@@ -30,6 +30,9 @@
 //! `SmFace::GetSurface`, the zone tolerances) through the [`ClassGeometry`] hooks.
 //! Deferred: `SmBrep::Transform`, the manager's fallback tolerance and what needs a real
 //! B-rep (`SmBrep::GetVertices`, `Point3DClassify`, UV domains from trim curves).
+//! `ProtoBrep::brep_squeeze_edge` (`SmBrep::SqueezeEdge`) defers under
+//! `harness:proto-pool-brep-edit`: the pool has no B-rep it can edit, so that is a gap
+//! of this harness, not of a plan unit (no case reaches it).
 
 use std::collections::BTreeMap;
 
@@ -1468,6 +1471,19 @@ impl ProtoTopology<H> for Pool {
 /// The bare stand-ins' members (upstream `SmEdge::GetInterval`, `GetCurve`, `GetTolerance`
 /// of the stand-in objects the shim makes), and new curves appended to the pool.
 impl ProtoBrep<H> for Pool {
+    fn brep_squeeze_edge(
+        &mut self,
+        _k: &mut Kernel,
+        _brep: H,
+        _edge: H,
+        _survivor: H,
+    ) -> solidcore::Result<()> {
+        // the pool's bare stand-ins have no B-rep to edit
+        Err(SolidError::unported(
+            "SmBrep::SqueezeEdge (bare stand-ins without a B-rep)",
+            "harness:proto-pool-brep-edit",
+        ))
+    }
     fn edge_interval(&self, edge: H) -> Option<Extent1d> {
         match self.objs.get(edge.0) {
             Some(PObj::Edge { ivl, .. }) if self.live_h(edge) => Some(*ivl),

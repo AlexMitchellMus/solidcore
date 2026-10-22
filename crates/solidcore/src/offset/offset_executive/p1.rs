@@ -608,7 +608,7 @@ impl OffsetExecutive {
     /// Builds a closing ruled side wall, or succeeds without work for null/ambiguous mappings.
     pub fn build_side_wall_of_edgeuse(
         &mut self,
-        kernel: &Kernel,
+        kernel: &mut Kernel,
         original_brep: &mut Brep,
         original: Option<EdgeuseId>,
     ) -> Result<()> {
@@ -633,7 +633,7 @@ impl OffsetExecutive {
         )?;
         // cpp:2819: m_pOffsetBrep->CreateFaceFromSurface(pNewSurface, natural domain)
         let domain = new_surface.natural_uv_domain();
-        let new_face = create_face_from_surface(offset_brep, &new_surface, &domain)?;
+        let new_face = create_face_from_surface(kernel, offset_brep, &new_surface, &domain)?;
         self.closing_faces.push(new_face); // [B549]
         Ok(())
     }
@@ -1097,6 +1097,9 @@ impl OffsetExecutive {
             SurfaceKind::SurfOfRevolution(surface) if surface.base().gw_nurb().is_none() => {
                 ignore_status(surface.make_nurb(kernel))?;
             }
+            SurfaceKind::SurfOfExtrusion(surface) if surface.base().gw_nurb().is_none() => {
+                ignore_status(surface.make_nurb(kernel))?;
+            }
             _ => {}
         }
         let original_faceuse = faceuse;
@@ -1512,6 +1515,37 @@ impl OffsetExecutive {
         }
         Ok(())
     }
+
+    /// Builds a face while binding source notifications to the supplied kernel context.
+    /// Source and newly-created result entities retain their separate key namespaces.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn build_offset_of_faceuse_with_kernel_context(
+        &mut self,
+        kernel: &mut Kernel,
+        original: &mut Brep,
+        faceuse: FaceuseId,
+        offset_surface: &mut Option<Surface>,
+        self_intersections: &SsiData<Curve>,
+        notifications: &mut NotificationStores<'_>,
+        offset_key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    ) -> Result<()> {
+        crate::geom::context::Context::with_notification_context(kernel, |kernel, context| {
+            self.build_offset_of_faceuse(
+                kernel,
+                original,
+                Some(faceuse),
+                offset_surface,
+                self_intersections,
+                &mut NotifyEnv {
+                    records: &mut *notifications.records,
+                    attributes: &mut *notifications.attributes,
+                    context: Some(context),
+                    key_of: notifications.key_of,
+                },
+                offset_key_of,
+            )
+        })?
+    }
 }
 
 /// The notification environment of offset-side entities: the caller's records,
@@ -1569,13 +1603,33 @@ fn uv_curve_bounding_box(kernel: &Kernel, curve: &mut Curve) -> Result<Extent3d>
 
 /// `SmBrep::CreateFaceFromSurface(pSurface, sDomain, rpNewFace)` (unit
 /// `topology.brep_p8`): the new face.
-fn create_face_from_surface(b: &mut Brep, surface: &Surface, domain: &Extent2d) -> Result<FaceId> {
-    let _ = (b, surface, domain);
-    // UNPORTED(topology.brep_p8): SmBrep::CreateFaceFromSurface
-    Err(SolidError::unported(
-        "SmBrep::CreateFaceFromSurface",
-        "topology.brep_p8",
-    ))
+///
+/// Notifications go to an arena-only store (`ArenaNotifyState`: default records, no
+/// attributes, no context), the new face owning its surface under its arena identity;
+/// the closing face's notifications have no observer here (upstream: the offset B-rep's
+/// context, which the executive does not hold).
+fn create_face_from_surface(
+    kernel: &mut Kernel,
+    b: &mut Brep,
+    surface: &Surface,
+    domain: &Extent2d,
+) -> Result<FaceId> {
+    let mut state = crate::topology::brep::p2::ArenaNotifyState::new(b);
+    let mut env = state.env(None);
+    let mut marks = crate::topology::topology_traverser::Marks::default();
+    let this_face = |f: FaceId| loopuse::notify_ref(EntityRef::Face(f));
+    let mut fenv = crate::topology::brep::p8::FaceBuildEnv {
+        env: &mut env,
+        marks: &mut marks,
+        this_face: &this_face,
+    };
+    crate::topology::brep::p8::create_face_from_surface(
+        kernel,
+        b,
+        Some(surface.clone()),
+        domain,
+        &mut fenv,
+    )
 }
 
 fn required<T>(value: Option<T>) -> Result<T> {
@@ -2510,7 +2564,7 @@ mod tests {
 
     #[test]
     fn sidewalls_handle_null_missing_ambiguous_and_single_mappings() {
-        let kernel = Kernel::default();
+        let mut kernel = Kernel::default();
         let mut executive = executive();
         // B-spline edge curves (a Line whose parameterisation was edited carries no NURB)
         let mut original_brep = Brep::new();
@@ -2519,21 +2573,28 @@ mod tests {
         let offset = add_bspline_use(&mut offset_brep, 1.0);
         executive.set_offset_brep(offset_brep);
         executive
-            .build_side_wall_of_edgeuse(&kernel, &mut original_brep, None)
+            .build_side_wall_of_edgeuse(&mut kernel, &mut original_brep, None)
             .unwrap();
         executive
-            .build_side_wall_of_edgeuse(&kernel, &mut original_brep, Some(original))
+            .build_side_wall_of_edgeuse(&mut kernel, &mut original_brep, Some(original))
             .unwrap();
-        // the ruled blend across the two B-reps runs; the closing face is next
+        // the ruled blend across the two B-reps runs; the closing face is made by
+        // topology.brep_p8 (CreateFaceFromSurface) on the offset B-rep, a bare
+        // `Brep::new()` here (no infinite region), and fails there
         executive.relate_edgeuses(original, offset);
-        assert_dependency(
-            executive.build_side_wall_of_edgeuse(&kernel, &mut original_brep, Some(original)),
-            "SmBrep::CreateFaceFromSurface",
-            "topology.brep_p8",
-        );
+        let r =
+            executive.build_side_wall_of_edgeuse(&mut kernel, &mut original_brep, Some(original));
+        assert!(r.is_err());
+        assert!(!matches!(
+            r,
+            Err(SolidError::Unported {
+                unit: "topology.brep_p8",
+                ..
+            })
+        ));
         executive.relate_edgeuses(original, EdgeuseId::from_index(2));
         executive
-            .build_side_wall_of_edgeuse(&kernel, &mut original_brep, Some(original))
+            .build_side_wall_of_edgeuse(&mut kernel, &mut original_brep, Some(original))
             .unwrap();
     }
 

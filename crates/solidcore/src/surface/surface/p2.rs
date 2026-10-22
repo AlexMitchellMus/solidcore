@@ -88,8 +88,10 @@
 //!   `AdjustSTEPUVDomain` and `TrimWithDomain` belong to `surface.surf_of_revolution_p2`;
 //!   `Reverse`, `Reparameterize`, `SwapUV`, `Transform`, the parameter conversions and
 //!   `DropPointFast` take the kernel for it); the other analytic and generated surfaces
-//!   (`SmCone`/`SmCylinder` are retained in the `Cone` variant by integration #76;
-//!   other analytic kinds join in separate adapters). Each virtual method is one `match`: a
+//!   (`SmCone`/`SmCylinder` are retained in the `Cone` variant by integration #76,
+//!   `SmSphere` and `SmTorus` in the `Sphere` and `Torus` variants, `SmSurfOfExtrusion`
+//!   in the `SurfOfExtrusion` variant: its overrides, else the inherited
+//!   `SmBSplineSurface` bodies on its B-spline part). Each virtual method is one `match`: a
 //!   kind that overrides it calls its own method, the others run the base-class body
 //!   ported here. The base bodies are also public as `base_*` functions (they are
 //!   what a kind without an override runs, and what difftest compares with an
@@ -285,6 +287,12 @@ pub enum SurfaceKind {
     OffsetSurface(OffsetSurface),
     /// `SmSrfInVolume`.
     SrfInVolume(Box<SrfInVolume>),
+    /// `SmSphere` (an `SmSurfOfRevolution`; boxed, it holds one).
+    Sphere(Box<Sphere>),
+    /// `SmTorus` (an `SmSurfOfRevolution`; boxed, it holds one).
+    Torus(Box<Torus>),
+    /// `SmSurfOfExtrusion` (an `SmBSplineSurface`; boxed, it holds a generator).
+    SurfOfExtrusion(Box<SurfOfExtrusion>),
 }
 
 /// A surface (`SmSurface`): its concrete kind and the object owning it (`m_pOwner`:
@@ -354,7 +362,22 @@ impl Surface {
                             push(Geometry::Curve(c));
                         }
                     }
+                    SurfaceKind::Sphere(s) => {
+                        if let Some(c) = s.base().gen_curve() {
+                            push(Geometry::Curve(c));
+                        }
+                    }
+                    SurfaceKind::Torus(s) => {
+                        if let Some(c) = s.base().gen_curve() {
+                            push(Geometry::Curve(c));
+                        }
+                    }
                     SurfaceKind::SurfOfRevolution(s) => {
+                        if let Some(c) = s.gen_curve() {
+                            push(Geometry::Curve(c));
+                        }
+                    }
+                    SurfaceKind::SurfOfExtrusion(s) => {
                         if let Some(c) = s.gen_curve() {
                             push(Geometry::Curve(c));
                         }
@@ -428,8 +451,24 @@ impl Surface {
                 c.rev = s.rev().clone_exact();
                 SurfaceKind::Cone(Box::new(c))
             }
+            SurfaceKind::Sphere(s) => {
+                let mut c = s.as_ref().clone();
+                c.base = s.base().clone_exact();
+                SurfaceKind::Sphere(Box::new(c))
+            }
+            SurfaceKind::Torus(s) => {
+                // (an exact evaluation copy: the copy constructor's reset of the
+                // inside-out flag does not apply)
+                let mut c = s.as_ref().clone();
+                c.base = s.base().clone_exact();
+                c.inside_out = s.inside_out;
+                SurfaceKind::Torus(Box::new(c))
+            }
             SurfaceKind::SurfOfRevolution(s) => {
                 SurfaceKind::SurfOfRevolution(Box::new(s.clone_exact()))
+            }
+            SurfaceKind::SurfOfExtrusion(s) => {
+                SurfaceKind::SurfOfExtrusion(Box::new(s.clone_exact()))
             }
             SurfaceKind::Step(s) => SurfaceKind::Step(s.clone_for_evaluation(depth + 1)?),
             SurfaceKind::CurveBounded(s) => {
@@ -463,6 +502,18 @@ impl From<Cone> for Surface {
     }
 }
 
+impl From<Torus> for Surface {
+    fn from(s: Torus) -> Self {
+        Self::new(SurfaceKind::Torus(Box::new(s)))
+    }
+}
+
+impl From<Sphere> for Surface {
+    fn from(s: Sphere) -> Self {
+        Self::new(SurfaceKind::Sphere(Box::new(s)))
+    }
+}
+
 impl From<StepSurface> for Surface {
     fn from(s: StepSurface) -> Self {
         Self::new(SurfaceKind::Step(s))
@@ -472,6 +523,12 @@ impl From<StepSurface> for Surface {
 impl From<Plane> for Surface {
     fn from(s: Plane) -> Self {
         Self::new(SurfaceKind::Plane(s))
+    }
+}
+
+impl From<SurfOfExtrusion> for Surface {
+    fn from(s: SurfOfExtrusion) -> Self {
+        Self::new(SurfaceKind::SurfOfExtrusion(Box::new(s)))
     }
 }
 
@@ -715,7 +772,10 @@ impl Surface {
             SurfaceKind::SrfInVolume(s) => s.type_code(),
             SurfaceKind::Plane(s) => s.type_code(),
             SurfaceKind::Cone(s) => s.type_code(),
+            SurfaceKind::Sphere(s) => s.type_code(),
+            SurfaceKind::Torus(s) => s.type_code(),
             SurfaceKind::SurfOfRevolution(s) => s.type_code(),
+            SurfaceKind::SurfOfExtrusion(s) => s.type_code(),
             SurfaceKind::OffsetSurface(s) => s.type_code(),
         }
     }
@@ -730,7 +790,10 @@ impl Surface {
             SurfaceKind::SrfInVolume(s) => s.type_string(),
             SurfaceKind::Plane(s) => s.type_string(),
             SurfaceKind::Cone(s) => s.type_string(),
+            SurfaceKind::Sphere(s) => s.type_string(),
+            SurfaceKind::Torus(s) => s.type_string(),
             SurfaceKind::SurfOfRevolution(s) => s.type_string(),
+            SurfaceKind::SurfOfExtrusion(s) => s.type_string(),
             SurfaceKind::OffsetSurface(s) => s.type_string(),
         }
     }
@@ -745,7 +808,10 @@ impl Surface {
             SurfaceKind::SrfInVolume(s) => s.class_string(),
             SurfaceKind::Plane(s) => s.class_string(),
             SurfaceKind::Cone(s) => s.class_string(),
+            SurfaceKind::Sphere(s) => s.class_string(),
+            SurfaceKind::Torus(s) => s.class_string(),
             SurfaceKind::SurfOfRevolution(s) => s.class_string(),
+            SurfaceKind::SurfOfExtrusion(s) => s.class_string(),
             SurfaceKind::OffsetSurface(s) => s.class_string(),
         }
     }
@@ -763,7 +829,10 @@ impl Surface {
             SurfaceKind::SrfInVolume(s) => Ok(s.is_kind_of(t)),
             SurfaceKind::Plane(s) => s.is_kind_of(t),
             SurfaceKind::Cone(s) => s.is_kind_of(t),
+            SurfaceKind::Sphere(s) => s.is_kind_of(t),
+            SurfaceKind::Torus(s) => s.is_kind_of(t),
             SurfaceKind::SurfOfRevolution(s) => s.is_kind_of(t),
+            SurfaceKind::SurfOfExtrusion(s) => s.is_kind_of(t),
             SurfaceKind::OffsetSurface(_) => Ok(OffsetSurface::is_kind_of(t)),
         }
     }
@@ -785,7 +854,10 @@ impl Surface {
             SurfaceKind::SrfInVolume(s) => Ok(Self::from(s.copy(k)?)),
             SurfaceKind::Plane(s) => Ok(Self::from(s.copy())),
             SurfaceKind::Cone(s) => Ok(Self::from(s.as_ref().clone())),
+            SurfaceKind::Sphere(s) => Ok(Self::from(s.copy())),
+            SurfaceKind::Torus(s) => Ok(Self::from(s.copy())),
             SurfaceKind::SurfOfRevolution(s) => Ok(Self::from(s.copy())),
+            SurfaceKind::SurfOfExtrusion(s) => Ok(Self::from(s.copy()?)),
             SurfaceKind::OffsetSurface(s) => Ok(Self::from(s.copy(k)?)),
         }
     }
@@ -805,7 +877,10 @@ impl Surface {
             // SmBSplineSurface::CopyAndAddAnalytics: not SmBSplineSurface_TYPE, so Copy
             SurfaceKind::Plane(s) => Ok(Self::from(s.copy())),
             SurfaceKind::Cone(s) => Ok(Self::from(s.as_ref().clone())),
+            SurfaceKind::Sphere(s) => Ok(Self::from(s.copy())),
+            SurfaceKind::Torus(s) => Ok(Self::from(s.copy())),
             SurfaceKind::SurfOfRevolution(s) => Ok(Self::from(s.copy())),
+            SurfaceKind::SurfOfExtrusion(s) => Ok(Self::from(s.copy()?)),
             // the base body: the virtual Copy
             SurfaceKind::OffsetSurface(s) => Ok(Self::from(s.copy(k)?)),
         }
@@ -848,6 +923,22 @@ impl Surface {
                 .collect()),
             SurfaceKind::SurfOfRevolution(s) => {
                 s.base()
+                    .evaluate(uv, highest_u_deriv, highest_v_deriv, flags)
+            }
+            // (not overridden: the SmBSplineSurface evaluation)
+            SurfaceKind::SurfOfExtrusion(s) => {
+                s.base()
+                    .evaluate(uv, highest_u_deriv, highest_v_deriv, flags)
+            }
+            // (not overridden: the SmBSplineSurface evaluation)
+            SurfaceKind::Sphere(s) => {
+                s.base()
+                    .base()
+                    .evaluate(uv, highest_u_deriv, highest_v_deriv, flags)
+            }
+            SurfaceKind::Torus(s) => {
+                s.base()
+                    .base()
                     .evaluate(uv, highest_u_deriv, highest_v_deriv, flags)
             }
             SurfaceKind::OffsetSurface(s) => {
@@ -895,6 +986,22 @@ impl Surface {
                 s.base()
                     .evaluate_ignoring_status(uv, highest_u_deriv, highest_v_deriv, flags)
             }
+            SurfaceKind::SurfOfExtrusion(s) => {
+                s.base()
+                    .evaluate_ignoring_status(uv, highest_u_deriv, highest_v_deriv, flags)
+            }
+            SurfaceKind::Sphere(s) => s.base().base().evaluate_ignoring_status(
+                uv,
+                highest_u_deriv,
+                highest_v_deriv,
+                flags,
+            ),
+            SurfaceKind::Torus(s) => s.base().base().evaluate_ignoring_status(
+                uv,
+                highest_u_deriv,
+                highest_v_deriv,
+                flags,
+            ),
             // pass the call along
             SurfaceKind::CurveBounded(s) => {
                 s.basis()
@@ -944,6 +1051,9 @@ impl Surface {
             SurfaceKind::Plane(s) => Ok(s.evaluate_point(uv)),
             SurfaceKind::Cone(s) => s.evaluate_point(k, uv),
             SurfaceKind::SurfOfRevolution(s) => s.base().evaluate_point(uv),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().evaluate_point(uv),
+            SurfaceKind::Sphere(s) => s.base().base().evaluate_point(uv),
+            SurfaceKind::Torus(s) => s.base().base().evaluate_point(uv),
             SurfaceKind::OffsetSurface(s) => s.evaluate_point(k, uv),
         }
     }
@@ -961,6 +1071,9 @@ impl Surface {
             SurfaceKind::Plane(s) => s.natural_uv_domain(),
             SurfaceKind::Cone(s) => s.rev().base().natural_uv_domain(),
             SurfaceKind::SurfOfRevolution(s) => s.base().natural_uv_domain(),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().natural_uv_domain(),
+            SurfaceKind::Sphere(s) => s.base().base().natural_uv_domain(),
+            SurfaceKind::Torus(s) => s.base().base().natural_uv_domain(),
             SurfaceKind::OffsetSurface(s) => s.natural_uv_domain(),
         }
     }
@@ -972,7 +1085,11 @@ impl Surface {
         match &self.kind {
             SurfaceKind::Plane(s) => s.step_uv_domain(),
             SurfaceKind::Cone(s) => s.rev().step_uv_domain(),
+            SurfaceKind::Sphere(s) => s.step_uv_domain(),
+            // (GetSTEPUVDomain is not overridden)
+            SurfaceKind::Torus(s) => s.base().step_uv_domain(),
             SurfaceKind::SurfOfRevolution(s) => s.step_uv_domain(),
+            SurfaceKind::SurfOfExtrusion(s) => s.step_uv_domain(),
             SurfaceKind::SrfInVolume(s) => s.step_uv_domain(),
             SurfaceKind::BSpline(_)
             | SurfaceKind::CurveBounded(_)
@@ -991,6 +1108,9 @@ impl Surface {
             SurfaceKind::Plane(s) => s.base_for_query().degree(param),
             SurfaceKind::Cone(s) => s.rev().base().degree(param),
             SurfaceKind::SurfOfRevolution(s) => s.base().degree(param),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().degree(param),
+            SurfaceKind::Sphere(s) => s.base().base().degree(param),
+            SurfaceKind::Torus(s) => s.base().base().degree(param),
             SurfaceKind::OffsetSurface(s) => s.degree(),
         }
     }
@@ -1008,6 +1128,9 @@ impl Surface {
             SurfaceKind::Plane(s) => s.base_for_query().number_control_points(param),
             SurfaceKind::Cone(s) => s.rev().base().number_control_points(param),
             SurfaceKind::SurfOfRevolution(s) => s.base().number_control_points(param),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().number_control_points(param),
+            SurfaceKind::Sphere(s) => s.base().base().number_control_points(param),
+            SurfaceKind::Torus(s) => s.base().base().number_control_points(param),
         }
     }
 
@@ -1023,7 +1146,10 @@ impl Surface {
             SurfaceKind::SrfInVolume(s) => s.max_analytic_domain(k),
             SurfaceKind::Plane(s) => Ok(s.max_analytic_domain()),
             SurfaceKind::Cone(s) => s.max_analytic_domain(k),
+            SurfaceKind::Sphere(s) => Ok(s.max_analytic_domain()),
+            SurfaceKind::Torus(s) => Ok(s.max_analytic_domain()),
             SurfaceKind::SurfOfRevolution(s) => s.max_analytic_domain(k),
+            SurfaceKind::SurfOfExtrusion(s) => s.max_analytic_domain(k),
             SurfaceKind::OffsetSurface(s) => s.max_analytic_domain(k),
         }
     }
@@ -1040,6 +1166,9 @@ impl Surface {
             SurfaceKind::Plane(s) => s.base_for_query().is_bilinear(),
             SurfaceKind::Cone(s) => s.rev().base().is_bilinear(),
             SurfaceKind::SurfOfRevolution(s) => s.base().is_bilinear(),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().is_bilinear(),
+            SurfaceKind::Sphere(s) => s.base().base().is_bilinear(),
+            SurfaceKind::Torus(s) => s.base().base().is_bilinear(),
         }
     }
 
@@ -1059,6 +1188,9 @@ impl Surface {
             // (not a plane: the SmBSplineSurface net test)
             SurfaceKind::Cone(s) => s.rev().base().is_parallel_to_vector(vector),
             SurfaceKind::SurfOfRevolution(s) => s.base().is_parallel_to_vector(vector),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().is_parallel_to_vector(vector),
+            SurfaceKind::Sphere(s) => s.base().base().is_parallel_to_vector(vector),
+            SurfaceKind::Torus(s) => s.base().base().is_parallel_to_vector(vector),
         }
     }
 
@@ -1081,6 +1213,9 @@ impl Surface {
             SurfaceKind::Plane(s) => s.base_for_query().knots(param, ivl),
             SurfaceKind::Cone(s) => s.rev().base().knots(param, ivl),
             SurfaceKind::SurfOfRevolution(s) => s.base().knots(param, ivl),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().knots(param, ivl),
+            SurfaceKind::Sphere(s) => s.base().base().knots(param, ivl),
+            SurfaceKind::Torus(s) => s.base().base().knots(param, ivl),
             SurfaceKind::OffsetSurface(s) => s.knots(param, ivl),
         }
     }
@@ -1095,7 +1230,9 @@ impl Surface {
     pub fn convert_uv_from_step_to_nurbs(&self, k: &Kernel, step_uv: Point2) -> Result<Point2> {
         match &self.kind {
             SurfaceKind::Cone(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
+            SurfaceKind::Sphere(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
             SurfaceKind::SurfOfRevolution(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
+            SurfaceKind::SurfOfExtrusion(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
             _ => Ok(base_convert_uv(step_uv)),
         }
     }
@@ -1110,7 +1247,9 @@ impl Surface {
     pub fn convert_uv_from_nurbs_to_step(&self, k: &Kernel, nurbs_uv: Point2) -> Result<Point2> {
         match &self.kind {
             SurfaceKind::Cone(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
+            SurfaceKind::Sphere(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             SurfaceKind::SurfOfRevolution(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
+            SurfaceKind::SurfOfExtrusion(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             _ => Ok(base_convert_uv(nurbs_uv)),
         }
     }
@@ -1158,6 +1297,34 @@ impl Surface {
             SurfaceKind::SurfOfRevolution(s) => {
                 s.step_inversion(k, anal_domain, point_on_surf, tol_3d, uv_guess)
             }
+            SurfaceKind::SurfOfExtrusion(s) => {
+                s.step_inversion(k, anal_domain, point_on_surf, tol_3d, uv_guess)
+            }
+            // SmSphere::STEPInversion: SM_ERR for a point off the sphere
+            SurfaceKind::Sphere(s) => {
+                let r = s.step_inversion(anal_domain, point_on_surf, tol_3d, uv_guess);
+                if r.on_surface {
+                    Ok((r.uv, r.location))
+                } else {
+                    Err(SolidError::sm_err(
+                        "surface::surface::Surface::step_inversion",
+                    ))
+                }
+            }
+            // the inherited SmSurfOfRevolution::STEPInversion: with a planar generator
+            // it makes no virtual call
+            SurfaceKind::Torus(s) if s.base().planar_generator => {
+                s.base()
+                    .step_inversion(k, anal_domain, point_on_surf, tol_3d, uv_guess)
+            }
+            SurfaceKind::Torus(_) => {
+                // DISPATCH GAP (#76): the non-planar branch converts through the torus's
+                // virtual ConvertUVFromSTEPToNURBS / ConvertUVFromNURBSToSTEP.
+                Err(SolidError::unported(
+                    "SurfaceKind::Torus::STEPInversion conversions",
+                    "surface.surface_p2",
+                ))
+            }
         }
     }
 
@@ -1197,10 +1364,70 @@ impl Surface {
                     "surface.surface_p2",
                 ))
             }
+            // the inherited SmSurfOfRevolution::DropPointFast, its virtual
+            // EvaluateSTEPPoint and LocalPointSolve those of the sphere/torus; the
+            // solutions name a stand-in for this surface, as for the revolution below
+            SurfaceKind::Sphere(s) => Ok(s
+                .base()
+                .drop_point_fast_using(
+                    k,
+                    uv_domain,
+                    operation,
+                    test_point,
+                    in_pointing_vector,
+                    distance_tolerance,
+                    target_distance,
+                    requested,
+                    Some(OperandObject::Surface(0, self.natural_uv_domain())),
+                    &|_, uv| s.evaluate_step_point(uv),
+                    &|k, domain, operation, point, guess| {
+                        let r = self.local_point_solve::<OperandObject>(
+                            k, domain, operation, point, guess,
+                        )?;
+                        Ok((r.found, r.solution))
+                    },
+                )?
+                .without_objects()),
+            SurfaceKind::Torus(s) => Ok(s
+                .base()
+                .drop_point_fast_using(
+                    k,
+                    uv_domain,
+                    operation,
+                    test_point,
+                    in_pointing_vector,
+                    distance_tolerance,
+                    target_distance,
+                    requested,
+                    Some(OperandObject::Surface(0, self.natural_uv_domain())),
+                    &|_, uv| s.evaluate_step_point(uv),
+                    &|k, domain, operation, point, guess| {
+                        let r = self.local_point_solve::<OperandObject>(
+                            k, domain, operation, point, guess,
+                        )?;
+                        Ok((r.found, r.solution))
+                    },
+                )?
+                .without_objects()),
             // upstream's solutions name this surface, whose natural UV domain
             // IdenticalSolutions reads: solve naming a stand-in for it, return the
             // solutions without objects
             SurfaceKind::SurfOfRevolution(s) => Ok(s
+                .drop_point_fast(
+                    k,
+                    uv_domain,
+                    operation,
+                    test_point,
+                    in_pointing_vector,
+                    distance_tolerance,
+                    target_distance,
+                    requested,
+                    Some(OperandObject::Surface(0, self.natural_uv_domain())),
+                )?
+                .without_objects()),
+            // SmSurfOfExtrusion::DropPointFast: its solutions name this surface, as the
+            // revolution's above
+            SurfaceKind::SurfOfExtrusion(s) => Ok(s
                 .drop_point_fast(
                     k,
                     uv_domain,
@@ -1258,9 +1485,28 @@ impl Surface {
             SurfaceKind::Cone(s) => {
                 s.intersect_with_plane(k, uv_domain, plane, other_uv_domain, approx_tol_3d)
             }
+            SurfaceKind::Sphere(s) => {
+                s.intersect_with_plane(k, uv_domain, plane, other_uv_domain, approx_tol_3d)
+            }
+            SurfaceKind::Torus(s) => {
+                s.intersect_with_plane(k, plane, other_uv_domain, approx_tol_3d)
+            }
             SurfaceKind::SurfOfRevolution(s) => {
                 s.intersect_with_plane(k, plane, other_uv_domain, approx_tol_3d)
             }
+            // SmSurfOfExtrusion::IntersectWithPlane (same signature: an override); the
+            // plane is taken as without owner, as for the plane above
+            SurfaceKind::SurfOfExtrusion(s) => s
+                .intersect_with_plane_on(
+                    k,
+                    self,
+                    uv_domain,
+                    plane,
+                    crate::surface::plane::p2::PlaneOwner::NoFace,
+                    other_uv_domain,
+                    approx_tol_3d,
+                )
+                .map(|x| (x.needs_more_intersections, SurfaceIntersection::from(x))),
             SurfaceKind::BSpline(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
@@ -1290,7 +1536,10 @@ impl Surface {
             | SurfaceKind::SrfInVolume(_) => base_adjust_step_uv_domain(),
             SurfaceKind::Plane(s) => s.adjust_step_uv_domain(new_step_uv_domain),
             SurfaceKind::Cone(s) => s.adjust_step_uv_domain(k, new_step_uv_domain),
+            SurfaceKind::Sphere(s) => s.adjust_step_uv_domain(k, new_step_uv_domain),
+            SurfaceKind::Torus(s) => s.adjust_step_uv_domain(k, new_step_uv_domain),
             SurfaceKind::SurfOfRevolution(s) => s.adjust_step_uv_domain(k, new_step_uv_domain),
+            SurfaceKind::SurfOfExtrusion(s) => s.adjust_step_uv_domain(k, new_step_uv_domain),
         }
     }
 
@@ -1317,6 +1566,26 @@ impl Surface {
                 s.base_mut().reverse(param)?;
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
+            SurfaceKind::Sphere(s) => {
+                // SmBSplineSurface::Reverse: GetOrCreateGwNurbPointer (the sphere's
+                // MakeNurb when missing, status ignored), the NURB reversal, then the
+                // sphere's RebuildSTEPFromNURBParameters (status ignored)
+                if s.base().base().gw_nurb().is_none() {
+                    ignore_status(s.make_nurb(k))?;
+                }
+                s.base.base_mut().reverse(param)?;
+                ignore_status(s.rebuild_step_from_nurb_parameters(k))
+            }
+            SurfaceKind::Torus(s) => {
+                // SmBSplineSurface::Reverse: GetOrCreateGwNurbPointer (the torus's
+                // MakeNurb when missing, status ignored), the NURB reversal, then the
+                // torus's RebuildSTEPFromNURBParameters (status ignored)
+                if s.base().base().gw_nurb().is_none() {
+                    ignore_status(s.make_nurb(k))?;
+                }
+                s.base.base_mut().reverse(param)?;
+                ignore_status(s.rebuild_step_from_nurb_parameters(k))
+            }
             SurfaceKind::SurfOfRevolution(s) => {
                 // Upstream reaches the NURB through the virtual GetOrCreateGwNurbPointer,
                 // which would call SmSurfOfRevolution::MakeNurb for a surface without
@@ -1324,6 +1593,15 @@ impl Surface {
                 // stored base is used directly.
                 s.base_mut().reverse(param)?;
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
+            }
+            SurfaceKind::SurfOfExtrusion(s) => {
+                // SmBSplineSurface::Reverse: GetOrCreateGwNurbPointer (the extrusion's
+                // MakeNurb when missing, status ignored), the NURB reversal; the
+                // extrusion keeps the base RebuildSTEPFromNURBParameters (no work)
+                if s.base().gw_nurb().is_none() {
+                    ignore_status(s.make_nurb(k))?;
+                }
+                s.base_mut().reverse(param)
             }
             SurfaceKind::OffsetSurface(s) => s.reverse(k, param),
         }
@@ -1344,7 +1622,10 @@ impl Surface {
             SurfaceKind::Plane(s) => s.reparameterize(new_domain),
             // the inherited SmSurfOfRevolution::Reparameterize with the cone's iso curves
             SurfaceKind::Cone(s) => s.reparameterize(k, new_domain),
+            SurfaceKind::Sphere(s) => s.reparameterize(k, new_domain),
+            SurfaceKind::Torus(s) => s.reparameterize(k, new_domain),
             SurfaceKind::SurfOfRevolution(s) => s.reparameterize(k, new_domain),
+            SurfaceKind::SurfOfExtrusion(s) => s.reparameterize(k, new_domain),
         }
     }
 
@@ -1369,11 +1650,39 @@ impl Surface {
                 s.rev.toggle_swap_uv_bit();
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
+            SurfaceKind::Sphere(s) => {
+                // SmBSplineSurface::SwapUV: the NURB swap, the inherited
+                // SmSurfOfRevolution::ToggleSwapUVBit, then SetCanonical's virtual
+                // RebuildSTEPFromNURBParameters (the sphere's, status ignored)
+                s.base.base_mut().swap_uv()?;
+                s.base.toggle_swap_uv_bit();
+                ignore_status(s.rebuild_step_from_nurb_parameters(k))
+            }
+            SurfaceKind::Torus(s) => {
+                // SmBSplineSurface::SwapUV: the NURB swap, the inherited
+                // SmSurfOfRevolution::ToggleSwapUVBit, then SetCanonical's virtual
+                // RebuildSTEPFromNURBParameters (the torus's, status ignored)
+                s.base.base_mut().swap_uv()?;
+                s.base.toggle_swap_uv_bit();
+                ignore_status(s.rebuild_step_from_nurb_parameters(k))
+            }
             SurfaceKind::SurfOfRevolution(s) => {
                 // As in `reverse`: the stored NURB stands for GetOrCreateGwNurbPointer.
                 s.base_mut().swap_uv()?;
                 s.toggle_swap_uv_bit();
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
+            }
+            SurfaceKind::SurfOfExtrusion(s) => {
+                // SmBSplineSurface::SwapUV: GetCanonical's GetOrCreateGwNurbPointer (the
+                // extrusion's MakeNurb when missing, status ignored), the NURB swap and
+                // the extrusion's ToggleSwapUVBit (its RebuildSTEPFromNURBParameters is
+                // the base's: no work)
+                if s.base().gw_nurb().is_none() {
+                    ignore_status(s.make_nurb(k))?;
+                }
+                s.base_mut().swap_uv()?;
+                s.toggle_swap_uv_bit();
+                Ok(())
             }
             SurfaceKind::OffsetSurface(s) => s.swap_uv(k),
         }
@@ -1392,7 +1701,10 @@ impl Surface {
     ) -> Result<()> {
         match &mut self.kind {
             SurfaceKind::Cone(s) => s.transform(k, rotate_n_move, scale),
+            SurfaceKind::Sphere(s) => s.transform(k, rotate_n_move, scale),
+            SurfaceKind::Torus(s) => s.transform(k, rotate_n_move, scale),
             SurfaceKind::SurfOfRevolution(s) => s.transform(k, rotate_n_move, scale),
+            SurfaceKind::SurfOfExtrusion(s) => s.transform(k, rotate_n_move, scale),
             SurfaceKind::BSpline(s) => s.transform(rotate_n_move, scale),
             SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) => base_edit(),
             SurfaceKind::OffsetSurface(s) => s.transform(k, rotate_n_move, scale),
@@ -1420,7 +1732,10 @@ impl Surface {
                     "surface.surface_p2",
                 ))
             }
+            SurfaceKind::Sphere(s) => s.trim_with_domain(k, trim_domain),
+            SurfaceKind::Torus(s) => s.trim_with_domain(k, trim_domain),
             SurfaceKind::SurfOfRevolution(s) => s.trim_with_domain(k, trim_domain),
+            SurfaceKind::SurfOfExtrusion(s) => s.trim_with_domain(k, trim_domain),
         }
     }
 
@@ -1456,7 +1771,19 @@ impl Surface {
                 let (l, r) = s.rev().base().split_at(param, surf_param)?;
                 Ok((Self::from(l), Self::from(r)))
             }
+            SurfaceKind::Sphere(s) => {
+                let (l, r) = s.base().base().split_at(param, surf_param)?;
+                Ok((Self::from(l), Self::from(r)))
+            }
+            SurfaceKind::Torus(s) => {
+                let (l, r) = s.base().base().split_at(param, surf_param)?;
+                Ok((Self::from(l), Self::from(r)))
+            }
             SurfaceKind::SurfOfRevolution(s) => {
+                let (l, r) = s.base().split_at(param, surf_param)?;
+                Ok((Self::from(l), Self::from(r)))
+            }
+            SurfaceKind::SurfOfExtrusion(s) => {
                 let (l, r) = s.base().split_at(param, surf_param)?;
                 Ok((Self::from(l), Self::from(r)))
             }
@@ -1488,6 +1815,30 @@ impl Surface {
             SurfaceKind::Plane(s) => Ok(Self::from(
                 s.create_extended_surface(dist, extension_continuity)?,
             )),
+            SurfaceKind::Sphere(s) => Ok(Self::from(
+                s.base().base().create_extended_surface_dispatched(
+                    SurfParamType::Both,
+                    dist,
+                    extension_continuity,
+                    &|uv| {
+                        self.is_singularity(k, uv, EFF_ZERO, false)
+                            .map(|r| (r.singular, r.direction))
+                    },
+                    &|domain, param| self.is_closed(k, domain, param, None, false).map(|r| r.0),
+                )?,
+            )),
+            SurfaceKind::Torus(s) => Ok(Self::from(
+                s.base().base().create_extended_surface_dispatched(
+                    SurfParamType::Both,
+                    dist,
+                    extension_continuity,
+                    &|uv| {
+                        self.is_singularity(k, uv, EFF_ZERO, false)
+                            .map(|r| (r.singular, r.direction))
+                    },
+                    &|domain, param| self.is_closed(k, domain, param, None, false).map(|r| r.0),
+                )?,
+            )),
             SurfaceKind::Cone(s) => Ok(Self::from(
                 s.rev().base().create_extended_surface_dispatched(
                     SurfParamType::Both,
@@ -1504,6 +1855,11 @@ impl Surface {
                 s.create_extended_surface(k, dist, extension_continuity)
             }
             SurfaceKind::SurfOfRevolution(s) => Ok(Self::from(s.base().create_extended_surface(
+                k,
+                dist,
+                extension_continuity,
+            )?)),
+            SurfaceKind::SurfOfExtrusion(s) => Ok(Self::from(s.base().create_extended_surface(
                 k,
                 dist,
                 extension_continuity,
@@ -1539,6 +1895,30 @@ impl Surface {
                 dist,
                 extension_continuity,
             )?)),
+            SurfaceKind::Sphere(s) => Ok(Self::from(
+                s.base().base().create_extended_surface_dispatched(
+                    ext_direction,
+                    dist,
+                    extension_continuity,
+                    &|uv| {
+                        self.is_singularity(k, uv, EFF_ZERO, false)
+                            .map(|r| (r.singular, r.direction))
+                    },
+                    &|domain, param| self.is_closed(k, domain, param, None, false).map(|r| r.0),
+                )?,
+            )),
+            SurfaceKind::Torus(s) => Ok(Self::from(
+                s.base().base().create_extended_surface_dispatched(
+                    ext_direction,
+                    dist,
+                    extension_continuity,
+                    &|uv| {
+                        self.is_singularity(k, uv, EFF_ZERO, false)
+                            .map(|r| (r.singular, r.direction))
+                    },
+                    &|domain, param| self.is_closed(k, domain, param, None, false).map(|r| r.0),
+                )?,
+            )),
             SurfaceKind::Cone(s) => Ok(Self::from(
                 s.rev().base().create_extended_surface_dispatched(
                     ext_direction,
@@ -1555,6 +1935,14 @@ impl Surface {
                 s.create_extended_surface_dir(k, ext_direction, dist, extension_continuity)
             }
             SurfaceKind::SurfOfRevolution(s) => {
+                Ok(Self::from(s.base().create_extended_surface_dir(
+                    k,
+                    ext_direction,
+                    dist,
+                    extension_continuity,
+                )?))
+            }
+            SurfaceKind::SurfOfExtrusion(s) => {
                 Ok(Self::from(s.base().create_extended_surface_dir(
                     k,
                     ext_direction,
@@ -1597,15 +1985,7 @@ impl Surface {
             B_SPLINE_SURFACE_TYPE => Ok(Self::from(BSplineSurface::read_from_db(db, version)?)),
             PLANE_TYPE => Ok(Self::from(Plane::read_from_db(db, version)?)),
             SURF_OF_EXTRUSION_TYPE => {
-                // SmSurfOfExtrusion::ReadFromDB reads the whole record.
-                let _surf = SurfOfExtrusion::read_from_db(k, db, version)?;
-                // DISPATCH GAP: the surface of extrusion is not a SurfaceKind yet (its
-                // SmSurface override adapters are not yet wired; see plan/findings.md), so no Surface can hold it (no UNPORTED marker:
-                // the reader is ported; the error names the extrusion's unit).
-                Err(SolidError::unported(
-                    "SurfaceKind::SurfOfExtrusion",
-                    "surface.surf_of_extrusion_p2",
-                ))
+                Ok(Self::from(SurfOfExtrusion::read_from_db(k, db, version)?))
             }
             SURF_OF_REVOLUTION_TYPE => {
                 Ok(Self::from(SurfOfRevolution::read_from_db(k, db, version)?))
@@ -1616,25 +1996,8 @@ impl Surface {
                 version,
                 surface_type == CYLINDER_TYPE,
             )?)),
-            SPHERE_TYPE => {
-                // SmSphere::ReadFromDB reads the whole record.
-                let _sphere = Sphere::read_from_db(k, db, version)?;
-                // DISPATCH GAP: the sphere is not a SurfaceKind yet (no variant with its
-                // SmSurface overrides), so no Surface can hold it (no UNPORTED marker:
-                // the reader is ported; the error names the sphere's unit).
-                Err(SolidError::unported(
-                    "SmSphere::ReadFromDB",
-                    "surface.sphere",
-                ))
-            }
-            TORUS_TYPE => {
-                // SmTorus::ReadFromDB reads the whole record.
-                let _torus = Torus::read_from_db(k, db, version)?;
-                // DISPATCH GAP: the torus is not a SurfaceKind yet (no variant with its
-                // SmSurface overrides), so no Surface can hold it (no UNPORTED marker:
-                // the reader is ported; the error names the torus's unit).
-                Err(SolidError::unported("SmTorus::ReadFromDB", "surface.torus"))
-            }
+            SPHERE_TYPE => Ok(Self::from(Sphere::read_from_db(k, db, version)?)),
+            TORUS_TYPE => Ok(Self::from(Torus::read_from_db(k, db, version)?)),
             CURVE_BOUNDED_SURFACE_TYPE => Ok(Self::from(CurveBoundedSurface::read_from_db(
                 k, db, version,
             )?)),
@@ -1747,9 +2110,99 @@ impl Surface {
                     )
                 },
             ),
+            // SmSphere::GlobalSurfaceIntersect: its special cases, else the base
+            // SmSurface::GlobalSurfaceIntersect of this surface
+            SurfaceKind::Sphere(s) => s.global_surface_intersect_with(
+                k,
+                uv_domain,
+                other,
+                other_uv_domain,
+                use_surface_edges,
+                approx_tol_3d,
+                ang_tol_rad,
+                |k| {
+                    base_global_surface_intersect(
+                        k,
+                        self,
+                        uv_domain,
+                        other,
+                        other_uv_domain,
+                        use_surface_edges,
+                        approx_tol_3d,
+                        ang_tol_rad,
+                    )
+                },
+            ),
+            // the inherited SmSurfOfRevolution::GlobalSurfaceIntersect: the plane
+            // special case runs the inherited IntersectWithPlane with the torus's iso
+            // circles, then the general intersection when it needs more (its curves
+            // follow: upstream appends to the same arrays); the other special cases
+            // (sphere, cone, surface of revolution) run through the torus's virtual
+            // iso curves and conversions (DISPATCH GAP, #76); any other surface takes
+            // the general intersection
+            SurfaceKind::Torus(t) => match other.kind() {
+                SurfaceKind::Plane(p) => {
+                    // the plane's boxes take its face's tolerance
+                    let (more, mut out) = t.intersect_with_plane_owned(
+                        k,
+                        p,
+                        crate::surface::plane::p2::PlaneOwner::of(other)?,
+                        other_uv_domain,
+                        approx_tol_3d,
+                    )?;
+                    if more {
+                        let more = base_global_surface_intersect(
+                            k,
+                            self,
+                            uv_domain,
+                            other,
+                            other_uv_domain,
+                            use_surface_edges,
+                            approx_tol_3d,
+                            ang_tol_rad,
+                        )?;
+                        out.curves_3d.extend(more.curves_3d);
+                        out.surface1_uv_curves.extend(more.surface1_uv_curves);
+                        out.surface2_uv_curves.extend(more.surface2_uv_curves);
+                        out.curve_types.extend(more.curve_types);
+                        out.deviations.extend(more.deviations);
+                    }
+                    Ok(out)
+                }
+                SurfaceKind::Sphere(_) | SurfaceKind::SurfOfRevolution(_) => {
+                    Err(SolidError::unported(
+                        "SurfaceKind::Torus::GlobalSurfaceIntersect special cases",
+                        "surface.surface_p2",
+                    ))
+                }
+                SurfaceKind::Cone(c) if c.type_code() == CONE_TYPE => Err(SolidError::unported(
+                    "SurfaceKind::Torus::GlobalSurfaceIntersect special cases",
+                    "surface.surface_p2",
+                )),
+                _ => base_global_surface_intersect(
+                    k,
+                    self,
+                    uv_domain,
+                    other,
+                    other_uv_domain,
+                    use_surface_edges,
+                    approx_tol_3d,
+                    ang_tol_rad,
+                ),
+            },
             SurfaceKind::SurfOfRevolution(s) => s.global_surface_intersect(
                 self,
                 k,
+                uv_domain,
+                other,
+                other_uv_domain,
+                use_surface_edges,
+                approx_tol_3d,
+                ang_tol_rad,
+            ),
+            SurfaceKind::SurfOfExtrusion(s) => s.global_surface_intersect_on(
+                k,
+                self,
                 uv_domain,
                 other,
                 other_uv_domain,
@@ -2737,6 +3190,9 @@ fn eval_second_derivatives_with_output(
                 };
             }
             SurfaceKind::SurfOfRevolution(s) if !step => {
+                return s.base().evaluate_with_partial_output(uv, flags);
+            }
+            SurfaceKind::SurfOfExtrusion(s) if !step => {
                 return s.base().evaluate_with_partial_output(uv, flags);
             }
             SurfaceKind::CurveBounded(s) => surface = s.basis(),

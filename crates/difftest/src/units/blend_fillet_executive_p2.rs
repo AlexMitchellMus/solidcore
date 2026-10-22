@@ -28,6 +28,7 @@ use solidcore::blend::fillet_executive::p3::{
     ContextMark, CornerView, ErrorInfo, ExecutionOptions, ExecutiveAccess, FilletExecutive,
     StitchAttempt, StitchSettings, TopoEdgeView,
 };
+use solidcore::blend::fillet_geom::p1::{FilletBrep, FilletSolverId};
 use solidcore::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use solidcore::blend::fillet_standard_solver::p1::{
     constant_radius_from_edgeuse, FilletLaw, FilletLawKind, FilletSolverType,
@@ -40,6 +41,7 @@ use solidcore::geom::solution_array::{ObjectKind, SolutionObject};
 use solidcore::intersect::point_class::{ClassObject, ClassObjectKind};
 use solidcore::kernel::Kernel;
 use solidcore::math::Point3;
+use solidcore::topology::proto_topology::p1::CopyBrepMap;
 use solidcore::topology::{edge, Brep, EdgeId, EdgeuseId};
 use solidcore::{Result as SolidResult, SolidError};
 use solidcore_ffi::units::blend_fillet_executive_p2::{self as ffi, Op};
@@ -272,6 +274,8 @@ impl SolutionObject for Handle {
 
 struct Access {
     breps: Vec<Brep>,
+    /// The executive's pseudo B-rep (`m_pPseudoBrep`): the solvers' fillet geometries.
+    pseudo: FilletBrep,
     generators: Vec<FilletSurfaceGenerator>,
     solvers: Vec<ConstantRadiusAssistedFs>,
     laws: Vec<FilletLaw>,
@@ -298,6 +302,49 @@ impl Access {
             _ => missing(),
         }
     }
+}
+
+/// `target->MergeBrep(other, NULL, NULL, bAddAnalytics)` for this fixture, which keeps no
+/// notification state: `topology::brep::p3::merge_brep` under the kernel's identities
+/// (`with_kernel_callbacks`), `other` enrolled in the same identity domain first so its
+/// objects never share a key with `target`'s.
+fn merge_breps(
+    k: &mut Kernel,
+    target: &mut Brep,
+    other: &mut Brep,
+    add_analytics: bool,
+) -> SolidResult<()> {
+    use solidcore::topology::brep::p3 as bp3;
+    let serial = bp3::notify_serial(&mut k.context, other)?;
+    let source_key = move |e| bp3::topology_ref(serial, e);
+    let other = &*other;
+    bp3::with_kernel_callbacks(k, target, |k, b, env| {
+        bp3::merge_brep(k, env, b, other, &source_key, None, None, add_analytics)
+    })
+}
+
+/// `brep->OrientTrimmedSurfaces(..)` for this fixture: `topology::brep::p3`'s under the
+/// kernel's identities. The fixture has no face handles, so only an empty
+/// `pOptFacesToSwapUV` list is accepted.
+fn orient_brep(
+    k: &mut Kernel,
+    b: &mut Brep,
+    outward: bool,
+    maybe_not_solid: &mut bool,
+    just_unify: bool,
+    faces_to_swap_uv: Option<&mut Vec<Handle>>,
+) -> SolidResult<()> {
+    use solidcore::topology::brep::p3 as bp3;
+    if faces_to_swap_uv.as_ref().is_some_and(|f| !f.is_empty()) {
+        return missing();
+    }
+    let swap: Option<&[solidcore::topology::FaceId]> = faces_to_swap_uv.map(|_| &[][..]);
+    let r = bp3::with_kernel_callbacks(k, b, |k, b, env| {
+        let mut marks = solidcore::topology::topology_traverser::Marks::default();
+        bp3::orient_trimmed_surfaces(k, b, env, &mut marks, outward, just_unify, swap)
+    })?;
+    *maybe_not_solid = r.maybe_not_closed_solid;
+    Ok(())
 }
 
 impl ExecutiveAccess<Handle> for Access {
@@ -330,6 +377,41 @@ impl ExecutiveAccess<Handle> for Access {
         _: Option<&[Handle]>,
     ) -> SolidResult<()> {
         missing()
+    }
+    fn merge_brep(
+        &mut self,
+        k: &mut Kernel,
+        target: Handle,
+        other: Handle,
+        copy_map: Option<&mut CopyBrepMap<Handle>>,
+        reverse_map: Option<&mut CopyBrepMap<Handle>>,
+        add_analytics: bool,
+    ) -> SolidResult<()> {
+        // (the fixture's handles name no topology objects: no copy maps of them)
+        if copy_map.is_some() || reverse_map.is_some() || target == other {
+            return missing();
+        }
+        let mut src = std::mem::take(self.brep_mut(other)?);
+        let r = match self.brep_mut(target) {
+            Ok(dst) => merge_breps(k, dst, &mut src, add_analytics),
+            Err(e) => Err(e),
+        };
+        if let Ok(slot) = self.brep_mut(other) {
+            *slot = src;
+        }
+        r
+    }
+    fn orient_trimmed_surfaces(
+        &mut self,
+        k: &mut Kernel,
+        brep: Handle,
+        outward: bool,
+        maybe_not_solid: &mut bool,
+        just_unify: bool,
+        faces_to_swap_uv: Option<&mut Vec<Handle>>,
+    ) -> SolidResult<()> {
+        let b = self.brep_mut(brep)?;
+        orient_brep(k, b, outward, maybe_not_solid, just_unify, faces_to_swap_uv)
     }
     fn do_stitching(
         &mut self,
@@ -376,6 +458,15 @@ impl ExecutiveAccess<Handle> for Access {
         &mut self,
         _: &mut Kernel,
         _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
+    fn test_rollover(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut Vec<Handle>,
         _: &mut FilletExecutive<Handle>,
     ) -> SolidResult<()> {
         missing()
@@ -615,6 +706,9 @@ impl ExecutiveAccess<Handle> for Access {
         }
         Ok(b.edges().ids().map(Handle::Edge).collect())
     }
+    fn edge_is_manifold(&self, _: Handle) -> SolidResult<bool> {
+        missing()
+    }
     fn vertices(&self, handle: Handle) -> SolidResult<Vec<Handle>> {
         if !self.brep(handle)?.vertices().is_empty() {
             return missing();
@@ -660,10 +754,15 @@ impl ExecutiveAccess<Handle> for Access {
         let Handle::Edgeuse(eu) = edgeuse else {
             return missing();
         };
-        let b = self.brep_mut(Handle::Brep(0))?;
+        let id = FilletSolverId(
+            u32::try_from(self.solvers.len()).map_err(|_| missing_error())?,
+        );
+        let b = self.breps.first_mut().ok_or_else(missing_error)?;
         let fs = constant_radius_from_edgeuse(
             k,
             b,
+            &mut self.pseudo,
+            id,
             approx_tol,
             ang_tol_rad,
             tan_tol_rad,
@@ -804,6 +903,7 @@ fn box_access(bx: &BoxIn) -> Result<Result<Access, Output>, HarnessError> {
     }
     Ok(Ok(Access {
         breps: vec![b],
+        pseudo: FilletBrep::new(),
         generators: Vec::new(),
         solvers: Vec::new(),
         laws: Vec::new(),

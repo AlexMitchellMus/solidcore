@@ -72,9 +72,12 @@
 //!   drops them, which changes nothing because `FindCommonElements` never matches a
 //!   null against a face's vertices.
 //! - Callees not ported yet return [`SolidError::Unported`] at the call site,
-//!   tagged `UNPORTED(<unit>)`: `SmBrep::MakeWireEdge` (`topology.brep_p3`); the
-//!   [`MergeBrep`] defaults do the same for `SmFace::GetEdges` / `GetVertices` /
-//!   `GetBrep` (`topology.face_p4`) and `OrientTrimmedSurfaces` (`topology.brep_p3`).
+//!   tagged `UNPORTED(<unit>)`: `SmBrep::MakeWireEdge` (`topology.brep_p3`, an
+//!   integration gap: the ported callee needs `&mut Kernel`, which
+//!   `MergeContext::Split` lacks, and a `NotifyEnv` from `TopologyCopy`'s keys).
+//!   `OrientTrimmedSurfaces` is a required [`MergeBrep`] method (`topology::brep::p3`);
+//!   `SmFace::GetEdges` / `GetVertices` / `GetBrep` are the intersector backend's
+//!   ([`IntersectorBrep::face_edges`] and siblings).
 //!   The code after each stub is ported in full. `SmBrep::GetMinEdgeBBoxSize` is
 //!   `topology::brep::p2::min_edge_bbox_size`. The callees ported on arena B-reps are
 //!   required [`MergeBrep`] methods (`SmEdge::GetVertices`, `SmFace::GetFaceuses`,
@@ -276,6 +279,10 @@ fn make_wire_edge(
     orientation: OrientType,
 ) -> Result<EdgeId> {
     let _ = (brep, region, start, end, curve, interval, orientation);
+    // Integration gap, not a missing callee: topology::brep::p3::make_wire_edge is
+    // ported, but it needs `&mut Kernel` (p2::make_edge_topology transfers shells),
+    // which MergeContext::Split does not carry, and a NotifyEnv naming the new
+    // topology from TopologyCopy's keys. Wiring it is a follow-up to PR #204.
     // UNPORTED(topology.brep_p3): SmBrep::MakeWireEdge
     unavailable("SmBrep::MakeWireEdge", "topology.brep_p3")
 }
@@ -1036,39 +1043,6 @@ pub trait MergeBrep<O>: IntersectorBrepP2<O> {
     /// Those of the notification.
     fn notify_brep(&mut self, k: &mut Kernel, brep: O, operation: NotifyOperation) -> Result<()>;
 
-    /// `SmFace::GetEdges(rEdges)`.
-    ///
-    /// # Errors
-    ///
-    /// [`SolidError::Unported`] until `topology.face_p4` is ported.
-    fn face_edges(&self, face: O) -> Result<Vec<O>> {
-        let _ = face;
-        // UNPORTED(topology.face_p4): SmFace::GetEdges
-        unavailable("SmFace::GetEdges", "topology.face_p4")
-    }
-
-    /// `SmFace::GetVertices(rVertices)`.
-    ///
-    /// # Errors
-    ///
-    /// [`SolidError::Unported`] until `topology.face_p4` is ported.
-    fn face_vertices(&self, face: O) -> Result<Vec<O>> {
-        let _ = face;
-        // UNPORTED(topology.face_p4): SmFace::GetVertices
-        unavailable("SmFace::GetVertices", "topology.face_p4")
-    }
-
-    /// `SmFace::GetBrep`.
-    ///
-    /// # Errors
-    ///
-    /// [`SolidError::Unported`] until `topology.face_p4` is ported.
-    fn face_brep(&self, face: O) -> Result<Option<O>> {
-        let _ = face;
-        // UNPORTED(topology.face_p4): SmFace::GetBrep
-        unavailable("SmFace::GetBrep", "topology.face_p4")
-    }
-
     /// `SmBrep::IsManifoldSolid` (`topology::brep::p2::is_manifold_solid`).
     ///
     /// # Errors
@@ -1079,20 +1053,19 @@ pub trait MergeBrep<O>: IntersectorBrepP2<O> {
     /// `SmBrep::OrientTrimmedSurfaces(bArg1, rbMaybeNotClosed, bArg3)` (no face
     /// list): returns `rbMaybeNotClosed`.
     ///
+    /// The owner of the B-rep implements it with
+    /// [`crate::topology::brep::p3::orient_trimmed_surfaces`].
+    ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] until `topology.brep_p3` is ported.
+    /// Those of the orientation.
     fn orient_trimmed_surfaces(
         &mut self,
         k: &mut Kernel,
         brep: O,
         arg1: bool,
         arg3: bool,
-    ) -> Result<bool> {
-        let _ = (k, brep, arg1, arg3);
-        // UNPORTED(topology.brep_p3): SmBrep::OrientTrimmedSurfaces
-        unavailable("SmBrep::OrientTrimmedSurfaces", "topology.brep_p3")
-    }
+    ) -> Result<bool>;
 }
 
 /// The four flags of [`MergeState::merge_added_topology`], in the order of

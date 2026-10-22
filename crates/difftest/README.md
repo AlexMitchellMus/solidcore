@@ -64,6 +64,15 @@ hash of the Rust output's `Debug` form (f64 `Debug` is the shortest round-trip
 form). Equal digest files from two builds mean bit-identical Rust outputs, which
 is how a refactor or optimisation proves it changed no value.
 
+**Rust side only / wasm32** (`--digest-dir <dir>`, plus `--digest-debug` for the
+full outputs in `<dir>/<unit>.debug`): runs only `run_rust` and writes the same
+digest lines, so the Rust kernel can be compared between targets. The binary also
+builds for `wasm32-wasip1` with feature `cpp`: the C++ shims are then not linked but
+left as imports, which `scripts/wasm_stub.py` serves with stubs returning
+`SC_ERR_UNLINKED`; a case whose Rust side reaches C++ (fixture exports) is written as
+`needs-cpp`. `scripts/wasm-digest.sh [--jobs N] [selection]` (default `--green`)
+builds both targets, runs native and under `wasmtime`, and lists differing cases.
+
 **Profiling without perf/sudo**: `scripts/perf/sampler.py` (ptrace sampler,
 frame-pointer unwinding) and `scripts/perf/analyze.py` (self/inclusive tables):
 
@@ -455,9 +464,11 @@ errors (unreadable case, report not writable); verdicts never fail the run.
     (`CreateCanonical`), `SmSphere`, `SmTorus`, and `SmBSplineSurface` over an NLib net
     filled directly; `SmApiGetOrCreateContext()`; natural UV domains; edges on;
     `SmApproxTol3d(tol)` (or `NULL` for `default`); `SmSurface::GlobalSurfaceIntersect`.
-  * `rust`: the same surfaces with solidcore's types and `Surface::global_surface_intersect`.
-    A surface kind that is not a `SurfaceKind` yet (cylinder, cone, sphere, torus) or any
-    `SolidError::Unported` makes the case `DEFERRED`, never a faked result.
+  * `rust`: the same surfaces with solidcore's types (`Plane`, `Cone` as cylinder and
+    `create_canonical` cone, `Sphere`, `Torus`, each with its NURB made as the runner's
+    `GetNaturalUVDomain()` does, and `BSplineSurface`) and
+    `Surface::global_surface_intersect`. Any `SolidError::Unported` makes the case
+    `DEFERRED`, never a faked result.
   * Both sample every 3D and UV curve at 4001 uniform parameters of its natural interval
     and evaluate each surface at its UV samples, and write the runner's JSON
     (`{xyz, uv1, uv2, s1_at_uv, s2_at_uv, type}` per curve) to

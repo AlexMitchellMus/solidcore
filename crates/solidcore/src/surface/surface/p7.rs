@@ -777,10 +777,14 @@ impl Surface {
         v_side: Side,
     ) -> Result<Vec3> {
         match self.kind() {
-            SurfaceKind::Cone(_) => base_evaluate_normal(k, self, uv, u_side, v_side),
-            SurfaceKind::BSpline(_) | SurfaceKind::SurfOfRevolution(_) | SurfaceKind::Step(_) => {
-                base_evaluate_normal(k, self, uv, u_side, v_side)
-            }
+            // SmSphere::EvaluateNormal (the side flags are not used)
+            SurfaceKind::Sphere(s) => s.evaluate_normal(uv),
+            SurfaceKind::Cone(_)
+            | SurfaceKind::Torus(_)
+            | SurfaceKind::BSpline(_)
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
+            | SurfaceKind::Step(_) => base_evaluate_normal(k, self, uv, u_side, v_side),
             SurfaceKind::CurveBounded(s) => s.evaluate_normal(k, uv, u_side, v_side),
             SurfaceKind::SrfInVolume(s) => s.evaluate_normal(k, uv, u_side, v_side),
             SurfaceKind::Plane(p) => Ok(p.evaluate_normal()),
@@ -790,7 +794,7 @@ impl Surface {
 
     /// Whether the surface is closed over `uv_domain` in direction `param`, and the
     /// continuity across the seam when `want_continuity` (`IsClosed`, virtual: a plane
-    /// is never closed; the others run [`base_is_closed`]).
+    /// is never closed, a sphere runs its override; the others run [`base_is_closed`]).
     ///
     /// # Errors
     ///
@@ -808,11 +812,18 @@ impl Surface {
                 let (closed, continuity) = p.is_closed();
                 Ok((closed, want_continuity.then_some(continuity)))
             }
+            // SmSphere::IsClosed (the tolerance is not used)
+            SurfaceKind::Sphere(s) => {
+                let (closed, continuity) = s.is_closed(uv_domain, param);
+                Ok((closed, want_continuity.then_some(continuity)))
+            }
 
             SurfaceKind::Cone(_)
+            | SurfaceKind::Torus(_)
             | SurfaceKind::BSpline(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::OffsetSurface(_)
             | SurfaceKind::SrfInVolume(_) => {
@@ -849,7 +860,8 @@ impl Surface {
                 let face_tol = self.face_zone_tol_3d()?;
                 Ok(planar_of(k, s, &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
             }
-            // SmSurfOfRevolution (and SmCone) inherit SmBSplineSurface::CalculateBoundingBox:
+            // SmSurfOfRevolution (and SmCone, SmSphere, SmTorus) inherit
+            // SmBSplineSurface::CalculateBoundingBox:
             // the face's cached tolerance, as for the B-spline (UNPORTED(topology.face_p2):
             // SmFace::GetTolerance for a bare face handle without it)
             SurfaceKind::Cone(s) => {
@@ -859,7 +871,26 @@ impl Surface {
                         .is_planar(tol_3d),
                 )
             }
+            SurfaceKind::Sphere(s) => {
+                let face_tol = self.face_zone_tol_3d()?;
+                Ok(
+                    planar_of(k, s.base().base(), &self.natural_uv_domain(), face_tol)?
+                        .is_planar(tol_3d),
+                )
+            }
+            SurfaceKind::Torus(s) => {
+                let face_tol = self.face_zone_tol_3d()?;
+                Ok(
+                    planar_of(k, s.base().base(), &self.natural_uv_domain(), face_tol)?
+                        .is_planar(tol_3d),
+                )
+            }
             SurfaceKind::SurfOfRevolution(s) => {
+                let face_tol = self.face_zone_tol_3d()?;
+                Ok(planar_of(k, s.base(), &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
+            }
+            // (and SmSurfOfExtrusion)
+            SurfaceKind::SurfOfExtrusion(s) => {
                 let face_tol = self.face_zone_tol_3d()?;
                 Ok(planar_of(k, s.base(), &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
             }

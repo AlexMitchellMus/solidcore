@@ -97,9 +97,9 @@ fn create_face(_k: &Kernel, _b: &mut Brep, _surface: Surface, _domain: Extent2d)
     ))
 }
 
-fn stitch(_k: &Kernel, b: &mut Brep) -> Result<()> {
+fn stitch(k: &mut Kernel, b: &mut Brep) -> Result<()> {
     use crate::topology::brep::p5::{stitch_and_orient, StitchAndOrientOptions};
-    stitch_and_orient(b, &StitchAndOrientOptions::default())
+    stitch_and_orient(k, b, &StitchAndOrientOptions::default())
 }
 
 fn planar_face(
@@ -192,9 +192,9 @@ fn create_face_id(
         "topology.brep_p8",
     ))
 }
-fn face_edges(_k: &Kernel, _b: &Brep, _face: FaceId) -> Result<Vec<crate::topology::EdgeId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    Err(SolidError::unported("SmFace::GetEdges", "topology.face_p4"))
+/// `SmFace::GetEdges(rEdges)` with its defaults (`topology::face::p4::edges`).
+fn face_edges(_k: &Kernel, b: &Brep, face: FaceId) -> Result<Vec<crate::topology::EdgeId>> {
+    crate::topology::face::p4::edges(b, face, None, false, None)
 }
 pub(super) fn detailed_face(
     k: &mut Kernel,
@@ -373,7 +373,7 @@ impl PrimitiveCreation {
     /// Build six planar faces, then stitch and orient them (`CreateBox`).
     pub fn create_box(
         &mut self,
-        k: &Kernel,
+        k: &mut Kernel,
         brep: &mut Brep,
         length: f64,
         width: f64,
@@ -516,7 +516,7 @@ impl PrimitiveCreation {
     /// Full analytic cone; edit mode stays enabled, including on error.
     pub fn create_cone(
         &mut self,
-        k: &Kernel,
+        k: &mut Kernel,
         brep: &mut Brep,
         height: f64,
         base: f64,
@@ -970,7 +970,7 @@ impl PrimitiveCreation {
 
     /// Elliptic-ended cone. NLib errors map to `SM_ERR` before any B-rep edit.
     pub fn create_cone_elliptic_ends(
-        k: &Kernel,
+        k: &mut Kernel,
         brep: &mut Brep,
         inputs: &crate::nurbs::srf_nurb::EllipticCone,
         cap_ends: bool,

@@ -62,7 +62,9 @@
 //!   [`SolidError::Unported`], which is always propagated.
 //! - **Loops.** The parent walks of `MarkFaceContainment` stop with
 //!   [`SolidError::InvalidInput`] after as many steps as the tree has nodes (a cyclic
-//!   parent chain, which upstream follows forever).
+//!   parent chain, which upstream follows forever); so does its descent from the top
+//!   node after as many visits (a shared or cyclic child link, whose parent does not
+//!   point back; fuzz `query.tess` fuzz00241, fuzz00353).
 //! - **Undefined behaviour.** Where upstream dereferences a null tree, top node,
 //!   poly B-rep, poly face or tessellation driver, or a node without
 //!   `SmBezierAux2d` data, the port returns `SM_ERR_NULL_POINTER` or
@@ -611,7 +613,34 @@ impl TessSrfCache {
                         None => s.rev().base().clone(),
                     }
                 }),
+                SurfaceKind::Sphere(s) => Some(if s.base().base().gw_nurb().is_some() {
+                    s.base().base().clone()
+                } else {
+                    let mut c = s.as_ref().clone();
+                    match ignore(c.make_nurb(k))? {
+                        Some(()) => c.base().base().clone(),
+                        None => s.base().base().clone(),
+                    }
+                }),
+                SurfaceKind::Torus(s) => Some(if s.base().base().gw_nurb().is_some() {
+                    s.base().base().clone()
+                } else {
+                    let mut c = s.as_ref().clone();
+                    match ignore(c.make_nurb(k))? {
+                        Some(()) => c.base().base().clone(),
+                        None => s.base().base().clone(),
+                    }
+                }),
                 SurfaceKind::SurfOfRevolution(s) => Some(if s.base().gw_nurb().is_some() {
+                    s.base().clone()
+                } else {
+                    let mut c = s.as_ref().clone();
+                    match ignore(c.make_nurb(k))? {
+                        Some(()) => c.base().clone(),
+                        None => s.base().clone(),
+                    }
+                }),
+                SurfaceKind::SurfOfExtrusion(s) => Some(if s.base().gw_nurb().is_some() {
                     s.base().clone()
                 } else {
                     let mut c = s.as_ref().clone();
@@ -844,7 +873,15 @@ impl TessSrfCache {
 
         // Propagate up ON_BOUNDARY flag and a mark when all subnodes are classified
         let mut stack = vec![top];
+        let mut visits = 0;
         while let Some(node) = stack.pop() {
+            // (not upstream) a tree whose children point back to their parents visits
+            // each node once: more visits mean a shared or cyclic child link (upstream
+            // follows a cycle forever)
+            visits += 1;
+            if visits > limit {
+                return Err(invalid(OP_MARK, "cyclic child links"));
+            }
             let base = self.trim.base_mut();
             let (c1, c2, parent) = links(base, node)?;
             let own = fields(base, node, OP_MARK)?;

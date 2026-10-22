@@ -389,14 +389,19 @@ fn inexact(b: &Brep, types: &ImportTypes, eus: &[EdgeuseId]) -> Option<Output> {
         let st = eu1::face(b, eu)
             .ok()
             .flatten()
-            .and_then(|f| types.face_surface_types.get(f.index() as usize).copied())
+            .and_then(|f| types.inexact_surface(f.index() as usize))
             .unwrap_or(-1);
         if st >= 0 && !EXACT_SURFACES.contains(&st) {
             let (unit, symbol) = match st {
-                15012 | 15013 => ("surface.cone_p1", "SmCone (no SurfaceKind)"),
-                15014 => ("surface.sphere", "SmSphere"),
-                15015 => ("surface.torus", "SmTorus (no SurfaceKind)"),
-                15030 => ("surface.surf_of_extrusion_p2", "SurfaceKind::SurfOfExtrusion"),
+                // the gap is the missing `SurfaceKind` variant (the `SmSurface` dispatch,
+                // unit `surface.surface_p2`; #76), not the kinds' own units (all ported)
+                15012 | 15013 => ("surface.surface_p2", "SurfaceKind::Cone (SmCone)"),
+                15014 => ("surface.surface_p2", "SurfaceKind::Sphere (SmSphere)"),
+                15015 => ("surface.surface_p2", "SurfaceKind::Torus (SmTorus)"),
+                15030 => (
+                "harness:analytic-geometry-export",
+                "SmSurfOfExtrusion face surface not exported exactly",
+            ),
                 _ => ("topology.brep_p10", "SmBrep::MakeTopologyFromData"),
             };
             return Some(Output::deferred(unit, symbol));
