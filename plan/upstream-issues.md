@@ -273,7 +273,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (ASan, reported in #427).
 - **Severity:** crash/UB (heap-buffer-overflow).
 - **Fix:** tangency-labs/smlib@0a7e06d refuses, before clamping, knot vectors that aren't finite (within `1e300`) and nondecreasing, and bounds that aren't increasing and strictly inside the knots.
-- **Rust port:** `nurbs::iges::clamp_surface` indexes with checks, so it never wrote out of bounds (this case gave `InvalidInput`, "index outside the arrays"), but a NaN interior knot with the bounds at the ends came back `Ok` with the NaN kept, and an infinite end knot was taken as junk. It now refuses up front as the fix does (test `clamp_surface_refuses_bad_knots`).
+- **Rust port:** `nurbs::iges::clamp_surface` indexes with checks, so it refuses this case (`InvalidInput`, "index outside the arrays") instead of writing past the end (test `clamp_surface_refuses_the_427_knots`). The fork's guard is not ported: it also refuses knots the reference build handles, e.g. infinite or `f64::MAX` planes (`primitive.api_primitives` fixtures `plane_surface_len_inf`, `rv_plane_l_max`), and a NaN interior knot between clamped ends, which upstream leaves in place on its "already clamped" path without writing anything.
 
 ### NLib: matrices and polynomials
 
