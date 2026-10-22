@@ -486,7 +486,7 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// `blend.fillet_standard_solver_p2`. Adapters must dispatch by concrete
     /// solver type and return that owner's `Unported` while it is missing.
     // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
-    // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::CalcFilletGeom
+    // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::CalcFilletGeom -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
     fn calc_fillet_geom(
         &mut self,
         k: &mut Kernel,
@@ -848,8 +848,9 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// The fillet solver constructors `SetFilletParameters` and `SurfaceSurfaceFillet`
     /// call, dispatched on the spec: `SmConstantRadiusFS` through
     /// [`ExecutiveAccess::new_constant_radius_solver`]; `SmConstantDistanceFS`,
-    /// `SmVariableRadiusFS` and `SmSurfaceSurfaceFS` wait for
-    /// `blend.fillet_standard_solver_p2`.
+    /// `SmVariableRadiusFS` and `SmSurfaceSurfaceFS` are ported
+    /// (`blend.fillet_standard_solver_p2`) but need a solver arena in the adapter
+    /// that no adapter has yet (`plan/findings.md`, executive adapter stubs).
     fn new_fillet_solver(
         &mut self,
         k: &mut Kernel,
@@ -870,17 +871,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
                 radius,
                 edgeuse,
             ),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantDistanceFS::SmConstantDistanceFS
+            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantDistanceFS::SmConstantDistanceFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
             super::p2::SolverSpec::ConstantDistance { .. } => Err(SolidError::unported(
                 "SmConstantDistanceFS::SmConstantDistanceFS",
                 "blend.fillet_standard_solver_p2",
             )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmVariableRadiusFS::SmVariableRadiusFS
+            // UNPORTED(blend.fillet_standard_solver_p2): SmVariableRadiusFS::SmVariableRadiusFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
             super::p2::SolverSpec::VariableRadius { .. } => Err(SolidError::unported(
                 "SmVariableRadiusFS::SmVariableRadiusFS",
                 "blend.fillet_standard_solver_p2",
             )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::SmSurfaceSurfaceFS
+            // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::SmSurfaceSurfaceFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
             super::p2::SolverSpec::SurfaceSurface { .. } => Err(SolidError::unported(
                 "SmSurfaceSurfaceFS::SmSurfaceSurfaceFS",
                 "blend.fillet_standard_solver_p2",
