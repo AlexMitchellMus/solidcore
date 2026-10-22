@@ -400,13 +400,10 @@ fn brep_get_curves(b: &Brep) -> Result<Vec<EdgeId>> {
     Ok(out)
 }
 
-/// `SmBrep::UnLockBoundingBox`.
-fn unlock_bounding_box(_b: &mut Brep) -> Result<()> {
-    // UNPORTED(query.brep): SmBrep::UnLockBoundingBox
-    Err(SolidError::unported(
-        "SmBrep::UnLockBoundingBox",
-        "query.brep",
-    ))
+/// `SmBrep::UnLockBoundingBox` (unit `query.brep`).
+fn unlock_bounding_box(b: &mut Brep) -> Result<()> {
+    crate::query::brep::unlock_bounding_box(b);
+    Ok(())
 }
 
 // ---- helpers -------------------------------------------------------------------------------
