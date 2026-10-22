@@ -288,6 +288,7 @@ const fn is_b_spline_kind(surface: &Surface) -> bool {
         SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
             | SurfaceKind::Cone(_)
             | SurfaceKind::Sphere(_)
             | SurfaceKind::Torus(_)
@@ -1789,7 +1790,8 @@ fn check_surface_nesting(surface: &Surface, depth: usize, op: &'static str) -> R
         | SurfaceKind::Cone(_)
         | SurfaceKind::Sphere(_)
         | SurfaceKind::Torus(_)
-        | SurfaceKind::SurfOfRevolution(_) => {}
+        | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_) => {}
     }
     Ok(())
 }
@@ -1906,6 +1908,7 @@ fn nurb_of(surface: &Surface) -> Result<crate::nurbs::srf_basic::Surface> {
         SurfaceKind::BSpline(b) => b.gw_nurb().cloned().ok_or_else(missing),
         SurfaceKind::Plane(p) => p.base_with_nurb()?.gw_nurb().cloned().ok_or_else(missing),
         SurfaceKind::SurfOfRevolution(s) => s.base().gw_nurb().cloned().ok_or_else(missing),
+        SurfaceKind::SurfOfExtrusion(s) => s.base().gw_nurb().cloned().ok_or_else(missing),
         _ => Err(missing()),
     }
 }
