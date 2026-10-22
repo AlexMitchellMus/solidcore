@@ -28,6 +28,8 @@
 //! that is not `SmEdge::IsManifold` is refused with error code
 //! `SM_FILERR_BAD_MERGE`, the edge in the error info and in the error, where
 //! upstream returns success. `do_filleting` alone is unchanged.
+//! Not upstream: [`ExecutiveAccess::shrink_face`] shrinks the new fillet faces with
+//! knot snapping of rounding errors (tangency-labs/solidcore#472).
 
 use crate::blend::fillet_geom::p1::FilletCornerType;
 use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
@@ -336,6 +338,12 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         body: impl FnOnce(&mut Self, &mut Kernel, &[ContextMark]) -> Result<T>,
     ) -> Result<T>;
     /// `SmFace::ShrinkGeometry()` with its header defaults; status is ignored.
+    /// Not upstream (tangency-labs/solidcore#472): implementations run
+    /// [`crate::topology::face::p1::shrink_geometry_with`] with
+    /// [`crate::nurbs::b_spline_surface_n_lib::p2::TrimOptions::snap_roundoff_to_knots`],
+    /// so that a fillet face whose domain lies a rounding error inside a knot of its
+    /// round keeps no sliver span (upstream's `TrimWithDomain` leaves one of
+    /// `10 * SM_EFF_ZERO_SQRT * (1 + |u|)`).
     fn shrink_face(&mut self, k: &mut Kernel, face: O) -> Result<()>;
     /// `SmFace::Notify`, adapting to `topology::face::p3::notify` with the
     /// caller's live notification records, attributes and surface trim cache.
@@ -517,20 +525,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         executive: &mut FilletExecutive<O>,
     ) -> Result<()>;
 
-    /// `SmFilletSolver::TestRollOver`; waiting for `blend.fillet_solver_p5`.
+    /// `SmFilletSolver::TestRollOver(sAdjustedCorners)` (`SmFilletExecutive.cpp:2384`):
+    /// delegate to the already ported `FilletSolver::test_roll_over` in
+    /// `blend::fillet_solver::p5` on the solver `solver` resolves to. Its status is
+    /// returned unchanged; the caller handles it as upstream does.
     fn test_rollover(
         &mut self,
-        _k: &mut Kernel,
-        _solver: O,
-        _adjusted_corners: &mut Vec<O>,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p5): SmFilletSolver::TestRollOver
-        Err(SolidError::unported(
-            "SmFilletSolver::TestRollOver",
-            "blend.fillet_solver_p5",
-        ))
-    }
+        k: &mut Kernel,
+        solver: O,
+        adjusted_corners: &mut Vec<O>,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// `SmBrep::SetTolerance(sZoneTol3d, bUpdateOnlyIfLarger, bCascadeToBndries)`:
     /// delegate to the already ported `topology::brep::p2::set_tolerance` (brep p2) on
@@ -846,7 +851,9 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
 
     /// `new SmConstantRadiusFS(ctx, dApproxTol, dAngTolRad, dTanTolRad, dRadius, pEU)`:
     /// delegate to `fillet_standard_solver::p1::constant_radius_from_edgeuse` on the
-    /// B-rep of `edgeuse` (no second radius) and return the new solver's handle.
+    /// B-rep of `edgeuse` (no second radius), with the executive's pseudo B-rep
+    /// (`m_pPseudoBrep`, which receives the solver's fillet geometry) and the new
+    /// solver's identity, and return the new solver's handle.
     fn new_constant_radius_solver(
         &mut self,
         k: &mut Kernel,
