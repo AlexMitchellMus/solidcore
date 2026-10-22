@@ -16008,3 +16008,15 @@ Validation limits: the fillet cannot run end to end in Rust yet
 `nurbs::b_spline_surface_n_lib::p2` cover the issue's own numbers (knot and one-ULP-below
 bound: upstream sliver of 2.115e-4, none with the option), the upper and v boundaries,
 and unchanged results for bounds farther than `SM_EFF_ZERO_PARAM` from a knot.
+
+### Sweep/merge snapshots: live topology and face-use links
+
+Units: boolean.merge_p2, boolean.merge_p5, topology.brep_p10.
+The `other_wire_classify_op{1,4,5,6}` cases exposed a snapshot mismatch: C++
+exports 96 topology integers; raw Rust arenas included 103 after MakeEdgeTopology.
+C++ deletes detached objects while Rust retains their slots. Both merge runners
+now share the complete reachable-graph serializer, preserving every live record.
+Face-use links use `shell::faceuse_sibling_links`, including its arena-list fallback;
+an absent optional backing field is not itself a null native link. No cases,
+rejection rules or tolerances change. This correction does not qualify full
+curve-copy geometry; WR-168 remains a separate existing deviation.
