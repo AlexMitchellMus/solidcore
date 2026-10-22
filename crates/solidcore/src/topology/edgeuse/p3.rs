@@ -264,13 +264,8 @@ fn status<T>(r: Result<T>) -> Result<Option<T>> {
 /// ([`crate::query::face::p2::face_surface_cache`]). The cache itself is not kept (the
 /// Rust surface solvers build their own); only its side effect on the face is.
 fn face_surface_cache(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<()> {
-    crate::query::face::p2::face_surface_cache(
-        k,
-        b,
-        f,
-        Some(crate::error::EntityRef::Face(f)),
-    )
-    .map(|_| ())
+    crate::query::face::p2::face_surface_cache(k, b, f, Some(crate::error::EntityRef::Face(f)))
+        .map(|_| ())
 }
 
 /// `pEdge->SetTolerance(tolerance)` (default arguments).
