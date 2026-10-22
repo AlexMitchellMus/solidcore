@@ -34,10 +34,11 @@
 //!   outputs keep their previous values (initially undefined); the port does the same
 //!   and still propagates [`SolidError::Unported`].
 //! - **Tolerance of a surface.** `SmTol::GetApproxTol3d(this)` is the system value for a
-//!   surface without an owner; for an owned surface it needs the face tolerance
-//!   (`topology.face_p2`) and returns [`SolidError::Unported`], unless the caller that
-//!   has the face passes it ([`Surface::get_singularities_of_face`], used by the face
-//!   props).
+//!   surface without an owner; for an owned surface it is half the face tolerance the
+//!   caller that has the face passes ([`Surface::get_singularities_of_face`], used by
+//!   the face props), else the one the B-rep cached on the surface
+//!   ([`Surface::owner_zone_tol_3d`]); a bare face handle without it returns
+//!   [`SolidError::Unported`] (`topology.face_p2`).
 //! - **Unported callees** (return [`SolidError::Unported`]): `SmFace::RemoveUVTrimCurves`
 //!   (`topology.face_p1`) when the surface is owned by a face.
 
@@ -99,7 +100,9 @@ const fn side(from_left: bool) -> Side {
 /// A [`Surface`] holds only an owner handle, not the B-rep, so the face's tolerance
 /// (`SmFace::GetTolerance`, `topology.face_p2`) is passed by a caller that has the face:
 /// `face_tolerance` is `Some` for a surface known to be that face's own surface, and the
-/// zone tolerance of the face is then used whether or not the handle is set.
+/// zone tolerance of the face is then used whether or not the handle is set. Otherwise
+/// a surface with a face uses the tolerance its B-rep cached on it
+/// ([`Surface::owner_zone_tol_3d`]).
 fn surface_approx_tol_3d(
     k: &Kernel,
     surface: &Surface,
@@ -111,20 +114,18 @@ fn surface_approx_tol_3d(
     }
     // SmTol::GetApproxTol3d(this) = .5 * GetZoneTol3d(this): GetFace() ? its tolerance
     // : the system's (a surface owned by an offset with no face uses the latter)
-    if surface.face()?.is_some() {
-        // UNPORTED(topology.face_p2): SmFace::GetTolerance of the owner, for the callers
-        // that cannot pass it (a surface does not reach its B-rep; justified: plan/findings.md,
-        // heal.face_props, "Why UNPORTED(topology.face_p2) stays"); the face props pass it through `get_singularities_of_face`
-        return Err(SolidError::unported(
-            "SmFace::GetTolerance",
-            "topology.face_p2",
-        ));
+    // the face's tolerance cached on the surface by its B-rep; a bare face handle
+    // without it stays UNPORTED(topology.face_p2): SmFace::GetTolerance
+    // (`Surface::face_zone_tol_3d`); the face props pass it through
+    // `get_singularities_of_face`
+    if let Some(zone) = surface.face_zone_tol_3d()? {
+        return Ok(approx_tol3d(k, 0.5 * zone));
     }
     Ok(approx_tol_3d(k, SmallTopoType::NormalSize))
 }
 
 /// `GetOutOfBoundsEnabled` of a surface that is an `SmBSplineSurface` (a B-spline
-/// surface, a plane or a surface of revolution); `None` for the other kinds
+/// surface, a plane, an analytic kind or a surface of revolution or extrusion); `None` for the other kinds
 /// (`SM_CAST_NONNULL_PTR(SmBSplineSurface, ..)` is null, so `SmTemporaryChangeValue`
 /// changes a local instead). An `SmSTEPSurface` is an `SmSurface`, not a B-spline surface.
 pub(crate) fn out_of_bounds_enabled(surface: &Surface) -> Option<bool> {
@@ -132,7 +133,10 @@ pub(crate) fn out_of_bounds_enabled(surface: &Surface) -> Option<bool> {
         SurfaceKind::BSpline(s) => Some(s.is_out_of_bounds_enabled()),
         SurfaceKind::Plane(s) => Some(s.is_out_of_bounds_enabled()),
         SurfaceKind::Cone(s) => Some(s.rev().is_out_of_bounds_enabled()),
+        SurfaceKind::Sphere(s) => Some(s.base().is_out_of_bounds_enabled()),
+        SurfaceKind::Torus(s) => Some(s.base().is_out_of_bounds_enabled()),
         SurfaceKind::SurfOfRevolution(s) => Some(s.is_out_of_bounds_enabled()),
+        SurfaceKind::SurfOfExtrusion(s) => Some(s.is_out_of_bounds_enabled()),
         SurfaceKind::OffsetSurface(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
@@ -149,7 +153,10 @@ pub(crate) fn set_out_of_bounds_enabled(surface: &mut Surface, enabled: bool) {
         SurfaceKind::BSpline(s) => *s.out_of_bounds_enabled_mut() = enabled,
         SurfaceKind::Plane(s) => s.set_out_of_bounds_enabled(enabled),
         SurfaceKind::Cone(s) => *s.rev.base_mut().out_of_bounds_enabled_mut() = enabled,
+        SurfaceKind::Sphere(s) => *s.base.base_mut().out_of_bounds_enabled_mut() = enabled,
+        SurfaceKind::Torus(s) => *s.base.base_mut().out_of_bounds_enabled_mut() = enabled,
         SurfaceKind::SurfOfRevolution(s) => *s.base_mut().out_of_bounds_enabled_mut() = enabled,
+        SurfaceKind::SurfOfExtrusion(s) => *s.base_mut().out_of_bounds_enabled_mut() = enabled,
         SurfaceKind::OffsetSurface(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)

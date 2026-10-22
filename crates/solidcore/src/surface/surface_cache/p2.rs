@@ -42,8 +42,8 @@
 //!   [`SolidError::Unported`] once it reaches it. The surface kinds are dispatched as
 //!   in [`crate::surface::surface_cache::p1`] (`SmIsoCurve::IsLinear` over the B-spline
 //!   kind only, which is all upstream reaches: the diagonal test runs for
-//!   `SmBSplineSurface_TYPE` and `SmSurfOfExtrusion_TYPE`, and no surface of extrusion
-//!   kind exists here yet).
+//!   `SmBSplineSurface_TYPE` and `SmSurfOfExtrusion_TYPE`, whose iso curves run the
+//!   inherited B-spline evaluation).
 //! - **Destructor.** `~SmSurfaceCache` deletes the tree, the continuity arrays, the
 //!   iso boundary curves, the alternate caches and the subdivision surfaces: all owned
 //!   by [`SurfaceCache`], dropped with it.
@@ -54,7 +54,6 @@ use crate::error::{Result, SolidError};
 use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::Extent3d;
 use crate::geom::pseudo_box::PseudoBox;
-use crate::geom::tol::{zone_tol_3d, SmallTopoType};
 use crate::geom::tree::{
     AuxDataType, NodeClass, NodeData, NodeGeomType, NodeId, SplitDir, SurfaceAux, TreeNode,
 };
@@ -433,7 +432,8 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     /// those of `CalculateBoundingBox`, `sm_ComputeNetConstants`,
     /// `sm_ComputeSurfConstants`, `GetCorners` and `ComputeSizeTolerances`;
     /// `InvalidInput` where upstream reads through null or mistyped data;
-    /// [`SolidError::Unported`] from `SmTol::GetZoneTol3d` of an owned surface and the
+    /// [`SolidError::Unported`] from `SmTol::GetZoneTol3d` of a face-owned surface whose
+    /// face tolerance is not cached on it ([`Surface::owner_zone_tol_3d`]) and from the
     /// surface calls.
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn test_against_tolerances(&mut self, k: &Kernel, node: NodeId) -> Result<ToleranceTest> {
@@ -469,18 +469,9 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         let chord_height_squared = chord_tol * chord_tol;
         let ang_tol_deg = opts.ang_tol_rad * 180.0 / PI;
         // SmTol::GetZoneTol3d(m_cpSurface): GetFace() ? its tolerance : the system's
-        let zone_tol = if self.surface().face()?.is_some() {
-            // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an opaque handle. Every
-            // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
-            // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
-            // receives the owning B-rep
-            return Err(SolidError::unported(
-                "SmTol::GetZoneTol3d(const SmObject*)",
-                "geom.tol",
-            ));
-        } else {
-            zone_tol_3d(k, SmallTopoType::NormalSize)
-        };
+        // (the face's tolerance as its B-rep cached it on the surface;
+        // UNPORTED(topology.face_p2): SmFace::GetTolerance for a bare face handle)
+        let zone_tol = crate::surface::surface::p1::zone_tol_3d(k, self.surface())?;
 
         // local tolerance state - a zero ChordHeight or Angle Tol value means to ignore the test
         {
@@ -524,6 +515,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                     pseudo_guess: None,
                     polar_guess: None,
                     expand_by_zone_tol: true,
+                    expand_tolerance: None,
                 };
                 let boxes = calculate_bounding_box(k, node_surface, &node_domain, &req)?;
                 let bbox = boxes
@@ -548,10 +540,13 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         // node's subdomain.
         let cache_surface = self.surface().clone();
         let surface_to_test: Option<&Surface> = match cache_surface.kind() {
-            SurfaceKind::Cone(_) => None,
-            SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) | SurfaceKind::SurfOfRevolution(_) => {
-                None
-            }
+            SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
+            | SurfaceKind::BSpline(_)
+            | SurfaceKind::Plane(_)
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_) => None,
             SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::OffsetSurface(_)
@@ -810,7 +805,14 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
 
         // remember need to check diagonal when all natural isoParam Curves are linear
         let mut check_diagonals = false;
-        if let SurfaceKind::BSpline(bss) = surface.kind() {
+        // (SmBSplineSurface_TYPE or SmSurfOfExtrusion_TYPE: the extrusion's iso curves
+        // evaluate its inherited B-spline evaluation)
+        let diagonal_candidate = match surface.kind() {
+            SurfaceKind::BSpline(bss) => Some(bss),
+            SurfaceKind::SurfOfExtrusion(s) => Some(s.base()),
+            _ => None,
+        };
+        if let Some(bss) = diagonal_candidate {
             let tol = if opts.chord_height_tolerance > 0.0 {
                 opts.chord_height_tolerance / 2.0
             } else {
@@ -935,7 +937,10 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                     SurfaceKind::BSpline(b) => b.copy_sub_patch(&node_uv),
                     SurfaceKind::Plane(p) => p.base().copy_sub_patch(&node_uv),
                     SurfaceKind::Cone(s) => s.rev().base().copy_sub_patch(&node_uv),
+                    SurfaceKind::Sphere(s) => s.base().base().copy_sub_patch(&node_uv),
+                    SurfaceKind::Torus(s) => s.base().base().copy_sub_patch(&node_uv),
                     SurfaceKind::SurfOfRevolution(s) => s.base().copy_sub_patch(&node_uv),
+                    SurfaceKind::SurfOfExtrusion(s) => s.base().copy_sub_patch(&node_uv),
                     SurfaceKind::CurveBounded(_)
                     | SurfaceKind::Step(_)
                     | SurfaceKind::OffsetSurface(_)
@@ -955,6 +960,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                     pseudo_guess: None,
                     polar_guess: None,
                     expand_by_zone_tol: true,
+                    expand_tolerance: None,
                 };
                 if let Some(boxes) = ignore(patch.calculate_bounding_box(k, &patch_domain, &req))? {
                     if let Some(b) = boxes.normal {

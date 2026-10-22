@@ -62,7 +62,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **How found:** read during porting (commit security review of `curve.projected_curve`); confirmed by the `.smb` reader fuzz (`crates/difftest/examples/reader_fuzz.rs`).
 - **Confirmed:** yes. `SmBrepData::ReadFromFile` (ASCII) on both 200000-level files segfaults (SIGSEGV, stack overflow) in the C++ reference build, with an 8 MiB stack; 200 levels read fine. The Rust port returns `InvalidInput` for both.
 - **Severity:** crash/UB (stack exhaustion).
-- **Rust port:** Limits nesting to 64 levels (`DatabaseReader::enter_nested`) and returns `InvalidInput` for deeper input.
+- **Rust port:** Limits nesting to 32 levels (`DatabaseReader::enter_nested`; 64 before the wasm32 stack review) and returns `InvalidInput` for deeper input.
 
 #### UB-4. Binary short reads return success with uninitialised values [PSIRT]
 - **Location:** `SmDatabaseIO.cpp:566`/`:598` `SmDatabaseIO::ReadLong`, `:473` `SmDatabaseIO::ReadLongs` (`version >= 40` path).
@@ -116,7 +116,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **How found:** read during porting (`topology.brep_data`).
 - **Confirmed:** no (guarded).
 - **Severity:** crash/UB (out-of-bounds read, stack exhaustion).
-- **Rust port:** `CompositeCurve::with_curves` returns `InvalidInput`; nesting is bounded by `DatabaseReader::enter_nested` (64).
+- **Rust port:** `CompositeCurve::with_curves` returns `InvalidInput`; nesting is bounded by `DatabaseReader::enter_nested` (32).
 
 #### UB-91. `SmSurfOfExtrusion::ReadFromDB` reads an uninitialised generator type from a failed ASCII stream [PSIRT]
 - **Location:** `source/SMLib/src/SmSurfOfExtrusion.cpp:4560` `SmSurfOfExtrusion::ReadFromDB` (def. `:4480`), through `SmDatabaseIO::ReadType` (`SmDatabaseIO.cpp:400`); also the locals `eOrientation` and `bSwapUV` (`:4506`-`:4507`).
@@ -264,6 +264,16 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (SIGABRT from glibc's heap checks in the reference build, both cases).
 - **Severity:** crash (heap corruption).
 - **Rust port:** the `primitive.api_curves` FFI refuses a non-finite knot for the canonical curve. The Rust side returns an error status on `fuzz08941`. Number follows the open PRs' UB-237; renumber on merge if taken.
+
+#### UB-250. `N_IgesClampSrf` writes past its new knot vector when a knot is NaN
+- **Location:** `source/SMLib/src/NL_Iges.cpp:817` `N_IgesClampSrf`: the span searches (`:980-1003` for v, as for u) assume finite, nondecreasing knots and bounds inside them; the knot copy (`:1096-1103`) then writes more knots than the vector it sized holds. Reached from `N_Iges128Srf` (`:757`), e.g. `SmBSplineSurface::CreateCanonical` for a surface of revolution.
+- **What happens:** For v knots `360 360 360 NaN NaN 540 540 540` (degree 2) clamped to `[360, 540]`, every comparison with NaN is false, so the searches give `span1 = 4`, `mult1 = 3`, `span2 = 5`, `mult2 = 3`. The new vector gets `span2 - span1 - mult2 + 2q + 1 = 3`, i.e. 4 knots (32 bytes); the copy writes 3 + 0 + 3 = 6 of them, the last two past the end in the `vb[1]` loop at `:1102-1103`.
+- **Trigger:** a STEP surface of revolution with its sweep domain from 360 degrees (tangency-labs/solidcore#428), whose B-spline gets the knots above (tangency-labs/solidcore#427).
+- **How found:** AddressSanitizer on SolidCraft's STEP import through SMLib (#427: heap-buffer-overflow, WRITE of size 8 at `NL_Iges.cpp:1103`, 0 bytes after a 32-byte region); the counts above were traced by hand at `c9c5979`.
+- **Confirmed:** yes (ASan, reported in #427).
+- **Severity:** crash/UB (heap-buffer-overflow).
+- **Fix:** tangency-labs/smlib@0a7e06d refuses, before clamping, knot vectors that aren't finite (within `1e300`) and nondecreasing, and bounds that aren't increasing and strictly inside the knots.
+- **Rust port:** `nurbs::iges::clamp_surface` indexes with checks, so it refuses this case (`InvalidInput`, "index outside the arrays") instead of writing past the end (test `clamp_surface_refuses_the_427_knots`). The fork's guard is not ported: it also refuses knots the reference build handles, e.g. infinite or `f64::MAX` planes (`primitive.api_primitives` fixtures `plane_surface_len_inf`, `rv_plane_l_max`), and a NaN interior knot between clamped ends, which upstream leaves in place on its "already clamped" path without writing anything.
 
 ### NLib: matrices and polynomials
 
@@ -672,9 +682,9 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
   - `SmBSplineCurve.cpp:43`: `SmBSplineCurve(lDim)` has a NULL NURB, which nearly every query dereferences (`GetOrCreateGwNurbPointer` asserts in debug only).
   - `SmHyperbola.cpp:422` `MakeNurb` (`:441`, `:470`) and `SmParabola.cpp:419` (`:435`): when `smgu_LineLineClosestPoint` fails, `MakeNurb` fails. The constructor ignores this, and `GlobalPointSolveSTEP` then dereferences the missing NURB in the curve cache.
 - **What happens:** NULL dereference.
-- **Trigger:** A hyperbola or parabola with a degenerate interval (parallel end tangents) or zero focal distance, then `GlobalPointSolveSTEP`.
-- **How found:** read during porting.
-- **Confirmed:** no. The shim refuses these inputs.
+- **Trigger:** A hyperbola or parabola with a degenerate interval (parallel end tangents) or zero focal distance, then `GlobalPointSolveSTEP`. Also the `SmHyperbola` constructor (`SmHyperbola.cpp:66`, `SE(MakeNurb())`) on extreme but finite input, e.g. a semi axis of 1e300 or a centre at 9.2e18 with unit axes: the NURB is left NULL or with non-finite control points, and building a surface of revolution / extrusion / offset over it segfaults.
+- **How found:** read during porting; the constructor trigger by `--fuzz 200` on the hyperbola generators of the `surface.surf_of_revolution_p1`, `surf_of_revolution_p3` and `offset_surface` runners (2026-10-21, 21 segfaults).
+- **Confirmed:** yes for the constructor trigger (segfaults in the C++ reference run); the shims now refuse a hyperbola whose built NURB is NULL or has a non-finite control point.
 - **Severity:** crash/UB.
 - **Rust port:** Returns `SM_ERR`.
 - **Fuzz sweep trigger (2026-10-20):** `SmParabola` with a non-finite-after-unitize frame (`/a/y/2 = 1e+300`, `curve.parabola` fuzz `fuzz01135`, op `gps_step`): `MakeNurb` fails, `GlobalPointSolveSTEP` -> `AdjustSTEPInterval` keeps the domain, then `SmCurve::GlobalPointSolve` builds the length cache through `SmBSplineCurve::EvaluatePoint`, which dereferences `GetOrCreateGwNurbPointer()` (`SmBSplineCurve.cpp:3300`). SIGSEGV in the C++ reference run. Change **Confirmed:** to yes (crash in the C++ reference run, fuzz sweep); the shim's earlier refusal did not cover this input, the FFI now replays `Adjust`/`MakeNurb` first (`crates/solidcore-ffi/src/units/curve_parabola.rs:131`).
@@ -718,11 +728,13 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 #### UB-50. `SmCurve::FixChainCurvesList` uses deleted curves
 - **Location:** `SmCurve.cpp:946` (also `:968`, `:989`, `:1010`), `SmCurve::FixChainCurvesList` (def. `:854`).
 - **What happens:** With `bDeleteDuplicates`, `delete pBSp1; pBSp1 = NULL;` leaves the dangling pointer in `r3DCurves[j]`. The next scan dereferences it, and a reversed duplicate can be deleted twice. A later branch can pick the NULL local as the next link and dereference it.
-- **Trigger:** Two identical B-spline segments, one reversed, with `bDeleteDuplicates = TRUE`.
-- **How found:** read during porting.
-- **Confirmed:** no. The generator drops these cases.
+- **Trigger:** Two identical B-spline segments, one reversed, with `bDeleteDuplicates = TRUE`. The duplicate test compares a candidate with the ends of the chain built so far (start, end, and the mid point of the end link), not with another curve: a line from a chain's end back to its start through its last link's mid point is deleted although it repeats no curve, while a square with a repeated side deletes nothing.
+- **How found:** read during porting; reached through `SmPrimitiveCreation::CreateTaperExtrude` (`SmPrimitiveCreation.cpp:3672`, `dTol = 2 * SM_ZONE_TOL_3D`) in the PR #250 review.
+- **Confirmed:** yes (PR #250): segfaults for two identical lines, a line and its reverse (gdb: `SmCurve::FixChainCurvesList` <- `CreateTaperExtrude`), two identical arcs, and lines `(0,0,0)-(3e-5,0,0)`, `(3e-5,0,0)-(1,0,0)`, `(1,0,0)-(0,0,0)`; with the first line `5e-5` long it runs. Squares with a repeated or reversed side run under each normal. One native process per input.
 - **Severity:** crash/UB (use after free, double free).
 - **Rust port:** Removes the duplicate once. A link choice equal to the deleted curve is `InvalidInput`.
+- **Second call site:** `CreateTaperExtrude`'s end cap at the offset end (`iEndCaps` 2 or 3, `SmPrimitiveCreation.cpp:4368`, the chaining at `:4382`) chains a copy (`sOffs`) of the trimmed offset curves with `bDeleteDuplicates = TRUE`; a curve deleted there stays in `sTrimCrvs`, and the cleanup at `:4477` deletes it again. Native abort `double free or corruption (!prev)` (SIGABRT from the `CreateTaperExtrude` frame) for lines `(0,0,0)-(5e-5,0,0)`, `(5e-5,0,0)-(100,0,0)`, `(100,0,0)-(0,0,0)`, height 100, draft -24.9, normal -Z, caps 3 (a generated case); not with caps 0 or 1, nor with the first line 1 long. That the deletion is this call is from source reading (the only deleting step reached only with that cap).
+- **Guard:** the `primitive.primitive_creation_p2` FFI repeats both of the taper's chaining passes (the second, reversed one whenever a normal is supplied) on the curves' end and mid points and refuses an input it would delete from; with the offset end cap it also refuses a closed chain narrower than `2 * SM_ZONE_TOL_3D`, the shape of every probe that crashed there.
 
 #### UB-51. `sm_UnitizeTangent` reads `rPVV[2]` of a 2-element array
 - **Location:** `SmCurve.cpp:4549` `sm_UnitizeTangent`, called from `:4620` `sm_FilterSolution` with `SmVector3d sPV1[2]` / `sPV2[2]`.
@@ -791,10 +803,12 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **What happens:** Uninitialised reads, out-of-bounds table reads.
 - **Trigger:** `SmCircle(P0, P1, P2)` with three collinear points.
 - **How found:** read during porting.
-- **Confirmed:** no.
+- **Confirmed:** the circle failed-solve precondition is confirmed by the compiled native preflight in PR #213; the undefined constructor execution and the other subcases have not been run.
 - **Severity:** crash/UB.
 - **Rust port:** Returns `InvalidInput`.
 - **Fuzz sweep trigger (2026-10-20):** `SmPolarConversion::ReadFromDB` (`SmEllipse.cpp:1488`) accepts an exactness table shorter than `angles - 1` (here empty, `curve.ellipse_p1` fuzz `fuzz00284`: `/build/read_db/record/exact emptied`); `ConvertToNURBSParameter` then reads `m_vExactConversion[ii-1]` past the array (`SmEllipse.cpp:555`). SIGSEGV in the C++ reference run: change **Confirmed:** to yes and add **[PSIRT]** to the title (reachable from a crafted file). Also refine the `ConvertTo2D` bullet: the quadratic is at `SmEllipse.cpp:1732`; with one root only `dThetaYRad` (`:1735`) reads the uninitialised `adSols[1]`, and it is unused; only a zero-root solve makes the used `adSols[0]` uninitialised (fuzz `fuzz01889`, `/build/read_db/record/head/11 = -1e-300`, degenerate radius).
+
+- **PR #213 witness:** `cylindrical_full_span_preflight` in `fixtures/primitive.primitive_creation_p1/primitives.json` (length 2, inner radius 1, outer radius 3, angles 0..360, identity frame). The shim calls the same three-point-circle solve before `CreateCylindricalBox`; a non-success result rejects the fixture before `SmCircle` reads the unset radius. This is a rejected fixture, not a parity pass or a claim that the constructor fails gracefully.
 
 #### UB-58. `SmCompositeCurve::GetKnots` reads past its array, and loops forever with an interval
 - **Location:** `SmCompositeCurve.cpp:524` (`lLastIndex = rKnots.GetSize()`), `:569` (`for(ii=rKnots.GetSize()-1; ii>=0; ii--)` on an unsigned `ULONG`), `SmCompositeCurve::GetKnots` (def. `:505`).
@@ -868,6 +882,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (SIGSEGV, 3 cases).
 - **Severity:** crash/UB (out-of-bounds read).
 - **Rust port:** not reached; the `query.loop` FFI wrapper rejects an edge curve whose last `p + 1` knots differ (`crates/solidcore-ffi/src/units/query_loop.rs:400`).
+
+#### UB-238. `SetIntersectionCurveThroughPoint` builds the new UV trim curves from the address of a pointer slot
+- **Location:** `source/SMLib/src/SmBSplineCurveNLib.cpp:2293` (`new SmBSplineCurve(rUVCurve[ii]->GetDim(), (gw_CURVE *)&sNewUVCrv[ii])`); `sNewUVCrv` is a `SmTArray<NL_CURVE *>` (`:1650`) filled with `N_AllocCrv` results in the knot-inserting cases (`:2018-2025`).
+- **What happens:** `&sNewUVCrv[ii]` is the address of the array element holding the `NL_CURVE*`, not the curve, so the copy constructor reads a pointer and the bytes after it as a `gw_CURVE` and dereferences garbage (segfault in the reference build). The 3D curve's own copy two lines up uses `&sNewCrv` correctly.
+- **Trigger:** any call with at least one UV trim curve whose parameter falls in a knot-inserting case (1, 4 or 8: a new knot before the start, inside a span away from its ends, or after the end), e.g. a piecewise C0 cubic over `[0,3]` in the plane `z = 0` with one UV curve on a bilinear plane and `dNewKnot = 0.5`.
+- **How found:** crash in the C++ reference run (adversarial / edge-case fixture, `nurbs.b_spline_curve_n_lib`).
+- **Confirmed:** yes (SIGSEGV running the case through the shim; the knot-moving cases 2, 3, 5, 6, 7 with the same curves run and match the port).
+- **Severity:** crash/UB.
+- **Rust port:** swaps in the inserted UV curves themselves (the evident intent). The `nurbs.b_spline_curve_n_lib` FFI guard only lets UV curves through when every span and node the parameter could select takes a knot-moving case.
 
 ### Surfaces and volumes
 
@@ -984,7 +1007,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **How found:** crash in the C++ reference run (`sweep.api_surfaces` probe case).
 - **Confirmed:** yes.
 - **Severity:** crash/UB.
-- **Rust port:** `create_skin_from_faces` is a stub until `primitive.primitive_creation_p3` lands; `BSplineSurface::create_skinned_surface` returns `InvalidInput` for no cross sections. The harness passes at least one face.
+- **Rust port:** `primitive.primitive_creation_p3` (PR #233) implements `CreateSkinFromFaces`; its `BSplineSurface::create_skinned_surface` call returns `InvalidInput` for no cross sections. The p3 native shim and checked FFI reject that exact case before C++; a direct probe of the linked reference reconfirmed SIGSEGV. The legacy API remains blocked earlier at B-rep construction.
 
 #### UB-80. `SmSurfOfExtrusion::EvaluateSTEP` lets order 5 overrun `sm_CrvDerivs`
 - **Location:** `SmSurfOfExtrusion.cpp:920`-`922` (`EvaluateSTEP`, def. `:897`: `lMaxDeriv = 5; // 5: MAXDER in NLib`), `:959` (`m_pGenCurve->EvaluateSTEP(dU, lHighestUDeriv, ..)`); `SmNurbsCrv.cpp:1281` `sm_CrvDerivs` (see UB-33).
@@ -1132,9 +1155,9 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 #### UB-154. `sm_GetEllipseTrimIntervals` reads the parameter of a failed line/plane intersection
 - **Location:** `source/SMLib/src/SmCone.cpp:5399`-`5405` and `:5463`-`5477`, `sm_GetEllipseTrimIntervals` (def. `:5282`, file static).
 - **What happens:** The statuses of `smgu_LinePlaneIntersect` for the two seam lines are ignored and `dParam[0]`, `dParam[1]` (uninitialised) are then compared and used. (The status of `ConvertDomainFromNURBSToSTEP` at `:5325` is ignored too, but that is defined: a failed corner conversion, e.g. of a cone without a polar curve, leaves the default-constructed domain, and a reversed one the NURB domain.)
-- **Trigger:** A seam line of the trimmed cone parallel to the ellipse plane (or of zero length, a zero-height trim domain).
-- **How found:** read during porting (`surface.cone_p2`, PR #153).
-- **Confirmed:** no. The shim runs the same calls first and refuses such inputs.
+- **Trigger:** A seam line of the trimmed cone shorter than `1e-12` (`ZERO_VEC_ER`, `SmGeomUtility.cpp:694`), e.g. a zero-height or reversed trim domain, or parallel to the ellipse plane within `SM_EFF_ZERO` (not reached in practice: the cone/cone ellipse planes are at least `SM_EFF_ZERO_SQRT / 2` from the seams, and the cone/plane path tests equally long, less steep generators first, `SmCone.cpp:3716`, `:3735`).
+- **How found:** read during porting (`surface.cone_p2`, PR #153); reached through `IntersectWithCone` by the `surface.cone_p3` fuzz (issue #276: fuzz00656 `/domains/2 = -1e300`, fuzz09540 `/domains/5 = 1e300`, `differs=2` with `cpp=None rust=status_1007`).
+- **Confirmed:** yes, with the C++ build: an instrumented replay shows both seam vectors are exactly `(0, 0, 0)` on the two fuzz inputs (the reversed domain evaluates both ends of each seam to the same point), so both `smgu_LinePlaneIntersect` calls fail and `dParam` is read uninitialised. Guards: the `surface.cone_p2` shim (`trim_defined`) and the `surface.cone_p3` shim (`harness/cpp/shim/surface_cone_p3.cpp`: `seam_lines_defined`, `cone_ellipse_seams_undefined`, `plane_ellipse_seams_undefined`) replay the upstream calls in the same order, with the same status checks, up to the two seam intersections, and refuse an input iff one fails (fixtures `fixtures/surface.cone_p3/ub154.json`: 7 rejections, 13 neighbours just inside validity compared).
 - **Severity:** UB (uninitialised read).
 - **Rust port:** The line/plane errors are returned. The ignored domain conversion is mirrored (fixture `surface.cone_p3/fuzz_trim_domain.json`).
 
@@ -1155,6 +1178,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes for (b) (the case above); no for (a).
 - **Severity:** crash/UB (out-of-bounds read).
 - **Rust port:** The bounds-checked skinning fails the first attempt (`InvalidInput`) and `CreateSkinnedSurface` retries as upstream does after a failure. The shim rejects both inputs (a dry run of the knot insertion and the ruled / revolved tests).
+
+#### UB-204. `SmFilletSolver::GetSurface` recurses without bound through the geometry set for the surfaces
+- **Location:** `source/SMLib/src/SmFilletSolver.cpp:136` (`SmFilletSolver::GetSurface`: `m_pFGForSurfaces->GetOffsetSurface(lRailIndex)`) and `source/SMLib/src/SmFilletGeom.cpp:9679` (`SmFilletGeom::GetOffsetSurface`: `m_pFilletSolver->GetSurface(lRailIndex)` when `m_pOffSurfs[lRailIndex]` is `NULL`).
+- **What happens:** With a geometry set by `SetFilletGeomForSurfaces` whose own offset surface for the rail is `NULL` and whose `m_pFilletSolver` is the same solver, each function calls the other until the stack overflows.
+- **Trigger:** `SetFilletGeomForSurfaces(pFG)` (`SmFilletGeom.cpp:11827`, `SmFilletCorner.cpp:7686-7693`, `:8092-8096`) on a geometry of the solver that never got its offset copies (`FinishConstruction` not run, or `SetOffsetSurface(i, NULL)` after it), then any `GetSurface(i)`.
+- **How found:** read during porting.
+- **Confirmed:** no.
+- **Severity:** crash/UB (stack exhaustion).
+- **Rust port:** `FilletSolver::surface` returns `Unported` while a geometry is set for the surfaces (`plan/findings.md`, "blend.fillet_solver_p1: the geometry for the surfaces"); no Rust caller sets one yet.
 
 #### UB-186. `SmCircularCrossSectionFSG::CreateSurfaceFromCurves` `G1` skin retry interpolates cross sections of different control point counts
 - **Location:** `source/SMLib/src/NL_SrfAdv.cpp:15096` (`N_CreateSkinSrfBoundaryContinuity`: `N_CrvGetCPts( cur[i], &nc, &Cw ); N_CopyCPt( Cw[j], &Qw[i] )` for `j` up to the first section's `nc`), reached from `SmFilletStandardSolver.cpp:3917` (`CreateSkinnedSurface` with the `G1` derivative surfaces) through `SmBSplineSurface::CreateSkinnedSurface`'s retry without the knot vector.
@@ -1758,6 +1790,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes.
 - **Severity:** crash/UB, hang.
 - **Rust port:** not reached yet (deferred); the difftest guard passes only radii in `[3e-4, 3e8]` on to the C++.
+
 #### UB-191. `CombineCoincidentVertices` deletes its isolated surviving vertex when inputs alias
 - **Location:** `source/SMLib/src/SmBrep.cpp:1354-1366`, `SmBrep::CombineCoincidentVertices`.
 - **What happens:** The zero-incident-edge branch notifies, sets the surviving vertex's point/tolerance, then calls `DeleteVertex(pVertexToDelete)` and returns `SM_SUCCESS`. If both input pointers are the same, the supposedly surviving vertex is deleted too. Nothing inside the function touches it afterwards, so the call itself is defined; a caller that keeps using the survivor pointer reads freed memory.
@@ -1775,6 +1808,33 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** no (source inspection; the difftest never exports these members before they are set).
 - **Severity:** UB (indeterminate reads).
 - **Rust port:** `FilletGeom::new` starts them as `0.0` and `false`.
+
+#### UB-213. `SmFilletEdge::CalcCrossSection` lifts `*pUVCurve1` when `sm_CreateUVCurve` succeeds without any curve
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:5759-5768` (`SmFilletEdge::CalcCrossSection`): `SER(sm_CreateUVCurve(.., p3DCurve, pUVCurve1, pUVCurve2))`, then `if (p3DCurve == NULL) { SER(pSurface1->LiftCurve(.., *pUVCurve1, pUVCurve1->GetNaturalInterval(), ..)); NER(p3DCurve); }`.
+- **What happens:** `NER(p3DCurve)` comes after the lift and nothing checks `pUVCurve1` before it. When `sm_CreateUVCurve` returns `SM_SUCCESS` with neither a 3D curve nor a UV curve (both out-pointers stay `NULL`), `*pUVCurve1` and `pUVCurve1->GetNaturalInterval()` dereference a null pointer.
+- **Trigger:** a fillet edge for which `sm_CreateUVCurve` (`:4212`) returns `SM_SUCCESS` with `rp3DCurve` and `rpUVCurve1` both `NULL`, i.e. a success exit that builds no curve.
+- **How found:** line-by-line comparison while porting `blend.fillet_geom_p5` (PR #264); the shim guards the call.
+- **Confirmed:** no (source inspection; the difftest shim refuses the input rather than running it, and no generated input has been seen to reach it).
+- **Severity:** UB (null dereference).
+- **Rust port:** `FilletBrep::calc_cross_section` returns `SM_ERR_NULL_POINTER` at the lift (`blend/fillet_geom/p5.rs`, the `UB-213` comment). The `blend.fillet_geom_p5` shim runs the same `sm_CreateUVCurve` call first (`p5_cross_runs`) and refuses (`SC_ERR_ARG`) an input where it succeeds with no curve, so no run reaches the dereference.
+
+#### UB-214. `SmFilletEdge::CalcFilletIntSideFace` calls `pCorner->IsExtendedSurfacePatch()` before its `pCorner` test
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:6219` (the call) and `:6223` (`(pCorner) ? pCorner->GetExtendedSurface(pFace) : NULL`), `SmFilletEdge::CalcFilletIntSideFace`; the else branch (`:6234`) also calls `pCorner->GetFilletedVertex()` unchecked.
+- **What happens:** the conditional that tests `pCorner` four lines after the dereference shows the author expected a null corner, but `pCorner->IsExtendedSurfacePatch()` (`SmFilletCorner.h:206`, an inline read of `m_bExtendedSurfacePatch`) already ran on it: a null `pCorner` reads a member through a null `this`.
+- **Trigger:** `CalcFilletIntSideFace` on a fillet edge with no 3D curve whose primary edge use has a fillet geometry, with a `NULL` corner argument (the function's default; `SmFilletVertex::CalcFilletIntSideFace` callers pass the vertex's corner, which is not `NULL` in a real run).
+- **How found:** line-by-line comparison while porting `blend.fillet_geom_p5` (PR #264); the shim's guard `p5_side_runs` models it.
+- **Confirmed:** no (source inspection; the difftest shim refuses the input).
+- **Severity:** UB (null dereference).
+- **Rust port:** `FilletBrep::calc_fillet_int_side_face` returns `SM_ERR_NULL_POINTER` for the missing corner (`blend/fillet_geom/p5.rs`, the `UB-214` comment); the shim refuses (`SC_ERR_ARG`) the inputs that reach it.
+
+#### UB-238. `SmFilletGeom::MakeRailEdgeuse` leaves a deleted vertex use linked in the fillet vertex when `NER(pBaseEU)` fails
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:10042-10052` (the allocation and `pFilletVertex->PostInsert(pNewVU)`), `:10076-10077` (`SmEdgeuse *pBaseEU = pFilletSolver->GetEdgeuse(lRailIndex); NER(pBaseEU);`), `:10089-10090` (`pBaseEU1->GetFace()`), `SmFilletGeom::MakeRailEdgeuse`.
+- **What happens:** the new edge use and vertex use are created under `SmObjDelete sClean3` / `sClean2`, and the vertex use is inserted into `pFilletVertex`'s use list (`SER(pFilletVertex->PostInsert(pNewVU))`) before the base edge use is looked up. When the solver has no edge use for `lRailIndex`, `NER(pBaseEU)` returns and the clean-up deletes the vertex use while it is still linked; a vertex use's destructor does not unlink it, so `~SmFilletVertex` deletes the same object a second time (double free). When `GetEdgeuse(lRailIndex)` is set but `GetEdgeuse(1-lRailIndex)` is not, `pBaseEU1->GetFace()` dereferences a null pointer.
+- **Trigger:** `MakeRailEdgeuse` with a non-null fillet solver and fillet vertex whose solver lacks one of its two base edge uses (a solver the executive has not set up).
+- **How found:** line-by-line reading of `MakeRailEdgeuse` while adding its op to the `blend.fillet_geom_p5` shim (PR #264); `~SmFilletVertex` (`:1333-1342`) deletes every vertex use in its list and `~SmFilletVertexuse` (`SmFilletGeom.h:180`) / `~SmVertexuse` (`SmVertexuse.h:149`) do not unlink the use from the vertex.
+- **Confirmed:** no (source inspection; the shim refuses the input rather than running it).
+- **Severity:** UB (double free, null dereference).
+- **Rust port:** `FilletBrep::make_rail_edgeuse` checks `NER(pFilletSolver)` and `NER(pFilletVertex)` and then defers at the edge-use constructor (`UNPORTED(topology.brep_p3)`); the shim refuses (`SC_ERR_ARG`) a solver without both base edge uses once those two checks pass, so the harness only compares the two defined early exits.
 
 #### UB-162. `sm_RedistributeSeamUVTrimCurves` reads a fourth edge use that need not exist
 - **Location:** `source/SMLib/src/SmBrep.cpp:12097`-`12105` (`sm_RedistributeSeamUVTrimCurves`): `SM_PTR_ARRAY(sNewEdgeuses, SmEdgeuse, 16)`, `pNewE->GetEdgeuses(sNewEdgeuses); SM_ASSERT(sNewEdgeuses.GetSize() == 4)`, then `sNewEdgeuses[0]` and `sNewEdgeuses[3]`.
@@ -1802,6 +1862,59 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (gdb backtraces in the reference build for the four reproducers; the FFI's rejection of exactly the constructed condition makes them rejected cases and the fuzz sweeps no longer crash).
 - **Severity:** crash (out-of-bounds read and write through a stale pointer).
 - **Rust port:** `nurbs::nurbs_srf::decompose_srf` bounds the patch index and returns an error. The `blend.fillet_geom_p1` shim reads back the knot vector the real constructor left and refuses (`SC_ERR_ARG`), for the six ops that build a surface cache, a surface whose constructed v vector has start multiplicity above `degree + 1`; that is the crash precondition, so it also refuses some runs that would complete because their path returns before building the cache (28 of 169 such programs in the round-5 review: `TwoPnts` 1001 and Fb-op exits before the cache fetch). It does not re-implement the fixup (a replica in the Rust wrapper missed the end-snap route). The u over-multiplicity, non-monotone constructed vectors, curves and the other ops are compared. Comparing the non-monotone vectors exposed three port bugs on the cache path, fixed in PR #147: the Rust caches held a `Clone` of their surface (the copy constructor, which runs the fixup a second time) where upstream holds a pointer, `compute_net_constants` returned the error of a failed `N_SrfEvalPt` that upstream ignores, and `subdivide_node` returned the error of a failed patch split that upstream's `GW_ERR` only logs (the children stay zero-filled).
+#### UB-215. `SmTopologySweep::SweepEdgeHigh` uses the original edge curve after `MakeFaceWithCurves` freed it
+- **Location:** `source/SMLib/src/SmTopologySweep.cpp:2162`-`2165` (`SmTopologySweep::SweepEdgeHigh`: `pOrigEdgeCurve->GetOwner()` after `pBrepToSweep->MakeFaceWithCurves(..)` at `:2127`); `source/SMLib/src/SmBrep.cpp:16134`-`16143` (`SmBrep::MakeFaceWithCurves` deletes each trim curve that is degenerate or whose `ApproximateLength` is below the zone tolerance, and clears its slot in the caller's array). The swept copy and the vertex sweep curves are looked up in `s3DCurves` again before use (`:2178`-`2183`, the B317 fix, `:2207`, `:2270`); the original-position copy is not.
+- **What happens:** When the face built for a swept edge drops the copy of the edge's own curve because it is shorter than the zone tolerance, `SweepEdgeHigh` makes a virtual call through the freed curve. The release build segfaults loading `GetOwner` from its vtable.
+- **Trigger:** Partial primitives of `SmPrimitiveCreation` on a fresh B-rep (zone tolerance `1e-5`), which sweep their profile edges with `SmRotationalSweepGeometry` (turns below `359.99999` degrees): `CreateCone(1, 1, top, 0, 90, identity)` with `top` from `1.2e-6` to `9e-6`, and the same with the height or both radii in that range (`1e-5` returns `SM_ERR`; `1e-9` to `1e-6` return `SM_ERR_INVALID_INPUT`); `CreateTorus(major, minor, 0, 90)` with `minor` `5e-7`, `1e-6` or `1.5e-6` and `major` `0`, `minor` or `0.01`, at origins `0`, `(1, -0.7, 0.3)` and `(1000, -700, 300)`, over turns `90`, `359` and `1e-9` (`minor = 2e-6` does not crash). Generated cases `gen0097`, `gen0145`, `gen0150`, `gen0197` and `gen0202` of `primitive.primitive_creation_p2`. Partial spheres never crash: the axis line sweeps to no face, and the arc's face fails the degenerate-surface test of `SweepEdgeHigh` first.
+- **How found:** generated difftest case (`primitive.primitive_creation_p2`), then about 450 isolated native probes (one process per input).
+- **Confirmed:** yes. Each crashing probe's backtrace (a scratch `SIGSEGV` handler, frames resolved with `addr2line`) ends in `SweepEdgeHigh` <- `DoSweepEdgesHigher` <- `DoSweep` <- `CreateRotationalSweep`; the faulting instruction is the vtable load after the `pOrigEdgeCurve` null test.
+- **Severity:** crash.
+- **Rust port:** `sweep::topology_sweep` keeps arena ids: a dropped curve has no edge in the face build's `curve_edges`, and `sweep_edge_high` returns an error (`required`) instead of reading it. The `primitive.primitive_creation_p2` FFI rejects partial cones that build a profile line shorter than the zone tolerance (mirroring the cone's own early failures) and partial tori whose minor circle is shorter than it.
+#### UB-247. `CreateTaperExtrude`'s start cap deletes input curves a failed `CreatePlanarFaceWith3DCurves` left in edges
+- **Location:** `source/SMLib/src/SmPrimitiveCreation.cpp:4327`-`4365` (`SmPrimitiveCreation::CreateTaperExtrude`, the start cap: `CreatePlanarFaceWith3DCurves(pRegion, r3DCurves, ..)`, and `bCleanupInputCurves`, cleared only on success); `source/SMLib/src/SmBrep.cpp:3834`-`3937` (`SmBrep::CreatePlanarFaceWith3DCurves`: `MakeFaceWithCurves` per outer loop under `SER`, its curves used by the new edges).
+- **What happens:** With the start cap (`iEndCaps` 1 or 3) the taper passes its chained input curves to `CreatePlanarFaceWith3DCurves`, which requires each curve end to meet exactly one other end (its header, `:3800`-`3801`). When that fails, the taper keeps `bCleanupInputCurves` and deletes the curves at clean-up, although edges of the result B-rep still use them (its own memory note: "Adding a Start cap consumes the r3DCurves as the curves for NewEdges"). The release build then segfaults in `SmEdgeuse::~SmEdgeuse` as the shim deletes the result B-rep, or inside `CreateTaperExtrude`.
+- **Trigger:** On a fresh B-rep, curves that close a loop while an end meets no other end or more than one, with the start cap: a line from `(0, 43)` into a unit square ending at its corner `(1, 0)` (difftest fuzz case `fuzz00880`, caps 3, normal +Z), the same line stopping `1e-3` short of the corner, two unit squares meeting at a corner, a line from a corner into the square (under -Z), a half circle across one side (under every normal). Each crashes under one normal or another and runs without the start cap. Curves that close no loop fail first and harmlessly, and clean loops ran in every probe, a self-crossing bow-tie and a square with a repeated or reversed side among them.
+- **How found:** `difftest --unit primitive.primitive_creation_p2 --fuzz 1000` (PR #250, 2026-10-21), then about 400 isolated native probes (one process per input) over tails, squares, spikes and arcs, every cap and normal.
+- **Confirmed:** yes. The fuzz case's backtrace (a scratch `SIGSEGV` handler, frames resolved with `addr2line`) is `SmEdgeuse::~SmEdgeuse` <- `SmEdgeuse::~SmEdgeuse` <- `SmBrep::~SmBrep` <- the shim; an arc crossed by a line under -Z crashes inside `CreateTaperExtrude`.
+- **Severity:** crash (use after free).
+- **Rust port:** `PrimitiveCreationAccess::planar_face` takes the curves by value, so a failed cap frees nothing an edge uses. The `primitive.primitive_creation_p2` FFI refuses, with the start cap, curves that close a loop while an end meets no other end or more than one within `2 * SM_ZONE_TOL_3D` (repeats of another curve left out); it still refuses some that run natively (a tail ending inside the square, a square with a diagonal, two squares at a corner in another order).
+
+#### UB-211. `SmFilletVertex::CalcVertOnVert` dereferences a missing or non-vertex classification object
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:2337-2345` (`SmFilletVertex::CalcVertOnVert`), reached from `SmFilletVertex::CalcCornerVertGeom` (`:1434`) for an `SM_FV_ON_VERTEX` vertex.
+- **What happens:** `(SmVertex*)GetPointClassObject()` is used without a check: a vertex whose point classification has no object dereferences `NULL` in `pVert->GetPoint()`, and an object of another kind (an edge use or face) is cast blindly and read as a vertex. There is no `NER` as in the sibling calculators.
+- **Trigger:** `CalcCornerVertGeom()` on an `SM_FV_ON_VERTEX` fillet vertex whose classification object is `NULL` or not an `SmVertex`.
+- **How found:** read during porting (`blend.fillet_geom_p3`, PR #242).
+- **Confirmed:** no (the difftest shim refuses such models, `SC_ERR_ARG`).
+- **Severity:** crash (NULL dereference) / UB (wrong-type cast).
+- **Rust port:** `FilletBrep::calc_vert_on_vert` returns `SM_ERR_NULL_POINTER` without an object and `SolidError::InvalidInput` for an object that is not a vertex.
+
+#### UB-185. `SmFilletVertex::CalcMateGeom` recurses without bound through a cycle of mates
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:3480-3490` (`SmFilletVertex::CalcMateGeom`: `pMainFV->CalcCornerVertGeom()`), with `CalcCornerVertGeom` (`:1434`) calling `CalcMateGeom` for an `SM_FV_MATE` vertex.
+- **What happens:** A mate computes its main vertex (`GetMate(0)`) first, unprocessed, through `CalcCornerVertGeom`; when the main vertex is itself an unprocessed mate whose `GetMate(0)` leads back (a cycle of `SM_FV_MATE` vertices, including a vertex that is its own mate), the two calls recurse until the stack overflows. Nothing marks a vertex as in progress.
+- **Trigger:** two unprocessed `SM_FV_MATE` fillet vertices that are each other's `GetMate(0)`.
+- **How found:** read during porting (`blend.fillet_geom_p3`, PR #242).
+- **Confirmed:** no (the difftest shim refuses mate cycles, `SC_ERR_ARG`).
+- **Severity:** crash (stack overflow).
+- **Rust port:** the nesting is bounded by `blend::fillet_geom::p3::MAX_MATE_DEPTH` (64; upstream's corners nest it at most once); deeper nesting is `SolidError::InvalidInput`.
+
+
+#### UB-208. `SmFilletGeom::ReCalcFilletGeom` reads the first of no sorted rail-end points
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:11648` (`SmFilletGeom::ReCalcFilletGeom`: `sDir = sTsectPnts[0]->CrvDeriv();`), after the sort loop of `:11431-11507`.
+- **What happens:** Without a march direction (`pOptMarchDir == NULL`) and with no curve on rail 0, the direction is taken from the first sorted rail-end point without checking that there is one. The sort loop skips every vertex that is unprocessed, `SM_FV_MATE` or `SM_FV_RAIL_X_EXTENDED_EDGEUSE`, and every point whose uv is unset (`-SM_BIG_DOUBLE`, `:11494` and `:11505`). When it skips them all, `sTsectPnts` is empty, so `sTsectPnts[0]` reads past the array (its stack buffer) and dereferences that pointer.
+- **Trigger:** `ReCalcFilletGeom(FALSE, NULL, NULL)` on a geometry whose rails' end vertices are all unprocessed (or all mates), both rails present and rail 0 without a curve: the `recalc_setup_fails` fixture with every vertex `status` 0 and a solver whose `SetupOffsetValues` succeeds (`regress_recalc_no_dir_all_unprocessed`), or with every vertex a processed mate (`regress_recalc_no_dir_all_mates`).
+- **How found:** reviewer's adversarial fixtures on PR #242 (core dump in the difftest process).
+- **Confirmed:** yes (both regression fixtures segfault the reference build, SIGSEGV in the difftest process, when the shim's guard is disabled).
+- **Severity:** crash (out-of-range read, then a wild pointer dereference).
+- **Rust port:** unreachable today (`FilletBrep::re_calc_fillet_geom` stops at the fillet intersector's point intersection first); the march direction there takes the first point through `.first()` and returns `SolidError::InvalidInput` when there is none. The `blend.fillet_geom_p3` shim refuses (`SC_ERR_ARG`) exactly that model: no march direction, rail 0 without a curve, and a sort loop that would finish without a point.
+
+#### UB-210. `SmFilletEdge::CalcFilletIntFillet` reads the context of a missing fillet corner
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:6051` (`SmFilletEdge::CalcFilletIntFillet`, from `:5959`: `sm_SrfSrfIntersection(m_cpCorner->GetContext(), ...)`); the failure branch after it calls `pCorner->RecordFilletError` (`:6072`).
+- **What happens:** When the fillet/fillet edge has no B-spline 3D curve yet, the surface/surface intersection is called with the context of the edge's own fillet corner, which is never checked. An edge without corner (`m_cpCorner == NULL`) dereferences `NULL`. Upstream's corners make these edges with a corner, so only a caller that builds or calls one without it reaches this.
+- **Trigger:** `CalcFilletIntFillet(crContext, pCorner)` on an `SM_FE_FILLET_X_FILLET` edge without curve or corner, both end vertices processed and both geometries with a solver and a fillet surface: fixture `regress_fif_no_curve_no_corner` (generated seed 748 of the 2000-seed sweep).
+- **How found:** generated difftest case (the 2000-seed sweep while addressing the PR #242 review); gdb puts the SIGSEGV in `SmFilletEdge::CalcFilletIntFillet`.
+- **Confirmed:** yes (SIGSEGV in the reference build before the shim refused it).
+- **Severity:** crash (NULL dereference).
+- **Rust port:** `FilletBrep::calc_fillet_int_fillet` returns `SM_ERR_NULL_POINTER` for an edge without corner on that path, before the unported intersection. The `blend.fillet_geom_p3` shim refuses (`SC_ERR_ARG`) a fillet/fillet edge without corner when it has no B-spline curve.
 
 #### UB-232. `SmApiCreatePipeSweep` raises `SIGFPE` for a path with a `1e300` control point
 - **Location:** `source/SM_API/src/SmApiBrep.cpp:1376` `SmApiCreatePipeSweep` -> `SmPrimitiveCreation::CreatePipeSweep`. The faulting instruction was not located (an integer division or `INT_MIN / -1`).
@@ -1888,6 +2001,24 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** no (source inspection; `GlueEdgesGeneral` is unported, so no difftest case reaches it). Not file-reachable: `m_bIgnoreProblems` defaults to FALSE (`SmStitch.h:99`) and is set only by an API caller choosing `StitchIntoShell(bShellIsWellFormed=FALSE)` (`SmOffsetExecutive` passes TRUE), so no [PSIRT] tag.
 - **Severity:** crash / use after free.
 - **Rust port:** Reproduces the control flow; queries on the deleted edge id return `NotFound`.
+
+#### UB-248. `sm_RefineRailCurveClassification` works on interval `ii`, not on small interval `ii`, and can read past the classification
+- **Location:** `source/SMLib/src/SmFilletSolver.cpp:5596`-`5690` (`sm_RefineRailCurveClassification`).
+- **What happens:** The loop counts `ii` from `crSmallIntervals.GetSize()` down to 1 but never reads `crSmallIntervals`: it refines classification interval `ii` itself (so the small intervals TestRollOver found are ignored unless they happen to be intervals `1..n`). It compares `ii` with the interval count taken before any `RemoveAt`, and a refinable interval `ii = size - 1` reads `rRailCurveClassification[ii + 1]`, past the end; after a removal later indices can also be past the end.
+- **Trigger:** `TestRollOver` passing more small intervals than (interval count - 2), or a refinable second-to-last interval.
+- **How found:** read during porting (unit `blend.fillet_solver_p3`).
+- **Confirmed:** no (the refinement path defers at `RailEdgeuseIntersect`, unit `blend.fillet_solver_p2`).
+- **Severity:** wrong result / out-of-bounds read.
+- **Rust port:** Faithful loop and indexing; an index past the classification is `InvalidInput` instead of a read past the array.
+
+#### UB-249. `SplitAndTrimFilletSurface` can index past a rail classification
+- **Location:** `source/SMLib/src/SmFilletSolver.cpp:4800`-`4866` (`SmFilletSolver::SplitAndTrimFilletSurface`, the interval walk).
+- **What happens:** When both current intervals end within `SM_EFF_ZERO_SQ`, both sides advance, but the second branch sets `bFound1 = TRUE` unconditionally after the first branch's search, so a first rail with no further good interval keeps looping with `lStartSearch1` one past its last interval (or on a non-good interval) and reads `(*pCC1)[lStartSearch1]`.
+- **Trigger:** Rail classifications whose last good intervals end at the same parameter while the second rail has more good intervals after it.
+- **How found:** read during porting (unit `blend.fillet_solver_p3`).
+- **Confirmed:** no.
+- **Severity:** out-of-bounds read.
+- **Rust port:** Faithful flags; an index past the classification is `InvalidInput`.
 
 ## Hang
 
@@ -2089,7 +2220,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **How found:** out-of-contract native extension probes during `offset.offset_executive_p1`, followed by maintainer review of the real callers.
 - **Confirmed:** yes for eight-second timeouts in the initial out-of-contract native probes (four fixed inputs and 104 generated inputs, Linux x86_64 / GNU g++ 16.2.1). Infinite execution and the exact stuck instruction were not experimentally established; the divergent loop condition was confirmed by source inspection.
 - **Severity:** hang on a direct negative extension request; not an offset-unit parity blocker.
-- **Rust port:** The offset executive's safe FFI and native adapter reject negative internal extension magnitudes before constructing native geometry. Zero, signed zero and positive magnitudes remain covered. This guard does not reject signed public inset operations or readonly constructor/getter probes. See `plan/findings.md`.
+- **Rust port:** The offset executive's safe FFI and native adapter reject negative internal extension magnitudes before constructing native geometry. Zero, signed zero and positive magnitudes remain covered. This guard does not reject signed public inset operations or readonly constructor/getter probes. See `plan/findings.md`. The Rust library itself (`BSplineSurface::create_extended_surface_dir`, also reached by `OffsetExecutive::get_create_extended_surface` with a negative distance) now bounds the doubling loop by `MAX_EXTEND_DOUBLINGS` (1101; a positive distance needs at most one more doubling than it had halvings) and returns `NotConverged`; before that the port looped as upstream does (Rust reached `dExtDist = -inf`, where every G1R extension of a plane still succeeds; fuzz `offset.offset_executive_p1` `/offset_distance = -1.0` / `-1e300`, 2026-10-21).
 
 #### HANG-17. `ST_surxsdr` (surface extension by distance) explores an exponential split for surfaces with short iso-curves
 - **Location:** `source/SMLib/src/NL_SrfAdv.cpp:696`-`960`, `ST_surxsdr` (the recursive body of `N_SrfExtendByDist`), reached through `SmBSplineSurface::CreateExtendedSurface(SM_SP_BOTH, 5 * offset, SM_CT_G1R)` from `SmOffsetExecutive::GetCreateExtendedSurface` (`SmOffsetExecutive.cpp`).
@@ -2165,6 +2296,14 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Rust port:** Returns `NotConverged` after `curve::ellipse::p2::MAX_PERIOD_SHIFTS` (2^20) shifts or when a shift no longer changes the midpoint; the callers ignore that status as upstream ignores the set-up's, leaving the converter impossible.
 - **Harness:** the `surface.cone_p3` FFI accepts cone angles only within upstream's documented `[-360, 360]` (`SmCone.h:205-206`). A first guard at about `3.8e8` degrees (the Rust bound) still let fuzzed intersections run past 20 s natively: every surface evaluation of such a cone goes through `SmEllipse::STEPInversion` and `SmExtent1d::PeriodicWrap`, one turn per iteration (HANG-1), confirmed with gdb backtraces.
 - **Fuzz sweep trigger (2026-10-20):** `SmSurfOfExtrusion::AdjustSTEPUVDomain` of an ellipse extrusion to a domain whose u end is `9223372036854775807` degrees (`surface.surf_of_extrusion_p1` `fuzz00222`, `fuzz01418`); a revolution (sphere part / torus generator circle) whose v domain bound is `±2^63` or `-1e300` degrees, through `DropPoint` / `ConvertUVFromSTEPToNURBS` (`surface.surf_of_revolution_p3` `fuzz00476`, `fuzz01129`, `fuzz01853`). Confirmed: yes (C++ timeouts; the loop was not traced, so HANG-1 `PeriodicWrap` may be the one spinning). Not guarded yet (open).
+#### HANG-35. Closed shells a few zone tolerances across take minutes to place in their region
+- **Location:** `source/SMLib/src/SmBrep.cpp:8666` `SmBrep::FindAndSetInfiniteRegion` -> `:8004` `FindInfiniteRegion` (ray fire at `:8417`) -> `source/SMLib/src/SmShell.cpp:592` `SmShell::RayFire` -> `SmSurface::GlobalLineIntersect`. The solver tree (`SmGlobalSolver::SolveBranch`, more than twenty levels) checks each new solution with `SmLSIGlobalSolver::IdenticalSolutions` (`SmSurface.cpp:18843`) or `LocalCurveIntersect`, which re-derive the surface's singularities (`SmSurface::GetSingularities`, `:12384`) every time. Reached from `TestClosureSplitRegion` (`SmBrep.cpp:27654`, `:27845`), both through `CreateFaceFromSurface` -> `MakeFaceWithCurves` for an analytic face and through `SmStitch::DoStitching` -> `GlueEdgesGeneral` for a stitched sweep.
+- **What happens:** Placing a small closed shell in its region takes minutes.
+- **Trigger:** `SmPrimitiveCreation` primitives on a fresh B-rep (zone tolerance `1e-5`): `CreateSphere(r)` and the partial `CreateSphere(r, 0, 359.999995)` (p3's `CreateRotationalSweep` builds analytic faces from `359.99999` degrees up) for `r` from `8e-6` to `5e-5` (radius `1e-5` takes 87 s and succeeds; `1e-4` takes 7.7 s); `CreateSphere(r, 0, 359)` for `r` from `4e-5` to `1e-4` (20 s at `1e-4`); `CreateTorus(s, s, 0, 360)` for `s` from `1e-5` to `2e-5`, and `CreateTorus(s, s, 0, 359)` from `3e-6` to `5e-5` (16.5 s at `5e-5`); `CreateCone(s, s, s, 0, 359)` at `2e-5` and `(0, 359.999995)` at `1e-5`; `CreateSkinPrimitive` of two circles of radius `1e-5` (25-30 s with caps, 10 s without; the stitch's closure test, `TestClosureSplitRegion` -> `SmTopologyTraverser::IsInnerShell` -> `SmFace::GlobalLineIntersect`). Every primitive probe from `1.5e-4` up, spheres of `5e-6` or less, and skins from `1e-4` up return in milliseconds. (The static `CreateSweepAlongPlanarPath` of a `1e-5` circle along `1e-4` lines also runs past a minute, in `ProjectAndTrim` and the boolean's face intersections rather than the ray fire; at `1e-3` it takes 0.1 s.) Generated case `gen0072` of `primitive.primitive_creation_p2` (sphere `1e-5`, turn `360.0000000036`).
+- **How found:** generated difftest case (`primitive.primitive_creation_p2`), then isolated native probes with 20-40 s limits.
+- **Confirmed:** yes (C++ 87 s for the radius `1e-5` sphere; stack samples from a scratch `SIGPROF` handler all in the ray fire's line intersection, for the analytic and the stitched path).
+- **Severity:** hang (seconds to minutes per call).
+- **Rust port:** These cases defer at the face construction (`topology.brep_p8`, not ported yet), before the ray fire; `FindInfiniteRegion` (`topology.brep_p9`) and the stitch (`heal.stitch_p2`) are partial ports that these cases do not reach yet. p1's FFI requires radii above `1e-4`; the `primitive.primitive_creation_p2` FFI rejects spheres, tori and cones from half the zone tolerance to `1.5e-4` across at any turn, keeping inputs that fail before any face is built, and its generator keeps skins and planar paths at scale `1e-3` or more.
 
 #### HANG-33. `SmStitch::StitchIntoShell` never returns when `dMaxStitchTol3d / 100` underflows
 - **Location:** `source/SMLib/src/SmStitch.cpp:2756`-`2791` (`StitchIntoShell`).
@@ -2583,6 +2722,14 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** no (the bisector cases of the `query.face_p3` difftest defer before comparing a pole skip).
 - **Severity:** wrong result.
 - **Rust port:** Ported as is (`query::face::p3`, private `find_element_in_masked_array`).
+#### WR-191. `SmMerge::ManifoldBoolean` leaves both contexts in boolean mode when it fails
+- **Location:** `source/SMLib/src/SmMerge.cpp:2551`-`2552` (`SmMerge::ManifoldBoolean` sets `SetDoingBoolean(TRUE)` on the B-rep's and the other B-rep's contexts); they are cleared only at the three success returns (`:3114`-`3115`, `:4148`-`4149`, `:5095`-`5096`). Every error return in between (`SER` at `:2616`, `:2628`, `:2661`, `:3023` and later, `SER(SM_ERR)` at `:3394`, `:3621`) leaves them set.
+- **What happens:** After a failed boolean, every later operation on those contexts runs in boolean mode (which delays surface cache construction, among other effects), until something resets the flag.
+- **Trigger:** the static `SmPrimitiveCreation::CreateSweepAlongPlanarPath` (tolerance `1e-7`, both caps, profile centred on the path) of a circle of radius `1e-3` at the origin along the lines `(0,0,0)-(0,0,0.01)` and `(0,0,0.01)-(0.01,0,0.01)`: it returns `SM_ERR` with the context's doing-boolean flag set, and the next primitive on that context reports it still set (generated case `gen0092` of `primitive.primitive_creation_p2`, which made the three cases after it differ).
+- **How found:** generated difftest case (`primitive.primitive_creation_p2`), then the same inputs in sequence in one process.
+- **Confirmed:** yes (the flag is set after the failing sweep and after the following, unrelated primitive). That the flag comes from `ManifoldBoolean` is from source reading: it is the only unscoped set on that path without a restore (the `SmBrep` and `SmEdge` destructors save and restore it, the primitive entry points use `SmTemporaryChangeValue`).
+- **Severity:** wrong result (state leaks into later calls).
+- **Rust port:** The `ManifoldBoolean` port (`boolean.merge_p4`) keeps the same exits. The `primitive.primitive_creation_p2` shim clears the flag before each case.
 
 #### WR-197. `SmMerge::MergeAddedTopology`'s declared defaults shift into the wrong flags
 - **Location:** `source/SMLib/inc/SmMerge.h:357` (declaration) against `source/SMLib/src/SmMerge.cpp:5304` (definition), `SmMerge::MergeAddedTopology`.
@@ -2631,7 +2778,25 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** wrong result.
 - **Rust port:** `Surface::is_closed_smooth_flag` returns both; `eval_pt_derivs_unbounded` keeps the copy and the flag, as upstream.
 
+#### WR-168. `MakeWireEdge` / `MakeWireEdgeVertex` give the new edge a sliced copy of an edge-owned curve
+- **Location:** `source/SMLib/src/SmBrep.cpp:21676`-`21678` (`SmBrep::MakeWireEdge`) and `:21801`-`21803` (`SmBrep::MakeWireEdgeVertex`).
+- **What happens:** When the curve passed in already belongs to an edge (`pCurve->GetEdge() != NULL`), the new wire edge gets `new (pCurve->GetContext()) SmCurve(*pCurve)`: the `SmCurve` base-class copy constructor, which copies none of the derived class's geometry (an `SmBSplineCurve`'s NURB, a line's point and vector). The new edge's curve is a plain `SmCurve` whose evaluation falls back to the base class (`SM_ERR`). The vertex tolerance checks right after still evaluate the original curve, so the calls succeed.
+- **Trigger:** `MakeWireEdge(NULL, v1, v2, pOtherEdge->GetCurve(), ...)` (or `MakeWireEdgeVertex`) with the curve of an existing edge.
+- **How found:** read during porting (`topology.brep_p3`, PR #204).
+- **Confirmed:** no (not run: the port and its difftest stop at `topology.shell` inside `MakeEdgeTopology` first). Update (PR #204, after topology.shell was wired): the wire makers now run and are compared (49 passing cases), but every wire fixture passes a curve no edge owns, so this branch is still not run.
+- **Severity:** wrong result (an edge without usable geometry).
+- **Rust port:** Deviation: the port clones the curve with its geometry (`Curve`'s `Clone`, the copy constructor of each curve kind); a geometry-less base curve cannot be represented.
+
 ### Curves
+
+#### WR-190. `SmFilletEdge::CalcBlendingRail` builds its Hermite fallback as a degree-2 curve and drops a control point
+- **Location:** `source/SMLib/src/SmFilletGeom.cpp:6537-6565` (`SmFilletEdge::CalcBlendingRail`, the `dT1*dT2 < 0.0` branch: `SmBSplineCurve::CreateCanonical(crContext, lCurveDim, 2, sCntrlPoly, ..., sKnotMult = {4, 4}, ...)`).
+- **What happens:** The four Bezier points of the cubic Hermite (`GetBezierPoints`) are passed with knot multiplicities 4 at both ends but degree 2. `CreateCanonical` accepts it and makes a quadratic of three points: start, the third Bezier point and end. The second point (start + start tangent / 3) is dropped, so the rail leaves its start in the wrong direction and is not tangent to the first rail. The same branch in `sm_InterpolateEndptsAndTangents` passes degree 3.
+- **Trigger:** A blending rail whose end tangents' closest-approach parameters have opposite signs (`smgu_LineLineClosestPoint`: `dT1 * dT2 < 0`).
+- **How found:** read during porting (`blend.fillet_geom_p6`, PR #247).
+- **Confirmed:** yes: the difftest reaches the branch (83 of 3000 generated cases) and C++ and Rust agree bit for bit on the three-point quadratic.
+- **Severity:** wrong result (tangency lost).
+- **Rust port:** faithful (degree 2); `blend::fillet_geom::p6` tests pin the three-point result.
 
 #### WR-25. `SmBSplineCurve` and `SmCurve` declare different default `bNonZeroTangents`
 - **Location:** `source/SMLib/inc/SmBSplineCurve.h:481` (`bNonZeroTangents=FALSE`) vs `source/SMLib/inc/SmCurve.h:396` (`TRUE`); used in `SmBSplineCurve.cpp:2997` `SmBSplineCurve::Evaluate`.
@@ -2753,6 +2918,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** wrong result.
 - **Rust port:** Ported as is.
 
+#### WR-211. `SmEllipse::AdjustSTEPInterval` collapses an arc moved a turn past its interval to one NURBS parameter
+- **Location:** `source/SMLib/src/SmEllipse.cpp:1905` `SmEllipse::AdjustSTEPInterval` (documented range `[-360 <= Min <= Max <= 360]` at `:1907`): both ends go through `SmPolarConversion::ConvertToNURBSParameter` (`:1921-1922`), which clamps an angle outside the current arc to its ends (`:512-517`). Reached from `SmSurfOfRevolution::AdjustSTEPUVDomain` (`SmSurfOfRevolution.cpp:331`, whose own comment gives `0_to_360`).
+- **What happens:** For a circle over `[0, 360]` (or `[0, 180]`) given `[360, 540]`, both ends clamp to the arc's end, so `sNewNurbsIvl` (`:1923`) has zero length and `EditParameterization` (`:1933`) collapses the curve to one parameter, without an error. The next reparameterisation divides by that length: `N_BasisReparam` (`NL_BasisBasic.cpp:2215`) gets `fac = (ur - ul) / 0`, keeps the end knots and makes every interior knot `ul + inf * 0 = NaN` (`:2221`), the knots `360 360 360 NaN NaN 540 540 540` of #428.
+- **Trigger:** a STEP surface of revolution whose sweep domain starts at 360 degrees (SolidCraft schema 4 allows a periodic domain up to one turn past 2π; tangency-labs/solidcore#428).
+- **How found:** following #428 and #427 (the NaN knots then overflow `N_IgesClampSrf`, `UB-250`); traced at `c9c5979`.
+- **Confirmed:** no (the port reproduces each step; no C++ run here).
+- **Severity:** wrong result (a zero-length curve, then NaN knots).
+- **Fix:** tangency-labs/smlib@74bed94 takes an angle outside the arc whole turns back into it for a full-turn arc, and otherwise extends the arc's NURBS interval in proportion.
+- **Rust port:** Faithful to the code: `Ellipse::adjust_step_interval` collapses the same way and the next reparameterisation gives the same NaN knots (test `step_interval_past_a_turn_collapses_as_upstream`). The fork's fix is not ported: the port follows the reference build, as for `UB-250`.
 ### Surfaces and volumes
 
 #### WR-38. `SmBSplineSurface` data constructor zeroes the v knots when `s > r`
@@ -3408,6 +3582,17 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** hang on out-of-range geometry; not a parity blocker (no fixture or generated case reaches it).
 - **Rust port:** the `offset.offset_executive_p1` FFI refuses control point coordinates (and coordinate/weight) above `MAX_COORDINATE = 1e154` in its `points()` guard, 1000x below the first slow value; the difftest runner's Rust side runs the same check, and the input is kept as a regression in `crates/difftest/tests/fuzz_regressions/`.
 
+### Primitive construction
+
+#### WR-209. `SmApiCreateBox` reports success for incomplete box topology
+- **Location:** `source/SMLib/src/SmPrimitiveCreation.cpp:294-344` (`CreateBox`) and `source/SM_API/src/SmApiPrimitives.cpp:306-324` (`SmApiCreateBox`).
+- **What happens:** `CreateBox` ignores all six `CreateFaceFromSurface` statuses. The API can return `SM_SUCCESS` with a non-null B-rep that lacks the expected six faces, twelve edges and eight vertices; callers cannot rely on that success status to select box faces.
+- **Trigger:** Positive box dimensions `[1e-6, 1e-6, 1e-6]` at `[0, 0, 0]`, or `[1e-3, 1e-3, 1e-3]` at `[1e6, 1e6, 1e6]`, under the reference context's construction tolerances. Applying B-rep tolerance `1e-9` afterwards does not repair the failed construction.
+- **How found:** adversarial review of `offset.offset_executive_p2` (PR #201), then fixed native fixtures `review_box_tiny_*` and `review_box_translated_*` in `fixtures/offset.offset_executive_p2/review_box_construction.json`.
+- **Confirmed:** yes, Linux ARM64 C++ reference build at `c9c5979`; eight source/foreign and null/indexed-selector fixtures reject incomplete construction, while two ordinary-size controls construct the expected topology and reach the real API selection error.
+- **Severity:** wrong result / hidden construction failure.
+- **Rust port:** No box-construction parity is claimed by the input scaffold. The native fixture adapter checks actual topology counts immediately after construction and records an explicit constructor rejection, before selector resolution or offset/shell execution. It does not substitute a successful Rust shape or impose a size cutoff.
+
 ### Numerical integration
 
 #### WR-94. `SmIntegrator::IntegrateIt` hides integration/evaluator failure as zero
@@ -3498,6 +3683,53 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** docs / debug assertion.
 - **Rust port:** Matches release C++ rather than enforcing the assertion; derivative orders remain bounded to 3.
 
+#### DOC-5. `SmApiCreateTaperExtrude` documents 90-180 degrees as an outer draft, but the code takes the side from the angle's sign
+- **Location:** `source/SM_API/inc/SmApiBrep.h:318` (`dDraftAngleDeg`: "0-90 inner, 90-180 outer") and `source/SMLib/src/SmPrimitiveCreation.cpp:3609` (the same in the parameter comment of `SmPrimitiveCreation::CreateTaperExtrude`); behaviour at `:3728` and `:3731`. The method comment at `:3564-3565` agrees with the code ("typically 30 degrees for an inner taper, and -30 degrees for an outer taper").
+- **What happens:** Only the sign picks the side (`dDraftAngleDeg < 0` gives `SM_OD_RIGHT_HAND_SIDE`, anything else `SM_OD_LEFT_HAND_SIDE`), and the in-plane offset is `|dHeight * tan(|dDraftAngleDeg|)|`. An angle between 90 and 180 degrees therefore drafts to the same side as a positive acute angle, by `|tan(180° - angle)|`: 135 gives the taper of 45, not an outer one. An outer taper needs a negative angle. Neither comment says that the curves must form one chain either: `SM_ASSERT(nChain == 1)` at `:3678` is the only check, and it compiles to nothing without `SM_DEBUG_CODE` (`SmMessages.h:714`), so a profile with an inner loop is not refused.
+- **Trigger:** `SmApiCreateTaperExtrude` with `dDraftAngleDeg` 135 against 45 (same side, same offset), or with a profile of two closed loops.
+- **How found:** read during porting, following tangency-labs/solidcore#413 (reported from SolidCraft's move onto SMLib).
+- **Confirmed:** no.
+- **Severity:** docs.
+- **Rust port:** Faithful to the code: `PrimitiveCreation::create_taper_extrude` (`primitive/primitive_creation/p2/taper.rs`) takes the side from the sign, makes the offset positive and does not count the chains. Its doc comment, and that of the API wrapper `sweep::api_brep::create_taper_extrude` (which stops at `SolidError::Unported` until the B-rep constructor is ported), state that convention.
+
+
+#### `ST_curxcdr` G1 fallback reads a third point of a two-point line (primitive.primitive_creation_p1, PR #213)
+
+- **Location:** `source/SMLib/src/NL_CrvAdv.cpp:999-1006,1077-1084`.
+- **Trigger:** a two-control-point line whose endpoint difference cannot be
+  normalized by `N_VectorNormalize`, then G1 extension at the affected end.
+  Finite coordinates around `1e300` overflow the computed vector magnitude.
+  The fallback reads `Pw[2]` at the start or `Pw[n-2]` (index -1) at the end.
+- **Found by:** the primitive path helper's 1,000-case FFI fuzz run (cases 427,
+  670, 689 and 919), initially reporting history-dependent garbage extension
+  intervals instead of Rust's checked error/unchanged curve.
+- **Confirmation:** the linked native `N_VectorNormalize` fails for those exact
+  two points; source inspection then proves the next read is out of bounds.
+  The revised shim prevents that read by preflighting only extension stages
+  actually selected by the upstream join and closed/periodic decisions. Huge
+  single lines that are not extended remain accepted. Rejected cases are
+  excluded from parity. The Rust NLib port already bounds its fallback lookup.
+
+## CreateLinearSweep: negative full-circle distance does not terminate (PR #213 review, 2026-10-19)
+
+- Location: `source/SMLib/src/SmPrimitiveCreation.cpp:1290-1360`, the full-circle
+  analytic-cylinder branch at `SmCone::AdjustSTEPUVDomain`, before face construction.
+- Trigger: one unit circular B-spline or analytic SmCircle in XY, sweep direction +Z, distance -1,
+  with or without end caps. Positive and zero distances finish; negative line,
+  skew-line and open-arc sweeps also finish.
+- Found by new PR #213 review fixtures `linear_circle_cap{0,1}_distance-1`; the analytic generator family adds two further rejected witnesses.
+  Confirmed by the native shim running the included upstream implementation:
+  both isolated cases exceeded the 10/5-second limits; the combined run ran
+  for over a minute without completing. An interrupted GDB run locates the loop
+  in `N_CreateEllipticalArcAngTypeTol` via `SmEllipse::MakeNurb`,
+  `SmCone::CreateIsoParametricCurve`, `SmSurfOfRevolution::RebuildPolarConverter`,
+  `Reparameterize` and `SmCone::AdjustSTEPUVDomain`. Rust reaches its face-construction
+  dependency, so these are rejected native fixtures, not parity comparisons.
+- The shim preflight repeats the upstream full-circle angular/tolerance and
+  axis-parallel tests and rejects only negative-distance inputs selecting that
+  cylinder branch. No kernel tolerance is changed and negative line/open-arc
+  fixtures remain accepted.
+
 #### UB-188. `BooleanTrees` trusts executed leaf indices and binary operand pointers
 
 - **Unit:** `boolean.merge_p3` (PR #245).
@@ -3571,3 +3803,31 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash/UB (virtual call through a mistyped pointer).
 - **Related:** WR-208 (the same `m_vVertexCornerMap` arrays leak for vertices without a corner).
 - **Rust port:** `ExecutiveAccess::solver_corner` yields `None` for a vertex without a corner, so the walk returns `SM_ERR_NULL_POINTER` (upstream's `NER`) instead.
+
+#### WR-210. `MakeFacesWithCurves` counts each outer-loop group's curves with the patch's first loop counts
+- **Location:** `source/SMLib/src/SmBrep.cpp:17590-17607` (`SmBrep::MakeFacesWithCurves`, split branch: the loop over `ll < lNumLoopsInGroup` reads `sThisPatchLoops.m_sLoopCounts[ll]`, but the curves and orientations from `sThisLoopGroup.m_sCurves[mm]` / `m_sOrients[mm]`).
+- **What happens:** `sThisLoopGroup` holds only the current outer-loop group's loops, while the counts come from the patch's loop list from its start. For the first group of a sub-patch the two agree; for a later group the counts are those of the first group's loops, so the face gets the wrong number of curves per loop, and reading past the group's curves is an out-of-bounds read.
+- **Trigger:** a surface with a `C0` crease and two disjoint outer loops (each with its own holes) on one side of the crease, so that `FindOuterLoops` returns two groups for one sub-patch.
+- **How found:** read during porting (`topology.brep_p8`, PR #72).
+- **Confirmed:** no (no native reproduction built).
+- **Severity:** wrong topology, or UB (out-of-bounds read) when the first group has more curves.
+- **Rust port:** keeps the counts; a read past the group's curves is `SolidError::InvalidInput`.
+
+#### WR-212. `DoFillet` returns success with a body that is not a closed manifold solid
+- **Location:** `source/SMLib/src/SmFilletExecutive.cpp`, the end of `DoFilleting`'s trim-and-merge path: `OrientTrimmedSurfaces` reports `bMaybeNotSolid`, which is ignored, and nothing after it checks the merged target. Line numbers are not given: they were not checked against `c9c5979`.
+- **What happens:** an R4 round over the rim of a through hole merges into a target that is not a closed manifold solid, and `DoFillet` returns `SM_SUCCESS` for it. The callers get an invalid body as a result, not a refusal naming the edge.
+- **Trigger:** a 40x20x10 block minus a through hole of r=3 centred at (20, 14.5), then `DoFillet` with radius 4 on the top long edge at y=20. The round covers y=16..20 and the hole reaches y=17.5, so the hole breaks into the round. This is SolidCraft's rig case `tests/kernel-cases/fillets/324-fillet-over-hole-overlap` (tangency-labs/solidcraft, branch `kernel-smlib`).
+- **How found:** SolidCraft's kernel rig, through the tangency-labs/smlib fork (`smlib_blend` -> `SmFilletExecutive::DoFillet`); tangency-labs/solidcore#422.
+- **Confirmed:** no (not reproduced with the reference build in this harness; seen on the fork's C++ in SolidCraft's rig).
+- **Severity:** wrong result (an invalid body reported as success).
+- **Rust port:** `FilletExecutive::do_fillet` refuses a target with an edge that is not `SmEdge::IsManifold`, with `SM_FILERR_BAD_MERGE` and the edge in the error info and in the error (`plan/findings.md`, `blend.fillet_executive_p3`). The cause of the broken shell is not found.
+
+#### Issue #489. `FaceFaceIntersect` discards the intersection UV curves when inserting edges
+
+- **Location:** `source/SMLib/src/SmTopologyIntersector.cpp:8246,8294`, the two `MakeEdgeInFace` calls in `SmTopologyIntersector::FaceFaceIntersect`.
+- **What happens:** each face's classification retains the intersection UV curve, but edge insertion receives `NULL` instead. `SmBrep::MakeEdgeInFaceWithVU` projects the 3D curve when no UV trim is supplied, adding another approximation.
+- **Trigger:** a new edge inserted by this face/face path with a current intersection UV curve available. Issue #489 reports 2–4e-6 gaps on threaded-shaft flank/shaft edges (the #474 reproduction).
+- **How found:** issue #489 from SolidCraft's `kernel-smlib` regression rig; confirmed the explicit-null calls by reading the pinned source.
+- **Confirmed:** source confirmed; the gap magnitude and complete shaft operation have not been reproduced with this harness's C++ reference.
+- **Severity:** accuracy loss from an additional projection fit.
+- **Rust port:** copies and forwards the classification's current UV curve in `TopologyIntersector::make_edge_for_interval`; absent/stale UVs retain projection. The path still defers at insertion adapters, so end-to-end gap elimination is not certified (see `plan/findings.md`, issue #489).

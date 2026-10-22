@@ -40,9 +40,9 @@
 //!
 //! Deviations:
 //! - **Derived class.** `SmSurfOfExtrusion` derives from `SmBSplineSurface`; the base
-//!   object is the [`SurfOfExtrusion::base`] field. The surface is not a
-//!   [`crate::surface::surface::SurfaceKind`] yet: its overrides need a [`Kernel`] the
-//!   `Surface` dispatchers do not take (see `surface.surf_of_extrusion_p2`).
+//!   object is the [`SurfOfExtrusion::base`] field. As a
+//!   [`crate::surface::surface::SurfaceKind::SurfOfExtrusion`] the `Surface` dispatchers
+//!   run its overrides, else the inherited bodies on that base.
 //! - **Generator.** `m_pGenCurve` is a [`Curve`] of a kind derived from
 //!   `SmBSplineCurve` (B-spline, ellipse, line, hyperbola, parabola); other kinds are
 //!   rejected (`InvalidInput`) where upstream casts. It is `None` only for the empty
@@ -50,14 +50,19 @@
 //!   [`crate::geom::object::ObjectRef`] to give it). The one place where upstream's
 //!   owner matters for these methods, an `SmLine`, `SmHyperbola` or `SmParabola`
 //!   generator whose `MakeNurb` (run by `AdjustSTEPInterval` when its interval
-//!   changes) reparameterises its NURB to the owner's
+//!   changes, or by a lazy line's first `GetCanonical`) reparameterises its NURB to the owner's
 //!   [`SurfOfExtrusion::gen_dir_param_extent`], is done here by the surface
-//!   (see `adjust_generator_interval`), also where `STEPInversion`'s
+//!   (see `adjust_generator_interval` and [`SurfOfExtrusion::make_nurb`]), also where `STEPInversion`'s
 //!   `GlobalPointSolveSTEP` of a hyperbola or parabola generator first adjusts it to
 //!   the solve interval (upstream on the owned generator itself, which `STEPInversion`
 //!   leaves adjusted; here on a copy). An ellipse generator's owner step is
 //!   overwritten by `AdjustSTEPInterval`'s own reparameterisation upstream, so it is
 //!   not repeated (the knots then agree within rounding, not bit for bit).
+//! - **Lazy line owner.** A constructor's `IsLinear` can build a lazy line and
+//!   its owning surface through virtual `GetEnds`. `classify_generator` performs
+//!   that owner build and retains the domain captured before `GetEnds` for the
+//!   remaining `IsLinear` samples; the finite constructor may adjust the line's
+//!   interval before storing its classification point.
 //! - **Lazy NURB.** Upstream's `const` methods make a missing NURB through
 //!   `GetOrCreateGwNurbPointer`; the `&self` methods here cannot. The parameter
 //!   conversions and `DropPointFast` return `SM_ERR` without a NURB (call
@@ -335,7 +340,8 @@ impl SurfOfExtrusion {
 
     /// The finite surface sweeping `gen_curve` along `extrusion_vec` over
     /// `anal_uv_domain` (generator parameters by extrusion parameters) from `origin`
-    /// (a point on the generator), without NURB (constructor). The generator's STEP
+    /// (a point on the generator), normally without NURB (constructor). A lazy
+    /// line may build its owner's NURB during the linearity test. The generator's STEP
     /// interval should equal the domain's U interval and it should not be inside out
     /// (upstream only logs otherwise). The orientation is classified with the tolerance
     /// `ANALYTIC_TOL_SCALE * SM_EFF_ZERO * (1 + |origin| + |P|)` for the generator
@@ -373,13 +379,13 @@ impl SurfOfExtrusion {
             curve_point: Vec3::UNDEF,
             curve_vec: Vec3::UNDEF,
         };
-        surf.classify(k, &gen_curve, tol, pnt)?;
-        surf.gen_curve = Some(gen_curve);
+        surf.classify_generator(k, gen_curve, tol, pnt)?;
         Ok(surf)
     }
 
     /// The surface sweeping `gen_curve` infinitely along `extrusion_vec`, without
-    /// NURB (constructor): the origin is the generator's STEP point at 45.678% of its
+    /// NURB (constructor, except for the lazy-line owner build described in the module
+    /// docs): the origin is the generator's STEP point at 45.678% of its
     /// STEP interval, the domain that interval by `[-SM_INFINITE_PARAMETER,
     /// SM_INFINITE_PARAMETER]`. The orientation is classified with the tolerance
     /// `ANALYTIC_TOL_SCALE * SM_EFF_ZERO * (1 + |origin| + |P|)` for the generator's
@@ -428,9 +434,39 @@ impl SurfOfExtrusion {
             curve_point: Vec3::UNDEF,
             curve_vec: Vec3::UNDEF,
         };
-        surf.classify(k, &gen_curve, tol, origin)?;
-        surf.gen_curve = Some(gen_curve);
+        surf.classify_generator(k, gen_curve, tol, origin)?;
         Ok(surf)
+    }
+
+    /// `GetEnds` in `IsLinear` materializes a lazy line's NURB. Its owner call
+    /// builds this surface, possibly adjusting the line's STEP interval first.
+    fn classify_generator(
+        &mut self,
+        k: &Kernel,
+        mut gen: Curve,
+        tol: f64,
+        plane_point: Point3,
+    ) -> Result<()> {
+        let lazy_line =
+            matches!(gen.kind(), CurveKind::Line(line) if line.base().gw_nurb().is_none());
+        let linearity = if lazy_line {
+            // IsLinear snapshots the domain before its virtual GetEnds call.
+            let domain = gen.natural_interval();
+            self.gen_curve = Some(gen);
+            ignore_status(self.make_nurb(k))?;
+            gen = self
+                .gen_curve
+                .take()
+                .ok_or(SolidError::null_pointer(OP_GEN))?;
+            let (start, end) = ignored(gen.ends(k))?
+                .map_or((Vec3::UNDEF, Vec3::UNDEF), |ends| (ends.start, ends.end));
+            Some(gen.is_linear_after_ends(k, tol, false, domain, start, end)?)
+        } else {
+            None
+        };
+        self.classify(k, &gen, tol, plane_point, linearity)?;
+        self.gen_curve = Some(gen);
+        Ok(())
     }
 
     /// The constructors' orientation classification: linear (`IsLinear(tol)`, its
@@ -446,9 +482,19 @@ impl SurfOfExtrusion {
     ///
     /// Those of the linearity and planarity tests and of `IsOnPlane` (whose output
     /// upstream reads even on failure).
-    fn classify(&mut self, k: &Kernel, gen: &Curve, tol: f64, plane_point: Point3) -> Result<()> {
+    fn classify(
+        &mut self,
+        k: &Kernel,
+        gen: &Curve,
+        tol: f64,
+        plane_point: Point3,
+        linearity: Option<crate::curve::curve::p5::Linearity>,
+    ) -> Result<()> {
         // if GenCurve is linear
-        let lin = gen.is_linear(k, tol, false)?;
+        let lin = match linearity {
+            Some(linearity) => linearity,
+            None => gen.is_linear(k, tol, false)?,
+        };
         if lin.linear {
             self.curve_point = lin.line_point;
             self.curve_vec = lin.line_tangent;
@@ -542,6 +588,18 @@ impl SurfOfExtrusion {
         // ignored)
         ignore_status(self.adjust_gen_step_interval(k, &anal_u_ivl))?;
 
+        // GetCanonical calls the generator's virtual GetOrCreateGwNurbPointer.
+        // SmLine(StartPoint, EndPoint) deliberately starts without a NURB.
+        let owner_ivl = self.owner_ivl();
+        if let Some(CurveKind::Line(line)) = self.gen_curve.as_mut().map(Curve::kind_mut) {
+            if line.base().gw_nurb().is_none() {
+                ignore_status(line.make_nurb())?;
+                if let Some(ivl) = owner_ivl {
+                    ignore_status(line.edit_parameterization_owned(None, &ivl))?;
+                }
+            }
+        }
+
         // Extract the m_pGenCurve BSplineCurve parameters
         let bsc = gen_base(self.gen()?)?;
         let canon = bsc.canonical()?;
@@ -630,6 +688,29 @@ impl SurfOfExtrusion {
     #[must_use]
     pub const fn base(&self) -> &BSplineSurface {
         &self.base
+    }
+
+    /// The `SmBSplineSurface` base object, mutably.
+    pub fn base_mut(&mut self) -> &mut BSplineSurface {
+        &mut self.base
+    }
+
+    /// A temporary evaluation copy: the surface's and the generator's NURBS data are
+    /// kept exactly (no copy-constructor knot fix-up), as
+    /// [`crate::surface::surf_of_revolution::SurfOfRevolution::clone_exact`].
+    #[must_use]
+    pub fn clone_exact(&self) -> Self {
+        let mut copy = Self {
+            base: self.base.clone_exact(),
+            ..self.clone()
+        };
+        if let (Some(dst), Some(src)) = (
+            copy.gen_curve.as_mut().and_then(|g| gen_base_mut(g).ok()),
+            self.gen_curve.as_ref().and_then(|g| gen_base(g).ok()),
+        ) {
+            *dst = src.clone_exact();
+        }
+        copy
     }
 
     fn gen(&self) -> Result<&Curve> {
@@ -2059,6 +2140,33 @@ mod tests {
         ];
         let cur = NurbCurve::new(pw, 2, vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
         Curve::from(BSplineCurve::from_nurb(cur, 3, false))
+    }
+
+    #[test]
+    fn canonical_extrusion_makes_a_lazy_line_nurb() {
+        let k = k();
+        let line = Line::from_points(Vec3::ZERO, Vec3::new(1.0, 0.0, 1.0), 3);
+        assert!(line.base().gw_nurb().is_none());
+        let mut s = SurfOfExtrusion::create_canonical(&k, Curve::from(line), Vec3::Z).unwrap();
+        assert!(s.base().gw_nurb().is_some());
+        assert!(gen_base(s.gen().unwrap()).unwrap().gw_nurb().is_some());
+        s.adjust_step_uv_domain(&k, &Extent2d::from_bounds(0.0, -2.0, 1.0, 3.0))
+            .unwrap();
+        let p = s.evaluate_step_point(&k, Point2::new(0.25, 0.5)).unwrap();
+        assert!((p - Vec3::new(0.25, 0.0, 0.75)).length() < 1e-12);
+
+        let line = Line::from_points(Vec3::ZERO, Vec3::new(1.0, 0.0, 1.0), 3);
+        let s = SurfOfExtrusion::new(
+            &k,
+            Curve::from(line),
+            Vec3::ZERO,
+            Vec3::Z,
+            Extent2d::from_bounds(-0.5, -2.0, 2.0, 3.0),
+            true,
+        )
+        .unwrap();
+        assert!(s.base().gw_nurb().is_some());
+        assert!((s.curve_point - Vec3::new(-0.5, 0.0, -0.5)).length() < 1e-12);
     }
 
     #[test]

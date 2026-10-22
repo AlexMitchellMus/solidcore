@@ -10,7 +10,8 @@
 //! optional `face` (a one-face B-rep built with `SmBrepConstructor` as in unit
 //! `heal.face_props`: a plane or `SmSurfOfRevolution::CreateCanonical` surface, cylinder or
 //! sphere among them, with a vertex loop or edge loops of line edges; rebuilt record by record
-//! on the Rust side by `heal_face_props::rust_brep`) whose face, loops, edges, vertices and edge
+//! on the Rust side by `heal_face_props::rust_brep` plus its down face use's side,
+//! `heal_face_props::add_down_side`) whose face, loops, edges, vertices and edge
 //! uses join the pool after the objects, and `ops` on two default classifications `cc[0]`,
 //! `cc[1]`: the setters of unit `intersect.curve_class_p1` build them (intervals, boundary
 //! classifications on the face's edges and vertices, the classification curve, face and
@@ -30,11 +31,12 @@
 //! (`GetPointClassifiesConnectedTo`, `intersect.curve_class_p7`, after the seam sampling of a
 //! closed face), `SetProps_Stage2` of a closed face (`SmFace::HasSeamProblem`,
 //! `topology.face_p4`), the edge ends of `GetIvlBound_EdgeuseObj` (`SmEdge::GetCurve` in
-//! `PointClassification::curve_object`, then `GetMinUV`, `intersect.curve_class_p2`), the
-//! constructor (`ReSet`, `intersect.curve_class_p2`) and every squeeze of a non-empty
-//! classification (`ConnectIntervals`, `intersect.curve_class_p2`). Generated scripts are
-//! filtered by the shim's run-time checks (scripts it rejects as undefined upstream are
-//! dropped).
+//! `PointClassification::curve_object`). The constructor's `ReSet`, `ConnectIntervals` and
+//! `GetMinUV` / `GetMaxUV` are part 2's (wired when `intersect.curve_class_p2` was merged
+//! with `boolean.topology_intersector_p3`). Generated scripts are filtered by the shim's
+//! run-time checks (scripts it rejects as undefined upstream are dropped), among them
+//! `GetLoopCrossings` on an empty classification (a squeeze can empty it), which reads
+//! `GetAt(0)` unchecked.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -55,7 +57,7 @@ use solidcore::intersect::point_class::{
 };
 use solidcore::heal::face_props::{FaceProps, LoopObject};
 use solidcore::kernel::Kernel;
-use solidcore::topology::{Brep, EdgeId, FaceId, LoopId};
+use solidcore::topology::{Brep, EdgeId, EdgeuseId, FaceId, LoopId};
 use solidcore::EntityRef;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::b_spline_surface::BSplineSurface;
@@ -568,12 +570,21 @@ fn cpp(s: &Script) -> Result<Output, HarnessError> {
 enum H {
     Obj(usize, ClassObjectKind),
     Topo(EntityRef),
+    /// The surface of a face, an edge's curve, an edge use's UV trim curve and the
+    /// temporary (seam) curves of `SmFace::HasSeamProblem` (reached through
+    /// `SetProps_Stage2`; none of them is a pool object).
+    FaceSurface(FaceId),
+    EdgeCurve(EdgeId),
+    Trim(EdgeuseId),
+    Temp(usize),
 }
 
 impl ClassObject for H {
     fn class_kind(&self) -> ClassObjectKind {
         match self {
             H::Obj(_, k) => *k,
+            H::FaceSurface(_) => ClassObjectKind::Surface,
+            H::EdgeCurve(_) | H::Trim(_) | H::Temp(_) => ClassObjectKind::Curve,
             H::Topo(e) => match e {
                 EntityRef::Face(_) => ClassObjectKind::Face,
                 EntityRef::Loop(_) => ClassObjectKind::Loop,
@@ -588,11 +599,59 @@ impl ClassObject for H {
             },
         }
     }
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        (kind == ClassObjectKind::Curve).then_some(H::Temp(index))
+    }
 }
 
 impl LoopObject for H {
     fn from_loop(l: LoopId) -> Self {
         H::Topo(EntityRef::Loop(l))
+    }
+    fn as_loop(&self) -> Option<LoopId> {
+        match self {
+            H::Topo(EntityRef::Loop(l)) => Some(*l),
+            _ => None,
+        }
+    }
+    fn as_vertex(&self) -> Option<solidcore::topology::VertexId> {
+        match self {
+            H::Topo(EntityRef::Vertex(v)) => Some(*v),
+            _ => None,
+        }
+    }
+    fn from_face(f: FaceId) -> Option<Self> {
+        Some(H::Topo(EntityRef::Face(f)))
+    }
+    fn from_face_surface(f: FaceId) -> Option<Self> {
+        Some(H::FaceSurface(f))
+    }
+    fn from_topology(t: EntityRef) -> Option<Self> {
+        Some(H::Topo(t))
+    }
+    fn as_topology(&self) -> Option<EntityRef> {
+        match self {
+            H::Topo(t) => Some(*t),
+            _ => None,
+        }
+    }
+    fn from_edge_curve(e: EdgeId) -> Option<Self> {
+        Some(H::EdgeCurve(e))
+    }
+    fn as_edge_curve(&self) -> Option<EdgeId> {
+        match self {
+            H::EdgeCurve(e) => Some(*e),
+            _ => None,
+        }
+    }
+    fn from_trim_curve(eu: EdgeuseId) -> Option<Self> {
+        Some(H::Trim(eu))
+    }
+    fn as_trim_curve(&self) -> Option<EdgeuseId> {
+        match self {
+            H::Trim(eu) => Some(*eu),
+            _ => None,
+        }
     }
 }
 
@@ -618,7 +677,7 @@ impl ClassGeometry<H> for Pool {
                 Some(PoolObj::Curve(c)) => Some(c),
                 _ => None,
             },
-            H::Topo(_) => None,
+            _ => None,
         }
     }
     fn surface(&self, o: H) -> Option<&Surface> {
@@ -627,7 +686,7 @@ impl ClassGeometry<H> for Pool {
                 Some(PoolObj::Surface(s)) => Some(s),
                 _ => None,
             },
-            H::Topo(_) => None,
+            _ => None,
         }
     }
     fn volume(&self, _o: H) -> Option<&Volume> {
@@ -639,7 +698,7 @@ impl ClassGeometry<H> for Pool {
                 Some(PoolObj::Point(p)) => Some(*p),
                 _ => None,
             },
-            H::Topo(_) => None,
+            _ => None,
         }
     }
     fn classification_vertex_point(&self, o: H) -> Option<Vec3> {
@@ -775,7 +834,10 @@ fn build_pool(k: &Kernel, s: &Script) -> Result<Pool, HarnessError> {
         pool.handles.push(H::Obj(i, class_kind_of(obj_kind(o))));
     }
     if let Some(face) = &s.face {
-        let (b, f) = face_brep(k, face)?;
+        let (mut b, f) = face_brep(k, face)?;
+        // the down face use's loops, so that edge mates (an edge's end vertex, the end edge
+        // use of a vertex use's UV sector) exist as upstream
+        hfp::add_down_side(&mut b, f)?;
         for (e, _) in topology_entities(&b, f)? {
             pool.handles.push(H::Topo(e));
         }

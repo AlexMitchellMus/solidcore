@@ -14,8 +14,9 @@
 //! op needing an entity the B-rep lacks is rejected (nothing runs on either side).
 //!
 //! **Inexact geometry.** The export carries plain B-spline curves and `SmLine`s and
-//! B-spline surfaces and `SmPlane`s exactly; other analytic kinds arrive as their
-//! B-spline part. The ops evaluating curves and surfaces (`topological` lists,
+//! B-spline surfaces, `SmPlane`s and `SmSurfOfRevolution`s exactly; other analytic
+//! kinds (cone, cylinder, sphere, torus, extrusion; ellipse and circle edges) arrive as
+//! their B-spline part. The ops evaluating curves and surfaces (`topological` lists,
 //! `check_uv`) defer when the geometry they touch is inexact (as `topology.edgeuse_p1`).
 
 use serde::{Deserialize, Serialize};
@@ -861,6 +862,9 @@ pub(crate) fn import(ex: &[f64], graph_at: usize) -> Result<(Brep, ImportTypes),
         {
             let _ = surface.set_owner(Some(arena_identity(CacheObject::Face(id))));
         }
+        // the face's tolerance, as the face upstream answers GetTolerance with
+        b.sync_face_surface_tolerance(id)
+            .map_err(|e| harness(e.to_string()))?;
     }
     // the shared import leaves `m_pFU` unset: the face's upward (SAME) face use
     let ups: Vec<(FaceId, FaceuseId)> = b
@@ -1083,14 +1087,16 @@ fn inexact(
     edges: Option<&[EdgeId]>,
 ) -> Option<Output> {
     let surface_types: Vec<i64> = match faces {
-        None => types.face_surface_types.clone(),
+        None => (0..types.face_surface_types.len())
+            .filter_map(|f| types.inexact_surface(f))
+            .collect(),
         Some(fs) => fs
             .iter()
-            .filter_map(|f| types.face_surface_types.get(f.index() as usize).copied())
+            .filter_map(|f| types.inexact_surface(f.index() as usize))
             .collect(),
     };
     for st in surface_types {
-        if st >= 0 && !EXACT_SURFACES.contains(&st) {
+        if !EXACT_SURFACES.contains(&st) {
             // a harness limitation, not an unported unit: the shared export of
             // `topology.edgeuse_p1` hands these surfaces over as their B-spline part
             let symbol = match st {
@@ -1098,7 +1104,7 @@ fn inexact(
                 15014 => "SmSphere face surface exported as its B-spline part",
                 15015 => "SmTorus face surface exported as its B-spline part",
                 15030 => "SmSurfOfExtrusion face surface exported as its B-spline part",
-                15031 => "SmSurfOfRevolution face surface exported as its B-spline part",
+                15020 => "SmSurfOfRevolution face surface exported as its B-spline part",
                 _ => "face surface of a kind the shared export flattens to a B-spline",
             };
             return Some(Output::deferred(HARNESS_ANALYTIC_IMPORT, symbol));
@@ -1165,10 +1171,19 @@ fn eu_state(k: &Kernel, b: &Brep, eu: EdgeuseId, out: &mut Vec<f64>) -> Result<(
     Ok(())
 }
 
-/// A surface block, as the shim's `put_surface` (B-spline surfaces and planes).
+/// A surface block, as the shim's `put_surface` (B-spline surfaces and planes; an
+/// `SmSurfOfRevolution` is an `SmBSplineSurface`, written as its B-spline part).
 fn put_surface(o: &mut Vec<f64>, s: &Surface) -> Result<(), HarnessError> {
-    match s.kind() {
-        SurfaceKind::Plane(p) => {
+    let base = match s.kind() {
+        SurfaceKind::BSpline(bs) => Some(bs),
+        SurfaceKind::SurfOfRevolution(r) => Some(r.base()),
+        SurfaceKind::Sphere(r) => Some(r.base().base()),
+        SurfaceKind::Torus(r) => Some(r.base().base()),
+        SurfaceKind::SurfOfExtrusion(r) => Some(r.base()),
+        _ => None,
+    };
+    match (s.kind(), base) {
+        (SurfaceKind::Plane(p), _) => {
             o.push(1.0);
             let pos = p.position();
             for v in [pos.origin(), pos.x_axis(), pos.y_axis()] {
@@ -1179,7 +1194,7 @@ fn put_surface(o: &mut Vec<f64>, s: &Surface) -> Result<(), HarnessError> {
             let d = p.step_uv_domain();
             o.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
         }
-        SurfaceKind::BSpline(bs) => {
+        (_, Some(bs)) => {
             let nurb = bs
                 .gw_nurb()
                 .ok_or_else(|| harness("blend surface without NURBS data"))?;
@@ -1960,6 +1975,21 @@ fn run_rust_op(
             dir,
         } => {
             let id = |i: i64| (i >= 0).then(|| EdgeuseId::from_index(i as u32));
+            // a blend (flag != 0) samples both edge uses' face surfaces (DropPoint,
+            // normals, directional derivatives): an analytic surface the export hands
+            // over as its B-spline part takes other paths in C++ (e.g.
+            // SmSurfOfRevolution::DropPointFast), so those cases are not comparable
+            if *f != 0 {
+                if let (Some(e1), Some(e2)) = (id(*eu1), id(*eu2)) {
+                    let face = solidcore::topology::edgeuse::p1::face;
+                    let has_edges = b.edgeuse(e1)?.edge.is_some() && b.edgeuse(e2)?.edge.is_some();
+                    if let (true, Some(f1), Some(f2)) = (has_edges, face(b, e1)?, face(b, e2)?) {
+                        if let Some(d) = inexact(types, Some(&[f1, f2]), Some(&[])) {
+                            return Ok(Err(d));
+                        }
+                    }
+                }
+            }
             match bp1::create_edge_edge_blend(
                 k,
                 u64::from(*f),

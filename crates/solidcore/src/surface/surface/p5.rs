@@ -51,7 +51,8 @@
 //!   `CoverCoincidentSurface` leaves `rdMaxDist` at `SM_BIG_DOUBLE` (its first
 //!   statement).
 //! - **Unported callees** (return [`SolidError::Unported`]): `SmSurface::GetFace`,
-//!   `SmFace::GetTolerance`, `LocalPointSolve_1`, `sm_GetSurfaceToEvaluate`, the STEP
+//!   `SmFace::GetTolerance` (for a surface whose B-rep has not cached its face's
+//!   tolerance on it, [`Surface::owner_zone_tol_3d`]), `LocalPointSolve_1`, `sm_GetSurfaceToEvaluate`, the STEP
 //!   domain conversions and the surface cache.
 
 use crate::curve::curve::p1::ApproximateCurveOptions;
@@ -484,6 +485,21 @@ impl Surface {
         want_uv_iso_curve: bool,
     ) -> Result<IsoParametricCurve> {
         match self.kind() {
+            // (SmSurfOfExtrusion inherits the B-spline override)
+            SurfaceKind::SurfOfExtrusion(s) => {
+                let opts = crate::nurbs::b_spline_surface::p2::IsoCurveOptions {
+                    domain: domain.copied(),
+                    uv_iso_curve: want_uv_iso_curve,
+                };
+                let r = s
+                    .base()
+                    .create_iso_parametric_curve(k, param, iso_parameter, opts)?;
+                return Ok(IsoParametricCurve {
+                    curve: Curve::from(r.curve),
+                    max_gap_3d: r.max_gap_3d,
+                    uv_iso_curve: r.uv_iso_curve,
+                });
+            }
             SurfaceKind::BSpline(b) => {
                 let opts = crate::nurbs::b_spline_surface::p2::IsoCurveOptions {
                     domain: domain.copied(),
@@ -507,6 +523,34 @@ impl Surface {
             }
             SurfaceKind::Cone(s) => {
                 // (the Rust override has no UV iso line option: `uv_iso_curve` is `None`)
+                let r = s.create_iso_parametric_curve(
+                    k,
+                    param,
+                    iso_parameter,
+                    domain,
+                    want_uv_iso_curve,
+                )?;
+                return Ok(IsoParametricCurve {
+                    curve: r.curve,
+                    max_gap_3d: r.max_gap_3d,
+                    uv_iso_curve: r.uv_iso_curve,
+                });
+            }
+            SurfaceKind::Sphere(s) => {
+                let r = s.create_iso_parametric_curve(
+                    k,
+                    param,
+                    iso_parameter,
+                    domain,
+                    want_uv_iso_curve,
+                )?;
+                return Ok(IsoParametricCurve {
+                    curve: r.curve,
+                    max_gap_3d: r.max_gap_3d,
+                    uv_iso_curve: r.uv_iso_curve,
+                });
+            }
+            SurfaceKind::Torus(s) => {
                 let r = s.create_iso_parametric_curve(
                     k,
                     param,
@@ -1000,7 +1044,8 @@ impl Surface {
     /// # Errors
     ///
     /// Those of the global solve; [`SolidError::Unported`]: `GetFace` and
-    /// `SmFace::GetTolerance` for an owned surface, `LocalPointSolve_1`.
+    /// `SmFace::GetTolerance` for an owned surface without the face tolerance cached
+    /// ([`Surface::owner_zone_tol_3d`]), `LocalPointSolve_1`.
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn drop_point<O: SolutionObject>(
         &self,
@@ -1024,15 +1069,9 @@ impl Surface {
         let mut answer_in_array = false;
 
         // We need a tolerance value.
-        let dist_tol = if self.face()?.is_some() {
-            // UNPORTED(topology.face_p2): SmFace::GetTolerance
-            return Err(SolidError::unported(
-                "SmFace::GetTolerance",
-                "topology.face_p2",
-            ));
-        } else {
-            XSECT_TOL_3D
-        };
+        // pFace ? pFace->GetTolerance() : SM_XSECT_TOL_3D (the face's tolerance cached
+        // on the surface; UNPORTED(topology.face_p2) for a bare face handle)
+        let dist_tol = self.face_zone_tol_3d()?.unwrap_or(XSECT_TOL_3D);
 
         // first try DropPointFast(), to catch special cases.
         if let Some(fast) = ignored(self.drop_point_fast::<O>(
@@ -1250,7 +1289,8 @@ impl Surface {
     /// # Errors
     ///
     /// [`SolidError::Unported`]: `GetFace`/`SmFace::GetTolerance` for an owned surface
-    /// and the surface caches (`smsurf_GetSurfaceCache`). The status of the UV-guess
+    /// without the face tolerance cached ([`Surface::owner_zone_tol_3d`]) and the
+    /// surface caches (`smsurf_GetSurfaceCache`). The status of the UV-guess
     /// `LocalSurfaceSurfaceIntersect` is ignored, as upstream (no answer).
     #[allow(clippy::too_many_arguments)] // upstream's argument list
     pub fn local_surface_surface_intersect_xyz<O: SolutionObject>(
@@ -1265,17 +1305,9 @@ impl Surface {
         opt_xyz_guess2: Option<Point3>,
     ) -> Result<(bool, Solution<O>)> {
         // GWC:TODO - upstream's magic numbers for the tolerance
-        let face_tol = |s: &Self| -> Result<f64> {
-            if s.face()?.is_some() {
-                // UNPORTED(topology.face_p2): SmFace::GetTolerance
-                Err(SolidError::unported(
-                    "SmFace::GetTolerance",
-                    "topology.face_p2",
-                ))
-            } else {
-                Ok(1e-05)
-            }
-        };
+        // GetFace() ? its tolerance (cached on the surface; UNPORTED(topology.face_p2)
+        // for a bare face handle) : 1e-05
+        let face_tol = |s: &Self| -> Result<f64> { Ok(s.face_zone_tol_3d()?.unwrap_or(1e-05)) };
         let tol1 = face_tol(self)?;
         let tol2 = face_tol(surface2)?;
         let tol3 = face_tol(surface3)?;

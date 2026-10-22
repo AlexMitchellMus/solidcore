@@ -69,6 +69,12 @@
 //!   (`CalculateBoundingBox`, `GetDomainWithContinuity`, `CreateSilhouetteCurves`)
 //!   build one as `smsurf_GetSurfaceCache` would: the trimmed surface cache. The
 //!   debug cache counters are not modelled.
+//! - **Silhouettes.** `CreateSilhouetteCurves` always computes both the 3D and the
+//!   UV curves (upstream's output arrays are optional) and returns them. It does not
+//!   copy the surface's `SM_AI_COLOR` attribute onto the traced curves: a free
+//!   [`Surface`] or [`Curve`] has no attribute list, so a caller holding the
+//!   surface's attributes adds it. A traced curve or UV curve that is not a B-spline
+//!   (upstream's `SM_CAST_PTR` null, then dereferenced) is `SM_ERR_NULL_POINTER`.
 //! - **Owners.** `m_pOwner` is an [`ObjectRef`]. `SetOwner`'s `SM_NO_CHANGE_OWNER`
 //!   notification is the object layer's (see part 2's `notify`). `GetFace` follows
 //!   owner chains through surfaces upstream; the owning surfaces (`SmOffsetSurface`,
@@ -83,11 +89,12 @@
 //!   the array on to their basis; an offset's failure after a partial write keeps the
 //!   previous values) and keeps upstream's `SER` inside a boolean function: a failing
 //!   `Unitize` returns `TRUE`.
-//! - **Unported callees.** `CreateSilhouetteCurves` needs `SmSurfaceSilhouette`
-//!   (`intersect.surface_silhouette`), `ApproximateSize` of kinds other than B-splines needs
+//! - **Unported callees.** `ApproximateSize` of kinds other than B-splines needs
 //!   `SmIsoCurve` over any surface (the ported iso curve holds a B-spline), the zone
-//!   tolerance of a surface with a face needs `SmFace::GetTolerance`
-//!   (`topology.face_p2`): those calls return [`SolidError::Unported`]. Every tree build
+//!   tolerance of a surface with a face is the one its B-rep cached on it
+//!   ([`Surface::owner_zone_tol_3d`]) and needs `SmFace::GetTolerance`
+//!   (`topology.face_p2`) for a bare face handle without it: those calls return
+//!   [`SolidError::Unported`]. Every tree build
 //!   needs `SmSurface::CalculateContinuities` (`surface.surface_p6`), whose iso curves
 //!   exist for the B-spline, plane and revolution kinds.
 //!   [`map_to_2d_on_curve`] ports the UV-curve and the general 3D branch of
@@ -99,10 +106,12 @@
 //! - **`SmDropCurveFail` copy constructor.** [`DropCurveFail::copy_of`]; the derived
 //!   `Clone` also copies the UV curves of a record without context.
 
-use crate::curve::curve::Curve;
+use crate::curve::curve::p2::CurvePropertyType;
+use crate::curve::curve::p7::PropertyAnalysisOptions;
+use crate::curve::curve::{Curve, CurveKind};
 use crate::curve::iso_curve::IsoCurve;
 use crate::curve::line::Line;
-use crate::error::{ignored, Result, SolidError};
+use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::a_object::{CacheId, ObjectCacheType};
 use crate::geom::assert_array::labels::FACE_TYPE;
 use crate::geom::extent1d::Extent1d;
@@ -115,7 +124,7 @@ use crate::geom::local_solve1d::{EvalFunction, FunctionValue};
 use crate::geom::object::ObjectRef;
 use crate::geom::polar_box::PolarBox;
 use crate::geom::pseudo_box::PseudoBox;
-use crate::geom::solution_array::SolutionObject;
+use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::geom::tol::{
     is_zero_to_tol, scaled_zero2, tol3d, zone_tol_3d as kernel_zone_tol_3d, ScaledZero,
     SmallTopoType, ANG_TOL_RAD,
@@ -123,10 +132,13 @@ use crate::geom::tol::{
 use crate::geom::tree::{AuxDataType, NodeClass, NodeData, Tree, TreeNode, TreeOwner};
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::{Point3, Vec3};
+use crate::intersect::surface_silhouette::SurfaceSilhouette;
+use crate::intersect::surface_tracer::SurfaceTrace;
 use crate::kernel::Kernel;
 #[cfg(test)]
 use crate::math::EFF_ZERO_DEG;
 use crate::math::{max2, min2, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT, PI};
+use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::knots::Side;
@@ -598,19 +610,17 @@ impl StepSurface {
 // ---- tolerances of surfaces (SmTol co-ports) ----------------------------------------------
 
 /// `SmTol::GetZoneTol3d(const SmObject*)` of a surface: its face's tolerance when it
-/// has a face, else the system zone tolerance.
+/// has a face (the tolerance the B-rep cached on the surface,
+/// [`Surface::owner_zone_tol_3d`]), else the system zone tolerance.
 ///
 /// # Errors
 ///
-/// Those of [`Surface::face`]; [`SolidError::Unported`]: `SmFace::GetTolerance`
-/// (`topology.face_p2`) for a surface with a face.
+/// Those of [`Surface::face_zone_tol_3d`]: [`SolidError::Unported`]
+/// (`SmFace::GetTolerance`, `topology.face_p2`) for a surface with a face whose
+/// tolerance was not cached on it.
 pub fn zone_tol_3d(k: &Kernel, surface: &Surface) -> Result<f64> {
-    match surface.face()? {
-        // UNPORTED(topology.face_p2): SmFace::GetTolerance
-        Some(_) => Err(SolidError::unported(
-            "SmFace::GetTolerance",
-            "topology.face_p2",
-        )),
+    match surface.face_zone_tol_3d()? {
+        Some(tol) => Ok(tol),
         None => Ok(kernel_zone_tol_3d(k, SmallTopoType::NormalSize)),
     }
 }
@@ -707,10 +717,7 @@ pub fn map_to_2d_on_curve(
 ) -> Result<f64> {
     // the same-surface SmCrvOnSurf branch evaluates the curve's own UV curve (an identity
     // test on the base surface that the port cannot make)
-    if matches!(
-        trim_curve.kind(),
-        crate::curve::curve::CurveKind::CrvOnSurf(_)
-    ) {
+    if matches!(trim_curve.kind(), CurveKind::CrvOnSurf(_)) {
         // UNPORTED(surface.surface_p1): SmTol::MapTo2d (SmCrvOnSurf branch, SmTol.cpp:1118-1123)
         return Err(SolidError::unported(
             "SmTol::MapTo2d(SmCrvOnSurf)",
@@ -971,6 +978,35 @@ pub struct SurfaceBoxes {
     pub polar_box: Option<PolarBox>,
 }
 
+/// The solution object of [`Surface::create_silhouette_curves`]'s surface cache (its
+/// trace solves keep no objects).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SilhouetteObject;
+
+impl SolutionObject for SilhouetteObject {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Surface
+    }
+}
+
+/// The traced curve named by the solutions of [`Surface::create_silhouette_curves`]'s
+/// `GlobalPropertyAnalysis` (upstream's `pCurve`): its natural interval, which
+/// `IdenticalSolutions` scales its merge tolerance by.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SilhouetteCurve {
+    natural_interval: Extent1d,
+}
+
+impl SolutionObject for SilhouetteCurve {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Curve
+    }
+
+    fn natural_interval(&self) -> Option<Extent1d> {
+        Some(self.natural_interval)
+    }
+}
+
 // ---- the SmSurface members of this unit ---------------------------------------------------
 
 impl Surface {
@@ -1007,17 +1043,25 @@ impl Surface {
             (SurfaceKind::SurfOfRevolution(a), SurfaceKind::SurfOfRevolution(b)) => {
                 a.approx_eq(k, b)
             }
+            (SurfaceKind::SurfOfExtrusion(a), SurfaceKind::SurfOfExtrusion(b)) => a.approx_eq(k, b),
             (SurfaceKind::SrfInVolume(a), SurfaceKind::SrfInVolume(b)) => a.approx_eq(k, b),
             _ => Ok(false),
         }
     }
 
-    /// Sets the owner and returns the previous one (`SetOwner`).
+    /// Sets the owner and returns the previous one (`SetOwner`). A different owner
+    /// drops the cached face tolerance ([`Surface::owner_zone_tol_3d`]): the B-rep
+    /// records the new face's ([`Surface::set_owner_zone_tol_3d`]).
     pub fn set_owner(&mut self, new_owner: Option<ObjectRef>) -> Option<ObjectRef> {
         // (notify when pNewOwner is NULL or a Face: the object layer's notify)
         let old = core::mem::replace(self.owner_mut(), new_owner);
-        // the bases this surface owns reach the face through it
-        self.update_owned_bases();
+        if old == new_owner {
+            // the bases this surface owns reach the face through it
+            self.update_owned_bases();
+        } else {
+            // (also passes the face down to the bases this surface owns)
+            self.set_owner_zone_tol_3d(None);
+        }
         old
     }
 
@@ -1111,12 +1155,30 @@ impl Surface {
                 .chunks(highest_v_deriv + 1)
                 .map(<[Vec3]>::to_vec)
                 .collect()),
+            // the SmSphere override (the side and half flags are not used)
+            SurfaceKind::Sphere(s) => Ok(s
+                .evaluate_step(uv, highest_u_deriv, highest_v_deriv)?
+                .chunks(highest_v_deriv + 1)
+                .map(<[Vec3]>::to_vec)
+                .collect()),
             SurfaceKind::SurfOfRevolution(s) => {
                 let d = s.evaluate_step_at(k, uv, highest_u_deriv, highest_v_deriv)?;
                 Ok(d.chunks(highest_v_deriv + 1)
                     .map(<[Vec3]>::to_vec)
                     .collect())
             }
+            // the SmSurfOfExtrusion override (the side and half flags are not used)
+            SurfaceKind::SurfOfExtrusion(s) => Ok(s
+                .evaluate_step(k, uv, highest_u_deriv, highest_v_deriv)?
+                .chunks(highest_v_deriv + 1)
+                .map(<[Vec3]>::to_vec)
+                .collect()),
+            // the SmTorus override (the side and half flags are not used)
+            SurfaceKind::Torus(s) => Ok(s
+                .evaluate_step(uv, highest_u_deriv, highest_v_deriv)?
+                .chunks(highest_v_deriv + 1)
+                .map(<[Vec3]>::to_vec)
+                .collect()),
             SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::Step(_)
@@ -1162,7 +1224,11 @@ impl Surface {
                 highest_v_deriv,
                 flags,
             ),
-            SurfaceKind::SurfOfRevolution(_) | SurfaceKind::Cone(_) => {
+            SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
+            | SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_) => {
                 ignored(self.evaluate_step(k, uv, highest_u_deriv, highest_v_deriv, flags))
             }
             SurfaceKind::BSpline(_)
@@ -1193,7 +1259,10 @@ impl Surface {
         match self.kind() {
             SurfaceKind::CurveBounded(s) => s.basis().evaluate_step_point(k, uv),
             SurfaceKind::Cone(s) => s.evaluate_step_point(uv),
+            SurfaceKind::Sphere(s) => s.evaluate_step_point(uv),
+            SurfaceKind::Torus(s) => s.evaluate_step_point(uv),
             SurfaceKind::SurfOfRevolution(s) => s.evaluate_step_point_at(k, uv),
+            SurfaceKind::SurfOfExtrusion(s) => s.evaluate_step_point(k, uv),
             SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::Step(_)
@@ -1237,6 +1306,30 @@ impl Surface {
                 flags.only_upper_half,
             ),
             SurfaceKind::SurfOfRevolution(s) => s.base().evaluate_simple(
+                uv,
+                highest_u_deriv,
+                highest_v_deriv,
+                flags.u_side == Side::Left,
+                flags.v_side == Side::Left,
+                flags.only_upper_half,
+            ),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().evaluate_simple(
+                uv,
+                highest_u_deriv,
+                highest_v_deriv,
+                flags.u_side == Side::Left,
+                flags.v_side == Side::Left,
+                flags.only_upper_half,
+            ),
+            SurfaceKind::Sphere(s) => s.base().base().evaluate_simple(
+                uv,
+                highest_u_deriv,
+                highest_v_deriv,
+                flags.u_side == Side::Left,
+                flags.v_side == Side::Left,
+                flags.only_upper_half,
+            ),
+            SurfaceKind::Torus(s) => s.base().base().evaluate_simple(
                 uv,
                 highest_u_deriv,
                 highest_v_deriv,
@@ -1505,7 +1598,8 @@ impl Surface {
     ///
     /// Those of the surface cache and of the polar box; [`SolidError::Unported`]:
     /// `SmFace::GetTolerance` (`topology.face_p2`) when a B-spline or plane with a
-    /// face expands its boxes.
+    /// face expands its boxes and the face's tolerance is not cached on the surface
+    /// ([`Surface::owner_zone_tol_3d`]).
     pub fn calculate_bounding_box(
         &self,
         k: &Kernel,
@@ -1516,19 +1610,21 @@ impl Surface {
         match self.kind() {
             // (SmSurfOfRevolution inherits the B-spline override)
             SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
             | SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
-            | SurfaceKind::SurfOfRevolution(_) => {
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_) => {
                 // the B-spline override expands by its face's tolerance (GetFace()):
-                // the owner is held here, not by the B-spline
-                if expand_pos_boxes_by_zone_tol_3d && (want[0] || want[1]) && self.face()?.is_some()
-                {
-                    // UNPORTED(topology.face_p2): SmFace::GetTolerance
-                    return Err(SolidError::unported(
-                        "SmFace::GetTolerance",
-                        "topology.face_p2",
-                    ));
-                }
+                // the owner is held here, not by the B-spline, so the face's cached
+                // tolerance is passed down (the GetBrep() arm is reached only without
+                // a face, where a surface's GetBrep is null: SM_ZONE_TOL_3D)
+                let expand_tolerance = if expand_pos_boxes_by_zone_tol_3d && (want[0] || want[1]) {
+                    self.face_zone_tol_3d()?
+                } else {
+                    None
+                };
                 let req = crate::nurbs::b_spline_surface::BoundingBoxRequest {
                     normal: want[0],
                     pseudo: want[1],
@@ -1536,13 +1632,23 @@ impl Surface {
                     pseudo_guess: None,
                     polar_guess: None,
                     expand_by_zone_tol: expand_pos_boxes_by_zone_tol_3d,
+                    expand_tolerance,
                 };
                 let r = match self.kind() {
                     SurfaceKind::BSpline(s) => s.calculate_bounding_box(k, uv_domain, &req)?,
                     SurfaceKind::Cone(s) => {
                         s.rev().base().calculate_bounding_box(k, uv_domain, &req)?
                     }
+                    SurfaceKind::Sphere(s) => {
+                        s.base().base().calculate_bounding_box(k, uv_domain, &req)?
+                    }
+                    SurfaceKind::Torus(s) => {
+                        s.base().base().calculate_bounding_box(k, uv_domain, &req)?
+                    }
                     SurfaceKind::SurfOfRevolution(s) => {
+                        s.base().calculate_bounding_box(k, uv_domain, &req)?
+                    }
+                    SurfaceKind::SurfOfExtrusion(s) => {
                         s.base().calculate_bounding_box(k, uv_domain, &req)?
                     }
                     SurfaceKind::Plane(p) => plane_bounding_box(k, p, uv_domain, &req)?,
@@ -1736,10 +1842,18 @@ impl Surface {
             SurfaceKind::Cone(s) => Ok(s
                 .create_offset_surface(k, signed_offset_distance, approx_tol_3d)?
                 .map(Self::from)),
+            SurfaceKind::Sphere(s) => Ok(s
+                .create_offset_surface(k, signed_offset_distance, approx_tol_3d)?
+                .map(Self::from)),
             SurfaceKind::OffsetSurface(s) => {
                 s.create_offset_surface(k, signed_offset_distance).map(Some)
             }
+            SurfaceKind::Torus(s) => Ok(s
+                .create_offset_surface(k, signed_offset_distance, approx_tol_3d)?
+                .map(Self::from)),
+            // (SmSurfOfExtrusion's override is commented out upstream)
             SurfaceKind::BSpline(_)
+            | SurfaceKind::SurfOfExtrusion(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::SrfInVolume(_) => {
@@ -1751,32 +1865,117 @@ impl Surface {
     /// The silhouette curves of the surface over `uv_domain` for a parallel
     /// (`eye_point_or_view_vector` the view vector) or perspective projection
     /// (`CreateSilhouetteCurves`), with the walk tolerances `pOptApproxTol3d` and
-    /// `cpdOptAngleTolRadians`.
+    /// `cpdOptAngleTolRadians`: the 3D and UV curves the silhouette tracer
+    /// ([`SurfaceSilhouette`]) finds. For a parallel projection each curve is then split
+    /// at its interior points with a tangent parallel to the view vector
+    /// (`GlobalPropertyAnalysis(SM_CP_PARALLEL_TO_VECTOR)` within
+    /// `100 * SM_EFF_ZERO_SQRT`): the leading pieces are trimmed copies appended after
+    /// the traced curves, the traced curve keeps the last piece; its UV curve is split
+    /// at the same (snapped) intervals.
+    ///
+    /// Upstream also adds the surface's `SM_AI_COLOR` attribute to each traced curve of
+    /// a parallel projection; a free [`Surface`] or [`Curve`] carries no attribute list
+    /// here, so a caller holding the surface's attributes copies it.
     ///
     /// # Errors
     ///
-    /// Those of the surface cache; [`SolidError::Unported`]: `SmSurfaceTracer::DoTrace`
-    /// (`intersect.surface_tracer`).
+    /// Those of the surface cache, of the trace and of the property analysis;
+    /// `SM_ERR_NULL_POINTER` for a traced curve that is not a B-spline (upstream's
+    /// `SM_CAST_PTR` null) or a missing UV curve. The trims' statuses are ignored, as
+    /// upstream (but [`SolidError::Unported`] is propagated).
     pub fn create_silhouette_curves(
         &self,
         k: &Kernel,
         uv_domain: &Extent2d,
-        _eye_point_or_view_vector: Point3,
-        _perspective: bool,
-        _approx_tol_3d: Option<f64>,
-        _ang_tol_rad: Option<f64>,
+        eye_point_or_view_vector: Point3,
+        perspective: bool,
+        approx_tol_3d: Option<f64>,
+        ang_tol_rad: Option<f64>,
     ) -> Result<(Vec<Curve>, Vec<Curve>)> {
-        let cache = get_surface_cache::<()>(k, self, None)?;
+        const OP: &str = "surface::surface::p1::create_silhouette_curves";
+
+        // test to see if this surface has color: not modelled (see the doc comment)
+
+        let mut cache = get_surface_cache::<SilhouetteObject>(k, self, None)?;
 
         // Check to make sure internal surface continuities are better then C0 (the
         // check only signals upstream)
         let _ = (cache.surface_continuity(uv_domain)? as i32) <= (ContinuityType::C0 as i32);
 
-        // UNPORTED(intersect.surface_tracer): SmSurfaceTracer::DoTrace (inherited by SmSurfaceSilhouette)
-        Err(SolidError::unported(
-            "SmSurfaceTracer::DoTrace",
-            "intersect.surface_tracer",
-        ))
+        let mut silhouette =
+            SurfaceSilhouette::new(k, self, uv_domain, perspective, eye_point_or_view_vector)?;
+        let traced = silhouette.do_trace(k, &mut cache, approx_tol_3d, ang_tol_rad)?;
+        let mut curves_3d = traced.curves_3d;
+        let mut curves_uv = traced.uv_curves;
+
+        // Post process silhouettes and break them up where the curve is parallel to
+        // the view vector.
+        if !perspective {
+            let mut new_curves: Vec<Curve> = Vec::new();
+            let mut new_uv_curves: Vec<Curve> = Vec::new();
+            let vectors = [eye_point_or_view_vector];
+            for (ii, curve) in curves_3d.iter_mut().enumerate() {
+                // SM_CAST_PTR(SmBSplineCurve, ..): NULL (then dereferenced) otherwise
+                if !matches!(curve.kind(), CurveKind::BSpline(_)) {
+                    return Err(SolidError::null_pointer(OP));
+                }
+
+                // To add color attribute for curve from color of surface: not modelled
+
+                let mut ivl = curve.natural_interval();
+                // the solutions name the curve
+                let opts = PropertyAnalysisOptions {
+                    property_value: None,
+                    opt_vectors: &vectors,
+                    want_comb: false,
+                    handle: Some(SilhouetteCurve {
+                        natural_interval: ivl,
+                    }),
+                };
+                let solutions = curve
+                    .global_property_analysis(
+                        k,
+                        &ivl,
+                        CurvePropertyType::ParallelToVector,
+                        EFF_ZERO_SQRT * 100.0,
+                        &opts,
+                    )?
+                    .solutions;
+
+                for sol in solutions.as_slice() {
+                    let param = sol.start.param(0)?;
+                    if param < ivl.min() + EFF_ZERO_SQRT || param > ivl.max() - EFF_ZERO_SQRT {
+                        continue;
+                    }
+
+                    let mut new_bsc = curve.clone();
+                    let mut trim1 = Extent1d::from_min_max(param, ivl.max());
+                    let mut trim2 = Extent1d::from_min_max(ivl.min(), param);
+                    // may snap sIvl by tol to existing knots
+                    ignore_status(new_bsc.trim(k, &mut trim2, TrimMode::Notify))?;
+
+                    new_curves.push(new_bsc);
+                    // may snap sIvl by tol to existing knots
+                    ignore_status(curve.trim(k, &mut trim1, TrimMode::Notify))?;
+
+                    let uv_curve = curves_uv.get_mut(ii).ok_or(SolidError::null_pointer(OP))?;
+                    if !matches!(uv_curve.kind(), CurveKind::BSpline(_)) {
+                        return Err(SolidError::null_pointer(OP));
+                    }
+                    let mut new_uv_bsc = uv_curve.clone();
+                    // may snap sIvl by tol to existing knots
+                    ignore_status(new_uv_bsc.trim(k, &mut trim2, TrimMode::Notify))?;
+                    new_uv_curves.push(new_uv_bsc);
+                    // may snap sIvl by tol to existing knots
+                    ignore_status(uv_curve.trim(k, &mut trim1, TrimMode::Notify))?;
+                    ivl = trim1;
+                }
+            }
+            curves_3d.append(&mut new_curves);
+            curves_uv.append(&mut new_uv_curves);
+        }
+
+        Ok((curves_3d, curves_uv))
     }
 
     // ---- shape tests ----------------------------------------------------------------
@@ -1882,6 +2081,9 @@ impl Surface {
                 }
             }
             SurfaceKind::SurfOfRevolution(s) => s.base().is_degenerate_point(k, tol_3d, uv_domain),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().is_degenerate_point(k, tol_3d, uv_domain),
+            SurfaceKind::Sphere(s) => s.base().base().is_degenerate_point(k, tol_3d, uv_domain),
+            SurfaceKind::Torus(s) => s.base().base().is_degenerate_point(k, tol_3d, uv_domain),
             SurfaceKind::Plane(p) => p.base_for_query().is_degenerate_point(k, tol_3d, uv_domain),
             SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
@@ -1911,6 +2113,20 @@ impl Surface {
             // inherited from SmBSplineSurface
             SurfaceKind::SurfOfRevolution(s) => {
                 s.base()
+                    .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
+            }
+            SurfaceKind::SurfOfExtrusion(s) => {
+                s.base()
+                    .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
+            }
+            SurfaceKind::Sphere(s) => {
+                s.base()
+                    .base()
+                    .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
+            }
+            SurfaceKind::Torus(s) => {
+                s.base()
+                    .base()
                     .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
             }
             SurfaceKind::Plane(p) => {
@@ -2556,6 +2772,24 @@ pub fn crossed_seam_or_pole(
         }
         SurfaceKind::SurfOfRevolution(s) => {
             let b = s.base();
+            if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
+                return false;
+            }
+        }
+        SurfaceKind::SurfOfExtrusion(s) => {
+            let b = s.base();
+            if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
+                return false;
+            }
+        }
+        SurfaceKind::Sphere(s) => {
+            let b = s.base().base();
+            if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
+                return false;
+            }
+        }
+        SurfaceKind::Torus(s) => {
+            let b = s.base().base();
             if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
                 return false;
             }

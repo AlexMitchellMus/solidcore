@@ -26,7 +26,7 @@
 //! `sm_FindConcaveEdgeuses` (`blend.fillet_corner_p2`); every patch builder past its state
 //! checks (`MakeAnalyticCornerSurface`, `CreateEndPatch`, `SmSurface::DropCurve`); the
 //! Nx2 adjustments where they change the topology (`MakeFilletEdge`,
-//! `GetRailIndexOfVertexuse`), the big-radius test of blending corners and the `NxN` /
+//! `SplitFilletGeomAtSideEdge` once a vertex drops inside a rail), the big-radius test of blending corners and the `NxN` /
 //! closed Nx1 overrides. The shim does not call upstream on those paths (`-3`; a Rust
 //! side that is not deferred there fails the case) and refuses (`-2`, a rejected case)
 //! the inputs that make upstream dereference null or free the harness's objects. A
@@ -389,14 +389,19 @@ fn inexact(b: &Brep, types: &ImportTypes, eus: &[EdgeuseId]) -> Option<Output> {
         let st = eu1::face(b, eu)
             .ok()
             .flatten()
-            .and_then(|f| types.face_surface_types.get(f.index() as usize).copied())
+            .and_then(|f| types.inexact_surface(f.index() as usize))
             .unwrap_or(-1);
         if st >= 0 && !EXACT_SURFACES.contains(&st) {
             let (unit, symbol) = match st {
-                15012 | 15013 => ("surface.cone_p1", "SmCone (no SurfaceKind)"),
-                15014 => ("surface.sphere", "SmSphere"),
-                15015 => ("surface.torus", "SmTorus (no SurfaceKind)"),
-                15030 => ("surface.surf_of_extrusion_p2", "SurfaceKind::SurfOfExtrusion"),
+                // the gap is the missing `SurfaceKind` variant (the `SmSurface` dispatch,
+                // unit `surface.surface_p2`; #76), not the kinds' own units (all ported)
+                15012 | 15013 => ("surface.surface_p2", "SurfaceKind::Cone (SmCone)"),
+                15014 => ("surface.surface_p2", "SurfaceKind::Sphere (SmSphere)"),
+                15015 => ("surface.surface_p2", "SurfaceKind::Torus (SmTorus)"),
+                15030 => (
+                "harness:analytic-geometry-export",
+                "SmSurfOfExtrusion face surface not exported exactly",
+            ),
                 _ => ("topology.brep_p10", "SmBrep::MakeTopologyFromData"),
             };
             return Some(Output::deferred(unit, symbol));
@@ -695,6 +700,8 @@ fn corner_rust(k: &Kernel, op: CornerOp, model: &Model, ci: &CornerIn) -> Result
             pseudo: &mut rm.fb,
             corner: None,
             tsect_surfaces: &surfaces,
+            // the model's geometries have no solver (as the shim's)
+            solvers: &mut [],
         };
         match op {
             CornerOp::CalcGeom => c.calc_corner_geom(k, &mut env),

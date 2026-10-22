@@ -169,6 +169,7 @@ fn patch_boxes(
         pseudo_guess,
         polar_guess: None,
         expand_by_zone_tol: false,
+        expand_tolerance: None,
     };
     let boxes = bss.calculate_bounding_box(k, &bss.natural_uv_domain(), &req)?;
     let mut bbox = boxes.normal.ok_or_else(|| invalid(op, "no bounding box"))?;
@@ -928,7 +929,34 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                     Some(std::borrow::Cow::Owned(tmp.rev().base().clone()))
                 }
             }
+            SurfaceKind::Sphere(s) => {
+                if s.base().base().gw_nurb().is_some() {
+                    Some(std::borrow::Cow::Borrowed(s.base().base()))
+                } else {
+                    let mut tmp = s.as_ref().clone();
+                    tmp.make_nurb(k)?;
+                    Some(std::borrow::Cow::Owned(tmp.base().base().clone()))
+                }
+            }
+            SurfaceKind::Torus(s) => {
+                if s.base().base().gw_nurb().is_some() {
+                    Some(std::borrow::Cow::Borrowed(s.base().base()))
+                } else {
+                    let mut tmp = s.as_ref().clone();
+                    tmp.make_nurb(k)?;
+                    Some(std::borrow::Cow::Owned(tmp.base().base().clone()))
+                }
+            }
             SurfaceKind::SurfOfRevolution(s) => {
+                if s.base().gw_nurb().is_some() {
+                    Some(std::borrow::Cow::Borrowed(s.base()))
+                } else {
+                    let mut tmp = (**s).clone();
+                    tmp.make_nurb(k)?;
+                    Some(std::borrow::Cow::Owned(tmp.base().clone()))
+                }
+            }
+            SurfaceKind::SurfOfExtrusion(s) => {
                 if s.base().gw_nurb().is_some() {
                     Some(std::borrow::Cow::Borrowed(s.base()))
                 } else {

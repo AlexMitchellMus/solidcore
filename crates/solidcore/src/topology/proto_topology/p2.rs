@@ -142,6 +142,15 @@ pub trait ProtoBrep<O>: ProtoGeometry<O> + ProtoTopology<O> {
     ///
     /// Those of the implementation's topology walk.
     fn vertex_common_edges(&self, v1: O, v2: O) -> Result<Vec<O>>;
+    /// `SmBrep::SqueezeEdge(pEdge, pSurvivingVertex)` on the B-rep `brep` (called by
+    /// `topology.proto_topology_p3` on `GetWhichBrep`): the owner of a real B-rep
+    /// implements it with `topology::brep::p3::squeeze_edge`.
+    ///
+    /// # Errors
+    ///
+    /// Those of the edit; an owner with no B-rep behind its handles returns
+    /// [`SolidError::Unported`] under a `harness:` label.
+    fn brep_squeeze_edge(&mut self, k: &mut Kernel, brep: O, edge: O, survivor: O) -> Result<()>;
     /// `SmFace::CurveOnClassify(bDoPointClassify, cc)` with upstream's other arguments at
     /// their defaults (`FALSE`), read by `topology.proto_topology_p3`: the B-rep owner
     /// implements it with `query::face::p2::curve_on_classify`. Returns
@@ -157,6 +166,23 @@ pub trait ProtoBrep<O>: ProtoGeometry<O> + ProtoTopology<O> {
         do_point_classify: bool,
         cc: &mut CurveClassification<O>,
     ) -> Result<bool>;
+    /// `SmBrep::Point3DClassify(point, tolerance, bDoBoundaryIntersections, sPC)` of the
+    /// B-rep `brep` names, read by `topology.proto_topology_p3`: the B-rep owner
+    /// implements it with `query::brep::BrepQuery::point_3d_classify` on its B-rep and
+    /// maps the classification's objects to its handles.
+    ///
+    /// # Errors
+    ///
+    /// Those of `point_3d_classify`; [`SolidError::InvalidInput`] for a handle that
+    /// names no B-rep or an object without a handle.
+    fn brep_point_3d_classify(
+        &mut self,
+        k: &Kernel,
+        brep: O,
+        point: Point3,
+        tolerance: f64,
+        boundary_intersections: bool,
+    ) -> Result<PointClassification<O>>;
 }
 
 /// The handle the curve point solves name (only the solution count and values are
@@ -2141,6 +2167,12 @@ mod tests {
     }
 
     impl ProtoBrep<H> for Geo {
+        fn brep_squeeze_edge(&mut self, _k: &mut Kernel, _b: H, _e: H, _v: H) -> Result<()> {
+            Err(SolidError::unported(
+                "SmBrep::SqueezeEdge (no B-rep behind the test handles)",
+                "harness:proto-test-brep-edit",
+            ))
+        }
         fn edge_interval(&self, edge: H) -> Option<Extent1d> {
             self.edge_ivl.iter().find(|e| e.0 == edge.0).map(|e| e.1)
         }
@@ -2188,6 +2220,16 @@ mod tests {
             _cc: &mut CurveClassification<H>,
         ) -> Result<bool> {
             Ok(false)
+        }
+        fn brep_point_3d_classify(
+            &mut self,
+            _k: &Kernel,
+            _brep: H,
+            _point: Point3,
+            _tolerance: f64,
+            _boundary_intersections: bool,
+        ) -> Result<PointClassification<H>> {
+            Err(SolidError::invalid_input("test geometry", "no B-reps"))
         }
     }
 

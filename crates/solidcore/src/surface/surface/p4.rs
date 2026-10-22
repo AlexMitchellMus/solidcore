@@ -39,7 +39,9 @@
 //!   compares it); the small-gap branch uses the other surface.
 //! - **Seam curves of planes.** `SmPlane` is an `SmBSplineSurface` upstream, so with
 //!   `known_closed` the C++ builds a seam curve for it; [`Surface::create_seam_curve`]
-//!   returns `InvalidInput` for a plane (its base is not a stored B-spline surface here).
+//!   returns `InvalidInput` for a plane (its base is not a stored B-spline surface here),
+//!   and `Unported` (`curve.crv_on_surf` dispatch gap) for an `SmSurfOfRevolution`,
+//!   `SmSphere` or `SmTorus`.
 //! - **Owner checks.** Only an owner of type `SmFace` (surface) or `SmEdge` (curve) takes
 //!   the topology path, as upstream's `SM_CAST_PTR`.
 //! - **Co-ported callees.** `smsurf_IsPointOnNormal` and `SmSurfaceEval::EvalNormal` are
@@ -61,7 +63,8 @@
 //! - **Kernel.** `is_on_seam` and `global_point_solve` (and `global_point_solve_starts`)
 //!   take the [`Kernel`] that the tolerance, drop and cache callees now need.
 //! - **Unported callees** (return [`SolidError::Unported`]): the zone tolerance of a face's
-//!   surface (`SmFace::GetTolerance`, `topology.face_p2`), `GlobalPointSolve_1`
+//!   surface whose B-rep has not cached it on the surface ([`Surface::owner_zone_tol_3d`];
+//!   `SmFace::GetTolerance`, `topology.face_p2`), `GlobalPointSolve_1`
 //!   (`surface.surface_point_solve_p3`), the trim containment of a face's surface
 //!   (`SmFace::PointClassify`, `query.face_p2`) and the edge and face tolerances of owned
 //!   curves and surfaces (`topology.edge`, `topology.face_p2`).
@@ -82,7 +85,7 @@ use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::local_solve_nd::{compute_jacobian, EvalNFunctions};
 use crate::geom::matrix::Matrix;
 use crate::geom::solution_array::{
-    ObjectKind, Solution, SolutionArray, SolutionEnd, SolutionObject, MAX_TREES,
+    ObjectKind, OperandObject, Solution, SolutionArray, SolutionEnd, SolutionObject, MAX_TREES,
 };
 use crate::geom::vector2d::Vec2;
 use crate::geom::vector3d::{asin, sqrt as sm_sqrt};
@@ -1132,8 +1135,10 @@ impl Surface {
     /// # Errors
     ///
     /// Those of [`Surface::is_closed`] and of the curve construction;
-    /// [`SolidError::InvalidInput`] for a closed surface that is not a B-spline
-    /// surface (a [`CrvOnSurf`] lives on a [`BSplineSurface`]).
+    /// [`SolidError::Unported`] for a closed surface of revolution, sphere or torus (the dispatch gap of
+    /// a [`CrvOnSurf`] over a non-B-spline surface); [`SolidError::InvalidInput`] for
+    /// any other closed surface that is not a B-spline surface (a [`CrvOnSurf`] lives
+    /// on a [`BSplineSurface`]).
     pub fn create_seam_curve(
         &self,
         kernel: &Kernel,
@@ -1163,11 +1168,28 @@ impl Surface {
                 Point3::new(uv_max.x, uv_min.y, 0.0),
             )
         };
-        let SurfaceKind::BSpline(base) = self.kind() else {
-            return Err(SolidError::invalid_input(
-                OP_SEAM,
-                "a curve on a surface needs a B-spline surface",
-            ));
+        let base = match self.kind() {
+            SurfaceKind::BSpline(base) => base,
+            SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
+            | SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_) => {
+                // DISPATCH GAP: SmCrvOnSurf over an SmSurfOfRevolution (or a cone, sphere, torus or extrusion) (the ported
+                // CrvOnSurf holds an SmBSplineSurface and would drop the revolution's
+                // evaluation overrides), as in surface::surface::p11.
+                // UNPORTED(curve.crv_on_surf): SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)
+                return Err(SolidError::unported(
+                    "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+                    "curve.crv_on_surf",
+                ));
+            }
+            _ => {
+                return Err(SolidError::invalid_input(
+                    OP_SEAM,
+                    "a curve on a surface needs a B-spline surface",
+                ))
+            }
         };
         let line = Line::from_points(start, end, 2); // Line Ivl:[0, 1]
         let seam = CrvOnSurf::new(kernel, Curve::from(line), base.clone(), Some(uv_domain), 2)?;
@@ -1400,6 +1422,9 @@ impl Surface {
         let use_new =
             (op != SolverOperation::Maximize) || op == SolverOperation::Signed3dDirectedMaximize;
         *solutions = if use_new {
+            // upstream's seam solutions name this surface, whose natural UV domain
+            // IsEqual (AddSortedSolution) reads: solve naming a stand-in for it, and
+            // return the solutions without objects, as before
             self.global_point_solve_1(
                 k,
                 uv_domain,
@@ -1408,8 +1433,9 @@ impl Surface {
                 src_zone_tol_3d,
                 opt_target_distance,
                 requested,
-                None,
+                Some(OperandObject::Surface(0, self.natural_uv_domain())),
             )?
+            .without_objects()
         } else if let Some(surface) = surface {
             self.global_point_solve_0(
                 k,
@@ -1737,12 +1763,12 @@ pub fn classify_curve_surface_xsect_point(
         curve_tol = curve_radius / 1000.0;
     }
     if surface.owner().is_some_and(|o| o.type_code == FACE_TYPE) {
-        // UNPORTED(topology.face_p2): SmFace::GetTolerance
-        let _ = surface_tol;
-        return Err(SolidError::unported(
-            "SmFace::GetTolerance",
-            "topology.face_p2",
-        ));
+        // pSurfaceOwner->GetTolerance(): the direct owner is the face, so the face the
+        // surface reaches; its tolerance as cached by the B-rep
+        surface_tol = surface.owner_zone_tol_3d().ok_or(
+            // UNPORTED(topology.face_p2): SmFace::GetTolerance (a bare face handle)
+            SolidError::unported("SmFace::GetTolerance", "topology.face_p2"),
+        )?;
     } else if !surface_line {
         surface_tol = surface_radius / 1000.0;
     }

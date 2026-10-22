@@ -106,7 +106,9 @@
 //!   surface the tolerance of its edge or face (`GetEdge` / `GetFace`), and every other
 //!   non-topology object the system zone tolerance. A curve's edge is found with
 //!   [`Curve::edge`] (intermediate owners through [`ClassGeometry::owner_of`]); a
-//!   surface's face is [`Surface::face`](crate::surface::surface::Surface::face);
+//!   surface's face is [`Surface::face`](crate::surface::surface::Surface::face),
+//!   whose tolerance is the one its B-rep cached on the surface
+//!   ([`Surface::owner_zone_tol_3d`](crate::surface::surface::Surface::owner_zone_tol_3d));
 //!   an edge's or face's tolerance is that of the edge or face. Topology
 //!   kinds without a `GetTolerance` override (region, faceuse, loop, loopuse,
 //!   vertexuse) get `SmTopology::GetTolerance`, `SM_ZONE_TOL_3D`, and a faceuse
@@ -331,6 +333,14 @@ pub trait ClassGeometry<O> {
     fn topology_handle(&self, entity: EntityRef) -> Option<O> {
         let _ = entity;
         None
+    }
+    /// The handle of entity `entity` of `brep`, a B-rep that
+    /// [`ClassGeometry::topology_entity`] returned. An adapter over several B-reps
+    /// implements this to tell them apart; the default is
+    /// [`ClassGeometry::topology_handle`].
+    fn topology_handle_in(&self, brep: &Brep, entity: EntityRef) -> Option<O> {
+        let _ = brep;
+        self.topology_handle(entity)
     }
     /// The owner of an intermediate owner on a curve's owner chain (`GetOwner` of a
     /// generating curve or an edgeuse), for `SmCurve::GetEdge`
@@ -1591,14 +1601,9 @@ pub fn object_zone_tol_3d<O: ClassObject>(
         | ClassObjectKind::Region => Ok(ZONE_TOL_3D),
         ClassObjectKind::Surface => {
             let surface = geometry.surface(o).ok_or_else(|| unresolved(OP_GEOMETRY))?;
-            if surface.face()?.is_some() {
-                // UNPORTED(topology.face_p2): SmFace::GetTolerance
-                return Err(SolidError::unported(
-                    "SmFace::GetTolerance",
-                    "topology.face_p2",
-                ));
-            }
-            Ok(system)
+            // GetFace() ? its tolerance (cached on the surface by its B-rep;
+            // UNPORTED(topology.face_p2): SmFace::GetTolerance for a bare face handle)
+            Ok(surface.face_zone_tol_3d()?.unwrap_or(system))
         }
         ClassObjectKind::Curve => {
             let curve = geometry.curve(o).ok_or_else(|| unresolved(OP_GEOMETRY))?;

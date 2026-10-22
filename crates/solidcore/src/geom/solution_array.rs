@@ -44,6 +44,7 @@
 //! | [`SolutionArray::add_sorted_solution`]        | `SmSolutionArray::AddSortedSolution`                       |
 //! | [`SolutionArray::insert_at`], [`SolutionArray::try_insert_at`] | `SmSolutionArray::InsertAt(ULONG, const SmSolution&, ULONG)` |
 //! | [`SolutionArray::remove_at`]                  | `SmSolutionArray::RemoveAt`                                |
+//! | `OperandObject`, `SolutionArray::without_objects` (crate) | the non-null `this` / operand objects of upstream's solves |
 //! | [`SolutionArray::swap`]                       | `SmSolutionArray::Swap`                                    |
 //! | [`SolutionArray::TYPE`], [`SolutionArray::type_code`], [`SolutionArray::type_string`], [`SolutionArray::is_kind_of`] | `SmSolutionArray::GetType`, `GetTypeString`, `IsKindOf` |
 //!
@@ -52,14 +53,17 @@
 //!   implementing [`SolutionObject`] (upstream `SmObject*`; a null pointer is
 //!   `None`, pointer equality is `O: PartialEq`). The handle reports its
 //!   [`ObjectKind`], which answers the `IsKindOf` tests made here, and, when it
-//!   can reach its curve, the curve's natural interval
-//!   ([`SolutionObject::natural_interval`], `SmCurve::GetNaturalInterval`). Tree
-//!   nodes (`m_apNodes`) are opaque [`NodeId`]s.
-//! - **Unported geometry.** Evaluating a curve, surface, edge, face, vertex or
-//!   poly vertex, the parameter domains of surfaces, edges, faces and volumes
-//!   (and of curves whose handle does not report it), and
-//!   `SmTol::GetZoneTol3d(const SmObject*)` belong to units not ported yet or
-//!   need the object model; those paths return [`SolidError::Unported`] (see the
+//!   can reach its object, the geometry read here (natural intervals and domains,
+//!   points, an edge's curve and interval, a face's surface and UV domain: the
+//!   [`SolutionObject`] hooks). Tree nodes (`m_apNodes`) are opaque [`NodeId`]s.
+//!   Solves whose caller gives no handle name `OperandObject` stand-ins internally
+//!   (upstream's solutions always name the solve's curves and surfaces, whose
+//!   natural intervals and domains `IdenticalSolutions` / `IsEqual` read) and hand
+//!   the solutions back without objects (`SolutionArray::without_objects`).
+//! - **Unresolved handles.** The geometry of a handle that cannot reach its object
+//!   (a hook answering `None`; also a failed curve or surface evaluation, whose
+//!   status upstream ignores), the parameter domain of a volume and
+//!   `SmTol::GetZoneTol3d(const SmObject*)` return [`SolidError::Unported`] (see the
 //!   `UNPORTED` markers).
 //! - **Status out-params.** `GetIndex`, `GetPoint`,
 //!   `GetObjectIndexForParameterIndex` and `GetParameterInterval` return
@@ -295,6 +299,93 @@ pub trait SolutionObject: Copy + PartialEq {
     /// vertex; `None` (the default) when it cannot.
     fn poly_vertex_point(&self) -> Option<Point3> {
         None
+    }
+
+    /// For a vertex object, its point (`SmVertex::GetPoint`) when the handle can reach
+    /// the vertex; `None` (the default) when it cannot.
+    fn vertex_point(&self) -> Option<Point3> {
+        None
+    }
+
+    /// For an edge object, the handle of its curve (`SmEdge::GetCurve`) when the
+    /// handle can reach the edge and the edge has a curve; `None` (the default)
+    /// otherwise.
+    fn edge_curve(&self) -> Option<Self> {
+        None
+    }
+
+    /// For an edge object, its parameter interval (`SmEdge::GetInterval`) when the
+    /// handle can reach the edge; `None` (the default) when it cannot.
+    fn edge_interval(&self) -> Option<Extent1d> {
+        None
+    }
+
+    /// For a curve object, its point at `t` (`SmCurve::EvaluatePoint`) when the handle
+    /// can reach the curve and the evaluation succeeds; `None` (the default)
+    /// otherwise.
+    fn curve_point(&self, t: f64) -> Option<Point3> {
+        let _ = t;
+        None
+    }
+
+    /// For a face object, the handle of its surface (`SmFace::GetSurface`) when the
+    /// handle can reach the face and the face has a surface; `None` (the default)
+    /// otherwise.
+    fn face_surface(&self) -> Option<Self> {
+        None
+    }
+
+    /// For a face object, its UV domain (`SmFace::GetUVDomain`) when the handle can
+    /// reach the face; `None` (the default) when it cannot.
+    fn face_uv_domain(&self) -> Option<crate::geom::extent2d::Extent2d> {
+        None
+    }
+
+    /// For a surface object, its point at `(u, v)` (`SmSurface::EvaluatePoint`) when
+    /// the handle can reach the surface and the evaluation succeeds; `None` (the
+    /// default) otherwise.
+    fn surface_point(&self, u: f64, v: f64) -> Option<Point3> {
+        let _ = (u, v);
+        None
+    }
+}
+
+/// The solution object a solve names internally when its caller gives no handle
+/// (`None`): upstream's solutions always name the solve's operands (`this` curve or
+/// surface, the other curve, ...), and `IdenticalSolutions` / `IsEqual` merge
+/// solutions within 1/10000th of their natural interval or domain, so the stand-in
+/// reports the operand's natural interval ([`OperandObject::Curve`]) or natural UV
+/// domain ([`OperandObject::Surface`]). The `u8` tells the operands apart. The
+/// caller gets the solutions back without objects
+/// ([`SolutionArray::without_objects`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum OperandObject {
+    /// A curve operand and its natural interval.
+    Curve(u8, Extent1d),
+    /// A surface operand and its natural UV domain.
+    Surface(u8, crate::geom::extent2d::Extent2d),
+}
+
+impl SolutionObject for OperandObject {
+    fn kind(&self) -> ObjectKind {
+        match self {
+            Self::Curve(..) => ObjectKind::Curve,
+            Self::Surface(..) => ObjectKind::Surface,
+        }
+    }
+
+    fn natural_interval(&self) -> Option<Extent1d> {
+        match self {
+            Self::Curve(_, ivl) => Some(*ivl),
+            Self::Surface(..) => None,
+        }
+    }
+
+    fn natural_uv_domain(&self) -> Option<crate::geom::extent2d::Extent2d> {
+        match self {
+            Self::Curve(..) => None,
+            Self::Surface(_, domain) => Some(*domain),
+        }
     }
 }
 
@@ -1020,36 +1111,51 @@ impl<O: SolutionObject> Solution<O> {
 // Each takes the object and the values upstream passes so that wiring the real
 // call is a local change.
 
-/// `SmVertex::GetPoint`.
-fn vertex_point<O>(_vertex: &O) -> Result<Point3> {
-    // UNPORTED(topology.vertex): SmVertex::GetPoint
+/// `SmVertex::GetPoint`: the handle's [`SolutionObject::vertex_point`].
+fn vertex_point<O: SolutionObject>(vertex: &O) -> Result<Point3> {
+    if let Some(p) = vertex.vertex_point() {
+        return Ok(p);
+    }
+    // UNPORTED(topology.vertex): SmVertex::GetPoint (a handle that cannot reach its
+    // vertex)
     Err(SolidError::Unported {
         upstream: "SmVertex::GetPoint",
         unit: "topology.vertex",
     })
 }
 
-/// `SmEdge::GetCurve`.
-fn edge_curve<O: Copy>(_edge: &O) -> Result<O> {
-    // UNPORTED(topology.edge): SmEdge::GetCurve
+/// `SmEdge::GetCurve`: the handle's [`SolutionObject::edge_curve`].
+fn edge_curve<O: SolutionObject>(edge: &O) -> Result<O> {
+    if let Some(c) = edge.edge_curve() {
+        return Ok(c);
+    }
+    // UNPORTED(topology.edge): SmEdge::GetCurve (a handle that cannot reach its edge)
     Err(SolidError::Unported {
         upstream: "SmEdge::GetCurve",
         unit: "topology.edge",
     })
 }
 
-/// `SmEdge::GetInterval`.
-fn edge_interval<O>(_edge: &O) -> Result<Extent1d> {
-    // UNPORTED(topology.edge): SmEdge::GetInterval
+/// `SmEdge::GetInterval`: the handle's [`SolutionObject::edge_interval`].
+fn edge_interval<O: SolutionObject>(edge: &O) -> Result<Extent1d> {
+    if let Some(ivl) = edge.edge_interval() {
+        return Ok(ivl);
+    }
+    // UNPORTED(topology.edge): SmEdge::GetInterval (a handle that cannot reach its edge)
     Err(SolidError::Unported {
         upstream: "SmEdge::GetInterval",
         unit: "topology.edge",
     })
 }
 
-/// `SmCurve::EvaluatePoint` at `t` (its status is ignored upstream: `SE`).
-fn evaluate_curve<O>(_curve: &O, _t: f64) -> Result<Point3> {
-    // UNPORTED(curve.curve_p2): SmCurve::EvaluatePoint
+/// `SmCurve::EvaluatePoint` at `t` (its status is ignored upstream: `SE`): the
+/// handle's [`SolutionObject::curve_point`].
+fn evaluate_curve<O: SolutionObject>(curve: &O, t: f64) -> Result<Point3> {
+    if let Some(p) = curve.curve_point(t) {
+        return Ok(p);
+    }
+    // UNPORTED(curve.curve_p2): SmCurve::EvaluatePoint (a handle that cannot reach its
+    // curve, or a failed evaluation, whose point upstream leaves as it was)
     Err(SolidError::Unported {
         upstream: "SmCurve::EvaluatePoint",
         unit: "curve.curve_p2",
@@ -1069,30 +1175,40 @@ fn curve_natural_interval<O: SolutionObject>(curve: &O) -> Result<Extent1d> {
     })
 }
 
-/// `SmFace::GetSurface`.
-fn face_surface<O: Copy>(_face: &O) -> Result<O> {
-    // UNPORTED(topology.face_p2): SmFace::GetSurface
+/// `SmFace::GetSurface`: the handle's [`SolutionObject::face_surface`].
+fn face_surface<O: SolutionObject>(face: &O) -> Result<O> {
+    if let Some(sf) = face.face_surface() {
+        return Ok(sf);
+    }
+    // UNPORTED(topology.face_p2): SmFace::GetSurface (a handle that cannot reach its
+    // face)
     Err(SolidError::Unported {
         upstream: "SmFace::GetSurface",
         unit: "topology.face_p2",
     })
 }
 
-/// `SmFace::GetUVDomain`.
-fn face_uv_domain<O>(_face: &O) -> Result<crate::geom::extent2d::Extent2d> {
-    // UNPORTED(topology.face_p2): SmFace::GetUVDomain
+/// `SmFace::GetUVDomain`: the handle's [`SolutionObject::face_uv_domain`].
+fn face_uv_domain<O: SolutionObject>(face: &O) -> Result<crate::geom::extent2d::Extent2d> {
+    if let Some(d) = face.face_uv_domain() {
+        return Ok(d);
+    }
+    // UNPORTED(topology.face_p2): SmFace::GetUVDomain (a handle that cannot reach its
+    // face)
     Err(SolidError::Unported {
         upstream: "SmFace::GetUVDomain",
         unit: "topology.face_p2",
     })
 }
 
-/// `SmSurface::EvaluatePoint` at `(u, v)` (its status is ignored upstream: `SE`).
-/// The surface is ported (`surface::surface::p2::Surface::evaluate_point`), but a
-/// solution object is an opaque handle `O` with no way to reach it yet.
-fn evaluate_surface<O>(_surface: &O, _u: f64, _v: f64) -> Result<Point3> {
-    // UNPORTED(surface.surface_p2): SmSurface::EvaluatePoint (needs a handle-to-surface
-    // lookup on SolutionObject)
+/// `SmSurface::EvaluatePoint` at `(u, v)` (its status is ignored upstream: `SE`): the
+/// handle's [`SolutionObject::surface_point`].
+fn evaluate_surface<O: SolutionObject>(surface: &O, u: f64, v: f64) -> Result<Point3> {
+    if let Some(p) = surface.surface_point(u, v) {
+        return Ok(p);
+    }
+    // UNPORTED(surface.surface_p2): SmSurface::EvaluatePoint (a handle that cannot
+    // reach its surface, or a failed evaluation, whose point upstream leaves as it was)
     Err(SolidError::Unported {
         upstream: "SmSurface::EvaluatePoint",
         unit: "surface.surface_p2",
@@ -1312,6 +1428,26 @@ impl<O: SolutionObject> SolutionArray<O> {
         if let Some(slot) = self.data.get_mut(index) {
             *slot = *solution;
         }
+    }
+
+    /// The solutions with every object cleared (null pointers), in another handle
+    /// type: what a caller that named no objects gets back from a solve that named
+    /// [`OperandObject`]s internally.
+    #[must_use]
+    pub(crate) fn without_objects<P: SolutionObject>(&self) -> SolutionArray<P> {
+        let mut out = SolutionArray::new();
+        for s in &self.data {
+            out.data.push(Solution {
+                solution_type: s.solution_type,
+                num_variables: s.num_variables,
+                start: s.start,
+                end: s.end,
+                num_objects: s.num_objects,
+                objects: [None; MAX_TREES],
+                nodes: s.nodes,
+            });
+        }
+        out
     }
 
     /// Appends `solution`; returns its index (`Add`).
@@ -1814,10 +1950,13 @@ mod tests {
         a.add(&single(1.0, &[]));
         a.add(&single(2.0, &[]));
         let keep = a.clone();
-        assert!(a.try_set_size(1 << 40).is_err());
+        // Byte counts past isize::MAX, so the reservation fails on every target; sizes
+        // the OS merely cannot back (2^33 solutions, ~2.5 TB) are granted lazily on
+        // macOS and the fill then commits them.
+        assert!(a.try_set_size(1 << 58).is_err());
         assert!(a.try_set_size(usize::MAX).is_err());
         assert!(a
-            .try_insert_at(1 << 32, &single(3.0, &[]), 1 << 32)
+            .try_insert_at(1 << 57, &single(3.0, &[]), 1 << 57)
             .is_err());
         assert!(a.try_insert_at(usize::MAX, &single(3.0, &[]), 1).is_err());
         assert!(a.try_insert_at(1, &single(3.0, &[]), usize::MAX).is_err());
