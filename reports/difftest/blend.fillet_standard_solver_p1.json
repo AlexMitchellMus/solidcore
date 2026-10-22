@@ -27129,16 +27129,12 @@
       "values_compared": 33
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0017",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694059",
-      "values_compared": 0
+      "values_compared": 25
     },
     {
       "deferred": {
@@ -27189,16 +27185,12 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0023",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694065",
-      "values_compared": 0
+      "values_compared": 25
     },
     {
       "inputs": {
@@ -27870,16 +27862,12 @@
       "values_compared": 226
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0090",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694132",
-      "values_compared": 0
+      "values_compared": 25
     },
     {
       "max_rel_err": 0.0,
@@ -28388,16 +28376,12 @@
       "values_compared": 266
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0147",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694189",
-      "values_compared": 0
+      "values_compared": 25
     },
     {
       "max_rel_err": 0.0,
@@ -28733,16 +28717,12 @@
       "values_compared": 212
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0182",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694224",
-      "values_compared": 0
+      "values_compared": 25
     },
     {
       "deferred": {
@@ -28969,16 +28949,12 @@
       "values_compared": 130
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0210",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=7089734759426694252",
-      "values_compared": 0
+      "values_compared": 25
     },
     {
       "max_rel_err": 0.0,
@@ -31575,14 +31551,13 @@
     }
   ],
   "cases_both_errored": 2,
-  "cases_deferred": 42,
+  "cases_deferred": 36,
   "cases_failed": 0,
-  "cases_passed": 3786,
+  "cases_passed": 3792,
   "cases_rejected": 11,
   "cases_total": 3839,
   "deferred_by_unit": {
     "blend.fillet_executive_p1": 16,
-    "intersect.surface_drop_lib_p3": 6,
     "surface.surf_of_extrusion_p2": 1,
     "surface.surface_p2": 13,
     "topology.brep_p10": 6

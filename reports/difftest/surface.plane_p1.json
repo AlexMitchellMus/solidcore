@@ -82,16 +82,12 @@
       "values_compared": 378
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "curve_test_plane_creating_fallback",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/upstream.json#2 (upstream tests/prog_test/src/smCurveTest.cpp:7296 (falls back to SmSurface::DropCurve))",
-      "values_compared": 0
+      "values_compared": 59
     },
     {
       "max_rel_err": 0.0,
@@ -167,8 +163,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "edge_drop_curve_bspline_fallback",
@@ -4666,40 +4662,28 @@
       "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0557_dc_cross_dom_0_01_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#556",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0558_dc_cross_dom_0_01_0.25_0.75",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#557",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0559_dc_cross_dom_0_01_0.75_0.25",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#558",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -4806,40 +4790,28 @@
       "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0573_dc_cross_dom_1e-06_01_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#572",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0574_dc_cross_dom_1e-06_01_0.25_0.75",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#573",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0575_dc_cross_dom_1e-06_01_0.75_0.25",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#574",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -4946,16 +4918,12 @@
       "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0589_dc_cross_dom_0.5_01_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#588",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -5462,16 +5430,12 @@
       "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0653_dc_touch_0_01_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#652",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -5594,16 +5558,12 @@
       "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0669_dc_touch_1e-06_01_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#668",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -5726,16 +5686,12 @@
       "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0685_dc_touch_0.5_01_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#684",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -6978,16 +6934,12 @@
       "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0841_dc_bs_out_in_tol_0_00_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#840",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -7006,28 +6958,20 @@
       "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0844_dc_bs_out_in_tol_0_00_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#843",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0845_dc_bs_out_in_tol_0_01_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#844",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -7046,28 +6990,20 @@
       "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0848_dc_bs_out_in_tol_0_01_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#847",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0849_dc_bs_out_in_tol_0_10_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#848",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -7086,28 +7022,20 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0852_dc_bs_out_in_tol_0_10_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#851",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0853_dc_bs_out_in_tol_0_11_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#852",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -7126,16 +7054,12 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0856_dc_bs_out_in_tol_0_11_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#855",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -7778,16 +7702,12 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0937_dc_bs_rat_0_00_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#936",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -7806,28 +7726,20 @@
       "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0940_dc_bs_rat_0_00_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#939",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0941_dc_bs_rat_0_01_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#940",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -7846,28 +7758,20 @@
       "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0944_dc_bs_rat_0_01_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#943",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0945_dc_bs_rat_0_10_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#944",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -7886,28 +7790,20 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0948_dc_bs_rat_0_10_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#947",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0949_dc_bs_rat_0_11_n",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#948",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -7926,21 +7822,17 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0952_dc_bs_rat_0_11_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#951",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "adv_0953_dc_bs_rat_1e-06_00_n",
@@ -7966,21 +7858,17 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0956_dc_bs_rat_1e-06_00_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#955",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "adv_0957_dc_bs_rat_1e-06_01_n",
@@ -8006,21 +7894,17 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0960_dc_bs_rat_1e-06_01_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#959",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "adv_0961_dc_bs_rat_1e-06_10_n",
@@ -8046,21 +7930,17 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0964_dc_bs_rat_1e-06_10_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#963",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "adv_0965_dc_bs_rat_1e-06_11_n",
@@ -8086,21 +7966,17 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0968_dc_bs_rat_1e-06_11_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#967",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "adv_0969_dc_bs_rat_0.5_00_n",
@@ -8126,21 +8002,17 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0972_dc_bs_rat_0.5_00_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#971",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "adv_0973_dc_bs_rat_0.5_01_n",
@@ -8166,21 +8038,17 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0976_dc_bs_rat_0.5_01_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#975",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "adv_0977_dc_bs_rat_0.5_10_n",
@@ -8206,21 +8074,17 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0980_dc_bs_rat_0.5_10_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#979",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "adv_0981_dc_bs_rat_0.5_11_n",
@@ -8246,16 +8110,12 @@
       "values_compared": 142
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "adv_0984_dc_bs_rat_0.5_11_0.5_0.5",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p1/zz_adv.json#983",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -9954,16 +9814,12 @@
       "values_compared": 72
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0017",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005093627",
-      "values_compared": 0
+      "values_compared": 72
     },
     {
       "max_rel_err": 0.0,
@@ -10295,8 +10151,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0059",
@@ -10471,7 +10327,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=12145710358005093690",
-      "values_compared": 131
+      "values_compared": 130
     },
     {
       "max_rel_err": 0.0,
@@ -10858,16 +10714,12 @@
       "values_compared": 110
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0129",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005093739",
-      "values_compared": 0
+      "values_compared": 130
     },
     {
       "max_rel_err": 0.0,
@@ -11006,16 +10858,12 @@
       "values_compared": 98
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0147",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005093757",
-      "values_compared": 0
+      "values_compared": 68
     },
     {
       "max_rel_err": 0.0,
@@ -11346,16 +11194,12 @@
       "values_compared": 76
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0189",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005093799",
-      "values_compared": 0
+      "values_compared": 147
     },
     {
       "max_rel_err": 0.0,
@@ -11858,16 +11702,12 @@
       "values_compared": 62
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0252",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005093862",
-      "values_compared": 0
+      "values_compared": 99
     },
     {
       "max_rel_err": 0.0,
@@ -12382,16 +12222,12 @@
       "values_compared": 98
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0317",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005093927",
-      "values_compared": 0
+      "values_compared": 93
     },
     {
       "max_rel_err": 0.0,
@@ -12434,16 +12270,12 @@
       "values_compared": 147
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0323",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005093933",
-      "values_compared": 0
+      "values_compared": 125
     },
     {
       "max_rel_err": 0.0,
@@ -12662,16 +12494,12 @@
       "values_compared": 187
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0351",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005093961",
-      "values_compared": 0
+      "values_compared": 84
     },
     {
       "max_rel_err": 0.0,
@@ -12738,16 +12566,12 @@
       "values_compared": 70
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0360",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005093970",
-      "values_compared": 0
+      "values_compared": 64
     },
     {
       "max_rel_err": 0.0,
@@ -12878,16 +12702,12 @@
       "values_compared": 59
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0377",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005093987",
-      "values_compared": 0
+      "values_compared": 59
     },
     {
       "max_rel_err": 0.0,
@@ -12930,16 +12750,12 @@
       "values_compared": 71
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0383",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005093993",
-      "values_compared": 0
+      "values_compared": 116
     },
     {
       "max_rel_err": 0.0,
@@ -13022,16 +12838,12 @@
       "values_compared": 90
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0394",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094004",
-      "values_compared": 0
+      "values_compared": 68
     },
     {
       "max_rel_err": 0.0,
@@ -13050,16 +12862,12 @@
       "values_compared": 116
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0397",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094007",
-      "values_compared": 0
+      "values_compared": 115
     },
     {
       "max_rel_err": 0.0,
@@ -13110,16 +12918,12 @@
       "values_compared": 133
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0404",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094014",
-      "values_compared": 0
+      "values_compared": 63
     },
     {
       "max_rel_err": 0.0,
@@ -13218,16 +13022,12 @@
       "values_compared": 150
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0417",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094027",
-      "values_compared": 0
+      "values_compared": 92
     },
     {
       "max_rel_err": 0.0,
@@ -13350,16 +13150,12 @@
       "values_compared": 67
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0433",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094043",
-      "values_compared": 0
+      "values_compared": 111
     },
     {
       "max_rel_err": 0.0,
@@ -13658,16 +13454,12 @@
       "values_compared": 103
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0471",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094081",
-      "values_compared": 0
+      "values_compared": 71
     },
     {
       "max_rel_err": 0.0,
@@ -13750,16 +13542,12 @@
       "values_compared": 56
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0482",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094092",
-      "values_compared": 0
+      "values_compared": 152
     },
     {
       "max_rel_err": 0.0,
@@ -14034,16 +13822,12 @@
       "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0517",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094127",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -14198,16 +13982,12 @@
       "values_compared": 65
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0537",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094147",
-      "values_compared": 0
+      "values_compared": 133
     },
     {
       "max_rel_err": 0.0,
@@ -14450,16 +14230,12 @@
       "values_compared": 71
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0568",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094178",
-      "values_compared": 0
+      "values_compared": 116
     },
     {
       "max_rel_err": 0.0,
@@ -14534,16 +14310,12 @@
       "values_compared": 121
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0578",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094188",
-      "values_compared": 0
+      "values_compared": 119
     },
     {
       "max_rel_err": 0.0,
@@ -14586,16 +14358,12 @@
       "values_compared": 57
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0584",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094194",
-      "values_compared": 0
+      "values_compared": 104
     },
     {
       "max_rel_err": 0.0,
@@ -14670,16 +14438,12 @@
       "values_compared": 57
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0594",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094204",
-      "values_compared": 0
+      "values_compared": 59
     },
     {
       "max_rel_err": 0.0,
@@ -14690,16 +14454,12 @@
       "values_compared": 59
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0596",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094206",
-      "values_compared": 0
+      "values_compared": 99
     },
     {
       "max_rel_err": 0.0,
@@ -14747,7 +14507,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=12145710358005094212",
-      "values_compared": 131
+      "values_compared": 130
     },
     {
       "max_rel_err": 0.0,
@@ -14838,16 +14598,12 @@
       "values_compared": 63
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0614",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094224",
-      "values_compared": 0
+      "values_compared": 80
     },
     {
       "max_rel_err": 0.0,
@@ -14939,8 +14695,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
+        "symbol": "SmSurface (non-B-spline) in SmCrvOnSurf",
+        "unit": "curve.crv_on_surf"
       },
       "max_rel_err": 0.0,
       "name": "gen0626",
@@ -15222,16 +14978,12 @@
       "values_compared": 136
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0661",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094271",
-      "values_compared": 0
+      "values_compared": 67
     },
     {
       "max_rel_err": 0.0,
@@ -15490,16 +15242,12 @@
       "values_compared": 133
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0694",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094304",
-      "values_compared": 0
+      "values_compared": 69
     },
     {
       "max_rel_err": 0.0,
@@ -15550,16 +15298,12 @@
       "values_compared": 69
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0701",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094311",
-      "values_compared": 0
+      "values_compared": 64
     },
     {
       "max_rel_err": 0.0,
@@ -15722,16 +15466,12 @@
       "values_compared": 61
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0722",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094332",
-      "values_compared": 0
+      "values_compared": 119
     },
     {
       "max_rel_err": 0.0,
@@ -16134,16 +15874,12 @@
       "values_compared": 69
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0773",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094383",
-      "values_compared": 0
+      "values_compared": 60
     },
     {
       "max_rel_err": 0.0,
@@ -16322,16 +16058,12 @@
       "values_compared": 56
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0796",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094406",
-      "values_compared": 0
+      "values_compared": 59
     },
     {
       "max_rel_err": 0.0,
@@ -16358,16 +16090,12 @@
       "values_compared": 63
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0800",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094410",
-      "values_compared": 0
+      "values_compared": 119
     },
     {
       "max_rel_err": 0.0,
@@ -16538,16 +16266,12 @@
       "values_compared": 63
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0822",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094432",
-      "values_compared": 0
+      "values_compared": 87
     },
     {
       "max_rel_err": 0.0,
@@ -16574,28 +16298,20 @@
       "values_compared": 66
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0826",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094436",
-      "values_compared": 0
+      "values_compared": 56
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0827",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094437",
-      "values_compared": 0
+      "values_compared": 72
     },
     {
       "max_rel_err": 0.0,
@@ -16630,28 +16346,20 @@
       "values_compared": 146
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0832",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094442",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0833",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094443",
-      "values_compared": 0
+      "values_compared": 72
     },
     {
       "max_rel_err": 0.0,
@@ -16723,7 +16431,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=12145710358005094452",
-      "values_compared": 161
+      "values_compared": 160
     },
     {
       "max_rel_err": 0.0,
@@ -16918,16 +16626,12 @@
       "values_compared": 57
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0867",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094477",
-      "values_compared": 0
+      "values_compared": 159
     },
     {
       "max_rel_err": 0.0,
@@ -16962,16 +16666,12 @@
       "values_compared": 137
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0872",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094482",
-      "values_compared": 0
+      "values_compared": 118
     },
     {
       "max_rel_err": 0.0,
@@ -17006,16 +16706,12 @@
       "values_compared": 121
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0877",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094487",
-      "values_compared": 0
+      "values_compared": 69
     },
     {
       "max_rel_err": 0.0,
@@ -17034,16 +16730,12 @@
       "values_compared": 128
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0880",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094490",
-      "values_compared": 0
+      "values_compared": 95
     },
     {
       "max_rel_err": 0.0,
@@ -17118,16 +16810,12 @@
       "values_compared": 109
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0890",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094500",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -17282,16 +16970,12 @@
       "values_compared": 92
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0910",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094520",
-      "values_compared": 0
+      "values_compared": 136
     },
     {
       "max_rel_err": 0.0,
@@ -17310,16 +16994,12 @@
       "values_compared": 135
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0913",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094523",
-      "values_compared": 0
+      "values_compared": 116
     },
     {
       "max_rel_err": 0.0,
@@ -17551,7 +17231,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=12145710358005094552",
-      "values_compared": 67
+      "values_compared": 64
     },
     {
       "max_rel_err": 0.0,
@@ -17583,7 +17263,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=12145710358005094556",
-      "values_compared": 134
+      "values_compared": 135
     },
     {
       "max_rel_err": 0.0,
@@ -17594,16 +17274,12 @@
       "values_compared": 62
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0948",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094558",
-      "values_compared": 0
+      "values_compared": 65
     },
     {
       "max_rel_err": 0.0,
@@ -17694,28 +17370,20 @@
       "values_compared": 61
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0960",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094570",
-      "values_compared": 0
+      "values_compared": 94
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0961",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094571",
-      "values_compared": 0
+      "values_compared": 142
     },
     {
       "max_rel_err": 0.0,
@@ -17726,16 +17394,12 @@
       "values_compared": 57
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0963",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094573",
-      "values_compared": 0
+      "values_compared": 168
     },
     {
       "max_rel_err": 0.0,
@@ -17762,16 +17426,12 @@
       "values_compared": 97
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0967",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094577",
-      "values_compared": 0
+      "values_compared": 90
     },
     {
       "max_rel_err": 0.0,
@@ -17910,40 +17570,28 @@
       "values_compared": 70
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0985",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094595",
-      "values_compared": 0
+      "values_compared": 97
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0986",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094596",
-      "values_compared": 0
+      "values_compared": 58
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0987",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094597",
-      "values_compared": 0
+      "values_compared": 59
     },
     {
       "max_rel_err": 0.0,
@@ -18050,16 +17698,12 @@
       "values_compared": 133
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1001",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094611",
-      "values_compared": 0
+      "values_compared": 90
     },
     {
       "max_rel_err": 0.0,
@@ -18078,16 +17722,12 @@
       "values_compared": 100
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1004",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094614",
-      "values_compared": 0
+      "values_compared": 74
     },
     {
       "max_rel_err": 0.0,
@@ -18218,16 +17858,12 @@
       "values_compared": 61
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1021",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094631",
-      "values_compared": 0
+      "values_compared": 56
     },
     {
       "max_rel_err": 0.0,
@@ -18486,16 +18122,12 @@
       "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1054",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094664",
-      "values_compared": 0
+      "values_compared": 148
     },
     {
       "max_rel_err": 0.0,
@@ -18594,16 +18226,12 @@
       "values_compared": 72
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1067",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094677",
-      "values_compared": 0
+      "values_compared": 69
     },
     {
       "max_rel_err": 0.0,
@@ -18718,16 +18346,12 @@
       "values_compared": 56
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1082",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094692",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -18770,16 +18394,12 @@
       "values_compared": 160
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1088",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094698",
-      "values_compared": 0
+      "values_compared": 137
     },
     {
       "max_rel_err": 0.0,
@@ -18814,16 +18434,12 @@
       "values_compared": 118
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1093",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094703",
-      "values_compared": 0
+      "values_compared": 59
     },
     {
       "max_rel_err": 0.0,
@@ -19322,16 +18938,12 @@
       "values_compared": 93
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1156",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094766",
-      "values_compared": 0
+      "values_compared": 119
     },
     {
       "max_rel_err": 0.0,
@@ -19390,16 +19002,12 @@
       "values_compared": 56
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1164",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094774",
-      "values_compared": 0
+      "values_compared": 128
     },
     {
       "max_rel_err": 0.0,
@@ -19426,16 +19034,12 @@
       "values_compared": 63
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1168",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094778",
-      "values_compared": 0
+      "values_compared": 76
     },
     {
       "max_rel_err": 0.0,
@@ -19478,16 +19082,12 @@
       "values_compared": 69
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1174",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094784",
-      "values_compared": 0
+      "values_compared": 157
     },
     {
       "max_rel_err": 0.0,
@@ -19578,16 +19178,12 @@
       "values_compared": 62
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1186",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094796",
-      "values_compared": 0
+      "values_compared": 66
     },
     {
       "max_rel_err": 0.0,
@@ -19702,16 +19298,12 @@
       "values_compared": 62
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1201",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094811",
-      "values_compared": 0
+      "values_compared": 127
     },
     {
       "max_rel_err": 0.0,
@@ -19762,16 +19354,12 @@
       "values_compared": 117
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1208",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094818",
-      "values_compared": 0
+      "values_compared": 108
     },
     {
       "max_rel_err": 0.0,
@@ -19819,7 +19407,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=12145710358005094824",
-      "values_compared": 96
+      "values_compared": 95
     },
     {
       "max_rel_err": 0.0,
@@ -19854,16 +19442,12 @@
       "values_compared": 138
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1219",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094829",
-      "values_compared": 0
+      "values_compared": 80
     },
     {
       "max_rel_err": 0.0,
@@ -20106,16 +19690,12 @@
       "values_compared": 57
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1250",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094860",
-      "values_compared": 0
+      "values_compared": 132
     },
     {
       "max_rel_err": 0.0,
@@ -20318,16 +19898,12 @@
       "values_compared": 129
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1276",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094886",
-      "values_compared": 0
+      "values_compared": 59
     },
     {
       "max_rel_err": 0.0,
@@ -20418,16 +19994,12 @@
       "values_compared": 65
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1288",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094898",
-      "values_compared": 0
+      "values_compared": 103
     },
     {
       "max_rel_err": 0.0,
@@ -20467,7 +20039,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=12145710358005094903",
-      "values_compared": 94
+      "values_compared": 93
     },
     {
       "max_rel_err": 0.0,
@@ -20542,16 +20114,12 @@
       "values_compared": 82
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1303",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094913",
-      "values_compared": 0
+      "values_compared": 129
     },
     {
       "max_rel_err": 0.0,
@@ -20562,16 +20130,12 @@
       "values_compared": 63
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1305",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094915",
-      "values_compared": 0
+      "values_compared": 75
     },
     {
       "max_rel_err": 0.0,
@@ -20819,7 +20383,7 @@
       "outcome": "pass",
       "pass": true,
       "source": "generated:seed=12145710358005094946",
-      "values_compared": 103
+      "values_compared": 136
     },
     {
       "max_rel_err": 0.0,
@@ -20862,16 +20426,12 @@
       "values_compared": 118
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1342",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094952",
-      "values_compared": 0
+      "values_compared": 59
     },
     {
       "max_rel_err": 0.0,
@@ -20938,16 +20498,12 @@
       "values_compared": 137
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1351",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094961",
-      "values_compared": 0
+      "values_compared": 70
     },
     {
       "max_rel_err": 0.0,
@@ -20966,16 +20522,12 @@
       "values_compared": 103
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1354",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094964",
-      "values_compared": 0
+      "values_compared": 62
     },
     {
       "max_rel_err": 0.0,
@@ -21210,16 +20762,12 @@
       "values_compared": 127
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1384",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005094994",
-      "values_compared": 0
+      "values_compared": 69
     },
     {
       "max_rel_err": 0.0,
@@ -21278,16 +20826,12 @@
       "values_compared": 63
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1392",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005095002",
-      "values_compared": 0
+      "values_compared": 117
     },
     {
       "max_rel_err": 0.0,
@@ -21450,16 +20994,12 @@
       "values_compared": 79
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1413",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005095023",
-      "values_compared": 0
+      "values_compared": 66
     },
     {
       "max_rel_err": 0.0,
@@ -21494,16 +21034,12 @@
       "values_compared": 90
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1418",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005095028",
-      "values_compared": 0
+      "values_compared": 76
     },
     {
       "max_rel_err": 0.0,
@@ -21650,16 +21186,12 @@
       "values_compared": 57
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1437",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005095047",
-      "values_compared": 0
+      "values_compared": 149
     },
     {
       "max_rel_err": 0.0,
@@ -21686,16 +21218,12 @@
       "values_compared": 109
     },
     {
-      "deferred": {
-        "symbol": "SmSurface::DropCurve",
-        "unit": "intersect.surface_drop_lib_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen1441",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145710358005095051",
-      "values_compared": 0
+      "values_compared": 117
     },
     {
       "max_rel_err": 0.0,
@@ -22163,13 +21691,13 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 130,
+  "cases_deferred": 12,
   "cases_failed": 0,
-  "cases_passed": 2575,
+  "cases_passed": 2693,
   "cases_total": 2705,
   "deferred_by_unit": {
-    "intersect.surface_drop_curve": 1,
-    "intersect.surface_drop_lib_p3": 129
+    "curve.crv_on_surf": 11,
+    "intersect.surface_drop_curve": 1
   },
   "max_rel_err": 0.0,
   "pass": true,
