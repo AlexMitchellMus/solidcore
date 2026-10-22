@@ -31,12 +31,14 @@
 //!   `m_bProcessBoundaryCurves`) have nothing to act on because the Rust surface
 //!   solvers build no surface cache. `EvaluateBinormal` first gets the surface cache of
 //!   the face's surface (`smsurf_GetSurfaceCache`), whose construction creates the UV
-//!   trim curves of the face's edge uses (`SmFace::CreateUVTrimCurves`). The Rust
-//!   trimmed surface cache holds its face as an opaque handle without the B-rep, so it
-//!   cannot make that call (a `justified:` stub, plan/findings.md `topology.face_p3`),
-//!   and the paths that reach the global point solve are deferred. The same side effect
-//!   makes `CreateUVTrimCurve` clean up a UV trim curve the cache attached; the clean-up
-//!   is kept.
+//!   trim curves of the face's edge uses (`SmFace::CreateUVTrimCurves`): the port
+//!   builds the face's trimmed surface cache over the B-rep
+//!   ([`crate::query::face::p2::face_surface_cache`], the `&mut Brep` the function
+//!   already takes) for that side effect and drops it. Upstream keeps the cache on the
+//!   surface; the port has no object caches, so it is rebuilt on every call that
+//!   reaches this point. The same
+//!   side effect makes `CreateUVTrimCurve` clean up a UV trim curve the cache attached;
+//!   the clean-up is kept.
 //! - **Out-params.** `CreateUVTrimCurve` returns a [`CreatedUvTrimCurve`]; its optional
 //!   `pdMaxDeviation` is `want_deviation`. `GetOrCreateUVTrimCurve` returns its status
 //!   as [`UvTrimCurveFetch::status`] (upstream's status can be a failure while the
@@ -63,8 +65,7 @@
 //! - **Drop curves.** `SmSurface::DropCurve` is wired (`intersect.surface_drop_lib_p3`;
 //!   a plane runs its own override): the UV curves keep their kind (`Vec<Curve>`),
 //!   and only the two-singular-end-points stitch takes their `SmBSplineCurve` parts.
-//! - **Unported callees.** `SmFace::CreateUVTrimCurves`
-//!   (`topology.face_p3`, through the face's surface cache) and the paths of
+//! - **Unported callees.** The paths of
 //!   `SmSurface::DropPoint` / `LocalPointSolve` that reach `LocalPointSolve_1`
 //!   (`surface.surface_point_solve_p3`) return [`SolidError::Unported`];
 //!   `GlobalPointSolve` of a non-plane surface is `surface.surface_point_solve_p3`
@@ -101,7 +102,7 @@ use crate::topology::edgeuse::p1::{
     tolerance, uv_trim_curve, uv_trim_curve_pointer, UvTrimCurveArg,
 };
 use crate::topology::edgeuse::p2::BinormalEval;
-use crate::topology::{Brep, EdgeId, EdgeuseId, ObjectHandle};
+use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, ObjectHandle};
 
 const OP: &str = "topology::edgeuse::p3";
 
@@ -274,20 +275,15 @@ fn status<T>(r: Result<T>) -> Result<Option<T>> {
     }
 }
 
-/// `smsurf_GetSurfaceCache(pSurface)` of the surface of a face (`NER`), as
+/// `smsurf_GetSurfaceCache(pSurface)` of the surface of face `f` (`NER`), as
 /// `EvaluateBinormal` calls it before clearing the surface's owner: the face's trimmed
 /// surface cache, whose construction attaches a UV trim curve to every edge use of the
-/// face (`SmFace::CreateUVTrimCurves`, `SmTrimSrfCache.cpp:209`). The Rust surface cache
-/// holds its face as an opaque handle without the B-rep, so it cannot make that call
-/// (`surface::trim_srf_cache`'s own `face_create_uv_trim_curves` stub); building the cache
-/// here without it would drop the side effect on the face's edge uses.
-fn face_surface_cache() -> Result<()> {
-    // UNPORTED(topology.face_p3): SmFace::CreateUVTrimCurves -- justified: findings.md topology.face_p3 "Stubs left for this unit"
-    // (through the trimmed surface cache of the face's surface, which has no B-rep handle)
-    Err(SolidError::unported(
-        "SmFace::CreateUVTrimCurves",
-        "topology.face_p3",
-    ))
+/// face (`SmFace::CreateUVTrimCurves`, `SmTrimSrfCache.cpp:209`), built over the B-rep
+/// ([`crate::query::face::p2::face_surface_cache`]). The cache itself is not kept (the
+/// Rust surface solvers build their own); only its side effect on the face is.
+fn face_surface_cache(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<()> {
+    crate::query::face::p2::face_surface_cache(k, b, f, Some(crate::error::EntityRef::Face(f)))
+        .map(|_| ())
 }
 
 /// `pEdge->SetTolerance(tolerance)` (default arguments).
@@ -1929,7 +1925,7 @@ pub fn evaluate_binormal_uv(
 
         // get and lock the surface cache (of the face's surface: its owner is cleared
         // only below)
-        face_surface_cache()?;
+        face_surface_cache(k, b, f)?;
 
         // (the surface cache flags are not modelled; module docs). Use surface's
         // domain instead of Face's domain.

@@ -7562,6 +7562,14 @@ with the runner-only profile override. No platform prerequisites enter this PR.
   Rust cache there instead (tried in this round) runs without the side effect: 251
   `topology.edgeuse_p3` binormal cases then fail on the edge use states (C++ 44 values,
   Rust 33: the UV trim curves the cache's `CreateUVTrimCurves` attaches are missing).
+  **Wired** (PR fix/surface-cache-face-trim, 2026-10-22): `EvaluateBinormal` already
+  holds `&mut Brep`, so it builds the face's trimmed cache with
+  `query::face::p2::face_surface_cache` (the `BrepCacheFace` adapter, whose
+  `create_uv_trim_curves` is `topology::face::p3::create_uv_trim_curves`), keeping the
+  side effect; the cache itself is dropped (no object caches in the port, so it is
+  rebuilt on each call that reaches it). Tiny adversarial fixture surfaces then exceed
+  the port's `MAX_SUBDIVISION_NODES` bound (surface.surface_cache_p3 above) where
+  upstream subdivides on; the difftest defers those cases to `surface.surface_cache_p3`.
   Also `topology.brep_p1` `face_intersect` (merge with main, #145):
   `SmBrep::BrepIntersect` intersects a face of this B-rep with a face of ANOTHER B-rep.
   `topology::face::p3::face_intersect` takes both faces from one `&Brep`: its
@@ -11320,7 +11328,11 @@ tested with the B-spline versions. Not hit by a compared case yet.
   `DoLawIntersection` (`intersect.surface_intersector_p4`) run on a `FilletIntersector`'s base
   still call the basic intersector's versions. Before a solver unit traces a fillet through
   those drivers, `intersect::surface_intersector` needs a hook trait the fillet intersector
-  implements.
+  implements. *Update (`blend.fillet_solver_p4`, PR #212):* `DoPointIntersection` (with
+  `TraceCurve` and `TestPoint`) now runs through
+  `intersect::surface_intersector::p4::IntersectorVirtuals`;
+  `FilletIntersector::do_point_intersection` dispatches to the overrides
+  (`FilletDispatch`). `DoLawIntersection` still has the gap.
 - **Surface aliasing.** Every upstream caller (`SmFilletSolver.cpp:2037`,
   `SmFilletStandardSolver.cpp:2273`/`:4721`, `SmFilletGeom.cpp:11627`) builds the intersector
   over the solver's own `SmOffsetSurface`s, and `TestSpanAccuracy` / `ComputeNextPoint` rely on
@@ -11328,6 +11340,10 @@ tested with the B-spline versions. Not hit by a compared case yet.
   so zeroing the solver's offsets does not reach it; the shim and runner also build both sides
   over the base surfaces, so the offset-surface configuration is not compared. Solver porters
   must pass the surfaces deliberately (or add a solver-backed surface accessor).
+  *Update (`blend.fillet_solver_p4`, PR #212):* `CalcFilletGeom` traces copies of the
+  solver's offset surfaces and keeps their distances in step with the solver's
+  (`OffsetSurface::set_offset_distance` takes `&self`, the distance is a `Cell`): on entry
+  to `DoPointIntersection` and after every solver call the intersector makes.
 - **FlushCrv guard kept.** The FFI still rejects `sm_FlushCrv` inputs whose polygon does not
   have `3 (knots - 1) + 1` points or whose knots are not strictly increasing:
   `CreateCanonical` then indexes NLIB arrays from the polygon size and the expanded knot
@@ -14852,6 +14868,98 @@ Final integrated-tree checks pending.
 
   Estimated size once (1) exists: about 150 lines across fillet geom p2's three sites and a concrete-id entry point, plus a regression. Item (1) itself is cross-unit (solver table type) and belongs with the #260 solver-base decision.
 
+## blend.fillet_executive_p1, laws slice (`SmFilletLaw` family; PR #260, 2026-10-20; no disagreements)
+
+- **Corpus.** 51 cases (35 fixture, 16 generated): linear laws from `smFilletTest.cpp`
+  (2 -> 0, 2 -> 0.5), the cubic Bezier law r, 1.2r, 0.8r, r over a box edge, sub-maps
+  of a two-edge sequence, zero-length maps and intervals, snapping within the scaled
+  zero, extension below and above the domain with reuse and regrowth of the cached
+  extension, rational and repeated-knot laws, constant (zero-tangent) laws, huge and
+  tiny radii and knot scales; after the PR #260 review also zero-tangent apexes
+  (quadratic, cubic), reversed maps and intervals, edge maps just below and above
+  `SM_EFF_ZERO`, a parameter exactly on the snap boundary and negative radii: 51 pass at
+  max_rel_err 0; 500 seeds 535 pass; `--perturb` SENSITIVE 51/51; `--fuzz 2000` FUZZ-PASS.
+- **Not compared.** Degree-0 (step) law curves: the shared FFI curve validator of
+  blend.fillet_standard_solver_p1 rejects them (interior knot multiplicity above the
+  degree), and nothing shows NLib's extension handles them.
+- **G1-closed law curve.** For a parameter beyond the domain of a G1-closed law curve
+  (the `smFilletTest.cpp` Bezier is one) `CreateExtendedCurve` returns an unextended
+  copy (NLib treats such a curve as periodic) and the evaluation clamps; not a crash.
+  Both sides agree (fixture `bspline_cubic_bezier_outside_domain_closed_law_copied`).
+- **Design.** `FilletLaw::evaluate` takes `&mut self` (upstream caches the extension
+  through a const cast); the `SmLinearFilletLaw` / `SmBSplineFilletLaw` constructors
+  are `blend.fillet_executive_p2`'s (PR #267). The harness builds linear laws with
+  `FilletLaw::linear`; `SmBSplineFilletLaw(pCurve, crEdgeMap)` is not ported, so for
+  B-spline laws it mirrors that constructor's zero-length-edge-map fallback.
+- Wiring the law into `intersect.surface_intersector_p1` (`EvaluateLawPoint`, opaque
+  `L` law parameter) is left for the executive: the call right after it
+  (`SmOffsetSurface::SetOffsetDistance` through a shared surface) is still a stub there.
+
+## blend.fillet_executive_p1, error info and executive object (PR #260, 2026-10-21; two harness bugs, no port disagreement)
+
+- **Corpus.** 61 cases (45 fixture, 16 generated): the 51 law cases plus scripts of
+  `NoteError` calls on a standalone `SmFilletErrorInfo`, and on a real
+  `SmFilletExecutive(ctx, target)` scripts of the `NoteFilletError` overloads (one on a
+  real `SmFilletEdge` in the pseudo B-rep), the setters (`SetDoGlobalMerge`,
+  `SetDoTrimming`, `SetSelfIntersectionHandler`, `AddFilletSurfaceGenerator`,
+  `AddTopoEdges`, `RemoveFromTopoEdges`) and the corner/solver maps and lookups. Other
+  handles become pointers the shim never dereferences; the executive's generator list is
+  emptied before its destructor would delete them. Short texts include non-ASCII
+  characters; long ones stay ASCII (a cut inside a UTF-8 sequence is a deviation). 61 pass
+  at max_rel_err 0; 500 seeds 545 pass; `--perturb` SENSITIVE 61/61; `--fuzz 2000`
+  FUZZ-PASS.
+- **Text.** `smos_sprintf` is `snprintf(buf, SM_TBLOCK_SIZE, ...)`: comments and names keep
+  1023 bytes. Every overload but the generic one prints a null comment through `"%s"`,
+  undefined in C; glibc prints `(null)`, and so does the port (fixture
+  `error_info_null_texts_print_null`). `SmFilletEdge::GetName` writes nothing for the fillet
+  edge types it has no name for, so `NoteFilletError(eErrorType, pFilletEdge, ...)` would
+  print an uninitialised buffer: the port returns `InvalidInput` instead, and the scripts
+  pass names directly.
+- **Uninitialised members.** `set()` leaves `m_pFilletVertex1/2` and `m_vLocation` unset; the
+  scripts compare them only after a call sets them.
+- **Harness bug 1 (co-port of #244).** `ErrorInfo::default` had edge type 0
+  (`SM_FE_BLENDING_RAIL`); `set()` writes `SM_FE_UNKNOWN` (14). Every script caught it; no
+  p3 output reads the field.
+- **Harness bug 2 (`blend.fillet_executive_p2` runner, #267).** Its `SmFilletSolverType`
+  table mapped codes 1, 2, 4 to `ConstRadius`, `ConstDist`, `SurfSurf`; upstream
+  (`SmFilletSolver.h:47`) has `SURF_SURF`, `CONST_RADIUS`, `CONST_DIST`. The shim passes the
+  raw code, so the two sides built different solvers. While `NoteError` was unported, every
+  case where that mattered deferred; once wired, `set_params_per_edge_r4` failed (C++
+  `SM_SUCCESS` with constant-distance solvers, Rust "invalid radius type"). Fixed: p2 is
+  274 cases, 258 pass, 0 failed, 16 deferred.
+- **Not ported yet.** The stubs in `blend.fillet_solver_p1`, `blend.fillet_corner_p3` and
+  `blend.fillet_geom_p4` reach the executive through their own typed ids, not a
+  `FilletExecutive<O>`; wiring them waits for the shared object model (PR #192).
+  `blend::fillet_corner::p3::FilletExecutiveData` holds the same edge-use-to-solver map as
+  `FilletExecutive::edgeuse_solver_map`.
+
+## blend.fillet_solver_p4 (harness)
+
+- **ND-3 (`sdStaticStep`) in the difftest.** The function static of `ComputePointValues` lives
+  in libSMLib and is not linkable (local symbol), and earlier units of a `--green` run
+  (`blend.fillet_intersector`) may already have latched it. The shim's probe
+  (`sc_blend_fillet_solver_p4_static_step`) calls the library's `ComputePointValues` once on a
+  fixed finite-difference crossing point (cubic sheet `(u, v, u^3)` against the plane
+  `y = 0.25`, zero offsets; this latches the static with `1e-5` if nothing has) and replays the
+  finite-difference block with `1e-3` and with `1e-5` through the public `StepSolve`; exactly one
+  replay reproduces the library's curve tangent bit for bit. The runner probes before every
+  case that can step (finite-difference solver, incoming `SM_IP_TANGENT_POINT`, or a previous
+  point) and seeds `Kernel::fillet_point_step`. Run order (C++ or Rust first) does not matter:
+  either the case or the probe latches the static before the probe reads it.
+- **Surfaces of revolution, not the SmCylinder/SmCone/SmSphere/SmTorus classes.** The Rust
+  port has only `SurfaceKind::SurfOfRevolution`; `SmSphere` overrides `EvaluateNormal` (used by
+  `ComputeSurfaceValues`' degenerate-normal fallback) and has no Rust counterpart yet. The point
+  cases therefore build cylinder, cone (also with its apex on the axis), sphere and torus shapes
+  as real `SmSurfOfRevolution`s from line / circle generators, as unit
+  `surface.surf_of_revolution_p1` does; poles and apexes are covered through them.
+- **CalcFilletGeom without the executive pipeline.** The only safe standalone paths are the
+  ones before the first rail: a non-B-spline edge curve (`SM_ERR_NULL_POINTER` at :1504) and a
+  bare `SmFilletGeom` without rails (`NER(pThisRail)`, or `SM_ERR` from a failed
+  `sm_FindFilletTsectPnt` at a G1/split knot first). `SetExtensionFlags` is overridden on both
+  sides (the base dereferences the unset executive). An empty `m_vFilletGeoms` with a B-spline
+  curve and a `NULL` `m_pEdgeuses[0]` are undefined behaviour upstream and rejected by the FFI.
+  Full pipeline cases (executive, corners, pseudo-B-rep import) are left until p2/p3 land:
+  every such case would defer (`topology.edgeuse_p3` is wired since the rebuild on main).
 ## curve.curve_p8 (`SmCurve::GlobalCurveIntersect`): Rust runs for minutes where C++ returns at once on a 1e300 control point (found by `offset.offset_geometry_creation`'s fuzz, 2026-10-20)
 
 Draws of `offset.offset_geometry_creation`'s fuzz, each a `trim_extended_edge` script with
@@ -16657,3 +16765,58 @@ wired `SmSurface::DropCurve` (PR #463): op `ExtendTrimEdges` gave `SM_SUCCESS` i
   `domain_with_continuity` can reproduce upstream's history-dependent answer. The
   `surface.surface_p1` `dom_cont` difftests do not see this: their shim builds the cache
   first (UB-83).
+## blend.fillet_custom_solver: `ConstantRadiusAssistedFs` reported the wrong `GetSolverType` (2026-10-22)
+
+Found while landing `blend.fillet_solver_p4` (#212, batch/finish-3). `impl FilletSolverOps
+for ConstantRadiusAssistedFs` returned `SM_FS_CONST_RADIUS`, with a comment saying the
+intersector shim builds an `SmConstantRadiusFS`. It does not: `IxCra` in
+`harness/cpp/shim/blend_fillet_intersector.cpp` derives from `SmConstantRadiusAssistedFS`,
+whose `GetSolverType` is `SM_FS_CONST_RADIUS_ASSISTED` (`SmFilletStandardSolver.h:112`).
+`StepSolve` branches on the type. This did not show until `ComputePointValues`
+(`blend.fillet_solver_p4`) was wired: the intersector's `ComputeNextPoint` cases then reached
+`StepSolve`, and `blend.fillet_intersector` gen0180 disagreed on the next point (Rust
+`SM_IP_TANGENT_POINT`, C++ crossing). Fixed to upstream's value. The `blend.fillet_solver_p4`
+runner's `ShimSolver` models a plain `SmConstantRadiusFS`, so it now overrides `GetType`,
+`GetSolverType`, `IsKindOf` and forwards `LoadInitialValues`. The fix changes no other unit's
+counts.
+## primitive.api_primitives: box, cylinder, cone and pyramid stop at SmSurface::DropCurve (2026-10-22)
+
+- The `GlueVertices` vertex-list stub and the 36 heal.stitch_p2 count mismatches were
+  already resolved on main by the #441 follow-up (root cause: `GlueEdgesGeneral` did not
+  take the glued edge off `Brep::edge_list`; see "topology.brep_p4: the last stubs").
+  On main d2028ca56: heal.stitch_p2 556 cases, 505 pass, 0 failed, 51 deferred.
+- Every valid solid primitive (`box_5_10_20`, `cone_5_10_20`, `cyl_box_valid`,
+  `pyramid_valid`, `box_far_origin`, `cylinder_brep_copy`, `cone_brep_copy`) is now
+  deferred on `SmSurface::DropCurve` (unit `intersect.surface_drop_lib_p3`, `todo`, one
+  2062-line function). The site reached is `topology/edgeuse/p3.rs`
+  `surface_drop_curve` (`SmEdgeuse::CreateUVTrimCurve`), for all four primitives. The
+  passing box/cylinder/cone/pyramid cases are input-validation error statuses only.
+- `crates/solidcore/examples/primitives` (and the ignored test
+  `crates/solidcore/tests/primitives_solid.rs`) check closed manifold solid, Euler-Poincare,
+  volume, area and bounding box against the analytic values once the build succeeds.
+  No STL: upstream's open SMLib has no B-rep face tessellation to a mesh.
+
+## blend.fillet_intersector `rv_next_clipped_step`: ULP-level next point once `ComputePointValues` is wired (2026-10-22, open)
+
+Found while landing `blend.fillet_solver_p4` (#212, batch/finish-3, draft PR #564). With
+`ComputePointValues` wired (and `curve.crv_on_surf` landed, #554), the fixture case
+`rv_next_clipped_step` (`fixtures/blend.fillet_intersector/review_cases.json` #72: planes
+`z = 0` and `y = 0`, domains `[-1, 1]^2` beyond the planes' `[0, 1]^2`, radii 0.1,
+`ComputeNextPoint` from uv `(0.9, -0.1)` / `(0.9, 0.1)` with step 0.5, clipped) no longer
+defers. Every output agrees within `1e-9` except the found angle `rec[3]`: C++
+`3.331303480692949e-16`, Rust `3.3306690738754696e-16` (rel. 1.9e-4; both are noise, the
+angle between nearly parallel tangents). The bit-level differences are in the next point that
+`StepSolve`'s clipped iso-curve branch returns: `rec[115]` C++ `-9.999999999999992e-2`, Rust
+`-1e-1`; `rec[123]`, `rec[177]` C++ `-9.999999999999987e-2`, Rust `-1.0000000000000009e-1`.
+The same disagreement shows with `GetSolverType` either `SM_FS_CONST_RADIUS` or
+`_ASSISTED`, so it comes before the assisted refinement: `SmIsoCurve` over the offset surface and
+`SmSurface::LocalCurveIntersect` on the other offset surface, both evaluated outside the planes'
+domains (extended bases). Suspected cause: the extension state of the solver's offset surfaces.
+Upstream evaluates the solver's own `SmOffsetSurface`s, and their `m_pExtendedSurface` grows with
+each out-of-domain evaluation. Rust's `blend::fillet_solver::p3::step_solve` evaluates clones
+(`iso_curve_of`, `other`), so extensions built there are dropped. A Newton solve that starts
+from a differently extended base can converge to a point a few ULP away. Not confirmed:
+confirming it needs a C++ probe of `LocalCurveIntersect` on a shared vs a fresh offset surface.
+Not fixed, and no tolerance was loosened. The case is listed in
+`crates/difftest/known_mismatches.toml` (reported as `known-mismatch`; `blend.fillet_intersector`
+stays partial, never green). Remove the entry when the cause is fixed.
