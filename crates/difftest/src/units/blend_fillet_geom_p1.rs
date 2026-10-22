@@ -18,11 +18,14 @@
 //! error upstream cannot produce), the op's values, and for the pseudo-B-rep queries that
 //! change the model its export (`v_*`, `e_*`, `g_*` keys).
 //!
+//! Faces (the model's target faces, `classify_face_point`'s, `evaluate_mate`'s) are built
+//! on both sides as the shim's `face_of` builds them (`natural_face`).
+//!
 //! Deferred on the Rust side (unported callees): `two_pnts` past its point drops
 //! (`intersect.surface_intersector_p4`), `classify_face_point` and `fb` `split_face` of
-//! a vertex classified to the split face (`SmFace::CreateUVTrimCurves` of
-//! `topology.face_p3`, inside the wired `CalculateUVDomainFromUVTrimCurves` of
-//! `topology.face_p1`), and `fb` `cliff`
+//! a vertex classified to the split face where `Point3DClassify` reaches the trimmed
+//! surface cache's face (`SmFace` handle of a surface's face, `topology.face_p2`), and
+//! `fb` `cliff`
 //! (`intersect.surface_drop_lib_p1`'s own unwired `SmSurfaceDropCurve::DoTrace`, whose
 //! stub prints `intersect.surface_drop_curve`). `fb` `examine` past its pre-checks is
 //! refused by the shim (no `SmFilletSolver`; see the FFI module). Fixtures flagged
@@ -3572,7 +3575,7 @@ mod tests {
         };
         let cases = Runner.cases(&ctx).unwrap();
         if env("CASE_CENSUS").is_some() {
-            let mut tally = std::collections::BTreeMap::<(i32, &str), usize>::new();
+            let mut tally = BTreeMap::<(i32, &str), usize>::new();
             for case in &cases {
                 // flagged regression inputs are rejected, never passes (and the HANG-20
                 // ones loop on the Rust side too)
@@ -3619,7 +3622,7 @@ mod tests {
             let ops = env("CASE_OPS").map_or_else(|| (20..40).collect(), list);
             let per_op = env("CASE_PER_OP").map_or(usize::MAX, |s| s.parse().unwrap());
             let skip = env("CASE_SKIP").map_or_else(Vec::new, list);
-            let mut taken = std::collections::BTreeMap::<i64, usize>::new();
+            let mut taken = BTreeMap::<i64, usize>::new();
             (0..cases.len())
                 .filter(|&i| {
                     let Ok(inp) = cases[i].parse::<Inputs>() else {

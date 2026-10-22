@@ -16017,3 +16017,32 @@ locate the seven remaining stops in trim/extend paths (`gen0081`, `gen0361`,
 `gen0479`, `gen0562`, `gen0688`, `gen0730`, `gen0732`); they remain explicitly
 deferred, not claimed as solved. The wider topology/cache-face adapter is separate
 work. The unit stays partial.
+
+## blend.fillet_geom_p1: the `sm_ClassifyFacePoint` disagreement was the runner's Rust face, not the kernel (2026-10-22)
+
+Follow-up to "blend.fillet_geom_p1: `sm_ClassifyFacePoint` returns 0 where the C++ returns
+1 or 2" above (the cause of PR #268's 5 `blend.fillet_corner_p2` failures).
+
+Cause: the shim builds every face with `face_of` = `SmBrep::CreateFaceFromSurface` (an outer
+loop of four natural trim edges, edge and face tolerances set), but the runner's Rust side
+(`classify_face_point`, the model's target faces, `evaluate_mate`) added a bare face with no
+loops and tolerance 0 to a `Brep::new()`. In `sm_ClassifyFacePoint`, `SmTol::GetZoneTol3d(pOrigFace)`
+is the face's tolerance (old-tolerance build: `pTopo->GetTolerance()`), so the Rust
+`Point3DClassify` ran with a zero tolerance on loopless faces and returned `SM_PC_UNKNOWN` for
+both faces (result 0), where the C++ classified the point into the face it lies in.
+`classify_face_point` itself matches upstream line by line (branch order, `ContainsPoint2d`
+default tolerance 0, guess UVs, flags).
+
+Fix (runner and shim only, no kernel change): both sides now build the face the same way:
+`CreateFaceFromSurface` over the natural domain, then `CreateUVTrimCurves(FALSE, natural UV
+curves, orientations)` (status ignored) so the edge uses carry their UV trim curves as a face
+read from a file does. Without that step upstream makes them on demand with
+`SmSurface::DropCurve` (`intersect.surface_drop_lib_p3`, todo). With a face-owned surface,
+`Point3DClassify`'s trimmed surface cache needs the surface's `SmFace` handle
+(`SurfaceCache::face`, `UNPORTED(topology.face_p2)`), so these cases now defer instead of
+comparing two different setups: `blend.fillet_geom_p1` 471 pass -> 461 pass + 16 deferred
+(12 previously compared, 4 of 6 new corner-model fixtures), `blend.fillet_geom_p5` 300 pass ->
+284 pass + 16 deferred (`split_face`); both green -> partial. On main merged with #268 (and
+#268's own pending adaptations), `blend.fillet_corner_p2`'s `gen0014` and
+`corner_update_split_face_08/_11/_71/_75` defer on `topology.face_p2` instead of failing
+(0 failed). They become comparable once the surface-owner face handle is wired.
