@@ -15,6 +15,8 @@
 //! | `4 n points(x y z)*n validate_only init_gaps` | actual `MakeShellVertex` calls (0..64 vertices) |
 //! | `5 has_face [surface u0 v0 u1 v1] networks validate_only init_gaps` | an optional face (as kind 2) and `networks` (0..=3) copies of the wire network in one B-rep |
 //! | `6 surface u0 v0 u1 v1 validate_only init_gaps` | as kind 2 on a B-spline surface, every edge curve then an `SmCrvOnSurf` over its UV trim curve |
+//! | `7 origin(x y z) length width height validate_only init_gaps` | the closed box solid of `SmApiCreateBox` (`SmPrimitiveCreation::CreateBox`; origin coordinates up to `1e4`, sizes in `1e-3..=1e4`) |
+//! | `8 nv (x y z tol)*nv ne (x0 y0 z0 x1 y1 z1 tol)*ne validate_only init_gaps` | `MakeShellVertex` points and `CreateWireEdgeFromCurve` line segments, each with `SetTolerance(tol, FALSE, FALSE)` (up to [`MAX_POINTS`] vertices and [`MAX_LINES`] segments, tolerances in `0..=1e3`, segments longer than `1e-9`) |
 //!
 //! A surface block is `0 oob form n m p q r s cpts(x y z w) u v` (`SmBSplineSurface`) or
 //! `1 O[3] N[3]` (`SmPlane(O, N)`); a curve block `dim n p m cpts(x y z w) knots`
@@ -43,6 +45,12 @@
 //! ten entity counts remain unchanged. This supplies shell state independently
 //! of the shell operations being compared.
 //!
+//! A face's surface in the graph export may start with an exact analytic head,
+//! `2 type version surf_oob gen_oob nbytes byte*nbytes` (an `SmSurfOfRevolution`: its
+//! binary `WriteToDB` record, `harness/cpp/shim/sc_analytic_export.h`), followed by the
+//! regular surface block (its B-spline part); other face surfaces have the regular
+//! block only.
+//!
 //! Geometry ops: `StepOff` (`surface dist P[3] N[3] u v jac` -> `status found F0 F1
 //! J00 J01 J10 J11`), `DistDev` (`surface P[3] u v value obj want_dev` -> `dist dev`;
 //! `obj` 0 null, 1 the surface, 2 a line), `Seam` (`n curve*n a b called` -> `seam`).
@@ -66,6 +74,10 @@ pub const MAX_DEGREE: usize = 5;
 pub const MAX_COORD: f64 = 1.0e300;
 /// Largest number of curves for `Seam` and of target loops for `FuQuery`.
 pub const MAX_LIST: usize = 64;
+/// Largest vertex count of a kind 8 block.
+pub const MAX_POINTS: usize = 600;
+/// Largest segment count of a kind 8 block.
+pub const MAX_LINES: usize = 150;
 
 /// Shim operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,7 +229,10 @@ fn check_points(rd: &mut Reader<'_>, k: usize, planar: bool, what: &str) -> Resu
             return Err(bad(format!("{what}: weight out of range")));
         }
         let z = if z == NOZ { 0.0 } else { z };
-        if [x, y, z].iter().any(|c| !c.is_finite() || c.abs() > MAX_COORD) {
+        if [x, y, z]
+            .iter()
+            .any(|c| !c.is_finite() || c.abs() > MAX_COORD)
+        {
             return Err(bad(format!("{what}: point out of range")));
         }
     }
@@ -225,7 +240,7 @@ fn check_points(rd: &mut Reader<'_>, k: usize, planar: bool, what: &str) -> Resu
 }
 
 /// The parameter domain `[u0, v0, u1, v1]` of a surface block, `None` for a plane.
-type Domain = Option<[f64; 4]>;
+pub(crate) type Domain = Option<[f64; 4]>;
 
 /// A surface block; returns its domain.
 pub(crate) fn surface(rd: &mut Reader<'_>) -> Result<Domain, FfiError> {
@@ -285,7 +300,8 @@ fn uv(rd: &mut Reader<'_>, dom: Domain) -> Result<(), FfiError> {
     let v = rd.finite()?;
     if let Some([u0, v0, u1, v1]) = dom {
         let (du, dv) = (u1 - u0, v1 - v0);
-        if u < u0 - 100.0 * du || u > u1 + 100.0 * du || v < v0 - 100.0 * dv || v > v1 + 100.0 * dv {
+        if u < u0 - 100.0 * du || u > u1 + 100.0 * du || v < v0 - 100.0 * dv || v > v1 + 100.0 * dv
+        {
             return Err(bad("uv too far outside the domain"));
         }
     } else if u.abs() > 1e6 || v.abs() > 1e6 {
@@ -302,32 +318,32 @@ pub(crate) fn brep_block(rd: &mut Reader<'_>, path: &str) -> Result<(), FfiError
 /// The surface and parameter domain of a face block (`2`, `6`, and `5` with a face):
 /// whether the surface is a B-spline surface (not a plane).
 pub(crate) fn face_block(rd: &mut Reader<'_>, plane_domain_limit: f64) -> Result<bool, FfiError> {
-        let dom = surface(rd)?;
-        let d = rd.finites(4)?;
-        let (Some(&a), Some(&b2), Some(&c), Some(&e)) = (d.first(), d.get(1), d.get(2), d.get(3))
-        else {
-            return Err(bad("domain too short"));
-        };
-        if a >= c || b2 >= e {
-            return Err(bad("face domain not ordered"));
-        }
-        match dom {
-            Some([u0, v0, u1, v1]) => {
-                if a < u0 || c > u1 || b2 < v0 || e > v1 {
-                    return Err(bad("face domain outside the surface's"));
-                }
-            }
-            None => {
-                if d.iter().any(|x| x.abs() > plane_domain_limit) {
-                    return Err(bad("plane face domain too large"));
-                }
+    let dom = surface(rd)?;
+    let d = rd.finites(4)?;
+    let (Some(&a), Some(&b2), Some(&c), Some(&e)) = (d.first(), d.get(1), d.get(2), d.get(3))
+    else {
+        return Err(bad("domain too short"));
+    };
+    if a >= c || b2 >= e {
+        return Err(bad("face domain not ordered"));
+    }
+    match dom {
+        Some([u0, v0, u1, v1]) => {
+            if a < u0 || c > u1 || b2 < v0 || e > v1 {
+                return Err(bad("face domain outside the surface's"));
             }
         }
+        None => {
+            if d.iter().any(|x| x.abs() > plane_domain_limit) {
+                return Err(bad("plane face domain too large"));
+            }
+        }
+    }
     Ok(dom.is_some())
 }
 
 fn brep_block_with_plane_limit(rd: &mut Reader<'_>, path: &str, plane_domain_limit: f64) -> Result<(), FfiError> {
-    match rd.index(6)? {
+    match rd.index(8)? {
         0 => {
             let p = Path::new(path);
             if p.extension().and_then(|e| e.to_str()) != Some("smb") || !p.is_file() {
@@ -362,6 +378,39 @@ fn brep_block_with_plane_limit(rd: &mut Reader<'_>, path: &str, plane_domain_lim
             let count = rd.index(MAX_LIST)?;
             for _ in 0..count {
                 rd.vec3()?;
+            }
+        }
+        8 => {
+            let tol = |rd: &mut Reader<'_>| -> Result<(), FfiError> {
+                if !(0.0..=1e3).contains(&rd.finite()?) {
+                    return Err(bad("points/lines: tolerance out of range"));
+                }
+                Ok(())
+            };
+            for _ in 0..rd.index(MAX_POINTS)? {
+                rd.vec3()?;
+                tol(rd)?;
+            }
+            for _ in 0..rd.index(MAX_LINES)? {
+                let a = rd.vec3()?;
+                let b = rd.vec3()?;
+                let d = a.iter().zip(&b).map(|(p, q)| (q - p) * (q - p)).sum::<f64>();
+                if d.sqrt() <= 1e-9 {
+                    return Err(bad("points/lines: degenerate segment"));
+                }
+                tol(rd)?;
+            }
+        }
+        7 => {
+            for _ in 0..3 {
+                if rd.finite()?.abs() > 1e4 {
+                    return Err(bad("box: origin too far"));
+                }
+            }
+            for _ in 0..3 {
+                if !(1e-3..=1e4).contains(&rd.finite()?) {
+                    return Err(bad("box: size out of range"));
+                }
             }
         }
         _ => {}

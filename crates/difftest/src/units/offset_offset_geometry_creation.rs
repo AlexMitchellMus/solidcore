@@ -4,7 +4,7 @@
 //! `solidcore::offset::offset_geometry_creation`.
 //!
 //! **Two real B-reps.** Each case builds two `SmBrep`s on the C++ side (an upstream
-//! `.smb` file, a wire edge, a face from a surface, or the wire network of
+//! `.smb` file, a wire edge, a face from a surface, a concrete cylinder/torus face, or the wire network of
 //! `prog_test` `my_test_topology`; the second may be absent): the original B-rep of an
 //! `SmOffsetExecutive` and the "offset" B-rep whose edge uses the executive maps the
 //! original edge uses to (the pairs are given; `MapEdgeuses` is unit
@@ -33,30 +33,37 @@
 //! **Guards.** The shim refuses (`-2`) what upstream dereferences without checking;
 //! the topology-walking functions need every edge use of both B-reps to be a loop edge
 //! use with edge, curve, vertex, mate, neighbours and a face with surface (so wire,
-//! single-face and network B-reps only exercise the refusal). `ReplaceEdgeCurves` with
+//! single-face and network B-reps only exercise the refusal), except `VertexOffset`,
+//! which walks no loops and keeps only its per-edge checks (a curve on each edge; for a
+//! single edge, a face with surface and a B-spline curve). `ReplaceEdgeCurves` with
 //! a 3D curve and no UV curve is refused only when the curves run opposite (the shape
-//! test is replicated). The runner mirrors every guard on the imported B-reps.
+//! test is replicated). The runner mirrors every guard on the imported B-reps. The run
+//! header takes any finite offset distance (zero included) and any finite tolerance that
+//! is not negative: upstream neither crashes nor hangs at zero (every generated script
+//! ran at each zero; the `*_zero_distance` and `*_zero_approx` cases keep the bases whose
+//! compared output changes at zero), so only a negative tolerance is refused, and the
+//! runner mirrors that refusal (`approx_negative`) as it does the B-rep guards.
 //!
 //! **Hang guards (`-6`, the script stops; the case defers).** The shim does not run two
 //! ops the Rust side defers at anyway, as they can take minutes or not return (the
-//! fuzz allows 20 s a side): a non-local `FaceuseOffset` of a face whose surface is an
-//! `SmBSplineSurface` subclass other than `SmPlane` (deferred under
-//! `harness:analytic-geometry-export`; HANG-26, the offset self-intersection of an
-//! `SmSurfOfRevolution`), and an `EdgeuseOffset` with
+//! fuzz allows 20 s a side): a non-local `FaceuseOffset` of an exactly
+//! `SmSurfOfRevolution` surface with self-intersection enabled (`upstream:HANG-26`),
+//! or an unsupported concrete surface kind (`harness:analytic-geometry-export`), and an `EdgeuseOffset` with
 //! `|offset distance| > 1e6` (deferred under `upstream:HANG-27`, the rail's
 //! `SmCrvOnSurf::ApproximateCurve`). The generator's distances (0.001 to 100) never
-//! reach the second bound; the first stops no compared case (the Rust defers there).
+//! reach the distance bound. HANG-26 remains guarded independently of exact imports.
 //!
 //! **Analytic faces.** The shared importer brings an `SmBSplineSurface` subclass in as its
-//! B-spline part; an exactly-`SmSurfOfRevolution` face surface is then replaced by the real
-//! surface, read back from the shim's binary `WriteToDB` record (`read_revolutions`).
-//! Extrusion, cone, sphere and torus faces stay inexact: ops that dispatch on their kind
-//! defer under `harness:analytic-geometry-export`.
+//! B-spline part; revolution, extrusion, cone, cylinder, sphere and torus face surfaces
+//! are then restored from the shim's binary `WriteToDB` records (`read_face_surfaces`)
+//! through the existing polymorphic reader. Native type codes, complete record
+//! consumption, face alignment and existing owner identities are checked. Restored
+//! surfaces synchronize their cached tolerance from the actual owning face. No native
+//! operation results are imported or replayed on the Rust side.
 //!
-//! **Deferred.** The offset surface of a non-plane analytic face
-//! (`harness:analytic-geometry-export`), `UpdateFaceSurfaceDomain`
-//! (`SmFace::CreateUVTrimCurves` inside `CalculateUVDomainFromUVTrimCurves`,
-//! `topology.face_p3`), the trimmed surface cache of a face's own surface that the
+//! **Deferred.** Operations dispatching on an unsupported, inexact face kind
+//! (`harness:analytic-geometry-export`), the
+//! trimmed surface cache of a face's own surface that the
 //! seeded `GetCreateExtendedSurface` hands to the surface intersections of `MateEdges`
 //! and `TrimExtendedEdge` (`SmTol::GetZoneTol3d`, `surface.surface_cache_p2`, and the face
 //! handle, `topology.face_p2`), the drops inside `CreateUVTrimCurve`
@@ -96,9 +103,9 @@ use solidcore::offset::offset_geometry_creation::{
 };
 use solidcore::query::edge::ClosestPoint;
 use solidcore::surface::plane::Plane;
-use solidcore::surface::surf_of_revolution::SurfOfRevolution;
 use solidcore::surface::surface::p2::{
-    DropCurveFail, SurfaceKind, TsectCurveType, B_SPLINE_SURFACE_TYPE, SPHERE_TYPE,
+    DropCurveFail, SurfaceKind, TsectCurveType, CONE_TYPE, CYLINDER_TYPE, SPHERE_TYPE,
+    SURF_OF_EXTRUSION_TYPE, SURF_OF_REVOLUTION_TYPE, TORUS_TYPE,
 };
 use solidcore::surface::surface::Surface;
 use solidcore::surface::volume::Volume;
@@ -136,17 +143,18 @@ fn harness(msg: impl Into<String>) -> HarnessError {
 const NULL_DEREF: f64 = -2.0;
 /// The deferral label of an op whose upstream path dispatches a virtual surface method
 /// on a face surface the importer could only bring in as its B-spline part (an
-/// `SmBSplineSurface` subclass other than `SmPlane` and `SmSurfOfRevolution`, which
-/// `read_revolutions` imports exactly): no plan unit's port would unblock it, an
-/// exact import would.
+/// `SmBSplineSurface` subclass whose concrete record is not supported by this
+/// adapter: no plan unit's port would unblock it, an exact import would.
 const ANALYTIC_EXPORT: &str = "harness:analytic-geometry-export";
+/// The native offset self-intersection of an exactly `SmSurfOfRevolution` surface
+/// can take minutes (HANG-26); restoring its concrete kind does not remove this guard.
+const HANG_26: &str = "upstream:HANG-26";
 /// The deferral label of an `EdgeuseOffset` whose offset distance is beyond the
 /// shim's HANG-27 bound (`plan/upstream-issues.md`): upstream's rail approximation does
 /// not return in time there, so neither side runs the op.
 const HANG_27: &str = "upstream:HANG-27";
-/// The shim's `REVOLUTION_DB_VERSION`: the database version of the exported
-/// `SmSurfOfRevolution` records.
-const REVOLUTION_DB_VERSION: u64 = 33;
+/// The shim's `SURFACE_DB_VERSION`: the database version of concrete surface records.
+const SURFACE_DB_VERSION: u64 = 33;
 /// The shim's `MAX_EDGEUSE_OFFSET_DISTANCE` (HANG-27): a bound chosen for the fuzz
 /// time budget (20 s a side; 10 s measured at 1e6), not the termination boundary
 /// (~1e250).
@@ -204,6 +212,16 @@ enum BrepIn {
     Face {
         surface: SrfIn,
         dom: [f64; 4],
+    },
+    /// A full, bounded native `SmCylinder` face, not a zero-angle `SmCone`.
+    Cylinder {
+        radius: f64,
+        height: f64,
+    },
+    /// A full native `SmTorus` face, not a generic surface of revolution.
+    Torus {
+        major: f64,
+        minor: f64,
     },
     Network,
 }
@@ -440,6 +458,14 @@ fn brep_block(v: &mut Vec<f64>, b: &BrepIn) -> Result<(), HarnessError> {
             push_surface(v, surface)?;
             v.extend(dom);
         }
+        BrepIn::Cylinder { radius, height } => {
+            v.extend([6.0, 0.0, *radius, *height]);
+            return Ok(());
+        }
+        BrepIn::Torus { major, minor } => {
+            v.extend([6.0, 1.0, *major, *minor]);
+            return Ok(());
+        }
         BrepIn::Network => v.push(3.0),
     }
     v.push(0.0); // validate_only
@@ -465,7 +491,14 @@ fn blocks(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
 fn export(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
     let pa = path_of(Some(&i.brep_a))?;
     let pb = path_of(i.brep_b.as_ref())?;
-    ffi::eval(Op::Export, [&pa, &pb], &blocks(i)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let block = blocks(i)?;
+    crate::export_memo::export(
+        "offset_offset_geometry_creation",
+        &[&pa, &pb],
+        &block,
+        || ffi::eval(Op::Export, [&pa, &pb], &block),
+    )
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 /// A build failure as an operation error.
@@ -500,6 +533,12 @@ const K_EU_UV: u8 = 11;
 const K_EXTRA: u8 = 12;
 /// A surface the port made (Rust only).
 const K_EXTRA_S: u8 = 13;
+/// Internal cache-only topology handles; never encoded as native script inputs.
+const K_VERTEXUSE: u8 = 14;
+const K_LOOPUSE: u8 = 15;
+const K_LOOP: u8 = 16;
+const K_SHELL: u8 = 17;
+const K_REGION: u8 = 18;
 
 #[derive(Debug, Clone, Copy)]
 struct H {
@@ -662,19 +701,41 @@ fn key_of(e: EntityRef) -> ObjectRef {
 struct Two {
     breps: [Option<Brep>; 2],
     /// Per B-rep, per face (traversal order): whether the face's surface was imported
-    /// exactly. An `SmBSplineSurface` subclass other than `SmPlane` and
-    /// `SmSurfOfRevolution` (surface of extrusion, cone, sphere, torus) arrives as its
-    /// B-spline part.
+    /// exactly. Supported concrete subclasses are restored from their native
+    /// records; unknown subclasses remain inexact B-spline stand-ins and cannot
+    /// certify operations that dispatch on their kinds.
     exact: [Vec<bool>; 2],
-    /// Per B-rep, per face: the exported surface subclass type code (`None` for a plane
-    /// or no surface).
-    types: [Vec<Option<i64>>; 2],
     curves: Vec<SmCurve>,
     surfaces: Vec<Option<Surface>>,
     extra: Vec<SmCurve>,
     extra_s: Vec<Surface>,
     marked: BTreeSet<H>,
     env: [NotifyEnv; 2],
+}
+
+impl std::fmt::Debug for Two {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OffsetFaceQueries")
+            .field("arenas", &self.breps.iter().filter(|b| b.is_some()).count())
+            .finish_non_exhaustive()
+    }
+}
+
+fn cache_topology_handle(b: i8, entity: EntityRef) -> H {
+    let (kind, index) = match entity {
+        EntityRef::Face(id) => (K_FACE, id.index()),
+        EntityRef::Edge(id) => (K_EDGE, id.index()),
+        EntityRef::Vertex(id) => (K_VERTEX, id.index()),
+        EntityRef::Faceuse(id) => (K_FACEUSE, id.index()),
+        EntityRef::Edgeuse(id) => (K_EDGEUSE, id.index()),
+        EntityRef::Vertexuse(id) => (K_VERTEXUSE, id.index()),
+        EntityRef::Loopuse(id) => (K_LOOPUSE, id.index()),
+        EntityRef::Loop(id) => (K_LOOP, id.index()),
+        EntityRef::Shell(id) => (K_SHELL, id.index()),
+        EntityRef::Region(id) => (K_REGION, id.index()),
+        EntityRef::Brep(_) => (K_BREP, 0),
+    };
+    hd(b, kind, index)
 }
 
 fn invalid(reason: &'static str) -> SolidError {
@@ -698,12 +759,11 @@ const fn fuid(h: H) -> FaceuseId {
 }
 
 impl Two {
-    fn new(a: Brep, b: Option<Brep>, exact: [Vec<bool>; 2], types: [Vec<Option<i64>>; 2]) -> Self {
+    fn new(a: Brep, b: Option<Brep>, exact: [Vec<bool>; 2]) -> Self {
         let env = [NotifyEnv::new(Some(&a)), NotifyEnv::new(b.as_ref())];
         Self {
             breps: [Some(a), b],
             exact,
-            types,
             curves: Vec::new(),
             surfaces: Vec::new(),
             extra: Vec::new(),
@@ -753,29 +813,6 @@ impl Two {
             }
         }
         Ok(false)
-    }
-
-    /// Whether `face`'s surface is an `SmBSplineSurface` subclass other than `SmPlane`
-    /// (see `types`), whether or not it was imported exactly.
-    fn face_is_subclass(&self, face: H) -> bool {
-        usize::try_from(face.b)
-            .ok()
-            .and_then(|b| self.types.get(b))
-            .and_then(|v| v.get(usize::try_from(face.i).ok()?))
-            .copied()
-            .flatten()
-            .is_some_and(|t| t != B_SPLINE_SURFACE_TYPE)
-    }
-
-    /// Whether `face`'s surface is an `SmSphere` (see `types`).
-    fn face_is_sphere(&self, face: H) -> bool {
-        usize::try_from(face.b)
-            .ok()
-            .and_then(|b| self.types.get(b))
-            .and_then(|v| v.get(usize::try_from(face.i).ok()?))
-            .copied()
-            .flatten()
-            == Some(SPHERE_TYPE)
     }
 
     /// Refuses (as [`ANALYTIC_EXPORT`]) an edit of a B-rep with a face whose surface was
@@ -1003,7 +1040,125 @@ impl ProtoGeometry<H> for Two {
     }
 }
 
+impl solidcore::surface::surface_cache::face_context::FaceQueries<H> for Two {
+    fn face_zone_tol_3d(&self, face: H) -> solidcore::Result<f64> {
+        if face.kind != K_FACE {
+            return Err(invalid("cache classifier expected a face handle"));
+        }
+        fp2::tolerance(self.brep_r(face)?, fid(face))
+    }
+
+    fn face_point_classify(
+        &self,
+        k: &Kernel,
+        face: H,
+        uv: Point2,
+        src_tol: f64,
+    ) -> solidcore::Result<(i32, Option<H>)> {
+        use solidcore::surface::surface_cache::face_context::PreparedFaceQueries;
+        if face.kind != K_FACE {
+            return Err(invalid("cache classifier expected a face handle"));
+        }
+        let map = |entity| Ok(cache_topology_handle(face.b, entity));
+        PreparedFaceQueries::new(self.brep_r(face)?, fid(face), &map)?
+            .face_point_classify(k, face, uv, src_tol)
+    }
+
+    fn face_point_classify_fast_drop(
+        &self,
+        k: &Kernel,
+        face: H,
+        uv: Point2,
+        src_tol: f64,
+    ) -> solidcore::Result<(i32, Option<H>)> {
+        use solidcore::surface::surface_cache::face_context::PreparedFaceQueries;
+        if face.kind != K_FACE {
+            return Err(invalid("cache classifier expected a face handle"));
+        }
+        let map = |entity| Ok(cache_topology_handle(face.b, entity));
+        PreparedFaceQueries::new(self.brep_r(face)?, fid(face), &map)?
+            .face_point_classify_fast_drop(k, face, uv, src_tol)
+    }
+}
+
 impl OffsetBrep<H> for Two {
+    fn prepare_surface_solve_cache(
+        &mut self,
+        k: &Kernel,
+        surface: &Surface,
+        handle: Option<H>,
+    ) -> solidcore::Result<solidcore::surface::surface_cache::SurfaceCache<H>> {
+        use solidcore::query::face::p2::BrepCacheFace;
+        use solidcore::surface::surface::p1::{
+            get_surface_cache, make_surface_cache, make_trim_srf_cache_with_face,
+        };
+        use solidcore::surface::surface_cache::face_context::MappedCacheFace;
+        use solidcore::surface::trim_srf_cache::CacheFace;
+        let Some(owner) = surface.face()? else {
+            return get_surface_cache(k, surface, handle);
+        };
+        // The surface handle selects its arena. ObjectRef keys alone deliberately
+        // cannot distinguish equal face indices of these independent B-reps.
+        let Some(h) = handle.filter(|h| h.kind == K_FACE_SURFACE && (h.b == 0 || h.b == 1)) else {
+            return get_surface_cache(k, surface, handle);
+        };
+        let b = self.brep_m(h)?;
+        // The typed surface handle already names its face; the imported owner
+        // key belongs to the importer's object space, not the notification store's
+        // `key_of` convention. Validate the actual record instead of conflating
+        // those independent key mappings.
+        let face = fid(h);
+        let actual_owner = fp2::surface(b, face)?
+            .ok_or_else(|| invalid("cache face has no surface"))?
+            .face()?;
+        if actual_owner != Some(owner) {
+            return Err(invalid("surface owner is not the selected B-rep face"));
+        }
+        let map = |entity| Ok(cache_topology_handle(h.b, entity));
+        let unmap = |handle: H| {
+            if handle.b != h.b {
+                return Err(invalid("cache handle belongs to a different B-rep"));
+            }
+            Ok(match handle.kind {
+                K_FACE => EntityRef::Face(FaceId::from_index(handle.i)),
+                K_EDGE => EntityRef::Edge(EdgeId::from_index(handle.i)),
+                K_VERTEX => EntityRef::Vertex(VertexId::from_index(handle.i)),
+                K_EDGEUSE => EntityRef::Edgeuse(EdgeuseId::from_index(handle.i)),
+                K_VERTEXUSE => EntityRef::Vertexuse(VertexuseId::from_index(handle.i)),
+                K_LOOPUSE => {
+                    EntityRef::Loopuse(solidcore::topology::LoopuseId::from_index(handle.i))
+                }
+                _ => return Err(invalid("unsupported typed cache handle")),
+            })
+        };
+        let mut context = MappedCacheFace::new(BrepCacheFace { b, f: face }, &map, &unmap)?;
+        match make_trim_srf_cache_with_face(k, surface, handle, &mut context) {
+            Ok(mut cache) => {
+                cache.bind_face(
+                    owner,
+                    cache_topology_handle(h.b, EntityRef::Face(face)),
+                    context.zone_tol_3d(k, context.face())?,
+                )?;
+                if cache.base().tree().is_none() {
+                    cache.build_tree_with_face(k, &mut context)?;
+                }
+                Ok(cache.into_base())
+            }
+            Err(
+                e @ (SolidError::Unported { .. }
+                | SolidError::InvalidInput { .. }
+                | SolidError::NotFound { .. }),
+            ) => Err(e),
+            Err(_) => make_surface_cache(k, surface, handle),
+        }
+    }
+
+    fn prepared_face_queries(
+        &self,
+    ) -> Option<&dyn solidcore::surface::surface_cache::face_context::FaceQueries<H>> {
+        Some(self)
+    }
+
     fn insert_curve(&mut self, curve: SmCurve) -> Option<H> {
         let i = u32::try_from(self.extra.len()).ok()?;
         let hh = curve_h(2, K_EXTRA, i, &curve);
@@ -1173,14 +1328,6 @@ impl OffsetBrep<H> for Two {
         if face.b != edge.b || face.kind != K_FACE {
             return Err(invalid("face of another B-rep"));
         }
-        if self.face_is_sphere(face) {
-            // SmEdge::IsSeam calls the surface's virtual IsClosed, which only SmSphere
-            // (of the subclasses imported as their B-spline part) overrides
-            return Err(SolidError::Unported {
-                upstream: "SmSphere::IsClosed (face surface imported as its B-spline part)",
-                unit: ANALYTIC_EXPORT,
-            });
-        }
         ed::is_seam_of_surface(k, self.brep_m(edge)?, eid(edge), fid(face))
     }
     fn edge_vertex(&self, edge: H) -> solidcore::Result<Option<H>> {
@@ -1245,10 +1392,12 @@ impl OffsetBrep<H> for Two {
         e2: H,
         ang_tol_deg: f64,
     ) -> solidcore::Result<bool> {
+        let k = &Kernel::default();
         if e1.b != vertex.b || e2.b != vertex.b {
             return Err(invalid("edges of another B-rep"));
         }
         vx::are_edges_tangent(
+            k,
             self.brep_r(vertex)?,
             vid(vertex),
             eid(e1),
@@ -1564,7 +1713,7 @@ fn status_code(e: &SolidError) -> f64 {
 /// The shim's `put_srf`: type, natural domain, a 3x3 point sample and, for a plain
 /// B-spline surface or a surface of revolution, the NURB (`has_nurb [n m p q r s net
 /// u_knots v_knots]`).
-fn put_srf(o: &mut Vec<f64>, s: Option<&Surface>) {
+fn put_srf(k: &Kernel, o: &mut Vec<f64>, s: Option<&Surface>) {
     let Some(s) = s else {
         o.push(-1.0);
         return;
@@ -1578,7 +1727,7 @@ fn put_srf(o: &mut Vec<f64>, s: Option<&Surface>) {
                 d.u_min() + (d.u_max() - d.u_min()) * (f64::from(i) / 2.0),
                 d.v_min() + (d.v_max() - d.v_min()) * (f64::from(j) / 2.0),
             );
-            match s.evaluate_point(uv) {
+            match s.evaluate_point(k, uv) {
                 Ok(p) => {
                     o.push(0.0);
                     put_vec(o, p);
@@ -1764,8 +1913,14 @@ fn resolve(i: &Inputs, c: &mut Counts, two: &Two) -> Result<(RHeader, Vec<ROp>),
             Some(_) => Err(format!("unresolvable_{what}_kind")),
         }
     };
-    // header (the local pairs come last: their store surfaces are named against the
-    // store the ops fill, and resolved again at each local op)
+    // header: the FFI refuses a negative tolerance (no upstream caller passes one); the
+    // refusal is mirrored here, as the B-rep guards are, so that neither side runs the
+    // script
+    if i.approx < 0.0 {
+        return Err("approx_negative".into());
+    }
+    // (the local pairs come last: their store surfaces are named against the store the
+    // ops fill, and resolved again at each local op)
     let mut shell = Vec::new();
     for (j, f) in i.shell.iter().enumerate() {
         shell.push(hk(c, *f, &[K_FACE], true, 3, &format!("shell{j}"))?);
@@ -1915,7 +2070,7 @@ fn resolve(i: &Inputs, c: &mut Counts, two: &Two) -> Result<(RHeader, Vec<ROp>),
                 other_off: eu(c, *other_off, true)?,
             },
             OpIn::HaveTangentGaps { n, off, other_off } => OpIn::HaveTangentGaps {
-                n: (*n).clamp(1, ffi::MAX_SAMPLES as u64),
+                n: (*n).min(ffi::MAX_SAMPLES as u64),
                 off: eu(c, *off, true)?,
                 other_off: eu(c, *other_off, true)?,
             },
@@ -2107,31 +2262,70 @@ fn encode(i: &Inputs, hdr: &RHeader, ops: &[ROp]) -> Result<Vec<f64>, HarnessErr
 
 // ---- running ----------------------------------------------------------------------------------
 
-/// Replaces each face surface that is exactly an `SmSurfOfRevolution` (which the export
-/// reduces to its B-spline part) by the real surface, read back from the C++ binary
-/// `WriteToDB` record ([`ffi::split_revolutions`]) with the face as owner, and marks the
-/// face exact: its virtual overrides (`CreateIsoParametricCurve` in `LiftCurve`'s
-/// `sm_ExtractIsoCurve`, ...) are then the upstream ones.
-fn read_revolutions(
+fn has_surface_record(type_code: i64) -> bool {
+    matches!(
+        type_code,
+        SURF_OF_REVOLUTION_TYPE
+            | SURF_OF_EXTRUSION_TYPE
+            | CONE_TYPE
+            | CYLINDER_TYPE
+            | SPHERE_TYPE
+            | TORUS_TYPE
+    )
+}
+
+/// Restores supported concrete face surfaces from native input records. Keep the
+/// graph's owner identity and require a complete, type-correct record for every
+/// supported subclass rather than silently falling back to its B-spline part.
+fn read_face_surfaces(
     b: &mut Brep,
     exact: &mut [bool],
+    types: &[Option<i64>],
     records: &[Option<Vec<u8>>],
 ) -> Result<(), HarnessError> {
+    if records.len() != b.faces().len()
+        || exact.len() != records.len()
+        || types.len() != records.len()
+    {
+        return Err(harness("surface records do not match the native face list"));
+    }
     let k = Kernel::default();
-    for (i, rec) in records.iter().enumerate() {
-        let Some(bytes) = rec else { continue };
+    for (i, (rec, type_code)) in records.iter().zip(types).enumerate() {
+        let Some(bytes) = rec else {
+            if type_code.is_some_and(has_surface_record) {
+                return Err(harness(format!(
+                    "missing concrete surface record of face {i}"
+                )));
+            }
+            continue;
+        };
+        let type_code = type_code
+            .filter(|&ty| has_surface_record(ty))
+            .ok_or_else(|| harness(format!("unexpected concrete surface record of face {i}")))?;
         let f = FaceId::from_index(u32::try_from(i).map_err(|_| harness("face index"))?);
         let mut db = DatabaseReader::with_stream(FileType::Binary, InputStream::new(bytes.clone()));
-        let rev = SurfOfRevolution::read_from_db(&k, &mut db, REVOLUTION_DB_VERSION)
-            .map_err(|e| harness(format!("revolution record of face {i}: {e}")))?;
+        let mut surface = Surface::read_from_db(&k, type_code, &mut db, SURFACE_DB_VERSION)
+            .map_err(|e| harness(format!("surface record of face {i}: {e}")))?;
+        if surface.type_code() != type_code || db.in_stream().is_none_or(|s| s.remaining() != 0) {
+            return Err(harness(format!(
+                "surface record type/length mismatch at face {i}"
+            )));
+        }
         let face = b.face_mut(f).map_err(|e| harness(e.to_string()))?;
-        let owner = face.surface.as_ref().and_then(Surface::owner);
-        let mut surface = Surface::from(rev);
+        let owner = face
+            .surface
+            .as_ref()
+            .ok_or_else(|| harness("surface record on a null face surface"))?
+            .owner();
         surface.set_owner(owner);
         face.surface = Some(surface);
+        // Replacement bypasses add_face_record's cache synchronization. Restore
+        // that invariant from this face's real tolerance, never a guessed default.
+        b.sync_face_surface_tolerance(f)
+            .map_err(|e| harness(e.to_string()))?;
         *exact
             .get_mut(i)
-            .ok_or_else(|| harness("revolution record past the faces"))? = true;
+            .ok_or_else(|| harness("surface record past the faces"))? = true;
     }
     Ok(())
 }
@@ -2150,18 +2344,20 @@ fn prepare(i: &Inputs) -> Result<Prepared, Box<Result<Output, HarnessError>>> {
     let Some((a, b)) = ffi::split_exports(&ex) else {
         return Err(Box::new(Ok(build_failure(&ex))));
     };
-    let [rev_a, rev_b] =
-        ffi::split_revolutions(&ex).ok_or_else(|| Box::new(Err(harness("revolution records"))))?;
+    let [surfaces_a, surfaces_b] =
+        ffi::split_surface_records(&ex).ok_or_else(|| Box::new(Err(harness("surface records"))))?;
     let (mut brep_a, mut exact_a, types_a) = import_with_types(&a).map_err(|e| Box::new(Err(e)))?;
-    read_revolutions(&mut brep_a, &mut exact_a, &rev_a).map_err(|e| Box::new(Err(e)))?;
-    let (brep_b, exact_b, types_b) = match &b {
+    read_face_surfaces(&mut brep_a, &mut exact_a, &types_a, &surfaces_a)
+        .map_err(|e| Box::new(Err(e)))?;
+    let (brep_b, exact_b) = match &b {
         Some(b) => {
             let (mut brep, mut exact, types) =
                 import_with_types(b).map_err(|e| Box::new(Err(e)))?;
-            read_revolutions(&mut brep, &mut exact, &rev_b).map_err(|e| Box::new(Err(e)))?;
-            (Some(brep), exact, types)
+            read_face_surfaces(&mut brep, &mut exact, &types, &surfaces_b)
+                .map_err(|e| Box::new(Err(e)))?;
+            (Some(brep), exact)
         }
-        None => (None, Vec::new(), Vec::new()),
+        None => (None, Vec::new()),
     };
     let count5 = |b: &Brep| {
         [
@@ -2177,7 +2373,7 @@ fn prepare(i: &Inputs) -> Result<Prepared, Box<Result<Output, HarnessError>>> {
         curves: [Vec::new(), Vec::new()],
         surfaces: 0,
     };
-    let two = Two::new(brep_a, brep_b, [exact_a, exact_b], [types_a, types_b]);
+    let two = Two::new(brep_a, brep_b, [exact_a, exact_b]);
     let (hdr, ops) = match resolve(i, &mut counts, &two) {
         Ok(r) => r,
         Err(name) => return Err(Box::new(Ok(Output::err(name)))),
@@ -2295,7 +2491,7 @@ fn put_ssi(o: &mut Vec<f64>, two: &Two, s: &SsiData<H>) -> Result<(), HarnessErr
 
 /// Whether `ReplaceEdgeCurves(eu, c3, NULL, orig)` would reverse the curves (the shim's
 /// replica of the function's shape test).
-fn would_reverse(two: &Two, eu: H, c3: H, orig: Option<H>) -> Result<bool, Fail> {
+fn would_reverse(k: &Kernel, two: &Two, eu: H, c3: H, orig: Option<H>) -> Result<bool, Fail> {
     let edge = two
         .edgeuse_edge(eu)?
         .ok_or_else(|| invalid("edge use without edge"))?;
@@ -2305,11 +2501,11 @@ fn would_reverse(two: &Two, eu: H, c3: H, orig: Option<H>) -> Result<bool, Fail>
     let ivl = two.edge_interval(edge)?;
     let tol = two.edge_tolerance(edge)?;
     let cv = |h: H| ClassGeometry::curve(two, h).ok_or_else(|| invalid("curve"));
-    let es = cv(euc)?.evaluate_point(ivl.min())?;
-    let ee = cv(euc)?.evaluate_point(ivl.max())?;
+    let es = cv(euc)?.evaluate_point(k, ivl.min())?;
+    let ee = cv(euc)?.evaluate_point(k, ivl.max())?;
     let civl = cv(c3)?.natural_interval();
-    let cs = cv(c3)?.evaluate_point(civl.min())?;
-    let ce = cv(c3)?.evaluate_point(civl.max())?;
+    let cs = cv(c3)?.evaluate_point(k, civl.min())?;
+    let ce = cv(c3)?.evaluate_point(k, civl.max())?;
     if es.distance(cs) < tol && ee.distance(ce) < tol {
         return Ok(false);
     }
@@ -2317,7 +2513,7 @@ fn would_reverse(two: &Two, eu: H, c3: H, orig: Option<H>) -> Result<bool, Fail>
         return Ok(false);
     }
     let pv = match orig {
-        None => cv(euc)?.evaluate(ivl.evaluate(0.5), 1, true, true)?,
+        None => cv(euc)?.evaluate(k, ivl.evaluate(0.5), 1, true, true)?,
         Some(orig) => {
             let oe = two
                 .edgeuse_edge(orig)?
@@ -2326,10 +2522,10 @@ fn would_reverse(two: &Two, eu: H, c3: H, orig: Option<H>) -> Result<bool, Fail>
                 .edge_curve(oe)?
                 .ok_or_else(|| invalid("edge without curve"))?;
             let oivl = two.edge_interval(oe)?;
-            cv(oc)?.evaluate(oivl.evaluate(0.5), 1, true, true)?
+            cv(oc)?.evaluate(k, oivl.evaluate(0.5), 1, true, true)?
         }
     };
-    let pv2 = cv(c3)?.evaluate(civl.evaluate(0.5), 1, true, true)?;
+    let pv2 = cv(c3)?.evaluate(k, civl.evaluate(0.5), 1, true, true)?;
     let t1 = pv.get(1).copied().ok_or_else(|| invalid("tangent"))?;
     let t2 = pv2.get(1).copied().ok_or_else(|| invalid("tangent"))?;
     Ok(t1.dot(t2) < 0.0)
@@ -2533,10 +2729,10 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<Vec<f64>, Fail> {
                     o.push(NULL_DEREF);
                     continue;
                 };
-                if two.face_surface(face)?.is_none() {
+                let Some(surface) = two.face_surface(face)? else {
                     o.push(NULL_DEREF);
                     continue;
-                }
+                };
                 if is_local {
                     // a listed face without surface (not added yet, or deleted) is
                     // dereferenced upstream
@@ -2548,17 +2744,22 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<Vec<f64>, Fail> {
                         }
                     }
                 }
-                if !is_local && two.face_is_subclass(face) {
-                    // CreateOffsetSurface is virtual and every SmBSplineSurface subclass
-                    // the importer reduces to its B-spline part overrides it: the Rust
-                    // would dispatch the B-spline override instead (the shim stops the
-                    // script here for every subclass face, as nothing after it is
-                    // compared; an SmSurfOfRevolution's offset self-intersection takes
-                    // 20 s to minutes, HANG-26)
-                    return Err(Fail::Solid(SolidError::Unported {
-                        upstream: "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
-                        unit: ANALYTIC_EXPORT,
-                    }));
+                if !is_local {
+                    if two.face_exact(face) != Some(true) {
+                        return Err(Fail::Solid(SolidError::Unported {
+                            upstream: "SmSurface subclass::CreateOffsetSurface (face surface imported as its B-spline part)",
+                            unit: ANALYTIC_EXPORT,
+                        }));
+                    }
+                    if !skip
+                        && ClassGeometry::surface(&two, surface)
+                            .is_some_and(|s| s.type_code() == SURF_OF_REVOLUTION_TYPE)
+                    {
+                        return Err(Fail::Solid(SolidError::Unported {
+                            upstream: "FaceuseOffset self-intersection of a surface of revolution (HANG-26)",
+                            unit: HANG_26,
+                        }));
+                    }
                 }
                 let r = if is_local {
                     let (lf, ls) = local_lists(&two);
@@ -2572,7 +2773,7 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<Vec<f64>, Fail> {
                 };
                 o.push(flag(ns.is_some()));
                 if let Some(ns) = ns {
-                    put_srf(&mut o, ClassGeometry::surface(&two, ns));
+                    put_srf(&k, &mut o, ClassGeometry::surface(&two, ns));
                 }
                 put_ssi(&mut o, &two, &ssi)?;
             }
@@ -2598,7 +2799,8 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<Vec<f64>, Fail> {
                         _ => bad = true,
                     }
                 }
-                if bad || !all_ok {
+                // (no `all_ok`: VertexOffset walks no loops, as the shim)
+                if bad {
                     o.push(NULL_DEREF);
                     continue;
                 }
@@ -2610,7 +2812,7 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<Vec<f64>, Fail> {
                 put_orients(&mut o, &out.orients);
                 o.push(flag(out.surface.is_some()));
                 if let Some(s) = out.surface {
-                    put_srf(&mut o, ClassGeometry::surface(&two, s));
+                    put_srf(&k, &mut o, ClassGeometry::surface(&two, s));
                 }
             }
             OpIn::UpdateFaceDomain { f, s } => {
@@ -2623,12 +2825,24 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<Vec<f64>, Fail> {
                     o.push(NULL_DEREF);
                     continue;
                 }
+                if !two
+                    .face_exact(f)
+                    .ok_or_else(|| Fail::Harness(harness("face outside the import table")))?
+                {
+                    // the trim-curve drops and GetNaturalUVDomain are virtual on the face's
+                    // surface, which the record also compares afterwards: a face imported as
+                    // its B-spline part dispatches (and reports) the B-spline kind instead
+                    return Err(Fail::Solid(SolidError::Unported {
+                        upstream: "UpdateFaceSurfaceDomain on a face surface imported as its B-spline part",
+                        unit: ANALYTIC_EXPORT,
+                    }));
+                }
                 let r = geom.update_face_surface_domain(&k, &mut two, f, s);
                 status(r, &mut o)?; // the face's domain and surface: after every status
                 let d = two.face_uv_domain(f)?;
                 o.extend([d.u_min(), d.u_max(), d.v_min(), d.v_max()]);
                 let sh = two.face_surface(f)?;
-                put_srf(&mut o, sh.and_then(|h| ClassGeometry::surface(&two, h)));
+                put_srf(&k, &mut o, sh.and_then(|h| ClassGeometry::surface(&two, h)));
             }
             OpIn::ReplaceEdgeCurves { eu, c3, uv, orig } => {
                 o.push(10.0);
@@ -2663,7 +2877,7 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<Vec<f64>, Fail> {
                             };
                         }
                     }
-                    if !bad && uv.is_none() && would_reverse(&two, eu, c3, orig)? {
+                    if !bad && uv.is_none() && would_reverse(&k, &two, eu, c3, orig)? {
                         bad = true;
                     }
                 }
@@ -2920,7 +3134,7 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<Vec<f64>, Fail> {
                     // the out-parameters: only after success
                     o.push(flag(out.surface.is_some()));
                     if let Some(s) = out.surface {
-                        put_srf(&mut o, ClassGeometry::surface(&two, s));
+                        put_srf(&k, &mut o, ClassGeometry::surface(&two, s));
                     }
                     put_hcurves(&mut o, &two, &out.trimming_curves)?;
                     put_orients(&mut o, &out.trim_orientations);
@@ -3373,6 +3587,8 @@ impl UnitDiff for Runner {
                 inputs,
             });
         }
+        let zero = zero_header_cases(self.id(), &cases)?;
+        cases.extend(zero);
         Ok(cases)
     }
 
@@ -3405,7 +3621,8 @@ const fn h(b: i64, kind: u8, i: i64) -> Hin {
 const NULL_H: Hin = [-1, K_NULL, -1];
 
 /// Cases built in code: each op on real solid B-reps with explicit geometry, at unit,
-/// tiny and huge scale, plus the guard refusals on the wire network.
+/// tiny and huge scale, plus the guard refusals on the wire network (the run header at
+/// zero is [`zero_header_cases`]).
 #[allow(clippy::too_many_lines)]
 fn edge_cases() -> Vec<(String, Value)> {
     let mut out = Vec::new();
@@ -3432,6 +3649,60 @@ fn edge_cases() -> Vec<(String, Value)> {
             .map(|j| [h(0, K_EDGEUSE, j), h(ob, K_EDGEUSE, j)])
             .collect()
     };
+
+    // Concrete input records must reach the actual virtual offset, not the
+    // B-spline stand-in. Visit both orientations of every analytic fixture face;
+    // skip only the caller-selected self-intersection stage, not geometry creation.
+    for (name, f, faceuses) in [
+        ("cone", "cone.smb", 6),
+        // This legacy file stores its cylindrical wall as an SmCone with zero
+        // semi-angle, not as an SmCylinder; preserve its actual concrete kind.
+        ("zero_angle_cone", "Solids/cylinder.smb", 6),
+        ("sphere", "sphere.smb", 2),
+        ("torus_revolution", "torus.smb", 2),
+        ("extrusion", "surf_extrude.smb", 2),
+        ("revolution", "surf_rev.smb", 2),
+    ] {
+        for (sign, distance) in [("negative", -0.1), ("zero", 0.0), ("positive", 0.1)] {
+            let mut i = base(f, Some(f), distance);
+            i.ops = (0..faceuses)
+                .map(|faceuse| OpIn::FaceuseOffset {
+                    fu: h(0, K_FACEUSE, faceuse),
+                    skip: true,
+                })
+                .collect();
+            add(&format!("analytic_import_{name}_{sign}"), i);
+        }
+    }
+    for (name, fixture) in [
+        (
+            "native_cylinder",
+            BrepIn::Cylinder {
+                radius: 2.0,
+                height: 3.0,
+            },
+        ),
+        (
+            "native_torus",
+            BrepIn::Torus {
+                major: 3.0,
+                minor: 1.0,
+            },
+        ),
+    ] {
+        for (sign, distance) in [("negative", -0.1), ("zero", 0.0), ("positive", 0.1)] {
+            let mut i = base("cone.smb", None, distance);
+            i.brep_a = fixture.clone();
+            i.brep_b = Some(fixture.clone());
+            i.ops = (0..2)
+                .map(|faceuse| OpIn::FaceuseOffset {
+                    fu: h(0, K_FACEUSE, faceuse),
+                    skip: true,
+                })
+                .collect();
+            add(&format!("analytic_import_{name}_{sign}"), i);
+        }
+    }
 
     // getters and the fixture ops
     let mut i = base("cone.smb", Some("cone.smb"), 0.5);
@@ -4096,5 +4367,347 @@ fn edge_cases() -> Vec<(String, Value)> {
         add(&format!("vase_{name}_scale"), i);
     }
 
+    // VertexOffset on topology without loops (it walks none, so the shim no longer
+    // refuses it there): the wire network's vertices with two and three of their edges,
+    // and with no edges; a single wire's end vertex with its own edge (refused: the
+    // one-edge branch needs a face)
+    for (name, v, edges) in [
+        ("network_vertex_two_edges", 0, vec![0, 1]),
+        ("network_vertex_three_edges", 1, vec![1, 2, 3]),
+        ("network_vertex_no_edges", 2, Vec::new()),
+    ] {
+        let mut i = base("cone.smb", None, 0.5);
+        i.brep_a = BrepIn::Network;
+        i.ops = vec![OpIn::VertexOffset {
+            v: h(0, K_VERTEX, v),
+            edges: edges.into_iter().map(|e| h(0, K_EDGE, e)).collect(),
+        }];
+        add(name, i);
+    }
+    {
+        let mut i = base("cone.smb", None, 0.5);
+        i.brep_a = BrepIn::Wire {
+            curve: CrvIn {
+                dim: 3,
+                cpts: vec![
+                    [0.0, 0.0, 0.0, 1.0],
+                    [1.0, 2.0, 0.0, 1.0],
+                    [3.0, 1.0, 1.0, 1.0],
+                ],
+                p: 2,
+                u: vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            },
+            t0: 0.0,
+            t1: 1.0,
+        };
+        i.ops = vec![
+            OpIn::VertexOffset {
+                v: h(0, K_VERTEX, 0),
+                edges: vec![h(0, K_EDGE, 0)],
+            },
+            OpIn::VertexOffset {
+                v: h(0, K_VERTEX, 1),
+                edges: Vec::new(),
+            },
+        ];
+        add("wire_vertex_offset", i);
+    }
+
+    // HaveTangentGaps with no samples: upstream evaluates once at 0 / 0
+    let mut i = base("cone.smb", Some("cone.smb"), 0.5);
+    i.pairs = pairs(4, 1);
+    i.ops = vec![OpIn::HaveTangentGaps {
+        n: 0,
+        off: h(1, K_EDGEUSE, 0),
+        other_off: h(1, K_EDGEUSE, 1),
+    }];
+    add("cone_have_tangent_gaps_no_samples", i);
+
     out
+}
+
+/// Bases of the `*_zero_distance` cases: their compared output changes at `dist = 0`.
+///
+/// A sweep of the 800 generated scripts at `dist = 0` (the `Getters` echo of the header
+/// left out) changes 67 compared results, every one a script with a `FaceuseOffset` (the
+/// offset surface at distance 0) or a `VertexOffset` (the radius-0 arc, status 1007);
+/// `EdgeuseOffset` reads the distance on its rail path only, which defers. The built-in
+/// `cone_vertex_offset` is the only built-in whose compared output changes. `gen0638`
+/// offsets a B-spline face (`ellips_ts2.smb`); `gen0700` and `gen0012` offset planes.
+const ZERO_DISTANCE_BASES: &[&str] = &[
+    "cone_vertex_offset",
+    "gen0700",
+    "gen0107",
+    "gen0012",
+    "gen0638",
+];
+
+/// Bases of the `*_zero_approx` cases: their compared output changes at `approx = 0`.
+///
+/// The same sweep at `approx = 0` changes 2 compared results, both through
+/// `VertexOffset`; the built-in `cone_trim_extended_edge` is the only built-in whose
+/// compared output changes (`TrimExtendedEdge`'s `d3DTol`, ten times the tolerance).
+const ZERO_APPROX_BASES: &[&str] = &["cone_trim_extended_edge", "gen0775", "gen0651"];
+
+/// The run header at zero (maintainer review of #156, second round): the bases above with
+/// `dist = 0` or `approx = 0`, named by exact case name (a generated base is taken from
+/// the case list, so `MIN_GENERATED` keeps it present); a base that is missing is an error.
+fn zero_header_cases(unit: &str, cases: &[Case]) -> Result<Vec<Case>, HarnessError> {
+    let mut out = Vec::new();
+    for (suffix, bases, zero_dist) in [
+        ("zero_distance", ZERO_DISTANCE_BASES, true),
+        ("zero_approx", ZERO_APPROX_BASES, false),
+    ] {
+        for base in bases {
+            let Some(c) = cases.iter().find(|c| c.name == *base) else {
+                return Err(harness(format!("zero-header base {base} is not a case")));
+            };
+            let mut i: Inputs = c.parse()?;
+            if zero_dist {
+                i.dist = 0.0;
+            } else {
+                i.approx = 0.0;
+            }
+            let inputs = serde_json::to_value(i).map_err(|e| harness(e.to_string()))?;
+            out.push(Case {
+                unit: unit.to_string(),
+                name: format!("{base}_{suffix}"),
+                source: CaseSource::Inline,
+                inputs,
+            });
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn import_input(name: &str) -> Inputs {
+        Inputs {
+            brep_a: file(name),
+            brep_b: Some(file(name)),
+            dist: 0.1,
+            approx: 1e-5,
+            analytics: true,
+            local: Vec::new(),
+            inset: false,
+            extend: false,
+            shell: Vec::new(),
+            pairs: Vec::new(),
+            ops: vec![OpIn::Getters],
+        }
+    }
+
+    fn nurb_state(surface: &Surface) -> String {
+        let base = match surface.kind() {
+            SurfaceKind::BSpline(s) => Some(s),
+            SurfaceKind::Cone(s) => Some(s.rev().base()),
+            SurfaceKind::Sphere(s) => Some(s.base().base()),
+            SurfaceKind::Torus(s) => Some(s.base().base()),
+            SurfaceKind::SurfOfRevolution(s) => Some(s.base()),
+            SurfaceKind::SurfOfExtrusion(s) => Some(s.base()),
+            _ => None,
+        };
+        format!("{:?}", base.and_then(BSplineSurface::gw_nurb))
+    }
+
+    #[test]
+    fn surface_records_restore_native_kinds_owners_tolerances_and_nurbs_in_both_arenas() {
+        for (fixture, expected_type) in [
+            (file("cone.smb"), CONE_TYPE),
+            (file("Solids/cylinder.smb"), CONE_TYPE),
+            (file("sphere.smb"), SPHERE_TYPE),
+            (file("torus.smb"), SURF_OF_REVOLUTION_TYPE),
+            (
+                BrepIn::Cylinder {
+                    radius: 2.0,
+                    height: 3.0,
+                },
+                CYLINDER_TYPE,
+            ),
+            (
+                BrepIn::Torus {
+                    major: 3.0,
+                    minor: 1.0,
+                },
+                TORUS_TYPE,
+            ),
+            (file("surf_extrude.smb"), SURF_OF_EXTRUSION_TYPE),
+            (file("surf_rev.smb"), SURF_OF_REVOLUTION_TYPE),
+        ] {
+            let name = format!("{fixture:?}");
+            let mut input = import_input("cone.smb");
+            input.brep_a = fixture.clone();
+            input.brep_b = Some(fixture);
+            let out = export(&input).unwrap();
+            let (a, b) = ffi::split_exports(&out).unwrap();
+            let records = ffi::split_surface_records(&out).unwrap();
+            for (block, records) in [a, b.unwrap()].iter().zip(&records) {
+                let (mut brep, mut exact, types) = import_with_types(block).unwrap();
+                assert!(types.contains(&Some(expected_type)), "{name}: {types:?}");
+                let before: Vec<_> = brep
+                    .faces()
+                    .iter()
+                    .map(|(_, face)| {
+                        face.surface
+                            .as_ref()
+                            .map(|s| (s.owner(), s.owner_zone_tol_3d(), nurb_state(s)))
+                    })
+                    .collect();
+                read_face_surfaces(&mut brep, &mut exact, &types, records).unwrap();
+                assert!(exact.iter().all(|&value| value), "{name}: {exact:?}");
+                for ((index, face), original) in brep.faces().iter().zip(before) {
+                    let Some(surface) = face.surface.as_ref() else {
+                        assert!(original.is_none());
+                        continue;
+                    };
+                    let (owner, tolerance, nurb) = original.unwrap();
+                    assert_eq!(surface.owner(), owner, "{name}: {index:?}");
+                    assert_eq!(surface.owner_zone_tol_3d(), tolerance, "{name}: {index:?}");
+                    assert_eq!(nurb_state(surface), nurb, "{name}: {index:?}");
+                    if let Some(type_code) = types[index.index() as usize] {
+                        assert_eq!(surface.type_code(), type_code, "{name}: {index:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn restored_surface_uses_its_own_face_tolerance_and_keeps_unowned_surfaces_unowned() {
+        let out = export(&import_input("cone.smb")).unwrap();
+        let (a, b) = ffi::split_exports(&out).unwrap();
+        let records = ffi::split_surface_records(&out).unwrap();
+        for (arena, (block, records)) in [a, b.unwrap()].iter().zip(&records).enumerate() {
+            for unowned in [false, true] {
+                let (mut brep, mut exact, types) = import_with_types(block).unwrap();
+                let faces: Vec<_> = brep.faces().ids().collect();
+                for &face_id in &faces {
+                    let face = brep.face_mut(face_id).unwrap();
+                    face.tolerance =
+                        (arena + 1) as f64 * (f64::from(face_id.index()) + 1.0) * 0.003;
+                    if unowned {
+                        face.surface.as_mut().unwrap().set_owner(None);
+                    }
+                    brep.sync_face_surface_tolerance(face_id).unwrap();
+                }
+                read_face_surfaces(&mut brep, &mut exact, &types, records).unwrap();
+                for face_id in faces {
+                    let face = brep.face(face_id).unwrap();
+                    let surface = face.surface.as_ref().unwrap();
+                    assert_eq!(surface.owner().is_none(), unowned);
+                    assert_eq!(
+                        surface.face_zone_tol_3d().unwrap(),
+                        (!unowned).then_some(face.tolerance),
+                        "arena={arena}, face={face_id:?}",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cache_context_distinguishes_equal_face_indices_in_two_arenas() {
+        let surface = SrfIn::Bspline(BssIn {
+            oob: false,
+            form: 11,
+            net: vec![
+                vec![[0.0, 0.0, 0.0, NOW], [0.0, 1.0, 0.0, NOW]],
+                vec![[1.0, 0.0, 0.0, NOW], [1.0, 1.0, 0.0, NOW]],
+            ],
+            p: 1,
+            q: 1,
+            u: vec![0.0, 0.0, 1.0, 1.0],
+            v: vec![0.0, 0.0, 1.0, 1.0],
+        });
+        let fixture = BrepIn::Face {
+            surface,
+            dom: [0.0, 0.0, 1.0, 1.0],
+        };
+        let mut input = import_input("cone.smb");
+        input.brep_a = fixture.clone();
+        input.brep_b = Some(fixture);
+        let mut prepared = prepare(&input).unwrap();
+        let k = Kernel::default();
+        for (arena, tolerance) in [(0, 0.003), (1, 0.007)] {
+            let handle = hd(arena, K_FACE_SURFACE, 0);
+            let brep = prepared.two.brep_m(handle).unwrap();
+            let face = FaceId::from_index(0);
+            brep.face_mut(face).unwrap().tolerance = tolerance;
+            brep.sync_face_surface_tolerance(face).unwrap();
+            // Exercise the native editing-mode cache branch, not guessed defaults.
+            brep.set_editing_enabled(true);
+            let source = ClassGeometry::surface(&prepared.two, handle).unwrap();
+            let mut surface = source.clone();
+            surface.set_owner(source.owner());
+            surface.set_owner_zone_tol_3d(source.owner_zone_tol_3d());
+            let cache = prepared
+                .two
+                .prepare_surface_solve_cache(&k, &surface, Some(handle))
+                .unwrap();
+            assert_eq!(cache.face().unwrap(), Some(hd(arena, K_FACE, 0)));
+            assert_eq!(cache.surface().owner_zone_tol_3d(), Some(tolerance));
+            assert_eq!(
+                prepared
+                    .two
+                    .prepared_face_queries()
+                    .unwrap()
+                    .face_zone_tol_3d(hd(arena, K_FACE, 0))
+                    .unwrap(),
+                tolerance
+            );
+        }
+    }
+
+    #[test]
+    fn incomplete_or_misaligned_surface_records_are_harness_errors_not_deferrals() {
+        let out = export(&import_input("torus.smb")).unwrap();
+        let (a, _) = ffi::split_exports(&out).unwrap();
+        let [records, _] = ffi::split_surface_records(&out).unwrap();
+        let index = records.iter().position(Option::is_some).unwrap();
+        for mutation in 0..5 {
+            let (mut brep, mut exact, mut types) = import_with_types(&a).unwrap();
+            let mut records = records.clone();
+            match mutation {
+                0 => {
+                    records.pop();
+                }
+                1 => {
+                    records[index].as_mut().unwrap().pop();
+                }
+                2 => records[index].as_mut().unwrap().push(0),
+                3 => records[index] = None,
+                _ => types[index] = Some(SPHERE_TYPE),
+            }
+            assert!(read_face_surfaces(&mut brep, &mut exact, &types, &records).is_err());
+        }
+    }
+
+    #[test]
+    fn exact_revolution_import_keeps_the_native_self_intersection_hang_guard() {
+        for name in ["vase_rev.smb", "toruswvy.smb"] {
+            let mut input = import_input(name);
+            input.brep_b = None;
+            let prepared = prepare(&input).unwrap();
+            let brep = prepared.two.breps[0].as_ref().unwrap();
+            let faceuse = brep
+                .faceuses()
+                .iter()
+                .find_map(|(id, faceuse)| {
+                    let surface = brep.face(faceuse.face?).ok()?.surface.as_ref()?;
+                    (surface.type_code() == SURF_OF_REVOLUTION_TYPE).then_some(id)
+                })
+                .unwrap();
+            input.ops = vec![OpIn::FaceuseOffset {
+                fu: h(0, K_FACEUSE, i64::from(faceuse.index())),
+                skip: false,
+            }];
+            let rust = run_rust(&input).unwrap();
+            assert_eq!(rust.deferred.unwrap().unit, HANG_26);
+            let cpp = run_cpp(&input).unwrap();
+            assert_eq!(cpp.values["state"], [0.0, 7.0, -6.0]);
+        }
+    }
 }

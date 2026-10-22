@@ -14,8 +14,8 @@
 //! propagate Unported; errors which would leave an uninitialised output propagate.
 //! A default `SmPoint2d` is `SM_UNDEF_DOUBLE`, not uninitialised, so an ignored
 //! `ConvertUVFromSTEPToNURBS` failure keeps the converter-written U and that V.
-//! The general intersection is supplied as a callback until `SurfaceKind` can hold
-//! cones (without erasing their virtual methods). It receives every original
+//! The general intersection is supplied as a callback until the common Surface intersection
+//! adapters retain cone virtual methods. It receives every original
 //! argument. Sphere dispatch awaits the sphere type. Bounding boxes are those of
 //! bare geometry (no face owner), with upstream's zone-tolerance expansion.
 //! A generator solve with no solution explicitly writes EXTERIOR upstream:
@@ -46,7 +46,9 @@ use crate::kernel::Kernel;
 use crate::math::{max2, min2, EFF_ZERO, EFF_ZERO_SQRT, PI, UNDEF_DOUBLE};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface::{BoundingBoxRequest, LocationType};
+use crate::surface::plane::p2::PlaneOwner;
 use crate::surface::plane::Plane;
+use crate::surface::sphere::Sphere;
 use crate::surface::surf_of_extrusion::SurfOfExtrusion;
 use crate::surface::surf_of_revolution::p3::Revolved;
 use crate::surface::surf_of_revolution::SurfOfRevolution;
@@ -64,6 +66,8 @@ pub enum IntersectTarget<'a> {
     Plane(&'a Plane),
     /// A general surface of revolution.
     Revolution(&'a SurfOfRevolution),
+    /// A sphere.
+    Sphere(&'a Sphere),
     /// A surface of extrusion.
     Extrusion(&'a SurfOfExtrusion),
     /// A surface already represented by the shared enum.
@@ -164,19 +168,20 @@ fn boundary_intersections(
     _other_domain: &Extent2d,
     _approx_tol: Option<f64>,
 ) -> Result<SurfaceIntersection> {
-    // The boundary algorithm is ported, but requires Surface operands. Preserve
-    // Cone/Cylinder virtual dispatch rather than wrapping their B-spline base.
-    // UNPORTED(surface.surface_p2): SurfaceKind::Cone (issue #76 / PR #133)
+    // SurfaceKind retains cones; the shared boundary path still needs its
+    // analytic iso/evaluation adapters. Keep this integration with its owner.
+    // UNPORTED(surface.surface_p2): common cone boundary dispatch adapter
     Err(SolidError::unported(
-        "SurfaceKind::Cone (SmSurface::IntersectSurfaceBoundaries)",
+        "SmCone common boundary dispatch adapter",
         "surface.surface_p2",
     ))
 }
 
-fn bbox(cone: &Cone, domain: &Extent2d) -> Result<Extent3d> {
+fn bbox(k: &Kernel, cone: &Cone, domain: &Extent2d) -> Result<Extent3d> {
     cone.rev()
         .base()
         .calculate_bounding_box(
+            k,
             domain,
             &BoundingBoxRequest {
                 normal: true,
@@ -231,9 +236,9 @@ fn add_plane_line(
     Ok(())
 }
 
-fn add_plane_ellipses(out: &mut SurfaceIntersection, curves: Vec<Curve>) -> Result<()> {
+fn add_plane_ellipses(k: &Kernel, out: &mut SurfaceIntersection, curves: Vec<Curve>) -> Result<()> {
     for curve in curves {
-        let kind = if curve.is_degenerate(EFF_ZERO, None)? {
+        let kind = if curve.is_degenerate(k, EFF_ZERO, None)? {
             TsectCurveType::Touching
         } else {
             TsectCurveType::Crossing
@@ -287,21 +292,39 @@ impl Cone {
         other_domain: &Extent2d,
         approx_tol: Option<f64>,
     ) -> Result<(bool, SurfaceIntersection)> {
+        self.intersect_with_plane_owned(
+            k,
+            domain,
+            plane,
+            PlaneOwner::NoFace,
+            other_domain,
+            approx_tol,
+        )
+    }
+
+    /// [`Cone::intersect_with_plane`] with the plane's owner: its box is expanded by the
+    /// tolerance of the plane's face (`GetFace()->GetTolerance()`), else by
+    /// `SM_ZONE_TOL_3D`.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Cone::intersect_with_plane`]; [`SolidError::Unported`]
+    /// (`SmFace::GetTolerance`) for a plane with a face whose tolerance is not cached.
+    pub(crate) fn intersect_with_plane_owned(
+        &self,
+        k: &Kernel,
+        domain: &Extent2d,
+        plane: &Plane,
+        plane_owner: PlaneOwner,
+        other_domain: &Extent2d,
+        approx_tol: Option<f64>,
+    ) -> Result<(bool, SurfaceIntersection)> {
         let mut out = SurfaceIntersection::default();
         let tol = approx_tol.map_or(EFF_ZERO_SQRT, |t| approx_tol3d(k, t));
-        let box1 = bbox(self, domain)?;
-        let mut box2 = plane
-            .base_with_nurb()?
-            .calculate_bounding_box(
-                other_domain,
-                &BoundingBoxRequest {
-                    normal: true,
-                    expand_by_zone_tol: true,
-                    ..BoundingBoxRequest::default()
-                },
-            )?
-            .normal
-            .ok_or_else(|| SolidError::sm_err(OP))?;
+        let box1 = bbox(k, self, domain)?;
+        // crPlane.CalculateBoundingBox: expanded by its face's tolerance (no face:
+        // SM_ZONE_TOL_3D)
+        let mut box2 = plane.bounding_boxes(k, other_domain, plane_owner)?.0;
         box2.expand_absolute(tol);
         if box1.are_disjoint(&box2, 0.0) {
             return Ok((false, out));
@@ -423,7 +446,7 @@ impl Cone {
                 &step.u_interval(),
                 tol,
             )?;
-            add_plane_ellipses(&mut out, curves)?;
+            add_plane_ellipses(k, &mut out, curves)?;
         } else {
             let cone_angle = (self.semi_angle_deg() * (PI / 180.0)).abs();
             let plane_angle = PI / 2.0 - angle.abs();
@@ -499,7 +522,7 @@ impl Cone {
                     &interval,
                     tol,
                 )?;
-                add_plane_ellipses(&mut out, curves)?;
+                add_plane_ellipses(k, &mut out, curves)?;
             }
         }
         Ok((false, out))
@@ -522,8 +545,8 @@ impl Cone {
         if core::ptr::eq(self, other) {
             return Ok((false, out));
         }
-        let box1 = bbox(self, domain)?;
-        let mut box2 = bbox(other, other_domain)?;
+        let box1 = bbox(k, self, domain)?;
+        let mut box2 = bbox(k, other, other_domain)?;
         let size = box2.size();
         let tol = approx_tol.map_or(EFF_ZERO_SQRT * (1.0 + size.length()), |t| {
             approx_tol3d(k, t)
@@ -717,7 +740,7 @@ impl Cone {
             }
             let count = out.curves_3d.len();
             for curve in degenerate {
-                let point = curve.evaluate_point(curve.natural_interval().min())?;
+                let point = curve.evaluate_point(k, curve.natural_interval().min())?;
                 let mut unique = true;
                 for existing in out.curves_3d.iter().take(count) {
                     if ellipse_contains(k, existing, point)? {
@@ -777,7 +800,7 @@ fn nurbs_uv_status_ignored(cone: &Cone, k: &Kernel, step_uv: Point2) -> Result<P
             let x = cone
                 .rev()
                 .polar
-                .convert_to_nurbs_parameter_or_written(circle, step_uv.x, 0.0)?;
+                .convert_to_nurbs_parameter_or_written(k, circle, step_uv.x, 0.0)?;
             Ok(Point2::new(x.unwrap_or(UNDEF_DOUBLE), UNDEF_DOUBLE))
         }
     }
@@ -820,7 +843,7 @@ fn add_ellipse_intervals_trimmed_to_two_cones(
                     let point = center + rx * cos * x + y * sin * ry;
                     let mut unique = true;
                     for existing in degenerate.iter() {
-                        let old = existing.evaluate_point(existing.natural_interval().min())?;
+                        let old = existing.evaluate_point(k, existing.natural_interval().min())?;
                         let zero = EFF_ZERO * 100.0 * (1.0 * point.max_dimension());
                         if old.distance(point) < zero {
                             unique = false;
@@ -891,6 +914,9 @@ impl Cone {
             IntersectTarget::Surface(s) => match s.kind() {
                 SurfaceKind::Plane(p) => IntersectTarget::Plane(p),
                 SurfaceKind::SurfOfRevolution(r) => IntersectTarget::Revolution(r),
+                SurfaceKind::Cone(c) => IntersectTarget::Cone(c.as_ref()),
+                SurfaceKind::Sphere(s) => IntersectTarget::Sphere(s.as_ref()),
+                SurfaceKind::SurfOfExtrusion(e) => IntersectTarget::Extrusion(e.as_ref()),
                 _ => other,
             },
             _ => other,
@@ -905,6 +931,12 @@ impl Cone {
             IntersectTarget::Revolution(r) => {
                 let (more, mut out) =
                     r.intersect_with_cone(k, other_domain, self, domain, approx_tol_3d)?;
+                core::mem::swap(&mut out.surface1_uv_curves, &mut out.surface2_uv_curves);
+                (more, out)
+            }
+            IntersectTarget::Sphere(s) => {
+                let (more, mut out) =
+                    s.intersect_with_cone(k, other_domain, self, domain, approx_tol_3d)?;
                 core::mem::swap(&mut out.surface1_uv_curves, &mut out.surface2_uv_curves);
                 (more, out)
             }

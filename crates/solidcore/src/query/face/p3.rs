@@ -10,7 +10,7 @@
 //!
 //! | Rust                                          | Upstream                                    |
 //! |-----------------------------------------------|---------------------------------------------|
-//! | [`calculate_tight_bounding_box`]              | `SmFace::CalculateTightBoundingBox`         |
+//! | [`calculate_tight_bounding_box`], [`calculate_tight_bounding_box_into`] | `SmFace::CalculateTightBoundingBox` |
 //! | [`face_classify_uv_line`]                     | `sm_FaceClassifyUVLine` (file static)       |
 //! | [`find_and_classify_loop_bisector`], [`LoopBisector`] | `sms_FindAndClassifyLoopBisector`   |
 //! | [`sector_classify_curve_on`], [`SectorEdgeuse`], [`SectorClassifyInput`], [`SectorClass`] | `SmFace::SectorClassifyCurveOn` |
@@ -37,10 +37,12 @@
 //!   borrows the B-rep and resolves the face, surface, topology, edge curve and trim
 //!   curve handles `CurveOnClassify` makes against it.
 //! - **B-rep snapshots.** `PointClassify` (tight box) and `SmEdge::IsSeam` (bisector)
-//!   may attach missing UV trim curves to the B-rep, which the port's functions take
-//!   immutably; they run on one private copy of the B-rep per call, as
-//!   `query::face::p2`'s boundary views do. The attached curves are the same ones a
-//!   later call makes again, so no result changes.
+//!   may attach missing UV trim curves to the B-rep, and `SetUVTrimCurve` then raises
+//!   the edge (and vertex) tolerances, which changes later tolerance-expanded boxes.
+//!   The tight box takes a [`LazyBrep`]: given `&mut Brep` the edits persist, as
+//!   upstream; given `&Brep` they go to a private copy and are lost. The bisector runs
+//!   on one private copy of the B-rep per call, as `query::face::p2`'s boundary views
+//!   do.
 //! - **Surface boxes of a face's surface.** `IsPlanar` and `CalculateBoundingBox` of a
 //!   B-spline, plane or surface of revolution expand their boxes by the owning face's
 //!   tolerance (`GetFace()->GetTolerance()`); the port's surface cannot reach its face,
@@ -56,8 +58,7 @@
 //! - **Same curve on two edges.** `SectorClassifyCurveOn` compares the curve pointers
 //!   of two different edges; an edge owns its curve in the port, so two edges never
 //!   share one (`bSingleCurveOnEdges` is always false), as in `query::edge`.
-//! - **`SmCrvOnSurf`** holds a B-spline surface in the port: a 2D curve on a face whose
-//!   surface is no B-spline is [`SolidError::Unported`] (`curve.crv_on_surf`).
+//! - **`SmCrvOnSurf`** preserves a face surface's concrete dispatch.
 //! - **`FindElementInMaskedArray`** tests `lBitMask & (1<ii)` upstream (a comparison,
 //!   not a shift); the port keeps that test, so only elements `2..` are searched and only
 //!   when bit 0 of the mask is set (`plan/upstream-issues.md`).
@@ -102,6 +103,7 @@ use crate::nurbs::b_spline_surface::BoundingBoxRequest;
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
+use crate::query::brep::LazyBrep;
 use crate::query::edge as qe;
 use crate::query::face::p2::{
     curve_on_classify, face_vertices, point_classify, CurveOnClassifyObjects, PointClassifyOptions,
@@ -216,6 +218,7 @@ fn edge_curve<'b>(b: &'b Brep, e: EdgeId, operation: &'static str) -> Result<&'b
 /// search was clamped (on a failure, the outputs as upstream initialises them: the
 /// start parameter, not clamped).
 fn step_off(
+    k: &Kernel,
     curve: &Curve,
     interval: &Extent1d,
     start_param: f64,
@@ -224,6 +227,7 @@ fn step_off(
     tol_3d: f64,
 ) -> Result<StepOff> {
     Ok(ignored(euclidian_step_off(
+        k,
         curve,
         interval,
         start_param,
@@ -245,7 +249,13 @@ fn step_off(
 fn has_b_spline_box(s: &Surface) -> bool {
     matches!(
         s.kind(),
-        SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) | SurfaceKind::SurfOfRevolution(_)
+        SurfaceKind::BSpline(_)
+            | SurfaceKind::Plane(_)
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
+            | SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
     )
 }
 
@@ -265,6 +275,10 @@ fn surface_is_planar(k: &Kernel, b: &Brep, f: FaceId, s: &Surface, tol_3d: f64) 
     let base = match s.kind() {
         SurfaceKind::BSpline(bs) => Some(bs),
         SurfaceKind::SurfOfRevolution(r) => Some(r.base()),
+        SurfaceKind::SurfOfExtrusion(r) => Some(r.base()),
+        SurfaceKind::Cone(c) => Some(c.rev().base()),
+        SurfaceKind::Sphere(s) => Some(s.base().base()),
+        SurfaceKind::Torus(s) => Some(s.base().base()),
         _ => None,
     };
     if let (Some(bs), Some(face_tol)) = (base, owning_face_tolerance(b, f, s)?) {
@@ -277,8 +291,9 @@ fn surface_is_planar(k: &Kernel, b: &Brep, f: FaceId, s: &Surface, tol_3d: f64) 
             pseudo_guess: None,
             polar_guess: None,
             expand_by_zone_tol: false,
+            expand_tolerance: None,
         };
-        let pseudo = ignored(bs.calculate_bounding_box(&s.natural_uv_domain(), &req))?
+        let pseudo = ignored(bs.calculate_bounding_box(k, &s.natural_uv_domain(), &req))?
             .and_then(|r| r.pseudo)
             .map_or_else(PseudoBox::new, |mut p| {
                 p.expand_absolute(face_tol);
@@ -321,10 +336,36 @@ fn surface_bounding_box(
 /// those of [`face_vertices`], the edge boxes ([`qe::calculate_tight_bounding_box`]),
 /// the planarity test and the surface's loose box; [`SolidError::Unported`] from the
 /// global solves and point classifications.
-pub fn calculate_tight_bounding_box(k: &Kernel, b: &Brep, f: FaceId) -> Result<Extent3d> {
+pub fn calculate_tight_bounding_box<'a>(
+    k: &Kernel,
+    b: impl Into<LazyBrep<'a>>,
+    f: FaceId,
+) -> Result<Extent3d> {
+    let mut face_bbox = Extent3d::new();
+    calculate_tight_bounding_box_into(k, &mut b.into(), f, &mut face_bbox)?;
+    Ok(face_bbox)
+}
+
+/// [`calculate_tight_bounding_box`] into the caller's `face_bbox` (`rFaceBBox`), for
+/// callers that ignore the status: as upstream, the box of the vertices and edges is
+/// written before the surface's part is computed, so a failure there leaves that box;
+/// a failure before it (vertices, edge boxes) leaves `face_bbox` as it was.
+///
+/// # Errors
+///
+/// Those of [`calculate_tight_bounding_box`].
+pub fn calculate_tight_bounding_box_into(
+    k: &Kernel,
+    lb: &mut LazyBrep<'_>,
+    f: FaceId,
+    out: &mut Extent3d,
+) -> Result<()> {
+    let b = lb.get();
     let mut face_bbox = Extent3d::new();
 
-    let surface = face_surface(b, f, OP_TIGHT)?;
+    // (a copy that keeps the owning face: the point classifications below may edit
+    // the B-rep)
+    let surface = &face_surface(b, f, OP_TIGHT)?.clone_for_evaluation()?;
     let face_zone_tol_3d = zone_tol3d(k, b.face(f)?.tolerance);
 
     // Method: get the bounding box of the Vertices.
@@ -345,17 +386,20 @@ pub fn calculate_tight_bounding_box(k: &Kernel, b: &Brep, f: FaceId) -> Result<E
         face_bbox = face_bbox.union(&e_bbox);
     } // end loop on Edges
 
+    // Set output to what we have so far.
+    *out = face_bbox;
+
     // Now the surface.
     // If it's a plane, then we're done.
     if surface_is_planar(k, b, f, surface, EFF_ZERO)? {
-        return Ok(face_bbox);
+        return Ok(());
     }
 
     // First check the approximate box.
     let uv_domain = b.face(f)?.uv_domain;
     let srf_bbox = surface_bounding_box(k, b, f, surface, &uv_domain)?;
     if srf_bbox.is_contained_by(&face_bbox, 0.0) {
-        return Ok(face_bbox);
+        return Ok(());
     }
 
     // Unfortunately, we can't just call the surface method with our domain,
@@ -368,8 +412,6 @@ pub fn calculate_tight_bounding_box(k: &Kernel, b: &Brep, f: FaceId) -> Result<E
     let mut srf_bbox = Extent3d::new();
 
     let mut dir_vec = Vec3::new(1.0, 0.0, 0.0); // +/- x
-                                                // (PointClassify may attach missing UV trim curves: a private snapshot of the B-rep)
-    let mut snapshot = b.clone();
     for idx in 0..3 {
         if idx == 1 {
             dir_vec = Vec3::new(0.0, 1.0, 0.0); // +/- y
@@ -399,11 +441,12 @@ pub fn calculate_tight_bounding_box(k: &Kernel, b: &Brep, f: FaceId) -> Result<E
                     sol.parameters.first().copied().unwrap_or(0.0),
                     sol.parameters.get(1).copied().unwrap_or(0.0),
                 );
-                let mut eval = SurfaceEval::with_uv(Some(surface), uv.x, uv.y);
+                let mut eval = SurfaceEval::with_uv(k, Some(surface), uv.x, uv.y);
                 // (status ignored upstream)
+                // (it may attach missing UV trim curves to the B-rep)
                 ignored(point_classify(
                     k,
-                    &mut snapshot,
+                    lb.get_mut(),
                     f,
                     uv,
                     &mut pt_class,
@@ -424,7 +467,8 @@ pub fn calculate_tight_bounding_box(k: &Kernel, b: &Brep, f: FaceId) -> Result<E
     face_bbox = face_bbox.union(&srf_bbox);
 
     // End copy of Surface::CalculateTightBoundingBox():
-    Ok(face_bbox)
+    *out = face_bbox;
+    Ok(())
 }
 
 /// `SmSurfaceEval::Pos()`: the position, also when the evaluation failed (then what
@@ -690,7 +734,7 @@ pub fn face_classify_uv_line<O: ClassObject>(
 
     // Figure a tolerance for the CurveClassification (never read upstream)
     let surface = face_surface(b, f, OP_UV_LINE)?;
-    approx_derivative_lengths(surface, &b.face(f)?.uv_domain)?;
+    approx_derivative_lengths(k, surface, &b.face(f)?.uv_domain)?;
 
     // Note: ReSet() tells the CC that pNewUVLine is owned, so it will be deleted.
     let (h, _) = objects.set_classify_curves(Curve::from(line), None)?;
@@ -876,15 +920,15 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
         }
 
         // Edge midpoint (status ignored)
-        if let Some(v) = ignored(curve.evaluate(edge_ivl.mid(), 1, true, true))? {
+        if let Some(v) = ignored(curve.evaluate(k, edge_ivl.mid(), 1, true, true))? {
             sp = pv(&v, OP_BISECTOR)?;
         }
 
         // Get Edge length - save longest edge in case we have to use it later
-        if let Some(p) = ignored(curve.evaluate_point(edge_ivl.min()))? {
+        if let Some(p) = ignored(curve.evaluate_point(k, edge_ivl.min()))? {
             ends[0] = p;
         }
-        if let Some(p) = ignored(curve.evaluate_point(edge_ivl.max()))? {
+        if let Some(p) = ignored(curve.evaluate_point(k, edge_ivl.max()))? {
             ends[1] = p;
         }
         let half0 = ends[0].distance(sp[0]);
@@ -948,7 +992,7 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
         // (note: the edge interval and sample point stay those of edge use ii)
         let uv_guess = match eu1::uv_trim_curve(b, eu)?.0 {
             Some(uv_trim) => {
-                let g = ignored(uv_trim.evaluate_point(edge_ivl.mid()))?.unwrap_or(Vec3::UNDEF);
+                let g = ignored(uv_trim.evaluate_point(k, edge_ivl.mid()))?.unwrap_or(Vec3::UNDEF);
                 Some(Point2::new(g.x, g.y))
             }
             None => None,
@@ -972,6 +1016,7 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
 
         // Drop EdgeTan to Surface (status ignored)
         if let Some(v) = ignored(drop_vectors_at(
+            k,
             surface,
             uv0,
             Side::Left,
@@ -984,7 +1029,7 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
         }
 
         // Surface normal at Drop Point (status ignored; only drawn upstream)
-        ignored(surface.evaluate_normal(uv0, Side::Left, Side::Left))?;
+        ignored(surface.evaluate_normal(k, uv0, Side::Left, Side::Left))?;
 
         // Rotation Range to search for 'good' classify curve
         let drop_tan_deg = rad2deg(uv1.y.atan2(uv1.x)); // Rtn: [-Pi to Pi] => [-180 to 180]
@@ -1099,21 +1144,18 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
             );
 
             // Map UVClassificationCurve to 3d through the Face->Surface
-            let SurfaceKind::BSpline(bs) = surface.kind() else {
-                // DISPATCH GAP: SmCrvOnSurf over a non-B-spline SmSurface (curve.crv_on_surf,
-                // partial; no UNPORTED marker)
-                return Err(SolidError::unported(
-                    "SmSurface (non-B-spline) in SmCrvOnSurf",
-                    "curve.crv_on_surf",
-                ));
-            };
             let uv_curve = Curve::from(uv_trim_line);
-            let crv_on_surf =
-                CrvOnSurf::new(k, uv_curve.clone(), bs.clone(), Some(surf_uv_domain), 0)?;
+            let crv_on_surf = CrvOnSurf::new(
+                k,
+                uv_curve.clone_for_evaluation()?,
+                surface.clone_for_evaluation()?,
+                Some(surf_uv_domain),
+                0,
+            )?;
             let crv_ivl = crv_on_surf.natural_interval();
             let (start_pt, end_pt) = (
-                crv_on_surf.evaluate_point(crv_ivl.min()),
-                crv_on_surf.evaluate_point(crv_ivl.max()),
+                crv_on_surf.evaluate_point(k, crv_ivl.min()),
+                crv_on_surf.evaluate_point(k, crv_ivl.max()),
             );
             let (h_curve, h_uv) =
                 objects.set_classify_curves(Curve::from(crv_on_surf), Some(uv_curve))?;
@@ -1167,8 +1209,8 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
             ))?;
 
             // get the classification curve vertex intersections
-            let vertices = cc.find_vertex_objects(None)?;
-            let coin_edges = cc.find_edge_objects(None, 1)?; // 1 = get CoincidentEdges only
+            let vertices = cc.find_vertex_objects(&*objects, None)?;
+            let coin_edges = cc.find_edge_objects(&*objects, None, 1)?; // 1 = get CoincidentEdges only
 
             let zone_tol_3d_sq = zone_tol_3d_face * zone_tol_3d_face;
 
@@ -1364,15 +1406,13 @@ pub fn sector_classify_curve_on(
     let surf_curve;
     let cp_curve: &Curve = if input.curve.dim() == 2 {
         let surface = face_surface(b, f, OP_SECTOR)?;
-        let SurfaceKind::BSpline(bs) = surface.kind() else {
-            // DISPATCH GAP: SmCrvOnSurf over a non-B-spline SmSurface (curve.crv_on_surf,
-            // partial; no UNPORTED marker)
-            return Err(SolidError::unported(
-                "SmSurface (non-B-spline) in SmCrvOnSurf",
-                "curve.crv_on_surf",
-            ));
-        };
-        surf_curve = Curve::from(CrvOnSurf::new(k, input.curve.clone(), bs.clone(), None, 0)?);
+        surf_curve = Curve::from(CrvOnSurf::new(
+            k,
+            input.curve.clone_for_evaluation()?,
+            surface.clone_for_evaluation()?,
+            None,
+            0,
+        )?);
         &surf_curve
     } else {
         input.curve
@@ -1439,6 +1479,7 @@ pub fn sector_classify_curve_on(
 
         // Step off each curve by the tolerance/2.0
         new_eu1_param = step_off(
+            k,
             &eu1_curve,
             &ivl_eu1,
             eu1_in.param,
@@ -1448,6 +1489,7 @@ pub fn sector_classify_curve_on(
         )?
         .end_param;
         new_eu2_param = step_off(
+            k,
             &eu2_curve,
             &ivl_eu2,
             eu2_in.param,
@@ -1457,6 +1499,7 @@ pub fn sector_classify_curve_on(
         )?
         .end_param;
         new_curve_param = step_off(
+            k,
             cp_curve,
             &curve_interval,
             curve_param,
@@ -1509,7 +1552,7 @@ pub fn sector_classify_curve_on(
 
         // get pEU2 position and tangent
         let mut eu2_pv = pv(
-            &eu2_curve.evaluate(new_eu2_param, 1, true, true)?,
+            &eu2_curve.evaluate(k, new_eu2_param, 1, true, true)?,
             OP_SECTOR,
         )?;
         // Note: use the composite orientation here.
@@ -1520,7 +1563,7 @@ pub fn sector_classify_curve_on(
 
         // get curve position and tangent
         let mut curve_pv = pv(
-            &cp_curve.evaluate(new_curve_param, 1, true, true)?,
+            &cp_curve.evaluate(k, new_curve_param, 1, true, true)?,
             OP_SECTOR,
         )?;
         if curve_orientation == OrientType::Opposite {
@@ -1723,6 +1766,7 @@ pub fn sector_classify_curve_on(
 
             // compute dNewEU1Param for point StepOffDistance from EU1 end
             let s1 = step_off(
+                k,
                 &eu1_curve,
                 &ivl_eu1,
                 eu1_in.param,
@@ -1742,6 +1786,7 @@ pub fn sector_classify_curve_on(
 
             // compute dNewEU2Param for point StepOffDistance from EU2 end
             let s2 = step_off(
+                k,
                 &eu2_curve,
                 &ivl_eu2,
                 eu2_in.param,
@@ -1760,6 +1805,7 @@ pub fn sector_classify_curve_on(
 
             // compute dNewCurveParam for point StepOffDistance from Curve end
             let sc = step_off(
+                k,
                 cp_curve,
                 &curve_interval,
                 curve_param,
@@ -1816,7 +1862,10 @@ pub fn sector_classify_curve_on(
     // Get a point on the curve close to the vertex, and classify its uv surface
     // parameter against the Loop. Start very near the vertex and move away, until a
     // good classification is found.
-    let curve_pv = pv(&cp_curve.evaluate(curve_param, 1, true, true)?, OP_SECTOR)?;
+    let curve_pv = pv(
+        &cp_curve.evaluate(k, curve_param, 1, true, true)?,
+        OP_SECTOR,
+    )?;
     let deriv_len = curve_pv[1].length();
 
     let mut step_off_dist = 2.0 * xsect_tol;
@@ -1876,6 +1925,7 @@ pub fn sector_classify_curve_on(
         } else {
             // in case curve is singular at end.
             let s = step_off(
+                k,
                 cp_curve,
                 &curve_interval,
                 curve_param,
@@ -1890,7 +1940,7 @@ pub fn sector_classify_curve_on(
         }
 
         // (status ignored upstream: the point keeps its last value)
-        if let Some(p) = ignored(cp_curve.evaluate_point(curve_step_off_param))? {
+        if let Some(p) = ignored(cp_curve.evaluate_point(k, curve_step_off_param))? {
             crv_pt = p;
         }
 

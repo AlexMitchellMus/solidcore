@@ -43,6 +43,8 @@
 //! | [`Volume::is_curve_in_param_domain_simple`]            | `IsCurveInParamDomainSimple` (virtual)           |
 //! | [`Volume::trim_param_bounding_box_simple`]             | `TrimParamBoundingBoxSimple` (virtual)           |
 //! | [`Volume::transform_simple`]                           | `TransformSimple` (virtual)                      |
+//! | [`Volume::mirror`]                                     | `Mirror`                                         |
+//! | [`Volume::mirror_simple`]                              | `MirrorSimple` (virtual)                         |
 //! | [`Volume::has_discontinuities_simple`]                 | `HasDiscontinuitiesSimple` (virtual)             |
 //! | [`Volume::calculate_continuities_simple`]              | `CalculateContinuitiesSimple` (virtual)          |
 //! | [`Volume::type_code`], [`Volume::type_string`], [`Volume::class_string`], [`VOLUME_TYPE`] | `GetType`, `GetTypeString`, `GetClassString` (`SM_COMMON`) |
@@ -431,18 +433,13 @@ impl Volume {
         Some(map)
     }
 
-    /// Mutable [`Volume::last_map`].
+    /// Mutable [`Volume::last_map`] (a loop over the chain, no recursion).
     fn last_map_mut(&mut self) -> Option<&mut Self> {
-        match self.next_map.as_deref_mut() {
-            None => None,
-            Some(next) => {
-                if next.next_map.is_some() {
-                    next.last_map_mut()
-                } else {
-                    Some(next)
-                }
-            }
+        let mut map = self.next_map.as_deref_mut()?;
+        while map.next_map.is_some() {
+            map = map.next_map.as_deref_mut()?;
         }
+        Some(map)
     }
 
     /// The orient map (`GetOrientMap`).
@@ -1113,8 +1110,19 @@ impl Volume {
     ///
     /// # Errors
     ///
-    /// Those of [`Volume::transform_simple`].
+    /// Those of [`Volume::transform_simple`]. Appending a map is refused when it
+    /// would exceed 64 geometry levels (including the enclosing curve/surface).
     pub fn transform(&mut self, rotate_n_move: &Axis2Placement, scale: Option<Vec3>) -> Result<()> {
+        self.transform_at_depth(rotate_n_move, scale, 0)
+    }
+
+    /// Transform with this volume's depth in the enclosing geometry graph.
+    pub(crate) fn transform_at_depth(
+        &mut self,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+        mut depth: usize,
+    ) -> Result<()> {
         let identity_scale = Vec3::new(1.0, 1.0, 1.0);
 
         // no work - identity transform
@@ -1123,13 +1131,72 @@ impl Volume {
             return Ok(());
         }
 
-        // save on m_pNextMap linked list length - try to build the Transform into
-        // the last NextMap
-        if let Some(last) = self.last_map_mut() {
-            return last.transform_simple(rotate_n_move, scale);
+        // Build into the terminal map, carrying its actual geometry depth. Only
+        // the fallback that appends a map consumes another level.
+        let mut last = self;
+        loop {
+            match last {
+                Self {
+                    next_map: Some(next),
+                    ..
+                } => {
+                    last = next;
+                    depth += 1;
+                }
+                terminal => {
+                    return terminal.transform_simple_at_depth(rotate_n_move, scale, depth);
+                }
+            }
         }
-        // build the Transform into this map
-        self.transform_simple(rotate_n_move, scale)
+    }
+
+    /// Mirrors the volume's final out-space image about the XY plane of
+    /// `out_mirror_plane` (`Mirror`): built into the last map of the chain (or this
+    /// map) by its `MirrorSimple`.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Volume::mirror_simple`].
+    pub fn mirror(&mut self, out_mirror_plane: &Axis2Placement) -> Result<()> {
+        let pt = out_mirror_plane.origin();
+        let normal = out_mirror_plane.z_axis();
+        // save on m_pNextMap linked list length - try to build the Mirror into the
+        // last NextMap
+        if let Some(last) = self.last_map_mut() {
+            return last.mirror_simple(pt, normal);
+        }
+        // build the Mirror into this map
+        self.mirror_simple(pt, normal)
+    }
+
+    /// Builds the out-space mirror about the plane through `plane_pt` with normal
+    /// `plane_normal` into the simple map (`MirrorSimple`, virtual): a transform
+    /// concatenates it; a B-spline volume transforms its control points
+    /// ([`BSplineVolume::mirror_simple`]); the base class appends a copy of an
+    /// `SmTransform` holding it to the next maps.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR` for a B-spline volume; the error of [`Vec3::unitize`] for a zero
+    /// normal.
+    pub fn mirror_simple(&mut self, plane_pt: Point3, plane_normal: Vec3) -> Result<()> {
+        match &mut self.kind {
+            VolumeKind::Transform(t) => return t.mirror_simple(plane_pt, plane_normal),
+            VolumeKind::BSpline(b) => {
+                return b.mirror_simple(
+                    self.orient_map.as_ref(),
+                    self.inv_orient_map.as_ref(),
+                    plane_pt,
+                    plane_normal,
+                );
+            }
+            _ => {}
+        }
+        // Create a Mirror SmTransform to compound with current mapping
+        let mut transform = Transform::IDENTITY; // identity map with no Orient map
+        transform.mirror_simple(plane_pt, plane_normal)?;
+        // Add mirror map to end of compound map list (a copy: owner flag 1)
+        self.add_next_map(Self::new(VolumeKind::Transform(transform)), 1)
     }
 
     // ---- simple maps ----------------------------------------------------------------
@@ -1349,10 +1416,20 @@ impl Volume {
     ///
     /// `SM_ERR` for a B-spline volume (its control points cannot be transformed
     /// without `USE_VOLUMES`; [`BSplineVolume::transform_simple`]).
+    /// [`SolidError::InvalidInput`] if appending would exceed 64 geometry levels.
     pub fn transform_simple(
         &mut self,
         rotate_n_move: &Axis2Placement,
         scale: Option<Vec3>,
+    ) -> Result<()> {
+        self.transform_simple_at_depth(rotate_n_move, scale, 0)
+    }
+
+    fn transform_simple_at_depth(
+        &mut self,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+        mut depth: usize,
     ) -> Result<()> {
         match &mut self.kind {
             VolumeKind::Transform(t) => {
@@ -1368,6 +1445,20 @@ impl Volume {
                 );
             }
             _ => {}
+        }
+        // Check at the actual growing branch, after the native Transform and
+        // BSpline overrides. TransformSimple can also be called on a compounded
+        // non-terminal map, whose append still goes at the end of the chain.
+        let mut last = &*self;
+        while let Some(next) = last.next_map() {
+            last = next;
+            depth += 1;
+        }
+        if depth >= 63 {
+            return Err(SolidError::invalid_input(
+                "surface::volume::p1::Volume::transform_simple",
+                "owned geometry nesting exceeds 64",
+            ));
         }
         // Create a Transform SmTransform to compound with current mapping
         let mut transform = Transform::IDENTITY;
@@ -1388,12 +1479,13 @@ impl Volume {
     /// [`SolidError::Unported`] from the B-spline override's callees.
     pub fn has_discontinuities_simple(
         &self,
+        k: &Kernel,
         disconts: Option<&mut Discontinuities3d>,
         calc_geometric: bool,
     ) -> Result<bool> {
         match &self.kind {
             VolumeKind::Transform(t) => Ok(t.has_discontinuities_simple(disconts)),
-            VolumeKind::BSpline(b) => b.has_discontinuities_simple(disconts, calc_geometric),
+            VolumeKind::BSpline(b) => b.has_discontinuities_simple(k, disconts, calc_geometric),
             VolumeKind::Base
             | VolumeKind::Bend(_)
             | VolumeKind::Unbend(_)
@@ -1418,12 +1510,13 @@ impl Volume {
     /// Those of [`BSplineVolume::calculate_continuities_simple`].
     pub fn calculate_continuities_simple(
         &self,
+        k: &Kernel,
         param: VolumeParam,
         out: &mut DirectionDiscontinuities,
         calc_geometric: bool,
     ) -> Result<()> {
         if let VolumeKind::BSpline(b) = &self.kind {
-            return b.calculate_continuities_simple(param, out, calc_geometric);
+            return b.calculate_continuities_simple(k, param, out, calc_geometric);
         }
         out.min_cont = ContinuityType::CInfinity;
         out.params.clear();
@@ -2449,7 +2542,7 @@ mod tests {
         d.set_unaligned();
         assert!(d.u.unaligned && d.min_continuity == ContinuityType::C0);
         assert!(!chain
-            .has_discontinuities_simple(Some(&mut d), true)
+            .has_discontinuities_simple(&k, Some(&mut d), true)
             .unwrap());
         assert_eq!(d, Discontinuities3d::default());
     }
@@ -2583,12 +2676,13 @@ mod tests {
 
     #[test]
     fn b_spline_overrides_and_inherited_base() {
+        let k = &Kernel::default();
         // the B-spline volume's NLib overrides
         let bs = Volume::new(VolumeKind::BSpline(b_spline()));
-        assert!(!bs.has_discontinuities_simple(None, true).unwrap());
+        assert!(!bs.has_discontinuities_simple(k, None, true).unwrap());
         let mut d = DirectionDiscontinuities::none();
         assert!(bs
-            .calculate_continuities_simple(VolumeParam::U, &mut d, false)
+            .calculate_continuities_simple(k, VolumeParam::U, &mut d, false)
             .is_ok());
         assert!(!d.params.is_empty());
         assert!(bs.natural_param_domain().is_ok());
@@ -2601,7 +2695,7 @@ mod tests {
         assert!(!bs.approx_eq(&copy).unwrap());
         // inherited base behaviour still runs
         let mut twist = Volume::new(VolumeKind::Twist(TwistVolume::new()));
-        assert!(!twist.has_discontinuities_simple(None, true).unwrap());
+        assert!(!twist.has_discontinuities_simple(k, None, true).unwrap());
         let ax = Axis2Placement::new(v(1.0, 0.0, 0.0), v(1.0, 0.0, 0.0), v(0.0, 1.0, 0.0));
         twist.transform(&ax, None).unwrap();
         assert!(twist.next_map().is_some());

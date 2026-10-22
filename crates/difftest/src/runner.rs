@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -14,7 +15,7 @@ use crate::HarnessError;
 /// A side-by-side runner for one unit. Implement it on `pub struct Runner;`
 /// in `src/units/<unit_id_with_underscores>.rs`.
 pub trait UnitDiff {
-    /// Unit id as in `plan/modules.toml` (e.g. `nlib.knots`).
+    /// Unit id as in `plan/units/<id>.toml` (e.g. `nlib.knots`).
     fn id(&self) -> &'static str;
 
     /// Runs the upstream C++ (via `solidcore_ffi::units::*`).
@@ -91,6 +92,10 @@ pub struct CaseResult {
     /// In perturb mode: what was perturbed (`value`, `int`, `topology`, `error`),
     /// or `None` if the case had nothing to perturb or was deferred.
     pub perturbed: Option<&'static str>,
+    /// The Rust side's [`Output::diagnostics`] (reported, never compared).
+    pub diagnostics: BTreeMap<String, i64>,
+    /// The case is listed in `known_mismatches.toml` (the entry's `why`).
+    pub known_mismatch: Option<String>,
 }
 
 /// Classification of one case.
@@ -105,16 +110,20 @@ pub enum CaseOutcome {
     /// The Rust side returned `Unported` (and the C++ side ran without a harness
     /// error): neither pass nor fail.
     Deferred,
+    /// A mismatch listed in `known_mismatches.toml` ([`crate::known`]): not a pass,
+    /// keeps the unit from being green, reported like a failure.
+    KnownMismatch,
 }
 
 impl CaseOutcome {
-    /// `pass`, `fail`, `deferred` or `rejected`.
+    /// `pass`, `fail`, `deferred`, `rejected` or `known_mismatch`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Pass => "pass",
             Self::Rejected => "rejected",
             Self::Fail => "fail",
             Self::Deferred => "deferred",
+            Self::KnownMismatch => "known_mismatch",
         }
     }
 }
@@ -131,9 +140,16 @@ impl CaseResult {
             CaseOutcome::Deferred
         } else if self.diff.pass() {
             CaseOutcome::Pass
+        } else if self.known_mismatch.is_some() {
+            CaseOutcome::KnownMismatch
         } else {
             CaseOutcome::Fail
         }
+    }
+
+    /// Case is a listed known mismatch that still mismatches.
+    pub fn is_known_mismatch(&self) -> bool {
+        self.outcome() == CaseOutcome::KnownMismatch
     }
 
     /// Case passes (not deferred, no harness error, no mismatch).
@@ -156,6 +172,15 @@ impl CaseResult {
     pub fn compared_values(&self) -> bool {
         self.diff.values_compared + self.diff.exact_compared > 0
     }
+
+    /// A *vacuous* pass: both sides reported success (no `error`) and the comparison
+    /// checked nothing but that status. Such a pass is only as good as the runner's
+    /// status reporting: a Rust `Err` swallowed into an empty output would look the
+    /// same, so runners must map every Rust error into [`Output::error`]
+    /// (see [`Output::from_result`]) and these cases are counted separately.
+    pub fn is_vacuous(&self) -> bool {
+        self.pass() && !self.compared_values() && !self.both_errored
+    }
 }
 
 /// Status of a unit run (AGENTS.md section 4a).
@@ -163,7 +188,7 @@ impl CaseResult {
 pub enum UnitStatus {
     /// At least one parity pass, no failures or deferrals (fixture rejections excluded).
     Green,
-    /// No failing case and at least one deferred case.
+    /// No failing case and at least one deferred case or known mismatch.
     Partial,
     /// Any failing case, a harness error, no cases, or only rejected fixtures.
     Fail,
@@ -193,6 +218,60 @@ pub struct UnitResult {
     pub abs_floors: Vec<AbsFloor>,
     /// `--seeds` value used.
     pub seeds: usize,
+    /// Wall time spent per phase (not written to the report).
+    pub timing: UnitTiming,
+}
+
+/// Wall time of one unit's run, split by phase (diagnostic only; printed to stderr).
+#[derive(Debug, Clone, Default)]
+pub struct UnitTiming {
+    /// Building the case list (`UnitDiff::cases`).
+    pub cases: Duration,
+    /// All `run_cpp` calls.
+    pub cpp: Duration,
+    /// All `run_rust` calls.
+    pub rust: Duration,
+    /// All comparisons.
+    pub compare: Duration,
+    /// Slowest single `run_rust` call: case name and time.
+    pub slowest_rust: Option<(String, Duration)>,
+    /// With `DIFFTEST_RUST_DIGEST` set: one `<case>\t<fnv1a64 of the Rust output's Debug form>`
+    /// line per case (f64 `Debug` is the shortest round-trip form, so equal digests mean
+    /// bit-identical Rust outputs across builds).
+    pub rust_digests: Vec<String>,
+    /// With `DIFFTEST_RUST_DIGEST` set: the same line for the C++ output of every case
+    /// (proves that harness changes leave the C++ side's results untouched).
+    pub cpp_digests: Vec<String>,
+}
+
+fn fnv1a64(s: &str) -> u64 {
+    s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
+impl UnitTiming {
+    /// One `TIME` line: `TIME <unit> n=<cases> cases=<s> cpp=<s> rust=<s> compare=<s> ratio=<rust/cpp> slowest_rust=<case>:<s>`.
+    pub fn line(&self, unit: &str, n_cases: usize) -> String {
+        let ratio = if self.cpp.as_secs_f64() > 0.0 {
+            self.rust.as_secs_f64() / self.cpp.as_secs_f64()
+        } else {
+            f64::NAN
+        };
+        let slow = self
+            .slowest_rust
+            .as_ref()
+            .map_or_else(String::new, |(n, d)| {
+                format!(" slowest_rust={n}:{:.6}", d.as_secs_f64())
+            });
+        format!(
+            "TIME {unit} n={n_cases} cases={:.6} cpp={:.6} rust={:.6} compare={:.6} ratio={ratio:.3}{slow}",
+            self.cases.as_secs_f64(),
+            self.cpp.as_secs_f64(),
+            self.rust.as_secs_f64(),
+            self.compare.as_secs_f64(),
+        )
+    }
 }
 
 impl UnitResult {
@@ -204,7 +283,7 @@ impl UnitResult {
             || self.cases.len() == self.rejected()
         {
             UnitStatus::Fail
-        } else if self.deferred() > 0 {
+        } else if self.deferred() > 0 || self.known_mismatches() > 0 {
             UnitStatus::Partial
         } else {
             UnitStatus::Green
@@ -230,6 +309,12 @@ impl UnitResult {
             .count()
     }
 
+    /// Number of [vacuous](CaseResult::is_vacuous) passes: both sides succeeded and only
+    /// that status was compared (a subset of the passes without values).
+    pub fn vacuous(&self) -> usize {
+        self.cases.iter().filter(|c| c.is_vacuous()).count()
+    }
+
     /// Number of failing cases.
     pub fn failed(&self) -> usize {
         self.cases.iter().filter(|c| c.fail()).count()
@@ -241,6 +326,11 @@ impl UnitResult {
             .iter()
             .filter(|c| c.outcome() == CaseOutcome::Rejected)
             .count()
+    }
+
+    /// Number of listed known mismatches that still mismatch.
+    pub fn known_mismatches(&self) -> usize {
+        self.cases.iter().filter(|c| c.is_known_mismatch()).count()
     }
 
     /// Number of deferred cases.
@@ -359,21 +449,58 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
         harness_error: None,
         abs_floors: unit.abs_floors().to_vec(),
         seeds: ctx.seeds,
+        timing: UnitTiming::default(),
     };
-    let cases = match unit.cases(ctx) {
+    let digest = std::env::var_os("DIFFTEST_RUST_DIGEST").is_some();
+    let t0 = Instant::now();
+    let cases = unit.cases(ctx);
+    res.timing.cases = t0.elapsed();
+    let cases = match cases {
         Ok(c) => c,
         Err(e) => {
             res.harness_error = Some(e.0);
             return res;
         }
     };
+    let known = match crate::known::for_unit(&ctx.root, unit.id()) {
+        Ok(k) => k,
+        Err(e) => {
+            res.harness_error = Some(e.0);
+            return res;
+        }
+    };
+    if opts.filter.is_none() {
+        let missing: Vec<&str> = known
+            .iter()
+            .filter(|k| !cases.iter().any(|c| c.name == k.case))
+            .map(|k| k.case.as_str())
+            .collect();
+        if !missing.is_empty() {
+            res.harness_error = Some(format!(
+                "{}: no such case(s): {}",
+                crate::known::KNOWN_MISMATCHES,
+                missing.join(", ")
+            ));
+            return res;
+        }
+    }
     for case in cases {
         if let Some(f) = &opts.filter {
             if !case.name.contains(f.as_str()) {
                 continue;
             }
         }
+        // the Rust side reuses this case's C++ fixture exports (`export_memo`)
+        let memo = crate::export_memo::CaseScope::new();
+        let t0 = Instant::now();
         let cpp = guarded(|| unit.run_cpp(&case), "cpp");
+        res.timing.cpp += t0.elapsed();
+        if digest {
+            let d = fnv1a64(&format!("{cpp:?}"));
+            res.timing
+                .cpp_digests
+                .push(format!("{}\t{d:016x}", case.name));
+        }
 
         let mut cr = CaseResult {
             name: case.name.clone(),
@@ -385,6 +512,11 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
             rejected: None,
             deferred: None,
             perturbed: None,
+            diagnostics: BTreeMap::new(),
+            known_mismatch: known
+                .iter()
+                .find(|k| k.case == case.name)
+                .map(|k| k.why.clone()),
         };
         if let Ok(c) = &cpp {
             if let Some(reason) = &c.rejected {
@@ -393,7 +525,27 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
                 continue;
             }
         }
+        crate::export_memo::rust_side();
+        let t0 = Instant::now();
         let rust = guarded(|| unit.run_rust(&case), "rust");
+        let dt = t0.elapsed();
+        drop(memo);
+        res.timing.rust += dt;
+        if digest {
+            let d = fnv1a64(&format!("{rust:?}"));
+            res.timing
+                .rust_digests
+                .push(format!("{}\t{d:016x}", case.name));
+        }
+        if res
+            .timing
+            .slowest_rust
+            .as_ref()
+            .is_none_or(|(_, d)| dt > *d)
+        {
+            res.timing.slowest_rust = Some((case.name.clone(), dt));
+        }
+        let t0 = Instant::now();
         match (cpp, rust) {
             (_, Ok(r)) if r.rejected.is_some() => {
                 cr.harness_error =
@@ -403,6 +555,7 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
                 cr.deferred = r.deferred;
             }
             (Ok(c), Ok(mut r)) => {
+                cr.diagnostics = r.diagnostics.as_deref().cloned().unwrap_or_default();
                 if opts.perturb {
                     cr.perturbed = perturb_output(&mut r);
                 }
@@ -414,7 +567,85 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
                 cr.harness_error = Some(msgs.join("; "));
             }
         }
+        res.timing.compare += t0.elapsed();
+        if cr.known_mismatch.is_some()
+            && !opts.perturb
+            && cr.harness_error.is_none()
+            && cr.outcome() != CaseOutcome::KnownMismatch
+        {
+            cr.harness_error = Some(format!(
+                "listed in {} but the case is now {}: remove the entry",
+                crate::known::KNOWN_MISMATCHES,
+                cr.outcome().as_str()
+            ));
+        }
         res.cases.push(cr);
+    }
+    res
+}
+
+/// Result of [`digest_unit`]: the Rust side alone, one digest line per case.
+#[derive(Debug, Clone, Default)]
+pub struct DigestResult {
+    /// Unit id.
+    pub unit: String,
+    /// One `<case>\t<fnv1a64>` line per case (as [`UnitTiming::rust_digests`]), or
+    /// `<case>\tneeds-cpp` when the Rust side called a C++ stub (wasm32 only).
+    pub lines: Vec<String>,
+    /// With `debug`: one `<case>\t<Debug of the Rust output>` line per case.
+    pub debug: Vec<String>,
+    /// Cases whose Rust side called a C++ stub (wasm32; never natively).
+    pub needs_cpp: usize,
+    /// Building the case list failed, or called a C++ stub.
+    pub harness_error: Option<String>,
+}
+
+/// Runs only the Rust side of every case of `unit` and digests each output like
+/// `DIFFTEST_RUST_DIGEST` does (`--digest-dir`). Nothing is compared: equal digests from
+/// two builds (native and wasm32) mean bit-identical Rust outputs. A case whose Rust
+/// side calls the C++ kernel (fixture exports) is `needs-cpp` on wasm32, where the shims
+/// are stubs ([`solidcore_ffi::unlinked_calls`]).
+pub fn digest_unit(
+    unit: &dyn UnitDiff,
+    ctx: &CaseContext,
+    opts: &RunOptions,
+    debug: bool,
+) -> DigestResult {
+    let mut res = DigestResult {
+        unit: unit.id().to_string(),
+        ..DigestResult::default()
+    };
+    let before = solidcore_ffi::unlinked_calls();
+    let cases = match unit.cases(ctx) {
+        Ok(c) => c,
+        Err(e) => {
+            res.harness_error = Some(e.0);
+            return res;
+        }
+    };
+    if solidcore_ffi::unlinked_calls() != before {
+        res.harness_error = Some("building the cases calls the C++ kernel".into());
+        return res;
+    }
+    for case in cases {
+        if let Some(f) = &opts.filter {
+            if !case.name.contains(f.as_str()) {
+                continue;
+            }
+        }
+        let before = solidcore_ffi::unlinked_calls();
+        let rust = guarded(|| unit.run_rust(&case), "rust");
+        if solidcore_ffi::unlinked_calls() == before {
+            let s = format!("{rust:?}");
+            res.lines
+                .push(format!("{}\t{:016x}", case.name, fnv1a64(&s)));
+            if debug {
+                res.debug.push(format!("{}\t{s}", case.name));
+            }
+        } else {
+            res.needs_cpp += 1;
+            res.lines.push(format!("{}\tneeds-cpp", case.name));
+        }
     }
     res
 }
@@ -474,6 +705,8 @@ mod tests {
             rejected: None,
             deferred,
             perturbed: None,
+            diagnostics: BTreeMap::new(),
+            known_mismatch: None,
         };
         let d = || {
             Some(Deferred {
@@ -487,6 +720,7 @@ mod tests {
             harness_error: None,
             abs_floors: Vec::new(),
             seeds: 0,
+            timing: UnitTiming::default(),
         };
         assert_eq!(r.cases[1].outcome(), CaseOutcome::Deferred);
         assert_eq!(r.status(), UnitStatus::Partial);
@@ -495,8 +729,17 @@ mod tests {
         assert_eq!(r.deferred_by_unit().get("geom.curve"), Some(&1));
         // Neither passing case compared a value (`CaseDiff::default()`).
         assert_eq!(r.passed_with_values(), 0);
+        assert_eq!(r.vacuous(), 1);
+        r.cases[0].both_errored = true;
+        assert_eq!(
+            r.vacuous(),
+            0,
+            "an agreed error is a compared status, not vacuous"
+        );
+        r.cases[0].both_errored = false;
         r.cases[0].diff.exact_compared = 1;
         assert_eq!(r.passed_with_values(), 1);
+        assert_eq!(r.vacuous(), 0);
         r.cases.push(case(None, false));
         assert_eq!(r.status(), UnitStatus::Fail);
         r.cases.truncate(1);
@@ -504,6 +747,16 @@ mod tests {
         let mut h = case(d(), true);
         h.harness_error = Some("cpp: bad".into());
         assert_eq!(h.outcome(), CaseOutcome::Fail);
+        // A listed mismatch keeps the unit partial, never green, and is not a pass.
+        let mut k = case(None, false);
+        k.known_mismatch = Some("why".into());
+        assert_eq!(k.outcome(), CaseOutcome::KnownMismatch);
+        r.cases.push(k);
+        assert_eq!(r.status(), UnitStatus::Partial);
+        assert_eq!((r.passed(), r.failed(), r.known_mismatches()), (1, 0, 1));
+        let mut listed_pass = case(None, true);
+        listed_pass.known_mismatch = Some("why".into());
+        assert_eq!(listed_pass.outcome(), CaseOutcome::Pass);
     }
 
     struct RejectedFixture {
@@ -617,6 +870,102 @@ mod tests {
                 })
                 .collect())
         }
+    }
+
+    /// C++ finds nothing (empty output); Rust fails on case `err` and its runner
+    /// reports the error, as runners must.
+    struct EmptyOrErr;
+
+    impl UnitDiff for EmptyOrErr {
+        fn id(&self) -> &'static str {
+            "empty.unit"
+        }
+        fn run_cpp(&self, _case: &Case) -> Result<Output, HarnessError> {
+            Ok(Output::new().values("points", Vec::<f64>::new()))
+        }
+        fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
+            let r: solidcore::Result<Vec<f64>> = if case.name == "err" {
+                Err(solidcore::SolidError::sm_err("empty.unit"))
+            } else {
+                Ok(Vec::new())
+            };
+            Ok(Output::from_result(
+                r,
+                |_| "status_1".into(),
+                |v| Output::new().values("points", v),
+            ))
+        }
+        fn cases(&self, _ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
+            Ok(["ok", "err"]
+                .into_iter()
+                .map(|n| Case {
+                    unit: "empty.unit".into(),
+                    name: n.into(),
+                    source: CaseSource::Inline,
+                    inputs: Value::Null,
+                })
+                .collect())
+        }
+    }
+
+    fn known_root(tag: &str, list: &str) -> CaseContext {
+        let root =
+            std::env::temp_dir().join(format!("difftest-known-{tag}-{}", std::process::id()));
+        let dir = root.join("crates/difftest");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("known_mismatches.toml"), list).unwrap();
+        CaseContext { root, seeds: 0 }
+    }
+
+    #[test]
+    fn status_mismatch_with_empty_outputs_fails_and_known_mismatches_are_tracked() {
+        let ctx = CaseContext {
+            root: std::path::PathBuf::new(),
+            seeds: 0,
+        };
+        let r = run_unit(&EmptyOrErr, &ctx, &RunOptions::default());
+        // Rust erred where C++ found nothing: a failure, not a vacuous pass.
+        assert_eq!((r.passed(), r.failed(), r.vacuous()), (1, 1, 1));
+        assert_eq!(r.cases[1].diff.mismatches[0].field, "error");
+        assert_eq!(r.status(), UnitStatus::Fail);
+        let line = crate::report::summary_line(&r);
+        assert!(
+            line.contains(" with_values=0 no_values=1 vacuous=1"),
+            "{line}"
+        );
+
+        let entry = |case: &str| {
+            format!("[[mismatch]]\nunit = \"empty.unit\"\ncase = \"{case}\"\nwhy = \"w\"\n")
+        };
+        let k = run_unit(
+            &EmptyOrErr,
+            &known_root("listed", &entry("err")),
+            &RunOptions::default(),
+        );
+        assert_eq!(k.cases[1].outcome(), CaseOutcome::KnownMismatch);
+        assert_eq!((k.passed(), k.failed(), k.known_mismatches()), (1, 0, 1));
+        assert_eq!(k.status(), UnitStatus::Partial);
+        assert!(crate::report::summary_line(&k).ends_with(" known_mismatch=1"));
+        assert_eq!(
+            crate::report::unit_report(&k)["cases"][1]["known_mismatch"],
+            "w"
+        );
+
+        // A listed case that passes, or one that does not exist, fails the unit.
+        let stale = run_unit(
+            &EmptyOrErr,
+            &known_root("stale", &entry("ok")),
+            &RunOptions::default(),
+        );
+        assert_eq!(stale.cases[0].outcome(), CaseOutcome::Fail);
+        assert_eq!(stale.status(), UnitStatus::Fail);
+        let gone = run_unit(
+            &EmptyOrErr,
+            &known_root("gone", &entry("nope")),
+            &RunOptions::default(),
+        );
+        assert!(gone.harness_error.is_some());
+        assert_eq!(gone.status(), UnitStatus::Fail);
     }
 
     #[test]

@@ -155,7 +155,8 @@ use crate::topology::{Brep, EdgeId, FaceId, VertexId};
 // SmPolyPointClassification / SmLineSegInterval: those classes have no Rust type (their
 // constructors are outside the in-scope call graph).
 // SmTol::GetAngTolRad(const SmFilletSolver*) is blend::fillet_solver::p1::tol_ang_tol_rad.
-// UNPORTED(blend.fillet_corner_p1): the SmFilletCorner branch of GetApproxTol3d(SmObject*);
+// The SmFilletCorner branch of GetApproxTol3d(SmObject*) is
+// blend::fillet_corner::p3::FilletCorner::this_approx_tol_3d (GetThisApproxTol3d);
 // the other GetApproxTol3d / GetAngTolRad overloads of algorithm objects (SmHCR,
 // SmPolyIntersector, SmSurfaceIntersector, SmSurfaceTracer, SmTopologyIntersector,
 // SmOffsetGeometryCreation) belong with those objects' units.
@@ -1183,9 +1184,8 @@ fn face_set_tolerance(
 }
 
 /// `SmFace::GetEdges(rEdges)`.
-fn face_edges(_b: &Brep, _f: FaceId) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    Err(SolidError::unported("SmFace::GetEdges", "topology.face_p4"))
+fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
+    crate::topology::face::p4::edges(b, f, None, false, None)
 }
 
 /// The topology object `SmTol::UpdateObjectTolerance` is given.

@@ -566,7 +566,7 @@ fn curve_of(k: &Kernel, c: &CurveIn) -> Result<Curve, HarnessError> {
         CurveIn::CrvOnSurf { uv, surface } => {
             let c = Curve::from(BSplineCurve::from_nurb(nl_curve(uv)?, 2, false));
             Curve::from(
-                CrvOnSurf::new(k, c, bss_of(surface)?, None, 3)
+                CrvOnSurf::new(k, c, Surface::from(bss_of(surface)?), None, 3)
                     .map_err(|e| harness(format!("crv on surf: {e}")))?,
             )
         }
@@ -841,7 +841,7 @@ fn topo_rust(k: &Kernel, b: &mut Brep, args: &[f64]) -> Result<Vec<f64>, SolidEr
         gap.edge_t(1),
         gap.uv_trim_curve_t(),
     ];
-    let fuv = gap.face_uv(b)?;
+    let fuv = gap.face_uv(k, b)?;
     o.extend([fuv.x, fuv.y]);
     o.push(idx(gap.vertex(b)?.map(VertexId::index)));
     o.push(idx(gap.vertexuse().map(VertexuseId::index)));

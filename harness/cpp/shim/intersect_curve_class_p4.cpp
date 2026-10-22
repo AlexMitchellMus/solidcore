@@ -20,7 +20,8 @@
 // not its classification, a classification without face (UB-124: GetUpwardFaceuse / GetSurface
 // on NULL) and, when the end is on an edge of a face with a surface, a NULL classification or
 // edge curve (both are evaluated); for GetLoopCrossings over loops a classification without
-// curve (UB-124: GetNaturalInterval on NULL). Geometry objects live for the whole process (never
+// curve (UB-124: GetNaturalInterval on NULL) or without intervals (GetPointClassifiesConnectedTo
+// reads m_pData[0]). Geometry objects live for the whole process (never
 // deleted); the B-rep is deleted at the end of the run.
 
 #include "sc_shim.h"
@@ -869,6 +870,13 @@ int32_t run(Rd& rd, std::vector<double>& o)
                 loops[(ULONG)i] = l;
             }
             bool with_props = rd.flag();
+            // GetPointClassifiesConnectedTo reads GetAt(0) unchecked: an empty classification
+            // (e.g. after a squeeze) reaches it with loops whose first loop's face has a
+            // surface, and a curve. (Refused even for a degenerate curve, which returns
+            // before it.)
+            if (n > 0 && cc.GetSize() == 0 && loops[0]->GetFace() != NULL
+                && loops[0]->GetFace()->GetSurface() != NULL && cc.GetCurve() != NULL)
+                return SC_ERR_ARG;
             // the face props seeds (`field idx value`, as the heal.face_props shim), applied to
             // the props passed: a preset at SM_PROPSTAGE_2a or later skips SetProps_Stage2
             int64_t n_seeds = rd.idx();
@@ -884,6 +892,11 @@ int32_t run(Rd& rd, std::vector<double>& o)
             }
             // UB-124: the classification curve's GetNaturalInterval() before its NULL check
             if (rd.bad || (n > 0 && cc.GetCurve() == NULL))
+                return SC_ERR_ARG;
+            // GetPointClassifiesConnectedTo reads m_pData[0]: an empty classification (left by
+            // a squeeze of its only interval, or never sized) reads a removed or missing
+            // interval
+            if (n > 0 && size == 0)
                 return SC_ERR_ARG;
             SmTArray<ULONG> counts;
             SmTArray<SmTouchData> raw, done;

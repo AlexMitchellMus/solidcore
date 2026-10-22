@@ -55,8 +55,9 @@ SmBSplineCurve* plain_curve(SmCurve* c)
     return new (the_context()) SmBSplineCurve(sm_AllocateAndCopyNurbCurve(nurb), b->GetDim(), FALSE);
 }
 
-// Gives every analytic face and edge of the B-rep a plain B-spline copy (the
-// originals are left unowned and leaked), as the heal.gap shim does.
+// Match the shared export/import: preserve exact analytic surfaces, and replace
+// other surfaces and edge curves with plain B-splines, as the heal.gap shim does.
+// Replaced originals are left unowned and leaked.
 void normalise(Graph& g)
 {
     for (SmFace* f : g.faces)
@@ -64,6 +65,10 @@ void normalise(Graph& g)
         SmSurface* s = f->*FPeek::srf();
         if (s == nullptr || !s->IsKindOf(SmBSplineSurface_TYPE) || s->GetType() == SmBSplineSurface_TYPE ||
             s->GetType() == SmPlane_TYPE)
+            continue;
+        // Preserve every surface the shared export imports as its exact analytic kind.
+        std::vector<double> head;
+        if (sc_analytic_export::put_exact_head(head, s, the_context()))
             continue;
         SmBSplineSurface* b = (SmBSplineSurface*)s;
         gw_SURFACE* nurb = b->GetGwNurbPointer();
@@ -550,6 +555,40 @@ struct VxPeek : SmObjsInVoxels<SmVertexProps*>
 {
     static SmExtent3d SmObjsInVoxels<SmVertexProps*>::*box() { return &VxPeek::m_sBBox; }
 };
+
+// An add naming a live target that the same step does not remove gives that entity a
+// second props record (upstream adds only topology it has just created). A catch-up
+// that can delete topology then frees the entity through one record and dereferences
+// it through the other (fuzz: SmEdge::GetVertices in Fix_DegenEdges).
+bool readds_live_target(SmHealData& h, SmBrep* brep, SmTArray<SmTopology*>& removed,
+                        SmTArray<SmTopology*>& added)
+{
+    for (ULONG i = 0; i < added.GetSize(); ++i)
+    {
+        SmTopology* t = added[i];
+        ULONG idx;
+        if (t == NULL || !brep->IsLiveTopologyMember(t) || removed.FindElement(t, idx))
+            continue;
+        if ((t->IsKindOf(SmFace_TYPE) && h.m_sTgtFaces.FindElement((SmFace*)t, idx)) ||
+            (t->IsKindOf(SmEdge_TYPE) && h.m_sTgtEdges.FindElement((SmEdge*)t, idx)) ||
+            (t->IsKindOf(SmVertex_TYPE) && h.m_sTgtVertices.FindElement((SmVertex*)t, idx)))
+            return true;
+    }
+    return false;
+}
+
+// A seed step that would queue a face props record a second time (upstream queues each
+// once; the repair then works on the record twice).
+bool degen_face_seeded(SmHealData& h)
+{
+    for (ULONG i = 0; i < h.m_sTgtFaceProps.GetSize(); ++i)
+    {
+        ULONG idx;
+        if (h.m_sBadFaceProps_DegenFaces.m_sProbArray.FindElement(h.m_sTgtFaceProps[i], idx))
+            return true;
+    }
+    return false;
+}
 
 // Get*Props_ForTgts indexes props by the matching target's position.
 template<class T, class P>
@@ -1430,6 +1469,13 @@ void run_heal(Rd& rd, const char* path, std::vector<double>& o)
                 stop = true;
                 continue;
             }
+            if ((op < h->m_eDoneHealOp ? op : h->m_eDoneHealOp) >= SM_HO_FIX_COIN_VERTICES &&
+                readds_live_target(*h, brep, removed, added))
+            {
+                o.push_back(ST_NULL_DEREF);
+                stop = true;
+                continue;
+            }
             // Native UpdateTargetLists sizes every props list to its TARGET
             // count. Reject holes left by removing an uncached props record,
             // including drift already introduced by a prior Remove*Props step.
@@ -1475,6 +1521,12 @@ void run_heal(Rd& rd, const char* path, std::vector<double>& o)
         case 42:
         {
             bool null_face = rd.flag();
+            if (degen_face_seeded(*h))
+            {
+                o.push_back(ST_NULL_DEREF);
+                stop = true;
+                continue;
+            }
             for (ULONG i = 0; i < h->m_sTgtFaceProps.GetSize(); ++i)
             {
                 SmFaceProps* p = h->m_sTgtFaceProps[i];
@@ -1488,6 +1540,12 @@ void run_heal(Rd& rd, const char* path, std::vector<double>& o)
             break;
         }
         case 41:
+            if (degen_face_seeded(*h))
+            {
+                o.push_back(ST_NULL_DEREF);
+                stop = true;
+                continue;
+            }
             for (ULONG i = 0; i < h->m_sTgtFaceProps.GetSize(); ++i)
             {
                 SmFaceProps* p = h->m_sTgtFaceProps[i];

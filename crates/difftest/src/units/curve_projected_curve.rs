@@ -360,6 +360,13 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
     let op = op_of(&i.op);
     let mut v = Vec::new();
     if let OpIn::ReadDb(d) = &i.op {
+        // `(SmProjectionType)lValue` beyond the enum's range of values (0..=3) is
+        // undefined behaviour upstream (the port reads it as `SM_PT_UNKNOWN`).
+        if d.ptype > 3 {
+            return Err(harness(
+                "projection type outside SmProjectionType (undefined upstream)",
+            ));
+        }
         let bytes = db_bytes(d);
         v.extend([d.version as f64, b(d.binary), bytes.len() as f64]);
         v.extend(bytes.iter().map(|&x| f64::from(x)));
@@ -619,7 +626,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             o.push(c.type_code() as f64);
             o.push(c.dim() as f64);
             let deg = tri!(o, c.degree());
-            let nnk = tri!(o, c.number_natural_knots());
+            let nnk = tri!(o, c.number_natural_knots(&k));
             let ncp = tri!(o, c.number_control_points());
             let rational = tri!(o, c.is_rational());
             o.extend([deg as f64, nnk as f64, ncp as f64, ivl.min(), ivl.max()]);
@@ -643,7 +650,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             nonzero,
         } => {
             let c = Curve::from(pc);
-            let v = tri!(o, c.evaluate(*t, *n, *left, *nonzero));
+            let v = tri!(o, c.evaluate(&k, *t, *n, *left, *nonzero));
             o.push(0.0);
             for x in v {
                 pv(&mut o, x);
@@ -651,14 +658,14 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         OpIn::EvalPoint { t } => {
             let c = Curve::from(pc);
-            let p = tri!(o, c.evaluate_point(*t));
+            let p = tri!(o, c.evaluate_point(&k, *t));
             o.push(0.0);
             pv(&mut o, p);
         }
         OpIn::Knots { ivl } => {
             let e = ivl.map(|[a, bb]| Extent1d::from_min_max(a, bb));
             let c = Curve::from(pc);
-            let (kn, m) = tri!(o, c.knots(e.as_ref()));
+            let (kn, m) = tri!(o, c.knots(&k, e.as_ref()));
             o.push(0.0);
             o.push(kn.len() as f64);
             o.extend_from_slice(&kn);
@@ -667,7 +674,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         OpIn::Continuities { angle } => {
             let c = Curve::from(pc);
-            let (mn, all) = tri!(o, c.calculate_continuities(*angle));
+            let (mn, all) = tri!(o, c.calculate_continuities(&k, *angle));
             o.push(0.0);
             o.push(f64::from(mn as i32));
             o.push(all.len() as f64);
@@ -731,7 +738,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             o.push(0.0);
             projected_state(&mut o, &nc)?;
             o.push(b(pc.owns_curve() == OwnsCurve::No));
-            let eq = tri!(o, nc.approx_eq(&c));
+            let eq = tri!(o, nc.approx_eq(&k, &c));
             o.push(b(eq));
         }
         OpIn::Equal { other } => {
@@ -739,19 +746,19 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             o.push(0.0);
             match other {
                 None => {
-                    let eq = tri!(o, c.approx_eq(&c));
+                    let eq = tri!(o, c.approx_eq(&k, &c));
                     o.push(b(eq));
                 }
                 Some(oi) => {
                     let (p2, _) = build(oi)?;
-                    let eq = tri!(o, c.approx_eq(&Curve::from(p2)));
+                    let eq = tri!(o, c.approx_eq(&k, &Curve::from(p2)));
                     o.push(b(eq));
                 }
             }
         }
         OpIn::Ends => {
             let c = Curve::from(pc);
-            let e = tri!(o, c.ends());
+            let e = tri!(o, c.ends(&k, ));
             o.push(0.0);
             pv(&mut o, e.start);
             pv(&mut o, e.end);

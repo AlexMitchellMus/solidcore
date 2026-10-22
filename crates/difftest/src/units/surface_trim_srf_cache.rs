@@ -46,6 +46,9 @@ use crate::runner::default_cases;
 use crate::util::flag;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 
+#[path = "surface_trim_srf_cache/native_face.rs"]
+mod native_face;
+
 /// Generated cases per run, whatever `--seeds` says (it can only raise this).
 pub const MIN_GENERATED: usize = 600;
 
@@ -272,7 +275,9 @@ fn push_srf(o: &mut Vec<f64>, b: &BssIn) -> Result<(), HarnessError> {
     let s = srf(&b.srf)?;
     let (n, m) = shape(&s)?;
     o.extend([n as f64, m as f64, s.p as f64, s.q as f64]);
-    o.extend([(s.u.len() - 1) as f64, (s.v.len() - 1) as f64]);
+    let ku = s.u.len().checked_sub(1).ok_or_else(|| harness("empty u knots"))?;
+    let kv = s.v.len().checked_sub(1).ok_or_else(|| harness("empty v knots"))?;
+    o.extend([ku as f64, kv as f64]);
     for row in &s.net {
         for p in row {
             o.extend(p);
@@ -1079,10 +1084,16 @@ impl UnitDiff for Runner {
     }
 
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
+        if let Some(input) = case.inputs.get("native_face") {
+            return native_face::run_cpp(input);
+        }
         cpp(&case.parse()?)
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
+        if let Some(input) = case.inputs.get("native_face") {
+            return native_face::run_rust(input);
+        }
         rust(&case.parse()?)
     }
 }
