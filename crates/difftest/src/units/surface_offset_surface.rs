@@ -648,14 +648,15 @@ fn put_state(k: &Kernel, o: &mut Vec<f64>, s: &OffsetSurface) -> Result<(), Fail
     o.push(f64::from(pu));
     o.push(f64::from(pv_));
     o.push(f64::from(s.singularities()));
-    match s.extended_base_surface() {
+    // GetExtendedBaseSurface (with an extension a `&self` evaluator made)
+    s.with_extended_base_surface(|e| match e {
         Some(e) => {
             o.push(1.0);
             put_dom(o, &e.natural_uv_domain());
             o.push(e.type_code() as f64);
         }
         None => o.push(0.0),
-    }
+    });
     let b = s.base_surface();
     o.push(b.type_code() as f64);
     put_dom(o, &b.natural_uv_domain());
@@ -1205,7 +1206,7 @@ fn tiny_revolution(rng: &mut Rng) -> rev::SurfIn {
                 *bi = *ai + (*bi - *ai) * f;
             }
         }
-        rev::GenIn::BSpline(_) => {}
+        rev::GenIn::BSpline(_) | rev::GenIn::Hyperbola { .. } => {}
     }
     s
 }
@@ -1607,6 +1608,8 @@ fn degree_1_directions(k: &Kernel, off: &OffIn) -> Option<[bool; 2]> {
             SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
             | SurfaceKind::SurfOfRevolution(_) => {
                 let d = [
                     s.degree(SurfParamType::U) == 1,

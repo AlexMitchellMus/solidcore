@@ -105,6 +105,12 @@
 //! - `MSG` / `SM_ASSERT` only report; the `SM_DEBUG_CODE` and `#if 0` blocks and the
 //!   empty `bShelling` branch are not ported. `SM_VALIDATE_INTERSECTORS` is not
 //!   defined in the reference build.
+//! - **Centre line of the circular FSG.** `CreateSurfaceFromCurves` receives the centre
+//!   line as its B-spline data, so `GetDegree` / `IsLine` / `IsArc` are not dispatched on
+//!   an `SmLine` centre line as upstream does (`SmFilletStandardSolver.cpp:3353-3384`;
+//!   `SmLine::IsLine` answers without testing); the vector may round differently. Taking
+//!   the curve as `&mut Curve` is a signature change of
+//!   `blend.fillet_standard_solver_p1`, left to a follow-up (`plan/findings.md`).
 //! - **Recursion.** None.
 
 use crate::blend::fillet_standard_solver::p1::CircularCrossSectionFsg;
@@ -2429,7 +2435,7 @@ impl OffsetGeometryCreation {
                     // Find the UVTrimCurve closest to the original - assume curve dropped to a seam
                     let mut min_dist = BIG_DOUBLE;
                     for (j, test) in uv_curves.iter().enumerate() {
-                        let tc = Curve::from(test.clone());
+                        let tc = test.clone();
                         let sols2: SolutionArray<O> = tc.global_point_solve(
                             k,
                             &tc.natural_interval(),
@@ -2456,7 +2462,7 @@ impl OffsetGeometryCreation {
                     .get(closest_idx)
                     .ok_or(dangling("drop curve index"))?
                     .clone();
-                store_curve(brep, Curve::from(best))?
+                store_curve(brep, best)?
             }; // end LiftedCurve failed to drop to OtherExtSurf branch
 
             // When using the RadialEdgeuse - swap the extended UVTrimCurves
