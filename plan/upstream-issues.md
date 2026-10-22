@@ -265,6 +265,16 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash (heap corruption).
 - **Rust port:** the `primitive.api_curves` FFI refuses a non-finite knot for the canonical curve. The Rust side returns an error status on `fuzz08941`. Number follows the open PRs' UB-237; renumber on merge if taken.
 
+#### UB-250. `N_IgesClampSrf` writes past its new knot vector when a knot is NaN
+- **Location:** `source/SMLib/src/NL_Iges.cpp:817` `N_IgesClampSrf`: the span searches (`:980-1003` for v, as for u) assume finite, nondecreasing knots and bounds inside them; the knot copy (`:1096-1103`) then writes more knots than the vector it sized holds. Reached from `N_Iges128Srf` (`:757`), e.g. `SmBSplineSurface::CreateCanonical` for a surface of revolution.
+- **What happens:** For v knots `360 360 360 NaN NaN 540 540 540` (degree 2) clamped to `[360, 540]`, every comparison with NaN is false, so the searches give `span1 = 4`, `mult1 = 3`, `span2 = 5`, `mult2 = 3`. The new vector gets `span2 - span1 - mult2 + 2q + 1 = 3`, i.e. 4 knots (32 bytes); the copy writes 3 + 0 + 3 = 6 of them, the last two past the end in the `vb[1]` loop at `:1102-1103`.
+- **Trigger:** a STEP surface of revolution with its sweep domain from 360 degrees (tangency-labs/solidcore#428), whose B-spline gets the knots above (tangency-labs/solidcore#427).
+- **How found:** AddressSanitizer on SolidCraft's STEP import through SMLib (#427: heap-buffer-overflow, WRITE of size 8 at `NL_Iges.cpp:1103`, 0 bytes after a 32-byte region); the counts above were traced by hand at `c9c5979`.
+- **Confirmed:** yes (ASan, reported in #427).
+- **Severity:** crash/UB (heap-buffer-overflow).
+- **Fix:** tangency-labs/smlib@0a7e06d refuses, before clamping, knot vectors that aren't finite (within `1e300`) and nondecreasing, and bounds that aren't increasing and strictly inside the knots.
+- **Rust port:** `nurbs::iges::clamp_surface` indexes with checks, so it never wrote out of bounds (this case gave `InvalidInput`, "index outside the arrays"), but a NaN interior knot with the bounds at the ends came back `Ok` with the NaN kept, and an infinite end knot was taken as junk. It now refuses up front as the fix does (test `clamp_surface_refuses_bad_knots`).
+
 ### NLib: matrices and polynomials
 
 #### UB-17. Banded and triangular matrix routines index outside rows
