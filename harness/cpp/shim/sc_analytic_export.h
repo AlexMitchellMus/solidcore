@@ -3,9 +3,9 @@
 // (sc_edgeuse_graph.h, sc_topology_fixture.h): the face surface kinds the Rust import can
 // rebuild as their own `SurfaceKind` travel as their upstream database record (binary,
 // SM_CURRENT_DATABASE_VERSION), which the importer reads with the ported `ReadFromDB`.
-// Only `SmSurfOfRevolution` itself qualifies: its subclasses (`SmCone`, `SmCylinder`,
-// `SmSphere`, `SmTorus`) and `SmSurfOfExtrusion` have no `SurfaceKind` in the port (the
-// dispatch gap in `Surface::read_from_db`) and keep their B-spline part.
+// `SmSurfOfRevolution`, `SmSphere` and `SmTorus` qualify (the kinds with a `SurfaceKind`
+// the port's `Surface::read_from_db` returns); the other subclasses (`SmCone`,
+// `SmCylinder`) and `SmSurfOfExtrusion` keep their B-spline part.
 //
 // Face surface block (layout in crates/solidcore-ffi/src/units/topology_edgeuse_p1.rs):
 //   `2 type version surf_oob gen_oob nbytes byte[nbytes]` then the header's regular
@@ -26,7 +26,9 @@
 #include <SmContext.h>
 #include <SmDatabaseIO.h>
 #include <SmEllipse.h>
+#include <SmSphere.h>
 #include <SmSurfOfRevolution.h>
+#include <SmTorus.h>
 #include <SmSurface.h>
 
 #include <sstream>
@@ -53,13 +55,20 @@ inline bool record_of(const SmSurfOfRevolution* s, std::string& bytes)
 
 inline bool oob_of(const SmBSplineCurve* c) { return c != nullptr && c->IsOutOfBoundsEnabled() != FALSE; }
 
+// The surface types exported exactly (all `SmSurfOfRevolution` or a subclass of it).
+inline bool exact_type(SM_TYPE t)
+{
+    return t == SmSurfOfRevolution_TYPE || t == SmSphere_TYPE || t == SmTorus_TYPE;
+}
+
 // Appends the exact block head (`2 type version surf_oob gen_oob nbytes bytes`) of `s`
 // when it can be exported exactly; returns whether it did (the caller then appends the
 // regular block either way).
 inline bool put_exact_head(std::vector<double>& o, const SmSurface* s, const SmContext& ctx)
 {
-    if (s == nullptr || s->GetType() != SmSurfOfRevolution_TYPE)
+    if (s == nullptr || !exact_type(s->GetType()))
         return false;
+    const SM_TYPE type = s->GetType();
     const SmSurfOfRevolution* r = (const SmSurfOfRevolution*)s;
     const SmBSplineCurve* gen = r->GetGenCurve();
     const SmPolarConversion& polar = r->*SorPeek::polar();
@@ -78,9 +87,8 @@ inline bool put_exact_head(std::vector<double>& o, const SmSurface* s, const SmC
         std::istringstream iss(bytes);
         SmDatabaseIOStream db(SM_BINARY, &iss);
         SmSurface* back = nullptr;
-        if (SmSurfOfRevolution::ReadFromDB(SmSurfOfRevolution_TYPE, db, ctx, back,
-                                           SM_CURRENT_DATABASE_VERSION) == SM_SUCCESS &&
-            back != nullptr)
+        if (SmSurface::ReadFromDB(type, db, ctx, back, SM_CURRENT_DATABASE_VERSION) == SM_SUCCESS &&
+            back != nullptr && back->GetType() == type)
         {
             const SmSurfOfRevolution* rb = (const SmSurfOfRevolution*)back;
             std::string again;
@@ -93,7 +101,7 @@ inline bool put_exact_head(std::vector<double>& o, const SmSurface* s, const SmC
     if (!ok)
         return false;
     o.push_back(2.0);
-    o.push_back((double)SmSurfOfRevolution_TYPE);
+    o.push_back((double)type);
     o.push_back((double)SM_CURRENT_DATABASE_VERSION);
     o.push_back(r->IsOutOfBoundsEnabled() != FALSE ? 1.0 : 0.0);
     o.push_back(oob_of(gen) ? 1.0 : 0.0);

@@ -121,8 +121,10 @@ pub(super) struct Setup {
 fn setup(i: &Inputs) -> Result<Result<Setup, Output>, HarnessError> {
     let path = path_of(Some(&i.brep))?;
     let block = brep_block_of(Some(&i.brep), i.validate_only, i.init_gaps)?;
-    let ex = ffi1::eval(ffi1::Op::Export, &path, &block)
-        .map_err(|e| harness(format!("c++ export: {e}")))?;
+    let ex = crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
+        ffi1::eval(ffi1::Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     let Some(c) = ffi1::counts(&ex) else {
         let st = ex.get(1).copied().unwrap_or(0.0);
         return Ok(Err(Output::err(format!("brep_build_status_{st}"))));
@@ -261,13 +263,14 @@ fn surface_kind_gap(surface_type: i64) -> Option<&'static str> {
 }
 
 /// The deferral of a case whose face surface overrides the NURB-parameter evaluators
-/// (`SmCone`, `SmCylinder`, `SmSphere`): the Rust `Surface` has no kind for it.
+/// (`SmCone`, `SmCylinder`, `SmSphere`) and is imported only as its B-spline part (not
+/// exported exactly).
 /// `SmTorus` overrides only the STEP evaluators, so its B-spline part evaluates alike.
 fn analytic_evaluators(s: &Setup) -> Option<Output> {
     let surface_type = eu1::face(&s.brep, s.eu)
         .ok()
         .flatten()
-        .and_then(|f| s.types.face_surface_types.get(f.index() as usize).copied())?;
+        .and_then(|f| s.types.inexact_surface(f.index() as usize))?;
     if surface_type == 15015 {
         return None;
     }
@@ -361,7 +364,7 @@ fn output_of(op: &OpIn, body: &[f64]) -> Output {
 // ---- Rust side --------------------------------------------------------------------------
 
 /// The state of an edge use as the shim's `put_eu_state`.
-pub(super) fn put_eu_state(o: &mut Vec<f64>, b: &Brep, eu: Option<EdgeuseId>) -> Result<(), SolidError> {
+pub(super) fn put_eu_state(k: &Kernel, o: &mut Vec<f64>, b: &Brep, eu: Option<EdgeuseId>) -> Result<(), SolidError> {
     let Some(eu) = eu else {
         o.push(-1.0);
         return Ok(());
@@ -376,7 +379,7 @@ pub(super) fn put_eu_state(o: &mut Vec<f64>, b: &Brep, eu: Option<EdgeuseId>) ->
             o.extend([ivl.min(), ivl.max()]);
             for t in [ivl.min(), ivl.mid(), ivl.max()] {
                 let p = c
-                    .evaluate_point(t)
+                    .evaluate_point(k, t)
                     .unwrap_or(solidcore::math::Vec3::UNDEF);
                 o.extend([p.x, p.y, p.z]);
             }
@@ -428,6 +431,11 @@ fn run_rust_op(
             ..
         } => eu2::is_tangent_sector(&k, b, eu, *tol_deg, *coincidence, *ok_make)
             .map(|r| vec![flag(r)]),
+        // the FFI bounds the sample count (`MAX_SAMPLES`); mirror it so a fuzzed count
+        // cannot keep the Rust side sampling for billions of iterations
+        OpIn::Convex { n, .. } if *n > ffi::MAX_SAMPLES as u64 => {
+            return Err(harness(format!("sample count {n} above {}", ffi::MAX_SAMPLES)));
+        }
         OpIn::Convex {
             n,
             step_off,
@@ -494,7 +502,7 @@ fn run_rust_op(
             };
             status.and_then(|s| {
                 let mut v = vec![s];
-                put_eu_state(&mut v, b, Some(eu))?;
+                put_eu_state(&k, &mut v, b, Some(eu))?;
                 Ok(v)
             })
         }
@@ -523,8 +531,8 @@ fn run_rust_op(
                     };
                     let state = (|| -> Result<Vec<f64>, SolidError> {
                         let mut v = vec![failed, dmax, replaced];
-                        put_eu_state(&mut v, b, Some(eu))?;
-                        put_eu_state(&mut v, b, mate)?;
+                        put_eu_state(&k, &mut v, b, Some(eu))?;
+                        put_eu_state(&k, &mut v, b, mate)?;
                         let tol = match eu1::edge(b, eu)? {
                             Some(e) => b.edge(e)?.tolerance,
                             None => -1.0,
@@ -558,8 +566,8 @@ fn run_rust_op(
             )
             .and_then(|()| {
                 let mut v = vec![0.0];
-                put_eu_state(&mut v, b, Some(eu))?;
-                put_eu_state(&mut v, b, mate)?;
+                put_eu_state(&k, &mut v, b, Some(eu))?;
+                put_eu_state(&k, &mut v, b, mate)?;
                 v.push(gap_flag(b, Some(eu))?);
                 v.push(gap_flag(b, mate)?);
                 Ok(v)

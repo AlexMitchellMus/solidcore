@@ -15,7 +15,7 @@ use crate::HarnessError;
 /// A side-by-side runner for one unit. Implement it on `pub struct Runner;`
 /// in `src/units/<unit_id_with_underscores>.rs`.
 pub trait UnitDiff {
-    /// Unit id as in `plan/modules.toml` (e.g. `nlib.knots`).
+    /// Unit id as in `plan/units/<id>.toml` (e.g. `nlib.knots`).
     fn id(&self) -> &'static str;
 
     /// Runs the upstream C++ (via `solidcore_ffi::units::*`).
@@ -92,6 +92,8 @@ pub struct CaseResult {
     /// In perturb mode: what was perturbed (`value`, `int`, `topology`, `error`),
     /// or `None` if the case had nothing to perturb or was deferred.
     pub perturbed: Option<&'static str>,
+    /// The Rust side's [`Output::diagnostics`] (reported, never compared).
+    pub diagnostics: BTreeMap<String, i64>,
 }
 
 /// Classification of one case.
@@ -215,6 +217,9 @@ pub struct UnitTiming {
     /// line per case (f64 `Debug` is the shortest round-trip form, so equal digests mean
     /// bit-identical Rust outputs across builds).
     pub rust_digests: Vec<String>,
+    /// With `DIFFTEST_RUST_DIGEST` set: the same line for the C++ output of every case
+    /// (proves that harness changes leave the C++ side's results untouched).
+    pub cpp_digests: Vec<String>,
 }
 
 fn fnv1a64(s: &str) -> u64 {
@@ -430,9 +435,17 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
                 continue;
             }
         }
+        // the Rust side reuses this case's C++ fixture exports (`export_memo`)
+        let memo = crate::export_memo::CaseScope::new();
         let t0 = Instant::now();
         let cpp = guarded(|| unit.run_cpp(&case), "cpp");
         res.timing.cpp += t0.elapsed();
+        if digest {
+            let d = fnv1a64(&format!("{cpp:?}"));
+            res.timing
+                .cpp_digests
+                .push(format!("{}\t{d:016x}", case.name));
+        }
 
         let mut cr = CaseResult {
             name: case.name.clone(),
@@ -444,6 +457,7 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
             rejected: None,
             deferred: None,
             perturbed: None,
+            diagnostics: BTreeMap::new(),
         };
         if let Ok(c) = &cpp {
             if let Some(reason) = &c.rejected {
@@ -452,9 +466,11 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
                 continue;
             }
         }
+        crate::export_memo::rust_side();
         let t0 = Instant::now();
         let rust = guarded(|| unit.run_rust(&case), "rust");
         let dt = t0.elapsed();
+        drop(memo);
         res.timing.rust += dt;
         if digest {
             let d = fnv1a64(&format!("{rust:?}"));
@@ -480,6 +496,7 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
                 cr.deferred = r.deferred;
             }
             (Ok(c), Ok(mut r)) => {
+                cr.diagnostics = r.diagnostics.as_deref().cloned().unwrap_or_default();
                 if opts.perturb {
                     cr.perturbed = perturb_output(&mut r);
                 }
@@ -552,6 +569,7 @@ mod tests {
             rejected: None,
             deferred,
             perturbed: None,
+            diagnostics: BTreeMap::new(),
         };
         let d = || {
             Some(Deferred {

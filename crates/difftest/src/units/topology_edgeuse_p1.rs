@@ -139,6 +139,14 @@ pub(crate) enum BrepIn {
         face: Option<FaceIn>,
         networks: usize,
     },
+    /// The closed box solid of `SmApiCreateBox` (planes and lines; fixtures only).
+    Box { origin: [f64; 3], size: [f64; 3] },
+    /// Isolated vertices `[x, y, z, tol]` and wire line segments `[x0, y0, z0, x1, y1,
+    /// z1, tol]`, each set to its tolerance (fixtures and other units' generators).
+    Points {
+        vertices: Vec<[f64; 4]>,
+        lines: Vec<[f64; 7]>,
+    },
 }
 
 /// The face of a [`BrepIn::Mixed`] B-rep (as [`BrepIn::Face`]).
@@ -307,6 +315,21 @@ pub(crate) fn brep_block_of(
                 v.extend(face.dom);
             }
             v.push(*networks as f64);
+        }
+        BrepIn::Box { origin, size } => {
+            v.push(7.0);
+            v.extend(origin);
+            v.extend(size);
+        }
+        BrepIn::Points { vertices, lines } => {
+            v.extend([8.0, vertices.len() as f64]);
+            for p in vertices {
+                v.extend(p);
+            }
+            v.push(lines.len() as f64);
+            for l in lines {
+                v.extend(l);
+            }
         }
     }
     v.push(flag(validate_only));
@@ -537,7 +560,11 @@ pub(crate) fn fixture_input(value: Value) -> Result<(String, Vec<f64>), HarnessE
 /// The C++ export of the case's B-rep.
 fn export(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
     let path = path_of(i.brep.as_ref())?;
-    ffi::eval(Op::Export, &path, &brep_block(i)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let block = brep_block(i)?;
+    crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 /// A build failure as an operation error.
@@ -1089,10 +1116,20 @@ pub(crate) fn import_with_types(ex: &[f64]) -> Result<(Brep, ImportTypes), Harne
     }
     for (f, (surface, uv_domain, tolerance)) in surfaces.into_iter().enumerate() {
         let shell = face_shells.get(f).copied().unwrap_or(ShellId::from_index(0));
+        // m_pFU, which the export does not carry: the primary face use is the face's
+        // upward one (SM_OT_SAME, SmFace::GetUpwardFaceuse)
+        let faceuse = faceuses
+            .iter()
+            .position(|fu| {
+                fu.face == Some(FaceId::from_index(f as u32))
+                    && fu.orientation == OrientType::Same
+            })
+            .map(|i| FaceuseId::from_index(i as u32));
         b.add_face_record(Face {
             surface,
             uv_domain,
             tolerance,
+            faceuse,
             ..Face::new(shell)
         })
         .map_err(|e| harness(e.to_string()))?;
@@ -1176,9 +1213,9 @@ fn rust_err(e: &SolidError) -> Result<Output, HarnessError> {
     }
 }
 
-fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
+fn run_rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     if !is_brep_op(&i.op) {
-        return match run_rust_geom(&i.op) {
+        return match run_rust_geom(k, &i.op) {
             Ok(o) => Ok(o),
             Err(Fail::Solid(e)) => rust_err(&e),
             Err(Fail::Harness(h)) => Err(h),
@@ -1195,7 +1232,7 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     if let Some(o) = inexact_geometry(&b, &types, &op) {
         return Ok(o);
     }
-    match run_rust_brep(&mut b, &op) {
+    match run_rust_brep(k, &mut b, &op) {
         Ok(o) => Ok(o),
         Err(Fail::Solid(e)) => rust_err(&e),
         Err(Fail::Harness(h)) => Err(h),
@@ -1294,7 +1331,7 @@ fn eid(i: i64) -> EdgeuseId {
 }
 
 /// The state of an edge use after `SetUVTrimCurve`, as the shim's `put_eu_state`.
-fn eu_state(b: &Brep, eu: Option<EdgeuseId>, out: &mut Vec<f64>) -> Result<(), SolidError> {
+fn eu_state(k: &Kernel, b: &Brep, eu: Option<EdgeuseId>, out: &mut Vec<f64>) -> Result<(), SolidError> {
     let Some(eu) = eu else {
         out.push(-1.0);
         return Ok(());
@@ -1308,7 +1345,7 @@ fn eu_state(b: &Brep, eu: Option<EdgeuseId>, out: &mut Vec<f64>) -> Result<(), S
             let ivl = c.natural_interval();
             out.extend([ivl.min(), ivl.max()]);
             for t in [ivl.min(), ivl.mid(), ivl.max()] {
-                let p = c.evaluate_point(t).unwrap_or(Vec3::UNDEF);
+                let p = c.evaluate_point(k, t).unwrap_or(Vec3::UNDEF);
                 out.extend([p.x, p.y, p.z]);
             }
         }
@@ -1333,7 +1370,7 @@ fn status_of(e: &SolidError) -> f64 {
     }
 }
 
-fn run_rust_brep(b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
+fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
     match op {
         OpIn::EuQuery { eu, vertex } => {
             let e = eid(*eu);
@@ -1472,8 +1509,8 @@ fn run_rust_brep(b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
                 Err(x) => return Err(x.into()),
             }
             let mut out = vec![0.0];
-            eu_state(b, Some(e), &mut out)?;
-            eu_state(b, mate, &mut out)?;
+            eu_state(k, b, Some(e), &mut out)?;
+            eu_state(k, b, mate, &mut out)?;
             out.push(match eu1::edge(b, e)? {
                 Some(x) => b.edge(x)?.tolerance,
                 None => -1.0,
@@ -1614,7 +1651,7 @@ impl solidcore::geom::solution_array::SolutionObject for Obj {
     }
 }
 
-fn run_rust_geom(op: &OpIn) -> Result<Output, Fail> {
+fn run_rust_geom(k: &Kernel, op: &OpIn) -> Result<Output, Fail> {
     match op {
         OpIn::StepOff {
             surface,
@@ -1625,7 +1662,7 @@ fn run_rust_geom(op: &OpIn) -> Result<Output, Fail> {
             jac,
         } => {
             let s = surface_of(surface)?;
-            let mut e = eu1::FindStepOff::new(*dist, Vec3::from_array(*p), Vec3::from_array(*n), &s);
+            let mut e = eu1::FindStepOff::new(k, *dist, Vec3::from_array(*p), Vec3::from_array(*n), &s);
             let mut f = [UNDEF_DOUBLE; 2];
             let mut m = Matrix::new(2, 2);
             for r in 0..2 {
@@ -1666,7 +1703,7 @@ fn run_rust_geom(op: &OpIn) -> Result<Output, Fail> {
                 _ => None,
             };
             let (dist, dev) =
-                eu1::calc_dist_and_dev(Vec3::from_array(*p), &sol, |_| Some(&s), *want_dev)?;
+                eu1::calc_dist_and_dev(k, Vec3::from_array(*p), &sol, |_| Some(&s), *want_dev)?;
             Ok(Output::new().values("dist_dev", vec![dist, dev.unwrap_or(UNDEF_DOUBLE)]))
         }
         OpIn::Seam {
@@ -1947,7 +1984,8 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        run_rust(&case.parse::<Inputs>()?)
+        let k = &Kernel::default();
+        run_rust(k, &case.parse::<Inputs>()?)
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {

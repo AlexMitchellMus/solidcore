@@ -24,8 +24,9 @@
 //! cache per surface, `smsurf_GetSurfaceCache`). A caller that holds the surface's
 //! cache passes it to [`Surface::global_curve_intersect_in`] /
 //! [`Surface::global_line_intersect_in`], so the line and tree solves run on that
-//! cache's tree as upstream's do (the degenerate-curve point solve and the drops still
-//! fetch their own). The
+//! cache's tree as upstream's do, and so do the coincident `DropAndTrimCurve` traces
+//! ([`Surface::drop_and_trim_curve_in`]; the degenerate-curve point solve and the
+//! `DropCurve` fallback still fetch their own). The
 //! optional `SmDerivSurfDefinition` of `CreateBlendSurface` is copied, so its caller
 //! does not see the fields upstream overwrites. `CreateBlendSurface` returns `SM_ERR`
 //! as soon as one of the sample evaluations fails (upstream ignores the status, goes
@@ -189,6 +190,9 @@ fn surface_drop_curve(
             Ok((d.uv_curves, d.max_drop_to_surf, d.max_approx_dev))
         }
         SurfaceKind::BSpline(_)
+        | SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -207,13 +211,18 @@ fn surface_drop_curve(
 
 /// `Evaluate(uv, 2, 2, TRUE, TRUE, TRUE (bOnlyUpperHalf), &sPVV[0][0])` whose status upstream ignores: on
 /// failure `out` keeps what it held (upstream's array is left as it was).
-fn evaluate_3x3_into(surface: &Surface, uv: Point2, out: &mut [[Vec3; 3]; 3]) -> Result<()> {
+fn evaluate_3x3_into(
+    k: &Kernel,
+    surface: &Surface,
+    uv: Point2,
+    out: &mut [[Vec3; 3]; 3],
+) -> Result<()> {
     // bOnlyUpperHalf = TRUE: only the entries with i + j <= 2 are written
     let flags = EvaluateFlags {
         only_upper_half: true,
         ..EvaluateFlags::default()
     };
-    let Some(m) = ignored(surface.evaluate(uv, 2, 2, flags))? else {
+    let Some(m) = ignored(surface.evaluate(k, uv, 2, 2, flags))? else {
         return Ok(());
     };
     for (i, row) in out.iter_mut().enumerate() {
@@ -230,8 +239,8 @@ fn evaluate_3x3_into(surface: &Surface, uv: Point2, out: &mut [[Vec3; 3]; 3]) ->
 }
 
 /// `EvaluatePoint(uv, pt)` whose status upstream ignores: `Vec3::UNDEF` on failure.
-fn point_or_undef(surface: &Surface, uv: Point2) -> Result<Point3> {
-    Ok(ignored(surface.evaluate_point(uv))?.unwrap_or(Vec3::UNDEF))
+fn point_or_undef(k: &Kernel, surface: &Surface, uv: Point2) -> Result<Point3> {
+    Ok(ignored(surface.evaluate_point(k, uv))?.unwrap_or(Vec3::UNDEF))
 }
 
 /// The B-spline part of a curve of a kind derived from `SmBSplineCurve`.
@@ -437,7 +446,7 @@ impl Surface {
         // Factor out some things that are better done just once for each.
         for slot in &mut bdrys1 {
             let degenerate = match slot {
-                Some(c) => c.is_degenerate(EFF_ZERO, None)?,
+                Some(c) => c.is_degenerate(k, EFF_ZERO, None)?,
                 None => false,
             };
             if degenerate {
@@ -451,7 +460,7 @@ impl Surface {
         // Double loop over the two surface's boundary curves.
         for (ii, crv0) in bdrys0.iter_mut().enumerate() {
             let Some(crv0) = crv0.as_ref() else { continue };
-            if crv0.is_degenerate(EFF_ZERO, None)? {
+            if crv0.is_degenerate(k, EFF_ZERO, None)? {
                 continue;
             }
             let crv_dom0 = if ii == 0 || ii == 2 {
@@ -484,8 +493,8 @@ impl Surface {
                     let (uv1, uv_binorm1) = boundary_uv(&domain1, jj, t1);
 
                     // Now check the surfaces for coincidence at this point.
-                    evaluate_3x3_into(self, uv0, &mut pvv0)?;
-                    evaluate_3x3_into(other, uv1, &mut pvv1)?;
+                    evaluate_3x3_into(k, self, uv0, &mut pvv0)?;
+                    evaluate_3x3_into(k, other, uv1, &mut pvv1)?;
 
                     // Now check 2nd order terms.
                     let matched =
@@ -520,7 +529,7 @@ impl Surface {
         // If there is coincidence, then one surface completely contains the other.
         // Drop any point from each to the other.
         let mut uv1 = domain1.mid();
-        let pt1 = point_or_undef(other, uv1)?;
+        let pt1 = point_or_undef(k, other, uv1)?;
         let in_box = bbox0.contains_point(pt1, 0.0);
         let dropped = if in_box {
             ignored(surface_drop_point(
@@ -537,8 +546,8 @@ impl Surface {
         if let Some((true, uv0, dist)) = dropped {
             if dist <= tol_3d {
                 // Point coincidence, check normals and curvature.
-                evaluate_3x3_into(self, uv0, &mut pvv0)?;
-                evaluate_3x3_into(other, uv1, &mut pvv1)?;
+                evaluate_3x3_into(k, self, uv0, &mut pvv0)?;
+                evaluate_3x3_into(k, other, uv1, &mut pvv1)?;
                 if ignored(check_shape_match(&mut pvv0, &mut pvv1, tol_3d, ang_tol_rad))?
                     .unwrap_or(false)
                 {
@@ -549,7 +558,7 @@ impl Surface {
 
         // Repeat the other way around.
         let uv0 = domain0.mid();
-        let pt0 = point_or_undef(self, uv0)?;
+        let pt0 = point_or_undef(k, self, uv0)?;
         let in_box = bbox1.contains_point(pt0, 0.0);
         let dropped = if in_box {
             ignored(surface_drop_point(
@@ -567,8 +576,8 @@ impl Surface {
             uv1 = found_uv1;
             if dist <= tol_3d {
                 // Point coincidence, check normals and curvature.
-                evaluate_3x3_into(self, uv0, &mut pvv0)?;
-                evaluate_3x3_into(other, uv1, &mut pvv1)?;
+                evaluate_3x3_into(k, self, uv0, &mut pvv0)?;
+                evaluate_3x3_into(k, other, uv1, &mut pvv1)?;
                 if ignored(check_shape_match(&mut pvv0, &mut pvv1, tol_3d, ang_tol_rad))?
                     .unwrap_or(false)
                 {
@@ -603,11 +612,11 @@ impl Surface {
                 let (fi, fj) = (f64::from(ii as u8), f64::from(jj as u8));
                 // surface1 corners
                 if let Some(slot) = pts1.get_mut(ii).and_then(|r| r.get_mut(jj)) {
-                    *slot = point_or_undef(self, domain0.evaluate(fi, fj))?;
+                    *slot = point_or_undef(k, self, domain0.evaluate(fi, fj))?;
                 }
                 // surface2 corners
                 if let Some(slot) = pts2.get_mut(ii).and_then(|r| r.get_mut(jj)) {
-                    *slot = point_or_undef(other, domain1.evaluate(fi, fj))?;
+                    *slot = point_or_undef(k, other, domain1.evaluate(fi, fj))?;
                 }
             }
         }
@@ -697,13 +706,10 @@ impl Surface {
         if p1(0, 0).closer_than(tol_3d, p1(1, 0)) {
             // Closed in u (on surf 1).
             let uv1 = domain0.evaluate(0.0, 0.0);
-            let (_, su0, _) = ignored(self.evaluate_1st_derivatives(uv1, true, true))?.unwrap_or((
-                Vec3::UNDEF,
-                Vec3::UNDEF,
-                Vec3::UNDEF,
-            ));
+            let (_, su0, _) = ignored(self.evaluate_1st_derivatives(k, uv1, true, true))?
+                .unwrap_or((Vec3::UNDEF, Vec3::UNDEF, Vec3::UNDEF));
             let uv2 = domain1.evaluate(f64::from(idx00 as u8), f64::from(jdx00 as u8));
-            let (_, su1, sv1) = ignored(other.evaluate_1st_derivatives(uv2, true, true))?
+            let (_, su1, sv1) = ignored(other.evaluate_1st_derivatives(k, uv2, true, true))?
                 .unwrap_or((Vec3::UNDEF, Vec3::UNDEF, Vec3::UNDEF));
             let other_dir = if orient == OrientType::Same { su1 } else { sv1 };
             if su0.dot(other_dir) < 0.0 {
@@ -715,13 +721,10 @@ impl Surface {
         if p1(0, 0).closer_than(tol_3d, p1(0, 1)) {
             // Closed in v (on surf 1).
             let uv1 = domain0.evaluate(0.0, 0.0);
-            let (_, _, sv0) = ignored(self.evaluate_1st_derivatives(uv1, true, true))?.unwrap_or((
-                Vec3::UNDEF,
-                Vec3::UNDEF,
-                Vec3::UNDEF,
-            ));
+            let (_, _, sv0) = ignored(self.evaluate_1st_derivatives(k, uv1, true, true))?
+                .unwrap_or((Vec3::UNDEF, Vec3::UNDEF, Vec3::UNDEF));
             let uv2 = domain1.evaluate(f64::from(idx00 as u8), f64::from(jdx00 as u8));
-            let (_, su1, sv1) = ignored(other.evaluate_1st_derivatives(uv2, true, true))?
+            let (_, su1, sv1) = ignored(other.evaluate_1st_derivatives(k, uv2, true, true))?
                 .unwrap_or((Vec3::UNDEF, Vec3::UNDEF, Vec3::UNDEF));
             let other_dir = if orient == OrientType::Same { sv1 } else { su1 };
             if sv0.dot(other_dir) < 0.0 {
@@ -748,7 +751,7 @@ impl Surface {
 
                 // this surface(dU,dV) point
                 let uv1 = domain0.evaluate(u, v);
-                let pt1 = point_or_undef(self, uv1)?;
+                let pt1 = point_or_undef(k, self, uv1)?;
 
                 // sUV1 =map=> sUV2
                 let normalized_uv2 = super::p2::map_uv(u, v, orient, dir_u, dir_v);
@@ -917,6 +920,7 @@ impl Surface {
         let mut end_rail = rail2.copy();
         // (the status is not checked upstream: a NULL blend surface is SM_ERR below)
         let blend = match def.skin_deriv_surface(
+            k,
             &cross_sections,
             &end.params,
             &mut start_rail,
@@ -1122,8 +1126,9 @@ impl Surface {
         let mut sols: SolutionArray<O> = SolutionArray::new();
 
         // local Surface Cache
+        let mut held = cache;
         let built;
-        let cache = if let Some(c) = cache {
+        let cache = if let Some(c) = held.as_deref_mut() {
             Self::held_cache(k, c, OP_LINE)?
         } else {
             built = self.solve_cache_of(k, surface, OP_LINE)?;
@@ -1142,6 +1147,7 @@ impl Surface {
         );
         // instance the Solver
         let mut gs = LsiGlobalSolver::new(
+            k,
             tree,
             Some(self),
             *uv_domain,
@@ -1152,7 +1158,6 @@ impl Surface {
             distance_tolerance,
         );
         gs.surface_cache = Some(cache);
-        gs.kernel = Some(k);
 
         // traverse curve and surface sub-division trees
         // for each sub-division leaf pair that has intersecting boundaries
@@ -1245,7 +1250,7 @@ impl Surface {
         //   2. Surface's NormalSection curvature in direction of line is far from linear.
         let num_sols = sols.len();
         let mut might_be_coincident = num_sols > 0;
-        let mut sr_eval = SurfaceEval::with_uv_and_sect_dir(Some(self), 0.0, 0.0, line_vector);
+        let mut sr_eval = SurfaceEval::with_uv_and_sect_dir(k, Some(self), 0.0, 0.0, line_vector);
 
         // for every solution - classify solution points as Coincident/NotCoincident
         for ii in 0..num_sols {
@@ -1260,12 +1265,12 @@ impl Surface {
                 sr_eval.set_uv_coords(end.param(1)?, end.param(2)?);
 
                 // When line tangent not perp to surfNormal - can't be coincident
-                ignore_status(sr_eval.eval_normal())?;
+                ignore_status(sr_eval.eval_normal(k))?;
                 let normal = sr_eval.values()[2][2];
                 if line_vector.is_perpendicular_to(normal, EFF_ZERO_RAD) {
                     // if SurfaceNormalSection curvature is far from linear - can't be
                     // coincident
-                    ignore_status(sr_eval.eval_normal_section())?;
+                    ignore_status(sr_eval.eval_normal_section(k))?;
                     let curvature = sr_eval.stored_section().1;
                     let surf_size = 2.0 * tree_box.max_dimension();
                     if curvature.abs() > (1.0 / surf_size) {
@@ -1311,8 +1316,9 @@ impl Surface {
             if found.is_some() {
                 sols.reset();
 
-                let dropped = self.drop_and_trim_curve::<NoObject>(
+                let dropped = self.drop_and_trim_curve_in::<NoObject, O>(
                     k,
+                    held,
                     uv_domain,
                     &line,
                     &line_interval_used,
@@ -1322,8 +1328,7 @@ impl Surface {
                     None,
                 )?;
                 let mut dist_to_surface = dropped.max_drop_to_surf;
-                let mut uv_curves: Vec<Curve> =
-                    dropped.uv_curves.into_iter().map(Curve::from).collect();
+                let mut uv_curves: Vec<Curve> = dropped.uv_curves;
 
                 // If the curve is entirely interior to the surface, then
                 // DropAndTrimCurve won't find it; in that case use DropCurve.
@@ -1348,13 +1353,13 @@ impl Surface {
                     sol.num_variables = 3;
                     sol.solution_type = SolutionType::RangeOfValues;
 
-                    let pnt = uv_curve.evaluate_point(ivl.min())?;
+                    let pnt = uv_curve.evaluate_point(k, ivl.min())?;
                     sol.start.solution_value = dist_to_surface;
                     *sol.start.param_mut(0)? = ivl.min();
                     *sol.start.param_mut(1)? = pnt.x;
                     *sol.start.param_mut(2)? = pnt.y;
 
-                    let pnt = uv_curve.evaluate_point(ivl.max())?;
+                    let pnt = uv_curve.evaluate_point(k, ivl.max())?;
                     sol.end.solution_value = dist_to_surface;
                     *sol.end.param_mut(0)? = ivl.max();
                     *sol.end.param_mut(1)? = pnt.x;
@@ -1622,8 +1627,8 @@ impl Surface {
         let [curve_handle, surface_handle] = handles;
 
         // Special case DegenerateCurve/Surface intersections
-        if curve.is_degenerate(EFF_ZERO, Some(interval))? {
-            let pnt = curve.evaluate_point(interval.min())?;
+        if curve.is_degenerate(k, EFF_ZERO, Some(interval))? {
+            let pnt = curve.evaluate_point(k, interval.min())?;
 
             // pass call to global surface/point intersect (status not checked: what the
             // call found before failing stays in the solutions)
@@ -1658,9 +1663,9 @@ impl Surface {
             // Note: cannot use IsLinear() here: for GlobalLineIntersect(), we also
             // require constant speed. Use IsLine(). [B196] Tolerance: whatever we use
             // here can result in errors of that magnitude, so use a very tight one.
-            if curve.is_line(10, EFF_ZERO)?.is_some() {
+            if curve.is_line(k, 10, EFF_ZERO)?.is_some() {
                 // get Line value at param=0.0 avoiding interval boundary problems
-                let pv = curve.evaluate(interval.min(), 1, true, false)?;
+                let pv = curve.evaluate(k, interval.min(), 1, true, false)?;
                 let p0 = pv.first().copied().ok_or(SolidError::sm_err(OP_CURVE))?;
                 let d1 = pv.get(1).copied().ok_or(SolidError::sm_err(OP_CURVE))?;
                 let line_point = p0 - interval.min() * d1;
@@ -1710,8 +1715,9 @@ impl Surface {
         //                   boundary by more than dDistanceTolerance
         if coincident {
             // drop curve to surface
-            let dropped = self.drop_and_trim_curve::<NoObject>(
+            let dropped = self.drop_and_trim_curve_in::<NoObject, O>(
                 k,
+                cache,
                 uv_domain,
                 curve,
                 interval,
@@ -1721,8 +1727,7 @@ impl Surface {
                 None,
             )?;
             let mut dist_to_surface = dropped.max_drop_to_surf;
-            let mut uv_curves: Vec<Curve> =
-                dropped.uv_curves.into_iter().map(Curve::from).collect();
+            let mut uv_curves: Vec<Curve> = dropped.uv_curves;
 
             // DropAndTrimCurve() will miss curves that lie entirely within the
             // boundaries of the surface. Use DropCurve() for that. [090827]
@@ -1754,13 +1759,13 @@ impl Surface {
                 sol.objects[0] = curve_handle;
                 sol.objects[1] = surface_handle;
 
-                let pnt = uv_curve.evaluate_point(ivl.min())?;
+                let pnt = uv_curve.evaluate_point(k, ivl.min())?;
                 sol.start.solution_value = dist_to_surface;
                 *sol.start.param_mut(0)? = ivl.min();
                 *sol.start.param_mut(1)? = pnt.x;
                 *sol.start.param_mut(2)? = pnt.y;
 
-                let pnt = uv_curve.evaluate_point(ivl.max())?;
+                let pnt = uv_curve.evaluate_point(k, ivl.max())?;
                 sol.end.solution_value = dist_to_surface;
                 *sol.end.param_mut(0)? = ivl.max();
                 *sol.end.param_mut(1)? = pnt.x;
@@ -1798,6 +1803,7 @@ impl Surface {
 
         // instance the Solver
         let mut gs = super::p1::CsiGlobalSolver::new(
+            k,
             curve_tree,
             surface_tree,
             Some(self),
@@ -1807,7 +1813,6 @@ impl Surface {
         );
         gs.curve = Some(curve);
         gs.surface_cache = Some(surface_cache);
-        gs.kernel = Some(k);
 
         // traverse curve and surface sub-division trees
         // for each sub-division leaf pair that has intersecting boundaries
@@ -1864,6 +1869,7 @@ impl<O: SolutionObject> SpGlobalSolver<'_, '_, O> {
         &mut self,
         branch: &crate::geom::global_solver::Branch,
     ) -> Result<bool> {
+        let k = self.kernel;
         // locals
         let point_node = *self.base.branch_node(branch, 0)?;
         let surface_node = *self.base.branch_node(branch, 1)?;
@@ -1970,7 +1976,7 @@ impl<O: SolutionObject> SpGlobalSolver<'_, '_, O> {
 
             // when SurfacePatch/Temp PolarBoxes are disjoint
             if tmp_polar.state() != PolarBoxState::Unbounded
-                && tmp_polar.are_disjoint(&cache.polar_box_unstored(surface_id)?)
+                && tmp_polar.are_disjoint(&cache.polar_box_unstored(k, surface_id)?)
             {
                 // no solution possible based on polar box check
                 solve_for_surface = false;
@@ -1978,7 +1984,6 @@ impl<O: SolutionObject> SpGlobalSolver<'_, '_, O> {
         }
 
         // solve
-        let k = self.kernel.ok_or(SolidError::null_pointer(OP_SP))?;
         let solutions = sp_local_solve::<O>(
             k,
             &patch,
@@ -2063,7 +2068,7 @@ impl Surface {
         let undef3 = (Vec3::UNDEF, Vec3::UNDEF, Vec3::UNDEF);
 
         let (srf_pt, su, sv) =
-            ignored(self.evaluate_1st_derivatives(uv_guess, false, false))?.unwrap_or(undef3);
+            ignored(self.evaluate_1st_derivatives(k, uv_guess, false, false))?.unwrap_or(undef3);
         if srf_pt.closer_than(tol, test_pt) {
             return Ok(SingularityInversion {
                 uv: uv_guess,
@@ -2103,6 +2108,7 @@ impl Surface {
 
         // test crTestPt/SurfaceNormal(sSingUV) dist against dTol (status ignored)
         let on_normal = ignored(is_point_on_normal(
+            k,
             self,
             Some(uv_domain),
             sing_uv,
@@ -2126,9 +2132,10 @@ impl Surface {
         // Ok, neither the guess uv nor the pole is a solution. Find the degenerate
         // param, at the pole, where the non-degenerate tangent points towards the
         // test point.
-        let pole_pt = point_or_undef(self, sing_uv)?;
+        let pole_pt = point_or_undef(k, self, sing_uv)?;
         let diff_vec = test_pt - pole_pt; // we know this isn't zero.
-        let degen = self.find_degen_param_for_direction(sing_uv, diff_vec, true, sing_dir, tol)?;
+        let degen =
+            self.find_degen_param_for_direction(k, sing_uv, diff_vec, true, sing_dir, tol)?;
         if !degen.converged {
             // Probably out of bounds (SM_TR_OUT_OF_BOUNDS / SM_TR_UNABLE_TO_CONVERGE).
             return Err(SolidError::sm_err(OP_INVERT));
@@ -2150,7 +2157,7 @@ impl Surface {
         // Get a guess param. First re-evaluate at the param that's going in the right
         // direction.
         let (_, su, sv) =
-            ignored(self.evaluate_1st_derivatives(sing_uv, false, false))?.unwrap_or(undef3);
+            ignored(self.evaluate_1st_derivatives(k, sing_uv, false, false))?.unwrap_or(undef3);
         let good_deriv = if sing_dir == SurfParamType::U { sv } else { su };
         let mut guess_t = diff_vec.dot(good_deriv) / good_deriv.dot(good_deriv);
         guess_t = good_domain.clamp_value(guess_t);
@@ -2225,6 +2232,7 @@ impl Surface {
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     pub fn local_line_intersect(
         &self,
+        k: &Kernel,
         uv_domain: &Extent2d,
         line_point: Point3,
         line_vector: Point3,
@@ -2256,7 +2264,7 @@ impl Surface {
             ..Default::default()
         };
         let pvv = |s: &Self, uv: Point2| -> Result<(Vec3, Vec3, Vec3)> {
-            let m = s.evaluate(uv, 1, 1, flags)?;
+            let m = s.evaluate(k, uv, 1, 1, flags)?;
             let at = |i: usize, j: usize| {
                 m.get(i)
                     .and_then(|r| r.get(j))
@@ -2294,7 +2302,7 @@ impl Surface {
 
                 let mut normal = du.cross(dv);
                 if normal.length_squared() < EFF_ZERO_SQ {
-                    normal = self.evaluate_normal(uv, Side::Left, Side::Left)?;
+                    normal = self.evaluate_normal(k, uv, Side::Left, Side::Left)?;
                 }
                 out.normal = normal;
                 return Ok(out);
@@ -2334,11 +2342,19 @@ impl Surface {
         let tmp_line = Curve::from(Line::infinite(line_point, line_vector, 3, false));
 
         // First try it from the uv value that our iteration ended up at.
-        let mut found =
-            self.local_curve_intersect(uv_domain, &tmp_line, interval, distance_tolerance, uv, t)?;
+        let mut found = self.local_curve_intersect(
+            k,
+            uv_domain,
+            &tmp_line,
+            interval,
+            distance_tolerance,
+            uv,
+            t,
+        )?;
         if found.is_none() {
             // Try again, from the original uv guess.
             found = self.local_curve_intersect(
+                k,
                 uv_domain,
                 &tmp_line,
                 interval,
@@ -2352,8 +2368,8 @@ impl Surface {
             out.uv = f.uv;
             out.t = f.t;
             out.deviation = f.deviation;
-            out.point = self.evaluate_point(f.uv)?;
-            out.normal = self.evaluate_normal(f.uv, Side::Left, Side::Left)?;
+            out.point = self.evaluate_point(k, f.uv)?;
+            out.normal = self.evaluate_normal(k, f.uv, Side::Left, Side::Left)?;
         }
         Ok(out)
     }
@@ -2478,12 +2494,12 @@ pub fn extract_iso_curve(
     let mut iso = iso;
 
     // signal failures and catch degenerate 3dCurves
-    if iso.is_degenerate(EFF_ZERO, None)? {
+    if iso.is_degenerate(k, EFF_ZERO, None)? {
         return Ok(Some(iso));
     }
 
     // Check starting and ending knots for too high multiplicity.
-    let Some((_, multiplicities)) = ignored(iso.knots(None))? else {
+    let Some((_, multiplicities)) = ignored(iso.knots(k, None))? else {
         return Ok(None);
     };
     let degree = iso.degree()?;
@@ -2539,6 +2555,7 @@ pub struct BoundaryIntersection {
 /// that is not a B-spline kind.
 #[allow(clippy::too_many_arguments)]
 pub fn intersect_srf_bndry_crv(
+    k: &Kernel,
     surface: &Surface,
     uv_domain: &Extent2d,
     curve_surface: &Surface,
@@ -2560,22 +2577,23 @@ pub fn intersect_srf_bndry_crv(
     let iso = super::p6::boundary_iso_curve(curve_surface, param, iso_parameter, true)?;
 
     // skip degenerate curves
-    if iso.is_degenerate(EFF_ZERO, None)? {
+    if iso.is_degenerate(k, EFF_ZERO, None)? {
         return Ok(out);
     }
 
     // If the curve is in the surface, don't even try: the solution can slip all
     // around. When the boundary curve is in the surface, then the regular intersector
     // will work just fine, so just act like nothing happened.
-    let pv = iso.evaluate(guess_t, 1, true, true)?;
+    let pv = iso.evaluate(k, guess_t, 1, true, true)?;
     let tangent = pv.get(1).copied().ok_or(SolidError::sm_err(OP_BNDRY))?;
-    let srf_norm = surface.evaluate_normal(guess_uv, Side::Right, Side::Right)?;
+    let srf_norm = surface.evaluate_normal(k, guess_uv, Side::Right, Side::Right)?;
     if srf_norm.is_perpendicular_to(tangent, 0.05) {
         return Ok(out); // no solutions
     }
 
     // intersect the surface with specified isoParameterCurve
     let found = surface.local_curve_intersect(
+        k,
         uv_domain,
         &iso,
         &iso.natural_interval(),
@@ -2590,9 +2608,9 @@ pub fn intersect_srf_bndry_crv(
         out.uv = f.uv;
         out.t = f.t;
         out.deviation = f.deviation;
-        let pv = iso.evaluate(f.t, 1, true, true)?;
+        let pv = iso.evaluate(k, f.t, 1, true, true)?;
         let tangent = pv.get(1).copied().ok_or(SolidError::sm_err(OP_BNDRY))?;
-        let normal = surface.evaluate_normal(f.uv, Side::Left, Side::Left)?;
+        let normal = surface.evaluate_normal(k, f.uv, Side::Left, Side::Left)?;
 
         // when the angle curveTangent/SurfaceNormal angle is perpendicular to +/-5 deg
         let angle = tangent.angle_between(normal)?;
@@ -2676,6 +2694,7 @@ mod tests {
         assert!(r.is_err());
         assert!(s
             .local_line_intersect(
+                &k,
                 &s.natural_uv_domain(),
                 Vec3::ZERO,
                 Vec3::ZERO,
@@ -2689,6 +2708,7 @@ mod tests {
 
     #[test]
     fn local_line_intersect_hits_a_plane_like_patch() {
+        let k = &Kernel::default();
         let s = Surface::from(
             BSplineSurface::create_bilinear_surface(
                 Vec3::new(0.0, 0.0, 0.0),
@@ -2700,6 +2720,7 @@ mod tests {
         );
         let hit = s
             .local_line_intersect(
+                k,
                 &s.natural_uv_domain(),
                 Vec3::new(1.0, 1.5, -2.0),
                 Vec3::new(0.0, 0.0, 1.0),

@@ -15,6 +15,7 @@
 //! | [`Torus::approx_eq`]                         | `operator==`                                 |
 //! | [`Torus::create_canonical`]                  | `CreateCanonical`                            |
 //! | [`Torus::make_nurb`]                         | `SmSurfOfRevolution::MakeNurb` on a torus (virtual iso curves) |
+//! | [`Torus::reparameterize`], [`Torus::adjust_step_uv_domain`] | `SmSurfOfRevolution::Reparameterize`, `AdjustSTEPUVDomain` on a torus (virtual iso curves) |
 //! | [`Torus::create_offset_surface`]             | `CreateOffsetSurface`                        |
 //! | [`Torus::convert_uv_from_step_to_nurbs`]     | `ConvertUVFromSTEPToNURBS`                   |
 //! | [`Torus::convert_uv_from_nurbs_to_step`]     | `ConvertUVFromNURBSToSTEP`                   |
@@ -29,11 +30,14 @@
 //!
 //! Deviations:
 //! - **Derived class.** `SmTorus` derives from `SmSurfOfRevolution`; the base object is
-//!   the [`Torus::base`] field ([`SurfOfRevolution`]). Like the surface of revolution,
-//!   the torus is not yet a [`crate::surface::surface::SurfaceKind`]. Upstream's
-//!   virtual `CreateIsoParametricCurve`, called by the base class's NURB and
-//!   polar-converter rebuilds, reaches the torus override through
-//!   [`Torus::make_nurb`] and the private `rebuild_polar_converter`.
+//!   the [`Torus::base`] field ([`SurfOfRevolution`]). A
+//!   [`crate::surface::surface::Surface`] holds it as
+//!   [`crate::surface::surface::SurfaceKind::Torus`], whose dispatch runs the torus's
+//!   overrides and the inherited `SmSurfOfRevolution` / `SmBSplineSurface` bodies on
+//!   its base. Upstream's virtual `CreateIsoParametricCurve`, called by the base
+//!   class's NURB and polar-converter rebuilds, reaches the torus override through
+//!   [`Torus::make_nurb`], [`Torus::reparameterize`], [`Torus::adjust_step_uv_domain`]
+//!   and the private `rebuild_polar_converter`.
 //! - **Copies.** As upstream's copy constructor, which leaves `m_bInsideOut` at its
 //!   default, `Clone` (and [`Torus::copy`]) resets [`Torus::inside_out`] to `false`.
 //!   The constructor also leaves it `false` (its `bInsideOut` only orients the minor
@@ -43,7 +47,7 @@
 //!   arguments upstream marks `NotUsed` (`EvaluateSTEP`'s side flags,
 //!   `CreateIsoParametricCurve`'s approximation tolerance, `ReadFromDB`'s type) are
 //!   dropped. `CreateIsoParametricCurve`'s optional UV iso line is forwarded to the
-//!   B-spline surface but always requested as `false` (no caller can ask for it yet). `EvaluateSTEP` entries it does not write are
+//!   B-spline surface. `EvaluateSTEP` entries it does not write are
 //!   `0`. `CreateOffsetSurface` returns `None` where upstream succeeds without a surface
 //!   (a new minor radius below the approximation tolerance).
 //! - **Statuses.** Calls whose status upstream ignores keep upstream's values, except
@@ -309,15 +313,58 @@ impl Torus {
         let shape = self.shape();
         self.base
             .make_nurb_with_sweep_params_using(k, None, &|s, k, p, t| {
-                Ok(iso_curve(s, shape, k, p, t, None)?.curve)
+                Ok(iso_curve(s, shape, k, p, t, None, false)?.curve)
             })
+    }
+
+    /// Maps the NURB domain onto `trim_domain` without changing the shape
+    /// (`SmSurfOfRevolution::Reparameterize`, the NURB made first when missing with
+    /// the torus's iso circles) and rebuilds the generator and the polar converter.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`SurfOfRevolution::reparameterize`].
+    pub fn reparameterize(&mut self, k: &Kernel, trim_domain: &Extent2d) -> Result<()> {
+        // (GetOrCreateGwNurbPointer: the virtual MakeNurb when missing, status ignored)
+        if self.base.base.gw_nurb().is_none() {
+            ignore_status(self.make_nurb(k))?;
+        }
+        let shape = self.shape();
+        self.base
+            .reparameterize_using(k, trim_domain, &|s, k, p, t| {
+                Ok(iso_curve(s, shape, k, p, t, None, false)?.curve)
+            })
+    }
+
+    /// Sets the STEP domain and rebuilds the NURB and the polar converter
+    /// (`SmSurfOfRevolution::AdjustSTEPUVDomain` on a torus: its virtual `MakeNurb`
+    /// and `Reparameterize` make the torus's iso circles).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`SurfOfRevolution::adjust_step_uv_domain`].
+    pub fn adjust_step_uv_domain(
+        &mut self,
+        k: &Kernel,
+        new_step_uv_domain: &Extent2d,
+    ) -> Result<()> {
+        let shape = self.shape();
+        self.base
+            .adjust_step_uv_domain_using(k, new_step_uv_domain, &|s, k, p, t| {
+                Ok(iso_curve(s, shape, k, p, t, None, false)?.curve)
+            })
+    }
+
+    /// The `SmSurfOfRevolution` base object, mutable.
+    pub fn base_mut(&mut self) -> &mut SurfOfRevolution {
+        &mut self.base
     }
 
     /// `RebuildPolarConverter` with the torus's iso circles.
     fn rebuild_polar_converter(&mut self, k: &Kernel) -> Result<()> {
         let shape = self.shape();
         self.base.rebuild_polar_converter(k, &|s, k, p, t| {
-            Ok(iso_curve(s, shape, k, p, t, None)?.curve)
+            Ok(iso_curve(s, shape, k, p, t, None, false)?.curve)
         })
     }
 
@@ -533,7 +580,7 @@ impl Torus {
     ///
     /// `InvalidInput` without converter circle (upstream dereferences it) or for a
     /// generator that is not a circle; those of the conversions.
-    pub fn convert_uv_from_step_to_nurbs(&self, step_uv: Point2) -> Result<Point2> {
+    pub fn convert_uv_from_step_to_nurbs(&self, k: &Kernel, step_uv: Point2) -> Result<Point2> {
         // convert sweep coordinate
         let polar_curve = self
             .base
@@ -546,14 +593,14 @@ impl Torus {
         let (mut nurbs_x, _exact) =
             self.base
                 .polar
-                .convert_to_nurbs_parameter(polar_curve, step_uv.x, 0.0)?;
+                .convert_to_nurbs_parameter(k, polar_curve, step_uv.x, 0.0)?;
 
         // (Torus GenCurves are centred on 0: the PolarParam is the StepParam)
         let polar_param = step_uv.y;
 
         // convert GenCurve PolarParam to NurbsParam
         let circle = gen_circle(self.base.gen_curve.as_ref(), OP_CONVERT)?;
-        let mut nurbs_y = circle.convert_t_from_step_to_nurbs(polar_param)?;
+        let mut nurbs_y = circle.convert_t_from_step_to_nurbs(k, polar_param)?;
 
         // m_bSwapUV - Nurb and STEP parameters are swapped
         if self.base.swap_uv {
@@ -750,6 +797,7 @@ impl Torus {
         surf_param: SurfParamType,
         iso_parameter: f64,
         domain: Option<&Extent2d>,
+        want_uv_iso_curve: bool,
     ) -> Result<RevolutionIsoCurve> {
         iso_curve(
             &self.base,
@@ -758,6 +806,7 @@ impl Torus {
             surf_param,
             iso_parameter,
             domain,
+            want_uv_iso_curve,
         )
     }
 
@@ -986,7 +1035,7 @@ impl Torus {
         ignore_status(
             self.base
                 .transform_using(k, rotate_n_move, scale, &|s, k, p, t| {
-                    Ok(iso_curve(s, shape, k, p, t, None)?.curve)
+                    Ok(iso_curve(s, shape, k, p, t, None, false)?.curve)
                 }),
         )?;
 
@@ -1044,6 +1093,7 @@ fn iso_curve(
     surf_param: SurfParamType,
     iso_parameter: f64,
     domain: Option<&Extent2d>,
+    want_uv_iso_curve: bool,
 ) -> Result<RevolutionIsoCurve> {
     // get the BSplineCurve (status ignored upstream, which then reads the curve)
     let iso = rev.base.create_iso_parametric_curve(
@@ -1052,12 +1102,12 @@ fn iso_curve(
         iso_parameter,
         IsoCurveOptions {
             domain: domain.copied(),
-            uv_iso_curve: false,
+            uv_iso_curve: want_uv_iso_curve,
         },
     )?;
 
     // low work - when curve is degenerate don't bother making a circle
-    if iso.curve.is_degenerate(EFF_ZERO, None)? {
+    if iso.curve.is_degenerate(k, EFF_ZERO, None)? {
         return Ok(RevolutionIsoCurve {
             curve: Curve::from(iso.curve),
             max_gap_3d: iso.max_gap_3d,
@@ -1222,7 +1272,7 @@ mod tests {
                 for (u, v) in [(10.0, 20.0), (100.0, 250.0), (359.0, 1.0), (0.0, 0.0)] {
                     let step = Point2::new(u, v);
                     let p = t.evaluate_step_point(step).expect("eval");
-                    let nurb = t.convert_uv_from_step_to_nurbs(step).expect("to nurbs");
+                    let nurb = t.convert_uv_from_step_to_nurbs(&k, step).expect("to nurbs");
                     let q = t.base.base.evaluate_point(nurb).expect("nurb eval");
                     assert!((p - q).length() < 1e-9, "{swap} {inside_out} {u} {v}");
                     let back = t.convert_uv_from_nurbs_to_step(&k, nurb).expect("to step");
@@ -1253,7 +1303,7 @@ mod tests {
             .expect("surface");
         assert!((off.minor_radius() - 1.25).abs() < 1e-15);
         let nurb = off
-            .convert_uv_from_step_to_nurbs(Point2::new(30.0, 60.0))
+            .convert_uv_from_step_to_nurbs(&k, Point2::new(30.0, 60.0))
             .expect("uv");
         let p = off.base.base.evaluate_point(nurb).expect("eval");
         let q = off

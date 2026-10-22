@@ -39,7 +39,9 @@
 //!   compares it); the small-gap branch uses the other surface.
 //! - **Seam curves of planes.** `SmPlane` is an `SmBSplineSurface` upstream, so with
 //!   `known_closed` the C++ builds a seam curve for it; [`Surface::create_seam_curve`]
-//!   returns `InvalidInput` for a plane (its base is not a stored B-spline surface here).
+//!   returns `InvalidInput` for a plane (its base is not a stored B-spline surface here),
+//!   and `Unported` (`curve.crv_on_surf` dispatch gap) for an `SmSurfOfRevolution`,
+//!   `SmSphere` or `SmTorus`.
 //! - **Owner checks.** Only an owner of type `SmFace` (surface) or `SmEdge` (curve) takes
 //!   the topology path, as upstream's `SM_CAST_PTR`.
 //! - **Co-ported callees.** `smsurf_IsPointOnNormal` and `SmSurfaceEval::EvalNormal` are
@@ -61,7 +63,8 @@
 //! - **Kernel.** `is_on_seam` and `global_point_solve` (and `global_point_solve_starts`)
 //!   take the [`Kernel`] that the tolerance, drop and cache callees now need.
 //! - **Unported callees** (return [`SolidError::Unported`]): the zone tolerance of a face's
-//!   surface (`SmFace::GetTolerance`, `topology.face_p2`), `GlobalPointSolve_1`
+//!   surface whose B-rep has not cached it on the surface ([`Surface::owner_zone_tol_3d`];
+//!   `SmFace::GetTolerance`, `topology.face_p2`), `GlobalPointSolve_1`
 //!   (`surface.surface_point_solve_p3`), the trim containment of a face's surface
 //!   (`SmFace::PointClassify`, `query.face_p2`) and the edge and face tolerances of owned
 //!   curves and surfaces (`topology.edge`, `topology.face_p2`).
@@ -82,7 +85,7 @@ use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::local_solve_nd::{compute_jacobian, EvalNFunctions};
 use crate::geom::matrix::Matrix;
 use crate::geom::solution_array::{
-    ObjectKind, Solution, SolutionArray, SolutionEnd, SolutionObject, MAX_TREES,
+    ObjectKind, OperandObject, Solution, SolutionArray, SolutionEnd, SolutionObject, MAX_TREES,
 };
 use crate::geom::vector2d::Vec2;
 use crate::geom::vector3d::{asin, sqrt as sm_sqrt};
@@ -149,6 +152,7 @@ impl EvalNFunctions for CsIntersectEnfo<'_> {
         f: &mut [f64],
         mut jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
+        let k = self.kernel;
         check_len(x, f, 3, OP_CS_INTERSECT)?;
         let (Some(&t), Some(&u), Some(&v)) = (x.first(), x.get(1), x.get(2)) else {
             return Err(SolidError::sm_err(OP_CS_INTERSECT));
@@ -158,14 +162,14 @@ impl EvalNFunctions for CsIntersectEnfo<'_> {
         self.count += 1;
 
         // Evaluate CurvePoint
-        let crv = self.curve.evaluate(t, 1, true, true)?;
+        let crv = self.curve.evaluate(k, t, 1, true, true)?;
         let c = nth(&crv, 0, OP_CS_INTERSECT)?;
         let ct = nth(&crv, 1, OP_CS_INTERSECT)?;
 
         // Evaluate SurfacePoint
         let uv = Point2::new(u, v);
         let (mut s, mut du, mut dv) =
-            evaluate_1st_derivatives(self.surface, uv, Side::Left, Side::Left)?;
+            evaluate_1st_derivatives(k, self.surface, uv, Side::Left, Side::Left)?;
 
         // Fail at singular Curve and Surface Points - zero tangent lengths
         if du.length_squared() < EFF_ZERO_SQ
@@ -202,14 +206,16 @@ impl EvalNFunctions for CsIntersectEnfo<'_> {
 
         if self.do_minimize || (self.count > iter_lim && gap.length_squared() > self.last_sum) {
             // if we are near a tangent point
-            let crv2 = self.curve.evaluate(t, 2, true, true)?;
-            let norm = self.surface.evaluate_normal(uv, Side::Left, Side::Left)?;
+            let crv2 = self.curve.evaluate(k, t, 2, true, true)?;
+            let norm = self
+                .surface
+                .evaluate_normal(k, uv, Side::Left, Side::Left)?;
             let c0 = nth(&crv2, 0, OP_CS_INTERSECT)?;
             let c1 = nth(&crv2, 1, OP_CS_INTERSECT)?;
             if norm.is_perpendicular_to(c1, tangent_tol_deg) {
                 // Slow convergence problem.  Switch to a normalize operation.
                 self.do_minimize = true;
-                let d2 = evaluate_2nd_derivatives(self.surface, uv, Side::Left, Side::Left)?;
+                let d2 = evaluate_2nd_derivatives(k, self.surface, uv, Side::Left, Side::Left)?;
                 s = d2.point;
                 du = d2.du;
                 dv = d2.dv;
@@ -263,6 +269,7 @@ impl EvalNFunctions for CsNormalizeEnfo<'_> {
         f: &mut [f64],
         mut jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
+        let k = self.kernel;
         let directed = self.solver_operation == SolverOperation::Signed3dDirectedMinimize;
         let count = if directed { 4 } else { 3 };
         check_len(x, f, count, OP_CS_NORMALIZE)?;
@@ -271,14 +278,14 @@ impl EvalNFunctions for CsNormalizeEnfo<'_> {
         };
 
         // evaluate Curve Point and derivs
-        let crv = self.curve.evaluate(t, 2, true, true)?;
+        let crv = self.curve.evaluate(k, t, 2, true, true)?;
         let c = nth(&crv, 0, OP_CS_NORMALIZE)?;
         let ct = nth(&crv, 1, OP_CS_NORMALIZE)?;
         let ctt = nth(&crv, 2, OP_CS_NORMALIZE)?;
 
         // evaluate Surface Point and derivs
         let uv = Point2::new(u, v);
-        let d2 = evaluate_2nd_derivatives(self.surface, uv, Side::Left, Side::Left)?;
+        let d2 = evaluate_2nd_derivatives(k, self.surface, uv, Side::Left, Side::Left)?;
         let (s, su, sv, suu, suv, svv) = (d2.point, d2.du, d2.dv, d2.duu, d2.duv, d2.dvv);
 
         // Fail at singular curve or surface points - zero length tangents
@@ -299,7 +306,8 @@ impl EvalNFunctions for CsNormalizeEnfo<'_> {
             let norm = if directed {
                 nth(self.opt_vectors.unwrap_or(&[]), 0, OP_CS_NORMALIZE)?
             } else {
-                self.surface.evaluate_normal(uv, Side::Left, Side::Left)?
+                self.surface
+                    .evaluate_normal(k, uv, Side::Left, Side::Left)?
             };
             if norm.dot(gap) >= 0.0 {
                 gap = (s + norm) - c;
@@ -392,6 +400,7 @@ impl EvalNFunctions for SspIntersectEnfo<'_> {
         f: &mut [f64],
         jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
+        let k = self.kernel;
         check_len(x, f, 4, OP_SSP_INTERSECT)?;
         let (Some(&u1), Some(&v1), Some(&u2), Some(&v2)) =
             (x.first(), x.get(1), x.get(2), x.get(3))
@@ -402,9 +411,10 @@ impl EvalNFunctions for SspIntersectEnfo<'_> {
         // get surface 3d points - with 1st derivatives
         let uv = Point2::new(u1, v1);
         let uv2 = Point2::new(u2, v2);
-        let (s_f, duf, dvf) = evaluate_1st_derivatives(self.surface, uv, Side::Left, Side::Left)?;
+        let (s_f, duf, dvf) =
+            evaluate_1st_derivatives(k, self.surface, uv, Side::Left, Side::Left)?;
         let (s_g, dug, dvg) =
-            evaluate_1st_derivatives(self.other_surface, uv2, Side::Left, Side::Left)?;
+            evaluate_1st_derivatives(k, self.other_surface, uv2, Side::Left, Side::Left)?;
 
         // pick the plane of this evaluation
         let temp_plane;
@@ -414,12 +424,14 @@ impl EvalNFunctions for SspIntersectEnfo<'_> {
             let mut norm1 = duf.cross(dvf);
             let mut norm2 = dug.cross(dvg);
             if norm1.length_squared() < EFF_ZERO {
-                norm1 = self.surface.evaluate_normal(uv, Side::Left, Side::Left)?;
+                norm1 = self
+                    .surface
+                    .evaluate_normal(k, uv, Side::Left, Side::Left)?;
             }
             if norm2.length_squared() < EFF_ZERO {
                 norm2 = self
                     .other_surface
-                    .evaluate_normal(uv2, Side::Left, Side::Left)?;
+                    .evaluate_normal(k, uv2, Side::Left, Side::Left)?;
             }
             let plane_norm = norm1.cross(norm2);
             if plane_norm.length_squared() < EFF_ZERO_SQ {
@@ -517,6 +529,7 @@ impl EvalNFunctions for SsiNormalizeEnfo<'_> {
         f: &mut [f64],
         jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
+        let k = self.kernel;
         check_len(x, f, 4, OP_SSI_NORMALIZE)?;
         let (Some(&u1), Some(&v1), Some(&u2), Some(&v2)) =
             (x.first(), x.get(1), x.get(2), x.get(3))
@@ -529,8 +542,8 @@ impl EvalNFunctions for SsiNormalizeEnfo<'_> {
         let plane_norm = self.plane_normal;
 
         // get surface 3d points - with 2nd derivatives
-        let d1 = evaluate_2nd_derivatives(self.surface, uv, Side::Left, Side::Left)?;
-        let d2 = evaluate_2nd_derivatives(self.other_surface, uv2, Side::Left, Side::Left)?;
+        let d1 = evaluate_2nd_derivatives(k, self.surface, uv, Side::Left, Side::Left)?;
+        let d2 = evaluate_2nd_derivatives(k, self.other_surface, uv2, Side::Left, Side::Left)?;
         let mut srf_point = d1.point;
         let srf_point2 = d2.point;
         let (du, dv) = (d1.du, d1.dv);
@@ -550,10 +563,12 @@ impl EvalNFunctions for SsiNormalizeEnfo<'_> {
         let tol = EFF_ZERO * 1000.0 * (1.0 + srf_point.max_dimension());
         if gap.length_squared() < tol {
             // translate one surface point by its normal and solve a little better
-            let norm = self.surface.evaluate_normal(uv, Side::Left, Side::Left)?;
+            let norm = self
+                .surface
+                .evaluate_normal(k, uv, Side::Left, Side::Left)?;
             let norm2 = self
                 .other_surface
-                .evaluate_normal(uv2, Side::Left, Side::Left)?;
+                .evaluate_normal(k, uv2, Side::Left, Side::Left)?;
             let ave_norm = if norm.dot(norm2) < 0.0 {
                 (norm - norm2) / 2.0
             } else {
@@ -577,7 +592,9 @@ impl EvalNFunctions for SsiNormalizeEnfo<'_> {
         // unitize surf1 Normal
         let mut nu = n;
         if nu.length_squared() < EFF_ZERO_SQ {
-            nu = self.surface.evaluate_normal(uv, Side::Left, Side::Left)?;
+            nu = self
+                .surface
+                .evaluate_normal(k, uv, Side::Left, Side::Left)?;
             if nu.length_squared() < EFF_ZERO_SQ {
                 return Err(SolidError::sm_err(OP_SSI_NORMALIZE));
             }
@@ -587,7 +604,9 @@ impl EvalNFunctions for SsiNormalizeEnfo<'_> {
         // unitize surf2 Normal (upstream evaluates it on the first surface)
         let mut n2u = n2;
         if n2u.length_squared() < EFF_ZERO_SQ {
-            n2u = self.surface.evaluate_normal(uv2, Side::Left, Side::Left)?;
+            n2u = self
+                .surface
+                .evaluate_normal(k, uv2, Side::Left, Side::Left)?;
             if n2u.length_squared() < EFF_ZERO_SQ {
                 return Err(SolidError::sm_err(OP_SSI_NORMALIZE));
             }
@@ -637,6 +656,7 @@ impl EvalNFunctions for SsNormalizeEnfo<'_> {
         f: &mut [f64],
         mut jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
+        let k = self.kernel;
         let directed = self.solver_operation == SolverOperation::Signed3dDirectedMinimize;
         let count = if directed { 5 } else { 4 };
         check_len(x, f, count, OP_SS_NORMALIZE)?;
@@ -649,8 +669,8 @@ impl EvalNFunctions for SsNormalizeEnfo<'_> {
         // Surf1Point and Surf2Point current solution values
         let uv1 = Point2::new(u1, v1);
         let uv2 = Point2::new(u2, v2);
-        let d1 = evaluate_2nd_derivatives(self.surface, uv1, Side::Left, Side::Left)?;
-        let d2 = evaluate_2nd_derivatives(self.other_surface, uv2, Side::Left, Side::Left)?;
+        let d1 = evaluate_2nd_derivatives(k, self.surface, uv1, Side::Left, Side::Left)?;
+        let d2 = evaluate_2nd_derivatives(k, self.other_surface, uv2, Side::Left, Side::Left)?;
         let (p1, s1u, s1v, s1uu, s1uv, s1vv) = (d1.point, d1.du, d1.dv, d1.duu, d1.duv, d1.dvv);
         let (p2, s2u, s2v, s2uu, s2uv, s2vv) = (d2.point, d2.du, d2.dv, d2.duu, d2.duv, d2.dvv);
 
@@ -671,7 +691,8 @@ impl EvalNFunctions for SsNormalizeEnfo<'_> {
             let norm = if directed {
                 nth(self.opt_vectors.unwrap_or(&[]), 0, OP_SS_NORMALIZE)?
             } else {
-                self.surface.evaluate_normal(uv1, Side::Left, Side::Left)?
+                self.surface
+                    .evaluate_normal(k, uv1, Side::Left, Side::Left)?
             };
             gap = if norm.dot(gap) > 0.0 {
                 p2 - (p1 - norm)
@@ -800,7 +821,7 @@ impl SurfaceEval<'_> {
     ///
     /// Those of [`SurfaceEval::eval`] (upstream ignores that status and reads the
     /// stale matrix) and of `EvaluateNormal`.
-    pub fn eval_normal(&mut self) -> Result<()> {
+    pub fn eval_normal(&mut self, k: &Kernel) -> Result<()> {
         if *self.state_mut().normal_set {
             return Ok(());
         }
@@ -852,7 +873,7 @@ impl SurfaceEval<'_> {
 
         // Try EvaluateNormal().
         let side = |left: bool| if left { Side::Left } else { Side::Right };
-        let normal = surface.evaluate_normal(uv, side(u_left), side(v_left))?;
+        let normal = surface.evaluate_normal(k, uv, side(u_left), side(v_left))?;
         st.pvv[2][2] = normal;
         *st.normal_set = true;
         Ok(())
@@ -864,8 +885,8 @@ impl SurfaceEval<'_> {
     ///
     /// Those of [`SurfaceEval::eval_normal`] (upstream's assertion on a failed
     /// evaluation, then the stale value).
-    pub fn normal(&mut self) -> Result<Vec3> {
-        self.eval_normal()?;
+    pub fn normal(&mut self, k: &Kernel) -> Result<Vec3> {
+        self.eval_normal(k)?;
         Ok(self.state_mut().pvv[2][2])
     }
 
@@ -877,14 +898,14 @@ impl SurfaceEval<'_> {
     ///
     /// Those of [`evaluate_normal_section`] (`surface.surface_p1`); [`SolidError::Unported`] from the
     /// evaluations.
-    pub fn eval_normal_section(&mut self) -> Result<()> {
+    pub fn eval_normal_section(&mut self, k: &Kernel) -> Result<()> {
         if *self.state_mut().sect_dir_set {
             return Ok(());
         }
 
         // upstream ignores the statuses of both evaluations
         ignore_status(self.eval())?;
-        ignore_status(self.eval_normal())?;
+        ignore_status(self.eval_normal(k))?;
 
         let dir = self.sect_dir();
         let st = self.state_mut();
@@ -946,6 +967,7 @@ pub struct PointOnNormal {
 /// [`SolidError::Unported`] from the surface evaluations (upstream returns success for
 /// every other failure, reporting it in [`PointOnNormal::reason`]).
 pub fn is_point_on_normal(
+    k: &Kernel,
     surface: &Surface,
     uv_domain: Option<&Extent2d>,
     uv_to_test: Point2,
@@ -971,6 +993,7 @@ pub fn is_point_on_normal(
 
     // evaluate surface point
     let mut eval = ignored(evaluate_1st_derivatives(
+        k,
         surface,
         clamped,
         Side::Left,
@@ -981,6 +1004,7 @@ pub fn is_point_on_normal(
     out.from_left_v = first_deriv.is_none_or(|d| dv.dot(d) >= 0.0);
     if !out.from_left_u || !out.from_left_v {
         eval = ignored(evaluate_1st_derivatives(
+            k,
             surface,
             clamped,
             side(out.from_left_u),
@@ -996,6 +1020,7 @@ pub fn is_point_on_normal(
     let mut norm = du.cross(dv);
     if norm.length_squared() < EFF_ZERO_SQ {
         let Some(n) = ignored(surface.evaluate_normal(
+            k,
             clamped,
             side(out.from_left_u),
             side(out.from_left_v),
@@ -1043,6 +1068,7 @@ pub fn is_point_on_normal(
                 // Get Surface 3d outside pointing vector
                 let outward = -bi_norm;
                 let srf_pd = ignored(evaluate_directional_derivs(
+                    k,
                     surface,
                     uv_to_test,
                     outward,
@@ -1078,13 +1104,14 @@ pub fn is_point_on_normal(
 ///
 /// [`SolidError::Unported`] from the surface evaluations.
 pub fn pass_sp_convergence_test(
+    k: &Kernel,
     surface: &Surface,
     uv: Point2,
     solved_point: Point3,
     tol_3d: f64,
 ) -> Result<bool> {
     // test crSolvedPoint/SurfaceNormal(crUV) dist against d3dTol
-    let r = is_point_on_normal(surface, None, uv, solved_point, None, tol_3d)?;
+    let r = is_point_on_normal(k, surface, None, uv, solved_point, None, tol_3d)?;
     Ok(r.good_point)
 }
 
@@ -1108,8 +1135,10 @@ impl Surface {
     /// # Errors
     ///
     /// Those of [`Surface::is_closed`] and of the curve construction;
-    /// [`SolidError::InvalidInput`] for a closed surface that is not a B-spline
-    /// surface (a [`CrvOnSurf`] lives on a [`BSplineSurface`]).
+    /// [`SolidError::Unported`] for a closed surface of revolution, sphere or torus (the dispatch gap of
+    /// a [`CrvOnSurf`] over a non-B-spline surface); [`SolidError::InvalidInput`] for
+    /// any other closed surface that is not a B-spline surface (a [`CrvOnSurf`] lives
+    /// on a [`BSplineSurface`]).
     pub fn create_seam_curve(
         &self,
         kernel: &Kernel,
@@ -1120,7 +1149,7 @@ impl Surface {
         let uv_domain = self.natural_uv_domain();
         let uv_min = uv_domain.min();
         let uv_max = uv_domain.max();
-        let is_closed = known_closed || self.is_closed(&uv_domain, param, None, false)?.0;
+        let is_closed = known_closed || self.is_closed(kernel, &uv_domain, param, None, false)?.0;
 
         // When Surface closed
         if !is_closed {
@@ -1139,11 +1168,24 @@ impl Surface {
                 Point3::new(uv_max.x, uv_min.y, 0.0),
             )
         };
-        let SurfaceKind::BSpline(base) = self.kind() else {
-            return Err(SolidError::invalid_input(
-                OP_SEAM,
-                "a curve on a surface needs a B-spline surface",
-            ));
+        let base = match self.kind() {
+            SurfaceKind::BSpline(base) => base,
+            SurfaceKind::SurfOfRevolution(_) | SurfaceKind::Sphere(_) | SurfaceKind::Torus(_) => {
+                // DISPATCH GAP: SmCrvOnSurf over an SmSurfOfRevolution (or a sphere or torus) (the ported
+                // CrvOnSurf holds an SmBSplineSurface and would drop the revolution's
+                // evaluation overrides), as in surface::surface::p11.
+                // UNPORTED(curve.crv_on_surf): SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)
+                return Err(SolidError::unported(
+                    "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+                    "curve.crv_on_surf",
+                ));
+            }
+            _ => {
+                return Err(SolidError::invalid_input(
+                    OP_SEAM,
+                    "a curve on a surface needs a B-spline surface",
+                ))
+            }
         };
         let line = Line::from_points(start, end, 2); // Line Ivl:[0, 1]
         let seam = CrvOnSurf::new(kernel, Curve::from(line), base.clone(), Some(uv_domain), 2)?;
@@ -1188,26 +1230,26 @@ impl Surface {
             None => zone_tol_3d(k, self)?,
         };
 
-        let tol_2d_u = map_to_2d_dir(tol_3d, uv, Vec2::new(1.0, 0.0), self)?;
-        let tol_2d_v = map_to_2d_dir(tol_3d, uv, Vec2::new(0.0, 1.0), self)?;
+        let tol_2d_u = map_to_2d_dir(k, tol_3d, uv, Vec2::new(1.0, 0.0), self)?;
+        let tol_2d_v = map_to_2d_dir(k, tol_3d, uv, Vec2::new(0.0, 1.0), self)?;
 
         // see if surface is closed across point's boundary
         let mut closed_u = false;
         let mut closed_v = false;
         if point_param == SurfParamType::Both {
             closed_u = self
-                .is_closed(&domain, SurfParamType::U, Some(tol_2d_u), false)?
+                .is_closed(k, &domain, SurfParamType::U, Some(tol_2d_u), false)?
                 .0;
             closed_v = self
-                .is_closed(&domain, SurfParamType::V, Some(tol_2d_v), false)?
+                .is_closed(k, &domain, SurfParamType::V, Some(tol_2d_v), false)?
                 .0;
         } else if point_param == SurfParamType::U {
             closed_u = self
-                .is_closed(&domain, SurfParamType::U, Some(tol_2d_u), false)?
+                .is_closed(k, &domain, SurfParamType::U, Some(tol_2d_u), false)?
                 .0;
         } else {
             closed_v = self
-                .is_closed(&domain, SurfParamType::V, Some(tol_2d_v), false)?
+                .is_closed(k, &domain, SurfParamType::V, Some(tol_2d_v), false)?
                 .0;
         }
 
@@ -1376,6 +1418,9 @@ impl Surface {
         let use_new =
             (op != SolverOperation::Maximize) || op == SolverOperation::Signed3dDirectedMaximize;
         *solutions = if use_new {
+            // upstream's seam solutions name this surface, whose natural UV domain
+            // IsEqual (AddSortedSolution) reads: solve naming a stand-in for it, and
+            // return the solutions without objects, as before
             self.global_point_solve_1(
                 k,
                 uv_domain,
@@ -1384,8 +1429,9 @@ impl Surface {
                 src_zone_tol_3d,
                 opt_target_distance,
                 requested,
-                None,
+                Some(OperandObject::Surface(0, self.natural_uv_domain())),
             )?
+            .without_objects()
         } else if let Some(surface) = surface {
             self.global_point_solve_0(
                 k,
@@ -1477,6 +1523,7 @@ fn farther_line_param(params: &[f64]) -> f64 {
 /// line/circle intersections.
 #[allow(clippy::too_many_lines)]
 pub fn classify_curve_surface_xsect_point(
+    k: &Kernel,
     surface: &Surface,
     uv_domain: &Extent2d,
     curve: &Curve,
@@ -1499,7 +1546,7 @@ pub fn classify_curve_surface_xsect_point(
         only_upper_half: true,
         non_zero_tangents: false, // exact tangent values
     };
-    let m = surface.evaluate(current_uv, 2, 2, flags)?;
+    let m = surface.evaluate(k, current_uv, 2, 2, flags)?;
     let mut pvv = [[Vec3::UNDEF; 3]; 3];
     for (i, row) in pvv.iter_mut().enumerate() {
         for (j, slot) in row.iter_mut().enumerate() {
@@ -1515,7 +1562,7 @@ pub fn classify_curve_surface_xsect_point(
     // get surface Normal
     let mut surface_normal = pvv[1][0].cross(pvv[0][1]);
     if surface_normal.length_squared() < EFF_ZERO_SQ {
-        surface_normal = surface.evaluate_normal(current_uv, Side::Left, Side::Left)?;
+        surface_normal = surface.evaluate_normal(k, current_uv, Side::Left, Side::Left)?;
     } else {
         surface_normal = surface_normal.unitize()?;
     }
@@ -1523,7 +1570,7 @@ pub fn classify_curve_surface_xsect_point(
 
     // Get the geometric properties of the curve at the current intersection:
     // a[0] position, a[1] first derivative, a[2] curvature vector
-    let geom = match curve_evaluate_geometric(curve, current_t, 2, true) {
+    let geom = match curve_evaluate_geometric(k, curve, current_t, 2, true) {
         Ok(v) => v,
         Err(SolidError::Upstream { code: SM_ERR, .. }) => {
             // no extra guesses or possible coincidence signalled for degenerate curves
@@ -1544,7 +1591,7 @@ pub fn classify_curve_surface_xsect_point(
 
     // Evaluate Surface Position and NormalSection in direction of CurveTangent.  This
     // should give us two circles or a line and a circle to intersect.
-    let surface_point = surface.evaluate_point(current_uv)?;
+    let surface_point = surface.evaluate_point(k, current_uv)?;
     let (surface_section_tangent, surface_section_curvature) =
         evaluate_normal_section(&mut pvv, curve_tan)?;
     let props = evaluate_geometric(&mut pvv)?;
@@ -1712,12 +1759,12 @@ pub fn classify_curve_surface_xsect_point(
         curve_tol = curve_radius / 1000.0;
     }
     if surface.owner().is_some_and(|o| o.type_code == FACE_TYPE) {
-        // UNPORTED(topology.face_p2): SmFace::GetTolerance
-        let _ = surface_tol;
-        return Err(SolidError::unported(
-            "SmFace::GetTolerance",
-            "topology.face_p2",
-        ));
+        // pSurfaceOwner->GetTolerance(): the direct owner is the face, so the face the
+        // surface reaches; its tolerance as cached by the B-rep
+        surface_tol = surface.owner_zone_tol_3d().ok_or(
+            // UNPORTED(topology.face_p2): SmFace::GetTolerance (a bare face handle)
+            SolidError::unported("SmFace::GetTolerance", "topology.face_p2"),
+        )?;
     } else if !surface_line {
         surface_tol = surface_radius / 1000.0;
     }
@@ -2007,7 +2054,7 @@ mod tests {
         let s = plane();
         let k = Kernel::default();
         let dom = Extent2d::from_points(Point2::new(-2.0, -2.0), Point2::new(2.0, 2.0));
-        let p = s.evaluate_point(Point2::new(0.25, 0.5)).unwrap();
+        let p = s.evaluate_point(&k, Point2::new(0.25, 0.5)).unwrap();
         let (uv, loc) = s.step_inversion(&k, &dom, p, 1e-6, None).unwrap();
         assert!((uv.x - 0.25).abs() < 1e-9 && (uv.y - 0.5).abs() < 1e-9);
         assert_eq!(loc, LocationType::Interior);
@@ -2015,22 +2062,25 @@ mod tests {
 
     #[test]
     fn plane_normal_through_the_evaluator() {
+        let k = &Kernel::default();
         let s = plane();
-        let mut e = SurfaceEval::with_uv(Some(&s), 0.3, 0.2);
-        let n = e.normal().unwrap();
+        let mut e = SurfaceEval::with_uv(k, Some(&s), 0.3, 0.2);
+        let n = e.normal(k).unwrap();
         assert!((n.z.abs() - 1.0).abs() < 1e-12 && n.x.abs() < 1e-12);
     }
 
     #[test]
     fn point_on_the_normal_of_a_plane() {
+        let k = &Kernel::default();
         let s = plane();
         let uv = Point2::new(0.3, 0.2);
-        let on = s.evaluate_point(uv).unwrap();
-        let n = s.evaluate_normal(uv, Side::Left, Side::Left).unwrap();
-        let r = is_point_on_normal(&s, None, uv, on + n * 5.0, None, 1e-6).unwrap();
+        let on = s.evaluate_point(k, uv).unwrap();
+        let n = s.evaluate_normal(k, uv, Side::Left, Side::Left).unwrap();
+        let r = is_point_on_normal(k, &s, None, uv, on + n * 5.0, None, 1e-6).unwrap();
         assert!(r.good_point);
         assert!((r.drop_to_surf - 5.0).abs() < 1e-12);
         let off = is_point_on_normal(
+            k,
             &s,
             None,
             uv,
@@ -2041,11 +2091,12 @@ mod tests {
         .unwrap();
         assert!(!off.good_point);
         assert_eq!(off.reason, NormalTestReason::NotWithinTolerance);
-        assert!(pass_sp_convergence_test(&s, uv, on + n, 1e-6).unwrap());
+        assert!(pass_sp_convergence_test(k, &s, uv, on + n, 1e-6).unwrap());
     }
 
     #[test]
     fn a_line_through_a_plane_crosses_it() {
+        let k = &Kernel::default();
         let s = plane();
         let c = Curve::from(Line::from_points(
             Vec3::new(0.1, 0.2, -1.0),
@@ -2055,6 +2106,7 @@ mod tests {
         let uv = Point2::new(0.1, 0.2);
         let dom = s.natural_uv_domain();
         let r = classify_curve_surface_xsect_point(
+            k,
             &s,
             &dom,
             &c,
@@ -2078,6 +2130,7 @@ mod tests {
 
     #[test]
     fn normal_section_of_a_plane_is_flat() {
+        let k = &Kernel::default();
         let s = plane();
         let flags = EvaluateFlags {
             u_side: Side::Left,
@@ -2085,7 +2138,7 @@ mod tests {
             only_upper_half: true,
             non_zero_tangents: true,
         };
-        let m = s.evaluate(Point2::new(0.1, 0.1), 2, 2, flags).unwrap();
+        let m = s.evaluate(k, Point2::new(0.1, 0.1), 2, 2, flags).unwrap();
         let mut pvv = [[Vec3::UNDEF; 3]; 3];
         for (i, row) in pvv.iter_mut().enumerate() {
             for (j, slot) in row.iter_mut().enumerate() {

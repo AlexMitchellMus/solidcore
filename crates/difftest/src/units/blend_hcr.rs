@@ -341,6 +341,10 @@ impl UnitDiff for Runner {
             {
                 let _ = surface.set_owner(Some(arena_identity(CacheObject::Face(id))));
             }
+            // the face's tolerance, as the face upstream answers GetTolerance with
+            scene
+                .sync_face_surface_tolerance(id)
+                .map_err(|e| harness(e.to_string()))?;
         }
         let [x0, y0, z0, x1, y1, z1] = s.scene_box;
         let (lo, hi) = (Vec3::new(x0, y0, z0), Vec3::new(x1, y1, z1));
@@ -420,11 +424,11 @@ fn put_cc(o: &mut Vec<f64>, cc: &CurveClassification<HcrObject>) {
     }
 }
 
-fn put_piece(o: &mut Vec<f64>, c: &Curve) {
+fn put_piece(k: &Kernel, o: &mut Vec<f64>, c: &Curve) {
     let n = c.natural_interval();
     o.extend([n.min(), n.max()]);
     for i in 0..5 {
-        match c.evaluate_point(n.evaluate(f64::from(i) / 4.0)) {
+        match c.evaluate_point(k, n.evaluate(f64::from(i) / 4.0)) {
             Ok(p) => o.extend([0.0, p.x, p.y, p.z]),
             Err(e) => o.extend([
                 match e {
@@ -513,11 +517,11 @@ fn run_rust(i: &Inputs, r: &Resolved, scene: Brep, scene_box: Extent3d) -> Resul
             }
             rec.push(h.visible_curves().len() as f64);
             for c in h.visible_curves() {
-                put_piece(&mut rec, c);
+                put_piece(&k, &mut rec, c);
             }
             rec.push(h.invisible_curves().len() as f64);
             for c in h.invisible_curves() {
-                put_piece(&mut rec, c);
+                put_piece(&k, &mut rec, c);
             }
         }
         OpIn::SilhouetteEdges => {

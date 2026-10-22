@@ -1,6 +1,8 @@
 //! Small conversions shared by the unit runners in [`crate::units`].
 
 use solidcore::math::{Point2, Vec3};
+use solidcore::topology::brep_cache::{arena_identity, CacheObject};
+use solidcore::topology::Brep;
 
 /// A JSON `[x, y, z]` as a [`Vec3`].
 #[must_use]
@@ -25,7 +27,7 @@ pub fn flag(b: bool) -> f64 {
 /// The exact head of an analytic face surface in the shared B-rep graph exports
 /// (`harness/cpp/shim/sc_analytic_export.h`), read after its kind code `2`:
 /// `type version surf_oob gen_oob nbytes byte[nbytes]`, the surface's upstream binary
-/// database record (only `SmSurfOfRevolution` so far) and the out-of-bounds flags the
+/// database record (`SmSurfOfRevolution`, `SmSphere` or `SmTorus`) and the out-of-bounds flags the
 /// record does not hold. The regular surface block (the B-spline part) follows it; the
 /// caller reads that too and checks it with [`check_exact_base`].
 ///
@@ -42,8 +44,8 @@ pub fn read_exact_surface(
 ) -> Result<Option<solidcore::surface::surface::Surface>, crate::HarnessError> {
     use solidcore::kernel::Kernel;
     use solidcore::surface::surf_of_revolution::SurfOfRevolution;
-    use solidcore::surface::surface::p2::SURF_OF_REVOLUTION_TYPE;
-    use solidcore::surface::surface::Surface;
+    use solidcore::surface::surface::p2::{SPHERE_TYPE, SURF_OF_REVOLUTION_TYPE, TORUS_TYPE};
+    use solidcore::surface::surface::{Surface, SurfaceKind};
     use solidcore::topology::database_io::{DatabaseReader, FileType, InputStream};
     use solidcore::SolidError;
     let harness = |m: String| crate::HarnessError::new(m);
@@ -52,7 +54,7 @@ pub fn read_exact_surface(
     let surf_oob = num()? != 0.0;
     let gen_oob = num()? != 0.0;
     let n = num()?;
-    if !(0.0..=1e8).contains(&n) || !(0.0..=1e4).contains(&version) {
+    if !(0.0..=1e8).contains(&n) || n.fract() != 0.0 || !(0.0..=1e4).contains(&version) {
         return Err(harness(format!(
             "export: bad exact surface head ({version}, {n})"
         )));
@@ -65,28 +67,38 @@ pub fn read_exact_surface(
         }
         bytes.push(b as u8);
     }
-    if ty != SURF_OF_REVOLUTION_TYPE {
+    if ty != SURF_OF_REVOLUTION_TYPE && ty != SPHERE_TYPE && ty != TORUS_TYPE {
         return Err(harness(format!("export: exact surface of type {ty}")));
     }
     let k = Kernel::default();
     let version = version as u64;
     let mut db = DatabaseReader::with_stream(FileType::Binary, InputStream::new(bytes));
     db.set_version(version);
-    let mut s = match SurfOfRevolution::read_from_db(&k, &mut db, version) {
+    let mut s = match Surface::read_from_db(&k, ty, &mut db, version) {
         Ok(s) => s,
         Err(SolidError::Unported { .. }) => return Ok(None),
-        Err(e) => return Err(harness(format!("export: SmSurfOfRevolution record: {e}"))),
+        Err(e) => return Err(harness(format!("export: surface record of type {ty}: {e}"))),
     };
     if db.in_stream().is_none_or(|st| st.remaining() != 0) {
-        return Err(harness(
-            "export: SmSurfOfRevolution record not read whole".into(),
-        ));
+        return Err(harness(format!(
+            "export: surface record of type {ty} not read whole"
+        )));
     }
     // the flags beside the record: SetOutOfBoundsEnabled sets the surface's and the
     // generator's, then the surface's own is put back
-    s.set_out_of_bounds_enabled(gen_oob);
-    *s.base_mut().out_of_bounds_enabled_mut() = surf_oob;
-    Ok(Some(Surface::from(s)))
+    let rev: &mut SurfOfRevolution = match s.kind_mut() {
+        SurfaceKind::SurfOfRevolution(r) => r,
+        SurfaceKind::Sphere(r) => r.base_mut(),
+        SurfaceKind::Torus(r) => r.base_mut(),
+        _ => {
+            return Err(harness(format!(
+                "export: exact surface of type {ty} read as another kind"
+            )))
+        }
+    };
+    rev.set_out_of_bounds_enabled(gen_oob);
+    *rev.base_mut().out_of_bounds_enabled_mut() = surf_oob;
+    Ok(Some(s))
 }
 
 /// Checks that an exactly imported surface's B-spline part is bit for bit the regular
@@ -103,6 +115,8 @@ pub fn check_exact_base(
     use solidcore::surface::surface::SurfaceKind;
     let base = match exact.kind() {
         SurfaceKind::SurfOfRevolution(s) => s.base(),
+        SurfaceKind::Sphere(s) => s.base().base(),
+        SurfaceKind::Torus(s) => s.base().base(),
         _ => {
             return Err(crate::HarnessError::new(
                 "export: unexpected exact surface kind",
@@ -139,4 +153,25 @@ fn nurb_bits(b: &solidcore::nurbs::b_spline_surface::BSplineSurface) -> Option<V
     v.extend(nurb.u_knots().iter().map(|x| x.to_bits()));
     v.extend(nurb.v_knots().iter().map(|x| x.to_bits()));
     Some(v)
+}
+
+/// Gives every edge curve and face surface of an imported B-rep the owner a native
+/// B-rep's geometry has (its edge or face, by [`arena_identity`]; curves also the
+/// B-rep), which the B-rep cache solves read (the import leaves geometry unowned).
+pub fn own_arena_geometry(b: &mut Brep) {
+    let edges: Vec<_> = b.edges().ids().collect();
+    for id in edges {
+        if let Some(curve) = b.edge_mut(id).ok().and_then(|e| e.curve.as_mut()) {
+            let _ = curve.set_owner(
+                Some(arena_identity(CacheObject::Edge(id))),
+                Some(arena_identity(CacheObject::Brep)),
+            );
+        }
+    }
+    let faces: Vec<_> = b.faces().ids().collect();
+    for id in faces {
+        if let Some(surface) = b.face_mut(id).ok().and_then(|f| f.surface.as_mut()) {
+            let _ = surface.set_owner(Some(arena_identity(CacheObject::Face(id))));
+        }
+    }
 }

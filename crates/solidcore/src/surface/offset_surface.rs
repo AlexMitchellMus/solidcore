@@ -58,13 +58,17 @@
 //!   `EvaluatePoint`) build an extended
 //!   base surface when extension is allowed (only the fillet standard solver allows
 //!   it) and the point lies outside the domain, and store it in `m_pExtendedSurface`
-//!   through a `const` cast. The `&self` evaluators carry the extension through the
-//!   call (recursion and repeated base-body evaluations see it as upstream) and drop it
-//!   at the end; the `*_extending` (`&mut self`) evaluators store it, as upstream.
+//!   through a `const` cast. The `&self` evaluators keep it too, in a pending slot (a
+//!   `Cell`) that supersedes the stored extension until a `&mut self` method folds it
+//!   in: later evaluations, `GetNaturalUVDomain` and `GetKnots` see it as upstream (a
+//!   point solve on the offset that leaves the base domain sees the extended natural
+//!   domain from then on). The `*_extending` (`&mut self`) evaluators store it at once.
 //!   [`OffsetSurface::step_inversion_extending`] also stores the one an offset base's
 //!   inversion makes (its `EvaluatePoint`), as upstream's base offset does.
 //!   [`OffsetSurface::with_evaluator`] runs an inherited `SmSurface` body on the
-//!   offset (as [`OffsetEval`]) and stores an extension its evaluations make.
+//!   offset (as [`OffsetEval`]) and stores an extension its evaluations make; the
+//!   bodies [`OffsetEval`] runs on a copy keep the copy's new extension. A copy
+//!   (`Clone`, [`OffsetSurface::copy`]) takes the current extension.
 //!   [`OffsetSurface::trim_with_domain`] uses the storing evaluator. The `SM_NO_PRE_EDIT`,
 //!   `SM_NO_COPY` and `SM_NO_SPLIT` notifications are the object layer's.
 //! - **Evaluation output.** `Evaluate` / `EvaluateSimple` return `D[i][j]` (`i` times in
@@ -84,7 +88,7 @@
 //! - **Recursion.** The pole step-off of `EvaluatePlainOrSimple` evaluates itself at
 //!   the step-off points; its depth is bounded by [`MAX_STEPOFF_DEPTH`] (upstream
 //!   fixtures reach depth 1). Construction and restoration bound nested surface
-//!   wrappers to [`MAX_SURFACE_NESTING`] (64, versus at most 3 in fixtures), including
+//!   wrappers to [`MAX_SURFACE_NESTING`] (32, versus at most 3 in fixtures), including
 //!   STEP/bounded wrappers and extended bases, before any recursive geometry query.
 //!   Database dispatch also enforces the reader's nesting limit.
 //! - **Database.** `ReadFromDB` always makes a new surface (the fill-an-existing-object
@@ -169,6 +173,10 @@ pub struct OffsetSurface {
     surface: Box<Surface>,
     /// `m_pExtendedSurface`: the base extended for evaluation outside its domain.
     extended_surface: Option<Box<Surface>>,
+    /// An extension a `&self` evaluator made: upstream stores it in `m_pExtendedSurface`
+    /// at once through a `const` cast (`SmOffsetSurface.cpp:710-713`, `:1064-1068`), so
+    /// it supersedes `extended_surface` until a `&mut self` method folds it in.
+    pending_extension: PendingExtension,
     /// `m_bIsPeriodicOnU` (an `SmBoolean`: values read from a file are kept as read).
     is_periodic_on_u: i32,
     /// `m_bIsPeriodicOnV`.
@@ -189,13 +197,26 @@ impl Clone for OffsetSurface {
             owns_surface: self.owns_surface,
             surface: Box::new(self.surface.clone_keeping_owner()),
             extended_surface: self
-                .extended_surface
-                .as_deref()
-                .map(|e| Box::new(e.clone_keeping_owner())),
+                .with_current_extension(|e| e.map(|e| Box::new(e.clone_keeping_owner()))),
+            pending_extension: PendingExtension::default(),
             is_periodic_on_u: self.is_periodic_on_u,
             is_periodic_on_v: self.is_periodic_on_v,
             singularities: self.singularities,
         }
+    }
+}
+
+/// The extension an [`OffsetSurface`]'s `&self` evaluators made (a [`core::cell::Cell`]:
+/// upstream's `const` evaluators write `m_pExtendedSurface`).
+#[derive(Default)]
+struct PendingExtension(core::cell::Cell<Option<Box<Surface>>>);
+
+impl core::fmt::Debug for PendingExtension {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let e = self.0.take();
+        let r = f.debug_tuple("PendingExtension").field(&e).finish();
+        self.0.set(e);
+        r
     }
 }
 
@@ -214,17 +235,13 @@ impl From<OffsetSurface> for Surface {
 }
 
 /// The extended base surface during one evaluation: the stored `m_pExtendedSurface`
-/// until the evaluation makes a new one.
+/// until an evaluation through `&self` made a new one (`made`, the pending extension).
 struct Extension<'a> {
     stored: Option<&'a Surface>,
     made: Option<Box<Surface>>,
 }
 
-impl<'a> Extension<'a> {
-    const fn new(stored: Option<&'a Surface>) -> Self {
-        Self { stored, made: None }
-    }
-
+impl Extension<'_> {
     /// `m_pExtendedSurface` as the evaluation sees it now.
     fn current(&self) -> Option<&Surface> {
         self.made.as_deref().or(self.stored)
@@ -280,12 +297,17 @@ fn highest_offset_deriv(hu: usize, hv: usize, only_upper_half: bool) -> Option<u
     }
 }
 
-/// `SM_CAST_PTR(SmBSplineSurface, surface)`: the B-spline kinds (planes and surfaces of
-/// revolution are `SmBSplineSurface`s).
+/// `SM_CAST_PTR(SmBSplineSurface, surface)`: the B-spline kinds (planes, surfaces of
+/// revolution, cones, spheres and tori are `SmBSplineSurface`s).
 const fn is_b_spline_kind(surface: &Surface) -> bool {
     matches!(
         surface.kind(),
-        SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) | SurfaceKind::SurfOfRevolution(_)
+        SurfaceKind::BSpline(_)
+            | SurfaceKind::Plane(_)
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
     )
 }
 
@@ -334,8 +356,8 @@ impl OffsetSurface {
                 )
             } else {
                 let domain = surface.natural_uv_domain();
-                let u = sm_bool(surface.is_periodic(&domain, SurfParamType::U)?);
-                let v = sm_bool(surface.is_periodic(&domain, SurfParamType::V)?);
+                let u = sm_bool(surface.is_periodic(k, &domain, SurfParamType::U)?);
+                let v = sm_bool(surface.is_periodic(k, &domain, SurfParamType::V)?);
                 let s = if singularities == SS_UNKNOWN {
                     base_singularities(k, &surface)?
                 } else {
@@ -349,6 +371,7 @@ impl OffsetSurface {
             owns_surface,
             surface: Box::new(surface),
             extended_surface: None,
+            pending_extension: PendingExtension::default(),
             is_periodic_on_u,
             is_periodic_on_v,
             singularities,
@@ -439,10 +462,75 @@ impl OffsetSurface {
         &mut self.surface
     }
 
-    /// `GetExtendedBaseSurface`.
+    /// The stored `m_pExtendedSurface` only. **Not `GetExtendedBaseSurface`:** an
+    /// extension a `&self` evaluator made since the last `&mut self` call (a plain
+    /// B-spline surface, pending) is not included; use
+    /// [`OffsetSurface::with_extended_base_surface`] for upstream's value. (The two
+    /// nesting walks over it are unaffected: a pending extension is a leaf at the depth
+    /// of the base surface they always visit.)
     #[must_use]
     pub fn extended_base_surface(&self) -> Option<&Surface> {
         self.extended_surface.as_deref()
+    }
+
+    /// `GetExtendedBaseSurface`: runs `f` on the surface upstream's
+    /// `m_pExtendedSurface` holds now (the pending extension, else the stored one).
+    /// `f` must not evaluate this offset (it would not see the pending extension).
+    pub fn with_extended_base_surface<T>(&self, f: impl FnOnce(Option<&Surface>) -> T) -> T {
+        self.with_current_extension(f)
+    }
+
+    /// Runs `f` on the surface upstream's `m_pExtendedSurface` holds now: the pending
+    /// extension, else the stored one.
+    fn with_current_extension<T>(&self, f: impl FnOnce(Option<&Surface>) -> T) -> T {
+        let pending = self.pending_extension.0.take();
+        let r = f(pending.as_deref().or(self.extended_surface.as_deref()));
+        self.pending_extension.0.set(pending);
+        r
+    }
+
+    /// Runs an evaluation body with the current extension; an extension it makes
+    /// becomes the pending one (upstream stores it at once, through a `const` cast).
+    ///
+    /// Invariant: the pending extension is taken out of its `Cell` while `f` runs, so
+    /// `f` must not call a `&self` method of this same offset (it would see only the
+    /// stored extension, and an extension it made would be overwritten when this one is
+    /// put back). Today's bodies (`point_with`, `evaluate_with`, `step_inversion_with`)
+    /// only evaluate the base or the extension objects.
+    fn with_extension<T>(&self, f: impl FnOnce(&mut Extension<'_>) -> T) -> T {
+        let mut ext = Extension {
+            stored: self.extended_surface.as_deref(),
+            made: self.pending_extension.0.take(),
+        };
+        let r = f(&mut ext);
+        self.pending_extension.0.set(ext.made);
+        r
+    }
+
+    /// Stores a pending extension in `m_pExtendedSurface`.
+    fn fold_pending_extension(&mut self) {
+        if let Some(m) = self.pending_extension.0.get_mut().take() {
+            self.extended_surface = Some(m);
+        }
+    }
+
+    /// Takes over an extension `other` (a copy of this offset that ran an inherited
+    /// `SmSurface` body) made since it was copied: upstream runs that body on this
+    /// object, whose `m_pExtendedSurface` it sets.
+    pub(crate) fn keep_extension_made_by(&self, other: &Self) {
+        if let Some(m) = other.pending_extension.0.take() {
+            self.pending_extension.0.set(Some(m));
+        }
+    }
+
+    /// Takes over the current extension of `other`, a copy of this offset (a copy
+    /// takes the current extension) that was evaluated in its place, pending or stored:
+    /// upstream evaluates this object, whose `m_pExtendedSurface` then holds it.
+    pub(crate) fn take_extension_of(&mut self, other: &Self) {
+        let current =
+            other.with_current_extension(|e| e.map(|e| Box::new(e.clone_keeping_owner())));
+        *self.pending_extension.0.get_mut() = None;
+        self.extended_surface = current;
     }
 
     /// `m_bIsPeriodicOnU` and `m_bIsPeriodicOnV` (`SmBoolean` values).
@@ -462,8 +550,8 @@ impl OffsetSurface {
     /// # Errors
     ///
     /// Those of the base surface's [`Surface::max_analytic_domain`].
-    pub fn max_analytic_domain(&self) -> Result<Extent2d> {
-        self.surface.max_analytic_domain()
+    pub fn max_analytic_domain(&self, k: &Kernel) -> Result<Extent2d> {
+        self.surface.max_analytic_domain(k)
     }
 
     /// `GetDegree`: always 3.
@@ -479,7 +567,7 @@ impl OffsetSurface {
     /// base surface's.
     #[must_use]
     pub fn natural_uv_domain(&self) -> Extent2d {
-        domain_with(&self.surface, self.extended_surface.as_deref())
+        self.with_current_extension(|e| domain_with(&self.surface, e))
     }
 
     /// `GetKnots`: those of the extended surface when there is one, else those of the
@@ -493,10 +581,10 @@ impl OffsetSurface {
         param: SurfParamType,
         ivl: Option<&Extent1d>,
     ) -> Result<(Vec<f64>, Vec<usize>)> {
-        match self.extended_surface.as_deref() {
+        self.with_current_extension(|e| match e {
             Some(e) => e.knots(param, ivl),
             None => self.surface.knots(param, ivl),
-        }
+        })
     }
 
     // ---- copies and comparison ------------------------------------------------------------
@@ -530,8 +618,8 @@ impl OffsetSurface {
         sur.allow_extension = self.allow_extension;
 
         // Copy ExtendedSurface
-        if let Some(e) = self.extended_surface.as_deref() {
-            sur.extended_surface = Some(Box::new(e.copy(k)?));
+        if let Some(e) = self.with_current_extension(|e| e.map(|e| e.copy(k)).transpose())? {
+            sur.extended_surface = Some(Box::new(e));
         }
         Ok(sur)
     }
@@ -543,7 +631,7 @@ impl OffsetSurface {
     /// # Errors
     ///
     /// Those of the base surfaces' [`Surface::approx_eq`].
-    pub fn approx_eq(&self, other: &Surface) -> Result<bool> {
+    pub fn approx_eq(&self, k: &Kernel, other: &Surface) -> Result<bool> {
         // first check the base
         let SurfaceKind::OffsetSurface(o) = other.kind() else {
             return Ok(false);
@@ -558,7 +646,7 @@ impl OffsetSurface {
             return Ok(false);
         }
         let (a, b): (&Surface, &Surface) = (&self.surface, &o.surface);
-        if !(ptr::eq(a, b) || a.approx_eq(b)?) {
+        if !(ptr::eq(a, b) || a.approx_eq(k, b)?) {
             return Ok(false);
         }
         Ok(self.is_periodic_on_u == o.is_periodic_on_u
@@ -623,17 +711,17 @@ impl OffsetSurface {
     /// `InvalidInput` past the evaluation copy's nesting bound.
     pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
         let surface = Box::new(self.surface.clone_for_evaluation_depth(depth)?);
-        let extended_surface = self
-            .extended_surface
-            .as_deref()
-            .map(|e| e.clone_for_evaluation_depth(depth).map(Box::new))
-            .transpose()?;
+        let extended_surface = self.with_current_extension(|e| {
+            e.map(|e| e.clone_for_evaluation_depth(depth).map(Box::new))
+                .transpose()
+        })?;
         Ok(Self {
             offset_distance: self.offset_distance,
             allow_extension: self.allow_extension,
             owns_surface: self.owns_surface,
             surface,
             extended_surface,
+            pending_extension: PendingExtension::default(),
             is_periodic_on_u: self.is_periodic_on_u,
             is_periodic_on_v: self.is_periodic_on_v,
             singularities: self.singularities,
@@ -689,7 +777,7 @@ impl OffsetSurface {
         let mut right_off = Self::new(k, self.offset_distance, sur_right, true, SS_UNKNOWN)?;
         right_off.allow_extension = self.allow_extension;
 
-        if self.extended_surface.is_some() {
+        if self.with_current_extension(|e| e.is_some()) {
             // (upstream splits m_pSurface, not m_pExtendedSurface)
             let (ext_left, ext_right) = self.surface.split_at(k, param, surf_param)?;
             left_off.extended_surface = Some(Box::new(ext_left));
@@ -713,8 +801,9 @@ impl OffsetSurface {
     ///
     /// Those of the base surface's [`Surface::calculate_bounding_box`] and of
     /// [`Surface::base_calculate_bounding_box`] (an owned base reaches this offset's face
-    /// through its owner, so a face-owned B-spline-kind base's expanded box returns
-    /// `SmFace::GetTolerance`'s [`SolidError::Unported`], as upstream asks that face).
+    /// through its owner, so a face-owned B-spline-kind base's box is expanded by the
+    /// face tolerance passed down to it, [`Surface::owner_zone_tol_3d`], as upstream asks
+    /// that face; without it, `SmFace::GetTolerance`'s [`SolidError::Unported`]).
     pub fn calculate_bounding_box(
         &self,
         k: &Kernel,
@@ -827,9 +916,8 @@ impl OffsetSurface {
     /// `SM_ERR` for an offset nested twice; `SM_ERR_NULL_POINTER` when a non-B-spline
     /// base must be extended; those of the extension and the base evaluations; the
     /// zero-vector error of `Unitize`.
-    pub fn evaluate_point(&self, uv: Point2) -> Result<Point3> {
-        let mut ext = Extension::new(self.extended_surface.as_deref());
-        self.point_with(&mut ext, uv)
+    pub fn evaluate_point(&self, k: &Kernel, uv: Point2) -> Result<Point3> {
+        self.with_extension(|ext| self.point_with(k, ext, uv))
     }
 
     /// [`OffsetSurface::evaluate_point`], storing an extension it makes in
@@ -838,15 +926,9 @@ impl OffsetSurface {
     /// # Errors
     ///
     /// Those of [`OffsetSurface::evaluate_point`].
-    pub fn evaluate_point_extending(&mut self, uv: Point2) -> Result<Point3> {
-        let (r, made) = {
-            let mut ext = Extension::new(self.extended_surface.as_deref());
-            let r = self.point_with(&mut ext, uv);
-            (r, ext.made)
-        };
-        if let Some(m) = made {
-            self.extended_surface = Some(m);
-        }
+    pub fn evaluate_point_extending(&mut self, k: &Kernel, uv: Point2) -> Result<Point3> {
+        let r = self.evaluate_point(k, uv);
+        self.fold_pending_extension();
         r
     }
 
@@ -864,20 +946,23 @@ impl OffsetSurface {
     /// those of the base evaluations and of the extension.
     pub fn evaluate(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
         flags: EvaluateFlags,
     ) -> Result<Vec<Vec<Vec3>>> {
-        let mut ext = Extension::new(self.extended_surface.as_deref());
-        self.evaluate_with(
-            &mut ext,
-            !flags.non_zero_tangents,
-            uv,
-            highest_u_deriv,
-            highest_v_deriv,
-            flags,
-        )
+        self.with_extension(|ext| {
+            self.evaluate_with(
+                k,
+                ext,
+                !flags.non_zero_tangents,
+                uv,
+                highest_u_deriv,
+                highest_v_deriv,
+                flags,
+            )
+        })
     }
 
     /// [`OffsetSurface::evaluate`], storing an extension it makes.
@@ -887,26 +972,14 @@ impl OffsetSurface {
     /// Those of [`OffsetSurface::evaluate`].
     pub fn evaluate_extending(
         &mut self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
         flags: EvaluateFlags,
     ) -> Result<Vec<Vec<Vec3>>> {
-        let (r, made) = {
-            let mut ext = Extension::new(self.extended_surface.as_deref());
-            let r = self.evaluate_with(
-                &mut ext,
-                !flags.non_zero_tangents,
-                uv,
-                highest_u_deriv,
-                highest_v_deriv,
-                flags,
-            );
-            (r, ext.made)
-        };
-        if let Some(m) = made {
-            self.extended_surface = Some(m);
-        }
+        let r = self.evaluate(k, uv, highest_u_deriv, highest_v_deriv, flags);
+        self.fold_pending_extension();
         r
     }
 
@@ -918,13 +991,15 @@ impl OffsetSurface {
     /// Those of [`OffsetSurface::evaluate`].
     pub fn evaluate_simple(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
         flags: EvaluateFlags,
     ) -> Result<Vec<Vec<Vec3>>> {
-        let mut ext = Extension::new(self.extended_surface.as_deref());
-        self.evaluate_with(&mut ext, true, uv, highest_u_deriv, highest_v_deriv, flags)
+        self.with_extension(|ext| {
+            self.evaluate_with(k, ext, true, uv, highest_u_deriv, highest_v_deriv, flags)
+        })
     }
 
     /// [`OffsetSurface::evaluate_simple`], storing an extension it makes.
@@ -934,39 +1009,40 @@ impl OffsetSurface {
     /// Those of [`OffsetSurface::evaluate`].
     pub fn evaluate_simple_extending(
         &mut self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
         flags: EvaluateFlags,
     ) -> Result<Vec<Vec<Vec3>>> {
-        let (r, made) = {
-            let mut ext = Extension::new(self.extended_surface.as_deref());
-            let r = self.evaluate_with(&mut ext, true, uv, highest_u_deriv, highest_v_deriv, flags);
-            (r, ext.made)
-        };
-        if let Some(m) = made {
-            self.extended_surface = Some(m);
-        }
+        let r = self.evaluate_simple(k, uv, highest_u_deriv, highest_v_deriv, flags);
+        self.fold_pending_extension();
         r
     }
 
     /// The unit normal at `uv` (`EvaluateNormal`): the base surface's inside its
     /// domain, else the `SmSurface::EvaluateNormal` body on the offset (whose
-    /// evaluations may extend the base, for this call only).
+    /// evaluations may extend the base).
     ///
     /// # Errors
     ///
     /// Those of the base surface's [`Surface::evaluate_normal`] and of
     /// [`base_evaluate_normal`].
-    pub fn evaluate_normal(&self, uv: Point2, u_side: Side, v_side: Side) -> Result<Vec3> {
+    pub fn evaluate_normal(
+        &self,
+        k: &Kernel,
+        uv: Point2,
+        u_side: Side,
+        v_side: Side,
+    ) -> Result<Vec3> {
         // see if domainPoint is within BaseSurface domain
         let domain = self.surface.natural_uv_domain();
         if domain.contains_point(uv, 0.0) {
-            self.surface.evaluate_normal(uv, u_side, v_side)
+            self.surface.evaluate_normal(k, uv, u_side, v_side)
         } else {
             // pass the call along to base virtual function which calls Evaluate
             let eval = OffsetEval::new(self);
-            base_evaluate_normal(&eval, uv, u_side, v_side)
+            base_evaluate_normal(k, &eval, uv, u_side, v_side)
         }
     }
 
@@ -977,15 +1053,16 @@ impl OffsetSurface {
     /// Those of [`OffsetSurface::evaluate_normal`].
     pub fn evaluate_normal_extending(
         &mut self,
+        k: &Kernel,
         uv: Point2,
         u_side: Side,
         v_side: Side,
     ) -> Result<Vec3> {
         let domain = self.surface.natural_uv_domain();
         if domain.contains_point(uv, 0.0) {
-            return self.surface.evaluate_normal(uv, u_side, v_side);
+            return self.surface.evaluate_normal(k, uv, u_side, v_side);
         }
-        self.with_evaluator(|eval| base_evaluate_normal(eval, uv, u_side, v_side))
+        self.with_evaluator(|eval| base_evaluate_normal(k, eval, uv, u_side, v_side))
     }
 
     /// Runs `f` on the offset seen as a generic surface ([`OffsetEval`]), as upstream
@@ -994,14 +1071,8 @@ impl OffsetSurface {
     /// An extension those evaluations make is stored in `m_pExtendedSurface`, as by
     /// the `*_extending` evaluators.
     pub fn with_evaluator<T>(&mut self, f: impl FnOnce(&OffsetEval<'_>) -> T) -> T {
-        let (r, made) = {
-            let eval = OffsetEval::new(self);
-            let r = f(&eval);
-            (r, eval.made.into_inner())
-        };
-        if let Some(m) = made {
-            self.extended_surface = Some(m);
-        }
+        let r = f(&OffsetEval::new(self));
+        self.fold_pending_extension();
         r
     }
 
@@ -1077,7 +1148,7 @@ impl OffsetSurface {
     }
 
     /// The body of [`OffsetSurface::evaluate_point`] with the extension of the call.
-    fn point_with(&self, ext: &mut Extension<'_>, uv: Point2) -> Result<Point3> {
+    fn point_with(&self, k: &Kernel, ext: &mut Extension<'_>, uv: Point2) -> Result<Point3> {
         let (base, offset_distance) = self.nested_base(OP_POINT)?;
         let (use_ext, uv, _domain) = self.select_surface(ext, base, uv)?;
         let surface = if use_ext {
@@ -1089,14 +1160,14 @@ impl OffsetSurface {
 
         // Optimization for zero offset distance
         if offset_distance == 0.0 {
-            return surface.evaluate_point(uv);
+            return surface.evaluate_point(k, uv);
         }
 
         // Evaluate the BaseSurface (either m_pBaseSurface or m_pExtendedSurface as needed)
-        let (pnt, du, dv) = surface.evaluate_1st_derivatives(uv, true, true)?;
+        let (pnt, du, dv) = surface.evaluate_1st_derivatives(k, uv, true, true)?;
         let mut norm = du.cross(dv);
         if norm.length_squared() < EFF_ZERO_SQ {
-            norm = surface.evaluate_normal(uv, Side::Left, Side::Left)?;
+            norm = surface.evaluate_normal(k, uv, Side::Left, Side::Left)?;
         }
         let norm = norm.unitize()?;
 
@@ -1108,6 +1179,7 @@ impl OffsetSurface {
     /// the call.
     fn evaluate_with(
         &self,
+        k: &Kernel,
         ext: &mut Extension<'_>,
         do_eval_simple: bool,
         uv: Point2,
@@ -1122,6 +1194,7 @@ impl OffsetSurface {
         }
         let mut out = vec![Vec3::UNDEF; (hu + 1) * (hv + 1)];
         self.plain_or_simple(
+            k,
             ext,
             0,
             do_eval_simple,
@@ -1138,6 +1211,7 @@ impl OffsetSurface {
     /// (`out[i * (hv + 1) + j]`). `depth` counts the pole step-off recursion.
     fn plain_or_simple(
         &self,
+        k: &Kernel,
         ext: &mut Extension<'_>,
         depth: usize,
         do_eval_simple: bool,
@@ -1173,10 +1247,10 @@ impl OffsetSurface {
                 non_zero_tangents: true,
             };
             let m = if do_eval_simple {
-                surface.evaluate_simple(uv, hu, hv, flags)?
+                surface.evaluate_simple(k, uv, hu, hv, flags)?
             } else {
                 // True: adjust to non-zero first derivatives
-                surface.evaluate(uv, hu, hv, flags)?
+                surface.evaluate(k, uv, hu, hv, flags)?
             };
             for (i, row) in m.iter().enumerate().take(hu + 1) {
                 for (j, v) in row.iter().enumerate().take(hv + 1) {
@@ -1188,6 +1262,7 @@ impl OffsetSurface {
 
         // evaluate the base surface one derivative higher than the offset
         let m = surface.evaluate_simple(
+            k,
             uv,
             hb,
             hb,
@@ -1228,13 +1303,14 @@ impl OffsetSurface {
                 ));
             }
             let param_step =
-                find_nonsingular_stepoff(surface, cr_uv, &domain, bu_len, bv_len, tol)?;
+                find_nonsingular_stepoff(k, surface, cr_uv, &domain, bu_len, bv_len, tol)?;
 
             // evaluate at the two step-off points
             let mut mat1 = [Vec3::UNDEF; MAT_LEN];
             let mut mat2 = [Vec3::UNDEF; MAT_LEN];
             let step_uv = cr_uv + param_step;
             self.plain_or_simple(
+                k,
                 ext,
                 depth + 1,
                 do_eval_simple,
@@ -1246,6 +1322,7 @@ impl OffsetSurface {
             )?;
             let step_uv = cr_uv + 2.0 * param_step;
             self.plain_or_simple(
+                k,
                 ext,
                 depth + 1,
                 do_eval_simple,
@@ -1318,7 +1395,8 @@ impl OffsetSurface {
         let mut n = bu.cross(bv);
         let mut l = n.length();
         if l < tol {
-            if let Some((_pnt, du, dv)) = ignored(surface.evaluate_1st_derivatives(uv, true, true))?
+            if let Some((_pnt, du, dv)) =
+                ignored(surface.evaluate_1st_derivatives(k, uv, true, true))?
             {
                 n = du.cross(dv);
                 l = n.length();
@@ -1335,7 +1413,7 @@ impl OffsetSurface {
             let bv_length = bv.length();
             let lt = min3(l, bu_length, bv_length);
             if lt < tol {
-                let norm = surface.evaluate_normal(uv, u_side, v_side)?;
+                let norm = surface.evaluate_normal(k, uv, u_side, v_side)?;
                 n = norm;
                 l = n.length(); // L will be 1.0, EvaluateNormal returns a normalized vector
                 if bu_length < bv_length {
@@ -1449,7 +1527,7 @@ impl OffsetSurface {
             let tolerance = EFF_ZERO * (1.0 + get(out, 0)?.max_dimension());
             if hu > 0 && get(out, hv + 1)?.length_squared() < tolerance * tolerance {
                 if let Some((_pnt, du, _dv)) =
-                    ignored(surface.evaluate_1st_derivatives(uv, true, true))?
+                    ignored(surface.evaluate_1st_derivatives(k, uv, true, true))?
                 {
                     if du.length_squared() > tolerance * tolerance {
                         let du = du.unitize_or_z();
@@ -1459,7 +1537,7 @@ impl OffsetSurface {
             }
             if hv > 0 && get(out, 1)?.length_squared() < tolerance * tolerance {
                 if let Some((_pnt, _du, dv)) =
-                    ignored(surface.evaluate_1st_derivatives(uv, true, true))?
+                    ignored(surface.evaluate_1st_derivatives(k, uv, true, true))?
                 {
                     if dv.length_squared() > tolerance * tolerance {
                         let dv = dv.unitize_or_z();
@@ -1498,16 +1576,9 @@ impl OffsetSurface {
         let base = self
             .surface
             .step_inversion(k, anal_domain, point_on_surf, offset_tol, uv_guess);
-        let mut ext = Extension::new(self.extended_surface.as_deref());
-        self.step_inversion_with(
-            &mut ext,
-            base,
-            k,
-            anal_domain,
-            point_on_surf,
-            tol_3d,
-            uv_guess,
-        )
+        self.with_extension(|ext| {
+            self.step_inversion_with(ext, base, k, anal_domain, point_on_surf, tol_3d, uv_guess)
+        })
     }
 
     /// [`OffsetSurface::step_inversion`], storing an extension its `EvaluatePoint` makes,
@@ -1534,22 +1605,10 @@ impl OffsetSurface {
                 .surface
                 .step_inversion(k, anal_domain, point_on_surf, offset_tol, uv_guess),
         };
-        let (r, made) = {
-            let mut ext = Extension::new(self.extended_surface.as_deref());
-            let r = self.step_inversion_with(
-                &mut ext,
-                base,
-                k,
-                anal_domain,
-                point_on_surf,
-                tol_3d,
-                uv_guess,
-            );
-            (r, ext.made)
-        };
-        if let Some(m) = made {
-            self.extended_surface = Some(m);
-        }
+        let r = self.with_extension(|ext| {
+            self.step_inversion_with(ext, base, k, anal_domain, point_on_surf, tol_3d, uv_guess)
+        });
+        self.fold_pending_extension();
         r
     }
 
@@ -1577,7 +1636,7 @@ impl OffsetSurface {
             }
         }
         let (uv, location) = result?;
-        let pt = self.point_with(ext, uv)?;
+        let pt = self.point_with(k, ext, uv)?;
         if pt.distance(point_on_surf) > tol_3d {
             return Err(SolidError::sm_err(OP_INV));
         }
@@ -1591,6 +1650,7 @@ impl OffsetSurface {
     ///
     /// Those of [`Surface::reverse`].
     pub fn reverse(&mut self, k: &Kernel, param: SurfParamType) -> Result<()> {
+        self.fold_pending_extension();
         self.surface.reverse(k, param)?;
         if let Some(e) = self.extended_surface.as_deref_mut() {
             e.reverse(k, param)?;
@@ -1606,6 +1666,7 @@ impl OffsetSurface {
     /// `SM_ERR` when the base surface is not owned (after the extended surface was
     /// swapped); those of [`Surface::swap_uv`].
     pub fn swap_uv(&mut self, k: &Kernel) -> Result<()> {
+        self.fold_pending_extension();
         if let Some(e) = self.extended_surface.as_deref_mut() {
             e.swap_uv(k)?;
             self.offset_distance = -self.offset_distance;
@@ -1635,6 +1696,7 @@ impl OffsetSurface {
         rotate_n_move: &Axis2Placement,
         scale: Option<Vec3>,
     ) -> Result<()> {
+        self.fold_pending_extension();
         let identity_scale = Vec3::new(1.0, 1.0, 1.0);
         if rotate_n_move.is_identity(EFF_ZERO) && scale.is_none_or(|s| s.approx_eq(identity_scale))
         {
@@ -1671,14 +1733,15 @@ impl OffsetSurface {
     /// `SM_ERR` when the base surface is not owned (after the other edits); those of
     /// the evaluations and of [`Surface::trim_with_domain`].
     pub fn trim_with_domain(&mut self, k: &Kernel, trim_domain: &mut Extent2d) -> Result<()> {
+        self.fold_pending_extension();
         let base_domain = self.surface.natural_uv_domain();
         let mut gets_bigger = false;
         if !base_domain.contains_point(trim_domain.min(), 0.0) {
-            self.evaluate_point_extending(trim_domain.min())?;
+            self.evaluate_point_extending(k, trim_domain.min())?;
             gets_bigger = true;
         }
         if !base_domain.contains_point(trim_domain.max(), 0.0) {
-            self.evaluate_point_extending(trim_domain.max())?;
+            self.evaluate_point_extending(k, trim_domain.max())?;
             gets_bigger = true;
         }
         if let Some(e) = self.extended_surface.as_deref_mut() {
@@ -1715,8 +1778,10 @@ impl OffsetSurface {
 
 /// Maximum wrapper depth accepted by offset construction and restoration.
 ///
-/// Bounds recursive domain queries, edits, cloning and destruction on wasm32.
-pub const MAX_SURFACE_NESTING: usize = 64;
+/// Bounds recursive domain queries, edits, cloning and destruction on wasm32. Equal
+/// to the database reader's bound
+/// ([`MAX_READ_NESTING`](crate::topology::database_io::MAX_READ_NESTING)).
+pub const MAX_SURFACE_NESTING: usize = 32;
 
 /// Walk wrappers in base-before-extension order, checking before recursive descent.
 fn check_surface_nesting(surface: &Surface, depth: usize, op: &'static str) -> Result<()> {
@@ -1740,7 +1805,12 @@ fn check_surface_nesting(surface: &Surface, depth: usize, op: &'static str) -> R
                 check_surface_nesting(base, depth + 1, op)?;
             }
         }
-        SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) | SurfaceKind::SurfOfRevolution(_) => {}
+        SurfaceKind::BSpline(_)
+        | SurfaceKind::Plane(_)
+        | SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
+        | SurfaceKind::SurfOfRevolution(_) => {}
     }
     Ok(())
 }
@@ -1832,6 +1902,7 @@ fn read_body(k: &Kernel, db: &mut DatabaseReader, version: u64) -> Result<Offset
         owns_surface: true,
         surface: Box::new(base_surface),
         extended_surface,
+        pending_extension: PendingExtension::default(),
         is_periodic_on_u,
         is_periodic_on_v,
         singularities,
@@ -1970,6 +2041,7 @@ fn extend_surface(
 ///
 /// `SM_ERR` when no step works; those of the base `EvaluateSimple`.
 fn find_nonsingular_stepoff(
+    k: &Kernel,
     surface: &Surface,
     uv: Point2,
     domain: &Extent2d,
@@ -2003,7 +2075,7 @@ fn find_nonsingular_stepoff(
         } else {
             Vec2::new((mid_param.x - uv.x) * step_size, 0.0)
         };
-        let m = surface.evaluate_simple(uv + param_step, 1, 1, flags)?;
+        let m = surface.evaluate_simple(k, uv + param_step, 1, 1, flags)?;
         if long_enough(&m)? {
             return Ok(param_step);
         }
@@ -2014,7 +2086,7 @@ fn find_nonsingular_stepoff(
         } else {
             Vec2::new(0.0, (mid_param.y - uv.y) * step_size)
         };
-        let m = surface.evaluate_simple(uv + param_step, 1, 1, flags)?;
+        let m = surface.evaluate_simple(k, uv + param_step, 1, 1, flags)?;
         if long_enough(&m)? {
             return Ok(param_step);
         }
@@ -2035,35 +2107,28 @@ fn find_nonsingular_stepoff(
 /// during the call, which upstream stores in `m_pExtendedSurface` at once.
 pub struct OffsetEval<'a> {
     off: &'a OffsetSurface,
-    made: core::cell::Cell<Option<Box<Surface>>>,
 }
 
 impl<'a> OffsetEval<'a> {
     const fn new(off: &'a OffsetSurface) -> Self {
-        Self {
-            off,
-            made: core::cell::Cell::new(None),
-        }
+        Self { off }
     }
 
-    /// A surface snapshot including any extension made earlier in this evaluation.
-    fn surface_snapshot(&self) -> Surface {
-        self.with_extension(|ext| {
-            let mut off = self.off.clone();
-            off.extended_surface = ext.current().cloned().map(Box::new);
-            Surface::from(off)
-        })
+    /// Runs `f` on a copy of the offset (with its current extension) as a [`Surface`];
+    /// an extension made on the copy is kept by the offset (upstream runs the body on
+    /// the offset itself).
+    fn on_snapshot<T>(&self, f: impl FnOnce(&Surface) -> T) -> T {
+        let snapshot = Surface::from(self.off.clone());
+        let r = f(&snapshot);
+        if let SurfaceKind::OffsetSurface(o) = snapshot.kind() {
+            self.off.keep_extension_made_by(o);
+        }
+        r
     }
 
     /// Runs `f` with the extension of the call, keeping a new one it makes.
     fn with_extension<T>(&self, f: impl FnOnce(&mut Extension<'_>) -> T) -> T {
-        let mut ext = Extension {
-            stored: self.off.extended_surface.as_deref(),
-            made: self.made.take(),
-        };
-        let r = f(&mut ext);
-        self.made.set(ext.made);
-        r
+        self.off.with_extension(f)
     }
 }
 
@@ -2075,8 +2140,7 @@ impl SurfaceEvaluate for OffsetEval<'_> {
         point: Point3,
         guess: Point2,
     ) -> Result<(bool, f64, Point2)> {
-        self.surface_snapshot()
-            .local_point_solve_minimize(k, domain, point, guess)
+        self.on_snapshot(|s| s.local_point_solve_minimize(k, domain, point, guess))
     }
 
     fn drop_point_minimize(
@@ -2086,20 +2150,19 @@ impl SurfaceEvaluate for OffsetEval<'_> {
         domain: &Extent2d,
         guess: Option<Point2>,
     ) -> Result<Option<(Point2, f64)>> {
-        self.surface_snapshot()
-            .drop_point_minimize(k, point, domain, guess)
+        self.on_snapshot(|s| s.drop_point_minimize(k, point, domain, guess))
     }
 
     fn local_curve_maximize(
         &self,
+        k: &Kernel,
         curve: &Curve,
         domain: &Extent2d,
         interval: &Extent1d,
         guess_uv: Point2,
         guess_t: f64,
     ) -> Result<Option<(f64, Point2)>> {
-        self.surface_snapshot()
-            .local_curve_maximize(curve, domain, interval, guess_uv, guess_t)
+        self.on_snapshot(|s| s.local_curve_maximize(k, curve, domain, interval, guess_uv, guess_t))
     }
 
     fn natural_uv_domain(&self) -> Extent2d {
@@ -2108,6 +2171,7 @@ impl SurfaceEvaluate for OffsetEval<'_> {
 
     fn evaluate(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
@@ -2115,6 +2179,7 @@ impl SurfaceEvaluate for OffsetEval<'_> {
     ) -> Result<Vec<Vec<Vec3>>> {
         self.with_extension(|ext| {
             self.off.evaluate_with(
+                k,
                 ext,
                 !flags.non_zero_tangents,
                 uv,
@@ -2125,12 +2190,12 @@ impl SurfaceEvaluate for OffsetEval<'_> {
         })
     }
 
-    fn evaluate_point(&self, uv: Point2) -> Result<Point3> {
-        self.with_extension(|ext| self.off.point_with(ext, uv))
+    fn evaluate_point(&self, k: &Kernel, uv: Point2) -> Result<Point3> {
+        self.with_extension(|ext| self.off.point_with(k, ext, uv))
     }
 
-    fn surface_approx_eq(&self, other: &Self) -> Result<bool> {
-        self.off.approx_eq(&Surface::from(other.off.clone()))
+    fn surface_approx_eq(&self, k: &Kernel, other: &Self) -> Result<bool> {
+        self.off.approx_eq(k, &Surface::from(other.off.clone()))
     }
 
     fn knots(
@@ -2148,13 +2213,13 @@ impl SurfaceEvaluate for OffsetEval<'_> {
         Ok(OffsetSurface::is_kind_of(t))
     }
 
-    fn evaluate_normal(&self, uv: Point2, u_side: Side, v_side: Side) -> Result<Vec3> {
+    fn evaluate_normal(&self, k: &Kernel, uv: Point2, u_side: Side, v_side: Side) -> Result<Vec3> {
         // the offset's override, with this call's extension
         let domain = self.off.surface.natural_uv_domain();
         if domain.contains_point(uv, 0.0) {
-            self.off.surface.evaluate_normal(uv, u_side, v_side)
+            self.off.surface.evaluate_normal(k, uv, u_side, v_side)
         } else {
-            base_evaluate_normal(self, uv, u_side, v_side)
+            base_evaluate_normal(k, self, uv, u_side, v_side)
         }
     }
 }
@@ -2191,11 +2256,12 @@ mod tests {
 
     #[test]
     fn plane_offset_point_and_derivatives() {
+        let k = &Kernel::default();
         let off = offset(2.0);
-        let p = off.evaluate_point(Point2::new(0.25, 0.5)).unwrap();
+        let p = off.evaluate_point(k, Point2::new(0.25, 0.5)).unwrap();
         assert_eq!(p, Vec3::new(0.25, 0.5, 2.0));
         let d = off
-            .evaluate(Point2::new(0.25, 0.5), 1, 1, flags(true, false))
+            .evaluate(k, Point2::new(0.25, 0.5), 1, 1, flags(true, false))
             .unwrap();
         assert_eq!(d[0][0], Vec3::new(0.25, 0.5, 2.0));
         assert_eq!(d[1][0], Vec3::new(1.0, 0.0, 0.0));
@@ -2205,20 +2271,22 @@ mod tests {
 
     #[test]
     fn too_many_derivatives_and_clamping() {
+        let k = &Kernel::default();
         let off = offset(-1.0);
         assert!(off
-            .evaluate(Point2::new(0.5, 0.5), 2, 2, flags(true, false))
+            .evaluate(k, Point2::new(0.5, 0.5), 2, 2, flags(true, false))
             .is_err());
         // outside the domain without extension: clamped
-        let p = off.evaluate_point(Point2::new(2.0, -1.0)).unwrap();
+        let p = off.evaluate_point(k, Point2::new(2.0, -1.0)).unwrap();
         assert_eq!(p, Vec3::new(1.0, 0.0, -1.0));
         assert_eq!(off.degree(), 3);
     }
 
     #[test]
     fn upper_half_with_unequal_orders_writes_past_the_array() {
+        let k = &Kernel::default();
         let off = offset(1.0);
-        let r = off.evaluate(Point2::new(0.5, 0.5), 0, 2, flags(true, true));
+        let r = off.evaluate(k, Point2::new(0.5, 0.5), 0, 2, flags(true, true));
         assert!(matches!(r, Err(SolidError::InvalidInput { .. })));
     }
 
@@ -2227,10 +2295,10 @@ mod tests {
         let k = Kernel::default();
         let inner = offset(1.0);
         let outer = OffsetSurface::new(&k, 2.0, Surface::from(inner), true, SS_UNKNOWN).unwrap();
-        let p = outer.evaluate_point(Point2::new(0.5, 0.5)).unwrap();
+        let p = outer.evaluate_point(&k, Point2::new(0.5, 0.5)).unwrap();
         assert_eq!(p, Vec3::new(0.5, 0.5, 3.0));
         let twice = OffsetSurface::new(&k, 1.0, Surface::from(outer), true, SS_UNKNOWN).unwrap();
-        assert!(twice.evaluate_point(Point2::new(0.5, 0.5)).is_err());
+        assert!(twice.evaluate_point(&k, Point2::new(0.5, 0.5)).is_err());
     }
 
     #[test]

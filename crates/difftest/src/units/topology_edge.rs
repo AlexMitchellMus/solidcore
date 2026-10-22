@@ -297,7 +297,11 @@ fn sel(s: i64, n: usize) -> i64 {
 /// The C++ export of the case's B-rep.
 fn export(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
     let path = path_of(&i.brep)?;
-    ffi::eval(Op::Export, &path, &brep_block(i)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let block = brep_block(i)?;
+    crate::export_memo::export("topology_edge", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 /// A build failure as an operation error.
@@ -1828,7 +1832,7 @@ fn run_rust_op(b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
                 ix(x, VertexuseId::index)
             })?;
         }
-        OpIn::EndTangent { e, at_start } => match ed::end_tangent(b, eid(*e), *at_start) {
+        OpIn::EndTangent { e, at_start } => match ed::end_tangent(&k, b, eid(*e), *at_start) {
             Ok(t) => out.extend([0.0, t.x, t.y, t.z]),
             Err(SolidError::InvalidInput { .. }) => out.push(NULL_DEREF),
             Err(err) if err.is_unported() => return Err(err.into()),
@@ -2111,7 +2115,7 @@ fn run_rust_op(b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
             };
             let mut dydx = vec![1.0; *n as usize];
             let ode = ed::OdeEdgeLength::new(c, Vec3::new(origin[0], origin[1], origin[2]), *radius);
-            match ode.evaluate(*t, &mut dydx) {
+            match ode.evaluate(&k, *t, &mut dydx) {
                 Ok(()) => out.push(0.0),
                 Err(SolidError::InvalidInput { .. }) => {
                     return Ok(Output::new().values("state", vec![NULL_DEREF]))

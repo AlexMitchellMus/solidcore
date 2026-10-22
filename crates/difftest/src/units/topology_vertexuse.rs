@@ -305,7 +305,11 @@ pub(crate) fn sel(s: i64, n: usize) -> i64 {
 /// The C++ export of the case's B-rep.
 fn export(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
     let path = path_of(&i.brep)?;
-    ffi::eval(Op::Export, &path, &brep_block(i)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let block = brep_block(i)?;
+    crate::export_memo::export("topology_vertexuse", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 /// A build failure as an operation error.
@@ -1325,11 +1329,33 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     if inexact(&op, &b, &exact) {
         return Ok(Output::err("inexact_surface"));
     }
+    // The export says whether each vertex use's cached vertex/face gap is set, not its
+    // values: refill the set ones by `CalcVertexFaceGap(NULL, TRUE)`, their only setter
+    // upstream, so the ops that read the cache (`IsOnPole`: its face UV) see real values.
+    if let Err(e) = refill_face_gaps(&mut b) {
+        return rust_err(&e);
+    }
     match run_rust_op(&mut b, &op) {
         Ok(o) => Ok(o),
         Err(Fail::Solid(e)) => rust_err(&e),
         Err(Fail::Harness(h)) => Err(h),
     }
+}
+
+/// Recomputes, in arena order, every vertex use's cached vertex/face gap the import
+/// marked as set (see [`run_rust`]).
+fn refill_face_gaps(b: &mut Brep) -> Result<(), SolidError> {
+    let k = Kernel::default();
+    let set: Vec<VertexuseId> = b
+        .vertexuses()
+        .iter()
+        .filter(|(_, r)| r.vertex_face_gap.is_init())
+        .map(|(id, _)| id)
+        .collect();
+    for vu in set {
+        vu1::calc_vertex_face_gap(&k, b, vu, false, true)?;
+    }
+    Ok(())
 }
 
 fn run_rust_op(b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {

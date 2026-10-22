@@ -10,7 +10,8 @@
 //! (the executive constructor belongs to `blend.fillet_executive_p1`). Their output is
 //! one float array (`out`): the status, then the switches, solver count and error code
 //! (`SetFilletParameters`) or the sequence and list lengths. `-2` in the status slot
-//! (upstream would dereference null) is a guard: an error on both sides. An elliptical
+//! (upstream would dereference null) and `-4` (a box with fewer than 12 edges) are
+//! guards: an error on both sides. An elliptical
 //! law whose interpolation failed (no such input is known) would have a null curve
 //! upstream and an error here: also an error on both sides.
 //!
@@ -39,6 +40,7 @@ use solidcore::geom::solution_array::{ObjectKind, SolutionObject};
 use solidcore::intersect::point_class::{ClassObject, ClassObjectKind};
 use solidcore::kernel::Kernel;
 use solidcore::math::Point3;
+use solidcore::topology::proto_topology::p1::CopyBrepMap;
 use solidcore::topology::{edge, Brep, EdgeId, EdgeuseId};
 use solidcore::{Result as SolidResult, SolidError};
 use solidcore_ffi::units::blend_fillet_executive_p2::{self as ffi, Op};
@@ -56,6 +58,9 @@ fn harness(msg: impl Into<String>) -> HarnessError {
 
 /// "Upstream would dereference null" in a status slot.
 const NULL_DEREF: f64 = -2.0;
+
+/// The box has fewer than 12 edges (`-4 n_edges`): no op runs on either side.
+const SHORT_BOX: f64 = -4.0;
 
 /// `SmPlane_TYPE`; `SmLine_TYPE`: the geometry of an `SmApiCreateBox` box, which the
 /// export carries exactly.
@@ -225,6 +230,7 @@ fn record(i: &Inputs) -> (Op, Vec<f64>) {
 fn values_output(o: Vec<f64>) -> Output {
     match o.first() {
         Some(&s) if s == NULL_DEREF => Output::err("null_deref"),
+        Some(&s) if s == SHORT_BOX => Output::err("box_edge_count"),
         _ => Output::new().values("out", o),
     }
 }
@@ -295,6 +301,49 @@ impl Access {
     }
 }
 
+/// `target->MergeBrep(other, NULL, NULL, bAddAnalytics)` for this fixture, which keeps no
+/// notification state: `topology::brep::p3::merge_brep` under the kernel's identities
+/// (`with_kernel_callbacks`), `other` enrolled in the same identity domain first so its
+/// objects never share a key with `target`'s.
+fn merge_breps(
+    k: &mut Kernel,
+    target: &mut Brep,
+    other: &mut Brep,
+    add_analytics: bool,
+) -> SolidResult<()> {
+    use solidcore::topology::brep::p3 as bp3;
+    let serial = bp3::notify_serial(&mut k.context, other)?;
+    let source_key = move |e| bp3::topology_ref(serial, e);
+    let other = &*other;
+    bp3::with_kernel_callbacks(k, target, |k, b, env| {
+        bp3::merge_brep(k, env, b, other, &source_key, None, None, add_analytics)
+    })
+}
+
+/// `brep->OrientTrimmedSurfaces(..)` for this fixture: `topology::brep::p3`'s under the
+/// kernel's identities. The fixture has no face handles, so only an empty
+/// `pOptFacesToSwapUV` list is accepted.
+fn orient_brep(
+    k: &mut Kernel,
+    b: &mut Brep,
+    outward: bool,
+    maybe_not_solid: &mut bool,
+    just_unify: bool,
+    faces_to_swap_uv: Option<&mut Vec<Handle>>,
+) -> SolidResult<()> {
+    use solidcore::topology::brep::p3 as bp3;
+    if faces_to_swap_uv.as_ref().is_some_and(|f| !f.is_empty()) {
+        return missing();
+    }
+    let swap: Option<&[solidcore::topology::FaceId]> = faces_to_swap_uv.map(|_| &[][..]);
+    let r = bp3::with_kernel_callbacks(k, b, |k, b, env| {
+        let mut marks = solidcore::topology::topology_traverser::Marks::default();
+        bp3::orient_trimmed_surfaces(k, b, env, &mut marks, outward, just_unify, swap)
+    })?;
+    *maybe_not_solid = r.maybe_not_closed_solid;
+    Ok(())
+}
+
 impl ExecutiveAccess<Handle> for Access {
     // The adapters SetFilletParameters and the empty-list executive members reach
     // before their executive p1 deferrals are real (below). The others reject
@@ -326,6 +375,41 @@ impl ExecutiveAccess<Handle> for Access {
     ) -> SolidResult<()> {
         missing()
     }
+    fn merge_brep(
+        &mut self,
+        k: &mut Kernel,
+        target: Handle,
+        other: Handle,
+        copy_map: Option<&mut CopyBrepMap<Handle>>,
+        reverse_map: Option<&mut CopyBrepMap<Handle>>,
+        add_analytics: bool,
+    ) -> SolidResult<()> {
+        // (the fixture's handles name no topology objects: no copy maps of them)
+        if copy_map.is_some() || reverse_map.is_some() || target == other {
+            return missing();
+        }
+        let mut src = std::mem::take(self.brep_mut(other)?);
+        let r = match self.brep_mut(target) {
+            Ok(dst) => merge_breps(k, dst, &mut src, add_analytics),
+            Err(e) => Err(e),
+        };
+        if let Ok(slot) = self.brep_mut(other) {
+            *slot = src;
+        }
+        r
+    }
+    fn orient_trimmed_surfaces(
+        &mut self,
+        k: &mut Kernel,
+        brep: Handle,
+        outward: bool,
+        maybe_not_solid: &mut bool,
+        just_unify: bool,
+        faces_to_swap_uv: Option<&mut Vec<Handle>>,
+    ) -> SolidResult<()> {
+        let b = self.brep_mut(brep)?;
+        orient_brep(k, b, outward, maybe_not_solid, just_unify, faces_to_swap_uv)
+    }
     fn do_stitching(
         &mut self,
         _: &mut Kernel,
@@ -352,6 +436,17 @@ impl ExecutiveAccess<Handle> for Access {
         &mut self,
         _: &mut Kernel,
         _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
+    fn trim_original_surfaces(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut Vec<Handle>,
+        _: &mut Vec<Handle>,
+        _: &[ContextMark],
         _: &mut FilletExecutive<Handle>,
     ) -> SolidResult<()> {
         missing()
@@ -561,6 +656,22 @@ impl ExecutiveAccess<Handle> for Access {
     fn delete_brep(&mut self, _: Handle) -> SolidResult<()> {
         missing()
     }
+    fn set_brep_tolerance(
+        &mut self,
+        k: &mut Kernel,
+        brep: Handle,
+        tolerance: f64,
+        update_only_if_larger: bool,
+        cascade_to_boundaries: bool,
+    ) -> SolidResult<()> {
+        solidcore::topology::brep::p2::set_tolerance(
+            k,
+            self.brep_mut(brep)?,
+            tolerance,
+            update_only_if_larger,
+            cascade_to_boundaries,
+        )
+    }
     fn tolerance(&self, k: &Kernel, brep: Handle, approx: bool) -> SolidResult<f64> {
         let tolerance = self.brep(brep)?.tolerance();
         Ok(if approx {
@@ -653,16 +764,17 @@ impl ExecutiveAccess<Handle> for Access {
     }
 }
 
-/// The p2 module's error operation (`SM_ERR_NULL_POINTER` raised there marks a null
-/// dereference upstream, `-2`).
-const OP_P2: &str = "blend::fillet_executive::p2";
+/// The prefix of the p2 module's null-object operations (`SM_ERR_NULL_POINTER` raised
+/// there, `blend::fillet_executive::p2: <what>`, marks a null dereference upstream,
+/// `-2`).
+const OP_P2: &str = "blend::fillet_executive::p2: ";
 
 /// The `SmStatus` of a Rust error.
 fn status_of(e: &SolidError) -> f64 {
     match e {
         SolidError::Upstream {
             operation, code, ..
-        } if *code == SM_ERR_NULL_POINTER && *operation == OP_P2 => NULL_DEREF,
+        } if *code == SM_ERR_NULL_POINTER && operation.starts_with(OP_P2) => NULL_DEREF,
         SolidError::Upstream { code, .. } => f64::from(*code),
         _ => -9.0,
     }
@@ -754,6 +866,10 @@ fn box_access(bx: &BoxIn) -> Result<Result<Access, Output>, HarnessError> {
         ))));
     };
     let (b, types) = super::topology_brep_p1::import(&ex, graph_at)?;
+    if b.edges().len() != ffi::BOX_EDGES {
+        // The shim reports the same box as `-4 n_edges`.
+        return Ok(Err(Output::err("box_edge_count")));
+    }
     if types
         .face_surface_types
         .iter()
@@ -764,9 +880,6 @@ fn box_access(bx: &BoxIn) -> Result<Result<Access, Output>, HarnessError> {
             .any(|&t| t >= 0 && t != BOX_CURVE)
     {
         return Err(harness("box geometry is not planes and lines"));
-    }
-    if b.edges().len() != ffi::BOX_EDGES {
-        return Err(harness("box without 12 edges"));
     }
     Ok(Ok(Access {
         breps: vec![b],

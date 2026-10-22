@@ -67,8 +67,8 @@
 //!   `intersect.curve_class_p8`): that returns [`SolidError::Unported`], and the trimming below it is ported with the
 //!   classification. The general intersection `GlobalSurfaceIntersect` falls back to
 //!   needs `SmAdvSurfaceIntersector` on this surface, which is not a [`Surface`] (see
-//!   **Not a `SurfaceKind`** above), so it stays [`SolidError::Unported`] under
-//!   `intersect.adv_surface_intersector`.
+//!   **Not a `SurfaceKind`** above), so it stays [`SolidError::Unported`] under the
+//!   `SmSurface` dispatch (`surface.surface_p2`), a dispatch gap.
 //! - **`sm_IntersectGenerators` status.** `IntersectWithCylinder` and
 //!   `IntersectWithSurfOfExtrusion` ignore it as upstream: a failure keeps the curves
 //!   and types already added, with no more intersections needed (upstream clears the
@@ -216,10 +216,13 @@ fn deg2rad(adeg: f64) -> f64 {
 /// `SmSurface::GlobalSurfaceIntersect` of a surface of extrusion: the general
 /// intersector.
 fn base_global_surface_intersect() -> Result<ExtrusionIntersection> {
-    // UNPORTED(intersect.adv_surface_intersector): SmAdvSurfaceIntersector::SmAdvSurfaceIntersector
+    // DISPATCH GAP: SmAdvSurfaceIntersector::SmAdvSurfaceIntersector is ported
+    // (intersect.adv_surface_intersector, partial; no UNPORTED marker), but it takes two
+    // `Surface`s and a surface of extrusion is no `SurfaceKind` yet (the SmSurface
+    // dispatch, unit surface.surface_p2; #76)
     Err(SolidError::unported(
-        "SmAdvSurfaceIntersector::SmAdvSurfaceIntersector",
-        "intersect.adv_surface_intersector",
+        "SmAdvSurfaceIntersector (SurfaceKind::SurfOfExtrusion)",
+        "surface.surface_p2",
     ))
 }
 
@@ -242,8 +245,8 @@ impl SurfOfExtrusion {
     /// # Errors
     ///
     /// Those of the special cases; [`SolidError::Unported`] from the general
-    /// intersection (`SmAdvSurfaceIntersector`, unit
-    /// `intersect.adv_surface_intersector`).
+    /// intersection (`SmAdvSurfaceIntersector`, which needs this surface as a
+    /// `SurfaceKind`: a dispatch gap of `surface.surface_p2`).
     #[allow(clippy::too_many_arguments)] // upstream's signature
     pub fn global_surface_intersect(
         &self,
@@ -375,6 +378,7 @@ impl SurfOfExtrusion {
             //  flag, so a failure is "no curves, no more intersections")
             let plane_tol = approx_tol_3d.map(|t| approx_tol3d(k, t));
             let (needs_more, plane_x) = match plane.intersect_with_plane(
+                k,
                 other_uv_domain,
                 &this_plane,
                 &this_plane.step_uv_domain(),
@@ -454,10 +458,13 @@ impl SurfOfExtrusion {
                 ..SurfaceBoxRequest::default()
             };
             let plane_nurb = plane.base_with_nurb()?;
-            let mut plane_pbox =
-                ignored(plane_nurb.calculate_bounding_box(&plane.natural_uv_domain(), &plane_req))?
-                    .and_then(|b| b.pseudo)
-                    .unwrap_or_default();
+            let mut plane_pbox = ignored(plane_nurb.calculate_bounding_box(
+                k,
+                &plane.natural_uv_domain(),
+                &plane_req,
+            ))?
+            .and_then(|b| b.pseudo)
+            .unwrap_or_default();
             let curve_req = CurveBoxRequest {
                 pseudo: true,
                 ..CurveBoxRequest::default()
@@ -521,7 +528,7 @@ impl SurfOfExtrusion {
             }
 
             // arrive here when all solutions are PointSolutions
-            let is_closed = gen.is_closed(&gen_curve_nurb_ivl, 0.0)?;
+            let is_closed = gen.is_closed(k, &gen_curve_nurb_ivl, 0.0)?;
 
             // for every SweptCurve/Plane point intersection - build, trim and if
             // nonNULL, output a line
@@ -531,7 +538,7 @@ impl SurfOfExtrusion {
             for (ii, sol) in sols.iter().enumerate() {
                 // create line segment intersection curve (Evaluate's status ignored
                 // upstream, which then reads the points)
-                let crv_pt = gen.evaluate(sol.start.parameters[0], 1, true, true)?;
+                let crv_pt = gen.evaluate(k, sol.start.parameters[0], 1, true, true)?;
                 let (Some(&pt0), Some(&pt1)) = (crv_pt.first(), crv_pt.get(1)) else {
                     return Err(SolidError::sm_err(OP_PLANE));
                 };
@@ -631,7 +638,7 @@ impl SurfOfExtrusion {
                 }
 
                 // add curve to ouput
-                let curve_type = if crv.is_degenerate(EFF_ZERO, None)? {
+                let curve_type = if crv.is_degenerate(k, EFF_ZERO, None)? {
                     TsectCurveType::Touching
                 } else if tangent {
                     TsectCurveType::Tangent
@@ -656,7 +663,7 @@ impl SurfOfExtrusion {
             // Line solutions have already added the curve types
             if cnt != out.curve_types.len() {
                 let crv = out.curves_3d.get(ii).ok_or(SolidError::sm_err(OP_PLANE))?;
-                let t = if crv.is_degenerate(EFF_ZERO, None)? {
+                let t = if crv.is_degenerate(k, EFF_ZERO, None)? {
                     TsectCurveType::Touching
                 } else {
                     TsectCurveType::Crossing

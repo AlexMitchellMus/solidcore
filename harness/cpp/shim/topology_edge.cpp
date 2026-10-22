@@ -507,7 +507,8 @@ void put_surface(std::vector<double>& o, const SmSurface* s)
     }
     // Reuse the shared lossless record checks, then always export the regular
     // B-spline block so the importer can verify the reconstructed base bitwise.
-    sc_analytic_export::put_exact_head(o, s, the_context());
+    if (s->GetType() == SmSurfOfRevolution_TYPE)
+        sc_analytic_export::put_exact_head(o, s, the_context());
     const SmBSplineSurface* b = (const SmBSplineSurface*)s;
     gw_SURFACE* sur = b->GetGwNurbPointer();
     o.push_back(0.0);
