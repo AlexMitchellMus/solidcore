@@ -97,6 +97,8 @@ fn harness(msg: impl Into<String>) -> HarnessError {
 const SM_ERR_INVALID_INPUT: f64 = 1007.0;
 /// "Not run": the shim keeps the call away from upstream (`-3`).
 const NOT_RUN: f64 = -3.0;
+/// The shim's `SC_ERR_ARG` (a loop it could not close).
+const SC_ERR_ARG: f64 = -1002.0;
 /// `NOW`: the weight of a non-rational control point.
 const NOW: f64 = -f64::MAX;
 /// `NOZ`: the z of a 2D control point.
@@ -661,6 +663,26 @@ fn orient_of(code: u8) -> Result<OrientType, Fail> {
     }
 }
 
+/// A notification identity for every topology object of the `MakeFace` loop (by kind and
+/// index; faces, edges and edge uses as [`key_of`]).
+fn loop_key_of(e: EntityRef) -> ObjectRef {
+    let (type_code, kind, i) = match e {
+        EntityRef::Face(_) | EntityRef::Edge(_) | EntityRef::Edgeuse(_) => return key_of(e),
+        EntityRef::Brep(x) => (16011, 4, x.index()),
+        EntityRef::Region(x) => (16012, 5, x.index()),
+        EntityRef::Shell(x) => (16013, 6, x.index()),
+        EntityRef::Faceuse(x) => (16022, 7, x.index()),
+        EntityRef::Loopuse(x) => (16004, 8, x.index()),
+        EntityRef::Loop(x) => (16003, 9, x.index()),
+        EntityRef::Vertexuse(x) => (16006, 10, x.index()),
+        EntityRef::Vertex(x) => (16021, 11, x.index()),
+    };
+    ObjectRef {
+        type_code,
+        key: ObjectKey(kind << 40 | u64::from(i)),
+    }
+}
+
 fn key_of(e: EntityRef) -> ObjectRef {
     let (type_code, key) = match e {
         EntityRef::Face(f) => (
@@ -759,7 +781,7 @@ fn brep_tolerances(b: &Brep) -> Vec<f64> {
 /// Whether `MakeFaceWithCurves` fails its input checks (`SmBrep.cpp:15722-15741`) on a
 /// face with 3D curves: no loops, or a surface degenerate to a curve or a point (the
 /// port's tests, which fail soft as upstream's flags).
-fn mfwc_input_error(surface: &SrfIn, loops: &[usize]) -> Result<bool, Fail> {
+fn mfwc_input_error(k: &Kernel, surface: &SrfIn, loops: &[usize]) -> Result<bool, Fail> {
     if loops.is_empty() {
         return Ok(true);
     }
@@ -775,8 +797,8 @@ fn mfwc_input_error(surface: &SrfIn, loops: &[usize]) -> Result<bool, Fail> {
     };
     let tol = solidcore::surface::surface::p1::DEGENERATE_TOL_3D;
     Ok(
-        flag(srf.is_degenerate_curve(solidcore::math::EFF_ZERO_DEG, None, tol))?
-            || flag(srf.is_degenerate_point(tol, None))?,
+        flag(srf.is_degenerate_curve(k, solidcore::math::EFF_ZERO_DEG, None, tol))?
+            || flag(srf.is_degenerate_point(k, tol, None))?,
     )
 }
 
@@ -845,7 +867,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
             // the shim's guard: upstream dereferences the null UV curve array once MakeFace
             // succeeds (the port returns InvalidInput there); its own input checks (no
             // loops, a degenerate surface) return first
-            if *crv_on_surf == 2 && !*has_uv && *has3d && !mfwc_input_error(surface, loops)? {
+            if *crv_on_surf == 2 && !*has_uv && *has3d && !mfwc_input_error(k, surface, loops)? {
                 return Err(cpp_null_deref(
                     "cpp-guard:ub-165",
                     "SmBrep::MakeFaceWithCurves",
@@ -926,33 +948,106 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
                         return Ok(vec![NOT_RUN]);
                     }
                 }
-                // The shim's loop starts with MakeShellVertex in a fresh B-rep's
-                // GetInfiniteRegion(); run it, then MakeWireEdgeVertex and MakeWireEdge
-                // (topology.brep_p3) come before MakeFace sees the loop.
-                let (mut b, region) = native_brep()?;
+                // The shim's loop: `new SmBrep()` (its infinite void region), MakeShellVertex
+                // there, MakeWireEdgeVertex along three sides and MakeWireEdge closing the
+                // fourth; MakeFace gets each edge's SAME edge use.
+                let defer = |e: SolidError| match Output::unported(&e) {
+                    Some(o) => Fail::Deferred(Box::new(o)),
+                    None => hfail(e),
+                };
+                let mut b = solidcore::topology::brep::p3::new_brep(
+                    k,
+                    solidcore::geom::tol::USE_DEFAULT,
+                    solidcore::geom::tol::USE_DEFAULT,
+                )
+                .map_err(defer)?;
+                let inf = b.infinite_region();
                 let mut records = BTreeMap::new();
                 let mut attrs = AttributeStore::default();
                 let mut env = ed::NotifyEnv {
                     records: &mut records,
                     attributes: &mut attrs,
                     context: None,
-                    key_of: &key_of,
+                    key_of: &loop_key_of,
                 };
-                if let Err(e) = solidcore::topology::brep::p9::make_shell_vertex(
-                    &mut b,
-                    Some(region),
-                    p[0],
-                    &mut env,
-                ) {
-                    return Err(match Output::unported(&e) {
-                        Some(o) => Fail::Deferred(Box::new(o)),
-                        None => hfail(e),
-                    });
+                let (_, v0) =
+                    solidcore::topology::brep::p9::make_shell_vertex(&mut b, inf, p[0], &mut env)
+                        .map_err(defer)?;
+                let corner = |i: usize| p.get(i % 4).copied().ok_or_else(|| hfail("corner"));
+                let line = |i: usize| {
+                    let (a, z) = (corner(i)?, corner(i + 1)?);
+                    let c = SmCurve::from(Line::create_line_segment(3, a, z, None).map_err(hfail)?);
+                    let ivl = c.natural_interval();
+                    Ok::<_, Fail>((c, ivl))
+                };
+                let mut vs = vec![v0];
+                let mut es = Vec::new();
+                for i in 0..3 {
+                    let (c, ivl) = line(i)?;
+                    let start = *vs.last().ok_or_else(|| hfail("no start vertex"))?;
+                    match solidcore::topology::brep::p3::make_wire_edge_vertex(
+                        k,
+                        &mut b,
+                        &mut env,
+                        inf,
+                        start,
+                        c,
+                        &ivl,
+                        OrientType::Same,
+                        corner(i + 1)?,
+                    ) {
+                        Ok((e, v)) => {
+                            es.push(e);
+                            vs.push(v);
+                        }
+                        Err(e) if e.is_unported() => return Err(defer(e)),
+                        // (the shim cannot build the loop either)
+                        Err(_) => return Ok(vec![NOT_RUN]),
+                    }
                 }
-                return Err(Fail::Deferred(Box::new(Output::deferred(
-                    "topology.brep_p3",
-                    "SmBrep::MakeWireEdgeVertex",
-                ))));
+                let (c, ivl) = line(3)?;
+                match solidcore::topology::brep::p3::make_wire_edge(
+                    k,
+                    &mut b,
+                    &mut env,
+                    inf,
+                    *vs.get(3).ok_or_else(|| hfail("no fourth vertex"))?,
+                    v0,
+                    c,
+                    &ivl,
+                    OrientType::Same,
+                ) {
+                    Ok(e) => es.push(e),
+                    Err(e) if e.is_unported() => return Err(defer(e)),
+                    Err(_) => return Ok(vec![SC_ERR_ARG]),
+                }
+                let mut eus = Vec::new();
+                for &e in &es {
+                    let all = ed::edgeuses(&b, e, None, None).map_err(hfail)?;
+                    for eu in all {
+                        if b.edgeuse(eu).map_err(hfail)?.orientation == OrientType::Same {
+                            eus.push(eu);
+                            break;
+                        }
+                    }
+                }
+                let plane = Plane::from_normal(Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 1.0));
+                let dom = plane.natural_uv_domain();
+                let r = p7::make_face(
+                    k,
+                    &mut b,
+                    if *region_null { None } else { inf },
+                    &[4],
+                    &eus,
+                    &[],
+                    Some(Surface::from(plane)),
+                    &dom,
+                    orient_of(*orient)?,
+                    &p7::MakeFaceOptions::default(),
+                    &this_face,
+                    &mut env,
+                );
+                return new_face_record(&b, &r);
             }
             // (the shim passes the new B-rep's GetInfiniteRegion() unless null)
             let (mut b, infinite) = native_brep()?;
@@ -964,6 +1059,14 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
                 ))
             });
             let dom = Extent2d::from_points(Point2::new(0.0, 0.0), Point2::new(1.0, 1.0));
+            let mut records = BTreeMap::new();
+            let mut attrs = AttributeStore::default();
+            let mut env = ed::NotifyEnv {
+                records: &mut records,
+                attributes: &mut attrs,
+                context: None,
+                key_of: &key_of,
+            };
             let r = p7::make_face(
                 k,
                 &mut b,
@@ -976,6 +1079,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
                 orient_of(*orient)?,
                 &p7::MakeFaceOptions::default(),
                 &this_face,
+                &mut env,
             );
             new_face_record(&b, &r)
         }

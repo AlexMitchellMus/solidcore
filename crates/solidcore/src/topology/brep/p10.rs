@@ -12,6 +12,7 @@
 //! | [`project_and_trim`]              | `SmBrep::ProjectAndTrim`                         |
 //! | [`TrimType`]                      | `SmTrimType`                                     |
 //! | [`remove_all_topology`]           | `SmBrep::RemoveAllTopology`                      |
+//! | [`remove_all_topology_notified`]  | `SmBrep::RemoveAllTopology` (caller's records)  |
 //! | [`test_closure_split_region`]     | `SmBrep::TestClosureSplitRegion(SmBoolean, SmEdge*, ...)` |
 //! | [`HEALER_VERSION`]                | `SM_HEALER_VERSION`                              |
 //!
@@ -87,8 +88,10 @@ use crate::kernel::Kernel;
 use crate::math::{max2, Point3, Vec3, BIG_DOUBLE, EFF_ZERO};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::surface::surface::Surface;
 use crate::topology::brep::p1;
+use crate::topology::brep::p4;
 use crate::topology::brep::p6;
 use crate::topology::brep_cache::{make_brep_cache, BrepObjects, CacheObject, CacheSource};
 use crate::topology::brep_data::{BrepData, TopologyData, NO_OBJECT, UNSURE};
@@ -733,6 +736,9 @@ fn build_faces(
 
         // Connect up face and faceuses and set FU fields
         rec.faceuse = Some(fu1); // FU1 is primary faceuse
+
+        // the surface reads the face's tolerance through GetFace()
+        b.sync_face_surface_tolerance(f)?;
         *b.faceuse_mut(fu1)? = Faceuse {
             face: Some(f),
             mate: Some(fu2),
@@ -1027,8 +1033,8 @@ fn edge_curve(
                     None,
                 )?;
                 let ends_match = |t: f64| -> Result<bool> {
-                    let or = src.object.evaluate_point(t)?;
-                    let an = c.evaluate_point(t)?;
+                    let or = src.object.evaluate_point(k, t)?;
+                    let an = c.evaluate_point(k, t)?;
                     let too_far = or.distance(an) > EFF_ZERO * (1.0 + or.max_dimension());
                     Ok(!too_far)
                 };
@@ -1791,18 +1797,21 @@ fn merge_curves_world(
     _curves_3d: &[Curve],
     _uv_curves: &[Curve],
 ) -> Result<(CacheMergeWorld, Vec<CacheHandle>, Vec<CacheHandle>)> {
-    // UNPORTED(query.brep): MergeCurvesObjects world over the B-rep cache
+    // DISPATCH GAP: SmBrep::MergeCurvesOnSurface is ported
+    // (`topology::brep::p2::merge_curves_on_surface`, topology.brep_p2 partial; no
+    // UNPORTED marker), but its classification world over the B-rep cache (handles for
+    // the 3D and UV curves next to the cached B-rep geometry) is not built here.
     Err(SolidError::Unported {
         upstream: "SmBrep::MergeCurvesOnSurface classification world over the B-rep cache",
-        unit: "query.brep",
+        unit: "topology.brep_p2",
     })
 }
 
 /// `MergeCurvesOnSurface(*pSurf, dTol, s3DCurves, &sUVCurves, sNewFaces, sCurveEdges,
 /// bUseProjection)` with the header defaults for the rest (no intersection surface,
 /// `bUVSpaceOkay = TRUE`): [`crate::topology::brep::p2::merge_curves_on_surface`]
-/// through the B-rep cache's classification world, which only `query.brep` provides
-/// ([`merge_curves_world`]). Called here (`SmBrep.cpp:25074`, default
+/// through the B-rep cache's classification world ([`merge_curves_world`], not built
+/// yet). Called here (`SmBrep.cpp:25074`, default
 /// `bUseProjection = FALSE`) and by `blend.hcr` (`SmHCR.cpp:1229`, `TRUE`).
 pub(crate) fn merge_curves_on_surface(
     k: &mut Kernel,
@@ -1856,17 +1865,14 @@ fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
     crate::topology::face::p4::edges(b, f, None, false, None)
 }
 
-fn brep_bounding_box(_k: &Kernel, _b: &Brep) -> Result<Extent3d> {
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::Unported {
-        upstream: "SmBrep::CalculateBoundingBox",
-        unit: "query.brep",
-    })
-}
-
 /// `sm_GetPointFromSol(sSol, start)` ([`crate::topology::brep::p2::point_from_solution`]).
-fn point_from_solution(b: &Brep, solution: &Solution<CacheObject>, start: usize) -> Result<Point3> {
-    crate::topology::brep::p2::point_from_solution(b, solution, start)
+fn point_from_solution(
+    k: &Kernel,
+    b: &Brep,
+    solution: &Solution<CacheObject>,
+    start: usize,
+) -> Result<Point3> {
+    crate::topology::brep::p2::point_from_solution(k, b, solution, start)
 }
 
 fn remove_faces(k: &mut Kernel, b: &mut Brep, faces: &[FaceId]) -> Result<()> {
@@ -1971,7 +1977,7 @@ fn project_and_trim_body(
 /// its vertices, else of its edges' mid-points, else by a ray along the projection
 /// direction.
 fn faces_to_delete(
-    k: &Kernel,
+    k: &mut Kernel,
     b: &Brep,
     env: &ProjectEnv<'_>,
     curve: &BSplineCurve,
@@ -2017,7 +2023,7 @@ fn faces_to_delete(
                     .as_ref()
                     .ok_or(SolidError::null_pointer(OP_PROJECT))?;
                 let tol1 = 5.0 * (rec.tolerance + tol);
-                let p = c.evaluate_point(rec.interval.evaluate(0.5))?;
+                let p = c.evaluate_point(k, rec.interval.evaluate(0.5))?;
                 if let Some(side) = ignored(find_side_of_curve(k, curve, p, direction, tol1))? {
                     if side != 0 {
                         right_votes += 1;
@@ -2034,10 +2040,17 @@ fn faces_to_delete(
             // Make a face shape with the face and its edges and vertices.
             let edge_keys: Vec<_> = edges.iter().map(|&e| (env.brep_id, e)).collect();
             let vertex_keys: Vec<_> = vertices.iter().map(|&v| (env.brep_id, v)).collect();
-            let shape = Shape::new(&[], &[(env.brep_id, face)], &edge_keys, &vertex_keys)?;
+            let shape = Shape::new(
+                k,
+                &(env.brep_id, b),
+                &[],
+                &[(env.brep_id, face)],
+                &edge_keys,
+                &vertex_keys,
+            )?;
 
             // Find a ray to determine which face needs to be kept or deleted
-            let bbox = brep_bounding_box(k, b)?;
+            let bbox = qbrep::calculate_bounding_box(k, b, BoundingBoxOptions::default())?;
             let sphere = bbox.sphere_bound();
             let param = line_closest_point(reference, direction, sphere.center);
             let projected_center = reference + direction * param;
@@ -2049,7 +2062,7 @@ fn faces_to_delete(
             let objects = BrepObjects {
                 brep: b,
                 brep_id: env.brep_id,
-                cache: &cache,
+                cache: Some(&cache),
                 keys: env.keys,
                 owner_of: env.owner_of,
             };
@@ -2079,7 +2092,7 @@ fn faces_to_delete(
             let Some(first) = solutions.as_slice().first() else {
                 continue;
             };
-            let p = point_from_solution(b, first, 1)?;
+            let p = point_from_solution(k, b, first, 1)?;
             let tol1 = 5.0 * (b.face(face)?.tolerance + tol);
             match ignored(find_side_of_curve(k, curve, p, direction, tol1))? {
                 Some(side) => face_right_side = side,
@@ -2105,12 +2118,11 @@ fn brep_wire_edges(b: &Brep) -> Result<Vec<EdgeId>> {
     p1::wire_edges(b, None)
 }
 
-fn delete_edge(_k: &mut Kernel, _b: &mut Brep, _e: EdgeId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
-    Err(SolidError::Unported {
-        upstream: "SmBrep::DeleteEdge",
-        unit: "topology.brep_p4",
-    })
+/// `SmBrep::DeleteEdge(edge)` (default `pOptSurfaceToKeep = NULL`), notifying through
+/// `env`.
+fn delete_edge(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>, e: EdgeId) -> Result<()> {
+    let mut d = p4::DeleteEnv::from_notify(env);
+    p4::delete_edge(k, b, &mut d, e, None)
 }
 
 /// `GetShellVertices` ([`crate::topology::brep::p2::shell_vertices`], no attribute filter).
@@ -2118,15 +2130,15 @@ fn brep_shell_vertices(b: &Brep) -> Result<Vec<VertexId>> {
     crate::topology::brep::p2::shell_vertices(b, None)
 }
 
-fn delete_vertex(_k: &mut Kernel, _b: &mut Brep, _v: VertexId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex
-    Err(SolidError::Unported {
-        upstream: "SmBrep::DeleteVertex",
-        unit: "topology.brep_p4",
-    })
+/// `SmBrep::DeleteVertex(vertex)`, notifying through `env` (as [`delete_edge`]).
+fn delete_vertex(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>, v: VertexId) -> Result<()> {
+    let mut d = p4::DeleteEnv::from_notify(env);
+    p4::delete_vertex(k, b, &mut d, v)
 }
 
-/// `SmBrep::RemoveAllTopology`: deletes every face, wire edge and shell vertex.
+/// `SmBrep::RemoveAllTopology`: deletes every face, wire edge and shell vertex,
+/// notifying through the kernel's callbacks (a caller without `SmTopology` records of
+/// its own; see [`remove_all_topology_notified`]).
 ///
 /// # Errors
 ///
@@ -2137,18 +2149,39 @@ pub fn remove_all_topology(k: &mut Kernel, b: &mut Brep) -> Result<()> {
     if !b.editing_enabled() {
         return Err(SolidError::sm_err(OP_REMOVE));
     }
+    crate::topology::brep::p3::with_kernel_callbacks(k, b, remove_all_topology_notified)
+}
+
+/// [`remove_all_topology`] notifying the caller's `env` (the objects' `SmTopology`
+/// records and attributes), so merged and deleted objects propagate their flags and
+/// user values as upstream's objects do.
+///
+/// # Errors
+///
+/// Those of [`remove_all_topology`].
+pub fn remove_all_topology_notified(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+) -> Result<()> {
+    // check state - m_bEditingEnabled must be on
+    if !b.editing_enabled() {
+        return Err(SolidError::sm_err(OP_REMOVE));
+    }
 
     let faces = brep_faces(b)?;
-    remove_faces(k, b, &faces)?; // increments unlocked mark value
+    let editing = b.editing_enabled();
+    // increments unlocked mark value
+    super::p5::remove_faces_notified(k, b, editing, &faces, env)?;
 
     for e in brep_wire_edges(b)? {
         // status ignored upstream
-        ignored(delete_edge(k, b, e))?;
+        ignored(delete_edge(k, b, env, e))?;
     }
 
     for v in brep_shell_vertices(b)? {
         // status ignored upstream
-        ignored(delete_vertex(k, b, v))?;
+        ignored(delete_vertex(k, b, env, v))?;
     }
     Ok(())
 }
@@ -2196,10 +2229,29 @@ fn test_closure_split_region_at_faceuse(
     }
 }
 
-fn find_and_set_infinite_region(_k: &mut Kernel, b: &mut Brep) -> Result<()> {
+fn find_and_set_infinite_region(
+    k: &mut Kernel,
+    b: &mut Brep,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+) -> Result<()> {
+    // the ray fires read the geometry under the caller's names, the ones its owners
+    // carry (as MakeTopologyFromData sets them)
+    let keys = |object| super::p2::caller_cache_key(key_of, object);
+    let query = qbrep::BrepQuery::new(qbrep::BrepIdentity {
+        brep_id: BrepId::from_index(0),
+        keys: &keys,
+        owner_of: &|_| None,
+    });
     // SmBrep::FindAndSetInfiniteRegion() with its defaults (topology.brep_p5): no shell
     // to test, SM_VS_INFINITEREGION_SWAP, no box
-    super::p5::find_and_set_infinite_region(b, None, 2, None)
+    super::p5::find_and_set_infinite_region(
+        k,
+        b,
+        &query,
+        None,
+        p1::SetRegionVoidType::InfiniteRegionSwap,
+        None,
+    )
 }
 
 /// `GetMate()->GetRadial()`: the next edge use pair around the edge in the same
@@ -2325,7 +2377,7 @@ pub fn test_closure_split_region(
     }
 
     if do_infinite_region_testing {
-        find_and_set_infinite_region(k, b)?;
+        find_and_set_infinite_region(k, b, env.key_of)?;
     }
     Ok(out)
 }
@@ -2723,7 +2775,7 @@ mod tests {
             assert_eq!(r, ClosureSplit::default());
         }
         // a doubled triangle: its loops traverse the same edges, so the face use
-        // version (unported) is reached
+        // version splits off the region between the two copies
         let mut d = triangles(&pts, &[[0, 1, 2], [0, 1, 2], [0, 1, 3]]);
         let mut b = build(&mut d, opts).unwrap();
         let mut state = crate::topology::brep::p2::RegionNotifyState::new(&b);
@@ -2734,7 +2786,13 @@ mod tests {
             false,
             EdgeId::from_index(0),
         );
-        assert!(r.unwrap_err().is_unported());
+        assert_eq!(
+            r.unwrap(),
+            ClosureSplit {
+                new_shells: vec![Some(ShellId::from_index(1))],
+                new_regions: vec![RegionId::from_index(2)],
+            }
+        );
     }
 
     #[test]
@@ -2754,8 +2812,7 @@ mod tests {
         assert_eq!(r, ClosureSplit::default());
         assert!(remove_all_topology(&mut k, &mut b).is_err());
         b.set_editing_enabled(true);
-        assert!(remove_all_topology(&mut k, &mut b)
-            .unwrap_err()
-            .is_unported());
+        // topology.brep_p4 (SmBrep::DeleteEdge and friends) is ported
+        assert!(remove_all_topology(&mut k, &mut b).is_ok());
     }
 }

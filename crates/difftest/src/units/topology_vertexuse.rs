@@ -305,7 +305,11 @@ pub(crate) fn sel(s: i64, n: usize) -> i64 {
 /// The C++ export of the case's B-rep.
 fn export(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
     let path = path_of(&i.brep)?;
-    ffi::eval(Op::Export, &path, &brep_block(i)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let block = brep_block(i)?;
+    crate::export_memo::export("topology_vertexuse", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 /// A build failure as an operation error.
@@ -421,6 +425,25 @@ fn read_curve(rd: &mut Rd<'_>, uv: bool) -> Result<Option<SmCurve>, HarnessError
 /// An exported surface block: the surface, whether it was imported exactly, and the
 /// exported `SmBSplineSurface` subclass type code (`None` for a plane or no surface).
 type SurfaceBlock = (Option<Surface>, bool, Option<i64>);
+
+/// A face's surface block: an exact analytic head (`2 ...`,
+/// [`crate::util::read_exact_surface`]) and the regular block after it, or the regular
+/// block alone.
+fn read_face_surface(rd: &mut Rd<'_>) -> Result<SurfaceBlock, HarnessError> {
+    if rd.v.get(rd.at) != Some(&2.0) {
+        return read_surface(rd);
+    }
+    rd.at += 1;
+    let exact = crate::util::read_exact_surface(&mut || rd.num())?;
+    let (fallback, fallback_exact, ty) = read_surface(rd)?;
+    match exact {
+        Some(s) => {
+            crate::util::check_exact_base(&s, fallback.as_ref())?;
+            Ok((Some(s), true, ty))
+        }
+        None => Ok((fallback, fallback_exact, ty)),
+    }
+}
 
 fn read_surface(rd: &mut Rd<'_>) -> Result<SurfaceBlock, HarnessError> {
     let kind = rd.num()?;
@@ -612,7 +635,7 @@ pub(crate) fn import_with_types(ex: &[f64]) -> Result<TypedImport, HarnessError>
     let mut exact_faces = Vec::new();
     let mut face_types = Vec::new();
     for f in 0..n_f {
-        let (mut surface, exact, ty) = read_surface(&mut rd)?;
+        let (mut surface, exact, ty) = read_face_surface(&mut rd)?;
         exact_faces.push(exact);
         face_types.push(ty);
         let faceuse = opt(rd.idx()?, FaceuseId::from_index)?;
@@ -1306,11 +1329,33 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     if inexact(&op, &b, &exact) {
         return Ok(Output::err("inexact_surface"));
     }
+    // The export says whether each vertex use's cached vertex/face gap is set, not its
+    // values: refill the set ones by `CalcVertexFaceGap(NULL, TRUE)`, their only setter
+    // upstream, so the ops that read the cache (`IsOnPole`: its face UV) see real values.
+    if let Err(e) = refill_face_gaps(&mut b) {
+        return rust_err(&e);
+    }
     match run_rust_op(&mut b, &op) {
         Ok(o) => Ok(o),
         Err(Fail::Solid(e)) => rust_err(&e),
         Err(Fail::Harness(h)) => Err(h),
     }
+}
+
+/// Recomputes, in arena order, every vertex use's cached vertex/face gap the import
+/// marked as set (see [`run_rust`]).
+fn refill_face_gaps(b: &mut Brep) -> Result<(), SolidError> {
+    let k = Kernel::default();
+    let set: Vec<VertexuseId> = b
+        .vertexuses()
+        .iter()
+        .filter(|(_, r)| r.vertex_face_gap.is_init())
+        .map(|(id, _)| id)
+        .collect();
+    for vu in set {
+        vu1::calc_vertex_face_gap(&k, b, vu, false, true)?;
+    }
+    Ok(())
 }
 
 fn run_rust_op(b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {

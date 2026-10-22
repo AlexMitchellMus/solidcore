@@ -50,6 +50,10 @@
 //!   minutes and Rust aborts on (a 3.5 GB patch array in a `surface.surface_p11` run).
 //!   The port refuses to split a node once the tree holds [`MAX_SUBDIVISION_NODES`]
 //!   nodes, with [`SolidError::InvalidInput`].
+//! - **Cyclic trees.** `FindUVNodes` walks the child links of a tree whose links form a
+//!   cycle forever (its stack grows without bound): the port stops after more node
+//!   visits than a tree of that size has (twice the node count plus one) with
+//!   [`SolidError::InvalidInput`].
 //! - **Undefined behaviour.** Where upstream would dereference a null tree (a failed
 //!   `GetTree`), a null `m_pNurb`, a node without data or a node that already has
 //!   children, the port returns [`SolidError::InvalidInput`]. `SubdivideToTolerances`
@@ -79,9 +83,10 @@
 //!   [`SurfaceCache::subdivide_node_split`] and its own implants. DISPATCH GAP: `GetTree`
 //!   (also called at the start of `SubdivideNode`, where it may build or rebuild the tree)
 //!   dispatches `BuildTree()` virtually, to `SmTrimSrfCache::BuildTree` on a trimmed
-//!   surface cache; [`SurfaceCache::get_tree`] builds the base class tree, and
-//!   [`SurfaceCache::subdivide_node`] does not call `GetTree` (it needs a built tree and
-//!   fails without one).
+//!   surface cache. [`SurfaceCache::get_tree`] preserves standalone trimmed-cache
+//!   flags and rejects a face-owned trimmed build without a [`CacheFace`](crate::surface::trim_srf_cache::CacheFace)
+//!   adapter, instead of silently building a plain cache. [`SurfaceCache::subdivide_node`]
+//!   does not call `GetTree` (it needs a built tree and fails without one).
 
 use crate::error::{Result, SolidError};
 use crate::geom::extent2d::Extent2d;
@@ -101,8 +106,8 @@ use crate::surface::surface::{Surface, SurfaceKind};
 use crate::geom::geom_utility::p2::ContinuityType;
 
 use super::p1::{
-    bspline_of, compute_bezier_approximation, invalid, BezierAux2d, BezierPatch, FaceContainment,
-    SurfaceCache, FACE_TYPE,
+    bspline_of, compute_bezier_approximation_memo, invalid, BezierAux2d, BezierPatch,
+    FaceContainment, SurfaceCache,
 };
 use super::p2::{
     create_approximate_bezier_patch_block, create_bezier_patch_block, ToleranceTester,
@@ -150,6 +155,7 @@ fn bss_of(bezier: &NurbSurface) -> BSplineSurface {
 /// tolerance. The surface has no owner, so `GetFace()` and `GetBrep()` are NULL and the
 /// tolerance is `SM_ZONE_TOL_3D` (see the module deviations).
 fn patch_boxes(
+    k: &Kernel,
     bss: &BSplineSurface,
     pseudo_guess: Option<&crate::geom::pseudo_box::PseudoBox>,
     op: &'static str,
@@ -164,8 +170,9 @@ fn patch_boxes(
         pseudo_guess,
         polar_guess: None,
         expand_by_zone_tol: false,
+        expand_tolerance: None,
     };
-    let boxes = bss.calculate_bounding_box(&bss.natural_uv_domain(), &req)?;
+    let boxes = bss.calculate_bounding_box(k, &bss.natural_uv_domain(), &req)?;
     let mut bbox = boxes.normal.ok_or_else(|| invalid(op, "no bounding box"))?;
     let mut pseudo = boxes.pseudo.ok_or_else(|| invalid(op, "no pseudo box"))?;
     bbox.expand_absolute(ZONE_TOL_3D);
@@ -273,8 +280,21 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         // init a node stack
         stack.push(top);
 
+        // a tree visits each node, and each missing second child, at most once
+        let visit_limit = self
+            .tree_or(OP_FIND)?
+            .nodes()
+            .len()
+            .saturating_mul(2)
+            .saturating_add(1);
+        let mut visits = 0usize;
+
         // while nodes remain to be processed
         while let Some(entry) = stack.pop() {
+            visits += 1;
+            if visits > visit_limit {
+                return Err(invalid(OP_FIND, "tree node links are cyclic"));
+            }
             // get current node
             let Some(node) = entry else {
                 // upstream: "Error: Surface cache: Null node"
@@ -578,17 +598,25 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                 // (zero-filled memory with the parent patch's sizes)
                 let mut b1 = zeroed_like(&parent_bezier)?;
                 let mut b2 = zeroed_like(&parent_bezier)?;
-                let surface = self.surface().clone();
                 let d1 = self.aux(node1)?.uv_domain;
                 let d2 = self.aux(node2)?.uv_domain;
-                ignore(compute_bezier_approximation(&surface, &d1, &mut b1))?;
-                ignore(compute_bezier_approximation(&surface, &d2, &mut b2))?;
+                let (surface, mut memo) = self.surface_and_pole_memo();
+                ignore(compute_bezier_approximation_memo(
+                    k,
+                    surface,
+                    &d1,
+                    &mut b1,
+                    memo.as_deref_mut(),
+                ))?;
+                ignore(compute_bezier_approximation_memo(
+                    k, surface, &d2, &mut b2, memo,
+                ))?;
                 (b1, b2)
             };
 
             // get and store child 1 and 2 bounding and pseudo boxes
             for (child, slot, bez) in [(node1, slot1, bez1), (node2, slot2, bez2)] {
-                let (bbox, pseudo) = patch_boxes(&bss_of(&bez), Some(&parent_pseudo), OP_NODE)?;
+                let (bbox, pseudo) = patch_boxes(k, &bss_of(&bez), Some(&parent_pseudo), OP_NODE)?;
                 self.tree_mut_or(OP_NODE)?.node_mut(child)?.bbox = bbox;
                 let p = self.patch_mut_slot(slot)?;
                 p.pseudo_box = pseudo;
@@ -677,14 +705,14 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
 
         // set the node bounding boxes from the halves
         let n = self.subdivision_surfaces_mut().len();
-        for (child, domain, k) in [(node1, d1, n - 2), (node2, d2, n - 1)] {
+        for (child, domain, half_index) in [(node1, d1, n - 2), (node2, d2, n - 1)] {
             let r = {
                 let half = &self
                     .subdivision_surfaces_mut()
-                    .get(k)
+                    .get(half_index)
                     .ok_or_else(|| invalid(OP_NODE, "subdivision surface missing"))?
                     .1;
-                half_box(half, &domain)
+                half_box(k, half, &domain)
             };
             let bbox = if direction == SurfParamType::U {
                 ignore(r)?
@@ -781,6 +809,23 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     ///
     /// As [`SurfaceCache::subdivide_to_tolerances`], with `tester`'s errors.
     pub fn subdivide_to_tolerances_with(
+        &mut self,
+        k: &Kernel,
+        node: NodeId,
+        depth: u32,
+        tester: &mut ToleranceTester<'_, O>,
+    ) -> Result<()> {
+        // performance only: the outermost call memoises the singularity test's pole
+        // data for the splits below it (see the deviations of `surface_cache::p1`)
+        let owns_memo = self.begin_pole_memo();
+        let r = self.subdivide_to_tolerances_body(k, node, depth, tester);
+        if owns_memo {
+            self.end_pole_memo();
+        }
+        r
+    }
+
+    fn subdivide_to_tolerances_body(
         &mut self,
         k: &Kernel,
         node: NodeId,
@@ -901,7 +946,43 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             SurfaceKind::BSpline(b) => Some(std::borrow::Cow::Borrowed(b)),
             SurfaceKind::Plane(p) => Some(p.base_with_nurb()?),
             // GetOrCreateGwNurbPointer: SmSurfOfRevolution::MakeNurb when it has none
+            SurfaceKind::Cone(s) => {
+                if s.rev().base().gw_nurb().is_some() {
+                    Some(std::borrow::Cow::Borrowed(s.rev().base()))
+                } else {
+                    let mut tmp = s.as_ref().clone();
+                    tmp.make_nurb(k)?;
+                    Some(std::borrow::Cow::Owned(tmp.rev().base().clone()))
+                }
+            }
+            SurfaceKind::Sphere(s) => {
+                if s.base().base().gw_nurb().is_some() {
+                    Some(std::borrow::Cow::Borrowed(s.base().base()))
+                } else {
+                    let mut tmp = s.as_ref().clone();
+                    tmp.make_nurb(k)?;
+                    Some(std::borrow::Cow::Owned(tmp.base().base().clone()))
+                }
+            }
+            SurfaceKind::Torus(s) => {
+                if s.base().base().gw_nurb().is_some() {
+                    Some(std::borrow::Cow::Borrowed(s.base().base()))
+                } else {
+                    let mut tmp = s.as_ref().clone();
+                    tmp.make_nurb(k)?;
+                    Some(std::borrow::Cow::Owned(tmp.base().base().clone()))
+                }
+            }
             SurfaceKind::SurfOfRevolution(s) => {
+                if s.base().gw_nurb().is_some() {
+                    Some(std::borrow::Cow::Borrowed(s.base()))
+                } else {
+                    let mut tmp = (**s).clone();
+                    tmp.make_nurb(k)?;
+                    Some(std::borrow::Cow::Owned(tmp.base().clone()))
+                }
+            }
+            SurfaceKind::SurfOfExtrusion(s) => {
                 if s.base().gw_nurb().is_some() {
                     Some(std::borrow::Cow::Borrowed(s.base()))
                 } else {
@@ -922,7 +1003,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             let block = create_bezier_patch_block(nurb)?;
             (block.num_u_spans, block.num_v_spans, block.beziers)
         } else {
-            let block = create_approximate_bezier_patch_block(self.surface())?;
+            let block = create_approximate_bezier_patch_block(k, self.surface())?;
             (block.num_u_spans, block.num_v_spans, block.beziers)
         };
         // the patch memory manager is initialised with the block
@@ -996,7 +1077,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                 let domain = bss.natural_uv_domain();
 
                 // compute and store the node's bounding box and the patch's pseudo box
-                let (bbox, pseudo) = patch_boxes(&bss, None, OP_BASE)?;
+                let (bbox, pseudo) = patch_boxes(k, &bss, None, OP_BASE)?;
                 self.tree_mut_or(OP_BASE)?.node_mut(node)?.bbox = bbox;
 
                 let (vc0, uc0, vc1, uc1) = (
@@ -1108,18 +1189,33 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     ///
     /// The errors of [`SurfaceCache::build_tree`] (upstream returns NULL).
     pub fn get_tree(&mut self, k: &Kernel) -> Result<&mut Tree<O>> {
-        let face_owned = self
-            .surface()
-            .owner()
-            .is_some_and(|o| o.type_code == FACE_TYPE);
+        let face_owned = self.surface().face()?.is_some();
         if self.tree().is_none()
             || (!self.have_t_surface_cache
                 && face_owned
                 && self.face_containment_done != FaceContainment::UnderConstruction)
         {
-            // DISPATCH GAP: the virtual BuildTree() (SmTrimSrfCache::BuildTree on a
-            // trimmed surface cache); this builds the base class tree
-            self.build_tree(k, false)?;
+            if self.trimmed_dispatch {
+                if self.surface().face()?.is_some() {
+                    return Err(SolidError::unported(
+                        "TrimSrfCache::build_tree_with_face for a face-owned surface",
+                        "surface.trim_srf_cache",
+                    ));
+                }
+                // The standalone trimmed override has no topology to implant.
+                // Preserve its construction guard and state rather than quietly
+                // treating a lazy trimmed cache as a base cache.
+                let saved = self.face_containment_done;
+                self.face_containment_done = FaceContainment::UnderConstruction;
+                let built = self.build_tree(k, false);
+                self.face_containment_done = saved;
+                built?;
+                self.process_boundary_curves = true;
+                self.point_test_enabled = false;
+                self.have_t_surface_cache = false;
+            } else {
+                self.build_tree(k, false)?;
+            }
         }
         self.tree_mut_or(OP_GET)
     }
@@ -1128,10 +1224,15 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
 /// `CalculateBoundingBox(domain, &box, NULL, NULL, NULL, NULL)` of a split half (the
 /// B-spline override, boxes expanded by the zone tolerance); the base body's `SM_ERR`
 /// for other kinds.
-fn half_box(half: &Surface, domain: &Extent2d) -> Result<crate::geom::extent3d::Extent3d> {
+fn half_box(
+    k: &Kernel,
+    half: &Surface,
+    domain: &Extent2d,
+) -> Result<crate::geom::extent3d::Extent3d> {
     match half.kind() {
         SurfaceKind::BSpline(b) => b
             .calculate_bounding_box(
+                k,
                 domain,
                 &BoundingBoxRequest {
                     normal: true,

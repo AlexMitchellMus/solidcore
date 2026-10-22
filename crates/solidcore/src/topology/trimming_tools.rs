@@ -74,9 +74,9 @@
 //!   (UB-120) cannot be passed.
 //! - **`CheckLoop`** takes the surface separately, as upstream; `CheckFace` passes a
 //!   copy of the face's surface (the edge use UV extremes need the B-rep mutably).
-//! - **Unported callees** return [`SolidError::Unported`]: `SmBrep::MakeFaceWithCurves` (`topology.brep_p7`),
-//!   `SmBrep::MakeFacesWithCurves` (`topology.brep_p8`),
-//!   `SmFace::FlipFaceOrientation` and `SmFace::SplitAtSeam` (`topology.face_p1`),
+//! - **Callees.** `SmBrep::MakeFaceWithCurves` (`topology.brep_p7`) and
+//!   `SmBrep::MakeFacesWithCurves` (`topology.brep_p8`) call their ports. Unported callees
+//!   return [`SolidError::Unported`]: `SmFace::FlipFaceOrientation` and `SmFace::SplitAtSeam` (`topology.face_p1`),
 //!   `SmFace::GetEdges` and `SmFace::HasSeamProblem` (`topology.face_p4`).
 //! - The other members of the class (`FindLoopCurveOrientations`,
 //!   `ComputeLoopOrientation`, `CopyNonDegenerate`, `OrientUVLoops`,
@@ -247,7 +247,7 @@ fn brep_set_tolerance(k: &Kernel, b: &mut Brep, tol: f64) -> Result<()> {
 /// `topology.brep_p7`). The new face owns the surface under the face identity
 /// `(SmFace_TYPE, 1 + index)`.
 fn make_face_with_curves(
-    k: &Kernel,
+    k: &mut Kernel,
     b: &mut Brep,
     region: RegionId,
     input: TrimInput,
@@ -291,13 +291,52 @@ fn make_face_with_curves(
 }
 
 /// `SmBrep::MakeFacesWithCurves(region, loops, 3d curves, NULL, ...)` (unit
-/// `topology.brep_p8`).
-fn make_faces_with_curves(_b: &mut Brep, _input: TrimInput) -> Result<Vec<FaceId>> {
-    // UNPORTED(topology.brep_p8): SmBrep::MakeFacesWithCurves
-    Err(SolidError::unported(
-        "SmBrep::MakeFacesWithCurves",
-        "topology.brep_p8",
-    ))
+/// `topology.brep_p8`). The new faces own their surfaces under the face identities
+/// `(SmFace_TYPE, 1 + index)`, as [`make_face_with_curves`].
+fn make_faces_with_curves(
+    k: &mut Kernel,
+    b: &mut Brep,
+    region: RegionId,
+    input: TrimInput,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+) -> Result<Vec<FaceId>> {
+    let TrimInput {
+        loop_counts,
+        curves,
+        orientations,
+        loop_points,
+        surface,
+        uv_domain,
+        surface_orientation,
+    } = input;
+    let curves_input = crate::topology::brep::p7::FaceCurvesInput {
+        loops: loop_counts,
+        curves_3d: Some(curves.into_iter().map(Some).collect()),
+        uv_curves: None,
+        orientations,
+        loop_points,
+    };
+    let face_ref = |f: FaceId| crate::geom::object::ObjectRef {
+        type_code: fp2::TYPE,
+        key: crate::geom::attribute::ObjectKey(1 + u64::from(f.index())),
+    };
+    let mut marks = crate::topology::topology_traverser::Marks::default();
+    let mut fenv = crate::topology::brep::p8::FaceBuildEnv {
+        env,
+        marks: &mut marks,
+        this_face: &face_ref,
+    };
+    let made = crate::topology::brep::p8::make_faces_with_curves(
+        k,
+        b,
+        Some(region),
+        curves_input,
+        surface,
+        &uv_domain,
+        surface_orientation,
+        &mut fenv,
+    )?;
+    Ok(made.faces)
 }
 
 /// `SmFace::CreateUVTrimCurves(FALSE, NULL, NULL, ...)`.
@@ -467,7 +506,7 @@ pub struct TrimInput {
 /// callees; [`SolidError::Unported`] (`SmBrep::SetTolerance` and the face builders).
 #[allow(clippy::fn_params_excessive_bools)]
 pub fn trim_surface_with_model_space_curves(
-    k: &Kernel,
+    k: &mut Kernel,
     b: &mut Brep,
     region: Option<RegionId>,
     tol_3d: f64,
@@ -500,7 +539,7 @@ pub fn trim_surface_with_model_space_curves(
         vec![make_face_with_curves(k, b, region, input, env)?]
     } else {
         // MakeFacesWithCurves, then clear the UV trim curves of the new faces
-        let faces = make_faces_with_curves(b, input)?;
+        let faces = make_faces_with_curves(k, b, region, input, env)?;
         for &f in &faces {
             clear_uv_trim_curves(b, f)?;
         }
@@ -717,7 +756,7 @@ pub struct EdgeUvExtremes {
 pub fn edge_uv_extremes(k: &Kernel, b: &mut Brep, eu: EdgeuseId) -> Result<EdgeUvExtremes> {
     // get underlying edgeuse->UVTrimCurve
     let ends = match eu1::uv_trim_curve(b, eu)?.0 {
-        Some(c) => Some(c.ends()?),
+        Some(c) => Some(c.ends(k)?),
         None => None,
     };
     let Some(ends) = ends else {
@@ -869,6 +908,7 @@ pub fn fix_face_tiny_parameter_space_gaps(
 /// [`SolidError::InvalidInput`] for an edge use without UV trim curve; those of
 /// [`is_iso_curve_on_seam`].
 pub fn ensure_last_edgeuse_uv_correct(
+    k: &Kernel,
     b: &Brep,
     surface: &Surface,
     edgeuses: &mut [EdgeuseId],
@@ -881,7 +921,7 @@ pub fn ensure_last_edgeuse_uv_correct(
         let edge = eu1::uv_trim_curve(b, eu)?
             .0
             .ok_or_else(|| null("edge use without UV trim curve"))?;
-        if is_iso_curve_on_seam(surface, edge)? {
+        if is_iso_curve_on_seam(k, surface, edge)? {
             iso_curve_on_seam_present = true;
         } else {
             dropped_correctly = ii;
@@ -937,8 +977,12 @@ pub fn fix_backwards_outer_loop_on_seam(k: &Kernel, b: &mut Brep, f: FaceId) -> 
         .ok_or_else(|| null("face without surface"))?;
     let bounds = surface.natural_uv_domain();
     let closed = [
-        surface.is_closed(&bounds, SurfParamType::U, None, false)?.0,
-        surface.is_closed(&bounds, SurfParamType::V, None, false)?.0,
+        surface
+            .is_closed(k, &bounds, SurfParamType::U, None, false)?
+            .0,
+        surface
+            .is_closed(k, &bounds, SurfParamType::V, None, false)?
+            .0,
     ];
     let [closed_u, closed_v] = closed;
     if !closed_u && !closed_v {
@@ -972,7 +1016,7 @@ pub fn fix_backwards_outer_loop_on_seam(k: &Kernel, b: &mut Brep, f: FaceId) -> 
     let mut eus = loop_edgeuses(b, first)?;
 
     // First we try to find an edge which is not an isocurve on a seam.
-    if ensure_last_edgeuse_uv_correct(b, &surface, &mut eus)? {
+    if ensure_last_edgeuse_uv_correct(k, b, &surface, &mut eus)? {
         return Ok(false);
     }
 
@@ -1286,8 +1330,8 @@ impl OrderedLoops {
     }
 }
 
-fn eval_point(c: &Curve, t: f64) -> Result<Point3> {
-    c.evaluate_point(t)
+fn eval_point(k: &Kernel, c: &Curve, t: f64) -> Result<Point3> {
+    c.evaluate_point(k, t)
 }
 
 /// `OrderCurvesIntoLoops`: orders `curves` into closed loops by matching their end
@@ -1322,15 +1366,15 @@ pub fn order_curves_into_loops(k: &Kernel, curves: &[Curve], tol_3d: f64) -> Res
         let iv = c.natural_interval();
 
         // Degenerate curves are only signalled (SE): the status is ignored
-        crate::error::ignore_status(c.is_degenerate(crate::math::EFF_ZERO, None))?;
+        crate::error::ignore_status(c.is_degenerate(k, crate::math::EFF_ZERO, None))?;
 
         // curve start/end points
-        let start = eval_point(c, iv.min())?;
-        let end = eval_point(c, iv.max())?;
+        let start = eval_point(k, c, iv.min())?;
+        let end = eval_point(k, c, iv.max())?;
 
         // when endPoints are within tol - degenerate check (signalled only)
         if start.distance(end) < 2.0 * tol_3d {
-            crate::error::ignore_status(c.approximate_length(&iv, 5, false))?;
+            crate::error::ignore_status(c.approximate_length(k, &iv, 5, false))?;
         }
 
         // build sVertexPoints list
@@ -1397,11 +1441,11 @@ pub fn order_curves_into_loops(k: &Kernel, curves: &[Curve], tol_3d: f64) -> Res
             let (pt1, pt2, pt3) = if single_curve_loop {
                 (
                     start,
-                    eval_point(c, ivl.evaluate(0.3))?,
-                    eval_point(c, ivl.evaluate(0.6))?,
+                    eval_point(k, c, ivl.evaluate(0.3))?,
+                    eval_point(k, c, ivl.evaluate(0.6))?,
                 )
             } else {
-                (start, eval_point(c, ivl.evaluate(0.5))?, end)
+                (start, eval_point(k, c, ivl.evaluate(0.5))?, end)
             };
 
             // Registering the 3 loop points in the correct order
@@ -1534,6 +1578,7 @@ pub fn order_curves_into_loops(k: &Kernel, curves: &[Curve], tol_3d: f64) -> Res
 /// range; those of the tessellations, areas and containment tests.
 #[allow(clippy::too_many_lines)]
 pub fn find_outer_loops(
+    k: &Kernel,
     all_curves: &[Curve],
     curves: &mut Vec<usize>,
     loop_counts: &mut [usize],
@@ -1583,7 +1628,7 @@ pub fn find_outer_loops(
             let crv = all_curves
                 .get(at(curves, jj)?)
                 .ok_or_else(|| null("curve index"))?;
-            let tess = crv.tessellate(&crv.natural_interval(), ch, ang, min_segs)?;
+            let tess = crv.tessellate(k, &crv.natural_interval(), ch, ang, min_segs)?;
             let mut pts = tess.points;
             if at(orients, jj)? == OrientType::Opposite {
                 pts.reverse();
@@ -1910,6 +1955,10 @@ pub fn is_loop_uv_gap_within_tolerance(
             Err(_) => return Ok(false),
         },
         SurfaceKind::SurfOfRevolution(s) => Cow::Borrowed(s.base()),
+        SurfaceKind::SurfOfExtrusion(s) => Cow::Borrowed(s.base()),
+        SurfaceKind::Cone(s) => Cow::Borrowed(s.rev().base()),
+        SurfaceKind::Sphere(s) => Cow::Borrowed(s.base().base()),
+        SurfaceKind::Torus(s) => Cow::Borrowed(s.base().base()),
         // (dynamic_cast<const SmBSplineSurface*> fails: FALSE)
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
@@ -2063,8 +2112,8 @@ pub fn check_loop(
 
         // When UVPoints vary by more than 1e-10
         if previous_end.distance(current_start) > 1e-10 {
-            let previous_end_3d = surface.evaluate_point(previous_end)?;
-            let current_start_3d = surface.evaluate_point(current_start)?;
+            let previous_end_3d = surface.evaluate_point(k, previous_end)?;
+            let current_start_3d = surface.evaluate_point(k, current_start)?;
             let end_start_dist = previous_end_3d.distance(current_start_3d);
 
             // check the Edge/Edge xsect distance
@@ -2106,10 +2155,10 @@ pub fn check_loop(
                 && ((large_u && !singular_u) || (large_v && !singular_v))
                 && !(large_u
                     && !singular_u
-                    && surface.is_closed(&dom, SurfParamType::U, None, false)?.0)
+                    && surface.is_closed(k, &dom, SurfParamType::U, None, false)?.0)
                 && !(large_v
                     && !singular_v
-                    && surface.is_closed(&dom, SurfParamType::V, None, false)?.0)
+                    && surface.is_closed(k, &dom, SurfParamType::V, None, false)?.0)
             {
                 bounded = is_loop_uv_gap_within_tolerance(
                     k,
@@ -2271,9 +2320,9 @@ pub fn is_iso_curve_at(curve: &Curve, side: SurfParamType, low: f64, tol_2d: f64
 /// # Errors
 ///
 /// Those of the curve's ends and [`is_iso_curve_at`].
-pub fn is_iso_curve(curve: &Curve) -> Result<Option<(SurfParamType, f64)>> {
+pub fn is_iso_curve(k: &Kernel, curve: &Curve) -> Result<Option<(SurfParamType, f64)>> {
     let tolerance = ZONE_TOL_3D / 10.0;
-    let ends = curve.ends()?;
+    let ends = curve.ends(k)?;
     for ii in 0..2 {
         let (s, e) = (ends.start.component(ii), ends.end.component(ii));
         if (s - e).abs() < tolerance {
@@ -2298,12 +2347,12 @@ pub fn is_iso_curve(curve: &Curve) -> Result<Option<(SurfParamType, f64)>> {
 /// # Errors
 ///
 /// Those of [`is_iso_curve`] and the closure test.
-pub fn is_iso_curve_on_seam(surface: &Surface, curve: &Curve) -> Result<bool> {
-    let Some((side, param)) = is_iso_curve(curve)? else {
+pub fn is_iso_curve_on_seam(k: &Kernel, surface: &Surface, curve: &Curve) -> Result<bool> {
+    let Some((side, param)) = is_iso_curve(k, curve)? else {
         return Ok(false);
     };
     let bounds = surface.natural_uv_domain();
-    let closed = surface.is_closed(&bounds, side, None, false)?.0;
+    let closed = surface.is_closed(k, &bounds, side, None, false)?.0;
     let (lo, hi) = if side == SurfParamType::U {
         (bounds.min().x, bounds.max().x)
     } else {
@@ -2353,12 +2402,13 @@ mod tests {
 
     #[test]
     fn iso_curves() {
+        let k = &Kernel::default();
         let c = uv_line([0.25, 0.0], [0.25, 1.0]);
-        assert_eq!(is_iso_curve(&c).unwrap(), Some((SurfParamType::U, 0.25)));
+        assert_eq!(is_iso_curve(k, &c).unwrap(), Some((SurfParamType::U, 0.25)));
         assert!(is_iso_curve_at(&c, SurfParamType::U, 0.25, 1e-6).unwrap());
         assert!(!is_iso_curve_at(&c, SurfParamType::V, 0.25, 1e-6).unwrap());
         let d = uv_line([0.0, 0.0], [1.0, 1.0]);
-        assert_eq!(is_iso_curve(&d).unwrap(), None);
+        assert_eq!(is_iso_curve(k, &d).unwrap(), None);
     }
 
     #[test]
@@ -2366,7 +2416,7 @@ mod tests {
         let k = Kernel::default();
         let mut c = uv_line([0.0, 0.1], [0.0, 0.9]);
         mirror_curve(&k, &mut c, SurfParamType::U, 0.0, 1.0, 0.0).unwrap();
-        let e = c.ends().unwrap();
+        let e = c.ends(&k).unwrap();
         assert!((e.start.x - 1.0).abs() < 1e-15);
         assert!((e.end.y - 0.9).abs() < 1e-15);
     }
@@ -2399,8 +2449,16 @@ mod tests {
         let mut counts = r.loop_counts.clone();
         let mut orients = r.orients.clone();
         let mut n = r.plane_normal;
-        let outer =
-            find_outer_loops(&cs, &mut ordered, &mut counts, &mut orients, &mut n, 1e-6).unwrap();
+        let outer = find_outer_loops(
+            &k,
+            &cs,
+            &mut ordered,
+            &mut counts,
+            &mut orients,
+            &mut n,
+            1e-6,
+        )
+        .unwrap();
         assert_eq!(outer, vec![1]);
         assert_eq!(counts, vec![4]);
     }

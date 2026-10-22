@@ -503,7 +503,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             nonzero,
         } => {
             let c = Curve::from(civ);
-            let v = tri!(o, c.evaluate(*t, *n, *left, *nonzero));
+            let v = tri!(o, c.evaluate(&k, *t, *n, *left, *nonzero));
             o.push(0.0);
             for p in v {
                 pv(&mut o, p);
@@ -511,14 +511,19 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         OpIn::EvalPoint { t } => {
             let c = Curve::from(civ);
-            let p = tri!(o, c.evaluate_point(*t));
+            let p = tri!(o, c.evaluate_point(&k, *t));
             o.push(0.0);
             pv(&mut o, p);
         }
         OpIn::Knots { ivl, want } => {
             let iv = ivl.map(|[x, y]| Extent1d::from_min_max(x, y));
-            let (kn, m) = tri!(o, civ.knots(iv.as_ref()));
-            o.push(0.0);
+            // the status, then what GetKnots wrote (also on a failing status)
+            let w = tri!(o, civ.knots_with_status(&k, iv.as_ref()));
+            match st_of(&w.status) {
+                Ok(s) => o.push(s),
+                Err(d) => return Ok(*d),
+            }
+            let (kn, m) = (w.knots, w.mults);
             o.push(kn.len() as f64);
             o.extend_from_slice(&kn);
             if *want {
@@ -533,12 +538,12 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             o.extend(m.iter().map(|&x| x as f64));
         }
         OpIn::Nnk => {
-            let n = tri!(o, civ.number_natural_knots());
+            let n = tri!(o, civ.number_natural_knots(&k));
             o.extend([0.0, n as f64]);
             put_cache(&mut o, &civ);
         }
         OpIn::Conts { angle } => {
-            let (mn, cs) = tri!(o, civ.calculate_continuities(*angle));
+            let (mn, cs) = tri!(o, civ.calculate_continuities(&k, *angle));
             o.extend([0.0, f64::from(mn as i32), cs.len() as f64]);
             o.extend(cs.iter().map(|&x| f64::from(x as i32)));
             put_cache(&mut o, &civ);
@@ -546,10 +551,10 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         OpIn::Equal { other } => {
             let c = Curve::from(civ);
             let eq = match other {
-                None => tri!(o, c.approx_eq(&c)),
+                None => tri!(o, c.approx_eq(&k, &c)),
                 Some(oc) => {
                     let d = Curve::from(build(oc)?);
-                    tri!(o, c.approx_eq(&d))
+                    tri!(o, c.approx_eq(&k, &d))
                 }
             };
             o.extend([0.0, b(eq)]);

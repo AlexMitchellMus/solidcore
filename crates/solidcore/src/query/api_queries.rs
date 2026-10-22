@@ -24,16 +24,18 @@
 //! handles retain the caller's identity. Missing topology queries return Unported
 //! at the call site. Solution point extraction retains upstream's zero parameter
 //! advance for a preceding Surface and ignores ordinary evaluation errors (the
-//! output stays undefined); Unported errors still propagate. No new recursion or
-//! allocation from serialized counts.
+//! output stays undefined); Unported errors still propagate. The containment tests of
+//! [`brep_relationship`] (`sm_PointInSolid`, `sm_CountContainedSamples`) classify on a
+//! private copy of each target ([`BrepClassifier`], keyed by
+//! [`BrepIdentity::default`]). No new recursion or allocation from serialized counts.
 
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::Curve;
-use crate::error::{ignored, Result, SolidError};
+use crate::error::{ignored, EntityRef, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent3d::Extent3d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
-use crate::geom::object::{FaceKey, ObjectRef, Shape, ShapeMember};
+use crate::geom::object::{BrepStore, FaceKey, ObjectRef, Shape, ShapeMember};
 use crate::geom::solution_array::{ObjectKind, Solution, SolutionArray, SolutionObject};
 use crate::geom::tools::{self, EdgePick};
 use crate::intersect::point_class::{PointClassType, PointClassification};
@@ -43,6 +45,8 @@ use crate::kernel::Kernel;
 use crate::math::{Point2, Point3, Vec3};
 use crate::nurbs::b_spline_curve::BoundingBoxRequest;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
+use crate::query::brep::{BrepClassifier, BrepIdentity};
 use crate::surface::surface::p1::zone_tol_3d;
 use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::p5::DropPointOptions;
@@ -113,9 +117,13 @@ fn curve_solutions(
     )
 }
 
-fn curve_result<O: Copy>(curve: &Curve, solution: &Solution<O>) -> Result<CurveClosestPoint> {
+fn curve_result<O: Copy>(
+    k: &Kernel,
+    curve: &Curve,
+    solution: &Solution<O>,
+) -> Result<CurveClosestPoint> {
     let parameter = solution.start.param(0)?;
-    let point = curve.evaluate_point(parameter)?;
+    let point = curve.evaluate_point(k, parameter)?;
     Ok(CurveClosestPoint {
         closest: ClosestPoint {
             point,
@@ -130,6 +138,7 @@ fn curve_result<O: Copy>(curve: &Curve, solution: &Solution<O>) -> Result<CurveC
 pub fn curve_closest_point(k: &Kernel, curve: &Curve, point: Point3) -> Result<CurveClosestPoint> {
     let solutions = curve_solutions(k, curve, point, SolutionRequested::Single)?;
     curve_result(
+        k,
         curve,
         solutions.as_slice().first().ok_or(SolidError::sm_err(OP))?,
     )
@@ -149,7 +158,7 @@ pub fn curve_closest_point_all(
     solutions
         .as_slice()
         .iter()
-        .map(|s| curve_result(curve, s))
+        .map(|s| curve_result(k, curve, s))
         .collect()
 }
 
@@ -185,11 +194,11 @@ pub fn surface_closest_point(
         }
     }
     let selected = Point2::new(best.start.param(0)?, best.start.param(1)?);
-    let point = surface.evaluate_point(selected)?;
+    let point = surface.evaluate_point(k, selected)?;
     let mut uvs = Vec::new();
     for solution in drop.solutions.as_slice() {
         let uv = Point2::new(solution.start.param(0)?, solution.start.param(1)?);
-        if let Some(candidate) = ignored(surface.evaluate_point(uv))? {
+        if let Some(candidate) = ignored(surface.evaluate_point(k, uv))? {
             if candidate.closer_than(tolerance, point) {
                 uvs.push(uv);
             }
@@ -219,6 +228,7 @@ fn solve_options(_k: &Kernel, requested: SolutionRequested) -> TopologySolveOpti
 
 // SmSolution::GetPoint using the same caller-owned geometry adapter as the solver.
 fn solution_point<O: SolutionObject>(
+    k: &Kernel,
     objects: &dyn TopologyObjects<O>,
     solution: &Solution<O>,
     index: usize,
@@ -247,7 +257,7 @@ fn solution_point<O: SolutionObject>(
                 return Ok(ignored(
                     objects
                         .curve(curve)?
-                        .evaluate_point(solution.start.param(parameter)?),
+                        .evaluate_point(k, solution.start.param(parameter)?),
                 )?
                 .unwrap_or(Point3::UNDEF));
             }
@@ -257,13 +267,14 @@ fn solution_point<O: SolutionObject>(
                 } else {
                     object
                 };
-                return Ok(
-                    ignored(objects.surface(surface)?.evaluate_point(Point2::new(
+                return Ok(ignored(objects.surface(surface)?.evaluate_point(
+                    k,
+                    Point2::new(
                         solution.start.param(parameter)?,
                         solution.start.param(parameter + 1)?,
-                    )))?
-                    .unwrap_or(Point3::UNDEF),
-                );
+                    ),
+                ))?
+                .unwrap_or(Point3::UNDEF));
             }
             return Err(SolidError::sm_err(OP));
         }
@@ -304,7 +315,7 @@ pub fn brep_closest_point<O: SolutionObject>(
     )?;
     let solution = solutions.as_slice().first().ok_or(SolidError::sm_err(OP))?;
     Ok(ClosestPoint {
-        point: solution_point(objects, solution, 0)?,
+        point: solution_point(k, objects, solution, 0)?,
         distance: solution.start.solution_value,
     })
 }
@@ -332,7 +343,7 @@ pub fn brep_closest_point_all<O: SolutionObject>(
         .iter()
         .map(|s| {
             Ok(ClosestPoint {
-                point: solution_point(objects, s, 0)?,
+                point: solution_point(k, objects, s, 0)?,
                 distance: s.start.solution_value,
             })
         })
@@ -357,21 +368,41 @@ pub struct BrepRelationship {
     pub distance: f64,
 }
 
-// Returns the point class and whether its region exists and is material.
-fn classify_point(
-    _target: &Brep,
-    _point: Point3,
-    _tolerance: f64,
-) -> Result<(PointClassType, bool)> {
-    // UNPORTED(query.brep): SmBrep::Point3DClassify
-    Err(SolidError::unported(
-        "SmBrep::Point3DClassify",
-        "query.brep",
-    ))
+/// A B-rep points are classified against (`pTarget`).
+struct Target<'b>(BrepClassifier<'static, 'b>);
+
+impl<'b> Target<'b> {
+    fn new(brep: &'b Brep) -> Self {
+        Self(BrepClassifier::new(brep, BrepIdentity::default()))
+    }
+
+    /// `pTarget->Point3DClassify(point, tolerance, FALSE, sPC)`: the point class and
+    /// whether its object is a region that is not void (`pReg != NULL &&
+    /// !pReg->IsVoid()`).
+    fn classify(
+        &mut self,
+        k: &Kernel,
+        point: Point3,
+        tolerance: f64,
+    ) -> Result<(PointClassType, bool)> {
+        let pc = self.0.point_3d_classify(k, point, tolerance, false)?;
+        let material = match pc.object() {
+            Some(EntityRef::Region(r)) => self.0.brep().region(r)?.is_void() == 0,
+            _ => false,
+        };
+        Ok((pc.point_class(), material))
+    }
 }
 
-fn point_in_solid(target: &Brep, point: Point3, tolerance: f64) -> Result<bool> {
-    Ok(ignored(classify_point(target, point, tolerance))?
+/// `sm_PointInSolid`: whether `point` classifies to a material region of `target`
+/// (a failing classification is `false`).
+fn point_in_solid(
+    k: &Kernel,
+    target: &mut Target<'_>,
+    point: Point3,
+    tolerance: f64,
+) -> Result<bool> {
+    Ok(ignored(target.classify(k, point, tolerance))?
         .is_some_and(|(class, material)| class == PointClassType::Region && material))
 }
 
@@ -382,7 +413,7 @@ fn brep_vertices(brep: &Brep) -> Result<Vec<VertexId>> {
 fn count_contained_samples(
     k: &Kernel,
     sample: &Brep,
-    target: &Brep,
+    target: &mut Target<'_>,
     tolerance: f64,
 ) -> Result<(usize, usize)> {
     let mut points = Vec::new();
@@ -396,7 +427,7 @@ fn count_contained_samples(
     }
     let (mut inside, mut outside) = (0, 0);
     for point in points {
-        if let Some((class, material)) = ignored(classify_point(target, point, tolerance))? {
+        if let Some((class, material)) = ignored(target.classify(k, point, tolerance))? {
             match class {
                 PointClassType::Region => {
                     if material {
@@ -433,16 +464,17 @@ pub fn brep_relationship<O: SolutionObject>(
     let distance = solution.start.solution_value;
     let tolerance =
         crate::geom::tol::context_zone_tol_3d(k, None, crate::geom::tol::SmallTopoType::NormalSize);
+    let (mut target_a, mut target_b) = (Target::new(a.brep), Target::new(b.brep));
     if distance > a.brep.tolerance() + b.brep.tolerance() {
-        let pa = ignored(solution_point(objects, solution, 0))?;
+        let pa = ignored(solution_point(k, objects, solution, 0))?;
         let pb = if pa.is_some() {
-            ignored(solution_point(objects, solution, 1))?
+            ignored(solution_point(k, objects, solution, 1))?
         } else {
             None
         };
         let relationship = if let (Some(pa), Some(pb)) = (pa, pb) {
-            let bin_a = point_in_solid(a.brep, pb, tolerance)?;
-            let ain_b = point_in_solid(b.brep, pa, tolerance)?;
+            let bin_a = point_in_solid(k, &mut target_a, pb, tolerance)?;
+            let ain_b = point_in_solid(k, &mut target_b, pa, tolerance)?;
             if bin_a {
                 3
             } else if ain_b {
@@ -451,8 +483,8 @@ pub fn brep_relationship<O: SolutionObject>(
                 0
             }
         } else {
-            let (bin, bout) = count_contained_samples(k, b.brep, a.brep, tolerance)?;
-            let (ain, aout) = count_contained_samples(k, a.brep, b.brep, tolerance)?;
+            let (bin, bout) = count_contained_samples(k, b.brep, &mut target_a, tolerance)?;
+            let (ain, aout) = count_contained_samples(k, a.brep, &mut target_b, tolerance)?;
             if bin > 0 && bout == 0 {
                 3
             } else if ain > 0 && aout == 0 {
@@ -466,8 +498,8 @@ pub fn brep_relationship<O: SolutionObject>(
             distance,
         })
     } else {
-        let (bin, _) = count_contained_samples(k, b.brep, a.brep, tolerance)?;
-        let (ain, _) = count_contained_samples(k, a.brep, b.brep, tolerance)?;
+        let (bin, _) = count_contained_samples(k, b.brep, &mut target_a, tolerance)?;
+        let (ain, _) = count_contained_samples(k, a.brep, &mut target_b, tolerance)?;
         Ok(BrepRelationship {
             relationship: if bin > 0 || ain > 0 { 2 } else { 1 },
             distance: 0.0,
@@ -557,8 +589,8 @@ pub fn face_get_boundary_loops(brep: &Brep, id: FaceId) -> Result<BoundaryLoops>
 }
 
 /// Finds an edge index and parameter (`SmApiFindEdge`); missing match is `SM_ERR`.
-pub fn find_edge(brep: &Brep, point: Point3) -> Result<EdgePick> {
-    tools::find_edge(brep, point)?.ok_or(SolidError::sm_err(OP))
+pub fn find_edge(k: &Kernel, brep: &Brep, point: Point3) -> Result<EdgePick> {
+    tools::find_edge(k, brep, point)?.ok_or(SolidError::sm_err(OP))
 }
 
 /// Finds a face (`SmApiFindFaces`); missing match is `SM_ERR`.
@@ -579,16 +611,12 @@ pub fn brep_is_manifold_solid(brep: &Brep) -> Result<bool> {
 }
 
 /// Loose or tight B-rep box (`SmApiBrepBoundingBox`); missing queries are `Unported`.
-pub fn brep_bounding_box(_k: &Kernel, _brep: &Brep, tight: bool) -> Result<Extent3d> {
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox / CalculateTightBoundingBox
-    Err(SolidError::unported(
-        if tight {
-            "SmBrep::CalculateTightBoundingBox"
-        } else {
-            "SmBrep::CalculateBoundingBox"
-        },
-        "query.brep",
-    ))
+pub fn brep_bounding_box(k: &Kernel, brep: &Brep, tight: bool) -> Result<Extent3d> {
+    if tight {
+        crate::query::brep::calculate_tight_bounding_box(k, brep)
+    } else {
+        qbrep::calculate_bounding_box(k, brep, BoundingBoxOptions::default())
+    }
 }
 
 /// Loose or tight face box (`SmApiFaceBoundingBox`); missing queries are `Unported`.
@@ -632,22 +660,23 @@ pub fn face_classify_uv(
     Ok(classification.point_class())
 }
 
-/// Trim-aware closest point on one face (`SmApiFaceClosestPoint`).
-/// Shape construction and solver errors propagate.
+/// Trim-aware closest point on one face (`SmApiFaceClosestPoint`), the face's B-rep
+/// held in `breps`. Shape construction and solver errors propagate.
 pub fn face_closest_point<O: SolutionObject>(
-    k: &Kernel,
+    k: &mut Kernel,
+    breps: &dyn BrepStore,
     objects: &dyn TopologyObjects<O>,
     face: FaceKey,
     point: Point3,
 ) -> Result<ClosestPoint> {
-    let shape = Shape::new(&[], &[face], &[], &[])?;
+    let shape = Shape::new(k, breps, &[], &[face], &[], &[])?;
     let mut options = solve_options(k, SolutionRequested::Single);
     options.tolerance_3d =
         objects.face_tolerance(objects.shape_member_object(ShapeMember::Face(face))?)?;
     let solutions = TopologySolver::shape_point_solve(k, objects, &shape, point, options)?;
     let solution = solutions.as_slice().first().ok_or(SolidError::sm_err(OP))?;
     Ok(ClosestPoint {
-        point: solution_point(objects, solution, 0)?,
+        point: solution_point(k, objects, solution, 0)?,
         distance: solution.start.solution_value,
     })
 }
@@ -692,7 +721,7 @@ pub fn edge_closest_point(
         .ok_or(SolidError::sm_err(OP))?;
     Ok(CurveClosestPoint {
         closest: ClosestPoint {
-            point: curve.evaluate_point(result.parameter)?,
+            point: curve.evaluate_point(k, result.parameter)?,
             distance: result.distance,
         },
         parameter: result.parameter,
@@ -708,14 +737,14 @@ pub fn edge_parameter_range(brep: &Brep, id: EdgeId) -> Result<Extent1d> {
 /// first with strict distance comparisons, including parameters outside the edge
 /// interval. An ordinary evaluation failure falls through to interval containment.
 pub fn edge_classify_parameter(
-    _k: &Kernel,
+    k: &Kernel,
     brep: &Brep,
     id: EdgeId,
     parameter: f64,
 ) -> Result<PointClassType> {
     let e = brep.edge(id)?;
     let curve = e.curve.as_ref().ok_or(SolidError::sm_err(OP))?;
-    if let Some(point) = ignored(curve.evaluate_point(parameter))? {
+    if let Some(point) = ignored(curve.evaluate_point(k, parameter))? {
         for v in [edge::start_vertex(brep, id)?, edge::end_vertex(brep, id)?]
             .into_iter()
             .flatten()
@@ -735,13 +764,13 @@ pub fn edge_classify_parameter(
 
 /// Unit tangent (`SmApiEdgeTangent`), evaluating from the left as upstream.
 /// A missing curve, evaluation failure or zero derivative returns an error.
-pub fn edge_tangent(brep: &Brep, id: EdgeId, parameter: f64) -> Result<Vec3> {
+pub fn edge_tangent(k: &Kernel, brep: &Brep, id: EdgeId, parameter: f64) -> Result<Vec3> {
     let curve = brep
         .edge(id)?
         .curve
         .as_ref()
         .ok_or(SolidError::sm_err(OP))?;
-    let values = curve.evaluate(parameter, 1, true, true)?;
+    let values = curve.evaluate(k, parameter, 1, true, true)?;
     values
         .get(1)
         .copied()
@@ -854,6 +883,7 @@ mod tests {
 
     #[test]
     fn solution_point_preserves_upstream_parameter_advances() {
+        let k = &Kernel::default();
         let objects = Geometry::new();
         for (preceding, expected_x) in [
             (ObjectKind::Surface, 2.5),
@@ -869,7 +899,7 @@ mod tests {
                 *solution.start.param_mut(i).unwrap() = t;
             }
             assert_eq!(
-                solution_point(&objects, &solution, 1).unwrap(),
+                solution_point(k, &objects, &solution, 1).unwrap(),
                 Point3::new(expected_x, 0., 0.),
                 "preceding {preceding:?}"
             );
@@ -878,12 +908,16 @@ mod tests {
 
     #[test]
     fn solution_point_ignores_ordinary_evaluation_failures() {
+        let k = &Kernel::default();
         let objects = Geometry {
             curve: Curve::from(BSplineCurve::new(3)),
             surface: Surface::from(BSplineSurface::new()),
         };
-        assert!(objects.curve.evaluate_point(2.).is_err());
-        assert!(objects.surface.evaluate_point(Point2::new(2., 2.)).is_err());
+        assert!(objects.curve.evaluate_point(k, 2.).is_err());
+        assert!(objects
+            .surface
+            .evaluate_point(k, Point2::new(2., 2.))
+            .is_err());
         for kind in [
             ObjectKind::Curve,
             ObjectKind::Edge,
@@ -896,7 +930,7 @@ mod tests {
             *solution.start.param_mut(0).unwrap() = 2.;
             *solution.start.param_mut(1).unwrap() = 2.;
             assert_eq!(
-                solution_point(&objects, &solution, 0).unwrap(),
+                solution_point(k, &objects, &solution, 0).unwrap(),
                 Point3::UNDEF
             );
         }

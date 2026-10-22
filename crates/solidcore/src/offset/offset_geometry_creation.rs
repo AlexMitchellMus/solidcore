@@ -27,6 +27,8 @@
 //! | [`SsiData`]                                                 | `SmSSIData` (`SmSSIData.h`, CO-PORTED: no unit owns it) |
 //! | [`OffsetExecutive`]                                         | what this unit uses of `SmOffsetExecutive` (ported in `offset.offset_executive_p1`), over handles |
 //! | [`OffsetBrep`]                                              | what the unit reads from and writes to the two B-reps |
+//! | `VertexOffsetBrep` (private)                                | the vertex creator's topology/owned-geometry subset |
+//! | `FaceOffsetBrep` (private)                                   | the face creator's topology/owned-geometry subset |
 //!
 //! Deviations:
 //! - **Object handles.** Every `SmObject*` (topology, curves, surfaces) is a caller
@@ -39,27 +41,29 @@
 //!   returns owned pointers. The offset executive is reached through
 //!   [`OffsetExecutive`] (its stored flags, shell faces, edge-use map and
 //!   extended-surface cache), which its owner implements over the ported
-//!   [`crate::offset::offset_executive::p1::OffsetExecutive`].
+//!   [`crate::offset::offset_executive::p1::OffsetExecutive`]. The executive's face and
+//!   vertex adapters use narrow internal backends; public full-backend methods delegate
+//!   to the same algorithms, preserving lookup/storage error translation.
 //! - **Context.** `crContext` is the [`Kernel`] passed to each method.
 //! - **Out-params** become return values ([`VertexOffsetGeometry`], [`EdgeuseOffset`],
 //!   [`ReplaceEdgeCurves`], the trim interval of `TrimExtendedEdge` as an `Option`,
 //!   the surface and self-intersections of `FaceuseOffset`). The `NotUsed`
 //!   parameters are kept.
-//! - **Deleted objects.** Upstream deletes the curves it does not keep; here the
-//!   handles simply stay unreferenced in the owner's store ([`ReplaceEdgeCurves`]
-//!   reports the `rbDelete*` flags).
+//! - **Deleted objects.** Geometry retained by handle stays in the owner's store
+//!   when upstream deletes it ([`ReplaceEdgeCurves`] reports the `rbDelete*` flags).
+//!   Trimmed UV and approximated offset-rail temporaries instead stay locally owned.
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
 //!   each tagged `UNPORTED(<unit>)`:
-//!   `SmCircularCrossSectionFSG` (`blend.fillet_solver_p1`,
-//!   `blend.fillet_standard_solver_p1`). The code after a stub is ported in full;
+//!   `SmCircularCrossSectionFSG::CreateSurfaceFromCurves` is
+//!   `blend.fillet_standard_solver_p1`'s, on the centre line's `SmBSplineCurve` part.
+//!   The code after a stub is ported in full;
 //!   `SmEdgeuse::NormalizedEvaluate` / `CreateUVTrimCurve` (`topology.edgeuse_p3`,
 //!   through [`OffsetBrep`]), `SmBrep::MateLaminaEdgeToSurface` / `ReplaceSurface`
 //!   (`topology.brep_p2`, through [`OffsetBrep`]), `SmSurface::GlobalCurveIntersect` (`surface.surface_p8`) and
 //!   `SmSurface::CreateOffsetSurface` / the `SmOffsetSurface` constructor
-//!   (`surface.offset_surface`) are real calls. The offset-surface rail of
-//!   `EdgeuseOffset` defers at `SmCrvOnSurf` over that offset surface
-//!   (`UNPORTED(curve.crv_on_surf)`, main's label for the ported curve on surface
-//!   holding B-spline surfaces only).
+//!   (`surface.offset_surface`) are real calls. `EdgeuseOffset` approximates its
+//!   missing rails through [`crate::curve::crv_on_surf::CrvOnSurf`] on the actual
+//!   offset surface, retaining its concrete evaluation and supplied knot sequence.
 //! - `SM_CAST_PTR(SmOffsetSurface, ..)` on an analytic copy: an offset surface gets
 //!   `SetAllowExtension(FALSE)`, as upstream.
 //! - **Undefined behaviour upstream** (null objects dereferenced, a curve that is
@@ -101,8 +105,13 @@
 //! - `MSG` / `SM_ASSERT` only report; the `SM_DEBUG_CODE` and `#if 0` blocks and the
 //!   empty `bShelling` branch are not ported. `SM_VALIDATE_INTERSECTORS` is not
 //!   defined in the reference build.
+//! - **Centre line of the circular FSG.** `CreateSurfaceFromCurves` receives the centre
+//!   line as the [`Curve`] itself, so `GetDegree` / `IsLine` / `IsArc` / `Evaluate`
+//!   dispatch on an `SmLine` (or other analytic) centre line as upstream does
+//!   (`SmFilletStandardSolver.cpp:3353-3384`).
 //! - **Recursion.** None.
 
+use crate::blend::fillet_standard_solver::p1::CircularCrossSectionFsg;
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::p2::{Curve, CurveKind};
 use crate::curve::curve::p8::CurveIntersectOptions;
@@ -132,8 +141,11 @@ use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
 use crate::query::edge::ClosestPoint;
 use crate::surface::offset_surface::{OffsetSurface, SS_UNKNOWN as OFFSET_SS_UNKNOWN};
+use crate::surface::surface::p1::SurfaceSolveContext;
 use crate::surface::surface::p2::{SurfaceKind, TsectCurveType};
 use crate::surface::surface::Surface;
+use crate::surface::surface_cache::face_context::FaceQueries;
+use crate::surface::surface_cache::SurfaceCache;
 use crate::topology::proto_topology::ProtoGeometry;
 
 const OP_LOCAL: &str =
@@ -343,6 +355,27 @@ pub trait OffsetExecutive<O> {
 ///   trimmed surface cache built on them reaches the face as upstream's does.
 #[allow(clippy::too_many_arguments)]
 pub trait OffsetBrep<O>: ProtoGeometry<O> {
+    /// Prepares the surface cache when a numerical solve actually requests it.
+    /// Backends with owning topology override this to build the real trimmed
+    /// cache; the default retains the existing opaque-owner deferral.
+    fn prepare_surface_solve_cache(
+        &mut self,
+        k: &Kernel,
+        surface: &Surface,
+        handle: Option<O>,
+    ) -> Result<SurfaceCache<O>>
+    where
+        O: Copy + PartialEq,
+    {
+        crate::surface::surface::p1::get_surface_cache(k, surface, handle)
+    }
+
+    /// Read-only face queries after cache preparation. One service resolves all
+    /// owning B-reps in this operation's object space.
+    fn prepared_face_queries(&self) -> Option<&dyn FaceQueries<O>> {
+        None
+    }
+
     /// Stores a new curve and returns its handle; `None` when the store is full.
     fn insert_curve(&mut self, curve: Curve) -> Option<O>;
     /// Stores a new surface and returns its handle; `None` when the store is full.
@@ -500,6 +533,121 @@ pub trait OffsetBrep<O>: ProtoGeometry<O> {
     ) -> Result<(f64, Curve)>;
 }
 
+/// The topology and owned-geometry subset used by `VertexOffset`. Keeping this
+/// interface separate lets the executive borrow the real source and result arenas
+/// without implementing unrelated SSI, classification or editing operations.
+pub(crate) trait VertexOffsetBrep<O> {
+    /// The source vertex's B-rep tolerance, not the result B-rep's tolerance.
+    fn brep_tolerance(&self, vertex: O) -> Result<f64>;
+    /// `SmVertex::GetPoint` in the source arena.
+    fn vertex_point(&self, vertex: O) -> Result<Point3>;
+    /// `SmVertex::IsLaminaVertex` in the source arena.
+    fn vertex_is_lamina(&self, vertex: O) -> Result<bool>;
+    /// The result edge's incident faces in native traversal order.
+    fn edge_faces(&self, edge: O) -> Result<Vec<O>>;
+    /// `SmEdge::IsSeam(*face->GetSurface())` in the result arena.
+    fn edge_is_seam_of_face_surface(&mut self, k: &Kernel, edge: O, face: O) -> Result<bool>;
+    /// The result edge's curve handle.
+    fn edge_curve(&self, edge: O) -> Result<Option<O>>;
+    /// The result edge's parameter interval.
+    fn edge_interval(&self, edge: O) -> Result<Extent1d>;
+    /// Resolves a curve without replacing its concrete kind by its B-spline part.
+    fn curve(&self, curve: O) -> Result<&Curve>;
+    /// Stores an owned trimming curve.
+    fn insert_curve(&mut self, curve: Curve) -> Result<O>;
+    /// Stores the owned cap surface.
+    fn insert_surface(&mut self, surface: Surface) -> Result<O>;
+}
+
+/// Adapts the existing full backend so public callers keep using the same path.
+struct OffsetVertexBrep<'a, B>(&'a mut B);
+
+impl<O: ClassObject, B: OffsetBrep<O>> VertexOffsetBrep<O> for OffsetVertexBrep<'_, B> {
+    fn brep_tolerance(&self, vertex: O) -> Result<f64> {
+        self.0.brep_tolerance(vertex)
+    }
+
+    fn vertex_point(&self, vertex: O) -> Result<Point3> {
+        self.0.vertex_point(vertex)
+    }
+
+    fn vertex_is_lamina(&self, vertex: O) -> Result<bool> {
+        self.0.vertex_is_lamina(vertex)
+    }
+
+    fn edge_faces(&self, edge: O) -> Result<Vec<O>> {
+        self.0.edge_faces(edge)
+    }
+
+    fn edge_is_seam_of_face_surface(&mut self, k: &Kernel, edge: O, face: O) -> Result<bool> {
+        self.0.edge_is_seam_of_face_surface(k, edge, face)
+    }
+
+    fn edge_curve(&self, edge: O) -> Result<Option<O>> {
+        self.0.edge_curve(edge)
+    }
+
+    fn edge_interval(&self, edge: O) -> Result<Extent1d> {
+        self.0.edge_interval(edge)
+    }
+
+    fn curve(&self, curve: O) -> Result<&Curve> {
+        curve_of(self.0, curve)
+    }
+
+    fn insert_curve(&mut self, curve: Curve) -> Result<O> {
+        store_curve(self.0, curve)
+    }
+
+    fn insert_surface(&mut self, surface: Surface) -> Result<O> {
+        store_surface(self.0, surface)
+    }
+}
+
+/// The narrow source/owned-geometry interface needed by `FaceuseOffset`.
+pub(crate) trait FaceOffsetBrep<O> {
+    /// `SmFaceuse::GetOrientation` in the source arena.
+    fn faceuse_orientation(&self, faceuse: O) -> Result<OrientType>;
+    /// `SmFaceuse::GetFace` in the source arena.
+    fn faceuse_face(&self, faceuse: O) -> Result<Option<O>>;
+    /// The source face's surface, preserving its concrete kind and owner.
+    fn face_surface(&self, face: O) -> Result<Option<O>>;
+    /// Resolves either source geometry or newly owned offset geometry.
+    fn surface(&self, surface: O) -> Result<&Surface>;
+    /// Stores a newly created surface without attaching it to topology.
+    fn insert_surface(&mut self, surface: Surface) -> Result<O>;
+    /// Stores a newly created intersection curve without changing its kind.
+    fn insert_curve(&mut self, curve: Curve) -> Result<O>;
+}
+
+struct OffsetFaceBrep<'a, B>(&'a mut B);
+
+impl<O: ClassObject, B: OffsetBrep<O>> FaceOffsetBrep<O> for OffsetFaceBrep<'_, B> {
+    fn faceuse_orientation(&self, faceuse: O) -> Result<OrientType> {
+        self.0.faceuse_orientation(faceuse)
+    }
+
+    fn faceuse_face(&self, faceuse: O) -> Result<Option<O>> {
+        self.0.faceuse_face(faceuse)
+    }
+
+    fn face_surface(&self, face: O) -> Result<Option<O>> {
+        self.0.face_surface(face)
+    }
+
+    fn surface(&self, surface: O) -> Result<&Surface> {
+        surface_of(self.0, surface)
+    }
+
+    fn insert_surface(&mut self, surface: Surface) -> Result<O> {
+        store_surface(self.0, surface)
+    }
+
+    fn insert_curve(&mut self, curve: Curve) -> Result<O> {
+        store_curve(self.0, curve)
+    }
+}
+
 // ---- callees through the B-rep, and unported callees ----------------------------------------
 //
 // Each helper carries every argument of the upstream call (literals and header defaults
@@ -580,58 +728,81 @@ fn brep_replace_surface<O>(
 
 /// `SmSurface::GlobalCurveIntersect(domain, curve, interval, tol, solutions)` of the
 /// surface and curve behind the handles (unit `surface.surface_p8`).
+struct OffsetSurfaceSolveContext<'a, B>(&'a mut B);
+
+impl<O: ClassObject, B: OffsetBrep<O>> SurfaceSolveContext<O> for OffsetSurfaceSolveContext<'_, B> {
+    fn build_surface_cache(
+        &mut self,
+        k: &Kernel,
+        surface: &Surface,
+        handle: Option<O>,
+    ) -> Result<SurfaceCache<O>> {
+        self.0.prepare_surface_solve_cache(k, surface, handle)
+    }
+
+    fn face_queries(&self) -> Option<&dyn FaceQueries<O>> {
+        self.0.prepared_face_queries()
+    }
+}
+
 fn surface_global_curve_intersect<O: ClassObject + SolutionObject>(
     k: &Kernel,
-    geometry: &impl ClassGeometry<O>,
+    geometry: &mut impl OffsetBrep<O>,
     surface: O,
     domain: &Extent2d,
     curve: O,
     interval: &Extent1d,
     tol: f64,
 ) -> Result<SolutionArray<O>> {
-    let s = surface_of(geometry, surface)?;
-    let c = curve_of(geometry, curve)?;
-    s.global_curve_intersect(k, [curve, surface], domain, c, interval, tol)
+    let c = curve_of(geometry, curve)?.clone_for_evaluation()?;
+    let s = surface_of(geometry, surface)?.clone_for_evaluation()?;
+    s.global_curve_intersect_with_context(
+        k,
+        [Some(curve), Some(surface)],
+        None,
+        &mut OffsetSurfaceSolveContext(geometry),
+        domain,
+        &c,
+        interval,
+        tol,
+    )
 }
 
-/// `SmOffsetSurface sOffset(dSign * dist, *pSurface, FALSE)` followed by
-/// `SmCrvOnSurf sOffCurve(*pUVCurve, sOffset, NULL, 0, NULL)` and
-/// `sOffCurve.ApproximateCurve(ctx, sKnots, tol, dAchievedTol, pRail, TRUE, FALSE,
-/// FALSE)`: the rail curve made by approximating the offset of an edge use's UV trim
-/// curve. The offset surface is built (a base upstream shares is a copy here, see
-/// [`OffsetSurface::new`]); the curve on it is not: the ported `SmCrvOnSurf` holds a
-/// B-spline surface only, so the call defers at its constructor with main's label for
-/// that gap, and the approximation after it is reached once it is lifted.
+/// Approximates a trimmed UV curve on a temporary offset surface, as
+/// `SmCrvOnSurf::ApproximateCurve` in `EdgeuseOffset`. The opposite rail supplies
+/// the breaks when present; otherwise the UV curve supplies them. Both temporary
+/// curves stay owned here rather than being inserted into the caller's store.
 fn offset_surface_rail<O: ClassObject>(
     k: &Kernel,
-    brep: &mut impl OffsetBrep<O>,
+    geometry: &impl ClassGeometry<O>,
     surface: O,
-    uv_curve: O,
+    uv_curve: Curve,
     signed_distance: f64,
     owns_surface: bool,
-    knots: &[f64],
+    knots_source: Option<&BSplineCurve>,
     tol: f64,
     approximation: ApproximateCurveFlags,
-) -> Result<O> {
-    let base = surface_of(brep, surface)?.clone();
+) -> Result<BSplineCurve> {
+    let base = surface_of(geometry, surface)?.clone_for_evaluation()?;
     let offset = OffsetSurface::new(k, signed_distance, base, owns_surface, OFFSET_SS_UNKNOWN)?;
-    // (the arguments the curve on surface and its approximation will take)
-    let _ = (
-        offset,
+    let mut rail = crate::curve::crv_on_surf::CrvOnSurf::new(
+        k,
         uv_curve,
-        knots,
-        tol,
+        Surface::new(SurfaceKind::OffsetSurface(offset)),
+        None,
+        0,
+    )?;
+    let knots = match knots_source {
+        Some(curve) => curve.knots(None)?.0,
+        None => rail.uv_curve().knots(k, None)?.0,
+    };
+    // SmCrvOnSurf::ApproximateCurve explicitly ignores these two flags upstream.
+    let _ = (
         approximation.create_analytics,
-        approximation.match_parameterization,
         approximation.just_copy_b_splines,
     );
-    // DISPATCH GAP: SmCrvOnSurf over a surface that is not a B-spline (the ported
-    // CrvOnSurf holds an SmBSplineSurface).
-    // UNPORTED(curve.crv_on_surf): SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)
-    Err(SolidError::unported(
-        "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-        "curve.crv_on_surf",
-    ))
+    rail.approximate_curve(k, &knots, tol, approximation.match_parameterization)
+        .map(|(curve, _)| curve)
 }
 
 /// The three trailing flags of `SmCurve::ApproximateCurve(.., bOptCreateAnalytics,
@@ -646,47 +817,23 @@ struct ApproximateCurveFlags {
     just_copy_b_splines: bool,
 }
 
-/// The constructor arguments of `SmCircularCrossSectionFSG`.
-#[derive(Debug, Clone, Copy)]
-struct CircularCrossSectionFsg {
-    /// `bApproximateArcs`.
-    approximate_arcs: bool,
-    /// `dTolPercentRadius`.
-    tol_percent_radius: f64,
-    /// `bMirror`.
-    mirror: bool,
-    /// `bComplement`.
-    complement: bool,
-}
-
 /// `SmCircularCrossSectionFSG sFSG(bApproximateArcs = FALSE, dTolPercentRadius = 0.05,
 /// bMirror = FALSE, bComplement = FALSE)` then `sFSG.CreateSurfaceFromCurves(ctx,
 /// *pCenterLine, *pRail1, *pRail2, tol, bNeedG1Continuity = FALSE, NULL, NULL, NULL, NULL,
 /// pNewSurface)`; the four NULLs are the optional surfaces and UV curves of the rails
-/// (`with_rail_surfaces`). The curves are non-const upstream, so they are `&mut`.
+/// (`blend.fillet_standard_solver_p1`'s generator takes none). The curves are non-const
+/// upstream, so they are `&mut`; the centre line is passed as the curve itself, so its
+/// virtuals dispatch on its kind (`rCenterLine` binds the `SmBSplineCurve` kinds).
 fn circular_cross_section_surface(
-    _k: &Kernel,
+    k: &Kernel,
     fsg: CircularCrossSectionFsg,
-    _center_line: &mut Curve,
-    _rail1: &mut BSplineCurve,
-    _rail2: &mut BSplineCurve,
-    _tol: f64,
-    _need_g1_continuity: bool,
-    _with_rail_surfaces: bool,
+    center_line: &mut Curve,
+    rail1: &mut BSplineCurve,
+    rail2: &mut BSplineCurve,
+    tol: f64,
+    need_g1_continuity: bool,
 ) -> Result<BSplineSurface> {
-    // (the arguments the wired call will pass on)
-    let _ = (
-        fsg.approximate_arcs,
-        fsg.tol_percent_radius,
-        fsg.mirror,
-        fsg.complement,
-    );
-    // UNPORTED(blend.fillet_standard_solver_p1): SmCircularCrossSectionFSG::CreateSurfaceFromCurves
-    // (the constructor is UNPORTED(blend.fillet_solver_p1): SmCircularCrossSectionFSG::SmCircularCrossSectionFSG)
-    Err(SolidError::unported(
-        "SmCircularCrossSectionFSG::CreateSurfaceFromCurves",
-        "blend.fillet_standard_solver_p1",
-    ))
+    fsg.create_surface_from_curves(k, center_line, rail1, rail2, tol, need_g1_continuity)
 }
 
 // ---- helpers over handles -------------------------------------------------------------------
@@ -700,6 +847,12 @@ fn b_spline_kind_of<O: ClassObject>(
     h: O,
 ) -> Result<Option<&Curve>> {
     let c = curve_of(geometry, h)?;
+    Ok(is_b_spline_kind(c).then_some(c))
+}
+
+/// The same cast through the vertex-only backend; concrete curve kinds stay intact.
+fn vertex_b_spline_kind_of<O>(geometry: &impl VertexOffsetBrep<O>, h: O) -> Result<Option<&Curve>> {
+    let c = geometry.curve(h)?;
     Ok(is_b_spline_kind(c).then_some(c))
 }
 
@@ -799,24 +952,21 @@ fn distance(a: Point3, b: Point3) -> f64 {
 /// surface of revolution and offset surface overrides, else `SmSurface`'s, which
 /// `SmBSplineSurface`'s calls: an `SmOffsetSurface` owning a copy). `None` is
 /// upstream's success with `rNewSurface == NULL` (the `SmTorus` override, whose minor
-/// radius vanishes; no [`SurfaceKind`] is a torus yet, so it is not reached).
+/// radius vanishes, not reached: no [`SurfaceKind`] is a torus yet; the `SmCone`
+/// override when both offset radii collapse).
 fn create_offset_surface(
     k: &Kernel,
     s: &Surface,
     signed_distance: f64,
     approx_tol_3d: f64,
 ) -> Result<Option<Surface>> {
-    Ok(Some(s.create_offset_surface(
-        k,
-        signed_distance,
-        approx_tol_3d,
-    )?))
+    s.create_offset_surface(k, signed_distance, approx_tol_3d)
 }
 
 /// `IsArc(samples, tol, ..)` of a plain B-spline curve (a rail or an arc this module
 /// built).
-fn is_arc(c: &BSplineCurve, num_samples: u64, tol: f64) -> Result<Option<ArcData>> {
-    Curve::from(c.clone()).is_arc(num_samples, tol)
+fn is_arc(k: &Kernel, c: &BSplineCurve, num_samples: u64, tol: f64) -> Result<Option<ArcData>> {
+    Curve::from(c.clone()).is_arc(k, num_samples, tol)
 }
 
 // ---- the geometry creation --------------------------------------------------------------------
@@ -899,6 +1049,22 @@ impl OffsetGeometryCreation {
         original_faceuse: O,
         skip_self_intersection: bool,
     ) -> Result<(Option<O>, SsiData<O>)> {
+        self.faceuse_offset_with_backend(
+            k,
+            &mut OffsetFaceBrep(brep),
+            original_faceuse,
+            skip_self_intersection,
+        )
+    }
+
+    /// Shared face-use algorithm for the full creator and owned executive adapter.
+    pub(crate) fn faceuse_offset_with_backend<O: Copy>(
+        &self,
+        k: &Kernel,
+        brep: &mut impl FaceOffsetBrep<O>,
+        original_faceuse: O,
+        skip_self_intersection: bool,
+    ) -> Result<(Option<O>, SsiData<O>)> {
         // init output
         let mut self_intersections = SsiData::default();
 
@@ -919,29 +1085,29 @@ impl OffsetGeometryCreation {
         // (SER_DELETE: the surface is deleted on failure; here its handle is simply not returned)
         let Some(offset) = create_offset_surface(
             k,
-            surface_of(brep, sur)?,
+            brep.surface(sur)?,
             sign * self.offset_distance,
             self.this_approx_tol_3d / 10.0,
         )?
         else {
             return Ok((None, self_intersections));
         };
-        let offset_h = store_surface(brep, offset)?;
+        let offset_h = brep.insert_surface(offset)?;
         let mut new_surface: Option<O> = Some(offset_h);
 
         // when working with analytics - replace all current appropriate BSplineSurface
         // with analytic copies when the surface is properly represented
         if self.make_analytics {
             // skip surfaces which are already analytics
-            if !surface_of(brep, offset_h)?.is_analytic()? {
+            if !brep.surface(offset_h)?.is_analytic()? {
                 // see if this surface is secretly an analytic - Copy pS, when possible as an analytic surface
-                let mut analytic = surface_of(brep, offset_h)?.copy_and_add_analytics(k)?;
+                let mut analytic = brep.surface(offset_h)?.copy_and_add_analytics(k)?;
                 if let SurfaceKind::OffsetSurface(offset) = analytic.kind_mut() {
                     // SM_CAST_PTR(SmOffsetSurface, pAnalyticS)
                     offset.set_allow_extension(false);
                 }
                 // store the copy
-                new_surface = Some(store_surface(brep, analytic)?);
+                new_surface = Some(brep.insert_surface(analytic)?);
             }
         } // end m_bMakeAnalytics check
 
@@ -950,11 +1116,11 @@ impl OffsetGeometryCreation {
             // self-intersection locals
             let angle_tol = 20.0 * PI / 180.0;
             let use_surface_edges = [false, false];
-            let uv_domain = surface_of(brep, off)?.natural_uv_domain();
+            let uv_domain = brep.surface(off)?.natural_uv_domain();
 
             // find self intersections
             let ssi = {
-                let s = surface_of(brep, off)?;
+                let s = brep.surface(off)?;
                 s.global_surface_intersect(
                     k,
                     &uv_domain,
@@ -966,18 +1132,18 @@ impl OffsetGeometryCreation {
                 )?
             };
             for c in ssi.curves_3d {
-                self_intersections.curves_3d.push(store_curve(brep, c)?);
+                self_intersections.curves_3d.push(brep.insert_curve(c)?);
             }
             for c in ssi.surface1_uv_curves {
                 let h = match c {
-                    Some(c) => Some(store_curve(brep, c)?),
+                    Some(c) => Some(brep.insert_curve(c)?),
                     None => None,
                 };
                 self_intersections.uv_curves1.push(h);
             }
             for c in ssi.surface2_uv_curves {
                 let h = match c {
-                    Some(c) => Some(store_curve(brep, c)?),
+                    Some(c) => Some(brep.insert_curve(c)?),
                     None => None,
                 };
                 self_intersections.uv_curves2.push(h);
@@ -1012,6 +1178,23 @@ impl OffsetGeometryCreation {
         &self,
         k: &Kernel,
         brep: &mut impl OffsetBrep<O>,
+        original_vertex: Option<O>,
+        bounding_edges: &[O],
+    ) -> Result<VertexOffsetGeometry<O>> {
+        self.vertex_offset_with_backend(
+            k,
+            &mut OffsetVertexBrep(brep),
+            original_vertex,
+            bounding_edges,
+        )
+    }
+
+    /// The shared vertex algorithm, also used by the executive's cross-arena adapter.
+    #[allow(clippy::too_many_lines)]
+    pub(crate) fn vertex_offset_with_backend<O: Copy>(
+        &self,
+        k: &Kernel,
+        brep: &mut impl VertexOffsetBrep<O>,
         original_vertex: Option<O>,
         bounding_edges: &[O],
     ) -> Result<VertexOffsetGeometry<O>> {
@@ -1063,11 +1246,12 @@ impl OffsetGeometryCreation {
             let ivl1 = brep.edge_interval(e1)?;
             let param2_start = ivl1.min();
             let param2_end = ivl1.max();
-            let max_dist = curve_of(brep, c1)?
+            let max_dist = brep
+                .curve(c1)?
                 .curve_max_distance_between(
                     k,
                     &ivl0,
-                    curve_of(brep, c2)?,
+                    brep.curve(c2)?,
                     param2_start,
                     param2_end,
                     10,
@@ -1080,11 +1264,12 @@ impl OffsetGeometryCreation {
             }
 
             // check to see if the curves have opposite parameterization
-            let max_dist = curve_of(brep, c1)?
+            let max_dist = brep
+                .curve(c1)?
                 .curve_max_distance_between(
                     k,
                     &ivl0,
-                    curve_of(brep, c2)?,
+                    brep.curve(c2)?,
                     param2_end,
                     param2_start,
                     10,
@@ -1112,13 +1297,13 @@ impl OffsetGeometryCreation {
                     .ok_or(dangling("edge list"))?;
                 let c = brep.edge_curve(e)?.ok_or(dangling("edge without curve"))?;
                 // SM_CAST_PTR(SmBSplineCurve, curve): the failed cast is dereferenced
-                let blend = b_spline_kind_of(brep, c)?
+                let blend = vertex_b_spline_kind_of(brep, c)?
                     .ok_or(dangling("bounding curve is not a B-spline curve"))?;
                 let ivl = brep.edge_interval(e)?;
-                if blend.is_closed(&ivl, 0.0)? {
+                if blend.is_closed(k, &ivl, 0.0)? {
                     let mut ref_frame = Axis2Placement::IDENTITY;
                     if let Some((frame, _arc_rad, _start_ang, _end_ang)) =
-                        blend.is_arc(10, tolerance)?
+                        blend.is_arc(k, 10, tolerance)?
                     {
                         ref_frame = frame;
                         let mut z_axis = ref_frame.z_axis();
@@ -1127,7 +1312,7 @@ impl OffsetGeometryCreation {
                         if vec_to_edge.dot(z_axis) < 0.0 {
                             z_axis = -z_axis;
                         }
-                        let point1 = blend.evaluate_point(blend.natural_interval().min())?;
+                        let point1 = blend.evaluate_point(k, blend.natural_interval().min())?;
                         let point2 = center + self.offset_distance * z_axis;
                         arc = Some(BSplineCurve::create_arc_from_points(
                             center,
@@ -1176,7 +1361,7 @@ impl OffsetGeometryCreation {
                     None,
                 )?,
             };
-            out.surface = Some(store_surface(brep, Surface::from(sphere))?);
+            out.surface = Some(brep.insert_surface(Surface::from(sphere))?);
         } else {
             // 3 boundary curves none of which are lamina
             // In this simple case we will assume that we are doing a constant radius
@@ -1188,7 +1373,8 @@ impl OffsetGeometryCreation {
                 let c = brep
                     .edge_curve(e)?
                     .ok_or(SolidError::null_pointer(OP_VERTEX))?;
-                let bsc = b_spline_kind_of(brep, c)?.ok_or(SolidError::null_pointer(OP_VERTEX))?;
+                let bsc =
+                    vertex_b_spline_kind_of(brep, c)?.ok_or(SolidError::null_pointer(OP_VERTEX))?;
                 curves.push(bsc.clone());
             }
 
@@ -1201,11 +1387,11 @@ impl OffsetGeometryCreation {
                     let mut line_count = 0usize;
                     let mut frame = Axis2Placement::IDENTITY;
                     for (jj, line) in curves.iter().enumerate() {
-                        if let Some((f, _radius, _start, _end)) = line.is_arc(10, tolerance)? {
+                        if let Some((f, _radius, _start, _end)) = line.is_arc(k, 10, tolerance)? {
                             frame = f;
                             shell_arc = Some(jj);
                         }
-                        if line.is_line(10, tolerance)?.is_some() {
+                        if line.is_line(k, 10, tolerance)?.is_some() {
                             line_count += 1;
                         }
                     }
@@ -1222,10 +1408,10 @@ impl OffsetGeometryCreation {
                             &point_curve,
                         )?;
                         for c in trimmed.trimming_curves {
-                            out.trimming_curves.push(store_curve(brep, c)?);
+                            out.trimming_curves.push(brep.insert_curve(c)?);
                         }
                         out.orients = trimmed.trim_orientations;
-                        out.surface = Some(store_surface(brep, Surface::from(trimmed.plane))?);
+                        out.surface = Some(brep.insert_surface(Surface::from(trimmed.plane))?);
                         return Ok(out);
                     }
                 }
@@ -1237,12 +1423,12 @@ impl OffsetGeometryCreation {
                 for j in 0..curves.len() {
                     let arc = curves.get(j).ok_or(dangling("curve index"))?;
                     // If we have a line then we probably are shelling
-                    let Some((frame, _radius, _start, _end)) = arc.is_arc(10, tol)? else {
+                    let Some((frame, _radius, _start, _end)) = arc.is_arc(k, 10, tol)? else {
                         return Err(sm_err(OP_VERTEX));
                     };
                     let next = (j + 1) % curves.len();
                     let other = curves.get(next).ok_or(dangling("curve index"))?;
-                    let mid = other.evaluate_point(other.natural_interval().evaluate(0.5))?;
+                    let mid = other.evaluate_point(k, other.natural_interval().evaluate(0.5))?;
                     let pp = frame.origin();
                     let mut pn = frame.z_axis();
                     let vec = pp - mid;
@@ -1264,7 +1450,7 @@ impl OffsetGeometryCreation {
                     // of sCurves[k] inside the loop does not change what the next kk reads)
                     let orig_arc = curves.get(kidx).ok_or(dangling("curve index"))?.clone();
                     let (start, end) = {
-                        let ends = orig_arc.ends()?;
+                        let ends = orig_arc.ends(k)?;
                         (ends.start, ends.end)
                     };
                     for kk in 0..curves.len() {
@@ -1289,10 +1475,11 @@ impl OffsetGeometryCreation {
                             let arc = &orig_arc;
                             // the status of IsArc is not checked here; a non-arc leaves the
                             // frame and radius uninitialised upstream
-                            let Some((frame, radius, _, _)) = arc.is_arc(10, tol)? else {
+                            let Some((frame, radius, _, _)) = arc.is_arc(k, 10, tol)? else {
                                 return Err(dangling("arc data of a non-arc read"));
                             };
-                            let mid = arc.evaluate_point(arc.natural_interval().evaluate(0.5))?;
+                            let mid =
+                                arc.evaluate_point(k, arc.natural_interval().evaluate(0.5))?;
 
                             let closest_pt1 =
                                 Self::closest_circle_plane_point(tol, radius, &frame, pp, pn, mid)?;
@@ -1320,7 +1507,7 @@ impl OffsetGeometryCreation {
             } // end exactly 3 curves check
 
             // (any failure is SM_ERR; an unported callee stays unported)
-            let sphere = match BSplineSurface::create_sphere_from_arcs(&curves, tolerance) {
+            let sphere = match BSplineSurface::create_sphere_from_arcs(k, &curves, tolerance) {
                 Ok(sphere) => sphere,
                 Err(e @ SolidError::Unported { .. }) => return Err(e),
                 Err(_) => return Err(sm_err(OP_VERTEX)),
@@ -1331,13 +1518,13 @@ impl OffsetGeometryCreation {
                 .filter_map(|&i| curves.get(i).cloned())
                 .collect();
             out.orients = sphere.orients;
-            out.surface = Some(store_surface(brep, Surface::from(sphere.sphere))?);
+            out.surface = Some(brep.insert_surface(Surface::from(sphere.sphere))?);
             for orig in trim_curves {
                 // SM_CAST_PTR(SmBSplineCurve, curve), new SmBSplineCurve(*pOrig): a plain
                 // B-spline copy of the curve's NURB part
                 let copy = b_spline_part(&orig)?.ok_or(dangling("trim curve kind"))?;
                 out.trimming_curves
-                    .push(store_curve(brep, Curve::from(copy))?);
+                    .push(brep.insert_curve(Curve::from(copy))?);
             }
         } // end given 3 boundary curves branch
 
@@ -1491,13 +1678,13 @@ impl OffsetGeometryCreation {
             let edge_tol = brep.edge_tolerance(edge)?;
 
             // Edgesuse->Curve Start and End pts
-            let edgeuse_start = curve_of(brep, eu_curve)?.evaluate_point(edge_ivl.min())?;
-            let edgeuse_end = curve_of(brep, eu_curve)?.evaluate_point(edge_ivl.max())?;
+            let edgeuse_start = curve_of(brep, eu_curve)?.evaluate_point(k, edge_ivl.min())?;
+            let edgeuse_end = curve_of(brep, eu_curve)?.evaluate_point(k, edge_ivl.max())?;
 
             // input 3DCurve- Start and End pts
             let c3_ivl = curve_of(brep, c3)?.natural_interval();
-            let curve_start = curve_of(brep, c3)?.evaluate_point(c3_ivl.min())?;
-            let curve_end = curve_of(brep, c3)?.evaluate_point(c3_ivl.max())?;
+            let curve_start = curve_of(brep, c3)?.evaluate_point(k, c3_ivl.min())?;
+            let curve_end = curve_of(brep, c3)?.evaluate_point(k, c3_ivl.max())?;
 
             // low work - Edgesuse->Curve and 3DCurve start and end Points are within tol
             if distance(edgeuse_start, curve_start) < edge_tol
@@ -1523,7 +1710,7 @@ impl OffsetGeometryCreation {
             let pv = match opt_orig_edgeuse {
                 None => {
                     let param = edge_ivl.evaluate(0.5);
-                    curve_of(brep, eu_curve)?.evaluate(param, 1, true, true)?
+                    curve_of(brep, eu_curve)?.evaluate(k, param, 1, true, true)?
                 }
                 Some(orig) => {
                     let orig_edge = brep
@@ -1533,12 +1720,12 @@ impl OffsetGeometryCreation {
                         .edge_curve(orig_edge)?
                         .ok_or(dangling("edge without curve"))?;
                     let param = brep.edge_interval(orig_edge)?.evaluate(0.5);
-                    curve_of(brep, orig_curve)?.evaluate(param, 1, true, true)?
+                    curve_of(brep, orig_curve)?.evaluate(k, param, 1, true, true)?
                 }
             };
 
             // input 3DCurve midPoint
-            let pv2 = curve_of(brep, c3)?.evaluate(c3_ivl.evaluate(0.5), 1, true, true)?;
+            let pv2 = curve_of(brep, c3)?.evaluate(k, c3_ivl.evaluate(0.5), 1, true, true)?;
 
             // when input and existing edge curves run in opposite directions - reverse 3DCurve and UVCurve
             let t1 = pv.get(1).copied().ok_or(dangling("tangent missing"))?;
@@ -1948,6 +2135,7 @@ impl OffsetGeometryCreation {
                     // output at SmPoint3d's SM_UNDEF_DOUBLE default)
                     let undef = Vec3::new(UNDEF_DOUBLE, UNDEF_DOUBLE, UNDEF_DOUBLE);
                     let pv = ignore_soft(curve_of(brep, curve_3d)?.evaluate(
+                        k,
                         sol.start.param(0)?,
                         1,
                         true,
@@ -1955,6 +2143,7 @@ impl OffsetGeometryCreation {
                     ))?;
                     let uv = Point2::new(sol.start.param(1)?, sol.start.param(2)?);
                     let normal = ignore_soft(surface_of(brep, ext_surface)?.evaluate_normal(
+                        k,
                         uv,
                         Side::Left,
                         Side::Left,
@@ -1998,7 +2187,7 @@ impl OffsetGeometryCreation {
             let base_point = brep.vertex_point(base_vertex)?;
             for sol in solutions.as_slice() {
                 let t = sol.start.param(0)?;
-                let pnt = curve_of(brep, curve_3d)?.evaluate_point(t)?;
+                let pnt = curve_of(brep, curve_3d)?.evaluate_point(k, t)?;
 
                 // search for the best solution
                 let dist_moved = distance(pnt, base_point);
@@ -2011,7 +2200,7 @@ impl OffsetGeometryCreation {
                 // If solution is a range, e.g. coincident curves, check m_vEnd
                 if sol.solution_type == SolutionType::RangeOfValues {
                     let t = sol.end.param(0)?;
-                    let pnt = curve_of(brep, curve_3d)?.evaluate_point(t)?;
+                    let pnt = curve_of(brep, curve_3d)?.evaluate_point(k, t)?;
                     let dist_moved = distance(pnt, base_point);
 
                     if dist_moved < found_dist && !are_same(t, trim_ivl.min()) {
@@ -2201,7 +2390,7 @@ impl OffsetGeometryCreation {
             // refresh locals
             let other = other_uv_curve.ok_or(dangling("other UV curve"))?;
             let orig_ivl = curve_of(brep, other)?.natural_interval();
-            other_mid = curve_of(brep, other)?.evaluate_point(orig_ivl.evaluate(0.5))?;
+            other_mid = curve_of(brep, other)?.evaluate_point(k, orig_ivl.evaluate(0.5))?;
         } // end edgeuse is not lamina check
 
         // Create a greatly extended curve and trim it to the bounding box of the extended surface.
@@ -2296,14 +2485,17 @@ impl OffsetGeometryCreation {
 
         // Set pLiftedCurve = pUVCurveExtended projected through pExtSurf
         let edge_tol = brep.edge_tolerance(edge)?;
-        let lifted = surface_of(brep, ext_surf_h)?
-            .lift_curve(
+        let ext_surface = surface_of(brep, ext_surf_h)?.clone_for_evaluation()?;
+        let lifted = ext_surface
+            .lift_curve_with_context(
                 k,
                 &ext_domain,
                 &Curve::from(uv_curve_extended.clone()),
                 &ext_ivl,
                 edge_tol / 3.0,
                 false,
+                &mut OffsetSurfaceSolveContext(brep),
+                Some(ext_surf_h),
             )?
             .curve;
         let lifted_curve = lifted;
@@ -2350,7 +2542,7 @@ impl OffsetGeometryCreation {
                     // Find the UVTrimCurve closest to the original - assume curve dropped to a seam
                     let mut min_dist = BIG_DOUBLE;
                     for (j, test) in uv_curves.iter().enumerate() {
-                        let tc = Curve::from(test.clone());
+                        let tc = test.clone();
                         let sols2: SolutionArray<O> = tc.global_point_solve(
                             k,
                             &tc.natural_interval(),
@@ -2377,7 +2569,7 @@ impl OffsetGeometryCreation {
                     .get(closest_idx)
                     .ok_or(dangling("drop curve index"))?
                     .clone();
-                store_curve(brep, Curve::from(best))?
+                store_curve(brep, best)?
             }; // end LiftedCurve failed to drop to OtherExtSurf branch
 
             // When using the RadialEdgeuse - swap the extended UVTrimCurves
@@ -2529,11 +2721,23 @@ impl OffsetGeometryCreation {
         let deg20_rad = 20.0_f64.to_radians();
         let use_surface_edges = [true, true];
 
-        // Intersect extended surfaces
-        let ssi = surface_of(brep, ext_surface1)?.global_surface_intersect(
+        // Intersect extended surfaces. The evaluation copies cannot be passed for
+        // both when the two faces share one surface (`SmSurfaceIntersector` records
+        // `doing_self_intersection` from pointer identity, and the C++ call passes
+        // the same surface pointer twice).
+        let s1 = surface_of(brep, ext_surface1)?.clone_for_evaluation()?;
+        let s2 = surface_of(brep, ext_surface2)?.clone_for_evaluation()?;
+        let other = if ext_surface1 == ext_surface2 {
+            &s1
+        } else {
+            &s2
+        };
+        let ssi = s1.global_surface_intersect_with_context(
             k,
+            [Some(ext_surface1), Some(ext_surface2)],
+            &mut OffsetSurfaceSolveContext(brep),
             &domain1,
-            surface_of(brep, ext_surface2)?,
+            other,
             &domain2,
             use_surface_edges,
             Some(ssi_tol),
@@ -2568,7 +2772,7 @@ impl OffsetGeometryCreation {
             let c3 = *curves_3d.get(ii).ok_or(dangling("curve index"))?;
 
             // skip degenerate curve solutions
-            if curve_of(brep, c3)?.is_degenerate(EFF_ZERO, None)? {
+            if curve_of(brep, c3)?.is_degenerate(k, EFF_ZERO, None)? {
                 continue;
             }
 
@@ -2607,7 +2811,7 @@ impl OffsetGeometryCreation {
                 // when there is more than 1 intersection curve to check
                 if curves_3d.len() > 1 {
                     // save the trimmed XSectCurve that has the smallest change from the original 3DCurve.
-                    let mid_pnt = curve_of(brep, c3)?.evaluate_point(my_trim.evaluate(0.5))?;
+                    let mid_pnt = curve_of(brep, c3)?.evaluate_point(k, my_trim.evaluate(0.5))?;
                     let orig_mid =
                         edgeuse_normalized_evaluate(k, brep, edgeuse, 0.5, false, false, true)?; // FALSE = 3d Eval
 
@@ -2930,7 +3134,6 @@ impl OffsetGeometryCreation {
                 .ok_or(SolidError::null_pointer(OP_EDGEUSE))?;
             let mut uv_copy = curve_of(brep, uv)?.copy(k)?;
             uv_copy.trim(k, &mut edge_ivl, TrimMode::Notify)?; // may snap sIvl by tol to existing knots
-            let uv_h = store_curve(brep, uv_copy)?;
 
             // make an offset surface from origEU->Face->Surface
             let surface = brep
@@ -2945,34 +3148,22 @@ impl OffsetGeometryCreation {
                 -1.0
             };
 
-            // get OtherRailCurve knots (or UVCurve knots if unavailable)
-            let knots: Vec<f64> = match &rail2 {
-                Some(r2) => r2.knots(None)?.0,
-                None => {
-                    b_spline_part(curve_of(brep, uv_h)?)?
-                        .ok_or(dangling("UV trim curve is not a B-spline curve"))?
-                        .knots(None)?
-                        .0
-                }
-            };
-
             // let pRail1Curve = approximation of the 3dCurve on the offset surface
-            let h = offset_surface_rail(
+            rail1 = Some(offset_surface_rail(
                 k,
                 brep,
                 surface,
-                uv_h,
+                uv_copy,
                 sign * self.offset_distance,
                 false,
-                &knots,
+                rail2.as_ref(),
                 self.this_approx_tol_3d,
                 ApproximateCurveFlags {
                     create_analytics: true,
                     match_parameterization: false,
                     just_copy_b_splines: false,
                 },
-            )?;
-            rail1 = Some(b_spline_of(brep, h)?.ok_or(SolidError::null_pointer(OP_EDGEUSE))?);
+            )?);
         } // end not given an OffsetEdgeuse check
 
         // When not given an OtherOffsetEdgeuse - make a Rail2Curve by approximating OtherOrigEU->UVTrimCurve Offset
@@ -2982,7 +3173,6 @@ impl OffsetGeometryCreation {
                 .ok_or(SolidError::null_pointer(OP_EDGEUSE))?;
             let mut uv_copy = curve_of(brep, uv)?.copy(k)?;
             uv_copy.trim(k, &mut edge_ivl, TrimMode::Notify)?;
-            let uv_h = store_curve(brep, uv_copy)?;
 
             let surface = brep
                 .face_surface(other_orig_face)?
@@ -2996,25 +3186,21 @@ impl OffsetGeometryCreation {
                 -1.0
             };
 
-            // get RailCurve knots
-            let knots: Vec<f64> = rail1.as_ref().ok_or(dangling("rail 1"))?.knots(None)?.0;
-
-            let h = offset_surface_rail(
+            rail2 = Some(offset_surface_rail(
                 k,
                 brep,
                 surface,
-                uv_h,
+                uv_copy,
                 sign * self.offset_distance,
                 false,
-                &knots,
+                Some(rail1.as_ref().ok_or(dangling("rail 1"))?),
                 self.this_approx_tol_3d,
                 ApproximateCurveFlags {
                     create_analytics: true,
                     match_parameterization: false,
                     just_copy_b_splines: false,
                 },
-            )?;
-            rail2 = Some(b_spline_of(brep, h)?.ok_or(SolidError::null_pointer(OP_EDGEUSE))?);
+            )?);
         } // end not given an OtherOffsetEdgeuse check
 
         // Make sure intervals of rail curves are the same
@@ -3077,7 +3263,7 @@ impl OffsetGeometryCreation {
 
         // get CenterLine StartPoint
         let mut center_ivl = center_line.natural_interval();
-        let mut pnt2 = center_line.evaluate_point(center_ivl.min())?;
+        let mut pnt2 = center_line.evaluate_point(k, center_ivl.min())?;
 
         // When StartPoints Gap != OffsetDistance to within tolerance
         if (distance(pnt1, pnt2) - self.offset_distance).abs() > self.this_approx_tol_3d {
@@ -3106,7 +3292,7 @@ impl OffsetGeometryCreation {
 
         // get Rail1 and CenterLine EndPoints
         pnt1 = rail1.evaluate_point(rail1_ivl.max())?;
-        pnt2 = center_line.evaluate_point(center_ivl.max())?;
+        pnt2 = center_line.evaluate_point(k, center_ivl.max())?;
 
         // When EndPoints Gap != OffsetDistance to within tolerance
         if (distance(pnt1, pnt2) - self.offset_distance).abs() > self.this_approx_tol_3d {
@@ -3181,18 +3367,18 @@ impl OffsetGeometryCreation {
         // First do a quick check for the self intersecting torus situation.
         if new_surface.is_none() {
             if let Some((ref_frame, major_radius, start_angle, end_angle)) =
-                center_line.is_arc(10, self.this_approx_tol_3d)?
+                center_line.is_arc(k, 10, self.this_approx_tol_3d)?
             {
                 // (`&&`: the second IsArc runs only when the first succeeds)
-                let rails = match is_arc(&rail1, 10, self.this_approx_tol_3d)? {
-                    Some((_, radius_r1, _, _)) => is_arc(&rail2, 10, self.this_approx_tol_3d)?
+                let rails = match is_arc(k, &rail1, 10, self.this_approx_tol_3d)? {
+                    Some((_, radius_r1, _, _)) => is_arc(k, &rail2, 10, self.this_approx_tol_3d)?
                         .map(|(_, radius_r2, _, _)| (radius_r1, radius_r2)),
                     None => None,
                 };
                 if let Some((radius_r1, radius_r2)) = rails {
                     // Have a torus situation
-                    let cl_point =
-                        center_line.evaluate_point(center_line.natural_interval().evaluate(0.0))?;
+                    let cl_point = center_line
+                        .evaluate_point(k, center_line.natural_interval().evaluate(0.0))?;
                     let mut r1_point =
                         rail1.evaluate_point(rail1.natural_interval().evaluate(0.0))?;
                     let mut r2_point =
@@ -3266,12 +3452,14 @@ impl OffsetGeometryCreation {
 
         // Check for case of cone or cylinder
         if new_surface.is_none() {
-            if let Some((_line_pt, line_vec)) = center_line.is_line(10, self.this_approx_tol_3d)? {
+            if let Some((_line_pt, line_vec)) =
+                center_line.is_line(k, 10, self.this_approx_tol_3d)?
+            {
                 if rail1.is_line(10, self.this_approx_tol_3d)?.is_some()
                     && rail2.is_line(10, self.this_approx_tol_3d)?.is_some()
                 {
-                    let cl_point =
-                        center_line.evaluate_point(center_line.natural_interval().evaluate(0.0))?;
+                    let cl_point = center_line
+                        .evaluate_point(k, center_line.natural_interval().evaluate(0.0))?;
                     let r1_point = rail1.evaluate_point(rail1.natural_interval().evaluate(0.0))?;
                     let r2_point = rail2.evaluate_point(rail2.natural_interval().evaluate(0.0))?;
                     let rad1 = distance(cl_point, r1_point);
@@ -3283,7 +3471,7 @@ impl OffsetGeometryCreation {
                             r1_point,
                             NurbCircleParam::Quadratic,
                         )?;
-                        if is_arc(&arc, 10, self.this_approx_tol_3d)?.is_some() {
+                        if is_arc(k, &arc, 10, self.this_approx_tol_3d)?.is_some() {
                             new_surface =
                                 Some(BSplineSurface::create_linear_sweep(&mut arc, line_vec)?);
                         }
@@ -3297,17 +3485,15 @@ impl OffsetGeometryCreation {
             Some(s) => s,
             None => circular_cross_section_surface(
                 k,
+                // SmCircularCrossSectionFSG sFSG(FALSE): the other arguments' defaults
                 CircularCrossSectionFsg {
                     approximate_arcs: false,
-                    tol_percent_radius: 0.05,
-                    mirror: false,
-                    complement: false,
+                    ..CircularCrossSectionFsg::default()
                 },
                 &mut center_line,
                 &mut rail1,
                 &mut rail2,
                 self.this_approx_tol_3d,
-                false,
                 false,
             )?,
         };

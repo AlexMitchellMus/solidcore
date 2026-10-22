@@ -71,6 +71,17 @@ fn output(op: i32, r: Result<Vec<f64>>) -> Output {
     }
 }
 
+/// The case ops are `1..=25`; the FFI's `0` and `26` are the graph exports
+/// [`imported`] reads the native B-rep through, which have no Rust counterpart to
+/// compare.
+fn compared_op(op: i32) -> std::result::Result<(), HarnessError> {
+    if (1..=25).contains(&op) {
+        Ok(())
+    } else {
+        Err(HarnessError::new(format!("op {op} is not a compared query (1..=25)")))
+    }
+}
+
 // Integer topology and status fields are compared exactly; only geometric
 // measurements use the harness's fixed relative tolerance.
 fn decode(op: i32, values: Vec<f64>) -> Output {
@@ -403,6 +414,9 @@ fn imported(k: &Kernel, a: &[f64; 22], export_op: i32) -> std::result::Result<Br
         {
             let _ = surface.set_owner(Some(arena_identity(CacheObject::Face(id))));
         }
+        // the face's tolerance, as the face upstream answers GetTolerance with
+        b.sync_face_surface_tolerance(id)
+            .map_err(|e| HarnessError::new(e.to_string()))?;
     }
     Ok(b)
 }
@@ -572,7 +586,7 @@ impl TopologyObjects<Object> for Objects<'_> {
     }
 }
 
-fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>> {
+fn topology(k: &mut Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>> {
     let a = &i.data;
     let point = v([a[11], a[12], a[13]]);
     let index = a[20] as usize;
@@ -635,7 +649,7 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
             }
         }
         12 => {
-            let hit = api::find_edge(b, point)?;
+            let hit = api::find_edge(k, b, point)?;
             o.push(hit.index as f64);
             o.push(hit.parameter);
         }
@@ -681,7 +695,13 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
             objects.build(k)?;
             closest(
                 &mut o,
-                api::face_closest_point(k, &objects, (BrepId::from_index(0), face), point)?,
+                api::face_closest_point(
+                    k,
+                    &(BrepId::from_index(0), b),
+                    &objects,
+                    (BrepId::from_index(0), face),
+                    point,
+                )?,
             );
         }
         21 => cclosest(
@@ -695,7 +715,7 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
         23 => o.push(f64::from(
             api::edge_classify_parameter(k, b, e.ok_or_else(missing)?, a[14])?.code(),
         )),
-        24 => vec(&mut o, api::edge_tangent(b, e.ok_or_else(missing)?, a[14])?),
+        24 => vec(&mut o, api::edge_tangent(k, b, e.ok_or_else(missing)?, a[14])?),
         25 => vec(&mut o, api::vertex_get_point(b, vert.ok_or_else(missing)?)?),
         _ => return Err(missing()),
     }
@@ -708,6 +728,7 @@ impl UnitDiff for Runner {
     }
     fn run_cpp(&self, c: &Case) -> std::result::Result<Output, HarnessError> {
         let i: Inputs = c.parse()?;
+        compared_op(i.op)?;
         let mut input = i.data.to_vec();
         if let Some(other) = i.other_box {
             input.extend(other);
@@ -724,8 +745,9 @@ impl UnitDiff for Runner {
     }
     fn run_rust(&self, c: &Case) -> std::result::Result<Output, HarnessError> {
         let i: Inputs = c.parse()?;
+        compared_op(i.op)?;
         let a = &i.data;
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         if a[16] != 0. {
             return Err(HarnessError::new(
                 "null pointers have no typed Rust equivalent; use the FFI contract tests",
@@ -775,7 +797,7 @@ impl UnitDiff for Runner {
                 } else {
                     Brep::new()
                 };
-                topology(&k, &i, &b, &second)
+                topology(&mut k, &i, &b, &second)
             }
         };
         Ok(output(i.op, result))

@@ -29,6 +29,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use solidcore::curve::curve::p2::CurveKind;
 use solidcore::curve::curve::Curve as SmCurve;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::extent2d::Extent2d;
@@ -53,6 +54,21 @@ pub struct Runner;
 
 fn harness(msg: impl Into<String>) -> HarnessError {
     HarnessError::new(msg)
+}
+
+/// Mirrors `new SmBSplineCurve(*c)` in the shim: the native base-class copy slices an
+/// analytic `SmBSplineCurve` subclass, then applies the B-spline copy constructor's
+/// knot fixup. Do not preserve the dynamic curve kind here.
+fn native_bspline_copy(curve: &SmCurve) -> Option<SmCurve> {
+    let base = match curve.kind() {
+        CurveKind::BSpline(bspline) => bspline,
+        CurveKind::Line(line) => line.base(),
+        CurveKind::Ellipse(ellipse) => ellipse.base(),
+        CurveKind::Hyperbola(hyperbola) => hyperbola.base(),
+        CurveKind::Parabola(parabola) => parabola.base(),
+        _ => return None,
+    };
+    Some(SmCurve::from(base.copy()))
 }
 
 /// `SmBSplineSurface_TYPE`, `SmPlane_TYPE`: imported exactly.
@@ -187,8 +203,10 @@ struct Built {
 fn build(i: &Inputs) -> Result<Result<Built, Output>, HarnessError> {
     let path = shared::path_of(&i.brep)?;
     let block = block(i)?;
-    let export = fixture::eval(FixtureOp::Export, &path, &block)
-        .map_err(|e| harness(format!("c++ export: {e}")))?;
+    let export = crate::export_memo::export("topology_vertexuse", &[&path], &block, || {
+        fixture::eval(FixtureOp::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     let Some(counts) = fixture::counts(&export) else {
         let status = export.get(1).copied().unwrap_or(0.0);
         return Ok(Err(Output::err(format!("brep_build_status_{status}"))));
@@ -375,7 +393,7 @@ fn put_samples(c: &SmCurve, out: &mut Vec<f64>) -> Result<(), SolidError> {
     let ivl = c.natural_interval();
     out.extend([ivl.min(), ivl.max()]);
     for k in 0..=2u8 {
-        match c.evaluate_point(ivl.evaluate(f64::from(k) / 2.0)) {
+        match c.evaluate_point(&Kernel::default(), ivl.evaluate(f64::from(k) / 2.0)) {
             Ok(p) => out.extend([0.0, p.x, p.y, p.z]),
             Err(SolidError::Upstream { code, .. }) => out.extend([f64::from(code), 0.0, 0.0, 0.0]),
             Err(e) => return Err(e),
@@ -474,9 +492,9 @@ fn inexact_geometry(types: &[f64]) -> Result<Option<Output>, HarnessError> {
                     "SurfaceKind::Torus (SmTorus dispatch)",
                 ),
                 15030 => (
-                    "surface.surf_of_extrusion_p2",
-                    "SurfaceKind::SurfOfExtrusion",
-                ),
+                "harness:analytic-geometry-export",
+                "SmSurfOfExtrusion face surface not exported exactly",
+            ),
                 _ => ("topology.brep_p7", "SmBrep::ReadFromFile"),
             };
             return Ok(Some(Output::deferred(unit, symbol)));
@@ -683,7 +701,9 @@ fn run_rust_case(i: &Inputs) -> Result<Output, HarnessError> {
                 }
                 for &eu in &face_eus {
                     if let Some(c) = value!(eu1::uv_trim_curve_pointer(&b, eu)) {
-                        own.push(Some(c.clone()));
+                        own.push(Some(native_bspline_copy(c).ok_or_else(|| {
+                            harness("UV trim curve is not an SmBSplineCurve kind")
+                        })?));
                         orients.push(value!(eu1::orientation(&b, eu)));
                     }
                 }
@@ -830,5 +850,45 @@ impl UnitDiff for Runner {
             op: gen_op(rng),
         };
         serde_json::to_value(i).ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solidcore::curve::line::Line;
+    use solidcore::geom::extent1d::Extent1d;
+    use solidcore::kernel::Kernel;
+    use solidcore::math::{Point3, Vec3};
+    use solidcore::nurbs::b_spline_curve::BSplineCurve;
+    use solidcore::nurbs::nurbs_crv::allocate_nurb_curve;
+
+    #[test]
+    fn own_uv_trim_copy_slices_line_to_its_b_spline_base() {
+        let k = Kernel::default();
+        let mut nurb = allocate_nurb_curve(1, 1, 3).unwrap();
+        for (point, x) in nurb.cpts_mut().iter_mut().zip([-5.0, 5.0]) {
+            point.x = x;
+            point.y = -1.753_545_387_010_300_2;
+            point.z = 0.0;
+            point.w = 1.0;
+        }
+        nurb.knots_mut().copy_from_slice(&[0.0, 0.0, 1.0, 1.0]);
+        let line = SmCurve::from(Line::from_parts(
+            BSplineCurve::from_nurb(nurb, 1, false),
+            Point3::new(-5.0, -1.753_545_387_010_300_2, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Extent1d::from_min_max(0.0, 1.0),
+            10.0,
+            false,
+        ));
+        let native_copy = native_bspline_copy(&line).unwrap();
+        let parameter = 1.0 / 7.0;
+
+        assert!(matches!(native_copy.kind(), CurveKind::BSpline(_)));
+        let native_x = native_copy.evaluate_point(&k, parameter).unwrap().x;
+        let analytic_x = line.evaluate_point(&k, parameter).unwrap().x;
+        assert_eq!(native_x, -5.0 * (1.0 - parameter) + 5.0 * parameter);
+        assert_ne!(native_x, analytic_x);
     }
 }

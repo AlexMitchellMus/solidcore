@@ -167,16 +167,12 @@ fn rust(i: &Inputs, initial: &[f64]) -> Result<Output, HarnessError> {
     let result: solidcore::Result<i32> = (|| {
         match i.op {
             0 => {
-                record.push(id(port::find_infinite_region::<
-                    super::topology_shell::NoRayObject,
-                    _,
-                >(
+                record.push(id(port::find_infinite_region(
                     &mut k,
                     &mut b,
-                    solidcore::topology::BrepId::from_index(0),
+                    &solidcore::query::brep::BrepQuery::default(),
                     None,
                     None,
-                    &super::topology_shell::EmptyRayWorld,
                 )?));
                 Ok(0)
             }
@@ -374,8 +370,8 @@ fn rust(i: &Inputs, initial: &[f64]) -> Result<Output, HarnessError> {
                 };
                 let interval = Extent1d::from_min_max(-3.0, 7.0);
                 let mut line = Line::from_points(
-                    surface.evaluate_point(Point2::new(x0, y))?,
-                    surface.evaluate_point(Point2::new(x1, y))?,
+                    surface.evaluate_point(&k, Point2::new(x0, y))?,
+                    surface.evaluate_point(&k, Point2::new(x1, y))?,
                     3,
                 );
                 line.edit_parameterization(&interval)?;
@@ -396,7 +392,7 @@ fn rust(i: &Inputs, initial: &[f64]) -> Result<Output, HarnessError> {
                     let d = curve.natural_interval();
                     record.extend([d.min(), d.max()]);
                     for t in [d.min(), d.min() + 0.5 * (d.max() - d.min()), d.max()] {
-                        let p = curve.evaluate_point(t)?;
+                        let p = curve.evaluate_point(&k, t)?;
                         record.extend([p.x, p.y, p.z]);
                     }
                 }

@@ -18,9 +18,9 @@
 //! Deferred cases: `IntersectWithPlane` of a linear or coplanar generator whose
 //! plane/plane intersection gives a line (`SmSurface::CurveOnClassify`,
 //! `intersect.curve_class_p2`; a bounded plane the swept plane misses compares);
-//! `GlobalSurfaceIntersect` needing the general intersector
-//! (`intersect.adv_surface_intersector`, on a surface of extrusion that is not a
-//! `Surface` yet).
+//! `GlobalSurfaceIntersect` needing the general intersector (run by the C++ side; the
+//! Rust one needs a surface of extrusion as a `Surface`, which it is not yet: the
+//! `SmSurface` dispatch, `surface.surface_p2`).
 
 use std::path::Path;
 
@@ -749,7 +749,7 @@ fn rust_op(
     Ok(match op {
         OpIn::State {} => {
             o.push(0.0);
-            put_state(o, s).map_err(|e| stop(&e))
+            put_state(k, o, s).map_err(|e| stop(&e))
         }
         OpIn::Plane {
             plane,
@@ -871,7 +871,7 @@ fn rust_op(
         OpIn::Trim { dom } => match s.trim_with_domain(k, &dom4(*dom)) {
             Ok(()) => {
                 o.push(0.0);
-                put_state(o, s).map_err(|e| stop(&e))
+                put_state(k, o, s).map_err(|e| stop(&e))
             }
             Err(e) => match stop(&e) {
                 Stop::Status(st) => {
@@ -977,7 +977,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                         match made {
                             Ok(()) => {
                                 o.push(0.0);
-                                put_state(&mut o, &s).map_err(|e| harness(e.to_string()))?;
+                                put_state(&k, &mut o, &s).map_err(|e| harness(e.to_string()))?;
                             }
                             Err(e) => {
                                 if let Some(d) = Output::unported(&e) {

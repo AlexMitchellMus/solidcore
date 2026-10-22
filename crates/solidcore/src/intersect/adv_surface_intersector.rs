@@ -47,6 +47,10 @@
 //! - **Points.** `ComputeSingularityPoint` takes intersection point ids of the
 //!   base's arena ([`AdvSurfaceIntersector::compute_singularity_point`]) or a
 //!   detached point ([`AdvSurfaceIntersector::compute_singularity_point_on`]).
+//!   Its body reads only base members, so it lives on [`SurfaceIntersector`]
+//!   (`adv_compute_singularity_point`), where the base's `ComputePointValues`
+//!   calls it for an intersector made by [`AdvSurfaceIntersector::new`] (the
+//!   virtual dispatch).
 //!   Its unused UV argument is kept. The fixed array of eight singular directions
 //!   is kept: a ninth direction (upstream writes past the array) is
 //!   [`SolidError::InvalidInput`].
@@ -56,10 +60,11 @@
 //! - **Statuses.** Statuses upstream ignores are ignored, except
 //!   [`SolidError::Unported`], which always propagates (also where
 //!   `FindInteriorCurves` skips a node pair whose `ComputePointValues` fails).
-//! - **Unported callees.** `SmSurface::LocalSurfaceIntersect`
-//!   (`surface.surface_p11`), `SmSurfaceIntersector::ComputePointValues`
-//!   (`intersect.surface_intersector_p2`) and `TraceCurve`
-//!   (`intersect.surface_intersector_p4`) return [`SolidError::Unported`].
+//! - **Base virtuals.** `FindInteriorCurves` calls the base `ComputePointValues` and
+//!   `TraceCurve` ([`SurfaceIntersector`] parts 2 and 4); the only virtual they reach
+//!   that this class overrides, `ComputeSingularityPoint`, dispatches through the
+//!   base's `advanced` flag. The start point is a zero-filled arena point
+//!   (`GetNewElement`, [`TsectPnt::zeroed`]).
 //! - **Recursion.** `SolveBranch` nests at most once per tree node; deeper nesting
 //!   (cyclic tree links, which recurse forever upstream) is
 //!   [`SolidError::InvalidInput`].
@@ -166,6 +171,9 @@ pub struct InteriorCurves {
 /// The advanced surface/surface intersector (`SmAdvSurfaceIntersector`).
 #[derive(Debug, Clone)]
 pub struct AdvSurfaceIntersector<'s, 't, O> {
+    /// Caller context for virtual evaluations.
+    pub kernel: &'s Kernel,
+
     /// The `SmSurfaceIntersector` base.
     pub base: SurfaceIntersector<'s>,
     /// The `SmGlobalSolver` base.
@@ -260,19 +268,23 @@ impl<'s, 't, O: SolutionObject + 't> AdvSurfaceIntersector<'s, 't, O> {
     ///
     /// Those of [`SurfaceIntersector::new`].
     pub fn new(
+        k: &'s Kernel,
         surface1: &'s Surface,
         uv_domain1: &Extent2d,
         surface2: &'s Surface,
         uv_domain2: &Extent2d,
         from_fillet_intersector: bool,
     ) -> Result<Self> {
-        let base = SurfaceIntersector::new(
+        let mut base = SurfaceIntersector::new(
+            k,
             surface1,
             uv_domain1,
             surface2,
             uv_domain2,
             from_fillet_intersector,
         )?;
+        // the virtual ComputeSingularityPoint is this class's override
+        base.advanced = true;
 
         // global solver members, as SmSurfaceIntersector's constructor sets them
         let mut solver = GlobalSolver::new();
@@ -287,6 +299,7 @@ impl<'s, 't, O: SolutionObject + 't> AdvSurfaceIntersector<'s, 't, O> {
         solver.at_distance_sq = 0.0;
 
         Ok(Self {
+            kernel: k,
             base,
             solver,
             caches: [None, None],
@@ -429,12 +442,685 @@ impl<'s, 't, O: SolutionObject + 't> AdvSurfaceIntersector<'s, 't, O> {
     #[allow(clippy::too_many_lines)] // one upstream function
     pub fn compute_singularity_point_on(
         &self,
+        uv_values: [Point2; 2],
+        point: &mut TsectPnt,
+        prev_crv_deriv: Option<Vec3>,
+    ) -> Result<()> {
+        self.base
+            .adv_compute_singularity_point(uv_values, point, prev_crv_deriv)
+    }
+
+    /// `MakeDupin`: the Dupin indicatrix curves of the surface point evaluated in
+    /// `surface_eval` (see [`TsectPnt::surface_pv`] for the layout; the matrix is
+    /// updated in place as `smsurf_EvaluateGeometric` does), with curvatures signed
+    /// by `reference_normal`. A planar point has no curves; a parabolic point two
+    /// half lines at `1/sqrt|k|` from the origin; an elliptic point one ellipse; a
+    /// hyperbolic point four hyperbolas (upstream's bottom hyperbola uses `k2` for
+    /// both axes). Curves go above for positive curvatures, below for negative.
+    ///
+    /// # Errors
+    ///
+    /// Those of `smsurf_EvaluateGeometric`.
+    pub fn make_dupin(
+        &self,
+        surface_eval: &mut [[Vec3; 3]; 3],
+        reference_normal: Vec3,
+    ) -> Result<Dupin> {
+        make_dupin(surface_eval, reference_normal)
+    }
+
+    // ---- interior curves -------------------------------------------------------------------
+
+    /// `FindInteriorCurves`: runs the global solve over the surface trees
+    /// ([`AdvSurfaceIntersector::set_surface_caches`]) for one candidate start point
+    /// per intersecting leaf pair, and traces a curve from each candidate whose
+    /// normals are at least 5 degrees apart, whose local intersection succeeds with
+    /// normals at least 2 degrees apart and which is not on a curve found already.
+    /// The curves are appended to `out`.
+    ///
+    /// # Errors
+    ///
+    /// Those of the solve and of the callees; [`SolidError::Unported`] (see the
+    /// module deviations).
+    pub fn find_interior_curves(&mut self, k: &Kernel, out: &mut InteriorCurves) -> Result<()> {
+        let mut solutions = SolutionArray::with_capacity(130);
+
+        // Find node pairs in the tree where intersections might exist
+        let request = SolveRequest {
+            operation: SolverOperation::Intersect,
+            solution_requested: SolutionRequested::All,
+            tolerance_3d: self.base.this_approx_tol_3d,
+            best_answer_so_far_sq: BIG_DOUBLE,
+            opt_vectors: &[],
+        };
+        self.solve_it(&request, &mut solutions)?;
+
+        // Now for each node pair do a test to see if produces a unique start point
+        for sol in solutions.as_slice() {
+            let uv_guess1 = Point2::new(sol.start.parameters[0], sol.start.parameters[1]);
+            let uv_guess2 = Point2::new(sol.start.parameters[2], sol.start.parameters[3]);
+            let node1 = sol.nodes[0];
+            let node2 = sol.nodes[1];
+            self.patch(0, node1)?;
+            self.patch(1, node2)?;
+            let bss1 = self.base.surface(SrfIndex::First);
+            let bss2 = self.base.surface(SrfIndex::Second);
+
+            // Skip cases where surface normals are very close
+            {
+                let norm1 = surface_evaluate_normal(k, bss1, uv_guess1)?;
+                let norm2 = surface_evaluate_normal(k, bss2, uv_guess2)?;
+                let mut angle_rad = norm1.angle_between(norm2)?;
+                if angle_rad > PI / 2.0 {
+                    angle_rad = PI - angle_rad;
+                }
+                if angle_rad * (180.0 / PI) < 5.0 {
+                    continue;
+                }
+            }
+
+            // Get an intersection curve start point
+            let (found_answer, start) = surface_local_surface_intersect(
+                k,
+                bss1,
+                &self.base.uv_domains[0],
+                bss2,
+                &self.base.uv_domains[1],
+                self.base.this_approx_tol_3d / 100.0,
+                uv_guess1,
+                uv_guess2,
+                None,
+                None,
+                false,
+            )?;
+
+            // for nodes that do not intersect - skip to next node pair
+            if !found_answer {
+                continue;
+            }
+
+            // Get solution 3d and UV points point
+            let uv = Point2::new(start[0], start[1]);
+            let uv2 = Point2::new(start[2], start[3]);
+            let surf_pnt = bss1.evaluate_point(k, uv)?;
+
+            // Skip cases where surface normals are very close
+            {
+                let norm1 = surface_evaluate_normal(k, bss1, uv)?;
+                let norm2 = surface_evaluate_normal(k, bss2, uv2)?;
+                let mut angle_rad = norm1.angle_between(norm2)?;
+                if angle_rad > PI / 2.0 {
+                    angle_rad = PI - angle_rad;
+                }
+                if angle_rad * (180.0 / PI) < 2.0 {
+                    continue;
+                }
+            }
+
+            // skip start points that are already on xsect curves
+            if self
+                .base
+                .is_point_on_curve(k, surf_pnt, &out.curves_3d, None)?
+            {
+                continue;
+            }
+
+            // make a SmTSectPnt for the intersection solution
+            let uv_pts = [uv, Point2::new(start[2], start[3])];
+            let start_tsp = self.base.alloc_point(TsectPnt::zeroed());
+            self.base.curve_trace_direction = 1.0;
+            match compute_point_values(k, &mut self.base, uv_pts, start_tsp) {
+                Err(e) if e.is_unported() => return Err(e),
+                Err(_) => continue,
+                Ok(()) => {}
+            }
+
+            // init trace params
+            let input_trace_direction = self.base.curve_trace_direction;
+            self.base.start_point = Some(start_tsp);
+
+            // do the trace
+            trace_curve(k, &mut self.base, start_tsp, &out.curves_3d)?;
+
+            // when appropriate - trace in the other direction as well
+            if !self.base.curve_is_closed
+                && !self.base.point(start_tsp)?.is_bounded()
+                && input_trace_direction == self.base.curve_trace_direction
+            {
+                self.base.reverse_curve_direction()?;
+                self.base.curve_trace_direction *= -1.0;
+                trace_curve(k, &mut self.base, start_tsp, &out.curves_3d)?;
+
+                // restore the curve direction (upstream multiplies by 1.0)
+                self.base.reverse_curve_direction()?;
+            }
+
+            // turn m_vCurvePoints into an intersection curve
+            flush_curve(k, &mut self.base, out)?;
+            self.base.start_point = None;
+        }
+
+        Ok(())
+    }
+
+    // ---- Gauss maps --------------------------------------------------------------------------
+
+    /// `BranchIsGaussSeparate`: true when both nodes of `branch` are surface
+    /// subdivision nodes (`SM_AD_BEZIER_SURFACE` or `_HEAD`) whose normal polar
+    /// boxes are disjoint.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR_NULL_POINTER` without node data (no caches); those of the lazy polar
+    /// box build.
+    pub fn branch_is_gauss_separate(&self, k: &Kernel, branch: &Branch) -> Result<bool> {
+        let node1 = self.node(0, branch[0])?;
+        let node2 = self.node(1, branch[1])?;
+        let is_surface = |n: &TreeNode<O>| {
+            n.aux_type == AuxDataType::BezierSurface || n.aux_type == AuxDataType::BezierSurfaceHead
+        };
+        if is_surface(node1) && is_surface(node2) {
+            let box1 = self.polar_box(k, 0, branch[0])?;
+            let box2 = self.polar_box(k, 1, branch[1])?;
+            if box1.are_disjoint(&box2) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// `((SmBezierAux2d*)m_pData)->GetPolarBox()` of node `id` of tree `index`.
+    fn polar_box(&self, k: &Kernel, index: usize, id: Option<NodeId>) -> Result<PolarBox> {
+        let cache = self
+            .caches
+            .get(index)
+            .copied()
+            .flatten()
+            .ok_or(SolidError::null_pointer(OP_GAUSS))?;
+        let id = id.ok_or(SolidError::null_pointer(OP_GAUSS))?;
+        let stored = cache.aux(id)?.polar_box;
+        if stored.state() != PolarBoxState::Uninitialized {
+            return Ok(stored);
+        }
+        // built lazily upstream; built on a copy here (the caches are shared)
+        let mut copy = cache.clone();
+        copy.polar_box(k, id)
+    }
+
+    /// The body of [`GlobalSolve::solve_branch`] (`SolveBranch`).
+    fn solve_branch_at_depth(&mut self, k: &Kernel, branch: &Branch) -> Result<()> {
+        self.separate_gauss_maps = true;
+
+        if !self.branch_may_contain_answers(branch)? {
+            return Ok(());
+        }
+
+        // no work - SolverOperation != INTERSECT - pass the call along
+        if self.solver.operation != SolverOperation::Intersect {
+            return global_solver::solve_branch(self, branch);
+        }
+
+        let mut save_answer = false;
+
+        let mut achieved_seperability = false;
+        if !self.separate_gauss_maps {
+            achieved_seperability = self.branch_is_gauss_separate(k, branch)?;
+        }
+
+        if achieved_seperability {
+            // separability at the top nodes of both trees: no interior curves
+            let node1 = self.node(0, branch[0])?;
+            let node2 = self.node(1, branch[1])?;
+            if node1.parent.is_none() && node2.parent.is_none() {
+                return Ok(());
+            }
+
+            let saved = core::mem::replace(&mut self.separate_gauss_maps, true);
+            self.closest_value = BIG_DOUBLE;
+            save_answer = true;
+
+            let result = if self.are_ready_for_local_solve(branch)? {
+                self.local_solve(branch).map(|_| ())
+            } else {
+                self.subdivide(branch).and_then(|(child1, child2)| {
+                    self.solve_branch(&child1)?;
+                    self.solve_branch(&child2)
+                })
+            };
+            self.separate_gauss_maps = saved;
+            result?;
+        } else if self.are_ready_for_local_solve(branch)? {
+            let saved = core::mem::replace(&mut self.separate_gauss_maps, true);
+            self.closest_value = BIG_DOUBLE;
+            // If we are unable to achieve seperability at the leaf level than we
+            // save the answer any how.
+            save_answer = true;
+            let result = self.local_solve(branch);
+            self.separate_gauss_maps = saved;
+            result?;
+        } else {
+            let (child1, child2) = self.subdivide(branch)?;
+            self.solve_branch(&child1)?;
+            self.solve_branch(&child2)?;
+        }
+
+        // some leaf nodes intersected: save the best one as an answer
+        if save_answer && self.closest_value < BIG_DOUBLE {
+            let mut solution = Solution::new();
+            solution.solution_type = SolutionType::SingleValue;
+            solution.num_variables = 4;
+            solution.start.parameters[0] = self.uvs[0].x;
+            solution.start.parameters[1] = self.uvs[0].y;
+            solution.start.parameters[2] = self.uvs[1].x;
+            solution.start.parameters[3] = self.uvs[1].y;
+            solution.nodes[0] = self.nodes[0];
+            solution.nodes[1] = self.nodes[1];
+            self.solver.solutions.add(&solution);
+        }
+
+        Ok(())
+    }
+}
+
+impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for AdvSurfaceIntersector<'_, 't, O> {
+    fn solver(&self) -> &GlobalSolver<'t, O> {
+        &self.solver
+    }
+
+    fn solver_mut(&mut self) -> &mut GlobalSolver<'t, O> {
+        &mut self.solver
+    }
+
+    /// `SolveBranch`: for `SM_SO_INTERSECT`, subdivides to the leaf pairs and saves
+    /// the closest midpoint pair of each leaf solve as a 4-variable single-value
+    /// solution (`m_vStart = [u1, v1, u2, v2]`, the two leaf nodes); other
+    /// operations run the base traversal.
+    fn solve_branch(&mut self, branch: &Branch) -> Result<()> {
+        // an acyclic pair of trees nests at most one level per node
+        let limit = self
+            .solver
+            .trees
+            .iter()
+            .flatten()
+            .map(|t| t.nodes().len())
+            .sum::<usize>()
+            + 2;
+        if self.solve_depth > limit {
+            return Err(SolidError::invalid_input(OP_SOLVE, "tree links are cyclic"));
+        }
+        self.solve_depth += 1;
+        let result = self.solve_branch_at_depth(self.kernel, branch);
+        self.solve_depth -= 1;
+        result
+    }
+
+    /// `LocalSolve`: for `SM_SO_INTERSECT`, when the patches' pseudo boxes (the
+    /// first grown by the solver tolerance) meet, compares the distance of the
+    /// patch midpoints (after one drop of the smaller patch's midpoint onto the
+    /// patch more than four times bigger) with the closest so far; for
+    /// `SM_SO_INTERSECTION_TEST`, accumulates the union of the overlapping leaf boxes
+    /// and patch domains in the first solution (`m_vStart` 3D box and count,
+    /// `m_vEnd` both UV domains). Never needs more subdivision.
+    #[allow(clippy::too_many_lines)] // one upstream function
+    fn local_solve(&mut self, branch: &Branch) -> Result<bool> {
+        let k = self.kernel;
+        let surface_node1 = self.node(0, branch[0])?;
+        let surface_node2 = self.node(1, branch[1])?;
+        let bez_patch1 = self.patch(0, branch[0])?;
+        let bez_patch2 = self.patch(1, branch[1])?;
+        let bsp1 = self.base.surface(SrfIndex::First);
+        let bsp2 = self.base.surface(SrfIndex::Second);
+        let mut uv_domain1 = *bez_patch1.aux.uv_domain();
+        let mut uv_domain2 = *bez_patch2.aux.uv_domain();
+
+        // Do interval tests and reject if disjoint
+        if uv_domain1.are_disjoint(&self.base.uv_domains[0], 0.0) {
+            return Ok(false);
+        }
+        if uv_domain2.are_disjoint(&self.base.uv_domains[1], 0.0) {
+            return Ok(false);
+        }
+
+        // If we are doing self intersection then reject case where domains are not
+        // disjoint.
+        if self.base.doing_self_intersection && !uv_domain1.are_disjoint(&uv_domain2, 0.0) {
+            return Ok(false);
+        }
+
+        if self.solver.operation == SolverOperation::Intersect {
+            let mut tmp_pbox0 = *bez_patch1.pseudo_box();
+            tmp_pbox0.expand_absolute(self.solver.tolerance_3d);
+            if !tmp_pbox0.are_disjoint(bez_patch2.pseudo_box(), None) {
+                let size1 = surface_node1.bbox.size();
+                let size2 = surface_node2.bbox.size();
+                let mut uv1 = uv_domain1.evaluate(0.5, 0.5);
+                let mut uv2 = uv_domain2.evaluate(0.5, 0.5);
+                let p1 = bsp1.evaluate_point(k, uv1)?;
+                let p2 = bsp2.evaluate_point(k, uv2)?;
+                let mut dist = p1.distance(p2);
+
+                // If the sizes are very different - try taking one Newton step to
+                // get a closer guess point on the big surface.
+                if size1.length() > 4.0 * size2.length() {
+                    let uv_points = drop_points_to_tangent_plane(k, bsp1, uv1, &[p2])?;
+                    let uv1_new = uv_domain1.clamp_point(uv_points.first().copied().unwrap_or(uv1));
+                    let p1_new = bsp1.evaluate_point(k, uv1_new)?;
+                    let new_dist = p1_new.distance(p2);
+                    if new_dist < dist {
+                        uv1 = uv1_new;
+                        dist = new_dist;
+                    }
+                } else if size2.length() > 4.0 * size1.length() {
+                    let uv_points = drop_points_to_tangent_plane(k, bsp2, uv2, &[p1])?;
+                    let uv2_new = uv_domain2.clamp_point(uv_points.first().copied().unwrap_or(uv2));
+                    let p2_new = bsp2.evaluate_point(k, uv2_new)?;
+                    let new_dist = p2_new.distance(p1);
+                    if new_dist < dist {
+                        uv2 = uv2_new;
+                        dist = new_dist;
+                    }
+                }
+
+                if dist < self.closest_value {
+                    self.closest_value = dist;
+                    self.uvs = [uv1, uv2];
+                    self.nodes = [branch[0], branch[1]];
+                }
+            }
+        } else if self.solver.operation == SolverOperation::IntersectionTest {
+            let mut tmp_pbox0 = *bez_patch1.pseudo_box();
+            let tmp_pbox1 = *bez_patch2.pseudo_box();
+            tmp_pbox0.expand_absolute(self.solver.tolerance_3d);
+
+            // when Patch1 and Patch2 PseudoBoxes intersect
+            if !tmp_pbox0.are_disjoint(&tmp_pbox1, None) {
+                // Update the bounding box information in the solution.
+                let mut bbox = surface_node1.bbox;
+                bbox.expand_absolute(self.solver.tolerance_3d);
+                let mut result = bbox
+                    .intersect(&surface_node2.bbox)
+                    .unwrap_or_else(|_| Extent3d::new());
+
+                let solutions = &mut self.solver.solutions;
+                if solutions.is_empty() {
+                    // the first solution
+                    let mut sol = Solution::new();
+                    sol.nodes[0] = branch[0];
+                    sol.nodes[1] = branch[1];
+                    sol.num_variables = 7;
+                    sol.solution_type = SolutionType::SingleValue;
+                    let (mn, mx) = (result.min(), result.max());
+                    sol.start.parameters[..7]
+                        .copy_from_slice(&[mn.x, mn.y, mn.z, mx.x, mx.y, mx.z, 1.0]);
+                    let (a, b) = (uv_domain1.min(), uv_domain1.max());
+                    let (c, d) = (uv_domain2.min(), uv_domain2.max());
+                    sol.end.parameters[..8]
+                        .copy_from_slice(&[a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y]);
+                    solutions.add(&sol);
+                } else if let Some(sol) = solutions.get_mut(0) {
+                    // add this solution to the previous solutions
+                    let s = &mut sol.start.parameters;
+                    s[6] += 1.0; // Number of contributors to intersection
+
+                    let old_box = Extent3d::from_points(
+                        Vec3::new(s[0], s[1], s[2]),
+                        Vec3::new(s[3], s[4], s[5]),
+                    );
+                    result = result.union(&old_box);
+                    let (mn, mx) = (result.min(), result.max());
+                    s[..6].copy_from_slice(&[mn.x, mn.y, mn.z, mx.x, mx.y, mx.z]);
+
+                    let e = &mut sol.end.parameters;
+                    let old_uv1 =
+                        Extent2d::from_points(Point2::new(e[0], e[1]), Point2::new(e[2], e[3]));
+                    let old_uv2 =
+                        Extent2d::from_points(Point2::new(e[4], e[5]), Point2::new(e[6], e[7]));
+                    uv_domain1 = old_uv1.union(&uv_domain1);
+                    uv_domain2 = old_uv2.union(&uv_domain2);
+                    let (a, b) = (uv_domain1.min(), uv_domain1.max());
+                    let (c, d) = (uv_domain2.min(), uv_domain2.max());
+                    e[..8].copy_from_slice(&[a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y]);
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// `FindBestSubdivisionNode`: `sm_FindLargestNonLeaf` (subdivide the second
+    /// tree when the first node is a leaf, else the first), never swapping.
+    fn find_best_subdivision_node(&self, branch: &Branch) -> Result<(usize, bool)> {
+        let node1 = self.node(0, branch[0])?;
+        let node2 = self.node(1, branch[1])?;
+        let child = |index: usize, n: &TreeNode<O>| -> Result<Option<&'t TreeNode<O>>> {
+            match n.child1 {
+                None => Ok(None),
+                Some(c) => self.node(index, Some(c)).map(Some),
+            }
+        };
+        let c1 = child(0, node1)?;
+        let c2 = child(1, node2)?;
+        Ok((find_largest_non_leaf(node1, c1, node2, c2), false))
+    }
+}
+
+/// `pSrf->DropPointsToTangentPlane(uv, TRUE, TRUE, n, points, uvs)`.
+fn drop_points_to_tangent_plane(
+    k: &Kernel,
+    surface: &Surface,
+    uv: Point2,
+    points: &[Point3],
+) -> Result<Vec<Point2>> {
+    crate::surface::surface::p7::drop_points_to_tangent_plane(
+        k,
+        surface,
+        uv,
+        Side::Left,
+        Side::Left,
+        points,
+    )
+}
+
+/// `ComputePointValues(uv_pts, *point, NULL)` on the arena point `point` (virtual:
+/// the base body, which calls this class's `ComputeSingularityPoint` override through
+/// the intersector's `advanced` flag).
+fn compute_point_values(
+    k: &Kernel,
+    si: &mut SurfaceIntersector<'_>,
+    uv_pts: [Point2; 2],
+    point: TsectId,
+) -> Result<()> {
+    let mut p = si.point(point)?.clone();
+    let r = si.compute_point_values(k, uv_pts, &mut p, None, None);
+    *si.point_mut(point)? = p;
+    r
+}
+
+/// `TraceCurve(*start, r3DCurves)`: the base `SmSurfaceIntersector::TraceCurve` (not
+/// overridden); its only virtual call this class overrides, `ComputeSingularityPoint`
+/// inside `ComputePointValues`, dispatches through the `advanced` flag.
+fn trace_curve(
+    k: &Kernel,
+    si: &mut SurfaceIntersector<'_>,
+    start: TsectId,
+    curves_3d: &[Curve],
+) -> Result<()> {
+    si.trace_curve(k, start, curves_3d)
+}
+
+/// `FlushCurve(r3DCurves, rSurface1UVCurves, rSurface2UVCurves, rCurveTypes,
+/// rDeviations)`: the base `SmSurfaceIntersector::FlushCurve` (not overridden). The
+/// output arrays are moved in and back, not cleared: its uniqueness test reads the 3D
+/// curves already flushed.
+fn flush_curve(
+    k: &Kernel,
+    si: &mut SurfaceIntersector<'_>,
+    out: &mut InteriorCurves,
+) -> Result<()> {
+    let mut curves = crate::intersect::surface_intersector::p2::TsectCurves {
+        curves_3d: core::mem::take(&mut out.curves_3d),
+        uv_curves: [
+            core::mem::take(&mut out.surface1_uv_curves),
+            core::mem::take(&mut out.surface2_uv_curves),
+        ],
+        curve_types: core::mem::take(&mut out.curve_types),
+        deviations: core::mem::take(&mut out.deviations),
+    };
+    let r = si.flush_curve(k, &mut curves);
+    let crate::intersect::surface_intersector::p2::TsectCurves {
+        curves_3d,
+        uv_curves: [surface1_uv_curves, surface2_uv_curves],
+        curve_types,
+        deviations,
+    } = curves;
+    *out = InteriorCurves {
+        curves_3d,
+        surface1_uv_curves,
+        surface2_uv_curves,
+        curve_types,
+        deviations,
+    };
+    r
+}
+
+/// `MakeDupin` (see [`AdvSurfaceIntersector::make_dupin`]; it reads no member).
+fn make_dupin(surface_eval: &mut [[Vec3; 3]; 3], reference_normal: Vec3) -> Result<Dupin> {
+    let geom = evaluate_geometric(surface_eval)?;
+    let mut out = Dupin {
+        above: Vec::new(),
+        below: Vec::new(),
+        prin_k1_vec: geom.principle_curvature_vector1,
+        prin_k2_vec: geom.principle_curvature_vector2,
+        prin_k1: geom.principle_curvature1,
+        prin_k2: geom.principle_curvature2,
+        efg: geom.efg_of_first_fund_form,
+        lmn: geom.lmn_of_second_fund_form,
+    };
+
+    // negate curvatures when surface normal is opposite reference normal
+    if reference_normal.dot(surface_eval[2][2]) < 0.0 {
+        out.prin_k1 = -out.prin_k1;
+        out.prin_k2 = -out.prin_k2;
+    }
+
+    // no work - surfacePoint is planar
+    if out.prin_k1.abs() < EFF_ZERO && out.prin_k2.abs() < EFF_ZERO {
+        return Ok(out);
+    }
+
+    // treat a curvature 1000 times smaller than the other as zero (a cylinder)
+    if out.prin_k1.abs() < out.prin_k2.abs() / 1000.00 {
+        out.prin_k1 = 0.0;
+    }
+    if out.prin_k2.abs() < out.prin_k1.abs() / 1000.00 {
+        out.prin_k2 = 0.0;
+    }
+    let (k1, k2) = (out.prin_k1, out.prin_k2);
+
+    if k1.abs() < EFF_ZERO || k2.abs() < EFF_ZERO {
+        // We have a parabolic point - create two parallel lines
+        let mut prin_k = k1;
+        // 90 degree rotation because curves are parallel to the local Y axis.
+        let mut angle_rad = PI / 2.0;
+        if prin_k.abs() < EFF_ZERO {
+            prin_k = k2;
+            angle_rad = 0.0;
+        }
+
+        // two lines leaving this point in opposite directions
+        let a = 1.0 / sqrt(prin_k.abs());
+        let mut line1 = Conic::new(ConicType::Line, a, 0.0);
+        line1.transform_2d(angle_rad, Point2::new(0.0, 0.0));
+        let mut line2 = Conic::new(ConicType::Line, a, 0.0);
+        line2.transform_2d(PI + angle_rad, Point2::new(0.0, 0.0));
+
+        if prin_k > 0.0 {
+            out.above.push(line1);
+            out.above.push(line2);
+        } else {
+            out.below.push(line1);
+            out.below.push(line2);
+        }
+        return Ok(out);
+    } else if k1 * k2 > 0.0 {
+        // We have an ellipse
+        let ellipse = Conic::new(
+            ConicType::Ellipse,
+            1.0 / sqrt(k1.abs()),
+            1.0 / sqrt(k2.abs()),
+        );
+        if k1 > 0.0 {
+            out.above.push(ellipse);
+        } else {
+            out.below.push(ellipse);
+        }
+    } else if k1 * k2 < 0.0 {
+        // We have a hyperbolic point
+        let mut push = |c: Conic, k: f64| {
+            if k > 0.0 {
+                out.above.push(c);
+            } else {
+                out.below.push(c);
+            }
+        };
+
+        // First create hyperbola on right side
+        let hyp = Conic::new(
+            ConicType::Hyperbola,
+            1.0 / sqrt(k1.abs()),
+            1.0 / sqrt(k2.abs()),
+        );
+        push(hyp, k1);
+
+        // Now do left side hyperbola
+        let mut hyp = Conic::new(
+            ConicType::Hyperbola,
+            1.0 / sqrt(k1.abs()),
+            1.0 / sqrt(k2.abs()),
+        );
+        hyp.transform_2d(PI, Point2::new(0.0, 0.0));
+        push(hyp, k1);
+
+        // Now do top hyperbola
+        let mut hyp = Conic::new(
+            ConicType::Hyperbola,
+            1.0 / sqrt(k2.abs()),
+            1.0 / sqrt(k1.abs()),
+        );
+        hyp.transform_2d(PI / 2.0, Point2::new(0.0, 0.0));
+        push(hyp, k2);
+
+        // Now do bottom hyperbola
+        let mut hyp = Conic::new(
+            ConicType::Hyperbola,
+            1.0 / sqrt(k2.abs()),
+            1.0 / sqrt(k2.abs()),
+        );
+        hyp.transform_2d(PI + PI / 2.0, Point2::new(0.0, 0.0));
+        push(hyp, k2);
+    }
+
+    Ok(out)
+}
+
+/// `SmAdvSurfaceIntersector::ComputeSingularityPoint` on the base intersector's
+/// state (it reads no member of the derived class), so that the base's
+/// `ComputePointValues` reaches the override on an `SmAdvSurfaceIntersector`.
+impl SurfaceIntersector<'_> {
+    /// See [`AdvSurfaceIntersector::compute_singularity_point_on`].
+    ///
+    /// # Errors
+    ///
+    /// Those of [`AdvSurfaceIntersector::compute_singularity_point_on`].
+    #[allow(clippy::too_many_lines)] // one upstream function
+    pub(crate) fn adv_compute_singularity_point(
+        &self,
         _uv_values: [Point2; 2],
         point: &mut TsectPnt,
         prev_crv_deriv: Option<Vec3>,
     ) -> Result<()> {
-        let curve_trace_direction = self.base.curve_trace_direction;
-        let ang_tol_rad = self.base.this_ang_tol_rad;
+        let curve_trace_direction = self.curve_trace_direction;
+        let ang_tol_rad = self.this_ang_tol_rad;
 
         // init curve direction when possible - NULL when given a start point
         if let Some(d) = prev_crv_deriv {
@@ -442,9 +1128,9 @@ impl<'s, 't, O: SolutionObject + 't> AdvSurfaceIntersector<'s, 't, O> {
         }
 
         // The last node of m_vCurvePoints (point may be on that list itself).
-        let last_node = self.base.curve_points().last().copied();
+        let last_node = self.curve_points().last().copied();
         let last_node_deriv = match last_node {
-            Some(id) => Some(self.base.point(id)?.crv_deriv()),
+            Some(id) => Some(self.point(id)?.crv_deriv()),
             None => None,
         };
 
@@ -571,13 +1257,13 @@ impl<'s, 't, O: SolutionObject + 't> AdvSurfaceIntersector<'s, 't, O> {
 
             // Dupin indicatrex curves for 1st surface
             let normal0 = point.srf_norm(SrfIndex::First);
-            let d1 = self.make_dupin(point.srf_eval_matrix_mut(SrfIndex::First), normal0)?;
+            let d1 = make_dupin(point.srf_eval_matrix_mut(SrfIndex::First), normal0)?;
             let (prin_k1, prin_k2, prin_kv1, prin_kv2) =
                 (d1.prin_k1, d1.prin_k2, d1.prin_k1_vec, d1.prin_k2_vec);
 
             // Compute values of second surface based upon the normal of the first
             let normal0 = point.srf_norm(SrfIndex::First);
-            let mut d2 = self.make_dupin(point.srf_eval_matrix_mut(SrfIndex::Second), normal0)?;
+            let mut d2 = make_dupin(point.srf_eval_matrix_mut(SrfIndex::Second), normal0)?;
             let (prin_k1_2, prin_k2_2, prin_kv1_2, prin_kv2_2) =
                 (d2.prin_k1, d2.prin_k2, d2.prin_k1_vec, d2.prin_k2_vec);
 
@@ -785,10 +1471,9 @@ impl<'s, 't, O: SolutionObject + 't> AdvSurfaceIntersector<'s, 't, O> {
                 let mut inside: Vec<usize> = Vec::new();
                 for (ii, (uv1, uv2)) in sing_uv_surf1.iter().zip(&sing_uv_surf2).enumerate() {
                     let delta1 = point.uv_pos(SrfIndex::First) + EFF_ZERO_SQRT * *uv1;
-                    if self.base.uv_domains[0].contains_point(delta1, EFF_ZERO_SQRT / 100_000.0) {
+                    if self.uv_domains[0].contains_point(delta1, EFF_ZERO_SQRT / 100_000.0) {
                         let delta2 = point.uv_pos(SrfIndex::Second) + EFF_ZERO_SQRT * *uv2;
-                        if self.base.uv_domains[1].contains_point(delta2, EFF_ZERO_SQRT / 100_000.0)
-                        {
+                        if self.uv_domains[1].contains_point(delta2, EFF_ZERO_SQRT / 100_000.0) {
                             // found a singular direction inside both domains
                             inside.push(ii);
                         }
@@ -875,658 +1560,14 @@ impl<'s, 't, O: SolutionObject + 't> AdvSurfaceIntersector<'s, 't, O> {
         } else {
             // select the direction with the smallest radius of curvature
             *point.crv_deriv_mut() = if prin_k2.abs() < prin_k1.abs() {
-                prin_kv2 * self.base.curve_trace_direction
+                prin_kv2 * self.curve_trace_direction
             } else {
-                prin_kv1 * self.base.curve_trace_direction
+                prin_kv1 * self.curve_trace_direction
             };
             point.point_type = IntersectionPointType::Coincidence;
         }
         Ok(())
     }
-
-    /// `MakeDupin`: the Dupin indicatrix curves of the surface point evaluated in
-    /// `surface_eval` (see [`TsectPnt::surface_pv`] for the layout; the matrix is
-    /// updated in place as `smsurf_EvaluateGeometric` does), with curvatures signed
-    /// by `reference_normal`. A planar point has no curves; a parabolic point two
-    /// half lines at `1/sqrt|k|` from the origin; an elliptic point one ellipse; a
-    /// hyperbolic point four hyperbolas (upstream's bottom hyperbola uses `k2` for
-    /// both axes). Curves go above for positive curvatures, below for negative.
-    ///
-    /// # Errors
-    ///
-    /// Those of `smsurf_EvaluateGeometric`.
-    pub fn make_dupin(
-        &self,
-        surface_eval: &mut [[Vec3; 3]; 3],
-        reference_normal: Vec3,
-    ) -> Result<Dupin> {
-        let geom = evaluate_geometric(surface_eval)?;
-        let mut out = Dupin {
-            above: Vec::new(),
-            below: Vec::new(),
-            prin_k1_vec: geom.principle_curvature_vector1,
-            prin_k2_vec: geom.principle_curvature_vector2,
-            prin_k1: geom.principle_curvature1,
-            prin_k2: geom.principle_curvature2,
-            efg: geom.efg_of_first_fund_form,
-            lmn: geom.lmn_of_second_fund_form,
-        };
-
-        // negate curvatures when surface normal is opposite reference normal
-        if reference_normal.dot(surface_eval[2][2]) < 0.0 {
-            out.prin_k1 = -out.prin_k1;
-            out.prin_k2 = -out.prin_k2;
-        }
-
-        // no work - surfacePoint is planar
-        if out.prin_k1.abs() < EFF_ZERO && out.prin_k2.abs() < EFF_ZERO {
-            return Ok(out);
-        }
-
-        // treat a curvature 1000 times smaller than the other as zero (a cylinder)
-        if out.prin_k1.abs() < out.prin_k2.abs() / 1000.00 {
-            out.prin_k1 = 0.0;
-        }
-        if out.prin_k2.abs() < out.prin_k1.abs() / 1000.00 {
-            out.prin_k2 = 0.0;
-        }
-        let (k1, k2) = (out.prin_k1, out.prin_k2);
-
-        if k1.abs() < EFF_ZERO || k2.abs() < EFF_ZERO {
-            // We have a parabolic point - create two parallel lines
-            let mut prin_k = k1;
-            // 90 degree rotation because curves are parallel to the local Y axis.
-            let mut angle_rad = PI / 2.0;
-            if prin_k.abs() < EFF_ZERO {
-                prin_k = k2;
-                angle_rad = 0.0;
-            }
-
-            // two lines leaving this point in opposite directions
-            let a = 1.0 / sqrt(prin_k.abs());
-            let mut line1 = Conic::new(ConicType::Line, a, 0.0);
-            line1.transform_2d(angle_rad, Point2::new(0.0, 0.0));
-            let mut line2 = Conic::new(ConicType::Line, a, 0.0);
-            line2.transform_2d(PI + angle_rad, Point2::new(0.0, 0.0));
-
-            if prin_k > 0.0 {
-                out.above.push(line1);
-                out.above.push(line2);
-            } else {
-                out.below.push(line1);
-                out.below.push(line2);
-            }
-            return Ok(out);
-        } else if k1 * k2 > 0.0 {
-            // We have an ellipse
-            let ellipse = Conic::new(
-                ConicType::Ellipse,
-                1.0 / sqrt(k1.abs()),
-                1.0 / sqrt(k2.abs()),
-            );
-            if k1 > 0.0 {
-                out.above.push(ellipse);
-            } else {
-                out.below.push(ellipse);
-            }
-        } else if k1 * k2 < 0.0 {
-            // We have a hyperbolic point
-            let mut push = |c: Conic, k: f64| {
-                if k > 0.0 {
-                    out.above.push(c);
-                } else {
-                    out.below.push(c);
-                }
-            };
-
-            // First create hyperbola on right side
-            let hyp = Conic::new(
-                ConicType::Hyperbola,
-                1.0 / sqrt(k1.abs()),
-                1.0 / sqrt(k2.abs()),
-            );
-            push(hyp, k1);
-
-            // Now do left side hyperbola
-            let mut hyp = Conic::new(
-                ConicType::Hyperbola,
-                1.0 / sqrt(k1.abs()),
-                1.0 / sqrt(k2.abs()),
-            );
-            hyp.transform_2d(PI, Point2::new(0.0, 0.0));
-            push(hyp, k1);
-
-            // Now do top hyperbola
-            let mut hyp = Conic::new(
-                ConicType::Hyperbola,
-                1.0 / sqrt(k2.abs()),
-                1.0 / sqrt(k1.abs()),
-            );
-            hyp.transform_2d(PI / 2.0, Point2::new(0.0, 0.0));
-            push(hyp, k2);
-
-            // Now do bottom hyperbola
-            let mut hyp = Conic::new(
-                ConicType::Hyperbola,
-                1.0 / sqrt(k2.abs()),
-                1.0 / sqrt(k2.abs()),
-            );
-            hyp.transform_2d(PI + PI / 2.0, Point2::new(0.0, 0.0));
-            push(hyp, k2);
-        }
-
-        Ok(out)
-    }
-
-    // ---- interior curves -------------------------------------------------------------------
-
-    /// `FindInteriorCurves`: runs the global solve over the surface trees
-    /// ([`AdvSurfaceIntersector::set_surface_caches`]) for one candidate start point
-    /// per intersecting leaf pair, and traces a curve from each candidate whose
-    /// normals are at least 5 degrees apart, whose local intersection succeeds with
-    /// normals at least 2 degrees apart and which is not on a curve found already.
-    /// The curves are appended to `out`.
-    ///
-    /// # Errors
-    ///
-    /// Those of the solve and of the callees; [`SolidError::Unported`] (see the
-    /// module deviations).
-    pub fn find_interior_curves(&mut self, k: &Kernel, out: &mut InteriorCurves) -> Result<()> {
-        let mut solutions = SolutionArray::with_capacity(130);
-
-        // Find node pairs in the tree where intersections might exist
-        let request = SolveRequest {
-            operation: SolverOperation::Intersect,
-            solution_requested: SolutionRequested::All,
-            tolerance_3d: self.base.this_approx_tol_3d,
-            best_answer_so_far_sq: BIG_DOUBLE,
-            opt_vectors: &[],
-        };
-        self.solve_it(&request, &mut solutions)?;
-
-        // Now for each node pair do a test to see if produces a unique start point
-        for sol in solutions.as_slice() {
-            let uv_guess1 = Point2::new(sol.start.parameters[0], sol.start.parameters[1]);
-            let uv_guess2 = Point2::new(sol.start.parameters[2], sol.start.parameters[3]);
-            let node1 = sol.nodes[0];
-            let node2 = sol.nodes[1];
-            self.patch(0, node1)?;
-            self.patch(1, node2)?;
-            let bss1 = self.base.surface(SrfIndex::First);
-            let bss2 = self.base.surface(SrfIndex::Second);
-
-            // Skip cases where surface normals are very close
-            {
-                let norm1 = surface_evaluate_normal(bss1, uv_guess1)?;
-                let norm2 = surface_evaluate_normal(bss2, uv_guess2)?;
-                let mut angle_rad = norm1.angle_between(norm2)?;
-                if angle_rad > PI / 2.0 {
-                    angle_rad = PI - angle_rad;
-                }
-                if angle_rad * (180.0 / PI) < 5.0 {
-                    continue;
-                }
-            }
-
-            // Get an intersection curve start point
-            let (found_answer, start) = surface_local_surface_intersect(
-                bss1,
-                &self.base.uv_domains[0],
-                bss2,
-                &self.base.uv_domains[1],
-                self.base.this_approx_tol_3d / 100.0,
-                uv_guess1,
-                uv_guess2,
-                None,
-                None,
-                false,
-            )?;
-
-            // for nodes that do not intersect - skip to next node pair
-            if !found_answer {
-                continue;
-            }
-
-            // Get solution 3d and UV points point
-            let uv = Point2::new(start[0], start[1]);
-            let uv2 = Point2::new(start[2], start[3]);
-            let surf_pnt = bss1.evaluate_point(uv)?;
-
-            // Skip cases where surface normals are very close
-            {
-                let norm1 = surface_evaluate_normal(bss1, uv)?;
-                let norm2 = surface_evaluate_normal(bss2, uv2)?;
-                let mut angle_rad = norm1.angle_between(norm2)?;
-                if angle_rad > PI / 2.0 {
-                    angle_rad = PI - angle_rad;
-                }
-                if angle_rad * (180.0 / PI) < 2.0 {
-                    continue;
-                }
-            }
-
-            // skip start points that are already on xsect curves
-            if self
-                .base
-                .is_point_on_curve(k, surf_pnt, &out.curves_3d, None)?
-            {
-                continue;
-            }
-
-            // make a SmTSectPnt for the intersection solution
-            let uv_pts = [uv, Point2::new(start[2], start[3])];
-            let start_tsp = self.base.alloc_point(TsectPnt::new());
-            self.base.curve_trace_direction = 1.0;
-            match compute_point_values(&mut self.base, uv_pts, start_tsp) {
-                Err(e) if e.is_unported() => return Err(e),
-                Err(_) => continue,
-                Ok(()) => {}
-            }
-
-            // init trace params
-            let input_trace_direction = self.base.curve_trace_direction;
-            self.base.start_point = Some(start_tsp);
-
-            // do the trace
-            trace_curve(&mut self.base, start_tsp, &mut out.curves_3d)?;
-
-            // when appropriate - trace in the other direction as well
-            if !self.base.curve_is_closed
-                && !self.base.point(start_tsp)?.is_bounded()
-                && input_trace_direction == self.base.curve_trace_direction
-            {
-                self.base.reverse_curve_direction()?;
-                self.base.curve_trace_direction *= -1.0;
-                trace_curve(&mut self.base, start_tsp, &mut out.curves_3d)?;
-
-                // restore the curve direction (upstream multiplies by 1.0)
-                self.base.reverse_curve_direction()?;
-            }
-
-            // turn m_vCurvePoints into an intersection curve
-            flush_curve(&mut self.base, out)?;
-            self.base.start_point = None;
-        }
-
-        Ok(())
-    }
-
-    // ---- Gauss maps --------------------------------------------------------------------------
-
-    /// `BranchIsGaussSeparate`: true when both nodes of `branch` are surface
-    /// subdivision nodes (`SM_AD_BEZIER_SURFACE` or `_HEAD`) whose normal polar
-    /// boxes are disjoint.
-    ///
-    /// # Errors
-    ///
-    /// `SM_ERR_NULL_POINTER` without node data (no caches); those of the lazy polar
-    /// box build.
-    pub fn branch_is_gauss_separate(&self, branch: &Branch) -> Result<bool> {
-        let node1 = self.node(0, branch[0])?;
-        let node2 = self.node(1, branch[1])?;
-        let is_surface = |n: &TreeNode<O>| {
-            n.aux_type == AuxDataType::BezierSurface || n.aux_type == AuxDataType::BezierSurfaceHead
-        };
-        if is_surface(node1) && is_surface(node2) {
-            let box1 = self.polar_box(0, branch[0])?;
-            let box2 = self.polar_box(1, branch[1])?;
-            if box1.are_disjoint(&box2) {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
-
-    /// `((SmBezierAux2d*)m_pData)->GetPolarBox()` of node `id` of tree `index`.
-    fn polar_box(&self, index: usize, id: Option<NodeId>) -> Result<PolarBox> {
-        let cache = self
-            .caches
-            .get(index)
-            .copied()
-            .flatten()
-            .ok_or(SolidError::null_pointer(OP_GAUSS))?;
-        let id = id.ok_or(SolidError::null_pointer(OP_GAUSS))?;
-        let stored = cache.aux(id)?.polar_box;
-        if stored.state() != PolarBoxState::Uninitialized {
-            return Ok(stored);
-        }
-        // built lazily upstream; built on a copy here (the caches are shared)
-        let mut copy = cache.clone();
-        copy.polar_box(id)
-    }
-
-    /// The body of [`GlobalSolve::solve_branch`] (`SolveBranch`).
-    fn solve_branch_at_depth(&mut self, branch: &Branch) -> Result<()> {
-        self.separate_gauss_maps = true;
-
-        if !self.branch_may_contain_answers(branch)? {
-            return Ok(());
-        }
-
-        // no work - SolverOperation != INTERSECT - pass the call along
-        if self.solver.operation != SolverOperation::Intersect {
-            return global_solver::solve_branch(self, branch);
-        }
-
-        let mut save_answer = false;
-
-        let mut achieved_seperability = false;
-        if !self.separate_gauss_maps {
-            achieved_seperability = self.branch_is_gauss_separate(branch)?;
-        }
-
-        if achieved_seperability {
-            // separability at the top nodes of both trees: no interior curves
-            let node1 = self.node(0, branch[0])?;
-            let node2 = self.node(1, branch[1])?;
-            if node1.parent.is_none() && node2.parent.is_none() {
-                return Ok(());
-            }
-
-            let saved = core::mem::replace(&mut self.separate_gauss_maps, true);
-            self.closest_value = BIG_DOUBLE;
-            save_answer = true;
-
-            let result = if self.are_ready_for_local_solve(branch)? {
-                self.local_solve(branch).map(|_| ())
-            } else {
-                self.subdivide(branch).and_then(|(child1, child2)| {
-                    self.solve_branch(&child1)?;
-                    self.solve_branch(&child2)
-                })
-            };
-            self.separate_gauss_maps = saved;
-            result?;
-        } else if self.are_ready_for_local_solve(branch)? {
-            let saved = core::mem::replace(&mut self.separate_gauss_maps, true);
-            self.closest_value = BIG_DOUBLE;
-            // If we are unable to achieve seperability at the leaf level than we
-            // save the answer any how.
-            save_answer = true;
-            let result = self.local_solve(branch);
-            self.separate_gauss_maps = saved;
-            result?;
-        } else {
-            let (child1, child2) = self.subdivide(branch)?;
-            self.solve_branch(&child1)?;
-            self.solve_branch(&child2)?;
-        }
-
-        // some leaf nodes intersected: save the best one as an answer
-        if save_answer && self.closest_value < BIG_DOUBLE {
-            let mut solution = Solution::new();
-            solution.solution_type = SolutionType::SingleValue;
-            solution.num_variables = 4;
-            solution.start.parameters[0] = self.uvs[0].x;
-            solution.start.parameters[1] = self.uvs[0].y;
-            solution.start.parameters[2] = self.uvs[1].x;
-            solution.start.parameters[3] = self.uvs[1].y;
-            solution.nodes[0] = self.nodes[0];
-            solution.nodes[1] = self.nodes[1];
-            self.solver.solutions.add(&solution);
-        }
-
-        Ok(())
-    }
-}
-
-impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for AdvSurfaceIntersector<'_, 't, O> {
-    fn solver(&self) -> &GlobalSolver<'t, O> {
-        &self.solver
-    }
-
-    fn solver_mut(&mut self) -> &mut GlobalSolver<'t, O> {
-        &mut self.solver
-    }
-
-    /// `SolveBranch`: for `SM_SO_INTERSECT`, subdivides to the leaf pairs and saves
-    /// the closest midpoint pair of each leaf solve as a 4-variable single-value
-    /// solution (`m_vStart = [u1, v1, u2, v2]`, the two leaf nodes); other
-    /// operations run the base traversal.
-    fn solve_branch(&mut self, branch: &Branch) -> Result<()> {
-        // an acyclic pair of trees nests at most one level per node
-        let limit = self
-            .solver
-            .trees
-            .iter()
-            .flatten()
-            .map(|t| t.nodes().len())
-            .sum::<usize>()
-            + 2;
-        if self.solve_depth > limit {
-            return Err(SolidError::invalid_input(OP_SOLVE, "tree links are cyclic"));
-        }
-        self.solve_depth += 1;
-        let result = self.solve_branch_at_depth(branch);
-        self.solve_depth -= 1;
-        result
-    }
-
-    /// `LocalSolve`: for `SM_SO_INTERSECT`, when the patches' pseudo boxes (the
-    /// first grown by the solver tolerance) meet, compares the distance of the
-    /// patch midpoints (after one drop of the smaller patch's midpoint onto the
-    /// patch more than four times bigger) with the closest so far; for
-    /// `SM_SO_INTERSECTION_TEST`, accumulates the union of the overlapping leaf boxes
-    /// and patch domains in the first solution (`m_vStart` 3D box and count,
-    /// `m_vEnd` both UV domains). Never needs more subdivision.
-    #[allow(clippy::too_many_lines)] // one upstream function
-    fn local_solve(&mut self, branch: &Branch) -> Result<bool> {
-        let surface_node1 = self.node(0, branch[0])?;
-        let surface_node2 = self.node(1, branch[1])?;
-        let bez_patch1 = self.patch(0, branch[0])?;
-        let bez_patch2 = self.patch(1, branch[1])?;
-        let bsp1 = self.base.surface(SrfIndex::First);
-        let bsp2 = self.base.surface(SrfIndex::Second);
-        let mut uv_domain1 = *bez_patch1.aux.uv_domain();
-        let mut uv_domain2 = *bez_patch2.aux.uv_domain();
-
-        // Do interval tests and reject if disjoint
-        if uv_domain1.are_disjoint(&self.base.uv_domains[0], 0.0) {
-            return Ok(false);
-        }
-        if uv_domain2.are_disjoint(&self.base.uv_domains[1], 0.0) {
-            return Ok(false);
-        }
-
-        // If we are doing self intersection then reject case where domains are not
-        // disjoint.
-        if self.base.doing_self_intersection && !uv_domain1.are_disjoint(&uv_domain2, 0.0) {
-            return Ok(false);
-        }
-
-        if self.solver.operation == SolverOperation::Intersect {
-            let mut tmp_pbox0 = *bez_patch1.pseudo_box();
-            tmp_pbox0.expand_absolute(self.solver.tolerance_3d);
-            if !tmp_pbox0.are_disjoint(bez_patch2.pseudo_box(), None) {
-                let size1 = surface_node1.bbox.size();
-                let size2 = surface_node2.bbox.size();
-                let mut uv1 = uv_domain1.evaluate(0.5, 0.5);
-                let mut uv2 = uv_domain2.evaluate(0.5, 0.5);
-                let p1 = bsp1.evaluate_point(uv1)?;
-                let p2 = bsp2.evaluate_point(uv2)?;
-                let mut dist = p1.distance(p2);
-
-                // If the sizes are very different - try taking one Newton step to
-                // get a closer guess point on the big surface.
-                if size1.length() > 4.0 * size2.length() {
-                    let uv_points = drop_points_to_tangent_plane(bsp1, uv1, &[p2])?;
-                    let uv1_new = uv_domain1.clamp_point(uv_points.first().copied().unwrap_or(uv1));
-                    let p1_new = bsp1.evaluate_point(uv1_new)?;
-                    let new_dist = p1_new.distance(p2);
-                    if new_dist < dist {
-                        uv1 = uv1_new;
-                        dist = new_dist;
-                    }
-                } else if size2.length() > 4.0 * size1.length() {
-                    let uv_points = drop_points_to_tangent_plane(bsp2, uv2, &[p1])?;
-                    let uv2_new = uv_domain2.clamp_point(uv_points.first().copied().unwrap_or(uv2));
-                    let p2_new = bsp2.evaluate_point(uv2_new)?;
-                    let new_dist = p2_new.distance(p1);
-                    if new_dist < dist {
-                        uv2 = uv2_new;
-                        dist = new_dist;
-                    }
-                }
-
-                if dist < self.closest_value {
-                    self.closest_value = dist;
-                    self.uvs = [uv1, uv2];
-                    self.nodes = [branch[0], branch[1]];
-                }
-            }
-        } else if self.solver.operation == SolverOperation::IntersectionTest {
-            let mut tmp_pbox0 = *bez_patch1.pseudo_box();
-            let tmp_pbox1 = *bez_patch2.pseudo_box();
-            tmp_pbox0.expand_absolute(self.solver.tolerance_3d);
-
-            // when Patch1 and Patch2 PseudoBoxes intersect
-            if !tmp_pbox0.are_disjoint(&tmp_pbox1, None) {
-                // Update the bounding box information in the solution.
-                let mut bbox = surface_node1.bbox;
-                bbox.expand_absolute(self.solver.tolerance_3d);
-                let mut result = bbox
-                    .intersect(&surface_node2.bbox)
-                    .unwrap_or_else(|_| Extent3d::new());
-
-                let solutions = &mut self.solver.solutions;
-                if solutions.is_empty() {
-                    // the first solution
-                    let mut sol = Solution::new();
-                    sol.nodes[0] = branch[0];
-                    sol.nodes[1] = branch[1];
-                    sol.num_variables = 7;
-                    sol.solution_type = SolutionType::SingleValue;
-                    let (mn, mx) = (result.min(), result.max());
-                    sol.start.parameters[..7]
-                        .copy_from_slice(&[mn.x, mn.y, mn.z, mx.x, mx.y, mx.z, 1.0]);
-                    let (a, b) = (uv_domain1.min(), uv_domain1.max());
-                    let (c, d) = (uv_domain2.min(), uv_domain2.max());
-                    sol.end.parameters[..8]
-                        .copy_from_slice(&[a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y]);
-                    solutions.add(&sol);
-                } else if let Some(sol) = solutions.get_mut(0) {
-                    // add this solution to the previous solutions
-                    let s = &mut sol.start.parameters;
-                    s[6] += 1.0; // Number of contributors to intersection
-
-                    let old_box = Extent3d::from_points(
-                        Vec3::new(s[0], s[1], s[2]),
-                        Vec3::new(s[3], s[4], s[5]),
-                    );
-                    result = result.union(&old_box);
-                    let (mn, mx) = (result.min(), result.max());
-                    s[..6].copy_from_slice(&[mn.x, mn.y, mn.z, mx.x, mx.y, mx.z]);
-
-                    let e = &mut sol.end.parameters;
-                    let old_uv1 =
-                        Extent2d::from_points(Point2::new(e[0], e[1]), Point2::new(e[2], e[3]));
-                    let old_uv2 =
-                        Extent2d::from_points(Point2::new(e[4], e[5]), Point2::new(e[6], e[7]));
-                    uv_domain1 = old_uv1.union(&uv_domain1);
-                    uv_domain2 = old_uv2.union(&uv_domain2);
-                    let (a, b) = (uv_domain1.min(), uv_domain1.max());
-                    let (c, d) = (uv_domain2.min(), uv_domain2.max());
-                    e[..8].copy_from_slice(&[a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y]);
-                }
-            }
-        }
-
-        Ok(false)
-    }
-
-    /// `FindBestSubdivisionNode`: `sm_FindLargestNonLeaf` (subdivide the second
-    /// tree when the first node is a leaf, else the first), never swapping.
-    fn find_best_subdivision_node(&self, branch: &Branch) -> Result<(usize, bool)> {
-        let node1 = self.node(0, branch[0])?;
-        let node2 = self.node(1, branch[1])?;
-        let child = |index: usize, n: &TreeNode<O>| -> Result<Option<&'t TreeNode<O>>> {
-            match n.child1 {
-                None => Ok(None),
-                Some(c) => self.node(index, Some(c)).map(Some),
-            }
-        };
-        let c1 = child(0, node1)?;
-        let c2 = child(1, node2)?;
-        Ok((find_largest_non_leaf(node1, c1, node2, c2), false))
-    }
-}
-
-/// `pSrf->DropPointsToTangentPlane(uv, TRUE, TRUE, n, points, uvs)`.
-fn drop_points_to_tangent_plane(
-    surface: &Surface,
-    uv: Point2,
-    points: &[Point3],
-) -> Result<Vec<Point2>> {
-    crate::surface::surface::p7::drop_points_to_tangent_plane(
-        surface,
-        uv,
-        Side::Left,
-        Side::Left,
-        points,
-    )
-}
-
-// ---- unported callees ---------------------------------------------------------------------
-
-/// `ComputePointValues(uv_pts, *point, NULL)`.
-fn compute_point_values(
-    _si: &mut SurfaceIntersector<'_>,
-    _uv_pts: [Point2; 2],
-    _point: TsectId,
-) -> Result<()> {
-    // UNPORTED(intersect.surface_intersector_p2): SmSurfaceIntersector::ComputePointValues
-    Err(SolidError::unported(
-        "SmSurfaceIntersector::ComputePointValues",
-        "intersect.surface_intersector_p2",
-    ))
-}
-
-/// `TraceCurve(*start, r3DCurves)`.
-fn trace_curve(
-    _si: &mut SurfaceIntersector<'_>,
-    _start: TsectId,
-    _curves_3d: &mut Vec<Curve>,
-) -> Result<()> {
-    // (SurfaceIntersector::trace_curve, part 4, is the basic intersector's: its
-    // ComputePointValues calls the basic ComputeSingularityPoint, not this class's
-    // override, so it cannot stand in for the advanced intersector's TraceCurve until
-    // the intersector parts dispatch their virtual calls)
-    // UNPORTED(intersect.surface_intersector_p4): SmSurfaceIntersector::TraceCurve
-    Err(SolidError::unported(
-        "SmSurfaceIntersector::TraceCurve",
-        "intersect.surface_intersector_p4",
-    ))
-}
-
-/// `FlushCurve(r3DCurves, rSurface1UVCurves, rSurface2UVCurves, rCurveTypes,
-/// rDeviations)`: the base `SmSurfaceIntersector::FlushCurve` (not overridden). The
-/// output arrays are moved in and back, not cleared: its uniqueness test reads the 3D
-/// curves already flushed.
-fn flush_curve(si: &mut SurfaceIntersector<'_>, out: &mut InteriorCurves) -> Result<()> {
-    let mut curves = crate::intersect::surface_intersector::p2::TsectCurves {
-        curves_3d: core::mem::take(&mut out.curves_3d),
-        uv_curves: [
-            core::mem::take(&mut out.surface1_uv_curves),
-            core::mem::take(&mut out.surface2_uv_curves),
-        ],
-        curve_types: core::mem::take(&mut out.curve_types),
-        deviations: core::mem::take(&mut out.deviations),
-    };
-    let r = si.flush_curve(&mut curves);
-    let crate::intersect::surface_intersector::p2::TsectCurves {
-        curves_3d,
-        uv_curves: [surface1_uv_curves, surface2_uv_curves],
-        curve_types,
-        deviations,
-    } = curves;
-    *out = InteriorCurves {
-        curves_3d,
-        surface1_uv_curves,
-        surface2_uv_curves,
-        curve_types,
-        deviations,
-    };
-    r
 }
 
 #[cfg(test)]
@@ -1561,10 +1602,11 @@ mod tests {
 
     #[test]
     fn construct_defaults() {
+        let k = &Kernel::default();
         let s = plane();
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let si: AdvSurfaceIntersector<'_, '_, H> =
-            AdvSurfaceIntersector::new(&s, &d, &s, &d, false).unwrap();
+            AdvSurfaceIntersector::new(k, &s, &d, &s, &d, false).unwrap();
         assert_eq!(si.closest_value(), BIG_DOUBLE);
         assert!(si.separate_gauss_maps());
         assert_eq!(si.solver.num_trees, 2);
@@ -1575,10 +1617,11 @@ mod tests {
 
     #[test]
     fn dupin_kinds() {
+        let k = &Kernel::default();
         let s = plane();
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let si: AdvSurfaceIntersector<'_, '_, H> =
-            AdvSurfaceIntersector::new(&s, &d, &s, &d, false).unwrap();
+            AdvSurfaceIntersector::new(k, &s, &d, &s, &d, false).unwrap();
         let x = Vec3::new(1.0, 0.0, 0.0);
         let y = Vec3::new(0.0, 1.0, 0.0);
         let z = Vec3::new(0.0, 0.0, 1.0);
@@ -1604,10 +1647,11 @@ mod tests {
 
     #[test]
     fn plane_against_saddle_is_singular() {
+        let k = &Kernel::default();
         let s = plane();
         let d = Extent2d::from_bounds(-1.0, -1.0, 1.0, 1.0);
         let mut si: AdvSurfaceIntersector<'_, '_, H> =
-            AdvSurfaceIntersector::new(&s, &d, &s, &d, false).unwrap();
+            AdvSurfaceIntersector::new(k, &s, &d, &s, &d, false).unwrap();
         let x = Vec3::new(1.0, 0.0, 0.0);
         let y = Vec3::new(0.0, 1.0, 0.0);
         let z = Vec3::new(0.0, 0.0, 1.0);

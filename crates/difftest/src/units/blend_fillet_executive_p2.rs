@@ -10,7 +10,8 @@
 //! (the executive constructor belongs to `blend.fillet_executive_p1`). Their output is
 //! one float array (`out`): the status, then the switches, solver count and error code
 //! (`SetFilletParameters`) or the sequence and list lengths. `-2` in the status slot
-//! (upstream would dereference null) is a guard: an error on both sides. An elliptical
+//! (upstream would dereference null) and `-4` (a box with fewer than 12 edges) are
+//! guards: an error on both sides. An elliptical
 //! law whose interpolation failed (no such input is known) would have a null curve
 //! upstream and an error here: also an error on both sides.
 //!
@@ -18,15 +19,19 @@
 //! `CreateFilletCorners` defers to `blend.fillet_executive_p1`, so `SmTemporaryRadiusChange`
 //! (which needs a loaded solver) is not compared yet.
 
+use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use solidcore::blend::fillet_custom_solver::ConstantRadiusAssistedFs;
 use solidcore::blend::fillet_executive::p2::FilletParameters;
+use solidcore::blend::fillet_executive::p1::ExecutiveObjects;
+use solidcore::blend::fillet_geom::p1::{FilStatus, FilletEdgeType};
 use solidcore::blend::fillet_executive::p3::{
     ContextMark, CornerView, ErrorInfo, ExecutionOptions, ExecutiveAccess, FilletExecutive,
     StitchAttempt, StitchSettings, TopoEdgeView,
 };
+use solidcore::blend::fillet_geom::p1::{FilletBrep, FilletSolverId};
 use solidcore::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use solidcore::blend::fillet_standard_solver::p1::{
     constant_radius_from_edgeuse, FilletLaw, FilletLawKind, FilletSolverType,
@@ -39,6 +44,7 @@ use solidcore::geom::solution_array::{ObjectKind, SolutionObject};
 use solidcore::intersect::point_class::{ClassObject, ClassObjectKind};
 use solidcore::kernel::Kernel;
 use solidcore::math::Point3;
+use solidcore::topology::proto_topology::p1::CopyBrepMap;
 use solidcore::topology::{edge, Brep, EdgeId, EdgeuseId};
 use solidcore::{Result as SolidResult, SolidError};
 use solidcore_ffi::units::blend_fillet_executive_p2::{self as ffi, Op};
@@ -56,6 +62,9 @@ fn harness(msg: impl Into<String>) -> HarnessError {
 
 /// "Upstream would dereference null" in a status slot.
 const NULL_DEREF: f64 = -2.0;
+
+/// The box has fewer than 12 edges (`-4 n_edges`): no op runs on either side.
+const SHORT_BOX: f64 = -4.0;
 
 /// `SmPlane_TYPE`; `SmLine_TYPE`: the geometry of an `SmApiCreateBox` box, which the
 /// export carries exactly.
@@ -225,6 +234,7 @@ fn record(i: &Inputs) -> (Op, Vec<f64>) {
 fn values_output(o: Vec<f64>) -> Output {
     match o.first() {
         Some(&s) if s == NULL_DEREF => Output::err("null_deref"),
+        Some(&s) if s == SHORT_BOX => Output::err("box_edge_count"),
         _ => Output::new().values("out", o),
     }
 }
@@ -267,6 +277,8 @@ impl SolutionObject for Handle {
 
 struct Access {
     breps: Vec<Brep>,
+    /// The executive's pseudo B-rep (`m_pPseudoBrep`): the solvers' fillet geometries.
+    pseudo: FilletBrep,
     generators: Vec<FilletSurfaceGenerator>,
     solvers: Vec<ConstantRadiusAssistedFs>,
     laws: Vec<FilletLaw>,
@@ -293,6 +305,49 @@ impl Access {
             _ => missing(),
         }
     }
+}
+
+/// `target->MergeBrep(other, NULL, NULL, bAddAnalytics)` for this fixture, which keeps no
+/// notification state: `topology::brep::p3::merge_brep` under the kernel's identities
+/// (`with_kernel_callbacks`), `other` enrolled in the same identity domain first so its
+/// objects never share a key with `target`'s.
+fn merge_breps(
+    k: &mut Kernel,
+    target: &mut Brep,
+    other: &mut Brep,
+    add_analytics: bool,
+) -> SolidResult<()> {
+    use solidcore::topology::brep::p3 as bp3;
+    let serial = bp3::notify_serial(&mut k.context, other)?;
+    let source_key = move |e| bp3::topology_ref(serial, e);
+    let other = &*other;
+    bp3::with_kernel_callbacks(k, target, |k, b, env| {
+        bp3::merge_brep(k, env, b, other, &source_key, None, None, add_analytics)
+    })
+}
+
+/// `brep->OrientTrimmedSurfaces(..)` for this fixture: `topology::brep::p3`'s under the
+/// kernel's identities. The fixture has no face handles, so only an empty
+/// `pOptFacesToSwapUV` list is accepted.
+fn orient_brep(
+    k: &mut Kernel,
+    b: &mut Brep,
+    outward: bool,
+    maybe_not_solid: &mut bool,
+    just_unify: bool,
+    faces_to_swap_uv: Option<&mut Vec<Handle>>,
+) -> SolidResult<()> {
+    use solidcore::topology::brep::p3 as bp3;
+    if faces_to_swap_uv.as_ref().is_some_and(|f| !f.is_empty()) {
+        return missing();
+    }
+    let swap: Option<&[solidcore::topology::FaceId]> = faces_to_swap_uv.map(|_| &[][..]);
+    let r = bp3::with_kernel_callbacks(k, b, |k, b, env| {
+        let mut marks = solidcore::topology::topology_traverser::Marks::default();
+        bp3::orient_trimmed_surfaces(k, b, env, &mut marks, outward, just_unify, swap)
+    })?;
+    *maybe_not_solid = r.maybe_not_closed_solid;
+    Ok(())
 }
 
 impl ExecutiveAccess<Handle> for Access {
@@ -326,6 +381,41 @@ impl ExecutiveAccess<Handle> for Access {
     ) -> SolidResult<()> {
         missing()
     }
+    fn merge_brep(
+        &mut self,
+        k: &mut Kernel,
+        target: Handle,
+        other: Handle,
+        copy_map: Option<&mut CopyBrepMap<Handle>>,
+        reverse_map: Option<&mut CopyBrepMap<Handle>>,
+        add_analytics: bool,
+    ) -> SolidResult<()> {
+        // (the fixture's handles name no topology objects: no copy maps of them)
+        if copy_map.is_some() || reverse_map.is_some() || target == other {
+            return missing();
+        }
+        let mut src = std::mem::take(self.brep_mut(other)?);
+        let r = match self.brep_mut(target) {
+            Ok(dst) => merge_breps(k, dst, &mut src, add_analytics),
+            Err(e) => Err(e),
+        };
+        if let Ok(slot) = self.brep_mut(other) {
+            *slot = src;
+        }
+        r
+    }
+    fn orient_trimmed_surfaces(
+        &mut self,
+        k: &mut Kernel,
+        brep: Handle,
+        outward: bool,
+        maybe_not_solid: &mut bool,
+        just_unify: bool,
+        faces_to_swap_uv: Option<&mut Vec<Handle>>,
+    ) -> SolidResult<()> {
+        let b = self.brep_mut(brep)?;
+        orient_brep(k, b, outward, maybe_not_solid, just_unify, faces_to_swap_uv)
+    }
     fn do_stitching(
         &mut self,
         _: &mut Kernel,
@@ -356,10 +446,30 @@ impl ExecutiveAccess<Handle> for Access {
     ) -> SolidResult<()> {
         missing()
     }
+    fn trim_original_surfaces(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut Vec<Handle>,
+        _: &mut Vec<Handle>,
+        _: &[ContextMark],
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
     fn calc_corner_geom(
         &mut self,
         _: &mut Kernel,
         _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
+    fn test_rollover(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut Vec<Handle>,
         _: &mut FilletExecutive<Handle>,
     ) -> SolidResult<()> {
         missing()
@@ -510,6 +620,22 @@ impl ExecutiveAccess<Handle> for Access {
     fn geom_side_edgeuses(&self, _: Handle) -> SolidResult<Vec<Handle>> {
         missing()
     }
+    fn edge_edgeuses(&self, edge: Handle) -> SolidResult<Vec<Handle>> {
+        let Handle::Edge(e) = edge else {
+            return missing();
+        };
+        let b = self.brep(Handle::Brep(0))?;
+        Ok(edge::edgeuses(b, e, None, None)?.into_iter().map(Handle::Edgeuse).collect())
+    }
+    fn fillet_edge_note(
+        &self,
+        _: Handle,
+    ) -> SolidResult<(Option<&'static str>, FilletEdgeType, FilStatus)> {
+        missing()
+    }
+    fn new_executive_objects(&mut self, _: &mut Kernel) -> SolidResult<ExecutiveObjects<Handle>> {
+        missing()
+    }
     fn edgeuse_edge(&self, _: Handle) -> SolidResult<Option<Handle>> {
         missing()
     }
@@ -550,6 +676,9 @@ impl ExecutiveAccess<Handle> for Access {
     fn solver_edgeuse(&self, _: Handle, _: usize) -> SolidResult<Option<Handle>> {
         missing()
     }
+    fn solver_corner(&self, _: Handle, _: usize) -> SolidResult<Option<Handle>> {
+        missing()
+    }
     fn corner_setback_distance(&self, _: Handle) -> SolidResult<f64> {
         missing()
     }
@@ -560,6 +689,42 @@ impl ExecutiveAccess<Handle> for Access {
     }
     fn delete_brep(&mut self, _: Handle) -> SolidResult<()> {
         missing()
+    }
+    fn set_brep_tolerance(
+        &mut self,
+        k: &mut Kernel,
+        brep: Handle,
+        tolerance: f64,
+        update_only_if_larger: bool,
+        cascade_to_boundaries: bool,
+    ) -> SolidResult<()> {
+        solidcore::topology::brep::p2::set_tolerance(
+            k,
+            self.brep_mut(brep)?,
+            tolerance,
+            update_only_if_larger,
+            cascade_to_boundaries,
+        )
+    }
+    fn stitch_faces(
+        &mut self,
+        k: &mut Kernel,
+        brep: Handle,
+        tolerance: f64,
+        faces: Option<&[Handle]>,
+        allow_spine_edges: bool,
+    ) -> SolidResult<StitchAttempt> {
+        // both executive call sites stitch every face (pOptFaces = NULL)
+        if faces.is_some() {
+            return missing();
+        }
+        StitchAttempt::from_stitch(solidcore::topology::brep::p4::stitch_faces(
+            k,
+            self.brep_mut(brep)?,
+            tolerance,
+            None,
+            allow_spine_edges,
+        ))
     }
     fn tolerance(&self, k: &Kernel, brep: Handle, approx: bool) -> SolidResult<f64> {
         let tolerance = self.brep(brep)?.tolerance();
@@ -582,6 +747,9 @@ impl ExecutiveAccess<Handle> for Access {
             return missing();
         }
         Ok(b.edges().ids().map(Handle::Edge).collect())
+    }
+    fn edge_is_manifold(&self, _: Handle) -> SolidResult<bool> {
+        missing()
     }
     fn vertices(&self, handle: Handle) -> SolidResult<Vec<Handle>> {
         if !self.brep(handle)?.vertices().is_empty() {
@@ -628,10 +796,15 @@ impl ExecutiveAccess<Handle> for Access {
         let Handle::Edgeuse(eu) = edgeuse else {
             return missing();
         };
-        let b = self.brep_mut(Handle::Brep(0))?;
+        let id = FilletSolverId(
+            u32::try_from(self.solvers.len()).map_err(|_| missing_error())?,
+        );
+        let b = self.breps.first_mut().ok_or_else(missing_error)?;
         let fs = constant_radius_from_edgeuse(
             k,
             b,
+            &mut self.pseudo,
+            id,
             approx_tol,
             ang_tol_rad,
             tan_tol_rad,
@@ -653,16 +826,17 @@ impl ExecutiveAccess<Handle> for Access {
     }
 }
 
-/// The p2 module's error operation (`SM_ERR_NULL_POINTER` raised there marks a null
-/// dereference upstream, `-2`).
-const OP_P2: &str = "blend::fillet_executive::p2";
+/// The prefix of the p2 module's null-object operations (`SM_ERR_NULL_POINTER` raised
+/// there, `blend::fillet_executive::p2: <what>`, marks a null dereference upstream,
+/// `-2`).
+const OP_P2: &str = "blend::fillet_executive::p2: ";
 
 /// The `SmStatus` of a Rust error.
 fn status_of(e: &SolidError) -> f64 {
     match e {
         SolidError::Upstream {
             operation, code, ..
-        } if *code == SM_ERR_NULL_POINTER && *operation == OP_P2 => NULL_DEREF,
+        } if *code == SM_ERR_NULL_POINTER && operation.starts_with(OP_P2) => NULL_DEREF,
         SolidError::Upstream { code, .. } => f64::from(*code),
         _ => -9.0,
     }
@@ -754,6 +928,10 @@ fn box_access(bx: &BoxIn) -> Result<Result<Access, Output>, HarnessError> {
         ))));
     };
     let (b, types) = super::topology_brep_p1::import(&ex, graph_at)?;
+    if b.edges().len() != ffi::BOX_EDGES {
+        // The shim reports the same box as `-4 n_edges`.
+        return Ok(Err(Output::err("box_edge_count")));
+    }
     if types
         .face_surface_types
         .iter()
@@ -765,11 +943,9 @@ fn box_access(bx: &BoxIn) -> Result<Result<Access, Output>, HarnessError> {
     {
         return Err(harness("box geometry is not planes and lines"));
     }
-    if b.edges().len() != ffi::BOX_EDGES {
-        return Err(harness("box without 12 edges"));
-    }
     Ok(Ok(Access {
         breps: vec![b],
+        pseudo: FilletBrep::new(),
         generators: Vec::new(),
         solvers: Vec::new(),
         laws: Vec::new(),
@@ -803,6 +979,11 @@ fn executive(target: Option<Handle>) -> FilletExecutive<Handle> {
         intersection_edges: vec![],
         intersection_vertices: vec![],
         law_sequence_edges: vec![],
+        pseudo_brep: None,
+        surface_generators: vec![],
+        vertex_corner_map: BTreeMap::new(),
+        edgeuse_solver_map: BTreeMap::new(),
+        self_intersection_handler: None,
     };
     executive.intersector.ignore_tangency = true;
     executive
@@ -818,13 +999,14 @@ fn xsect_type(code: usize) -> Result<FilletSurfaceGeneratorType, HarnessError> {
     })
 }
 
+/// `SmFilletSolverType` (`SmFilletSolver.h:47`) from its code.
 fn radius_type(code: usize) -> Result<FilletSolverType, HarnessError> {
     Ok(match code {
         0 => FilletSolverType::Unknown,
-        1 => FilletSolverType::ConstRadius,
-        2 => FilletSolverType::ConstDist,
+        1 => FilletSolverType::SurfSurf,
+        2 => FilletSolverType::ConstRadius,
         3 => FilletSolverType::VariableRadius,
-        4 => FilletSolverType::SurfSurf,
+        4 => FilletSolverType::ConstDist,
         5 => FilletSolverType::CurveBased,
         6 => FilletSolverType::ConstRadiusAssisted,
         _ => return Err(harness("radius type code out of range")),
