@@ -16037,8 +16037,8 @@ Fix (runner only, no kernel or shim change): the Rust side builds the faces as t
 (`create_face_from_surface` on a `new_brep`). Those faces have no UV trim curves yet, and
 `CalculateUVDomainFromUVTrimCurves` makes them with `SmSurface::DropCurve`
 (`intersect.surface_drop_lib_p3`, todo), so these cases now defer instead of comparing two
-different setups: `blend.fillet_geom_p1` 471 pass -> 457 pass + 20 deferred (16 previously
-compared, 4 of 6 new corner-model fixtures), `blend.fillet_geom_p5` 300 pass -> 274 pass + 26
+different setups: `blend.fillet_geom_p1` 471 pass -> 457 pass + 20 deferred (14 previously
+compared, the 6 new corner-model fixtures), `blend.fillet_geom_p5` 300 pass -> 274 pass + 26
 deferred (`split_face`); both green -> partial. On main merged with #268 (plus #268's own
 pending adaptations), `blend.fillet_corner_p2`'s `gen0014` and
 `corner_update_split_face_08/_11/_71/_75` defer instead of failing (0 failed).
