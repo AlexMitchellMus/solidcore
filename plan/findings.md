@@ -14491,7 +14491,7 @@ the tested PR head; no tolerance or absolute floor is relaxed.
 The audit covers the code merged through main `67e321cd` plus the review fixes
 in this PR. Wrapper constructors and setters check owned curves, surfaces and
 volume chains with a non-recursive walk before
-adding another ownership edge (maximum depth 64, root at depth 0). The base global
+adding another ownership edge (maximum depth 64 at first, 32 since main's #308; root at depth 0). The base global
 solver limits traversal to `MAX_SOLVE_DEPTH + 1` nested calls (main later set
 `MAX_SOLVE_DEPTH` to 1000 and checks tree heights up front in `solve_it`; the counter
 covers overrides and direct callers); the advanced intersector uses the same ceiling. Spatial-tree top-box rebuilds are limited to one nested rebuild,
@@ -14581,8 +14581,37 @@ clippy passes, and difftest of the 12 touched units (`geom.global_solver`,
 `query.tess`, `intersect.topology_solver_p1`) gives 4 passed, 8 partial, 0 failed,
 `max_rel_err` 0 throughout.
 
-The green audit status applies to this merged snapshot. Direct audit dependencies
-`blend.fillet_corner_p2` and `offset.offset_executive_p2` remain unported;
+Re-audit through main `ea10fd3e` (2026-10-22): 19 PRs, 124 changed kernel files
+(about 28,000 lines), with the new ports #201 `offset.offset_executive_p2`, #247
+`blend.fillet_geom_p6`, #264 `blend.fillet_geom_p5`, #329 `query.brep`, #222
+`sweep.topology_sweep` and #233/#250 `primitive.primitive_creation_p3`/`p2`.
+- **Nesting bound to 32.** #308 measured that a 64-deep offset chain read from a
+  file overflows the 1 MiB wasm32 stack unoptimised, and lowered `MAX_READ_NESTING`
+  to 32. Geometry built in memory recurses through the same dispatch, so
+  `MAX_GEOMETRY_NESTING` (and `MAX_SURFACE_NESTING`, tied to it) is now 32 as well.
+- **Checked segment replacement.** `primitive.primitive_creation_p2`'s taper wrote
+  B-spline generators back through `CompositeCurve::segments_mut`, which this audit
+  removed. It now uses the checked `set_segment`; a B-spline cannot nest, so
+  results are unchanged.
+- **Screen.** The new functions' same-name calls forward to other modules or free
+  functions (`fillet_intersector`, `topology_sweep::engine` local helpers). The one
+  intra-module cycle, `fillet_geom::p3` `corner_vert_geom` <-> `mate_geom`, is
+  already bounded by its port (`MAX_MATE_DEPTH` = 64, depth parameter, `SolidError`
+  past it). The blend `OffsetSurface` struct literals are
+  `blend::fillet_custom_solver::OffsetSurface`, a solver record rather than the
+  wrapper surface. No new curve, surface or volume variant, no new nesting reader
+  and no new boxed geometry field.
+- **Checks.** fmt, workspace clippy, 1772 solidcore tests, 38 difftest tests and the
+  wasm check pass locally. C++-feature clippy passes, and difftest of the 17 units
+  holding a wrapper constructor or the taper change (`primitive.primitive_creation_p1`-`p3`,
+  `curve.composite_curve_p1`/`p2`, `curve.crv_in_volume`, `curve.crv_on_surf`,
+  `curve.iso_curve`, `curve.offset_curve`, `curve.projected_curve`,
+  `surface.curve_bounded_surface`, `surface.offset_surface`, `surface.srf_in_volume`,
+  `surface.surface_p1`/`p2`, `surface.volume_p1`/`p2`) gives 8 passed, 9 partial,
+  0 failed, `max_rel_err` 0 throughout.
+
+The green audit status applies to this merged snapshot. Direct audit dependency
+`blend.fillet_corner_p2` remains unported (`offset.offset_executive_p2` landed in #201 and is covered by the re-audit through `ea10fd3e`);
 their implementations, other open port PRs and future geometry variants need a
 follow-up sweep when they land.
 The current manifest's 122 partial units retain deferred dependency paths that
