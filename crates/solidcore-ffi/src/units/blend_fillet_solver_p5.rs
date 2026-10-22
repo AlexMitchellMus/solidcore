@@ -17,6 +17,8 @@
 //! The multi-interval rail-copy guard rejects null curves only after the
 //! defined null-surface return; earlier returns remain covered.
 //! Unsupported platforms fail closed rather than executing SMLib in process.
+//! The native worker is Linux-only; macOS worker exceptions do not establish a
+//! Rust/C++ numerical mismatch. Native parity claims here refer to Linux x86-64.
 
 use crate::{call_with_buffer, FfiError};
 

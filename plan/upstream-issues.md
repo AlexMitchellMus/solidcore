@@ -2909,6 +2909,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** wrong result.
 - **Rust port:** Ported as is.
 
+#### WR-211. `SmEllipse::AdjustSTEPInterval` collapses an arc moved a turn past its interval to one NURBS parameter
+- **Location:** `source/SMLib/src/SmEllipse.cpp:1905` `SmEllipse::AdjustSTEPInterval` (documented range `[-360 <= Min <= Max <= 360]` at `:1907`): both ends go through `SmPolarConversion::ConvertToNURBSParameter` (`:1921-1922`), which clamps an angle outside the current arc to its ends (`:512-517`). Reached from `SmSurfOfRevolution::AdjustSTEPUVDomain` (`SmSurfOfRevolution.cpp:331`, whose own comment gives `0_to_360`).
+- **What happens:** For a circle over `[0, 360]` (or `[0, 180]`) given `[360, 540]`, both ends clamp to the arc's end, so `sNewNurbsIvl` (`:1923`) has zero length and `EditParameterization` (`:1933`) collapses the curve to one parameter, without an error. The next reparameterisation divides by that length: `N_BasisReparam` (`NL_BasisBasic.cpp:2215`) gets `fac = (ur - ul) / 0`, keeps the end knots and makes every interior knot `ul + inf * 0 = NaN` (`:2221`), the knots `360 360 360 NaN NaN 540 540 540` of #428.
+- **Trigger:** a STEP surface of revolution whose sweep domain starts at 360 degrees (SolidCraft schema 4 allows a periodic domain up to one turn past 2π; tangency-labs/solidcore#428).
+- **How found:** following #428 and #427 (the NaN knots then overflow `N_IgesClampSrf`, `UB-250`); traced at `c9c5979`.
+- **Confirmed:** no (the port reproduces each step; no C++ run here).
+- **Severity:** wrong result (a zero-length curve, then NaN knots).
+- **Fix:** tangency-labs/smlib@74bed94 takes an angle outside the arc whole turns back into it for a full-turn arc, and otherwise extends the arc's NURBS interval in proportion.
+- **Rust port:** Faithful to the code: `Ellipse::adjust_step_interval` collapses the same way and the next reparameterisation gives the same NaN knots (test `step_interval_past_a_turn_collapses_as_upstream`). The fork's fix is not ported: the port follows the reference build, as for `UB-250`.
 ### Surfaces and volumes
 
 #### WR-38. `SmBSplineSurface` data constructor zeroes the v knots when `s > r`
@@ -3794,3 +3803,12 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** no (no native reproduction built).
 - **Severity:** wrong topology, or UB (out-of-bounds read) when the first group has more curves.
 - **Rust port:** keeps the counts; a read past the group's curves is `SolidError::InvalidInput`.
+
+#### WR-212. `DoFillet` returns success with a body that is not a closed manifold solid
+- **Location:** `source/SMLib/src/SmFilletExecutive.cpp`, the end of `DoFilleting`'s trim-and-merge path: `OrientTrimmedSurfaces` reports `bMaybeNotSolid`, which is ignored, and nothing after it checks the merged target. Line numbers are not given: they were not checked against `c9c5979`.
+- **What happens:** an R4 round over the rim of a through hole merges into a target that is not a closed manifold solid, and `DoFillet` returns `SM_SUCCESS` for it. The callers get an invalid body as a result, not a refusal naming the edge.
+- **Trigger:** a 40x20x10 block minus a through hole of r=3 centred at (20, 14.5), then `DoFillet` with radius 4 on the top long edge at y=20. The round covers y=16..20 and the hole reaches y=17.5, so the hole breaks into the round. This is SolidCraft's rig case `tests/kernel-cases/fillets/324-fillet-over-hole-overlap` (tangency-labs/solidcraft, branch `kernel-smlib`).
+- **How found:** SolidCraft's kernel rig, through the tangency-labs/smlib fork (`smlib_blend` -> `SmFilletExecutive::DoFillet`); tangency-labs/solidcore#422.
+- **Confirmed:** no (not reproduced with the reference build in this harness; seen on the fork's C++ in SolidCraft's rig).
+- **Severity:** wrong result (an invalid body reported as success).
+- **Rust port:** `FilletExecutive::do_fillet` refuses a target with an edge that is not `SmEdge::IsManifold`, with `SM_FILERR_BAD_MERGE` and the edge in the error info and in the error (`plan/findings.md`, `blend.fillet_executive_p3`). The cause of the broken shell is not found.
