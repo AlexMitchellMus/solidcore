@@ -1434,8 +1434,8 @@ impl Surface {
     /// `DropPointFast`: the plane and surface of revolution overrides (their
     /// solutions name no object; the surface of revolution's are merged as
     /// upstream's, which name the surface; the cone, sphere and torus inherit the
-    /// revolution's with their own `EvaluateSTEPPoint`); the other ported kinds run
-    /// the base default, which fails.
+    /// revolution's with their own `EvaluateSTEPPoint`, `EvaluatePoint` and
+    /// `LocalPointSolve`); the other ported kinds run the base default, which fails.
     ///
     /// # Errors
     ///
@@ -1462,8 +1462,9 @@ impl Surface {
                 None,
             ),
             // the inherited SmSurfOfRevolution::DropPointFast, its virtual
-            // EvaluateSTEPPoint and LocalPointSolve those of the cone/sphere/torus; the
-            // solutions name a stand-in for this surface, as for the revolution below
+            // EvaluateSTEPPoint, EvaluatePoint and LocalPointSolve those of the
+            // cone/sphere/torus; solutions name a stand-in for this surface, as for
+            // the revolution below
             SurfaceKind::Cone(s) => Ok(s
                 .rev()
                 .drop_point_fast_using(
@@ -1477,6 +1478,7 @@ impl Surface {
                     requested,
                     Some(OperandObject::Surface(0, self.natural_uv_domain())),
                     &|_, uv| s.evaluate_step_point(uv),
+                    &|k, uv| self.evaluate_point(k, uv),
                     &|k, domain, operation, point, guess| {
                         let r = self.local_point_solve::<OperandObject>(
                             k, domain, operation, point, guess,
@@ -1498,6 +1500,7 @@ impl Surface {
                     requested,
                     Some(OperandObject::Surface(0, self.natural_uv_domain())),
                     &|_, uv| s.evaluate_step_point(uv),
+                    &|k, uv| self.evaluate_point(k, uv),
                     &|k, domain, operation, point, guess| {
                         let r = self.local_point_solve::<OperandObject>(
                             k, domain, operation, point, guess,
@@ -1519,6 +1522,7 @@ impl Surface {
                     requested,
                     Some(OperandObject::Surface(0, self.natural_uv_domain())),
                     &|_, uv| s.evaluate_step_point(uv),
+                    &|k, uv| self.evaluate_point(k, uv),
                     &|k, domain, operation, point, guess| {
                         let r = self.local_point_solve::<OperandObject>(
                             k, domain, operation, point, guess,
