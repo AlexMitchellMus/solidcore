@@ -15112,6 +15112,21 @@ reconciliation with main's `surface.offset_surface`. With both, the affected dif
   returns `SM_ERR_INVALID_INPUT` (1007; both located with gdb on the reference build). The B-spline-data port skipped the
   sweep test and stopped at the zero-radius cross section (`SM_ERR`, 1001):
   `values.state[410]` C++ 1007 vs Rust 1001. With the dispatch both give 1007.
+## Fuzz crash corpus replayed on main (2026-10-22)
+
+The 2,061 unique crash/panic/timeout inputs of the 2026-10-20 fuzz sweep corpus were
+replayed one at a time on main `4bb0f022` (`difftest --fuzz-exec`, 4 GiB address-space
+limit, 20 s per side). 1,780 are now refused by an FFI guard or harness check, 208 run on
+both sides, 46 still crash (7) or hang (39) the C++ reference, and 27 are still open on the
+Rust side. One reduced input per unit, category and guard message is kept in
+`crates/difftest/tests/fuzz_corpus/` (197 cases, checked by
+`cargo test -p difftest --features cpp --test fuzz_corpus`).
+
+- **Rust still hangs (> 20 s; the C++ side refuses 24 of them and runs 1):** `curve.composite_curve_p2` fuzz00198, `curve.composite_curve_p2` fuzz00430, `curve.composite_curve_p2` fuzz00435, `curve.composite_curve_p2` fuzz01007, `curve.composite_curve_p2` fuzz01111, `curve.composite_curve_p2` fuzz01988, `curve.crv_on_surf` fuzz00526, `curve.crv_on_surf` fuzz01785, `curve.curve_cache` fuzz01735, `curve.curve_p1` fuzz01951, `curve.curve_p8` fuzz01456, `curve.curve_p8` fuzz01856, `curve.curve_p9` fuzz00144, `curve.curve_p9` fuzz01043, `curve.curve_p9` fuzz01222, `heal.heal_data_p1` fuzz00977, `heal.heal_data_p1` fuzz01666, `nlib.crv_approx` fuzz05147, `query.tess` fuzz00241, `query.tess` fuzz00353, `surface.surface_p8` fuzz01603, `surface.surface_point_solve_p1` fuzz00979, `surface.surface_point_solve_p2` fuzz00474, `surface.surface_point_solve_p2` fuzz01057, `surface.surface_point_solve_p3` fuzz00349. Known from the sweep ("Rust hangs on extreme coords"); `heal.heal_data_p1` and `surface.surface_point_solve_p2`/`p3` are the slow-not-hung cases of the 2026-10-21 entry above.
+- **Rust aborts:** `curve.curve_p1` fuzz01255 (`memory allocation of 6442450944 bytes failed` on the Rust side; the C++ guard refuses the input as `value 1e300 not finite or too large`).
+- **Inputs whose replay depends on the memory limit (23, not committed):** a side attempts an allocation that fails with `ENOMEM` under 4 GiB (strace), e.g. `nurbs.b_spline_curve_p2` fuzz00841 (`expert`, `stride = 2^31`): `control_points_expert` reserves `stride * count` doubles fallibly, which fails under the limit, but without a limit it succeeds and zero-fills `2^32` doubles (about 50 s of system time here). Same pattern in `geom.grid`, `geom.local_solve1d`, `geom.solution_array`, `intersect.ray_tracer`, `nlib.crv_approx`, `nlib.crv_fit_p1`/`p2`, `nlib.srf_adv_p3`, `nlib.srf_basic`, `nlib.srf_fit`, `nlib.srf_offset`, `nurbs.b_spline_curve_n_lib`, `nurbs.nurbs_crv`, `primitive.api_curves` (list in the PR's inventory).
+- **Rust-only replay of C++ hangs still hangs (11):** the `topology.edgeuse_p2`/`p3`, `face_p3`, `loopuse` and `vertex` HANG-29 inputs build their Rust B-rep through the same C++ export that hangs, so skipping the C++ operation does not help; `surface.surface_point_solve_p2` fuzz00961 / `p3` fuzz00316 take 75 s / 290 s in Rust.
+- **`surface.plane_p2` fuzz00842** (was a C++ crash after 42 preceding cases): alone, both sides run and differ (`values.rec.len`: cpp 41787, rust 1).
 
 ## topology.topology_traverser: `IsInnerShell` rebuilt the target surface cache per ray (perf, 2026-10-21)
 
@@ -15183,3 +15198,33 @@ blockers of the seam cases (generic-surface `SmCrvOnSurf`: open PR #307). Left u
 `topology::trimming_tools::face_has_seam_problem` (its `SeamObject` handles name loops and
 vertices only, and its `SplitAtSeam` geometry resolves no curve; no difftest case
 reaches it).
+
+## Issue #489: retain intersection UV curves at face/face edge insertion
+
+`boolean.topology_intersector_p1`, `SmTopologyIntersector::FaceFaceIntersect`:
+the pinned C++ passes `NULL` as the UV curve to `MakeEdgeInFace` for both faces
+(`source/SMLib/src/SmTopologyIntersector.cpp:8246,8294`), even though the face
+classifications retain the intersection UV curves. The Rust counterpart was
+`TopologyIntersector::make_edge_for_interval`, which likewise passed `None`.
+It now copies the classification's current `uv_curve1()` alongside its 3D curve
+and supplies that independent copy with the same parameter interval. Missing or
+stale UVs retain the projection fallback. This deliberately differs from the
+pinned C++ handoff; it removes an additional projection fit, not the intersection
+algorithm's own approximation error. No tolerance is changed.
+
+The other stages already retain supplied UVs: `topology::face::p3::face_intersect`
+attaches the trace UV handles to both classifications; proto-edge creation copies
+and trims both UVs; `topology::brep::p9::make_edge_in_face_with_vu` projects only
+when the supplied trim is absent and otherwise attaches it (with seam copies).
+Pinned C++ `SmEdgeDefinition::Imprint` already forwards both UVs.
+
+Validation limits: this is a latent Rust loss, not a reproduction of the reported
+2–4e-6 threaded-shaft gaps. The handle insertion adapter still defers at
+`SmFace::FindVertexSector`, and proto-edge imprint still defers at its
+`MakeEdgeInFace` adapter. The new tests cover independent curved UV copies for
+two faces, non-unit domains and subintervals, analytic kind preservation,
+missing/stale UV fallback, and forwarding to both vertex sectors and insertion
+in both orientations. They do not certify successful boolean insertion or
+periodic seam behavior. Issue #489 remains open for end-to-end reproduction
+after those adapters are wired. Existing parity cases must retain their original
+comparison rules; a future completed explicit-null C++ path may differ by design.
