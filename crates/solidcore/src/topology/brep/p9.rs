@@ -44,7 +44,7 @@ use crate::nurbs::b_spline_surface::p1::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::query::brep::{BrepIdentity, BrepQuery};
-use crate::surface::surface::{Surface, SurfaceKind};
+use crate::surface::surface::Surface;
 use crate::topology::edge;
 use crate::topology::vertex;
 use crate::topology::vertexuse;

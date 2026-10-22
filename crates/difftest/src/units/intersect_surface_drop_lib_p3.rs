@@ -314,9 +314,9 @@ type Frame = ([f64; 3], [f64; 3], [f64; 3], [f64; 3]);
 
 /// Surface point, unit normal and first derivatives at `uv` (`None` when the surface
 /// cannot evaluate there).
-fn frame(srf: &Surface, uv: [f64; 2]) -> Option<Frame> {
+fn frame(k: &Kernel, srf: &Surface, uv: [f64; 2]) -> Option<Frame> {
     let (p, su, sv) = srf
-        .evaluate_1st_derivatives(Point2::new(uv[0], uv[1]), true, true)
+        .evaluate_1st_derivatives(k, Point2::new(uv[0], uv[1]), true, true)
         .ok()?;
     let n = norm3(cross3(arr3(su), arr3(sv)));
     Some((arr3(p), n, arr3(su), arr3(sv)))
@@ -426,13 +426,13 @@ fn gen_case(rng: &mut Rng, k: &Kernel) -> Option<Inputs> {
     let (curve, mut interval) = if kind < 45 {
         // a point curve on (or off) the surface
         let uv = gen_uv(rng, domain);
-        let (p, n, _, _) = frame(&srf, uv)?;
+        let (p, n, _, _) = frame(k, &srf, uv)?;
         let off = pick(rng, &[0.0, 0.0, 0.0, 1.0e-9, 1.0e-6, 1.0e-3, 0.5], 0.0) * s;
         point_curve(rng, add3(p, scale3(n, off)), s)
     } else if kind < 65 {
         // a line along the surface normal, from the surface or off it
         let uv = gen_uv(rng, domain);
-        let (p, n, _, _) = frame(&srf, uv)?;
+        let (p, n, _, _) = frame(k, &srf, uv)?;
         let len = pick(rng, &[0.1, 1.0, 1.0e-3], 1.0) * s;
         let start_off = pick(rng, &[0.0, 0.0, 1.0e-9, 1.0e-3, 0.5], 0.0) * s;
         let sign = if rng.chance(0.5) { 1.0 } else { -1.0 };
@@ -441,7 +441,7 @@ fn gen_case(rng: &mut Rng, k: &Kernel) -> Option<Inputs> {
         (CurveIn::Line { a, b }, [0.0, 1.0])
     } else {
         // a curve near the surface (mostly deferred: the offset surface)
-        let c = gen_curve_near(rng, &srf, domain, s)?;
+        let c = gen_curve_near(k, rng, &srf, domain, s)?;
         let r = curve_range(&c);
         (c, r)
     };

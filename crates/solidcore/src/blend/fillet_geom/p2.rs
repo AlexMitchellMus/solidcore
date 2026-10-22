@@ -96,6 +96,7 @@ use crate::nurbs::b_spline_surface_n_lib::p2::{EvaluateFlags, OrientType};
 use crate::nurbs::knots::Side;
 use crate::surface::plane::Plane;
 use crate::surface::surface::p2::SurfaceIntersection;
+use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::edgeuse::p1::{self as eu1, primary_edgeuse};
 use crate::topology::edgeuse::p3::{
@@ -256,7 +257,7 @@ const fn b_spline_net(s: &Surface) -> Option<&BSplineSurface> {
 /// rdMaxDist, rdDeviation, rUVCurves)` with the defaults (`bKeepAllDropCurves =
 /// TRUE`, no fail record, `bCreatingUVTrimCurve = TRUE`): the UV curves
 /// ([`Surface::drop_curve`]; the `SmPlane` override or the general drop).
-fn surface_drop_curve(
+pub(super) fn surface_drop_curve(
     k: &Kernel,
     surface: &Surface,
     domain: &Extent2d,
