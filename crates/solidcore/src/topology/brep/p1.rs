@@ -579,6 +579,23 @@ pub fn surfaces<'b>(
     b: &'b Brep,
     attribute: Option<&GeometryAttributeFilter<'_>>,
 ) -> Result<Vec<&'b Surface>> {
+    surface_owners(b, attribute, &|id| arena_identity(CacheObject::Face(id)))?
+        .into_iter()
+        .map(|id| {
+            b.face(id)?
+                .surface
+                .as_ref()
+                .ok_or_else(|| null("GetSurfaces: face without surface"))
+        })
+        .collect()
+}
+
+/// The same native geometry collection with caller-supplied owner identities.
+pub(crate) fn surface_owners(
+    b: &Brep,
+    attribute: Option<&GeometryAttributeFilter<'_>>,
+    owner: &dyn Fn(FaceId) -> ObjectRef,
+) -> Result<Vec<FaceId>> {
     let mut out = Vec::new();
     // for every face
     for f in faces(b, None)? {
@@ -588,7 +605,7 @@ pub fn surfaces<'b>(
             .as_ref()
             .ok_or_else(|| null("GetSurfaces: face without surface"))?;
         // add all standalone face->Surfaces to the list
-        if surface.owner() == Some(arena_identity(CacheObject::Face(f)))
+        if surface.owner() == Some(owner(f))
             && attribute.is_none_or(|filter| {
                 filter
                     .attributes
@@ -596,7 +613,7 @@ pub fn surfaces<'b>(
                     .is_some()
             })
         {
-            out.push(surface);
+            out.push(f);
         }
     }
     Ok(out)
@@ -613,6 +630,23 @@ pub fn curves<'b>(
     b: &'b Brep,
     attribute: Option<&GeometryAttributeFilter<'_>>,
 ) -> Result<Vec<&'b Curve>> {
+    curve_owners(b, attribute, &|id| arena_identity(CacheObject::Edge(id)))?
+        .into_iter()
+        .map(|id| {
+            b.edge(id)?
+                .curve
+                .as_ref()
+                .ok_or_else(|| null("GetCurves: edge without curve"))
+        })
+        .collect()
+}
+
+/// The same native geometry collection with caller-supplied owner identities.
+pub(crate) fn curve_owners(
+    b: &Brep,
+    attribute: Option<&GeometryAttributeFilter<'_>>,
+    owner: &dyn Fn(EdgeId) -> ObjectRef,
+) -> Result<Vec<EdgeId>> {
     let mut out = Vec::new();
     for e in edges(b, None)? {
         let curve = b
@@ -620,7 +654,7 @@ pub fn curves<'b>(
             .curve
             .as_ref()
             .ok_or_else(|| null("GetCurves: edge without curve"))?;
-        if curve.owner() == Some(arena_identity(CacheObject::Edge(e)))
+        if curve.owner() == Some(owner(e))
             && attribute.is_none_or(|filter| {
                 filter
                     .attributes
@@ -628,7 +662,7 @@ pub fn curves<'b>(
                     .is_some()
             })
         {
-            out.push(curve);
+            out.push(e);
         }
     }
     Ok(out)
