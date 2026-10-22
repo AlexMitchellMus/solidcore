@@ -11295,8 +11295,8 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
 
 ## blend.fillet_standard_solver_p2 (`SmFilletStandardSolver.cpp` part 2, PR #265, 2026-10-19, continued in PR #439, 2026-10-21; partial)
 
-Difftest (PR #439, on #303): 405 cases (400 generated + 5 fixtures): 367 pass, 0 failed, 33
-deferred, 5 rejected; `--perturb` 367/367; `--fuzz 2000` 0 differs. (PR #265 before the
+Difftest (PR #439, on main with #236): 405 cases (400 generated + 5 fixtures): 373 pass, 0
+failed, 27 deferred, 5 rejected; `--perturb` 373/373; `--fuzz 2000` 0 differs. (PR #265 before the
 `ReCalcFilletGeom` port: 388 pass, 17 deferred; 3000 seeds 2893 pass, 0 failed, 112
 deferred, max_rel_err 3.8e-16.)
 

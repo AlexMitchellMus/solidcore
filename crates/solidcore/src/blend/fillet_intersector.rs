@@ -2043,15 +2043,20 @@ mod tests {
             .compute_next_point(&mut s, &Kernel::default(), p, 0.1, p)
             .unwrap();
         assert!(!r.found_good_point && !r.clipped && !r.boundary_hit);
-        // a crossing reaches StepSolve
+        // a crossing reaches StepSolve, whose Newton solve (through the
+        // SmConstantRadiusFS::LoadInitialValues override, blend.fillet_standard_solver_p2)
+        // finds no point on these surfaces
         let c = fi
             .base
             .base
             .alloc_point(pnt([0.1, 0.0], [0.1, 0.0], [1.0, 0.0, 0.0], 0.0));
-        let e = fi
+        let r = fi
             .compute_next_point(&mut s, &Kernel::default(), c, 0.1, n)
-            .unwrap_err();
-        assert!(e.is_unported());
+            .unwrap();
+        assert!(
+            !r.found_good_point && !r.clipped && !r.boundary_hit,
+            "{r:?}"
+        );
     }
 
     /// A solver whose `StepSolve` clips the step to `clip` (rescaling it, as
@@ -2436,26 +2441,16 @@ mod tests {
 
         // StepSolve is the base's (unit blend.fillet_solver_p3) dispatched on this
         // solver: a clipped step finds no boundary point here and goes on to the Newton
-        // solve, which stops at the SmConstantRadiusFS::LoadInitialValues override
-        // (blend.fillet_standard_solver_p2); the clip it recorded first is kept
+        // solve (through the SmConstantRadiusFS::LoadInitialValues override,
+        // blend.fillet_standard_solver_p2), which finds no point; the clip it recorded
+        // first is kept
         let d = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
         let cur = pnt([0.9, 0.5], [0.9, 0.5], [1.0, 0.0, 0.0], 0.0);
         let mut step = 0.5;
         let mut flags = StepSolve::default();
         let mut next = TsectPnt::new();
-        let e = s
-            .step_solve(&k, &cur, &mut step, &d, &d, &mut flags, &mut next)
-            .unwrap_err();
-        assert!(
-            matches!(
-                e,
-                SolidError::Unported {
-                    unit: "blend.fillet_standard_solver_p2",
-                    ..
-                }
-            ),
-            "{e:?}"
-        );
+        s.step_solve(&k, &cur, &mut step, &d, &d, &mut flags, &mut next)
+            .unwrap();
         assert!(
             flags.clipped && !flags.found_answer && !flags.boundary_hit,
             "{flags:?}"
