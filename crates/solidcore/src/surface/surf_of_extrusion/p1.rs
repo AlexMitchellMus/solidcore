@@ -69,6 +69,11 @@
 //!   [`SurfOfExtrusion::make_nurb`] first) instead of reading a `(0, 0, 0, 0)` domain;
 //!   [`SurfOfExtrusion::gen_dir_param_extent`] reads the NURB as it is (an empty
 //!   interval without one). `Reparameterize` makes it.
+//!   Inherited `Surface` evaluation and iso-curve queries use a temporary, bounded
+//!   copy via `base_with_nurb`; they do not change the stored copy state. A lazy
+//!   B-spline generator (as returned by the extrusion recogniser) uses the analytic
+//!   domain, swapped when needed, for `Surface::natural_uv_domain`; other lazy
+//!   generator kinds still require an explicit `MakeNurb` for that domain query.
 //! - **Out-of-bounds evaluation.** `SmTemporaryChangeValue` gives the generator the
 //!   surface's out-of-bounds flag for the evaluation / drop; only a B-spline generator
 //!   reads it, so only that kind is copied with the flag changed. `STEPInversion`
@@ -95,6 +100,8 @@
 //! - **`sm_IntersectGenerators`** reads `pOpt3DCurves->GetSize()` before checking the
 //!   pointer and compares offset curves it may not have set; here a missing curve list
 //!   has size 0 and unset offsets compare unequal.
+
+use std::borrow::Cow;
 
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::p8::CurveIntersectOptions;
@@ -715,6 +722,37 @@ impl SurfOfExtrusion {
     /// The `SmBSplineSurface` base object, mutably.
     pub fn base_mut(&mut self) -> &mut BSplineSurface {
         &mut self.base
+    }
+
+    /// The inherited NURB for a query, made on a bounded temporary copy when missing.
+    /// An existing (possibly reparameterised) NURB is borrowed unchanged.
+    pub(crate) fn base_with_nurb(&self, k: &Kernel) -> Result<Cow<'_, BSplineSurface>> {
+        if self.base.gw_nurb().is_some() {
+            return Ok(Cow::Borrowed(&self.base));
+        }
+        let mut copy = self.clone_for_evaluation(0)?;
+        copy.make_nurb(k)?;
+        Ok(Cow::Owned(copy.base))
+    }
+
+    /// The recogniser's lazy B-spline generator has the STEP interval as its NURB
+    /// interval. Read that domain without making a NURB or choosing a kernel.
+    pub(crate) fn natural_uv_domain_for_query(&self) -> Extent2d {
+        if self.base.gw_nurb().is_none()
+            && matches!(
+                self.gen_curve.as_ref().map(Curve::kind),
+                Some(CurveKind::BSpline(_))
+            )
+        {
+            let min = self.anal_uv_domain.min();
+            let max = self.anal_uv_domain.max();
+            return if self.swap_uv {
+                Extent2d::from_bounds(min.y, min.x, max.y, max.x)
+            } else {
+                self.anal_uv_domain
+            };
+        }
+        self.base.natural_uv_domain()
     }
 
     /// A temporary evaluation copy: the surface's and the generator's NURBS data are

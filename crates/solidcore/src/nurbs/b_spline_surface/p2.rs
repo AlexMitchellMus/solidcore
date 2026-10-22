@@ -62,10 +62,6 @@
 //! - **`SetCanonical`** passes no domain to `CreateCanonical` (as upstream), so the
 //!   [`CanonicalSurfaceData::uv_domain`] of its argument is ignored. As upstream, only
 //!   the NURB is replaced: form and knot type stay those of the surface.
-//! - **Extrusion copies.** A recognised extrusion's missing NURB is made before
-//!   wrapping it as a [`Surface`]: upstream makes it lazily in `const` queries,
-//!   whereas the Rust dispatch reads the inherited B-spline data directly. An
-//!   existing NURB (possibly reparameterised by the recogniser) is left unchanged.
 //! - **Back-edges.** `CopyAndAddAnalytics` returns recognised planes, cones, surfaces
 //!   of revolution and extrusions as a [`Surface`]. A recognised sphere retains a
 //!   `surface.surface_p2` dispatch gap;
@@ -226,10 +222,7 @@ fn recognise_analytic(k: &Kernel, srf: &BSplineSurface) -> Result<Option<Surface
     if let Some(rev) = SurfOfRevolution::is_nurb_surface_surf_of_revolution(k, &test, 1.0)? {
         return Ok(Some(Surface::from(rev)));
     }
-    if let Some(mut extrusion) = SurfOfExtrusion::is_nurb_surface_surf_of_extrusion(k, srf, 1.0)? {
-        if extrusion.base().gw_nurb().is_none() {
-            extrusion.make_nurb(k)?;
-        }
+    if let Some(extrusion) = SurfOfExtrusion::is_nurb_surface_surf_of_extrusion(k, srf, 1.0)? {
         return Ok(Some(Surface::from(extrusion)));
     }
     Ok(None)
@@ -371,8 +364,7 @@ impl BSplineSurface {
     /// # Errors
     ///
     /// Those of the recognisers ([`Plane::is_nurb_surface_plane`],
-    /// [`crate::surface::cone::Cone::is_nurb_surface_cone`], ...) and of
-    /// [`SurfOfExtrusion::make_nurb`];
+    /// [`crate::surface::cone::Cone::is_nurb_surface_cone`], ...);
     /// [`SolidError::Unported`] from the still-unwired recognised sphere conversion.
     pub fn copy_and_add_analytics(&self, k: &Kernel) -> Result<Surface> {
         // (a surface that is not SmBSplineSurface_TYPE is copied as is: never here)
@@ -1774,11 +1766,18 @@ mod tests {
                 copy.kind(),
                 crate::surface::surface::SurfaceKind::SurfOfExtrusion(_)
             ));
+            if let crate::surface::surface::SurfaceKind::SurfOfExtrusion(extrusion) = copy.kind() {
+                // Only swapped, unequal domains make Reparameterize build the NURB.
+                assert_eq!(extrusion.base().gw_nurb().is_some(), swap_uv);
+            }
             assert_eq!(copy.natural_uv_domain(), domain);
             for ((u, v), expected) in samples.into_iter().zip(before) {
                 let uv = domain.evaluate(u, v);
                 assert_eq!(s.evaluate_point(uv).unwrap(), expected);
                 assert!(copy.evaluate_point(k, uv).unwrap().distance(expected) < 1e-12);
+            }
+            if let crate::surface::surface::SurfaceKind::SurfOfExtrusion(extrusion) = copy.kind() {
+                assert_eq!(extrusion.base().gw_nurb().is_some(), swap_uv);
             }
         }
     }
