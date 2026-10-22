@@ -98,9 +98,10 @@
 //!   `CreateUVTrimCurves` is `topology::face::p3::create_uv_trim_curves`.
 //! - **`HasSeamProblem`** (`topology.face_p4`) runs on the face's own B-rep objects
 //!   ([`crate::topology::face::p4::has_seam_problem_in_brep`]), so the classification
-//!   handle type must name them; the seam curves its classifications name are the
-//!   handle type's temporaries, which the caller's [`ClassGeometry`] resolves for
-//!   `SplitAtSeam`'s merges.
+//!   handle type must name them. The seam curves its classifications name are the
+//!   handle type's temporaries (upstream's classifications own them); `SplitAtSeam`'s
+//!   merges read them through the caller's [`ClassGeometry`], and a handle it cannot
+//!   resolve is [`SolidError::InvalidInput`].
 //!   `SmEdgeuse::NormalizedEvaluate` and `GetOrCreateUVTrimCurve` call
 //!   [`crate::topology::edgeuse::p3`] (wired in PR #117).
 //!   `SmBrep::ReplaceSurface` is [`brep_p2::replace_surface`], which reaches
