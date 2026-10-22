@@ -695,14 +695,27 @@ mod tests {
     }
 
     #[test]
-    fn consuming_sweeps_copy_then_defer() {
+    fn consuming_sweeps_copy_then_run_or_defer() {
         let mut k = Kernel::default();
         let (c, l, h) = (circle(), line(), hermite());
         let ok = [Some(&c), Some(&l)];
         let z = Vec3::new(0.0, 0.0, 1.0);
         let o = Point3::new(0.0, 0.0, 0.0);
-        assert!(unported(&create_linear_sweep(&mut k, &ok, z, 10.0, true)));
-        assert!(unported(&create_linear_sweep(&mut k, &[], z, 10.0, true)));
+        // the copies are made and the sweep runs (topology.brep_p4 is ported)
+        let b = create_linear_sweep(&mut k, &ok, z, 10.0, true).expect("linear sweep");
+        assert_eq!(
+            (
+                b.face_list().len(),
+                b.edge_list().len(),
+                b.vertex_list().len()
+            ),
+            (2, 7, 6)
+        );
+        // no profile curves: a successful empty sweep, as upstream
+        let b = create_linear_sweep(&mut k, &[], z, 10.0, true).expect("empty sweep");
+        assert!(b.face_list().is_empty());
+        assert!(b.edge_list().is_empty());
+        assert!(b.vertex_list().is_empty());
         assert!(invalid(&create_linear_sweep(
             &mut k,
             &[Some(&c), None],
