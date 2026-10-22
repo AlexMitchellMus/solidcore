@@ -99,7 +99,7 @@ use crate::geom::global_solver::{
 use crate::geom::solution_array::{
     OperandObject, Solution, SolutionArray, SolutionObject, SolutionType, SortKey,
 };
-use crate::geom::tol::{are_same, is_zero, is_zero_to_tol, zone_tol_3d_of_curve};
+use crate::geom::tol::{are_same, is_zero, is_zero_to_tol};
 use crate::geom::tree::{NodeData, Tree};
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
@@ -1605,14 +1605,12 @@ impl Curve {
         // interval IdenticalSolutions reads); the caller gets them without objects
         if opts.handle.is_none() && opts.analytic_handle.is_none() {
             let ivl = self.natural_interval();
-            // the stand-ins name this curve: SmTol::GetZoneTol3d(this)
-            let this_zone_tol = |_: OperandObject| zone_tol_3d_of_curve(k, self);
             let inner = GlobalPointSolveOptions {
                 target_distance: opts.target_distance,
                 opt_vectors: opts.opt_vectors,
                 handle: Some(OperandObject::Curve(0, ivl)),
                 analytic_handle: Some(OperandObject::Curve(2, ivl)),
-                zone_tol_3d: Some(ObjectZoneTol(&this_zone_tol)),
+                zone_tol_3d: None,
             };
             return Ok(self
                 .global_point_solve_cached(
