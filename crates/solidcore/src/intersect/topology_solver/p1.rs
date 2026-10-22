@@ -1134,7 +1134,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
         sol.start.solution_value = sign * sqrt(dist_sq);
 
         // accumulate unique solutions sorted by value into SmGlobalSolver::m_pSolutions
-        ts.base
+        ts
             .add_sorted_solution(&sol, SortKey::BySolutionValue, true)
     }
 
@@ -1288,7 +1288,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             if sol.solution_type == SolutionType::RangeOfValues {
                 sol.end.solution_value *= sign;
             }
-            ts.base
+            ts
                 .add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
         } // end iter every solution building final solution list
 
@@ -1479,7 +1479,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 *sol.start.param_mut(1)? = sol.start.param(2)?;
 
                 // add solution to output m_rTopologySolver.m_pSolutions if appropriate
-                ts.base
+                ts
                     .add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
             } // end for each solution
         } else if ts.base.projected_operation {
@@ -1541,7 +1541,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 if sol.solution_type == SolutionType::RangeOfValues {
                     sol.end.solution_value *= sign;
                 }
-                ts.base
+                ts
                     .add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
             }
         } // end not a ProjectedOperation branch
@@ -1727,7 +1727,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             if sol.solution_type == SolutionType::RangeOfValues {
                 sol.end.solution_value *= sign;
             }
-            ts.base
+            ts
                 .add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
         }
 

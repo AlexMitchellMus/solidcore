@@ -490,7 +490,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                         if self.swap_order {
                             swap_curve_surface_parameters(&mut solution)?;
                         }
-                        ts.base
+                        ts
                             .add_sorted_solution(&solution, SortKey::BySolutionValue, false)?;
                     }
                     continue;
@@ -512,7 +512,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             if self.swap_order {
                 swap_curve_surface_parameters(&mut solution)?;
             }
-            ts.base
+            ts
                 .add_sorted_solution(&solution, SortKey::BySolutionValue, true)?;
         }
         Ok(())
@@ -583,7 +583,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 solution.objects[1] = Some(face2);
                 solution.num_objects = 2;
                 solution.num_variables = 4;
-                ts.base
+                ts
                     .add_sorted_solution(&solution, SortKey::BySolutionValue, true)?;
             }
         }
