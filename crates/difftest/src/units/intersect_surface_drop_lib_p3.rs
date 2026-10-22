@@ -84,6 +84,13 @@ fn ffi_drop(i: &Inputs) -> ffi::Drop {
 }
 
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    // the FFI refuses a plane whose domain has no positive extent (UB-68: upstream
+    // dereferences its missing NURB), so such a fixture cannot establish parity
+    if let SurfIn::Plane { domain, .. } = &i.surface {
+        if !(domain[2] > domain[0] && domain[3] > domain[1]) {
+            return Ok(Output::rejected("plane domain without positive extent (UB-68)"));
+        }
+    }
     match ffi::run(&ffi_drop(i)) {
         Ok(rec) => Ok(Output::new().values("rec", rec)),
         Err(e) => Err(harness(format!("C++: {e}"))),
@@ -655,7 +662,8 @@ fn fixtures() -> Vec<(String, Inputs)> {
             ),
         ),
         // a plane whose natural domain has no width (DegenSurfaceFail: the given
-        // degenerate domain is replaced by the natural one)
+        // degenerate domain is replaced by the natural one); rejected since the FFI
+        // refuses such a plane (UB-68)
         (
             "plane_natural_zero_width".to_owned(),
             fixture(
@@ -666,7 +674,7 @@ fn fixtures() -> Vec<(String, Inputs)> {
             ),
         ),
         // a plane whose natural domain has no height (WR-100: upstream tests the width
-        // twice, so the drop goes on with degen_v = 0)
+        // twice, so the drop goes on with degen_v = 0); rejected as above (UB-68)
         (
             "plane_natural_zero_height".to_owned(),
             fixture(
