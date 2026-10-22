@@ -896,10 +896,10 @@ mod tests {
         ] {
             assert_eq!(deferred_at(&r), Some("topology.brep_p4"));
         }
-        // the closed analytic face gets through the region split, then stops at
-        // SmSurface::DropCurve
+        // the closed analytic face gets through the region split, then stops in
+        // SmSurface::DropCurve at an SmCrvOnSurf over the analytic surface
         for r in [create_sphere(k, o(), 5.0), create_torus(k, o(), 10.0, 2.0)] {
-            assert_eq!(deferred_at(&r), Some("intersect.surface_drop_lib_p3"));
+            assert_eq!(deferred_at(&r), Some("curve.crv_on_surf"));
         }
         // partial solids sweep a profile (topology sweep) past SmFace::FindVertexSector
         // until SmBrep::DeleteEdge
@@ -910,9 +910,11 @@ mod tests {
         ] {
             assert_eq!(deferred_at(&r), Some("topology.brep_p4"));
         }
+        // the sphere without poles gets through SmSurface::DropCurve and stops at
+        // SmBrep::StitchFaces
         assert_eq!(
             deferred_at(&create_sphere_no_pole(k, o(), -5.0)),
-            Some("intersect.surface_drop_lib_p3")
+            Some("topology.brep_p4")
         );
         // edges without an edge use on their face
         let mut brep = Brep::new_with_infinite_region().unwrap();

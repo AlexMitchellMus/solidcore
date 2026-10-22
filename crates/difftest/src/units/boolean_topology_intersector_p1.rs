@@ -1258,18 +1258,26 @@ impl solidcore::topology::proto_topology::p3::BrepGlue<H> for Two {
         v2: H,
         opt_wire_edges_in_brep: Option<&[H]>,
     ) -> solidcore::Result<()> {
-        if brep.kind != K_BREP || v1.kind != K_VERTEX || v2.kind != K_VERTEX || v1.b != brep.b
+        if brep.kind == K_BREP
+            && v1.kind == K_VERTEX
+            && v2.kind == K_VERTEX
+            && v1.b != v2.b
+            && (v1.b == brep.b || v2.b == brep.b)
+        {
+            // UNPORTED(topology.brep_p5): SmBrep::GlueVertices of vertices of two B-reps --
+            // justified: topology::brep::p5::glue_vertices takes one B-rep arena
+            return Err(SolidError::unported(
+                "SmBrep::GlueVertices (vertices of two B-reps)",
+                "topology.brep_p5",
+            ));
+        }
+        if brep.kind != K_BREP
+            || v1.kind != K_VERTEX
+            || v2.kind != K_VERTEX
+            || v1.b != brep.b
+            || v2.b != brep.b
         {
             return Err(invalid("glue vertex owner mismatch"));
-        }
-        if v2.b != brep.b {
-            // VertexFaceIntersect glues the vertex its imprint made in the face's B-rep
-            // onto the other B-rep's vertex (`pV->GetBrep()->GlueVertices(pV,
-            // pNewVertex)`); the two operand arenas cannot share a vertex
-            return Err(SolidError::unported(
-                "SmBrep::GlueVertices (vertex of the other B-rep)",
-                "harness:cross-brep-glue",
-            ));
         }
         let wires = opt_wire_edges_in_brep
             .map(|edges| {

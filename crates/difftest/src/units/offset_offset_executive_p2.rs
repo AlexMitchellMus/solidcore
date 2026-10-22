@@ -2496,8 +2496,7 @@ mod tests {
 
     #[test]
     fn face_geometry_paths_reach_distinct_actual_callees() {
-        // MakeWireEdgeVertex now runs; its UV-curve construction runs DropCurve, and the
-        // extended sheets stop later, at the edge-use offset adapter.
+        // MakeWireEdgeVertex runs; its UV-curve construction gets through DropCurve.
         let context = CaseContext {
             root: repo_root(),
             seeds: 0,

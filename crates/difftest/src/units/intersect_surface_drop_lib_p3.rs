@@ -84,13 +84,6 @@ fn ffi_drop(i: &Inputs) -> ffi::Drop {
 }
 
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
-    // the FFI refuses a plane whose domain has no positive extent (UB-68: upstream
-    // dereferences its missing NURB), so such a fixture cannot establish parity
-    if let SurfIn::Plane { domain, .. } = &i.surface {
-        if !(domain[2] > domain[0] && domain[3] > domain[1]) {
-            return Ok(Output::rejected("plane domain without positive extent (UB-68)"));
-        }
-    }
     match ffi::run(&ffi_drop(i)) {
         Ok(rec) => Ok(Output::new().values("rec", rec)),
         Err(e) => Err(harness(format!("C++: {e}"))),
@@ -508,17 +501,6 @@ fn square_plane() -> SurfIn {
     }
 }
 
-/// A plane with the given natural domain.
-fn plane_with_domain(domain: [f64; 4]) -> SurfIn {
-    SurfIn::Plane {
-        o: [0.0, 0.0, 0.0],
-        x: [1.0, 0.0, 0.0],
-        y: [0.0, 1.0, 0.0],
-        scale: [1.0, 1.0],
-        domain,
-    }
-}
-
 /// A cone of base radius 1 and height 1 about the z axis, apex at `(0, 0, 1)`.
 fn cone_to_apex() -> SurfIn {
     SurfIn::Revolution {
@@ -661,29 +643,9 @@ fn fixtures() -> Vec<(String, Inputs)> {
                 [0.0, 1.0],
             ),
         ),
-        // a plane whose natural domain has no width (DegenSurfaceFail: the given
-        // degenerate domain is replaced by the natural one); rejected since the FFI
-        // refuses such a plane (UB-68)
-        (
-            "plane_natural_zero_width".to_owned(),
-            fixture(
-                plane_with_domain([0.0, 0.0, 0.0, 1.0]),
-                point_at([0.0, 0.5, 0.0]),
-                [0.0, 0.0, 0.0, 1.0],
-                [0.0, 1.0],
-            ),
-        ),
-        // a plane whose natural domain has no height (WR-100: upstream tests the width
-        // twice, so the drop goes on with degen_v = 0); rejected as above (UB-68)
-        (
-            "plane_natural_zero_height".to_owned(),
-            fixture(
-                plane_with_domain([0.0, 0.0, 1.0, 0.0]),
-                point_at([0.5, 0.0, 0.0]),
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 1.0],
-            ),
-        ),
+        // (a plane whose natural domain has no width or height is not compared: the
+        // shared plane encoder of `intersect.surface_drop_lib_p2` rejects it, UB-68 in
+        // `plan/upstream-issues.md`)
         // the apex of a cone (a surface pole) with a point curve there: the pole line
         // (a degenerate curve on a pole)
         (
