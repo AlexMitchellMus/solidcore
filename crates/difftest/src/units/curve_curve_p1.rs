@@ -627,6 +627,18 @@ fn per_point(
     Ok(Some(all))
 }
 
+/// The FFI's own validation of `op` (what [`cpp`] runs, point by point as there),
+/// applied to the Rust side too: its guards refuse inputs upstream (and the
+/// faithful port) never finish on (fuzz Rust-side hangs).
+fn validate(op: &OpIn) -> Result<Output, HarnessError> {
+    if let Some(o) = per_point(op, validate)? {
+        return Ok(o);
+    }
+    let (code, input) = cpp_input(op)?;
+    ffi::validate(code, &input).map_err(|e| harness(e.to_string()))?;
+    Ok(Output::new())
+}
+
 fn cpp(op: &OpIn) -> Result<Output, HarnessError> {
     if let Some(o) = per_point(op, cpp)? {
         return Ok(o);
@@ -1448,14 +1460,51 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        rust(&case.parse()?)
+        let op = case.parse()?;
+        validate(&op)?;
+        rust(&op)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CaseSource;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn fuzz_breaks_near_1e300_fail_softly() {
+        // `--fuzz` replays: a break at `+-1e300`. The FFI refuses the value (upstream
+        // approximates forever, growing its control polygon until memory runs out);
+        // the Rust side now refuses it by the FFI's own check too. Run directly, the
+        // port's `approximate_curve` used to abort on a 6 GiB allocation (fuzz01255)
+        // or spin (fuzz01951); fuzz01255 now stops at `MAX_APPROX_SPANS` with an error.
+        let recorded: Value = serde_json::from_str(include_str!(
+            "../../tests/fuzz_regressions/curve.curve_p1.json"
+        ))
+        .unwrap();
+        let cases = recorded["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 2);
+        for recorded in cases {
+            let case = Case {
+                unit: Runner.id().into(),
+                name: recorded["name"].as_str().unwrap().into(),
+                source: CaseSource::Inline,
+                inputs: recorded["inputs"].clone(),
+            };
+            let error = Runner.run_rust(&case).unwrap_err().to_string();
+            assert!(error.ends_with("not finite or too large"), "{error}");
+            #[cfg(feature = "cpp")]
+            {
+                let native = Runner.run_cpp(&case).unwrap_err().to_string();
+                assert!(native.ends_with("not finite or too large"), "{native}");
+            }
+        }
+        let op: OpIn = serde_json::from_value(cases[0]["inputs"].clone()).unwrap();
+        let out = rust(&op).unwrap();
+        // a failing status, not a curve
+        assert_ne!(out.ints["status"], vec![0], "{out:?}");
+    }
 
     /// Generated cases cover every op, with passing (not deferred) cases.
     #[test]

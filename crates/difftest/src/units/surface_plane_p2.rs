@@ -315,6 +315,15 @@ fn db_bytes(d: &DbIn) -> Result<Vec<u8>, HarnessError> {
     if d.binary && d.cut > 0 {
         return Err(harness("truncated binary streams are not comparable"));
     }
+    // A header of other than 15 values shifts the B-spline header into the wrong
+    // fields: upstream then reads `n m p q rat` from failed extractions and uses them
+    // uninitialised (UB-6; fuzz00842 segfaults or returns a different surface each
+    // run), the port refuses the unreadable header.
+    if d.header.len() != 15 {
+        return Err(harness(
+            "plane header must hold 15 values (upstream reads the B-spline header uninitialised)",
+        ));
+    }
     let s = &d.surface;
     let n = s.net.len().checked_sub(1).ok_or_else(|| harness("empty net"))? as i64;
     let m = s
@@ -1502,5 +1511,42 @@ impl UnitDiff for Runner {
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         rust(&case.parse()?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::CaseSource;
+
+    #[test]
+    fn both_sides_refuse_a_misaligned_db_header() {
+        // `--fuzz` replay (verify2000/surface.plane_p2/fuzz00842): an ASCII stream whose
+        // plane header is empty. Upstream then reads the B-spline header from failed
+        // extractions into uninitialised locals (UB-6) and segfaults or returns a
+        // different surface each run; the port refuses the unreadable header. Both
+        // sides now refuse the input before reading.
+        let recorded: Value = serde_json::from_str(include_str!(
+            "../../tests/fuzz_regressions/surface.plane_p2.json"
+        ))
+        .unwrap();
+        let cases = recorded["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 1);
+        for recorded in cases {
+            let case = Case {
+                unit: Runner.id().into(),
+                name: recorded["name"].as_str().unwrap().into(),
+                source: CaseSource::Inline,
+                inputs: recorded["inputs"].clone(),
+            };
+            let expected = "plane header must hold 15 values";
+            let error = Runner.run_rust(&case).unwrap_err().to_string();
+            assert!(error.contains(expected), "{error}");
+            #[cfg(feature = "cpp")]
+            {
+                let native = Runner.run_cpp(&case).unwrap_err().to_string();
+                assert!(native.contains(expected), "{native}");
+            }
+        }
     }
 }

@@ -1440,14 +1440,52 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        rust(&case.parse()?)
+        let i = case.parse()?;
+        // Run only what the FFI accepts, as the C++ side: its guards refuse inputs
+        // upstream (and the faithful port) never finish on (fuzz Rust-side hangs).
+        let (code, input) = cpp_input(&i)?;
+        ffi::validate(code, &input).map_err(|e| HarnessError::new(e.to_string()))?;
+        rust(&i)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CaseSource;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn fuzz_cyclic_trees_fail_softly() {
+        // `--fuzz` replays: a tree node whose child is itself (or another node whose
+        // parent does not point back). The FFI refuses the tree; the Rust side now
+        // refuses it by the FFI's own check too. Run directly, the port's
+        // `mark_face_containment` used to descend the cycle forever; it now stops.
+        let recorded: Value = serde_json::from_str(include_str!(
+            "../../tests/fuzz_regressions/query.tess.json"
+        ))
+        .unwrap();
+        let cases = recorded["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 2);
+        for recorded in cases {
+            let case = Case {
+                unit: Runner.id().into(),
+                name: recorded["name"].as_str().unwrap().into(),
+                source: CaseSource::Inline,
+                inputs: recorded["inputs"].clone(),
+            };
+            let error = Runner.run_rust(&case).unwrap_err().to_string();
+            assert!(error.starts_with("invalid argument"), "{error}");
+            #[cfg(feature = "cpp")]
+            {
+                let native = Runner.run_cpp(&case).unwrap_err().to_string();
+                assert_eq!(native, error);
+            }
+            let input: Inputs = serde_json::from_value(recorded["inputs"].clone()).unwrap();
+            let direct = rust(&input).unwrap();
+            assert_ne!(direct.ints["status"], vec![0], "{direct:?}");
+        }
+    }
 
     /// The generators reach every op with successful outcomes on the Rust side, real
     /// subdivision (split subdivision surfaces), silhouette nodes and classified nodes.
