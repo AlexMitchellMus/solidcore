@@ -441,7 +441,10 @@ fn status(e: &SolidError) -> f64 {
 }
 
 /// Pushes the status then, on success, the surface.
-fn surface_result(o: &mut Vec<f64>, r: solidcore::Result<BSplineSurface>) -> Result<(), SolidError> {
+fn surface_result(
+    o: &mut Vec<f64>,
+    r: solidcore::Result<BSplineSurface>,
+) -> Result<(), SolidError> {
     match r {
         Ok(s) => {
             o.push(0.0);
@@ -511,7 +514,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 .iter()
                 .map(|c| need(bspline(c)?))
                 .collect::<Result<Vec<_>, _>>()?;
-            surface_result(&mut o, api::create_skin(&ps))
+            surface_result(&mut o, api::create_skin(&k, &ps))
         }
         Inputs::SkinPrimitive {
             counts,
@@ -820,7 +823,11 @@ fn gen_revolution(rng: &mut Rng) -> Inputs {
     };
     Inputs::Revolution {
         curve,
-        origin: if null { rng.point3(-5.0, 5.0) } else { [0.0; 3] },
+        origin: if null {
+            rng.point3(-5.0, 5.0)
+        } else {
+            [0.0; 3]
+        },
         axis,
         angle_deg: rng.uniform(-360.0, 360.0),
     }

@@ -11,7 +11,7 @@
 //! | [`Hcr::from_scene`]                          | `ConstructorInit` after the scene B-rep is built |
 //! | `Drop` (implicit)                            | `SmHCR::~SmHCR`                           |
 //! | [`Hcr::set_hcr_for_silhouettes`]             | `SetHCRForSilhouettes`                    |
-//! | [`Hcr::scene_brep`]                          | `GetSceneBrep`                            |
+//! | [`Hcr::scene_brep`], [`Hcr::scene_brep_mut`] | `GetSceneBrep`                            |
 //! | [`Hcr::silhouette_edges`]                    | `GetSilhouetteEdges`                      |
 //! | [`Hcr::compute_curve_visibility`]            | `ComputeCurveVisibility`                  |
 //! | [`Hcr::compute_global_visibility`]           | `ComputeGlobalVisibility`                 |
@@ -91,6 +91,7 @@ use crate::nurbs::b_spline_curve::p2::BoundingBoxRequest;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::BSplineSurface;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::surface::volume::Volume;
 use crate::topology::{edge, edgeuse, vertex, vertexuse};
@@ -218,16 +219,6 @@ fn find_and_set_infinite_region(brep: &mut Brep) -> Result<()> {
         SM_VS_INFINITEREGION_SWAP,
         None,
     )
-}
-
-/// `SmBrep::CalculateBoundingBox` (unit `query.brep`).
-fn brep_bounding_box(brep: &Brep) -> Result<Extent3d> {
-    let _ = brep;
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmBrep::CalculateBoundingBox",
-        "query.brep",
-    ))
 }
 
 /// `SmBrep::GetInfiniteRegion` (unit `topology.brep_p1`).
@@ -517,7 +508,12 @@ impl Hcr {
         ignore_status(transform_brep(&mut scene, &vt))?;
         ignore_status(find_and_set_infinite_region(&mut scene))?; // [B23]
                                                                   // its status is ignored upstream (the box then stays empty)
-        let scene_box = ignored(brep_bounding_box(&scene))?.unwrap_or_else(Extent3d::new);
+        let scene_box = ignored(qbrep::calculate_bounding_box(
+            k,
+            &scene,
+            BoundingBoxOptions::default(),
+        ))?
+        .unwrap_or_else(Extent3d::new);
         Ok(Self::from_scene(k, scene, view_transform, scene_box, opts))
     }
 
@@ -572,6 +568,11 @@ impl Hcr {
     #[must_use]
     pub const fn scene_brep(&self) -> &Brep {
         &self.scene
+    }
+    /// The owned scene, for topology services that require a mutable source borrow.
+    /// Edits must preserve the identities referenced by this HCR session.
+    pub const fn scene_brep_mut(&mut self) -> &mut Brep {
+        &mut self.scene
     }
     /// The view vector in the scene (`m_vViewVector`, always `(0, 0, 1)`).
     #[must_use]
@@ -714,7 +715,7 @@ impl Hcr {
                 let mid = Geometry { brep: &self.scene }
                     .curve(curve)
                     .ok_or(undefined("classification curve not resolved"))?
-                    .evaluate_point(t_mid)?;
+                    .evaluate_point(k, t_mid)?;
                 visibility = self.is_point_visible(k, mid)?;
             }
 
@@ -780,7 +781,7 @@ impl Hcr {
                         marked.insert(e);
                     } else if let Some(curve) = edge::curve(&self.scene, e)? {
                         let tol = self.scene.tolerance() / 100.0;
-                        if curve.is_line(10, tol)?.is_some() {
+                        if curve.is_line(k, 10, tol)?.is_some() {
                             let t = edge::interval(&self.scene, e)?.evaluate(0.5);
                             let (bin, _, _) = evaluate_binormal(k, &mut self.scene, eu, t)?;
                             if bin.z > -EFF_ZERO {
@@ -1008,8 +1009,7 @@ impl Hcr {
             if matches!(surface.kind(), SurfaceKind::Plane(_)) {
                 continue;
             }
-            // pick tol to limit segment sizes in DoTrace (the partial callee does not
-            // take the tolerances yet)
+            // pick tol to limit segment sizes in DoTrace
             let sil_tol = self.approx_tol_3d.min(self.ray_offset_tolerance / 100.0);
             let uv_domain = face.uv_domain;
             let Some((curves, uv_curves)) = ignored(surface.create_silhouette_curves(
@@ -1353,7 +1353,7 @@ impl Hcr {
         let mut ray_start = ray_end;
         ray_start.z += max_distance;
 
-        match tracer.fire_ray(ray_start, ray_vec, max_distance) {
+        match tracer.fire_ray(k, ray_start, ray_vec, max_distance) {
             Ok(hit) => Ok(!hit.hits_something),
             Err(err) if err.is_unported() => Err(err),
             // signal an error and guess that the point is visible
@@ -1430,7 +1430,7 @@ impl Hcr {
                     continue;
                 }
                 // skip solutions behind this curve
-                let crv_pnt = curve.evaluate_point(param)?;
+                let crv_pnt = curve.evaluate_point(k, param)?;
                 if crv_pnt.z > vert_pnt.z + self.ray_offset_tolerance {
                     continue;
                 }
@@ -1449,7 +1449,7 @@ impl Hcr {
                         .point_class_by_index(index)
                         .map_err(|_| undefined("null point class"))?;
                     if pc.point_class() == PointClassType::Vertex {
-                        let existing = ignored(pc.find_obj_point_3d(&geom))?
+                        let existing = ignored(pc.find_obj_point_3d(k, &geom))?
                             .ok_or(undefined("uninitialised vertex point"))?;
                         if existing.z >= vert_pnt.z {
                             continue; // Just ignore this one.
@@ -1514,8 +1514,8 @@ impl Hcr {
                     [Some(&sol.start), None]
                 };
                 for end in ends.into_iter().flatten() {
-                    let p1 = curve.evaluate_point(end.parameters[0])?;
-                    let p2 = other.evaluate_point(end.parameters[1])?;
+                    let p1 = curve.evaluate_point(k, end.parameters[0])?;
+                    let p2 = other.evaluate_point(k, end.parameters[1])?;
                     // Don't use this intersection if it is behind the curve
                     if p1.z < p2.z + self.ray_offset_tolerance {
                         let mut pc = PointClassification::new(curve_zone);

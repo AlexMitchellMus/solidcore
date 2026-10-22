@@ -15,6 +15,18 @@
 //! | [`ProtoTopologyManager::resolve_overlapping_proto_edges`] | `SmProtoTopologyManager::ResolveOverlappingProtoEdges` |
 //!
 //! Deviations:
+//! - **Removed proto edges** (SolidCraft fix, tangency-labs/smlib 93efd6d, UB-239).
+//!   Upstream's `SplitIntersectingProtoEdges` deletes the combined-away proto edge while
+//!   proto faces (coincident lists) and other proto edges (overlap lists) still name
+//!   it, and `GlueCoincidentBrepVertices` reads it after the free. Here the faces it
+//!   bounded get the surviving edge first
+//!   ([`ProtoTopologyManager::hand_over_coincident_proto_edge`]), and every reference
+//!   to it is dropped before the delete ([`ProtoTopologyManager::forget_proto_edge`],
+//!   part 1), here and in `ResolveOverlappingProtoEdges`. The fork does that inside
+//!   `RemoveProtoEdge`; the port does it at these library deletes, so unlisting or
+//!   deleting a proto edge on its own (the difftest's script ops) stays upstream's.
+//!   Without it, the stale id names a deleted slot and the later passes fail with
+//!   `InvalidInput`.
 //! - **B-rep access.** Topology objects are the caller's handles `O`, as in
 //!   [`p1`](super::p1). What these functions read from vertices and edges, and the
 //!   store new curves go to, is [`ProtoBrep`] (of `topology.proto_topology_p2`, which
@@ -24,8 +36,9 @@
 //!   [`ProtoBrep::topology_tolerance`]; `SmTol::GetXSectTol3d(v1, v2)` is the
 //!   sum of the two.
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
-//!   each tagged `UNPORTED(<unit>)`: `SmBrep::Point3DClassify` (`query.brep`),
-//!   `SqueezeEdge` / `DeleteEdge` (`topology.brep_p3` / `_p4`). `SmBrep::GlueVertices`
+//!   each tagged `UNPORTED(<unit>)`: `SqueezeEdge` / `DeleteEdge` (`topology.brep_p3`
+//!   / `_p4`). `SmBrep::Point3DClassify` goes through
+//!   [`ProtoBrep::brep_point_3d_classify`], which the B-reps' owner implements. `SmBrep::GlueVertices`
 //!   goes through [`BrepGlue`], which the B-reps' owner implements with
 //!   `topology::brep::p5` (so [`ProtoTopologyManager::glue_coincident_brep_vertices`]
 //!   takes the kernel and the B-reps mutably).
@@ -65,7 +78,7 @@ use crate::intersect::point_class::{
     ClassGeometry, ClassObject, ClassObjectKind, PointClassification,
 };
 use crate::kernel::Kernel;
-use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO};
+use crate::math::{Vec3, BIG_DOUBLE, EFF_ZERO};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 
 use super::p1::proto::{can_imprint, find_position_from_pcs, topo_dimension};
@@ -140,20 +153,6 @@ fn curve_of<O: Copy>(geometry: &impl ClassGeometry<O>, o: Option<O>) -> Result<&
 }
 
 // ---- callees not ported yet ----------------------------------------------------------
-
-/// `SmBrep::Point3DClassify(point, tol, TRUE, classification)`.
-fn brep_point3d_classify<O>(
-    _brep: O,
-    _point: Point3,
-    _tol: f64,
-    _pc: &mut PointClassification<O>,
-) -> Result<()> {
-    // UNPORTED(query.brep): SmBrep::Point3DClassify
-    Err(SolidError::unported(
-        "SmBrep::Point3DClassify",
-        "query.brep",
-    ))
-}
 
 /// `SmCurveClassification(pCurve, interval, NULL, tol)` (the remaining arguments default:
 /// no interval storage, the curve not owned and current, no surfaces).
@@ -331,7 +330,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         .unwrap_or_default();
 
         // when CrvInterval is degenerate - find or create a ProtoVertex for Interval
-        if curve_of(geometry, cc_curve)?.is_degenerate(tol, None)? {
+        if curve_of(geometry, cc_curve)?.is_degenerate(k, tol, None)? {
             let start =
                 can_imprint(ci1.start.point_class()) && can_imprint(ci2.start.point_class());
             let mid = can_imprint(ci1.mid.point_class()) && can_imprint(ci2.mid.point_class());
@@ -386,7 +385,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         }
 
         // quit - degenerate interval. [B488]
-        if curve_of(geometry, cc_curve)?.is_degenerate(tol, Some(&this_ivl))? {
+        if curve_of(geometry, cc_curve)?.is_degenerate(k, tol, Some(&this_ivl))? {
             return Ok((None, false));
         }
 
@@ -486,7 +485,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         let tol = d.raw_tolerance();
 
         // Takes reversal into account; status ignored.
-        let crv_pt = ignore_soft(d.evaluate(&*geometry, param_pe, true, false))?
+        let crv_pt = ignore_soft(d.evaluate(k, &*geometry, param_pe, true, false))?
             .and_then(|r| r.0)
             .unwrap_or(Vec3::UNDEF);
 
@@ -498,11 +497,11 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         let start_pv = pe.start_proto_vertex();
         let end_pv = pe.end_proto_vertex();
 
-        let pt = self.edge_def_end_position_at(&*geometry, ed, start_pv)?;
+        let pt = self.edge_def_end_position_at(k, &*geometry, ed, start_pv)?;
         if crv_pt.distance(pt) < tol * CBI_FUDGE {
             return Ok((None, None));
         }
-        let pt = self.edge_def_end_position_at(&*geometry, ed, end_pv)?;
+        let pt = self.edge_def_end_position_at(k, &*geometry, ed, end_pv)?;
         if crv_pt.distance(pt) < tol * CBI_FUDGE {
             return Ok((None, None));
         }
@@ -512,8 +511,18 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         let brep2 = self.which_brep(2);
         let mut pc1 = PointClassification::new(zone_tol3d(k, tol));
         let mut pc2 = PointClassification::new(zone_tol3d(k, tol));
-        ignore_soft(brep_point3d_classify(brep1, crv_pt, tol, &mut pc1))?;
-        ignore_soft(brep_point3d_classify(brep2, crv_pt, tol, &mut pc2))?;
+        // (statuses ignored: a failed classification keeps its cleared state)
+        let tol_3d = zone_tol3d(k, tol);
+        if let Some(pc) =
+            ignore_soft(geometry.brep_point_3d_classify(k, brep1, crv_pt, tol_3d, true))?
+        {
+            pc1 = pc;
+        }
+        if let Some(pc) =
+            ignore_soft(geometry.brep_point_3d_classify(k, brep2, crv_pt, tol_3d, true))?
+        {
+            pc2 = pc;
+        }
 
         let mid_pv = mid_pv.ok_or(dangling("mid proto vertex is null"))?;
         let (new_vd, created) = ignore_soft(
@@ -649,11 +658,11 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         }
         let tol = e.raw_tolerance();
 
-        let crv_pt = ignore_soft(self.proto_edge_evaluate(&*geometry, pe, dt, true, false))?
+        let crv_pt = ignore_soft(self.proto_edge_evaluate(k, &*geometry, pe, dt, true, false))?
             .and_then(|r| r.0)
             .unwrap_or(Vec3::UNDEF);
-        let start_pt = self.proto_edge_end_position(&*geometry, pe, true)?;
-        let end_pt = self.proto_edge_end_position(&*geometry, pe, false)?;
+        let start_pt = self.proto_edge_end_position(k, &*geometry, pe, true)?;
+        let end_pt = self.proto_edge_end_position(k, &*geometry, pe, false)?;
 
         // no work - Split Pt is within tol of ProtoEdge end point
         if crv_pt.distance(start_pt) < tol {
@@ -883,8 +892,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                     .unwrap_or((None, None));
 
                 // Combine PVs:
-                let pv1 = self.which_pv_to_combine(&*geometry, pe1, t11, npv11)?;
-                let pv2 = self.which_pv_to_combine(&*geometry, pe1, t21, npv21)?;
+                let pv1 = self.which_pv_to_combine(k, &*geometry, pe1, t11, npv11)?;
+                let pv2 = self.which_pv_to_combine(k, &*geometry, pe1, t21, npv21)?;
                 self.combine_and_delete_pvs(pv1, pv2)?;
 
                 // T2: first decide which pieces to split.
@@ -902,8 +911,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                 let _ = npe12;
 
                 // Combine PVs:
-                let pv1 = self.which_pv_to_combine(&*geometry, pe1_to_split, t12, npv12)?;
-                let pv2 = self.which_pv_to_combine(&*geometry, pe2_to_split, t22, npv22)?;
+                let pv1 = self.which_pv_to_combine(k, &*geometry, pe1_to_split, t12, npv12)?;
+                let pv2 = self.which_pv_to_combine(k, &*geometry, pe2_to_split, t22, npv22)?;
                 self.combine_and_delete_pvs(pv1, pv2)?;
 
                 // Combine ProtoEdges
@@ -919,7 +928,13 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                     pe1_to_combine,
                     pe2_to_combine,
                 ))?;
+
+                // ProtoFaces bounded by the combined-away PE are bounded by the
+                // survivor now (SolidCraft change, tangency-labs/smlib 93efd6d)
+                self.hand_over_coincident_proto_edge(pe1_to_combine, pe2_to_combine);
+
                 ignore_soft(self.remove_proto_edge(pe2_to_combine))?;
+                self.forget_proto_edge(pe2_to_combine);
                 deleted.extend(self.delete_proto_edge_object(pe2_to_combine));
             }
         }
@@ -1118,7 +1133,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                                 .edge_interval(edge)
                                 .ok_or(dangling("edge is unknown"))?;
                             let len = curve_of(brep, curve_handle)?
-                                .approximate_length(&ivl, 5, false)?
+                                .approximate_length(k, &ivl, 5, false)?
                                 .0;
                             if len < xs {
                                 // If any to-be-deleted topology is mated, remove the
@@ -1452,6 +1467,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
 
                 // remove OverlapPE from ProtoTopoMgr, then delete it
                 ignore_soft(self.remove_proto_edge(overlap))?;
+                self.forget_proto_edge(overlap);
                 deleted_curves.extend(self.delete_proto_edge_object(overlap));
             }
 

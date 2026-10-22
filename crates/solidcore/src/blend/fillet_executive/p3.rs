@@ -520,21 +520,19 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmBrep::SetTolerance`; waiting for `topology.brep_p2`.
+    /// `SmBrep::SetTolerance(sZoneTol3d, bUpdateOnlyIfLarger, bCascadeToBndries)`:
+    /// delegate to the already ported `topology::brep::p2::set_tolerance` (brep p2) on
+    /// the B-rep `brep` resolves to, passing every argument. Upstream's `SetTolerance`
+    /// is `void`, so the callers ignore any non-`Unported` error
+    /// (`SmFilletExecutive.cpp:2439`, `:2509`).
     fn set_brep_tolerance(
         &mut self,
-        _k: &mut Kernel,
-        _brep: O,
-        _tolerance: f64,
-        _update_only_if_larger: bool,
-        _cascade_to_boundaries: bool,
-    ) -> Result<()> {
-        // UNPORTED(topology.brep_p2): SmBrep::SetTolerance
-        Err(SolidError::unported(
-            "SmBrep::SetTolerance",
-            "topology.brep_p2",
-        ))
-    }
+        k: &mut Kernel,
+        brep: O,
+        tolerance: f64,
+        update_only_if_larger: bool,
+        cascade_to_boundaries: bool,
+    ) -> Result<()>;
 
     /// `SmFilletGeom::MakeFaceBrep(m_pFilletBrep)`: delegate to the already ported
     /// `blend::fillet_geom::p4::FilletBrep::make_face_brep` (fillet geom p4) on the
@@ -624,22 +622,21 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         intersector: &mut TopologyIntersector<O>,
     ) -> Result<()>;
 
-    /// `SmFilletGeom::TrimOriginalSurfaces`; waiting for `blend.fillet_geom_p6`.
+    /// `SmFilletGeom::TrimOriginalSurfaces(rKept, rDeleted, rMarkLocks)`: delegate to
+    /// the already ported `blend::fillet_geom::p6::FilletBrep::trim_original_surfaces`
+    /// (fillet geom p6) on the fillet geometry `geom` resolves to, with the fillet
+    /// B-rep (`executive.fillet`), the target B-rep (`executive.target`), the
+    /// executive's topology-intersector mates and the solver table; the faces it
+    /// collects resolve back to handles in `kept_faces` / `deleted_faces`.
     fn trim_original_surfaces(
         &mut self,
-        _k: &mut Kernel,
-        _geom: O,
-        _kept_faces: &mut Vec<O>,
-        _deleted_faces: &mut Vec<O>,
-        _marks: &[ContextMark],
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_geom_p6): SmFilletGeom::TrimOriginalSurfaces
-        Err(SolidError::unported(
-            "SmFilletGeom::TrimOriginalSurfaces",
-            "blend.fillet_geom_p6",
-        ))
-    }
+        k: &mut Kernel,
+        geom: O,
+        kept_faces: &mut Vec<O>,
+        deleted_faces: &mut Vec<O>,
+        marks: &[ContextMark],
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// Delegate to the live intersector's already ported
     /// `TopologyIntersector::delete_faces` (boolean intersector p2), using this

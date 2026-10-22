@@ -10,7 +10,8 @@
 //! optional `face` (a one-face B-rep built with `SmBrepConstructor` as in unit
 //! `heal.face_props`: a plane or `SmSurfOfRevolution::CreateCanonical` surface, cylinder or
 //! sphere among them, with a vertex loop or edge loops of line edges; rebuilt record by record
-//! on the Rust side by `heal_face_props::rust_brep`) whose face, loops, edges, vertices and edge
+//! on the Rust side by `heal_face_props::rust_brep` plus its down face use's side,
+//! `heal_face_props::add_down_side`) whose face, loops, edges, vertices and edge
 //! uses join the pool after the objects, and `ops` on two default classifications `cc[0]`,
 //! `cc[1]`: the setters of unit `intersect.curve_class_p1` build them (intervals, boundary
 //! classifications on the face's edges and vertices, the classification curve, face and
@@ -719,7 +720,10 @@ fn obj_kind(o: &ObjIn) -> usize {
 
 /// The topology of the face's B-rep in pool order (the shim's): the face, then per loop the
 /// loop and its vertex (a vertex loop) or, per edge use, its edge, vertex and the edge use.
-fn topology_entities(b: &Brep, f: FaceId) -> Result<Vec<(EntityRef, usize)>, HarnessError> {
+pub(crate) fn topology_entities(
+    b: &Brep,
+    f: FaceId,
+) -> Result<Vec<(EntityRef, usize)>, HarnessError> {
     let e = |e: SolidError| harness(e.to_string());
     let mut out = vec![(EntityRef::Face(f), kind::FACE)];
     for &l in &b.face(f).map_err(e)?.loops {
@@ -772,23 +776,32 @@ fn build_pool(k: &Kernel, s: &Script) -> Result<Pool, HarnessError> {
         pool.handles.push(H::Obj(i, class_kind_of(obj_kind(o))));
     }
     if let Some(face) = &s.face {
-        let (mut b, f) = hfp::rust_brep(k, face)?;
-        // the edge lines with their NURB made, as the shim makes them
-        for i in 0..b.edges().len() {
-            let id = EdgeId::from_index(u32::try_from(i).map_err(|_| harness("edge index"))?);
-            let edge = b.edge_mut(id).map_err(|e| harness(e.to_string()))?;
-            if let Some(c) = edge.curve.as_mut() {
-                if let CurveKind::Line(l) = c.kind_mut() {
-                    l.make_nurb().map_err(|e| harness(format!("line nurb: {e}")))?;
-                }
-            }
-        }
+        let (mut b, f) = face_brep(k, face)?;
+        // the down face use's loops, so that edge mates (an edge's end vertex, the end edge
+        // use of a vertex use's UV sector) exist as upstream
+        hfp::add_down_side(&mut b, f)?;
         for (e, _) in topology_entities(&b, f)? {
             pool.handles.push(H::Topo(e));
         }
         pool.brep = Some((b, f));
     }
     Ok(pool)
+}
+
+/// The one-face B-rep of `face` as the shim builds it (`heal_face_props::rust_brep`), with
+/// its edge lines' NURBs made.
+pub(crate) fn face_brep(k: &Kernel, face: &FaceIn) -> Result<(Brep, FaceId), HarnessError> {
+    let (mut b, f) = hfp::rust_brep(k, face)?;
+    for i in 0..b.edges().len() {
+        let id = EdgeId::from_index(u32::try_from(i).map_err(|_| harness("edge index"))?);
+        let edge = b.edge_mut(id).map_err(|e| harness(e.to_string()))?;
+        if let Some(c) = edge.curve.as_mut() {
+            if let CurveKind::Line(l) = c.kind_mut() {
+                l.make_nurb().map_err(|e| harness(format!("line nurb: {e}")))?;
+            }
+        }
+    }
+    Ok((b, f))
 }
 
 /// The `SmStatus` of a Rust error; `-1` for one upstream cannot return.
@@ -1056,7 +1069,7 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
                         o.push(st(r)?.err().unwrap_or(0.0));
                     }
                     OpIn::IvlBound { j, do_min, .. } => {
-                        let r = cc.ivl_bound_edgeuse_obj(&pool, *j, *do_min);
+                        let r = cc.ivl_bound_edgeuse_obj(&k, &pool, *j, *do_min);
                         match st(r)? {
                             Ok(eu) => o.extend([0.0, pool.id(eu)]),
                             Err(s) => o.push(s),
@@ -1283,7 +1296,7 @@ fn gen_surface(rng: &mut Rng, o: [f64; 3], x: [f64; 3], y: [f64; 3], sz: f64, bu
 }
 
 /// The kinds of the topology of `face`'s B-rep in pool order (see [`topology_entities`]).
-fn topology_kinds(face: &FaceIn) -> Vec<usize> {
+pub(crate) fn topology_kinds(face: &FaceIn) -> Vec<usize> {
     let mut v = vec![kind::FACE];
     match &face.loops {
         None | Some(LoopsIn::Vertex { .. }) => v.extend([kind::LOOP, kind::VERTEX]),
@@ -1427,7 +1440,7 @@ fn polar(r: f64, a: f64, z: f64) -> [f64; 3] {
 /// The face of a generated script: a plane (the z = 0 plane), a cylinder or a sphere about
 /// the z axis (closed or swept below 360 degrees), with a vertex loop or edge loops whose
 /// corners lie on the surface; sometimes a face of the `heal.face_props` generator.
-fn gen_face(rng: &mut Rng) -> FaceIn {
+pub(crate) fn gen_face(rng: &mut Rng) -> FaceIn {
     let tol = *rng.choose(&[1e-5, 1e-5, 1e-4, 1e-3, 1e-6, 1e-2]).unwrap_or(&1e-5);
     let s = *rng.choose(&[1.0, 1.0, 1.0, 10.0, 0.1]).unwrap_or(&1.0);
     let mut face = FaceIn {
