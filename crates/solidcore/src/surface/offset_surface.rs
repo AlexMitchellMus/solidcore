@@ -306,6 +306,7 @@ const fn is_b_spline_kind(surface: &Surface) -> bool {
         SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
             | SurfaceKind::Cone(_)
             | SurfaceKind::Sphere(_)
             | SurfaceKind::Torus(_)
@@ -1888,7 +1889,8 @@ fn read_body(k: &Kernel, db: &mut DatabaseReader, version: u64) -> Result<Offset
 
 /// The NURB of a B-spline kind surface (`GetOrCreateGwNurbPointer`, which calls the
 /// virtual `MakeNurb` when it is missing): the B-spline's (a plain B-spline cannot make
-/// one), the plane's (made on a copy when missing), the surface of revolution's.
+/// one), the plane's (made on a copy when missing), the surface of revolution's (also
+/// of a cone, cylinder, sphere or torus) and the surface of extrusion's.
 /// A surface of revolution is not given a missing NURB here (its `MakeNurb` needs the
 /// kernel's tolerances, which evaluations do not take, and a default kernel would
 /// substitute tolerances silently). No defined upstream run reaches that case: the
@@ -1903,6 +1905,10 @@ fn nurb_of(surface: &Surface) -> Result<crate::nurbs::srf_basic::Surface> {
         SurfaceKind::BSpline(b) => b.gw_nurb().cloned().ok_or_else(missing),
         SurfaceKind::Plane(p) => p.base_with_nurb()?.gw_nurb().cloned().ok_or_else(missing),
         SurfaceKind::SurfOfRevolution(s) => s.base().gw_nurb().cloned().ok_or_else(missing),
+        SurfaceKind::SurfOfExtrusion(s) => s.base().gw_nurb().cloned().ok_or_else(missing),
+        SurfaceKind::Cone(s) => s.rev().base().gw_nurb().cloned().ok_or_else(missing),
+        SurfaceKind::Sphere(s) => s.base().base().gw_nurb().cloned().ok_or_else(missing),
+        SurfaceKind::Torus(s) => s.base().base().gw_nurb().cloned().ok_or_else(missing),
         _ => Err(missing()),
     }
 }

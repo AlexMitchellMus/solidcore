@@ -33,9 +33,11 @@
 //!   indexes past the two-element arrays) is [`SolidError::InvalidInput`]. The
 //!   base-class constructor from an edge use ([`ConstantRadiusAssistedFs::from_edgeuse`])
 //!   is `blend.fillet_standard_solver_p1`'s `constant_radius_from_edgeuse` (it takes the
-//!   B-rep mutably: `SmEdgeuse::EvaluateBinormal` may create UV trim curves);
-//!   [`ConstantRadiusAssistedFs::from_parts`] builds the
-//!   members directly with the base-class defaults.
+//!   B-rep mutably: `SmEdgeuse::EvaluateBinormal` may create UV trim curves, and the
+//!   pseudo B-rep that receives the base constructor's fillet geometry, which
+//!   `FinishConstruction` fills); [`ConstantRadiusAssistedFs::from_parts`] builds the
+//!   members directly with the base-class defaults, without that geometry
+//!   ([`ConstantRadiusAssistedFs::from_solver_parts`] on a constructed base).
 //! - **Offset surfaces.** A rail surface is an [`OffsetSurface`]: the ported
 //!   `SmOffsetSurface` ([`offset_surface::OffsetSurface`], which owns a copy of its
 //!   base) with a [`SurfaceId`] standing for the base `SmSurface*`: upstream compares
@@ -74,6 +76,7 @@
 //!   evaluations use the real offset port; point solvers and default singularity
 //!   construction propagate the errors of their surface dispatchers.
 
+use crate::blend::fillet_geom::p1::{FilletBrep, FilletSolverId};
 use crate::blend::fillet_intersector::FilletSolverOps as IntersectorOps;
 use crate::blend::fillet_solver::p1::{
     FilletSolver, FilletSolverOps, FilletSolverType, OffsetSurfaceSlot,
@@ -319,7 +322,8 @@ impl ConstantRadiusAssistedFs {
     /// The base as the `SmFilletSolver` constructor initialises it
     /// (`m_dSurfaceExtensionFactor = 0.5`, `m_dConversionTol = SM_EFF_ZERO / 10`), with
     /// the edge uses, offset surfaces (keys 0 and 1), orientations and radii given (what
-    /// the `SmConstantRadiusFS` constructor computes from the edge use).
+    /// the `SmConstantRadiusFS` constructor computes from the edge use). The base is
+    /// [`FilletSolver::new`], without the constructor's fillet geometry.
     #[must_use]
     pub fn from_parts(
         approx_tol_3d: f64,
@@ -330,7 +334,26 @@ impl ConstantRadiusAssistedFs {
         orientations: [f64; 2],
         edgeuses: [Option<EdgeuseId>; 2],
     ) -> Self {
-        let mut solver = FilletSolver::new(approx_tol_3d, ang_tol_rad, tangency_tolerance);
+        Self::from_solver_parts(
+            FilletSolver::new(approx_tol_3d, ang_tol_rad, tangency_tolerance),
+            fillet_radii,
+            surfaces,
+            orientations,
+            edgeuses,
+        )
+    }
+
+    /// [`ConstantRadiusAssistedFs::from_parts`] on a constructed base (the
+    /// `SmConstantRadiusFS` constructors pass [`FilletSolver::new_in`]'s, which holds
+    /// the constructor's fillet geometry).
+    #[must_use]
+    pub fn from_solver_parts(
+        mut solver: FilletSolver,
+        fillet_radii: [f64; 2],
+        surfaces: [Option<OffsetSurface>; 2],
+        orientations: [f64; 2],
+        edgeuses: [Option<EdgeuseId>; 2],
+    ) -> Self {
         solver.edgeuses = edgeuses;
         let [s0, s1] = surfaces;
         solver.surfaces = [
@@ -346,7 +369,8 @@ impl ConstantRadiusAssistedFs {
 
     /// `SmConstantRadiusAssistedFS(crContext, dThisApproxTol3d, dAngleTolerance,
     /// dTangencyTolerance, dFilletRadius1, dFilletRadius2, pEdgeuse)`: the offset
-    /// surfaces and orientations of the faces at `edgeuse` and its radial.
+    /// surfaces and orientations of the faces at `edgeuse` and its radial, with the
+    /// constructor's fillet geometry in `pseudo` for solver `id`.
     ///
     /// # Errors
     ///
@@ -356,6 +380,8 @@ impl ConstantRadiusAssistedFs {
     pub fn from_edgeuse(
         k: &Kernel,
         brep: &mut Brep,
+        pseudo: &mut FilletBrep,
+        id: FilletSolverId,
         approx_tol_3d: f64,
         ang_tol_rad: f64,
         tangency_tolerance: f64,
@@ -366,6 +392,8 @@ impl ConstantRadiusAssistedFs {
         crate::blend::fillet_standard_solver::p1::constant_radius_from_edgeuse(
             k,
             brep,
+            pseudo,
+            id,
             approx_tol_3d,
             ang_tol_rad,
             tangency_tolerance,
@@ -2063,6 +2091,114 @@ mod tests {
         *t.srf_pos_mut(SrfIndex::First) = p1;
         *t.srf_pos_mut(SrfIndex::Second) = p2;
         t
+    }
+
+    fn assisted_parallel_planes() -> ConstantRadiusAssistedFs {
+        let k = Kernel::default();
+        let x = Vec3::new(1.0, 0.0, 0.0);
+        let y = Vec3::new(0.0, 1.0, 0.0);
+        ConstantRadiusAssistedFs::from_parts(
+            1e-6,
+            0.5,
+            0.03,
+            [1.0, 2.0],
+            [
+                Some(rail(&k, 7.0, plane(Vec3::new(0.0, 0.0, 0.0), x, y), 11)),
+                Some(rail(&k, 9.0, plane(Vec3::new(0.0, 0.0, 1.0), x, y), 29)),
+            ],
+            [1.0, -1.0],
+            [None, None],
+        )
+    }
+
+    #[test]
+    fn assisted_virtuals_use_ported_constant_radius_methods() {
+        let mut fs = assisted_parallel_planes();
+        let mut distance = -17.0;
+        let ops: &mut dyn FilletSolverOps = &mut fs;
+        assert_eq!(ops.jacobian_size().expect("size"), 4);
+        assert!(!ops.offset_radii_can_change().expect("fixed radii"));
+        assert_eq!(
+            ops.type_code().expect("type"),
+            CONSTANT_RADIUS_ASSISTED_FS_TYPE
+        );
+        ops.setup_offset_values(&TsectPnt::new(), Some(&mut distance))
+            .expect("offsets");
+        assert_eq!(distance, 1.0);
+        ops.setup_offset_values(&TsectPnt::new(), None)
+            .expect("optional distance");
+        assert!(!ops.is_kind_of(0).expect("unrelated type"));
+        assert!(ops
+            .is_kind_of(CONSTANT_RADIUS_ASSISTED_FS_TYPE)
+            .expect("assisted type"));
+        assert_eq!(fs.surface(0).expect("first rail").offset_distance(), 1.0);
+        assert_eq!(fs.surface(1).expect("second rail").offset_distance(), -2.0);
+    }
+
+    #[test]
+    fn assisted_virtual_jacobian_writes_rail_offsets_values_and_matrix() {
+        let k = Kernel::default();
+        for rail_index in [0, 1] {
+            let mut fs = assisted_parallel_planes();
+            let x = [99.0, 99.0, 0.25, 0.75, 0.5, 0.125];
+            let mut load = JacobianLoad {
+                rail_index,
+                surface1: None,
+                surf1_offset: 71,
+                surface2: None,
+                surf2_offset: 83,
+                x: &x,
+            };
+            let (mut ne, mut np) = (1, 2);
+            let mut f = [17.0; 5];
+            let mut matrix = Matrix::new(4, 6);
+            let ops: &mut dyn FilletSolverOps = &mut fs;
+            assert!(!ops
+                .load_jacobian(&k, &mut ne, &mut np, &mut load, &mut f, Some(&mut matrix))
+                .expect("jacobian"));
+            assert_eq!((ne, np), (4, 6));
+            assert_eq!(
+                [load.surf1_offset, load.surf2_offset],
+                if rail_index == 0 { [2, 4] } else { [4, 2] }
+            );
+            assert_eq!(f, [17.0, -0.25, 0.625, 2.0, 17.0]);
+            for (row, expected) in [
+                [1.0, 0.0, -1.0, 0.0],
+                [0.0, 1.0, 0.0, -1.0],
+                [0.0, 0.0, 0.0, 0.0],
+            ]
+            .iter()
+            .enumerate()
+            {
+                for (column, value) in expected.iter().enumerate() {
+                    assert_eq!(matrix.at(row + 1, column + 2).expect("entry"), *value);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn assisted_virtual_jacobian_preserves_offsets_after_later_error() {
+        let k = Kernel::default();
+        let mut fs = assisted_parallel_planes();
+        let mut load = JacobianLoad {
+            rail_index: 1,
+            surface1: None,
+            surf1_offset: 71,
+            surface2: None,
+            surf2_offset: 83,
+            x: &[0.25, 0.75],
+        };
+        let (mut ne, mut np) = (0, 0);
+        let mut f = [17.0; 3];
+        let ops: &mut dyn FilletSolverOps = &mut fs;
+        assert!(matches!(
+            ops.load_jacobian(&k, &mut ne, &mut np, &mut load, &mut f, None),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert_eq!((ne, np), (0, 4));
+        assert_eq!([load.surf1_offset, load.surf2_offset], [2, 0]);
+        assert_eq!(f, [17.0; 3]);
     }
 
     #[test]

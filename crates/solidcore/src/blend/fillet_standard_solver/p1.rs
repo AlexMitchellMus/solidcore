@@ -31,7 +31,7 @@
 //! | [`ConstantDistanceFs::load_initial_values`]              | `SmConstantDistanceFS::LoadInitialValues`             |
 //! | [`InitialSurface`]                                       | the `crSurface1` argument of `LoadInitialValues`      |
 //! | [`ConstantDistanceFs::is_kind_of`], [`ConstantDistanceFs::type_code`], [`ConstantDistanceFs::type_string`] | `IsKindOf`, `GetType`, `GetTypeString` |
-//! | [`CurveBasedFs`], [`CurveBasedFs::new`]                  | `SmCurveBasedFS`, `SmCurveBasedFS::SmCurveBasedFS` (`Drop` is the destructor) |
+//! | [`CurveBasedFs`], [`CurveBasedFs::new`], [`CurveBasedFs::new_in`] | `SmCurveBasedFS`, `SmCurveBasedFS::SmCurveBasedFS` (`Drop` is the destructor) |
 //! | [`CurveBasedFs::original_curve`], [`CurveBasedFs::set_original_curve`] | `GetOriginalCurve`, `SetOriginalCurve`  |
 //! | [`CurveBasedFs::evaluate_base_curve`]                    | `SmCurveBasedFS::EvaluateBaseCurve`                   |
 //! | [`CurveBasedFs::is_kind_of`], [`CurveBasedFs::type_code`], [`CurveBasedFs::type_string`] | `IsKindOf`, `GetType`, `GetTypeString` |
@@ -67,7 +67,13 @@
 //!   mutably (`SmEdgeuse::EvaluateBinormal` may create a UV trim curve). Its offset
 //!   surfaces share the face surfaces (the copies keep their owner); the surface
 //!   constructor's take the caller's surfaces. Constructors are fallible: the offset
-//!   surface constructor (`SM_SS_UNKNOWN` singularities) evaluates its base.
+//!   surface constructor (`SM_SS_UNKNOWN` singularities) evaluates its base. The
+//!   constructors take the executive's pseudo B-rep ([`FilletBrep`]) and the solver's
+//!   identity ([`FilletSolverId`]): the `SmFilletSolver` constructor's default fillet
+//!   geometry ([`FilletSolver::new_in`]) is stored there, and `FinishConstruction`
+//!   ([`FilletSolver::finish_construction`]) installs copies of the offsets into it. A
+//!   construction that fails after the base leaves that geometry in `pseudo` (the
+//!   arena does not delete; upstream's half-built solver holds it).
 //! - **Offset surfaces.** The rails are the ported `SmOffsetSurface`
 //!   (`surface.offset_surface`) through [`OffsetSurface`]. Evaluations store the base
 //!   extension they make, so `crSurface1` of `LoadInitialValues` names the solver's own
@@ -85,15 +91,16 @@
 //!   a pair; `rbFoundAnswer` is the result. `LoadInitialValues` takes `rlSurface2Index` (read when
 //!   `rbDoSurf2Calcs` is `0`) and returns the rail of `rpSurface2` and the new index. The
 //!   surface generators drop the solver (they read only its tolerance and type) and
-//!   their unused centre line, surface and UV curve arguments; the rails and centre line
-//!   are plain B-spline curves changed in place as upstream (knot insertion and
-//!   synchronisation). So `CreateSurfaceFromCurves` of the circular generator runs
-//!   `GetDegree` / `IsLine` / `IsArc` on the centre line's B-spline data, where upstream
-//!   dispatches them virtually on `rCenterLine`: for an `SmLine` centre line
-//!   (`SmOffsetGeometryCreation.cpp:2717-2751`) `SmLine::IsLine` (`SmLine.cpp:1167-1183`)
-//!   answers without testing and rounds its vector as `length * m_dScale *
-//!   m_vLineVector`, which the sampled B-spline test may round differently (see
-//!   `plan/findings.md`).
+//!   their unused centre line, surface and UV curve arguments; the rails are plain
+//!   B-spline curves changed in place as upstream (knot insertion and synchronisation).
+//!   The circular generator's `CreateSurfaceFromCurves` takes the centre line as a
+//!   [`Curve`] of an `SmBSplineCurve` kind, so `GetDegree` / `IsLine` / `IsArc` /
+//!   `Evaluate` / `GetNaturalInterval` dispatch on its kind as upstream's virtual calls
+//!   on `rCenterLine` do (an `SmLine` centre line, `SmOffsetGeometryCreation.cpp:2717-2751`,
+//!   answers degree 1 and `SmLine::IsLine` even after `MakeCurvesCompatible` raised its
+//!   NURB to degree 3); the knot synchronisation edits its NURB part. The blend
+//!   generator still takes the centre line's B-spline data (no caller passes an
+//!   analytic one).
 //!   `BlendCurveCrossSectionFsg::continuity` is `u32` where `m_lContinuity` is `ULONG`
 //!   (64 bits in the reference build); the FFI guard bounds it to 32 bits, so no compared
 //!   value differs.
@@ -114,6 +121,7 @@ use crate::blend::fillet_custom_solver::{
     offset_local_point_solve, offset_natural_uv_domain, surface_global_point_solve,
     ConstantRadiusAssistedFs, OffsetSurface, SurfaceId,
 };
+use crate::blend::fillet_geom::p1::{FilletBrep, FilletSolverId};
 use crate::blend::fillet_solver::p1::{
     FilletSolverOps, FilletSphereSolveEnfo, FilletSurfaceGenerator,
 };
@@ -426,7 +434,8 @@ fn face_surface(brep: &Brep, eu: EdgeuseId, op: &'static str) -> Result<(Surface
 /// dTangencyTolerance, dFilletRadius, pEdgeuse, pdOptSecondRadius)`: the offset
 /// surfaces (offset by the radius, extension allowed) of the faces at `edgeuse` and its
 /// radial, oriented by the binormals at the middle of the edge. The radius of rail 1
-/// is `second_radius` when given.
+/// is `second_radius` when given. The constructor's fillet geometry is stored in
+/// `pseudo` for solver `id` and receives copies of the offsets (`FinishConstruction`).
 ///
 /// # Errors
 ///
@@ -435,11 +444,14 @@ fn face_surface(brep: &Brep, eu: EdgeuseId, op: &'static str) -> Result<(Surface
 /// [`SolidError::InvalidInput`] for an edge use without radial, edge, face use or face
 /// surface; those of [`OffsetSurface::new`]; [`SolidError::Unported`] from
 /// `SmEdgeuse::EvaluateBinormal` (whose other failures are only signalled upstream and
-/// end here as tangent surfaces).
+/// end here as tangent surfaces); those of [`FilletSolver::new_in`] and
+/// [`FilletSolver::finish_construction`].
 #[allow(clippy::too_many_arguments)]
 pub fn constant_radius_from_edgeuse(
     k: &Kernel,
     brep: &mut Brep,
+    pseudo: &mut FilletBrep,
+    id: FilletSolverId,
     approx_tol_3d: f64,
     ang_tol_rad: f64,
     tangency_tolerance: f64,
@@ -448,6 +460,14 @@ pub fn constant_radius_from_edgeuse(
     second_radius: Option<f64>,
 ) -> Result<ConstantRadiusFs> {
     const OP: &str = OP_CR_CTOR;
+    let solver = FilletSolver::new_in(
+        k,
+        pseudo,
+        id,
+        approx_tol_3d,
+        ang_tol_rad,
+        tangency_tolerance,
+    )?;
     let mut radii = [fillet_radius, fillet_radius];
     if let Some(r) = second_radius {
         radii[1] = r;
@@ -464,15 +484,15 @@ pub fn constant_radius_from_edgeuse(
     off0.set_allow_extension(true);
     off1.set_allow_extension(true);
 
-    Ok(ConstantRadiusAssistedFs::from_parts(
-        approx_tol_3d,
-        ang_tol_rad,
-        tangency_tolerance,
+    let cr = ConstantRadiusAssistedFs::from_solver_parts(
+        solver,
         radii,
         [Some(off0), Some(off1)],
         orientations,
         [Some(eu0), Some(eu1)],
-    ))
+    );
+    cr.solver.finish_construction(k, pseudo)?; // Take care of other things in the base class.
+    Ok(cr)
 }
 
 impl ConstantRadiusAssistedFs {
@@ -481,13 +501,19 @@ impl ConstantRadiusAssistedFs {
     /// crSurface2, bOrientationSurface1, bOrientationSurface2)`: offset surfaces of the
     /// two surfaces (offset by radius times orientation, extension allowed); an
     /// orientation is `1.0`, or `-1.0` for `false`. No edge uses. The offsets take
-    /// upstream's default `lSingularities`, `SM_SS_UNKNOWN`.
+    /// upstream's default `lSingularities`, `SM_SS_UNKNOWN`. The constructor's fillet
+    /// geometry is stored in `pseudo` for solver `id` and receives copies of the
+    /// offsets (`FinishConstruction`).
     ///
     /// # Errors
     ///
-    /// Those of [`OffsetSurface::new`].
+    /// Those of [`OffsetSurface::new`], [`FilletSolver::new_in`] and
+    /// [`FilletSolver::finish_construction`].
+    #[allow(clippy::too_many_arguments)]
     pub fn from_surfaces(
         k: &Kernel,
+        pseudo: &mut FilletBrep,
+        id: FilletSolverId,
         approx_tol_3d: f64,
         ang_tol_rad: f64,
         tangency_tolerance: f64,
@@ -495,6 +521,14 @@ impl ConstantRadiusAssistedFs {
         surfaces: [(Surface, SurfaceId); 2],
         orientations: [bool; 2],
     ) -> Result<Self> {
+        let solver = FilletSolver::new_in(
+            k,
+            pseudo,
+            id,
+            approx_tol_3d,
+            ang_tol_rad,
+            tangency_tolerance,
+        )?;
         let o = orientations.map(|b| if b { 1.0 } else { -1.0 });
         let [(s0, id0), (s1, id1)] = surfaces;
         let [r0, r1] = offset_radii;
@@ -503,15 +537,15 @@ impl ConstantRadiusAssistedFs {
         let mut off1 = OffsetSurface::new(k, r1 * o1, s1, id1, SS_UNKNOWN)?;
         off0.set_allow_extension(true);
         off1.set_allow_extension(true);
-        Ok(Self::from_parts(
-            approx_tol_3d,
-            ang_tol_rad,
-            tangency_tolerance,
+        let cr = Self::from_solver_parts(
+            solver,
             offset_radii,
             [Some(off0), Some(off1)],
             o,
             [None, None],
-        ))
+        );
+        cr.solver.finish_construction(k, pseudo)?; // Take care of other things in the base class.
+        Ok(cr)
     }
 
     /// `GetFilletRadius(lIndex)`.
@@ -1457,7 +1491,9 @@ impl CurveBasedFs {
     pub const TYPE: i64 = CURVE_BASED_FS_TYPE;
 
     /// `SmCurveBasedFS(crContext, dThisApproxTol3d, dAngleTolerance,
-    /// dTangencyTolerance)`: no original or extended curve.
+    /// dTangencyTolerance)`: no original or extended curve. The base is
+    /// [`FilletSolver::new`], without the constructor's fillet geometry
+    /// ([`CurveBasedFs::new_in`] adds it).
     #[must_use]
     pub fn new(approx_tol_3d: f64, ang_tol_rad: f64, tangency_tolerance: f64) -> Self {
         Self {
@@ -1465,6 +1501,35 @@ impl CurveBasedFs {
             original: None,
             extended: None,
         }
+    }
+
+    /// `SmCurveBasedFS(crContext, dThisApproxTol3d, dAngleTolerance,
+    /// dTangencyTolerance)` with the base's fillet geometry: [`FilletSolver::new_in`]
+    /// in `pseudo`, with `id` as the solver's identity.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`FilletSolver::new_in`].
+    pub fn new_in(
+        k: &Kernel,
+        pseudo: &mut FilletBrep,
+        id: FilletSolverId,
+        approx_tol_3d: f64,
+        ang_tol_rad: f64,
+        tangency_tolerance: f64,
+    ) -> Result<Self> {
+        Ok(Self {
+            solver: FilletSolver::new_in(
+                k,
+                pseudo,
+                id,
+                approx_tol_3d,
+                ang_tol_rad,
+                tangency_tolerance,
+            )?,
+            original: None,
+            extended: None,
+        })
     }
 
     /// `GetOriginalCurve`.
@@ -1965,6 +2030,42 @@ impl Default for CircularCrossSectionFsg {
     }
 }
 
+/// Whether `c` is an `SmBSplineCurve` kind (B-spline, line, ellipse, hyperbola or
+/// parabola), the kinds an `SmBSplineCurve &` binds.
+fn is_b_spline_kind(c: &Curve) -> bool {
+    matches!(
+        c.kind(),
+        CurveKind::BSpline(_)
+            | CurveKind::Line(_)
+            | CurveKind::Ellipse(_)
+            | CurveKind::Hyperbola(_)
+            | CurveKind::Parabola(_)
+    )
+}
+
+/// The NURB part of an `SmBSplineCurve` kind, in place, for the static B-spline
+/// routines that edit it whatever the kind (a line's NURB is made first when it has
+/// none); `None` for the other kinds.
+fn nurb_part_mut(c: &mut Curve) -> Result<Option<&mut BSplineCurve>> {
+    Ok(match c.kind_mut() {
+        CurveKind::BSpline(b) => Some(b),
+        CurveKind::Line(l) => {
+            let made = match l.base_with_nurb()? {
+                std::borrow::Cow::Owned(b) => Some(b),
+                std::borrow::Cow::Borrowed(_) => None,
+            };
+            if let Some(b) = made {
+                *l.base_mut() = b;
+            }
+            Some(l.base_mut())
+        }
+        CurveKind::Ellipse(e) => Some(e.base_mut()),
+        CurveKind::Hyperbola(h) => Some(h.base_mut()),
+        CurveKind::Parabola(p) => Some(p.base_mut()),
+        _ => None,
+    })
+}
+
 /// The arc a curve is (`IsArc(11, 1e-8, ..)`, the `SmCurve` base: B-spline curves do
 /// not override it).
 fn bspline_is_arc(k: &Kernel, c: &BSplineCurve) -> Result<Option<(Axis2Placement, f64, f64, f64)>> {
@@ -2224,31 +2325,48 @@ impl CircularCrossSectionFsg {
     /// of the curve and surface constructions; [`SolidError::InvalidInput`] where
     /// upstream indexes past its cross sections (a second pass for a ruled or revolved
     /// surface).
+    ///
+    /// `center_line` is upstream's `SmBSplineCurve & rCenterLine`: an `SmBSplineCurve`
+    /// kind (B-spline, line, ellipse, hyperbola or parabola) whose `GetDegree`, `IsLine`,
+    /// `IsArc`, `Evaluate` and `GetNaturalInterval` dispatch on that kind (an `SmLine`
+    /// answers degree 1 and its own line whatever its NURB); the static knot
+    /// synchronisation edits its NURB part. Another kind is
+    /// [`SolidError::InvalidInput`] (upstream cannot bind it).
     pub fn create_surface_from_curves(
         &self,
         k: &Kernel,
-        center_line: &mut BSplineCurve,
+        center_line: &mut Curve,
         rail1: &mut BSplineCurve,
         rail2: &mut BSplineCurve,
         approx_tol_3d: f64,
         need_g1_continuity: bool,
     ) -> Result<BSplineSurface> {
         const OP: &str = OP_CIRC;
+        if !is_b_spline_kind(center_line) {
+            return Err(SolidError::invalid_input(
+                OP,
+                "the centre line is not an SmBSplineCurve kind",
+            ));
+        }
         let knots = rail1.knots(None)?.0;
         let knots2 = rail2.knots(None)?.0;
 
         // make sure all 3 curves have compatible knot vectors
         if knots2.len() != knots.len() {
+            let cl = nurb_part_mut(center_line)?.ok_or(SolidError::invalid_input(
+                OP,
+                "the centre line is not an SmBSplineCurve kind",
+            ))?;
             let mut rails = [
                 core::mem::take(rail1),
                 core::mem::take(rail2),
-                core::mem::take(center_line),
+                core::mem::take(cl),
             ];
             let sync = BSplineCurve::synchronize_knots_of_curves(&mut rails, EFF_ZERO_SQRT);
             let [a, b, c] = rails;
             *rail1 = a;
             *rail2 = b;
-            *center_line = c;
+            *cl = c;
             sync?;
         }
 
@@ -2266,9 +2384,10 @@ impl CircularCrossSectionFsg {
         let mut sweep = false;
         let mut revolve = false;
 
-        // see if newSurf == RuledSurface
+        // see if newSurf == RuledSurface (`GetDegree` and `IsLine` of the centre line's
+        // own kind)
         let deg1_line = if center_line.degree()? == 1 {
-            center_line.is_line(ANALYTIC_SAMPLES, ANALYTIC_TOL)?
+            center_line.is_line(k, ANALYTIC_SAMPLES, ANALYTIC_TOL)?
         } else {
             None
         };
@@ -2283,7 +2402,7 @@ impl CircularCrossSectionFsg {
         }
 
         // see if NewSurf == SurfaceOfRevolution
-        let arc = bspline_is_arc(k, center_line)?;
+        let arc = center_line.is_arc(k, ANALYTIC_SAMPLES, ANALYTIC_TOL)?;
         if let Some((ref_frame, _, _, end_ang)) = &arc {
             revolve = true;
             match bspline_is_arc(k, rail1)? {
@@ -2328,6 +2447,7 @@ impl CircularCrossSectionFsg {
                     ii = knots.len() - 1;
                 }
                 self.cross_section_at(
+                    k,
                     kkk,
                     ii,
                     &knots,
@@ -2457,10 +2577,11 @@ impl CircularCrossSectionFsg {
     /// `jj` for the knot span ending at `ii`, pass `kkk`).
     fn cross_section_at(
         &self,
+        k: &Kernel,
         kkk: usize,
         ii: usize,
         knots: &[f64],
-        center_line: &BSplineCurve,
+        center_line: &Curve,
         rail1: &BSplineCurve,
         rail2: &BSplineCurve,
         approx_tol_3d: f64,
@@ -2492,7 +2613,7 @@ impl CircularCrossSectionFsg {
 
             // get center, rail1, rail2 points for dT
             let cent = center_line
-                .evaluate(t, 1, true, false)?
+                .evaluate(k, t, 1, true, false)?
                 .first()
                 .copied()
                 .ok_or_else(|| SolidError::sm_err(OP))?;
@@ -3137,8 +3258,14 @@ mod tests {
     }
 
     fn cr() -> ConstantRadiusFs {
+        cr_in(&mut FilletBrep::new(), FilletSolverId(0))
+    }
+
+    fn cr_in(pseudo: &mut FilletBrep, id: FilletSolverId) -> ConstantRadiusFs {
         ConstantRadiusFs::from_surfaces(
             &Kernel::default(),
+            pseudo,
+            id,
             1e-6,
             0.5,
             0.03,
@@ -3150,6 +3277,24 @@ mod tests {
             [true, false],
         )
         .expect("constant radius solver")
+    }
+
+    #[test]
+    fn constant_radius_from_surfaces_finishes_construction() {
+        let mut pseudo = FilletBrep::new();
+        let fs = cr_in(&mut pseudo, FilletSolverId(3));
+        // the SmFilletSolver constructor's geometry, with copies of both offsets
+        assert_eq!(fs.solver.fillet_geoms.len(), 1);
+        let fg = pseudo.geom(fs.solver.fillet_geoms[0]).expect("geometry");
+        assert_eq!(fg.fillet_solver(), Some(FilletSolverId(3)));
+        for (rail, d) in [(0, 1.0), (1, -2.0)] {
+            let off = fg
+                .offset_surface(rail, None)
+                .expect("own offset")
+                .expect("offset copy");
+            assert_eq!(off.offset_distance(), d);
+            assert!(off.surface.allow_extension());
+        }
     }
 
     #[test]
@@ -3422,7 +3567,7 @@ mod tests {
             .expect("ruled");
         assert!(ruled.gw_nurb().is_some());
 
-        let mut c = line(p(0.0, 1.0, 1.0), p(5.0, 1.0, 1.0));
+        let mut c = Curve::from(line(p(0.0, 1.0, 1.0), p(5.0, 1.0, 1.0)));
         let (mut a, mut b) = (r1.copy(), r2.copy());
         let s = CircularCrossSectionFsg::default()
             .create_surface_from_curves(&k, &mut c, &mut a, &mut b, 1e-6, false)
@@ -3433,7 +3578,7 @@ mod tests {
         assert!(corner.distance(p(0.0, 0.0, 1.0)) < 1e-6);
 
         // a zero radius section
-        let mut c = line(p(0.0, 0.0, 1.0), p(5.0, 0.0, 1.0));
+        let mut c = Curve::from(line(p(0.0, 0.0, 1.0), p(5.0, 0.0, 1.0)));
         let (mut a, mut b) = (r1.copy(), r2.copy());
         assert!(matches!(
             CircularCrossSectionFsg::default()
@@ -3468,5 +3613,55 @@ mod tests {
         assert_eq!(g.base.plane_abc, p(1.0, 2.0, 3.0));
         assert_eq!(g.base.plane_d, 0.5);
         assert!(!g.base.plane_adjusts);
+    }
+
+    #[test]
+    fn circular_centre_line_dispatches_on_its_line_kind() {
+        let k = Kernel::default();
+        let r1 = line(p(0.0, 0.0, 1.0), p(5.0, 0.0, 1.0));
+        let r2 = line(p(0.0, 1.0, 0.0), p(5.0, 1.0, 0.0));
+        // an SmLine centre line whose NURB was elevated to degree 3 (as
+        // MakeCurvesCompatible does in SmOffsetGeometryCreation::EdgeuseOffset):
+        // SmLine::GetDegree still answers 1, so the ruled (sweep) branch runs
+        let mut lc = Curve::from(crate::curve::line::Line::from_points(
+            p(0.0, 1.0, 1.0),
+            p(5.0, 1.0, 1.0),
+            3,
+        ));
+        nurb_part_mut(&mut lc)
+            .expect("nurb")
+            .expect("line kind")
+            .degree_elevate(3)
+            .expect("elevate");
+        assert_eq!(lc.degree().expect("degree"), 1);
+        let (mut a, mut b) = (r1.copy(), r2.copy());
+        let swept = CircularCrossSectionFsg::default()
+            .create_surface_from_curves(&k, &mut lc, &mut a, &mut b, 1e-6, false)
+            .expect("swept");
+        // the same NURB as a plain B-spline (degree 3) takes the skinned branch
+        let mut bc = Curve::from(nurb_part_mut(&mut lc).expect("nurb").expect("kind").clone());
+        assert_eq!(bc.degree().expect("degree"), 3);
+        let (mut a, mut b) = (r1.copy(), r2.copy());
+        let skinned = CircularCrossSectionFsg::default()
+            .create_surface_from_curves(&k, &mut bc, &mut a, &mut b, 1e-6, false)
+            .expect("skinned");
+        let rows = |s: &BSplineSurface| {
+            (
+                s.number_control_points(SurfParamType::U),
+                s.number_control_points(SurfParamType::V),
+            )
+        };
+        // the ruled surface spans the two end sections; the skin all four
+        assert_eq!(rows(&swept), (2, 7));
+        assert_eq!(rows(&skinned), (4, 7));
+
+        // a centre line that is no SmBSplineCurve kind cannot bind rCenterLine
+        let mut hc = Curve::from(crate::curve::hermite_curve::HermiteCurve::default());
+        let (mut a, mut b) = (r1.copy(), r2.copy());
+        assert!(matches!(
+            CircularCrossSectionFsg::default()
+                .create_surface_from_curves(&k, &mut hc, &mut a, &mut b, 1e-6, false),
+            Err(SolidError::InvalidInput { .. })
+        ));
     }
 }
