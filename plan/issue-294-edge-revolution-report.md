@@ -198,11 +198,15 @@ integration review; its head still requires its own validation.
 ## Validation of this PR
 
 The native default edge comparison on source `0471572f6` passed with the
-counts above. Formatting and strict default workspace/all-target Clippy passed.
-The remaining checks are pending; the PR stays draft until verification is complete.
+counts above. Formatting and both strict workspace/all-target Clippy gates passed.
+The current branch is checked by the [CI jobs on PR #492](https://github.com/tangency-labs/solidcore/pull/492/checks),
+including workspace tests, native C++ runner regressions, wasm and the full
+differential gate. Those checks validate the PR's merge with newer main separately
+from the pinned baseline/adapter measurements above.
 
 
-Both raw runner outputs and default reports are retained locally, joined by
-unique case name. The per-case captures and the final post-gate report are retained as validation evidence.
+Both raw runner outputs and default reports were captured for the fresh pinned
+baseline and adapter. The earlier audits retain complete case-name joins and
+post-gate default reports.
 Reports are CI artifacts under the current repository layout and are not
 versioned.
