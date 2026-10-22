@@ -2412,13 +2412,13 @@ mod tests {
                 Operation::Solid,
                 sheet([0.0; 3], 1.0, 0),
                 false,
-                "SmBrep::MakeWireEdgeVertex",
+                "SmSurface::DropCurve",
             ),
             (
                 Operation::Extended,
                 sheet([0.0; 3], 1.0, 0),
                 true,
-                "SmBrep::MakeWireEdgeVertex",
+                "SmSurface::DropCurve",
             ),
         ] {
             for distance in [0.0, 1.9999999999999995e-6, 2e-6, 2.0000000000000003e-6] {
@@ -2496,6 +2496,7 @@ mod tests {
 
     #[test]
     fn face_geometry_paths_reach_distinct_actual_callees() {
+        // MakeWireEdgeVertex now runs; its UV-curve construction reaches DropCurve.
         let context = CaseContext {
             root: repo_root(),
             seeds: 0,
@@ -2509,8 +2510,8 @@ mod tests {
             ),
             (
                 "static_offset_real_plane_sheet_extended",
-                "topology.brep_p3",
-                "SmBrep::MakeWireEdgeVertex",
+                "intersect.surface_drop_lib_p3",
+                "SmSurface::DropCurve",
             ),
             (
                 "member_sheet_round_skip_true_still_real_geometry",
@@ -2519,8 +2520,8 @@ mod tests {
             ),
             (
                 "member_sheet_extended_dispatch_ignores_skip",
-                "topology.brep_p3",
-                "SmBrep::MakeWireEdgeVertex",
+                "intersect.surface_drop_lib_p3",
+                "SmSurface::DropCurve",
             ),
             (
                 "extended_sheet_direct_independent_flags",
