@@ -16357,3 +16357,44 @@ Result: `topology.face_p4` 5506 cases, 5141 pass, 0 failed, 365 deferred, max_re
 Possibly the same latent gap: `query.face_p1`'s `make_trim_srf_cache_with_face(.., None)`
 also leaves node surfaces unnamed (its point solve runs with point testing off; no
 failing case).
+
+## topology.brep_p4: the last stubs (PR #441)
+
+Follow-up on PR #441 after merging main (2026-10-22).
+
+- **Nested notify lend swallowed as an ignored status.** `topology::brep::p5::stitch_and_orient`
+  ran both `StitchFaces` passes inside `plain_edit` (`with_kernel_callbacks`, which lends the
+  kernel context's notify callbacks). The stitcher's own glue/squeeze edits
+  (`heal::stitch::p1::glue_edges_general`, `squeeze_edge_to`) lend them again and are refused
+  (`geom::context::lend_notify`, "nested edit"), and `ignore_status` turned that refusal into an
+  ignored upstream status. So the second, wider pass never glued. Found through
+  `sweep.api_brep` gen0044 / gen0209 (two tiny `from_faces` discs, radii ~1.5e-5, 3e-5 apart):
+  C++ glued the second disc's start circle onto the first at the 4e-4 pass (5 edges, 3
+  vertices), Rust kept both (6, 4). Only `OrientTrimmedSurfaces` uses the edit's environment, so
+  only it runs under `plain_edit` now. A diagnostic run that logged every refused lend across
+  `difftest --green` (255 units) and the units touched here found no other site.
+- **Stale list removals that stitching now reaches.** `GlueVertices`' `m_pVertexListHead->Remove`
+  (`topology.brep_p5`) was still an `UNPORTED(topology.brep_p1)` stub (brep_p1 is partial); it
+  is `Brep::remove_from_vertex_list`. `GlueEdgesGeneral` (`topology.brep_p7`) did not take the
+  glued edge off `Brep::edge_list` (its deviation note predated the separate list), so
+  `heal.stitch_p2`'s 36 `StitchIntoShell` cases counted the orphan edge once the vertex stub
+  stopped deferring them (C++ 7 edges, Rust 8). Both fixed: heal.stitch_p2 505/556 pass, 0 failed.
+- **Wired.** `StitchFaces` / `ShrinkGeometry` / `DeleteFace` in `primitive_creation` p1/p2's
+  access; `StitchFaces` in the fillet executive (a required `ExecutiveAccess` method, with
+  `StitchAttempt::from_stitch`, implemented by the p2/p3 difftest adapters). The
+  "opaque object handles" sites above are hooks now: `IntersectorBrep::brep_delete_edge` /
+  `brep_delete_vertex` (topology_intersector p2 `DeleteFaces`, p3 `MergeCurveClasses`) and
+  `BrepGlue::delete_edge` (proto_topology p3), implemented by `merge::p4::ArenaPair` and the
+  difftest adapters. No difftest case reaches the p2/p3/proto_topology deletions yet.
+- **Still stubs (`justified:` with this section).**
+  - `blend/fillet_corner/p1.rs` `pseudo_brep_delete_edge`: the corner geometry pass holds no
+    `Kernel`, and the pseudo B-rep's fillet records (its edge list, the `SmFilletEdge` /
+    `SmFilletVertex` members) would have to drop whatever `DeleteEdge` deletes. No difftest
+    case reaches it.
+  - `offset/offset_executive/p2.rs` `do_solid_offset` (cpp:608 `ShrinkGeometry`): the stub
+    also marks where this unit's own unported continuation (cpp:648-1051, BuildOffsetOfEdgeuses
+    through MakeManifold) begins. Wiring the shrink alone leaves that remainder without a
+    stop; it belongs with porting the continuation (3 deferred cases).
+- **Harness, not a stub.** `topology.brep_p5`'s 2 cases deferred as `SmBrep::~SmBrep (stable
+  owning record erasure)` come from its runner, which defers whenever an edit leaves
+  unlinked records in the arena (`has_unlinked_records`).

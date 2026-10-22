@@ -1167,7 +1167,7 @@ pub fn glue_with_notifications(
         remove_vertexuse(b, deleted, vu)?;
         post_insert_vertexuse(b, survivor, vu)?;
     }
-    remove_owned_vertex(b, deleted)?;
+    remove_owned_vertex(b, deleted);
     destroy_topology_record(b, crate::error::EntityRef::Vertex(deleted))?;
     if let Some(first) = first.filter(|&first| first != last) {
         if let Some(vu) = shell_vertexuse(b, last)? {
@@ -1320,9 +1320,8 @@ fn transfer_shell_children(
     crate::topology::shell::transfer_children(k, b, source, target, Some(&wires))
 }
 /// `m_pVertexListHead->Remove(pVertexToDelete)`.
-fn remove_owned_vertex(b: &mut Brep, vertex: VertexId) -> Result<()> {
+fn remove_owned_vertex(b: &mut Brep, vertex: VertexId) {
     b.remove_from_vertex_list(vertex);
-    Ok(())
 }
 
 /// Outputs of `MakeEdgeInFace`, initialized to null after its editing and face checks.
