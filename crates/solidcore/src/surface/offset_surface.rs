@@ -280,12 +280,17 @@ fn highest_offset_deriv(hu: usize, hv: usize, only_upper_half: bool) -> Option<u
     }
 }
 
-/// `SM_CAST_PTR(SmBSplineSurface, surface)`: the B-spline kinds (planes and surfaces of
-/// revolution are `SmBSplineSurface`s).
+/// `SM_CAST_PTR(SmBSplineSurface, surface)`: the B-spline kinds (planes, surfaces of
+/// revolution, cones, spheres and tori are `SmBSplineSurface`s).
 const fn is_b_spline_kind(surface: &Surface) -> bool {
     matches!(
         surface.kind(),
-        SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) | SurfaceKind::SurfOfRevolution(_)
+        SurfaceKind::BSpline(_)
+            | SurfaceKind::Plane(_)
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
     )
 }
 

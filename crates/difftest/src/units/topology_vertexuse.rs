@@ -1329,11 +1329,33 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     if inexact(&op, &b, &exact) {
         return Ok(Output::err("inexact_surface"));
     }
+    // The export says whether each vertex use's cached vertex/face gap is set, not its
+    // values: refill the set ones by `CalcVertexFaceGap(NULL, TRUE)`, their only setter
+    // upstream, so the ops that read the cache (`IsOnPole`: its face UV) see real values.
+    if let Err(e) = refill_face_gaps(&mut b) {
+        return rust_err(&e);
+    }
     match run_rust_op(&mut b, &op) {
         Ok(o) => Ok(o),
         Err(Fail::Solid(e)) => rust_err(&e),
         Err(Fail::Harness(h)) => Err(h),
     }
+}
+
+/// Recomputes, in arena order, every vertex use's cached vertex/face gap the import
+/// marked as set (see [`run_rust`]).
+fn refill_face_gaps(b: &mut Brep) -> Result<(), SolidError> {
+    let k = Kernel::default();
+    let set: Vec<VertexuseId> = b
+        .vertexuses()
+        .iter()
+        .filter(|(_, r)| r.vertex_face_gap.is_init())
+        .map(|(id, _)| id)
+        .collect();
+    for vu in set {
+        vu1::calc_vertex_face_gap(&k, b, vu, false, true)?;
+    }
+    Ok(())
 }
 
 fn run_rust_op(b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
