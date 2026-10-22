@@ -206,12 +206,17 @@ const fn is_b_spline(c: &Curve) -> bool {
     )
 }
 
-/// `SM_CAST_PTR(SmBSplineSurface, pSurf) != NULL`: a B-spline surface, a plane or a
-/// surface of revolution (as `blend.fillet_geom_p4`'s cast).
+/// `SM_CAST_PTR(SmBSplineSurface, pSurf) != NULL`: a B-spline surface, a plane, a
+/// surface of revolution, a cone, a sphere or a torus (as `blend.fillet_geom_p4`'s cast).
 fn is_b_spline_surface(s: &Surface) -> bool {
     matches!(
         s.kind(),
-        SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) | SurfaceKind::SurfOfRevolution(_)
+        SurfaceKind::BSpline(_)
+            | SurfaceKind::Plane(_)
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
     )
 }
 
@@ -2170,11 +2175,8 @@ mod tests {
             fb.make_fillet_edge(None, Some(v[1]), None).unwrap_err(),
             SolidError::Upstream { .. }
         ));
-        // FilletBrep::new has no infinite region yet (SmBrep())
-        assert!(fb
-            .make_fillet_edge(Some(v[0]), Some(v[1]), None)
-            .unwrap_err()
-            .is_unported());
+        // FilletBrep::new has its infinite region (SmBrep(), topology.brep_p3)
+        fb.make_fillet_edge(Some(v[0]), Some(v[1]), None).unwrap();
     }
 
     #[test]
@@ -2197,11 +2199,13 @@ mod tests {
                 .unwrap_err(),
             SolidError::Upstream { .. }
         ));
-        // the allocation of the edge use needs the infinite region (SmBrep())
-        assert!(fb
-            .make_rail_edgeuse(g, 0, Some(v[0]), OrientType::Same, None, &solvers, &target)
-            .unwrap_err()
-            .is_unported());
+        // the edge use is allocated in the infinite region (SmBrep(), topology.brep_p3);
+        // the bare fillet geometry then fails upstream, no longer as Unported
+        assert!(matches!(
+            fb.make_rail_edgeuse(g, 0, Some(v[0]), OrientType::Same, None, &solvers, &target)
+                .unwrap_err(),
+            SolidError::Upstream { .. }
+        ));
     }
 
     #[test]
