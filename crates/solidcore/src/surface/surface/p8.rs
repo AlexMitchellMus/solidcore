@@ -24,8 +24,9 @@
 //! cache per surface, `smsurf_GetSurfaceCache`). A caller that holds the surface's
 //! cache passes it to [`Surface::global_curve_intersect_in`] /
 //! [`Surface::global_line_intersect_in`], so the line and tree solves run on that
-//! cache's tree as upstream's do (the degenerate-curve point solve and the drops still
-//! fetch their own). The
+//! cache's tree as upstream's do, and so do the coincident `DropAndTrimCurve` traces
+//! ([`Surface::drop_and_trim_curve_in`]; the degenerate-curve point solve and the
+//! `DropCurve` fallback still fetch their own). The
 //! optional `SmDerivSurfDefinition` of `CreateBlendSurface` is copied, so its caller
 //! does not see the fields upstream overwrites. `CreateBlendSurface` returns `SM_ERR`
 //! as soon as one of the sample evaluations fails (upstream ignores the status, goes
@@ -1126,8 +1127,9 @@ impl Surface {
         let mut sols: SolutionArray<O> = SolutionArray::new();
 
         // local Surface Cache
+        let mut held = cache;
         let built;
-        let cache = if let Some(c) = cache {
+        let cache = if let Some(c) = held.as_deref_mut() {
             Self::held_cache(k, c, OP_LINE)?
         } else {
             built = self.solve_cache_of(k, surface, OP_LINE)?;
@@ -1315,8 +1317,9 @@ impl Surface {
             if found.is_some() {
                 sols.reset();
 
-                let dropped = self.drop_and_trim_curve::<NoObject>(
+                let dropped = self.drop_and_trim_curve_in::<NoObject, O>(
                     k,
+                    held,
                     uv_domain,
                     &line,
                     &line_interval_used,
@@ -1326,8 +1329,7 @@ impl Surface {
                     None,
                 )?;
                 let mut dist_to_surface = dropped.max_drop_to_surf;
-                let mut uv_curves: Vec<Curve> =
-                    dropped.uv_curves.into_iter().map(Curve::from).collect();
+                let mut uv_curves: Vec<Curve> = dropped.uv_curves;
 
                 // If the curve is entirely interior to the surface, then
                 // DropAndTrimCurve won't find it; in that case use DropCurve.
@@ -1714,8 +1716,9 @@ impl Surface {
         //                   boundary by more than dDistanceTolerance
         if coincident {
             // drop curve to surface
-            let dropped = self.drop_and_trim_curve::<NoObject>(
+            let dropped = self.drop_and_trim_curve_in::<NoObject, O>(
                 k,
+                cache,
                 uv_domain,
                 curve,
                 interval,
@@ -1725,8 +1728,7 @@ impl Surface {
                 None,
             )?;
             let mut dist_to_surface = dropped.max_drop_to_surf;
-            let mut uv_curves: Vec<Curve> =
-                dropped.uv_curves.into_iter().map(Curve::from).collect();
+            let mut uv_curves: Vec<Curve> = dropped.uv_curves;
 
             // DropAndTrimCurve() will miss curves that lie entirely within the
             // boundaries of the surface. Use DropCurve() for that. [090827]
