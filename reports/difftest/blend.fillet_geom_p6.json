@@ -659,8 +659,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::RailEdgeuseIntersect",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmFilletGeom::GetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0075",
@@ -1099,8 +1099,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::RailEdgeuseIntersect",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmFilletGeom::GetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0124",
@@ -1875,8 +1875,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::RailEdgeuseIntersect",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmFilletGeom::GetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0212",
@@ -1935,8 +1935,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::RailEdgeuseIntersect",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmFilletGeom::GetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0218",
@@ -2339,8 +2339,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::RailEdgeuseIntersect",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmFilletGeom::GetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0266",
@@ -2367,8 +2367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::RailEdgeuseIntersect",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmFilletGeom::GetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0269",
@@ -2623,8 +2623,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::RailEdgeuseIntersect",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmFilletGeom::GetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0295",
@@ -3059,8 +3059,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmFilletSolver::RailEdgeuseIntersect",
-        "unit": "blend.fillet_solver_p2"
+        "symbol": "SmFilletGeom::GetOffsetSurface",
+        "unit": "blend.fillet_geom_p1"
       },
       "max_rel_err": 0.0,
       "name": "gen0345",
@@ -3573,7 +3573,7 @@
   "cases_total": 400,
   "deferred_by_unit": {
     "blend.fillet_executive_p1": 9,
-    "blend.fillet_solver_p2": 8,
+    "blend.fillet_geom_p1": 8,
     "harness:analytic-geometry-export": 61,
     "intersect.surface_drop_lib_p3": 13
   },

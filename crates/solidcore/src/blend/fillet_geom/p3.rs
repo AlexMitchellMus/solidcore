@@ -52,9 +52,11 @@
 //!   the base driver (`intersect.surface_intersector_p4`) does not reach the fillet
 //!   intersector's overrides yet, and the solver does not implement the intersector's
 //!   `FilletSolverOps`, so it returns [`SolidError::Unported`].
-//! - **Unported callees.** `CalcConeFilletGeom` / `CalcTorusFilletGeom`
-//!   (`blend.fillet_solver_p2`) for analytic fillets, `SmFilletEdge::CalcCrossSection`
-//!   (`blend.fillet_geom_p5`) after it (it needs a solver table `ReCalcFilletGeom` does
+//! - **Analytic fillets.** `CalcConeFilletGeom` / `CalcTorusFilletGeom`
+//!   (`blend.fillet_solver_p2`) read copies of the sorted vertex uses' points
+//!   (`SmTArray<SmTsectPnt*>` upstream; the builders only read them).
+//! - **Unported callees.** `SmFilletEdge::CalcCrossSection`
+//!   (`blend.fillet_geom_p5`) after the intersection (it needs a solver table `ReCalcFilletGeom` does
 //!   not have); after a failed intersection, `SmFilletCorner::RecordFilletError`
 //!   (`blend.fillet_corner_p2`) in the edge's `CalcFilletIntFillet` (the dispatchers'
 //!   vertex and edge calculators of parts 2, 4, 5 and 6 are called); in
@@ -708,8 +710,8 @@ impl FilletBrep {
     /// use, offset surface, vertex use); those of `SetupOffsetValues`, the offset
     /// evaluation and the curve solve; [`SolidError::Unported`] for the fillet
     /// intersector's point intersection (a DISPATCH GAP of
-    /// `intersect.surface_intersector_p4`) and the analytic fillets
-    /// (`blend.fillet_solver_p2`).
+    /// `intersect.surface_intersector_p4`); those of the analytic fillets'
+    /// `Unported` callees (`blend.fillet_solver_p2`).
     pub fn re_calc_fillet_geom(
         &mut self,
         k: &Kernel,

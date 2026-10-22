@@ -18,18 +18,18 @@
 //! | [`FilletSolver::record_fillet_error`]                    | `SmFilletSolver::RecordFilletError`          |
 //!
 //! Deviations:
-//! - **Stacked on `blend.fillet_solver_p1`.** Everything here is a method of p1's
-//!   [`FilletSolver`]; methods that call a virtual take the solver as
-//!   `&mut dyn FilletSolverOps` (as p1's `ComputeSurfaceValues`). The p1 function
-//!   objects are wrapped privately into [`EvalNFunctions`] for [`LocalSolveNd`].
+//! - **Methods of p1's solver.** Everything here is a method of p1's [`FilletSolver`];
+//!   methods that call a virtual take the solver as `&mut dyn FilletSolverOps` (as
+//!   p1's `ComputeSurfaceValues`). The p1 function objects are wrapped privately into
+//!   [`EvalNFunctions`] for [`LocalSolveNd`].
 //! - **Fillet geometries.** The ported `SmFilletGeom`, `SmFilletEdge`, `SmFilletVertex`
-//!   and the other pseudo-B-rep records (`blend.fillet_geom_p1`/`_p2`, partial) live in
-//!   a [`FilletBrep`], which the executive owns (`SmFilletExecutive::GetPseudoBrep`):
-//!   the methods that reach the pseudo B-rep take it as an argument (`pseudo`, `pseudo`),
-//!   and a solver's `SmFilletGeom*` ([`FilletGeomId`]) names the geometry of the same
-//!   index in it. The members and constructors are wired; what is left is
-//!   [`SolidError::Unported`] at the call site (tagged `UNPORTED`, `plan/findings.md`,
-//!   "`blend.fillet_solver_p2`: fillet-geometry stubs need a `FilletBrep`"). The
+//!   and the other pseudo-B-rep records (`blend.fillet_geom_p1`/`_p2`) live in the
+//!   [`FilletBrep`] the executive owns (`SmFilletExecutive::GetPseudoBrep`): the
+//!   methods that reach it take it as `pseudo`, and the solver's `SmFilletGeom*`s are
+//!   [`FilletGeomId`]s of it (as in `blend.fillet_solver_p1`). The members and
+//!   constructors are wired; what is left is [`SolidError::Unported`] at the call site
+//!   (tagged `UNPORTED`, `plan/findings.md`, "`blend.fillet_solver_p2`:
+//!   fillet-geometry stubs need a `FilletBrep`"). The
 //!   analytic `Calc*FilletGeom` methods build the fillet surface, rail curves and centre
 //!   line first ([`FilletGeomParts`], `*_fillet_geom_parts`) and then store them into
 //!   the fillet geometry (`m_pFilletSurface`, `SmFilletEdge::SetCurve`, `SetInterval`,

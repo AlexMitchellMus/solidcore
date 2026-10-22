@@ -1186,9 +1186,9 @@ impl FilletBrep {
     /// `SM_ERR_NULL_POINTER` without corner, side edge use, curve, mate face or solver;
     /// `SM_ERR` without a fillet geometry and, for a blending corner, when no
     /// intersection is found; those of the evaluations and solves;
-    /// [`SolidError::Unported`] for the corner (`blend.fillet_corner_p1`),
-    /// `SmFilletSolver::RailEdgeuseIntersect` (`blend.fillet_solver_p2`) and the
-    /// temporary radius change of a solver (`blend.fillet_executive_p2`).
+    /// [`SolidError::Unported`] for the corner (`blend.fillet_corner_p1`), the
+    /// temporary radius change of a solver (`blend.fillet_executive_p2`) and those of
+    /// `SmFilletSolver::RailEdgeuseIntersect`.
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn calc_rail_int_edgeuse(
         &mut self,
