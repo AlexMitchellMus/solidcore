@@ -1128,3 +1128,61 @@ fn rollover_recalc_uses_the_real_solver_and_reports_missing_edge_curve() {
         "blend::fillet_geom::p3::FilletBrep::re_calc_fillet_geom"
     );
 }
+
+#[test]
+fn landed_p3_refinement_is_a_noop_without_small_intervals_and_restores_errors() {
+    use super::super::{ClassificationOps, MissingClassification};
+    let mut f = Fixture::new([&[0.3, 0.31, 1.0], &[1.0]], false);
+    let rail = f.fb.geom(f.geom).unwrap().rail(0).unwrap();
+    MissingClassification
+        .refine(
+            &mut f.solver,
+            &f.k,
+            &f.target,
+            &mut f.fb,
+            f.geom,
+            0,
+            rail,
+            &[],
+        )
+        .unwrap();
+    let error = MissingClassification
+        .refine(
+            &mut f.solver,
+            &f.k,
+            &f.target,
+            &mut f.fb,
+            f.geom,
+            0,
+            rail,
+            &[1],
+        )
+        .unwrap_err();
+    assert_eq!(
+        error,
+        SolidError::sm_err("blend::fillet_solver::p3::refine_rail_curve_classification")
+    );
+    let cc = f.fb.fillet_edge(rail).unwrap().curve_class().unwrap();
+    assert_eq!(cc.size(), 3);
+    assert_eq!(cc.sub_interval(1).unwrap().min(), 0.3);
+    assert_eq!(cc.sub_interval(1).unwrap().max(), 0.31);
+}
+
+#[test]
+fn landed_p3_rail_intersection_reports_the_actual_missing_face_use() {
+    let mut f = Fixture::new([&[1.0], &[1.0]], false);
+    let rail = f.fb.geom(f.geom).unwrap().rail(0).unwrap();
+    let vertex = edge::vertex(f.fb.brep(), rail).unwrap().unwrap();
+    let a = f.target.add_vertex(Vec3::ZERO).unwrap();
+    let b = f.target.add_vertex(Vec3::X).unwrap();
+    let side = f.target.add_edge(a, b).unwrap();
+    let geom = f.geom;
+    let error = Missing
+        .rail_x_edge(&mut f.context(), vertex, geom, 0, rail, side, None)
+        .unwrap_err();
+    assert_eq!(
+        error,
+        SolidError::null_pointer("blend::fillet_solver::p3::calc_rail_x_edge")
+    );
+    assert!(f.owners.notifications.is_empty());
+}

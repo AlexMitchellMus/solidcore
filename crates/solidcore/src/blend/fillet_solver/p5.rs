@@ -194,20 +194,34 @@ trait ClassificationOps {
     }
     fn refine(
         &mut self,
-        _solver: &mut FilletSolver,
-        _k: &Kernel,
-        _target: &Brep,
-        _fillets: &mut FilletBrep,
+        solver: &mut FilletSolver,
+        k: &Kernel,
+        target: &Brep,
+        fillets: &mut FilletBrep,
         _geom: FilletGeomId,
-        _which: usize,
-        _rail: EdgeId,
-        _small: &[usize],
+        which: usize,
+        rail: EdgeId,
+        small: &[usize],
     ) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p3): sm_RefineRailCurveClassification
-        Err(SolidError::unported(
-            "sm_RefineRailCurveClassification",
-            "blend.fillet_solver_p3",
-        ))
+        let mut classification = fillets
+            .fillet_edge_mut(rail)?
+            .curve_class
+            .take()
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
+        let result = super::p3::refine_rail_curve_classification(
+            solver,
+            k,
+            target,
+            fillets,
+            which,
+            small,
+            rail,
+            &mut classification,
+        );
+        // The classification is detached only to share immutable rail data with
+        // the callee; restore its partial writes on every return path.
+        fillets.fillet_edge_mut(rail)?.curve_class = Some(classification);
+        result
     }
 }
 struct MissingClassification;
@@ -380,12 +394,12 @@ mod tests {
             &mut adjusted,
             &mut NoOwnership,
         );
-        assert!(matches!(
+        assert_eq!(
             result,
-            Err(SolidError::Unported {
-                unit: "blend.fillet_solver_p3",
-                ..
-            })
-        ));
+            Err(SolidError::invalid_input(
+                "blend::fillet_solver::p3",
+                "solver without edge use",
+            ))
+        );
     }
 }

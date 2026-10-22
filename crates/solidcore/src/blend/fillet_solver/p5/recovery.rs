@@ -74,15 +74,12 @@ pub(super) struct SideSearch<'a> {
     pub tangency_tolerance: f64,
 }
 
-// Only unavailable calls are abstracted, so tests can exercise the real caller's
-// entire continuation without pretending those callees are implemented.
+// Service boundaries let tests exercise the real caller continuation. Available
+// callees delegate to their owning units; only unavailable callees remain stubs.
 pub(super) trait RecoveryOps {
-    fn full(&mut self, _c: &mut Recovery<'_>, _geom: FilletGeomId, _rail: usize) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p3): SmFilletSolver::ProcessFullRollOver
-        Err(SolidError::unported(
-            "SmFilletSolver::ProcessFullRollOver",
-            "blend.fillet_solver_p3",
-        ))
+    fn full(&mut self, c: &mut Recovery<'_>, geom: FilletGeomId, rail: usize) -> Result<()> {
+        c.solver
+            .process_full_roll_over(c.k, c.target, c.fillets, geom, rail, c.ownership)
     }
     fn convex(
         &mut self,
@@ -149,19 +146,17 @@ pub(super) trait RecoveryOps {
     }
     fn rail_x_edge(
         &mut self,
-        _c: &mut Recovery<'_>,
-        _vertex: VertexId,
-        _geom: FilletGeomId,
-        _which: usize,
-        _rail: EdgeId,
-        _side: EdgeId,
-        _guess: Option<Point3>,
+        c: &mut Recovery<'_>,
+        vertex: VertexId,
+        geom: FilletGeomId,
+        which: usize,
+        rail: EdgeId,
+        side: EdgeId,
+        guess: Option<Point3>,
     ) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p3): sm_CalcRailXEdge
-        Err(SolidError::unported(
-            "sm_CalcRailXEdge",
-            "blend.fillet_solver_p3",
-        ))
+        super::super::p3::calc_rail_x_edge(
+            c.solver, c.k, c.target, c.fillets, vertex, geom, which, rail, side, guess,
+        )
     }
     fn tangent(&mut self, c: &mut Recovery<'_>, side: EdgeId) -> Result<bool> {
         super::super::p1::test_manifold_tangent_rollover(
