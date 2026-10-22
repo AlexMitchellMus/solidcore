@@ -43,6 +43,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use solidcore::blend::fillet_geom::p1::{FilletBrep, FilletSolverId};
 use solidcore::blend::fillet_custom_solver::{JacobianLoad, OffsetSurface, SurfaceId};
 use solidcore::blend::fillet_solver::p1::{
     check_edge_curve_domains, compute_uv_vectors, find_next_good_interval, test_analytic_surface,
@@ -76,7 +77,7 @@ use solidcore::surface::torus::{Torus, TorusOptions};
 use solidcore::surface::volume::Volume;
 use solidcore::topology::edgeuse::p1 as eu;
 use solidcore::topology::{Brep, Edge, EdgeId, EdgeuseId, FaceId, Vertex};
-use solidcore::SolidError;
+use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::blend_fillet_solver_p1::{self as ffi, Op, StaticOp};
 use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
 
@@ -710,7 +711,19 @@ fn rust_state(
 ) -> Result<Result<(), SolidError>, HarnessError> {
     let bases = [surface_of(&base[0])?, surface_of(&base[1])?];
     let kern = Kernel::default();
-    let mut fs = FilletSolver::new(tols[0], tols[1], tols[2]);
+    // the shim's solver owns the constructor's fillet geometry
+    let mut pseudo = FilletBrep::new();
+    let mut fs = match FilletSolver::new_in(
+        &kern,
+        &mut pseudo,
+        FilletSolverId(0),
+        tols[0],
+        tols[1],
+        tols[2],
+    ) {
+        Ok(fs) => fs,
+        Err(e) => return Ok(Err(e)),
+    };
     let mut next_key = 0u64;
     let mut make = |rail: usize, d: f64| -> Result<OffsetSurfaceSlot, SolidError> {
         let key = next_key;
@@ -1353,8 +1366,7 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
         Inputs::SurfValues { setup, surfs, uv } => {
             let mut fs = shim_with(surfs, false, false, *setup)?;
             let mut t = TsectPnt::new();
-            let r = FilletSolver::compute_surface_values(
-                k,
+            let r = FilletSolver::compute_surface_values(k, 
                 &mut fs as &mut dyn FilletSolverOps,
                 [Point2::new(uv[0], uv[1]), Point2::new(uv[2], uv[3])],
                 &mut t,
@@ -1402,29 +1414,35 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
         }
         Inputs::Split => {
             let k = Kernel::default();
-            let mut fs = FilletSolver::new(1.0e-6, 0.1, 0.01);
-            let cc: CurveClassification<H> = CurveClassification::new(&k);
-            let r = fs.split_fillet_geom(
-                &k,
-                &mut Brep::default(),
-                &NoGeometry,
-                0,
-                0,
-                &[],
-                &[],
-                &cc,
-                &cc,
-            );
-            if r.is_ok() {
-                o.extend_from_slice(&[0.0, fs.fillet_geoms().len() as f64]);
-            }
-            r
+            let mut pseudo = FilletBrep::new();
+            let cc: CurveClassification<EntityRef> = CurveClassification::new(&k);
+            let r = (|| -> Result<usize, SolidError> {
+                let mut fs =
+                    FilletSolver::new_in(&k, &mut pseudo, FilletSolverId(0), 1.0e-6, 0.1, 0.01)?;
+                fs.split_fillet_geom(
+                    &k,
+                    &mut pseudo,
+                    &NoGeometry,
+                    0,
+                    0,
+                    &[],
+                    &[],
+                    &cc,
+                    &cc,
+                )?;
+                Ok(fs.fillet_geoms().len())
+            })();
+            r.map(|n| o.extend_from_slice(&[0.0, n as f64]))
         }
         Inputs::Finish { surface, has, off } => {
             let base = surface_of(surface)?;
             let k = Kernel::default();
-            let mut fs = FilletSolver::new(1.0e-6, 0.1, 0.01);
+            let mut pseudo = FilletBrep::new();
             let r = (|| -> Result<(), SolidError> {
+                // the constructor's fillet geometry, before the derived constructor's
+                // SetSurface calls (as the shim's ShimFS)
+                let mut fs =
+                    FilletSolver::new_in(&k, &mut pseudo, FilletSolverId(0), 1.0e-6, 0.1, 0.01)?;
                 if has[0] {
                     let s =
                         OffsetSurface::new(&k, *off, base.clone(), SurfaceId::Free(0), SS_UNKNOWN)?;
@@ -1440,7 +1458,26 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
                     )?;
                     fs.set_surface(1, Some(OffsetSurfaceSlot { key: 1, surface: s }))?;
                 }
-                fs.finish_construction(&k)
+                fs.finish_construction(&k, &mut pseudo)?;
+                // every geometry now holds a copy of each set offset surface (the shim
+                // compares only the status; checked here against the solver's)
+                for g in fs.fillet_geoms() {
+                    let geom = pseudo.geom(g)?;
+                    for (rail, has_rail) in has.iter().enumerate() {
+                        let own = geom.off_surfs.get(rail).and_then(Option::as_ref);
+                        let ours = fs.surface(rail)?;
+                        if own.map(|s| s.surface.offset_distance())
+                            != ours.map(|s| s.surface.offset_distance())
+                            || own.is_some() != *has_rail
+                        {
+                            return Err(SolidError::invalid_input(
+                                "difftest::blend_fillet_solver_p1",
+                                "FinishConstruction did not install the offset copies",
+                            ));
+                        }
+                    }
+                }
+                Ok(())
             })();
             if r.is_ok() {
                 o.push(0.0);
@@ -1649,17 +1686,17 @@ impl ClassObject for H {
 /// intervals classifies nothing).
 struct NoGeometry;
 
-impl ClassGeometry<H> for NoGeometry {
-    fn curve(&self, _o: H) -> Option<&Curve> {
+impl<O> ClassGeometry<O> for NoGeometry {
+    fn curve(&self, _o: O) -> Option<&Curve> {
         None
     }
-    fn surface(&self, _o: H) -> Option<&Surface> {
+    fn surface(&self, _o: O) -> Option<&Surface> {
         None
     }
-    fn volume(&self, _o: H) -> Option<&Volume> {
+    fn volume(&self, _o: O) -> Option<&Volume> {
         None
     }
-    fn point(&self, _o: H) -> Option<Point3> {
+    fn point(&self, _o: O) -> Option<Point3> {
         None
     }
 }
