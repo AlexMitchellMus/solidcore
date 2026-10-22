@@ -682,9 +682,9 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
   - `SmBSplineCurve.cpp:43`: `SmBSplineCurve(lDim)` has a NULL NURB, which nearly every query dereferences (`GetOrCreateGwNurbPointer` asserts in debug only).
   - `SmHyperbola.cpp:422` `MakeNurb` (`:441`, `:470`) and `SmParabola.cpp:419` (`:435`): when `smgu_LineLineClosestPoint` fails, `MakeNurb` fails. The constructor ignores this, and `GlobalPointSolveSTEP` then dereferences the missing NURB in the curve cache.
 - **What happens:** NULL dereference.
-- **Trigger:** A hyperbola or parabola with a degenerate interval (parallel end tangents) or zero focal distance, then `GlobalPointSolveSTEP`.
-- **How found:** read during porting.
-- **Confirmed:** no. The shim refuses these inputs.
+- **Trigger:** A hyperbola or parabola with a degenerate interval (parallel end tangents) or zero focal distance, then `GlobalPointSolveSTEP`. Also the `SmHyperbola` constructor (`SmHyperbola.cpp:66`, `SE(MakeNurb())`) on extreme but finite input, e.g. a semi axis of 1e300 or a centre at 9.2e18 with unit axes: the NURB is left NULL or with non-finite control points, and building a surface of revolution / extrusion / offset over it segfaults.
+- **How found:** read during porting; the constructor trigger by `--fuzz 200` on the hyperbola generators of the `surface.surf_of_revolution_p1`, `surf_of_revolution_p3` and `offset_surface` runners (2026-10-21, 21 segfaults).
+- **Confirmed:** yes for the constructor trigger (segfaults in the C++ reference run); the shims now refuse a hyperbola whose built NURB is NULL or has a non-finite control point.
 - **Severity:** crash/UB.
 - **Rust port:** Returns `SM_ERR`.
 - **Fuzz sweep trigger (2026-10-20):** `SmParabola` with a non-finite-after-unitize frame (`/a/y/2 = 1e+300`, `curve.parabola` fuzz `fuzz01135`, op `gps_step`): `MakeNurb` fails, `GlobalPointSolveSTEP` -> `AdjustSTEPInterval` keeps the domain, then `SmCurve::GlobalPointSolve` builds the length cache through `SmBSplineCurve::EvaluatePoint`, which dereferences `GetOrCreateGwNurbPointer()` (`SmBSplineCurve.cpp:3300`). SIGSEGV in the C++ reference run. Change **Confirmed:** to yes (crash in the C++ reference run, fuzz sweep); the shim's earlier refusal did not cover this input, the FFI now replays `Adjust`/`MakeNurb` first (`crates/solidcore-ffi/src/units/curve_parabola.rs:131`).
@@ -882,6 +882,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (SIGSEGV, 3 cases).
 - **Severity:** crash/UB (out-of-bounds read).
 - **Rust port:** not reached; the `query.loop` FFI wrapper rejects an edge curve whose last `p + 1` knots differ (`crates/solidcore-ffi/src/units/query_loop.rs:400`).
+
+#### UB-238. `SetIntersectionCurveThroughPoint` builds the new UV trim curves from the address of a pointer slot
+- **Location:** `source/SMLib/src/SmBSplineCurveNLib.cpp:2293` (`new SmBSplineCurve(rUVCurve[ii]->GetDim(), (gw_CURVE *)&sNewUVCrv[ii])`); `sNewUVCrv` is a `SmTArray<NL_CURVE *>` (`:1650`) filled with `N_AllocCrv` results in the knot-inserting cases (`:2018-2025`).
+- **What happens:** `&sNewUVCrv[ii]` is the address of the array element holding the `NL_CURVE*`, not the curve, so the copy constructor reads a pointer and the bytes after it as a `gw_CURVE` and dereferences garbage (segfault in the reference build). The 3D curve's own copy two lines up uses `&sNewCrv` correctly.
+- **Trigger:** any call with at least one UV trim curve whose parameter falls in a knot-inserting case (1, 4 or 8: a new knot before the start, inside a span away from its ends, or after the end), e.g. a piecewise C0 cubic over `[0,3]` in the plane `z = 0` with one UV curve on a bilinear plane and `dNewKnot = 0.5`.
+- **How found:** crash in the C++ reference run (adversarial / edge-case fixture, `nurbs.b_spline_curve_n_lib`).
+- **Confirmed:** yes (SIGSEGV running the case through the shim; the knot-moving cases 2, 3, 5, 6, 7 with the same curves run and match the port).
+- **Severity:** crash/UB.
+- **Rust port:** swaps in the inserted UV curves themselves (the evident intent). The `nurbs.b_spline_curve_n_lib` FFI guard only lets UV curves through when every span and node the parameter could select takes a knot-moving case.
 
 ### Surfaces and volumes
 
@@ -1146,9 +1155,9 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 #### UB-154. `sm_GetEllipseTrimIntervals` reads the parameter of a failed line/plane intersection
 - **Location:** `source/SMLib/src/SmCone.cpp:5399`-`5405` and `:5463`-`5477`, `sm_GetEllipseTrimIntervals` (def. `:5282`, file static).
 - **What happens:** The statuses of `smgu_LinePlaneIntersect` for the two seam lines are ignored and `dParam[0]`, `dParam[1]` (uninitialised) are then compared and used. (The status of `ConvertDomainFromNURBSToSTEP` at `:5325` is ignored too, but that is defined: a failed corner conversion, e.g. of a cone without a polar curve, leaves the default-constructed domain, and a reversed one the NURB domain.)
-- **Trigger:** A seam line of the trimmed cone parallel to the ellipse plane (or of zero length, a zero-height trim domain).
-- **How found:** read during porting (`surface.cone_p2`, PR #153).
-- **Confirmed:** no. The shim runs the same calls first and refuses such inputs.
+- **Trigger:** A seam line of the trimmed cone shorter than `1e-12` (`ZERO_VEC_ER`, `SmGeomUtility.cpp:694`), e.g. a zero-height or reversed trim domain, or parallel to the ellipse plane within `SM_EFF_ZERO` (not reached in practice: the cone/cone ellipse planes are at least `SM_EFF_ZERO_SQRT / 2` from the seams, and the cone/plane path tests equally long, less steep generators first, `SmCone.cpp:3716`, `:3735`).
+- **How found:** read during porting (`surface.cone_p2`, PR #153); reached through `IntersectWithCone` by the `surface.cone_p3` fuzz (issue #276: fuzz00656 `/domains/2 = -1e300`, fuzz09540 `/domains/5 = 1e300`, `differs=2` with `cpp=None rust=status_1007`).
+- **Confirmed:** yes, with the C++ build: an instrumented replay shows both seam vectors are exactly `(0, 0, 0)` on the two fuzz inputs (the reversed domain evaluates both ends of each seam to the same point), so both `smgu_LinePlaneIntersect` calls fail and `dParam` is read uninitialised. Guards: the `surface.cone_p2` shim (`trim_defined`) and the `surface.cone_p3` shim (`harness/cpp/shim/surface_cone_p3.cpp`: `seam_lines_defined`, `cone_ellipse_seams_undefined`, `plane_ellipse_seams_undefined`) replay the upstream calls in the same order, with the same status checks, up to the two seam intersections, and refuse an input iff one fails (fixtures `fixtures/surface.cone_p3/ub154.json`: 7 rejections, 13 neighbours just inside validity compared).
 - **Severity:** UB (uninitialised read).
 - **Rust port:** The line/plane errors are returned. The ignored domain conversion is mirrored (fixture `surface.cone_p3/fuzz_trim_domain.json`).
 
@@ -2760,6 +2769,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** wrong result.
 - **Rust port:** `Surface::is_closed_smooth_flag` returns both; `eval_pt_derivs_unbounded` keeps the copy and the flag, as upstream.
 
+#### WR-168. `MakeWireEdge` / `MakeWireEdgeVertex` give the new edge a sliced copy of an edge-owned curve
+- **Location:** `source/SMLib/src/SmBrep.cpp:21676`-`21678` (`SmBrep::MakeWireEdge`) and `:21801`-`21803` (`SmBrep::MakeWireEdgeVertex`).
+- **What happens:** When the curve passed in already belongs to an edge (`pCurve->GetEdge() != NULL`), the new wire edge gets `new (pCurve->GetContext()) SmCurve(*pCurve)`: the `SmCurve` base-class copy constructor, which copies none of the derived class's geometry (an `SmBSplineCurve`'s NURB, a line's point and vector). The new edge's curve is a plain `SmCurve` whose evaluation falls back to the base class (`SM_ERR`). The vertex tolerance checks right after still evaluate the original curve, so the calls succeed.
+- **Trigger:** `MakeWireEdge(NULL, v1, v2, pOtherEdge->GetCurve(), ...)` (or `MakeWireEdgeVertex`) with the curve of an existing edge.
+- **How found:** read during porting (`topology.brep_p3`, PR #204).
+- **Confirmed:** no (not run: the port and its difftest stop at `topology.shell` inside `MakeEdgeTopology` first). Update (PR #204, after topology.shell was wired): the wire makers now run and are compared (49 passing cases), but every wire fixture passes a curve no edge owns, so this branch is still not run.
+- **Severity:** wrong result (an edge without usable geometry).
+- **Rust port:** Deviation: the port clones the curve with its geometry (`Curve`'s `Clone`, the copy constructor of each curve kind); a geometry-less base curve cannot be represented.
+
 ### Curves
 
 #### WR-190. `SmFilletEdge::CalcBlendingRail` builds its Hermite fallback as a degree-2 curve and drops a control point
@@ -3767,3 +3785,12 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash/UB (virtual call through a mistyped pointer).
 - **Related:** WR-208 (the same `m_vVertexCornerMap` arrays leak for vertices without a corner).
 - **Rust port:** `ExecutiveAccess::solver_corner` yields `None` for a vertex without a corner, so the walk returns `SM_ERR_NULL_POINTER` (upstream's `NER`) instead.
+
+#### WR-210. `MakeFacesWithCurves` counts each outer-loop group's curves with the patch's first loop counts
+- **Location:** `source/SMLib/src/SmBrep.cpp:17590-17607` (`SmBrep::MakeFacesWithCurves`, split branch: the loop over `ll < lNumLoopsInGroup` reads `sThisPatchLoops.m_sLoopCounts[ll]`, but the curves and orientations from `sThisLoopGroup.m_sCurves[mm]` / `m_sOrients[mm]`).
+- **What happens:** `sThisLoopGroup` holds only the current outer-loop group's loops, while the counts come from the patch's loop list from its start. For the first group of a sub-patch the two agree; for a later group the counts are those of the first group's loops, so the face gets the wrong number of curves per loop, and reading past the group's curves is an out-of-bounds read.
+- **Trigger:** a surface with a `C0` crease and two disjoint outer loops (each with its own holes) on one side of the crease, so that `FindOuterLoops` returns two groups for one sub-patch.
+- **How found:** read during porting (`topology.brep_p8`, PR #72).
+- **Confirmed:** no (no native reproduction built).
+- **Severity:** wrong topology, or UB (out-of-bounds read) when the first group has more curves.
+- **Rust port:** keeps the counts; a read past the group's curves is `SolidError::InvalidInput`.
