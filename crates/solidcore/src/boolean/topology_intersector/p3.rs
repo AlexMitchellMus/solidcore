@@ -54,8 +54,9 @@
 //!   conversion does.
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
 //!   each tagged `UNPORTED(<unit>)`: `SmBrep::DeleteEdge` (`topology.brep_p4`). The
-//!   code after it is ported in full. `SmFace::GetEdges` and `GetUpwardLoopuses`
-//!   (`topology.face_p4`) are [`IntersectorBrepP3`] hooks.
+//!   code after it is ported in full. `SmFace::GetEdges` is
+//!   [`IntersectorBrep::face_edges`] and `GetUpwardLoopuses` an [`IntersectorBrepP3`]
+//!   hook (`topology.face_p4`).
 //! - **Undefined behaviour upstream** (a null or deleted object dereferenced, a
 //!   classification object of the wrong kind used as an edge or vertex, an index past
 //!   a list) is [`SolidError::InvalidInput`].
@@ -189,15 +190,6 @@ pub trait IntersectorBrepP3<O>: IntersectorBrepP2<O> {
     /// Those of `calculate_bounding_box`; [`SolidError::InvalidInput`] for a handle
     /// that is not a face of a known B-rep.
     fn face_bounding_box(&self, k: &Kernel, face: O) -> Result<Extent3d>;
-    /// `SmFace::GetEdges(rEdges)` with its defaults (no attribute, all loops; unit
-    /// `topology.face_p4`: `topology::face::p4::edges`): the edges of every loop use of
-    /// the face's upward face use, loop by loop.
-    ///
-    /// # Errors
-    ///
-    /// Those of `edges`; [`SolidError::InvalidInput`] for a handle that is not a face of
-    /// a known B-rep.
-    fn face_edges(&self, face: O) -> Result<Vec<O>>;
     /// `SmFace::GetUpwardLoopuses(rLoopuses)` (all loops; unit `topology.face_p4`:
     /// `topology::face::p4::upward_loopuses`).
     ///
@@ -1623,7 +1615,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 for uv_curve in dropped.uv_curves {
                     let mut ivl = uv_curve.natural_interval();
                     let uv_h = brep
-                        .insert_curve(Curve::from(uv_curve))
+                        .insert_curve(uv_curve)
                         .ok_or(dangling("curve store is full"))?;
                     deleted_curves.push(uv_h);
 

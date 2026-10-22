@@ -75,7 +75,6 @@ use crate::intersect::surface_tracer::{
 };
 use crate::kernel::Kernel;
 use crate::math::{BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT, PI};
-use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::knots::Side;
@@ -139,6 +138,8 @@ fn evaluate_geometric_at(k: &Kernel, surface: &Surface, uv: Point2) -> Result<Ge
         SurfaceKind::CurveBounded(s) => s.evaluate_geometric(k, uv, Side::Left, Side::Left),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::Plane(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -162,6 +163,8 @@ fn evaluate_normal_section(
         }
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::Plane(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -318,7 +321,7 @@ impl<'s> SurfaceSilhouette<'s> {
     pub fn find_solutions_on_boundary_curve(
         &self,
         k: &Kernel,
-        boundary: &BSplineCurve,
+        boundary: &Curve,
         interval: &Extent1d,
     ) -> Result<SolutionArray<BoundaryCurve>> {
         let curve_prop = if self.perspective {
@@ -333,7 +336,7 @@ impl<'s> SurfaceSilhouette<'s> {
             want_comb: false,
             handle: None,
         };
-        let curve = Curve::from(boundary.clone());
+        let curve = boundary;
         // the solutions name the curve (its cache tree's owner)
         opts.handle = Some(BoundaryCurve {
             natural_interval: Some(curve.natural_interval()),
@@ -1033,7 +1036,7 @@ impl<'s> SurfaceTrace<'s> for SurfaceSilhouette<'s> {
     fn find_solutions_on_boundary_curve(
         &self,
         k: &Kernel,
-        boundary: &BSplineCurve,
+        boundary: &Curve,
         interval: &Extent1d,
         side: usize,
         param: SurfParamType,

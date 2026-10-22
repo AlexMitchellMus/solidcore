@@ -83,6 +83,9 @@
 //! - **The proto topology manager** (`m_pProtoTopoMgr`) is created by
 //!   `IntersectInsertRelate` (unit `boolean.topology_intersector_p2`); until that is
 //!   ported it is set with [`TopologyIntersector::set_proto_topology_manager`].
+//! - **B-rep edits** go through the adapter: `SmBrep::DeleteFace` is
+//!   [`IntersectorBrep::brep_delete_face`] (the owner of the B-reps calls
+//!   `topology::brep::p3::delete_face`), so `face_face_coincidence` takes `&mut Kernel`.
 //! - **`SmBrep::GlueEdgesGeneral`** (`topology.brep_p7`) goes through
 //!   [`IntersectorBrep::brep_glue_edges_general`], which the B-rep owner implements with
 //!   `topology::brep::p7::glue_edges_general` (so `face_face_intersect` takes the
@@ -91,11 +94,13 @@
 //!   its supertrait `BrepGlue` (`topology::proto_topology::p3`), which the B-rep owner
 //!   implements with `topology::brep::p5` (so `vertex_face_intersect` and the
 //!   interval-end imprint take the kernel mutably).
+//! - **`SmFace::GetBrep` / `GetVertices` / `GetEdges`** (`topology.face_p4`, with their
+//!   default arguments) go through [`IntersectorBrep::face_brep`],
+//!   [`IntersectorBrep::face_vertices`] and [`IntersectorBrep::face_edges`], which the B-rep
+//!   owner implements with `topology::face::p4`.
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
 //!   each tagged `UNPORTED(<unit>)`: `SmBrep::MakeVertexLoop` / `MakeVertexSplitEdge`
 //!   (`topology.brep_p9`), `MakeEdgeInFace` (`topology.brep_p5`),
-//!   `DeleteFace` (`topology.brep_p3`),
-//!   `SmFace::GetVertices` / `GetEdges` / `GetBrep` (`topology.face_p4`),
 //!   `SmFace::FaceIntersect` with UV curve and point outputs (`topology.face_p3`; part
 //!   2's `face_face_intersect_curves`, which [`IntersectorBrep`] does not cover),
 //!   `SmFace::Point3DClassify` (`query.face_p1`; `SmFace::CalculateBoundingBox` goes
@@ -329,6 +334,27 @@ pub trait IntersectorBrep<O>:
     ///
     /// Those of the query.
     fn edge_vertex(&self, edge: O) -> Result<Option<O>>;
+    /// `SmFace::GetBrep` (`topology::face::p4::brep`): the B-rep handle of a face, `None`
+    /// for a face without face use or shell.
+    ///
+    /// # Errors
+    ///
+    /// Those of the topology walk.
+    fn face_brep(&self, face: O) -> Result<Option<O>>;
+    /// `SmFace::GetVertices(rVertices)` with its defaults (no attribute filter, every
+    /// loop; `topology::face::p4::vertices`).
+    ///
+    /// # Errors
+    ///
+    /// Those of the topology walk.
+    fn face_vertices(&self, face: O) -> Result<Vec<O>>;
+    /// `SmFace::GetEdges(rEdges)` with its defaults (no attribute filter, every loop;
+    /// `topology::face::p4::edges`).
+    ///
+    /// # Errors
+    ///
+    /// Those of the topology walk.
+    fn face_edges(&self, face: O) -> Result<Vec<O>>;
     /// `SmEdge::GetPrimaryEdgeuse()->GetOrientation()`
     /// (`topology::edgeuse::p1::primary_edgeuse`, `orientation`): `None` without a
     /// primary edge use (upstream dereferences null).
@@ -401,6 +427,15 @@ pub trait IntersectorBrep<O>:
     /// The adapter the topology solver reads the B-reps' cache trees and geometry
     /// through (`SmTopologySolver::BrepPointSolve` / `BrepCurveSolve`).
     fn topology_objects(&self) -> &dyn TopologyObjects<O>;
+    /// `SmBrep::DeleteFace(pFace)` with upstream's default arguments (`FALSE, TRUE,
+    /// NULL, NULL`) on the B-rep `brep`: the owner of a real B-rep implements it with
+    /// `topology::brep::p3::delete_face`.
+    ///
+    /// # Errors
+    ///
+    /// Those of the edit; an owner with no B-rep behind its handles returns
+    /// [`SolidError::Unported`] under a `harness:` label.
+    fn brep_delete_face(&mut self, k: &mut Kernel, brep: O, face: O) -> Result<()>;
     /// `SmBrep::GlueEdgesGeneral(pSurvivingEdge, eRelativeOrientation, dEdgeGap,
     /// bDoRegionNesting, pEdgeToDelete, pInsideFaceuses)` on B-rep `brep`
     /// (`topology::brep::p7::glue_edges_general`; `pInsideFaceuses` defaults to `NULL`).
@@ -538,59 +573,6 @@ impl<O: Copy, B: IntersectorBrep<O>> crate::topology::brep::p5::FaceEdgeBackend
             "topology.brep_p9",
         ))
     }
-}
-
-/// `SmBrep::DeleteFace(pFace, bDeleteEdgesVertices, bDoRegionNesting,
-/// pOptDeletedEdgesVertices, pOptRegionToKeep)` (`FALSE`, `TRUE`, `NULL`, `NULL` by
-/// default); `want_deleted_edges_vertices` is whether `pOptDeletedEdgesVertices` is
-/// given: the deleted edges and vertices are returned then.
-fn brep_delete_face<O>(
-    _k: &Kernel,
-    _brep: O,
-    _face: O,
-    _delete_edges_vertices: bool,
-    _do_region_nesting: bool,
-    _want_deleted_edges_vertices: bool,
-    _opt_region_to_keep: Option<O>,
-) -> Result<Vec<O>> {
-    // UNPORTED(topology.brep_p3): SmBrep::DeleteFace
-    Err(SolidError::unported(
-        "SmBrep::DeleteFace",
-        "topology.brep_p3",
-    ))
-}
-
-/// `SmFace::GetBrep()`.
-pub(super) fn face_brep<O>(_face: O) -> Result<Option<O>> {
-    // UNPORTED(topology.face_p4): SmFace::GetBrep
-    Err(SolidError::unported("SmFace::GetBrep", "topology.face_p4"))
-}
-
-/// `SmFace::GetVertices(rVertices, pOptAttribId, bTgtLoopsOnly, pOptTgtLoops)`
-/// (`NULL`, `FALSE`, `NULL` by default).
-pub(super) fn face_vertices<O>(
-    _face: O,
-    _opt_attrib_id: Option<u64>,
-    _tgt_loops_only: bool,
-    _opt_tgt_loops: Option<&[O]>,
-) -> Result<Vec<O>> {
-    // UNPORTED(topology.face_p4): SmFace::GetVertices
-    Err(SolidError::unported(
-        "SmFace::GetVertices",
-        "topology.face_p4",
-    ))
-}
-
-/// `SmFace::GetEdges(rEdges, pOptAttribId, bTgtLoopsOnly, pOptTgtLoops)` (`NULL`,
-/// `FALSE`, `NULL` by default).
-pub(super) fn face_edges<O>(
-    _face: O,
-    _opt_attrib_id: Option<u64>,
-    _tgt_loops_only: bool,
-    _opt_tgt_loops: Option<&[O]>,
-) -> Result<Vec<O>> {
-    // UNPORTED(topology.face_p4): SmFace::GetEdges
-    Err(SolidError::unported("SmFace::GetEdges", "topology.face_p4"))
 }
 
 /// `eStat = pFace->CalculateUVDomainFromUVTrimCurves(sTempDomain)` of a caller that takes
@@ -2168,7 +2150,9 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 .face_surface(face)
                 .ok_or(dangling("face handle is unknown"))?
                 .ok_or(dangling("face without surface"))?;
-            let f_brep = face_brep(face)?.ok_or(dangling("face without B-rep"))?;
+            let f_brep = brep
+                .face_brep(face)?
+                .ok_or(dangling("face without B-rep"))?;
 
             // Find the point -- make sure they're the same. Can err if pEdge was edited by prior loop iteration
             let mut edge_pt = eval_curve_point(k, brep, curve, param)?;
@@ -2459,7 +2443,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             let uv1 = brep
                 .face_uv_domain(face1)
                 .ok_or(dangling("face handle is unknown"))?;
-            let v1s = face_vertices(face1, None, false, None)?;
+            let v1s = brep.face_vertices(face1)?;
             let intersect_f1 = Self::surface_is_closed(k, brep, surf1, &uv1)?;
 
             let mut jj = 0usize;
@@ -2473,7 +2457,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 let uv2 = brep
                     .face_uv_domain(face2)
                     .ok_or(dangling("face handle is unknown"))?;
-                let v2s = face_vertices(face2, None, false, None)?;
+                let v2s = brep.face_vertices(face2)?;
                 let intersect_f2 = Self::surface_is_closed(k, brep, surf2, &uv2)?;
 
                 // Do these 2 faces share 2 or more common vertices?
@@ -2488,8 +2472,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 }
 
                 // We do not handle coincident edges here
-                let face1_edges = face_edges(face1, None, false, None)?;
-                let face2_edges = face_edges(face2, None, false, None)?;
+                let face1_edges = brep.face_edges(face1)?;
+                let face2_edges = brep.face_edges(face2)?;
                 let common_edges = find_common_elements(&face1_edges, &face2_edges);
 
                 // In the SmMerge::MergeAddedTopology routine, by now all coincident edges should have common edges
@@ -3010,13 +2994,13 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     /// Unless `ignore_problems`, `SM_ERR` for a face to delete without B-rep;
     /// [`SolidError::Unported`] for `SmFace::GetEdges` / `GetBrep`
     /// (`topology.face_p4`), `SmFace::CalculateUVDomainFromUVTrimCurves`'s
-    /// `CreateUVTrimCurves` and
-    /// `SmBrep::DeleteFace`; [`SolidError::InvalidInput`] for null handles upstream
+    /// `CreateUVTrimCurves`; those of
+    /// [`IntersectorBrep::brep_delete_face`]; [`SolidError::InvalidInput`] for null handles upstream
     /// dereferences; those of the surface evaluations.
     #[allow(clippy::too_many_lines)]
     pub fn face_face_coincidence(
         &mut self,
-        k: &Kernel,
+        k: &mut Kernel,
         brep: &mut impl IntersectorBrep<O>,
         input_edges: &[Option<O>],
         faces_to_delete: &[O],
@@ -3049,7 +3033,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     continue;
                 };
 
-                let edges1 = face_edges(face1, None, false, None)?;
+                let edges1 = brep.face_edges(face1)?;
                 let num_edges1 = edges1.len();
                 let mut kk = jj + 1;
                 let mut break_outer = false;
@@ -3059,7 +3043,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                         continue;
                     };
 
-                    let edges2 = face_edges(face2, None, false, None)?;
+                    let edges2 = brep.face_edges(face2)?;
                     let num_edges2 = edges2.len();
 
                     // See whether they're the same sets of edges.
@@ -3152,7 +3136,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                             sav_face = face1;
                         }
 
-                        let Some(f_brep) = face_brep(del_face)? else {
+                        let Some(f_brep) = brep.face_brep(del_face)? else {
                             if ignore_problems {
                                 kk += 1;
                                 continue;
@@ -3162,9 +3146,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                         let old_tol = brep
                             .topology_tolerance(del_face)
                             .ok_or(dangling("face handle is unknown"))?;
-                        ignore_soft(brep_delete_face(
-                            k, f_brep, del_face, false, true, false, None,
-                        ))?;
+                        ignore_soft(brep.brep_delete_face(k, f_brep, del_face))?;
 
                         // Add to the output lists.
                         // In the case of three or more faces all coincident (or
@@ -3990,7 +3972,9 @@ pub fn test_and_imprint_face<O: ClassObject + SolutionObject + Ord>(
     }
 
     // Point is on the surface, within the face.
-    let f_brep = face_brep(face)?.ok_or(dangling("face without B-rep"))?;
+    let f_brep = geometry
+        .face_brep(face)?
+        .ok_or(dangling("face without B-rep"))?;
     match geometry
         .make_vertex_loop(f_brep, face, point)
         .map(|(l, v)| (l, Some(v)))

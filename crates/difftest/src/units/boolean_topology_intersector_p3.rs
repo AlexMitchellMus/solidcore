@@ -907,18 +907,6 @@ impl IntersectorBrepP3<H> for Two {
         r
     }
 
-    fn face_edges(&self, face: H) -> solidcore::Result<Vec<H>> {
-        if face.kind != K_FACE {
-            return Err(invalid("not a face"));
-        }
-        Ok(
-            fp4::edges(self.brep_r(face)?, fid(face), None, false, None)?
-                .into_iter()
-                .map(|e| hd(face.b, K_EDGE, e.index()))
-                .collect(),
-        )
-    }
-
     fn face_upward_loopuses(&self, face: H) -> solidcore::Result<Vec<H>> {
         if face.kind != K_FACE {
             return Err(invalid("not a face"));

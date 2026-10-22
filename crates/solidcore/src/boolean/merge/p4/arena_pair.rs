@@ -10,6 +10,7 @@
 //! This adapts the ported operations without copying their geometry algorithms.
 //! No input-dependent recursion is introduced.
 
+use super::notification_keys::NotificationKeys;
 use crate::boolean::topology_intersector::p1 as ti;
 use crate::boolean::topology_intersector::p1::IntersectorBrep;
 use crate::boolean::topology_intersector::p2::IntersectorBrepP2;
@@ -20,7 +21,7 @@ use crate::geom::context::Context;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::Extent3d;
-use crate::geom::object::{ObjectRef, ShapeMember};
+use crate::geom::object::ShapeMember;
 use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::geom::tol::{update_object_tolerance, TopologyToUpdate};
 use crate::intersect::curve_class::p1::CurveClassification;
@@ -32,6 +33,7 @@ use crate::kernel::Kernel;
 use crate::math::{Point2, Point3};
 use crate::nurbs::b_spline_curve::p2::BoundingBoxRequest;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{BrepIdentity, BrepQuery};
 use crate::query::face::p2::{
     curve_on_classify, point_classify, CurveOnClassifyObjects, PointClassifyOptions,
 };
@@ -50,7 +52,7 @@ use crate::topology::proto_topology::p1::ProtoTopology;
 use crate::topology::proto_topology::{ProtoBrep, ProtoGeometry};
 use crate::topology::topology::Topology;
 use crate::topology::vertex as vx;
-use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, LoopId, VertexId, VertexuseId};
+use crate::topology::{Brep, BrepId, EdgeId, EdgeuseId, FaceId, LoopId, VertexId, VertexuseId};
 use crate::{EntityRef, SolidError};
 use std::collections::BTreeMap;
 const K_VERTEX: u8 = 0;
@@ -67,6 +69,7 @@ const K_LOOP: u8 = 10;
 const K_TI: u8 = 11;
 const K_TRIM_CURVE: u8 = 12;
 const K_NULL: u8 = 13;
+const K_REGION: u8 = 14;
 /// An object handle: the B-rep (`2` for the curve stores, `-1` for the intersector),
 /// the kind and the index. Ordered by operand, class and arena index. A
 /// curve handle also carries its curve's natural interval (what `SmSolutionArray`
@@ -130,6 +133,7 @@ impl ClassObject for H {
             K_EDGEUSE => ClassObjectKind::Edgeuse,
             K_VERTEXUSE => ClassObjectKind::Vertexuse,
             K_LOOP => ClassObjectKind::Loop,
+            K_REGION => ClassObjectKind::Region,
             _ => ClassObjectKind::Other,
         }
     }
@@ -171,8 +175,8 @@ pub(super) struct ArenaPair<'a> {
     attributes: &'a mut AttributeStore,
     primary_context: &'a mut Context,
     other_context: Option<&'a mut Context>,
-    namespace: u32,
-    cache_kernels: [Kernel; 2],
+    keys: NotificationKeys<'a>,
+    cache_kernels: Option<[Kernel; 2]>,
     caches: [std::cell::OnceCell<BrepCache<H>>; 2],
 }
 fn invalid(reason: &'static str) -> SolidError {
@@ -195,10 +199,10 @@ impl ArenaPair<'_> {
         extra: &'a mut Vec<SmCurve>,
         records: &'a mut BTreeMap<ObjectKey, Topology>,
         attributes: &'a mut AttributeStore,
-        cache_kernels: [Kernel; 2],
+        cache_kernels: Option<[Kernel; 2]>,
         primary_context: &'a mut Context,
         other_context: Option<&'a mut Context>,
-        namespace: u32,
+        keys: NotificationKeys<'a>,
     ) -> ArenaPair<'a> {
         ArenaPair {
             breps: [Some(primary), other],
@@ -208,7 +212,7 @@ impl ArenaPair<'_> {
             attributes,
             primary_context,
             other_context,
-            namespace,
+            keys,
             cache_kernels,
             caches: [std::cell::OnceCell::new(), std::cell::OnceCell::new()],
         }
@@ -274,6 +278,7 @@ impl ArenaPair<'_> {
             EntityRef::Face(f) => Some(hd(b, K_FACE, f.index())),
             EntityRef::Loop(l) => Some(hd(b, K_LOOP, l.index())),
             EntityRef::Edgeuse(eu) => Some(hd(b, K_EDGEUSE, eu.index())),
+            EntityRef::Region(r) => Some(hd(b, K_REGION, r.index())),
             _ => None,
         }
     }
@@ -432,6 +437,29 @@ impl ProtoBrep<H> for ArenaPair<'_> {
             .map(|e| hd(v1.b, K_EDGE, e.index()))
             .collect())
     }
+    fn brep_point_3d_classify(
+        &mut self,
+        k: &Kernel,
+        brep: H,
+        point: Point3,
+        tolerance: f64,
+        boundary_intersections: bool,
+    ) -> crate::Result<PointClassification<H>> {
+        let operand = brep.b;
+        let id = BrepId::from_index(u32::try_from(operand).map_err(|_| invalid("not an operand"))?);
+        let pc = BrepQuery::new(BrepIdentity::arena(id)).point_3d_classify(
+            k,
+            self.brep_m(brep)?,
+            point,
+            tolerance,
+            boundary_intersections,
+        )?;
+        pc.map_objects(&mut |e| {
+            Self::entity_h(operand, e)
+                .ok_or_else(|| invalid("classification object without a handle"))
+        })
+    }
+
     fn face_curve_on_classify(
         &self,
         k: &Kernel,
@@ -455,6 +483,23 @@ impl ProtoBrep<H> for ArenaPair<'_> {
             false,
             true,
         )
+    }
+
+    /// `SmBrep::SqueezeEdge(edge, survivor)` of `brep`'s B-rep
+    /// ([`crate::topology::brep::p3::squeeze_edge`]), notifying as the glue does.
+    fn brep_squeeze_edge(
+        &mut self,
+        k: &mut Kernel,
+        brep: H,
+        edge: H,
+        survivor: H,
+    ) -> crate::Result<()> {
+        if brep.kind != K_BREP || edge.b != brep.b || survivor.b != brep.b {
+            return Err(invalid("edge or vertex is not in the B-rep"));
+        }
+        self.with_edit_env(brep, |b, env| {
+            crate::topology::brep::p3::squeeze_edge(k, b, env, eid(edge), vid(survivor))
+        })
     }
 }
 
@@ -529,7 +574,7 @@ impl IntersectorBrep<H> for ArenaPair<'_> {
             } else {
                 self.primary_context
             }),
-            key_of: &|e| super::kernel_adapter::notification_key(self.namespace, brep.b == 1, e),
+            key_of: &|e| self.keys.object(brep.b == 1, e),
         };
         let (loop_, vertex) = crate::topology::brep::p9::make_vertex_loop(
             b,
@@ -570,7 +615,7 @@ impl IntersectorBrep<H> for ArenaPair<'_> {
             } else {
                 self.primary_context
             }),
-            key_of: &|e| super::kernel_adapter::notification_key(self.namespace, brep.b == 1, e),
+            key_of: &|e| self.keys.object(brep.b == 1, e),
         };
         let out = crate::topology::brep::p9::make_vertex_split_edge(
             k,
@@ -578,15 +623,7 @@ impl IntersectorBrep<H> for ArenaPair<'_> {
             eid(edge),
             parameter,
             &mut env,
-            &|e, kind| ObjectRef {
-                key: super::kernel_adapter::notification_key(
-                    self.namespace,
-                    brep.b == 1,
-                    EntityRef::Edge(e),
-                )
-                .key,
-                type_code: kind,
-            },
+            &|e, kind| self.keys.curve(brep.b == 1, e, kind),
         )?;
         if !out.split {
             return Err(SolidError::sm_err("boolean::merge::p4::arena_pair::split"));
@@ -642,11 +679,8 @@ impl IntersectorBrep<H> for ArenaPair<'_> {
             .get_mut(slot)
             .and_then(Option::as_deref_mut)
             .ok_or_else(|| invalid("absent B-rep"))?;
-        let this = super::kernel_adapter::notification_key(
-            self.namespace,
-            vertex.b == 1,
-            EntityRef::Vertex(vid(vertex)),
-        );
+        let keys = self.keys;
+        let this = keys.object(vertex.b == 1, EntityRef::Vertex(vid(vertex)));
         vx::set_point(
             b,
             vid(vertex),
@@ -661,13 +695,7 @@ impl IntersectorBrep<H> for ArenaPair<'_> {
                 self.primary_context
             }),
             this,
-            &|vu| {
-                super::kernel_adapter::notification_key(
-                    self.namespace,
-                    vertex.b == 1,
-                    EntityRef::Vertexuse(vu),
-                )
-            },
+            &|vu| keys.object(vertex.b == 1, EntityRef::Vertexuse(vu)),
         )
     }
     fn set_topology_tolerance(
@@ -725,6 +753,35 @@ impl IntersectorBrep<H> for ArenaPair<'_> {
     }
     fn edge_vertex(&self, edge: H) -> crate::Result<Option<H>> {
         Ok(ed::vertex(self.brep_r(edge)?, eid(edge))?.map(|v| hd(edge.b, K_VERTEX, v.index())))
+    }
+    fn face_brep(&self, face: H) -> crate::Result<Option<H>> {
+        if face.kind != K_FACE {
+            return Err(invalid("not a face handle"));
+        }
+        let b = self.brep_r(face)?;
+        Ok(crate::topology::face::p4::brep(b, fid(face))?.map(|_| brep_h(face.b)))
+    }
+    fn face_vertices(&self, face: H) -> crate::Result<Vec<H>> {
+        if face.kind != K_FACE {
+            return Err(invalid("not a face handle"));
+        }
+        let vs =
+            crate::topology::face::p4::vertices(self.brep_r(face)?, fid(face), None, false, None)?;
+        Ok(vs
+            .into_iter()
+            .map(|v| hd(face.b, K_VERTEX, v.index()))
+            .collect())
+    }
+    fn face_edges(&self, face: H) -> crate::Result<Vec<H>> {
+        if face.kind != K_FACE {
+            return Err(invalid("not a face handle"));
+        }
+        let es =
+            crate::topology::face::p4::edges(self.brep_r(face)?, fid(face), None, false, None)?;
+        Ok(es
+            .into_iter()
+            .map(|e| hd(face.b, K_EDGE, e.index()))
+            .collect())
     }
     fn edge_primary_edgeuse_orientation(&self, edge: H) -> crate::Result<Option<OrientType>> {
         let b = self.brep_r(edge)?;
@@ -811,8 +868,16 @@ impl IntersectorBrep<H> for ArenaPair<'_> {
         ang_tol_deg: f64,
         opt_coincidence_flag: Option<bool>,
     ) -> crate::Result<ti::FaceIntersection<H>> {
-        if face1.kind != K_FACE || face2.kind != K_FACE || face1.b != face2.b {
-            return Err(invalid("FaceIntersect needs two faces of one B-rep"));
+        if face1.kind != K_FACE || face2.kind != K_FACE {
+            return Err(invalid("FaceIntersect needs two faces"));
+        }
+        if face1.b != face2.b {
+            // UNPORTED(topology.face_p3): SmFace::FaceIntersect of faces of two B-reps --
+            // justified: topology::face::p3::face_intersect takes one B-rep arena
+            return Err(SolidError::unported(
+                "SmFace::FaceIntersect (faces of two B-reps)",
+                "topology.face_p3",
+            ));
         }
         let options = FaceIntersectOptions {
             want_this_classes: true,
@@ -965,7 +1030,7 @@ impl IntersectorBrep<H> for ArenaPair<'_> {
             } else {
                 self.primary_context
             }),
-            key_of: &|e| super::kernel_adapter::notification_key(self.namespace, brep.b == 1, e),
+            key_of: &|e| self.keys.object(brep.b == 1, e),
         };
         p7::glue_edges_general(
             k,
@@ -979,13 +1044,64 @@ impl IntersectorBrep<H> for ArenaPair<'_> {
             &mut notify,
         )
     }
+
+    /// `SmBrep::DeleteFace(pFace)` with its defaults (`FALSE, TRUE, NULL, NULL`):
+    /// [`crate::topology::brep::p3::delete_face`], notifying as the glue does.
+    fn brep_delete_face(&mut self, k: &mut Kernel, brep: H, face: H) -> crate::Result<()> {
+        if brep.kind != K_BREP || face.kind != K_FACE || face.b != brep.b {
+            return Err(invalid("face is not in the B-rep"));
+        }
+        self.with_edit_env(brep, |b, env| {
+            let mut marks = crate::topology::topology_traverser::Marks::default();
+            crate::topology::brep::p3::delete_face(
+                k,
+                b,
+                env,
+                &mut marks,
+                fid(face),
+                crate::topology::brep::p3::DeleteFaceOptions::default(),
+            )
+            .map(drop)
+        })
+    }
+}
+
+impl ArenaPair<'_> {
+    /// Runs the edit `f` of `brep`'s B-rep with the adapter's records and attributes,
+    /// notifying through that B-rep's context under its notification keys (as
+    /// `brep_glue_edges_general`).
+    fn with_edit_env<R>(
+        &mut self,
+        brep: H,
+        f: impl FnOnce(&mut Brep, &mut ed::NotifyEnv<'_>) -> crate::Result<R>,
+    ) -> crate::Result<R> {
+        let slot = usize::try_from(brep.b).map_err(|_| invalid("bad B-rep"))?;
+        let b = self
+            .breps
+            .get_mut(slot)
+            .and_then(Option::as_deref_mut)
+            .ok_or_else(|| invalid("handle names an absent B-rep"))?;
+        let mut env = ed::NotifyEnv {
+            records: self.records,
+            attributes: self.attributes,
+            context: Some(if brep.b == 1 {
+                self.other_context
+                    .as_deref_mut()
+                    .unwrap_or(self.primary_context)
+            } else {
+                self.primary_context
+            }),
+            key_of: &|e| self.keys.object(brep.b == 1, e),
+        };
+        f(b, &mut env)
+    }
 }
 
 impl TopologyObjects<H> for ArenaPair<'_> {
     /// The B-rep's cache (`SmBrep::GetBrepCache`), built from the B-rep on first use (the
-    /// C++ topology solver builds it on demand) with this adapter's handles. The build
-    /// starts with `SmBrep::CalculateBoundingBox` (unit `query.brep`), so until that
-    /// lands the solves needing a cache defer there.
+    /// C++ topology solver builds it on demand) with this adapter's handles and the
+    /// arena identities. Under caller notification keys it is not built yet (a dispatch
+    /// gap of this adapter: no kernel, caller identities).
     fn brep_cache(&self, brep: H) -> crate::Result<&BrepCache<H>> {
         let slot = usize::try_from(brep.b).map_err(|_| invalid("bad B-rep"))?;
         let cell = self.caches.get(slot).ok_or_else(|| invalid("bad B-rep"))?;
@@ -1001,6 +1117,19 @@ impl TopologyObjects<H> for ArenaPair<'_> {
         let mut cache = BrepCache::new(BREP_TYPE)?;
         cache.build_trees(
             self.cache_kernels
+                .as_ref()
+                .ok_or_else(|| {
+                    // DISPATCH GAP: SmBrep::CalculateBoundingBox (BuildTrees' first
+                    // call) is ported (`query::brep::calculate_bounding_box`, query.brep
+                    // partial), but under caller notification keys this adapter has no
+                    // kernel to evaluate it with, and the cache would need the caller's
+                    // geometry identities instead of `arena_identity` (the tree indexes
+                    // only owned geometry).
+                    SolidError::unported(
+                        "SmBrep::GetBrepCache under caller notification keys",
+                        "boolean.merge_p4",
+                    )
+                })?
                 .get(slot)
                 .ok_or_else(|| invalid("bad B-rep cache context"))?,
             CacheSource::Brep(b),
@@ -1113,7 +1242,7 @@ impl IntersectorBrepP2<H> for ArenaPair<'_> {
             } else {
                 self.primary_context
             }),
-            key_of: &|e| super::kernel_adapter::notification_key(self.namespace, brep.b == 1, e),
+            key_of: &|e| self.keys.object(brep.b == 1, e),
         };
         let mut deleted_edge = None;
         crate::topology::brep::p5::combine_with_notifications(
@@ -1202,7 +1331,7 @@ impl crate::topology::proto_topology::p3::BrepGlue<H> for ArenaPair<'_> {
             } else {
                 self.primary_context
             }),
-            key_of: &|e| super::kernel_adapter::notification_key(self.namespace, brep.b == 1, e),
+            key_of: &|e| self.keys.object(brep.b == 1, e),
         };
         crate::topology::brep::p5::glue_with_notifications(
             k,
@@ -1229,7 +1358,7 @@ pub(super) fn decode(h: H) -> EntityRef {
         K_FACE => EntityRef::Face(fid(h)),
         K_EDGE => EntityRef::Edge(eid(h)),
         K_VERTEX => EntityRef::Vertex(vid(h)),
-        _ => EntityRef::Brep(crate::topology::BrepId::from_index(h.i)),
+        _ => EntityRef::Brep(BrepId::from_index(h.i)),
     }
 }
 

@@ -153,22 +153,26 @@ impl solidcore::intersect::point_class::ClassObject for NoRayObject {
 }
 impl solidcore::topology::shell::ShellRayWorld<NoRayObject> for EmptyRayWorld {
     // Harness-limited: a non-empty boundary-face shape needs the B-rep's cached
-    // geometry (`topology::brep_cache::BrepObjects` over a built `BrepCache`, which
-    // is `query.brep`) plus a world overriding `shell_ray_sector` with `topology::brep::p2::local_curve_sector`. The
-    // cases whose C++ run reaches that stage are deferred, never compared here;
-    // swap this world for `BrepObjects` when those units are ported.
+    // geometry (`topology::brep_cache::BrepObjects` over a built `BrepCache`), which this
+    // world has no handles for. The cases whose C++ run reaches that stage are deferred
+    // (`harness:shell-ray-world`), never compared here.
+    fn class_entity(&self, object: NoRayObject) -> Option<solidcore::EntityRef> {
+        match object {}
+    }
     fn shell_ray_shape(
         &self,
+        kernel: &solidcore::kernel::Kernel,
+        brep: (solidcore::topology::BrepId, &solidcore::topology::Brep),
         faces: &[solidcore::geom::object::FaceKey],
     ) -> solidcore::Result<solidcore::geom::object::Shape> {
         if faces.is_empty() {
-            return solidcore::geom::object::Shape::new(&[], &[], &[], &[]);
+            return solidcore::geom::object::Shape::new(kernel, &brep, &[], &[], &[], &[]);
         }
-        // UNPORTED(query.brep): SmBrep cache for SmShape/ShapePointSolve on faces
-        // (harness-limited: this adapter has no B-rep geometry; see the note above)
+        // Harness-limited (see the note above): the shape builds, but this adapter has
+        // no handles for the B-rep geometry the shape solve then reads.
         Err(solidcore::SolidError::unported(
             "SmShape::SmShape / SmTopologySolver::ShapePointSolve on boundary faces",
-            "query.brep",
+            "harness:shell-ray-world",
         ))
     }
 }
@@ -289,6 +293,8 @@ fn ray_output(values: &[f64]) -> Result<Output, HarnessError> {
 fn rust_ray(brep: &solidcore::topology::Brep, input: &RayInput) -> Result<Output, HarnessError> {
     use solidcore::intersect::point_class::{PointClassType, PointClassification};
     use solidcore::topology::shell::{ray_fire, ShellRayInput, ShellRayState};
+    // The ray fires may add UV trim curves (as the native B-rep's): one copy per case.
+    let mut scratch = brep.clone();
     let mut kernel = solidcore::kernel::Kernel::default();
     let mut out = Vec::new();
     // The shim's guard: non-finite ray values would reach the intersection solver
@@ -325,7 +331,7 @@ fn rust_ray(brep: &solidcore::topology::Brep, input: &RayInput) -> Result<Output
         classification.set_pre_snap_param(456.0);
         let attempt = ray_fire(
             &mut kernel,
-            brep,
+            &mut scratch,
             solidcore::topology::BrepId::from_index(0),
             id,
             &EmptyRayWorld,
@@ -615,7 +621,9 @@ fn rust_transfer_records(
         let extra = ShellId::from_index(u32::try_from(extra_index).map_err(failure)?);
         let members = match &mut brep.shell_mut(original).map_err(failure)?.members {
             ShellMembers::Faceuses(members) if members.len() >= 2 => members,
-            _ => return Err(failure("split fixture needs a face-use cycle")),
+            // the shim refuses this fixture (`SC_ERR_ARG`), which the C++ side reports
+            // as `rejected_input`
+            _ => return Ok(Output::err("rejected_input")),
         };
         let moved = members.remove(0);
         let target = brep.shell_mut(extra).map_err(failure)?;
