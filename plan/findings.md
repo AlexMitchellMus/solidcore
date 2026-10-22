@@ -16079,9 +16079,11 @@ they are right only when the B-rep's geometry owners carry arena identities.
 order, the Rust walk in arena order; they diverge once a region-list head rotates
 (`ResetInfiniteRegion` sets `m_pList = pNewInfRegion`).
 
-Moves vs main: brep_p6 +8 pass, brep_p10 +4 pass; the other 16 former split stops defer
-at geom.tol `GetZoneTol3d(const SmObject*)` (12), `topology.face_p2` (2) and
-`intersect.surface_drop_lib_p3` (2). No case fails and no former pass changed.
+Moves vs main (after #536): of the 110 cases that stopped at the OMITTED stop, 12 pass
+(brep_p6 8, brep_p10 4); 79 stop at `SmSurface::DropCurve` (the closed primitives:
+`FindInfiniteRegion` -> `SmEdge::IsSeam` -> `NormalizedEvaluate` builds a UV trim curve),
+16 at geom.tol `GetZoneTol3d(const SmObject*)` and 3 at `topology.face_p2`. No case
+fails and no former pass changed.
 ## blend.fillet_geom_p1: the `sm_ClassifyFacePoint` disagreement was the runner's Rust face, not the kernel (2026-10-22)
 
 Follow-up to "blend.fillet_geom_p1: `sm_ClassifyFacePoint` returns 0 where the C++ returns
