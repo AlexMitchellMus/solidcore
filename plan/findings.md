@@ -16011,6 +16011,35 @@ reported as the upstream limitation rather than a fictitious missing surface imp
 HANG-27 and the seeded extension-cache policy are unchanged. This remains a partial
 creator port, not complete constructive offset/shell or returned-B-rep certification.
 
+## surface.trim_srf_cache — face-owned trimmed caches (owning-face handle, 2026-10-22)
+
+`SmSurface::GetFace()` of a trimmed surface cache was the largest deferral bucket
+(`SmFace handle of a surface's face`, 1971 CI cases). The cache now reaches its face
+through `surface::trim_srf_cache::CacheFace` (implemented over the B-rep by
+`query::face::p2::BrepCacheFace`): `BuildTree`'s face walk (`CreateUVTrimCurves`,
+loop uses, edge and vertex uses, `ComputeUVPoint`, vertex tolerances), and
+`MarkFaceContainment` now dispatches to `SmTrimSrfCache::PointClassify` (the former
+DISPATCH GAP). Wired so far: `SmFace::Point3DClassify` (`query.face_p1`).
+
+Not wired, with the measured reason: `SmFace::GlobalLineIntersect`
+(`topology::face::p4`, 1118 `topology.face_p4` cases). Building the face's trimmed
+cache lazily for the surface's line solve (patch kept on branch
+`surface/face-line-intersect-wip` of the fork) turns 993 of them into passes, but
+19 fail, all lines through a singular point: `cone.smb` along the axis through the
+apex (`p=(0,0,0)`, `v=(0,0,±1)`: C++ solutions `u=15.307…, v=0` then `u=0, v=0`, Rust
+`u≈3.9e-33, v≈3.9e-31` then `u=15.307…`; a third solution has Rust `v=5.9e-31`
+against C++ `0`) and `surf_sphere150.smb` along the pole axis (`v=(1,0,0)`: C++ four
+solutions, Rust two, one per pole; with `bFireRay` the first `u` is C++ `0`, Rust
+`11.5099…`). The same Rust solve over an untrimmed cache gives the same
+counts and tiny nonzero `v`, so the difference sits in the LSI leaf solves at a
+singular point over the trimmed tree, not in the face reads; suspected: the trimmed
+tree's subdivision around the apex/pole vertex uses (`ImplantVertexuse`, first
+exercised with a real face here) or `sm_IsPointValid`, which upstream answers with
+`SmTrimSrfCache::PointTest` (a face classification) and the port with the base
+domain test. Cases (`topology.face_p4`): `cone.smb_0_f1_op19`, `cone.smb_1_f2_op19`,
+`cone.smb_f0_tol4867..4869`, `cone.smb_f1_tol4885..4887`, `cone.smb_f2_tol4903..4905`,
+`surf_sphere150.smb_0_f1_op17`, `surf_sphere150.smb_1_f2_op17`,
+`surf_sphere150.smb_f0_tol5302/5304`, `_f1_tol5320/5322`, `_f2_tol5338/5340`.
 ## offset.offset_geometry_creation — restored owning-face tolerance cache (PR #529)
 
 Follow-up to #522 on merged main `ceb85b2a4`: replacing a face's B-spline stand-in
@@ -16035,3 +16064,72 @@ locate the seven remaining stops in trim/extend paths (`gen0081`, `gen0361`,
 `gen0479`, `gen0562`, `gen0688`, `gen0730`, `gen0732`); they remain explicitly
 deferred, not claimed as solved. The wider topology/cache-face adapter is separate
 work. The unit stays partial.
+
+## topology.brep_p6 — the TestClosureSplitRegion remainder (PR #535)
+
+`SmBrep::TestClosureSplitRegion(SmFaceuse*)` is ported past `CalculateBoundingBox`
+(SmBrep.cpp:27966-28583): the infinite-region test (`FindAndSetInfiniteRegion` with the
+new shell, `SM_VS_INFINITEREGION_SWAP`, the cached box), the inner-shell choice, the
+ray-fire distribution of face uses joined only by a vertex (the 100-try step-off loop),
+wires and the old region's other shells (`OrderShells` after a move), and the deletion
+of emptied shells and regions. No disagreement with the C++; upstream details kept:
+
+- The face-use loop's inner re-mark loop reuses the outer index `ii`, so after each
+  move the scan resumes at `sReplacedFaceusesAll.GetSize() + 1`.
+- `IsInnerShell`'s status is ignored and a failure leaves `UNSURE`, which is truthy:
+  the new shell is then taken as the inner one.
+- The wire loop uses the zone tolerance of the first wire for every wire.
+
+**Ray fires and the caller's names.** The ray fires (here and in `topology.brep_p10`'s
+final `FindAndSetInfiniteRegion`) used `BrepQuery::default()`, whose cache keys are the
+arena identities. `MakeTopologyFromData` names geometry owners with the caller's
+`NotifyEnv::key_of`, so the solve matched no face or edge and every ray "hit nothing",
+returning the old infinite region. On `spine_doubled` with infinite-region testing the
+C++ picks the new region instead. Both now build the query from the caller's `key_of`
+(`brep::p2::caller_cache_key`, shared with p2's cache rebuild), and the brep_p10 runner's
+closure op names objects as its build does (a `NotifyEnv` over the build's records with
+the runner's `key_of`, not a `RegionNotifyState` keyed by `notify_ref`). Those cases now
+reach `SmTol::GetZoneTol3d(const SmObject*)` (geom.tol) and defer. Other
+`BrepQuery::default()` callers (hcr, stitch p2, heal_data p1, merge p4/p5) are unchanged;
+they are right only when the B-rep's geometry owners carry arena identities.
+
+**Harness gap (not fixed).** The brep_p10 C++ export walks regions in `GetRegions` (list)
+order, the Rust walk in arena order; they diverge once a region-list head rotates
+(`ResetInfiniteRegion` sets `m_pList = pNewInfRegion`).
+
+Moves vs main (after #536): of the 110 cases that stopped at the OMITTED stop, 12 pass
+(brep_p6 8, brep_p10 4); 79 stop at `SmSurface::DropCurve` (the closed primitives:
+`FindInfiniteRegion` -> `SmEdge::IsSeam` -> `NormalizedEvaluate` builds a UV trim curve),
+16 at geom.tol `GetZoneTol3d(const SmObject*)` and 3 at `topology.face_p2`. No case
+fails and no former pass changed.
+## blend.fillet_geom_p1: the `sm_ClassifyFacePoint` disagreement was the runner's Rust face, not the kernel (2026-10-22)
+
+Follow-up to "blend.fillet_geom_p1: `sm_ClassifyFacePoint` returns 0 where the C++ returns
+1 or 2" above (the cause of PR #268's 5 `blend.fillet_corner_p2` failures).
+
+Cause: the shim builds every face with `face_of` = `SmBrep::CreateFaceFromSurface` (an outer
+loop of four natural trim edges, edge and face tolerances set), but the runner's Rust side
+(`classify_face_point`, the model's target faces, `evaluate_mate`) added a bare face with no
+loops and tolerance 0 to a `Brep::new()`. In `sm_ClassifyFacePoint`,
+`SmTol::GetZoneTol3d(pOrigFace)` is the face's tolerance (old-tolerance build:
+`pTopo->GetTolerance()`), so the Rust `Point3DClassify` ran with a zero tolerance on loopless
+faces and returned `SM_PC_UNKNOWN` for both faces (result 0), where the C++ classified the
+point into the face it lies in. `classify_face_point` itself matches upstream line by line
+(branch order, `ContainsPoint2d` default tolerance 0, guess UVs, flags).
+
+Fix (runner only, no kernel or shim change): the Rust side builds the faces as the shim does
+(`create_face_from_surface` on a `new_brep`). Those faces have no UV trim curves yet, and
+`CalculateUVDomainFromUVTrimCurves` makes them with `SmSurface::DropCurve`
+(`intersect.surface_drop_lib_p3`, todo), so these cases now defer instead of comparing two
+different setups: `blend.fillet_geom_p1` 471 pass -> 457 pass + 20 deferred (14 previously
+compared, the 6 new corner-model fixtures), `blend.fillet_geom_p5` 300 pass -> 274 pass + 26
+deferred (`split_face`); both green -> partial. On main merged with #268 (plus #268's own
+pending adaptations), `blend.fillet_corner_p2`'s `gen0014` and
+`corner_update_split_face_08/_11/_71/_75` defer instead of failing (0 failed).
+
+Considered and not done: also attaching the natural UV trim curves in the shim's `face_of`
+(`CreateUVTrimCurves` with the natural curves) so the cases get past `DropCurve`. They then
+stop at `Point3DClassify`'s trimmed surface cache face handle (`UNPORTED(topology.face_p2)`)
+instead, and every face-building op (`evaluate_mate`, every `fb` op) enters HANG-29's
+`CreateUVTrimCurves` regime: the FFI fuzz sweep hung 30 s in `EvaluateMate` on a control
+point of `-DBL_MAX`, which would need the `MAX_MAGNITUDE` bound on those ops too.
