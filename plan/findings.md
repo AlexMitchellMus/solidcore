@@ -11308,20 +11308,31 @@ deferred, max_rel_err 3.8e-16.)
   `SmVariableRadiusFS`, pins its offsets and replaces its first geometry by the Model's.
 - **Upstream solvers start with one fillet geometry.** `SmFilletSolver()` adds
   `new SmFilletGeom(this)` to `m_vFilletGeoms` (`SmFilletSolver.cpp:65`), so after any
-  derived constructor `m_vFilletGeoms.GetSize() == 1`; Rust's `FilletSolver::new` leaves it
-  out (`FilletSolver::new_in` / `add_constructor_fillet_geom` add it, #303). A shim that
-  `Add`s a geometry to a constructed solver puts it at index 1, not 0 (the first `recalc`
-  harness did, and every case read the constructor's rail-less geometry: `NER(pRail)`).
-- **FinishConstruction (stub kept, justified).** The `SmConstantDistanceFS` and
-  `SmVariableRadiusFS` constructors (and upstream's `SmConstantRadiusFS` surface
-  constructor under `SmSurfaceSurfaceFS`) end with `FinishConstruction()`. Because of the
-  constructor's default geometry above, upstream it is not a no-op: it installs copies of
-  the two offsets into that geometry (`SmFilletGeom::SetOffsetSurface`). It changes nothing
-  on the solver, and nothing these units port reads that geometry's offsets. Wiring it needs
-  the constructors to take the pseudo B-rep and the solver's id (as `FilletSolver::new_in`)
-  and to add the default geometry first; `blend.fillet_standard_solver_p1`'s
-  `SmConstantRadiusFS` constructors, which these build on, do not take them yet either. The
-  three sites keep `UNPORTED(blend.fillet_geom_p1)` comments pointing here.
+  derived constructor `m_vFilletGeoms.GetSize() == 1`. Rust's derived constructors add it
+  too (follow-up to #439: `FilletSolver::new_in` / `CurveBasedFs::new_in` in the
+  `SmConstantRadiusFS`, `SmConstantDistanceFS`, `SmVariableRadiusFS` and, through
+  `SmConstantRadiusFS`, `SmSurfaceSurfaceFS` / `SmConstantRadiusAssistedFS` constructors,
+  which take the pseudo B-rep and the solver's `FilletSolverId`); `FilletSolver::new` and
+  `ConstantRadiusAssistedFs::from_parts` still leave it out, for bare solvers of tests and
+  harnesses. A shim that `Add`s a geometry to a constructed solver puts it at index 1, not
+  0 (the first `recalc` harness did, and every case read the constructor's rail-less
+  geometry: `NER(pRail)`).
+- **FinishConstruction (wired, follow-up to #439).** The `SmConstantRadiusFS` constructors
+  (both: edge use and surfaces, so also `SmSurfaceSurfaceFS` and the assisted / custom
+  solvers built on it), `SmConstantDistanceFS` and the edge-use `SmVariableRadiusFS`
+  constructor end with `FinishConstruction()` (`SmFilletStandardSolver.cpp:67, 153, 1315,
+  1972`); the surface `SmVariableRadiusFS` constructor (`:1995`) does not, and the
+  tangent-face early returns skip it. Because of the constructor's default geometry above,
+  upstream it is not a no-op: it installs copies of the two offsets into that geometry
+  (`SmFilletGeom::SetOffsetSurface`). The Rust constructors call
+  `FilletSolver::finish_construction` at the same points (the three justified
+  `UNPORTED(blend.fillet_geom_p1)` stubs are gone; the surface `SmVariableRadiusFS` one was
+  wrong to name it). A Rust construction that fails after the base leaves its default
+  geometry in the pseudo B-rep (the arena does not delete; upstream's half-built solver
+  holds it). Harness: the `SmConstantRadiusFS` edge-use op (`blend.fillet_standard_solver_p1`),
+  the `SmConstantDistanceFS` edge-use op and the `Ss` op (`_p2`) also compare the default
+  geometry (`GetFilletGeoms` size, its solver, and per rail whether it holds its own offset
+  copy, with that copy's distance, base identity and a point or its natural domain).
 - **Stacked on #303 (2026-10-21).** PR #265 was closed unmerged and continued in PR #439,
   which merges PR #303 (tdamsma, `blend.fillet_solver_p1` glue: it carries #192 and
   replaces `FilletGeomRef` by `FilletGeomId` with the pseudo B-rep threaded through
