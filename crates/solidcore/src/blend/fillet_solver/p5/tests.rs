@@ -858,18 +858,26 @@ fn offset_copy_uses_the_real_port_and_preserves_base_identity_and_options() {
 }
 
 #[test]
-fn public_split_helper_reaches_the_builder_infinite_region_gap() {
+fn public_split_helper_rejects_a_missing_infinite_region_after_partial_edits() {
     let mut f = Fixture::new([&[1.0], &[1.0]], false);
     let id = f.geom;
     let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
+    let old_end = f.context().end(rail).unwrap();
+    // The real constructor supplies this region. Explicitly corrupt the fixture
+    // to exercise the builder's null guard after SplitRail moved the end use.
+    assert!(f.fb.brep().infinite_region().is_some());
+    f.fb.brep_mut().set_infinite_region_record(None);
     let outcome = super::super::super::p1::split_rail(&f.k, &mut f.fb, &mut f.owners, id, rail);
     assert!(matches!(
         outcome,
-        Err(SolidError::Unported {
-            unit: "topology.brep_p3",
+        Err(SolidError::Upstream {
+            code: crate::error::SM_ERR_NULL_POINTER,
             ..
         })
     ));
+    assert_ne!(f.context().end(rail).unwrap(), old_end);
+    assert!(f.fb.brep().vertex(old_end).unwrap().vertexuses.is_empty());
+    assert!(f.owners.notifications.is_empty());
 }
 
 #[test]
@@ -878,14 +886,8 @@ fn public_split_helper_uses_the_ported_edge_builder_and_actual_geometry_id() {
     let id = f.geom;
     let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
     let old_end = f.context().end(rail).unwrap();
-    let reg =
-        f.fb.brep_mut()
-            .add_region_record(crate::topology::Region {
-                in_brep: true,
-                ..crate::topology::Region::default()
-            })
-            .unwrap();
-    f.fb.brep_mut().set_infinite_region_record(Some(reg));
+    // Exercise the actual constructor rather than injecting a substitute region.
+    assert!(f.fb.brep().infinite_region().is_some());
     let (middle, new_rail) =
         super::super::super::p1::split_rail(&f.k, &mut f.fb, &mut f.owners, id, rail).unwrap();
     assert_eq!(f.context().end(rail).unwrap(), middle);
@@ -1090,8 +1092,9 @@ fn rollover_topology_split_preserves_actual_solver_id_and_partial_edits() {
     assert!(
         matches!(
             err,
-            SolidError::Unported {
-                unit: "topology.brep_p3",
+            SolidError::Upstream {
+                operation: "blend::fillet_geom::p5::FilletBrep::make_rail_edgeuse",
+                code: crate::error::SM_ERR_NULL_POINTER,
                 ..
             }
         ),

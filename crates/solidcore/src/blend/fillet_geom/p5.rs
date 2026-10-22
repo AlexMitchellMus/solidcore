@@ -49,10 +49,10 @@
 //!   `blend.fillet_geom_p1` links them; the generic list of
 //!   `topology.proto_topology_p1` works on its own record store, not on [`Brep`]
 //!   arenas. The edge uses come from [`FilletBrep::new_fillet_edgeuse`], which needs
-//!   the pseudo B-rep's infinite region (`SmBrep()`, `UNPORTED(topology.brep_p3)` in
-//!   [`FilletBrep::new`]) and its first shell (`MakeShellVertexTopology`,
-//!   `UNPORTED(topology.brep_p2)`): a B-rep without them returns
-//!   [`SolidError::Unported`] from every builder here. Upstream's `SmObjDelete`
+//!   the pseudo B-rep's infinite region (created by [`FilletBrep::new`]) and its
+//!   first shell (`MakeShellVertexTopology`, `topology.brep_p2`). A missing region
+//!   returns `SM_ERR_NULL_POINTER`; an empty region receives a shell vertex through
+//!   the real topology builder. Upstream's `SmObjDelete`
 //!   clean-ups delete the new objects on a failure; the Rust arenas are append-only,
 //!   so the records made before a failure stay, unreferenced by the edge list only
 //!   when the edge was not made yet.
@@ -1110,9 +1110,7 @@ impl FilletBrep {
     /// # Errors
     ///
     /// `SM_ERR_NULL_POINTER` for a missing vertex; those of the edge use constructor
-    /// ([`FilletBrep::new_fillet_edgeuse`], [`SolidError::Unported`] while the pseudo
-    /// B-rep has no infinite region or shell); [`SolidError::NotFound`] for dangling
-    /// ids.
+    /// ([`FilletBrep::new_fillet_edgeuse`]); [`SolidError::NotFound`] for dangling ids.
     pub fn make_fillet_edge(
         &mut self,
         start: Option<VertexId>,
@@ -1323,8 +1321,8 @@ impl FilletBrep {
             // accessor (`edge::vertex`, `start_end_vertices`, `vertices`) derives the
             // vertices from the edge uses' vertex uses, as upstream's `GetVertex(es)`
             // do, so it is never returned as the rail's vertex; the difftest export
-            // reads that field, which the first success-path comparison of this
-            // routine (after `topology.brep_p3`) has to account for
+            // reads that field; its native counterpart preserves creation order
+            // rather than using orientation-dependent GetVertices ordering.
             let r = self.new_fillet_edge(fv, fv, None)?;
             self.fillet_edge_mut(r)?
                 .set_fillet_edge_type(FilletEdgeType::Rail);
