@@ -15198,7 +15198,7 @@ Replay of the fuzz crash corpus against main (area 5f inventory: `difftest --fuz
   returned a different surface on every run (`rec` lengths 40251, 62874, 65074) or
   segfaulted; the port refuses the unreadable header. The runner now refuses a plane
   header of other than 15 values on both sides (`db_bytes`; the generator always writes
-  15). Regression: `tests/fuzz_regressions/surface.plane_p2.json`.
+  15). Regression: `tests/fuzz_corpus/surface.plane_p2.json`.
 - **`curve.curve_p1` fuzz01255 (Rust abort, 6 GiB): unbounded approximation.** A break at
   `1e300` on a line: `ApproximateCurve`'s spans pass the accuracy test only when tiny
   (about `1e-4` at `t = 5e10`), so the control polygon grows without end (upstream too;
@@ -15222,8 +15222,10 @@ Replay of the fuzz crash corpus against main (area 5f inventory: `difftest --fuz
   did, so both sides refuse with one message. Library change only for query.tess: the
   descent of `mark_face_containment` stops after as many visits as the tree has nodes
   (shared or cyclic child links), as its parent walks already did. curve_cache fuzz01735
-  spent its time in the runner's quadratic `tree_out` (now a map). Regression:
-  `tests/fuzz_regressions/rust_side_guards.json`, `query.tess.json`, `curve.curve_p1.json`.
+  spent its time in the runner's quadratic `tree_out` (now a map). Regressions: the 24
+  inputs in `crates/difftest/tests/fuzz_corpus/<unit>.json` (both sides refuse; 13
+  earlier corpus cases whose Rust side ran on a refused input now record the refusal),
+  and library-direct tests for the two library bounds (curve_p1, query.tess runners).
 - **The 25th hang is not a hang:** `surface.surface_point_solve_p2` fuzz00474 runs on both
   sides and agrees, the C++ in 11 s, the Rust in 21 s (`SurfaceCache` subdivision of a
   tiny `1e-5` surface, as HANG-15: the port is about 2x slower there). Not changed.

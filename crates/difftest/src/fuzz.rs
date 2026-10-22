@@ -923,39 +923,6 @@ fn record(
 mod tests {
     use super::*;
 
-    #[test]
-    fn rust_side_refuses_what_the_ffi_refuses() {
-        // Corpus replays (2026-10-22) whose C++ side the FFI guard refuses but whose
-        // Rust side ran on: 21 never returned (HANG-29 / HANG-20 regimes, mixed
-        // rationality, `1e300` values), two sized 16 GiB arrays from a 2^31 count.
-        // Each runner now applies the FFI's own validation to the Rust side first, so
-        // both sides refuse with one message.
-        let recorded: Value = serde_json::from_str(include_str!(
-            "../tests/fuzz_regressions/rust_side_guards.json"
-        ))
-        .unwrap();
-        let reg = crate::registry();
-        let cases = recorded["cases"].as_array().unwrap();
-        assert_eq!(cases.len(), 23);
-        for c in cases {
-            let unit_id = c["unit"].as_str().unwrap();
-            let unit = reg.iter().find(|u| u.id() == unit_id).unwrap();
-            let case = Case {
-                unit: unit_id.into(),
-                name: c["name"].as_str().unwrap().into(),
-                source: CaseSource::Inline,
-                inputs: c["inputs"].clone(),
-            };
-            let error = unit.run_rust(&case).unwrap_err().to_string();
-            assert!(!error.is_empty(), "{unit_id} {}", case.name);
-            #[cfg(feature = "cpp")]
-            {
-                let native = unit.run_cpp(&case).unwrap_err().to_string();
-                assert_eq!(native, error, "{unit_id} {}", case.name);
-            }
-        }
-    }
-
     fn base() -> Value {
         json!({"op": "basis_eval", "knots": [0.0, 0.0, 0.5, 1.0, 1.0], "degree": 2,
                "u": 0.25, "closed": false, "pts": [[1.5, 2.5, 3.5]]})

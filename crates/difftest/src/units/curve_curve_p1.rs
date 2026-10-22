@@ -1469,40 +1469,26 @@ impl UnitDiff for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::CaseSource;
     use std::collections::BTreeMap;
 
     #[test]
-    fn fuzz_breaks_near_1e300_fail_softly() {
-        // `--fuzz` replays: a break at `+-1e300`. The FFI refuses the value (upstream
-        // approximates forever, growing its control polygon until memory runs out);
-        // the Rust side now refuses it by the FFI's own check too. Run directly, the
-        // port's `approximate_curve` used to abort on a 6 GiB allocation (fuzz01255)
-        // or spin (fuzz01951); fuzz01255 now stops at `MAX_APPROX_SPANS` with an error.
-        let recorded: Value = serde_json::from_str(include_str!(
-            "../../tests/fuzz_regressions/curve.curve_p1.json"
+    fn approximation_of_a_break_at_1e300_fails_softly() {
+        // fuzz01255 (`tests/fuzz_corpus/curve.curve_p1.json`): the FFI refuses the
+        // `1e300` break, so the runner never hands it to the port; run directly, the
+        // port's `approximate_curve` used to abort on a 6 GiB allocation and now stops
+        // at `MAX_APPROX_SPANS` with an error status.
+        let corpus: Value = serde_json::from_str(include_str!(
+            "../../tests/fuzz_corpus/curve.curve_p1.json"
         ))
         .unwrap();
-        let cases = recorded["cases"].as_array().unwrap();
-        assert_eq!(cases.len(), 2);
-        for recorded in cases {
-            let case = Case {
-                unit: Runner.id().into(),
-                name: recorded["name"].as_str().unwrap().into(),
-                source: CaseSource::Inline,
-                inputs: recorded["inputs"].clone(),
-            };
-            let error = Runner.run_rust(&case).unwrap_err().to_string();
-            assert!(error.ends_with("not finite or too large"), "{error}");
-            #[cfg(feature = "cpp")]
-            {
-                let native = Runner.run_cpp(&case).unwrap_err().to_string();
-                assert!(native.ends_with("not finite or too large"), "{native}");
-            }
-        }
-        let op: OpIn = serde_json::from_value(cases[0]["inputs"].clone()).unwrap();
+        let case = corpus["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == "fuzz01255_approx_break_1e300")
+            .unwrap();
+        let op: OpIn = serde_json::from_value(case["inputs"].clone()).unwrap();
         let out = rust(&op).unwrap();
-        // a failing status, not a curve
         assert_ne!(out.ints["status"], vec![0], "{out:?}");
     }
 

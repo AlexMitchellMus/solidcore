@@ -1452,38 +1452,28 @@ impl UnitDiff for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::CaseSource;
     use std::collections::BTreeMap;
 
     #[test]
-    fn fuzz_cyclic_trees_fail_softly() {
-        // `--fuzz` replays: a tree node whose child is itself (or another node whose
-        // parent does not point back). The FFI refuses the tree; the Rust side now
-        // refuses it by the FFI's own check too. Run directly, the port's
-        // `mark_face_containment` used to descend the cycle forever; it now stops.
-        let recorded: Value = serde_json::from_str(include_str!(
-            "../../tests/fuzz_regressions/query.tess.json"
+    fn cyclic_trees_fail_softly() {
+        // fuzz00241 / fuzz00353 (`tests/fuzz_corpus/query.tess.json`): a tree node
+        // whose child is itself. The FFI refuses the tree, so the runner never hands it
+        // to the port; run directly, `mark_face_containment` used to descend the cycle
+        // forever and now returns an error status.
+        let corpus: Value = serde_json::from_str(include_str!(
+            "../../tests/fuzz_corpus/query.tess.json"
         ))
         .unwrap();
-        let cases = recorded["cases"].as_array().unwrap();
-        assert_eq!(cases.len(), 2);
-        for recorded in cases {
-            let case = Case {
-                unit: Runner.id().into(),
-                name: recorded["name"].as_str().unwrap().into(),
-                source: CaseSource::Inline,
-                inputs: recorded["inputs"].clone(),
-            };
-            let error = Runner.run_rust(&case).unwrap_err().to_string();
-            assert!(error.starts_with("invalid argument"), "{error}");
-            #[cfg(feature = "cpp")]
-            {
-                let native = Runner.run_cpp(&case).unwrap_err().to_string();
-                assert_eq!(native, error);
-            }
-            let input: Inputs = serde_json::from_value(recorded["inputs"].clone()).unwrap();
-            let direct = rust(&input).unwrap();
-            assert_ne!(direct.ints["status"], vec![0], "{direct:?}");
+        for name in ["fuzz00241_rust_hang", "fuzz00353_rust_hang"] {
+            let case = corpus["cases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["name"] == name)
+                .unwrap();
+            let input: Inputs = serde_json::from_value(case["inputs"].clone()).unwrap();
+            let out = rust(&input).unwrap();
+            assert_ne!(out.ints["status"], vec![0], "{name}: {out:?}");
         }
     }
 
