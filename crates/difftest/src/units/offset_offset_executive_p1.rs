@@ -3317,9 +3317,9 @@ mod tests {
             // PiecewiseMerge succeeds on the empty B-rep (its B-rep box is
             // query.brep's) and hands the offset B-rep on
             (Probe::PiecewiseEmpty, None, [1000, 0, 0, 0, 1, 0]),
-            // MapEdgeuses now evaluates through topology.edgeuse_p3, which must
-            // build the hand-made plane face's missing UV trim curve.
-            (Probe::MapPlane, Some("intersect.surface_drop_lib_p3"), plain(1000)),
+            // MapEdgeuses evaluates through topology.edgeuse_p3, which builds the
+            // hand-made plane face's missing UV trim curve (SmSurface::DropCurve).
+            (Probe::MapPlane, None, plain(1000)),
             (Probe::EdgeusesUnmapped, None, plain(1000)),
         ] {
             let input = Inputs::Probe {
@@ -3338,9 +3338,9 @@ mod tests {
     #[test]
     fn face_tail_fixture_reaches_the_kernel_face_constructor() {
         // The shared MakeFaceWithCurves fixture builds its wire edges
-        // (SmBrep::MakeWireEdgeVertex, topology.brep_p3) and defers in
-        // MakeFaceTopology (ported in full, topology.brep_p6) at the UV trim
-        // curve's SmSurface::DropCurve rather than failing as a harness error.
+        // (SmBrep::MakeWireEdgeVertex, topology.brep_p3) and its face
+        // (MakeFaceTopology, topology.brep_p6, through the UV trim curve's
+        // SmSurface::DropCurve), and the tail maps every edge use.
         let input: Inputs = serde_json::from_value(serde_json::json!({
             "op": "face_tail",
             "offset_distance": 0.25,
@@ -3353,11 +3353,9 @@ mod tests {
         }))
         .unwrap();
         let output = Runner.run_rust(&case(&input)).unwrap();
-        let deferred = output.deferred.unwrap();
-        assert_eq!(
-            (deferred.unit.as_str(), deferred.symbol.as_str()),
-            ("intersect.surface_drop_lib_p3", "SmSurface::DropCurve")
-        );
+        assert!(output.deferred.is_none(), "{:?}", output.deferred);
+        assert_eq!(output.ints["status"], [1000]);
+        assert_eq!(output.ints["mapped"], [1, 1, 1, 1]);
     }
 
     #[test]
