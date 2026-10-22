@@ -14017,6 +14017,39 @@ change does not claim a new geometric pass. The current UNPORTED inventory is
 33 symbols across 12 owners; all remaining tagged callees are still unported.
 Final integrated-tree checks pending.
 
+### blend.fillet_executive_p3 — closed-manifold check after `DoFillet` (issue #422, WR-212)
+
+- **Deviation from upstream.** `FilletExecutive::do_fillet` now ends with
+  `check_closed_manifold`: it walks the target's edges in `GetEdges` order and
+  refuses the first one that is not `SmEdge::IsManifold`
+  (`topology::edge::is_manifold`: four edge uses, the first a loop edge use). The
+  refusal sets the error info to `SM_FILERR_BAD_MERGE` (7), `SM_FIL_FAILURE`, that
+  edge and a comment, and returns `SolidError::Upstream { code: 1001 }` with the
+  edge's `EntityRef` (from `ExecutiveAccess::edge_entity`, `None` for adapters
+  whose handles have no typed id). Upstream returns success with the body.
+  `do_filleting` is unchanged, so its difftest cases still compare as before.
+- **Why.** SolidCraft's rig case `fillets/324-fillet-over-hole-overlap` (an R4 round
+  on the top long edge of a 40x20x10 block, where a through hole of r=3 at (20, 14.5)
+  reaches into the round) comes back from the C++ as success with a body that is not
+  a closed manifold solid. The C++ that ran was the tangency-labs/smlib fork, called
+  through `smlib_blend`. `trim_and_merge` passes `bMaybeNotSolid` to
+  `OrientTrimmedSurfaces` and ignores it, as upstream does, so nothing on that path
+  refuses the result. The defect that breaks the shell is not found: the Rust port
+  can't run this fillet yet (`blend.fillet_executive_p1`, `fillet_geom_p1`,
+  `fillet_corner_p1` and others are unported), and no C++ reproduction was built
+  in this harness.
+- **Parity.** No difftest case changes. The p3 runner's `do_fillet` op is always
+  deferred (`CreateFilletCorners` is unported), and the p2 and p3 runners' new
+  `edge_is_manifold` adapters return "fixture has no such object", as their other
+  unused edge queries do. Once `blend.fillet_executive_p1` lands, a `do_fillet` case
+  whose C++ result is not manifold will fail by design: classify it against this
+  entry, don't remove the check.
+- **Tests.** `p3_tests.rs` hand-builds a tetrahedron with full use topology (mated
+  face uses, loop uses, four loop edge uses per edge). The closed body passes. An
+  open body (one face missing) is refused at its first laminar edge, and a body
+  with a fin (a fifth face on one edge, six uses) is refused at that edge.
+  `do_filleting` alone still accepts the open body.
+
 ## blend.fillet_executive_p2 (`SmFilletExecutive.cpp` part 2: `SetFilletParameters`, `SurfaceSurfaceFillet`, `DoSurfaceFilleting`, `SetFilletBrepEdgeMap`, smooth edge sequences, `SmTemporaryRadiusChange`, the linear and elliptical fillet-law constructors; PR #267, 2026-10-20; partial, no disagreements)
 
 - **Coverage.** The only comparisons with values are the law constructors: 224 fixture cases and 16 generated ones. They compare every field of the law, including the degree-2 law curve's control points and knots. Every executive member with a non-empty input defers at executive p1 (`NoteError`, `AddFilletSurfaceGenerator`, `LoadFilletSolver`, `CreateFilletCorners`). The remaining passes are the empty-edge `SetFilletParameters` cases (switches, solver count, error code), the two null-dereference guards (UB-206, compared as errors on both sides) and the three members on an executive without solvers. No geometric fillet output is compared.
@@ -15010,6 +15043,27 @@ reconciliation with main's `surface.offset_surface`. With both, the affected dif
   `surface.surface_p2` dispatch gap; the `SmSurface` dispatch (real face surfaces) runs
   the general intersector (no B-rep unit disagreed on Linux/Mac `--green`).
 
+## topology.edge — exact private revolution transport (issue #294)
+
+The private edge shim and importer reuse the shared lossless record helpers for
+native SmSurfOfRevolution (15020), with a bitwise independent B-spline-base check.
+Malformed records remain harness errors; nested heads are rejected without
+recursive parsing. Concrete geometry, owner/tolerance metadata and raw knots
+retain their existing transport. No shared numerical implementation changes.
+
+Fresh native default results on main 7c74a05f6: 1787 cases, 1595 value passes,
+192 deferrals. With the private adapter: 1667 value passes, 120 deferrals, zero
+failures or empty passes; max relative error zero. The unit remains partial.
+
+The 72 cases compare 120 flag/index/status values at zero relative error;
+topological distance remains the upstream 1e20 sentinel. This is not a claim of
+new nonzero geometric-distance coverage. Relative tolerance stays 1e-9, with no
+edge absolute floors. Remaining native cone/sphere/extrusion transport and the
+six DropCurve dependencies remain explicit; active DropCurve work belongs to
+PR #463. No competing implementation is included.
+
+The per-case outputs, separate earlier six-case dependency audit and validation
+are documented in [the edge report](issue-294-edge-revolution-report.md).
 ## `SmFace::HasSeamProblem` callers wired (topology.face_p4; wire/seam-problem, 2026-10-22)
 
 `SmFaceProps::SetProps_Stage2` (`heal::face_props`) and the seam checks of
