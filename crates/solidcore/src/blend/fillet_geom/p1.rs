@@ -2308,6 +2308,7 @@ pub fn evaluate_mate(k: &Kernel, brep: &Brep, face: FaceId, uv: Point2) -> Resul
         SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
             | SurfaceKind::Cone(_)
             | SurfaceKind::Sphere(_)
             | SurfaceKind::Torus(_)

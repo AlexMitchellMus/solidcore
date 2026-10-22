@@ -250,6 +250,7 @@ fn has_b_spline_box(s: &Surface) -> bool {
         SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
             | SurfaceKind::Cone(_)
             | SurfaceKind::Sphere(_)
             | SurfaceKind::Torus(_)
