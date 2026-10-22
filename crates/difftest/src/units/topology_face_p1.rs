@@ -28,14 +28,14 @@
 //! `IsCrossedByEdge`, `intersect.curve_class_p7`; the callees `MergeIntervals` of unit
 //! `intersect.curve_class_p5` still defers to).
 //!
-//! **C++ crash guard.** Upstream `SplitAtSeam`'s U-then-V branch recurses on the wrong
-//! face and crashes (`plan/upstream-issues.md` UB-137). The shim skips (`-3`) every seam
-//! call that can reach it: a `SplitAtSeam` merging in both directions on a face periodic
-//! in either (by the face properties' closed flags or by the surface itself), and every
-//! `MoveSeam` with split past its early return (it recomputes the seam problem before
-//! splitting). The Rust side defers all of these before anything is compared. The Rust side
-//! reports those cases as deferred to `cpp-crash-guard:UB-137`; they never become
-//! comparable.
+//! **C++ crash trap.** Upstream `SplitAtSeam`'s U-then-V branch recurses on the wrong
+//! face and crashes (`plan/upstream-issues.md` UB-137). The shim runs every seam call
+//! that can reach it in a forked child: a `SplitAtSeam` merging in both directions on a
+//! face periodic in either (by the face properties' closed flags or by the surface
+//! itself), and every `MoveSeam` with split past its early return (it recomputes the seam
+//! problem before splitting). A child that crashes answers `-4`; where the shim cannot
+//! fork (Windows) it skips the call (`-3`) as before. The C++ side reports both as
+//! deferred to `cpp-crash-guard:UB-137`; the Rust side runs every case.
 //!
 //! **Not compared.** The normalisation to plain B-splines means `MoveSeam`'s analytic
 //! branch (`CopyAndAddAnalytics` of the joined surface) and the conic UV trim curve and
@@ -84,6 +84,10 @@ fn harness(msg: impl Into<String>) -> HarnessError {
 
 /// "Upstream would dereference null" in an output slot.
 const NULL_DEREF: f64 = -2.0;
+/// A seam call the shim skipped: it could not run it in a child process (UB-137).
+const NOT_RUN: f64 = -3.0;
+/// A seam call whose child process crashed, hung or sent no whole record (UB-137).
+const CRASHED: f64 = -4.0;
 /// `SM_ERR_INVALID_INPUT`.
 const SM_ERR_INVALID_INPUT: f64 = 1007.0;
 
@@ -334,7 +338,19 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
     };
     let (op, path, input) = input_of(&r)?;
     let out = ffi::eval(op, &path, &input).map_err(|e| harness(format!("c++: {e}")))?;
+    if trapped(&out) {
+        return Ok(Output::deferred(
+            "cpp-crash-guard:UB-137",
+            "SmFace::SplitAtSeam",
+        ));
+    }
     Ok(Output::new().values("out", out))
+}
+
+/// A seam call the shim's crash trap did not get a record from (UB-137): the child
+/// crashed (`-4`), or the shim could not fork and skipped it (`-3`).
+fn trapped(out: &[f64]) -> bool {
+    matches!(out, [b, x] if *b == 0.0 && (*x == CRASHED || *x == NOT_RUN))
 }
 
 // ---- Rust side --------------------------------------------------------------------------
@@ -568,71 +584,6 @@ fn probe(
     Ok(Some((problem, cu, cv)))
 }
 
-/// The shim's guard of the seam ops (upstream's `SplitAtSeam` recursion crashes in
-/// `MergeInterval`, see `plan/upstream-issues.md`): a seam problem in both directions on
-/// a face periodic in either direction, and `MoveSeam` with split past its early return.
-/// Such cases are deferred to `cpp-crash-guard:UB-137`.
-#[allow(clippy::too_many_arguments)]
-fn seam_guard(
-    k: &Kernel,
-    b: &Brep,
-    f: FaceId,
-    props: Option<PropsIn>,
-    problem: fp1::SeamProblem,
-    cu: &CurveClassification<H>,
-    cv: &CurveClassification<H>,
-    split_op: bool,
-    split: bool,
-) -> Result<bool, Fail> {
-    use SurfParamType as Sp;
-    let s = b
-        .face(f)
-        .map_err(|e| fail(&e))?
-        .surface
-        .as_ref()
-        .ok_or_else(|| Fail::Harness(harness("face without surface")))?;
-    let nat = s.natural_uv_domain();
-    // (as the shim: the face properties' closed flag or the real surface)
-    let real_u = s.is_periodic(k, &nat, Sp::U).map_err(|e| fail(&e))?;
-    let real_v = s.is_periodic(k, &nat, Sp::V).map_err(|e| fail(&e))?;
-    let (per_u, per_v) = match props {
-        Some(p) => (p.closed_u != 0 || real_u, p.closed_v != 0 || real_v),
-        None => (real_u, real_v),
-    };
-    let quiet_dir = |c: u8| c == Sp::Neither as u8 || c == Sp::Unknown as u8;
-    if split_op {
-        let has = |p: Sp, d: Sp| p == d || p == Sp::Both;
-        let merge_u = has(problem.crossed, Sp::U) || has(problem.missing, Sp::U);
-        let merge_v = has(problem.crossed, Sp::V) || has(problem.missing, Sp::V);
-        let no_missing = props.is_some_and(|p| quiet_dir(p.missing));
-        return Ok(!no_missing && (per_u || per_v) && merge_u && merge_v);
-    }
-    if !split {
-        return Ok(false);
-    }
-    let quiet = if let Some(p) = props {
-        quiet_dir(p.crossed) && quiet_dir(p.missing)
-    } else {
-        let q = |c: &CurveClassification<H>| match c.intervals() {
-            [] => true,
-            [one] => one.mid.point_class() != PointClassType::Face,
-            _ => false,
-        };
-        q(cu) && q(cv)
-    };
-    let _ = (per_u, per_v);
-    Ok(!quiet)
-}
-
-/// The cases the shim keeps away from upstream's `SplitAtSeam` crash (UB-137): not a
-/// deferral to a unit, they never become comparable.
-fn merge_deferred() -> Fail {
-    Fail::Deferred(Box::new(Output::deferred(
-        "cpp-crash-guard:UB-137",
-        "SmFace::SplitAtSeam",
-    )))
-}
-
 /// The C++ shim's null guards for loop `l` of face `f` (`LoopRoundTrip`).
 fn ok_round_trip(b: &Brep, f: FaceId, l: LoopId) -> Result<bool, SolidError> {
     let Some(a) = b.loop_(l)?.loopuse else {
@@ -809,9 +760,6 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
             let Some((problem, mut cu, mut cv)) = probe(&k, i)? else {
                 return Err(Fail::Harness(harness("probe refused a face with surface")));
             };
-            if seam_guard(&k, &b, f, *props, problem, &cu, &cv, false, *split)? {
-                return Err(merge_deferred());
-            }
             let fp = face_props(*props)?;
             let opts = fp1::MoveSeamOptions {
                 ok_to_move_to_center: *center,
@@ -849,9 +797,6 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
             let Some((problem, mut cu, mut cv)) = probe(&k, i)? else {
                 return Err(Fail::Harness(harness("probe refused a face with surface")));
             };
-            if seam_guard(&k, &b, f, *props, problem, &cu, &cv, true, false)? {
-                return Err(merge_deferred());
-            }
             let fp = face_props(*props)?;
             let r = fp1::split_at_seam(
                 &k,
@@ -1066,7 +1011,7 @@ impl UnitDiff for Runner {
         }
         // the reviews' crash reproducers (vase_rev.smb face 0, face properties claiming a
         // crossed seam in both directions and a missing seam, closed in U, V or both, with
-        // split): the guard must keep them away from upstream's UB-137
+        // split): the crash trap must catch upstream's UB-137 there
         for missing in [0u8, 1, 3] {
             for (cu, cv) in [(1u8, 0u8), (0, 1), (1, 1)] {
                 for center in [false, true] {
