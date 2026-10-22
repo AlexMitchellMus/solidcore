@@ -14017,6 +14017,39 @@ change does not claim a new geometric pass. The current UNPORTED inventory is
 33 symbols across 12 owners; all remaining tagged callees are still unported.
 Final integrated-tree checks pending.
 
+### blend.fillet_executive_p3 — closed-manifold check after `DoFillet` (issue #422, WR-212)
+
+- **Deviation from upstream.** `FilletExecutive::do_fillet` now ends with
+  `check_closed_manifold`: it walks the target's edges in `GetEdges` order and
+  refuses the first one that is not `SmEdge::IsManifold`
+  (`topology::edge::is_manifold`: four edge uses, the first a loop edge use). The
+  refusal sets the error info to `SM_FILERR_BAD_MERGE` (7), `SM_FIL_FAILURE`, that
+  edge and a comment, and returns `SolidError::Upstream { code: 1001 }` with the
+  edge's `EntityRef` (from `ExecutiveAccess::edge_entity`, `None` for adapters
+  whose handles have no typed id). Upstream returns success with the body.
+  `do_filleting` is unchanged, so its difftest cases still compare as before.
+- **Why.** SolidCraft's rig case `fillets/324-fillet-over-hole-overlap` (an R4 round
+  on the top long edge of a 40x20x10 block, where a through hole of r=3 at (20, 14.5)
+  reaches into the round) comes back from the C++ as success with a body that is not
+  a closed manifold solid. The C++ that ran was the tangency-labs/smlib fork, called
+  through `smlib_blend`. `trim_and_merge` passes `bMaybeNotSolid` to
+  `OrientTrimmedSurfaces` and ignores it, as upstream does, so nothing on that path
+  refuses the result. The defect that breaks the shell is not found: the Rust port
+  can't run this fillet yet (`blend.fillet_executive_p1`, `fillet_geom_p1`,
+  `fillet_corner_p1` and others are unported), and no C++ reproduction was built
+  in this harness.
+- **Parity.** No difftest case changes. The p3 runner's `do_fillet` op is always
+  deferred (`CreateFilletCorners` is unported), and the p2 and p3 runners' new
+  `edge_is_manifold` adapters return "fixture has no such object", as their other
+  unused edge queries do. Once `blend.fillet_executive_p1` lands, a `do_fillet` case
+  whose C++ result is not manifold will fail by design: classify it against this
+  entry, don't remove the check.
+- **Tests.** `p3_tests.rs` hand-builds a tetrahedron with full use topology (mated
+  face uses, loop uses, four loop edge uses per edge). The closed body passes. An
+  open body (one face missing) is refused at its first laminar edge, and a body
+  with a fin (a fifth face on one edge, six uses) is refused at that edge.
+  `do_filleting` alone still accepts the open body.
+
 ## blend.fillet_executive_p2 (`SmFilletExecutive.cpp` part 2: `SetFilletParameters`, `SurfaceSurfaceFillet`, `DoSurfaceFilleting`, `SetFilletBrepEdgeMap`, smooth edge sequences, `SmTemporaryRadiusChange`, the linear and elliptical fillet-law constructors; PR #267, 2026-10-20; partial, no disagreements)
 
 - **Coverage.** The only comparisons with values are the law constructors: 224 fixture cases and 16 generated ones. They compare every field of the law, including the degree-2 law curve's control points and knots. Every executive member with a non-empty input defers at executive p1 (`NoteError`, `AddFilletSurfaceGenerator`, `LoadFilletSolver`, `CreateFilletCorners`). The remaining passes are the empty-edge `SetFilletParameters` cases (switches, solver count, error code), the two null-dereference guards (UB-206, compared as errors on both sides) and the three members on an executive without solvers. No geometric fillet output is compared.
@@ -14993,3 +15026,21 @@ Rust side. One reduced input per unit, category and guard message is kept in
 - **Inputs whose replay depends on the memory limit (23, not committed):** a side attempts an allocation that fails with `ENOMEM` under 4 GiB (strace), e.g. `nurbs.b_spline_curve_p2` fuzz00841 (`expert`, `stride = 2^31`): `control_points_expert` reserves `stride * count` doubles fallibly, which fails under the limit, but without a limit it succeeds and zero-fills `2^32` doubles (about 50 s of system time here). Same pattern in `geom.grid`, `geom.local_solve1d`, `geom.solution_array`, `intersect.ray_tracer`, `nlib.crv_approx`, `nlib.crv_fit_p1`/`p2`, `nlib.srf_adv_p3`, `nlib.srf_basic`, `nlib.srf_fit`, `nlib.srf_offset`, `nurbs.b_spline_curve_n_lib`, `nurbs.nurbs_crv`, `primitive.api_curves` (list in the PR's inventory).
 - **Rust-only replay of C++ hangs still hangs (11):** the `topology.edgeuse_p2`/`p3`, `face_p3`, `loopuse` and `vertex` HANG-29 inputs build their Rust B-rep through the same C++ export that hangs, so skipping the C++ operation does not help; `surface.surface_point_solve_p2` fuzz00961 / `p3` fuzz00316 take 75 s / 290 s in Rust.
 - **`surface.plane_p2` fuzz00842** (was a C++ crash after 42 preceding cases): alone, both sides run and differ (`values.rec.len`: cpp 41787, rust 1).
+## `SmFace::HasSeamProblem` callers wired (topology.face_p4; wire/seam-problem, 2026-10-22)
+
+`SmFaceProps::SetProps_Stage2` (`heal::face_props`) and the seam checks of
+`SmFace::MoveSeam` / `SplitAtSeam` (`topology::face::p1`) now call
+`topology::face::p4::has_seam_problem` through `has_seam_problem_in_brep`, whose
+`BrepSeamObjects` names the face's own B-rep objects with the caller's `LoopObject`
+handles (the handle type must name topology, edge / trim curves, the face surface and
+curve temporaries; `HealLoopHandle` gained `Temp`). No case changed outcome: every case
+that deferred at `SmFace::HasSeamProblem` (heal.face_props 210, intersect.curve_class_p4
+436, heal.heal_data_p1 49, topology.brep_p10 14, topology.brep_p7 8) now defers one call
+later, at the seam curve: `Surface::create_seam_curve` builds an `SmCrvOnSurf`, which
+holds B-spline surfaces only (`curve.crv_on_surf`; the analytic periodic surfaces of the
+fixtures, cylinder / sphere / torus / revolution), or at `SmCurveClassification::ReSet`
+(`curve/crv_on_surf.rs`, `intersect.curve_class_p2`, heal_data_p1). Those are the real
+blockers of the seam cases (generic-surface `SmCrvOnSurf`: open PR #307). Left unwired:
+`topology::trimming_tools::face_has_seam_problem` (its `SeamObject` handles name loops and
+vertices only, and its `SplitAtSeam` geometry resolves no curve; no difftest case
+reaches it).
