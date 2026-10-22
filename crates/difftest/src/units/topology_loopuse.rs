@@ -819,7 +819,7 @@ fn inexact_geometry(s: &Setup) -> Option<Output> {
             .ok()
             .flatten()
             .and_then(|fu| b.faceuse(fu).ok().and_then(|r| r.face))?;
-        let t = s.types.face_surface_types.get(f.index() as usize).copied().unwrap_or(-1);
+        let t = s.types.inexact_surface(f.index() as usize).unwrap_or(-1);
         if t >= 0 && !EXACT_SURFACES.contains(&t) {
             let (unit, symbol) = match t {
                 // the DISPATCH GAP of `Surface::read_from_db` (issue #76) belongs to
@@ -828,7 +828,10 @@ fn inexact_geometry(s: &Setup) -> Option<Output> {
                 15013 => ("surface.surface_p2", "SurfaceKind::Cone (SmCylinder dispatch)"),
                 15014 => ("surface.surface_p2", "SurfaceKind::Sphere (SmSphere dispatch)"),
                 15015 => ("surface.surface_p2", "SurfaceKind::Torus (SmTorus dispatch)"),
-                15030 => ("surface.surf_of_extrusion_p2", "SurfaceKind::SurfOfExtrusion"),
+                15030 => (
+                "harness:analytic-geometry-export",
+                "SmSurfOfExtrusion face surface not exported exactly",
+            ),
                 _ => ("topology.brep_p10", "SmBrep::MakeTopologyFromData"),
             };
             return Some(Output::deferred(unit, symbol));

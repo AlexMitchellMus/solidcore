@@ -1210,10 +1210,13 @@ const fn is_offset_surface(surface: &Surface) -> bool {
 fn surface_is_singularity(k: &Kernel, surface: &Surface, uv: Point2) -> Result<bool> {
     match surface.kind() {
         SurfaceKind::Plane(p) => Ok(p.is_singularity().0),
-        SurfaceKind::Cone(_) => Ok(surface.is_singularity(k, uv, EFF_ZERO, false)?.singular),
-        SurfaceKind::BSpline(_)
+        SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
+        | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => {

@@ -49,8 +49,8 @@ use solidcore::blend::fillet_solver::p1::{
     check_edge_curve_domains, compute_uv_vectors, find_next_good_interval, test_analytic_surface,
     test_manifold_tangent_rollover, test_side_edge_convexity, tol_ang_tol_rad, trim_rail,
     AnalyticTestSurface, FilStatus, FilletSolver, FilletSolverOffsetsData, FilletSolverOps,
-    FilletSphereSolveEnfo, FilletSurfaceGenerator, FindClippedRadiusEfo, OffsetSurfaceSlot,
-    RailRailIntersectEnfo, RailUvCurveIntersectEnfo,
+    FilletSolverType, FilletSphereSolveEnfo, FilletSurfaceGenerator, FindClippedRadiusEfo,
+    OffsetSurfaceSlot, RailRailIntersectEnfo, RailUvCurveIntersectEnfo,
 };
 use solidcore::curve::curve::Curve;
 use solidcore::curve::line::Line;
@@ -892,7 +892,7 @@ fn put_zone_tol_and_knots(
     o.push(zt(edge.curve.is_some()));
     o.push(zt(eu::uv_trim_curve(b, prim).map_err(err)?.0.is_some()));
     o.push(zt(eu::uv_trim_curve(b, mate).map_err(err)?.0.is_some()));
-    match edge.curve.as_ref().map(|c| c.knots(None)) {
+    match edge.curve.as_ref().map(|c| c.knots(k, None)) {
         Some(Ok((knots, mults))) => {
             o.push(knots.len() as f64);
             o.extend_from_slice(&knots);
@@ -1511,17 +1511,47 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
                 let k = Kernel::default();
                 let mut r1 = bspline_of(&line_curve())?;
                 let mut r2 = r1.clone();
-                o.push(match g.create_surface(&k, 1.0e-6, &mut r1, &mut r2, &[]) {
-                    Ok(_) => 0.0,
-                    Err(e) => status(&e),
-                });
+                let none = solidcore::blend::fillet_standard_solver::p1::RailSurface {
+                    surface: None,
+                    uv_curve: None,
+                };
+                o.push(
+                    match g.create_surface(
+                        &k,
+                        1.0e-6,
+                        FilletSolverType::Unknown,
+                        None,
+                        &mut r1,
+                        &mut r2,
+                        &[],
+                        none,
+                        none,
+                    ) {
+                        Ok(_) => 0.0,
+                        Err(e) => status(&e),
+                    },
+                );
             } else if let (1, [c1, c2]) = (*kind, rails.as_slice()) {
                 // the linear one: the ruled surface of two real rails, `status` then the
-                // surface block (as the shim's `put_bss`)
+                // surface block (as the shim's `put_bss`; it reads only the rails)
                 let k = Kernel::default();
                 let mut r1 = bspline_of(c1)?;
                 let mut r2 = bspline_of(c2)?;
-                match g.create_surface(&k, 1.0e-6, &mut r1, &mut r2, &[]) {
+                let none = solidcore::blend::fillet_standard_solver::p1::RailSurface {
+                    surface: None,
+                    uv_curve: None,
+                };
+                match g.create_surface(
+                    &k,
+                    1.0e-6,
+                    FilletSolverType::Unknown,
+                    None,
+                    &mut r1,
+                    &mut r2,
+                    &[],
+                    none,
+                    none,
+                ) {
                     Ok(s) => {
                         o.push(0.0);
                         put_bss(&mut o, &s);

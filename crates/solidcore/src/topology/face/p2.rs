@@ -719,9 +719,12 @@ fn is_singularity(
         SurfaceKind::Plane(p) => Ok(p.is_singularity()),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::OffsetSurface(_) => {

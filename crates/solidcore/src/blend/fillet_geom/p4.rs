@@ -60,11 +60,11 @@
 //!   `MakeFaceBrep`'s 3D curve list holds `Option<Curve>` as the join appends them.
 //! - **Unported callees.** The fillet executive's
 //!   topology intersector, attribute users and topology bookkeeping
-//!   (`blend.fillet_executive_p1`), `SmTopologyIntersector::MergeCurveOnSurfaces`
-//!   (`boolean.topology_intersector_p3`), `RegisterExistingSSI` (ported in
-//!   `boolean.topology_intersector_p2`, but it needs the executive's intersector, so its
-//!   stub is tagged `blend.fillet_executive_p1`) in `InsertIntersectionTopology`. Each
-//!   stub replaces only its call; the code behind it is ported. The 777/778 marker attributes
+//!   (`blend.fillet_executive_p1`), `SmTopologyIntersector::MergeCurveOnSurfaces` and
+//!   `RegisterExistingSSI` (ported in `boolean.topology_intersector_p3` / `_p2`, but
+//!   they need the executive's intersector, so their stubs are tagged
+//!   `blend.fillet_executive_p1`) in `InsertIntersectionTopology`. Each stub replaces
+//!   only its call; the code behind it is ported. The 777/778 marker attributes
 //!   `InsertIntersectionTopology` puts on a face for the executive's split check travel
 //!   with the `UpdateTopologyChanges` stub.
 //! - **B-spline casts.** `SM_CAST_PTR(SmBSplineCurve, ..)` succeeds for every kind
@@ -254,12 +254,17 @@ const fn as_b_spline(c: &Curve) -> Option<&BSplineCurve> {
 }
 
 /// The B-spline net of a surface that is an `SmBSplineSurface` (a B-spline surface, a
-/// plane or a surface of revolution): `SM_CAST_PTR(SmBSplineSurface, ..)`.
+/// plane, a surface of revolution, a cone, a sphere or a torus):
+/// `SM_CAST_PTR(SmBSplineSurface, ..)`.
 fn b_spline_net(s: &Surface) -> Option<&BSplineSurface> {
     match s.kind() {
         SurfaceKind::BSpline(b) => Some(b),
         SurfaceKind::Plane(p) => Some(p.base()),
         SurfaceKind::SurfOfRevolution(r) => Some(r.base()),
+        SurfaceKind::SurfOfExtrusion(r) => Some(r.base()),
+        SurfaceKind::Cone(c) => Some(c.rev().base()),
+        SurfaceKind::Sphere(s) => Some(s.base().base()),
+        SurfaceKind::Torus(t) => Some(t.base().base()),
         _ => None,
     }
 }
@@ -386,10 +391,13 @@ fn executive_attribute_e_users(solver: &FilletSolver) -> Result<Vec<EdgeId>> {
     )
 }
 
-/// `SmTopologyIntersector::MergeCurveOnSurfaces` (unit
-/// `boolean.topology_intersector_p3`): whether topology was deleted, the edges this call
-/// deleted (upstream appends them to the caller's `paDeletedEdges`; the caller
-/// accumulates them).
+/// `SmTopologyIntersector::MergeCurveOnSurfaces`: whether topology was deleted, the
+/// edges this call deleted (upstream appends them to the caller's `paDeletedEdges`; the
+/// caller accumulates them). The routine itself is ported
+/// ([`crate::boolean::topology_intersector::p3`]), but it runs on the executive's
+/// topology intersector, which [`TopologyIntersectorRef`] only stands for until
+/// `blend.fillet_executive_p1` is ported; the stub is tagged with that unit, as
+/// [`register_existing_ssi`]'s is.
 #[allow(clippy::too_many_arguments)]
 fn merge_curve_on_surfaces(
     ti: TopologyIntersectorRef,
@@ -400,11 +408,11 @@ fn merge_curve_on_surfaces(
     uv_curve: Option<&Curve>,
     other_edge: EdgeId,
 ) -> Result<(bool, Vec<EdgeId>)> {
-    // UNPORTED(boolean.topology_intersector_p3): SmTopologyIntersector::MergeCurveOnSurfaces
+    // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetTopologyIntersector()->MergeCurveOnSurfaces
     unported_on(
         (ti, target, surface, tol, curve, uv_curve, other_edge),
         "SmTopologyIntersector::MergeCurveOnSurfaces",
-        "boolean.topology_intersector_p3",
+        "blend.fillet_executive_p1",
     )
 }
 
@@ -1888,8 +1896,8 @@ impl FilletBrep {
     /// # Errors
     ///
     /// `SM_ERR_NULL_POINTER` without solver or executive; the merge's status;
-    /// [`SolidError::Unported`] for the executive (`blend.fillet_executive_p1`) and the
-    /// topology intersector's merge (`boolean.topology_intersector_p3`).
+    /// [`SolidError::Unported`] for the executive and its topology intersector's merge
+    /// (`blend.fillet_executive_p1`).
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn insert_intersection_topology(
         &mut self,

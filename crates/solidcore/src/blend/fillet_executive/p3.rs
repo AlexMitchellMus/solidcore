@@ -23,11 +23,16 @@
 //! ownership are restored explicitly after fallible bodies, including on deferral.
 //! The upstream `cbi_MAP_TOPO_EDGES=0` experiments remain disabled. Parent-linked
 //! stage hooks borrow this live executive, never an adapter-owned duplicate.
+//! Not upstream: `do_fillet` ends with a closed-manifold check of the target
+//! (`check_closed_manifold`, tangency-labs/solidcore#422). A target with an edge
+//! that is not `SmEdge::IsManifold` is refused with error code
+//! `SM_FILERR_BAD_MERGE`, the edge in the error info and in the error, where
+//! upstream returns success. `do_filleting` alone is unchanged.
 
 use crate::blend::fillet_geom::p1::FilletCornerType;
 use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
-use crate::error::{Result, SolidError};
+use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::object::NotifyOperation;
 use crate::geom::solution_array::SolutionObject;
 use crate::geom::tol::zone_tol3d;
@@ -298,6 +303,13 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     fn set_editing_enabled(&mut self, brep: O, enabled: bool) -> Result<()>;
     /// `SmBrep::GetEdges`, preserving list order.
     fn edges(&self, brep: O) -> Result<Vec<O>>;
+    /// `SmEdge::IsManifold` (`topology::edge::is_manifold`): four edge uses, the
+    /// first a loop edge use. Used only by the closed-manifold result check.
+    fn edge_is_manifold(&self, edge: O) -> Result<bool>;
+    /// The typed id of `edge` for error context, when the handle has one.
+    fn edge_entity(&self, _edge: O) -> Option<EntityRef> {
+        None
+    }
     /// `SmBrep::GetVertices`, preserving list order.
     fn vertices(&self, brep: O) -> Result<Vec<O>>;
     /// `SmBrep::GetFaces`, preserving list order.
@@ -486,7 +498,7 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// `blend.fillet_standard_solver_p2`. Adapters must dispatch by concrete
     /// solver type and return that owner's `Unported` while it is missing.
     // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
-    // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::CalcFilletGeom
+    // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::CalcFilletGeom -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
     fn calc_fillet_geom(
         &mut self,
         k: &mut Kernel,
@@ -505,20 +517,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         executive: &mut FilletExecutive<O>,
     ) -> Result<()>;
 
-    /// `SmFilletSolver::TestRollOver`; waiting for `blend.fillet_solver_p5`.
+    /// `SmFilletSolver::TestRollOver(sAdjustedCorners)` (`SmFilletExecutive.cpp:2384`):
+    /// delegate to the already ported `FilletSolver::test_roll_over` in
+    /// `blend::fillet_solver::p5` on the solver `solver` resolves to. Its status is
+    /// returned unchanged; the caller handles it as upstream does.
     fn test_rollover(
         &mut self,
-        _k: &mut Kernel,
-        _solver: O,
-        _adjusted_corners: &mut Vec<O>,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_solver_p5): SmFilletSolver::TestRollOver
-        Err(SolidError::unported(
-            "SmFilletSolver::TestRollOver",
-            "blend.fillet_solver_p5",
-        ))
-    }
+        k: &mut Kernel,
+        solver: O,
+        adjusted_corners: &mut Vec<O>,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// `SmBrep::SetTolerance(sZoneTol3d, bUpdateOnlyIfLarger, bCascadeToBndries)`:
     /// delegate to the already ported `topology::brep::p2::set_tolerance` (brep p2) on
@@ -649,22 +658,23 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         keep_as_wires: Option<&[O]>,
     ) -> Result<()>;
 
-    /// `SmBrep::MergeBrep`; waiting for `topology.brep_p3`.
+    /// `target->MergeBrep(other, pOptCopyBrepMap, pOptReverseMap, bAddAnalytics)`: the
+    /// owner of the B-reps implements it with `topology::brep::p3::merge_brep` (a
+    /// stateless owner through `topology::brep::p3::with_kernel_callbacks`, `other`
+    /// enrolled in the same identity domain), as `IntersectorBrep::brep_delete_face`.
+    ///
+    /// # Errors
+    ///
+    /// Those of the merge; an owner with no B-rep behind a handle returns its own error.
     fn merge_brep(
         &mut self,
-        _k: &mut Kernel,
-        _target: O,
-        _other: O,
-        _copy_map: Option<&mut CopyBrepMap<O>>,
-        _reverse_map: Option<&mut CopyBrepMap<O>>,
-        _add_analytics: bool,
-    ) -> Result<()> {
-        // UNPORTED(topology.brep_p3): SmBrep::MergeBrep
-        Err(SolidError::unported(
-            "SmBrep::MergeBrep",
-            "topology.brep_p3",
-        ))
-    }
+        k: &mut Kernel,
+        target: O,
+        other: O,
+        copy_map: Option<&mut CopyBrepMap<O>>,
+        reverse_map: Option<&mut CopyBrepMap<O>>,
+        add_analytics: bool,
+    ) -> Result<()>;
 
     /// `SmStitch::DoStitching` (`SmFilletExecutive.cpp:3559-3576`). Delegate to the
     /// already ported `heal::stitch::p2::Stitch::do_stitching` (heal stitch p2) on the
@@ -716,22 +726,24 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmBrep::OrientTrimmedSurfaces`; waiting for `topology.brep_p3`.
+    /// `brep->OrientTrimmedSurfaces(bNormalsOutward, rbMaybeNotSolid, bJustUnifyNormals,
+    /// pOptFacesToSwapUV)`: the owner of the B-reps implements it with
+    /// `topology::brep::p3::orient_trimmed_surfaces`, writing its
+    /// `maybe_not_closed_solid` to `maybe_not_solid`.
+    ///
+    /// # Errors
+    ///
+    /// Those of the orientation; an owner with no B-rep behind a handle returns its own
+    /// error.
     fn orient_trimmed_surfaces(
         &mut self,
-        _k: &mut Kernel,
-        _brep: O,
-        _outward: bool,
-        _maybe_not_solid: &mut bool,
-        _just_unify: bool,
-        _faces_to_swap_uv: Option<&mut Vec<O>>,
-    ) -> Result<()> {
-        // UNPORTED(topology.brep_p3): SmBrep::OrientTrimmedSurfaces
-        Err(SolidError::unported(
-            "SmBrep::OrientTrimmedSurfaces",
-            "topology.brep_p3",
-        ))
-    }
+        k: &mut Kernel,
+        brep: O,
+        outward: bool,
+        maybe_not_solid: &mut bool,
+        just_unify: bool,
+        faces_to_swap_uv: Option<&mut Vec<O>>,
+    ) -> Result<()>;
 
     // ---- added by blend.fillet_executive_p2 (PR #267) --------------------------------
 
@@ -841,8 +853,9 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// The fillet solver constructors `SetFilletParameters` and `SurfaceSurfaceFillet`
     /// call, dispatched on the spec: `SmConstantRadiusFS` through
     /// [`ExecutiveAccess::new_constant_radius_solver`]; `SmConstantDistanceFS`,
-    /// `SmVariableRadiusFS` and `SmSurfaceSurfaceFS` wait for
-    /// `blend.fillet_standard_solver_p2`.
+    /// `SmVariableRadiusFS` and `SmSurfaceSurfaceFS` are ported
+    /// (`blend.fillet_standard_solver_p2`) but need a solver arena in the adapter
+    /// that no adapter has yet (`plan/findings.md`, executive adapter stubs).
     fn new_fillet_solver(
         &mut self,
         k: &mut Kernel,
@@ -863,17 +876,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
                 radius,
                 edgeuse,
             ),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantDistanceFS::SmConstantDistanceFS
+            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantDistanceFS::SmConstantDistanceFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
             super::p2::SolverSpec::ConstantDistance { .. } => Err(SolidError::unported(
                 "SmConstantDistanceFS::SmConstantDistanceFS",
                 "blend.fillet_standard_solver_p2",
             )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmVariableRadiusFS::SmVariableRadiusFS
+            // UNPORTED(blend.fillet_standard_solver_p2): SmVariableRadiusFS::SmVariableRadiusFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
             super::p2::SolverSpec::VariableRadius { .. } => Err(SolidError::unported(
                 "SmVariableRadiusFS::SmVariableRadiusFS",
                 "blend.fillet_standard_solver_p2",
             )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::SmSurfaceSurfaceFS
+            // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::SmSurfaceSurfaceFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
             super::p2::SolverSpec::SurfaceSurface { .. } => Err(SolidError::unported(
                 "SmSurfaceSurfaceFS::SmSurfaceSurfaceFS",
                 "blend.fillet_standard_solver_p2",
@@ -950,7 +963,35 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             return Err(invalid("fillet parameters not set up"));
         }
         access.create_corners(k, self, None)?;
-        self.do_filleting(k, access, None)
+        self.do_filleting(k, access, None)?;
+        self.check_closed_manifold(access)
+    }
+
+    /// Refuse a filleted target that is not a closed manifold solid (not upstream;
+    /// tangency-labs/solidcore#422). Upstream ignores the `bMaybeNotSolid` that
+    /// `OrientTrimmedSurfaces` reports and returns success, so a round whose
+    /// trimming breaks the shell came back as a valid body. The first edge of the
+    /// target, in `GetEdges` order, that is not `SmEdge::IsManifold` is recorded in
+    /// the error info and named in the error. The target keeps the merged
+    /// topology, as on upstream's other merge failures.
+    fn check_closed_manifold(&mut self, access: &impl ExecutiveAccess<O>) -> Result<()> {
+        let target = self.target.ok_or(invalid("missing target B-rep"))?;
+        for edge in access.edges(target)? {
+            if access.edge_is_manifold(edge)? {
+                continue;
+            }
+            self.error.code = 7; // SM_FILERR_BAD_MERGE
+            self.error.status = 2; // SM_FIL_FAILURE
+            self.error.edge = Some(edge);
+            self.error.comment =
+                "Fillet Merge Failure: Result Is Not A Closed Manifold Solid".into();
+            return Err(SolidError::Upstream {
+                operation: OP,
+                code: 1001,
+                entity: access.edge_entity(edge),
+            });
+        }
+        Ok(())
     }
 
     fn corner_failure(

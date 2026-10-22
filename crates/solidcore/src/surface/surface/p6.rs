@@ -270,7 +270,7 @@ impl Surface {
             // make temp isoParameter curve for this knot sample value
             let mut iso = create_iso_parametric_curve(k, self, get_sp, parameter, None)?.0;
             // (status ignored)
-            let iso_knots = iso_knots_of(&iso)?;
+            let iso_knots = iso_knots_of(k, &iso)?;
 
             // When curve is degenerate - try another knot sample value
             if iso.is_degenerate(k, EFF_ZERO, None)? {
@@ -1776,8 +1776,8 @@ fn find_element(values: &[f64], target: f64) -> Option<usize> {
 }
 
 /// `pIsoCrv->GetKnots(sIsoKnots)` with its status ignored (no knots on failure).
-fn iso_knots_of(curve: &Curve) -> Result<Vec<f64>> {
-    Ok(ignored(curve.knots(None))?
+fn iso_knots_of(k: &Kernel, curve: &Curve) -> Result<Vec<f64>> {
+    Ok(ignored(curve.knots(k, None))?
         .map(|(k, _)| k)
         .unwrap_or_default())
 }
@@ -1878,11 +1878,32 @@ pub(super) fn create_iso_parametric_curve(
             )?;
             Ok((Curve::from(iso.curve), iso.max_gap_3d))
         }
+        // (SmSurfOfExtrusion inherits the B-spline override)
+        SurfaceKind::SurfOfExtrusion(s) => {
+            let iso = s.base().create_iso_parametric_curve(
+                k,
+                dir,
+                value,
+                IsoCurveOptions {
+                    domain: domain.copied(),
+                    uv_iso_curve: false,
+                },
+            )?;
+            Ok((Curve::from(iso.curve), iso.max_gap_3d))
+        }
         SurfaceKind::Plane(p) => {
             let iso = p.create_iso_parametric_curve(dir, value, domain, false)?;
             Ok((Curve::from(iso.curve), iso.max_gap_3d))
         }
         SurfaceKind::Cone(s) => {
+            let iso = s.create_iso_parametric_curve(k, dir, value, domain, false)?;
+            Ok((iso.curve, iso.max_gap_3d))
+        }
+        SurfaceKind::Sphere(s) => {
+            let iso = s.create_iso_parametric_curve(k, dir, value, domain, false)?;
+            Ok((iso.curve, iso.max_gap_3d))
+        }
+        SurfaceKind::Torus(s) => {
             let iso = s.create_iso_parametric_curve(k, dir, value, domain, false)?;
             Ok((iso.curve, iso.max_gap_3d))
         }
@@ -1913,10 +1934,13 @@ fn is_singularity(
         SurfaceKind::Plane(p) => Ok(p.is_singularity()),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_) => {
             let r = surface.is_singularity(k, uv, tol, false)?;
@@ -1932,10 +1956,13 @@ fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<bool> {
         SurfaceKind::Plane(p) => Ok(p.is_on_seam().0),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_) => Ok(surface.is_on_seam(k, uv, None)?.on_seam),
     }
