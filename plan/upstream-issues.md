@@ -265,6 +265,16 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash (heap corruption).
 - **Rust port:** the `primitive.api_curves` FFI refuses a non-finite knot for the canonical curve. The Rust side returns an error status on `fuzz08941`. Number follows the open PRs' UB-237; renumber on merge if taken.
 
+#### UB-250. `N_IgesClampSrf` writes past its new knot vector when a knot is NaN
+- **Location:** `source/SMLib/src/NL_Iges.cpp:817` `N_IgesClampSrf`: the span searches (`:980-1003` for v, as for u) assume finite, nondecreasing knots and bounds inside them; the knot copy (`:1096-1103`) then writes more knots than the vector it sized holds. Reached from `N_Iges128Srf` (`:757`), e.g. `SmBSplineSurface::CreateCanonical` for a surface of revolution.
+- **What happens:** For v knots `360 360 360 NaN NaN 540 540 540` (degree 2) clamped to `[360, 540]`, every comparison with NaN is false, so the searches give `span1 = 4`, `mult1 = 3`, `span2 = 5`, `mult2 = 3`. The new vector gets `span2 - span1 - mult2 + 2q + 1 = 3`, i.e. 4 knots (32 bytes); the copy writes 3 + 0 + 3 = 6 of them, the last two past the end in the `vb[1]` loop at `:1102-1103`.
+- **Trigger:** a STEP surface of revolution with its sweep domain from 360 degrees (tangency-labs/solidcore#428), whose B-spline gets the knots above (tangency-labs/solidcore#427).
+- **How found:** AddressSanitizer on SolidCraft's STEP import through SMLib (#427: heap-buffer-overflow, WRITE of size 8 at `NL_Iges.cpp:1103`, 0 bytes after a 32-byte region); the counts above were traced by hand at `c9c5979`.
+- **Confirmed:** yes (ASan, reported in #427).
+- **Severity:** crash/UB (heap-buffer-overflow).
+- **Fix:** tangency-labs/smlib@0a7e06d refuses, before clamping, knot vectors that aren't finite (within `1e300`) and nondecreasing, and bounds that aren't increasing and strictly inside the knots.
+- **Rust port:** `nurbs::iges::clamp_surface` indexes with checks, so it refuses this case (`InvalidInput`, "index outside the arrays") instead of writing past the end (test `clamp_surface_refuses_the_427_knots`). The fork's guard is not ported: it also refuses knots the reference build handles, e.g. infinite or `f64::MAX` planes (`primitive.api_primitives` fixtures `plane_surface_len_inf`, `rv_plane_l_max`), and a NaN interior knot between clamped ends, which upstream leaves in place on its "already clamped" path without writing anything.
+
 ### NLib: matrices and polynomials
 
 #### UB-17. Banded and triangular matrix routines index outside rows
@@ -1974,6 +1984,24 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash / use after free.
 - **Rust port:** Reproduces the control flow; queries on the deleted edge id return `NotFound`.
 
+#### UB-248. `sm_RefineRailCurveClassification` works on interval `ii`, not on small interval `ii`, and can read past the classification
+- **Location:** `source/SMLib/src/SmFilletSolver.cpp:5596`-`5690` (`sm_RefineRailCurveClassification`).
+- **What happens:** The loop counts `ii` from `crSmallIntervals.GetSize()` down to 1 but never reads `crSmallIntervals`: it refines classification interval `ii` itself (so the small intervals TestRollOver found are ignored unless they happen to be intervals `1..n`). It compares `ii` with the interval count taken before any `RemoveAt`, and a refinable interval `ii = size - 1` reads `rRailCurveClassification[ii + 1]`, past the end; after a removal later indices can also be past the end.
+- **Trigger:** `TestRollOver` passing more small intervals than (interval count - 2), or a refinable second-to-last interval.
+- **How found:** read during porting (unit `blend.fillet_solver_p3`).
+- **Confirmed:** no (the refinement path defers at `RailEdgeuseIntersect`, unit `blend.fillet_solver_p2`).
+- **Severity:** wrong result / out-of-bounds read.
+- **Rust port:** Faithful loop and indexing; an index past the classification is `InvalidInput` instead of a read past the array.
+
+#### UB-249. `SplitAndTrimFilletSurface` can index past a rail classification
+- **Location:** `source/SMLib/src/SmFilletSolver.cpp:4800`-`4866` (`SmFilletSolver::SplitAndTrimFilletSurface`, the interval walk).
+- **What happens:** When both current intervals end within `SM_EFF_ZERO_SQ`, both sides advance, but the second branch sets `bFound1 = TRUE` unconditionally after the first branch's search, so a first rail with no further good interval keeps looping with `lStartSearch1` one past its last interval (or on a non-good interval) and reads `(*pCC1)[lStartSearch1]`.
+- **Trigger:** Rail classifications whose last good intervals end at the same parameter while the second rail has more good intervals after it.
+- **How found:** read during porting (unit `blend.fillet_solver_p3`).
+- **Confirmed:** no.
+- **Severity:** out-of-bounds read.
+- **Rust port:** Faithful flags; an index past the classification is `InvalidInput`.
+
 ## Hang
 
 #### HANG-1. `SmExtent1d::PeriodicWrap` steps one period per iteration
@@ -3618,6 +3646,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes for the release build: the sweep-only boundary solve returns U `158.85355268828013`; the assertion conflict and sentinel initialization were confirmed by source inspection. Debug builds were not run.
 - **Severity:** docs / debug assertion.
 - **Rust port:** Matches release C++ rather than enforcing the assertion; derivative orders remain bounded to 3.
+
+#### DOC-5. `SmApiCreateTaperExtrude` documents 90-180 degrees as an outer draft, but the code takes the side from the angle's sign
+- **Location:** `source/SM_API/inc/SmApiBrep.h:318` (`dDraftAngleDeg`: "0-90 inner, 90-180 outer") and `source/SMLib/src/SmPrimitiveCreation.cpp:3609` (the same in the parameter comment of `SmPrimitiveCreation::CreateTaperExtrude`); behaviour at `:3728` and `:3731`. The method comment at `:3564-3565` agrees with the code ("typically 30 degrees for an inner taper, and -30 degrees for an outer taper").
+- **What happens:** Only the sign picks the side (`dDraftAngleDeg < 0` gives `SM_OD_RIGHT_HAND_SIDE`, anything else `SM_OD_LEFT_HAND_SIDE`), and the in-plane offset is `|dHeight * tan(|dDraftAngleDeg|)|`. An angle between 90 and 180 degrees therefore drafts to the same side as a positive acute angle, by `|tan(180° - angle)|`: 135 gives the taper of 45, not an outer one. An outer taper needs a negative angle. Neither comment says that the curves must form one chain either: `SM_ASSERT(nChain == 1)` at `:3678` is the only check, and it compiles to nothing without `SM_DEBUG_CODE` (`SmMessages.h:714`), so a profile with an inner loop is not refused.
+- **Trigger:** `SmApiCreateTaperExtrude` with `dDraftAngleDeg` 135 against 45 (same side, same offset), or with a profile of two closed loops.
+- **How found:** read during porting, following tangency-labs/solidcore#413 (reported from SolidCraft's move onto SMLib).
+- **Confirmed:** no.
+- **Severity:** docs.
+- **Rust port:** Faithful to the code: `PrimitiveCreation::create_taper_extrude` (`primitive/primitive_creation/p2/taper.rs`) takes the side from the sign, makes the offset positive and does not count the chains. Its doc comment, and that of the API wrapper `sweep::api_brep::create_taper_extrude` (which stops at `SolidError::Unported` until the B-rep constructor is ported), state that convention.
 
 
 #### `ST_curxcdr` G1 fallback reads a third point of a two-point line (primitive.primitive_creation_p1, PR #213)

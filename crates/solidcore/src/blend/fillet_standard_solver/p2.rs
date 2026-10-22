@@ -2310,7 +2310,7 @@ fn step_solve(
     _domain1: &Extent2d,
     _domain2: &Extent2d,
 ) -> Result<StepResult> {
-    // UNPORTED(blend.fillet_solver_p3): SmFilletSolver::StepSolve
+    // UNPORTED(blend.fillet_solver_p3): SmFilletSolver::StepSolve -- justified: plan/findings.md blend.fillet_standard_solver_p2 (StepSolve)
     Err(SolidError::unported(
         "SmFilletSolver::StepSolve",
         "blend.fillet_solver_p3",

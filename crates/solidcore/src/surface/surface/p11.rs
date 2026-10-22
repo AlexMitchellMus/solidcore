@@ -1939,7 +1939,7 @@ impl Surface {
 
             // get UVCurve knots and associated continuities (SER: checked; default
             // angle SM_CONTINUITY_ANGLE)
-            let (knots, _) = uv_curve.knots(None)?;
+            let (knots, _) = uv_curve.knots(k, None)?;
             let (_, curve_conts) = uv_curve.calculate_continuities(k, CONTINUITY_ANGLE)?;
 
             // for every curve knot: the projected 3D curve's C0 break points
@@ -1953,6 +1953,8 @@ impl Surface {
         let bss = match self.kind() {
             SurfaceKind::BSpline(b) => b,
             SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::SurfOfRevolution(_)
             | SurfaceKind::CurveBounded(_)
