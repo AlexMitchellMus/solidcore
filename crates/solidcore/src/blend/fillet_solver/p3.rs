@@ -1905,8 +1905,18 @@ mod tests {
             0,
             BoundaryTrimmingType::Maximal,
         );
-        // SplitFilletGeom stops at the geometry's rail vertices
-        assert!(matches!(r, Err(SolidError::Unported { .. })), "{r:?}");
+        // SplitFilletGeom (wired to blend.fillet_geom_p1 on main) reaches the geometry's
+        // rail vertex uses, which this fixture's rails do not have: an upstream error
+        assert!(
+            matches!(
+                r,
+                Err(SolidError::Upstream {
+                    operation: "blend::fillet_geom::p1::FilletBrep::rail_vertexuse",
+                    ..
+                })
+            ),
+            "{r:?}"
+        );
         assert!(fb.geom(g).unwrap().fillet_surface.is_some());
     }
 
