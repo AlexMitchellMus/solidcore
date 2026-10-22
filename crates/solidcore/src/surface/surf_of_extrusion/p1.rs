@@ -68,7 +68,7 @@
 //!   conversions and `DropPointFast` return `SM_ERR` without a NURB (call
 //!   [`SurfOfExtrusion::make_nurb`] first) instead of reading a `(0, 0, 0, 0)` domain;
 //!   [`SurfOfExtrusion::gen_dir_param_extent`] reads the NURB as it is (an empty
-//!   interval without one). `Reparameterize` makes it.
+//!   interval without one). `Reparameterize` and a non-identity `Transform` make it.
 //!   Inherited `Surface` evaluation and iso-curve queries use a temporary, bounded
 //!   copy via `base_with_nurb`; they do not change the stored copy state. A lazy
 //!   B-spline generator (as returned by the extrusion recogniser) uses the analytic
@@ -1691,6 +1691,10 @@ impl SurfOfExtrusion {
         }
 
         // transform m_pNurb
+        // SmBSplineSurface::Transform reaches the virtual GetOrCreateGwNurbPointer.
+        if self.base.gw_nurb().is_none() {
+            ignore_status(self.make_nurb(k))?;
+        }
         self.base.transform(rotate_n_move, scale)?;
 
         // transform the rest of the 3d data (status ignored)
@@ -2200,6 +2204,50 @@ mod tests {
 
     fn k() -> Kernel {
         Kernel::default()
+    }
+
+    #[test]
+    fn lazy_transform_matches_materialized_transform() {
+        let k = k();
+        let mut lazy = SurfOfExtrusion::new(
+            &k,
+            arc_gen(),
+            Point3::ZERO,
+            Vec3::new(0.0, 0.0, 2.0),
+            Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+            false,
+        )
+        .unwrap();
+        assert!(lazy.base().gw_nurb().is_none());
+        lazy.transform(&k, &Axis2Placement::IDENTITY, None).unwrap();
+        assert!(lazy.base().gw_nurb().is_none());
+        assert!(lazy
+            .transform(
+                &k,
+                &Axis2Placement::IDENTITY,
+                Some(Vec3::new(2.0, 3.0, 2.0))
+            )
+            .is_err());
+        assert!(lazy.base().gw_nurb().is_none());
+
+        let mut ready = lazy.clone_exact();
+        ready.make_nurb(&k).unwrap();
+        let mut transform = Axis2Placement::IDENTITY;
+        transform.translate(Vec3::new(3.0, -2.0, 1.0));
+        lazy.transform(&k, &transform, None).unwrap();
+        ready.transform(&k, &transform, None).unwrap();
+        assert!(lazy.base().gw_nurb().is_some());
+        assert_eq!(lazy.origin(), ready.origin());
+        for uv in [
+            Point2::new(0.0, 0.0),
+            Point2::new(0.25, 0.75),
+            Point2::new(1.0, 1.0),
+        ] {
+            assert_eq!(
+                lazy.base().evaluate_point(uv).unwrap(),
+                ready.base().evaluate_point(uv).unwrap()
+            );
+        }
     }
 
     /// A planar quadratic B-spline in the z = 0 plane.
