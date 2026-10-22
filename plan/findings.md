@@ -1313,6 +1313,9 @@ worth knowing:
   owner metadata, with a 64-link bound; missing metadata is a capture failure.
   Tracker/callback state uses a private shared notification-array allocation so
   active resets and foreign-callback replacement preserve native array lifetimes.
+  `topology.brep_p3` (PR #204) runs heal_data_p3's ported edits (`SqueezeEdge`,
+  `DeleteFace`) under this tracker too (`SmHealData` installs
+  `SmTrackTopologyChanges(m_pBrep, TRUE)` around them, SmHealData.cpp:3341).
 - **Starting a tracker twice leaves its callback installed after it dies.** The
   second `StartTracking` sees the tracker's own callback in the slot and stores it in
   `m_pLastNotifyCallback`; `StopTracking` (and so the destructor) then does nothing,
@@ -6588,6 +6591,78 @@ mutated scales and accepted/reduced step counts are compared.
   `GlobalPointSolve_1` fails; `Surface::global_point_solve_into` has the same gap in
   `surface.surface_p4`), not seen in any case. The 398 review adversarial cases are
   `fixtures/query.face_p3/review_adversarial.json` (none is undefined in C++).
+
+## topology.brep_p8 (`SmBrep` face builders, PR #72, 2026-10-20; partial, no disagreements)
+
+- **Builds on PR #204** (`topology.brep_p3`, head `293ce7fc`, merged into the branch):
+  `MakeFaceWithCurves` makes its wire edges with #204's `MakeWireEdge` /
+  `MakeWireEdgeVertex`, and `CreateFacesWithCurves` deletes faces with its `DeleteFace`.
+  #72 cannot merge before #204.
+- **Every face construction stops in `MakeFaceTopology` (`topology.brep_p6`).** All seven
+  functions are ported (`topology::brep::p8`; the "new algorithm" branch of
+  `CreateFaceInRegionFromSurface` is dead code, `sbUseOldAlgorithm` is a `constexpr TRUE`).
+  Every path that makes a face goes `MakeFaceWithCurves` (`brep_p7`) -> `MakeFace` ->
+  `MakeFaceTopology` (`brep_p6`), whose port stops at its `SetTolerance` call: the stub
+  there is labelled `UNPORTED(topology.face_p3): SmFace::SetTolerance`, but
+  `face::p3::set_tolerance` is ported and the stub stands for the unported remainder of
+  `MakeFaceTopology` (face use / loop / edge use construction, radial sectors, trims,
+  `TestClosureSplitRegion`; `SmBrep.cpp:14141-14828`), which `topology.brep_p6` owns. So
+  every case that would build a face defers on `topology.face_p3` (298 of 339). **Unblock:**
+  finish `MakeFaceTopology` in `topology.brep_p6`; then the 298 deferred cases (faces on
+  planes and B-spline patches, natural and sub-domains, creased and closed surfaces,
+  planar loops with holes and several outer loops, the pyramid of
+  `primitive.api_primitives`) compare the whole B-rep they build.
+- **What is compared now** (41 cases, all with values): the status and the whole B-rep
+  after the op (counts, shell digest, the full topology graph of the `topology.brep_p3`
+  runner, and every vertex, edge, face and edge use's geometry): domains outside the
+  natural one, null surfaces and curve arrays, open, non-planar, empty and
+  degenerate-line planar curve sets, and three `MakeFacesWithCurves` split paths (a UV
+  loop with a hole on surfaces creased in `u`, `v` and both, 479 values each: the crease
+  iso curves are intersected with the loops, the loops split and the iso segments
+  inserted, the sub-patches made; each sub-patch's `MakeFaceWithCurves` fails, which
+  upstream ignores, leaving its wire edges in the B-rep). `--perturb` SENSITIVE 41/41;
+  `--fuzz 2000` FUZZ-PASS (rejected 474, malformed 822, ran 704, 0 differs/crashes).
+- **UB-119 behind the plane fit.** `CreatePlaneWith3DCurves` of loops far from the origin
+  relative to their size (the pyramid base at `1e9` with side 5) tessellates them to zero
+  area, and upstream `FindOuterLoops` reads past its arrays (UB-119); the C++ goes on with
+  garbage counts (and builds the pyramid). The port refuses it (`InvalidInput` from
+  `topology::trimming_tools`); the face builders pass that error through instead of
+  `SM_ERR`, and the runners of this unit and `primitive.api_primitives` defer such cases
+  as `cpp-guard:ub-119` (4 generated pyramids).
+- **`MakeFacesWithCurves` group counts** (WR-210): a sub-patch's second outer-loop group
+  is counted with the first group's loop counts; ported as is.
+- **Wired back-edges:** `topology.trimming_tools` (`MakeFacesWithCurves`),
+  `heal.heal_data_p3` (`CreateFaceInRegionFromSurface` under the edit tracker, its changes
+  kept also on failure), `boolean.merge_p3` and `offset.offset_executive_p1`
+  (`CreateFaceFromSurface`, arena-only notification stores; `build_side_wall_of_edgeuse`
+  now takes `&mut Kernel`) and `primitive.api_primitives` (`SmApiCreatePyramid` builds
+  its five faces and stitches them; it takes the kernel). Two remain:
+  `offset_executive` `CreatePlanarFaceWith3DCurves` (the 2D-boolean continuation around it,
+  `SmOffsetExecutive.cpp:3816-3928`, is unported and needs `Boolean2D`,
+  `primitive.primitive_creation_p1`), and the runner-side deferrals of
+  `mass.integrator` and `surface.trim_srf_cache` (their Rust sides build no face yet).
+- **Wired stale stubs in `geom.tools`** (`FindCoincidentEdge`, `FindEdge`): the curve
+  owner, evaluation, `DropPoint` and `CurveMaxDistanceBetween` of the green
+  `curve.curve_p2` / `curve.curve_p6`; `MakeFaceWithCurves` reached them for every
+  second curve of a loop. `CoincidentEdgeQuery` gets `curve_owner` (the caller resolves
+  `pCurve->GetOwner()`), and `find_coincident_edge` / `find_edge` take the kernel. The
+  `geom.tools` runner now compares the coincident-edge cases on the file B-rep.
+- **Shim bug fixed in `primitive.api_primitives`:** `put_brep(o, SmApiCreateX(.., b), b)`
+  read `b` before the call wrote it (unspecified argument order; GCC evaluates right to
+  left), so every successful C++ B-rep reported `has = 0`; `put_brep` now takes `b` by
+  reference. Unseen before, as every Rust B-rep entry point deferred.
+- **Analytic surfaces** (`SmCylinder`, `SmSphere`, `SmTorus`, `SmCone`) are not in the
+  shim: the Rust `Surface` has no such kinds (issue #76), so a face on one could not be
+  compared with its C++ overrides.
+- **`topology.brep_p5` runner after merging #204 into main:** `CreateWireEdgeFromCurve`
+  now runs through (main wired `GetInfiniteRegion`, #204 `MakeShellVertex` /
+  `MakeWireEdgeVertex`), and `MakeEdgeVertexTopology` unlinks the start vertex's shell
+  vertex use, which upstream deletes. The arena keeps it, and that runner's `graph` lists
+  unreachable records too, so `isolated_op13_editing_*` showed one vertex use more than
+  the C++. The runner now defers a result holding unlinked uses or shells on
+  `topology.brep_p4` (`SmBrep::~SmBrep`, the record erasure its notes already name): 744
+  pass, 0 fail, 53 deferred, as on main.
+
 ## intersect.curve_class_p6 (partial; PR #138)
 
 - **Certified scope.** 4438 default cases: 3927 bit-identical kernel comparisons,
@@ -9155,6 +9230,17 @@ regression inputs below; 2000-seed sweep 2051 pass / 116 deferred / 0 failed / 1
   311/30/278, `heal.stitch_p1` 300/232/68, `boolean.merge_p5` 140/108/32,
   `boolean.merge_p1` 248/206/42, `boolean.topology_intersector_p1` 830/713/117 and
   `topology.brep_p9` 684/638/46 unchanged from main.
+- **Integration gap (PR #204, topology.brep_p3): `SmBrep::MakeWireEdge` stays a stub.**
+  `merge_edge_with`'s `make_wire_edge` keeps `UNPORTED(topology.brep_p3)` although
+  `topology::brep::p3::make_wire_edge` is ported. The callee needs `&mut Kernel`
+  (`topology::brep::p2::make_edge_topology` transfers shells), and #229's
+  `MergeContext::Split` carries only `&Kernel` plus an optional `Context`. It also
+  needs a `NotifyEnv` naming the new edge, edge uses and vertex uses, which has to be
+  built from `TopologyCopy`'s destination keys. Wiring it means changing
+  `MergeContext::Split` to `&mut Kernel` for every `merge_edge` caller, so it is a
+  small follow-up after #204 lands. `OrientTrimmedSurfaces` is wired in #204: it is a
+  required `MergeBrep` method, implemented by the runner's `Two` with
+  `topology::brep::p3::orient_trimmed_surfaces` under the kernel's identities.
 
 ## topology.brep_p5 — historical pre-review coverage (superseded)
 
@@ -13973,6 +14059,19 @@ guarded in `offset.offset_geometry_creation`; the fix belongs to the curve cache
   tessellation, before any intersection test, as in `fuzz00504`.
 - **Status.** Open, with `fuzz00504`. Reproduce with the fuzz output file as a fixture and
   the tolerance set to any accepted value.
+- **Difftest `graph()` compared arena records upstream deletes (topology.brep_p3, PR #204).** The shared
+  difftest helper `graph()` / `Canon::of` (`crates/difftest/src/units/boolean_merge_p1.rs`, used by
+  several runners) counted raw arena lengths and appended the records its walk did not reach, while the
+  C++ side is a fresh import of the shim's export walk, which emits only live objects. Upstream deletes
+  records the Rust arenas keep, unlinked (topology.brep_p2's documented deviation: "deleted records ...
+  stay in the arena, unlinked", e.g. `MakeEdgeVertexTopology` deleting a vertex shell's vertex use,
+  SmBrep.cpp:13850). It surfaced when #339 wired `GetInfiniteRegion` into topology.brep_p5, so
+  `CreateWireEdgeFromCurve` (op 13) ran for the first time: 5 vertex uses vs 4, geometry 29 vs 27, graph
+  57 vs 54, with equal topology. `graph()` now numbers, compares and counts only the records the walk
+  reaches from the B-rep's roots (regions and edge list, as the export walk): reachability is the
+  definition of the B-rep's content upstream, and a record that is wrongly still linked is reached and
+  compared. The unreached count is a Rust-side report diagnostic (`diagnostics.unreached_records`,
+  never compared) so leaks stay visible.
 
 ## query.brep (B-rep boxes, `Point3DClassify`, decimation attributes, `SmApiEvaluateSurface*`; PR #329, takeover of #101, 2026-10-21; partial, no disagreements)
 
@@ -14197,6 +14296,45 @@ stitching still have their documented dependencies; merge p3/p4 remain paired
 with the missing p2 merge constructor. Final native/CI evidence is recorded on
 the tested PR head; no tolerance or absolute floor is relaxed.
 
+## topology.brep_p3 — `OrientTrimmedSurfaces` SwapUV cases defer under `harness:surface-notify-identity` (PR #204, 2026-10-21)
+
+- **Root cause.** `SmFace::SwapUV` calls `pSurface->SwapUV()`. `SmBSplineSurface::SwapUV`
+  rebuilds the surface with `SetCanonical`, which notifies `SM_NO_PRE_EDIT` /
+  `SM_NO_POST_EDIT` on the surface itself (`SmBSplineSurface.cpp:4585` / `:4592`,
+  `(this, SM_NO_GET_OWNER(this) = NULL, NULL)`). `SmOffsetSurface::SwapUV` forwards to its
+  base surface, and `SmSrfInVolume::SwapUV` notifies itself. So every upstream swap
+  sends a geometry `POST_EDIT`. The tracker records it and, through the surface's
+  owner, puts the face in its `Chg` list. A Rust `Surface` has no notification
+  identity (a `Curve` has its `IdentitySlot`), so the port cannot send that event.
+  Found when #364 (#239 `topology.face_p4`) let the orient fixtures reach `SwapUV`: 31
+  `orient_*_swap0` cases, 29 with one swap and 2 with two, differed only in the
+  tracker's event list (`orient_Mouse_swap0`: C++ 577 values, Rust 557, i.e. one
+  `Chg` entry and one geometry event per swap).
+- **Fixed in the same round.** The face's own `PRE_EDIT` / `POST_EDIT` now go through the
+  caller's environment (`face::p1::swap_uv_with_notifications`) and carry
+  `(this, NULL, NULL)`: `SM_NO_GET_BREP(this)` is a null pointer (`SmTypes.h:659`).
+- **Deferral.** The `topology.brep_p3` runner defers an `Orient` case exactly when
+  `SmFace::SwapUV` ran (the face's `POST_EDIT` is in the tracker's events). Orient cases
+  that swap nothing are still compared in full. The whole case defers: its face and
+  topology values share one output vector with the tracker's lists, and no case
+  boundary separates them.
+- **Follow-up.** Co-port a notification `IdentitySlot` onto `Surface` (owned by
+  `surface.surface_p1`, as `Curve`'s). Send the surface's `PRE/POST_EDIT` around the
+  surface swap in `swap_uv_with_notifications`. Have the runner issue each face
+  surface's identity before the op, with the face as owner for the tracker's owner
+  walk (as it does for edge curves). Then remove the deferral.
+- **Update (re-check of `766472a1`).** The whole-case deferral was decided from the
+  Rust side alone, so a Rust-only wrong swap would have been hidden, and the 31 cases
+  compared nothing. `harness:surface-notify-identity` is gone. Both the shim and the
+  runner now end an `Orient` output with a trailer: each pre-op face's `SmFace::SwapUV`
+  `POST_EDIT` count from that side's own tracker events, the face count, and the
+  tracker's offset. The runner splits it into `out` (status, flag, face domains and
+  upward face uses, counts), `swapped` and `tracker`. `out` and `swapped` are always
+  compared. Only a side whose own events show a swap leaves out `tracker`, so a swap on
+  one side only fails on `swapped`, and on `tracker`'s presence too.
+- **MakeWireEdge (above): Shared is wireable.** `MergeContext::Shared(&mut Kernel)` does
+  carry a mutable kernel, so that path could be wired now. Only `Split` needs the
+  signature change. Both are left for the follow-up.
 **Resolved (wire/curve-class-p4, PR #365):** both back-edges are now wired.
 
 - The 4 `ConnectIntervals` disagreements are upstream undefined behaviour, not a port
@@ -14506,6 +14644,23 @@ operation, not to the whole B-rep.
   536 deferred, 0 failed, unchanged (its face paths go through the unported
   `topology.brep_p8` and `primitive_creation_p*`).
 
+## Green-unit coverage pass (2026-10-21, `tests/green-coverage`)
+
+- An llvm-cov run of `difftest --green` (solidcore 79.8% of lines executed; green units
+  93.1%, partial 70.8%) listed the ported spans no case ran. 458 cases in
+  `fixtures/<unit>/coverage.json` (44 green units) now execute many of them, each citing the
+  upstream branch and the Rust line. Spans classified as Rust-only, defensive or unreachable
+  from upstream callers were left alone. Recipe: build the difftest binary with
+  `RUSTFLAGS="-C instrument-coverage"` into its own target dir, run `--green` with
+  `LLVM_PROFILE_FILE` set, `llvm-profdata merge` and `llvm-cov export` (rustup
+  `llvm-tools`), ignoring the difftest and ffi crates.
+- **`curve.composite_curve_p2`: a segment transition code above 13 in a composite DB
+  record.** Upstream reads it into `SmContinuityType` unchecked (14 and 15 are within the
+  enum's value range, so not undefined) and carries it along; Rust refuses the record with
+  `InvalidInput` ("transition code outside SmContinuityType", `composite_curve/p2.rs`), so a
+  crafted file reads in C++ and fails in Rust. Left as a deliberate deviation (no fixture
+  holds such a code; the generators never write one).
+
 ## Upstream prog_test parity cases (2026-10-21, `tests/upstream-parity`): what they found
 
 New fixtures replicate upstream prog_test calls in `surface.surface_p2` (`ssi_adv.json`,
@@ -14693,6 +14848,9 @@ stitching still have their documented dependencies; merge p3/p4 remain paired
 with the missing p2 merge constructor. Final native/CI evidence is recorded on
 the tested PR head; no tolerance or absolute floor is relaxed.
 
+## Batch shepherd-2 (#204 + #72 after #222/#233/#250): primitive entry points not wired yet (2026-10-21)
+
+#250/#233 (primitive.primitive_creation_p2/p3) and #204 (topology.brep_p3) were each written assuming the other was missing. After both landed, the `SmApiCreate*` entry points in `primitive::api_primitives`, `sweep::api_brep` and `sweep::api_surfaces` build the new B-rep (`brep::p3::new_brep` / `Brep::new_with_infinite_region`) and then return `Unported` at the `SmPrimitiveCreation` call. Those units are partial now, so these calls should be wired through `PrimitiveCreation` and its access traits in a follow-up. The same applies to `primitive_creation::p1::primitives::new_brep` (still `UNPORTED(topology.brep_p3)`) and `create_face` (`UNPORTED(topology.brep_p8)`), and to `create_blend_primitive`'s `CreateFaceFromSurface`. No case changes outcome: the Rust side defers where it used to, only at a later call.
 
 ## blend.fillet_solver_p3 (`SmFilletSolver.cpp` part 3: `StepSolve`, `SplitAndTrimFilletSurface`, `ProcessFullRollOver`, ...; PR #236, 2026-10-18; partial, no disagreements)
 
