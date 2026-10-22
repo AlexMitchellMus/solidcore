@@ -84,7 +84,7 @@
 //! - **Recursion.** The pole step-off of `EvaluatePlainOrSimple` evaluates itself at
 //!   the step-off points; its depth is bounded by [`MAX_STEPOFF_DEPTH`] (upstream
 //!   fixtures reach depth 1). Construction and restoration bound nested surface
-//!   wrappers to [`MAX_SURFACE_NESTING`] (64, versus at most 3 in fixtures), including
+//!   wrappers to [`MAX_SURFACE_NESTING`] (32, versus at most 3 in fixtures), including
 //!   STEP/bounded wrappers and extended bases, before any recursive geometry query.
 //!   Database dispatch also enforces the reader's nesting limit.
 //! - **Database.** `ReadFromDB` always makes a new surface (the fill-an-existing-object
@@ -713,8 +713,9 @@ impl OffsetSurface {
     ///
     /// Those of the base surface's [`Surface::calculate_bounding_box`] and of
     /// [`Surface::base_calculate_bounding_box`] (an owned base reaches this offset's face
-    /// through its owner, so a face-owned B-spline-kind base's expanded box returns
-    /// `SmFace::GetTolerance`'s [`SolidError::Unported`], as upstream asks that face).
+    /// through its owner, so a face-owned B-spline-kind base's box is expanded by the
+    /// face tolerance passed down to it, [`Surface::owner_zone_tol_3d`], as upstream asks
+    /// that face; without it, `SmFace::GetTolerance`'s [`SolidError::Unported`]).
     pub fn calculate_bounding_box(
         &self,
         k: &Kernel,
@@ -1751,8 +1752,10 @@ impl OffsetSurface {
 
 /// Maximum wrapper depth accepted by offset construction and restoration.
 ///
-/// Bounds recursive domain queries, edits, cloning and destruction on wasm32.
-pub const MAX_SURFACE_NESTING: usize = 64;
+/// Bounds recursive domain queries, edits, cloning and destruction on wasm32. Equal
+/// to the database reader's bound
+/// ([`MAX_READ_NESTING`](crate::topology::database_io::MAX_READ_NESTING)).
+pub const MAX_SURFACE_NESTING: usize = 32;
 
 /// Walk wrappers in base-before-extension order, checking before recursive descent.
 fn check_surface_nesting(surface: &Surface, depth: usize, op: &'static str) -> Result<()> {
