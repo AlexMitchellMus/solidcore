@@ -664,6 +664,45 @@ fn gen_torus(rng: &mut Rng) -> TorusIn {
     }
 }
 
+/// A `TrimWithDomain` domain for the NURB domain `nd`: the whole domain, one sticking
+/// out of it, one direction trimmed, a thin strip, one within `SM_EFF_ZERO_PARAM` of
+/// the edge, or a sub-domain.
+fn gen_trim_domain(rng: &mut Rng, nd: Extent2d) -> Option<[f64; 4]> {
+    let (lo, hi) = (nd.min(), nd.max());
+    let (du, dv) = (hi.x - lo.x, hi.y - lo.y);
+    Some(match rng.below(8) {
+        0 => [lo.x, lo.y, hi.x, hi.y],
+        1 => {
+            let e = rng.uniform(1e-6, 0.3);
+            if rng.chance(0.5) {
+                [lo.x - e * du, lo.y, hi.x, hi.y]
+            } else {
+                [lo.x, lo.y, hi.x, hi.y + e * dv]
+            }
+        }
+        2 => {
+            let a = rng.uniform(0.0, 0.45);
+            let b = rng.uniform(0.55, 1.0);
+            if rng.chance(0.5) {
+                [lo.x + a * du, lo.y, lo.x + b * du, hi.y]
+            } else {
+                [lo.x, lo.y + a * dv, hi.x, lo.y + b * dv]
+            }
+        }
+        3 => {
+            let a = rng.uniform(0.0, 0.9);
+            let w = *rng.choose(&[1e-3, 1e-2, 0.05])?;
+            [lo.x + a * du, lo.y, lo.x + (a + w) * du, hi.y]
+        }
+        4 => [lo.x - 1e-13, lo.y, hi.x, hi.y - 0.25 * dv],
+        _ => {
+            let a = nd.evaluate(rng.uniform(0.0, 0.45), rng.uniform(0.0, 0.45));
+            let b = nd.evaluate(rng.uniform(0.55, 1.0), rng.uniform(0.55, 1.0));
+            [a.x, a.y, b.x, b.y]
+        }
+    })
+}
+
 fn gen_case(rng: &mut Rng) -> Option<Inputs> {
     let k = Kernel::default();
     let torus = gen_torus(rng);
@@ -687,7 +726,7 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
             _ => lo + rng.unit() * (hi - lo),
         }
     };
-    let op = match rng.below(14) {
+    let op = match rng.below(13) {
         0 => OpIn::Build {},
         1..=3 => OpIn::EvalStep {
             u: pick(rng, sd.min().x, sd.max().x),
@@ -769,48 +808,13 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
             }
             OpIn::Eq { other }
         }
-        12 => {
-            let (lo, hi) = (nd.min(), nd.max());
-            let (du, dv) = (hi.x - lo.x, hi.y - lo.y);
-            let dom = match rng.below(8) {
-                // the whole domain: no work
-                0 => [lo.x, lo.y, hi.x, hi.y],
-                // sticking out of the domain: SM_ERR_OUTSIDE_OF_DOMAIN
-                1 => {
-                    let e = rng.uniform(1e-6, 0.3);
-                    if rng.chance(0.5) {
-                        [lo.x - e * du, lo.y, hi.x, hi.y]
-                    } else {
-                        [lo.x, lo.y, hi.x, hi.y + e * dv]
-                    }
-                }
-                // one direction trimmed only
-                2 => {
-                    let a = rng.uniform(0.0, 0.45);
-                    let b = rng.uniform(0.55, 1.0);
-                    if rng.chance(0.5) {
-                        [lo.x + a * du, lo.y, lo.x + b * du, hi.y]
-                    } else {
-                        [lo.x, lo.y + a * dv, hi.x, lo.y + b * dv]
-                    }
-                }
-                // a thin strip
-                3 => {
-                    let a = rng.uniform(0.0, 0.9);
-                    let w = *rng.choose(&[1e-3, 1e-2, 0.05])?;
-                    [lo.x + a * du, lo.y, lo.x + (a + w) * du, hi.y]
-                }
-                // inside within SM_EFF_ZERO_PARAM of the domain
-                4 => [lo.x - 1e-13, lo.y, hi.x, hi.y - 0.25 * dv],
-                _ => {
-                    let a = nd.evaluate(rng.uniform(0.0, 0.45), rng.uniform(0.0, 0.45));
-                    let b = nd.evaluate(rng.uniform(0.55, 1.0), rng.uniform(0.55, 1.0));
-                    [a.x, a.y, b.x, b.y]
-                }
-            };
-            OpIn::TrimDomain { dom }
-        }
-        _ => OpIn::Copy {},
+        // (a sub-draw keeps the other ops' generated cases unchanged)
+        _ => match rng.below(4) {
+            0 => OpIn::Copy {},
+            _ => OpIn::TrimDomain {
+                dom: gen_trim_domain(rng, nd)?,
+            },
+        },
     };
     Some(Inputs { torus, op })
 }

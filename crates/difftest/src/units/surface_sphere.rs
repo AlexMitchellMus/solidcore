@@ -1197,7 +1197,7 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
         }
     };
     let r = sphere.radius.abs().max(0.5);
-    let op = match rng.below(25) {
+    let op = match rng.below(24) {
         0 => OpIn::Build {},
         1..=3 => OpIn::EvalStep {
             u: pick(rng, sd.min().x, sd.max().x),
@@ -1283,7 +1283,13 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
             }
             OpIn::Eq { other }
         }
-        13 => OpIn::Copy {},
+        // (a sub-draw keeps the other ops' generated cases unchanged)
+        13 => match rng.below(4) {
+            0 => OpIn::Copy {},
+            _ => OpIn::TrimDomain {
+                dom: gen_trim_domain(rng, nd)?,
+            },
+        },
         14 => OpIn::Closed {
             param: rng.below(3) as u8,
             dom: some_dom(rng, nd),
@@ -1459,9 +1465,6 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
                 args: gen_args(rng, nd, cnat),
             }
         }
-        23 => OpIn::TrimDomain {
-            dom: gen_trim_domain(rng, nd)?,
-        },
         _ => {
             let n = rng.below(3) as usize;
             let scale = *rng.choose(&[1.0, 1.0, 0.1, 10.0, 1000.0])?;
