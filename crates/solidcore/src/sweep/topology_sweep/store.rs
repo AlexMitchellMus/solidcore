@@ -246,7 +246,7 @@ impl SweepAccess for SweepStore<'_> {
                 key_of: &key,
             };
             body(k, e.model.get_mut(), &face, &mut env)
-        })
+        })?
     }
     fn with_breps_mut<T>(
         &mut self,
@@ -289,7 +289,7 @@ impl SweepAccess for SweepStore<'_> {
                 key_of: &key,
             };
             body(k, src.model.get_mut(), dst.model.get_mut(), &face, &mut env)
-        })
+        })?
     }
     fn with_brep_notifications<T>(
         &mut self,
