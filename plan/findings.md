@@ -15190,3 +15190,8 @@ blockers of the seam cases (generic-surface `SmCrvOnSurf`: open PR #307). Left u
 `topology::trimming_tools::face_has_seam_problem` (its `SeamObject` handles name loops and
 vertices only, and its `SplitAtSeam` geometry resolves no curve; no difftest case
 reaches it).
+- **Follow-up merge through `339740fe`.** #446, #477, #484 and #486 landed during the
+  run. They touch six kernel files (`blend::fillet_executive::p3`, `heal::face_props`,
+  `topology::brep::p1`, `topology::face::p1`/`p4`) with no new self-call, call cycle
+  or nested-geometry install; fmt, clippy, 1832 solidcore tests, 39 difftest tests
+  and the wasm check pass.
