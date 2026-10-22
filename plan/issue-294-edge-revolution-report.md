@@ -1,74 +1,52 @@
-# Issue #294: private edge revolution transport, Phases 0–1
+# Issue #294: exact private edge revolution transport
 
-The isolated integration base is `c4241a48` (main `7b57d8de`, PR #356
-`b338b918`, PR #304 `f7ba5d5e`). Both dependency histories and authorship are
-preserved by merges. #356 is unchanged. Ownership was refreshed on 2026-10-21
-at 07:51 UTC: all 86 open PR file lists, relevant PR discussions and the #76/#294
-issue discussions were checked. No private edge transport implementation was
-claimed in that inventory. #313's refreshed head was `6d59d6fa`; its shared
-dispatch ownership, the analytic variant follow-ups and #136's DropCurve work
-remain separate. Only #304 and #356 were needed for this integration.
+The private edge adapter now preserves actual `SmSurfOfRevolution` face surfaces
+through the shared lossless exporter and reader already on main. This restores
+72 genuine comparisons covering both seam forms, topology, tangency, blend and
+radial operations, including rebuilt UV trims. The unit remains **partial**.
 
-The baseline report and both runner outputs were captured before the adapter
-change. A diagnostic copy of the unchanged edge importer retained native type
-codes before flattening, resolved the selected edge and enumerated its incident
-faces. The 186-case import manifest, six separate DropCurve cases, full before
-and after outputs, comparison script and logs are retained locally under
-`bin/edge-coverage/`.
+## Implementation and scope
 
-## Implementation
+The shim emits the shared exact database-record head only for native type
+`15020`, followed by its regular B-spline block. The importer uses
+`read_exact_surface` and `check_exact_base` and requires the independently
+exported base to match bit for bit. Native non-mutation checks, record round trip,
+analytic domain, generator, polar curve and out-of-bounds flags are preserved.
+Face ownership/tolerance metadata and fixture inputs retain their existing layout.
+A malformed, truncated, trailing, nested or mismatched record is a harness error.
+The reader does not recurse into another head in place of the regular block.
 
-The private edge shim calls #304's `sc_analytic_export::put_exact_head` before
-the regular B-spline block. The private importer uses `read_exact_surface` and
-`check_exact_base`, without changing either shared helper. The native helper's
-NURB-presence/non-mutation checks, native binary record round trip and polar
-curve checks are retained. Analytic domains, generator, polar curve and the
-surface/generator out-of-bounds flags travel through the existing format. The
-reconstructed base must match the independent regular block bitwise. Existing
-face ownership/tolerance metadata and fixture input layouts are preserved.
+The private shim deliberately limits the shared helper to actual revolution
+surfaces. Sphere, torus, cone and extrusion transport remain outside this change;
+the `torus.smb` cases below contain native revolution surfaces, not `SmTorus`.
+No shared helper, Surface dispatch or kernel numerical implementation changes.
+Phase 1 commit `6da1a55b` and its dependency authorship are retained through merges.
 
-A second transport head where the regular block belongs is rejected without
-recursive parsing. Native regressions cover the 72 revolution operations and
-damaged bytes, truncated/trailing records, mismatched/missing bases and nested
-heads, alongside the existing exact line/B-spline/plane/same-B-rep controls.
+## Fresh native results
 
-## Default differential results
-
-| Measurement | Integrated baseline | Private adapter |
+| Measurement | Current-main baseline `7c74a05f6` | Private adapter |
 | --- | ---: | ---: |
 | Cases | 1787 | 1787 |
 | Passes with compared values | 1595 | 1667 |
-| Empty passes / both errored | 0 | 0 |
-| Import deferrals | 186 | 114 |
-| DropCurve deferrals | 6 | 6 |
-| Failures / rejections | 0 | 0 |
+| Deferrals | 192 | 120 |
+| Failures / empty passes | 0 / 0 | 0 / 0 |
 | Maximum relative error | 0 | 0 |
 
-All 72 revolution cases now execute both operations and compare 120 output
-values. Every one was formerly C++ `inexact_geometry` with empty outputs and a
-Rust `topology.edge` import deferral; neither operation executed at baseline.
-Every one now passes with nonempty outputs, no operation error or deferral, and
-zero relative error. The other **1715 case records and both runner outputs are
-unchanged**, including all 1595 former passes. Relative tolerance remains
-`1e-9`; the absolute-floor list remains empty.
 
-These operations return predicates, traversal indices and statuses. In particular,
-the topological result is false and its distance remains the upstream `1e20`
-sentinel; no newly computed nonzero geometric distance is claimed. Blend returns
-the null edge-use index `-1`. The table below records the actual `state` arrays
-from both engines, including these outcomes.
+All 72 restored cases compare 120 values with zero relative error. Their outputs
+are flags, traversal indices and statuses. Topological distance remains the
+native `1e20` sentinel; this does not claim new nonzero distance coverage. Blend
+returns the null edge-use index `-1`. Relative tolerance remains `1e-9`, with no
+edge absolute floors.
 
-Existing controls still compare 4 values (`line_join_fw_tangent_start`), 18
-(`line_join_fw_trimmed`), 18 (`net_trimmed_e0`), 1
-(`plane_square_e0_tangent`) and 50 (`Mouse_e0_query`).
-
-## Per-case before/after evidence
-
-For **each** row, before = C++ refusal / Rust import deferral; after = genuine
-pass with the identical C++ and Rust `state` arrays shown. `_seam` and `_seam_f`
-are the two seam forms; `_rb_` uses rebuilt UV trim curves. The native selected
-edge curves are B-splines (`14033`), and their incident face is an exact
-`SmSurfOfRevolution` (`15020`), including the `torus.smb` fixtures.
+The per-case vectors below were measured on Phase 1 source `6da1a55b` and
+retained in the separately validated integration `d427cb2b5`. For every row,
+before is a C++ `inexact_geometry` refusal and a Rust
+`topology.edge` import deferral, with zero compared values. After is a genuine
+pass with identical C++ and Rust state arrays, no operation error or rejection,
+and no deferral. `_seam` and `_seam_f` exercise both seam forms; `_rb_` rebuilds
+UV trim curves. Native edge curves are B-splines (`14033`), and incident faces are
+exact `SmSurfOfRevolution` (`15020`).
 
 | Case | After C++ state = Rust state | Values compared |
 | --- | --- | ---: |
@@ -145,52 +123,86 @@ edge curves are B-splines (`14033`), and their incident face is an exact
 | `surf_rev_rb_e0_blend` | `[-1.0]` | 1 |
 | `surf_rev_rb_e0_radial` | `[0.0, 0.0, -1.0]` | 3 |
 
-## Remaining deferrals and ownership
+## Controls and remaining dependencies
 
-The 114 remaining import deferrals are unchanged: 42 cone cases (`cone.smb`
-and six `box_with_large_fillet.smb` cases), 36 sphere cases (`sphere.smb`), and
-36 extrusion cases (`Mouse.smb`). Their original unsupported incident-face
-types are `15012`, `15014` and `15030` respectively. The existing native refusal
-and Rust import deferral remain in effect; no B-spline stand-in is newly accepted.
+Exact controls retain 4 values (`line_join_fw_tangent_start`), 18
+(`line_join_fw_trimmed`), 18 (`net_trimmed_e0`), 1
+(`plane_square_e0_tangent`) and 50 (`Mouse_e0_query`). The native regression also
+checks imported concrete kinds and face owners, unsupported import deferrals,
+and damaged records.
 
-The six unchanged `intersect.surface_drop_lib_p3` deferrals are
-`Endcap_e0_uv_of_surface`, `Endcap_e2_uv_of_surface`,
-`Endcap_e5_uv_of_surface`, `Endcap_e9_uv_of_surface`,
-`Endcap_e11_uv_of_surface`, and `Endcap_rb_e0_uv_of_surface`.
+The remaining 120 deferrals comprise 42 cone, 36 sphere and 36 extrusion import
+gaps plus six DropCurve calls. DropCurve is owned by the active continuation
+[#463](https://github.com/tangency-labs/solidcore/pull/463), which supersedes closed
+[#136](https://github.com/tangency-labs/solidcore/pull/136). Concrete-surface
+CrvOnSurf remains with [#307](https://github.com/tangency-labs/solidcore/pull/307).
+The owner-tolerance work from #301 and shared exact-export work from #304/#436
+are already on the pinned main. This PR adds no competing dependency work.
 
-No shared dispatch change or new numerical port was needed by these 72 cases.
-The unit remains **partial** with 120 deferrals. Sphere/extrusion variants,
-cone integration and DropCurve remain outside this bounded slice.
+## Separate six-case DropCurve integration evidence
 
-## Validation
+An earlier bounded local integration combined main `215f690e`, the Phase 1 adapter
+and #136 owner continuation `4190d481`, preserving merge authorship. Its tested
+source is `d427cb2b5`. These measurements describe that separate source, not the
+current PR or the current head of #463.
 
-The first C++ Clippy run exited 101 on `manual_let_else` in the new test helper.
-That test-only destructuring was corrected; no lint was suppressed. The native
-test build was deliberately interrupted (exit 143) to restart with that fix. The initial
-lint failure and interrupted-build logs are retained separately from final checks.
+That integration changed exactly six of 1787 records: value passes increased from
+1667 to 1673 and deferrals fell from 120 to 114, with zero failures, rejections,
+both-error passes or empty passes and maximum relative error zero. The other
+1781 records and both raw outputs were unchanged; all 72 revolution cases and
+existing exact controls were retained.
 
-All final checks exited **0**:
+| Case | Before C++ / Rust | After C++ = Rust | Compared values before / after |
+| --- | --- | --- | ---: |
+| `Endcap_e0_uv_of_surface` | `[1.0,0.0]` / `{}` | `[1.0,0.0]` | 0 / 2 |
+| `Endcap_e2_uv_of_surface` | `[1.0,0.0]` / `{}` | `[1.0,0.0]` | 0 / 2 |
+| `Endcap_e5_uv_of_surface` | `[1.0,0.0]` / `{}` | `[1.0,0.0]` | 0 / 2 |
+| `Endcap_e9_uv_of_surface` | `[1.0,0.0]` / `{}` | `[1.0,0.0]` | 0 / 2 |
+| `Endcap_e11_uv_of_surface` | `[1.0,0.0]` / `{}` | `[1.0,0.0]` | 0 / 2 |
+| `Endcap_rb_e0_uv_of_surface` | `[1.0,0.0]` / `{}` | `[1.0,0.0]` | 0 / 2 |
 
-| Check | Final result |
-| --- | --- |
-| `cargo fmt --all --check` | Pass, including rerun after the test fix |
-| `cargo clippy --workspace --all-targets -- -D warnings` | Pass |
-| Same Clippy gate with `--features difftest/cpp` | Pass after the test-only fix |
-| Native `topology_edge::tests`, difftest profile, C++ enabled, one test thread | 1 passed; covers all 72 cases, exact controls and damaged records |
-| `cargo test -p solidcore` | 1551 passed; zero failed or ignored |
-| `cargo check -p solidcore --target wasm32-unknown-unknown` | Pass |
-| Default edge differential on the final source tree, 16 seeds | 1667 passes with values, 120 deferred, zero failures or empty passes |
-| Edge `--perturb` | 1667 perturbed, 1667 detected, zero unperturbed, 120 deferred |
-| Edge `--fuzz 2000` | 107 rejected, 235 malformed, 1658 ran, zero differences, crashes, panics or timeouts |
-| Full compiled differential runner, `--green --jobs 4` | 236 units: 116 green, 120 partial, zero failed |
+Each before deferral names `intersect.surface_drop_lib_p3: SmSurface::DropCurve`.
+Both operation error fields are absent before and after; all after comparisons
+have relative error zero, no rejection and no deferral. The two standard values
+record UV-curve presence and owning edge-use traversal index. All six names
+resolve to one actual edge/face pair; the rebuilt case requests a separate export.
+They are not six distinct geometric edges.
 
-The final default report was regenerated after the test fix and agrees with the
-measured after report. No numerical disagreement or operation failure was exposed
-in the 72-case slice. Fuzz differences and all abnormal outcomes were counted
-separately rather than treated as passes.
+An additional observational audit exported the resulting cubic 2D UV B-spline
+through the existing serializers: all 795 scalar values per case were
+bit-identical, comprising six header fields, 157 weighted control-point records
+and 161 knots. These are separate observations, not extra standard-runner
+comparison counts or permanent regression assertions.
 
-Build jobs were limited to two and differential workers to four; Cargo/C++
-commands ran under `nice -n 10`. Existing native reference libraries were reused.
-Only the edge report was regenerated in the versioned report directory; the full
-gate summary and raw validation logs remain local under `bin/edge-coverage/`.
-No tolerance or guard was relaxed, and nothing was published or pushed.
+Concrete B-spline faces, raw knot vectors and owner
+`ObjectRef(16002,ObjectKey(1))` were retained. Native export, Rust import and
+ordinary-copy knot bits matched, including the interior U knot
+`0.418782349525896` and V knot `0.5020448001044`. Face tolerance remained `1e-5`.
+UV-trim creation increased edge tolerance from `0.0040511335586128185` to
+`0.007557289128801149` identically in both engines; that was the only changed
+Rust edge field. No default tolerance or approximate geometry was substituted.
+The temporary surface copy intentionally clears its owner as upstream does;
+the arena face owner and geometry remain intact. Neither #307 nor #301 was a
+missing dependency on these six paths.
+
+On that separate source, native validation passed both strict workspace Clippy
+gates, formatting, 1625 kernel tests, wasm, the native edge regression, 239-unit
+default and sensitivity gates (120 green, 119 partial, zero failed), edge and
+DropCurve perturbations, and 2000-input fuzz runs for each. DropCurve itself had
+1529 cases, 1310 value passes, 219 CrvOnSurf deferrals and zero failures/empty
+passes. Its sensitivity detected 1310/1310 perturbations. The previously reported
+`probe_map_plane` ownership error did not reproduce: both engines agreed on
+14 integer values and returned no error. This evidence is available for #463's
+integration review; its head still requires its own validation.
+
+## Validation of this PR
+
+The native default edge comparison on source `0471572f6` passed with the
+counts above. Formatting and strict default workspace/all-target Clippy passed.
+The remaining checks are pending; the PR stays draft until verification is complete.
+
+
+Both raw runner outputs and default reports are retained locally, joined by
+unique case name. The per-case captures and the final post-gate report are retained as validation evidence.
+Reports are CI artifacts under the current repository layout and are not
+versioned.
