@@ -138,6 +138,8 @@ fn evaluate_geometric_at(k: &Kernel, surface: &Surface, uv: Point2) -> Result<Ge
         SurfaceKind::CurveBounded(s) => s.evaluate_geometric(k, uv, Side::Left, Side::Left),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::Plane(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -161,6 +163,8 @@ fn evaluate_normal_section(
         }
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::Plane(_)
         | SurfaceKind::SurfOfRevolution(_)

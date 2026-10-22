@@ -10686,6 +10686,7 @@ tested with the B-spline versions. Not hit by a compared case yet.
   (for `query::face::p2::point_classify`); wiring those two means lending the B-rep
   mutably down their call chains. Their cases would still defer inside it today.
 
+
 ## blend.fillet_intersector (PR #179)
 
 - **FlushCurve with two or more points cannot run standalone in C++.** Past the span
@@ -11301,6 +11302,36 @@ listed mutation, sharing, opaque-adapter and reader coverage limits still apply.
 ## harness: analytic face/edge geometry in the shared B-rep export (cross-unit coverage gap)
 
 Raised by oursland's review of #145. The B-rep graph export of `harness/cpp/shim/sc_edgeuse_graph.h` (shared by topology.edgeuse_p1/p2, topology.vertexuse, topology.brep_p1 and every runner that imports through them, e.g. heal.stitch_p1) carries `SmBSplineSurface`/`SmPlane` faces and `SmBSplineCurve`/`SmLine` edges exactly. `SmCone`, `SmCylinder`, `SmSphere`, `SmTorus`, `SmSurfOfExtrusion`, `SmSurfOfRevolution` faces and `SmEllipse`/`SmCircle`/other analytic edges arrive as their B-spline part, so the Rust side would evaluate different geometry. Runners therefore defer every op that evaluates such geometry under `harness:analytic-geometry-export` (topology.brep_p1: 217 of 2343 cases; heal.stitch_p1: 12). Those analytic branches are never compared (AGENTS.md §4 step 5 item 5). Closing it needs the export to carry the analytic kinds (type code + defining data) and the importers to rebuild them; it is a harness task, not a unit's, and every topology unit that exports faces inherits it until then.
+
+**Update (exact `SmSurfOfRevolution` export, 2026-10-20).** Both shared graph exports
+(`sc_edgeuse_graph.h`, `sc_topology_fixture.h`) now put an exact head before a face surface
+that is an `SmSurfOfRevolution` itself (`harness/cpp/shim/sc_analytic_export.h`):
+`2 type version surf_oob gen_oob nbytes bytes`, the surface's binary `WriteToDB` record
+(generator, polar converter with its circle, placement, analytic domain, swap flag, NURB),
+then the regular block. The shim sends it only when it is lossless for the C++ object (NURBs
+present so the write mutates nothing; a C++ `ReadFromDB` of the bytes writes back the same
+bytes; the polar curve and its out-of-bounds flag survive). The importers
+(`topology_edgeuse_p1::read_face_surface`, `topology_vertexuse::read_face_surface`) rebuild
+it with the ported `SurfOfRevolution::read_from_db`, set the two out-of-bounds flags the
+record lacks, and check that its B-spline part is bit for bit the regular block. Every
+newly compared case passes bit for bit (`--green`: 0 failed; e.g. `topology.brep_p1` 92
+revolution deferrals -> 56 pass, 36 defer on real stubs; `topology.edgeuse_p1` +200,
+`topology.edgeuse_p3` +332, `topology.loopuse` +87, `blend.fillet_standard_solver_p1` +6
+passes). With the parallel owner-zone-tolerance `SmFace::GetTolerance` PR on top, the `surf_rev` / `vase_rev` /
+`torus` / `toruswvy` `edge_edge_blend` cases (flag != 0) match at 0, including the two that
+differed by up to 7.3e-4 through `DropPointFast`. Still flattened (no `SurfaceKind`, the
+dispatch gap of `Surface::read_from_db`): `SmSurfOfExtrusion`, `SmCone`, `SmCylinder`,
+`SmSphere`, `SmTorus`, and analytic edge curves. A non-local `FaceuseOffset` of a revolution
+face is still not run by the `offset.offset_geometry_creation` shim (HANG-26). That runner
+also reads its own appended `WriteToDB` records (main's #156 follow-up ed40f92c, which landed
+the same HANG-26 keying independently), so its counts are unchanged by this export; the two
+imports of a revolution face agree.
+`topology.face_p4` (landed on main after this export was written) builds seam curves on face
+surfaces: with revolution faces exact, 32 `seam` cases (torus / toruswvy) reach
+`Surface::create_seam_curve` on an `SmSurfOfRevolution`, which returned `InvalidInput` (the
+ported `CrvOnSurf` holds only a B-spline surface) while the C++ builds the curve. It now
+returns `Unported(curve.crv_on_surf)` with the same DISPATCH GAP marker as
+`surface::surface::p11`, so those cases defer (face_p4 3957 pass unchanged, 0 failed).
 
 ## boolean.topology_intersector_p1: B-rep cache of the difftest adapter (exposed by topology.brep_p1)
 
@@ -14309,6 +14340,33 @@ Exact controls still compare 4 values (`line_join_fw_tangent_start`), 18
 same imported B-rep as the deferred operations: the guard still applies per
 operation, not to the whole B-rep.
 
+## SurfaceKind::Sphere / Torus (#76 follow-up to #313, 2026-10-21)
+
+- `SmSphere` and `SmTorus` are `SurfaceKind` variants; `Surface::read_from_db` and the
+  B-spline recogniser chain return them, and the shared graph exports
+  (`sc_analytic_export.h`, from #304) carry sphere and torus face surfaces as their
+  WriteToDB record, so the importers rebuild real spheres/tori.
+- Still named dispatch gaps (`surface.surface_p2` unless noted): sphere/torus
+  `TrimWithDomain` (the inherited `SmSurfOfRevolution` body calls the derived class's
+  `ConvertUVFromNURBSToSTEP`, `MakeNurb`, `Reparameterize`; 24 `topology.face_p1` cases
+  that passed on the flattened B-spline now defer here), torus `IntersectWithPlane` and the
+  inherited `GlobalSurfaceIntersect` special cases with a torus `this` (virtual iso curves
+  and conversions), non-planar torus `STEPInversion`, sphere/torus iso storage
+  (`surface.surface_p9`) and `SmCrvOnSurf` seams (`curve.crv_on_surf`).
+- `DropPointFast` of spheres and tori runs `SurfOfRevolution::drop_point_fast_using`
+  with the derived class's `EvaluateSTEPPoint` / `LocalPointSolve`.
+- `topology.vertexuse` +151 deferrals on `SmFace::GetTolerance` (`topology.face_p2`):
+  exact sphere/torus faces now reach the face tolerance, as #304's revolution faces did.
+- `plane::p2::global_surface_intersect`'s `Cone` arm (from #313) calls the cone's
+  `SmSurfOfRevolution::IntersectWithPlane`, while upstream calls
+  `SmCone::IntersectWithPlane` (a different, conic-section body): confirmed by
+  difftest (2 failures with real cones) and fixed separately in #440.
+- `SurfOfRevolution::is_nurb_surface_surf_of_revolution` returns `None` for a cone,
+  sphere or torus; upstream's `IsKindOf(SmSurfOfRevolution_TYPE)` copies them.
+- `topology.vertex` has its own fixture export (`support/topology_fixture.h`), which does
+  not use `sc_analytic_export.h`: its 104 sphere and torus deferrals remain.
+- Query face boxes (`query.face` p1/p3) of cones, spheres and tori now take the
+  `SmBSplineSurface::CalculateBoundingBox` path (face-tolerance expansion), as upstream.
 ## topology.brep_p6: the `MakeFaceTopology` remainder (2026-10-21, no disagreements)
 
 - **What was ported.** `SmBrep.cpp:14141-14828` in full. That covers the face and face
@@ -14550,3 +14608,89 @@ checks are Rust regressions. Complete construction, HCR, merge and nonempty
 stitching still have their documented dependencies; merge p3/p4 remain paired
 with the missing p2 merge constructor. Final native/CI evidence is recorded on
 the tested PR head; no tolerance or absolute floor is relaxed.
+
+
+## blend.fillet_solver_p3 (`SmFilletSolver.cpp` part 3: `StepSolve`, `SplitAndTrimFilletSurface`, `ProcessFullRollOver`, ...; PR #236, 2026-10-18; partial, no disagreements)
+
+Built on the open dependency PRs #147 (`blend.fillet_geom_p1`, head `b396cdd3`) and #192
+(`blend.fillet_solver_p1`, head `a88c62af`), merged into the branch; #192 carries its own
+reconciliation with main's `surface.offset_surface`. With both, the affected difftests have
+0 failures (`fillet_solver_p1` 303 passed / 40 deferred, `fillet_geom_p1` 446/21,
+`fillet_custom_solver` 401/47).
+
+- **`StepSolve` difftest.** Every library solver belongs to an unported unit, so the shim
+  derives a deterministic `SmFilletSolver` (the offset/offset intersection as
+  `LoadJacobian`, a configurable `GetSolverType`, `SetupOffsetValues` from a radius, an
+  optional extra unknown, a failing `LoadInitialValues`), mirrored by the runner. Cases step
+  along floor/wall fillets (20 to 160 degrees, scales `1e-3`..`1e3`, flat and bumped
+  B-splines) inside the domains, across boundaries (iso-curve intersection, clipped radius
+  solve of a constant-distance solver), from boundaries, with zero/tiny/reversed steps,
+  extended domains and offsets on the wrong side. The constant-radius-assisted clipped
+  branch defers at `PointOnPlaneSolve` (`blend.fillet_solver_p2`). The variable-radius
+  branch casts to `SmVariableRadiusFS`: the FFI guard rejects that solver type and the
+  Rust side returns `Unported(blend.fillet_standard_solver_p1)`.
+- **New virtuals.** `FilletSolverOps` gains `solver_type` (`GetSolverType`, pure virtual
+  upstream; default `SM_FS_UNKNOWN`, the custom solvers' `SmConstantRadiusAssistedFS`
+  override is `Unported(blend.fillet_standard_solver_p1)`) and `constant_distance` (the
+  `SmConstantDistanceFS::GetDistance` read of `SmFindClippedRadiusEFO`, default `Unported`).
+  `FilletBrep::set_vertex_point` (`SmVertex::SetPoint` on a fillet vertex) is public.
+- **Kernel-tested only.** `GetOtherFilletCorner` (needs `GetFilletCorner`, p2),
+  `sm_FindFilletTsectPnt` (defers at `PointOnPlaneSolve` after both drops),
+  `SplitAndTrimFilletSurface` (no-overlap deletion compares; an overlap reaches
+  `SplitFilletGeom`, whose geometry calls are p1 stubs), `sm_RefineRailCurveClassification`
+  and `sm_CalcRailXEdge` (defer at `RailEdgeuseIntersect`, p2) and `ProcessFullRollOver`
+  (defers at `sm_SplitRail`'s fillet geometry calls, then `CreateCliffRollOverSideFG`, p2,
+  and `TrimCliffRails`, `blend.fillet_geom_p5`; `MakeFilletEdge` is wired to #264's
+  `FilletBrep::make_fillet_edge`). A native fixture for them needs the
+  executive's pseudo B-rep and real fillet geometries; once p2 lands they should get
+  difftest cases. Upstream index defects found while porting: UB-248, UB-249.
+- **For #208 (`blend.fillet_solver_p5`).** Its `ProcessRollOver` calls
+  `is_convex_radial_sector(.., 10, true, 0.0)`; upstream calls `IsConvexRadialSector(10)`,
+  whose `bOptStepOff` defaults to `FALSE` (`SmEdgeuse.h:356`, `SmFilletSolver.cpp:7260`).
+- **`blend.fillet_geom_p5` back-edges (after #264 merged, 2026-10-21).**
+  `ProcessFullRollOver`'s `SmFilletEdge::MakeFilletEdge` calls #264's
+  `FilletBrep::make_fillet_edge` (start `pEndVert`, end `pNewV`, no corner), and the
+  `SetFilletEdgeType(SM_FE_ON_EXTEND_EDGE)` after it, unreachable behind the stub before,
+  is ported. `SmFilletGeom::TrimCliffRails` stays a justified stub:
+  `FilletBrep::trim_cliff_rails` finds the geometry's solver by its `FilletSolverId` in a
+  solver table (`&[FilletSolver]`), while `ProcessFullRollOver` holds only `this` solver
+  (`&mut self`); a one-entry table would answer for id 0 only. Wiring it needs the
+  solver table, or the solver itself, passed to `trim_cliff_rails` (the same handle
+  question as #192's `FilletGeomRef` / `FilletBrep` id note); no compared path reaches it
+  (`ProcessFullRollOver` defers earlier at `CreateCliffRollOverSideFG`, p2).
+- **Solver dispatch (#236 review round 4, 2026-10-20).** The constant-radius solver's
+  `FilletSolverOps` overrides (`GetJacobianSize`, `SetupOffsetValues`,
+  `OffsetRadiiCanChange`, `LoadJacobian`, `GetType`, `GetSolverType`) call
+  `blend.fillet_standard_solver_p1` (#168); they answer for `SmConstantRadiusFS`, the
+  class the intersector shim builds (one Rust type stands for both it and
+  `SmConstantRadiusAssistedFS`), so `GetSolverType` is `SM_FS_CONST_RADIUS` and
+  `GetType` `SmConstantRadiusFS_TYPE`. `PointOnPlaneSolve` is a `FilletSolverOps` hook
+  (virtual upstream, overridden by `SmConstantRadiusAssistedFS` in
+  `blend.fillet_standard_solver_p2`); its default is the base's stub
+  (`blend.fillet_solver_p2`). Two stubs stay, justified: `StepSolve`'s variable-radius
+  cast (`SmVariableRadiusFS::GetOriginalCurve`) and `SmFindClippedRadiusEFO`'s
+  `SmConstantDistanceFS::GetDistance` name `blend.fillet_standard_solver_p1`, which
+  ports `CurveBasedFs::original_curve` and `ConstantDistanceFs::distance`, but neither
+  solver implements `FilletSolverOps` yet, so no `StepSolve` call reaches them. Wiring
+  them needs those solvers on the trait (with `original_curve` and `constant_distance`
+  overrides) and, for the variable-radius branch, the rest of it after the cast (the
+  radius law, `blend.fillet_executive_p1`).
+- **`allow_ext` results are not bit-identical (owner: `surface.offset_surface`; found by
+  the #236 review, 2026-10-19).** With `allow_ext = false` every `StepSolve` case agrees
+  bit for bit; with `allow_ext = true` the committed generated cases differ by up to
+  `2e-15` relative (inside the gate), and degenerate inputs on bumped degree-2/3 floor/wall
+  patches stepping into the extended domain exceed it: in a local 160-input probe (40
+  bumped patch pairs, each as is, with radius `1e-12`, radius `0`, and coincident surfaces
+  `s1 = s0` with solver type 6), 69 fail with `allow_ext = true` (radius `1e-12`: 22, up to
+  `2.4e-4`; radius `0`: 17, up to `1.26` on a value near `1e-17` on both sides, round-off;
+  coincident: 30, up to `6.4e-3`) and all 160 agree bit for bit with `allow_ext = false`.
+  The difference is in the extension the offset surface evaluates through
+  (`OffsetSurface::select_surface` -> `extend_surface`, `surface/offset_surface.rs`), not in
+  `StepSolve`, which only steps into the extended domain. Reproducer (a `fixtures/blend.fillet_solver_p3/`
+  file; `values.flat[5]`, the next point's `uv0.x`: cpp `-4.9125900745644524e-1`, rust
+  `-4.912594392781986e-1`, rel `8.8e-7`):
+  ```json
+  {"cases":[{"name":"allow_ext_coincident_t6","inputs":{"op":"step","ty":6,"tol":1e-06,"radius":0.24711325320699934,"orient":[1.0,1.0],"distance":0.3971157594662729,"extra":false,"init_fail":false,"allow_ext":true,"s0":{"bspline":{"oob":false,"form":0,"net":[[[0.0,0.0,0.0,-1.7976931348623157e+308],[0.0,0.3333333333333333,0.0,-1.7976931348623157e+308],[0.0,1.0,0.0,-1.7976931348623157e+308],[0.0,1.6666666666666665,0.0,-1.7976931348623157e+308],[0.0,2.0,0.0,-1.7976931348623157e+308]],[[0.3333333333333333,0.0,0.0,-1.7976931348623157e+308],[0.3333333333333333,0.3333333333333333,-0.00386486079810279,-1.7976931348623157e+308],[0.3333333333333333,1.0,-0.0496387620540373,-1.7976931348623157e+308],[0.3333333333333333,1.6666666666666665,-0.042903240427989445,-1.7976931348623157e+308],[0.3333333333333333,2.0,0.0,-1.7976931348623157e+308]],[[1.0,0.0,0.0,-1.7976931348623157e+308],[1.0,0.3333333333333333,0.006920316939206098,-1.7976931348623157e+308],[1.0,1.0,0.04497275994504303,-1.7976931348623157e+308],[1.0,1.6666666666666665,-0.005616450429799948,-1.7976931348623157e+308],[1.0,2.0,0.0,-1.7976931348623157e+308]],[[1.6666666666666665,0.0,0.0,-1.7976931348623157e+308],[1.6666666666666665,0.3333333333333333,-0.03901164828741922,-1.7976931348623157e+308],[1.6666666666666665,1.0,0.052278298644664226,-1.7976931348623157e+308],[1.6666666666666665,1.6666666666666665,-0.04916828327950224,-1.7976931348623157e+308],[1.6666666666666665,2.0,0.0,-1.7976931348623157e+308]],[[2.0,0.0,0.0,-1.7976931348623157e+308],[2.0,0.3333333333333333,0.0,-1.7976931348623157e+308],[2.0,1.0,0.0,-1.7976931348623157e+308],[2.0,1.6666666666666665,0.0,-1.7976931348623157e+308],[2.0,2.0,0.0,-1.7976931348623157e+308]]],"p":2,"q":2,"u":[0.0,0.0,0.0,0.3333333333333333,0.6666666666666666,1.0,1.0,1.0],"v":[0.0,0.0,0.0,0.3333333333333333,0.6666666666666666,1.0,1.0,1.0]}},"s1":{"bspline":{"oob":false,"form":0,"net":[[[0.0,0.0,0.0,-1.7976931348623157e+308],[0.0,0.3333333333333333,0.0,-1.7976931348623157e+308],[0.0,1.0,0.0,-1.7976931348623157e+308],[0.0,1.6666666666666665,0.0,-1.7976931348623157e+308],[0.0,2.0,0.0,-1.7976931348623157e+308]],[[0.3333333333333333,0.0,0.0,-1.7976931348623157e+308],[0.3333333333333333,0.3333333333333333,-0.00386486079810279,-1.7976931348623157e+308],[0.3333333333333333,1.0,-0.0496387620540373,-1.7976931348623157e+308],[0.3333333333333333,1.6666666666666665,-0.042903240427989445,-1.7976931348623157e+308],[0.3333333333333333,2.0,0.0,-1.7976931348623157e+308]],[[1.0,0.0,0.0,-1.7976931348623157e+308],[1.0,0.3333333333333333,0.006920316939206098,-1.7976931348623157e+308],[1.0,1.0,0.04497275994504303,-1.7976931348623157e+308],[1.0,1.6666666666666665,-0.005616450429799948,-1.7976931348623157e+308],[1.0,2.0,0.0,-1.7976931348623157e+308]],[[1.6666666666666665,0.0,0.0,-1.7976931348623157e+308],[1.6666666666666665,0.3333333333333333,-0.03901164828741922,-1.7976931348623157e+308],[1.6666666666666665,1.0,0.052278298644664226,-1.7976931348623157e+308],[1.6666666666666665,1.6666666666666665,-0.04916828327950224,-1.7976931348623157e+308],[1.6666666666666665,2.0,0.0,-1.7976931348623157e+308]],[[2.0,0.0,0.0,-1.7976931348623157e+308],[2.0,0.3333333333333333,0.0,-1.7976931348623157e+308],[2.0,1.0,0.0,-1.7976931348623157e+308],[2.0,1.6666666666666665,0.0,-1.7976931348623157e+308],[2.0,2.0,0.0,-1.7976931348623157e+308]]],"p":2,"q":2,"u":[0.0,0.0,0.0,0.3333333333333333,0.6666666666666666,1.0,1.0,1.0],"v":[0.0,0.0,0.0,0.3333333333333333,0.6666666666666666,1.0,1.0,1.0]}},"uv0":[0.16677358603977566,0.7353018686739239],"uv1":[0.7353018686739239,0.16677358603977568],"duv0":[0.0,0.5],"duv1":[0.5,0.0],"crv_pos":[0.3335471720795513,1.4706037373478478,0.24711325320699934],"crv_deriv":[0.0,1.0,0.0],"step":1.1314549619233154,"dom1":[-0.5,-0.5,1.5,1.5],"dom2":[-0.5,-0.5,1.5,1.5],"next_uv0":[0.0,0.0],"next_uv1":[0.0,0.0],"next_ud":[0.0,0.0,0.0,0.0]}}]}
+  ```
+  Not committed as a fixture (it fails the unit); tracking it down is a follow-up in
+  `surface.offset_surface`.
