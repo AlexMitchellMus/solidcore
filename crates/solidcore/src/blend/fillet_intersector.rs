@@ -256,8 +256,8 @@ pub trait FilletSolverOps {
     /// # Errors
     ///
     /// The solver's failure. A virtual: each implementer dispatches it on its own
-    /// class (the base `SmFilletSolver::PointOnPlaneSolve` belongs to unit
-    /// `blend.fillet_solver_p2`).
+    /// class (the base `SmFilletSolver::PointOnPlaneSolve` is
+    /// [`crate::blend::fillet_solver::p1::FilletSolver::point_on_plane_solve`]).
     #[allow(clippy::too_many_arguments)]
     fn point_on_plane_solve(
         &mut self,
