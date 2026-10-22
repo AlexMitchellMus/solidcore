@@ -88,7 +88,7 @@ use std::borrow::Cow;
 
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_custom_solver::ConstantRadiusAssistedFs;
-use crate::blend::fillet_solver::p1::{FilletSolver, FilletSurfaceGeneratorType};
+use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, FilletSurfaceGeneratorType};
 use crate::curve::curve::p3::PointSolveOptions;
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{EntityRef, Result, SolidError};
@@ -565,7 +565,6 @@ fn rail_rail_intersect(
 #[allow(clippy::too_many_arguments)]
 fn point_on_plane_solve(
     k: &Kernel,
-    target: &Brep,
     fs: &mut FilletSolver,
     plane_orig: Point3,
     plane_normal: Vec3,
@@ -576,10 +575,10 @@ fn point_on_plane_solve(
     tsect_pnt: &TsectPnt,
 ) -> Result<(bool, TsectPnt)> {
     let mut tsect = tsect_pnt.clone();
-    let found = FilletSolver::point_on_plane_solve(
+    // the virtual: the base version for a base solver
+    let found = FilletSolverOps::point_on_plane_solve(
         fs,
         k,
-        Some(target),
         plane_orig,
         plane_normal,
         domain1,
@@ -1755,7 +1754,6 @@ impl FilletBrep {
             let [u0, u1] = uvs;
             let (found, t) = point_on_plane_solve(
                 k,
-                target,
                 solver_at_mut(solvers, s1, OP)?,
                 plane_orig,
                 plane_normal,
@@ -1921,7 +1919,6 @@ impl FilletBrep {
         // find filletPoint on given plane that satisfies geometry requirements
         let (found, tsect) = point_on_plane_solve(
             k,
-            target,
             solver_at_mut(solvers, si, OP)?,
             plane_orig,
             plane_normal,

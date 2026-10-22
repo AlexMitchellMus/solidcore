@@ -1495,9 +1495,23 @@ fn vertex_of_edgeuse(b: &Brep, e: EdgeuseId) -> Result<Option<VertexId>> {
 
 // ---- virtual methods ---------------------------------------------------------------------
 
+/// The solver as a `dyn` [`FilletSolverOps`]: lets a default method hand `self` to the
+/// base functions that take the virtuals as a trait object (implemented for every
+/// solver).
+pub trait AsFilletSolverOps {
+    /// `self` as a trait object.
+    fn as_solver_ops(&mut self) -> &mut dyn FilletSolverOps;
+}
+
+impl<T: FilletSolverOps> AsFilletSolverOps for T {
+    fn as_solver_ops(&mut self) -> &mut dyn FilletSolverOps {
+        self
+    }
+}
+
 /// The virtual methods of `SmFilletSolver` (the base versions are the default methods)
 /// with access to the base data.
-pub trait FilletSolverOps {
+pub trait FilletSolverOps: AsFilletSolverOps {
     /// The `SmFilletSolver` base.
     fn solver(&self) -> &FilletSolver;
 
@@ -1669,24 +1683,33 @@ pub trait FilletSolverOps {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] by default (the base, unit `blend.fillet_solver_p2`).
+    /// Those of the base `SmFilletSolver::PointOnPlaneSolve`
+    /// ([`FilletSolver::point_on_plane_solve`], unit `blend.fillet_solver_p2`, without
+    /// a B-rep: none of the virtual's callers holds one).
     #[allow(clippy::too_many_arguments)]
     fn point_on_plane_solve(
         &mut self,
-        _k: &Kernel,
-        _plane_origin: Point3,
-        _plane_normal: Vec3,
-        _uv_domain1: &Extent2d,
-        _uv_domain2: &Extent2d,
-        _uv1: Point2,
-        _uv2: Point2,
-        _point: &mut TsectPnt,
+        k: &Kernel,
+        plane_origin: Point3,
+        plane_normal: Vec3,
+        uv_domain1: &Extent2d,
+        uv_domain2: &Extent2d,
+        uv1: Point2,
+        uv2: Point2,
+        point: &mut TsectPnt,
     ) -> Result<bool> {
-        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::PointOnPlaneSolve
-        Err(SolidError::unported(
-            "SmFilletSolver::PointOnPlaneSolve",
-            "blend.fillet_solver_p2",
-        ))
+        FilletSolver::point_on_plane_solve(
+            self.as_solver_ops(),
+            k,
+            None,
+            plane_origin,
+            plane_normal,
+            uv_domain1,
+            uv_domain2,
+            uv1,
+            uv2,
+            point,
+        )
     }
 }
 

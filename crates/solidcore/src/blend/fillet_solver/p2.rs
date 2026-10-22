@@ -38,8 +38,8 @@
 //!   part of the `SmLine` upstream builds.
 //! - **Arguments.** Out-params become return values (`rbFoundSolution` /
 //!   `rbFoundIntersection` the returned `bool` / `Option`); `SmContext` is the
-//!   [`Kernel`]; `SmFilletErrorType` is its raw value; `SmFilletCorner*` is an opaque
-//!   [`FilletCornerRef`].
+//!   [`Kernel`]; `SmFilletErrorType` is its raw value; `SmFilletCorner*` is
+//!   `blend.fillet_geom_p1`'s opaque [`FilletCornerId`].
 //! - **Undefined inputs.** Where upstream dereferences `NULL` (missing edge use, edge,
 //!   offset surface, surface generator, executive, UV trim curve), reads an
 //!   uninitialised `lSurf2Index`, indexes past an array (`rTsectPnts` empty, a rail
@@ -55,8 +55,8 @@
 
 use crate::blend::fillet_custom_solver::OffsetSurface;
 use crate::blend::fillet_geom::p1::{
-    FilletBrep, FilletEdgeType, FilletGeom, FilletGeomId, FilletGeomType, FilletSolverId,
-    FilletVertex, FilletVertexType, FilletVertexuse,
+    FilletBrep, FilletCornerId, FilletEdgeType, FilletGeom, FilletGeomId, FilletGeomType,
+    FilletSolverId, FilletVertex, FilletVertexType, FilletVertexuse,
 };
 use crate::blend::fillet_geom::p2::{srf_srf_intersection, SrfSrfOptions};
 use crate::blend::fillet_geom::p4::{set_edge_curve, set_vertex_point};
@@ -141,10 +141,6 @@ fn invalid(reason: &'static str) -> SolidError {
 fn sm_err() -> SolidError {
     SolidError::sm_err(OP)
 }
-
-/// An `SmFilletCorner*` (unit `blend.fillet_corner_p1`, not modelled).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FilletCornerRef;
 
 /// The analytic fillet geometry a `Calc*FilletGeom` method builds before storing it into
 /// the fillet geometry: the fillet surface (`m_pFilletSurface`), the rail curves
@@ -395,7 +391,7 @@ impl FilletSolver {
     /// Those of [`FilletSolver::vertex`]; [`SolidError::InvalidInput`] without an
     /// executive (upstream dereferences `NULL`); [`SolidError::Unported`] for the corner
     /// lookup (`SmFilletExecutive::GetFilletCornerOfVertex`).
-    pub fn fillet_corner(&self, b: &Brep, index: usize) -> Result<Option<FilletCornerRef>> {
+    pub fn fillet_corner(&self, b: &Brep, index: usize) -> Result<Option<FilletCornerId>> {
         if index > 1 {
             return Ok(None);
         }
