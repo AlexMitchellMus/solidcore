@@ -18,7 +18,8 @@
 //! imported B-rep (identically for both sides).
 //!
 //! **Inexact geometry.** The export carries B-spline curves, `SmLine`s, B-spline
-//! surfaces and `SmPlane`s exactly; other analytic kinds arrive as their B-spline part,
+//! surfaces, `SmPlane`s and `SmSurfOfRevolution`s exactly; other analytic kinds arrive
+//! as their B-spline part,
 //! so the ops evaluating geometry defer on B-reps holding them (as `topology.brep_p1`).
 
 use serde::{Deserialize, Serialize};
@@ -211,7 +212,11 @@ pub(crate) fn path(b: &StitchBrep) -> Result<String, HarnessError> {
 
 /// The C++ export of the case's B-rep.
 pub(crate) fn export(b: &StitchBrep) -> Result<Vec<f64>, HarnessError> {
-    ffi::eval(Op::Export, &path(b)?, &block_of(b)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let (path, block) = (path(b)?, block_of(b)?);
+    crate::export_memo::export("heal_stitch_p1", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 pub(crate) fn build_failure(export: &[f64]) -> Output {
@@ -568,14 +573,16 @@ fn args(op: &Resolved) -> (Op, Vec<f64>) {
 
 /// The deferral of an op evaluating geometry on a B-rep with inexact geometry.
 pub(crate) fn inexact(types: &ImportTypes) -> Option<Output> {
-    if types
-        .face_surface_types
-        .iter()
-        .any(|&t| t >= 0 && !EXACT_SURFACES.contains(&t))
+    if let Some(t) = (0..types.face_surface_types.len())
+        .filter_map(|f| types.inexact_surface(f))
+        .find(|t| !EXACT_SURFACES.contains(t))
     {
         return Some(Output::deferred(
             HARNESS_ANALYTIC_IMPORT,
-            "analytic face surface exported as its B-spline part",
+            format!(
+                "{} face surface exported as its B-spline part",
+                super::topology_edgeuse_p1::surface_class_name(t)
+            ),
         ));
     }
     if types

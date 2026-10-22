@@ -389,6 +389,28 @@ impl MergeBrep<H> for Two {
     fn is_manifold_solid(&self, brep: H) -> solidcore::Result<bool> {
         topology::brep::p2::is_manifold_solid(self.brep_r(brep)?)
     }
+    fn orient_trimmed_surfaces(
+        &mut self,
+        k: &mut Kernel,
+        brep: H,
+        outward: bool,
+        just_unify: bool,
+    ) -> solidcore::Result<bool> {
+        use solidcore::topology::brep::p3 as bp3;
+        let b = self.brep_m(brep)?;
+        let r = bp3::with_kernel_callbacks(k, b, |k, b, env| {
+            bp3::orient_trimmed_surfaces(
+                k,
+                b,
+                env,
+                &mut Marks::default(),
+                outward,
+                just_unify,
+                None,
+            )
+        })?;
+        Ok(r.maybe_not_closed_solid)
+    }
     fn faceuse_shell(&self, fu: H) -> solidcore::Result<Option<H>> {
         let b = self.brep_r(fu)?;
         Ok(edgeuse::p1::faceuse_shell(b, FaceuseId::from_index(fu.i))?
@@ -524,7 +546,7 @@ fn run_rust(i: &Inputs, p: &Prepared) -> Result<Output, HarnessError> {
     let mut a = import_operand(&p.a)?;
     let mut b = p.b.as_ref().map(import_operand).transpose()?;
     let options = i.options.map(options_of);
-    let k = Kernel::default();
+    let mut k = Kernel::default();
     let mut ids = Vec::new();
     let mut values = Vec::new();
     match &i.op {
@@ -646,7 +668,7 @@ fn run_rust(i: &Inputs, p: &Prepared) -> Result<Output, HarnessError> {
                 } => {
                     let mut made = Vec::new();
                     match make_faceuse(
-                        &k,
+                        &mut k,
                         &mut a,
                         b,
                         FaceuseId::from_index(u32::try_from(*faceuse).map_err(|e| err(&e))?),

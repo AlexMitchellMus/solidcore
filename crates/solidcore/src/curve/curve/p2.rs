@@ -18,6 +18,7 @@
 //! | [`is_kind_of`], [`Curve::is_kind_of`]             | `SmCurve::IsKindOf`                              |
 //! | [`Curve::approx_eq`]                              | `operator==`                                     |
 //! | [`Curve::owner`], [`Curve::set_owner`], [`OwnerChange`] | `GetOwner`, `SetOwner`                     |
+//! | [`Curve::notify_key`] | (none: the object's kernel-issued identity in notifications; CO-PORTED by `topology.brep_p3`) |
 //! | [`Curve::edge`]                                   | `GetEdge`                                        |
 //! | [`notify`]                                        | `SmCurve::Notify`                                |
 //! | [`CurveEvaluate`]                                 | the evaluation virtuals the base numerics call   |
@@ -147,6 +148,11 @@
 //!   `surface.surface_p1`), and
 //!   `ReadFromDB` of the analytic and generated curve types needs their units;
 //!   those calls return [`SolidError::Unported`].
+//! - **Derivative order bound.** [`Curve::evaluate`] returns
+//!   [`SolidError::InvalidInput`] for a Hermite or line kind (whose evaluators are
+//!   infallible) when `num_derivs` exceeds [`crate::curve::MAX_EVAL_DERIVS`]; the other
+//!   kinds' evaluators check the bound themselves or fail earlier (B-splines at
+//!   `NL_MAXDER`).
 
 use crate::curve::composite_curve::CompositeCurve;
 use crate::curve::conic::Conic;
@@ -162,9 +168,9 @@ use crate::curve::parabola::Parabola;
 use crate::curve::projected_curve::ProjectedCurve;
 use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::a_object::{self, AObject, CacheStore};
-use crate::geom::attribute::AttributeStore;
+use crate::geom::attribute::{AttributeStore, ObjectKey};
 use crate::geom::axis2_placement::Axis2Placement;
-use crate::geom::context::Context;
+use crate::geom::context::{Context, IdentitySlot};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::Extent3d;
@@ -282,6 +288,7 @@ const OP_FLUSH: &str = "curve::curve::p2::flush_crv";
 const OP_GEOM: &str = "curve::curve::p2::evaluate_geometric";
 const OP_READ: &str = "curve::curve::p2::Curve::read_from_db";
 const OP_GS: &str = "curve::curve::p2::CurvePropertyGs";
+const OP_EVAL: &str = "curve::curve::p2::Curve::evaluate";
 
 /// `SM_ERR` of a base-class default.
 const fn base_err() -> SolidError {
@@ -561,14 +568,20 @@ pub enum CurveKind {
 pub struct Curve {
     kind: CurveKind,
     owner: Option<ObjectRef>,
+    /// The kernel-issued identity this curve object is notified under (upstream passes
+    /// the object itself), issued by the context of the first notification that names
+    /// it ([`IdentitySlot`]).
+    notify_identity: IdentitySlot,
 }
 
-/// The copy constructor: copies the geometry, resets the owner.
+/// The copy constructor: copies the geometry, resets the owner (and the identity: a
+/// copy is another object).
 impl Clone for Curve {
     fn clone(&self) -> Self {
         Self {
             kind: self.kind.clone(),
             owner: None,
+            notify_identity: IdentitySlot::new(),
         }
     }
 }
@@ -671,7 +684,24 @@ impl Curve {
     /// constructor).
     #[must_use]
     pub const fn new(kind: CurveKind) -> Self {
-        Self { kind, owner: None }
+        Self {
+            kind,
+            owner: None,
+            notify_identity: IdentitySlot::new(),
+        }
+    }
+
+    /// The key this curve object is notified under, once a context has issued it one
+    /// (the kernel issues it; there is no setter).
+    #[must_use]
+    pub fn notify_key(&self) -> Option<ObjectKey> {
+        self.notify_identity.value().map(ObjectKey)
+    }
+
+    /// The slot of this curve object's notification identity, for the context that
+    /// issues it.
+    pub(crate) fn notify_identity_slot(&mut self) -> &mut IdentitySlot {
+        &mut self.notify_identity
     }
 
     /// The concrete kind.
@@ -848,7 +878,7 @@ impl Curve {
     /// # Errors
     ///
     /// `SM_ERR` for a B-spline without NURB.
-    pub fn number_natural_knots(&self) -> Result<usize> {
+    pub fn number_natural_knots(&self, k: &Kernel) -> Result<usize> {
         match &self.kind {
             CurveKind::BSpline(c) => c.number_natural_knots(),
             CurveKind::Hyperbola(c) => c.base().number_natural_knots(),
@@ -858,10 +888,10 @@ impl Curve {
             | CurveKind::Conic(_)
             | CurveKind::Iso(_)
             | CurveKind::Composite(_) => Ok(2),
-            CurveKind::Offset(c) => c.number_natural_knots(),
-            CurveKind::Projected(c) => c.number_natural_knots(),
-            CurveKind::CrvInVolume(c) => c.number_natural_knots_ref(),
-            CurveKind::CrvOnSurf(c) => c.number_natural_knots_ref(),
+            CurveKind::Offset(c) => c.number_natural_knots(k),
+            CurveKind::Projected(c) => c.number_natural_knots(k),
+            CurveKind::CrvInVolume(c) => c.number_natural_knots_ref(k),
+            CurveKind::CrvOnSurf(c) => c.number_natural_knots_ref(k),
             CurveKind::Line(c) => Ok(c.number_natural_knots()),
         }
     }
@@ -1079,7 +1109,8 @@ impl Curve {
     ///
     /// # Errors
     ///
-    /// Those of the kind's evaluator.
+    /// Those of the kind's evaluator; [`SolidError::InvalidInput`] for a Hermite or
+    /// line kind when `num_derivs` exceeds [`crate::curve::MAX_EVAL_DERIVS`].
     pub fn evaluate(
         &self,
         k: &Kernel,
@@ -1091,7 +1122,11 @@ impl Curve {
         match &self.kind {
             CurveKind::Composite(_) => Err(base_err()),
             CurveKind::BSpline(c) => c.evaluate(t, num_derivs, from_left, non_zero_tangents),
-            CurveKind::Hermite(c) => Ok(c.evaluate(t, num_derivs, non_zero_tangents)),
+            CurveKind::Hermite(c) => {
+                // The Hermite evaluator is infallible: bound its output size here.
+                crate::curve::check_eval_derivs(num_derivs, OP_EVAL)?;
+                Ok(c.evaluate(t, num_derivs, non_zero_tangents))
+            }
             CurveKind::Hyperbola(c) => {
                 c.base()
                     .evaluate(t, num_derivs, from_left, non_zero_tangents)
@@ -1109,7 +1144,11 @@ impl Curve {
             CurveKind::Offset(c) => c.evaluate(k, t, num_derivs, from_left, non_zero_tangents),
             CurveKind::CrvInVolume(c) => c.evaluate(k, t, num_derivs, from_left, non_zero_tangents),
             CurveKind::CrvOnSurf(c) => c.evaluate(k, t, num_derivs, from_left, non_zero_tangents),
-            CurveKind::Line(c) => Ok(c.evaluate(t, num_derivs)),
+            CurveKind::Line(c) => {
+                // The line evaluator is infallible: bound its output size here.
+                crate::curve::check_eval_derivs(num_derivs, OP_EVAL)?;
+                Ok(c.evaluate(t, num_derivs))
+            }
         }
     }
 
@@ -1170,9 +1209,30 @@ impl Curve {
     /// # Errors
     ///
     /// `SM_ERR` for a B-spline without NURB.
-    pub fn knots(&self, interval: Option<&Extent1d>) -> Result<(Vec<f64>, Vec<usize>)> {
+    pub fn knots_with_status(
+        &self,
+        k: &Kernel,
+        interval: Option<&Extent1d>,
+    ) -> Result<KnotsWithStatus> {
         match &self.kind {
-            CurveKind::Composite(c) => c.knots(interval),
+            CurveKind::CrvInVolume(c) => c.knots_with_status_ref(k, interval),
+            CurveKind::CrvOnSurf(c) => c.as_ref().clone().knots_with_status(k, interval),
+            _ => {
+                let (knots, mults) = self.knots(k, interval)?;
+                Ok(KnotsWithStatus::success(knots, mults))
+            }
+        }
+    }
+
+    /// Unique knots and multiplicities, optionally limited to `interval`
+    /// (`GetKnots`), with a failing status as the error.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR` for a B-spline without NURB.
+    pub fn knots(&self, k: &Kernel, interval: Option<&Extent1d>) -> Result<(Vec<f64>, Vec<usize>)> {
+        match &self.kind {
+            CurveKind::Composite(c) => c.knots(k, interval),
             CurveKind::BSpline(c) => c.knots(interval),
             CurveKind::Hyperbola(c) => c.base().knots(interval),
             CurveKind::Ellipse(c) => c.base().knots(interval),
@@ -1185,11 +1245,11 @@ impl Curve {
                 let (k, m) = c.knots(interval);
                 Ok((k, m.into_iter().map(|v| v as usize).collect()))
             }
-            CurveKind::Projected(c) => c.knots(interval),
+            CurveKind::Projected(c) => c.knots(k, interval),
             CurveKind::Iso(c) => c.knots(interval),
-            CurveKind::Offset(c) => c.knots(interval),
-            CurveKind::CrvInVolume(c) => c.knots_ref(interval),
-            CurveKind::CrvOnSurf(c) => c.knots_ref(interval),
+            CurveKind::Offset(c) => c.knots(k, interval),
+            CurveKind::CrvInVolume(c) => c.knots_ref(k, interval),
+            CurveKind::CrvOnSurf(c) => c.knots_ref(k, interval),
             CurveKind::Line(c) => c.base_with_nurb()?.knots(interval),
         }
     }
@@ -1614,14 +1674,14 @@ impl Curve {
         // special case line/plane check
         let mut do_precise = false;
         let is_plane = surface_is_plane(surface)?;
-        if is_plane && self.degree()? == 1 && self.number_natural_knots()? == 4 {
+        if is_plane && self.degree()? == 1 && self.number_natural_knots(k)? == 4 {
             do_precise = false;
             num_samples = 2;
         } else if num_samples == 0 {
             // Do a very large sample and adjust it upward to compensate for
             // cases where there are a large number of knots.
             do_precise = true;
-            let num_knots1 = self.number_natural_knots()?;
+            let num_knots1 = self.number_natural_knots(k)?;
             let num_knots2 = surface_knot_count(surface, false)?;
             let num_knots3 = surface_knot_count(surface, true)?;
             num_samples = 22 + num_knots1 + num_knots2 + num_knots3;
@@ -3658,6 +3718,53 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CciGlobalSolver<'t, O> {
     }
 }
 
+/// `GetKnots`' out-parameters with its status. The classifying overrides
+/// (`SmCrvOnSurf`, `SmCrvInVolume`) write the base curve's knots and multiplicities
+/// before their classification can fail (`SER`), and their own callers ignore the
+/// status and read what was written.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KnotsWithStatus {
+    /// `rKnots`.
+    pub knots: Vec<f64>,
+    /// `pOptMults`.
+    pub mults: Vec<usize>,
+    /// The returned status: `Err` (never [`SolidError::Unported`]) for a failing one.
+    pub status: Result<()>,
+}
+
+impl KnotsWithStatus {
+    /// A successful `GetKnots`.
+    #[must_use]
+    pub const fn success(knots: Vec<f64>, mults: Vec<usize>) -> Self {
+        Self {
+            knots,
+            mults,
+            status: Ok(()),
+        }
+    }
+
+    /// The lists, or the failing status.
+    ///
+    /// # Errors
+    ///
+    /// The failing status.
+    pub fn into_result(self) -> Result<(Vec<f64>, Vec<usize>)> {
+        self.status?;
+        Ok((self.knots, self.mults))
+    }
+}
+
+/// The lists a caller that ignores `GetKnots`' status reads: what was written, also on a
+/// failing status; empty when nothing was (an error before the out-parameters, as
+/// [`ignored`]).
+///
+/// # Errors
+///
+/// [`SolidError::Unported`].
+pub fn knots_ignoring_status(r: Result<KnotsWithStatus>) -> Result<(Vec<f64>, Vec<usize>)> {
+    Ok(ignored(r)?.map_or_else(Default::default, |r| (r.knots, r.mults)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3696,6 +3803,25 @@ mod tests {
     }
 
     #[test]
+    fn dispatcher_rejects_huge_derivative_orders() {
+        // fuzz (curve_p2, offset_curve, projected_curve): a Hermite kind evaluated with
+        // `n = 2^31` / `usize::MAX` sized the output allocation
+        let h = hermite();
+        for n in [crate::curve::MAX_EVAL_DERIVS + 1, 1 << 31, usize::MAX] {
+            assert!(matches!(
+                h.evaluate(&Kernel::default(), 0.5, n, true, true),
+                Err(SolidError::InvalidInput { .. })
+            ));
+        }
+        assert_eq!(
+            h.evaluate(&Kernel::default(), 0.5, 6, true, true)
+                .unwrap()
+                .len(),
+            7
+        );
+    }
+
+    #[test]
     fn type_queries() {
         let k = &Kernel::default();
         let h = hermite();
@@ -3705,7 +3831,7 @@ mod tests {
         assert!(is_kind_of(a_object::TYPE));
         assert_eq!(h.degree().unwrap(), 3);
         assert_eq!(h.number_control_points().unwrap(), 0);
-        assert_eq!(h.number_natural_knots().unwrap(), 2);
+        assert_eq!(h.number_natural_knots(k).unwrap(), 2);
         assert!(!h.is_rational().unwrap());
         let b = cubic();
         assert!(b.approx_eq(k, &b.clone()).unwrap() && !b.approx_eq(k, &h).unwrap());

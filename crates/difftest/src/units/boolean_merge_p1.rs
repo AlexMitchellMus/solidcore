@@ -25,6 +25,9 @@ use solidcore::SolidError;
 use solidcore_ffi::units::{boolean_merge_p1 as ffi, topology_vertexuse as fixture};
 use std::collections::BTreeMap;
 
+/// The op of `find_brep_region_of_other_face` (`SmMerge::FindBrepRegionOfOtherFace`).
+const OP_FIND_REGION: u8 = 5;
+
 /// Differential runner for `boolean.merge_p1`.
 pub struct Runner;
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,8 +150,14 @@ impl<I: ArenaId + Copy> Order<I> {
 /// first-seen order, while Rust arenas append new records. Both sides are renumbered
 /// by the same walk (the shim's, from the B-rep's regions in arena order and the edge
 /// list; on an imported C++ export it is the identity), so records created by the op
-/// compare by position in the topology, not by allocation order. Records the walk
-/// does not reach follow in arena order.
+/// compare by position in the topology, not by allocation order. [`graph`] compares only
+/// the records the walk reaches ([`Canon::reachable`]), as the C++ export walk emits
+/// only those: a record upstream deletes stays in the Rust arena, unlinked (the arena
+/// model's documented deviation, e.g. `MakeEdgeVertexTopology`'s vertex-shell vertex
+/// use), and is not part of the B-rep. A record that is wrongly still linked is reached,
+/// so it is still compared. The unreached count is a report diagnostic ([`graph`]).
+/// [`Canon::of`] (numbering record slots) also numbers the unreached records, after the
+/// reached ones.
 pub(crate) struct Canon {
     pub(crate) regions: Order<RegionId>,
     pub(crate) shells: Order<ShellId>,
@@ -381,6 +390,21 @@ impl Canon {
         }
         g
     }
+    /// The arena records of `b` the walk did not reach (deleted records the arenas
+    /// keep, or a leak).
+    pub(crate) fn unreached(&self, b: &Brep) -> usize {
+        let all = b.regions().len()
+            + b.shells().len()
+            + b.faceuses().len()
+            + b.faces().len()
+            + b.loopuses().len()
+            + b.loops().len()
+            + b.edgeuses().len()
+            + b.edges().len()
+            + b.vertexuses().len()
+            + b.vertices().len();
+        all.saturating_sub(self.len())
+    }
     fn len(&self) -> usize {
         self.regions.items.len()
             + self.shells.items.len()
@@ -397,12 +421,11 @@ impl Canon {
 /// The B-rep's records and links in [`Canon`] numbering, after `record` (which the
 /// caller has already put in that numbering, see [`Canon::of`]).
 pub(crate) fn graph(b: &Brep, record: Vec<f64>) -> Output {
-    graph_counted(b, record, false)
+    graph_counted(b, record, true)
 }
 
-/// [`graph`] with the record counts of the reachable topology ([`Canon`]) instead of
-/// the arena lengths: for ops that delete records, which an arena only resets (the C++
-/// side exports a fresh walk, so its counts are the reachable ones).
+/// [`graph`] (kept for its callers): the reachable topology ([`Canon::reachable`]) and
+/// its record counts, as the C++ side's fresh export walk.
 pub(crate) fn graph_reachable(b: &Brep, record: Vec<f64>) -> Output {
     graph_counted(b, record, true)
 }
@@ -601,10 +624,14 @@ fn graph_counted(b: &Brep, record: Vec<f64>, reachable: bool) -> Output {
     for e in &edges {
         values.extend([e.interval.min(), e.interval.max(), e.tolerance]);
     }
-    Output::new()
+    let out = Output::new()
         .values("record", record)
         .values("geometry", values)
-        .ints("graph", ints)
+        .ints("graph", ints);
+    match c.unreached(b) {
+        0 => out,
+        n => out.diagnostic("unreached_records", n as i64),
+    }
 }
 #[derive(Debug, Default)]
 struct Recorder {
@@ -869,7 +896,7 @@ fn run_rust(i: &Inputs, b: &mut Brep, other: &Brep) -> Result<Vec<f64>, SolidErr
             }
             append_events(&context, &mut out)?;
         }
-        5 => {
+        OP_FIND_REGION => {
             let f = FaceuseId::from_index(u32::from(a) % other.faceuses().len() as u32);
             out.push(
                 port::find_brep_region_of_other_face(
@@ -897,17 +924,16 @@ fn run_rust(i: &Inputs, b: &mut Brep, other: &Brep) -> Result<Vec<f64>, SolidErr
         7 => {
             let mut other = other.clone();
             // The native probe constructs and immediately destroys its shift.
-            port::temporary_brep_transform(b, &mut other)?.restore(
-                Some(b),
-                Some(&mut other),
-                |_brep, _is_other, _xfm, _scale, _scale_tolerance| {
-                    // UNPORTED(topology.brep_p5): SmBrep::Transform
-                    Err(SolidError::unported(
-                        "SmBrep::Transform",
-                        "topology.brep_p5",
-                    ))
-                },
-            )?;
+            let transform = |_: &mut Brep, _: bool, _: &_, _: Option<_>, _: bool| {
+                // UNPORTED(topology.brep_p5): SmBrep::Transform
+                Err(SolidError::unported(
+                    "SmBrep::Transform",
+                    "topology.brep_p5",
+                ))
+            };
+            port::temporary_brep_transform(&k, &k, b, &other)?
+                .apply(b, &mut other, transform)?
+                .restore(Some(b), Some(&mut other), transform)?;
         }
         8 | 9 => {
             let sec = EdgeuseId::from_index(u32::from(a) % b.edgeuses().len() as u32);
@@ -993,13 +1019,44 @@ impl UnitDiff for Runner {
             return Ok(Output::new().values("record", control(i.args)));
         }
         let (path, block) = block(&i)?;
-        let raw = fixture::eval(fixture::Op::Export, &path, &block)
-            .map_err(|e| harness(e.to_string()))?;
-        let (mut b, _) = import(&raw)?;
+        let raw = crate::export_memo::export("topology_vertexuse", &[&path], &block, || {
+            fixture::eval(fixture::Op::Export, &path, &block)
+        })
+        .map_err(|e| harness(e.to_string()))?;
+        let (mut b, exact) = import(&raw)?;
+        // the B-rep cache solves of op 5's point classification (`BrepQuery::default`)
+        // find the faces and edges by their arena identities, as upstream's by pointer
+        crate::util::own_arena_geometry(&mut b);
+        // the new owners drop the face tolerances the import cached on the surfaces
+        let faces: Vec<_> = b.faces().ids().collect();
+        for f in faces {
+            b.sync_face_surface_tolerance(f)
+                .map_err(|e| harness(e.to_string()))?;
+        }
+        // Op 5 without mates classifies points against `b` (SmBrep::Point3DClassify;
+        // with mates every edge is mated, so the radial sectors decide): a face surface
+        // the export carries only as its B-spline part would be classified against other
+        // geometry than the C++ one (the harness limitation of `query.face_p1`).
+        let [_, mates, _] = i.args;
+        let mated = mates != 0;
+        if i.op == OP_FIND_REGION && !mated && exact.iter().any(|&e| !e) {
+            return Ok(Output::deferred(
+                "harness:analytic-geometry-export",
+                "analytic face surface in the B-rep export",
+            ));
+        }
         let (other_path, other_block) = other_block(&i)?;
-        let other_raw = fixture::eval(fixture::Op::Export, &other_path, &other_block)
+        let other_raw =
+            crate::export_memo::export("topology_vertexuse", &[&other_path], &other_block, || {
+                fixture::eval(fixture::Op::Export, &other_path, &other_block)
+            })
             .map_err(|e| harness(e.to_string()))?;
         let (other, _) = import(&other_raw)?;
+        // the FFI's selection guard: the selectors are taken modulo these counts
+        let counts = |raw: &[f64]| fixture::counts(raw).ok_or_else(|| harness("fixture rejected"));
+        if !ffi::selection_valid(i.op, &counts(&raw)?, &counts(&other_raw)?) {
+            return Err(harness("fixture lacks selected entity"));
+        }
         match run_rust(&i, &mut b, &other) {
             Ok(v) => Ok(graph(&b, v)),
             Err(e) => Ok(Output::unported(&e).unwrap_or_else(|| {
@@ -1042,5 +1099,68 @@ impl UnitDiff for Runner {
             seeds: ctx.seeds.max(96),
         };
         crate::runner::default_cases(self, &ctx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::case::CaseSource;
+    use solidcore::topology::{Vertexuse, VertexuseOwner};
+
+    /// A B-rep with one shell vertex in its infinite region.
+    fn shell_vertex() -> (Brep, VertexId) {
+        let mut b = Brep::new_with_infinite_region().unwrap();
+        let inf = b.infinite_region();
+        let (_, v) =
+            solidcore::topology::brep::p2::make_shell_vertex_topology(&mut b, inf).unwrap();
+        (b, v)
+    }
+
+    /// `graph` compares what the C++ export walk emits: a record the walk does not reach
+    /// (one upstream deleted, which the arena keeps unlinked) leaves the compared output
+    /// unchanged and is only counted as a diagnostic; an extra vertex use that is still
+    /// linked is reached, so it changes the output.
+    #[test]
+    fn graph_compares_only_reachable_records() {
+        let (b, _) = shell_vertex();
+        let base = graph(&b, vec![]);
+        assert!(base.diagnostics.is_none());
+
+        let (mut unlinked, _) = shell_vertex();
+        unlinked.add_vertexuse_record(Vertexuse::default()).unwrap();
+        let g = graph(&unlinked, vec![]);
+        assert_eq!((&g.values, &g.ints), (&base.values, &base.ints));
+        assert_eq!(g.diagnostic_value("unreached_records"), Some(1));
+
+        let (mut linked, v) = shell_vertex();
+        let extra = linked
+            .add_vertexuse_record(Vertexuse {
+                vertex: Some(v),
+                owner: VertexuseOwner::Unknown,
+                ..Vertexuse::default()
+            })
+            .unwrap();
+        linked.vertex_mut(v).unwrap().vertexuses.push(extra);
+        let g = graph(&linked, vec![]);
+        assert_ne!(g.ints, base.ints);
+        assert!(g.diagnostics.is_none());
+    }
+
+    /// Fuzz 30000 (fuzz03460): op 2 on a wire, which has no face to select. The FFI
+    /// rejects the fixture; the Rust side must refuse it too instead of taking the
+    /// selector modulo zero faces.
+    #[test]
+    fn op_without_selected_entity_is_refused_not_a_panic() {
+        let case = Case {
+            unit: "boolean.merge_p1".into(),
+            name: "fuzz03460".into(),
+            source: CaseSource::Inline,
+            inputs: json!({"args":[2,1,0],"brep":{"curve":{"cpts":[[0,0,0,1],[4,0,0,1]],
+                "dim":3,"p":1,"u":[0,0,1,1]},"kind":"wire","t0":0.125,"t1":0.875},
+                "op":2,"tolerances":[0.001,1.0]}),
+        };
+        let e = Runner.run_rust(&case).unwrap_err();
+        assert!(e.to_string().contains("lacks selected entity"), "{e}");
     }
 }

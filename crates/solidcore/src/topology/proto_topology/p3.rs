@@ -15,6 +15,18 @@
 //! | [`ProtoTopologyManager::resolve_overlapping_proto_edges`] | `SmProtoTopologyManager::ResolveOverlappingProtoEdges` |
 //!
 //! Deviations:
+//! - **Removed proto edges** (SolidCraft fix, tangency-labs/smlib 93efd6d, UB-239).
+//!   Upstream's `SplitIntersectingProtoEdges` deletes the combined-away proto edge while
+//!   proto faces (coincident lists) and other proto edges (overlap lists) still name
+//!   it, and `GlueCoincidentBrepVertices` reads it after the free. Here the faces it
+//!   bounded get the surviving edge first
+//!   ([`ProtoTopologyManager::hand_over_coincident_proto_edge`]), and every reference
+//!   to it is dropped before the delete ([`ProtoTopologyManager::forget_proto_edge`],
+//!   part 1), here and in `ResolveOverlappingProtoEdges`. The fork does that inside
+//!   `RemoveProtoEdge`; the port does it at these library deletes, so unlisting or
+//!   deleting a proto edge on its own (the difftest's script ops) stays upstream's.
+//!   Without it, the stale id names a deleted slot and the later passes fail with
+//!   `InvalidInput`.
 //! - **B-rep access.** Topology objects are the caller's handles `O`, as in
 //!   [`p1`](super::p1). What these functions read from vertices and edges, and the
 //!   store new curves go to, is [`ProtoBrep`] (of `topology.proto_topology_p2`, which
@@ -23,17 +35,22 @@
 //!   those of its supertrait [`ProtoTopology`](super::p1::proto::ProtoTopology)), which the owner of the B-reps implements. `SmTol::GetZoneTol3d` of a vertex is
 //!   [`ProtoBrep::topology_tolerance`]; `SmTol::GetXSectTol3d(v1, v2)` is the
 //!   sum of the two.
+//! - **B-rep edits**: `SmBrep::SqueezeEdge` of `GetWhichBrep(which)` is
+//!   [`ProtoBrep::brep_squeeze_edge`] (the owner of the B-reps calls
+//!   `topology::brep::p3::squeeze_edge`), so
+//!   [`ProtoTopologyManager::glue_coincident_brep_vertices`] takes `&mut Kernel` and
+//!   the B-reps mutably.
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
-//!   each tagged `UNPORTED(<unit>)`: `SmBrep::Point3DClassify` (`query.brep`),
-//!   `SqueezeEdge` / `DeleteEdge` (`topology.brep_p3` / `_p4`). `SmBrep::GlueVertices`
+//!   each tagged `UNPORTED(<unit>)`: `DeleteEdge` (`topology.brep_p4`).
+//!   `SmBrep::Point3DClassify` goes through [`ProtoBrep::brep_point_3d_classify`],
+//!   which the B-reps' owner implements. `SmBrep::GlueVertices`
 //!   goes through [`BrepGlue`], which the B-reps' owner implements with
 //!   `topology::brep::p5` (so [`ProtoTopologyManager::glue_coincident_brep_vertices`]
 //!   takes the kernel and the B-reps mutably).
 //!   The intersector's `GetOtherMate` /
 //!   `RemoveRelationship` are reached through [`Mates`] (ported in
 //!   `boolean.topology_intersector_p1` / `_p2`; [`NoMates`] for no intersector maps). The
-//!   `SmCurveClassification` constructor is part 4's ([`CurveClassification::with_curve`];
-//!   it defers on `ReSet`, `intersect.curve_class_p2`). `ExtractGeometry` calls part 5 and
+//!   `SmCurveClassification` constructor is part 4's ([`CurveClassification::with_curve`]). `ExtractGeometry` calls part 5 and
 //!   currently reaches part 6's `Homogenize` dependency. The code
 //!   after a stub is ported in full. The callees of `topology.proto_topology_p2` are
 //!   its methods on [`ProtoTopologyManager`].
@@ -65,7 +82,7 @@ use crate::intersect::point_class::{
     ClassGeometry, ClassObject, ClassObjectKind, PointClassification,
 };
 use crate::kernel::Kernel;
-use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO};
+use crate::math::{Vec3, BIG_DOUBLE, EFF_ZERO};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 
 use super::p1::proto::{can_imprint, find_position_from_pcs, topo_dimension};
@@ -141,20 +158,6 @@ fn curve_of<O: Copy>(geometry: &impl ClassGeometry<O>, o: Option<O>) -> Result<&
 
 // ---- callees not ported yet ----------------------------------------------------------
 
-/// `SmBrep::Point3DClassify(point, tol, TRUE, classification)`.
-fn brep_point3d_classify<O>(
-    _brep: O,
-    _point: Point3,
-    _tol: f64,
-    _pc: &mut PointClassification<O>,
-) -> Result<()> {
-    // UNPORTED(query.brep): SmBrep::Point3DClassify
-    Err(SolidError::unported(
-        "SmBrep::Point3DClassify",
-        "query.brep",
-    ))
-}
-
 /// `SmCurveClassification(pCurve, interval, NULL, tol)` (the remaining arguments default:
 /// no interval storage, the curve not owned and current, no surfaces).
 fn new_curve_classification<O: ClassObject>(
@@ -201,15 +204,6 @@ pub trait BrepGlue<O> {
         v2: O,
         opt_wire_edges_in_brep: Option<&[O]>,
     ) -> Result<()>;
-}
-
-/// `SmBrep::SqueezeEdge` of B-rep `which`.
-fn brep_squeeze_edge<O>(_which: i32, _edge: O, _vertex: O) -> Result<()> {
-    // UNPORTED(topology.brep_p3): SmBrep::SqueezeEdge
-    Err(SolidError::unported(
-        "SmBrep::SqueezeEdge",
-        "topology.brep_p3",
-    ))
 }
 
 /// `SmBrep::DeleteEdge` of B-rep `which`.
@@ -512,8 +506,18 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         let brep2 = self.which_brep(2);
         let mut pc1 = PointClassification::new(zone_tol3d(k, tol));
         let mut pc2 = PointClassification::new(zone_tol3d(k, tol));
-        ignore_soft(brep_point3d_classify(brep1, crv_pt, tol, &mut pc1))?;
-        ignore_soft(brep_point3d_classify(brep2, crv_pt, tol, &mut pc2))?;
+        // (statuses ignored: a failed classification keeps its cleared state)
+        let tol_3d = zone_tol3d(k, tol);
+        if let Some(pc) =
+            ignore_soft(geometry.brep_point_3d_classify(k, brep1, crv_pt, tol_3d, true))?
+        {
+            pc1 = pc;
+        }
+        if let Some(pc) =
+            ignore_soft(geometry.brep_point_3d_classify(k, brep2, crv_pt, tol_3d, true))?
+        {
+            pc2 = pc;
+        }
 
         let mid_pv = mid_pv.ok_or(dangling("mid proto vertex is null"))?;
         let (new_vd, created) = ignore_soft(
@@ -919,7 +923,13 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                     pe1_to_combine,
                     pe2_to_combine,
                 ))?;
+
+                // ProtoFaces bounded by the combined-away PE are bounded by the
+                // survivor now (SolidCraft change, tangency-labs/smlib 93efd6d)
+                self.hand_over_coincident_proto_edge(pe1_to_combine, pe2_to_combine);
+
                 ignore_soft(self.remove_proto_edge(pe2_to_combine))?;
+                self.forget_proto_edge(pe2_to_combine);
                 deleted.extend(self.delete_proto_edge_object(pe2_to_combine));
             }
         }
@@ -1134,7 +1144,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                                     // Can't call SqueezeEdge() in this case.
                                     brep_delete_edge(which, edge)
                                 } else {
-                                    let r = brep_squeeze_edge(which, edge, v1); // deletes v2
+                                    let r =
+                                        brep.brep_squeeze_edge(k, self.which_brep(which), edge, v1); // deletes v2
                                     set_slot(deleted_v, jj, v2);
                                     r
                                 };
@@ -1452,6 +1463,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
 
                 // remove OverlapPE from ProtoTopoMgr, then delete it
                 ignore_soft(self.remove_proto_edge(overlap))?;
+                self.forget_proto_edge(overlap);
                 deleted_curves.extend(self.delete_proto_edge_object(overlap));
             }
 

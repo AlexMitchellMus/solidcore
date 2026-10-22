@@ -900,7 +900,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let c = c_ref()?;
             let ivl = c.natural_interval();
             let deg = tri!(o, c.degree());
-            let nnk = tri!(o, c.number_natural_knots());
+            let nnk = tri!(o, c.number_natural_knots(&k));
             let ncp = tri!(o, c.number_control_points());
             let rat = tri!(o, c.is_rational());
             o.extend([0.0, c.type_code() as f64, c.dim() as f64]);
@@ -936,7 +936,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         OpIn::Knots { ivl } => {
             let iv = ivl.map(|[a, bb]| Extent1d::from_min_max(a, bb));
-            let (kn, m) = tri!(o, c_ref()?.knots(iv.as_ref()));
+            let (kn, m) = tri!(o, c_ref()?.knots(&k, iv.as_ref()));
             o.extend([0.0, kn.len() as f64]);
             o.extend_from_slice(&kn);
             o.push(m.len() as f64);
@@ -953,6 +953,11 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             samples,
             turn,
         } => {
+            // the FFI rejects more than `ffi::MAX_SAMPLES` samples; upstream (and the port)
+            // would loop that many times, so a larger count is not a case for Rust either
+            if *samples > ffi::MAX_SAMPLES {
+                return Err(HarnessError::new(format!("{samples} samples")));
+            }
             let (len, t) = tri!(
                 o,
                 c_ref()?.approximate_length(&k, &Extent1d::from_min_max(*a, *bb), *samples, *turn)

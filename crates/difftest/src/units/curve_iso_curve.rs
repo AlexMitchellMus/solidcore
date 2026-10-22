@@ -347,10 +347,17 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
             binary,
             version,
             db,
-        } => (
-            Op::ReadDb,
-            Params::Db(db_bytes(*binary, *version, db)?, *binary, *version as i64),
-        ),
+        } => {
+            // Enum values beyond the enums' range of values (`SmSurfParamType`,
+            // `SmBSplineSurfaceForm`: 0..=15) are undefined behaviour upstream.
+            if db.sp > 15 || db.form > 15 {
+                return Err(harness("enum value outside its range (undefined upstream)"));
+            }
+            (
+                Op::ReadDb,
+                Params::Db(db_bytes(*binary, *version, db)?, *binary, *version as i64),
+            )
+        }
     };
     match ffi::op(op, &a, &params) {
         Ok(v) => Ok(Output::new().values("out", v)),
@@ -494,7 +501,7 @@ fn rust_op(k: &solidcore::kernel::Kernel, i: &Inputs, o: &mut Vec<f64>) -> Resul
         OpIn::State => state(o, &c)?,
         OpIn::Knots { ivl } => {
             let e = ivl.map(|[a, b]| Extent1d::from_min_max(a, b));
-            let (k, m) = c.knots(e.as_ref())?;
+            let (k, m) = c.knots(k, e.as_ref())?;
             o.push(0.0);
             o.push(k.len() as f64);
             o.extend_from_slice(&k);

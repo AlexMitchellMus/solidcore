@@ -9,11 +9,13 @@
 //! imports the graph the shim exports in traversal order (raw members: list owners,
 //! list order, loop neighbours, orientations, UV trim curves, cached gap states,
 //! tolerances, face UV domains, geometry as B-splines; an `SmPlane` face surface as the
-//! exact [`Plane`] (origin, axes, scales, analytic domain), an `SmLine` edge curve as
+//! exact [`Plane`] (origin, axes, scales, analytic domain), an `SmSurfOfRevolution` face
+//! surface as the exact surface of revolution (its database record, read by the ported
+//! `ReadFromDB`: [`crate::util::read_exact_surface`]), an `SmLine` edge curve as
 //! the exact [`Line`]) into a [`Brep`] and runs the ported functions on it; their
 //! results are compared as traversal indices, and the gaps the gap ops compute by
 //! value. A case that evaluates a face surface or edge curve the import holds only as
-//! its B-spline part (an analytic subclass: cone, sphere, torus, revolution, extrusion,
+//! its B-spline part (an analytic subclass: cone, sphere, torus, extrusion,
 //! circle, ...) is deferred ([`inexact_geometry`]): the gap calculations and the 3D
 //! drop branch of `GetStartPointUVLoopGap`. The skeleton fields no ported function
 //! reads (`Loop::edges`, `Shell::faces`, `Face::loops`) are filled minimally.
@@ -136,6 +138,14 @@ pub(crate) enum BrepIn {
         #[serde(default)]
         face: Option<FaceIn>,
         networks: usize,
+    },
+    /// The closed box solid of `SmApiCreateBox` (planes and lines; fixtures only).
+    Box { origin: [f64; 3], size: [f64; 3] },
+    /// Isolated vertices `[x, y, z, tol]` and wire line segments `[x0, y0, z0, x1, y1,
+    /// z1, tol]`, each set to its tolerance (fixtures and other units' generators).
+    Points {
+        vertices: Vec<[f64; 4]>,
+        lines: Vec<[f64; 7]>,
     },
 }
 
@@ -305,6 +315,21 @@ pub(crate) fn brep_block_of(
                 v.extend(face.dom);
             }
             v.push(*networks as f64);
+        }
+        BrepIn::Box { origin, size } => {
+            v.push(7.0);
+            v.extend(origin);
+            v.extend(size);
+        }
+        BrepIn::Points { vertices, lines } => {
+            v.extend([8.0, vertices.len() as f64]);
+            for p in vertices {
+                v.extend(p);
+            }
+            v.push(lines.len() as f64);
+            for l in lines {
+                v.extend(l);
+            }
         }
     }
     v.push(flag(validate_only));
@@ -535,7 +560,11 @@ pub(crate) fn fixture_input(value: Value) -> Result<(String, Vec<f64>), HarnessE
 /// The C++ export of the case's B-rep.
 fn export(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
     let path = path_of(i.brep.as_ref())?;
-    ffi::eval(Op::Export, &path, &brep_block(i)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let block = brep_block(i)?;
+    crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 /// A build failure as an operation error.
@@ -782,14 +811,59 @@ fn read_surface(rd: &mut Rd<'_>) -> Result<Option<Surface>, HarnessError> {
 
 /// What the import cannot hold exactly: the upstream type codes of the face surfaces
 /// and edge curves (`-1` none), by export index. A surface other than an
-/// `SmBSplineSurface` or `SmPlane` is imported as its B-spline part, and an edge curve
-/// other than an `SmBSplineCurve` or `SmLine` likewise.
+/// `SmBSplineSurface`, an `SmPlane` or an exactly exported analytic kind (an
+/// `SmSurfOfRevolution`, see [`crate::util::read_exact_surface`]) is imported as its
+/// B-spline part, and an edge curve other than an `SmBSplineCurve` or `SmLine` likewise.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ImportTypes {
     /// `GetSurface()->GetType()` of each face.
     pub(crate) face_surface_types: Vec<i64>,
+    /// Whether each face's Rust surface is the upstream kind (or the face has none).
+    pub(crate) face_exact: Vec<bool>,
     /// `GetCurve()->GetType()` of each edge.
     pub(crate) edge_curve_types: Vec<i64>,
+}
+
+impl ImportTypes {
+    /// The upstream surface type code of face `f` when the import holds that surface
+    /// only as its B-spline part (`None`: imported exactly, no surface, or no face `f`).
+    pub(crate) fn inexact_surface(&self, f: usize) -> Option<i64> {
+        let t = *self.face_surface_types.get(f)?;
+        (t >= 0 && !self.face_exact.get(f).copied().unwrap_or(false)).then_some(t)
+    }
+}
+
+/// The upstream class of an `SmBSplineSurface` subclass type code, for deferral symbols.
+pub(crate) const fn surface_class_name(t: i64) -> &'static str {
+    match t {
+        15012 => "SmCone",
+        15013 => "SmCylinder",
+        15014 => "SmSphere",
+        15015 => "SmTorus",
+        15030 => "SmSurfOfExtrusion",
+        15020 => "SmSurfOfRevolution",
+        _ => "analytic",
+    }
+}
+
+/// A face's surface block: an exact analytic head (`2 ...`,
+/// [`crate::util::read_exact_surface`]) and the regular block after it, or the regular
+/// block alone. Returns the surface and whether the export carried it exactly (the
+/// regular block of a B-spline surface or a plane is exact by itself).
+fn read_face_surface(rd: &mut Rd<'_>) -> Result<(Option<Surface>, bool), HarnessError> {
+    if rd.v.get(rd.at) != Some(&2.0) {
+        return Ok((read_surface(rd)?, false));
+    }
+    rd.at += 1;
+    let exact = crate::util::read_exact_surface(&mut || rd.num())?;
+    let fallback = read_surface(rd)?;
+    match exact {
+        Some(s) => {
+            crate::util::check_exact_base(&s, fallback.as_ref())?;
+            Ok((Some(s), true))
+        }
+        None => Ok((fallback, false)),
+    }
 }
 
 /// Builds the Rust B-rep from the shim's export (see the module docs).
@@ -847,11 +921,15 @@ pub(crate) fn import_with_types(ex: &[f64]) -> Result<(Brep, ImportTypes), Harne
     }
     let mut surfaces = Vec::new();
     for _ in 0..n_f {
-        let surface = read_surface(&mut rd)?;
+        let (surface, by_record) = read_face_surface(&mut rd)?;
         let (u0, v0, u1, v1) = (rd.num()?, rd.num()?, rd.num()?, rd.num()?);
         let uv_domain = Extent2d::from_bounds(u0, v0, u1, v1);
         let tolerance = rd.num()?;
-        extras.face_surface_types.push(rd.idx()?);
+        let ty = rd.idx()?;
+        extras.face_surface_types.push(ty);
+        extras
+            .face_exact
+            .push(by_record || ty < 0 || EXACT_SURFACES.contains(&ty));
         surfaces.push((surface, uv_domain, tolerance));
     }
     let mut loopuses = Vec::new();
@@ -1038,10 +1116,20 @@ pub(crate) fn import_with_types(ex: &[f64]) -> Result<(Brep, ImportTypes), Harne
     }
     for (f, (surface, uv_domain, tolerance)) in surfaces.into_iter().enumerate() {
         let shell = face_shells.get(f).copied().unwrap_or(ShellId::from_index(0));
+        // m_pFU, which the export does not carry: the primary face use is the face's
+        // upward one (SM_OT_SAME, SmFace::GetUpwardFaceuse)
+        let faceuse = faceuses
+            .iter()
+            .position(|fu| {
+                fu.face == Some(FaceId::from_index(f as u32))
+                    && fu.orientation == OrientType::Same
+            })
+            .map(|i| FaceuseId::from_index(i as u32));
         b.add_face_record(Face {
             surface,
             uv_domain,
             tolerance,
+            faceuse,
             ..Face::new(shell)
         })
         .map_err(|e| harness(e.to_string()))?;
@@ -1163,7 +1251,7 @@ fn inexact_geometry(b: &Brep, types: &ImportTypes, op: &OpIn) -> Option<Output> 
         eu1::face(b, e)
             .ok()
             .flatten()
-            .and_then(|f| types.face_surface_types.get(f.index() as usize).copied())
+            .and_then(|f| types.inexact_surface(f.index() as usize))
             .unwrap_or(-1)
     };
     let curve_of = |e: Option<EdgeuseId>| {

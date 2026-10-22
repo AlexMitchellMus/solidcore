@@ -85,6 +85,12 @@
 //!   control points in `CreateCanonical`, too short arrays for the data constructor,
 //!   negative sizes, an unreadable header or a short binary stream in `ReadFromDB`,
 //!   knot type / form values outside the enums) the port returns `InvalidInput`.
+//! - **Canonical knots.** `CreateCanonical` expands the knots by the caller's
+//!   multiplicities with `SmTArray::Add` (failed growth ignored). The port counts the
+//!   expanded knots first and materialises them only after the control point rows
+//!   are taken, which bounds them by the point count; the checks and their order are
+//!   upstream's, so an absurd multiplicity fails the same point-count check without
+//!   allocating. A total count above `usize::MAX` is `InvalidInput`.
 //! - **Data constructor.** `SmBSplineSurface(n, m, p, q, r, s, Pw, U, V)` copies `V`
 //!   with `smos_MemCpy(.., (s+1) doubles, (r+1) doubles)`: the destination size is the
 //!   u knot count, so the copy is refused (status ignored) when `s > r` and the v
@@ -109,7 +115,8 @@
 //!   `SmSurface::EvaluateNormal` (`surface::surface::p7`); its zone tolerance expansion
 //!   reads `GetFace()`, and a bare B-spline has no owner (the owner is held by the
 //!   [`Surface`](crate::surface::surface::Surface) wrapper), so it uses
-//!   `SM_ZONE_TOL_3D`; `CreateOffsetSurface` uses the base `SmSurface` body and
+//!   `SM_ZONE_TOL_3D` unless the wrapper passes its face's cached tolerance as
+//!   [`BoundingBoxRequest::expand_tolerance`]; `CreateOffsetSurface` uses the base `SmSurface` body and
 //!   constructs an `OffsetSurface`, asking the copy for its singularities.
 //!   `STEPInversion` runs `GlobalPointSolve` and `IsClosed` on the owning surface
 //!   (including plane overrides) and calls the base `LocalPointSolve` and
@@ -131,6 +138,7 @@ use crate::geom::vector2d::Point2;
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
 use crate::math::{EFF_ZERO, EFF_ZERO_PARAM, EFF_ZERO_SQ};
+use crate::nurbs::b_spline_curve::p1::ExpandedKnots;
 use crate::nurbs::b_spline_curve::{BSplineCurve, KnotType, NurbCircleParam};
 use crate::nurbs::crv_basic::ConicType;
 use crate::nurbs::iges::{iges_128_surface, Entity128};
@@ -372,6 +380,11 @@ pub struct BoundingBoxRequest<'a> {
     /// Expand the normal and pseudo boxes by the zone tolerance
     /// (`bExpandPosBoxesByZoneTol3d`, upstream default `TRUE`).
     pub expand_by_zone_tol: bool,
+    /// The zone tolerance of the owning face to expand by (`GetFace()->GetTolerance()`):
+    /// a bare B-spline has no owner, so the [`Surface`](crate::surface::surface::Surface)
+    /// wrapper holding it passes its face's cached tolerance here; `None` expands by
+    /// the ownerless `SM_ZONE_TOL_3D`.
+    pub expand_tolerance: Option<f64>,
 }
 
 /// The boxes of [`BSplineSurface::calculate_bounding_box`] (each present when asked).
@@ -492,11 +505,13 @@ fn evaluate_normal(k: &Kernel, srf: &BSplineSurface, uv: Point2) -> Result<Vec3>
 /// bare B-spline has no owner (the owner is held by the
 /// [`Surface`](crate::surface::surface::Surface) wrapper, whose
 /// [`calculate_bounding_box`](crate::surface::surface::Surface::calculate_bounding_box)
-/// handles a face owner before calling here): `SM_ZONE_TOL_3D`. Callers that hold a
-/// `Surface` with a face must check it first (as `Surface::calculate_bounding_box` and
-/// `Surface::is_planar` do); the patch boxes of surface caches are ownerless.
-const fn owner_zone_tolerance(_srf: &BSplineSurface) -> f64 {
-    crate::geom::tol::ZONE_TOL_3D
+/// passes a face owner's tolerance as [`BoundingBoxRequest::expand_tolerance`]):
+/// that tolerance when given, else `SM_ZONE_TOL_3D`. Callers that hold a `Surface` with
+/// a face must pass it (as `Surface::calculate_bounding_box` and `Surface::is_planar`
+/// do); the patch boxes of surface caches are ownerless.
+fn owner_zone_tolerance(req: &BoundingBoxRequest<'_>) -> f64 {
+    req.expand_tolerance
+        .unwrap_or(crate::geom::tol::ZONE_TOL_3D)
 }
 
 /// `SmSurface::IsDegenerateCurve` (the base body, on a copy of the B-spline as an
@@ -1408,11 +1423,11 @@ impl BSplineSurface {
         // When asked, expand the normal box by the zone tolerance
         if req.expand_by_zone_tol {
             if let Some(nb) = normal_box.as_mut() {
-                nb.expand_absolute(owner_zone_tolerance(self));
+                nb.expand_absolute(owner_zone_tolerance(req));
             }
             // When asked, expand the pPseudoBox box by the zone tolerance
             if let Some(pb) = pseudo_box.as_mut() {
-                pb.expand_absolute(owner_zone_tolerance(self));
+                pb.expand_absolute(owner_zone_tolerance(req));
             }
         }
 
@@ -1479,22 +1494,13 @@ impl BSplineSurface {
         }
 
         // Make sNewUKnots / sNewVKnots arrays with one entry for each multiplicity
-        let expand = |knots: &[f64], mults: &[usize]| -> Result<Vec<f64>> {
-            let mut out = Vec::new();
-            for (i, &knot) in knots.iter().enumerate() {
-                let mult = *mults
-                    .get(i)
-                    .ok_or_else(|| invalid(OP_CANON, "fewer multiplicities than knots"))?;
-                out.extend(core::iter::repeat_n(knot, mult));
-            }
-            Ok(out)
-        };
-        let new_u_knots = expand(data.u_knots, data.u_multiplicities)?;
-        let new_v_knots = expand(data.v_knots, data.v_multiplicities)?;
+        // (kept implicit until the control points bound their size)
+        let exp_u = ExpandedKnots::new(data.u_knots, data.u_multiplicities, OP_CANON)?;
+        let exp_v = ExpandedKnots::new(data.v_knots, data.v_multiplicities, OP_CANON)?;
 
         // Get number of ControlPoints (ULONG arithmetic)
-        let num_u_cpts = new_u_knots.len().wrapping_sub(u_degree).wrapping_sub(1);
-        let num_v_cpts = new_v_knots.len().wrapping_sub(v_degree).wrapping_sub(1);
+        let num_u_cpts = exp_u.len().wrapping_sub(u_degree).wrapping_sub(1);
+        let num_v_cpts = exp_v.len().wrapping_sub(v_degree).wrapping_sub(1);
 
         // check input - number of ControlPoints is consistent with Knot Count and degree
         if num_u_cpts.wrapping_mul(num_v_cpts) != cps.len() {
@@ -1505,8 +1511,8 @@ impl BSplineSurface {
         }
         if num_u_cpts == 0
             || num_v_cpts == 0
-            || num_u_cpts > new_u_knots.len()
-            || num_v_cpts > new_v_knots.len()
+            || num_u_cpts > exp_u.len()
+            || num_v_cpts > exp_v.len()
         {
             // upstream builds k1 = -1 or wraps its sizes
             return Err(invalid(OP_CANON, "no control points"));
@@ -1527,19 +1533,25 @@ impl BSplineSurface {
             Some(w) if non1_weight && !w.is_empty() => w.to_vec(),
             _ => vec![1.0; cps.len()],
         };
-        let rows = |k: usize| k * num_v_cpts..(k + 1) * num_v_cpts;
-        let mut w_rows: Vec<Vec<f64>> = Vec::with_capacity(num_u_cpts);
-        let mut p_rows: Vec<Vec<Point3>> = Vec::with_capacity(num_u_cpts);
+        let rows = |k: usize| -> Option<core::ops::Range<usize>> {
+            Some(k.checked_mul(num_v_cpts)?..k.checked_add(1)?.checked_mul(num_v_cpts)?)
+        };
+        let mut w_rows: Vec<Vec<f64>> = Vec::new();
+        let mut p_rows: Vec<Vec<Point3>> = Vec::new();
         for k in 0..num_u_cpts {
-            let wr = weights_flat
-                .get(rows(k))
+            let wr = rows(k)
+                .and_then(|r| weights_flat.get(r))
                 .ok_or_else(|| invalid(OP_CANON, "too few weights"))?;
-            let pr = cps
-                .get(rows(k))
+            let pr = rows(k)
+                .and_then(|r| cps.get(r))
                 .ok_or_else(|| invalid(OP_CANON, "too few control points"))?;
             w_rows.push(wr.to_vec());
             p_rows.push(pr.to_vec());
         }
+
+        // the control net bounds the knot counts now (num_u_cpts * num_v_cpts points)
+        let new_u_knots = exp_u.prefix(exp_u.len(), OP_CANON)?;
+        let new_v_knots = exp_v.prefix(exp_v.len(), OP_CANON)?;
 
         let knot = |k: &[f64], i: usize| -> Result<f64> {
             k.get(i)
@@ -2314,5 +2326,40 @@ mod tests {
         let (_, _, cps) = s.control_points().unwrap();
         assert_eq!(cps[3].z, 1.0);
         assert_eq!(cps[3].w, NOW);
+    }
+
+    #[test]
+    fn canonical_huge_multiplicities_do_not_allocate() {
+        // fuzz regressions (nurbs.b_spline_surface_p1 fuzz00115, fuzz00156): huge
+        // multiplicities aborted (or overflowed) the knot expansion
+        let pts: Vec<Point3> = (0..6)
+            .map(|k| Point3::new(f64::from(k / 3), f64::from(k % 3), f64::from(k)))
+            .collect();
+        let data = |u: &'static [usize], v: &'static [usize]| CanonicalSurfaceData {
+            u_degree: 1,
+            v_degree: 2,
+            control_points: &[],
+            form: BSplineSurfaceForm::QuadricSurf,
+            u_multiplicities: u,
+            v_multiplicities: v,
+            u_knots: &[0.0, 1.0],
+            v_knots: &[0.0, 2.0],
+            knot_type: KnotType::PiecewiseBezierKnots,
+            weights: None,
+            uv_domain: None,
+        };
+        for (u, v) in [
+            (&[2, 1 << 31][..], &[3, 3][..]),
+            (&[2, 2][..], &[3, usize::MAX][..]),
+            (&[usize::MAX, 2][..], &[3, 3][..]),
+            // wrapped point count 2^63 * 2 == 0 with no points: still no allocation
+            (&[2, 1 << 63][..], &[3, 2][..]),
+        ] {
+            let mut d = data(u, v);
+            d.control_points = &pts;
+            assert!(BSplineSurface::create_canonical(&d).is_err());
+            d.control_points = &[];
+            assert!(BSplineSurface::create_canonical(&d).is_err());
+        }
     }
 }

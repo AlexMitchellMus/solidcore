@@ -20,6 +20,7 @@
 //! | [`is_arc_base`], [`Curve::is_arc`]           | `SmCurve::IsArc` (virtual: base, circle, line, parabola, hyperbola) |
 //! | [`is_line_base`], [`Curve::is_line`]         | `SmCurve::IsLine` (virtual: base, B-spline, line) |
 //! | [`Curve::is_linear`], [`Linearity`]          | `SmCurve::IsLinear`                            |
+//! | `Curve::is_linear_after_ends` (crate helper) | general `IsLinear` branch after virtual `GetEnds` |
 //! | [`Curve::is_domain_boundary`]                | `SmCurve::IsDomainBoundary` (virtual: base, ellipse, line) |
 //! | [`is_periodic`], [`Curve::is_periodic`]      | `SmCurve::IsPeriodic`                          |
 //! | [`Curve::length`], [`Curve::length_base`]    | `SmCurve::Length` (virtual: base, line)        |
@@ -289,7 +290,7 @@ pub fn make_curve_cache<O: Copy + PartialEq>(
     // get an Idea of the curve's size.
     let length = curve.approximate_length(k, &ivl, 5, false)?.0;
     // (int arithmetic: GetNumberNaturalKnots() - 1, then 30 * NumberOfSpans)
-    let number_of_spans = curve.number_natural_knots()? as i64 - 1;
+    let number_of_spans = curve.number_natural_knots(k)? as i64 - 1;
     let chord_factor = 250.min(30 * number_of_spans) as f64; // 0.004 of length may be too tight
 
     // set chordHeight tolerance based on curve size
@@ -433,6 +434,26 @@ impl Curve {
         let (start_pt, end_pt) = match ignored(self.ends(k))? {
             Some(e) => (e.start, e.end),
             None => (Vec3::UNDEF, Vec3::UNDEF),
+        };
+        self.is_linear_after_ends(k, tol, want_deviation, domain, start_pt, end_pt)
+    }
+
+    /// General `IsLinear` branch after `GetEnds`, retaining the interval captured
+    /// before that call. An owned lazy line can build its owner's NURB in `GetEnds`.
+    pub(crate) fn is_linear_after_ends(
+        &self,
+        k: &Kernel,
+        tol: f64,
+        want_deviation: bool,
+        domain: Extent1d,
+        start_pt: Vec3,
+        end_pt: Vec3,
+    ) -> Result<Linearity> {
+        let mut out = Linearity {
+            linear: false,
+            line_point: Vec3::UNDEF,
+            line_tangent: Vec3::UNDEF,
+            deviation: 0.0,
         };
         let mut pt = Vec3::UNDEF;
         let mut base_vec = end_pt - start_pt;

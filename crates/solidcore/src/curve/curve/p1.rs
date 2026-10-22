@@ -64,6 +64,7 @@
 //!   evaluators behind `LocalCurveSolve` / `LocalCurveIntersect`, `SmCurve::IsArc`)
 //!   are wired; [`SolidError::Unported`] is propagated from what they reach.
 
+use crate::curve::curve::knots_ignoring_status;
 use crate::curve::curve::p2::{
     add_to_curve, evaluate_continuity, find_test_params, flush_crv, output, pop_stack,
     proj_signed_angle, push_point, stack_look, test_step, CpGlobalSolver, Curve, CurveKind,
@@ -82,7 +83,9 @@ use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::global_solver::{
     Branch, GlobalSolve, SolutionRequested, SolveRequest, SolverOperation,
 };
-use crate::geom::solution_array::{Solution, SolutionArray, SolutionObject, SolutionType, SortKey};
+use crate::geom::solution_array::{
+    OperandObject, Solution, SolutionArray, SolutionObject, SolutionType, SortKey,
+};
 use crate::geom::tol::{are_same, is_zero, is_zero_to_tol};
 use crate::geom::tree::{NodeData, Tree};
 use crate::geom::vector3d::{Point3, Vec3};
@@ -1475,7 +1478,9 @@ pub struct GlobalPointSolveOptions<'a, O> {
     pub target_distance: Option<f64>,
     /// `cpOptVectors`: the vectors of the ray, directed and projected operations.
     pub opt_vectors: Option<&'a [Vec3]>,
-    /// The handle of this curve, named by its solutions.
+    /// The handle of this curve, named by its solutions. With this and
+    /// [`GlobalPointSolveOptions::analytic_handle`] both `None` the solutions name no
+    /// object, but are merged as upstream's (which name the curve).
     pub handle: Option<O>,
     /// The handle of the curve cache's analytic replacement (an `SmLine` the cache
     /// makes of a straight B-spline), named by its fast drop's solutions.
@@ -1548,6 +1553,22 @@ impl Curve {
         requested: SolutionRequested,
         opts: &GlobalPointSolveOptions<'_, O>,
     ) -> Result<SolutionArray<O>> {
+        // no handles: upstream's solutions still name this curve (whose natural
+        // interval IdenticalSolutions reads); the caller gets them without objects
+        if opts.handle.is_none() && opts.analytic_handle.is_none() {
+            let ivl = self.natural_interval();
+            let inner = GlobalPointSolveOptions {
+                target_distance: opts.target_distance,
+                opt_vectors: opts.opt_vectors,
+                handle: Some(OperandObject::Curve(0, ivl)),
+                analytic_handle: Some(OperandObject::Curve(2, ivl)),
+            };
+            return Ok(self
+                .global_point_solve_cached(
+                    k, interval, op, test_point, dist_tol, requested, &inner, &mut None,
+                )?
+                .without_objects());
+        }
         self.global_point_solve_cached(
             k, interval, op, test_point, dist_tol, requested, opts, &mut None,
         )
@@ -1747,9 +1768,7 @@ impl Curve {
         let max_3d_distance_squared = max_3d_distance * max_3d_distance;
 
         // SmCurve locals - knots (status ignored)
-        let knots = ignored(self.knots(None))?
-            .map(|(k, _)| k)
-            .unwrap_or_default();
+        let (knots, _) = knots_ignoring_status(self.knots_with_status(k, None))?;
 
         // get this SmCurve's start position and derivative
         let mut cur_pv: [Vec3; 2] = eval_n(k, self, interval.min(), 1, true, true)?; // nonZeroTangent values
@@ -1985,7 +2004,7 @@ impl Curve {
         min_segments: u64,
     ) -> Result<Tessellation> {
         match self.kind() {
-            CurveKind::Line(l) => Ok(l.tessellate(
+            CurveKind::Line(l) => l.tessellate(
                 interval,
                 min_segments,
                 TessellationRequest {
@@ -1993,7 +2012,7 @@ impl Curve {
                     points: true,
                     tangents: true,
                 },
-            )),
+            ),
             CurveKind::BSpline(c) => c.tessellate(
                 k,
                 interval,

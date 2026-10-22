@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! cargo run -p difftest --features cpp -- --unit <id> [--unit <id>...]
-//! cargo run -p difftest --features cpp -- --green      # all status=green|partial units in plan/modules.toml
+//! cargo run -p difftest --features cpp -- --green      # all status=green|partial units in plan/units/*.toml
 //! cargo run -p difftest --features cpp -- --green --jobs 0   # same, one child process per unit, all cores
 //! cargo run -p difftest --features cpp -- --all        # every registered runner
 //! cargo run -p difftest --features cpp -- --list
@@ -11,6 +11,9 @@
 //!          --jobs N (-j; default 1, 0 = all cores)   # units in N child processes (`difftest::jobs`)
 //! cargo run -p difftest --features cpp -- --unit <id> --fuzz N [--fuzz-out <dir>]   # FFI guard probing
 //! cargo run -p difftest --features cpp -- --ssi-corpus [--tol 1e-6|default] [--jobs N] [glob]
+//! cargo run -p difftest -- --solidcraft-cases [glob]   # Rust only; no `cpp` feature needed
+//! cargo run -p difftest --features cpp -- --green --digest-dir <dir> [--digest-debug]   # Rust side
+//!          only, one `<dir>/<unit>.digest` per unit (native vs wasm32: scripts/wasm-digest.sh)
 //! ```
 //! Exit status: 0 no failures (deferred cases are not failures), 1 any failure,
 //! 2 usage / harness setup error.
@@ -24,8 +27,10 @@ use difftest::{fuzz, plan, registry, report, run_unit, CaseContext, RunOptions, 
 
 const USAGE: &str = "usage: difftest [--unit <id>]... [--green] [--all] [--list] \
 [--status-of <id>] [--seeds N] [--filter <substr>] [--perturb] [--report-dir <dir>] [--no-report] [--jobs N]
+       [--digest-dir <dir> [--digest-debug]]
        difftest --unit <id>... --fuzz N [--fuzz-out <dir>] [--seeds N] [--filter <substr>]
-       difftest --ssi-corpus [--tol 1e-6|default] [--jobs N] [--report-dir <dir>] [--no-report] [case-glob]";
+       difftest --ssi-corpus [--tol 1e-6|default] [--jobs N] [--report-dir <dir>] [--no-report] [case-glob]
+       difftest --solidcraft-cases [--report-dir <dir>] [--no-report] [case-glob]";
 
 /// Default child processes of `--ssi-corpus`.
 const DEFAULT_SSI_JOBS: usize = 2;
@@ -51,11 +56,14 @@ struct Args {
     report_dir: Option<PathBuf>,
     no_report: bool,
     ssi_corpus: bool,
+    solidcraft_cases: bool,
     tol: Option<String>,
     jobs: Option<usize>,
     glob: Option<String>,
     fuzz: Option<usize>,
     fuzz_out: Option<PathBuf>,
+    digest_dir: Option<PathBuf>,
+    digest_debug: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -78,6 +86,7 @@ fn parse_args() -> Result<Args, String> {
             "--report-dir" => a.report_dir = Some(PathBuf::from(val("--report-dir")?)),
             "--no-report" => a.no_report = true,
             "--ssi-corpus" => a.ssi_corpus = true,
+            "--solidcraft-cases" => a.solidcraft_cases = true,
             "--tol" => a.tol = Some(val("--tol")?),
             "--jobs" | "-j" => {
                 let v = val("--jobs")?;
@@ -88,8 +97,14 @@ fn parse_args() -> Result<Args, String> {
                 a.fuzz = Some(v.parse().map_err(|_| format!("bad --fuzz `{v}`"))?);
             }
             "--fuzz-out" => a.fuzz_out = Some(PathBuf::from(val("--fuzz-out")?)),
+            "--digest-dir" => a.digest_dir = Some(PathBuf::from(val("--digest-dir")?)),
+            "--digest-debug" => a.digest_debug = true,
             "-h" | "--help" => return Err(String::new()),
-            other if a.ssi_corpus && !other.starts_with('-') && a.glob.is_none() => {
+            other
+                if (a.ssi_corpus || a.solidcraft_cases)
+                    && !other.starts_with('-')
+                    && a.glob.is_none() =>
+            {
                 a.glob = Some(other.to_string());
             }
             other => return Err(format!("unknown argument `{other}`")),
@@ -133,6 +148,16 @@ fn main() -> ExitCode {
         root: root.clone(),
         seeds: args.seeds.unwrap_or(DEFAULT_SEEDS),
     };
+
+    // Rust only, so it runs without the C++ kernel.
+    if args.solidcraft_cases {
+        let opts = difftest::solidcraft::CasesOptions {
+            glob: args.glob.clone(),
+            report_dir: args.report_dir.clone(),
+            no_report: args.no_report,
+        };
+        return difftest::solidcraft::run_cases(&root, &opts);
+    }
 
     if !solidcore_ffi::LINKED {
         eprintln!(
@@ -254,10 +279,23 @@ fn main() -> ExitCode {
     let jobs = difftest::jobs::resolve(args.jobs.unwrap_or(1)).min(wanted.len());
     if jobs > 1 {
         let fwd = difftest::jobs::forwarded_args(&raw);
-        // Previous reports order the queue; a fresh --report-dir falls back to the default.
+        // Previous reports order the queue; a fresh --report-dir falls back to the default,
+        // and a unit with no report anywhere to its fixture size (reports are not committed).
         let default_dir = root.join("reports").join("difftest");
         let dirs = [report_dir.as_path(), default_dir.as_path()];
-        return difftest::jobs::run_parallel(&wanted, &fwd, jobs, &dirs);
+        let times = (!args.no_report).then(|| report_dir.join(difftest::jobs::TIMES_FILE));
+        return difftest::jobs::run_parallel(
+            &wanted,
+            &fwd,
+            jobs,
+            &dirs,
+            &root.join("fixtures"),
+            times.as_deref(),
+        );
+    }
+
+    if let Some(dir) = &args.digest_dir {
+        return digest_main(&wanted, &reg, &ctx, &opts, dir, args.digest_debug);
     }
 
     let mut failed = 0usize;
@@ -300,6 +338,11 @@ fn main() -> ExitCode {
             let body = res.timing.rust_digests.join("\n") + "\n";
             if let Err(e) = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, body))
             {
+                eprintln!("difftest: {}: {e}", path.display());
+            }
+            let path = Path::new(&dir).join(format!("{id}.cppdigest"));
+            let body = res.timing.cpp_digests.join("\n") + "\n";
+            if let Err(e) = std::fs::write(&path, body) {
                 eprintln!("difftest: {}: {e}", path.display());
             }
         }
@@ -351,6 +394,63 @@ fn main() -> ExitCode {
     if setup_error {
         ExitCode::from(2)
     } else if failed > 0 {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// `--digest-dir DIR`: the Rust side of each unit only, digests to `DIR/<unit>.digest`
+/// (and the outputs to `DIR/<unit>.debug` with `--digest-debug`). A unit fails only if
+/// its cases cannot be built or a file cannot be written.
+fn digest_main(
+    wanted: &[String],
+    reg: &[Box<dyn difftest::UnitDiff>],
+    ctx: &CaseContext,
+    opts: &RunOptions,
+    dir: &Path,
+    debug: bool,
+) -> ExitCode {
+    let mut failed = 0usize;
+    for id in wanted {
+        let Some(unit) = reg.iter().find(|u| u.id() == id.as_str()) else {
+            println!("FAIL {id} (no difftest runner registered for this unit)");
+            failed += 1;
+            continue;
+        };
+        let start = Instant::now();
+        let res = difftest::runner::digest_unit(unit.as_ref(), ctx, opts, debug);
+        if let Some(e) = &res.harness_error {
+            println!("FAIL {id} ({e})");
+            failed += 1;
+            continue;
+        }
+        let mut files = vec![(format!("{id}.digest"), &res.lines)];
+        if debug {
+            files.push((format!("{id}.debug"), &res.debug));
+        }
+        for (name, lines) in files {
+            let path = dir.join(name);
+            let body = lines.join("\n") + "\n";
+            if let Err(e) = std::fs::create_dir_all(dir).and_then(|()| std::fs::write(&path, body))
+            {
+                eprintln!("difftest: {}: {e}", path.display());
+                return ExitCode::from(2);
+            }
+        }
+        println!(
+            "DIGEST {id} cases={} needs_cpp={} rust={:.3}s",
+            res.lines.len(),
+            res.needs_cpp,
+            start.elapsed().as_secs_f64()
+        );
+    }
+    println!(
+        "difftest: {} unit(s), {} passed, 0 partial, {failed} failed",
+        wanted.len(),
+        wanted.len() - failed
+    );
+    if failed > 0 {
         ExitCode::from(1)
     } else {
         ExitCode::SUCCESS

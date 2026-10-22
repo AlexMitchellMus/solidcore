@@ -9,7 +9,7 @@
 //! | [`Surface::coincidence_check`], [`Surface::base_coincidence_check`] | `SmSurface::CoincidenceCheck` (virtual; `SmPlane` overrides it) |
 //! | [`Surface::create_blend_surface`] | `SmSurface::CreateBlendSurface` |
 //! | [`Surface::global_curve_intersect`], [`Surface::global_curve_intersect_in`] | `SmSurface::GlobalCurveIntersect` |
-//! | [`Surface::global_line_intersect`], [`Surface::global_line_intersect_in`], [`Surface::base_global_line_intersect`], [`Surface::base_global_line_intersect_in`] | `SmSurface::GlobalLineIntersect` (virtual; `SmPlane` overrides it) |
+//! | [`Surface::global_line_intersect`], [`Surface::global_line_intersect_in`], [`Surface::global_line_intersect_held`], [`Surface::base_global_line_intersect`], [`Surface::base_global_line_intersect_in`] | `SmSurface::GlobalLineIntersect` (virtual; `SmPlane` overrides it) |
 //! | [`SpGlobalSolver::local_solve_branch`] | `SmSPGlobalSolver::LocalSolve` |
 //! | [`Surface::invert_point_near_singularity`] | `SmSurface::InvertPointNearSingularity` |
 //! | [`Surface::local_line_intersect`] | `SmSurface::LocalLineIntersect` |
@@ -24,8 +24,15 @@
 //! cache per surface, `smsurf_GetSurfaceCache`). A caller that holds the surface's
 //! cache passes it to [`Surface::global_curve_intersect_in`] /
 //! [`Surface::global_line_intersect_in`], so the line and tree solves run on that
-//! cache's tree as upstream's do (the degenerate-curve point solve and the drops still
-//! fetch their own). The
+//! cache's tree as upstream's do, and so do the coincident `DropAndTrimCurve` traces
+//! ([`Surface::drop_and_trim_curve_in`]; the degenerate-curve point solve and the
+//! `DropCurve` fallback still fetch their own). A caller that makes many line solves
+//! on one unchanged surface keeps its cache in a [`HeldSolveCache`]
+//! ([`Surface::global_line_intersect_held`]), built on the first solve and reused as
+//! upstream reuses the surface's cache (its coincident traces fetch their own, as
+//! without a cache); a failed build is kept as well and its error returned again
+//! (upstream retries the build, which fails the same way: the build is
+//! deterministic). The
 //! optional `SmDerivSurfDefinition` of `CreateBlendSurface` is copied, so its caller
 //! does not see the fields upstream overwrites. `CreateBlendSurface` returns `SM_ERR`
 //! as soon as one of the sample evaluations fails (upstream ignores the status, goes
@@ -77,6 +84,21 @@ use crate::surface::plane::Coincidence;
 use crate::surface::surface::p7::SpGlobalSolver;
 use crate::surface::surface_cache::p1::SurfaceCache;
 use crate::surface::surface_cache::BezierPatch;
+
+/// A surface's solve cache kept by a caller across [`Surface::global_line_intersect_held`]
+/// calls (upstream keeps one cache on each surface): `None` until the first call
+/// builds it, then the outcome of that build.
+pub type HeldSolveCache<O> = Option<Result<SurfaceCache<O>>>;
+
+/// Where `GlobalLineIntersect` takes its surface cache from.
+enum LineCacheSource<'c, O> {
+    /// Built for this call.
+    Fresh,
+    /// The caller's cache of the surface (its tree is built if it has none).
+    Caller(&'c mut SurfaceCache<O>),
+    /// Built on the first call and kept by the caller.
+    Held(&'c mut HeldSolveCache<O>),
+}
 
 const OP_KNOTS: &str = "surface::surface::p8::Surface::find_knots_by_max_continuity";
 const OP_BNDRY: &str = "surface::surface::p8::intersect_srf_bndry_crv";
@@ -190,6 +212,8 @@ fn surface_drop_curve(
         }
         SurfaceKind::BSpline(_)
         | SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -1101,12 +1125,95 @@ impl Surface {
     /// # Errors
     ///
     /// Those of [`Surface::base_global_line_intersect`].
-    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    #[allow(clippy::too_many_arguments)]
     pub fn base_global_line_intersect_in<O: SolutionObject>(
         &self,
         k: &Kernel,
         surface: Option<O>,
         cache: Option<&mut SurfaceCache<O>>,
+        uv_domain: &Extent2d,
+        line_point: Point3,
+        line_vector: Vec3,
+        line_interval: Option<&Extent1d>,
+        fire_ray: bool,
+        distance_tolerance: f64,
+    ) -> Result<SolutionArray<O>> {
+        let source = match cache {
+            Some(c) => LineCacheSource::Caller(c),
+            None => LineCacheSource::Fresh,
+        };
+        self.base_global_line_intersect_from(
+            k,
+            surface,
+            source,
+            uv_domain,
+            line_point,
+            line_vector,
+            line_interval,
+            fire_ray,
+            distance_tolerance,
+        )
+    }
+
+    /// [`Surface::global_line_intersect`] with the surface's cache kept in `held`
+    /// across calls, as upstream keeps it on the surface (`smsurf_GetSurfaceCache`):
+    /// the first call builds it ([`get_surface_cache`]) and stores the outcome, later
+    /// calls reuse it. A failed build is kept too: the build is deterministic, so
+    /// building again from the same surface fails the same way (upstream retries it).
+    /// A plane builds its own cache (only its coincident-line branch needs one).
+    /// `held` must only ever be used with this surface, unchanged, and `surface`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::global_line_intersect`]; a kept failed build returns its error
+    /// again.
+    #[allow(clippy::too_many_arguments)]
+    pub fn global_line_intersect_held<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        surface: O,
+        held: &mut HeldSolveCache<O>,
+        uv_domain: &Extent2d,
+        line_point: Point3,
+        line_vector: Vec3,
+        line_interval: Option<&Extent1d>,
+        fire_ray: bool,
+        distance_tolerance: f64,
+    ) -> Result<SolutionArray<O>> {
+        match self.kind() {
+            SurfaceKind::Plane(p) => p.global_line_intersect_in(
+                k,
+                Some(surface),
+                None,
+                uv_domain,
+                line_point,
+                line_vector,
+                line_interval,
+                fire_ray,
+                distance_tolerance,
+            ),
+            _ => self.base_global_line_intersect_from(
+                k,
+                Some(surface),
+                LineCacheSource::Held(held),
+                uv_domain,
+                line_point,
+                line_vector,
+                line_interval,
+                fire_ray,
+                distance_tolerance,
+            ),
+        }
+    }
+
+    /// The body of [`Surface::base_global_line_intersect_in`] with the cache from
+    /// `source`.
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    fn base_global_line_intersect_from<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        surface: Option<O>,
+        source: LineCacheSource<'_, O>,
         uv_domain: &Extent2d,
         line_point: Point3,
         line_vector: Vec3,
@@ -1123,12 +1230,27 @@ impl Surface {
         let mut sols: SolutionArray<O> = SolutionArray::new();
 
         // local Surface Cache
+        // (`held`: the caller's cache, which the coincident traces below share)
+        let mut held: Option<&mut SurfaceCache<O>> = None;
         let built;
-        let cache = if let Some(c) = cache {
-            Self::held_cache(k, c, OP_LINE)?
-        } else {
-            built = self.solve_cache_of(k, surface, OP_LINE)?;
-            &built
+        let cache = match source {
+            LineCacheSource::Caller(c) => {
+                held = Some(c);
+                match held.as_deref_mut() {
+                    Some(c) => Self::held_cache(k, c, OP_LINE)?,
+                    None => return Err(SolidError::null_pointer(OP_LINE)),
+                }
+            }
+            LineCacheSource::Fresh => {
+                built = self.solve_cache_of(k, surface, OP_LINE)?;
+                &built
+            }
+            LineCacheSource::Held(kept) => {
+                match kept.get_or_insert_with(|| self.solve_cache_of(k, surface, OP_LINE)) {
+                    Ok(c) => &*c,
+                    Err(e) => return Err(e.clone()),
+                }
+            }
         };
         let tree = cache.tree().ok_or(SolidError::null_pointer(OP_LINE))?;
         let top = tree.top_node().ok_or(SolidError::null_pointer(OP_LINE))?;
@@ -1312,8 +1434,9 @@ impl Surface {
             if found.is_some() {
                 sols.reset();
 
-                let dropped = self.drop_and_trim_curve::<NoObject>(
+                let dropped = self.drop_and_trim_curve_in::<NoObject, O>(
                     k,
+                    held,
                     uv_domain,
                     &line,
                     &line_interval_used,
@@ -1323,8 +1446,7 @@ impl Surface {
                     None,
                 )?;
                 let mut dist_to_surface = dropped.max_drop_to_surf;
-                let mut uv_curves: Vec<Curve> =
-                    dropped.uv_curves.into_iter().map(Curve::from).collect();
+                let mut uv_curves: Vec<Curve> = dropped.uv_curves;
 
                 // If the curve is entirely interior to the surface, then
                 // DropAndTrimCurve won't find it; in that case use DropCurve.
@@ -1711,8 +1833,9 @@ impl Surface {
         //                   boundary by more than dDistanceTolerance
         if coincident {
             // drop curve to surface
-            let dropped = self.drop_and_trim_curve::<NoObject>(
+            let dropped = self.drop_and_trim_curve_in::<NoObject, O>(
                 k,
+                cache,
                 uv_domain,
                 curve,
                 interval,
@@ -1722,8 +1845,7 @@ impl Surface {
                 None,
             )?;
             let mut dist_to_surface = dropped.max_drop_to_surf;
-            let mut uv_curves: Vec<Curve> =
-                dropped.uv_curves.into_iter().map(Curve::from).collect();
+            let mut uv_curves: Vec<Curve> = dropped.uv_curves;
 
             // DropAndTrimCurve() will miss curves that lie entirely within the
             // boundaries of the surface. Use DropCurve() for that. [090827]
@@ -2495,7 +2617,7 @@ pub fn extract_iso_curve(
     }
 
     // Check starting and ending knots for too high multiplicity.
-    let Some((_, multiplicities)) = ignored(iso.knots(None))? else {
+    let Some((_, multiplicities)) = ignored(iso.knots(k, None))? else {
         return Ok(None);
     };
     let degree = iso.degree()?;

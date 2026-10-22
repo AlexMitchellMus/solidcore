@@ -285,7 +285,7 @@ impl TopologySweep {
                 continue;
             };
             let interval = curve.natural_interval();
-            let point = curve.evaluate_point(a.kernel(region.0)?, interval.max())?;
+            let point = curve.evaluate_point(a.kernel(original.0)?, interval.max())?;
             // bNewVtxNeeded is unconditionally TRUE in the active upstream code.
             let point0 = vertex::point(a.brep(original.0)?, original.1)?;
             let (_, start) = a.make_shell_vertex(region, point0)?;
@@ -1744,5 +1744,22 @@ mod tests {
             access.with_merge(b, b, b, 1e-5, 0.1, |_, _| Err(SolidError::sm_err(OP)));
         assert!(result.is_err());
         assert_eq!(access.deleted_merges, 1);
+    }
+    #[test]
+    fn stitch_default_calls_port_and_restores_caller_state() {
+        let mut access = Access::new();
+        let owner = BrepId::from_index(0);
+        let mut sweep = TopologySweep::new(super::super::TopologySweepOptions::default());
+        for editing in [false, true] {
+            for doing_boolean in [false, true] {
+                access.brep_mut(owner).unwrap().set_editing_enabled(editing);
+                access.kernel.context.set_doing_boolean(doing_boolean);
+                let result = access.stitch(owner, &mut sweep, 0.125, false);
+                // query.brep (CalculateBoundingBox) is ported: the stitch completes.
+                assert!(result.is_ok(), "stitch result: {result:?}");
+                assert_eq!(access.brep(owner).unwrap().editing_enabled(), editing);
+                assert_eq!(access.kernel.context.doing_boolean(), doing_boolean);
+            }
+        }
     }
 }
