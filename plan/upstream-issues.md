@@ -2636,6 +2636,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** wrong result.
 - **Rust port:** Ported as is (`bFoundAnswer` starts `false`).
 
+#### WR-253. `SmLocalSolve1d::SolveOscillating` reads a failed guess's value as a sign change
+- **Location:** `source/SMLib/src/SmLocalSolve1d.cpp:470-495` `SmLocalSolve1d::SolveOscillating`: a failed `Evaluate` of an interior guess `continue`s (`:478`), and the sign test after the loop (`:495`) reads `sTempIter.m_dFOfT` from the last guess whether or not its evaluation succeeded.
+- **What happens:** when the last guess (0.99 of the way) fails, its `F` is whatever the evaluator left: an evaluator that zeroes its outputs before failing, as `SmCurvePropertyEFO::Evaluate` does (`SmCurve.cpp:14918`), leaves 0. `0 * F(curr) <= 0` passes as a sign change, the guess is bracketed with `F = 0`, and bisection returns it as converged (`SM_TR_FOUND_ANSWER_CONVERGED`) although `F` there is not zero.
+- **Trigger:** an oscillating `SolveIt` whose evaluator fails at the last interior guess. In SolidCraft's rig, the radius-of-curvature test of `SmBSplineCurve::AssertValid` (once #475 is fixed) on a straight UV trim: box minus a y-axis cylinder tangent to the box bottom (`smlib_test_booleans` tangent_cylinders, seed 74 op 1) gives two "minima" of radius 0 (tangency-labs/solidcore#481).
+- **How found:** issue #481; traced at `c9c5979`.
+- **Confirmed:** no (the port reproduces it; no C++ run here).
+- **Severity:** wrong result (a solution where there is none).
+- **Rust port:** Faithful to the code: `LocalSolve1d::solve_oscillating` keeps the failed evaluation's value and brackets it the same way (test `failed_guess_is_read_as_a_sign_change_as_upstream`: `F = t^3 - 2t + 2` reports converged at the failed guess, where `F` is about 0.95, and nothing without the failure). Not changed, so the unit keeps the reference build's results.
+
 #### WR-20. `SmLocalSolveNd::SolveIt` reports a failed first evaluation as found
 - **Location:** `SmLocalSolveNd.cpp:90`, `SmLocalSolveNd::SolveIt`.
 - **What happens:** If the first `Evaluate` fails, it returns `SM_SUCCESS` with `rbFoundSolution = TRUE` (the guess) and `SM_TR_UNABLE_TO_CONVERGE`. `bFoundAnswer` is read even when the evaluator never writes it, and the constructor does not set `m_lCurrentIteration`.
@@ -3897,3 +3906,11 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes, on the C++ build (x86-64 Linux, g++, `c9c5979`). Snapping a boundary at most `SM_EFF_ZERO_PARAM` inside a knot onto it (and passing that knot as the requested bound to `sm_CheckTrimBoundaries`) gives all four rounds the same knots with no sliver, and the -2 shell then succeeds (a manifold solid with 19 faces).
 - **Severity:** a needlessly ill-conditioned surface (a sliver knot span) that makes later operations fail.
 - **Rust port:** `BSplineSurface::trim_with_domain_with` with `TrimOptions::snap_roundoff_to_knots` (`crates/solidcore/src/nurbs/b_spline_surface_n_lib/p2.rs`), through `Surface::trim_with_domain_with` and `topology::face::p1::shrink_geometry_with`, which the fillet executive's face shrink uses. The default keeps upstream's behaviour for the unit's difftest (`plan/findings.md`, issue #472).
+#### UB-212. `SmFilletCorner::SqueezeEdge` frees a closed corner edge at its first vertex use and reads it at its second
+- **Location:** `source/SMLib/src/SmFilletCorner.cpp:2264-2304` (`SmFilletCorner::SqueezeEdge`): the loop over the deleted vertex's vertex uses (`:2273-2293`) and the deletion of the vertex (`:2295-2298`).
+- **What happens:** The vertex uses of the vertex to delete are copied into `sVUs` first. For a vertex use whose edge is not a rail, the edge is deleted (`delete pFE`, `:2291`), which frees the edge's edge uses and their vertex uses. A non-rail edge with both ends at that vertex (a closed corner edge) has two entries in `sVUs`: the second is dereferenced (`pVU->GetEdgeuse()`, `:2277`) after the first iteration freed it. Separately, when the edge to squeeze is itself closed, `GetVertex()` and `GetOtherVertex()` (`:2268-2269`) name the same vertex, so `pSurvivingFV == pDeleteFV`: the rail vertex uses are "moved" to the vertex that `delete pDeleteFV` (`:2298`) then frees, and dangle.
+- **Trigger:** A corner whose vertex to delete (`SM_FV_TO_BE_DELETED`) has a closed non-rail corner edge, or a closed edge passed as the edge to squeeze. Reached from `CalcCornerEdgeGeom` (`:1648`) for an edge whose `CalcCornerEdgeGeom` set `SM_FE_TO_BE_SQUEEZED`.
+- **How found:** source reading while porting `SqueezeEdge` (`blend.fillet_corner_p1`, PR #266); a generated difftest case with a closed squeezed edge crashed the C++ reference before the harness refused it.
+- **Confirmed:** no (the closed non-rail edge: source only; the harness refuses both paths; the closed squeezed edge crashed once in a generated run, not reproduced in isolation).
+- **Severity:** crash/UB (use after free).
+- **Rust port:** `FilletCorner::squeeze_edge` follows the same loop on ids (no frees), so it returns `NotFound` or deletes consistently; the difftest shim and runner refuse exactly the inputs whose loop reaches a freed vertex use or the dangling survivor, and compare the defined early-error paths (`SM_ERR` for an edge or vertex not in the corner's lists).

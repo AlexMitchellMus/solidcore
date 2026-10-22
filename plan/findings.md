@@ -15937,6 +15937,33 @@ Validation limits: the fillet cannot run end to end in Rust yet
 bound: upstream sliver of 2.115e-4, none with the option), the upper and v boundaries,
 and unchanged results for bounds farther than `SM_EFF_ZERO_PARAM` from a knot.
 
+## blend.fillet_geom_p1: `sm_ClassifyFacePoint` returns 0 where the C++ returns 1 or 2 (2026-10-22)
+
+Found while batching PR #268 (`blend.fillet_corner_p2`) onto main. Now that
+`topology.face_p4` (`GetUpwardLoopuses`) and `blend.fillet_geom_p6` (`ShouldSwapFaces`)
+are ported, #268's `update_split_face` corner cases run `sm_ClassifyFacePoint` instead
+of deferring, and 5 of them fail (`gen0014`, `corner_update_split_face_08/_11/_71/_75`).
+In each, one fillet vertex's point-classification face stays at the original face
+(Rust, `which = 0`) where the C++ moves it to the new face (`which = 2`).
+
+The same disagreement shows in `blend.fillet_geom_p1`'s own `classify_face_point` op
+(main's code, not #268's), with the two planar bilinear faces of that corner model
+(face 0: the `y = 0` square `[0, 0.1] x [0, 0.1]` in x/z; face 1: the `x = 0` square in
+y/z). The weights are 1.0 or non-rational; both give the same results:
+
+| pos                  | C++ | Rust |
+|----------------------|-----|------|
+| `(0, 0.0179, 0)`     | 2   | 0    |
+| `(0, 0.05, 0.05)`    | 2   | 0    |
+| `(0.05, 0, 0.05)`    | 1   | 0    |
+| `(0, 0.0179, 0.001)` | 2   | 2    |
+
+Suspected cause: the drop or `Point3DClassify` step of `classify_face_point`
+(`crates/solidcore/src/blend/fillet_geom/p1.rs`) reports neither face for points well
+inside one face. Its existing fixture cases (a 3 x 2 face pair) pass. This has not been
+investigated further. Until it is fixed, #268's runner cannot be green. Also, #268's
+`p3_check_split` shim guard (`-3` for `ShouldSwapFaces`) is stale on main, because
+`blend.fillet_geom_p6` ported it.
 ## offset.offset_geometry_creation — exact analytic input records (PR #522)
 
 The creator adapter now restores revolution, extrusion, cone, cylinder, sphere and
@@ -15995,3 +16022,27 @@ domain test. Cases (`topology.face_p4`): `cone.smb_0_f1_op19`, `cone.smb_1_f2_op
 `cone.smb_f0_tol4867..4869`, `cone.smb_f1_tol4885..4887`, `cone.smb_f2_tol4903..4905`,
 `surf_sphere150.smb_0_f1_op17`, `surf_sphere150.smb_1_f2_op17`,
 `surf_sphere150.smb_f0_tol5302/5304`, `_f1_tol5320/5322`, `_f2_tol5338/5340`.
+## offset.offset_geometry_creation — restored owning-face tolerance cache (PR #529)
+
+Follow-up to #522 on merged main `ceb85b2a4`: replacing a face's B-spline stand-in
+with its concrete database record preserved the owner and NURBS but discarded the
+`Surface::owner_zone_tol_3d` cache that `Brep::add_face_record` had initialized.
+This is a metadata handoff omission, not a missing numerical offset algorithm.
+Two extended native regressions reproduce it before the fix: the restored cache is
+`None` instead of `Some(1e-5)`, and a face-tolerance query returns `Unported`.
+
+After installation, the importer now calls `Brep::sync_face_surface_tolerance` to
+restore the invariant from that face's actual record. Tests check all six concrete
+families, different face tolerances in both arenas, and unowned surfaces (which
+must stay unowned and have no cached face tolerance). No default tolerance is
+invented and the fixed comparison tolerance is unchanged.
+
+Native result: still 898 cases / 713 passed / 185 deferred / 0 failed, max relative
+error zero, no absolute floors, and both executive reports byte-identical to #522.
+There are no new parity passes: 53 former `SmFace::GetTolerance` deferrals reach the
+cache's missing owning-face handle instead. The `topology.face_p2` total stays 123:
+116 cache-face-handle stops and seven `SmFace::GetTolerance` stops. Prefix replays
+locate the seven remaining stops in trim/extend paths (`gen0081`, `gen0361`,
+`gen0479`, `gen0562`, `gen0688`, `gen0730`, `gen0732`); they remain explicitly
+deferred, not claimed as solved. The wider topology/cache-face adapter is separate
+work. The unit stays partial.
