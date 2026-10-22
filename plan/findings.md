@@ -13459,6 +13459,109 @@ boundary. No Rust/C++ value mismatch was observed in the completed fuzz cases.
 The ordinary unit run remains 2686 cases, 2250 passed, 436 deferred, 0 failed,
 with maximum relative error 0.
 
+## blend.fillet_solver_p2: fillet-geometry stubs need a FilletBrep
+
+`CreateCliffRollOverSideFG`, `sm_FindRolloverSideEdge`, `RecordFilletError`, the torus rail-end checks and the `store` step of
+the `Calc*FilletGeom` methods call the `SmFilletGeom` / `SmFilletEdge` / `SmFilletVertex` / `SmFilletEdgeuse` /
+`SmFilletVertexuse` members (`blend.fillet_geom_p1`) and the `SmFilletVertex(SmFilletCorner*)` / `SmFilletEdge(..)` /
+`SmFilletGeom(..)` constructors (co-ported in `fillet_geom::p1` as `FilletVertex::new` / `FilletBrep::new_fillet_edge` /
+`FilletGeom::new`). The ported ones live inside a `FilletBrep` and are addressed by its ids. Since PR #249's review round they
+take the pseudo B-rep as the `FilletBrep` the executive owns (`GetPseudoBrep()` is the `pseudo` argument), and every one of the
+27 `blend.fillet_geom_p1` sites is wired. PR #466 (merge of main after #303) dropped PR #249's own `FilletGeomRef { index }`
+handle and its index mapping: the solver's `m_vFilletGeoms` are #303's `FilletGeomId`s of that pseudo B-rep, so there is one
+FilletBrep threading (#303's), not two. `FilletGeom::new` takes the `SmFilletSolver` base, and `CreateCliffRollOverSideFG` gets
+`this`'s `FilletSolverId`. `SmVertex::SetPoint` and `SmEdge::SetCurve` on the pseudo B-rep apply the `SM_NO_CHANGE_GEOMETRY`
+resets directly, as `blend.fillet_geom_p1`/`_p4` and `blend.fillet_corner_p3` do (`fillet_geom::p4::{set_vertex_point,
+set_edge_curve}` are `pub(crate)` for it), and `SmVertex::PostInsert` of a vertex use is the same direct write as
+`blend.fillet_corner_p3`'s. What stays an `UNPORTED` stub: `SmFilletEdge::MakeFilletEdge` and `SmFilletEdge::CalcEdgeOnEdge`,
+`SmFilletExecutive::GetFilletCornerOfVertex` / `NoteFilletError` (`blend.fillet_executive_p1`), the `PreInsert`/`PostInsert`
+of edge uses (`topology.proto_topology_p1`, `justified:` by "blend.fillet_solver_p1: pseudo-B-rep mutations"), and the new edge
+uses: `FilletBrep::new_fillet_edgeuse` is a real call that still stops at `SmBrep::SmBrep` (`topology.brep_p3`: the pseudo
+B-rep has no infinite region). So `CreateCliffRollOverSideFG` runs up to the creation of the side geometry's rail edge uses, and
+`sm_FindRolloverSideEdge` runs in full (Rust unit tests in `fillet_solver/p2.rs`; no difftest op: its C++ is a static function of
+`SmFilletSolver.cpp` that needs a classified rail, a pseudo B-rep and a target B-rep of a matching shape). `sm_SrfSrfIntersection`
+(`blend.fillet_geom_p2`) is wired in `CreateCliffRollOverSideFG`, with the points the two vertices were just set to. The
+`Calc*FilletGeom` entry points run in the difftest (`geom` op) against a `FilletBrep` mirroring the shim's `MakeRailEdge` rails
+(a fresh `SmFilletGeom`, passed explicitly, so no constructor geometry is involved); the torus rail-end checks set
+`m_bExtendAfter` and are compared with rail ends typed `SM_FV_RAIL_X_EDGEUSE`, processed.
+
+## blend.fillet_solver_p2: back-edges into the solver from blend.fillet_geom
+
+`RailRailIntersect`, `PointOnPlaneSolve`, `RailEdgeuseIntersect` and `CalcCone/TorusFilletGeom` were stubbed in
+`blend.fillet_geom_p1` (`sm_CreateCubicRailRailInterpolant`), `blend.fillet_geom_p2` (`SmFilletVertex::CalcRailIntRail`,
+`CalcVertOnCrossSection`, `CalcSetBackVert`), `blend.fillet_geom_p3` (`SmFilletGeom::ReCalcFilletGeom`), `blend.fillet_geom_p6`
+(`SmFilletGeom::RailEdgeuseIntersect`) and `blend.fillet_intersector` (the `FilletSolverOps::point_on_plane_solve` default).
+Wired as follows (PR #466; PR #249's round 4 wired the first three against a `&mut [ConstantRadiusAssistedFs]` table, which
+PR #466 replaced after main's #247/#264 built `blend.fillet_geom_p3`..`_p6` on `&mut [FilletSolver]` tables):
+- **Solver class.** The `blend.fillet_geom` solver tables hold base `FilletSolver`s, and every geometry shim
+  (`blend_fillet_geom_p3.cpp`, `_p4_static.inc`, `_p6.cpp`) builds a base `SmFilletSolver` subclass with only the base
+  virtuals. The wired calls therefore run on the table's `FilletSolver` with the base virtuals (`impl FilletSolverOps for
+  FilletSolver`, p1): `RailRailIntersect`'s callees and the virtual `PointOnPlaneSolve` (the base
+  `SmFilletSolver::PointOnPlaneSolve`). This replaces main's `as_assisted` views (`ConstantRadiusAssistedFs` clones of the base
+  with invented radii `[0, 0]`, review of PR #249) for these calls without inventing data, and the virtuals' changes to the
+  solver (offsets, surface extensions) stay in the table. Not modelled: a derived class in the table (upstream, an
+  `SmConstantRadiusFS` there would dispatch its own `LoadInitialValues` etc.; the table would need a boxed `FilletSolverOps`
+  per entry, a follow-up for whoever ports the executive's solver list). `sm_FindStepoffUV` (`blend.fillet_geom_p1`) still takes a
+  `ConstantRadiusAssistedFs` and `CalcVertOnCrossSection` still passes it an `as_assisted` view (it reads base members only).
+- **`sm_CreateCubicRailRailInterpolant`** takes two `&mut FilletSolver` (`SmFilletSolver*` upstream; main had
+  `&ConstantRadiusAssistedFs`) and calls `FilletSolver::rail_rail_intersect`; the intersection points start as `SmTsectPnt()`, as
+  upstream's locals. When both are the same table entry (one object upstream; the table cannot lend it twice) the second
+  argument runs on a copy and its changes are dropped (`fillet_geom::p2::with_solver_pair`; also for `CalcRailIntRail`).
+- **`CalcRailIntRail`** passes the vertex uses' points in and writes them back also on failure (they are in/out upstream).
+  `CalcRailIntRail`, `CalcVertOnCrossSection` and `CalcSetBackVert` stop at the corner's filleted vertex
+  (`blend.fillet_corner_p1`) before reaching the solver, so no compared case changes. The `blend.fillet_geom_p2` /
+  `_p3` `calc_*` that reach a solver virtual take the table as `&mut [FilletSolver]`.
+- **`SmFilletGeom::RailEdgeuseIntersect`** (`blend.fillet_geom_p6`) passes the vertex use's own `rTsectPnt` in/out (upstream's
+  `CalcRailIntEdgeuse` hands it `pVU1->GetTsectPnt()`, which keeps what earlier guesses wrote; `CalcRailIntEdgeuse` writes it
+  back also on a failure) and takes the target B-rep `&mut` (the solver may build the side edge use's UV trim curve). It sets
+  the geometry for the surfaces, so the solver's `GetSurface` reaches `blend.fillet_solver_p1`'s justified
+  `UNPORTED(blend.fillet_geom_p1): SmFilletGeom::GetOffsetSurface` ("blend.fillet_solver_p1: the geometry for the surfaces"):
+  `blend.fillet_geom_p6`'s `rail_eu_intersect` cases with a solver now defer there instead of at this unit.
+- **`ReCalcFilletGeom`** (`blend.fillet_geom_p3`) calls `CalcConeFilletGeom`, then `CalcTorusFilletGeom`, on copies of the
+  sorted vertex uses' points (`SmTArray<SmTsectPnt*>` upstream; the builders only read them); a failing status of either is
+  "not created", as upstream's `== SM_SUCCESS`, and `Unported` propagates.
+- **`SmFilletIntersector`** runs `PointOnPlaneSolve` on `ConstantRadiusAssistedFs`, whose override is
+  `SmConstantRadiusAssistedFS::PointOnPlaneSolve` (`blend.fillet_standard_solver_p2`): the intersector trait method has no
+  default any more (the base version is never reached through it), and that implementation returns `Unported` for its owner.
+
+## blend.fillet_solver_p2: SmTemporaryRadiusChange needs the executive's handles
+
+`blend.fillet_executive_p2` (partial on main since 2026-10-21) ports `SmTemporaryRadiusChange` as
+`fillet_executive::p2::TemporaryRadiusChange<O>`, over the executive's opaque handles: its constructor and `SetUp` take
+`&mut impl ExecutiveAccess<O>` and the solver and side edge use as handles `O` (`variable_radius_solver(fs)`,
+`solver_edgeuse(fs, i)`, `edgeuse_edge`, `edge_vertices`). `SmFilletSolver::RailRailIntersect` here runs on
+`&mut dyn FilletSolverOps` and two typed `Brep` ids, with no `ExecutiveAccess` adapter and no handle for either solver, and
+`FilletSolverOps` has no cast to `VariableRadiusFs`. So the two `SmTemporaryRadiusChange` locals stay `UNPORTED` stubs behind the
+`IsKindOf(SmVariableRadiusFS_TYPE)` class test (`SetUp` returns at once for every other class, which is what the class test
+reproduces), until the executive owns the solvers and can hand `RailRailIntersect` its access and handles. No compared case reaches
+them: the difftest's test solver is not an `SmVariableRadiusFS`.
+
+## blend.fillet_solver_p2: `LoadInitialValues` gets a copy of the rail's offset surface
+
+`PointOnPlaneSolve`, `RailEdgeuseIntersect` and `RailRailIntersect` pass `*GetSurface(lRailIndex)` as `crSurface1` of the
+virtual `LoadInitialValues`. p1's `FilletSolverOps::load_initial_values` takes `&mut OffsetSurface`, so p2 passes a clone of the
+rail's surface and writes the clone back afterwards (keeping an extension the evaluation grows). A `LoadInitialValues` that also
+changes the solver's own rail surface (`SmConstantDistanceFS` calls `SetOffsets(approx radius)` on both rails) would have that
+change on the rail overwritten by the write-back, where upstream it sticks (`crSurface1` is the rail surface). The test solver's
+`LoadInitialValues` does not touch the rails, so no case shows it. #168's `SmConstantDistanceFS` (all four virtuals ported) needs
+the trait's `surface1` to name the rail (as #168's `InitialSurface` does) and a p1 `FilletSolverOps` implementation for
+`ConstantDistanceFs`, both in `blend.fillet_solver_p1`'s interface.
+
+Why the harness still runs the test solver (`P2FS` / `TestSolver`) and no library solver (review of PR #249 corrected this note):
+- `SmConstantRadiusFS::LoadInitialValues` belongs to `blend.fillet_standard_solver_p2`, so with #168's `SmConstantRadiusFS` every
+  solve would defer. `EiffelTowerFs` and `SecantConstantRadiusFs` (`blend.fillet_custom_solver`) do implement `FilletSolverOps`
+  (inherited `GetJacobianSize` / `SetupOffsetValues`, their own `LoadJacobian`), and their `LoadInitialValues` returns at once
+  without `lDoSurf2Calcs`, so `PointOnPlaneSolve` (which passes 0) and the `Calc*FilletGeom` builders (which only call
+  `SetupOffsetValues`) could run on them on both sides; the ops that pass `lDoSurf2Calcs = TRUE` (`RailEdgeuseIntersect`,
+  `RailRailIntersect`) reach the unported `GuessPointOnPlaneSolve`, and a `ConstantRadiusAssistedFs`-based solver answers
+  `IsKindOf` with `Unported`, which stops `RailRailIntersect` at its `SmTemporaryRadiusChange` class test.
+- Not added to this round: a library solver is built from an edge use of a solid B-rep (`SmConstantRadiusAssistedFS(.., pEdgeuse)`
+  takes the offset surfaces and orientations of the two faces at the edge), which needs `blend.fillet_custom_solver`'s solid
+  fixtures and its C++ constructor plumbing in this shim; the plane and geometry ops would then compare the real
+  `FilletSolverOps -> ConstantRadius*` dispatch once. A follow-up for whoever wires `blend.fillet_standard_solver_p2`.
+- The test solver reaches what no library solver does: a varying radius through `slope`, 0-5 extra unknowns (the user-double
+  overflow of `PointOnPlaneSolve`, UB-192). The mirror is record by record: `TestSolver` (runner) against `P2FS` (shim).
+
 ## surface: owning face's zone tolerance cached on `Surface` (branch `surface/owner-zone-tol`, 2026-10-20)
 
 Upstream reads `GetFace()->GetTolerance()` from a surface in ten places (`SmTol::GetZoneTol3d(SmObject*)`

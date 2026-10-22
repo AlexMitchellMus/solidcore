@@ -38,6 +38,8 @@ Latest topology integration: `topology.brep_p6` partial (PR #169, after its depe
 
 Latest analytic kinds: `SurfaceKind::Sphere` and `SurfaceKind::Torus` (#76 follow-up to #313, on #304's exact export): 238 units, 120 green / 118 partial, 0 failed; `sweep.rotational_sweep_geometry` promoted to green; topology.edgeuse_p1 +300, topology.edgeuse_p3 +497, topology.loopuse +132, topology.brep_p1 +89, query.face_p1 +39 passes; extrusion and exact cone export still pending.
 
+`blend.fillet_solver_p2` (PR #466, continuing #249) partial: 311 cases, 256 pass, 0 failed, 55 deferred (`intersect.surface_drop_lib_p3` 45, `blend.fillet_executive_p1` 10); `--perturb` 256/256.
+
 Latest main integration: issue #76 kernel-aware Surface dispatch (PR #313, #133 revived, `SurfaceKind::Cone`): 234 units, 117 green / 117 partial, 0 failed; 534,436 cases, 510,383 pass, 23,933 deferred (before 493,865 / 24,694); `intersect.surface_intersector_p1`, `intersect.surface_intersector_p4`, `surface.surface_p11` promoted to green. Before: `surface.surface_p11` partial (PR #120: 176 ported units, 98 green and 78 partial; `intersect.surface_silhouette` promoted to green).
 
 Latest fillet unit: `blend.fillet_geom_p5` (PR #264) is partial: all 13 functions ported, 300 generated cases with 245 bit-identical passes and 55 deferred (`blend.fillet_geom_p6` 37, `intersect.surface_intersector_p2` 7 and `_p4` 1, `topology.brep_p3` 10); round 2 traced the tiny-scale disagreements to solves without a solution object (upstream merges near-duplicate solutions by the object's parameter interval, `plan/findings.md`).

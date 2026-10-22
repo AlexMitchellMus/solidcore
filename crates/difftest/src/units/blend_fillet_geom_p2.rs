@@ -495,7 +495,7 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             let vid = rm.vertex(*v)?;
             let r = match &i.query {
                 Query::RailIntRail { .. } => {
-                    rm.fb.calc_rail_int_rail(&k, vid, &solvers, &mut rm.target)
+                    rm.fb.calc_rail_int_rail(&k, vid, &mut solvers, &mut rm.target)
                 }
                 Query::RailIntEdgeuse { g, .. } => {
                     let g = match usize::try_from(*g) {
@@ -507,9 +507,9 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                 }
                 Query::CrossSection { param, .. } => {
                     rm.fb
-                        .calc_vert_on_cross_section(&k, vid, *param, &solvers, &mut rm.target)
+                        .calc_vert_on_cross_section(&k, vid, *param, &mut solvers, &mut rm.target)
                 }
-                _ => rm.fb.calc_set_back_vert(&k, vid, &solvers, &rm.target),
+                _ => rm.fb.calc_set_back_vert(&k, vid, &mut solvers, &rm.target),
             };
             o.push(status_of!(r));
             let p: Point3 = rm.fb.vertex_point(vid).map_err(h)?;
@@ -543,7 +543,7 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             o.push(0.0);
             let r = rm
                 .fb
-                .calc_rail_rail_interpolation(&k, eid, None, &solvers, &mut rm.target);
+                .calc_rail_rail_interpolation(&k, eid, None, &mut solvers, &mut rm.target);
             o.push(status_of!(r));
             o.push(rm.fb.fillet_edge(eid).map_err(h)?.status() as i64 as f64);
             let brep = rm.fb.brep();
