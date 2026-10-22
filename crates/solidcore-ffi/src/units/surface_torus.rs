@@ -19,7 +19,10 @@
 //!   `has [rebuild_status] state`; `Rebuild`: the state (also after a failure);
 //!   `Transform`: the state (also after a failure); `Eq`: the other torus's
 //!   construction status, then on success `this == other`, `other == this`; `Copy`:
-//!   `state copy == this`.
+//!   `state copy == this`; `IsectPlane`, `Global`: status, then on success `more ncurves
+//!   curves ntypes types ndevs devs nuv1 nuv2 nnull1 nnull2` (`more` is `0` for
+//!   `Global`). The plane and the intersection arguments are those of
+//!   [`super::surface_sphere`] ([`Plane`], [`IsectArgs`]).
 //!
 //! The wrappers accept only what upstream handles without undefined behaviour: finite
 //! values, unit and independent placement axes (the base constructor passes the Y axis
@@ -27,6 +30,8 @@
 //! inside `[-360, 360]` at most 360 long, generator circles with independent axes and a
 //! positive radius, derivative orders up to 3.
 
+pub use super::surface_sphere::{Dom, IsectArgs, Plane};
+use super::surface_sphere::{push_args, push_plane};
 use crate::validate::bad;
 use crate::{call_with_buffer, FfiError};
 
@@ -151,6 +156,20 @@ pub enum Op {
     },
     /// `Copy`.
     Copy,
+    /// `IntersectWithPlane` (inherited from `SmSurfOfRevolution`).
+    IsectPlane {
+        /// The plane.
+        plane: Plane,
+        /// Domains and tolerance.
+        args: IsectArgs,
+    },
+    /// `GlobalSurfaceIntersect` with a plane (inherited from `SmSurfOfRevolution`).
+    Global {
+        /// The plane.
+        plane: Plane,
+        /// Domains and tolerance.
+        args: IsectArgs,
+    },
 }
 
 impl Op {
@@ -166,6 +185,8 @@ impl Op {
             Op::Transform { .. } => 7,
             Op::Eq { .. } => 8,
             Op::Copy => 9,
+            Op::IsectPlane { .. } => 11,
+            Op::Global { .. } => 12,
         }
     }
 }
@@ -321,6 +342,10 @@ fn push_op(o: &mut Vec<f64>, op: &Op) -> Result<(), FfiError> {
             o.extend_from_slice(&s);
         }
         Op::Eq { other } => push_torus(o, other)?,
+        Op::IsectPlane { plane, args } | Op::Global { plane, args } => {
+            push_plane(o, plane)?;
+            push_args(o, args)?;
+        }
     }
     Ok(())
 }
