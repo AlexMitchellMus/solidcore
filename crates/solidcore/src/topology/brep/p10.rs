@@ -1975,7 +1975,7 @@ fn project_and_trim_body(
 /// its vertices, else of its edges' mid-points, else by a ray along the projection
 /// direction.
 fn faces_to_delete(
-    k: &Kernel,
+    k: &mut Kernel,
     b: &Brep,
     env: &ProjectEnv<'_>,
     curve: &BSplineCurve,
@@ -2060,7 +2060,7 @@ fn faces_to_delete(
             let objects = BrepObjects {
                 brep: b,
                 brep_id: env.brep_id,
-                cache: &cache,
+                cache: Some(&cache),
                 keys: env.keys,
                 owner_of: env.owner_of,
             };
@@ -2207,10 +2207,29 @@ fn test_closure_split_region_at_faceuse(
     }
 }
 
-fn find_and_set_infinite_region(_k: &mut Kernel, b: &mut Brep) -> Result<()> {
+fn find_and_set_infinite_region(
+    k: &mut Kernel,
+    b: &mut Brep,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+) -> Result<()> {
+    // the ray fires read the geometry under the caller's names, the ones its owners
+    // carry (as MakeTopologyFromData sets them)
+    let keys = |object| super::p2::caller_cache_key(key_of, object);
+    let query = qbrep::BrepQuery::new(qbrep::BrepIdentity {
+        brep_id: BrepId::from_index(0),
+        keys: &keys,
+        owner_of: &|_| None,
+    });
     // SmBrep::FindAndSetInfiniteRegion() with its defaults (topology.brep_p5): no shell
     // to test, SM_VS_INFINITEREGION_SWAP, no box
-    super::p5::find_and_set_infinite_region(b, None, 2, None)
+    super::p5::find_and_set_infinite_region(
+        k,
+        b,
+        &query,
+        None,
+        p1::SetRegionVoidType::InfiniteRegionSwap,
+        None,
+    )
 }
 
 /// `GetMate()->GetRadial()`: the next edge use pair around the edge in the same
@@ -2336,7 +2355,7 @@ pub fn test_closure_split_region(
     }
 
     if do_infinite_region_testing {
-        find_and_set_infinite_region(k, b)?;
+        find_and_set_infinite_region(k, b, env.key_of)?;
     }
     Ok(out)
 }
@@ -2734,7 +2753,7 @@ mod tests {
             assert_eq!(r, ClosureSplit::default());
         }
         // a doubled triangle: its loops traverse the same edges, so the face use
-        // version (unported) is reached
+        // version splits off the region between the two copies
         let mut d = triangles(&pts, &[[0, 1, 2], [0, 1, 2], [0, 1, 3]]);
         let mut b = build(&mut d, opts).unwrap();
         let mut state = crate::topology::brep::p2::RegionNotifyState::new(&b);
@@ -2745,7 +2764,13 @@ mod tests {
             false,
             EdgeId::from_index(0),
         );
-        assert!(r.unwrap_err().is_unported());
+        assert_eq!(
+            r.unwrap(),
+            ClosureSplit {
+                new_shells: vec![Some(ShellId::from_index(1))],
+                new_regions: vec![RegionId::from_index(2)],
+            }
+        );
     }
 
     #[test]

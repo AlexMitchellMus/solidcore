@@ -38,11 +38,10 @@ use serde_json::Value;
 use solidcore::blend::fillet_geom::p1::FilletSolverId;
 use solidcore::blend::fillet_geom::p2::{srf_srf_intersection, SrfSrfOptions};
 use solidcore::blend::fillet_solver::p1::FilletSolver;
-use solidcore::curve::curve::{Curve, CurveKind};
+use solidcore::curve::curve::Curve;
 use solidcore::geom::tol::zone_tol3d;
 use solidcore::kernel::Kernel;
 use solidcore::math::{Point3, Vec3};
-use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::surface::surface::Surface;
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::{edge, EdgeId, FaceId};
@@ -50,7 +49,7 @@ use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_geom_p2::{self as ffi, Op};
 
 use super::blend_fillet_geom_p1::{
-    analytic_surface, dump_bcurve, gen_model, gen_surface, push_model, push_srf, scale_of, status,
+    analytic_surface, b_spline_part, dump_bcurve, gen_model, gen_surface, push_model, push_srf, scale_of, status,
     surface_of, AnalyticSrf, Crv, EdgeIn, EuIn, Model, RustModel, Srf,
 };
 use super::blend_fillet_geom_p4::{
@@ -381,18 +380,6 @@ fn st<T>(r: &solidcore::Result<T>) -> Result<f64, SolidError> {
     }
 }
 
-/// The B-spline part of a curve of a kind derived from `SmBSplineCurve`.
-const fn b_spline_part(c: &Curve) -> Option<&BSplineCurve> {
-    match c.kind() {
-        CurveKind::BSpline(b) => Some(b),
-        CurveKind::Line(l) => Some(l.base()),
-        CurveKind::Ellipse(e) => Some(e.base()),
-        CurveKind::Hyperbola(h) => Some(h.base()),
-        CurveKind::Parabola(p) => Some(p.base()),
-        _ => None,
-    }
-}
-
 /// The curve record `type has [..]`.
 fn dump_curve(o: &mut Vec<f64>, c: Option<&Curve>) {
     o.push(c.map_or(0.0, |c| c.type_code() as f64));
@@ -508,7 +495,7 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             let vid = rm.vertex(*v)?;
             let r = match &i.query {
                 Query::RailIntRail { .. } => {
-                    rm.fb.calc_rail_int_rail(&k, vid, &solvers, &mut rm.target)
+                    rm.fb.calc_rail_int_rail(&k, vid, &mut solvers, &mut rm.target)
                 }
                 Query::RailIntEdgeuse { g, .. } => {
                     let g = match usize::try_from(*g) {
@@ -520,9 +507,9 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                 }
                 Query::CrossSection { param, .. } => {
                     rm.fb
-                        .calc_vert_on_cross_section(&k, vid, *param, &solvers, &mut rm.target)
+                        .calc_vert_on_cross_section(&k, vid, *param, &mut solvers, &mut rm.target)
                 }
-                _ => rm.fb.calc_set_back_vert(&k, vid, &solvers, &rm.target),
+                _ => rm.fb.calc_set_back_vert(&k, vid, &mut solvers, &rm.target),
             };
             o.push(status_of!(r));
             let p: Point3 = rm.fb.vertex_point(vid).map_err(h)?;
@@ -556,7 +543,7 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             o.push(0.0);
             let r = rm
                 .fb
-                .calc_rail_rail_interpolation(&k, eid, None, &solvers, &mut rm.target);
+                .calc_rail_rail_interpolation(&k, eid, None, &mut solvers, &mut rm.target);
             o.push(status_of!(r));
             o.push(rm.fb.fillet_edge(eid).map_err(h)?.status() as i64 as f64);
             let brep = rm.fb.brep();

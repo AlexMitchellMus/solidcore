@@ -2636,6 +2636,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** wrong result.
 - **Rust port:** Ported as is (`bFoundAnswer` starts `false`).
 
+#### WR-253. `SmLocalSolve1d::SolveOscillating` reads a failed guess's value as a sign change
+- **Location:** `source/SMLib/src/SmLocalSolve1d.cpp:470-495` `SmLocalSolve1d::SolveOscillating`: a failed `Evaluate` of an interior guess `continue`s (`:478`), and the sign test after the loop (`:495`) reads `sTempIter.m_dFOfT` from the last guess whether or not its evaluation succeeded.
+- **What happens:** when the last guess (0.99 of the way) fails, its `F` is whatever the evaluator left: an evaluator that zeroes its outputs before failing, as `SmCurvePropertyEFO::Evaluate` does (`SmCurve.cpp:14918`), leaves 0. `0 * F(curr) <= 0` passes as a sign change, the guess is bracketed with `F = 0`, and bisection returns it as converged (`SM_TR_FOUND_ANSWER_CONVERGED`) although `F` there is not zero.
+- **Trigger:** an oscillating `SolveIt` whose evaluator fails at the last interior guess. In SolidCraft's rig, the radius-of-curvature test of `SmBSplineCurve::AssertValid` (once #475 is fixed) on a straight UV trim: box minus a y-axis cylinder tangent to the box bottom (`smlib_test_booleans` tangent_cylinders, seed 74 op 1) gives two "minima" of radius 0 (tangency-labs/solidcore#481).
+- **How found:** issue #481; traced at `c9c5979`.
+- **Confirmed:** no (the port reproduces it; no C++ run here).
+- **Severity:** wrong result (a solution where there is none).
+- **Rust port:** Faithful to the code: `LocalSolve1d::solve_oscillating` keeps the failed evaluation's value and brackets it the same way (test `failed_guess_is_read_as_a_sign_change_as_upstream`: `F = t^3 - 2t + 2` reports converged at the failed guess, where `F` is about 0.95, and nothing without the failure). Not changed, so the unit keeps the reference build's results.
+
 #### WR-20. `SmLocalSolveNd::SolveIt` reports a failed first evaluation as found
 - **Location:** `SmLocalSolveNd.cpp:90`, `SmLocalSolveNd::SolveIt`.
 - **What happens:** If the first `Evaluate` fails, it returns `SM_SUCCESS` with `rbFoundSolution = TRUE` (the guess) and `SM_TR_UNABLE_TO_CONVERGE`. `bFoundAnswer` is read even when the evaluator never writes it, and the constructor does not set `m_lCurrentIteration`.
@@ -2734,6 +2743,16 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** wrong result (the intended recovery is dead code).
 - **Cause:** `s2ndUVCurves.Add(pNewUVTrimCurve)` where `sUVCurves.Add(...)` was meant.
 - **Rust port:** Reproduces it (`topology::edgeuse::p3::create_uv_trim_curve` builds the joined curve into the discarded second-half array and reports the recovery path).
+
+#### WR-190. `SmFilletSolver::RecordFilletError` reports rail 0 for rail 1
+- **Location:** `source/SMLib/src/SmFilletSolver.cpp:7930` (`SmFilletSolver::RecordFilletError`).
+- **What happens:** `if ( pThisGeom->GetRail(1)->GetCurve() != NULL ) { apFilEdges.AddUnique( pThisGeom->GetRail(0) ); }`: the second rail is tested but the first is added, so the fillet edges handed to `SmFilletExecutive::NoteFilletError` never contain a geometry's second rail.
+- **Trigger:** any fillet error recorded after a geometry got its second rail curve.
+- **How found:** read during porting (unit `blend.fillet_solver_p2`).
+- **Confirmed:** no (the fillet geometry queries are unported).
+- **Severity:** wrong result (incomplete error report).
+- **Cause:** copy-paste slip (`GetRail(0)` for `GetRail(1)`).
+- **Rust port:** Reproduced (`FilletSolver::record_fillet_error` adds rail 0 where it tests rail 1); the list only feeds `SmFilletExecutive::NoteFilletError`, an `UNPORTED(blend.fillet_executive_p1)` stop, so it is not observable yet.
 
 #### WR-176. `SmFace::HasSeamProblem` returns TRUE whenever it has to compute the face properties
 - **Location:** `source/SMLib/src/SmFace.cpp:15650`, `SmFace::HasSeamProblem` (def. `:15540`).
@@ -3612,6 +3631,16 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** crash/UB. **[PSIRT]:** the cross-pair repeat is reachable from geometry read from a file with well-formed `SmApiSimpleFaceStitch` face lists.
 - **Rust port:** `heal::stitch::p1::Stitch::do_simple_face_stitch` refuses those inputs with `deref` (`InvalidInput`, the null-dereference guard) before removing any face: a repeated delete face, a vertex in more than one entry of the two vertex lists, or a delete vertex no other face uses. The difftest shim refuses exactly the same inputs after a read-only copy of the validation. A repeated vertex whose first entry would free nothing (squeeze skipped, a short manifold common edge, the `m_bMakingManifoldSolid` non-lamina skip, or the loop ending first with upstream's defined `SM_ERR`) is refused too, a deliberate over-refusal.
 
+#### UB-192. `SmFilletSolver::PointOnPlaneSolve` writes solution values past `m_adUserDoubles`
+- **Location:** `source/SMLib/src/SmFilletSolver.cpp:3054`-`3057` (`SmFilletSolver::PointOnPlaneSolve`, the found-solution copy).
+- **What happens:** Every solution value after the four UV values is copied to `rTsectPnt.m_adUserDoubles[i-4]` with no bound; the array holds `SM_MAX_USER_DOUBLES` (4) values. The sibling copies in `RailEdgeuseIntersect` and `RailRailIntersect` check `lCnt == SM_MAX_USER_DOUBLES` and return `SM_ERR`.
+- **Trigger:** a solver whose `GetJacobianSize` / `LoadInitialValues` give a solution vector longer than 8 values (a derived solver of calling code; the shipped solvers stay at or below 8).
+- **How found:** read during porting (unit `blend.fillet_solver_p2`).
+- **Confirmed:** no.
+- **Severity:** crash/UB (out-of-bounds write into the `SmTsectPnt`).
+- **Cause:** missing `SM_MAX_USER_DOUBLES` check.
+- **Rust port:** `blend::fillet_solver::p2::FilletSolver::point_on_plane_solve` returns `InvalidInput` for a fifth extra value.
+
 #### HANG-30. `SmApiStitch(SmBrep*)` never returns on a sheet with a coordinate near the top of the double range
 - **Location:** `source/SM_API/src/SmApiBrep.cpp:1128`-`1151` (`SmApiStitch(pBrep)`) -> `SmBrep::StitchAndOrient` (unit `topology.brep_p5`); the looping routine is not located.
 - **What happens:** A one-face sheet whose biquadratic surface has one control point at `-1e300` (the others about `1e-3`) makes `StitchAndOrient` run past 20 s without returning, also when run alone; the same class as HANG-20 (box arithmetic overflowing on a coordinate in the top decades of the double range).
@@ -3879,3 +3908,29 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** source confirmed; the gap magnitude and complete shaft operation have not been reproduced with this harness's C++ reference.
 - **Severity:** accuracy loss from an additional projection fit.
 - **Rust port:** copies and forwards the classification's current UV curve in `TopologyIntersector::make_edge_for_interval`; absent/stale UVs retain projection. The path still defers at insertion adapters, so end-to-end gap elimination is not certified (see `plan/findings.md`, issue #489).
+
+#### WR-214. `SmProtoEdge::Resolve` splits a self-loop proto edge onto one vertex, after `CanCombineVertexDefinitions` merged its ends
+- **Location:** `source/SMLib/src/SmProtoTopology.cpp:3407`-`3462` (`SmProtoEdge::Resolve`, the `m_pStartPV == m_pEndPV` block: `if(dDist > 2*m_dTol)` at `:3435`, `if(bAddVtxDef)` at `:3450`, where the new definition copies `pVD0`'s two point classifications); `:6372`-`6378` (`SmProtoTopologyManager::CanCombineVertexDefinitions`, `sdTolFactor = 5.0`: definitions up to `5 * (tol1 + tol2)` apart are combined, the one on lower-dimensional topology kept); the failure surfaces at `source/SMLib/src/SmMerge.cpp:7071` (`SmMerge::MakeFaceuse`, the `else { SER(SM_ERR); }` of the edge-use orientation lookup).
+- **What happens:** Proto vertices capture positions within `max(0.01, 2000 * tol)` (`SmTopologyIntersector.cpp:1159`). A crossing of two edges and a vertex of one B-rep within `5 * (tol1 + tol2)` of it end up in one proto vertex, and `SmProtoVertex::Resolve` keeps only the definition on the vertex. The short intersection curve between the two points then runs from that proto vertex back to itself; when its ends are more than `2 * m_dTol` apart, `Resolve` adds a second vertex definition copying the first one's classifications. Both definitions are on the same vertex in that B-rep, so `SmVertexDefinition::Imprint` merges both positions into it (`MergeIntoObject` moves it to their midpoint), while the other B-rep's edge is split twice and gets a short edge between two vertices whose mates are one vertex. `MakeFaceuse` finds the mate of the short edge's vertex is neither end of the mated edge and returns `SM_ERR`. The two thresholds (combine at `<= 5 * (tol1 + tol2)`, re-split at `> 2 * m_dTol`) disagree for distances in between.
+- **Trigger:** `SmApiBooleanUnion` of a ring (cylinder r5 minus cylinder r3 about (0,10), z 0..2, turned 90 degrees so its circles' seam vertex is at (0,15,2)) and a lip ((cylinder r5 minus cylinder r4 about (e,10), z 2..20) intersected with a box y >= 10), brep tolerance 1e-5. The two r5 rims on the coplanar faces at z = 2 cross at (e/2, 15, 2), e/2 from the vertex: `SM_ERR` (1001) for 4e-5 < e <= 2e-4 (5e-5, 7e-5, 1e-4 and 1.5e-4 checked); e = 0, 1e-5, 2e-5, 3e-5, 2e-4 to 1e-2 succeed. With the seam at (5,10) (no vertex near the crossing) every offset succeeds. tangency-labs/solidcore#480 (SolidCraft regression rig, tangency-labs/solidcraft branch `kernel-smlib`; the rig's two-lip case returns 1066 mm^3 instead of 769.47).
+- **How found:** issue #480; reproduced with an `SM_API` program against the reference build, then traced in a private instrumented copy (error returns of `SER`, `SmVertex::SetPoint`, vertex definition creation, combine and imprint).
+- **Confirmed:** yes, on the C++ build (x86-64 Linux, g++, `c9c5979`). Skipping the split when the definition is on a vertex in either B-rep (treating the proto edge as degenerate, as `Resolve` does for a curve shorter than `2 * m_dTol`) makes every failing offset a manifold solid of 354.99989 mm^3 (analytic 354.99997), with the same topology as e = 3e-5; results at every other offset are unchanged, and `SM_API_test` and `prog_test` pass with and without it (the new branch is taken 0 times in either suite).
+- **Severity:** Boolean failure (`SM_ERR`), or a wrong body where the caller does not check.
+- **Rust port:** `ProtoTopologyManager::resolve_proto_edge` (`crates/solidcore/src/topology/proto_topology/p2.rs`) treats such a proto edge as degenerate when `split_self_loops_on_vertices` is off, which the Boolean's topology intersector sets (documented deviation); the default keeps upstream's split for the unit's difftest. The full union does not run in Rust yet (`plan/findings.md`, issue #480).
+
+#### WR-252. `TrimWithDomain` pushes a trim boundary one rounding error inside a knot 10 * SM_EFF_ZERO_SQRT away, leaving a sliver span
+- **Location:** `source/SMLib/src/SmBSplineSurfaceNLib.cpp`, `SmBSplineSurface::TrimWithDomain`, the U snap loop (`if (ul >= dKnot || i == 0) ... else { ul = dKnot - 10.0 * dTolMin; ...}` and the mirrored `ur` branch), and the same in the V loop.
+- **What happens:** a lower trim boundary within `dTolMin = SM_EFF_ZERO_SQRT * (1 + |ul|)` of a knot is snapped onto the knot when it is at or above it, but moved to `knot - 10 * dTolMin` when it is below it, by any amount down to one ULP (upper boundaries likewise). The new surface then starts with a span of `10 * dTolMin`, 2.1e-4 at u = 20. Two faces whose domains differ by one ULP get different knot structures.
+- **Trigger:** `SmApiCreateTaperExtrude` of a 120x80 rectangle, height 40, draft 5 degrees, both caps; `SmFilletExecutive::DoFillet` r4 (circular, constant radius) on the four sloping corner edges. `SmFace::ShrinkGeometry` of the (-x,+y) round passes u_min = 20.15250701054303, one ULP below the knot 20.152507010543033 on which the identical (+x,-y) round's domain lies. The result is u knots 20.15229549 / 20.15250701. tangency-labs/solidcore#472 (SolidCraft rig shell/3576, tangency-labs/solidcraft branch `kernel-smlib`). The sliver makes the later `N_SrfOffset` fit diverge (#471): the inward shell by -2 fails with 1001.
+- **How found:** issue #472; reproduced with an `SM_API` program against the reference build, traced with knot dumps at `SetFilletSurface` and in `SmFace::ShrinkGeometry`.
+- **Confirmed:** yes, on the C++ build (x86-64 Linux, g++, `c9c5979`). Snapping a boundary at most `SM_EFF_ZERO_PARAM` inside a knot onto it (and passing that knot as the requested bound to `sm_CheckTrimBoundaries`) gives all four rounds the same knots with no sliver, and the -2 shell then succeeds (a manifold solid with 19 faces).
+- **Severity:** a needlessly ill-conditioned surface (a sliver knot span) that makes later operations fail.
+- **Rust port:** `BSplineSurface::trim_with_domain_with` with `TrimOptions::snap_roundoff_to_knots` (`crates/solidcore/src/nurbs/b_spline_surface_n_lib/p2.rs`), through `Surface::trim_with_domain_with` and `topology::face::p1::shrink_geometry_with`, which the fillet executive's face shrink uses. The default keeps upstream's behaviour for the unit's difftest (`plan/findings.md`, issue #472).
+#### UB-212. `SmFilletCorner::SqueezeEdge` frees a closed corner edge at its first vertex use and reads it at its second
+- **Location:** `source/SMLib/src/SmFilletCorner.cpp:2264-2304` (`SmFilletCorner::SqueezeEdge`): the loop over the deleted vertex's vertex uses (`:2273-2293`) and the deletion of the vertex (`:2295-2298`).
+- **What happens:** The vertex uses of the vertex to delete are copied into `sVUs` first. For a vertex use whose edge is not a rail, the edge is deleted (`delete pFE`, `:2291`), which frees the edge's edge uses and their vertex uses. A non-rail edge with both ends at that vertex (a closed corner edge) has two entries in `sVUs`: the second is dereferenced (`pVU->GetEdgeuse()`, `:2277`) after the first iteration freed it. Separately, when the edge to squeeze is itself closed, `GetVertex()` and `GetOtherVertex()` (`:2268-2269`) name the same vertex, so `pSurvivingFV == pDeleteFV`: the rail vertex uses are "moved" to the vertex that `delete pDeleteFV` (`:2298`) then frees, and dangle.
+- **Trigger:** A corner whose vertex to delete (`SM_FV_TO_BE_DELETED`) has a closed non-rail corner edge, or a closed edge passed as the edge to squeeze. Reached from `CalcCornerEdgeGeom` (`:1648`) for an edge whose `CalcCornerEdgeGeom` set `SM_FE_TO_BE_SQUEEZED`.
+- **How found:** source reading while porting `SqueezeEdge` (`blend.fillet_corner_p1`, PR #266); a generated difftest case with a closed squeezed edge crashed the C++ reference before the harness refused it.
+- **Confirmed:** no (the closed non-rail edge: source only; the harness refuses both paths; the closed squeezed edge crashed once in a generated run, not reproduced in isolation).
+- **Severity:** crash/UB (use after free).
+- **Rust port:** `FilletCorner::squeeze_edge` follows the same loop on ids (no frees), so it returns `NotFound` or deletes consistently; the difftest shim and runner refuse exactly the inputs whose loop reaches a freed vertex use or the dangling survivor, and compare the defined early-error paths (`SM_ERR` for an edge or vertex not in the corner's lists).

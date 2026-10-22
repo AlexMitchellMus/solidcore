@@ -422,6 +422,15 @@ fn curve_of<O: Copy>(geometry: &impl ClassGeometry<O>, curve: Option<O>) -> Resu
 impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     // ---- the intersection table ------------------------------------------------------
 
+    /// Register a known empty surface intersection without a geometry backend.
+    /// This is the empty-array branch of [`Self::register_existing_ssi`].
+    pub(crate) fn register_empty_ssi(&mut self, brep_surface: Option<O>, other_surface: Option<O>) {
+        let table = self.intersection_table.get_or_insert_with(Default::default);
+        table.brep_surfaces.push(brep_surface);
+        table.other_surfaces.push(other_surface);
+        table.results.push(IntersectionResults::default());
+    }
+
     /// `RegisterExistingSSI(pBrepSurface, pOtherSurface, cr3DCurves, crUVCurves1,
     /// crUVCurves2, crCurveTypes, crDeviations)`: adds a table entry (making the table
     /// when there is none) with copies of the curves (each 3D curve must be a B-spline
@@ -446,6 +455,10 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         curve_types: &[TsectCurveType],
         deviations: &[f64],
     ) -> Result<()> {
+        if curves_3d.is_empty() {
+            self.register_empty_ssi(brep_surface, other_surface);
+            return Ok(());
+        }
         let table = self.intersection_table.get_or_insert_with(Default::default);
         table.brep_surfaces.push(brep_surface);
         table.other_surfaces.push(other_surface);
@@ -1200,7 +1213,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         let other = self
             .other
             .ok_or(invalid(OP_INSERT_RELATE, "no other B-rep"))?;
-        self.proto_topo_mgr = Some(ProtoTopologyManager::new(
+        let mut mgr = ProtoTopologyManager::new(
             k,
             (this, brep.brep_arena(this)?),
             (other, brep.brep_arena(other)?),
@@ -1208,7 +1221,11 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             self.this_approx_tol_3d,
             capture_distance,
             0.0,
-        )?);
+        )?;
+        // Not upstream (tangency-labs/solidcore#480, plan/upstream-issues.md WR-214):
+        // a self-loop proto edge on a vertex is dropped, not split onto that vertex.
+        mgr.set_split_self_loops_on_vertices(false);
+        self.proto_topo_mgr = Some(mgr);
 
         // Intersect Topology; if that didn't work, quit before we mess up the Breps.
         let mut deleted = self.intersect_topology(k, brep)?;

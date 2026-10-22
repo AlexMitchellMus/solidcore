@@ -161,7 +161,7 @@ fn smin(a: f64, b: f64) -> f64 {
 /// `SmVertex::SetPoint` on a fillet vertex: the `SM_NO_CHANGE_GEOMETRY` notification
 /// resets the cached gaps of every vertex use of the vertex, then the point is stored
 /// (as `blend.fillet_geom_p1` does).
-pub(super) fn set_vertex_point(brep: &mut Brep, v: VertexId, point: Point3) -> Result<()> {
+pub(crate) fn set_vertex_point(brep: &mut Brep, v: VertexId, point: Point3) -> Result<()> {
     for vu in brep.vertex(v)?.vertexuses.clone() {
         let vu = brep.vertexuse_mut(vu)?;
         vu.vertex_edge_gap.reset();
@@ -176,7 +176,7 @@ pub(super) fn set_vertex_point(brep: &mut Brep, v: VertexId, point: Point3) -> R
 /// its cached edge/face gap (its mate's too) and the cached gaps of the edge's vertex
 /// uses; then the curve (possibly `NULL`) replaces the old one (as
 /// `blend.fillet_geom_p1` does for a rail).
-pub(super) fn set_edge_curve(brep: &mut Brep, e: EdgeId, curve: Option<Curve>) -> Result<()> {
+pub(crate) fn set_edge_curve(brep: &mut Brep, e: EdgeId, curve: Option<Curve>) -> Result<()> {
     for eu in edge::edgeuses(brep, e, None, None)? {
         let mate_eu = eu1::mate(brep, eu)?;
         let rec = brep.edgeuse_mut(eu)?;
@@ -325,6 +325,8 @@ pub(super) fn srf_srf_intersection(
 }
 
 /// `SmFilletCorner::GetCornerType` (unit `blend.fillet_corner_p1`).
+/// Needs the executive corner store (`blend.fillet_executive_p2`, #267) to resolve the
+/// id; wired in a follow-up once it merges.
 fn corner_type(corner: FilletCornerId) -> Result<FilletCornerType> {
     // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetCornerType
     unported_on(
@@ -336,6 +338,8 @@ fn corner_type(corner: FilletCornerId) -> Result<FilletCornerType> {
 
 /// `SmFilletCorner::GetFilletedVertex` (unit `blend.fillet_corner_p1`): the target
 /// B-rep vertex the corner fillets.
+/// Needs the executive corner store (`blend.fillet_executive_p2`, #267) to resolve the
+/// id; wired in a follow-up once it merges.
 fn corner_filleted_vertex(corner: FilletCornerId) -> Result<Option<VertexId>> {
     // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetFilletedVertex
     unported_on(
@@ -346,6 +350,8 @@ fn corner_filleted_vertex(corner: FilletCornerId) -> Result<Option<VertexId>> {
 }
 
 /// `SmFilletCorner::GetExtendedSurface(pOriginalFace)` (unit `blend.fillet_corner_p1`).
+/// Needs the executive corner store (`blend.fillet_executive_p2`, #267) to resolve the
+/// id; wired in a follow-up once it merges.
 fn corner_extended_surface(corner: FilletCornerId, face: FaceId) -> Result<Option<Surface>> {
     // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetExtendedSurface
     unported_on(

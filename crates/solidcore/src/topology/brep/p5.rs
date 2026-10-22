@@ -66,7 +66,10 @@ use crate::kernel::Kernel;
 use crate::math::{max2, Point3, Vec3};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::BrepQuery;
+use crate::topology::brep::p1::SetRegionVoidType;
 use crate::topology::brep::p2 as brep_p2;
+use crate::topology::face::p4 as face_p4;
 use crate::topology::VertexuseId;
 use crate::topology::{vertex, Brep, EdgeId, FaceId, LoopId, RegionId, ShellId, VertexId};
 
@@ -383,6 +386,7 @@ pub fn combine_with_notifications(
             let editing = b.editing_enabled();
             let mut output = EdgeInFace::default();
             make_edge_in_face(
+                k,
                 b,
                 editing,
                 Some(face),
@@ -394,6 +398,7 @@ pub fn combine_with_notifications(
                 OrientType::Same,
                 crate::math::EFF_ZERO,
                 &mut output,
+                notifications.as_deref_mut(),
             )?;
             common = output.edge;
         }
@@ -989,44 +994,36 @@ fn get_or_create_uv_trim_curve(
     crate::topology::edgeuse::p3::get_or_create_uv_trim_curve(k, b, eu, false, false, true)?.status
 }
 
-/// Finds the infinite region, then resets its void state. The ray-selection
-/// operation belongs to part 9; its optional shell and bounding box are retained
-/// in the interface for that integration. `void_setting_code` is the native
-/// `SmSetRegionVoidType` code (0 nested-solid, 1 infinite-only, 2 swap). Its common
-/// enum is being ported in part 1's independent PR; this deferred boundary does
-/// not duplicate that type.
+/// Finds the infinite region (part 9's `FindInfiniteRegion`, whose ray fires use
+/// `query`: the B-rep's identities and cache), then makes it the infinite region and
+/// sets the void flags as `void_setting` asks (part 1's `ResetInfiniteRegion`). A
+/// face-use shell to test always swaps the flags (`SM_VS_INFINITEREGION_SWAP`), as
+/// upstream.
+///
+/// # Errors
+///
+/// Those of both callees; [`SolidError::InvalidInput`] when no region is found
+/// (upstream's `NER`).
 pub fn find_and_set_infinite_region(
+    k: &mut Kernel,
     b: &mut Brep,
+    query: &BrepQuery<'_>,
     shell: Option<ShellId>,
-    mut void_setting_code: i32,
-    bbox: Option<&mut Extent3d>,
+    mut void_setting: SetRegionVoidType,
+    bbox: Option<&Extent3d>,
 ) -> Result<()> {
-    let region =
-        find_infinite_region(b, shell, bbox)?.ok_or_else(|| SolidError::null_pointer(OP))?;
+    let region = crate::topology::brep::p9::find_infinite_region(k, b, query, shell, bbox)?
+        .ok_or_else(|| SolidError::null_pointer(OP))?;
     if let Some(shell) = shell {
         if shell_is_faceuse_shell(b, shell)? {
-            void_setting_code = 2; // SM_VS_INFINITEREGION_SWAP
+            void_setting = SetRegionVoidType::InfiniteRegionSwap;
         }
     }
-    reset_infinite_region(b, region, void_setting_code)
-}
-
-fn find_infinite_region(
-    _b: &mut Brep,
-    _shell: Option<ShellId>,
-    _bbox: Option<&mut Extent3d>,
-) -> Result<Option<RegionId>> {
-    // UNPORTED(topology.brep_p9): SmBrep::FindInfiniteRegion
-    missing("SmBrep::FindInfiniteRegion", "topology.brep_p9")
+    crate::topology::brep::p1::reset_infinite_region(k, b, Some(region), void_setting)
 }
 
 fn shell_is_faceuse_shell(b: &Brep, shell: ShellId) -> Result<bool> {
     Ok(b.shell(shell)?.is_faceuse_shell())
-}
-
-fn reset_infinite_region(_b: &mut Brep, _region: RegionId, _mode: i32) -> Result<()> {
-    // UNPORTED(topology.brep_p1): SmBrep::ResetInfiniteRegion
-    missing("SmBrep::ResetInfiniteRegion", "topology.brep_p1")
 }
 
 /// Glues vertices, leaving the survivor in place. `wire_edges` is the optional
@@ -1301,6 +1298,7 @@ pub struct EdgeInFace {
 /// lifecycle is preserved: editing-disabled/null-face failures leave outputs alone;
 /// a valid face clears all three before sector classification.
 pub fn make_edge_in_face(
+    k: &mut Kernel,
     b: &mut Brep,
     editing_enabled: bool,
     face: Option<FaceId>,
@@ -1312,8 +1310,10 @@ pub fn make_edge_in_face(
     orientation: OrientType,
     max_gap_3d: f64,
     output: &mut EdgeInFace,
+    notifications: Option<&mut EditNotifyEnv<'_>>,
 ) -> Result<()> {
     make_edge_in_face_with_uv_curve(
+        k,
         b,
         editing_enabled,
         face,
@@ -1325,6 +1325,7 @@ pub fn make_edge_in_face(
         orientation,
         max_gap_3d,
         output,
+        notifications,
     )
 }
 
@@ -1332,6 +1333,7 @@ pub fn make_edge_in_face(
 /// `SmBSplineCurve`-derived line and conic kinds, without replacing their geometry.
 /// Editing checks and output lifetime are identical to the original entry point.
 pub fn make_edge_in_face_with_uv_curve(
+    k: &mut Kernel,
     b: &mut Brep,
     editing_enabled: bool,
     face: Option<FaceId>,
@@ -1343,20 +1345,23 @@ pub fn make_edge_in_face_with_uv_curve(
     orientation: OrientType,
     max_gap_3d: f64,
     output: &mut EdgeInFace,
+    notifications: Option<&mut EditNotifyEnv<'_>>,
 ) -> Result<()> {
-    make_edge_with_backend(
-        &mut ArenaFaceEdge(b),
-        editing_enabled,
-        face,
-        start,
-        end,
-        curve,
-        uv_curve,
-        interval,
-        orientation,
-        max_gap_3d,
-        output,
-    )
+    with_p3_notifications(k, b, notifications, |k, b, env| {
+        make_edge_with_backend(
+            &mut ArenaFaceEdge { k, b, env },
+            editing_enabled,
+            face,
+            start,
+            end,
+            curve,
+            uv_curve,
+            interval,
+            orientation,
+            max_gap_3d,
+            output,
+        )
+    })
 }
 
 /// Handle adapter for the shared owned control flow. Missing sector/insertion
@@ -1371,7 +1376,7 @@ pub(crate) trait FaceEdgeBackend {
     fn validate_face(&self, face: Self::Face) -> Result<()>;
     fn tolerance(&self) -> Result<f64>;
     fn sector(
-        &self,
+        &mut self,
         face: Self::Face,
         vertex: Option<Self::Vertex>,
         curve: &Self::Curve,
@@ -1457,8 +1462,12 @@ pub(crate) fn make_edge_with_backend<B: FaceEdgeBackend>(
     )
 }
 
-struct ArenaFaceEdge<'a>(&'a mut Brep);
-impl FaceEdgeBackend for ArenaFaceEdge<'_> {
+struct ArenaFaceEdge<'a, 'e> {
+    k: &'a Kernel,
+    b: &'a mut Brep,
+    env: &'a mut EditNotifyEnv<'e>,
+}
+impl FaceEdgeBackend for ArenaFaceEdge<'_, '_> {
     type Face = FaceId;
     type Vertex = VertexId;
     type Curve = Curve;
@@ -1466,13 +1475,13 @@ impl FaceEdgeBackend for ArenaFaceEdge<'_> {
     type Vertexuse = VertexuseId;
     type Output = EdgeInFace;
     fn validate_face(&self, f: FaceId) -> Result<()> {
-        self.0.face(f).map(|_| ())
+        self.b.face(f).map(|_| ())
     }
     fn tolerance(&self) -> Result<f64> {
-        Ok(self.0.tolerance())
+        Ok(self.b.tolerance())
     }
     fn sector(
-        &self,
+        &mut self,
         f: FaceId,
         v: Option<VertexId>,
         c: &Curve,
@@ -1483,7 +1492,19 @@ impl FaceEdgeBackend for ArenaFaceEdge<'_> {
         tolerance: f64,
         all: bool,
     ) -> Result<Option<VertexuseId>> {
-        find_vertex_sector(self.0, f, v, c, uv, start, end, orientation, tolerance, all)
+        find_vertex_sector(
+            self.k,
+            self.b,
+            f,
+            v,
+            c,
+            uv,
+            start,
+            end,
+            orientation,
+            tolerance,
+            all,
+        )
     }
     fn insert(
         &mut self,
@@ -1498,7 +1519,9 @@ impl FaceEdgeBackend for ArenaFaceEdge<'_> {
         out: &mut EdgeInFace,
     ) -> Result<()> {
         make_edge_in_face_with_vu(
-            self.0,
+            self.k,
+            self.b,
+            self.env,
             f,
             first,
             last,
@@ -1512,36 +1535,96 @@ impl FaceEdgeBackend for ArenaFaceEdge<'_> {
     }
 }
 
+/// `SmFace::FindVertexSector(vertex, curve, uv, start, end, orientation, tolerance,
+/// all_sectors, ...)` with upstream's default `bUVSpaceOkay = TRUE`
+/// ([`face_p4::find_vertex_sector`]); only the sector's vertex use is read.
+#[allow(clippy::too_many_arguments)]
 fn find_vertex_sector(
-    _b: &Brep,
-    _f: FaceId,
-    _v: Option<VertexId>,
-    _curve: &Curve,
-    _uv: Option<&Curve>,
-    _start: f64,
-    _end: f64,
-    _orientation: OrientType,
-    _tolerance: f64,
-    _all_sectors: bool,
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    v: Option<VertexId>,
+    curve: &Curve,
+    uv: Option<&Curve>,
+    start: f64,
+    end: f64,
+    orientation: OrientType,
+    tolerance: f64,
+    all_sectors: bool,
 ) -> Result<Option<VertexuseId>> {
-    // UNPORTED(topology.face_p4): SmFace::FindVertexSector
-    missing("SmFace::FindVertexSector", "topology.face_p4")
+    // NER(cpVertex)
+    let vertex = v.ok_or_else(|| SolidError::null_pointer(OP))?;
+    let sector = face_p4::find_vertex_sector(
+        k,
+        b,
+        f,
+        face_p4::FindVertexSectorArgs {
+            vertex,
+            curve,
+            uv_curve: uv,
+            param_at_vertex: start,
+            param_ivl_end: end,
+            orientation,
+            zone_tol_3d: tolerance,
+            validate_sector: all_sectors,
+            uv_space_okay: true,
+        },
+    )?;
+    Ok(sector.vertexuse)
 }
 
+/// `SmBrep::MakeEdgeInFaceWithVU(face, first, last, curve, uv, interval, orientation,
+/// max_gap_3d, ...)` without drop-curve state ([`super::p9::make_edge_in_face_with_vu`]).
+/// The double gap becomes the `SmZoneTol3d` parameter. Curves carry no identity in this
+/// port (module docs): the new edge's curve gets a call-local one.
+#[allow(clippy::too_many_arguments)]
 fn make_edge_in_face_with_vu(
-    _b: &mut Brep,
-    _f: FaceId,
-    _first: VertexuseId,
-    _last: VertexuseId,
-    _curve: Curve,
-    _uv: Option<Curve>,
-    _interval: Extent1d,
-    _orientation: OrientType,
-    _max_gap_3d: f64,
-    _output: &mut EdgeInFace,
+    k: &Kernel,
+    b: &mut Brep,
+    env: &mut EditNotifyEnv<'_>,
+    f: FaceId,
+    first: VertexuseId,
+    last: VertexuseId,
+    curve: Curve,
+    uv: Option<Curve>,
+    interval: Extent1d,
+    orientation: OrientType,
+    max_gap_3d: f64,
+    output: &mut EdgeInFace,
 ) -> Result<()> {
-    // UNPORTED(topology.brep_p9): SmBrep::MakeEdgeInFaceWithVU
-    missing("SmBrep::MakeEdgeInFaceWithVU", "topology.brep_p9")
+    let made = super::p9::make_edge_in_face_with_vu(
+        k,
+        b,
+        super::p9::EdgeInFaceInput {
+            face: Some(f),
+            vertices: [Some(first), Some(last)],
+            curve: Some(curve),
+            uv_trim: uv,
+            drop_fail: None,
+            interval,
+            orientation,
+            curve_zone_tol_3d: crate::geom::tol::zone_tol3d(k, max_gap_3d),
+        },
+        env,
+        &edge_curve_identity,
+    )?;
+    *output = EdgeInFace {
+        edge: Some(made.edge),
+        loop_: made.loop_,
+        face: made.face,
+    };
+    Ok(())
+}
+
+/// A call-local identity for an edge's curve: the type code above the edge index,
+/// outside the arena identities' key space (bare indices), as `heal::stitch` does.
+fn edge_curve_identity(edge: EdgeId, type_code: i64) -> ObjectRef {
+    ObjectRef {
+        type_code,
+        key: crate::geom::attribute::ObjectKey(
+            (type_code.unsigned_abs() << 32) | u64::from(edge.index()),
+        ),
+    }
 }
 
 /// Makes the selected regions manifold. `None` means all non-infinite regions;
@@ -2235,6 +2318,7 @@ pub fn transform_with_notifications(
             transform_with_notifications(k, b, placement, scale, scale_tolerances, Some(env))
         });
     };
+    let owner_keys = env.key_of;
     let mut notifications = Some(env);
     if placement.is_identity(crate::math::EFF_ZERO)
         && scale.is_none_or(|s| s.approx_eq(Vec3::new(1.0, 1.0, 1.0)))
@@ -2268,7 +2352,9 @@ pub fn transform_with_notifications(
         set_vertex_point(k, b, vertex, point, notifications.as_deref_mut())?;
         bbox.add_point(point);
     }
-    for edge in brep_curve_owners(b)? {
+    for edge in crate::topology::brep::p1::curve_owners(b, None, &|e| {
+        owner_keys(crate::EntityRef::Edge(e))
+    })? {
         crate::error::ignore_status(notify_edge_pre_edit(
             k,
             b,
@@ -2290,7 +2376,9 @@ pub fn transform_with_notifications(
             }
         }
     }
-    for face in brep_surface_owners(b)? {
+    for face in crate::topology::brep::p1::surface_owners(b, None, &|f| {
+        owner_keys(crate::EntityRef::Face(f))
+    })? {
         crate::error::ignore_status(notify_face_pre_edit(
             k,
             b,
@@ -2366,16 +2454,8 @@ fn turn_to_nurbs(
         k,
         b,
         notifications,
-        crate::topology::brep::p3::turn_to_nurbs,
+        crate::topology::brep::p3::turn_to_nurbs_with_geometry_owners,
     )
-}
-fn brep_curve_owners(_b: &Brep) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetCurves
-    missing("SmBrep::GetCurves", "topology.brep_p1")
-}
-fn brep_surface_owners(_b: &Brep) -> Result<Vec<FaceId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetSurfaces
-    missing("SmBrep::GetSurfaces", "topology.brep_p1")
 }
 fn notify_edge_pre_edit(
     k: &mut Kernel,
@@ -2532,7 +2612,7 @@ mod tests {
                 Ok(1e-6)
             }
             fn sector(
-                &self,
+                &mut self,
                 (): (),
                 _vertex: Option<()>,
                 (): &(),
