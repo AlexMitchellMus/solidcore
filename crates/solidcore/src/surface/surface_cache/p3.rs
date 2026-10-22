@@ -1172,9 +1172,27 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                 && face_owned
                 && self.face_containment_done != FaceContainment::UnderConstruction)
         {
-            // DISPATCH GAP: the virtual BuildTree() (SmTrimSrfCache::BuildTree on a
-            // trimmed surface cache); this builds the base class tree
-            self.build_tree(k, false)?;
+            if self.trimmed_dispatch {
+                if self.surface().face()?.is_some() {
+                    return Err(SolidError::unported(
+                        "contextual TrimSrfCache::BuildTree dispatch",
+                        "surface.trim_srf_cache",
+                    ));
+                }
+                // The standalone trimmed override has no topology to implant.
+                // Preserve its construction guard and state rather than quietly
+                // treating a lazy trimmed cache as a base cache.
+                let saved = self.face_containment_done;
+                self.face_containment_done = FaceContainment::UnderConstruction;
+                let built = self.build_tree(k, false);
+                self.face_containment_done = saved;
+                built?;
+                self.process_boundary_curves = true;
+                self.point_test_enabled = false;
+                self.have_t_surface_cache = false;
+            } else {
+                self.build_tree(k, false)?;
+            }
         }
         self.tree_mut_or(OP_GET)
     }

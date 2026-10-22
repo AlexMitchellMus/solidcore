@@ -144,6 +144,7 @@ use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::knots::Side;
 use crate::surface::offset_surface::{OffsetSurface, SS_UNKNOWN};
 use crate::surface::plane::Plane;
+use crate::surface::surface_cache::face_context::{FaceCacheContext, FaceQueries};
 use crate::surface::surface_cache::p1::{SurfaceCache, SurfaceCacheOptions};
 use crate::surface::trim_srf_cache::TrimSrfCache;
 use crate::topology::database_io::{DatabaseReader, FileType};
@@ -963,6 +964,49 @@ pub fn get_surface_cache<O: Copy + PartialEq>(
         // else - get or make SurfaceCache
         Err(_) => make_surface_cache(k, surface, handle),
     }
+}
+
+/// The caller's operation-scoped topology access for surface solves. Cache
+/// preparation is mutable (it may attach UV trims); classification borrows the
+/// prepared topology afterward. One context can serve several surfaces of the
+/// same B-rep without keeping overlapping mutable borrows in their caches.
+pub trait SurfaceSolveContext<O: Copy + PartialEq> {
+    /// Builds this surface's cache at the point the numerical operation first
+    /// requests it, with its decomposition tree ready for the solve.
+    ///
+    /// # Errors
+    /// Those of cache preparation and the caller's identity resolution.
+    fn build_surface_cache(
+        &mut self,
+        k: &Kernel,
+        surface: &Surface,
+        handle: Option<O>,
+    ) -> Result<SurfaceCache<O>>;
+
+    /// Read-only classification of the topology prepared by this context.
+    fn face_queries(&self) -> Option<&dyn FaceQueries<O>>;
+}
+
+/// Constructs a trimmed cache with explicit owning-face topology. Like
+/// [`make_trim_srf_cache`], construction during a Boolean operation is delayed;
+/// the caller then uses [`TrimSrfCache::build_tree_with_context`] on first access.
+///
+/// # Errors
+/// Those of the tolerance queries, identity checks and trim-cache construction.
+pub fn make_trim_srf_cache_with_context<O: Copy + PartialEq>(
+    k: &Kernel,
+    surface: &Surface,
+    handle: Option<O>,
+    context: &mut FaceCacheContext<'_, O>,
+) -> Result<TrimSrfCache<O>> {
+    let tol = cache_tolerances(k, surface)?;
+    let mut cache = TrimSrfCache::new(surface.clone_for_evaluation()?, cache_options(tol));
+    cache.base_mut().set_surface_handle(handle);
+    cache.bind_face_context(context)?;
+    if !k.context.doing_boolean() {
+        cache.build_tree_with_context(k, context)?;
+    }
+    Ok(cache)
 }
 
 // ---- bounding boxes -------------------------------------------------------------------
@@ -2831,17 +2875,36 @@ const fn is_surface_cache_owner(owner: Option<TreeOwner>) -> bool {
 /// `sm_IsPointValid`: whether a potential solution at `uv` should be kept: always
 /// unless the tree (owner kind `owner`) is a surface cache's, then the cache's point
 /// test.
-#[must_use]
 pub fn is_point_valid<O: Copy + PartialEq>(
     owner: Option<TreeOwner>,
     cache: &SurfaceCache<O>,
     uv: Point2,
-) -> bool {
+) -> Result<bool> {
     // keep all points when SurfaceNode has no trim boundaries
     if !is_surface_cache_owner(owner) {
-        return true;
+        return Ok(true);
     }
     cache.point_test(uv)
+}
+
+/// [`is_point_valid`] with the trimmed cache's operation-scoped face queries.
+/// As upstream's `sm_IsPointValid`, a failed native classification keeps the
+/// candidate; an unavailable Rust capability still propagates as `Unported`.
+///
+/// # Errors
+/// Missing owning-face context and unported classification dependencies.
+pub fn is_point_valid_with<O: Copy + PartialEq>(
+    k: &Kernel,
+    owner: Option<TreeOwner>,
+    cache: &SurfaceCache<O>,
+    uv: Point2,
+    tolerance: Option<f64>,
+    faces: Option<&dyn FaceQueries<O>>,
+) -> Result<bool> {
+    if !is_surface_cache_owner(owner) {
+        return Ok(true);
+    }
+    Ok(ignored(cache.point_test_with(k, uv, tolerance, faces))?.map_or(true, |(valid, _)| valid))
 }
 
 /// `sm_IsNodeValid`: false only when `node` of a surface cache's tree (owner kind
@@ -3126,6 +3189,8 @@ pub struct CsiGlobalSolver<'t, 's, O> {
     pub curve: Option<&'s Curve>,
     /// Cache supplying the surface patches for leaf solves (part 9).
     pub surface_cache: Option<&'s SurfaceCache<O>>,
+    /// The prepared owning-face classifier for trimmed candidate acceptance.
+    pub face_queries: Option<&'s dyn FaceQueries<O>>,
     /// `m_pSurf`.
     pub surface: Option<&'s Surface>,
     /// `m_bFoundCoincidence`.
@@ -3153,6 +3218,7 @@ impl<'t, 's, O: SolutionObject> CsiGlobalSolver<'t, 's, O> {
             base: GlobalSolver::with_trees(curve_tree, surface_tree, 3),
             curve: None,
             surface_cache: None,
+            face_queries: None,
             surface,
             found_coincidence,
             interval,
@@ -3178,6 +3244,8 @@ pub struct CsGlobalSolver<'t, 's, O> {
     /// The cache holding the patches of the surface tree's nodes, for the leaf solve
     /// (part 11; upstream reaches it through the node's tree owner).
     pub surface_cache: Option<&'s SurfaceCache<O>>,
+    /// The prepared owning-face classifier for trimmed candidate acceptance.
+    pub face_queries: Option<&'s dyn FaceQueries<O>>,
     /// The kernel (upstream's `SmContext`) the leaf solve's evaluations and solves run
     /// with (part 11).
     pub kernel: &'s Kernel,
@@ -3201,6 +3269,7 @@ impl<'t, 's, O: SolutionObject> CsGlobalSolver<'t, 's, O> {
             uv_domain,
             curve: None,
             surface_cache: None,
+            face_queries: None,
             kernel: k,
         }
     }
@@ -3268,6 +3337,7 @@ impl<'t, 's, O: SolutionObject> LsiGlobalSolver<'t, 's, O> {
             ray_fire,
             distance_tolerance,
             surface_cache: None,
+            face_queries: None,
         }
     }
 }
@@ -3289,6 +3359,7 @@ impl<'t, 's, O: SolutionObject> SpGlobalSolver<'t, 's, O> {
             surface,
             uv_domain,
             surface_cache: None,
+            face_queries: None,
         }
     }
 }
@@ -3312,6 +3383,7 @@ impl<'t, 's, O: SolutionObject> SsGlobalSolver<'t, 's, O> {
             uv_domain2,
             kernel,
             caches: [None, None],
+            face_queries: None,
         }
     }
 }

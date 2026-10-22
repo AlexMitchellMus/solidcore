@@ -895,6 +895,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                         surface: Some(&s),
                         uv_domain: dom,
                         surface_cache: None,
+                        face_queries: None,
                     }
                     .identical_solutions(&sa, &sb),
                     "identical_solutions",
@@ -910,6 +911,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                         ray_fire: false,
                         distance_tolerance: 0.0,
                         surface_cache: None,
+                        face_queries: None,
                         kernel: &k,
                     }
                     .identical_solutions(&sa, &sb),

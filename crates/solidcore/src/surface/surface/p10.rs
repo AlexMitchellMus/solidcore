@@ -43,7 +43,7 @@
 //! - **Bounds.** The leaf solve takes at most six guesses (upstream's fixed arrays). No
 //!   recursion.
 
-use super::p1::{is_node_valid, is_point_valid, surface_to_evaluate};
+use super::p1::{is_node_valid, surface_to_evaluate};
 use super::p2::{original_surface, LsiGlobalSolver, Surface, TsectCurveType};
 use super::p4;
 use super::p6::{CurveIntersection, RangeTangentPoint};
@@ -328,7 +328,14 @@ impl<'t, 's, O: SolutionObject + 't> LsiGlobalSolver<'t, 's, O> {
         if keep {
             let uv = Point2::new(p(&solution.start, 1)?, p(&solution.start, 2)?);
             // for points within the surface's trim boundary
-            if is_point_valid(leaf.owner, leaf.cache, uv) {
+            if super::p1::is_point_valid_with(
+                k,
+                leaf.owner,
+                leaf.cache,
+                uv,
+                None,
+                self.face_queries,
+            )? {
                 self.add_sorted_solution(solution, SortKey::ByAllParameters, true)?;
             }
         }
@@ -598,7 +605,14 @@ impl<'t, 's, O: SolutionObject + 't> LsiGlobalSolver<'t, 's, O> {
             }
 
             // for points within the surface's trim boundary
-            if is_point_valid(leaf.owner, cache, hit.uv) {
+            if super::p1::is_point_valid_with(
+                k,
+                leaf.owner,
+                cache,
+                hit.uv,
+                None,
+                self.face_queries,
+            )? {
                 self.add_sorted_solution(&solution, SortKey::ByAllParameters, true)?;
             }
 

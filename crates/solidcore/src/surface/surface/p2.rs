@@ -5200,6 +5200,8 @@ pub struct LsiGlobalSolver<'t, 's, O> {
     /// The cache holding the patches of the surface tree's nodes, read by the leaf
     /// solve (part 10; upstream reaches it through the node's tree owner).
     pub surface_cache: Option<&'s SurfaceCache<O>>,
+    /// Prepared face classification shared with other caches in this operation.
+    pub face_queries: Option<&'s dyn crate::surface::surface_cache::face_context::FaceQueries<O>>,
 }
 
 impl<O: SolutionObject> LsiGlobalSolver<'_, '_, O> {
@@ -5747,6 +5749,7 @@ mod tests {
             ray_fire: false,
             distance_tolerance: 1e-6,
             surface_cache: None,
+            face_queries: None,
             kernel: &Kernel::default(),
         };
         let mut branch: Branch = Default::default();
