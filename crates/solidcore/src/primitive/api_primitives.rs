@@ -885,20 +885,24 @@ mod tests {
     #[test]
     fn solids_run_primitive_creation_until_the_next_unported_call() {
         let k = &mut Kernel::default();
-        // the faces are built (topology.brep_p8) and stitched (topology.brep_p4); the
-        // stitch's glue path stops at the vertex-list removal
+        // the faces are built (topology.brep_p8), stitched (topology.brep_p4),
+        // bounded (query.brep) and get through SmSurface::DropCurve: the planar solids
+        // then stop at a zone tolerance, the ones with analytic faces (and the closed
+        // analytic faces after the region split) at an SmCrvOnSurf over the analytic
+        // surface
         for r in [
             create_box(k, o(), 5.0, 10.0, 20.0),
+            create_pyramid(k, o(), 2.0, 3.0),
+        ] {
+            assert_eq!(deferred_at(&r), Some("geom.tol"));
+        }
+        for r in [
             create_cylinder(k, o(), 5.0, 10.0),
             create_cone(k, o(), 5.0, 2.0, 10.0),
-            create_pyramid(k, o(), 2.0, 3.0),
             create_cylindrical_box(k, o(), 10.0, 2.0, 5.0, 0.0, 90.0),
+            create_sphere(k, o(), 5.0),
+            create_torus(k, o(), 10.0, 2.0),
         ] {
-            assert_eq!(deferred_at(&r), Some("topology.brep_p1"));
-        }
-        // the closed analytic face gets through the region split, then stops in
-        // SmSurface::DropCurve at an SmCrvOnSurf over the analytic surface
-        for r in [create_sphere(k, o(), 5.0), create_torus(k, o(), 10.0, 2.0)] {
             assert_eq!(deferred_at(&r), Some("curve.crv_on_surf"));
         }
         // partial solids sweep a profile (topology sweep) past SmFace::FindVertexSector
@@ -910,11 +914,10 @@ mod tests {
         ] {
             assert_eq!(deferred_at(&r), Some("query.face_p2"));
         }
-        // the sphere without poles gets through SmSurface::DropCurve and stops at
-        // SmBrep::StitchFaces
+        // the sphere without poles gets through SmSurface::DropCurve
         assert_eq!(
             deferred_at(&create_sphere_no_pole(k, o(), -5.0)),
-            Some("topology.brep_p4")
+            Some("topology.edge")
         );
         // edges without an edge use on their face
         let mut brep = Brep::new_with_infinite_region().unwrap();
