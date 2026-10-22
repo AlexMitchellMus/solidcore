@@ -2983,7 +2983,7 @@ fn turn_to_nurbs_in(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Re
 
         // Approximate pCurve if we don't have a SmBSplineCurve yet (status ignored)
         if bsc.is_none() {
-            let (knots, _) = match curve.knots(None) {
+            let (knots, _) = match curve.knots(k, None) {
                 Ok(x) => x,
                 Err(err) if err.is_unported() => return Err(err),
                 Err(_) => (Vec::new(), Vec::new()),
