@@ -14603,55 +14603,6 @@ Exact controls still compare 4 values (`line_join_fw_tangent_start`), 18
 same imported B-rep as the deferred operations: the guard still applies per
 operation, not to the whole B-rep.
 
-<<<<<<< HEAD
-## topology.edge — exact private revolution transport (issue #294, Phases 0–1)
-
-The isolated base `c4241a48` merges main `7b57d8de`, #356 `b338b918` and #304
-`f7ba5d5e`, preserving both dependency histories. Ownership was refreshed before
-implementation; the private edge transport had no competing implementation in
-the 86 open PR file lists. #356 and the shared analytic helpers are unchanged.
-
-Before the adapter change, native default-seed execution reproduced 1787 cases:
-1595 passes with values, 192 deferrals and no failures or empty passes. A native
-type inventory retained all 186 import cases with selected edges and incident
-faces, separately from the six DropCurve deferrals. The revolution faces in
-`surf_rev.smb` and `torus.smb` are type `15020`, not native torus instances.
-
-The private shim/importer now reuse #304's exact record head and shared record
-reader/base checker. No shared dispatch, analytic variants, numerical bodies or
-DropCurve implementation changed. Ownership/tolerance metadata remains in the
-existing graph layout. An invalid or mismatched record is a harness error; another
-record head in place of its regular base is rejected without recursion.
-
-After integration, all 72 revolution cases genuinely compare 120 operation output
-values at the existing `1e-9` relative tolerance with no absolute floors and zero
-relative error. These are flags, indices and statuses; the topological distance
-remains the native `1e20` sentinel. The other 1715 case records and both runner
-outputs are unchanged, including every former pass and every remaining deferral.
-The default result is 1667 passes with values, 120 deferrals, zero failures,
-rejections, operation errors or empty passes. The unit remains `partial`.
-
-The remaining import groups are cone 42, sphere 36 and extrusion 36; the six
-`intersect.surface_drop_lib_p3` deferrals are unchanged. No shared blocker was
-exposed by these 72 cases. The bounded slice stops at private revolution transport;
-#76/#313 analytic variants and #136 DropCurve ownership remain separate.
-
-Per-case before/after outcomes and actual values, provenance, remaining blockers
-and final validation are recorded in
-[`issue-294-edge-revolution-report.md`](issue-294-edge-revolution-report.md).
-Full local captures and the 186-case manifest are under `bin/edge-coverage/`.
-
-Final validation passed: fmt, both workspace/all-target Clippy gates, the native
-edge regression (all 72 cases plus malformed-record and exact controls), 1551
-kernel tests, wasm, and the full differential gate (236 units: 116 green,
-120 partial, zero failed). Sensitivity detected all 1667 perturbations; fuzzing
-2000 cases produced 107 rejections, 235 malformed inputs and 1658 runs, with
-zero differences, crashes, panics or timeouts. An initial test-only Clippy style
-error was corrected without suppressing a lint; its logs and the deliberately
-interrupted/restarted native test build are distinguished from final passing
-checks in the report. The final default report reproduces the measured after
-result. All work remains local.
-=======
 ## SurfaceKind::Sphere / Torus (#76 follow-up to #313, 2026-10-21)
 
 - `SmSphere` and `SmTorus` are `SurfaceKind` variants; `Surface::read_from_db` and the
@@ -15026,4 +14977,51 @@ reconciliation with main's `surface.offset_surface`. With both, the affected dif
   ```
   Not committed as a fixture (it fails the unit); tracking it down is a follow-up in
   `surface.offset_surface`.
->>>>>>> origin/main
+
+## topology.edge — exact private revolution transport (issue #294, Phases 0–1)
+
+The isolated base `c4241a48` merges main `7b57d8de`, #356 `b338b918` and #304
+`f7ba5d5e`, preserving both dependency histories. Ownership was refreshed before
+implementation; the private edge transport had no competing implementation in
+the 86 open PR file lists. #356 and the shared analytic helpers are unchanged.
+
+Before the adapter change, native default-seed execution reproduced 1787 cases:
+1595 passes with values, 192 deferrals and no failures or empty passes. A native
+type inventory retained all 186 import cases with selected edges and incident
+faces, separately from the six DropCurve deferrals. The revolution faces in
+`surf_rev.smb` and `torus.smb` are type `15020`, not native torus instances.
+
+The private shim/importer now reuse #304's exact record head and shared record
+reader/base checker. No shared dispatch, analytic variants, numerical bodies or
+DropCurve implementation changed. Ownership/tolerance metadata remains in the
+existing graph layout. An invalid or mismatched record is a harness error; another
+record head in place of its regular base is rejected without recursion.
+
+After integration, all 72 revolution cases genuinely compare 120 operation output
+values at the existing `1e-9` relative tolerance with no absolute floors and zero
+relative error. These are flags, indices and statuses; the topological distance
+remains the native `1e20` sentinel. The other 1715 case records and both runner
+outputs are unchanged, including every former pass and every remaining deferral.
+The default result is 1667 passes with values, 120 deferrals, zero failures,
+rejections, operation errors or empty passes. The unit remains `partial`.
+
+The remaining import groups are cone 42, sphere 36 and extrusion 36; the six
+`intersect.surface_drop_lib_p3` deferrals are unchanged. No shared blocker was
+exposed by these 72 cases. The bounded slice stops at private revolution transport;
+#76/#313 analytic variants and #136 DropCurve ownership remain separate.
+
+Per-case before/after outcomes and actual values, provenance, remaining blockers
+and final validation are recorded in
+[`issue-294-edge-revolution-report.md`](issue-294-edge-revolution-report.md).
+Full local captures and the 186-case manifest are under `bin/edge-coverage/`.
+
+Final validation passed: fmt, both workspace/all-target Clippy gates, the native
+edge regression (all 72 cases plus malformed-record and exact controls), 1551
+kernel tests, wasm, and the full differential gate (236 units: 116 green,
+120 partial, zero failed). Sensitivity detected all 1667 perturbations; fuzzing
+2000 cases produced 107 rejections, 235 malformed inputs and 1658 runs, with
+zero differences, crashes, panics or timeouts. An initial test-only Clippy style
+error was corrected without suppressing a lint; its logs and the deliberately
+interrupted/restarted native test build are distinguished from final passing
+checks in the report. The final default report reproduces the measured after
+result. All work remains local.
