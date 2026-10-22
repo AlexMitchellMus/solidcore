@@ -16727,5 +16727,6 @@ each out-of-domain evaluation. Rust's `blend::fillet_solver::p3::step_solve` eva
 (`iso_curve_of`, `other`), so extensions built there are dropped. A Newton solve that starts
 from a differently extended base can converge to a point a few ULP away. Not confirmed:
 confirming it needs a C++ probe of `LocalCurveIntersect` on a shared vs a fresh offset surface.
-Not fixed, and no tolerance was loosened. Until it is resolved, `blend.fillet_intersector`
-reports this one case as failed on the #212 branch, so #212 stays unlanded.
+Not fixed, and no tolerance was loosened. The case is listed in
+`crates/difftest/known_mismatches.toml` (reported as `known-mismatch`; `blend.fillet_intersector`
+stays partial, never green). Remove the entry when the cause is fixed.
