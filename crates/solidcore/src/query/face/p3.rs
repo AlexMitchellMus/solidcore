@@ -354,8 +354,9 @@ pub fn calculate_tight_bounding_box_into(
     let b = lb.get();
     let mut face_bbox = Extent3d::new();
 
-    // (a copy: the point classifications below may edit the B-rep)
-    let surface = &face_surface(b, f, OP_TIGHT)?.clone();
+    // (a copy that keeps the owning face: the point classifications below may edit
+    // the B-rep)
+    let surface = &face_surface(b, f, OP_TIGHT)?.clone_for_evaluation()?;
     let face_zone_tol_3d = zone_tol3d(k, b.face(f)?.tolerance);
 
     // Method: get the bounding box of the Vertices.
