@@ -45,6 +45,7 @@ use crate::EntityRef;
 mod arena_pair;
 mod kernel_adapter;
 mod notification_keys;
+pub(crate) use kernel_adapter::notification_key;
 pub use kernel_adapter::{KernelManifoldIntersector, ManifoldKernelAdapter};
 pub use notification_keys::ManifoldNotificationKeys;
 
@@ -108,7 +109,7 @@ impl BooleanKernels<'_> {
         self.other.as_deref().unwrap_or(self.primary)
     }
 
-    fn mark_action<T>(
+    pub(crate) fn mark_action<T>(
         &mut self,
         action: impl FnOnce(&mut [crate::geom::context::Context]) -> Result<T>,
     ) -> Result<T> {
@@ -1109,18 +1110,20 @@ fn result_solid(operation: BooleanOperation, data: &MergeRegionData, was_solid: 
 }
 
 fn find_and_set_infinite(
-    _kernels: &mut BooleanKernels<'_>,
+    kernels: &mut BooleanKernels<'_>,
     primary: &mut Brep,
     shell: Option<crate::topology::ShellId>,
     void_setting: bp::SetRegionVoidType,
-    bounding_box: Option<&mut crate::geom::extent3d::Extent3d>,
+    bounding_box: Option<&crate::geom::extent3d::Extent3d>,
 ) -> Result<()> {
-    let code = match void_setting {
-        bp::SetRegionVoidType::NestedSolid => 0,
-        bp::SetRegionVoidType::InfiniteRegionOnly => 1,
-        bp::SetRegionVoidType::InfiniteRegionSwap => 2,
-    };
-    crate::topology::brep::p5::find_and_set_infinite_region(primary, shell, code, bounding_box)
+    crate::topology::brep::p5::find_and_set_infinite_region(
+        kernels.primary,
+        primary,
+        &BrepQuery::default(),
+        shell,
+        void_setting,
+        bounding_box,
+    )
 }
 
 /// `m_pOther->IsSheet()` (`topology.brep_p2`), in the other B-rep's context as
