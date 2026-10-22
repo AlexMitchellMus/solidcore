@@ -26,7 +26,7 @@
 //! `sm_FindConcaveEdgeuses` (`blend.fillet_corner_p2`); every patch builder past its state
 //! checks (`MakeAnalyticCornerSurface`, `CreateEndPatch`, `SmSurface::DropCurve`); the
 //! Nx2 adjustments where they change the topology (`MakeFilletEdge`,
-//! `GetRailIndexOfVertexuse`), the big-radius test of blending corners and the `NxN` /
+//! `SplitFilletGeomAtSideEdge` once a vertex drops inside a rail), the big-radius test of blending corners and the `NxN` /
 //! closed Nx1 overrides. The shim does not call upstream on those paths (`-3`; a Rust
 //! side that is not deferred there fails the case) and refuses (`-2`, a rejected case)
 //! the inputs that make upstream dereference null or free the harness's objects. A
@@ -248,8 +248,10 @@ fn create_setup(
 ) -> Result<Result<CreateSetup, Output>, HarnessError> {
     let path = path_of(Some(brep))?;
     let block = brep_block_of(Some(brep), validate_only, init_gaps)?;
-    let ex = ffi1::eval(ffi1::Op::Export, &path, &block)
-        .map_err(|e| harness(format!("c++ export: {e}")))?;
+    let ex = crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
+        ffi1::eval(ffi1::Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     let Some(c) = ffi1::counts(&ex) else {
         let st = ex.get(1).copied().unwrap_or(0.0);
         return Ok(Err(Output::err(format!("brep_build_status_{st}"))));
@@ -387,14 +389,19 @@ fn inexact(b: &Brep, types: &ImportTypes, eus: &[EdgeuseId]) -> Option<Output> {
         let st = eu1::face(b, eu)
             .ok()
             .flatten()
-            .and_then(|f| types.face_surface_types.get(f.index() as usize).copied())
+            .and_then(|f| types.inexact_surface(f.index() as usize))
             .unwrap_or(-1);
         if st >= 0 && !EXACT_SURFACES.contains(&st) {
             let (unit, symbol) = match st {
-                15012 | 15013 => ("surface.cone_p1", "SmCone (no SurfaceKind)"),
-                15014 => ("surface.sphere", "SmSphere"),
-                15015 => ("surface.torus", "SmTorus (no SurfaceKind)"),
-                15030 => ("surface.surf_of_extrusion_p2", "SurfaceKind::SurfOfExtrusion"),
+                // the gap is the missing `SurfaceKind` variant (the `SmSurface` dispatch,
+                // unit `surface.surface_p2`; #76), not the kinds' own units (all ported)
+                15012 | 15013 => ("surface.surface_p2", "SurfaceKind::Cone (SmCone)"),
+                15014 => ("surface.surface_p2", "SurfaceKind::Sphere (SmSphere)"),
+                15015 => ("surface.surface_p2", "SurfaceKind::Torus (SmTorus)"),
+                15030 => (
+                "harness:analytic-geometry-export",
+                "SmSurfOfExtrusion face surface not exported exactly",
+            ),
                 _ => ("topology.brep_p10", "SmBrep::MakeTopologyFromData"),
             };
             return Some(Output::deferred(unit, symbol));
@@ -562,7 +569,7 @@ fn corner_cpp(op: CornerOp, model: &Model, c: &CornerIn) -> Result<Output, Harne
     corner_output(&flat)
 }
 
-fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, HarnessError> {
+fn corner_rust(k: &Kernel, op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, HarnessError> {
     let h = |e: SolidError| harness(e.to_string());
     let mut rm = RustModel::build(model)?;
     let kind = *KINDS.get(ci.kind).ok_or_else(|| harness("kind"))?;
@@ -665,7 +672,7 @@ fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, Har
             .curve
             .as_ref()
             .ok_or_else(|| harness("line edge without curve"))?
-            .ends()
+            .ends(k)
             .map_err(h)?;
         let mut l = solidcore::curve::line::Line::from_points(ends.start, ends.end, 3);
         let _ = l.make_nurb();
@@ -693,12 +700,14 @@ fn corner_rust(op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, Har
             pseudo: &mut rm.fb,
             corner: None,
             tsect_surfaces: &surfaces,
+            // the model's geometries have no solver (as the shim's)
+            solvers: &mut [],
         };
         match op {
-            CornerOp::CalcGeom => c.calc_corner_geom(&mut env),
-            CornerOp::Patch => c.create_corner_patch(&mut env),
-            CornerOp::AdjustTopology => c.adjust_topology(&mut env),
-            CornerOp::AdjustTangent => c.adjust_tangent_corner(&mut env),
+            CornerOp::CalcGeom => c.calc_corner_geom(k, &mut env),
+            CornerOp::Patch => c.create_corner_patch(k, &mut env),
+            CornerOp::AdjustTopology => c.adjust_topology(k, &mut env),
+            CornerOp::AdjustTangent => c.adjust_tangent_corner(k, &mut env),
         }
     };
     let st = match r {
@@ -1248,7 +1257,7 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
     }
 }
 
-fn rust(i: &Inputs) -> Result<Output, HarnessError> {
+fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     match i {
         Inputs::Create {
             brep,
@@ -1260,7 +1269,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         } => create_rust(brep, *validate_only, *init_gaps, *eu, more, solvers),
         Inputs::Corner { op, model, corner } => {
             ffi::validate_corner(&corner_input(model, corner)?).map_err(|e| harness(e.to_string()))?;
-            corner_rust(*op, model, corner)
+            corner_rust(k, *op, model, corner)
         }
     }
 }
@@ -1275,7 +1284,8 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        rust(&case.parse::<Inputs>()?)
+        let k = &Kernel::default();
+        rust(k, &case.parse::<Inputs>()?)
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {

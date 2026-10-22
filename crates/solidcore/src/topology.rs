@@ -10,6 +10,7 @@
 //! | [`Region`] / [`RegionId`]   | `SmRegion` (minimal: list owner, shell list, void flag) |
 //! | [`Shell`] / [`ShellId`]     | `SmShell` (faces, region, type and list head)         |
 //! | [`Brep::new_with_infinite_region`] | `SmBrep::SmBrep()` (topology part, CO-PORTED) |
+//! | [`Brep::notify_serial`]     | (none: the B-rep's kernel-issued notification serial; CO-PORTED by `topology.brep_p3`) |
 //! | [`Faceuse`] / [`FaceuseId`] | `SmFaceuse` (unit `topology.edgeuse_p1`)              |
 //! | [`Face`] / [`FaceId`]       | `SmFace` (unit `topology.face_p2`)                    |
 //! | [`Loopuse`] / [`LoopuseId`] | `SmLoopuse` (unit `topology.loopuse`)                 |
@@ -59,8 +60,10 @@ use core::marker::PhantomData;
 use crate::curve::curve::Curve;
 use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::attribute::ObjectKey;
+use crate::geom::context::IdentitySlot;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
+use crate::geom::extent3d::Extent3d;
 use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::geom::tol::{USE_DEFAULT, ZONE_TOL_3D};
 use crate::geom::vector2d::Point2;
@@ -181,12 +184,18 @@ impl<I: ArenaId, T> Arena<I, T> {
     /// Appends an item and returns its id.
     ///
     /// Fails with [`SolidError::InvalidInput`] if the arena already holds `u32::MAX`
-    /// items.
+    /// items or cannot grow (allocation failure).
     pub fn insert(&mut self, item: T) -> Result<I> {
         let index = u32::try_from(self.items.len()).map_err(|_| SolidError::InvalidInput {
             operation: "topology::Arena::insert",
             reason: "arena is full",
         })?;
+        self.items
+            .try_reserve(1)
+            .map_err(|_| SolidError::InvalidInput {
+                operation: "topology::Arena::insert",
+                reason: "arena cannot grow",
+            })?;
         self.items.push(item);
         Ok(I::from_index(index))
     }
@@ -573,6 +582,16 @@ pub struct Brep {
     /// `m_pDeletedSurfaces` (unit `topology.brep_p1`): surfaces removed from the B-rep
     /// that are kept until the operation ends because they may still be referenced.
     deleted_surfaces: Vec<Surface>,
+    /// `m_pLockedBoundingBox` (unit `query.brep`): the box
+    /// [`crate::query::brep::lock_bounding_box`] saved, which
+    /// [`crate::query::brep::calculate_bounding_box`] returns while it is set. A clone
+    /// keeps it (clones stand in for the same B-rep); upstream's copy constructor
+    /// (`topology.brep_p3`) starts without one.
+    locked_bounding_box: Option<Extent3d>,
+    /// The B-rep's kernel-issued notification serial (CO-PORTED by `topology.brep_p3`):
+    /// its objects' topology keys hold it (`topology::brep::p3::topology_ref`). A
+    /// clone is a new B-rep without one.
+    notify_identity: IdentitySlot,
 }
 
 impl Default for Brep {
@@ -600,6 +619,8 @@ impl Default for Brep {
             model_size_estimate: USE_DEFAULT,
             large_small_size_ratio: USE_DEFAULT,
             deleted_surfaces: Vec::new(),
+            locked_bounding_box: None,
+            notify_identity: IdentitySlot::default(),
         }
     }
 }
@@ -661,6 +682,19 @@ impl Brep {
     /// Sets `m_bEditingEnabled`.
     pub fn set_editing_enabled(&mut self, enabled: bool) {
         self.editing_enabled = enabled;
+    }
+
+    /// `m_pLockedBoundingBox` (unit `query.brep`): the locked bounding box, if any.
+    #[must_use]
+    pub const fn locked_bounding_box(&self) -> Option<Extent3d> {
+        self.locked_bounding_box
+    }
+
+    /// Sets (`Some`) or clears (`None`) `m_pLockedBoundingBox`; see
+    /// [`crate::query::brep::lock_bounding_box`] and
+    /// [`crate::query::brep::unlock_bounding_box`].
+    pub fn set_locked_bounding_box(&mut self, bbox: Option<Extent3d>) {
+        self.locked_bounding_box = bbox;
     }
 
     /// All shells.
@@ -899,6 +933,23 @@ impl Brep {
         self.key = key;
     }
 
+    /// The serial a context issued this B-rep for its notifications, once one has
+    /// (the kernel issues it; there is no setter).
+    #[must_use]
+    pub fn notify_serial(&self) -> Option<u64> {
+        self.notify_identity.value()
+    }
+
+    /// The slot of the B-rep's notification serial, for the context that issues it.
+    pub(crate) fn notify_identity_slot(&mut self) -> &mut IdentitySlot {
+        &mut self.notify_identity
+    }
+
+    /// The slot of the B-rep's notification serial, read-only.
+    pub(crate) const fn notify_identity(&self) -> &IdentitySlot {
+        &self.notify_identity
+    }
+
     /// Appends a region record as is (no validation).
     pub fn add_region_record(&mut self, region: Region) -> Result<RegionId> {
         self.regions.insert(region)
@@ -910,11 +961,31 @@ impl Brep {
     }
 
     /// Appends a face record as is (no validation; the shell's face list is not
-    /// touched); the face joins the end of the B-rep's face list.
+    /// touched); the face joins the end of the B-rep's face list, and its surface
+    /// records the face's tolerance ([`Brep::sync_face_surface_tolerance`]).
     pub fn add_face_record(&mut self, face: Face) -> Result<FaceId> {
         let id = self.faces.insert(face)?;
         self.face_list.push(id);
+        self.sync_face_surface_tolerance(id)?;
         Ok(id)
+    }
+
+    /// Records the face's tolerance on its surface
+    /// ([`Surface::set_owner_zone_tol_3d`](crate::surface::surface::Surface::set_owner_zone_tol_3d)),
+    /// so the surface's `GetFace()->GetTolerance()` reads it: the B-rep invariant that a
+    /// face record's surface carries that record's `tolerance`. A surface reaching no
+    /// face records nothing. Called wherever a face's surface or tolerance changes.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::NotFound`] for a dangling id.
+    pub fn sync_face_surface_tolerance(&mut self, f: FaceId) -> Result<()> {
+        let face = self.face_mut(f)?;
+        let tol = face.tolerance;
+        if let Some(surface) = face.surface.as_mut() {
+            surface.set_owner_zone_tol_3d(Some(tol));
+        }
+        Ok(())
     }
 
     /// Appends a loop record as is (no validation; the face's loop list is not

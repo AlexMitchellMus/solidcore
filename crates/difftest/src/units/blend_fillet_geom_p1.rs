@@ -60,7 +60,6 @@ use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::nurbs::srf_basic::Surface as NurbSurface;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surf_of_revolution::SurfOfRevolution;
-use solidcore::surface::surface::p4::NoObject;
 use solidcore::surface::surface::{Surface, SurfaceKind};
 use solidcore::topology::{
     Brep, EdgeId, Edgeuse, EdgeuseId, FaceId, VertexId, Vertexuse, VertexuseId, VertexuseOwner,
@@ -120,7 +119,8 @@ pub(crate) struct VertexIn {
     #[serde(default = "pc_unknown")]
     pub(crate) pc_class: i64,
     /// `0` none, `1` the start/end (`pc_sub`) vertex of target wire edge `pc_index`, `2`
-    /// its primary edge use, `3` target face `pc_index`.
+    /// its primary edge use, `3` target face `pc_index`, `4` the target wire edge itself
+    /// (an `SmEdge`, what `SM_PC_EDGE` classifies to upstream).
     #[serde(default)]
     pub(crate) pc_kind: i64,
     #[serde(default = "minus_one")]
@@ -896,14 +896,14 @@ fn cpp(i: &Inputs, expected_rejection: bool) -> Result<Output, HarnessError> {
 
 // ---- output splitting ---------------------------------------------------------------
 
-struct Split<'a> {
-    flat: &'a [f64],
-    at: usize,
-    out: Output,
+pub(crate) struct Split<'a> {
+    pub(crate) flat: &'a [f64],
+    pub(crate) at: usize,
+    pub(crate) out: Output,
 }
 
 impl Split<'_> {
-    fn take(&mut self, k: usize) -> Result<Vec<f64>, HarnessError> {
+    pub(crate) fn take(&mut self, k: usize) -> Result<Vec<f64>, HarnessError> {
         let part = self
             .at
             .checked_add(k)
@@ -925,19 +925,19 @@ impl Split<'_> {
         Ok(x as usize)
     }
 
-    fn put(&mut self, key: &str, v: Vec<f64>) {
+    pub(crate) fn put(&mut self, key: &str, v: Vec<f64>) {
         let out = std::mem::take(&mut self.out);
         self.out = out.values(key, v);
     }
 
-    fn vals(&mut self, key: &str, k: usize) -> Result<(), HarnessError> {
+    pub(crate) fn vals(&mut self, key: &str, k: usize) -> Result<(), HarnessError> {
         let v = self.take(k)?;
         self.put(key, v);
         Ok(())
     }
 
     /// A curve record `has [dim n p m cpts knots]` under `pfx`.
-    fn curve(&mut self, pfx: &str) -> Result<(), HarnessError> {
+    pub(crate) fn curve(&mut self, pfx: &str) -> Result<(), HarnessError> {
         let has = self.take(1)?;
         let set = has.first().copied() == Some(1.0);
         self.put(&format!("{pfx}has"), has);
@@ -980,7 +980,7 @@ impl Split<'_> {
     }
 
     /// The pseudo-B-rep export.
-    fn export(&mut self) -> Result<(), HarnessError> {
+    pub(crate) fn export(&mut self) -> Result<(), HarnessError> {
         let nv = self.count()?;
         self.put("v_count", vec![nv as f64]);
         for i in 0..nv {
@@ -1205,6 +1205,18 @@ pub(crate) fn dump_curve(o: &mut Vec<f64>, c: Option<&Curve>) {
     o.extend_from_slice(cur.knots());
 }
 
+/// The B-spline part of a curve of a kind derived from `SmBSplineCurve`.
+pub(crate) const fn b_spline_part(c: &Curve) -> Option<&BSplineCurve> {
+    match c.kind() {
+        CurveKind::BSpline(b) => Some(b),
+        CurveKind::Line(l) => Some(l.base()),
+        CurveKind::Ellipse(e) => Some(e.base()),
+        CurveKind::Hyperbola(h) => Some(h.base()),
+        CurveKind::Parabola(p) => Some(p.base()),
+        _ => None,
+    }
+}
+
 pub(crate) fn dump_bcurve(o: &mut Vec<f64>, c: Option<&BSplineCurve>) {
     let Some(cur) = c.and_then(BSplineCurve::gw_nurb) else {
         o.push(0.0);
@@ -1332,14 +1344,14 @@ fn face_brep(surface: Surface) -> Result<(Brep, FaceId), HarnessError> {
 /// A wire edge on `curve` over its natural interval (`CreateWireEdgeFromCurve`): start and
 /// end vertices at the curve ends (glued into the start vertex when closer than the
 /// B-rep tolerance), the edge with two edge uses and vertex uses.
-fn wire_edge(b: &mut Brep, curve: BSplineCurve, tol: Option<f64>) -> Result<EdgeId, HarnessError> {
+fn wire_edge(k: &Kernel, b: &mut Brep, curve: BSplineCurve, tol: Option<f64>) -> Result<EdgeId, HarnessError> {
     let c = Curve::from(curve);
     let ivl = c.natural_interval();
     let ps = c
-        .evaluate_point(ivl.min())
+        .evaluate_point(k, ivl.min())
         .map_err(|e| harness(e.to_string()))?;
     let pe = c
-        .evaluate_point(ivl.max())
+        .evaluate_point(k, ivl.max())
         .map_err(|e| harness(e.to_string()))?;
     let vs = b.add_vertex(ps).map_err(|e| harness(e.to_string()))?;
     let ve = if ps.distance(pe) < ZONE_TOL_3D {
@@ -1408,7 +1420,7 @@ impl RustModel {
         let mut target = Brep::new();
         let mut target_edges = Vec::new();
         for c in &m.targets {
-            target_edges.push(wire_edge(&mut target, curve_of(c)?, None)?);
+            target_edges.push(wire_edge(&k, &mut target, curve_of(c)?, None)?);
         }
         let mut target_faces = Vec::new();
         for s in &m.faces {
@@ -1424,7 +1436,7 @@ impl RustModel {
         let mut fillet = Brep::new();
         let mut fillet_edges = Vec::new();
         for e in &m.fillet_brep {
-            fillet_edges.push(wire_edge(&mut fillet, curve_of(&e.curve)?, Some(e.tol))?);
+            fillet_edges.push(wire_edge(&k, &mut fillet, curve_of(&e.curve)?, Some(e.tol))?);
         }
 
         let mut fb = FilletBrep::new();
@@ -1460,6 +1472,9 @@ impl RustModel {
                 }
                 (3, Ok(i)) => Some(EntityRef::Face(
                     *target_faces.get(i).ok_or_else(|| harness("pc face"))?,
+                )),
+                (4, Ok(i)) => Some(EntityRef::Edge(
+                    *target_edges.get(i).ok_or_else(|| harness("pc index"))?,
                 )),
                 _ => None,
             };
@@ -1718,6 +1733,14 @@ impl RustModel {
                 }
                 o.extend([-1.0, -1.0, 0.0]);
             }
+            Some(EntityRef::Edge(e)) => {
+                let i = self.target_edges.iter().position(|&x| x == e);
+                o.extend([
+                    if i.is_some() { 4.0 } else { -1.0 },
+                    i.map_or(-1.0, |i| i as f64),
+                    0.0,
+                ]);
+            }
             Some(EntityRef::Face(f)) => {
                 let i = self.target_faces.iter().position(|&x| x == f);
                 o.extend([
@@ -1782,8 +1805,15 @@ impl RustModel {
         for &e in es {
             let fe = self.fb.fillet_edge(e).map_err(h)?;
             let edge = b.edge(e).map_err(h)?;
-            o.push(self.vertex_index(Some(edge.vertices[0])));
-            o.push(self.vertex_index(Some(edge.vertices[1])));
+            // the shim's SmEdge::GetVertices(vs, ve): through the primary edge use and its
+            // mate, swapped unless the primary use is SM_OT_SAME (a new rail edge's uses are
+            // SM_OT_UNKNOWN); the stored pair where the uses cannot give it
+            let (vs0, ve0) = solidcore::topology::vertex::edge_vertex_pair(b, e)
+                .ok()
+                .and_then(|(s, t)| s.zip(t))
+                .unwrap_or((edge.vertices[0], edge.vertices[1]));
+            o.push(self.vertex_index(Some(vs0)));
+            o.push(self.vertex_index(Some(ve0)));
             o.push(fe.fillet_edge_type() as i64 as f64);
             o.push(fe.status() as i64 as f64);
             o.push(Self::corner_index(fe.fillet_corner()));
@@ -1901,7 +1931,7 @@ fn rust_geometry(i: &Inputs) -> Result<Rec, HarnessError> {
         Inputs::SurfaceClosure { surface, domain } => {
             let s = surface_of(surface)?;
             let dom = Extent2d::from_bounds(domain[0][0], domain[0][1], domain[1][0], domain[1][1]);
-            match try_status!(fg::set_surface_closure(&s, &dom)) {
+            match try_status!(fg::set_surface_closure(&k, &s, &dom)) {
                 Ok(c) => o.extend([0.0, c as u64 as f64]),
                 Err(st) => o.push(st),
             }
@@ -1929,7 +1959,7 @@ fn rust_geometry(i: &Inputs) -> Result<Rec, HarnessError> {
             let s = surface_of(surface)?;
             let mut q = uv(*p);
             let r =
-                fg::adjust_uv_on_seam(&s, Vec3::new(ref_dir[0], ref_dir[1], ref_dir[2]), &mut q);
+                fg::adjust_uv_on_seam(&k, &s, Vec3::new(ref_dir[0], ref_dir[1], ref_dir[2]), &mut q);
             match try_status!(r) {
                 Ok(()) => o.push(0.0),
                 Err(st) => o.push(st),
@@ -1962,10 +1992,11 @@ fn rust_geometry(i: &Inputs) -> Result<Rec, HarnessError> {
         }
         Inputs::SurfaceDropPoint { surface, pnt, tol } => {
             let s = surface_of(surface)?;
-            match try_status!(fg::surface_drop_point::<NoObject>(
+            // the solutions name the surface, as `sm_SurfaceDropPoint`'s do
+            match try_status!(fg::surface_drop_point(
                 &k,
                 &s,
-                Some(NoObject),
+                Some(fg::SurfaceHandle(&s)),
                 v3(*pnt),
                 *tol
             )) {
@@ -2009,9 +2040,10 @@ fn rust_geometry(i: &Inputs) -> Result<Rec, HarnessError> {
             match try_status!(r) {
                 Ok(x) => {
                     o.push(0.0);
-                    dump_bcurve(&mut o, x.curve_3d.as_ref());
-                    dump_bcurve(&mut o, x.surface1_uv_curve.as_ref());
-                    dump_bcurve(&mut o, x.surface2_uv_curve.as_ref());
+                    // (the C++ dumps the SmBSplineCurve outputs' NURBs)
+                    dump_bcurve(&mut o, x.curve_3d.as_ref().and_then(b_spline_part));
+                    dump_bcurve(&mut o, x.surface1_uv_curve.as_ref().and_then(b_spline_part));
+                    dump_bcurve(&mut o, x.surface2_uv_curve.as_ref().and_then(b_spline_part));
                 }
                 Err(st) => o.extend([st, 0.0, 0.0, 0.0]),
             }
@@ -2019,7 +2051,7 @@ fn rust_geometry(i: &Inputs) -> Result<Rec, HarnessError> {
         }
         Inputs::EvaluateMate { surface, uv: p } => {
             let (b, f) = face_brep(surface_of(surface)?)?;
-            match try_status!(fg::evaluate_mate(&b, f, uv(*p))) {
+            match try_status!(fg::evaluate_mate(&k, &b, f, uv(*p))) {
                 Ok(q) => o.extend([0.0, q.x, q.y, q.z]),
                 Err(st) => o.extend([st, 0.0, 0.0, 0.0]),
             }
@@ -2030,7 +2062,7 @@ fn rust_geometry(i: &Inputs) -> Result<Rec, HarnessError> {
                 Ok(srf) => {
                     let (b, f) = face_brep(srf)?;
                     o.push(0.0);
-                    match try_status!(fg::evaluate_mate(&b, f, uv(*p))) {
+                    match try_status!(fg::evaluate_mate(&k, &b, f, uv(*p))) {
                         Ok(q) => o.extend([0.0, q.x, q.y, q.z]),
                         Err(st) => o.extend([st, 0.0, 0.0, 0.0]),
                     }

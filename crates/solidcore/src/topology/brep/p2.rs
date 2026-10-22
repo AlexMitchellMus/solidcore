@@ -94,6 +94,7 @@ use crate::math::{Point2, Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI}
 use crate::nurbs::b_spline_curve::{BSplineCurve, BoundingBoxRequest};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::query::edge as qedge;
 use crate::query::face::p1 as qface1;
 use crate::query::face::p2::{curve_on_classify, CurveOnClassifyObjects};
@@ -331,8 +332,8 @@ pub fn min_edge_bbox_size(k: &Kernel, b: &Brep) -> Result<(f64, Option<EdgeId>)>
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] for the B-rep box (`query.brep`); [`SolidError::NotFound`]
-/// for a dangling id.
+/// [`SolidError::Unported`] from the B-rep box; [`SolidError::NotFound`] for a dangling
+/// id.
 pub fn set_tolerance(
     k: &Kernel,
     b: &mut Brep,
@@ -346,7 +347,13 @@ pub fn set_tolerance(
 
     // when sZoneTol3d <= 0.0 compute tol from Bounding box size
     if new_tol <= 0.0 {
-        let bbox = brep_bounding_box(k, b)?;
+        // (status ignored: a failure leaves the initialised box)
+        let bbox = crate::error::ignored(qbrep::calculate_bounding_box(
+            k,
+            &mut *b,
+            BoundingBoxOptions::default(),
+        ))?
+        .unwrap_or_default();
         let mut size = bbox.size().length();
         if size >= 1.0e15 || size <= 0.0 {
             size = 1.0;
@@ -505,16 +512,6 @@ fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<bool> {
         Err(SolidError::Upstream { code: SM_ERR, .. }) => Ok(false),
         Err(e) => Err(e),
     }
-}
-
-/// `SmBrep::CalculateBoundingBox(box)` with defaults (unit `query.brep`).
-fn brep_bounding_box(k: &Kernel, b: &Brep) -> Result<Extent3d> {
-    let _ = (k, b);
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmBrep::CalculateBoundingBox",
-        "query.brep",
-    ))
 }
 
 /// `SmFace::SetTolerance(tol, bUpdateOnlyIfLarger, FALSE)` ([`face3::set_tolerance`]).
@@ -1043,6 +1040,7 @@ pub fn delete_stale_caches<O: Copy + PartialEq>(
 /// edge or face object the B-rep does not hold (the port cannot evaluate it); the evaluation's
 /// error (upstream ignores it and returns an uninitialised point).
 pub fn point_from_solution(
+    k: &Kernel,
     b: &Brep,
     solution: &Solution<CacheObject>,
     index: usize,
@@ -1074,7 +1072,7 @@ pub fn point_from_solution(
                         .as_ref()
                         .ok_or(null_deref("edge without curve"))?;
                     // Evaluate the curve at the current parameter
-                    return curve.evaluate_point(param(start)?);
+                    return curve.evaluate_point(k, param(start)?);
                 }
                 CacheObject::Face(f) => {
                     let surface = b
@@ -1084,7 +1082,7 @@ pub fn point_from_solution(
                         .ok_or(null_deref("face without surface"))?;
                     // Initialize a 2D point using two parameters from the solution
                     let uv = Point2::new(param(start)?, param(start + 1)?);
-                    return surface.evaluate_point(uv);
+                    return surface.evaluate_point(k, uv);
                 }
                 // a curve, edge or face the B-rep does not hold: upstream evaluates it
                 CacheObject::Other(r)
@@ -1154,24 +1152,24 @@ pub fn local_curve_sector(
 
     // evaluate Curve EndPoint tangent at intersection
     let mut test_dir = if orientation == OrientType::Same {
-        let pv = curve.evaluate(interval.min(), 1, true, true)?;
+        let pv = curve.evaluate(k, interval.min(), 1, true, true)?;
         *pv.get(1).ok_or(null_deref("missing tangent"))?
     } else {
-        let pv = curve.evaluate(interval.max(), 1, false, true)?;
+        let pv = curve.evaluate(k, interval.max(), 1, false, true)?;
         -*pv.get(1).ok_or(null_deref("missing tangent"))?
     };
 
     // evaluate Curve NearEndPoint - this is for classifying vertex corners where this
     // point is dropped to all vertex->faces
     let d3_step = b.tolerance() * 10.0;
-    let (length, _) = curve.approximate_length(interval, 10, false)?;
+    let (length, _) = curve.approximate_length(k, interval, 10, false)?;
     let t_step = d3_step / length * (interval.max() - interval.min());
     let t_test = if orientation == OrientType::Same {
         interval.min() + t_step
     } else {
         interval.max() - t_step
     };
-    let test_pnt = curve.evaluate_point(t_test)?;
+    let test_pnt = curve.evaluate_point(k, t_test)?;
     test_dir *= t_step / test_dir.length();
 
     // switch on the intersection type
@@ -1289,8 +1287,9 @@ pub struct RayFireResult {
     pub intersection: PointClassification<EntityRef>,
 }
 
-/// The topology entity a B-rep cache object stands for.
-fn cache_entity(object: CacheObject) -> Result<EntityRef> {
+/// The topology entity a B-rep cache object stands for (also the solution objects of
+/// `SmBrep::Point3DClassify`'s boundary solve, unit `query.brep`).
+pub(crate) fn cache_entity(object: CacheObject) -> Result<EntityRef> {
     match object {
         CacheObject::Vertex(v) => Ok(EntityRef::Vertex(v)),
         CacheObject::Edge(e) | CacheObject::Curve(e) => Ok(EntityRef::Edge(e)),
@@ -1311,7 +1310,7 @@ fn cache_entity(object: CacheObject) -> Result<EntityRef> {
 ///
 /// `SM_ERR` when the best hit is closer than `SM_EFF_ZERO * (1 + max |start|)`; errors
 /// of the B-rep box, the solve, the classification load and [`local_curve_sector`];
-/// [`SolidError::Unported`] from the B-rep box (`query.brep`).
+/// [`SolidError::Unported`] from the callees.
 #[allow(clippy::too_many_arguments)] // one upstream routine
 pub fn ray_fire(
     k: &Kernel,
@@ -1326,7 +1325,7 @@ pub fn ray_fire(
     answer_limit: Option<f64>,
 ) -> Result<RayFireResult> {
     // get Brep BoundingBox and BoundingSphere
-    let bbox = brep_bounding_box(k, b)?;
+    let bbox = qbrep::calculate_bounding_box(k, &mut *b, BoundingBoxOptions::default())?;
     let sphere = bbox.sphere_bound();
     let radius = sphere.radius;
 
@@ -1939,7 +1938,7 @@ fn merge_curves_body<O: ClassObject + Copy>(
 
         // skip very short curves (gwc:this is tolerance bug waiting to happen)
         let natural = curve.natural_interval();
-        if curve.approximate_length(&natural, 10, false)?.0 < tolerance {
+        if curve.approximate_length(k, &natural, 10, false)?.0 < tolerance {
             continue;
         }
 
@@ -2245,7 +2244,7 @@ pub fn mate_lamina_edge_to_surface(
             .as_ref()
             .ok_or(null_deref("edge without curve"))?;
         for j in 0..=20u32 {
-            let edge_pnt = e_curve.evaluate_point(ivl.evaluate(f64::from(j) / 20.0))?;
+            let edge_pnt = e_curve.evaluate_point(k, ivl.evaluate(f64::from(j) / 20.0))?;
             // (only the distance is read: no handle for the surface)
             let sols = ext_mating.global_point_solve::<ObjectHandle>(
                 k,
@@ -2707,21 +2706,23 @@ mod tests {
         let s = solution(&objs, &[0.25, 0.5, 0.75, 1.0]);
         let edge = b.edge(e).unwrap().curve.as_ref().unwrap();
         assert_eq!(
-            point_from_solution(&b, &s, 0).unwrap(),
-            edge.evaluate_point(0.25).unwrap()
+            point_from_solution(&Kernel::default(), &b, &s, 0).unwrap(),
+            edge.evaluate_point(&Kernel::default(), 0.25).unwrap()
         );
         let plane = b.face(f).unwrap().surface.as_ref().unwrap();
         assert_eq!(
-            point_from_solution(&b, &s, 1).unwrap(),
-            plane.evaluate_point(Point2::new(0.5, 0.75)).unwrap()
+            point_from_solution(&Kernel::default(), &b, &s, 1).unwrap(),
+            plane
+                .evaluate_point(&Kernel::default(), Point2::new(0.5, 0.75))
+                .unwrap()
         );
         assert_eq!(
-            point_from_solution(&b, &s, 2).unwrap(),
+            point_from_solution(&Kernel::default(), &b, &s, 2).unwrap(),
             Point3::new(1.0, 2.0, 3.0)
         );
         assert_eq!(
-            point_from_solution(&b, &s, 3).unwrap(),
-            edge.evaluate_point(1.0).unwrap()
+            point_from_solution(&Kernel::default(), &b, &s, 3).unwrap(),
+            edge.evaluate_point(&Kernel::default(), 1.0).unwrap()
         );
     }
 
@@ -2731,13 +2732,13 @@ mod tests {
         // a surface object is no curve, edge, vertex or face: SE(SM_ERR), the origin
         let s = solution(&[CacheObject::Surface(f)], &[]);
         assert_eq!(
-            point_from_solution(&b, &s, 0).unwrap(),
+            point_from_solution(&Kernel::default(), &b, &s, 0).unwrap(),
             Point3::new(0.0, 0.0, 0.0)
         );
         // a null object is dereferenced upstream
         let s = solution(&[], &[]);
         assert!(matches!(
-            point_from_solution(&b, &s, 0),
+            point_from_solution(&Kernel::default(), &b, &s, 0),
             Err(SolidError::InvalidInput { .. })
         ));
     }

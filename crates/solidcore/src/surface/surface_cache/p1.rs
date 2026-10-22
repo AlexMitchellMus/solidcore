@@ -86,11 +86,10 @@
 //!   those return [`SolidError::Unported`]. `EvaluateNormal` is
 //!   [`Surface::evaluate_normal`] (`surface::surface::p7`, with the plane and
 //!   curve-bounded overrides). An `SmPlane` is an
-//!   `SmBSplineSurface` upstream: the cast gives its B-spline part, and its
-//!   `CreateIsoParametricCurve` (an `SmLine`, which the cache cannot hold as a
-//!   [`BSplineCurve`] without losing the line's overrides) and the inherited
-//!   `CalculateBoundingBox` (which dispatches back to the plane) return
-//!   [`SolidError::Unported`] (`surface.plane_p1`). Where upstream
+//!   `SmBSplineSurface` upstream: the cast gives its B-spline part. The iso curves
+//!   (`CreateIsoParametricCurve`, virtual: an `SmLine` for a plane, an `SmCircle` in
+//!   the sweep direction of a surface of revolution) are held as [`Curve`], so the
+//!   derived classes' overrides stay in effect. Where upstream
 //!   casts with `SM_CAST_PTR(SmBSplineSurface, ...)` and `NER`s, a non-B-spline surface
 //!   gives `SM_ERR_NULL_POINTER`. `PointClassify` is the base class body (`SM_ERR`); the
 //!   trimmed surface cache overrides belong to `surface.trim_srf_cache`.
@@ -107,13 +106,17 @@
 //!   `m_pData`, index past an array (`GetPatchAt`, which would also grow the patch
 //!   list; a continuity array longer than the knot list) or dereference a null
 //!   subdivision surface, the port returns [`SolidError::InvalidInput`].
+//! - **Cyclic trees.** `FindUnmarkedLeafNode` walks child links: on a tree whose links
+//!   form a cycle it never ends (its stack grows without bound). The port stops after
+//!   more pops than an acyclic tree allows (the initial stack length plus one, times
+//!   the node count plus one) with [`SolidError::InvalidInput`].
 //! - **Not ported here.** `GetNthBoundingPlane`, `AddCurvesToCache`, the destructor
 //!   (`surface.surface_cache_p2`, [`crate::surface::surface_cache::p2`]), the tree construction
 //!   (`surface.surface_cache_p3`, [`crate::surface::surface_cache::p3`]),
 //!   `GetBoundingPlane`, `GetBrep`, `GetMemoryUsed`, `AssertValid`, the `Dump` and
 //!   `Draw` functions (other units or debug output).
 
-use crate::curve::curve::p2::{approximate_length, Curve, CurveKind};
+use crate::curve::curve::p2::{Curve, CurveKind};
 use crate::error::{ignored, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
@@ -129,7 +132,7 @@ use crate::kernel::Kernel;
 use crate::math::{Point2, Point3, Vec2, Vec3, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface::{
-    BSplineSurface, BoundingBoxRequest, BoundingBoxes, IsoCurveOptions, SurfParamType,
+    BSplineSurface, BoundingBoxRequest, BoundingBoxes, SurfParamType,
 };
 use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::math::NOW;
@@ -182,19 +185,6 @@ pub(super) fn invalid(operation: &'static str, reason: &'static str) -> SolidErr
     SolidError::InvalidInput { operation, reason }
 }
 
-/// `SmPlane::CreateIsoParametricCurve` (virtual, reached through an `SmSurface` or
-/// an `SmBSplineSurface` pointer): not wired into the cache.
-const fn plane_iso_unported() -> SolidError {
-    // UNPORTED(surface.surface_cache_p1): SmPlane::CreateIsoParametricCurve. Ported as
-    // Plane::create_iso_parametric_curve (surface.plane_p1), but it makes an SmLine and
-    // this cache holds its iso curves as BSplineCurve, which would drop the SmLine
-    // overrides (evaluation, length); wiring it needs Curve storage here.
-    SolidError::unported(
-        "SmPlane::CreateIsoParametricCurve",
-        "surface.surface_cache_p1",
-    )
-}
-
 /// `SM_CAST_PTR(SmBSplineSurface, surface)` for callers that run only non-virtual
 /// `SmBSplineSurface` members: an `SmPlane` gives its B-spline part. Callers that
 /// reach a virtual member deal with planes first.
@@ -202,12 +192,33 @@ pub(super) const fn bspline_of(surface: &Surface) -> Option<&BSplineSurface> {
     match surface.kind() {
         SurfaceKind::BSpline(b) => Some(b),
         SurfaceKind::Plane(p) => Some(p.base()),
+        SurfaceKind::Cone(s) => Some(s.rev().base()),
+        SurfaceKind::Sphere(s) => Some(s.base().base()),
+        SurfaceKind::Torus(s) => Some(s.base().base()),
         SurfaceKind::SurfOfRevolution(s) => Some(s.base()),
+        SurfaceKind::SurfOfExtrusion(s) => Some(s.base()),
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => None,
     }
+}
+
+/// `new SmBSplineCurve(*pCurve)` for an `SmBSplineCurve*` that may point at an `SmLine` or
+/// `SmCircle` (the iso curves of a plane or a sweep): the copy constructor of the base
+/// class makes a plain B-spline curve, dropping the derived class.
+///
+/// # Errors
+///
+/// `SM_ERR_NULL_POINTER` for a curve that is not of a B-spline kind.
+pub fn copy_as_bspline(curve: &Curve) -> Result<Curve> {
+    // (an SmLine makes its NURB when the copy constructor asks for it)
+    if let CurveKind::Line(l) = curve.kind() {
+        return Ok(Curve::from(l.base_with_nurb()?.into_owned()));
+    }
+    bspline_curve_of(curve)
+        .map(|b| Curve::from(b.clone()))
+        .ok_or(SolidError::null_pointer(OP_COPY))
 }
 
 /// `SM_CAST_PTR(SmBSplineCurve, curve)`: the B-spline (base) of the B-spline kinds.
@@ -229,72 +240,53 @@ const fn bspline_curve_of(curve: &Curve) -> Option<&BSplineCurve> {
     }
 }
 
-/// `SmSurface::CreateIsoParametricCurve(ctx, param, iso, tol, curve, domain)`: the
-/// B-spline override (the 3D tolerance is not used by it); other kinds run the base
-/// class body.
+/// `SmSurface::CreateIsoParametricCurve(ctx, param, iso, tol, curve, domain)`, the
+/// virtual: the B-spline, plane (an `SmLine`) and surface of revolution (an
+/// `SmCircle` in the sweep direction) overrides, the base class body for the other
+/// kinds. The curve is held as a [`Curve`] so the derived classes' overrides
+/// (evaluation, length, degeneracy) stay in effect; the 3D tolerance is `0.0` as
+/// upstream's callers pass (the overrides do not use it).
 fn create_iso_parametric_curve(
     k: &Kernel,
     surface: &Surface,
     param: SurfParamType,
     iso: f64,
     domain: Option<Extent2d>,
-) -> Result<BSplineCurve> {
+) -> Result<Curve> {
+    let r = surface.create_iso_parametric_curve(k, param, iso, 0.0, domain.as_ref(), false)?;
     match surface.kind() {
-        SurfaceKind::BSpline(b) => bspline_iso_curve(k, b, param, iso, domain),
-        SurfaceKind::Plane(_) => Err(plane_iso_unported()),
-        // UNPORTED(surface.surface_cache_p1): SmSurfOfRevolution::CreateIsoParametricCurve.
-        // Ported as SurfOfRevolution::create_iso_parametric_curve
-        // (surface.surf_of_revolution_p1), but it makes an SmCircle in the sweep
-        // direction and this cache holds its iso curves as BSplineCurve, which would drop
-        // the SmEllipse overrides; wiring it needs Curve storage here.
-        SurfaceKind::SurfOfRevolution(_) => Err(SolidError::unported(
-            "SmSurfOfRevolution::CreateIsoParametricCurve",
-            "surface.surface_cache_p1",
-        )),
-        // the SmSurface body (surface.surface_p5); tolerance 0.0 as upstream's callers
+        // the SmSurface body (surface.surface_p5) makes a B-spline
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
-        | SurfaceKind::SrfInVolume(_) => {
-            let r =
-                surface.create_iso_parametric_curve(k, param, iso, 0.0, domain.as_ref(), false)?;
-            match r.curve.into_kind() {
-                CurveKind::BSpline(b) => Ok(b),
-                _ => Err(SolidError::sm_err(
-                    "surface::surface_cache::p1::create_iso_parametric_curve",
-                )),
-            }
+        | SurfaceKind::SrfInVolume(_)
+            if !matches!(r.curve.kind(), CurveKind::BSpline(_)) =>
+        {
+            Err(SolidError::sm_err(
+                "surface::surface_cache::p1::create_iso_parametric_curve",
+            ))
         }
+        _ => Ok(r.curve),
     }
-}
-
-/// `SmBSplineSurface::CreateIsoParametricCurve` without UV curve.
-fn bspline_iso_curve(
-    k: &Kernel,
-    bss: &BSplineSurface,
-    param: SurfParamType,
-    iso: f64,
-    domain: Option<Extent2d>,
-) -> Result<BSplineCurve> {
-    let opts = IsoCurveOptions {
-        domain,
-        uv_iso_curve: false,
-    };
-    Ok(bss.create_iso_parametric_curve(k, param, iso, opts)?.curve)
 }
 
 /// `SmSurface::CalculateBoundingBox(domain, ...)`: the B-spline override; other kinds
 /// run the base class body.
 pub(super) fn calculate_bounding_box(
+    k: &Kernel,
     surface: &Surface,
     domain: &Extent2d,
     req: &BoundingBoxRequest<'_>,
 ) -> Result<BoundingBoxes> {
     match surface.kind() {
-        SurfaceKind::BSpline(b) => b.calculate_bounding_box(domain, req),
+        SurfaceKind::BSpline(b) => b.calculate_bounding_box(k, domain, req),
         // inherited from SmBSplineSurface: none of its virtual calls is overridden
-        SurfaceKind::SurfOfRevolution(s) => s.base().calculate_bounding_box(domain, req),
-        SurfaceKind::Plane(p) => crate::surface::surface::p1::plane_bounding_box(p, domain, req),
+        SurfaceKind::Cone(s) => s.rev().base().calculate_bounding_box(k, domain, req),
+        SurfaceKind::Sphere(s) => s.base().base().calculate_bounding_box(k, domain, req),
+        SurfaceKind::Torus(s) => s.base().base().calculate_bounding_box(k, domain, req),
+        SurfaceKind::SurfOfRevolution(s) => s.base().calculate_bounding_box(k, domain, req),
+        SurfaceKind::SurfOfExtrusion(s) => s.base().calculate_bounding_box(k, domain, req),
+        SurfaceKind::Plane(p) => crate::surface::surface::p1::plane_bounding_box(k, p, domain, req),
         SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) | SurfaceKind::SrfInVolume(_) => {
             // SmSurface::CalculateBoundingBox (surface::surface::p1). Its polar box asks the
             // surface's own cache for it, whose build asks this function again: upstream
@@ -335,9 +327,13 @@ pub(super) fn calculate_bounding_box(
 fn is_singularity(k: &Kernel, surface: &Surface, uv: Point2) -> Result<bool> {
     match surface.kind() {
         SurfaceKind::Plane(p) => Ok(p.is_singularity().0),
-        SurfaceKind::BSpline(_)
+        SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
+        | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => {
@@ -347,10 +343,16 @@ fn is_singularity(k: &Kernel, surface: &Surface, uv: Point2) -> Result<bool> {
 }
 
 /// `EvaluateNormal(uv, u_from_left, v_from_left, normal)` (virtual).
-fn evaluate_normal(surface: &Surface, uv: Point2, u_left: bool, v_left: bool) -> Result<Vec3> {
+fn evaluate_normal(
+    k: &Kernel,
+    surface: &Surface,
+    uv: Point2,
+    u_left: bool,
+    v_left: bool,
+) -> Result<Vec3> {
     use crate::nurbs::knots::Side;
     let side = |left: bool| if left { Side::Left } else { Side::Right };
-    surface.evaluate_normal(uv, side(u_left), side(v_left))
+    surface.evaluate_normal(k, uv, side(u_left), side(v_left))
 }
 
 /// `smos_Max`.
@@ -613,15 +615,13 @@ impl PatchBoundaryBoundingPlanes {
         k: &Kernel,
         surface: &Surface,
         index: usize,
-    ) -> Result<BSplineCurve> {
+    ) -> Result<Curve> {
         let (spt, param) = self.iso_of(index);
-        let bss = bspline_of(surface).ok_or(SolidError::null_pointer(OP_BOUNDARY))?;
-        if matches!(surface.kind(), SurfaceKind::Plane(_)) {
-            // the cast succeeds; the virtual call reaches the SmPlane override
-            return Err(plane_iso_unported());
-        }
-        // make the curve (3D Tol SM_BIG_DOUBLE: not used)
-        bspline_iso_curve(k, bss, spt, param, None)
+        // SM_CAST_PTR(SmBSplineSurface, ..) and NER: the B-spline kinds
+        bspline_of(surface).ok_or(SolidError::null_pointer(OP_BOUNDARY))?;
+        // make the curve through the virtual (the SmPlane and SmSurfOfRevolution
+        // overrides; 3D Tol SM_BIG_DOUBLE: not used by any of them)
+        create_iso_parametric_curve(k, surface, spt, param, None)
     }
 
     /// The UV end points of boundary `index` (`GetBoundaryUVEndPoints`).
@@ -655,6 +655,12 @@ impl PatchBoundaryBoundingPlanes {
 
         // local
         let bs = bspline_of(surface).ok_or(SolidError::null_pointer(OP_PLANES))?;
+        // (the canonical form asks for the NURB through the virtual GetOrCreateGwNurbPointer,
+        // which makes a plane's)
+        let bs = match surface.kind() {
+            SurfaceKind::Plane(p) => p.base_for_query(),
+            _ => std::borrow::Cow::Borrowed(bs),
+        };
 
         // for every boundary
         for ii in 0..4 {
@@ -665,18 +671,18 @@ impl PatchBoundaryBoundingPlanes {
             self.set_flags(ii, false, false);
 
             // test 3D boundary curve for degeneracy
-            if bsp.is_degenerate(EFF_ZERO, None)? {
+            if bsp.is_degenerate(k, EFF_ZERO, None)? {
                 self.set_flags(ii, false, true);
                 continue;
             }
 
             // eval 3D boundary curve beg, mid, and end pts
             let domain = bsp.natural_interval();
-            let p1 = bsp.evaluate_point(domain.evaluate(0.0))?;
-            let p12 = bsp.evaluate_point(domain.evaluate(0.25))?;
-            let p2 = bsp.evaluate_point(domain.evaluate(0.5))?;
-            let p23 = bsp.evaluate_point(domain.evaluate(0.75))?;
-            let p3 = bsp.evaluate_point(domain.evaluate(1.0))?;
+            let p1 = bsp.evaluate_point(k, domain.evaluate(0.0))?;
+            let p12 = bsp.evaluate_point(k, domain.evaluate(0.25))?;
+            let p2 = bsp.evaluate_point(k, domain.evaluate(0.5))?;
+            let p23 = bsp.evaluate_point(k, domain.evaluate(0.75))?;
+            let p3 = bsp.evaluate_point(k, domain.evaluate(1.0))?;
 
             // compute plane from those 3 points
             let plane = compute_plane_from_3_points(p1, p2, p3, tolerance)?;
@@ -695,10 +701,10 @@ impl PatchBoundaryBoundingPlanes {
                     self.uv_domain.max()
                 };
 
-                let surf_normal = evaluate_normal(surface, corner, from_left, from_left)?;
+                let surf_normal = evaluate_normal(k, surface, corner, from_left, from_left)?;
 
                 let rel_curve_loc = if ii == 0 || ii == 3 { 0.0 } else { 1.0 };
-                let evals = bsp.evaluate(domain.evaluate(rel_curve_loc), 1, from_left, false)?;
+                let evals = bsp.evaluate(k, domain.evaluate(rel_curve_loc), 1, from_left, false)?;
                 let curve_direction = evals
                     .get(1)
                     .copied()
@@ -714,7 +720,7 @@ impl PatchBoundaryBoundingPlanes {
             }
 
             // test: Is boundary curve control polygon on computed plane
-            let on_plane = bsp.is_on_plane(plane_base, plane_normal, tolerance, None)?;
+            let on_plane = bsp.is_on_plane(k, plane_base, plane_normal, tolerance, None)?;
 
             // low work - this curve not planar - go to next boundary curve
             if !on_plane.on_plane {
@@ -723,7 +729,7 @@ impl PatchBoundaryBoundingPlanes {
 
             // test: does surface lie completely on one side of the bounding plane
             let (is_separating, invert_normal) =
-                check_bounding_plane_separating_halfspace(bs, plane_base, plane_normal)?;
+                check_bounding_plane_separating_halfspace(&bs, plane_base, plane_normal)?;
 
             // low work - surface xsects bounding plane
             if !is_separating {
@@ -777,6 +783,7 @@ impl PatchBoundaryBoundingPlanes {
 /// Those of `Evaluate`; `InvalidInput` when `bezier` is smaller than bicubic;
 /// [`SolidError::Unported`] from `SmSurface::IsSingularity`.
 pub fn compute_bezier_approximation(
+    k: &Kernel,
     surface: &Surface,
     uv_domain: &Extent2d,
     bezier: &mut NurbSurface,
@@ -842,7 +849,7 @@ pub fn compute_bezier_approximation(
             twist,
             net: [c00, c10, c01, c11],
         } = corner;
-        let mat = surface.evaluate(uv, 1, 1, flags)?;
+        let mat = surface.evaluate(k, uv, 1, 1, flags)?;
         let d = |m: &Vec<Vec<Vec3>>, i: usize, j: usize| -> Result<Vec3> {
             m.get(i)
                 .and_then(|r| r.get(j))
@@ -851,13 +858,13 @@ pub fn compute_bezier_approximation(
         };
         let p00 = d(&mat, 0, 0)?;
         let (du, dv, duv);
-        if is_singularity(&Kernel::default(), surface, uv)? {
+        if is_singularity(k, surface, uv)? {
             let uvu = Point2::new(uv.x + su * (size.x * EFF_ZERO_SQRT), uv.y);
             let uvv = Point2::new(uv.x, uv.y + sv * (size.y * EFF_ZERO_SQRT));
-            let mu = surface.evaluate(uvu, 1, 1, flags)?;
+            let mu = surface.evaluate(k, uvu, 1, 1, flags)?;
             du = d(&mu, 1, 0)? * size.x;
             let duv1 = d(&mu, 1, 1)? * size.x * size.y;
-            let mv = surface.evaluate(uvv, 1, 1, flags)?;
+            let mv = surface.evaluate(k, uvv, 1, 1, flags)?;
             dv = d(&mv, 0, 1)? * size.y;
             duv = (duv1 + d(&mv, 1, 1)? * size.x * size.y) / 2.0;
         } else {
@@ -1368,7 +1375,7 @@ pub struct IsoBoundaryCurves {
     /// `rbCurvesAreCached`: the curves are (now) held by the cache.
     pub cached: bool,
     /// `rIsoCurves`: minimum u, minimum v, maximum u, maximum v iso curves.
-    pub curves: [BSplineCurve; 4],
+    pub curves: [Curve; 4],
 }
 
 /// The Bezier decomposition of a surface (`SmSurfaceCache`). `O` is the caller's
@@ -1407,7 +1414,7 @@ pub struct SurfaceCache<O> {
     /// `m_dTrimSubdivisionFactor`.
     pub trim_subdivision_factor: f64,
     /// `m_apIsoBoundaryCurves`: the cached natural boundary iso curves.
-    iso_boundary_curves: Option<[BSplineCurve; 4]>,
+    iso_boundary_curves: Option<[Curve; 4]>,
     /// `m_sSubdivisionSurfaces`: construction surfaces with their handles.
     subdivision_surfaces: Vec<(O, Surface)>,
     /// Names the halves of a split subdivision surface (see
@@ -2019,9 +2026,9 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     ///
     /// `InvalidInput` for a node without surface data; [`SolidError::Unported`] from
     /// the build.
-    pub fn polar_box(&mut self, node: NodeId) -> Result<PolarBox> {
+    pub fn polar_box(&mut self, k: &Kernel, node: NodeId) -> Result<PolarBox> {
         if self.aux(node)?.polar_box.state() == PolarBoxState::Uninitialized {
-            match self.build_polar_box(node) {
+            match self.build_polar_box(k, node) {
                 Err(e) if e.is_unported() => return Err(e),
                 Err(_) | Ok(()) => {}
             }
@@ -2037,7 +2044,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     ///
     /// `InvalidInput` for nodes without surface data or surface, cyclic parent
     /// links; [`SolidError::Unported`] from `CalculateBoundingBox`.
-    pub fn build_polar_box(&mut self, node: NodeId) -> Result<()> {
+    pub fn build_polar_box(&mut self, k: &Kernel, node: NodeId) -> Result<()> {
         // collect chain of nodes up the tree, terminating in either the root
         // or something which has a polar box already
         let mut chain = vec![node];
@@ -2068,7 +2075,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             self.aux(last)?.polar_box
         } else {
             // the root (can't have a box, else we would have stopped when we saw it)
-            let b = self.compute_polar_box(last, None)?;
+            let b = self.compute_polar_box(k, last, None)?;
             if let Some(b) = b {
                 self.aux_mut(last)?.polar_box = b;
             }
@@ -2079,7 +2086,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         while let Some(n) = chain.pop() {
             // this addresses a bunch of assert messages by not using a bad initial guess
             let guess = (last_polar.state() != PolarBoxState::Unbounded).then_some(last_polar);
-            if let Some(b) = self.compute_polar_box(n, guess.as_ref())? {
+            if let Some(b) = self.compute_polar_box(k, n, guess.as_ref())? {
                 self.aux_mut(n)?.polar_box = b;
             }
             last_polar = self.aux(n)?.polar_box;
@@ -2097,9 +2104,9 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     ///
     /// `InvalidInput` for a node without surface data; [`SolidError::Unported`] from
     /// the build (its other failures leave the stored box, as [`Self::polar_box`]).
-    pub fn polar_box_unstored(&self, node: NodeId) -> Result<PolarBox> {
+    pub fn polar_box_unstored(&self, k: &Kernel, node: NodeId) -> Result<PolarBox> {
         if self.aux(node)?.polar_box.state() == PolarBoxState::Uninitialized {
-            match self.build_polar_box_unstored(node) {
+            match self.build_polar_box_unstored(k, node) {
                 Err(e) if e.is_unported() => return Err(e),
                 Err(_) => {}
                 Ok(b) => return Ok(b),
@@ -2109,7 +2116,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     }
 
     /// The box [`Self::build_polar_box`] would store at `node`.
-    fn build_polar_box_unstored(&self, node: NodeId) -> Result<PolarBox> {
+    fn build_polar_box_unstored(&self, k: &Kernel, node: NodeId) -> Result<PolarBox> {
         // collect chain of nodes up the tree, as build_polar_box
         let mut chain = vec![node];
         let mut found_polar = false;
@@ -2138,7 +2145,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             self.aux(last)?.polar_box
         } else {
             // the root (can't have a box, else we would have stopped when we saw it)
-            match self.compute_polar_box(last, None)? {
+            match self.compute_polar_box(k, last, None)? {
                 Some(b) => b,
                 None => self.aux(last)?.polar_box,
             }
@@ -2147,7 +2154,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         // build boxes toward the start of the array (our starting node)
         while let Some(n) = chain.pop() {
             let guess = (last_polar.state() != PolarBoxState::Unbounded).then_some(last_polar);
-            last_polar = match self.compute_polar_box(n, guess.as_ref())? {
+            last_polar = match self.compute_polar_box(k, n, guess.as_ref())? {
                 Some(b) => b,
                 None => self.aux(n)?.polar_box,
             };
@@ -2159,6 +2166,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     /// NULL, guess)`; `None` when the (ignored) status is a failure.
     fn compute_polar_box(
         &self,
+        k: &Kernel,
         node: NodeId,
         guess: Option<&PolarBox>,
     ) -> Result<Option<PolarBox>> {
@@ -2174,8 +2182,9 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             pseudo_guess: None,
             polar_guess: guess,
             expand_by_zone_tol: true,
+            expand_tolerance: None,
         };
-        let boxes = ignored(calculate_bounding_box(surface, &domain, &req))?;
+        let boxes = ignored(calculate_bounding_box(k, surface, &domain, &req))?;
         Ok(boxes.and_then(|b| b.polar))
     }
 
@@ -2194,8 +2203,18 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         stack: &mut Vec<NodeId>,
     ) -> Result<Option<NodeId>> {
         let tree = self.tree_ref(OP_FIND)?;
+        // each entry of the stack expands to at most every node of an acyclic tree
+        let visit_limit = stack
+            .len()
+            .saturating_add(1)
+            .saturating_mul(tree.nodes().len().saturating_add(1));
+        let mut visits = 0usize;
         // while nodes are to be processed
         while let Some(id) = stack.pop() {
+            visits += 1;
+            if visits > visit_limit {
+                return Err(invalid(OP_FIND, "tree node links are cyclic"));
+            }
             let node = tree.node(id)?;
             let aux = match node.data {
                 NodeData::Surface(a) => a,
@@ -2422,7 +2441,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                     // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an opaque handle. Every
                     // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
                     // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
-                    // receives the owning B-rep
+                    // receives the owning B-rep (justified: findings.md "stubs naming green units")
                     return Err(SolidError::unported(
                         "SmTol::GetZoneTol3d(const SmObject*)",
                         "geom.tol",
@@ -2722,8 +2741,8 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         let top_v = create_iso_parametric_curve(k, surface, SurfParamType::V, uv_top.y, d)?;
 
         // 3D Udir and Vdir IsoParamCurve lengths
-        let len = |c: &BSplineCurve, ivl: &Extent1d| -> Result<f64> {
-            Ok(approximate_length(c, ivl, 8, false)?.0)
+        let len = |c: &Curve, ivl: &Extent1d| -> Result<f64> {
+            Ok(c.approximate_length(k, ivl, 8, false)?.0)
         };
         let bot_v_size = len(&bot_u, &v_domain)?;
         let bot_u_size = len(&bot_v, &u_domain)?;
@@ -2753,6 +2772,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     /// Those of `EvaluatePoint`; `InvalidInput` for an empty Bezier net.
     pub fn corners(
         &self,
+        k: &Kernel,
         bezier: Option<&NurbSurface>,
         patch_domain: &Extent2d,
     ) -> Result<Corners> {
@@ -2778,16 +2798,16 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             // no gw_SURFACE available
             let u0v0 = self
                 .surface
-                .evaluate_point(patch_domain.evaluate(0.0, 0.0))?;
+                .evaluate_point(k, patch_domain.evaluate(0.0, 0.0))?;
             let u1v0 = self
                 .surface
-                .evaluate_point(patch_domain.evaluate(1.0, 0.0))?;
+                .evaluate_point(k, patch_domain.evaluate(1.0, 0.0))?;
             let u0v1 = self
                 .surface
-                .evaluate_point(patch_domain.evaluate(0.0, 1.0))?;
+                .evaluate_point(k, patch_domain.evaluate(0.0, 1.0))?;
             let u1v1 = self
                 .surface
-                .evaluate_point(patch_domain.evaluate(1.0, 1.0))?;
+                .evaluate_point(k, patch_domain.evaluate(1.0, 1.0))?;
             Ok(Corners {
                 u0v0,
                 u1v0,
@@ -2849,6 +2869,25 @@ where
 mod tests {
     use super::*;
     use crate::geom::extent3d::Extent3d;
+
+    #[test]
+    fn plane_boundary_planes() {
+        use crate::surface::plane::Plane;
+        let k = Kernel::default();
+        let dom = Extent2d::from_bounds(0.0, 0.0, 10.0, 6.0);
+        let surface = Surface::from(Plane::new(
+            Vec3::new(-5.0, -3.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            &dom,
+        ));
+        let mut bp = PatchBoundaryBoundingPlanes::new(dom);
+        // the iso curve of a plane is its SmLine
+        let c = bp.create_boundary_curve_for_index(&k, &surface, 0).unwrap();
+        assert!(matches!(c.kind(), CurveKind::Line(_)));
+        bp.compute_bounding_planes(&k, &surface).unwrap();
+    }
 
     #[test]
     fn cull_keeps_first_and_last() {

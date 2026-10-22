@@ -116,7 +116,6 @@ use crate::geom::attribute::{AttributeHandle, AttributeStore, ObjectKey};
 use crate::geom::context::{with_mark_lock, MarkType, ALL_MARKS};
 use crate::geom::extent1d::{Extent1d, ExtentPointType};
 use crate::geom::extent2d::Extent2d;
-use crate::geom::extent3d::Extent3d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::object::{NotifyOperation, ObjectRef};
 use crate::geom::tol;
@@ -131,6 +130,7 @@ use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::{BSplineSurface, SurfParamType};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::surface::surface::p2::{BlendEndType, CurvatureType, DerivSurfDefinition, SurfaceKind};
 use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::Surface;
@@ -656,7 +656,12 @@ pub fn is_degenerate(k: &Kernel, b: &Brep, tol_3d: f64) -> Result<bool> {
     // status is ignored: a failure leaves the default box)
     // CalculateBoundingBox(sBBox): header defaults bApprox = FALSE, bTight = FALSE,
     // bExpandByZoneTol3d = TRUE
-    let bbox = ignored(brep_bounding_box(b, false, false, true))?.unwrap_or_default();
+    let bbox = ignored(qbrep::calculate_bounding_box(
+        k,
+        b,
+        BoundingBoxOptions::default(),
+    ))?
+    .unwrap_or_default();
     Ok(bbox.is_point_sized(tol_3d))
 }
 
@@ -1239,7 +1244,7 @@ pub fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<()> {
     // evaluations below are not status-checked upstream: a failure leaves the points
     // unset; the port uses undefined coordinates there.)
     let (start_uv, end_uv) =
-        ignored(trim_crv.ends())?.map_or((Point3::UNDEF, Point3::UNDEF), |e| (e.start, e.end));
+        ignored(trim_crv.ends(k))?.map_or((Point3::UNDEF, Point3::UNDEF), |e| (e.start, e.end));
 
     let e = eu1::edge(b, eu)?.ok_or_else(|| null("sm_CheckUVTrimCurve: edge use without edge"))?;
     let edge_ivl = edge::interval(b, e)?;
@@ -1249,7 +1254,7 @@ pub fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<()> {
         .as_ref()
         .ok_or_else(|| null("sm_CheckUVTrimCurve: edge without curve"))?;
     let edge_3d_start =
-        ignored(curve.evaluate_point(edge_ivl.evaluate(0.0)))?.unwrap_or(Point3::UNDEF);
+        ignored(curve.evaluate_point(k, edge_ivl.evaluate(0.0)))?.unwrap_or(Point3::UNDEF);
 
     let mate_vertex = |b: &Brep| -> Result<VertexId> {
         start_vertex(
@@ -1268,8 +1273,8 @@ pub fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<()> {
         eu1::face(b, eu)?.ok_or_else(|| null("sm_CheckUVTrimCurve: edge use without face"))?;
     let surf = face2::surface(b, face)?
         .ok_or_else(|| null("sm_CheckUVTrimCurve: face without surface"))?;
-    let face_3d_start =
-        ignored(surf.evaluate_point(Point2::new(start_uv.x, start_uv.y)))?.unwrap_or(Point3::UNDEF);
+    let face_3d_start = ignored(surf.evaluate_point(k, Point2::new(start_uv.x, start_uv.y)))?
+        .unwrap_or(Point3::UNDEF);
 
     let face_tol = face2::tolerance(b, face)?;
     let edge_tol = edge::tolerance(b, e)?;
@@ -1286,7 +1291,7 @@ pub fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<()> {
 
     // Now the other end:
     let edge_3d_end =
-        ignored(curve.evaluate_point(edge_ivl.evaluate(1.0)))?.unwrap_or(Point3::UNDEF);
+        ignored(curve.evaluate_point(k, edge_ivl.evaluate(1.0)))?.unwrap_or(Point3::UNDEF);
     let end_vtx = if reverse {
         start_vertex(b, eu)?
     } else {
@@ -1294,7 +1299,7 @@ pub fn check_uv_trim_curve(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<()> {
     };
     let vrtx_3d_end = vertex::point(b, end_vtx)?;
     let face_3d_end =
-        ignored(surf.evaluate_point(Point2::new(end_uv.x, end_uv.y)))?.unwrap_or(Point3::UNDEF);
+        ignored(surf.evaluate_point(k, Point2::new(end_uv.x, end_uv.y)))?.unwrap_or(Point3::UNDEF);
     vrtx_tol = vertex::tolerance(b, end_vtx)?; // have to update this to End vtx.
 
     let dist_face_vrtx_end = face_3d_end.distance(vrtx_3d_end);
@@ -1318,19 +1323,15 @@ pub struct LockBrepBox<'b> {
 }
 
 impl<'b> LockBrepBox<'b> {
-    /// `SmLockBrepBox(pBrep)`.
+    /// `SmLockBrepBox(pBrep)`: `LockBoundingBox()` (default `bTight = FALSE`), whose
+    /// status the constructor cannot report (a failure leaves the box unlocked).
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`]: `SmBrep::LockBoundingBox` is unit `query.brep`.
+    /// [`SolidError::Unported`] from the box computation.
     pub fn new(k: &Kernel, brep: &'b mut Brep) -> Result<Self> {
-        let _ = k;
-        // UNPORTED(query.brep): SmBrep::LockBoundingBox
-        let _unlocked = Self { brep };
-        Err(SolidError::unported(
-            "SmBrep::LockBoundingBox",
-            "query.brep",
-        ))
+        ignore_status(crate::query::brep::lock_bounding_box(k, brep, false))?;
+        Ok(Self { brep })
     }
 
     /// The locked B-rep.
@@ -1342,8 +1343,7 @@ impl<'b> LockBrepBox<'b> {
 
 impl Drop for LockBrepBox<'_> {
     fn drop(&mut self) {
-        // UNPORTED(query.brep): SmBrep::UnLockBoundingBox (nothing to unlock until
-        // `new` can lock)
+        crate::query::brep::unlock_bounding_box(self.brep);
     }
 }
 
@@ -1409,22 +1409,6 @@ fn shell_region(b: &Brep, shell: ShellId) -> Result<Option<RegionId>> {
 /// claims a mark).
 fn shell_mated_shells(k: &mut Kernel, b: &Brep, shell: ShellId) -> Result<Vec<ShellId>> {
     b.shell(shell)?.mated_shells(k, b)
-}
-
-/// `SmBrep::CalculateBoundingBox(rBox, bApprox, bTight, bExpandByZoneTol3d)` (unit
-/// `query.brep`).
-fn brep_bounding_box(
-    b: &Brep,
-    approx: bool,
-    tight: bool,
-    expand_by_zone_tol_3d: bool,
-) -> Result<Extent3d> {
-    let _ = (b, approx, tight, expand_by_zone_tol_3d);
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmBrep::CalculateBoundingBox",
-        "query.brep",
-    ))
 }
 
 /// `SmEdgeuse::GetOrCreateUVTrimCurve(rpUVTrimCurve, pdOptDistToSurf, pdOptDeviation,
@@ -1553,7 +1537,7 @@ pub fn find_side_of_curve(
     }
     let sol = solutions.get(0).ok_or_else(sm_err)?;
 
-    let pv = curve.evaluate(sol.start.param(0)?, 1, true, true)?;
+    let pv = curve.evaluate(k, sol.start.param(0)?, 1, true, true)?;
     let (p0, p1) = match pv.as_slice() {
         [p0, p1, ..] => (*p0, *p1),
         _ => return Err(null("sm_FindSideOfCurve: evaluation without tangent")),
@@ -1620,8 +1604,8 @@ pub fn find_sector_of_face(
     let surface = face_surface(b, face)?;
     let eval = |uv: Point2| -> Result<(Point3, Vec3)> {
         // found Surface Point, Found Surface Point Normal
-        let p = surface.evaluate_point(uv)?;
-        let n = surface.evaluate_normal(uv, Side::Left, Side::Left)?;
+        let p = surface.evaluate_point(k, uv)?;
+        let n = surface.evaluate_normal(k, uv, Side::Left, Side::Left)?;
         Ok((p, n))
     };
     let uv_of = |start: &crate::geom::solution_array::SolutionEnd| -> Result<Point2> {
@@ -1757,7 +1741,7 @@ pub fn update_vertex_edge_intervals(
         if edge::start_vertex(b, e)? == Some(vertex) {
             // eval edge's start point
             let min_t = interval.min();
-            let pnt = curve.evaluate_point(min_t)?;
+            let pnt = curve.evaluate_point(k, min_t)?;
 
             // get edgeStart to vertex distance
             orig_dist = pnt.distance(vertex_point);
@@ -1784,7 +1768,7 @@ pub fn update_vertex_edge_intervals(
             // (SM_ASSERT: the edge's other vertex is the target vertex)
             // eval EdgeEnd point
             let max_t = interval.max();
-            let pnt = curve.evaluate_point(max_t)?;
+            let pnt = curve.evaluate_point(k, max_t)?;
 
             // get EdgeEnd to Vertex distance
             orig_dist = pnt.distance(vertex_point);
@@ -1944,7 +1928,7 @@ pub fn redistribute_seam_uv_trim_curves(
             null("sm_RedistributeSeamUVTrimCurves: edge use without UV trim curve")
         })?;
         // (the three statuses are tested, not propagated)
-        let uv = ignored(this_uv_trim_curve.evaluate_point(parameter))?;
+        let uv = ignored(this_uv_trim_curve.evaluate_point(k, parameter))?;
         let binormal = match uv {
             Some(_) => ignored(evaluate_binormal(k, b, this_eu, parameter, true))?,
             None => None,
@@ -1954,7 +1938,7 @@ pub fn redistribute_seam_uv_trim_curves(
             let surface = face2::surface(b, face)?
                 .ok_or_else(|| null("sm_RedistributeSeamUVTrimCurves: face without surface"))?;
             if let Some((_surface_point, du, dv)) =
-                ignored(surface.evaluate_1st_derivatives(Point2::new(uv.x, uv.y), true, true))?
+                ignored(surface.evaluate_1st_derivatives(k, Point2::new(uv.x, uv.y), true, true))?
             {
                 let across = if this_seam_edge == SurfParamType::U {
                     du
@@ -2024,6 +2008,7 @@ fn bspline_surface(surface: &Surface) -> Result<&BSplineSurface> {
         SurfaceKind::BSpline(s) => Ok(s),
         SurfaceKind::Plane(p) => Ok(p.base()),
         SurfaceKind::SurfOfRevolution(s) => Ok(s.base()),
+        SurfaceKind::SurfOfExtrusion(s) => Ok(s.base()),
         // Upstream passes any SmSurface*; the port of SmBSplineSurface::CreateCornerBlend
         // takes B-spline neighbours only (its Deviations): the other kinds are that
         // partial unit's own unported part.
@@ -2101,8 +2086,8 @@ pub fn make_vertex_split_uv_trim_curve(
         .ok_or_else(|| SolidError::null_pointer(OP))?
         .clone(); // NER
     let lift = |t: f64| -> Result<Point3> {
-        let p = new_uv_curve.evaluate_point(t)?;
-        surface.evaluate_point(Point2::new(p.x, p.y))
+        let p = new_uv_curve.evaluate_point(k, t)?;
+        surface.evaluate_point(k, Point2::new(p.x, p.y))
     };
 
     // when 3D distance from splitPoint to UVTrimCurvePoint > tol/100 (was "tol/30" [B606])
@@ -2130,6 +2115,7 @@ pub fn make_vertex_split_uv_trim_curve(
             )?);
             // get best UVTrimCurve param possible by projecting splitPoint to 3d UVTrimCurve
             let (found, sol) = uv_3d_curve.local_point_solve::<NoObject>(
+                k,
                 &new_uv_curve.natural_interval(),
                 SolverOperation::Minimize,
                 split_pnt,
@@ -2257,7 +2243,7 @@ pub fn brep_intersect(
         }
     }
 
-    crate::curve::curve::p5::remove_duplicate_curves(&mut curves_3d)?;
+    crate::curve::curve::p5::remove_duplicate_curves(k, &mut curves_3d)?;
     Ok((curves_3d.into_iter().flatten().collect(), points))
 }
 
@@ -2502,7 +2488,7 @@ pub fn create_corner_blend(
         // evaluation below takes the raw 0/1 parameter)
 
         // Curve EndPoint
-        let pnt = curve_3d.evaluate_point(param)?;
+        let pnt = curve_3d.evaluate_point(k, param)?;
 
         // create a degenerate 'point' curve at the second curve's endPoint (parameterized from 0 to 1)
         let top_curve = BSplineCurve::create_point_curve(pnt)?;
@@ -2524,6 +2510,7 @@ pub fn create_corner_blend(
     let surfs: Vec<Option<&BSplineSurface>> = ordered_surfs.iter().map(Option::as_ref).collect();
     let ordered_3d = corner_blend_bspline_curves(&ordered_3d, &ordered_uv, &surfs)?;
     BSplineSurface::create_corner_blend(
+        k,
         &ordered_3d,
         &eu_orients,
         &ordered_uv,
@@ -2955,6 +2942,9 @@ pub enum HealLoopHandle {
     EdgeCurve(EdgeId),
     /// The UV trim curve of an edge use.
     Trim(EdgeuseId),
+    /// A temporary curve ([`ClassObject::temporary`]): the seam curves of
+    /// `SmFace::HasSeamProblem`.
+    Temp(usize),
 }
 
 impl ClassObject for HealLoopHandle {
@@ -2962,8 +2952,14 @@ impl ClassObject for HealLoopHandle {
         match self {
             Self::Topo(e) => e.class_kind(),
             Self::Surface(_) => ClassObjectKind::Surface,
-            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) => ClassObjectKind::Curve,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) | Self::Temp(_) => {
+                ClassObjectKind::Curve
+            }
         }
+    }
+
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        (kind == ClassObjectKind::Curve).then_some(Self::Temp(index))
     }
 }
 

@@ -71,6 +71,8 @@ enum H {
     Curve(bool),
     EdgeCurve(EdgeId),
     Trim(EdgeuseId),
+    /// A temporary curve (the seam curves of `SmFace::HasSeamProblem`).
+    Temp(usize),
 }
 
 impl ClassObject for H {
@@ -78,8 +80,14 @@ impl ClassObject for H {
         match self {
             Self::Topo(e) => e.class_kind(),
             Self::Surface(_) => ClassObjectKind::Surface,
-            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) => ClassObjectKind::Curve,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) | Self::Temp(_) => {
+                ClassObjectKind::Curve
+            }
         }
+    }
+
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        (kind == ClassObjectKind::Curve).then_some(Self::Temp(index))
     }
 }
 
@@ -527,7 +535,10 @@ fn ffi_out(r: Result<Vec<f64>, solidcore_ffi::FfiError>) -> Result<Output, Harne
 /// The export of a heal case's B-rep and its `[n_v, n_e, n_f]` (`None` when it could
 /// not be built).
 fn export_of(path: &str, block: &[f64]) -> Result<(Vec<f64>, Option<[usize; 3]>), HarnessError> {
-    let ex = ffi::export(path, block).map_err(|e| harness(format!("c++ export: {e}")))?;
+    let ex = crate::export_memo::export("heal_heal_data_p2", &[path], block, || {
+        ffi::export(path, block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     let n = counts(&ex).map(vef);
     Ok((ex, n))
 }
@@ -866,6 +877,15 @@ fn pick<I: Copy>(alive: &[I], sel: u64) -> Option<I> {
     } else {
         alive.get((sel % alive.len() as u64) as usize).copied()
     }
+}
+
+/// Whether a seed step would queue a face props record a second time (the shim's
+/// `degen_face_seeded`: upstream queues each once, and the repair works on a record
+/// queued twice twice).
+fn degen_face_seeded(h: &HealData<H>) -> bool {
+    h.tgt_face_props
+        .iter()
+        .any(|id| h.bad_face_props_degen_faces.prob_array.contains(id))
 }
 
 fn target_count_after_removals<T: Copy + PartialEq>(
@@ -1581,6 +1601,28 @@ fn rust_heal(
                     stop = true;
                     break;
                 }
+                // (the shim's guard: re-adding a live target this step does not remove
+                // gives it a second props record, which a catch-up that deletes topology
+                // frees through one record and dereferences through the other)
+                let readds = add.iter().flatten().any(|e| {
+                    !rm.contains(e)
+                        && match *e {
+                            EntityRef::Face(f) => b.face(f).is_ok() && h.tgt_faces.contains(&f),
+                            EntityRef::Edge(x) => b.edge(x).is_ok() && h.tgt_edges.contains(&x),
+                            EntityRef::Vertex(v) => {
+                                b.vertex(v).is_ok() && h.tgt_vertices.contains(&v)
+                            }
+                            _ => false,
+                        }
+                });
+                if readds
+                    && i64::from(*op).min(h.done_heal_op.code())
+                        >= HealerOpType::FixCoinVertices.code()
+                {
+                    o.push(NULL_DEREF);
+                    stop = true;
+                    break;
+                }
                 let rf = h.face_props_for_tgts(&rm, true);
                 let re = h.edge_props_for_tgts(&rm, true);
                 let rv = h.vertex_props_for_tgts(&rm, true);
@@ -1621,6 +1663,11 @@ fn rust_heal(
                     h.update_target_lists(&mut k, &mut b, &rm, &add, op_of(i64::from(*op)))
                         .map(|()| false)
                 }
+            }
+            Step::SeedFaceProblems { .. } | Step::SeedDegenFaces if degen_face_seeded(&h) => {
+                o.push(NULL_DEREF);
+                stop = true;
+                break;
             }
             Step::SeedFaceProblems { null_face } => {
                 for (i, &id) in h.tgt_face_props.iter().enumerate() {

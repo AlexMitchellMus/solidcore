@@ -37,10 +37,11 @@
 //! - Compound evaluation copies carry a depth counter capped at 64 by `Surface`.
 //! - **Volumes.** The volume is a [`Volume`] (unit `surface.volume_p1`).
 //!   `InvEvaluatePoint`, `InvMapPoint` and `ReadFromDB` are wired to
-//!   `surface.volume_p2`. `SmVolume::Mirror` and
-//!   `MakeExactBSplineOutSurfaceFrom{Param,In}Space` are in no unit in `units.json`
-//!   (not `surface.volume_p2`), so they stay [`SolidError::Unported`], tagged with this
-//!   unit as a dispatch gap.
+//!   `surface.volume_p2`. `SmVolume::Mirror` is in no unit in `units.json`: co-ported
+//!   here as [`Volume::mirror`] (with `MirrorSimple` of the base class, `SmTransform`
+//!   and `SmBSplineVolume`). `MakeExactBSplineOutSurfaceFrom{Param,In}Space` are in no
+//!   unit either (not `surface.volume_p2`), so they stay [`SolidError::Unported`],
+//!   tagged with this unit as a dispatch gap.
 //! - **Ownership.** The base surface and the volume are held by value (the surface
 //!   boxed: it is itself a [`Surface`]). Upstream either shares them with the caller
 //!   or owns (and maybe copies) them, as the copy and owner flags say; here the copy
@@ -103,13 +104,9 @@ const MAX_DERIVS: usize = 3;
 
 // ---- back-edges ----------------------------------------------------------------------
 
-/// `SmVolume::Mirror`.
-fn volume_mirror(_volume: &mut Volume, _plane: &Axis2Placement) -> Result<()> {
-    // DISPATCH GAP: SmVolume::Mirror is in no unit in units.json
-    Err(SolidError::unported(
-        "SmVolume::Mirror",
-        "surface.srf_in_volume",
-    ))
+/// `SmVolume::Mirror` (in no unit in units.json; co-ported as [`Volume::mirror`]).
+fn volume_mirror(volume: &mut Volume, plane: &Axis2Placement) -> Result<()> {
+    volume.mirror(plane)
 }
 
 /// `SmVolume::MakeExactBSplineOutSurfaceFromParamSpace` / `...FromInSpace`.
@@ -355,8 +352,8 @@ impl SrfInVolume {
     /// # Errors
     ///
     /// Those of the base surface's query.
-    pub fn max_analytic_domain(&self) -> Result<Extent2d> {
-        self.surface.max_analytic_domain()
+    pub fn max_analytic_domain(&self, k: &Kernel) -> Result<Extent2d> {
+        self.surface.max_analytic_domain(k)
     }
 
     /// `GetDegree`: always 3.
@@ -389,7 +386,7 @@ impl SrfInVolume {
     /// # Errors
     ///
     /// Those of the base surface's and the volume's `operator==`.
-    pub fn approx_eq(&self, other: &Self) -> Result<bool> {
+    pub fn approx_eq(&self, k: &Kernel, other: &Self) -> Result<bool> {
         // low work
         if core::ptr::eq(self, other) {
             return Ok(true);
@@ -402,7 +399,7 @@ impl SrfInVolume {
 
         // check equivalence of these objects
         Ok(self.in_param_space == other.in_param_space
-            && self.surface.approx_eq(&other.surface)?
+            && self.surface.approx_eq(k, &other.surface)?
             && self.volume.approx_eq(&other.volume)?)
     }
 
@@ -503,8 +500,7 @@ impl SrfInVolume {
     ///
     /// # Errors
     ///
-    /// Those of the copy; [`SolidError::Unported`]: `SmVolume::Mirror`
-    /// (in no unit: a dispatch gap).
+    /// Those of the copy and of [`Volume::mirror`].
     pub fn create_mirror_surface(&self, k: &Kernel, mirror_plane: &Axis2Placement) -> Result<Self> {
         // copy this surface
         let mut new_surface = self.copy(k)?;
@@ -544,6 +540,7 @@ impl SrfInVolume {
     /// evaluation and the volume's [`Volume::evaluate`] / [`Volume::map`].
     pub fn evaluate(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
@@ -599,6 +596,7 @@ impl SrfInVolume {
 
         // Surface eval
         let srf = self.surface.evaluate(
+            k,
             s_uv,
             n_temp,
             n_temp,
@@ -753,6 +751,7 @@ impl SrfInVolume {
     /// Those of [`Self::evaluate`].
     pub fn evaluate_simple(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
@@ -762,6 +761,7 @@ impl SrfInVolume {
     ) -> Result<Vec<Vec<Vec3>>> {
         // pass the call along
         self.evaluate(
+            k,
             uv,
             highest_u_deriv,
             highest_v_deriv,
@@ -779,9 +779,10 @@ impl SrfInVolume {
     /// # Errors
     ///
     /// Those of [`Self::evaluate`].
-    pub fn evaluate_point(&self, uv: Point2) -> Result<Point3> {
+    pub fn evaluate_point(&self, k: &Kernel, uv: Point2) -> Result<Point3> {
         // pass the call along
         let d = self.evaluate(
+            k,
             uv,
             0,
             0,
@@ -803,9 +804,16 @@ impl SrfInVolume {
     ///
     /// Those of [`Self::evaluate`]; [`SolidError::InvalidInput`] for a zero-length
     /// normal (`Unitize`'s status).
-    pub fn evaluate_normal(&self, uv: Point2, u_side: Side, v_side: Side) -> Result<Vec3> {
+    pub fn evaluate_normal(
+        &self,
+        k: &Kernel,
+        uv: Point2,
+        u_side: Side,
+        v_side: Side,
+    ) -> Result<Vec3> {
         // evaluate 1st derivs with nonZeroTangents
         let d = self.evaluate(
+            k,
             uv,
             1,
             1,
@@ -1023,6 +1031,7 @@ mod tests {
     /// branch, writes `Duv` past the requested matrix (skipped here) and succeeds.
     #[test]
     fn point_evaluation_without_upper_half_succeeds() {
+        let k = &Kernel::default();
         let plane = Plane::from_normal(Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0));
         let volume = TwistVolume::create(
             Vec3::ZERO,
@@ -1038,8 +1047,8 @@ mod tests {
             only_upper_half: false,
             ..EvaluateFlags::default()
         };
-        let d = siv.evaluate(uv, 0, 0, flags).unwrap();
-        let p = siv.evaluate_point(uv).unwrap();
+        let d = siv.evaluate(k, uv, 0, 0, flags).unwrap();
+        let p = siv.evaluate_point(k, uv).unwrap();
         assert_eq!(d.first().and_then(|r| r.first()).copied(), Some(p));
     }
 }

@@ -57,6 +57,13 @@
 //!   just-copy branch (upstream returns a null curve with success) are errors.
 //!   Option vectors an operation reads without a `NULL` check are `InvalidInput`
 //!   when missing.
+//! - **Unbounded approximation.** `ApproximateCurve` returns `InvalidInput` where
+//!   upstream never finishes: when a span that fails the accuracy test can no
+//!   longer be split (its midpoint rounds onto an end and evaluates to that end's
+//!   data, so upstream repeats the same state forever), and past
+//!   [`MAX_APPROX_SPANS`] appended spans (upstream grows its control polygon until
+//!   memory runs out, e.g. for a break at `1e300`; fuzz `curve.curve_p1`
+//!   fuzz01255 aborted on a 6 GiB allocation).
 //! - `SM_ASSERT`, `WARN` and the `SM_DEBUG_CODE` drawing blocks are not ported;
 //!   `TessellateByBisection`'s unused `GetDegree` (its only consumer,
 //!   `sm_FindTestParams`, ignores it) is not called.
@@ -64,6 +71,7 @@
 //!   evaluators behind `LocalCurveSolve` / `LocalCurveIntersect`, `SmCurve::IsArc`)
 //!   are wired; [`SolidError::Unported`] is propagated from what they reach.
 
+use crate::curve::curve::knots_ignoring_status;
 use crate::curve::curve::p2::{
     add_to_curve, evaluate_continuity, find_test_params, flush_crv, output, pop_stack,
     proj_signed_angle, push_point, stack_look, test_step, CpGlobalSolver, Curve, CurveKind,
@@ -82,7 +90,9 @@ use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::global_solver::{
     Branch, GlobalSolve, SolutionRequested, SolveRequest, SolverOperation,
 };
-use crate::geom::solution_array::{Solution, SolutionArray, SolutionObject, SolutionType, SortKey};
+use crate::geom::solution_array::{
+    OperandObject, Solution, SolutionArray, SolutionObject, SolutionType, SortKey,
+};
 use crate::geom::tol::{are_same, is_zero, is_zero_to_tol};
 use crate::geom::tree::{NodeData, Tree};
 use crate::geom::vector3d::{Point3, Vec3};
@@ -94,6 +104,13 @@ use crate::nurbs::b_spline_curve::{BSplineCurve, Tessellation};
 
 const OP_REFINE: &str = "curve::curve::p1::refine_cc_solutions";
 const OP_APPROX: &str = "curve::curve::p1::Curve::approximate_curve";
+
+/// Most Hermite spans [`Curve::approximate_curve`] appends before it gives up (not
+/// upstream). Upstream grows its control polygon without limit, so a curve whose
+/// spans pass the accuracy test only when tiny (coordinates near `1e10` and beyond,
+/// e.g. a break at `1e300`) runs until memory is exhausted. Upstream fixtures need
+/// hundreds of spans at most; 2^20 spans are about 75 MB of control points.
+pub const MAX_APPROX_SPANS: usize = 1 << 20;
 const OP_LOCAL: &str = "curve::curve::p1::CpGlobalSolver::local_solve_branch";
 const OP_GLOBAL: &str = "curve::curve::p1::Curve::global_point_solve";
 
@@ -142,7 +159,11 @@ fn status_value(e: &SolidError) -> f64 {
 ///
 /// `SM_ERR` for a range solution without two variables; `SM_ERR_NULL_POINTER` for
 /// an object that is not a curve; those of the local intersection.
-pub fn refine_cc_solutions<'c, O, F>(solutions: &mut SolutionArray<O>, curve_of: F) -> Result<()>
+pub fn refine_cc_solutions<'c, O, F>(
+    k: &Kernel,
+    solutions: &mut SolutionArray<O>,
+    curve_of: F,
+) -> Result<()>
 where
     O: SolutionObject,
     F: Fn(Option<O>) -> Option<&'c Curve>,
@@ -191,6 +212,7 @@ where
 
             // (status ignored)
             let found = ignored(local_curve_intersect(
+                k,
                 crv1,
                 &natural_dom1,
                 crv2,
@@ -256,6 +278,7 @@ pub struct SpanAccuracy {
 ///
 /// Those of the curve evaluations; [`SolidError::Unported`] from the drop.
 pub fn test_span_accuracy(
+    k: &Kernel,
     curve: &Curve,
     last_t: f64,
     last_pv: [Point3; 2],
@@ -310,7 +333,7 @@ pub fn test_span_accuracy(
         // Evaluate the curve.  Then, if we're matching parameterization,
         // evaluate the Hermite curve at the same (relative) parameter,
         // else find the closest point on the Hermite curve.
-        let crv_pnt = curve.evaluate_point(crv_param)?;
+        let crv_pnt = curve.evaluate_point(k, crv_param)?;
 
         let approx_dist = if match_parameterization {
             // Approx dist = DistanceBetween(Curve(param), Hermite(param))
@@ -320,6 +343,7 @@ pub fn test_span_accuracy(
             // Approx dist = DistanceBetween(Curve(param), NearestPointOnHermite)
             let hermite_domain = Extent1d::from_min_max(0.0, 1.0);
             let r = hermite_curve.local_point_solve::<()>(
+                k,
                 &hermite_domain,
                 SolverOperation::Minimize,
                 crv_pnt,
@@ -463,8 +487,8 @@ impl Curve {
         }
 
         // low work - degenerate curves
-        if self.is_degenerate(EFF_ZERO, None)? {
-            let pnt = self.evaluate_point(first)?;
+        if self.is_degenerate(k, EFF_ZERO, None)? {
+            let pnt = self.evaluate_point(k, first)?;
             let degenerate = BSplineCurve::create_degenerate_curve(self.dim(), pnt)?;
             let mut curve = Curve::from(degenerate);
             let ivl = Extent1d::from_min_max(first, last);
@@ -491,13 +515,13 @@ impl Curve {
             let mut curr_t = b;
 
             // interval start position and tangent (Last)
-            let mut last_pv: [Vec3; 2] = eval_n(self, last_t, 1, true, true)?; // NonZeroTangent values
+            let mut last_pv: [Vec3; 2] = eval_n(k, self, last_t, 1, true, true)?; // NonZeroTangent values
             {
                 // walk to a nonZero Tangent evaluation
                 let mut step = 0.0001;
                 while last_pv[1].length_squared() < EFF_ZERO_SQ * 100000.0 {
                     let tmp = last_pv[0];
-                    last_pv = eval_n(self, last_t + step * (curr_t - last_t), 1, true, true)?;
+                    last_pv = eval_n(k, self, last_t + step * (curr_t - last_t), 1, true, true)?;
                     last_pv[0] = tmp;
                     step *= 2.0;
                     if step > 0.5 {
@@ -507,12 +531,12 @@ impl Curve {
             }
 
             // interval end position and tangent (Curr)
-            let mut curr_pv: [Vec3; 2] = eval_n(self, curr_t, 1, false, true)?; // NonZeroTangent values
+            let mut curr_pv: [Vec3; 2] = eval_n(k, self, curr_t, 1, false, true)?; // NonZeroTangent values
             {
                 let mut step = 0.0001;
                 while curr_pv[1].length_squared() < EFF_ZERO_SQ * 100000.0 {
                     let tmp = curr_pv[0];
-                    curr_pv = eval_n(self, curr_t - step * (curr_t - last_t), 1, true, true)?;
+                    curr_pv = eval_n(k, self, curr_t - step * (curr_t - last_t), 1, true, true)?;
                     curr_pv[0] = tmp;
                     step *= 2.0;
                     if step > 0.5 {
@@ -531,6 +555,7 @@ impl Curve {
 
                 // Test if HermiteSpan is within ApproxTol of thisCurve interval
                 let acc = test_span_accuracy(
+                    k,
                     self,
                     last_t,
                     last_pv,
@@ -545,6 +570,14 @@ impl Curve {
                     // save max deviation
                     max_deviation = max2(max_deviation, acc.max_dist);
 
+                    // (not upstream) bound the growing curve: see MAX_APPROX_SPANS
+                    if knots.len() > MAX_APPROX_SPANS {
+                        return Err(SolidError::invalid_input(
+                            OP_APPROX,
+                            "approximation needs more than MAX_APPROX_SPANS spans",
+                        ));
+                    }
+
                     // Append Hermite interval to end of growing piecewise cubic bezier
                     add_to_curve(last_pv, curr_pv, last_t, curr_t, &mut ctrl_poly, &mut knots)?;
 
@@ -557,8 +590,22 @@ impl Curve {
                 } else {
                     // get param mid point and associated curve pos and tan
                     let mid_t = (last_t + curr_t) / 2.0;
+                    let mid_pv: [Vec3; 2] = eval_n(k, self, mid_t, 1, true, true)?; // NonZeroTangent values
+
+                    // (not upstream) the span cannot be split: the midpoint rounds onto
+                    // an end and evaluates to that end's data, so upstream repeats this
+                    // state forever (growing its stack or control polygon until memory
+                    // runs out)
+                    if (mid_t == curr_t && mid_pv == curr_pv)
+                        || (mid_t == last_t && mid_pv == last_pv)
+                    {
+                        return Err(SolidError::invalid_input(
+                            OP_APPROX,
+                            "break interval cannot be bisected further (upstream loops forever)",
+                        ));
+                    }
                     curr_t = mid_t;
-                    curr_pv = eval_n(self, curr_t, 1, true, true)?; // NonZeroTangent values
+                    curr_pv = mid_pv;
 
                     // push midPoint onto stach
                     push_point(curr_t, curr_pv, &mut stack);
@@ -623,6 +670,7 @@ impl Curve {
     /// Those of the local solves.
     pub fn classify_intersecting_range_solution<O: SolutionObject>(
         &self,
+        k: &Kernel,
         other: &Self,
         sol: &Solution<O>,
     ) -> Result<(bool, Option<TangentPoint>)> {
@@ -665,13 +713,14 @@ impl Curve {
         othr_dom.add_value(sol.end.parameters[1]);
         // (status ignored)
         let solved = ignored(self.local_curve_solve::<O>(
+            k,
             &this_dom,
             other,
             &othr_dom,
             SolverOperation::Minimize,
-            1.0,           // min dist between distinct solutions.  We don't want more than one.
-            Some(end_dev), // don't return anything bigger than this.
-            None,          // optional vectors for some other operations.
+            1.0,
+            Some(end_dev),
+            None,
             [this_dom.evaluate(0.5), othr_dom.evaluate(0.5)],
             [None, None],
         ))?;
@@ -684,8 +733,8 @@ impl Curve {
         }
 
         // get Solution segment start points and gapVector
-        let pnt0 = ignored(this_curve.evaluate_point(start_par[0]))?.unwrap_or(Vec3::UNDEF);
-        let pnt1 = ignored(other.evaluate_point(start_par[1]))?.unwrap_or(Vec3::UNDEF);
+        let pnt0 = ignored(this_curve.evaluate_point(k, start_par[0]))?.unwrap_or(Vec3::UNDEF);
+        let pnt1 = ignored(other.evaluate_point(k, start_par[1]))?.unwrap_or(Vec3::UNDEF);
         let xsect_gap = pnt1 - pnt0;
 
         // scale zero to current intersection point location
@@ -726,12 +775,13 @@ impl Curve {
             let t2 = start_par[1] + delta * delta_par[1];
 
             // get ThisCurve sample point
-            if let Some(p) = ignored(this_curve.evaluate_point(t1))? {
+            if let Some(p) = ignored(this_curve.evaluate_point(k, t1))? {
                 put3(&mut curve_point, tgt, p);
             }
 
             // Find OtherCurve nearest point to sCurvePoint
             let dropped = ignored(other.local_point_solve::<O>(
+                k,
                 &o_ivl,
                 SolverOperation::Normalize,
                 at3(&curve_point, tgt, Vec3::UNDEF),
@@ -742,7 +792,7 @@ impl Curve {
             if let Some((true, s)) = dropped {
                 // evaluate the nearest OtherCurve point
                 let o_drop = s.start.parameters[0];
-                if let Some(p) = ignored(other.evaluate_point(o_drop))? {
+                if let Some(p) = ignored(other.evaluate_point(k, o_drop))? {
                     put3(&mut o_curve_point, tgt, p);
                 }
 
@@ -892,7 +942,7 @@ impl<'t, O: SolutionObject + 't> CpGlobalSolver<'t, O> {
     /// `SM_ERR_NULL_POINTER` for a node without data; `InvalidInput` for a missing
     /// branch node, curve or option vector or a node that is not a curve leaf; those
     /// of `Unitize`, the signed angle, `AddSortedSolution` and `LocalPropertyAnalysis`.
-    pub fn local_solve_branch(&mut self, branch: &Branch) -> Result<bool> {
+    pub fn local_solve_branch(&mut self, k: &Kernel, branch: &Branch) -> Result<bool> {
         // init outputs
         let needs_more_subdivision = false;
 
@@ -947,11 +997,12 @@ impl<'t, O: SolutionObject + 't> CpGlobalSolver<'t, O> {
         if (is_zero(bez_ivl.min() - parent_ivl.min()) || is_zero(bez_ivl.max() - parent_ivl.max()))
             && (is_zero(interval.min() - parent_ivl.min())
                 && is_zero(interval.max() - parent_ivl.max()))
-            && curve.is_closed(&parent_ivl, 0.0)?
+            && curve.is_closed(k, &parent_ivl, 0.0)?
         {
             // get pCurve1's end continuity (status ignored)
             let mut continuity = ContinuityType::Discontinuous;
             if let Some(c) = ignored(evaluate_continuity(
+                k,
                 curve,
                 parent_ivl.min(),
                 false,
@@ -1008,10 +1059,10 @@ impl<'t, O: SolutionObject + 't> CpGlobalSolver<'t, O> {
         // get BezierCurve EndPoints and the vector between them (statuses ignored)
         let mut start_pt = [Vec3::UNDEF; 2];
         let mut end_pt = [Vec3::UNDEF; 2];
-        if let Some(v) = ignored(curve.evaluate(bez_ivl.min(), 1, true, true))? {
+        if let Some(v) = ignored(curve.evaluate(k, bez_ivl.min(), 1, true, true))? {
             start_pt = first_n(&v);
         }
-        if let Some(v) = ignored(curve.evaluate(bez_ivl.max(), 1, true, true))? {
+        if let Some(v) = ignored(curve.evaluate(k, bez_ivl.max(), 1, true, true))? {
             end_pt = first_n(&v);
         }
 
@@ -1195,6 +1246,7 @@ impl<'t, O: SolutionObject + 't> CpGlobalSolver<'t, O> {
                 // execute NewtonRaphson serarch to find curve param value
                 // that sets requested CurveProperty to zero
                 match local_property_analysis(
+                    k,
                     curve,
                     &bez_ivl,
                     curve_prop,
@@ -1229,7 +1281,7 @@ impl<'t, O: SolutionObject + 't> CpGlobalSolver<'t, O> {
 
                 if op == SolverOperation::SignedPivotMinimize {
                     // set SolutionValue = CCW angle from sTestPnt to sSolPt
-                    let sol_pt = curve.evaluate_point(solution.start.parameters[0])?;
+                    let sol_pt = curve.evaluate_point(k, solution.start.parameters[0])?;
                     solution.start.solution_value =
                         proj_signed_angle(test_pnt, sol_pt, vectors[0], vectors[1], direction)?;
                 } else if op == SolverOperation::ProjectedTangentThroughPoint {
@@ -1237,6 +1289,7 @@ impl<'t, O: SolutionObject + 't> CpGlobalSolver<'t, O> {
                 } else {
                     // set SolutionValue = appropriate signed testPoint/CurvePoint distance
                     solution.start.solution_value = match proj_dist(
+                        k,
                         curve,
                         solution.start.parameters[0],
                         test_pnt,
@@ -1257,7 +1310,7 @@ impl<'t, O: SolutionObject + 't> CpGlobalSolver<'t, O> {
                     target_distance: Some(self.base.at_distance_sq),
                     vectors: opt_slice,
                 };
-                match curve.local_point_solve::<O>(&bez_ivl, local_op, test_pnt, &opts, guess) {
+                match curve.local_point_solve::<O>(k, &bez_ivl, local_op, test_pnt, &opts, guess) {
                     Ok((f, s)) => {
                         found_solution = f;
                         merge_point_solution(&mut solution, f, &s, local_op);
@@ -1461,7 +1514,9 @@ pub struct GlobalPointSolveOptions<'a, O> {
     pub target_distance: Option<f64>,
     /// `cpOptVectors`: the vectors of the ray, directed and projected operations.
     pub opt_vectors: Option<&'a [Vec3]>,
-    /// The handle of this curve, named by its solutions.
+    /// The handle of this curve, named by its solutions. With this and
+    /// [`GlobalPointSolveOptions::analytic_handle`] both `None` the solutions name no
+    /// object, but are merged as upstream's (which name the curve).
     pub handle: Option<O>,
     /// The handle of the curve cache's analytic replacement (an `SmLine` the cache
     /// makes of a straight B-spline), named by its fast drop's solutions.
@@ -1483,6 +1538,7 @@ impl<O> Default for GlobalPointSolveOptions<'_, O> {
 /// naming `handle` (base: `SM_ERR`; a line drops the point onto itself, an ellipse
 /// handles circles).
 fn drop_point_fast<O: Copy>(
+    k: &Kernel,
     curve: &Curve,
     interval: &Extent1d,
     op: SolverOperation,
@@ -1495,6 +1551,7 @@ fn drop_point_fast<O: Copy>(
     match curve.kind() {
         CurveKind::Line(l) => l.drop_point_fast(interval, op, point, tol, target_distance, handle),
         CurveKind::Ellipse(e) => e.drop_point_fast(
+            k,
             interval,
             op,
             point,
@@ -1532,6 +1589,22 @@ impl Curve {
         requested: SolutionRequested,
         opts: &GlobalPointSolveOptions<'_, O>,
     ) -> Result<SolutionArray<O>> {
+        // no handles: upstream's solutions still name this curve (whose natural
+        // interval IdenticalSolutions reads); the caller gets them without objects
+        if opts.handle.is_none() && opts.analytic_handle.is_none() {
+            let ivl = self.natural_interval();
+            let inner = GlobalPointSolveOptions {
+                target_distance: opts.target_distance,
+                opt_vectors: opts.opt_vectors,
+                handle: Some(OperandObject::Curve(0, ivl)),
+                analytic_handle: Some(OperandObject::Curve(2, ivl)),
+            };
+            return Ok(self
+                .global_point_solve_cached(
+                    k, interval, op, test_point, dist_tol, requested, &inner, &mut None,
+                )?
+                .without_objects());
+        }
         self.global_point_solve_cached(
             k, interval, op, test_point, dist_tol, requested, opts, &mut None,
         )
@@ -1564,6 +1637,7 @@ impl Curve {
         // Try quick solves when MINIMIZING and INTERSECTING (without using curve cache)
         if op == SolverOperation::Minimize || op == SolverOperation::Intersect {
             if let Some(sols) = ignored(drop_point_fast(
+                k,
                 self,
                 interval,
                 op,
@@ -1602,6 +1676,7 @@ impl Curve {
                     opts.analytic_handle
                 };
                 if let Some(sols) = ignored(drop_point_fast(
+                    k,
                     analytic,
                     interval,
                     op,
@@ -1623,6 +1698,7 @@ impl Curve {
                         // when solution could be tighter
                         if anal_solution_value > EFF_ZERO {
                             let (found, sol) = self.local_point_solve::<O>(
+                                k,
                                 interval,
                                 op,
                                 test_point,
@@ -1651,7 +1727,7 @@ impl Curve {
         let curve_tree = cache.tree().ok_or(SolidError::null_pointer(OP_GLOBAL))?;
 
         // Construct and init global solver
-        let mut gs = CpGlobalSolver::new(&point_tree, curve_tree, *interval).with_curve(self);
+        let mut gs = CpGlobalSolver::new(k, &point_tree, curve_tree, *interval).with_curve(self);
 
         // set atDistance value - when appropriate
         if op == SolverOperation::AtDistance {
@@ -1716,6 +1792,7 @@ impl Curve {
     /// Those of the evaluations and of the degeneracy and line tests.
     pub fn tessellate_by_bisection(
         &self,
+        k: &Kernel,
         interval: &Extent1d,
         chord_height_tol: f64,
         angle_tol_deg: f64,
@@ -1727,17 +1804,15 @@ impl Curve {
         let max_3d_distance_squared = max_3d_distance * max_3d_distance;
 
         // SmCurve locals - knots (status ignored)
-        let knots = ignored(self.knots(None))?
-            .map(|(k, _)| k)
-            .unwrap_or_default();
+        let (knots, _) = knots_ignoring_status(self.knots_with_status(k, None))?;
 
         // get this SmCurve's start position and derivative
-        let mut cur_pv: [Vec3; 2] = eval_n(self, interval.min(), 1, true, true)?; // nonZeroTangent values
+        let mut cur_pv: [Vec3; 2] = eval_n(k, self, interval.min(), 1, true, true)?; // nonZeroTangent values
 
         // when SmCurve's start derivative is zero
         if cur_pv[1].length_squared() < EFF_ZERO_SQ {
             // get SmCurve's pos and der values near beginning
-            let tmp: [Vec3; 2] = eval_n(self, interval.evaluate(0.001), 1, true, true)?;
+            let tmp: [Vec3; 2] = eval_n(k, self, interval.evaluate(0.001), 1, true, true)?;
 
             // if der near end is zero - make one up to continue processing
             if tmp[1].length_squared() < EFF_ZERO_SQ {
@@ -1748,7 +1823,7 @@ impl Curve {
         }
 
         // check for degenerate or linear curves
-        if self.is_degenerate(EFF_ZERO, None)? {
+        if self.is_degenerate(k, EFF_ZERO, None)? {
             // degenerate curve is a point - load one tessellation point and exit
             out.parameters.push(interval.min());
             out.points.push(cur_pv[0]);
@@ -1762,12 +1837,12 @@ impl Curve {
         } else {
             EFF_ZERO * 100.0
         };
-        if max_3d_distance < EFF_ZERO && self.is_line(5, tol)?.is_some() {
+        if max_3d_distance < EFF_ZERO && self.is_line(k, 5, tol)?.is_some() {
             // load two tessellation points and exit
             out.parameters.push(interval.min());
             out.parameters.push(interval.max());
             out.points.push(cur_pv[0]);
-            cur_pv[0] = self.evaluate_point(interval.max())?;
+            cur_pv[0] = self.evaluate_point(k, interval.max())?;
             out.points.push(cur_pv[0]);
             out.tangents.push(cur_pv[1]);
             out.tangents.push(cur_pv[1]);
@@ -1819,10 +1894,10 @@ impl Curve {
                     param_step_size = interval.max() - cur_t;
                 }
 
-                next_pv = eval_n(self, cur_t + param_step_size, 1, true, true)?; // nonZeroTangent values
+                next_pv = eval_n(k, self, cur_t + param_step_size, 1, true, true)?; // nonZeroTangent values
                 if next_pv[1].length_squared() < EFF_ZERO_SQ {
                     let tmp: [Vec3; 2] =
-                        eval_n(self, cur_t + param_step_size * 0.99, 1, true, true)?;
+                        eval_n(k, self, cur_t + param_step_size * 0.99, 1, true, true)?;
                     if tmp[1].length_squared() < EFF_ZERO_SQ {
                         next_pv[1] = cur_pv[1];
                     } else {
@@ -1845,7 +1920,7 @@ impl Curve {
                         // generate 3 sample points per knot interval
                         let params = find_test_params(cur_t, cur_t + param_step_size, &knots);
                         for &tmp_t in &params {
-                            let next_pv2: [Vec3; 2] = eval_n(self, tmp_t, 1, true, true)?; // nonZeroTangent values
+                            let next_pv2: [Vec3; 2] = eval_n(k, self, tmp_t, 1, true, true)?; // nonZeroTangent values
                             if next_pv2[1].length_squared() < EFF_ZERO_SQ {
                                 continue;
                             }
@@ -1883,7 +1958,7 @@ impl Curve {
                     if result == TessStepResult::Cut {
                         if step_direction == 1 {
                             param_step_size = last_step_size;
-                            next_pv = eval_n(self, cur_t + param_step_size, 1, true, true)?;
+                            next_pv = eval_n(k, self, cur_t + param_step_size, 1, true, true)?;
                             break;
                         }
                         param_step_size /= 2.0;
@@ -1891,7 +1966,7 @@ impl Curve {
                         step_direction = -1;
                         if param_step_size < min_step_size {
                             param_step_size = min_step_size;
-                            next_pv = eval_n(self, cur_t + param_step_size, 1, true, true)?;
+                            next_pv = eval_n(k, self, cur_t + param_step_size, 1, true, true)?;
                             break;
                         }
                         continue;
@@ -1903,7 +1978,7 @@ impl Curve {
                         // accept it: evaluate there and break the while loop.
                         if cur_t + param_step_size > interval.max() - scaled_zero {
                             param_step_size = interval.max() - cur_t;
-                            next_pv = eval_n(self, interval.max(), 1, true, true)?;
+                            next_pv = eval_n(k, self, interval.max(), 1, true, true)?;
                             break;
                         }
 
@@ -1920,7 +1995,7 @@ impl Curve {
                     && param_step_size < interval.max() - cur_t
                 {
                     param_step_size = min_step_size;
-                    next_pv = eval_n(self, cur_t + param_step_size, 1, true, true)?;
+                    next_pv = eval_n(k, self, cur_t + param_step_size, 1, true, true)?;
                     break;
                 }
 
@@ -1958,13 +2033,14 @@ impl Curve {
     /// Those of [`Curve::tessellate_base`] and of the B-spline override.
     pub fn tessellate(
         &self,
+        k: &Kernel,
         interval: &Extent1d,
         chord_height_tol: f64,
         angle_tol_deg: f64,
         min_segments: u64,
     ) -> Result<Tessellation> {
         match self.kind() {
-            CurveKind::Line(l) => Ok(l.tessellate(
+            CurveKind::Line(l) => l.tessellate(
                 interval,
                 min_segments,
                 TessellationRequest {
@@ -1972,26 +2048,30 @@ impl Curve {
                     points: true,
                     tangents: true,
                 },
-            )),
+            ),
             CurveKind::BSpline(c) => c.tessellate(
+                k,
                 interval,
                 chord_height_tol,
                 angle_tol_deg,
                 min_segments as usize,
             ),
             CurveKind::Hyperbola(c) => c.base().tessellate(
+                k,
                 interval,
                 chord_height_tol,
                 angle_tol_deg,
                 min_segments as usize,
             ),
             CurveKind::Ellipse(c) => c.base().tessellate(
+                k,
                 interval,
                 chord_height_tol,
                 angle_tol_deg,
                 min_segments as usize,
             ),
             CurveKind::Parabola(c) => c.base().tessellate(
+                k,
                 interval,
                 chord_height_tol,
                 angle_tol_deg,
@@ -2005,7 +2085,7 @@ impl Curve {
             | CurveKind::CrvInVolume(_)
             | CurveKind::CrvOnSurf(_)
             | CurveKind::Composite(_) => {
-                self.tessellate_base(interval, chord_height_tol, angle_tol_deg, min_segments)
+                self.tessellate_base(k, interval, chord_height_tol, angle_tol_deg, min_segments)
             }
         }
     }
@@ -2019,6 +2099,7 @@ impl Curve {
     /// Those of [`Curve::tessellate_by_bisection`] and the length.
     pub fn tessellate_base(
         &self,
+        k: &Kernel,
         interval: &Extent1d,
         chord_height_tol: f64,
         angle_tol_deg: f64,
@@ -2026,13 +2107,13 @@ impl Curve {
     ) -> Result<Tessellation> {
         // init MaxLength control parameter
         let max_length = if min_segments > 1 {
-            self.approximate_length(interval, 5, false)?.0 / (min_segments as f64 * 1.0)
+            self.approximate_length(k, interval, 5, false)?.0 / (min_segments as f64 * 1.0)
         } else {
             0.0
         };
 
         // pass the call along
-        self.tessellate_by_bisection(interval, chord_height_tol, angle_tol_deg, max_length)
+        self.tessellate_by_bisection(k, interval, chord_height_tol, angle_tol_deg, max_length)
     }
 }
 
@@ -2052,9 +2133,10 @@ mod tests {
 
     #[test]
     fn tessellation_covers_the_interval() {
+        let k = &Kernel::default();
         let c = cubic();
         let ivl = Extent1d::from_min_max(0.0, 1.0);
-        let t = c.tessellate_by_bisection(&ivl, 0.01, 5.0, 0.0).unwrap();
+        let t = c.tessellate_by_bisection(k, &ivl, 0.01, 5.0, 0.0).unwrap();
         assert!(t.parameters.len() > 2);
         assert_eq!(t.parameters.first().copied(), Some(0.0));
         assert!((t.parameters.last().copied().unwrap() - 1.0).abs() < 1e-12);
@@ -2064,6 +2146,7 @@ mod tests {
 
     #[test]
     fn approximation_is_within_tolerance() {
+        let k = &Kernel::default();
         let c = cubic();
         let r = c
             .approximate_curve(
@@ -2074,8 +2157,8 @@ mod tests {
             )
             .unwrap();
         assert!(r.achieved_tol.unwrap() <= 1e-3);
-        let p = r.curve.evaluate_point(0.5).unwrap();
-        assert!(p.distance(c.evaluate_point(0.5).unwrap()) < 1e-2);
+        let p = r.curve.evaluate_point(k, 0.5).unwrap();
+        assert!(p.distance(c.evaluate_point(k, 0.5).unwrap()) < 1e-2);
     }
 
     #[test]
@@ -2099,11 +2182,12 @@ mod tests {
 
     #[test]
     fn point_solution_range_is_degenerate() {
+        let k = &Kernel::default();
         let c = cubic();
         let mut s: Solution<Obj> = Solution::new();
         s.solution_type = SolutionType::SingleValue;
         assert_eq!(
-            c.classify_intersecting_range_solution(&c, &s).unwrap(),
+            c.classify_intersecting_range_solution(k, &c, &s).unwrap(),
             (true, None)
         );
     }
@@ -2118,10 +2202,12 @@ mod tests {
 
     #[test]
     fn span_accuracy_of_exact_hermite_passes() {
+        let k = &Kernel::default();
         let c = cubic();
-        let a = c.evaluate(0.0, 1, true, false).unwrap();
-        let b = c.evaluate(1.0, 1, false, false).unwrap();
-        let r = test_span_accuracy(&c, 0.0, [a[0], a[1]], 1.0, [b[0], b[1]], 1e-9, true).unwrap();
+        let a = c.evaluate(k, 0.0, 1, true, false).unwrap();
+        let b = c.evaluate(k, 1.0, 1, false, false).unwrap();
+        let r =
+            test_span_accuracy(k, &c, 0.0, [a[0], a[1]], 1.0, [b[0], b[1]], 1e-9, true).unwrap();
         assert!(r.passes);
         assert!(r.max_dist < 1e-12);
     }
