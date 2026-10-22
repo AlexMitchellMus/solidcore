@@ -354,21 +354,17 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "make_face_join",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_geom_p4/cases.json#44 (upstream source/SMLib/src/SmFilletGeom.cpp)",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::TestClosureSplitRegion (after CalculateBoundingBox, SmBrep.cpp:27966-28583)",
+        "unit": "topology.brep_p6"
       },
       "max_rel_err": 0.0,
       "name": "make_face_cliff_join",
@@ -746,45 +742,33 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "make_face_join_negtol",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_geom_p4/review.json#22 (upstream source/SMLib/src/SmFilletGeom.cpp)",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "make_face_join_negtol_big",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_geom_p4/review.json#23 (upstream source/SMLib/src/SmFilletGeom.cpp)",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "make_face_join_usedefault",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/blend.fillet_geom_p4/review.json#24 (upstream source/SMLib/src/SmFilletGeom.cpp)",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::TestClosureSplitRegion (after CalculateBoundingBox, SmBrep.cpp:27966-28583)",
+        "unit": "topology.brep_p6"
       },
       "max_rel_err": 0.0,
       "name": "make_face_cliff_join_negtol",
@@ -795,8 +779,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::TestClosureSplitRegion (after CalculateBoundingBox, SmBrep.cpp:27966-28583)",
+        "unit": "topology.brep_p6"
       },
       "max_rel_err": 0.0,
       "name": "make_face_cliff_join_negtol_big",
@@ -807,8 +791,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
+        "symbol": "SmBrep::TestClosureSplitRegion (after CalculateBoundingBox, SmBrep.cpp:27966-28583)",
+        "unit": "topology.brep_p6"
       },
       "max_rel_err": 0.0,
       "name": "make_face_cliff_join_usedefault",
@@ -922,16 +906,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0011",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207371918134190339",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -1294,16 +1274,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0057",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207371918134190385",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -1778,16 +1754,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0117",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207371918134190445",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -2150,16 +2122,12 @@
       "values_compared": 37
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0163",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207371918134190491",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -2234,16 +2202,12 @@
       "values_compared": 21
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0173",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207371918134190501",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -2366,16 +2330,12 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0189",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207371918134190517",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -2410,16 +2370,12 @@
       "values_compared": 21
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0194",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207371918134190522",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -2878,16 +2834,12 @@
       "values_compared": 37
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0252",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207371918134190580",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -3146,16 +3098,12 @@
       "values_compared": 37
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0285",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207371918134190613",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -3206,16 +3154,12 @@
       "values_compared": 21
     },
     {
-      "deferred": {
-        "symbol": "SmBrep::MakeWireEdgeVertex",
-        "unit": "topology.brep_p3"
-      },
       "max_rel_err": 0.0,
       "name": "gen0292",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=9207371918134190620",
-      "values_compared": 0
+      "values_compared": 1
     },
     {
       "max_rel_err": 0.0,
@@ -3275,12 +3219,12 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 18,
+  "cases_deferred": 4,
   "cases_failed": 0,
-  "cases_passed": 382,
+  "cases_passed": 396,
   "cases_total": 400,
   "deferred_by_unit": {
-    "topology.brep_p3": 18
+    "topology.brep_p6": 4
   },
   "max_rel_err": 0.0,
   "pass": true,
