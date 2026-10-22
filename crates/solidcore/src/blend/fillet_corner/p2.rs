@@ -206,15 +206,14 @@ impl FilletCorner {
                 .update_split_face(env.k, v, env.target, orig_face, split_face)?;
         }
         for &e in &self.edges {
-            env.pseudo
-                .update_edge_split_face(
-                    env.k,
-                    e,
-                    Some(orig_face),
-                    Some(split_face),
-                    env.target,
-                    corners,
-                )?;
+            env.pseudo.update_edge_split_face(
+                env.k,
+                e,
+                Some(orig_face),
+                Some(split_face),
+                env.target,
+                corners,
+            )?;
         }
         Ok(())
     }
