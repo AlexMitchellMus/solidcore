@@ -327,8 +327,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0029",
@@ -523,8 +523,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace handle of a surface's face",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0050",
@@ -747,8 +747,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace handle of a surface's face",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0075",
@@ -2243,8 +2243,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace handle of a surface's face",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0235",
@@ -2255,8 +2255,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0236",
@@ -2367,8 +2367,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace handle of a surface's face",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0248",
@@ -2395,8 +2395,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0251",
@@ -2915,8 +2915,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace handle of a surface's face",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0308",
@@ -4079,8 +4079,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0434",
@@ -4091,8 +4091,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0435",
@@ -4707,8 +4707,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace handle of a surface's face",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0501",
@@ -5431,8 +5431,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace handle of a surface's face",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0579",
@@ -5735,8 +5735,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace handle of a surface's face",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0614",
@@ -5843,8 +5843,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0625",
@@ -6007,8 +6007,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0641",
@@ -6163,8 +6163,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0659",
@@ -7019,8 +7019,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0749",
@@ -7683,8 +7683,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace::GetTolerance",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "torus_edgeuse_offset_extend",
@@ -8102,10 +8102,9 @@
   "deferred_by_unit": {
     "curve.crv_on_surf": 29,
     "harness:analytic-geometry-export": 123,
-    "intersect.surface_drop_curve": 18,
     "intersect.surface_drop_lib_p3": 13,
     "surface.surface_p2": 1,
-    "topology.face_p2": 91
+    "topology.face_p2": 109
   },
   "max_rel_err": 0.0,
   "pass": true,

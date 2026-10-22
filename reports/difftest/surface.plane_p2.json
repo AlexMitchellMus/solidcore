@@ -754,16 +754,12 @@
       "values_compared": 80
     },
     {
-      "deferred": {
-        "symbol": "SmPlane::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "global_cone_plane_parallel_offset",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p2/cone.json#3",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -982,28 +978,20 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmPlane::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gsi_plane_coincident",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p2/edge.json#21",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
-      "deferred": {
-        "symbol": "SmPlane::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gsi_bspline",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.plane_p2/edge.json#22",
-      "values_compared": 0
+      "values_compared": 45
     },
     {
       "max_rel_err": 0.0,
@@ -8790,16 +8778,12 @@
       "values_compared": 7
     },
     {
-      "deferred": {
-        "symbol": "SmPlane::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0869",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145709258493466268",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -8978,16 +8962,12 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmPlane::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0892",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145709258493466291",
-      "values_compared": 0
+      "values_compared": 6
     },
     {
       "max_rel_err": 0.0,
@@ -13686,16 +13666,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmPlane::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen1480",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145709258493466879",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -14338,16 +14314,12 @@
       "values_compared": 54
     },
     {
-      "deferred": {
-        "symbol": "SmPlane::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen1561",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145709258493466960",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -15630,16 +15602,12 @@
       "values_compared": 3
     },
     {
-      "deferred": {
-        "symbol": "SmPlane::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen1722",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145709258493467121",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -17250,16 +17218,12 @@
       "values_compared": 6
     },
     {
-      "deferred": {
-        "symbol": "SmPlane::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen1924",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=12145709258493467323",
-      "values_compared": 0
+      "values_compared": 114
     },
     {
       "max_rel_err": 0.0,
@@ -17863,17 +17827,15 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 9,
+  "cases_deferred": 0,
   "cases_failed": 0,
-  "cases_passed": 2219,
+  "cases_passed": 2228,
   "cases_total": 2228,
-  "deferred_by_unit": {
-    "surface.surface_cache_p1": 9
-  },
+  "deferred_by_unit": {},
   "max_rel_err": 0.0,
   "pass": true,
   "rel_tol": 1e-9,
   "seeds": 16,
-  "status": "partial",
+  "status": "green",
   "unit": "surface.plane_p2"
 }

@@ -2226,16 +2226,12 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0011",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950218",
-      "values_compared": 0
+      "values_compared": 889
     },
     {
       "max_rel_err": 0.0,
@@ -2318,16 +2314,12 @@
       "values_compared": 159
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0022",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950229",
-      "values_compared": 0
+      "values_compared": 1804
     },
     {
       "max_rel_err": 0.0,
@@ -2370,16 +2362,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0028",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950235",
-      "values_compared": 0
+      "values_compared": 11
     },
     {
       "max_rel_err": 0.0,
@@ -2414,16 +2402,12 @@
       "values_compared": 121
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0033",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950240",
-      "values_compared": 0
+      "values_compared": 405
     },
     {
       "max_rel_err": 0.0,
@@ -2650,16 +2634,12 @@
       "values_compared": 67
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0062",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950269",
-      "values_compared": 0
+      "values_compared": 240
     },
     {
       "max_rel_err": 0.0,
@@ -3066,16 +3046,12 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0113",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950320",
-      "values_compared": 0
+      "values_compared": 1155
     },
     {
       "max_rel_err": 0.0,
@@ -3342,16 +3318,12 @@
       "values_compared": 281
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0147",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950354",
-      "values_compared": 0
+      "values_compared": 195
     },
     {
       "max_rel_err": 0.0,
@@ -3402,16 +3374,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0154",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950361",
-      "values_compared": 0
+      "values_compared": 105
     },
     {
       "max_rel_err": 0.0,
@@ -3582,21 +3550,17 @@
       "values_compared": 283
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0176",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950383",
-      "values_compared": 0
+      "values_compared": 109
     },
     {
       "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0177",
@@ -4914,16 +4878,12 @@
       "values_compared": 418
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0341",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950548",
-      "values_compared": 0
+      "values_compared": 165
     },
     {
       "max_rel_err": 0.0,
@@ -5022,16 +4982,12 @@
       "values_compared": 120
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0354",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950561",
-      "values_compared": 0
+      "values_compared": 11
     },
     {
       "max_rel_err": 0.0,
@@ -5106,16 +5062,12 @@
       "values_compared": 5417
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0364",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950571",
-      "values_compared": 0
+      "values_compared": 195
     },
     {
       "max_rel_err": 0.0,
@@ -5826,16 +5778,12 @@
       "values_compared": 205
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0453",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950660",
-      "values_compared": 0
+      "values_compared": 2258
     },
     {
       "max_rel_err": 0.0,
@@ -5854,16 +5802,12 @@
       "values_compared": 331
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0456",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950663",
-      "values_compared": 0
+      "values_compared": 11
     },
     {
       "max_rel_err": 0.0,
@@ -5906,16 +5850,12 @@
       "values_compared": 3149
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0462",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950669",
-      "values_compared": 0
+      "values_compared": 11
     },
     {
       "max_rel_err": 0.0,
@@ -6214,16 +6154,12 @@
       "values_compared": 205
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0500",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950707",
-      "values_compared": 0
+      "values_compared": 195
     },
     {
       "max_rel_err": 0.0,
@@ -6274,16 +6210,12 @@
       "values_compared": 11
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0507",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950714",
-      "values_compared": 0
+      "values_compared": 195
     },
     {
       "max_rel_err": 0.0,
@@ -6430,16 +6362,12 @@
       "values_compared": 247
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0526",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950733",
-      "values_compared": 0
+      "values_compared": 540
     },
     {
       "max_rel_err": 0.0,
@@ -6962,16 +6890,12 @@
       "values_compared": 2
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0592",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950799",
-      "values_compared": 0
+      "values_compared": 349
     },
     {
       "max_rel_err": 0.0,
@@ -7302,16 +7226,12 @@
       "values_compared": 177
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0634",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950841",
-      "values_compared": 0
+      "values_compared": 319
     },
     {
       "max_rel_err": 0.0,
@@ -7450,16 +7370,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0652",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950859",
-      "values_compared": 0
+      "values_compared": 90
     },
     {
       "max_rel_err": 0.0,
@@ -7870,16 +7786,12 @@
       "values_compared": 247
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0704",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950911",
-      "values_compared": 0
+      "values_compared": 45
     },
     {
       "max_rel_err": 0.0,
@@ -7938,16 +7850,12 @@
       "values_compared": 1
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0712",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722950919",
-      "values_compared": 0
+      "values_compared": 390
     },
     {
       "max_rel_err": 0.0,
@@ -8143,8 +8051,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
+        "symbol": "SmSurfaceIntersector::ComputePointValues",
+        "unit": "intersect.surface_intersector_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0737",
@@ -8618,16 +8526,12 @@
       "values_compared": 1349
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0796",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722951003",
-      "values_compared": 0
+      "values_compared": 139
     },
     {
       "max_rel_err": 0.0,
@@ -8790,16 +8694,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0817",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722951024",
-      "values_compared": 0
+      "values_compared": 11
     },
     {
       "max_rel_err": 0.0,
@@ -9034,16 +8934,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0847",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722951054",
-      "values_compared": 0
+      "values_compared": 270
     },
     {
       "max_rel_err": 0.0,
@@ -9254,16 +9150,12 @@
       "values_compared": 205
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0874",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722951081",
-      "values_compared": 0
+      "values_compared": 1305
     },
     {
       "max_rel_err": 0.0,
@@ -9306,16 +9198,12 @@
       "values_compared": 5
     },
     {
-      "deferred": {
-        "symbol": "SmSurfOfRevolution::CreateIsoParametricCurve",
-        "unit": "surface.surface_cache_p1"
-      },
       "max_rel_err": 0.0,
       "name": "gen0880",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "generated:seed=4440997136722951087",
-      "values_compared": 0
+      "values_compared": 289
     },
     {
       "max_rel_err": 0.0,
@@ -9471,13 +9359,13 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 33,
+  "cases_deferred": 5,
   "cases_failed": 0,
-  "cases_passed": 1134,
+  "cases_passed": 1162,
   "cases_total": 1167,
   "deferred_by_unit": {
-    "intersect.surface_intersector_p2": 3,
-    "surface.surface_cache_p1": 30
+    "intersect.surface_drop_lib_p3": 1,
+    "intersect.surface_intersector_p2": 4
   },
   "max_rel_err": 0.0,
   "pass": true,

@@ -1271,8 +1271,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace handle of a surface's face",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "review_empty_drops_call_real_drop_and_trim",
@@ -5488,8 +5488,8 @@
   "cases_passed": 682,
   "cases_total": 684,
   "deferred_by_unit": {
-    "intersect.surface_drop_curve": 1,
-    "intersect.surface_drop_lib_p3": 1
+    "intersect.surface_drop_lib_p3": 1,
+    "topology.face_p2": 1
   },
   "max_rel_err": 0.0,
   "pass": true,

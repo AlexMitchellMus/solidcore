@@ -786,93 +786,65 @@
       "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
-      },
       "max_rel_err": 0.0,
       "name": "prog_csi_coincidence_line_on_side_quadratic",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.surface_p8/upstream_prog_test.json#44 (upstream tests/prog_test/src/smSurfaceTest.cpp:1321 my_test_csi_coincidence: GlobalCurveIntersect at SM_ZONE_TOL_3D of the SM_CO_QUADRATIC CreateConePatch(unit radii, 0-360 deg, height 1) with a SmBSplineCurve line along the side (asserts 1); net computed with the green nurbs.b_spline_surface_p1 port and inlined)",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
-      },
       "max_rel_err": 0.0,
       "name": "prog_csi_coincidence_line_on_side_quintic",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.surface_p8/upstream_prog_test.json#45 (upstream tests/prog_test/src/smSurfaceTest.cpp:1326 my_test_csi_coincidence: GlobalCurveIntersect at SM_ZONE_TOL_3D of the SM_CO_QUINTIC CreateConePatch(unit radii, 0-360 deg, height 1) with a SmBSplineCurve line along the side (asserts 1); net computed with the green nurbs.b_spline_surface_p1 port and inlined)",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
-      },
       "max_rel_err": 0.0,
       "name": "prog_csi_coincidence_line_left_short_quadratic",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.surface_p8/upstream_prog_test.json#46 (upstream tests/prog_test/src/smSurfaceTest.cpp:1334 my_test_csi_coincidence: GlobalCurveIntersect at SM_ZONE_TOL_3D of the SM_CO_QUADRATIC CreateConePatch(unit radii, 0-360 deg, height 1) with a SmBSplineCurve shorter line on the left side (asserts 1); net computed with the green nurbs.b_spline_surface_p1 port and inlined)",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
-      },
       "max_rel_err": 0.0,
       "name": "prog_csi_coincidence_line_left_short_quintic",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.surface_p8/upstream_prog_test.json#47 (upstream tests/prog_test/src/smSurfaceTest.cpp:1339 my_test_csi_coincidence: GlobalCurveIntersect at SM_ZONE_TOL_3D of the SM_CO_QUINTIC CreateConePatch(unit radii, 0-360 deg, height 1) with a SmBSplineCurve shorter line on the left side (asserts 1); net computed with the green nurbs.b_spline_surface_p1 port and inlined)",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
-      "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
-      },
       "max_rel_err": 0.0,
       "name": "prog_csi_coincidence_line_seam_long_quadratic",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.surface_p8/upstream_prog_test.json#48 (upstream tests/prog_test/src/smSurfaceTest.cpp:1347 my_test_csi_coincidence: GlobalCurveIntersect at SM_ZONE_TOL_3D of the SM_CO_QUADRATIC CreateConePatch(unit radii, 0-360 deg, height 1) with a SmBSplineCurve longer line along the seam (asserts 2); net computed with the green nurbs.b_spline_surface_p1 port and inlined)",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
-      "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
-      },
       "max_rel_err": 0.0,
       "name": "prog_csi_coincidence_line_seam_long_quintic",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.surface_p8/upstream_prog_test.json#49 (upstream tests/prog_test/src/smSurfaceTest.cpp:1352 my_test_csi_coincidence: GlobalCurveIntersect at SM_ZONE_TOL_3D of the SM_CO_QUINTIC CreateConePatch(unit radii, 0-360 deg, height 1) with a SmBSplineCurve longer line along the seam (asserts 2); net computed with the green nurbs.b_spline_surface_p1 port and inlined)",
-      "values_compared": 0
+      "values_compared": 28
     },
     {
-      "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
-      },
       "max_rel_err": 0.0,
       "name": "prog_csi_coincidence_circle_end_quadratic",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.surface_p8/upstream_prog_test.json#50 (upstream tests/prog_test/src/smSurfaceTest.cpp:1360 my_test_csi_coincidence: GlobalCurveIntersect at SM_ZONE_TOL_3D of the SM_CO_QUADRATIC CreateConePatch(unit radii, 0-360 deg, height 1) with a SmBSplineCurve SM_CO_QUADRATIC circle at the bottom end (asserts 1); net computed with the green nurbs.b_spline_surface_p1 port and inlined)",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "prog_csi_coincidence_circle_end_quintic",
@@ -882,21 +854,17 @@
       "values_compared": 0
     },
     {
-      "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
-      },
       "max_rel_err": 0.0,
       "name": "prog_csi_coincidence_circle_mid_quadratic",
-      "outcome": "deferred",
-      "pass": false,
+      "outcome": "pass",
+      "pass": true,
       "source": "fixture:fixtures/surface.surface_p8/upstream_prog_test.json#52 (upstream tests/prog_test/src/smSurfaceTest.cpp:1373 my_test_csi_coincidence: GlobalCurveIntersect at SM_ZONE_TOL_3D of the SM_CO_QUADRATIC CreateConePatch(unit radii, 0-360 deg, height 1) with a SmBSplineCurve SM_CO_QUADRATIC circle at z=0.3 (asserts 1); net computed with the green nurbs.b_spline_surface_p1 port and inlined)",
-      "values_compared": 0
+      "values_compared": 15
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "prog_csi_coincidence_circle_mid_quintic",
@@ -907,8 +875,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0000",
@@ -6863,8 +6831,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0744",
@@ -7427,8 +7395,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0814",
@@ -8903,8 +8871,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen0998",
@@ -9955,8 +9923,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmSurface::DropCurve",
+        "unit": "intersect.surface_drop_lib_p3"
       },
       "max_rel_err": 0.0,
       "name": "gen1129",
@@ -16927,12 +16895,12 @@
     }
   ],
   "cases_both_errored": 0,
-  "cases_deferred": 15,
+  "cases_deferred": 7,
   "cases_failed": 0,
-  "cases_passed": 2093,
+  "cases_passed": 2101,
   "cases_total": 2108,
   "deferred_by_unit": {
-    "intersect.surface_drop_curve": 15
+    "intersect.surface_drop_lib_p3": 7
   },
   "max_rel_err": 0.0,
   "pass": true,

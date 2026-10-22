@@ -4292,8 +4292,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace handle of a surface's face",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0513",
@@ -6410,8 +6410,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmSurfaceDropCurve::DoTrace",
-        "unit": "intersect.surface_drop_curve"
+        "symbol": "SmFace handle of a surface's face",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "gen0773",
@@ -6812,10 +6812,9 @@
   "cases_total": 830,
   "deferred_by_unit": {
     "geom.tol": 1,
-    "intersect.surface_drop_curve": 2,
     "intersect.surface_drop_lib_p3": 6,
     "query.face_p2": 2,
-    "topology.face_p2": 15,
+    "topology.face_p2": 17,
     "topology.face_p4": 14
   },
   "max_rel_err": 4.9067236441588354e-12,
