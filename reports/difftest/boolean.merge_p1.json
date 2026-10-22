@@ -907,8 +907,8 @@
     },
     {
       "deferred": {
-        "symbol": "SmTol::GetZoneTol3d(const SmObject*)",
-        "unit": "geom.tol"
+        "symbol": "SmFace handle of a surface's face",
+        "unit": "topology.face_p2"
       },
       "max_rel_err": 0.0,
       "name": "regions_file_sphere.smb",
@@ -2093,9 +2093,9 @@
   "cases_total": 248,
   "deferred_by_unit": {
     "boolean.topology_intersector_p3": 4,
-    "geom.tol": 1,
     "intersect.surface_drop_lib_p3": 18,
-    "topology.brep_p5": 2
+    "topology.brep_p5": 2,
+    "topology.face_p2": 1
   },
   "max_rel_err": 0.0,
   "pass": true,
