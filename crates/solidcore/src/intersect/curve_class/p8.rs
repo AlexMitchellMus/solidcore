@@ -67,9 +67,23 @@ use crate::surface::surface::{Surface, SurfaceKind};
 use crate::surface::volume::{Discontinuities3d, Volume};
 
 /// Solution-object tag: 0/2 the classification curve (and its analytic replacement),
-/// 1/3 the boundary curve (and its analytic replacement), [`PLANE_TAG`] a boundary plane.
+/// 1/3 the boundary curve (and its analytic replacement), [`PLANE_TAG`] a boundary
+/// plane; with the natural interval of the curve or the natural UV domain of the
+/// plane (upstream's objects are the curves and the plane, whose parameter intervals
+/// `IdenticalSolutions` reads).
 #[derive(Clone, Copy, PartialEq)]
-struct BoundaryObject(u8, Extent1d);
+struct BoundaryObject(u8, Extent1d, Extent2d);
+impl BoundaryObject {
+    /// Curve `tag` with natural interval `ivl`.
+    fn curve(tag: u8, ivl: Extent1d) -> Self {
+        Self(tag, ivl, Extent2d::new())
+    }
+
+    /// The boundary plane with natural UV domain `domain`.
+    fn plane(domain: Extent2d) -> Self {
+        Self(PLANE_TAG, Extent1d::new(), domain)
+    }
+}
 impl SolutionObject for BoundaryObject {
     fn kind(&self) -> ObjectKind {
         if self.0 == PLANE_TAG {
@@ -80,6 +94,9 @@ impl SolutionObject for BoundaryObject {
     }
     fn natural_interval(&self) -> Option<Extent1d> {
         (self.0 != PLANE_TAG).then_some(self.1)
+    }
+    fn natural_uv_domain(&self) -> Option<Extent2d> {
+        (self.0 == PLANE_TAG).then_some(self.2)
     }
 }
 
@@ -220,8 +237,8 @@ fn plane_intersections(
         .global_curve_intersect(
             k,
             [
-                BoundaryObject(0, natural),
-                BoundaryObject(PLANE_TAG, natural),
+                BoundaryObject::curve(0, natural),
+                BoundaryObject::plane(plane.natural_uv_domain()),
             ],
             &plane.natural_uv_domain(),
             curve,
@@ -270,8 +287,8 @@ fn intersections(
     tol: f64,
     fast: bool,
 ) -> Result<Vec<Solution<BoundaryObject>>> {
-    let this = BoundaryObject(0, curve.natural_interval());
-    let other = BoundaryObject(1, boundary.natural_interval());
+    let this = BoundaryObject::curve(0, curve.natural_interval());
+    let other = BoundaryObject::curve(1, boundary.natural_interval());
     if fast {
         if let CurveKind::Line(line) = boundary.kind() {
             let r =
@@ -303,8 +320,8 @@ fn intersections(
             &CurveIntersectOptions {
                 handles: [Some(this), Some(other)],
                 analytic_handles: [
-                    Some(BoundaryObject(2, this.1)),
-                    Some(BoundaryObject(3, other.1)),
+                    Some(BoundaryObject::curve(2, this.1)),
+                    Some(BoundaryObject::curve(3, other.1)),
                 ],
                 ..Default::default()
             },

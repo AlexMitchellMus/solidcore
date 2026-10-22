@@ -2332,7 +2332,11 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
         }
         Probe::RemoveNoMerge | Probe::RemoveEmpty => {
             executive.set_merge_results(matches!(branch, Probe::RemoveEmpty));
-            executive.remove_excess_faces(&kernel, &original, &mut Brep::new())
+            executive.remove_excess_faces_with_kernel_context(
+                &mut kernel,
+                &original,
+                &mut Brep::new(),
+            )
         }
         Probe::SideWallNull => executive.build_side_wall_of_edgeuse(&kernel, &mut original, None),
         Probe::SideWallUnmapped => {
@@ -3280,23 +3284,27 @@ mod tests {
 
     #[test]
     fn each_highlevel_probe_calls_its_real_method() {
-        for (branch, dependency, status) in [
-            (Probe::ReplaceEmpty, Some("topology.brep_p4"), 1000),
-            (Probe::RemoveNoMerge, None, 1000),
-            // Both native and Rust adapters stop at the legacy editing-metadata boundary before RemoveFaces.
-            (Probe::RemoveEmpty, Some("topology.brep_p1"), 1000),
-            (Probe::SideWallNull, None, 1000),
-            (Probe::SideWallUnmapped, None, 1000),
-            (Probe::FillEmpty, None, 1000),
-            (Probe::VertexNull, None, 1006),
-            (Probe::VertexIsolated, None, 1000),
-            (Probe::FaceuseNull, None, 1006),
-            (Probe::FaceuseNoSurface, None, 1000),
-            (Probe::PiecewiseEmpty, Some("query.brep"), 1000),
+        // `status, counts[4], has offset B-rep`: no counts, the offset B-rep kept
+        let plain = |status: i64| [status, 0, 0, 0, 0, 1];
+        for (branch, dependency, record) in [
+            (Probe::ReplaceEmpty, Some("topology.brep_p4"), plain(1000)),
+            (Probe::RemoveNoMerge, None, plain(1000)),
+            (Probe::RemoveEmpty, None, plain(1000)),
+            (Probe::SideWallNull, None, plain(1000)),
+            (Probe::SideWallUnmapped, None, plain(1000)),
+            (Probe::FillEmpty, None, plain(1000)),
+            (Probe::VertexNull, None, plain(1006)),
+            // VertexOffset builds the vertex's offset surface
+            (Probe::VertexIsolated, None, [1000, 0, 0, 1, 0, 1]),
+            (Probe::FaceuseNull, None, plain(1006)),
+            (Probe::FaceuseNoSurface, None, plain(1000)),
+            // PiecewiseMerge succeeds on the empty B-rep (its B-rep box is
+            // query.brep's) and hands the offset B-rep on
+            (Probe::PiecewiseEmpty, None, [1000, 0, 0, 0, 1, 0]),
             // MapEdgeuses now evaluates through topology.edgeuse_p3, which must
             // build the hand-made plane face's missing UV trim curve.
-            (Probe::MapPlane, Some("intersect.surface_drop_lib_p3"), 1000),
-            (Probe::EdgeusesUnmapped, None, 1000),
+            (Probe::MapPlane, Some("intersect.surface_drop_lib_p3"), plain(1000)),
+            (Probe::EdgeusesUnmapped, None, plain(1000)),
         ] {
             let input = Inputs::Probe {
                 branch,
@@ -3306,8 +3314,7 @@ mod tests {
             if let Some(unit) = dependency {
                 assert_eq!(output.deferred.unwrap().unit, unit);
             } else {
-                let has_surface = i64::from(matches!(branch, Probe::VertexIsolated));
-                assert_eq!(output.ints["probe"], [status, 0, 0, has_surface, 0, 1]);
+                assert_eq!(output.ints["probe"], record, "{branch:?}");
             }
         }
     }
