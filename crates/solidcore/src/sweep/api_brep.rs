@@ -723,7 +723,8 @@ mod tests {
             1.0,
             false
         )));
-        assert!(unported(&create_rotational_sweep(
+        // the circle around the axis sweeps a surface degenerate to a curve
+        assert!(invalid(&create_rotational_sweep(
             &mut k, &ok, o, z, 90.0, false
         )));
         assert!(unported(&create_draft_sweep(
@@ -792,7 +793,7 @@ mod tests {
             2,
             false
         )));
-        assert!(unported(&create_rotational_sweep_with_repetitions(
+        assert!(invalid(&create_rotational_sweep_with_repetitions(
             &mut k, &ok, o, z, 5.0, 2, false
         )));
     }
@@ -804,12 +805,10 @@ mod tests {
         assert!(invalid(&create_pipe_sweep(&mut k, 1.0, None, true)));
         assert!(invalid(&create_pipe_sweep(&mut k, 0.0, Some(&p), true)));
         assert!(invalid(&create_pipe_sweep(&mut k, -1.0, Some(&p), false)));
-        assert!(unported(&create_pipe_sweep(
-            &mut k,
-            f64::NAN,
-            Some(&p),
-            false
-        )));
+        // NaN passes upstream's `radius <= 0` check; the circle it builds fails (status
+        // ignored upstream), leaving nothing to sweep
+        let b = create_pipe_sweep(&mut k, f64::NAN, Some(&p), false).expect("NaN pipe");
+        assert!(b.face_list().is_empty());
         assert!(unported(&create_pipe_sweep(&mut k, 1.0, Some(&p), true)));
 
         let (c, l) = (circle(), line());

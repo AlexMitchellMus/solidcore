@@ -1319,9 +1319,10 @@ fn transfer_shell_children(
     let wires: Vec<_> = wire_edges.iter().copied().map(Some).collect();
     crate::topology::shell::transfer_children(k, b, source, target, Some(&wires))
 }
-fn remove_owned_vertex(_b: &mut Brep, _vertex: VertexId) -> Result<()> {
-    // UNPORTED(topology.brep_p1): SmBrep::m_pVertexListHead
-    missing("SmBrep::m_pVertexListHead", "topology.brep_p1")
+/// `m_pVertexListHead->Remove(pVertexToDelete)`.
+fn remove_owned_vertex(b: &mut Brep, vertex: VertexId) -> Result<()> {
+    b.remove_from_vertex_list(vertex);
+    Ok(())
 }
 
 /// Outputs of `MakeEdgeInFace`, initialized to null after its editing and face checks.
@@ -2062,20 +2063,14 @@ pub fn initial_stitch_tolerance(brep_tolerance: f64, requested: f64) -> f64 {
 
 /// Stitches twice if needed, then orients surfaces. No success is manufactured
 /// from the statuses ignored upstream when a required callee is missing.
+///
+/// The stitches run on the kernel's context: the stitcher's own edits (glue,
+/// squeeze) each lend its callbacks for themselves, which a surrounding
+/// [`plain_edit`] would refuse as nested. Only the orientation runs under one.
 pub fn stitch_and_orient(
     k: &mut Kernel,
     b: &mut Brep,
     options: &StitchAndOrientOptions,
-) -> Result<()> {
-    plain_edit(k, b, |k, b, env| stitch_and_orient_in(k, b, options, env))
-}
-
-/// [`stitch_and_orient`] under the edit's notification environment ([`plain_edit`]).
-fn stitch_and_orient_in(
-    k: &mut Kernel,
-    b: &mut Brep,
-    options: &StitchAndOrientOptions,
-    env: &mut EditNotifyEnv<'_>,
 ) -> Result<()> {
     let mut lamina = 0;
     let mut tolerance = initial_stitch_tolerance(b.tolerance(), options.stitch_tolerance);
@@ -2100,15 +2095,16 @@ fn stitch_and_orient_in(
             &mut lamina,
         ))?;
     }
-    crate::error::ignore_status(orient_trimmed_surfaces(
-        k,
-        b,
-        Some(&mut *env),
-        true,
-        options.just_unify.unwrap_or(lamina > 0),
-        options.faces_to_swap.as_deref(),
-    ))?;
-    Ok(())
+    plain_edit(k, b, |k, b, env| {
+        crate::error::ignore_status(orient_trimmed_surfaces(
+            k,
+            b,
+            Some(env),
+            true,
+            options.just_unify.unwrap_or(lamina > 0),
+            options.faces_to_swap.as_deref(),
+        ))
+    })
 }
 
 /// `StitchFaces(tol, lNumStitched, lNumLamina, dMaxVGap, dMaxEGap, NULL, bAllowSpine)`:
