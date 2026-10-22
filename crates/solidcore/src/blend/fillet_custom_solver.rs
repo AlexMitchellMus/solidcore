@@ -75,7 +75,9 @@
 //!   construction propagate the errors of their surface dispatchers.
 
 use crate::blend::fillet_intersector::FilletSolverOps as IntersectorOps;
-use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, OffsetSurfaceSlot};
+use crate::blend::fillet_solver::p1::{
+    FilletSolver, FilletSolverOps, FilletSolverType, OffsetSurfaceSlot,
+};
 use crate::blend::fillet_standard_solver::p1::CONSTANT_RADIUS_ASSISTED_FS_TYPE;
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::p5::is_arc_base;
@@ -1667,6 +1669,12 @@ macro_rules! fillet_solver_ops {
                 )
             }
 
+            /// `SmConstantRadiusAssistedFS::GetSolverType` (inherited):
+            /// `SM_FS_CONST_RADIUS_ASSISTED` (`SmFilletStandardSolver.h:112`).
+            fn solver_type(&self) -> Result<FilletSolverType> {
+                Ok(FilletSolverType::ConstRadiusAssisted)
+            }
+
             fn load_jacobian(
                 &mut self,
                 k: &Kernel,
@@ -1760,6 +1768,28 @@ macro_rules! fillet_intersector_ops {
                     uv2,
                     point,
                 )
+            }
+
+            /// `SmFilletSolver::StepSolve` (non-virtual, unit `blend.fillet_solver_p3`):
+            /// it dispatches on this class's virtuals, so the derived solver is passed.
+            fn step_solve(
+                &mut self,
+                k: &Kernel,
+                point: &TsectPnt,
+                step_size: &mut f64,
+                uv_domain1: &Extent2d,
+                uv_domain2: &Extent2d,
+                flags: &mut crate::blend::fillet_intersector::StepSolve,
+                next: &mut TsectPnt,
+            ) -> Result<()> {
+                let mut out = crate::blend::fillet_solver::p3::StepSolveOutcome::default();
+                let r = FilletSolver::step_solve(
+                    self, k, None, point, step_size, uv_domain1, uv_domain2, next, &mut out,
+                );
+                flags.found_answer = out.found_good_point;
+                flags.clipped = out.clipped;
+                flags.boundary_hit = out.boundary_hit;
+                r
             }
 
             fn set_surfaces_to_zero_offset(&mut self) -> Result<()> {
@@ -1932,6 +1962,14 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
     /// `SmConstantRadiusAssistedFS::GetType` (`SM_COMMON`).
     fn type_code(&self) -> Result<i64> {
         Ok(CONSTANT_RADIUS_ASSISTED_FS_TYPE)
+    }
+
+    /// `GetSolverType`: `SM_FS_CONST_RADIUS` (`SmConstantRadiusFS::GetSolverType`,
+    /// `SmFilletStandardSolver.h:58`), the class the intersector shim builds; `StepSolve`
+    /// branches on it, and `SM_FS_CONST_RADIUS_ASSISTED` would send a clipped step down
+    /// the assisted branch the C++ does not take. Added by `blend.fillet_solver_p3`.
+    fn solver_type(&self) -> Result<FilletSolverType> {
+        Ok(FilletSolverType::ConstRadius)
     }
 
     /// `SmConstantRadiusAssistedFS::IsKindOf` (unit `blend.fillet_standard_solver_p2`).
