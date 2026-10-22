@@ -414,6 +414,9 @@ fn imported(k: &Kernel, a: &[f64; 22], export_op: i32) -> std::result::Result<Br
         {
             let _ = surface.set_owner(Some(arena_identity(CacheObject::Face(id))));
         }
+        // the face's tolerance, as the face upstream answers GetTolerance with
+        b.sync_face_surface_tolerance(id)
+            .map_err(|e| HarnessError::new(e.to_string()))?;
     }
     Ok(b)
 }
@@ -692,7 +695,13 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
             objects.build(k)?;
             closest(
                 &mut o,
-                api::face_closest_point(k, &objects, (BrepId::from_index(0), face), point)?,
+                api::face_closest_point(
+                    k,
+                    &(BrepId::from_index(0), b),
+                    &objects,
+                    (BrepId::from_index(0), face),
+                    point,
+                )?,
             );
         }
         21 => cclosest(
