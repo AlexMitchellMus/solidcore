@@ -610,7 +610,7 @@ impl OffsetSurface {
         } else {
             // when BaseSurface is not owned (shared upstream: the same base surface)
             // (the same object upstream: its owner is unchanged)
-            let shared = self.surface.clone_keeping_owner();
+            let shared = self.surface.clone_for_evaluation_depth(1)?;
             let mut s = Self::new(k, self.offset_distance, shared, false, SS_UNKNOWN)?;
             s.owns_surface = false;
             s
@@ -703,13 +703,29 @@ impl OffsetSurface {
         )?))
     }
 
-    /// A copy for evaluation (`Surface::clone_for_evaluation`): the members as they
-    /// are, the base and extended surfaces copied exactly (no knot fix-up), `depth`
-    /// the wrapper nesting already walked.
-    ///
-    /// # Errors
-    ///
-    /// `InvalidInput` past the evaluation copy's nesting bound.
+    /// Exact evaluation copy (no knot fix-up) that takes the current extension, pending
+    /// or stored, as main's copy does; the caller validates the complete geometry graph
+    /// first.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        let surface = Box::new(self.surface.clone_exact_bounded());
+        let extended_surface =
+            self.with_current_extension(|e| e.map(|e| Box::new(e.clone_exact_bounded())));
+        Self {
+            offset_distance: self.offset_distance,
+            allow_extension: self.allow_extension,
+            owns_surface: self.owns_surface,
+            surface,
+            extended_surface,
+            pending_extension: PendingExtension::default(),
+            is_periodic_on_u: self.is_periodic_on_u,
+            is_periodic_on_v: self.is_periodic_on_v,
+            singularities: self.singularities,
+        }
+    }
+
+    /// A copy for evaluation: the members as they are, the base and extended
+    /// surfaces copied exactly (no knot fix-up), `depth` the wrapper nesting
+    /// already walked.
     pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
         let surface = Box::new(self.surface.clone_for_evaluation_depth(depth)?);
         let extended_surface = self.with_current_extension(|e| {
@@ -1697,6 +1713,16 @@ impl OffsetSurface {
         rotate_n_move: &Axis2Placement,
         scale: Option<Vec3>,
     ) -> Result<()> {
+        self.transform_at_depth(k, rotate_n_move, scale, 0)
+    }
+
+    pub(crate) fn transform_at_depth(
+        &mut self,
+        k: &Kernel,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+        depth: usize,
+    ) -> Result<()> {
         self.fold_pending_extension();
         let identity_scale = Vec3::new(1.0, 1.0, 1.0);
         if rotate_n_move.is_identity(EFF_ZERO) && scale.is_none_or(|s| s.approx_eq(identity_scale))
@@ -1713,10 +1739,11 @@ impl OffsetSurface {
             }
         }
         if let Some(e) = self.extended_surface.as_deref_mut() {
-            e.transform(k, rotate_n_move, scale)?;
+            e.transform_at_depth(k, rotate_n_move, scale, depth + 1)?;
         }
         if self.owns_surface {
-            self.surface.transform(k, rotate_n_move, scale)?;
+            self.surface
+                .transform_at_depth(k, rotate_n_move, scale, depth + 1)?;
         } else {
             // Can not transform if I do not own the surface
             return Err(SolidError::sm_err(OP_EDIT));

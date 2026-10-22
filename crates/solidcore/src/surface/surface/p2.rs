@@ -69,10 +69,11 @@
 //!   record's surface or tolerance changes) together with the face it belongs to; an
 //!   owner change drops it, the copy constructor resets it and a bare face handle
 //!   without it returns [`SolidError::Unported`] (`SmFace::GetTolerance`).
-//! - Evaluation dispatch and copies check all owned surface, curve and volume branches against a
-//!   64-level depth bound before invoking recursive copies. The surface evaluator
-//!   also bounds its wrapper traversal to 64 levels and retains B-spline output
-//!   written before zero-tangent correction fails, as upstream accessors do.
+//! - Evaluation dispatch and copies check all owned surface, curve and volume branches,
+//!   including curve-on-surface children, against a 64-level depth bound before invoking
+//!   recursive copies. The surface evaluator also bounds its wrapper traversal to 64
+//!   levels and retains B-spline output written before zero-tangent correction fails,
+//!   as upstream accessors do.
 //! - **Object model.** `SmSurface` is not abstract upstream, but every ported surface
 //!   is a derived class: the [`SurfaceKind`] variants. The ported kinds are
 //!   [`BSplineSurface`], [`CurveBoundedSurface`] (unit
@@ -348,7 +349,8 @@ impl Surface {
     }
 
     /// Check every owned geometry branch before invoking recursive `Clone` impls.
-    /// This includes trim curves and volume chains, not only the surface basis.
+    /// This includes trim curves, curve-on-surface children and volume chains, not only
+    /// the surface basis.
     pub(crate) fn check_evaluation_copy_depth(&self, initial_depth: usize) -> Result<()> {
         Self::check_owned_evaluation_copy_depth(
             EvaluationCopyGeometry::Surface(self),
@@ -459,7 +461,10 @@ impl Surface {
                         push(Geometry::Volume(c.volume()));
                         push(Geometry::Curve(c.curve()));
                     }
-                    CurveKind::CrvOnSurf(c) => push(Geometry::Curve(c.uv_curve())),
+                    CurveKind::CrvOnSurf(c) => {
+                        push(Geometry::Curve(c.uv_curve()));
+                        push(Geometry::Surface(c.surface()));
+                    }
                     CurveKind::Composite(c) => {
                         for segment in c.segments() {
                             push(Geometry::Curve(&segment.curve));
@@ -531,6 +536,50 @@ impl Surface {
             owner_chain_face: self.owner_chain_face,
             owner_zone_tol_3d: self.owner_zone_tol_3d,
         })
+    }
+
+    /// Exact recursive copy after the caller has validated the complete geometry graph.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        let kind = match &self.kind {
+            SurfaceKind::BSpline(s) => SurfaceKind::BSpline(s.clone_exact()),
+            SurfaceKind::Plane(s) => SurfaceKind::Plane(s.clone_exact()),
+            SurfaceKind::Cone(s) => {
+                let mut c = s.as_ref().clone();
+                c.rev = s.rev().clone_exact();
+                SurfaceKind::Cone(Box::new(c))
+            }
+            SurfaceKind::Sphere(s) => {
+                let mut c = s.as_ref().clone();
+                c.base = s.base().clone_exact();
+                SurfaceKind::Sphere(Box::new(c))
+            }
+            SurfaceKind::Torus(s) => {
+                // (an exact evaluation copy: the copy constructor's reset of the
+                // inside-out flag does not apply)
+                let mut c = s.as_ref().clone();
+                c.base = s.base().clone_exact();
+                c.inside_out = s.inside_out;
+                SurfaceKind::Torus(Box::new(c))
+            }
+            SurfaceKind::SurfOfRevolution(s) => {
+                SurfaceKind::SurfOfRevolution(Box::new(s.clone_exact()))
+            }
+            SurfaceKind::SurfOfExtrusion(s) => {
+                SurfaceKind::SurfOfExtrusion(Box::new(s.clone_exact()))
+            }
+            SurfaceKind::Step(s) => SurfaceKind::Step(s.clone_exact_bounded()),
+            SurfaceKind::CurveBounded(s) => SurfaceKind::CurveBounded(s.clone_exact_bounded()),
+            SurfaceKind::SrfInVolume(s) => {
+                SurfaceKind::SrfInVolume(Box::new(s.clone_exact_bounded()))
+            }
+            SurfaceKind::OffsetSurface(s) => SurfaceKind::OffsetSurface(s.clone_exact_bounded()),
+        };
+        Self {
+            kind,
+            owner: self.owner,
+            owner_chain_face: self.owner_chain_face,
+            owner_zone_tol_3d: self.owner_zone_tol_3d,
+        }
     }
 }
 
@@ -1753,23 +1802,37 @@ impl Surface {
     ///
     /// # Errors
     ///
-    /// Those of the kind's override (the base default is `SM_ERR`).
+    /// Those of the kind's override (the base default is `SM_ERR`), including
+    /// `InvalidInput` if a volume append would exceed 64 whole-geometry levels.
     pub fn transform(
         &mut self,
         k: &Kernel,
         rotate_n_move: &Axis2Placement,
         scale: Option<Vec3>,
     ) -> Result<()> {
+        self.transform_at_depth(k, rotate_n_move, scale, 0)
+    }
+
+    /// Carry geometry depth through only the branches the native transform visits.
+    pub(crate) fn transform_at_depth(
+        &mut self,
+        k: &Kernel,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+        depth: usize,
+    ) -> Result<()> {
         match &mut self.kind {
             SurfaceKind::Cone(s) => s.transform(k, rotate_n_move, scale),
             SurfaceKind::Sphere(s) => s.transform(k, rotate_n_move, scale),
             SurfaceKind::Torus(s) => s.transform(k, rotate_n_move, scale),
-            SurfaceKind::SurfOfRevolution(s) => s.transform(k, rotate_n_move, scale),
-            SurfaceKind::SurfOfExtrusion(s) => s.transform(k, rotate_n_move, scale),
+            SurfaceKind::SurfOfRevolution(s) => {
+                s.transform_at_depth(k, rotate_n_move, scale, depth)
+            }
+            SurfaceKind::SurfOfExtrusion(s) => s.transform_at_depth(k, rotate_n_move, scale, depth),
             SurfaceKind::BSpline(s) => s.transform(rotate_n_move, scale),
             SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) => base_edit(),
-            SurfaceKind::OffsetSurface(s) => s.transform(k, rotate_n_move, scale),
-            SurfaceKind::SrfInVolume(s) => s.transform(rotate_n_move, scale),
+            SurfaceKind::OffsetSurface(s) => s.transform_at_depth(k, rotate_n_move, scale, depth),
+            SurfaceKind::SrfInVolume(s) => s.transform_at_depth(rotate_n_move, scale, depth),
             SurfaceKind::Plane(s) => s.transform(k, rotate_n_move, scale),
         }
     }
@@ -5469,6 +5532,44 @@ mod tests {
             .unwrap(),
         );
         assert!(surface.clone_for_evaluation().is_err());
+    }
+
+    #[test]
+    fn curve_on_surface_rejects_surface_depth_before_domain_and_owned_copy() {
+        use crate::curve::crv_on_surf::CrvOnSurf;
+        let k = Kernel::default();
+        let mut surface = Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::Z));
+        for _ in 0..63 {
+            surface = Surface::from(StepSurface::new(surface, true));
+        }
+        assert!(surface.clone_for_evaluation().is_ok());
+        for owner_flag in 0..=3 {
+            assert!(matches!(
+                CrvOnSurf::new(
+                    &k,
+                    Curve::from(BSplineCurve::new(2)),
+                    surface.clone_for_evaluation().unwrap(),
+                    None,
+                    owner_flag,
+                ),
+                Err(SolidError::InvalidInput { .. })
+            ));
+        }
+        assert!(matches!(
+            CrvOnSurf::from_uv_line(
+                &k,
+                Point2::new(0.0, 0.0),
+                Point2::new(1.0, 1.0),
+                surface.clone_for_evaluation().unwrap(),
+                None,
+                2,
+            ),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert!(matches!(
+            CrvOnSurf::empty(Curve::from(BSplineCurve::new(2)), surface),
+            Err(SolidError::InvalidInput { .. })
+        ));
     }
 
     /// An offset chain is walked into its base by the evaluation copy (and bounded).

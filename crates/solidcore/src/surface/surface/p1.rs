@@ -378,6 +378,17 @@ impl StepSurface {
         })
     }
 
+    /// Exact evaluation copy; the caller validates the complete geometry graph first.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            surface: self
+                .surface
+                .as_deref()
+                .map(|s| Box::new(s.clone_exact_bounded())),
+            owns_surface: self.owns_surface,
+        }
+    }
+
     /// `GetTypeString()`.
     pub const TYPE_STRING: &'static str = "SmSTEPSurface_TYPE";
     /// `GetClassString()`.
