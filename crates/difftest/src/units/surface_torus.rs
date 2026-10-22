@@ -809,12 +809,15 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
             OpIn::Eq { other }
         }
         // (a sub-draw keeps the other ops' generated cases unchanged)
-        _ => match rng.below(4) {
-            0 => OpIn::Copy {},
-            _ => OpIn::TrimDomain {
-                dom: gen_trim_domain(rng, nd)?,
-            },
-        },
+        _ => {
+            if rng.below(4) == 0 {
+                OpIn::Copy {}
+            } else {
+                OpIn::TrimDomain {
+                    dom: gen_trim_domain(rng, nd)?,
+                }
+            }
+        }
     };
     Some(Inputs { torus, op })
 }
