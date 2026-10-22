@@ -2063,9 +2063,11 @@ pub fn initial_stitch_tolerance(brep_tolerance: f64, requested: f64) -> f64 {
 /// Stitches twice if needed, then orients surfaces. No success is manufactured
 /// from the statuses ignored upstream when a required callee is missing.
 ///
-/// The stitches run on the kernel's context: the stitcher's own edits (glue,
-/// squeeze) each lend its callbacks for themselves, which a surrounding
-/// [`plain_edit`] would refuse as nested. Only the orientation runs under one.
+/// The stitch passes run outside an edit of their own: the stitch's glue and squeeze
+/// helpers notify through their own kernel-context edits
+/// ([`crate::topology::brep::p3::with_kernel_callbacks`]), which the guard refuses
+/// inside another edit, and upstream's `SmBrep::StitchFaces` has no edit scope to
+/// nest. Only the orientation pass needs the caller's notification environment.
 pub fn stitch_and_orient(
     k: &mut Kernel,
     b: &mut Brep,
@@ -2102,7 +2104,8 @@ pub fn stitch_and_orient(
             true,
             options.just_unify.unwrap_or(lamina > 0),
             options.faces_to_swap.as_deref(),
-        ))
+        ))?;
+        Ok(())
     })
 }
 

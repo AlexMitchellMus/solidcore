@@ -16360,25 +16360,18 @@ failing case).
 
 ## topology.brep_p4: the last stubs (PR #441)
 
-Follow-up on PR #441 after merging main (2026-10-22).
+Follow-up on PR #441 (oursland/solidcore#1, on top of 55b9202), 2026-10-22.
 
-- **Nested notify lend swallowed as an ignored status.** `topology::brep::p5::stitch_and_orient`
-  ran both `StitchFaces` passes inside `plain_edit` (`with_kernel_callbacks`, which lends the
-  kernel context's notify callbacks). The stitcher's own glue/squeeze edits
-  (`heal::stitch::p1::glue_edges_general`, `squeeze_edge_to`) lend them again and are refused
-  (`geom::context::lend_notify`, "nested edit"), and `ignore_status` turned that refusal into an
-  ignored upstream status. So the second, wider pass never glued. Found through
-  `sweep.api_brep` gen0044 / gen0209 (two tiny `from_faces` discs, radii ~1.5e-5, 3e-5 apart):
-  C++ glued the second disc's start circle onto the first at the 4e-4 pass (5 edges, 3
-  vertices), Rust kept both (6, 4). Only `OrientTrimmedSurfaces` uses the edit's environment, so
-  only it runs under `plain_edit` now. A diagnostic run that logged every refused lend across
-  `difftest --green` (255 units) and the units touched here found no other site.
-- **Stale list removals that stitching now reaches.** `GlueVertices`' `m_pVertexListHead->Remove`
-  (`topology.brep_p5`) was still an `UNPORTED(topology.brep_p1)` stub (brep_p1 is partial); it
-  is `Brep::remove_from_vertex_list`. `GlueEdgesGeneral` (`topology.brep_p7`) did not take the
-  glued edge off `Brep::edge_list` (its deviation note predated the separate list), so
-  `heal.stitch_p2`'s 36 `StitchIntoShell` cases counted the orphan edge once the vertex stub
-  stopped deferring them (C++ 7 edges, Rust 8). Both fixed: heal.stitch_p2 505/556 pass, 0 failed.
+- **The 36 heal.stitch_p2 differences behind the glue stub** (section "StitchAndOrient's
+  second pass, and the glue stub that hides 36 heal.stitch_p2 differences" above). They are
+  not in the shell-vertex glue: `GlueEdgesGeneral` (`topology.brep_p7`) did not take the glued
+  edge off `Brep::edge_list` (upstream `m_pEdgeListHead->Remove(pEdgeToDelete)`; p7's
+  deviation note predated the separate list), so each `StitchIntoShell` case counted the
+  orphan edge (C++ 7 edges, Rust 8; the orphan has no edge uses). With that fixed,
+  `GlueVertices`' `m_pVertexListHead->Remove` is wired (`Brep::remove_from_vertex_list`):
+  heal.stitch_p2 505/556 pass, 0 failed, 51 deferred (was 368 pass, 188 deferred).
+  A diagnostic run that logged every refused notify lend across `difftest --green` (255
+  units) found no nested lend besides the one fixed in StitchAndOrient.
 - **Wired.** `StitchFaces` / `ShrinkGeometry` / `DeleteFace` in `primitive_creation` p1/p2's
   access; `StitchFaces` in the fillet executive (a required `ExecutiveAccess` method, with
   `StitchAttempt::from_stitch`, implemented by the p2/p3 difftest adapters). The
@@ -16398,3 +16391,33 @@ Follow-up on PR #441 after merging main (2026-10-22).
 - **Harness, not a stub.** `topology.brep_p5`'s 2 cases deferred as `SmBrep::~SmBrep (stable
   owning record erasure)` come from its runner, which defers whenever an edit leaves
   unlinked records in the arena (`has_unlinked_records`).
+## topology.brep_p4 / topology.brep_p5: StitchAndOrient's second pass, and the glue stub that hides 36 heal.stitch_p2 differences
+
+While making `sweep.api_brep` compare successful sweeps (PR #441), two tiny-scale
+`FromFaces` generated cases (`gen0044`, `gen0209`; discs of radius ~1.4e-5 and ~1.55e-5
+swept along a 9.6e-5 path) disagreed: C++ 2 faces / 5 edges / 4 vertices, Rust
+2 / 6 / 4. A topology dump of the C++ result (temporary shim instrumentation, not
+committed) shows its `StitchAndOrient` **second pass** — tolerance doubled to `4e-4`
+after the first pass leaves `lamina=4` — merging the two profiles' start circles into
+one edge; the Rust pass never ran its glue.
+
+- Cause: `topology::brep::p5::stitch_and_orient` opened one `plain_edit` (context
+  notify lease) around the whole call, while the stitch's glue/squeeze helpers notify
+  through their own `brep_p3::with_kernel_callbacks` edits. The nested edit is refused
+  (`geom::context::lend_notify`, "nested edit") and `SmStitch` swallows the error, so
+  the second pass silently left the B-rep unstitched. Fixed by running both stitch
+  passes outside an edit; only the `OrientTrimmedSurfaces` pass uses the caller's env.
+- Consequence: the second pass now reaches `remove_owned_vertex`
+  (`UNPORTED(topology.brep_p1): SmBrep::m_pVertexListHead`, the shell-vertex branch of
+  `GlueVertices`), so those cases defer instead of comparing. That stub is honest:
+  completing it (`destroy_topology_record(Vertex)` subsumes upstream's list removal)
+  un-defers 137 `heal.stitch_p2` cases and 36 of them differ from C++ — e.g.
+  `TestSmStitchIntoShell` `pair_gap0_shell_*` end with one extra edge
+  (`out[5]`: C++ 7, Rust 8). Baseline `heal.stitch_p2` is 368 pass / 0 fail / 188
+  deferred (`topology.brep_p1` 178); with the glue completed it is 469 / 36 / 51.
+  Whoever wires that stub must fix the shell-vertex glue path first (PR #441 keeps the
+  stub, as main had it).
+- Difftest after the fix (Linux x86_64, C++ reference built from the pinned upstream):
+  `sweep.api_brep` 573 cases, 481 pass, 0 fail, 92 deferred (`topology.brep_p1` 45,
+  `topology.brep_p4` 15, `query.face_p2` 15, `topology.edge` 9, ...);
+  `heal.stitch_p2` unchanged at 368 / 0 / 188.

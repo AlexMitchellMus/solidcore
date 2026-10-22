@@ -799,17 +799,29 @@ mod tests {
     }
 
     #[test]
-    fn pipe_and_planar_path_validate_then_defer() {
+    fn pipe_and_planar_path_validate_then_run_or_defer() {
         let mut k = Kernel::default();
         let p = path();
         assert!(invalid(&create_pipe_sweep(&mut k, 1.0, None, true)));
         assert!(invalid(&create_pipe_sweep(&mut k, 0.0, Some(&p), true)));
         assert!(invalid(&create_pipe_sweep(&mut k, -1.0, Some(&p), false)));
-        // NaN passes upstream's `radius <= 0` check; the circle it builds fails (status
-        // ignored upstream), leaving nothing to sweep
-        let b = create_pipe_sweep(&mut k, f64::NAN, Some(&p), false).expect("NaN pipe");
+        // a NaN radius passes the API's validation; upstream returns an empty B-rep
+        let b = create_pipe_sweep(&mut k, f64::NAN, Some(&p), false).expect("nan pipe");
         assert!(b.face_list().is_empty());
-        assert!(unported(&create_pipe_sweep(&mut k, 1.0, Some(&p), true)));
+        assert!(b.edge_list().is_empty());
+        assert!(b.vertex_list().is_empty());
+        // a positive radius sweeps the tube; the capped one's cap builder glues, then
+        // stops at SmSurface::DropCurve
+        let b = create_pipe_sweep(&mut k, 1.0, Some(&p), false).expect("pipe");
+        assert_eq!(b.face_list().len(), 1);
+        let capped = create_pipe_sweep(&mut k, 1.0, Some(&p), true);
+        assert!(matches!(
+            capped,
+            Err(SolidError::Unported {
+                upstream: "SmSurface::DropCurve",
+                unit: "intersect.surface_drop_lib_p3"
+            })
+        ));
 
         let (c, l) = (circle(), line());
         assert!(invalid(&create_sweep_along_planar_path(
