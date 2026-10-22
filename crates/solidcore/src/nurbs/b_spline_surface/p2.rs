@@ -62,11 +62,13 @@
 //! - **`SetCanonical`** passes no domain to `CreateCanonical` (as upstream), so the
 //!   [`CanonicalSurfaceData::uv_domain`] of its argument is ignored. As upstream, only
 //!   the NURB is replaced: form and knot type stay those of the surface.
-//! - **Back-edges.** `CopyAndAddAnalytics` returns the [`Surface`] that
-//!   `SmPlane::IsNurbSurfacePlane` or `IsNurbSurfaceSurfOfRevolution` recognises; a
-//!   cone, sphere or extrusion that `IsNurbSurfaceCone`, `IsNurbSurfaceSphere` or
-//!   `IsNurbSurfaceSurfOfExtrusion` recognises needs a `SurfaceKind` variant
-//!   (`surface.surface_p2`, dispatch gap);
+//! - **Extrusion copies.** A recognised extrusion's missing NURB is made before
+//!   wrapping it as a [`Surface`]: upstream makes it lazily in `const` queries,
+//!   whereas the Rust dispatch reads the inherited B-spline data directly. An
+//!   existing NURB (possibly reparameterised by the recogniser) is left unchanged.
+//! - **Back-edges.** `CopyAndAddAnalytics` returns recognised planes, cones, surfaces
+//!   of revolution and extrusions as a [`Surface`]. A recognised sphere retains a
+//!   `surface.surface_p2` dispatch gap;
 //!   `GetMaxAnalyticDomain` nothing unported (`SmSurface::Evaluate1stDerivatives` is
 //!   `surface::surface::p1`'s, `IsPlanar` and `IsClosed` are those of
 //!   `surface::surface::p7`). `IsDegeneratePoint` over another domain runs the
@@ -224,12 +226,11 @@ fn recognise_analytic(k: &Kernel, srf: &BSplineSurface) -> Result<Option<Surface
     if let Some(rev) = SurfOfRevolution::is_nurb_surface_surf_of_revolution(k, &test, 1.0)? {
         return Ok(Some(Surface::from(rev)));
     }
-    if SurfOfExtrusion::is_nurb_surface_surf_of_extrusion(k, srf, 1.0)?.is_some() {
-        // DISPATCH GAP: the extrusion is not a SurfaceKind yet (issue #76).
-        return Err(SolidError::Unported {
-            upstream: "SmSurfOfExtrusion as SmSurface",
-            unit: "surface.surface_p2",
-        });
+    if let Some(mut extrusion) = SurfOfExtrusion::is_nurb_surface_surf_of_extrusion(k, srf, 1.0)? {
+        if extrusion.base().gw_nurb().is_none() {
+            extrusion.make_nurb(k)?;
+        }
+        return Ok(Some(Surface::from(extrusion)));
     }
     Ok(None)
 }
@@ -370,9 +371,9 @@ impl BSplineSurface {
     /// # Errors
     ///
     /// Those of the recognisers ([`Plane::is_nurb_surface_plane`],
-    /// [`crate::surface::cone::Cone::is_nurb_surface_cone`], ...);
-    /// [`SolidError::Unported`]: a recognised sphere or extrusion cannot be held
-    /// by a [`Surface`] yet.
+    /// [`crate::surface::cone::Cone::is_nurb_surface_cone`], ...) and of
+    /// [`SurfOfExtrusion::make_nurb`];
+    /// [`SolidError::Unported`] from the still-unwired recognised sphere conversion.
     pub fn copy_and_add_analytics(&self, k: &Kernel) -> Result<Surface> {
         // (a surface that is not SmBSplineSurface_TYPE is copied as is: never here)
         // SmPlane
@@ -1740,6 +1741,46 @@ mod tests {
             None
         )
         .is_err());
+    }
+
+    #[test]
+    fn copy_and_add_analytics_preserves_extrusion_geometry() {
+        let k = &Kernel::default();
+        for swap_uv in [false, true] {
+            let net = [(1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+                .into_iter()
+                .map(|(x, y)| vec![CPoint::new(x, y, 0.0, NOW), CPoint::new(x, y, 2.0, NOW)])
+                .collect();
+            let nurb = Surface::new(
+                net,
+                2,
+                1,
+                vec![-1.0, -1.0, -1.0, 3.0, 3.0, 3.0],
+                vec![2.0, 2.0, 4.0, 4.0],
+            )
+            .unwrap();
+            let mut s = BSplineSurface::from_nurb(nurb, false);
+            if swap_uv {
+                s.swap_uv().unwrap();
+            }
+            let domain = s.natural_uv_domain();
+            let samples = [(0.0, 0.0), (0.25, 0.75), (0.5, 0.5), (1.0, 1.0)];
+            let before: Vec<_> = samples
+                .iter()
+                .map(|&(u, v)| s.evaluate_point(domain.evaluate(u, v)).unwrap())
+                .collect();
+            let copy = s.copy_and_add_analytics(k).unwrap();
+            assert!(matches!(
+                copy.kind(),
+                crate::surface::surface::SurfaceKind::SurfOfExtrusion(_)
+            ));
+            assert_eq!(copy.natural_uv_domain(), domain);
+            for ((u, v), expected) in samples.into_iter().zip(before) {
+                let uv = domain.evaluate(u, v);
+                assert_eq!(s.evaluate_point(uv).unwrap(), expected);
+                assert!(copy.evaluate_point(k, uv).unwrap().distance(expected) < 1e-12);
+            }
+        }
     }
 
     #[test]
