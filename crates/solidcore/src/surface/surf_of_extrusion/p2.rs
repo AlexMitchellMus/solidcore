@@ -20,8 +20,9 @@
 //! Deviations:
 //! - **Free surfaces.** `GlobalSurfaceIntersect` takes its other surface as an
 //!   [`IntersectTarget`] (a plane, a cone, a surface of extrusion, or a [`Surface`] of
-//!   any kind); its general intersection and `IntersectWithPlane`'s classification run
-//!   on ownerless [`Surface`] stand-ins of this surface and the target. Through
+//!   any kind); `IntersectWithPlane`'s classification runs on an ownerless [`Surface`]
+//!   stand-in of this surface, and its general intersection stays a named dispatch gap
+//!   (`surface.surface_p2`; see plan/findings.md). Through
 //!   [`crate::surface::surface::SurfaceKind::SurfOfExtrusion`] the `SmSurface` dispatch
 //!   passes the real surfaces instead (`global_surface_intersect_on`,
 //!   `intersect_with_plane_on`, with the plane's face tolerance for its boxes and the
@@ -306,7 +307,6 @@ impl SurfOfExtrusion {
         ang_tol_rad: Option<f64>,
     ) -> Result<ExtrusionIntersection> {
         // (the general intersection takes the edge flags and angle tolerance)
-        let _ = (use_surface_edges, ang_tol_rad);
 
         let plane = match other {
             IntersectTarget::Plane(p) => Some(p),
@@ -331,39 +331,22 @@ impl SurfOfExtrusion {
         };
 
         // when bNeedNurbIntersection == TRUE, intersection was too complicated for
-        // analytic intersectors: the general intersection of both surfaces (as
-        // ownerless stand-ins; SmSurfaceIntersector::DoIntersection resets the output
-        // arrays, so the special case's curves are dropped)
+        // analytic intersectors
         if let Some(r) = special {
             if !r.needs_more_intersections {
                 return Ok(r);
             }
         }
-        let this = Surface::from(self.clone_exact());
-        let other_surface = match other {
-            IntersectTarget::Plane(p) => Surface::from(p.clone_exact()),
-            IntersectTarget::Cone(c) => Surface::from(c.clone()).clone_for_evaluation()?,
-            IntersectTarget::SurfOfExtrusion(s) => Surface::from(s.clone_exact()),
-            IntersectTarget::Surface(s) => s.clone_for_evaluation()?,
-        };
-        let out = base_global_surface_intersect(
-            k,
-            &this,
-            uv_domain,
-            &other_surface,
-            other_uv_domain,
-            use_surface_edges,
-            approx_tol_3d,
-            ang_tol_rad,
-        )?;
-        Ok(ExtrusionIntersection {
-            needs_more_intersections: false,
-            curves_3d: out.curves_3d,
-            surface1_uv_curves: out.surface1_uv_curves,
-            surface2_uv_curves: out.surface2_uv_curves,
-            curve_types: out.curve_types,
-            deviations: out.deviations,
-        })
+        // DISPATCH GAP (#76): SmSurface::GlobalSurfaceIntersect of a free extrusion. The
+        // general intersector runs on ownerless stand-ins of both surfaces in principle,
+        // but on surface.surf_of_extrusion_p2 gen0413/gen0448/gen0732 it returns no curves
+        // where the C++ finds some (plan/findings.md); the SmSurface dispatch
+        // (`global_surface_intersect_on`) runs it on the real surfaces.
+        let _ = (other, use_surface_edges, ang_tol_rad);
+        Err(SolidError::unported(
+            "SmAdvSurfaceIntersector (free SmSurfOfExtrusion)",
+            "surface.surface_p2",
+        ))
     }
 
     /// [`Self::global_surface_intersect`] of the surface `this` holding this extrusion

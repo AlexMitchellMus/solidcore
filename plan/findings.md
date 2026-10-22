@@ -15000,3 +15000,12 @@ reconciliation with main's `surface.offset_surface`. With both, the affected dif
   the cone evaluation path compared bit for bit before the export can land. Also
   needed: `Surface::create_seam_curve` treats a cone as a CrvOnSurf dispatch gap (was
   an invalid-input harness failure in topology.face_p4 `cone.smb_*_op21..`; fixed here).
+- Free-extrusion general intersection: running `SmAdvSurfaceIntersector` from
+  `SurfOfExtrusion::global_surface_intersect` on ownerless `Surface` stand-ins passed
+  before merging main 7c74a05f (its intersector parts were deferred), but afterwards
+  `surface.surf_of_extrusion_p2` gen0413, gen0448, gen0732 (plane targets: bounded plane
+  through a built extrusion, a parabola generator extruded by (0,0,1000), a cubic
+  B-spline generator; tol -1e-6 / default) return no curves in Rust (record length 8)
+  where C++ returns 230 / 734 / 1724 values. Not resolved: that path is kept a named
+  `surface.surface_p2` dispatch gap; the `SmSurface` dispatch (real face surfaces) runs
+  the general intersector (no B-rep unit disagreed on Linux/Mac `--green`).
