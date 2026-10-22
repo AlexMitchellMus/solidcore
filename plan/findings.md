@@ -16708,7 +16708,7 @@ counts.
 
 ## blend.fillet_intersector `rv_next_clipped_step`: ULP-level next point once `ComputePointValues` is wired (2026-10-22, open)
 
-Found while landing `blend.fillet_solver_p4` (#212, batch/finish-3, PR #561 draft). With
+Found while landing `blend.fillet_solver_p4` (#212, batch/finish-3, draft PR #564). With
 `ComputePointValues` wired (and `curve.crv_on_surf` landed, #554), the fixture case
 `rv_next_clipped_step` (`fixtures/blend.fillet_intersector/review_cases.json` #72: planes
 `z = 0` and `y = 0`, domains `[-1, 1]^2` beyond the planes' `[0, 1]^2`, radii 0.1,
