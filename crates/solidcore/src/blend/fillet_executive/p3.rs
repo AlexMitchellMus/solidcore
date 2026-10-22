@@ -498,7 +498,7 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// `blend.fillet_standard_solver_p2`. Adapters must dispatch by concrete
     /// solver type and return that owner's `Unported` while it is missing.
     // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
-    // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::CalcFilletGeom
+    // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::CalcFilletGeom -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
     fn calc_fillet_geom(
         &mut self,
         k: &mut Kernel,
@@ -634,22 +634,21 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         intersector: &mut TopologyIntersector<O>,
     ) -> Result<()>;
 
-    /// `SmFilletGeom::TrimOriginalSurfaces`; waiting for `blend.fillet_geom_p6`.
+    /// `SmFilletGeom::TrimOriginalSurfaces(rKept, rDeleted, rMarkLocks)`: delegate to
+    /// the already ported `blend::fillet_geom::p6::FilletBrep::trim_original_surfaces`
+    /// (fillet geom p6) on the fillet geometry `geom` resolves to, with the fillet
+    /// B-rep (`executive.fillet`), the target B-rep (`executive.target`), the
+    /// executive's topology-intersector mates and the solver table; the faces it
+    /// collects resolve back to handles in `kept_faces` / `deleted_faces`.
     fn trim_original_surfaces(
         &mut self,
-        _k: &mut Kernel,
-        _geom: O,
-        _kept_faces: &mut Vec<O>,
-        _deleted_faces: &mut Vec<O>,
-        _marks: &[ContextMark],
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_geom_p6): SmFilletGeom::TrimOriginalSurfaces
-        Err(SolidError::unported(
-            "SmFilletGeom::TrimOriginalSurfaces",
-            "blend.fillet_geom_p6",
-        ))
-    }
+        k: &mut Kernel,
+        geom: O,
+        kept_faces: &mut Vec<O>,
+        deleted_faces: &mut Vec<O>,
+        marks: &[ContextMark],
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// Delegate to the live intersector's already ported
     /// `TopologyIntersector::delete_faces` (boolean intersector p2), using this
@@ -662,22 +661,23 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         keep_as_wires: Option<&[O]>,
     ) -> Result<()>;
 
-    /// `SmBrep::MergeBrep`; waiting for `topology.brep_p3`.
+    /// `target->MergeBrep(other, pOptCopyBrepMap, pOptReverseMap, bAddAnalytics)`: the
+    /// owner of the B-reps implements it with `topology::brep::p3::merge_brep` (a
+    /// stateless owner through `topology::brep::p3::with_kernel_callbacks`, `other`
+    /// enrolled in the same identity domain), as `IntersectorBrep::brep_delete_face`.
+    ///
+    /// # Errors
+    ///
+    /// Those of the merge; an owner with no B-rep behind a handle returns its own error.
     fn merge_brep(
         &mut self,
-        _k: &mut Kernel,
-        _target: O,
-        _other: O,
-        _copy_map: Option<&mut CopyBrepMap<O>>,
-        _reverse_map: Option<&mut CopyBrepMap<O>>,
-        _add_analytics: bool,
-    ) -> Result<()> {
-        // UNPORTED(topology.brep_p3): SmBrep::MergeBrep
-        Err(SolidError::unported(
-            "SmBrep::MergeBrep",
-            "topology.brep_p3",
-        ))
-    }
+        k: &mut Kernel,
+        target: O,
+        other: O,
+        copy_map: Option<&mut CopyBrepMap<O>>,
+        reverse_map: Option<&mut CopyBrepMap<O>>,
+        add_analytics: bool,
+    ) -> Result<()>;
 
     /// `SmStitch::DoStitching` (`SmFilletExecutive.cpp:3559-3576`). Delegate to the
     /// already ported `heal::stitch::p2::Stitch::do_stitching` (heal stitch p2) on the
@@ -729,22 +729,24 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         ))
     }
 
-    /// `SmBrep::OrientTrimmedSurfaces`; waiting for `topology.brep_p3`.
+    /// `brep->OrientTrimmedSurfaces(bNormalsOutward, rbMaybeNotSolid, bJustUnifyNormals,
+    /// pOptFacesToSwapUV)`: the owner of the B-reps implements it with
+    /// `topology::brep::p3::orient_trimmed_surfaces`, writing its
+    /// `maybe_not_closed_solid` to `maybe_not_solid`.
+    ///
+    /// # Errors
+    ///
+    /// Those of the orientation; an owner with no B-rep behind a handle returns its own
+    /// error.
     fn orient_trimmed_surfaces(
         &mut self,
-        _k: &mut Kernel,
-        _brep: O,
-        _outward: bool,
-        _maybe_not_solid: &mut bool,
-        _just_unify: bool,
-        _faces_to_swap_uv: Option<&mut Vec<O>>,
-    ) -> Result<()> {
-        // UNPORTED(topology.brep_p3): SmBrep::OrientTrimmedSurfaces
-        Err(SolidError::unported(
-            "SmBrep::OrientTrimmedSurfaces",
-            "topology.brep_p3",
-        ))
-    }
+        k: &mut Kernel,
+        brep: O,
+        outward: bool,
+        maybe_not_solid: &mut bool,
+        just_unify: bool,
+        faces_to_swap_uv: Option<&mut Vec<O>>,
+    ) -> Result<()>;
 
     // ---- added by blend.fillet_executive_p2 (PR #267) --------------------------------
 
@@ -858,8 +860,9 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// The fillet solver constructors `SetFilletParameters` and `SurfaceSurfaceFillet`
     /// call, dispatched on the spec: `SmConstantRadiusFS` through
     /// [`ExecutiveAccess::new_constant_radius_solver`]; `SmConstantDistanceFS`,
-    /// `SmVariableRadiusFS` and `SmSurfaceSurfaceFS` wait for
-    /// `blend.fillet_standard_solver_p2`.
+    /// `SmVariableRadiusFS` and `SmSurfaceSurfaceFS` are ported
+    /// (`blend.fillet_standard_solver_p2`) but need a solver arena in the adapter
+    /// that no adapter has yet (`plan/findings.md`, executive adapter stubs).
     fn new_fillet_solver(
         &mut self,
         k: &mut Kernel,
@@ -880,17 +883,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
                 radius,
                 edgeuse,
             ),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantDistanceFS::SmConstantDistanceFS
+            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantDistanceFS::SmConstantDistanceFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
             super::p2::SolverSpec::ConstantDistance { .. } => Err(SolidError::unported(
                 "SmConstantDistanceFS::SmConstantDistanceFS",
                 "blend.fillet_standard_solver_p2",
             )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmVariableRadiusFS::SmVariableRadiusFS
+            // UNPORTED(blend.fillet_standard_solver_p2): SmVariableRadiusFS::SmVariableRadiusFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
             super::p2::SolverSpec::VariableRadius { .. } => Err(SolidError::unported(
                 "SmVariableRadiusFS::SmVariableRadiusFS",
                 "blend.fillet_standard_solver_p2",
             )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::SmSurfaceSurfaceFS
+            // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::SmSurfaceSurfaceFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
             super::p2::SolverSpec::SurfaceSurface { .. } => Err(SolidError::unported(
                 "SmSurfaceSurfaceFS::SmSurfaceSurfaceFS",
                 "blend.fillet_standard_solver_p2",

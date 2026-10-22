@@ -426,6 +426,9 @@ impl Pool {
                         )));
                     }
                 }
+                // a new owner key drops the cached face tolerance: record it again
+                brep.sync_face_surface_tolerance(face)
+                    .map_err(|error| harness(&error))?;
             }
             breps.push(brep);
         }
@@ -845,14 +848,16 @@ fn destroy_brep(
     Err(SolidError::unported("SmBrep::~SmBrep", "topology.brep_p4"))
 }
 
+/// `new SmBrep(dSize, dRatio, pOptContextForStack)`
+/// (`topology::brep::p3::new_brep`; `pOptContextForStack` is the allocating kernel).
 fn empty_brep(
-    _k: &mut Kernel,
-    _model_size_estimate: f64,
-    _large_small_size_ratio: f64,
-    _stack_context: Option<&Kernel>,
+    k: &mut Kernel,
+    model_size_estimate: f64,
+    large_small_size_ratio: f64,
+    stack_context: Option<&Kernel>,
 ) -> solidcore::Result<Brep> {
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+    let _ = stack_context;
+    solidcore::topology::brep::p3::new_brep(k, model_size_estimate, large_small_size_ratio)
 }
 
 /// `pNewBrep->SetTolerance(tol, bUpdateOnlyIfLarger, bCascadeToBndries)`
@@ -1258,13 +1263,10 @@ mod tests {
     fn piecewise_dependency_errors_name_the_next_missing_owner() {
         let mut pool = Pool::load(&inputs()).unwrap();
         let mut k = Kernel::default();
-        assert!(matches!(
-            pool.new_face_brep(&mut k, 0),
-            Err(SolidError::Unported {
-                unit: "topology.brep_p3",
-                ..
-            })
-        ));
+        // the face B-rep is built (SmBrep constructor, topology.brep_p3;
+        // CreateFaceFromSurface, topology.brep_p8)
+        let r = pool.new_face_brep(&mut k, 0);
+        assert!(r.is_ok(), "new_face_brep: {r:?}");
         // SmBrep::Notify is topology.brep_p2's (#149): PRE_EDIT of the fixture B-rep runs
         let r = pool.notify_pre_edit(&mut k, 0);
         assert!(r.is_ok(), "notify_pre_edit: {r:?}");
@@ -1275,16 +1277,11 @@ mod tests {
                 ..
             })
         ));
-        // SmMerge's constructor and copy environment are boolean.merge_p2's (#229):
-        // ProcessWiresAndShellVertices now runs and stops at the other B-rep's
-        // SmBrep::Point3DClassify (query.brep), as the C++ path calls it next
-        assert!(matches!(
-            pool.process_wires(&mut k, &MarkLock::unbound()),
-            Err(SolidError::Unported {
-                unit: "query.brep",
-                upstream: "SmBrep::Point3DClassify",
-            })
-        ));
+        // SmMerge's constructor and copy environment are boolean.merge_p2's (#229) and
+        // SmBrep::Point3DClassify is query.brep's: ProcessWiresAndShellVertices runs to
+        // completion on the fixture
+        let r = pool.process_wires(&mut k, &MarkLock::unbound());
+        assert!(r.is_ok(), "process_wires: {r:?}");
         assert!(matches!(
             pool.delete_other(&mut k),
             Err(SolidError::Unported {

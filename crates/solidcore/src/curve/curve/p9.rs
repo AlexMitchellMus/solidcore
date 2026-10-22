@@ -81,7 +81,7 @@ use crate::curve::curve::p3::PointSolveOptions;
 use crate::curve::curve::p4::{point_or_undef, proj_dist};
 use crate::curve::curve::p5::{local_property_analysis, make_curve_cache};
 use crate::curve::curve::p7::PropertyAnalysisOptions;
-use crate::curve::curve::p8::CurveIntersectOptions;
+use crate::curve::curve::p8::{operand_handles, CurveIntersectOptions};
 use crate::curve::curve_cache::CurveCache;
 use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
@@ -1031,7 +1031,7 @@ fn min_signed_angle_into<O: SolutionObject>(
                 ops.handles[0],
             )
         };
-        let (knots, _) = disc_curve.knots(None)?;
+        let (knots, _) = disc_curve.knots(k, None)?;
 
         // for every continuity boundary
         for (jj, &cont) in conts.iter().enumerate() {
@@ -1145,7 +1145,9 @@ pub struct CurveSolveOptions<'a, O> {
     /// operation.
     pub opt_vectors: Option<&'a [Vec3]>,
     /// The handles of this curve and the other curve: the owners of their cache
-    /// trees, named by the solutions (upstream `this`, `&crOtherCurve`).
+    /// trees, named by the solutions (upstream `this`, `&crOtherCurve`). With both
+    /// `None` the solutions name no objects, but are merged as upstream's (which
+    /// always name the curves).
     pub handles: [Option<O>; 2],
 }
 
@@ -1223,6 +1225,28 @@ impl Curve {
         requested: SolutionRequested,
     ) -> Result<SolutionArray<O>> {
         type Op = SolverOperation;
+        // no handles: upstream's solutions still name this curve and the other one
+        // (whose natural intervals IdenticalSolutions reads)
+        if opts.handles == [None, None] {
+            let own = operand_handles(self, other);
+            let inner = CurveSolveOptions {
+                target_distance: opts.target_distance,
+                opt_vectors: opts.opt_vectors,
+                handles: [Some(own[0]), Some(own[1])],
+            };
+            return Ok(self
+                .global_curve_solve(
+                    k,
+                    interval,
+                    other,
+                    other_interval,
+                    op,
+                    dist_tol,
+                    &inner,
+                    requested,
+                )?
+                .without_objects());
+        }
         let [h_this, h_other] = opts.handles;
         let same_curve = core::ptr::eq(self, other);
         let opt = |i: usize| -> Result<Vec3> {
@@ -1526,7 +1550,7 @@ impl Curve {
 
         // Now add all tangent discontinuous points
         if self.is_kind_of(BSPLINE_CURVE_TYPE) {
-            let (knots, _) = self.knots(None)?;
+            let (knots, _) = self.knots(k, None)?;
             let (_, continuities) = self.calculate_continuities(k, 2.0)?;
 
             let n = knots.len();
