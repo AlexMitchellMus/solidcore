@@ -3,7 +3,8 @@
 //! STEP/NURB conversions, STEP evaluation, the normal, iso curves,
 //! `RebuildSTEPFromNURBParameters`, `Transform`, `IsClosed*`, `STEPInversion`,
 //! `CreateTrimmedCircleSegments`, the intersections with planes, spheres and cones,
-//! `GlobalSurfaceIntersect` and `IsNurbSurfaceSphere`).
+//! `GlobalSurfaceIntersect`, `IsNurbSurfaceSphere`, and the inherited
+//! `SmSurfOfRevolution::TrimWithDomain`).
 //!
 //! C++: `solidcore_ffi::units::surface_sphere` (upstream `source/SMLib/src/SmSphere.cpp`).
 //! Rust: `solidcore::surface::sphere`.
@@ -222,6 +223,9 @@ enum OpIn {
         #[serde(default)]
         perturb: Vec<PerturbIn>,
     },
+    TrimDomain {
+        dom: [f64; 4],
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -393,6 +397,7 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
                 })
                 .collect(),
         },
+        OpIn::TrimDomain { dom } => ffi::Op::TrimDomain { dom: *dom },
     };
     let flat = ffi::sphere_op(&ffi_sphere(&i.sphere), &op).map_err(|e| harness(e.to_string()))?;
     to_output(i, &flat)
@@ -983,6 +988,18 @@ fn rust_op(
                 }
             }
         }
+        OpIn::TrimDomain { dom } => {
+            let [a, b, c, d] = *dom;
+            // (upstream writes the domain back; the inherited body never changes it)
+            match t.trim_with_domain(k, &Extent2d::from_bounds(a, b, c, d)) {
+                Err(e) if e.is_unported() => Err(e),
+                r => {
+                    o.push(r.map_or_else(|e| status(&e), |()| 0.0));
+                    o.extend_from_slice(dom);
+                    put_state(o, t)
+                }
+            }
+        }
     };
     Ok(r)
 }
@@ -1180,7 +1197,7 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
         }
     };
     let r = sphere.radius.abs().max(0.5);
-    let op = match rng.below(24) {
+    let op = match rng.below(25) {
         0 => OpIn::Build {},
         1..=3 => OpIn::EvalStep {
             u: pick(rng, sd.min().x, sd.max().x),
@@ -1442,6 +1459,9 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
                 args: gen_args(rng, nd, cnat),
             }
         }
+        23 => OpIn::TrimDomain {
+            dom: gen_trim_domain(rng, nd)?,
+        },
         _ => {
             let n = rng.below(3) as usize;
             let scale = *rng.choose(&[1.0, 1.0, 0.1, 10.0, 1000.0])?;
@@ -1469,6 +1489,45 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
         }
     };
     Some(Inputs { sphere, op })
+}
+
+/// A `TrimWithDomain` domain for the NURB domain `nd`: the whole domain, one sticking
+/// out of it, one direction trimmed, a thin strip, one within `SM_EFF_ZERO_PARAM` of
+/// the edge, or a sub-domain.
+fn gen_trim_domain(rng: &mut Rng, nd: Extent2d) -> Option<[f64; 4]> {
+    let (lo, hi) = (nd.min(), nd.max());
+    let (du, dv) = (hi.x - lo.x, hi.y - lo.y);
+    Some(match rng.below(8) {
+        0 => [lo.x, lo.y, hi.x, hi.y],
+        1 => {
+            let e = rng.uniform(1e-6, 0.3);
+            if rng.chance(0.5) {
+                [lo.x - e * du, lo.y, hi.x, hi.y]
+            } else {
+                [lo.x, lo.y, hi.x, hi.y + e * dv]
+            }
+        }
+        2 => {
+            let a = rng.uniform(0.0, 0.45);
+            let b = rng.uniform(0.55, 1.0);
+            if rng.chance(0.5) {
+                [lo.x + a * du, lo.y, lo.x + b * du, hi.y]
+            } else {
+                [lo.x, lo.y + a * dv, hi.x, lo.y + b * dv]
+            }
+        }
+        3 => {
+            let a = rng.uniform(0.0, 0.9);
+            let w = *rng.choose(&[1e-3, 1e-2, 0.05])?;
+            [lo.x + a * du, lo.y, lo.x + (a + w) * du, hi.y]
+        }
+        4 => [lo.x - 1e-13, lo.y, hi.x, hi.y - 0.25 * dv],
+        _ => {
+            let a = nd.evaluate(rng.uniform(0.0, 0.45), rng.uniform(0.0, 0.45));
+            let b = nd.evaluate(rng.uniform(0.55, 1.0), rng.uniform(0.55, 1.0));
+            [a.x, a.y, b.x, b.y]
+        }
+    })
 }
 
 impl UnitDiff for Runner {
@@ -1528,6 +1587,7 @@ mod tests {
             OpIn::IsectCone { .. } => "isect_cone",
             OpIn::Global { .. } => "global",
             OpIn::IsNurb { .. } => "is_nurb",
+            OpIn::TrimDomain { .. } => "trim_domain",
         }
     }
 
@@ -1591,6 +1651,7 @@ mod tests {
             "isect_sphere",
             "isect_cone",
             "is_nurb",
+            "trim_domain",
         ] {
             let ok = tally.iter().any(|((o, k), _)| {
                 o == op
