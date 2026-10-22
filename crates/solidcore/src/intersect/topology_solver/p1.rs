@@ -61,8 +61,8 @@
 //!   object tree local to the call; afterwards upstream's first tree pointer
 //!   dangles, here it is cleared.
 //! - **Unported callees.** Part 2 now supplies the local traversal and its six
-//!   local classes. Curve/curve solves, surface solves, topology tolerances and
-//!   face classification still propagate their owning units' unported errors.
+//!   local classes. Curve/curve solves, surface solves and face classification
+//!   still propagate their owning units' unported errors.
 //!   Face silhouettes use the ported surface cache factory. The face-silhouette loop names temporary curves
 //!   by their face owner through the adapter.
 
@@ -83,6 +83,7 @@ use crate::geom::object::{Shape, ShapeMember};
 use crate::geom::solution_array::{
     Solution, SolutionArray, SolutionObject, SolutionType, SortKey, MAX_TREES,
 };
+use crate::geom::tol::{zone_tol_3d, SmallTopoType};
 use crate::geom::tree::Tree;
 use crate::geom::vector2d::Vec2;
 use crate::geom::vector3d::sqrt;
@@ -185,6 +186,9 @@ pub trait TopologyObjects<O> {
 
     /// `SmEdge::GetInterval`.
     fn edge_interval(&self, edge: O) -> Result<Extent1d>;
+
+    /// `SmEdge::GetTolerance`.
+    fn edge_tolerance(&self, edge: O) -> Result<f64>;
 
     /// `SmSurface::GetFace`: the face a surface defines, if any.
     fn surface_face(&self, surface: O) -> Result<Option<O>>;
@@ -1421,7 +1425,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 // We've found a result within the surface domain.
                 // It must also be within the Face: this is a topology routine.
                 // [060718 bd]
-                let src_zone_tol = object_zone_tol_3d(self.point_vertex)?;
+                let src_zone_tol = vertex_zone_tol_3d(ts.kernel, objects, self.point_vertex)?;
                 let uv = Vec2::new(sol.start.param(1)?, sol.start.param(2)?);
                 if face_point_classify(face, uv, src_zone_tol, true, true)? == POINT_CLASS_UNKNOWN {
                     continue;
@@ -1502,7 +1506,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 let mut sol = *found;
 
                 // Check whether the point is within the Face's trimmed boundaries.
-                let src_zone_tol = object_zone_tol_3d(self.point_vertex)?;
+                let src_zone_tol = vertex_zone_tol_3d(ts.kernel, objects, self.point_vertex)?;
                 let uv = Vec2::new(sol.start.param(0)?, sol.start.param(1)?);
                 if face_point_classify(face, uv, src_zone_tol, true, true)? == POINT_CLASS_UNKNOWN {
                     continue;
@@ -1880,16 +1884,35 @@ fn curve_global_curve_solve<O: SolutionObject>(
     )
 }
 
-/// `SmTol::GetZoneTol3d(m_pPointVertex)`.
-pub(super) fn object_zone_tol_3d<O>(_vertex: Option<O>) -> Result<f64> {
-    // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an opaque handle. Every
-    // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
-    // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
-    // receives the owning B-rep
-    Err(SolidError::unported(
-        "SmTol::GetZoneTol3d(const SmObject*)",
-        "geom.tol",
-    ))
+/// `SmTol::GetZoneTol3d(m_pPointVertex)` (`SM_USE_OLDTOL`): the system zone
+/// tolerance without a vertex, the vertex's `GetTolerance` otherwise.
+pub(super) fn vertex_zone_tol_3d<O>(
+    k: &Kernel,
+    objects: &dyn TopologyObjects<O>,
+    vertex: Option<O>,
+) -> Result<f64> {
+    match vertex {
+        Some(vertex) => objects.vertex_tolerance(vertex),
+        None => Ok(zone_tol_3d(k, SmallTopoType::NormalSize)),
+    }
+}
+
+/// `SmTol::GetZoneTol3d(m_pCurve)` (`SM_USE_OLDTOL`): the tolerance of the curve's
+/// edge (`SmCurve::GetEdge`), the system zone tolerance without a curve or for a
+/// curve no edge owns.
+pub(super) fn curve_zone_tol_3d<O>(
+    k: &Kernel,
+    objects: &dyn TopologyObjects<O>,
+    curve: Option<O>,
+) -> Result<f64> {
+    let edge = match curve {
+        Some(curve) => objects.curve_edge(curve)?,
+        None => None,
+    };
+    match edge {
+        Some(edge) => objects.edge_tolerance(edge),
+        None => Ok(zone_tol_3d(k, SmallTopoType::NormalSize)),
+    }
 }
 
 /// `pFace->PointClassify(uv, src_zone_tol, do_boundaries, use_uv, point_class)`
@@ -2029,6 +2052,9 @@ pub(crate) mod tests {
                 Obj::Edge(i) => Ok(self.edges[i].1),
                 _ => Err(SolidError::sm_err("edge")),
             }
+        }
+        fn edge_tolerance(&self, _edge: Obj) -> Result<f64> {
+            Err(SolidError::sm_err("edge"))
         }
         fn surface_face(&self, _surface: Obj) -> Result<Option<Obj>> {
             Ok(None)

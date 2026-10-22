@@ -1938,6 +1938,9 @@ impl TopologyObjects<H> for Two {
     fn edge_interval(&self, edge: H) -> solidcore::Result<Extent1d> {
         ed::interval(self.brep_r(edge)?, eid(edge))
     }
+    fn edge_tolerance(&self, edge: H) -> solidcore::Result<f64> {
+        ed::tolerance(self.brep_r(edge)?, eid(edge))
+    }
     fn surface_face(&self, surface: H) -> solidcore::Result<Option<H>> {
         Ok((surface.kind == K_FACE_SURFACE).then_some(hd(surface.b, K_FACE, surface.i)))
     }

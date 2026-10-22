@@ -520,6 +520,12 @@ impl TopologyObjects<Object> for Objects<'_> {
         };
         Ok(self.b(o)?.edge(e)?.interval)
     }
+    fn edge_tolerance(&self, o: Object) -> Result<f64> {
+        let CacheObject::Edge(e) = o.1 else {
+            return Err(SolidError::sm_err("edge handle"));
+        };
+        Ok(self.b(o)?.edge(e)?.tolerance)
+    }
     fn surface_face(&self, o: Object) -> Result<Option<Object>> {
         let Some(owner) = self.surface(o)?.face()? else {
             return Ok(None);
