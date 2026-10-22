@@ -1313,6 +1313,9 @@ worth knowing:
   owner metadata, with a 64-link bound; missing metadata is a capture failure.
   Tracker/callback state uses a private shared notification-array allocation so
   active resets and foreign-callback replacement preserve native array lifetimes.
+  `topology.brep_p3` (PR #204) runs heal_data_p3's ported edits (`SqueezeEdge`,
+  `DeleteFace`) under this tracker too (`SmHealData` installs
+  `SmTrackTopologyChanges(m_pBrep, TRUE)` around them, SmHealData.cpp:3341).
 - **Starting a tracker twice leaves its callback installed after it dies.** The
   second `StartTracking` sees the tracker's own callback in the slot and stores it in
   `m_pLastNotifyCallback`; `StopTracking` (and so the destructor) then does nothing,
@@ -5331,6 +5334,71 @@ shell traversal; PR #88's cache-reset scans keep their existing behavior.
   draw order, so the generated cases are byte-identical. 328 review fixtures added
   (`fixtures/intersect.surface_drop_lib_p1/review_poles.json`, subsampled from 3596; none
   undefined in C++): all pass bit-identical or defer on `surface.surface_p3`.
+- **Review fixes (PR #140): UV curve kind.** `DropAndTrimCurve` used to turn each traced
+  UV curve into a plain `BSplineCurve`. Upstream `SM_CAST_PTR(SmBSplineCurve, p)` is only
+  an `IsKindOf` check on the same object, so `rUVCurves` keeps the `SmLine` that
+  `SmPlane::DropCurve` makes for a line on a plane, and callers use the `SmLine` overrides
+  (`EvaluatePoint` is `P + t*scale*V`, not de Boor). `DropAndTrim::uv_curves` is now
+  `Vec<Curve>`; the runner writes a line's data through `base_with_nurb`, as the shim's
+  `GetOrCreateGwNurbPointer` does. This was latent: every plane `DropAndTrimCurve` case
+  still defers on `surface.surface_cache_p1` (`SmPlane::CreateIsoParametricCurve`), so
+  plane cases will start comparing (and would have diverged) once that stub is wired.
+- **Coverage (PR #140 review).** Before the review fixtures, the only compared trim
+  cases were iso lines on bilinear and cylinder patches: all plane lines defer on
+  `surface.surface_cache_p1`, and B-spline cases with `on_surface = false` defer on
+  `intersect.curve_class_p4`. 632 review fixtures (`review_trim_adversarial.json`) add 360
+  passing cases. A zero-length line (`a == b`) is still rejected by the FFI
+  ("zero-length segment"), so that degenerate case is not difftested.
+- **Surface cache.** `drop_curve_trace` builds a fresh surface cache per call, where
+  upstream checks out the context-cached `smsurf_GetSurfaceCache`; state left in that
+  cache between upstream calls is not modelled (documented in the module Deviations).
+  Callers that hold the surface's cache now pass it (`Surface::drop_and_trim_curve_in`):
+  the coincident branches of `GlobalCurveIntersect` / `GlobalLineIntersect`
+  (`surface.surface_p8`) and the boundary curve drops of `FindBoundaryStartPoints`
+  (`intersect.surface_intersector_p3`, on a handle-mapped copy as its
+  `GlobalCurveIntersect` already does).
+- **ComputeSingularityPoint dispatch (merge with main, 2026-10-16).** Wiring the trace
+  let 6 generated `intersect.surface_intersector_p5` cases (gen0127, gen0428, gen0439,
+  gen0512, gen1092, gen1264: bilinear patches sharing an edge) reach past
+  `DropAndTrimCurve`, and they failed: C++ returned two more curves (`rec.len` 437 vs
+  297), the touching points at the shared edge's ends. Cause: `FindBoundaryStartPoints`
+  calls `ComputePointValues`, which calls the virtual `ComputeSingularityPoint`; on an
+  `SmAdvSurfaceIntersector` that is the override, but the port always ran the basic
+  `SM_ERR` body, so the start points were dropped (the "DISPATCH GAP" the p5 header
+  noted as unreachable). Fix: the override's body reads only base members, so it moved to
+  `SurfaceIntersector::adv_compute_singularity_point`, and `ComputePointValues` calls it
+  when the base's `advanced` flag (set by `AdvSurfaceIntersector::new`) is on. All 6
+  cases now pass bit-identical; p2/p3/p4/adv/p5 have 0 failures.
+- **Second review (PR #140): iso curves of the surface cache wired.** The two
+  `UNPORTED(surface.surface_cache_p1)` stubs (`SmPlane::CreateIsoParametricCurve`,
+  `SmSurfOfRevolution::CreateIsoParametricCurve`) were tagged with a green unit while the
+  callees were ported (`surface.plane_p1`, `surface.surf_of_revolution_p1`). They are now
+  wired the way PR #270 does it (its `surface_cache/p1.rs`, the `Curve` storage of the iso
+  curves, `copy_as_bspline` for upstream's `new SmBSplineCurve(*p)` copies, and the
+  `&Curve` boundary signatures of the tracer, silhouette and surface intersector p2/p3,
+  taken over unchanged so the two PRs merge cleanly), **including the plane branch of
+  `GetIsoBoundaryCurves`** that #270 keeps stubbed because of
+  `intersect.surface_intersector_p5` `gen0072`. On this branch `gen0072` passes
+  bit-identical (157 values): its missing touching-point curves are the
+  `ComputeSingularityPoint` dispatch gap fixed above. `intersect.surface_intersector_p5`
+  goes from 1009 to 1471 passes with 0 failures (its runner now writes the B-spline part
+  of a `Line` / `Ellipse` output curve, as #270's does, after its type code).
+  The plane and revolution `DropAndTrimCurve` cases now trace past the iso curves and
+  stop at a real gap: `SmCrvOnSurf` over a non-B-spline surface
+  (`surface_drop_curve.rs`, the `curve.crv_on_surf` port holds only a `BSplineSurface`;
+  an `SmPlane`'s virtual evaluators differ from its B-spline part, so wrapping the
+  plane's B-spline would not be faithful). These defer on `curve.crv_on_surf`.
+- **Second review (PR #140): curve_class_p2 stubs not wired.** The `ReSet` and
+  `ConnectIntervals` stubs in `intersect/curve_class/p4.rs` are deliberate: wiring them
+  breaks `topology.brep_p2`'s `merge_plane10_line` and 4 squeeze cases of
+  `intersect.curve_class_p4` (see that unit's section). The deferrals behind them are
+  counted as such in the unit's notes.
+- **Second review (PR #140): coverage.** The generator is back to main's buckets
+  (`88..=98` iso, `99` plane line), so every generated case keeps its inputs; the wider
+  trim generator runs as 400 fixed-seed cases `trim0000..trim0399` appended after the
+  1500. The `Trim` record now carries each UV curve's `GetType()` (line vs B-spline is
+  compared), and the shim writes the sentinel `NULL_CURVE` for a `NULL` entry instead of
+  dereferencing it.
 ## topology.vertex (`SmVertex`, 2026-10-15; partial, no disagreements)
 
 - **Vertex use lists.** `topology::Vertex` gained `vertexuses` (`m_pList`, upstream list
@@ -6464,6 +6532,78 @@ mutated scales and accepted/reduced step counts are compared.
   `GlobalPointSolve_1` fails; `Surface::global_point_solve_into` has the same gap in
   `surface.surface_p4`), not seen in any case. The 398 review adversarial cases are
   `fixtures/query.face_p3/review_adversarial.json` (none is undefined in C++).
+
+## topology.brep_p8 (`SmBrep` face builders, PR #72, 2026-10-20; partial, no disagreements)
+
+- **Builds on PR #204** (`topology.brep_p3`, head `293ce7fc`, merged into the branch):
+  `MakeFaceWithCurves` makes its wire edges with #204's `MakeWireEdge` /
+  `MakeWireEdgeVertex`, and `CreateFacesWithCurves` deletes faces with its `DeleteFace`.
+  #72 cannot merge before #204.
+- **Every face construction stops in `MakeFaceTopology` (`topology.brep_p6`).** All seven
+  functions are ported (`topology::brep::p8`; the "new algorithm" branch of
+  `CreateFaceInRegionFromSurface` is dead code, `sbUseOldAlgorithm` is a `constexpr TRUE`).
+  Every path that makes a face goes `MakeFaceWithCurves` (`brep_p7`) -> `MakeFace` ->
+  `MakeFaceTopology` (`brep_p6`), whose port stops at its `SetTolerance` call: the stub
+  there is labelled `UNPORTED(topology.face_p3): SmFace::SetTolerance`, but
+  `face::p3::set_tolerance` is ported and the stub stands for the unported remainder of
+  `MakeFaceTopology` (face use / loop / edge use construction, radial sectors, trims,
+  `TestClosureSplitRegion`; `SmBrep.cpp:14141-14828`), which `topology.brep_p6` owns. So
+  every case that would build a face defers on `topology.face_p3` (298 of 339). **Unblock:**
+  finish `MakeFaceTopology` in `topology.brep_p6`; then the 298 deferred cases (faces on
+  planes and B-spline patches, natural and sub-domains, creased and closed surfaces,
+  planar loops with holes and several outer loops, the pyramid of
+  `primitive.api_primitives`) compare the whole B-rep they build.
+- **What is compared now** (41 cases, all with values): the status and the whole B-rep
+  after the op (counts, shell digest, the full topology graph of the `topology.brep_p3`
+  runner, and every vertex, edge, face and edge use's geometry): domains outside the
+  natural one, null surfaces and curve arrays, open, non-planar, empty and
+  degenerate-line planar curve sets, and three `MakeFacesWithCurves` split paths (a UV
+  loop with a hole on surfaces creased in `u`, `v` and both, 479 values each: the crease
+  iso curves are intersected with the loops, the loops split and the iso segments
+  inserted, the sub-patches made; each sub-patch's `MakeFaceWithCurves` fails, which
+  upstream ignores, leaving its wire edges in the B-rep). `--perturb` SENSITIVE 41/41;
+  `--fuzz 2000` FUZZ-PASS (rejected 474, malformed 822, ran 704, 0 differs/crashes).
+- **UB-119 behind the plane fit.** `CreatePlaneWith3DCurves` of loops far from the origin
+  relative to their size (the pyramid base at `1e9` with side 5) tessellates them to zero
+  area, and upstream `FindOuterLoops` reads past its arrays (UB-119); the C++ goes on with
+  garbage counts (and builds the pyramid). The port refuses it (`InvalidInput` from
+  `topology::trimming_tools`); the face builders pass that error through instead of
+  `SM_ERR`, and the runners of this unit and `primitive.api_primitives` defer such cases
+  as `cpp-guard:ub-119` (4 generated pyramids).
+- **`MakeFacesWithCurves` group counts** (WR-210): a sub-patch's second outer-loop group
+  is counted with the first group's loop counts; ported as is.
+- **Wired back-edges:** `topology.trimming_tools` (`MakeFacesWithCurves`),
+  `heal.heal_data_p3` (`CreateFaceInRegionFromSurface` under the edit tracker, its changes
+  kept also on failure), `boolean.merge_p3` and `offset.offset_executive_p1`
+  (`CreateFaceFromSurface`, arena-only notification stores; `build_side_wall_of_edgeuse`
+  now takes `&mut Kernel`) and `primitive.api_primitives` (`SmApiCreatePyramid` builds
+  its five faces and stitches them; it takes the kernel). Two remain:
+  `offset_executive` `CreatePlanarFaceWith3DCurves` (the 2D-boolean continuation around it,
+  `SmOffsetExecutive.cpp:3816-3928`, is unported and needs `Boolean2D`,
+  `primitive.primitive_creation_p1`), and the runner-side deferrals of
+  `mass.integrator` and `surface.trim_srf_cache` (their Rust sides build no face yet).
+- **Wired stale stubs in `geom.tools`** (`FindCoincidentEdge`, `FindEdge`): the curve
+  owner, evaluation, `DropPoint` and `CurveMaxDistanceBetween` of the green
+  `curve.curve_p2` / `curve.curve_p6`; `MakeFaceWithCurves` reached them for every
+  second curve of a loop. `CoincidentEdgeQuery` gets `curve_owner` (the caller resolves
+  `pCurve->GetOwner()`), and `find_coincident_edge` / `find_edge` take the kernel. The
+  `geom.tools` runner now compares the coincident-edge cases on the file B-rep.
+- **Shim bug fixed in `primitive.api_primitives`:** `put_brep(o, SmApiCreateX(.., b), b)`
+  read `b` before the call wrote it (unspecified argument order; GCC evaluates right to
+  left), so every successful C++ B-rep reported `has = 0`; `put_brep` now takes `b` by
+  reference. Unseen before, as every Rust B-rep entry point deferred.
+- **Analytic surfaces** (`SmCylinder`, `SmSphere`, `SmTorus`, `SmCone`) are not in the
+  shim: the Rust `Surface` has no such kinds (issue #76), so a face on one could not be
+  compared with its C++ overrides.
+- **`topology.brep_p5` runner after merging #204 into main:** `CreateWireEdgeFromCurve`
+  now runs through (main wired `GetInfiniteRegion`, #204 `MakeShellVertex` /
+  `MakeWireEdgeVertex`), and `MakeEdgeVertexTopology` unlinks the start vertex's shell
+  vertex use, which upstream deletes. The arena keeps it, and that runner's `graph` lists
+  unreachable records too, so `isolated_op13_editing_*` showed one vertex use more than
+  the C++. The runner now defers a result holding unlinked uses or shells on
+  `topology.brep_p4` (`SmBrep::~SmBrep`, the record erasure its notes already name): 744
+  pass, 0 fail, 53 deferred, as on main.
+
 ## intersect.curve_class_p6 (partial; PR #138)
 
 - **Certified scope.** 4438 default cases: 3927 bit-identical kernel comparisons,
@@ -9030,6 +9170,17 @@ regression inputs below; 2000-seed sweep 2051 pass / 116 deferred / 0 failed / 1
   311/30/278, `heal.stitch_p1` 300/232/68, `boolean.merge_p5` 140/108/32,
   `boolean.merge_p1` 248/206/42, `boolean.topology_intersector_p1` 830/713/117 and
   `topology.brep_p9` 684/638/46 unchanged from main.
+- **Integration gap (PR #204, topology.brep_p3): `SmBrep::MakeWireEdge` stays a stub.**
+  `merge_edge_with`'s `make_wire_edge` keeps `UNPORTED(topology.brep_p3)` although
+  `topology::brep::p3::make_wire_edge` is ported. The callee needs `&mut Kernel`
+  (`topology::brep::p2::make_edge_topology` transfers shells), and #229's
+  `MergeContext::Split` carries only `&Kernel` plus an optional `Context`. It also
+  needs a `NotifyEnv` naming the new edge, edge uses and vertex uses, which has to be
+  built from `TopologyCopy`'s destination keys. Wiring it means changing
+  `MergeContext::Split` to `&mut Kernel` for every `merge_edge` caller, so it is a
+  small follow-up after #204 lands. `OrientTrimmedSurfaces` is wired in #204: it is a
+  required `MergeBrep` method, implemented by the runner's `Two` with
+  `topology::brep::p3::orient_trimmed_surfaces` under the kernel's identities.
 
 ## topology.brep_p5 — historical pre-review coverage (superseded)
 
@@ -11316,6 +11467,107 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   unchanged with 0 flips: 300/206/0/94, 1000 seeds 1284/868/0/410, perturb 333/333, fuzz 2000 pass.
   valgrind with `harness/valgrind/ub11.supp` gives 0 errors on the simple, unify, select and split
   samples.
+
+## blend.fillet_standard_solver_p2 (`SmFilletStandardSolver.cpp` part 2, PR #265, 2026-10-19, continued in PR #439, 2026-10-21; partial)
+
+Difftest (PR #439, on main with #236): 405 cases (400 generated + 5 fixtures): 373 pass, 0
+failed, 27 deferred, 5 rejected; `--perturb` 373/373; `--fuzz 2000` 0 differs. (PR #265 before the
+`ReCalcFilletGeom` port: 388 pass, 17 deferred; 3000 seeds 2893 pass, 0 failed, 112
+deferred, max_rel_err 3.8e-16.)
+
+- **Resolved disagreement.** `SmConstantRadiusFS::LoadInitialValues` on an
+  `SmSurfaceSurfaceFS` (fixture `fx_a`, generated case `gen0180`, seed `7089733659915066011`;
+  `fx_d_guess`): rail 1, the other rail a bicubic x linear B-spline patch offset by `0.391`,
+  extension factor `0.1`. The other rail's v guess was `2.3112246736941722e-1` (C++) against
+  `2.3103818605745594e-1` (Rust). Traced with prints on both sides: the
+  `rpSrf2Offset->LocalPointSolve` in the grown domain `[-0.1, 1.1]^2` leaves the base domain,
+  so its first evaluation there extends the base (`sm_ExtendSurface`, G1 ruled, to
+  `[-1.1, 1] x [0, 1]`; the extension's points agree bit for bit). Upstream's `const`
+  evaluators store it in `m_pExtendedSurface` (`SmOffsetSurface.cpp:710-713`, `:1064-1068`),
+  so from then on the offset's `GetNaturalUVDomain()` is the extended one. The solve ends on
+  the grown `u = -0.1` boundary; the read that differed is most likely the boundary step of
+  `LocalPointSolve_1`, which clamps the iso parameter into the surface's natural domain
+  (`surface_point_solve/p3.rs`): `-0.1` upstream, `0` in Rust, whose `&self` evaluators
+  dropped the extension after each call (the domain stayed `[0, 1]^2`).
+  Fix in `surface.offset_surface`: the `&self` evaluators keep the extension they make in a
+  pending slot (a `Cell`) that supersedes the stored one (natural domain, knots, later
+  evaluations, copies) until a `&mut self` method folds it in; `offset_local_point_solve`
+  hands an extension made on its copy back to the solver's offset. Factor `0` (no
+  extension) and `0.5` (the solve stays inside the base domain) were unaffected. The same
+  fix resolved the point-on-plane case `gen0386` once `SmFilletSphereSolveENFO::Evaluate`
+  was wired. `blend.fillet_custom_solver`, `blend.fillet_standard_solver_p1` and
+  `blend.fillet_solver_p1` are unchanged by it (0 failed).
+- **ReCalcFilletGeom (ported, PR #439).** `VariableRadiusFs::re_calc_fillet_geom` takes the
+  pseudo B-rep its fillet geometry lives in (as `blend.fillet_solver_p1` does since #303) and
+  ports the whole routine: the rail walk over the first geometry's rails (unprocessed, mate
+  and rail-x-extended-edge-use vertices skipped), the projection of the rail-end points on
+  the reference curve and their sorted, de-duplicated insertion, `SetupOffsetExtension` and
+  `SmFilletIntersector::DoLawIntersection`, whose points are written back to the vertex
+  uses. `DoLawIntersection` evaluates the law first (`SmFilletLaw::Evaluate`,
+  `UNPORTED(blend.fillet_executive_p1)`), so a case with exactly two points defers there;
+  0, 1, 3 or 4 points (`SM_ERR`), a missing reference curve or rail (`SM_ERR_NULL_POINTER`)
+  and a zero point tangent (`Unitize`, `SM_ERR_INVALID_INPUT`) compare. The call runs on the
+  base intersector: `DISPATCH GAP` for `SmFilletIntersector`'s overrides (the
+  `blend.fillet_intersector` "Virtual overrides" note above). Harness: the `recalc` op
+  (shim `blend_fillet_standard_solver_p2_static.inc`, included by
+  `blend_fillet_geom_p1.cpp` to build the geometry with its `Model`) constructs a real
+  `SmVariableRadiusFS`, pins its offsets and replaces its first geometry by the Model's.
+- **Upstream solvers start with one fillet geometry.** `SmFilletSolver()` adds
+  `new SmFilletGeom(this)` to `m_vFilletGeoms` (`SmFilletSolver.cpp:65`), so after any
+  derived constructor `m_vFilletGeoms.GetSize() == 1`; Rust's `FilletSolver::new` leaves it
+  out (`FilletSolver::new_in` / `add_constructor_fillet_geom` add it, #303). A shim that
+  `Add`s a geometry to a constructed solver puts it at index 1, not 0 (the first `recalc`
+  harness did, and every case read the constructor's rail-less geometry: `NER(pRail)`).
+- **StepSolve (stub kept, justified).** `SmSurfaceSurfaceFS::CalcFilletGeom` calls
+  `SmFilletSolver::StepSolve` (`blend.fillet_solver_p3`, partial since #236).
+  `FilletSolver::step_solve` dispatches on the solver's virtuals through
+  `fillet_solver::p1::FilletSolverOps`, which `SurfaceSurfaceFs` does not implement yet
+  (its `LoadJacobian`, `LoadInitialValues`, `GetJacobianSize`, `SetupOffsetValues`,
+  `SetupOffsetExtension` override and `GetSolverType`). Wiring it needs that impl; it would
+  add no compared case now: right after `StepSolve` the tail calls
+  `SmFilletExecutive::GetPseudoBrep` (`UNPORTED(blend.fillet_executive_p1)`), and the `ss`
+  shim runs `CalcFilletGeom` only to its parallel-normal exit (past it upstream dereferences
+  the solver's `NULL` executive). Follow-up with the executive port.
+- **FinishConstruction (stub kept, justified).** The `SmConstantDistanceFS` and
+  `SmVariableRadiusFS` constructors (and upstream's `SmConstantRadiusFS` surface
+  constructor under `SmSurfaceSurfaceFS`) end with `FinishConstruction()`. Because of the
+  constructor's default geometry above, upstream it is not a no-op: it installs copies of
+  the two offsets into that geometry (`SmFilletGeom::SetOffsetSurface`). It changes nothing
+  on the solver, and nothing these units port reads that geometry's offsets. Wiring it needs
+  the constructors to take the pseudo B-rep and the solver's id (as `FilletSolver::new_in`)
+  and to add the default geometry first; `blend.fillet_standard_solver_p1`'s
+  `SmConstantRadiusFS` constructors, which these build on, do not take them yet either. The
+  three sites keep `UNPORTED(blend.fillet_geom_p1)` comments pointing here.
+- **Stacked on #303 (2026-10-21).** PR #265 was closed unmerged and continued in PR #439,
+  which merges PR #303 (tdamsma, `blend.fillet_solver_p1` glue: it carries #192 and
+  replaces `FilletGeomRef` by `FilletGeomId` with the pseudo B-rep threaded through
+  `FilletSolverOps`) instead of #192; #265's WIP also carried froglemonade2's #192 commit
+  `f676c2e8`, which #303 lacks. The custom solvers' intersector adapters gained #303's
+  four geometry setters (delegating to the base).
+- **Stacked on #192 (2026-10-20).** The PR merges PR #192 (`blend.fillet_solver_p1`):
+  one `FilletSolver` base, `FilletSurfaceGenerator::Circular`/`BlendCurve` wrapping
+  p1's generator structs (continuity `u32`), `ConstantRadiusAssistedFs`'s
+  `FilletSolverOps` (whose `IsKindOf` / `LoadInitialValues` this unit wires).
+  `PointOnPlaneSolve` dispatches on the solver's class through that trait;
+  `blend.fillet_intersector`'s `FilletSolverOps::point_on_plane_solve` is a required
+  method (as in PR #249) implemented for `ConstantRadiusAssistedFs`, `EiffelTowerFs`
+  and `SecantConstantRadiusFs`. `GuessPointOnPlaneSolve` runs on the solver itself
+  (`&mut`), so its extensions stay on the solver's offsets.
+- **Executive adapter stubs (kept, justified).** `blend.fillet_executive_p3`'s
+  `ExecutiveAccess` (`fillet_executive/p3.rs`) names this unit at four places: the
+  `SmConstantDistanceFS`, `SmVariableRadiusFS` and `SmSurfaceSurfaceFS` constructors in the
+  default `new_fillet_solver`, and the `SmSurfaceSurfaceFS::CalcFilletGeom` dispatch note on
+  `calc_fillet_geom`. The trait does not own the solvers: a handle `O` names an object in the
+  adapter's own arena, and the only constructor the trait delegates is
+  `new_constant_radius_solver` (`constant_radius_from_edgeuse` on the adapter's B-rep).
+  The three constructors need the same arena slot, B-rep access and solver enum, which exist
+  in neither the library nor the two runners' adapters (`blend_fillet_executive_p2.rs` keeps
+  constant-radius solvers only; `blend_fillet_executive_p3.rs` keeps none). The library
+  half is ported here: `ConstantDistanceFs::from_edgeuse`, `VariableRadiusFs::from_edgeuse`,
+  `SurfaceSurfaceFs::new` and `SurfaceSurfaceFs::calc_fillet_geom`; an adapter that stores
+  these solvers calls them. Wiring needs a solver arena in the executive adapters, which
+  is the work of `blend.fillet_executive_p2` / `_p3`'s follow-up, not of this unit.
+- Fixtures `fx_*` in `fixtures/blend.fillet_standard_solver_p2/cases.json` keep the inputs.
 
 ## primitive.primitive_creation_p1 (PR #213, 2026-10-17; partial)
 
@@ -13848,6 +14100,19 @@ guarded in `offset.offset_geometry_creation`; the fix belongs to the curve cache
   tessellation, before any intersection test, as in `fuzz00504`.
 - **Status.** Open, with `fuzz00504`. Reproduce with the fuzz output file as a fixture and
   the tolerance set to any accepted value.
+- **Difftest `graph()` compared arena records upstream deletes (topology.brep_p3, PR #204).** The shared
+  difftest helper `graph()` / `Canon::of` (`crates/difftest/src/units/boolean_merge_p1.rs`, used by
+  several runners) counted raw arena lengths and appended the records its walk did not reach, while the
+  C++ side is a fresh import of the shim's export walk, which emits only live objects. Upstream deletes
+  records the Rust arenas keep, unlinked (topology.brep_p2's documented deviation: "deleted records ...
+  stay in the arena, unlinked", e.g. `MakeEdgeVertexTopology` deleting a vertex shell's vertex use,
+  SmBrep.cpp:13850). It surfaced when #339 wired `GetInfiniteRegion` into topology.brep_p5, so
+  `CreateWireEdgeFromCurve` (op 13) ran for the first time: 5 vertex uses vs 4, geometry 29 vs 27, graph
+  57 vs 54, with equal topology. `graph()` now numbers, compares and counts only the records the walk
+  reaches from the B-rep's roots (regions and edge list, as the export walk): reachability is the
+  definition of the B-rep's content upstream, and a record that is wrongly still linked is reached and
+  compared. The unreached count is a Rust-side report diagnostic (`diagnostics.unreached_records`,
+  never compared) so leaks stay visible.
 
 ## query.brep (B-rep boxes, `Point3DClassify`, decimation attributes, `SmApiEvaluateSurface*`; PR #329, takeover of #101, 2026-10-21; partial, no disagreements)
 
@@ -14072,6 +14337,45 @@ stitching still have their documented dependencies; merge p3/p4 remain paired
 with the missing p2 merge constructor. Final native/CI evidence is recorded on
 the tested PR head; no tolerance or absolute floor is relaxed.
 
+## topology.brep_p3 — `OrientTrimmedSurfaces` SwapUV cases defer under `harness:surface-notify-identity` (PR #204, 2026-10-21)
+
+- **Root cause.** `SmFace::SwapUV` calls `pSurface->SwapUV()`. `SmBSplineSurface::SwapUV`
+  rebuilds the surface with `SetCanonical`, which notifies `SM_NO_PRE_EDIT` /
+  `SM_NO_POST_EDIT` on the surface itself (`SmBSplineSurface.cpp:4585` / `:4592`,
+  `(this, SM_NO_GET_OWNER(this) = NULL, NULL)`). `SmOffsetSurface::SwapUV` forwards to its
+  base surface, and `SmSrfInVolume::SwapUV` notifies itself. So every upstream swap
+  sends a geometry `POST_EDIT`. The tracker records it and, through the surface's
+  owner, puts the face in its `Chg` list. A Rust `Surface` has no notification
+  identity (a `Curve` has its `IdentitySlot`), so the port cannot send that event.
+  Found when #364 (#239 `topology.face_p4`) let the orient fixtures reach `SwapUV`: 31
+  `orient_*_swap0` cases, 29 with one swap and 2 with two, differed only in the
+  tracker's event list (`orient_Mouse_swap0`: C++ 577 values, Rust 557, i.e. one
+  `Chg` entry and one geometry event per swap).
+- **Fixed in the same round.** The face's own `PRE_EDIT` / `POST_EDIT` now go through the
+  caller's environment (`face::p1::swap_uv_with_notifications`) and carry
+  `(this, NULL, NULL)`: `SM_NO_GET_BREP(this)` is a null pointer (`SmTypes.h:659`).
+- **Deferral.** The `topology.brep_p3` runner defers an `Orient` case exactly when
+  `SmFace::SwapUV` ran (the face's `POST_EDIT` is in the tracker's events). Orient cases
+  that swap nothing are still compared in full. The whole case defers: its face and
+  topology values share one output vector with the tracker's lists, and no case
+  boundary separates them.
+- **Follow-up.** Co-port a notification `IdentitySlot` onto `Surface` (owned by
+  `surface.surface_p1`, as `Curve`'s). Send the surface's `PRE/POST_EDIT` around the
+  surface swap in `swap_uv_with_notifications`. Have the runner issue each face
+  surface's identity before the op, with the face as owner for the tracker's owner
+  walk (as it does for edge curves). Then remove the deferral.
+- **Update (re-check of `766472a1`).** The whole-case deferral was decided from the
+  Rust side alone, so a Rust-only wrong swap would have been hidden, and the 31 cases
+  compared nothing. `harness:surface-notify-identity` is gone. Both the shim and the
+  runner now end an `Orient` output with a trailer: each pre-op face's `SmFace::SwapUV`
+  `POST_EDIT` count from that side's own tracker events, the face count, and the
+  tracker's offset. The runner splits it into `out` (status, flag, face domains and
+  upward face uses, counts), `swapped` and `tracker`. `out` and `swapped` are always
+  compared. Only a side whose own events show a swap leaves out `tracker`, so a swap on
+  one side only fails on `swapped`, and on `tracker`'s presence too.
+- **MakeWireEdge (above): Shared is wireable.** `MergeContext::Shared(&mut Kernel)` does
+  carry a mutable kernel, so that path could be wired now. Only `Split` needs the
+  signature change. Both are left for the follow-up.
 **Resolved (wire/curve-class-p4, PR #365):** both back-edges are now wired.
 
 - The 4 `ConnectIntervals` disagreements are upstream undefined behaviour, not a port
@@ -14381,6 +14685,23 @@ operation, not to the whole B-rep.
   536 deferred, 0 failed, unchanged (its face paths go through the unported
   `topology.brep_p8` and `primitive_creation_p*`).
 
+## Green-unit coverage pass (2026-10-21, `tests/green-coverage`)
+
+- An llvm-cov run of `difftest --green` (solidcore 79.8% of lines executed; green units
+  93.1%, partial 70.8%) listed the ported spans no case ran. 458 cases in
+  `fixtures/<unit>/coverage.json` (44 green units) now execute many of them, each citing the
+  upstream branch and the Rust line. Spans classified as Rust-only, defensive or unreachable
+  from upstream callers were left alone. Recipe: build the difftest binary with
+  `RUSTFLAGS="-C instrument-coverage"` into its own target dir, run `--green` with
+  `LLVM_PROFILE_FILE` set, `llvm-profdata merge` and `llvm-cov export` (rustup
+  `llvm-tools`), ignoring the difftest and ffi crates.
+- **`curve.composite_curve_p2`: a segment transition code above 13 in a composite DB
+  record.** Upstream reads it into `SmContinuityType` unchecked (14 and 15 are within the
+  enum's value range, so not undefined) and carries it along; Rust refuses the record with
+  `InvalidInput` ("transition code outside SmContinuityType", `composite_curve/p2.rs`), so a
+  crafted file reads in C++ and fails in Rust. Left as a deliberate deviation (no fixture
+  holds such a code; the generators never write one).
+
 ## Upstream prog_test parity cases (2026-10-21, `tests/upstream-parity`): what they found
 
 New fixtures replicate upstream prog_test calls in `surface.surface_p2` (`ssi_adv.json`,
@@ -14397,9 +14718,9 @@ New fixtures replicate upstream prog_test calls in `surface.surface_p2` (`ssi_ad
   where upstream's virtual call reaches `SmAdvSurfaceIntersector::ComputeSingularityPoint`
   (`SmAdvSurfaceIntersector.cpp:116`), so `FindBoundaryStartPoints` skips those points and
   traces stop at them. PR #140 adds this dispatch (`advanced` flag); on #140's head all 56
-  pairs pass or defer (0 failures). The eight files are listed in
-  `harness/fixturegen/ssi_adv.py` `PENDING_PR140`; remove the list and regenerate once #140
-  is on `main`.
+  pairs pass or defer (0 failures). The eight files are back in the fixture (all 56 pairs;
+  on #140's head at `c70653a63` they pass, 545 to 5679 values each), so this unit fails on
+  `main` until #140's dispatch lands.
 - **`surface.surface_p11` `LiftCurve` `PS_lift_crv2` on `PS_lift_srf2`: fixed** (case
   `lift_crv2_kinked_uv_trim_curve` added): `sm_IntersectAndSplit`'s plane intersection
   solutions named no object, so `IdenticalSolutions` merged only within `100 * SM_EFF_ZERO`
@@ -14568,6 +14889,9 @@ stitching still have their documented dependencies; merge p3/p4 remain paired
 with the missing p2 merge constructor. Final native/CI evidence is recorded on
 the tested PR head; no tolerance or absolute floor is relaxed.
 
+## Batch shepherd-2 (#204 + #72 after #222/#233/#250): primitive entry points not wired yet (2026-10-21)
+
+#250/#233 (primitive.primitive_creation_p2/p3) and #204 (topology.brep_p3) were each written assuming the other was missing. After both landed, the `SmApiCreate*` entry points in `primitive::api_primitives`, `sweep::api_brep` and `sweep::api_surfaces` build the new B-rep (`brep::p3::new_brep` / `Brep::new_with_infinite_region`) and then return `Unported` at the `SmPrimitiveCreation` call. Those units are partial now, so these calls should be wired through `PrimitiveCreation` and its access traits in a follow-up. The same applies to `primitive_creation::p1::primitives::new_brep` (still `UNPORTED(topology.brep_p3)`) and `create_face` (`UNPORTED(topology.brep_p8)`), and to `create_blend_primitive`'s `CreateFaceFromSurface`. No case changes outcome: the Rust side defers where it used to, only at a later call.
 
 ## blend.fillet_solver_p3 (`SmFilletSolver.cpp` part 3: `StepSolve`, `SplitAndTrimFilletSurface`, `ProcessFullRollOver`, ...; PR #236, 2026-10-18; partial, no disagreements)
 
