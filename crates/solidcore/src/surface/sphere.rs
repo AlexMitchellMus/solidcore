@@ -944,6 +944,7 @@ impl Sphere {
             SurfaceKind::BSpline(_)
             | SurfaceKind::Cone(_)
             | SurfaceKind::Torus(_)
+            | SurfaceKind::SurfOfExtrusion(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::SrfInVolume(_)
