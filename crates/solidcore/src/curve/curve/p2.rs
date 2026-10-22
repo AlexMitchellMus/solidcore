@@ -589,6 +589,39 @@ impl Clone for Curve {
     }
 }
 
+impl Curve {
+    /// Exact recursive copy after the caller validates the complete geometry graph.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        let kind = match &self.kind {
+            CurveKind::BSpline(c) => CurveKind::BSpline(c.clone_exact()),
+            CurveKind::Hermite(c) => CurveKind::Hermite(*c),
+            CurveKind::Hyperbola(c) => CurveKind::Hyperbola(Hyperbola {
+                base: c.base.clone_exact(),
+                position: c.position,
+                anal_domain: c.anal_domain,
+                semi_axis: c.semi_axis,
+                semi_image_axis: c.semi_image_axis,
+            }),
+            CurveKind::Projected(c) => CurveKind::Projected(c.clone_exact_bounded()),
+            CurveKind::Iso(c) => CurveKind::Iso(c.clone_exact_bounded()),
+            CurveKind::Offset(c) => CurveKind::Offset(c.clone_exact_bounded()),
+            CurveKind::Conic(c) => CurveKind::Conic(*c),
+            CurveKind::CrvInVolume(c) => CurveKind::CrvInVolume(Box::new(c.clone_exact_bounded())),
+            CurveKind::CrvOnSurf(c) => CurveKind::CrvOnSurf(Box::new(c.as_ref().clone())),
+            CurveKind::Line(c) => CurveKind::Line(c.clone_exact_bounded()),
+            CurveKind::Ellipse(c) => CurveKind::Ellipse(c.clone_exact_bounded()),
+            CurveKind::Parabola(c) => CurveKind::Parabola(c.clone_exact_bounded()),
+            CurveKind::Composite(c) => CurveKind::Composite(c.clone_exact_bounded()),
+        };
+        Self {
+            kind,
+            owner: self.owner,
+            // an evaluation snapshot is never notified under the original's identity
+            notify_identity: IdentitySlot::new(),
+        }
+    }
+}
+
 impl From<BSplineCurve> for Curve {
     fn from(c: BSplineCurve) -> Self {
         Self::new(CurveKind::BSpline(c))
@@ -1562,14 +1595,25 @@ impl Curve {
     /// # Errors
     ///
     /// `SM_ERR` for kinds without the edit; those of [`BSplineCurve::transform`].
+    /// A volume append is refused if it would exceed 64 whole-geometry levels.
     pub fn transform(
         &mut self,
         k: &Kernel,
         rotate_n_move: &Axis2Placement,
         scale: Option<Vec3>,
     ) -> Result<()> {
+        self.transform_at_depth(k, rotate_n_move, scale, 0)
+    }
+
+    pub(crate) fn transform_at_depth(
+        &mut self,
+        k: &Kernel,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+        depth: usize,
+    ) -> Result<()> {
         match &mut self.kind {
-            CurveKind::Composite(c) => c.transform(k, rotate_n_move, scale),
+            CurveKind::Composite(c) => c.transform_at_depth(k, rotate_n_move, scale, depth),
             CurveKind::BSpline(c) => c.transform(rotate_n_move, scale),
             CurveKind::Hyperbola(c) => c.transform(rotate_n_move, scale),
             CurveKind::Ellipse(c) => c.transform(k, rotate_n_move, scale),
@@ -1578,9 +1622,9 @@ impl Curve {
             | CurveKind::Conic(_)
             | CurveKind::Iso(_)
             | CurveKind::Offset(_) => Err(base_err()),
-            CurveKind::Projected(c) => c.transform(k, rotate_n_move, scale),
-            CurveKind::CrvInVolume(c) => c.transform(rotate_n_move, scale),
-            CurveKind::CrvOnSurf(c) => c.transform(rotate_n_move, scale),
+            CurveKind::Projected(c) => c.transform_at_depth(k, rotate_n_move, scale, depth),
+            CurveKind::CrvInVolume(c) => c.transform_at_depth(rotate_n_move, scale, depth),
+            CurveKind::CrvOnSurf(c) => c.transform_at_depth(k, rotate_n_move, scale, depth),
             CurveKind::Line(c) => c.transform(rotate_n_move, scale),
         }
     }
@@ -4034,7 +4078,7 @@ mod tests {
         let mut on_surface = CrvOnSurf::new(
             &Kernel::default(),
             noncanonical_evaluation_curve(2),
-            patch,
+            Surface::from(patch),
             None,
             3,
         )
@@ -4052,7 +4096,10 @@ mod tests {
             evaluation_bspline(c.uv_curve()).gw_nurb().unwrap().knots()[3],
             0.5 + 1e-14
         );
-        assert_eq!(c.surface().gw_nurb().unwrap().u_knots()[1], 1e-14);
+        let SurfaceKind::BSpline(base) = c.surface().kind() else {
+            panic!("expected B-spline surface");
+        };
+        assert_eq!(base.gw_nurb().unwrap().u_knots()[1], 1e-14);
     }
 
     #[test]

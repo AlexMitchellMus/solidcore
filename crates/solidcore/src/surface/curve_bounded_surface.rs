@@ -114,6 +114,24 @@ impl From<CurveBoundedSurface> for Surface {
 }
 
 impl CurveBoundedSurface {
+    /// Exact evaluation copy; the caller validates the complete geometry graph first.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            basis: Box::new(self.basis.clone_exact_bounded()),
+            boundaries_3d: self
+                .boundaries_3d
+                .iter()
+                .map(Curve::clone_exact_bounded)
+                .collect(),
+            boundaries_uv: self
+                .boundaries_uv
+                .iter()
+                .map(Curve::clone_exact_bounded)
+                .collect(),
+            implicit_outer: self.implicit_outer,
+        }
+    }
+
     /// An evaluation copy retaining exact basis data, with Surface's 64-level bound.
     pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
         Ok(Self {

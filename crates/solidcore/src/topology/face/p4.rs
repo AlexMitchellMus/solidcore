@@ -59,10 +59,10 @@
 //! - **`FindVertexSector`'s interval** starts as the curve's natural interval and takes
 //!   the orientation's ends through `SetMinMax`, whose failure on a reversed pair is
 //!   ignored as upstream (the natural interval stays).
-//! - **`FindVertexSector` of a 2D curve** lifts it onto the face's surface as a
-//!   [`CrvOnSurf`], which needs a B-spline surface here (upstream's `SetAll` takes any
-//!   `SmSurface`); a `Plane` face is [`SolidError::InvalidInput`]. The shim always passes
-//!   the edge's 3D curve, so this branch is not compared.
+//! - **`FindVertexSector` of a 2D curve** lifts it onto an evaluation snapshot of the
+//!   face's concrete surface as a [`CrvOnSurf`] (upstream's `SetAll` takes any
+//!   `SmSurface`). The shim passes the edge's 3D curve, so the UV lift is covered by
+//!   a Rust regression rather than the native corpus.
 //! - **`FindVertexSector`** returns [`VertexSector`]. The out-of-scope `sSurfDomain` of
 //!   the 3D branch is reproduced: it is the natural UV domain only on the pass that first
 //!   fetches the poles, and an empty extent on later passes, as upstream (a block-local
@@ -125,7 +125,7 @@ use crate::query::face::p2::{
 };
 use crate::surface::surface::p5::{SS_NONE, SS_UMAX, SS_UMIN, SS_VMAX, SS_VMIN};
 use crate::surface::surface::p8::{FaceSolveCache, HeldSolveCache};
-use crate::surface::surface::{Surface, SurfaceKind};
+use crate::surface::surface::Surface;
 use crate::surface::surface_cache::SurfaceCache;
 use crate::surface::trim_srf_cache::TrimSrfCache;
 use crate::surface::volume::Volume;
@@ -995,7 +995,7 @@ fn face_surface(b: &Brep, f: FaceId) -> Result<Surface> {
 /// # Errors
 ///
 /// [`SolidError::NotFound`] for a dangling id; [`SolidError::InvalidInput`] for a 2D
-/// curve on a face without surface (or a surface that is not a B-spline surface), a
+/// curve on a face without surface, a
 /// vertex use without edge use, an edge use without edge or CW edge use, a closed
 /// surface without seam curve, and a curve tangent upstream reads uninitialised; the
 /// errors of the evaluations upstream checks (`SER`); [`SolidError::Unported`]
@@ -1025,12 +1025,19 @@ pub fn find_vertex_sector(
     // work in 3d: when cr3DCurve's domain_dim == 2, use it as an SmCrvOnSurf object
     let lifted;
     let curve: &Curve = if curve_3d.dim() == 2 {
-        let SurfaceKind::BSpline(s) = face_surface(b, f)?.kind().clone() else {
-            return Err(null(
-                "FindVertexSector: a curve on a surface needs a B-spline surface",
-            ));
-        };
-        lifted = Curve::from(CrvOnSurf::new(k, curve_3d.clone(), s, None, 0)?);
+        let surface = b
+            .face(f)?
+            .surface
+            .as_ref()
+            .ok_or_else(|| null("FindVertexSector: face without surface"))?
+            .clone_for_evaluation()?;
+        lifted = Curve::from(CrvOnSurf::new(
+            k,
+            curve_3d.clone_for_evaluation()?,
+            surface,
+            None,
+            0,
+        )?);
         &lifted
     } else {
         curve_3d
@@ -2106,4 +2113,84 @@ pub fn has_seam_problem_in_brep<O: LoopObject>(
 ) -> Result<SeamCheck<O>> {
     let objects = BrepSeamObjects::new(k, b, f)?;
     has_seam_problem(k, b, f, &objects, opts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::math::{Point3, Vec3};
+    use crate::nurbs::b_spline_curve::BSplineCurve;
+    use crate::nurbs::nurbs_crv::allocate_nurb_curve;
+    use crate::surface::plane::Plane;
+    use crate::topology::{Faceuse, Loopuse, LoopuseStart, Vertexuse, VertexuseOwner};
+
+    #[test]
+    fn find_vertex_sector_lifts_uv_curve_on_plane_surface() {
+        let mut b = Brep::new();
+        let shell = b.add_shell().unwrap();
+        let face = b.add_face(shell).unwrap();
+        b.face_mut(face).unwrap().surface =
+            Some(Surface::from(Plane::from_normal(Point3::ZERO, Vec3::Z)));
+
+        let faceuse = b
+            .add_faceuse_record(Faceuse {
+                face: Some(face),
+                ..Faceuse::default()
+            })
+            .unwrap();
+        b.face_mut(face).unwrap().faceuse = Some(faceuse);
+        let loopuse = b
+            .add_loopuse_record(Loopuse {
+                faceuse: Some(faceuse),
+                ..Loopuse::default()
+            })
+            .unwrap();
+        b.faceuse_mut(faceuse).unwrap().loopuses.push(loopuse);
+        let vertex = b.add_vertex(Point3::ZERO).unwrap();
+        let vertexuse = b
+            .add_vertexuse_record(Vertexuse {
+                vertex: Some(vertex),
+                owner: VertexuseOwner::Loopuse(Some(loopuse)),
+                ..Vertexuse::default()
+            })
+            .unwrap();
+        b.loopuse_mut(loopuse).unwrap().start = LoopuseStart::Vertexuse(Some(vertexuse));
+        b.vertex_mut(vertex).unwrap().vertexuses.push(vertexuse);
+
+        let mut uv_data = allocate_nurb_curve(2, 2, 5).unwrap();
+        for (point, (u, v)) in
+            uv_data
+                .cpts_mut()
+                .iter_mut()
+                .zip([(0.1, 0.2), (0.5, 0.9), (0.9, 0.3)])
+        {
+            point.x = u;
+            point.y = v;
+            point.z = f64::MAX;
+            point.w = -f64::MAX;
+        }
+        uv_data
+            .knots_mut()
+            .copy_from_slice(&[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
+        let uv_curve = Curve::from(BSplineCurve::from_nurb(uv_data, 2, false));
+        let result = find_vertex_sector(
+            &Kernel::default(),
+            &mut b,
+            face,
+            FindVertexSectorArgs {
+                vertex,
+                curve: &uv_curve,
+                uv_curve: None,
+                param_at_vertex: 0.0,
+                param_ivl_end: 1.0,
+                orientation: OrientType::Same,
+                zone_tol_3d: 0.0,
+                validate_sector: false,
+                uv_space_okay: true,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.vertexuse, Some(vertexuse));
+    }
 }
