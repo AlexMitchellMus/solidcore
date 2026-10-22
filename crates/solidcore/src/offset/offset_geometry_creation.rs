@@ -746,48 +746,6 @@ impl<O: ClassObject, B: OffsetBrep<O>> SurfaceSolveContext<O> for OffsetSurfaceS
     }
 }
 
-/// An exact temporary evaluation copy of the non-compound curve kinds this
-/// adapter can borrow across mutable topology preparation. In particular the
-/// B-spline copy constructor's knot fix-up must not run on the solver's input.
-/// Compound kinds keep the existing bare-surface path until they can provide an
-/// exact evaluation copy; no topology is invented for them.
-fn curve_for_context_solve(curve: &Curve) -> Option<Curve> {
-    let kind = match curve.kind() {
-        CurveKind::BSpline(c) => CurveKind::BSpline(c.clone_exact()),
-        CurveKind::Line(c) => {
-            let mut copy = c.clone();
-            *copy.base_mut() = c.base().clone_exact();
-            CurveKind::Line(copy)
-        }
-        CurveKind::Ellipse(c) => {
-            let mut copy = c.clone();
-            *copy.base_mut() = c.base().clone_exact();
-            CurveKind::Ellipse(copy)
-        }
-        CurveKind::Hyperbola(c) => {
-            let mut copy = c.clone();
-            *copy.base_mut() = c.base().clone_exact();
-            CurveKind::Hyperbola(copy)
-        }
-        CurveKind::Parabola(c) => {
-            let mut copy = c.clone();
-            *copy.base_mut() = c.base().clone_exact();
-            CurveKind::Parabola(copy)
-        }
-        CurveKind::Hermite(c) => CurveKind::Hermite(c.clone()),
-        CurveKind::Conic(c) => CurveKind::Conic(c.clone()),
-        CurveKind::Projected(_)
-        | CurveKind::Iso(_)
-        | CurveKind::Offset(_)
-        | CurveKind::CrvInVolume(_)
-        | CurveKind::CrvOnSurf(_)
-        | CurveKind::Composite(_) => return None,
-    };
-    let mut copy = Curve::new(kind);
-    let _ = copy.set_owner(curve.owner(), None);
-    Some(copy)
-}
-
 fn surface_global_curve_intersect<O: ClassObject + SolutionObject>(
     k: &Kernel,
     geometry: &mut impl OffsetBrep<O>,
@@ -797,20 +755,12 @@ fn surface_global_curve_intersect<O: ClassObject + SolutionObject>(
     interval: &Extent1d,
     tol: f64,
 ) -> Result<SolutionArray<O>> {
-    let Some(c) = curve_for_context_solve(curve_of(geometry, curve)?) else {
-        return surface_of(geometry, surface)?.global_curve_intersect(
-            k,
-            [curve, surface],
-            domain,
-            curve_of(geometry, curve)?,
-            interval,
-            tol,
-        );
-    };
+    let c = curve_of(geometry, curve)?.clone_for_evaluation()?;
     let s = surface_of(geometry, surface)?.clone_for_evaluation()?;
     s.global_curve_intersect_with_context(
         k,
         [Some(curve), Some(surface)],
+        None,
         &mut OffsetSurfaceSolveContext(geometry),
         domain,
         &c,

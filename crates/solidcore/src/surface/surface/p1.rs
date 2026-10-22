@@ -26,6 +26,7 @@
 //! | [`Surface::calculate_bounding_box`], [`SurfaceBoxes`] | `CalculateBoundingBox` (base body)           |
 //! | [`Surface::approximate_size`]                     | `ApproximateSize`                                |
 //! | [`validate_surface_cache`], [`make_surface_cache`], [`make_trim_srf_cache`], [`cache_tolerances`] | `CacheMakeOrValidate` |
+//! | [`make_trim_srf_cache_with_face`], [`get_surface_cache_with_face`] | `CacheMakeOrValidate(SM_OC_TRIMSRF)`, `smsurf_GetSurfaceCache` of a face's surface |
 //! | [`Surface::compute_param_direction`]              | `ComputeParamDirection`                          |
 //! | [`Surface::evaluate_directional_derivs`]          | `EvaluateDirectionalDerivs`                      |
 //! | [`Surface::create_offset_surface`]                | `CreateOffsetSurface`                            |
@@ -68,7 +69,12 @@
 //!   whose face state the caller passes in). The members that query a cache
 //!   (`CalculateBoundingBox`, `GetDomainWithContinuity`, `CreateSilhouetteCurves`)
 //!   build one as `smsurf_GetSurfaceCache` would: the trimmed surface cache. The
-//!   debug cache counters are not modelled.
+//!   debug cache counters are not modelled. The owner of a face's surface is an
+//!   [`ObjectRef`] the surface cannot follow to the B-rep: a caller holding the face
+//!   builds the cache with [`make_trim_srf_cache_with_face`] /
+//!   [`get_surface_cache_with_face`], giving `GetFace()` as a
+//!   [`CacheFace`]; without it a face-owned surface's trimmed cache stops at
+//!   `GetFace` ([`SolidError::Unported`]).
 //! - **Silhouettes.** `CreateSilhouetteCurves` always computes both the 3D and the
 //!   UV curves (upstream's output arrays are optional) and returns them. It does not
 //!   copy the surface's `SM_AI_COLOR` attribute onto the traced curves: a free
@@ -144,9 +150,9 @@ use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::knots::Side;
 use crate::surface::offset_surface::{OffsetSurface, SS_UNKNOWN};
 use crate::surface::plane::Plane;
-use crate::surface::surface_cache::face_context::{FaceCacheContext, FaceQueries};
+use crate::surface::surface_cache::face_context::FaceQueries;
 use crate::surface::surface_cache::p1::{SurfaceCache, SurfaceCacheOptions};
-use crate::surface::trim_srf_cache::TrimSrfCache;
+use crate::surface::trim_srf_cache::{CacheFace, TrimSrfCache};
 use crate::topology::database_io::{DatabaseReader, FileType};
 
 use super::p2::{
@@ -945,6 +951,68 @@ pub fn make_trim_srf_cache<O: Copy + PartialEq>(
     Ok(cache)
 }
 
+/// [`make_trim_srf_cache`] for a surface owned by `face` (`GetFace()`): the tree build
+/// creates the face's UV trim curves and implants its boundary
+/// ([`TrimSrfCache::build_tree_with_face`]). `surface` is the face's surface (a copy:
+/// the face's B-rep is changed through `face` while the cache is built).
+///
+/// # Errors
+///
+/// As [`make_trim_srf_cache`], and those of the face reads.
+pub fn make_trim_srf_cache_with_face<O: Copy + PartialEq>(
+    k: &Kernel,
+    surface: &Surface,
+    handle: Option<O>,
+    face: &mut dyn CacheFace<O>,
+) -> Result<TrimSrfCache<O>> {
+    let tol = cache_tolerances(k, surface)?;
+
+    // construct new SurfaceCache Object
+    let mut cache = TrimSrfCache::new(surface.clone_for_evaluation()?, cache_options(tol));
+    cache.base_mut().set_surface_handle(handle);
+    if let Some(owner) = surface.face()? {
+        cache.bind_face(owner, face.face(), face.zone_tol_3d(k, face.face())?)?;
+    }
+
+    // when we are not doing a boolean operation
+    //  - during a boolean operation delay surface cache tree construction
+    //    until some function calls SmSurfaceCache::GetTree()
+    if !k.context.doing_boolean() {
+        // build the surface subdivision tree annotated with UVTrimBoundary classifications
+        cache.build_tree_with_face(k, face)?;
+    }
+    Ok(cache)
+}
+
+/// `smsurf_GetSurfaceCache` of a surface owned by `face`: its trimmed surface cache
+/// ([`make_trim_srf_cache_with_face`]), else its surface cache, built fresh and
+/// wrapped as it is ([`TrimSrfCache::from_base`]: no trimmed cache state, so the face
+/// classification does not consult it, as upstream finds no trimmed cache then).
+///
+/// # Errors
+///
+/// As [`get_surface_cache`].
+pub fn get_surface_cache_with_face<O: Copy + PartialEq>(
+    k: &Kernel,
+    surface: &Surface,
+    handle: Option<O>,
+    face: &mut dyn CacheFace<O>,
+) -> Result<TrimSrfCache<O>> {
+    // if possible - get or make TrimSrfCache
+    match make_trim_srf_cache_with_face(k, surface, handle, face) {
+        Ok(c) => Ok(c),
+        Err(
+            e @ (SolidError::Unported { .. }
+            | SolidError::InvalidInput { .. }
+            | SolidError::NotFound { .. }),
+        ) => Err(e),
+        // else - get or make SurfaceCache
+        Err(_) => Ok(TrimSrfCache::from_base(make_surface_cache(
+            k, surface, handle,
+        )?)),
+    }
+}
+
 /// `smsurf_GetSurfaceCache`: the surface's trimmed surface cache, else its surface
 /// cache, built fresh.
 ///
@@ -970,6 +1038,10 @@ pub fn get_surface_cache<O: Copy + PartialEq>(
 /// preparation is mutable (it may attach UV trims); classification borrows the
 /// prepared topology afterward. One context can serve several surfaces of the
 /// same B-rep without keeping overlapping mutable borrows in their caches.
+/// Preparation may update trims and tolerance metadata, not the input surface's
+/// evaluated geometry or the intersected 3D curve. Numerical evaluation uses the
+/// returned cache's exact surface copy, refreshed with the final face tolerance.
+/// Retained caches are valid only for the same edit-free geometry/topology state.
 pub trait SurfaceSolveContext<O: Copy + PartialEq> {
     /// Builds this surface's cache at the point the numerical operation first
     /// requests it, with its decomposition tree ready for the solve.
@@ -985,28 +1057,6 @@ pub trait SurfaceSolveContext<O: Copy + PartialEq> {
 
     /// Read-only classification of the topology prepared by this context.
     fn face_queries(&self) -> Option<&dyn FaceQueries<O>>;
-}
-
-/// Constructs a trimmed cache with explicit owning-face topology. Like
-/// [`make_trim_srf_cache`], construction during a Boolean operation is delayed;
-/// the caller then uses [`TrimSrfCache::build_tree_with_context`] on first access.
-///
-/// # Errors
-/// Those of the tolerance queries, identity checks and trim-cache construction.
-pub fn make_trim_srf_cache_with_context<O: Copy + PartialEq>(
-    k: &Kernel,
-    surface: &Surface,
-    handle: Option<O>,
-    context: &mut FaceCacheContext<'_, O>,
-) -> Result<TrimSrfCache<O>> {
-    let tol = cache_tolerances(k, surface)?;
-    let mut cache = TrimSrfCache::new(surface.clone_for_evaluation()?, cache_options(tol));
-    cache.base_mut().set_surface_handle(handle);
-    cache.bind_face_context(context)?;
-    if !k.context.doing_boolean() {
-        cache.build_tree_with_context(k, context)?;
-    }
-    Ok(cache)
 }
 
 // ---- bounding boxes -------------------------------------------------------------------
@@ -2904,7 +2954,19 @@ pub fn is_point_valid_with<O: Copy + PartialEq>(
     if !is_surface_cache_owner(owner) {
         return Ok(true);
     }
-    Ok(ignored(cache.point_test_with(k, uv, tolerance, faces))?.map_or(true, |(valid, _)| valid))
+    Ok(
+        ignore_native_classification(cache.point_test_with(k, uv, tolerance, faces))?
+            .is_none_or(|(valid, _)| valid),
+    )
+}
+
+/// A failed native classification has caller-specific keep/remove behavior; a
+/// malformed identity or dangling Rust arena reference is not a native status.
+pub(super) fn ignore_native_classification<T>(result: Result<T>) -> Result<Option<T>> {
+    match result {
+        Err(error @ (SolidError::InvalidInput { .. } | SolidError::NotFound { .. })) => Err(error),
+        native => ignored(native),
+    }
 }
 
 /// `sm_IsNodeValid`: false only when `node` of a surface cache's tree (owner kind

@@ -1,25 +1,27 @@
-//! Operation-scoped access to the mutable B-rep and face queries needed by trim caches.
+//! Handle mapping and immutable operation-scoped face queries for trim caches.
 //!
 //! Upstream: `source/SMLib/src/SmTrimSrfCache.cpp`, `source/SMLib/src/SmFace.cpp`.
 //!
 //! | Rust | Upstream |
 //! |------|----------|
-//! | [`FaceCacheContext`] | `GetFace()->GetBrep()` during `SmTrimSrfCache::BuildTree` |
+//! | [`MappedCacheFace`] | `GetFace()->GetBrep()` during `SmTrimSrfCache::BuildTree` |
 //! | [`FaceQueries`], [`PreparedFaceQueries`] | `SmFace::PointClassify`, `SmTol::GetZoneTol3d` |
 //!
-//! Deviations: borrowed operation contexts replace topology pointers and virtual
-//! calls; typed entities are mapped by the caller, never decoded from object keys.
-//! No topology is retained by a cache; callers provide this borrowed context only while
-//! preparing a cache or servicing a face classification.
+//! Deviations: [`MappedCacheFace`] only translates handles over the shared
+//! [`BrepCacheFace`] implementation of [`CacheFace`]; it does not duplicate topology
+//! construction. Both mappings are explicit and checked in both directions; object
+//! keys are never decoded as arena ids. No topology is retained by a cache.
 
 use core::fmt::{self, Debug};
 
 use crate::error::{EntityRef, Result, SolidError};
-use crate::geom::object::ObjectRef;
+use crate::geom::extent2d::Extent2d;
 use crate::intersect::point_class::PointClassification;
 use crate::kernel::Kernel;
 use crate::math::Point2;
-use crate::query::face::p2::{point_classify_prepared, PointClassifyOptions};
+use crate::nurbs::b_spline_curve::BSplineCurve;
+use crate::query::face::p2::{point_classify_prepared, BrepCacheFace, PointClassifyOptions};
+use crate::surface::trim_srf_cache::CacheFace;
 use crate::topology::{Brep, FaceId};
 
 /// Face operations needed by a trimmed surface cache.
@@ -41,29 +43,146 @@ pub trait FaceQueries<O>: Debug {
     /// Adapters must explicitly support these flags rather than dropping them.
     fn face_point_classify_fast_drop(
         &self,
-        _k: &Kernel,
-        _face: O,
-        _uv: Point2,
-        _src_tol: f64,
-    ) -> Result<(i32, Option<O>)> {
-        // UNPORTED(query.face_p2): fast-drop caller flags on an opaque adapter.
-        Err(SolidError::unported(
-            "SmFace::PointClassify fast-drop adapter",
-            "query.face_p2",
-        ))
+        k: &Kernel,
+        face: O,
+        uv: Point2,
+        src_tol: f64,
+    ) -> Result<(i32, Option<O>)>;
+}
+
+/// The shared B-rep cache-face adapter in a caller's handle space.
+///
+/// The mappings must be inverse for every entity used by the cache. The adapter
+/// checks that contract on every translation, rejecting aliases instead of
+/// decoding object keys or casting handles to typed ids.
+pub struct MappedCacheFace<'a, O> {
+    inner: BrepCacheFace<'a>,
+    face_handle: O,
+    handle_of: &'a dyn Fn(EntityRef) -> Result<O>,
+    entity_of: &'a dyn Fn(O) -> Result<EntityRef>,
+}
+
+impl<O> Debug for MappedCacheFace<'_, O> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MappedCacheFace")
+            .field("face", &self.inner.f)
+            .finish_non_exhaustive()
     }
 }
 
-/// Borrowed mutable B-rep context for preparing one face's trim cache.
-pub struct FaceCacheContext<'a, O> {
-    /// The mutable topology being prepared.
-    pub brep: &'a mut Brep,
-    /// Face whose surface is cached.
-    pub face: FaceId,
-    /// Maps a typed entity to its caller object key.
-    pub key_of: &'a dyn Fn(EntityRef) -> ObjectRef,
-    /// Resolves an entity to a caller handle.
-    pub handle_of: &'a dyn Fn(EntityRef) -> Result<O>,
+impl<'a, O: Copy + PartialEq> MappedCacheFace<'a, O> {
+    /// Wraps the shared adapter with explicit forward and reverse handle mappings.
+    ///
+    /// # Errors
+    ///
+    /// An invalid face, a failing mapping, or mappings that are not inverse.
+    pub fn new(
+        inner: BrepCacheFace<'a>,
+        handle_of: &'a dyn Fn(EntityRef) -> Result<O>,
+        entity_of: &'a dyn Fn(O) -> Result<EntityRef>,
+    ) -> Result<Self> {
+        inner.b.face(inner.f)?;
+        let entity = inner.face();
+        let face_handle = handle_of(entity)?;
+        if entity_of(face_handle)? != entity {
+            return Err(Self::mapping_error());
+        }
+        Ok(Self {
+            inner,
+            face_handle,
+            handle_of,
+            entity_of,
+        })
+    }
+
+    fn mapping_error() -> SolidError {
+        SolidError::invalid_input(
+            "surface::surface_cache::face_context::MappedCacheFace",
+            "handle and entity mappings are not inverse",
+        )
+    }
+
+    fn handle(&self, entity: EntityRef) -> Result<O> {
+        let handle = (self.handle_of)(entity)?;
+        if (self.entity_of)(handle)? != entity {
+            return Err(Self::mapping_error());
+        }
+        Ok(handle)
+    }
+
+    fn entity(&self, handle: O) -> Result<EntityRef> {
+        let entity = (self.entity_of)(handle)?;
+        if (self.handle_of)(entity)? != handle {
+            return Err(Self::mapping_error());
+        }
+        Ok(entity)
+    }
+
+    fn handles(&self, entities: Vec<EntityRef>) -> Result<Vec<O>> {
+        entities.into_iter().map(|e| self.handle(e)).collect()
+    }
+}
+
+impl<O: Copy + PartialEq> CacheFace<O> for MappedCacheFace<'_, O> {
+    fn face(&self) -> O {
+        self.face_handle
+    }
+
+    fn brep_editing_enabled(&self) -> Result<bool> {
+        self.inner.brep_editing_enabled()
+    }
+
+    fn set_brep_editing_enabled(&mut self, enabled: bool) -> Result<()> {
+        self.inner.set_brep_editing_enabled(enabled)
+    }
+
+    fn create_uv_trim_curves(&mut self, k: &Kernel) -> Result<()> {
+        self.inner.create_uv_trim_curves(k)
+    }
+
+    fn upward_loopuses(&self) -> Result<Vec<O>> {
+        self.handles(self.inner.upward_loopuses()?)
+    }
+
+    fn loopuse_edgeuses(&self, loopuse: O) -> Result<Vec<O>> {
+        self.handles(self.inner.loopuse_edgeuses(self.entity(loopuse)?)?)
+    }
+
+    fn loopuse_vertexuses(&self, loopuse: O) -> Result<Vec<O>> {
+        self.handles(self.inner.loopuse_vertexuses(self.entity(loopuse)?)?)
+    }
+
+    fn edgeuse_uv_trim_curve(&self, edgeuse: O) -> Result<Option<BSplineCurve>> {
+        self.inner.edgeuse_uv_trim_curve(self.entity(edgeuse)?)
+    }
+
+    fn vertexuse_uv_point(&mut self, k: &Kernel, vertexuse: O) -> Result<Point2> {
+        let entity = self.entity(vertexuse)?;
+        self.inner.vertexuse_uv_point(k, entity)
+    }
+
+    fn vertexuse_vertex_tolerance(&self, vertexuse: O) -> Result<f64> {
+        self.inner
+            .vertexuse_vertex_tolerance(self.entity(vertexuse)?)
+    }
+
+    fn zone_tol_3d(&self, k: &Kernel, object: O) -> Result<f64> {
+        self.inner.zone_tol_3d(k, self.entity(object)?)
+    }
+
+    fn natural_uv_domain(&self) -> Result<Option<Extent2d>> {
+        self.inner.natural_uv_domain()
+    }
+
+    fn point_classify(
+        &mut self,
+        k: &Kernel,
+        uv_point: Point2,
+        src_zone_tol_3d: f64,
+    ) -> Result<(i32, Option<O>)> {
+        let (class, entity) = self.inner.point_classify(k, uv_point, src_zone_tol_3d)?;
+        Ok((class, entity.map(|e| self.handle(e)).transpose()?))
+    }
 }
 
 /// Read-only face queries after UV trim preparation has finished.

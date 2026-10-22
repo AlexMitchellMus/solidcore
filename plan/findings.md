@@ -15993,6 +15993,35 @@ reported as the upstream limitation rather than a fictitious missing surface imp
 HANG-27 and the seeded extension-cache policy are unchanged. This remains a partial
 creator port, not complete constructive offset/shell or returned-B-rep certification.
 
+## surface.trim_srf_cache — face-owned trimmed caches (owning-face handle, 2026-10-22)
+
+`SmSurface::GetFace()` of a trimmed surface cache was the largest deferral bucket
+(`SmFace handle of a surface's face`, 1971 CI cases). The cache now reaches its face
+through `surface::trim_srf_cache::CacheFace` (implemented over the B-rep by
+`query::face::p2::BrepCacheFace`): `BuildTree`'s face walk (`CreateUVTrimCurves`,
+loop uses, edge and vertex uses, `ComputeUVPoint`, vertex tolerances), and
+`MarkFaceContainment` now dispatches to `SmTrimSrfCache::PointClassify` (the former
+DISPATCH GAP). Wired so far: `SmFace::Point3DClassify` (`query.face_p1`).
+
+Not wired, with the measured reason: `SmFace::GlobalLineIntersect`
+(`topology::face::p4`, 1118 `topology.face_p4` cases). Building the face's trimmed
+cache lazily for the surface's line solve (patch kept on branch
+`surface/face-line-intersect-wip` of the fork) turns 993 of them into passes, but
+19 fail, all lines through a singular point: `cone.smb` along the axis through the
+apex (`p=(0,0,0)`, `v=(0,0,±1)`: C++ solutions `u=15.307…, v=0` then `u=0, v=0`, Rust
+`u≈3.9e-33, v≈3.9e-31` then `u=15.307…`; a third solution has Rust `v=5.9e-31`
+against C++ `0`) and `surf_sphere150.smb` along the pole axis (`v=(1,0,0)`: C++ four
+solutions, Rust two, one per pole; with `bFireRay` the first `u` is C++ `0`, Rust
+`11.5099…`). The same Rust solve over an untrimmed cache gives the same
+counts and tiny nonzero `v`, so the difference sits in the LSI leaf solves at a
+singular point over the trimmed tree, not in the face reads; suspected: the trimmed
+tree's subdivision around the apex/pole vertex uses (`ImplantVertexuse`, first
+exercised with a real face here) or `sm_IsPointValid`, which upstream answers with
+`SmTrimSrfCache::PointTest` (a face classification) and the port with the base
+domain test. Cases (`topology.face_p4`): `cone.smb_0_f1_op19`, `cone.smb_1_f2_op19`,
+`cone.smb_f0_tol4867..4869`, `cone.smb_f1_tol4885..4887`, `cone.smb_f2_tol4903..4905`,
+`surf_sphere150.smb_0_f1_op17`, `surf_sphere150.smb_1_f2_op17`,
+`surf_sphere150.smb_f0_tol5302/5304`, `_f1_tol5320/5322`, `_f2_tol5338/5340`.
 ## offset.offset_geometry_creation — restored owning-face tolerance cache (PR #529)
 
 Follow-up to #522 on merged main `ceb85b2a4`: replacing a face's B-spline stand-in
@@ -16017,3 +16046,35 @@ locate the seven remaining stops in trim/extend paths (`gen0081`, `gen0361`,
 `gen0479`, `gen0562`, `gen0688`, `gen0730`, `gen0732`); they remain explicitly
 deferred, not claimed as solved. The wider topology/cache-face adapter is separate
 work. The unit stays partial.
+
+## blend.fillet_geom_p1: the `sm_ClassifyFacePoint` disagreement was the runner's Rust face, not the kernel (2026-10-22)
+
+Follow-up to "blend.fillet_geom_p1: `sm_ClassifyFacePoint` returns 0 where the C++ returns
+1 or 2" above (the cause of PR #268's 5 `blend.fillet_corner_p2` failures).
+
+Cause: the shim builds every face with `face_of` = `SmBrep::CreateFaceFromSurface` (an outer
+loop of four natural trim edges, edge and face tolerances set), but the runner's Rust side
+(`classify_face_point`, the model's target faces, `evaluate_mate`) added a bare face with no
+loops and tolerance 0 to a `Brep::new()`. In `sm_ClassifyFacePoint`,
+`SmTol::GetZoneTol3d(pOrigFace)` is the face's tolerance (old-tolerance build:
+`pTopo->GetTolerance()`), so the Rust `Point3DClassify` ran with a zero tolerance on loopless
+faces and returned `SM_PC_UNKNOWN` for both faces (result 0), where the C++ classified the
+point into the face it lies in. `classify_face_point` itself matches upstream line by line
+(branch order, `ContainsPoint2d` default tolerance 0, guess UVs, flags).
+
+Fix (runner only, no kernel or shim change): the Rust side builds the faces as the shim does
+(`create_face_from_surface` on a `new_brep`). Those faces have no UV trim curves yet, and
+`CalculateUVDomainFromUVTrimCurves` makes them with `SmSurface::DropCurve`
+(`intersect.surface_drop_lib_p3`, todo), so these cases now defer instead of comparing two
+different setups: `blend.fillet_geom_p1` 471 pass -> 457 pass + 20 deferred (14 previously
+compared, the 6 new corner-model fixtures), `blend.fillet_geom_p5` 300 pass -> 274 pass + 26
+deferred (`split_face`); both green -> partial. On main merged with #268 (plus #268's own
+pending adaptations), `blend.fillet_corner_p2`'s `gen0014` and
+`corner_update_split_face_08/_11/_71/_75` defer instead of failing (0 failed).
+
+Considered and not done: also attaching the natural UV trim curves in the shim's `face_of`
+(`CreateUVTrimCurves` with the natural curves) so the cases get past `DropCurve`. They then
+stop at `Point3DClassify`'s trimmed surface cache face handle (`UNPORTED(topology.face_p2)`)
+instead, and every face-building op (`evaluate_mate`, every `fb` op) enters HANG-29's
+`CreateUVTrimCurves` regime: the FFI fuzz sweep hung 30 s in `EvaluateMate` on a control
+point of `-DBL_MAX`, which would need the `MAX_MAGNITUDE` bound on those ops too.

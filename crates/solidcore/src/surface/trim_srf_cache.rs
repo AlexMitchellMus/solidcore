@@ -14,7 +14,10 @@
 //! | [`is_kind_of`], [`TrimSrfCache::is_kind_of`] | `SmTrimSrfCache::IsKindOf`              |
 //! | [`TrimSrfCache::point_test`]              | `SmTrimSrfCache::PointTest`                |
 //! | [`TrimSrfCache::point_classify`]          | `SmTrimSrfCache::PointClassify`            |
-//! | [`TrimSrfCache::build_tree`]              | `SmTrimSrfCache::BuildTree`                |
+//! | [`TrimSrfCache::build_tree`], [`TrimSrfCache::build_tree_with_face`] | `SmTrimSrfCache::BuildTree` |
+//! | [`TrimSrfCache::point_test_in`], [`TrimSrfCache::point_classify_in`] | `PointTest`, `PointClassify` over the given face |
+//! | [`CacheFace`]                             | `GetFace()` and what the cache reads from the face and its B-rep |
+//! | [`TrimSrfCache::bind_face`]                 | `GetFace()` with an explicit caller-handle mapping |
 //! | [`TrimSrfCache::implant_edgeuse`]         | `SmTrimSrfCache::ImplantEdgeuse`           |
 //! | [`TrimSrfCache::implant_poly_edge`], [`PolyEdgeInput`] | `SmTrimSrfCache::ImplantPolyEdge` |
 //! | [`TrimSrfCache::implant_vertexuse`], [`VertexuseInput`] | `SmTrimSrfCache::ImplantVertexuse` |
@@ -25,13 +28,25 @@
 //!   the overriding methods. The constructor's `dAngleTolDeg` is handed to the base
 //!   constructor's `dAngTolRad` unconverted, as upstream does: pass it as
 //!   [`SurfaceCacheOptions::ang_tol_rad`].
-//! - **Topology reads.** [`TrimSrfCache::build_tree_with_context`] walks the real
-//!   B-rep through a borrowed [`FaceCacheContext`]. Caller handles are mapped from
-//!   typed entities, never decoded from object keys. Exact UV B-spline copies are
-//!   retained for subdivision to reimplant prior edge uses; context builds clear
-//!   them on success and error. Public standalone implant calls retain their own
-//!   supplied trim data without topology lookup. The final domain uses the owning face's
-//!   surface, which need not be the generated surface being cached.
+//! - **Topology reads.** The topology objects are caller handles (`O`), so what the
+//!   implant functions read from them is passed in: the edge use's UV trim curve
+//!   (`SmEdgeuse::GetUVTrimCurve`), the vertex use's parameter point and vertex
+//!   tolerance (`SmVertexuse::ComputeUVPoint`, `SmVertex::GetTolerance`), the poly
+//!   edge's end points and tolerance and the surface of its original face
+//!   (`SmPolyEdge::GetStartPoint`, `GetEndPoint`, `GetTolerance`,
+//!   `GetPolyFace()->GetOriginalFace()->GetSurface()`). `GetFace()` is a
+//!   [`CacheFace`] the caller gives ([`TrimSrfCache::build_tree_with_face`],
+//!   [`TrimSrfCache::point_test_in`], [`TrimSrfCache::point_classify_in`]): the
+//!   surface's owner is an object reference the cache cannot follow to the B-rep.
+//!   Without it ([`TrimSrfCache::build_tree`], [`TrimSrfCache::point_test`],
+//!   [`TrimSrfCache::point_classify`]) a face-owned surface stops at
+//!   [`SurfaceCache::face`] ([`SolidError::Unported`]). `BuildTree` reads the natural
+//!   domain of `GetFace()->GetSurface()` through [`CacheFace::natural_uv_domain`],
+//!   falling back to the cache surface only when the adapter does not supply it.
+//!   An explicit [`TrimSrfCache::bind_face`] validates the source owner key and
+//!   records its caller handle without decoding the key as a topology id.
+//!   `SubdivideNode` re-implants a moved edge use with the curve it was implanted with
+//!   (its `GetUVTrimCurve`, retained as an exact B-spline copy).
 //! - **Node lists.** `SmTList::Prepend` onto a node's edge use, vertex and poly edge
 //!   lists inserts at the front of the [`BezierAux2d`] `Vec`s (list order, head first).
 //!   The list memory managers (`m_sVLMgr`, `m_sEdgeuseListMgr`) have no counterpart.
@@ -39,16 +54,21 @@
 //!   explicit save / restore around the inner bodies; as upstream, the
 //!   `m_bPointTestEnabled` set at the end of the face branch is overwritten by the
 //!   restore when the branch ends.
-//! - **Virtual dispatch.** `MarkFaceContainment` uses the existing base traversal
-//!   with a prepared read-only face classifier and face-tolerance callback. Point
-//!   tests on an unwrapped base retain trimmed dispatch and require an operation
-//!   scoped [`FaceQueries`] service. A face-owned cache cannot be built without its
-//!   context; opaque handles alone cannot reach topology. Poly-edge reimplantation
-//!   still requires its separate poly-topology context.
+//! - **Virtual dispatch.** `MarkFaceContainment` runs the base traversal through
+//!   [`sc::FaceContainmentClassifier`], with the face as classifier. Point tests on
+//!   an unwrapped base retain trimmed dispatch and require an operation-scoped
+//!   [`FaceQueries`] service. A base fallback wrapped by [`TrimSrfCache::from_base`]
+//!   keeps its untrimmed dispatch. Poly-edge reimplantation still requires its
+//!   separate poly-topology context.
 //! - **Recursion.** Edge implantation uses an explicit subdivision stack. Its
 //!   nested reimplantation always disables subdivision, so that call chain has
 //!   at most one nested implantation. Geometric subdivision retains the base
 //!   cache's documented bounds; construction uses its containment guard.
+//! - **Unported callees** (all return [`SolidError::Unported`]): `SmSurface::GetFace`
+//!   without a [`CacheFace`] (through [`SurfaceCache::face`]); `SmTol::GetZoneTol3d`
+//!   and `SmFace::PointClassify` of [`TrimSrfCache::point_test`] /
+//!   [`TrimSrfCache::point_classify`] without a [`CacheFace`]; `SmFace::GetSurface` of
+//!   a moved poly edge's original face.
 //! - **Undefined behaviour.** Upstream dereferences a null face in `PointTest` /
 //!   `PointClassify` of a cache whose surface has no face; the port returns
 //!   `SM_ERR_NULL_POINTER`. A node without surface data in this cache gives
@@ -58,10 +78,11 @@
 
 use crate::curve::curve::Curve;
 use crate::curve::curve_cache::{CurveCache, CurveCacheOptions};
-use crate::error::{EntityRef, Result, SolidError};
+use crate::error::{Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::Extent3d;
+use crate::geom::object::ObjectRef;
 use crate::geom::tree::{NodeClass, NodeData, NodeId};
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::{Point3, Vec3};
@@ -71,9 +92,7 @@ use crate::nurbs::b_spline_curve::{BSplineCurve, BoundingBoxRequest};
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::surface::surface::p2::PLANE_TYPE;
 use crate::surface::surface::Surface;
-use crate::surface::surface_cache::face_context::{
-    FaceCacheContext, FaceQueries, PreparedFaceQueries,
-};
+use crate::surface::surface_cache::face_context::FaceQueries;
 use crate::surface::surface_cache::p1::{self as sc, FaceContainment, SurfaceCacheOptions};
 use crate::surface::surface_cache::{BezierAux2d, SurfaceCache};
 
@@ -109,7 +128,7 @@ pub const POINT_CLASS_VERTEX: i32 = 104;
 const OP_CLASSIFY: &str = "surface::trim_srf_cache::TrimSrfCache::point_classify";
 const OP_EU: &str = "surface::trim_srf_cache::TrimSrfCache::implant_edgeuse";
 const OP_VU: &str = "surface::trim_srf_cache::TrimSrfCache::implant_vertexuse";
-const OP_BUILD: &str = "surface::trim_srf_cache::TrimSrfCache::build_tree_with_context";
+const OP_BUILD: &str = "surface::trim_srf_cache::TrimSrfCache::build_tree_with_face";
 
 /// `SmTrimSrfCache::IsKindOf`: the trimmed surface cache or a base type.
 #[must_use]
@@ -147,14 +166,160 @@ pub struct PolyEdgeInput<'a, O> {
     pub surface: &'a Surface,
 }
 
+/// The owning face of a trimmed surface cache's surface (`GetFace()`) and what
+/// `BuildTree` and `PointClassify` read from it and its B-rep. The face, its loop uses,
+/// edge uses and vertex uses are handles in the cache's object space (`O`); the B-rep
+/// layer implements this over its records (`query::face::p2`), so the cache reaches
+/// the face the surface's owner names without holding the B-rep.
+pub trait CacheFace<O> {
+    /// The face (`GetFace()`).
+    fn face(&self) -> O;
+
+    /// `GetFace()->GetBrep()->m_bEditingEnabled`.
+    ///
+    /// # Errors
+    ///
+    /// The implementor's (a face without B-rep).
+    fn brep_editing_enabled(&self) -> Result<bool>;
+
+    /// Sets `GetFace()->GetBrep()->m_bEditingEnabled`.
+    ///
+    /// # Errors
+    ///
+    /// The implementor's (a face without B-rep).
+    fn set_brep_editing_enabled(&mut self, enabled: bool) -> Result<()>;
+
+    /// `GetFace()->CreateUVTrimCurves(TRUE, NULL, NULL, ..)` (its gap statistics are
+    /// not read).
+    ///
+    /// # Errors
+    ///
+    /// Those of `CreateUVTrimCurves`.
+    fn create_uv_trim_curves(&mut self, k: &Kernel) -> Result<()>;
+
+    /// `GetFace()->GetUpwardLoopuses(sLoopuses)`.
+    ///
+    /// # Errors
+    ///
+    /// The implementor's.
+    fn upward_loopuses(&self) -> Result<Vec<O>>;
+
+    /// `pLU->GetEdgeuses(sEUses)`.
+    ///
+    /// # Errors
+    ///
+    /// The implementor's.
+    fn loopuse_edgeuses(&self, loopuse: O) -> Result<Vec<O>>;
+
+    /// `pLU->GetVertexuses(sVUses)`.
+    ///
+    /// # Errors
+    ///
+    /// The implementor's (a null vertex use, which upstream dereferences).
+    fn loopuse_vertexuses(&self, loopuse: O) -> Result<Vec<O>>;
+
+    /// `SM_CAST_PTR(SmBSplineCurve, pEdgeuse->GetUVTrimCurve())` (`None` when there is
+    /// none or it is no B-spline curve).
+    ///
+    /// # Errors
+    ///
+    /// The implementor's.
+    fn edgeuse_uv_trim_curve(&self, edgeuse: O) -> Result<Option<BSplineCurve>>;
+
+    /// `pVertexuse->ComputeUVPoint(sUV)` (`bOKToMakeUVTrimCurve` default `TRUE`).
+    ///
+    /// # Errors
+    ///
+    /// Those of `ComputeUVPoint`.
+    fn vertexuse_uv_point(&mut self, k: &Kernel, vertexuse: O) -> Result<Point2>;
+
+    /// `pVertexuse->GetVertex()->GetTolerance()`.
+    ///
+    /// # Errors
+    ///
+    /// The implementor's (a vertex use without vertex).
+    fn vertexuse_vertex_tolerance(&self, vertexuse: O) -> Result<f64>;
+
+    /// `SmTol::GetZoneTol3d(pObject)` of the face or of an object a node records.
+    ///
+    /// # Errors
+    ///
+    /// The implementor's.
+    fn zone_tol_3d(&self, k: &Kernel, object: O) -> Result<f64>;
+
+    /// The natural domain of `GetFace()->GetSurface()`, when available. It can
+    /// differ from the generated surface whose decomposition is being cached.
+    /// `None` preserves the cache-surface domain for adapters without this query.
+    ///
+    /// # Errors
+    ///
+    /// The implementor's (for example, a face without a surface).
+    fn natural_uv_domain(&self) -> Result<Option<Extent2d>> {
+        Ok(None)
+    }
+
+    /// `GetFace()->PointClassify(uv, tol, FALSE, TRUE, sPC)` into a fresh
+    /// `SmPointClassification(tol)`: its class (`SmPointClassificationType`) and
+    /// object.
+    ///
+    /// # Errors
+    ///
+    /// Those of `SmFace::PointClassify`.
+    fn point_classify(
+        &mut self,
+        k: &Kernel,
+        uv_point: Point2,
+        src_zone_tol_3d: f64,
+    ) -> Result<(i32, Option<O>)>;
+}
+
+/// [`CacheFace`] as `MarkFaceContainment`'s classifier: `PointClassify` dispatches to
+/// [`TrimSrfCache::point_classify_in`].
+struct FaceClassifier<'f, O>(&'f mut dyn CacheFace<O>);
+
+impl<O> sc::FaceContainmentClassifier<O> for FaceClassifier<'_, O> {
+    fn zone_tol_3d(&mut self, k: &Kernel, face: O) -> Result<f64> {
+        self.0.zone_tol_3d(k, face)
+    }
+
+    fn point_classify(
+        &mut self,
+        k: &Kernel,
+        uv_point: Point2,
+        src_zone_tol_3d: f64,
+    ) -> Result<(i32, Option<O>)> {
+        classify_in_face(k, self.0, uv_point, src_zone_tol_3d)
+    }
+}
+
+/// The body of `SmTrimSrfCache::PointClassify` over the cache's face.
+fn classify_in_face<O>(
+    k: &Kernel,
+    face: &mut dyn CacheFace<O>,
+    uv_point: Point2,
+    src_zone_tol_3d: f64,
+) -> Result<(i32, Option<O>)> {
+    // Classify the Point against the surface->Face
+    let (class, object) = face.point_classify(k, uv_point, src_zone_tol_3d)?;
+
+    // set output
+    let object = if class == POINT_CLASS_UNKNOWN {
+        None
+    } else {
+        object
+    };
+    Ok((class, object))
+}
+
 /// The trimmed surface cache (`SmTrimSrfCache`): a [`SurfaceCache`] whose tree
 /// knows the face boundary.
 #[derive(Debug, Clone)]
 pub struct TrimSrfCache<O> {
     /// The `SmSurfaceCache` base.
     base: SurfaceCache<O>,
-    /// Exact edge-use geometry for reimplantation, scoped to a context build.
-    construction_edge_curves: Vec<(O, BSplineCurve)>,
+    /// The UV trim curve of every edge use implanted (`GetUVTrimCurve`, read again
+    /// when a subdivision moves the edge use into the new children).
+    edgeuse_curves: Vec<(O, BSplineCurve)>,
 }
 
 impl<O: Copy + PartialEq> TrimSrfCache<O> {
@@ -177,18 +342,16 @@ impl<O: Copy + PartialEq> TrimSrfCache<O> {
         base.trimmed_dispatch = true;
         Self {
             base,
-            construction_edge_curves: Vec::new(),
+            edgeuse_curves: Vec::new(),
         }
     }
 
     /// Wraps an existing cache as is (no state change).
     #[must_use]
     pub const fn from_base(base: SurfaceCache<O>) -> Self {
-        let mut base = base;
-        base.trimmed_dispatch = true;
         Self {
             base,
-            construction_edge_curves: Vec::new(),
+            edgeuse_curves: Vec::new(),
         }
     }
 
@@ -284,184 +447,13 @@ impl<O: Copy + PartialEq> TrimSrfCache<O> {
     /// tree. Classification can then run while Boolean construction is delayed.
     ///
     /// # Errors
-    /// A mismatched owner key, missing face surface, or failing handle mapping.
-    pub fn bind_face_context(&mut self, context: &FaceCacheContext<'_, O>) -> Result<()> {
-        let face_ref = EntityRef::Face(context.face);
-        let expected = (context.key_of)(face_ref);
-        if self.base.surface().face()? != Some(expected) {
-            return Err(invalid(
-                OP_BUILD,
-                "surface owner does not match supplied face or B-rep",
-            ));
-        }
-        crate::topology::face::p2::surface(context.brep, context.face)?
-            .ok_or(SolidError::null_pointer(OP_BUILD))?;
-        let handle = (context.handle_of)(face_ref)?;
-        self.base.bind_trimmed_face(expected, handle)?;
-        self.base
-            .set_owner_zone_tol_3d(crate::topology::face::p2::tolerance(
-                context.brep,
-                context.face,
-            )?);
-
+    ///
+    /// A key that does not match the source surface's reached face owner. The
+    /// caller supplies the key and handle explicitly; neither is decoded as an id.
+    pub fn bind_face(&mut self, key: ObjectRef, face: O, tolerance: f64) -> Result<()> {
+        self.base.bind_trimmed_face(key, face)?;
+        self.base.set_owner_zone_tol_3d(tolerance);
         Ok(())
-    }
-
-    /// Builds this face's trimmed cache with a borrowed mutable B-rep context.
-    ///
-    /// Binding is checked against the surface's mapped owner key before construction.
-    pub fn build_tree_with_context(
-        &mut self,
-        k: &Kernel,
-        context: &mut FaceCacheContext<'_, O>,
-    ) -> Result<()> {
-        self.bind_face_context(context)?;
-        let saved = self.base.face_containment_done;
-        let fresh_tree = self.base.tree().is_none();
-        self.base.face_containment_done = FaceContainment::UnderConstruction;
-        let result = self.build_tree_context_body(k, context);
-        self.finish_build(result, saved, fresh_tree)
-    }
-
-    /// Returns the decomposition tree, running the trimmed override with this
-    /// owning-face context when construction was delayed or trims need loading.
-    ///
-    /// # Errors
-    /// Those of [`Self::build_tree_with_context`].
-    pub fn get_tree_with_context(
-        &mut self,
-        k: &Kernel,
-        context: &mut FaceCacheContext<'_, O>,
-    ) -> Result<&mut crate::geom::tree::Tree<O>> {
-        if self.base.tree().is_none()
-            || (!self.base.have_t_surface_cache
-                && self.base.face_containment_done != FaceContainment::UnderConstruction)
-        {
-            self.build_tree_with_context(k, context)?;
-        }
-        self.base
-            .tree_mut()
-            .ok_or(SolidError::null_pointer(OP_BUILD))
-    }
-
-    /// The context build inside the containment guard, in upstream `BuildTree` order.
-    fn build_tree_context_body(
-        &mut self,
-        k: &Kernel,
-        context: &mut FaceCacheContext<'_, O>,
-    ) -> Result<bool> {
-        if self.base.tree().is_none() {
-            surface_cache_build_tree(&mut self.base, k)?;
-        }
-        if context.brep.editing_enabled() {
-            self.set_standalone_flags();
-            return Ok(false);
-        }
-
-        let saved_point_test = self.base.point_test_enabled;
-        let saved_editing = context.brep.editing_enabled();
-        self.base.point_test_enabled = false;
-        context.brep.set_editing_enabled(true);
-        let result = self.implant_face_with_context(k, context);
-        // No fallible operation is allowed between the body and these restores.
-        context.brep.set_editing_enabled(saved_editing);
-        self.base.point_test_enabled = saved_point_test;
-        result
-    }
-
-    fn implant_face_with_context(
-        &mut self,
-        k: &Kernel,
-        context: &mut FaceCacheContext<'_, O>,
-    ) -> Result<bool> {
-        let created = crate::topology::face::p3::create_uv_trim_curves(
-            k,
-            context.brep,
-            context.face,
-            true,
-            None,
-        );
-        // Creation may raise tolerances even before reporting an error. Keep the
-        // evaluation surface's owner tolerance in step with the actual face.
-        self.base
-            .set_owner_zone_tol_3d(crate::topology::face::p2::tolerance(
-                context.brep,
-                context.face,
-            )?);
-        created?;
-
-        let loopuses =
-            crate::topology::face::p4::upward_loopuses(context.brep, context.face, false, None)?;
-        let mut face_domain = Extent2d::new();
-        let do_subdivision = !self.base.surface().is_kind_of(PLANE_TYPE)?;
-
-        // Preserve GetUpwardLoopuses / GetEdgeuses order and complete all edge
-        // implants before computing or implanting any vertex use.
-        for &lu in &loopuses {
-            for eu in crate::topology::loopuse::edgeuses(context.brep, lu, None, None)? {
-                let handle = (context.handle_of)(EntityRef::Edgeuse(eu))?;
-                let curve = topology_uv_trim_curve(context.brep, eu)?;
-                if let Some(curve) = &curve {
-                    if self
-                        .construction_edge_curves
-                        .iter()
-                        .any(|(h, _)| *h == handle)
-                    {
-                        return Err(invalid(OP_BUILD, "edge-use handles are not unique"));
-                    }
-                    self.construction_edge_curves
-                        .push((handle, curve.clone_exact()));
-                }
-                self.implant_edgeuse(
-                    k,
-                    handle,
-                    curve.as_ref(),
-                    do_subdivision,
-                    &mut face_domain,
-                    None,
-                )?;
-            }
-        }
-        for &lu in &loopuses {
-            for vu in crate::topology::loopuse::vertexuses(context.brep, lu, None)? {
-                let vu = vu.ok_or(SolidError::null_pointer(OP_BUILD))?;
-                let uv_point =
-                    crate::topology::vertexuse::compute_uv_point(k, context.brep, vu, true)?;
-                let vertex = crate::topology::vertexuse::vertex(context.brep, vu)?
-                    .ok_or(SolidError::null_pointer(OP_BUILD))?;
-                self.implant_vertexuse(
-                    k,
-                    VertexuseInput {
-                        vertexuse: (context.handle_of)(EntityRef::Vertexuse(vu))?,
-                        uv_point,
-                        vertex_tolerance: crate::topology::vertex::tolerance(context.brep, vertex)?,
-                    },
-                    &mut face_domain,
-                )?;
-            }
-        }
-
-        let surface_domain = crate::topology::face::p2::surface(context.brep, context.face)?
-            .ok_or(SolidError::null_pointer(OP_BUILD))?
-            .natural_uv_domain();
-        self.base
-            .set_uv_domain(surface_domain.intersect(&face_domain)?);
-        if loopuses.is_empty() {
-            self.set_standalone_flags();
-            return Ok(false);
-        }
-
-        self.base.process_boundary_curves = false;
-        self.base.point_test_enabled = true;
-        self.base.have_t_surface_cache = true;
-        let queries = PreparedFaceQueries::new(context.brep, context.face, context.handle_of)?;
-        let face = (context.handle_of)(EntityRef::Face(context.face))?;
-        self.base.mark_face_containment_with(
-            k,
-            &|face| queries.face_zone_tol_3d(face),
-            &|uv, src_tol| queries.face_point_classify(k, face, uv, src_tol),
-        )?;
-        Ok(true)
     }
 
     fn set_standalone_flags(&mut self) {
@@ -470,8 +462,8 @@ impl<O: Copy + PartialEq> TrimSrfCache<O> {
         self.base.have_t_surface_cache = false;
     }
 
-    /// Restores the containment guard and releases construction-only geometry,
-    /// including on errors (no stale Bezier/subdivision references escape).
+    /// Restores the containment guard and releases temporary subdivision geometry,
+    /// including on errors. Edge-use curves stay available for reimplantation.
     fn finish_build(
         &mut self,
         result: Result<bool>,
@@ -483,7 +475,6 @@ impl<O: Copy + PartialEq> TrimSrfCache<O> {
         } else {
             Ok(())
         };
-        self.construction_edge_curves.clear();
         let result = result.and_then(|done| cleanup.map(|()| done));
         self.base.face_containment_done = if matches!(result, Ok(true)) {
             FaceContainment::Done
@@ -520,45 +511,239 @@ impl<O: Copy + PartialEq> TrimSrfCache<O> {
         ))
     }
 
+    /// [`TrimSrfCache::point_test`] with the surface's face given (`GetFace()`).
+    ///
+    /// # Errors
+    ///
+    /// Those of the face classification.
+    pub fn point_test_in(
+        &self,
+        k: &Kernel,
+        face: &mut dyn CacheFace<O>,
+        uv_point: Point2,
+        opt_zone_tol_3d: Option<f64>,
+    ) -> Result<(bool, Option<O>)> {
+        // when testing is off or cache is not current
+        if !self.base.point_test_enabled || self.base.face_was_modified {
+            // return TRUE so this point won't be culled
+            return Ok((true, None));
+        }
+
+        self.check_face_binding(face.face())?;
+
+        // classify point (with optional tolerance) against face
+        let src_zone_tol_3d = match opt_zone_tol_3d {
+            Some(t) => t,
+            None => face.zone_tol_3d(k, face.face())?,
+        };
+        let (class, object) = face.point_classify(k, uv_point, src_zone_tol_3d)?;
+
+        // Point is ok when it classified to a topology object
+        let ok =
+            class == POINT_CLASS_FACE || class == POINT_CLASS_EDGE || class == POINT_CLASS_VERTEX;
+        Ok((ok, object))
+    }
+
+    /// [`TrimSrfCache::point_classify`] with the surface's face given (`GetFace()`).
+    ///
+    /// # Errors
+    ///
+    /// Those of the face classification.
+    pub fn point_classify_in(
+        &self,
+        k: &Kernel,
+        face: &mut dyn CacheFace<O>,
+        uv_point: Point2,
+        src_zone_tol_3d: f64,
+    ) -> Result<(i32, Option<O>)> {
+        self.check_face_binding(face.face())?;
+        classify_in_face(k, face, uv_point, src_zone_tol_3d)
+    }
+
+    fn check_face_binding(&self, face: O) -> Result<()> {
+        if self.base.trimmed_face.is_some() && self.base.face()? != Some(face) {
+            return Err(invalid(
+                OP_BUILD,
+                "supplied face does not match cache binding",
+            ));
+        }
+        Ok(())
+    }
+
     // ---- construction ------------------------------------------------------------------
 
     /// Builds a standalone surface's decomposition tree (`BuildTree`). A face-owned
-    /// surface requires [`Self::build_tree_with_context`] to prepare and implant its
+    /// surface requires [`Self::build_tree_with_face`] to prepare and implant its
     /// actual trims; opaque handles alone cannot service that build.
     ///
     /// # Errors
     ///
     /// Those of tree construction; [`SolidError::Unported`] for a face-owned surface
-    /// without a topology context.
+    /// without a [`CacheFace`] adapter.
     pub fn build_tree(&mut self, k: &Kernel) -> Result<()> {
+        self.build_tree_in(k, None)
+    }
+
+    /// [`TrimSrfCache::build_tree`] with the surface's face given (`GetFace()`): `face`
+    /// must be the face owning the cache's surface. Its UV trim curves are created
+    /// (`CreateUVTrimCurves`, which changes the B-rep) and its edge uses and vertex uses
+    /// implanted unless its B-rep is being edited.
+    ///
+    /// # Errors
+    ///
+    /// Those of the tree construction, of the face reads, the implanting and the
+    /// classification.
+    pub fn build_tree_with_face(&mut self, k: &Kernel, face: &mut dyn CacheFace<O>) -> Result<()> {
+        self.check_face_binding(face.face())?;
+        self.build_tree_in(k, Some(face))
+    }
+
+    fn build_tree_in(&mut self, k: &Kernel, face: Option<&mut dyn CacheFace<O>>) -> Result<()> {
+        // prevent bad recursion back into BuildTree
         let saved = self.base.face_containment_done;
         let fresh_tree = self.base.tree().is_none();
         self.base.face_containment_done = FaceContainment::UnderConstruction;
-        let result = (|| {
-            if self.base.surface().face()?.is_some() {
-                if self.base.tree().is_none() {
-                    surface_cache_build_tree(&mut self.base, k)?;
-                }
-                // Preserve the original opaque-handle boundary after base-tree
-                // construction; a mapped face still needs mutable build context.
-                self.base.face()?;
-                Err(SolidError::unported(
-                    "TrimSrfCache::build_tree_with_context for a face-owned surface",
-                    "surface.trim_srf_cache",
-                ))
-            } else {
-                self.build_standalone_tree(k)
-            }
-        })();
+        let result = self.build_tree_body(k, face);
         self.finish_build(result, saved, fresh_tree)
     }
 
-    fn build_standalone_tree(&mut self, k: &Kernel) -> Result<bool> {
+    /// `BuildTree` inside the face containment guard; `true` when the guard was
+    /// cleared (containment done).
+    fn build_tree_body(&mut self, k: &Kernel, face: Option<&mut dyn CacheFace<O>>) -> Result<bool> {
+        // Build m_ptree surface subdivision tree when it does not exist
         if self.base.tree().is_none() {
             surface_cache_build_tree(&mut self.base, k)?;
         }
-        self.set_standalone_flags();
-        Ok(false)
+
+        // skip inserting UVTrimCurves and classifying node containment
+        //   when Surface is not owned by a face (no UVTrimCurves to process)
+        //     or Brep Editing is enabled (face data structure may be in an intermediate state)
+        // (`GetFace()`: the caller's face, else the surface's owner, which has no
+        // handle here when it is a face)
+        let face = if let Some(f) = face {
+            Some(f)
+        } else {
+            self.base.face()?;
+            // A bound handle is not a mutable topology service. Do not silently
+            // turn a face-owned cache into an untrimmed rectangle without one.
+            if self.base.surface().face()?.is_some() {
+                return Err(SolidError::unported(
+                    "TrimSrfCache::build_tree_with_face for a face-owned surface",
+                    "surface.trim_srf_cache",
+                ));
+            }
+            None
+        };
+        let mut cleared = false;
+        let editing_face = match face {
+            None => None,
+            Some(f) => {
+                if f.brep_editing_enabled()? {
+                    None
+                } else {
+                    Some(f)
+                }
+            }
+        };
+        match editing_face {
+            None => self.set_standalone_flags(),
+            Some(f) => {
+                // SmTemporaryChangeValue restores point testing on every exit.
+                let saved_point_test = self.base.point_test_enabled;
+                self.base.point_test_enabled = false;
+                let result = self.implant_face(k, f);
+                self.base.point_test_enabled = saved_point_test;
+                cleared = result?;
+            }
+        }
+        Ok(cleared)
+    }
+
+    /// The face branch of `BuildTree` (editing disabled in the brep): implant every
+    /// edge use and vertex use, reduce the cache domain to the face domain and
+    /// classify the nodes. `true` when the face containment is done.
+    fn implant_face(&mut self, k: &Kernel, face: &mut dyn CacheFace<O>) -> Result<bool> {
+        let saved_editing = face.brep_editing_enabled()?;
+        face.set_brep_editing_enabled(true)?;
+        let result = self.implant_face_body(k, face);
+        // SmTemporaryChangeValue restores the brep editing flag on errors too.
+        face.set_brep_editing_enabled(saved_editing)?;
+        result
+    }
+
+    fn implant_face_body(&mut self, k: &Kernel, face: &mut dyn CacheFace<O>) -> Result<bool> {
+        // create UVTrimCurve for every face->edge
+        let created = face.create_uv_trim_curves(k);
+        // Creation may raise the owning face's tolerance even on an error.
+        // Refresh the evaluation copy before propagating either failure.
+        let refreshed = face
+            .zone_tol_3d(k, face.face())
+            .map(|tol| self.base.set_owner_zone_tol_3d(tol));
+        created?;
+        refreshed?;
+
+        // Now implant edgeuses and vertexuses into the cache tree
+        let loopuses = face.upward_loopuses()?;
+        let mut face_domain = Extent2d::new();
+
+        // do subdivision on nonPlanar faces.
+        let do_subdivision = !self.base.surface().is_kind_of(PLANE_TYPE)?;
+
+        // for every loopuse - implant edgeuses into TrimSurfaceCache
+        for &lu in &loopuses {
+            for eu in face.loopuse_edgeuses(lu)? {
+                let curve = face.edgeuse_uv_trim_curve(eu)?;
+                self.implant_edgeuse(
+                    k,
+                    eu,
+                    curve.as_ref(),
+                    do_subdivision,
+                    &mut face_domain,
+                    None,
+                )?;
+            }
+        }
+
+        // for every Loopuse - implant every vertexuse into the TrimSurfCache
+        for &lu in &loopuses {
+            for vu in face.loopuse_vertexuses(lu)? {
+                let input = VertexuseInput {
+                    vertexuse: vu,
+                    uv_point: face.vertexuse_uv_point(k, vu)?,
+                    vertex_tolerance: face.vertexuse_vertex_tolerance(vu)?,
+                };
+                self.implant_vertexuse(k, input, &mut face_domain)?;
+            }
+        }
+
+        // set SurfaceCacheDomain as SurfaceNaturalDomain/FaceDomain intersection
+        let surface_domain = face
+            .natural_uv_domain()?
+            .unwrap_or_else(|| self.base.surface().natural_uv_domain());
+        let domain = surface_domain.intersect(&face_domain)?;
+        self.base.set_uv_domain(domain);
+
+        // When the surface has UVTrimCurves
+        if loopuses.is_empty() {
+            // there are no UVTrimCurves - treat as a standalone surface
+            self.set_standalone_flags();
+            Ok(false)
+        } else {
+            // mark state to run Solvers for TrimSurfaces
+            self.base.process_boundary_curves = false;
+            self.base.point_test_enabled = true;
+            self.base.have_t_surface_cache = true;
+
+            // Classify every TrimSurfCache Node not on a boundary as INSIDE or OUTSIDE
+            //
+            // (the virtual `MarkFaceContainment`, whose `PointClassify` is this cache's
+            // `SmTrimSrfCache::PointClassify` over the face)
+            self.base
+                .mark_face_containment_with(k, &mut FaceClassifier(face))?;
+            // set a permament value into m_bFaceContainment
+            self.base.face_containment_done = FaceContainment::Done;
+            Ok(true)
+        }
     }
 
     /// Drops the construction data of a freshly built tree: the subdivision surfaces
@@ -641,16 +826,14 @@ impl<O: Copy + PartialEq> TrimSrfCache<O> {
         let eu_curve = uv_trim_curve.ok_or(SolidError::null_pointer(OP_EU))?;
         // Subdivision may need a curve implanted by an earlier call. Retain its
         // exact input data instead of trying to resolve an opaque edge-use handle.
-        // Context builds discard these construction snapshots on every exit.
         if let Some((_, curve)) = self
-            .construction_edge_curves
+            .edgeuse_curves
             .iter_mut()
             .find(|(handle, _)| *handle == edgeuse)
         {
             *curve = eu_curve.clone_exact();
         } else {
-            self.construction_edge_curves
-                .push((edgeuse, eu_curve.clone_exact()));
+            self.edgeuse_curves.push((edgeuse, eu_curve.clone_exact()));
         }
 
         // set up for poles
@@ -901,8 +1084,8 @@ impl<O: Copy + PartialEq> TrimSrfCache<O> {
     /// # Errors
     ///
     /// Those of [`SurfaceCache::subdivide_node_split`]; [`SolidError::Unported`]:
-    /// missing operation-scoped trim data for an edge use to move,
-    /// `SmFace::GetSurface` (`topology.face_p2`) for a poly edge to move.
+    /// `SmFace::GetSurface` (`topology.face_p2`) for a poly edge to move. An edge use's
+    /// `GetUVTrimCurve` is the curve it was implanted with.
     fn subdivide_node(
         &mut self,
         k: &Kernel,
@@ -917,22 +1100,16 @@ impl<O: Copy + PartialEq> TrimSrfCache<O> {
                     // implant the edge use in both children without subsequent
                     // subdivision (the status is ignored)
                     let curve = self
-                        .construction_edge_curves
+                        .edgeuse_curves
                         .iter()
-                        .find(|(handle, _)| *handle == eu)
-                        .map(|(_, curve)| curve.clone_exact())
-                        .ok_or_else(|| {
-                            SolidError::unported(
-                                "operation-scoped edge-use trim for subdivision",
-                                "surface.trim_srf_cache",
-                            )
-                        })?;
+                        .find(|(e, _)| *e == eu)
+                        .map(|(_, c)| c.clone_exact());
                     for child in [node1, node2] {
                         let mut temp_ext = Extent2d::new();
                         let r = self.implant_edgeuse(
                             k,
                             eu,
-                            Some(&curve),
+                            curve.as_ref(),
                             false,
                             &mut temp_ext,
                             Some(child),
@@ -1160,27 +1337,6 @@ impl<O: Copy + PartialEq> TrimSrfCache<O> {
 
 // ---- shared construction and geometry operations ------------------------------------
 
-/// The actual `GetUVTrimCurve` B-spline part, without copy-constructor knot fix-up.
-fn topology_uv_trim_curve(
-    brep: &crate::topology::Brep,
-    eu: crate::topology::EdgeuseId,
-) -> Result<Option<BSplineCurve>> {
-    use crate::curve::curve::CurveKind;
-
-    let Some(curve) = crate::topology::edgeuse::p1::uv_trim_curve(brep, eu)?.0 else {
-        return Ok(None);
-    };
-    let spline = match curve.kind() {
-        CurveKind::BSpline(c) => c.clone_exact(),
-        CurveKind::Line(c) => c.base_with_nurb()?.clone_exact(),
-        CurveKind::Hyperbola(c) => c.base().clone_exact(),
-        CurveKind::Ellipse(c) => c.base().clone_exact(),
-        CurveKind::Parabola(c) => c.base().clone_exact(),
-        _ => return Err(SolidError::null_pointer(OP_BUILD)),
-    };
-    Ok(Some(spline))
-}
-
 /// `SmSurfaceCache::BuildTree(&sBezierBlock)` (base class tree construction for a derived
 /// cache, which finishes it).
 fn surface_cache_build_tree<O: Copy + PartialEq>(
@@ -1233,6 +1389,7 @@ fn map_to_2d(k: &Kernel, tol_3d: f64, uv: Point2, dir: Vec2, surface: &Surface) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::EntityRef;
     use crate::geom::tree::{
         AuxDataType, NodeGeomType, SplitDir, SurfaceAux, Tree, TreeNode, TreeOwner,
     };
@@ -1240,6 +1397,8 @@ mod tests {
     use crate::nurbs::crv_basic::Curve as NlCurve;
     use crate::nurbs::math::{CPoint, NOW, NOZ};
     use crate::nurbs::srf_basic::Surface as NlSurface;
+    use crate::query::face::p2::BrepCacheFace;
+    use crate::surface::surface_cache::face_context::MappedCacheFace;
 
     fn plane() -> Surface {
         let net = (0..2)
@@ -1423,11 +1582,11 @@ mod tests {
         assert_eq!(c.base().face_containment_done, FaceContainment::NotDone);
     }
 
-    fn face_key(entity: EntityRef) -> crate::geom::object::ObjectRef {
+    fn face_key(entity: EntityRef) -> ObjectRef {
         let EntityRef::Face(face) = entity else {
             panic!("test only maps faces");
         };
-        crate::geom::object::ObjectRef {
+        ObjectRef {
             type_code: crate::topology::face::p2::TYPE,
             key: crate::geom::attribute::ObjectKey(10_000 + u64::from(face.index())),
         }
@@ -1476,6 +1635,16 @@ mod tests {
         ) -> Result<(i32, Option<i64>)> {
             Ok((POINT_CLASS_UNKNOWN, None))
         }
+
+        fn face_point_classify_fast_drop(
+            &self,
+            k: &Kernel,
+            face: i64,
+            uv: Point2,
+            src_tol: f64,
+        ) -> Result<(i32, Option<i64>)> {
+            self.face_point_classify(k, face, uv, src_tol)
+        }
     }
 
     #[test]
@@ -1493,14 +1662,31 @@ mod tests {
             .unwrap();
         let mut cache = TrimSrfCache::new(surface, SurfaceCacheOptions::default());
         cache
-            .build_tree_with_context(
+            .bind_face(
+                face_key(EntityRef::Face(face)),
+                face_handle(EntityRef::Face(face)).unwrap(),
+                2.5e-4,
+            )
+            .unwrap();
+        let entity_of = |handle| {
+            if handle == face_handle(EntityRef::Face(face))? {
+                Ok(EntityRef::Face(face))
+            } else {
+                Err(invalid(OP_BUILD, "unknown test handle"))
+            }
+        };
+        cache
+            .build_tree_with_face(
                 &k,
-                &mut FaceCacheContext {
-                    brep: &mut brep,
-                    face,
-                    key_of: &face_key,
-                    handle_of: &face_handle,
-                },
+                &mut MappedCacheFace::new(
+                    BrepCacheFace {
+                        b: &mut brep,
+                        f: face,
+                    },
+                    &face_handle,
+                    &entity_of,
+                )
+                .unwrap(),
             )
             .unwrap();
         assert!(brep.editing_enabled());
@@ -1544,7 +1730,67 @@ mod tests {
     }
 
     #[test]
-    fn context_build_restores_guards_when_real_topology_is_incomplete() {
+    fn mapped_face_checks_both_directions_and_delegates_domain_queries() {
+        let (mut brep, face) = bare_owned_face();
+        let other_face = crate::topology::FaceId::from_index(99);
+        let wrong_entity = |_| Ok(EntityRef::Face(other_face));
+        assert!(MappedCacheFace::new(
+            BrepCacheFace {
+                b: &mut brep,
+                f: face
+            },
+            &face_handle,
+            &wrong_entity,
+        )
+        .is_err());
+
+        let entity_of = |_| Ok(EntityRef::Face(face));
+        let mapped = MappedCacheFace::new(
+            BrepCacheFace {
+                b: &mut brep,
+                f: face,
+            },
+            &face_handle,
+            &entity_of,
+        )
+        .unwrap();
+        assert_eq!(mapped.face(), 100);
+        assert_eq!(
+            mapped.natural_uv_domain().unwrap(),
+            Some(plane().natural_uv_domain())
+        );
+        assert_eq!(mapped.zone_tol_3d(&Kernel::default(), 100).unwrap(), 2.5e-4);
+        // Even if the reverse mapping accepts this alias, the forward mapping
+        // must name the same handle. No object key or index is decoded here.
+        assert!(mapped.zone_tol_3d(&Kernel::default(), 101).is_err());
+    }
+
+    #[test]
+    fn base_fallback_keeps_untrimmed_dispatch() {
+        let surface = plane();
+        let domain = surface.natural_uv_domain();
+        let mut base: SurfaceCache<i64> =
+            SurfaceCache::new(surface, domain, SurfaceCacheOptions::default());
+        base.point_test_enabled = true;
+        let cache = TrimSrfCache::from_base(base);
+        assert!(!cache.base().is_trimmed());
+        assert_eq!(
+            cache
+                .point_test(&Kernel::default(), Point2::new(0.5, 0.5), None)
+                .unwrap(),
+            (true, None)
+        );
+        assert_eq!(
+            cache
+                .point_test(&Kernel::default(), Point2::new(2.0, 2.0), None)
+                .unwrap(),
+            (false, None)
+        );
+        assert!(!cache.into_base().is_trimmed());
+    }
+
+    #[test]
+    fn face_build_restores_guards_when_real_topology_is_incomplete() {
         let k = Kernel::default();
         let (mut brep, face) = bare_owned_face();
         let surface = brep
@@ -1556,28 +1802,34 @@ mod tests {
             .clone_for_evaluation()
             .unwrap();
         let mut cache = TrimSrfCache::new(surface, SurfaceCacheOptions::default());
+        cache
+            .bind_face(
+                face_key(EntityRef::Face(face)),
+                EntityRef::Face(face),
+                2.5e-4,
+            )
+            .unwrap();
         assert!(cache
-            .build_tree_with_context(
+            .build_tree_with_face(
                 &k,
-                &mut FaceCacheContext {
-                    brep: &mut brep,
-                    face,
-                    key_of: &face_key,
-                    handle_of: &face_handle,
-                }
+                &mut BrepCacheFace {
+                    b: &mut brep,
+                    f: face
+                },
             )
             .is_err());
         assert!(!brep.editing_enabled());
         assert!(cache.base().point_test_enabled);
         assert_eq!(cache.base().face_containment_done, FaceContainment::NotDone);
         assert!(!cache.base().have_t_surface_cache);
-        assert!(cache.construction_edge_curves.is_empty());
+        assert!(cache.edgeuse_curves.is_empty());
+        assert!(cache.base().patches().iter().all(|p| p.bezier.is_none()));
+        assert!(cache.base_mut().subdivision_surfaces_mut().is_empty());
     }
 
     #[test]
-    fn context_rejects_a_different_owner_key_before_mutating_state() {
-        let k = Kernel::default();
-        let (mut brep, face) = bare_owned_face();
+    fn binding_rejects_a_different_owner_key_before_mutating_state() {
+        let (brep, face) = bare_owned_face();
         let surface = brep
             .face(face)
             .unwrap()
@@ -1587,21 +1839,10 @@ mod tests {
             .clone_for_evaluation()
             .unwrap();
         let mut cache = TrimSrfCache::new(surface, SurfaceCacheOptions::default());
-        let wrong_key = |entity| {
-            let mut key = face_key(entity);
-            key.key.0 += 1;
-            key
-        };
+        let mut wrong_key = face_key(EntityRef::Face(face));
+        wrong_key.key.0 += 1;
         assert!(matches!(
-            cache.build_tree_with_context(
-                &k,
-                &mut FaceCacheContext {
-                    brep: &mut brep,
-                    face,
-                    key_of: &wrong_key,
-                    handle_of: &face_handle,
-                }
-            ),
+            cache.bind_face(wrong_key, EntityRef::Face(face), 2.5e-4),
             Err(SolidError::InvalidInput { .. })
         ));
         assert!(!brep.editing_enabled());

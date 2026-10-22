@@ -35,6 +35,7 @@
 //! | [`SurfaceCache::surface_continuity`]              | `SmSurfaceCache::GetSurfaceContinuity`           |
 //! | [`SurfaceCache::connected_region`], [`ConnectedRegion`] | `SmSurfaceCache::GetConnectedRegion`       |
 //! | [`SurfaceCache::mark_face_containment`]           | `SmSurfaceCache::MarkFaceContainment`            |
+//! | [`SurfaceCache::mark_face_containment_with`], [`FaceContainmentClassifier`] | `MarkFaceContainment` with the virtual `PointClassify` of a derived cache |
 //! | [`SurfaceCache::build_tree_top`]                  | `SmSurfaceCache::BuildTreeTop`                   |
 //! | [`SurfaceCache::iso_boundary_curves`], [`IsoBoundaryCurves`] | `SmSurfaceCache::GetIsoBoundaryCurves` |
 //! | [`SurfaceCache::size_tolerances_from_corners`], [`SizeTolerances`] | `ComputeSizeTolerances` (corner point version) |
@@ -43,6 +44,8 @@
 //! | [`SurfaceCache::face`]                            | `SmSurfaceCache::GetFace`                        |
 //! | [`SurfaceCache::point_test`]                      | `SmSurfaceCache::PointTest`                      |
 //! | [`SurfaceCache::point_classify`]                  | `SmSurfaceCache::PointClassify`                  |
+//! | [`SurfaceCache::point_test_with`], [`SurfaceCache::point_classify_with`] | virtual trimmed-cache point queries with an operation-scoped face service |
+//! | [`SurfaceCache::is_trimmed`]                      | the retained `SmTrimSrfCache` dynamic type       |
 //! | [`SurfaceCache::implant_edgeuse`], [`SurfaceCache::implant_poly_edge`] | `ImplantEdgeuse`, `ImplantPolyEdge` (base class) |
 //! | [`SurfaceCache::process_boundary_curves`]         | `GetProcessBoundaryCurves`                       |
 //! | [`SurfaceCache::patch_count`], [`SurfaceCache::patch_at`] | `GetPatchCount`, `GetPatchAt`            |
@@ -81,9 +84,10 @@
 //!   (`SmSurface::CreateIsoParametricCurve`, `surface.surface_p5`;
 //!   `SmSurface::CalculateBoundingBox`, `surface.surface_p1`), and
 //!   `SmSurface::IsSingularity` (`surface.surface_p5`; only the plane overrides it,
-//!   with "no singularity", wired by `surface.surface_cache_p2`) and
-//!   `SmSurface::GetFace` (`surface.surface_p1`) are not overridden by the other kinds:
-//!   those return [`SolidError::Unported`]. `EvaluateNormal` is
+//!   with "no singularity", wired by `surface.surface_cache_p2`).
+//!   `SmSurface::GetFace` (`surface.surface_p1`) follows the surface owner chain;
+//!   [`SurfaceCache::face`] additionally needs a validated caller-handle binding.
+//!   `EvaluateNormal` is
 //!   [`Surface::evaluate_normal`] (`surface::surface::p7`, with the plane and
 //!   curve-bounded overrides). An `SmPlane` is an
 //!   `SmBSplineSurface` upstream: the cast gives its B-spline part. The iso curves
@@ -92,7 +96,10 @@
 //!   derived classes' overrides stay in effect. Where upstream
 //!   casts with `SM_CAST_PTR(SmBSplineSurface, ...)` and `NER`s, a non-B-spline surface
 //!   gives `SM_ERR_NULL_POINTER`. `PointClassify` is the base class body (`SM_ERR`); the
-//!   trimmed surface cache overrides belong to `surface.trim_srf_cache`.
+//!   trimmed surface cache overrides belong to `surface.trim_srf_cache`, which runs
+//!   `MarkFaceContainment` through [`SurfaceCache::mark_face_containment_with`]: the
+//!   [`FaceContainmentClassifier`] stands for the virtual `PointClassify` and for
+//!   `SmTol::GetZoneTol3d` of a node's face (an opaque handle here).
 //! - **Out-params** become return values; where upstream leaves an output untouched
 //!   on a failure the port returns `None` for it. `GetIsoBoundaryCurves` returns
 //!   copies of the cached curves instead of shared pointers.
@@ -150,9 +157,6 @@ pub const TYPE: i64 = 15100;
 
 /// `SmSurfaceCache::GetTypeString`.
 pub const TYPE_STRING: &str = "SmSurfaceCache_TYPE";
-
-/// `SmFace_TYPE` (`TOPO_BASE_TYPE + 2`).
-pub(super) const FACE_TYPE: i64 = 16002;
 
 /// `SM_PB_SAMPLECOUNT`: sample points stored per bounding plane.
 pub const PB_SAMPLE_COUNT: usize = 5;
@@ -983,6 +987,57 @@ pub struct VertexListItem<O> {
     pub uv_point: Point2,
     /// `m_vUVTol`.
     pub uv_tol: Vec2,
+}
+
+/// What [`SurfaceCache::mark_face_containment_with`] asks of the cache's face: the
+/// virtual `PointClassify` of the derived cache and `SmTol::GetZoneTol3d` of a node's
+/// face handle (the handles are opaque to the cache).
+pub trait FaceContainmentClassifier<O> {
+    /// `SmTol::GetZoneTol3d(pAux->m_pFace)` for a node's (non-null) face.
+    ///
+    /// # Errors
+    ///
+    /// The implementor's.
+    fn zone_tol_3d(&mut self, k: &Kernel, face: O) -> Result<f64>;
+
+    /// `PointClassify(uv, tol)`: the `SmPointClassificationType` value and the object
+    /// the point is in or on.
+    ///
+    /// # Errors
+    ///
+    /// The implementor's (upstream `SER`s them).
+    fn point_classify(
+        &mut self,
+        k: &Kernel,
+        uv_point: Point2,
+        src_zone_tol_3d: f64,
+    ) -> Result<(i32, Option<O>)>;
+}
+
+/// The base class answers of [`FaceContainmentClassifier`]: `PointClassify` is
+/// `SM_ERR`, a node face's tolerance is unreachable.
+struct BaseClassifier;
+
+impl<O> FaceContainmentClassifier<O> for BaseClassifier {
+    fn zone_tol_3d(&mut self, _k: &Kernel, _face: O) -> Result<f64> {
+        // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an opaque handle. Every
+        // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
+        // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
+        // receives the owning B-rep (justified: findings.md "stubs naming green units")
+        Err(SolidError::unported(
+            "SmTol::GetZoneTol3d(const SmObject*)",
+            "geom.tol",
+        ))
+    }
+
+    fn point_classify(
+        &mut self,
+        _k: &Kernel,
+        _uv_point: Point2,
+        _src_zone_tol_3d: f64,
+    ) -> Result<(i32, Option<O>)> {
+        Err(SolidError::sm_err(OP_CLASSIFY))
+    }
 }
 
 /// The decomposition data of a surface subdivision tree node (`SmBezierAux2d`),
@@ -1937,7 +1992,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             None => service.face_zone_tol_3d(face)?,
         };
         let (class, object) = service.face_point_classify(k, face, uv_point, tol)?;
-        Ok((matches!(class, 102 | 103 | 104), object))
+        Ok((matches!(class, 102..=104), object))
     }
 
     /// Classifies a point with the operation-scoped trimmed-cache override.
@@ -2557,24 +2612,19 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     /// `GetTree` (a tree build needs `SmSurface::CalculateContinuities`) and
     /// `SmTol::GetZoneTol3d` of a face.
     pub fn mark_face_containment(&mut self, k: &Kernel) -> Result<()> {
-        self.mark_face_containment_impl(k, None, None)
+        self.mark_face_containment_with(k, &mut BaseClassifier)
     }
 
-    /// Marks containment using caller-provided face tolerance and point classification.
+    /// [`SurfaceCache::mark_face_containment`] of a derived cache: `classifier`
+    /// answers the virtual `PointClassify` and the zone tolerance of a node's face.
+    ///
+    /// # Errors
+    ///
+    /// Those of `classifier`; `InvalidInput` for malformed trees; those of `GetTree`.
     pub fn mark_face_containment_with(
         &mut self,
         k: &Kernel,
-        face_tolerance: &dyn Fn(O) -> Result<f64>,
-        classify: &dyn Fn(Point2, f64) -> Result<(i32, Option<O>)>,
-    ) -> Result<()> {
-        self.mark_face_containment_impl(k, Some(face_tolerance), Some(classify))
-    }
-
-    fn mark_face_containment_impl(
-        &mut self,
-        k: &Kernel,
-        face_tolerance: Option<&dyn Fn(O) -> Result<f64>>,
-        classify: Option<&dyn Fn(Point2, f64) -> Result<(i32, Option<O>)>>,
+        classifier: &mut dyn FaceContainmentClassifier<O>,
     ) -> Result<()> {
         self.get_tree(k)?;
         let top = self
@@ -2607,28 +2657,14 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
 
             // when no classified neighbor was found - cast a ray
             if found_class == NodeClass::Unknown {
-                let src_zone_tol_3d = if curr_fields.face.is_some() {
-                    if let (Some(face), Some(tolerance)) = (curr_fields.face, face_tolerance) {
-                        tolerance(face)?
-                    } else {
-                        // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an opaque handle. Every
-                        // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
-                        // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
-                        // receives the owning B-rep (justified: findings.md "stubs naming green units")
-                        return Err(SolidError::unported(
-                            "SmTol::GetZoneTol3d(const SmObject*)",
-                            "geom.tol",
-                        ));
-                    }
-                } else {
-                    zone_tol_3d(k, SmallTopoType::NormalSize)
+                let src_zone_tol_3d = match curr_fields.face {
+                    Some(face) => classifier.zone_tol_3d(k, face)?,
+                    None => zone_tol_3d(k, SmallTopoType::NormalSize),
                 };
 
                 let test_pt = self.aux(curr_node)?.uv_domain.evaluate(0.5, 0.5);
-                let (classification, object_in_or_on) = match classify {
-                    Some(classify) => classify(test_pt, src_zone_tol_3d)?,
-                    None => self.point_classify(test_pt, src_zone_tol_3d)?,
-                };
+                let (classification, object_in_or_on) =
+                    classifier.point_classify(k, test_pt, src_zone_tol_3d)?;
 
                 // remember the Node is in or out of the Face (SM_PC_FACE)
                 if classification == POINT_CLASS_FACE {

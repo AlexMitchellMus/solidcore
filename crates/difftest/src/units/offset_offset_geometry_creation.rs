@@ -1088,10 +1088,12 @@ impl OffsetBrep<H> for Two {
         surface: &Surface,
         handle: Option<H>,
     ) -> solidcore::Result<solidcore::surface::surface_cache::SurfaceCache<H>> {
+        use solidcore::query::face::p2::BrepCacheFace;
         use solidcore::surface::surface::p1::{
-            get_surface_cache, make_surface_cache, make_trim_srf_cache_with_context,
+            get_surface_cache, make_surface_cache, make_trim_srf_cache_with_face,
         };
-        use solidcore::surface::surface_cache::face_context::FaceCacheContext;
+        use solidcore::surface::surface_cache::face_context::MappedCacheFace;
+        use solidcore::surface::trim_srf_cache::CacheFace;
         let Some(owner) = surface.face()? else {
             return get_surface_cache(k, surface, handle);
         };
@@ -1108,20 +1110,40 @@ impl OffsetBrep<H> for Two {
             .map(|(id, _)| id)
             .ok_or_else(|| invalid("surface owner is not in the selected B-rep"))?;
         let map = |entity| Ok(cache_topology_handle(h.b, entity));
-        let mut context = FaceCacheContext {
-            brep: b,
-            face,
-            key_of: &key_of,
-            handle_of: &map,
+        let unmap = |handle: H| {
+            if handle.b != h.b {
+                return Err(invalid("cache handle belongs to a different B-rep"));
+            }
+            Ok(match handle.kind {
+                K_FACE => EntityRef::Face(FaceId::from_index(handle.i)),
+                K_EDGE => EntityRef::Edge(EdgeId::from_index(handle.i)),
+                K_VERTEX => EntityRef::Vertex(VertexId::from_index(handle.i)),
+                K_EDGEUSE => EntityRef::Edgeuse(EdgeuseId::from_index(handle.i)),
+                K_VERTEXUSE => EntityRef::Vertexuse(VertexuseId::from_index(handle.i)),
+                K_LOOPUSE => {
+                    EntityRef::Loopuse(solidcore::topology::LoopuseId::from_index(handle.i))
+                }
+                _ => return Err(invalid("unsupported typed cache handle")),
+            })
         };
-        match make_trim_srf_cache_with_context(k, surface, handle, &mut context) {
+        let mut context = MappedCacheFace::new(BrepCacheFace { b, f: face }, &map, &unmap)?;
+        match make_trim_srf_cache_with_face(k, surface, handle, &mut context) {
             Ok(mut cache) => {
+                cache.bind_face(
+                    owner,
+                    cache_topology_handle(h.b, EntityRef::Face(face)),
+                    context.zone_tol_3d(k, context.face())?,
+                )?;
                 if cache.base().tree().is_none() {
-                    cache.build_tree_with_context(k, &mut context)?;
+                    cache.build_tree_with_face(k, &mut context)?;
                 }
                 Ok(cache.into_base())
             }
-            Err(e) if e.is_unported() => Err(e),
+            Err(
+                e @ (SolidError::Unported { .. }
+                | SolidError::InvalidInput { .. }
+                | SolidError::NotFound { .. }),
+            ) => Err(e),
             Err(_) => make_surface_cache(k, surface, handle),
         }
     }

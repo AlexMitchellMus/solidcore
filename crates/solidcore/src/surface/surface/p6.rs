@@ -620,6 +620,7 @@ impl Surface {
             partial_coincidence_ok,
             objects,
             None,
+            None,
         )
     }
 
@@ -638,6 +639,7 @@ impl Surface {
         tol_3d: f64,
         partial_coincidence_ok: bool,
         objects: [Option<O>; 2],
+        cache: Option<&crate::surface::surface_cache::SurfaceCache<O>>,
         context: &mut dyn super::p1::SurfaceSolveContext<O>,
     ) -> Result<Option<Solution<O>>> {
         self.simple_coincidence_checker_from(
@@ -648,6 +650,7 @@ impl Surface {
             tol_3d,
             partial_coincidence_ok,
             objects,
+            cache,
             Some(context),
         )
     }
@@ -662,6 +665,7 @@ impl Surface {
         tol_3d: f64,
         partial_coincidence_ok: bool,
         objects: [Option<O>; 2],
+        cache: Option<&crate::surface::surface_cache::SurfaceCache<O>>,
         context: Option<&mut dyn super::p1::SurfaceSolveContext<O>>,
     ) -> Result<Option<Solution<O>>> {
         // First try boxing (statuses ignored).
@@ -699,6 +703,7 @@ impl Surface {
             self.global_point_solve_into_with_context(
                 k,
                 objects[1],
+                cache,
                 context,
                 uv_domain,
                 SolverOperation::Minimize,

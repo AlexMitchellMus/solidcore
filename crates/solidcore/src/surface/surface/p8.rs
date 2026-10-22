@@ -100,8 +100,6 @@ enum LineCacheSource<'c, O: Copy + PartialEq> {
     Caller(&'c mut SurfaceCache<O>),
     /// Built on the first call and kept by the caller.
     Held(&'c mut HeldSolveCache<O>),
-    /// Prepared lazily by the operation's caller, with real owning-face topology.
-    Context(&'c mut dyn SurfaceSolveContext<O>),
 }
 
 const OP_KNOTS: &str = "surface::surface::p8::Surface::find_knots_by_max_continuity";
@@ -1005,6 +1003,19 @@ impl Surface {
         }
     }
 
+    fn solve_cache_from_context<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        handle: Option<O>,
+        op: &'static str,
+        context: Option<&mut dyn SurfaceSolveContext<O>>,
+    ) -> Result<SurfaceCache<O>> {
+        match context {
+            None => self.solve_cache_of(k, handle, op),
+            Some(context) => context.build_surface_cache(k, self, handle),
+        }
+    }
+
     /// Intersections of the line `line_point + t * line_vector` with the surface over
     /// `uv_domain` (`GlobalLineIntersect`): the plane override for a plane, else
     /// [`Surface::base_global_line_intersect`]. `surface` is this surface's handle in
@@ -1096,6 +1107,7 @@ impl Surface {
         &self,
         k: &Kernel,
         surface: Option<O>,
+        cache: Option<&mut SurfaceCache<O>>,
         context: &mut dyn SurfaceSolveContext<O>,
         uv_domain: &Extent2d,
         line_point: Point3,
@@ -1108,7 +1120,7 @@ impl Surface {
             SurfaceKind::Plane(p) => p.global_line_intersect_in(
                 k,
                 surface,
-                None,
+                cache,
                 uv_domain,
                 line_point,
                 line_vector,
@@ -1119,7 +1131,11 @@ impl Surface {
             _ => self.base_global_line_intersect_from(
                 k,
                 surface,
-                LineCacheSource::Context(context),
+                match cache {
+                    Some(cache) => LineCacheSource::Caller(cache),
+                    None => LineCacheSource::Fresh,
+                },
+                Some(context),
                 uv_domain,
                 line_point,
                 line_vector,
@@ -1196,6 +1212,7 @@ impl Surface {
             k,
             surface,
             source,
+            None,
             uv_domain,
             line_point,
             line_vector,
@@ -1230,6 +1247,66 @@ impl Surface {
         fire_ray: bool,
         distance_tolerance: f64,
     ) -> Result<SolutionArray<O>> {
+        self.global_line_intersect_held_from(
+            k,
+            surface,
+            held,
+            None,
+            uv_domain,
+            line_point,
+            line_vector,
+            line_interval,
+            fire_ray,
+            distance_tolerance,
+        )
+    }
+
+    /// [`Self::global_line_intersect_held`] with an independent topology service.
+    /// A retained trimmed cache receives classification even when no build occurs.
+    /// `held` and the context must name the same unchanged geometry and topology.
+    ///
+    /// # Errors
+    /// Those of the solve, cache preparation and face classification.
+    pub fn global_line_intersect_held_with_context<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        surface: O,
+        held: &mut HeldSolveCache<O>,
+        context: &mut dyn SurfaceSolveContext<O>,
+        uv_domain: &Extent2d,
+        line_point: Point3,
+        line_vector: Vec3,
+        line_interval: Option<&Extent1d>,
+        fire_ray: bool,
+        distance_tolerance: f64,
+    ) -> Result<SolutionArray<O>> {
+        self.global_line_intersect_held_from(
+            k,
+            surface,
+            held,
+            Some(context),
+            uv_domain,
+            line_point,
+            line_vector,
+            line_interval,
+            fire_ray,
+            distance_tolerance,
+        )
+    }
+
+    fn global_line_intersect_held_from<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        surface: O,
+        held: &mut HeldSolveCache<O>,
+        context: Option<&mut dyn SurfaceSolveContext<O>>,
+        uv_domain: &Extent2d,
+        line_point: Point3,
+        line_vector: Vec3,
+        line_interval: Option<&Extent1d>,
+        fire_ray: bool,
+        distance_tolerance: f64,
+    ) -> Result<SolutionArray<O>> {
         match self.kind() {
             SurfaceKind::Plane(p) => p.global_line_intersect_in(
                 k,
@@ -1246,6 +1323,7 @@ impl Surface {
                 k,
                 Some(surface),
                 LineCacheSource::Held(held),
+                context,
                 uv_domain,
                 line_point,
                 line_vector,
@@ -1264,6 +1342,7 @@ impl Surface {
         k: &Kernel,
         surface: Option<O>,
         source: LineCacheSource<'_, O>,
+        mut context: Option<&mut dyn SurfaceSolveContext<O>>,
         uv_domain: &Extent2d,
         line_point: Point3,
         line_vector: Vec3,
@@ -1283,7 +1362,6 @@ impl Surface {
         // (`held`: the caller's cache, which the coincident traces below share)
         let mut held: Option<&mut SurfaceCache<O>> = None;
         let built;
-        let mut face_queries = None;
         let cache = match source {
             LineCacheSource::Caller(c) => {
                 held = Some(c);
@@ -1293,25 +1371,35 @@ impl Surface {
                 }
             }
             LineCacheSource::Fresh => {
-                built = self.solve_cache_of(k, surface, OP_LINE)?;
+                built = self.solve_cache_from_context(
+                    k,
+                    surface,
+                    OP_LINE,
+                    context
+                        .as_mut()
+                        .map(|context| &mut **context as &mut dyn SurfaceSolveContext<O>),
+                )?;
                 &built
             }
             LineCacheSource::Held(kept) => {
-                match kept.get_or_insert_with(|| self.solve_cache_of(k, surface, OP_LINE)) {
+                match kept.get_or_insert_with(|| {
+                    self.solve_cache_from_context(
+                        k,
+                        surface,
+                        OP_LINE,
+                        context
+                            .as_mut()
+                            .map(|context| &mut **context as &mut dyn SurfaceSolveContext<O>),
+                    )
+                }) {
                     Ok(c) => &*c,
                     Err(e) => return Err(e.clone()),
                 }
             }
-            LineCacheSource::Context(context) => {
-                built = match context.build_surface_cache(k, self, surface) {
-                    Ok(cache) => cache,
-                    Err(e) if e.is_unported() => return Err(e),
-                    Err(_) => return Err(SolidError::null_pointer(OP_LINE)),
-                };
-                face_queries = context.face_queries();
-                &built
-            }
         };
+        let face_queries = context
+            .as_deref()
+            .and_then(SurfaceSolveContext::face_queries);
         let tree = cache.tree().ok_or(SolidError::null_pointer(OP_LINE))?;
         let top = tree.top_node().ok_or(SolidError::null_pointer(OP_LINE))?;
         let tree_box = tree.node(top)?.bbox;
@@ -1327,7 +1415,7 @@ impl Surface {
         let mut gs = LsiGlobalSolver::new(
             k,
             tree,
-            Some(self),
+            Some(cache.surface()),
             *uv_domain,
             line_point,
             vec, // preScale line: crLinePoint, crLineVector
@@ -1826,6 +1914,7 @@ impl Surface {
         &self,
         k: &Kernel,
         handles: [Option<O>; 2],
+        cache: Option<&mut SurfaceCache<O>>,
         context: &mut dyn SurfaceSolveContext<O>,
         uv_domain: &Extent2d,
         curve: &Curve,
@@ -1835,7 +1924,7 @@ impl Surface {
         self.global_curve_intersect_from(
             k,
             handles,
-            None,
+            cache,
             Some(context),
             uv_domain,
             curve,
@@ -1869,6 +1958,7 @@ impl Surface {
                 self.global_point_solve_into_with_context(
                     k,
                     surface_handle,
+                    cache.as_deref(),
                     context,
                     uv_domain,
                     SolverOperation::Intersect,
@@ -1891,7 +1981,7 @@ impl Surface {
                     &mut sols,
                 )
             };
-            ignore_status(solve)?;
+            let _ = super::p1::ignore_native_classification(solve)?;
 
             // set output values
             for ii in 0..sols.len() {
@@ -1923,6 +2013,7 @@ impl Surface {
                     self.global_line_intersect_with_context(
                         k,
                         surface_handle,
+                        cache,
                         context,
                         uv_domain,
                         line_point,
@@ -1969,6 +2060,7 @@ impl Surface {
                 distance_tolerance,
                 true,
                 [curve_handle, surface_handle],
+                cache.as_deref(),
                 &mut **context,
             )?
         } else {
@@ -2056,21 +2148,22 @@ impl Surface {
         // cause lots of additions to the curve cache, which could push this curve's
         // cache right out of the queue. So get the curve's cache afterwards.)
         let built;
-        let mut face_queries = None;
         let surface_cache = if let Some(c) = cache {
             Self::held_cache(k, c, OP_CURVE)?
-        } else if let Some(context) = context {
-            built = match context.build_surface_cache(k, self, surface_handle) {
-                Ok(cache) => cache,
-                Err(e) if e.is_unported() => return Err(e),
-                Err(_) => return Err(SolidError::null_pointer(OP_CURVE)),
-            };
-            face_queries = context.face_queries();
-            &built
         } else {
-            built = self.solve_cache_of(k, surface_handle, OP_CURVE)?;
+            built = self.solve_cache_from_context(
+                k,
+                surface_handle,
+                OP_CURVE,
+                context
+                    .as_mut()
+                    .map(|context| &mut **context as &mut dyn SurfaceSolveContext<O>),
+            )?;
             &built
         };
+        let face_queries = context
+            .as_deref()
+            .and_then(SurfaceSolveContext::face_queries);
         let surface_tree = surface_cache
             .tree()
             .ok_or(SolidError::null_pointer(OP_CURVE))?;
@@ -2089,7 +2182,7 @@ impl Surface {
             k,
             curve_tree,
             surface_tree,
-            Some(self),
+            Some(surface_cache.surface()),
             coincident,
             *interval,
             *uv_domain,
@@ -3026,16 +3119,24 @@ mod tests {
     #[test]
     fn caller_context_does_not_prepare_an_analytic_fast_path() {
         let k = Kernel::default();
-        let plane = Surface::from(crate::surface::plane::Plane::from_normal(
+        let mut plane = Surface::from(crate::surface::plane::Plane::from_normal(
             Vec3::ZERO,
             Vec3::Z,
         ));
+        // Real ownership with no available trims: analytic work must not request
+        // mutable topology merely because an owner is present.
+        plane.set_owner(Some(crate::geom::object::ObjectRef {
+            type_code: crate::topology::face::p2::TYPE,
+            key: crate::geom::attribute::ObjectKey(50_000),
+        }));
+        plane.set_owner_zone_tol_3d(Some(1e-5));
         let mut context = RejectCachePreparation { calls: 0 };
         let domain = Extent2d::from_bounds(-1.0, -1.0, 1.0, 1.0);
         let hit = plane
             .global_line_intersect_with_context(
                 &k,
                 Some(NoObject),
+                None,
                 &mut context,
                 &domain,
                 Vec3::new(0.0, 0.0, -1.0),
@@ -3055,6 +3156,7 @@ mod tests {
             .global_curve_intersect_with_context(
                 &k,
                 [Some(NoObject), Some(NoObject)],
+                None,
                 &mut context,
                 &domain,
                 &curve,
@@ -3075,6 +3177,7 @@ mod tests {
             .global_line_intersect_with_context(
                 &k,
                 Some(NoObject),
+                None,
                 &mut context,
                 &surface.natural_uv_domain(),
                 Vec3::ZERO,
@@ -3085,6 +3188,177 @@ mod tests {
             )
             .is_err());
         assert_eq!(context.calls, 0);
+    }
+
+    #[test]
+    fn degenerate_curve_propagates_malformed_cache_context() {
+        let k = Kernel::default();
+        let mut plane = Surface::from(crate::surface::plane::Plane::from_normal(
+            Vec3::ZERO,
+            Vec3::Z,
+        ));
+        plane.set_owner(Some(crate::geom::object::ObjectRef {
+            type_code: crate::topology::face::p2::TYPE,
+            key: crate::geom::attribute::ObjectKey(50_002),
+        }));
+        plane.set_owner_zone_tol_3d(Some(1e-5));
+        let curve = Curve::from(BSplineCurve::create_degenerate_curve(3, Vec3::ZERO).unwrap());
+        let mut context = RejectCachePreparation { calls: 0 };
+        let result = plane.global_curve_intersect_with_context(
+            &k,
+            [Some(NoObject), Some(NoObject)],
+            None,
+            &mut context,
+            &Extent2d::from_bounds(-1.0, -1.0, 1.0, 1.0),
+            &curve,
+            &curve.natural_interval(),
+            1e-6,
+        );
+        assert!(matches!(result, Err(SolidError::InvalidInput { .. })));
+        assert_eq!(context.calls, 1);
+    }
+
+    #[derive(Debug)]
+    struct NumericalTrimContext {
+        builds: usize,
+        tests: core::cell::Cell<usize>,
+        inside: bool,
+    }
+
+    impl crate::surface::surface_cache::face_context::FaceQueries<NoObject> for NumericalTrimContext {
+        fn face_zone_tol_3d(&self, _face: NoObject) -> Result<f64> {
+            Ok(1e-5)
+        }
+
+        fn face_point_classify(
+            &self,
+            _k: &Kernel,
+            _face: NoObject,
+            _uv: Point2,
+            _tol: f64,
+        ) -> Result<(i32, Option<NoObject>)> {
+            self.tests.set(self.tests.get() + 1);
+            Ok(if self.inside {
+                (102, Some(NoObject))
+            } else {
+                (100, None)
+            })
+        }
+
+        fn face_point_classify_fast_drop(
+            &self,
+            k: &Kernel,
+            face: NoObject,
+            uv: Point2,
+            tol: f64,
+        ) -> Result<(i32, Option<NoObject>)> {
+            self.face_point_classify(k, face, uv, tol)
+        }
+    }
+
+    impl SurfaceSolveContext<NoObject> for NumericalTrimContext {
+        fn build_surface_cache(
+            &mut self,
+            k: &Kernel,
+            surface: &Surface,
+            handle: Option<NoObject>,
+        ) -> Result<SurfaceCache<NoObject>> {
+            use crate::surface::surface_cache::p1::FaceContainment;
+            use crate::surface::surface_cache::SurfaceCacheOptions;
+            use crate::surface::trim_srf_cache::TrimSrfCache;
+            self.builds += 1;
+            let mut cache = TrimSrfCache::new(
+                surface.clone_for_evaluation()?,
+                SurfaceCacheOptions::default(),
+            );
+            cache.base_mut().set_surface_handle(handle);
+            cache.bind_face(surface.face()?.unwrap(), NoObject, 1e-5)?;
+            // This focused adapter isolates solver acceptance. Real topology and
+            // containment are independently compared in native_face fixtures.
+            cache.base_mut().build_tree(k, false)?;
+            cache.base_mut().have_t_surface_cache = true;
+            cache.base_mut().face_containment_done = FaceContainment::Done;
+            Ok(cache.into_base())
+        }
+
+        fn face_queries(
+            &self,
+        ) -> Option<&dyn crate::surface::surface_cache::face_context::FaceQueries<NoObject>>
+        {
+            Some(self)
+        }
+    }
+
+    #[test]
+    fn numerical_trim_queries_survive_caller_and_held_cache_reuse() {
+        let k = Kernel::default();
+        let mut surface = bilinear();
+        surface.set_owner(Some(crate::geom::object::ObjectRef {
+            type_code: crate::topology::face::p2::TYPE,
+            key: crate::geom::attribute::ObjectKey(50_001),
+        }));
+        surface.set_owner_zone_tol_3d(Some(1e-5));
+        let domain = surface.natural_uv_domain();
+        let mut context = NumericalTrimContext {
+            builds: 0,
+            tests: core::cell::Cell::new(0),
+            inside: true,
+        };
+        let mut held = None;
+        let hit = surface
+            .global_line_intersect_held_with_context(
+                &k,
+                NoObject,
+                &mut held,
+                &mut context,
+                &domain,
+                Vec3::new(1.0, 1.5, -2.0),
+                Vec3::Z,
+                None,
+                false,
+                1e-6,
+            )
+            .unwrap();
+        assert_eq!(hit.len(), 1);
+        assert_eq!(context.builds, 1);
+        assert!(context.tests.get() > 0);
+        context.inside = false;
+        let tested = context.tests.get();
+        let hit = surface
+            .global_line_intersect_held_with_context(
+                &k,
+                NoObject,
+                &mut held,
+                &mut context,
+                &domain,
+                Vec3::new(1.0, 1.5, -2.0),
+                Vec3::Z,
+                None,
+                false,
+                1e-6,
+            )
+            .unwrap();
+        assert!(hit.is_empty());
+        assert_eq!(context.builds, 1);
+        assert!(context.tests.get() > tested);
+        let cache = held.as_mut().unwrap().as_mut().unwrap();
+        context.inside = true;
+        let hit = surface
+            .global_line_intersect_with_context(
+                &k,
+                Some(NoObject),
+                Some(cache),
+                &mut context,
+                &domain,
+                Vec3::new(1.0, 1.5, -2.0),
+                Vec3::Z,
+                None,
+                false,
+                1e-6,
+            )
+            .unwrap();
+        assert_eq!(hit.len(), 1);
+        assert_eq!(context.builds, 1);
     }
 
     #[test]

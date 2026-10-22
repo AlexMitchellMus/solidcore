@@ -13,9 +13,10 @@ use solidcore::geom::attribute::ObjectKey;
 use solidcore::geom::object::ObjectRef;
 use solidcore::geom::vector2d::Point2;
 use solidcore::kernel::Kernel;
+use solidcore::query::face::p2::BrepCacheFace;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::{Surface, SurfaceKind};
-use solidcore::surface::surface_cache::face_context::{FaceCacheContext, PreparedFaceQueries};
+use solidcore::surface::surface_cache::face_context::PreparedFaceQueries;
 use solidcore::surface::surface_cache::{SurfaceCache, SurfaceCacheOptions};
 use solidcore::surface::trim_srf_cache::TrimSrfCache;
 use solidcore::topology::face::p4 as face_p4;
@@ -32,6 +33,7 @@ const PROBE: usize = 21;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[allow(clippy::struct_excessive_bools)] // independent flags in the native probe protocol
 struct Inputs {
     path: String,
     surface_type: u32,
@@ -127,7 +129,8 @@ fn output(flat: &[f64]) -> Result<Output, HarnessError> {
     for probe in flat
         .get(HEADER..)
         .ok_or_else(|| harness("missing probes"))?
-        .chunks_exact(PROBE)
+        .as_chunks::<PROBE>()
+        .0
     {
         for (index, &v) in probe.iter().enumerate() {
             if (2..5).contains(&index) {
@@ -194,7 +197,7 @@ fn object(out: &mut Vec<f64>, value: Option<EntityRef>) {
 
 /// An exact snapshot of the INPUT surface, retaining its real face owner/tolerance.
 /// The shared importer reconstructs planes from precisely these analytic members
-/// (without a NURB); do not invoke Surface::clone, which fixes B-spline knots again.
+/// (without a NURB); do not invoke `Surface::clone`, which fixes B-spline knots again.
 fn snapshot(surface: &Surface) -> SolidResult<Surface> {
     let mut copy = match surface.kind() {
         SurfaceKind::BSpline(s) => Surface::from(s.clone_exact()),
@@ -347,25 +350,17 @@ fn rust_record(input: &Inputs, brep: &mut Brep, face: FaceId) -> SolidResult<Vec
     let surface = snapshot(source)?;
     let mut cache: TrimSrfCache<EntityRef> =
         TrimSrfCache::new(surface, SurfaceCacheOptions::default());
-    cache.base_mut().set_owner_zone_tol_3d(record.tolerance);
+    let tolerance = record.tolerance;
+    cache.base_mut().set_owner_zone_tol_3d(tolerance);
     brep.set_editing_enabled(input.editing);
     let handle_of = |entity| Ok(entity);
-    cache.bind_face_context(&FaceCacheContext {
-        brep,
-        face,
-        key_of: &key_of,
-        handle_of: &handle_of,
-    })?;
+    cache.bind_face(
+        key_of(EntityRef::Face(face)),
+        EntityRef::Face(face),
+        tolerance,
+    )?;
     if input.build {
-        let built = cache.build_tree_with_context(
-            &k,
-            &mut FaceCacheContext {
-                brep,
-                face,
-                key_of: &key_of,
-                handle_of: &handle_of,
-            },
-        );
+        let built = cache.build_tree_with_face(&k, &mut BrepCacheFace { b: brep, f: face });
         let build_status = match built {
             Ok(()) => SUCCESS,
             Err(error) => status(error)?,

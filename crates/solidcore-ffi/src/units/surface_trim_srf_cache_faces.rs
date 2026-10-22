@@ -87,7 +87,9 @@ pub fn validate(path: &str, input: &[f64]) -> Result<(), FfiError> {
         return Err(bad("sample count does not match UV-fraction triples"));
     }
     if samples
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .any(|p| p.get(2).is_none_or(|t| *t < 0.0))
     {
         return Err(bad("source tolerances must be nonnegative"));

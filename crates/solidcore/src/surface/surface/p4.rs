@@ -15,7 +15,7 @@
 //! | [`pass_sp_convergence_test`]                      | `sm_PassSPConvergenceTest` (static)              |
 //! | [`Surface::create_seam_curve`]                    | `SmSurface::CreateSeamCurve`                     |
 //! | [`Surface::is_on_seam`], [`SeamInfo`]             | `SmSurface::IsOnSeam`                            |
-//! | [`Surface::global_point_solve`], [`global_point_solve_starts`], [`NoObject`] | `SmSurface::GlobalPointSolve` |
+//! | [`Surface::global_point_solve`], [`Surface::global_point_solve_point_test_off`], [`global_point_solve_starts`], [`NoObject`] | `SmSurface::GlobalPointSolve` |
 //! | [`classify_curve_surface_xsect_point`], [`XsectClassification`] | `sm_ClassifyCurveSurfaceXSectPoint` (static) |
 //! | [`CsIntersectEnfo`] (`EvalNFunctions`)           | `SmCSIntersectENFO::Evaluate` (struct: `surface.surface_p1`) |
 //! | [`CsNormalizeEnfo`] (`EvalNFunctions`)            | `SmCSNormalizeENFO::Evaluate` (struct: `surface.surface_p1`) |
@@ -1327,6 +1327,44 @@ impl Surface {
         Ok(solutions)
     }
 
+    /// [`Surface::global_point_solve`] by a caller that holds the surface's cache with
+    /// its point testing switched off (`SmTemporaryChangeValue` on
+    /// `m_bPointTestEnabled` around the solve, as `SmFace::Point3DClassify` does): the
+    /// trim boundary check of a face's surface keeps every solution, so the cache is
+    /// not fetched for it.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::global_point_solve`].
+    pub fn global_point_solve_point_test_off<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        surface: Option<O>,
+        uv_domain: &Extent2d,
+        op: SolverOperation,
+        test_point: Point3,
+        src_zone_tol_3d: f64,
+        opt_target_distance: Option<f64>,
+        requested: SolutionRequested,
+    ) -> Result<SolutionArray<O>> {
+        let mut solutions = SolutionArray::new();
+        self.global_point_solve_in(
+            k,
+            surface,
+            None,
+            None,
+            uv_domain,
+            op,
+            test_point,
+            src_zone_tol_3d,
+            opt_target_distance,
+            requested,
+            &mut solutions,
+            true,
+        )?;
+        Ok(solutions)
+    }
+
     /// [`Surface::global_point_solve`] with upstream's out-parameter: `solutions` keeps
     /// what was found when the call fails (for callers that ignore the status), except
     /// what the fast drop produced before it failed itself.
@@ -1346,9 +1384,10 @@ impl Surface {
         requested: SolutionRequested,
         solutions: &mut SolutionArray<O>,
     ) -> Result<()> {
-        self.global_point_solve_into_from(
+        self.global_point_solve_in(
             k,
             surface,
+            None,
             None,
             uv_domain,
             op,
@@ -1357,6 +1396,7 @@ impl Surface {
             opt_target_distance,
             requested,
             solutions,
+            false,
         )
     }
 
@@ -1371,6 +1411,7 @@ impl Surface {
         &self,
         k: &Kernel,
         surface: Option<O>,
+        cache: Option<&crate::surface::surface_cache::SurfaceCache<O>>,
         context: &mut dyn super::p1::SurfaceSolveContext<O>,
         uv_domain: &Extent2d,
         op: SolverOperation,
@@ -1380,9 +1421,10 @@ impl Surface {
         requested: SolutionRequested,
         solutions: &mut SolutionArray<O>,
     ) -> Result<()> {
-        self.global_point_solve_into_from(
+        self.global_point_solve_in(
             k,
             surface,
+            cache,
             Some(context),
             uv_domain,
             op,
@@ -1391,14 +1433,16 @@ impl Surface {
             opt_target_distance,
             requested,
             solutions,
+            false,
         )
     }
 
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
-    fn global_point_solve_into_from<O: SolutionObject>(
+    fn global_point_solve_in<O: SolutionObject>(
         &self,
         k: &Kernel,
         surface: Option<O>,
+        cache: Option<&crate::surface::surface_cache::SurfaceCache<O>>,
         context: Option<&mut dyn super::p1::SurfaceSolveContext<O>>,
         uv_domain: &Extent2d,
         op: SolverOperation,
@@ -1407,6 +1451,7 @@ impl Surface {
         opt_target_distance: Option<f64>,
         requested: SolutionRequested,
         solutions: &mut SolutionArray<O>,
+        point_test_off: bool,
     ) -> Result<()> {
         // init output
         *solutions = SolutionArray::new();
@@ -1450,9 +1495,15 @@ impl Surface {
                 // If this surface belongs to a face, then check whether the returned UV
                 // values are within the trim boundaries of the face, unless flags in its
                 // surface cache indicate otherwise.
-                if self.owner().is_some_and(|o| o.type_code == FACE_TYPE) {
+                if !point_test_off && self.owner().is_some_and(|o| o.type_code == FACE_TYPE) {
                     if let Some(context) = context {
-                        let cache = context.build_surface_cache(k, self, surface)?;
+                        let built;
+                        let cache = if let Some(cache) = cache {
+                            cache
+                        } else {
+                            built = context.build_surface_cache(k, self, surface)?;
+                            &built
+                        };
                         if cache.is_trimmed()
                             && cache.point_test_enabled
                             && !cache.face_was_modified
@@ -1472,13 +1523,15 @@ impl Surface {
                                 let uv = Point2::new(point.start.param(0)?, point.start.param(1)?);
                                 // Here upstream removes a candidate on classification
                                 // failure (unlike sm_IsPointValid's keep-on-error).
-                                let good = ignored(queries.face_point_classify_fast_drop(
-                                    k,
-                                    face,
-                                    uv,
-                                    src_zone_tol_3d,
-                                ))?
-                                .is_some_and(|(class, _)| matches!(class, 102 | 103 | 104));
+                                let good = super::p1::ignore_native_classification(
+                                    queries.face_point_classify_fast_drop(
+                                        k,
+                                        face,
+                                        uv,
+                                        src_zone_tol_3d,
+                                    ),
+                                )?
+                                .is_some_and(|(class, _)| matches!(class, 102..=104));
                                 if good {
                                     i += 1;
                                 } else {
