@@ -2491,7 +2491,7 @@ mod tests {
         let mut trailing_byte = block.clone();
         trailing_byte.insert(regular, 0.0);
         trailing_byte[5] += 1.0;
-        fails(&trailing_byte, "record not read whole");
+        fails(&trailing_byte, "not read whole");
         let mut mismatched_base = block.clone();
         mismatched_base[regular + 10] += 1.0;
         fails(&mismatched_base, "B-spline part differs");
