@@ -15530,6 +15530,35 @@ Neither is one.
   `global_cylinder_plane_perp` (rel err 0.92) failed and 4 cases deferred on
   `SmPlane::CreateIsoParametricCurve`; after it 9 of 10 pass bit-identically.
 
+## topology.edge — inexact geometry import reporting (issue #294, PR #356)
+
+The edge adapter imports analytic curves other than lines, and analytic surfaces
+other than planes, as their B-spline parts. Its existing `inexact` predicate skips
+operations that would evaluate those stand-ins. The C++ runner still refuses those
+inputs with `inexact_geometry`; the Rust runner now reports a harness deferral on
+`topology.edge`, with symbol `difftest: exact analytic geometry import for edge
+evaluation`. Neither runner evaluates the skipped operation. This corrects coverage
+accounting without adding analytic import or kernel coverage.
+
+A fresh default-seed baseline on `7b57d8de` reproduced the committed report exactly:
+1787 cases, 1781 passed, 6 deferred, zero failed. Capturing both runner outputs proved
+that all 186 empty passes returned `inexact_geometry` on both sides: 62 `seam` cases
+(both overloads), and 31 each for `topological`, `tangent`, `blend`, and `radial`.
+The other 1595 passes compared real values; the six existing deferrals belong to
+`intersect.surface_drop_lib_p3`.
+
+After the correction, the same 1787 cases produce 1595 passes, 192 deferrals
+(`topology.edge` 186, `intersect.surface_drop_lib_p3` 6), zero failures, and zero
+empty passes. Comparing by case name proved that all 1601 other case records and
+both runner outputs are identical. The C++ refusal output is also unchanged for
+each of the 186 reclassified cases. The unit remains `partial`, with relative
+tolerance `1e-9`, no absolute floors, and maximum relative error zero.
+
+Exact controls still compare 4 values (`line_join_fw_tangent_start`), 18
+(`line_join_fw_trimmed`), 18 (`net_trimmed_e0`, a B-spline), 1
+(`plane_square_e0_tangent`), and 50 (`Mouse_e0_query`). The Mouse query uses the
+same imported B-rep as the deferred operations: the guard still applies per
+operation, not to the whole B-rep.
 ## sweep.topology_sweep — third review integration (PR #222, 2026-10-20)
 
 Merged canonical main `bb137d7d` after review 5589823426. The manifest keeps
@@ -15590,6 +15619,49 @@ stitching still have their documented dependencies; merge p3/p4 remain paired
 with the missing p2 merge constructor. Final native/CI evidence is recorded on
 the tested PR head; no tolerance or absolute floor is relaxed.
 
+## 2026-10-21 — Production SweepAccess store (issue #255, PR #424)
+
+`SweepStore` integrates the PR #222 orchestration with caller-owned B-reps,
+actual kernels, stable object identities, notification records and attributes.
+It borrows originals, owns temporary B-reps and complete HCR sessions, uses a
+caller-retained monotonic handle counter, and rejects mismatched borrowed B-rep
+keys. Shared contexts resolve to one kernel; dual borrows reject aliasing and use
+the destination kernel. Full-kernel callbacks preserve context callbacks through
+`Context::with_notification_context`. The five sweep evaluation calls affected by
+current main's kernel-aware curve/surface APIs now take the destination context.
+
+Tags use `AttributeStore` and original curve identities supplied by the caller.
+Traversal imports/exports the caller's actual `Topology` records through a small
+`Marks` record bridge, preserving order and partial traversal output. Mark locks
+remain owned until release or store drop; unlike the reference's exhausted-mask
+fallback, the adapter refuses when every permitted mark is already locked so it
+cannot unlock a caller-owned mark. Temporary deletion clears its topology and
+caller-declared exclusively owned auxiliary attribute users/records, is idempotent,
+and never releases borrowed originals. The caller must provide correct persistent
+identity and auxiliary ownership mappings; the adapter invents neither keys nor kernels.
+
+Eight focused Rust adapter regressions cover shared/distinct contexts, both split
+borrow orders, callback execution/restoration after an error, mark lifetime and
+partial traversal state, tag ordering and original-curve identities, cross-session
+handles/persistent original attributes, key mismatch refusal, HCR scene identity,
+and production `TopologySweep::do_sweep` calls. A translation sweep creates a real
+destination shell and vertex, then returns the exact `MakeWireEdgeVertex`
+`Unported` while retaining that partial topology and restoring context flags.
+These are production-store integration tests, not additional C++ geometry parity.
+
+### Explicit remaining boundary
+
+Current main has `MergeState::with_breps`; the older PR #222 note that the merge
+constructor is entirely unported no longer describes current main. Its canonical
+engine has a separate namespace/attribute store, and there is still no caller-key
+copy-notification registration bridge or concrete `PiecewiseAccess` implementation.
+This store therefore refuses `new_merge` explicitly at that registration bridge
+(`boolean.merge_p2`), before creating a registration. `delete_merge` has nothing
+to release. Successful consuming union/merge registration and full HCR construction
+are not claimed as production-store acceptance. Available HCR retention uses the
+actual `Hcr` scene; its unavailable construction path and other modelling defaults
+remain explicit errors. No new topology constructors, tolerances, parity counts or
+unit status promotions are introduced by this adapter.
 ## blend.fillet_solver_p5 — integrating geom p3/p6 (PR #208)
 
 After #247 landed, rollover recovery delegates `TopologySplit` and
@@ -16040,6 +16112,17 @@ Validation limits: the fillet cannot run end to end in Rust yet
 bound: upstream sliver of 2.115e-4, none with the option), the upper and v boundaries,
 and unchanged results for bounds farther than `SM_EFF_ZERO_PARAM` from a knot.
 
+### Sweep/merge snapshots: live topology and face-use links
+
+Units: boolean.merge_p2, boolean.merge_p5, topology.brep_p10.
+The `other_wire_classify_op{1,4,5,6}` cases exposed a snapshot mismatch: C++
+exports 96 topology integers; raw Rust arenas included 103 after MakeEdgeTopology.
+C++ deletes detached objects while Rust retains their slots. Both merge runners
+now share the complete reachable-graph serializer, preserving every live record.
+Face-use links use `shell::faceuse_sibling_links`, including its arena-list fallback;
+an absent optional backing field is not itself a null native link. No cases,
+rejection rules or tolerances change. This correction does not qualify full
+curve-copy geometry; WR-168 remains a separate existing deviation.
 ## blend.fillet_geom_p1: `sm_ClassifyFacePoint` returns 0 where the C++ returns 1 or 2 (2026-10-22)
 
 Found while batching PR #268 (`blend.fillet_corner_p2`) onto main. Now that
