@@ -190,6 +190,8 @@ fn surface_drop_curve(
         }
         SurfaceKind::BSpline(_)
         | SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -2495,7 +2497,7 @@ pub fn extract_iso_curve(
     }
 
     // Check starting and ending knots for too high multiplicity.
-    let Some((_, multiplicities)) = ignored(iso.knots(None))? else {
+    let Some((_, multiplicities)) = ignored(iso.knots(k, None))? else {
         return Ok(None);
     };
     let degree = iso.degree()?;

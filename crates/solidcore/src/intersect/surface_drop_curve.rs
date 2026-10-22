@@ -79,6 +79,7 @@
 //!   depends on input; the seam search loop is bounded (19 steps) as upstream.
 
 use crate::curve::crv_on_surf::CrvOnSurf;
+use crate::curve::curve::knots_ignoring_status;
 use crate::curve::curve::p5::make_curve_cache;
 use crate::curve::curve::p8::CurveIntersectOptions;
 use crate::curve::curve::p9::CurveSolveOptions;
@@ -183,6 +184,8 @@ fn is_singularity(k: &Kernel, surface: &Surface, uv: Point2) -> Result<(bool, Su
         SurfaceKind::Plane(p) => Ok(p.is_singularity()),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -259,6 +262,8 @@ fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<Option<Vec<Po
         }),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -293,9 +298,15 @@ fn create_iso_parametric_curve(
         SurfaceKind::Cone(s) => Ok(s
             .create_iso_parametric_curve(k, param, value, None, false)?
             .curve),
+        SurfaceKind::Sphere(s) => Ok(s
+            .create_iso_parametric_curve(k, param, value, None, false)?
+            .curve),
         SurfaceKind::SurfOfRevolution(s) => {
             Ok(s.create_iso_parametric_curve(k, param, value, None)?.curve)
         }
+        SurfaceKind::Torus(s) => Ok(s
+            .create_iso_parametric_curve(k, param, value, None, false)?
+            .curve),
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
@@ -370,6 +381,8 @@ fn surface_drop_curve(
         }
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
@@ -977,11 +990,7 @@ impl<'s> SurfaceDropCurve<'s> {
         let max_drop_dist = self.curve_is_on_surface.then_some(approx_tol);
 
         // Copy TargetCurve knots into m_pCurveKnotVector
-        self.curve_knot_vector = Some(
-            ignored(curve.knots(None))?
-                .map(|(knots, _)| knots)
-                .unwrap_or_default(),
-        );
+        self.curve_knot_vector = Some(knots_ignoring_status(curve.knots_with_status(k, None))?.0);
 
         // Place targetCurve interval start/end points into m_pCurveBreaks
         let mut breaks = Vec::new();
@@ -1189,7 +1198,7 @@ impl<'s> SurfaceDropCurve<'s> {
         }
 
         // Add every curve discontinuity point to breakpoints array
-        let (c_knots, _) = curve.knots(None)?;
+        let (c_knots, _) = curve.knots(k, None)?;
         let conts = curve_cache.continuities();
         for jj in 1..conts.len().saturating_sub(1) {
             if is_c0(conts, jj)? {
@@ -1205,8 +1214,8 @@ impl<'s> SurfaceDropCurve<'s> {
         let mut ii = 1usize;
         while ii < breaks.len() {
             // snap this and last breakpoint parameters to nearby curve knot values
-            let t0 = curve.snap_to_knots(index(&breaks, ii - 1)?, EFF_ZERO_SQRT / 100.0)?;
-            let t1 = curve.snap_to_knots(index(&breaks, ii)?, EFF_ZERO_SQRT / 100.0)?;
+            let t0 = curve.snap_to_knots(k, index(&breaks, ii - 1)?, EFF_ZERO_SQRT / 100.0)?;
+            let t1 = curve.snap_to_knots(k, index(&breaks, ii)?, EFF_ZERO_SQRT / 100.0)?;
 
             // Copy the snapped values back into the array:
             set_index(&mut breaks, ii - 1, t0)?;
