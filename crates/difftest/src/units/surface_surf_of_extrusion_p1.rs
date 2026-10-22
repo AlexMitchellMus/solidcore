@@ -565,7 +565,11 @@ pub(crate) fn put_curve(o: &mut Vec<f64>, c: Option<&Curve>) {
     o.extend_from_slice(cur.knots());
 }
 
-pub(crate) fn put_state(k: &Kernel, o: &mut Vec<f64>, s: &SurfOfExtrusion) -> solidcore::Result<()> {
+pub(crate) fn put_state(
+    k: &Kernel,
+    o: &mut Vec<f64>,
+    s: &SurfOfExtrusion,
+) -> solidcore::Result<()> {
     o.extend([
         flag(s.is_kind_of(SURF_OF_EXTRUSION_TYPE)?),
         flag(s.is_kind_of(B_SPLINE_SURFACE_TYPE)?),

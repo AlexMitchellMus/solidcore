@@ -2491,17 +2491,22 @@ pub fn find_best_uv_curve(
 
 /// Saves a surface's owner and puts it back (`SmRescueSurfaceOwner`: the constructor
 /// saves, the destructor restores).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RescueSurfaceOwner {
     owner: Option<ObjectRef>,
+    /// The face tolerance cached on the surface ([`Surface::owner_zone_tol_3d`]), put
+    /// back with the owner (a caller that may change the face's tolerance meanwhile
+    /// re-syncs it from the B-rep).
+    zone_tol_3d: Option<f64>,
 }
 
 impl RescueSurfaceOwner {
     /// Saves `surface`'s owner.
     #[must_use]
-    pub const fn new(surface: &Surface) -> Self {
+    pub fn new(surface: &Surface) -> Self {
         Self {
             owner: surface.owner(),
+            zone_tol_3d: surface.owner_zone_tol_3d(),
         }
     }
 
@@ -2514,6 +2519,9 @@ impl RescueSurfaceOwner {
     /// Restores the saved owner on `surface` (the destructor).
     pub fn restore(self, surface: &mut Surface) {
         surface.set_owner(self.owner);
+        if self.zone_tol_3d.is_some() {
+            surface.set_owner_zone_tol_3d(self.zone_tol_3d);
+        }
     }
 }
 
@@ -2842,11 +2850,11 @@ mod tests {
             BSplineCurve::create_line_segment(2, Vec3::ZERO, Vec3::new(1.0, 1.0, 0.0)).unwrap(),
         );
         let uv = [Some(line)];
-        assert!(
-            create_curves_by_trimming(&k, &b, f, Some(1.0), None, Some(&uv), false, true)
-                .unwrap_err()
-                .is_unported()
-        );
+        // a face without loops: CurveOnClassify's status
+        assert!(matches!(
+            create_curves_by_trimming(&k, &b, f, Some(1.0), None, Some(&uv), false, true),
+            Err(SolidError::Upstream { .. })
+        ));
         assert!(create_curves_by_trimming(&k, &b, f, None, None, None, true, false).is_err());
     }
 
