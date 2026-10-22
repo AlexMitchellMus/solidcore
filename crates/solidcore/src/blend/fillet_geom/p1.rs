@@ -168,8 +168,7 @@
 //!   examine path (`DropCurve`). `sm_TwoPntsIntersection` hands its tolerance to
 //!   `PointBasedSurfaceIntersect` through `SM_CAST_APPROXTOL3D_PTR` (a pointer cast, no
 //!   conversion), so it stays raw there.
-//! - **Unported callees.** `SmSurface::PointBasedSurfaceIntersect` defers in
-//!   `intersect.surface_intersector_p4`; `SmSurface::GlobalCurveIntersect` (in
+//! - **Unported callees.** `SmSurface::GlobalCurveIntersect` (in
 //!   [`FilletBrep::calc_cliff_rail_int_edge`]) stops at the unwired
 //!   `SmSurfaceDropCurve::DoTrace` call of `intersect.surface_drop_lib_p1` (its stub
 //!   carries the label `intersect.surface_drop_curve`);
@@ -1079,10 +1078,10 @@ impl FilletGeom {
         let mut off_surfs = [None, None];
         for (slot, i) in off_surfs.iter_mut().zip(0..2usize) {
             if let Some((_, fs)) = solver {
-                *slot = match fs.surface(i)? {
+                *slot = match fs.surface(i)?.map(|slot| &slot.surface) {
                     // SmOffsetSurface::Copy() returns an SmSurface*, not SmOffsetSurface*;
                     // its status is ignored, so a failed copy leaves NULL
-                    Some(off_srf) => match offset_surface_copy(k, &off_srf.surface) {
+                    Some(off_srf) => match offset_surface_copy(k, off_srf) {
                         Ok(new_surf) => Some(new_surf),
                         Err(e) if e.is_unported() => return Err(e),
                         Err(_) => None,
@@ -2183,7 +2182,7 @@ fn ignore_non_unported<T>(r: Result<T>) -> Result<()> {
 /// upstream's solutions point at the target curve and the fillet surface, whose
 /// natural domains the solver reads back (`SmSolution::GetParameterInterval`).
 #[derive(Clone, Copy)]
-enum CliffHandle<'a> {
+pub(crate) enum CliffHandle<'a> {
     Curve(&'a Curve),
     Surface(&'a Surface),
 }
@@ -2412,8 +2411,7 @@ fn is_closed(
 /// # Errors
 ///
 /// Those of the point drops ([`surface_drop_point`]) and of
-/// [`Surface::point_based_surface_intersect`] (deferred:
-/// `intersect.surface_intersector_p4`); [`SolidError::InvalidInput`] for a zero
+/// [`Surface::point_based_surface_intersect`]; [`SolidError::InvalidInput`] for a zero
 /// direction. `direction` is unitised in place before the intersection (upstream
 /// `pDirection->Unitize()`).
 pub fn two_pnts_intersection(

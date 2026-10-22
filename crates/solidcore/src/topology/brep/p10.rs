@@ -1976,7 +1976,7 @@ fn project_and_trim_body(
 /// its vertices, else of its edges' mid-points, else by a ray along the projection
 /// direction.
 fn faces_to_delete(
-    k: &Kernel,
+    k: &mut Kernel,
     b: &Brep,
     env: &ProjectEnv<'_>,
     curve: &BSplineCurve,
@@ -2061,7 +2061,7 @@ fn faces_to_delete(
             let objects = BrepObjects {
                 brep: b,
                 brep_id: env.brep_id,
-                cache: &cache,
+                cache: Some(&cache),
                 keys: env.keys,
                 owner_of: env.owner_of,
             };
@@ -2203,10 +2203,17 @@ fn test_closure_split_region_at_faceuse(
     }
 }
 
-fn find_and_set_infinite_region(_k: &mut Kernel, b: &mut Brep) -> Result<()> {
+fn find_and_set_infinite_region(k: &mut Kernel, b: &mut Brep) -> Result<()> {
     // SmBrep::FindAndSetInfiniteRegion() with its defaults (topology.brep_p5): no shell
     // to test, SM_VS_INFINITEREGION_SWAP, no box
-    super::p5::find_and_set_infinite_region(b, None, 2, None)
+    super::p5::find_and_set_infinite_region(
+        k,
+        b,
+        &qbrep::BrepQuery::default(),
+        None,
+        p1::SetRegionVoidType::InfiniteRegionSwap,
+        None,
+    )
 }
 
 /// `GetMate()->GetRadial()`: the next edge use pair around the edge in the same

@@ -1533,6 +1533,37 @@ impl OffsetExecutive {
         }
         Ok(())
     }
+
+    /// Builds a face while binding source notifications to the supplied kernel context.
+    /// Source and newly-created result entities retain their separate key namespaces.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn build_offset_of_faceuse_with_kernel_context(
+        &mut self,
+        kernel: &mut Kernel,
+        original: &mut Brep,
+        faceuse: FaceuseId,
+        offset_surface: &mut Option<Surface>,
+        self_intersections: &SsiData<Curve>,
+        notifications: &mut NotificationStores<'_>,
+        offset_key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    ) -> Result<()> {
+        crate::geom::context::Context::with_notification_context(kernel, |kernel, context| {
+            self.build_offset_of_faceuse(
+                kernel,
+                original,
+                Some(faceuse),
+                offset_surface,
+                self_intersections,
+                &mut NotifyEnv {
+                    records: &mut *notifications.records,
+                    attributes: &mut *notifications.attributes,
+                    context: Some(context),
+                    key_of: notifications.key_of,
+                },
+                offset_key_of,
+            )
+        })?
+    }
 }
 
 /// The notification environment of offset-side entities: the caller's records,
@@ -1826,7 +1857,7 @@ fn solve_original_brep_point(
         brep: original,
         // There is exactly one B-rep in this query adapter's local namespace.
         brep_id: crate::topology::BrepId::from_index(0),
-        cache,
+        cache: Some(cache),
         keys: &arena_identity,
         // make_original_brep_cache checked that all geometry owners are direct.
         owner_of: &|_| None,
