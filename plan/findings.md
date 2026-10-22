@@ -15726,6 +15726,7 @@ Replay of the fuzz crash corpus against main (area 5f inventory: `difftest --fuz
   The four nlib.crv_approx inputs are now refused on the Rust side by the FFI's
   validation; so are b_spline_curve_p2 fuzz00841 and b_spline_curve_n_lib fuzz00880. The
   others are sizes the caller asks for (upstream allocates them too) and stay as they are.
+
 ## blend.fillet_standard_solver_p1: circular FSG centre line dispatch (2026-10-22)
 
 - `SmCircularCrossSectionFSG::CreateSurfaceFromCurves` now takes the centre line as a
