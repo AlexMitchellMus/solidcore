@@ -15026,6 +15026,28 @@ Rust side. One reduced input per unit, category and guard message is kept in
 - **Inputs whose replay depends on the memory limit (23, not committed):** a side attempts an allocation that fails with `ENOMEM` under 4 GiB (strace), e.g. `nurbs.b_spline_curve_p2` fuzz00841 (`expert`, `stride = 2^31`): `control_points_expert` reserves `stride * count` doubles fallibly, which fails under the limit, but without a limit it succeeds and zero-fills `2^32` doubles (about 50 s of system time here). Same pattern in `geom.grid`, `geom.local_solve1d`, `geom.solution_array`, `intersect.ray_tracer`, `nlib.crv_approx`, `nlib.crv_fit_p1`/`p2`, `nlib.srf_adv_p3`, `nlib.srf_basic`, `nlib.srf_fit`, `nlib.srf_offset`, `nurbs.b_spline_curve_n_lib`, `nurbs.nurbs_crv`, `primitive.api_curves` (list in the PR's inventory).
 - **Rust-only replay of C++ hangs still hangs (11):** the `topology.edgeuse_p2`/`p3`, `face_p3`, `loopuse` and `vertex` HANG-29 inputs build their Rust B-rep through the same C++ export that hangs, so skipping the C++ operation does not help; `surface.surface_point_solve_p2` fuzz00961 / `p3` fuzz00316 take 75 s / 290 s in Rust.
 - **`surface.plane_p2` fuzz00842** (was a C++ crash after 42 preceding cases): alone, both sides run and differ (`values.rec.len`: cpp 41787, rust 1).
+
+## topology.edge — exact private revolution transport (issue #294)
+
+The private edge shim and importer reuse the shared lossless record helpers for
+native SmSurfOfRevolution (15020), with a bitwise independent B-spline-base check.
+Malformed records remain harness errors; nested heads are rejected without
+recursive parsing. Concrete geometry, owner/tolerance metadata and raw knots
+retain their existing transport. No shared numerical implementation changes.
+
+Fresh native default results on main 7c74a05f6: 1787 cases, 1595 value passes,
+192 deferrals. With the private adapter: 1667 value passes, 120 deferrals, zero
+failures or empty passes; max relative error zero. The unit remains partial.
+
+The 72 cases compare 120 flag/index/status values at zero relative error;
+topological distance remains the upstream 1e20 sentinel. This is not a claim of
+new nonzero geometric-distance coverage. Relative tolerance stays 1e-9, with no
+edge absolute floors. Remaining native cone/sphere/extrusion transport and the
+six DropCurve dependencies remain explicit; active DropCurve work belongs to
+PR #463. No competing implementation is included.
+
+The per-case outputs, separate earlier six-case dependency audit and validation
+are documented in [the edge report](issue-294-edge-revolution-report.md).
 ## `SmFace::HasSeamProblem` callers wired (topology.face_p4; wire/seam-problem, 2026-10-22)
 
 `SmFaceProps::SetProps_Stage2` (`heal::face_props`) and the seam checks of
