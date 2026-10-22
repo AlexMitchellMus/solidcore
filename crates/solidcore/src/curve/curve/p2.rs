@@ -184,7 +184,8 @@ use crate::geom::geom_utility::p2::{
     evaluate_curve_continuity, frenet_from_derivatives, ContinuityType, CurveEval,
 };
 use crate::geom::global_solver::{
-    Branch, GlobalSolve, GlobalSolver, SolutionRequested, SolverOperation,
+    resolve_object_zone_tol_3d, Branch, GlobalSolve, GlobalSolver, ObjectZoneTol, SolutionRequested,
+    SolverOperation,
 };
 use crate::geom::object::{NotifyOperation, ObjectRef};
 use crate::geom::solution_array::{Solution, SolutionObject};
@@ -3230,6 +3231,9 @@ pub struct CpGlobalSolver<'t, O> {
     /// curve cache, `GetOwner()->GetCurve()`); `None` until set with
     /// [`CpGlobalSolver::with_curve`].
     pub curve: Option<&'t Curve>,
+    /// The caller's `SmTol::GetZoneTol3d(const SmObject*)` of the solution handles
+    /// ([`GlobalSolve::object_zone_tol_3d`]); `None` defers.
+    pub zone_tol_3d: Option<ObjectZoneTol<'t, O>>,
 }
 
 impl<'t, O: SolutionObject + 't> CpGlobalSolver<'t, O> {
@@ -3246,6 +3250,7 @@ impl<'t, O: SolutionObject + 't> CpGlobalSolver<'t, O> {
             base: GlobalSolver::with_trees(point_tree, curve_tree, 1),
             interval,
             curve: None,
+            zone_tol_3d: None,
         }
     }
 
@@ -3319,6 +3324,10 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CpGlobalSolver<'t, O> {
 
     fn solver_mut(&mut self) -> &mut GlobalSolver<'t, O> {
         &mut self.base
+    }
+
+    fn object_zone_tol_3d(&self, object: O) -> Result<f64> {
+        resolve_object_zone_tol_3d(self.zone_tol_3d, object)
     }
 
     fn branch_may_contain_answers(&mut self, branch: &Branch) -> Result<bool> {

@@ -496,6 +496,8 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                     continue;
                 }
                 let src_tol = p1::object_zone_tol_3d(
+                    k,
+                    ts.objects,
                     self.curve_edge
                         .or(self.curve_face)
                         .or(self.curve.map(|c| c.handle)),

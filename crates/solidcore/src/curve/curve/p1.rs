@@ -94,12 +94,12 @@ use crate::geom::extent1d::Extent1d;
 use crate::geom::geom_utility::p1::segment_point_angle_deg_to_perp;
 use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::global_solver::{
-    Branch, GlobalSolve, SolutionRequested, SolveRequest, SolverOperation,
+    Branch, GlobalSolve, ObjectZoneTol, SolutionRequested, SolveRequest, SolverOperation,
 };
 use crate::geom::solution_array::{
     OperandObject, Solution, SolutionArray, SolutionObject, SolutionType, SortKey,
 };
-use crate::geom::tol::{are_same, is_zero, is_zero_to_tol};
+use crate::geom::tol::{are_same, is_zero, is_zero_to_tol, zone_tol_3d_of_curve};
 use crate::geom::tree::{NodeData, Tree};
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
@@ -1527,6 +1527,11 @@ pub struct GlobalPointSolveOptions<'a, O> {
     /// The handle of the curve cache's analytic replacement (an `SmLine` the cache
     /// makes of a straight B-spline), named by its fast drop's solutions.
     pub analytic_handle: Option<O>,
+    /// `SmTol::GetZoneTol3d(const SmObject*)` of the handles, which a
+    /// [`SolverOperation::Rayfire`] solve reads (`GetObjectTolerance`); `None` when
+    /// the caller cannot resolve them (that solve then returns
+    /// [`SolidError::Unported`]).
+    pub zone_tol_3d: Option<ObjectZoneTol<'a, O>>,
 }
 
 impl<O> Default for GlobalPointSolveOptions<'_, O> {
@@ -1536,6 +1541,7 @@ impl<O> Default for GlobalPointSolveOptions<'_, O> {
             opt_vectors: None,
             handle: None,
             analytic_handle: None,
+            zone_tol_3d: None,
         }
     }
 }
@@ -1599,11 +1605,14 @@ impl Curve {
         // interval IdenticalSolutions reads); the caller gets them without objects
         if opts.handle.is_none() && opts.analytic_handle.is_none() {
             let ivl = self.natural_interval();
+            // the stand-ins name this curve: SmTol::GetZoneTol3d(this)
+            let this_zone_tol = |_: OperandObject| zone_tol_3d_of_curve(k, self);
             let inner = GlobalPointSolveOptions {
                 target_distance: opts.target_distance,
                 opt_vectors: opts.opt_vectors,
                 handle: Some(OperandObject::Curve(0, ivl)),
                 analytic_handle: Some(OperandObject::Curve(2, ivl)),
+                zone_tol_3d: Some(ObjectZoneTol(&this_zone_tol)),
             };
             return Ok(self
                 .global_point_solve_cached(
@@ -1734,6 +1743,7 @@ impl Curve {
 
         // Construct and init global solver
         let mut gs = CpGlobalSolver::new(k, &point_tree, curve_tree, *interval).with_curve(self);
+        gs.zone_tol_3d = opts.zone_tol_3d;
 
         // set atDistance value - when appropriate
         if op == SolverOperation::AtDistance {

@@ -76,7 +76,7 @@ use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::{Extent3d, LineHit};
 use crate::geom::geom_utility::p1::{line_closest_point, point_project_to_plane};
 use crate::geom::global_solver::{
-    Branch, GlobalSolve, GlobalSolver, OperationCategory, SolutionRequested, SolverOperation,
+    Branch, GlobalSolve, GlobalSolver, ObjectZoneTol, OperationCategory, SolutionRequested, SolverOperation,
     MAX_SOLVER_TREES,
 };
 use crate::geom::object::{Shape, ShapeMember};
@@ -87,6 +87,7 @@ use crate::geom::tree::Tree;
 use crate::geom::vector2d::Vec2;
 use crate::geom::vector3d::sqrt;
 use crate::kernel::Kernel;
+use crate::geom::tol::{zone_tol_3d, SmallTopoType};
 use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI};
 use crate::surface::surface::p2::{surface_cache, Surface, SurfaceKind};
 use crate::surface::surface_cache::p1::{AltCacheKey, AltSrfCacheType};
@@ -207,6 +208,25 @@ pub trait TopologyObjects<O> {
 
     /// The member an edge or face handle is for `SmShape::IsInShape`.
     fn shape_member(&self, object: O) -> ShapeMember;
+
+    /// `SmTol::GetZoneTol3d(const SmObject*)` of a non-null handle (`SM_USE_OLDTOL`):
+    /// a topology object's own `GetTolerance`, a curve's edge's or a surface's face's
+    /// tolerance (the system zone tolerance when it has none), a B-rep's tolerance,
+    /// and the system zone tolerance for other objects.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] by default: an adapter that cannot resolve its handles
+    /// to their B-rep entities.
+    fn object_zone_tol_3d(&self, k: &Kernel, object: O) -> Result<f64> {
+        let _ = (k, object);
+        // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on a handle this
+        // adapter does not resolve to its B-rep entity
+        Err(SolidError::unported(
+            "SmTol::GetZoneTol3d(const SmObject*)",
+            "geom.tol",
+        ))
+    }
 }
 
 /// A curve a local solver works on (`m_pCurve`, `m_pCurve2`): the curve and the
@@ -798,6 +818,10 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for TopologySolver<'t, '_, O
         &mut self.base
     }
 
+    fn object_zone_tol_3d(&self, object: O) -> Result<f64> {
+        self.objects.object_zone_tol_3d(self.kernel, object)
+    }
+
     /// `SmTopologySolver::AreReadyForLocalSolve`: any node of a topology tree may
     /// hold objects, so every branch is solved locally.
     fn are_ready_for_local_solve(&self, _branch: &Branch) -> Result<bool> {
@@ -1225,6 +1249,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
         let target = best.map(|b| b * sign);
 
         // make the PointSolve call
+        let zone_tol = |o: O| objects.object_zone_tol_3d(k, o);
         let solutions = curve.global_point_solve(
             ts.kernel,
             &self.interval,
@@ -1237,6 +1262,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 opt_vectors: vecs,
                 handle,
                 analytic_handle: handle.and_then(|h| objects.analytic_curve_handle(h)),
+                zone_tol_3d: Some(ObjectZoneTol(&zone_tol)),
             },
         )?;
 
@@ -1421,7 +1447,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 // We've found a result within the surface domain.
                 // It must also be within the Face: this is a topology routine.
                 // [060718 bd]
-                let src_zone_tol = object_zone_tol_3d(self.point_vertex)?;
+                let src_zone_tol = object_zone_tol_3d(k, objects, self.point_vertex)?;
                 let uv = Vec2::new(sol.start.param(1)?, sol.start.param(2)?);
                 if face_point_classify(face, uv, src_zone_tol, true, true)? == POINT_CLASS_UNKNOWN {
                     continue;
@@ -1502,7 +1528,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 let mut sol = *found;
 
                 // Check whether the point is within the Face's trimmed boundaries.
-                let src_zone_tol = object_zone_tol_3d(self.point_vertex)?;
+                let src_zone_tol = object_zone_tol_3d(k, objects, self.point_vertex)?;
                 let uv = Vec2::new(sol.start.param(0)?, sol.start.param(1)?);
                 if face_point_classify(face, uv, src_zone_tol, true, true)? == POINT_CLASS_UNKNOWN {
                     continue;
@@ -1880,16 +1906,16 @@ fn curve_global_curve_solve<O: SolutionObject>(
     )
 }
 
-/// `SmTol::GetZoneTol3d(m_pPointVertex)`.
-pub(super) fn object_zone_tol_3d<O>(_vertex: Option<O>) -> Result<f64> {
-    // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an opaque handle. Every
-    // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
-    // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
-    // receives the owning B-rep
-    Err(SolidError::unported(
-        "SmTol::GetZoneTol3d(const SmObject*)",
-        "geom.tol",
-    ))
+/// `SmTol::GetZoneTol3d(m_pPointVertex)`: the system zone tolerance for no vertex.
+pub(super) fn object_zone_tol_3d<O>(
+    k: &Kernel,
+    objects: &dyn TopologyObjects<O>,
+    vertex: Option<O>,
+) -> Result<f64> {
+    match vertex {
+        Some(v) => objects.object_zone_tol_3d(k, v),
+        None => Ok(zone_tol_3d(k, SmallTopoType::NormalSize)),
+    }
 }
 
 /// `pFace->PointClassify(uv, src_zone_tol, do_boundaries, use_uv, point_class)`
