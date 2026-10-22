@@ -205,6 +205,7 @@ use crate::surface::surf_of_extrusion::SurfOfExtrusion;
 use crate::surface::surf_of_revolution::p3::intersect_revolved;
 use crate::surface::surf_of_revolution::{Revolved, SurfOfRevolution};
 use crate::surface::surface::p1::StepSurface;
+use crate::surface::surface::p8::FaceSolveCache;
 use crate::surface::surface_cache::p1::SurfaceCache;
 use crate::surface::torus::Torus;
 use crate::topology::database_io::DatabaseReader;
@@ -5216,7 +5217,6 @@ pub fn cs_are_perpen_disjoint_in<O: Copy + PartialEq>(
 
 /// The line/surface intersection global solver (`SmLSIGlobalSolver`): one tree (the
 /// surface cache tree), solutions `[line t, surface u, surface v]`.
-#[derive(Debug, Clone)]
 pub struct LsiGlobalSolver<'t, 's, O> {
     /// Caller context for virtual evaluations.
     pub kernel: &'s Kernel,
@@ -5242,6 +5242,28 @@ pub struct LsiGlobalSolver<'t, 's, O> {
     pub surface_cache: Option<&'s SurfaceCache<O>>,
     /// Prepared face classification shared with other caches in this operation.
     pub face_queries: Option<&'s dyn crate::surface::surface_cache::face_context::FaceQueries<O>>,
+    /// The point test of the face's trimmed cache when the cache is one
+    /// (`SmTrimSrfCache::PointTest`, the virtual `PointTest` `sm_IsPointValid`
+    /// calls); `None` tests against the cache's domain (`SmSurfaceCache::PointTest`).
+    pub face_cache: Option<&'s mut (dyn FaceSolveCache<O> + 's)>,
+}
+
+impl<O: std::fmt::Debug> std::fmt::Debug for LsiGlobalSolver<'_, '_, O> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LsiGlobalSolver")
+            .field("base", &self.base)
+            .field("surface", &self.surface)
+            .field("uv_domain", &self.uv_domain)
+            .field("line_point", &self.line_point)
+            .field("line_vector", &self.line_vector)
+            .field("line_interval", &self.line_interval)
+            .field("ray_fire", &self.ray_fire)
+            .field("distance_tolerance", &self.distance_tolerance)
+            .field("surface_cache", &self.surface_cache)
+            .field("face_cache", &self.face_cache.is_some())
+            .field("face_queries", &self.face_queries.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 impl<O: SolutionObject> LsiGlobalSolver<'_, '_, O> {
@@ -5790,6 +5812,7 @@ mod tests {
             distance_tolerance: 1e-6,
             surface_cache: None,
             face_queries: None,
+            face_cache: None,
             kernel: &Kernel::default(),
         };
         let mut branch: Branch = Default::default();
