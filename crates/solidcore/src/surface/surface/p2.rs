@@ -205,7 +205,7 @@ use crate::surface::srf_in_volume::SrfInVolume;
 use crate::surface::surf_of_extrusion::SurfOfExtrusion;
 use crate::surface::surf_of_revolution::p3::intersect_revolved;
 use crate::surface::surf_of_revolution::{Revolved, SurfOfRevolution};
-use crate::surface::surface::p1::StepSurface;
+use crate::surface::surface::p1::{StepSurface, SurfaceIntersectContext, SurfaceSolveContext};
 use crate::surface::surface::p8::FaceSolveCache;
 use crate::surface::surface_cache::p1::SurfaceCache;
 use crate::surface::torus::Torus;
@@ -2216,8 +2216,69 @@ impl Surface {
         approx_tol_3d: Option<f64>,
         ang_tol_rad: Option<f64>,
     ) -> Result<SurfaceIntersection> {
+        self.global_surface_intersect_in::<crate::surface::surface::p4::NoObject>(
+            k,
+            uv_domain,
+            other,
+            other_uv_domain,
+            use_surface_edges,
+            approx_tol_3d,
+            ang_tol_rad,
+            None,
+        )
+    }
+
+    /// [`Surface::global_surface_intersect`] through the caller's face-aware cache
+    /// context. `handles` name the two intersected surfaces (this surface and
+    /// `other`) in their caches, so the context can bind a surface owned by a face to
+    /// that face (upstream reaches it through the surface pointer).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::global_surface_intersect`] and of the context's cache
+    /// preparation.
+    #[allow(clippy::too_many_arguments)]
+    pub fn global_surface_intersect_with_context<O: SolutionObject + Copy + PartialEq>(
+        &self,
+        k: &Kernel,
+        handles: [Option<O>; 2],
+        context: &mut dyn SurfaceSolveContext<O>,
+        uv_domain: &Extent2d,
+        other: &Self,
+        other_uv_domain: &Extent2d,
+        use_surface_edges: [bool; 2],
+        approx_tol_3d: Option<f64>,
+        ang_tol_rad: Option<f64>,
+    ) -> Result<SurfaceIntersection> {
+        self.global_surface_intersect_in(
+            k,
+            uv_domain,
+            other,
+            other_uv_domain,
+            use_surface_edges,
+            approx_tol_3d,
+            ang_tol_rad,
+            Some(SurfaceIntersectContext {
+                solver: context,
+                handles,
+            }),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn global_surface_intersect_in<O: SolutionObject + Copy + PartialEq>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        other: &Self,
+        other_uv_domain: &Extent2d,
+        use_surface_edges: [bool; 2],
+        approx_tol_3d: Option<f64>,
+        ang_tol_rad: Option<f64>,
+        context: Option<SurfaceIntersectContext<'_, O>>,
+    ) -> Result<SurfaceIntersection> {
         match &self.kind {
-            SurfaceKind::Plane(p) => crate::surface::plane::p2::global_surface_intersect(
+            SurfaceKind::Plane(p) => crate::surface::plane::p2::global_surface_intersect_in(
                 k,
                 self,
                 p,
@@ -2227,6 +2288,7 @@ impl Surface {
                 use_surface_edges,
                 approx_tol_3d,
                 ang_tol_rad,
+                context,
             ),
             // SmCone::GlobalSurfaceIntersect: its special cases, else the base
             // SmSurface::GlobalSurfaceIntersect of this surface
@@ -2239,7 +2301,7 @@ impl Surface {
                 approx_tol_3d,
                 ang_tol_rad,
                 |req| {
-                    base_global_surface_intersect(
+                    base_global_surface_intersect_in(
                         req.kernel,
                         self,
                         req.domain,
@@ -2248,6 +2310,7 @@ impl Surface {
                         req.use_surface_edges,
                         req.approx_tol_3d,
                         req.ang_tol_rad,
+                        context,
                     )
                 },
             ),
@@ -2262,7 +2325,7 @@ impl Surface {
                 approx_tol_3d,
                 ang_tol_rad,
                 |k| {
-                    base_global_surface_intersect(
+                    base_global_surface_intersect_in(
                         k,
                         self,
                         uv_domain,
@@ -2271,6 +2334,7 @@ impl Surface {
                         use_surface_edges,
                         approx_tol_3d,
                         ang_tol_rad,
+                        context,
                     )
                 },
             ),
@@ -2320,7 +2384,7 @@ impl Surface {
                     _ => (true, SurfaceIntersection::default()),
                 };
                 if more {
-                    let more = base_global_surface_intersect(
+                    let more = base_global_surface_intersect_in(
                         k,
                         self,
                         uv_domain,
@@ -2329,6 +2393,7 @@ impl Surface {
                         use_surface_edges,
                         approx_tol_3d,
                         ang_tol_rad,
+                        context,
                     )?;
                     out.curves_3d.extend(more.curves_3d);
                     out.surface1_uv_curves.extend(more.surface1_uv_curves);
@@ -2338,7 +2403,7 @@ impl Surface {
                 }
                 Ok(out)
             }
-            SurfaceKind::SurfOfRevolution(s) => s.global_surface_intersect(
+            SurfaceKind::SurfOfRevolution(s) => s.global_surface_intersect_in(
                 self,
                 k,
                 uv_domain,
@@ -2347,8 +2412,9 @@ impl Surface {
                 use_surface_edges,
                 approx_tol_3d,
                 ang_tol_rad,
+                context,
             ),
-            SurfaceKind::SurfOfExtrusion(s) => s.global_surface_intersect_on(
+            SurfaceKind::SurfOfExtrusion(s) => s.global_surface_intersect_on_in(
                 k,
                 self,
                 uv_domain,
@@ -2357,12 +2423,13 @@ impl Surface {
                 use_surface_edges,
                 approx_tol_3d,
                 ang_tol_rad,
+                context,
             ),
             SurfaceKind::BSpline(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::OffsetSurface(_)
-            | SurfaceKind::SrfInVolume(_) => base_global_surface_intersect(
+            | SurfaceKind::SrfInVolume(_) => base_global_surface_intersect_in(
                 k,
                 self,
                 uv_domain,
@@ -2371,6 +2438,7 @@ impl Surface {
                 use_surface_edges,
                 approx_tol_3d,
                 ang_tol_rad,
+                context,
             ),
         }
     }
@@ -2920,6 +2988,46 @@ pub fn base_global_surface_intersect(
         approx_tol_3d,
         ang_tol_rad,
     )
+}
+
+/// [`base_global_surface_intersect`] through the caller's face-aware cache context.
+/// `handles` name the two surfaces in their caches.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn base_global_surface_intersect_in<O: SolutionObject + Copy + PartialEq>(
+    k: &Kernel,
+    this: &Surface,
+    uv_domain: &Extent2d,
+    other: &Surface,
+    other_uv_domain: &Extent2d,
+    use_surface_edges: [bool; 2],
+    approx_tol_3d: Option<f64>,
+    ang_tol_rad: Option<f64>,
+    context: Option<SurfaceIntersectContext<'_, O>>,
+) -> Result<SurfaceIntersection> {
+    match context {
+        Some(context) => crate::intersect::surface_intersector::p5::do_intersection_with_context(
+            k,
+            this,
+            uv_domain,
+            other,
+            other_uv_domain,
+            use_surface_edges,
+            approx_tol_3d,
+            ang_tol_rad,
+            context.solver,
+            context.handles,
+        ),
+        None => crate::intersect::surface_intersector::p5::do_intersection(
+            k,
+            this,
+            uv_domain,
+            other,
+            other_uv_domain,
+            use_surface_edges,
+            approx_tol_3d,
+            ang_tol_rad,
+        ),
+    }
 }
 
 /// `SmSurface::GetMaxAnalyticDomain`: reports `SM_ERR` and returns an initialised
