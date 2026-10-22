@@ -88,6 +88,7 @@ use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, PI};
 use crate::nurbs::b_spline_curve::p2::BoundingBoxRequest;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::topology::brep::p1 as bp1;
 use crate::topology::brep_cache::{arena_identity, CacheObject};
 use crate::topology::edgeuse::p1 as eu1;
@@ -471,8 +472,8 @@ pub fn select_topology_to_keep<C: StitchCallback + ?Sized>(
         }
 
         // knot counts (statuses ignored: a failing call leaves its list empty)
-        let knots1 = ignored(curve_of(b, edge1)?.knots(None))?.map_or(0, |(k1, _)| k1.len());
-        let knots2 = ignored(curve_of(b, edge2)?.knots(None))?.map_or(0, |(k2, _)| k2.len());
+        let knots1 = ignored(curve_of(b, edge1)?.knots(k, None))?.map_or(0, |(k1, _)| k1.len());
+        let knots2 = ignored(curve_of(b, edge2)?.knots(k, None))?.map_or(0, |(k2, _)| k2.len());
 
         // when knot counts vary - keep the smallest count
         if knots2 != knots1 {
@@ -1168,7 +1169,12 @@ impl<'c> Stitch<'c> {
 
             // CalculateBoundingBox(sBrepBBox) with the header defaults; status ignored
             // upstream (a failure leaves the default-initialised box)
-            let brep_bbox = ignored(brep_bounding_box(b, false, false, true))?.unwrap_or_default();
+            let brep_bbox = ignored(qbrep::calculate_bounding_box(
+                k,
+                b,
+                BoundingBoxOptions::default(),
+            ))?
+            .unwrap_or_default();
 
             let edges = bp1::edges(b, None)?;
             // lNumPerNode = max(500, edges/10) only sizes the memory blocks
@@ -1760,8 +1766,8 @@ impl<'c> Stitch<'c> {
 
                     // If both edges are lines then we don't have to do the harder test.
                     let edges_are_lines = (e_curve.degree()? == 1
-                        && e_curve.number_natural_knots()? == 4)
-                        && (te_curve.degree()? == 1 && te_curve.number_natural_knots()? == 4);
+                        && e_curve.number_natural_knots(k)? == 4)
+                        && (te_curve.degree()? == 1 && te_curve.number_natural_knots(k)? == 4);
                     if !edges_are_lines {
                         // do a quick 5 point distance check
                         dist_to_curve = e_curve
@@ -2119,22 +2125,6 @@ pub(crate) fn brep_notify_pre_edit(b: &mut Brep) -> Result<()> {
         crate::geom::object::NotifyOperation::PreEdit,
         [this, None, None],
     )
-}
-
-/// `SmBrep::CalculateBoundingBox(rBox, bApprox, bTight, bExpandByZoneTol3d)` (unit
-/// `query.brep`; header defaults FALSE, FALSE, TRUE).
-fn brep_bounding_box(
-    b: &Brep,
-    approx: bool,
-    tight: bool,
-    expand_by_zone_tol_3d: bool,
-) -> Result<Extent3d> {
-    let _ = (b, approx, tight, expand_by_zone_tol_3d);
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmBrep::CalculateBoundingBox",
-        "query.brep",
-    ))
 }
 
 /// Whether `SmFace::GetBrep()` is `b` (unit `topology.face_p4`): a face of this arena

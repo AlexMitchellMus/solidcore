@@ -15,7 +15,7 @@
 //! `ComputeSurfaceValues` (fails in the base `SetupOffsetValues`, else evaluates the
 //! offset surfaces), `ComputeUVVectors` (including zero and parallel tangents),
 //! `SplitFilletGeom` with empty intervals, `FinishConstruction` (deferred with an offset
-//! surface to copy: `SmOffsetSurface::Copy`, unit `surface.offset_surface`), the fillet
+//! surface to copy: `SetOffsetSurface`, unit `blend.fillet_geom_p1`), the fillet
 //! surface generators (`fsg`), `SmTol::GetAngTolRad(const SmFilletSolver*)` (`tol_ang`)
 //! and the base `LoadInitialValues` (`initial_values`).
 //!
@@ -43,6 +43,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use solidcore::blend::fillet_geom::p1::{FilletBrep, FilletSolverId};
 use solidcore::blend::fillet_custom_solver::{JacobianLoad, OffsetSurface, SurfaceId};
 use solidcore::blend::fillet_solver::p1::{
     check_edge_curve_domains, compute_uv_vectors, find_next_good_interval, test_analytic_surface,
@@ -52,6 +53,7 @@ use solidcore::blend::fillet_solver::p1::{
     RailRailIntersectEnfo, RailUvCurveIntersectEnfo,
 };
 use solidcore::curve::curve::Curve;
+use solidcore::curve::line::Line;
 use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::geom::extent1d::{Extent1d, ExtentNd};
 use solidcore::geom::extent2d::Extent2d;
@@ -65,7 +67,7 @@ use solidcore::intersect::point_class::{
 use solidcore::intersect::surface_intersector::p1::TsectPnt;
 use solidcore::kernel::Kernel;
 use solidcore::math::Point3;
-use solidcore::nurbs::b_spline_surface::SurfParamType;
+use solidcore::nurbs::b_spline_surface::{BSplineSurface, SurfParamType};
 use solidcore::nurbs::math::NOW;
 use solidcore::surface::cone::Cone;
 use solidcore::surface::offset_surface::SS_UNKNOWN;
@@ -75,7 +77,7 @@ use solidcore::surface::torus::{Torus, TorusOptions};
 use solidcore::surface::volume::Volume;
 use solidcore::topology::edgeuse::p1 as eu;
 use solidcore::topology::{Brep, Edge, EdgeId, EdgeuseId, FaceId, Vertex};
-use solidcore::SolidError;
+use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::blend_fillet_solver_p1::{self as ffi, Op, StaticOp};
 use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
 
@@ -167,6 +169,10 @@ enum Inputs {
         #[serde(default)]
         found: bool,
         curve: CrvIn,
+        /// An `SmLine` UV curve (start, end, dimension 2 or 3) used instead of `curve`:
+        /// the shim builds the real `SmLine`, whose virtual `Evaluate` is analytic.
+        #[serde(default)]
+        line: Option<[f64; 7]>,
         ivl: [f64; 2],
         arrays: Arrays,
     },
@@ -190,6 +196,10 @@ enum Inputs {
     Fsg {
         kind: u8,
         args: [f64; 4],
+        /// Kind 1 (linear) only: the two rail curves `CreateSurface` is given (empty:
+        /// no `CreateSurface` call).
+        #[serde(default)]
+        rails: Vec<CrvIn>,
     },
     TolAng {
         has: bool,
@@ -540,12 +550,17 @@ fn cpp_input(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
             load,
             found,
             curve,
+            line,
             ivl,
             arrays,
         } => {
             o.push(*rail as f64);
             o.push(b(*load));
             o.push(b(*found));
+            o.push(b(line.is_some()));
+            if let Some(l) = line {
+                o.extend_from_slice(l);
+            }
             push_curve(&mut o, curve)?;
             o.extend_from_slice(ivl);
             push_arrays(&mut o, arrays);
@@ -568,9 +583,16 @@ fn cpp_input(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
             o.push(b(has[1]));
             o.push(*off);
         }
-        Inputs::Fsg { kind, args } => {
+        Inputs::Fsg { kind, args, rails } => {
             o.push(f64::from(*kind));
             o.extend_from_slice(args);
+            if *kind == 1 {
+                // (the shim reads the rail count of the linear kind, then the rails)
+                o.push(rails.len() as f64);
+                for r in rails {
+                    push_curve(&mut o, r)?;
+                }
+            }
         }
         Inputs::TolAng { has, ang } => o.extend([0.0, b(*has), *ang]),
         Inputs::InitialValues { do2, rail, idx2 } => {
@@ -689,7 +711,19 @@ fn rust_state(
 ) -> Result<Result<(), SolidError>, HarnessError> {
     let bases = [surface_of(&base[0])?, surface_of(&base[1])?];
     let kern = Kernel::default();
-    let mut fs = FilletSolver::new(tols[0], tols[1], tols[2]);
+    // the shim's solver owns the constructor's fillet geometry
+    let mut pseudo = FilletBrep::new();
+    let mut fs = match FilletSolver::new_in(
+        &kern,
+        &mut pseudo,
+        FilletSolverId(0),
+        tols[0],
+        tols[1],
+        tols[2],
+    ) {
+        Ok(fs) => fs,
+        Err(e) => return Ok(Err(e)),
+    };
     let mut next_key = 0u64;
     let mut make = |rail: usize, d: f64| -> Result<OffsetSurfaceSlot, SolidError> {
         let key = next_key;
@@ -800,6 +834,24 @@ fn shim_with(s: &Surfs, load: bool, found: bool, setup: bool) -> Result<ShimSolv
     Ok(fs)
 }
 
+/// The shim's `put_bss`: `has_nurb [n m p q r s cpts(x y z w) knots_u knots_v]`.
+fn put_bss(o: &mut Vec<f64>, s: &BSplineSurface) {
+    let Some(sur) = s.gw_nurb() else {
+        o.push(0.0);
+        return;
+    };
+    o.push(1.0);
+    let ix = sur.indices();
+    o.extend([ix.n, ix.m, ix.p, ix.q, ix.r, ix.s].map(|x| x as f64));
+    for row in sur.rows() {
+        for p in row {
+            o.extend([p.x, p.y, p.z, p.w]);
+        }
+    }
+    o.extend_from_slice(sur.u_knots());
+    o.extend_from_slice(sur.v_knots());
+}
+
 /// `put_crv` of the static shim: `1 t0 t1 P(t0) P(mid) P(t1)`, `-1` for none.
 fn put_crv(k: &Kernel, o: &mut Vec<f64>, c: Option<&Curve>) {
     let Some(c) = c else {
@@ -840,7 +892,7 @@ fn put_zone_tol_and_knots(
     o.push(zt(edge.curve.is_some()));
     o.push(zt(eu::uv_trim_curve(b, prim).map_err(err)?.0.is_some()));
     o.push(zt(eu::uv_trim_curve(b, mate).map_err(err)?.0.is_some()));
-    match edge.curve.as_ref().map(|c| c.knots(None)) {
+    match edge.curve.as_ref().map(|c| c.knots(k, None)) {
         Some(Ok((knots, mults))) => {
             o.push(knots.len() as f64);
             o.extend_from_slice(&knots);
@@ -1272,10 +1324,18 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
             load,
             found,
             curve,
+            line,
             ivl,
             arrays,
         } => {
-            let crv = bspline_of(curve)?;
+            let crv = match line {
+                Some(l) => Curve::from(Line::from_points(
+                    Point3::new(l[0], l[1], l[2]),
+                    Point3::new(l[3], l[4], l[5]),
+                    l[6] as u64,
+                )),
+                None => Curve::from(bspline_of(curve)?),
+            };
             let mut fs = ShimSolver {
                 base: FilletSolver::new(1.0e-6, 0.1, 0.01),
                 load: *load,
@@ -1354,29 +1414,35 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
         }
         Inputs::Split => {
             let k = Kernel::default();
-            let mut fs = FilletSolver::new(1.0e-6, 0.1, 0.01);
-            let cc: CurveClassification<H> = CurveClassification::new(&k);
-            let r = fs.split_fillet_geom(
-                &k,
-                &mut Brep::default(),
-                &NoGeometry,
-                0,
-                0,
-                &[],
-                &[],
-                &cc,
-                &cc,
-            );
-            if r.is_ok() {
-                o.extend_from_slice(&[0.0, fs.fillet_geoms().len() as f64]);
-            }
-            r
+            let mut pseudo = FilletBrep::new();
+            let cc: CurveClassification<EntityRef> = CurveClassification::new(&k);
+            let r = (|| -> Result<usize, SolidError> {
+                let mut fs =
+                    FilletSolver::new_in(&k, &mut pseudo, FilletSolverId(0), 1.0e-6, 0.1, 0.01)?;
+                fs.split_fillet_geom(
+                    &k,
+                    &mut pseudo,
+                    &NoGeometry,
+                    0,
+                    0,
+                    &[],
+                    &[],
+                    &cc,
+                    &cc,
+                )?;
+                Ok(fs.fillet_geoms().len())
+            })();
+            r.map(|n| o.extend_from_slice(&[0.0, n as f64]))
         }
         Inputs::Finish { surface, has, off } => {
             let base = surface_of(surface)?;
             let k = Kernel::default();
-            let mut fs = FilletSolver::new(1.0e-6, 0.1, 0.01);
+            let mut pseudo = FilletBrep::new();
             let r = (|| -> Result<(), SolidError> {
+                // the constructor's fillet geometry, before the derived constructor's
+                // SetSurface calls (as the shim's ShimFS)
+                let mut fs =
+                    FilletSolver::new_in(&k, &mut pseudo, FilletSolverId(0), 1.0e-6, 0.1, 0.01)?;
                 if has[0] {
                     let s =
                         OffsetSurface::new(&k, *off, base.clone(), SurfaceId::Free(0), SS_UNKNOWN)?;
@@ -1392,48 +1458,55 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
                     )?;
                     fs.set_surface(1, Some(OffsetSurfaceSlot { key: 1, surface: s }))?;
                 }
-                fs.finish_construction(&k)
+                fs.finish_construction(&k, &mut pseudo)?;
+                // every geometry now holds a copy of each set offset surface (the shim
+                // compares only the status; checked here against the solver's)
+                for g in fs.fillet_geoms() {
+                    let geom = pseudo.geom(g)?;
+                    for (rail, has_rail) in has.iter().enumerate() {
+                        let own = geom.off_surfs.get(rail).and_then(Option::as_ref);
+                        let ours = fs.surface(rail)?;
+                        if own.map(|s| s.surface.offset_distance())
+                            != ours.map(|s| s.surface.offset_distance())
+                            || own.is_some() != *has_rail
+                        {
+                            return Err(SolidError::invalid_input(
+                                "difftest::blend_fillet_solver_p1",
+                                "FinishConstruction did not install the offset copies",
+                            ));
+                        }
+                    }
+                }
+                Ok(())
             })();
             if r.is_ok() {
                 o.push(0.0);
             }
             r
         }
-        Inputs::Fsg { kind, args } => {
+        Inputs::Fsg { kind, args, rails } => {
             let [a, bb, c, d] = *args;
             let g = match kind {
                 0 => FilletSurfaceGenerator::Base,
                 1 => FilletSurfaceGenerator::Linear,
                 2 => FilletSurfaceGenerator::circular_default(),
-                3 => FilletSurfaceGenerator::Circular {
-                    approximate_arcs: a != 0.0,
-                    tol_percent_radius: bb,
-                    mirror: c != 0.0,
-                    complement: d != 0.0,
-                },
+                3 => FilletSurfaceGenerator::circular(a != 0.0, bb, c != 0.0, d != 0.0),
                 4 => FilletSurfaceGenerator::blend_curve_default(),
-                _ => FilletSurfaceGenerator::BlendCurve {
-                    continuity: bb as u64,
-                    blend_scale: a,
-                },
+                // (the shim's `(ULONG)b`)
+                _ => FilletSurfaceGenerator::blend_curve(a, bb as u32),
             };
             o.push(f64::from(g.fillet_surface_generator_type() as i32));
             match g {
-                FilletSurfaceGenerator::Circular {
-                    approximate_arcs,
-                    tol_percent_radius,
-                    mirror,
-                    complement,
-                } => o.extend([
-                    b(approximate_arcs),
-                    tol_percent_radius,
-                    b(mirror),
-                    b(complement),
+                FilletSurfaceGenerator::Circular(c) => o.extend([
+                    b(c.approximate_arcs),
+                    c.tol_percent_radius,
+                    b(c.mirror),
+                    b(c.complement),
                 ]),
                 _ => o.extend([0.0; 4]),
             }
             o.push(g.blend_scale().unwrap_or(0.0));
-            o.push(g.continuity().map_or(0.0, |v| v as f64));
+            o.push(g.continuity().map_or(0.0, f64::from));
             if *kind == 0 {
                 let k = Kernel::default();
                 let mut r1 = bspline_of(&line_curve())?;
@@ -1442,6 +1515,22 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
                     Ok(_) => 0.0,
                     Err(e) => status(&e),
                 });
+            } else if let (1, [c1, c2]) = (*kind, rails.as_slice()) {
+                // the linear one: the ruled surface of two real rails, `status` then the
+                // surface block (as the shim's `put_bss`)
+                let k = Kernel::default();
+                let mut r1 = bspline_of(c1)?;
+                let mut r2 = bspline_of(c2)?;
+                match g.create_surface(&k, 1.0e-6, &mut r1, &mut r2, &[]) {
+                    Ok(s) => {
+                        o.push(0.0);
+                        put_bss(&mut o, &s);
+                    }
+                    Err(e) => {
+                        o.push(status(&e));
+                        o.push(0.0);
+                    }
+                }
             } else {
                 o.push(-1.0);
             }
@@ -1597,17 +1686,17 @@ impl ClassObject for H {
 /// intervals classifies nothing).
 struct NoGeometry;
 
-impl ClassGeometry<H> for NoGeometry {
-    fn curve(&self, _o: H) -> Option<&Curve> {
+impl<O> ClassGeometry<O> for NoGeometry {
+    fn curve(&self, _o: O) -> Option<&Curve> {
         None
     }
-    fn surface(&self, _o: H) -> Option<&Surface> {
+    fn surface(&self, _o: O) -> Option<&Surface> {
         None
     }
-    fn volume(&self, _o: H) -> Option<&Volume> {
+    fn volume(&self, _o: O) -> Option<&Volume> {
         None
     }
-    fn point(&self, _o: H) -> Option<Point3> {
+    fn point(&self, _o: O) -> Option<Point3> {
         None
     }
 }
@@ -1854,6 +1943,34 @@ fn gen_sphere(rng: &mut Rng) -> Inputs {
     }
 }
 
+/// The two rails of a linear `fsg` case (`SmLinearCrossSectionFSG::CreateSurface`):
+/// real 3D B-spline curves, either a rail and a copy of it moved by an offset (same
+/// degree, knots and domain: the ruled surface needs no reparametrisation), or two
+/// independent curves (different degrees, knot vectors, domains, rational or not:
+/// `CreateRuledSurface` makes them compatible, or fails).
+fn gen_fsg_rails(rng: &mut Rng) -> Vec<CrvIn> {
+    let scale = *rng.choose(&[1e-3, 1.0, 1.0, 1e3]).unwrap_or(&1.0);
+    let first = gen_curve(rng, 3, scale);
+    let second = if rng.chance(0.5) {
+        let d = [
+            rng.uniform(-1.0, 1.0) * scale,
+            rng.uniform(-1.0, 1.0) * scale,
+            rng.uniform(0.5, 2.0) * scale,
+        ];
+        let mut c = first.clone();
+        for p in &mut c.cpts {
+            let w = if p[3] == NOW { 1.0 } else { p[3] };
+            p[0] += d[0] * w;
+            p[1] += d[1] * w;
+            p[2] += d[2] * w;
+        }
+        c
+    } else {
+        gen_curve(rng, 3, scale)
+    };
+    vec![first, second]
+}
+
 fn gen_rail_uv(rng: &mut Rng) -> Inputs {
     let scale = *rng.choose(&[1e-3, 1.0, 1e3]).unwrap_or(&1.0);
     let dim = 2 + rng.below(2);
@@ -1876,12 +1993,31 @@ fn gen_rail_uv(rng: &mut Rng) -> Inputs {
             }
         }
     }
+    // a third of the cases use an SmLine UV curve (natural interval [0, 1], including
+    // degenerate zero-length lines), whose virtual Evaluate is analytic
+    let line = rng.chance(0.35).then(|| {
+        let mut p = [0.0; 7];
+        for v in p.iter_mut().take(6) {
+            *v = scale * rng.uniform(-2.0, 2.0);
+        }
+        if rng.chance(0.1) {
+            p.copy_within(0..3, 3);
+        }
+        p[6] = dim as f64;
+        p
+    });
+    if line.is_some() {
+        if let Some(x0) = arrays.x.first_mut() {
+            *x0 = rng.uniform(-0.2, 1.2);
+        }
+    }
     Inputs::RailUv {
         load,
         found: rng.chance(0.6),
         rail: rng.below(2) as usize,
         curve,
-        ivl: [a, z],
+        line,
+        ivl: if line.is_some() { [0.0, 1.0] } else { [a, z] },
         arrays,
     }
 }
@@ -2313,7 +2449,12 @@ fn gen_case(rng: &mut Rng) -> Inputs {
             off: rng.uniform(-1.0, 1.0),
         },
         20 => {
-            let kind = rng.below(6) as u8;
+            // half the cases are the linear kind (the one with a real `CreateSurface`)
+            let kind = if rng.chance(0.5) {
+                1
+            } else {
+                rng.below(6) as u8
+            };
             let args = if kind == 5 {
                 [rng.uniform(0.1, 3.0), rng.below(4) as f64, 0.0, 0.0]
             } else {
@@ -2324,7 +2465,13 @@ fn gen_case(rng: &mut Rng) -> Inputs {
                     b(rng.chance(0.5)),
                 ]
             };
-            Inputs::Fsg { kind, args }
+            // the linear kind (1) is given two rails for `CreateSurface` in 3 of 4 cases
+            let rails = if kind == 1 && rng.chance(0.75) {
+                gen_fsg_rails(rng)
+            } else {
+                Vec::new()
+            };
+            Inputs::Fsg { kind, args, rails }
         }
         21 => {
             if rng.chance(0.5) {

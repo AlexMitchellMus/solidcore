@@ -83,6 +83,7 @@ use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::a_object;
 use crate::geom::assert_array::{labels, AssertArray, AssertReport, ObjectKey, ReportSpec};
 use crate::geom::extent1d::{Extent1d, ExtentNd};
+use crate::geom::extent2d::Extent2d;
 use crate::geom::geom_utility::p1::line_line_closest_point;
 use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::global_solver::SolverOperation;
@@ -936,18 +937,35 @@ pub fn has_plane_crossings(k: &Kernel, curve: &Curve, planes: &[Plane]) -> Resul
     Ok(false)
 }
 
-/// The objects of the plane intersection's solutions (never read).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The objects of the plane intersection's solutions: the curve and the plane with
+/// their natural interval and UV domain (upstream's objects are the curve and the
+/// plane, whose parameter intervals `IdenticalSolutions` reads; nothing else reads
+/// them).
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum PlaneHandle {
-    Curve,
-    Plane,
+    Curve(Extent1d),
+    Plane(Extent2d),
 }
 
 impl SolutionObject for PlaneHandle {
     fn kind(&self) -> ObjectKind {
         match self {
-            Self::Curve => ObjectKind::Curve,
-            Self::Plane => ObjectKind::Surface,
+            Self::Curve(_) => ObjectKind::Curve,
+            Self::Plane(_) => ObjectKind::Surface,
+        }
+    }
+
+    fn natural_interval(&self) -> Option<Extent1d> {
+        match self {
+            Self::Curve(ivl) => Some(*ivl),
+            Self::Plane(_) => None,
+        }
+    }
+
+    fn natural_uv_domain(&self) -> Option<Extent2d> {
+        match self {
+            Self::Curve(_) => None,
+            Self::Plane(domain) => Some(*domain),
         }
     }
 }
@@ -964,7 +982,10 @@ fn plane_global_curve_intersect(
     let surface = Surface::from(plane.clone());
     let sols = surface.global_curve_intersect::<PlaneHandle>(
         k,
-        [PlaneHandle::Curve, PlaneHandle::Plane],
+        [
+            PlaneHandle::Curve(curve.natural_interval()),
+            PlaneHandle::Plane(surface.natural_uv_domain()),
+        ],
         &surface.natural_uv_domain(),
         curve,
         ivl,
@@ -1106,22 +1127,22 @@ impl Curve {
     /// # Errors
     ///
     /// Those of [`Curve::knots`].
-    pub fn snap_to_knots(&self, param: f64, snap_tol: f64) -> Result<f64> {
+    pub fn snap_to_knots(&self, k: &Kernel, param: f64, snap_tol: f64) -> Result<f64> {
         // init output
         let mut snapped = param;
 
         // locals
         let mut jump = BIG_DOUBLE;
-        let (knots, _) = self.knots(None)?;
+        let (knots, _) = self.knots(k, None)?;
 
         // for every knot
-        for &k in &knots {
-            let test_jump = (k - param).abs();
+        for &knot in &knots {
+            let test_jump = (knot - param).abs();
 
             // when TestJump is less than SnapDistance and the smallest jump yet seen
             if test_jump < snap_tol && test_jump < jump {
                 // snap parameter to knot value
-                snapped = k;
+                snapped = knot;
 
                 // remember smallest snap dist value
                 jump = test_jump;
@@ -2179,8 +2200,8 @@ mod tests {
     fn snap_and_property() {
         let k = &Kernel::default();
         let c = seg([0.0, 0.0, 0.0], [2.0, 0.0, 0.0]);
-        assert_eq!(c.snap_to_knots(0.999, 0.01).unwrap(), 1.0);
-        assert_eq!(c.snap_to_knots(0.5, 0.01).unwrap(), 0.5);
+        assert_eq!(c.snap_to_knots(k, 0.999, 0.01).unwrap(), 1.0);
+        assert_eq!(c.snap_to_knots(k, 0.5, 0.01).unwrap(), 0.5);
         let p = [Vec3::new(1.0, 1.0, 0.0)];
         let mut efo = CurvePropertyEfo::new(
             k,

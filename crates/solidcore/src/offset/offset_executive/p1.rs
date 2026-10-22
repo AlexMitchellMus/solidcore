@@ -806,10 +806,13 @@ impl OffsetExecutive {
             let _curve = edge::create_trimmed_nurbs_curve(kernel, original, edge)?;
             self.required_offset_brep()?;
             // cpp:3092: offset distance, approximation tolerance, FALSE, FALSE.
-            // UNPORTED(primitive.primitive_creation_p2): SmPrimitiveCreation::CreatePipeSweep
+            // Ported: primitive::primitive_creation::p2::PrimitiveCreation::create_pipe_sweep,
+            // which needs a PrimitiveCreationAccess over the offset B-rep. Its first B-rep
+            // edit (p3's curve sweep) is the face construction below.
+            // UNPORTED(topology.brep_p8): SmBrep::CreateFacesFromSurface
             return Err(SolidError::unported(
-                "SmPrimitiveCreation::CreatePipeSweep",
-                "primitive.primitive_creation_p2",
+                "SmBrep::CreateFacesFromSurface",
+                "topology.brep_p8",
             ));
         }
         Ok(())
@@ -2729,8 +2732,8 @@ mod tests {
         };
         assert_dependency(
             exec.fill_offset_edgeuse_gaps(&kernel, &original, edge, &synchronized),
-            "SmPrimitiveCreation::CreatePipeSweep",
-            "primitive.primitive_creation_p2",
+            "SmBrep::CreateFacesFromSurface",
+            "topology.brep_p8",
         );
     }
 
@@ -2807,15 +2810,10 @@ mod tests {
     }
 
     #[test]
-    fn original_brep_query_propagates_actual_cache_dependency() {
+    fn original_brep_cache_builds_through_the_brep_box() {
         let kernel = Kernel::default();
-        // The real cache constructor currently defers at bounding-box calculation,
-        // not at the already implemented BrepPointSolve entry point.
-        assert_dependency(
-            make_original_brep_cache(&kernel, &Brep::new()),
-            "SmBrep::CalculateBoundingBox",
-            "query.brep",
-        );
+        // The real cache constructor computes the B-rep box (query.brep) first.
+        assert!(make_original_brep_cache(&kernel, &Brep::new()).is_ok());
     }
 
     #[test]
@@ -2863,11 +2861,7 @@ mod tests {
             .as_mut()
             .unwrap()
             .set_owner(Some(arena_identity(CacheObject::Edge(edge_id))), None);
-        assert_dependency(
-            make_original_brep_cache(&kernel, &original),
-            "SmBrep::CalculateBoundingBox",
-            "query.brep",
-        );
+        assert!(make_original_brep_cache(&kernel, &original).is_ok());
     }
 
     #[test]
@@ -2879,13 +2873,12 @@ mod tests {
             executive.set_offset_brep(Brep::new());
             executive.set_create_offset_solid(solid);
             executive.relate_edgeuses(EdgeuseId::from_index(1), EdgeuseId::from_index(2));
-            // StitchIntoShell (past DoStitching's first Notify) and StitchIntoSolid both
-            // defer at the B-rep bounding box
-            assert_dependency(
-                executive.piecewise_merge(&mut kernel, &mut original),
-                "SmBrep::CalculateBoundingBox",
-                "query.brep",
-            );
+            // StitchIntoShell and StitchIntoSolid of the empty offset B-rep succeed (the
+            // B-rep box is ported, query.brep); the merged B-rep is handed back
+            let merged = executive
+                .piecewise_merge(&mut kernel, &mut original)
+                .unwrap();
+            assert!(merged.faces().is_empty());
             assert!(executive.offset_brep().is_none());
             assert_eq!(executive.offset_edgeuse(EdgeuseId::from_index(1)), None);
         }

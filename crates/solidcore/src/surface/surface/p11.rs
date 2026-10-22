@@ -1885,6 +1885,10 @@ impl Surface {
                     Err(_) => return Err(SolidError::null_pointer(OP_LIFT)),
                 };
 
+                // the solutions of sm_IntersectAndSplit name crUVCurveToLift (the
+                // curve tree's owner), whose natural interval IdenticalSolutions reads
+                let lift_handle = BoundaryCurveHandle(0, uv_curve.natural_interval());
+
                 // for every U knot (SER: checked)
                 let (knots, _) = self.knots(SurfParamType::U, None)?;
                 let u_conts = cache.u_continuities();
@@ -1902,6 +1906,7 @@ impl Surface {
                             interval,
                             Point3::new(knot, 0.0, 0.0),
                             Vec3::new(1.0, 0.0, 0.0),
+                            Some(lift_handle),
                             &mut segments,
                         )?;
                     }
@@ -1924,6 +1929,7 @@ impl Surface {
                             interval,
                             Point3::new(0.0, knot, 0.0),
                             Vec3::new(0.0, 1.0, 0.0),
+                            Some(lift_handle),
                             &mut segments,
                         )?;
                     }
@@ -1932,7 +1938,7 @@ impl Surface {
 
             // get UVCurve knots and associated continuities (SER: checked; default
             // angle SM_CONTINUITY_ANGLE)
-            let (knots, _) = uv_curve.knots(None)?;
+            let (knots, _) = uv_curve.knots(k, None)?;
             let (_, curve_conts) = uv_curve.calculate_continuities(k, CONTINUITY_ANGLE)?;
 
             // for every curve knot: the projected 3D curve's C0 break points
