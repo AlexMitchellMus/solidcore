@@ -19,10 +19,11 @@
 //!   `has [rebuild_status] state`; `Rebuild`: the state (also after a failure);
 //!   `Transform`: the state (also after a failure); `Eq`: the other torus's
 //!   construction status, then on success `this == other`, `other == this`; `Copy`:
-//!   `state copy == this`; `IsectPlane`, `Global`: status, then on success `more ncurves
-//!   curves ntypes types ndevs devs nuv1 nuv2 nnull1 nnull2` (`more` is `0` for
-//!   `Global`). The plane and the intersection arguments are those of
-//!   [`super::surface_sphere`] ([`Plane`], [`IsectArgs`]).
+//!   `state copy == this`; `TrimDomain`: the domain after the call (`TrimWithDomain`
+//!   writes it back), then the state (also after a failure); `IsectPlane`, `Global`:
+//!   status, then on success `more ncurves curves ntypes types ndevs devs nuv1 nuv2
+//!   nnull1 nnull2` (`more` is `0` for `Global`). The plane and the intersection
+//!   arguments are those of [`super::surface_sphere`] ([`Plane`], [`IsectArgs`]).
 //!
 //! The wrappers accept only what upstream handles without undefined behaviour: finite
 //! values, unit and independent placement axes (the base constructor passes the Y axis
@@ -170,6 +171,12 @@ pub enum Op {
         /// Domains and tolerance.
         args: IsectArgs,
     },
+    /// `TrimWithDomain(SmExtent2d(u0, v0, u1, v1))` (inherited from
+    /// `SmSurfOfRevolution`).
+    TrimDomain {
+        /// The new NURB domain `[u0, v0, u1, v1]`.
+        dom: [f64; 4],
+    },
 }
 
 impl Op {
@@ -185,6 +192,7 @@ impl Op {
             Op::Transform { .. } => 7,
             Op::Eq { .. } => 8,
             Op::Copy => 9,
+            Op::TrimDomain { .. } => 10,
             Op::IsectPlane { .. } => 11,
             Op::Global { .. } => 12,
         }
@@ -345,6 +353,10 @@ fn push_op(o: &mut Vec<f64>, op: &Op) -> Result<(), FfiError> {
         Op::IsectPlane { plane, args } | Op::Global { plane, args } => {
             push_plane(o, plane)?;
             push_args(o, args)?;
+        }
+        Op::TrimDomain { dom } => {
+            domain(*dom, "trim domain")?;
+            o.extend_from_slice(dom);
         }
     }
     Ok(())
