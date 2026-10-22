@@ -3303,7 +3303,7 @@ mod tests {
         // `status, counts[4], has offset B-rep`: no counts, the offset B-rep kept
         let plain = |status: i64| [status, 0, 0, 0, 0, 1];
         for (branch, dependency, record) in [
-            (Probe::ReplaceEmpty, Some("topology.brep_p4"), plain(1000)),
+            (Probe::ReplaceEmpty, None, plain(1000)),
             (Probe::RemoveNoMerge, None, plain(1000)),
             (Probe::RemoveEmpty, None, plain(1000)),
             (Probe::SideWallNull, None, plain(1000)),
@@ -3581,7 +3581,8 @@ mod tests {
                 approx_tol: 1e-6,
             }))
             .unwrap();
-        assert_eq!(output.deferred.unwrap().unit, "topology.brep_p4");
+        // ShrinkGeometry of the empty B-rep and the empty offset-surface scan complete
+        assert!(output.deferred.is_none() && output.error.is_none());
     }
 
     const SYNC_LISTS: [&str; 4] = [

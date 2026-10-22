@@ -11926,6 +11926,24 @@ Difftest (`fixtures/heal.stitch_p1/constructed.json`: the SM_API_test box tests,
   valgrind with `harness/valgrind/ub11.supp` gives 0 errors on the simple, unify, select and split
   samples.
 
+## topology.brep_p4: back-edges on opaque object handles
+
+`topology.brep_p4` (`SmBrep::DeleteEdge`, `DeleteVertex`, `ShrinkGeometry`, `StitchFaces`, `~SmBrep`;
+PR #173) wires 18 of the 21 `UNPORTED(topology.brep_p4)` call sites on main. Callers with a
+notification environment pass it (`topology/brep/p7.rs` `GlueEdgesGeneral`, `topology/brep/p5.rs`
+`*_with_notifications`, `boolean/merge/p5.rs` through its `VertexCopy` records); callers that hold no
+notification state run on call-local records (`topology::brep::p4::with_local_env`, as
+`heal::stitch::p1::make_vertex_split_edge` and `loopuse::face_notify_edit` do). Three stay stubs,
+each `justified:` with this section, for a reason specific to the site:
+
+- **`DeleteEdge` / `DeleteVertex`** in `boolean/topology_intersector/p2.rs` (`brep_delete_edge`,
+  `brep_delete_vertex`): the intersector is generic over its object handles `O`; the B-rep, the edge
+  (vertex) and the surface to keep are `O` values with no `&mut Brep` or typed id to call the port
+  with. Wiring needs the typed adapter that resolves `O` to a B-rep and its ids, which that unit does
+  not have yet.
+- **`DeleteEdge`** in `topology/proto_topology/p3.rs` (`brep_delete_edge(which, edge)`): the caller
+  names the B-rep by an index (`which`) and the edge by a generic handle `O`; it holds no `Brep`.
+
 ## blend.fillet_standard_solver_p2 (`SmFilletStandardSolver.cpp` part 2, PR #265, 2026-10-19, continued in PR #439, 2026-10-21; partial)
 
 Difftest (PR #439, on main with #236): 405 cases (400 generated + 5 fixtures): 373 pass, 0
@@ -16317,6 +16335,20 @@ Moves vs main (after #536): of the 110 cases that stopped at the OMITTED stop, 1
 `FindInfiniteRegion` -> `SmEdge::IsSeam` -> `NormalizedEvaluate` builds a UV trim curve),
 16 at geom.tol `GetZoneTol3d(const SmObject*)` and 3 at `topology.face_p2`. No case
 fails and no former pass changed.
+
+**Coverage follow-up (port/brep-p6-closure-coverage).** brep_p6 op 0 now exports the
+whole post-split graph on both sides: regions with their infinite and void flags and
+shells, shells, face uses and the rest, via the op-3 `post::export_graph` and
+`export_graph`. Previously only face-use shells and counts were compared. All op-0
+cases still pass. Eight `MakeFaceTopology` network fixtures target the remainder's
+ray-fire branches: `two_cubes_at_a_vertex` (face uses joined only by a vertex),
+`two_disjoint_cubes` and `cube_in_cube` (shell nesting), `cube_with_wire` and
+`cube_with_inner_wire` (wires), `cube_with_inner_vertex` and `cube_with_outer_vertex`
+(vertex shells), and `cube_faces_6_reversed`. All eight defer at geom.tol
+`GetZoneTol3d(const SmObject*)` in the topology solver (`object_zone_tol_3d` on an
+opaque handle). Wiring its null-object branch to the system tolerance only moves the
+stop to `SmFace::PointClassify` (`query.face_p2`, `face_point_classify`), so those
+branches stay uncompared until both opaque-handle stubs get the owning B-rep.
 ## blend.fillet_geom_p1: the `sm_ClassifyFacePoint` disagreement was the runner's Rust face, not the kernel (2026-10-22)
 
 Follow-up to "blend.fillet_geom_p1: `sm_ClassifyFacePoint` returns 0 where the C++ returns
@@ -16386,3 +16418,34 @@ Result: `topology.face_p4` 5506 cases, 5141 pass, 0 failed, 365 deferred, max_re
 Possibly the same latent gap: `query.face_p1`'s `make_trim_srf_cache_with_face(.., None)`
 also leaves node surfaces unnamed (its point solve runs with point testing off; no
 failing case).
+
+## topology.brep_p4 / topology.brep_p5: StitchAndOrient's second pass, and the glue stub that hides 36 heal.stitch_p2 differences
+
+While making `sweep.api_brep` compare successful sweeps (PR #441), two tiny-scale
+`FromFaces` generated cases (`gen0044`, `gen0209`; discs of radius ~1.4e-5 and ~1.55e-5
+swept along a 9.6e-5 path) disagreed: C++ 2 faces / 5 edges / 4 vertices, Rust
+2 / 6 / 4. A topology dump of the C++ result (temporary shim instrumentation, not
+committed) shows its `StitchAndOrient` **second pass** — tolerance doubled to `4e-4`
+after the first pass leaves `lamina=4` — merging the two profiles' start circles into
+one edge; the Rust pass never ran its glue.
+
+- Cause: `topology::brep::p5::stitch_and_orient` opened one `plain_edit` (context
+  notify lease) around the whole call, while the stitch's glue/squeeze helpers notify
+  through their own `brep_p3::with_kernel_callbacks` edits. The nested edit is refused
+  (`geom::context::lend_notify`, "nested edit") and `SmStitch` swallows the error, so
+  the second pass silently left the B-rep unstitched. Fixed by running both stitch
+  passes outside an edit; only the `OrientTrimmedSurfaces` pass uses the caller's env.
+- Consequence: the second pass now reaches `remove_owned_vertex`
+  (`UNPORTED(topology.brep_p1): SmBrep::m_pVertexListHead`, the shell-vertex branch of
+  `GlueVertices`), so those cases defer instead of comparing. That stub is honest:
+  completing it (`destroy_topology_record(Vertex)` subsumes upstream's list removal)
+  un-defers 137 `heal.stitch_p2` cases and 36 of them differ from C++ — e.g.
+  `TestSmStitchIntoShell` `pair_gap0_shell_*` end with one extra edge
+  (`out[5]`: C++ 7, Rust 8). Baseline `heal.stitch_p2` is 368 pass / 0 fail / 188
+  deferred (`topology.brep_p1` 178); with the glue completed it is 469 / 36 / 51.
+  Whoever wires that stub must fix the shell-vertex glue path first (PR #441 keeps the
+  stub, as main had it).
+- Difftest after the fix (Linux x86_64, C++ reference built from the pinned upstream):
+  `sweep.api_brep` 573 cases, 481 pass, 0 fail, 92 deferred (`topology.brep_p1` 45,
+  `topology.brep_p4` 15, `query.face_p2` 15, `topology.edge` 9, ...);
+  `heal.stitch_p2` unchanged at 368 / 0 / 188.
