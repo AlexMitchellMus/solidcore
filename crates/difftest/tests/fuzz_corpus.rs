@@ -17,7 +17,9 @@
 //!
 //! `cpp` and `rust` are the outcome each side must still give: `harness: <message>`
 //! (the runner's `HarnessError`, e.g. an FFI guard refusing the input), `rejected:
-//! <reason>`, `error: <normalised error>`, `deferred: <unit>` or `ok`. Instead of
+//! <reason>`, `error: <normalised error>`, `deferred: <unit>` or `ok`. A `rust` of
+//! plain `deferred` (the Rust side defers on an unported callee today) accepts any
+//! outcome but a panic, so wiring that callee needs no edit here. Instead of
 //! `cpp`, a case may carry `cpp_skip: "<reason>"`: the input still crashes or hangs the
 //! C++ reference, so only the Rust side runs (it must return, without a panic). When
 //! both sides give `ok` or `error:`, their outputs must also agree as in the gate.
@@ -156,7 +158,7 @@ fn replay_file(root: &Path, path: &Path, record: bool) -> Result<Vec<String>, St
         if record {
             let cpp = cpp.as_ref().map_or_else(|| "skip".to_string(), outcome);
             println!("@outcome {unit_id} {name} {cpp} | {got}");
-        } else if got != want {
+        } else if got != want && want != "deferred" {
             problems.push(format!("{at}: rust gave `{got}`, expected `{want}`"));
         }
         if let (Some(Ok(cpp)), Ok(rust)) = (&cpp, &r) {
