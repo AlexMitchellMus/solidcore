@@ -8,7 +8,7 @@
 //! |----------------------------------------------|----------------------------------------------|
 //! | [`read_from_file`]                           | `SmBrep::ReadFromFile`                       |
 //! | [`make_face`], [`MakeFaceOptions`], [`NewFace`] | `SmBrep::MakeFace`                        |
-//! | [`make_face_with_curves`], [`make_face_with_curves_with_kernel_context`], [`FaceCurvesInput`] | `SmBrep::MakeFaceWithCurves` |
+//! | [`make_face_with_curves`], [`make_face_with_curves_with_kernel_context`], [`make_face_with_curve_owners`], [`FaceCurvesInput`] | `SmBrep::MakeFaceWithCurves` |
 //! | [`glue_edges_general`]                       | `SmBrep::GlueEdgesGeneral`                   |
 //! | [`copy_faces`]                               | `SmBrep::CopyFaces`                          |
 //! | [`merge_self_intersection_curves`], [`SelfIntersectionCurve`] | `SmBrep::MergeSelfIntersectionCurves` |
@@ -31,7 +31,9 @@
 //!   use lists and back links.
 //! - **Curves and surfaces are values.** `MakeFaceWithCurves` consumes its curves and
 //!   surface (upstream: "all inputs are consumed"), so "two copies, never two references"
-//!   holds by construction; `MakeFace` takes the surface by value (`None` is a null
+//!   holds by construction. `make_face_with_curve_owners` exposes curve-slot owners
+//!   for callers that read the consumed curves' native owner pointers; discarded
+//!   curves retain `None`, and completed slots survive a later failure. `MakeFace` takes the surface by value (`None` is a null
 //!   pointer). `CopyFaces` copies from one B-rep into another one: upstream also allows
 //!   the destination to be the source B-rep, which a shared and a mutable borrow cannot
 //!   express (copy within one B-rep through a clone).
@@ -57,9 +59,11 @@
 //!   a failed `GetEnds` keeps the previous end point. A failed `CopyAndAddAnalytics` is
 //!   [`SolidError::InvalidInput`] (upstream then dereferences the null copy), as is
 //!   `pbOptCrvOnSurf` without UV curves (upstream loops over a null array).
-//! - **Unported callees** return [`SolidError::Unported`]: `MakeWireEdge`,
-//!   `MakeWireEdgeVertex` (`topology.brep_p3`); `DeleteEdge` (`topology.brep_p4`);
-//!   the curve constructor of
+//! - **Wire edges.** `MakeWireEdge` / `MakeWireEdgeVertex` (unit `topology.brep_p3`, wired
+//!   by its PR #204) notify through the caller's notification environment, as the
+//!   other edits here do.
+//! - **Unported callees** return [`SolidError::Unported`]: `DeleteEdge`
+//!   (`topology.brep_p4`); the curve constructor of
 //!   `SmCurveClassification` (`intersect.curve_class_p4`), which
 //!   `MergeSelfIntersectionCurves` reaches first. `GlueVertices` calls
 //!   `topology.brep_p5` with the caller's notification environment. `CopyFaces` with the
@@ -205,38 +209,42 @@ fn rebuild_uv_trim_curves(k: &Kernel, b: &mut Brep) -> Result<()> {
     p2::rebuild_uv_trim_curves(k, b)
 }
 
-/// `MakeWireEdge(region, start, end, curve, ivl, orient, rpNewEdge)`.
+/// `MakeWireEdge(region, start, end, curve, ivl, orient, rpNewEdge)`
+/// ([`crate::topology::brep::p3::make_wire_edge`], unit `topology.brep_p3`), notifying
+/// through `env`.
+#[allow(clippy::too_many_arguments)]
 fn make_wire_edge(
-    _b: &mut Brep,
-    _region: Option<RegionId>,
-    _start: VertexId,
-    _end: VertexId,
-    _curve: Curve,
-    _ivl: Extent1d,
-    _orient: OrientType,
+    k: &mut Kernel,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    start: VertexId,
+    end: VertexId,
+    curve: Curve,
+    ivl: Extent1d,
+    orient: OrientType,
+    env: &mut ed::NotifyEnv<'_>,
 ) -> Result<EdgeId> {
-    // UNPORTED(topology.brep_p3): SmBrep::MakeWireEdge
-    Err(SolidError::unported(
-        "SmBrep::MakeWireEdge",
-        "topology.brep_p3",
-    ))
+    crate::topology::brep::p3::make_wire_edge(k, b, env, region, start, end, curve, &ivl, orient)
 }
 
-/// `MakeWireEdgeVertex(region, start, curve, ivl, orient, endPt, rpNewEdge, rpEndVertex)`.
+/// `MakeWireEdgeVertex(region, start, curve, ivl, orient, endPt, rpNewEdge, rpEndVertex)`
+/// ([`crate::topology::brep::p3::make_wire_edge_vertex`], unit `topology.brep_p3`), as
+/// [`make_wire_edge`].
+#[allow(clippy::too_many_arguments)]
 fn make_wire_edge_vertex(
-    _b: &mut Brep,
-    _region: Option<RegionId>,
-    _start: VertexId,
-    _curve: Curve,
-    _ivl: Extent1d,
-    _orient: OrientType,
-    _end_pt: Point3,
+    k: &mut Kernel,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    start: VertexId,
+    curve: Curve,
+    ivl: Extent1d,
+    orient: OrientType,
+    end_pt: Point3,
+    env: &mut ed::NotifyEnv<'_>,
 ) -> Result<(EdgeId, VertexId)> {
-    // UNPORTED(topology.brep_p3): SmBrep::MakeWireEdgeVertex
-    Err(SolidError::unported(
-        "SmBrep::MakeWireEdgeVertex",
-        "topology.brep_p3",
-    ))
+    crate::topology::brep::p3::make_wire_edge_vertex(
+        k, b, env, region, start, curve, &ivl, orient, end_pt,
+    )
 }
 
 /// `DeleteEdge(edge)`.
@@ -693,6 +701,7 @@ fn make_face_with_state(
     // make the face->surface connections
     surface.set_owner(Some(this_face(new_face)));
     b.face_mut(new_face)?.surface = Some(surface);
+    b.sync_face_surface_tolerance(new_face)?;
 
     Ok(NewFace {
         region: new_region,
@@ -781,6 +790,42 @@ pub fn make_face_with_curves(
         orientation,
         crv_on_surf,
         this_face,
+        &mut Vec::new(),
+        &mut ed::NotifyState::from_env(env),
+    )
+}
+
+/// [`make_face_with_curves`] retaining each input curve slot's owning edge.
+/// Degenerate and coincident curves discarded by construction have no owner;
+/// output slots preserve their original input positions. Completed owners remain
+/// in `curve_owners` if a later construction step fails.
+///
+/// # Errors
+/// As [`make_face_with_curves`].
+pub fn make_face_with_curve_owners(
+    k: &mut Kernel,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    input: FaceCurvesInput,
+    surface: Surface,
+    uv_domain: &Extent2d,
+    orientation: OrientType,
+    crv_on_surf: Option<bool>,
+    this_face: &dyn Fn(FaceId) -> ObjectRef,
+    curve_owners: &mut Vec<Option<EdgeId>>,
+    env: &mut ed::NotifyEnv<'_>,
+) -> Result<NewFace> {
+    make_face_with_curves_impl(
+        k,
+        b,
+        region,
+        input,
+        surface,
+        uv_domain,
+        orientation,
+        crv_on_surf,
+        this_face,
+        curve_owners,
         &mut ed::NotifyState::from_env(env),
     )
 }
@@ -838,6 +883,7 @@ pub(crate) fn make_face_with_curves_with_state(
         orientation,
         crv_on_surf,
         this_face,
+        &mut Vec::new(),
         state,
     )
 }
@@ -853,8 +899,10 @@ fn make_face_with_curves_impl(
     orientation: OrientType,
     crv_on_surf: Option<bool>,
     this_face: &dyn Fn(FaceId) -> ObjectRef,
+    curve_owners: &mut Vec<Option<EdgeId>>,
     state: &mut ed::NotifyState<'_>,
 ) -> Result<NewFace> {
+    curve_owners.clear();
     let FaceCurvesInput {
         loops,
         curves_3d,
@@ -1054,6 +1102,7 @@ fn make_face_with_curves_impl(
         let mut vertices: Vec<VertexId> = Vec::new();
         for jj in 0..n {
             let slot = curve_total + jj;
+            curve_owners.push(None);
             let Some(curve) = curves_3d.get_mut(slot).and_then(Option::take) else {
                 degenerate += 1;
                 continue;
@@ -1135,6 +1184,8 @@ fn make_face_with_curves_impl(
                         start_vertex,
                         end_vertex,
                         curve: &curve,
+                        // (a new input curve: no edge owns it)
+                        curve_owner: None,
                         interval: ivl,
                         tolerance: zone_tol,
                     };
@@ -1156,13 +1207,42 @@ fn make_face_with_curves_impl(
                         }
                     }
                 }
-                let e = make_wire_edge(b, region, start_vertex, end_vertex, curve, ivl, orient)?;
+                let e = state.with_kernel_env(k, |k, env| {
+                    make_wire_edge(
+                        k,
+                        b,
+                        region,
+                        start_vertex,
+                        end_vertex,
+                        curve,
+                        ivl,
+                        orient,
+                        env,
+                    )
+                })?;
                 edges.push(e);
+                if let Some(owner) = curve_owners.get_mut(slot) {
+                    *owner = Some(e);
+                }
                 edge_orients.push(l_orient);
             } else {
-                let (e, v) =
-                    make_wire_edge_vertex(b, region, start_vertex, curve, ivl, orient, end_pt)?;
+                let (e, v) = state.with_kernel_env(k, |k, env| {
+                    make_wire_edge_vertex(
+                        k,
+                        b,
+                        region,
+                        start_vertex,
+                        curve,
+                        ivl,
+                        orient,
+                        end_pt,
+                        env,
+                    )
+                })?;
                 edges.push(e);
+                if let Some(owner) = curve_owners.get_mut(slot) {
+                    *owner = Some(e);
+                }
                 edge_orients.push(l_orient);
                 vertices.push(v);
             }
@@ -1826,6 +1906,50 @@ mod tests {
 
     fn dom() -> Extent2d {
         Extent2d::from_points(Point2::new(0.0, 0.0), Point2::new(1.0, 1.0))
+    }
+
+    #[test]
+    fn curve_owner_slots_retain_discarded_inputs_before_a_later_failure() {
+        let mut k = Kernel::default();
+        let mut b = Brep::new();
+        let region = b
+            .add_region_record(Region {
+                in_brep: true,
+                ..Region::default()
+            })
+            .unwrap();
+        b.set_infinite_region(Some(region));
+        let mut owners = vec![Some(EdgeId::from_index(99))];
+        let mut records = std::collections::BTreeMap::new();
+        let mut attributes = AttributeStore::default();
+        let mut env = ed::NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &key_of,
+        };
+        let result = make_face_with_curve_owners(
+            &mut k,
+            &mut b,
+            // All curves are discarded first; the later MakeFace region lookup
+            // must fail independently of whether brep_p6 has been ported.
+            Some(RegionId::from_index(12345)),
+            FaceCurvesInput {
+                loops: vec![3],
+                curves_3d: Some(vec![None, None, None]),
+                orientations: vec![OrientType::Same; 3],
+                ..FaceCurvesInput::default()
+            },
+            plane(),
+            &dom(),
+            OrientType::Same,
+            None,
+            &face_ref,
+            &mut owners,
+            &mut env,
+        );
+        assert!(matches!(result, Err(error) if !error.is_unported()));
+        assert_eq!(owners, vec![None, None, None]);
     }
 
     #[test]

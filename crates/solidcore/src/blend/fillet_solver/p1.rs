@@ -29,7 +29,7 @@
 //! | [`FilletSolver::split_fillet_geom`]                    | `SplitFilletGeom`                                     |
 //! | [`FilletSolver::trim_rails`]                           | `TrimRails`                                           |
 //! | [`FilletSolver::TYPE`], [`FilletSolver::type_string`], [`FilletSolver::is_kind_of`] | `GetType`, `GetTypeString` (`SM_COMMON`), `IsKindOf` |
-//! | [`FilletSolverOps`] (trait, base methods)              | the virtuals `GetJacobianSize`, `SetupOffsetValues`, `CanMakeAnalytic`, `OffsetRadiiCanChange`, `LoadJacobian`, `LoadInitialValues` |
+//! | [`FilletSolverOps`] (trait, base methods)              | the virtuals `GetJacobianSize`, `SetupOffsetValues`, `CanMakeAnalytic`, `OffsetRadiiCanChange`, `LoadJacobian`, `LoadInitialValues`; `GetSolverType`, `PointOnPlaneSolve` and the `SmConstantDistanceFS::GetDistance` read of `SmFindClippedRadiusEFO` (added by `blend.fillet_solver_p3`) |
 //! | [`FilStatus`] (re-export of `blend.fillet_geom_p1`'s), [`FilletSolverType`], [`FilletSurfaceGeneratorType`] | `SmFilStatus`, `SmFilletSolverType`, `SmFilletSurfaceGeneratorType` |
 //! | [`FilletSurfaceGenerator`]                             | `SmFilletSurfaceGenerator`, `SmLinearCrossSectionFSG`, `SmCircularCrossSectionFSG`, `SmBlendCurveCrossSectionFSG` (constructors, `GetFilletSurfaceGeneratorType`, `GetBlendScale`, `GetContinuity`; `Drop` is each destructor); the circular and blend-curve variants hold `blend.fillet_standard_solver_p1`'s [`CircularCrossSectionFsg`] / [`BlendCurveCrossSectionFsg`] (one type per class) |
 //! | [`FilletSurfaceGenerator::create_surface`]             | `SmFilletSurfaceGenerator::CreateSurface` (base; the linear one dispatches to [`LinearCrossSectionFsg::create_surface`]) |
@@ -312,41 +312,60 @@ impl FilletSurfaceGenerator {
         }
     }
 
-    /// `CreateSurface` (virtual) on the rails and fillet points: `SM_ERR` for the base,
-    /// the Eiffel tower surface for [`FilletSurfaceGenerator::EiffelTower`] (it reads
-    /// only the solver's `GetThisApproxTol3d()`, passed as `approx_tol_3d`).
+    /// `CreateSurface(rFilletSolver, pCenterLine, pRail1Curve, pRail2Curve,
+    /// crFilletPoints, pSurf1, pUV1, pSurf2, pUV2, rpFilletSurface)` (virtual): `SM_ERR`
+    /// for the base, else the generator's surface. The solver is read only for its
+    /// `GetThisApproxTol3d()` (`approx_tol_3d`) and `GetSolverType()`
+    /// (`solver_type`); `center_line` is `None` for `NULL`.
     ///
     /// # Errors
     ///
     /// `SM_ERR` for [`FilletSurfaceGenerator::Base`]; those of
-    /// `SmEiffelTowerCrossSectionFSG::CreateSurface` and
-    /// `SmLinearCrossSectionFSG::CreateSurface`; [`SolidError::Unported`] for the
-    /// circular and blend-curve generators.
+    /// `SmEiffelTowerCrossSectionFSG::CreateSurface`,
+    /// `SmLinearCrossSectionFSG::CreateSurface` ([`LinearCrossSectionFsg::create_surface`])
+    /// and the circular and blend-curve generators' `CreateSurface`;
+    /// [`SolidError::InvalidInput`] for a missing centre line of the circular and
+    /// blend-curve generators (upstream dereferences `NULL`).
+    #[allow(clippy::too_many_arguments)]
     pub fn create_surface(
         &self,
         k: &Kernel,
         approx_tol_3d: f64,
+        solver_type: FilletSolverType,
+        center_line: Option<&mut BSplineCurve>,
         rail1: &mut BSplineCurve,
         rail2: &mut BSplineCurve,
         points: &[TsectPnt],
+        side1: crate::blend::fillet_standard_solver::p1::RailSurface<'_>,
+        side2: crate::blend::fillet_standard_solver::p1::RailSurface<'_>,
     ) -> Result<crate::nurbs::b_spline_surface::BSplineSurface> {
+        let no_center = || SolidError::invalid_input(OP, "NULL centre line");
         match self {
             Self::Base => Err(SolidError::sm_err(OP)),
             Self::EiffelTower => {
                 crate::blend::fillet_custom_solver::EiffelTowerCrossSectionFsg::new()
                     .create_surface(k, approx_tol_3d, rail1, rail2, points)
             }
+            // the ruled surface between the rails (SER)
             Self::Linear => LinearCrossSectionFsg.create_surface(rail1, rail2),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmCircularCrossSectionFSG::CreateSurface
-            Self::Circular(_) => Err(SolidError::unported(
-                "SmCircularCrossSectionFSG::CreateSurface",
-                "blend.fillet_standard_solver_p2",
-            )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmBlendCurveCrossSectionFSG::CreateSurface
-            Self::BlendCurve(_) => Err(SolidError::unported(
-                "SmBlendCurveCrossSectionFSG::CreateSurface",
-                "blend.fillet_standard_solver_p2",
-            )),
+            Self::Circular(g) => g.create_surface(
+                k,
+                approx_tol_3d,
+                solver_type,
+                center_line.ok_or_else(no_center)?,
+                rail1,
+                rail2,
+            ),
+            Self::BlendCurve(g) => g.create_surface(
+                k,
+                approx_tol_3d,
+                solver_type,
+                center_line.ok_or_else(no_center)?,
+                rail1,
+                rail2,
+                side1,
+                side2,
+            ),
         }
     }
 }
@@ -1067,11 +1086,11 @@ impl FilletSolver {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] from its first call (`SmFilletGeom::GetRailIndexOfVertexuse`,
-    /// unit `blend.fillet_geom_p6`), the split (`SmFilletGeom::TopologySplit`,
-    /// `blend.fillet_geom_p3`) and the rail vertex lookup (`GetRailVertex`,
-    /// `blend.fillet_geom_p6`); `SM_ERR_NULL_POINTER` (`NER`) for a missing fillet
-    /// vertex, side edge use, original face or adjacent face;
+    /// Those of [`FilletBrep::rail_index_of_vertexuse`] (`SM_ERR` when the vertex use
+    /// ends neither rail), [`FilletBrep::rail_vertex`] and
+    /// [`FilletBrep::topology_split`]; `SM_ERR_NULL_POINTER` (`NER`) for a geometry
+    /// without solver, a missing fillet vertex, side edge use, original face or
+    /// adjacent face;
     /// [`SolidError::InvalidInput`] when the faces across the side edge are not tangent
     /// (`SM_ERR_INVALID_INPUT`), for a classification object that is not an edge use
     /// (upstream casts it) and where upstream dereferences `NULL`;
@@ -1090,12 +1109,7 @@ impl FilletSolver {
         let nul = || SolidError::null_pointer(OP_S);
 
         // Get the rail being split.
-        // UNPORTED(blend.fillet_geom_p6): SmFilletGeom::GetRailIndexOfVertexuse
-        let rail_idx: usize = unported_on(
-            (fillet_geom, split_vertexuse),
-            "SmFilletGeom::GetRailIndexOfVertexuse",
-            "blend.fillet_geom_p6",
-        )?;
+        let rail_idx = pseudo.rail_index_of_vertexuse(fillet_geom, Some(split_vertexuse))?;
         let other_idx = 1usize
             .checked_sub(rail_idx)
             .ok_or_else(|| invalid("rail index out of range"))?;
@@ -1187,13 +1201,11 @@ impl FilletSolver {
                 .set_fillet_geom_type(FilletGeomType::TangentRollover);
         }
 
-        // Do the split.
-        // UNPORTED(blend.fillet_geom_p3): SmFilletGeom::TopologySplit
-        let new_fillet_geom: FilletGeomId = unported_on(
-            fillet_geom,
-            "SmFilletGeom::TopologySplit",
-            "blend.fillet_geom_p3",
-        )?;
+        // Do the split (default eNewGeomType = SM_FG_DEFAULT; the geometry's solver is
+        // this one).
+        let solver_id = pseudo.geom(fillet_geom)?.fillet_solver().ok_or_else(nul)?;
+        let new_fillet_geom =
+            pseudo.topology_split(k, fillet_geom, FilletGeomType::Default, solver_id, self, b)?;
 
         // The new fillet geom comes out as the 'high end'. Update offset surfaces,
         // orig face, and type in the two FG's. Copy offset surface from non-split side
@@ -1307,20 +1319,10 @@ impl FilletSolver {
         pseudo
             .fillet_vertex_mut(fil_vtx)?
             .set_status(FilStatus::Unprocessed);
-        let opp_fv: VertexId = if which_end == 0 {
-            // UNPORTED(blend.fillet_geom_p6): SmFilletGeom::GetRailVertex
-            unported_on(
-                (fillet_geom, 0usize, other_idx),
-                "SmFilletGeom::GetRailVertex",
-                "blend.fillet_geom_p6",
-            )?
+        let opp_fv = if which_end == 0 {
+            pseudo.rail_vertex(fillet_geom, 0, other_idx)?
         } else {
-            // UNPORTED(blend.fillet_geom_p6): SmFilletGeom::GetRailVertex
-            unported_on(
-                (new_fillet_geom, 1usize, other_idx),
-                "SmFilletGeom::GetRailVertex",
-                "blend.fillet_geom_p6",
-            )?
+            pseudo.rail_vertex(new_fillet_geom, 1, other_idx)?
         };
         pseudo
             .fillet_vertex_mut(opp_fv)?
@@ -1340,21 +1342,21 @@ impl FilletSolver {
     /// [`SolidError::InvalidInput`] for a geometry index past the solver's geometries or
     /// fewer second intervals than first ones (upstream only asserts equal sizes, then
     /// reads `crIvls2[i]` for every `i` of `crIvls1`); [`SolidError::Unported`] for the
-    /// geometry copies (`SmFilletGeom::SmFilletGeom`), the rail vertices
-    /// (`SmFilletGeom::GetRailVertex`), the rail points and end curves
-    /// (`SetUpRailPoint`, `CreateEndCurve`); [`SolidError::NotFound`] for a vertex
-    /// without its fillet record; those of `FindPointClass` and [`trim_rail`].
-    pub fn split_fillet_geom<O: ClassObject>(
+    /// geometry copies (`SmFilletGeom::SmFilletGeom`) and the end curves
+    /// (`CreateEndCurve`); [`SolidError::NotFound`] for a vertex without its fillet
+    /// record; those of [`FilletBrep::rail_vertex`], `FindPointClass`,
+    /// [`FilletBrep::set_up_rail_point`] and [`trim_rail`].
+    pub fn split_fillet_geom(
         &mut self,
         k: &Kernel,
         pseudo: &mut FilletBrep,
-        geometry: &impl ClassGeometry<O>,
+        geometry: &impl ClassGeometry<EntityRef>,
         fillet_geom_index: usize,
         trim_type: i32,
         ivls1: &[Extent1d],
         ivls2: &[Extent1d],
-        cc1: &CurveClassification<O>,
-        cc2: &CurveClassification<O>,
+        cc1: &CurveClassification<EntityRef>,
+        cc2: &CurveClassification<EntityRef>,
     ) -> Result<()> {
         // SM_ASSERT(sizes equal) is a no-op; a shorter crIvls2 is read past its end.
         if ivls2.len() < ivls1.len() {
@@ -1392,18 +1394,10 @@ impl FilletSolver {
         {
             // If we split things then set the processed flag for interior vertexuses
             // to FALSE.
-            let rail_vertex = |rail: usize, end: usize| -> Result<VertexId> {
-                // UNPORTED(blend.fillet_geom_p6): SmFilletGeom::GetRailVertex
-                unported_on(
-                    (fillet_geom, rail, end),
-                    "SmFilletGeom::GetRailVertex",
-                    "blend.fillet_geom_p6",
-                )
-            };
-            let v00 = rail_vertex(0, 0)?;
-            let v01 = rail_vertex(0, 1)?;
-            let v10 = rail_vertex(1, 0)?;
-            let v11 = rail_vertex(1, 1)?;
+            let v00 = pseudo.rail_vertex(fillet_geom, 0, 0)?;
+            let v01 = pseudo.rail_vertex(fillet_geom, 0, 1)?;
+            let v10 = pseudo.rail_vertex(fillet_geom, 1, 0)?;
+            let v11 = pseudo.rail_vertex(fillet_geom, 1, 1)?;
             if i > 0 {
                 for v in [v00, v10] {
                     pseudo
@@ -1432,12 +1426,7 @@ impl FilletSolver {
                 (1, 0, ivl2.min(), pc10),
                 (1, 1, ivl2.max(), pc11),
             ] {
-                // UNPORTED(blend.fillet_geom_p6): SmFilletGeom::SetUpRailPoint
-                unported_on::<_, ()>(
-                    (new_fillet_geom, rail, end, t, pc),
-                    "SmFilletGeom::SetUpRailPoint",
-                    "blend.fillet_geom_p6",
-                )?;
+                pseudo.set_up_rail_point(k, new_fillet_geom, rail, end, t, Some(&pc))?;
             }
 
             // Create the ending curve on the fillet
@@ -1648,6 +1637,65 @@ pub trait FilletSolverOps {
     fn is_kind_of(&self, t: i64) -> Result<bool> {
         Ok(FilletSolver::is_kind_of(t))
     }
+
+    /// `GetSolverType` (pure virtual upstream; each derived solver's override belongs
+    /// to its unit). The default stands for a derived solver that names no kind
+    /// (`SM_FS_UNKNOWN`). Added by `blend.fillet_solver_p3` (`StepSolve` branches on it).
+    ///
+    /// # Errors
+    ///
+    /// None for the default; [`SolidError::Unported`] for an override of an unported
+    /// unit.
+    fn solver_type(&self) -> Result<FilletSolverType> {
+        Ok(FilletSolverType::Unknown)
+    }
+
+    /// `((SmConstantDistanceFS*)this)->GetDistance()`: the rail distance of a
+    /// constant-distance solver, read by `SmFindClippedRadiusEFO` (a cast upstream
+    /// makes only for a [`FilletSolverType::ConstDist`] solver). Added by
+    /// `blend.fillet_solver_p3`.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] by default (`SmConstantDistanceFS`, unit
+    /// `blend.fillet_standard_solver_p1`).
+    fn constant_distance(&self) -> Result<f64> {
+        // UNPORTED(blend.fillet_standard_solver_p1): SmConstantDistanceFS::GetDistance (justified: findings.md "blend.fillet_solver_p3 (`SmFilletSolver.cpp` part 3")
+        Err(SolidError::unported(
+            "SmConstantDistanceFS::GetDistance",
+            "blend.fillet_standard_solver_p1",
+        ))
+    }
+
+    /// `PointOnPlaneSolve(crPlaneOrig, crPlaneNormal, crUVDomain1, crUVDomain2, crUV1,
+    /// crUV2, rbFoundSolution, rTsectPnt)`: the rail points on the plane at the fillet
+    /// radius from its origin, written to `point`; the result is `rbFoundSolution`.
+    /// Virtual upstream (`SmFilletSolver.h:258`) and overridden by
+    /// `SmConstantRadiusAssistedFS` (unit `blend.fillet_standard_solver_p2`), so
+    /// `StepSolve` and `sm_FindFilletTsectPnt` dispatch through it. Added by
+    /// `blend.fillet_solver_p3`.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] by default (the base, unit `blend.fillet_solver_p2`).
+    #[allow(clippy::too_many_arguments)]
+    fn point_on_plane_solve(
+        &mut self,
+        _k: &Kernel,
+        _plane_origin: Point3,
+        _plane_normal: Vec3,
+        _uv_domain1: &Extent2d,
+        _uv_domain2: &Extent2d,
+        _uv1: Point2,
+        _uv2: Point2,
+        _point: &mut TsectPnt,
+    ) -> Result<bool> {
+        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::PointOnPlaneSolve
+        Err(SolidError::unported(
+            "SmFilletSolver::PointOnPlaneSolve",
+            "blend.fillet_solver_p2",
+        ))
+    }
 }
 
 impl FilletSolverOps for FilletSolver {
@@ -1789,6 +1837,17 @@ pub struct FilletSphereSolveEnfo<'a> {
 }
 
 impl<'a> FilletSphereSolveEnfo<'a> {
+    /// `m_crFilletSolver`.
+    #[must_use]
+    pub fn solver(&self) -> &dyn FilletSolverOps {
+        &*self.solver
+    }
+
+    /// `m_crFilletSolver`, for the virtuals that write to the solver.
+    pub fn solver_mut(&mut self) -> &mut dyn FilletSolverOps {
+        &mut *self.solver
+    }
+
     /// `SmFilletSphereSolveENFO(crSphereCenter, dSphereRadius, crFilletSolver)`: the
     /// plane starts as `(centre, radius)`, not adjusting.
     pub fn new(
@@ -2369,6 +2428,8 @@ fn evaluate_point_out_of_bounds(k: &Kernel, base: &Surface, uv: Point2) -> Resul
         SurfaceKind::Plane(p) => *p.out_of_bounds_enabled_mut() = true,
         SurfaceKind::SurfOfRevolution(r) => *r.base_mut().out_of_bounds_enabled_mut() = true,
         SurfaceKind::Cone(c) => *c.base_mut().out_of_bounds_enabled_mut() = true,
+        SurfaceKind::Sphere(c) => *c.base.base_mut().out_of_bounds_enabled_mut() = true,
+        SurfaceKind::Torus(c) => *c.base.base_mut().out_of_bounds_enabled_mut() = true,
         // an SmOffsetSurface is not an SmBSplineSurface either
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
@@ -2542,7 +2603,7 @@ pub enum AnalyticTestSurface<'a> {
 /// Those of `IsPlanar` and of the cone test (`SmCone::IsNurbSurfaceCone`), except a
 /// failing iso curve status, which upstream returns as the `SmBoolean` and which
 /// reads as `true`; `InvalidInput` for a surface kind that is not an
-/// `SmBSplineSurface`.
+/// `SmBSplineSurface` (a plane is accepted by type before).
 pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Result<bool> {
     use crate::surface::surface::p2::{CONE_TYPE, PLANE_TYPE};
     use crate::surface::surface::SurfaceKind;
@@ -2577,6 +2638,8 @@ pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Re
             SurfaceKind::Plane(p) => p.base(),
             SurfaceKind::SurfOfRevolution(r) => r.base(),
             SurfaceKind::Cone(c) => c.rev().base(),
+            SurfaceKind::Sphere(s) => s.base().base(),
+            SurfaceKind::Torus(s) => s.base().base(),
             // not an SmBSplineSurface: upstream's parameter type excludes these
             _ => {
                 return Err(SolidError::InvalidInput {

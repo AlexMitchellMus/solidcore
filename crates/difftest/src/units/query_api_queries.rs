@@ -71,6 +71,17 @@ fn output(op: i32, r: Result<Vec<f64>>) -> Output {
     }
 }
 
+/// The case ops are `1..=25`; the FFI's `0` and `26` are the graph exports
+/// [`imported`] reads the native B-rep through, which have no Rust counterpart to
+/// compare.
+fn compared_op(op: i32) -> std::result::Result<(), HarnessError> {
+    if (1..=25).contains(&op) {
+        Ok(())
+    } else {
+        Err(HarnessError::new(format!("op {op} is not a compared query (1..=25)")))
+    }
+}
+
 // Integer topology and status fields are compared exactly; only geometric
 // measurements use the harness's fixed relative tolerance.
 fn decode(op: i32, values: Vec<f64>) -> Output {
@@ -403,6 +414,9 @@ fn imported(k: &Kernel, a: &[f64; 22], export_op: i32) -> std::result::Result<Br
         {
             let _ = surface.set_owner(Some(arena_identity(CacheObject::Face(id))));
         }
+        // the face's tolerance, as the face upstream answers GetTolerance with
+        b.sync_face_surface_tolerance(id)
+            .map_err(|e| HarnessError::new(e.to_string()))?;
     }
     Ok(b)
 }
@@ -635,7 +649,7 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
             }
         }
         12 => {
-            let hit = api::find_edge(b, point)?;
+            let hit = api::find_edge(k, b, point)?;
             o.push(hit.index as f64);
             o.push(hit.parameter);
         }
@@ -714,6 +728,7 @@ impl UnitDiff for Runner {
     }
     fn run_cpp(&self, c: &Case) -> std::result::Result<Output, HarnessError> {
         let i: Inputs = c.parse()?;
+        compared_op(i.op)?;
         let mut input = i.data.to_vec();
         if let Some(other) = i.other_box {
             input.extend(other);
@@ -730,6 +745,7 @@ impl UnitDiff for Runner {
     }
     fn run_rust(&self, c: &Case) -> std::result::Result<Output, HarnessError> {
         let i: Inputs = c.parse()?;
+        compared_op(i.op)?;
         let a = &i.data;
         let k = Kernel::default();
         if a[16] != 0. {

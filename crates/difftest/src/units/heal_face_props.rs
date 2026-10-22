@@ -79,6 +79,8 @@ enum H {
     Curve(bool),
     EdgeCurve(EdgeId),
     Trim(EdgeuseId),
+    /// A temporary curve (the seam curves of `SmFace::HasSeamProblem`).
+    Temp(usize),
 }
 
 impl ClassObject for H {
@@ -86,8 +88,14 @@ impl ClassObject for H {
         match self {
             Self::Topo(e) => e.class_kind(),
             Self::Surface(_) => ClassObjectKind::Surface,
-            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) => ClassObjectKind::Curve,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) | Self::Temp(_) => {
+                ClassObjectKind::Curve
+            }
         }
+    }
+
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        (kind == ClassObjectKind::Curve).then_some(Self::Temp(index))
     }
 }
 
@@ -463,7 +471,11 @@ pub(crate) fn rust_brep(k: &Kernel, f: &FaceIn) -> Result<(Brep, FaceId), Harnes
         .map_err(e)?;
     b.shell_mut(shell).map_err(e)?.faces.push(face);
     let up = next_id!(b.faceuses(), FaceuseId);
-    let down = next_id!(b.faceuses(), FaceuseId);
+    // the down face use is the record after the up one (both ids are taken before either
+    // record is added, so they cannot both come from the arena's length)
+    let down = FaceuseId::from_index(
+        u32::try_from(b.faceuses().len() + 1).map_err(|_| harness("too many records"))?,
+    );
     for (mate, orientation) in [(down, OrientType::Same), (up, OrientType::Opposite)] {
         b.add_faceuse_record(Faceuse {
             shell: Some(shell),
