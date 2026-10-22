@@ -117,6 +117,19 @@ pub struct ProjectedCurve {
 }
 
 impl ProjectedCurve {
+    /// An exact evaluation copy; `depth` is the base curve's depth in the shared
+    /// 64-level curve/surface/volume traversal.
+    pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
+        Ok(Self {
+            curve: Box::new(self.curve.clone_for_evaluation_depth(depth)?),
+            proj_point: self.proj_point,
+            proj_vec: self.proj_vec,
+            aux_data: self.aux_data,
+            proj_type: self.proj_type,
+            owns_curve: self.owns_curve,
+        })
+    }
+
     /// `SmProjectedCurve_TYPE`.
     pub const TYPE: i64 = PROJECTED_CURVE_TYPE;
 
@@ -346,9 +359,9 @@ impl ProjectedCurve {
     /// # Errors
     ///
     /// Those of [`Curve::knots`].
-    pub fn knots(&self, interval: Option<&Extent1d>) -> Result<(Vec<f64>, Vec<usize>)> {
+    pub fn knots(&self, k: &Kernel, interval: Option<&Extent1d>) -> Result<(Vec<f64>, Vec<usize>)> {
         // pass the call along
-        self.curve.knots(interval)
+        self.curve.knots(k, interval)
     }
 
     /// The sum of the knot multiplicities over the natural interval
@@ -358,8 +371,8 @@ impl ProjectedCurve {
     /// # Errors
     ///
     /// Only [`SolidError::Unported`].
-    pub fn number_natural_knots(&self) -> Result<usize> {
-        let (_, mults) = match self.knots(None) {
+    pub fn number_natural_knots(&self, k: &Kernel) -> Result<usize> {
+        let (_, mults) = match self.knots(k, None) {
             Ok(km) => km,
             Err(e @ SolidError::Unported { .. }) => return Err(e),
             Err(_) => (Vec::new(), Vec::new()),
@@ -766,9 +779,9 @@ mod tests {
         assert!(c.transform(&k, &a, None).is_err());
         a = Axis2Placement::new(Vec3::new(0.0, 0.0, 0.0), Vec3::X, Vec3::Y);
         assert!(c.transform(&k, &a, None).is_ok());
-        let (_, mults) = c.knots(None).expect("knots");
+        let (_, mults) = c.knots(&k, None).expect("knots");
         assert_eq!(
-            c.number_natural_knots().expect("knots"),
+            c.number_natural_knots(&k).expect("knots"),
             mults.iter().sum::<usize>()
         );
         // owned Hermite base has no Copy

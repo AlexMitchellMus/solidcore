@@ -14,7 +14,7 @@
 //! | [`upward_vertexuses`]                        | `SmFace::GetUpwardVertexuses`                |
 //! | [`upward_edgeuses`]                          | `SmFace::GetUpwardEdgeuses`                  |
 //! | [`is_connected_to`]                          | `SmFace::IsConnectedTo`                      |
-//! | [`global_line_intersect`]                    | `SmFace::GlobalLineIntersect`                |
+//! | [`global_line_intersect`], [`global_line_intersect_held`] | `SmFace::GlobalLineIntersect`  |
 //! | [`find_vertex_sector`], [`VertexSector`], [`FindVertexSectorArgs`] | `SmFace::FindVertexSector` |
 //! | [`has_seam_problem`], [`SeamCheck`], [`HasSeamProblemOptions`] | `SmFace::HasSeamProblem`  |
 //! | [`ClassifyProblem`]                          | `SmClassifyProblem` (`SmCurveClass.h`)       |
@@ -34,9 +34,21 @@
 //!   region on the B-rep's region list, as [`crate::topology::shell::shell_brep`].
 //! - **`GlobalLineIntersect`.** The surface's solutions are those of
 //!   [`Surface::global_line_intersect`] with the caller's `surface` handle as object
-//!   (upstream's surface pointer). `SmFace::PointClassify` gets the face's tolerance
-//!   options as `query.face_p2`'s callers pass them, without the trimmed surface cache
-//!   (the cache answers as the loop classification does); its status is ignored as
+//!   (upstream's surface pointer); [`global_line_intersect_held`] keeps the surface's
+//!   cache in the caller's [`HeldSolveCache`] across calls, as upstream keeps it on the
+//!   surface. [`global_line_intersect`] builds the surface's cache with the face
+//!   ([`crate::query::face::p2::face_surface_cache`], `GetFace()` of the trimmed
+//!   cache) when the solve fetches it, so the solve runs on the face's trimmed tree;
+//!   the trimmed cache names the surface `EntityRef::Face(f)` (upstream's
+//!   `m_cpSurface`, which every node's `mBA_pSurface` becomes after the build; the
+//!   leaf solves compute their polar boxes on it). The solve gets the cache with
+//!   every handle naming `surface` ([`SurfaceCache::map_handles`]: the line solve
+//!   reads only node classes, boxes and the cache surface), its `sm_IsPointValid`
+//!   runs the trimmed cache's `PointTest` (a face classification,
+//!   [`TrimSrfCache::point_test_in`]), and `SmFace::PointClassify` of the single values gets the trimmed cache
+//!   itself (upstream finds it on the surface). The held variant and
+//!   `sm_FaceClassifyUVLine` classify without it. `SmFace::PointClassify` gets the face's tolerance
+//!   options as `query.face_p2`'s callers pass them; its status is ignored as
 //!   upstream ignores it ([`SolidError::Unported`], `InvalidInput` and `NotFound`
 //!   propagate). A range whose `sm_FaceClassifyUVLine` returns no interval reads
 //!   `sCC[0]` of an empty array upstream (`plan/upstream-issues.md` UB-180); the port
@@ -108,10 +120,13 @@ use crate::math::{BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT};
 use crate::nurbs::b_spline_surface::p1::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::query::face::p2::{
-    curve_on_classify, point_classify, CurveOnClassifyObjects, PointClassifyOptions,
+    curve_on_classify, face_surface_cache, point_classify, BrepCacheFace, CurveOnClassifyObjects,
+    PointClassifyOptions,
 };
 use crate::surface::surface::p5::{SS_NONE, SS_UMAX, SS_UMIN, SS_VMAX, SS_VMIN};
+use crate::surface::surface::p8::{FaceSolveCache, HeldSolveCache};
 use crate::surface::surface::{Surface, SurfaceKind};
+use crate::surface::surface_cache::SurfaceCache;
 use crate::surface::trim_srf_cache::TrimSrfCache;
 use crate::surface::volume::Volume;
 use crate::topology::edge;
@@ -408,12 +423,14 @@ fn classify_uv_point(
     f: FaceId,
     uv: Point2,
     tol: f64,
+    trim_cache: Option<&mut TrimSrfCache<EntityRef>>,
 ) -> Result<PointClassType> {
     let mut pc = PointClassification::new(tol);
     let opts = PointClassifyOptions {
         src_zone_tol_3d: tol,
         do_boundary_intersections: true,
         use_uv_classification: true,
+        trim_cache,
         ..PointClassifyOptions::default()
     };
     match point_classify(k, b, f, uv, &mut pc, opts) {
@@ -450,6 +467,127 @@ pub fn global_line_intersect<O: SolutionObject>(
     fire_ray: bool,
     src_zone_tol_3d: f64,
 ) -> Result<SolutionArray<O>> {
+    global_line_intersect_with(
+        k,
+        b,
+        f,
+        surface,
+        None,
+        uv_domain,
+        line_point,
+        line_vector,
+        line_interval,
+        fire_ray,
+        src_zone_tol_3d,
+    )
+}
+
+/// [`global_line_intersect`] with the face surface's cache kept by the caller in
+/// `held` across calls, as upstream keeps it on the surface (see
+/// [`Surface::global_line_intersect_held`]). `held` must only be used with this face,
+/// whose surface the caller does not change between the calls, and the same `surface`
+/// handle.
+///
+/// # Errors
+///
+/// As [`global_line_intersect`].
+///
+/// [`Surface::global_line_intersect_held`]: crate::surface::surface::Surface::global_line_intersect_held
+#[allow(clippy::too_many_arguments)]
+pub fn global_line_intersect_held<O: SolutionObject>(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    surface: O,
+    held: &mut HeldSolveCache<O>,
+    uv_domain: &Extent2d,
+    line_point: Point3,
+    line_vector: Vec3,
+    line_interval: Option<&Extent1d>,
+    fire_ray: bool,
+    src_zone_tol_3d: f64,
+) -> Result<SolutionArray<O>> {
+    global_line_intersect_with(
+        k,
+        b,
+        f,
+        surface,
+        Some(held),
+        uv_domain,
+        line_point,
+        line_vector,
+        line_interval,
+        fire_ray,
+        src_zone_tol_3d,
+    )
+}
+
+/// The face's trimmed surface cache as its surface's line solve fetches it
+/// (`smsurf_GetSurfaceCache(pSurface)`), named by `surface` in the solve.
+struct FaceLineCache<'b, O> {
+    b: &'b mut Brep,
+    f: FaceId,
+    surface: O,
+    /// The trimmed cache, once built.
+    trim: Option<TrimSrfCache<EntityRef>>,
+}
+
+impl<O: SolutionObject> FaceSolveCache<O> for FaceLineCache<'_, O> {
+    fn build(&mut self, k: &Kernel) -> Result<SurfaceCache<O>> {
+        // the face's trimmed cache, its tree built (GetTree); the surface needs a name
+        // in the cache's object space: after the build every node's `mBA_pSurface` is
+        // the cache surface (the polar boxes of the leaf solves are computed on it)
+        let mut c = face_surface_cache(k, self.b, self.f, Some(EntityRef::Face(self.f)))?;
+        if c.base().tree().is_none() {
+            c.build_tree_with_face(
+                k,
+                &mut BrepCacheFace {
+                    b: &mut *self.b,
+                    f: self.f,
+                },
+            )?;
+        }
+        let surface = self.surface;
+        let mut solve_cache = c.base().map_handles(|_| Ok(surface))?;
+        solve_cache.set_surface_handle(Some(surface));
+        self.trim = Some(c);
+        Ok(solve_cache)
+    }
+
+    fn point_test(&mut self, k: &Kernel, uv: Point2) -> Result<bool> {
+        let trim = self
+            .trim
+            .as_ref()
+            .ok_or_else(|| null("GlobalLineIntersect: point test without cache"))?;
+        // PointTest(uv, ok, NULL, NULL): the face's zone tolerance
+        let (ok, _) = trim.point_test_in(
+            k,
+            &mut BrepCacheFace {
+                b: &mut *self.b,
+                f: self.f,
+            },
+            uv,
+            None,
+        )?;
+        Ok(ok)
+    }
+}
+
+/// The body of [`global_line_intersect`] and [`global_line_intersect_held`].
+#[allow(clippy::too_many_arguments)]
+fn global_line_intersect_with<O: SolutionObject>(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    surface: O,
+    held: Option<&mut HeldSolveCache<O>>,
+    uv_domain: &Extent2d,
+    line_point: Point3,
+    line_vector: Vec3,
+    line_interval: Option<&Extent1d>,
+    fire_ray: bool,
+    src_zone_tol_3d: f64,
+) -> Result<SolutionArray<O>> {
     // the double becomes the `SmZoneTol3d` parameter: `fabs`, and `SM_USE_DEFAULT` -> the
     // system zone tolerance
     let src_zone_tol_3d = tol::zone_tol3d(k, src_zone_tol_3d);
@@ -457,14 +595,37 @@ pub fn global_line_intersect<O: SolutionObject>(
     // First find the solutions with the underlying surface
     // Note: pass False as the bFireRay argument, otherwise it will return
     // only the first hit in the surface, and that might not be in this Face.
-    let mut solutions = b
+    let face_surface = b
         .face(f)?
         .surface
         .as_ref()
         .ok_or_else(|| null("GlobalLineIntersect: face without surface"))?
-        .global_line_intersect(
+        .clone_for_evaluation()?;
+    // the face's trimmed surface cache, when the surface solve fetched it
+    let mut trim: Option<TrimSrfCache<EntityRef>> = None;
+    let mut solutions = if let Some(held) = held {
+        face_surface.global_line_intersect_held(
             k,
             surface,
+            held,
+            uv_domain,
+            line_point,
+            line_vector,
+            line_interval,
+            false,
+            src_zone_tol_3d,
+        )?
+    } else {
+        let mut face_cache = FaceLineCache {
+            b: &mut *b,
+            f,
+            surface,
+            trim: None,
+        };
+        let solutions = face_surface.global_line_intersect_built(
+            k,
+            surface,
+            &mut face_cache,
             uv_domain,
             line_point,
             line_vector,
@@ -472,6 +633,9 @@ pub fn global_line_intersect<O: SolutionObject>(
             false,
             src_zone_tol_3d,
         )?;
+        trim = face_cache.trim;
+        solutions
+    };
 
     // If there are no solutions then return whatever the surface method returns.
     if solutions.is_empty() {
@@ -494,7 +658,9 @@ pub fn global_line_intersect<O: SolutionObject>(
         if sol.solution_type == SolutionType::SingleValue {
             // Get uv on surface
             let uv = Point2::new(sol.start.parameters[1], sol.start.parameters[2]);
-            if classify_uv_point(k, b, f, uv, src_zone_tol_3d)? == PointClassType::Unknown {
+            if classify_uv_point(k, b, f, uv, src_zone_tol_3d, trim.as_mut())?
+                == PointClassType::Unknown
+            {
                 removal_indices.push(ii);
                 ii += 1;
                 continue;
@@ -1243,6 +1409,9 @@ impl<M: ClassGeometry<O>, O: ClassObject> ClassGeometry<O> for WithSeam<'_, M, O
     fn topology_handle(&self, entity: EntityRef) -> Option<O> {
         self.inner.topology_handle(entity)
     }
+    fn topology_handle_in(&self, brep: &Brep, entity: EntityRef) -> Option<O> {
+        self.inner.topology_handle_in(brep, entity)
+    }
     fn owner_of(&self, owner: ObjectRef) -> Option<ObjectRef> {
         self.inner.owner_of(owner)
     }
@@ -1711,4 +1880,230 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
     };
     out.has_problem = crossed_u || crossed_v || missing_u || missing_v;
     Ok(out)
+}
+
+// ---- B-rep classification handles ------------------------------------------------------
+
+/// Operation name of [`BrepSeamObjects`].
+const OP_SEAM_OBJECTS: &str = "topology::face::p4::BrepSeamObjects";
+
+/// The classification objects of face `f`'s own B-rep for a [`has_seam_problem`] caller
+/// that holds [`LoopObject`] handles only (`SmFaceProps::SetProps_Stage2`, the seam
+/// checks of `SmFace::MoveSeam` / `SmFace::SplitAtSeam`): upstream's `SmObject` pointers
+/// name the B-rep's own entities and geometry. The face, its surface, the B-rep
+/// topology, edge curves and UV trim curves are the handles [`LoopObject::from_face`],
+/// [`LoopObject::from_face_surface`], [`LoopObject::from_topology`],
+/// [`LoopObject::from_edge_curve`] and [`LoopObject::from_trim_curve`] name (and their
+/// inverses resolve); the seam curves are the handle type's temporaries
+/// ([`ClassObject::temporary`]). Tolerances, points and vertex/face gaps are those
+/// stored in `b` (a gap is computed on a snapshot, as `GetVertexFaceGap` fills a lazy
+/// cache).
+#[derive(Debug)]
+pub struct BrepSeamObjects<'b, O> {
+    k: &'b Kernel,
+    b: &'b Brep,
+    f: FaceId,
+    face: O,
+    surface: Option<O>,
+}
+
+impl<'b, O: LoopObject> BrepSeamObjects<'b, O> {
+    /// The objects of face `f` of `b`.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::NotFound`] for a dangling face; [`SolidError::InvalidInput`] when
+    /// `O` cannot name the face, its surface, the B-rep topology, edge curves, trim
+    /// curves or the seam temporaries (a limitation of the handle type, not an upstream
+    /// status).
+    pub fn new(k: &'b Kernel, b: &'b Brep, f: FaceId) -> Result<Self> {
+        let no = || {
+            SolidError::invalid_input(
+                OP_SEAM_OBJECTS,
+                "classification handles cannot name the face's topology, curves or seam curves",
+            )
+        };
+        // a handle type names every entity of a kind or none (LoopObject), so the first
+        // ids answer for all
+        let e0 = EdgeId::from_index(0);
+        let eu0 = EdgeuseId::from_index(0);
+        let names_all = O::from_topology(EntityRef::Vertex(VertexId::from_index(0))).is_some()
+            && O::from_topology(EntityRef::Edge(e0)).is_some()
+            && O::from_topology(EntityRef::Vertexuse(VertexuseId::from_index(0))).is_some()
+            && O::from_topology(EntityRef::Edgeuse(eu0)).is_some()
+            && O::from_edge_curve(e0).is_some()
+            && O::from_trim_curve(eu0).is_some()
+            && [
+                SEAM_U_TEMPS.0,
+                SEAM_U_TEMPS.1,
+                SEAM_V_TEMPS.0,
+                SEAM_V_TEMPS.1,
+            ]
+            .iter()
+            .all(|&i| O::temporary(i, ClassObjectKind::Curve).is_some());
+        if !names_all {
+            return Err(no());
+        }
+        let surface = if b.face(f)?.surface.is_some() {
+            Some(O::from_face_surface(f).ok_or_else(no)?)
+        } else {
+            None
+        };
+        Ok(Self {
+            k,
+            b,
+            f,
+            face: O::from_face(f).ok_or_else(no)?,
+            surface,
+        })
+    }
+
+    /// The B-rep entity `o` names (the face handle included).
+    fn entity(&self, o: O) -> Option<EntityRef> {
+        if o == self.face {
+            return Some(EntityRef::Face(self.f));
+        }
+        o.as_topology()
+    }
+
+    /// The handle of B-rep entity `t` ([`Self::new`] checked that `O` names topology, so
+    /// the face handle fallback is never taken).
+    fn topology(&self, t: EntityRef) -> O {
+        match t {
+            EntityRef::Face(f) if f == self.f => self.face,
+            _ => O::from_topology(t).unwrap_or(self.face),
+        }
+    }
+}
+
+impl<O: LoopObject> ClassGeometry<O> for BrepSeamObjects<'_, O> {
+    fn curve(&self, o: O) -> Option<&Curve> {
+        if let Some(e) = o.as_edge_curve() {
+            return self.b.edge(e).ok()?.curve.as_ref();
+        }
+        if let Some(eu) = o.as_trim_curve() {
+            return eu1::uv_trim_curve(self.b, eu).ok()?.0;
+        }
+        None
+    }
+
+    fn surface(&self, o: O) -> Option<&Surface> {
+        if self.surface == Some(o) {
+            return self.b.face(self.f).ok()?.surface.as_ref();
+        }
+        None
+    }
+
+    fn volume(&self, _o: O) -> Option<&Volume> {
+        None
+    }
+
+    fn point(&self, o: O) -> Option<Point3> {
+        self.classification_vertex_point(o)
+    }
+
+    fn classification_vertex_point(&self, vertex: O) -> Option<Point3> {
+        match self.entity(vertex)? {
+            EntityRef::Vertex(v) => self.b.vertex(v).ok().map(|v| v.point),
+            _ => None,
+        }
+    }
+
+    fn topology_zone_tol_3d(&self, object: O) -> Option<f64> {
+        match self.entity(object)? {
+            EntityRef::Vertex(v) => self.b.vertex(v).ok().map(|v| v.tolerance),
+            EntityRef::Edge(e) => self.b.edge(e).ok().map(|e| e.tolerance),
+            EntityRef::Face(f) => self.b.face(f).ok().map(|f| f.tolerance),
+            _ => None,
+        }
+    }
+
+    fn vertex_face_gap(&self, vertex: O, surface: &Surface, face: Option<O>) -> Option<f64> {
+        let EntityRef::Vertex(v) = self.entity(vertex)? else {
+            return None;
+        };
+        let f = match face {
+            Some(h) => match self.entity(h)? {
+                EntityRef::Face(f) => f,
+                _ => return None,
+            },
+            // the face whose surface `surface` is (`SmSurface::GetFace`)
+            None => self
+                .b
+                .faces()
+                .iter()
+                .find(|(_, r)| r.surface.as_ref().is_some_and(|s| std::ptr::eq(s, surface)))
+                .map(|(f, _)| f)?,
+        };
+        let vu = vertex::vertexuse_of_face(self.b, v, Some(f)).ok()??;
+        let mut snapshot = self.b.clone();
+        let gap = vertexuse::vertex_face_gap(self.k, &mut snapshot, vu, false).ok()?;
+        Some(gap.map_or(0.0, |g| g.gap_3d))
+    }
+
+    fn topology_entity(&self, object: O) -> Option<(&Brep, EntityRef)> {
+        Some((self.b, self.entity(object)?))
+    }
+
+    fn topology_handle(&self, entity: EntityRef) -> Option<O> {
+        Some(self.topology(entity))
+    }
+}
+
+impl<O: LoopObject> CurveOnClassifyObjects<O> for BrepSeamObjects<'_, O> {
+    fn face(&self, f: FaceId) -> O {
+        self.topology(EntityRef::Face(f))
+    }
+
+    fn vertex(&self, v: VertexId) -> O {
+        self.topology(EntityRef::Vertex(v))
+    }
+
+    fn edge(&self, e: EdgeId) -> O {
+        self.topology(EntityRef::Edge(e))
+    }
+
+    fn vertexuse(&self, vu: VertexuseId) -> O {
+        self.topology(EntityRef::Vertexuse(vu))
+    }
+
+    fn edgeuse(&self, eu: EdgeuseId) -> O {
+        self.topology(EntityRef::Edgeuse(eu))
+    }
+
+    fn edge_curve(&self, e: EdgeId) -> O {
+        O::from_edge_curve(e).unwrap_or(self.face)
+    }
+
+    fn trim_curve(&self, eu: EdgeuseId) -> O {
+        O::from_trim_curve(eu).unwrap_or(self.face)
+    }
+
+    fn face_surface(&self, f: FaceId) -> Option<O> {
+        if f == self.f {
+            self.surface
+        } else {
+            None
+        }
+    }
+
+    fn loop_id(&self, tgt_loop: O) -> Option<LoopId> {
+        tgt_loop.as_loop()
+    }
+}
+
+/// `pFace->HasSeamProblem(..)` for a caller holding [`LoopObject`] handles only:
+/// [`has_seam_problem`] with the face's own B-rep objects ([`BrepSeamObjects`]).
+///
+/// # Errors
+///
+/// Those of [`BrepSeamObjects::new`] and [`has_seam_problem`].
+pub fn has_seam_problem_in_brep<O: LoopObject>(
+    k: &Kernel,
+    b: &Brep,
+    f: FaceId,
+    opts: HasSeamProblemOptions<'_, O>,
+) -> Result<SeamCheck<O>> {
+    let objects = BrepSeamObjects::new(k, b, f)?;
+    has_seam_problem(k, b, f, &objects, opts)
 }

@@ -15,7 +15,7 @@
 //! | [`pass_sp_convergence_test`]                      | `sm_PassSPConvergenceTest` (static)              |
 //! | [`Surface::create_seam_curve`]                    | `SmSurface::CreateSeamCurve`                     |
 //! | [`Surface::is_on_seam`], [`SeamInfo`]             | `SmSurface::IsOnSeam`                            |
-//! | [`Surface::global_point_solve`], [`global_point_solve_starts`], [`NoObject`] | `SmSurface::GlobalPointSolve` |
+//! | [`Surface::global_point_solve`], [`Surface::global_point_solve_point_test_off`], [`global_point_solve_starts`], [`NoObject`] | `SmSurface::GlobalPointSolve` |
 //! | [`classify_curve_surface_xsect_point`], [`XsectClassification`] | `sm_ClassifyCurveSurfaceXSectPoint` (static) |
 //! | [`CsIntersectEnfo`] (`EvalNFunctions`)           | `SmCSIntersectENFO::Evaluate` (struct: `surface.surface_p1`) |
 //! | [`CsNormalizeEnfo`] (`EvalNFunctions`)            | `SmCSNormalizeENFO::Evaluate` (struct: `surface.surface_p1`) |
@@ -39,7 +39,9 @@
 //!   compares it); the small-gap branch uses the other surface.
 //! - **Seam curves of planes.** `SmPlane` is an `SmBSplineSurface` upstream, so with
 //!   `known_closed` the C++ builds a seam curve for it; [`Surface::create_seam_curve`]
-//!   returns `InvalidInput` for a plane (its base is not a stored B-spline surface here).
+//!   returns `InvalidInput` for a plane (its base is not a stored B-spline surface here),
+//!   and `Unported` (`curve.crv_on_surf` dispatch gap) for an `SmSurfOfRevolution`,
+//!   `SmSphere` or `SmTorus`.
 //! - **Owner checks.** Only an owner of type `SmFace` (surface) or `SmEdge` (curve) takes
 //!   the topology path, as upstream's `SM_CAST_PTR`.
 //! - **Co-ported callees.** `smsurf_IsPointOnNormal` and `SmSurfaceEval::EvalNormal` are
@@ -1133,8 +1135,10 @@ impl Surface {
     /// # Errors
     ///
     /// Those of [`Surface::is_closed`] and of the curve construction;
-    /// [`SolidError::InvalidInput`] for a closed surface that is not a B-spline
-    /// surface (a [`CrvOnSurf`] lives on a [`BSplineSurface`]).
+    /// [`SolidError::Unported`] for a closed surface of revolution, sphere or torus (the dispatch gap of
+    /// a [`CrvOnSurf`] over a non-B-spline surface); [`SolidError::InvalidInput`] for
+    /// any other closed surface that is not a B-spline surface (a [`CrvOnSurf`] lives
+    /// on a [`BSplineSurface`]).
     pub fn create_seam_curve(
         &self,
         kernel: &Kernel,
@@ -1164,11 +1168,28 @@ impl Surface {
                 Point3::new(uv_max.x, uv_min.y, 0.0),
             )
         };
-        let SurfaceKind::BSpline(base) = self.kind() else {
-            return Err(SolidError::invalid_input(
-                OP_SEAM,
-                "a curve on a surface needs a B-spline surface",
-            ));
+        let base = match self.kind() {
+            SurfaceKind::BSpline(base) => base,
+            SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
+            | SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_) => {
+                // DISPATCH GAP: SmCrvOnSurf over an SmSurfOfRevolution (or a cone, sphere, torus or extrusion) (the ported
+                // CrvOnSurf holds an SmBSplineSurface and would drop the revolution's
+                // evaluation overrides), as in surface::surface::p11.
+                // UNPORTED(curve.crv_on_surf): SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)
+                return Err(SolidError::unported(
+                    "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
+                    "curve.crv_on_surf",
+                ));
+            }
+            _ => {
+                return Err(SolidError::invalid_input(
+                    OP_SEAM,
+                    "a curve on a surface needs a B-spline surface",
+                ))
+            }
         };
         let line = Line::from_points(start, end, 2); // Line Ivl:[0, 1]
         let seam = CrvOnSurf::new(kernel, Curve::from(line), base.clone(), Some(uv_domain), 2)?;
@@ -1306,6 +1327,44 @@ impl Surface {
         Ok(solutions)
     }
 
+    /// [`Surface::global_point_solve`] by a caller that holds the surface's cache with
+    /// its point testing switched off (`SmTemporaryChangeValue` on
+    /// `m_bPointTestEnabled` around the solve, as `SmFace::Point3DClassify` does): the
+    /// trim boundary check of a face's surface keeps every solution, so the cache is
+    /// not fetched for it.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::global_point_solve`].
+    pub fn global_point_solve_point_test_off<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        surface: Option<O>,
+        uv_domain: &Extent2d,
+        op: SolverOperation,
+        test_point: Point3,
+        src_zone_tol_3d: f64,
+        opt_target_distance: Option<f64>,
+        requested: SolutionRequested,
+    ) -> Result<SolutionArray<O>> {
+        let mut solutions = SolutionArray::new();
+        self.global_point_solve_in(
+            k,
+            surface,
+            None,
+            None,
+            uv_domain,
+            op,
+            test_point,
+            src_zone_tol_3d,
+            opt_target_distance,
+            requested,
+            &mut solutions,
+            true,
+        )?;
+        Ok(solutions)
+    }
+
     /// [`Surface::global_point_solve`] with upstream's out-parameter: `solutions` keeps
     /// what was found when the call fails (for callers that ignore the status), except
     /// what the fast drop produced before it failed itself.
@@ -1324,6 +1383,75 @@ impl Surface {
         opt_target_distance: Option<f64>,
         requested: SolutionRequested,
         solutions: &mut SolutionArray<O>,
+    ) -> Result<()> {
+        self.global_point_solve_in(
+            k,
+            surface,
+            None,
+            None,
+            uv_domain,
+            op,
+            test_point,
+            src_zone_tol_3d,
+            opt_target_distance,
+            requested,
+            solutions,
+            false,
+        )
+    }
+
+    /// [`Surface::global_point_solve_into`] with lazy owning-face topology for
+    /// the fast-drop trim test. The context is consulted at the original cache
+    /// lookup, not before the analytic drop or UV-domain rejection.
+    ///
+    /// # Errors
+    /// Those of the solve, cache preparation and face classification.
+    #[allow(clippy::too_many_arguments)]
+    pub fn global_point_solve_into_with_context<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        surface: Option<O>,
+        cache: Option<&crate::surface::surface_cache::SurfaceCache<O>>,
+        context: &mut dyn super::p1::SurfaceSolveContext<O>,
+        uv_domain: &Extent2d,
+        op: SolverOperation,
+        test_point: Point3,
+        src_zone_tol_3d: f64,
+        opt_target_distance: Option<f64>,
+        requested: SolutionRequested,
+        solutions: &mut SolutionArray<O>,
+    ) -> Result<()> {
+        self.global_point_solve_in(
+            k,
+            surface,
+            cache,
+            Some(context),
+            uv_domain,
+            op,
+            test_point,
+            src_zone_tol_3d,
+            opt_target_distance,
+            requested,
+            solutions,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    fn global_point_solve_in<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        surface: Option<O>,
+        cache: Option<&crate::surface::surface_cache::SurfaceCache<O>>,
+        context: Option<&mut dyn super::p1::SurfaceSolveContext<O>>,
+        uv_domain: &Extent2d,
+        op: SolverOperation,
+        test_point: Point3,
+        src_zone_tol_3d: f64,
+        opt_target_distance: Option<f64>,
+        requested: SolutionRequested,
+        solutions: &mut SolutionArray<O>,
+        point_test_off: bool,
     ) -> Result<()> {
         // init output
         *solutions = SolutionArray::new();
@@ -1367,26 +1495,71 @@ impl Surface {
                 // If this surface belongs to a face, then check whether the returned UV
                 // values are within the trim boundaries of the face, unless flags in its
                 // surface cache indicate otherwise.
-                if self.owner().is_some_and(|o| o.type_code == FACE_TYPE) {
-                    get_surface_cache(k, self, None::<NoObject>)?;
-                    // UNPORTED(query.face_p2): SmFace::PointClassify
-                    // NOTE for the face_p2 porter: upstream callers disable the surface
-                    // cache's point test (`m_bPointTestEnabled`, SmTemporaryChangeValue)
-                    // around GlobalPointSolve so every solution is kept unclassified:
-                    // SmCurveClass.cpp:1040, SmTopologySolver.cpp:1665,
-                    // SmVertexUse.cpp:471-480, SmBrep.cpp:11098, SmFilletGeom.cpp:149-150,
-                    // 446-447, SmFace.cpp:12801 and SmOffsetExecutive.cpp:3725-3734 (Rust:
-                    // `intersect::curve_class::p1`, `intersect::topology_solver::p2`,
-                    // `topology::vertexuse`, `topology::brep::p1::find_sector_of_face`,
-                    // `blend::fillet_geom::p1`, `query::face::p1::point_3d_classify`, and
-                    // the lamina test in
-                    // `offset::offset_executive::p1::build_contained_offset_faces`).
-                    // The Rust cache has no such switch yet; add it when this stub is
-                    // wired.
-                    return Err(SolidError::unported(
-                        "SmFace::PointClassify",
-                        "query.face_p2",
-                    ));
+                if !point_test_off && self.owner().is_some_and(|o| o.type_code == FACE_TYPE) {
+                    if let Some(context) = context {
+                        let built;
+                        let cache = if let Some(cache) = cache {
+                            cache
+                        } else {
+                            built = context.build_surface_cache(k, self, surface)?;
+                            &built
+                        };
+                        if cache.is_trimmed()
+                            && cache.point_test_enabled
+                            && !cache.face_was_modified
+                        {
+                            let face = cache.face()?.ok_or(SolidError::null_pointer(
+                                "surface::surface::p4::global_point_solve",
+                            ))?;
+                            let queries = context.face_queries().ok_or_else(|| {
+                                SolidError::unported(
+                                    "prepared face classifier for fast drop",
+                                    "query.face_p2",
+                                )
+                            })?;
+                            let mut i = 0;
+                            while i < solutions.len() {
+                                let point = solutions.get_at(i)?;
+                                let uv = Point2::new(point.start.param(0)?, point.start.param(1)?);
+                                // Here upstream removes a candidate on classification
+                                // failure (unlike sm_IsPointValid's keep-on-error).
+                                let good = super::p1::ignore_native_classification(
+                                    queries.face_point_classify_fast_drop(
+                                        k,
+                                        face,
+                                        uv,
+                                        src_zone_tol_3d,
+                                    ),
+                                )?
+                                .is_some_and(|(class, _)| matches!(class, 102..=104));
+                                if good {
+                                    i += 1;
+                                } else {
+                                    solutions.remove_at(i, 1);
+                                }
+                            }
+                        }
+                    } else {
+                        get_surface_cache(k, self, None::<NoObject>)?;
+                        // UNPORTED(query.face_p2): SmFace::PointClassify
+                        // NOTE for the face_p2 porter: upstream callers disable the surface
+                        // cache's point test (`m_bPointTestEnabled`, SmTemporaryChangeValue)
+                        // around GlobalPointSolve so every solution is kept unclassified:
+                        // SmCurveClass.cpp:1040, SmTopologySolver.cpp:1665,
+                        // SmVertexUse.cpp:471-480, SmBrep.cpp:11098, SmFilletGeom.cpp:149-150,
+                        // 446-447, SmFace.cpp:12801 and SmOffsetExecutive.cpp:3725-3734 (Rust:
+                        // `intersect::curve_class::p1`, `intersect::topology_solver::p2`,
+                        // `topology::vertexuse`, `topology::brep::p1::find_sector_of_face`,
+                        // `blend::fillet_geom::p1`, `query::face::p1::point_3d_classify`, and
+                        // the lamina test in
+                        // `offset::offset_executive::p1::build_contained_offset_faces`).
+                        // The Rust cache has no such switch yet; add it when this stub is
+                        // wired.
+                        return Err(SolidError::unported(
+                            "SmFace::PointClassify",
+                            "query.face_p2",
+                        ));
+                    }
                 }
 
                 if !solutions.is_empty() {

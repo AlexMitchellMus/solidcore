@@ -21,7 +21,7 @@
 //! | [`swap_uv`]                                  | `SmFace::SwapUV`                             |
 //! | [`move_seam`], [`MoveSeamOptions`], [`MoveSeamResult`], [`SeamProblem`] | `SmFace::MoveSeam` |
 //! | [`split_at_seam`], [`SeamSplit`]             | `SmFace::SplitAtSeam`                        |
-//! | [`shrink_geometry`]                          | `SmFace::ShrinkGeometry`                     |
+//! | [`shrink_geometry`], [`shrink_geometry_with`] | `SmFace::ShrinkGeometry`                    |
 //! | [`FixSeamPlanType`]                          | `SmFixSeamPlanType` (`SmTypes.h`)            |
 //!
 //! Deviations:
@@ -76,7 +76,7 @@
 //! - **`bUseJGU`** (`static constexpr FALSE` in `SplitAtSeam`) branches are dead code
 //!   upstream and are not ported. The `SmTemporaryChangeValue`s of `SplitAtSeam`
 //!   (`m_bEditingEnabled`, `GetDoingBooleanRef`) are not set: they guard
-//!   `HasSeamProblem` (unported) and `MergeIntervals`, whose port reads neither flag
+//!   `HasSeamProblem` and `MergeIntervals`, whose ports read neither flag
 //!   (its topology edits defer to `intersect.curve_class_p6`, the imprinting after
 //!   `GetPointObjZoneTol3d`). `SplitAtSeam` takes the caller's [`ClassGeometry`] for
 //!   the zone tolerances `MergeIntervals` reads.
@@ -96,9 +96,12 @@
 //!   new and the old surface, which have no identity in the B-rep model) stays
 //!   [`SolidError::Unported`], justified in `plan/findings.md` (`topology.face_p3`).
 //!   `CreateUVTrimCurves` is `topology::face::p3::create_uv_trim_curves`.
-//! - **Unported callees** return [`SolidError::Unported`]: `SmFace::GetUpwardLoopuses`,
-//!   `GetUpwardVertexuses`, `GetEdges`, `GetBrep` and `HasSeamProblem`
-//!   (`topology.face_p4`).
+//! - **`HasSeamProblem`** (`topology.face_p4`) runs on the face's own B-rep objects
+//!   ([`crate::topology::face::p4::has_seam_problem_in_brep`]), so the classification
+//!   handle type must name them. The seam curves its classifications name are the
+//!   handle type's temporaries (upstream's classifications own them); `SplitAtSeam`'s
+//!   merges read them through the caller's [`ClassGeometry`], and a handle it cannot
+//!   resolve is [`SolidError::InvalidInput`].
 //!   `SmEdgeuse::NormalizedEvaluate` and `GetOrCreateUVTrimCurve` call
 //!   [`crate::topology::edgeuse::p3`] (wired in PR #117).
 //!   `SmBrep::ReplaceSurface` is [`brep_p2::replace_surface`], which reaches
@@ -107,6 +110,9 @@
 //!   (upstream asserts the recursion only fixes V seams); the port carries a depth and
 //!   returns [`SolidError::InvalidInput`] past [`MAX_SPLIT_AT_SEAM_DEPTH`]. Every other
 //!   loop is over B-rep arrays, knots or a fixed sample count.
+//! - **Not upstream: [`shrink_geometry_with`]** (tangency-labs/solidcore#472) passes
+//!   [`TrimOptions`] to the surface trim; [`shrink_geometry`] uses the defaults
+//!   (upstream). See `nurbs::b_spline_surface_n_lib::p2`'s Deviations.
 
 use core::cmp::Ordering;
 
@@ -131,7 +137,7 @@ use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_PARAM};
 use crate::nurbs::b_spline_curve::p2::BoundingBoxRequest;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::p1::SurfParamType;
-use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::nurbs::b_spline_surface_n_lib::p2::{OrientType, TrimOptions};
 use crate::nurbs::knots::Side;
 use crate::surface::surface::p2::B_SPLINE_SURFACE_TYPE;
 use crate::surface::surface::p4::NoObject;
@@ -235,20 +241,32 @@ pub struct SeamProblem {
 
 /// `SmFace::HasSeamProblem(rCrvClassU, rCrvClassV, eCrossed, eMissing, eNearMiss,
 /// bTgtLoopsOnly)`: rebuilds the classifications and the problem.
+///
+/// The classifications name the face's own B-rep objects
+/// ([`crate::topology::face::p4::has_seam_problem_in_brep`]); the other optional
+/// arguments keep their defaults (periodicity tested, local face properties).
 fn has_seam_problem<O: LoopObject>(
-    _k: &Kernel,
-    _b: &mut Brep,
-    _f: FaceId,
-    _crv_class_u: &mut CurveClassification<O>,
-    _crv_class_v: &mut CurveClassification<O>,
-    _problem: &mut SeamProblem,
-    _tgt_loops_only: bool,
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    crv_class_u: &mut CurveClassification<O>,
+    crv_class_v: &mut CurveClassification<O>,
+    problem: &mut SeamProblem,
+    tgt_loops_only: bool,
 ) -> Result<bool> {
-    // UNPORTED(topology.face_p4): SmFace::HasSeamProblem
-    Err(SolidError::unported(
-        "SmFace::HasSeamProblem",
-        "topology.face_p4",
-    ))
+    let check = crate::topology::face::p4::has_seam_problem_in_brep(
+        k,
+        b,
+        f,
+        crate::topology::face::p4::HasSeamProblemOptions {
+            outer_loop_only: tgt_loops_only,
+            ..Default::default()
+        },
+    )?;
+    *crv_class_u = check.class_u;
+    *crv_class_v = check.class_v;
+    *problem = check.problem;
+    Ok(check.has_problem)
 }
 
 /// `pEU->NormalizedEvaluate(dT, TRUE, rUV)` (UV evaluation; default arguments: no
@@ -1018,6 +1036,37 @@ pub fn remove_uv_trim_curves(b: &mut Brep, f: FaceId) -> Result<()> {
 /// without loop or mate, an edge use without mate; those of the mirror and surface
 /// swap and of the edit notifications.
 pub fn swap_uv(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<()> {
+    swap_uv_notifying(k, b, f, &mut |b, op| face_notify(b, f, op))
+}
+
+/// [`swap_uv`] with its `SM_NO_PRE_EDIT` / `SM_NO_POST_EDIT` (`this`,
+/// `SM_NO_GET_BREP(this)`, `NULL`) sent through the caller's notification environment
+/// (`env.key_of` names the face; `SM_NO_GET_BREP` is a null pointer upstream, so no
+/// B-rep; the context's callbacks see them, as upstream's B-rep context's do).
+///
+/// # Errors
+///
+/// Those of [`swap_uv`].
+pub fn swap_uv_with_notifications(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+) -> Result<()> {
+    swap_uv_notifying(k, b, f, &mut |b, op| {
+        let this = (env.key_of)(EntityRef::Face(f));
+        // SM_NO_GET_BREP(this) is a null pointer upstream (SmTypes.h)
+        fp3::notify(b, f, env, None, op, [Some(this), None, None])
+    })
+}
+
+/// [`swap_uv`]'s body, `notify` sending the face's edit notifications.
+fn swap_uv_notifying(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    notify: &mut dyn FnMut(&mut Brep, NotifyOperation) -> Result<()>,
+) -> Result<()> {
     // GetBrep()->GetContext()
     if !has_brep(b, f)? {
         return Err(null(
@@ -1041,7 +1090,7 @@ pub fn swap_uv(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<()> {
     let upward = upward_loopuses(b, f)?;
 
     // prepare to Edit
-    face_notify(b, f, NotifyOperation::PreEdit)?;
+    notify(b, NotifyOperation::PreEdit)?;
 
     let mut to_set: Vec<(EdgeuseId, Curve)> = Vec::new();
     for lu in upward {
@@ -1124,7 +1173,7 @@ pub fn swap_uv(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<()> {
     b.faceuse_mut(fu_mate)?.orientation = OrientType::Same;
     b.face_mut(f)?.faceuse = Some(fu_mate);
 
-    face_notify(b, f, NotifyOperation::PostEdit)?;
+    notify(b, NotifyOperation::PostEdit)?;
     Ok(())
 }
 
@@ -1145,6 +1194,25 @@ pub fn shrink_geometry(
     b: &mut Brep,
     f: FaceId,
     key_of: &dyn Fn(EntityRef) -> ObjectRef,
+) -> Result<()> {
+    shrink_geometry_with(k, b, f, key_of, TrimOptions::default())
+}
+
+/// [`shrink_geometry`] with the [`TrimOptions`] of its surface trim (not upstream,
+/// tangency-labs/solidcore#472). The fillet executive's shrink of the new fillet faces
+/// passes [`TrimOptions::snap_roundoff_to_knots`], so that a face domain one rounding
+/// error inside a knot does not leave a sliver span on a round. The default options
+/// are upstream's `ShrinkGeometry`.
+///
+/// # Errors
+///
+/// Those of [`shrink_geometry`].
+pub fn shrink_geometry_with(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    trim: TrimOptions,
 ) -> Result<()> {
     // no work - don't work on faces when in an intermediate state
     match fp2::surface(b, f)? {
@@ -1181,7 +1249,7 @@ pub fn shrink_geometry(
 
     // Trim the surface (status ignored)
     if let Some(s) = b.face_mut(f)?.surface.as_mut() {
-        ignore_status(s.trim_with_domain(k, &mut new_domain))?;
+        ignore_status(s.trim_with_domain_with(k, &mut new_domain, trim))?;
     }
 
     // remove all associated UVTrimCurves (status ignored)

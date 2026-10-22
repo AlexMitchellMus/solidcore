@@ -270,7 +270,7 @@ impl Surface {
             // make temp isoParameter curve for this knot sample value
             let mut iso = create_iso_parametric_curve(k, self, get_sp, parameter, None)?.0;
             // (status ignored)
-            let iso_knots = iso_knots_of(&iso)?;
+            let iso_knots = iso_knots_of(k, &iso)?;
 
             // When curve is degenerate - try another knot sample value
             if iso.is_degenerate(k, EFF_ZERO, None)? {
@@ -611,6 +611,63 @@ impl Surface {
         partial_coincidence_ok: bool,
         objects: [Option<O>; 2],
     ) -> Result<Option<Solution<O>>> {
+        self.simple_coincidence_checker_from(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            tol_3d,
+            partial_coincidence_ok,
+            objects,
+            None,
+            None,
+        )
+    }
+
+    /// [`Surface::simple_coincidence_checker`] with lazy cache preparation for
+    /// its initial global point solve. All boxing and sample tests are shared.
+    ///
+    /// # Errors
+    /// Those of the coincidence check and prepared trimmed point classification.
+    #[allow(clippy::too_many_arguments)]
+    pub fn simple_coincidence_checker_with_context<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        tol_3d: f64,
+        partial_coincidence_ok: bool,
+        objects: [Option<O>; 2],
+        cache: Option<&crate::surface::surface_cache::SurfaceCache<O>>,
+        context: &mut dyn super::p1::SurfaceSolveContext<O>,
+    ) -> Result<Option<Solution<O>>> {
+        self.simple_coincidence_checker_from(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            tol_3d,
+            partial_coincidence_ok,
+            objects,
+            cache,
+            Some(context),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    fn simple_coincidence_checker_from<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        tol_3d: f64,
+        partial_coincidence_ok: bool,
+        objects: [Option<O>; 2],
+        cache: Option<&crate::surface::surface_cache::SurfaceCache<O>>,
+        context: Option<&mut dyn super::p1::SurfaceSolveContext<O>>,
+    ) -> Result<Option<Solution<O>>> {
         // First try boxing (statuses ignored).
         let this_box =
             ignored(self.calculate_bounding_box(k, uv_domain, [true, false, false], true))?
@@ -641,7 +698,25 @@ impl Surface {
         let mid_pt = curve.evaluate(k, mid_param, 1, true, true)?;
         let mid_pt0 = vec_at(&mid_pt, 0)?;
         let mut mid_pt1 = vec_at(&mid_pt, 1)?;
-        let solutions = global_point_solve_single(k, self, uv_domain, mid_pt0, tol_3d)?;
+        let solutions = if let Some(context) = context {
+            let mut found = SolutionArray::<O>::new();
+            self.global_point_solve_into_with_context(
+                k,
+                objects[1],
+                cache,
+                context,
+                uv_domain,
+                SolverOperation::Minimize,
+                mid_pt0,
+                tol_3d,
+                None,
+                SolutionRequested::Single,
+                &mut found,
+            )?;
+            found.as_slice().iter().map(|s| s.start).collect()
+        } else {
+            global_point_solve_single(k, self, uv_domain, mid_pt0, tol_3d)?
+        };
 
         // If GlobalSolve, using Minimize, couldn't find any solutions, we're not likely
         // to have much success in finding coincidence.
@@ -1776,8 +1851,8 @@ fn find_element(values: &[f64], target: f64) -> Option<usize> {
 }
 
 /// `pIsoCrv->GetKnots(sIsoKnots)` with its status ignored (no knots on failure).
-fn iso_knots_of(curve: &Curve) -> Result<Vec<f64>> {
-    Ok(ignored(curve.knots(None))?
+fn iso_knots_of(k: &Kernel, curve: &Curve) -> Result<Vec<f64>> {
+    Ok(ignored(curve.knots(k, None))?
         .map(|(k, _)| k)
         .unwrap_or_default())
 }
@@ -1878,11 +1953,32 @@ pub(super) fn create_iso_parametric_curve(
             )?;
             Ok((Curve::from(iso.curve), iso.max_gap_3d))
         }
+        // (SmSurfOfExtrusion inherits the B-spline override)
+        SurfaceKind::SurfOfExtrusion(s) => {
+            let iso = s.base().create_iso_parametric_curve(
+                k,
+                dir,
+                value,
+                IsoCurveOptions {
+                    domain: domain.copied(),
+                    uv_iso_curve: false,
+                },
+            )?;
+            Ok((Curve::from(iso.curve), iso.max_gap_3d))
+        }
         SurfaceKind::Plane(p) => {
             let iso = p.create_iso_parametric_curve(dir, value, domain, false)?;
             Ok((Curve::from(iso.curve), iso.max_gap_3d))
         }
         SurfaceKind::Cone(s) => {
+            let iso = s.create_iso_parametric_curve(k, dir, value, domain, false)?;
+            Ok((iso.curve, iso.max_gap_3d))
+        }
+        SurfaceKind::Sphere(s) => {
+            let iso = s.create_iso_parametric_curve(k, dir, value, domain, false)?;
+            Ok((iso.curve, iso.max_gap_3d))
+        }
+        SurfaceKind::Torus(s) => {
             let iso = s.create_iso_parametric_curve(k, dir, value, domain, false)?;
             Ok((iso.curve, iso.max_gap_3d))
         }
@@ -1913,10 +2009,13 @@ fn is_singularity(
         SurfaceKind::Plane(p) => Ok(p.is_singularity()),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_) => {
             let r = surface.is_singularity(k, uv, tol, false)?;
@@ -1932,10 +2031,13 @@ fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<bool> {
         SurfaceKind::Plane(p) => Ok(p.is_on_seam().0),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_) => Ok(surface.is_on_seam(k, uv, None)?.on_seam),
     }
@@ -2187,6 +2289,7 @@ mod tests {
             uv_domain2: s2.natural_uv_domain(),
             kernel: &k,
             caches: [None, None],
+            face_queries: None,
         };
         let mk = |a: f64| {
             let mut s: Solution<Obj> = Solution::new();

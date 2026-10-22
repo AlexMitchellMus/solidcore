@@ -375,6 +375,25 @@ fn to_output(i: &Inputs, flat: &[f64]) -> Result<Output, HarnessError> {
 
 // ---- Rust side ----------------------------------------------------------------------
 
+/// `SmApiCreatePlanarCircle` B-reps of the circles; an unported construction defers.
+fn discs(k: &mut Kernel, circles: &[(P3, f64)]) -> solidcore::Result<Vec<Brep>> {
+    circles
+        .iter()
+        .map(|(c, r)| solidcore::primitive::api_primitives::create_planar_circle(k, pt(c), *r))
+        .collect()
+}
+
+/// Every face of the disc B-reps, with its B-rep.
+fn disc_faces(discs: &[Brep]) -> solidcore::Result<Vec<(&Brep, FaceId)>> {
+    let mut faces = Vec::new();
+    for b in discs {
+        for f in solidcore::topology::brep::p1::faces(b, None)? {
+            faces.push((b, f));
+        }
+    }
+    Ok(faces)
+}
+
 fn pt(p: &P3) -> Point3 {
     Point3::new(p[0], p[1], p[2])
 }
@@ -452,9 +471,8 @@ fn status(e: &SolidError) -> f64 {
 }
 
 fn rust(i: &Inputs) -> Result<Output, HarnessError> {
-    let k = Kernel::default();
+    let mut k = Kernel::default();
     let v = |p: &P3| Vec3::new(p[0], p[1], p[2]);
-    let b = Brep::default();
     // `Ok(())` only on success, which the stubbed entry points cannot reach yet.
     let res: solidcore::Result<()> = match i {
         Inputs::Linear {
@@ -464,7 +482,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             cap,
         } => {
             let cs = curves(&k, cs)?;
-            api::create_linear_sweep(&k, &refs(&cs), v(dir), *dist, *cap).map(drop)
+            api::create_linear_sweep(&mut k, &refs(&cs), v(dir), *dist, *cap).map(drop)
         }
         Inputs::Rotational {
             curves: cs,
@@ -474,7 +492,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             cap,
         } => {
             let cs = curves(&k, cs)?;
-            api::create_rotational_sweep(&k, &refs(&cs), pt(base), v(axis), *angle_deg, *cap)
+            api::create_rotational_sweep(&mut k, &refs(&cs), pt(base), v(axis), *angle_deg, *cap)
                 .map(drop)
         }
         Inputs::Draft {
@@ -485,11 +503,12 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             caps,
         } => {
             let cs = curves(&k, cs)?;
-            api::create_draft_sweep(&k, &refs(&cs), *height, *angle_deg, *corner, *caps).map(drop)
+            api::create_draft_sweep(&mut k, &refs(&cs), *height, *angle_deg, *corner, *caps)
+                .map(drop)
         }
         Inputs::Pipe { radius, path, cap } => {
             let p = curve(&k, path)?;
-            api::create_pipe_sweep(&k, *radius, p.as_ref(), *cap).map(drop)
+            api::create_pipe_sweep(&mut k, *radius, p.as_ref(), *cap).map(drop)
         }
         Inputs::PlanarPath {
             profile,
@@ -500,7 +519,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let pc = curves(&k, profile)?;
             let pp = curves(&k, path)?;
             api::create_sweep_along_planar_path(
-                &k,
+                &mut k,
                 &non_null(&pc)?,
                 &non_null(&pp)?,
                 *move_profile,
@@ -515,7 +534,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let scl = curve(&k, &sweep.scale_curve)?;
             let opts = options_of(sweep.options);
             api::create_curve_sweep(
-                &k,
+                &mut k,
                 &refs(&pc),
                 path.as_ref(),
                 sref.as_ref(),
@@ -529,34 +548,38 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let sref = curve(&k, &sweep.scale_reference)?;
             let scl = curve(&k, &sweep.scale_curve)?;
             let opts = options_of(sweep.options);
-            // Placeholder ids, one per planar circle: `SmApiCreatePlanarCircle` cannot be
-            // built in Rust yet and only the count is read before the kernel call.
-            let n = u32::try_from(circles.len()).map_err(|_| harness("too many circles"))?;
-            if matches!(i, Inputs::FromFaces { .. }) {
-                let faces: Vec<FaceId> = (0..n).map(FaceId::from_index).collect();
-                api::create_curve_sweep_from_faces(
-                    &k,
-                    &b,
-                    &faces,
-                    path.as_ref(),
-                    sref.as_ref(),
-                    scl.as_ref(),
-                    opts.as_ref(),
-                )
-                .map(drop)
-            } else {
-                let edges: Vec<EdgeId> = (0..n).map(EdgeId::from_index).collect();
-                api::create_curve_sweep_from_edges(
-                    &k,
-                    &b,
-                    &edges,
-                    path.as_ref(),
-                    sref.as_ref(),
-                    scl.as_ref(),
-                    opts.as_ref(),
-                )
-                .map(drop)
-            }
+            // The faces of `SmApiCreatePlanarCircle` B-reps, as the C++ side.
+            let from_faces = matches!(i, Inputs::FromFaces { .. });
+            (|| -> solidcore::Result<()> {
+                let discs = discs(&mut k, circles)?;
+                let faces = disc_faces(&discs)?;
+                if from_faces {
+                    api::create_curve_sweep_from_faces(
+                        &mut k,
+                        &faces,
+                        path.as_ref(),
+                        sref.as_ref(),
+                        scl.as_ref(),
+                        opts.as_ref(),
+                    )
+                    .map(drop)
+                } else {
+                    let mut edges: Vec<(&Brep, EdgeId)> = Vec::new();
+                    for (b, f) in &faces {
+                        let fe = solidcore::topology::face::p4::edges(b, *f, None, false, None)?;
+                        edges.extend(fe.into_iter().map(|e| (*b, e)));
+                    }
+                    api::create_curve_sweep_from_edges(
+                        &mut k,
+                        &edges,
+                        path.as_ref(),
+                        sref.as_ref(),
+                        scl.as_ref(),
+                        opts.as_ref(),
+                    )
+                    .map(drop)
+                }
+            })()
         }
         Inputs::Taper {
             curves: cs,
@@ -566,7 +589,8 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             caps,
         } => {
             let cs = curves(&k, cs)?;
-            api::create_taper_extrude(&k, &refs(&cs), *height, *angle_deg, *caps, *fillet).map(drop)
+            api::create_taper_extrude(&mut k, &refs(&cs), *height, *angle_deg, *caps, *fillet)
+                .map(drop)
         }
         Inputs::LinearReps {
             curves: cs,
@@ -576,8 +600,15 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             cap,
         } => {
             let cs = curves(&k, cs)?;
-            api::create_linear_sweep_with_repetitions(&k, &refs(&cs), v(dir), *dist, *reps, *cap)
-                .map(drop)
+            api::create_linear_sweep_with_repetitions(
+                &mut k,
+                &refs(&cs),
+                v(dir),
+                *dist,
+                *reps,
+                *cap,
+            )
+            .map(drop)
         }
         Inputs::RotationalReps {
             curves: cs,
@@ -589,7 +620,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         } => {
             let cs = curves(&k, cs)?;
             api::create_rotational_sweep_with_repetitions(
-                &k,
+                &mut k,
                 &refs(&cs),
                 pt(base),
                 v(axis),

@@ -284,7 +284,10 @@ fn b_spline_part(surface: &Surface) -> Option<&BSplineSurface> {
         SurfaceKind::BSpline(b) => Some(b),
         SurfaceKind::Plane(p) => Some(p.base()),
         SurfaceKind::Cone(s) => Some(s.rev().base()),
+        SurfaceKind::Sphere(s) => Some(s.base().base()),
+        SurfaceKind::Torus(s) => Some(s.base().base()),
         SurfaceKind::SurfOfRevolution(s) => Some(s.base()),
+        SurfaceKind::SurfOfExtrusion(s) => Some(s.base()),
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
@@ -1289,9 +1292,12 @@ fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<bool> {
         SurfaceKind::Plane(p) => Ok(p.is_on_seam().0),
 
         SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => Ok(surface.is_on_seam(k, uv, None)?.on_seam),
@@ -1966,7 +1972,7 @@ impl<'s> SurfPtSolveStepper<'s> {
         let mut min_param = domain.min();
 
         // Drop the point to each continuous section.
-        let knots = match iso_curve.knots(None) {
+        let knots = match iso_curve.knots(k, None) {
             Ok((k, _)) => k,
             Err(e) if e.is_unported() => return Err(e),
             Err(_) => Vec::new(),

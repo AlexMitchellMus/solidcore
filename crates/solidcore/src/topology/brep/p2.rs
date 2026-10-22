@@ -350,7 +350,7 @@ pub fn set_tolerance(
         // (status ignored: a failure leaves the initialised box)
         let bbox = crate::error::ignored(qbrep::calculate_bounding_box(
             k,
-            b,
+            &mut *b,
             BoundingBoxOptions::default(),
         ))?
         .unwrap_or_default();
@@ -757,10 +757,20 @@ impl ArenaNotifyState {
 
 /// The identities a rebuilt cache keys its edge/face owners by.
 fn cache_keys(env: &NotifyEnv<'_>, object: CacheObject) -> ObjectRef {
+    caller_cache_key(env.key_of, object)
+}
+
+/// The identity of a cache object under the caller's topology naming `key_of` (the
+/// names its edges, faces and vertices own their geometry under); other objects keep
+/// their [`brep_cache::arena_identity`].
+pub(crate) fn caller_cache_key(
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    object: CacheObject,
+) -> ObjectRef {
     match object {
-        CacheObject::Edge(e) | CacheObject::Curve(e) => (env.key_of)(EntityRef::Edge(e)),
-        CacheObject::Face(f) | CacheObject::Surface(f) => (env.key_of)(EntityRef::Face(f)),
-        CacheObject::Vertex(v) => (env.key_of)(EntityRef::Vertex(v)),
+        CacheObject::Edge(e) | CacheObject::Curve(e) => key_of(EntityRef::Edge(e)),
+        CacheObject::Face(f) | CacheObject::Surface(f) => key_of(EntityRef::Face(f)),
+        CacheObject::Vertex(v) => key_of(EntityRef::Vertex(v)),
         other => brep_cache::arena_identity(other),
     }
 }
@@ -1326,7 +1336,7 @@ pub fn ray_fire(
     answer_limit: Option<f64>,
 ) -> Result<RayFireResult> {
     // get Brep BoundingBox and BoundingSphere
-    let bbox = qbrep::calculate_bounding_box(k, b, BoundingBoxOptions::default())?;
+    let bbox = qbrep::calculate_bounding_box(k, &mut *b, BoundingBoxOptions::default())?;
     let sphere = bbox.sphere_bound();
     let radius = sphere.radius;
 
@@ -1340,7 +1350,7 @@ pub fn ray_fire(
     let objects = BrepObjects {
         brep: b,
         brep_id,
-        cache,
+        cache: Some(cache),
         keys,
         owner_of,
     };

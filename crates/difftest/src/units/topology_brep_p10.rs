@@ -36,10 +36,12 @@ use solidcore::surface::surface::Surface;
 use solidcore::topology::brep::p10::{
     make_topology_from_data, project_and_trim, remove_all_topology, test_closure_split_region,
     MakeTopologyOptions, ProjectAndTrimOptions, ProjectEnv, TopologyEnv, TrimType,
+    HEALER_VERSION,
 };
 use solidcore::topology::brep_cache::CacheObject;
 use solidcore::topology::brep_data::{BrepData, TopologyData};
 use solidcore::topology::database_io::FileType;
+use solidcore::topology::edge::NotifyEnv;
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::shell::{ShellMembers, ShellType};
 use solidcore::topology::topology::Topology;
@@ -165,7 +167,58 @@ fn to_output(items: &[Item]) -> Output {
         .ints("kinds", kinds)
 }
 
+/// Why the C++ side must not build these inputs, if it must not: requests on which
+/// `MakeTopologyFromData` runs the healer (`bHealerIsEnabled` and either `bAlwaysHeal`
+/// or an old healer version) over a B-rep it builds unchecked from patched records.
+///
+/// * After a `Set` patch: the healer walks the malformed indices the build kept (as
+///   the ops after the build would; the FFI refuses those itself).
+/// * After an `Iges` patch whose kept shells leave a face use record in no face use
+///   shell (the crafted spine fixtures: region 1 has no shells): that face use is built
+///   without a shell and `SmHealData::Fix_BadSheets` hands it to
+///   `SmBrep::TestClosureSplitRegion`, which reads `pFUStart->GetShell()->GetRegion()`
+///   through the null shell (`SmBrep.cpp:27909`, SIGSEGV).
+///
+/// The data is read and patched with the Rust reader (the same records upstream reads).
+fn heal_guard(i: &Inputs) -> Option<&'static str> {
+    let [_, _, _, _, always_heal, healer_enabled] = i.options;
+    if !healer_enabled {
+        return None;
+    }
+    let path = path_of(i).ok()?;
+    let bytes = std::fs::read(&path).ok()?;
+    let k = Kernel::default();
+    let mut data = BrepData::read_from_file(&k, bytes, FileType::Ascii).ok()?;
+    apply_patches(&mut data, &i.patches).ok()?;
+    if !(always_heal || data.healer_version() < HEALER_VERSION) {
+        return None;
+    }
+    if i.patches.iter().any(|p| matches!(p, PatchIn::Set { .. })) {
+        return Some("healing after a set patch walks malformed indices");
+    }
+    if i.patches.iter().any(|p| matches!(p, PatchIn::Iges)) {
+        let in_shell = |f: usize| {
+            data.shells.iter().any(|s| {
+                s.shell_type == 0
+                    && usize::try_from(s.faceuse_start).is_ok_and(|a| {
+                        usize::try_from(s.num_faceuses)
+                            .is_ok_and(|n| f >= a && f - a < n)
+                    })
+            })
+        };
+        if !(0..data.faceuses.len()).all(in_shell) {
+            return Some("healing a face use the iges patch left without a shell");
+        }
+    }
+    None
+}
+
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    if let Some(why) = heal_guard(i) {
+        // C++ undefined behaviour: neither side runs (not a harness error, which a
+        // normal run would count as a failure)
+        return Ok(Output::rejected(format!("guard: {why}")));
+    }
     let patches = i
         .patches
         .iter()
@@ -325,9 +378,9 @@ fn apply_patches(d: &mut BrepData, patches: &[PatchIn]) -> Result<(), HarnessErr
     for p in patches {
         match *p {
             PatchIn::ZoneTol(v) => d.zone_tol_3d = v,
-            PatchIn::Manifold(v) => {
-                d.manifold = i32::try_from(v).map_err(|_| harness("manifold"))?;
-            }
+            // the shim's `(SmBoolean)rd.i()`: an `int64_t` to `int` conversion, which
+            // keeps the low 32 bits (GCC), as `as i32` does
+            PatchIn::Manifold(v) => d.manifold = v as i32,
             PatchIn::Healer(v) => d.set_healer_version(v as u64),
             PatchIn::Borrowed(v) => d.is_geom_borrowed = v,
             PatchIn::Stamp(base) => {
@@ -454,11 +507,17 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
     match i.op {
         OpIn::Make => {}
         OpIn::Closure { do_infinite } => {
-            // harness env: the runner holds no attribute state (default region
-            // records, empty store; see RegionNotifyState)
-            let mut state = solidcore::topology::brep::p2::RegionNotifyState::new(&b);
+            // the split names the B-rep's objects as the build did (`key_of`, the names
+            // its geometry owners carry, which its ray fires look up), over the build's
+            // records and attribute store
+            let mut env = NotifyEnv {
+                records: &mut records,
+                attributes: &mut store,
+                context: None,
+                key_of: &key_of,
+            };
             for &e in &g.edges.items {
-                match test_closure_split_region(&mut k, &mut b, &mut state.env(), do_infinite, e) {
+                match test_closure_split_region(&mut k, &mut b, &mut env, do_infinite, e) {
                     Ok(r) => {
                         out.push(Item::Int(0));
                         out.push(Item::Int(r.new_shells.len() as i64));
@@ -1024,8 +1083,8 @@ pub(crate) fn snapshot(k: &Kernel, b: &Brep) -> Result<Output, HarnessError> {
     let mut uv = Vec::new();
     let mut links = Vec::new();
     for id in &g.faceuses.items {
-        let f = b.faceuse(*id).map_err(|e| harness(e.to_string()))?;
-        let (next, last) = f.sibling_links.unwrap_or((None, None));
+        let (next, last) = solidcore::topology::shell::faceuse_sibling_links(b, *id)
+            .map_err(|e| harness(e.to_string()))?;
         links.extend([
             g.faceuses.find(next, FaceuseId::index),
             g.faceuses.find(last, FaceuseId::index),

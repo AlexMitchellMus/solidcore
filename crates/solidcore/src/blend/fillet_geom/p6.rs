@@ -51,8 +51,9 @@
 //!   [`Kernel`]; `iDebugLevel` and debug drawing are dropped. The unused corner of
 //!   `CalcEdgeOnEdge` (`SM_REF1`) is dropped. `sm_MoveTSP` reorders any list whose
 //!   items carry an intersection point (upstream: pointers to them).
-//!   `RailEdgeuseIntersect` takes its geometry's solver and the solver's handle of
-//!   this geometry ([`FilletGeomRef`], what `SetFilletGeomForSurfaces(this)` stores).
+//!   `RailEdgeuseIntersect` takes its geometry's solver (the geometry's
+//!   [`FilletGeomId`] is what `SetFilletGeomForSurfaces(this)` stores) and the
+//!   intersection point in/out.
 //!   `TrimOriginalSurfaces` takes, as [`TrimOriginalSurfacesEnv`], what it reads from
 //!   the solver's executive (`GetFilletExecutive()->GetTopologyIntersector()`'s
 //!   `GetBrepMate` for the fillet B-rep's edges), the fillet B-rep (`m_pFilletBrep`,
@@ -72,8 +73,7 @@
 //!   `CreateCanonical` for degree 2 with the four Bezier points and end multiplicities
 //!   4, as upstream; the quadratic it makes drops the start-tangent point
 //!   (`plan/upstream-issues.md` WR-190).
-//! - **Unported callees.** `SmFilletSolver::RailEdgeuseIntersect`
-//!   (`blend.fillet_solver_p2`); `SmFilletExecutive::NoteFilletError`
+//! - **Unported callees.** `SmFilletExecutive::NoteFilletError`
 //!   (`blend.fillet_executive_p1`). Each stub replaces only its call; the code behind
 //!   it is ported.
 //! - **Iteration.** No recursion; `JoinTwoFilletVertsByCurves` removes a side edge use
@@ -117,7 +117,7 @@ use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId, VertexuseId};
 use super::p1::{
     classify_face_point, interpolate_endpts_and_tangents, is_order_correct, set_rail_curve,
     FilStatus, FilletBrep, FilletCornerId, FilletCornerType, FilletEdgeType, FilletErrorType,
-    FilletGeomId, FilletVertexType,
+    FilletGeomId, FilletSolverId, FilletVertexType,
 };
 use super::p4::solver_of;
 
@@ -1493,13 +1493,24 @@ impl FilletBrep {
         target: &Brep,
         solvers: &[FilletSolver],
     ) -> Result<usize> {
+        self.rail_index_of_side_eu_resolved(g, eu, target, &|id| solver_of(solvers, id, OP_SIDE_EU))
+    }
+
+    /// Shared indexed-table and live-solver implementation; resolution stays at
+    /// the upstream lookup, after the complete-rail shortcut.
+    pub(crate) fn rail_index_of_side_eu_resolved<'s>(
+        &self,
+        g: FilletGeomId,
+        eu: EdgeuseId,
+        target: &Brep,
+        resolve: &impl Fn(FilletSolverId) -> Result<&'s FilletSolver>,
+    ) -> Result<usize> {
         let geom = self.geom(g)?;
         let (Some(rail0), Some(rail1)) = (geom.rail(0), geom.rail(1)) else {
             let solver_id = geom
                 .fillet_solver()
                 .ok_or_else(|| invalid(OP_SIDE_EU, "fillet geometry without solver"))?;
-            return solver_of(solvers, solver_id, OP_SIDE_EU)?
-                .find_index_of_rail_x_side_edgeuse(target, eu);
+            return resolve(solver_id)?.find_index_of_rail_x_side_edgeuse(target, eu);
         };
 
         let face0 = self.fillet_edge(rail0)?.original_face();
@@ -1662,25 +1673,27 @@ impl FilletBrep {
     /// `SmFilletGeom::RailEdgeuseIntersect(lRailIndex, pEdgeuse, dGuessEdgeParameter,
     /// ...)`: the solver's rail/edge-use intersection evaluated on this geometry's
     /// surfaces: the solver's geometry for surfaces is `g` during the call and restored
-    /// after it. Returns
-    /// `(rbFoundIntersection, rTsectPnt, rdEdgeuseParameter)`.
+    /// after it (also on a failure). `tsect` is `rTsectPnt` (written in place, as
+    /// upstream, also on a failure); returns `rdEdgeuseParameter` when an intersection
+    /// was found (`rbFoundIntersection`), else `None`. `target` is mutable because the
+    /// solver may build the edge use's UV trim curve.
     ///
     /// # Errors
     ///
     /// `SM_ERR_NULL_POINTER` for a geometry without solver (upstream's `NER(pFS)`);
-    /// those of the solver's call ([`SolidError::Unported`]:
-    /// `SmFilletSolver::RailEdgeuseIntersect`, unit `blend.fillet_solver_p2`).
+    /// those of the solver's call ([`FilletSolver::rail_edgeuse_intersect`]).
     #[allow(clippy::too_many_arguments)]
     pub fn rail_edgeuse_intersect(
         &self,
         k: &Kernel,
         g: FilletGeomId,
         solver: &mut FilletSolver,
-        target: &Brep,
+        target: &mut Brep,
         rail_index: usize,
         edgeuse: EdgeuseId,
         guess_edge_parameter: f64,
-    ) -> Result<(bool, TsectPnt, f64)> {
+        tsect: &mut TsectPnt,
+    ) -> Result<Option<f64>> {
         // NER( pFS )
         if self.geom(g)?.fillet_solver().is_none() {
             return Err(SolidError::null_pointer(OP_RAIL_EU));
@@ -1692,18 +1705,14 @@ impl FilletBrep {
 
         solver.set_fillet_geom_for_surfaces(Some(g));
 
-        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::RailEdgeuseIntersect
-        let stat = unported_on(
-            (
-                k,
-                &*solver,
-                target,
-                rail_index,
-                edgeuse,
-                guess_edge_parameter,
-            ),
-            "SmFilletSolver::RailEdgeuseIntersect",
-            "blend.fillet_solver_p2",
+        let stat = FilletSolver::rail_edgeuse_intersect(
+            solver,
+            k,
+            target,
+            rail_index,
+            edgeuse,
+            guess_edge_parameter,
+            tsect,
         );
 
         solver.set_fillet_geom_for_surfaces(saved_fg);
@@ -2418,13 +2427,16 @@ mod tests {
                 &k,
                 g,
                 &mut s,
-                &Brep::new(),
+                &mut Brep::new(),
                 0,
                 EdgeuseId::from_index(0),
                 0.5,
+                &mut TsectPnt::default(),
             )
             .unwrap_err();
-        assert_eq!(unit_of(&err), Some("blend.fillet_solver_p2"));
+        // the solver reads its surfaces through the geometry (blend.fillet_solver_p1's
+        // justified stub)
+        assert_eq!(unit_of(&err), Some("blend.fillet_geom_p1"));
         assert_eq!(s.fillet_geom_for_surfaces(), saved);
 
         // a geometry without solver: NER(pFS), the solver untouched
@@ -2434,10 +2446,11 @@ mod tests {
                 &k,
                 g,
                 &mut s,
-                &Brep::new(),
+                &mut Brep::new(),
                 0,
                 EdgeuseId::from_index(0),
                 0.5,
+                &mut TsectPnt::default(),
             )
             .unwrap_err();
         assert_eq!(code(&err), Some(SM_ERR_NULL_POINTER));

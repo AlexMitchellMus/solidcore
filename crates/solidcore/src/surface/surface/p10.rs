@@ -18,6 +18,10 @@
 //!   parent surface (`sm_GetOriginalSurface`) are the cache's surface, named in the
 //!   solutions by its handle. `GetPolarBox` builds a missing polar box without
 //!   storing it ([`SurfaceCache::polar_box_unstored`]; the values are the same).
+//!   `sm_IsPointValid` calls the virtual `PointTest` of the tree's cache: a face's
+//!   trimmed cache answers through the solver's `face_cache`
+//!   ([`crate::surface::surface::p8::FaceSolveCache::point_test`], a face
+//!   classification), otherwise through [`super::p1::is_point_valid_with`].
 //! - **Ignored statuses.** The leaf solve ignores the status of
 //!   `SmExtent3d::IntersectLine` and `SmPseudoBox::IntersectLine` (a zero line vector,
 //!   an undefined box or a negative volume box leave the hit count at zero: no work)
@@ -43,7 +47,7 @@
 //! - **Bounds.** The leaf solve takes at most six guesses (upstream's fixed arrays). No
 //!   recursion.
 
-use super::p1::{is_node_valid, is_point_valid, surface_to_evaluate};
+use super::p1::{is_node_valid, is_surface_cache_owner, surface_to_evaluate};
 use super::p2::{original_surface, LsiGlobalSolver, Surface, TsectCurveType};
 use super::p4;
 use super::p6::{CurveIntersection, RangeTangentPoint};
@@ -211,7 +215,7 @@ fn drop_and_trim_curve(
         .drop_and_trim_curve::<ObjectHandle>(k, domain, curve, interval, tol, true, true, None)?;
     Ok(DropAndTrim {
         dist_to_surface: r.max_drop_to_surf,
-        uv_curves: r.uv_curves.into_iter().map(Curve::from).collect(),
+        uv_curves: r.uv_curves,
     })
 }
 
@@ -305,6 +309,27 @@ impl<O: SolutionObject> LsiLeaf<'_, O> {
 }
 
 impl<'t, 's, O: SolutionObject + 't> LsiGlobalSolver<'t, 's, O> {
+    /// `sm_IsPointValid` of a leaf of `cache` (tree owner kind `owner`): the face's
+    /// trimmed cache answers with its point test (a face classification) when the
+    /// solve runs on one, else the prepared query service. A failed native classification keeps the
+    /// point (`SE(SM_ERR)`, return TRUE); [`SolidError::Unported`] propagates.
+    fn is_point_valid(
+        &mut self,
+        k: &Kernel,
+        owner: Option<crate::geom::tree::TreeOwner>,
+        cache: &SurfaceCache<O>,
+        uv: Point2,
+    ) -> Result<bool> {
+        match self.face_cache.as_deref_mut() {
+            // keep all points when SurfaceNode has no trim boundaries
+            Some(face_cache) if is_surface_cache_owner(owner) => Ok(
+                super::p1::ignore_native_classification(face_cache.point_test(k, uv))?
+                    .unwrap_or(true),
+            ),
+            _ => super::p1::is_point_valid_with(k, owner, cache, uv, None, self.face_queries),
+        }
+    }
+
     /// Filters a single valued solution of `surface` over `domain` and adds it when
     /// kept and inside the trim boundary (upstream's repeated `sm_FilterSolution` /
     /// `sm_IsPointValid` / `AddSortedSolution` block).
@@ -328,7 +353,7 @@ impl<'t, 's, O: SolutionObject + 't> LsiGlobalSolver<'t, 's, O> {
         if keep {
             let uv = Point2::new(p(&solution.start, 1)?, p(&solution.start, 2)?);
             // for points within the surface's trim boundary
-            if is_point_valid(leaf.owner, leaf.cache, uv) {
+            if self.is_point_valid(k, leaf.owner, leaf.cache, uv)? {
                 self.add_sorted_solution(solution, SortKey::ByAllParameters, true)?;
             }
         }
@@ -598,7 +623,7 @@ impl<'t, 's, O: SolutionObject + 't> LsiGlobalSolver<'t, 's, O> {
             }
 
             // for points within the surface's trim boundary
-            if is_point_valid(leaf.owner, cache, hit.uv) {
+            if self.is_point_valid(k, leaf.owner, cache, hit.uv)? {
                 self.add_sorted_solution(&solution, SortKey::ByAllParameters, true)?;
             }
 
@@ -1567,13 +1592,13 @@ mod tests {
     }
 
     #[test]
-    fn leading_point_defers_on_classification() {
+    fn leading_point_on_coincident_line_becomes_range() {
         let k = Kernel::default();
         let mut sols = SolutionArray::new();
         let mut s = range(0.2, 0.2);
         s.solution_type = SolutionType::SingleValue;
         sols.add(&s);
-        let e = global_curve_intersect_combine_solutions(
+        global_curve_intersect_combine_solutions(
             &k,
             &plane(),
             &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
@@ -1583,8 +1608,14 @@ mod tests {
             &CombineContext::default(),
             &mut sols,
         )
-        .unwrap_err();
-        assert!(e.is_unported());
+        .unwrap();
+        // the line lies on the surface: its drop (an iso line) replaces the point
+        // by the whole coincident range
+        assert_eq!(sols.len(), 1);
+        let r = sols.get_at(0).unwrap();
+        assert_eq!(r.solution_type, SolutionType::RangeOfValues);
+        assert_eq!(r.start.parameters[..3], [0.0, 0.0, 0.5]);
+        assert_eq!(r.end.parameters[..3], [1.0, 1.0, 0.5]);
     }
 
     #[test]

@@ -146,7 +146,9 @@ mod tests {
                 &mut Kernel,
                 &mut Brep,
                 &mut Brep,
+                &dyn Fn(crate::EntityRef) -> ObjectRef,
                 &dyn Fn(FaceId) -> ObjectRef,
+                Option<&mut crate::geom::context::Context>,
                 &mut NotifyEnv<'_>,
             ) -> Result<T>,
         ) -> Result<T> {
@@ -173,6 +175,41 @@ mod tests {
         }
         fn delete_brep(&mut self, id: BrepId) {
             self.deleted.push(id);
+        }
+        fn new_merge(
+            &mut self,
+            _: BrepId,
+            _: BrepId,
+            _: BrepId,
+            _: f64,
+            _: f64,
+        ) -> Result<SweepMergeId> {
+            none()
+        }
+        fn merge_operands(&self, _: SweepMergeId) -> Result<(BrepId, BrepId)> {
+            none()
+        }
+        fn merge_relations(
+            &mut self,
+            _: SweepMergeId,
+        ) -> Result<&mut crate::boolean::topology_intersector::p1::Relations> {
+            none()
+        }
+        fn copy_faces(
+            &mut self,
+            _: BrepId,
+            _: &[FaceId],
+            _: BrepId,
+            _: SweepMergeId,
+            _: &mut crate::sweep::topology_sweep::access::BTreeEdgeMap,
+        ) -> Result<()> {
+            none()
+        }
+        fn piecewise_merge(&mut self, _: SweepMergeId, _: bool, _: bool) -> Result<BrepId> {
+            none()
+        }
+        fn union(&mut self, _: SweepMergeId) -> Result<BrepId> {
+            none()
         }
         fn delete_merge(&mut self, _: SweepMergeId) {}
         fn tag(&self, _: SweepEntity) -> Result<Option<TagData>> {
@@ -467,17 +504,16 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_union_loses_the_breps_the_merge_took() -> Result<()> {
-        // both leaves move onto the merge's stack before the union defers (`SmMerge::SmMerge`,
-        // boolean.merge_p2); upstream would leak them, here they are gone, and the slots
-        // stay listed for the caller
+    fn a_union_leaves_its_result_first_and_releases_the_other_slot() -> Result<()> {
+        // the union of the two leaves runs to its end (its FindAndSetInfiniteRegion,
+        // topology.brep_p5, is wired): one result for the one tree, in the first slot;
+        // the second slot is released and dropped from the list
         let (mut a, ids) = models(1)?;
         let mut list = ids.clone();
-        let union = a.boolean_trees(&mut list, &[0, 1, -1]);
-        assert!(matches!(&union, Err(e) if e.is_unported()), "{union:?}");
-        assert_eq!(list, ids);
-        assert!(!whole(&a, ids[0]) && !whole(&a, ids[1]));
-        assert!(a.deleted.is_empty());
+        a.boolean_trees(&mut list, &[0, 1, -1])?;
+        assert_eq!(list, [ids[0]]);
+        assert!(whole(&a, ids[0]));
+        assert_eq!(a.deleted, [ids[1]]);
         Ok(())
     }
 

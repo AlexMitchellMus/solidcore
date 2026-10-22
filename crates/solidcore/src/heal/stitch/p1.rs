@@ -472,8 +472,8 @@ pub fn select_topology_to_keep<C: StitchCallback + ?Sized>(
         }
 
         // knot counts (statuses ignored: a failing call leaves its list empty)
-        let knots1 = ignored(curve_of(b, edge1)?.knots(None))?.map_or(0, |(k1, _)| k1.len());
-        let knots2 = ignored(curve_of(b, edge2)?.knots(None))?.map_or(0, |(k2, _)| k2.len());
+        let knots1 = ignored(curve_of(b, edge1)?.knots(k, None))?.map_or(0, |(k1, _)| k1.len());
+        let knots2 = ignored(curve_of(b, edge2)?.knots(k, None))?.map_or(0, |(k2, _)| k2.len());
 
         // when knot counts vary - keep the smallest count
         if knots2 != knots1 {
@@ -1033,7 +1033,7 @@ impl<'c> Stitch<'c> {
                     }
                     let (keep, other) = if c.keep_first { (v0, v1) } else { (v1, v0) };
                     if do_squeeze {
-                        squeeze_edge_to(b, squeeze_edge, keep)?;
+                        squeeze_edge_to(k, b, squeeze_edge, keep)?;
                     } else if do_glue {
                         glue_vertices(k, b, keep, other, Some(&wire_edges))?;
                     }
@@ -1171,7 +1171,7 @@ impl<'c> Stitch<'c> {
             // upstream (a failure leaves the default-initialised box)
             let brep_bbox = ignored(qbrep::calculate_bounding_box(
                 k,
-                b,
+                &mut *b,
                 BoundingBoxOptions::default(),
             ))?
             .unwrap_or_default();
@@ -1766,8 +1766,8 @@ impl<'c> Stitch<'c> {
 
                     // If both edges are lines then we don't have to do the harder test.
                     let edges_are_lines = (e_curve.degree()? == 1
-                        && e_curve.number_natural_knots()? == 4)
-                        && (te_curve.degree()? == 1 && te_curve.number_natural_knots()? == 4);
+                        && e_curve.number_natural_knots(k)? == 4)
+                        && (te_curve.degree()? == 1 && te_curve.number_natural_knots(k)? == 4);
                     if !edges_are_lines {
                         // do a quick 5 point distance check
                         dist_to_curve = e_curve
@@ -2003,9 +2003,8 @@ fn stitch_and_orient(
     faces_to_swap: Option<&[FaceId]>,
     just_unify: Option<bool>,
 ) -> Result<()> {
-    // The part 5 body reaches no kernel state before its stitching dependency.
-    let _ = k;
     crate::topology::brep::p5::stitch_and_orient(
+        k,
         b,
         &crate::topology::brep::p5::StitchAndOrientOptions {
             stitch_tolerance: stitch_tol_3d,
@@ -2048,17 +2047,28 @@ pub(crate) fn glue_edges_general(
             inside_faceuses,
             &mut env,
         )
-    })
+    })?
 }
 
-/// `SmBrep::SqueezeEdge(edge, keep)` (unit `topology.brep_p3`).
-pub(crate) fn squeeze_edge_to(b: &mut Brep, e: Option<EdgeId>, keep: VertexId) -> Result<()> {
-    let _ = (b, e, keep);
-    // UNPORTED(topology.brep_p3): SmBrep::SqueezeEdge
-    Err(SolidError::unported(
-        "SmBrep::SqueezeEdge",
-        "topology.brep_p3",
-    ))
+/// `SmBrep::SqueezeEdge(edge, keep)` (unit `topology.brep_p3`,
+/// [`crate::topology::brep::p3::squeeze_edge`]), notifying through the kernel
+/// context's callbacks under the kernel's identities
+/// ([`crate::topology::brep::p3::with_kernel_callbacks`]).
+///
+/// # Errors
+///
+/// Those of the squeeze; `SM_ERR_NULL_POINTER` for a null edge (upstream dereferences
+/// it).
+pub(crate) fn squeeze_edge_to(
+    k: &mut Kernel,
+    b: &mut Brep,
+    e: Option<EdgeId>,
+    keep: VertexId,
+) -> Result<()> {
+    let e = e.ok_or_else(|| SolidError::null_pointer("heal::stitch::p1::squeeze_edge_to"))?;
+    crate::topology::brep::p3::with_kernel_callbacks(k, b, |k, b, env| {
+        crate::topology::brep::p3::squeeze_edge(k, b, env, e, keep)
+    })
 }
 
 /// `SmBrep::MakeVertexSplitEdge(edge, t, rpE1, rpE2, rpNewV)` (unit `topology.brep_p9`),

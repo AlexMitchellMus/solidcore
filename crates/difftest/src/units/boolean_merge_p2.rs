@@ -389,6 +389,28 @@ impl MergeBrep<H> for Two {
     fn is_manifold_solid(&self, brep: H) -> solidcore::Result<bool> {
         topology::brep::p2::is_manifold_solid(self.brep_r(brep)?)
     }
+    fn orient_trimmed_surfaces(
+        &mut self,
+        k: &mut Kernel,
+        brep: H,
+        outward: bool,
+        just_unify: bool,
+    ) -> solidcore::Result<bool> {
+        use solidcore::topology::brep::p3 as bp3;
+        let b = self.brep_m(brep)?;
+        let r = bp3::with_kernel_callbacks(k, b, |k, b, env| {
+            bp3::orient_trimmed_surfaces(
+                k,
+                b,
+                env,
+                &mut Marks::default(),
+                outward,
+                just_unify,
+                None,
+            )
+        })?;
+        Ok(r.maybe_not_closed_solid)
+    }
     fn faceuse_shell(&self, fu: H) -> solidcore::Result<Option<H>> {
         let b = self.brep_r(fu)?;
         Ok(edgeuse::p1::faceuse_shell(b, FaceuseId::from_index(fu.i))?
@@ -473,9 +495,16 @@ impl MergeBrep<H> for Two {
             min_unstitched_edge_gap: r.min_unstitched_edge_gap,
         })
     }
-    fn find_and_set_infinite_region(&mut self, _k: &mut Kernel, brep: H) -> solidcore::Result<()> {
-        // pOptShellToTest = NULL, SM_VS_INFINITEREGION_SWAP (2), no bounding box
-        topology::brep::p5::find_and_set_infinite_region(self.brep_m(brep)?, None, 2, None)
+    fn find_and_set_infinite_region(&mut self, k: &mut Kernel, brep: H) -> solidcore::Result<()> {
+        // pOptShellToTest = NULL, SM_VS_INFINITEREGION_SWAP, no bounding box
+        topology::brep::p5::find_and_set_infinite_region(
+            k,
+            self.brep_m(brep)?,
+            &solidcore::query::brep::BrepQuery::default(),
+            None,
+            topology::brep::p1::SetRegionVoidType::InfiniteRegionSwap,
+            None,
+        )
     }
 }
 
@@ -623,7 +652,7 @@ fn run_rust(i: &Inputs, p: &Prepared) -> Result<Output, HarnessError> {
             match &i.op {
                 Op::MergeEdge { edgeuse, region } => {
                     match merge_edge(
-                        &k,
+                        &mut k,
                         &mut a,
                         b,
                         opt_id::<EdgeuseId>(*edgeuse),

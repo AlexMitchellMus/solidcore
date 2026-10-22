@@ -60,12 +60,18 @@
 //!   cache. Other `DropPoint` callers still build one per call.
 //! - **Recursion.** `GlobalCoincidenceChecker` splits closed and half closed curves
 //!   recursively; past [`MAX_COINCIDENCE_DEPTH`] nested splits it fails with
-//!   `InvalidInput` (upstream recurses without bound).
+//!   `InvalidInput` (upstream recurses without bound). Each split makes three calls, so
+//!   the calls grow as `3^depth` well before that depth: past
+//!   [`MAX_COINCIDENCE_CALLS`] calls in one check it fails with `InvalidInput` too
+//!   (`1e300` control points split 15 to 30 levels deep and ran for minutes, fuzz
+//!   `curve.curve_p8` fuzz01456; upstream fixtures and the committed difftest cases
+//!   make at most 15,139 calls and split 32 levels deep).
 //! - **Seam test.** `sm_IsPointSolutionAcrossClosedSeamBoundary` (unit
 //!   `curve.curve_p5`) is told whether the solution's first object is its `this`
 //!   curve: the split solutions name `[this, other]`, so it is when the coincidence
 //!   check split the other curve, or `this` and the other are the same curve.
 
+use crate::curve::curve::knots_ignoring_status;
 use crate::curve::curve::p1::{ApproximateCurveOptions, GlobalPointSolveOptions};
 use crate::curve::curve::p2::{
     at, snap_sol_to_specified_endpoint, Curve, CurveKind, CurvePropertyType,
@@ -102,6 +108,12 @@ const OP_COINCIDENCE: &str = "curve::curve::p6::global_coincidence_checker";
 /// most 37.5% and stops below a tenth of the zone tolerance, so upstream inputs need
 /// fewer than 40 levels).
 pub const MAX_COINCIDENCE_DEPTH: usize = 200;
+
+/// Most calls (the first and every split piece) one
+/// [`Curve::global_coincidence_checker`] makes (not upstream; see the module
+/// deviations): `2^18`, 17 times the most any upstream fixture or committed difftest
+/// case makes (15,139).
+pub const MAX_COINCIDENCE_CALLS: usize = 1 << 18;
 
 /// `lNumSpans` of the base `CalculateBoundingBox`.
 const NUM_SPANS: u64 = 12;
@@ -883,16 +895,20 @@ impl Curve {
         // there are a large number of knots.
         if num_samples == 0 {
             do_precise = true;
-            let knots = ignored(self.knots(None))?.map_or(0, |(k, _)| k.len());
-            let other_knots = ignored(other.knots(None))?.map_or(0, |(k, _)| k.len());
+            let knots = knots_ignoring_status(self.knots_with_status(k, None))?
+                .0
+                .len();
+            let other_knots = knots_ignoring_status(other.knots_with_status(k, None))?
+                .0
+                .len();
             num_samples = 22 + knots as u64 + other_knots as u64;
         }
 
         // special case line/line check
         if self.degree()? == 1
-            && self.number_natural_knots()? == 4
+            && self.number_natural_knots(k)? == 4
             && other.degree()? == 1
-            && other.number_natural_knots()? == 4
+            && other.number_natural_knots(k)? == 4
         {
             do_precise = false;
             num_samples = 2;
@@ -1337,8 +1353,8 @@ impl Curve {
     /// # Errors
     ///
     /// Those of the evaluations, box, closure, degeneracy and drop computations;
-    /// `InvalidInput` past [`MAX_COINCIDENCE_DEPTH`] nested splits; those of the seam
-    /// test of split solutions.
+    /// `InvalidInput` past [`MAX_COINCIDENCE_DEPTH`] nested splits or
+    /// [`MAX_COINCIDENCE_CALLS`] calls; those of the seam test of split solutions.
     pub fn global_coincidence_checker<O: SolutionObject>(
         &self,
         k: &Kernel,
@@ -1353,6 +1369,7 @@ impl Curve {
         // solve and kept for the whole split recursion (upstream keeps them on the
         // curves, which do not change here)
         let mut caches = [None, None];
+        let mut calls = 0;
         self.global_coincidence_checker_at(
             k,
             interval,
@@ -1363,10 +1380,12 @@ impl Curve {
             objects,
             0,
             &mut caches,
+            &mut calls,
         )
     }
 
-    /// [`Curve::global_coincidence_checker`] at split depth `depth`.
+    /// [`Curve::global_coincidence_checker`] at split depth `depth`; `calls` counts the
+    /// calls of the whole check.
     fn global_coincidence_checker_at<O: SolutionObject>(
         &self,
         k: &Kernel,
@@ -1378,11 +1397,19 @@ impl Curve {
         objects: [Option<O>; 2],
         depth: usize,
         caches: &mut [Option<CurveCache<CurveHandle>>; 2],
+        calls: &mut usize,
     ) -> Result<Coincidence<O>> {
+        *calls += 1;
         if depth > MAX_COINCIDENCE_DEPTH {
             return Err(SolidError::invalid_input(
                 OP_COINCIDENCE,
                 "coincidence check split deeper than MAX_COINCIDENCE_DEPTH",
+            ));
+        }
+        if *calls > MAX_COINCIDENCE_CALLS {
+            return Err(SolidError::invalid_input(
+                OP_COINCIDENCE,
+                "coincidence check makes more than MAX_COINCIDENCE_CALLS calls",
             ));
         }
 
@@ -1438,6 +1465,7 @@ impl Curve {
                         objects,
                         depth + 1,
                         caches,
+                        calls,
                     )?
                     .solutions,
                 );
@@ -1461,6 +1489,7 @@ impl Curve {
                         objects,
                         depth + 1,
                         caches,
+                        calls,
                     )?
                     .solutions,
                 );
@@ -2063,6 +2092,7 @@ mod tests {
                 objects,
                 0,
                 &mut caches,
+                &mut 0,
             )
             .unwrap()
         };

@@ -71,6 +71,17 @@ fn output(op: i32, r: Result<Vec<f64>>) -> Output {
     }
 }
 
+/// The case ops are `1..=25`; the FFI's `0` and `26` are the graph exports
+/// [`imported`] reads the native B-rep through, which have no Rust counterpart to
+/// compare.
+fn compared_op(op: i32) -> std::result::Result<(), HarnessError> {
+    if (1..=25).contains(&op) {
+        Ok(())
+    } else {
+        Err(HarnessError::new(format!("op {op} is not a compared query (1..=25)")))
+    }
+}
+
 // Integer topology and status fields are compared exactly; only geometric
 // measurements use the harness's fixed relative tolerance.
 fn decode(op: i32, values: Vec<f64>) -> Output {
@@ -575,7 +586,7 @@ impl TopologyObjects<Object> for Objects<'_> {
     }
 }
 
-fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>> {
+fn topology(k: &mut Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>> {
     let a = &i.data;
     let point = v([a[11], a[12], a[13]]);
     let index = a[20] as usize;
@@ -638,7 +649,7 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
             }
         }
         12 => {
-            let hit = api::find_edge(b, point)?;
+            let hit = api::find_edge(k, b, point)?;
             o.push(hit.index as f64);
             o.push(hit.parameter);
         }
@@ -717,6 +728,7 @@ impl UnitDiff for Runner {
     }
     fn run_cpp(&self, c: &Case) -> std::result::Result<Output, HarnessError> {
         let i: Inputs = c.parse()?;
+        compared_op(i.op)?;
         let mut input = i.data.to_vec();
         if let Some(other) = i.other_box {
             input.extend(other);
@@ -733,8 +745,9 @@ impl UnitDiff for Runner {
     }
     fn run_rust(&self, c: &Case) -> std::result::Result<Output, HarnessError> {
         let i: Inputs = c.parse()?;
+        compared_op(i.op)?;
         let a = &i.data;
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         if a[16] != 0. {
             return Err(HarnessError::new(
                 "null pointers have no typed Rust equivalent; use the FFI contract tests",
@@ -784,7 +797,7 @@ impl UnitDiff for Runner {
                 } else {
                     Brep::new()
                 };
-                topology(&k, &i, &b, &second)
+                topology(&mut k, &i, &b, &second)
             }
         };
         Ok(output(i.op, result))

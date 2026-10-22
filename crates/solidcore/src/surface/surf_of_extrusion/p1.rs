@@ -40,9 +40,9 @@
 //!
 //! Deviations:
 //! - **Derived class.** `SmSurfOfExtrusion` derives from `SmBSplineSurface`; the base
-//!   object is the [`SurfOfExtrusion::base`] field. The surface is not a
-//!   [`crate::surface::surface::SurfaceKind`] yet: its overrides need a [`Kernel`] the
-//!   `Surface` dispatchers do not take (see `surface.surf_of_extrusion_p2`).
+//!   object is the [`SurfOfExtrusion::base`] field. As a
+//!   [`crate::surface::surface::SurfaceKind::SurfOfExtrusion`] the `Surface` dispatchers
+//!   run its overrides, else the inherited bodies on that base.
 //! - **Generator.** `m_pGenCurve` is a [`Curve`] of a kind derived from
 //!   `SmBSplineCurve` (B-spline, ellipse, line, hyperbola, parabola); other kinds are
 //!   rejected (`InvalidInput`) where upstream casts. It is `None` only for the empty
@@ -316,6 +316,26 @@ pub struct SurfOfExtrusion {
 }
 
 impl SurfOfExtrusion {
+    /// An evaluation copy with an exact, owner-preserving generator. `depth` is
+    /// the generator's depth in the shared 64-level geometry traversal.
+    pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
+        Ok(Self {
+            base: self.base.clone_exact(),
+            gen_curve: self
+                .gen_curve
+                .as_ref()
+                .map(|c| c.clone_for_evaluation_depth(depth))
+                .transpose()?,
+            origin: self.origin,
+            extrusion_vec: self.extrusion_vec,
+            anal_uv_domain: self.anal_uv_domain,
+            orientation: self.orientation,
+            swap_uv: self.swap_uv,
+            curve_point: self.curve_point,
+            curve_vec: self.curve_vec,
+        })
+    }
+
     /// `SmSurfOfExtrusion_TYPE` (`SURF_BASE_TYPE + 30`).
     pub const TYPE: i64 = SURF_OF_EXTRUSION_TYPE;
 
@@ -688,6 +708,29 @@ impl SurfOfExtrusion {
     #[must_use]
     pub const fn base(&self) -> &BSplineSurface {
         &self.base
+    }
+
+    /// The `SmBSplineSurface` base object, mutably.
+    pub fn base_mut(&mut self) -> &mut BSplineSurface {
+        &mut self.base
+    }
+
+    /// A temporary evaluation copy: the surface's and the generator's NURBS data are
+    /// kept exactly (no copy-constructor knot fix-up), as
+    /// [`crate::surface::surf_of_revolution::SurfOfRevolution::clone_exact`].
+    #[must_use]
+    pub fn clone_exact(&self) -> Self {
+        let mut copy = Self {
+            base: self.base.clone_exact(),
+            ..self.clone()
+        };
+        if let (Some(dst), Some(src)) = (
+            copy.gen_curve.as_mut().and_then(|g| gen_base_mut(g).ok()),
+            self.gen_curve.as_ref().and_then(|g| gen_base(g).ok()),
+        ) {
+            *dst = src.clone_exact();
+        }
+        copy
     }
 
     fn gen(&self) -> Result<&Curve> {

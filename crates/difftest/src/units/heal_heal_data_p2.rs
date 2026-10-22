@@ -71,6 +71,8 @@ enum H {
     Curve(bool),
     EdgeCurve(EdgeId),
     Trim(EdgeuseId),
+    /// A temporary curve (the seam curves of `SmFace::HasSeamProblem`).
+    Temp(usize),
 }
 
 impl ClassObject for H {
@@ -78,8 +80,14 @@ impl ClassObject for H {
         match self {
             Self::Topo(e) => e.class_kind(),
             Self::Surface(_) => ClassObjectKind::Surface,
-            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) => ClassObjectKind::Curve,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) | Self::Temp(_) => {
+                ClassObjectKind::Curve
+            }
         }
+    }
+
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        (kind == ClassObjectKind::Curve).then_some(Self::Temp(index))
     }
 }
 
@@ -1532,7 +1540,7 @@ fn rust_heal(
                 .make_uv_trim_curves(&k, &mut b, *make, HealerOpType::MakeUvtrimcurves)
                 .map(|()| false),
             Step::FixInfiniteRegion => h
-                .fix_infinite_region(&mut b, HealerOpType::FixInfiniteRegions)
+                .fix_infinite_region(&mut k, &mut b, HealerOpType::FixInfiniteRegions)
                 .map(|()| false),
             Step::HealBrep {
                 mode,

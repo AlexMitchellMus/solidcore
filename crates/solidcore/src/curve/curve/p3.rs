@@ -51,7 +51,11 @@
 //!   (`NER`); a node whose data is not a leaf span is `InvalidInput` (upstream casts
 //!   whatever `m_pData` holds).
 //! - **`SmFindPCExtremaEFO::Evaluate`** is implemented for [`Curve`] (it calls the
-//!   virtual `IsDegenerate`).
+//!   virtual `IsDegenerate`). Its first call divides the derivatives by ten until
+//!   `|C'|^2 <= 1e4`; upstream loops forever on an infinite tangent (a rational
+//!   B-spline with a `-1e308` weight, fuzz `curve.curve_p9` fuzz01222). The port stops
+//!   after [`MAX_PC_SCALE_STEPS`] divisions (a finite tangent needs at most 310) with
+//!   [`SolidError::InvalidInput`].
 //! - **`SmBestLineFitENFO`** keeps the solver's intervals as copies; its
 //!   `m_dSolutionSize` / `m_dScaledZero` are fields read through
 //!   [`EvalNFunctions::solution_size`] / [`EvalNFunctions::scaled_zero`]. The status
@@ -68,6 +72,7 @@
 //!   reads the kernel's tolerances); `Length` of curved spans reaches `SmIntegrator`
 //!   (the ported unit `mass.integrator`).
 
+use crate::curve::curve::knots_ignoring_status;
 use crate::curve::curve::p2::{
     proj_signed_angle, property_angle, unitize_tangent, Curve, CurveEvaluate, CurveKind,
     CurvePropertyGs, CurvePropertyType,
@@ -102,6 +107,12 @@ const OP_CURVE: &str = "curve::curve::p3::local_curve_solve";
 const OP_GS: &str = "curve::curve::p3::CurvePropertyGs::local_solve_branch";
 const OP_PC: &str = "curve::curve::p3::FindPcExtremaEfo::evaluate";
 const OP_LINE_FIT: &str = "curve::curve::p3::BestLineFitEnfo::evaluate";
+
+/// Most divisions by ten `SmFindPCExtremaEFO::Evaluate` makes to bring `|C'|^2` down
+/// to `1e4` (not upstream, which loops forever on an infinite tangent). A finite
+/// tangent needs at most 310: its squared length overflows to infinity until each
+/// component is below about `1e154`, and then needs at most 152 more divisions.
+pub const MAX_PC_SCALE_STEPS: u64 = 400;
 
 /// `SM_ERR_NOT_CONVERGING`.
 const SM_ERR_NOT_CONVERGING: i32 = 1022;
@@ -483,9 +494,7 @@ impl Curve {
         }
 
         // First, find the span containing dStartParam.
-        let knots = ignored(self.knots(None))?
-            .map(|(k, _)| k)
-            .unwrap_or_default();
+        let (knots, _) = knots_ignoring_status(self.knots_with_status(k, None))?;
         let num_knots = knots.len() as i64;
         let knot = |i: i64| -> Result<f64> {
             usize::try_from(i)
@@ -704,6 +713,14 @@ impl EvalFunction for FindPcExtremaEfo<'_, Curve> {
             }
         } else {
             while pv[1].length_squared() > 1.0e4 {
+                // (not upstream) an infinite tangent never scales down: see
+                // MAX_PC_SCALE_STEPS
+                if self.num_scale >= MAX_PC_SCALE_STEPS {
+                    return Err(SolidError::invalid_input(
+                        OP_PC,
+                        "tangent too large to scale (upstream loops forever)",
+                    ));
+                }
                 self.num_scale += 1;
                 sv = div(sv, 10.0);
                 pv[0] = div(pv[0], 10.0);

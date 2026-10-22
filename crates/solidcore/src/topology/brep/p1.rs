@@ -575,6 +575,23 @@ pub fn surfaces<'b>(
     b: &'b Brep,
     attribute: Option<&GeometryAttributeFilter<'_>>,
 ) -> Result<Vec<&'b Surface>> {
+    surface_owners(b, attribute, &|id| arena_identity(CacheObject::Face(id)))?
+        .into_iter()
+        .map(|id| {
+            b.face(id)?
+                .surface
+                .as_ref()
+                .ok_or_else(|| null("GetSurfaces: face without surface"))
+        })
+        .collect()
+}
+
+/// The same native geometry collection with caller-supplied owner identities.
+pub(crate) fn surface_owners(
+    b: &Brep,
+    attribute: Option<&GeometryAttributeFilter<'_>>,
+    owner: &dyn Fn(FaceId) -> ObjectRef,
+) -> Result<Vec<FaceId>> {
     let mut out = Vec::new();
     // for every face
     for f in faces(b, None)? {
@@ -584,7 +601,7 @@ pub fn surfaces<'b>(
             .as_ref()
             .ok_or_else(|| null("GetSurfaces: face without surface"))?;
         // add all standalone face->Surfaces to the list
-        if surface.owner() == Some(arena_identity(CacheObject::Face(f)))
+        if surface.owner() == Some(owner(f))
             && attribute.is_none_or(|filter| {
                 filter
                     .attributes
@@ -592,7 +609,7 @@ pub fn surfaces<'b>(
                     .is_some()
             })
         {
-            out.push(surface);
+            out.push(f);
         }
     }
     Ok(out)
@@ -609,6 +626,23 @@ pub fn curves<'b>(
     b: &'b Brep,
     attribute: Option<&GeometryAttributeFilter<'_>>,
 ) -> Result<Vec<&'b Curve>> {
+    curve_owners(b, attribute, &|id| arena_identity(CacheObject::Edge(id)))?
+        .into_iter()
+        .map(|id| {
+            b.edge(id)?
+                .curve
+                .as_ref()
+                .ok_or_else(|| null("GetCurves: edge without curve"))
+        })
+        .collect()
+}
+
+/// The same native geometry collection with caller-supplied owner identities.
+pub(crate) fn curve_owners(
+    b: &Brep,
+    attribute: Option<&GeometryAttributeFilter<'_>>,
+    owner: &dyn Fn(EdgeId) -> ObjectRef,
+) -> Result<Vec<EdgeId>> {
     let mut out = Vec::new();
     for e in edges(b, None)? {
         let curve = b
@@ -616,7 +650,7 @@ pub fn curves<'b>(
             .curve
             .as_ref()
             .ok_or_else(|| null("GetCurves: edge without curve"))?;
-        if curve.owner() == Some(arena_identity(CacheObject::Edge(e)))
+        if curve.owner() == Some(owner(e))
             && attribute.is_none_or(|filter| {
                 filter
                     .attributes
@@ -624,7 +658,7 @@ pub fn curves<'b>(
                     .is_some()
             })
         {
-            out.push(curve);
+            out.push(e);
         }
     }
     Ok(out)
@@ -2008,6 +2042,7 @@ fn bspline_surface(surface: &Surface) -> Result<&BSplineSurface> {
         SurfaceKind::BSpline(s) => Ok(s),
         SurfaceKind::Plane(p) => Ok(p.base()),
         SurfaceKind::SurfOfRevolution(s) => Ok(s.base()),
+        SurfaceKind::SurfOfExtrusion(s) => Ok(s.base()),
         // Upstream passes any SmSurface*; the port of SmBSplineSurface::CreateCornerBlend
         // takes B-spline neighbours only (its Deviations): the other kinds are that
         // partial unit's own unported part.
@@ -2960,6 +2995,9 @@ pub enum HealLoopHandle {
     EdgeCurve(EdgeId),
     /// The UV trim curve of an edge use.
     Trim(EdgeuseId),
+    /// A temporary curve ([`ClassObject::temporary`]): the seam curves of
+    /// `SmFace::HasSeamProblem`.
+    Temp(usize),
 }
 
 impl ClassObject for HealLoopHandle {
@@ -2967,8 +3005,14 @@ impl ClassObject for HealLoopHandle {
         match self {
             Self::Topo(e) => e.class_kind(),
             Self::Surface(_) => ClassObjectKind::Surface,
-            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) => ClassObjectKind::Curve,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) | Self::Temp(_) => {
+                ClassObjectKind::Curve
+            }
         }
+    }
+
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        (kind == ClassObjectKind::Curve).then_some(Self::Temp(index))
     }
 }
 
