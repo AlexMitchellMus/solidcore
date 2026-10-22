@@ -675,6 +675,7 @@ fn crv_on_surf(
     let bs = match surface.kind() {
         SurfaceKind::BSpline(s) => s.clone(),
         SurfaceKind::SurfOfRevolution(s) => s.base().clone(),
+        SurfaceKind::SurfOfExtrusion(s) => s.base().clone(),
         _ => {
             // DISPATCH GAP: SmCrvOnSurf over a non-B-spline SmSurface whose Evaluate
             // overrides the B-spline one (curve.crv_on_surf, partial; no UNPORTED
@@ -2431,9 +2432,14 @@ mod tests {
             .set_offset_distance(0.0);
         let mut p = TsectPnt::new();
         s.compute_surface_values(&k, [Point2::new(0.5, 0.5); 2], &mut p)
-            .unwrap();
+            .expect("ported constant-radius surface values");
         assert_eq!(s.surface(0).unwrap().offset_distance(), 1.0);
         assert_eq!(s.surface(1).unwrap().offset_distance(), -2.0);
+        assert_eq!(p.srf_pos(SrfIndex::First), Vec3::new(0.5, 0.5, 1.0));
+        assert_eq!(p.srf_pos(SrfIndex::Second), Vec3::new(0.5, -2.0, 0.5));
+        assert_eq!(p.srf_norm(SrfIndex::First), Vec3::new(0.0, 0.0, 1.0));
+        assert_eq!(p.srf_norm(SrfIndex::Second), Vec3::new(0.0, 1.0, 0.0));
+        assert_eq!(p.crv_pos(), p.srf_pos(SrfIndex::First));
         assert_eq!(
             crate::blend::fillet_solver::p1::FilletSolverOps::solver_type(&s).unwrap(),
             crate::blend::fillet_solver::p1::FilletSolverType::ConstRadius

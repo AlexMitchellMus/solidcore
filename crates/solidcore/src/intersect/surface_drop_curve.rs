@@ -189,6 +189,7 @@ fn is_singularity(k: &Kernel, surface: &Surface, uv: Point2) -> Result<(bool, Su
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => {
@@ -267,6 +268,7 @@ fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<Option<Vec<Po
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => {
@@ -289,6 +291,12 @@ fn create_iso_parametric_curve(
     match surface.kind() {
         SurfaceKind::BSpline(b) => Ok(Curve::from(
             b.create_iso_parametric_curve(k, param, value, IsoCurveOptions::default())?
+                .curve,
+        )),
+        // (SmSurfOfExtrusion inherits the B-spline CreateIsoParametricCurve)
+        SurfaceKind::SurfOfExtrusion(s) => Ok(Curve::from(
+            s.base()
+                .create_iso_parametric_curve(k, param, value, IsoCurveOptions::default())?
                 .curve,
         )),
         SurfaceKind::Plane(p) => Ok(Curve::from(
@@ -386,6 +394,7 @@ fn surface_drop_curve(
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => {
@@ -1015,7 +1024,7 @@ impl<'s> SurfaceDropCurve<'s> {
 
         // Add TargetSurface natural boundary curves to sIsoCurves array
         let iso = cache.iso_boundary_curves(k, &uv_domain, cci_tol / 3.0)?;
-        let mut iso_curves: Vec<Curve> = iso.curves.iter().cloned().map(Curve::from).collect();
+        let mut iso_curves: Vec<Curve> = iso.curves.to_vec();
 
         // add every Surface U internal continuity boundary to sIsoCurves array
         let u_conts: Vec<ContinuityType> = cache.u_continuities().to_vec();

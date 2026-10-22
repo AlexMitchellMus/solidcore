@@ -1211,6 +1211,12 @@ fn out_of_bounds(surface: &Surface) -> Cow<'_, Surface> {
             *s.base_mut().out_of_bounds_enabled_mut() = true;
             Cow::Owned(Surface::from(s))
         }
+        SurfaceKind::SurfOfExtrusion(s) => {
+            // the SmBSplineSurface base flag only (not SetOutOfBoundsEnabled)
+            let mut s = s.as_ref().clone();
+            *s.base_mut().out_of_bounds_enabled_mut() = true;
+            Cow::Owned(Surface::from(s))
+        }
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
@@ -1908,7 +1914,7 @@ fn vertex_edges<O: ClassObject>(geometry: &impl ClassGeometry<O>, vertex: O) -> 
         .into_iter()
         .map(|e| {
             geometry
-                .topology_handle(EntityRef::Edge(e))
+                .topology_handle_in(b, EntityRef::Edge(e))
                 .ok_or(SolidError::invalid_input(UPSTREAM, "edge without handle"))
         })
         .collect()

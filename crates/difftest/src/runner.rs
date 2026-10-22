@@ -92,6 +92,8 @@ pub struct CaseResult {
     /// In perturb mode: what was perturbed (`value`, `int`, `topology`, `error`),
     /// or `None` if the case had nothing to perturb or was deferred.
     pub perturbed: Option<&'static str>,
+    /// The Rust side's [`Output::diagnostics`] (reported, never compared).
+    pub diagnostics: BTreeMap<String, i64>,
 }
 
 /// Classification of one case.
@@ -455,6 +457,7 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
             rejected: None,
             deferred: None,
             perturbed: None,
+            diagnostics: BTreeMap::new(),
         };
         if let Ok(c) = &cpp {
             if let Some(reason) = &c.rejected {
@@ -493,6 +496,7 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
                 cr.deferred = r.deferred;
             }
             (Ok(c), Ok(mut r)) => {
+                cr.diagnostics = r.diagnostics.as_deref().cloned().unwrap_or_default();
                 if opts.perturb {
                     cr.perturbed = perturb_output(&mut r);
                 }
@@ -506,6 +510,72 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
         }
         res.timing.compare += t0.elapsed();
         res.cases.push(cr);
+    }
+    res
+}
+
+/// Result of [`digest_unit`]: the Rust side alone, one digest line per case.
+#[derive(Debug, Clone, Default)]
+pub struct DigestResult {
+    /// Unit id.
+    pub unit: String,
+    /// One `<case>\t<fnv1a64>` line per case (as [`UnitTiming::rust_digests`]), or
+    /// `<case>\tneeds-cpp` when the Rust side called a C++ stub (wasm32 only).
+    pub lines: Vec<String>,
+    /// With `debug`: one `<case>\t<Debug of the Rust output>` line per case.
+    pub debug: Vec<String>,
+    /// Cases whose Rust side called a C++ stub (wasm32; never natively).
+    pub needs_cpp: usize,
+    /// Building the case list failed, or called a C++ stub.
+    pub harness_error: Option<String>,
+}
+
+/// Runs only the Rust side of every case of `unit` and digests each output like
+/// `DIFFTEST_RUST_DIGEST` does (`--digest-dir`). Nothing is compared: equal digests from
+/// two builds (native and wasm32) mean bit-identical Rust outputs. A case whose Rust
+/// side calls the C++ kernel (fixture exports) is `needs-cpp` on wasm32, where the shims
+/// are stubs ([`solidcore_ffi::unlinked_calls`]).
+pub fn digest_unit(
+    unit: &dyn UnitDiff,
+    ctx: &CaseContext,
+    opts: &RunOptions,
+    debug: bool,
+) -> DigestResult {
+    let mut res = DigestResult {
+        unit: unit.id().to_string(),
+        ..DigestResult::default()
+    };
+    let before = solidcore_ffi::unlinked_calls();
+    let cases = match unit.cases(ctx) {
+        Ok(c) => c,
+        Err(e) => {
+            res.harness_error = Some(e.0);
+            return res;
+        }
+    };
+    if solidcore_ffi::unlinked_calls() != before {
+        res.harness_error = Some("building the cases calls the C++ kernel".into());
+        return res;
+    }
+    for case in cases {
+        if let Some(f) = &opts.filter {
+            if !case.name.contains(f.as_str()) {
+                continue;
+            }
+        }
+        let before = solidcore_ffi::unlinked_calls();
+        let rust = guarded(|| unit.run_rust(&case), "rust");
+        if solidcore_ffi::unlinked_calls() == before {
+            let s = format!("{rust:?}");
+            res.lines
+                .push(format!("{}\t{:016x}", case.name, fnv1a64(&s)));
+            if debug {
+                res.debug.push(format!("{}\t{s}", case.name));
+            }
+        } else {
+            res.needs_cpp += 1;
+            res.lines.push(format!("{}\tneeds-cpp", case.name));
+        }
     }
     res
 }
@@ -565,6 +635,7 @@ mod tests {
             rejected: None,
             deferred,
             perturbed: None,
+            diagnostics: BTreeMap::new(),
         };
         let d = || {
             Some(Deferred {

@@ -2008,6 +2008,7 @@ fn bspline_surface(surface: &Surface) -> Result<&BSplineSurface> {
         SurfaceKind::BSpline(s) => Ok(s),
         SurfaceKind::Plane(p) => Ok(p.base()),
         SurfaceKind::SurfOfRevolution(s) => Ok(s.base()),
+        SurfaceKind::SurfOfExtrusion(s) => Ok(s.base()),
         // Upstream passes any SmSurface*; the port of SmBSplineSurface::CreateCornerBlend
         // takes B-spline neighbours only (its Deviations): the other kinds are that
         // partial unit's own unported part.
@@ -2941,6 +2942,9 @@ pub enum HealLoopHandle {
     EdgeCurve(EdgeId),
     /// The UV trim curve of an edge use.
     Trim(EdgeuseId),
+    /// A temporary curve ([`ClassObject::temporary`]): the seam curves of
+    /// `SmFace::HasSeamProblem`.
+    Temp(usize),
 }
 
 impl ClassObject for HealLoopHandle {
@@ -2948,8 +2952,14 @@ impl ClassObject for HealLoopHandle {
         match self {
             Self::Topo(e) => e.class_kind(),
             Self::Surface(_) => ClassObjectKind::Surface,
-            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) => ClassObjectKind::Curve,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) | Self::Temp(_) => {
+                ClassObjectKind::Curve
+            }
         }
+    }
+
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        (kind == ClassObjectKind::Curve).then_some(Self::Temp(index))
     }
 }
 
