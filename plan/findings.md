@@ -190,6 +190,26 @@ The actual-head validation results are tracked in the PR discussion.
   suspect site: `objdump -d -r` the function in `bin/cpp/lib/libSMLib.a` and in the
   solidcore rlib and compare `sin`/`cos`/`sincos` relocations.
 
+- **The shared B-rep import does not keep vertex-use order.** `topology_vertexuse::import`
+  (used by every runner that imports a real B-rep from `sc_topology_fixture.h`) lists each
+  vertex's uses in arena order, because the export does not carry the order. So
+  `topology::vertex::edges` / `vertexuses` on an imported B-rep can return a different order
+  from upstream's `SmVertex::GetEdges` / `GetVertexuses`. For `plane_square.smb`, vertices
+  1–3 come out reversed. Results that take "the first" edge or use of a vertex can disagree
+  for that reason alone. The `boolean.topology_intersector_p3` runner hit this in
+  `sm_MakeConsistentClassifications`; its shim exports each vertex's list order
+  (`VertexUses` op) and the runner reorders the imported lists. Exporting the order in the
+  shared fixture would fix every runner at once.
+- **The `heal.heal_data_p1/p2/p3` and `geom.hash_table` failures seen in a Debian
+  bookworm container on an Apple Silicon host are the arm64 conversion difference above,
+  not GCC 12.** Docker there runs `linux/arm64` (`uname -m`: `aarch64`). On `main`
+  `bb137d7d` the container gives 3 / 104 / 7 / 435 failed. With the two Rust conversions
+  switched to saturating `as u64` for the experiment, `heal.heal_data_p2` passes every case
+  it runs (452 on the `boolean.topology_intersector_p3` branch, 0 failed), including 4
+  generated cases (`gen0070`, `gen0211`, `gen0544`, `gen0549`) that `main` defers and that
+  branch reaches through `intersect.curve_class_p4`'s wired part-2 calls. An earlier note
+  here blamed the compiler; that was wrong. (2026-10-20.)
+
 ## nlib.knots (green; no disagreements)
 
 2953 default cases and a 51,753-case run (`--seeds 50000`) all agree bit for bit with
@@ -10579,6 +10599,73 @@ rejected: nothing runs on either side.
   `CreateUVTrimCurves` must still return this clipped domain (callers in
   `boolean.topology_intersector_p1` keep it on success).
 
+## boolean.topology_intersector_p3 (`SmTopologyIntersector.cpp` part 3: `MergeCurveClasses`, `MergeCurveOnSurfaces`, `MergeCoincidentSurfaces`; PR #211, 2026-10-17; partial, no disagreements)
+
+- **Dependencies.** Parts 1 and 2 (#146, #203) and `intersect.curve_class_p2` / `_p4`
+  (#85, #137) are on `main`. The constructor `MergeCurveOnSurfaces` needs is part 4's
+  `with_curve`, whose `ReSet` is part 2's. `main` still has part 4's stubs for `ReSet`,
+  `ConnectIntervals` and `GetMinUV` / `GetMaxUV` (the two PRs merged separately); this
+  branch wires them to part 2.
+- **`query.face_p1` wired (2026-10-20).** `SmFace::Point3DClassify` and
+  `CalculateBoundingBox` are `IntersectorBrepP3` hooks; the difftest adapter calls
+  `query::face::p1`, mapping the classification's handles both ways with
+  `PointClassification::map_objects`. Upstream passes the `double` `dCurveTolerance` where
+  an `SmZoneTol3d` is expected (the classify call and the `SmPointClassification`
+  constructor); the port applies `zone_tol3d` at both, as that implicit conversion does.
+- **`curve_class_p7` cast fixed (2026-10-20).** With the edge queries wired, the fuzz run
+  reached `TestForPartialCoincidentEdges` with `SmLine` edges (the shared import keeps
+  lines). p7 accepted only a plain B-spline; upstream's `SM_CAST_PTR(SmBSplineCurve, ..)`
+  succeeds for every kind derived from it, and `new SmBSplineCurve(*p)` copies its B-spline
+  base. Three fuzz inputs gave `SM_ERR` in C++ and a null-dereference error in Rust; with
+  the fix, 2000 fuzz cases give 0 differs.
+- **Wired stubs of partial units.** `sm_MakeConsistentClassifications` (`curve_class_p1`)
+  was a stub on `SmEdge::GetVertex` (`topology.edge`, already partial). It is now ported in
+  full, reaching the edges and vertices through `ClassGeometry::topology_entity` and the new
+  `ClassGeometry::topology_handle_in`. `curve_class_p7`'s `SmEdge::GetCurve` /
+  `GetInterval` and the edge-pair tolerance are wired the same way where classification
+  geometry is in scope. An adapter that cannot resolve a handle (no hooks, or a stand-in edge
+  without a B-rep, as in the `curve_class_p7` runner) keeps the previous `Unported` deferral,
+  so those runners' outcomes do not change.
+- **Guard exposed by the wiring.** With `ConnectIntervals` real, a squeeze can empty a
+  classification. `GetLoopCrossings` then reads `GetAt(0)` unchecked (undefined upstream).
+  The `curve_class_p4` shim now refuses that (the first loop's face has a surface, there are
+  loops and a curve, and the classification is empty), also for a degenerate curve, which
+  would return first.
+- **`CheckForSqueezeVertices` keeps partial appends.** Upstream can append in its first
+  conflict block and then return `SM_ERR` from the second; `MergeCurveClasses` continues with
+  those lists. Part 2 gained `check_for_squeeze_vertices_into`, which appends to the
+  caller's lists.
+- **Still deferred:**
+  - `SmFace::GetEdges` / `GetUpwardLoopuses` (`topology.face_p4`), reached by
+    `MergeCoincidentSurfaces` once the face boxes overlap;
+  - the imprinting of `MergeInterval` (`curve_class_p6`);
+  - `topology.brep_p5`'s own stubs (`m_bEditingEnabled`, `topology.brep_p1`; `SqueezeEdge`,
+    `topology.brep_p3`), reached through `CombineCoincidentVertices` when squeezing;
+  - `SmBrep::DeleteEdge` (`topology.brep_p4`) when repairing an edge relation;
+  - the remaining `topology.edge` / `topology.vertex` stubs of `curve_class_p7`, which are
+    in functions without classification geometry.
+- **Review r1 (2026-10-21).**
+  - *Guard:* an `SM_PC_UNKNOWN` start or end of a face-mid interval stays unknown, without
+    object, when the point does not project onto that face (`sm_ComputeFacePointClass`);
+    a region mid copies a null object (this harness names no region). `MergeInterval`
+    then dereferences the null vertex (`SmCurveClass.cpp:17659` / `:17672`). The shim
+    and the runner refuse that input; the generator only made edge mids, so the fuzz
+    never reached it.
+  - *UV curves:* `MergeCurveOnSurfaces` was compared only without UV curves. Handles of
+    kind 13 name an edge use's UV trim curve (`GetUVTrimCurve`, own or mate's), and three
+    inline cases pass the curve's own edge uses. They defer at `intersect.point_class`'s
+    `SmVertex::GetTolerance` stub in `MergeIntoObject`, past the UV classification.
+  - *Owner:* the 3D edge-curve copy in `MergeCoincidentSurfaces` gets the edge curve's
+    owner as upstream (`SetOwner`, also after the trim on the other side); the
+    `SM_NO_CHANGE_OWNER` notification of the temporary copy is not delivered (noted in the
+    module's Deviations).
+- **Back-edges.** `blend.fillet_geom_p4`'s `MergeCurveOnSurfaces` stub is retagged
+  `blend.fillet_executive_p1`: it runs on the executive's intersector, which that unit
+  provides (as its `RegisterExistingSSI` stub already is). `boolean.merge_p1`'s
+  `MergeCoincidentSurfaces` stays `UNPORTED(boolean.topology_intersector_p3)`: wiring it
+  needs an `IntersectorBrepP3` for `boolean.merge_p4`'s `ArenaPair` and the kernels and
+  notification context in `fix_face_coincidence`; left for a follow-up PR.
+
 ## blend.fillet_geom_p2: sm_SplitRail's fillet vertex
 
 `sm_SplitRail` (`blend.fillet_solver_p1`) builds `SmFilletVertex(pFG->..->GetFilletCorner())`
@@ -15011,6 +15098,37 @@ reconciliation with main's `surface.offset_surface`. With both, the affected dif
   Not committed as a fixture (it fails the unit); tracking it down is a follow-up in
   `surface.offset_surface`.
 
+## topology.topology_traverser: `IsInnerShell` rebuilt the target surface cache per ray (perf, 2026-10-21)
+
+- **Symptom.** Case `adversarial_02_op7_00` (`fixtures/topology.topology_traverser/traversals.json`,
+  op 7 `IsInnerShell` on one face of a 3x3 biquadratic B-spline whose weights are all
+  `-f64::MAX`) took ~410 s on the Rust side against ~4 s for the C++ side. The outputs agree.
+- **Cause.** Upstream `SmSurface::GlobalLineIntersect` takes the surface's cache from
+  `smsurf_GetSurfaceCache` (`source/SMLib/src/SmSurface.cpp:3749`,
+  `SmCacheMgr::GetOrCreateObjectCache`): the surface keeps one cache, so `IsInnerShell`
+  (`SmTopologyTraverser.cpp:1239`) builds it on its first ray and reuses it for the
+  rest. The port built a fresh cache for every ray
+  (`Surface::base_global_line_intersect_in` -> `get_surface_cache`). That is 48 ray/face
+  intersections here (2 face uses x 12 rays x 2 targets), and each one ran a trimmed
+  surface cache build and then a plain cache build.
+- **Why the build is so slow on this surface.** The tolerance test never passes on the
+  degenerate patches, so `SubdivideToTolerances` splits until the
+  `MinimumSideLengthRatioUV` stop. Upstream builds 1,411,883 patches (~3.5 s, 1.4 GB RSS,
+  measured with a standalone program linking `bin/cpp/lib`) and reuses them. The port stops
+  at `MAX_SUBDIVISION_NODES` (`2^20`, `surface/surface_cache/p3.rs`, a documented
+  memory bound) with `InvalidInput`, so each build fails after ~4.3 s. This gives `SM_ERR_NULL_POINTER`
+  from `GlobalLineIntersect`, and `IsInnerShell` skips the face. Upstream's build succeeds
+  (a standalone surface `GlobalLineIntersect` from the first sample point returned one
+  solution). The case still agrees on both sides: neither one counts a hit
+  beyond the face tolerance.
+- **Fix.** `IsInnerShell` keeps each target face surface's cache for the whole call
+  (`HeldSolveCache`, `Surface::global_line_intersect_held`,
+  `topology::face::p4::global_line_intersect_held`), as upstream keeps it on the surface.
+  The case now takes ~9 s: one failing pair of builds per face.
+- **Deviation.** A failed build is kept and its error returned again. Upstream retries
+  the build on every call. The retry is deterministic, so it fails the same way.
+- **Open.** The node cap remains a real difference from upstream on this input
+  (upstream's tree is 1.35x the cap). Raising it would cost >1.7 GB per cache in Rust.
 ## topology.edge — exact private revolution transport (issue #294)
 
 The private edge shim and importer reuse the shared lossless record helpers for
