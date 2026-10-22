@@ -15747,6 +15747,33 @@ Replay of the fuzz crash corpus against main (area 5f inventory: `difftest --fuz
   validation; so are b_spline_curve_p2 fuzz00841 and b_spline_curve_n_lib fuzz00880. The
   others are sizes the caller asks for (upstream allocates them too) and stay as they are.
 
+## Issue #504: library bounds for the Rust-side fuzz hangs (fix/bounded-loops-504, 2026-10-22)
+
+The 21 inputs of #504 run on the Rust side alone (runner guard bypassed locally),
+with the loops instrumented and the maxima over a full `--green` (upstream fixtures
+and committed cases) recorded:
+
+| regime | bound (`InvalidInput` past it) | fixtures' max | corpus inputs, before -> after |
+|---|---|---|---|
+| `SmFindPCExtremaEFO::Evaluate` scale loop (HANG-47) | `MAX_PC_SCALE_STEPS = 400` (provable: finite needs <= 310) | - | curve_p9 fuzz00144/01222: never -> 0.00 s, no solution |
+| `GlobalCoincidenceChecker` calls (HANG-48) | `MAX_COINCIDENCE_CALLS = 2^18` | 15,139 calls, depth 32 | curve_p8 fuzz01456/01856, surface_p8 fuzz01603: never -> 8-9 s, status 1007 |
+| `SolveBranch` visits per solve | `MAX_SOLVE_BRANCHES = 2^20` | 56,753 | curve_p9 fuzz01043: never -> 11 s, the 20 solutions found by then (status ignored, as upstream) |
+| `CurveCache::Tessellate` halves | `MAX_TESS_SPLITS = 2^16` | 4,024 | none: the default `min_parametric_ratio` caps these at about 1.5e4 |
+| `N_ApproxNurbsWithNonRatCrv` samples (HANG-49) | `MAX_APPROX_SAMPLES = 2^17` | 11,104 | nlib.crv_approx fuzz05147: never -> 0.00 s |
+
+- Results below the bounds are unchanged: a full `--green` (Mac) gives case-for-case
+  identical reports with and without the bounds; the touched units on Linux pass with
+  the same counts and `max_rel_err` 0, and `--perturb` detects every case.
+- **Not hangs, slow:** composite_curve_p2 fuzz00198/00435/01111/01988 and
+  fuzz00430/01007 finish in 23-171 s: `IntersectAndTrimOffsets` intersects every pair
+  of offsets, and the port rebuilds both curve caches for each pair (upstream keeps
+  them on the curves); each tessellation stays near the `min_parametric_ratio` cap.
+  surface_point_solve_p1 fuzz00979 finishes in 73 s: the `SurfaceCache`
+  approximation tree reaches 262,141 nodes, as a committed fixture does (and the
+  B-spline fixtures reach `MAX_SUBDIVISION_NODES`), so no bound 10x above the
+  fixtures would stop it sooner (p2 fuzz01057 and p3 fuzz00349 build the same kind
+  of tree, about 1e5 nodes after 10 s; not run to completion). Unchanged.
+
 ## blend.fillet_standard_solver_p1: circular FSG centre line dispatch (2026-10-22)
 
 - `SmCircularCrossSectionFSG::CreateSurfaceFromCurves` now takes the centre line as a
@@ -15792,6 +15819,50 @@ periodic seam behavior. Issue #489 remains open for end-to-end reproduction
 after those adapters are wired. Existing parity cases must retain their original
 comparison rules; a future completed explicit-null C++ path may differ by design.
 
+## Issue #480: union fails when coplanar rims cross just off a vertex (topology.proto_topology_p2, 2026-10-22)
+
+`SmApiBooleanUnion` of a ring and a half-ring lip whose r5 cylinders are offset by e
+fails (`SM_ERR`) for 4e-5 < e <= 2e-4 when the ring's circles have their seam vertex at
+(0,15,2), next to where the two rims on the coplanar faces cross ((e/2, 15, 2)). This was
+reproduced and traced on the C++ reference build; the cause is in the proto topology
+(plan/upstream-issues.md WR-214), not in the coplanar face merge or the curve/curve
+intersector as first suspected.
+
+- `CanCombineVertexDefinitions` merges the crossing and the vertex into one proto
+  vertex (they are e/2 <= `5 * (1e-5 + 1e-5)` = 1e-4 apart), keeping the definition on
+  the vertex. `SmProtoEdge::Resolve` then re-splits the short intersection curve
+  between them (ends e/2 > `2 * m_dTol` = 2e-5 apart) by copying that definition, so
+  both ends are the ring's one vertex while the lip gets a short edge between two
+  vertices. `MakeFaceuse` fails at `SmMerge.cpp:7071`. Window: 2e-5 < e/2 <= 1e-4.
+- With the seam at (5,10) (`SmApiCreateCylinder` default) every offset succeeds; the
+  failure needs the vertex.
+- The reporter's e = 1e-3 failure was not reproduced with this construction; their
+  operands come from SolidCraft's own sketch/extrude path and may place vertices
+  differently.
+
+Fix (documented deviation, `topology::proto_topology::p2`): with
+`ProtoTopologyManager::set_split_self_loops_on_vertices(false)`, `resolve_proto_edge`
+does not split a self-loop proto edge whose definition is on a vertex in either B-rep;
+it drops the proto edge's definitions, as upstream does when the curve is shorter than
+`2 * m_dTol`. The Boolean's topology intersector (`boolean::topology_intersector::p2`,
+`IntersectInsertRelate`, the only caller of `resolve_proto_edge`) sets it; the default
+keeps upstream's split. The same change in a private C++ copy makes all failing offsets
+a manifold solid of 354.99989 mm^3 with the topology of the snapped e = 3e-5 case,
+leaves every other offset unchanged, and is never taken in `SM_API_test` or
+`prog_test` (both pass).
+
+Why a setting: 7 of the 1533 generated `topology.proto_topology_p2` difftest cases reach
+this branch (with the change unconditional: 1455 pass, 7 fail on `values.out.len`, e.g.
+gen0405 C++ 373 vs Rust 84, against 1462 pass at the parent commit). With the default
+they compare the faithful port against the unpatched C++ as before, and no case is
+dropped. `boolean.topology_intersector_p1` (830 cases, 797 pass, 33 deferred) is
+unchanged with the setting on.
+
+Validation limits: the union cannot run end to end in Rust yet (primitive creation,
+`SmFace::FaceIntersect`, `topology.brep_p4` deletes and the `MergeCoincidentSurfaces`
+wiring are unported). Unit tests cover the new branch (definition on a vertex in
+either B-rep: dropped), the default (split attempted) and the unchanged case off a
+vertex.
 ## Input-sized allocations bounded (issue #505)
 
 The 17 memory-dependent fuzz inputs of #505 (the 23 above minus the six #502 already
