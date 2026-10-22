@@ -181,7 +181,7 @@ impl OffsetSurface {
 
     /// `GetOffsetDistance`.
     #[must_use]
-    pub const fn offset_distance(&self) -> f64 {
+    pub fn offset_distance(&self) -> f64 {
         self.surface.offset_distance()
     }
 
@@ -1758,6 +1758,30 @@ macro_rules! fillet_intersector_ops {
         impl crate::blend::fillet_intersector::FilletSolverOps for $t {
             type FilletGeom = crate::blend::fillet_geom::p1::FilletGeomId;
 
+            /// `SmFilletSolver::ComputePointValues` (non-virtual, unit
+            /// `blend.fillet_solver_p4`) on this class's virtuals.
+            fn compute_point_values(
+                &mut self,
+                k: &Kernel,
+                uv_values: [Point2; 2],
+                uv_domain1: &Extent2d,
+                uv_domain2: &Extent2d,
+                curve_trace_direction: f64,
+                point: &mut TsectPnt,
+                previous: Option<&TsectPnt>,
+            ) -> Result<()> {
+                FilletSolver::compute_point_values(
+                    self,
+                    k,
+                    uv_values,
+                    uv_domain1,
+                    uv_domain2,
+                    curve_trace_direction,
+                    point,
+                    previous,
+                )
+            }
+
             fn compute_surface_values(
                 &mut self,
                 k: &Kernel,
@@ -1992,12 +2016,15 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
         Ok(CONSTANT_RADIUS_ASSISTED_FS_TYPE)
     }
 
-    /// `GetSolverType`: `SM_FS_CONST_RADIUS` (`SmConstantRadiusFS::GetSolverType`,
-    /// `SmFilletStandardSolver.h:58`), the class the intersector shim builds; `StepSolve`
-    /// branches on it, and `SM_FS_CONST_RADIUS_ASSISTED` would send a clipped step down
-    /// the assisted branch the C++ does not take. Added by `blend.fillet_solver_p3`.
+    /// `SmConstantRadiusAssistedFS::GetSolverType`: `SM_FS_CONST_RADIUS_ASSISTED`
+    /// (`SmFilletStandardSolver.h:112`; `StepSolve` branches on it). The fillet
+    /// intersector's shim builds a real `SmConstantRadiusAssistedFS`; a harness that
+    /// models a plain `SmConstantRadiusFS` with this type overrides it (as
+    /// `blend.fillet_solver_p4`'s `ShimSolver` does). It returned `SM_FS_CONST_RADIUS`
+    /// until `blend.fillet_solver_p4` wired `ComputePointValues`, which made the
+    /// intersector's `ComputeNextPoint` cases reach `StepSolve` and showed the gap.
     fn solver_type(&self) -> Result<FilletSolverType> {
-        Ok(FilletSolverType::ConstRadius)
+        Ok(FilletSolverType::ConstRadiusAssisted)
     }
 
     /// `SmConstantRadiusAssistedFS::IsKindOf` (unit `blend.fillet_standard_solver_p2`).
