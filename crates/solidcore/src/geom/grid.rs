@@ -1188,9 +1188,27 @@ mod tests {
         let left = Extent3d::from_bounds(0.1, 0.1, 0.1, 0.2, 0.2, 0.2);
         let right = Extent3d::from_bounds(0.6, 0.6, 0.6, 0.7, 0.7, 0.7);
         let all = Extent3d::from_bounds(0.1, 0.1, 0.1, 0.7, 0.7, 0.7);
-        let root = mk(&mut t, None, AuxDataType::BezierSurface, NodeClass::Unknown, all);
-        let a = mk(&mut t, Some(root), AuxDataType::BezierSurface, NodeClass::Inside, left);
-        let b = mk(&mut t, Some(root), AuxDataType::BezierSurface, NodeClass::Outside, right);
+        let root = mk(
+            &mut t,
+            None,
+            AuxDataType::BezierSurface,
+            NodeClass::Unknown,
+            all,
+        );
+        let a = mk(
+            &mut t,
+            Some(root),
+            AuxDataType::BezierSurface,
+            NodeClass::Inside,
+            left,
+        );
+        let b = mk(
+            &mut t,
+            Some(root),
+            AuxDataType::BezierSurface,
+            NodeClass::Outside,
+            right,
+        );
         t.node_mut(root).unwrap().child1 = Some(a);
         t.node_mut(root).unwrap().child2 = Some(b);
         t.set_top_node(Some(root));
@@ -1198,7 +1216,9 @@ mod tests {
         let base = g
             .add_hierarchy_element(HierarchyElement::new(0.0), &all)
             .unwrap();
-        assert!(g.expand_hierarchy_with(base, &t, |_, _| unreachable!()).is_err());
+        assert!(g
+            .expand_hierarchy_with(base, &t, |_, _| unreachable!())
+            .is_err());
 
         let h = g
             .add_hierarchy_element(HierarchyElement::new_surface(9, 0.05), &all)

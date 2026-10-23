@@ -1746,7 +1746,10 @@ mod tests {
         assert_eq!(t.first_bezier_patch(root, none, nurb).unwrap(), None);
         t.node_mut(root).unwrap().aux_type = AuxDataType::BezierSurface;
         let patch = |n: NodeId| -> Result<Option<i32>> { Ok(Some(n.0 as i32)) };
-        assert_eq!(t.first_bezier_patch(root, patch, nurb).unwrap(), Some(root.0 as i32));
+        assert_eq!(
+            t.first_bezier_patch(root, patch, nurb).unwrap(),
+            Some(root.0 as i32)
+        );
         t.set_owner_object(Some(TreeOwner::BrepCache));
         assert_eq!(t.owner_object().unwrap(), None);
     }
