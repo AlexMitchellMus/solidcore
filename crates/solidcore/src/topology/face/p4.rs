@@ -1697,8 +1697,10 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
         seam_v: None,
     };
 
+    // Use the face's actual surface, as upstream does. A geometry copy drops its
+    // owner and would make surface_zone_tol_3d use the system tolerance instead.
     // no work - no surface - return Okay
-    let Some(surface) = b.face(f)?.surface.clone() else {
+    let Some(surface) = b.face(f)?.surface.as_ref() else {
         return Ok(out);
     };
 
@@ -1729,7 +1731,7 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
     }
 
     // locals
-    let surface_zone_tol_3d = surface_zone_tol_3d(k, b, f, &surface)?;
+    let surface_zone_tol_3d = surface_zone_tol_3d(k, b, f, surface)?;
     let mut crossed_u = false;
     let mut crossed_v = false;
     let mut missing_u = false;
@@ -1815,7 +1817,7 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
             b,
             f,
             objects,
-            &surface,
+            surface,
             SurfParamType::U,
             periodic_u,
             surface_zone_tol_3d,
@@ -1835,7 +1837,7 @@ pub fn has_seam_problem<O: LoopObject, M: CurveOnClassifyObjects<O>>(
             b,
             f,
             objects,
-            &surface,
+            surface,
             SurfParamType::V,
             periodic_v,
             surface_zone_tol_3d,
