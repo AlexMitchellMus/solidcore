@@ -137,6 +137,8 @@
 //!   needs but the caller did not give are [`SolidError::InvalidInput`] (upstream
 //!   reads through a null or short array). `SmCurvePropertyGS`'s corner loop keeps
 //!   upstream's `dZV = 1.0 * j`.
+//!   Point/curve duplicate comparisons resolve an opaque handle's natural interval
+//!   from the solver's borrowed curve without changing its output identities.
 //! - **Not ported here.** `HasIntervals` / `SetIntervals` of `SmCCIntersectENFO` and
 //!   `SmBestLineFitENFO` and the destructors of the evaluator classes
 //!   (`SmCurvePropertyEFO`, `SmCCTangentIntENFO`, `SmCCIntersectENFO`,
@@ -186,10 +188,10 @@ use crate::geom::geom_utility::p2::{
 };
 use crate::geom::global_solver::{
     resolve_object_zone_tol_3d, Branch, GlobalSolve, GlobalSolver, ObjectZoneTol,
-    SolutionRequested, SolverOperation,
+    PreferredSolution, SolutionPairType, SolutionRequested, SolverOperation,
 };
 use crate::geom::object::{NotifyOperation, ObjectRef};
-use crate::geom::solution_array::{Solution, SolutionObject};
+use crate::geom::solution_array::{ObjectKind, OperandObject, Solution, SolutionObject};
 use crate::geom::tree::{AuxDataType, NodeData, Tree, TreeNode};
 use crate::geom::vector2d::Point2;
 use crate::geom::vector3d::{acos, Point3, Vec3};
@@ -3330,6 +3332,36 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CpGlobalSolver<'t, O> {
 
     fn object_zone_tol_3d(&self, object: O) -> Result<f64> {
         resolve_object_zone_tol_3d(self.zone_tol_3d, object)
+    }
+
+    fn identical_solutions(
+        &self,
+        first: &Solution<O>,
+        second: &Solution<O>,
+    ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
+        let object = first.objects.first().copied().flatten();
+        let same_curve = first.num_objects == 1
+            && second.num_objects == 1
+            && object == second.objects.first().copied().flatten()
+            && object.is_some_and(|o| {
+                o.kind().is_kind_of(ObjectKind::Curve) && o.natural_interval().is_none()
+            });
+        let Some(curve) = self.curve.filter(|_| same_curve) else {
+            return self.base.identical_solutions(first, second);
+        };
+        // The live curve supplies the natural interval an arena handle cannot
+        // dereference. Resolve it for comparison; keep the original output handles.
+        let object = OperandObject::Curve(0, curve.natural_interval());
+        let resolved = |s: &Solution<O>| Solution {
+            solution_type: s.solution_type,
+            num_variables: s.num_variables,
+            start: s.start,
+            end: s.end,
+            num_objects: s.num_objects,
+            objects: s.objects.map(|o| o.map(|_| object)),
+            nodes: s.nodes,
+        };
+        GlobalSolver::new().identical_solutions(&resolved(first), &resolved(second))
     }
 
     fn branch_may_contain_answers(&mut self, branch: &Branch) -> Result<bool> {
