@@ -17510,6 +17510,69 @@ a status-only or vacuous pass.
   the capped degenerate sweep before `Stitch` (they exist before it). Upstream probably
   deletes such a face on its failure path; Rust leaves the record in the arena. Not
   observable through any compared output today.
+## intersect.curve_class_p5 to green: B-rep cases (PR #610, 2026-10-23)
+
+- **C++ raises a vertex tolerance while computing a vertex/face gap; the port does not
+  (`topology.vertexuse`, not a part-5 disagreement).** Found by the part-5 B-rep runner:
+  a box whose vertices are moved off their faces by `1e-4` (raw `m_vPoint` edit), vertex
+  tolerances `1e-5`, face tolerances default, `IntersectVertices` with `bHasBigGaps`.
+  `SmVertexuse::GetVertexFaceGap` -> `CalcVertexFaceGap` -> `ComputeUVPoint(FALSE)`: the
+  local projection lands farther than vertex + face tolerance, so upstream falls back to
+  `smsurf_GetSurfaceCache(face surface)` + `GlobalPointSolve`. After the call C++ has the
+  moved vertex's tolerance at `2e-4` (twice its distance to the edge ends); Rust keeps
+  `1e-5`. Same input with `bHasBigGaps = FALSE` (no gap computed) agrees. Suspected cause:
+  building the face's trimmed surface cache validates its edges, and
+  `SmEdge::ValidateGeometry(TRUE)` (SmEdge.cpp:6188, 6213) sets an end vertex's tolerance
+  to twice its gap; the port has no object caches. Not confirmed by stepping the C++.
+  The part-5 generator keeps such projections local (face tolerances `1e-3` whenever it
+  moves a vertex); the gap value itself still agrees.
+- **Large-gap vertex insertion of `IntersectVertices` is not reached.** Its curve point
+  solve passes `dZero` as the distance limit and `XSectTol3d` as the tolerance; in every
+  fixture and generated case (vertices up to `1e-4` off their faces, curves `6e-5` from
+  the vertex) it returns no drop point beyond `XSectTol3d`, so the projections onto the
+  (owner-cleared) face surface run in no case. The large-gap tolerance itself
+  (`sBigGapXSectTol3d` from real vertex uses) is computed and compared.
+- **The SSS cull's removal branch is not reached**: two drop points of one vertex that
+  snap to the same knot. A cubic loop near a vertex gives two drop points, but a Bezier
+  loop's two parameters straddle its span, so they snap to different knots.
+## query.face_p1 hooks: what still blocks the remaining deferrals (claude/face-p1-hooks, 2026-10-23)
+
+- **Blocker (query.face_p2 code).** `SmFace::EdgeCurveOnClassify` / `Point3DClassify` are now
+  dispatched from `ClassifyFaceInterval` (`intersect::curve_class::p7`) on the B-rep that
+  `ClassGeometry::topology_entity` resolves the face handle to. Every `CurveOnClassify` path
+  (`query::face::p2::curve_on_classify`) wraps the caller's objects in `WithMadeTrimCurves`,
+  which does not forward `topology_entity` / `topology_handle(_in)`, so the face handle stays
+  unresolved and the case keeps its `query.face_p1` deferral. This covers all remaining
+  `query.face_p1` deferrals on main: intersect.curve_class_p4 97, topology.brep_p3 38,
+  heal.face_props 27, topology.face_p2 19, query.face_p2 4, query.face_p4 1, topology.brep_p1 1,
+  and blend.fillet_solver_p5 3 (its runner goes through the same wrapper; not checked on the
+  Mac, where the unit fails at main too). The forwarding exists on `codex/primitive-p2-production`
+  (commit 4526f4aa0).
+- **Latent disagreement (shows up once that forwarding lands).** Mac run of this branch plus
+  4526f4aa0's `p2.rs` hunk: heal.face_props 8 failures (gen0009, gen0205, gen0492, gen0616,
+  gen0620, gen1053, gen1315, gen1483) and intersect.curve_class_p4 2 (gen1841, gen1968). All
+  are on `SmSurfOfRevolution` faces (torus/cylinder kinds). In gen0009 the seam-U classification
+  of `HasSeamProblem` yields these intervals:
+  C++ `[0, 0.44758834428291155]` end **VERTEX** (104), `[.., 0.44823953478617956]` start VERTEX, end
+  EDGE t=0.008715797478860355, `[.., 1]` mid FACE; Rust: the first crossing is **EDGE (103) at edge
+  parameter 1.0** (the edge end) instead of the vertex. Everything else matches. Snapshot effect:
+  `m_bBadNearMissSeam` C++ TRUE / Rust FALSE (`values.v[29]` 1 vs 0), `m_eBadNearMissSeamDir`
+  (`v[30]`) C++ 0/1 vs Rust 4. Suspected cause: the boundary intersection of
+  `CurveOnClassify` (vertex intersection or edge-hit-at-edge-end snapping in `query::face::p2`
+  / curve classification), not query.face_p1. With the vertex found, the Rust side would reach
+  `SmFace::FindVertexSector` (topology.face_p4) and defer, as C++ goes through it.
+- **topology.brep_p3 (fixed here).** `brep_curve_solve` (OrientTrimmedSurfaces ray votes) solved
+  against an empty `BrepCache` with no trees (`SM_ERR_NULL_POINTER` from
+  `TopologyObjects::brep_trees`); it now builds them with `make_brep_cache`, as upstream's
+  `CacheMakeOrValidate`. Only reachable once the face classifiers resolve (7 cases became
+  failures in the combined run before this fix; deferred to topology.face_p2 after it).
+- **Adapter hooks left out.** Giving `query::face::p3::LoopObjectCurves` and
+  `topology::face::p2::UvLineObjects` `topology_entity` / `topology_handle` (patch kept outside
+  the repo) resolves their edges as well; combined with the forwarding it shows 5 more
+  topology.face_p2 failures in `CalculateAnInternalPoint` (internal_bss_tiny, extra00702,
+  extra00744, extra00806, extra01154; earlier deferred at `SmEdge::GetCurve`). No face
+  classifier runs in internal_bss_tiny, so these disagreements are not query.face_p1's.
+  extra00744: C++ (0, 0, 5), Rust (-0.659, -0.2026, 4.952) on sphere.smb.
 ## surface.surf_of_extrusion_p2: free-extrusion general intersection resolved (2026-10-23)
 
 - **Cause of gen0413 / gen0448 / gen0732 (entry "Free-extrusion general intersection" above).**
@@ -17526,3 +17589,22 @@ a status-only or vacuous pass.
   `approx_tol_3d` to the general intersector without the `SmApproxTol3d` conversion. Only a
   negative (or `SM_USE_DEFAULT`) tolerance is affected; a generated negative-tolerance case
   in those runners would show whether they diverge.
+## primitive.primitive_creation_p2: fixture face keys hid the trimmed surface cache (2026-10-23)
+
+- **What.** The p2 runner's one-B-rep fixture gave new faces object keys from its own
+  namespace (`FACE_TYPE`, `100000 + 97 * index`). The B-rep caches of the shell ray fire
+  (`StitchAndOrient` -> region split -> `FindInfiniteRegion` -> `SmShell::RayFire`) cannot
+  resolve those keys to a face, so the faces' surfaces were solved as untrimmed, which is
+  the shortcut `SurfaceCache::get_tree` refuses for a face-owned surface. 12 cases
+  (`pipe_sweep_curved_path` and 11 generated pipe/skin/planar-path cases) matched C++
+  only because the record compares status and list sizes, not geometry.
+- **How found.** With the same fixture, only the face keys changed to the production
+  `notify_ref` formula, those 12 cases defer at `TrimSrfCache::build_tree_with_face for a
+  face-owned surface` (passes 196 -> 184, `surface.trim_srf_cache` deferrals 6 -> 18).
+- **Now.** The runner uses the production `PrimitiveModel`: 194 passes (the 10 cases that
+  waited for `SmBrep::SmBrep` pass, the 12 above defer honestly), 0 failed, 114 deferred.
+  The p3 fixture (#617) keys faces the same way; #615 moves p3 to the production adapter
+  and reports the same 295 passes, so no p3 comparison depended on it.
+- **Follow-up.** `PrimitiveModel::new_merge` still returns `Unported(SmMerge::SmMerge,
+  boolean.merge_p2)` although the unit is ported (34 taper cases); `SweepStore` has the
+  merge services.
