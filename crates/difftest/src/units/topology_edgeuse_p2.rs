@@ -28,6 +28,7 @@ use solidcore::curve::curve::CurveKind;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::object::{NotifyOperation, ObjectRef};
 use solidcore::kernel::Kernel;
+use solidcore::nurbs::math::NOW;
 use solidcore::surface::surface::p2::DropCurveFail;
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::edgeuse::p2 as eu2;
@@ -50,15 +51,18 @@ const NULL_DEREF: f64 = -2.0;
 /// The shim did not run the op (deferred on the Rust side).
 const NOT_RUN: f64 = -3.0;
 
-const NOW: f64 = -f64::MAX;
-
 /// The UV curve given to `CheckAndSetUVTrimCurve`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "src", rename_all = "snake_case")]
 enum UvSrc {
     /// The current UV trim curve moved by `(du, dv)` domain lengths; without one the
     /// line from `a` to `b` (fractions of the face's UV domain).
-    Current { du: f64, dv: f64, a: [f64; 2], b: [f64; 2] },
+    Current {
+        du: f64,
+        dv: f64,
+        a: [f64; 2],
+        b: [f64; 2],
+    },
     /// A given 2D curve.
     Given { curve: CrvIn },
 }
@@ -66,8 +70,18 @@ enum UvSrc {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum OpIn {
-    Tangent { eu: i64, tol_deg: f64, coincidence: bool, ok_make: bool },
-    Convex { eu: i64, n: u64, step_off: bool, tol_deg: f64 },
+    Tangent {
+        eu: i64,
+        tol_deg: f64,
+        coincidence: bool,
+        ok_make: bool,
+    },
+    Convex {
+        eu: i64,
+        n: u64,
+        step_off: bool,
+        tol_deg: f64,
+    },
     StepOff {
         eu: i64,
         frac: f64,
@@ -76,9 +90,19 @@ enum OpIn {
         normal: Option<[f64; 3]>,
         ok_make: bool,
     },
-    Rebuild { eu: i64 },
-    CheckSet { eu: i64, uv: UvSrc, adjust: bool, fail: Option<i64> },
-    Notify { eu: i64, operation: u8 },
+    Rebuild {
+        eu: i64,
+    },
+    CheckSet {
+        eu: i64,
+        uv: UvSrc,
+        adjust: bool,
+        fail: Option<i64>,
+    },
+    Notify {
+        eu: i64,
+        operation: u8,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,7 +116,7 @@ struct Inputs {
     op: OpIn,
 }
 
-fn flag(b: bool) -> f64 {
+pub(super) fn flag(b: bool) -> f64 {
     f64::from(u8::from(b))
 }
 
@@ -111,19 +135,21 @@ impl OpIn {
 
 /// The case's B-rep: the C++ export, the imported Rust B-rep and the selected edge
 /// use; `Err(output)` when the B-rep cannot be built or has no edge use.
-struct Setup {
-    path: String,
-    block: Vec<f64>,
-    brep: Brep,
-    eu: EdgeuseId,
-    types: ImportTypes,
+pub(super) struct Setup {
+    pub(super) path: String,
+    pub(super) block: Vec<f64>,
+    pub(super) brep: Brep,
+    pub(super) eu: EdgeuseId,
+    pub(super) types: ImportTypes,
 }
 
 fn setup(i: &Inputs) -> Result<Result<Setup, Output>, HarnessError> {
     let path = path_of(Some(&i.brep))?;
     let block = brep_block_of(Some(&i.brep), i.validate_only, i.init_gaps)?;
-    let ex = ffi1::eval(ffi1::Op::Export, &path, &block)
-        .map_err(|e| harness(format!("c++ export: {e}")))?;
+    let ex = crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
+        ffi1::eval(ffi1::Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     let Some(c) = ffi1::counts(&ex) else {
         let st = ex.get(1).copied().unwrap_or(0.0);
         return Ok(Err(Output::err(format!("brep_build_status_{st}"))));
@@ -172,7 +198,12 @@ fn uv_curve(b: &Brep, eu: EdgeuseId, src: &UvSrc) -> Option<CrvIn> {
         match f.and_then(|f| b.face(f).ok()) {
             Some(face) => {
                 let d = face.uv_domain;
-                (d.min().x, d.min().y, d.max().x - d.min().x, d.max().y - d.min().y)
+                (
+                    d.min().x,
+                    d.min().y,
+                    d.max().x - d.min().x,
+                    d.max().y - d.min().y,
+                )
             }
             None => (0.0, 0.0, 1.0, 1.0),
         }
@@ -180,7 +211,9 @@ fn uv_curve(b: &Brep, eu: EdgeuseId, src: &UvSrc) -> Option<CrvIn> {
     match src {
         UvSrc::Given { curve } => Some(curve.clone()),
         UvSrc::Current { du, dv, a, b: bb } => {
-            let current = eu1::uv_trim_curve(b, eu).ok().and_then(|(c, _)| c.and_then(crv_in));
+            let current = eu1::uv_trim_curve(b, eu)
+                .ok()
+                .and_then(|(c, _)| c.and_then(crv_in));
             if let Some(mut c) = current {
                 let (sx, sy) = (du * du_len, dv * dv_len);
                 for q in &mut c.cpts {
@@ -205,21 +238,28 @@ fn uv_curve(b: &Brep, eu: EdgeuseId, src: &UvSrc) -> Option<CrvIn> {
     }
 }
 
-/// `SmBSplineSurface_TYPE`, `SmPlane_TYPE`, `SmBSplineCurve_TYPE`, `SmLine_TYPE`.
+/// `SmBSplineSurface_TYPE`, `SmPlane_TYPE`; `SmBSplineCurve_TYPE`, `SmLine_TYPE` and
+/// `SmCrvOnSurf_TYPE` (the import rebuilds a curve on a B-spline surface exactly).
 const EXACT_SURFACES: [i64; 2] = [15002, 15011];
-const EXACT_CURVES: [i64; 2] = [14033, 14010];
+const EXACT_CURVES: [i64; 3] = [14033, 14010, 14048];
+
+/// The deferral label of cases whose geometry the shared B-rep export holds only as a
+/// B-spline part (an analytic face surface or edge curve the import cannot rebuild
+/// exactly): a harness limitation, not an unported unit (`topology.brep_p1`'s
+/// convention).
+const HARNESS_ANALYTIC_EXPORT: &str = "harness:analytic-geometry-export";
 
 /// The deferral of a `CheckSet` case whose face surface or edge curve the import holds
 /// only as its B-spline part (an analytic `SmBSplineSurface` / `SmBSplineCurve`
 /// subclass): the Rust `Surface` has no kind for it (the unit named, as in
-/// `Surface::read_from_db`), or its exact import needs the B-rep reader
-/// (`SmBrep::ReadFromFile`, unit `topology.brep_p7`).
-fn inexact_geometry(s: &Setup) -> Option<Output> {
+/// `Surface::read_from_db`), or the shared export flattened it
+/// ([`HARNESS_ANALYTIC_EXPORT`]).
+pub(super) fn inexact_geometry(s: &Setup) -> Option<Output> {
     let b = &s.brep;
     let surface_type = eu1::face(b, s.eu)
         .ok()
         .flatten()
-        .and_then(|f| s.types.face_surface_types.get(f.index() as usize).copied())
+        .and_then(|f| s.types.inexact_surface(f.index() as usize))
         .unwrap_or(-1);
     let curve_type = eu1::edge(b, s.eu)
         .ok()
@@ -227,19 +267,56 @@ fn inexact_geometry(s: &Setup) -> Option<Output> {
         .and_then(|e| s.types.edge_curve_types.get(e.index() as usize).copied())
         .unwrap_or(-1);
     if surface_type >= 0 && !EXACT_SURFACES.contains(&surface_type) {
-        let (unit, symbol) = match surface_type {
-            15012 | 15013 => ("surface.cone_p1", "SmCone (no SurfaceKind)"),
-            15014 => ("surface.sphere", "SmSphere"),
-            15015 => ("surface.torus", "SmTorus (no SurfaceKind)"),
-            15030 => ("surface.surf_of_extrusion_p2", "SurfaceKind::SurfOfExtrusion"),
-            _ => ("topology.brep_p7", "SmBrep::ReadFromFile"),
+        let (unit, symbol) = match (surface_type, surface_kind_gap(surface_type)) {
+            (_, Some(symbol)) => ("surface.surface_p2", symbol),
+            (15030, None) => (
+                "harness:analytic-geometry-export",
+                "SmSurfOfExtrusion face surface not exported exactly",
+            ),
+            _ => (
+                HARNESS_ANALYTIC_EXPORT,
+                "face surface of an analytic kind exported as its B-spline part",
+            ),
         };
         return Some(Output::deferred(unit, symbol));
     }
     if curve_type >= 0 && !EXACT_CURVES.contains(&curve_type) {
-        return Some(Output::deferred("topology.brep_p7", "SmBrep::ReadFromFile"));
+        return Some(Output::deferred(
+            HARNESS_ANALYTIC_EXPORT,
+            "edge curve of an analytic kind exported as its B-spline part",
+        ));
     }
     None
+}
+
+/// The symbol of the `surface.surface_p2` dispatch gap for an analytic surface type the
+/// import holds only as its B-spline part: the DISPATCH GAP of `Surface::read_from_db`
+/// (issue #76) belongs to `surface.surface_p2`, not to the analytic surface units (all
+/// green).
+fn surface_kind_gap(surface_type: i64) -> Option<&'static str> {
+    match surface_type {
+        15012 => Some("SurfaceKind::Cone (SmCone dispatch)"),
+        15013 => Some("SurfaceKind::Cone (SmCylinder dispatch)"),
+        15014 => Some("SurfaceKind::Sphere (SmSphere dispatch)"),
+        15015 => Some("SurfaceKind::Torus (SmTorus dispatch)"),
+        _ => None,
+    }
+}
+
+/// The deferral of a case whose face surface overrides the NURB-parameter evaluators
+/// (`SmCone`, `SmCylinder`, `SmSphere`) and is imported only as its B-spline part (not
+/// exported exactly).
+/// `SmTorus` overrides only the STEP evaluators, so its B-spline part evaluates alike.
+fn analytic_evaluators(s: &Setup) -> Option<Output> {
+    let surface_type = eu1::face(&s.brep, s.eu)
+        .ok()
+        .flatten()
+        .and_then(|f| s.types.inexact_surface(f.index() as usize))?;
+    if surface_type == 15015 {
+        return None;
+    }
+    let symbol = surface_kind_gap(surface_type)?;
+    Some(Output::deferred("surface.surface_p2", symbol))
 }
 
 // ---- C++ side ---------------------------------------------------------------------------
@@ -292,7 +369,11 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
             let Some(c) = uv_curve(&s.brep, s.eu, uv) else {
                 return Ok(Output::err("no_uv_curve"));
             };
-            input.extend([flag(*adjust), flag(fail.is_some()), fail.unwrap_or(0) as f64]);
+            input.extend([
+                flag(*adjust),
+                flag(fail.is_some()),
+                fail.unwrap_or(0) as f64,
+            ]);
             push_curve(&mut input, &c)?;
             Op::CheckSet
         }
@@ -328,7 +409,7 @@ fn output_of(op: &OpIn, body: &[f64]) -> Output {
 // ---- Rust side --------------------------------------------------------------------------
 
 /// The state of an edge use as the shim's `put_eu_state`.
-fn put_eu_state(o: &mut Vec<f64>, b: &Brep, eu: Option<EdgeuseId>) -> Result<(), SolidError> {
+pub(super) fn put_eu_state(k: &Kernel, o: &mut Vec<f64>, b: &Brep, eu: Option<EdgeuseId>) -> Result<(), SolidError> {
     let Some(eu) = eu else {
         o.push(-1.0);
         return Ok(());
@@ -343,7 +424,7 @@ fn put_eu_state(o: &mut Vec<f64>, b: &Brep, eu: Option<EdgeuseId>) -> Result<(),
             o.extend([ivl.min(), ivl.max()]);
             for t in [ivl.min(), ivl.mid(), ivl.max()] {
                 let p = c
-                    .evaluate_point(t)
+                    .evaluate_point(k, t)
                     .unwrap_or(solidcore::math::Vec3::UNDEF);
                 o.extend([p.x, p.y, p.z]);
             }
@@ -393,14 +474,20 @@ fn run_rust_op(
             coincidence,
             ok_make,
             ..
-        } => eu2::is_tangent_sector(b, eu, *tol_deg, *coincidence, *ok_make)
+        } => eu2::is_tangent_sector(&k, b, eu, *tol_deg, *coincidence, *ok_make)
             .map(|r| vec![flag(r)]),
+        // the FFI bounds the sample count (`MAX_SAMPLES`); mirror it so a fuzzed count
+        // cannot keep the Rust side sampling for billions of iterations
+        OpIn::Convex { n, .. } if *n > ffi::MAX_SAMPLES as u64 => {
+            return Err(harness(format!("sample count {n} above {}", ffi::MAX_SAMPLES)));
+        }
         OpIn::Convex {
             n,
             step_off,
             tol_deg,
             ..
-        } => eu2::is_convex_radial_sector(&Kernel::default(), b, eu, *n, *step_off, *tol_deg).map(|r| vec![flag(r)]),
+        } => eu2::is_convex_radial_sector(&Kernel::default(), b, eu, *n, *step_off, *tol_deg)
+            .map(|r| vec![flag(r)]),
         OpIn::StepOff {
             frac,
             dist,
@@ -419,22 +506,52 @@ fn run_rust_op(
                 Ok(None) => Ok(*frac),
                 Err(e) => Err(e),
             };
-            t.and_then(|t| eu2::evaluate_binormal_step_off(&Kernel::default(), b, eu, t, *dist, &opts))
-                .map(|r| {
-                    let mut v = vec![0.0];
-                    v.extend([r.point.x, r.point.y, r.point.z]);
-                    v.extend([r.binormal.x, r.binormal.y, r.binormal.z]);
-                    v.extend([r.tangent.x, r.tangent.y, r.tangent.z]);
-                    v.extend([r.face_normal.x, r.face_normal.y, r.face_normal.z]);
-                    v.extend([r.uv.x, r.uv.y]);
-                    v
-                })
+            // the out-params are compared whatever the status, like the shim's: the record
+            // starts at the shim's zeros and keeps what a failing call wrote
+            let mut out = eu2::BinormalEval {
+                point: solidcore::math::Vec3::ZERO,
+                binormal: solidcore::math::Vec3::ZERO,
+                tangent: solidcore::math::Vec3::ZERO,
+                face_normal: solidcore::math::Vec3::ZERO,
+                uv: solidcore::math::Point2::new(0.0, 0.0),
+            };
+            let status = t.and_then(|t| {
+                eu2::evaluate_binormal_step_off_into(
+                    &Kernel::default(),
+                    b,
+                    eu,
+                    t,
+                    *dist,
+                    &opts,
+                    &mut out,
+                )
+            });
+            let code = match status {
+                Ok(()) => Ok(0.0),
+                Err(SolidError::Upstream { code, .. }) => Ok(f64::from(code)),
+                Err(e) => Err(e),
+            };
+            code.map(|c| {
+                let mut v = vec![c];
+                for p in [out.point, out.binormal, out.tangent, out.face_normal] {
+                    v.extend([p.x, p.y, p.z]);
+                }
+                v.extend([out.uv.x, out.uv.y]);
+                v
+            })
         }
-        OpIn::Rebuild { .. } => eu2::rebuild_uv_trim_curve(&k, b, eu).and_then(|()| {
-            let mut v = vec![0.0];
-            put_eu_state(&mut v, b, Some(eu))?;
-            Ok(v)
-        }),
+        OpIn::Rebuild { .. } => {
+            let status = match eu2::rebuild_uv_trim_curve(&k, b, eu) {
+                Ok(()) => Ok(0.0),
+                Err(SolidError::Upstream { code, .. }) => Ok(f64::from(code)),
+                Err(e) => Err(e),
+            };
+            status.and_then(|s| {
+                let mut v = vec![s];
+                put_eu_state(&k, &mut v, b, Some(eu))?;
+                Ok(v)
+            })
+        }
         OpIn::CheckSet {
             uv, adjust, fail, ..
         } => {
@@ -455,13 +572,17 @@ fn run_rust_op(
                 (_, Err(e)) => Err(e),
                 (r, Ok(mate)) => {
                     let (failed, dmax, replaced) = match r {
-                        Ok(o) => (0.0, o.max_dist_to_surf.unwrap_or(-1.0), flag(o.trim_replaced)),
+                        Ok(o) => (
+                            0.0,
+                            o.max_dist_to_surf.unwrap_or(-1.0),
+                            flag(o.trim_replaced),
+                        ),
                         Err(_) => (1.0, -1.0, 0.0),
                     };
                     let state = (|| -> Result<Vec<f64>, SolidError> {
                         let mut v = vec![failed, dmax, replaced];
-                        put_eu_state(&mut v, b, Some(eu))?;
-                        put_eu_state(&mut v, b, mate)?;
+                        put_eu_state(&k, &mut v, b, Some(eu))?;
+                        put_eu_state(&k, &mut v, b, mate)?;
                         let tol = match eu1::edge(b, eu)? {
                             Some(e) => b.edge(e)?.tolerance,
                             None => -1.0,
@@ -495,8 +616,8 @@ fn run_rust_op(
             )
             .and_then(|()| {
                 let mut v = vec![0.0];
-                put_eu_state(&mut v, b, Some(eu))?;
-                put_eu_state(&mut v, b, mate)?;
+                put_eu_state(&k, &mut v, b, Some(eu))?;
+                put_eu_state(&k, &mut v, b, mate)?;
                 v.push(gap_flag(b, Some(eu))?);
                 v.push(gap_flag(b, mate)?);
                 Ok(v)
@@ -515,6 +636,15 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
             return Ok(Output::err("no_uv_curve"));
         }
         if let Some(o) = inexact_geometry(&s) {
+            return Ok(o);
+        }
+    }
+    // the step-off point, binormal and face normal come from the face surface's
+    // NURB-parameter evaluators, which `SmCone` (`Evaluate`, `EvaluatePoint`; inherited
+    // by `SmCylinder`) and `SmSphere` (`EvaluateNormal`) override analytically: their
+    // B-spline part, all the import holds, differs by ulps
+    if let OpIn::StepOff { .. } = &i.op {
+        if let Some(o) = analytic_evaluators(&s) {
             return Ok(o);
         }
     }

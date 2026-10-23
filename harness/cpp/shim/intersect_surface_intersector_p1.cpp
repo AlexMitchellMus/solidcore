@@ -196,6 +196,7 @@ SmBoolean bDebugMe2 = FALSE;
   if ( s3DBox.AreDisjoint( sPntBox ) )
     { return FALSE; }
 
+
   // Do bounding-box checks in the uv-space of both surfaces:
   // check the uv points against the bounding boxes of Hermite curves.
   ULONG lSurf;
@@ -238,6 +239,7 @@ SmBoolean bDebugMe2 = FALSE;
         { dLen = dDiag / 100; }
       sTemp.ExpandAbsolute( dLen );
       sUVBox.SetVInterval( sTemp );
+
 
       // Let sUV = UVPoint to test.
       SmPoint3d sUV( crPointToTest.UVPos( lSurf ));
@@ -1081,6 +1083,7 @@ SC_EXPORT int32_t sc_intersect_surface_intersector_p1_run(const double* in, int6
         return SC_ERR_ARG;
     try
     {
+        SC_NATIVE_LOCK;
         SmContext ctx;
         std::vector<double> o;
         Rd rd{in, n_in, 0};

@@ -13,9 +13,14 @@
 //! with end multiplicity exactly `p+1` and interior multiplicity at most `p`), and
 //! reject arguments that would make upstream index outside its arrays:
 //!
-//! - sweep: `deg` in `1..=MAX_SWEEP_DEGREE`, `dir` in `1..=2`, `E > 0`.
+//! - sweep: `deg` in `1..=MAX_SWEEP_DEGREE`, `dir` in `1..=2`, `E > 0` and at least
+//!   [`MIN_SWEEP_TOL_FRACTION`] of the trajectory's control polygon length: the
+//!   trajectory is approximated by a polyline within `E / 2`, and
+//!   `N_ApproxCrvWithPolyline` subdivides without end below floating-point
+//!   resolution (HANG-5; a tiny `E`, or a trajectory with huge coordinates).
 //! - fill: `1 <= k < MAX_SIDES` (upstream rejects `k < 2` before any access), `eps > 0`.
 
+use crate::validate::{bad, euclid};
 use crate::{call_with_buffer, FfiError};
 
 /// Largest highest control point index of a curve.
@@ -24,6 +29,9 @@ pub const MAX_CRV_INDEX: usize = 64;
 pub const MAX_CRV_DEGREE: usize = 6;
 /// Largest sweep degree.
 pub const MAX_SWEEP_DEGREE: usize = 5;
+/// Smallest sweeping tolerance `E`, relative to the trajectory's control polygon
+/// length (see the module docs).
+pub const MIN_SWEEP_TOL_FRACTION: f64 = 1e-6;
 /// Largest number of boundary curves of a hole.
 pub const MAX_SIDES: usize = 12;
 
@@ -46,17 +54,9 @@ mod sys {
     }
 }
 
-fn bad(msg: impl Into<String>) -> FfiError {
-    FfiError::InvalidArgument(msg.into())
-}
+crate::reader::unit_reader!();
 
-/// Sequential reader over the input.
-struct Reader<'a> {
-    input: &'a [f64],
-    at: usize,
-}
-
-impl<'a> Reader<'a> {
+impl Reader<'_> {
     fn num(&mut self) -> Result<f64, FfiError> {
         let v = self
             .input
@@ -78,28 +78,8 @@ impl<'a> Reader<'a> {
         Ok(v as usize)
     }
 
-    fn slice(&mut self, k: usize) -> Result<&'a [f64], FfiError> {
-        let end = self.at.checked_add(k).ok_or_else(|| bad("overflow"))?;
-        let s = self
-            .input
-            .get(self.at..end)
-            .ok_or_else(|| bad("input too short"))?;
-        if s.iter().any(|x| !x.is_finite()) {
-            return Err(bad("non-finite input"));
-        }
-        self.at = end;
-        Ok(s)
-    }
-
     fn flag(&mut self) -> Result<bool, FfiError> {
         Ok(self.index(0, 1)? == 1)
-    }
-
-    fn done(&self) -> Result<(), FfiError> {
-        if self.at != self.input.len() {
-            return Err(bad("trailing input"));
-        }
-        Ok(())
     }
 }
 
@@ -128,7 +108,8 @@ fn valid_knots(u: &[f64], p: usize) -> bool {
     })
 }
 
-fn curve(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+/// Validates a curve; returns the length of its (Euclidean) control polygon.
+fn curve(rd: &mut Reader<'_>) -> Result<f64, FfiError> {
     let n = rd.index(1, MAX_CRV_INDEX)?;
     let p = rd.index(1, MAX_CRV_DEGREE)?;
     if p > n {
@@ -145,12 +126,27 @@ fn curve(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     if !valid_knots(u, p) {
         return Err(bad("invalid knot vector"));
     }
-    Ok(())
+    let e: Vec<[f64; 3]> = pts
+        .chunks(4)
+        .filter_map(|c| match *c {
+            [x, y, z, w] => Some(euclid([x, y, z, w])),
+            _ => None,
+        })
+        .collect();
+    Ok(e.windows(2)
+        .map(|w| match *w {
+            [[ax, ay, az], [bx, by, bz]] => {
+                let (dx, dy, dz) = (bx - ax, by - ay, bz - az);
+                (dx * dx + dy * dy + dz * dz).sqrt()
+            }
+            _ => 0.0,
+        })
+        .sum())
 }
 
 fn validate_sweep(input: &[f64]) -> Result<(), FfiError> {
-    let mut rd = Reader { input, at: 0 };
-    curve(&mut rd)?;
+    let mut rd = Reader::new(input);
+    let traj_len = curve(&mut rd)?;
     curve(&mut rd)?;
     rd.slice(3)?;
     if rd.flag()? {
@@ -167,11 +163,15 @@ fn validate_sweep(input: &[f64]) -> Result<(), FfiError> {
     if e <= 0.0 {
         return Err(bad("sweeping tolerance must be positive"));
     }
+    // (NaN `e` or length is rejected too)
+    if e.partial_cmp(&(MIN_SWEEP_TOL_FRACTION * traj_len)).is_none_or(std::cmp::Ordering::is_lt) {
+        return Err(bad("sweeping tolerance too small for the trajectory"));
+    }
     rd.done()
 }
 
 fn validate_fill(input: &[f64]) -> Result<(), FfiError> {
-    let mut rd = Reader { input, at: 0 };
+    let mut rd = Reader::new(input);
     let k = rd.index(1, MAX_SIDES - 1)?;
     for _ in 0..=k {
         curve(&mut rd)?;

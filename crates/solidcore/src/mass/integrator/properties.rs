@@ -28,6 +28,7 @@ use crate::geom::extent3d::Extent3d;
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, PI};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::surface::surface::Surface;
 use crate::topology::face::p2::{
     OdeArea, PrecisePropertyLayout, PPF_ALL, PPF_AREA, PPF_AREA_FIRST_MOMENTS,
@@ -121,6 +122,7 @@ impl PropertyAttributes<'_> {
 
 /// `SmEdge::ComputePreciseProperties` on a live edge.
 pub fn edge_properties(
+    k: &Kernel,
     b: &Brep,
     e: EdgeId,
     accuracy: f64,
@@ -128,10 +130,11 @@ pub fn edge_properties(
     radius: f64,
 ) -> Result<EdgeProperties> {
     let curve = edge::curve(b, e)?.ok_or_else(|| SolidError::null_pointer(OP))?;
-    curve_properties(curve, &edge::interval(b, e)?, accuracy, origin, radius)
+    curve_properties(k, curve, &edge::interval(b, e)?, accuracy, origin, radius)
 }
 /// The precise edge integration on an already-bound curve and interval.
 pub fn curve_properties(
+    k: &Kernel,
     curve: &Curve,
     interval: &Extent1d,
     accuracy: f64,
@@ -139,7 +142,7 @@ pub fn curve_properties(
     radius: f64,
 ) -> Result<EdgeProperties> {
     let eval = edge::OdeEdgeLength::new(curve, origin, radius);
-    let approx = curve.approximate_length(interval, 10, false)?.0;
+    let approx = curve.approximate_length(k, interval, 10, false)?.0;
     let mut y = [0.0; 27];
     let mut scale = [BIG_DOUBLE; 27];
     if let Some(s) = scale.first_mut() {
@@ -157,7 +160,7 @@ pub fn curve_properties(
             scale: Some(&scale),
         },
         |t, _, dy| {
-            eval.evaluate(t, &mut scratch)?;
+            eval.evaluate(k, t, &mut scratch)?;
             for (d, v) in dy.iter_mut().zip(scratch.iter().skip(1)) {
                 *d = *v;
             }
@@ -219,6 +222,7 @@ pub fn face_properties(
         .as_ref()
         .ok_or_else(|| SolidError::null_pointer(OP))?;
     boundary_properties(
+        k,
         surface,
         &trims,
         &b.face(f)?.uv_domain,
@@ -240,6 +244,7 @@ fn valid_flags(flags: u64) -> Result<()> {
 /// Integrates the same precise face properties after oriented trim construction.
 /// `trims` must have the orientation and order returned by `CreateOrientedTrimBoundary`.
 pub fn boundary_properties(
+    k: &Kernel,
     surface: &Surface,
     trims: &[Curve],
     domain: &Extent2d,
@@ -267,6 +272,7 @@ pub fn boundary_properties(
             *s = estimated_area / 10.0;
         }
         let eval = OdeArea {
+            kernel: k,
             surface,
             uv_curve: trim,
             min_v: domain.min().y,
@@ -304,7 +310,7 @@ pub fn boundary_properties(
                         for (s, d) in scratch.iter_mut().skip(1).zip(dy.iter()) {
                             *s = *d;
                         }
-                        eval.evaluate(t, &mut scratch)?;
+                        eval.evaluate(k, t, &mut scratch)?;
                         for (d, v) in dy.iter_mut().zip(scratch.iter().skip(1)) {
                             *d = *v;
                         }
@@ -345,45 +351,24 @@ pub fn boundary_properties(
     Ok(result)
 }
 
-fn brep_box(_b: &Brep) -> Result<Extent3d> {
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmBrep::CalculateBoundingBox",
-        "query.brep",
-    ))
+fn face_box(k: &Kernel, b: &Brep, f: FaceId) -> Result<Extent3d> {
+    crate::query::face::p1::calculate_bounding_box(k, b, f, false)
 }
-fn face_box(_b: &Brep, _f: FaceId) -> Result<Extent3d> {
-    // UNPORTED(query.face_p1): SmFace::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmFace::CalculateBoundingBox",
-        "query.face_p1",
-    ))
+fn faces(b: &Brep) -> Result<Vec<FaceId>> {
+    crate::topology::brep::p1::faces(b, None)
 }
-fn faces(_b: &Brep) -> Result<Vec<FaceId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetFaces
-    Err(SolidError::unported("SmBrep::GetFaces", "topology.brep_p1"))
+fn edges(b: &Brep) -> Result<Vec<EdgeId>> {
+    crate::topology::brep::p1::edges(b, None)
 }
-fn edges(_b: &Brep) -> Result<Vec<EdgeId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetEdges
-    Err(SolidError::unported("SmBrep::GetEdges", "topology.brep_p1"))
+fn vertices(b: &Brep) -> Result<Vec<VertexId>> {
+    crate::topology::brep::p1::vertices(b, None)
 }
-fn vertices(_b: &Brep) -> Result<Vec<VertexId>> {
-    // UNPORTED(topology.brep_p1): SmBrep::GetVertices
-    Err(SolidError::unported(
-        "SmBrep::GetVertices",
-        "topology.brep_p1",
-    ))
+/// `SmRegion::IsVoid` as a C truth value (`UNSURE`, 2, counts as void).
+fn region_void(b: &Brep, r: RegionId) -> Result<bool> {
+    Ok(b.region(r)?.is_void() != 0)
 }
-fn region_void(_b: &Brep, _r: RegionId) -> Result<bool> {
-    // UNPORTED(topology.shell): SmRegion::IsVoid
-    Err(SolidError::unported("SmRegion::IsVoid", "topology.shell"))
-}
-fn manifold_solid(_b: &Brep) -> Result<bool> {
-    // UNPORTED(topology.brep_p2): SmBrep::IsManifoldSolid
-    Err(SolidError::unported(
-        "SmBrep::IsManifoldSolid",
-        "topology.brep_p2",
-    ))
+fn manifold_solid(b: &Brep) -> Result<bool> {
+    crate::topology::brep::p2::is_manifold_solid(b)
 }
 fn add(total: &mut PreciseProperties, delta: &PreciseProperties, density: f64) {
     total.area += delta.area;
@@ -407,7 +392,7 @@ pub fn brep_properties(
     behavior: MassPropertyBehavior,
     attributes: &PropertyAttributes<'_>,
 ) -> Result<PreciseProperties> {
-    let bbox = brep_box(b)?;
+    let bbox = qbrep::calculate_bounding_box(k, b, BoundingBoxOptions::default())?;
     let size = bbox.size();
     let estimated = size.z.max(size.x.max(size.y));
     let estimated = estimated * estimated / 100.0;
@@ -498,7 +483,7 @@ pub fn brep_properties(
             EntityRef::Edge(e),
             Vec3::new(behavior.density, behavior.edge_radius, 0.0),
         )?;
-        let delta = edge_properties(b, e, accuracy, origin, mass.y)?;
+        let delta = edge_properties(k, b, e, accuracy, origin, mass.y)?;
         if mass.x < EFF_ZERO {
             mass.x = 1.0;
         }
@@ -554,7 +539,7 @@ fn area_estimate(bbox: &Extent3d) -> f64 {
 }
 /// `SmApiFaceComputeArea`: clamps accuracy and integrates only area.
 pub fn face_area(k: &Kernel, b: &Brep, f: FaceId, accuracy: f64) -> Result<f64> {
-    let bbox = face_box(b, f)?;
+    let bbox = face_box(k, b, f)?;
     Ok(face_properties(
         k,
         b,
@@ -571,7 +556,7 @@ pub fn face_area(k: &Kernel, b: &Brep, f: FaceId, accuracy: f64) -> Result<f64> 
 }
 /// `SmApiFaceComputeCentroid`: one area/first-moment integration.
 pub fn face_centroid(k: &Kernel, b: &Brep, f: FaceId, accuracy: f64) -> Result<(f64, Point3)> {
-    let bbox = face_box(b, f)?;
+    let bbox = face_box(k, b, f)?;
     let origin = bbox.mid();
     let p = face_properties(
         k,
@@ -609,7 +594,7 @@ pub fn brep_volume(
     attributes: &PropertyAttributes<'_>,
 ) -> Result<f64> {
     valid_api_number(accuracy)?;
-    let bbox = brep_box(b)?;
+    let bbox = qbrep::calculate_bounding_box(k, b, BoundingBoxOptions::default())?;
     Ok(brep_properties(
         k,
         b,

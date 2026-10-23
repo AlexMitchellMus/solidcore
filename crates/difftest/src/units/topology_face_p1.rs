@@ -3,8 +3,9 @@
 //!
 //! Every op runs on a B-rep of unit `topology.vertexuse` (upstream `.smb` files, faces of
 //! B-spline surfaces or real `SmPlane`s, wire edges, the `my_test_topology` network): the
-//! C++ side builds a real `SmBrep`, gives its faces and edges the plain B-spline copies of
-//! analytic geometry (what the Rust import rebuilds, keeping the owners) and runs the
+//! C++ side builds a real `SmBrep`, preserves exactly exported analytic surfaces and
+//! gives other surfaces and edge curves the plain B-spline copies the Rust import
+//! rebuilds (keeping the owners), then runs the
 //! `SmFace` member on the selected face; the Rust side imports the graph that unit's shim
 //! exports (with each edge curve owned by its edge, as upstream) and runs the port. Face
 //! and loop selectors are taken modulo their counts. Both sides produce one flat record
@@ -37,9 +38,9 @@
 //! reports those cases as deferred to `cpp-crash-guard:UB-137`; they never become
 //! comparable.
 //!
-//! **Not compared.** The normalisation to plain B-splines means `MoveSeam`'s analytic
-//! branch (`CopyAndAddAnalytics` of the joined surface) and the conic UV trim curve and
-//! edge curve paths (`SwapUV`'s conic mirrors) are never compared with the C++.
+//! **Not compared.** Edge curves and UV trim curves are still imported as plain
+//! B-splines (except lines), so conic curve paths (`SwapUV`'s conic mirrors) are not
+//! compared with the C++. Exactly exported analytic surface branches are retained.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -300,7 +301,11 @@ fn resolve(i: &Inputs) -> Result<Resolved, HarnessError> {
     r.face = shared::sel(i.face.max(0), n_f);
     match &mut r.op {
         OpIn::Oriented { loop_, .. } => {
-            *loop_ = if *loop_ < 0 { -1 } else { shared::sel(*loop_, n_l) };
+            *loop_ = if *loop_ < 0 {
+                -1
+            } else {
+                shared::sel(*loop_, n_l)
+            };
         }
         OpIn::LoopRoundTrip { loop_ } => {
             if n_l == 0 {
@@ -369,7 +374,10 @@ fn status<T>(r: &Result<T, SolidError>) -> Result<f64, Fail> {
 fn key_of(e: EntityRef) -> ObjectRef {
     let (type_code, key) = match e {
         EntityRef::Face(f) => (fp2::TYPE, 1 + u64::from(f.index())),
-        EntityRef::Edge(x) => (solidcore::topology::edge::TYPE, 1 << 40 | u64::from(x.index())),
+        EntityRef::Edge(x) => (
+            solidcore::topology::edge::TYPE,
+            1 << 40 | u64::from(x.index()),
+        ),
         EntityRef::Edgeuse(x) => (16005, 2 << 40 | u64::from(x.index())),
         EntityRef::Loop(x) => (16003, 3 << 40 | u64::from(x.index())),
         _ => (0, 4 << 40),
@@ -419,7 +427,7 @@ fn put_domain(o: &mut Vec<f64>, d: &Extent2d) {
 }
 
 /// A curve as samples (the shim's `fp1_put_curve`).
-fn put_curve(o: &mut Vec<f64>, c: Option<&Curve>) {
+fn put_curve(k: &Kernel, o: &mut Vec<f64>, c: Option<&Curve>) {
     let Some(c) = c else {
         o.push(-1.0);
         return;
@@ -433,7 +441,7 @@ fn put_curve(o: &mut Vec<f64>, c: Option<&Curve>) {
         } else {
             ivl.min() + f64::from(i) / 4.0 * (ivl.max() - ivl.min())
         };
-        let p = c.evaluate_point(t).unwrap_or_default();
+        let p = c.evaluate_point(k, t).unwrap_or_default();
         o.extend([p.x, p.y, p.z]);
     }
 }
@@ -465,21 +473,23 @@ fn put_orientation(o: &mut Vec<f64>, b: &Brep) {
     }
 }
 
-fn put_uv_curves(o: &mut Vec<f64>, b: &Brep) {
+fn put_uv_curves(k: &Kernel, o: &mut Vec<f64>, b: &Brep) {
     for (_, eu) in b.edgeuses().iter() {
-        put_curve(o, eu.uv_trim_curve.as_ref());
+        put_curve(k, o, eu.uv_trim_curve.as_ref());
     }
 }
 
 fn surf_param(code: u8) -> Result<SurfParamType, Fail> {
-    SurfParamType::from_code(u64::from(code)).ok_or_else(|| Fail::Harness(harness("SmSurfParamType")))
+    SurfParamType::from_code(u64::from(code))
+        .ok_or_else(|| Fail::Harness(harness("SmSurfParamType")))
 }
 
-fn tri(code: u8) -> Tri {
+fn tri(code: u8) -> Result<Tri, Fail> {
     match code {
-        0 => Tri::False,
-        1 => Tri::True,
-        _ => Tri::Unsure,
+        0 => Ok(Tri::False),
+        1 => Ok(Tri::True),
+        2 => Ok(Tri::Unsure),
+        _ => Err(Fail::Harness(harness("SmBoolean"))),
     }
 }
 
@@ -492,17 +502,13 @@ fn face_props(p: Option<PropsIn>) -> Result<Option<FaceProps<H>>, Fail> {
     fp.bad_crossed_seam_dir = surf_param(p.crossed)?;
     fp.bad_missing_seam_dir = surf_param(p.missing)?;
     fp.bad_near_miss_seam_dir = surf_param(p.near_miss)?;
-    fp.closed_u = tri(p.closed_u);
-    fp.closed_v = tri(p.closed_v);
+    fp.closed_u = tri(p.closed_u)?;
+    fp.closed_v = tri(p.closed_v)?;
     Ok(Some(fp))
 }
 
 /// Reads one classification of the probe (`tgt_only n mid_class*n`).
-fn read_class(
-    k: &Kernel,
-    v: &[f64],
-    at: &mut usize,
-) -> Result<CurveClassification<H>, Fail> {
+fn read_class(k: &Kernel, v: &[f64], at: &mut usize) -> Result<CurveClassification<H>, Fail> {
     let mut next = || -> Result<f64, Fail> {
         let x = v
             .get(*at)
@@ -518,7 +524,10 @@ fn read_class(
     for i in 0..n {
         let pc = PointClassType::from_code(next()? as i32)
             .ok_or_else(|| Fail::Harness(harness("probe point class")))?;
-        c.at_mut(i).map_err(|e| fail(&e))?.mid.set_class_object(pc, None);
+        c.at_mut(i)
+            .map_err(|e| fail(&e))?
+            .mid
+            .set_class_object(pc, None);
     }
     Ok(c)
 }
@@ -529,7 +538,14 @@ fn read_class(
 fn probe(
     k: &Kernel,
     i: &Inputs,
-) -> Result<Option<(fp1::SeamProblem, CurveClassification<H>, CurveClassification<H>)>, Fail> {
+) -> Result<
+    Option<(
+        fp1::SeamProblem,
+        CurveClassification<H>,
+        CurveClassification<H>,
+    )>,
+    Fail,
+> {
     let mut v = vec![i.face as f64];
     let path = shared::path_of(&i.brep)?;
     v.extend(brep_block(&i.brep)?);
@@ -559,6 +575,7 @@ fn probe(
 /// Such cases are deferred to `cpp-crash-guard:UB-137`.
 #[allow(clippy::too_many_arguments)]
 fn seam_guard(
+    k: &Kernel,
     b: &Brep,
     f: FaceId,
     props: Option<PropsIn>,
@@ -577,8 +594,8 @@ fn seam_guard(
         .ok_or_else(|| Fail::Harness(harness("face without surface")))?;
     let nat = s.natural_uv_domain();
     // (as the shim: the face properties' closed flag or the real surface)
-    let real_u = s.is_periodic(&nat, Sp::U).map_err(|e| fail(&e))?;
-    let real_v = s.is_periodic(&nat, Sp::V).map_err(|e| fail(&e))?;
+    let real_u = s.is_periodic(k, &nat, Sp::U).map_err(|e| fail(&e))?;
+    let real_v = s.is_periodic(k, &nat, Sp::V).map_err(|e| fail(&e))?;
     let (per_u, per_v) = match props {
         Some(p) => (p.closed_u != 0 || real_u, p.closed_v != 0 || real_v),
         None => (real_u, real_v),
@@ -698,7 +715,7 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
                     o.extend(t.loops.iter().map(|&n| n as f64));
                     o.push(t.curves.len() as f64);
                     for c in &t.curves {
-                        put_curve(&mut o, Some(c));
+                        put_curve(&k, &mut o, Some(c));
                     }
                 }
                 Err(_) => o.extend([0.0, 0.0]),
@@ -730,11 +747,9 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
             o.push(0.0);
             let face = b.face(f).map_err(e)?;
             put_domain(&mut o, &face.uv_domain);
-            o.push(flag(
-                face.surface
-                    .as_ref()
-                    .is_some_and(|s| s.owner() == Some(key_of(EntityRef::Face(f)))),
-            ));
+            o.push(flag(face.surface.as_ref().is_some_and(|s| {
+                s.owner() == Some(key_of(EntityRef::Face(f)))
+            })));
         }
         OpIn::LoopRoundTrip { loop_ } => {
             let l = LoopId::from_index(*loop_ as u32);
@@ -755,11 +770,14 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
             }
             let r = fp1::remove_uv_trim_curves(&mut b, f);
             o.push(status(&r)?);
-            put_uv_curves(&mut o, &b);
+            put_uv_curves(&k, &mut o, &b);
         }
         OpIn::SwapUv => {
             let face = b.face(f).map_err(e)?;
-            if face.surface.is_none() || face.faceuse.is_none() || !reaches_brep(&b, f).map_err(e)? {
+            if face.surface.is_none()
+                || face.faceuse.is_none()
+                || !reaches_brep(&b, f).map_err(e)?
+            {
                 o.push(NULL_DEREF);
                 return Ok(o);
             }
@@ -767,7 +785,7 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
             o.push(status(&r)?);
             put_domain(&mut o, &b.face(f).map_err(e)?.uv_domain);
             put_orientation(&mut o, &b);
-            put_uv_curves(&mut o, &b);
+            put_uv_curves(&k, &mut o, &b);
         }
         OpIn::Shrink => {
             let r = fp1::shrink_geometry(&k, &mut b, f, ko);
@@ -792,7 +810,7 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
             let Some((problem, mut cu, mut cv)) = probe(&k, i)? else {
                 return Err(Fail::Harness(harness("probe refused a face with surface")));
             };
-            if seam_guard(&b, f, *props, problem, &cu, &cv, false, *split)? {
+            if seam_guard(&k, &b, f, *props, problem, &cu, &cv, false, *split)? {
                 return Err(merge_deferred());
             }
             let fp = face_props(*props)?;
@@ -832,11 +850,21 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
             let Some((problem, mut cu, mut cv)) = probe(&k, i)? else {
                 return Err(Fail::Harness(harness("probe refused a face with surface")));
             };
-            if seam_guard(&b, f, *props, problem, &cu, &cv, true, false)? {
+            if seam_guard(&k, &b, f, *props, problem, &cu, &cv, true, false)? {
                 return Err(merge_deferred());
             }
             let fp = face_props(*props)?;
-            let r = fp1::split_at_seam(&k, &mut b, f, &mut cu, &mut cv, problem, fp.as_ref(), &|_| None);
+            let r = fp1::split_at_seam(
+                &k,
+                &mut b,
+                f,
+                &mut cu,
+                &mut cv,
+                problem,
+                fp.as_ref(),
+                &NoGeometry,
+                &|_| None,
+            );
             o.push(status(&r)?);
             let r = r.unwrap_or_default();
             o.extend([
@@ -878,13 +906,15 @@ const PROPS: [Option<PropsTuple>; 7] = [
 ];
 
 fn props_of(p: Option<PropsTuple>) -> Option<PropsIn> {
-    p.map(|(crossed, missing, near_miss, closed_u, closed_v)| PropsIn {
-        crossed,
-        missing,
-        near_miss,
-        closed_u,
-        closed_v,
-    })
+    p.map(
+        |(crossed, missing, near_miss, closed_u, closed_v)| PropsIn {
+            crossed,
+            missing,
+            near_miss,
+            closed_u,
+            closed_v,
+        },
+    )
 }
 
 /// Every op variant for one face selector `s` (`v` varies the flags).
@@ -930,10 +960,7 @@ fn gen_inputs(rng: &mut Rng) -> Inputs {
     };
     let s = rng.below(64) as i64;
     let ops = ops_for(s, rng.below(1 << 10) as usize);
-    let op = rng
-        .choose(&ops)
-        .cloned()
-        .unwrap_or(OpIn::Rect);
+    let op = rng.choose(&ops).cloned().unwrap_or(OpIn::Rect);
     Inputs { brep, face: s, op }
 }
 
@@ -991,7 +1018,13 @@ impl UnitDiff for Runner {
             }
         }
         // seam ops with every face-property variant on the periodic files
-        for file in ["sphere.smb", "torus.smb", "cone.smb", "surf_rev.smb", "vase_rev.smb"] {
+        for file in [
+            "sphere.smb",
+            "torus.smb",
+            "cone.smb",
+            "surf_rev.smb",
+            "vase_rev.smb",
+        ] {
             for (pi, p) in PROPS.iter().enumerate() {
                 for s in 0..4i64 {
                     for (j, op) in [

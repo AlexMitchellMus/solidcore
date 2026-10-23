@@ -55,8 +55,10 @@ use crate::nurbs::b_spline_curve::BoundingBoxRequest;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::p1::LocationType;
 use crate::nurbs::b_spline_surface::{BSplineSurface, IsoCurveOptions, SurfParamType};
+use crate::surface::surface::p1::SurfaceIntersectContext;
 use crate::surface::surface::p2::{
-    base_global_surface_intersect, Surface, SurfaceIntersection, SurfaceKind, B_SPLINE_SURFACE_TYPE,
+    base_global_surface_intersect_in, Surface, SurfaceIntersection, SurfaceKind,
+    B_SPLINE_SURFACE_TYPE,
 };
 
 use super::p1::{
@@ -190,6 +192,30 @@ impl SurfOfRevolution {
     /// `SM_ERR_OUTSIDE_OF_DOMAIN` (1020) when the domain is not inside the current NURB
     /// domain (within `SM_EFF_ZERO_PARAM`); those of [`Self::make_nurb`].
     pub fn trim_with_domain(&mut self, k: &Kernel, new_nurb_uv_domain: &Extent2d) -> Result<()> {
+        self.trim_with_domain_using(
+            k,
+            new_nurb_uv_domain,
+            &|s, k, uv| s.convert_uv_from_nurbs_to_step_or_written(k, uv),
+            &Self::own_sweep_iso,
+        )
+    }
+
+    /// [`Self::trim_with_domain`] with upstream's virtual calls taken from a derived
+    /// class (`SmSphere`, `SmTorus`): `convert` is its `ConvertUVFromNURBSToSTEP` (in
+    /// `UpdateAnalyticalDomain`) and `iso` its `CreateIsoParametricCurve` (in
+    /// `MakeNurb`, `Reparameterize` and `RebuildPolarConverter`).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Self::trim_with_domain`]; those of `convert` (upstream ignores the
+    /// status and reads the corner it may not have written).
+    pub(crate) fn trim_with_domain_using(
+        &mut self,
+        k: &Kernel,
+        new_nurb_uv_domain: &Extent2d,
+        convert: &dyn Fn(&Self, &Kernel, Point2) -> Result<Point2>,
+        iso: SweepIsoFn<'_>,
+    ) -> Result<()> {
         // locals
         let current = self.base.natural_uv_domain();
 
@@ -208,17 +234,28 @@ impl SurfOfRevolution {
         }
 
         // Update just the analytic domain and the GenCurve (both analytic and NURB)
-        ignore_status(self.update_analytical_domain(k, new_nurb_uv_domain))?;
+        let min_anal_uv = convert(self, k, new_nurb_uv_domain.min())?;
+        let max_anal_uv = convert(self, k, new_nurb_uv_domain.max())?;
+        ignore_status(self.update_analytical_domain_from_step(
+            k,
+            new_nurb_uv_domain,
+            min_anal_uv,
+            max_anal_uv,
+        ))?;
 
         // rebuild Nurbs surface from updated analytic domain. (right shape - wrong
         // UVDomain)
-        self.make_nurb(k)?;
+        self.make_nurb_with_sweep_params_using(k, None, iso)?;
 
-        // adjust Nurb Surface UVDomain
-        ignore_status(self.reparameterize(k, new_nurb_uv_domain))?;
+        // adjust Nurb Surface UVDomain (GetOrCreateGwNurbPointer: the virtual MakeNurb
+        // when missing, status ignored)
+        if self.base.nurb.is_none() {
+            ignore_status(self.make_nurb_with_sweep_params_using(k, None, iso))?;
+        }
+        ignore_status(self.reparameterize_using(k, new_nurb_uv_domain, iso))?;
 
         // rebuild the sweep polar converter
-        ignore_status(self.rebuild_polar_converter(k, &Self::own_sweep_iso))?;
+        ignore_status(self.rebuild_polar_converter(k, iso))?;
         Ok(())
     }
 
@@ -349,7 +386,7 @@ impl SurfOfRevolution {
         let mut gen = self.gen()?.clone();
         let mut ivl = gen_step_interval(&gen)?;
         if self.is_out_of_bounds_enabled() {
-            ivl = gen_max_analytic_domain(&gen)?;
+            ivl = gen_max_analytic_domain(k, &gen)?;
             if let Some(b) = gen_base_mut(&mut gen) {
                 b.set_out_of_bounds_enabled(true);
             }
@@ -377,7 +414,7 @@ impl SurfOfRevolution {
 
         // for points on closed genCurve seams - update point classification
         if solutions.len() > 1
-            && gen.is_closed(&ivl, tol_3d)?
+            && gen.is_closed(k, &ivl, tol_3d)?
             && ivl.is_value_on_boundary(v, EFF_ZERO).0
         {
             location = match location {
@@ -594,12 +631,49 @@ impl SurfOfRevolution {
         approx_tol_3d: Option<f64>,
         ang_tol_rad: Option<f64>,
     ) -> Result<SurfaceIntersection> {
+        self.global_surface_intersect_in::<crate::surface::surface::p4::NoObject>(
+            this,
+            k,
+            uv_domain,
+            other,
+            other_uv_domain,
+            use_surface_edges,
+            approx_tol_3d,
+            ang_tol_rad,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn global_surface_intersect_in<O: SolutionObject + Copy + PartialEq>(
+        &self,
+        this: &Surface,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        other: &Surface,
+        other_uv_domain: &Extent2d,
+        use_surface_edges: [bool; 2],
+        approx_tol_3d: Option<f64>,
+        ang_tol_rad: Option<f64>,
+        context: Option<SurfaceIntersectContext<'_, O>>,
+    ) -> Result<SurfaceIntersection> {
         let mut need_nurb_intersection = true;
         let mut out = SurfaceIntersection::default();
         match other.kind() {
             SurfaceKind::Plane(p) => {
                 let (more, found) =
                     self.intersect_with_plane(k, p, other_uv_domain, approx_tol_3d)?;
+                need_nurb_intersection = more;
+                out = found;
+            }
+            SurfaceKind::Cone(c) if c.type_code() == crate::surface::surface::p2::CONE_TYPE => {
+                let (more, found) = self.intersect_with_cone(
+                    k,
+                    uv_domain,
+                    c.as_ref(),
+                    other_uv_domain,
+                    approx_tol_3d,
+                )?;
                 need_nurb_intersection = more;
                 out = found;
             }
@@ -614,16 +688,32 @@ impl SurfOfRevolution {
                 need_nurb_intersection = more;
                 out = found;
             }
-            // (IntersectWithSphere / IntersectWithCone once those kinds exist)
-            SurfaceKind::BSpline(_)
+            SurfaceKind::Sphere(o) => {
+                let (more, found) = self.intersect_with_sphere(
+                    k,
+                    uv_domain,
+                    o.as_ref(),
+                    other_uv_domain,
+                    approx_tol_3d,
+                )?;
+                need_nurb_intersection = more;
+                out = found;
+            }
+            // (an SmCylinder is not SmCone_TYPE, an SmTorus not SmSurfOfRevolution_TYPE:
+            // the default branch)
+            SurfaceKind::Torus(_)
+            | SurfaceKind::SurfOfExtrusion(_)
+            | SurfaceKind::BSpline(_)
+            | SurfaceKind::Cone(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
+            | SurfaceKind::OffsetSurface(_)
             | SurfaceKind::SrfInVolume(_) => {}
         }
 
         // If we're here, then analytic intersections were not found
         if need_nurb_intersection {
-            let more = base_global_surface_intersect(
+            let more = base_global_surface_intersect_in(
                 k,
                 this,
                 uv_domain,
@@ -632,6 +722,7 @@ impl SurfOfRevolution {
                 use_surface_edges,
                 approx_tol_3d,
                 ang_tol_rad,
+                context,
             )?;
             out.curves_3d.extend(more.curves_3d);
             out.surface1_uv_curves.extend(more.surface1_uv_curves);
@@ -676,13 +767,20 @@ impl SurfOfRevolution {
         let plane_base;
         let tgt: &BSplineSurface = match test_surface.kind() {
             SurfaceKind::BSpline(s) => s,
+            // (an SmSurfOfExtrusion is an SmBSplineSurface: its NURB is tested)
+            SurfaceKind::SurfOfExtrusion(s) => s.base(),
             SurfaceKind::Plane(p) => {
                 plane_base = p.base_for_query();
                 &plane_base
             }
-            SurfaceKind::SurfOfRevolution(_)
+
+            SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
+            | SurfaceKind::SurfOfRevolution(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
+            | SurfaceKind::OffsetSurface(_)
             | SurfaceKind::SrfInVolume(_) => return Ok(None),
         };
         Self::is_nurb_surface_surf_of_revolution_base(k, tgt, tolerance_scale)
@@ -765,7 +863,7 @@ impl SurfOfRevolution {
             .curve;
 
         // no work - GenCurve is degenerate
-        if iso_crv.is_degenerate(scaled_zero, None)? {
+        if iso_crv.is_degenerate(k, scaled_zero, None)? {
             return Ok(None);
         }
 
@@ -774,7 +872,7 @@ impl SurfOfRevolution {
         let linear_tol =
             EFF_ZERO * (1.0 + crate::math::max2(min_pnt.max_dimension(), max_pnt.max_dimension()));
         let planar = iso_curve.is_planar(k, scaled_zero)?;
-        let linear = iso_curve.is_linear(linear_tol, false)?;
+        let linear = iso_curve.is_linear(k, linear_tol, false)?;
         let is_linear = linear.linear;
 
         // verify that plane containing genCurve also contains refFrame Z axis

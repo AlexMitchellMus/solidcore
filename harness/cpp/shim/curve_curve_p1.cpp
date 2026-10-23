@@ -19,6 +19,7 @@
 #include "sc_shim.h"
 
 #include "StdAfx.h"
+#include <SmAxis2Placement.h>
 #include <SmBSplineCurve.h>
 #include <SmContext.h>
 #include <SmCurve.h>
@@ -105,6 +106,7 @@ static SmStatus sm_RefineCCSolutions( SmSolutionArray &rSolutions )
       sSolIvl2.AddValue( rSol.m_vStart.m_adParameters[1] );
       sSolIvl2.AddValue( rSol.m_vEnd  .m_adParameters[1] );
       bReverse2 = ( rSol.m_vStart.m_adParameters[1] > rSol.m_vEnd.m_adParameters[1] );
+
 
       // The start:
       if ( rSol.m_vStart.m_dSolutionValue > 0.000001 )
@@ -238,6 +240,7 @@ static SmStatus sm_TestSpanAccuracy
       // power-series expansion.
       SER( crCurve.EvaluatePoint( dCrvParam, sCrvPnt ));
 
+
       // when matching parameterization
       if ( bMatchParameterization )
         {
@@ -346,6 +349,23 @@ SmCurve* read_curve(Rd& rd, const SmContext& ctx)
     return new (ctx) SmHermiteCurve(p1, d1, p2, d2, dim);
 }
 
+// The transforms `nt (O X Y has_s S)*nt` after a curve block, applied to `c` in order.
+void read_transforms(Rd& rd, SmCurve* c)
+{
+    int64_t nt = rd.idx();
+    for (int64_t i = 0; i < nt; i++)
+    {
+        SmPoint3d o = rd.vec();
+        SmVector3d x = rd.vec();
+        SmVector3d y = rd.vec();
+        bool has_s = rd.flag();
+        SmVector3d s = rd.vec();
+        SmAxis2Placement a2p;
+        a2p.SetCanonical(o, x, y);
+        c->Transform(a2p, has_s ? &s : NULL);
+    }
+}
+
 // `nv V[nv]` into `vecs`; returns NULL for nv == 0.
 const SmVector3d* read_vecs(Rd& rd, SmVector3d vecs[4])
 {
@@ -421,6 +441,7 @@ void run(int32_t op, Rd& rd, const SmContext& ctx, std::vector<double>& o)
     case OP_GPS:
     {
         SmCurve* c = read_curve(rd, ctx);
+        read_transforms(rd, c);
         double a = rd.num();
         double b = rd.num();
         SmSolverOperationType sop = (SmSolverOperationType)rd.idx();

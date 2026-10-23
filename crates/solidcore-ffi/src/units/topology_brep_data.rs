@@ -48,6 +48,7 @@
 //! For upstream test files ([`Request::upstream_file`]) the simulation stops, and
 //! accepts, at the first geometry kind it does not know.
 
+use crate::validate::bad;
 use crate::{check, FfiError, SC_ERR_BUFFER};
 
 mod sys {
@@ -193,15 +194,12 @@ pub fn run(req: &Request) -> Result<Vec<Item>, FfiError> {
     Err(FfiError::Status(SC_ERR_BUFFER))
 }
 
-fn bad(m: impl Into<String>) -> FfiError {
-    FfiError::InvalidArgument(m.into())
-}
-
 /// `SM_BIG_ULONG`: `SmTArray::SetSize` refuses this size or more.
 const BIG_ULONG: u64 = 99_999_999;
 /// Largest attribute count / index accepted (as the Rust port).
 const MAX_ATTR: u64 = 1 << 20;
-/// Deepest composite curve nesting accepted.
+/// Deepest composite curve nesting accepted (as the Rust reader's
+/// `solidcore::topology::database_io::MAX_READ_NESTING`: each composite is one level).
 const MAX_DEPTH: u32 = 32;
 /// Largest B-spline control point count accepted (per direction).
 const MAX_POINTS: i64 = 100_000;

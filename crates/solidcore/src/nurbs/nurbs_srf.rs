@@ -29,12 +29,17 @@
 //!   `Option` (upstream: `pSurface` may be NULL); `sm_ComputeSurfConstants`'s NULL
 //!   check (`NER`) has no counterpart.
 //! - `sm_ComputeNetConstants` ignores the flags of its `N_SrfEvalPt` calls (the
-//!   output point then keeps its previous value); the port returns the error. It
-//!   only fails for surfaces upstream cannot evaluate (invalid knot vectors).
+//!   output point then keeps its previous value), and so does the port: its points are
+//!   function-scope as upstream's, and a failed evaluation leaves them unchanged. This
+//!   only happens for surfaces whose knot vector the constructor's fixup left
+//!   non-monotone (a Bezier patch with a reversed domain, PR #147 round 4); returning
+//!   the error there, as earlier, failed the whole surface-cache build where upstream
+//!   builds it.
 //! - The memory-layout helpers (`sm_ComputeNurbSurfaceSize`,
 //!   `sm_InitNurbSurfaceMemory`) have no counterpart: [`Surface`] owns its storage.
 //!   [`allocate_nurb_surface`] returns a zero-filled surface (upstream
-//!   `smos_Calloc`); [`copy_nurb_surface`] returns a compact copy (upstream returns
+//!   `smos_Calloc`), allocated fallibly: `InvalidInput` where the size overflows or
+//!   does not fit in memory (upstream: `NULL`); [`copy_nurb_surface`] returns a compact copy (upstream returns
 //!   NULL for a surface without a net, which a [`Surface`] cannot be).
 //! - `sm_DecomposeSrf` fills a caller-allocated array of `nsu * nsv` patches (degrees
 //!   `p`, `q`, highest knot indices `2p+1`, `2q+1`, as its caller
@@ -206,23 +211,31 @@ pub fn compute_net_constants(
     let mut acc = Acc::default();
     let (n, m) = (sur.n(), sur.m());
 
+    // Upstream declares these points once for the whole function, and the surface
+    // evaluations of the UV section below ignore their status (`N_SrfEvalPt` leaves its
+    // output untouched on failure), so a failed evaluation reuses the value the earlier
+    // sections left: they are function-scope here too.
+    let mut line_pnt = Vec3::ZERO;
+    let mut last_point = Vec3::ZERO;
+    let mut try_point = Vec3::ZERO;
+    let mut next = Vec3::ZERO;
+    let mut line_vec = Vec3::ZERO;
+
     // Save time - quit when the turning angle exceeds a huge limit.
     let mut over_limit = false;
 
     // VDir chord height and VDir angle from the control polygon: for all u rows.
     for jj in 0..=n {
-        let mut line_pnt = Vec3::ZERO;
-        let mut line_vec = Vec3::ZERO;
         // For the chord height, get a base segment from the first to the last control
         // point on this net row.
         if req.v_chord_height {
             line_pnt = pt(sur, jj, 0)?;
-            let last_point = pt(sur, jj, m)?;
+            last_point = pt(sur, jj, m)?;
             line_vec = last_point - line_pnt;
             let mut try_index = m.wrapping_sub(1);
             while line_vec.length_squared() < EFF_ZERO_SQ {
                 // If first and last point coincide try a middle point.
-                let try_point = pt(sur, jj, try_index)?;
+                try_point = pt(sur, jj, try_index)?;
                 line_vec = try_point - line_pnt;
                 if try_index == 0 {
                     // Singular point: just continue on.
@@ -241,7 +254,7 @@ pub fn compute_net_constants(
         // Hold u constant and loop across the v points.
         let mut curr = pt(sur, jj, 0)?;
         for ii in 1..=m {
-            let next = pt(sur, jj, ii)?;
+            next = pt(sur, jj, ii)?;
 
             // V chord height.
             if req.v_chord_height {
@@ -298,16 +311,14 @@ pub fn compute_net_constants(
 
     // UDir chord height and UDir angle from the control polygon: for all v columns.
     for jj in 0..=m {
-        let mut line_pnt = Vec3::ZERO;
-        let mut line_vec = Vec3::ZERO;
         if req.u_chord_height {
             line_pnt = pt(sur, 0, jj)?;
-            let last_point = pt(sur, n, jj)?;
+            last_point = pt(sur, n, jj)?;
             line_vec = last_point - line_pnt;
             let mut try_index = n.wrapping_sub(1);
             while line_vec.length_squared() < EFF_ZERO_SQ {
                 // If first and last point coincide try a middle point.
-                let try_point = pt(sur, try_index, jj)?;
+                try_point = pt(sur, try_index, jj)?;
                 line_vec = try_point - line_pnt;
                 if try_index == 0 {
                     // Singular point: just continue on.
@@ -325,7 +336,7 @@ pub fn compute_net_constants(
 
         let mut curr = pt(sur, 0, jj)?;
         for ii in 1..=n {
-            let next = pt(sur, ii, jj)?;
+            next = pt(sur, ii, jj)?;
 
             // U chord height.
             if req.u_chord_height {
@@ -393,16 +404,22 @@ pub fn compute_net_constants(
             let mut dv = jjf;
 
             // Get a base segment from the first to the last corner of this diagonal.
-            let line_pnt = eval(0.0, dv)?;
-            let last_point = eval(1.0, 1.0 - dv)?;
+            if let Ok(pnt) = eval(0.0, dv) {
+                line_pnt = pnt;
+            }
+            if let Ok(pnt) = eval(1.0, 1.0 - dv) {
+                last_point = pnt;
+            }
 
-            let mut line_vec = last_point - line_pnt;
+            line_vec = last_point - line_pnt;
             let mut itr = 0_i32;
             while itr <= 3 && line_vec.length_squared() < EFF_ZERO_SQ {
                 // If first and last point coincide try a middle point.
                 let du = 1.0 - 0.25 * f64::from(itr);
                 dv = f64::from(1 - jj) + ds * f64::from(itr);
-                let try_point = eval(du, dv)?;
+                if let Ok(pnt) = eval(du, dv) {
+                    try_point = pnt;
+                }
                 line_vec = try_point - line_pnt;
                 itr += 1;
             }
@@ -416,7 +433,9 @@ pub fn compute_net_constants(
             for itr in 1..=3_i32 {
                 let du = 0.0 + 0.25 * f64::from(itr);
                 let dv = jjf - ds * f64::from(itr);
-                let next = eval(du, dv)?;
+                if let Ok(pnt) = eval(du, dv) {
+                    next = pnt;
+                }
                 let ch_sq = chord_sq(line_pnt, line_vec, next);
                 if ch_sq > acc.uv_ch {
                     acc.uv_ch = ch_sq;
@@ -668,7 +687,8 @@ pub fn compute_surf_constants(
 /// `q` and highest knot indices `r`, `s` (`sm_AllocateNurbSurface`, memory from
 /// `smos_Calloc`).
 ///
-/// Errors with `InvalidInput` when an index is `usize::MAX` (no storage size).
+/// Errors with `InvalidInput` when an index is `usize::MAX` (no storage size) or the
+/// storage does not fit in memory (upstream: `smos_Calloc` returns `NULL`).
 pub fn allocate_nurb_surface(
     n: usize,
     m: usize,
@@ -683,9 +703,39 @@ pub fn allocate_nurb_surface(
     };
     let rows = n.checked_add(1).ok_or_else(too_big)?;
     let cols = m.checked_add(1).ok_or_else(too_big)?;
-    let net = vec![vec![CPoint::default(); cols]; rows];
-    let u = vec![0.0; r.checked_add(1).ok_or_else(too_big)?];
-    let v = vec![0.0; s.checked_add(1).ok_or_else(too_big)?];
+    let u_len = r.checked_add(1).ok_or_else(too_big)?;
+    let v_len = s.checked_add(1).ok_or_else(too_big)?;
+    let no_memory = || SolidError::InvalidInput {
+        operation: OP_ALLOC,
+        reason: "storage too large for memory",
+    };
+    // upstream allocates the whole surface as one smos_Calloc block and returns NULL
+    // (NERN) when that fails: reserve (and release) a block of that size first, so
+    // an absurd size fails before any row is allocated
+    let total = rows
+        .checked_mul(cols)
+        .and_then(|k| k.checked_mul(size_of::<CPoint>()))
+        .and_then(|b| b.checked_add(u_len.checked_add(v_len)?.checked_mul(size_of::<f64>())?))
+        .ok_or_else(too_big)?;
+    Vec::<u8>::new()
+        .try_reserve_exact(total)
+        .map_err(|_| no_memory())?;
+    let filled = |len: usize, value: f64| -> Result<Vec<f64>> {
+        let mut a = Vec::new();
+        a.try_reserve_exact(len).map_err(|_| no_memory())?;
+        a.resize(len, value);
+        Ok(a)
+    };
+    let mut net: Vec<Vec<CPoint>> = Vec::new();
+    net.try_reserve_exact(rows).map_err(|_| no_memory())?;
+    for _ in 0..rows {
+        let mut row = Vec::new();
+        row.try_reserve_exact(cols).map_err(|_| no_memory())?;
+        row.resize(cols, CPoint::default());
+        net.push(row);
+    }
+    let u = filled(u_len, 0.0)?;
+    let v = filled(v_len, 0.0)?;
     Surface::new(net, p, q, u, v)
 }
 
@@ -1169,5 +1219,16 @@ mod tests {
         assert_eq!(copy_nurb_surface(&s), s);
         assert!(!is_nsrf_degenerate(&s, EFF_ZERO).unwrap());
         assert!(is_nsrf_degenerate(&s, 100.0).unwrap());
+    }
+
+    #[test]
+    fn allocate_absurd_surface_is_an_error() {
+        // fuzz regressions (nurbs.nurbs_srf fuzz00748, fuzz01665): absurd sizes
+        // aborted the allocation
+        // (sizes beyond the 47-bit address space, so no test machine can grant them)
+        assert!(allocate_nurb_surface(1 << 46, 1, 1, 1, 3, 3).is_err());
+        assert!(allocate_nurb_surface(1 << 62, 1 << 62, 1, 1, 3, 3).is_err());
+        assert!(allocate_nurb_surface(1, 1, 1, 1, 1 << 47, 3).is_err());
+        assert!(allocate_nurb_surface(1, 1, 1, 1, 3, 3).is_ok());
     }
 }

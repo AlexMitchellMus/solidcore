@@ -15,8 +15,8 @@
 //!   `Extrusion`, `Global`), then the op status and, on success, its outputs. `State`:
 //!   `0` and the state. `Plane`, `Cylinder`, `Extrusion`: an intersection `more n
 //!   curves ntypes types nuv1 has_uv1... nuv2 has_uv2... ndev devs`. `Global`: the same
-//!   (`more` always `0`), or the status `-3` when upstream would run the general
-//!   intersector (the special case needs more, or the other surface has none).
+//!   (`more` always `0`), also when upstream runs the general intersector (the
+//!   special case needs more, or the other surface has none).
 //!   `Trim`: the state. A state is the `surface.surf_of_extrusion_p1` state, a curve
 //!   its curve layout.
 //! * [`is_nurb`]: the source status (`0` for an inline NURB), the statuses of the
@@ -32,14 +32,17 @@
 //! independent axes, planes with positive UV scales and ordered domains (a plane normal
 //! longer than `1e-6`), ordered edit domains with positive extents, clamped inline test
 //! NURBs with `1 <= degree <= n` and at most [`MAX_INDEX`] control points per direction
-//! and finite tolerances. The shim answers `SC_ERR_ARG` for a control point to perturb
+//! and finite tolerances, and for plane intersections (`Plane`, `Global` with a plane) a
+//! built surface whose extrusion vector's squared length does not overflow (upstream
+//! dereferences the failed generator projection). The shim answers `SC_ERR_ARG` for a control point to perturb
 //! outside the test NURB and for a cylinder whose bottom iso circle upstream would make
 //! from unset values (as the `surface.cone_p1` shim tests it).
 
 use crate::units::surface_surf_of_extrusion_p1::{
-    axes, check_knots, check_points, domain, finite, push_surf, Surf,
+    axes, check_knots, check_points, domain, finite, push_surf, Build, Surf,
 };
 use crate::units::topology_brep_data::Sim;
+use crate::validate::bad;
 use crate::{call_with_buffer, FfiError};
 
 /// Largest control point index of an inline test NURB.
@@ -277,8 +280,15 @@ impl Op {
 /// `OP_IS_NURB`.
 const OP_IS_NURB: i32 = 5;
 
-fn bad(msg: impl Into<String>) -> FfiError {
-    FfiError::InvalidArgument(msg.into())
+/// A built surface whose extrusion vector's squared length overflows.
+fn vector_overflows(src: &Src) -> bool {
+    let Src::Built(s) = src else {
+        return false;
+    };
+    let v = match &s.build {
+        Build::Canonical { vec } | Build::Ctor { vec, .. } | Build::Infinite { vec } => vec,
+    };
+    !len(*v).is_finite()
 }
 
 fn flag(b: bool) -> f64 {
@@ -481,7 +491,21 @@ impl Enc {
         Ok(())
     }
 
-    fn op(&mut self, op: &Op) -> Result<(), FfiError> {
+    fn op(&mut self, src: &Src, op: &Op) -> Result<(), FfiError> {
+        // IntersectWithPlane projects the generator along the extrusion vector
+        // (CreatePlaneProjection, status ignored) and dereferences the projected curve:
+        // N_CrvProjectOntoPlane fails for a vector whose squared length overflows
+        if matches!(
+            op,
+            Op::Plane { .. }
+                | Op::Global {
+                    target: Target::Plane(_),
+                    ..
+                }
+        ) && vector_overflows(src)
+        {
+            return Err(bad("extrusion vector length overflows"));
+        }
         match op {
             Op::State => {}
             Op::Plane {
@@ -612,7 +636,7 @@ pub fn surface_op(src: &Src, op: &Op) -> Result<Vec<f64>, FfiError> {
         bytes: Vec::new(),
     };
     e.src(src)?;
-    e.op(op)?;
+    e.op(src, op)?;
     call(op.code(), &e.o, &e.bytes)
 }
 

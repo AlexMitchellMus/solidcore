@@ -26,7 +26,7 @@ use solidcore::surface::surf_of_revolution::SurfOfRevolution;
 use solidcore::surface::surface::Surface;
 use solidcore::topology::brep_cache::BrepCache;
 use solidcore::topology::brep_cache::{arena_identity, CacheObject, CacheSource};
-use solidcore::topology::{Brep, BrepId, FaceuseId};
+use solidcore::topology::{Brep, BrepId, EdgeId, FaceId, FaceuseId, VertexId};
 use solidcore::{Result, SolidError};
 use solidcore_ffi::units::query_api_queries as ffi;
 
@@ -68,6 +68,17 @@ fn output(op: i32, r: Result<Vec<f64>>) -> Output {
     match r {
         Ok(v) => decode(op, v),
         Err(e) => Output::unported(&e).unwrap_or_else(|| decode(op, vec![status(&e)])),
+    }
+}
+
+/// The case ops are `1..=25`; the FFI's `0` and `26` are the graph exports
+/// [`imported`] reads the native B-rep through, which have no Rust counterpart to
+/// compare.
+fn compared_op(op: i32) -> std::result::Result<(), HarnessError> {
+    if (1..=25).contains(&op) {
+        Ok(())
+    } else {
+        Err(HarnessError::new(format!("op {op} is not a compared query (1..=25)")))
     }
 }
 
@@ -290,6 +301,23 @@ fn imported(k: &Kernel, a: &[f64; 22], export_op: i32) -> std::result::Result<Br
         .get(3)
         .copied()
         .ok_or_else(|| HarnessError::new("missing face count"))?;
+    // the B-rep's face, edge and vertex lists in their list order follow the metadata
+    let (n_e, n_v) = (
+        counts
+            .get(7)
+            .copied()
+            .ok_or_else(|| HarnessError::new("missing edge count"))?,
+        counts
+            .get(9)
+            .copied()
+            .ok_or_else(|| HarnessError::new("missing vertex count"))?,
+    );
+    let lists_len = 3 + count + n_e + n_v;
+    let lists_at = raw
+        .len()
+        .checked_sub(lists_len)
+        .ok_or_else(|| HarnessError::new("missing list orders"))?;
+    let (raw, lists) = raw.split_at(lists_at);
     let tail = count
         .checked_mul(2)
         .ok_or_else(|| HarnessError::new("face metadata overflow"))?;
@@ -299,6 +327,32 @@ fn imported(k: &Kernel, a: &[f64; 22], export_op: i32) -> std::result::Result<Br
         .ok_or_else(|| HarnessError::new("missing face metadata"))?;
     let (graph, metadata) = raw.split_at(split);
     let (mut b, types) = crate::units::topology_edgeuse_p1::import_with_types(graph)?;
+    {
+        let mut at = 0usize;
+        let mut read_list = |expect: usize| -> std::result::Result<Vec<u32>, HarnessError> {
+            let n = lists.get(at).copied().unwrap_or(-1.0);
+            if n < 0.0 || n as usize != expect {
+                return Err(HarnessError::new("list order length mismatch"));
+            }
+            let v: Vec<u32> = lists
+                .get(at + 1..at + 1 + expect)
+                .ok_or_else(|| HarnessError::new("short list order"))?
+                .iter()
+                .map(|&i| i as u32)
+                .collect();
+            at += 1 + expect;
+            Ok(v)
+        };
+        let fl = read_list(count)?;
+        let el = read_list(n_e)?;
+        let vl = read_list(n_v)?;
+        b.set_face_list(fl.into_iter().map(FaceId::from_index).collect())
+            .map_err(|e| HarnessError::new(format!("face list: {e}")))?;
+        b.set_edge_list(el.into_iter().map(EdgeId::from_index).collect())
+            .map_err(|e| HarnessError::new(format!("edge list: {e}")))?;
+        b.set_vertex_list(vl.into_iter().map(VertexId::from_index).collect())
+            .map_err(|e| HarnessError::new(format!("vertex list: {e}")))?;
+    }
     let faces: Vec<_> = b.faces().ids().collect();
     let (metadata, remainder) = metadata.as_chunks::<2>();
     if !remainder.is_empty() {
@@ -360,6 +414,9 @@ fn imported(k: &Kernel, a: &[f64; 22], export_op: i32) -> std::result::Result<Br
         {
             let _ = surface.set_owner(Some(arena_identity(CacheObject::Face(id))));
         }
+        // the face's tolerance, as the face upstream answers GetTolerance with
+        b.sync_face_surface_tolerance(id)
+            .map_err(|e| HarnessError::new(e.to_string()))?;
     }
     Ok(b)
 }
@@ -463,6 +520,12 @@ impl TopologyObjects<Object> for Objects<'_> {
         };
         Ok(self.b(o)?.edge(e)?.interval)
     }
+    fn edge_tolerance(&self, o: Object) -> Result<f64> {
+        let CacheObject::Edge(e) = o.1 else {
+            return Err(SolidError::sm_err("edge handle"));
+        };
+        Ok(self.b(o)?.edge(e)?.tolerance)
+    }
     fn surface_face(&self, o: Object) -> Result<Option<Object>> {
         let Some(owner) = self.surface(o)?.face()? else {
             return Ok(None);
@@ -507,6 +570,12 @@ impl TopologyObjects<Object> for Objects<'_> {
         };
         Ok(self.b(o)?.face(f)?.tolerance)
     }
+    fn face_entity(&self, o: Object) -> Option<(&Brep, FaceId)> {
+        let CacheObject::Face(f) = o.1 else {
+            return None;
+        };
+        Some((self.b(o).ok()?, f))
+    }
     fn surface_owner(&self, o: Object) -> Result<Option<Object>> {
         self.surface_face(o)
     }
@@ -529,7 +598,7 @@ impl TopologyObjects<Object> for Objects<'_> {
     }
 }
 
-fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>> {
+fn topology(k: &mut Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>> {
     let a = &i.data;
     let point = v([a[11], a[12], a[13]]);
     let index = a[20] as usize;
@@ -592,7 +661,7 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
             }
         }
         12 => {
-            let hit = api::find_edge(b, point)?;
+            let hit = api::find_edge(k, b, point)?;
             o.push(hit.index as f64);
             o.push(hit.parameter);
         }
@@ -625,7 +694,8 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
         18 => o.push(f64::from(
             api::face_classify_uv(
                 k,
-                b,
+                // (the classification may attach missing UV trim curves: a copy)
+                &mut b.clone(),
                 f.ok_or_else(missing)?,
                 solidcore::math::Point2::new(a[11], a[12]),
             )?
@@ -639,6 +709,7 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
                 &mut o,
                 api::face_closest_point(
                     k,
+                    &(BrepId::from_index(0), b),
                     &objects,
                     (BrepId::from_index(0), face),
                     point,
@@ -656,7 +727,7 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
         23 => o.push(f64::from(
             api::edge_classify_parameter(k, b, e.ok_or_else(missing)?, a[14])?.code(),
         )),
-        24 => vec(&mut o, api::edge_tangent(b, e.ok_or_else(missing)?, a[14])?),
+        24 => vec(&mut o, api::edge_tangent(k, b, e.ok_or_else(missing)?, a[14])?),
         25 => vec(&mut o, api::vertex_get_point(b, vert.ok_or_else(missing)?)?),
         _ => return Err(missing()),
     }
@@ -669,6 +740,7 @@ impl UnitDiff for Runner {
     }
     fn run_cpp(&self, c: &Case) -> std::result::Result<Output, HarnessError> {
         let i: Inputs = c.parse()?;
+        compared_op(i.op)?;
         let mut input = i.data.to_vec();
         if let Some(other) = i.other_box {
             input.extend(other);
@@ -685,8 +757,9 @@ impl UnitDiff for Runner {
     }
     fn run_rust(&self, c: &Case) -> std::result::Result<Output, HarnessError> {
         let i: Inputs = c.parse()?;
+        compared_op(i.op)?;
         let a = &i.data;
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         if a[16] != 0. {
             return Err(HarnessError::new(
                 "null pointers have no typed Rust equivalent; use the FFI contract tests",
@@ -736,7 +809,7 @@ impl UnitDiff for Runner {
                 } else {
                     Brep::new()
                 };
-                topology(&k, &i, &b, &second)
+                topology(&mut k, &i, &b, &second)
             }
         };
         Ok(output(i.op, result))

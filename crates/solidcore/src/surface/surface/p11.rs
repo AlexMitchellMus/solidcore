@@ -57,6 +57,14 @@
 //!   array (UB-121; the port always returns the curves); `LocalSurfaceIntersect`'s
 //!   boundary retries bind `!bFoundSolution` to the minimum test only (WR-99;
 //!   reproduced).
+//! - **Surface cache history.** `LiftCurve` reads the surface cache's continuity arrays
+//!   (its C0 knot splits, and `GetDomainWithContinuity`'s C1 domain around each
+//!   segment's start point) without building the cache's tree, so the arrays are empty
+//!   while no earlier call has built it, and a point off the natural domain then gets
+//!   the whole domain instead of one the end-knot discontinuities shrink to nothing.
+//!   Both reads go through [`continuity_surface_cache`], which follows the surface's
+//!   cache slot ([`Surface::cache_tree_state`]; `plan/findings.md`, "surface cache
+//!   history").
 //! - Debug-only work (`SM_ASSERT`, `SM_DEBUG_CODE` drawing) is not ported.
 
 use crate::curve::composite_curve::CompositeCurve;
@@ -82,7 +90,6 @@ use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::{sqrt, Point3, Vec3};
 use crate::kernel::Kernel;
 use crate::math::{max2, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT, PI};
-use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::knots::Side;
@@ -90,8 +97,8 @@ use crate::surface::plane::Plane;
 use crate::surface::surface_cache::p1::{BezierPatch, SurfaceCache};
 
 use super::p1::{
-    get_surface_cache, is_node_valid, is_point_valid, surface_to_evaluate, CsGlobalSolver,
-    SsiNormalizeEnfo, SspIntersectEnfo,
+    continuity_surface_cache, is_node_valid, surface_to_evaluate, CsGlobalSolver, SsiNormalizeEnfo,
+    SspIntersectEnfo, SurfaceSolveContext,
 };
 use super::p2::{cs_are_perpen_disjoint_in, intersect_and_split, original_surface, set_up_breaks};
 use super::p5::{cs_identical_solutions, DropPointOptions};
@@ -129,6 +136,7 @@ struct BoundaryHit {
 /// plane normal arguments are unused there and dropped; the guess is a copy.
 #[allow(clippy::too_many_arguments)]
 fn intersect_srf_bndry_crv(
+    k: &Kernel,
     surface: &Surface,
     uv_domain: &Extent2d,
     curve_surface: &Surface,
@@ -141,6 +149,7 @@ fn intersect_srf_bndry_crv(
     // (sm_IntersectSrfBndryCrv, surface.surface_p8; the deviation and the tangency flag
     // are not read here)
     let hit = super::p8::intersect_srf_bndry_crv(
+        k,
         surface,
         uv_domain,
         curve_surface,
@@ -162,6 +171,7 @@ fn intersect_srf_bndry_crv(
 /// value; `None` when not found. `opt_vectors` empty is upstream's `NULL`.
 #[allow(clippy::too_many_arguments)]
 fn local_surface_solve(
+    k: &Kernel,
     surface: &Surface,
     uv_domain: &Extent2d,
     other: &Surface,
@@ -172,6 +182,7 @@ fn local_surface_solve(
     other_uv: Point2,
 ) -> Result<Option<([f64; 4], f64)>> {
     let found = surface.local_surface_solve(
+        k,
         uv_domain,
         other,
         other_uv_domain,
@@ -261,6 +272,7 @@ impl Surface {
     /// checked upstream); `SM_ERR` past [`MAX_RECURSION`] self calls.
     pub fn local_surface_intersect(
         &self,
+        k: &Kernel,
         uv_domain: &Extent2d,
         other: &Surface,
         other_uv_domain: &Extent2d,
@@ -270,6 +282,7 @@ impl Surface {
         opts: &LocalSurfaceIntersectOptions,
     ) -> Result<Option<SurfaceIntersection>> {
         self.local_surface_intersect_at(
+            k,
             uv_domain,
             other,
             other_uv_domain,
@@ -284,6 +297,7 @@ impl Surface {
     #[allow(clippy::too_many_lines)]
     fn local_surface_intersect_at(
         &self,
+        k: &Kernel,
         uv_domain: &Extent2d,
         other: &Surface,
         other_uv_domain: &Extent2d,
@@ -321,6 +335,7 @@ impl Surface {
                 // intersect OtherSurface with const u Surface boundary isoParameterCurve
                 // (SER: checked; sm_IntersectSrfBndryCrv over the other surface's kind)
                 let hit = intersect_srf_bndry_crv(
+                    k,
                     other,
                     other_uv_domain,
                     self,
@@ -351,6 +366,7 @@ impl Surface {
                 // intersect OtherSurface with const v Surface boundary isoParameterCurve
                 // (SER: checked)
                 let hit = intersect_srf_bndry_crv(
+                    k,
                     other,
                     other_uv_domain,
                     self,
@@ -379,6 +395,7 @@ impl Surface {
                 // intersect Surface with const u OtherSurface boundary isoParameterCurve
                 // (SER: checked)
                 let hit = intersect_srf_bndry_crv(
+                    k,
                     self,
                     uv_domain,
                     other,
@@ -407,6 +424,7 @@ impl Surface {
                 // intersect Surface with const v OtherSurface boundary isoParameterCurve
                 // (SER: checked)
                 let hit = intersect_srf_bndry_crv(
+                    k,
                     self,
                     uv_domain,
                     other,
@@ -432,8 +450,8 @@ impl Surface {
         let guess = [uv_guess.x, uv_guess.y, other_uv_guess.x, other_uv_guess.y];
 
         // get Surface GuessPoints (SER: checked; each surface's own EvaluatePoint)
-        let pnt1 = self.evaluate_point(uv_guess)?;
-        let pnt2 = other.evaluate_point(other_uv_guess)?;
+        let pnt1 = self.evaluate_point(k, uv_guess)?;
+        let pnt2 = other.evaluate_point(k, other_uv_guess)?;
 
         // Select through point for plane containing answer
         let plane_orig: Point3 = if this_on_boundary {
@@ -453,8 +471,8 @@ impl Surface {
             n
         } else {
             // (SER: checked; EvaluateNormal(uv, TRUE, TRUE) of each surface's kind)
-            let norm1 = self.evaluate_normal(uv_guess, Side::Left, Side::Left)?;
-            let norm2 = other.evaluate_normal(other_uv_guess, Side::Left, Side::Left)?;
+            let norm1 = self.evaluate_normal(k, uv_guess, Side::Left, Side::Left)?;
+            let norm2 = other.evaluate_normal(k, other_uv_guess, Side::Left, Side::Left)?;
             steepest_descent = true;
             let n = norm1.cross(norm2);
 
@@ -473,6 +491,7 @@ impl Surface {
         // instance SmSSPIntersectENFO surf/surf/plane NewtonRaphson Solver
         let ssi_node_tol = distance_tolerance / 100.0;
         let mut eval_fun = SspIntersectEnfo::new(
+            k,
             self,
             other,
             steepest_descent,
@@ -507,6 +526,7 @@ impl Surface {
             // do intersection over with guessPoint = iteration Solution so that
             // BoundarySolutions can be found and selected.
             return self.local_surface_intersect_at(
+                k,
                 uv_domain,
                 other,
                 other_uv_domain,
@@ -553,6 +573,7 @@ impl Surface {
             if are_same(sv[0], uv_domain.min().x) || are_same(sv[0], uv_domain.max().x) {
                 // (SER: checked)
                 let hit = intersect_srf_bndry_crv(
+                    k,
                     other,
                     other_uv_domain,
                     self,
@@ -576,6 +597,7 @@ impl Surface {
             {
                 // (SER: checked)
                 let hit = intersect_srf_bndry_crv(
+                    k,
                     other,
                     other_uv_domain,
                     self,
@@ -598,6 +620,7 @@ impl Surface {
             {
                 // (SER: checked)
                 let hit = intersect_srf_bndry_crv(
+                    k,
                     self,
                     uv_domain,
                     other,
@@ -620,6 +643,7 @@ impl Surface {
             {
                 // (SER: checked)
                 let hit = intersect_srf_bndry_crv(
+                    k,
                     self,
                     uv_domain,
                     other,
@@ -642,8 +666,8 @@ impl Surface {
         //       surfaces are a minDist from one another. A TangentTouching case
         if found_solution && steepest_descent {
             // get angle between surface normals at the solution (SER: checked)
-            let norm1 = self.evaluate_normal(uv, Side::Left, Side::Left)?;
-            let norm2 = other.evaluate_normal(uv_other, Side::Left, Side::Left)?;
+            let norm1 = self.evaluate_normal(k, uv, Side::Left, Side::Left)?;
+            let norm2 = other.evaluate_normal(k, uv_other, Side::Left, Side::Left)?;
             let angle = norm1.angle_between(norm2)?;
 
             // If the angle is within 3 degrees of being parallel then try refining
@@ -652,6 +676,7 @@ impl Surface {
                 // find point of closest approach between the two surfaces in current
                 // solution neighborhood (SER: checked)
                 let sol_norm = local_surface_solve(
+                    k,
                     self,
                     uv_domain,
                     other,
@@ -662,8 +687,8 @@ impl Surface {
                     uv_other,
                 )?;
                 // (SER: checked)
-                let p1 = self.evaluate_point(uv)?;
-                let p2 = other.evaluate_point(uv_other)?;
+                let p1 = self.evaluate_point(k, uv)?;
+                let p2 = other.evaluate_point(k, uv_other)?;
                 let distance_between_points = p1.distance(p2);
 
                 // use new solution when deviation is better
@@ -679,16 +704,16 @@ impl Surface {
         // 6th - when a Non-Zero Deviation solution has been found
         if found_solution {
             // (SER: checked)
-            let p1 = self.evaluate_point(uv)?;
-            let p2 = other.evaluate_point(uv_other)?;
+            let p1 = self.evaluate_point(k, uv)?;
+            let p2 = other.evaluate_point(k, uv_other)?;
             let mut dist = p1.distance(p2);
 
             // If we don't converge to an exact answer then try converging to
             // surf/surf/plane intersection with a variation on the set of equations
             if dist > EFF_ZERO {
                 // (SER: checked)
-                let norm1 = self.evaluate_normal(uv, Side::Left, Side::Left)?;
-                let norm2 = other.evaluate_normal(uv_other, Side::Left, Side::Left)?;
+                let norm1 = self.evaluate_normal(k, uv, Side::Left, Side::Left)?;
+                let norm2 = other.evaluate_normal(k, uv_other, Side::Left, Side::Left)?;
                 let angle = norm1.angle_between(norm2)?;
 
                 // If the angle is within 3 degrees of being perpendicular than we should
@@ -712,6 +737,7 @@ impl Surface {
                     // set up surf/surf/plane intersection NewtonRaphson solver using
                     // different eqns
                     let mut eval_fun2 = SsiNormalizeEnfo::new(
+                        k,
                         self,
                         other,
                         EFF_ZERO * EFF_ZERO,
@@ -732,8 +758,8 @@ impl Surface {
                         let sv2 = four(&r2.x)?;
                         let (uv2, uv_other2) = split(&sv2);
                         // (SER: checked)
-                        let pt1 = self.evaluate_point(uv2)?;
-                        let pt2 = other.evaluate_point(uv_other2)?;
+                        let pt1 = self.evaluate_point(k, uv2)?;
+                        let pt2 = other.evaluate_point(k, uv_other2)?;
                         let dist2 = pt1.distance(pt2);
 
                         // save solution when deviation is better than previous solution
@@ -751,6 +777,7 @@ impl Surface {
                         // current solution neighborhood (SER: checked; the found flag
                         // overwrites bFoundSolution upstream)
                         let sol = local_surface_solve(
+                            k,
                             self,
                             uv_domain,
                             other,
@@ -763,8 +790,8 @@ impl Surface {
                         if let Some((x, _)) = sol {
                             // get the Surf1Point/Surf2Point gap size (SER: checked)
                             let (uv2, uv_other2) = split(&x);
-                            let pt1 = self.evaluate_point(uv2)?;
-                            let pt2 = other.evaluate_point(uv_other2)?;
+                            let pt1 = self.evaluate_point(k, uv2)?;
+                            let pt2 = other.evaluate_point(k, uv_other2)?;
                             let dist2 = pt1.distance(pt2);
 
                             // save solution when this is a better answer
@@ -938,6 +965,7 @@ impl<'t, O: SolutionObject + 't> CsGlobalSolver<'t, '_, O> {
     /// `SmExtent1d::Intersect`, `LocalCurveIntersect` and `sm_SCLocalSolve`.
     #[allow(clippy::too_many_lines)]
     pub fn local_solve_branch(&mut self, branch: &Branch) -> Result<bool> {
+        let k = self.kernel;
         let curve_node = *self.base.branch_node(branch, 0)?;
         let surface_node = *self.base.branch_node(branch, 1)?;
         let surface_id = branch
@@ -981,7 +1009,7 @@ impl<'t, O: SolutionObject + 't> CsGlobalSolver<'t, '_, O> {
             }
             // Do a test to see if the range of vectors possible with the curve do not
             // cross the perpendicular of the normal field.
-            let polar = cache.polar_box_unstored(surface_id)?;
+            let polar = cache.polar_box_unstored(k, surface_id)?;
             let [start, end] = span.aux.ends;
             let line_vec = end - start;
             if line_vec.length_squared() > EFF_ZERO_SQ {
@@ -1031,10 +1059,17 @@ impl<'t, O: SolutionObject + 't> CsGlobalSolver<'t, '_, O> {
                 // (SER: checked; LocalCurveIntersect is not overridden)
                 let hit = view
                     .eval
-                    .local_curve_intersect(&uv_domain, curve, &ivl, tol, uv_guess, t_guess)?;
+                    .local_curve_intersect(k, &uv_domain, curve, &ivl, tol, uv_guess, t_guess)?;
                 if let Some(h) = hit {
                     // for points within the surface's trim boundary
-                    if is_point_valid(surface_tree.owner(), cache, h.uv) {
+                    if super::p1::is_point_valid_with(
+                        k,
+                        surface_tree.owner(),
+                        cache,
+                        h.uv,
+                        None,
+                        self.face_queries,
+                    )? {
                         let mut solution = Solution::new();
                         solution.num_variables = 3;
                         *solution.start.param_mut(0)? = h.t;
@@ -1067,7 +1102,14 @@ impl<'t, O: SolutionObject + 't> CsGlobalSolver<'t, '_, O> {
         // discontinuities at the ends of the curves or boundaries of the patches.
         let mut skip_normalize = false;
         if (op == SolverOperation::Minimize || op == SolverOperation::Maximize)
-            && cs_are_perpen_disjoint_in(curve_tree, &curve_node, &surface_node, cache, surface_id)?
+            && cs_are_perpen_disjoint_in(
+                k,
+                curve_tree,
+                &curve_node,
+                &surface_node,
+                cache,
+                surface_id,
+            )?
         {
             skip_normalize = true;
         }
@@ -1078,7 +1120,7 @@ impl<'t, O: SolutionObject + 't> CsGlobalSolver<'t, '_, O> {
             surface_box: surface_node.bbox,
             curve_box: Some(curve_node.bbox),
         };
-        let k = self.kernel.ok_or(SolidError::null_pointer(OP_CS))?;
+
         // (SER: checked)
         let solutions: SolutionArray<O> = sc_local_solve(
             k,
@@ -1106,7 +1148,14 @@ impl<'t, O: SolutionObject + 't> CsGlobalSolver<'t, '_, O> {
 
             // for points within the surface's trim boundary
             let uv_found = Point2::new(solution.start.param(1)?, solution.start.param(2)?);
-            if is_point_valid(surface_tree.owner(), cache, uv_found) {
+            if super::p1::is_point_valid_with(
+                k,
+                surface_tree.owner(),
+                cache,
+                uv_found,
+                None,
+                self.face_queries,
+            )? {
                 let key = if op == SolverOperation::Minimize
                     || op == SolverOperation::Maximize
                     || op == SolverOperation::Signed3dDirectedMinimize
@@ -1147,7 +1196,7 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CsGlobalSolver<'t, '_, O
         sol2: &Solution<O>,
     ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
         // (surface::surface::p5)
-        cs_identical_solutions(&self.base, self.surface, sol1, sol2)
+        cs_identical_solutions(self.kernel, &self.base, self.surface, sol1, sol2)
     }
 }
 
@@ -1182,6 +1231,7 @@ impl<'t, O: SolutionObject + 't> SsGlobalSolver<'t, '_, O> {
         objects: [Option<O>; 2],
         process_boundary_curves: bool,
     ) -> Result<()> {
+        let k = self.kernel;
         let op = self.base.operation;
         let tol = self.base.tolerance_3d;
         let c0 = ct(ContinuityType::C0);
@@ -1248,7 +1298,7 @@ impl<'t, O: SolutionObject + 't> SsGlobalSolver<'t, '_, O> {
                 // SmIsoCurve(*pSrfEval, dir, value, bFlag) over the evaluated surface
                 let ic = boundary_iso_curve(own_view.eval, dir, value, from_left)?;
                 // (IsDegenerate's default tolerance SM_EFF_ZERO; the iso curve's kind)
-                if ic.is_degenerate(EFF_ZERO, None)? {
+                if ic.is_degenerate(k, EFF_ZERO, None)? {
                     continue;
                 }
                 // the patch continuities and the curve's (the other direction's)
@@ -1328,6 +1378,7 @@ impl<'t, O: SolutionObject + 't> SsGlobalSolver<'t, '_, O> {
     /// `sm_SCLocalSolve`, `LocalSurfaceSolve` and `sm_PassSSConvergenceTest`.
     #[allow(clippy::too_many_lines)]
     pub fn local_solve_branch(&mut self, branch: &Branch) -> Result<bool> {
+        let k = self.kernel;
         let node1 = *self.base.branch_node(branch, 0)?;
         let node2 = *self.base.branch_node(branch, 1)?;
         let id1 = branch
@@ -1418,6 +1469,7 @@ impl<'t, O: SolutionObject + 't> SsGlobalSolver<'t, '_, O> {
                 // (SER: checked; cpSurf1/cpSurf2 are the original surfaces, over their
                 // natural domains, with boundary testing)
                 let found = view1.eval.local_surface_intersect(
+                    k,
                     &view1.eval.natural_uv_domain(),
                     view2.eval,
                     &view2.eval.natural_uv_domain(),
@@ -1431,9 +1483,21 @@ impl<'t, O: SolutionObject + 't> SsGlobalSolver<'t, '_, O> {
                     },
                 )?;
                 if let Some(x) = found {
-                    if is_point_valid(tree1.owner(), cache1, x.uv)
-                        && is_point_valid(tree2.owner(), cache2, x.other_uv)
-                    {
+                    if super::p1::is_point_valid_with(
+                        k,
+                        tree1.owner(),
+                        cache1,
+                        x.uv,
+                        None,
+                        self.face_queries,
+                    )? && super::p1::is_point_valid_with(
+                        k,
+                        tree2.owner(),
+                        cache2,
+                        x.other_uv,
+                        None,
+                        self.face_queries,
+                    )? {
                         let mut solution = Solution::new();
                         solution.num_variables = 4;
                         solution.solution_type = SolutionType::SingleValue;
@@ -1479,8 +1543,8 @@ impl<'t, O: SolutionObject + 't> SsGlobalSolver<'t, '_, O> {
             process_boundary_curves,
         )?;
 
-        let polar1 = cache1.polar_box_unstored(id1)?;
-        let polar2 = cache2.polar_box_unstored(id2)?;
+        let polar1 = cache1.polar_box_unstored(k, id1)?;
+        let polar2 = cache2.polar_box_unstored(k, id2)?;
         if op == SolverOperation::Signed3dDirectedMinimize {
             // Do a tight bounding box test in projected space to see if they are
             // disjoint
@@ -1511,6 +1575,7 @@ impl<'t, O: SolutionObject + 't> SsGlobalSolver<'t, '_, O> {
         let uv_guess2 = dom2.evaluate(0.5, 0.5);
         // (SER: checked; pSrfEval1->LocalSurfaceSolve: virtual, never overridden)
         let mut found = local_surface_solve(
+            k,
             view1.eval,
             &dom1,
             view2.eval,
@@ -1525,7 +1590,7 @@ impl<'t, O: SolutionObject + 't> SsGlobalSolver<'t, '_, O> {
             if op != SolverOperation::Signed3dDirectedMinimize {
                 let (uv, uv2) = split(&x);
                 // (SER: checked)
-                if !pass_ss_convergence_test(view1.eval, uv, view2.eval, uv2)? {
+                if !pass_ss_convergence_test(k, view1.eval, uv, view2.eval, uv2)? {
                     found = None;
                 }
             }
@@ -1544,9 +1609,21 @@ impl<'t, O: SolutionObject + 't> SsGlobalSolver<'t, '_, O> {
             solution.objects[0] = objects[0];
             solution.objects[1] = objects[1];
             let (uv1, uv2) = split(&x);
-            if is_point_valid(tree1.owner(), cache1, uv1)
-                && is_point_valid(tree2.owner(), cache2, uv2)
-            {
+            if super::p1::is_point_valid_with(
+                k,
+                tree1.owner(),
+                cache1,
+                uv1,
+                None,
+                self.face_queries,
+            )? && super::p1::is_point_valid_with(
+                k,
+                tree2.owner(),
+                cache2,
+                uv2,
+                None,
+                self.face_queries,
+            )? {
                 let key = if op == SolverOperation::Minimize || op == SolverOperation::Maximize {
                     SortKey::ByValueWithParameter
                 } else {
@@ -1607,13 +1684,13 @@ fn boundary_curves(
     let mut out = vec![Curve::from(c0), Curve::from(c1)];
     // (IsClosed of the surface's own kind, default tolerance, no continuity)
     if !surface
-        .is_closed(uv_domain, SurfParamType::U, None, false)?
+        .is_closed(k, uv_domain, SurfParamType::U, None, false)?
         .0
     {
         out.push(Curve::from(c2));
     }
     if !surface
-        .is_closed(uv_domain, SurfParamType::V, None, false)?
+        .is_closed(k, uv_domain, SurfParamType::V, None, false)?
         .0
     {
         out.push(Curve::from(c3));
@@ -1703,7 +1780,7 @@ impl Surface {
 
                 let crv_t = ivl.mid();
                 // (SE: status ignored)
-                if let Some(p) = ignored(other_crv.evaluate_point(crv_t))? {
+                if let Some(p) = ignored(other_crv.evaluate_point(k, crv_t))? {
                     crv_pt = p;
                 }
 
@@ -1729,7 +1806,7 @@ impl Surface {
                         continue;
                     };
 
-                    if copy.approximate_length(&ivl, 4, false)?.0 < approx_tol_3d {
+                    if copy.approximate_length(k, &ivl, 4, false)?.0 < approx_tol_3d {
                         continue;
                     }
 
@@ -1758,7 +1835,7 @@ fn extract_iso_curve(
     uv_curve: &Curve,
     interval: &Extent1d,
     approx_tol_3d: f64,
-) -> Result<Option<(BSplineCurve, f64)>> {
+) -> Result<Option<(Curve, f64)>> {
     // `sm_ExtractIsoCurve` takes an `SmBSplineCurve`: every `Curve` kind derived from it
     // has one as base. Other kinds cannot reach upstream's signature, so they are not
     // iso curves here.
@@ -1776,23 +1853,24 @@ fn extract_iso_curve(
     else {
         return Ok(None);
     };
-    // rp3dCurve is an SmBSplineCurve
-    let bspline = match iso.into_kind() {
-        CurveKind::BSpline(b) => b,
-        CurveKind::Line(l) => l.base().clone(),
-        CurveKind::Ellipse(e) => e.base().clone(),
-        CurveKind::Hyperbola(h) => h.base().clone(),
-        CurveKind::Parabola(p) => p.base().clone(),
-        _ => return Err(SolidError::sm_err(OP_LIFT)),
-    };
-    Ok(Some((bspline, 0.0)))
+    // rp3dCurve is an SmBSplineCurve: the iso curve keeps its own kind (an SmLine or
+    // conic is one; the caller's virtual calls dispatch on it)
+    match iso.kind() {
+        CurveKind::BSpline(_)
+        | CurveKind::Line(_)
+        | CurveKind::Ellipse(_)
+        | CurveKind::Hyperbola(_)
+        | CurveKind::Parabola(_) => Ok(Some((iso, 0.0))),
+        _ => Err(SolidError::sm_err(OP_LIFT)),
+    }
 }
 
 /// The lifted curve of [`Surface::lift_curve`].
 #[derive(Debug, Clone)]
 pub struct LiftedCurve {
-    /// `rp3dCurve`: the 3D curve `surface(uv_curve(interval))`.
-    pub curve: BSplineCurve,
+    /// `rp3dCurve`: the 3D curve `surface(uv_curve(interval))`, an `SmBSplineCurve`:
+    /// a B-spline, or the analytic iso curve (line or conic) `sm_ExtractIsoCurve` made.
+    pub curve: Curve,
     /// `rdMaxApproxDev`: the largest distance from the curve to the surface.
     pub max_approx_dev: f64,
 }
@@ -1804,15 +1882,14 @@ impl Surface {
     /// per segment between the surface's C0 knot lines (unless
     /// `skip_continuity_checks`) and joined into one curve.
     ///
-    /// Dispatch: `GetKnots` of the surface's own kind; the curve on surface holds a
-    /// B-spline surface.
+    /// Dispatch: `GetKnots` of the surface's own kind; the curve on surface preserves
+    /// that concrete surface dispatch.
     ///
     /// # Errors
     ///
     /// `SM_ERR` when no segment could be lifted or a segment's continuous domain is
     /// empty; `SM_ERR_NULL_POINTER` without a surface cache; those of the checked
-    /// (`SER`) calls; [`SolidError::Unported`] for a curve on a surface that is not a
-    /// B-spline (`SmCrvOnSurf` holds an `SmBSplineSurface` here).
+    /// (`SER`) calls.
     #[allow(clippy::too_many_lines)]
     pub fn lift_curve(
         &self,
@@ -1822,6 +1899,61 @@ impl Surface {
         interval: &Extent1d,
         approx_tol_3d: f64,
         skip_continuity_checks: bool,
+    ) -> Result<LiftedCurve> {
+        self.lift_curve_in::<crate::surface::surface::p4::NoObject>(
+            k,
+            uv_domain,
+            uv_curve,
+            interval,
+            approx_tol_3d,
+            skip_continuity_checks,
+            None,
+            None,
+        )
+    }
+
+    /// [`Surface::lift_curve`] through the caller's face-aware cache context:
+    /// `handle` names this surface in the cache, so a surface owned by a face can
+    /// reach that face when the continuity checks build its cache.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::lift_curve`] and of the context's cache preparation.
+    #[allow(clippy::too_many_arguments)]
+    pub fn lift_curve_with_context<O: Copy + PartialEq>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        uv_curve: &Curve,
+        interval: &Extent1d,
+        approx_tol_3d: f64,
+        skip_continuity_checks: bool,
+        context: &mut dyn SurfaceSolveContext<O>,
+        handle: Option<O>,
+    ) -> Result<LiftedCurve> {
+        self.lift_curve_in(
+            k,
+            uv_domain,
+            uv_curve,
+            interval,
+            approx_tol_3d,
+            skip_continuity_checks,
+            Some(context),
+            handle,
+        )
+    }
+
+    #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+    fn lift_curve_in<O: Copy + PartialEq>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        uv_curve: &Curve,
+        interval: &Extent1d,
+        approx_tol_3d: f64,
+        skip_continuity_checks: bool,
+        mut context: Option<&mut dyn SurfaceSolveContext<O>>,
+        handle: Option<O>,
     ) -> Result<LiftedCurve> {
         let mut max_approx_dev = 0.0;
 
@@ -1847,12 +1979,25 @@ impl Surface {
         } else {
             // Right now step surfaces will not be created that have discontinuities.
             if !matches!(self.kind(), SurfaceKind::Step(_)) {
-                // NER: no surface cache
-                let cache = match get_surface_cache::<()>(k, self, None) {
+                // NER: no surface cache (no GetTree: the continuity arrays are empty
+                // unless the cache's tree was built)
+                let cache = continuity_surface_cache(
+                    k,
+                    self,
+                    handle,
+                    context
+                        .as_mut()
+                        .map(|c| &mut **c as &mut dyn SurfaceSolveContext<O>),
+                );
+                let cache = match cache {
                     Ok(c) => c,
                     Err(e) if e.is_unported() => return Err(e),
                     Err(_) => return Err(SolidError::null_pointer(OP_LIFT)),
                 };
+
+                // the solutions of sm_IntersectAndSplit name crUVCurveToLift (the
+                // curve tree's owner), whose natural interval IdenticalSolutions reads
+                let lift_handle = BoundaryCurveHandle(0, uv_curve.natural_interval());
 
                 // for every U knot (SER: checked)
                 let (knots, _) = self.knots(SurfParamType::U, None)?;
@@ -1871,6 +2016,7 @@ impl Surface {
                             interval,
                             Point3::new(knot, 0.0, 0.0),
                             Vec3::new(1.0, 0.0, 0.0),
+                            Some(lift_handle),
                             &mut segments,
                         )?;
                     }
@@ -1893,6 +2039,7 @@ impl Surface {
                             interval,
                             Point3::new(0.0, knot, 0.0),
                             Vec3::new(0.0, 1.0, 0.0),
+                            Some(lift_handle),
                             &mut segments,
                         )?;
                     }
@@ -1901,8 +2048,8 @@ impl Surface {
 
             // get UVCurve knots and associated continuities (SER: checked; default
             // angle SM_CONTINUITY_ANGLE)
-            let (knots, _) = uv_curve.knots(None)?;
-            let (_, curve_conts) = uv_curve.calculate_continuities(CONTINUITY_ANGLE)?;
+            let (knots, _) = uv_curve.knots(k, None)?;
+            let (_, curve_conts) = uv_curve.calculate_continuities(k, CONTINUITY_ANGLE)?;
 
             // for every curve knot: the projected 3D curve's C0 break points
             for (j, c) in curve_conts.iter().enumerate() {
@@ -1912,24 +2059,7 @@ impl Surface {
             }
         }
 
-        let bss = match self.kind() {
-            SurfaceKind::BSpline(b) => b,
-            SurfaceKind::Plane(_)
-            | SurfaceKind::SurfOfRevolution(_)
-            | SurfaceKind::CurveBounded(_)
-            | SurfaceKind::SrfInVolume(_)
-            | SurfaceKind::Step(_) => {
-                // DISPATCH GAP: SmCrvOnSurf over a surface that is not a B-spline (the
-                // ported CrvOnSurf holds an SmBSplineSurface and would drop the kind's
-                // evaluation overrides). SmCrvOnSurf is ported, so this is a dispatch gap
-                // rather than a missing unit; the marker keeps it greppable.
-                // UNPORTED(curve.crv_on_surf): SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)
-                return Err(SolidError::unported(
-                    "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-                    "curve.crv_on_surf",
-                ));
-            }
-        };
+        let surface = self.clone_for_evaluation()?;
 
         let mut curves_3d: Vec<Curve> = Vec::new();
 
@@ -1952,7 +2082,7 @@ impl Surface {
 
             // the UV curve point and (non-zero) tangent just inside the segment
             // (SER: checked)
-            let pv = uv_curve.evaluate(ivl.min() + EFF_ZERO_SQRT, 1, true, true)?;
+            let pv = uv_curve.evaluate(k, ivl.min() + EFF_ZERO_SQRT, 1, true, true)?;
             let (Some(p0), Some(p1)) = (pv.first(), pv.get(1)) else {
                 return Err(SolidError::sm_err(OP_LIFT));
             };
@@ -1960,7 +2090,17 @@ impl Surface {
             let vec = Vec2::new(p1.x, p1.y);
 
             // get surface domain enclosing pnt that is at least SM_CT_C1 continuous
-            let seg_domain = self.domain_with_continuity(k, ContinuityType::C1, pnt, vec)?;
+            let seg_domain = match context.as_mut() {
+                Some(ctx) => self.domain_with_continuity_with_context(
+                    k,
+                    ContinuityType::C1,
+                    pnt,
+                    vec,
+                    &mut **ctx,
+                    handle,
+                )?,
+                None => self.domain_with_continuity(k, ContinuityType::C1, pnt, vec)?,
+            };
 
             // If we don't get some sort of a domain then error out.
             if seg_domain.size().length_squared() < EFF_ZERO_SQ {
@@ -1968,17 +2108,23 @@ impl Surface {
             }
 
             // define 3DCurve = SmCrvOnSurf(segment, thisSurface)
-            let mut trace = CrvOnSurf::new(k, uv_curve.clone(), bss.copy(), Some(seg_domain), 0)?;
+            let mut trace = CrvOnSurf::new(
+                k,
+                uv_curve.clone_for_evaluation()?,
+                surface.clone_for_evaluation()?,
+                Some(seg_domain),
+                0,
+            )?;
 
             // Check for degenerate curve segment (SER: checked)
-            let pnt1 = trace.evaluate_point(ivl.min())?;
+            let pnt1 = trace.evaluate_point(k, ivl.min())?;
             let mut degenerate = true;
 
             // check 10 sample points until 1 is found that is more than tol dist from
             // begin point
             for ii in 1..=10_u32 {
                 // (SER: checked)
-                let pnt2 = trace.evaluate_point(ivl.evaluate(f64::from(ii) / 10.0))?;
+                let pnt2 = trace.evaluate_point(k, ivl.evaluate(f64::from(ii) / 10.0))?;
                 if pnt2.distance(pnt1) > approx_tol_3d / 100.0 {
                     degenerate = false;
                     break;
@@ -2011,7 +2157,7 @@ impl Surface {
             },
             // output = 1 composite curve (IsClosed default tolerance 0.0)
             _ => {
-                let closed = uv_curve.is_closed(interval, 0.0)?;
+                let closed = uv_curve.is_closed(k, interval, 0.0)?;
                 let mut composite = CompositeCurve::with_curves(3, curves_3d, closed, None, None)?;
                 // (SER: checked)
                 composite.make_composite_nurb()?
@@ -2019,7 +2165,7 @@ impl Surface {
         };
 
         Ok(LiftedCurve {
-            curve,
+            curve: Curve::from(curve),
             max_approx_dev,
         })
     }
@@ -2035,11 +2181,13 @@ mod tests {
 
     #[test]
     fn two_perpendicular_planes_meet_on_their_line() {
+        let k = &Kernel::default();
         let a = plane(Point3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 1.0));
         let b = plane(Point3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0));
         let dom = Extent2d::from_points(Point2::new(-5.0, -5.0), Point2::new(5.0, 5.0));
         let r = a
             .local_surface_intersect(
+                k,
                 &dom,
                 &b,
                 &dom,
@@ -2050,19 +2198,21 @@ mod tests {
             )
             .unwrap()
             .unwrap();
-        let p = a.evaluate_point(r.uv).unwrap();
-        let q = b.evaluate_point(r.other_uv).unwrap();
+        let p = a.evaluate_point(k, r.uv).unwrap();
+        let q = b.evaluate_point(k, r.other_uv).unwrap();
         assert!(p.distance(q) < 1e-6);
         assert!(p.x.abs() < 1e-9 && p.z.abs() < 1e-9);
     }
 
     #[test]
     fn parallel_guess_normals_give_no_answer() {
+        let k = &Kernel::default();
         let a = plane(Point3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 1.0));
         let b = plane(Point3::new(0.0, 0.0, 1.0), Vec3::new(0.0, 0.0, 1.0));
         let dom = Extent2d::from_points(Point2::new(-5.0, -5.0), Point2::new(5.0, 5.0));
         let r = a
             .local_surface_intersect(
+                k,
                 &dom,
                 &b,
                 &dom,

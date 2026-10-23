@@ -27,8 +27,9 @@
 //! `p + 1` and interior multiplicity at most `p`), non-degenerate lines, circles and
 //! ellipses with positive radii, independent axes and an angular domain inside `[-360,
 //! 360]` at most 360 long, hyperbolas (STEP domain inside `[-10, 10]`) and parabolas
-//! (inside `[-1000, 1000]`) with positive semi axes / focal distance, independent axes and
-//! an ordered domain, finite vectors and points, constructor domains with `u0 <
+//! (inside `[-1000, 1000]`) with positive semi axes / focal distance at most
+//! [`MAX_CONIC`] and a centre inside `[-MAX_CONIC, MAX_CONIC]`, independent axes (whose
+//! squared lengths do not overflow) and an ordered domain, finite vectors and points, constructor domains with `u0 <
 //! u1` and `v0 < v1` (`MakeNurb` builds the V knots `{v0, v0, v1, v1}`), edit domains
 //! ordered with positive extents, independent placement axes, finite parameters and
 //! tolerances, derivative orders up to [`MAX_ORDER`] (above 5 upstream fails before
@@ -37,6 +38,7 @@
 //! `SM_SO_MAXIMIZE`, `SM_SO_NORMALIZE` (the ones it documents) and generator
 //! intersections with a finite other vector and ordered interval.
 
+use crate::validate::{bad, NOW};
 use crate::{call_with_buffer, FfiError};
 
 /// Largest control point index accepted.
@@ -45,9 +47,6 @@ pub const MAX_INDEX: usize = 256;
 pub const MAX_DEGREE: usize = 9;
 /// Largest STEP derivative order accepted.
 pub const MAX_ORDER: usize = 7;
-
-/// `NL_NOW`: the weight of a non-rational control point.
-const NOW: f64 = -f64::MAX;
 
 mod sys {
     extern "C" {
@@ -81,6 +80,13 @@ pub enum Gen {
     BSpline(BSplineData),
     /// `SmLine(a, b, 3)` with its NURB made.
     Line {
+        /// Start point.
+        a: [f64; 3],
+        /// End point.
+        b: [f64; 3],
+    },
+    /// `SmLine(a, b, 3)` with its NURB left lazy.
+    LazyLine {
         /// Start point.
         a: [f64; 3],
         /// End point.
@@ -313,10 +319,6 @@ impl Op {
     }
 }
 
-fn bad(msg: impl Into<String>) -> FfiError {
-    FfiError::InvalidArgument(msg.into())
-}
-
 pub(crate) fn finite(v: &[f64], what: &str) -> Result<(), FfiError> {
     if v.iter().all(|x| x.is_finite()) {
         Ok(())
@@ -336,11 +338,17 @@ fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx]
 }
 
-/// Checks two axes are long enough and far from parallel.
+/// Checks two axes are long enough, far from parallel, and of a length whose square
+/// does not overflow: unitizing an axis of infinite length gives a zero axis, so a conic
+/// generator on it gets no NURB, which `SmSurfOfExtrusion`'s constructor then evaluates
+/// (`EvaluatePoint` dereferences the NULL NURB).
 pub(crate) fn axes(x: [f64; 3], y: [f64; 3], what: &str) -> Result<(), FfiError> {
     finite(&x, what)?;
     finite(&y, what)?;
     let (lx, ly) = (len(x), len(y));
+    if !lx.is_finite() || !ly.is_finite() {
+        return Err(bad(format!("{what}: axis length overflows")));
+    }
     if lx < 1e-6 || ly < 1e-6 || len(cross(x, y)) < 1e-3 * lx * ly {
         return Err(bad(format!("{what}: degenerate or parallel axes")));
     }
@@ -443,6 +451,21 @@ fn check_bspline(c: &BSplineData) -> Result<(), FfiError> {
     check_knots(&c.knots, c.p, "curve")
 }
 
+/// Largest centre coordinate and size of a hyperbola or parabola generator.
+pub const MAX_CONIC: f64 = 1e12;
+
+/// `SmHyperbola::MakeNurb` / `SmParabola::MakeNurb` place the middle control point at
+/// the intersection of the end tangents (`smgu_LineLineClosestPoint`); with a centre or
+/// size near the top of the double range the points collapse or the products overflow,
+/// that fails, and the extrusion constructor then evaluates the generator's NULL NURB.
+/// Bounds the centre and sizes by [`MAX_CONIC`].
+fn conic_size(c: &[f64; 3], sizes: &[f64], what: &str) -> Result<(), FfiError> {
+    if c.iter().chain(sizes).any(|v| v.abs() > MAX_CONIC) {
+        return Err(bad(format!("{what}: centre or size above MAX_CONIC")));
+    }
+    Ok(())
+}
+
 fn flag(b: bool) -> f64 {
     f64::from(u8::from(b))
 }
@@ -459,7 +482,7 @@ fn push_gen(o: &mut Vec<f64>, g: &Gen) -> Result<(), FfiError> {
             }
             o.extend_from_slice(&c.knots);
         }
-        Gen::Line { a, b } => {
+        Gen::Line { a, b } | Gen::LazyLine { a, b } => {
             finite(a, "line")?;
             finite(b, "line")?;
             let [ax, ay, az] = *a;
@@ -467,7 +490,11 @@ fn push_gen(o: &mut Vec<f64>, g: &Gen) -> Result<(), FfiError> {
             if len([bx - ax, by - ay, bz - az]) <= 0.0 {
                 return Err(bad("line: degenerate"));
             }
-            o.push(1.0);
+            o.push(if matches!(g, Gen::LazyLine { .. }) {
+                6.0
+            } else {
+                1.0
+            });
             o.extend_from_slice(a);
             o.extend_from_slice(b);
         }
@@ -510,6 +537,7 @@ fn push_gen(o: &mut Vec<f64>, g: &Gen) -> Result<(), FfiError> {
             if !(a.is_finite() && *a > 1e-6 && b.is_finite() && *b > 1e-6) {
                 return Err(bad("hyperbola: semi axes"));
             }
+            conic_size(c, &[*a, *b], "hyperbola")?;
             o.push(4.0);
             o.extend_from_slice(c);
             o.extend_from_slice(x);
@@ -527,6 +555,7 @@ fn push_gen(o: &mut Vec<f64>, g: &Gen) -> Result<(), FfiError> {
             if !(f.is_finite() && *f > 1e-6) {
                 return Err(bad("parabola: focal distance"));
             }
+            conic_size(c, &[*f], "parabola")?;
             o.push(5.0);
             o.extend_from_slice(c);
             o.extend_from_slice(x);

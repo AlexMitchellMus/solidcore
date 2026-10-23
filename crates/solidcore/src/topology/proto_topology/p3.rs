@@ -15,6 +15,18 @@
 //! | [`ProtoTopologyManager::resolve_overlapping_proto_edges`] | `SmProtoTopologyManager::ResolveOverlappingProtoEdges` |
 //!
 //! Deviations:
+//! - **Removed proto edges** (SolidCraft fix, tangency-labs/smlib 93efd6d, UB-239).
+//!   Upstream's `SplitIntersectingProtoEdges` deletes the combined-away proto edge while
+//!   proto faces (coincident lists) and other proto edges (overlap lists) still name
+//!   it, and `GlueCoincidentBrepVertices` reads it after the free. Here the faces it
+//!   bounded get the surviving edge first
+//!   ([`ProtoTopologyManager::hand_over_coincident_proto_edge`]), and every reference
+//!   to it is dropped before the delete ([`ProtoTopologyManager::forget_proto_edge`],
+//!   part 1), here and in `ResolveOverlappingProtoEdges`. The fork does that inside
+//!   `RemoveProtoEdge`; the port does it at these library deletes, so unlisting or
+//!   deleting a proto edge on its own (the difftest's script ops) stays upstream's.
+//!   Without it, the stale id names a deleted slot and the later passes fail with
+//!   `InvalidInput`.
 //! - **B-rep access.** Topology objects are the caller's handles `O`, as in
 //!   [`p1`](super::p1). What these functions read from vertices and edges, and the
 //!   store new curves go to, is [`ProtoBrep`] (of `topology.proto_topology_p2`, which
@@ -23,14 +35,22 @@
 //!   those of its supertrait [`ProtoTopology`](super::p1::proto::ProtoTopology)), which the owner of the B-reps implements. `SmTol::GetZoneTol3d` of a vertex is
 //!   [`ProtoBrep::topology_tolerance`]; `SmTol::GetXSectTol3d(v1, v2)` is the
 //!   sum of the two.
-//! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
-//!   each tagged `UNPORTED(<unit>)`: `SmBrep::Point3DClassify` (`query.brep`),
-//!   `SmBrep::GlueVertices` /
-//!   `SqueezeEdge` / `DeleteEdge` (`topology.brep_p5` / `_p3` / `_p4`),
-//!   `SmTopologyIntersector::RemoveRelationship` (`boolean.topology_intersector_p2`;
-//!   `GetOtherMate` is the `other_mate` closure the caller passes to
-//!   [`ProtoTopologyManager::glue_coincident_brep_vertices`]) and the `SmCurveClassification`
-//!   constructor (`intersect.curve_class_p4`). `ExtractGeometry` calls part 5 and
+//! - **B-rep edits**: `SmBrep::SqueezeEdge` of `GetWhichBrep(which)` is
+//!   [`ProtoBrep::brep_squeeze_edge`] (the owner of the B-reps calls
+//!   `topology::brep::p3::squeeze_edge`), so
+//!   [`ProtoTopologyManager::glue_coincident_brep_vertices`] takes `&mut Kernel` and
+//!   the B-reps mutably.
+//! - **Callees of other units** go through traits the B-reps' owner implements:
+//!   `SmBrep::DeleteEdge` (`topology.brep_p4`) through [`BrepGlue::delete_edge`],
+//!   `SmBrep::Point3DClassify` goes through [`ProtoBrep::brep_point_3d_classify`],
+//!   which the B-reps' owner implements. `SmBrep::GlueVertices`
+//!   goes through [`BrepGlue`], which the B-reps' owner implements with
+//!   `topology::brep::p5` (so [`ProtoTopologyManager::glue_coincident_brep_vertices`]
+//!   takes the kernel and the B-reps mutably).
+//!   The intersector's `GetOtherMate` /
+//!   `RemoveRelationship` are reached through [`Mates`] (ported in
+//!   `boolean.topology_intersector_p1` / `_p2`; [`NoMates`] for no intersector maps). The
+//!   `SmCurveClassification` constructor is part 4's ([`CurveClassification::with_curve`]). `ExtractGeometry` calls part 5 and
 //!   currently reaches part 6's `Homogenize` dependency. The code
 //!   after a stub is ported in full. The callees of `topology.proto_topology_p2` are
 //!   its methods on [`ProtoTopologyManager`].
@@ -57,12 +77,12 @@ use crate::geom::extent1d::Extent1d;
 use crate::geom::solution_array::{ObjectKind, SolutionObject, SolutionType};
 use crate::geom::tol::{xsect_tol3d, zone_tol3d, USE_DEFAULT};
 use crate::intersect::curve_class::p5::ExtractOptions;
-use crate::intersect::curve_class::{CurveClassification, CurveInterval};
+use crate::intersect::curve_class::{ClassificationInit, CurveClassification, CurveInterval};
 use crate::intersect::point_class::{
     ClassGeometry, ClassObject, ClassObjectKind, PointClassification,
 };
 use crate::kernel::Kernel;
-use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO};
+use crate::math::{Vec3, BIG_DOUBLE, EFF_ZERO};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 
 use super::p1::proto::{can_imprint, find_position_from_pcs, topo_dimension};
@@ -138,67 +158,91 @@ fn curve_of<O: Copy>(geometry: &impl ClassGeometry<O>, o: Option<O>) -> Result<&
 
 // ---- callees not ported yet ----------------------------------------------------------
 
-/// `SmBrep::Point3DClassify(point, tol, TRUE, classification)`.
-fn brep_point3d_classify<O>(
-    _brep: O,
-    _point: Point3,
-    _tol: f64,
-    _pc: &mut PointClassification<O>,
-) -> Result<()> {
-    // UNPORTED(query.brep): SmBrep::Point3DClassify
-    Err(SolidError::unported(
-        "SmBrep::Point3DClassify",
-        "query.brep",
-    ))
-}
-
-/// `SmCurveClassification(pCurve, interval, NULL, tol)`.
+/// `SmCurveClassification(pCurve, interval, NULL, tol)` (the remaining arguments default:
+/// no interval storage, the curve not owned and current, no surfaces).
 fn new_curve_classification<O: ClassObject>(
-    _curve: O,
-    _interval: Extent1d,
-    _tol: f64,
+    k: &Kernel,
+    curve: O,
+    interval: Extent1d,
+    tol: f64,
 ) -> Result<CurveClassification<O>> {
-    // UNPORTED(intersect.curve_class_p4): SmCurveClassification::SmCurveClassification
-    Err(SolidError::unported(
-        "SmCurveClassification::SmCurveClassification",
-        "intersect.curve_class_p4",
-    ))
+    CurveClassification::with_curve(
+        k,
+        &ClassificationInit {
+            curve: Some(curve),
+            interval,
+            uv_curve: None,
+            src_zone_tol_3d: zone_tol3d(k, tol),
+            opt_data_size: 0,
+            is_curve_owned: false,
+            is_curve_current: true,
+            surface1: None,
+            surface2: None,
+            uv_curve2: None,
+            ti: None,
+        },
+    )
 }
 
-/// `SmBrep::GlueVertices` of B-rep `which`.
-fn brep_glue_vertices<O>(_which: i32, _v1: O, _v2: O) -> Result<()> {
-    // UNPORTED(topology.brep_p5): SmBrep::GlueVertices
-    Err(SolidError::unported(
-        "SmBrep::GlueVertices",
-        "topology.brep_p5",
-    ))
+/// The B-rep edit [`ProtoTopologyManager::glue_coincident_brep_vertices`] (and the
+/// topology intersector) make on the B-reps behind the handles, implemented by their
+/// owner with the mutable arenas (`topology::brep::p5`).
+pub trait BrepGlue<O> {
+    /// `SmBrep::GlueVertices(pV1, pV2, pOptWireEdgesInBrep)` of `brep`;
+    /// `opt_wire_edges_in_brep` is `pOptWireEdgesInBrep` (`NULL` by default: every
+    /// shell edge is checked).
+    ///
+    /// # Errors
+    ///
+    /// Those of `topology::brep::p5::glue_vertices`; [`SolidError::InvalidInput`] for
+    /// handles that name no vertex (or edge) of `brep`.
+    fn glue_vertices(
+        &mut self,
+        k: &mut Kernel,
+        brep: O,
+        v1: O,
+        v2: O,
+        opt_wire_edges_in_brep: Option<&[O]>,
+    ) -> Result<()>;
+    /// `SmBrep::DeleteEdge(pEdge)` of `brep` (`pOptSurfaceToKeep = NULL`;
+    /// `topology::brep::p4::delete_edge`).
+    ///
+    /// # Errors
+    ///
+    /// Those of `topology::brep::p4::delete_edge`; [`SolidError::InvalidInput`] for a
+    /// handle that names no edge of `brep`.
+    fn delete_edge(&mut self, k: &mut Kernel, brep: O, edge: O) -> Result<()>;
 }
 
-/// `SmBrep::SqueezeEdge` of B-rep `which`.
-fn brep_squeeze_edge<O>(_which: i32, _edge: O, _vertex: O) -> Result<()> {
-    // UNPORTED(topology.brep_p3): SmBrep::SqueezeEdge
-    Err(SolidError::unported(
-        "SmBrep::SqueezeEdge",
-        "topology.brep_p3",
-    ))
+/// What the manager's topology intersector (`m_pTI`) provides to
+/// [`ProtoTopologyManager::glue_coincident_brep_vertices`]: `GetOtherMate` and
+/// `RemoveRelationship` (implemented by
+/// `boolean::topology_intersector::p2::MapMates` over the intersector's maps).
+pub trait Mates<O> {
+    /// `SmTopologyIntersector::GetOtherMate(pBrepEntity)`.
+    fn other_mate(&self, brep_entity: O) -> Option<O>;
+    /// `SmTopologyIntersector::RemoveRelationship(pBrepEntity, pOtherEntity)`.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR` when the two are not a mated pair.
+    fn remove_relationship(&mut self, brep_entity: O, other_entity: O) -> Result<()>;
 }
 
-/// `SmBrep::DeleteEdge` of B-rep `which`.
-fn brep_delete_edge<O>(_which: i32, _edge: O) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
-    Err(SolidError::unported(
-        "SmBrep::DeleteEdge",
-        "topology.brep_p4",
-    ))
-}
+/// An intersector without relationships: no object has a mate.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoMates;
 
-/// `SmTopologyIntersector::RemoveRelationship`.
-fn ti_remove_relationship<O>(_a: O, _b: O) -> Result<()> {
-    // UNPORTED(boolean.topology_intersector_p2): SmTopologyIntersector::RemoveRelationship
-    Err(SolidError::unported(
-        "SmTopologyIntersector::RemoveRelationship",
-        "boolean.topology_intersector_p2",
-    ))
+impl<O> Mates<O> for NoMates {
+    fn other_mate(&self, _brep_entity: O) -> Option<O> {
+        None
+    }
+
+    fn remove_relationship(&mut self, _brep_entity: O, _other_entity: O) -> Result<()> {
+        Err(SolidError::sm_err(
+            "topology::proto_topology::p3::remove_relationship",
+        ))
+    }
 }
 
 // ---- the manager's members ------------------------------------------------------------
@@ -280,7 +324,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         .unwrap_or_default();
 
         // when CrvInterval is degenerate - find or create a ProtoVertex for Interval
-        if curve_of(geometry, cc_curve)?.is_degenerate(tol, None)? {
+        if curve_of(geometry, cc_curve)?.is_degenerate(k, tol, None)? {
             let start =
                 can_imprint(ci1.start.point_class()) && can_imprint(ci2.start.point_class());
             let mid = can_imprint(ci1.mid.point_class()) && can_imprint(ci2.mid.point_class());
@@ -335,7 +379,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         }
 
         // quit - degenerate interval. [B488]
-        if curve_of(geometry, cc_curve)?.is_degenerate(tol, Some(&this_ivl))? {
+        if curve_of(geometry, cc_curve)?.is_degenerate(k, tol, Some(&this_ivl))? {
             return Ok((None, false));
         }
 
@@ -435,7 +479,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         let tol = d.raw_tolerance();
 
         // Takes reversal into account; status ignored.
-        let crv_pt = ignore_soft(d.evaluate(&*geometry, param_pe, true, false))?
+        let crv_pt = ignore_soft(d.evaluate(k, &*geometry, param_pe, true, false))?
             .and_then(|r| r.0)
             .unwrap_or(Vec3::UNDEF);
 
@@ -447,11 +491,11 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         let start_pv = pe.start_proto_vertex();
         let end_pv = pe.end_proto_vertex();
 
-        let pt = self.edge_def_end_position_at(&*geometry, ed, start_pv)?;
+        let pt = self.edge_def_end_position_at(k, &*geometry, ed, start_pv)?;
         if crv_pt.distance(pt) < tol * CBI_FUDGE {
             return Ok((None, None));
         }
-        let pt = self.edge_def_end_position_at(&*geometry, ed, end_pv)?;
+        let pt = self.edge_def_end_position_at(k, &*geometry, ed, end_pv)?;
         if crv_pt.distance(pt) < tol * CBI_FUDGE {
             return Ok((None, None));
         }
@@ -461,8 +505,18 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         let brep2 = self.which_brep(2);
         let mut pc1 = PointClassification::new(zone_tol3d(k, tol));
         let mut pc2 = PointClassification::new(zone_tol3d(k, tol));
-        ignore_soft(brep_point3d_classify(brep1, crv_pt, tol, &mut pc1))?;
-        ignore_soft(brep_point3d_classify(brep2, crv_pt, tol, &mut pc2))?;
+        // (statuses ignored: a failed classification keeps its cleared state)
+        let tol_3d = zone_tol3d(k, tol);
+        if let Some(pc) =
+            ignore_soft(geometry.brep_point_3d_classify(k, brep1, crv_pt, tol_3d, true))?
+        {
+            pc1 = pc;
+        }
+        if let Some(pc) =
+            ignore_soft(geometry.brep_point_3d_classify(k, brep2, crv_pt, tol_3d, true))?
+        {
+            pc2 = pc;
+        }
 
         let mid_pv = mid_pv.ok_or(dangling("mid proto vertex is null"))?;
         let (new_vd, created) = ignore_soft(
@@ -598,11 +652,11 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         }
         let tol = e.raw_tolerance();
 
-        let crv_pt = ignore_soft(self.proto_edge_evaluate(&*geometry, pe, dt, true, false))?
+        let crv_pt = ignore_soft(self.proto_edge_evaluate(k, &*geometry, pe, dt, true, false))?
             .and_then(|r| r.0)
             .unwrap_or(Vec3::UNDEF);
-        let start_pt = self.proto_edge_end_position(&*geometry, pe, true)?;
-        let end_pt = self.proto_edge_end_position(&*geometry, pe, false)?;
+        let start_pt = self.proto_edge_end_position(k, &*geometry, pe, true)?;
+        let end_pt = self.proto_edge_end_position(k, &*geometry, pe, false)?;
 
         // no work - Split Pt is within tol of ProtoEdge end point
         if crv_pt.distance(start_pt) < tol {
@@ -832,8 +886,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                     .unwrap_or((None, None));
 
                 // Combine PVs:
-                let pv1 = self.which_pv_to_combine(&*geometry, pe1, t11, npv11)?;
-                let pv2 = self.which_pv_to_combine(&*geometry, pe1, t21, npv21)?;
+                let pv1 = self.which_pv_to_combine(k, &*geometry, pe1, t11, npv11)?;
+                let pv2 = self.which_pv_to_combine(k, &*geometry, pe1, t21, npv21)?;
                 self.combine_and_delete_pvs(pv1, pv2)?;
 
                 // T2: first decide which pieces to split.
@@ -851,8 +905,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                 let _ = npe12;
 
                 // Combine PVs:
-                let pv1 = self.which_pv_to_combine(&*geometry, pe1_to_split, t12, npv12)?;
-                let pv2 = self.which_pv_to_combine(&*geometry, pe2_to_split, t22, npv22)?;
+                let pv1 = self.which_pv_to_combine(k, &*geometry, pe1_to_split, t12, npv12)?;
+                let pv2 = self.which_pv_to_combine(k, &*geometry, pe2_to_split, t22, npv22)?;
                 self.combine_and_delete_pvs(pv1, pv2)?;
 
                 // Combine ProtoEdges
@@ -868,7 +922,13 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                     pe1_to_combine,
                     pe2_to_combine,
                 ))?;
+
+                // ProtoFaces bounded by the combined-away PE are bounded by the
+                // survivor now (SolidCraft change, tangency-labs/smlib 93efd6d)
+                self.hand_over_coincident_proto_edge(pe1_to_combine, pe2_to_combine);
+
                 ignore_soft(self.remove_proto_edge(pe2_to_combine))?;
+                self.forget_proto_edge(pe2_to_combine);
                 deleted.extend(self.delete_proto_edge_object(pe2_to_combine));
             }
         }
@@ -898,8 +958,9 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     /// `SmProtoTopologyManager::GlueCoincidentBrepVertices()`: glues the final
     /// vertices of the vertex definitions of each proto vertex, squeezing or deleting
     /// the short edges between them, and drops the definitions that referred to what
-    /// was deleted. Returns the curves deleted. `other_mate` is the intersector's
-    /// `GetOtherMate` (`m_pTI`), used to drop the relationship of deleted topology.
+    /// was deleted. Returns the curves deleted. `mates` is the intersector (`m_pTI`):
+    /// its `GetOtherMate` and `RemoveRelationship` drop the relationships of deleted
+    /// topology ([`Mates`]).
     ///
     /// # Errors
     ///
@@ -908,9 +969,9 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     /// in the module header.
     pub fn glue_coincident_brep_vertices(
         &mut self,
-        k: &Kernel,
-        brep: &impl ProtoBrep<O>,
-        other_mate: &dyn Fn(O) -> Option<O>,
+        k: &mut Kernel,
+        brep: &mut (impl ProtoBrep<O> + BrepGlue<O>),
+        mates: &mut dyn Mates<O>,
     ) -> Result<Vec<O>> {
         let mut deleted_curves: Vec<O> = Vec::new();
         let pvs: Vec<ProtoVertexId> = self.proto_vertices().to_vec();
@@ -1045,7 +1106,13 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                     if dist > xs {
                     } else if edges.is_empty() {
                         if v1 != v2 {
-                            ignore_soft(brep_glue_vertices(which, v1, v2))?;
+                            ignore_soft(brep.glue_vertices(
+                                k,
+                                self.which_brep(which),
+                                v1,
+                                v2,
+                                None,
+                            ))?;
                             set_slot(deleted_v, jj, v2);
                             self.vertex_def_mut(vd2)
                                 .ok_or(dangling("vertex definition is deleted"))?
@@ -1060,21 +1127,24 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                                 .edge_interval(edge)
                                 .ok_or(dangling("edge is unknown"))?;
                             let len = curve_of(brep, curve_handle)?
-                                .approximate_length(&ivl, 5, false)?
+                                .approximate_length(k, &ivl, 5, false)?
                                 .0;
                             if len < xs {
                                 // If any to-be-deleted topology is mated, remove the
                                 // relationship when done.
-                                let edge_mate = other_mate(edge)
+                                let edge_mate = mates
+                                    .other_mate(edge)
                                     .filter(|m| m.class_kind() == ClassObjectKind::Edge);
-                                let vertex_mate = other_mate(v2)
+                                let vertex_mate = mates
+                                    .other_mate(v2)
                                     .filter(|m| m.class_kind() == ClassObjectKind::Vertex);
                                 let other_vtx = brep.edge_other_vertex(edge, Some(v1))?;
                                 let stat = if other_vtx == Some(v1) {
                                     // Can't call SqueezeEdge() in this case.
-                                    brep_delete_edge(which, edge)
+                                    brep.delete_edge(k, self.which_brep(which), edge)
                                 } else {
-                                    let r = brep_squeeze_edge(which, edge, v1); // deletes v2
+                                    let r =
+                                        brep.brep_squeeze_edge(k, self.which_brep(which), edge, v1); // deletes v2
                                     set_slot(deleted_v, jj, v2);
                                     r
                                 };
@@ -1083,12 +1153,12 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                                     Ok(()) => {
                                         *flag = true;
                                         if let Some(m) = edge_mate {
-                                            ignore_soft(ti_remove_relationship(edge, m))?;
+                                            ignore_soft(mates.remove_relationship(edge, m))?;
                                         }
                                         if let Some(m) = vertex_mate {
                                             // (upstream uses the Brep 2 vertex in both
                                             // B-reps)
-                                            ignore_soft(ti_remove_relationship(b2v2, m))?;
+                                            ignore_soft(mates.remove_relationship(b2v2, m))?;
                                         }
                                         let found =
                                             self.find_edge_definition_from_edge(Some(edge), which)?;
@@ -1123,7 +1193,13 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                             } else {
                                 // coincident Vertices connected by a long Edge: Glue.
                                 if v1 != v2 {
-                                    ignore_soft(brep_glue_vertices(which, v1, v2))?;
+                                    ignore_soft(brep.glue_vertices(
+                                        k,
+                                        self.which_brep(which),
+                                        v1,
+                                        v2,
+                                        None,
+                                    ))?;
                                     set_slot(deleted_v, jj, v2);
                                     self.vertex_def_mut(vd2)
                                         .ok_or(dangling("vertex definition is deleted"))?
@@ -1386,6 +1462,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
 
                 // remove OverlapPE from ProtoTopoMgr, then delete it
                 ignore_soft(self.remove_proto_edge(overlap))?;
+                self.forget_proto_edge(overlap);
                 deleted_curves.extend(self.delete_proto_edge_object(overlap));
             }
 
@@ -1457,8 +1534,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                         // PEs expect the same curve classified against each face
                         let ivl = Extent1d::from_min_max(sol.start.param(0)?, sol.end.param(0)?);
                         let c1h = h1.ok_or(dangling("edge has no curve"))?;
-                        let mut cc1 = new_curve_classification(c1h, ivl, tol)?;
-                        let mut cc2 = new_curve_classification(c1h, ivl, tol)?;
+                        let mut cc1 = new_curve_classification(k, c1h, ivl, tol)?;
+                        let mut cc2 = new_curve_classification(k, c1h, ivl, tol)?;
 
                         // Classify the coincident curves against their faces
                         let face1 = f1.ok_or(dangling("face is null"))?;
@@ -1492,8 +1569,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                 let ivl = geometry
                     .edge_interval(edge)
                     .ok_or(dangling("edge is unknown"))?;
-                let mut cc1 = new_curve_classification(handle, ivl, tol)?;
-                let mut cc2 = new_curve_classification(handle, ivl, tol)?;
+                let mut cc1 = new_curve_classification(k, handle, ivl, tol)?;
+                let mut cc2 = new_curve_classification(k, handle, ivl, tol)?;
 
                 // Pick a SrcFace object for the SrcEdge object
                 let faces = geometry.edge_faces(edge)?;

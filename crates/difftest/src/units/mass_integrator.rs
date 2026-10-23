@@ -346,9 +346,19 @@ fn geometry_rust(g: &Geometry) -> Output {
                         store: &store,
                         key_of: &|_| solidcore::geom::attribute::ObjectKey(0),
                     };
-                    props::brep_properties(
-                        &kernel,
-                        &Brep::new(),
+                    // As the shim: a wire edge over the curve interval in a fresh B-rep
+                    // (`CreateWireEdgeFromCurve`), then the B-rep's precise properties.
+                    let mut wire_kernel = Kernel::default();
+                    let mut brep = Brep::new_with_infinite_region()?;
+                    solidcore::topology::brep::p5::create_wire_edge_from_curve(
+                        &mut wire_kernel,
+                        &mut brep,
+                        c,
+                        ivl,
+                    )?;
+                    let p = props::brep_properties(
+                        &wire_kernel,
+                        &brep,
                         accuracy,
                         Vec3::new(ox, oy, oz),
                         props::MassPropertyBehavior {
@@ -357,9 +367,13 @@ fn geometry_rust(g: &Geometry) -> Output {
                         },
                         &attrs,
                     )?;
-                    return Err(SolidError::sm_err("unexpected brep dependency"));
+                    let mut out = vec![0.0, p.area, p.volume, p.mass];
+                    for m in p.moments {
+                        out.extend([m.x, m.y, m.z]);
+                    }
+                    return Ok(out);
                 }
-                let p = props::curve_properties(&c, &ivl, accuracy, Vec3::new(ox, oy, oz), radius)?;
+                let p = props::curve_properties(&kernel, &c, &ivl, accuracy, Vec3::new(ox, oy, oz), radius)?;
                 let mut out = vec![0.0, p.length, p.properties.area, p.properties.volume];
                 for m in p.properties.moments {
                     out.extend([m.x, m.y, m.z]);
@@ -373,46 +387,66 @@ fn geometry_rust(g: &Geometry) -> Output {
             } => {
                 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
                 if *query != 0 && *query != 7 {
+                    // The aggregate queries (face area / centroid, B-rep area / volume /
+                    // mass properties) integrate a face the C++ side constructs from the
+                    // parameters; this runner builds no Rust face for them. The Rust is
+                    // still run on an empty B-rep so that a genuine unit blocker keeps its
+                    // label; only an outcome that depends on the missing face is reported
+                    // as the harness limitation (SmBrep::GetFaces / GetEdges / GetVertices
+                    // themselves are ported in topology.brep_p1).
                     let store = solidcore::geom::attribute::AttributeStore::default();
                     let attrs = props::PropertyAttributes {
                         store: &store,
                         key_of: &|_| solidcore::geom::attribute::ObjectKey(0),
                     };
                     let brep = Brep::new();
-                    let f = solidcore::topology::FaceId::from_index(0);
-                    match *query {
-                        2 => {
-                            props::face_area(&kernel, &brep, f, p[12])?;
+                    let r: solidcore::Result<()> = match *query {
+                        // The C++ face comes from SmBrep::CreateFaceFromSurface; the
+                        // Rust side has no B-rep face builder yet, so the face API
+                        // queries wait for it (their SmFace::CalculateBoundingBox is
+                        // ported, query.face_p1); then props::face_area /
+                        // props::face_centroid on that face.
+                        2 | 3 => {
+                            // UNPORTED(topology.brep_p8): SmBrep::CreateFaceFromSurface
+                            Err(SolidError::unported(
+                                "SmBrep::CreateFaceFromSurface",
+                                "topology.brep_p8",
+                            ))
                         }
-                        3 => {
-                            props::face_centroid(&kernel, &brep, f, p[12])?;
-                        }
-                        4 => {
-                            props::brep_area(&kernel, &brep, p[12])?;
-                        }
-                        5 => {
-                            props::brep_volume(&kernel, &brep, p[12], &attrs)?;
-                        }
-                        6 => {
-                            props::brep_mass_properties(
-                                &kernel,
-                                &brep,
-                                p[12],
-                                1.0,
-                                Vec3::new(p[9], p[10], p[11]),
-                                &attrs,
-                            )?;
-                        }
+                        4 => props::brep_area(&kernel, &brep, p[12]).map(|_| ()),
+                        5 => props::brep_volume(&kernel, &brep, p[12], &attrs).map(|_| ()),
+                        6 => props::brep_mass_properties(
+                            &kernel,
+                            &brep,
+                            p[12],
+                            1.0,
+                            Vec3::new(p[9], p[10], p[11]),
+                            &attrs,
+                        )
+                        .map(|_| ()),
                         _ => return Err(SolidError::sm_err("unknown query")),
-                    }
-                    return Err(SolidError::sm_err("unexpected topology dependency"));
+                    };
+                    return match r {
+                        Err(e) if e.is_unported() => Err(e),
+                        _ => Err(SolidError::Unported {
+                            upstream:
+                                "mass.integrator runner: no Rust face for the aggregate queries",
+                            unit: "harness:mass.integrator-face-construction",
+                        }),
+                    };
                 }
                 // Import only input geometry: C++ constructs and exports its actual
                 // oriented trims. Both sides then integrate those same boundaries.
                 let raw = ffi::face(1, *kind, p).map_err(|_| SolidError::sm_err("trim export"))?;
                 let mut it = raw.into_iter();
                 if it.next() != Some(0.0) {
-                    return Err(SolidError::sm_err("trim construction"));
+                    // the C++ could not construct the face, so there are no trims to
+                    // import: the Rust side has nothing to integrate (a harness
+                    // limitation, as for the aggregate queries)
+                    return Err(SolidError::Unported {
+                        upstream: "mass.integrator runner: the C++ face construction failed",
+                        unit: "harness:mass.integrator-face-construction",
+                    });
                 }
                 let estimated_area = it.next().ok_or_else(|| SolidError::sm_err("bbox export"))?;
                 let u0 = it
@@ -445,9 +479,26 @@ fn geometry_rust(g: &Geometry) -> Output {
                         })
                         .collect();
                     let knots: Vec<_> = it.by_ref().take(m + 1).collect();
-                    curves.push(Curve::from(BSplineCurve::from_data(
-                        2, n, m, degree, &cp, &knots,
-                    )?));
+                    let base = BSplineCurve::from_data(2, n, m, degree, &cp, &knots)?;
+                    // C++ evaluates an SmLine trim analytically, not through its NURB.
+                    let line = it.next().ok_or_else(|| SolidError::sm_err("trim type"))?;
+                    if line == 0.0 {
+                        curves.push(Curve::from(base));
+                        continue;
+                    }
+                    let mut v = [0.0; 10];
+                    for x in &mut v {
+                        *x = it.next().ok_or_else(|| SolidError::sm_err("trim line"))?;
+                    }
+                    let [px, py, pz, vx, vy, vz, a, b, scale, inside_out] = v;
+                    curves.push(Curve::from(solidcore::curve::line::Line::from_parts(
+                        base,
+                        Vec3::new(px, py, pz),
+                        Vec3::new(vx, vy, vz),
+                        Extent1d::from_raw(a, b),
+                        scale,
+                        inside_out != 0.0,
+                    )));
                 }
                 let domain = if *query == 7 {
                     // Surface::Area integrates the requested rectangle, independent
@@ -514,7 +565,7 @@ fn geometry_rust(g: &Geometry) -> Output {
                         domain.max().x,
                         IntegrationAlgorithm::Romberg,
                         p[12],
-                        |t| eval.evaluate(t),
+                        |t| eval.evaluate(&kernel, t),
                     )?;
                     return Ok(if area == 0.0 {
                         vec![1001.0]
@@ -523,6 +574,7 @@ fn geometry_rust(g: &Geometry) -> Output {
                     });
                 }
                 let properties = props::boundary_properties(
+                    &kernel,
                     &surface,
                     &curves,
                     &domain,

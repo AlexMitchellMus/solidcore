@@ -60,18 +60,23 @@
 //!   and the `SM_DEBUG_CODE` graphics and asserts are dropped (asserts are compiled out
 //!   of the reference build). The unreachable `SmCurveClassification::ReSet` branch of
 //!   `SetProps_Stage2` (the classifications are deleted by `ReSet(SM_PROPSTAGE_2)`
-//!   first) is kept as an `Unported` stub.
-//! - **Unported callees** (`UNPORTED` stubs): `SmFace::HasSeamProblem`
-//!   (`topology.face_p4`), `SmFace::ClassifyLoops` (`query.face_p4`),
-//!   `SmCurveClassification::ReSet` (`intersect.curve_class_p2`). The `SmLoop` queries
-//!   (`topology.loopuse`) are wired.
+//!   first) is kept and calls [`CurveClassification::reset`].
+//! - **Callees.** `SmFace::HasSeamProblem` of [`FaceProps::set_props_stage2`] runs
+//!   [`crate::topology::face::p4::has_seam_problem_in_brep`] on the face's own B-rep
+//!   objects, so the handle type must name them
+//!   ([`crate::topology::face::p4::BrepSeamObjects`]; otherwise
+//!   [`SolidError::InvalidInput`]). The `SmLoop` queries (`topology.loopuse`),
+//!   `SmCurveClassification::ReSet` (`intersect.curve_class_p2`) and
+//!   `SmFace::ClassifyLoops` ([`crate::query::face::p4::classify_loops`], whose status
+//!   `SetProps_Stage3` ignores as upstream) are wired.
 
-use crate::error::{Result, SolidError};
+use crate::error::{ignored, EntityRef, Result, SolidError};
 use crate::geom::tol::{calc_face_zone_tol_3d, xsect_tol_3d_from_zones};
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::intersect::curve_class::p1::{
     get_connected_touches, get_winding_count, CrvDirOnFaceType, CurveClassification, TouchData,
 };
+use crate::intersect::curve_class::p2::ResetOptions;
 use crate::intersect::point_class::ClassObject;
 use crate::kernel::Kernel;
 use crate::math::EFF_ZERO;
@@ -486,6 +491,9 @@ pub enum LoopuseType {
     Vertexuse,
     /// `SmEdgeuse_TYPE` (16005): an edge loop.
     Edgeuse,
+    /// `0`: the zero bytes of a record `SmTArray::SetSize` adds without running the
+    /// constructor (an unclassified record of `SmFace::ClassifyLoops`).
+    Zero,
 }
 
 impl LoopuseType {
@@ -496,6 +504,7 @@ impl LoopuseType {
             Self::Unknown => 16999,
             Self::Vertexuse => 16006,
             Self::Edgeuse => 16005,
+            Self::Zero => 0,
         }
     }
 }
@@ -516,6 +525,78 @@ pub const fn orient_code(o: OrientType) -> i64 {
 pub trait LoopObject: ClassObject {
     /// The handle of loop `l`.
     fn from_loop(l: LoopId) -> Self;
+
+    /// The loop this handle names, if it is a loop (`SmFace::ClassifyLoops` casts a
+    /// touch's `m_pConnectedTo` to `SmLoop*`); `None` (the default) for a handle type
+    /// that names no loops.
+    fn as_loop(&self) -> Option<LoopId> {
+        None
+    }
+
+    /// The vertex this handle names, if it is a vertex (`GetVertexObject` of a vertex
+    /// point classification); `None` (the default) for a handle type that names no
+    /// vertices.
+    fn as_vertex(&self) -> Option<VertexId> {
+        None
+    }
+
+    /// The handle of face `f` (the face a curve classification classifies against),
+    /// `None` (the default) when this handle type cannot name faces. Used by
+    /// [`crate::query::face::p3::LoopObjectCurves`].
+    fn from_face(_f: FaceId) -> Option<Self> {
+        None
+    }
+
+    /// The handle of face `f`'s surface (a classification's surface 1), `None` (the
+    /// default) when this handle type cannot name it.
+    fn from_face_surface(_f: FaceId) -> Option<Self> {
+        None
+    }
+
+    /// The handle of a curve a classification makes and classifies: its 3D curve
+    /// (`uv` false) or its UV curve (`uv` true); `None` (the default) when this handle
+    /// type cannot name them.
+    fn from_classify_curve(_uv: bool) -> Option<Self> {
+        None
+    }
+
+    /// The handle of B-rep entity `t` (a vertex, edge, vertex use or edge use the
+    /// boundary intersections of a classification name), `None` (the default) when
+    /// this handle type cannot name it. A handle type names every entity of a kind or
+    /// none.
+    fn from_topology(_t: EntityRef) -> Option<Self> {
+        None
+    }
+
+    /// The B-rep entity this handle names (the inverse of [`Self::from_topology`]),
+    /// `None` (the default) for any other handle.
+    fn as_topology(&self) -> Option<EntityRef> {
+        None
+    }
+
+    /// The handle of edge `e`'s curve, `None` (the default) when this handle type
+    /// cannot name it.
+    fn from_edge_curve(_e: EdgeId) -> Option<Self> {
+        None
+    }
+
+    /// The edge whose curve this handle names (the inverse of
+    /// [`Self::from_edge_curve`]).
+    fn as_edge_curve(&self) -> Option<EdgeId> {
+        None
+    }
+
+    /// The handle of the UV trim curve of edge use `eu`, `None` (the default) when
+    /// this handle type cannot name it.
+    fn from_trim_curve(_eu: EdgeuseId) -> Option<Self> {
+        None
+    }
+
+    /// The edge use whose UV trim curve this handle names (the inverse of
+    /// [`Self::from_trim_curve`]).
+    fn as_trim_curve(&self) -> Option<EdgeuseId> {
+        None
+    }
 }
 
 // ---- SmClassifyLoopIO -----------------------------------------------------------------
@@ -1052,40 +1133,68 @@ pub struct SeamProblem {
     pub near_miss: SurfParamType,
 }
 
+/// `SmFace::HasSeamProblem` as `SetProps_Stage2` calls it (see
+/// [`FaceProps::set_props_stage2_with`]): the face's seam classifications into `cu`,
+/// `cv`, its raw and done touch lists into `props`, and the seam problem.
+pub type SeamProblemFn<'f, O> = dyn FnMut(
+        &Kernel,
+        &Brep,
+        FaceId,
+        &mut CurveClassification<O>,
+        &mut CurveClassification<O>,
+        &mut FaceProps<O>,
+    ) -> Result<SeamProblem>
+    + 'f;
+
 /// `m_pFace->HasSeamProblem(*m_pCrvClassU, *m_pCrvClassV, crossed, missing, nearMiss,
-/// FALSE, &m_bClosedU, &m_bClosedV, this)`: the caller's `props` receive the raw and
-/// done touch lists ([`FaceProps::raw_touch_list_u`] and the like).
+/// FALSE, &m_bClosedU, &m_bClosedV, this)` for the callers of
+/// [`FaceProps::set_props_stage2`], which hold no classification objects: the face's own
+/// B-rep objects ([`crate::topology::face::p4::has_seam_problem_in_brep`]; callers that
+/// have their own objects use [`FaceProps::set_props_stage2_with`]). An `UNSURE` closed
+/// flag reads as `TRUE`; the returned flag is dropped, as upstream.
 fn face_has_seam_problem<O: LoopObject>(
-    _b: &Brep,
-    _f: FaceId,
-    _class_u: &mut CurveClassification<O>,
-    _class_v: &mut CurveClassification<O>,
-    _props: &mut FaceProps<O>,
+    k: &Kernel,
+    b: &Brep,
+    f: FaceId,
+    class_u: &mut CurveClassification<O>,
+    class_v: &mut CurveClassification<O>,
+    props: &mut FaceProps<O>,
 ) -> Result<SeamProblem> {
-    // UNPORTED(topology.face_p4): SmFace::HasSeamProblem
-    Err(SolidError::unported(
-        "SmFace::HasSeamProblem",
-        "topology.face_p4",
-    ))
+    let (closed_u, closed_v) = (props.closed_u != Tri::False, props.closed_v != Tri::False);
+    let check = crate::topology::face::p4::has_seam_problem_in_brep(
+        k,
+        b,
+        f,
+        crate::topology::face::p4::HasSeamProblemOptions {
+            outer_loop_only: false,
+            periodic_u: Some(closed_u),
+            periodic_v: Some(closed_v),
+            face_props: Some(props),
+        },
+    )?;
+    *class_u = check.class_u;
+    *class_v = check.class_v;
+    Ok(SeamProblem {
+        crossed: check.problem.crossed,
+        missing: check.problem.missing,
+        near_miss: check.problem.near_miss,
+    })
 }
 
 /// `SmCurveClassification::ReSet()` of an existing seam classification.
-fn curve_classification_reset<O: LoopObject>(_c: &mut CurveClassification<O>) -> Result<()> {
-    // UNPORTED(intersect.curve_class_p2): SmCurveClassification::ReSet
-    Err(SolidError::unported(
-        "SmCurveClassification::ReSet",
-        "intersect.curve_class_p2",
-    ))
+fn curve_classification_reset<O: LoopObject>(
+    k: &Kernel,
+    c: &mut CurveClassification<O>,
+) -> Result<()> {
+    c.reset(k, &ResetOptions::default())
 }
 
-/// The outputs of `SmFace::ClassifyLoops`.
+/// The out-params of `SmFace::ClassifyLoops` ([`crate::query::face::p4::classify_loops`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassifyLoopsOut {
-    /// `SmStatus == SM_SUCCESS`.
-    pub succeeded: bool,
     /// `reClassifiable`.
     pub classifiable: HealNotYetFaceType,
-    /// `rClassifyLoopIOs`: one record per classified (closed) loop.
+    /// `rClassifyLoopIOs`: one record per target loop.
     pub classify_loop_ios: Vec<ClassifyLoopIo>,
     /// `reClassifyCrv_StartType`.
     pub start_type: CrvDirOnFaceType,
@@ -1097,21 +1206,19 @@ pub struct ClassifyLoopsOut {
     pub looptree: Option<Looptree>,
 }
 
-/// `m_pFace->ClassifyLoops(sClosedLoops, .., sCrvClassification, *this)`; the caller's
-/// `props` are read (`m_bClosedU`, the touch lists) and its loop props written.
-fn face_classify_loops<O: LoopObject>(
-    _k: &Kernel,
-    _b: &Brep,
-    _f: FaceId,
-    _closed_loops: &[LoopId],
-    _scratch: &mut CurveClassification<O>,
-    _props: &mut FaceProps<O>,
-) -> Result<ClassifyLoopsOut> {
-    // UNPORTED(query.face_p4): SmFace::ClassifyLoops
-    Err(SolidError::unported(
-        "SmFace::ClassifyLoops",
-        "query.face_p4",
-    ))
+impl Default for ClassifyLoopsOut {
+    /// The values `SetProps_Stage3` initialises them with: no problem, no records,
+    /// `SM_CD_UNINIT` types, no tree.
+    fn default() -> Self {
+        Self {
+            classifiable: HealNotYetFaceType::NoProbs,
+            classify_loop_ios: Vec::new(),
+            start_type: CrvDirOnFaceType::Uninit,
+            stop_type: CrvDirOnFaceType::Uninit,
+            ordered_no_area_indices: Vec::new(),
+            looptree: None,
+        }
+    }
 }
 
 /// `pLoop->GetLoopuse()->GetLoopuseType()`.
@@ -1591,8 +1698,9 @@ impl<O: LoopObject> FaceProps<O> {
     ///
     /// `SM_ERR` ([`SolidError::Upstream`]) when `exe_heal_op` is before
     /// [`HealerOpType::FixTolsizes`]; [`SolidError::InvalidInput`] for a face without
-    /// surface or face use; [`SolidError::Unported`] for `SmFace::HasSeamProblem`
-    /// (`topology.face_p4`); the errors of the surface queries.
+    /// surface or face use, and for a handle type that cannot name the face's B-rep
+    /// objects (`SmFace::HasSeamProblem`, see the module docs); the errors of the
+    /// surface queries and the seam check.
     pub fn set_props_stage2(
         &mut self,
         k: &Kernel,
@@ -1600,6 +1708,33 @@ impl<O: LoopObject> FaceProps<O> {
         face: FaceId,
         face_index: u64,
         exe_heal_op: HealerOpType,
+    ) -> Result<()> {
+        self.set_props_stage2_with(
+            k,
+            b,
+            face,
+            face_index,
+            exe_heal_op,
+            &mut |k, b, f, cu, cv, p| face_has_seam_problem(k, b, f, cu, cv, p),
+        )
+    }
+
+    /// [`FaceProps::set_props_stage2`] with `seam` as its `SmFace::HasSeamProblem` call
+    /// (`m_pFace->HasSeamProblem(*m_pCrvClassU, *m_pCrvClassV, .., FALSE, &m_bClosedU,
+    /// &m_bClosedV, this)`, made at [`PropStage::Stage2A`]): a caller holding the
+    /// classification objects passes [`crate::topology::face::p4::has_seam_problem`].
+    ///
+    /// # Errors
+    ///
+    /// As [`FaceProps::set_props_stage2`], with `seam`'s errors for its seam call.
+    pub fn set_props_stage2_with(
+        &mut self,
+        k: &Kernel,
+        b: &Brep,
+        face: FaceId,
+        face_index: u64,
+        exe_heal_op: HealerOpType,
+        seam: &mut SeamProblemFn<'_, O>,
     ) -> Result<()> {
         // no work - already done or being done
         if self.prop_stage >= PropStage::Stage2A {
@@ -1632,7 +1767,7 @@ impl<O: LoopObject> FaceProps<O> {
         let mut class_u = match self.crv_class_u.take() {
             None => CurveClassification::new(k),
             Some(mut c) => {
-                curve_classification_reset(&mut c)?;
+                curve_classification_reset(k, &mut c)?;
                 c
             }
         };
@@ -1640,7 +1775,7 @@ impl<O: LoopObject> FaceProps<O> {
         let mut class_v = match self.crv_class_v.take() {
             None => CurveClassification::new(k),
             Some(mut c) => {
-                curve_classification_reset(&mut c)?;
+                curve_classification_reset(k, &mut c)?;
                 c
             }
         };
@@ -1673,6 +1808,7 @@ impl<O: LoopObject> FaceProps<O> {
         // Closed pFace->Surface classification: m_bClosedU, m_bClosedV, m_eClosedValU,
         // m_eClosedValV
         let (closed_u, val_u) = surface.is_closed(
+            k,
             &self.natural_uv_domain,
             SurfParamType::U,
             Some(xsect_tol_3d),
@@ -1683,6 +1819,7 @@ impl<O: LoopObject> FaceProps<O> {
             self.closed_val_u = c;
         }
         let (closed_v, val_v) = surface.is_closed(
+            k,
             &self.natural_uv_domain,
             SurfParamType::V,
             Some(xsect_tol_3d),
@@ -1760,7 +1897,7 @@ impl<O: LoopObject> FaceProps<O> {
         // when pFace->Surface is closed the seam classifications, touch lists and the
         // bad seam directions are set by this SmFace::HasSeamProblem call
         if self.closed_u.is_true() || self.closed_v.is_true() {
-            let seam = face_has_seam_problem(b, m_face, &mut class_u, &mut class_v, self);
+            let seam = seam(k, b, m_face, &mut class_u, &mut class_v, self);
             self.crv_class_u = Some(class_u);
             self.crv_class_v = Some(class_v);
             let seam = seam?;
@@ -1793,8 +1930,7 @@ impl<O: LoopObject> FaceProps<O> {
     /// `SM_ERR_NOTYET_HEAL_FACE` ([`SM_ERR_NOTYET_HEAL_FACE`]) for a face
     /// `ClassifyLoops` cannot classify; the errors of [`FaceProps::set_props_stage2`]
     /// and [`LoopProps::set_props`]; [`SolidError::InvalidInput`] where upstream reads
-    /// outside an array; [`SolidError::Unported`] for `SmFace::ClassifyLoops`
-    /// (`query.face_p4`).
+    /// outside an array; [`SolidError::Unported`] from `SmFace::ClassifyLoops`.
     pub fn set_props_stage3(
         &mut self,
         k: &Kernel,
@@ -1844,9 +1980,30 @@ impl<O: LoopObject> FaceProps<O> {
         // Call SmFace::ClassifyLoops to get loop orientations and containment for all
         // non-wire loops
         let mut scratch = CurveClassification::new(k);
-        let classified = face_classify_loops(k, b, m_face, &closed_loops, &mut scratch, self)?;
+        let mut classified = ClassifyLoopsOut {
+            looptree: self.looptree.take(),
+            ..ClassifyLoopsOut::default()
+        };
+        let mut target_loops = closed_loops;
+        // (the status is only reported upstream; a handle type that cannot name the
+        // loop bisector's objects is a limitation of the caller, not a status)
+        let classify_status = match crate::query::face::p4::classify_loops(
+            k,
+            b,
+            m_face,
+            &mut target_loops,
+            &mut classified,
+            &mut scratch,
+            self,
+        ) {
+            Err(e @ SolidError::InvalidInput { reason, .. })
+                if reason == crate::query::face::p3::NO_CURVE_HANDLES =>
+            {
+                return Err(e);
+            }
+            r => ignored(r)?,
+        };
         let ClassifyLoopsOut {
-            succeeded: classify_succeeded,
             classifiable,
             classify_loop_ios,
             start_type: classify_crv_start_type,
@@ -1884,7 +2041,7 @@ impl<O: LoopObject> FaceProps<O> {
             // guard against NULL m_pLooptreeRoot - can happen when ClassifyLoops cannot
             // process loops (a failed status is checked upstream by SE_MSG only)
             let Some(root) = self.looptree.as_ref().and_then(Looptree::root) else {
-                let _ = classify_succeeded;
+                let _ = classify_status;
                 self.not_yet_face_type = HealNotYetFaceType::NoLoopTreeRoot;
                 return Err(not_yet_heal_face(OP_STAGE3));
             };
@@ -2279,6 +2436,15 @@ mod tests {
     impl LoopObject for H {
         fn from_loop(l: LoopId) -> Self {
             Self::Loop(l)
+        }
+
+        fn as_loop(&self) -> Option<LoopId> {
+            let Self::Loop(l) = self;
+            Some(*l)
+        }
+
+        fn as_vertex(&self) -> Option<VertexId> {
+            None
         }
     }
 

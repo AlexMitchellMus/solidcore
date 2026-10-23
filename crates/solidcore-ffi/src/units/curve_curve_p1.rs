@@ -12,7 +12,7 @@
 //!
 //! | [`Op`]      | upstream                                 | parameters                                  | outputs |
 //! |-------------|------------------------------------------|---------------------------------------------|---------|
-//! | `Gps`       | `GlobalPointSolve`                       | curve `a b sop P tol has_tg tg` vecs `req`  | `n sol*n` (on success) |
+//! | `Gps`       | `GlobalPointSolve`                       | curve xforms `a b sop P tol has_tg tg` vecs `req` | `n sol*n` (on success) |
 //! | `Approx`    | `ApproximateCurve`                       | curve `nb breaks[nb] tol analytics match copy` | `written tol` curve (on success) |
 //! | `Bisect`    | `TessellateByBisection`                  | curve `a b chord angle max3d`               | `nt np nd t[nt] P[3 np] D[3 nd]` (on success) |
 //! | `Tess`      | `Tessellate` (virtual)                   | curve `a b chord angle minseg`              | as `Bisect` |
@@ -20,6 +20,9 @@
 //! | `Span`      | `sm_TestSpanAccuracy` (static)           | curve `lt LP[3] LD[3] ct CP[3] CD[3] tol match` | `pass dist` (on success) |
 //! | `Refine`    | `sm_RefineCCSolutions` (static)          | curve curve `n (type nvar o0 o1 v0 s0 s1 v1 e0 e1)*n` | `n (v0 s0 s1 v1 e0 e1)*n` (always) |
 //!
+//! `xforms` is `nt (O[3] X[3] Y[3] has_s S[3])*nt`, transforms applied to the curve before
+//! them in order (`SmAxis2Placement::SetCanonical(O, X, Y)`, then `SmCurve::Transform`
+//! with the scale `S` when `has_s`; B-splines only, `nt = 0` for none).
 //! A `Gps` solution is `type nvar nobj o0 value s0 [evalue e0]` (the end for a range);
 //! objects are `0` (the curve), `2` (another object, the cache's analytic curve), `-1`
 //! (`NULL`). A result curve is `type dim has_nurb [n p m cpts(x y z w) knots]`. `Refine`
@@ -36,6 +39,7 @@
 //! [`MIN_TOL`]), tessellation tolerances that are zero or at least [`MIN_CHORD`] /
 //! [`MIN_ANGLE`] degrees / [`MIN_DIST`].
 
+use crate::validate::{bad, euclid, NOW, NOZ};
 use crate::{call_with_buffer, FfiError};
 
 /// Largest control point index `n`.
@@ -46,6 +50,8 @@ pub const MAX_DEGREE: usize = 9;
 pub const MAX_COORD: f64 = 1e6;
 /// Parameters may lie this many interval lengths outside the curve's range.
 pub const MAX_REL_DIST: f64 = 2.0;
+/// Most transforms after a curve block.
+pub const MAX_TRANSFORMS: usize = 16;
 /// Most breaks of `Approx`.
 pub const MAX_BREAKS: usize = 8;
 /// Most solutions of `Refine`.
@@ -60,9 +66,6 @@ pub const MIN_CHORD: f64 = 1e-4;
 pub const MIN_ANGLE: f64 = 0.5;
 /// Smallest non-zero maximum segment length of `Bisect`.
 pub const MIN_DIST: f64 = 1e-3;
-
-const NOZ: f64 = f64::MAX;
-const NOW: f64 = -f64::MAX;
 
 /// Shim operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,92 +109,13 @@ mod sys {
     }
 }
 
-fn bad(msg: impl Into<String>) -> FfiError {
-    FfiError::InvalidArgument(msg.into())
-}
-
-/// Sequential reader over the input.
-struct Reader<'a> {
-    input: &'a [f64],
-    at: usize,
-}
-
-impl<'a> Reader<'a> {
-    fn num(&mut self) -> Result<f64, FfiError> {
-        let v = self
-            .input
-            .get(self.at)
-            .copied()
-            .ok_or_else(|| bad("input too short"))?;
-        self.at += 1;
-        Ok(v)
-    }
-
-    /// A finite value of magnitude at most [`MAX_COORD`].
-    fn finite(&mut self) -> Result<f64, FfiError> {
-        let v = self.num()?;
-        if !v.is_finite() || v.abs() > MAX_COORD {
-            return Err(bad(format!("value {v} not finite or too large")));
-        }
-        Ok(v)
-    }
-
-    fn vec3(&mut self) -> Result<[f64; 3], FfiError> {
-        Ok([self.finite()?, self.finite()?, self.finite()?])
-    }
-
-    fn nonzero3(&mut self) -> Result<[f64; 3], FfiError> {
-        let v = self.vec3()?;
-        if v.iter().map(|c| c * c).sum::<f64>() < 1e-12 {
-            return Err(bad("zero vector"));
-        }
-        Ok(v)
-    }
-
-    fn index(&mut self, max: usize) -> Result<usize, FfiError> {
-        let v = self.num()?;
-        if v.fract() != 0.0 || v < 0.0 || v > max as f64 {
-            return Err(bad(format!("bad index/count {v}")));
-        }
-        Ok(v as usize)
-    }
-
-    fn flag(&mut self) -> Result<bool, FfiError> {
-        Ok(self.index(1)? == 1)
-    }
-
-    fn take(&mut self, k: usize) -> Result<&'a [f64], FfiError> {
-        let end = self.at.checked_add(k).ok_or_else(|| bad("overflow"))?;
-        let s = self
-            .input
-            .get(self.at..end)
-            .ok_or_else(|| bad("input too short"))?;
-        self.at = end;
-        Ok(s)
-    }
-
-    fn done(&self) -> Result<(), FfiError> {
-        if self.at != self.input.len() {
-            return Err(bad("trailing input"));
-        }
-        Ok(())
-    }
-}
+crate::reader::unit_reader!(MAX_COORD);
 
 /// The parameter range of a validated curve block.
 #[derive(Debug, Clone, Copy)]
 struct CurveInfo {
     a: f64,
     b: f64,
-}
-
-fn euclid([x, y, z, w]: [f64; 4]) -> [f64; 3] {
-    let z = if z == NOZ { 0.0 } else { z };
-    if w == NOW {
-        [x, y, z]
-    } else {
-        [x / w, y / w, z / w]
-    }
 }
 
 /// A B-spline `n p m cpts knots`.
@@ -383,10 +307,48 @@ fn two_curve_ends(rd: &mut Reader<'_>, c1: &CurveInfo, c2: &CurveInfo) -> Result
     Ok(())
 }
 
+/// Whether the next curve block is a B-spline (kind `0`).
+fn next_is_bspline(rd: &Reader<'_>) -> bool {
+    rd.input.get(rd.at) == Some(&0.0)
+}
+
+/// The transforms `nt (O[3] X[3] Y[3] has_s S[3])*nt` after a curve block, applied to it
+/// in order (`SmAxis2Placement::SetCanonical(O, X, Y)`, then `SmCurve::Transform` with
+/// the scale `S` when `has_s`): B-splines only, at most [`MAX_TRANSFORMS`], origins of
+/// magnitude at most `MAX_COORD / MAX_TRANSFORMS`, non-parallel axes and scales of
+/// magnitude within `[1e-3, 1]` (so transformed points stay within a few `MAX_COORD`).
+fn transforms(rd: &mut Reader<'_>, bspline: bool) -> Result<(), FfiError> {
+    let nt = rd.index(MAX_TRANSFORMS)?;
+    if nt > 0 && !bspline {
+        return Err(bad("transforms apply to B-splines only"));
+    }
+    let sq = |v: [f64; 3]| v.iter().map(|c| c * c).sum::<f64>();
+    for _ in 0..nt {
+        let o = rd.vec3()?;
+        if o.iter().any(|c| c.abs() > MAX_COORD / MAX_TRANSFORMS as f64) {
+            return Err(bad("transform: origin too far"));
+        }
+        let [x0, x1, x2] = rd.nonzero3()?;
+        let [y0, y1, y2] = rd.nonzero3()?;
+        let cross = [x1 * y2 - x2 * y1, x2 * y0 - x0 * y2, x0 * y1 - x1 * y0];
+        if sq(cross) < 1e-6 * sq([x0, x1, x2]) * sq([y0, y1, y2]) {
+            return Err(bad("transform: parallel axes"));
+        }
+        let has_scale = rd.flag()?;
+        let s = rd.vec3()?;
+        if has_scale && s.iter().any(|c| !(1e-3..=1.0).contains(&c.abs())) {
+            return Err(bad("transform: scale outside [1e-3, 1]"));
+        }
+    }
+    Ok(())
+}
+
 fn validate_op(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
     match op {
         Op::Gps => {
+            let bspline = next_is_bspline(rd);
             let c = curve_block(rd)?;
+            transforms(rd, bspline)?;
             interval(rd, &c)?;
             let sop = rd.index(24)?;
             let need = gps_vectors(sop)
@@ -475,7 +437,7 @@ fn validate_op(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
 ///
 /// [`FfiError::InvalidArgument`] for input [`eval`] rejects.
 pub fn validate(op: Op, input: &[f64]) -> Result<(), FfiError> {
-    let mut rd = Reader { input, at: 0 };
+    let mut rd = Reader::new(input);
     validate_op(op, &mut rd)?;
     rd.done()
 }

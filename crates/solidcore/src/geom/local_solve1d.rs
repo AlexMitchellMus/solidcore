@@ -11,7 +11,7 @@
 //! | [`EvalFunction`], [`FunctionValue`]          | `SmEvalFunctionObject`                         |
 //! | [`EvalFunction::evaluate`] (default)         | `SmEvalFunctionObject::Evaluate`               |
 //! | [`IterationValue`]                           | `SmIterationValue`                             |
-//! | [`IterQueue1d`], [`IterQueue1d::new`]        | `SmIterQueue1d`, `SmIterQueue1d(ULONG)`        |
+//! | [`IterQueue1d`], [`IterQueue1d::new`], [`IterQueue1d::try_new`] | `SmIterQueue1d`, `SmIterQueue1d(ULONG)` |
 //! | [`IterQueue1d::add`]                         | `SmIterQueue1d::Add`                           |
 //! | [`IterQueue1d::is_oscillating`]              | `SmIterQueue1d::IsOscillating`                 |
 //! | [`LocalSolve1d`]                             | `SmLocalSolve1d`                               |
@@ -46,6 +46,10 @@
 //!   also where upstream ignores or retries a failed evaluation (so callers that
 //!   reach unported code report "deferred" instead of a different result).
 //! - `SolveByBisection` recursion is a loop (same arithmetic and order).
+//! - [`IterQueue1d::try_new`] (caller-chosen sizes) returns `InvalidInput` when the
+//!   slots cannot be allocated or would take more than
+//!   [`crate::limits::MAX_ALLOC_BYTES`] (upstream's `SetSize` fails softly and `Add`
+//!   then writes out of bounds; upstream's only queue has 8 slots).
 //! - `SE(...)`/`SER` error-log side effects and `SM_DEBUG_CODE` tracing are not
 //!   ported.
 
@@ -53,6 +57,7 @@ use crate::error::{ignored, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 pub use crate::geom::local_solve_nd::TerminationReason;
 use crate::geom::tol::{in_tol, scaled_zero};
+use crate::limits::try_filled;
 use crate::math::{BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, UNDEF_DOUBLE};
 
 /// Upstream status `SM_ERR`.
@@ -200,6 +205,10 @@ pub struct IterQueue1d {
 
 impl IterQueue1d {
     /// An empty queue of `size` slots (`SmIterQueue1d(ULONG)`).
+    ///
+    /// For small sizes known at the call site. Like any `Vec`, it aborts when the
+    /// slots cannot be allocated; use [`IterQueue1d::try_new`] for sizes that come
+    /// from caller input.
     #[must_use]
     pub fn new(size: u64) -> Self {
         Self {
@@ -209,6 +218,30 @@ impl IterQueue1d {
             next_idx: 0,
             full: false,
         }
+    }
+
+    /// An empty queue of `size` slots (`SmIterQueue1d(ULONG)`) for sizes that come
+    /// from caller input.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::InvalidInput`] when `size` slots cannot be allocated or would take
+    /// more than [`crate::limits::MAX_ALLOC_BYTES`] (upstream's `SetSize` then fails
+    /// softly and `Add` writes past the empty array).
+    pub fn try_new(size: u64) -> Result<Self> {
+        let too_large = || SolidError::InvalidInput {
+            operation: "geom::local_solve1d::IterQueue1d::try_new",
+            reason: "queue size too large to allocate",
+        };
+        let len = usize::try_from(size).map_err(|_| too_large())?;
+        let array = try_filled(len, IterationValue::default()).ok_or_else(too_large)?;
+        Ok(Self {
+            array,
+            size,
+            count: 0,
+            next_idx: 0,
+            full: false,
+        })
     }
 
     /// Stores `v` in the next slot (`Add`). A zero-size queue (undefined behaviour
@@ -1125,6 +1158,26 @@ mod tests {
         }
     }
 
+    /// The two values `Cycle` settles between from 0 within [-3, 3] (Newton's
+    /// steps are capped at 0.08 of the interval) and the last interior guess of
+    /// `SolveOscillating` between them, 0.99 of the way.
+    const CYCLE_PREV: f64 = 0.475_200_000_000_989_94;
+    const CYCLE_CURR: f64 = 0.950_400_000_001_979_9;
+    const LAST_GUESS: f64 = CYCLE_PREV + 0.99 * (CYCLE_CURR - CYCLE_PREV);
+
+    /// `Cycle`, except that the evaluation at `LAST_GUESS` fails after zeroing its
+    /// outputs, as `SmCurvePropertyEFO::Evaluate` does (`SmCurve.cpp:14918`).
+    struct CycleFailingAtLastGuess;
+    impl EvalFunction for CycleFailingAtLastGuess {
+        fn evaluate(&mut self, t: f64, out: &mut FunctionValue, s: bool) -> Result<()> {
+            if t.to_bits() == LAST_GUESS.to_bits() {
+                *out = FunctionValue::default();
+                return Err(sm_err("test: no value here"));
+            }
+            Cycle.evaluate(t, out, s)
+        }
+    }
+
     struct Unp;
     impl EvalFunction for Unp {
         fn evaluate(&mut self, _: f64, _: &mut FunctionValue, _: bool) -> Result<()> {
@@ -1157,6 +1210,37 @@ mod tests {
         assert!(r.t.is_finite());
     }
 
+    /// WR-253 (#481): a failed interior evaluation in `SolveOscillating` leaves
+    /// its zeroed `F` behind, and the sign test after the guesses reads it as a
+    /// sign change. `F = t^3 - 2t + 2` has no root between the two values Newton
+    /// cycles on, so the clean solve finds nothing; when the last guess fails,
+    /// upstream brackets that guess with `F = 0`, bisection keeps it, and the solve
+    /// reports it converged there. The port does the same.
+    #[test]
+    fn failed_guess_is_read_as_a_sign_change_as_upstream() {
+        let mut s = LocalSolve1d::with_interval(Extent1d::from_min_max(-3.0, 3.0), false);
+        let clean = s.solve_it(&mut Cycle, 0.0, 1e-9).unwrap();
+        assert!(!clean.found);
+        assert_eq!(s.termination_reason(), TerminationReason::UnableToConverge);
+
+        let mut s = LocalSolve1d::with_interval(Extent1d::from_min_max(-3.0, 3.0), false);
+        let r = s.solve_it(&mut CycleFailingAtLastGuess, 0.0, 1e-9).unwrap();
+        assert!(r.found);
+        assert_eq!(r.t.to_bits(), LAST_GUESS.to_bits());
+        assert_eq!(
+            s.termination_reason(),
+            TerminationReason::FoundAnswerConverged
+        );
+        assert_eq!(
+            (s.lower_bracket_t.to_bits(), s.lower_bracket_f),
+            (LAST_GUESS.to_bits(), 0.0)
+        );
+        // F really is about 0.95 there.
+        let mut out = FunctionValue::default();
+        Cycle.evaluate(LAST_GUESS, &mut out, true).unwrap();
+        assert!(out.f > 0.9);
+    }
+
     #[test]
     fn queue_oscillation() {
         let mut q = IterQueue1d::new(8);
@@ -1173,6 +1257,13 @@ mod tests {
         let mut z = IterQueue1d::new(0);
         z.add(&IterationValue::default());
         assert!(!z.is_oscillating(2));
+        assert_eq!(IterQueue1d::try_new(8).unwrap(), IterQueue1d::new(8));
+        // fuzz regression: a caller-chosen size that cannot be allocated fails softly
+        assert!(matches!(
+            IterQueue1d::try_new(u64::MAX),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert!(IterQueue1d::try_new(1 << 60).is_err());
     }
 
     #[test]

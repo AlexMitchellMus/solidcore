@@ -41,7 +41,7 @@ use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::b_spline_surface::BSplineSurface;
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use solidcore::nurbs::math::CPoint;
+use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::nurbs::nurbs_crv::allocate_nurb_curve;
 use solidcore::nurbs::srf_basic::Surface as NlSurface;
 use solidcore::surface::plane::Plane;
@@ -224,7 +224,12 @@ fn push_curve(v: &mut Vec<f64>, c: &CurveIn) {
     match c {
         CurveIn::Nurb { p, cpts, knots } => {
             let n = cpts.len().saturating_sub(1);
-            v.extend([0.0, n as f64, *p as f64, knots.len().saturating_sub(1) as f64]);
+            v.extend([
+                0.0,
+                n as f64,
+                *p as f64,
+                knots.len().saturating_sub(1) as f64,
+            ]);
             for cp in cpts {
                 v.extend(cp);
             }
@@ -275,7 +280,13 @@ fn push_curve(v: &mut Vec<f64>, c: &CurveIn) {
 
 fn push_surface(v: &mut Vec<f64>, s: &SurfIn) {
     match s {
-        SurfIn::Nurb { p, q, net, u, v: kv } => {
+        SurfIn::Nurb {
+            p,
+            q,
+            net,
+            u,
+            v: kv,
+        } => {
             let n = net.len().saturating_sub(1);
             let m = net.first().map_or(0, Vec::len).saturating_sub(1);
             v.extend([
@@ -499,13 +510,9 @@ fn rust_curve(k: &Kernel, c: &CurveIn) -> Result<Curve, HarnessError> {
                 .map_err(bad)?,
             )
         }
-        CurveIn::Hermite { p1, d1, p2, d2 } => Curve::from(HermiteCurve::new(
-            v3(*p1),
-            v3(*d1),
-            v3(*p2),
-            v3(*d2),
-            3,
-        )),
+        CurveIn::Hermite { p1, d1, p2, d2 } => {
+            Curve::from(HermiteCurve::new(v3(*p1), v3(*d1), v3(*p2), v3(*d2), 3))
+        }
     })
 }
 
@@ -548,11 +555,17 @@ fn new_brep(k: &Kernel, s: &SweepIn) -> Result<(Brep, solidcore::topology::Shell
     if s.brep_tol > 0.0 {
         b.set_tolerance(zone_tol3d(k, s.brep_tol));
     }
-    let r = b.add_region_record(Region { in_brep: true }).map_err(hb)?;
+    let r = b
+        .add_region_record(Region {
+            in_brep: true,
+            ..Region::default()
+        })
+        .map_err(hb)?;
     let shell = b
         .add_shell_record(Shell {
             faces: Vec::new(),
             region: Some(r),
+            ..Shell::default()
         })
         .map_err(hb)?;
     Ok((b, shell))
@@ -572,8 +585,8 @@ fn rust_edge(
     let curve = rust_curve(k, &e.curve)?;
     let [t0, t1] = e.t;
     let (ta, tb) = if e.opposite { (t1, t0) } else { (t0, t1) };
-    let pa = curve.evaluate_point(ta).map_err(hb)? + v3(e.off0);
-    let pb = curve.evaluate_point(tb).map_err(hb)? + v3(e.off1);
+    let pa = curve.evaluate_point(k, ta).map_err(hb)? + v3(e.off0);
+    let pb = curve.evaluate_point(k, tb).map_err(hb)? + v3(e.off1);
     let v0 = b
         .add_vertex_record(Vertex {
             point: pa,
@@ -641,14 +654,18 @@ fn ivl_eval(a: f64, b: f64, f: f64) -> f64 {
 }
 
 /// As the shim's `put_curve`.
-fn put_curve(o: &mut Vec<f64>, c: &Curve, uv: bool) -> Result<(), Fail> {
+fn put_curve(k: &Kernel, o: &mut Vec<f64>, c: &Curve, uv: bool) -> Result<(), Fail> {
     o.push(c.type_code() as f64);
     let nat = c.natural_interval();
     o.push(nat.min());
     o.push(nat.max());
     for i in 0..N_CURVE_SAMPLES {
-        let t = ivl_eval(nat.min(), nat.max(), i as f64 / (N_CURVE_SAMPLES - 1) as f64);
-        let (st, p) = match c.evaluate_point(t) {
+        let t = ivl_eval(
+            nat.min(),
+            nat.max(),
+            i as f64 / (N_CURVE_SAMPLES - 1) as f64,
+        );
+        let (st, p) = match c.evaluate_point(k, t) {
             Ok(p) => (0.0, p),
             Err(e) => {
                 defer(&e)?;
@@ -664,7 +681,7 @@ fn put_curve(o: &mut Vec<f64>, c: &Curve, uv: bool) -> Result<(), Fail> {
 }
 
 /// As the shim's `put_surface`.
-fn put_surface(o: &mut Vec<f64>, s: &Surface) -> Result<(), Fail> {
+fn put_surface(k: &Kernel, o: &mut Vec<f64>, s: &Surface) -> Result<(), Fail> {
     o.push(s.type_code() as f64);
     let d = s.natural_uv_domain();
     let (mn, mx) = (d.min(), d.max());
@@ -674,7 +691,7 @@ fn put_surface(o: &mut Vec<f64>, s: &Surface) -> Result<(), Fail> {
             let fu = i as f64 / (N_SURF_SAMPLES - 1) as f64;
             let fv = j as f64 / (N_SURF_SAMPLES - 1) as f64;
             let uv = Point2::new(mn.x + fu * (mx.x - mn.x), mn.y + fv * (mx.y - mn.y));
-            let (st, p) = match s.evaluate_point(uv) {
+            let (st, p) = match s.evaluate_point(k, uv) {
                 Ok(p) => (0.0, p),
                 Err(e) => {
                     defer(&e)?;
@@ -807,7 +824,7 @@ fn run_rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), Fail> {
                         o.push(flag(r.is_some()));
                         if let Some((c, tol)) = r {
                             o.push(tol);
-                            put_curve(o, &c, false)?;
+                            put_curve(&k, o, &c, false)?;
                         }
                     }
                     Err(e) => {
@@ -836,7 +853,7 @@ fn run_rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), Fail> {
             match g.edge_sweep_same(&k, &b, e) {
                 Ok((c, tol)) => {
                     o.extend([0.0, 1.0, tol]);
-                    put_curve(o, &c, false)?;
+                    put_curve(&k, o, &c, false)?;
                 }
                 Err(err) => {
                     defer(&err)?;
@@ -853,7 +870,7 @@ fn run_rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), Fail> {
                     o.push(0.0);
                     o.push(flag(r.surface.is_some()));
                     if let Some(srf) = &r.surface {
-                        put_surface(o, srf)?;
+                        put_surface(&k, o, srf)?;
                     }
                     o.extend([
                         r.face_tol,
@@ -871,11 +888,11 @@ fn run_rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), Fail> {
                     ]);
                     o.push(r.trim_curves.len() as f64);
                     for c in &r.trim_curves {
-                        put_curve(o, c, false)?;
+                        put_curve(&k, o, c, false)?;
                     }
                     o.push(r.uv_trim_curves.len() as f64);
                     for c in &r.uv_trim_curves {
-                        put_curve(o, &Curve::from(c.clone()), true)?;
+                        put_curve(&k, o, &Curve::from(c.clone()), true)?;
                     }
                     o.push(r.orients.len() as f64);
                     o.extend(r.orients.iter().map(|x| orient_code(*x)));
@@ -904,7 +921,7 @@ fn run_rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), Fail> {
                     o.push(flag(r.is_some()));
                     if let Some((srf, tol)) = r {
                         o.push(tol);
-                        put_surface(o, &srf)?;
+                        put_surface(&k, o, &srf)?;
                     }
                 }
                 Err(e) => {
@@ -927,9 +944,6 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
 }
 
 // ---- generation -----------------------------------------------------------------------
-
-/// Non-rational weight marker.
-const NOW: f64 = -f64::MAX;
 
 fn pick<T: Copy>(rng: &mut Rng, items: &[T], default: T) -> T {
     rng.choose(items).copied().unwrap_or(default)
@@ -1011,7 +1025,9 @@ fn gen_sweep(rng: &mut Rng, scale: f64) -> SweepIn {
     let angle = if rng.chance(0.7) {
         pick(
             rng,
-            &[30.0, 36.0, 45.0, 90.0, 180.0, 270.0, 360.0, 359.9999, 360.0, 0.5, 1e-3],
+            &[
+                30.0, 36.0, 45.0, 90.0, 180.0, 270.0, 360.0, 359.9999, 360.0, 0.5, 1e-3,
+            ],
             90.0,
         )
     } else {
@@ -1059,10 +1075,20 @@ fn gen_curve(rng: &mut Rng, f: &Frame, scale: f64) -> (CurveIn, [f64; 2], bool) 
                     (r, 0.0, r, rng.uniform(0.5, 3.0)) // cylinder
                 }
                 3 => (0.0, 0.0, 0.0, rng.uniform(0.5, 3.0)), // on the axis
-                4 => (-rng.uniform(0.5, 2.0), 0.0, rng.uniform(0.5, 2.0), rng.uniform(0.0, 1.0)), // crossing
+                4 => (
+                    -rng.uniform(0.5, 2.0),
+                    0.0,
+                    rng.uniform(0.5, 2.0),
+                    rng.uniform(0.0, 1.0),
+                ), // crossing
                 5 => (0.0, 0.0, rng.uniform(0.5, 3.0), rng.uniform(0.5, 3.0)), // cone apex on axis
                 6 => (rng.uniform(1e-7, 1e-5), 0.0, rng.uniform(0.5, 3.0), 0.0), // near the axis
-                7 => (rng.uniform(0.5, 3.0), 0.0, rng.uniform(0.5, 3.0), rng.uniform(1e-7, 1e-5)), // almost perpendicular
+                7 => (
+                    rng.uniform(0.5, 3.0),
+                    0.0,
+                    rng.uniform(0.5, 3.0),
+                    rng.uniform(1e-7, 1e-5),
+                ), // almost perpendicular
                 _ => (
                     rng.uniform(0.2, 3.0),
                     rng.uniform(-2.0, 2.0),
@@ -1177,7 +1203,11 @@ fn gen_curve(rng: &mut Rng, f: &Frame, scale: f64) -> (CurveIn, [f64; 2], bool) 
                     } else {
                         rng.uniform(0.3, 3.0)
                     };
-                    let t = if planar { th } else { th + rng.uniform(-0.8, 0.8) };
+                    let t = if planar {
+                        th
+                    } else {
+                        th + rng.uniform(-0.8, 0.8)
+                    };
                     let q = f.at(r * s, t, (i as f64 + rng.uniform(-0.3, 0.3)) * s);
                     if rational {
                         let w = rng.uniform(0.5, 2.0);
@@ -1236,7 +1266,10 @@ fn gen_edge(rng: &mut Rng, f: &Frame, scale: f64, eps: f64) -> EdgeIn {
         if rng.chance(0.85) {
             [0.0; 3]
         } else {
-            scale3(norm(rng.point3(-1.0, 1.0)), pick(rng, &[1e-9, 1e-7, 0.5], 1e-7) * eps.max(1e-6))
+            scale3(
+                norm(rng.point3(-1.0, 1.0)),
+                pick(rng, &[1e-9, 1e-7, 0.5], 1e-7) * eps.max(1e-6),
+            )
         }
     };
     let tols = [1e-6, 1e-6, 1e-5, 1e-3, 0.0, 1e-8];
@@ -1269,7 +1302,12 @@ fn gen_surface(rng: &mut Rng, scale: f64) -> SurfIn {
             x,
             y,
             scale: [rng.uniform(0.5, 2.0) * scale, rng.uniform(0.5, 2.0) * scale],
-            dom: [u0, v0, u0 + rng.uniform(0.5, 3.0), v0 + rng.uniform(0.5, 3.0)],
+            dom: [
+                u0,
+                v0,
+                u0 + rng.uniform(0.5, 3.0),
+                v0 + rng.uniform(0.5, 3.0),
+            ],
         }
     } else {
         let p = 1 + rng.below(2) as usize;
@@ -1417,4 +1455,3 @@ mod tests {
         assert!(ok > 280, "only {ok} of 300 generated cases validate");
     }
 }
-

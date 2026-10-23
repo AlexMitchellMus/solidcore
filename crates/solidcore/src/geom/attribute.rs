@@ -68,9 +68,11 @@
 //!   ([`crate::geom::object::is_kind_of`]) is the last entry of [`Attribute::is_kind_of`]'s chain.
 //!   `SmObject::GetContext` / `SetContext` have no counterpart (no per-object
 //!   contexts).
-//! - **Unported.** `SmMergeRegionAttribute::Merge` first asks both regions for their
-//!   B-rep (`SmRegion::GetBrep`, unit `topology.shell`) and returns
-//!   [`SolidError::Unported`] until that unit is wired.
+//! - **Region lookup.** [`AttributeStore::merge_with_regions`] supplies the actual
+//!   region/owner context needed by the native merge-region handler. Detached
+//!   regions retain NULL owner identity; raw void flags use native nonzero truth.
+//!   The legacy merge entry point reports an explicit missing-context error for
+//!   that handler instead of inventing topology from an opaque object key.
 //! - **Signals and asserts.** `SE(SM_ERR)`, `SM_ASSERT*`, `SM_DBG_WARN` and `ERR_MSG`
 //!   are compiled out of the release reference build and are dropped. Where upstream
 //!   would then dereference `NULL`, read a dangling pointer, write past an array or
@@ -539,6 +541,12 @@ pub enum AttributeValue {
         /// `m_pVertexuse`.
         vertexuse: Option<ObjectKey>,
     },
+    /// `SmDecimateVertexAttr` (unit `query.brep`, [`crate::query::brep`]).
+    DecimateVertex(crate::query::brep::DecimateVertexData),
+    /// `SmQuadricVertexAttr` (unit `query.brep`, [`crate::query::brep`]).
+    QuadricVertex(crate::query::brep::QuadricVertexData),
+    /// `SmQuadricEdgeAttr` (unit `query.brep`, [`crate::query::brep`]).
+    QuadricEdge(crate::query::brep::QuadricEdgeData),
 }
 
 /// An attribute: an id naming its purpose, a [`Behavior`], the list of objects
@@ -655,7 +663,9 @@ impl Attribute {
     ///
     /// As upstream, `SmLongAttribute`, `SmVector3dAttribute` and `SmColorAttribute`
     /// copies get [`Behavior::Copy`] whatever the original's behaviour; the other
-    /// classes keep it.
+    /// classes keep it. The decimation attributes copy everything but their sort
+    /// index, which restarts at `0` ([`crate::query::brep::DecimateVertexData::make_copy`],
+    /// [`crate::query::brep::QuadricEdgeData::make_copy`]).
     #[must_use]
     pub fn make_copy(&self) -> Self {
         let id = self.id;
@@ -663,6 +673,16 @@ impl Attribute {
             AttributeValue::Long(v) => Self::long(id, *v, Behavior::Copy),
             AttributeValue::Vector3d(v) => Self::vector3d(id, *v, Behavior::Copy),
             AttributeValue::Color(v) => Self::color(id, *v, Behavior::Copy),
+            AttributeValue::DecimateVertex(d) => Self::with_value(
+                id,
+                self.behavior,
+                AttributeValue::DecimateVertex(d.make_copy()),
+            ),
+            AttributeValue::QuadricEdge(d) => Self::with_value(
+                id,
+                self.behavior,
+                AttributeValue::QuadricEdge(d.make_copy()),
+            ),
             other => Self::with_value(id, self.behavior, other.clone()),
         }
     }
@@ -704,7 +724,10 @@ impl Attribute {
         match self.value {
             AttributeValue::None
             | AttributeValue::PolyToEuVu { .. }
-            | AttributeValue::PolyEdgeToVertexUse { .. } => type_code::ATTRIBUTE,
+            | AttributeValue::PolyEdgeToVertexUse { .. }
+            | AttributeValue::DecimateVertex(_)
+            | AttributeValue::QuadricVertex(_)
+            | AttributeValue::QuadricEdge(_) => type_code::ATTRIBUTE,
             AttributeValue::Generic { .. } => type_code::GENERIC,
             AttributeValue::Long(_) => type_code::LONG,
             AttributeValue::Pointer(_) | AttributeValue::MergeRegion(_) => type_code::POINTER,
@@ -720,7 +743,10 @@ impl Attribute {
         match self.value {
             AttributeValue::None
             | AttributeValue::PolyToEuVu { .. }
-            | AttributeValue::PolyEdgeToVertexUse { .. } => "SmAttribute_TYPE",
+            | AttributeValue::PolyEdgeToVertexUse { .. }
+            | AttributeValue::DecimateVertex(_)
+            | AttributeValue::QuadricVertex(_)
+            | AttributeValue::QuadricEdge(_) => "SmAttribute_TYPE",
             AttributeValue::Generic { .. } => "SmGenericAttribute_TYPE",
             AttributeValue::Long(_) => "SmLongAttribute_TYPE",
             AttributeValue::Pointer(_) | AttributeValue::MergeRegion(_) => {
@@ -741,7 +767,10 @@ impl Attribute {
         let own: &[i64] = match self.value {
             AttributeValue::None
             | AttributeValue::PolyToEuVu { .. }
-            | AttributeValue::PolyEdgeToVertexUse { .. } => &[],
+            | AttributeValue::PolyEdgeToVertexUse { .. }
+            | AttributeValue::DecimateVertex(_)
+            | AttributeValue::QuadricVertex(_)
+            | AttributeValue::QuadricEdge(_) => &[],
             AttributeValue::Generic { .. } => &[type_code::GENERIC],
             AttributeValue::Long(_) => &[type_code::LONG],
             AttributeValue::Pointer(_) => &[type_code::POINTER],
@@ -845,6 +874,13 @@ impl AttributeStore {
             operation: "geom::attribute::AttributeStore::insert",
             reason: "too many attributes",
         })?;
+        // upstream's `new` of an attribute fails on memory exhaustion; never abort
+        self.slots
+            .try_reserve(1)
+            .map_err(|_| SolidError::InvalidInput {
+                operation: "geom::attribute::AttributeStore::insert",
+                reason: "attribute store cannot grow",
+            })?;
         self.slots.push(Some(attribute));
         Ok(AttributeHandle(index))
     }
@@ -1093,6 +1129,8 @@ impl AttributeStore {
     /// `Merge(pOrigObject1, pOrigObject2, pMergedResult)` (virtual): the merge-region
     /// attribute's own handler, otherwise the default one (`merged` gets a copy of
     /// or a reference to this attribute unless it has one of its id).
+    /// Merge-region attributes require [`Self::merge_with_regions`]; this legacy
+    /// entry point has no topology lookup and returns an explicit context error.
     pub fn merge(
         &mut self,
         h: AttributeHandle,
@@ -1100,9 +1138,37 @@ impl AttributeStore {
         orig2: ObjectKey,
         merged: ObjectKey,
     ) -> Result<()> {
+        self.merge_using_regions(h, orig1, orig2, merged, None)
+    }
+
+    /// Merge with the caller's actual typed region context. Ordinary attributes
+    /// use the same default handler; merge-region attributes resolve live owners
+    /// and flags rather than inferring them from opaque object keys.
+    ///
+    /// # Errors
+    /// Invalid attribute handles, failed region lookup or native merge errors.
+    pub fn merge_with_regions(
+        &mut self,
+        h: AttributeHandle,
+        orig1: ObjectKey,
+        orig2: ObjectKey,
+        merged: ObjectKey,
+        regions: &dyn crate::topology::shell::RegionLookup,
+    ) -> Result<()> {
+        self.merge_using_regions(h, orig1, orig2, merged, Some(regions))
+    }
+
+    fn merge_using_regions(
+        &mut self,
+        h: AttributeHandle,
+        orig1: ObjectKey,
+        orig2: ObjectKey,
+        merged: ObjectKey,
+        regions: Option<&dyn crate::topology::shell::RegionLookup>,
+    ) -> Result<()> {
         const OP: &str = "geom::attribute::AttributeStore::merge";
         if matches!(self.attr(h, OP)?.value, AttributeValue::MergeRegion(_)) {
-            return self.merge_region_merge(h, orig1, orig2, merged);
+            return self.merge_region_merge(h, orig1, orig2, merged, regions);
         }
         self.propagate_to(h, merged, OP)
     }
@@ -1213,10 +1279,11 @@ impl AttributeStore {
         orig1: ObjectKey,
         orig2: ObjectKey,
         merged: ObjectKey,
+        regions: Option<&dyn crate::topology::shell::RegionLookup>,
     ) -> Result<()> {
         const OP: &str = "geom::attribute::AttributeStore::merge";
-        let brep1 = region_brep(orig1)?;
-        if brep1 != region_brep(orig2)? {
+        let brep1 = region_brep(orig1, regions)?;
+        if brep1 != region_brep(orig2, regions)? {
             return Ok(());
         }
         let out = self.merge_region_on(merged, OP)?;
@@ -1260,9 +1327,9 @@ impl AttributeStore {
             new
         };
         let add_region = if in1.is_none() { orig1 } else { orig2 };
-        let add_type = if region_is_infinite(add_region)? {
+        let add_type = if region_is_infinite(add_region, regions)? {
             region_type::INFINITE
-        } else if region_is_void(add_region)? {
+        } else if region_is_void(add_region, regions)? {
             region_type::VOID
         } else {
             region_type::SOLID
@@ -1463,31 +1530,46 @@ fn goto_next_attline(s: &mut InputStream) -> Result<()> {
     }
 }
 
-/// `SmRegion::GetBrep` on a region carrying a merge-region attribute.
-fn region_brep(_region: ObjectKey) -> Result<u64> {
-    // UNPORTED(topology.shell): SmRegion::GetBrep
-    Err(SolidError::Unported {
-        upstream: "SmRegion::GetBrep",
-        unit: "topology.shell",
-    })
+/// Resolve the native pointer through a live caller-supplied topology context.
+/// Without one the region query is a deferral (`Unported`), not an invalid input:
+/// the native pointer is always reachable upstream.
+fn resolve_region<'a>(
+    region: ObjectKey,
+    regions: Option<&'a dyn crate::topology::shell::RegionLookup>,
+    symbol: &'static str,
+) -> Result<crate::topology::shell::RegionRef<'a>> {
+    // UNPORTED(topology.shell): SmRegion::GetBrep / IsInfiniteRegion / IsVoid (justified: plan/findings.md "topology.shell: borrowed region context for attribute backedges")
+    // REGION-LOOKUP(#86): no library `RegionLookup` exists yet, so a region handler
+    // reached without a caller-supplied context defers here instead of inferring
+    // region state. The owner of issue #86 replaces this with the real lookup
+    // (grep REGION-LOOKUP).
+    regions
+        .ok_or_else(|| SolidError::unported(symbol, "topology.shell"))?
+        .resolve_region(region)
 }
 
-/// `SmRegion::IsInfiniteRegion`.
-fn region_is_infinite(_region: ObjectKey) -> Result<bool> {
-    // UNPORTED(topology.shell): SmRegion::IsInfiniteRegion
-    Err(SolidError::Unported {
-        upstream: "SmRegion::IsInfiniteRegion",
-        unit: "topology.shell",
-    })
+/// `SmRegion::GetBrep`, preserving NULL owner identity.
+fn region_brep(
+    region: ObjectKey,
+    regions: Option<&dyn crate::topology::shell::RegionLookup>,
+) -> Result<Option<crate::topology::BrepId>> {
+    resolve_region(region, regions, "SmRegion::GetBrep")?.owning_brep()
 }
 
-/// `SmRegion::IsVoid`.
-fn region_is_void(_region: ObjectKey) -> Result<bool> {
-    // UNPORTED(topology.shell): SmRegion::IsVoid
-    Err(SolidError::Unported {
-        upstream: "SmRegion::IsVoid",
-        unit: "topology.shell",
-    })
+/// `SmRegion::IsInfiniteRegion` on the actual arena record.
+fn region_is_infinite(
+    region: ObjectKey,
+    regions: Option<&dyn crate::topology::shell::RegionLookup>,
+) -> Result<bool> {
+    resolve_region(region, regions, "SmRegion::IsInfiniteRegion")?.is_infinite()
+}
+
+/// Native truth semantics: every nonzero `SmBoolean`, including `UNSURE`, is true.
+fn region_is_void(
+    region: ObjectKey,
+    regions: Option<&dyn crate::topology::shell::RegionLookup>,
+) -> Result<bool> {
+    Ok(resolve_region(region, regions, "SmRegion::IsVoid")?.void_state()? != 0)
 }
 
 #[cfg(test)]
@@ -1619,7 +1701,109 @@ mod tests {
     }
 
     #[test]
-    fn merge_region_merge_is_unported() {
+    fn region_lookup_preserves_brep_identity_null_owners_and_native_void_truth() {
+        use crate::topology::shell::{RegionLookup, RegionRef};
+        use crate::topology::{Brep, BrepId, Region, RegionId};
+        struct Lookup {
+            left: Brep,
+            right: Brep,
+            detached: Brep,
+            void: RegionId,
+        }
+        impl RegionLookup for Lookup {
+            fn resolve_region(&self, key: ObjectKey) -> Result<RegionRef<'_>> {
+                let (brep, brep_id, region_id) = match key.0 {
+                    1 => (&self.left, BrepId::from_index(0), RegionId::from_index(0)),
+                    2 => (&self.right, BrepId::from_index(1), RegionId::from_index(0)),
+                    3 => (&self.left, BrepId::from_index(0), self.void),
+                    4 => (
+                        &self.detached,
+                        BrepId::from_index(2),
+                        RegionId::from_index(0),
+                    ),
+                    _ => return Err(SolidError::invalid_input("test::regions", "unknown object")),
+                };
+                Ok(RegionRef {
+                    brep,
+                    brep_id,
+                    region_id,
+                })
+            }
+        }
+        let mut left = Brep::new();
+        let inf = left
+            .add_region_record(Region {
+                in_brep: true,
+                ..Region::new()
+            })
+            .unwrap();
+        left.set_infinite_region_record(Some(inf));
+        let void = left
+            .add_region_record(Region {
+                in_brep: true,
+                is_void: 2,
+                ..Region::new()
+            })
+            .unwrap();
+        let mut right = Brep::new();
+        let right_inf = right
+            .add_region_record(Region {
+                in_brep: true,
+                ..Region::new()
+            })
+            .unwrap();
+        right.set_infinite_region_record(Some(right_inf));
+        assert_eq!(
+            inf, right_inf,
+            "identical scoped indices belong to distinct B-reps"
+        );
+        let mut detached = Brep::new();
+        detached.add_region_record(Region::new()).unwrap();
+        let lookup = Lookup {
+            left,
+            right,
+            detached,
+            void,
+        };
+        assert_eq!(
+            lookup.resolve_region(O1).unwrap().owning_brep().unwrap(),
+            Some(BrepId::from_index(0))
+        );
+        assert_eq!(
+            lookup
+                .resolve_region(ObjectKey(4))
+                .unwrap()
+                .owning_brep()
+                .unwrap(),
+            None
+        );
+        assert!(lookup.resolve_region(O1).unwrap().is_infinite().unwrap());
+        assert!(!lookup.resolve_region(O3).unwrap().is_infinite().unwrap());
+        assert_eq!(lookup.resolve_region(O3).unwrap().void_state().unwrap(), 2);
+        let mut store = AttributeStore::new();
+        let h = store.insert(Attribute::merge_region(O1, 0, O2, 1)).unwrap();
+        store.add_attribute(O1, h).unwrap();
+        let before = store.clone();
+        store.merge_with_regions(h, O1, O2, O3, &lookup).unwrap();
+        assert_eq!(store, before, "different owner identities do not merge");
+        store
+            .merge_with_regions(h, O1, ObjectKey(4), O3, &lookup)
+            .unwrap();
+        assert_eq!(
+            store, before,
+            "NULL must differ from valid B-rep identity zero"
+        );
+        store.merge_with_regions(h, O1, O3, O1, &lookup).unwrap();
+        let data = store.get(h).unwrap().merge_region_data().unwrap();
+        assert_eq!(data.this_regions().last().copied(), Some(O3));
+        assert_eq!(
+            data.this_region_types().last().copied(),
+            Some(region_type::VOID)
+        );
+    }
+
+    #[test]
+    fn merge_region_merge_requires_region_context() {
         let mut s = AttributeStore::new();
         let m = s.insert(Attribute::merge_region(O1, 0, O2, 1)).unwrap();
         s.add_attribute(O1, m).unwrap();

@@ -39,6 +39,7 @@
 //! B-splines and lines only (`SmBSplineCurve*`); gaps for a closed composite only with
 //! curves.
 
+use crate::validate::{bad, euclid, NOW, NOZ};
 use crate::{call_with_buffer, FfiError};
 
 /// Largest control point index `n`.
@@ -51,9 +52,6 @@ pub const MAX_COORD: f64 = 1e6;
 pub const MAX_SEGMENTS: usize = 8;
 /// Largest type code asked about.
 pub const MAX_TYPE: usize = 100_000;
-
-const NOZ: f64 = f64::MAX;
-const NOW: f64 = -f64::MAX;
 
 /// Shim operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,75 +119,15 @@ mod sys {
     }
 }
 
-fn bad(msg: impl Into<String>) -> FfiError {
-    FfiError::InvalidArgument(msg.into())
-}
+crate::reader::unit_reader!(MAX_COORD);
 
-/// Sequential reader over the input.
-struct Reader<'a> {
-    input: &'a [f64],
-    at: usize,
-}
-
-impl<'a> Reader<'a> {
-    fn num(&mut self) -> Result<f64, FfiError> {
-        let v = self
-            .input
-            .get(self.at)
-            .copied()
-            .ok_or_else(|| bad("input too short"))?;
-        self.at += 1;
-        Ok(v)
-    }
-
-    /// A finite value of magnitude at most [`MAX_COORD`].
-    fn finite(&mut self) -> Result<f64, FfiError> {
-        let v = self.num()?;
-        if !v.is_finite() || v.abs() > MAX_COORD {
-            return Err(bad(format!("value {v} not finite or too large")));
-        }
-        Ok(v)
-    }
-
-    fn vec3(&mut self) -> Result<[f64; 3], FfiError> {
-        Ok([self.finite()?, self.finite()?, self.finite()?])
-    }
-
+impl Reader<'_> {
     fn nonzero3(&mut self) -> Result<[f64; 3], FfiError> {
         let v = self.vec3()?;
         if len_sq(v) < 1e-12 {
             return Err(bad("zero vector"));
         }
         Ok(v)
-    }
-
-    fn index(&mut self, max: usize) -> Result<usize, FfiError> {
-        let v = self.num()?;
-        if v.fract() != 0.0 || v < 0.0 || v > max as f64 {
-            return Err(bad(format!("bad index/count {v}")));
-        }
-        Ok(v as usize)
-    }
-
-    fn flag(&mut self) -> Result<bool, FfiError> {
-        Ok(self.index(1)? == 1)
-    }
-
-    fn take(&mut self, k: usize) -> Result<&'a [f64], FfiError> {
-        let end = self.at.checked_add(k).ok_or_else(|| bad("overflow"))?;
-        let s = self
-            .input
-            .get(self.at..end)
-            .ok_or_else(|| bad("input too short"))?;
-        self.at = end;
-        Ok(s)
-    }
-
-    fn done(&self) -> Result<(), FfiError> {
-        if self.at != self.input.len() {
-            return Err(bad("trailing input"));
-        }
-        Ok(())
     }
 }
 
@@ -198,7 +136,7 @@ fn len_sq(v: [f64; 3]) -> f64 {
 }
 
 /// What validation learns about a curve block.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct CurveInfo {
     /// `0` B-spline, `1` Hermite, `2` line.
     kind: usize,
@@ -207,19 +145,15 @@ struct CurveInfo {
     /// for a line).
     start: [f64; 3],
     end: [f64; 3],
+    /// The distinct knot values of a B-spline (empty otherwise).
+    knots: Vec<f64>,
 }
 
-fn euclid([x, y, z, w]: [f64; 4]) -> [f64; 3] {
-    let z = if z == NOZ { 0.0 } else { z };
-    if w == NOW {
-        [x, y, z]
-    } else {
-        [x / w, y / w, z / w]
-    }
-}
+/// Distinct knot values, start point and end point of a curve.
+type KnotsAndEnds = (Vec<f64>, [f64; 3], [f64; 3]);
 
-/// A B-spline `n p m cpts knots`: its range and end points.
-fn bspline(rd: &mut Reader<'_>) -> Result<(f64, f64, [f64; 3], [f64; 3]), FfiError> {
+/// A B-spline `n p m cpts knots`: its distinct knot values and end points.
+fn bspline(rd: &mut Reader<'_>) -> Result<KnotsAndEnds, FfiError> {
     let n = rd.index(MAX_INDEX)?;
     let p = rd.index(MAX_DEGREE)?;
     let m = rd.index(MAX_INDEX + MAX_DEGREE + 1)?;
@@ -281,7 +215,13 @@ fn bspline(rd: &mut Reader<'_>) -> Result<(f64, f64, [f64; 3], [f64; 3]), FfiErr
     }
     let first = cpts.first().copied().ok_or_else(|| bad("empty curve"))?;
     let last = cpts.last().copied().ok_or_else(|| bad("empty curve"))?;
-    Ok((a, b, euclid(first), euclid(last)))
+    let mut distinct: Vec<f64> = Vec::new();
+    for &k in knots {
+        if distinct.last() != Some(&k) {
+            distinct.push(k);
+        }
+    }
+    Ok((distinct, euclid(first), euclid(last)))
 }
 
 /// A line `P V d0 d1 scale io`.
@@ -311,12 +251,13 @@ fn curve_block(rd: &mut Reader<'_>) -> Result<CurveInfo, FfiError> {
     match kind {
         0 => {
             rd.flag()?;
-            let (_, _, start, end) = bspline(rd)?;
+            let (knots, start, end) = bspline(rd)?;
             Ok(CurveInfo {
                 kind,
                 dim,
                 start,
                 end,
+                knots,
             })
         }
         1 => {
@@ -329,6 +270,7 @@ fn curve_block(rd: &mut Reader<'_>) -> Result<CurveInfo, FfiError> {
                 dim,
                 start: p1,
                 end: p2,
+                knots: Vec::new(),
             })
         }
         _ => {
@@ -341,6 +283,7 @@ fn curve_block(rd: &mut Reader<'_>) -> Result<CurveInfo, FfiError> {
                 dim,
                 start: [f64::NAN; 3],
                 end: [f64::NAN; 3],
+                knots: Vec::new(),
             })
         }
     }
@@ -426,6 +369,33 @@ fn check_approx(curves: &[CurveInfo]) -> Result<(), FfiError> {
         if len_sq(d).sqrt() > 1e-9 * size {
             return Err(bad("approx: segments not connected (the join fails)"));
         }
+    }
+    // `SmBSplineCurve::CreateByJoining` appends each segment's distinct knots shifted
+    // by `last joined knot - first segment knot`; a knot span that the shift rounds
+    // away leaves equal knots, `CreateCanonical` fails and `ApproximateCurve` calls
+    // `AssertValid` on the `NULL` result (`SmCompositeCurve.cpp:676`, SIGSEGV). The
+    // same sums in the same order, with a Hermite segment's approximation over its
+    // natural interval `[0, 1]`.
+    let mut last: Option<f64> = None;
+    for c in curves {
+        let hermite = [0.0, 1.0];
+        let knots: &[f64] = if c.kind == 1 { &hermite } else { &c.knots };
+        let (Some(&u0), Some(rest)) = (knots.first(), knots.get(1..)) else {
+            continue;
+        };
+        let start = *last.get_or_insert(u0);
+        let offset = start - u0;
+        let mut prev = start;
+        for &u in rest {
+            let v = u + offset;
+            if v <= prev {
+                return Err(bad(
+                    "approx: a knot span vanishes in the join (the join fails)",
+                ));
+            }
+            prev = v;
+        }
+        last = Some(prev);
     }
     Ok(())
 }
@@ -564,7 +534,7 @@ fn validate_op(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
 ///
 /// [`FfiError::InvalidArgument`] describing the first problem.
 pub fn validate(op: Op, input: &[f64]) -> Result<(), FfiError> {
-    let mut rd = Reader { input, at: 0 };
+    let mut rd = Reader::new(input);
     validate_op(op, &mut rd)?;
     rd.done()
 }

@@ -18,14 +18,19 @@
 //! model. Optional [`ClassGeometry`] callbacks resolve vertex points, topology tolerances
 //! and vertex/face gaps. Opaque handles still defer. The SSS refinement block
 //! (upstream lines 14826–15095) needs mutable curve/topology ownership and defers
-//! before editing geometry; this block and the edge branch of `insert_solutions`
-//! remain unported. That block of `IntersectVertices` (SmCurveClass.cpp
+//! before editing geometry; this block remains unported. That block of `IntersectVertices` (SmCurveClass.cpp
 //! 14826-15095) is this unit's own unported code (`UNPORTED(intersect.curve_class_p5)`);
 //! the mate lookups it ends with are ported in `boolean.topology_intersector_p1`.
 //! Ordinary vertex projections are
 //! compared; large-gap projections remain uncertified because the oracle vertices
 //! have no vertexuse and its Rust adapter supplies no vertex/face gap.
-//! Part 2 remains an explicit dependency; parts 6/7 are wired from main. The fixup
+//! Parts 2, 6 and 7 are wired. The edge branch of `insert_solutions` resolves the edge
+//! through [`ClassGeometry::topology_entity`] (an adapter without it keeps the
+//! `SmEdge::GetCurve` deferral): the edge-end vertex snap, then
+//! `sm_RefineCCIToSurfaces` through its no-work gate (its large-gap tail defers, part
+//! 2), then the edge classification. Raising a vertex tolerance to the edge's
+//! (`SmVertex::SetTolerance`, when `GetOKToSetTolerance`) needs the mutable B-rep and
+//! defers. The fixup
 //! restart loop is bounded by three times the initial interval count plus one: fixes remove an interval or
 //! snap an edge classification to a vertex. Undefined
 //! native null dereferences and unequal paired classification lengths return errors.
@@ -35,6 +40,7 @@
 //! `p5_closed` errors on an unresolved curve, where upstream returns FALSE.
 //! The differential runner's face zone tolerance of zero is not compared against C++.
 
+use super::p2::refine_cci_to_surfaces_in;
 use super::{
     make_consistent_classifications, src_zone_tol_3d_of, CurveClassification, CurveInterval,
 };
@@ -45,7 +51,9 @@ use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::solution_array::{ObjectKind, Solution, SolutionObject, SolutionType};
-use crate::geom::tol::{xsect_tol3d, xsect_tol_3d_from_zones, ANG_TOL_DEG, USE_DEFAULT};
+use crate::geom::tol::{
+    map_to_1d_on_curve, xsect_tol3d, xsect_tol_3d_from_zones, ANG_TOL_DEG, USE_DEFAULT,
+};
 use crate::intersect::point_class::{
     object_zone_tol_3d, ClassGeometry, ClassObject, ClassObjectKind, PointClassType,
     PointClassification,
@@ -54,6 +62,7 @@ use crate::kernel::Kernel;
 use crate::math::{Point3, BIG_DOUBLE, EFF_ZERO, PI};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::surface::surface::{Surface, SurfaceKind};
+use crate::EntityRef;
 
 #[derive(Clone, Copy, PartialEq)]
 struct NoObject;
@@ -196,12 +205,13 @@ impl<O: ClassObject> CurveClassification<O> {
             .ok_or(SolidError::invalid_input(OP, "unresolved curve"))?;
         let zone = src_zone_tol_3d_of(k, Some(self));
         curve.is_closed(
+            k,
             &curve.natural_interval(),
             xsect_tol_3d_from_zones(k, zone, zone),
         )
     }
 
-    // Remaining dependency boundaries belong to the independent p2/p7 ports.
+    // Thin wrappers over the part-2/6/7 members.
     fn p5_point_class_by_index(
         classification: &Self,
         index: usize,
@@ -210,23 +220,22 @@ impl<O: ClassObject> CurveClassification<O> {
     }
 
     fn p5_classify_crv_loc_by_index(
-        _classification: &Self,
-        _geometry: &impl ClassGeometry<O>,
-        _index: usize,
+        k: &Kernel,
+        classification: &Self,
+        geometry: &impl ClassGeometry<O>,
+        index: usize,
     ) -> Result<(Point3, f64)> {
-        // UNPORTED(intersect.curve_class_p2): SmCurveClassification::GetClassifyCrvLoc
-        Err(SolidError::unported(
-            "SmCurveClassification::GetClassifyCrvLoc",
-            "intersect.curve_class_p2",
-        ))
+        classification.classify_crv_loc_by_index(k, geometry, index)
     }
 
     fn p5_merge_interval(
         classification: &mut Self,
+        k: &Kernel,
+        geometry: &impl ClassGeometry<O>,
         index: usize,
         vertices_only: bool,
     ) -> Result<MergedTopology<O>> {
-        let merged = classification.merge_interval(index, vertices_only)?;
+        let merged = classification.merge_interval(k, geometry, index, vertices_only)?;
         Ok(MergedTopology {
             faces: merged.new_faces,
             edges: merged.new_edges,
@@ -291,13 +300,13 @@ impl<O: ClassObject> CurveClassification<O> {
             {
                 // Upstream computes a tolerance-weighted point, then overwrites it with
                 // GetClassifyCrvLoc(j). Retain the fallible lookups before that overwrite.
-                let p1 = Self::p5_classify_crv_loc_by_index(self, geometry, j)?.0;
-                let p2 = Self::p5_classify_crv_loc_by_index(other, geometry, j)?.0;
+                let p1 = Self::p5_classify_crv_loc_by_index(k, self, geometry, j)?.0;
+                let p2 = Self::p5_classify_crv_loc_by_index(k, other, geometry, j)?.0;
                 if (p2 - p1).length() > EFF_ZERO {
                     object_zone_tol_3d(k, geometry, this.object())?;
                     object_zone_tol_3d(k, geometry, that.object())?;
                 }
-                let point = Self::p5_classify_crv_loc_by_index(self, geometry, j)?.0;
+                let point = Self::p5_classify_crv_loc_by_index(k, self, geometry, j)?.0;
                 if options.points_3d {
                     out.points_3d.push(point);
                 }
@@ -324,8 +333,8 @@ impl<O: ClassObject> CurveClassification<O> {
                 }
                 let curve = self.curve_geometry(geometry)?;
                 let interval = self.at(i)?.interval;
-                let start = curve.evaluate_point(interval.min())?;
-                let end = curve.evaluate_point(interval.max())?;
+                let start = curve.evaluate_point(k, interval.min())?;
+                let end = curve.evaluate_point(k, interval.max())?;
                 if self.fix_end_point_class(k, geometry, i, start)?
                     || self.fix_end_point_class(k, geometry, i + 1, end)?
                 {
@@ -335,7 +344,7 @@ impl<O: ClassObject> CurveClassification<O> {
             }
             break;
         }
-        make_consistent_classifications(self)
+        make_consistent_classifications(k, geometry, self)
     }
 
     /// Inserts topology solutions in four passes: nonface ranges, vertices, other
@@ -433,8 +442,8 @@ impl<O: ClassObject> CurveClassification<O> {
     /// Intersects the curve with vertices (defaults: no large gaps, UV space allowed).
     ///
     /// # Errors
-    /// Missing vertex points or vertex/face gaps are invalid input. Generic 2D
-    /// curve-on-surface dispatch and the unported SSS block defer.
+    /// Missing vertex points or vertex/face gaps are invalid input. Unported surface
+    /// dependencies and the SSS block defer.
     pub fn intersect_vertices(
         &mut self,
         k: &Kernel,
@@ -447,17 +456,10 @@ impl<O: ClassObject> CurveClassification<O> {
         let original_curve = self.curve_geometry(geometry)?;
         let wrapped;
         let curve = if !uv_space_okay && original_curve.dim() == 2 {
-            let SurfaceKind::BSpline(bs) = surface.kind() else {
-                // UNPORTED(curve.crv_on_surf): SmCrvOnSurf over a generic Surface
-                return Err(SolidError::unported(
-                    "SmCrvOnSurf generic Surface dispatch",
-                    "curve.crv_on_surf",
-                ));
-            };
             wrapped = Curve::from(CrvOnSurf::new(
                 k,
-                original_curve.clone(),
-                bs.clone(),
+                original_curve.clone_for_evaluation()?,
+                surface.clone_for_evaluation()?,
                 Some(surface.natural_uv_domain()),
                 0,
             )?);
@@ -539,11 +541,14 @@ impl<O: ClassObject> CurveClassification<O> {
                     let Some(projected) = vertex_solutions.as_slice().first() else {
                         continue;
                     };
-                    let vertex_on_surface = surface.evaluate_point(crate::math::Vec2::new(
-                        projected.start.param(0)?,
-                        projected.start.param(1)?,
-                    ))?;
-                    let curve_point = curve.evaluate_point(solution.start.param(0)?)?;
+                    let vertex_on_surface = surface.evaluate_point(
+                        k,
+                        crate::math::Vec2::new(
+                            projected.start.param(0)?,
+                            projected.start.param(1)?,
+                        ),
+                    )?;
+                    let curve_point = curve.evaluate_point(k, solution.start.param(0)?)?;
                     let curve_solutions = surface.global_point_solve::<NoObject>(
                         k,
                         None,
@@ -557,10 +562,13 @@ impl<O: ClassObject> CurveClassification<O> {
                     let Some(projected) = curve_solutions.as_slice().first() else {
                         continue;
                     };
-                    let curve_on_surface = surface.evaluate_point(crate::math::Vec2::new(
-                        projected.start.param(0)?,
-                        projected.start.param(1)?,
-                    ))?;
+                    let curve_on_surface = surface.evaluate_point(
+                        k,
+                        crate::math::Vec2::new(
+                            projected.start.param(0)?,
+                            projected.start.param(1)?,
+                        ),
+                    )?;
                     if curve_on_surface.distance(vertex_on_surface) > tolerance {
                         continue;
                     }
@@ -608,11 +616,11 @@ impl<O: ClassObject> CurveClassification<O> {
             {
                 continue;
             }
-            scratch = Self::p5_merge_interval(self, i, false)?;
+            scratch = Self::p5_merge_interval(self, k, geometry, i, false)?;
             append_unique(&mut out.faces, scratch.faces.iter().copied());
             append_unique(&mut out.edges, scratch.edges.iter().copied());
             append_unique(&mut out.vertices, scratch.vertices.iter().copied());
-            scratch_other = Self::p5_merge_interval(other, i, false)?;
+            scratch_other = Self::p5_merge_interval(other, k, geometry, i, false)?;
             append_unique(&mut out_other.faces, scratch_other.faces.iter().copied());
             append_unique(&mut out_other.edges, scratch_other.edges.iter().copied());
             append_unique(
@@ -663,8 +671,13 @@ impl<O: ClassObject> CurveClassification<O> {
     ///
     /// # Errors
     /// Unfinished topology merging defers when an interval requires graph mutation.
-    pub fn merge_intervals(&mut self, vertices_only: bool) -> Result<MergedTopology<O>> {
-        self.merge_intervals_with_partial(vertices_only)
+    pub fn merge_intervals(
+        &mut self,
+        k: &Kernel,
+        geometry: &impl ClassGeometry<O>,
+        vertices_only: bool,
+    ) -> Result<MergedTopology<O>> {
+        self.merge_intervals_with_partial(k, geometry, vertices_only)
             .map_err(|e| e.error)
     }
 
@@ -672,9 +685,13 @@ impl<O: ClassObject> CurveClassification<O> {
     /// Callers that ignore the native status must still consume its partial lists.
     pub(crate) fn merge_intervals_with_partial(
         &mut self,
+        k: &Kernel,
+        geometry: &impl ClassGeometry<O>,
         vertices_only: bool,
     ) -> Result<MergedTopology<O>, PartialMergeError<O>> {
-        self.merge_intervals_using(vertices_only, Self::p5_merge_interval)
+        self.merge_intervals_using(vertices_only, |c, j, v| {
+            Self::p5_merge_interval(c, k, geometry, j, v)
+        })
     }
 
     fn merge_intervals_using(
@@ -732,44 +749,89 @@ pub fn insert_solutions<O: ClassObject>(
         || xsect_tol_3d_from_zones(k, source_zone, target_zone),
         |t| xsect_tol3d(k, t),
     );
-    let target = geometry.curve(object);
-    let plane = geometry
-        .surface(object)
-        .is_some_and(|s| matches!(s.kind(), SurfaceKind::Plane(_)));
-    if object.class_kind() == ClassObjectKind::Edge {
-        // UNPORTED(intersect.curve_class_p2): sm_InsertSolutions edge branch (InsertAt)
-        // The unported branch also needs p7 point-index queries, vertex snapping,
-        // sm_RefineCCIToSurfaces and the 2D class object; resolving an edge curve
-        // alone does not implement it.
-        return Err(SolidError::unported(
-            "sm_InsertSolutions edge branch (InsertAt / GetPointClassByIndex)",
-            "intersect.curve_class_p2",
-        ));
-    }
+
+    // when given an Edge - the target curve is Edge->Curve
+    let edge = (object.class_kind() == ClassObjectKind::Edge).then_some(object);
+    let edge_curve = match edge {
+        Some(e) => Some(
+            super::p3::edge_curve(geometry, e)?
+                .ok_or(SolidError::invalid_input(OP, "edge without a curve"))?,
+        ),
+        None => None,
+    };
+    let target = match edge_curve {
+        Some(c) => Some(c),
+        None => geometry.curve(object),
+    };
+    let plane = edge.is_none()
+        && geometry
+            .surface(object)
+            .is_some_and(|s| matches!(s.kind(), SurfaceKind::Plane(_)));
     if target.is_none() && !plane {
         return Err(SolidError::sm_err(OP));
     }
     for sol in solutions {
-        collapse_short_range(geometry, sol, tol)?;
+        collapse_short_range(k, geometry, sol, tol)?;
         if sol.solution_type == SolutionType::SingleValue {
+            // Check whether it should have classified to a vertex.
+            if let (Some(e), Some(e_curve)) = (edge, edge_curve) {
+                if edge_end_vertex_snap(
+                    k,
+                    geometry,
+                    classification,
+                    sol,
+                    e,
+                    e_curve,
+                    source,
+                    source_zone,
+                    tol,
+                )? {
+                    continue;
+                }
+            }
+
+            // only try SSS for edge solutions: see if vertex should be placed at a
+            // surf/surf/surf intersection
+            let refine = match edge {
+                Some(e) => Some(refine_cci_to_surfaces_in(
+                    k,
+                    geometry,
+                    classification,
+                    sol,
+                    e,
+                    Point3::UNDEF,
+                    0,
+                )?),
+                None => None,
+            };
+            let sss_point_flag = refine.is_some_and(|r| r.sss_point_flag);
+
             let mut pc = PointClassification::new(source_zone);
             pc.set_class_object(
-                if target.is_some() {
+                if edge.is_some() {
+                    PointClassType::Edge
+                } else if target.is_some() {
                     PointClassType::Curve
                 } else {
                     PointClassType::Surface
                 },
                 Some(object),
             );
-            pc.set_gap_3d(sol.start.solution_value);
+            pc.set_gap_3d(match refine {
+                Some(r) if r.sss_point_flag => r.deviation,
+                _ => sol.start.solution_value,
+            });
             pc.set_src_zone_tol_3d(source_zone);
             pc.set_pre_snap_param(sol.start.param(0)?);
             pc.set_t_param(sol.start.param(1)?, classification.doing_cross_hatch());
+            if let (true, Some(r)) = (sss_point_flag, refine) {
+                pc.set_sss_point(r.sss_point);
+            }
             let mut do_insertion = true;
             if classification.ignore_tangency() {
                 if let Some(target) = target {
-                    let a = source.evaluate(sol.start.param(0)?, 1, true, true)?;
-                    let b = target.evaluate(sol.start.param(1)?, 1, true, true)?;
+                    let a = source.evaluate(k, sol.start.param(0)?, 1, true, true)?;
+                    let b = target.evaluate(k, sol.start.param(1)?, 1, true, true)?;
                     let ta = a.get(1).copied().ok_or(SolidError::sm_err(OP))?;
                     let tb = b.get(1).copied().ok_or(SolidError::sm_err(OP))?;
                     let mut angle = tb.angle_between(ta).unwrap_or(1.0);
@@ -807,9 +869,13 @@ pub fn insert_solutions<O: ClassObject>(
                 &Extent1d::from_min_max(sol.start.param(0)?, sol.end.param(0)?),
                 Some(classification),
             );
+            // (with an edge the class object is the edge: upstream's 2D-curve case
+            // needs a 2D target curve, which an edge target never sets)
             for pc in [&mut ivl.start, &mut ivl.mid, &mut ivl.end] {
                 pc.set_class_object(
-                    if target.is_some() {
+                    if edge.is_some() {
+                        PointClassType::Edge
+                    } else if target.is_some() {
                         PointClassType::Curve
                     } else {
                         PointClassType::Surface
@@ -822,13 +888,44 @@ pub fn insert_solutions<O: ClassObject>(
                 pc.set_pre_snap_param(end.param(0)?);
                 pc.set_t_param(end.param(1)?, classification.doing_cross_hatch());
             }
-            if classification.ignore_tangency()
-                && ivl.interval.length() / classification.interval().length() < 0.05
-            {
-                return Err(SolidError::invalid_input(
-                    OP,
-                    "native short-range tangency filtering requires an edge",
-                ));
+            let size_ratio = ivl.interval.length() / classification.interval().length();
+            if classification.ignore_tangency() && size_ratio < 0.05 {
+                // cancel the scheduled insertion; check for end point intersections and
+                // insert them here (upstream maps the tolerance on pEdgeCurve, which a
+                // curve or plane target leaves NULL)
+                let Some(e_curve) = edge_curve else {
+                    return Err(SolidError::invalid_input(
+                        OP,
+                        "native short-range tangency filtering requires an edge",
+                    ));
+                };
+                let cc_ivl = classification.interval();
+                let start_tol = map_to_1d_on_curve(k, tol, sol.start.param(0)?, e_curve)?;
+                if cc_ivl
+                    .is_value_on_boundary(sol.start.param(0)?, start_tol)
+                    .0
+                {
+                    classification.insert_point_class(
+                        k,
+                        geometry,
+                        &ivl.start,
+                        sol.start.param(0)?,
+                        BIG_DOUBLE,
+                        false,
+                    )?;
+                }
+                let end_tol = map_to_1d_on_curve(k, tol, sol.end.param(0)?, e_curve)?;
+                if cc_ivl.is_value_on_boundary(sol.end.param(0)?, end_tol).0 {
+                    classification.insert_point_class(
+                        k,
+                        geometry,
+                        &ivl.end,
+                        sol.end.param(0)?,
+                        BIG_DOUBLE,
+                        false,
+                    )?;
+                }
+                continue;
             }
             classification.insert_curve_interval(k, geometry, &ivl)?;
         }
@@ -836,7 +933,105 @@ pub fn insert_solutions<O: ClassObject>(
     Ok(())
 }
 
+/// The vertex check of `sm_InsertSolutions` for an edge target: a point solution within
+/// the intersection tolerance of an edge end whose vertex is within the classification
+/// curve / vertex tolerance is inserted as a vertex classification (unless that would
+/// make a sub-tolerance interval with both ends at the vertex). `true` when the solution
+/// is done with (inserted or skipped).
+#[allow(clippy::too_many_arguments)] // upstream's locals
+fn edge_end_vertex_snap<O: ClassObject>(
+    k: &Kernel,
+    geometry: &impl ClassGeometry<O>,
+    classification: &mut CurveClassification<O>,
+    sol: &Solution<O>,
+    edge: O,
+    edge_curve: &Curve,
+    source: &Curve,
+    source_zone: f64,
+    xsect_tol: f64,
+) -> Result<bool> {
+    let param = sol.start.param(1)?;
+    let edge_dom = super::p3::edge_interval(geometry, edge)?;
+    let (eb, e) = super::p7::edge_of(geometry, edge, "SmEdge::GetStartVertex")?;
+    let start_vertex = crate::topology::edge::start_vertex(eb, e)?;
+    let edge_zone = object_zone_tol_3d(k, geometry, Some(edge))?;
+    let param_xsect_tol = map_to_1d_on_curve(k, xsect_tol, edge_dom.min(), edge_curve)?;
+
+    let near_start = (param - edge_dom.min()).abs() < param_xsect_tol
+        && (param - edge_dom.min()).abs() < (param - edge_dom.max()).abs();
+    let near_end = (param - edge_dom.max()).abs() < param_xsect_tol
+        && (param - edge_dom.max()).abs() < (param - edge_dom.min()).abs();
+
+    // if Param is near EdgeIvlStart (then EdgeIvlEnd) avoiding probs with closed curves
+    for (near, at_end) in [(near_start, false), (near_end, true)] {
+        if !near {
+            continue;
+        }
+        let vertex = if at_end {
+            crate::topology::edge::other_vertex(eb, e, start_vertex)?
+        } else {
+            start_vertex
+        };
+        let vertex = vertex.ok_or(SolidError::null_pointer(OP))?;
+        let vtx = geometry
+            .topology_handle_in(eb, EntityRef::Vertex(vertex))
+            .ok_or(SolidError::invalid_input(OP, "vertex without handle"))?;
+        let mut vtx_zone = object_zone_tol_3d(k, geometry, Some(vtx))?;
+
+        if vtx_zone < edge_zone {
+            if classification.ok_to_set_tolerance() {
+                // UNPORTED(topology.vertex): SmVertex::SetTolerance (raising a vertex
+                // tolerance needs the mutable B-rep)
+                return Err(SolidError::unported(
+                    "SmVertex::SetTolerance",
+                    "topology.vertex",
+                ));
+            }
+            vtx_zone = edge_zone;
+        }
+
+        // (GetXSectTol3d(src, vtx) at the start, (vtx, src) at the end: the same sum)
+        let cc_vtx_xsect_tol = xsect_tol_3d_from_zones(k, source_zone, vtx_zone);
+
+        // check the EdgeEnd/Vertex distance (EvaluatePoint's status is ignored)
+        let edge_end_pt = ignored(edge_curve.evaluate_point(k, param))?.unwrap_or(Point3::UNDEF);
+        let dist = edge_end_pt.distance(super::p3::vertex_point(geometry, vtx)?);
+
+        // if EdgeEnd/Vertex distance < XSectTol3d(Vtx,ClassCurve) - snap to vertex
+        if dist < cc_vtx_xsect_tol {
+            // Don't add this vertex as a PointClassification if it would make a
+            // sub-tolerant CurveInterval, where both ends are this vertex [B678]
+            let touches = classification.point_classifies_connected_to(geometry, &[vtx])?;
+            let vtx_vtx_zone = object_zone_tol_3d(k, geometry, Some(vtx))?;
+            let xsect_vtx_vtx = xsect_tol_3d_from_zones(k, vtx_vtx_zone, vtx_vtx_zone);
+            let s0 = sol.start.param(0)?;
+            for touch in &touches {
+                let lo = if touch.param < s0 { touch.param } else { s0 };
+                let hi = if touch.param > s0 { touch.param } else { s0 };
+                if source
+                    .approximate_length(k, &Extent1d::from_min_max(lo, hi), 3, false)?
+                    .0
+                    < xsect_vtx_vtx
+                {
+                    return Ok(true);
+                }
+            }
+
+            // Insert a Vertex classification.
+            let mut pc = PointClassification::new(source_zone);
+            pc.set_class_object(PointClassType::Vertex, Some(vtx));
+            pc.set_gap_3d(sol.start.solution_value);
+            pc.set_src_zone_tol_3d(source_zone);
+            pc.set_pre_snap_param(s0);
+            classification.insert_point_class(k, geometry, &pc, s0, BIG_DOUBLE, false)?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn collapse_short_range<O: ClassObject>(
+    k: &Kernel,
     geometry: &impl ClassGeometry<O>,
     sol: &mut Solution<O>,
     tolerance: f64,
@@ -853,8 +1048,8 @@ fn collapse_short_range<O: ClassObject>(
         return Ok(());
     };
     let (Some(start), Some(end)) = (
-        ignored(curve.evaluate_point(sol.start.param(0)?))?,
-        ignored(curve.evaluate_point(sol.end.param(0)?))?,
+        ignored(curve.evaluate_point(k, sol.start.param(0)?))?,
+        ignored(curve.evaluate_point(k, sol.end.param(0)?))?,
     ) else {
         return Ok(());
     };
@@ -863,7 +1058,7 @@ fn collapse_short_range<O: ClassObject>(
     }
     let mut interval = Extent1d::from_value(sol.start.param(0)?);
     interval.add_value(sol.end.param(0)?);
-    if curve.approximate_length(&interval, 6, false)?.0 < tolerance {
+    if curve.approximate_length(k, &interval, 6, false)?.0 < tolerance {
         sol.solution_type = SolutionType::SingleValue;
         if sol.end.solution_value < sol.start.solution_value * 0.8 {
             sol.start.solution_value = sol.end.solution_value;
@@ -1140,6 +1335,7 @@ mod tests {
 
     #[test]
     fn collapsed_range_keeps_end_and_unrelated_parameters() {
+        let k = &Kernel::default();
         let g = geometry();
         for (ratio, expected) in [(0.79, 0.6e-6), (0.8, 0.55e-6), (1.2, 0.5e-6)] {
             let mut sol = Solution::new();
@@ -1155,7 +1351,7 @@ mod tests {
             sol.start.solution_value = 1.;
             sol.end.solution_value = ratio;
             let end = sol.end;
-            collapse_short_range(&g, &mut sol, 1e-6).unwrap();
+            collapse_short_range(k, &g, &mut sol, 1e-6).unwrap();
             assert_eq!(sol.solution_type, SolutionType::SingleValue);
             assert_eq!(sol.start.param(0).unwrap(), expected);
             assert_eq!(sol.start.param(2).unwrap(), 42.);

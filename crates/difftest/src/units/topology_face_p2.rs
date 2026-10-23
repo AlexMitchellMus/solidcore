@@ -89,6 +89,10 @@ const NULL_DEREF: f64 = -2.0;
 /// Generated cases beyond the default `--seeds` (the B-rep ops are cheap).
 const EXTRA_GENERATED: usize = 1500;
 
+/// Times a generated case's B-rep is drawn again, at most, when it lacks the entity kind its
+/// op selects (a wire or an edge network for a face op).
+const BREP_DRAWS: usize = 8;
+
 // ---- inputs -----------------------------------------------------------------------------
 
 /// A B-spline curve: `dim`, control points `[x y z w]` (`w = NOW` non-rational, `z =
@@ -303,8 +307,8 @@ fn push_surface(v: &mut Vec<f64>, s: &SrfIn) -> Result<(), HarnessError> {
                 m as f64,
                 b.p as f64,
                 b.q as f64,
-                (b.u.len() - 1) as f64,
-                (b.v.len() - 1) as f64,
+                b.u.len().checked_sub(1).ok_or_else(|| harness("empty u knots"))? as f64,
+                b.v.len().checked_sub(1).ok_or_else(|| harness("empty v knots"))? as f64,
             ]);
             for row in &b.net {
                 for p in row {
@@ -371,7 +375,11 @@ fn sel(s: i64, n: usize) -> i64 {
 /// The C++ export of the case's B-rep.
 fn export(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
     let path = path_of(i)?;
-    ffi::eval(Op::Export, &path, &brep_block(i)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let block = brep_block(i)?;
+    crate::export_memo::export("topology_face_p2", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 /// A build failure as an operation error.
@@ -538,20 +546,28 @@ pub(crate) fn import(ex: &[f64]) -> Result<(Brep, Exact), HarnessError> {
     let validate_only = rd.num()? != 0.0;
     rd.at = 12;
 
+    // Region shell lists, shell types and face-use lists as exported (void flags
+    // are not exported and stay 0); wire/vertex shell heads are set after import.
     let mut regions = Vec::new();
     for _ in 0..n_r {
         let in_brep = rd.num()? != 0.0;
-        rd.list()?;
-        regions.push(Region { in_brep });
+        let shells = super::topology_vertexuse::region_shell_list(rd.list()?)?;
+        regions.push(Region {
+            in_brep,
+            shells,
+            ..Region::default()
+        });
     }
     let mut shells = Vec::new();
     for _ in 0..n_s {
         let region = opt(rd.idx()?, RegionId::from_index)?;
-        rd.idx()?;
-        rd.list()?;
+        let (shell_type, members) =
+            super::topology_vertexuse::shell_members(rd.idx()?, rd.list()?)?;
         shells.push(Shell {
             faces: Vec::new(),
             region,
+            shell_type,
+            members,
         });
     }
     let mut faceuses = Vec::new();
@@ -571,6 +587,7 @@ pub(crate) fn import(ex: &[f64]) -> Result<(Brep, Exact), HarnessError> {
             mate,
             orientation,
             loopuses,
+            sibling_links: None,
         });
     }
     let mut surfaces = Vec::new();
@@ -734,6 +751,14 @@ pub(crate) fn import(ex: &[f64]) -> Result<(Brep, Exact), HarnessError> {
             ..Vertex::default()
         });
     }
+    let infinite_region = super::topology_vertexuse::read_shell_state(
+        ex,
+        &mut rd.at,
+        &mut regions,
+        &mut shells,
+        &mut vertices,
+        &mut faceuses,
+    )?;
     if rd.at != ex.len() {
         return Err(harness("export: trailing data"));
     }
@@ -741,6 +766,7 @@ pub(crate) fn import(ex: &[f64]) -> Result<(Brep, Exact), HarnessError> {
     // assemble (skeleton fields filled minimally)
     let mut b = Brep::new();
     b.set_validate_only(validate_only);
+    b.set_infinite_region_record(infinite_region);
     for r in regions {
         b.add_region_record(r).map_err(|e| harness(e.to_string()))?;
     }
@@ -1913,9 +1939,15 @@ fn run_rust_geom(op: &OpIn) -> Result<Vec<f64>, Fail> {
             flags,
             n,
         } => {
+            // The FFI bounds the derivative array (`MAX_DYDX`); mirror it so a
+            // fuzzed count cannot make the runner allocate without bound.
+            if *n > ffi::MAX_DYDX {
+                return Err(harness(format!("bad index/count {n} (max {})", ffi::MAX_DYDX)).into());
+            }
             let s = rust_surface(surface)?;
             let l = fp2::PrecisePropertyLayout::new(*flags);
-            let e = fp2::OdeIsoCurveLength::new(&s, *u, Vec3::new(origin[0], origin[1], origin[2]), *thickness, &l);
+            let k = Kernel::default();
+            let e = fp2::OdeIsoCurveLength::new(&k, &s, *u, Vec3::new(origin[0], origin[1], origin[2]), *thickness, &l);
             let mut d = vec![7.0; *n];
             let r = e.evaluate(*t, &mut d);
             match r {
@@ -1940,7 +1972,9 @@ fn run_rust_geom(op: &OpIn) -> Result<Vec<f64>, Fail> {
             let s = rust_surface(surface)?;
             let c = rust_curve(curve)?;
             let l = fp2::PrecisePropertyLayout::new(*flags);
+            let k = Kernel::default();
             let e = fp2::OdeArea {
+                kernel: &k,
                 surface: &s,
                 uv_curve: &c,
                 min_v: *min_v,
@@ -1951,7 +1985,7 @@ fn run_rust_geom(op: &OpIn) -> Result<Vec<f64>, Fail> {
                 layout: &l,
             };
             let mut d = dydx.clone();
-            match e.evaluate(*t, &mut d) {
+            match e.evaluate(&k, *t, &mut d) {
                 Ok(()) => o.push(0.0),
                 Err(e) if e.is_unported() => return Err(e.into()),
                 Err(_) => o.push(1.0),
@@ -2184,12 +2218,31 @@ fn gen_op(rng: &mut Rng) -> OpIn {
 fn gen_inputs(rng: &mut Rng) -> Inputs {
     let op = gen_op(rng);
     let brep = op.is_brep().then(|| gen_brep(rng));
-    Inputs {
+    let mut i = Inputs {
         brep,
         validate_only: rng.chance(0.1),
         init_gaps: rng.chance(0.7),
         op,
+    };
+    // A B-rep without the entity kind the op selects compares only the same refusal on
+    // both sides: draw another. One that doesn't build, or no draw with the kind, keeps
+    // the case as it is, so its error stays visible.
+    for _ in 0..BREP_DRAWS {
+        if !lacks_kind(&i) {
+            break;
+        }
+        i.brep = Some(gen_brep(rng));
     }
+    i
+}
+
+/// Whether `i`'s B-rep builds but has none of the entity kind its op selects.
+fn lacks_kind(i: &Inputs) -> bool {
+    i.brep.is_some()
+        && export(i)
+            .ok()
+            .and_then(|ex| ffi::counts(&ex))
+            .is_some_and(|c| resolve(&i.op, &counts_of(c)).is_err())
 }
 
 impl UnitDiff for Runner {

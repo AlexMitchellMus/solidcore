@@ -32,6 +32,7 @@
 //! shim does not run (record [[`REJECTED`]]) a `Next` whose start evaluation (status
 //! ignored upstream, which goes on with whatever the evaluator left) fails.
 
+use crate::validate::bad;
 use crate::{call_with_buffer, FfiError};
 
 mod sys {
@@ -210,10 +211,6 @@ pub enum Op {
     },
 }
 
-fn bad(msg: &str) -> FfiError {
-    FfiError::InvalidArgument(msg.into())
-}
-
 fn finite(x: f64) -> Result<f64, FfiError> {
     if x.is_finite() && x.abs() <= MAX_COORD {
         Ok(x)
@@ -383,6 +380,11 @@ impl Enc {
                 }
                 if scale.iter().any(|s| s.abs() < 1e-9) {
                     return Err(bad("plane scale"));
+                }
+                // UB-68: a plane with a degenerate or inverted domain has no NURB
+                // (`CreateCanonical` fails), which upstream paths then dereference
+                if !(domain[2] > domain[0] && domain[3] > domain[1]) {
+                    return Err(bad("plane domain must have positive extent"));
                 }
                 self.int(0);
                 self.nums(o)?;
@@ -608,4 +610,30 @@ pub fn run(op: &Op) -> Result<Vec<f64>, FfiError> {
             )
         }
     })
+}
+
+/// Appends the shim's block for the surface `s` to `out` (the layout the
+/// `intersect.surface_drop_lib_p3` shim shares).
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for a rejected surface.
+pub fn encode_surface(s: &SurfaceIn, out: &mut Vec<f64>) -> Result<(), FfiError> {
+    let mut e = Enc { v: Vec::new() };
+    e.surface(s)?;
+    out.extend(e.v);
+    Ok(())
+}
+
+/// Appends the shim's block for the curve `c` to `out` (the layout the
+/// `intersect.surface_drop_lib_p3` shim shares).
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for a rejected curve.
+pub fn encode_curve(c: &CurveIn, out: &mut Vec<f64>) -> Result<(), FfiError> {
+    let mut e = Enc { v: Vec::new() };
+    e.curve(c)?;
+    out.extend(e.v);
+    Ok(())
 }

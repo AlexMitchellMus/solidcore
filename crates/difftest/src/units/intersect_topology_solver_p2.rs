@@ -233,6 +233,10 @@ impl TopologyObjects<StaticHandle> for StaticScene {
         self.edge_curve(edge)?;
         Ok(Extent1d::from_min_max(0.0, 1.0))
     }
+    fn edge_tolerance(&self, edge: StaticHandle) -> SolidResult<f64> {
+        self.edge_curve(edge)?;
+        Ok(1e-5)
+    }
     fn surface_face(&self, surface: StaticHandle) -> SolidResult<Option<StaticHandle>> {
         match surface.0 {
             2002 => Ok(Some(StaticHandle(2000))),
@@ -283,7 +287,7 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
     {
         return Err(HarnessError::new("unbounded static fixture"));
     }
-    let kernel = Kernel::default();
+    let mut kernel = Kernel::default();
     let first: Vec<Point3> = i
         .first
         .iter()
@@ -362,7 +366,8 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
         handle: StaticHandle(999),
     };
     let interval = Extent1d::from_min_max(0.0, 1.0);
-    let shape = Shape::new(&[], &[], &[], &[]).map_err(|e| HarnessError::new(e.to_string()))?;
+    let shape = Shape::new(&mut kernel, &solidcore::geom::object::NoBreps, &[], &[], &[], &[])
+        .map_err(|e| HarnessError::new(e.to_string()))?;
     let result = match i.entry {
         0 => TopologySolver::brep_point_solve(
             &kernel,
@@ -421,7 +426,7 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
                 (first, second)
             };
             local
-                .solve_it(&mut ts, Some(first), Some(second))
+                .solve_it(&kernel, &mut ts, Some(first), Some(second))
                 .map(|()| ts.base.solutions)
         }
         _ => return Err(HarnessError::new("static entry")),

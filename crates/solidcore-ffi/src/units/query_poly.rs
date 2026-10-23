@@ -16,13 +16,14 @@
 //! arguments (see [`Op`]).
 //!
 //! The wrapper rejects what would make upstream read invalid memory: indices out of
-//! range, loops without vertices (or open-with-end loops with fewer than two), radial
+//! range, a region with more than [`MAX_SHELLS_PER_REGION`] shells, loops without vertices (or open-with-end loops with fewer than two), radial
 //! rings with fewer than two edges or sharing an edge, an edge given aux data twice
 //! (the replaced data may be freed), a face in two composite faces (deleting it would
 //! leave a dangling member), `CalculateBoundingBox` asked for a pseudo box without a
 //! point array (upstream dereferences the null pointer), labels outside `1..=3`, and
 //! mutations that touch an already deleted object.
 
+use crate::validate::bad;
 use crate::{call_with_buffer, FfiError};
 
 mod sys {
@@ -183,9 +184,11 @@ pub struct Section {
     pub values: Vec<f64>,
 }
 
-fn bad(m: impl Into<String>) -> FfiError {
-    FfiError::InvalidArgument(m.into())
-}
+/// Largest shell count of one region the wrapper accepts. The shim converts each count
+/// with `(int64_t)` and allocates that many shells, so a fuzzed `2^63 - 1` wraps to a
+/// negative count (no shells, later shell indices read past the shim's array: SIGSEGV)
+/// and `2^31` allocates billions of objects.
+pub const MAX_SHELLS_PER_REGION: usize = 1 << 16;
 
 fn idx(i: usize, n: usize, what: &str) -> Result<f64, FfiError> {
     if i < n {
@@ -221,6 +224,9 @@ fn encode(d: &PolyDesc, op: &Op) -> Result<Vec<f64>, FfiError> {
     v.push(d.regions.len() as f64);
     let mut n_shells = 0usize;
     for &s in &d.regions {
+        if s > MAX_SHELLS_PER_REGION {
+            return Err(bad("too many shells in a region"));
+        }
         v.push(s as f64);
         n_shells += s;
     }

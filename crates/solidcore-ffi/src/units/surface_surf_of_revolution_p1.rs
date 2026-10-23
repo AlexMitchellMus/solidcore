@@ -28,20 +28,20 @@
 //! positive weights or all non-rational, non-decreasing knots with end multiplicity
 //! `p + 1` and interior multiplicity at most `p`), non-degenerate lines, circles with a
 //! positive radius, independent axes and an angular domain inside `[-360, 360]` at most
-//! 360 long, finite rotation axes (`CreateCanonical` makes a zero one `(0, 0, 1)`),
-//! independent unit placement axes for the constructor (a longer Y axis leaves
-//! `IsOnPlane`'s output uninitialised), ordered domains, finite parameters and
-//! derivative orders up to 3.
+//! 360 long, hyperbolas with positive semi axes and a STEP domain inside `[-10, 10]`
+//! (the shims also refuse, as a C++ exception, a hyperbola whose constructor left no
+//! finite NURB: `SmHyperbola` ignores a failing `MakeNurb`), finite rotation axes
+//! (`CreateCanonical` makes a zero one `(0, 0, 1)`), independent unit placement axes
+//! for the constructor (a longer Y axis leaves `IsOnPlane`'s output uninitialised),
+//! ordered domains, finite parameters and derivative orders up to 3.
 
+use crate::validate::{bad, NOW};
 use crate::{call_with_buffer, FfiError};
 
 /// Largest control point index accepted.
 pub const MAX_INDEX: usize = 256;
 /// Largest NURB degree accepted.
 pub const MAX_DEGREE: usize = 9;
-
-/// `NL_NOW`: the weight of a non-rational control point.
-const NOW: f64 = -f64::MAX;
 
 mod sys {
     extern "C" {
@@ -107,6 +107,21 @@ pub enum Gen {
         d: [f64; 2],
         /// Radius.
         r: f64,
+    },
+    /// `SmHyperbola(c, x, y, [d0, d1], a, b, 3)`.
+    Hyperbola {
+        /// Centre.
+        c: [f64; 3],
+        /// X axis.
+        x: [f64; 3],
+        /// Y axis.
+        y: [f64; 3],
+        /// STEP domain (`|t| <= 10`).
+        d: [f64; 2],
+        /// Semi axis.
+        a: f64,
+        /// Semi imaginary axis.
+        b: f64,
     },
 }
 
@@ -235,10 +250,6 @@ impl Op {
 
 const OP_ISO_CIRCLES: i32 = 20;
 
-fn bad(msg: impl Into<String>) -> FfiError {
-    FfiError::InvalidArgument(msg.into())
-}
-
 fn finite(v: &[f64], what: &str) -> Result<(), FfiError> {
     if v.iter().all(|x| x.is_finite()) {
         Ok(())
@@ -258,11 +269,17 @@ fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx]
 }
 
-/// Checks two axes are long enough and far from parallel.
+/// Checks two axes are long enough, far from parallel, and of a length whose square
+/// does not overflow: unitizing an axis of infinite length gives a zero axis, so a
+/// generator circle on it gets no NURB, which `SmSurfOfRevolution`'s constructor then
+/// evaluates (`EvaluatePoint` dereferences the NULL NURB).
 fn axes(x: [f64; 3], y: [f64; 3], what: &str) -> Result<(), FfiError> {
     finite(&x, what)?;
     finite(&y, what)?;
     let (lx, ly) = (len(x), len(y));
+    if !lx.is_finite() || !ly.is_finite() {
+        return Err(bad(format!("{what}: axis length overflows")));
+    }
     if lx < 1e-6 || ly < 1e-6 || len(cross(x, y)) < 1e-3 * lx * ly {
         return Err(bad(format!("{what}: degenerate or parallel axes")));
     }
@@ -443,6 +460,25 @@ fn push_gen(o: &mut Vec<f64>, g: &Gen) -> Result<(), FfiError> {
             o.extend_from_slice(x);
             o.extend_from_slice(y);
             o.extend([d0, d1, *r]);
+        }
+        Gen::Hyperbola { c, x, y, d, a, b } => {
+            // (the guard of the surface.surf_of_extrusion_p1 FFI: a bounded STEP domain
+            // keeps `cosh` finite, positive semi axes)
+            finite(c, "hyperbola")?;
+            axes(*x, *y, "hyperbola")?;
+            let [d0, d1] = *d;
+            finite(&[d0, d1], "hyperbola")?;
+            if !(d0 < d1 && d0 >= -10.0 && d1 <= 10.0) {
+                return Err(bad("hyperbola: domain"));
+            }
+            if !(a.is_finite() && *a > 1e-6 && b.is_finite() && *b > 1e-6) {
+                return Err(bad("hyperbola: semi axes"));
+            }
+            o.push(3.0);
+            o.extend_from_slice(c);
+            o.extend_from_slice(x);
+            o.extend_from_slice(y);
+            o.extend([d0, d1, *a, *b]);
         }
     }
     Ok(())

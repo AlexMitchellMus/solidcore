@@ -5,9 +5,9 @@
 //!
 //! | Rust                                          | Upstream                                  |
 //! |-----------------------------------------------|-------------------------------------------|
-//! | [`BSplineSurface::create_corner_blend`], [`OrientType`] | `CreateCornerBlend`, `SmOrientType` |
+//! | [`BSplineSurface::create_corner_blend`], [`OrientType`], [`BlendNeighbour`] | `CreateCornerBlend`, `SmOrientType`, its `SmSurface*` |
 //! | [`BSplineSurface::create_skinned_surface`], [`SkinnedSurfaceOptions`] | `CreateSkinnedSurface` |
-//! | [`BSplineSurface::trim_with_domain`]          | `TrimWithDomain`                          |
+//! | [`BSplineSurface::trim_with_domain`], [`BSplineSurface::trim_with_domain_with`], [`TrimOptions`] | `TrimWithDomain` |
 //! | [`BSplineSurface::evaluate`], [`EvaluateFlags`] | `Evaluate`                              |
 //!
 //! The other functions of the file belong to `nurbs.b_spline_surface_n_lib_p1` and
@@ -19,9 +19,12 @@
 //!   `Notify(SM_NO_PRE_EDIT / SM_NO_POST_EDIT)` in `TrimWithDomain` is omitted (a
 //!   surface here has no owner to notify).
 //! - **Curve and surface types.** `CreateCornerBlend` takes [`BSplineCurve`] 3D curves
-//!   and [`BSplineSurface`] neighbour surfaces (upstream `SmCurve*` / `SmSurface*`;
-//!   `sm_CreateNonRationalCurve` fails with `NER` for any other curve type, and
-//!   B-spline surfaces are the only surfaces so far). `NULL` UV curves and surfaces
+//!   and [`BlendNeighbour`] neighbour surfaces (upstream `SmCurve*` / `SmSurface*`;
+//!   `sm_CreateNonRationalCurve` fails with `NER` for any other curve type). A
+//!   neighbour is the caller's surface (its kind and owner, for the virtual `DropCurve`
+//!   of `sm_CreateNonRationalCurve`) with its B-spline representation, which the
+//!   cross-tangent construction evaluates (B-spline evaluators are the only ones it
+//!   takes so far). `NULL` UV curves and surfaces
 //!   are `None`. Where upstream indexes past the end of the orientation, UV curve or
 //!   surface arrays, or dereferences a `NULL` UV curve or surface (n-sided blends,
 //!   bilinear blends with more than four curves), the port returns `InvalidInput`.
@@ -40,24 +43,47 @@
 //!   failure, because upstream accessors ignore that failure and read the output.
 //! - **Tangent fields** are [`TangentField`]s of `SmCurve` views of the B-spline
 //!   curves (the same data, not a copy-constructed curve).
-//! - **Unported callees** return [`SolidError::Unported`]:
-//!   `SmCrvOnSurf::ApproximateCurve` (`curve.crv_on_surf`). (`SmSurface::EvaluateNormalSection`
+//! - **Tangent-field approximation.** `SmTangentField::ApproximateCurve` is the
+//!   inherited `SmCrvOnSurf::ApproximateCurve`, which on the new field's empty cache
+//!   runs `SmCurve::ApproximateCurve` with the field as the virtual curve.
+//!   [`crate::curve::crv_on_surf::CrvOnSurf`] and `Curve::approximate_curve_base` take
+//!   a [`crate::curve::curve::p2::Curve`], which has no tangent-field kind, so that
+//!   body (and `sm_TestSpanAccuracy`) is repeated here over the field, same order and
+//!   bounds (`approximate_tangent_field`). (`SmSurface::EvaluateNormalSection`
 //!   is `surface::surface::p3`'s, `SmSurface::EvaluateNormal`
 //!   is `surface::surface::p7`'s, `Evaluate1stDerivatives` `surface::surface::p1`'s.) Upstream ignores the status of
 //!   most of these calls; an unported one still stops the port.
+//! - **Not upstream: `TrimWithDomain` knot snapping** (tangency-labs/solidcore#472), only
+//!   with [`TrimOptions::snap_roundoff_to_knots`] ([`BSplineSurface::trim_with_domain`]
+//!   keeps upstream's behaviour). Upstream moves a trim boundary that lies within
+//!   `SM_EFF_ZERO_SQRT * (1 + |t|)` *inside* a knot away from it by ten times that, so a
+//!   boundary one rounding error inside a knot leaves a sliver span (2.1e-4 on a fillet
+//!   round at u = 20) where a boundary on the knot leaves none. With the option a
+//!   boundary within `SM_EFF_ZERO_PARAM` of a knot is snapped onto it, and the
+//!   requested domain passed to `sm_CheckTrimBoundaries` takes the knot too, so the
+//!   `[B306]` widening does not run for that rounding error.
 //! - Status values upstream ignores stay ignored (`EditParameterization` before
 //!   `MakeCurvesCompatible`, the curve evaluations of the n-sided blend, `Scale`,
 //!   `GetKnots`, `N_CrvElevateDegree`, `SetMinMax`).
 
+use crate::curve::curve::p1::{SpanAccuracy, MAX_APPROX_SPANS};
 use crate::curve::curve::p2::Curve as SmCurve;
+use crate::curve::curve::p2::{
+    add_to_curve, flush_crv, pop_stack, push_point, stack_look, CurveEvaluate, CurveKind,
+};
+use crate::curve::curve::p3::PointSolveOptions;
+use crate::curve::curve::p4::is_degenerate_base;
+use crate::curve::hermite_curve::HermiteCurve;
 use crate::curve::tangent_field::{CurveEnd as TangentFieldEnd, TangentDirType, TangentField};
 use crate::error::{ignored, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::{Extent2d, SS_UMAX, SS_UMIN, SS_VMIN};
 use crate::geom::extent3d::Extent3d;
+use crate::geom::global_solver::SolverOperation;
 use crate::geom::vector2d::Point2;
+use crate::geom::vector3d::Point3;
 use crate::geom::vector3d::Vec3;
-use crate::math::{min2, EFF_ZERO, EFF_ZERO_PARAM, EFF_ZERO_SQRT, UNDEF_DOUBLE};
+use crate::math::{max2, min2, EFF_ZERO, EFF_ZERO_PARAM, EFF_ZERO_SQ, EFF_ZERO_SQRT, UNDEF_DOUBLE};
 use crate::nurbs::b_spline_curve::{
     BSplineCurve, BSplineCurveForm, BoundingBoxRequest, CanonicalData, KnotType,
 };
@@ -97,6 +123,28 @@ pub enum OrientType {
     Same,
     /// `SM_OT_OPPOSITE` (2): parametrised against it.
     Opposite,
+}
+
+/// A neighbour surface of [`BSplineSurface::create_corner_blend`] (upstream's
+/// `SmSurface*`).
+#[derive(Debug, Clone, Copy)]
+pub struct BlendNeighbour<'a> {
+    /// The surface itself, with its kind and owner: `sm_CreateNonRationalCurve`
+    /// drops rational curves onto it through the virtual `SmSurface::DropCurve`.
+    pub surface: &'a crate::surface::surface::Surface,
+    /// Its B-spline representation, which the cross-tangent construction evaluates.
+    pub b_spline: &'a BSplineSurface,
+}
+
+/// Options of [`BSplineSurface::trim_with_domain_with`]. `Default` is upstream's
+/// `TrimWithDomain`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct TrimOptions {
+    /// Not upstream (tangency-labs/solidcore#472): a trim boundary at most
+    /// `SM_EFF_ZERO_PARAM` inside a knot is snapped onto the knot instead of being
+    /// moved `10 * SM_EFF_ZERO_SQRT * (1 + |t|)` away from it, which leaves a sliver
+    /// span. Off by default (upstream).
+    pub snap_roundoff_to_knots: bool,
 }
 
 /// The flags of [`BSplineSurface::evaluate`].
@@ -170,7 +218,7 @@ impl Default for SkinnedSurfaceOptions<'_> {
     }
 }
 
-// ---- unported callees -------------------------------------------------------------------
+// ---- tangent-field callees --------------------------------------------------------------
 
 /// `curve` as an `SmCurve` (the same object upstream: the NURB and flags as they are,
 /// without the copy constructor's knot fix-up).
@@ -185,24 +233,317 @@ fn as_sm_curve(curve: &BSplineCurve) -> SmCurve {
     })
 }
 
-/// `SmTangentField::ApproximateCurve(ctx, knots, ang_tol, max_gap, curve, TRUE, FALSE,
-/// FALSE)` (inherited from `SmCrvOnSurf`).
+/// The operation path of [`approximate_tangent_field`].
+const OP_APPROX_FIELD: &str = "nurbs::b_spline_surface_n_lib::p2::approximate_tangent_field";
+
+/// A tangent field seen as an `SmCurve` (its virtual `Evaluate`, `EvaluatePoint`,
+/// `GetNaturalInterval` and `GetDim` as `SmCurve::ApproximateCurve` reaches them).
+struct FieldCurve<'f, 'a>(&'f TangentField<'a, BSplineSurface>);
+
+impl CurveEvaluate for FieldCurve<'_, '_> {
+    fn dim(&self) -> u64 {
+        // SmCrvOnSurf: always 3D
+        3
+    }
+
+    fn natural_interval(&self) -> Extent1d {
+        self.0.natural_interval()
+    }
+
+    fn evaluate(
+        &self,
+        k: &crate::kernel::Kernel,
+        t: f64,
+        num_derivs: usize,
+        _from_left: bool,
+        _non_zero_tangents: bool,
+    ) -> Result<Vec<Vec3>> {
+        self.0.evaluate(k, t, num_derivs)
+    }
+
+    fn evaluate_point(&self, k: &crate::kernel::Kernel, t: f64) -> Result<Point3> {
+        self.0.evaluate_point(k, t)
+    }
+}
+
+/// `Evaluate(t, pv, 1, bFromLeft, bNonZeroTangents)` into a position/tangent pair.
+fn field_eval2(
+    k: &crate::kernel::Kernel,
+    curve: &FieldCurve<'_, '_>,
+    t: f64,
+    from_left: bool,
+) -> Result<[Vec3; 2]> {
+    let v = curve.evaluate(k, t, 1, from_left, true)?;
+    let mut out = [Vec3::UNDEF; 2];
+    for (d, s) in out.iter_mut().zip(v) {
+        *d = s;
+    }
+    Ok(out)
+}
+
+/// Maximum adaptive Hermite subdivisions in one approximation, as
+/// `curve::curve::p1`'s `SmCurve::ApproximateCurve` (see its deviations).
+const MAX_APPROXIMATION_SUBDIVISIONS: usize = 8192;
+
+/// `sm_TestSpanAccuracy` on a tangent field (the body of
+/// [`crate::curve::curve::p1::test_span_accuracy`], whose curve is the field).
+fn field_span_accuracy(
+    k: &crate::kernel::Kernel,
+    curve: &FieldCurve<'_, '_>,
+    last_t: f64,
+    last_pv: [Point3; 2],
+    curr_t: f64,
+    curr_pv: [Point3; 2],
+    approx_tol: f64,
+    match_parameterization: bool,
+) -> Result<SpanAccuracy> {
+    // init output
+    let mut out = SpanAccuracy {
+        passes: false,
+        max_dist: 0.0,
+    };
+
+    // locals
+    let mut force_pass = false;
+    let this_span = curr_t - last_t;
+    let t_scale = 1.0 + curr_t.abs();
+    let ivl = curve.natural_interval();
+    let min_step = 1500.0;
+    let mut num_test_points: u32 = 3;
+
+    // when span is getting very small - just pass it
+    if this_span < EFF_ZERO * t_scale {
+        force_pass = true;
+    }
+
+    // Don't let the interval get too small
+    if this_span < (ivl.length()) / min_step {
+        force_pass = true;
+    }
+
+    // hermite cuve between interval end points
+    let hermite = HermiteCurve::new(
+        last_pv[0],
+        last_pv[1] * this_span,
+        curr_pv[0],
+        curr_pv[1] * this_span,
+        3,
+    );
+    let hermite_curve = SmCurve::from(hermite);
+
+    if force_pass {
+        // get a better error value if we're going to keep this step.
+        num_test_points = 7;
+    }
+
+    for ii in 0..num_test_points {
+        let normalized_param = (f64::from(ii) + 1.0) / (f64::from(num_test_points) + 1.0);
+        let crv_param = last_t + normalized_param * this_span;
+
+        // Evaluate the curve.  Then, if we're matching parameterization,
+        // evaluate the Hermite curve at the same (relative) parameter,
+        // else find the closest point on the Hermite curve.
+        let crv_pnt = curve.evaluate_point(k, crv_param)?;
+
+        let approx_dist = if match_parameterization {
+            // Approx dist = DistanceBetween(Curve(param), Hermite(param))
+            let herm_pnt = hermite.evaluate_point(normalized_param);
+            herm_pnt.distance(crv_pnt)
+        } else {
+            // Approx dist = DistanceBetween(Curve(param), NearestPointOnHermite)
+            let hermite_domain = Extent1d::from_min_max(0.0, 1.0);
+            let r = hermite_curve.local_point_solve::<()>(
+                k,
+                &hermite_domain,
+                SolverOperation::Minimize,
+                crv_pnt,
+                &PointSolveOptions::default(),
+                normalized_param,
+            );
+            // save nearest distance (when drop point failed - load a big distance to
+            // quit testing)
+            match ignored(r)? {
+                Some((true, sol)) => sol.start.solution_value,
+                _ => 2.0 * approx_tol,
+            }
+        };
+
+        // When ApproxDist is too big
+        if approx_dist > approx_tol && !force_pass {
+            // set output and quit testing
+            out.passes = false;
+            return Ok(out);
+        }
+        out.max_dist = max2(out.max_dist, approx_dist);
+    }
+
+    // when bForcePass == TRUE
+    out.passes = true;
+    Ok(out)
+}
+
+/// `SmCrvOnSurf::ApproximateCurve(ctx, knots, ang_tol, max_gap, curve, TRUE, FALSE,
+/// FALSE)` on a new tangent field (inherited): its `GetOrCreateBSApproxPointer` with
+/// the given breaks and `bMatchParam = FALSE` on an empty cache runs
+/// `SmCurve::ApproximateCurve(ctx, breaks, tol, gap, approx, TRUE, FALSE, FALSE)` and
+/// copies the result. The body is that of
+/// [`crate::curve::curve::p1`]'s `Curve::approximate_curve_base` with the field as the
+/// virtual curve (a tangent field is no B-spline, so neither the copy shortcut nor
+/// the "input curve is better" copy applies).
 fn approximate_tangent_field(
-    _field: &TangentField<'_, BSplineSurface>,
-    _knots: &[f64],
-    _ang_tol: f64,
+    k: &crate::kernel::Kernel,
+    field: &TangentField<'_, BSplineSurface>,
+    breaks: &[f64],
+    approx_tol_3d: f64,
 ) -> Result<BSplineCurve> {
-    // UNPORTED(curve.crv_on_surf): SmCrvOnSurf::ApproximateCurve
-    Err(SolidError::Unported {
-        upstream: "SmCrvOnSurf::ApproximateCurve",
-        unit: "curve.crv_on_surf",
-    })
+    let curve = FieldCurve(field);
+    let create_analytics = true;
+    let match_parameterization = false;
+
+    // need 2 breakpoints to define the curve interval
+    let (Some(&first), Some(&last)) = (breaks.first(), breaks.last()) else {
+        return Err(SolidError::sm_err(OP_APPROX_FIELD));
+    };
+    if breaks.len() < 2 {
+        return Err(SolidError::sm_err(OP_APPROX_FIELD));
+    }
+
+    // low work - degenerate curves
+    if is_degenerate_base(k, &curve, EFF_ZERO, None)? {
+        let pnt = curve.evaluate_point(k, first)?;
+        let degenerate = BSplineCurve::create_degenerate_curve(curve.dim(), pnt)?;
+        let mut c = SmCurve::from(degenerate);
+        let ivl = Extent1d::from_min_max(first, last);
+        // (status ignored)
+        ignored(c.edit_parameterization(k, &ivl))?;
+        let CurveKind::BSpline(bs) = c.into_kind() else {
+            return Err(SolidError::invalid_input(
+                OP_APPROX_FIELD,
+                "the approximation is not an SmBSplineCurve",
+            ));
+        };
+        return Ok(bs.copy());
+    }
+
+    // locals
+    let mut stack: Vec<f64> = Vec::with_capacity(256 * 4 * 2);
+    let mut ctrl_poly: Vec<Point3> = Vec::with_capacity(256);
+    let mut knots: Vec<f64> = Vec::with_capacity(256);
+    let mut subdivisions = 0;
+
+    // for every interval defined by input BreakParams array
+    for w in breaks.windows(2) {
+        let (Some(&a), Some(&b)) = (w.first(), w.get(1)) else {
+            continue;
+        };
+        let mut last_t = a;
+        let mut curr_t = b;
+
+        // interval start position and tangent (Last)
+        let mut last_pv = field_eval2(k, &curve, last_t, true)?; // NonZeroTangent values
+        {
+            // walk to a nonZero Tangent evaluation
+            let mut step = 0.0001;
+            while last_pv[1].length_squared() < EFF_ZERO_SQ * 100000.0 {
+                let tmp = last_pv[0];
+                last_pv = field_eval2(k, &curve, last_t + step * (curr_t - last_t), true)?;
+                last_pv[0] = tmp;
+                step *= 2.0;
+                if step > 0.5 {
+                    break;
+                }
+            }
+        }
+
+        // interval end position and tangent (Curr)
+        let mut curr_pv = field_eval2(k, &curve, curr_t, false)?; // NonZeroTangent values
+        {
+            let mut step = 0.0001;
+            while curr_pv[1].length_squared() < EFF_ZERO_SQ * 100000.0 {
+                let tmp = curr_pv[0];
+                curr_pv = field_eval2(k, &curve, curr_t - step * (curr_t - last_t), true)?;
+                curr_pv[0] = tmp;
+                step *= 2.0;
+                if step > 0.5 {
+                    break;
+                }
+            }
+        }
+
+        // Place Curr Point [param, posXYZ, tanXYZ] on sStack
+        push_point(curr_t, curr_pv, &mut stack);
+
+        // For each span subdivide until our approximating curve is accurate enough.
+        while !stack.is_empty() {
+            // get last point's param, pos, and tan from stack - leave stack unmodified
+            (curr_t, curr_pv) = stack_look(&stack)?;
+
+            // Test if HermiteSpan is within ApproxTol of thisCurve interval
+            let acc = field_span_accuracy(
+                k,
+                &curve,
+                last_t,
+                last_pv,
+                curr_t,
+                curr_pv,
+                approx_tol_3d,
+                match_parameterization,
+            )?;
+
+            // When Span passes test (or If step size gets real small just accept it)
+            if acc.passes || (last_t - curr_t).abs() < EFF_ZERO {
+                // (not upstream) bound the growing curve: see MAX_APPROX_SPANS
+                if knots.len() > MAX_APPROX_SPANS {
+                    return Err(SolidError::invalid_input(
+                        OP_APPROX_FIELD,
+                        "approximation needs more than MAX_APPROX_SPANS spans",
+                    ));
+                }
+
+                // Append Hermite interval to end of growing piecewise cubic bezier
+                add_to_curve(last_pv, curr_pv, last_t, curr_t, &mut ctrl_poly, &mut knots)?;
+
+                // for next iteration - move Curr param, pos, and tan to Last
+                last_t = curr_t;
+                last_pv = curr_pv;
+
+                // for next iteration - pop stack
+                pop_stack(&mut stack)?;
+            } else {
+                if subdivisions >= MAX_APPROXIMATION_SUBDIVISIONS {
+                    return Err(SolidError::sm_err(OP_APPROX_FIELD));
+                }
+                subdivisions += 1;
+
+                // get param mid point and associated curve pos and tan
+                let mid_t = (last_t + curr_t) / 2.0;
+                if !mid_t.is_finite() || mid_t == last_t || mid_t == curr_t {
+                    return Err(SolidError::sm_err(OP_APPROX_FIELD));
+                }
+                let mid_pv = field_eval2(k, &curve, mid_t, true)?; // NonZeroTangent values
+                curr_t = mid_t;
+                curr_pv = mid_pv;
+
+                // push midPoint onto stach
+                push_point(curr_t, curr_pv, &mut stack);
+            }
+        }
+    }
+
+    // create pBSC curve from control polygon
+    let bsc = flush_crv(approx_tol_3d, &mut ctrl_poly, &mut knots, create_analytics)?.ok_or(
+        SolidError::invalid_input(OP_APPROX_FIELD, "no approximating curve built"),
+    )?;
+
+    // pBSCurve->Copy(crContext, rpNewBSplineCurve)
+    Ok(bsc.copy())
 }
 
 /// `SmTangentField::Create(ctx, tol, boundary, uv, surface, start, t0, SAME, end, t1,
 /// SAME)` followed by its `ApproximateCurve` over the knots of `boundary`: the
 /// cross-tangent curve of `boundary` on `surface`.
 fn tangent_field_curve(
+    k: &crate::kernel::Kernel,
     tol: f64,
     boundary: &BSplineCurve,
     uv_curve: &BSplineCurve,
@@ -216,6 +557,7 @@ fn tangent_field_curve(
     let start_crv = as_sm_curve(start);
     let end_crv = as_sm_curve(end);
     let field = TangentField::create(
+        k,
         tol,
         &base_3d,
         &base_uv,
@@ -234,12 +576,13 @@ fn tangent_field_curve(
 
     // build an approximate piecewise hermite curve to the crossTangent curve
     let knots = unique_knots(boundary);
-    approximate_tangent_field(&field, &knots, ang_tol)
+    approximate_tangent_field(k, &field, &knots, ang_tol)
 }
 
 /// `new SmTangentField(uv, surface, SM_INTERPOLATE_DIR, start, end)` followed by its
 /// `ApproximateCurve(knots, ang_tol, ..)`.
 fn interpolated_tangent_field_curve(
+    k: &crate::kernel::Kernel,
     uv_curve: &BSplineCurve,
     surface: &BSplineSurface,
     start: Vec3,
@@ -256,18 +599,28 @@ fn interpolated_tangent_field_curve(
         end,
         None,
     )?;
-    approximate_tangent_field(&field, knots, ang_tol)
+    approximate_tangent_field(k, &field, knots, ang_tol)
 }
 
 /// `SmSurface::EvaluateNormal(uv, TRUE, TRUE, normal)`.
-fn evaluate_normal(surface: &BSplineSurface, uv: Point2) -> Result<Vec3> {
-    crate::surface::surface::p7::base_evaluate_normal(surface, uv, Side::Left, Side::Left)
+fn evaluate_normal(
+    k: &crate::kernel::Kernel,
+    surface: &BSplineSurface,
+    uv: Point2,
+) -> Result<Vec3> {
+    crate::surface::surface::p7::base_evaluate_normal(k, surface, uv, Side::Left, Side::Left)
 }
 
 /// `SmSurface::EvaluateNormalSection(uv, TRUE, TRUE, direction, ..)`: the cross
 /// tangent (the unit projection of `direction` into the tangent plane).
-fn evaluate_normal_section(surface: &BSplineSurface, uv: Point2, dir: Vec3) -> Result<Vec3> {
+fn evaluate_normal_section(
+    k: &crate::kernel::Kernel,
+    surface: &BSplineSurface,
+    uv: Point2,
+    dir: Vec3,
+) -> Result<Vec3> {
     Ok(crate::surface::surface::p3::evaluate_normal_section_of(
+        k,
         surface,
         uv,
         Side::Left,
@@ -278,9 +631,18 @@ fn evaluate_normal_section(surface: &BSplineSurface, uv: Point2, dir: Vec3) -> R
 }
 
 /// `SmSurface::Evaluate1stDerivatives(uv, TRUE, TRUE, ..)`: `(Su, Sv)`.
-fn evaluate_1st_derivatives(surface: &BSplineSurface, uv: Point2) -> Result<(Vec3, Vec3)> {
-    let (_, du, dv) =
-        crate::surface::surface::p1::evaluate_1st_derivatives(surface, uv, Side::Left, Side::Left)?;
+fn evaluate_1st_derivatives(
+    k: &crate::kernel::Kernel,
+    surface: &BSplineSurface,
+    uv: Point2,
+) -> Result<(Vec3, Vec3)> {
+    let (_, du, dv) = crate::surface::surface::p1::evaluate_1st_derivatives(
+        k,
+        surface,
+        uv,
+        Side::Left,
+        Side::Left,
+    )?;
     Ok((du, dv))
 }
 
@@ -288,6 +650,7 @@ fn evaluate_1st_derivatives(surface: &BSplineSurface, uv: Point2) -> Result<(Vec
 /// ..)`: whether an intersection was found and its parameter on `rail` (the status is
 /// ignored upstream: a failure is no intersection; `Unported` is propagated).
 fn local_curve_intersect(
+    k: &crate::kernel::Kernel,
     rail: &BSplineCurve,
     domain: &Extent1d,
     other: &BSplineCurve,
@@ -297,6 +660,7 @@ fn local_curve_intersect(
     other_guess: f64,
 ) -> Result<(bool, f64)> {
     let r = ignored(crate::curve::curve::p3::local_curve_intersect(
+        k,
         rail,
         domain,
         other,
@@ -352,7 +716,7 @@ impl BSplineSurface {
     /// With four curves the result is one Coons patch
     /// ([`BSplineSurface::create_coons_patch`]): bilinear with
     /// `create_bilinear_patch` (UV curves and surfaces are then optional), else
-    /// bicubic matching the cross tangents of the neighbour `surfaces` along their
+    /// bicubic matching the cross tangents of the `neighbours` surfaces along their
     /// `uv_curves` within `tangency_tol_radians` (one degenerate curve without surface
     /// gives a triangular patch). More curves give an n-sided patch
     /// ([`BSplineSurface::create_n_sided_patch`]) matching the neighbours' cross
@@ -367,10 +731,11 @@ impl BSplineSurface {
     /// surfaces where upstream dereferences them; [`SolidError::Unported`] where the
     /// tangent fields or surface normals are needed.
     pub fn create_corner_blend(
+        k: &crate::kernel::Kernel,
         curves_3d: &[BSplineCurve],
         curve_orients: &[OrientType],
         uv_curves: &[Option<BSplineCurve>],
-        surfaces: &[Option<&BSplineSurface>],
+        neighbours: &[Option<BlendNeighbour<'_>>],
         approx_tol: f64,
         tangency_tol_radians: f64,
         create_bilinear_patch: bool,
@@ -382,6 +747,9 @@ impl BSplineSurface {
             return Err(SolidError::sm_err(OP));
         }
         let curve_cnt = curves_3d.len();
+        let surfaces: Vec<Option<&BSplineSurface>> =
+            neighbours.iter().map(|n| n.map(|n| n.b_spline)).collect();
+        let surfaces = surfaces.as_slice();
         if uv_curves.len() < curve_cnt || surfaces.len() < curve_cnt {
             return Err(SolidError::invalid_input(
                 OP,
@@ -414,11 +782,12 @@ impl BSplineSurface {
         // convert all input edges from NURBs to NUBs
         let mut boundaries: Vec<BSplineCurve> = Vec::with_capacity(curve_cnt);
         let mut uv_crvs: Vec<Option<BSplineCurve>> = Vec::with_capacity(curve_cnt);
-        for ((curve, uv), srf) in curves_3d.iter().zip(uv_curves).zip(surfaces) {
+        for ((curve, uv), srf) in curves_3d.iter().zip(uv_curves).zip(neighbours) {
             // copy NUBs and their UVTrimCurves, approx NURBs and drop them to make their
             // UVTrimCurves
+            let base = srf.map(|n| n.surface);
             let (boundary, ps_curve) =
-                create_non_rational_curve(curve, uv.as_ref(), *srf, approx_tol / 2.0)?;
+                create_non_rational_curve(k, curve, uv.as_ref(), base, approx_tol / 2.0)?;
             boundaries.push(boundary); // cleaned up 3d boundary curves
             uv_crvs.push(ps_curve); // associated UVTrimCurves
         }
@@ -427,6 +796,7 @@ impl BSplineSurface {
         // compatible
         if boundaries.len() == 4 {
             return corner_blend_4(
+                k,
                 boundaries,
                 uv_crvs,
                 curve_orients,
@@ -438,6 +808,7 @@ impl BSplineSurface {
         }
 
         corner_blend_n(
+            k,
             boundaries,
             uv_crvs,
             curve_orients,
@@ -468,6 +839,7 @@ impl BSplineSurface {
     /// few intersection parameters; [`SolidError::Unported`] when two rails change
     /// their domains (`SmCurve::LocalCurveIntersect`).
     pub fn create_skinned_surface(
+        k: &crate::kernel::Kernel,
         cross_sections: &[BSplineCurve],
         opts: SkinnedSurfaceOptions<'_>,
     ) -> Result<Self> {
@@ -526,8 +898,14 @@ impl BSplineSurface {
 
             if let Some(params) = int_params.as_mut() {
                 let tol = 0.001
-                    * crate::curve::curve::p2::approximate_length(&*r1, &domain1_after, 6, false)?
-                        .0;
+                    * crate::curve::curve::p2::approximate_length(
+                        k,
+                        &*r1,
+                        &domain1_after,
+                        6,
+                        false,
+                    )?
+                    .0;
 
                 // Check rail 1.
                 if (domain1_after.min() - domain1_before.min()).abs() > EFF_ZERO
@@ -544,6 +922,7 @@ impl BSplineSurface {
                         // reintersect, to be safe
                         let cross_domain = sect_crv.natural_interval();
                         let (found, t_rail) = local_curve_intersect(
+                            k,
                             r1,
                             &domain1_after,
                             sect_crv,
@@ -573,6 +952,7 @@ impl BSplineSurface {
 
                         let cross_domain = sect_crv.natural_interval();
                         let (found, t_rail) = local_curve_intersect(
+                            k,
                             r2,
                             &domain2_after,
                             sect_crv,
@@ -780,7 +1160,22 @@ impl BSplineSurface {
     /// fails; `InvalidInput` when the snapped u boundaries are too close;
     /// `SM_ERR_NULL_POINTER` without NURB (once a trim is needed).
     pub fn trim_with_domain(&mut self, trim_domain: &mut Extent2d) -> Result<()> {
+        self.trim_with_domain_with(trim_domain, TrimOptions::default())
+    }
+
+    /// [`BSplineSurface::trim_with_domain`] with [`TrimOptions`]; the default options
+    /// are upstream's `TrimWithDomain`.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`BSplineSurface::trim_with_domain`].
+    pub fn trim_with_domain_with(
+        &mut self,
+        trim_domain: &mut Extent2d,
+        options: TrimOptions,
+    ) -> Result<()> {
         const OP: &str = OP_TRIM;
+        let snap = options.snap_roundoff_to_knots;
         // get current natural boundary
         let natural_domain = self.natural_uv_domain();
 
@@ -799,6 +1194,10 @@ impl BSplineSurface {
         let mut ur = trim_domain.max().x;
         let mut vl = trim_domain.min().y;
         let mut vr = trim_domain.max().y;
+
+        // Not upstream (#472): the requested domain as sm_CheckTrimBoundaries sees it,
+        // with any boundary snapped onto a knot by `snap_roundoff_to_knots`.
+        let (mut req_ul, mut req_ur, mut req_vl, mut req_vr) = (ul, ur, vl, vr);
 
         // don't build too small spans in u direction.
         {
@@ -821,8 +1220,11 @@ impl BSplineSurface {
                 // when lower trim boundary is close to knot
                 if (knot - ul).abs() < tol_min {
                     // when trim boundary is slightly larger than knot - set trim
-                    // boundary to knot
-                    if ul >= knot || i == 0 {
+                    // boundary to knot (or, not upstream, a rounding error smaller)
+                    if ul >= knot || i == 0 || (snap && knot - ul <= EFF_ZERO_PARAM) {
+                        if snap && ul < knot {
+                            req_ul = knot;
+                        }
                         ul = knot;
                         idx_min = Some(i);
                     } else {
@@ -840,7 +1242,10 @@ impl BSplineSurface {
 
                 // when upper trim boundary is close to knot
                 if (knot - ur).abs() < tol_max {
-                    if ur <= knot || i == last {
+                    if ur <= knot || i == last || (snap && ur - knot <= EFF_ZERO_PARAM) {
+                        if snap && ur > knot {
+                            req_ur = knot;
+                        }
                         ur = knot;
                         idx_max = Some(i);
                     } else {
@@ -861,7 +1266,7 @@ impl BSplineSurface {
                 idx_min,
                 ur,
                 idx_max,
-                trim_domain,
+                &Extent2d::from_bounds(req_ul, req_vl, req_ur, req_vr),
                 SurfParamType::U,
             )?;
 
@@ -892,7 +1297,10 @@ impl BSplineSurface {
             for (i, &knot) in knots.iter().enumerate() {
                 // snap lower V Trim boundaries as appropriate
                 if (knot - vl).abs() < tol_min {
-                    if vl >= knot || i == 0 {
+                    if vl >= knot || i == 0 || (snap && knot - vl <= EFF_ZERO_PARAM) {
+                        if snap && vl < knot {
+                            req_vl = knot;
+                        }
                         vl = knot;
                         idx_min = Some(i);
                     } else {
@@ -907,7 +1315,10 @@ impl BSplineSurface {
 
                 // snap upper V Trim Boundaries as appropriate
                 if (knot - vr).abs() < tol_max {
-                    if vr <= knot || i == last {
+                    if vr <= knot || i == last || (snap && vr - knot <= EFF_ZERO_PARAM) {
+                        if snap && vr > knot {
+                            req_vr = knot;
+                        }
                         vr = knot;
                         idx_min = Some(i);
                     } else {
@@ -929,7 +1340,7 @@ impl BSplineSurface {
                 idx_min,
                 vr,
                 idx_max,
-                trim_domain,
+                &Extent2d::from_bounds(req_ul, req_vl, req_ur, req_vr),
                 SurfParamType::V,
             )?;
         }
@@ -991,6 +1402,46 @@ impl BSplineSurface {
         match self.evaluate_impl(uv, 2, 2, flags, true, Some(&mut partial)) {
             Ok(values) => (Ok(()), values),
             Err(error) => (Err(error), partial),
+        }
+    }
+
+    /// `Evaluate` for a caller that ignores its status (as `SmSurface::IsPeriodic`
+    /// does): the derivative array as upstream leaves it in `aDerivatives`, also when
+    /// the zero-tangent repair fails after the NLib evaluation wrote it (the raw or
+    /// partly repaired derivatives); `None` when the call fails before writing it (bad
+    /// orders, no NURB), leaving the caller's array as it was.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR` when NLib fails: upstream's array then holds whatever NLib wrote
+    /// before failing, which the port does not reproduce.
+    pub fn evaluate_ignoring_status(
+        &self,
+        uv: Point2,
+        highest_u_deriv: usize,
+        highest_v_deriv: usize,
+        flags: EvaluateFlags,
+    ) -> Result<Option<Vec<Vec<Vec3>>>> {
+        // the checks `Evaluate` fails on before anything is written
+        if (flags.only_upper_half && highest_u_deriv != highest_v_deriv)
+            || highest_u_deriv > MAX_DERIVATIVE
+            || highest_v_deriv > MAX_DERIVATIVE
+            || self.nurb.is_none()
+        {
+            return Ok(None);
+        }
+        let mut written = Vec::new();
+        match self.evaluate_impl(
+            uv,
+            highest_u_deriv,
+            highest_v_deriv,
+            flags,
+            true,
+            Some(&mut written),
+        ) {
+            Ok(d) => Ok(Some(d)),
+            Err(_) if !written.is_empty() => Ok(Some(written)),
+            Err(e) => Err(e),
         }
     }
 
@@ -1064,208 +1515,221 @@ impl BSplineSurface {
         }
         .map_err(SolidError::nl_ser(OP))?;
 
-        // If we don't have to check for zero first derivatives, we're done.
-        if !non_zero_tangents {
-            return Ok(d);
-        }
-        if highest_u_deriv < 1 && highest_v_deriv < 1 {
-            return Ok(d);
-        }
+        // The zero-tangent repair below works on the matrix NLib wrote; upstream's
+        // caller array keeps it (raw or partly repaired) whatever the repair's status,
+        // including a failed recursive re-evaluation.
+        let status = (|| -> Result<()> {
+            let d = &mut d;
+            // If we don't have to check for zero first derivatives, we're done.
+            if !non_zero_tangents {
+                return Ok(());
+            }
+            if highest_u_deriv < 1 && highest_v_deriv < 1 {
+                return Ok(());
+            }
 
-        // flat index `k` of the upstream array: D[k / (nv + 1)][k % (nv + 1)]
-        let nv1 = highest_v_deriv + 1;
-        let at = |d: &[Vec<Vec3>], k: usize| -> Result<Vec3> {
-            d.get(k / nv1)
-                .and_then(|row| row.get(k % nv1))
-                .copied()
-                .ok_or_else(|| SolidError::sm_err(OP))
-        };
-        let set = |d: &mut [Vec<Vec3>], k: usize, v: Vec3| -> Result<()> {
-            let slot = d
-                .get_mut(k / nv1)
-                .and_then(|row| row.get_mut(k % nv1))
-                .ok_or_else(|| SolidError::sm_err(OP))?;
-            *slot = v;
-            Ok(())
-        };
-
-        // position and tangents
-        let orig_pnt = at(&d, 0)?;
-        let orig_du = if highest_u_deriv >= 1 {
-            at(&d, nv1)?
-        } else {
-            at(&d, 1)?
-        };
-        let orig_dv = if highest_v_deriv >= 1 {
-            at(&d, 1)?
-        } else {
-            at(&d, nv1)?
-        };
-
-        // tangent sizes
-        let orig_du_len = orig_du.length();
-        let orig_dv_len = orig_dv.length();
-
-        let deriv_lim = crate::surface::surface::p2::derivative_limit(orig_pnt);
-
-        // test
-        let zero_du = orig_du_len < deriv_lim;
-        let zero_dv = orig_dv_len < deriv_lim;
-
-        // no work - no zero tangents to fix
-        if !zero_du && !zero_dv {
-            return Ok(d);
-        }
-
-        // when not enough derivatives were asked for - recurse to this function
-        if highest_u_deriv < 2 || highest_v_deriv < 2 {
-            let re = self.evaluate_impl(
-                cr_uv,
-                2,
-                2,
-                EvaluateFlags {
-                    u_side,
-                    v_side,
-                    only_upper_half: true,
-                    non_zero_tangents: true,
-                },
-                true,
-                None,
-            )?;
-            let re_at = |i: usize, j: usize| -> Result<Vec3> {
-                re.get(i)
-                    .and_then(|row| row.get(j))
+            // flat index `k` of the upstream array: D[k / (nv + 1)][k % (nv + 1)]
+            let nv1 = highest_v_deriv + 1;
+            let at = |d: &[Vec<Vec3>], k: usize| -> Result<Vec3> {
+                d.get(k / nv1)
+                    .and_then(|row| row.get(k % nv1))
                     .copied()
                     .ok_or_else(|| SolidError::sm_err(OP))
             };
-
-            // save the kluged tangent values (aReDer[3] = Su, aReDer[1] = Sv)
-            if highest_u_deriv >= 1 {
-                set(&mut d, nv1, re_at(1, 0)?)?;
-            }
-            if highest_v_deriv >= 1 {
-                set(&mut d, 1, re_at(0, 1)?)?;
-            }
-            return Ok(d);
-        }
-
-        // Ok, now we have at least two derivatives.
-        let lnv = highest_v_deriv;
-        let mut su = at(&d, lnv + 1)?;
-        let mut sv = at(&d, 1)?;
-        let ok = super::p1::check_zero_surface_derivs(
-            s_uv,
-            &natural_uv_domain,
-            &mut su,
-            &mut sv,
-            at(&d, 2 * lnv + 2)?,
-            at(&d, lnv + 2)?,
-            at(&d, 2)?,
-            deriv_lim,
-        );
-        set(&mut d, lnv + 1, su)?;
-        set(&mut d, 1, sv)?;
-
-        // all done?
-        if ok {
-            return Ok(d);
-        }
-
-        // Try finding a nonZeroTangent value with a more brute-force method: step
-        // towards the center of the domain.
-        let step_dir_u = if s_uv.x > natural_uv_domain.u_interval().mid() {
-            -1.0
-        } else {
-            1.0
-        };
-        let step_dir_v = if s_uv.y > natural_uv_domain.v_interval().mid() {
-            -1.0
-        } else {
-            1.0
-        };
-
-        let mut step = ZONE_TOL_3D / 10.0; // works well in practice.
-
-        // for larger and larger step off distances
-        while do_zero_sampling && step < 0.1 {
-            // increase the step off distance
-            step *= 10.0;
-
-            // for this step size: try 5 directions; last 4 are diagonals.
-            // Make the first step go in the most likely direction: direction of good
-            // deriv, towards center of surface.
-            let first = if orig_du_len < orig_dv_len {
-                // step in v
-                Point2::new(s_uv.x, s_uv.y + step_dir_v * step)
-            } else {
-                // step in u
-                Point2::new(s_uv.x + step_dir_u * step, s_uv.y)
+            let set = |d: &mut [Vec<Vec3>], k: usize, v: Vec3| -> Result<()> {
+                let slot = d
+                    .get_mut(k / nv1)
+                    .and_then(|row| row.get_mut(k % nv1))
+                    .ok_or_else(|| SolidError::sm_err(OP))?;
+                *slot = v;
+                Ok(())
             };
-            let test_uv = [
-                first,
-                Point2::new(s_uv.x + step, s_uv.y + step),
-                Point2::new(s_uv.x - step, s_uv.y - step),
-                Point2::new(s_uv.x - step, s_uv.y + step),
-                Point2::new(s_uv.x + step, s_uv.y - step),
-            ];
 
-            // for all 5 sample directions at this step size
-            for t_uv in test_uv {
-                let t_uv = natural_uv_domain.clamp_point(t_uv);
-                // just take what's naturally there; one derivative is enough.
-                let Ok(re) = self.evaluate_impl(
-                    t_uv,
-                    1,
-                    1,
+            // position and tangents
+            let orig_pnt = at(d, 0)?;
+            let orig_du = if highest_u_deriv >= 1 {
+                at(d, nv1)?
+            } else {
+                at(d, 1)?
+            };
+            let orig_dv = if highest_v_deriv >= 1 {
+                at(d, 1)?
+            } else {
+                at(d, nv1)?
+            };
+
+            // tangent sizes
+            let orig_du_len = orig_du.length();
+            let orig_dv_len = orig_dv.length();
+
+            let deriv_lim = crate::surface::surface::p2::derivative_limit(orig_pnt);
+
+            // test
+            let zero_du = orig_du_len < deriv_lim;
+            let zero_dv = orig_dv_len < deriv_lim;
+
+            // no work - no zero tangents to fix
+            if !zero_du && !zero_dv {
+                return Ok(());
+            }
+
+            // when not enough derivatives were asked for - recurse to this function
+            if highest_u_deriv < 2 || highest_v_deriv < 2 {
+                let re = self.evaluate_impl(
+                    cr_uv,
+                    2,
+                    2,
                     EvaluateFlags {
                         u_side,
                         v_side,
                         only_upper_half: true,
-                        non_zero_tangents: false,
+                        non_zero_tangents: true,
                     },
-                    false,
+                    true,
                     None,
-                ) else {
-                    continue;
+                )?;
+                let re_at = |i: usize, j: usize| -> Result<Vec3> {
+                    re.get(i)
+                        .and_then(|row| row.get(j))
+                        .copied()
+                        .ok_or_else(|| SolidError::sm_err(OP))
                 };
-                // aReDer[2] = Su, aReDer[1] = Sv
-                let mut re_su = re
-                    .get(1)
-                    .and_then(|r| r.first())
-                    .copied()
-                    .ok_or_else(|| SolidError::sm_err(OP))?;
-                let mut re_sv = re
-                    .first()
-                    .and_then(|r| r.get(1))
-                    .copied()
-                    .ok_or_else(|| SolidError::sm_err(OP))?;
 
-                // Save the nearby tangent values, if they're good enough.
-                if re_su.length() >= deriv_lim && re_sv.length() >= deriv_lim {
-                    // Set magnitudes of degenerate derivatives to 1.1 * dDerivLim.
-                    if zero_du {
-                        re_su = re_su.unitize_or_z();
-                        re_su *= 1.1 * deriv_lim;
-                        set(&mut d, highest_v_deriv + 1, re_su)?;
-                    }
-                    if zero_dv {
-                        re_sv = re_sv.unitize_or_z();
-                        re_sv *= 1.1 * deriv_lim;
-                        set(&mut d, 1, re_sv)?;
-                    }
+                // save the kluged tangent values (aReDer[3] = Su, aReDer[1] = Sv)
+                if highest_u_deriv >= 1 {
+                    set(d, nv1, re_at(1, 0)?)?;
+                }
+                if highest_v_deriv >= 1 {
+                    set(d, 1, re_at(0, 1)?)?;
+                }
+                return Ok(());
+            }
 
-                    // all done
-                    return Ok(d);
+            // Ok, now we have at least two derivatives.
+            let lnv = highest_v_deriv;
+            let mut su = at(d, lnv + 1)?;
+            let mut sv = at(d, 1)?;
+            let ok = super::p1::check_zero_surface_derivs(
+                s_uv,
+                &natural_uv_domain,
+                &mut su,
+                &mut sv,
+                at(d, 2 * lnv + 2)?,
+                at(d, lnv + 2)?,
+                at(d, 2)?,
+                deriv_lim,
+            );
+            set(d, lnv + 1, su)?;
+            set(d, 1, sv)?;
+
+            // all done?
+            if ok {
+                return Ok(());
+            }
+
+            // Try finding a nonZeroTangent value with a more brute-force method: step
+            // towards the center of the domain.
+            let step_dir_u = if s_uv.x > natural_uv_domain.u_interval().mid() {
+                -1.0
+            } else {
+                1.0
+            };
+            let step_dir_v = if s_uv.y > natural_uv_domain.v_interval().mid() {
+                -1.0
+            } else {
+                1.0
+            };
+
+            let mut step = ZONE_TOL_3D / 10.0; // works well in practice.
+
+            // for larger and larger step off distances
+            while do_zero_sampling && step < 0.1 {
+                // increase the step off distance
+                step *= 10.0;
+
+                // for this step size: try 5 directions; last 4 are diagonals.
+                // Make the first step go in the most likely direction: direction of good
+                // deriv, towards center of surface.
+                let first = if orig_du_len < orig_dv_len {
+                    // step in v
+                    Point2::new(s_uv.x, s_uv.y + step_dir_v * step)
+                } else {
+                    // step in u
+                    Point2::new(s_uv.x + step_dir_u * step, s_uv.y)
+                };
+                let test_uv = [
+                    first,
+                    Point2::new(s_uv.x + step, s_uv.y + step),
+                    Point2::new(s_uv.x - step, s_uv.y - step),
+                    Point2::new(s_uv.x - step, s_uv.y + step),
+                    Point2::new(s_uv.x + step, s_uv.y - step),
+                ];
+
+                // for all 5 sample directions at this step size
+                for t_uv in test_uv {
+                    let t_uv = natural_uv_domain.clamp_point(t_uv);
+                    // just take what's naturally there; one derivative is enough.
+                    let Ok(re) = self.evaluate_impl(
+                        t_uv,
+                        1,
+                        1,
+                        EvaluateFlags {
+                            u_side,
+                            v_side,
+                            only_upper_half: true,
+                            non_zero_tangents: false,
+                        },
+                        false,
+                        None,
+                    ) else {
+                        continue;
+                    };
+                    // aReDer[2] = Su, aReDer[1] = Sv
+                    let mut re_su = re
+                        .get(1)
+                        .and_then(|r| r.first())
+                        .copied()
+                        .ok_or_else(|| SolidError::sm_err(OP))?;
+                    let mut re_sv = re
+                        .first()
+                        .and_then(|r| r.get(1))
+                        .copied()
+                        .ok_or_else(|| SolidError::sm_err(OP))?;
+
+                    // Save the nearby tangent values, if they're good enough.
+                    if re_su.length() >= deriv_lim && re_sv.length() >= deriv_lim {
+                        // Set magnitudes of degenerate derivatives to 1.1 * dDerivLim.
+                        if zero_du {
+                            re_su = re_su.unitize_or_z();
+                            re_su *= 1.1 * deriv_lim;
+                            set(d, highest_v_deriv + 1, re_su)?;
+                        }
+                        if zero_dv {
+                            re_sv = re_sv.unitize_or_z();
+                            re_sv *= 1.1 * deriv_lim;
+                            set(d, 1, re_sv)?;
+                        }
+
+                        // all done
+                        return Ok(());
+                    }
                 }
             }
-        }
 
-        // If we make it to here we are unable to get both of the first derivatives to
-        // a non-zero size. C++ has already written the matrix to the caller's array.
-        if let Some(output) = failed_output {
-            *output = d;
+            // If we make it to here we are unable to get both of the first derivatives to
+            // a non-zero size.
+            Err(SolidError::sm_err(OP))
+        })();
+        match status {
+            Ok(()) => Ok(d),
+            Err(e) => {
+                // C++ has already written the matrix to the caller's array.
+                if let Some(output) = failed_output {
+                    *output = d;
+                }
+                Err(e)
+            }
         }
-        Err(SolidError::sm_err(OP))
     }
 }
 
@@ -1278,6 +1742,7 @@ const TOP: usize = 3;
 
 /// The four-sided branch of `CreateCornerBlend`.
 fn corner_blend_4(
+    k: &crate::kernel::Kernel,
     mut boundaries: Vec<BSplineCurve>,
     mut uv_crvs: Vec<Option<BSplineCurve>>,
     curve_orients: &[OrientType],
@@ -1359,6 +1824,7 @@ fn corner_blend_4(
                     .and_then(Option::as_ref)
                     .ok_or_else(|| SolidError::invalid_input(OP, "missing UV curve"))?;
                 tangent_field_curve(
+                    k,
                     2.0 * approx_tol,
                     boundary_curve,
                     uv,
@@ -1369,7 +1835,7 @@ fn corner_blend_4(
                 )?
             } else {
                 // a degenerate curve which does not 'lie' on a surface
-                if !boundary_curve.is_degenerate(EFF_ZERO, None)? {
+                if !boundary_curve.is_degenerate(k, EFF_ZERO, None)? {
                     return Err(SolidError::sm_err(OP));
                 }
 
@@ -1446,6 +1912,7 @@ fn corner_blend_4(
 
 /// The n-sided branch of `CreateCornerBlend`.
 fn corner_blend_n(
+    k: &crate::kernel::Kernel,
     mut boundaries: Vec<BSplineCurve>,
     mut uv_crvs: Vec<Option<BSplineCurve>>,
     curve_orients: &[OrientType],
@@ -1525,10 +1992,10 @@ fn corner_blend_n(
         let next_start_uv = uv2(next_uv, next_start_param);
 
         // Surface Normals at boundary endPoints
-        let mut prev_end_normal = evaluate_normal(prev_srf, prev_end_uv)?;
-        let mut curr_start_normal = evaluate_normal(curr_srf, curr_start_uv)?;
-        let mut curr_end_normal = evaluate_normal(curr_srf, curr_end_uv)?;
-        let mut next_start_normal = evaluate_normal(next_srf, next_start_uv)?;
+        let mut prev_end_normal = evaluate_normal(k, prev_srf, prev_end_uv)?;
+        let mut curr_start_normal = evaluate_normal(k, curr_srf, curr_start_uv)?;
+        let mut curr_end_normal = evaluate_normal(k, curr_srf, curr_end_uv)?;
+        let mut next_start_normal = evaluate_normal(k, next_srf, next_start_uv)?;
 
         // compare the neighbor and current surface normal directions
         let prev_dot_curr_normal = prev_end_normal.dot(curr_start_normal);
@@ -1579,7 +2046,7 @@ fn corner_blend_n(
             // when pCurr starts and stop on a common boundary - check orientation
             if bndries != 0 {
                 // Surface 1st derivs at CurveStart
-                let (srf_du, srf_dv) = evaluate_1st_derivatives(curr_srf, curr_start_uv)?;
+                let (srf_du, srf_dv) = evaluate_1st_derivatives(k, curr_srf, curr_start_uv)?;
 
                 // pick the appropriate vector and make it point out of the patch
                 let outward = if bndries & SS_UMIN != 0 {
@@ -1599,13 +2066,13 @@ fn corner_blend_n(
 
         // Surface CrossTangents at boundary endPoints
         let prev_end_cross_tang =
-            evaluate_normal_section(prev_srf, prev_end_uv, prev_end_cross_vec)?;
+            evaluate_normal_section(k, prev_srf, prev_end_uv, prev_end_cross_vec)?;
         let curr_start_cross_tang =
-            evaluate_normal_section(curr_srf, curr_start_uv, curr_start_cross_vec)?;
+            evaluate_normal_section(k, curr_srf, curr_start_uv, curr_start_cross_vec)?;
         let curr_end_cross_tang =
-            evaluate_normal_section(curr_srf, curr_end_uv, curr_end_cross_vec)?;
+            evaluate_normal_section(k, curr_srf, curr_end_uv, curr_end_cross_vec)?;
         let next_start_cross_tang =
-            evaluate_normal_section(next_srf, next_start_uv, next_start_cross_vec)?;
+            evaluate_normal_section(k, next_srf, next_start_uv, next_start_cross_vec)?;
 
         // check boundary curve gap sizes
         let dist_prev = pv0(&prev_end_pv).distance(pv0(&curr_start_pv));
@@ -1621,6 +2088,7 @@ fn corner_blend_n(
         // use pCurr knot vector and build a curve approximation to the tangent field
         let knots = unique_knots(curr);
         let tan_curve = interpolated_tangent_field_curve(
+            k,
             curr_uv,
             curr_srf,
             start_tf,
@@ -1723,15 +2191,134 @@ mod tests {
         assert!(s.trim_with_domain(&mut bad).is_err());
     }
 
+    /// A cubic-by-linear surface with u knots `u` (clamped) and v knots `v`, its
+    /// control points on z = 0.
+    fn net_with_knots(u: &[f64], v: &[f64]) -> BSplineSurface {
+        let (p, q) = (3, 1);
+        let nu = u.len() - p - 1;
+        let nv = v.len() - q - 1;
+        let net: Vec<Vec<CPoint>> = (0..nu)
+            .map(|i| {
+                (0..nv)
+                    .map(|j| CPoint::new(i as f64, j as f64, 0.0, NOW))
+                    .collect()
+            })
+            .collect();
+        let s = Surface::new(net, p, q, u.to_vec(), v.to_vec()).unwrap();
+        BSplineSurface::from_nurb(s, false)
+    }
+
+    fn u_knots(s: &BSplineSurface) -> Vec<f64> {
+        s.knots(SurfParamType::U, None).unwrap().0
+    }
+
+    fn v_knots(s: &BSplineSurface) -> Vec<f64> {
+        s.knots(SurfParamType::V, None).unwrap().0
+    }
+
+    /// tangency-labs/solidcore#472: the round's u knots and face domains of the
+    /// (+x,-y) and (-x,+y) rounds of a drafted box (their domains differ by one ULP).
+    #[test]
+    fn trim_one_ulp_inside_a_knot_leaves_a_sliver_upstream_and_none_with_snapping() {
+        let k = 20.152507010543033_f64;
+        let (k2, end) = (60.45751479, 80.61001657);
+        let u = [0.0, 0.0, 0.0, 0.0, k, k, k, k2, k2, k2, end, end, end, end];
+        let v = [0.0, 0.0, 0.5, 1.0, 1.0];
+        let below = f64::from_bits(k.to_bits() - 1);
+        assert!(below < k && k - below < 4e-15);
+        let ur = 60.601175783809218;
+
+        // on the knot: no sliver
+        let mut s = net_with_knots(&u, &v);
+        let mut dom = Extent2d::from_bounds(k, 0.0, ur, 1.0);
+        s.trim_with_domain(&mut dom).unwrap();
+        assert_eq!(u_knots(&s), vec![k, k2, ur]);
+        assert_eq!(dom.min().x, k);
+
+        // one ULP inside the knot: upstream moves the boundary 10 * 1e-6 * (1 + u) away
+        let mut s = net_with_knots(&u, &v);
+        let mut dom = Extent2d::from_bounds(below, 0.0, ur, 1.0);
+        s.trim_with_domain(&mut dom).unwrap();
+        let sliver = k - 10.0 * EFF_ZERO_SQRT * (1.0 + below.abs());
+        assert_eq!(u_knots(&s), vec![sliver, k, k2, ur]);
+        assert!((k - sliver - 2.115e-4).abs() < 1e-6);
+
+        // with snapping: the boundary goes onto the knot, as for the face on it
+        let snap = TrimOptions {
+            snap_roundoff_to_knots: true,
+        };
+        let mut s = net_with_knots(&u, &v);
+        let mut dom = Extent2d::from_bounds(below, 0.0, ur, 1.0);
+        s.trim_with_domain_with(&mut dom, snap).unwrap();
+        assert_eq!(u_knots(&s), vec![k, k2, ur]);
+        assert_eq!(dom.min().x, k);
+        assert_eq!(s.natural_uv_domain().min().x, k);
+    }
+
+    #[test]
+    fn snapping_covers_upper_and_v_boundaries() {
+        let u = [0.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0, 5.0, 5.0, 5.0, 5.0];
+        let v = [0.0, 0.0, 0.5, 1.0, 1.0];
+        let snap = TrimOptions {
+            snap_roundoff_to_knots: true,
+        };
+        let above = 2.0 + 1e-12;
+        let v_above = 0.5 + 1e-13;
+
+        // upstream: an upper boundary just outside a knot is moved further out
+        let mut s = net_with_knots(&u, &v);
+        let mut dom = Extent2d::from_bounds(0.5, 0.0, above, v_above);
+        s.trim_with_domain(&mut dom).unwrap();
+        assert_eq!(dom.max().x, 2.0 + 10.0 * EFF_ZERO_SQRT * (1.0 + above));
+        assert_eq!(dom.max().y, 0.5 + 10.0 * EFF_ZERO_SQRT * (1.0 + v_above));
+        assert_eq!(u_knots(&s).len(), 3);
+
+        // with snapping both go onto their knots
+        let mut s = net_with_knots(&u, &v);
+        let mut dom = Extent2d::from_bounds(0.5, 0.0, above, v_above);
+        s.trim_with_domain_with(&mut dom, snap).unwrap();
+        assert_eq!((dom.max().x, dom.max().y), (2.0, 0.5));
+        assert_eq!(u_knots(&s), vec![0.5, 2.0]);
+        assert_eq!(v_knots(&s), vec![0.0, 0.5]);
+
+        // lower v boundary just inside a knot
+        let mut s = net_with_knots(&u, &v);
+        let mut dom = Extent2d::from_bounds(0.5, 0.5 - 1e-13, 4.0, 1.0);
+        s.trim_with_domain_with(&mut dom, snap).unwrap();
+        assert_eq!(dom.min().y, 0.5);
+        assert_eq!(v_knots(&s), vec![0.5, 1.0]);
+    }
+
+    #[test]
+    fn snapping_leaves_boundaries_beyond_eff_zero_param_to_upstream() {
+        let u = [0.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0, 5.0, 5.0, 5.0, 5.0];
+        let v = [0.0, 0.0, 1.0, 1.0];
+        let snap = TrimOptions {
+            snap_roundoff_to_knots: true,
+        };
+        for ul in [2.0 - 3e-8, 2.0 - 1e-6, 2.0 + 1e-9, 1.0] {
+            let mut a = net_with_knots(&u, &v);
+            let mut b = a.clone();
+            let mut da = Extent2d::from_bounds(ul, 0.0, 4.0, 1.0);
+            let mut db = da;
+            a.trim_with_domain(&mut da).unwrap();
+            b.trim_with_domain_with(&mut db, snap).unwrap();
+            assert_eq!(da, db, "ul = {ul}");
+            assert_eq!(u_knots(&a), u_knots(&b), "ul = {ul}");
+        }
+    }
+
     #[test]
     fn corner_blend_needs_four_curves() {
-        let r = BSplineSurface::create_corner_blend(&[], &[], &[], &[], 1e-3, 0.1, true);
+        let k = &crate::Kernel::default();
+        let r = BSplineSurface::create_corner_blend(k, &[], &[], &[], &[], 1e-3, 0.1, true);
         assert!(r.is_err());
     }
 
     #[test]
     fn skinned_surface_needs_sections() {
-        let r = BSplineSurface::create_skinned_surface(&[], SkinnedSurfaceOptions::default());
+        let k = &crate::Kernel::default();
+        let r = BSplineSurface::create_skinned_surface(k, &[], SkinnedSurfaceOptions::default());
         assert!(matches!(r, Err(SolidError::InvalidInput { .. })));
     }
 }

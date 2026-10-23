@@ -44,6 +44,7 @@
 //! `SmCurve::GlobalPointSolve` / `GlobalCurveIntersect` / `GlobalCurveSolve` accept for
 //! the curve solvers.
 
+use crate::validate::{bad, euclid, NOW, NOZ};
 use crate::{call_with_buffer, FfiError};
 
 /// Largest control point index `n`.
@@ -64,9 +65,6 @@ pub const MAX_BOXES: usize = 64;
 pub const MAX_TREE_OBJECTS: usize = 16;
 /// `SM_BIG_DOUBLE`.
 pub const BIG_DOUBLE: f64 = 1.0e20;
-
-const NOZ: f64 = f64::MAX;
-const NOW: f64 = -f64::MAX;
 
 /// Shim operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,56 +155,9 @@ mod sys {
     }
 }
 
-fn bad(msg: impl Into<String>) -> FfiError {
-    FfiError::InvalidArgument(msg.into())
-}
+crate::reader::unit_reader!(MAX_COORD);
 
-/// Sequential reader over the input.
-struct Reader<'a> {
-    input: &'a [f64],
-    at: usize,
-}
-
-impl<'a> Reader<'a> {
-    fn num(&mut self) -> Result<f64, FfiError> {
-        let v = self
-            .input
-            .get(self.at)
-            .copied()
-            .ok_or_else(|| bad("input too short"))?;
-        self.at += 1;
-        Ok(v)
-    }
-
-    /// A finite value of magnitude at most [`MAX_COORD`].
-    fn finite(&mut self) -> Result<f64, FfiError> {
-        let v = self.num()?;
-        if !v.is_finite() || v.abs() > MAX_COORD {
-            return Err(bad(format!("value {v} not finite or too large")));
-        }
-        Ok(v)
-    }
-
-    fn vec3(&mut self) -> Result<[f64; 3], FfiError> {
-        Ok([self.finite()?, self.finite()?, self.finite()?])
-    }
-
-    fn nonzero3(&mut self) -> Result<[f64; 3], FfiError> {
-        let v = self.vec3()?;
-        if v.iter().map(|c| c * c).sum::<f64>() < 1e-12 {
-            return Err(bad("zero vector"));
-        }
-        Ok(v)
-    }
-
-    fn index(&mut self, max: usize) -> Result<usize, FfiError> {
-        let v = self.num()?;
-        if v.fract() != 0.0 || v < 0.0 || v > max as f64 {
-            return Err(bad(format!("bad index/count {v}")));
-        }
-        Ok(v as usize)
-    }
-
+impl Reader<'_> {
     /// An object index below `n`, or `-1` (`None`).
     fn object(&mut self, n: usize) -> Result<Option<usize>, FfiError> {
         let v = self.num()?;
@@ -219,27 +170,6 @@ impl<'a> Reader<'a> {
         Ok(Some(v as usize))
     }
 
-    fn flag(&mut self) -> Result<bool, FfiError> {
-        Ok(self.index(1)? == 1)
-    }
-
-    fn take(&mut self, k: usize) -> Result<&'a [f64], FfiError> {
-        let end = self.at.checked_add(k).ok_or_else(|| bad("overflow"))?;
-        let s = self
-            .input
-            .get(self.at..end)
-            .ok_or_else(|| bad("input too short"))?;
-        self.at = end;
-        Ok(s)
-    }
-
-    fn done(&self) -> Result<(), FfiError> {
-        if self.at != self.input.len() {
-            return Err(bad("trailing input"));
-        }
-        Ok(())
-    }
-
     /// A box `min max` with `min <= max`.
     fn bbox(&mut self) -> Result<(), FfiError> {
         let a = self.vec3()?;
@@ -248,15 +178,6 @@ impl<'a> Reader<'a> {
             return Err(bad("box with min > max"));
         }
         Ok(())
-    }
-}
-
-fn euclid([x, y, z, w]: [f64; 4]) -> [f64; 3] {
-    let z = if z == NOZ { 0.0 } else { z };
-    if w == NOW {
-        [x, y, z]
-    } else {
-        [x / w, y / w, z / w]
     }
 }
 
@@ -681,7 +602,10 @@ fn call(spec: Spec, objs: &[Entry], o1: Option<usize>, o2: Option<usize>) -> Res
         LocalKind::Base | LocalKind::Point | LocalKind::Curve => true,
         // NER(pV) checks the vertex for NULL
         LocalKind::PointVertex => second.is_none() || is_vertex(second),
-        LocalKind::VertexVertex => is_vertex(first) && (second.is_none() || is_vertex(second)),
+        // The release `SM_ASSERT(pObjN->IsKindOf(..))` of `SmTLSVertexVertex::SolveIt` and
+        // `SmTLSEdgeEdge::SolveIt` still evaluates its argument, so both objects are
+        // dereferenced before any `NULL` check (UB-238).
+        LocalKind::VertexVertex => is_vertex(first) && is_vertex(second),
         LocalKind::PointCurve => match (second, spec.interval) {
             // the interval must lie near the curve's range
             (Some(Entry::Curve(info, _)), Some((a, b))) => {
@@ -696,7 +620,7 @@ fn call(spec: Spec, objs: &[Entry], o1: Option<usize>, o2: Option<usize>) -> Res
         LocalKind::CurveVertex => is_vertex(entry(objs, o2)),
         // NER(pCurve) checks the second curve for NULL
         LocalKind::CurveEdge => second.is_none() || is_edge_curve(second),
-        LocalKind::EdgeEdge => is_edge_curve(first) && (second.is_none() || is_edge_curve(second)),
+        LocalKind::EdgeEdge => is_edge_curve(first) && is_edge_curve(second),
     };
     if !ok {
         return Err(bad("call objects do not fit the solver"));
@@ -803,7 +727,7 @@ fn validate_op(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
 ///
 /// [`FfiError::InvalidArgument`] describing the first problem.
 pub fn validate(op: Op, input: &[f64]) -> Result<(), FfiError> {
-    let mut rd = Reader { input, at: 0 };
+    let mut rd = Reader::new(input);
     validate_op(op, &mut rd)?;
     rd.done()
 }
@@ -833,4 +757,38 @@ pub fn eval(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
             )
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spec(kind: LocalKind, swap: bool) -> Spec {
+        Spec {
+            kind,
+            swap,
+            interval: None,
+        }
+    }
+
+    #[test]
+    fn vertex_and_edge_pair_solvers_refuse_a_null_object() {
+        let vertices = [Entry::Vertex, Entry::Vertex];
+        let edge = Entry::Curve(CurveInfo { a: 0.0, b: 1.0 }, true);
+        let edges = [edge, edge];
+        for swap in [false, true] {
+            let vv = spec(LocalKind::VertexVertex, swap);
+            assert!(call(vv, &vertices, Some(0), Some(1)).is_ok());
+            assert!(call(vv, &vertices, Some(0), None).is_err());
+            assert!(call(vv, &vertices, None, Some(1)).is_err());
+            let ee = spec(LocalKind::EdgeEdge, swap);
+            assert!(call(ee, &edges, Some(0), Some(1)).is_ok());
+            assert!(call(ee, &edges, Some(0), None).is_err());
+            assert!(call(ee, &edges, None, Some(1)).is_err());
+            // NER(pV) / NER(pCurve) still accept a NULL second object
+            let pv = spec(LocalKind::PointVertex, swap);
+            let (o1, o2) = if swap { (None, Some(0)) } else { (Some(0), None) };
+            assert!(call(pv, &vertices, o1, o2).is_ok());
+        }
+    }
 }

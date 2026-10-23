@@ -13,7 +13,14 @@
 //!    runtime. Static libs are linked `-bundle` (not copied into the rlib; they
 //!    are huge) so the final link of `difftest` pulls them from `bin/cpp/lib`.
 //!
-//! `SOLIDCORE_CPP_DIR` overrides the `bin/cpp` location.
+//! `SOLIDCORE_CPP_DIR` overrides the `bin/cpp` location. `scripts/fetch-cpp.sh`
+//! downloads a prebuilt `bin/cpp` (or builds it with `harness/cpp/build.sh`).
+//!
+//! Shim compile caching: the `cc` crate (1.8) runs the C++ compiler through
+//! `RUSTC_WRAPPER` when that is `sccache` (or cachepot/buildcache/kache), so
+//! `RUSTC_WRAPPER=sccache` caches the shim objects as well as the Rust crates. To
+//! cache only the C++, set `CXX="sccache c++"` instead; `cc` recognises the wrapper.
+//! Nothing here needs to change for either.
 //!
 //! `ffi.env` format (one `KEY=VALUE` per line, `#` comments, values are
 //! whitespace separated lists; relative paths are relative to the repo root):
@@ -76,6 +83,12 @@ fn main() {
     if !cpp {
         return;
     }
+    // wasm32 (`difftest --digest-dir` only): keep the declarations, compile and link
+    // nothing. The shim symbols stay undefined imports, served at run time by the stub
+    // module from `scripts/wasm_stub.py` (each returns `SC_ERR_UNLINKED`).
+    if env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32") {
+        return;
+    }
 
     // ---- locate C++ build --------------------------------------------------
     let cpp_dir = env::var_os("SOLIDCORE_CPP_DIR")
@@ -103,7 +116,11 @@ fn main() {
     for f in &shims {
         println!("cargo:rerun-if-changed={}", f.display());
     }
-    for h in sorted_files(&shim_dir, "h") {
+    // headers and the `.inc` files a shim includes (not compiled on their own)
+    for h in sorted_files(&shim_dir, "h")
+        .into_iter()
+        .chain(sorted_files(&shim_dir, "inc"))
+    {
         println!("cargo:rerun-if-changed={}", h.display());
     }
     if !shims.is_empty() {
@@ -132,6 +149,34 @@ fn main() {
         for f in &cfg.cxxflags {
             b.flag(f);
         }
+        // Rollover fixture destruction can abort on OOM. Execute a fresh worker
+        // image rather than calling SMLib after fork in a multithreaded host.
+        let worker_source = root.join("harness/cpp/worker/rollover.cpp");
+        println!("cargo:rerun-if-changed={}", worker_source.display());
+        let worker = out_dir.join("solidcore-rollover-worker");
+        let mut command = b.get_compiler().to_command();
+        command
+            .arg(&worker_source)
+            .arg(shim_dir.join("topology_edgeuse_p1.cpp"))
+            .arg(shim_dir.join("sc_shim.cpp"))
+            .arg("-o")
+            .arg(&worker);
+        command.arg(format!("-L{}", lib_dir.display()));
+        for dir in &cfg.lib_dirs {
+            command.arg(format!("-L{}", dir.display()));
+        }
+        command.args(["-lSM_API", "-lSMLib", "-pthread"]);
+        for lib in cfg.syslibs.as_deref().unwrap_or(&[]) {
+            command.arg(format!("-l{lib}"));
+        }
+        assert!(
+            command.status().expect("compile rollover worker").success(),
+            "rollover worker compilation failed"
+        );
+        b.define(
+            "SC_ROLLOVER_WORKER_PATH",
+            Some(format!("\"{}\"", worker.display()).as_str()),
+        );
         b.files(&shims);
         b.compile("solidcore_shims");
     }
@@ -172,7 +217,15 @@ fn main() {
     for l in cfg.syslibs.as_deref().unwrap_or(&[]) {
         println!("cargo:rustc-link-lib=dylib={l}");
     }
-    println!("cargo:rustc-link-lib=dylib=stdc++");
+    // Apple, FreeBSD and OpenBSD (clang platforms) ship libc++, not libstdc++. NetBSD
+    // still defaults to GCC and libstdc++.
+    let os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let cxx = if matches!(os.as_str(), "macos" | "ios" | "freebsd" | "openbsd") {
+        "c++"
+    } else {
+        "stdc++"
+    };
+    println!("cargo:rustc-link-lib=dylib={cxx}");
     println!("cargo:rustc-link-lib=dylib=m");
 }
 

@@ -2,7 +2,8 @@
 // difftest shim for unit `surface.volume_p1`: the SmVolume members owned by the unit
 // (source/SMLib/src/SmVolume.cpp, source/SMLib/inc/SmVolume.h), called on compound volumes
 // built from plain SmVolume, SmTransform, SmTwistVolume and SmUnbendVolume maps (the last
-// two default-constructed; their simple maps are not ported, so the Rust side defers), and
+// two default-constructed, as on the Rust side: units surface.twist_volume and
+// surface.unbend_volume), and
 // the file-level smvol_Lift*Derivative / smvol_ConcatEvals functions.
 //
 // One entry point, sc_surface_volume_p1_eval(op, in, n_in, out, cap, out_len). Layouts are
@@ -33,6 +34,7 @@
 #include "sc_sm.h"
 
 using sc::Rd;
+using sc::put_mat;
 using sc::put_vec;
 
 // The class of SmVolume.cpp, declared exactly as there.
@@ -105,14 +107,6 @@ enum : int64_t
 
 double st(SmStatus s) { return s == SM_SUCCESS ? 0.0 : (double)s; }
 double flg(SmBoolean b) { return b ? 1.0 : 0.0; }
-
-void put_mat(std::vector<double>& o, const SmTransform& t)
-{
-    SmTransform& m = (SmTransform&)t;
-    for (int i = 0; i < 4; ++i)
-        for (int j = 0; j < 4; ++j)
-            o.push_back(m[i][j]);
-}
 
 // `origin X Y Z`: SmTransform(ctx, origin, X, Y, &Z).
 SmTransform* read_transform(Rd& rd, const SmContext& ctx)

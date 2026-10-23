@@ -61,10 +61,17 @@
 //!   object tree local to the call; afterwards upstream's first tree pointer
 //!   dangles, here it is cleared.
 //! - **Unported callees.** Part 2 now supplies the local traversal and its six
-//!   local classes. Curve/curve solves, surface solves, topology tolerances and
-//!   face classification still propagate their owning units' unported errors.
+//!   local classes. Curve/curve solves and surface solves still propagate their
+//!   owning units' unported errors.
 //!   Face silhouettes use the ported surface cache factory. The face-silhouette loop names temporary curves
 //!   by their face owner through the adapter.
+//! - **Face classification.** `SmFace::PointClassify` is
+//!   [`crate::query::face::p2::point_classify_prepared`] on the B-rep and face
+//!   [`TopologyObjects::face_entity`] names (unported when the adapter names none or
+//!   the classification would first create UV trims; the solver only reads its
+//!   objects). No trimmed surface cache is passed, so upstream's cache fast path
+//!   (taken when the face's surface has an up-to-date one) is skipped.
+//!   `SmFace::Point3DClassify` still has no dispatch.
 
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::p2::Curve;
@@ -76,18 +83,21 @@ use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::{Extent3d, LineHit};
 use crate::geom::geom_utility::p1::{line_closest_point, point_project_to_plane};
 use crate::geom::global_solver::{
-    Branch, GlobalSolve, GlobalSolver, OperationCategory, SolutionRequested, SolverOperation,
-    MAX_SOLVER_TREES,
+    Branch, GlobalSolve, GlobalSolver, ObjectZoneTol, OperationCategory, SolutionRequested,
+    SolverOperation, MAX_SOLVER_TREES,
 };
 use crate::geom::object::{Shape, ShapeMember};
 use crate::geom::solution_array::{
     Solution, SolutionArray, SolutionObject, SolutionType, SortKey, MAX_TREES,
 };
+use crate::geom::tol::{zone_tol_3d, SmallTopoType};
 use crate::geom::tree::Tree;
 use crate::geom::vector2d::Vec2;
 use crate::geom::vector3d::sqrt;
+use crate::intersect::point_class::PointClassification;
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI};
+use crate::query::face::p2::{point_classify_prepared, PointClassifyOptions};
 use crate::surface::surface::p2::{surface_cache, Surface, SurfaceKind};
 use crate::surface::surface_cache::p1::{AltCacheKey, AltSrfCacheType};
 use crate::surface::trim_srf_cache::POINT_CLASS_UNKNOWN;
@@ -186,6 +196,9 @@ pub trait TopologyObjects<O> {
     /// `SmEdge::GetInterval`.
     fn edge_interval(&self, edge: O) -> Result<Extent1d>;
 
+    /// `SmEdge::GetTolerance`.
+    fn edge_tolerance(&self, edge: O) -> Result<f64>;
+
     /// `SmSurface::GetFace`: the face a surface defines, if any.
     fn surface_face(&self, surface: O) -> Result<Option<O>>;
 
@@ -202,11 +215,38 @@ pub trait TopologyObjects<O> {
     /// `SmFace::GetTolerance`.
     fn face_tolerance(&self, face: O) -> Result<f64>;
 
+    /// The B-rep and face record a face handle names, for the face members that work
+    /// on the B-rep (`SmFace::PointClassify`). `None` (the default) is a handle the
+    /// adapter cannot resolve: a gap in the caller's adapter, which the caller reports.
+    fn face_entity(&self, face: O) -> Option<(&crate::topology::Brep, crate::topology::FaceId)> {
+        let _ = face;
+        None
+    }
+
     /// `SmSurface::GetOwner`.
     fn surface_owner(&self, surface: O) -> Result<Option<O>>;
 
     /// The member an edge or face handle is for `SmShape::IsInShape`.
     fn shape_member(&self, object: O) -> ShapeMember;
+
+    /// `SmTol::GetZoneTol3d(const SmObject*)` of a non-null handle (`SM_USE_OLDTOL`):
+    /// a topology object's own `GetTolerance`, a curve's edge's or a surface's face's
+    /// tolerance (the system zone tolerance when it has none), a B-rep's tolerance,
+    /// and the system zone tolerance for other objects.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] by default: an adapter that cannot resolve its handles
+    /// to their B-rep entities.
+    fn object_zone_tol_3d(&self, k: &Kernel, object: O) -> Result<f64> {
+        let _ = (k, object);
+        // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on a handle this
+        // adapter does not resolve to its B-rep entity
+        Err(SolidError::unported(
+            "SmTol::GetZoneTol3d(const SmObject*)",
+            "geom.tol",
+        ))
+    }
 }
 
 /// A curve a local solver works on (`m_pCurve`, `m_pCurve2`): the curve and the
@@ -676,6 +716,9 @@ impl<'t, 'a, O: SolutionObject + 't> TopologySolver<'t, 'a, O> {
             s.best_answer_so_far_sq = 0.0;
         }
 
+        // (not upstream) a new solve: restart the work bound of solve_branch
+        s.branches_visited = 0;
+
         // locals
         let start_branch: Branch = [tree1.top_node(), tree2.top_node(), None];
 
@@ -765,6 +808,8 @@ impl<'t, 'a, O: SolutionObject + 't> TopologySolver<'t, 'a, O> {
             at_distance_sq,
             opt_vectors,
             solutions,
+            solve_depth,
+            branches_visited,
         } = s;
         self.base = GlobalSolver {
             operation,
@@ -780,6 +825,8 @@ impl<'t, 'a, O: SolutionObject + 't> TopologySolver<'t, 'a, O> {
             at_distance_sq,
             opt_vectors,
             solutions,
+            solve_depth,
+            branches_visited,
         };
     }
 }
@@ -793,6 +840,10 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for TopologySolver<'t, '_, O
         &mut self.base
     }
 
+    fn object_zone_tol_3d(&self, object: O) -> Result<f64> {
+        self.objects.object_zone_tol_3d(self.kernel, object)
+    }
+
     /// `SmTopologySolver::AreReadyForLocalSolve`: any node of a topology tree may
     /// hold objects, so every branch is solved locally.
     fn are_ready_for_local_solve(&self, _branch: &Branch) -> Result<bool> {
@@ -801,7 +852,8 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for TopologySolver<'t, '_, O
 
     /// `SmTopologySolver::LocalSolve`.
     fn local_solve(&mut self, branch: &Branch) -> Result<bool> {
-        self.local_solve_branch(branch)
+        let k = self.kernel;
+        self.local_solve_branch(k, branch)
     }
 }
 
@@ -877,6 +929,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
     /// unported callees.
     pub fn solve_it(
         &mut self,
+        k: &Kernel,
         ts: &mut TopologySolver<'_, 'a, O>,
         object1: Option<O>,
         object2: Option<O>,
@@ -887,19 +940,19 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             }
             LocalSolverKind::PointVertex => self.solve_point_vertex(ts, object1, object2),
             LocalSolverKind::VertexVertex => self.solve_vertex_vertex(ts, object1, object2),
-            LocalSolverKind::PointCurve => self.solve_point_curve(ts, object1, object2),
-            LocalSolverKind::PointEdge => self.solve_point_edge(ts, object1, object2),
-            LocalSolverKind::VertexEdge => self.solve_vertex_edge(ts, object1, object2),
-            LocalSolverKind::PointFace => self.solve_point_face(ts, object1, object2),
-            LocalSolverKind::CurveCurve => self.solve_curve_curve(ts),
-            LocalSolverKind::CurveEdge => self.solve_curve_edge(ts, object1, object2),
-            LocalSolverKind::EdgeEdge => self.solve_edge_edge(ts, object1, object2),
-            LocalSolverKind::VertexFace => self.solve_vertex_face(ts, object1, object2),
-            LocalSolverKind::CurveVertex => self.solve_curve_vertex(ts, object1, object2),
-            LocalSolverKind::EdgeVertex => self.solve_edge_vertex(ts, object1, object2),
-            LocalSolverKind::CurveFace => self.solve_curve_face(ts, object1, object2),
-            LocalSolverKind::EdgeFace => self.solve_edge_face(ts, object1, object2),
-            LocalSolverKind::FaceFace => self.solve_face_face(ts, object1, object2),
+            LocalSolverKind::PointCurve => self.solve_point_curve(k, ts, object1, object2),
+            LocalSolverKind::PointEdge => self.solve_point_edge(k, ts, object1, object2),
+            LocalSolverKind::VertexEdge => self.solve_vertex_edge(k, ts, object1, object2),
+            LocalSolverKind::PointFace => self.solve_point_face(k, ts, object1, object2),
+            LocalSolverKind::CurveCurve => self.solve_curve_curve(k, ts),
+            LocalSolverKind::CurveEdge => self.solve_curve_edge(k, ts, object1, object2),
+            LocalSolverKind::EdgeEdge => self.solve_edge_edge(k, ts, object1, object2),
+            LocalSolverKind::VertexFace => self.solve_vertex_face(k, ts, object1, object2),
+            LocalSolverKind::CurveVertex => self.solve_curve_vertex(k, ts, object1, object2),
+            LocalSolverKind::EdgeVertex => self.solve_edge_vertex(k, ts, object1, object2),
+            LocalSolverKind::CurveFace => self.solve_curve_face(k, ts, object1, object2),
+            LocalSolverKind::EdgeFace => self.solve_edge_face(k, ts, object1, object2),
+            LocalSolverKind::FaceFace => self.solve_face_face(k, ts, object1, object2),
         }
     }
 
@@ -1103,8 +1156,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
         sol.start.solution_value = sign * sqrt(dist_sq);
 
         // accumulate unique solutions sorted by value into SmGlobalSolver::m_pSolutions
-        ts.base
-            .add_sorted_solution(&sol, SortKey::BySolutionValue, true)
+        ts.add_sorted_solution(&sol, SortKey::BySolutionValue, true)
     }
 
     /// Loads the vertex among `object1`, `object2` (the first unless swapped) as
@@ -1144,6 +1196,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
     /// first when swapped).
     fn solve_point_curve(
         &mut self,
+        k: &Kernel,
         ts: &mut TopologySolver<'_, '_, O>,
         object1: Option<O>,
         object2: Option<O>,
@@ -1152,7 +1205,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
         let handle = if self.swap_order { object1 } else { object2 };
         let handle = handle.ok_or(null_deref(OP_PC, "null curve object"))?;
         let curve = objects.curve(handle)?;
-        self.point_curve(ts, curve, Some(handle))
+        self.point_curve(k, ts, curve, Some(handle))
     }
 
     /// The body of `SmTLSPointCurve::SolveIt` for `curve` named by `handle`: the
@@ -1162,6 +1215,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
     /// when there is one.
     pub(super) fn point_curve(
         &self,
+        k: &Kernel,
         ts: &mut TopologySolver<'_, '_, O>,
         curve: &Curve,
         handle: Option<O>,
@@ -1216,6 +1270,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
         let target = best.map(|b| b * sign);
 
         // make the PointSolve call
+        let zone_tol = |o: O| objects.object_zone_tol_3d(k, o);
         let solutions = curve.global_point_solve(
             ts.kernel,
             &self.interval,
@@ -1228,6 +1283,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 opt_vectors: vecs,
                 handle,
                 analytic_handle: handle.and_then(|h| objects.analytic_curve_handle(h)),
+                zone_tol_3d: Some(ObjectZoneTol(&zone_tol)),
             },
         )?;
 
@@ -1241,7 +1297,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             // surface parameters into the output instead of the curve parameters.
             sol.num_variables = 1;
             if let Some(surface_curve) = self.surface_curve {
-                let pnt = surface_curve.evaluate_point(sol.start.param(0)?)?;
+                let pnt = surface_curve.evaluate_point(k, sol.start.param(0)?)?;
                 *sol.start.param_mut(0)? = pnt.x;
                 *sol.start.param_mut(1)? = pnt.y;
                 sol.num_variables = 2;
@@ -1253,8 +1309,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             if sol.solution_type == SolutionType::RangeOfValues {
                 sol.end.solution_value *= sign;
             }
-            ts.base
-                .add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
+            ts.add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
         } // end iter every solution building final solution list
 
         Ok(())
@@ -1264,6 +1319,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
     /// interval of the curve's edge, solutions naming the edge.
     fn solve_point_edge(
         &mut self,
+        k: &Kernel,
         ts: &mut TopologySolver<'_, '_, O>,
         object1: Option<O>,
         object2: Option<O>,
@@ -1292,7 +1348,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             //   So - put curve in as both args makes sure this works
             //        no matter the value of m_bSwapOrder
             let curve = objects.curve(handle)?;
-            self.point_curve(ts, curve, Some(handle))?;
+            self.point_curve(k, ts, curve, Some(handle))?;
         }
 
         Ok(())
@@ -1302,12 +1358,13 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
     /// vertex as the point.
     fn solve_vertex_edge(
         &mut self,
+        k: &Kernel,
         ts: &mut TopologySolver<'_, '_, O>,
         object1: Option<O>,
         object2: Option<O>,
     ) -> Result<()> {
         self.load_vertex(ts.objects, object1, object2)?;
-        self.solve_point_edge(ts, object1, object2)
+        self.solve_point_edge(k, ts, object1, object2)
     }
 
     /// `SmTLSPointFace::SolveIt`: ray and 3D signed solves intersect the face's
@@ -1316,6 +1373,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
     /// only solutions the face's trim classifies inside are kept.
     pub(super) fn solve_point_face(
         &mut self,
+        k: &Kernel,
         ts: &mut TopologySolver<'_, '_, O>,
         object1: Option<O>,
         object2: Option<O>,
@@ -1409,9 +1467,11 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 // We've found a result within the surface domain.
                 // It must also be within the Face: this is a topology routine.
                 // [060718 bd]
-                let src_zone_tol = object_zone_tol_3d(self.point_vertex)?;
+                let src_zone_tol = vertex_zone_tol_3d(ts.kernel, objects, self.point_vertex)?;
                 let uv = Vec2::new(sol.start.param(1)?, sol.start.param(2)?);
-                if face_point_classify(face, uv, src_zone_tol, true, true)? == POINT_CLASS_UNKNOWN {
+                if face_point_classify(ts.kernel, objects, face, uv, src_zone_tol, true, true)?
+                    == POINT_CLASS_UNKNOWN
+                {
                     continue;
                 }
 
@@ -1441,8 +1501,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 *sol.start.param_mut(1)? = sol.start.param(2)?;
 
                 // add solution to output m_rTopologySolver.m_pSolutions if appropriate
-                ts.base
-                    .add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
+                ts.add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
             } // end for each solution
         } else if ts.base.projected_operation {
             let opt_vectors = ts.base.opt_vectors.clone();
@@ -1460,7 +1519,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 sub.point = self.point;
                 sub.point_vertex = self.point_vertex;
                 // (the temporary curve has no handle)
-                sub.point_curve(ts, curve, None)?;
+                sub.point_curve(k, ts, curve, None)?;
             }
         } else {
             let best = best_answer_so_far(&ts.base);
@@ -1490,9 +1549,11 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 let mut sol = *found;
 
                 // Check whether the point is within the Face's trimmed boundaries.
-                let src_zone_tol = object_zone_tol_3d(self.point_vertex)?;
+                let src_zone_tol = vertex_zone_tol_3d(ts.kernel, objects, self.point_vertex)?;
                 let uv = Vec2::new(sol.start.param(0)?, sol.start.param(1)?);
-                if face_point_classify(face, uv, src_zone_tol, true, true)? == POINT_CLASS_UNKNOWN {
+                if face_point_classify(ts.kernel, objects, face, uv, src_zone_tol, true, true)?
+                    == POINT_CLASS_UNKNOWN
+                {
                     continue;
                 }
 
@@ -1503,8 +1564,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 if sol.solution_type == SolutionType::RangeOfValues {
                     sol.end.solution_value *= sign;
                 }
-                ts.base
-                    .add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
+                ts.add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
             }
         } // end not a ProjectedOperation branch
 
@@ -1516,6 +1576,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
     /// second curve's edge as the second curve.
     fn solve_curve_edge(
         &mut self,
+        k: &Kernel,
         ts: &mut TopologySolver<'_, 'a, O>,
         object1: Option<O>,
         object2: Option<O>,
@@ -1542,7 +1603,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             self.curve_edge2 = Some(edge);
 
             // Solve the Curve/Curve problem
-            self.solve_curve_curve(ts)?;
+            self.solve_curve_curve(k, ts)?;
         } // end iter all cureve->edges
 
         Ok(())
@@ -1552,7 +1613,11 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
     /// or other solves (`SmCurve::GlobalCurveSolve`) of the two curves over their
     /// intervals, named by their edges, faces (UV points replacing the parameters)
     /// or the curves themselves.
-    pub(super) fn solve_curve_curve(&self, ts: &mut TopologySolver<'_, '_, O>) -> Result<()> {
+    pub(super) fn solve_curve_curve(
+        &self,
+        k: &Kernel,
+        ts: &mut TopologySolver<'_, '_, O>,
+    ) -> Result<()> {
         let objects = ts.objects;
         let mut sol_objects: [Option<O>; MAX_TREES] = [None; MAX_TREES];
         let mut count = 0;
@@ -1670,7 +1735,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             sol.num_variables = 0;
             for (uv_curve, t) in [(uv_curve1, t1), (uv_curve2, t2)] {
                 if let Some(uv_curve) = uv_curve {
-                    let pnt = uv_curve.evaluate_point(t)?;
+                    let pnt = uv_curve.evaluate_point(k, t)?;
                     *sol.start.param_mut(sol.num_variables)? = pnt.x;
                     sol.num_variables += 1;
                     *sol.start.param_mut(sol.num_variables)? = pnt.y;
@@ -1684,8 +1749,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             if sol.solution_type == SolutionType::RangeOfValues {
                 sol.end.solution_value *= sign;
             }
-            ts.base
-                .add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
+            ts.add_sorted_solution(&sol, SortKey::BySolutionValue, true)?;
         }
 
         Ok(())
@@ -1695,6 +1759,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
     /// curve's edge (and its curve and interval) as the first curve.
     fn solve_edge_edge(
         &mut self,
+        k: &Kernel,
         ts: &mut TopologySolver<'_, 'a, O>,
         object1: Option<O>,
         object2: Option<O>,
@@ -1719,7 +1784,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 None => None,
             };
 
-            self.solve_curve_edge(ts, object1, object2)?;
+            self.solve_curve_edge(k, ts, object1, object2)?;
         }
 
         Ok(())
@@ -1779,8 +1844,14 @@ pub(super) fn face_silhouettes<O: Copy + PartialEq>(
     }
 
     // Create the planar section curves from the brep and the plane
-    let (_curves_3d, _curves_uv) =
-        srf.create_silhouette_curves(k, &objects.face_uv_domain(face)?, view, false)?;
+    let (_curves_3d, _curves_uv) = srf.create_silhouette_curves(
+        k,
+        &objects.face_uv_domain(face)?,
+        view,
+        false,
+        Some(approx_tol),
+        Some(angle_tol),
+    )?;
 
     // Now trim the curves (then SmSurfaceCache::AddCurvesToCache(SM_AS_TRIMMED_SILHOUETTE,
     // ..) and HasCachedCurves again, SM_ERR when they are not found).
@@ -1856,47 +1927,98 @@ fn curve_global_curve_solve<O: SolutionObject>(
     )
 }
 
-/// `SmTol::GetZoneTol3d(m_pPointVertex)`.
-pub(super) fn object_zone_tol_3d<O>(_vertex: Option<O>) -> Result<f64> {
-    // UNPORTED(topology.brep_p1): SmTol::GetZoneTol3d(const SmObject*)
-    Err(SolidError::unported(
-        "SmTol::GetZoneTol3d(const SmObject*)",
-        "topology.brep_p1",
-    ))
+/// `SmTol::GetZoneTol3d(m_pPointVertex)` (`SM_USE_OLDTOL`): the system zone
+/// tolerance without a vertex, the vertex's `GetTolerance` otherwise.
+pub(super) fn vertex_zone_tol_3d<O>(
+    k: &Kernel,
+    objects: &dyn TopologyObjects<O>,
+    vertex: Option<O>,
+) -> Result<f64> {
+    match vertex {
+        Some(vertex) => objects.vertex_tolerance(vertex),
+        None => Ok(zone_tol_3d(k, SmallTopoType::NormalSize)),
+    }
+}
+
+/// `SmTol::GetZoneTol3d(m_pCurve)` (`SM_USE_OLDTOL`): the tolerance of the curve's
+/// edge (`SmCurve::GetEdge`), the system zone tolerance without a curve or for a
+/// curve no edge owns.
+pub(super) fn curve_zone_tol_3d<O>(
+    k: &Kernel,
+    objects: &dyn TopologyObjects<O>,
+    curve: Option<O>,
+) -> Result<f64> {
+    let edge = match curve {
+        Some(curve) => objects.curve_edge(curve)?,
+        None => None,
+    };
+    match edge {
+        Some(edge) => objects.edge_tolerance(edge),
+        None => Ok(zone_tol_3d(k, SmallTopoType::NormalSize)),
+    }
 }
 
 /// `pFace->PointClassify(uv, src_zone_tol, do_boundaries, use_uv, point_class)`
 /// with a fresh `SmPointClassification(src_zone_tol, context)`: the point class
 /// code (`SM_PC_*`).
 ///
-/// Contract for the call that replaces this stub: every caller (the
-/// `SmTLSPointFace::SolveIt` paths) ignores `PointClassify`'s status and reads only
-/// `GetPointClass()`, so a failing `PointClassify` must still return `Ok` with the
-/// class the classification holds afterwards (`SM_PC_UNKNOWN` when it set none).
-/// `Err` is only for [`SolidError::Unported`] (and other harness-level failures
+/// Every caller (the `SmTLSPointFace::SolveIt` and `SmTLSCurveFace::SolveIt` paths)
+/// ignores `PointClassify`'s status and reads only `GetPointClass()`, so a failing
+/// `PointClassify` still returns `Ok` with the class the classification holds
+/// afterwards (`SM_PC_UNKNOWN` when it set none). `Err` is only for
+/// [`SolidError::Unported`] and [`SolidError::InvalidInput`] (harness-level failures
 /// upstream cannot have); the callers propagate it with `?`.
+///
+/// The solver only reads its objects, so this is the read-only
+/// [`point_classify_prepared`]: a classification that would have to create a UV trim
+/// curve or build a trim-cache tree first is [`SolidError::Unported`]. No trimmed
+/// surface cache is passed (the solver's objects expose none), so upstream's cache
+/// fast path is skipped and the loops classify the point.
 pub(super) fn face_point_classify<O>(
-    _face: O,
-    _uv: Vec2,
-    _src_zone_tol: f64,
-    _do_boundaries: bool,
-    _use_uv: bool,
+    k: &Kernel,
+    objects: &dyn TopologyObjects<O>,
+    face: O,
+    uv: Vec2,
+    src_zone_tol: f64,
+    do_boundaries: bool,
+    use_uv: bool,
 ) -> Result<i32> {
-    // The classification is `PointClassification::new(src_zone_tol)`
-    // (`intersect::point_class`); build it and read `point_class()` after the call
-    // below once `SmFace::PointClassify` is ported.
-    // UNPORTED(query.face_p2): SmFace::PointClassify
-    Err(SolidError::unported(
-        "SmFace::PointClassify",
-        "query.face_p2",
-    ))
+    let Some((b, f)) = objects.face_entity(face) else {
+        // DISPATCH GAP: SmFace::PointClassify is ported (`query::face::p2`, query.face_p2
+        // partial; no UNPORTED marker), but this adapter cannot resolve the face handle
+        // to its `Brep` and `FaceId`.
+        return Err(SolidError::unported(
+            "SmFace::PointClassify",
+            "query.face_p2",
+        ));
+    };
+    let mut pc = PointClassification::new(src_zone_tol);
+    match point_classify_prepared(
+        k,
+        b,
+        f,
+        uv,
+        &mut pc,
+        PointClassifyOptions {
+            src_zone_tol_3d: src_zone_tol,
+            do_boundary_intersections: do_boundaries,
+            use_uv_classification: use_uv,
+            ..PointClassifyOptions::default()
+        },
+    ) {
+        Err(e @ (SolidError::Unported { .. } | SolidError::InvalidInput { .. })) => Err(e),
+        // (status ignored, as upstream)
+        Ok(()) | Err(_) => Ok(pc.point_class().code()),
+    }
 }
 
 /// The `Point3DClassify` test of `SmTLSPointFace::SolveIt`: classify `point`
 /// against the face within `tol`, retrying within `100 * tol` when that fails;
 /// `false` when both fail or the class is not `SM_PC_FACE`.
 fn face_classifies_on_face<O>(_face: O, _point: Point3, _tol: f64) -> Result<bool> {
-    // UNPORTED(query.face_p1): SmFace::Point3DClassify
+    // DISPATCH GAP: SmFace::Point3DClassify is ported (`query::face::p1::point_3d_classify`,
+    // query.face_p1 partial; no UNPORTED marker), but it takes the face's `Brep` and
+    // `FaceId`, which this caller's opaque face handle does not carry.
     Err(SolidError::unported(
         "SmFace::Point3DClassify",
         "query.face_p1",
@@ -2000,6 +2122,9 @@ pub(crate) mod tests {
                 Obj::Edge(i) => Ok(self.edges[i].1),
                 _ => Err(SolidError::sm_err("edge")),
             }
+        }
+        fn edge_tolerance(&self, _edge: Obj) -> Result<f64> {
+            Err(SolidError::sm_err("edge"))
         }
         fn surface_face(&self, _surface: Obj) -> Result<Option<Obj>> {
             Ok(None)
@@ -2147,7 +2272,8 @@ pub(crate) mod tests {
         );
         let mut ls = LocalSolver::new(LocalSolverKind::PointVertex, false, None);
         ls.set_point(Vec3::new(0.0, 0.0, 0.0));
-        ls.solve_it(&mut ts, None, Some(Obj::Vertex(0))).unwrap();
+        ls.solve_it(&k, &mut ts, None, Some(Obj::Vertex(0)))
+            .unwrap();
         assert_eq!(ts.base.solutions.len(), 1);
         let s = ts.base.solutions.get(0).unwrap();
         assert_eq!(s.start.solution_value, 5.0);
@@ -2169,14 +2295,85 @@ pub(crate) mod tests {
             &[],
         );
         let mut ls = LocalSolver::new(LocalSolverKind::Curve, false, None);
-        assert!(ls.solve_it(&mut ts, None, None).is_err());
+        assert!(ls.solve_it(&k, &mut ts, None, None).is_err());
         let mut ls = LocalSolver::new(LocalSolverKind::FaceFace, false, None);
         assert!(matches!(
-            ls.solve_it(&mut ts, None, None),
+            ls.solve_it(&k, &mut ts, None, None),
             Err(SolidError::Upstream {
                 code: crate::error::SM_ERR_NULL_POINTER,
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn face_point_classify_reads_the_face_the_adapter_names() {
+        use crate::geom::object::ObjectRef;
+        use crate::surface::trim_srf_cache::{POINT_CLASS_FACE, POINT_CLASS_VERTEX};
+        use crate::topology::brep_cache::{arena_identity, BrepObjects, CacheObject};
+        use crate::topology::{Brep, BrepId, EdgeuseId};
+        let k = Kernel::default();
+        let gap = |r: Result<i32>| {
+            matches!(
+                r,
+                Err(SolidError::Unported {
+                    unit: "query.face_p2",
+                    ..
+                })
+            )
+        };
+        // an adapter without B-rep faces
+        let sc = scene();
+        let uv = Vec2::new(0.25, 0.5);
+        assert!(gap(face_point_classify(
+            &k,
+            &sc,
+            Obj::Face(0),
+            uv,
+            1e-6,
+            true,
+            true
+        )));
+
+        let owner_of = |_: ObjectRef| None;
+        let mut b = Brep::new();
+        let f = crate::query::face::p2::tests::square(&mut b);
+        let objects = BrepObjects {
+            brep: &b,
+            brep_id: BrepId::from_index(0),
+            cache: None,
+            keys: &arena_identity,
+            owner_of: &owner_of,
+        };
+        let classify = |face, uv| face_point_classify(&k, &objects, face, uv, 1e-6, true, true);
+        let face = CacheObject::Face(f);
+        assert_eq!(classify(face, uv).unwrap(), POINT_CLASS_FACE);
+        assert_eq!(
+            classify(face, Vec2::new(1.0, 1.0)).unwrap(),
+            POINT_CLASS_VERTEX
+        );
+        assert_eq!(
+            classify(face, Vec2::new(2.0, 0.5)).unwrap(),
+            POINT_CLASS_UNKNOWN
+        );
+        // a handle the adapter does not resolve to a face
+        assert!(gap(classify(CacheObject::Surface(f), uv)));
+
+        // the read-only classification cannot create a missing UV trim
+        let mut b = Brep::new();
+        let f = crate::query::face::p2::tests::square(&mut b);
+        for i in 0..4 {
+            b.edgeuse_mut(EdgeuseId::from_index(i))
+                .unwrap()
+                .uv_trim_curve = None;
+        }
+        let objects = BrepObjects {
+            brep: &b,
+            ..objects
+        };
+        assert!(matches!(
+            face_point_classify(&k, &objects, CacheObject::Face(f), uv, 1e-6, true, true),
+            Err(SolidError::Unported { .. })
         ));
     }
 
@@ -2195,7 +2392,7 @@ pub(crate) mod tests {
         );
         let mut ls = LocalSolver::new(LocalSolverKind::VertexEdge, false, None);
         let curve = Obj::Curve(0, sc.curves[0].natural_interval());
-        ls.solve_it(&mut ts, Some(Obj::Vertex(0)), Some(curve))
+        ls.solve_it(&k, &mut ts, Some(Obj::Vertex(0)), Some(curve))
             .unwrap();
         let s = ts.base.solutions.get(0).unwrap();
         assert_eq!(s.objects[0], Some(Obj::Vertex(0)));

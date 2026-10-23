@@ -15,8 +15,9 @@
 //!
 //! **B-rep ops** use the B-reps of unit `topology.vertexuse` (upstream `.smb` files and
 //! faces of B-spline surfaces or real `SmPlane`s): the C++ side builds a real `SmBrep`
-//! and gives its faces and edges the plain B-spline copies of analytic geometry (what the
-//! Rust import rebuilds); the Rust side imports the graph that unit's shim exports. Loop,
+//! and preserves exactly exported analytic surfaces. Other surfaces and edge curves
+//! get the plain B-spline copies the Rust import rebuilds; the Rust side imports the
+//! graph that unit's shim exports. Loop,
 //! face and edge use selectors are taken modulo their counts. The mutating ops compare
 //! every edge use's UV trim curve afterwards.
 //!
@@ -25,13 +26,18 @@
 //! Rust side reports [`SolidError::InvalidInput`] or fails the same guard), `-3` a call
 //! the shim skips because the Rust side defers it to an unported unit.
 //!
-//! Deferred: everything past `SmFace::ComputeLoopOrientation` (`topology.face_p3`:
-//! `CheckFace` after its first loop check, `FixTrimLoopOrientation`, `FixTrimLoopOrder`),
-//! `SplitAtSeams`, `ClearUVTrimCurves`, `CreateUVTrimCurves` (`topology.face_p1` /
-//! `topology.face_p3` / `topology.face_p4`), `SmEdgeuse::GetOrCreateUVTrimCurve`
+//! `CheckFace`, `FixTrimLoopOrientation` and `FixTrimLoopOrder` run in full on both sides
+//! (`SmFace::ComputeLoopOrientation` is ported; it was skipped with `-3` while the Rust
+//! side still deferred it), guarded (`-2`) where a loop lacks its loop use, the face its
+//! surface or UV trim curves, or `CheckLoop` a loop's UV extremes.
+//!
+//! Deferred: `SplitAtSeams` (`topology.face_p1` / `topology.face_p4`), `CreateUVTrimCurves`
+//! at the face-owned surface's `SmFace::GetTolerance` stub of `GetSingularities`
+//! (`topology.face_p2`; it and `ClearUVTrimCurves` are compared, with every edge use's
+//! UV trim curve after the call), `SmEdgeuse::GetOrCreateUVTrimCurve`
 //! (`topology.edgeuse_p3`), and the vertex-use UV points some B-reps need
 //! (`ComputeUVPoint`'s own deferrals). Last run: 3263 cases, 2842 pass, 421 deferred
-//! (`topology.edgeuse_p3` 193, `topology.face_p3` 219, `topology.face_p4` 9).
+//! (`topology.edgeuse_p3` 409, `topology.face_p2` 3, `topology.face_p4` 9).
 //!
 //! The UV curve ops (`mirror`, `iso_at`, `iso`, `iso_seam`) take every curve kind: an
 //! `SmLine` or `SmEllipse` is an `SmBSplineCurve` (`rv_ellipse.json`).
@@ -58,7 +64,7 @@ use solidcore::nurbs::b_spline_surface::p1::SurfParamType;
 use solidcore::nurbs::b_spline_surface::{BSplineSurface, BSplineSurfaceForm};
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::nurbs::nurbs_crv::allocate_nurb_curve;
-use solidcore::nurbs::math::CPoint;
+use solidcore::nurbs::math::{CPoint, NOW, NOZ};
 use solidcore::nurbs::srf_basic::Surface as NlSurface;
 use solidcore::surface::curve_bounded_surface::CurveBoundedSurface;
 use solidcore::surface::plane::Plane;
@@ -66,10 +72,10 @@ use solidcore::surface::surface::Surface;
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::face::p2 as fp2;
 use solidcore::topology::loopuse as lu1;
+use solidcore::topology::trimming_tools as tt;
 use solidcore::topology::trimming_tools::curve_loops::{
     CurveIntersections, CurveKey, CurveLoops, IsoXSectSegment, LoopObject,
 };
-use solidcore::topology::trimming_tools as tt;
 use solidcore::topology::{Brep, EdgeuseId, FaceId, LoopId};
 use solidcore::SolidError;
 use solidcore_ffi::units::topology_trimming_tools::{self as ffi, Op};
@@ -89,9 +95,6 @@ pub const MIN_GENERATED: usize = 1200;
 fn harness(msg: impl Into<String>) -> HarnessError {
     HarnessError::new(msg)
 }
-
-const NOZ: f64 = f64::MAX;
-const NOW: f64 = -f64::MAX;
 
 /// "Upstream would dereference null" in an output slot.
 const NULL_DEREF: f64 = -2.0;
@@ -204,18 +207,54 @@ enum SrfIn {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "do", rename_all = "snake_case")]
 enum LoopOp {
-    StartIndex { i: u64 },
-    StartEnd { i: u64 },
-    Adjacent { key: usize, t: f64 },
-    EnterLeave { a: u64, b: u64 },
-    Sample { key: usize, t: f64 },
-    SameSide { key: usize, t: f64, dir: u8, iso: f64, ztol: f64, dom: [f64; 4] },
-    AppendSelf { i: u64 },
-    InsertInto { new: usize, after: usize },
-    InsertIso { key: usize, ivl: [f64; 2], idx: [u64; 4] },
-    Update { ints: Vec<IntsIn>, orig: usize, new: usize, ztol: f64 },
+    StartIndex {
+        i: u64,
+    },
+    StartEnd {
+        i: u64,
+    },
+    Adjacent {
+        key: usize,
+        t: f64,
+    },
+    EnterLeave {
+        a: u64,
+        b: u64,
+    },
+    Sample {
+        key: usize,
+        t: f64,
+    },
+    SameSide {
+        key: usize,
+        t: f64,
+        dir: u8,
+        iso: f64,
+        ztol: f64,
+        dom: [f64; 4],
+    },
+    AppendSelf {
+        i: u64,
+    },
+    InsertInto {
+        new: usize,
+        after: usize,
+    },
+    InsertIso {
+        key: usize,
+        ivl: [f64; 2],
+        idx: [u64; 4],
+    },
+    Update {
+        ints: Vec<IntsIn>,
+        orig: usize,
+        new: usize,
+        ztol: f64,
+    },
     Reset,
-    SegIndices { idx: [u64; 4] },
+    SegIndices {
+        idx: [u64; 4],
+    },
 }
 
 /// An `SmCurveIntersections`: iso curve key (`-1` none), direction, parameter and its
@@ -930,13 +969,18 @@ fn rust_surface(s: &SrfIn) -> Result<Surface, HarnessError> {
             Vec::new(),
             Vec::new(),
             *implicit,
-        ))),
+        )
+        .map_err(|e| harness(e.to_string()))?)),
         SrfIn::Plane { o, n } => Ok(Surface::from(Plane::from_normal(v3(*o), v3(*n)))),
         SrfIn::Bspline(b) => {
             let net = b
                 .net
                 .iter()
-                .map(|r| r.iter().map(|p| CPoint::new(p[0], p[1], p[2], p[3])).collect())
+                .map(|r| {
+                    r.iter()
+                        .map(|p| CPoint::new(p[0], p[1], p[2], p[3]))
+                        .collect()
+                })
                 .collect();
             let nl = NlSurface::new(net, b.p, b.q, b.u.clone(), b.v.clone())
                 .map_err(|e| harness(format!("surface: {e}")))?;
@@ -1002,11 +1046,11 @@ fn put_nurb(o: &mut Vec<f64>, c: &Curve) {
 }
 
 /// The shim's `tt_put_samples`.
-fn put_samples(o: &mut Vec<f64>, c: &Curve) {
+fn put_samples(k: &Kernel, o: &mut Vec<f64>, c: &Curve) {
     let ivl = c.natural_interval();
     o.extend([ivl.min(), ivl.max()]);
     for i in 0..=4 {
-        match c.evaluate_point(ivl.evaluate(f64::from(i) / 4.0)) {
+        match c.evaluate_point(k, ivl.evaluate(f64::from(i) / 4.0)) {
             Ok(p) => {
                 o.push(0.0);
                 put_vec(o, p);
@@ -1047,6 +1091,7 @@ fn put_outer(
 
 /// The shim's `tt_find_outer`.
 fn find_outer(
+    k: &Kernel,
     o: &mut Vec<f64>,
     curves: &[Curve],
     mut ordered: Vec<usize>,
@@ -1055,7 +1100,15 @@ fn find_outer(
     mut normal: Vec3,
     tol: f64,
 ) -> Result<(), Fail> {
-    let r = tt::find_outer_loops(curves, &mut ordered, &mut counts, &mut orients, &mut normal, tol);
+    let r = tt::find_outer_loops(
+        k,
+        curves,
+        &mut ordered,
+        &mut counts,
+        &mut orients,
+        &mut normal,
+        tol,
+    );
     match r {
         Ok(outer) => {
             o.push(0.0);
@@ -1069,7 +1122,7 @@ fn find_outer(
     Ok(())
 }
 
-fn run_rust_geom(k: &Kernel, op: &OpIn) -> Result<Vec<f64>, Fail> {
+fn run_rust_geom(k: &mut Kernel, op: &OpIn) -> Result<Vec<f64>, Fail> {
     let mut o = Vec::new();
     match op {
         OpIn::Order { curves, tol, outer } => {
@@ -1089,6 +1142,7 @@ fn run_rust_geom(k: &Kernel, op: &OpIn) -> Result<Vec<f64>, Fail> {
                     put_vec(&mut o, r.curves_box.max());
                     if *outer && st == 0.0 {
                         find_outer(
+                            k,
                             &mut o,
                             &cs,
                             r.ordered,
@@ -1111,6 +1165,7 @@ fn run_rust_geom(k: &Kernel, op: &OpIn) -> Result<Vec<f64>, Fail> {
         } => {
             let cs = rust_curves(curves)?;
             find_outer(
+                k,
                 &mut o,
                 &cs,
                 (0..cs.len()).collect(),
@@ -1145,7 +1200,7 @@ fn run_rust_geom(k: &Kernel, op: &OpIn) -> Result<Vec<f64>, Fail> {
         }
         OpIn::Iso { curve } => {
             let c = rust_curve(curve)?;
-            match tt::is_iso_curve(&c).map_err(|e| fail(&e))? {
+            match tt::is_iso_curve(k, &c).map_err(|e| fail(&e))? {
                 Some((side, param)) => o.extend([1.0, f64::from(side as u8), param]),
                 None => o.push(0.0),
             }
@@ -1153,7 +1208,9 @@ fn run_rust_geom(k: &Kernel, op: &OpIn) -> Result<Vec<f64>, Fail> {
         OpIn::IsoSeam { surface, curve } => {
             let s = rust_surface(surface)?;
             let c = rust_curve(curve)?;
-            o.push(flag(tt::is_iso_curve_on_seam(&s, &c).map_err(|e| fail(&e))?));
+            o.push(flag(
+                tt::is_iso_curve_on_seam(k, &s, &c).map_err(|e| fail(&e))?,
+            ));
         }
         OpIn::Continuity { surface } => {
             let s = rust_surface(surface)?;
@@ -1174,7 +1231,7 @@ fn run_rust_geom(k: &Kernel, op: &OpIn) -> Result<Vec<f64>, Fail> {
             let (ua, ub) = (Point2::new(a[0], a[1]), Point2::new(b[0], b[1]));
             let (pa, pb) = match pts {
                 Some([p0, p1]) => (Ok(v3(*p0)), Ok(v3(*p1))),
-                None => (s.evaluate_point(ua), s.evaluate_point(ub)),
+                None => (s.evaluate_point(k, ua), s.evaluate_point(k, ub)),
             };
             o.push(status(&pa)?);
             o.push(status(&pb)?);
@@ -1210,8 +1267,21 @@ fn run_rust_geom(k: &Kernel, op: &OpIn) -> Result<Vec<f64>, Fail> {
                 surface_orientation: OrientType::Same,
             };
             let mut b = Brep::new();
+            let mut records = std::collections::BTreeMap::new();
+            let mut attributes = solidcore::geom::attribute::AttributeStore::default();
+            let key_of = |_| solidcore::geom::object::ObjectRef {
+                type_code: 0,
+                key: solidcore::geom::attribute::ObjectKey(0),
+            };
+            let mut env = solidcore::topology::edge::NotifyEnv {
+                records: &mut records,
+                attributes: &mut attributes,
+                context: None,
+                key_of: &key_of,
+            };
+            // Without a region the call returns before any notification.
             let r = tt::trim_surface_with_model_space_curves(
-                k, &mut b, None, 1e-5, input, true, true, false,
+                k, &mut b, None, 1e-5, input, true, true, false, &mut env,
             );
             o.push(status(&r)?);
         }
@@ -1223,7 +1293,17 @@ fn run_rust_geom(k: &Kernel, op: &OpIn) -> Result<Vec<f64>, Fail> {
             mode,
             surface,
             ops,
-        } => run_rust_loops(k, store, counts, keys, orients, *mode, surface.as_ref(), ops, &mut o)?,
+        } => run_rust_loops(
+            k,
+            store,
+            counts,
+            keys,
+            orients,
+            *mode,
+            surface.as_ref(),
+            ops,
+            &mut o,
+        )?,
         _ => return Err(Fail::Harness(harness("not a geometry op"))),
     }
     Ok(o)
@@ -1308,7 +1388,7 @@ fn run_rust_loops(
                     continue;
                 }
                 let (p1, p2) = l
-                    .sample_nearby_points(&store, CurveKey(*key), *t)
+                    .sample_nearby_points(k, &store, CurveKey(*key), *t)
                     .map_err(|e| fail(&e))?;
                 o.push(0.0);
                 put_vec(o, p1);
@@ -1400,6 +1480,7 @@ fn run_rust_loops(
                     cis.push(c);
                 }
                 let r = l.update_solution_objects(
+                    k,
                     &store,
                     &mut cis,
                     CurveKey(*orig),
@@ -1444,7 +1525,7 @@ fn run_rust_loops(
     o.extend(l.orients.iter().map(|&x| orient_code(x)));
     o.push(store.len().saturating_sub(ns) as f64);
     for c in store.iter().skip(ns) {
-        put_samples(o, c);
+        put_samples(k, o, c);
     }
     Ok(())
 }
@@ -1494,6 +1575,20 @@ fn ok_loop_extremes(b: &Brep, l: LoopId) -> Result<bool, Fail> {
         }
     }
     Ok(true)
+}
+
+/// The shim's `tt_ok_face_loops`: every loop has its loop use, and a face with loops
+/// has a surface and UV trim curves everywhere.
+fn ok_face_loops(b: &Brep, f: FaceId) -> Result<bool, Fail> {
+    let loops = face_loops(b, f)?;
+    for &l in &loops {
+        if !ok_loop(b, l)? {
+            return Ok(false);
+        }
+    }
+    Ok(loops.is_empty()
+        || (b.face(f).map_err(|e| fail(&e))?.surface.is_some()
+            && tt::face_uv_curves_present(b, f).map_err(|e| fail(&e))?))
 }
 
 /// The surface of a loop's face (a copy), `None` without face or surface.
@@ -1677,6 +1772,21 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Vec<f64>, Fail> 
                     return Ok(o);
                 }
             }
+            // the shim's guards of the CheckLoop / ComputeLoopOrientation walk
+            let loops = face_loops(b, fc)?;
+            if !loops.is_empty() && tt::face_uv_curves_present(b, fc).map_err(|e| fail(&e))? {
+                let mut ok = b.face(fc).map_err(|e| fail(&e))?.surface.is_some();
+                for &l in &loops {
+                    if !ok || *skip {
+                        break;
+                    }
+                    ok = ok_loop_extremes(b, l)?;
+                }
+                if !ok {
+                    o.push(NULL_DEREF);
+                    return Ok(o);
+                }
+            }
             let mut a = AssertArray::new();
             let r = tt::check_face(k, b, fc, *tol, list.then_some(&mut a), *skip);
             o.push(status(&r)?);
@@ -1759,7 +1869,7 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Vec<f64>, Fail> 
                     return Ok(o);
                 }
             }
-            let r = tt::ensure_last_edgeuse_uv_correct(b, &srf, &mut eus);
+            let r = tt::ensure_last_edgeuse_uv_correct(k, b, &srf, &mut eus);
             o.push(status(&r)?);
             o.push(flag(r.unwrap_or(false)));
             o.push(eus.len() as f64);
@@ -1777,11 +1887,11 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Vec<f64>, Fail> 
             };
             let bounds = srf.natural_uv_domain();
             let closed = srf
-                .is_closed(&bounds, SurfParamType::U, None, false)
+                .is_closed(k, &bounds, SurfParamType::U, None, false)
                 .map_err(f)?
                 .0
                 || srf
-                    .is_closed(&bounds, SurfParamType::V, None, false)
+                    .is_closed(k, &bounds, SurfParamType::V, None, false)
                     .map_err(f)?
                     .0;
             if closed {
@@ -1809,11 +1919,19 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Vec<f64>, Fail> 
             put_uv_curves(&mut o, b);
         }
         OpIn::BOrient { f: face, .. } => {
+            if !ok_face_loops(b, fid(*face))? {
+                o.push(NULL_DEREF);
+                return Ok(o);
+            }
             let r = tt::fix_face_loop_orientations(k, b, fid(*face));
             o.push(status(&r)?);
             o.push(r.map_or(0.0, |n| n as f64));
         }
         OpIn::BOrder { f: face, .. } => {
+            if !ok_face_loops(b, fid(*face))? {
+                o.push(NULL_DEREF);
+                return Ok(o);
+            }
             let r = tt::fix_trim_loop_order(k, b, fid(*face));
             o.push(status(&r)?);
         }
@@ -1825,6 +1943,9 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Vec<f64>, Fail> 
                 _ => tt::create_uv_trim_curves(k, b, fc),
             };
             o.push(status(&r)?);
+            // ClearUVTrimCurves, CreateUVTrimCurves: every edge use's UV trim curve after
+            // the call
+            put_uv_curves(&mut o, b);
         }
         _ => return Err(Fail::Harness(harness("not a B-rep op"))),
     }
@@ -1832,7 +1953,7 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Vec<f64>, Fail> 
 }
 
 fn run_rust(i: &OpIn) -> Result<Output, HarnessError> {
-    let k = Kernel::default();
+    let mut k = Kernel::default();
     let r = match brep_of(i) {
         Some(brep) => {
             let ex = export_of(brep)?;
@@ -1845,7 +1966,7 @@ fn run_rust(i: &OpIn) -> Result<Output, HarnessError> {
             let (mut b, _) = shared::import(&ex)?;
             run_rust_brep(&k, &mut b, &op)
         }
-        None => run_rust_geom(&k, i),
+        None => run_rust_geom(&mut k, i),
     };
     match r {
         Ok(v) => Ok(Output::new().values("out", v)),

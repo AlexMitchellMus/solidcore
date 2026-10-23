@@ -33,15 +33,22 @@ fn case_json(c: &CaseResult) -> Value {
     }
     m.insert("max_rel_err".into(), num(c.diff.max_rel_err));
     m.insert("values_compared".into(), json!(c.diff.values_compared));
-    // Integer and topology comparisons, which `--baseline` also counts as values
-    // (omitted when zero to keep float-only reports unchanged).
-    if c.diff.exact_compared > 0 {
-        m.insert("exact_compared".into(), json!(c.diff.exact_compared));
+    m.insert("exact_compared".into(), json!(c.diff.exact_compared));
+    if !c.diagnostics.is_empty() {
+        m.insert("diagnostics".into(), json!(c.diagnostics));
     }
     if c.both_errored {
         m.insert("both_errored".into(), json!(true));
     }
-    if c.fail() {
+    if c.is_vacuous() {
+        m.insert("vacuous".into(), json!(true));
+    } else if c.pass() && !c.both_errored && c.diff.nonzero_compared == 0 {
+        m.insert("only_zeros".into(), json!(true));
+    }
+    if let Some(why) = &c.known_mismatch {
+        m.insert("known_mismatch".into(), json!(why));
+    }
+    if c.fail() || c.is_known_mismatch() {
         m.insert("inputs".into(), c.inputs.clone());
         m.insert("mismatch_count".into(), json!(c.diff.mismatch_count));
         let mm: Vec<Value> = c
@@ -76,6 +83,7 @@ pub fn unit_report(r: &UnitResult) -> Value {
         .collect();
     let errored = r.cases.iter().filter(|c| c.both_errored).count();
     let mut m = Map::new();
+    m.insert("schema_version".into(), json!(1));
     m.insert("unit".into(), json!(r.unit));
     m.insert("pass".into(), json!(r.pass()));
     m.insert("status".into(), json!(r.status().as_str()));
@@ -96,6 +104,10 @@ pub fn unit_report(r: &UnitResult) -> Value {
         .collect();
     m.insert("deferred_by_unit".into(), Value::Object(by_unit));
     m.insert("cases_both_errored".into(), json!(errored));
+    m.insert("cases_vacuous".into(), json!(r.vacuous()));
+    if r.known_mismatches() > 0 {
+        m.insert("cases_known_mismatch".into(), json!(r.known_mismatches()));
+    }
     m.insert("max_rel_err".into(), num(r.max_rel_err()));
     m.insert(
         "cases".into(),
@@ -116,8 +128,7 @@ pub fn write_unit_report(dir: &Path, r: &UnitResult) -> Result<PathBuf, HarnessE
     Ok(path)
 }
 
-/// The counts a report records, compared by `--green` to spot a committed report that no
-/// longer matches the code (a "stale" report weakens the `--baseline` ratchet).
+/// Aggregate counts recorded in a report (including vacuous and known outcomes).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportCounts {
     /// `green`, `partial` or `fail`.
@@ -132,6 +143,10 @@ pub struct ReportCounts {
     pub deferred: u64,
     /// Rejected native fixtures.
     pub rejected: u64,
+    /// Known mismatches (never counted as passing cases).
+    pub known: u64,
+    /// Successful cases with no numeric/topological comparisons.
+    pub vacuous: u64,
 }
 
 impl ReportCounts {
@@ -145,6 +160,8 @@ impl ReportCounts {
             failed: n(r.failed()),
             deferred: n(r.deferred()),
             rejected: n(r.rejected()),
+            known: n(r.known_mismatches()),
+            vacuous: n(r.vacuous()),
         }
     }
 
@@ -159,28 +176,38 @@ impl ReportCounts {
             failed: n("cases_failed")?,
             deferred: n("cases_deferred")?,
             rejected: n("cases_rejected").unwrap_or(0),
+            known: n("cases_known_mismatch").unwrap_or(0),
+            vacuous: n("cases_vacuous").unwrap_or(0),
         })
     }
 
     /// `status=… cases=… passed=… failed=… deferred=… rejected=…`.
     pub fn describe(&self) -> String {
         format!(
-            "status={} cases={} passed={} failed={} deferred={} rejected={}",
-            self.status, self.total, self.passed, self.failed, self.deferred, self.rejected
+            "status={} cases={} passed={} failed={} deferred={} rejected={} known={} vacuous={}",
+            self.status,
+            self.total,
+            self.passed,
+            self.failed,
+            self.deferred,
+            self.rejected,
+            self.known,
+            self.vacuous
         )
     }
 }
 
 /// One-line summary, e.g.
-/// `PASS harness.selftest cases=40 passed=40 failed=0 deferred=0 max_rel_err=1.1e-16 with_values=36 no_values=4`.
+/// `PASS harness.selftest cases=40 passed=40 failed=0 deferred=0 max_rel_err=1.1e-16 with_values=36 no_values=4 vacuous=1`.
 /// The status word is `PASS` (green), `PARTIAL` or `FAIL`; `with_values` / `no_values`
 /// split the passing cases into those that compared at least one value and those that
-/// compared nothing (the same error on both sides, or empty outputs); with deferred
+/// compared nothing (the same error on both sides, or empty outputs); `vacuous` counts
+/// the `no_values` cases where both sides succeeded, so only the status agreed; with deferred
 /// cases the line ends with ` blocked_by=<unit>(<cases>),...`.
 pub fn summary_line(r: &UnitResult) -> String {
     let with_values = r.passed_with_values();
     let mut s = format!(
-        "{} {} cases={} passed={} failed={} deferred={} max_rel_err={:e} with_values={with_values} no_values={}",
+        "{} {} cases={} passed={} failed={} deferred={} max_rel_err={:e} with_values={with_values} no_values={} vacuous={}",
         match r.status() {
             UnitStatus::Green => "PASS",
             UnitStatus::Partial => "PARTIAL",
@@ -192,10 +219,14 @@ pub fn summary_line(r: &UnitResult) -> String {
         r.failed(),
         r.deferred(),
         r.max_rel_err(),
-        r.passed() - with_values
+        r.passed() - with_values,
+        r.vacuous()
     );
     if r.rejected() > 0 {
         let _ = write!(s, " rejected={}", r.rejected());
+    }
+    if r.known_mismatches() > 0 {
+        let _ = write!(s, " known_mismatch={}", r.known_mismatches());
     }
     let blocked: Vec<String> = r
         .deferred_by_unit()
@@ -227,12 +258,13 @@ mod tests {
             harness_error: None,
             abs_floors: Vec::new(),
             seeds: 16,
+            timing: crate::runner::UnitTiming::default(),
         };
         let text = to_canonical_string(&unit_report(&r));
         assert_eq!(ReportCounts::parse(&text), Some(ReportCounts::of(&r)));
         assert_eq!(
             ReportCounts::of(&r).describe(),
-            "status=fail cases=0 passed=0 failed=0 deferred=0 rejected=0"
+            "status=fail cases=0 passed=0 failed=0 deferred=0 rejected=0 known=0 vacuous=0"
         );
     }
 

@@ -5,12 +5,15 @@
 //!
 //! Object input ([`Op::Object`]): an object block building the `SmCrvOnSurf` `c`, then
 //! `nops` and `nops` ops, each its code ([`ObjOp`]) and parameters, run in order on `c`.
-//! The block is the UV curve (`0 n p m cpts(x y z w) knots`: a 2D `SmBSplineCurve`;
-//! or `1 x0 y0 x1 y1`: the UV-line constructor), the surface (`n m p q r s cpts(x y z
-//! w, v fastest) u v`: an `SmBSplineSurface`), `has_domain umin vmin umax vmax`,
-//! `owner` (the constructor's owner flag) and `has_cache [need nb B[nb]]` (loaded into
-//! `m_bNeedBreaks`, `m_vBreaks`). Every op output starts with its status (`0` =
-//! `SM_SUCCESS`, else the `SmStatus`); the rest:
+//! The block is the UV curve (`0 borrow_uv_nurb n p m cpts(x y z w) knots`: a 2D
+//! `SmBSplineCurve`; or `1 x0 y0 x1 y1`: the UV-line constructor), `is_offset
+//! borrow_surface_nurb`, the base surface (`n m p q r s cpts(x y z w, v fastest) u v`),
+//! `offset_distance owns_base` when `is_offset`, then `has_domain umin vmin umax vmax`,
+//! `owner` (the constructor's owner flag) and `has_cache [need nb B[nb]]`.
+//! The borrow flags use the respective borrowed-NURB constructors, preserving close
+//! knots verbatim; the shim retains each allocation until all referencing objects
+//! are deleted.
+//! Every op output starts with its status (`0` = `SM_SUCCESS`, else the `SmStatus`); the rest:
 //!
 //! | [`ObjOp`]      | upstream                              | parameters                     | outputs |
 //! |----------------|---------------------------------------|--------------------------------|---------|
@@ -26,6 +29,7 @@
 //! | `Conts`        | `CalculateContinuities`               | `angle`                        | `min nc C` state |
 //! | `Equal`        | `operator==` (both ways)              | `self` or `0` object block     | `flag [flag]` |
 //! | `Copy`         | `Copy` (copy constructor)             |                                | state of the copy, `copy == c` (on success) |
+//! | `CopyEval`     | `Copy`, then `Evaluate` on the copy     | `t n left nonzero`             | copy state, evaluation status and vectors (on success) |
 //! | `EditParam`    | `EditParameterization`                | `a b`                          | state |
 //! | `Reverse`      | `ReverseParameterization`             | `a b`                          | `[a' b']` state |
 //! | `Trim`         | `Trim(ivl, notify, FALSE)`            | `a b mode` (0 `TRUE`, 1 `FALSE`, 2 `UNSURE`) | `a' b'` state |
@@ -37,8 +41,9 @@
 //! | `Gap`          | `SurfaceCurveMaxDistanceBetween`      | `self` or `0` block, `a b s0 s1 ns tol has_max max` | `dist dev t1 t2 t3 t4` (on success) |
 //!
 //! A state is `owner umin vmin umax vmax need nb B gap matches has_approx [nurb]`, the
-//! UV curve (`type dim nurb`, the B-spline part of a line) and the surface's NURB
-//! (`n m cpts u v`); a NURB curve is `n p m cpts knots`.
+//! UV curve (`type dim nurb`, the B-spline part of a line) and a recursive surface state:
+//! `type [n m cpts u v]` for a B-spline or `type distance owns_base base_surface` for an
+//! offset; a NURB curve is `n p m cpts knots`.
 //!
 //! Static inputs: [`Op::ReadDb`] (`file_type version nb bytes[nb]`:
 //! `SmCrvOnSurf::ReadFromDB`, outputs `status made [state]`) and [`Op::WriteDb`]
@@ -53,6 +58,7 @@
 //! sorted breaks inside the range, approximation tolerances in `[1e-7, 1]`, valid placements and solver operations, and database text that is a
 //! complete record when ASCII (truncated ASCII reads uninitialised variables).
 
+use crate::validate::bad;
 use crate::{call_with_buffer, FfiError};
 
 /// Largest control point index of a curve.
@@ -125,6 +131,7 @@ pub enum ObjOp {
     Drop,
     Gap,
     State,
+    CopyEval,
 }
 
 impl ObjOp {
@@ -153,6 +160,7 @@ impl ObjOp {
             ObjOp::Drop => 18,
             ObjOp::Gap => 19,
             ObjOp::State => 20,
+            ObjOp::CopyEval => 21,
         }
     }
 
@@ -179,6 +187,7 @@ impl ObjOp {
             ObjOp::Drop,
             ObjOp::Gap,
             ObjOp::State,
+            ObjOp::CopyEval,
         ]
         .into_iter()
         .find(|o| i64::from(o.code()) == c)
@@ -195,6 +204,7 @@ impl ObjOp {
                 | ObjOp::EvalUv
                 | ObjOp::Equal
                 | ObjOp::Copy
+                | ObjOp::CopyEval
         )
     }
 }
@@ -212,69 +222,7 @@ mod sys {
     }
 }
 
-fn bad(msg: impl Into<String>) -> FfiError {
-    FfiError::InvalidArgument(msg.into())
-}
-
-/// Sequential reader over the input.
-struct Reader<'a> {
-    input: &'a [f64],
-    at: usize,
-}
-
-impl<'a> Reader<'a> {
-    fn num(&mut self) -> Result<f64, FfiError> {
-        let v = self
-            .input
-            .get(self.at)
-            .copied()
-            .ok_or_else(|| bad("input too short"))?;
-        self.at += 1;
-        Ok(v)
-    }
-
-    /// A finite value of magnitude at most [`MAX_COORD`].
-    fn finite(&mut self) -> Result<f64, FfiError> {
-        let v = self.num()?;
-        if !v.is_finite() || v.abs() > MAX_COORD {
-            return Err(bad(format!("value {v} not finite or too large")));
-        }
-        Ok(v)
-    }
-
-    fn vec3(&mut self) -> Result<[f64; 3], FfiError> {
-        Ok([self.finite()?, self.finite()?, self.finite()?])
-    }
-
-    fn index(&mut self, max: usize) -> Result<usize, FfiError> {
-        let v = self.num()?;
-        if v.fract() != 0.0 || v < 0.0 || v > max as f64 {
-            return Err(bad(format!("bad index/count {v}")));
-        }
-        Ok(v as usize)
-    }
-
-    fn flag(&mut self) -> Result<bool, FfiError> {
-        Ok(self.index(1)? == 1)
-    }
-
-    fn take(&mut self, k: usize) -> Result<&'a [f64], FfiError> {
-        let end = self.at.checked_add(k).ok_or_else(|| bad("overflow"))?;
-        let s = self
-            .input
-            .get(self.at..end)
-            .ok_or_else(|| bad("input too short"))?;
-        self.at = end;
-        Ok(s)
-    }
-
-    fn done(&self) -> Result<(), FfiError> {
-        if self.at != self.input.len() {
-            return Err(bad("trailing input"));
-        }
-        Ok(())
-    }
-}
+crate::reader::unit_reader!(MAX_COORD);
 
 /// Clamped, sorted, finite knots of degree `p` with interior multiplicities at most
 /// `p`; returns the range.
@@ -418,6 +366,7 @@ fn near(t: f64, a: f64, b: f64) -> Result<f64, FfiError> {
 fn object_block(rd: &mut Reader<'_>) -> Result<Block, FfiError> {
     let kind = rd.index(1)?;
     let (range, pts) = if kind == 0 {
+        rd.flag()?; // borrowed UV NURB: identical validation, no constructor knot repair
         uv_bspline(rd)?
     } else {
         let x0 = rd.finite()?;
@@ -430,7 +379,16 @@ fn object_block(rd: &mut Reader<'_>) -> Result<Block, FfiError> {
         }
         ((0.0, 1.0), vec![[x0, y0], [x1, y1]])
     };
+    let offset = rd.flag()?;
+    rd.flag()?; // borrowed NURB: identical surface validation, no constructor knot repair
     let dom = surface(rd)?;
+    if offset {
+        let distance = rd.finite()?;
+        if distance.abs() > MAX_COORD {
+            return Err(bad("offset surface: distance out of range"));
+        }
+        rd.flag()?;
+    }
     rd.flag()?;
     for _ in 0..4 {
         rd.finite()?;
@@ -529,7 +487,7 @@ fn validate_op(op: ObjOp, rd: &mut Reader<'_>, c: &mut Block) -> Result<(), FfiE
             }
         }
         ObjOp::State | ObjOp::Nnk | ObjOp::Copy => {}
-        ObjOp::Eval => {
+        ObjOp::Eval | ObjOp::CopyEval => {
             param(rd, c)?;
             rd.index(MAX_DERIVS)?;
             rd.flag()?;
@@ -670,7 +628,7 @@ fn complete_ascii(bytes: &[u8]) -> bool {
 ///
 /// [`FfiError::InvalidArgument`] for input [`eval`] rejects.
 pub fn validate(op: Op, input: &[f64]) -> Result<(), FfiError> {
-    let mut rd = Reader { input, at: 0 };
+    let mut rd = Reader::new(input);
     match op {
         Op::Object => {
             let mut c = object_block(&mut rd)?;

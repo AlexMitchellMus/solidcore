@@ -18,7 +18,12 @@
 //! [`MAX_CONSTRAINTS`] entries) must hold an entry other than the surface's first
 //! knot in that direction (upstream skips leading copies of it without a bound).
 //! `N_MakeSrfsCompatibleUV` takes `1..=MAX_SURFACES` surfaces.
+//! The surface whose knots are removed must have homogeneous coordinates of at most
+//! [`MAX_REMOVAL_COORD`] and weights within [`MAX_REMOVAL_WEIGHT`] of one: larger
+//! values can make the removal error bounds NaN, and upstream's removal loop then
+//! never ends (a conservative bound, not an exact test).
 
+use crate::validate::{bad, NOW, NOZ};
 use crate::{call_with_buffer, FfiError};
 
 /// Largest highest index (`n`, `m`) accepted by [`eval`].
@@ -62,17 +67,9 @@ mod sys {
     }
 }
 
-fn bad(msg: impl Into<String>) -> FfiError {
-    FfiError::InvalidArgument(msg.into())
-}
+crate::reader::unit_reader!();
 
-/// Sequential reader over the input.
-struct Reader<'a> {
-    input: &'a [f64],
-    at: usize,
-}
-
-impl<'a> Reader<'a> {
+impl Reader<'_> {
     fn num(&mut self) -> Result<f64, FfiError> {
         let v = self
             .input
@@ -93,26 +90,25 @@ impl<'a> Reader<'a> {
         }
         Ok(v as usize)
     }
+}
 
-    fn slice(&mut self, k: usize) -> Result<&'a [f64], FfiError> {
-        let end = self.at.checked_add(k).ok_or_else(|| bad("overflow"))?;
-        let s = self
-            .input
-            .get(self.at..end)
-            .ok_or_else(|| bad("input too short"))?;
-        if s.iter().any(|x| !x.is_finite()) {
-            return Err(bad("non-finite input"));
-        }
-        self.at = end;
-        Ok(s)
-    }
+/// Largest homogeneous coordinate magnitude of a surface whose knots are removed.
+pub const MAX_REMOVAL_COORD: f64 = 1e60;
+/// Weights of a surface whose knots are removed lie in
+/// `[1 / MAX_REMOVAL_WEIGHT, MAX_REMOVAL_WEIGHT]` in magnitude (or are `NOW`).
+pub const MAX_REMOVAL_WEIGHT: f64 = 1e30;
 
-    fn done(&self) -> Result<(), FfiError> {
-        if self.at != self.input.len() {
-            return Err(bad("trailing input"));
-        }
-        Ok(())
-    }
+/// Whether every control point `x y z w` of `net` is small enough for the knot
+/// removal error bounds to stay finite. Upstream's removal loop never ends once a
+/// bound is NaN (`NL_UVDIR` then keeps choosing a direction with nothing left to
+/// remove; `plan/upstream-issues.md`), so larger nets are refused.
+fn removal_net_in_range(net: &[f64]) -> bool {
+    let small = |v: f64| v.abs() <= MAX_REMOVAL_COORD;
+    let weight = |w: f64| (1.0 / MAX_REMOVAL_WEIGHT..=MAX_REMOVAL_WEIGHT).contains(&w.abs());
+    net.chunks(4).all(|c| match *c {
+        [x, y, z, w] => small(x) && small(y) && (z == NOZ || small(z)) && (w == NOW || weight(w)),
+        _ => false,
+    })
 }
 
 /// `N_KnotVectorIsValid` for degree `p` (end multiplicities exactly `p + 1`,
@@ -141,8 +137,9 @@ fn valid_knots(u: &[f64], p: usize) -> bool {
     })
 }
 
-/// Validates a surface; returns its first u and v knots.
-fn surface(rd: &mut Reader<'_>) -> Result<(f64, f64), FfiError> {
+/// Validates a surface (`removal`: see [`removal_net_in_range`]); returns its first
+/// u and v knots.
+fn surface(rd: &mut Reader<'_>, removal: bool) -> Result<(f64, f64), FfiError> {
     let n = rd.index(1, MAX_INDEX)?;
     let m = rd.index(1, MAX_INDEX)?;
     let p = rd.index(1, MAX_DEGREE)?;
@@ -150,7 +147,10 @@ fn surface(rd: &mut Reader<'_>) -> Result<(f64, f64), FfiError> {
     if p > n || q > m {
         return Err(bad("degree above the highest net index"));
     }
-    rd.slice(4 * (n + 1) * (m + 1))?;
+    let net = rd.slice(4 * (n + 1) * (m + 1))?;
+    if removal && !removal_net_in_range(net) {
+        return Err(bad("control point too large for knot removal"));
+    }
     let u = rd.slice(n + p + 2)?;
     let v = rd.slice(m + q + 2)?;
     if !valid_knots(u, p) || !valid_knots(v, q) {
@@ -174,10 +174,10 @@ fn constraints(rd: &mut Reader<'_>, first: f64) -> Result<(), FfiError> {
 }
 
 fn validate(op: Op, input: &[f64]) -> Result<(), FfiError> {
-    let mut rd = Reader { input, at: 0 };
+    let mut rd = Reader::new(input);
     match op {
         Op::RemoveKnotsConstraints => {
-            let (u0, v0) = surface(&mut rd)?;
+            let (u0, v0) = surface(&mut rd, true)?;
             constraints(&mut rd, u0)?;
             constraints(&mut rd, v0)?;
             rd.num()?;
@@ -187,7 +187,7 @@ fn validate(op: Op, input: &[f64]) -> Result<(), FfiError> {
         Op::MakeCompatibleUv => {
             let cnt = rd.index(1, MAX_SURFACES)?;
             for _ in 0..cnt {
-                surface(&mut rd)?;
+                surface(&mut rd, false)?;
             }
         }
     }

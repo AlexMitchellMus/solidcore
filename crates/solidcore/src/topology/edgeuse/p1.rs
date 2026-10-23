@@ -45,7 +45,7 @@
 //! | [`primary_edgeuse`], [`edge_is_lamina`], [`edge_brep`] | `SmEdge::GetPrimaryEdgeuse`, `IsLamina`, `GetBrep` (CO-PORTED, `topology.edge`) |
 //! | [`loopuse_edgeuses`], [`loopuse_shell`] | `SmLoopuse::GetEdgeuses`, `GetShell` (unit `topology.loopuse`) |
 //! | [`vertexuse_edgeuse`]                  | `SmVertexuse::GetEdgeuse` (CO-PORTED, `topology.vertexuse`) |
-//! | [`shell_region`], [`shell_brep`]       | `SmShell::GetRegion`, `GetBrep` (CO-PORTED, `topology.shell`) |
+//! | [`shell_region`], [`shell_brep`]       | `SmShell::GetRegion`, `GetBrep` (unit `topology.shell`) |
 //! | [`owning_topology_is_kind_of`]         | `SmOwningTopology::IsKindOf` (unit `topology.proto_topology_p1`) |
 //!
 //! Deviations:
@@ -80,8 +80,8 @@
 //!   ([`SolidError::Unported`] still propagates), leaving the outputs of a failed
 //!   evaluation at their `SM_UNDEF_DOUBLE` defaults. `sm_AreSeamCurves`' unused
 //!   edge use argument is dropped.
-//! - **Unported callees.** `SmEdgeuse::EvaluateBinormal` (`topology.edgeuse_p3`)
-//!   returns [`SolidError::Unported`]. The gap computations are [`crate::heal::gap`];
+//! - **Unported callees.** `SmEdgeuse::EvaluateBinormal` is wired
+//!   (`topology.edgeuse_p3`); its deferred callees return [`SolidError::Unported`]. The gap computations are [`crate::heal::gap`];
 //!   `CalcMaxEdgeFaceGap`'s cross-section tolerance is the context one with no
 //!   context (`SmTol::GetXSectTol3d(NULL)`: the B-rep records carry no context).
 //! - **Co-ports.** The small accessors of other units this unit reaches are ported
@@ -273,26 +273,23 @@ pub fn vertexuse_edgeuse(brep: &Brep, vu: VertexuseId) -> Result<Option<EdgeuseI
     })
 }
 
-/// `SmShell::GetRegion` (CO-PORTED from unit `topology.shell`).
+/// `SmShell::GetRegion`: delegates to unit `topology.shell`.
 ///
 /// # Errors
 ///
 /// [`SolidError::NotFound`] for a dangling id.
 pub fn shell_region(brep: &Brep, s: ShellId) -> Result<Option<RegionId>> {
-    Ok(brep.shell(s)?.region)
+    crate::topology::shell::shell_region(brep, s)
 }
 
-/// `SmShell::GetBrep` (CO-PORTED from unit `topology.shell`): the B-rep of the owning
+/// `SmShell::GetBrep` (delegates to unit `topology.shell`): the B-rep of the owning
 /// region.
 ///
 /// # Errors
 ///
 /// [`SolidError::NotFound`] for a dangling id.
 pub fn shell_brep(brep: &Brep, s: ShellId) -> Result<Option<&Brep>> {
-    match shell_region(brep, s)? {
-        None => Ok(None),
-        Some(r) => Ok(brep.region(r)?.in_brep.then_some(brep)),
-    }
+    crate::topology::shell::shell_brep(brep, s)
 }
 
 // ---- simple edge use access ---------------------------------------------------------------
@@ -913,6 +910,7 @@ pub fn max_edge_face_gap(
 /// [`SolidError::InvalidInput`] from the calculation (its status is ignored, as
 /// upstream).
 pub fn edge_ccw_edge_gap(
+    k: &Kernel,
     b: &mut Brep,
     eu: EdgeuseId,
     force_calc: bool,
@@ -922,7 +920,7 @@ pub fn edge_ccw_edge_gap(
         return Ok(None);
     }
     if force_calc || !b.edgeuse(eu)?.edge_ccw_edge_gap.is_init() {
-        ignore_status(calc_edge_ccw_edge_gap(b, eu, false, true))?;
+        ignore_status(calc_edge_ccw_edge_gap(k, b, eu, false, true))?;
     }
     Ok(Some(b.edgeuse(eu)?.edge_ccw_edge_gap))
 }
@@ -995,6 +993,7 @@ pub fn calc_max_edge_face_gap(
     // set Edge/Face gap - assigns m_pEdgeuse, m_dEdgeT and m_sFaceUV and computes the
     // gap
     let gap = EdgeFaceGap::with(
+        k,
         b,
         Some(eu),
         sample.this_param().x,
@@ -1024,6 +1023,7 @@ pub fn calc_max_edge_face_gap(
 /// upstream dereferences null (no counter-clockwise neighbour or edge);
 /// those of [`EdgeEdgeGap::set_edge_edge_gap`] when the gap is cached or wanted.
 pub fn calc_edge_ccw_edge_gap(
+    k: &Kernel,
     b: &mut Brep,
     eu: EdgeuseId,
     want_output: bool,
@@ -1064,13 +1064,14 @@ pub fn calc_edge_ccw_edge_gap(
 
     // set m_sEdgeCCWEdgeGap3d
     if cache {
-        let g = EdgeEdgeGap::with(b, Some(eu), Some(ccw), edge_t, ccw_edge_t)?;
+        let g = EdgeEdgeGap::with(k, b, Some(eu), Some(ccw), edge_t, ccw_edge_t)?;
         b.edgeuse_mut(eu)?.edge_ccw_edge_gap = g;
     }
 
     // set output
     match out {
         Some(_) => Ok(Some(EdgeEdgeGap::with(
+            k,
             b,
             Some(eu),
             Some(ccw),
@@ -1147,8 +1148,8 @@ pub fn start_point_uv_loop_gap(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<f6
                 .as_ref()
                 .ok_or_else(|| null("GetStartPointUVLoopGap: edge without curve"))
         };
-        let start_3d = point_or_undef(curve_of(eu)?.evaluate_point(start_param))?;
-        let cw_end_3d = point_or_undef(curve_of(cw)?.evaluate_point(cw_end_param))?;
+        let start_3d = point_or_undef(curve_of(eu)?.evaluate_point(k, start_param))?;
+        let cw_end_3d = point_or_undef(curve_of(cw)?.evaluate_point(k, cw_end_param))?;
 
         // drop point to Surface (statuses ignored, as upstream)
         let domain = surface.natural_uv_domain();
@@ -1175,8 +1176,8 @@ pub fn start_point_uv_loop_gap(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<f6
         let cw_end_2d = cw_drop.map_or(start_2d, |d| d.result_uv);
         return Ok(start_2d.distance(cw_end_2d));
     };
-    let start_uv = point_or_undef(tc.evaluate_point(start_param))?;
-    let cw_end_uv = point_or_undef(cc.evaluate_point(cw_end_param))?;
+    let start_uv = point_or_undef(tc.evaluate_point(k, start_param))?;
+    let cw_end_uv = point_or_undef(cc.evaluate_point(k, cw_end_param))?;
 
     // compute and return the EdgeEnd to EdgeEnd gap
     Ok(start_uv.distance(cw_end_uv))
@@ -1338,6 +1339,19 @@ pub fn faceuse_neighbors(
     Ok(out)
 }
 
+/// `pEU->EvaluateBinormal(param, TRUE, point, binormal, NULL, &normal)` with its status
+/// ignored: the face use normal, a zero vector where the evaluation failed (upstream
+/// zeroes the output before it can fail). [`SolidError::Unported`] propagates.
+fn binormal_face_normal(k: &Kernel, b: &mut Brep, eu: EdgeuseId, param: f64) -> Result<Vec3> {
+    let options = crate::topology::edgeuse::p3::BinormalOptions::default();
+    Ok(
+        crate::error::ignored(crate::topology::edgeuse::p3::evaluate_binormal(
+            k, b, eu, param, true, &options,
+        ))?
+        .map_or(Vec3::new(0.0, 0.0, 0.0), |r| r.face_normal),
+    )
+}
+
 /// `SmFaceuse::CollectAdjacentFaceuses`: appends to `faceuses` the face uses reached
 /// from this one across radial partners, not crossing lamina edges (and, with an
 /// angle threshold, not across edges whose face normals differ by more).
@@ -1346,10 +1360,11 @@ pub fn faceuse_neighbors(
 ///
 /// Those of [`faceuse_edgeuses`] and [`radial`]; [`SolidError::InvalidInput`] where
 /// upstream dereferences null (no edge, radial partner or its face use);
-/// [`SolidError::Unported`] with a threshold (`SmEdgeuse::EvaluateBinormal`, unit
-/// `topology.edgeuse_p3`).
+/// [`SolidError::Unported`] and the binormal errors with a threshold
+/// (`SmEdgeuse::EvaluateBinormal`, [`crate::topology::edgeuse::p3`]).
 pub fn faceuse_collect_adjacent(
-    b: &Brep,
+    k: &Kernel,
+    b: &mut Brep,
     fu: FaceuseId,
     faceuses: &mut Vec<FaceuseId>,
     angle_threshold: Option<f64>,
@@ -1372,12 +1387,28 @@ pub fn faceuse_collect_adjacent(
                 .ok_or_else(|| null("CollectAdjacentFaceuses: edge use without radial partner"))?;
             let fu_rad = faceuse(b, rad)?;
 
-            if angle_threshold.is_some() {
-                // UNPORTED(topology.edgeuse_p3): SmEdgeuse::EvaluateBinormal
-                return Err(SolidError::unported(
-                    "SmEdgeuse::EvaluateBinormal",
-                    "topology.edgeuse_p3",
-                ));
+            if let Some(threshold) = angle_threshold {
+                // the face use normals at the start, middle and end of the edge must
+                // differ by no more than the threshold. The binormal statuses are
+                // ignored upstream: `EvaluateBinormal` zeroes `*pOptFaceuseNormal`
+                // before it can fail, so a failing evaluation leaves a zero normal, and
+                // `AngleBetween` of a zero vector fails with `rdAngRad == 0` (so the
+                // angle is 0 and the face use is kept). Only `Unported` propagates.
+                let ivl = b.edge(e)?.interval;
+                let mut too_far = false;
+                for param in [ivl.min(), ivl.mid(), ivl.max()] {
+                    let n_eu = binormal_face_normal(k, b, eu, param)?;
+                    let n_rad = binormal_face_normal(k, b, rad, param)?;
+                    // (status ignored; the angle is 0 on failure)
+                    let angle = crate::error::ignored(n_eu.angle_between(n_rad))?.unwrap_or(0.0);
+                    if angle > threshold {
+                        too_far = true;
+                        break;
+                    }
+                }
+                if too_far {
+                    continue;
+                }
             }
 
             if fu_rad != Some(fu) && !fu_rad.is_some_and(|x| faceuses.contains(&x)) {
@@ -1406,6 +1437,7 @@ pub fn faceuse_collect_adjacent(
 /// [`SolidError::Unported`] from the surface evaluations (their other failures are
 /// ignored, as upstream).
 pub fn calc_dist_and_dev<'s, O: SolutionObject>(
+    k: &Kernel,
     pt: Point3,
     sol: &Solution<O>,
     surface_of: impl FnOnce(O) -> Option<&'s Surface>,
@@ -1434,7 +1466,7 @@ pub fn calc_dist_and_dev<'s, O: SolutionObject>(
     let [u, v, ..] = sol.start.parameters;
     let uv = Point2::new(u, v);
     let (s_pt, s_su, s_sv) =
-        crate::error::ignored(evaluate_1st_derivatives(srf, uv, Side::Left, Side::Left))?
+        crate::error::ignored(evaluate_1st_derivatives(k, srf, uv, Side::Left, Side::Left))?
             .unwrap_or((Vec3::UNDEF, Vec3::UNDEF, Vec3::UNDEF));
 
     let mut norm = s_su.cross(s_sv);
@@ -1442,7 +1474,7 @@ pub fn calc_dist_and_dev<'s, O: SolutionObject>(
     if mag > EFF_ZERO {
         norm /= mag;
     } else {
-        norm = srf.evaluate_normal(uv, Side::Left, Side::Left)?;
+        norm = srf.evaluate_normal(k, uv, Side::Left, Side::Left)?;
         if norm.length() < 0.5 {
             return Ok((dist, Some(dev)));
         }
@@ -1500,6 +1532,9 @@ pub fn are_seam_curves(
 /// `F0 = |S - P|^2 - d^2`, `F1 = S . N - P . N`.
 #[derive(Debug, Clone, Copy)]
 pub struct FindStepOff<'a> {
+    /// Caller context retained by evaluation callbacks.
+    pub kernel: &'a Kernel,
+
     /// `m_dStepOffDist`.
     step_off_dist: f64,
     /// `m_crPoint`.
@@ -1514,12 +1549,14 @@ impl<'a> FindStepOff<'a> {
     /// The equations for `point` on `surface` (the constructor).
     #[must_use]
     pub const fn new(
+        k: &'a Kernel,
         step_off_dist: f64,
         point: Point3,
         plane_normal: Vec3,
         surface: &'a Surface,
     ) -> Self {
         Self {
+            kernel: k,
             step_off_dist,
             point,
             plane_normal,
@@ -1540,6 +1577,7 @@ impl EvalNFunctions for FindStepOff<'_> {
         f: &mut [f64],
         jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
+        let k = self.kernel;
         let (Some(&u), Some(&v)) = (x.first(), x.get(1)) else {
             return Err(SolidError::invalid_input(
                 OP_STEP,
@@ -1554,7 +1592,7 @@ impl EvalNFunctions for FindStepOff<'_> {
         }
 
         let (s_point, s_du, s_dv) =
-            evaluate_1st_derivatives(self.surface, Point2::new(u, v), Side::Left, Side::Left)?;
+            evaluate_1st_derivatives(k, self.surface, Point2::new(u, v), Side::Left, Side::Left)?;
 
         let du_len_sq = s_du.length_squared();
         let dv_len_sq = s_dv.length_squared();
@@ -1604,10 +1642,15 @@ mod tests {
     fn square() -> Brep {
         let mut b = Brep::new();
         let id = |i: u32| EdgeuseId::from_index(i);
-        b.add_region_record(Region { in_brep: true }).unwrap();
+        b.add_region_record(Region {
+            in_brep: true,
+            ..Region::default()
+        })
+        .unwrap();
         b.add_shell_record(Shell {
             faces: vec![FaceId::from_index(0)],
             region: Some(RegionId::from_index(0)),
+            ..Shell::default()
         })
         .unwrap();
         b.add_face_record(Face {
@@ -1633,6 +1676,7 @@ mod tests {
                 mate: Some(FaceuseId::from_index(1 - k)),
                 orientation: o,
                 loopuses: vec![LoopuseId::from_index(k)],
+                sibling_links: None,
             })
             .unwrap();
             b.add_loopuse_record(Loopuse {
@@ -1774,7 +1818,7 @@ mod tests {
 
     #[test]
     fn faceuse_collections() {
-        let b = square();
+        let mut b = square();
         let f0 = FaceuseId::from_index(0);
         assert_eq!(
             faceuse_region(&b, f0).unwrap(),
@@ -1793,7 +1837,7 @@ mod tests {
         );
         assert!(faceuse_neighbors(&b, f0, true).unwrap().is_empty());
         let mut out = vec![FaceuseId::from_index(1)];
-        faceuse_collect_adjacent(&b, f0, &mut out, None).unwrap();
+        faceuse_collect_adjacent(&Kernel::default(), &mut b, f0, &mut out, None).unwrap();
         assert_eq!(out, vec![FaceuseId::from_index(1)]);
     }
 
@@ -1944,11 +1988,13 @@ mod tests {
         ));
         // the caches were reset before
         assert!(!is_max_edge_face_gap_init(&b, a0).unwrap());
-        assert!(calc_edge_ccw_edge_gap(&mut b, a0, false, false)
-            .unwrap()
-            .is_none());
+        assert!(
+            calc_edge_ccw_edge_gap(&Kernel::default(), &mut b, a0, false, false)
+                .unwrap()
+                .is_none()
+        );
         assert!(matches!(
-            calc_edge_ccw_edge_gap(&mut b, a0, true, false),
+            calc_edge_ccw_edge_gap(&Kernel::default(), &mut b, a0, true, false),
             Err(SolidError::InvalidInput { .. })
         ));
         // With curves, both edge/edge and edge/face gaps are evaluated.
@@ -1960,7 +2006,7 @@ mod tests {
             line.set_owner(None, None);
             b.edge_mut(e).unwrap().curve = Some(line);
         }
-        let g = calc_edge_ccw_edge_gap(&mut b, a0, true, true)
+        let g = calc_edge_ccw_edge_gap(&Kernel::default(), &mut b, a0, true, true)
             .unwrap()
             .unwrap();
         assert!(g.is_init() && g.gap_3d.abs() < 1e-12);
@@ -2002,20 +2048,21 @@ mod tests {
 
     #[test]
     fn dist_and_dev_on_a_plane() {
+        let k = &Kernel::default();
         let s = Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::Z));
         let mut sol = Solution::<H>::new();
         sol.start.solution_value = 0.5;
         let pt = Vec3::new(3.0, 4.0, 2.0);
         assert_eq!(
-            calc_dist_and_dev(pt, &sol, |_| Some(&s), false).unwrap(),
+            calc_dist_and_dev(k, pt, &sol, |_| Some(&s), false).unwrap(),
             (0.5, None)
         );
         assert_eq!(
-            calc_dist_and_dev(pt, &sol, |_| Some(&s), true).unwrap(),
+            calc_dist_and_dev(k, pt, &sol, |_| Some(&s), true).unwrap(),
             (-1.0, Some(-1.0))
         );
         sol.objects[0] = Some(H(ObjectKind::Surface));
-        let (d, dev) = calc_dist_and_dev(pt, &sol, |_| Some(&s), true).unwrap();
+        let (d, dev) = calc_dist_and_dev(k, pt, &sol, |_| Some(&s), true).unwrap();
         assert!((d - 2.0).abs() < 1e-12);
         assert!(dev.is_some_and(|x| x > 0.0));
     }
@@ -2041,13 +2088,14 @@ mod tests {
 
     #[test]
     fn step_off_equations() {
+        let k = &Kernel::default();
         let s = Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::Z));
-        let mut e = FindStepOff::new(1.0, Vec3::ZERO, Vec3::Y, &s);
+        let mut e = FindStepOff::new(k, 1.0, Vec3::ZERO, Vec3::Y, &s);
         let mut f = [0.0; 2];
         let mut m = Matrix::new(2, 2);
         let found = e.evaluate(&[0.0, 0.0], &mut f, Some(&mut m)).unwrap();
         assert!(!found);
-        let p = s.evaluate_point(Point2::new(0.0, 0.0)).unwrap();
+        let p = s.evaluate_point(k, Point2::new(0.0, 0.0)).unwrap();
         assert!((f[0] - (p.dot(p) - 1.0)).abs() < 1e-12);
         assert!((f[1] - p.y).abs() < 1e-12);
         assert!(e.evaluate(&[0.0], &mut f, None).is_err());

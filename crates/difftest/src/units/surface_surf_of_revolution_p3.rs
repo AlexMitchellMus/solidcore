@@ -24,9 +24,10 @@
 //! `surface.surface_p5`); the intersections without approximation tolerance (the
 //! bounding box's zone tolerance, `SmSurface::GetFace`, `surface.surface_p1`) or
 //! reaching `ConvertUVFromNURBSToSTEP` without exact conversion (`SmSTEPSurface`,
-//! `surface.surface_p1`); `UpdateAnalyticalDomain` reaching the latter; every
-//! `IntersectWithCone` / `IntersectWithSphere` case (the Rust side cannot build the
-//! `SmCone` / `SmSphere` operand: `surface.cone_p1`, `surface.sphere`).
+//! `surface.surface_p1`); `UpdateAnalyticalDomain` reaching the latter.
+//!
+//! `IntersectWithCone` builds its operand with `SmCone::CreateCanonical` on both sides
+//! ([`Cone::create_canonical`]) and is compared in full.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -38,6 +39,8 @@ use solidcore::geom::solution_array::{ObjectKind, SolutionObject};
 use solidcore::geom::vector2d::Point2;
 use solidcore::geom::vector3d::Vec3;
 use solidcore::kernel::Kernel;
+use solidcore::surface::cone::Cone;
+use solidcore::surface::sphere::Sphere;
 use solidcore::surface::surf_of_revolution::SurfOfRevolution;
 use solidcore::surface::surface::{Surface, SurfaceKind};
 use solidcore::topology::database_io::{DatabaseReader, FileType, InputStream};
@@ -339,9 +342,9 @@ fn revolution(s: &Surface) -> solidcore::Result<&SurfOfRevolution> {
 }
 
 /// Pushes `0` and the state of `s`.
-fn ok_state(o: &mut Vec<f64>, s: &SurfOfRevolution) -> solidcore::Result<()> {
+fn ok_state(k: &Kernel, o: &mut Vec<f64>, s: &SurfOfRevolution) -> solidcore::Result<()> {
     o.push(0.0);
-    put_state(o, s)
+    put_state(k, o, s)
 }
 
 /// Runs the op on the Rust surface, appending its status and outputs (for
@@ -355,7 +358,7 @@ fn rust_op(
     let r: solidcore::Result<()> = match op {
         OpIn::Copy {} => {
             let c = s.copy();
-            ok_state(o, &c).and_then(|()| {
+            ok_state(k, o, &c).and_then(|()| {
                 o.push(flag(c.approx_eq(k, s)?));
                 Ok(())
             })
@@ -364,7 +367,7 @@ fn rust_op(
             let mut c = s.clone();
             let [a, b, cc, d] = *dom;
             c.reparameterize(k, &Extent2d::from_bounds(a, b, cc, d))
-                .and_then(|()| ok_state(o, &c))
+                .and_then(|()| ok_state(k, o, &c))
         }
         OpIn::ToNurbs { u, v } => s
             .convert_uv_from_step_to_nurbs(k, Point2::new(*u, *v))
@@ -417,7 +420,7 @@ fn rust_op(
         } => {
             let built;
             let other_s: &SurfOfRevolution = match other {
-                OtherIn::Revolution { surf: None } => s,
+                OtherIn::Revolution { surf: None } | OtherIn::Sphere { .. } | OtherIn::Cone { .. } => s,
                 OtherIn::Revolution { surf: Some(os) } => match rust_surf(k, os)? {
                     Err(e) if e.is_unported() => return Ok(Err(e)),
                     Err(e) => {
@@ -429,27 +432,64 @@ fn rust_op(
                         &built
                     }
                 },
-                OtherIn::Cone { .. } => {
-                    return Ok(Err(solidcore::SolidError::unported(
-                        "SmCone::CreateCanonical",
-                        "surface.cone_p1",
-                    )))
+            };
+            let sphere = match other {
+                OtherIn::Sphere { frame, r } => {
+                    let f = Axis2Placement::new(v3(frame[0]), v3(frame[1]), v3(frame[2]));
+                    match Sphere::create_canonical(k, &f, *r) {
+                        Ok(sp) => Some(sp),
+                        Err(e) => {
+                            o.push(status(&e));
+                            return Ok(Ok(()));
+                        }
+                    }
                 }
-                OtherIn::Sphere { .. } => {
-                    return Ok(Err(solidcore::SolidError::unported(
-                        "SmSphere::CreateCanonical",
-                        "surface.sphere",
-                    )))
+                _ => None,
+            };
+            // `SmCone::CreateCanonical(ctx, a2p, r0, r1, h, c)` (bSwapUV, bInsideOut FALSE)
+            let cone = match other {
+                OtherIn::Cone { frame, r0, r1, h } => {
+                    let f = Axis2Placement::new(v3(frame[0]), v3(frame[1]), v3(frame[2]));
+                    match Cone::create_canonical(k, &f, *r0, *r1, *h, false, false) {
+                        Ok(c) => Some(c),
+                        Err(e) => {
+                            o.push(status(&e));
+                            return Ok(Ok(()));
+                        }
+                    }
                 }
+                _ => None,
             };
             o.push(0.0);
-            s.intersect_with_surf_of_revolution(
-                k,
-                &dom_of(s, *dom),
-                other_s,
-                &dom_of(other_s, *other_dom),
-                *tol,
-            )
+            match (&sphere, &cone) {
+                (_, Some(c)) => s.intersect_with_cone(
+                    k,
+                    &dom_of(s, *dom),
+                    c,
+                    &other_dom.map_or_else(
+                        || c.rev().base().natural_uv_domain(),
+                        |[a, b, cc, e]| Extent2d::from_bounds(a, b, cc, e),
+                    ),
+                    *tol,
+                ),
+                (Some(sp), None) => s.intersect_with_sphere(
+                    k,
+                    &dom_of(s, *dom),
+                    sp,
+                    &other_dom.map_or_else(
+                        || sp.base().base().natural_uv_domain(),
+                        |[a, b, c, e]| Extent2d::from_bounds(a, b, c, e),
+                    ),
+                    *tol,
+                ),
+                (None, None) => s.intersect_with_surf_of_revolution(
+                    k,
+                    &dom_of(s, *dom),
+                    other_s,
+                    &dom_of(other_s, *other_dom),
+                    *tol,
+                ),
+            }
             .map(|(more, x)| {
                 o.extend([0.0, flag(more), x.curves_3d.len() as f64]);
                 for c in &x.curves_3d {
@@ -482,27 +522,27 @@ fn rust_op(
                 }
             }
             c.rebuild_step_from_nurb_parameters(k)
-                .and_then(|()| ok_state(o, &c))
+                .and_then(|()| ok_state(k, o, &c))
         }
         OpIn::Transform { frame } => {
             let mut c = s.clone();
             let (rf, scale) = frame_of(frame);
-            c.transform(k, &rf, scale).and_then(|()| ok_state(o, &c))
+            c.transform(k, &rf, scale).and_then(|()| ok_state(k, o, &c))
         }
         OpIn::Update { dom } => {
             let mut c = s.clone();
             let d = dom_of(&c, *dom);
             c.update_analytical_domain(k, &d)
-                .and_then(|()| ok_state(o, &c))
+                .and_then(|()| ok_state(k, o, &c))
         }
         OpIn::Reverse { param } => {
             let mut c = Surface::from(s.clone());
             c.reverse(k, param_of(*param))
-                .and_then(|()| ok_state(o, revolution(&c)?))
+                .and_then(|()| ok_state(k, o, revolution(&c)?))
         }
         OpIn::Swap {} => {
             let mut c = Surface::from(s.clone());
-            c.swap_uv(k).and_then(|()| ok_state(o, revolution(&c)?))
+            c.swap_uv(k).and_then(|()| ok_state(k, o, revolution(&c)?))
         }
         OpIn::ReadDb { .. } => return Err(harness("unreachable")),
     };
@@ -525,7 +565,7 @@ fn rust_read(k: &Kernel, binary: bool, version: u32, bytes: &[u8]) -> Result<Out
             o.push(status(&e));
         }
         Ok(s) => {
-            if let Err(e) = ok_state(&mut o, &s) {
+            if let Err(e) = ok_state(k, &mut o, &s) {
                 if let Some(out) = Output::unported(&e) {
                     return Ok(out);
                 }
@@ -596,6 +636,11 @@ pub(crate) fn scale_surf(s: &mut SurfIn, f: f64) {
         GenIn::Circle { c, r, .. } => {
             sc(c);
             *r *= f;
+        }
+        GenIn::Hyperbola { c, a, b, .. } => {
+            sc(c);
+            *a *= f;
+            *b *= f;
         }
     }
     match &mut s.build {
@@ -686,7 +731,7 @@ pub(crate) fn other_surf(rng: &mut Rng, s: &SurfOfRevolution, coaxial: bool) -> 
                 c.u.last().copied().unwrap_or(1.0),
             ],
             GenIn::Line { .. } => [0.0, 1.0],
-            GenIn::Circle { d, .. } => *d,
+            GenIn::Circle { d, .. } | GenIn::Hyperbola { d, .. } => *d,
         };
         let a = rng.uniform(-180.0, 180.0);
         BuildIn::Ctor {
@@ -827,7 +872,7 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
         }
         9..=13 => {
             let b = built.as_ref()?;
-            let other = match rng.below(12) {
+            let other = match rng.below(15) {
                 0..=4 => OtherIn::Revolution {
                     surf: Some(Box::new(other_surf(rng, b, true))),
                 },
@@ -838,8 +883,23 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
                     surf: Some(Box::new(other_surf(rng, b, false))),
                 },
                 9 => OtherIn::Revolution { surf: None },
-                10 => {
-                    let f = frame(rng);
+                10..=13 => {
+                    // mostly coaxial with the surface (a random axis only reaches the
+                    // general-intersection early return)
+                    let f = if rng.chance(0.7) {
+                        let pos = b.position();
+                        let (o, z) = (pos.origin(), pos.z_axis());
+                        let (x, y) = (pos.x_axis(), pos.y_axis());
+                        let t = rng.uniform(-1.0, 1.0);
+                        (
+                            [o.x + t * z.x, o.y + t * z.y, o.z + t * z.z],
+                            [x.x, x.y, x.z],
+                            [y.x, y.y, y.z],
+                        )
+                    } else {
+                        let f = frame(rng);
+                        (f.0, f.1, f.2)
+                    };
                     OtherIn::Cone {
                         frame: [f.0, f.1, f.2],
                         r0: rng.uniform(0.5, 3.0),

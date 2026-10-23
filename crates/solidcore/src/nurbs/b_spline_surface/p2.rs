@@ -43,7 +43,8 @@
 //!   `SM_ERR_NULL_POINTER` (`NER`).
 //! - **Array bounds.** `GetControlPointsExpert` checks indices also for a single
 //!   point (upstream reads outside the net there) and returns the output array
-//!   (sized to the last value written, unwritten slots `0`). `CreateSurfOfRevolution`
+//!   (sized to the last value written, unwritten slots `0`, allocated fallibly:
+//!   `InvalidInput` when strides make it too large for memory). `CreateSurfOfRevolution`
 //!   returns `InvalidInput` where upstream would index past the sweep circle's
 //!   weights or polygon.
 //! - **Ignored statuses** stay ignored: `CreateIsoParametricCurve`'s
@@ -54,14 +55,16 @@
 //!   propagated, as everywhere.
 //! - **`CreateSphereFromArcs`** returns the indices of the input arcs in CCW order
 //!   (upstream returns the same curve pointers). The recomputing `IsArc` calls whose
-//!   result upstream ignores keep the previous frame and angles when they fail.
+//!   result upstream ignores keep the previous frame and angles when they fail. Its
+//!   `rOrigin` is a reference into the frame those calls overwrite, so the centre check
+//!   never fires and the sphere centre is the last examined arc's (WR-103): the port
+//!   reads the current frame's origin at each use.
 //! - **`SetCanonical`** passes no domain to `CreateCanonical` (as upstream), so the
 //!   [`CanonicalSurfaceData::uv_domain`] of its argument is ignored. As upstream, only
 //!   the NURB is replaced: form and knot type stay those of the surface.
-//! - **Back-edges.** `CopyAndAddAnalytics` returns the [`Surface`] that
-//!   `SmPlane::IsNurbSurfacePlane` recognises, else needs the recognisers after it
-//!   (`surface.cone_p2`, `surface.sphere`,
-//!   `surface.surf_of_revolution_p2`, `surface.surf_of_extrusion_p2`);
+//! - **Back-edges.** `CopyAndAddAnalytics` returns recognised planes, cones, surfaces
+//!   of revolution and extrusions as a [`Surface`]. A recognised sphere retains a
+//!   `surface.surface_p2` dispatch gap;
 //!   `GetMaxAnalyticDomain` nothing unported (`SmSurface::Evaluate1stDerivatives` is
 //!   `surface::surface::p1`'s, `IsPlanar` and `IsClosed` are those of
 //!   `surface::surface::p7`). `IsDegeneratePoint` over another domain runs the
@@ -92,6 +95,8 @@ use crate::nurbs::nurbs_srf::{is_nsrf_degenerate, split_srf};
 use crate::nurbs::srf_basic::Direction;
 use crate::nurbs::srf_tool::p1::{extract_iso_crv, extract_patch};
 use crate::surface::plane::Plane;
+use crate::surface::surf_of_extrusion::SurfOfExtrusion;
+use crate::surface::surf_of_revolution::SurfOfRevolution;
 use crate::surface::surface::Surface;
 
 use super::p1::{
@@ -202,24 +207,32 @@ fn transpose<T: Copy>(a: &mut [T], num_rows: usize) {
 
 // ---- unported callees ---------------------------------------------------------------
 
-/// `SmCone::IsNurbSurfaceCone` (then the sphere, revolution and extrusion
-/// recognisers).
-fn is_nurb_surface_cone(_srf: &BSplineSurface) -> Result<Option<Surface>> {
-    // UNPORTED(surface.cone_p2): SmCone::IsNurbSurfaceCone
-    Err(SolidError::Unported {
-        upstream: "SmCone::IsNurbSurfaceCone",
-        unit: "surface.cone_p2",
-    })
+/// The analytic recognisers after the plane: `SmCone::IsNurbSurfaceCone`,
+/// `SmSphere::IsNurbSurfaceSphere`, `SmSurfOfRevolution::IsNurbSurfaceSurfOfRevolution`
+/// and `SmSurfOfExtrusion::IsNurbSurfaceSurfOfExtrusion`, in upstream's order. `None`
+/// when none recognises the surface.
+fn recognise_analytic(k: &Kernel, srf: &BSplineSurface) -> Result<Option<Surface>> {
+    if let Some(cone) = crate::surface::cone::Cone::is_nurb_surface_cone(k, srf, 1.0)? {
+        return Ok(Some(Surface::from(cone)));
+    }
+    if let Some(sphere) = crate::surface::sphere::Sphere::is_nurb_surface_sphere(k, srf, 1.0)? {
+        return Ok(Some(Surface::from(sphere)));
+    }
+    let test = Surface::from(srf.copy());
+    if let Some(rev) = SurfOfRevolution::is_nurb_surface_surf_of_revolution(k, &test, 1.0)? {
+        return Ok(Some(Surface::from(rev)));
+    }
+    if let Some(extrusion) = SurfOfExtrusion::is_nurb_surface_surf_of_extrusion(k, srf, 1.0)? {
+        return Ok(Some(Surface::from(extrusion)));
+    }
+    Ok(None)
 }
 
-/// `SmCurve::IsArc(lNumberOfSamplePoints, d3DTol, ..)` of a B-spline curve.
-fn curve_is_arc(c: &BSplineCurve, num_samples: u64, tol: f64) -> Result<Option<ArcData>> {
-    let arc = crate::curve::curve::p5::is_arc_base(
-        c,
-        |c, tol| c.is_degenerate(tol, None),
-        num_samples,
-        tol,
-    )?;
+/// `pArc->IsArc(lNumberOfSamplePoints, d3DTol, ..)`: the virtual call on an
+/// `SmBSplineCurve *` whose real kind may be a circle (`SmCircle::IsArc`, exact) or a
+/// line (never an arc); [`SmCurve::is_arc`].
+fn curve_is_arc(k: &Kernel, c: &SmCurve, num_samples: u64, tol: f64) -> Result<Option<ArcData>> {
+    let arc = c.is_arc(k, num_samples, tol)?;
     Ok(arc.map(|(frame, radius, start_deg, end_deg)| ArcData {
         frame,
         radius,
@@ -248,8 +261,13 @@ fn sweep_circle(c: &SmCurve) -> Result<(CurveCanonical, Extent1d)> {
 }
 
 /// `SmSurface::Evaluate1stDerivatives(uv, TRUE, TRUE, ..)`: point, `S_u`, `S_v`.
-fn evaluate_1st_derivatives(srf: &BSplineSurface, uv: Point2) -> Result<(Point3, Vec3, Vec3)> {
+fn evaluate_1st_derivatives(
+    k: &Kernel,
+    srf: &BSplineSurface,
+    uv: Point2,
+) -> Result<(Point3, Vec3, Vec3)> {
     crate::surface::surface::p1::evaluate_1st_derivatives(
+        k,
         srf,
         uv,
         crate::nurbs::knots::Side::Left,
@@ -302,23 +320,29 @@ fn create_natural_uv_trim_curves(
 /// `SmSurface::IsDegeneratePoint(d3DTol, pUVDomain)` (the base body, on a copy of the
 /// B-spline as an [`SmSurface`](crate::surface::surface::Surface)).
 fn surface_is_degenerate_point(
+    k: &Kernel,
     srf: &BSplineSurface,
     tol_3d: f64,
     uv_domain: Option<&Extent2d>,
 ) -> Result<bool> {
     let s = Surface::from(srf.clone());
-    crate::surface::surface::p1::base_is_degenerate_point(&s, tol_3d, uv_domain)
+    crate::surface::surface::p1::base_is_degenerate_point(k, &s, tol_3d, uv_domain)
 }
 
 /// `SmSurface::IsPlanar()`.
-fn surface_is_planar(srf: &BSplineSurface) -> Result<bool> {
+fn surface_is_planar(k: &Kernel, srf: &BSplineSurface) -> Result<bool> {
     // upstream's default tolerance is SM_EFF_ZERO
-    Ok(crate::surface::surface::p7::b_spline_is_planar(srf, EFF_ZERO)?.is_planar)
+    Ok(crate::surface::surface::p7::b_spline_is_planar(k, srf, EFF_ZERO)?.is_planar)
 }
 
 /// `SmSurface::IsClosed(domain, dir)`.
-fn surface_is_closed(srf: &BSplineSurface, domain: &Extent2d, dir: SurfParamType) -> Result<bool> {
-    Ok(crate::surface::surface::p7::base_is_closed(srf, domain, dir, None, false)?.0)
+fn surface_is_closed(
+    k: &Kernel,
+    srf: &BSplineSurface,
+    domain: &Extent2d,
+    dir: SurfParamType,
+) -> Result<bool> {
+    Ok(crate::surface::surface::p7::base_is_closed(k, srf, domain, dir, None, false)?.0)
 }
 
 /// Expands `ivl` relatively by 100 (degree 1), 1 (degree 2) or 0.5.
@@ -339,16 +363,17 @@ impl BSplineSurface {
     ///
     /// # Errors
     ///
-    /// Those of [`Plane::is_nurb_surface_plane`]; [`SolidError::Unported`]: the
-    /// recognisers after the plane (`SmCone::IsNurbSurfaceCone`, ...) are not ported.
-    pub fn copy_and_add_analytics(&self) -> Result<Surface> {
+    /// Those of the recognisers ([`Plane::is_nurb_surface_plane`],
+    /// [`crate::surface::cone::Cone::is_nurb_surface_cone`], ...);
+    /// [`SolidError::Unported`] from the still-unwired recognised sphere conversion.
+    pub fn copy_and_add_analytics(&self, k: &Kernel) -> Result<Surface> {
         // (a surface that is not SmBSplineSurface_TYPE is copied as is: never here)
         // SmPlane
-        if let Some(plane) = Plane::is_nurb_surface_plane(self, 1.0)? {
+        if let Some(plane) = Plane::is_nurb_surface_plane(k, self, 1.0)? {
             return Ok(Surface::from(plane));
         }
-        // SmCone (then SmSphere, SmSurfOfRevolution, SmSurfOfExtrusion)
-        if let Some(analytic) = is_nurb_surface_cone(self)? {
+        // SmCone, SmSphere, SmSurfOfRevolution, SmSurfOfExtrusion
+        if let Some(analytic) = recognise_analytic(k, self)? {
             return Ok(analytic);
         }
         // arrive here - make sure it's a copy
@@ -446,7 +471,11 @@ impl BSplineSurface {
     ///
     /// `SM_ERR` unless there are exactly three arcs of a common center and radius
     /// meeting at their ends; [`SolidError::Unported`] (`SmCurve::IsArc`).
-    pub fn create_sphere_from_arcs(arcs: &[BSplineCurve], tol_3d: f64) -> Result<SphereFromArcs> {
+    pub fn create_sphere_from_arcs(
+        k: &Kernel,
+        arcs: &[SmCurve],
+        tol_3d: f64,
+    ) -> Result<SphereFromArcs> {
         let total_curves = arcs.len();
 
         // no work - not given exactly 3 curves
@@ -456,7 +485,7 @@ impl BSplineSurface {
         let arc = |i: usize| arcs.get(i).ok_or_else(|| SolidError::sm_err(OP_SPHERE));
 
         // no work - first curve is not an arc
-        let Some(first) = curve_is_arc(arc(0)?, 5, tol_3d)? else {
+        let Some(first) = curve_is_arc(k, arc(0)?, 5, tol_3d)? else {
             return Err(SolidError::sm_err(OP_SPHERE));
         };
         let rad = first.radius;
@@ -465,12 +494,13 @@ impl BSplineSurface {
 
         // extract Sphere Params from Arc shapes
         let mut angle_span = first.end_deg - first.start_deg;
-        let origin = ref_frame.origin();
+        // (upstream's `rOrigin` is a reference into `sRefFrame`, which every later `IsArc`
+        // overwrites: the centre is read from the current frame at each use, WR-103)
 
         // for all other input arcs - check for Compatible centers and radii
         for i in 1..total_curves {
             // no work - other Curve is not an arc of the same radius as the 1st Curve
-            let Some(a) = curve_is_arc(arc(i)?, 5, tol_3d)? else {
+            let Some(a) = curve_is_arc(k, arc(i)?, 5, tol_3d)? else {
                 return Err(SolidError::sm_err(OP_SPHERE));
             };
             if (a.radius - rad).abs() > tol_3d {
@@ -478,11 +508,9 @@ impl BSplineSurface {
             }
             ref_frame = a.frame;
 
-            // no work - OtherCurve center is not the same as 1st Curve cent
-            let diff = ref_frame.origin() - origin;
-            if diff.length() > tol_3d {
-                return Err(SolidError::sm_err(OP_SPHERE));
-            }
+            // no work - OtherCurve center is not the same as 1st Curve cent: upstream
+            // compares `sRefFrame.GetOriginRef()` with `rOrigin`, a reference to that same
+            // origin, so the difference is zero and the check never fires (WR-103)
 
             // remember the largest ArcAngle seen
             let angle_span1 = a.end_deg - a.start_deg;
@@ -495,7 +523,7 @@ impl BSplineSurface {
 
         // Get 1st Neighbor Curve to largest Span
         let mut second_largest = (gen_curve_index + 1) % total_curves;
-        if let Some(a) = curve_is_arc(arc(second_largest)?, 5, tol_3d)? {
+        if let Some(a) = curve_is_arc(k, arc(second_largest)?, 5, tol_3d)? {
             ref_frame = a.frame;
             start_ang = a.start_deg;
             end_ang = a.end_deg;
@@ -507,7 +535,7 @@ impl BSplineSurface {
         let other = ((gen_curve_index + total_curves) - 1) % total_curves;
         let mut smallest = other;
         let (mut start_ang1, mut end_ang1) = (0.0, 0.0);
-        if let Some(a) = curve_is_arc(arc(other)?, 5, tol_3d)? {
+        if let Some(a) = curve_is_arc(k, arc(other)?, 5, tol_3d)? {
             ref_frame = a.frame;
             start_ang1 = a.start_deg;
             end_ang1 = a.end_deg;
@@ -529,9 +557,12 @@ impl BSplineSurface {
         }
 
         // Now find the non common point between the second largest and the gen curve
-        let ends = |c: &BSplineCurve| -> Result<(Point3, Point3)> {
+        let ends = |c: &SmCurve| -> Result<(Point3, Point3)> {
             let ivl = c.natural_interval();
-            Ok((c.evaluate_point(ivl.min())?, c.evaluate_point(ivl.max())?))
+            Ok((
+                c.evaluate_point(k, ivl.min())?,
+                c.evaluate_point(k, ivl.max())?,
+            ))
         };
         let gen_curve = arc(gen_curve_index)?;
         let (st1, end1) = ends(gen_curve)?;
@@ -589,18 +620,23 @@ impl BSplineSurface {
         }
 
         // Define ZAxis in same general direction as sRefZAxis
-        let mut z_axis = origin - non_common_pnt;
+        let mut z_axis = ref_frame.origin() - non_common_pnt;
         if z_axis.dot(ref_z_axis) < 0.0 {
             z_axis = -z_axis;
         }
         let z_axis = z_axis.unitize_or_z();
 
-        // Make the Sphere as a SurfOfRevolution
-        // (no sweep circle is given, so the kernel is not used)
+        // Make the Sphere as a SurfOfRevolution (of the generator's NURB data: a B-spline
+        // or a circle, the only kinds IsArc accepts)
+        let gen_nurb = match gen_curve.kind() {
+            CurveKind::BSpline(b) => b,
+            CurveKind::Ellipse(e) => e.base(),
+            _ => return Err(SolidError::sm_err(OP_SPHERE)),
+        };
         let sphere = Self::create_surf_of_revolution(
-            &Kernel::default(),
-            gen_curve,
-            origin,
+            k,
+            gen_nurb,
+            ref_frame.origin(),
             z_axis,
             angle_span,
             false,
@@ -943,13 +979,14 @@ impl BSplineSurface {
         let ruled_surface = Self::create_ruled_surface(curve1, curve2, SurfParamType::V)?;
 
         let domain = ruled_surface.natural_uv_domain();
-        let (pnt, du, dv) = evaluate_1st_derivatives(&ruled_surface, domain.evaluate(0.5, 0.5))?;
+        let (pnt, du, dv) = evaluate_1st_derivatives(k, &ruled_surface, domain.evaluate(0.5, 0.5))?;
         let du = du.unitize()?;
         let dv = du.cross(dv).cross(du);
         let dv = dv.unitize()?;
 
         let bbox = ruled_surface
             .calculate_bounding_box(
+                k,
                 &domain,
                 &BoundingBoxRequest {
                     normal: true,
@@ -991,13 +1028,18 @@ impl BSplineSurface {
     ///
     /// Those of `SmSurface::IsDegeneratePoint` for a domain other than the natural
     /// one; `SM_ERR` without NURB.
-    pub fn is_degenerate_point(&self, tol_3d: f64, uv_domain: Option<&Extent2d>) -> Result<bool> {
+    pub fn is_degenerate_point(
+        &self,
+        k: &Kernel,
+        tol_3d: f64,
+        uv_domain: Option<&Extent2d>,
+    ) -> Result<bool> {
         // low work - for nonNaturalUVInterval intervals pass the call
         //  along to the general SmSurface::IsDegenerate
         if uv_domain.is_some_and(|d| !d.are_equal(&self.natural_uv_domain(), EFF_ZERO))
             || self.is_kind_of(CRV_ON_SURF_TYPE)?
         {
-            return surface_is_degenerate_point(self, tol_3d, uv_domain);
+            return surface_is_degenerate_point(k, self, tol_3d, uv_domain);
         }
 
         // ensure existence of m_pNurb
@@ -1141,7 +1183,11 @@ impl BSplineSurface {
             .and_then(|a| v_stride.checked_mul(nv).and_then(|b| a.checked_add(b)))
             .and_then(|a| a.checked_add(pt_size))
             .ok_or_else(|| SolidError::invalid_input(OP_EXPERT, "output too large"))?;
-        let mut out = vec![0.0; len];
+        // the caller's output array upstream: allocated fallibly here
+        let mut out = Vec::new();
+        out.try_reserve_exact(len)
+            .map_err(|_| SolidError::invalid_input(OP_EXPERT, "output too large"))?;
+        out.resize(len, 0.0);
 
         // copy the requested array of control points into the requested output array
         for (u_cnt, i_u) in (start_u..=end_u).enumerate() {
@@ -1183,10 +1229,10 @@ impl BSplineSurface {
     /// # Errors
     ///
     /// [`SolidError::Unported`]: `SmSurface::IsPlanar` and `IsClosed` are not ported.
-    pub fn max_analytic_domain(&self) -> Result<Extent2d> {
+    pub fn max_analytic_domain(&self, k: &Kernel) -> Result<Extent2d> {
         let mut dom = self.natural_uv_domain();
 
-        if surface_is_planar(self)? {
+        if surface_is_planar(k, self)? {
             dom.expand_relative(100.0);
             return Ok(dom);
         }
@@ -1195,12 +1241,12 @@ impl BSplineSurface {
         let mut u_dom = dom.u_interval();
 
         // Do not extend closed surfaces.
-        if !surface_is_closed(self, &dom, SurfParamType::U)? {
+        if !surface_is_closed(k, self, &dom, SurfParamType::U)? {
             expand_by_degree(&mut u_dom, self.degree(SurfParamType::U));
         }
 
         let mut v_dom = dom.v_interval();
-        if !surface_is_closed(self, &dom, SurfParamType::V)? {
+        if !surface_is_closed(k, self, &dom, SurfParamType::V)? {
             expand_by_degree(&mut v_dom, self.degree(SurfParamType::V));
         }
 
@@ -1437,6 +1483,48 @@ mod tests {
     use crate::nurbs::math::CPoint;
     use crate::nurbs::srf_basic::Surface;
 
+    /// A rational quadratic arc from `p0` to `p2` with tangent corner `c` and corner
+    /// weight `w` (the cosine of half the arc angle).
+    fn arc3(p0: [f64; 3], c: [f64; 3], w: f64, p2: [f64; 3]) -> SmCurve {
+        let pw = vec![
+            CPoint::new(p0[0], p0[1], p0[2], 1.0),
+            CPoint::new(c[0] * w, c[1] * w, c[2] * w, w),
+            CPoint::new(p2[0], p2[1], p2[2], 1.0),
+        ];
+        let cur = crate::nurbs::crv_basic::Curve::new(pw, 2, vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0])
+            .expect("curve");
+        SmCurve::from(BSplineCurve::from_nurb(cur, 3, false))
+    }
+
+    /// WR-103: arcs about two centres (the first two sharing their start point) build a
+    /// sphere, as upstream's aliased (dead) centre check lets them.
+    #[test]
+    fn sphere_from_arcs_about_two_centres() {
+        let k = &Kernel::default();
+        let arcs = [
+            arc3(
+                [5.0, 0.0, 0.0],
+                [5.0, 8.660_254_037_844_386, 0.0],
+                0.5,
+                [-2.5, 4.330_127_018_922_193, 0.0],
+            ),
+            arc3(
+                [5.0, 0.0, 0.0],
+                [5.0, 0.0, 5.0],
+                std::f64::consts::FRAC_1_SQRT_2,
+                [10.0, 0.0, 5.0],
+            ),
+            arc3(
+                [10.0, 5.0, 0.0],
+                [10.0, 5.0, 2.886_751_345_948_129],
+                0.866_025_403_784_438_6,
+                [10.0, 2.5, 4.330_127_018_922_193],
+            ),
+        ];
+        let r = BSplineSurface::create_sphere_from_arcs(k, &arcs, 1e-6).unwrap();
+        assert_eq!(r.ccw_arcs, vec![0, 1, 2]);
+    }
+
     /// A biquadratic 3 x 3 patch over `[0, 2] x [0, 1]`.
     fn patch(rational: bool) -> BSplineSurface {
         let net = (0..3)
@@ -1648,17 +1736,69 @@ mod tests {
     }
 
     #[test]
-    fn back_edges_are_unported() {
+    fn copy_and_add_analytics_preserves_extrusion_geometry() {
+        let k = &Kernel::default();
+        for swap_uv in [false, true] {
+            let net = [(1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+                .into_iter()
+                .map(|(x, y)| vec![CPoint::new(x, y, 0.0, NOW), CPoint::new(x, y, 2.0, NOW)])
+                .collect();
+            let nurb = Surface::new(
+                net,
+                2,
+                1,
+                vec![-1.0, -1.0, -1.0, 3.0, 3.0, 3.0],
+                vec![2.0, 2.0, 4.0, 4.0],
+            )
+            .unwrap();
+            let mut s = BSplineSurface::from_nurb(nurb, false);
+            if swap_uv {
+                s.swap_uv().unwrap();
+            }
+            let domain = s.natural_uv_domain();
+            let samples = [(0.0, 0.0), (0.25, 0.75), (0.5, 0.5), (1.0, 1.0)];
+            let before: Vec<_> = samples
+                .iter()
+                .map(|&(u, v)| s.evaluate_point(domain.evaluate(u, v)).unwrap())
+                .collect();
+            let copy = s.copy_and_add_analytics(k).unwrap();
+            assert!(matches!(
+                copy.kind(),
+                crate::surface::surface::SurfaceKind::SurfOfExtrusion(_)
+            ));
+            if let crate::surface::surface::SurfaceKind::SurfOfExtrusion(extrusion) = copy.kind() {
+                // Only swapped, unequal domains make Reparameterize build the NURB.
+                assert_eq!(extrusion.base().gw_nurb().is_some(), swap_uv);
+            }
+            assert_eq!(copy.natural_uv_domain(), domain);
+            for ((u, v), expected) in samples.into_iter().zip(before) {
+                let uv = domain.evaluate(u, v);
+                assert_eq!(s.evaluate_point(uv).unwrap(), expected);
+                assert!(copy.evaluate_point(k, uv).unwrap().distance(expected) < 1e-12);
+            }
+            if let crate::surface::surface::SurfaceKind::SurfOfExtrusion(extrusion) = copy.kind() {
+                assert_eq!(extrusion.base().gw_nurb().is_some(), swap_uv);
+            }
+        }
+    }
+
+    #[test]
+    fn back_edges_are_wired() {
+        let k = &Kernel::default();
         let s = patch(false);
-        let unported = |r: Result<()>| matches!(r, Err(SolidError::Unported { .. }));
-        assert!(unported(s.copy_and_add_analytics().map(|_| ())));
-        // (wired through surface.surface_p1 / surface.surface_p7)
-        assert!(s.max_analytic_domain().is_ok());
-        assert!(s.is_degenerate_point(1e-6, None).is_ok());
-        let sub = Extent2d::from_bounds(0.0, 0.0, 0.5, 0.5);
-        assert!(!s.is_degenerate_point(1e-6, Some(&sub)).unwrap());
+        // no recogniser takes the patch: a B-spline copy
+        let copy = s.copy_and_add_analytics(k).unwrap();
         assert!(matches!(
-            BSplineSurface::create_sphere_from_arcs(&[], 1e-6),
+            copy.kind(),
+            crate::surface::surface::SurfaceKind::BSpline(_)
+        ));
+        // (wired through surface.surface_p1 / surface.surface_p7)
+        assert!(s.max_analytic_domain(k,).is_ok());
+        assert!(s.is_degenerate_point(k, 1e-6, None).is_ok());
+        let sub = Extent2d::from_bounds(0.0, 0.0, 0.5, 0.5);
+        assert!(!s.is_degenerate_point(k, 1e-6, Some(&sub)).unwrap());
+        assert!(matches!(
+            BSplineSurface::create_sphere_from_arcs(k, &[], 1e-6),
             Err(SolidError::Upstream { code: 1001, .. })
         ));
     }

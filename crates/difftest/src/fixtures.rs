@@ -13,6 +13,9 @@
 //! * `{"$upstream_file": "Boolean/a.smb"}` → absolute path string of that file
 //!   (for runners whose C++ side reads the file directly).
 
+#[cfg(feature = "cpp")]
+pub(crate) mod regions;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -131,6 +134,12 @@ pub fn load_fixture_dir(root: &Path, unit: &str) -> Result<Vec<Case>, HarnessErr
         }
     }
     Ok(cases)
+}
+
+/// Expands the `$pts` / `$upstream_file` objects of a case's `inputs`, as
+/// [`load_fixture_dir`] does (for case files kept outside `fixtures/`).
+pub fn expand_inputs(root: &Path, inputs: Value) -> Result<Value, HarnessError> {
+    expand(root, inputs)
 }
 
 fn expand(root: &Path, v: Value) -> Result<Value, HarnessError> {

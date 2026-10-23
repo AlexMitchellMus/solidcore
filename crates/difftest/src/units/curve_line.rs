@@ -31,7 +31,7 @@ use solidcore::geom::vector3d::Vec3;
 use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_curve::{BSplineCurve, BoundingBoxRequest, BoundingBoxes};
 use solidcore::nurbs::b_spline_curve_n_lib::{InValueType, TrimMode};
-use solidcore::nurbs::math::CPoint;
+use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::topology::database_io::{DatabaseReader, FileType};
 use solidcore::SolidError;
 use solidcore_ffi::units::curve_line::{self as ffi};
@@ -50,9 +50,6 @@ pub struct Runner;
 fn harness(msg: impl Into<String>) -> HarnessError {
     HarnessError::new(msg)
 }
-
-/// `NL_NOW`.
-const NOW: f64 = -f64::MAX;
 
 // ---- inputs -------------------------------------------------------------------------
 
@@ -892,7 +889,7 @@ fn rust_op(op: &OpIn, a: &mut Line, o: &mut Vec<f64>) -> Result<(), Fail> {
             put_boxes(o, &boxes);
         }
         OpIn::Tessellate { ivl, nseg, flags } => {
-            let t = a.tessellate(
+            let r = a.tessellate(
                 &ivl_of(a, *ivl),
                 u64::from(*nseg),
                 TessellationRequest {
@@ -901,21 +898,22 @@ fn rust_op(op: &OpIn, a: &mut Line, o: &mut Vec<f64>) -> Result<(), Fail> {
                     tangents: flags & 4 != 0,
                 },
             );
-            o.push(0.0);
-            if flags & 1 != 0 {
-                o.push(t.parameters.len() as f64);
-                o.extend_from_slice(&t.parameters);
-            }
-            if flags & 2 != 0 {
-                o.push(t.points.len() as f64);
-                for p in &t.points {
-                    put_vec(o, *p);
+            if let Some(t) = st(o, r)? {
+                if flags & 1 != 0 {
+                    o.push(t.parameters.len() as f64);
+                    o.extend_from_slice(&t.parameters);
                 }
-            }
-            if flags & 4 != 0 {
-                o.push(t.tangents.len() as f64);
-                for p in &t.tangents {
-                    put_vec(o, *p);
+                if flags & 2 != 0 {
+                    o.push(t.points.len() as f64);
+                    for p in &t.points {
+                        put_vec(o, *p);
+                    }
+                }
+                if flags & 4 != 0 {
+                    o.push(t.tangents.len() as f64);
+                    for p in &t.tangents {
+                        put_vec(o, *p);
+                    }
                 }
             }
         }

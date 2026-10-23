@@ -38,6 +38,7 @@ use solidcore::curve::line::Line;
 use solidcore::geom::attribute::ObjectKey;
 use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::extent2d::Extent2d;
+use solidcore::error::EntityRef;
 use solidcore::geom::object::ObjectRef;
 use solidcore::geom::vector2d::Vec2;
 use solidcore::geom::vector3d::Vec3;
@@ -69,18 +70,97 @@ pub const MIN_GENERATED: usize = 1500;
 /// `heal.face_props` runner.
 pub struct Runner;
 
+/// The classification handles: loops, and the face, its surface and the two curves of
+/// `SmFace::ClassifyLoops`' loop bisector.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct H(LoopId);
+enum H {
+    Topo(EntityRef),
+    Surface(FaceId),
+    Curve(bool),
+    EdgeCurve(EdgeId),
+    Trim(EdgeuseId),
+    /// A temporary curve (the seam curves of `SmFace::HasSeamProblem`).
+    Temp(usize),
+}
 
 impl ClassObject for H {
     fn class_kind(&self) -> ClassObjectKind {
-        ClassObjectKind::Loop
+        match self {
+            Self::Topo(e) => e.class_kind(),
+            Self::Surface(_) => ClassObjectKind::Surface,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) | Self::Temp(_) => {
+                ClassObjectKind::Curve
+            }
+        }
+    }
+
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        (kind == ClassObjectKind::Curve).then_some(Self::Temp(index))
     }
 }
 
 impl LoopObject for H {
     fn from_loop(l: LoopId) -> Self {
-        Self(l)
+        Self::Topo(EntityRef::Loop(l))
+    }
+
+    fn as_loop(&self) -> Option<LoopId> {
+        match self {
+            Self::Topo(e) => e.as_loop(),
+            _ => None,
+        }
+    }
+
+    fn as_vertex(&self) -> Option<VertexId> {
+        match self {
+            Self::Topo(e) => e.as_vertex(),
+            _ => None,
+        }
+    }
+
+    fn from_face(f: FaceId) -> Option<Self> {
+        Some(Self::Topo(EntityRef::Face(f)))
+    }
+
+    fn from_face_surface(f: FaceId) -> Option<Self> {
+        Some(Self::Surface(f))
+    }
+
+    fn from_classify_curve(uv: bool) -> Option<Self> {
+        Some(Self::Curve(uv))
+    }
+
+    fn from_topology(t: EntityRef) -> Option<Self> {
+        Some(Self::Topo(t))
+    }
+
+    fn as_topology(&self) -> Option<EntityRef> {
+        match self {
+            Self::Topo(t) => Some(*t),
+            _ => None,
+        }
+    }
+
+    fn from_edge_curve(e: EdgeId) -> Option<Self> {
+        Some(Self::EdgeCurve(e))
+    }
+
+    fn as_edge_curve(&self) -> Option<EdgeId> {
+        match self {
+            Self::EdgeCurve(e) => Some(*e),
+            _ => None,
+        }
+    }
+
+    fn from_trim_curve(eu: EdgeuseId) -> Option<Self> {
+        Some(Self::Trim(eu))
+    }
+
+    fn as_trim_curve(&self) -> Option<EdgeuseId> {
+        match self {
+            Self::Trim(eu) => Some(*eu),
+            _ => None,
+        }
     }
 }
 
@@ -93,7 +173,7 @@ fn harness(msg: impl Into<String>) -> HarnessError {
 /// The generator of a surface of revolution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-enum GenIn {
+pub(crate) enum GenIn {
     Line {
         a: [f64; 3],
         b: [f64; 3],
@@ -110,7 +190,7 @@ enum GenIn {
 /// The face's surface when it is not the plane `o`, `x`, `y`, `domain` of [`FaceIn`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-enum SurfIn {
+pub(crate) enum SurfIn {
     Revolution {
         gen: GenIn,
         point: [f64; 3],
@@ -125,24 +205,24 @@ enum SurfIn {
 /// The face's loops when they are not the one vertex loop at the origin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-enum LoopsIn {
+pub(crate) enum LoopsIn {
     Vertex { at: [f64; 3] },
     /// Edge loops (the first one outer, the others holes): corner points joined by lines.
     Edges { loops: Vec<Vec<[f64; 3]>> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct FaceIn {
-    tol: f64,
-    o: [f64; 3],
-    x: [f64; 3],
-    y: [f64; 3],
+pub(crate) struct FaceIn {
+    pub(crate) tol: f64,
+    pub(crate) o: [f64; 3],
+    pub(crate) x: [f64; 3],
+    pub(crate) y: [f64; 3],
     /// `[umin, vmin, umax, vmax]`.
-    domain: [f64; 4],
+    pub(crate) domain: [f64; 4],
     #[serde(default)]
-    surf: Option<SurfIn>,
+    pub(crate) surf: Option<SurfIn>,
     #[serde(default)]
-    loops: Option<LoopsIn>,
+    pub(crate) loops: Option<LoopsIn>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,7 +260,7 @@ fn ffi_gen(g: &GenIn) -> ffi::Gen {
     }
 }
 
-fn ffi_face(f: &FaceIn) -> ffi::FaceSpec {
+pub(crate) fn ffi_face(f: &FaceIn) -> ffi::FaceSpec {
     let surf = match &f.surf {
         None => ffi::Surf::Plane {
             o: f.o,
@@ -357,14 +437,20 @@ macro_rules! next_id {
 /// loop use whose edge use list starts at the first requested edge use, one `SmLine` edge per
 /// edge use, a vertex per edge use at its edge's start; the first loop use outer, the others
 /// inner), then `SetTolerance` of the face.
-fn rust_brep(k: &Kernel, f: &FaceIn) -> Result<(Brep, FaceId), HarnessError> {
+pub(crate) fn rust_brep(k: &Kernel, f: &FaceIn) -> Result<(Brep, FaceId), HarnessError> {
     let mut b = Brep::new();
     let e = |e: solidcore::SolidError| harness(e.to_string());
-    let region = b.add_region_record(Region { in_brep: true }).map_err(e)?;
+    let region = b
+        .add_region_record(Region {
+            in_brep: true,
+            ..Region::default()
+        })
+        .map_err(e)?;
     let shell = b
         .add_shell_record(Shell {
             faces: Vec::new(),
             region: Some(region),
+            ..Shell::default()
         })
         .map_err(e)?;
 
@@ -385,7 +471,11 @@ fn rust_brep(k: &Kernel, f: &FaceIn) -> Result<(Brep, FaceId), HarnessError> {
         .map_err(e)?;
     b.shell_mut(shell).map_err(e)?.faces.push(face);
     let up = next_id!(b.faceuses(), FaceuseId);
-    let down = next_id!(b.faceuses(), FaceuseId);
+    // the down face use is the record after the up one (both ids are taken before either
+    // record is added, so they cannot both come from the arena's length)
+    let down = FaceuseId::from_index(
+        u32::try_from(b.faceuses().len() + 1).map_err(|_| harness("too many records"))?,
+    );
     for (mate, orientation) in [(down, OrientType::Same), (up, OrientType::Opposite)] {
         b.add_faceuse_record(Faceuse {
             shell: Some(shell),
@@ -543,6 +633,111 @@ fn rust_edge_loop(
     Ok(())
 }
 
+/// The down face use's side of [`rust_brep`]'s B-rep, as `SmBrepConstructor` builds it with
+/// the up side (`StartLoop`, `StartEdge`, `EndLoop`, `StartAndEndSingleVertexLoop`): per loop
+/// a mate loop use on the down face use with the same orientation; per edge use a mate edge
+/// use of its edge (orientation opposite, its vertex use at the edge's end vertex, after the
+/// up edge use in the edge's list) walking the loop the other way, the mate loop use starting
+/// at the mate of the up loop use's first edge use; each vertex gets the vertex use of the
+/// mate ending at it after its own. A vertex loop gets a second vertex use of its vertex.
+/// [`rust_brep`] leaves this side out; units whose queries walk edge mates (an edge's
+/// vertices, its faces) add it.
+pub(crate) fn add_down_side(b: &mut Brep, face: FaceId) -> Result<(), HarnessError> {
+    let e = |e: solidcore::SolidError| harness(e.to_string());
+    let up = b.face(face).map_err(e)?.faceuse.ok_or_else(|| harness("face use"))?;
+    let down = b.faceuse(up).map_err(e)?.mate.ok_or_else(|| harness("face use mate"))?;
+    let loops = b.face(face).map_err(e)?.loops.clone();
+    for l in loops {
+        let lu1 = b.loop_(l).map_err(e)?.loopuse.ok_or_else(|| harness("loop use"))?;
+        let (start, orientation) = {
+            let r = b.loopuse(lu1).map_err(e)?;
+            (r.start, r.orientation)
+        };
+        let lu2 = next_id!(b.loopuses(), LoopuseId);
+        let start2 = match start {
+            LoopuseStart::Vertexuse(Some(vu1)) => {
+                let v = b.vertexuse(vu1).map_err(e)?.vertex.ok_or_else(|| harness("vertex"))?;
+                let vu2 = next_id!(b.vertexuses(), VertexuseId);
+                b.add_vertexuse_record(Vertexuse {
+                    vertex: Some(v),
+                    owner: VertexuseOwner::Loopuse(Some(lu2)),
+                    ..Vertexuse::default()
+                })
+                .map_err(e)?;
+                b.vertex_mut(v).map_err(e)?.vertexuses.push(vu2);
+                LoopuseStart::Vertexuse(Some(vu2))
+            }
+            LoopuseStart::Edgeuse(Some(eu0)) => {
+                // the up loop in order
+                let mut eus = vec![eu0];
+                let mut eu = eu0;
+                loop {
+                    eu = b.edgeuse(eu).map_err(e)?.ccw.ok_or_else(|| harness("ccw edge use"))?;
+                    if eu == eu0 {
+                        break;
+                    }
+                    eus.push(eu);
+                }
+                let n = eus.len();
+                let m0 = b.edgeuses().len();
+                let vm0 = b.vertexuses().len();
+                let id = |base: usize, i: usize| -> Result<u32, HarnessError> {
+                    u32::try_from(base + i % n).map_err(|_| harness("too many records"))
+                };
+                let mut edges = Vec::new();
+                for (i, &eu) in eus.iter().enumerate() {
+                    let edge = b.edgeuse(eu).map_err(e)?.edge.ok_or_else(|| harness("edge"))?;
+                    let [_, end] = b.edge(edge).map_err(e)?.vertices;
+                    b.add_vertexuse_record(Vertexuse {
+                        vertex: Some(end),
+                        owner: VertexuseOwner::Edgeuse(Some(EdgeuseId::from_index(id(m0, i)?))),
+                        ..Vertexuse::default()
+                    })
+                    .map_err(e)?;
+                    edges.push((edge, end));
+                }
+                for (i, &(edge, _)) in edges.iter().enumerate() {
+                    b.add_edgeuse_record(Edgeuse {
+                        edge: Some(edge),
+                        owner: EdgeuseOwner::Loopuse(Some(lu2)),
+                        ccw: Some(EdgeuseId::from_index(id(m0, i + n - 1)?)),
+                        cw: Some(EdgeuseId::from_index(id(m0, i + 1)?)),
+                        vertexuse: Some(VertexuseId::from_index(id(vm0, i)?)),
+                        orientation: OrientType::Opposite,
+                        ..Edgeuse::default()
+                    })
+                    .map_err(e)?;
+                    b.edge_mut(edge)
+                        .map_err(e)?
+                        .edgeuses
+                        .push(EdgeuseId::from_index(id(m0, i)?));
+                }
+                // EndLoop: the vertex at the start of edge use i also takes the vertex use of
+                // the mate of edge use i - 1 (which ends there)
+                for (i, &(_, end)) in edges.iter().enumerate() {
+                    b.vertex_mut(end)
+                        .map_err(e)?
+                        .vertexuses
+                        .push(VertexuseId::from_index(id(vm0, i)?));
+                }
+                LoopuseStart::Edgeuse(Some(EdgeuseId::from_index(id(m0, 0)?)))
+            }
+            _ => return Err(harness("loop use start")),
+        };
+        b.add_loopuse_record(Loopuse {
+            faceuse: Some(down),
+            loop_: Some(l),
+            mate: Some(lu1),
+            start: start2,
+            orientation,
+        })
+        .map_err(e)?;
+        b.loopuse_mut(lu1).map_err(e)?.mate = Some(lu2);
+        b.faceuse_mut(down).map_err(e)?.loopuses.push(lu2);
+    }
+    Ok(())
+}
+
 fn status(r: solidcore::Result<()>) -> Result<f64, solidcore::SolidError> {
     match r {
         Ok(()) => Ok(1000.0),
@@ -552,7 +747,7 @@ fn status(r: solidcore::Result<()>) -> Result<f64, solidcore::SolidError> {
     }
 }
 
-fn snapshot(p: &FaceProps<H>, face: FaceId) -> Vec<f64> {
+pub(crate) fn snapshot<O: LoopObject>(p: &FaceProps<O>, face: FaceId) -> Vec<f64> {
     let t = |x: solidcore::heal::face_props::Tri| x.code() as f64;
     let mut o: Vec<f64> = vec![p.prop_stage.code() as f64];
     o.push(p.not_yet_face_type.code() as f64);
@@ -658,7 +853,7 @@ fn loop_snapshot(
     Ok((loops.len() as f64, o))
 }
 
-fn seed(p: &mut FaceProps<H>, face: FaceId, field: i64, idx: i64, v: f64) {
+pub(crate) fn seed<O: LoopObject>(p: &mut FaceProps<O>, face: FaceId, field: i64, idx: i64, v: f64) {
     use solidcore::heal::face_props::{MixedLinkType as M, Tri};
     let tri = |x: f64| match x as i64 {
         0 => Tri::False,
@@ -985,7 +1180,7 @@ fn gen_loops(rng: &mut Rng, poles: &[[f64; 3]]) -> Option<LoopsIn> {
     }
 }
 
-fn gen_face(rng: &mut Rng) -> FaceIn {
+pub(crate) fn gen_face(rng: &mut Rng) -> FaceIn {
     let tols = [
         1e-5,
         1e-6,

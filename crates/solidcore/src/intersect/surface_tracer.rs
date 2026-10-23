@@ -83,9 +83,8 @@
 //!   `FindInteriorCurves`' reverse trace, `AddStartPoint`), except
 //!   [`SolidError::Unported`], which is always propagated. `GetSurfaceContinuity`
 //!   at most `SM_CT_C0` only signals upstream (`SE`), so the trace goes on.
-//! - **Unported callees.** `SmSurface::DropCurve` for surfaces other than planes
-//!   (`intersect.surface_drop_lib_p3`) returns [`SolidError::Unported`] (see the
-//!   `UNPORTED` markers).
+//! - **Drop curve.** `SmSurface::DropCurve` is the plane override for planes and the
+//!   base body ([`Surface::drop_curve_base`]) for the other kinds.
 //! - **Undefined behaviour.** `ReverseCurveDirection` on an empty curve is
 //!   `SM_ERR_NULL_POINTER` (upstream `NER`); a `TraceCurve` that ends with an empty
 //!   curve and a `TestPoint` closure check on an empty curve (upstream dereferences
@@ -121,7 +120,7 @@ use crate::nurbs::b_spline_curve::{BSplineCurve, BSplineCurveForm, CanonicalData
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::knots::Side;
 use crate::surface::surface::p2::surface_cache;
-use crate::surface::surface::{Surface, SurfaceKind};
+use crate::surface::surface::Surface;
 use crate::surface::surface_cache::SurfaceCache;
 
 /// `SmSurfaceTracer_TYPE` (`SOLV_BASE_TYPE + 56`).
@@ -328,13 +327,13 @@ impl<'s> SurfaceTracer<'s> {
     /// [`SolidError::Unported`] from the surface evaluations (whose other failures
     /// upstream only signals; the tolerance is then made from whatever points were
     /// evaluated, here from the origin).
-    pub fn new(surface: &'s Surface, uv_domain: &Extent2d) -> Result<Self> {
+    pub fn new(k: &Kernel, surface: &'s Surface, uv_domain: &Extent2d) -> Result<Self> {
         // Compute a reasonable default tolerance for intersection based on the sizes
         // of the surfaces.
-        let p1 = ignored(surface.evaluate_point(uv_domain.min()))?.unwrap_or(Vec3::ZERO);
+        let p1 = ignored(surface.evaluate_point(k, uv_domain.min()))?.unwrap_or(Vec3::ZERO);
         let p_mid =
-            ignored(surface.evaluate_point(uv_domain.evaluate(0.5, 0.5)))?.unwrap_or(Vec3::ZERO);
-        let p2 = ignored(surface.evaluate_point(uv_domain.max()))?.unwrap_or(Vec3::ZERO);
+            ignored(surface.evaluate_point(k, uv_domain.evaluate(0.5, 0.5)))?.unwrap_or(Vec3::ZERO);
+        let p2 = ignored(surface.evaluate_point(k, uv_domain.max()))?.unwrap_or(Vec3::ZERO);
         let size = p1.distance(p_mid) + p_mid.distance(p2);
         let approx_tol_3d = size / 1000.0; // accuracy is 1/1000th size of surface
 
@@ -625,7 +624,7 @@ pub trait SurfaceTrace<'s> {
     fn find_solutions_on_boundary_curve(
         &self,
         k: &Kernel,
-        boundary: &BSplineCurve,
+        boundary: &Curve,
         interval: &Extent1d,
         side: usize,
         param: SurfParamType,
@@ -836,10 +835,10 @@ pub fn is_point_on_curve_base(
     for curve in curves {
         // When curve is degenerate - check Dist(CurvePnt, PointToTest)
         // (IsDegenerate's defaults: SM_EFF_ZERO, no interval)
-        if ignored(curve.is_degenerate(EFF_ZERO, None))? == Some(true) {
+        if ignored(curve.is_degenerate(k, EFF_ZERO, None))? == Some(true) {
             // Get CurvePnt3d
             let ivl = curve.natural_interval();
-            let Some(crv_pnt) = ignored(curve.evaluate_point(ivl.min()))? else {
+            let Some(crv_pnt) = ignored(curve.evaluate_point(k, ivl.min()))? else {
                 continue;
             };
 
@@ -1028,13 +1027,13 @@ pub fn compute_span_deviation_base<'s, T: SurfaceTrace<'s> + ?Sized>(
         let crv_pnt = hermite_uv.evaluate_point(param);
         let mut uv = Vec2::new(crv_pnt.x, crv_pnt.y);
         uv = t.tracer().uv_domain.clamp_point(uv);
-        t.tracer().surface.evaluate_point(uv)?;
+        t.tracer().surface.evaluate_point(k, uv)?;
 
         let mut dummy = TracePoint::new();
         let Some(uv_found) = t.local_point_solve(k, curr, uv, &mut dummy)? else {
             return Ok((None, false));
         };
-        let crv_pnt2 = t.tracer().surface.evaluate_point(uv_found)?;
+        let crv_pnt2 = t.tracer().surface.evaluate_point(k, uv_found)?;
         let crv_pnt3 = hermite_3d.evaluate_point(param);
         let dist_sq = crv_pnt3.distance_squared(crv_pnt2);
         if dist_sq > max_dist {
@@ -1113,6 +1112,7 @@ pub fn test_point_base<'s, T: SurfaceTrace<'s> + ?Sized>(
 
                     // find closest HermiteCurve pt to StartPoint
                     let (success, sol) = herm_curve.local_point_solve::<()>(
+                        k,
                         &ivl,
                         SolverOperation::Minimize,
                         start.curve_3d[0],
@@ -1448,8 +1448,8 @@ fn flush_crv(
 }
 
 /// `SmSurface::EvaluateNormal(uv, FALSE, FALSE, ..)` (virtual).
-fn evaluate_normal(surface: &Surface, uv: Point2) -> Result<Vec3> {
-    surface.evaluate_normal(uv, Side::Right, Side::Right)
+fn evaluate_normal(k: &Kernel, surface: &Surface, uv: Point2) -> Result<Vec3> {
+    surface.evaluate_normal(k, uv, Side::Right, Side::Right)
 }
 
 /// `SmSurfaceTracer::FlushCurve`: empties the curve points and appends the curve
@@ -1465,6 +1465,7 @@ fn evaluate_normal(surface: &Surface, uv: Point2) -> Result<Vec3> {
 /// `InvalidInput` for unknown ids; those of the curve constructions;
 /// [`SolidError::Unported`] from the surface evaluations of `opt_curve`'s spans.
 pub fn flush_curve(
+    k: &Kernel,
     t: &mut SurfaceTracer<'_>,
     out: &mut TraceOutput,
     opt_curve: Option<&Curve>,
@@ -1584,13 +1585,13 @@ pub fn flush_curve(
             if let Some(opt) = opt_curve {
                 // Mid Segment CrvPoint (status ignored upstream: the point stays)
                 let mid_t = (last.curve_parameter + curr.curve_parameter) / 2.0;
-                if let Some(p) = ignored(opt.evaluate_point(mid_t))? {
+                if let Some(p) = ignored(opt.evaluate_point(k, mid_t))? {
                     crv_pt = p;
                 }
 
                 // Mid Segment SrfPoint (SurfUV point is the midPoint of the Bezier UVTrimCurve)
                 let uv = (p1 + 3.0 * p2 + 3.0 * p3 + p4) / 8.0;
-                if let Some(p) = ignored(t.surface.evaluate_point(uv))? {
+                if let Some(p) = ignored(t.surface.evaluate_point(k, uv))? {
                     srf_pt = p;
                 }
 
@@ -1598,7 +1599,7 @@ pub fn flush_curve(
                 let dist = crv_pt.distance(srf_pt);
                 if dist > max_drop_dist {
                     // the component of (CrvPnt - SrfPnt) in the surfNorm direction
-                    if let Some(n) = ignored(evaluate_normal(t.surface, uv))? {
+                    if let Some(n) = ignored(evaluate_normal(k, t.surface, uv))? {
                         norm = n;
                     }
                     let dist = fabs((crv_pt - srf_pt).dot(norm));
@@ -1608,7 +1609,7 @@ pub fn flush_curve(
                 }
 
                 // End Segment CrvPnt
-                if let Some(p) = ignored(opt.evaluate_point(curr.curve_parameter))? {
+                if let Some(p) = ignored(opt.evaluate_point(k, curr.curve_parameter))? {
                     crv_pt = p;
                 }
 
@@ -1642,23 +1643,10 @@ fn surface_drop_curve(
     interval: &Extent1d,
     approx_tol: f64,
 ) -> Result<(f64, f64, Vec<Curve>)> {
-    match surface.kind() {
-        SurfaceKind::Plane(p) => {
-            let r = p.drop_curve(k, uv_domain, curve, interval, approx_tol, true, false)?;
-            Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
-        }
-        SurfaceKind::BSpline(_)
-        | SurfaceKind::CurveBounded(_)
-        | SurfaceKind::SurfOfRevolution(_)
-        | SurfaceKind::Step(_)
-        | SurfaceKind::SrfInVolume(_) => {
-            // UNPORTED(intersect.surface_drop_lib_p3): SmSurface::DropCurve
-            Err(SolidError::unported(
-                "SmSurface::DropCurve",
-                "intersect.surface_drop_lib_p3",
-            ))
-        }
-    }
+    let r = surface.drop_curve::<crate::surface::surface::p4::NoObject>(
+        k, uv_domain, curve, interval, approx_tol, true, None, false,
+    )?;
+    Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
 }
 
 /// `SmSurfaceTracer::FindBoundaryStartPoints`: for each of the four boundary iso
@@ -1710,7 +1698,7 @@ where
             );
 
             // skip degen IsoCurves (IsDegenerate's defaults; a failure is not degenerate)
-            if ignored(new_bsc.is_degenerate(EFF_ZERO, None))? == Some(true) {
+            if ignored(new_bsc.is_degenerate(k, EFF_ZERO, None))? == Some(true) {
                 continue;
             }
 
@@ -1722,7 +1710,7 @@ where
             if curve_is_silhouette {
                 // get near mid-Pnt
                 let test_param = bsc_ivl.evaluate(0.45678);
-                let test_pnt = new_bsc.evaluate_point(test_param)?;
+                let test_pnt = new_bsc.evaluate_point(k, test_param)?;
 
                 // If we already have this curve then skip it.
                 if t.is_point_on_curve(k, test_pnt, &out.curves_3d)? {
@@ -1730,7 +1718,8 @@ where
                 }
 
                 // Add a copy of this solution curve to r3DCurves.
-                let result = Curve::from(new_bsc.clone());
+                // (`new SmBSplineCurve(*pNewBSC)`: a plain B-spline copy)
+                let result = crate::surface::surface_cache::p1::copy_as_bspline(new_bsc)?;
                 let result_ivl = result.natural_interval();
                 out.curves_3d.push(result.clone());
 
@@ -2005,7 +1994,7 @@ where
         };
 
         // Now test start point to see if it drops to any of the existing 3D curves.
-        let surf_pnt = match t.tracer().surface.evaluate_point(found_uv) {
+        let surf_pnt = match t.tracer().surface.evaluate_point(k, found_uv) {
             Ok(p) => p,
             Err(e) if e.is_unported() => return Err(e),
             Err(_) => continue,
@@ -2041,7 +2030,7 @@ where
                 Err(e) if e.is_unported() => return Err(e),
                 Err(_) => {
                     // Note, if this failed, we want to call FlushCurve()
-                    ignore_status(flush_curve(t.tracer_mut(), out, None))?;
+                    ignore_status(flush_curve(k, t.tracer_mut(), out, None))?;
                     continue;
                 }
             }
@@ -2057,7 +2046,7 @@ where
             t.tracer_mut().curve_trace_direction = 1.0;
         }
 
-        ignore_status(flush_curve(t.tracer_mut(), out, None))?;
+        ignore_status(flush_curve(k, t.tracer_mut(), out, None))?;
         t.tracer_mut().start_point = None;
     }
     Ok(())
@@ -2138,7 +2127,7 @@ where
                 }
 
                 // output curve
-                flush_curve(t.tracer_mut(), &mut out, None)?;
+                flush_curve(k, t.tracer_mut(), &mut out, None)?;
             }
             Err(e) if e.is_unported() => return Err(e),
             Err(_) => {}
@@ -2150,18 +2139,25 @@ where
     Ok(out)
 }
 
-/// `smsurf_GetSurfaceCache` for the tracer's surface ([`surface_cache`], built fresh):
-/// the cache callers pass to [`SurfaceTrace::do_trace`].
+/// `smsurf_GetSurfaceCache` for the tracer's surface ([`surface_cache`], built fresh)
+/// and the tracer constructor's `pSC->GetTree()` (whose failure the constructor
+/// ignores): the cache callers pass to [`SurfaceTrace::do_trace`]. The tree is built
+/// before the boundary search reads the cache's continuity arrays, also during a
+/// Boolean operation.
 ///
 /// # Errors
 ///
 /// Those of the cache builds (the continuities of the tree build:
-/// `SmSurface::CalculateContinuities`).
+/// `SmSurface::CalculateContinuities`); [`SolidError::Unported`] from the tree build.
 pub fn tracer_surface_cache<O: Copy + PartialEq>(
     k: &Kernel,
     t: &SurfaceTracer<'_>,
 ) -> Result<SurfaceCache<O>> {
-    surface_cache(k, t.surface, None)
+    let mut cache = surface_cache(k, t.surface, None)?;
+    match cache.get_tree(k) {
+        Err(e) if e.is_unported() => Err(e),
+        _ => Ok(cache),
+    }
 }
 
 #[cfg(test)]
@@ -2181,9 +2177,10 @@ mod tests {
 
     #[test]
     fn constructor_tolerances() {
+        let k = &Kernel::default();
         let s = plane();
         let d = Extent2d::from_bounds(0.0, 0.0, 10.0, 10.0);
-        let t = SurfaceTracer::new(&s, &d).unwrap();
+        let t = SurfaceTracer::new(k, &s, &d).unwrap();
         let diag = (200.0_f64).sqrt();
         assert!((t.approx_tol_3d() - diag / 1000.0).abs() < 1e-15);
         assert!((t.ang_tol_rad() - 20.0 * PI / 180.0).abs() < 1e-15);
@@ -2194,9 +2191,10 @@ mod tests {
 
     #[test]
     fn start_points_are_unique() {
+        let k = &Kernel::default();
         let s = plane();
         let d = Extent2d::from_bounds(0.0, 0.0, 10.0, 10.0);
-        let mut t = SurfaceTracer::new(&s, &d).unwrap();
+        let mut t = SurfaceTracer::new(k, &s, &d).unwrap();
         let mut p = TracePoint::new();
         p.point_type = TracePointType::Normal;
         p.curve_uv[0] = Vec2::new(1.0, 2.0);
@@ -2220,9 +2218,10 @@ mod tests {
 
     #[test]
     fn reverse_reparameterises() {
+        let k = &Kernel::default();
         let s = plane();
         let d = Extent2d::from_bounds(0.0, 0.0, 10.0, 10.0);
-        let mut t = SurfaceTracer::new(&s, &d).unwrap();
+        let mut t = SurfaceTracer::new(k, &s, &d).unwrap();
         assert!(t.reverse_curve_direction().is_err());
         for (i, param) in [0.0, 1.0, 3.0].into_iter().enumerate() {
             let mut p = TracePoint::new();
@@ -2246,9 +2245,10 @@ mod tests {
 
     #[test]
     fn flush_single_tangent_point_is_degenerate() {
+        let k = &Kernel::default();
         let s = plane();
         let d = Extent2d::from_bounds(0.0, 0.0, 10.0, 10.0);
-        let mut t = SurfaceTracer::new(&s, &d).unwrap();
+        let mut t = SurfaceTracer::new(k, &s, &d).unwrap();
         let mut p = TracePoint::new();
         p.point_type = TracePointType::TangentPoint;
         p.curve_3d[0] = Vec3::new(1.0, 2.0, 0.0);
@@ -2258,7 +2258,7 @@ mod tests {
         let id = t.new_point(p);
         t.add_point_to_curve(id);
         let mut out = TraceOutput::default();
-        flush_curve(&mut t, &mut out, None).unwrap();
+        flush_curve(k, &mut t, &mut out, None).unwrap();
         assert!(t.curve_points.is_empty());
         assert_eq!(out.curves_3d.len(), 1);
         assert_eq!(out.uv_curves.len(), 1);
@@ -2268,9 +2268,10 @@ mod tests {
 
     #[test]
     fn flush_two_close_points_makes_nothing() {
+        let k = &Kernel::default();
         let s = plane();
         let d = Extent2d::from_bounds(0.0, 0.0, 10.0, 10.0);
-        let mut t = SurfaceTracer::new(&s, &d).unwrap();
+        let mut t = SurfaceTracer::new(k, &s, &d).unwrap();
         for x in [0.0, 1e-6] {
             let mut p = TracePoint::new();
             p.curve_3d[0] = Vec3::new(x, 0.0, 0.0);
@@ -2278,7 +2279,7 @@ mod tests {
             t.add_point_to_curve(id);
         }
         let mut out = TraceOutput::default();
-        flush_curve(&mut t, &mut out, None).unwrap();
+        flush_curve(k, &mut t, &mut out, None).unwrap();
         assert!(out.curves_3d.is_empty() && out.max_drop_dists.is_empty());
     }
 
@@ -2287,7 +2288,7 @@ mod tests {
         let s = plane();
         let d = Extent2d::from_bounds(0.0, 0.0, 10.0, 10.0);
         let k = Kernel::default();
-        let mut t = SurfaceTracer::new(&s, &d).unwrap();
+        let mut t = SurfaceTracer::new(&k, &s, &d).unwrap();
         let mut p = TracePoint::new();
         assert!(t
             .compute_point_values(&k, Vec2::ZERO, &mut p, None, None)
@@ -2304,7 +2305,7 @@ mod tests {
         let s = plane();
         let d = Extent2d::from_bounds(0.0, 0.0, 10.0, 10.0);
         let k = Kernel::default();
-        let mut t = SurfaceTracer::new(&s, &d).unwrap();
+        let mut t = SurfaceTracer::new(&k, &s, &d).unwrap();
         let mut p = TracePoint::new();
         p.curve_uv[0] = Vec2::new(10.0, 5.0);
         let a = t.new_point(p);

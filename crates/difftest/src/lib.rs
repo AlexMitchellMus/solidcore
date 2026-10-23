@@ -11,14 +11,18 @@
 pub mod baseline;
 pub mod case;
 pub mod compare;
+pub mod export_memo;
 pub mod fixtures;
 pub mod fuzz;
+pub mod jobs;
 pub mod json;
+pub mod known;
 pub mod output;
 pub mod plan;
 pub mod report;
 pub mod rng;
 pub mod runner;
+pub mod solidcraft;
 pub mod ssi;
 pub mod util;
 
@@ -26,7 +30,7 @@ pub use case::{Case, CaseContext, CaseSource};
 pub use compare::{compare, AbsFloor, CaseDiff, Mismatch, REL_TOL};
 pub use output::{Deferred, Output, Topology};
 pub use rng::Rng;
-pub use runner::{run_unit, CaseOutcome, RunOptions, UnitDiff, UnitResult, UnitStatus};
+pub use runner::{run_unit, CaseOutcome, RunOptions, UnitDiff, UnitResult, UnitStatus, UnitTiming};
 
 /// Error from the harness itself (bad fixture, missing file, ...), as opposed
 /// to a comparison failure.

@@ -275,6 +275,23 @@ impl PseudoBox {
         }
     }
 
+    /// The bytes of an `SmPseudoBox` whose constructor never ran in zero-filled
+    /// memory: zero basis vectors and intervals, not orthogonal. Upstream's curve cache
+    /// spans live in `smos_Calloc` blocks (`SmMemBlockMgr::GetNewElement`), so a
+    /// span's box starts so until `CalculateBoundingBox` sets its basis.
+    #[must_use]
+    pub const fn zero_filled() -> Self {
+        Self {
+            orthogonal_basis: false,
+            basis: [Vec3::ZERO, Vec3::ZERO, Vec3::ZERO],
+            intervals: [
+                Extent1d::from_raw(0.0, 0.0),
+                Extent1d::from_raw(0.0, 0.0),
+                Extent1d::from_raw(0.0, 0.0),
+            ],
+        }
+    }
+
     /// The header constructor `SmPseudoBox(xDir, yDir, zDir, xIvl, yIvl, zIvl)`:
     /// [`PseudoBox::set_basis`] (whose failure leaves the basis uninitialised,
     /// [`Vec3::UNDEF`]) then [`PseudoBox::set_intervals`].
@@ -702,7 +719,10 @@ impl PseudoBox {
         points.iter().zip(vectors).any(|(pnt, vec)| {
             // Calculate D of plane equation, A, B, C are in aVectors
             let d = -pnt.dot(*vec);
-            corners.iter().all(|c| vec.dot(*c) + d >= EFF_ZERO)
+            // `!any(< EFF_ZERO)`, as upstream's loop: a NaN corner (a perspective eye on the
+            // view plane projects the boxes to NaN) is not below the limit, so the plane
+            // separates. `all(>= EFF_ZERO)` says the opposite for NaN (#59).
+            !corners.iter().any(|c| vec.dot(*c) + d < EFF_ZERO)
         })
     }
 
@@ -1048,8 +1068,16 @@ impl PseudoBox {
                     // orthogonality flag is not refreshed)
                     Ok(axes) => out.basis = axes,
                     Err(e) => {
-                        // upstream's in-place Unitize of the zero x axis
-                        out.basis[0] = Vec3::Z;
+                        // keep what upstream wrote into m_aBasis before failing
+                        for (slot, w) in out
+                            .basis
+                            .iter_mut()
+                            .zip(basis[0].unit_ortho_vectors_on_failure())
+                        {
+                            if let Some(w) = w {
+                                *slot = w;
+                            }
+                        }
                         return Err(e);
                     }
                 }

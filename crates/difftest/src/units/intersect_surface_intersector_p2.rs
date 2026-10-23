@@ -40,7 +40,7 @@ use solidcore::kernel::Kernel;
 use solidcore::math::UNDEF_DOUBLE;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::b_spline_surface::BSplineSurface;
-use solidcore::nurbs::math::CPoint;
+use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::nurbs::srf_basic::Surface as NurbSurface;
 use solidcore::surface::curve_bounded_surface::CurveBoundedSurface;
 use solidcore::surface::plane::Plane;
@@ -62,8 +62,6 @@ pub struct Runner;
 fn harness(msg: impl Into<String>) -> HarnessError {
     HarnessError::new(msg)
 }
-
-const NOW: f64 = -f64::MAX;
 
 // ---- inputs ---------------------------------------------------------------------------
 
@@ -408,7 +406,7 @@ fn rust_surface(s: &SurfaceIn) -> Result<Surface, Fail> {
             Vec::new(),
             Vec::new(),
             true,
-        ))),
+        ).map_err(|e| HarnessError::new(e.to_string()))?)),
     }
 }
 
@@ -623,7 +621,7 @@ fn run_op(
                 let r = if matches!(op, OpIn::AddCurve { .. }) {
                     si.add_point_to_curve(id(*i))
                 } else {
-                    si.add_start_point(id(*i))
+                    si.add_start_point(k, id(*i))
                 };
                 st(o, r)?;
             }
@@ -648,7 +646,7 @@ fn run_op(
             }
         }
         OpIn::Flush => {
-            if st(o, si.flush_curve(outs))?.is_some() {
+            if st(o, si.flush_curve(k, outs))?.is_some() {
                 put_outs(o, outs, curves.len())?;
             }
         }
@@ -659,7 +657,7 @@ fn run_op(
                 .map(|&j| pt_of(si, j.index()))
                 .collect::<Result<Vec<_>, _>>()?;
             let refs: Vec<&TsectPnt> = starts.iter().collect();
-            let r = is_point_unique(v3(*p), &refs, &outs.curves_3d, *tol);
+            let r = is_point_unique(k, v3(*p), &refs, &outs.curves_3d, *tol);
             if let Some(f) = st(o, r)? {
                 o.push(b(f));
             }
@@ -697,7 +695,7 @@ fn run_op(
                 surface_orientations: l.orientations,
             };
             let r = si.compute_law_point_values(
-                l.param,
+                k, l.param,
                 p2(l.uv0),
                 p2(l.uv1),
                 l.delta,
@@ -753,7 +751,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
         .map(rust_curve)
         .collect::<Result<Vec<_>, _>>()?;
     let mut o = Vec::new();
-    let mut si = match SurfaceIntersector::new(&a, &ext(i.dom1), b_ref, &ext(i.dom2), i.fillet) {
+    let mut si = match SurfaceIntersector::new(&k, &a, &ext(i.dom1), b_ref, &ext(i.dom2), i.fillet) {
         Ok(si) => si,
         Err(e) => {
             if let Some(d) = Output::unported(&e) {

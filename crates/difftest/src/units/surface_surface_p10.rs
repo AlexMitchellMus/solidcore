@@ -51,7 +51,7 @@ use solidcore::geom::vector3d::Vec3;
 use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::b_spline_surface::BSplineSurface;
-use solidcore::nurbs::math::CPoint;
+use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::nurbs::srf_basic::Surface as NurbSurface;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::p10::{global_curve_intersect_combine_solutions, CombineContext};
@@ -69,9 +69,6 @@ use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 
 /// Generated cases per run, whatever `--seeds` says (it can only raise this).
 pub const MIN_GENERATED: usize = 800;
-
-/// `NL_NOW`: the weight of a non-rational control point.
-const NOW: f64 = -f64::MAX;
 
 /// `surface.surface_p10` runner.
 pub struct Runner;
@@ -594,7 +591,7 @@ fn rust_lsi(
     cache.process_boundary_curves = flags.boundary;
     let tree = cache.tree().ok_or_else(|| harness("surface tree"))?;
     let mut solver = LsiGlobalSolver::new(
-        tree,
+        k, tree,
         Some(cache.surface()),
         ext(dom),
         v3(point),
@@ -609,12 +606,12 @@ fn rust_lsi(
         .base
         .set_solution_requested(SolutionRequested::All);
     solver.surface_cache = Some(&cache);
-    solver.kernel = Some(k);
+    solver.kernel = k;
     let mut branch: Branch = Default::default();
     if let Some(slot) = branch.first_mut() {
         *slot = Some(NodeId(node));
     }
-    let r = solver.local_solve_branch(&branch).map(|more| {
+    let r = solver.local_solve_branch(k, &branch).map(|more| {
         let mut o = vec![
             0.0,
             if more { 1.0 } else { 0.0 },
