@@ -1544,8 +1544,8 @@ pub fn set_xsect_edge_through_point_in(
     let mut curve_interval = edge::curve(b, e)?
         .ok_or_else(|| SolidError::invalid_input(OP, "edge without curve"))?
         .natural_interval();
-    let common_curve_edge_interval = edge_interval.min() == curve_interval.min()
-        && edge_interval.max() == curve_interval.max();
+    let common_curve_edge_interval =
+        edge_interval.min() == curve_interval.min() && edge_interval.max() == curve_interval.max();
 
     // check state - given or found valid pointers to edge, curve, points, and surfaces
     if surfaces.len() < 2 || uv_points.len() != surfaces.len() {
@@ -1667,7 +1667,10 @@ pub fn set_xsect_edge_through_point_in(
                 .as_mut()
                 .ok_or_else(|| SolidError::invalid_input(OP, "edge without curve"))?;
             let Some(bs) = bspline_part_mut(src_curve) else {
-                return Err(SolidError::invalid_input(OP, "edge curve is not a B-spline"));
+                return Err(SolidError::invalid_input(
+                    OP,
+                    "edge curve is not a B-spline",
+                ));
             };
             bs.set_intersection_curve_through_point(
                 k,
@@ -1722,7 +1725,14 @@ pub fn set_xsect_edge_through_point_in(
 
         // GWC:CHANGE_SSSUVTRIMCURVE - remove obsolete UVTrimCurves from edge->Edgeuses
         for eu in edge::edgeuses(b, e, None, None)? {
-            ignored(set_uv_trim_curve(b, eu, UvTrimCurveArg::Null, 0.0, true, None))?;
+            ignored(set_uv_trim_curve(
+                b,
+                eu,
+                UvTrimCurveArg::Null,
+                0.0,
+                true,
+                None,
+            ))?;
         }
 
         // inform the public that the curves were updated
@@ -1964,21 +1974,26 @@ pub fn get_cci_geometry_in<'g, O: ClassObject, G: ClassGeometry<O>>(
     if let Some(s) = surface1 {
         out.surfaces.push(s);
         out.edgeuses.push(None);
-        out.uv_curves.push(resolve_curve(classification.uv_curve1())?);
+        out.uv_curves
+            .push(resolve_curve(classification.uv_curve1())?);
     }
     if let Some(s) = surface2 {
         out.surfaces.push(s);
         out.edgeuses.push(None);
-        out.uv_curves.push(resolve_curve(classification.uv_curve2())?);
+        out.uv_curves
+            .push(resolve_curve(classification.uv_curve2())?);
     }
 
     // get Faces connected to Edge and Edge->BooleanMate
     let (eb, e) = cci_edge_of(geometry, edge)?;
-    let mut faces: Vec<(&'g crate::topology::Brep, crate::topology::EdgeId, crate::topology::FaceId)> =
-        crate::topology::edge::faces(eb, e, None)?
-            .into_iter()
-            .map(|f| (eb, e, f))
-            .collect();
+    let mut faces: Vec<(
+        &'g crate::topology::Brep,
+        crate::topology::EdgeId,
+        crate::topology::FaceId,
+    )> = crate::topology::edge::faces(eb, e, None)?
+        .into_iter()
+        .map(|f| (eb, e, f))
+        .collect();
     let edge_face_count = faces.len();
 
     // When curve classification is being done as part of a boolean operation
