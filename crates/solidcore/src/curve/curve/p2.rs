@@ -191,7 +191,6 @@ use crate::geom::global_solver::{
 };
 use crate::geom::object::{NotifyOperation, ObjectRef};
 use crate::geom::solution_array::{ParameterDomains, Solution, SolutionObject};
-
 use crate::geom::tree::{AuxDataType, NodeData, Tree, TreeNode};
 use crate::geom::vector2d::Point2;
 use crate::geom::vector3d::{acos, Point3, Vec3};
