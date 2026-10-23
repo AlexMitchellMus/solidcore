@@ -170,7 +170,12 @@ fn validate_op(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
         }
         Op::LoadSolver => {
             let scale=rd.value()?;
-            if scale<=0.0 { return Err(bad("loader scale must be positive")); }
+            if [scale, 2.0 * scale, 3.0 * scale]
+                .iter()
+                .any(|dimension| !(1e-3..=1e6).contains(dimension))
+            {
+                return Err(bad("loader box dimension out of range"));
+            }
             rd.flag()?;
             let count=rd.index(6)?;
             let mut specs=Vec::new();
@@ -235,4 +240,19 @@ pub fn eval(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
             )
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate, Op};
+
+    #[test]
+    fn loader_dimensions_match_the_shared_box_exporter() {
+        for scale in [1e-3, 1.0, 1e6 / 3.0] {
+            assert!(validate(Op::LoadSolver, &[scale, 0.0, 0.0, 0.0, 0.0]).is_ok());
+        }
+        for scale in [0.0, 1e-4, 1e6 / 2.0, 1e6, f64::INFINITY, f64::NAN] {
+            assert!(validate(Op::LoadSolver, &[scale, 0.0, 0.0, 0.0, 0.0]).is_err());
+        }
+    }
 }
