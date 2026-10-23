@@ -1231,6 +1231,12 @@ impl TopologyObjects<H> for ArenaPair<'_> {
     fn face_tolerance(&self, face: H) -> crate::Result<f64> {
         fp2::tolerance(self.brep_r(face)?, fid(face))
     }
+    fn face_entity(&self, face: H) -> Option<(&Brep, FaceId)> {
+        if face.kind != K_FACE {
+            return None;
+        }
+        Some((self.brep_r(face).ok()?, fid(face)))
+    }
     fn surface_owner(&self, surface: H) -> crate::Result<Option<H>> {
         self.surface_face(surface)
     }
