@@ -52,7 +52,7 @@ use crate::intersect::point_class::{PointClassType, PointClassification};
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use crate::query::brep::{self as qbrep, BoundingBoxOptions, BrepQuery};
+use crate::query::brep::{self as qbrep, BoundingBoxOptions, BrepIdentity, BrepQuery};
 use crate::topology::brep::p4;
 use crate::topology::edgeuse::p1 as eu;
 use crate::topology::shell;
@@ -295,7 +295,7 @@ pub fn find_brep_region_of_other_face(
         // (the classification's construction tolerance, the edge's, is not read)
         let Some(pc) = ignore_failure(classify_point_editing_disabled(
             k,
-            &BrepQuery::default(),
+            &BrepQuery::new(BrepIdentity::of_brep(brep)),
             brep,
             point,
             0.0,
