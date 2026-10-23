@@ -16880,3 +16880,11 @@ step in the face UV-trim path on the B-spline cylinder fixture.
 
 `ints.topology.len: cpp=278 rust=274` (fixture `SmMerge.cpp:4367`, closed loop
 orientation from tangents): the merged topology differs.
+- `Surface::base_global_line_intersect` built its own cache (no caller cache) without
+  `GetTree()`: a cache made while a boolean operation delays its tree (the primitive
+  sweeps set `doing_boolean`) had no tree and the solve returned `SM_ERR_NULL_POINTER`
+  where upstream's `pSurfaceCache->GetTree()` builds it. The fresh cache now goes through
+  `held_cache` like the caller's, so the B-rep ray fire of a sphere's region split
+  reaches the face-bound tree build (deferred, `surface.trim_srf_cache`) instead of
+  failing, and `sweep.api_brep` `rotational_sweep_semicircle_sphere` no longer keeps a
+  half-built analytic face (it defers rather than mismatch).
