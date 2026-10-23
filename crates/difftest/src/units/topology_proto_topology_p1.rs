@@ -1671,7 +1671,10 @@ impl ProtoBrep<H> for Pool {
     }
     fn face_trim_uv_domain(&mut self, k: &Kernel, face: H) -> solidcore::Result<Extent2d> {
         if !self.live_h(face) {
-            return Err(SolidError::invalid_input("difftest::proto::face_trim_uv_domain", "stale face handle"));
+            return Err(SolidError::invalid_input(
+                "difftest::proto::face_trim_uv_domain",
+                "stale face handle",
+            ));
         }
         let owned = self
             .owned_faces
@@ -1716,7 +1719,10 @@ impl ProtoBrep<H> for Pool {
         source_tolerance: f64,
     ) -> solidcore::Result<PointClassType> {
         if !self.live_h(face) {
-            return Err(SolidError::invalid_input("difftest::proto::face_point_classify_uv", "stale face handle"));
+            return Err(SolidError::invalid_input(
+                "difftest::proto::face_point_classify_uv",
+                "stale face handle",
+            ));
         }
         let owned = self
             .owned_faces
@@ -2551,7 +2557,11 @@ fn run_proto(
                 ))?
                 .map_err(|e| harness(e.to_string()))?;
                 let handle = H(pool.objs.len(), ClassObjectKind::Face);
-                pool.objs[*surface] = PObj::OwnedSurface(handle);
+                *pool
+                    .objs
+                    .get_mut(*surface)
+                    .ok_or_else(|| harness("missing consumed surface slot"))? =
+                    PObj::OwnedSurface(handle);
                 pool.owned_faces.push(OwnedFace {
                     handle,
                     body: body_index,
@@ -2671,8 +2681,22 @@ fn run_proto(
     let ti_tol = approx_tol;
     let mgr = match st(ProtoTopologyManager::new(
         &k,
-        (brep1, &pool.breps[0].1),
-        (brep2, &pool.breps[1].1),
+        (
+            brep1,
+            &pool
+                .breps
+                .first()
+                .ok_or_else(|| harness("missing first operand body"))?
+                .1,
+        ),
+        (
+            brep2,
+            &pool
+                .breps
+                .get(1)
+                .ok_or_else(|| harness("missing second operand body"))?
+                .1,
+        ),
         ti,
         ti_tol,
         capture,
