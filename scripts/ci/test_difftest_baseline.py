@@ -199,14 +199,22 @@ class BaselineTests(unittest.TestCase):
                 return {"items": [1] * 100 if path.endswith("&page=1") else [2]}
         api = API(); self.assertEqual(len(api.pages("path", "items")), 101)
         self.assertEqual(len(api.calls), 2)
-        class Failure(b.GitHub):
-            def json(self, path): raise b.BaselineError("HTTP 403/404/410")
-        with self.assertRaises(b.BaselineError): b.fetch_exact(Failure(), BASE, 0)
+        import subprocess
+        from unittest.mock import patch
+        for code in [403, 404, 410]:
+            with self.subTest(status=code), patch("subprocess.check_output", side_effect=subprocess.CalledProcessError(1, ["gh"], stderr=f"HTTP {code}")), self.assertRaises(b.BaselineError):
+                b.fetch_exact(b.GitHub(), BASE, 0)
+        with patch("subprocess.check_output", side_effect=subprocess.TimeoutExpired(["gh"], 120)), self.assertRaises(b.BaselineError):
+            b.GitHub().raw("repos/fixed/path")
         class Pending(b.GitHub):
             def json(self, path):
                 if path.endswith("ci.yml"): return dict(id=b.WORKFLOW_ID, path=b.WORKFLOW_PATH)
                 return {"workflow_runs": [dict(run_metadata(), status="in_progress", conclusion=None)]}
         with self.assertRaises(b.BaselineError): b.fetch_exact(Pending(), BASE, 0)
+        with patch("time.monotonic", side_effect=[0, 0, 0, 2]), patch("time.sleep") as sleep, self.assertRaises(b.BaselineError):
+            b.fetch_exact(Pending(), BASE, 1)
+        sleep.assert_called_once_with(1)
+
 
 
 if __name__ == "__main__": unittest.main()
