@@ -44,7 +44,6 @@ use super::p2::refine_cci_to_surfaces_in;
 use super::{
     make_consistent_classifications, src_zone_tol_3d_of, CurveClassification, CurveInterval,
 };
-use crate::EntityRef;
 use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::p2::{Curve, CurveKind};
@@ -63,6 +62,7 @@ use crate::kernel::Kernel;
 use crate::math::{Point3, BIG_DOUBLE, EFF_ZERO, PI};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::surface::surface::{Surface, SurfaceKind};
+use crate::EntityRef;
 
 #[derive(Clone, Copy, PartialEq)]
 struct NoObject;

@@ -951,10 +951,10 @@ pub fn refine_cci_to_surfaces_in<O: ClassObject, S: Copy>(
     let no_work_xsect_tol_3d = edge_zone_tol_3d / 2000.0; // usually about 1e-8 = ApproxTol/1000 (2 gets ApproxTol)
 
     // (the statuses of both evaluations are ignored upstream)
-    let src_curve_pt = ignored(src_curve.evaluate_point(k, solution.start.param(0)?))?
-        .unwrap_or(Vec3::UNDEF);
-    let edge_curve_pt = ignored(edge_curve.evaluate_point(k, solution.start.param(1)?))?
-        .unwrap_or(Vec3::UNDEF);
+    let src_curve_pt =
+        ignored(src_curve.evaluate_point(k, solution.start.param(0)?))?.unwrap_or(Vec3::UNDEF);
+    let edge_curve_pt =
+        ignored(edge_curve.evaluate_point(k, solution.start.param(1)?))?.unwrap_or(Vec3::UNDEF);
 
     // get cci connected geometry and topology (sm_GetCCIGeometry always succeeds)
     let cci = super::p1::get_cci_geometry_in(geometry, classification, edge)?;
