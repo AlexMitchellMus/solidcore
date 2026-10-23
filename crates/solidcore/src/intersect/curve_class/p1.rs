@@ -71,6 +71,7 @@
 //! | [`get_cci_geometry`], [`CciGeometry`]                  | `sm_GetCCIGeometry` (static)                     |
 //! | [`get_cci_geometry_in`], [`CciGeometryRefs`]           | `sm_GetCCIGeometry` (static), through an adapter |
 //! | [`apply_point_solution`], [`ApplyPointSolutionInput`], [`ApplyPointSolution`] | `sm_ApplyPointSolution` (static) |
+//! | [`apply_point_solution_in`], [`ApplyPointSolutionEdges`] | `sm_ApplyPointSolution` with `pEdge`/`pEMate` |
 //! | [`make_consistent_classifications`]                    | `sm_MakeConsistentClassifications` (static)      |
 //! | [`get_curve_curve_angle`]                              | `sm_GetCurveCurveAngle` (static)                 |
 //! | [`cull_or_refine_cci_in_3d`]                           | `sm_CullOrRefineCCIIn3d` (static)                |
@@ -2155,6 +2156,72 @@ pub fn apply_point_solution<O, S: Copy>(
     solution: &mut Solution<S>,
     sss_point: Point3,
 ) -> Result<ApplyPointSolution> {
+    if input.edge.is_some() {
+        // this entry point has no B-rep for the edge ([`apply_point_solution_in`] has)
+        // UNPORTED(topology.edge): SmEdge::GetCurve
+        return Err(SolidError::unported("SmEdge::GetCurve", "topology.edge"));
+    }
+    apply_point_solution_impl(
+        k,
+        src_curve,
+        input,
+        input.emate.is_some(),
+        None,
+        solution,
+        sss_point,
+    )
+}
+
+/// The edges [`apply_point_solution_in`] moves through the surf/surf/surf point:
+/// `pEdge` in `brep` and its Boolean mate `pEMate`.
+#[derive(Debug)]
+pub struct ApplyPointSolutionEdges<'b> {
+    /// The B-rep of `pEdge`.
+    pub brep: &'b mut crate::topology::Brep,
+    /// `pEdge`.
+    pub edge: crate::topology::EdgeId,
+    /// `pEMate` and its B-rep (`None`: the edge's own B-rep), `None` for no mate.
+    pub mate: Option<(
+        Option<&'b mut crate::topology::Brep>,
+        crate::topology::EdgeId,
+    )>,
+}
+
+/// [`apply_point_solution`] over B-rep edges (`sm_ApplyPointSolution` with `pEdge`):
+/// after the classification curve, the edge (and then its mate, `edges.mate`) is
+/// made to pass through the surf/surf/surf point with
+/// [`set_xsect_edge_through_point_in`] over the edge surfaces given, starting from the
+/// solution's second parameter; that parameter moves to the edge's, and the mate's
+/// guess is the edge parameter mapped through the edge and mate intervals. The edge
+/// handles of `input` are ignored; `edges` names them. `input`'s surfaces must not
+/// borrow from the B-reps (copy face surfaces first).
+///
+/// # Errors
+///
+/// Those of [`apply_point_solution`] (without its edge deferral) and of
+/// [`set_xsect_edge_through_point_in`].
+pub fn apply_point_solution_in<O, S: Copy>(
+    k: &Kernel,
+    src_curve: Option<&mut Curve>,
+    input: &ApplyPointSolutionInput<'_, O>,
+    edges: Option<ApplyPointSolutionEdges<'_>>,
+    solution: &mut Solution<S>,
+    sss_point: Point3,
+) -> Result<ApplyPointSolution> {
+    let has_edge = edges.is_some();
+    apply_point_solution_impl(k, src_curve, input, has_edge, edges, solution, sss_point)
+}
+
+/// `sm_ApplyPointSolution`; `has_edge` is `pEdge || pEMate`.
+fn apply_point_solution_impl<O, S: Copy>(
+    k: &Kernel,
+    src_curve: Option<&mut Curve>,
+    input: &ApplyPointSolutionInput<'_, O>,
+    has_edge: bool,
+    edges: Option<ApplyPointSolutionEdges<'_>>,
+    solution: &mut Solution<S>,
+    sss_point: Point3,
+) -> Result<ApplyPointSolution> {
     // init output
     let mut out = ApplyPointSolution {
         success: false,
@@ -2166,12 +2233,9 @@ pub fn apply_point_solution<O, S: Copy>(
         deviation: 0.0,
     };
 
-    // locals
-    if input.edge.is_some() {
-        // UNPORTED(topology.edge): SmEdge::GetCurve
-        return Err(SolidError::unported("SmEdge::GetCurve", "topology.edge"));
-    }
+    // locals (pEdge->GetCurve() only feeds upstream's gwcUpdateEdges == FALSE branch)
     let src_zone_tol_3d = input.src_zone_tol_3d;
+    let mut t_deviation = 0.0;
 
     // let rSSSPoint = pClassCurveSurface1 evaluation at the intersection point
     let has_src = src_curve.is_some();
@@ -2179,10 +2243,7 @@ pub fn apply_point_solution<O, S: Copy>(
         Some(s.evaluate_point(k, uv))
     } else if let (true, Some((s, uv))) = (has_src, input.class_curve_surface2) {
         Some(s.evaluate_point(k, uv))
-    } else if let (true, Some((s, uv))) = (
-        input.edge.is_some() || input.emate.is_some(),
-        input.edge_curve_surface1,
-    ) {
+    } else if let (true, Some((s, uv))) = (has_edge, input.edge_curve_surface1) {
         Some(s.evaluate_point(k, uv))
     } else {
         None
@@ -2231,10 +2292,87 @@ pub fn apply_point_solution<O, S: Copy>(
         *solution.start.param_mut(0)? = r.param;
 
         // increase deviation to include distance to this curve from rSSSPoint
-        out.deviation = max2(out.deviation, r.deviation.unwrap_or(0.0));
+        if let Some(d) = r.deviation {
+            t_deviation = d;
+        }
+        out.deviation = max2(out.deviation, t_deviation);
     }
 
-    // (pEdge: handled above)
+    // set closest point on pEdge to surf/surf/surf intersection point
+    if let Some(ApplyPointSolutionEdges { brep, edge, mate }) = edges {
+        // set arguments for sm_SetXSectEdgeThroughPoint() call.
+        let param = solution.start.param(1)?;
+        let mut surfaces: Vec<&Surface> = Vec::new();
+        let mut uv_points: Vec<Vec2> = Vec::new();
+        if let Some((s, uv)) = input.edge_curve_surface1 {
+            surfaces.push(s);
+            uv_points.push(uv);
+        }
+        if let Some((s, uv)) = input.edge_curve_surface2 {
+            surfaces.push(s);
+            uv_points.push(uv);
+        }
+
+        // fix the pEdge and its UVTrimCurves - edge is only modified if it is piecewise C0
+        let r = set_xsect_edge_through_point_in(
+            k,
+            brep,
+            edge,
+            out.sss_point,
+            &surfaces,
+            &uv_points,
+            param,
+        )?;
+        out.modified_edge_curve = r.modified_curve;
+        if let Some(d) = r.deviation {
+            t_deviation = d;
+        }
+
+        // move pEdge parameter in rSolution to surf/surf/surf xsect point
+        *solution.start.param_mut(1)? = r.param;
+
+        // increase deviation to include distance to this edge from rSSSPoint
+        out.deviation = max2(out.deviation, t_deviation);
+
+        // inform the public - remove obsolete UVTrimCurves
+        if out.modified_edge_curve {
+            out.sss_point_flag = true;
+        }
+
+        // when there is an associated pEMate
+        if let Some((mate_brep, mate_edge)) = mate {
+            // use edge's solution to get a good guess on the mate (Inversion leaves
+            // SM_UNDEF_DOUBLE for a degenerate interval)
+            let normalized = crate::topology::edge::interval(brep, edge)?
+                .inversion(r.param)
+                .parameter
+                .unwrap_or(crate::math::UNDEF_DOUBLE);
+            let mate_brep = match mate_brep {
+                Some(mb) => mb,
+                None => brep,
+            };
+            let param1 =
+                crate::topology::edge::interval(mate_brep, mate_edge)?.evaluate(normalized);
+
+            // fix the pEMate and its UVTrimCurves
+            let r1 = set_xsect_edge_through_point_in(
+                k,
+                mate_brep,
+                mate_edge,
+                out.sss_point,
+                &surfaces,
+                &uv_points,
+                param1,
+            )?;
+            out.modified_mate_curve = r1.modified_curve;
+            if let Some(d) = r1.deviation {
+                t_deviation = d;
+            }
+
+            // increase deviation to include distance to this edge from rSSSPoint
+            out.deviation = max2(out.deviation, t_deviation);
+        }
+    }
 
     // all done
     out.success = true;
