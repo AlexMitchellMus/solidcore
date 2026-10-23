@@ -1,4 +1,4 @@
-//! Diagnostic-only native test for review_cases.json#72, outside the corpus.
+//! Diagnostic-only native test for `review_cases.json#72`, outside the corpus.
 //!
 //! Tags 1..=4 copy actual call arguments/results without extra evaluations.
 //! Per-side bit identity against the untouched runner is the observer safety gate.
