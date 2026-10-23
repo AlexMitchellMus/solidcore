@@ -1274,25 +1274,25 @@ mod tests {
     }
 
     /// The 17 baseline cases (main before the fallback) that deferred on
-    /// `SmFace::GetSurface`: generated name and seed from the baseline report.
-    const MIXED_TOPOLOGY_CASES: [(&str, u64); 17] = [
-        ("gen0009", 128_163_503_876_321_781_80),
-        ("gen0036", 128_163_503_876_321_782_07),
-        ("gen0039", 128_163_503_876_321_782_10),
-        ("gen0205", 128_163_503_876_321_783_76),
-        ("gen0212", 128_163_503_876_321_783_83),
-        ("gen0519", 128_163_503_876_321_786_90),
-        ("gen0667", 128_163_503_876_321_788_38),
-        ("gen0700", 128_163_503_876_321_788_71),
-        ("gen0722", 128_163_503_876_321_788_93),
-        ("gen0748", 128_163_503_876_321_789_19),
-        ("gen0919", 128_163_503_876_321_790_90),
-        ("gen0971", 128_163_503_876_321_791_42),
-        ("gen0973", 128_163_503_876_321_791_44),
-        ("gen1022", 128_163_503_876_321_791_93),
-        ("gen1025", 128_163_503_876_321_791_96),
-        ("gen1383", 128_163_503_876_321_795_54),
-        ("gen1415", 128_163_503_876_321_795_86),
+    /// `SmFace::GetSurface`: generated name and case index from the baseline report.
+    const MIXED_TOPOLOGY_CASES: [(&str, usize); 17] = [
+        ("gen0009", 9),
+        ("gen0036", 36),
+        ("gen0039", 39),
+        ("gen0205", 205),
+        ("gen0212", 212),
+        ("gen0519", 519),
+        ("gen0667", 667),
+        ("gen0700", 700),
+        ("gen0722", 722),
+        ("gen0748", 748),
+        ("gen0919", 919),
+        ("gen0971", 971),
+        ("gen0973", 973),
+        ("gen1022", 1022),
+        ("gen1025", 1025),
+        ("gen1383", 1383),
+        ("gen1415", 1415),
     ];
 
     /// A classification face may stay on the base pool's bare face while a real one-face
@@ -1300,8 +1300,8 @@ mod tests {
     /// surface, so `GetMinUV` / `GetMaxUV` must compare real values through the bare fallback.
     #[test]
     fn baseline_mixed_topology_cases_compare() {
-        for (name, seed) in MIXED_TOPOLOGY_CASES {
-            let mut rng = Rng::new(seed);
+        for (name, index) in MIXED_TOPOLOGY_CASES {
+            let mut rng = Rng::new(CaseContext::seed_for("intersect.curve_class_p2", index));
             let v = Runner
                 .generate(&mut rng)
                 .unwrap_or_else(|| panic!("{name}: generation rejected"));
