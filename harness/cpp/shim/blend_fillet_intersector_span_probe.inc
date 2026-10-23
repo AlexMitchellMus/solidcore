@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Unit-local observations for rv_next_clipped_step. Never included in the pinned
-// reference. Virtual overrides only copy arguments/results and delegate once;
-// the supplemental span reconstruction starts AFTER ComputeNextPoint returns.
-#include <SmCrvOnSurf.h>
-#include <SmHermiteCurve.h>
+// reference. Virtual overrides only copy arguments/results and delegate once.
+// No supplemental geometry evaluations or reconstruction are performed.
 
 namespace
 {
@@ -44,7 +42,6 @@ struct ProbeCra : IxCra
 struct ProbePeek : Peek
 {
     ProbeCra& solver;
-    double observed_step = UNSET;
     ProbePeek(const SmSurface& a, const SmExtent2d& da, const SmSurface& b,
               const SmExtent2d& db, ProbeCra& fs) : Peek(a, da, b, db, fs), solver(fs) {}
 
@@ -55,8 +52,7 @@ struct ProbePeek : Peek
         // non-virtual implementation has already returned, including rdStep.
         if (previous == NULL || step == NULL)
             throw Bad();
-        observed_step = *step;
-        std::vector<double> before{observed_step};
+        std::vector<double> before{*step};
         put_point(before, point);
         probe_event(solver.events, 3, before);
         SmStatus result = SmFilletIntersector::ComputePointValues(uv, point, previous, step);
@@ -67,67 +63,6 @@ struct ProbePeek : Peek
     }
 };
 
-// Supplemental replay of SmFilletIntersector.cpp:652-713, 774-839. The
-// concrete Hermite/map evaluators are native, but these are NOT its local objects
-// or cache state at their original evaluation times. Emit the residual so the
-// test can report whether reconstruction reproduces the genuine operation.
-void probe_span(std::vector<double>& events, SmSurface& a, SmSurface& b,
-                const SmExtent2d& d0, const SmExtent2d& d1,
-                const SmTsectPnt& current, const SmTsectPnt& next, double step)
-{
-    SmHermiteCurve uv0(current.m_vUVCurvePV[0][0], current.m_vUVCurvePV[0][1]*step,
-                       next.m_vUVCurvePV[0][0], next.m_vUVCurvePV[0][1]*step, 2);
-    SmHermiteCurve uv1(current.m_vUVCurvePV[1][0], current.m_vUVCurvePV[1][1]*step,
-                       next.m_vUVCurvePV[1][0], next.m_vUVCurvePV[1][1]*step, 2);
-    uv0.SetContext(NULL);
-    uv1.SetContext(NULL);
-    SmCrvOnSurf map0(uv0, a, &d0, 0, NULL);
-    SmCrvOnSurf map1(uv1, b, &d1, 0, NULL);
-    SmPoint3d p0[2], p1[2], q0[2], q1[2];
-    if (map0.Evaluate(map0.GetNaturalInterval().GetMin(), 1, TRUE, p0) != SM_SUCCESS ||
-        map0.Evaluate(map0.GetNaturalInterval().GetMax(), 1, TRUE, p1) != SM_SUCCESS)
-        throw Bad();
-    SmHermiteCurve rail0(p0[0], p0[1], p1[0], p1[1]);
-    rail0.SetContext(NULL);
-    std::vector<double> ends0;
-    for (const SmPoint3d& p : {p0[0], p0[1], p1[0], p1[1]}) put_vec(ends0, p);
-    probe_event(events, 11, ends0);
-    if (map1.Evaluate(map1.GetNaturalInterval().GetMin(), 1, TRUE, q0) != SM_SUCCESS ||
-        map1.Evaluate(map1.GetNaturalInterval().GetMax(), 1, TRUE, q1) != SM_SUCCESS)
-        throw Bad();
-    SmHermiteCurve rail1(q0[0], q0[1], q1[0], q1[1]);
-    rail1.SetContext(NULL);
-    std::vector<double> ends1;
-    for (const SmPoint3d& p : {q0[0], q0[1], q1[0], q1[1]}) put_vec(ends1, p);
-    probe_event(events, 12, ends1);
-    const double params[] = {0.5, 0.17, 0.83, 0.33, 0.67};
-    double maximum = 0.0;
-    for (int i = 0; i < 5; ++i)
-    {
-        SmPoint3d u0, u1, s0, s1, c0, c1;
-        const double t = params[i];
-        if (uv0.EvaluatePoint(t, u0) != SM_SUCCESS || uv1.EvaluatePoint(t, u1) != SM_SUCCESS)
-            throw Bad();
-        SmPoint2d v0 = d0.ClampPoint2d(SmPoint2d(u0.x, u0.y));
-        SmPoint2d v1 = d1.ClampPoint2d(SmPoint2d(u1.x, u1.y));
-        if (a.EvaluatePoint(v0, s0) != SM_SUCCESS || b.EvaluatePoint(v1, s1) != SM_SUCCESS ||
-            rail0.EvaluatePoint(t, c0) != SM_SUCCESS || rail1.EvaluatePoint(t, c1) != SM_SUCCESS)
-            throw Bad();
-        double ds0 = s0.DistanceBetweenSquared(c0);
-        double ds1 = s1.DistanceBetweenSquared(c1);
-        double distance = smos_Max(ds0, ds1);
-        if (distance > maximum) maximum = distance;
-        std::vector<double> sample{t};
-        put_vec(sample, u0); put_vec(sample, u1);
-        put_uv(sample, v0); put_uv(sample, v1);
-        put_vec(sample, s0); put_vec(sample, s1);
-        put_vec(sample, c0); put_vec(sample, c1);
-        put_vec(sample, s0-c0); put_vec(sample, s1-c1);
-        sample.insert(sample.end(), {ds0, ds1, distance, maximum});
-        probe_event(events, 20+i, sample);
-    }
-    probe_event(events, 30, {smos_Sqrt(maximum)});
-}
 } // namespace
 
 // Same validated program as the original entry point. This companion owns fresh
@@ -177,11 +112,6 @@ SC_EXPORT int32_t sc_blend_fillet_intersector_probe_next(const double* in, int64
             ProbePeek si(*a, d0, *b, d1, fs);
             si.set(ang, tol, false, dir);
             if (rd.idx(0, OP_LAST) != OP_NEXT) throw Bad();
-            // Peek at the validated point indices, but leave the reader for run_op.
-            Rd arguments = rd;
-            SmTsectPnt* current = pts.pt(arguments);
-            arguments.num();
-            SmTsectPnt* next = pts.pt(arguments);
             std::vector<double> original{(double)OP_NEXT};
             run_op(OP_NEXT, rd, pts, si, ctx, original);
             si.put_state(original, fs);
@@ -189,9 +119,6 @@ SC_EXPORT int32_t sc_blend_fillet_intersector_probe_next(const double* in, int64
             for (SmTsectPnt* point : pts.v) put_point(original, *point);
             result.push_back((double)original.size());
             result.insert(result.end(), original.begin(), original.end());
-            if (si.observed_step == UNSET) throw Bad();
-            // All extra evaluations occur after the original record is frozen.
-            probe_span(fs.events, *a, *b, d0, d1, *current, *next, si.observed_step);
             result.insert(result.end(), fs.events.begin(), fs.events.end());
             for (SmTsectPnt* point : pts.v) point->ReSet();
         }

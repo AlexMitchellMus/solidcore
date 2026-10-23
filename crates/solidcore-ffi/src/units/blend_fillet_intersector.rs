@@ -543,11 +543,11 @@ pub fn run(prog: &Program) -> Result<Vec<f64>, FfiError> {
 ///
 /// Calls the genuine C++ operation on fresh objects, with copy-only virtual-call
 /// observers. Its original flat record is returned first as `length, values...`,
-/// followed by `tag, length, values...` checkpoints. Tags 1/2 observe the plane
-/// solve, 3 observes the post-`StepSolve` point and rescaled step, and 4 observes
-/// `ComputePointValues` output. Tags 11/12, 20..=24 and 30 are **post-operation
-/// reconstruction**, not observations of the operation's internal span locals.
-/// No extra geometry evaluations occur before the genuine operation returns.
+/// followed by `tag, length, values...` actual-call observations only. Tags 1/2
+/// observe the plane solve (12/82 values), 3 observes the post-`StepSolve` point
+/// and rescaled step (81 values), and 4 observes `ComputePointValues` output
+/// (81 values). No supplemental geometry evaluations or reconstruction run.
+/// Internal intersection, Hermite and span calculations are not observed.
 /// This does not replace [`run`] or add comparison values to the corpus.
 ///
 /// # Errors

@@ -1,9 +1,8 @@
 //! Diagnostic-only native test for review_cases.json#72, outside the corpus.
 //!
 //! Tags 1..=4 copy actual call arguments/results without extra evaluations.
-//! Tags >=11 reconstruct the span AFTER the genuine operation has returned;
-//! they must never be described as observations of its internal Hermite objects.
 //! Per-side bit identity against the untouched runner is the observer safety gate.
+//! Internal intersection, Hermite and span calculations are not observed.
 
 use super::*;
 use solidcore::blend::fillet_custom_solver::{InitialValues, JacobianLoad};
@@ -14,11 +13,8 @@ use solidcore::blend::fillet_solver::p1::{
     FilletSolver, FilletSolverOps as SolverOps, FilletSolverType,
 };
 use solidcore::blend::fillet_solver::p3::StepSolveOutcome;
-use solidcore::curve::crv_on_surf::CrvOnSurf;
-use solidcore::curve::hermite_curve::HermiteCurve;
 use solidcore::geom::extent1d::ExtentNd;
 use solidcore::geom::matrix::Matrix;
-use solidcore::intersect::surface_intersector::p1::SrfIndex;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::topology::Brep;
 use solidcore::Result as KernelResult;
@@ -33,7 +29,6 @@ struct Event {
 struct Observed {
     inner: ConstantRadiusAssistedFs,
     events: Vec<Event>,
-    step: Option<f64>,
 }
 
 // All unobserved members delegate to the existing concrete solver. In particular,
@@ -171,7 +166,6 @@ impl IntersectorOps for Observed {
         flags.found_answer = out.found_good_point;
         flags.clipped = out.clipped;
         flags.boundary_hit = out.boundary_hit;
-        self.step = Some(*step);
         let mut values = vec![*step];
         put_point(&mut values, next);
         self.events.push(Event { tag: 3, values });
@@ -203,118 +197,6 @@ impl IntersectorOps for Observed {
         self.events.push(Event { tag: 4, values });
         result
     }
-}
-
-fn first_two(values: &[Vec3]) -> KernelResult<[Vec3; 2]> {
-    values
-        .get(..2)
-        .ok_or_else(|| probe_error("missing mapped endpoint derivatives"))?
-        .try_into()
-        .map_err(|_| probe_error("mapped endpoint derivative count"))
-}
-
-fn reconstruct_rail(
-    k: &Kernel,
-    uv: HermiteCurve,
-    surface: &Surface,
-    domain: Extent2d,
-    tag: u32,
-    events: &mut Vec<Event>,
-) -> KernelResult<HermiteCurve> {
-    let map = CrvOnSurf::new(
-        k,
-        Curve::from(uv),
-        surface.clone_for_evaluation()?,
-        Some(domain),
-        0,
-    )?;
-    let interval = map.natural_interval();
-    let start = map.evaluate(k, interval.min(), 1, true, true)?;
-    let end = map.evaluate(k, interval.max(), 1, true, true)?;
-    let [p0, d0] = first_two(&start)?;
-    let [p1, d1] = first_two(&end)?;
-    let mut values = Vec::new();
-    for p in [p0, d0, p1, d1] {
-        put_vec(&mut values, p);
-    }
-    events.push(Event { tag, values });
-    Ok(HermiteCurve::new(p0, d0, p1, d1, 3))
-}
-
-fn reconstruct_span(
-    k: &Kernel,
-    surfaces: [&Surface; 2],
-    domains: [Extent2d; 2],
-    current: &TsectPnt,
-    next: &TsectPnt,
-    step: f64,
-) -> KernelResult<Vec<Event>> {
-    let indices = [SrfIndex::First, SrfIndex::Second];
-    let uv = indices.map(|s| {
-        HermiteCurve::from_2d(
-            current.uv_pos(s),
-            current.uv_deriv(s) * step,
-            next.uv_pos(s),
-            next.uv_deriv(s) * step,
-            2,
-        )
-    });
-    let [uv0, uv1] = uv;
-    let [surface0, surface1] = surfaces;
-    let [domain0, domain1] = domains;
-    let mut events = Vec::new();
-    let rail0 = reconstruct_rail(k, uv0, surface0, domain0, 11, &mut events)?;
-    let rail1 = reconstruct_rail(k, uv1, surface1, domain1, 12, &mut events)?;
-    let rails = [rail0, rail1];
-    let mut maximum = 0.0;
-    for (i, t) in [0.5, 0.17, 0.83, 0.33, 0.67].into_iter().enumerate() {
-        let raw = uv.map(|c| c.evaluate_point(t));
-        let [raw0, raw1] = raw;
-        let clamped = [
-            domain0.clamp_point(Vec2::new(raw0.x, raw0.y)),
-            domain1.clamp_point(Vec2::new(raw1.x, raw1.y)),
-        ];
-        let [clamped0, clamped1] = clamped;
-        let points = [
-            surface0.evaluate_point(k, clamped0)?,
-            surface1.evaluate_point(k, clamped1)?,
-        ];
-        let curve_points = rails.map(|c| c.evaluate_point(t));
-        let [point0, point1] = points;
-        let [curve_point0, curve_point1] = curve_points;
-        let ds0 = point0.distance_squared(curve_point0);
-        let ds1 = point1.distance_squared(curve_point1);
-        let distance = solidcore::math::max2(ds0, ds1);
-        if distance > maximum {
-            maximum = distance;
-        }
-        let mut values = vec![t];
-        for p in raw {
-            put_vec(&mut values, p);
-        }
-        for p in clamped {
-            put_uv(&mut values, p);
-        }
-        for p in points {
-            put_vec(&mut values, p);
-        }
-        for p in curve_points {
-            put_vec(&mut values, p);
-        }
-        for (point, curve_point) in points.into_iter().zip(curve_points) {
-            put_vec(&mut values, point - curve_point);
-        }
-        values.extend([ds0, ds1, distance, maximum]);
-        events.push(Event {
-            tag: 20 + i as u32,
-            values,
-        });
-    }
-    events.push(Event {
-        tag: 30,
-        values: vec![solidcore::geom::vector3d::sqrt(maximum)],
-    });
-    Ok(events)
 }
 
 fn observed_rust(i: &Inputs) -> KernelResult<(Vec<f64>, Vec<Event>)> {
@@ -360,7 +242,6 @@ fn observed_rust(i: &Inputs) -> KernelResult<(Vec<f64>, Vec<Event>)> {
     let mut solver = Observed {
         inner,
         events: Vec::new(),
-        step: None,
     };
     let mut fi: Fi<'_> = FilletIntersector::new(&k, &a, &ext(i.dom1), bref, &ext(i.dom2), None)?;
     fi.base.base.this_ang_tol_rad = i.ang_tol;
@@ -382,7 +263,7 @@ fn observed_rust(i: &Inputs) -> KernelResult<(Vec<f64>, Vec<Event>)> {
     };
     if i.clipped {
         return Err(probe_error(
-            "reconstruction does not model finite-difference adjustment",
+            "probe requires Next without through-point clipping",
         ));
     }
     let out = fi.compute_next_point(&mut solver, &k, id(from), step, id(to))?;
@@ -426,18 +307,6 @@ fn observed_rust(i: &Inputs) -> KernelResult<(Vec<f64>, Vec<Event>)> {
     for p in si.points() {
         put_point(&mut record, p);
     }
-    // Freeze the genuine operation's record before any extra evaluations.
-    let reconstruction = reconstruct_span(
-        &k,
-        [&a, bref],
-        si.uv_domains,
-        si.point(id(from))?,
-        si.point(id(to))?,
-        solver
-            .step
-            .ok_or_else(|| probe_error("missing observed step"))?,
-    )?;
-    solver.events.extend(reconstruction);
     Ok((record, solver.events))
 }
 
@@ -492,9 +361,6 @@ fn label(tag: u32) -> KernelResult<&'static str> {
         2 => "observed.plane_output.status_found_point80",
         3 => "observed.step_output.rescaled_step_point80",
         4 => "observed.point_values_output.status_point80",
-        11 | 12 => "reconstruction.rail_endpoints.p0_d0_p1_d1",
-        20..=24 => "reconstruction.sample.t_rawuv_clampeduv_surface_rail_delta_dist2_max",
-        30 => "reconstruction.span_deviation",
         _ => return Err(probe_error("unknown checkpoint tag")),
     })
 }
@@ -525,15 +391,11 @@ fn difference(cpp: &Event, rust: &Event) -> KernelResult<Option<Value>> {
     })))
 }
 
-fn first_difference(cpp: &[Event], rust: &[Event], observed: bool) -> KernelResult<Option<Value>> {
+fn first_difference(cpp: &[Event], rust: &[Event]) -> KernelResult<Option<Value>> {
     if cpp.len() != rust.len() {
         return Err(probe_error("checkpoint counts differ"));
     }
     for (c, r) in cpp.iter().zip(rust) {
-        let selected = if observed { c.tag <= 4 } else { c.tag >= 11 };
-        if !selected {
-            continue;
-        }
         if let Some(difference) = difference(c, r)? {
             return Ok(Some(difference));
         }
@@ -568,20 +430,7 @@ fn original_clipped_step_checkpoint_evidence() {
         bits(&rust_record),
         "Rust observation changed original record"
     );
-    let expected = [
-        (1, 12),
-        (2, 82),
-        (3, 81),
-        (4, 81),
-        (11, 12),
-        (12, 12),
-        (20, 33),
-        (21, 33),
-        (22, 33),
-        (23, 33),
-        (24, 33),
-        (30, 1),
-    ];
+    let expected = [(1, 12), (2, 82), (3, 81), (4, 81)];
     for events in [&cpp_events, &rust_events] {
         assert_eq!(
             events
@@ -592,8 +441,7 @@ fn original_clipped_step_checkpoint_evidence() {
         );
         assert!(events.iter().flat_map(|e| &e.values).all(|v| v.is_finite()));
     }
-    let first_observed = first_difference(&cpp_events, &rust_events, true).unwrap();
-    let first_reconstructed = first_difference(&cpp_events, &rust_events, false).unwrap();
+    let first_observed = first_difference(&cpp_events, &rust_events).unwrap();
     // Direct stdout intentionally survives libtest's passing-test capture, so
     // canonical CI's existing native-feature test job retains the evidence. No
     // new tracing option, environment knob, file or corpus comparison is added.
@@ -604,12 +452,7 @@ fn original_clipped_step_checkpoint_evidence() {
         "observer_records_bit_identical": true,
         "original_deviation": {"cpp": plain_cpp[3], "rust": plain_rust[3]},
         "first_observed_checkpoint_difference_not_internal_root_cause": first_observed,
-        "first_post_operation_reconstruction_difference": first_reconstructed,
-        "reconstruction_reproduces_original_deviation_bits": {
-            "cpp": cpp_events.last().unwrap().values[0].to_bits() == plain_cpp[3].to_bits(),
-            "rust": rust_events.last().unwrap().values[0].to_bits() == plain_rust[3].to_bits(),
-        },
-        "limitation": "No hook observes the internal LocalCurveIntersect or span locals; replay is explicitly reconstruction, never proof of their original cache state."
+        "limitation": "Actual calls only. Internal LocalCurveIntersect, Hermite and span calculations are not observed; checkpoint differences are not proof of an internal root cause."
     })).unwrap();
     for (c, r) in cpp_events.iter().zip(&rust_events) {
         writeln!(
