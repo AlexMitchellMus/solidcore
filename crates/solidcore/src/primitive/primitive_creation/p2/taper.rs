@@ -26,7 +26,7 @@ use crate::curve::composite_curve::{
 use crate::curve::curve::p3::{compute_crvs_normal, crvs_fix_gaps};
 use crate::curve::curve::p4::fix_chain_curves_list;
 use crate::curve::curve::p5::crvs_cleanup;
-use crate::curve::curve::{Curve, CurveKind};
+use crate::curve::curve::Curve;
 use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::extent1d::Extent1d;
@@ -75,10 +75,11 @@ fn current_curve(
     }
 }
 
-/// Write the edited B-spline generators back into the composite's segments.
+/// Write the edited B-spline generators back into the composite's segments, in
+/// place (the segment curves keep their owners).
 fn sync_generators(composite: &mut CompositeCurve, generators: &[BSplineCurve]) {
-    for (segment, generator) in composite.segments_mut().iter_mut().zip(generators) {
-        if let CurveKind::BSpline(curve) = segment.curve.kind_mut() {
+    for (index, generator) in generators.iter().enumerate() {
+        if let Some(curve) = composite.segment_b_spline_mut(index) {
             *curve = generator.clone();
         }
     }
