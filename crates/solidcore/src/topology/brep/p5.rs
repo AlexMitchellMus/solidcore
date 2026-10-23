@@ -420,7 +420,8 @@ pub fn combine_with_notifications(
         true,
         true,
     ))?;
-    update_vertex_edge_intervals(k, b, survivor, notifications)
+    let env = notifications.ok_or_else(|| SolidError::null_pointer(OP))?;
+    crate::topology::brep::p1::update_vertex_edge_intervals(k, b, env, survivor)
 }
 
 /// `Notify(SM_NO_MERGE_IN_BREP, pSurvivingVertex, pVertexToDelete, this)`
@@ -547,17 +548,6 @@ fn set_vertex_point(
             ))
         },
     )
-}
-
-fn update_vertex_edge_intervals(
-    k: &mut Kernel,
-    b: &mut Brep,
-    vertex: VertexId,
-    notifications: Option<&mut EditNotifyEnv<'_>>,
-) -> Result<()> {
-    with_p3_notifications(k, b, notifications, |k, b, env| {
-        crate::topology::brep::p1::update_vertex_edge_intervals(k, b, env, vertex)
-    })
 }
 
 /// Makes a wire edge over the caller's curve interval. Evaluates start before end,
