@@ -2462,6 +2462,11 @@ mod tests {
                     "{name}"
                 );
                 let surface = face.surface.as_ref().unwrap();
+                assert_eq!(
+                    surface.owner_zone_tol_3d(),
+                    Some(face.tolerance),
+                    "{name}"
+                );
                 saw_expected |= expected.matches(surface.kind());
             }
             assert!(saw_expected, "{name}: expected {expected:?}");
@@ -2550,6 +2555,12 @@ mod tests {
             for id in faces {
                 let face = im.b.face(id).unwrap();
                 let surface = face.surface.as_ref().unwrap();
+                assert_eq!(
+                    surface.owner_zone_tol_3d(),
+                    Some(face.tolerance),
+                    "{}",
+                    case.name
+                );
                 assert!(
                     matches!(surface.kind(), SurfaceKind::SurfOfRevolution(_)),
                     "{}",
