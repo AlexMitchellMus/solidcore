@@ -90,6 +90,13 @@
 //!   the private `WithMadeTrimCurves` geometry. The gap caches and these trim curves
 //!   share one snapshot per call, as upstream mutates the one B-rep. The healer shares
 //!   that snapshot across both seam directions before applying its gap-cache values.
+//!   `WithMadeTrimCurves` forwards the topology hooks (`topology_entity`,
+//!   `topology_handle(_in)`, `brep_id`, `owner_entity`, the intersector mate) to the
+//!   caller's geometry with the face's B-rep resolved in the snapshot, and is the
+//!   [`ClassGeometryMut`] of `ClassifyFaceInterval`
+//!   ([`CurveClassification::classify_face_interval_mut`]): its face queries edit the
+//!   snapshot, so their UV trims and tolerance changes stay for the rest of the
+//!   classification (not for the caller's B-rep).
 //! - No recursion.
 
 use crate::curve::curve::{Curve, CurveKind};
@@ -1025,7 +1032,7 @@ struct WithMadeTrimCurves<'g, O, G> {
 impl<O, G> WithMadeTrimCurves<'_, O, G> {
     /// `b` as the caller's geometry knows it: the snapshot stands for `brep`.
     fn caller_brep<'a>(&'a self, b: &'a Brep) -> &'a Brep {
-        if core::ptr::eq(b, &*self.snapshot) {
+        if core::ptr::eq(b, &raw const *self.snapshot) {
             self.brep
         } else {
             b

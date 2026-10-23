@@ -18,7 +18,7 @@
 //! | [`CurveClassification::is_crossing_face`]                   | `IsCrossingFace`                                      |
 //! | [`CurveClassification::has_near_misses`]                    | `HasNearMisses`                                       |
 //! | [`CurveClassification::are_coincident_maybe`], [`CoincidentMaybe`] | `AreCoincidentMaybe`                          |
-//! | [`CurveClassification::classify_face_interval`]             | `ClassifyFaceInterval`                                |
+//! | [`CurveClassification::classify_face_interval`], [`CurveClassification::classify_face_interval_mut`] | `ClassifyFaceInterval` |
 //! | [`CurveClassification::test_for_partial_coincident_edges`], [`PartialCoincidence`] | `TestForPartialCoincidentEdges` |
 //! | [`set_do_filleting_geometry`]                               | `sm_SetDoFilletingGeometry`                           |
 //! | [`CurveClassification::curve`] of the owner                 | `SmCurveInterval::GetCurve`                           |
@@ -65,17 +65,30 @@
 //!   `TRUE` before any member is read, as upstream. The edits of `sm_SetDoFilletingGeometry`
 //!   (`SmVertex::SetPoint`, `SmEdge::SetCurve`) need mutable topology and its `Notify`
 //!   chain and still return [`SolidError::Unported`].
-//! - **Face classifiers.** `SmFace::EdgeCurveOnClassify` / `Point3DClassify` are
-//!   [`crate::query::face::p1`]'s, on the B-rep and face that
-//!   [`ClassGeometry::topology_entity`] resolves the face handle to. Upstream's members
-//!   are `const` but may add UV trim curves and trimmed surface caches to the B-rep;
-//!   here they run on a copy of it (the caller holds the B-rep shared), so those
-//!   additions are not kept. A handle the adapter cannot resolve keeps the
-//!   [`SolidError::Unported`] deferral (`query.face_p1`).
-//! - **Callees in units not ported yet** return [`SolidError::Unported`]: the face
-//!   classifiers `SmFace::FindVertexSector` (`topology.face_p4`) and `PointClassify`
-//!   (`query.face_p2`), and the topology zone tolerances of point classifications
-//!   (through `intersect.point_class`).
+//! - **Face classifiers.** `SmFace::FindVertexSector` ([`crate::topology::face::p4`]),
+//!   `EdgeCurveOnClassify` / `Point3DClassify` ([`crate::query::face::p1`]) and
+//!   `PointClassify` ([`crate::query::face::p2`]) run on the B-rep and face that the
+//!   adapter resolves the face handle to. Upstream's members are `const` but may add UV
+//!   trim curves and trimmed surface caches to the B-rep.
+//!   [`CurveClassification::classify_face_interval_mut`] (a [`ClassGeometryMut`]) runs
+//!   them on that B-rep itself, so those additions stay, in upstream's order.
+//!   **Deviation (#614, kept):** the read-only
+//!   [`CurveClassification::classify_face_interval`] runs `EdgeCurveOnClassify` and
+//!   `Point3DClassify` on a copy of the B-rep, so their additions are discarded; there
+//!   `FindVertexSector` and `PointClassify` defer (`SmBrep mutable owning context`,
+//!   `topology.brep_p1`). A handle the adapter cannot resolve keeps the
+//!   [`SolidError::Unported`] dispatch-gap deferral. An edge or vertex of another
+//!   B-rep has no use on the face: not inside, as upstream's use walks find.
+//!   `PointClassify` gets no trimmed surface cache (upstream's `GetObjectCache` finds
+//!   one when an earlier call built it; the port keeps no object caches): the loops
+//!   classify the point. **Cache history:** a face query on the mutable path that
+//!   raises a vertex or edge tolerance (a trimmed surface cache built with the face's
+//!   UV trim curves, `smsurf_GetSurfaceCache`) defers on
+//!   `surface.surface_p2`: upstream reuses an `SmTrimSrfCache` made earlier without
+//!   the face (no UV trims, no tolerance growth) when one exists, which the port cannot
+//!   know (`plan/findings.md`, "classification face queries through `ClassGeometryMut`").
+//! - **Callees in units not ported yet** return [`SolidError::Unported`]: the topology
+//!   zone tolerances of point classifications (through `intersect.point_class`).
 //! - **Recursion.** None.
 
 use std::borrow::Cow;
@@ -881,8 +894,10 @@ impl<O: ClassObject> CurveClassification<O> {
     ///
     /// [`SolidError::InvalidInput`] for `index >= size()` or a missing curve where it is
     /// used; `SM_ERR_NULL_POINTER` for a vertex or edge end without its object; those
-    /// of the curve evaluations; [`SolidError::Unported`] for the face queries (units
-    /// `topology.face_p4`, `query.face_p1`, `query.face_p2`).
+    /// of the curve evaluations and face queries; [`SolidError::Unported`] for
+    /// `FindVertexSector` and `PointClassify`, which need the mutable entry point
+    /// ([`CurveClassification::classify_face_interval_mut`]), and for face or edge
+    /// handles the adapter cannot resolve.
     pub fn classify_face_interval(
         &mut self,
         k: &Kernel,
