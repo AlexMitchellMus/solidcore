@@ -44,14 +44,9 @@
 //! - **Flags.** `IsDegenerate`, `IsDegenerateCurve` and `IsDegeneratePoint` return flags
 //!   upstream; a Rust error of those tests (other than [`SolidError::Unported`]) counts as
 //!   "not degenerate".
-//! - **Gaps in other units' ports** (`plan/findings.md`): the port of
-//!   `SmCurve::DeformToEndPointTargets` (unit `curve.curve_p6`) has no `pOptSurfCrvOnSurf`,
-//!   so deforming a curve on surface to a gap target (upstream edits its UV curve) returns
-//!   [`SolidError::Unported`] for `curve.curve_p6`; other curves, and curves on surface
-//!   without targets, call the port. A curve on surface of any surface but a plain
-//!   `SmBSplineSurface` (the port's `CrvOnSurf` holds one; a plane's or a surface of
-//!   revolution's B-spline base would lose the kind's evaluation overrides) returns
-//!   [`SolidError::Unported`] for `curve.crv_on_surf`, as at that gap's other sites.
+//! - **Gap targets on curves on surfaces.** The optional-surface deformation path
+//!   retains the actual surface kind and adjusts the UV curve using surface drops,
+//!   preserving upstream's default orientation and tangent choices.
 //! - **Statuses ignored upstream** (`LiftCurve`, `DeformToEndPointTargets`, `ConvertTo2D`
 //!   of the UV curves, `GetEnds`, `CopyAndAddAnalytics`, `FindRadialSector`,
 //!   `SetUVTrimCurve`, `TestClosureSplitRegion`, `sm_CheckAndFixUVTrimCurves`,
@@ -105,7 +100,6 @@ use crate::boolean::merge::p1::{MergeState, VertexCopy};
 use crate::boolean::merge::p2::{make_faceuse_with, MergeContext, MergeOperand, TopologyCopy};
 use crate::boolean::topology_intersector::p1::{Relations, TopologyIntersector};
 use crate::curve::crv_on_surf::CrvOnSurf;
-use crate::curve::curve::p2::CurveKind;
 use crate::curve::curve::Curve;
 use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
@@ -452,7 +446,7 @@ fn classify_on_faces(
             opt_data_size: 16,
             is_curve_owned: false,
             is_curve_current: true,
-            surface1: Some(IntersectObject::Surface(face)),
+            surface1: Some(IntersectObject::Surface(face, false)),
             surface2: None,
             uv_curve2: None,
             ti: None,
@@ -478,7 +472,7 @@ fn set_curve_and_merge(
         .faces
         .into_iter()
         .map(|o| match o {
-            IntersectObject::Topology(EntityRef::Face(f)) => Ok(f),
+            IntersectObject::Topology(EntityRef::Face(f), _) => Ok(f),
             _ => Err(null("merged face is not a face")),
         })
         .collect()
@@ -488,7 +482,7 @@ fn set_curve_and_merge(
 /// edge (upstream dereferences the result).
 fn mid_edge(ivl: &CurveInterval<IntersectObject>) -> Result<EdgeId> {
     match ivl.mid.object() {
-        Some(IntersectObject::Topology(EntityRef::Edge(e))) => Ok(e),
+        Some(IntersectObject::Topology(EntityRef::Edge(e), _)) => Ok(e),
         _ => Err(null("interval middle on an edge without edge")),
     }
 }
@@ -1055,22 +1049,7 @@ fn make_face_with_curves_impl(
                     let Some(Some(curve)) = s3d.get_mut(ci) else {
                         return Err(null("missing curve"));
                     };
-                    // upstream passes the surface as pOptSurfCrvOnSurf, so a curve on surface
-                    // with a target edits its UV curve in place (DropPoint of the targets);
-                    // the port of DeformToEndPointTargets has no such parameter and would
-                    // approximate the curve instead. Without targets upstream returns at once,
-                    // and other curve kinds dispatch before pOptSurfCrvOnSurf is read.
-                    if matches!(curve.kind(), CurveKind::CrvOnSurf(_))
-                        && (new_start.is_some() || new_end.is_some())
-                    {
-                        // UNPORTED(curve.curve_p6): SmCurve::DeformToEndPointTargets
-                        // (pOptSurfCrvOnSurf branch)
-                        return Err(SolidError::unported(
-                            "SmCurve::DeformToEndPointTargets (pOptSurfCrvOnSurf)",
-                            "curve.curve_p6",
-                        ));
-                    }
-                    let deformed = ignored(curve.deform_to_end_point_targets(
+                    let deformed = ignored(curve.deform_to_end_point_targets_on_surface(
                         k,
                         new_start,
                         new_end,
@@ -1079,6 +1058,7 @@ fn make_face_with_curves_impl(
                         InValueType::Unconstrained,
                         None,
                         InValueType::Unconstrained,
+                        Some((&surface, None)),
                     ))?
                     .flatten();
                     if let Some(d) = deformed {
@@ -1620,9 +1600,10 @@ pub fn glue_edges_general(
             ed::set_tolerance(b, surv, radius, true, true)?;
         }
 
-        // Upstream destroys the deleted edge once its last pair has moved.
+        // Upstream destroys the deleted edge once its last pair has moved
+        // (`delete pDeleteEdge`: its destruction notification and attribute cleanup).
         if b.edge(del)?.edgeuses.is_empty() {
-            b.remove_edge_record(del)?;
+            ed::destroy(k, b, del, env)?;
         }
         jj -= 2;
     }
@@ -1858,6 +1839,8 @@ pub fn merge_self_intersection_curves(
         let curve_3d = IntersectObject::Curve(i);
         let objects = IntersectObjects {
             b: &*b,
+            other: &*b,
+            side: false,
             curves_3d: &curves_3d,
             uv1: &uv1,
             uv2: &uv2,
@@ -1883,6 +1866,8 @@ pub fn merge_self_intersection_curves(
             let e1 = mid_edge(ivl)?;
             let objects = IntersectObjects {
                 b: &*b,
+                other: &*b,
+                side: false,
                 curves_3d: &curves_3d,
                 uv1: &uv1,
                 uv2: &uv2,
@@ -2288,6 +2273,81 @@ mod tests {
         assert!(b.edge(deleted).is_err());
         assert_eq!(b.edges().len(), 3);
         assert_eq!(ed::edgeuses(&b, surviving, None, None).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn glue_destruction_notifies_and_clears_the_deleted_edges_attribute_users() {
+        // `delete pDeleteEdge`: ~SmEdge notifies SM_NO_DESTRUCTION with DoingBoolean set,
+        // ~SmAObject removes the edge from its attributes (issue #556).
+        use crate::geom::attribute::{Attribute, Behavior};
+        use crate::topology::edge::notification_test_support as callbacks;
+        let mut k = Kernel::default();
+        let events = callbacks::install(&mut k.context);
+        let (mut b, surviving, deleted, _) = glue_notification_fixture();
+        let ends = b.edge(deleted).unwrap().vertices;
+        let shared_ends = [ends[1], ends[0]];
+        let wire_uses = ed::edgeuses(&b, surviving, None, None).unwrap();
+        for (eu, vertex) in wire_uses.into_iter().zip(shared_ends) {
+            let vu = eu1::vertexuse(&b, eu).unwrap().unwrap();
+            let old_vertex = b.vertexuse(vu).unwrap().vertex.unwrap();
+            b.vertex_mut(old_vertex)
+                .unwrap()
+                .vertexuses
+                .retain(|&candidate| candidate != vu);
+            b.vertex_mut(vertex).unwrap().vertexuses.push(vu);
+            b.vertexuse_mut(vu).unwrap().vertex = Some(vertex);
+        }
+        b.edge_mut(surviving).unwrap().vertices = shared_ends;
+        b.edge_mut(surviving).unwrap().curve =
+            Some(Curve::from(crate::curve::line::Line::from_points(
+                b.vertex(shared_ends[0]).unwrap().point,
+                b.vertex(shared_ends[1]).unwrap().point,
+                3,
+            )));
+        // distinct identities per entity (the module's `key_of` names every edge alike)
+        let key_of = crate::topology::loopuse::notify_ref;
+        let surviving_ref = key_of(EntityRef::Edge(surviving));
+        let deleted_ref = key_of(EntityRef::Edge(deleted));
+        let mut records = std::collections::BTreeMap::new();
+        let mut attributes = AttributeStore::default();
+        let shared = attributes
+            .insert(Attribute::long(81, 912, Behavior::Reference))
+            .unwrap();
+        attributes.add_attribute(surviving_ref.key, shared).unwrap();
+        attributes.add_attribute(deleted_ref.key, shared).unwrap();
+        glue_edges_general(
+            &mut k,
+            &mut b,
+            Some(surviving),
+            OrientType::Opposite,
+            0.0,
+            false,
+            Some(deleted),
+            None,
+            &mut ed::NotifyEnv {
+                records: &mut records,
+                attributes: &mut attributes,
+                context: None,
+                key_of: &key_of,
+            },
+        )
+        .unwrap();
+        assert!(b.edge(deleted).is_err());
+        assert_eq!(attributes.users(shared).unwrap(), vec![surviving_ref.key]);
+        assert!(!k.context.doing_boolean());
+        // one SM_NO_DESTRUCTION of the deleted edge for each installed callback
+        let mut destructions: Vec<_> = events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.operation == NotifyOperation::Destruction)
+            .map(|e| (e.callback, e.caller))
+            .collect();
+        destructions.sort_by_key(|(callback, _)| *callback);
+        assert_eq!(
+            destructions,
+            vec![("system", deleted_ref), ("user", deleted_ref)]
+        );
     }
 
     #[test]
