@@ -11852,6 +11852,17 @@ listed mutation, sharing, opaque-adapter and reader coverage limits still apply.
   `curve.curve_p6`'s notes. The old B-spline-only `CrvOnSurf` gate is removed:
   `MakeFaceWithCurves` now retains the actual surface with checked exact snapshots
   and native owning-copy semantics.
+- **Resolved optional-surface endpoint gap (2026-10-22).**
+  `Curve::deform_to_end_point_targets_on_surface` restores the optional surface and
+  orientation branch; `MakeFaceWithCurves` passes its actual surface. It drops target
+  points using the current UV endpoint guesses and edits the UV B-spline, retaining
+  native default tangents and replacing derived UV curves when required. The original
+  `face_curves_cos_open_loop` now compares 10 values with C++ (status 0, max relative
+  error 0). Against exact-main `3e811d0c7`, this is the only existing-case outcome
+  change; no cases were removed. Ten new scaled/oriented plane/B-spline fixtures add
+  three comparisons and seven honest `SmSurface::DropCurve` deferrals. Native direct
+  endpoint samples on B-spline and derived-line UV curves match the Rust regression
+  for absent, same and opposite orientation. No tolerance or FFI guard was changed.
 - **MakeFace with a square loop** (`kind 1`): the shim builds the loop with
   `MakeShellVertex`, `MakeWireEdgeVertex` and `MakeWireEdge`. The Rust side mirrors its
   `-3` when `CreateLineSegment` fails for the side, and otherwise defers at
@@ -17317,6 +17328,28 @@ Three Rust regressions cover sibling invalidation after classification failure,
 resets before projection failure, and the untouched-cache path. All 2049 kernel
 tests, fmt, workspace Clippy and the wasm check pass. No comparison tolerances,
 existing cases, deferrals, native hang guards or known-mismatch entries changed.
+## topology.face_p3 `cyl_bspline_uv_trim_*`, boolean.merge_p2 `make_faceuse_sphere`: nested UV trim curve creation while the surface owner is cleared (fixed, PR #586, 2026-10-23)
+
+Follow-up to "PR #463: 27 Rust-vs-C++ mismatches newly reachable once
+`SmSurface::DropCurve` is wired" (topology.face_p3 and boolean.merge_p2 groups; one
+cause). `SmFace::CreateUVTrimCurves` and `SmEdgeuse::CreateUVTrimCurve` clear the
+surface's `m_pOwner` for the rest of the call, so a nested `smsurf_GetSurfaceCache`
+(`EvaluateBinormal(bUse3DOnly)` from `CreateUVTrimCurve`'s seam choice) builds a
+standalone `SmTrimSrfCache` and makes no UV trim curves. The port's
+`query::face::p2::face_surface_cache` handed the face to the cache build regardless
+(`TrimSrfCache` uses "the caller's face, else the surface's owner"; imported face
+surfaces carry no owner), so on the B-spline cylinder the nested build created the
+other edges' UV trim curves and the outer `CreateUVTrimCurves` skipped them: its maximum
+curve/surface gap (`out[2]`) was `0` instead of `9.10934752180535e-17` (traced with a
+debug print of each `GetOrCreateUVTrimCurve` distance: Rust dropped edge use 0 in the
+outer loop and 0..3 in a nested one). The B-rep now records the clearing scope
+(`Brep::begin_surface_owner_cleared`), `face_surface_cache` builds the standalone cache
+inside it, and `create_uv_trim_curve` clears the B-rep face surface's owner too. A first
+attempt that keyed this on the surface owner alone (`TrimSrfCache::build_tree_body`
+ignoring the caller's face when the surface has no owner) broke 274 `topology.edgeuse_p3`
+binormal cases, because imported face surfaces have no owner; the explicit scope avoids
+that. Full `--green` sweep: 0 failed; face_p3 +2, merge_p2 +1, brep_p4 +2 (deferred ->
+pass), nothing else changed.
 ## blend.fillet_solver_p4 `gen0512`: the calc_geom shim's split flag was never read (fixed, PR #584, 2026-10-23)
 
 Follow-up to "PR #463: 27 Rust-vs-C++ mismatches newly reachable once
