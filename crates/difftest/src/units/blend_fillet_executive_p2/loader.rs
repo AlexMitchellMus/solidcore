@@ -156,6 +156,7 @@ pub(crate) fn loader_rust(i: &LoaderScript) -> Result<Output, HarnessError> {
             }
         }
         let edges = b.edges().iter().map(|(id, _)| id).collect::<Vec<_>>();
+        let mut notifications = solidcore::topology::brep::p2::ArenaNotifyState::new(b);
         for id in edges {
             let edge = b.edge(id).map_err(|e| harness(e.to_string()))?;
             let domain = edge.interval;
@@ -185,9 +186,29 @@ pub(crate) fn loader_rust(i: &LoaderScript) -> Result<Output, HarnessError> {
                     domain.max(),
                 ],
             };
-            let mut curve = solidcore::curve::curve::Curve::from(bcurve_of(&c)?);
-            let _ = curve.set_owner(owner, None);
-            b.edge_mut(id).map_err(|e| harness(e.to_string()))?.curve = Some(curve);
+            let curve = solidcore::curve::curve::Curve::from(bcurve_of(&c)?);
+            let interval = curve.natural_interval();
+            // Match Replace3DCurve: notify the change (including deleting old UV
+            // trims), replace the actual curve, then restore its edge back pointer.
+            edge::set_curve(
+                b,
+                id,
+                Some(curve),
+                edge::SetCurveOptions {
+                    delete_old_curve: true,
+                    ..edge::SetCurveOptions::default()
+                },
+                &mut notifications.env(None),
+                [None, None],
+            )
+            .map_err(|e| harness(e.to_string()))?;
+            let edge = b.edge_mut(id).map_err(|e| harness(e.to_string()))?;
+            edge.interval = interval;
+            let _ = edge
+                .curve
+                .as_mut()
+                .ok_or_else(|| harness("replacement curve missing"))?
+                .set_owner(owner, None);
         }
     }
     let mut closed_edge = None;
