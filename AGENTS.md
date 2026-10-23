@@ -178,7 +178,9 @@ into `upstream/` (see README), then run `scripts/fetch-cpp.sh`, or
    Available follow-ups: independent work others can take
    Status / blockers / next step:
    ```
-   The earliest open claim wins only for overlapping work. Non-overlapping work in
+   For overlapping whole-unit `port:` claims, the lowest-numbered open PR wins.
+   For completion tasks, the earliest open claim wins only for overlapping work.
+   Non-overlapping work in
    the same unit is welcome. Link the related PR and state the boundary before
    starting; independent work need not wait for a whole-unit owner to reply.
    If work changes the same function or shared interface, agree on a split in the
