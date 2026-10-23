@@ -18,6 +18,7 @@
 //! | [`Surface::drop_point`], [`DropPointOptions`], [`DropPoint`] | `DropPoint`                          |
 //! | [`Surface::local_surface_surface_intersect_xyz`]    | `LocalSurfaceSurfaceIntersect` (from an image-space guess) |
 //! | [`Surface::cover_other_coincident_surface`], [`CoverOtherCoincident`] | `CoverOtherCoincidentSurface` |
+//! | [`Surface::cover_other_coincident_surface_deferring_trims_with_context`], [`CoverSolveContext`] | `CoverOtherCoincidentSurface` (`smsurf_GetSurfaceCache` seeing each face) |
 //! | [`sp_local_solve`]                                  | `sm_SpLocalSolve` (static)                    |
 //! | [`filter_solution`]                                 | `sm_FilterSolution` (static)                  |
 //! | [`SpGlobalSolver`]'s and [`LsiGlobalSolver`]'s `identical_solutions` | `SmSPGlobalSolver::IdenticalSolutions`, `SmLSIGlobalSolver::IdenticalSolutions` |
@@ -54,7 +55,9 @@
 //!   ([`Surface::cover_other_coincident_surface_deferring_trims`] lists the faces in
 //!   [`CoverOtherCoincident::remove_uv_trim_curves_of`], in call order);
 //!   [`Surface::cover_other_coincident_surface`] returns [`SolidError::Unported`]
-//!   (`topology.face_p1`) there, as before.
+//!   (`topology.face_p1`) there, as before. A caller holding the faces lends them
+//!   through a [`CoverSolveContext`], under which each `CoverCoincidentSurface`'s
+//!   `STEPInversion` solves see the covering surface's face.
 //! - **Unported callees** (return [`SolidError::Unported`]): `SmSurface::GetFace`,
 //!   `SmFace::GetTolerance` (for a surface whose B-rep has not cached its face's
 //!   tolerance on it, [`Surface::owner_zone_tol_3d`]), `LocalPointSolve_1`, `sm_GetSurfaceToEvaluate`, the STEP
@@ -86,7 +89,9 @@ use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::knots::Side;
 
-use super::p1::{evaluate_1st_derivatives, get_surface_cache, FindPsNormalEnfo};
+use super::p1::{
+    evaluate_1st_derivatives, get_surface_cache, FindPsNormalEnfo, SurfaceSolveContext,
+};
 use super::p2::{LsiGlobalSolver, SurfaceEval};
 use super::p4::is_point_on_normal;
 use super::p4::NoObject;
@@ -1440,9 +1445,12 @@ struct CoverCoincident {
 /// [, &step_domain])`: whether `cover` covers `covered_domain` of `covered` and the
 /// largest gap. `cover` is expanded on success. With `defer_trims` the owner face whose
 /// `RemoveUVTrimCurves` the call runs upstream is appended to `trims`; without it that
-/// call is [`SolidError::Unported`] ([`Surface::cover_coincident_surface`]).
+/// call is [`SolidError::Unported`] ([`Surface::cover_coincident_surface`]). With
+/// `context` (the face solve context and `cover`'s handle in it) the cover's
+/// `STEPInversion` solves see `cover`'s face
+/// ([`Surface::cover_coincident_surface_deferring_trims_with_context`]).
 #[allow(clippy::too_many_arguments)] // upstream's arguments plus the deferred trims
-fn cover_coincident_surface(
+fn cover_coincident_surface<O: SolutionObject>(
     k: &Kernel,
     cover: &mut Surface,
     covered: &Surface,
@@ -1450,9 +1458,21 @@ fn cover_coincident_surface(
     covered_domain: &Extent2d,
     want_step_domain: bool,
     trims: &mut Option<&mut Vec<ObjectRef>>,
+    context: Option<(&mut dyn SurfaceSolveContext<O>, Option<O>)>,
 ) -> Result<CoverCoincident> {
-    let r = match trims {
-        Some(list) => {
+    let r = match (trims, context) {
+        (Some(list), Some(context)) => {
+            let r = cover.cover_coincident_surface_deferring_trims_with_context(
+                k,
+                covered,
+                tol,
+                Some(covered_domain),
+                context,
+            )?;
+            list.extend(r.remove_uv_trim_curves_of);
+            r
+        }
+        (Some(list), None) => {
             let r = cover.cover_coincident_surface_deferring_trims(
                 k,
                 covered,
@@ -1462,7 +1482,8 @@ fn cover_coincident_surface(
             list.extend(r.remove_uv_trim_curves_of);
             r
         }
-        None => cover.cover_coincident_surface(k, covered, tol, Some(covered_domain))?,
+        // (a context is only lent together with the trim deferral)
+        (None, _) => cover.cover_coincident_surface(k, covered, tol, Some(covered_domain))?,
     };
     Ok(CoverCoincident {
         success: r.success,
@@ -1489,12 +1510,40 @@ struct CoverState {
     trims: Option<Vec<ObjectRef>>,
 }
 
+/// The face solve context of
+/// [`Surface::cover_other_coincident_surface_deferring_trims_with_context`]: one context
+/// lending the faces of both surfaces, and each surface's handle in it.
+pub struct CoverSolveContext<'c, O: Copy + PartialEq> {
+    /// The solve context (`smsurf_GetSurfaceCache` of either surface sees its face).
+    pub context: &'c mut dyn SurfaceSolveContext<O>,
+    /// The handles of this surface and of the other one in `context`.
+    pub handles: [Option<O>; 2],
+}
+
+impl<O: Copy + PartialEq> core::fmt::Debug for CoverSolveContext<'_, O> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("CoverSolveContext").finish_non_exhaustive()
+    }
+}
+
+/// The context and the handle of surface `index` (`0` this, `1` the other) in it, for
+/// one `CoverCoincidentSurface` call.
+fn cover_context<'a, O: Copy + PartialEq>(
+    context: &'a mut Option<CoverSolveContext<'_, O>>,
+    index: usize,
+) -> Option<(&'a mut dyn SurfaceSolveContext<O>, Option<O>)> {
+    context.as_mut().map(|c| {
+        let handle = c.handles.get(index).copied().flatten();
+        (&mut *c.context as &mut dyn SurfaceSolveContext<O>, handle)
+    })
+}
+
 /// The `Cover` lambda: `cover` covers the other surface; returns `bSuccess && eStat ==
 /// SM_SUCCESS`. A failing `CoverCoincidentSurface` or conversion is no cover (a failing
 /// `CoverCoincidentSurface` has already set `rdMaxDist` to `SM_BIG_DOUBLE`); only
 /// [`SolidError::Unported`] propagates.
 #[allow(clippy::too_many_arguments)] // the lambda's captures
-fn try_cover(
+fn try_cover<O: SolutionObject>(
     k: &Kernel,
     st: &mut CoverState,
     this: &mut Surface,
@@ -1502,7 +1551,10 @@ fn try_cover(
     cover_is_other: bool,
     tol: f64,
     want_merged: bool,
+    context: &mut Option<CoverSolveContext<'_, O>>,
 ) -> Result<bool> {
+    // the covering surface's handle in the face solve context
+    let cover_handle = usize::from(cover_is_other);
     let (cover, covered): (&mut Surface, &Surface) = if cover_is_other {
         (other, this)
     } else {
@@ -1529,6 +1581,7 @@ fn try_cover(
             &covered_domain,
             false,
             &mut trims,
+            cover_context(context, cover_handle),
         ) {
             Ok(r) => {
                 st.max_dist = r.max_dist;
@@ -1551,7 +1604,16 @@ fn try_cover(
         Err(_) => return Ok(false),
     };
     let r =
-        match cover_coincident_surface(k, cover, covered, tol, &covered_domain, true, &mut trims) {
+        match cover_coincident_surface(
+            k,
+            cover,
+            covered,
+            tol,
+            &covered_domain,
+            true,
+            &mut trims,
+            cover_context(context, cover_handle),
+        ) {
             Ok(r) => r,
             Err(e) if e.is_unported() => return Err(e),
             Err(_) => {
@@ -1600,7 +1662,7 @@ impl Surface {
         other_domain: Option<&Extent2d>,
         want_merged: bool,
     ) -> Result<CoverOtherCoincident> {
-        self.cover_other_coincident_surface_in(
+        self.cover_other_coincident_surface_in::<NoObject>(
             k,
             other,
             tol,
@@ -1608,6 +1670,7 @@ impl Surface {
             other_domain,
             want_merged,
             false,
+            None,
         )
     }
 
@@ -1631,6 +1694,38 @@ impl Surface {
         other_domain: Option<&Extent2d>,
         want_merged: bool,
     ) -> Result<CoverOtherCoincident> {
+        self.cover_other_coincident_surface_in::<NoObject>(
+            k,
+            other,
+            tol,
+            this_domain,
+            other_domain,
+            want_merged,
+            true,
+            None,
+        )
+    }
+
+    /// [`Surface::cover_other_coincident_surface_deferring_trims`] whose
+    /// `CoverCoincidentSurface` calls run their `STEPInversion` solves under `context`,
+    /// so a face-owned covering surface's drops are classified against its face's trims
+    /// as upstream's `GlobalPointSolve` does through `GetFace()`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::cover_other_coincident_surface_deferring_trims`], with those of
+    /// the context.
+    #[allow(clippy::too_many_arguments)] // upstream's arguments plus the context
+    pub fn cover_other_coincident_surface_deferring_trims_with_context<O: SolutionObject>(
+        &mut self,
+        k: &Kernel,
+        other: &mut Self,
+        tol: f64,
+        this_domain: Option<&Extent2d>,
+        other_domain: Option<&Extent2d>,
+        want_merged: bool,
+        context: CoverSolveContext<'_, O>,
+    ) -> Result<CoverOtherCoincident> {
         self.cover_other_coincident_surface_in(
             k,
             other,
@@ -1639,11 +1734,12 @@ impl Surface {
             other_domain,
             want_merged,
             true,
+            Some(context),
         )
     }
 
     #[allow(clippy::too_many_arguments)] // upstream's arguments plus the trim deferral
-    fn cover_other_coincident_surface_in(
+    fn cover_other_coincident_surface_in<O: SolutionObject>(
         &mut self,
         k: &Kernel,
         other: &mut Self,
@@ -1652,6 +1748,7 @@ impl Surface {
         other_domain: Option<&Extent2d>,
         want_merged: bool,
         defer_trims: bool,
+        mut context: Option<CoverSolveContext<'_, O>>,
     ) -> Result<CoverOtherCoincident> {
         let mut st = CoverState {
             domain0: this_domain
@@ -1681,13 +1778,13 @@ impl Surface {
         // Favor SmPlanes:
         if is_plane(self) {
             tried0 = true;
-            if try_cover(k, &mut st, self, other, false, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, false, tol, want_merged, &mut context)? {
                 return Ok(done(&mut st, false));
             }
         }
         if is_plane(other) {
             tried1 = true;
-            if try_cover(k, &mut st, self, other, true, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, true, tol, want_merged, &mut context)? {
                 return Ok(done(&mut st, true));
             }
         }
@@ -1695,13 +1792,13 @@ impl Surface {
         // Next look for bilinear.
         if !tried0 && self.is_bilinear() {
             tried0 = true;
-            if try_cover(k, &mut st, self, other, false, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, false, tol, want_merged, &mut context)? {
                 return Ok(done(&mut st, false));
             }
         }
         if !tried1 && other.is_bilinear() {
             tried1 = true;
-            if try_cover(k, &mut st, self, other, true, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, true, tol, want_merged, &mut context)? {
                 return Ok(done(&mut st, true));
             }
         }
@@ -1709,13 +1806,13 @@ impl Surface {
         // Next, favor SmBSplineSurfaces.
         if !tried0 && is_bspline(self) {
             tried0 = true;
-            if try_cover(k, &mut st, self, other, false, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, false, tol, want_merged, &mut context)? {
                 return Ok(done(&mut st, false));
             }
         }
         if !tried1 && is_bspline(other) {
             tried1 = true;
-            if try_cover(k, &mut st, self, other, true, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, true, tol, want_merged, &mut context)? {
                 return Ok(done(&mut st, true));
             }
         }
@@ -1723,14 +1820,14 @@ impl Surface {
         // No special cases.
         if !tried0 {
             tried0 = true;
-            if try_cover(k, &mut st, self, other, false, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, false, tol, want_merged, &mut context)? {
                 return Ok(done(&mut st, false));
             }
         }
         let _ = tried0;
         if !tried1 {
             tried1 = true;
-            if try_cover(k, &mut st, self, other, true, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, true, tol, want_merged, &mut context)? {
                 return Ok(done(&mut st, true));
             }
         }
@@ -2441,6 +2538,77 @@ mod tests {
         )
         .unwrap();
         assert!(keep);
+    }
+
+    /// A context that lends no face: every cache is the surface's own plain one.
+    struct PlainCaches;
+
+    impl SurfaceSolveContext<NoObject> for PlainCaches {
+        fn build_surface_cache(
+            &mut self,
+            k: &Kernel,
+            surface: &Surface,
+            handle: Option<NoObject>,
+        ) -> Result<crate::surface::surface_cache::p1::SurfaceCache<NoObject>> {
+            get_surface_cache(k, surface, handle)
+        }
+
+        fn face_queries(
+            &self,
+        ) -> Option<&dyn crate::surface::surface_cache::face_context::FaceQueries<NoObject>>
+        {
+            None
+        }
+    }
+
+    /// Without faces, the context path of `CoverOtherCoincidentSurface` leaves the
+    /// same results and the same (possibly expanded) surfaces as the plain path.
+    #[test]
+    fn cover_with_context_matches_the_plain_path_without_faces() {
+        let k = Kernel::default();
+        let tilted = || Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::new(0.0, 1e-3, 1.0)));
+        let sub = Extent2d::from_points(Point2::new(0.25, 0.25), Point2::new(0.5, 0.75));
+        let pairs: [(fn() -> Surface, Option<Extent2d>); 3] =
+            [(xy_plane, None), (xy_plane, Some(sub)), (tilted, None)];
+        for (other_of, this_domain) in pairs {
+            for want_merged in [false, true] {
+                let (mut a0, mut b0) = (xy_plane(), other_of());
+                let plain = a0.cover_other_coincident_surface_deferring_trims(
+                    &k,
+                    &mut b0,
+                    1e-6,
+                    this_domain.as_ref(),
+                    None,
+                    want_merged,
+                );
+                let (mut a1, mut b1) = (xy_plane(), other_of());
+                let mut caches = PlainCaches;
+                let with = a1.cover_other_coincident_surface_deferring_trims_with_context(
+                    &k,
+                    &mut b1,
+                    1e-6,
+                    this_domain.as_ref(),
+                    None,
+                    want_merged,
+                    CoverSolveContext {
+                        context: &mut caches,
+                        handles: [None, None],
+                    },
+                );
+                match (plain, with) {
+                    (Ok(p), Ok(w)) => {
+                        assert_eq!(p.covering_is_other, w.covering_is_other);
+                        assert_eq!(p.max_dist.to_bits(), w.max_dist.to_bits());
+                        assert_eq!(p.merged_domain, w.merged_domain);
+                        assert_eq!(p.remove_uv_trim_curves_of, w.remove_uv_trim_curves_of);
+                    }
+                    (Err(p), Err(w)) => assert_eq!(p, w),
+                    (p, w) => panic!("plain {p:?} vs context {w:?}"),
+                }
+                assert_eq!(a0.natural_uv_domain(), a1.natural_uv_domain());
+                assert_eq!(b0.natural_uv_domain(), b1.natural_uv_domain());
+            }
+        }
     }
 
     #[test]
