@@ -74,7 +74,7 @@
 use std::collections::BTreeMap;
 
 use crate::blend::fillet_corner::p1;
-use crate::blend::fillet_corner::p2::find_concave_edgeuses;
+use crate::blend::fillet_corner::p2::{find_concave_edgeuses, make_fillet_edge};
 use crate::blend::fillet_geom::p1::{
     FilStatus, FilletBrep, FilletCornerId, FilletCornerType, FilletEdgeType, FilletGeomType,
     FilletSolverId, FilletVertex, FilletVertexType,
@@ -281,7 +281,7 @@ fn unported(upstream: &'static str, unit: &'static str) -> SolidError {
 
 /// `SmVertex::SetPoint` on a pseudo-B-rep vertex: the notification resets the cached
 /// gaps of every vertex use, then the point is stored.
-fn set_vertex_point(pseudo: &mut FilletBrep, v: VertexId, point: Point3) -> Result<()> {
+pub(super) fn set_vertex_point(pseudo: &mut FilletBrep, v: VertexId, point: Point3) -> Result<()> {
     let brep = pseudo.brep_mut();
     for vu in brep.vertex(v)?.vertexuses.clone() {
         let rec = brep.vertexuse_mut(vu)?;
@@ -1151,11 +1151,7 @@ impl FilletCorner {
         match self.kind {
             FilletCornerKind::NByTwo => self.adjust_topology_nx2(k, env),
             FilletCornerKind::ConvexNByN | FilletCornerKind::ConcaveNByN => {
-                // UNPORTED(blend.fillet_corner_p2): SmFilletConvexNxNCorner::AdjustTopology
-                Err(unported(
-                    "SmFilletConvexNxNCorner::AdjustTopology",
-                    "blend.fillet_corner_p2",
-                ))
+                self.adjust_topology_convex_nxn(env)
             }
             _ => Ok(()),
         }
@@ -1346,12 +1342,61 @@ impl FilletCorner {
             )?;
 
             // Recreate fillet edges
-            let _ = (insert_after, other_vert, small_rad_geom, large_rad_geom);
-            // UNPORTED(blend.fillet_geom_p5): SmFilletEdge::MakeFilletEdge (justified: findings.md "blend.fillet_geom_p5: solver and corner callers")
-            return Err(unported(
-                "SmFilletEdge::MakeFilletEdge",
-                "blend.fillet_geom_p5",
-            ));
+            let fillet_edge1 = if insert_after {
+                make_fillet_edge(env, vert_on_side_edge, vert_on_side_face)?
+            } else {
+                make_fillet_edge(env, vert_on_side_face, vert_on_side_edge)?
+            };
+            env.pseudo
+                .fillet_edge_mut(fillet_edge1)?
+                .set_fillet_edge_type(FilletEdgeType::FilletXSideFace);
+
+            let prim_eu = primary_eu(env.pseudo, fillet_edge1, OP_TOPO)?;
+            env.pseudo
+                .set_edgeuse_fillet_geom(prim_eu, Some(large_rad_geom))?;
+            env.pseudo
+                .fillet_edge_mut(fillet_edge1)?
+                .set_original_face(side_face);
+
+            let fillet_edge2 = if insert_after {
+                make_fillet_edge(env, vert_on_side_face, other_vert)?
+            } else {
+                make_fillet_edge(env, other_vert, vert_on_side_face)?
+            };
+            env.pseudo
+                .fillet_edge_mut(fillet_edge2)?
+                .set_fillet_edge_type(FilletEdgeType::FilletXFillet);
+
+            let prim_eu = primary_eu(env.pseudo, fillet_edge2, OP_TOPO)?;
+            let mate_eu = eu1::mate(env.pseudo.brep(), prim_eu)?
+                .ok_or_else(|| invalid(OP_TOPO, "new fillet edge use without mate"))?;
+
+            env.pseudo
+                .set_edgeuse_fillet_geom(prim_eu, Some(large_rad_geom))?;
+            env.pseudo
+                .set_edgeuse_fillet_geom(mate_eu, Some(small_rad_geom))?;
+
+            // (lIndex >= 1: it is ii + 1, or ii >= 1 when it was decremented)
+            let index = index
+                .checked_sub(1)
+                .ok_or_else(|| invalid(OP_TOPO, "edge index"))?;
+            if index >= self.edges.len() {
+                // m_vEdges[lIndex] past the array
+                return Err(invalid(OP_TOPO, "edge index"));
+            }
+            let removed_edge = self.edges.remove(index);
+            env.pseudo.delete_fillet_edge(removed_edge)?;
+
+            if insert_after {
+                self.edges.push(fillet_edge1);
+                self.edges.push(fillet_edge2);
+            } else {
+                self.edges.push(fillet_edge2);
+                self.edges.push(fillet_edge1);
+            }
+            ii += 1;
+            // (the loop's own ii++)
+            ii += 1;
         }
 
         // all done

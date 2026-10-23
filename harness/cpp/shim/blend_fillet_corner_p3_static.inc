@@ -31,6 +31,8 @@ enum : int32_t
 
 const double P3C_REFUSE = -2.0;
 const double P3C_NOT_RUN = -3.0;
+// The corner id of the corner under test (`this`) in the export (model corners are 0..3).
+const int64_t P3C_THIS_CORNER = 1000000;
 
 struct P3ExecPeek : SmFilletExecutive
 {
@@ -326,9 +328,42 @@ double p3_check_concave(SmFilletCorner* c)
     if (cv == NULL)
         return P3C_REFUSE;
     SmPoint3d vp = cv->GetPoint();
-    if (!(p1.DistanceBetween(vp) < p2.DistanceBetween(vp)) && side->GetRadial() == NULL)
+    bool near1 = p1.DistanceBetween(vp) < p2.DistanceBetween(vp);
+    if (!near1 && side->GetRadial() == NULL)
         return P3C_REFUSE;
-    return P3C_NOT_RUN; // SmFilletEdge::MakeFilletEdge
+    // the side face's surface is extended (pSideFace->GetSurface()->CreateExtendedSurface)
+    SmFace* sideFace = near1 ? side->GetFace() : side->GetRadial()->GetFace();
+    if (sideFace == NULL || sideFace->GetSurface() == NULL)
+        return P3C_REFUSE;
+    // the mates loop over pAdjustVert's remaining vertex uses (vu1 and vu2 moved away; the
+    // new edges' uses are not cross sections): GetEdgeuse()->GetEdge(), the mate of an edge
+    // use without geometry, and the other vertex's GetMate(0) when the geometry is one of
+    // the two
+    SmTArray<SmVertexuse*> vus;
+    adjust->GetVertexuses(vus);
+    for (ULONG ii = 0; ii < vus.GetSize(); ++ii)
+    {
+        if (vus[ii] == vu1 || vus[ii] == vu2)
+            continue;
+        SmFilletEdgeuse* eu = (SmFilletEdgeuse*)vus[ii]->GetEdgeuse();
+        if (eu == NULL || eu->GetEdge() == NULL)
+            return P3C_REFUSE;
+        SmFilletEdge* e = (SmFilletEdge*)eu->GetEdge();
+        if (e->GetFilletEdgeType() != SM_FE_CROSS_SECTION)
+            continue;
+        SmFilletGeom* fg = eu->GetFilletGeom();
+        if (fg == NULL)
+        {
+            if (eu->GetMate() == NULL)
+                return P3C_REFUSE;
+            fg = ((SmFilletEdgeuse*)eu->GetMate())->GetFilletGeom();
+            if (fg == NULL)
+                return 0.0; // NER(pFG)
+        }
+        if ((fg == gs[0] || fg == gs[1]) && e->GetOtherVertex(adjust) == NULL)
+            return P3C_REFUSE;
+    }
+    return 0.0;
 }
 
 // SmFilletCorner::UpdateSplitFace: a fillet edge whose original face is the split face calls
@@ -357,10 +392,77 @@ double p3_check_split(SmFilletCorner* c, SmFace* orig)
     return 0.0;
 }
 
+// The edge use of a fillet vertex use, its edge's type and the fillet geometry on it or its
+// mate, as SmFilletConvexNxNCorner::AdjustTopology reads them; false where it would
+// dereference NULL.
+bool p3_cross_section_geom(SmVertexuse* vu, bool& cross, SmFilletGeom*& fg)
+{
+    SmFilletEdgeuse* eu = (SmFilletEdgeuse*)vu->GetEdgeuse();
+    if (eu == NULL || eu->GetEdge() == NULL)
+        return false;
+    cross = ((SmFilletEdge*)eu->GetEdge())->GetFilletEdgeType() == SM_FE_CROSS_SECTION;
+    fg = NULL;
+    if (!cross)
+        return true;
+    fg = eu->GetFilletGeom();
+    if (fg == NULL)
+    {
+        if (eu->GetMate() == NULL)
+            return false;
+        fg = ((SmFilletEdgeuse*)eu->GetMate())->GetFilletGeom();
+    }
+    return true;
+}
+
+// SmFilletConvexNxNCorner::AdjustTopology (blend.fillet_corner_p2): -2 where it dereferences
+// NULL or writes past sVec (a third cross section at a vertex), else 0. The candidate loop
+// dereferences the fillet solver of every cross section's geometry (FindIndexOfRailOnFace,
+// GetEdgeuse(0)): with the model's solverless geometries a cross section at a RAIL_X_RAIL
+// vertex on a face is refused; the loop's exits before that (more than three vertices, a
+// vertex of another type: SER, a vertex not on a face, a geometry missing on both edge uses:
+// NER) run.
+double p3_check_convex_nxn(SmFilletCorner* c)
+{
+    SmTArray<SmFilletVertex*>& V = c->*P3CornerPeek::verts();
+    ULONG total = V.GetSize();
+    if (total > 3)
+        return 0.0;
+    for (ULONG ii = 0; ii < total; ++ii)
+    {
+        SmFilletVertex* cur = V[ii];
+        if (cur->GetFilletVertexType() != SM_FV_RAIL_X_RAIL)
+            return 0.0; // SER(SM_ERR)
+        if (SM_CAST_PTR(SmFace, cur->GetPointClassObject()) == NULL)
+            return 0.0; // NER(pOrigFace)
+        SmTArray<SmVertexuse*> vus;
+        cur->GetVertexuses(vus);
+        ULONG count = 0;
+        for (ULONG jj = 0; jj < vus.GetSize(); ++jj)
+        {
+            bool cross = false;
+            SmFilletGeom* fg = NULL;
+            if (!p3_cross_section_geom(vus[jj], cross, fg))
+                return P3C_REFUSE;
+            if (!cross)
+                continue;
+            if (fg == NULL)
+                return 0.0; // NER(pFilletGeom)
+            if (fg->GetFilletSolver() == NULL)
+                return P3C_REFUSE; // pFilSolver->FindIndexOfRailOnFace
+            if (++count > 2)
+                return P3C_REFUSE; // sVec[2]
+            return P3C_REFUSE; // (no model geometry has a solver)
+        }
+        // no cross section: lCount stays 0 and sVec / sPnt keep their SM_UNDEF_DOUBLE
+        // members (equal lengths, no distance): not a candidate
+    }
+    return 0.0;
+}
+
 double p3_check_topo(int64_t kind, SmFilletCorner* c, Model& M)
 {
     if (kind == 9 || kind == 10)
-        return P3C_NOT_RUN; // SmFilletConvexNxNCorner::AdjustTopology
+        return p3_check_convex_nxn(c); // SmFilletConvexNxNCorner::AdjustTopology
     if (kind != 7)
         return 0.0;
     SmTArray<SmEdgeuse*>* all = c->*P3CornerPeek::all();
@@ -405,7 +507,21 @@ double p3_check_topo(int64_t kind, SmFilletCorner* c, Model& M)
             return P3C_REFUSE;
         if (ii + 1 >= V.GetSize() && ii == 0)
             return P3C_REFUSE; // m_vVertices[lIndex - 1] with lIndex == 0
-        return P3C_NOT_RUN;    // SmFilletEdge::MakeFilletEdge
+        // after the split, m_vEdges[lIndex - 1] (lIndex: ii + 1, or ii when that is past the
+        // vertices) is removed and deleted: past the array it is undefined
+        ULONG removed = ii + 1 < V.GetSize() ? ii : ii - 1;
+        if (removed >= E.GetSize())
+            return P3C_REFUSE;
+        // the loop goes on at ii + 2 with the split done: only the first split is checked
+        // here, a second RAIL_X_EDGEUSE vertex with two geometries is not run
+        for (ULONG jj = ii + 1; jj < V.GetSize(); ++jj)
+        {
+            SmTArray<SmFilletGeom*> gs2;
+            V[jj]->GetFilletGeoms(gs2);
+            if (V[jj]->GetFilletVertexType() == SM_FV_RAIL_X_EDGEUSE && gs2.GetSize() == 2)
+                return P3C_NOT_RUN;
+        }
+        return 0.0;
     }
     return 0.0;
 }
@@ -735,6 +851,35 @@ int32_t p3_run(int32_t op, Rd& rd, std::vector<double>& o)
         default: r = c->AdjustTangentCorner(); break;
         }
         o.push_back(st(r));
+        // fillet vertices the op made (the topology adjustments' new SmFilletVertex(this)):
+        // appended to the model's list in creation order, as the Rust model lists every
+        // live vertex, and owned by the model from here on (the corner never deletes its
+        // m_vVertices). Each op appends its new vertices to m_vVertices in the order it
+        // makes them; the pseudo B-rep's edges are scanned after, for any other.
+        {
+            SmTArray<SmFilletVertex*>& V = c->*P3CornerPeek::verts();
+            for (ULONG i = 0; i < V.GetSize(); ++i)
+                if (index_of(M.verts, V[i]) < 0)
+                    M.verts.push_back(V[i]);
+            std::vector<SmFilletEdge*> es = M.edges();
+            for (SmFilletEdge* e : es)
+            {
+                SmVertex* vs = NULL;
+                SmVertex* ve = NULL;
+                e->GetVertices(vs, ve);
+                for (SmVertex* v : {vs, ve})
+                    if (v != NULL && index_of(M.verts, (SmFilletVertex*)v) < 0)
+                        M.verts.push_back((SmFilletVertex*)v);
+            }
+        }
+        // the vertices and edges the op made store the corner itself (`this`): exported as
+        // the corner id P3C_THIS_CORNER the Rust side passes as the corner's identity
+        for (SmFilletVertex* v : M.verts)
+            if (v->GetFilletCorner() == c)
+                v->SetFilletCorner((SmFilletCorner*)(uintptr_t)(P3C_THIS_CORNER + 1));
+        for (SmFilletEdge* e : M.edges())
+            if (e->GetFilletCorner() == c)
+                e->SetFilletCorner((SmFilletCorner*)(uintptr_t)(P3C_THIS_CORNER + 1));
         p3_put_corner(o, c, M);
         M.put(o);
     }

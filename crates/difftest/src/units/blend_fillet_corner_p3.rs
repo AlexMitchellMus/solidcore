@@ -42,7 +42,7 @@ use serde_json::Value;
 use solidcore::blend::fillet_corner::p3::{
     CornerEnv, FilletCorner, FilletCornerKind, FilletExecutiveData,
 };
-use solidcore::blend::fillet_geom::p1::{FilletCornerType, FilletSolverId};
+use solidcore::blend::fillet_geom::p1::{FilletCornerId, FilletCornerType, FilletSolverId};
 use solidcore::blend::fillet_solver::p1::{FilletSolver, FilletSurfaceGenerator};
 use solidcore::intersect::surface_intersector::p1::SrfIndex;
 use solidcore::kernel::Kernel;
@@ -72,6 +72,8 @@ pub const MIN_GENERATED: usize = 400;
 const REFUSED: f64 = -2.0;
 /// The shim did not run upstream (the Rust side defers).
 const NOT_RUN: f64 = -3.0;
+/// The corner id the shim exports the corner under test (`this`) as.
+const THIS_CORNER: u32 = 1_000_000;
 
 /// The runner.
 pub struct Runner;
@@ -839,7 +841,8 @@ pub(super) fn corner_rust_with(
             target: &mut rm.target,
             pseudo: &mut rm.fb,
             exec: &mut exec,
-            corner: None,
+            // the shim exports `this` as this id
+            corner: Some(FilletCornerId(THIS_CORNER)),
             tsect_surfaces: &surfaces,
             // the model's geometries have no solver (as the shim's)
             solvers: &mut [],
