@@ -540,6 +540,10 @@ fn import(ex: &[f64]) -> Result<Imported, HarnessError> {
                     type_code: solidcore::topology::face::p2::TYPE,
                     key: ObjectKey(1 + f as u64),
                 }));
+                // The face record below repeats this through
+                // `Brep::add_face_record`; cache it with the owner too so the surface
+                // never exists in an owned-but-untoleranced state.
+                s.set_owner_zone_tol_3d(Some(tolerance));
             }
         }
         surfaces.push((surface, faceuse, dom, rect, tolerance));
