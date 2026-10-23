@@ -822,6 +822,33 @@ fn gen_analytic(rng: &mut Rng) -> Inputs {
         }
     };
     let n_edges = edges.len();
+    // real SmLine / SmCircle curves where the edges are straight / arcs in the XY plane
+    // about c (the analytic code dispatches IsLine, IsArc on them): the circle is the
+    // quarter from the x to the y direction
+    let real = rng.chance(0.5);
+    let line_edges: Vec<usize> = if real {
+        edges
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.curve.as_ref().is_some_and(|c| c.p == 1))
+            .map(|(i, _)| i)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let arc_from_x = |e: &super::blend_fillet_geom_p1::EdgeIn| {
+        e.curve.as_ref().is_some_and(|c| c.p == 2) && e.vs == 0 && e.ve == 1 && (shape <= 1 || shape == 4)
+    };
+    let arc_edges: Vec<[f64; 7]> = if real {
+        edges
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| arc_from_x(e))
+            .map(|(i, _)| [i as f64, c[0], c[1], c[2], r, 0.0, 90.0])
+            .collect()
+    } else {
+        Vec::new()
+    };
     let model = Model {
         targets,
         faces,
@@ -852,8 +879,8 @@ fn gen_analytic(rng: &mut Rng) -> Inputs {
             tan: rng.uniform(1e-4, 0.2),
             tsects: Vec::new(),
             orig_faces,
-            line_edges: Vec::new(),
-            arc_edges: Vec::new(),
+            line_edges,
+            arc_edges,
         },
         split: [0, 0],
     }
