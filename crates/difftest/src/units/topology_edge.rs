@@ -540,10 +540,6 @@ fn import(ex: &[f64]) -> Result<Imported, HarnessError> {
                     type_code: solidcore::topology::face::p2::TYPE,
                     key: ObjectKey(1 + f as u64),
                 }));
-                // The face record below repeats this through
-                // `Brep::add_face_record`; cache it with the owner too so the surface
-                // never exists in an owned-but-untoleranced state.
-                s.set_owner_zone_tol_3d(Some(tolerance));
             }
         }
         surfaces.push((surface, faceuse, dom, rect, tolerance));
@@ -2373,11 +2369,10 @@ mod tests {
             assert!(case.compared_values(), "{}", case.name);
         }
         check_revolution_cases(&fixtures);
-        check_analytic_surface_cases(&fixtures);
-        check_inexact_guard(&fixtures);
 
-        // Temporary diagnostic: list what the formerly exact-geometry-deferred
-        // cases reach now, so the remaining dependency is reported by name.
+        // Hard regression: no former exact-geometry case may reach an unported
+        // dependency again. Run this before the per-geometry checks so a failure
+        // lists every remaining case and symbol, not just the first one.
         let mut deferred = Vec::new();
         for case in &fixtures {
             let i: Inputs = case.parse().unwrap();
@@ -2406,8 +2401,11 @@ mod tests {
         }
         assert!(
             deferred.is_empty(),
-            "exact-surface cases must not defer; remaining: {deferred:?}"
+            "exact-surface cases must not defer or error; remaining: {deferred:?}"
         );
+
+        check_analytic_surface_cases(&fixtures);
+        check_inexact_guard(&fixtures);
     }
 
     /// The analytic surfaces that the shared exact exporter now carries for this runner.
@@ -2440,6 +2438,7 @@ mod tests {
             ("box_with_large_fillet_e11_seam", AnalyticSurface::Cone),
             ("box_with_large_fillet_e11_seam_f", AnalyticSurface::Cone),
             ("box_with_large_fillet_e11_tangent", AnalyticSurface::Cone),
+            ("box_with_large_fillet_rb_e0_tangent", AnalyticSurface::Cone),
         ] {
             let case = fixtures.iter().find(|case| case.name == name).unwrap();
             let i: Inputs = case.parse().unwrap();

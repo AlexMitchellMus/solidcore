@@ -1848,6 +1848,9 @@ pub fn evaluate_binormal_uv(
         // (a copy that keeps the face's owner: the copy constructor resets it)
         let mut copy = live.clone();
         copy.set_owner(live.owner());
+        // `set_owner` drops the cached face tolerance; restore the exact value
+        // after the owner, or the snapshot keeps a face handle without its cache.
+        copy.set_owner_zone_tol_3d(live.owner_zone_tol_3d());
         copy
     };
     let domain = face_rec.uv_domain;
