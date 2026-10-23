@@ -16876,7 +16876,7 @@ torus_edgeuse_offset_extend, cone_mate_extend_local. The guard lost three of the
 (`gen0027`, `gen0394`, `gen0449`) and made two cases A had deferred pass
 (`cylinder_seam_vertex_and_edge_caps`, `gen0218`), so it did not meet the acceptance
 condition and did not stop `gen0508`. A is therefore not shipped. On merged main
-`8b8e3596b` the shipped subset alone is 820 pass / 78 deferred / 0 fail; main is
+`422f71321` the shipped subset alone is 820 pass / 78 deferred / 0 fail; main is
 818 / 80 / 0, and the only transitions are the two genuine gains
 (`cylinder_seam_vertex_and_edge_caps`, `gen0218`), with no pass->defer, pass->fail or
 relocation.
