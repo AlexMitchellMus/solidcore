@@ -1167,12 +1167,15 @@ mod tests {
             assert_eq!(cache.polar_box_unstored(&k, id).unwrap(), normal);
 
             for (name, ends, rejected) in [
-                // Displacement is outside the surface-normal cone.
-                ("polar_reject", [[10.0, 0.5, 0.0], [11.0, 0.5, 0.0]], true),
-                // Normal cone overlaps; the curve chord is perpendicular to it.
-                ("chord_reject", [[0.0, 0.5, 10.0], [1.0, 0.5, 10.0]], true),
-                // Both cones overlap: keep looking for intersections.
-                ("keep", [[0.5, 0.5, 10.0], [0.5, 0.5, 11.0]], false),
+                // Displacement is outside the surface-normal cone. The chord
+                // is perpendicular to it, so the chord test cannot mask this.
+                ("polar_reject", [[10.0, 0.0, 0.0], [10.0, 1.0, 0.0]], true),
+                // Normal cone overlaps, but no chord direction is perpendicular
+                // to the displacement cone (ConesAreDisjointPerpen).
+                ("chord_reject", [[0.5, 0.5, 10.0], [0.5, 0.5, 11.0]], true),
+                // Normal cone overlaps and the chord can be perpendicular to
+                // the displacement: the cone tests cannot reject this branch.
+                ("keep", [[0.0, 0.5, 10.0], [1.0, 0.5, 10.0]], false),
                 // Overlapping boxes give a wide cone and must not reject.
                 ("wide_keep", [[0.5, 0.5, -1.0], [0.5, 0.5, 1.0]], false),
             ] {
