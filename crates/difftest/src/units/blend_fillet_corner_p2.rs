@@ -691,6 +691,23 @@ fn arc(c: [f64; 3], a: [f64; 3], b: [f64; 3]) -> Crv {
     }
 }
 
+/// The fillet edges of the closed loop through `p` (edge `i` from `p[i]` to the next
+/// point), with the type and curve `make` gives for edge `i` from `a` to `b`.
+fn ring_edges(
+    p: &[[f64; 3]],
+    mut make: impl FnMut(usize, [f64; 3], [f64; 3]) -> (i64, Option<Crv>),
+) -> Vec<super::blend_fillet_geom_p1::EdgeIn> {
+    let n = p.len();
+    p.iter()
+        .zip(p.iter().cycle().skip(1))
+        .enumerate()
+        .map(|(i, (&a, &b))| {
+            let (etype, crv) = make(i, a, b);
+            edge_in(i, (i + 1) % n, etype, crv, [-1, -1])
+        })
+        .collect()
+}
+
 /// A corner for `MakeAnalyticCornerSurface`: fillet edges without fillet geometries (the
 /// model's have no solver) whose curves admit (or almost admit) the analytic fits.
 /// - a sphere octant: three exact quarter arcs, cross sections or fillet-fillet edges (the
@@ -731,12 +748,10 @@ fn gen_analytic(rng: &mut Rng) -> Inputs {
             let p = [at([1.0, 0.0, 0.0]), at([0.0, 1.0, 0.0]), at([0.0, 0.0, 1.0])];
             let etype = |rng: &mut Rng| *rng.choose(&[1i64, 4, 5]).unwrap_or(&1);
             let chord = if shape == 1 { rng.below(3) as usize } else { 3 };
-            let mut edges = Vec::new();
-            for i in 0..3 {
-                let (a, b) = (p[i], p[(i + 1) % 3]);
+            let mut edges = ring_edges(&p, |i, a, b| {
                 let crv = if i == chord { line(a, b) } else { arc(c, a, b) };
-                edges.push(edge_in(i, (i + 1) % 3, etype(rng), Some(crv), [-1, -1]));
-            }
+                (etype(rng), Some(crv))
+            });
             if rng.chance(0.2) {
                 edges.reverse();
             }
@@ -745,31 +760,30 @@ fn gen_analytic(rng: &mut Rng) -> Inputs {
         // chamfer: a triangle or a quadrilateral of lines
         2 => {
             chamfer = true;
-            let n = if rng.chance(0.5) { 3 } else { 4 };
+            let n: u32 = if rng.chance(0.5) { 3 } else { 4 };
             let mut p: Vec<[f64; 3]> = (0..n)
                 .map(|i| {
-                    let a = std::f64::consts::TAU * (i as f64) / (n as f64);
+                    let a = std::f64::consts::TAU * f64::from(i) / f64::from(n);
                     at([a.cos(), a.sin(), rng.uniform(-0.3, 0.3)])
                 })
                 .collect();
             if rng.chance(0.2) {
                 p.reverse();
             }
-            let edges = (0..n)
-                .map(|i| edge_in(i, (i + 1) % n, 1, Some(line(p[i], p[(i + 1) % n])), [-1, -1]))
-                .collect();
+            let edges = ring_edges(&p, |_, a, b| (1, Some(line(a, b))));
             (p, edges, vec![plane_srf(c, [r, 0.0, 0.0], [0.0, r, 0.0])])
         }
         // chamfer: a triangle whose first edge is a rail-rail interpolating arc on target
         // face 0 (the plane z = c.z); the others lines
         3 => {
             chamfer = true;
-            let p = vec![at([1.0, 0.0, 0.0]), at([0.0, 1.0, 0.0]), at([0.3, 0.3, 1.0])];
+            let [p0, p1, p2] = [at([1.0, 0.0, 0.0]), at([0.0, 1.0, 0.0]), at([0.3, 0.3, 1.0])];
             let edges = vec![
-                edge_in(0, 1, 11, Some(arc(c, p[0], p[1])), [-1, -1]),
-                edge_in(1, 2, 1, Some(line(p[1], p[2])), [-1, -1]),
-                edge_in(2, 0, 1, Some(line(p[2], p[0])), [-1, -1]),
+                edge_in(0, 1, 11, Some(arc(c, p0, p1)), [-1, -1]),
+                edge_in(1, 2, 1, Some(line(p1, p2)), [-1, -1]),
+                edge_in(2, 0, 1, Some(line(p2, p0)), [-1, -1]),
             ];
+            let p = vec![p0, p1, p2];
             if rng.chance(0.85) {
                 orig_faces.push([0, 0]);
             }
@@ -780,20 +794,22 @@ fn gen_analytic(rng: &mut Rng) -> Inputs {
         4 => {
             let h = r * rng.uniform(0.2, 2.0);
             let r2 = if rng.chance(0.5) { 1.0 } else { rng.uniform(0.5, 1.5) };
-            let p = vec![
+            let [c0, c1, c2] = c;
+            let [p0, p1, p2, p3] = [
                 at([1.0, 0.0, 0.0]),
                 at([0.0, 1.0, 0.0]),
-                [c[0], c[1] + r * r2, c[2] + h],
-                [c[0] + r * r2, c[1], c[2] + h],
+                [c0, c1 + r * r2, c2 + h],
+                [c0 + r * r2, c1, c2 + h],
             ];
-            let top = [c[0], c[1], c[2] + h];
+            let top = [c0, c1, c2 + h];
             let cross = *rng.choose(&[1i64, 1, 4]).unwrap_or(&1);
             let edges = vec![
-                edge_in(0, 1, 11, Some(arc(c, p[0], p[1])), [-1, -1]),
-                edge_in(1, 2, cross, Some(line(p[1], p[2])), [-1, -1]),
-                edge_in(2, 3, 1, Some(arc(top, p[2], p[3])), [-1, -1]),
-                edge_in(3, 0, cross, Some(line(p[3], p[0])), [-1, -1]),
+                edge_in(0, 1, 11, Some(arc(c, p0, p1)), [-1, -1]),
+                edge_in(1, 2, cross, Some(line(p1, p2)), [-1, -1]),
+                edge_in(2, 3, 1, Some(arc(top, p2, p3)), [-1, -1]),
+                edge_in(3, 0, cross, Some(line(p3, p0)), [-1, -1]),
             ];
+            let p = vec![p0, p1, p2, p3];
             (p, edges, vec![plane_srf(c, [r, 0.0, 0.0], [0.0, r, 0.0])])
         }
         // degenerate: two or five edges, a missing curve, a cubic rail-rail interpolation
@@ -805,9 +821,7 @@ fn gen_analytic(rng: &mut Rng) -> Inputs {
                     at([a.cos(), a.sin(), 0.0])
                 })
                 .collect();
-            let mut edges: Vec<_> = (0..n)
-                .map(|i| edge_in(i, (i + 1) % n, 1, Some(line(p[i], p[(i + 1) % n])), [-1, -1]))
-                .collect();
+            let mut edges = ring_edges(&p, |_, a, b| (1, Some(line(a, b))));
             if let Some(e) = edges.first_mut() {
                 match rng.below(3) {
                     0 => e.curve = None,
