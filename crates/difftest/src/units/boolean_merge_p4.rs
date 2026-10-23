@@ -99,7 +99,7 @@ fn own_geometry(b: &mut Brep) -> Result<(), HarnessError> {
 /// least (exact, `f64::total_cmp`, x before y before z). The loop and its cycle are
 /// unchanged; only where the walk enters it. An exact tie between two edge uses of one loop has no
 /// canonical answer and is a harness error rather than a guess (ND-258).
-fn canonical_loop_starts(b: &mut Brep) -> Result<(), HarnessError> {
+pub(super) fn canonical_loop_starts(b: &mut Brep) -> Result<(), HarnessError> {
     use solidcore::topology::{EdgeuseId, LoopuseId, LoopuseStart};
     let point = |b: &Brep, eu: EdgeuseId| -> Result<[f64; 3], HarnessError> {
         let vu = b
