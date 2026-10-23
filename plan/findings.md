@@ -17251,7 +17251,7 @@ solidcore tests pass. The exception is the Windows-only
 `solids_run_primitive_creation_until_the_next_unported_call` (see the previous entry).
 Every unit is now green or partial. The open PRs #563, #178 and #270 add no units.
 
-## blend.fillet_solver_p4 `gen0512`: the calc_geom shim's split flag was never read (fixed, 2026-10-23)
+## blend.fillet_solver_p4 `gen0512`: the calc_geom shim's split flag was never read (fixed, PR #584, 2026-10-23)
 
 Follow-up to "PR #463: 27 Rust-vs-C++ mismatches newly reachable once
 `SmSurface::DropCurve` is wired" (blend.fillet_solver_p4 group). `gen0512` (calc_geom,
