@@ -17484,6 +17484,40 @@ Every one of the 1436 deferral-to-pass conversions compares actual floating-poin
 values (`values_compared > 0`), with maximum relative error exactly zero. None is
 a status-only or vacuous pass.
 
+## intersect.topology_solver_p2 static face solves: answering `GetNaturalUVDomain` exposes 9 mismatches (open, PR #599, 2026-10-23)
+
+Known-issue group G3, item 6, proposed giving the runner's `StaticHandle` a
+`natural_uv_domain`. The handle's surfaces 2002/2003 are the shim's two `SmPlane`s,
+at z=0 and z=1 over [0,1]^2. That change un-defers the 12
+`face_included_without_shape_limit_*` fixture cases, which are deferred on
+`SmSurface::GetNaturalUVDomain` (surface.surface_p2). Three of them move on to other
+blockers. The other 9 then **fail**: entry 6 (`SmTLSCurveFace`) `_6_3_0`, `_6_4_0` and
+`_6_4_1`; entry 7 `_7_4_0` and `_7_4_1`; entry 8 (`SmTLSFaceFace`) `_8_3_0`,
+`_8_3_1`, `_8_4_0` and `_8_4_1`.
+
+The values from `static-shell-vertices.json#132` (entry 6, operation 3, request 0, tol
+1e-5, no swap, included) are below. Each solution is `[type, nvars, nobjs, obj0,
+obj1, value, params...]`.
+- C++: `3, 2, 999, -2, 0, 1, 1, 0`. Curve t=1, plane uv (1, 0).
+- Rust: `3, 2, 999, -2, 0, 0.5, 0, 0`. Curve t=0.5, plane uv (0, 0).
+
+Both are valid zero-distance points of the overlap x in [0, 1], but they are
+different picks. Entry 8 with the same inputs (parallel planes, distance 1
+everywhere) gives:
+- C++: `4, 2, -2, -2, 1, 0.5, 0.5, 0.5, 0.5`.
+- Rust: `4, 2, -2, -2, 1, 0, 0, 0, 0`.
+
+Suspected cause: the face-owned surface cache. Upstream `pSurface1->GlobalSurfaceSolve`
+(and the curve/face global solve) uses the surface's own cache, which for a
+face's surface is that face's `SmTrimSrfCache`. Rust `Surface::global_surface_solve`
+builds a fresh plain cache (`solve_surface_cache`), so the subdivision tree differs,
+and so does the order in which equal-valued solutions arrive. This is the
+known-issue G8 class, a face-aware `SurfaceSolveContext`. It is not a handle
+one-liner.
+
+What PR #599 does: it leaves the handle without `natural_uv_domain`, so these 12
+cases stay deferred. It adds only `StaticScene::object_zone_tol_3d`, which turns the
+2 `static_operation_matrix_0_8_*` `GetZoneTol3d` deferrals into passes.
 ## surface.cone_p3 to green: typed iso boundaries (PR #598, 2026-10-23)
 
 - `Surface::create_iso_boundaries` (unit `surface.surface_p9`) now returns the typed iso
@@ -17695,3 +17729,62 @@ unchanged. All 90 spine_doubled fixtures match C++ bit for bit, including the tw
 failures; the shared p6 exporter still has 588 passes, no failures and 7 deferrals.
 The full local p10 rerun was superseded before completion; no full-suite pass is
 claimed. No fixture, comparison gate or tolerance was changed.
+## topology.face_p1: `SetSurface`'s `SM_NO_CHANGE_GEOMETRY` wired (PR #637, 2026-10-23)
+
+- **What.** The `UNPORTED(topology.face_p3): SmFace::Notify` stub in
+  `topology::face::p1::set_surface` is gone. Its justification was the
+  `topology.face_p3` "Stubs left for this unit" entry above (line ~7535): a face-owned
+  surface has no object identity, so the data arguments cannot be formed. That no
+  longer holds:
+  - `set_surface` notifies `SM_NO_CHANGE_GEOMETRY` in the empty B-rep face environment,
+    with null data. Upstream the two surfaces reach only `SmTopology::Notify`, which
+    copies attributes from the old surface to the new one and calls the context
+    callbacks; that environment has neither.
+  - `SmBrep::ReplaceSurface` calls the new `set_surface_notified` with the caller's
+    environment. `Surface` now carries a notification identity slot (as `Curve` does).
+    The caller's context issues the keys for the new and the old surface.
+  - A change tracker then records the same `ChangeGeometry` event as upstream: the
+    face, the new surface, null (`SM_NO_GET_BREP`), and the old surface.
+  - Without these identities, the brep_p3 tracker disagreed on all 47 `TurnToNURBS`
+    cases: event 26 of the C++ side's 26 was missing, and so was the face's `Chg` entry.
+- **Unmasked and fixed: extrusion split.** `Surface::split_at` returned `SM_ERR` for a
+  surface of extrusion without a NURB, which is how `CopyAndAddAnalytics`' extrusion
+  recogniser leaves it. Upstream `SplitAt` makes the NURB first
+  (`GetOrCreateGwNurbPointer`). The port now splits a temporary copy with the NURB made
+  (`SurfOfExtrusion::base_with_nurb`).
+  - Found by face_p1 `Mouse.smb_0_f1_op9` (`MoveSeam`). The V pass split the U pass's
+    joined surface, which had been recognised as an extrusion.
+  - Before the fix, C++ returned status 0 with `MoveOutOfFace` in both directions;
+    Rust returned `SM_ERR`.
+- **Still deferred: geometry edit notifications.** Six `topology.brep_p3`
+  `TurnToNURBS` cases are deferred to `unmodelled:geometry-edit-notify`:
+  `nurbs_off_Mouse_0.1`, `nurbs_off_Mouse_-0.05`, `nurbs_off_toruswvy_0.1`,
+  `gen0138`, `gen0164` and `gen0241`.
+  - In these cases upstream geometry objects notify their own edits with
+    `Notify(SM_NO_PRE_EDIT / SM_NO_POST_EDIT, this, owner, NULL)`. This happens on
+    `SmBSplineCurve`, `SmLine`, `SmBSplineSurface` and others, for example on the curves
+    `CreateUVTrimCurves` builds after `ReplaceSurface`.
+  - The tracker records these events. Through the geometry's owner, they also become
+    `Chg` entries of edges.
+  - The port's geometry types send no edit notifications. Values seen:
+    - `gen0164`: C++ has 32 events, including six `PostEdit`s of unowned geometry
+      `-30 2..5`; Rust has 26.
+    - `nurbs_off_Mouse_0.1`: the C++ `Chg` list has 6 entries and 34 events; Rust has 4
+      entries and 20 events.
+    - Everything before the tracker agrees.
+  - The runner's `geometry_edit_deferral` reads the C++ tracker at the offset where the
+    Rust tracker starts. It defers the case when that tracker holds a pre- or post-edit
+    whose caller is geometry.
+  - The fix is to give geometry edits notifications in the curve and surface units: an
+    identity slot plus a context at each edit. This is a cross-unit job and has not
+    been started.
+- **Update (PR #661, 2026-10-23): known mismatches, not a C++-output deferral.** The
+  runner no longer reads the C++ tracker to choose a deferral: `geometry_edit_deferral`
+  and the `TurnToNURBS` tracker-offset trailer are removed, since difftest must not pick
+  a deferral from the reference output. The six cases above now compare and fail on the
+  tracker. They are listed in `crates/difftest/known_mismatches.toml`, so they still run
+  and report as `known_mismatch`, and `topology.brep_p3` stays `partial`.
+  - The real fix is unchanged: port the curve and surface `SM_NO_PRE_EDIT` /
+    `SM_NO_POST_EDIT` notifications (an identity slot plus a context at each geometry
+    edit). This is queued as follow-up work. When it lands, remove the six
+    `known_mismatches.toml` entries (a listed case that passes fails the unit).
