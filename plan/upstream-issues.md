@@ -4184,3 +4184,13 @@ Numbering paragraph at the top says.
 - **What happens:** In `fixtures/solidcraft/3665-column-in-channel.json` every case fails at the cut of the r 3.04 cylinder centred at (0, 20) from the column (step 12 of `column_in_channel`, step 14 of the other three). That circle is internally tangent to the column's r 23.04 wall (r 23.039 in `control_column_clear`), so the column ends in a sharp corner on the wall. SolidCraft's expected volumes are closed forms; SMLib never reaches the final union.
 - **How found:** a standalone SM_API driver running the case steps on the C++ reference build (`SmApiCreateBox/Cylinder`, `SmApiBooleanIntersection/Difference`, `SmApiBrepCopy`), with gdb return breakpoints on `SmMerge::MakeFaceuse`, `SmBrep::MakeFaceTopology` and `SmBrep::TestClosureSplitRegion`.
 - **Confirmed:** yes, on the C++ build for main 92454ca60. The Rust port fails at the same step in the same function (`boolean::merge::p2::make_faceuse` and `topology::brep::p6`, status 1001).
+### Issue #368: RemoveExcessFaces leaves removed faces in correspondence maps
+
+- **Location:** `source/SMLib/src/SmOffsetExecutive.cpp`, `RemoveExcessFaces`,
+  immediately before `pResult->RemoveFaces(sDeleteFaces)`.
+- **Trigger:** an excess offset face still named by face-use, edge, vertex or blend
+  correspondence, subsequently walked by `PiecewiseMerge`.
+- **Effect:** stale face pointers are read after removal (reported under ASan in #368).
+- **Confirmed locally:** direct Rust relation regression; native shell trigger not rerun.
+- **Rust port:** Fixed in tangency-labs/smlib 5fe723c; the port carries it. All
+  incoming face pairs and deleted blends' outgoing pairs are forgotten before removal.
