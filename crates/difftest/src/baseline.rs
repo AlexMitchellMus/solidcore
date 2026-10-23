@@ -205,6 +205,12 @@ pub fn parse_baseline(text: &str) -> Result<Baseline, String> {
         if schema == Some(1) && outcome == "pass" && !compared_values && !vacuous && !both_errored {
             return Err(format!("case `{name}` has an unmarked zero-value success"));
         }
+        if outcome == "known_mismatch" && !compared_values && c.get("exact_compared").is_none() {
+            if vacuous || both_errored || !legacy_known_integer_presence(c) {
+                return Err("legacy known-mismatch integer coverage is ambiguous".into());
+            }
+            compared_values = true;
+        }
         cases.push(BaselineCase {
             name: name.to_string(),
             outcome: outcome.to_string(),
@@ -257,6 +263,39 @@ pub fn parse_baseline(text: &str) -> Result<Baseline, String> {
         seeds: Some(seeds),
         cases,
     })
+}
+
+// exact_list increments its counter before serializing an indexed integer
+// mismatch. Keys/length mismatches cannot establish integer value coverage.
+fn legacy_known_integer_presence(case: &Value) -> bool {
+    case.get("mismatches")
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items.iter().any(|mismatch| {
+                let field = mismatch.get("field").and_then(Value::as_str).unwrap_or("");
+                let indexed = field
+                    .strip_prefix("ints.")
+                    .and_then(|name| name.rsplit_once('['))
+                    .is_some_and(|(name, index)| {
+                        !name.is_empty()
+                            && index.strip_suffix(']').is_some_and(|digits| {
+                                !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
+                            })
+                    });
+                indexed
+                    && ["cpp", "rust"].iter().all(|key| {
+                        mismatch
+                            .get(*key)
+                            .and_then(Value::as_str)
+                            .is_some_and(|value| {
+                                let digits = value.strip_prefix('-').unwrap_or(value);
+                                !digits.is_empty()
+                                    && digits.bytes().all(|b| b.is_ascii_digit())
+                                    && value.parse::<i64>().is_ok()
+                            })
+                    })
+            })
+        })
 }
 
 /// Reads `<dir>/<unit>.json`; `None` if there is no such report (a new unit).
@@ -352,7 +391,8 @@ pub fn validate_selected_baselines(dir: &Path, units: &[String]) -> Result<(), H
 
 /// Ratchet violations of `res` against `base` (empty: no regression).
 ///
-/// A case that now fails is not reported here: the failure already fails the unit.
+/// A formerly passing case that now fails already fails the unit. Known mismatch
+/// outcomes and previously exercised numerical coverage are also ratcheted.
 pub fn ratchet(base: &Baseline, res: &UnitResult) -> Vec<Violation> {
     let now: BTreeMap<&str, &crate::runner::CaseResult> =
         res.cases.iter().map(|c| (c.name.as_str(), c)).collect();
@@ -384,10 +424,19 @@ pub fn ratchet(base: &Baseline, res: &UnitResult) -> Vec<Violation> {
             continue;
         };
         let o = c.outcome();
-        if b.outcome != "pass" || o == CaseOutcome::Fail {
+        if b.outcome == "known_mismatch"
+            && !matches!(o, CaseOutcome::KnownMismatch | CaseOutcome::Pass)
+        {
+            push(
+                &b.name,
+                format!("case `{}` was a known mismatch, now {}", b.name, o.as_str()),
+            );
             continue;
         }
-        if o != CaseOutcome::Pass {
+        if b.outcome == "pass" && o != CaseOutcome::Pass {
+            if o == CaseOutcome::Fail {
+                continue;
+            }
             push(
                 &b.name,
                 format!(
@@ -396,7 +445,9 @@ pub fn ratchet(base: &Baseline, res: &UnitResult) -> Vec<Violation> {
                     o.as_str()
                 ),
             );
-        } else if b.compared_values && !c.compared_values() {
+            continue;
+        }
+        if b.compared_values && !c.compared_values() {
             push(
                 &b.name,
                 format!(
@@ -640,6 +691,41 @@ mod tests {
         ]);
         let violations = ratchet(&b, &unit(vec![case("pass", "known_mismatch", 1)]));
         assert_eq!(violations.len(), 2);
+    }
+
+    #[test]
+    fn known_mismatches_keep_outcomes_and_numerical_coverage() {
+        let b = base(&[("known", "known_mismatch", false, true)]);
+        for outcome in ["known_mismatch", "pass"] {
+            assert!(ratchet(&b, &unit(vec![case("known", outcome, 1)])).is_empty());
+            let violations = ratchet(&b, &unit(vec![case("known", outcome, 0)]));
+            assert_eq!(violations.len(), 1, "{outcome}");
+            assert!(violations[0].detail.contains("now compares nothing"));
+        }
+        for outcome in ["deferred", "rejected", "fail"] {
+            let violations = ratchet(&b, &unit(vec![case("known", outcome, 0)]));
+            assert_eq!(violations.len(), 1, "{outcome}");
+            assert!(violations[0].detail.contains("was a known mismatch"));
+        }
+    }
+
+    #[test]
+    fn legacy_indexed_integer_mismatch_proves_presence_without_a_count() {
+        let mut old = serde_json::json!({"unit":"a.b","status":"partial","pass":true,"seeds":16,
+            "cases_total":1,"cases_passed":0,"cases_failed":0,"cases_deferred":0,
+            "cases_known_mismatch":1,"cases_vacuous":0,
+            "cases":[{"name":"known","pass":false,"outcome":"known_mismatch","values_compared":0,
+                "mismatches":[{"field":"ints.status[0]","cpp":"1006","rust":"1001"}]}]});
+        assert!(parse_baseline(&old.to_string()).unwrap().cases[0].compared_values);
+        assert!(old["cases"][0].get("exact_compared").is_none());
+        for bad in [
+            serde_json::json!([]),
+            serde_json::json!([{"field":"ints.status.len","cpp":"1","rust":"2"}]),
+            serde_json::json!([{"field":"ints.status[0]","cpp":"missing","rust":"1"}]),
+        ] {
+            old["cases"][0]["mismatches"] = bad;
+            assert!(parse_baseline(&old.to_string()).is_err());
+        }
     }
 
     #[test]

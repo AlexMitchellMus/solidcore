@@ -113,6 +113,34 @@ class BaselineTests(unittest.TestCase):
             with self.subTest(unit=invalid), self.assertRaises(b.BaselineError):
                 b.validate_report(dict(r, unit=invalid), invalid)
 
+    def test_known_outcomes_and_value_presence_are_retained(self):
+        def known(outcome="known_mismatch", exact=1):
+            r = valid_report()
+            r["schema_version"] = 1
+            c = r["cases"][0]
+            c.update(outcome=outcome, exact_compared=exact)
+            c["pass"] = outcome == "pass"
+            for kind, field in [("pass", "cases_passed"), ("fail", "cases_failed"), ("deferred", "cases_deferred"), ("rejected", "cases_rejected"), ("known_mismatch", "cases_known_mismatch")]:
+                r[field] = int(outcome == kind)
+            r["status"] = "fail" if outcome in {"fail", "rejected"} else "partial" if outcome in {"known_mismatch", "deferred"} else "green"
+            r["pass"] = r["status"] != "fail"
+            if outcome == "pass" and exact == 0:
+                c["vacuous"] = True; r["cases_vacuous"] = 1
+            return r
+        before = known()
+        for outcome in ["known_mismatch", "pass"]:
+            self.assertEqual(b.ratchet_reports({"a.b": before}, {"a.b": known(outcome)}), [])
+            self.assertEqual(len(b.ratchet_reports({"a.b": before}, {"a.b": known(outcome, 0)})), 1)
+        for outcome in ["deferred", "rejected", "fail"]:
+            self.assertEqual(len(b.ratchet_reports({"a.b": before}, {"a.b": known(outcome, 0)})), 1)
+        legacy = known(); legacy.pop("schema_version"); legacy["cases"][0].pop("exact_compared")
+        legacy["cases"][0]["mismatches"] = [dict(field="ints.status[0]", cpp="1006", rust="1001")]
+        b.validate_report(legacy, "a.b")
+        self.assertTrue(b.case_has_values(legacy, legacy["cases"][0]))
+        for bad in [[], [dict(field="ints.status.len", cpp="1", rust="2")], [dict(field="ints.status[0]", cpp="missing", rust="1")]]:
+            wrong = copy.deepcopy(legacy); wrong["cases"][0]["mismatches"] = bad
+            with self.assertRaises(b.BaselineError): b.validate_report(wrong, "a.b")
+
     def test_atomic_zip_and_digest(self):
         blob = archive([("a.b.json", json.dumps(valid_report()))])
         provenance = dict(digest="sha256:" + hashlib.sha256(blob).hexdigest())

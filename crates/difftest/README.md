@@ -272,7 +272,9 @@ Passing cases must retain their identities, outcomes and value coverage.
 `--baseline D` compares a full unit run against `D/<unit>.json`: passing cases
 must remain passing, including against `known_mismatch`; cases that compared
 float/integer/topology values must keep value coverage. Deferred, failing and
-known-mismatch cases cannot disappear. Rejected fixture constructors may be
+known-mismatch cases cannot disappear. A known mismatch must remain known or
+become a genuine pass; it cannot become deferred or rejected. Every retained case
+that compared values must keep value coverage. Rejected fixture constructors may be
 removed; new passing cases and genuine fixes are allowed. Changed seeds and
 `--filter` with `--baseline` are errors, so generated cases cannot silently vanish.
 With `--green`, dropped baseline units fail in the parent before parallel workers
@@ -299,7 +301,9 @@ other missing runner/report units fail. Provenance is stored beside the reports.
 Modern reports serialize actual `exact_compared` counts (including zero) with
 `schema_version = 1`. Old #550 reports omitted those counts, but their vacuity
 marker proves boolean integer coverage for a zero-float pass that is neither
-vacuous nor both-error. This bridge never invents an integer comparison count.
+vacuous nor both-error. This bridge never invents an integer comparison count. Legacy known mismatches
+with zero floats need an indexed integer mismatch as proof of exact-value
+coverage; missing or ambiguous proof fails closed.
 Ambiguous older schemas fail rather than silently discarding coverage.
 Reports remain generated artifacts; never regenerate-and-commit baseline reports.
 

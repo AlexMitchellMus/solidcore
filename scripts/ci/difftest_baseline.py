@@ -72,6 +72,18 @@ def uint(value, field):
     return value
 
 
+def legacy_known_integer_presence(case):
+    # compare.rs::exact_list increments exact_compared before emitting this
+    # indexed integer mismatch. Length/key mismatches prove no compared value.
+    for mismatch in case.get("mismatches", []):
+        if not isinstance(mismatch, dict) or not re.fullmatch(r"ints\..+\[[0-9]+\]", mismatch.get("field", "")):
+            continue
+        values = [mismatch.get(key) for key in ["cpp", "rust"]]
+        if all(isinstance(v, str) and re.fullmatch(r"-?[0-9]+", v) and -(1 << 63) <= int(v) < (1 << 63) for v in values):
+            return True
+    return False
+
+
 def case_has_values(report, case):
     if report.get("schema_version") == 1 and "exact_compared" not in case:
         raise BaselineError("modern schema requires exact comparison count")
@@ -81,6 +93,10 @@ def case_has_values(report, case):
         if case.get("vacuous", False) or case.get("both_errored", False):
             raise BaselineError("case claims values and vacuity")
         return True
+    if case["outcome"] == "known_mismatch" and "exact_compared" not in case:
+        if not case.get("both_errored", False) and not case.get("vacuous", False) and legacy_known_integer_presence(case):
+            return True  # Proven Boolean presence, never an invented exact count.
+        raise BaselineError("legacy known-mismatch integer coverage is ambiguous")
     if case.get("both_errored", False) or case.get("vacuous", False):
         return False
     if "exact_compared" in case:
@@ -175,7 +191,9 @@ def ratchet_reports(baseline, current):
                 violations.append((unit, old["name"], "baseline case dropped"))
             elif old["outcome"] == "pass" and new["outcome"] != "pass":
                 violations.append((unit, old["name"], "passing case no longer passes"))
-            elif old["outcome"] == "pass" and case_has_values(before, old) and not case_has_values(after, new):
+            elif old["outcome"] == "known_mismatch" and new["outcome"] not in {"known_mismatch", "pass"}:
+                violations.append((unit, old["name"], "known mismatch no longer exercised"))
+            elif case_has_values(before, old) and not case_has_values(after, new):
                 violations.append((unit, old["name"], "value coverage lost"))
     return violations
 
