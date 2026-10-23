@@ -33,7 +33,7 @@ use solidcore_ffi::units::surface_surface_p9 as ffi;
 use solidcore::geom::solution_array::{ObjectKind, SolutionObject};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Handle(u8);
+struct Handle(u8, Option<Extent2d>);
 impl SolutionObject for Handle {
     fn kind(&self) -> ObjectKind {
         if self.0 == 0 {
@@ -44,6 +44,10 @@ impl SolutionObject for Handle {
     }
     fn natural_interval(&self) -> Option<Extent1d> {
         (self.0 == 0).then(|| Extent1d::from_min_max(0.0, 1.0))
+    }
+    /// The surface handle carries its surface's `GetNaturalUVDomain`.
+    fn natural_uv_domain(&self) -> Option<Extent2d> {
+        self.1
     }
 }
 /// Differential runner for the three owned surface operations.
@@ -230,16 +234,17 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
                     ..CurveCacheOptions::default()
                 },
             );
-            cc.set_curve_handle(Some(Handle(0)));
+            cc.set_curve_handle(Some(Handle(0, None)));
             cc.tessellate(&k)
                 .map_err(|e| harness(format!("CSI fixture cache setup: {e}")))?;
             {
+                let natural = Some(surface.natural_uv_domain());
                 let mut cache = SurfaceCache::<Handle>::new(
                     surface,
                     Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
                     SurfaceCacheOptions::default(),
                 );
-                cache.set_surface_handle(Some(Handle(1)));
+                cache.set_surface_handle(Some(Handle(1, natural)));
                 let uv = cache.uv_domain();
                 let mut bbox = Extent3d::new();
                 for p in i.net {
@@ -266,7 +271,7 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
                         is_marked: false,
                         node_class: NodeClass::Unknown,
                         face: None,
-                        surface: Some(Handle(1)),
+                        surface: Some(Handle(1, natural)),
                         slot: Some(0),
                     }),
                     ..TreeNode::new()

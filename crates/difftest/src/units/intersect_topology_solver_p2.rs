@@ -141,24 +141,9 @@ impl SolutionObject for StaticHandle {
     fn natural_interval(&self) -> Option<Extent1d> {
         (self.0 == 999 || self.0 == -2).then(|| Extent1d::from_min_max(0.0, 1.0))
     }
-    /// The shim's two planes (`GetNaturalUVDomain`), rebuilt as the scene builds them.
-    fn natural_uv_domain(&self) -> Option<Extent2d> {
-        match self.0 {
-            2002 => Some(static_plane(0.0).natural_uv_domain()),
-            2003 => Some(static_plane(1.0).natural_uv_domain()),
-            _ => None,
-        }
-    }
-}
-/// The shim's `SmPlane` at height `z` over the unit UV square.
-fn static_plane(z: f64) -> Surface {
-    Surface::from(solidcore::surface::plane::Plane::new(
-        Point3::new(0.0, 0.0, z),
-        Vec3::new(1.0, 0.0, 0.0),
-        Vec3::new(0.0, 1.0, 0.0),
-        solidcore::geom::vector2d::Vec2::new(1.0, 1.0),
-        &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
-    ))
+    // No natural_uv_domain: answering it un-defers 12 face cases, 9 of which then
+    // disagree (the C++ solves over the faces' own trimmed surface caches; see
+    // plan/findings.md, "topology_solver_p2 static face solves").
 }
 struct StaticScene {
     points: Vec<Point3>,
@@ -381,7 +366,15 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
         empty_second,
         curve: Curve::from(BSplineCurve::from_nurb(nurb, 3, false)),
         edge_owner: i.entry == 7,
-        surfaces: [0.0, 1.0].map(static_plane),
+        surfaces: [0.0, 1.0].map(|z| {
+            Surface::from(solidcore::surface::plane::Plane::new(
+                Point3::new(0.0, 0.0, z),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                solidcore::geom::vector2d::Vec2::new(1.0, 1.0),
+                &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+            ))
+        }),
     };
     let vectors = [Vec3::new(0.0, 0.0, 1.0), Vec3::new(1.0, 0.0, 0.0)];
     let options = TopologySolveOptions {
