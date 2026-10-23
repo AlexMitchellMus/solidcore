@@ -94,10 +94,10 @@ fn own_geometry(b: &mut Brep) -> Result<(), HarnessError> {
     Ok(())
 }
 
-/// Rotates every edge loop use's start to its canonical edge use: the one whose own
-/// vertex point, then its CCW neighbour's vertex point, is least (exact,
-/// `f64::total_cmp`, x before y before z). The loop and its cycle are unchanged; only
-/// where the walk enters it. An exact tie between two edge uses of one loop has no
+/// Rotates the start of every edge loop use the fixture walk reaches to its canonical
+/// edge use: the one whose own vertex point, then its CCW neighbour's vertex point, is
+/// least (exact, `f64::total_cmp`, x before y before z). The loop and its cycle are
+/// unchanged; only where the walk enters it. An exact tie between two edge uses of one loop has no
 /// canonical answer and is a harness error rather than a guess (ND-258).
 fn canonical_loop_starts(b: &mut Brep) -> Result<(), HarnessError> {
     use solidcore::topology::{EdgeuseId, LoopuseId, LoopuseStart};
@@ -122,7 +122,14 @@ fn canonical_loop_starts(b: &mut Brep) -> Result<(), HarnessError> {
             .find(|o| o.is_ne())
             .unwrap_or(core::cmp::Ordering::Equal)
     };
-    let loopuses: Vec<LoopuseId> = b.loopuses().ids().collect();
+    // only the loop uses the fixture walk reaches: after a Boolean's deletes the arena
+    // keeps dead loop use records whose edge uses are gone
+    let walk_error = |_| error("fixture walk failed");
+    let g = super::topology_brep_p3::walk(b).map_err(walk_error)?;
+    let mut loopuses = Vec::with_capacity(g.len(4));
+    for i in 0..g.len(4) {
+        loopuses.push(LoopuseId::from_index(g.at(4, i).map_err(walk_error)?));
+    }
     for lu in loopuses {
         let start = b.loopuse(lu).map_err(|x| error(&x.to_string()))?.start;
         let LoopuseStart::Edgeuse(Some(start)) = start else {
