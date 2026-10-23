@@ -111,7 +111,7 @@
 use std::collections::BTreeMap;
 
 use crate::curve::curve::{Curve, CurveKind};
-use crate::error::{EntityRef, Result, SolidError};
+use crate::error::{ignore_status, EntityRef, Result, SolidError};
 use crate::geom::a_object;
 use crate::geom::attribute::{AttributeStore, ObjectKey};
 use crate::geom::context::Context;
@@ -281,11 +281,33 @@ fn cover_other_coincident_surface(
         b.face_mut(face0)?.surface = Some(this);
         return Err(null("sm_CoverOtherCoincidentFace: face without surface"));
     };
-    let r =
-        this.cover_other_coincident_surface(k, &mut other, tol, Some(domain0), Some(domain1), true);
+    let (owner0, owner1) = (this.owner(), other.owner());
+    let r = this.cover_other_coincident_surface_deferring_trims(
+        k,
+        &mut other,
+        tol,
+        Some(domain0),
+        Some(domain1),
+        true,
+    );
     b.face_mut(face0)?.surface = Some(this);
     b.face_mut(face1)?.surface = Some(other);
     let r = r?;
+    // the SmFace::RemoveUVTrimCurves (status ignored) each successful
+    // CoverCoincidentSurface of a face-owned surface ends with, in call order
+    for owner in &r.remove_uv_trim_curves_of {
+        let face = if Some(*owner) == owner0 {
+            face0
+        } else if Some(*owner) == owner1 {
+            face1
+        } else {
+            return Err(SolidError::invalid_input(
+                "topology::edge::cover_other_coincident_surface",
+                "covered surface owned by another face",
+            ));
+        };
+        ignore_status(crate::topology::face::p1::remove_uv_trim_curves(b, face))?;
+    }
     Ok(Cover {
         max_dist: r.max_dist,
         covering: r.covering_is_other.map(|is_other| {
