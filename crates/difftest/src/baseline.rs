@@ -311,6 +311,45 @@ pub fn baseline_units(dir: &Path) -> Result<Vec<String>, HarnessError> {
     Ok(out)
 }
 
+/// Validate only explicitly selected unit reports before their work starts.
+///
+/// The `--green`/`--all` parent validates the complete directory separately.
+/// Repeating that full parse in every per-unit child would make setup quadratic.
+/// A new unit may have no baseline report; the directory must still contain at
+/// least one valid report so an empty or missing baseline cannot disable gates.
+pub fn validate_selected_baselines(dir: &Path, units: &[String]) -> Result<(), HarnessError> {
+    let entries =
+        fs::read_dir(dir).map_err(|e| HarnessError::new(format!("{}: {e}", dir.display())))?;
+    let mut first = None;
+    for entry in entries {
+        let path = entry
+            .map_err(|e| HarnessError::new(format!("{}: {e}", dir.display())))?
+            .path();
+        if path.extension().and_then(|x| x.to_str()) == Some("json")
+            && first.as_ref().is_none_or(|earlier| &path < earlier)
+        {
+            first = Some(path);
+        }
+    }
+    let first = first.ok_or_else(|| HarnessError::new("baseline has no unit reports"))?;
+    let mut found = false;
+    for unit in units {
+        found |= load_baseline(dir, unit)?.is_some();
+    }
+    if !found {
+        let unit = first
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| HarnessError::new("invalid baseline filename"))?;
+        if load_baseline(dir, unit)?.is_none() {
+            return Err(HarnessError::new(
+                "baseline report disappeared during validation",
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Ratchet violations of `res` against `base` (empty: no regression).
 ///
 /// A case that now fails is not reported here: the failure already fails the unit.

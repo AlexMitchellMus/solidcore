@@ -277,6 +277,9 @@ removed; new passing cases and genuine fixes are allowed. Changed seeds and
 `--filter` with `--baseline` are errors, so generated cases cannot silently vanish.
 With `--green`, dropped baseline units fail in the parent before parallel workers
 start. Children receive `--baseline` and enforce the same per-unit gates.
+Whole-set `--green`/`--all` preflight validates every report. Explicit `--unit`
+preflight validates selected reports and refuses an empty baseline; new units may
+have no earlier report. This avoids parsing the full corpus in every worker.
 
 The separate value-share floor remains 75% of a unit's passing cases and at
 least one value-bearing case. Both-error and vacuous passes stay in the

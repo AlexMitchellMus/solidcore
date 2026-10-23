@@ -299,7 +299,12 @@ fn main() -> ExitCode {
     // A unit that was green or partial in the baseline must still be run by --green.
     let mut dropped = 0usize;
     if let Some(dir) = &args.baseline {
-        match baseline::baseline_units(dir) {
+        let preflight = if args.green || args.all {
+            baseline::baseline_units(dir)
+        } else {
+            baseline::validate_selected_baselines(dir, &wanted).map(|()| Vec::new())
+        };
+        match preflight {
             Ok(units) => {
                 for u in units.iter().filter(|u| args.green && !wanted.contains(u)) {
                     let v = Violation {

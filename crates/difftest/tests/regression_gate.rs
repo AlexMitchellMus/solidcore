@@ -12,6 +12,8 @@ use serde_json::{json, Value};
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 struct Scratch(PathBuf);
+// Test fixture setup deliberately fails immediately on filesystem errors.
+#[allow(clippy::unwrap_used)]
 impl Scratch {
     fn new() -> Self {
         let path = std::env::temp_dir().join(format!(
@@ -29,6 +31,8 @@ impl Drop for Scratch {
     }
 }
 
+// Test-only child cleanup must fail loudly if the early gate hangs.
+#[allow(clippy::unwrap_used, clippy::panic)]
 fn run(args: &[String], digests: Option<&PathBuf>) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_difftest"));
     command
@@ -84,11 +88,22 @@ fn dropped_units_and_invalid_baselines_fail_before_parallel_dispatch() {
         assert!(!stdout.contains("TIME "));
         assert!(!stdout.contains("PASS "));
     }
+    let mut new_unit = strings(&["--unit", "harness.selftest", "--no-report", "--baseline"]);
+    new_unit.push(baseline.display().to_string());
+    assert!(run(&new_unit, None).status.success());
     fs::remove_file(path).unwrap();
     for jobs in ["1", "2"] {
         let mut args = strings(&["--unit", "harness.selftest", "--jobs", jobs, "--baseline"]);
         args.push(baseline.display().to_string());
         assert_eq!(run(&args, None).status.code(), Some(2));
+    }
+    fs::write(baseline.join("harness.selftest.json"), "{").unwrap();
+    for jobs in ["1", "2"] {
+        let mut args = strings(&["--unit", "harness.selftest", "--jobs", jobs, "--baseline"]);
+        args.push(baseline.display().to_string());
+        let output = run(&args, None);
+        assert_eq!(output.status.code(), Some(2));
+        assert!(!String::from_utf8(output.stdout).unwrap().contains("TIME "));
     }
     let mut args = strings(&["--unit", "harness.selftest", "--filter", "x", "--baseline"]);
     args.push(baseline.display().to_string());
@@ -120,6 +135,28 @@ fn child_case_and_value_gates_preserve_reports_and_output_digests() {
     );
     let path = baseline.join("geom.matrix.json");
     let clean: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    // Explicit unit runs validate their selected reports. The whole-set parent
+    // still rejects unrelated corruption before dispatching any native work.
+    fs::write(baseline.join("unselected.bad.json"), "{").unwrap();
+    let mut whole = strings(&["--green", "--no-report", "--jobs", "2", "--baseline"]);
+    whole.push(baseline.display().to_string());
+    let output = run(&whole, None);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(!String::from_utf8(output.stdout).unwrap().contains("TIME "));
+    for jobs in ["1", "2"] {
+        let mut selected = strings(&[
+            "--unit",
+            "harness.selftest",
+            "--unit",
+            "geom.matrix",
+            "--no-report",
+            "--jobs",
+            jobs,
+            "--baseline",
+        ]);
+        selected.push(baseline.display().to_string());
+        assert!(run(&selected, None).status.success());
+    }
     for mode in ["missing", "values"] {
         let mut report = clean.clone();
         if mode == "missing" {
