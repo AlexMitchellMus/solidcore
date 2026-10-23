@@ -16,17 +16,27 @@ seeds and scales from 1e-6 through 1e6.
 | Invalid capped repetition counts, empty curve sweep, null blend edge uses | Entry-point status and edit/context/output-list state; these are early exits, not geometry coverage |
 | Swung primitive with no profiles | Successful empty-loop return and unchanged state, not a constructed surface |
 
-The eight nontrivial construction fixtures execute the real C++ public entry
-points. Rust defers at `CreatePlanarFacesWith3DCurves`, `CreateFaceFromSurface`
-or `CreateFacesFromSurface`; no topology or later transformations are compared
-for those cases. All eight owned functions have full Rust bodies, including
-control flow after dependency adapters. The production caller must supply a
-`PrimitiveAccess` resolver extending the existing `SweepAccess` interface.
-No concrete production construction adapter is supplied by this unit.
+The construction fixtures run through the production `PrimitiveModel`, using the
+same new B-rep and primitive options as the native probe. In addition to the
+original six fields (status, editing/Boolean flags and three output-list lengths),
+they compare owning-list face/edge/vertex counts. Successful calls also compare
+vertex positions, each edge's actual interval and five curve evaluations, and each
+face's UV domain and nine surface evaluations. Evaluation statuses are retained;
+failed operations compare partial topology counts without evaluating unfinished
+geometry. Neither side substitutes cached B-splines for virtual geometry dispatch.
+
+The current 296 cases yield 294 passes, one `DeleteFaces` deferral in
+`partial_rotation_line`, one UB-78 rejection and no failures. All 294 comparable
+native/Rust output digests agree exactly. Eight former topology-construction
+deferrals now compare actual nonempty geometry, including the existing zero and
+negative tolerance cases. The repeated linear wire has two faces, seven edges and
+six vertices; skin, curve-sweep and swung fixtures each have one face, four edges
+and four vertices. A native-enabled regression requires those counts, successful
+construction and the complete geometry record on both sides.
 
 Curve-sweep scaling, profile orientation, face-based skinning, classification,
 cap construction, stitching, map-copy tails and topology edits are implemented
-but **not certified by these differential results**. A kernel regression checks
+but paths beyond the specifically compared fixtures remain **uncertified**. A kernel regression checks
 that preparation preserves the input curves and that the inverse placements
 recover the original path. Another checks the transform/marriage mutations on
 the missing-face early return. Neither replaces native comparison of the tails.
@@ -46,8 +56,8 @@ no arena-order replacement is used.
 
 Review regressions (`review.json`) allow finite zero/negative rule tolerances and
 zero/negative curve-sweep approximation tolerance through the checked FFI. Four
-helper cases compare real values on both sides; two curve-sweep cases still defer
-at topology construction. That earlier update has 293 cases: 284 pass, 8 deferred,
+helper cases compare real values on both sides; two curve-sweep cases deferred
+at topology construction at that historical checkpoint; they now compare geometry. That earlier update has 293 cases: 284 pass, 8 deferred,
 1 UB-78 rejection and 0 failures.
 
 Swung scaling retains the original derived `Curve` for virtual point evaluation
