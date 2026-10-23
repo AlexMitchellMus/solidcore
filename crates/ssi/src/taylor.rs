@@ -911,13 +911,22 @@ mod tests {
     /// cross there, the normals parallel), how well a Taylor polynomial of the
     /// separation holds it, whether the cell test proves the saddle, and
     /// whether two neighboring cells' polynomials agree on their shared edge.
+    /// Reads the case from an ssi-corpus clone: `SSI_CORPUS` when set, else
+    /// `corpus/ssi` of the Solidcore workspace (`scripts/fetch-ssi-corpus.sh`).
     #[test]
-    #[ignore = "a report, not a check: reads C:/Github/ssi-corpus"]
+    #[ignore = "a report, not a check: reads the ssi-corpus (SSI_CORPUS)"]
     fn gate_fig1a_singular_point() {
-        let text = std::fs::read_to_string(
-            "C:/Github/ssi-corpus/cases/data/y23_fig1a_two_loops_cross.json",
-        )
-        .unwrap();
+        let corpus = std::env::var_os("SSI_CORPUS").map_or_else(
+            || std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/ssi"),
+            std::path::PathBuf::from,
+        );
+        let path = corpus.join("cases/data/y23_fig1a_two_loops_cross.json");
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "{}: {e}; set SSI_CORPUS to an ssi-corpus clone",
+                path.display()
+            )
+        });
         let case = json::parse(&text).unwrap();
         let surfaces = case.get("surfaces").and_then(json::Json::arr).unwrap();
         let (pa, pb) = (nurbs(&surfaces[0]), nurbs(&surfaces[1]));
