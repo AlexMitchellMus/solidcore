@@ -17495,6 +17495,69 @@ a status-only or vacuous pass.
   The `surface.surface_p11` generator still uses patches for the other surface; adding
   plane cases is left as a follow-up.
 
+## intersect.curve_class_p5 to green: B-rep cases (PR #610, 2026-10-23)
+
+- **C++ raises a vertex tolerance while computing a vertex/face gap; the port does not
+  (`topology.vertexuse`, not a part-5 disagreement).** Found by the part-5 B-rep runner:
+  a box whose vertices are moved off their faces by `1e-4` (raw `m_vPoint` edit), vertex
+  tolerances `1e-5`, face tolerances default, `IntersectVertices` with `bHasBigGaps`.
+  `SmVertexuse::GetVertexFaceGap` -> `CalcVertexFaceGap` -> `ComputeUVPoint(FALSE)`: the
+  local projection lands farther than vertex + face tolerance, so upstream falls back to
+  `smsurf_GetSurfaceCache(face surface)` + `GlobalPointSolve`. After the call C++ has the
+  moved vertex's tolerance at `2e-4` (twice its distance to the edge ends); Rust keeps
+  `1e-5`. Same input with `bHasBigGaps = FALSE` (no gap computed) agrees. Suspected cause:
+  building the face's trimmed surface cache validates its edges, and
+  `SmEdge::ValidateGeometry(TRUE)` (SmEdge.cpp:6188, 6213) sets an end vertex's tolerance
+  to twice its gap; the port has no object caches. Not confirmed by stepping the C++.
+  The part-5 generator keeps such projections local (face tolerances `1e-3` whenever it
+  moves a vertex); the gap value itself still agrees.
+- **Large-gap vertex insertion of `IntersectVertices` is not reached.** Its curve point
+  solve passes `dZero` as the distance limit and `XSectTol3d` as the tolerance; in every
+  fixture and generated case (vertices up to `1e-4` off their faces, curves `6e-5` from
+  the vertex) it returns no drop point beyond `XSectTol3d`, so the projections onto the
+  (owner-cleared) face surface run in no case. The large-gap tolerance itself
+  (`sBigGapXSectTol3d` from real vertex uses) is computed and compared.
+- **The SSS cull's removal branch is not reached**: two drop points of one vertex that
+  snap to the same knot. A cubic loop near a vertex gives two drop points, but a Bezier
+  loop's two parameters straddle its span, so they snap to different knots.
+## query.face_p1 hooks: what still blocks the remaining deferrals (claude/face-p1-hooks, 2026-10-23)
+
+- **Blocker (query.face_p2 code).** `SmFace::EdgeCurveOnClassify` / `Point3DClassify` are now
+  dispatched from `ClassifyFaceInterval` (`intersect::curve_class::p7`) on the B-rep that
+  `ClassGeometry::topology_entity` resolves the face handle to. Every `CurveOnClassify` path
+  (`query::face::p2::curve_on_classify`) wraps the caller's objects in `WithMadeTrimCurves`,
+  which does not forward `topology_entity` / `topology_handle(_in)`, so the face handle stays
+  unresolved and the case keeps its `query.face_p1` deferral. This covers all remaining
+  `query.face_p1` deferrals on main: intersect.curve_class_p4 97, topology.brep_p3 38,
+  heal.face_props 27, topology.face_p2 19, query.face_p2 4, query.face_p4 1, topology.brep_p1 1,
+  and blend.fillet_solver_p5 3 (its runner goes through the same wrapper; not checked on the
+  Mac, where the unit fails at main too). The forwarding exists on `codex/primitive-p2-production`
+  (commit 4526f4aa0).
+- **Latent disagreement (shows up once that forwarding lands).** Mac run of this branch plus
+  4526f4aa0's `p2.rs` hunk: heal.face_props 8 failures (gen0009, gen0205, gen0492, gen0616,
+  gen0620, gen1053, gen1315, gen1483) and intersect.curve_class_p4 2 (gen1841, gen1968). All
+  are on `SmSurfOfRevolution` faces (torus/cylinder kinds). In gen0009 the seam-U classification
+  of `HasSeamProblem` yields these intervals:
+  C++ `[0, 0.44758834428291155]` end **VERTEX** (104), `[.., 0.44823953478617956]` start VERTEX, end
+  EDGE t=0.008715797478860355, `[.., 1]` mid FACE; Rust: the first crossing is **EDGE (103) at edge
+  parameter 1.0** (the edge end) instead of the vertex. Everything else matches. Snapshot effect:
+  `m_bBadNearMissSeam` C++ TRUE / Rust FALSE (`values.v[29]` 1 vs 0), `m_eBadNearMissSeamDir`
+  (`v[30]`) C++ 0/1 vs Rust 4. Suspected cause: the boundary intersection of
+  `CurveOnClassify` (vertex intersection or edge-hit-at-edge-end snapping in `query::face::p2`
+  / curve classification), not query.face_p1. With the vertex found, the Rust side would reach
+  `SmFace::FindVertexSector` (topology.face_p4) and defer, as C++ goes through it.
+- **topology.brep_p3 (fixed here).** `brep_curve_solve` (OrientTrimmedSurfaces ray votes) solved
+  against an empty `BrepCache` with no trees (`SM_ERR_NULL_POINTER` from
+  `TopologyObjects::brep_trees`); it now builds them with `make_brep_cache`, as upstream's
+  `CacheMakeOrValidate`. Only reachable once the face classifiers resolve (7 cases became
+  failures in the combined run before this fix; deferred to topology.face_p2 after it).
+- **Adapter hooks left out.** Giving `query::face::p3::LoopObjectCurves` and
+  `topology::face::p2::UvLineObjects` `topology_entity` / `topology_handle` (patch kept outside
+  the repo) resolves their edges as well; combined with the forwarding it shows 5 more
+  topology.face_p2 failures in `CalculateAnInternalPoint` (internal_bss_tiny, extra00702,
+  extra00744, extra00806, extra01154; earlier deferred at `SmEdge::GetCurve`). No face
+  classifier runs in internal_bss_tiny, so these disagreements are not query.face_p1's.
+  extra00744: C++ (0, 0, 5), Rust (-0.659, -0.2026, 4.952) on sphere.smb.
 ## surface.surf_of_extrusion_p2: free-extrusion general intersection resolved (2026-10-23)
 
 - **Cause of gen0413 / gen0448 / gen0732 (entry "Free-extrusion general intersection" above).**
@@ -17519,40 +17582,60 @@ a status-only or vacuous pass.
   handle type and moved to `geom::grid`). `Grid::expand_hierarchy(k, id, cache)` takes the
   surface's one cache (`smsurf_GetSurfaceCache`) and `Grid::add_surface_node` is
   `AddElement(SM_GE_SURFACE)` from a tree node; `ElementSource::Surface` is gone.
-  `RayTracer::add_surface_to_grid` calls `Grid::expand_hierarchy`. Both dispatch gaps of
-  the unit (`smsurf_GetSurfaceCache` on a bare handle, `SmBezierPatch::GetPseudoBox` from a
-  node) are closed.
-- **Harness.** The `geom.grid` shim builds real `SmPlane` / `SmBSplineSurface` surfaces
-  (op 11), makes real surface hierarchy elements (op 12), runs `ExpandHierarchy` (op 9) and
-  `AddElement(node, SM_GE_SURFACE)` for node `i` of the cache tree's `GetAllTreeNodes` (op 10,
-  `-4` for an index past the tree or a node that is not `SM_AD_BEZIER_SURFACE`, which
-  upstream casts and reads garbage). Surface elements are reported as (type, surface index)
-  and carry the 51-value leaf record in the dump (the `intersect.ray_tracer` ADD_SURFACE
-  record, now `difftest::units::geom_grid::put_leaf` on the Rust side). Fixtures
-  `raytracer_surface_hierarchy_expand` and `surface_leaf_element` run the real code on both
-  sides (a runner test asserts status 0 and non-empty records); the generator puts 1-2 real
-  surfaces into about 30% of the cases.
-- **Numbers.** `geom.grid` 615 cases, 613 pass + 2 deferred -> 615 pass, 0 deferred, all 615
-  compare values, max_rel_err 0 (6000 extra seeds clean). `intersect.ray_tracer` and
-  `blend.hcr`: 421 cases, 421 pass, 0 deferred, max_rel_err 0 (unchanged; the 51-value ADD_SURFACE leaf records stay bit-identical); `blend.hcr` 434 cases, 396 pass, 38 deferred (topology.edge 37, topology.face_p2 1), unchanged; `--green --jobs 4`: 260 units, 189 passed, 71 partial, 0 failed.
+  `RayTracer::add_surface_to_grid` calls `Grid::expand_hierarchy`. Both dispatch gaps of the
+  unit (`smsurf_GetSurfaceCache` on a bare handle, `SmBezierPatch::GetPseudoBox` from a
+  node) are closed. `Init` reads the cache's existing tree and never fetches it (upstream
+  `Init` takes a node; `GetTree` would rebuild the tree of a face-owned surface).
+- **Harness.** The explicit-cache ops of the runner (`define_surface`, `add_cached_hier`,
+  `expand_cached`, `add_cached_leaf`, `observe_cached`) now run these library functions on
+  the real cache nodes of both sides (`native.rs` calls `SurfaceGridElement::init`; it used
+  to copy `surface_leaf`). The two fixtures that were deferred,
+  `raytracer_surface_hierarchy_expand` and `surface_leaf_element`, are written with those
+  ops (a 3 x 3 span affine patch expanded, and two nodes of a 2 x 2 patch added) instead of
+  opaque object labels, which cannot name a surface; opaque `add_hier { surface: true }`
+  elements stay dump-only and `expand` of one is an invalid program (the shim would
+  dereference the fake pointer). The legacy `add_surface` op (a node label without a
+  surface) is gone from the runner. A runner test asserts that both fixtures run on both
+  sides with more than one 51-value leaf record compared.
+- **Numbers.** `geom.grid` 615 cases, 613 pass + 2 deferred -> with the six explicit-cache
+  fixtures of #620: 621 cases, 621 pass, 0 deferred, all 621 compare values, max_rel_err 0
+  (6000 extra seeds: 6021/6021). `intersect.ray_tracer` 421/421 (unchanged, its 51-value
+  leaf records stay bit-identical) and `blend.hcr` 396 pass, 38 deferred (topology.edge 37,
+  topology.face_p2 1), unchanged.
 - **Statuses.** Upstream `Init` is `void` with `SE`, `ExpandHierarchy` ignores `AddElement`'s
   status and `AddSurfaceToGrid` ignores `ExpandHierarchy`'s; the port propagates failures
-  (an `Evaluate` that fails even without `non_zero_tangents`, `Unported`). Generated surfaces
-  are non-degenerate and the generator test asserts every generated `expand` / Bezier
-  `add_surface` returns status 0.
-- **No harness surface has a non-Bezier cache node.** The cache trees of single-patch
-  B-splines and planes only hold `SM_AD_BEZIER_SURFACE` nodes (dumped for a plane and two
-  Beziers), so the shim's pre-check for a non-Bezier node is exercised only through
-  out-of-range indices; the library's `InvalidInput` for such a node is covered by the
-  `geom::grid` unit test `add_surface_node_rejects_what_has_no_patch`, which makes
-  `SM_AD_AUX_DATA` children with `subdivide_node`.
-- **Open: surface cache size at tiny scale (not a Rust-vs-C++ difference found).** A random
+  (an `Evaluate` that fails even without `non_zero_tangents`, `Unported`).
+- **A non-Bezier cache node is only reached by a unit test.** The cache trees of the
+  harness's single-patch surfaces only hold `SM_AD_BEZIER_SURFACE` nodes, so the library's
+  `InvalidInput` for a node without a Bezier patch (upstream casts it and reads garbage) is
+  covered by the `geom::grid` unit test `add_surface_node_rejects_what_has_no_patch`, which
+  makes `SM_AD_AUX_DATA` children with `subdivide_node`.
+- **Surface cache size at tiny scale (why random surfaces are not generated).** A random
   bicubic Bezier patch of size ~1e-3 (net perturbation 30% of the patch size, so not flat)
-  made `Caches::get` + `get_tree` grow past 418,000 tree nodes within 100 s and not finish;
-  the same shape at scale 1 or more finishes in milliseconds (a flat 1e-3 patch: 39 nodes).
-  The generator therefore adds surfaces only at grid scales >= 1. The C++ shim runs the same program
-  (seed 11 of the unfiltered generator, one bicubic patch) to completion in about 15 s per
-  run (the FFI runs the program twice: 30 s), so the large subdivision is shared behaviour
-  and not a Rust-vs-C++ disagreement; the Rust cache is at least 7 times slower on it (no
-  result after 100 s). Which absolute threshold keeps the subdivision going at that size,
-  and why Rust is slower, were not investigated; the FFI does not reject small surfaces.
+  made `get_tree` grow past 418,000 tree nodes within 100 s without finishing, on the Rust
+  side; the same shape at scale 1 or more finishes in milliseconds (a flat 1e-3 patch: 39
+  nodes). The C++ shim runs the same program to completion in about 15 s per run, so the
+  large subdivision is shared behaviour and not a Rust-vs-C++ disagreement; the Rust cache is
+  at least 7 times slower on it. The threshold that keeps the subdivision going at that size
+  and the speed difference were not investigated. The explicit-cache ops accept only the
+  bounded affine family (#620), which avoids the problem.
+
+## primitive.primitive_creation_p2: fixture face keys hid the trimmed surface cache (2026-10-23)
+
+- **What.** The p2 runner's one-B-rep fixture gave new faces object keys from its own
+  namespace (`FACE_TYPE`, `100000 + 97 * index`). The B-rep caches of the shell ray fire
+  (`StitchAndOrient` -> region split -> `FindInfiniteRegion` -> `SmShell::RayFire`) cannot
+  resolve those keys to a face, so the faces' surfaces were solved as untrimmed, which is
+  the shortcut `SurfaceCache::get_tree` refuses for a face-owned surface. 12 cases
+  (`pipe_sweep_curved_path` and 11 generated pipe/skin/planar-path cases) matched C++
+  only because the record compares status and list sizes, not geometry.
+- **How found.** With the same fixture, only the face keys changed to the production
+  `notify_ref` formula, those 12 cases defer at `TrimSrfCache::build_tree_with_face for a
+  face-owned surface` (passes 196 -> 184, `surface.trim_srf_cache` deferrals 6 -> 18).
+- **Now.** The runner uses the production `PrimitiveModel`: 194 passes (the 10 cases that
+  waited for `SmBrep::SmBrep` pass, the 12 above defer honestly), 0 failed, 114 deferred.
+  The p3 fixture (#617) keys faces the same way; #615 moves p3 to the production adapter
+  and reports the same 295 passes, so no p3 comparison depended on it.
+- **Follow-up.** `PrimitiveModel::new_merge` still returns `Unported(SmMerge::SmMerge,
+  boolean.merge_p2)` although the unit is ported (34 taper cases); `SweepStore` has the
+  merge services.
