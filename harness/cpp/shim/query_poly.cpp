@@ -171,6 +171,20 @@ int64_t unfake(const void* p)
 // geometry operation is replaced. SetSurface establishes the real surface owner.
 struct OwnerFace : SmFace
 {
+    // SmTopology hides the context allocator; SmObject's full overload sets also
+    // contain private entries. Forward only the public, matching allocation pair.
+    static void* operator new(size_t size, const SmContext& ctx)
+    {
+        return SmObject::operator new(size, ctx);
+    }
+    static void operator delete(void* ptr)
+    {
+        SmObject::operator delete(ptr);
+    }
+    static void operator delete(void* ptr, const SmContext& ctx)
+    {
+        SmObject::operator delete(ptr, ctx);
+    }
     explicit OwnerFace(SmSurface* surface)
     {
         if (surface != NULL)
