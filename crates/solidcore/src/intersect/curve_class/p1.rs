@@ -69,6 +69,7 @@
 //! | [`set_xsect_edge_through_point`]                       | `sm_SetXSectEdgeThroughPoint` (static)           |
 //! | [`get_cci_surface_gaps`], [`CciSurfaceGaps`]           | `sm_GetCCISurfaceGaps` (static)                  |
 //! | [`get_cci_geometry`], [`CciGeometry`]                  | `sm_GetCCIGeometry` (static)                     |
+//! | [`get_cci_geometry_in`], [`CciGeometryRefs`]           | `sm_GetCCIGeometry` (static), through an adapter |
 //! | [`apply_point_solution`], [`ApplyPointSolutionInput`], [`ApplyPointSolution`] | `sm_ApplyPointSolution` (static) |
 //! | [`make_consistent_classifications`]                    | `sm_MakeConsistentClassifications` (static)      |
 //! | [`get_curve_curve_angle`]                              | `sm_GetCurveCurveAngle` (static)                 |
@@ -1642,9 +1643,202 @@ pub fn get_cci_geometry<O: ClassObject>(
         out.uv_curves.push(classification.uv_curve2());
     }
 
-    // get Faces connected to Edge and Edge->BooleanMate
+    // get Faces connected to Edge and Edge->BooleanMate: this entry point has no
+    // adapter to resolve `edge` to its B-rep ([`get_cci_geometry_in`] has one).
     // UNPORTED(topology.edge): SmEdge::GetFaces
     Err(SolidError::unported("SmEdge::GetFaces", "topology.edge"))
+}
+
+/// [`get_cci_geometry`] over the geometry the handles resolve to: the classification's
+/// surfaces and UV curves through the adapter, the edge's (and its Boolean mate's)
+/// faces, edge uses and UV trim curves through [`ClassGeometry::topology_entity`].
+/// Surfaces are told apart by identity, as upstream compares `SmSurface*`.
+#[derive(Debug, Clone)]
+pub struct CciGeometryRefs<'g, O> {
+    /// `pEMate`: the edge's Boolean mate.
+    pub emate: Option<O>,
+    /// `rSurfaces`: curve surfaces, edge surfaces, the common surface again, mate
+    /// surfaces.
+    pub surfaces: Vec<&'g Surface>,
+    /// `rEdgeuses`: the edge use of each surface (`None` for the curve's), in the
+    /// B-rep of the edge (or of the mate, for its surfaces).
+    pub edgeuses: Vec<Option<crate::topology::EdgeuseId>>,
+    /// `rUVCurves`: the UV trim curve of each surface.
+    pub uv_curves: Vec<Option<&'g Curve>>,
+    /// `lEdgeSurfaceCount`.
+    pub edge_surface_count: usize,
+}
+
+/// `sm_GetCCIGeometry` with an adapter: the surfaces, edge uses and UV trim curves at a
+/// classification-curve / `edge` intersection, in upstream's order (curve surfaces,
+/// edge surfaces, the surface the edge shares with the curve once more, the Boolean
+/// mate's surfaces).
+///
+/// # Errors
+///
+/// [`SolidError::Unported`] when `geometry` cannot resolve the edge (or its mate) to a
+/// B-rep, or the classification has a topology intersector whose mate lookup the
+/// adapter does not answer ([`ClassGeometry::topology_intersector_mate`]);
+/// [`SolidError::InvalidInput`] for a surface or UV curve handle that does not resolve
+/// and for a face without a surface (upstream adds the `NULL` surface and dereferences
+/// it later).
+pub fn get_cci_geometry_in<'g, O: ClassObject, G: ClassGeometry<O>>(
+    geometry: &'g G,
+    classification: &CurveClassification<O>,
+    edge: O,
+) -> Result<CciGeometryRefs<'g, O>> {
+    const OP: &str = "intersect::curve_class::p1::get_cci_geometry_in";
+    let mut out = CciGeometryRefs {
+        emate: None,
+        surfaces: Vec::new(),
+        edgeuses: Vec::new(),
+        uv_curves: Vec::new(),
+        edge_surface_count: 0,
+    };
+
+    // locals
+    let resolve_surface = |h: Option<O>| -> Result<Option<&'g Surface>> {
+        h.map(|h| {
+            geometry
+                .surface(h)
+                .ok_or(SolidError::invalid_input(OP, "unresolved surface handle"))
+        })
+        .transpose()
+    };
+    let resolve_curve = |h: Option<O>| -> Result<Option<&'g Curve>> {
+        h.map(|h| {
+            geometry
+                .curve(h)
+                .ok_or(SolidError::invalid_input(OP, "unresolved UV curve handle"))
+        })
+        .transpose()
+    };
+    let surface1 = resolve_surface(classification.surface1())?;
+    let surface2 = resolve_surface(classification.surface2())?;
+    let mut common_surf: Option<usize> = None;
+
+    // Part 1 - gather Surfaces, edgeuses, and UVTrimCurves connected to intersection Point
+
+    // gather the ClassCurve Surfaces and UVTrimCurves
+    if let Some(s) = surface1 {
+        out.surfaces.push(s);
+        out.edgeuses.push(None);
+        out.uv_curves.push(resolve_curve(classification.uv_curve1())?);
+    }
+    if let Some(s) = surface2 {
+        out.surfaces.push(s);
+        out.edgeuses.push(None);
+        out.uv_curves.push(resolve_curve(classification.uv_curve2())?);
+    }
+
+    // get Faces connected to Edge and Edge->BooleanMate
+    let (eb, e) = cci_edge_of(geometry, edge)?;
+    let mut faces: Vec<(&'g crate::topology::Brep, crate::topology::EdgeId, crate::topology::FaceId)> =
+        crate::topology::edge::faces(eb, e, None)?
+            .into_iter()
+            .map(|f| (eb, e, f))
+            .collect();
+    let edge_face_count = faces.len();
+
+    // When curve classification is being done as part of a boolean operation
+    if let Some(ti) = classification.topology_intersector() {
+        // look for edge->BooleanMate (GetOtherMate, else GetBrepMate)
+        out.emate = geometry.topology_intersector_mate(ti, edge).ok_or(
+            // UNPORTED(boolean.topology_intersector_p1): SmTopologyIntersector::GetOtherMate
+            // (an adapter that cannot reach the intersector behind its handle)
+            SolidError::unported(
+                "SmTopologyIntersector::GetOtherMate",
+                "boolean.topology_intersector_p1",
+            ),
+        )?;
+
+        // when pEdge has a boolean operation temporary mate
+        if let Some(emate) = out.emate {
+            // add in Faces and Edgeuses connected to Edge->BooleanMate
+            let (mb, me) = cci_edge_of(geometry, emate)?;
+            faces.extend(
+                crate::topology::edge::faces(mb, me, None)?
+                    .into_iter()
+                    .map(|f| (mb, me, f)),
+            );
+        }
+    }
+
+    // gather unique surfaces and edgeuses connected to this intersection point
+    for (ii, &(fb, fe, f)) in faces.iter().enumerate() {
+        let surf = crate::topology::face::p2::surface(fb, f)?
+            .ok_or(SolidError::invalid_input(OP, "face without a surface"))?;
+
+        // when pSurf is not in sSurfaces list - add it
+        if !out.surfaces.iter().any(|s| core::ptr::eq(*s, surf)) {
+            // (pEdge->GetEdgeuseOfFace for the edge's faces, pEMate's for the mate's)
+            let edgeuse = crate::topology::edge::edgeuse_of_face(fb, fe, Some(f))?;
+            if let Some(eu) = edgeuse {
+                out.surfaces.push(surf);
+                out.edgeuses.push(Some(eu));
+
+                // don't use pEMate UVTrimCurves (they have a different parameterization)
+                out.uv_curves.push(if ii < edge_face_count {
+                    crate::topology::edgeuse::p1::uv_trim_curve(fb, eu)?.0
+                } else {
+                    None
+                });
+            }
+
+            if ii < edge_face_count {
+                out.edge_surface_count += 1;
+            }
+        }
+
+        // remember an edge->Surface which is shared with the curve (nonManifold may have 2)
+        if surface1.is_some_and(|s| core::ptr::eq(s, surf))
+            || surface2.is_some_and(|s| core::ptr::eq(s, surf))
+        {
+            common_surf = Some(ii);
+        }
+
+        // when we are done with edgeSurfaces
+        if edge_face_count.checked_sub(1) == Some(ii) {
+            if let Some(common) = common_surf.filter(|&c| c < edge_face_count) {
+                // add the commonSurf a 2nd time
+                let &(cb, ce, cf) = faces
+                    .get(common)
+                    .ok_or(SolidError::invalid_input(OP, "common face index"))?;
+                let surf = crate::topology::face::p2::surface(cb, cf)?
+                    .ok_or(SolidError::invalid_input(OP, "face without a surface"))?;
+                if let Some(eu) = crate::topology::edge::edgeuse_of_face(cb, ce, Some(cf))? {
+                    out.surfaces.push(surf);
+                    out.edgeuses.push(Some(eu));
+
+                    // don't use pEMate UVTrimCurves (they have a different parameterization)
+                    out.uv_curves
+                        .push(crate::topology::edgeuse::p1::uv_trim_curve(cb, eu)?.0);
+                    out.edge_surface_count += 1;
+                }
+            }
+        }
+    } // end iter every face attached to this edge
+
+    // all done (upstream only asserts that the edge shares a surface with the curve)
+    Ok(out)
+}
+
+/// The B-rep edge behind edge handle `edge` ([`ClassGeometry::topology_entity`]); an
+/// adapter that cannot resolve it keeps the `SmEdge::GetFaces` deferral.
+fn cci_edge_of<'g, O: ClassObject>(
+    geometry: &'g impl ClassGeometry<O>,
+    edge: O,
+) -> Result<(&'g crate::topology::Brep, crate::topology::EdgeId)> {
+    match geometry.topology_entity(edge) {
+        Some((b, EntityRef::Edge(e))) => Ok((b, e)),
+        Some(_) => Err(SolidError::invalid_input(
+            "intersect::curve_class::p1::get_cci_geometry_in",
+            "handle is not an edge",
+        )),
+        // UNPORTED(topology.edge): SmEdge::GetFaces (an adapter that cannot resolve the
+        // edge handle to its B-rep)
+        None => Err(SolidError::unported("SmEdge::GetFaces", "topology.edge")),
+    }
 }
 
 /// The inputs of [`apply_point_solution`] other than the curves and the solution.
