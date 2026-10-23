@@ -15,8 +15,11 @@
 // destroyed object or tracker, needs a lock when none is held, or would destroy a
 // tracker whose callback stays installed (the Rust runner applies the same rules).
 // TRACK_LISTS emits the rm, add and chg lists (length then object indices) and the
-// notify events (length then action, caller, data1..3 as object indices). Tolerances
-// go to the double output.
+// notify events (length then action, caller, data1..3 as object indices). SET_KIND
+// gives a pool object a stand-in topology type code for the tracker's IsKindOf
+// classification; it keeps SmTopology storage, and the state dump asks the base
+// class explicitly, so the dump's type answers do not change. Tolerances go to the
+// double output.
 #include "sc_shim.h"
 
 #include <SmBrep.h>
@@ -55,7 +58,8 @@ enum Op : int64_t
     OP_TRACK_DROP = 21,
     OP_SYS_FOREIGN = 22,
     OP_DESTROY = 23,
-    OP_LAST = 23,
+    OP_SET_KIND = 24,
+    OP_LAST = 24,
 };
 
 const int64_t ST_SKIP = -2;
@@ -65,6 +69,13 @@ const int64_t MAX_TRACKERS = 16;
 struct ShimTopology : public SmTopology
 {
     ShimTopology() : SmTopology() {}
+    // Stand-in kind for the change tracker's IsKindOf tests (OP_SET_KIND): the
+    // object keeps SmTopology storage, and SmTrackTopologyChanges classifies it by
+    // type code alone. The state dump asks the base class explicitly, so its type
+    // answers do not change.
+    SM_TYPE m_kind = SmTopology_TYPE;
+    SM_TYPE GetType() const override { return m_kind; }
+    SmBoolean IsKindOf(SM_TYPE t) const override { return t == m_kind || SmTopology::IsKindOf(t); }
     static void* operator new(size_t size, const SmContext& c) { return SmObject::operator new(size, c); }
     static void operator delete(void* p, const SmContext&) { smos_Free(p); }
     static void operator delete(void* p) { smos_Free(p); }
@@ -311,6 +322,16 @@ int64_t run_op(Run& r, const int64_t* a, std::vector<int64_t>& out)
         REF(o, a[1], false);
         delete r.objs[(size_t)o];
         r.objs[(size_t)o] = nullptr;
+        return 0;
+    }
+    case OP_SET_KIND:
+    {
+        REF(o, a[1], false);
+        SM_TYPE t = (SM_TYPE)a[2];
+        if (t != SmTopology_TYPE && t != SmFace_TYPE && t != SmEdge_TYPE && t != SmVertex_TYPE &&
+            t != SmEdgeuse_TYPE)
+            return SC_ERR_ARG;
+        r.objs[(size_t)o]->m_kind = t;
         return 0;
     }
     default:
