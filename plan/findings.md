@@ -17892,14 +17892,14 @@ cases stay deferred. It adds only `StaticScene::object_zone_tol_3d`, which turns
   pins the rule. A slice of a solid with a face in the sheet will differ from the pinned
   C++ here by design, until the pin takes the fork's fix (ee2a67b).
 
-## Status index (2026-10-23, main CI `73e557331`)
+## Status index (2026-10-23, main CI `e33985411`)
 
 This file is append-only, so older headings keep the status they had when written. This
 index records what has changed since; check here before acting on an older entry. Unit
-statuses are from the difftest reports of main CI run 40027690283 (`73e557331`).
+statuses are from the difftest reports of main CI run 40029966086 (`e33985411`).
 
 **Headings that say "partial" for units that are now green (39).** By line number at
-`73e557331`; each of these units now passes every compared case with nothing deferred:
+`e33985411`; each of these units now passes every compared case with nothing deferred:
 299 `geom.extent3d`, 402 `geom.tol`, 472 `geom.tree`, 582 `geom.attribute`, 840
 `geom.object`, 1055 `geom.grid`, 1139 `nlib.crv_basic`, 1171 `geom.transform`, 1189
 `geom.a_object`, 1262 `curve.hermite_curve`, 1281 `nlib.crv_tool_p1`, 3665
