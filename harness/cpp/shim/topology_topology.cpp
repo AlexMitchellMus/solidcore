@@ -13,7 +13,10 @@
 //
 // Per op output: status, n, n values. Statuses: 0 ok, ST_SKIP (-2) the op refers to a
 // destroyed object or tracker, needs a lock when none is held, or would destroy a
-// tracker whose callback stays installed (the Rust runner applies the same rules). Tolerances go to the double output.
+// tracker whose callback stays installed (the Rust runner applies the same rules).
+// TRACK_LISTS emits the rm, add and chg lists (length then object indices) and the
+// notify events (length then action, caller, data1..3 as object indices). Tolerances
+// go to the double output.
 #include "sc_shim.h"
 
 #include <SmBrep.h>
@@ -268,12 +271,24 @@ int64_t run_op(Run& r, const int64_t* a, std::vector<int64_t>& out)
         case OP_TRACK_IS: out.push_back(t->IsTracking() ? 1 : 0); break;
         case OP_TRACK_LISTS:
         {
-            SmTArray<SmTopology*>* rm = t->GetRmList();
-            SmTArray<SmTopology*>* add = t->GetAddList();
-            out.push_back((int64_t)rm->GetSize());
-            for (ULONG i = 0; i < rm->GetSize(); ++i) out.push_back(r.Index((*rm)[i]));
-            out.push_back((int64_t)add->GetSize());
-            for (ULONG i = 0; i < add->GetSize(); ++i) out.push_back(r.Index((*add)[i]));
+            const auto put_list = [&out, &r](SmTArray<SmTopology*>* list) {
+                out.push_back((int64_t)list->GetSize());
+                for (ULONG i = 0; i < list->GetSize(); ++i) out.push_back(r.Index((*list)[i]));
+            };
+            put_list(t->GetRmList());
+            put_list(t->GetAddList());
+            put_list(t->GetChgList());
+            SmTArray<SmNotifyEvent>* events = t->GetNotifyEvents();
+            out.push_back((int64_t)events->GetSize());
+            for (ULONG i = 0; i < events->GetSize(); ++i)
+            {
+                const SmNotifyEvent& e = (*events)[i];
+                out.push_back((int64_t)e.m_eAction);
+                out.push_back(r.Index(e.m_pCaller));
+                out.push_back(r.Index(e.m_pData1));
+                out.push_back(r.Index(e.m_pData2));
+                out.push_back(r.Index(e.m_pData3));
+            }
             break;
         }
         case OP_TRACK_RESET: t->ReSetArrays(); break;

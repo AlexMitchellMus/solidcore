@@ -70,7 +70,7 @@ pub mod op {
     pub const TRACK_STOP: i64 = 17;
     /// `[t]`: `IsTracking`.
     pub const TRACK_IS: i64 = 18;
-    /// `[t]`: `GetRmList`, `GetAddList`.
+    /// `[t]`: `GetRmList`, `GetAddList`, `GetChgList`, `GetNotifyEvents`.
     pub const TRACK_LISTS: i64 = 19;
     /// `[t]`: `ReSetArrays`.
     pub const TRACK_RESET: i64 = 20;

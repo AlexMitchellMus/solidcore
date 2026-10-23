@@ -119,6 +119,17 @@ fn obj_ref(k: usize) -> ObjectRef {
     }
 }
 
+/// A captured list as `length, keys...` (the shim's object indices; `-1` null).
+fn put_keys(out: &mut Vec<i64>, keys: &[ObjectKey]) {
+    out.push(keys.len() as i64);
+    out.extend(keys.iter().map(|k| k.0 as i64));
+}
+
+/// One captured event reference (the shim's object index; `-1` null).
+fn put_event_ref(out: &mut Vec<i64>, object: Option<ObjectRef>) {
+    out.push(object.map_or(-1, |o| o.key.0 as i64));
+}
+
 fn mark_type(m: i64) -> Result<MarkType, HarnessError> {
     i32::try_from(m)
         .ok()
@@ -350,10 +361,18 @@ impl State {
                     op::TRACK_STOP => t.stop_tracking(Some(self.ctx()?)),
                     op::TRACK_IS => out.push(i64::from(t.is_tracking(Some(self.ctx_ref()?)))),
                     op::TRACK_LISTS => {
-                        out.push(t.rm_list().len() as i64);
-                        out.extend(t.rm_list().iter().map(|k| k.0 as i64));
-                        out.push(t.add_list().len() as i64);
-                        out.extend(t.add_list().iter().map(|k| k.0 as i64));
+                        let lists = t.lists();
+                        put_keys(&mut out, &lists.rm_list);
+                        put_keys(&mut out, &lists.add_list);
+                        put_keys(&mut out, &lists.chg_list);
+                        out.push(lists.notify_events.len() as i64);
+                        for ev in &lists.notify_events {
+                            out.push(i64::from(ev.operation.code()));
+                            put_event_ref(&mut out, ev.caller);
+                            put_event_ref(&mut out, ev.data1);
+                            put_event_ref(&mut out, ev.data2);
+                            put_event_ref(&mut out, ev.data3);
+                        }
                     }
                     op::TRACK_RESET => t.reset_arrays(),
                     _ => keep = false,
