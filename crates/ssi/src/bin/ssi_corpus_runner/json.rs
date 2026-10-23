@@ -63,14 +63,19 @@ struct Parser<'a> {
 }
 
 impl Parser<'_> {
+    /// The input from the cursor on.
+    fn rest(&self) -> &[u8] {
+        self.s.get(self.i..).unwrap_or_default()
+    }
+
     fn ws(&mut self) {
-        while self.i < self.s.len() && matches!(self.s[self.i], b' ' | b'\t' | b'\n' | b'\r') {
+        while matches!(self.s.get(self.i), Some(b' ' | b'\t' | b'\n' | b'\r')) {
             self.i += 1;
         }
     }
 
     fn expect(&mut self, word: &str) -> Result<(), String> {
-        if self.s[self.i..].starts_with(word.as_bytes()) {
+        if self.rest().starts_with(word.as_bytes()) {
             self.i += word.len();
             Ok(())
         } else {
@@ -82,12 +87,12 @@ impl Parser<'_> {
         self.ws();
         match self.s.get(self.i) {
             None => Err("unexpected end".into()),
-            Some(b'n') => self.expect("null").map(|_| Json::Null),
-            Some(b't') => self.expect("true").map(|_| Json::Bool(true)),
-            Some(b'f') => self.expect("false").map(|_| Json::Bool(false)),
+            Some(b'n') => self.expect("null").map(|()| Json::Null),
+            Some(b't') => self.expect("true").map(|()| Json::Bool(true)),
+            Some(b'f') => self.expect("false").map(|()| Json::Bool(false)),
             // Python's json writes these for non-finite floats.
-            Some(b'N') => self.expect("NaN").map(|_| Json::Num(f64::NAN)),
-            Some(b'I') => self.expect("Infinity").map(|_| Json::Num(f64::INFINITY)),
+            Some(b'N') => self.expect("NaN").map(|()| Json::Num(f64::NAN)),
+            Some(b'I') => self.expect("Infinity").map(|()| Json::Num(f64::INFINITY)),
             Some(b'"') => self.string().map(Json::Str),
             Some(b'[') => {
                 self.i += 1;
@@ -142,19 +147,18 @@ impl Parser<'_> {
 
     fn number(&mut self) -> Result<Json, String> {
         let start = self.i;
-        if self.s[self.i..].starts_with(b"-Infinity") {
+        if self.rest().starts_with(b"-Infinity") {
             self.i += 9;
             return Ok(Json::Num(f64::NEG_INFINITY));
         }
-        while self.i < self.s.len()
-            && matches!(
-                self.s[self.i],
-                b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9'
-            )
-        {
+        while matches!(
+            self.s.get(self.i),
+            Some(b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9')
+        ) {
             self.i += 1;
         }
-        let text = std::str::from_utf8(&self.s[start..self.i]).map_err(|e| e.to_string())?;
+        let digits = self.s.get(start..self.i).unwrap_or_default();
+        let text = std::str::from_utf8(digits).map_err(|e| e.to_string())?;
         text.parse::<f64>()
             .map(Json::Num)
             .map_err(|_| format!("bad number {text:?} at byte {start}"))
@@ -194,7 +198,7 @@ impl Parser<'_> {
                         b'u' => {
                             let high = self.hex4()?;
                             let code = if (0xd800..0xdc00).contains(&high)
-                                && self.s[self.i..].starts_with(b"\\u")
+                                && self.rest().starts_with(b"\\u")
                             {
                                 self.i += 2;
                                 let low = self.hex4()?;

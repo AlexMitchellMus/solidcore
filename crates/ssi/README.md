@@ -19,8 +19,13 @@ one when a polynomial of degree 10 or less holds it exactly (`algebraic`: the nu
 composing each monomial with the patch's Bézier pieces, built from their control points and taken only
 where its least singular value is at the rounding, then composed with every piece to zero), so NURBS
 cylinders, spheres and tori, and constructed free-form sheets of low implicit degree, take the field path
-too. Contacts it cannot build yet (tangencies between patches with no such form) are refused by name as
-`Error::Tangent`, never approximated.
+too. A plane against a sphere, or against a patch whose exact form has degree 2 and cuts it in an
+ellipse, is solved in closed form before any of that (`quadric`): the conic from the plane's distance to
+the center, or from the form's one value at the conic's center, then placed on both patches by inversion
+and clipped to their domains. A pair with no such form is traced near its tangencies on local fields (`taylor`): the separation of
+one patch from the other along a fixed direction, as a Taylor polynomial over a piece with proved bounds on
+its value's and derivatives' errors, read by the same cell tests; the polynomial proves, the surfaces place
+every point. Contacts it cannot prove are refused by name as `Error::Tangent`, never approximated.
 
 No dependencies: the exact geometry (`geom3`, `surface3`: analytic surfaces, their feet, and a certified
 branch-and-bound closest point on B-spline surfaces) is part of the crate, and `shapes` builds the exact
@@ -70,12 +75,13 @@ is the corpus's own runner on SMLib (1.0.0, then 1.0.1); Solidcore's report on t
 | 2026-10-23 | 111 | 82 | Contacts zero to the field's rounding: a critical point there is a touch or a crossing whatever the curvature, cells about such a touch inside its rounding band are its own, a pole divided out with no arc at it is a touch point, and contact points on a collapsed edge are inside their patch (three nested shells' touch points, two at poles) |
 | 2026-10-23 | 114 | 82 | Topology where branches cross or meet: a valley at most zero and dipping below the band is two branches meeting where it reaches zero (two loops tangent at a point), its side arcs broken there; branches joined straight through their crossings, the vertices reported as points; arcs traced twice either way kept once. On the 82 cases both pass, interleaved: median 0.93 ms against SMLib 1.0.1's 1.06, total 0.93 s against 0.40 |
 | 2026-10-23 | 114 | 82 | Speed, same answers: each patch's Bézier pieces made once, coincident boundaries clipped with warm-started inversions, sweeps solved on their line, binomial rows shared, implicit-form proofs reusing the compositions already made, pieces proved off the other surface by their points before composing, quadric forms fitted up front for pairs with no analytic side. On the 82 cases both pass, interleaved: median 0.65 ms against SMLib 1.0.1's 1.08, total 0.43 s against 0.39; faster on 42 of the 82 |
+| 2026-10-23 | 115 | 82 | Zero edges divided out on the field path: a cell edge on which the field vanishes to its rounding (or the implicit form's residual), to order up to 4, is itself a crossing or tangent curve, and dividing its factor out leaves the rest of the zero set resolvable. A cubic contact ending on a tube's crease, where the other tube's form is singular, now traces (`y23_t2_ex5_two_loops`); a crossing on a form's double curve takes the patch's own closest point; densified points stay in both patches' domains; an arc that runs out and back along a folded edge is kept once. Same speed |
+| 2026-10-23 | 116 | 82 | Local fields where neither patch has an implicit form (`taylor`): on a pair of pieces that is not loop-free, the separation of A from B along a fixed normal as a Taylor polynomial over A's piece, with proved bounds on its value's, gradient's and Hessian's errors (an approximate root's residual and a contraction, from B's derivatives' exact Bernstein numerators); the field path's cells read them, and every point is placed on the surfaces themselves. Two degree-8 x circle tubes whose loops cross at two points now trace (`y23_fig1a_two_loops_cross`, 3.8 s: slow, each local field costs 17 ms). Tried only once no exact form exists. Same speed elsewhere |
+| 2026-10-23 | 118 | 82 | Closed forms for a plane against a sphere or a degree-2 form (`quadric`): the circle's radius as √((R − \|d\|)(R + \|d\|)) with d a compensated dot product, an ellipse from the form's value at its center told from the form's rounding and residual. The two loops 1e-7 across now pass (`c7_tiny_loop_sphere_1e-7`, `c7_tiny_loop_parab_1e-7`), where the field path read their depth, 1e-14 of the field, as rounding and gave a point. Interleaved against the row above on the 116 cases both pass: median 0.60 ms against 0.77, total the same within noise; plane and sphere pairs 3 to 4 times faster, while five degree-2 NURBS patches that are not ellipse cases pay 0.1 to 0.5 ms for a fit that is set aside |
 
-The five cases left fail on every engine scored here. Three free-form pairs whose branches cross are refused
-by name (`BOOLEAN_TANGENT`): `y23_fig1a_two_loops_cross` has no exact implicit form of degree 10 or less,
-and in `y23_fig1d_two_quads` and `y23_t2_ex5_two_loops` tracing stalls where the contact meets a seam or a
-patch edge. `c7_tiny_loop_parab_1e-7` and `c7_tiny_loop_sphere_1e-7` are loops 1e-7 across, below the
-run's 1e-6 tolerance, reported as one point each.
+The one case left, `y23_fig1d_two_quads`, fails on every engine scored here. It is refused by name
+(`BOOLEAN_TANGENT`): its patches, 1e-8 apart, separate only at second order in places, below the 4.4e-13 its
+degree-9 form is exact to.
 
 ## License
 

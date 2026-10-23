@@ -5,20 +5,25 @@ use std::cell::OnceCell;
 
 /// A homogeneous point (w x, w y, w z, w).
 pub type H = [f64; 4];
+/// A point or direction in space.
 pub type V3 = [f64; 3];
 
 /// The highest degree a piece may have (the Bernstein scratch arrays' size).
 pub const MAX_DEGREE: usize = 31;
 
+/// a - b.
 pub fn sub(a: V3, b: V3) -> V3 {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
+/// a + b.
 pub fn add(a: V3, b: V3) -> V3 {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
+/// The dot product.
 pub fn dot(a: V3, b: V3) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
+/// The cross product.
 pub fn cross(a: V3, b: V3) -> V3 {
     [
         a[1] * b[2] - a[2] * b[1],
@@ -26,45 +31,102 @@ pub fn cross(a: V3, b: V3) -> V3 {
         a[0] * b[1] - a[1] * b[0],
     ]
 }
+/// The Euclidean length.
 pub fn norm(a: V3) -> f64 {
     (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt()
 }
+/// a times s.
 pub fn scale(a: V3, s: f64) -> V3 {
     [a[0] * s, a[1] * s, a[2] * s]
 }
+/// a scaled to length 1.
 pub fn unit(a: V3) -> V3 {
     scale(a, 1.0 / norm(a))
 }
 
-/// Bernstein values and derivatives of degree n at t, written into `out` and `dout`.
+/// The point h / w of a homogeneous point h.
+fn project(h: H) -> V3 {
+    [h[0] / h[3], h[1] / h[3], h[2] / h[3]]
+}
+
+/// The derivative of the projection at `point` (= h / w, w = h[3]), from the
+/// homogeneous derivative d.
+fn projected_derivative(d: H, point: V3, w: f64) -> V3 {
+    [
+        (d[0] - point[0] * d[3]) / w,
+        (d[1] - point[1] * d[3]) / w,
+        (d[2] - point[2] * d[3]) / w,
+    ]
+}
+
+/// Bernstein values and derivatives of degree n at t, written into `out` and
+/// `dout`; nothing is written when they hold fewer than n + 1 values.
 fn bernstein_into(n: usize, t: f64, out: &mut [f64], dout: &mut [f64]) {
+    let (Some(out), Some(dout)) = (out.get_mut(..=n), dout.get_mut(..=n)) else {
+        return;
+    };
     let s = 1.0 - t;
-    out[0] = 1.0;
+    if let Some(first) = out.first_mut() {
+        *first = 1.0;
+    }
     if n == 0 {
-        dout[0] = 0.0;
+        if let Some(first) = dout.first_mut() {
+            *first = 0.0;
+        }
     }
     for k in 1..=n {
         if k == n {
-            for i in 0..=n {
-                let left = if i > 0 { out[i - 1] } else { 0.0 };
-                let right = if i < n { out[i] } else { 0.0 };
-                dout[i] = n as f64 * (left - right);
+            // dout[i] = n (out[i - 1] - out[i]), out[-1] and out[n] taken as 0.
+            let mut left = 0.0;
+            for (i, d) in dout.iter_mut().enumerate() {
+                let right = if i < n {
+                    out.get(i).copied().unwrap_or(0.0)
+                } else {
+                    0.0
+                };
+                *d = n as f64 * (left - right);
+                left = right;
             }
         }
         let mut saved = 0.0;
-        for i in 0..k {
-            let temp = out[i];
-            out[i] = saved + s * temp;
+        for o in out.iter_mut().take(k) {
+            let temp = *o;
+            *o = saved + s * temp;
             saved = t * temp;
         }
-        out[k] = saved;
+        if let Some(o) = out.get_mut(k) {
+            *o = saved;
+        }
+    }
+}
+
+/// The two halves at 1/2 of the control points of a Bézier curve (homogeneous):
+/// de Casteljau on `work`, which holds the curve and is used up.
+fn halve_into(work: &mut [H], mut left: impl FnMut(usize, H), mut right: impl FnMut(usize, H)) {
+    let n = work.len().saturating_sub(1);
+    for r in 0..=n {
+        if let Some(&w) = work.first() {
+            left(r, w);
+        }
+        if let Some(&w) = work.get(n - r) {
+            right(n - r, w);
+        }
+        for i in 0..n - r {
+            if let Some([a, b]) = work.get_mut(i..i + 2) {
+                for (x, y) in a.iter_mut().zip(*b) {
+                    *x = 0.5 * (*x + y);
+                }
+            }
+        }
     }
 }
 
 /// A cone of directions: every unit vector within `angle` of `axis`.
 #[derive(Clone, Copy, Debug)]
 pub struct Cone {
+    /// The unit axis.
     pub axis: V3,
+    /// The half-angle (radians).
     pub angle: f64,
 }
 
@@ -104,8 +166,11 @@ pub fn cone_of(vectors: &[V3]) -> Option<Cone> {
 /// A point and its first derivatives on a piece.
 #[derive(Clone, Copy, Debug)]
 pub struct Eval {
+    /// The point.
     pub point: V3,
+    /// The derivative in s.
     pub ds: V3,
+    /// The derivative in t.
     pub dt: V3,
 }
 
@@ -117,14 +182,23 @@ pub struct Eval {
 /// computed once.
 #[derive(Clone)]
 pub struct Piece {
+    /// The index of the patch the piece is cut from.
     pub patch: usize,
+    /// The low end of the piece's knot interval in u.
     pub u0: f64,
+    /// The high end in u.
     pub u1: f64,
+    /// The low end in v.
     pub v0: f64,
+    /// The high end in v.
     pub v1: f64,
+    /// The degree in u.
     pub du: usize,
+    /// The degree in v.
     pub dv: usize,
+    /// The (du + 1) (dv + 1) homogeneous coefficients, (i, j) at i * (dv + 1) + j.
     pub c: Vec<H>,
+    /// Whether the surface goes on past the high end in u and in v.
     pub above: [bool; 2],
     points: OnceCell<Vec<V3>>,
     bounds: OnceCell<[f64; 6]>,
@@ -133,6 +207,8 @@ pub struct Piece {
 }
 
 impl Piece {
+    /// The piece of `patch` over [u0, u1] × [v0, v1] with degrees (du, dv) and
+    /// coefficients `c`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         patch: usize,
@@ -164,12 +240,8 @@ impl Piece {
 
     /// The projected control points.
     pub fn points(&self) -> &[V3] {
-        self.points.get_or_init(|| {
-            self.c
-                .iter()
-                .map(|h| [h[0] / h[3], h[1] / h[3], h[2] / h[3]])
-                .collect()
-        })
+        self.points
+            .get_or_init(|| self.c.iter().map(|&h| project(h)).collect())
     }
 
     /// [min x, min y, min z, max x, max y, max z] of the control points, which hold the piece (positive weights).
@@ -177,6 +249,7 @@ impl Piece {
         self.bounds.get_or_init(|| box_of(self.points()))
     }
 
+    /// The diagonal of the control points' box.
     pub fn size(&self) -> f64 {
         let b = self.bounds();
         norm([b[3] - b[0], b[4] - b[1], b[5] - b[2]])
@@ -191,7 +264,7 @@ impl Piece {
     /// so the normals lie in the cone of the cross products of the two sets.
     pub fn cone(&self) -> Option<Cone> {
         *self.cone.get_or_init(|| {
-            let w0 = self.c[0][3];
+            let w0 = self.c.first().map_or(f64::NAN, |h| h[3]);
             let rational = self.c.iter().any(|h| (h[3] - w0).abs() > 1e-12 * w0.abs());
             let (gu, gv) = if rational {
                 (derivative_numerator(self, 0), derivative_numerator(self, 1))
@@ -210,29 +283,40 @@ impl Piece {
 
     /// The control polygon's longest run along u (dir 0) or v (dir 1).
     pub fn extent(&self, dir: usize) -> f64 {
-        let (du, dv) = (self.du, self.dv);
+        let row_length = self.dv + 1;
         let p = self.points();
-        let at = |i: usize, j: usize| p[i * (dv + 1) + j];
-        let (outer, inner) = if dir == 0 { (dv, du) } else { (du, dv) };
-        let mut longest: f64 = 0.0;
-        for a in 0..=outer {
+        let run = |line: &mut dyn Iterator<Item = &V3>| {
             let mut run = 0.0;
-            for b in 0..inner {
-                let (x, y) = if dir == 0 {
-                    (at(b, a), at(b + 1, a))
-                } else {
-                    (at(a, b), at(a, b + 1))
-                };
-                run += norm(sub(y, x));
+            let mut last = line.next();
+            for y in line {
+                if let Some(x) = last {
+                    run += norm(sub(*y, *x));
+                }
+                last = Some(y);
             }
-            longest = longest.max(run);
+            run
+        };
+        let mut longest: f64 = 0.0;
+        if dir == 0 {
+            for j in 0..row_length {
+                longest = longest.max(run(&mut p.iter().skip(j).step_by(row_length)));
+            }
+        } else {
+            for row in p.chunks(row_length) {
+                longest = longest.max(run(&mut row.iter()));
+            }
         }
         longest
     }
 
     /// The two halves along u (dir 0) or v (dir 1), by de Casteljau at 1/2; computed once.
     pub fn halves(&self, dir: usize) -> &[Piece; 2] {
-        self.halves[dir].get_or_init(|| {
+        let cell = if dir == 0 {
+            &self.halves[0]
+        } else {
+            &self.halves[1]
+        };
+        cell.get_or_init(|| {
             let (du, dv) = (self.du, self.dv);
             let (n, m) = if dir == 0 { (du, dv) } else { (dv, du) };
             let index = |i: usize, j: usize| {
@@ -246,23 +330,31 @@ impl Piece {
             let mut right = vec![[0.0; 4]; self.c.len()];
             let mut work = vec![[0.0; 4]; n + 1];
             for j in 0..=m {
-                for i in 0..=n {
-                    work[i] = self.c[index(i, j)];
-                }
-                for r in 0..=n {
-                    left[index(r, j)] = work[0];
-                    right[index(n - r, j)] = work[n - r];
-                    for i in 0..n - r {
-                        for k in 0..4 {
-                            work[i][k] = 0.5 * (work[i][k] + work[i + 1][k]);
-                        }
+                for (i, w) in work.iter_mut().enumerate() {
+                    if let Some(&c) = self.c.get(index(i, j)) {
+                        *w = c;
                     }
                 }
+                halve_into(
+                    &mut work,
+                    |r, w| {
+                        if let Some(x) = left.get_mut(index(r, j)) {
+                            *x = w;
+                        }
+                    },
+                    |r, w| {
+                        if let Some(x) = right.get_mut(index(r, j)) {
+                            *x = w;
+                        }
+                    },
+                );
             }
             let (u0, u1, v0, v1) = (self.u0, self.u1, self.v0, self.v1);
             // The low half always has the high half above it.
             let mut low_above = self.above;
-            low_above[dir] = true;
+            if let Some(a) = low_above.get_mut(dir) {
+                *a = true;
+            }
             let halves = if dir == 0 {
                 let um = (u0 + u1) / 2.0;
                 [
@@ -292,21 +384,20 @@ impl Piece {
         bernstein_into(du, s, &mut bu, &mut dbu);
         bernstein_into(dv, t, &mut bv, &mut dbv);
         let (mut h, mut hs, mut ht) = ([0.0; 4], [0.0; 4], [0.0; 4]);
-        for i in 0..=du {
-            for j in 0..=dv {
-                let c = self.c[i * (dv + 1) + j];
-                let (w, ws, wt) = (bu[i] * bv[j], dbu[i] * bv[j], bu[i] * dbv[j]);
-                for k in 0..4 {
-                    h[k] += w * c[k];
-                    hs[k] += ws * c[k];
-                    ht[k] += wt * c[k];
+        for (row, (&bi, &dbi)) in self.c.chunks(dv + 1).zip(bu.iter().zip(&dbu)).take(du + 1) {
+            for (c, (&bj, &dbj)) in row.iter().zip(bv.iter().zip(&dbv)) {
+                let (w, ws, wt) = (bi * bj, dbi * bj, bi * dbj);
+                for (((hk, hsk), htk), ck) in h.iter_mut().zip(&mut hs).zip(&mut ht).zip(c) {
+                    *hk += w * ck;
+                    *hsk += ws * ck;
+                    *htk += wt * ck;
                 }
             }
         }
         let w = h[3];
         let point = [h[0] / w, h[1] / w, h[2] / w];
-        let ds = [0, 1, 2].map(|k| (hs[k] - point[k] * hs[3]) / w);
-        let dt = [0, 1, 2].map(|k| (ht[k] - point[k] * ht[3]) / w);
+        let ds = projected_derivative(hs, point, w);
+        let dt = projected_derivative(ht, point, w);
         Eval { point, ds, dt }
     }
 
@@ -325,19 +416,20 @@ impl Piece {
         let (du, dv) = (self.du, self.dv);
         let count = if e < 2 { dv + 1 } else { du + 1 };
         (0..count)
-            .map(|k| {
+            .filter_map(|k| {
                 let (i, j) = match e {
                     0 => (0, k),
                     1 => (du, k),
                     2 => (k, 0),
                     _ => (k, dv),
                 };
-                self.c[i * (dv + 1) + j]
+                self.c.get(i * (dv + 1) + j).copied()
             })
             .collect()
     }
 }
 
+/// [min x, min y, min z, max x, max y, max z] of the points.
 pub fn box_of(points: &[V3]) -> [f64; 6] {
     let mut b = [
         f64::INFINITY,
@@ -347,10 +439,11 @@ pub fn box_of(points: &[V3]) -> [f64; 6] {
         f64::NEG_INFINITY,
         f64::NEG_INFINITY,
     ];
+    let (lo, hi) = b.split_at_mut(3);
     for p in points {
-        for k in 0..3 {
-            b[k] = b[k].min(p[k]);
-            b[k + 3] = b[k + 3].max(p[k]);
+        for ((l, h), &x) in lo.iter_mut().zip(hi.iter_mut()).zip(p) {
+            *l = l.min(x);
+            *h = h.max(x);
         }
     }
     b
@@ -367,14 +460,21 @@ fn binomial(n: usize, k: usize) -> f64 {
 
 /// A polynomial piece's control-point differences along u (dir 0) or v (dir 1): Su or Sv's Bernstein directions.
 fn differences(piece: &Piece, dir: usize) -> Vec<V3> {
-    let (du, dv) = (piece.du, piece.dv);
-    let p = piece.points();
-    let at = |i: usize, j: usize| p[i * (dv + 1) + j];
+    let rows = piece.points().chunks(piece.dv + 1);
     let mut out = Vec::new();
-    for i in 0..(if dir == 0 { du } else { du + 1 }) {
-        for j in 0..(if dir == 0 { dv + 1 } else { dv }) {
-            let a = if dir == 0 { at(i + 1, j) } else { at(i, j + 1) };
-            out.push(sub(a, at(i, j)));
+    if dir == 0 {
+        for (r0, r1) in rows.clone().zip(rows.skip(1)) {
+            for (x, y) in r0.iter().zip(r1) {
+                out.push(sub(*y, *x));
+            }
+        }
+    } else {
+        for row in rows {
+            for w in row.windows(2) {
+                if let [x, y] = w {
+                    out.push(sub(*y, *x));
+                }
+            }
         }
     }
     out
@@ -384,9 +484,19 @@ fn differences(piece: &Piece, dir: usize) -> Vec<V3> {
 /// coefficients: a positive multiple of Su or Sv everywhere.
 fn derivative_numerator(piece: &Piece, dir: usize) -> Vec<V3> {
     let (du, dv) = (piece.du, piece.dv);
-    let h = |i: usize, j: usize| piece.c[i * (dv + 1) + j];
+    let h = |i: usize, j: usize| {
+        piece
+            .c
+            .get(i * (dv + 1) + j)
+            .copied()
+            .unwrap_or([f64::NAN; 4])
+    };
     // The difference net and the degrees of the two factors in each direction.
-    let (ku, kv) = if dir == 0 { (du - 1, dv) } else { (du, dv - 1) };
+    let (ku, kv) = if dir == 0 {
+        (du.saturating_sub(1), dv)
+    } else {
+        (du, dv.saturating_sub(1))
+    };
     let d = |k: usize, l: usize| {
         let (a, b) = if dir == 0 {
             (h(k + 1, l), h(k, l))
@@ -405,9 +515,10 @@ fn derivative_numerator(piece: &Piece, dir: usize) -> Vec<V3> {
                     let dkl = d(k, l);
                     let alpha = (binomial(du, i) * binomial(ku, k) / binomial(nu, i + k))
                         * (binomial(dv, j) * binomial(kv, l) / binomial(nv, j + l));
-                    let o = &mut out[(i + k) * (nv + 1) + j + l];
-                    for m in 0..3 {
-                        o[m] += alpha * (hij[3] * dkl[m] - dkl[3] * hij[m]);
+                    if let Some(o) = out.get_mut((i + k) * (nv + 1) + j + l) {
+                        for ((om, &dm), &hm) in o.iter_mut().zip(&dkl).zip(&hij) {
+                            *om += alpha * (hij[3] * dm - dkl[3] * hm);
+                        }
                     }
                 }
             }
@@ -418,54 +529,65 @@ fn derivative_numerator(piece: &Piece, dir: usize) -> Vec<V3> {
 
 /// A rational Bézier curve (homogeneous points) at t: point and derivative.
 pub fn curve_at(c: &[H], t: f64) -> (V3, V3) {
-    let n = c.len() - 1;
+    let n = c.len().saturating_sub(1);
     let (mut b, mut db) = ([0.0; MAX_DEGREE + 1], [0.0; MAX_DEGREE + 1]);
     bernstein_into(n, t, &mut b, &mut db);
     let (mut h, mut hd) = ([0.0; 4], [0.0; 4]);
-    for i in 0..=n {
-        for k in 0..4 {
-            h[k] += b[i] * c[i][k];
-            hd[k] += db[i] * c[i][k];
+    for (ci, (&bi, &dbi)) in c.iter().zip(b.iter().zip(&db)) {
+        for ((hk, hdk), &ck) in h.iter_mut().zip(&mut hd).zip(ci) {
+            *hk += bi * ck;
+            *hdk += dbi * ck;
         }
     }
     let w = h[3];
     let point = [h[0] / w, h[1] / w, h[2] / w];
-    (point, [0, 1, 2].map(|k| (hd[k] - point[k] * hd[3]) / w))
+    (point, projected_derivative(hd, point, w))
 }
 
 /// The two halves of a homogeneous curve at 1/2.
 pub fn split_curve(c: &[H]) -> (Vec<H>, Vec<H>) {
-    let n = c.len() - 1;
     let mut left = vec![[0.0; 4]; c.len()];
     let mut right = vec![[0.0; 4]; c.len()];
     let mut work = c.to_vec();
-    for r in 0..=n {
-        left[r] = work[0];
-        right[n - r] = work[n - r];
-        for i in 0..n - r {
-            for k in 0..4 {
-                work[i][k] = 0.5 * (work[i][k] + work[i + 1][k]);
+    halve_into(
+        &mut work,
+        |r, w| {
+            if let Some(x) = left.get_mut(r) {
+                *x = w;
             }
-        }
-    }
+        },
+        |r, w| {
+            if let Some(x) = right.get_mut(r) {
+                *x = w;
+            }
+        },
+    );
     (left, right)
 }
 
 /// Projected points, box, size and tangent cone of a homogeneous curve.
 pub struct Hull {
+    /// The projected control points.
     pub points: Vec<V3>,
+    /// Their box, as [`box_of`] gives it.
     pub bounds: [f64; 6],
+    /// The box's diagonal.
     pub size: f64,
+    /// A cone holding every tangent, when one narrower than a half-space is known.
     pub cone: Option<Cone>,
 }
 
+/// The hull of a homogeneous curve's control points.
 pub fn curve_hull(c: &[H]) -> Hull {
-    let points: Vec<V3> = c
-        .iter()
-        .map(|h| [h[0] / h[3], h[1] / h[3], h[2] / h[3]])
-        .collect();
+    let points: Vec<V3> = c.iter().map(|&h| project(h)).collect();
     let bounds = box_of(&points);
-    let differences: Vec<V3> = points.windows(2).map(|w| sub(w[1], w[0])).collect();
+    let differences: Vec<V3> = points
+        .windows(2)
+        .filter_map(|w| match w {
+            [a, b] => Some(sub(*b, *a)),
+            _ => None,
+        })
+        .collect();
     let size = norm([
         bounds[3] - bounds[0],
         bounds[4] - bounds[1],
@@ -479,6 +601,7 @@ pub fn curve_hull(c: &[H]) -> Hull {
     }
 }
 
+/// Whether two boxes ([`box_of`]) are more than `pad` apart along an axis.
 pub fn boxes_apart(a: &[f64; 6], b: &[f64; 6], pad: f64) -> bool {
     a[0] > b[3] + pad
         || b[0] > a[3] + pad
@@ -505,6 +628,8 @@ pub fn slab_apart(a: &[V3], b: &[V3], axis: V3, pad: f64) -> bool {
     a1 + pad < b0 || b1 + pad < a0
 }
 
+/// Whether two pieces are proved more than `pad` apart: by their boxes, or by
+/// a slab across either one's normal axis.
 pub fn pieces_apart(a: &Piece, b: &Piece, pad: f64) -> bool {
     if boxes_apart(a.bounds(), b.bounds(), pad) {
         return true;

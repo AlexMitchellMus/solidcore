@@ -24,11 +24,24 @@ use crate::piece::{norm, sub, Piece, V3};
 /// `center` and scaled by `length`: Σ coef[k] x^a y^b z^c over `monomials`.
 #[derive(Clone, Debug)]
 pub struct Algebraic {
+    /// The total degree of F.
     pub degree: usize,
+    /// The largest |F| the proof met on the patch's pieces, over the scale of
+    /// the terms there: how exact F is, at most `PROOF`.
+    pub residual: f64,
     center: V3,
     length: f64,
     monomials: Vec<[usize; 3]>,
     coef: Vec<f64>,
+}
+
+/// A quadric's coefficients (`Algebraic::quadric`).
+pub(crate) struct Quadric {
+    pub center: V3,
+    pub length: f64,
+    pub m: [[f64; 3]; 3],
+    pub w: V3,
+    pub c: f64,
 }
 
 /// The highest degree tried.
@@ -44,7 +57,7 @@ const EXACT: f64 = 1e-13;
 /// all the rows, half again a hard pair's time). The subset must keep four
 /// rows a column: from two, a near form, not the exact one, passed this
 /// bound, and missed a touch point told to the rounding (ssi-corpus
-/// y23_fig1b_two_arcs_and_point).
+/// `y23_fig1b_two_arcs_and_point`).
 const PROOF: f64 = 1e-11;
 
 impl Algebraic {
@@ -62,7 +75,13 @@ impl Algebraic {
     /// g = W^k F(X / W) on the piece, a Bernstein polynomial of degree k times
     /// the piece's, and the scale of its terms.
     pub fn compose(&self, piece: &Piece) -> (Bern, f64) {
-        let terms = terms(piece, self.center, self.length, self.degree);
+        let Some(terms) = terms(piece, self.center, self.length, self.degree) else {
+            // Every monomial of the degree is built (`Powers::raise`), so this
+            // is not reached; a field of NaN proves nothing either way.
+            let (du, dv) = (self.degree * piece.du, self.degree * piece.dv);
+            let c = vec![f64::NAN; (du + 1) * (dv + 1)];
+            return (Bern { du, dv, c }, f64::NAN);
+        };
         let weighted: Vec<(f64, &Bern)> = self.coef.iter().copied().zip(&terms).collect();
         let m = (0..4)
             .map(|d| coordinate(piece, self.center, self.length, d).max_abs())
@@ -70,9 +89,42 @@ impl Algebraic {
         (Bern::sum(&weighted), m.powi(self.degree as i32))
     }
 
+    /// A form of degree 2 as x^T M x + 2 w · x + c in its scaled coordinates
+    /// x = (p − center) / length, with that center and length.
+    pub(crate) fn quadric(&self) -> Option<Quadric> {
+        if self.degree != 2 {
+            return None;
+        }
+        let mut q = Quadric {
+            center: self.center,
+            length: self.length,
+            m: [[0.0; 3]; 3],
+            w: [0.0; 3],
+            c: 0.0,
+        };
+        for (e, &k) in self.monomials.iter().zip(&self.coef) {
+            let axes: Vec<usize> = e
+                .iter()
+                .enumerate()
+                .flat_map(|(i, &n)| std::iter::repeat_n(i, n))
+                .collect();
+            match axes[..] {
+                [] => q.c = k,
+                [i] => *q.w.get_mut(i)? = 0.5 * k,
+                [i, j] if i == j => *q.m.get_mut(i)?.get_mut(i)? = k,
+                [i, j] => {
+                    *q.m.get_mut(i)?.get_mut(j)? = 0.5 * k;
+                    *q.m.get_mut(j)?.get_mut(i)? = 0.5 * k;
+                }
+                _ => return None,
+            }
+        }
+        Some(q)
+    }
+
     /// F, its gradient (in space, not the scaled coordinates), and the size of
     /// its terms at p, Σ |c x^a y^b z^c|, for its rounding.
-    fn value(&self, p: V3) -> (f64, V3, f64) {
+    pub(crate) fn value(&self, p: V3) -> (f64, V3, f64) {
         let x = [
             (p[0] - self.center[0]) / self.length,
             (p[1] - self.center[1]) / self.length,
@@ -86,11 +138,16 @@ impl Algebraic {
             let t = [power(x[0], m[0]), power(x[1], m[1]), power(x[2], m[2])];
             f += c * t[0] * t[1] * t[2];
             size += (c * t[0] * t[1] * t[2]).abs();
-            for k in 0..3 {
-                if m[k] > 0 {
-                    let d = m[k] as f64 * power(x[k], m[k] - 1);
-                    let others: f64 = (0..3).filter(|&j| j != k).map(|j| t[j]).product();
-                    g[k] += c * d * others / self.length;
+            for (k, ((gk, &mk), &xk)) in g.iter_mut().zip(m).zip(&x).enumerate() {
+                if mk > 0 {
+                    let d = mk as f64 * power(xk, mk - 1);
+                    let others: f64 = t
+                        .iter()
+                        .enumerate()
+                        .filter(|&(j, _)| j != k)
+                        .map(|(_, &tj)| tj)
+                        .product();
+                    *gk += c * d * others / self.length;
                 }
             }
         }
@@ -100,7 +157,7 @@ impl Algebraic {
     /// The point of F = 0 that Newton reaches from p along F's gradient: p's foot
     /// to first order, for the gap at a contact. A point where F is zero to its
     /// rounding is its own foot: stepping on from there, where the gradient is
-    /// small (a shell's pole), walked 0.08 away (ssi-corpus y23_fig1g_three_points).
+    /// small (a shell's pole), walked 0.08 away (ssi-corpus `y23_fig1g_three_points`).
     pub fn foot(&self, p: V3) -> V3 {
         let mut q = p;
         for _ in 0..50 {
@@ -140,8 +197,8 @@ impl Fitter {
             .collect();
         let mut center = [0.0; 3];
         for p in &points {
-            for k in 0..3 {
-                center[k] += p[k] / points.len() as f64;
+            for (ck, pk) in center.iter_mut().zip(p) {
+                *ck += pk / points.len() as f64;
             }
         }
         let length = points
@@ -150,7 +207,8 @@ impl Fitter {
         if !(length > 0.0) {
             return None;
         }
-        let cap = MAX_DEGREE.min(2 * pieces[0].du * pieces[0].dv).max(1);
+        let first = pieces.first()?;
+        let cap = MAX_DEGREE.min(2 * first.du * first.dv).max(1);
         let powers = pieces
             .iter()
             .map(|piece| Powers::new(piece, center, length))
@@ -179,7 +237,7 @@ impl Fitter {
         let mut columns = vec![Vec::new(); monomials.len()];
         for p in &mut self.powers {
             p.raise();
-            for (column, term) in columns.iter_mut().zip(p.terms(&monomials)) {
+            for (column, term) in columns.iter_mut().zip(p.terms(&monomials)?) {
                 column.extend_from_slice(&term.c);
             }
         }
@@ -195,6 +253,7 @@ impl Fitter {
             // the monomials already made (each piece's coefficients a run of
             // the columns), not composed again.
             let mut start = 0;
+            let mut residual = 0.0_f64;
             for (piece, p) in self.pieces.iter().zip(&self.powers) {
                 let n = (degree * piece.du + 1) * (degree * piece.dv + 1);
                 let scale = p
@@ -202,22 +261,27 @@ impl Fitter {
                     .iter()
                     .fold(0.0_f64, |m, b| m.max(b.max_abs()))
                     .powi(degree as i32);
-                let largest = (start..start + n)
-                    .map(|r| {
-                        full.iter()
-                            .zip(&coef)
-                            .map(|(column, c)| c * column[r])
-                            .sum::<f64>()
-                            .abs()
-                    })
-                    .fold(0.0_f64, f64::max);
+                let mut largest = 0.0_f64;
+                for r in start..start + n {
+                    let Some(row) = full
+                        .iter()
+                        .zip(&coef)
+                        .map(|(column, c)| column.get(r).map(|x| c * x))
+                        .sum::<Option<f64>>()
+                    else {
+                        return Err(false);
+                    };
+                    largest = largest.max(row.abs());
+                }
                 if largest > PROOF * scale {
                     return Err(true);
                 }
+                residual = residual.max(largest / scale);
                 start += n;
             }
             Ok(Algebraic {
                 degree,
+                residual,
                 center: self.center,
                 length: self.length,
                 monomials: monomials.clone(),
@@ -229,7 +293,8 @@ impl Fitter {
         // repeat their coefficients, and a strided subset of them lost rank:
         // its null vector was not the sphere's, and the sphere times a plane
         // was proved at the next degree, ssi-corpus c4n_viviani_nurbs).
-        let stride = (columns[0].len() / (4 * monomials.len())).max(1);
+        let rows = columns.first().map_or(0, Vec::len);
+        let stride = (rows / (4 * monomials.len())).max(1);
         if stride > 1 {
             let some: Vec<Vec<f64>> = columns
                 .iter()
@@ -253,12 +318,9 @@ fn coordinate(piece: &Piece, center: V3, length: f64, d: usize) -> Bern {
         c: piece
             .c
             .iter()
-            .map(|h| {
-                if d == 3 {
-                    h[3]
-                } else {
-                    (h[d] - center[d] * h[3]) / length
-                }
+            .map(|h| match (h.get(d), center.get(d)) {
+                (Some(&hd), Some(&cd)) if d < 3 => (hd - cd * h[3]) / length,
+                _ => h[3],
             })
             .collect(),
     }
@@ -269,16 +331,18 @@ fn coordinate(piece: &Piece, center: V3, length: f64, d: usize) -> Bern {
 /// a time, each monomial of one degree from one of the degree below (a
 /// product per monomial: from powers, degree 10 took three large products
 /// each, most of a second a piece).
-fn terms(piece: &Piece, center: V3, length: f64, degree: usize) -> Vec<Bern> {
+fn terms(piece: &Piece, center: V3, length: f64, degree: usize) -> Option<Vec<Bern>> {
     let mut powers = Powers::new(piece, center, length);
     for _ in 0..degree {
         powers.raise();
     }
-    powers
-        .terms(&monomials(degree))
-        .into_iter()
-        .cloned()
-        .collect()
+    Some(
+        powers
+            .terms(&monomials(degree))?
+            .into_iter()
+            .cloned()
+            .collect(),
+    )
 }
 
 /// The homogeneous monomials of one degree composed with a piece, raised a
@@ -313,10 +377,12 @@ impl Powers {
     fn raise(&mut self) {
         let mut next = std::collections::HashMap::with_capacity(self.level.len() * 2);
         for (e, b) in &self.level {
-            let last = (0..4).rev().find(|&i| e[i] > 0).unwrap_or(0);
+            let last = e.iter().rposition(|&x| x > 0).unwrap_or(0);
             for (i, coordinate) in self.base.iter().enumerate().skip(last) {
                 let mut raised = *e;
-                raised[i] += 1;
+                if let Some(r) = raised.get_mut(i) {
+                    *r += 1;
+                }
                 next.insert(raised, b.mul(coordinate));
             }
         }
@@ -324,12 +390,13 @@ impl Powers {
         self.degree += 1;
     }
 
-    /// Each of `monomials` (of this degree), x^a y^b z^c, homogenized.
-    fn terms(&self, monomials: &[[usize; 3]]) -> Vec<&Bern> {
+    /// Each of `monomials` (of this degree), x^a y^b z^c, homogenized; None
+    /// when one is above the degree.
+    fn terms(&self, monomials: &[[usize; 3]]) -> Option<Vec<&Bern>> {
         let k = self.degree;
         monomials
             .iter()
-            .map(|&[a, b, c]| &self.level[&[a, b, c, k - a - b - c]])
+            .map(|&[a, b, c]| self.level.get(&[a, b, c, k.checked_sub(a + b + c)?]))
             .collect()
     }
 }
@@ -357,31 +424,39 @@ fn monomials(degree: usize) -> Vec<[usize; 3]> {
 fn null_vector(columns: &[Vec<f64>]) -> Option<(Vec<f64>, f64)> {
     let n = columns.len();
     let m = columns.first()?.len();
-    if m < n {
+    if m < n || columns.iter().any(|c| c.len() != m) {
         return None;
     }
     let mut a = columns.to_vec();
     for j in 0..n {
-        let norm = a[j][j..].iter().map(|x| x * x).sum::<f64>().sqrt();
+        let head = a.get(j)?.get(j..)?;
+        let norm = head.iter().map(|x| x * x).sum::<f64>().sqrt();
         if norm == 0.0 {
             continue;
         }
-        let alpha = if a[j][j] > 0.0 { -norm } else { norm };
-        let mut v = a[j][j..].to_vec();
-        v[0] -= alpha;
+        let alpha = if *head.first()? > 0.0 { -norm } else { norm };
+        let mut v = head.to_vec();
+        *v.first_mut()? -= alpha;
         let v2: f64 = v.iter().map(|x| x * x).sum();
         if v2 == 0.0 {
             continue;
         }
         for column in a.iter_mut().skip(j) {
-            let f = 2.0 * v.iter().zip(&column[j..]).map(|(x, y)| x * y).sum::<f64>() / v2;
-            for (x, y) in column[j..].iter_mut().zip(&v) {
+            let tail = column.get_mut(j..)?;
+            let f = 2.0 * v.iter().zip(tail.iter()).map(|(x, y)| x * y).sum::<f64>() / v2;
+            for (x, y) in tail.iter_mut().zip(&v) {
                 *x -= f * y;
             }
         }
     }
-    // R, upper triangular: r[i][j] = a[j][i] for i <= j.
-    let r = |i: usize, j: usize| a[j][i];
+    // R, upper triangular: r[i][j] = a[j][i] for i <= j (every i, j < n is
+    // inside a, which has n columns of m >= n rows).
+    let r = |i: usize, j: usize| {
+        a.get(j)
+            .and_then(|column| column.get(i))
+            .copied()
+            .unwrap_or(f64::NAN)
+    };
     let largest_pivot = (0..n).fold(0.0_f64, |p, i| p.max(r(i, i).abs()));
     if !(largest_pivot > 0.0) {
         return None;
@@ -397,26 +472,41 @@ fn null_vector(columns: &[Vec<f64>]) -> Option<(Vec<f64>, f64)> {
     };
     let times = |x: &[f64]| -> Vec<f64> {
         (0..n)
-            .map(|i| (i..n).map(|j| r(i, j) * x[j]).sum())
+            .map(|i| {
+                x.iter()
+                    .enumerate()
+                    .skip(i)
+                    .map(|(j, xj)| r(i, j) * xj)
+                    .sum()
+            })
             .collect()
     };
     let unit = |mut x: Vec<f64>| {
         let l = x.iter().map(|v| v * v).sum::<f64>().sqrt();
-        x.iter_mut().for_each(|v| *v /= l);
+        for v in &mut x {
+            *v /= l;
+        }
         x
     };
     let mut x = unit((0..n).map(|i| 1.0 + 0.1 * (i as f64).sin()).collect());
     for _ in 0..6 {
         // R^T y = x, then R z = y.
-        let mut y = vec![0.0; n];
-        for i in 0..n {
-            let s: f64 = (0..i).map(|k| r(k, i) * y[k]).sum();
-            y[i] = (x[i] - s) / pivot(i);
+        let mut y: Vec<f64> = Vec::with_capacity(n);
+        for (i, xi) in x.iter().enumerate() {
+            let s: f64 = y.iter().enumerate().map(|(k, yk)| r(k, i) * yk).sum();
+            y.push((xi - s) / pivot(i));
         }
         let mut z = vec![0.0; n];
-        for i in (0..n).rev() {
-            let s: f64 = (i + 1..n).map(|k| r(i, k) * z[k]).sum();
-            z[i] = (y[i] - s) / pivot(i);
+        for (i, yi) in y.iter().enumerate().rev() {
+            let s: f64 = z
+                .iter()
+                .enumerate()
+                .skip(i + 1)
+                .map(|(k, zk)| r(i, k) * zk)
+                .sum();
+            if let Some(zi) = z.get_mut(i) {
+                *zi = (yi - s) / pivot(i);
+            }
         }
         if !z.iter().all(|v| v.is_finite()) {
             return None;
@@ -429,7 +519,13 @@ fn null_vector(columns: &[Vec<f64>]) -> Option<(Vec<f64>, f64)> {
     for _ in 0..30 {
         let y = times(&big);
         let back: Vec<f64> = (0..n)
-            .map(|j| (0..=j).map(|i| r(i, j) * y[i]).sum())
+            .map(|j| {
+                y.iter()
+                    .enumerate()
+                    .take(j + 1)
+                    .map(|(i, yi)| r(i, j) * yi)
+                    .sum()
+            })
             .collect();
         most = back.iter().map(|v| v * v).sum::<f64>().sqrt().sqrt();
         big = unit(back);
@@ -446,7 +542,7 @@ mod tests {
         let ms = monomials(2);
         let points: Vec<[f64; 3]> = (0..40)
             .map(|k| {
-                let (a, b) = (k as f64 * 0.37, k as f64 * 0.91);
+                let (a, b) = (f64::from(k) * 0.37, f64::from(k) * 0.91);
                 [
                     0.8 * a.cos() * b.sin(),
                     0.8 * a.sin() * b.sin(),

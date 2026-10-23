@@ -69,7 +69,7 @@ fn patch_of(
     }
 }
 
-/// ImplicitCAM's frame through `o` with x axis `x` and z axis `z`.
+/// `ImplicitCAM`'s frame through `o` with x axis `x` and z axis `z`.
 fn frame(o: V3, x: V3, z: V3) -> Frame {
     let v = |p: V3| Exact3::new(p[0], p[1], p[2]);
     Frame {
@@ -273,9 +273,9 @@ pub fn resolving(feature: f64, patches: &[&Patch]) -> Options {
     let mut lo = [f64::INFINITY; 3];
     let mut hi = [f64::NEG_INFINITY; 3];
     for pole in patches.iter().flat_map(|patch| &patch.poles) {
-        for k in 0..3 {
-            lo[k] = lo[k].min(pole[k]);
-            hi[k] = hi[k].max(pole[k]);
+        for ((l, h), &x) in lo.iter_mut().zip(&mut hi).zip(pole) {
+            *l = l.min(x);
+            *h = h.max(x);
         }
     }
     let size = match norm(sub(hi, lo)) {

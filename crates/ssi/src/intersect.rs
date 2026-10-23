@@ -40,11 +40,13 @@ use crate::algebraic::{Algebraic, Fitter, MAX_DEGREE};
 use crate::coincide::{self, Spacing};
 use crate::field::Field;
 use crate::field::{relate, Relation};
+use crate::invert::Side;
 use crate::patch::Patch;
 use crate::piece::{
     boxes_apart, cross, curve_at, curve_hull, dot, loop_free, norm, pieces_apart, scale,
     slab_apart, split_curve, sub, unit, Eval, Piece, H, V3,
 };
+use crate::quadric;
 use crate::small::{newton_step, solve_damped, solve_regularized, System};
 use crate::trace2d;
 use crate::Error;
@@ -82,23 +84,31 @@ impl Default for Options {
 /// A surface's parameters at a curve point, in its patch's own knot domain.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Param {
+    /// The patch's index in its body.
     pub patch: usize,
+    /// The u parameter.
     pub u: f64,
+    /// The v parameter.
     pub v: f64,
 }
 
 /// A point of an intersection curve: the midpoint of the two surfaces' points, and each one's parameters.
 #[derive(Clone, Copy, Debug)]
 pub struct CurvePoint {
+    /// The point in space.
     pub p: V3,
+    /// Its parameters on body A's surface.
     pub a: Param,
+    /// Its parameters on body B's surface.
     pub b: Param,
 }
 
 /// An intersection curve. A closed curve does not repeat its first point.
 #[derive(Clone, Debug)]
 pub struct Curve {
+    /// Whether the curve closes on itself.
     pub closed: bool,
+    /// Its points, in order along nA × nB.
     pub points: Vec<CurvePoint>,
 }
 
@@ -106,22 +116,31 @@ pub struct Curve {
 /// `pairs` every pair (and curve node) visited while refining them.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Stats {
+    /// Body A's Bézier pieces.
     pub pieces_a: usize,
+    /// Body B's Bézier pieces.
     pub pieces_b: usize,
+    /// Pairs of pieces whose boxes clash.
     pub candidates: usize,
+    /// Pairs (and curve nodes) visited while refining them.
     pub pairs: usize,
+    /// Loop-free pairs traced.
     pub leaves: usize,
+    /// Arcs before they were joined into curves.
     pub arcs: usize,
 }
 
+/// Where two bodies' surfaces meet.
 #[derive(Clone, Debug)]
 pub struct Intersection {
+    /// The intersection curves.
     pub curves: Vec<Curve>,
     /// Isolated points where the surfaces touch.
     pub points: Vec<CurvePoint>,
     /// Points on the curves where branches cross or meet: curves end at a
     /// crossing; two branches tangent to each other pass through their meeting.
     pub vertices: Vec<V3>,
+    /// Counts from the run.
     pub stats: Stats,
 }
 
@@ -161,20 +180,20 @@ impl Ctx {
 /// Where a patch has no analytic surface, that first try runs on 1/64 of the
 /// pair budget: a pair that needs implicit forms shows it by being refused,
 /// and need not spend the whole budget first (2 s of a 2.6 s case,
-/// ssi-corpus c2n_quartic_contact_parabola). A pair refused only for the
+/// ssi-corpus `c2n_quartic_contact_parabola`). A pair refused only for the
 /// short budget, with no forms to try, is tried again on the whole one.
 ///
 /// One implicit form a pair is enough for the field path, so a patch whose
 /// every pair already has a field on the other side is not fitted further:
 /// fitting is most of a hard pair's time (2.7 s on a patch with no form,
-/// ssi-corpus y23_fig1b_two_arcs_and_point). The patches are fitted in step,
+/// ssi-corpus `y23_fig1b_two_arcs_and_point`). The patches are fitted in step,
 /// a degree at a time, so the form of lowest degree is the one found (one
 /// patch fitted first to its degree 8 left the other, planar, unfitted,
-/// ssi-corpus y23_t6_ex4_tangential_point); within a degree, in the order the
+/// ssi-corpus `y23_t6_ex4_tangential_point`); within a degree, in the order the
 /// field path takes its implicit side (`trace2d::roles`): a patch with a
 /// collapsed edge first, then B's (fitted first, a NURBS cylinder was made
 /// the implicit side against a NURBS sphere, whose poles were then traced,
-/// ssi-corpus c4n_viviani_nurbs).
+/// ssi-corpus `c4n_viviani_nurbs`).
 pub fn intersect_bodies(
     body_a: &[Patch],
     body_b: &[Patch],
@@ -212,7 +231,7 @@ pub fn intersect_bodies(
             .collect()
     };
     let (pre_a, pre_b) = (quadric(body_a, body_b), quadric(body_b, body_a));
-    match intersect_with(body_a, body_b, &short, &pre_a, &pre_b) {
+    match intersect_with(body_a, body_b, &short, &pre_a, &pre_b, false) {
         Err(refused @ Error::Tangent { .. }) => {
             let (mut forms_a, mut forms_b) = (none(body_a), none(body_b));
             let mut fitters: Vec<(bool, usize, Fitter)> = body_a
@@ -225,7 +244,12 @@ pub fn intersect_bodies(
                 .collect();
             fitters.sort_by_key(|(in_a, i, _)| {
                 (
-                    !(if *in_a { &body_a[*i] } else { &body_b[*i] }).has_collapsed_edge(),
+                    !(if *in_a {
+                        body_a.get(*i)
+                    } else {
+                        body_b.get(*i)
+                    })
+                    .is_some_and(Patch::has_collapsed_edge),
                     *in_a,
                 )
             });
@@ -237,29 +261,43 @@ pub fn intersect_bodies(
             for _ in 0..MAX_DEGREE {
                 for (in_a, i, fitter) in &mut fitters {
                     let (done, pairs_covered) = if *in_a {
-                        (forms_a[*i].is_some(), covered(body_b, &forms_b))
+                        (
+                            forms_a.get(*i).is_some_and(Option::is_some),
+                            covered(body_b, &forms_b),
+                        )
                     } else {
-                        (forms_b[*i].is_some(), covered(body_a, &forms_a))
+                        (
+                            forms_b.get(*i).is_some_and(Option::is_some),
+                            covered(body_a, &forms_a),
+                        )
                     };
                     if done || pairs_covered || !fitter.open() {
                         continue;
                     }
                     if let Some(form) = fitter.next() {
-                        if *in_a {
-                            forms_a[*i] = Some(form);
+                        let slot = if *in_a {
+                            forms_a.get_mut(*i)
                         } else {
-                            forms_b[*i] = Some(form);
+                            forms_b.get_mut(*i)
+                        };
+                        if let Some(slot) = slot {
+                            *slot = Some(form);
                         }
                     }
                 }
             }
+            // Pairs with no implicit form at all are tried on local fields
+            // (`trace2d::trace_local`), only once the forms are known not to
+            // exist: where one does, its exact field is the better proof, and a
+            // local field taken first left eight such cases wrong.
             if forms_a.iter().chain(&forms_b).all(Option::is_none) {
                 if short.budget < options.budget && exhausted(&refused) {
-                    return intersect_with(body_a, body_b, options, &pre_a, &pre_b);
+                    return intersect_with(body_a, body_b, options, &pre_a, &pre_b, true);
                 }
-                return Err(refused);
+                return intersect_with(body_a, body_b, options, &pre_a, &pre_b, true)
+                    .map_err(|_| refused);
             }
-            intersect_with(body_a, body_b, options, &forms_a, &forms_b)
+            intersect_with(body_a, body_b, options, &forms_a, &forms_b, true)
         }
         other => other,
     }
@@ -273,6 +311,11 @@ fn exhausted(error: &Error) -> bool {
 /// The words of the pair budget's refusal.
 const EXHAUSTED: &str = "could not be separated within";
 
+/// The largest pair of pieces, as a share of the bodies' size, tried on a
+/// local field (`trace2d::trace_local`) when not loop-free: past that the
+/// field seldom holds over the piece, and each attempt costs milliseconds.
+const LOCAL_REACH: f64 = 1.0 / 16.0;
+
 /// `intersect_bodies` with the patches' proved algebraic forms, where fitted.
 fn intersect_with(
     body_a: &[Patch],
@@ -280,6 +323,7 @@ fn intersect_with(
     options: &Options,
     forms_a: &[Option<Algebraic>],
     forms_b: &[Option<Algebraic>],
+    local: bool,
 ) -> Result<Intersection, Error> {
     let fields_a: Vec<Option<Field>> = body_a
         .iter()
@@ -324,11 +368,15 @@ fn intersect_with(
         f64::NEG_INFINITY,
         f64::NEG_INFINITY,
     ];
-    for piece in pieces_a.iter().chain(&pieces_b) {
-        let b = piece.bounds();
-        for k in 0..3 {
-            bounds[k] = bounds[k].min(b[k]);
-            bounds[k + 3] = bounds[k + 3].max(b[k + 3]);
+    {
+        let (lo, hi) = bounds.split_at_mut(3);
+        for piece in pieces_a.iter().chain(&pieces_b) {
+            let (b_lo, b_hi) = piece.bounds().split_at(3);
+            for ((l, h), (&bl, &bh)) in lo.iter_mut().zip(hi.iter_mut()).zip(b_lo.iter().zip(b_hi))
+            {
+                *l = l.min(bl);
+                *h = h.max(bh);
+            }
         }
     }
     let size = match norm([
@@ -384,37 +432,44 @@ fn intersect_with(
             max_step: ctx.max_step,
             max_sag: ctx.max_step * ctx.max_turn / 8.0,
         },
+        contacts: true,
+    };
+    // Where both patches have analytic surfaces of a pair solved in closed
+    // form, that is their intersection (`quadric`).
+    let closed = quadric::Settings {
+        contact: ctx.tolerance,
+        max_step: ctx.max_step,
+        max_turn: ctx.max_turn,
     };
     let mut coincident: Vec<(usize, usize)> = Vec::new();
     let mut shared = Vec::new();
+    let mut loops: Vec<Curve> = Vec::new();
     let mut points: Vec<CurvePoint> = Vec::new();
     let mut vertices: Vec<V3> = Vec::new();
-    for (ia, pa) in body_a.iter().enumerate() {
-        for (ib, pb) in body_b.iter().enumerate() {
-            if let Some(arcs) = coincide::boundary(
-                pa,
-                ia,
-                fields_a[ia],
-                &sets_a[ia],
-                pb,
-                ib,
-                fields_b[ib],
-                &sets_b[ib],
-                &spacing,
-            )? {
+    for (ia, ((pa, &field_a), set_a)) in body_a.iter().zip(&fields_a).zip(&sets_a).enumerate() {
+        for (ib, ((pb, &field_b), set_b)) in body_b.iter().zip(&fields_b).zip(&sets_b).enumerate() {
+            if let Some(found) =
+                quadric::pair(pa, ia, field_a, set_a, pb, ib, field_b, set_b, &closed)?
+            {
+                coincident.push((ia, ib));
+                shared.extend(found.arcs);
+                loops.extend(found.loops);
+                for q in found.touches {
+                    if !points
+                        .iter()
+                        .any(|other| norm(sub(other.p, q.p)) < ctx.link)
+                    {
+                        points.push(q);
+                    }
+                }
+            } else if let Some(arcs) =
+                coincide::boundary(pa, ia, field_a, set_a, pb, ib, field_b, set_b, &spacing)?
+            {
                 coincident.push((ia, ib));
                 shared.extend(arcs);
-            } else if let Some((arcs, touches, crossings)) = trace2d::trace_pair(
-                pa,
-                ia,
-                fields_a[ia],
-                &sets_a[ia],
-                pb,
-                ib,
-                fields_b[ib],
-                &sets_b[ib],
-                &field,
-            )? {
+            } else if let Some((arcs, touches, crossings)) =
+                trace2d::trace_pair(pa, ia, field_a, set_a, pb, ib, field_b, set_b, &field)?
+            {
                 coincident.push((ia, ib));
                 shared.extend(arcs);
                 vertices.extend(crossings);
@@ -433,18 +488,24 @@ fn intersect_with(
     // A piece that the other patch's analytic surface proves apart from it is
     // dropped from the search, whatever its box and normal cone say.
     let analytic_apart = |a: &Piece, b: &Piece| {
-        body_b[b.patch]
-            .analytic
-            .as_ref()
+        body_b
+            .get(b.patch)
+            .and_then(|patch| patch.analytic.as_ref())
             .is_some_and(|s| relate(a, s) == Relation::Apart)
-            || body_a[a.patch]
-                .analytic
-                .as_ref()
+            || body_a
+                .get(a.patch)
+                .and_then(|patch| patch.analytic.as_ref())
                 .is_some_and(|s| relate(b, s) == Relation::Apart)
     };
 
+    // B's patches for inverting a local field's points, made when first needed.
+    let mut sides_b: Vec<Option<Side>> = (0..body_b.len()).map(|_| None).collect();
+    let mut local_arcs: Vec<Vec<CurvePoint>> = Vec::new();
+
     // Pairs of pieces, halved until apart or loop-free; depth first, so a
-    // tangency is found, and refused, before the search spreads.
+    // tangency is found, and refused, before the search spreads. A pair that
+    // is not loop-free and small enough is traced on a local field first
+    // (`trace2d::trace_local`), the field path without an implicit form.
     let mut leaves: Vec<(&Piece, &Piece)> = Vec::new();
     let mut candidates = 0;
     for a0 in &pieces_a {
@@ -478,6 +539,37 @@ fn intersect_with(
                 if analytic_apart(a, b) {
                     continue;
                 }
+                if local
+                    && fields_a.get(a.patch).is_some_and(Option::is_none)
+                    && fields_b.get(b.patch).is_some_and(Option::is_none)
+                    && a.size().max(b.size()) <= LOCAL_REACH * size
+                {
+                    let side = of_patch_mut(&mut sides_b, b)?;
+                    if side.is_none() {
+                        *side = Some(Side::with_pieces(
+                            of_patch(body_b, b)?,
+                            b.patch,
+                            of_patch(&sets_b, b)?.clone(),
+                        )?);
+                    }
+                    if let Some(side) = side {
+                        if let Some((arcs, touches, crossings)) =
+                            trace2d::trace_local(a, b, side, &field)
+                        {
+                            local_arcs.extend(arcs);
+                            vertices.extend(crossings);
+                            for q in touches {
+                                if !points
+                                    .iter()
+                                    .any(|other| norm(sub(other.p, q.p)) < ctx.link)
+                                {
+                                    points.push(q);
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                }
                 let split_a = if a.size() >= b.size() {
                     a.size() >= ctx.resolution
                 } else {
@@ -494,11 +586,7 @@ fn intersect_with(
                         ),
                     });
                 }
-                let dir = if piece.extent(0) >= piece.extent(1) {
-                    0
-                } else {
-                    1
-                };
+                let dir = usize::from(!(piece.extent(0) >= piece.extent(1)));
                 for half in piece.halves(dir) {
                     stack.push(if split_a { (half, b) } else { (a, half) });
                 }
@@ -507,17 +595,19 @@ fn intersect_with(
     }
 
     let mut arcs = shared;
+    arcs.extend(local_arcs);
     for &(a, b) in &leaves {
         arcs.extend(trace_leaf(
             a,
             b,
-            body_a[a.patch].analytic.as_ref(),
-            body_b[b.patch].analytic.as_ref(),
+            of_patch(body_a, a)?.analytic.as_ref(),
+            of_patch(body_b, b)?.analytic.as_ref(),
             &mut ctx,
         )?);
     }
     let arc_count = arcs.len();
-    let curves = join_arcs(arcs, &vertices, &ctx);
+    let mut curves = join_arcs(arcs, &vertices, &ctx);
+    curves.extend(loops);
     let mut unique_vertices: Vec<V3> = Vec::new();
     for v in vertices {
         if !unique_vertices.iter().any(|&u| norm(sub(u, v)) < ctx.link) {
@@ -537,6 +627,28 @@ fn intersect_with(
             arcs: arc_count,
         },
     })
+}
+
+/// The item of a per-patch list that a piece's patch has (its patch, its
+/// pieces, its field, ...); a piece of a patch past the list's end is a body
+/// whose pieces do not line up with its patches.
+fn of_patch<'l, T>(list: &'l [T], piece: &Piece) -> Result<&'l T, Error> {
+    list.get(piece.patch)
+        .ok_or_else(|| stray(piece, list.len()))
+}
+
+/// `of_patch`, to write.
+fn of_patch_mut<'l, T>(list: &'l mut [T], piece: &Piece) -> Result<&'l mut T, Error> {
+    let count = list.len();
+    list.get_mut(piece.patch).ok_or_else(|| stray(piece, count))
+}
+
+/// The refusal of a piece whose patch is past its body's `count` patches.
+fn stray(piece: &Piece, count: usize) -> Error {
+    Error::BadPatch(format!(
+        "a piece of patch {} in a body of {count} patches",
+        piece.patch
+    ))
 }
 
 /// A piece for a refusal's detail: its patch, knot rectangle, size and normal cone.
@@ -646,9 +758,11 @@ fn curve_surface(curve: &[H], surface: &Piece, ctx: &mut Ctx) -> Result<Vec<[f64
             }
             let mut system = System::new(3, 3);
             let r = sub(e.point, c);
-            for k in 0..3 {
-                system.j[k] = [cd[k], -e.ds[k], -e.dt[k], 0.0];
-                system.r[k] = r[k];
+            let rows = system.j.iter_mut().zip(&mut system.r);
+            let terms = cd.iter().zip(&e.ds).zip(&e.dt).zip(&r);
+            for ((row, rk), (((&c_k, &s_k), &u_k), &r_k)) in rows.zip(terms) {
+                *row = [c_k, -s_k, -u_k, 0.0];
+                *rk = r_k;
             }
             let Some(step) = solve_damped(&system) else {
                 break;
@@ -739,11 +853,7 @@ fn curve_surface(curve: &[H], surface: &Piece, ctx: &mut Ctx) -> Result<Vec<[f64
                 piece,
             });
         } else {
-            let dir = if piece.extent(0) >= piece.extent(1) {
-                0
-            } else {
-                1
-            };
+            let dir = usize::from(!(piece.extent(0) >= piece.extent(1)));
             for half in piece.halves(dir) {
                 stack.push(Node {
                     c: node.c.clone(),
@@ -807,28 +917,36 @@ fn newton_pair(
     let mut q = q0;
     let mut free = [0usize; 4];
     let mut n_free = 0;
-    for k in (0..4).filter(|k| !fixed.contains(k)) {
-        free[n_free] = k;
+    for (slot, k) in free.iter_mut().zip((0..4).filter(|k| !fixed.contains(k))) {
+        *slot = k;
         n_free += 1;
     }
-    let free = &free[..n_free];
+    let free = free.get(..n_free).unwrap_or_default();
     for _ in 0..MAX_NEWTON {
         let ea = a.evaluate(q[0], q[1]);
         let eb = b.evaluate(q[2], q[3]);
         let residual = sub(ea.point, eb.point);
         let columns = [ea.ds, ea.dt, scale(eb.ds, -1.0), scale(eb.dt, -1.0)];
         let mut system = System::new(if target.is_some() { 4 } else { 3 }, n_free);
-        for row in 0..3 {
-            for (i, &k) in free.iter().enumerate() {
-                system.j[row][i] = columns[k][row];
+        let rows = system.j.iter_mut().zip(&mut system.r).zip(&residual);
+        for (row, ((j_row, r_row), &res)) in rows.enumerate() {
+            for (slot, &k) in j_row.iter_mut().zip(free) {
+                *slot = columns
+                    .get(k)
+                    .and_then(|column| column.get(row))
+                    .copied()
+                    .unwrap_or(f64::NAN);
             }
-            system.r[row] = -residual[row];
+            *r_row = -res;
         }
         let mut plane_error = 0.0;
         if let Some((point, normal)) = target {
             plane_error = dot(sub(ea.point, point), normal);
-            for (i, &k) in free.iter().enumerate() {
-                system.j[3][i] = if k < 2 { dot(columns[k], normal) } else { 0.0 };
+            for (slot, &k) in system.j[3].iter_mut().zip(free) {
+                *slot = match columns.get(k) {
+                    Some(&column) if k < 2 => dot(column, normal),
+                    _ => 0.0,
+                };
             }
             system.r[3] = -plane_error;
         }
@@ -858,8 +976,9 @@ fn newton_pair(
             };
         }
         let fits = |step: &[f64]| {
-            free.iter().enumerate().all(|(i, &k)| {
-                (q[k] + step[i]).is_finite() && (-0.5..=1.5).contains(&(q[k] + step[i]))
+            free.iter().zip(step).all(|(&k, &d)| {
+                q.get(k)
+                    .is_some_and(|&qk| (qk + d).is_finite() && (-0.5..=1.5).contains(&(qk + d)))
             })
         };
         let Some(step) = newton_step(&system, fits) else {
@@ -870,9 +989,11 @@ fn newton_pair(
             };
         };
         let mut size: f64 = 0.0;
-        for (i, &k) in free.iter().enumerate() {
-            q[k] += step[i];
-            size = size.max(step[i].abs());
+        for (&k, &d) in free.iter().zip(&step) {
+            if let Some(qk) = q.get_mut(k) {
+                *qk += d;
+            }
+            size = size.max(d.abs());
         }
         if q.iter().any(|x| !x.is_finite() || *x < -0.5 || *x > 1.5) {
             return Solved {
@@ -999,11 +1120,14 @@ fn trace_leaf(
     }
     let mut arcs = Vec::new();
     for i in 0..seeds.len() {
-        if seeds[i].1 {
+        let Some(seed) = seeds.get_mut(i) else {
+            continue;
+        };
+        if seed.1 {
             continue;
         }
-        seeds[i].1 = true;
-        let start = seeds[i].0;
+        seed.1 = true;
+        let start = seed.0;
         let (direction, along_high, along_any) = inward(&start);
         if direction == 0 {
             continue;
@@ -1014,13 +1138,15 @@ fn trace_leaf(
         // split, ssi-corpus c7_tiny_loop_parab_1e-6), and the march from there
         // can fail. Such a seed is dropped then; the arc, if it is one, has
         // other seeds, as before boundary arcs were traced at all.
-        let mut points = match march(a, b, start, direction as f64, ctx) {
+        let mut points = match march(a, b, start, f64::from(direction), ctx) {
             Ok(points) => points,
             Err(_) if along_any => continue,
             Err(error) => return Err(error),
         };
-        let end = points[points.len() - 1].p;
-        for other in seeds.iter_mut() {
+        let Some(end) = points.last().map(|q| q.p) else {
+            continue;
+        };
+        for other in &mut seeds {
             if !other.1 && norm(sub(other.0.a.point, end)) < ctx.link {
                 other.1 = true;
             }
@@ -1039,13 +1165,21 @@ fn trace_leaf(
         // and a curve that starts tangent to an edge (a circle touching the edge
         // y = 1 of a plane piece at (0, 1, 0), ssi-corpus c8_sphere_plane_poles)
         // has no velocity across it at first and still leaves it at once.
-        let owned_elsewhere = (0..4).any(|k| {
-            let above = if k < 2 { a.above[k] } else { b.above[k - 2] };
-            along_high[k] && above && points.iter().all(|point| on_high(a, b, point, k))
-        });
+        let above = [a.above[0], a.above[1], b.above[0], b.above[1]];
+        let owned_elsewhere =
+            along_high
+                .iter()
+                .zip(above)
+                .enumerate()
+                .any(|(k, (&along, above))| {
+                    along && above && points.iter().all(|point| on_high(a, b, point, k))
+                });
         if !owned_elsewhere
             && points.len() > 1
-            && norm(sub(points[0].p, points[points.len() - 1].p)) > ctx.link
+            && points
+                .first()
+                .zip(points.last())
+                .is_some_and(|(first, last)| norm(sub(first.p, last.p)) > ctx.link)
         {
             arcs.push(points);
         }
@@ -1059,7 +1193,7 @@ fn trace_leaf(
 /// the edge lines up with the curve's tangent; None when no parameter in the
 /// piece does, as the curve then does not enter this piece from the point.
 /// From the parameter the seed happened to get, the corrector cannot swing
-/// round to the right one (ssi-corpus c8_sphere_plane_poles: a pole seed at
+/// round to the right one (ssi-corpus `c8_sphere_plane_poles`: a pole seed at
 /// longitude 45 for a curve leaving along the 90 meridian stalled).
 fn settle(a: &Piece, b: &Piece, mut q: [f64; 4]) -> Option<[f64; 4]> {
     let tangent = both(a, b, q).tangent;
@@ -1068,23 +1202,22 @@ fn settle(a: &Piece, b: &Piece, mut q: [f64; 4]) -> Option<[f64; 4]> {
     }
     let direction = unit(tangent);
     for (piece, off) in [(a, 0), (b, 2)] {
-        let e = piece.evaluate(q[off], q[off + 1]);
+        let Some(&[s0, t0]) = q.get(off..off + 2) else {
+            continue;
+        };
+        let e = piece.evaluate(s0, t0);
         let (ls, lt) = (norm(e.ds), norm(e.dt));
         let on = |x: f64| x <= MARGIN || x >= 1.0 - MARGIN;
         // Which coordinate runs along the collapsed edge, if any.
-        let along = if ls <= 1e-9 * lt && on(q[off + 1]) {
+        let along = if ls <= 1e-9 * lt && on(t0) {
             0
-        } else if lt <= 1e-9 * ls && on(q[off]) {
+        } else if lt <= 1e-9 * ls && on(s0) {
             1
         } else {
             continue;
         };
         let alignment = |x: f64| {
-            let (s, t) = if along == 0 {
-                (x, q[off + 1])
-            } else {
-                (q[off], x)
-            };
+            let (s, t) = if along == 0 { (x, t0) } else { (s0, x) };
             let e = piece.evaluate(s, t);
             let off_edge = if along == 0 { e.dt } else { e.ds };
             dot(unit(off_edge), direction).abs()
@@ -1092,7 +1225,7 @@ fn settle(a: &Piece, b: &Piece, mut q: [f64; 4]) -> Option<[f64; 4]> {
         let samples = 64;
         let (mut best, mut score) = (0.0, -1.0);
         for i in 0..=samples {
-            let x = i as f64 / samples as f64;
+            let x = f64::from(i) / f64::from(samples);
             let value = alignment(x);
             if value > score {
                 (best, score) = (x, value);
@@ -1100,8 +1233,8 @@ fn settle(a: &Piece, b: &Piece, mut q: [f64; 4]) -> Option<[f64; 4]> {
         }
         // Golden-section refinement around the best sample.
         let (mut lo, mut hi) = (
-            (best - 1.0 / samples as f64).max(0.0),
-            (best + 1.0 / samples as f64).min(1.0),
+            (best - 1.0 / f64::from(samples)).max(0.0),
+            (best + 1.0 / f64::from(samples)).min(1.0),
         );
         let g = 0.5 * (5.0_f64.sqrt() - 1.0);
         for _ in 0..60 {
@@ -1119,7 +1252,9 @@ fn settle(a: &Piece, b: &Piece, mut q: [f64; 4]) -> Option<[f64; 4]> {
         if score < 1.0 - 1e-6 {
             return None;
         }
-        q[off + along] = best;
+        if let Some(x) = q.get_mut(off + along) {
+            *x = best;
+        }
     }
     Some(q)
 }
@@ -1164,19 +1299,19 @@ fn inward(state: &State) -> (i32, [bool; 4], bool) {
         let mut fine = true;
         let mut along_high = [false; 4];
         let mut along_any = false;
-        for k in 0..4 {
-            let along = on >= 2 && v[k].abs() <= still;
-            if q[k] <= MARGIN {
-                if !(sign * v[k] > still || along) {
+        for ((&qk, &vk), high) in q.iter().zip(&v).zip(&mut along_high) {
+            let along = on >= 2 && vk.abs() <= still;
+            if qk <= MARGIN {
+                if !(sign * vk > still || along) {
                     fine = false;
                 }
                 along_any |= along;
             }
-            if q[k] >= 1.0 - MARGIN {
-                if !(sign * v[k] < -still || along) {
+            if qk >= 1.0 - MARGIN {
+                if !(sign * vk < -still || along) {
                     fine = false;
                 }
-                along_high[k] = along;
+                *high = along;
                 along_any |= along;
             }
         }
@@ -1209,7 +1344,8 @@ fn march(
             state.q[2] + vb[0],
             state.q[3] + vb[1],
         ];
-        let target = [0, 1, 2].map(|k| state.a.point[k] + h * t[k]);
+        let p = state.a.point;
+        let target = [p[0] + h * t[0], p[1] + h * t[1], p[2] + h * t[2]];
         let next = newton_pair(a, b, guess, Some((target, t)), &[], ctx.tolerance);
         let mut accepted = false;
         if next.ok {
@@ -1259,12 +1395,16 @@ fn march(
 /// Whether a point outside the pair lies past a collapsed edge of a piece: an
 /// edge where the derivative along it vanishes (a pole, a cone's apex).
 fn crosses_collapsed(a: &Piece, b: &Piece, beyond: &[f64; 4]) -> bool {
-    (0..4).any(|k| {
-        if !(beyond[k] < -MARGIN || beyond[k] > 1.0 + MARGIN) {
+    beyond.iter().enumerate().any(|(k, &x)| {
+        if !(x < -MARGIN || x > 1.0 + MARGIN) {
             return false;
         }
-        let (piece, off) = if k < 2 { (a, 0) } else { (b, 2) };
-        let e = piece.evaluate(beyond[off].clamp(0.0, 1.0), beyond[off + 1].clamp(0.0, 1.0));
+        let (piece, (s, t)) = if k < 2 {
+            (a, (beyond[0], beyond[1]))
+        } else {
+            (b, (beyond[2], beyond[3]))
+        };
+        let e = piece.evaluate(s.clamp(0.0, 1.0), t.clamp(0.0, 1.0));
         // Across a v boundary the edge runs along s, and it is collapsed when Ss vanishes.
         let (along, across) = if k % 2 == 1 {
             (e.ds, e.dt)
@@ -1288,28 +1428,39 @@ fn exit_point(
     for _ in 0..4 {
         let mut first = None;
         let mut fraction = f64::INFINITY;
-        for k in 0..4 {
+        for (k, (&gk, &qk)) in guess.iter().zip(&q).enumerate() {
             if fixed.contains(&k) {
                 continue;
             }
-            let bound = if guess[k] < -MARGIN {
+            let bound = if gk < -MARGIN {
                 0.0
-            } else if guess[k] > 1.0 + MARGIN {
+            } else if gk > 1.0 + MARGIN {
                 1.0
             } else {
                 continue;
             };
-            let f = (bound - q[k]) / (guess[k] - q[k]);
+            let f = (bound - qk) / (gk - qk);
             if f < fraction {
                 fraction = f;
                 first = Some(k);
             }
         }
         let Some(first) = first else { break };
-        let bound = if guess[first] < 0.0 { 0.0 } else { 1.0 };
+        let bound = if guess.get(first).is_some_and(|&g| g < 0.0) {
+            0.0
+        } else {
+            1.0
+        };
         let along = fraction.clamp(0.0, 1.0);
-        let mut start = [0, 1, 2, 3].map(|k| q[k] + along * (guess[k] - q[k]));
-        start[first] = bound;
+        let mut start = [
+            q[0] + along * (guess[0] - q[0]),
+            q[1] + along * (guess[1] - q[1]),
+            q[2] + along * (guess[2] - q[2]),
+            q[3] + along * (guess[3] - q[3]),
+        ];
+        if let Some(x) = start.get_mut(first) {
+            *x = bound;
+        }
         fixed.push(first);
         let solved = newton_pair(a, b, start, None, &fixed, ctx.tolerance);
         if !solved.ok {
@@ -1317,7 +1468,9 @@ fn exit_point(
         }
         guess = solved.q;
         if !outside(&guess) {
-            let (ea, eb) = solved.ab.expect("a converged solve carries its points");
+            let Some((ea, eb)) = solved.ab else {
+                return Err(Error::ExitDiverged);
+            };
             return Ok((guess, ea, eb));
         }
     }
@@ -1326,25 +1479,97 @@ fn exit_point(
     Ok((q2, state.a, state.b))
 }
 
+/// An arc that runs out and back along itself, its way back retracing its way
+/// out, is its way out: a folded patch's edge, both halves of it one path in
+/// space (A(0, v) = A(0, 1 - v)), traced as one arc when its cell's zero edge
+/// spans the fold (ssi-corpus `y23_t6_ex6_four_boundary_curves`). It retraces
+/// when its two halves, split at its point farthest from its start, are within
+/// 1e-3 of their length of each other at a quarter, half and three quarters of
+/// their lengths; a closed loop's halves are a diameter apart there.
+fn unfolded(arc: Vec<CurvePoint>, link: f64) -> Vec<CurvePoint> {
+    let n = arc.len();
+    let (Some(start), Some(end)) = (arc.first().map(|q| q.p), arc.last().map(|q| q.p)) else {
+        return arc;
+    };
+    if n < 5 || !(norm(sub(start, end)) < link) {
+        return arc;
+    }
+    let far = arc
+        .iter()
+        .enumerate()
+        .max_by(|(_, x), (_, y)| norm(sub(x.p, start)).total_cmp(&norm(sub(y.p, start))))
+        .map_or(0, |(i, _)| i);
+    let out: Vec<V3> = arc.iter().take(far + 1).map(|q| q.p).collect();
+    let back: Vec<V3> = arc.iter().skip(far).rev().map(|q| q.p).collect();
+    let step_of = |w: &[V3]| match w {
+        [x, y] => norm(sub(*y, *x)),
+        _ => 0.0,
+    };
+    let length = |path: &[V3]| path.windows(2).map(step_of).sum::<f64>();
+    // The point a fraction f of the way along a path, by length.
+    let along = |path: &[V3], f: f64| -> V3 {
+        let mut left = f * length(path);
+        for w in path.windows(2) {
+            let &[x, y] = w else {
+                continue;
+            };
+            let step = norm(sub(y, x));
+            if left <= step && step > 0.0 {
+                let r = left / step;
+                return [
+                    x[0] + r * (y[0] - x[0]),
+                    x[1] + r * (y[1] - x[1]),
+                    x[2] + r * (y[2] - x[2]),
+                ];
+            }
+            left -= step;
+        }
+        path.last().copied().unwrap_or([f64::NAN; 3])
+    };
+    let size = length(&out);
+    if out.len() < 2 || back.len() < 2 || !(size > 0.0) {
+        return arc;
+    }
+    let retraces = [0.25, 0.5, 0.75]
+        .iter()
+        .all(|&f| norm(sub(along(&out, f), along(&back, f))) <= link.max(1e-3 * size));
+    let mut arc = arc;
+    if retraces {
+        arc.truncate(far + 1);
+    }
+    arc
+}
+
 /// Arcs joined end to start into curves; an arc traced twice (along a piece
 /// boundary, either way) is kept once. No curve runs through a vertex (where branches
 /// cross): curves end there, as the edges of the intersection's graph.
 fn join_arcs(arcs: Vec<Vec<CurvePoint>>, vertices: &[V3], ctx: &Ctx) -> Vec<Curve> {
     let at_vertex = |p: V3| vertices.iter().any(|&v| norm(sub(v, p)) < ctx.link);
     let cell = ctx.link * 4.0;
-    let key_of = |p: V3| [0, 1, 2].map(|k| (p[k] / cell).floor() as i64);
+    let key_of = |p: V3| p.map(|x| (x / cell).floor() as i64);
     let mut unique: Vec<Vec<CurvePoint>> = Vec::new();
     for arc in arcs {
-        let (first, last, middle) = (arc[0].p, arc[arc.len() - 1].p, arc[arc.len() >> 1].p);
+        let arc = unfolded(arc, ctx.link);
+        let (Some(first), Some(last), Some(middle)) =
+            (arc.first(), arc.last(), arc.get(arc.len() >> 1))
+        else {
+            continue;
+        };
+        let (first, last, middle) = (first.p, last.p, middle.p);
         // Either way along: an edge both patches' fields trace, one from each
         // side, ran opposite ways, and joined end to start with its copy it was
         // a closed loop of twice its length (ssi-corpus
         // y23_t6_ex6_four_boundary_curves).
         let twin = unique.iter().any(|other| {
-            let (o_first, o_last) = (other[0].p, other[other.len() - 1].p);
+            let (Some(o_first), Some(o_last), Some(o_middle)) =
+                (other.first(), other.last(), other.get(other.len() >> 1))
+            else {
+                return false;
+            };
+            let (o_first, o_last) = (o_first.p, o_last.p);
             let ends = (norm(sub(o_first, first)) < ctx.link && norm(sub(o_last, last)) < ctx.link)
                 || (norm(sub(o_first, last)) < ctx.link && norm(sub(o_last, first)) < ctx.link);
-            ends && norm(sub(other[other.len() >> 1].p, middle)) < ctx.link * 1e3
+            ends && norm(sub(o_middle.p, middle)) < ctx.link * 1e3
         });
         if !twin {
             unique.push(arc);
@@ -1352,7 +1577,10 @@ fn join_arcs(arcs: Vec<Vec<CurvePoint>>, vertices: &[V3], ctx: &Ctx) -> Vec<Curv
     }
     let mut starts: HashMap<[i64; 3], Vec<usize>> = HashMap::new();
     for (index, arc) in unique.iter().enumerate() {
-        let key = key_of(arc[0].p);
+        let Some(start) = arc.first() else {
+            continue;
+        };
+        let key = key_of(start.p);
         for dx in -1..=1 {
             for dy in -1..=1 {
                 for dz in -1..=1 {
@@ -1366,7 +1594,7 @@ fn join_arcs(arcs: Vec<Vec<CurvePoint>>, vertices: &[V3], ctx: &Ctx) -> Vec<Curv
     }
     let mut used = vec![false; unique.len()];
     let following = |index: usize, used: &[bool]| -> Option<usize> {
-        let end = unique[index][unique[index].len() - 1].p;
+        let end = unique.get(index)?.last()?.p;
         if at_vertex(end) {
             return None;
         }
@@ -1375,28 +1603,39 @@ fn join_arcs(arcs: Vec<Vec<CurvePoint>>, vertices: &[V3], ctx: &Ctx) -> Vec<Curv
             .iter()
             .copied()
             .find(|&candidate| {
-                !used[candidate] && norm(sub(unique[candidate][0].p, end)) < ctx.link
+                used.get(candidate).is_some_and(|&u| !u)
+                    && unique
+                        .get(candidate)
+                        .and_then(|arc| arc.first())
+                        .is_some_and(|q| norm(sub(q.p, end)) < ctx.link)
             })
     };
     let mut curves: Vec<Curve> = Vec::new();
     for first in 0..unique.len() {
-        if used[first] {
-            continue;
+        match used.get_mut(first) {
+            Some(u) if !*u => *u = true,
+            _ => continue,
         }
-        used[first] = true;
         let mut chain = vec![first];
         let mut next = following(first, &used);
         while let Some(n) = next {
-            used[n] = true;
+            if let Some(u) = used.get_mut(n) {
+                *u = true;
+            }
             chain.push(n);
             next = following(n, &used);
         }
         let mut points: Vec<CurvePoint> = Vec::new();
         for index in chain {
-            let skip = if points.is_empty() { 0 } else { 1 };
-            points.extend_from_slice(&unique[index][skip..]);
+            let skip = usize::from(!points.is_empty());
+            if let Some(part) = unique.get(index).and_then(|arc| arc.get(skip..)) {
+                points.extend_from_slice(part);
+            }
         }
-        let closed = norm(sub(points[0].p, points[points.len() - 1].p)) < ctx.link;
+        let closed = points
+            .first()
+            .zip(points.last())
+            .is_some_and(|(first, last)| norm(sub(first.p, last.p)) < ctx.link);
         if closed {
             points.pop();
         }
@@ -1409,26 +1648,41 @@ fn join_arcs(arcs: Vec<Vec<CurvePoint>>, vertices: &[V3], ctx: &Ctx) -> Vec<Curv
             if curve.closed {
                 continue;
             }
-            let end = curve.points[curve.points.len() - 1].p;
+            let Some(end) = curve.points.last().map(|q| q.p) else {
+                continue;
+            };
             if at_vertex(end) {
                 continue;
             }
             for (j, other) in curves.iter().enumerate() {
-                if j != i && !other.closed && norm(sub(other.points[0].p, end)) < ctx.link {
+                if j != i
+                    && !other.closed
+                    && other
+                        .points
+                        .first()
+                        .is_some_and(|q| norm(sub(q.p, end)) < ctx.link)
+                {
                     joined = Some((i, j));
                     break 'search;
                 }
             }
         }
         let Some((i, j)) = joined else { break };
-        let other = curves[j].points[1..].to_vec();
-        curves[i].points.extend(other);
-        let curve = &mut curves[i];
-        if norm(sub(
-            curve.points[0].p,
-            curve.points[curve.points.len() - 1].p,
-        )) < ctx.link
-        {
+        let other = curves
+            .get(j)
+            .and_then(|c| c.points.get(1..))
+            .map(<[CurvePoint]>::to_vec)
+            .unwrap_or_default();
+        let Some(curve) = curves.get_mut(i) else {
+            break;
+        };
+        curve.points.extend(other);
+        let closes = curve
+            .points
+            .first()
+            .zip(curve.points.last())
+            .is_some_and(|(first, last)| norm(sub(first.p, last.p)) < ctx.link);
+        if closes {
             curve.closed = true;
             curve.points.pop();
         }
@@ -1439,14 +1693,15 @@ fn join_arcs(arcs: Vec<Vec<CurvePoint>>, vertices: &[V3], ctx: &Ctx) -> Vec<Curv
     // vertex's (a tangent stretch's sliver where two loops meet, five points
     // within 1e-4, ssi-corpus y23_fig1e_loops_touching); one of no length is none.
     curves.retain(|c| {
-        let first = c.points[0].p;
+        let (Some(first), Some(last)) = (c.points.first(), c.points.last()) else {
+            return false;
+        };
+        let first = first.p;
         let small = c
             .points
             .iter()
             .all(|q| norm(sub(q.p, first)) < ctx.resolution);
-        let touches = [first, c.points[c.points.len() - 1].p]
-            .iter()
-            .any(|&e| at_vertex(e));
+        let touches = [first, last.p].iter().any(|&e| at_vertex(e));
         c.points.iter().any(|q| norm(sub(q.p, first)) >= ctx.link)
             && !(small && !c.closed && touches)
     });
@@ -1460,31 +1715,26 @@ fn join_arcs(arcs: Vec<Vec<CurvePoint>>, vertices: &[V3], ctx: &Ctx) -> Vec<Curv
 /// first, so the two branches through a crossing each go on as themselves.
 /// Split at every crossing, a small loop crossing a curve twice left two short
 /// arcs between the same two vertices a lens's width apart, read as one curve
-/// lying on another (ssi-corpus y23_t2_ex3_loop_two_curves); the vertices are
+/// lying on another (ssi-corpus `y23_t2_ex3_loop_two_curves`); the vertices are
 /// reported apart (`Intersection::vertices`).
 fn through_vertices(curves: &mut Vec<Curve>, vertices: &[V3], link: f64) {
     // The direction away from a curve's end: to its first point some links off.
     let away = |c: &Curve, at_end: bool| -> V3 {
-        let n = c.points.len();
-        let end = if at_end {
-            c.points[n - 1].p
-        } else {
-            c.points[0].p
+        let (Some(first), Some(last)) = (c.points.first(), c.points.last()) else {
+            return [f64::NAN; 3];
         };
-        let next = (1..n)
-            .map(|k| {
-                if at_end {
-                    c.points[n - 1 - k].p
-                } else {
-                    c.points[k].p
-                }
-            })
-            .find(|&p| norm(sub(p, end)) > 16.0 * link)
-            .unwrap_or(if at_end {
-                c.points[0].p
-            } else {
-                c.points[n - 1].p
-            });
+        let (end, other_end) = if at_end {
+            (last.p, first.p)
+        } else {
+            (first.p, last.p)
+        };
+        let beyond = |q: &&CurvePoint| norm(sub(q.p, end)) > 16.0 * link;
+        let next = if at_end {
+            c.points.iter().rev().skip(1).find(beyond)
+        } else {
+            c.points.iter().skip(1).find(beyond)
+        }
+        .map_or(other_end, |q| q.p);
         let d = sub(next, end);
         let l = norm(d);
         if l > 0.0 {
@@ -1501,17 +1751,19 @@ fn through_vertices(curves: &mut Vec<Curve>, vertices: &[V3], link: f64) {
                 .enumerate()
                 .filter(|(_, c)| !c.closed)
                 .flat_map(|(i, c)| {
-                    let (first, last) = (c.points[0].p, c.points[c.points.len() - 1].p);
+                    let at = |q: Option<&CurvePoint>| q.is_some_and(|q| norm(sub(q.p, v)) < link);
                     [
-                        (norm(sub(first, v)) < link).then_some((i, false)),
-                        (norm(sub(last, v)) < link).then_some((i, true)),
+                        at(c.points.first()).then_some((i, false)),
+                        at(c.points.last()).then_some((i, true)),
                     ]
                 })
                 .flatten()
                 .collect();
+            let away_of =
+                |i: usize, at_end: bool| curves.get(i).map_or([f64::NAN; 3], |c| away(c, at_end));
             for (a, &(i, i_end)) in ends.iter().enumerate() {
-                for &(j, j_end) in &ends[a + 1..] {
-                    let d = dot(away(&curves[i], i_end), away(&curves[j], j_end));
+                for &(j, j_end) in ends.iter().skip(a + 1) {
+                    let d = dot(away_of(i, i_end), away_of(j, j_end));
                     if d < -std::f64::consts::FRAC_1_SQRT_2 && best.is_none_or(|b| d < b.0) {
                         best = Some((d, i, i_end, j, j_end));
                     }
@@ -1522,25 +1774,82 @@ fn through_vertices(curves: &mut Vec<Curve>, vertices: &[V3], link: f64) {
             break;
         };
         if i == j {
-            curves[i].closed = true;
-            curves[i].points.pop();
+            let Some(curve) = curves.get_mut(i) else {
+                break;
+            };
+            curve.closed = true;
+            curve.points.pop();
             continue;
         }
+        let (Some(curve_i), Some(curve_j)) = (curves.get(i), curves.get(j)) else {
+            break;
+        };
         // i's paired end last, j's paired end first.
-        let mut head = curves[i].points.clone();
+        let mut head = curve_i.points.clone();
         if !i_end {
             head.reverse();
         }
-        let mut tail = curves[j].points.clone();
+        let mut tail = curve_j.points.clone();
         if j_end {
             tail.reverse();
         }
-        head.extend_from_slice(&tail[1..]);
+        head.extend_from_slice(tail.get(1..).unwrap_or_default());
         let (keep, drop) = (i.min(j), i.max(j));
-        curves[keep] = Curve {
-            closed: false,
-            points: head,
-        };
+        if let Some(slot) = curves.get_mut(keep) {
+            *slot = Curve {
+                closed: false,
+                points: head,
+            };
+        }
         curves.remove(drop);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn arc(points: &[V3]) -> Vec<CurvePoint> {
+        let param = Param {
+            patch: 0,
+            u: 0.0,
+            v: 0.0,
+        };
+        points
+            .iter()
+            .map(|&p| CurvePoint {
+                p,
+                a: param,
+                b: param,
+            })
+            .collect()
+    }
+
+    /// Out along a parabola and back along it: the way out alone.
+    #[test]
+    fn an_arc_that_runs_back_along_itself_is_its_way_out() {
+        let out: Vec<V3> = (0..=20)
+            .map(|k| {
+                let x = f64::from(k) / 20.0;
+                [x, x * x, 0.0]
+            })
+            .collect();
+        let mut both = out.clone();
+        both.extend(out.iter().rev().skip(1));
+        let kept = unfolded(arc(&both), 1e-9);
+        assert_eq!(kept.len(), out.len());
+        assert_eq!(kept[kept.len() - 1].p, [1.0, 1.0, 0.0]);
+    }
+
+    /// A closed loop's halves are a diameter apart: it is kept whole.
+    #[test]
+    fn a_closed_loop_is_not_folded() {
+        let circle: Vec<V3> = (0..=40)
+            .map(|k| {
+                let a = std::f64::consts::TAU * f64::from(k) / 40.0;
+                [a.cos(), a.sin(), 0.0]
+            })
+            .collect();
+        assert_eq!(unfolded(arc(&circle), 1e-9).len(), circle.len());
     }
 }

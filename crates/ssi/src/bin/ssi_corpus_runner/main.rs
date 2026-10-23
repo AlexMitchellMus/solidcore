@@ -18,8 +18,8 @@
 //! coverage tolerance: as the corpus's SMLib runner samples its B-spline
 //! curves after its timer.
 //!
-//! Status: 1000 (the corpus's SM_SUCCESS) when curves come back; 2000 with the
-//! refusal's code as `status_name` when the kernel refuses (BOOLEAN_TANGENT);
+//! Status: 1000 (the corpus's `SM_SUCCESS`) when curves come back; 2000 with the
+//! refusal's code as `status_name` when the kernel refuses (`BOOLEAN_TANGENT`);
 //! 3000 when it fails another way.
 
 // `!(t > 0.0)` rejects NaN as well as non-positive tolerances.
@@ -27,6 +27,7 @@
 
 mod json;
 
+use std::fmt::Write as _;
 use std::time::Instant;
 
 use json::Json;
@@ -186,7 +187,7 @@ fn run(args: &[String]) -> Result<(), String> {
         Err(e @ Error::Tangent { .. }) => (REFUSED, e.code().to_string(), Some(e.to_string())),
         Err(e) => (FAILED, format!("FAILED: {}", e.code()), Some(e.to_string())),
     };
-    out.push_str(&format!(",\"status\":{status},\"status_name\":"));
+    let _ = write!(out, ",\"status\":{status},\"status_name\":");
     json::string(&mut out, &name);
     if let Some(detail) = detail {
         out.push_str(",\"detail\":");
@@ -202,24 +203,34 @@ fn run(args: &[String]) -> Result<(), String> {
             }
             let mut points = curve.points.clone();
             if curve.closed {
-                points.push(curve.points[0]);
+                points.extend(curve.points.first());
             }
-            out.push_str(&format!("{{\"type\":\"CURVE\",\"closed\":{}", curve.closed));
+            let _ = write!(out, "{{\"type\":\"CURVE\",\"closed\":{}", curve.closed);
             let lists: [(&str, Column); 5] = [
                 ("xyz", Box::new(|q| q.p.to_vec())),
                 ("uv1", Box::new(|q| vec![q.a.u, q.a.v])),
                 (
                     "s1_at_uv",
-                    Box::new(|q| patch_a.evaluate(q.a.u, q.a.v).to_vec()),
+                    Box::new(|q| {
+                        patch_a
+                            .evaluate(q.a.u, q.a.v)
+                            .unwrap_or([f64::NAN; 3])
+                            .to_vec()
+                    }),
                 ),
                 ("uv2", Box::new(|q| vec![q.b.u, q.b.v])),
                 (
                     "s2_at_uv",
-                    Box::new(|q| patch_b.evaluate(q.b.u, q.b.v).to_vec()),
+                    Box::new(|q| {
+                        patch_b
+                            .evaluate(q.b.u, q.b.v)
+                            .unwrap_or([f64::NAN; 3])
+                            .to_vec()
+                    }),
                 ),
             ];
             for (key, value) in lists {
-                out.push_str(&format!(",\"{key}\":["));
+                let _ = write!(out, ",\"{key}\":[");
                 for (k, q) in points.iter().enumerate() {
                     if k > 0 {
                         out.push(',');
@@ -250,10 +261,11 @@ fn run(args: &[String]) -> Result<(), String> {
     out.push(']');
     if let Ok(found) = &result {
         let s = found.stats;
-        out.push_str(&format!(
+        let _ = write!(
+            out,
             ",\"stats\":{{\"piecesA\":{},\"piecesB\":{},\"candidates\":{},\"pairs\":{},\"leaves\":{},\"arcs\":{}}}",
             s.pieces_a, s.pieces_b, s.candidates, s.pairs, s.leaves, s.arcs
-        ));
+        );
     }
     out.push_str("}\n");
     std::fs::write(out_path, out).map_err(|e| format!("{out_path}: {e}"))

@@ -2,7 +2,7 @@
 //! parameters of a point, found by Newton on the right Bézier piece, free to
 //! run past the patch's boundary where the exact surface goes on. The piece
 //! comes from a hint (the previous point along a curve) or, failing that, from
-//! ImplicitCAM's certified closest point.
+//! `ImplicitCAM`'s certified closest point.
 
 use crate::geom3::V3 as Exact3;
 use crate::surface3::NurbsSurf;
@@ -29,21 +29,29 @@ pub(crate) struct Side {
 impl Side {
     /// The patch, with its Bézier pieces (made once by the caller, who has them).
     pub fn with_pieces(patch: &Patch, index: usize, pieces: Vec<Piece>) -> Result<Self, Error> {
+        if pieces.is_empty() {
+            return Err(Error::BadPatch(format!("patch {index} has no pieces")));
+        }
         let mut lo = [f64::INFINITY; 3];
         let mut hi = [f64::NEG_INFINITY; 3];
         for piece in &pieces {
-            let b = piece.bounds();
-            for k in 0..3 {
-                lo[k] = lo[k].min(b[k]);
-                hi[k] = hi[k].max(b[k + 3]);
+            let (b_lo, b_hi) = piece.bounds().split_at(3);
+            for ((l, h), (&bl, &bh)) in lo.iter_mut().zip(&mut hi).zip(b_lo.iter().zip(b_hi)) {
+                *l = l.min(bl);
+                *h = h.max(bh);
             }
         }
         let size = norm(sub(hi, lo)).max(f64::MIN_POSITIVE);
+        let domain = patch.domain().ok_or_else(|| {
+            Error::BadPatch(format!(
+                "patch {index}: its knots are too few for its poles"
+            ))
+        })?;
         Ok(Side {
             index,
             pieces,
             nurbs: patch.nurbs()?,
-            domain: patch.domain(),
+            domain,
             closed: patch.closed(),
             size,
         })
@@ -51,7 +59,9 @@ impl Side {
 
     /// The point at patch parameters (u, v), and the normal Su × Sv there.
     pub fn at(&self, u: f64, v: f64) -> (V3, V3) {
-        let piece = self.piece_at(u, v);
+        let Some(piece) = self.piece_at(u, v) else {
+            return ([f64::NAN; 3], [f64::NAN; 3]);
+        };
         let e = piece.evaluate(
             (u - piece.u0) / (piece.u1 - piece.u0),
             (v - piece.v0) / (piece.v1 - piece.v0),
@@ -59,13 +69,15 @@ impl Side {
         (e.point, cross(e.ds, e.dt))
     }
 
-    fn piece_at(&self, u: f64, v: f64) -> &Piece {
+    /// The piece holding (u, v) clamped to the domain, else the first piece
+    /// (there is always one).
+    fn piece_at(&self, u: f64, v: f64) -> Option<&Piece> {
         let d = self.domain;
         let (u, v) = (u.clamp(d[0], d[1]), v.clamp(d[2], d[3]));
         self.pieces
             .iter()
             .find(|p| p.u0 <= u && u <= p.u1 && p.v0 <= v && v <= p.v1)
-            .unwrap_or(&self.pieces[0])
+            .or_else(|| self.pieces.first())
     }
 
     /// Gauss-Newton for p from (u, v): the parameters it converges to, and
@@ -73,7 +85,7 @@ impl Side {
     /// piece and may leave it; inside the domain that is the piece's extension,
     /// not its neighbour, and a rational arc's extension parameterizes its
     /// circle differently, so (u, v) would name another point of the patch
-    /// (4.5e-4 off near a sphere's pole, ssi-corpus c1_sphere_cyl_two_loops).
+    /// (4.5e-4 off near a sphere's pole, ssi-corpus `c1_sphere_cyl_two_loops`).
     /// It is run again on the piece holding where it landed until the two
     /// agree; only past the domain does it run on the last piece's extension.
     fn newton_from(&self, p: V3, u: f64, v: f64) -> Option<((f64, f64), bool)> {
@@ -99,7 +111,7 @@ impl Side {
 
     /// Gauss-Newton for p on the piece holding (u, v), with that piece's knot rectangle.
     fn newton_on(&self, p: V3, u: f64, v: f64) -> Option<((f64, f64), bool, Rect)> {
-        let piece = self.piece_at(u, v);
+        let piece = self.piece_at(u, v)?;
         let (du, dv) = (piece.u1 - piece.u0, piece.v1 - piece.v0);
         let (mut s, mut t) = ((u - piece.u0) / du, (v - piece.v0) / dv);
         for _ in 0..40 {
@@ -142,6 +154,33 @@ impl Side {
             Some((uv, true)) => Some(uv),
             _ => None,
         }
+    }
+
+    /// `invert` along a curve, warm-started from the previous point's
+    /// parameters. A warm start runs on past a closed patch's seam (longitude
+    /// 360.1 on a sphere whose seam the curve crosses, ssi-corpus
+    /// `c9n_many_spans_plane_sphere`), where the point is outside by its
+    /// parameters and inside the patch: the certified search finds the chart
+    /// on the seam's other side. Only a closed patch has such a seam.
+    pub fn place(&self, p: V3, hint: Option<(f64, f64)>) -> Option<(f64, f64)> {
+        let uv = self.invert(p, hint)?;
+        if hint.is_some() && self.closed.iter().any(|&c| c) && self.margin(uv, 0.0) < 0.0 {
+            if let Some(fresh) = self.invert(p, None) {
+                if self.margin(fresh, 0.0) > self.margin(uv, 0.0) {
+                    return Some(fresh);
+                }
+            }
+        }
+        Some(uv)
+    }
+
+    /// Parameters a little outside the domain clamped into it, when the
+    /// clamped ones name the same point p (to the inversion's own 1e-9 of the
+    /// patch): on a collapsed edge any u names the pole.
+    pub fn clamped(&self, p: V3, (u, v): (f64, f64)) -> Option<(f64, f64)> {
+        let d = self.domain;
+        let uv = (u.clamp(d[0], d[1]), v.clamp(d[2], d[3]));
+        (norm(sub(self.at(uv.0, uv.1).0, p)) <= 1e-9 * self.size).then_some(uv)
     }
 
     /// The parameters' margin inside the domain: positive inside, zero on its

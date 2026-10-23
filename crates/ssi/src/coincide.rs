@@ -6,7 +6,7 @@
 //! (`field::relate`). The boundary is made of the first patch's edges where they
 //! fall inside the second and the second's edges where they fall strictly
 //! inside the first, joined into loops. Inside is decided on parameters: each
-//! edge point is inverted onto the other patch (ImplicitCAM's certified closest
+//! edge point is inverted onto the other patch (`ImplicitCAM`'s certified closest
 //! point finds the Bézier piece, then Newton runs on that piece, past its
 //! boundary if it must, where the exact surface goes on), and its parameters
 //! are compared with the patch's domain. No distance decides anything.
@@ -94,7 +94,9 @@ pub(crate) fn boundary(
             dot(na, nb) >= 0.0
         });
     if !agree {
-        from_b.iter_mut().for_each(|arc| arc.reverse());
+        for arc in &mut from_b {
+            arc.reverse();
+        }
     }
     arcs.extend(from_b);
     Ok(Some(arcs))
@@ -224,7 +226,7 @@ fn clip_edge(
 pub(crate) fn sample(curve: &dyn Fn(f64) -> V3, spacing: &Spacing) -> Vec<f64> {
     sample_points(&|t| (curve(t), ()), spacing)
         .into_iter()
-        .map(|(t, _, _)| t)
+        .map(|(t, _, ())| t)
         .collect()
 }
 

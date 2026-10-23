@@ -1,8 +1,11 @@
 //! Where two bodies' surfaces cross: the cases of Form Studio's
 //! test/kernel/intersect.test.mjs that stand on exact surfaces alone.
 
+// Test code, as Solidcore's test files: indexing and unwrap fail the test.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+
 use ssi::piece::{norm, sub, V3};
-use ssi::{intersect_bodies, Error, Intersection, Options, Patch};
+use ssi::{intersect_bodies, shapes, Intersection, Options, Patch};
 
 const S: f64 = std::f64::consts::FRAC_1_SQRT_2;
 
@@ -74,8 +77,8 @@ fn worst_residual(result: &Intersection, a: &[Patch], b: &[Patch]) -> f64 {
     let mut worst: f64 = 0.0;
     for curve in &result.curves {
         for q in &curve.points {
-            worst = worst.max(norm(sub(a[q.a.patch].evaluate(q.a.u, q.a.v), q.p)));
-            worst = worst.max(norm(sub(b[q.b.patch].evaluate(q.b.u, q.b.v), q.p)));
+            worst = worst.max(norm(sub(a[q.a.patch].evaluate(q.a.u, q.a.v).unwrap(), q.p)));
+            worst = worst.max(norm(sub(b[q.b.patch].evaluate(q.b.u, q.b.v).unwrap(), q.p)));
         }
     }
     worst
@@ -88,7 +91,8 @@ fn bezier_pieces_reproduce_the_bspline_they_came_from_rational_and_clamped_or_no
     let mut poles = Vec::new();
     for i in 0..6 {
         for j in 0..5 {
-            poles.push([i as f64, j as f64, (i as f64 + 2.0 * j as f64).sin()]);
+            let (x, y) = (f64::from(i), f64::from(j));
+            poles.push([x, y, (x + 2.0 * y).sin()]);
         }
     }
     let unclamped = Patch {
@@ -107,7 +111,12 @@ fn bezier_pieces_reproduce_the_bspline_they_came_from_rational_and_clamped_or_no
             for (s, t) in [(0.0, 0.0), (0.3, 0.7), (1.0, 0.5), (0.9, 1.0)] {
                 let u = piece.u0 + s * (piece.u1 - piece.u0);
                 let v = piece.v0 + t * (piece.v1 - piece.v0);
-                assert!(norm(sub(piece.evaluate(s, t).point, patch.evaluate(u, v))) < 1e-12);
+                assert!(
+                    norm(sub(
+                        piece.evaluate(s, t).point,
+                        patch.evaluate(u, v).unwrap()
+                    )) < 1e-12
+                );
             }
         }
     }
@@ -231,17 +240,20 @@ fn dome(k: f64, mirror: Option<f64>) -> Patch {
     }
 }
 
+/// Two domes of no implicit form within reach, touching at their peaks: the
+/// touch point, found on a local field of the separation (`trace2d::trace_local`).
 #[test]
-fn free_form_surfaces_that_touch_are_refused_by_name_not_approximated() {
+fn free_form_surfaces_that_touch_meet_at_their_one_point() {
     let (top, peak) = (1.0 / 3.0, 1.0 - 1.0 / 3.0_f64.sqrt());
     let (a, b) = ([dome(1.0, None)], [dome(1.0, Some(top))]);
-    let touch = a[0].evaluate(peak, peak);
-    match intersect_bodies(&a, &b, &Options::default()) {
-        Err(Error::Tangent { at: Some(at), .. }) => assert!(
-            norm(sub(at, touch)) < 1e-3,
-            "refused at {at:?}, touch at {touch:?}"
-        ),
-        other => panic!("expected a tangency refusal, got {other:?}"),
+    let touch = a[0].evaluate(peak, peak).unwrap();
+    let result = intersect_bodies(&a, &b, &Options::default()).unwrap();
+    assert!(result.curves.is_empty(), "{:?}", result.curves);
+    assert_eq!(result.points.len(), 1);
+    let q = result.points[0];
+    assert!(norm(sub(q.p, touch)) < 1e-9, "{:?} against {touch:?}", q.p);
+    for param in [q.a, q.b] {
+        assert!((param.u - peak).abs() < 1e-8 && (param.v - peak).abs() < 1e-8);
     }
 }
 
@@ -299,4 +311,76 @@ fn parallel_planes_1e_7_apart_are_proved_apart_not_refused() {
         .unwrap()
         .curves
         .is_empty());
+}
+
+/// The one closed curve of `result`, every point at height `z` and at `radius`
+/// from the z axis, to `within` of it.
+fn one_loop_about_z(result: &Intersection, z: f64, radius: f64, within: f64) {
+    assert_eq!(result.curves.len(), 1);
+    assert!(result.curves[0].closed);
+    assert!(result.points.is_empty());
+    for q in &result.curves[0].points {
+        assert!(
+            (q.p[0].hypot(q.p[1]) / radius - 1.0).abs() < within,
+            "at {:?}",
+            q.p
+        );
+        assert!((q.p[2] - z).abs() < 1e-20);
+    }
+}
+
+#[test]
+fn a_plane_5e_15_under_a_spheres_pole_cuts_its_loop_of_radius_1e_7() {
+    let x = [1.0, 0.0, 0.0];
+    let y = [0.0, 1.0, 0.0];
+    let d = 0.999_999_999_999_995;
+    let plane = [shapes::plane([0.0; 3], x, y, [-1.0, 1.0], [-1.0, 1.0])];
+    let sphere = [shapes::sphere(
+        [0.0, 0.0, d],
+        x,
+        y,
+        1.0,
+        [0.0, 360.0],
+        [-90.0, 90.0],
+    )];
+    let result = intersect_bodies(&plane, &sphere, &Options::default()).unwrap();
+    one_loop_about_z(&result, 0.0, ((1.0 - d) * (1.0 + d)).sqrt(), 1e-9);
+    assert!(worst_residual(&result, &plane, &sphere) < 1e-15);
+}
+
+#[test]
+fn a_plane_1e_14_over_a_paraboloids_apex_cuts_its_loop_of_radius_1e_7() {
+    // z = x^2 + y^2 over [-1, 1]^2, one biquadratic Bézier patch.
+    let poles = vec![
+        [-1.0, -1.0, 2.0],
+        [-1.0, 0.0, 0.0],
+        [-1.0, 1.0, 2.0],
+        [0.0, -1.0, 0.0],
+        [0.0, 0.0, -2.0],
+        [0.0, 1.0, 0.0],
+        [1.0, -1.0, 2.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 2.0],
+    ];
+    let knots = vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0];
+    let paraboloid = [Patch {
+        u_degree: 2,
+        v_degree: 2,
+        u_count: 3,
+        v_count: 3,
+        poles,
+        weights: None,
+        u_knots: knots.clone(),
+        v_knots: knots,
+        analytic: None,
+    }];
+    let h = 1e-14;
+    let x = [1.0, 0.0, 0.0];
+    let y = [0.0, 1.0, 0.0];
+    let plane = [shapes::plane([0.0, 0.0, h], x, y, [-1.0, 1.0], [-1.0, 1.0])];
+    let result = intersect_bodies(&paraboloid, &plane, &Options::default()).unwrap();
+    // The form's value at the apex is known to about 1% (rounding in terms
+    // of 0.1, for a value of 1e-15), the radius to half that.
+    one_loop_about_z(&result, h, h.sqrt(), 1e-2);
+    assert!(worst_residual(&result, &paraboloid, &plane) < 1e-15);
 }

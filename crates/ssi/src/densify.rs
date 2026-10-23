@@ -38,15 +38,30 @@ impl Pieces {
 
     /// As `at`, but a parameter a hair past the patch's domain is read on its nearest piece.
     fn at_any(&self, at: &Param) -> Option<(V3, V3, V3, V3)> {
+        let piece = self.nearest(at)?.0;
+        Self::on(piece, at)
+    }
+
+    /// The piece nearest the parameters, and how far past it they are, in
+    /// units of its own size.
+    fn nearest(&self, at: &Param) -> Option<(&Piece, f64)> {
         let pieces = self.0.get(at.patch)?;
         let distance = |p: &Piece| {
             (p.u0 - at.u).max(at.u - p.u1).max(0.0) / (p.u1 - p.u0)
                 + (p.v0 - at.v).max(at.v - p.v1).max(0.0) / (p.v1 - p.v0)
         };
-        let piece = pieces
+        pieces
             .iter()
-            .min_by(|x, y| distance(x).total_cmp(&distance(y)))?;
-        Self::on(piece, at)
+            .map(|p| (p, distance(p)))
+            .min_by(|x, y| x.1.total_cmp(&y.1))
+    }
+
+    /// Whether the parameters are in the patch's domain, to a hair: past it a
+    /// patch's polynomial runs on as a surface the patch is not (across a
+    /// tube's crease, its seam, the other side is another sheet: a point
+    /// settled there was 9.4e-4 off it, ssi-corpus `y23_t2_ex5_two_loops`).
+    fn holds(&self, at: &Param) -> bool {
+        self.nearest(at).is_some_and(|(_, d)| d <= 1e-9)
     }
 
     fn on(piece: &Piece, at: &Param) -> Option<(V3, V3, V3, V3)> {
@@ -86,7 +101,7 @@ fn tangent(a: &Pieces, b: &Pieces, q: &CurvePoint, chord: V3) -> Option<(V3, [f6
 /// when the two surface points agree within `gap`, else moved onto the curve by
 /// Newton on (uA, vA, uB, vB), held to the plane through it across `along`
 /// (the parameter curve can bend more than the space curve: a torus against an
-/// ellipsoid, ssi-corpus y23_t3_ex2, left points 1.01e-5 off at 0.06 rad).
+/// ellipsoid, ssi-corpus `y23_t3_ex2`, left points 1.01e-5 off at 0.06 rad).
 /// None when that does not converge, the point then left out.
 fn settle(a: &Pieces, b: &Pieces, mut q: CurvePoint, along: V3, gap: f64) -> Option<CurvePoint> {
     let target = q.p;
@@ -100,9 +115,14 @@ fn settle(a: &Pieces, b: &Pieces, mut q: CurvePoint, along: V3, gap: f64) -> Opt
             return Some(q);
         }
         let mut system = System::new(4, 4);
-        for k in 0..3 {
-            system.j[k] = [sua[k], sva[k], -sub_[k], -svb[k]];
-            system.r[k] = -residual[k];
+        let rows = system.j.iter_mut().zip(&mut system.r);
+        let terms = residual
+            .iter()
+            .zip(sua.iter().zip(&sva))
+            .zip(sub_.iter().zip(&svb));
+        for ((row, r), ((&res, (&a_u, &a_v)), (&b_u, &b_v))) in rows.zip(terms) {
+            *row = [a_u, a_v, -b_u, -b_v];
+            *r = -res;
         }
         system.j[3] = [dot(sua, along), dot(sva, along), 0.0, 0.0];
         system.r[3] = -plane;
@@ -134,7 +154,9 @@ fn densify_curve(curve: &Curve, a: &Pieces, b: &Pieces, max_turn: f64) -> Curve 
     let segments = if curve.closed { n } else { n.saturating_sub(1) };
     let mut out = Vec::with_capacity(n);
     for i in 0..segments {
-        let (q0, q1) = (curve.points[i], curve.points[(i + 1) % n]);
+        let (Some(&q0), Some(&q1)) = (curve.points.get(i), curve.points.get((i + 1) % n)) else {
+            continue;
+        };
         out.push(q0);
         let chord = sub(q1.p, q0.p);
         let length = norm(chord);
@@ -170,12 +192,16 @@ fn densify_curve(curve: &Curve, a: &Pieces, b: &Pieces, max_turn: f64) -> Curve 
             let mix = |x0: f64, d0: f64, x1: f64, d1: f64| {
                 h00 * x0 + h10 * length * d0 + h01 * x1 + h11 * length * d1
             };
-            let p = [0, 1, 2].map(|c| mix(q0.p[c], t0.0[c], q1.p[c], t1.0[c]));
+            let p = [
+                mix(q0.p[0], t0.0[0], q1.p[0], t1.0[0]),
+                mix(q0.p[1], t0.0[1], q1.p[1], t1.0[1]),
+                mix(q0.p[2], t0.0[2], q1.p[2], t1.0[2]),
+            ];
             // Across a seam the parameters cannot be interpolated, but each side
             // of it is a chart: an inserted point starts from the nearer end's
             // parameters, and the polish below places it.
-            let (pa, pb) = if consistent {
-                (
+            let starts = if consistent {
+                vec![(
                     Param {
                         patch: q0.a.patch,
                         u: mix(q0.a.u, t0.1[0], q1.a.u, t1.1[0]),
@@ -186,20 +212,24 @@ fn densify_curve(curve: &Curve, a: &Pieces, b: &Pieces, max_turn: f64) -> Curve 
                         u: mix(q0.b.u, t0.2[0], q1.b.u, t1.2[0]),
                         v: mix(q0.b.v, t0.2[1], q1.b.v, t1.2[1]),
                     },
-                )
+                )]
             } else if s < 0.5 {
-                (q0.a, q0.b)
+                vec![(q0.a, q0.b), (q1.a, q1.b)]
             } else {
-                (q1.a, q1.b)
+                vec![(q1.a, q1.b), (q0.a, q0.b)]
             };
             let direction = unit(sub(q1.p, q0.p));
-            if let Some(point) = settle(
-                a,
-                b,
-                CurvePoint { p, a: pa, b: pb },
-                direction,
-                1e-9 * length,
-            ) {
+            let settled = starts.into_iter().find_map(|(pa, pb)| {
+                settle(
+                    a,
+                    b,
+                    CurvePoint { p, a: pa, b: pb },
+                    direction,
+                    1e-9 * length,
+                )
+                .filter(|q| a.holds(&q.a) && b.holds(&q.b))
+            });
+            if let Some(point) = settled {
                 out.push(point);
             }
         }

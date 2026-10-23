@@ -4,14 +4,19 @@
 //! transversal, tangent and singular intersections, boundaries, coincident
 //! regions, near-degenerate pairs, seams and poles.
 //!
+//! A plane against a sphere, or against a patch whose implicit form has
+//! degree 2 and cuts it in an ellipse, is solved in closed form (`quadric`).
 //! Where a patch has an implicit form (an analytic surface, or a B-spline
 //! patch's exact algebraic form proved by composition, `algebraic`), the
 //! other patch's pieces are traced in their own parameters against it as a
 //! Bernstein field (`trace2d`): signs, monotone sweeps, critical points proved
 //! one to a cell, and valleys proved on their chords give touch points,
 //! crossings and tangent curves. Other pairs are subdivided with Sederberg and
-//! Meyers's loop test and marched ([`intersect`]). Contacts it cannot prove are
-//! refused by name, never approximated.
+//! Meyers's loop test and marched ([`intersect`]); where that cannot separate
+//! them near a tangency, a pair of pieces is traced on a local field (`taylor`):
+//! the separation along a fixed direction as a polynomial with proved bounds,
+//! read by the same cell tests. Contacts it cannot prove are refused by name,
+//! never approximated.
 //!
 //! No intersection point is ever chosen by thresholding distances at sample
 //! points (US patent 12,229,885 claims that): points come from Newton roots and
@@ -31,9 +36,11 @@ pub mod intersect;
 mod invert;
 pub mod patch;
 pub mod piece;
+mod quadric;
 pub mod shapes;
 mod small;
 pub mod surface3;
+mod taylor;
 mod trace2d;
 
 pub use densify::densify;
@@ -46,9 +53,11 @@ use std::fmt;
 #[derive(Clone, Debug)]
 pub enum Error {
     /// The surfaces touch or coincide, or a piece is degenerate right at the
-    /// crossing: a contact this method has not built (Form Studio's BOOLEAN_TANGENT).
+    /// crossing: a contact this method has not built (Form Studio's `BOOLEAN_TANGENT`).
     Tangent {
+        /// Where, when known.
         at: Option<piece::V3>,
+        /// What was found there.
         detail: String,
     },
     /// A patch whose degrees, counts, knots or weights cannot be read.
@@ -77,8 +86,7 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Tangent { detail, .. } => write!(f, "{detail}"),
-            Error::BadPatch(detail) => write!(f, "{detail}"),
+            Error::Tangent { detail, .. } | Error::BadPatch(detail) => write!(f, "{detail}"),
             Error::Stalled(p) => write!(
                 f,
                 "marching stalled at {:.6e}, {:.6e}, {:.6e}",

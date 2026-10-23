@@ -27,61 +27,84 @@ impl System {
     /// The 3 × 2 system [a b] x = r: a vector's coordinates along two directions.
     pub fn columns2(a: [f64; 3], b: [f64; 3], r: [f64; 3]) -> System {
         let mut s = System::new(3, 2);
-        for k in 0..3 {
-            s.j[k] = [a[k], b[k], 0.0, 0.0];
-            s.r[k] = r[k];
+        for ((row, rk), ((&ak, &bk), &rv)) in
+            s.j.iter_mut().zip(&mut s.r).zip(a.iter().zip(&b).zip(&r))
+        {
+            *row = [ak, bk, 0.0, 0.0];
+            *rk = rv;
         }
         s
     }
 }
 
+/// Entry (r, c) of a stack matrix; NaN outside it, which fails every pivot test.
+fn entry(a: &[[f64; MAX]; MAX], r: usize, c: usize) -> f64 {
+    a.get(r)
+        .and_then(|row| row.get(c))
+        .copied()
+        .unwrap_or(f64::NAN)
+}
+
 /// Solve the square n × n system A x = b by Gaussian elimination with partial
 /// pivoting; None when singular or not finite.
 fn solve_square(n: usize, mut a: [[f64; MAX]; MAX], mut b: [f64; MAX]) -> Option<[f64; MAX]> {
+    if n > MAX {
+        return None;
+    }
     for col in 0..n {
         let mut pivot = col;
         for r in col + 1..n {
-            if a[r][col].abs() > a[pivot][col].abs() {
+            if entry(&a, r, col).abs() > entry(&a, pivot, col).abs() {
                 pivot = r;
             }
         }
-        if !(a[pivot][col].abs() > 1e-300) {
+        if !(entry(&a, pivot, col).abs() > 1e-300) {
             return None;
         }
         a.swap(col, pivot);
         b.swap(col, pivot);
-        for r in col + 1..n {
-            let f = a[r][col] / a[col][col];
-            for k in col..n {
-                a[r][k] -= f * a[col][k];
+        let (head, tail) = a.split_at_mut(col + 1);
+        let (b_head, b_tail) = b.split_at_mut(col + 1);
+        let (pivot_row, pivot_b) = (head.last()?, *b_head.last()?);
+        let pivot_value = *pivot_row.get(col)?;
+        for (row, br) in tail.iter_mut().zip(b_tail).take(n - col - 1) {
+            let f = *row.get(col)? / pivot_value;
+            for (x, &y) in row.iter_mut().zip(pivot_row).take(n).skip(col) {
+                *x -= f * y;
             }
-            b[r] -= f * b[col];
+            *br -= f * pivot_b;
         }
     }
     let mut x = [0.0; MAX];
     for r in (0..n).rev() {
-        let mut sum = b[r];
-        for k in r + 1..n {
-            sum -= a[r][k] * x[k];
+        let row = a.get(r)?;
+        let mut sum = *b.get(r)?;
+        for (ark, xk) in row.iter().zip(&x).take(n).skip(r + 1) {
+            sum -= ark * xk;
         }
-        x[r] = sum / a[r][r];
+        *x.get_mut(r)? = sum / row.get(r)?;
     }
-    x[..n].iter().all(|v| v.is_finite()).then_some(x)
+    x.get(..n)?.iter().all(|v| v.is_finite()).then_some(x)
 }
 
-/// (JᵀJ + damping I) x = Jᵀr.
+/// `(JᵀJ + damping I) x = Jᵀr`.
 pub(crate) fn solve_regularized(s: &System, damping: f64) -> Option<[f64; MAX]> {
-    let (m, n) = (s.m, s.n);
+    let (rows, rhs) = (s.j.get(..s.m)?, s.r.get(..s.m)?);
+    let column = |row: &[f64; MAX], p: usize| row.get(p).copied().unwrap_or(f64::NAN);
     let mut a = [[0.0; MAX]; MAX];
     let mut b = [0.0; MAX];
-    for p in 0..n {
-        for q in 0..n {
-            a[p][q] = (0..m).map(|k| s.j[k][p] * s.j[k][q]).sum();
+    for (p, (a_row, bp)) in a.iter_mut().zip(&mut b).enumerate().take(s.n) {
+        for (q, apq) in a_row.iter_mut().enumerate().take(s.n) {
+            *apq = rows.iter().map(|row| column(row, p) * column(row, q)).sum();
         }
-        a[p][p] += damping;
-        b[p] = (0..m).map(|k| s.j[k][p] * s.r[k]).sum();
+        *a_row.get_mut(p)? += damping;
+        *bp = rows
+            .iter()
+            .zip(rhs)
+            .map(|(row, rk)| column(row, p) * rk)
+            .sum();
     }
-    solve_square(n, a, b)
+    solve_square(s.n, a, b)
 }
 
 /// The damped least-squares step for J x = r, damped by |r|^2 (Levenberg and
@@ -91,10 +114,10 @@ pub(crate) fn solve_regularized(s: &System, damping: f64) -> Option<[f64; MAX]> 
 /// rank 2, and a plain solve then throws its root away. The damping vanishes
 /// with the residual, so a grazing double root still converges at Newton's
 /// rate; a fixed damping of 1e-12 of the normal matrix stalled there 2e-7 to
-/// 1e-6 short of the touch (ssi-corpus c5_hemisphere_equator, where a plane
+/// 1e-6 short of the touch (ssi-corpus `c5_hemisphere_equator`, where a plane
 /// piece's edge grazes the circle), and each stalled root traced the arc again.
 pub(crate) fn solve_damped(s: &System) -> Option<[f64; MAX]> {
-    solve_regularized(s, (0..s.m).map(|k| s.r[k] * s.r[k]).sum())
+    solve_regularized(s, s.r.iter().take(s.m).map(|rk| rk * rk).sum())
 }
 
 /// The Newton step for J x = r: solved directly where J is square (least
@@ -111,7 +134,7 @@ pub(crate) fn newton_step(s: &System, fits: impl Fn(&[f64]) -> bool) -> Option<[
         solve_regularized(s, 0.0)
     };
     match direct {
-        Some(step) if fits(&step[..s.n]) => Some(step),
+        Some(step) if step.get(..s.n).is_some_and(&fits) => Some(step),
         _ => solve_damped(s),
     }
 }

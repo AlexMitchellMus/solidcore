@@ -1,5 +1,5 @@
 //! The field path: where one patch has an analytic surface S, the intersection
-//! is the zero set of g = f_S(P(s, t)) on the other patch P's own parameters,
+//! is the zero set of g = `f_S`(P(s, t)) on the other patch P's own parameters,
 //! and it is found there, in two unknowns, instead of by subdividing both.
 //!
 //! Each Bézier piece of P gets g as a Bernstein polynomial (`field::compose`),
@@ -38,6 +38,10 @@ pub(crate) struct Settings {
     /// The gap below which surfaces apart at an extremum of g still touch there.
     pub contact: f64,
     pub spacing: Spacing,
+    /// Contact curves of third and fourth order may be traced (`contact_curve`):
+    /// they read g's third and fourth derivatives, which a local field bounds
+    /// no error of.
+    pub contacts: bool,
 }
 
 /// Which patch is parametric and which surface implicit: (A parametric, S of
@@ -114,7 +118,7 @@ pub(crate) fn trace_pair(
             return Ok(None);
         };
         let (g, poles) = divide_poles(piece, g, scale);
-        let Some(found) = cells(piece, g, scale, surf, settings) else {
+        let Some(found) = cells(piece, g, scale, surf, settings, None) else {
             return Ok(None);
         };
         let ctx = Emit {
@@ -122,68 +126,149 @@ pub(crate) fn trace_pair(
             side: &side,
             p_is_a,
             spacing: &settings.spacing,
+            clip: None,
+            local: None,
         };
-        let first = arcs.len();
-        for sweep in &found.sweeps {
-            arcs.extend(ctx.emit(sweep, true));
-        }
-        for sweep in &found.tangents {
-            arcs.extend(ctx.emit(sweep, false));
-        }
-        points.extend(
-            found
-                .touches
-                .iter()
-                .filter_map(|&(s, t)| ctx.contact_point(s, t, surf)),
-        );
-        vertices.extend(
-            found
-                .meets
-                .iter()
-                .filter_map(|&(s, t)| ctx.contact_point(s, t, surf))
-                .map(|q| q.p),
-        );
-        // A pole on the other surface where arcs end: they meet there (two
-        // branches crossing at the pole leave its edge at different s). One no
-        // arc ends at touches the surface there alone: an isolated point, when
-        // it is on the other patch (two shells touching at their poles, the
-        // field zero to second order along the edge and both factors divided
-        // out, ssi-corpus y23_fig1g_three_points).
-        let near = 1e-9
-            * norm(sub(
-                [piece.bounds()[3], piece.bounds()[4], piece.bounds()[5]],
-                [piece.bounds()[0], piece.bounds()[1], piece.bounds()[2]],
-            ));
-        for (pole, (s, t)) in poles {
-            if arcs[first..].iter().any(|arc| {
-                [arc[0].p, arc[arc.len() - 1].p]
-                    .iter()
-                    .any(|&end| norm(sub(end, pole)) <= near)
-            }) {
-                vertices.push(pole);
-            } else if let Some(q) = ctx.contact_point(s, t, surf) {
-                points.push(q);
-            }
-        }
-        for (x, ends) in &found.crossings {
-            let Some(center) = ctx.contact_point(x.0, x.1, surf) else {
-                continue;
-            };
-            let segments = ctx.crossing(center, ends);
-            if !segments.is_empty() {
-                vertices.push(center.p);
-            }
-            arcs.extend(segments);
-        }
+        let (more, touches, met) = emit_found(&ctx, &found, surf, poles);
+        arcs.extend(more);
+        points.extend(touches);
+        vertices.extend(met);
     }
     Ok(Some((arcs, points, vertices)))
+}
+
+/// A piece's arcs, touch points and vertices from its cells.
+#[allow(clippy::type_complexity)]
+fn emit_found(
+    ctx: &Emit,
+    found: &Found,
+    surf: &Field,
+    poles: Vec<(V3, (f64, f64))>,
+) -> (Vec<Vec<CurvePoint>>, Vec<CurvePoint>, Vec<V3>) {
+    let piece = ctx.piece;
+    let (mut arcs, mut points, mut vertices) = (Vec::new(), Vec::new(), Vec::new());
+    for sweep in &found.sweeps {
+        arcs.extend(ctx.emit(sweep, true));
+    }
+    for sweep in &found.tangents {
+        arcs.extend(ctx.emit(sweep, false));
+    }
+    points.extend(
+        found
+            .touches
+            .iter()
+            .filter_map(|&(s, t)| ctx.contact_point(s, t, surf)),
+    );
+    vertices.extend(
+        found
+            .meets
+            .iter()
+            .filter_map(|&(s, t)| ctx.contact_point(s, t, surf))
+            .map(|q| q.p),
+    );
+    // A pole on the other surface where arcs end: they meet there (two
+    // branches crossing at the pole leave its edge at different s). One no
+    // arc ends at touches the surface there alone: an isolated point, when
+    // it is on the other patch (two shells touching at their poles, the
+    // field zero to second order along the edge and both factors divided
+    // out, ssi-corpus y23_fig1g_three_points).
+    let near = 1e-9
+        * norm(sub(
+            [piece.bounds()[3], piece.bounds()[4], piece.bounds()[5]],
+            [piece.bounds()[0], piece.bounds()[1], piece.bounds()[2]],
+        ));
+    for (pole, (s, t)) in poles {
+        if arcs.iter().any(|arc: &Vec<CurvePoint>| {
+            [arc.first(), arc.last()]
+                .into_iter()
+                .flatten()
+                .any(|end| norm(sub(end.p, pole)) <= near)
+        }) {
+            vertices.push(pole);
+        } else if let Some(q) = ctx.contact_point(s, t, surf) {
+            points.push(q);
+        }
+    }
+    for (x, ends) in &found.crossings {
+        let Some(center) = ctx.contact_point(x.0, x.1, surf) else {
+            continue;
+        };
+        let segments = ctx.crossing(center, ends);
+        if !segments.is_empty() {
+            vertices.push(center.p);
+        }
+        arcs.extend(segments);
+    }
+    (arcs, points, vertices)
+}
+
+/// The order of a local field's polynomial.
+const LOCAL_ORDER: usize = 6;
+
+/// The field path on a pair of pieces where neither patch has an implicit
+/// form: A's piece traced against B's on a local field (`taylor`), the
+/// separation of A from B along A's normal at the piece's middle, as one
+/// polynomial over the piece (grown by `GROW`, the square `critical` reads)
+/// with proved bounds on its value's, gradient's and Hessian's errors. The
+/// cells read the value's band as their scale, and the derivatives' bands at
+/// each cell's width for the tests of derivatives' signs (`Cell::dscale`). One
+/// polynomial over the piece, so its cells never disagree; the polynomial
+/// proves, and every point emitted is placed on the surfaces themselves
+/// (inverted onto B, clipped to B's piece: a neighboring pair owns the rest).
+/// None when the field cannot be proved over the piece (too large: the pair
+/// is halved instead) or a cell is unresolved.
+#[allow(clippy::type_complexity)]
+pub(crate) fn trace_local(
+    a: &Piece,
+    b: &Piece,
+    side: &Side,
+    settings: &Settings,
+) -> Option<(Vec<Vec<CurvePoint>>, Vec<CurvePoint>, Vec<V3>)> {
+    let dir = crate::taylor::normal(a, 0.5, 0.5);
+    let start = [(0.5, 0.5), (0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)]
+        .iter()
+        .find_map(|&(u, v)| crate::taylor::separation(a, b, dir, (0.5, 0.5), (u, v, 0.0)))?;
+    let grown = (-GROW, 1.0 + GROW, -GROW, 1.0 + GROW);
+    let local = crate::taylor::local_field(a, b, dir, grown, start, LOCAL_ORDER)?;
+    let (lo, hi) = (GROW / (1.0 + 2.0 * GROW), (1.0 + GROW) / (1.0 + 2.0 * GROW));
+    let g = local.g.restrict(lo, hi, lo, hi);
+    // The value's band as the cells' scale; the derivatives' at each cell's width.
+    let scale = local.band / CLEAR;
+    let field = Field::Local(b, dir);
+    let local_settings = Settings {
+        resolution: settings.resolution,
+        contact: settings.contact,
+        spacing: Spacing {
+            max_step: settings.spacing.max_step,
+            max_sag: settings.spacing.max_sag,
+        },
+        contacts: false,
+    };
+    let (g, poles) = divide_poles(a, g, scale);
+    let found = cells(
+        a,
+        g,
+        scale,
+        &field,
+        &local_settings,
+        Some((local.gradient, local.hessian)),
+    )?;
+    let ctx = Emit {
+        piece: a,
+        side,
+        p_is_a: true,
+        spacing: &settings.spacing,
+        clip: Some([b.u0, b.u1, b.v0, b.v1]),
+        local: Some((b, dir)),
+    };
+    Some(emit_found(&ctx, &found, &field, poles))
 }
 
 /// g with the factor of each collapsed edge of the piece (a pole) divided out
 /// where the pole lies on the surface, and those poles. There g is zero along
 /// the whole edge, one point in space: every cell beside it is a tangency to
 /// the cell test, and two branches crossing at the pole cross there in the
-/// parameters too (ssi-corpus y23_t3_ex3_torus_ellipsoid, an ellipsoid's pole
+/// parameters too (ssi-corpus `y23_t3_ex3_torus_ellipsoid`, an ellipsoid's pole
 /// on a torus). Divided out, the branches leave the edge apart. An edge that
 /// is a curve on the surface is not divided: it is part of the zero set.
 /// Each pole with the piece-local (s, t) of its edge's middle.
@@ -196,9 +281,13 @@ fn divide_poles(piece: &Piece, mut g: Bern, scale: f64) -> (Bern, Vec<(V3, (f64,
             .iter()
             .map(|h| [h[0] / h[3], h[1] / h[3], h[2] / h[3]])
             .collect();
-        let collapsed = edge
-            .windows(2)
-            .all(|w| (0..3).all(|k| (w[0][k] - w[1][k]).abs() <= 1e-12 * (1.0 + w[0][k].abs())));
+        let collapsed = edge.windows(2).all(|w| match w {
+            [a, b] => a
+                .iter()
+                .zip(b)
+                .all(|(x, y)| (x - y).abs() <= 1e-12 * (1.0 + x.abs())),
+            _ => true,
+        });
         if !collapsed {
             continue;
         }
@@ -210,8 +299,15 @@ fn divide_poles(piece: &Piece, mut g: Bern, scale: f64) -> (Bern, Vec<(V3, (f64,
             divided = true;
         }
         if divided {
-            let at = [(0.0, 0.5), (1.0, 0.5), (0.5, 0.0), (0.5, 1.0)][e];
-            poles.push((edge[0], at));
+            let at = match e {
+                0 => (0.0, 0.5),
+                1 => (1.0, 0.5),
+                2 => (0.5, 0.0),
+                _ => (0.5, 1.0),
+            };
+            if let Some(&pole) = edge.first() {
+                poles.push((pole, at));
+            }
         }
     }
     (g, poles)
@@ -232,6 +328,19 @@ struct Cell {
     /// one and clear of the zero set (`Contact::Open`): its halves are not
     /// tested again, the ones without it being free.
     open: Option<(f64, f64)>,
+    /// The scale of g's coefficients that its rounding bands are read in: the
+    /// field's, times what dividing out zero edges multiplied the rounding by
+    /// (`zero_edges`).
+    scale: f64,
+    /// The same for g's derivatives' coefficients, which the tests of their
+    /// signs read (monotone, the Hessian's determinant, the gradient's turns,
+    /// a valley's lines): `scale` for an implicit form's g, whose rounding is
+    /// its coefficients'; for a local field, the proved bands of its gradient
+    /// and Hessian at the cell's width (`cells`).
+    dscale: f64,
+    /// g has its zero edges divided out already: dividing it again would read
+    /// its rows in the band the first division widened.
+    divided: bool,
 }
 
 impl Cell {
@@ -268,15 +377,15 @@ struct Found {
 }
 
 /// A cell's critical point of g, cell-local, with its index (+1 an extremum,
-/// -1 a saddle) and the Hessian there, (g_ss, g_st, g_tt).
-struct Critical {
-    s: f64,
-    t: f64,
-    index: i32,
-    hessian: (f64, f64, f64),
+/// -1 a saddle) and the Hessian there, (`g_ss`, `g_st`, `g_tt`).
+pub(crate) struct Critical {
+    pub s: f64,
+    pub t: f64,
+    pub index: i32,
+    pub hessian: (f64, f64, f64),
 }
 
-enum Inside {
+pub(crate) enum Inside {
     /// No critical point in the cell.
     Free,
     /// Exactly one, nondegenerate.
@@ -302,31 +411,52 @@ enum Inside {
 /// magnitude of its terms), not relative to each polynomial: in a cell 1e-7
 /// across on a tangent curve the determinant and ∇g are rounding throughout,
 /// and relative bands read that as signs, a cell free of critical points
-/// (ssi-corpus c2n_quartic_circle).
-fn critical(g: &Bern, scale: f64) -> Inside {
-    match critical_on(g, scale) {
-        Ok(found) => found,
-        Err(()) => {
-            let (lo, hi) = (-GROW, 1.0 + GROW);
-            match critical_on(&g.restrict(lo, hi, lo, hi), scale) {
-                Ok(Inside::One(c)) => {
-                    let (s, t) = (lo + c.s * (hi - lo), lo + c.t * (hi - lo));
-                    let slack = 1e-9;
-                    if !(-slack..=1.0 + slack).contains(&s) || !(-slack..=1.0 + slack).contains(&t)
-                    {
-                        return Inside::Free;
-                    }
-                    let (s, t) = (s.clamp(0.0, 1.0), t.clamp(0.0, 1.0));
-                    Inside::One(Critical {
-                        s,
-                        t,
-                        index: c.index,
-                        hessian: Hessian::of(g).at(s, t),
-                    })
+/// (ssi-corpus `c2n_quartic_circle`).
+#[cfg(test)]
+pub(crate) fn critical(g: &Bern, scale: f64) -> Inside {
+    critical_claiming(g, scale, false)
+}
+
+/// `critical`, a critical point found past the closed cell claimed within its
+/// position's uncertainty when `uncertain`: a local field's polynomial differs
+/// from the field by its bands, and from its neighbor's, so one on the edge
+/// between two cells may lie just outside each by its own polynomial, and
+/// neither claimed it (a crossing on a knot line, ssi-corpus
+/// `y23_fig1a_two_loops_cross`, at order 4). The uncertainty is the gradient's
+/// band over the Hessian's smaller eigenvalue there; both cells may then claim
+/// it, and duplicates are merged.
+fn critical_claiming(g: &Bern, scale: f64, uncertain: bool) -> Inside {
+    if let Ok(found) = critical_on(g, scale) {
+        found
+    } else {
+        let (lo, hi) = (-GROW, 1.0 + GROW);
+        match critical_on(&g.restrict(lo, hi, lo, hi), scale) {
+            Ok(Inside::One(c)) => {
+                let (s, t) = (lo + c.s * (hi - lo), lo + c.t * (hi - lo));
+                let slack = if uncertain {
+                    let (h11, h12, h22) = c.hessian;
+                    let (mean, spread) = (
+                        0.5 * (h11 + h22),
+                        (0.25 * (h11 - h22) * (h11 - h22) + h12 * h12).sqrt(),
+                    );
+                    let weaker = (mean + spread).abs().min((mean - spread).abs());
+                    (4.0 * 1e-13 * scale / weaker).clamp(1e-9, 0.5 * GROW)
+                } else {
+                    1e-9
+                };
+                if !(-slack..=1.0 + slack).contains(&s) || !(-slack..=1.0 + slack).contains(&t) {
+                    return Inside::Free;
                 }
-                Ok(found) => found,
-                Err(()) => Inside::Unknown,
+                let (s, t) = (s.clamp(0.0, 1.0), t.clamp(0.0, 1.0));
+                Inside::One(Critical {
+                    s,
+                    t,
+                    index: c.index,
+                    hessian: Hessian::of(g).at(s, t),
+                })
             }
+            Ok(found) => found,
+            Err(()) => Inside::Unknown,
         }
     }
 }
@@ -357,7 +487,7 @@ impl Hessian {
         (value(&self.ss), self.st.at(s, t), value(&self.tt))
     }
 
-    /// The determinant g_ss g_tt - g_st^2 as a polynomial.
+    /// The determinant `g_ss` `g_tt` - `g_st`^2 as a polynomial.
     fn det(&self) -> Bern {
         let square = self.st.mul(&self.st);
         match (&self.ss, &self.tt) {
@@ -403,7 +533,11 @@ fn critical_on(g: &Bern, scale: f64) -> Result<Inside, ()> {
     if !det.one_sign((1e-12 * det.max_abs()).max(floor)) {
         return Ok(Inside::Unknown);
     }
-    let sign = if det.c[0] > 0.0 { 1 } else { -1 };
+    let sign = if det.c.first().is_some_and(|&x| x > 0.0) {
+        1
+    } else {
+        -1
+    };
     let turns = winding(&gs, &gt, 1e-13 * scale).ok_or(())?;
     if turns == 0 {
         return Ok(Inside::Free);
@@ -418,7 +552,8 @@ fn critical_on(g: &Bern, scale: f64) -> Result<Inside, ()> {
             let d = h11 * h22 - h12 * h12;
             let (ds, dt) = ((h22 * a - h12 * b) / d, (h11 * b - h12 * a) / d);
             (s, t) = (s - ds, t - dt);
-            if !(s.is_finite() && t.is_finite())
+            if !s.is_finite()
+                || !t.is_finite()
                 || !(-0.5..=1.5).contains(&s)
                 || !(-0.5..=1.5).contains(&t)
             {
@@ -452,12 +587,12 @@ fn critical_on(g: &Bern, scale: f64) -> Result<Inside, ()> {
     .map_or(Inside::Unknown, Inside::One))
 }
 
-/// The turns (g_s, g_t) makes around a cell's boundary, counterclockwise; None
+/// The turns (`g_s`, `g_t`) makes around a cell's boundary, counterclockwise; None
 /// where it vanishes on the boundary, or too nearly to tell: coefficients
 /// within 1e-10 of the gradient's size, or within the rounding `floor`, count
 /// as zero (a critical point on a cell's corner leaves rounding there, of
 /// either sign, and taken for signs it gave 0 turns about a touch point,
-/// ssi-corpus c3n_four_points).
+/// ssi-corpus `c3n_four_points`).
 fn winding(gs: &Bern, gt: &Bern, floor: f64) -> Option<i32> {
     let clear = (1e-10 * gs.max_abs().max(gt.max_abs())).max(floor);
     // Counterclockwise: t = 0 along s, s = 1 along t, t = 1 back along s, s = 0 back along t.
@@ -477,7 +612,12 @@ fn winding(gs: &Bern, gt: &Bern, floor: f64) -> Option<i32> {
 fn turn(u: &[f64], v: &[f64], clear: f64, depth: u32) -> Option<f64> {
     let strict = |c: &[f64]| c.iter().all(|&x| x > clear) || c.iter().all(|&x| x < -clear);
     if strict(u) || strict(v) {
-        let (a, b) = ((u[0], v[0]), (u[u.len() - 1], v[v.len() - 1]));
+        let (Some(&u0), Some(&v0), Some(&u1), Some(&v1)) =
+            (u.first(), v.first(), u.last(), v.last())
+        else {
+            return None;
+        };
+        let (a, b) = ((u0, v0), (u1, v1));
         return Some((a.0 * b.1 - a.1 * b.0).atan2(a.0 * b.0 + a.1 * b.1));
     }
     if depth >= 40 {
@@ -573,7 +713,7 @@ const CLEAR: f64 = 1e-14;
 /// about the box. The box is a few resolutions across, and wide enough that g
 /// on its edges, of order |H| h^2 at half-width h, stands 1e4 times clear of
 /// the rounding band its roots are found against: at a few resolutions it
-/// was inside the band, and the box had no roots (ssi-corpus c4_cone_apex_plane).
+/// was inside the band, and the box had no roots (ssi-corpus `c4_cone_apex_plane`).
 fn crossing(
     piece: &Piece,
     cell: &Cell,
@@ -624,9 +764,11 @@ fn crossing(
     }
     found.crossings.push((cell.at(c.s, c.t), ends));
     let (s_cuts, t_cuts) = ([0.0, bs0, bs1, 1.0], [0.0, bt0, bt1, 1.0]);
-    for i in 0..3 {
-        for j in 0..3 {
-            let (a0, a1, b0, b1) = (s_cuts[i], s_cuts[i + 1], t_cuts[j], t_cuts[j + 1]);
+    for (i, s_pair) in s_cuts.windows(2).enumerate() {
+        for (j, t_pair) in t_cuts.windows(2).enumerate() {
+            let (&[a0, a1], &[b0, b1]) = (s_pair, t_pair) else {
+                continue;
+            };
             if (i == 1 && j == 1) || !(a1 > a0 && b1 > b0) {
                 continue;
             }
@@ -640,26 +782,29 @@ fn crossing(
                 depth: cell.depth + 1,
                 free: true,
                 open: None,
+                scale: cell.scale,
+                dscale: cell.dscale,
+                divided: false,
             });
         }
     }
 }
 
 /// A tangent curve across a cell: where g is convex (or concave) along every
-/// line of one parameter, g_ss of one sign on the cell, each line s -> g(s, t)
-/// has one critical point m(t), the root of g_s, and G(t) = g(m(t), t) is its
+/// line of one parameter, `g_ss` of one sign on the cell, each line s -> g(s, t)
+/// has one critical point m(t), the root of `g_s`, and G(t) = g(m(t), t) is its
 /// minimum there (maximum, concave). The valley m(t) is swept like any arc,
-/// as the zero set of g_s; when it crosses the cell from edge to edge and |G|
+/// as the zero set of `g_s`; when it crosses the cell from edge to edge and |G|
 /// is proved small along all of it, every zero of g in the cell lies within
-/// the resolution of the valley, sqrt(2 |G| / |g_ss|) along each line, and the
+/// the resolution of the valley, sqrt(2 |G| / |`g_ss`|) along each line, and the
 /// valley is the tangent curve. Where the valley leaves the cell by a side
 /// (as a curved one does at every cell it cuts the corner of), the lines past
-/// it have g_s of one sign: g is monotone along each, its one zero bracketed
+/// it have `g_s` of one sign: g is monotone along each, its one zero bracketed
 /// by the line's ends, and those lines are swept as a monotone cell's are.
 ///
 /// Proved on whole intervals, not at points: on a chord of the valley,
 /// G <= g there (any point bounds the minimum), and by convexity
-/// G >= g - g_s^2 / (2 min |g_ss|) there, both polynomials along the chord
+/// G >= g - `g_s`^2 / (2 min |`g_ss`|) there, both polynomials along the chord
 /// bounded by their coefficients (`Bern::along`); a chord whose bounds do
 /// not prove it is halved. Alike with s and t swapped.
 ///
@@ -667,7 +812,7 @@ fn crossing(
 /// meet) when proved; none of any when the valley is
 /// the cell's high edge, left to the cell beyond (the ownership of
 /// `sweep_cell`; a tangent ruling on a knot line, ssi-corpus
-/// c2_cyl_cyl_external, otherwise halved the cell beside it to 2^20 cells
+/// `c2_cyl_cyl_external`, otherwise halved the cell beside it to 2^20 cells
 /// along the edge). None when neither direction proves one.
 #[allow(clippy::type_complexity)]
 fn valley(
@@ -679,7 +824,10 @@ fn valley(
     for lines in [0, 1] {
         let d = cell.g.derivative(lines);
         let dd = d.derivative(lines);
-        if !dd.one_sign(1e-14 * scale) {
+        if !dd.one_sign(1e-14 * cell.dscale) {
+            if !settings.contacts {
+                continue;
+            }
             if let Some(found) = contact_curve(piece, cell, lines, scale, settings) {
                 return Some(found);
             }
@@ -703,7 +851,7 @@ fn valley(
         } else {
             cell.t1 < 1.0 || piece.above[1]
         };
-        if beyond && roots(&d.edge(high), CLEAR * scale).is_none() {
+        if beyond && roots(&d.edge(high), CLEAR * cell.dscale).is_none() {
             if cell.g.edge(high).iter().all(|x| x.abs() <= limit) {
                 return Some((Vec::new(), Vec::new(), Vec::new()));
             }
@@ -719,12 +867,15 @@ fn valley(
             depth: cell.depth,
             free: false,
             open: None,
+            scale: cell.scale,
+            dscale: cell.dscale,
+            divided: false,
         };
-        sweep_cell(piece, &d_cell, 1 - lines, CLEAR * scale, &mut valleys);
+        sweep_cell(piece, &d_cell, 1 - lines, CLEAR * cell.dscale, &mut valleys);
         if valleys.is_empty() {
             continue;
         }
-        let sign = dd.c[0].signum();
+        let sign = dd.c.first().map_or(f64::NAN, |x| x.signum());
         let local = |(s, t): (f64, f64)| {
             (
                 (s - cell.s0) / (cell.s1 - cell.s0),
@@ -848,7 +999,7 @@ fn valley(
             };
             let n = 32;
             let xs: Vec<f64> = (0..=n)
-                .map(|i| sweep.x0 + (sweep.x1 - sweep.x0) * i as f64 / n as f64)
+                .map(|i| sweep.x0 + (sweep.x1 - sweep.x0) * f64::from(i) / f64::from(n))
                 .collect();
             let mut out = Vec::new();
             for (x, rises) in [
@@ -861,7 +1012,9 @@ fn valley(
                 }
             }
             for w in xs.windows(2) {
-                let (mut a, mut b) = (w[0], w[1]);
+                let &[mut a, mut b] = w else {
+                    continue;
+                };
                 if !(slope(a) > 0.0 && slope(b) <= 0.0) {
                     continue;
                 }
@@ -930,18 +1083,18 @@ fn valley(
 }
 
 /// A contact curve of higher order across a cell: where g's k-th derivative
-/// d_k along one parameter's lines has one sign (k = 3 or 4) and g_ss does
+/// `d_k` along one parameter's lines has one sign (k = 3 or 4) and `g_ss` does
 /// not, each line has at most k zeros, and the curve m where d_(k-1) vanishes
 /// is a simple root on each line, swept like an arc. By Taylor's theorem about
-/// m, with |d_j(m)| <= B_j for j <= k - 2 and |d_k| >= κ on the cell, g has no
+/// m, with |`d_j`(m)| <= `B_j` for j <= k - 2 and |`d_k`| >= κ on the cell, g has no
 /// zero farther than r from m along the line when
-/// Σ B_j / (j! r^(k - j)) < κ / k!; with r the resolution the curve is then the
+/// Σ `B_j` / (j! r^(k - j)) < κ / k!; with r the resolution the curve is then the
 /// surfaces' contact curve to it (two sheets with third-order contact along a
 /// line, crossing there with their normals parallel, ssi-corpus
-/// y23_t6_ex1_tangent_line). B_j is proved on chords of the curve, not at
-/// points: each d_i is bounded along the chord by its coefficients (A_i), the
+/// `y23_t6_ex1_tangent_line`). `B_j` is proved on chords of the curve, not at
+/// points: each `d_i` is bounded along the chord by its coefficients (`A_i`), the
 /// curve is within δ = A_(k-1) / κ of the chord on each line, and so
-/// |d_j(m)| <= Σ_(i = j..k-1) A_i δ^(i-j) / (i-j)! + κ_max δ^(k-j) / (k-j)!.
+/// |`d_j`(m)| <= Σ_(i = j..k-1) `A_i` δ^(i-j) / (i-j)! + `κ_max` δ^(k-j) / (k-j)!.
 /// Only a curve that crosses every line of the cell is taken, or one along the
 /// cell's high edge, left to the cell beyond.
 #[allow(clippy::type_complexity)]
@@ -955,7 +1108,9 @@ fn contact_curve(
     let degree = if lines == 0 { cell.g.du } else { cell.g.dv };
     let mut ds = vec![cell.g.clone()];
     for _ in 0..4.min(degree) {
-        let next = ds[ds.len() - 1].derivative(lines);
+        let Some(next) = ds.last().map(|d| d.derivative(lines)) else {
+            break;
+        };
         ds.push(next);
     }
     let factorial = |n: usize| (1..=n).product::<usize>() as f64;
@@ -971,7 +1126,7 @@ fn contact_curve(
         if degree < k {
             break;
         }
-        let dk = &ds[k];
+        let dk = ds.get(k)?;
         if !dk.one_sign(1e-14 * scale) {
             continue;
         }
@@ -983,15 +1138,17 @@ fn contact_curve(
         // differencing): a contact to the input's own precision, where the
         // flatness puts no zero nearer than (rounding / κ)^(1/k) of it.
         let rounding = |j: usize| CLEAR * scale * (2.0 * degree as f64).powi(j as i32);
+        // b holds k - 1 bounds, j = 0 to k - 2.
         let enough = |b: &[f64]| {
-            (0..k - 1).all(|j| b[j] <= rounding(j))
-                || (0..k - 1)
-                    .map(|j| b[j] / (factorial(j) * r.powi((k - j) as i32)))
+            b.iter().enumerate().all(|(j, &bj)| bj <= rounding(j))
+                || b.iter()
+                    .enumerate()
+                    .map(|(j, &bj)| bj / (factorial(j) * r.powi((k - j) as i32)))
                     .sum::<f64>()
                     < kappa / factorial(k)
         };
         let largest = |c: &[f64]| c.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
-        let curve = &ds[k - 1];
+        let curve = ds.get(k - 1)?;
         let high = if lines == 0 { 1 } else { 3 };
         let beyond = if lines == 0 {
             cell.s1 < 1.0 || piece.above[0]
@@ -999,7 +1156,11 @@ fn contact_curve(
             cell.t1 < 1.0 || piece.above[1]
         };
         if beyond && roots(&curve.edge(high), CLEAR * scale).is_none() {
-            let b: Vec<f64> = (0..k - 1).map(|j| largest(&ds[j].edge(high))).collect();
+            let b: Vec<f64> = ds
+                .iter()
+                .take(k - 1)
+                .map(|d| largest(&d.edge(high)))
+                .collect();
             if enough(&b) {
                 return Some((Vec::new(), Vec::new(), Vec::new()));
             }
@@ -1015,12 +1176,17 @@ fn contact_curve(
             depth: cell.depth,
             free: false,
             open: None,
+            scale: cell.scale,
+            dscale: cell.dscale,
+            divided: false,
         };
         sweep_cell(piece, &curve_cell, 1 - lines, CLEAR * scale, &mut sweeps);
-        if sweeps.len() != 1 || sweeps[0].x0 != 0.0 || sweeps[0].x1 != 1.0 {
+        let [sweep] = sweeps.as_slice() else {
+            continue;
+        };
+        if sweep.x0 != 0.0 || sweep.x1 != 1.0 {
             continue;
         }
-        let sweep = &sweeps[0];
         let local = |(s, t): (f64, f64)| {
             (
                 (s - cell.s0) / (cell.s1 - cell.s0),
@@ -1029,12 +1195,15 @@ fn contact_curve(
         };
         let point = |x: f64| local(sweep.at(x));
         let chord = |p: (f64, f64), q: (f64, f64)| {
-            let a: Vec<f64> = (0..k).map(|i| largest(&ds[i].along(p, q))).collect();
-            let delta = a[k - 1] / kappa;
+            // a holds k bounds, i = 0 to k - 1.
+            let a: Vec<f64> = ds.iter().take(k).map(|d| largest(&d.along(p, q))).collect();
+            let delta = a.last().map_or(f64::NAN, |&last| last / kappa);
             let b: Vec<f64> = (0..k - 1)
                 .map(|j| {
-                    (j..k)
-                        .map(|i| a[i] * delta.powi((i - j) as i32) / factorial(i - j))
+                    a.iter()
+                        .enumerate()
+                        .skip(j)
+                        .map(|(i, ai)| ai * delta.powi((i - j) as i32) / factorial(i - j))
                         .sum::<f64>()
                         + kappa_max * delta.powi((k - j) as i32) / factorial(k - j)
                 })
@@ -1045,8 +1214,9 @@ fn contact_curve(
         let (p0, p1, middle) = (point(0.0), point(1.0), point(0.5));
         if ![p0, middle, p1].iter().all(|&(s, t)| {
             enough(
-                &(0..k - 1)
-                    .map(|j| ds[j].at(s, t).abs())
+                &ds.iter()
+                    .take(k - 1)
+                    .map(|d| d.at(s, t).abs())
                     .collect::<Vec<f64>>(),
             )
         }) {
@@ -1130,7 +1300,9 @@ fn sweep_sides(
         );
         breaks.sort_by(f64::total_cmp);
         for w in breaks.windows(2) {
-            let (x0, x1) = (w[0], w[1]);
+            let &[x0, x1] = w else {
+                continue;
+            };
             if x1 > x0 && sign * value(0.5 * (x0 + x1), end) > 0.0 {
                 let bracket = if below {
                     Bracket::Below(Box::new(valley.clone()))
@@ -1179,7 +1351,9 @@ fn sweep_lines(cell: &Cell, dir: usize, a: f64, b: f64, clear: f64, out: &mut Ve
     };
     let dg = cell.g.derivative(1 - dir);
     for w in breaks.windows(2) {
-        let (x0, x1) = (w[0], w[1]);
+        let &[x0, x1] = w else {
+            continue;
+        };
         let mid = 0.5 * (x0 + x1);
         if x1 > x0 && (value(mid, 0.0) > 0.0) != (value(mid, 1.0) > 0.0) {
             out.push(Sweep {
@@ -1227,6 +1401,10 @@ impl Sweep {
     /// The piece-local (s, t) of the zero at swept value x (cell-local): the
     /// root in y of g, bracketed by [0, 1], by Newton steps kept inside the
     /// bracket (bisection where one would leave it), to the last bits.
+    ///
+    /// Recursion: a bracket's valley is one of `sweep_cell`'s sweeps, whose
+    /// bracket is `Whole` (`sweep_sides` is given no other), so this nests once
+    /// at most, whatever the input.
     fn at(&self, x: f64) -> (f64, f64) {
         // g and its derivative on the line x, once: each Newton step is then a
         // one-variable evaluation (bivariate ones of a degree-30 field were most
@@ -1304,8 +1482,27 @@ fn cell_size(piece: &Piece, c: &Cell) -> f64 {
 }
 
 /// What a piece's zero set comes to, or None when a cell cannot be resolved.
-fn cells(piece: &Piece, g: Bern, scale: f64, surf: &Field, settings: &Settings) -> Option<Found> {
-    let clear = CLEAR * scale;
+///
+/// `derivative`: a local field's proved bands of its gradient and Hessian per
+/// unit of the piece's parameters, from which each cell's `dscale` follows at
+/// its width (a gradient's coefficients scale with it, a Hessian's with its
+/// square); None for an implicit form's g, `dscale` then `scale`.
+fn cells(
+    piece: &Piece,
+    g: Bern,
+    scale: f64,
+    surf: &Field,
+    settings: &Settings,
+    derivative: Option<(f64, f64)>,
+) -> Option<Found> {
+    let dscale_at = |width: f64, scale: f64| {
+        derivative.map_or(scale, |(gradient, hessian)| {
+            ((gradient * width).max(hessian * width * width) / 1e-14).max(scale)
+        })
+    };
+    // An edge row this small is zero: the field's rounding, or the implicit
+    // form's residual where that is larger (zero_edges).
+    let exact = 2.0 * surf.residual() * scale;
     let mut found = Found::default();
     let mut stack = vec![Cell {
         s0: 0.0,
@@ -1316,24 +1513,41 @@ fn cells(piece: &Piece, g: Bern, scale: f64, surf: &Field, settings: &Settings) 
         depth: 0,
         free: false,
         open: None,
+        scale,
+        dscale: dscale_at(1.0, scale),
+        divided: false,
     }];
     while let Some(cell) = stack.pop() {
+        let (scale, clear) = (cell.scale, CLEAR * cell.scale);
         if cell.g.one_sign(clear) {
             continue;
         }
         let monotone = (0..2)
             .rev()
-            .find(|&d| cell.g.derivative(d).one_sign(1e-14 * scale));
+            .find(|&d| cell.g.derivative(d).one_sign(1e-14 * cell.dscale));
         if let Some(d) = monotone {
             // ∂g/∂t of one sign: sweep along s (dir 0); ∂g/∂s: sweep along t (dir 1).
             let dir = 1 - d;
             sweep_cell(piece, &cell, dir, clear, &mut found.sweeps);
             continue;
         }
+        if let Some(divided) = zero_edges(piece, &cell, exact) {
+            found.sweeps.extend(divided.crossings);
+            found.tangents.extend(divided.tangents);
+            found.meets.extend(divided.meets);
+            stack.push(Cell {
+                g: divided.g,
+                scale: divided.scale,
+                dscale: cell.dscale.max(divided.scale),
+                divided: true,
+                ..cell
+            });
+            continue;
+        }
         let mut free = cell.free;
         let mut open = cell.open;
         if !free && open.is_none() {
-            match critical(&cell.g, scale) {
+            match critical_claiming(&cell.g, cell.dscale, matches!(surf, Field::Local(..))) {
                 Inside::Free => free = true,
                 Inside::One(c) => match contact(piece, &cell, &c, surf, clear, settings) {
                     Contact::Touch => {
@@ -1395,6 +1609,13 @@ fn cells(piece: &Piece, g: Bern, scale: f64, surf: &Field, settings: &Settings) 
                     depth: cell.depth + 1,
                     free,
                     open: None,
+                    scale,
+                    dscale: if derivative.is_some() {
+                        dscale_at((s1 - s0).max(t1 - t0), scale)
+                    } else {
+                        cell.dscale
+                    },
+                    divided: false,
                 };
                 match open {
                     Some(x) if half.holds(x) => half.open = Some(x),
@@ -1406,6 +1627,235 @@ fn cells(piece: &Piece, g: Bern, scale: f64, surf: &Field, settings: &Settings) 
         }
     }
     Some(found)
+}
+
+/// The deepest cells whose edges are tried as zero edges: lines 1/16 of the
+/// piece apart. Deeper, a cell's rows are small because the cell is, beside
+/// the zero set it is near, not because g vanishes on its edge; and every
+/// division widens the band its halves read (a cell 2^-23 across divided
+/// down to degree 25 from 36 x 54, its band 5e4, ssi-corpus
+/// `y23_fig1d_two_quads`).
+const ZERO_EDGE_DEPTH: u32 = 4;
+
+/// The highest order of a zero edge: contact of fourth order, as
+/// `contact_curve` traces at most.
+const MAX_ORDER: usize = 4;
+
+/// A cell's g with its zero edges divided out, and those edges' arcs.
+struct Divided {
+    g: Bern,
+    scale: f64,
+    /// Zero edges of order 1: crossing curves.
+    crossings: Vec<Sweep>,
+    /// Zero edges of higher order: tangent curves.
+    tangents: Vec<Sweep>,
+    /// Piece-local points where the rest of the zero set reaches a zero edge,
+    /// and where two zero edges meet.
+    meets: Vec<(f64, f64)>,
+}
+
+/// The cell's edges on which g vanishes, divided out: g = x^m h for the
+/// factor x of edge e (`Bern::divide_edge`), the edge itself a branch of the
+/// zero set and h's zero set the rest of g's. Where a branch lies on a line
+/// the cells are split along (the tangent curves of symmetric models, on
+/// s = 1/2 or t = 1/2) or on the patch's own edge, g is zero to its rounding
+/// on whole cells beside it, and they are unresolved to every other test: a
+/// cubic contact ending on a tube's crease, where the other tube's form is
+/// singular (ssi-corpus `y23_t2_ex5_two_loops`), and a boundary meeting a
+/// tangent curve (`y23_fig1d_two_quads`). An edge is zero to order m when its
+/// first m rows of coefficients are (s^m divides g exactly when g's first m
+/// rows from s = 0 vanish), each within the cell's rounding or `exact` (the
+/// implicit form's residual) where that is larger. The rows are read on g
+/// itself, every edge's before any is divided: dividing out one edge
+/// multiplies the coefficients beside it by up to the degree, its neighbors'
+/// rows with them (a triangle's two zero sides, the second read after the
+/// first was divided, was not zero, ssi-corpus `y23_fig1c_boundary_triangle`).
+/// Dividing m times in one direction multiplies a coefficient by up to C(n, m),
+/// at the edge (by about 1 across the cell from it), its signal and its
+/// rounding alike: h's coefficients are as clear of their rounding as g's
+/// were, and h's band is the cell's, or the largest row dropped where that is
+/// larger (the form's residual). A band times C(n, m) over the whole cell was
+/// 1431 times too wide across it, past g's values (`y23_fig1d_two_quads`). A
+/// cell that is rounding throughout has no zero edges, only rounding (the
+/// band about a touch point).
+///
+/// The edges are emitted by the cell that owns them, as `sweep_cell` keeps
+/// zero edges: its low edges, and its high ones on the patch's boundary;
+/// crossing curves at order 1, tangent curves above. Where h has a root on a
+/// zero edge (its ends included), or two zero edges meet, branches meet: a
+/// vertex, and the edge's arc ends there.
+fn zero_edges(piece: &Piece, cell: &Cell, exact: f64) -> Option<Divided> {
+    if cell.divided || cell.depth > ZERO_EDGE_DEPTH {
+        return None;
+    }
+    let original = CLEAR * cell.scale;
+    let (du, dv) = (cell.g.du, cell.g.dv);
+    // A composition of high degree rounds its coefficients by more than the
+    // band read in its scale (a monomial's size, not the sum of the form's
+    // terms): a few ulps of g's largest coefficient per degree is less than
+    // that rounding, never more (a triangle's side at 1.2e-13 in a
+    // degree-39 x 14 field of largest coefficient 3.2, the band 1e-14,
+    // ssi-corpus y23_fig1c_boundary_triangle).
+    let composed = 16.0 * f64::EPSILON * (du + dv) as f64 * cell.g.max_abs();
+    let zero = original.max(exact).max(composed);
+    // The k-th row of coefficients from edge e, at its largest.
+    // A coefficient past the net counts as large: no row is taken for zero on it.
+    let row = |e: usize, k: usize| -> f64 {
+        let at = |i: usize, j: usize| {
+            cell.g
+                .c
+                .get(i * (dv + 1) + j)
+                .map_or(f64::INFINITY, |x| x.abs())
+        };
+        match e {
+            0 => (0..=dv).map(|j| at(k, j)).fold(0.0, f64::max),
+            1 => (0..=dv).map(|j| at(du - k, j)).fold(0.0, f64::max),
+            2 => (0..=du).map(|i| at(i, k)).fold(0.0, f64::max),
+            _ => (0..=du).map(|i| at(i, dv - k)).fold(0.0, f64::max),
+        }
+    };
+    let mut order = [0usize; 4];
+    let mut dropped = [0.0_f64; 4];
+    for (e, (order_e, dropped_e)) in order.iter_mut().zip(&mut dropped).enumerate() {
+        let degree = if e < 2 { du } else { dv };
+        while *order_e < degree && row(e, *order_e) <= zero {
+            *dropped_e = dropped_e.max(row(e, *order_e));
+            *order_e += 1;
+        }
+        // A zero edge's rows give way to g's own beyond its order: past the
+        // fourth order, or into rows hardly above the band, they fade into
+        // rounding, the cell's rather than an edge's.
+        if *order_e > 0
+            && (*order_e > MAX_ORDER || *order_e >= degree || !(row(e, *order_e) > 4.0 * zero))
+        {
+            return None;
+        }
+    }
+    if order == [0; 4] || order[0] + order[1] >= du.max(1) || order[2] + order[3] >= dv.max(1) {
+        return None;
+    }
+    let mut g = cell.g.clone();
+    let rounding = dropped.iter().fold(original, |r, &d| r.max(d));
+    for (e, &order_e) in order.iter().enumerate() {
+        for _ in 0..order_e {
+            g = g.divide_edge(e);
+        }
+    }
+    if g.max_abs() <= 64.0 * rounding {
+        return None;
+    }
+    let owns = |e: usize| match e {
+        1 => !(cell.s1 < 1.0 || piece.above[0]),
+        3 => !(cell.t1 < 1.0 || piece.above[1]),
+        _ => true,
+    };
+    let mut out = Divided {
+        g: Bern {
+            du: 0,
+            dv: 0,
+            c: Vec::new(),
+        },
+        scale: rounding / CLEAR,
+        crossings: Vec::new(),
+        tangents: Vec::new(),
+        meets: Vec::new(),
+    };
+    for (e, &order_e) in order.iter().enumerate().filter(|&(_, &o)| o > 0) {
+        let on_edge = |x: f64| match e {
+            0 => cell.at(0.0, x),
+            1 => cell.at(1.0, x),
+            2 => cell.at(x, 0.0),
+            _ => cell.at(x, 1.0),
+        };
+        // The rest of the zero set reaching the edge, at its ends too (a
+        // triangle's crossing side meeting a zero side at the cell's corner,
+        // ssi-corpus y23_fig1c_boundary_triangle).
+        let reached: Vec<f64> = roots(&g.edge(e), rounding)
+            .into_iter()
+            .flatten()
+            .map(|x| x.clamp(0.0, 1.0))
+            .collect();
+        out.meets.extend(reached.iter().map(|&x| on_edge(x)));
+        let mut breaks = vec![0.0, 1.0];
+        breaks.extend(reached);
+        breaks.sort_by(f64::total_cmp);
+        breaks.dedup_by(|x, y| (*x - *y).abs() <= 1e-12);
+        if !owns(e) {
+            continue;
+        }
+        for w in breaks.windows(2) {
+            let &[x0, x1] = w else {
+                continue;
+            };
+            if !(x1 > x0) {
+                continue;
+            }
+            let sweep = edge_sweep(cell, e, x0, x1);
+            if order_e == 1 {
+                out.crossings.push(sweep);
+            } else {
+                out.tangents.push(sweep);
+            }
+        }
+    }
+    for (e, f, corner) in [
+        (0, 2, (0.0, 0.0)),
+        (0, 3, (0.0, 1.0)),
+        (1, 2, (1.0, 0.0)),
+        (1, 3, (1.0, 1.0)),
+    ] {
+        let zero_edge = |e: usize| order.get(e).is_some_and(|&o| o > 0);
+        if zero_edge(e) && zero_edge(f) {
+            out.meets.push(cell.at(corner.0, corner.1));
+        }
+    }
+    out.g = g;
+    Some(out)
+}
+
+/// The sweep of the cell's edge e from x0 to x1 along it (cell-local): the
+/// root of the edge's own factor (s, 1 - s, t or 1 - t, as `Bern::divide_edge`
+/// numbers them) on each line across it, the edge itself.
+fn edge_sweep(cell: &Cell, e: usize, x0: f64, x1: f64) -> Sweep {
+    let factor = if matches!(e, 0 | 2) {
+        vec![0.0, 1.0]
+    } else {
+        vec![-1.0, 0.0]
+    };
+    // Edges s = 0, 1 are swept along t (dir 1), edges t = 0, 1 along s.
+    let (g, dir) = if e < 2 {
+        (
+            Bern {
+                du: 1,
+                dv: 0,
+                c: factor,
+            },
+            1,
+        )
+    } else {
+        (
+            Bern {
+                du: 0,
+                dv: 1,
+                c: factor,
+            },
+            0,
+        )
+    };
+    Sweep {
+        cell_s: (cell.s0, cell.s1),
+        cell_t: (cell.t0, cell.t1),
+        g,
+        dg: Bern {
+            du: 0,
+            dv: 0,
+            c: vec![1.0],
+        },
+        dir,
+        x0,
+        x1,
+        bracket: Bracket::Whole,
+    }
 }
 
 /// The arcs of a monotone cell. Along s (dir 0) the zero set crosses each line
@@ -1464,7 +1914,9 @@ fn sweep_cell(piece: &Piece, cell: &Cell, dir: usize, clear: f64, out: &mut Vec<
         }
     };
     for w in breaks.windows(2) {
-        let (x0, x1) = (w[0], w[1]);
+        let &[x0, x1] = w else {
+            continue;
+        };
         if !(x1 > x0) {
             continue;
         }
@@ -1482,6 +1934,14 @@ struct Emit<'e> {
     side: &'e Side,
     p_is_a: bool,
     spacing: &'e Spacing,
+    /// A rectangle [u0, u1, v0, v1] of the other patch's parameters points must
+    /// lie in, besides its domain: its piece, where a pair of pieces owns
+    /// only its own share (`trace_local`).
+    clip: Option<[f64; 4]>,
+    /// A local field's other piece and direction: its zeros are the
+    /// separation's only to its band, so each point is polished onto the
+    /// intersection before it is placed (`taylor::polish`).
+    local: Option<(&'e Piece, V3)>,
 }
 
 impl Emit<'_> {
@@ -1491,8 +1951,16 @@ impl Emit<'_> {
         x: f64,
         hint: Option<(f64, f64)>,
     ) -> Option<(CurvePoint, f64, (f64, f64))> {
-        let (s, t) = sweep.at(x);
+        let (s, t) = self.placed(sweep.at(x));
         self.point_at(s, t, self.piece.evaluate(s, t).point, hint)
+    }
+
+    /// (s, t) polished onto the intersection for a local field, as it is otherwise.
+    fn placed(&self, at: (f64, f64)) -> (f64, f64) {
+        match self.local {
+            Some((b, dir)) => crate::taylor::polish(self.piece, b, dir, at),
+            None => at,
+        }
     }
 
     /// The curve point at piece-local (s, t), whose 3D point is p: the other
@@ -1505,25 +1973,25 @@ impl Emit<'_> {
         hint: Option<(f64, f64)>,
     ) -> Option<(CurvePoint, f64, (f64, f64))> {
         let piece = self.piece;
-        let mut quv = self.side.invert(p, hint)?;
-        // A warm start runs on past a closed patch's seam (longitude 360.1 on a
-        // sphere whose seam the curve crosses, ssi-corpus
-        // c9n_many_spans_plane_sphere), where the point is outside by its
-        // parameters and inside the patch: the certified search finds the chart
-        // on the seam's other side. Only a closed patch has such a seam.
-        if hint.is_some() && self.side.closed.iter().any(|&c| c) && self.side.margin(quv, 0.0) < 0.0
-        {
-            if let Some(fresh) = self.side.invert(p, None) {
-                if self.side.margin(fresh, 0.0) > self.side.margin(quv, 0.0) {
-                    quv = fresh;
-                }
-            }
+        if let Some((b, dir)) = self.local {
+            return self.ray_point(s, t, p, b, dir);
         }
+        let quv = self.side.place(p, hint)?;
         let mine = Param {
             patch: piece.patch,
             u: piece.u0 + s * (piece.u1 - piece.u0),
             v: piece.v0 + t * (piece.v1 - piece.v0),
         };
+        let mut margin = self.side.margin(quv, 0.0);
+        if let Some([u0, u1, v0, v1]) = self.clip {
+            let d = self.side.domain;
+            let (su, sv) = (d[1] - d[0], d[3] - d[2]);
+            margin = margin
+                .min((quv.0 - u0) / su)
+                .min((u1 - quv.0) / su)
+                .min((quv.1 - v0) / sv)
+                .min((v1 - quv.1) / sv);
+        }
         let theirs = Param {
             patch: self.side.index,
             u: quv.0,
@@ -1534,7 +2002,52 @@ impl Emit<'_> {
         } else {
             (theirs, mine)
         };
-        Some((CurvePoint { p, a, b }, self.side.margin(quv, 0.0), quv))
+        Some((CurvePoint { p, a, b }, margin, quv))
+    }
+
+    /// `point_at` for a local field: B's parameters where the line through p
+    /// along the field's direction meets B's piece (inside that piece's square
+    /// its polynomial is the patch), the point halfway to it, and the margin
+    /// inside the piece's square and the patch's domain.
+    fn ray_point(
+        &self,
+        s: f64,
+        t: f64,
+        p: V3,
+        b: &Piece,
+        dir: V3,
+    ) -> Option<(CurvePoint, f64, (f64, f64))> {
+        let (u, v, l) = crate::taylor::ray(b, dir, p, (0.5, 0.5, 0.0))?;
+        let quv = (b.u0 + u * (b.u1 - b.u0), b.v0 + v * (b.v1 - b.v0));
+        let d = self.side.domain;
+        let (su, sv) = (d[1] - d[0], d[3] - d[2]);
+        let margin = self
+            .side
+            .margin(quv, 0.0)
+            .min((u.min(1.0 - u) * (b.u1 - b.u0) / su).min(v.min(1.0 - v) * (b.v1 - b.v0) / sv));
+        let piece = self.piece;
+        let mine = Param {
+            patch: piece.patch,
+            u: piece.u0 + s * (piece.u1 - piece.u0),
+            v: piece.v0 + t * (piece.v1 - piece.v0),
+        };
+        let theirs = Param {
+            patch: self.side.index,
+            u: quv.0,
+            v: quv.1,
+        };
+        let (a, bp) = if self.p_is_a {
+            (mine, theirs)
+        } else {
+            (theirs, mine)
+        };
+        let half = 0.5 * l;
+        let at = [
+            p[0] + half * dir[0],
+            p[1] + half * dir[1],
+            p[2] + half * dir[2],
+        ];
+        Some((CurvePoint { p: at, a, b: bp }, margin, quv))
     }
 
     /// The sweep's arcs inside the other patch's domain; oriented along nA × nB
@@ -1542,11 +2055,22 @@ impl Emit<'_> {
     fn emit(&self, sweep: &Sweep, orient: bool) -> Vec<Vec<CurvePoint>> {
         let span = sweep.x1 - sweep.x0;
         let x_of = |l: f64| sweep.x0 + l * span;
+        // Sampled on the field's own zero set, smooth; each sample then placed.
         let curve = |l: f64| {
             let (s, t) = sweep.at(x_of(l));
             (self.piece.evaluate(s, t).point, (s, t))
         };
-        let samples = sample_points(&curve, self.spacing);
+        let samples: Vec<(f64, V3, (f64, f64))> = sample_points(&curve, self.spacing)
+            .into_iter()
+            .map(|(l, p, at)| {
+                let (s, t) = self.placed(at);
+                if (s, t) == at {
+                    (l, p, at)
+                } else {
+                    (l, self.piece.evaluate(s, t).point, (s, t))
+                }
+            })
+            .collect();
         let mut runs = Vec::new();
         let mut run: Vec<CurvePoint> = Vec::new();
         let mut hint = None;
@@ -1603,10 +2127,24 @@ impl Emit<'_> {
     /// Parameters a little outside the domain that, clamped into it, name the
     /// same point are inside it: on a collapsed edge any u names the pole (a
     /// touch at the other patch's pole inverted to u = -1.4e-5, ssi-corpus
-    /// y23_fig1g_three_points).
+    /// `y23_fig1g_three_points`).
+    ///
+    /// The field's foot is a step along its gradient, and where an algebraic
+    /// form is singular (its patch's sheet crossing another of its sheets,
+    /// the gradient vanishing there) it lands far off: 9.4e-3 from a
+    /// transversal point on such a double curve, and the crossing was lost
+    /// (ssi-corpus `y23_t2_ex5_two_loops`). Where the foot is not on the other
+    /// patch, the other patch's own closest point is tried.
     fn contact_point(&self, s: f64, t: f64, surf: &Field) -> Option<CurvePoint> {
         let p = self.piece.evaluate(s, t).point;
-        let f = surf.foot(p);
+        self.contact_at(s, t, p, surf.foot(p)).or_else(|| {
+            let uv = self.side.invert(p, None)?;
+            self.contact_at(s, t, p, self.side.at(uv.0, uv.1).0)
+        })
+    }
+
+    /// `contact_point` with the foot f of the piece's point p.
+    fn contact_at(&self, s: f64, t: f64, p: V3, f: V3) -> Option<CurvePoint> {
         let (mut q, margin, quv) = self.point_at(s, t, f, None)?;
         q.p = [
             0.5 * (p[0] + f[0]),
@@ -1651,7 +2189,8 @@ impl Emit<'_> {
     /// (at the crossing nA × nB vanishes).
     fn crossing(&self, center: CurvePoint, ends: &[(f64, f64)]) -> Vec<Vec<CurvePoint>> {
         let mut out = Vec::new();
-        for &(s, t) in ends {
+        for &end in ends {
+            let (s, t) = self.placed(end);
             let Some((q, margin, quv)) = self.point_at(s, t, self.piece.evaluate(s, t).point, None)
             else {
                 continue;
@@ -1678,9 +2217,14 @@ impl Emit<'_> {
     /// Reversed when its direction runs against nA × nB.
     fn orient(&self, arc: &mut [CurvePoint]) {
         let i = arc.len() / 2;
-        let (j, k) = (i.saturating_sub(1), (i + 1).min(arc.len() - 1));
-        let chord = sub(arc[k].p, arc[j].p);
-        let q = arc[i];
+        let (j, k) = (
+            i.saturating_sub(1),
+            (i + 1).min(arc.len().saturating_sub(1)),
+        );
+        let (Some(&q), Some(qj), Some(qk)) = (arc.get(i), arc.get(j), arc.get(k)) else {
+            return;
+        };
+        let chord = sub(qk.p, qj.p);
         let (mine, theirs) = if self.p_is_a { (q.a, q.b) } else { (q.b, q.a) };
         let piece = self.piece;
         let e = piece.evaluate(
@@ -1784,14 +2328,14 @@ mod tests {
             let line = g.along(p, q);
             let raised = elevate1(&line, line.len() + 3);
             for k in 0..=16 {
-                let x = k as f64 / 16.0;
+                let x = f64::from(k) / 16.0;
                 let want = g.at(p.0 + x * (q.0 - p.0), p.1 + x * (q.1 - p.1));
                 assert!(
-                    (crate::field::casteljau(&line, x) - want).abs() < 1e-14,
+                    (casteljau(&line, x) - want).abs() < 1e-14,
                     "{p:?} {q:?} {x}"
                 );
                 assert!(
-                    (crate::field::casteljau(&raised, x) - want).abs() < 1e-14,
+                    (casteljau(&raised, x) - want).abs() < 1e-14,
                     "{p:?} {q:?} {x}"
                 );
             }
@@ -1821,6 +2365,77 @@ mod tests {
                 "edge {e}"
             );
         }
+    }
+
+    /// A flat piece over the unit square, for the cell tests' edge rules.
+    fn flat_piece() -> Piece {
+        let c = vec![
+            [0.0, 0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [1.0, 1.0, 0.0, 1.0],
+        ];
+        Piece::new(0, 0.0, 1.0, 0.0, 1.0, 1, 1, c, [false, false])
+    }
+
+    fn whole(g: Bern) -> Cell {
+        Cell {
+            s0: 0.0,
+            s1: 1.0,
+            t0: 0.0,
+            t1: 1.0,
+            g,
+            depth: 0,
+            free: false,
+            open: None,
+            scale: 1.0,
+            dscale: 1.0,
+            divided: false,
+        }
+    }
+
+    /// g = s^2 h, h = t - 0.4 + s/2: the edge s = 0 is a tangent curve, split
+    /// where h's own zero set reaches it, and h is what is left.
+    #[test]
+    fn a_zero_edge_is_divided_out_and_traced() {
+        let h = Bern {
+            du: 1,
+            dv: 1,
+            c: vec![-0.4, 0.6, 0.1, 1.1],
+        };
+        let s2 = Bern {
+            du: 2,
+            dv: 0,
+            c: vec![0.0, 0.0, 1.0],
+        };
+        let divided = zero_edges(&flat_piece(), &whole(h.mul(&s2)), 0.0).expect("a zero edge");
+        assert!(divided.crossings.is_empty());
+        assert_eq!(divided.tangents.len(), 2);
+        assert_eq!((divided.g.du, divided.g.dv), (1, 1));
+        assert!(divided
+            .g
+            .c
+            .iter()
+            .zip(&h.c)
+            .all(|(a, b)| (a - b).abs() < 1e-15));
+        assert_eq!(divided.meets.len(), 1);
+        let (ms, mt) = divided.meets[0];
+        assert!(ms == 0.0 && (mt - 0.4).abs() < 1e-12, "{ms} {mt}");
+        for sweep in &divided.tangents {
+            let (s, t) = sweep.at(0.5 * (sweep.x0 + sweep.x1));
+            assert!(s == 0.0 && t > 0.0 && t < 1.0, "{s} {t}");
+        }
+    }
+
+    /// Coefficients of rounding throughout are no zero edge, only rounding.
+    #[test]
+    fn a_cell_of_rounding_has_no_zero_edges() {
+        let g = Bern {
+            du: 1,
+            dv: 1,
+            c: vec![1e-17, -2e-17, 3e-17, -1e-17],
+        };
+        assert!(zero_edges(&flat_piece(), &whole(g), 0.0).is_none());
     }
 
     #[test]
@@ -1859,7 +2474,7 @@ mod tests {
             bracket: Bracket::Whole,
         };
         for k in 0..=64 {
-            let (s, t) = sweep.at(sweep.x1 * k as f64 / 64.0);
+            let (s, t) = sweep.at(sweep.x1 * f64::from(k) / 64.0);
             assert!((s * s + t * t - 0.5).abs() < 1e-15, "s {s} t {t}");
         }
     }

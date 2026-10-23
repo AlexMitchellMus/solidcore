@@ -10,6 +10,8 @@
 //! off the coefficients, a proof up to rounding, and neither looks at a sampled
 //! point's distance.
 
+use std::cell::Cell;
+
 use crate::geom3::{Frame, V3};
 use crate::surface3::Surf;
 
@@ -19,111 +21,193 @@ use crate::piece::Piece;
 /// A tensor Bernstein polynomial of degree (du, dv), coefficient (i, j) at i * (dv + 1) + j.
 #[derive(Clone, Debug)]
 pub struct Bern {
+    /// The degree in s.
     pub du: usize,
+    /// The degree in t.
     pub dv: usize,
+    /// The (du + 1) (dv + 1) coefficients, (i, j) at i * (dv + 1) + j.
     pub c: Vec<f64>,
 }
 
-fn binomial(n: usize, k: usize) -> f64 {
-    with_row(n, |row| row[k])
-}
+/// The rows of Pascal's triangle held as constants: every product's but the
+/// highest-degree fields' (the ssi-corpus asks for rows up to 166), whose
+/// rows are built past them.
+const PASCAL_ROWS: usize = 128;
+const PASCAL_LEN: usize = PASCAL_ROWS * (PASCAL_ROWS + 1) / 2;
 
-thread_local! {
-    /// Pascal's triangle, grown a row at a time as far as asked: rebuilt for
-    /// every product the binomial rows cost as much as the product itself, and
-    /// built to row 255 up front they were most of a small case's time.
-    static PASCAL: std::cell::RefCell<Vec<Vec<f64>>> = std::cell::RefCell::new(vec![vec![1.0]]);
-}
+/// Pascal's triangle to row `PASCAL_ROWS` - 1, row n from n (n + 1) / 2, each
+/// entry the sum in f64 of the two above it (exact to row 56, rounded as
+/// added past it). Built at compile time: rebuilt for every product the rows
+/// cost as much as the product itself, and a cache would be global state.
+static PASCAL: [f64; PASCAL_LEN] = pascal();
 
-/// `f` of row n of Pascal's triangle.
-fn with_row<R>(n: usize, f: impl FnOnce(&[f64]) -> R) -> R {
-    with_rows(n, |rows| f(&rows[n]))
-}
-
-/// `f` of Pascal's triangle, to row n at least.
-fn with_rows<R>(n: usize, f: impl FnOnce(&[Vec<f64>]) -> R) -> R {
-    PASCAL.with(|rows| {
-        {
-            let mut rows = rows.borrow_mut();
-            while rows.len() <= n {
-                let last = &rows[rows.len() - 1];
-                let m = last.len();
-                let row: Vec<f64> = (0..=m)
-                    .map(|k| {
-                        if k == 0 || k == m {
-                            1.0
-                        } else {
-                            last[k - 1] + last[k]
-                        }
-                    })
-                    .collect();
-                rows.push(row);
-            }
+// Evaluated at compile time only: an index out of range stops the build rather
+// than a run, and the array is the static's value, never a frame at run time.
+#[allow(clippy::indexing_slicing, clippy::large_stack_arrays)]
+const fn pascal() -> [f64; PASCAL_LEN] {
+    let mut t = [0.0; PASCAL_LEN];
+    let mut n = 0;
+    while n < PASCAL_ROWS {
+        let start = n * (n + 1) / 2;
+        let mut k = 0;
+        while k <= n {
+            t[start + k] = if k == 0 || k == n {
+                1.0
+            } else {
+                t[start - n + k - 1] + t[start - n + k]
+            };
+            k += 1;
         }
-        f(&rows.borrow())
-    })
+        n += 1;
+    }
+    t
+}
+
+/// Pascal's triangle to some row: the constant rows, then those built past
+/// them as the constant rows are (each entry the sum of the two above it).
+struct Rows {
+    past: Vec<Vec<f64>>,
+}
+
+impl Rows {
+    /// The triangle to row n at least.
+    fn to(n: usize) -> Rows {
+        let mut past: Vec<Vec<f64>> = Vec::new();
+        for m in PASCAL_ROWS..=n {
+            let last = past
+                .last()
+                .map_or_else(|| constant_row(m - 1), Vec::as_slice);
+            let row = (0..=m)
+                .map(|k| {
+                    if k == 0 || k == m {
+                        1.0
+                    } else {
+                        last.get(k - 1)
+                            .zip(last.get(k))
+                            .map_or(f64::NAN, |(a, b)| a + b)
+                    }
+                })
+                .collect();
+            past.push(row);
+        }
+        Rows { past }
+    }
+
+    /// Row n (empty past the rows held).
+    fn row(&self, n: usize) -> &[f64] {
+        match n.checked_sub(PASCAL_ROWS) {
+            None => constant_row(n),
+            Some(m) => self.past.get(m).map_or(&[], Vec::as_slice),
+        }
+    }
+
+    /// C(n, k) as the triangle holds it; NaN past it.
+    fn binomial(&self, n: usize, k: usize) -> f64 {
+        self.row(n).get(k).copied().unwrap_or(f64::NAN)
+    }
+}
+
+/// Row n of the constant rows.
+fn constant_row(n: usize) -> &'static [f64] {
+    let start = n * (n + 1) / 2;
+    PASCAL.get(start..=start + n).unwrap_or_default()
+}
+
+/// One de Casteljau level on the first `count + 1` values: value i becomes
+/// `step(value i, value i + 1)`, for i below `count`.
+pub(crate) fn casteljau_level(work: &mut [f64], count: usize, step: impl Fn(f64, f64) -> f64) {
+    for pair in Cell::from_mut(work)
+        .as_slice_of_cells()
+        .windows(2)
+        .take(count)
+    {
+        if let [a, b] = pair {
+            a.set(step(a.get(), b.get()));
+        }
+    }
+}
+
+/// de Casteljau halving of `work` at x, handing out the left half's points
+/// (index r, value) and the right half's: one level per point, as
+/// `casteljau_level` with `step`.
+fn casteljau_halves(
+    work: &mut [f64],
+    step: impl Fn(f64, f64) -> f64,
+    mut left: impl FnMut(usize, f64),
+    mut right: impl FnMut(usize, f64),
+) {
+    let n = work.len().saturating_sub(1);
+    for r in 0..=n {
+        if let Some(&w) = work.first() {
+            left(r, w);
+        }
+        if let Some(&w) = work.get(n - r) {
+            right(n - r, w);
+        }
+        casteljau_level(work, n - r, &step);
+    }
 }
 
 impl Bern {
     /// The product, by the Bernstein product rule: C(m, i) C(n, k) / C(m + n, i + k)
     /// in each direction, scaled in and out once instead of per term (binomial
     /// rows computed once per product; per term they were most of its cost).
+    #[must_use]
     pub fn mul(&self, o: &Bern) -> Bern {
         let (du, dv) = (self.du + o.du, self.dv + o.dv);
-        with_rows(du.max(dv), |rows| self.mul_with(o, rows))
+        self.mul_with(o, &Rows::to(du.max(dv)))
     }
 
-    /// `mul` with Pascal's triangle at hand (borrowed, not copied per product).
-    fn mul_with(&self, o: &Bern, rows: &[Vec<f64>]) -> Bern {
+    /// `mul` with Pascal's triangle at hand.
+    fn mul_with(&self, o: &Bern, rows: &Rows) -> Bern {
         let (du, dv) = (self.du + o.du, self.dv + o.dv);
-        let (bu_a, bv_a, bu_b, bv_b, bu, bv) = (
-            &rows[self.du],
-            &rows[self.dv],
-            &rows[o.du],
-            &rows[o.dv],
-            &rows[du],
-            &rows[dv],
-        );
         // Scaled coefficients C(m, i) C(p, j) a_ij, multiplied as power-like terms, then divided back.
-        let a: Vec<f64> = (0..=self.du)
-            .flat_map(|i| (0..=self.dv).map(move |j| (i, j)))
-            .map(|(i, j)| bu_a[i] * bv_a[j] * self.c[i * (self.dv + 1) + j])
-            .collect();
-        let b: Vec<f64> = (0..=o.du)
-            .flat_map(|k| (0..=o.dv).map(move |l| (k, l)))
-            .map(|(k, l)| bu_b[k] * bv_b[l] * o.c[k * (o.dv + 1) + l])
-            .collect();
+        let scaled = |x: &Bern| -> Vec<f64> {
+            let (bu, bv) = (rows.row(x.du), rows.row(x.dv));
+            x.c.chunks(x.dv + 1)
+                .zip(bu)
+                .flat_map(|(row, &bi)| row.iter().zip(bv).map(move |(&c, &bj)| bi * bj * c))
+                .collect()
+        };
+        let (a, b) = (scaled(self), scaled(o));
         let mut c = vec![0.0; (du + 1) * (dv + 1)];
-        for i in 0..=self.du {
-            for j in 0..=self.dv {
-                let x = a[i * (self.dv + 1) + j];
+        for (i, a_row) in a.chunks(self.dv + 1).enumerate() {
+            for (j, &x) in a_row.iter().enumerate() {
                 if x == 0.0 {
                     continue;
                 }
-                for k in 0..=o.du {
+                for (k, row_b) in b.chunks(o.dv + 1).enumerate() {
                     let base = (i + k) * (dv + 1) + j;
-                    let row_b = &b[k * (o.dv + 1)..(k + 1) * (o.dv + 1)];
-                    for (l, y) in row_b.iter().enumerate() {
-                        c[base + l] += x * y;
+                    if let Some(out) = c.get_mut(base..base + row_b.len()) {
+                        for (z, y) in out.iter_mut().zip(row_b) {
+                            *z += x * y;
+                        }
                     }
                 }
             }
         }
-        for i in 0..=du {
-            for j in 0..=dv {
-                c[i * (dv + 1) + j] /= bu[i] * bv[j];
+        let (bu, bv) = (rows.row(du), rows.row(dv));
+        for (row, &bi) in c.chunks_mut(dv + 1).zip(bu) {
+            for (z, &bj) in row.iter_mut().zip(bv) {
+                *z /= bi * bj;
             }
         }
         Bern { du, dv, c }
     }
 
-    /// Σ weight × term, over terms of one degree.
+    /// Σ weight × term, over terms of one degree (the zero constant for none).
     pub(crate) fn sum(terms: &[(f64, &Bern)]) -> Bern {
-        let first = terms[0].1;
+        let Some((_, first)) = terms.first() else {
+            return Bern {
+                du: 0,
+                dv: 0,
+                c: vec![0.0],
+            };
+        };
         let mut c = vec![0.0; first.c.len()];
         for (w, t) in terms {
-            for (k, x) in t.c.iter().enumerate() {
-                c[k] += w * x;
+            for (z, x) in c.iter_mut().zip(&t.c) {
+                *z += w * x;
             }
         }
         Bern {
@@ -133,12 +217,22 @@ impl Bern {
         }
     }
 
+    /// The largest coefficient's magnitude, which bounds |g| on the square.
     pub fn max_abs(&self) -> f64 {
         self.c.iter().fold(0.0, |m, x| m.max(x.abs()))
     }
 
+    /// Coefficient (i, j); NaN outside the net.
     fn get(&self, i: usize, j: usize) -> f64 {
-        self.c[i * (self.dv + 1) + j]
+        self.c
+            .get(i * (self.dv + 1) + j)
+            .copied()
+            .unwrap_or(f64::NAN)
+    }
+
+    /// The rows of coefficients along t, one per i.
+    fn rows(&self) -> std::slice::Chunks<'_, f64> {
+        self.c.chunks(self.dv + 1)
     }
 
     /// The value at (s, t) in [0, 1]^2, by de Casteljau along t then along s,
@@ -146,19 +240,22 @@ impl Bern {
     /// these, and heap vectors for them were most of an emitted point's cost).
     pub fn at(&self, s: f64, t: f64) -> f64 {
         if self.du >= STACK || self.dv >= STACK {
-            let column: Vec<f64> = (0..=self.du)
-                .map(|i| casteljau(&self.c[i * (self.dv + 1)..(i + 1) * (self.dv + 1)], t))
+            let column: Vec<f64> = self
+                .rows()
+                .take(self.du + 1)
+                .map(|row| casteljau(row, t))
                 .collect();
             return casteljau(&column, s);
         }
         let mut column = [0.0; STACK];
-        for (i, value) in column.iter_mut().enumerate().take(self.du + 1) {
-            *value = casteljau(&self.c[i * (self.dv + 1)..(i + 1) * (self.dv + 1)], t);
+        for (value, row) in column.iter_mut().zip(self.rows()).take(self.du + 1) {
+            *value = casteljau(row, t);
         }
-        casteljau(&column[..=self.du], s)
+        casteljau(column.get(..=self.du).unwrap_or_default(), s)
     }
 
     /// The two halves at s = x (dir 0) or t = x (dir 1), each over its own [0, 1].
+    #[must_use]
     pub fn split(&self, dir: usize, x: f64) -> (Bern, Bern) {
         let (du, dv) = (self.du, self.dv);
         let (n, m) = if dir == 0 { (du, dv) } else { (dv, du) };
@@ -173,21 +270,29 @@ impl Bern {
         let mut right = vec![0.0; self.c.len()];
         let mut work = vec![0.0; n + 1];
         for j in 0..=m {
-            for i in 0..=n {
-                work[i] = self.c[index(i, j)];
+            for (i, w) in work.iter_mut().enumerate() {
+                *w = self.c.get(index(i, j)).copied().unwrap_or(f64::NAN);
             }
-            for r in 0..=n {
-                left[index(r, j)] = work[0];
-                right[index(n - r, j)] = work[n - r];
-                for i in 0..n - r {
-                    work[i] = (1.0 - x) * work[i] + x * work[i + 1];
-                }
-            }
+            casteljau_halves(
+                &mut work,
+                |a, b| (1.0 - x) * a + x * b,
+                |r, w| {
+                    if let Some(z) = left.get_mut(index(r, j)) {
+                        *z = w;
+                    }
+                },
+                |r, w| {
+                    if let Some(z) = right.get_mut(index(r, j)) {
+                        *z = w;
+                    }
+                },
+            );
         }
         (Bern { du, dv, c: left }, Bern { du, dv, c: right })
     }
 
     /// The polynomial over [s0, s1] x [t0, t1], on its own [0, 1]^2.
+    #[must_use]
     pub fn restrict(&self, s0: f64, s1: f64, t0: f64, t1: f64) -> Bern {
         let mut b = self.clone();
         for (dir, lo, hi) in [(0, s0, s1), (1, t0, t1)] {
@@ -216,31 +321,37 @@ impl Bern {
         }
         let mut column = vec![0.0; du + 1];
         for j in 0..=dv {
-            for i in 0..=du {
-                column[i] = q[i * (dv + 1) + j];
+            for (x, row) in column.iter_mut().zip(q.chunks(dv + 1)) {
+                *x = row.get(j).copied().unwrap_or(f64::NAN);
             }
             restrict1_into(&mut column, s0, s1, &mut work);
-            for i in 0..=du {
-                q[i * (dv + 1) + j] = column[i];
+            for (x, row) in column.iter().zip(q.chunks_mut(dv + 1)) {
+                if let Some(y) = row.get_mut(j) {
+                    *y = *x;
+                }
             }
         }
         let n = du + dv;
+        let rows = Rows::to(n);
         let mut out = vec![0.0; n + 1];
-        for i in 0..=du {
-            for j in 0..=dv {
-                out[i + j] += binomial(du, i) * binomial(dv, j) * q[i * (dv + 1) + j];
+        for (i, row) in q.chunks(dv + 1).enumerate() {
+            for (j, &y) in row.iter().enumerate() {
+                if let Some(o) = out.get_mut(i + j) {
+                    *o += rows.binomial(du, i) * rows.binomial(dv, j) * y;
+                }
             }
         }
         for (k, x) in out.iter_mut().enumerate() {
-            *x /= binomial(n, k);
+            *x /= rows.binomial(n, k);
         }
         out
     }
 
     /// h with g = x h, x the factor that vanishes on edge e (s, 1 - s, t or
     /// 1 - t for edges 0 to 3), for g zero on that edge: one degree lower in
-    /// that direction, from x B_k^(n-1) = (k + 1) / n B_(k+1)^n and
-    /// (1 - x) B_k^(n-1) = (n - k) / n B_k^n.
+    /// that direction, from x `B_k^(n-1)` = (k + 1) / n `B_(k+1)^n` and
+    /// (1 - x) `B_k^(n-1)` = (n - k) / n `B_k^n`.
+    #[must_use]
     pub fn divide_edge(&self, e: usize) -> Bern {
         let (du, dv) = (self.du, self.dv);
         let mut c = Vec::with_capacity(self.c.len());
@@ -255,7 +366,11 @@ impl Bern {
                         });
                     }
                 }
-                Bern { du: du - 1, dv, c }
+                Bern {
+                    du: du.saturating_sub(1),
+                    dv,
+                    c,
+                }
             }
             _ => {
                 for i in 0..=du {
@@ -267,7 +382,11 @@ impl Bern {
                         });
                     }
                 }
-                Bern { du, dv: dv - 1, c }
+                Bern {
+                    du,
+                    dv: dv.saturating_sub(1),
+                    c,
+                }
             }
         }
     }
@@ -286,13 +405,15 @@ impl Bern {
                 })
                 .collect()
         } else {
-            (0..=du)
-                .map(|i| casteljau(&self.c[i * (dv + 1)..(i + 1) * (dv + 1)], x))
+            self.rows()
+                .take(du + 1)
+                .map(|row| casteljau(row, x))
                 .collect()
         }
     }
 
     /// The derivative along s (dir 0) or t (dir 1), a polynomial one degree lower there.
+    #[must_use]
     pub fn derivative(&self, dir: usize) -> Bern {
         let (du, dv) = (self.du, self.dv);
         if (dir == 0 && du == 0) || (dir == 1 && dv == 0) {
@@ -339,21 +460,20 @@ const STACK: usize = 64;
 /// A one-variable Bernstein polynomial at t.
 pub fn casteljau(c: &[f64], t: f64) -> f64 {
     let n = c.len();
+    let step = |a: f64, b: f64| (1.0 - t) * a + t * b;
     if n > STACK {
         let mut work = c.to_vec();
         for r in 1..n {
-            for i in 0..n - r {
-                work[i] = (1.0 - t) * work[i] + t * work[i + 1];
-            }
+            casteljau_level(&mut work, n - r, step);
         }
-        return work[0];
+        return work.first().copied().unwrap_or(f64::NAN);
     }
     let mut work = [0.0; STACK];
-    work[..n].copy_from_slice(c);
+    if let Some(head) = work.get_mut(..n) {
+        head.copy_from_slice(c);
+    }
     for r in 1..n {
-        for i in 0..n - r {
-            work[i] = (1.0 - t) * work[i] + t * work[i + 1];
-        }
+        casteljau_level(&mut work, n - r, step);
     }
     work[0]
 }
@@ -385,9 +505,10 @@ pub fn roots(c: &[f64], clear: f64) -> Option<Vec<f64>> {
         }
         let changes = b
             .windows(2)
-            .filter(|w| (w[0] > 0.0) != (w[1] > 0.0))
+            .filter(|w| matches!(w, [x, y] if (*x > 0.0) != (*y > 0.0)))
             .count();
-        let ends_differ = (b[0] > 0.0) != (b[b.len() - 1] > 0.0);
+        let positive = |x: Option<&f64>| x.is_some_and(|&x| x > 0.0);
+        let ends_differ = positive(b.first()) != positive(b.last());
         if changes == 1 && ends_differ {
             // One simple root: bisection on the sign, to the last bit.
             let (mut a, mut z) = (0.0_f64, 1.0_f64);
@@ -432,33 +553,36 @@ pub fn roots(c: &[f64], clear: f64) -> Option<Vec<f64>> {
 /// (b below a runs it backward): coefficient k is its blossom at a (n - k
 /// times) and b (k times). In place, `work` a scratch buffer.
 pub(crate) fn restrict1_into(c: &mut [f64], a: f64, b: f64, work: &mut Vec<f64>) {
-    let n = c.len() - 1;
+    let n = c.len().saturating_sub(1);
     let source = c.to_vec();
     for (k, out) in c.iter_mut().enumerate() {
         work.clear();
         work.extend_from_slice(&source);
         for r in 0..n {
             let x = if r < k { b } else { a };
-            for i in 0..n - r {
-                work[i] = (1.0 - x) * work[i] + x * work[i + 1];
-            }
+            casteljau_level(work, n - r, |p, q| (1.0 - x) * p + x * q);
         }
-        *out = work[0];
+        *out = work.first().copied().unwrap_or(f64::NAN);
     }
 }
 
 /// A one-variable Bernstein polynomial raised to degree `to` (at least its own).
 pub(crate) fn elevate1(c: &[f64], to: usize) -> Vec<f64> {
     let mut c = c.to_vec();
+    if c.is_empty() {
+        return c;
+    }
     while c.len() - 1 < to {
         let n = c.len() - 1;
-        let mut up = vec![0.0; n + 2];
-        up[0] = c[0];
-        up[n + 1] = c[n];
-        for i in 1..=n {
-            let a = i as f64 / (n + 1) as f64;
-            up[i] = a * c[i - 1] + (1.0 - a) * c[i];
+        let mut up = Vec::with_capacity(n + 2);
+        up.extend(c.first());
+        for (i, pair) in c.windows(2).enumerate() {
+            if let &[before, here] = pair {
+                let a = (i + 1) as f64 / (n + 1) as f64;
+                up.push(a * before + (1.0 - a) * here);
+            }
         }
+        up.extend(c.last());
         c = up;
     }
     c
@@ -466,17 +590,23 @@ pub(crate) fn elevate1(c: &[f64], to: usize) -> Vec<f64> {
 
 /// A one-variable Bernstein polynomial's halves at 1/2.
 pub(crate) fn split1(c: &[f64]) -> (Vec<f64>, Vec<f64>) {
-    let n = c.len() - 1;
     let mut work = c.to_vec();
-    let mut left = vec![0.0; n + 1];
-    let mut right = vec![0.0; n + 1];
-    for r in 0..=n {
-        left[r] = work[0];
-        right[n - r] = work[n - r];
-        for i in 0..n - r {
-            work[i] = 0.5 * (work[i] + work[i + 1]);
-        }
-    }
+    let mut left = vec![0.0; c.len()];
+    let mut right = vec![0.0; c.len()];
+    casteljau_halves(
+        &mut work,
+        |a, b| 0.5 * (a + b),
+        |r, w| {
+            if let Some(z) = left.get_mut(r) {
+                *z = w;
+            }
+        },
+        |r, w| {
+            if let Some(z) = right.get_mut(r) {
+                *z = w;
+            }
+        },
+    );
     (left, right)
 }
 
@@ -495,7 +625,7 @@ pub enum Relation {
 fn local(piece: &Piece, f: &Frame) -> [Bern; 4] {
     let (y, z) = (f.y(), f.z);
     let axes = [f.x, y, z];
-    let mut out = [(); 4].map(|_| Bern {
+    let mut out = [(); 4].map(|()| Bern {
         du: piece.du,
         dv: piece.dv,
         c: Vec::with_capacity(piece.c.len()),
@@ -506,8 +636,8 @@ fn local(piece: &Piece, f: &Frame) -> [Bern; 4] {
             h[1] - f.o.y * h[3],
             h[2] - f.o.z * h[3],
         );
-        for (k, axis) in axes.iter().enumerate() {
-            out[k].c.push(d.dot(*axis));
+        for (o, axis) in out.iter_mut().zip(&axes) {
+            o.c.push(d.dot(*axis));
         }
         out[3].c.push(h[3]);
     }
@@ -566,11 +696,32 @@ pub fn compose(piece: &Piece, surf: &Surf) -> Option<(Bern, f64)> {
 }
 
 /// A surface with an implicit equation: analytic, or a B-spline patch's proved
-/// algebraic form (`algebraic`).
-#[derive(Clone, Copy, Debug)]
+/// algebraic form (`algebraic`); or a piece of a patch with neither, seen along
+/// a fixed direction (`taylor`): its field is a cell's local polynomial of the
+/// separation, and the foot of a point is where the line through it along the
+/// direction meets the piece.
+#[derive(Clone, Copy)]
 pub enum Field<'f> {
+    /// An analytic surface's equation.
     Analytic(&'f Surf),
+    /// A B-spline patch's proved algebraic form.
     Algebraic(&'f Algebraic),
+    /// A piece seen along a fixed unit direction.
+    Local(&'f Piece, [f64; 3]),
+}
+
+impl std::fmt::Debug for Field<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Field::Analytic(surf) => write!(f, "Analytic({surf:?})"),
+            Field::Algebraic(form) => write!(f, "Algebraic(degree {})", form.degree),
+            Field::Local(piece, dir) => write!(
+                f,
+                "Local(patch {} [{}, {}] x [{}, {}], along {dir:?})",
+                piece.patch, piece.u0, piece.u1, piece.v0, piece.v1
+            ),
+        }
+    }
 }
 
 impl Field<'_> {
@@ -579,6 +730,7 @@ impl Field<'_> {
         match self {
             Field::Analytic(surf) => compose(piece, surf),
             Field::Algebraic(form) => Some(form.compose(piece)),
+            Field::Local(..) => None,
         }
     }
 
@@ -590,6 +742,20 @@ impl Field<'_> {
                 [f.x, f.y, f.z]
             }
             Field::Algebraic(form) => form.foot(p),
+            Field::Local(piece, dir) => crate::taylor::ray(piece, *dir, p, (0.5, 0.5, 0.0))
+                .map_or([f64::NAN; 3], |(_, _, l)| {
+                    [p[0] + l * dir[0], p[1] + l * dir[1], p[2] + l * dir[2]]
+                }),
+        }
+    }
+
+    /// How exact the implicit equation is, relative to the scale of its
+    /// terms: an analytic surface's is exact, an algebraic form's has the
+    /// residual its proof met.
+    pub fn residual(&self) -> f64 {
+        match self {
+            Field::Analytic(_) | Field::Local(..) => 0.0,
+            Field::Algebraic(form) => form.residual,
         }
     }
 
@@ -600,6 +766,7 @@ impl Field<'_> {
             Field::Analytic(Surf::Torus { .. }) => 4,
             Field::Analytic(_) => 2,
             Field::Algebraic(form) => form.degree,
+            Field::Local(..) => 0,
         }
     }
 }

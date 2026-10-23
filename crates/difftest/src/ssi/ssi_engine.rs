@@ -108,6 +108,12 @@ fn patch(spec: &SurfaceSpec) -> Result<Patch, String> {
     })
 }
 
+/// The patch at (u, v), NaN where its counts and knots do not let it be evaluated (as
+/// the crate's runner writes it).
+fn at(patch: &Patch, u: f64, v: f64) -> [f64; 3] {
+    patch.evaluate(u, v).unwrap_or([f64::NAN; 3])
+}
+
 /// Writes the curves and points of an intersection into `out`.
 fn write_found(out: &mut RawOutput, found: &Intersection, a: &Patch, b: &Patch) {
     for curve in &found.curves {
@@ -120,9 +126,9 @@ fn write_found(out: &mut RawOutput, found: &Intersection, a: &Patch, b: &Patch) 
             deviation: f64::NAN,
             xyz: points.iter().map(|q| q.p).collect(),
             uv1: points.iter().map(|q| [q.a.u, q.a.v]).collect(),
-            s1_at_uv: points.iter().map(|q| a.evaluate(q.a.u, q.a.v)).collect(),
+            s1_at_uv: points.iter().map(|q| at(a, q.a.u, q.a.v)).collect(),
             uv2: points.iter().map(|q| [q.b.u, q.b.v]).collect(),
-            s2_at_uv: points.iter().map(|q| b.evaluate(q.b.u, q.b.v)).collect(),
+            s2_at_uv: points.iter().map(|q| at(b, q.b.u, q.b.v)).collect(),
             ..RawCurve::default()
         });
     }
@@ -146,6 +152,12 @@ pub fn run_ssi(case: &SsiCase, tol: Option<f64>) -> Result<RawOutput, EngineFail
     }
     let a = patch(spec_a).map_err(EngineFailure::Build)?;
     let b = patch(spec_b).map_err(EngineFailure::Build)?;
+    let domain = |p: &Patch| {
+        p.domain().ok_or_else(|| {
+            EngineFailure::Build("ssi: a patch's knots are too few for its poles".into())
+        })
+    };
+    let (domain1, domain2) = (domain(&a)?, domain(&b)?);
     let options = tol.map_or_else(Options::default, |t| shapes::resolving(t, &[&a, &b]));
     let (body_a, body_b) = (std::slice::from_ref(&a), std::slice::from_ref(&b));
     let t0 = Instant::now();
@@ -159,8 +171,8 @@ pub fn run_ssi(case: &SsiCase, tol: Option<f64>) -> Result<RawOutput, EngineFail
         case: case.id.clone(),
         engine: "ssi".into(),
         status: SM_SUCCESS,
-        domain1: a.domain(),
-        domain2: b.domain(),
+        domain1,
+        domain2,
         approx_tol: tol,
         time_ms,
         ..RawOutput::default()
