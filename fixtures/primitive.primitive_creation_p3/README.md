@@ -25,14 +25,22 @@ face's UV domain and nine surface evaluations. Evaluation statuses are retained;
 failed operations compare partial topology counts without evaluating unfinished
 geometry. Neither side substitutes cached B-splines for virtual geometry dispatch.
 
-The current 296 cases yield 294 passes, one `DeleteFaces` deferral in
-`partial_rotation_line`, one UB-78 rejection and no failures. All 294 comparable
-native/Rust output digests agree exactly. Eight former topology-construction
-deferrals now compare actual nonempty geometry, including the existing zero and
+The current 296 cases yield 295 passes, no deferrals or failures, and the unchanged
+UB-78 rejection. All 295 comparable native/Rust output digests agree exactly.
+Nine former topology-construction deferrals now compare actual nonempty geometry,
+including the existing zero and
 negative tolerance cases. The repeated linear wire has two faces, seven edges and
 six vertices; skin, curve-sweep and swung fixtures each have one face, four edges
+and four vertices. The partial rotational sweep also builds one face, four edges
 and four vertices. A native-enabled regression requires those counts, successful
-construction and the complete geometry record on both sides.
+construction and the complete geometry record on both sides; the repeated linear
+fixture also exercises the public FFI output-buffer retry.
+
+The production deletion adapter uses the landed context-only intersector with the
+model's real notification records and object keys, matching the fresh native
+intersector inside the rotational caller. The revolution API extracts and detaches
+the actual first surface under those same keys, matching `GetSurfaces` and
+`SetOwner(NULL)`; no geometry copy or owner guess replaces it.
 
 Curve-sweep scaling, profile orientation, face-based skinning, classification,
 cap construction, stitching, map-copy tails and topology edits are implemented
@@ -48,10 +56,11 @@ curve construction or non-finite fixture samples are construction rejections.
 The Rust port still checks these inputs safely. No comparison tolerance or
 absolute floor is added.
 
-Legacy sweep APIs remain blocked at their earlier `SmBrep` constructor. Their
-outdated p3 blocker labels now identify that actual missing dependency. Five
-read-only sweep services resolve the integrated B-rep/region/shell accessors;
-no arena-order replacement is used.
+The adjacent surface-of-revolution API uses the same real model and now compares
+its detached output's owner state, UV domain and 25 virtual point evaluations.
+Its native unit has 879 exact passes and three remaining downstream skin/cache
+classification deferrals; those paths are separate from this unit's completed
+construction fixtures.
 
 
 Review regressions (`review.json`) allow finite zero/negative rule tolerances and

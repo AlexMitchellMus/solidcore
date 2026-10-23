@@ -423,7 +423,7 @@ fn geometry_point(out: &mut Vec<f64>, value: Result<Vec3>) -> Result<()> {
 }
 
 // Native owning-list order, with actual evaluated geometry on successful builds.
-// Failed operations still compare their partial arena counts without attempting
+// Failed operations still compare their partial owning-list counts without attempting
 // to evaluate geometry the operation did not finish constructing.
 fn construction_geometry(k: &Kernel, b: &Brep, success: bool, out: &mut Vec<f64>) -> Result<()> {
     out.extend([
@@ -731,6 +731,7 @@ mod tests {
         let cases = context.fixture_cases(Runner.id()).unwrap();
         for (name, counts) in [
             ("linear_repeated_wire", [2.0, 7.0, 6.0]),
+            ("partial_rotation_line", [1.0, 4.0, 4.0]),
             ("skin_two_lines", [1.0, 4.0, 4.0]),
             ("curve_sweep_line", [1.0, 4.0, 4.0]),
             ("swung_one_path_profile", [1.0, 4.0, 4.0]),
@@ -751,6 +752,11 @@ mod tests {
             // Includes actual vertex positions, curve intervals/points and face
             // domains/points, rather than an empty or status-only success.
             assert!(native.len() > 100, "{name}: geometry was not exported");
+            if name == "linear_repeated_wire" {
+                // The public FFI starts with 256 slots; this construction must
+                // also exercise its exact-size output-buffer retry.
+                assert!(native.len() > 256);
+            }
             assert_eq!(rust, native, "{name}: native geometry differs");
         }
     }
