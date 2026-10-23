@@ -2497,7 +2497,8 @@ mod tests {
     #[test]
     fn face_geometry_paths_reach_distinct_actual_callees() {
         // MakeWireEdgeVertex now runs, and concrete-Surface CrvOnSurf construction
-        // lets the rounded paths get through DropCurve too.
+        // lets the rounded paths get through DropCurve too: they stop at
+        // SmBrep::ShrinkGeometry, the extended ones at the edge-use offset adapter.
         let context = CaseContext {
             root: repo_root(),
             seeds: 0,
@@ -2506,8 +2507,8 @@ mod tests {
         for (name, owner, symbol) in [
             (
                 "static_offset_real_plane_sheet_round",
-                "intersect.surface_drop_lib_p3",
-                "SmSurface::DropCurve",
+                "topology.brep_p4",
+                "SmBrep::ShrinkGeometry",
             ),
             (
                 "static_offset_real_plane_sheet_extended",
@@ -2516,8 +2517,8 @@ mod tests {
             ),
             (
                 "member_sheet_round_skip_true_still_real_geometry",
-                "intersect.surface_drop_lib_p3",
-                "SmSurface::DropCurve",
+                "topology.brep_p4",
+                "SmBrep::ShrinkGeometry",
             ),
             (
                 "member_sheet_extended_dispatch_ignores_skip",
@@ -2526,8 +2527,8 @@ mod tests {
             ),
             (
                 "extended_sheet_direct_independent_flags",
-                "intersect.surface_drop_lib_p3",
-                "SmSurface::DropCurve",
+                "offset.offset_executive_p1",
+                "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
             ),
         ] {
             let case = fixtures.iter().find(|case| case.name == name).unwrap();
