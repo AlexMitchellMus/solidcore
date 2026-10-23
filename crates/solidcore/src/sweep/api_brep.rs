@@ -812,15 +812,15 @@ mod tests {
         assert!(b.vertex_list().is_empty());
         // a positive radius sweeps the tube; the capped one's cap builder glues, gets
         // through SmSurface::DropCurve and SmFace::CreateUVTrimCurves, then stops at the
-        // classification of an opaque face handle
+        // face-bound trimmed surface cache of its region split's ray fire
         let b = create_pipe_sweep(&mut k, 1.0, Some(&p), false).expect("pipe");
         assert_eq!(b.face_list().len(), 1);
         let capped = create_pipe_sweep(&mut k, 1.0, Some(&p), true);
         assert!(matches!(
             capped,
             Err(SolidError::Unported {
-                upstream: "SmFace::PointClassify",
-                unit: "query.face_p2"
+                upstream: "TrimSrfCache::build_tree_with_face for a face-owned surface",
+                unit: "surface.trim_srf_cache"
             })
         ));
 
