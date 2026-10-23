@@ -17043,6 +17043,41 @@ counts.
   volume, area and bounding box against the analytic values once the build succeeds.
   No STL: upstream's open SMLib has no B-rep face tessellation to a mesh.
 
+## curve.crv_on_surf: selective break-cache writes and seam tolerance (PR #563)
+
+`SmCrvOnSurf::GetKnots` writes its break cache from const queries. The Rust
+`Curve` dispatch previously computed those knots on a copy, and the base
+`DropPoint` also ran on a copy. Wiring UV discontinuity classification alone
+therefore exposed the 17 drop-state mismatches recorded above. The value-only
+break cache now retains shared-query writes, and the base drop transfers its
+actual break state back even on error. A successful local solve that never
+queries knots leaves the cache untouched. Clones keep independent caches;
+`breaks()` returns an owned snapshot so callers cannot hold an internal borrow
+across a geometry query. The existing approximation-cache copy semantics of
+the `*_ref` approximation/drop wrappers remain outside this change.
+
+Native Linux ARM64 against main `3e811d0c7`: `curve.crv_on_surf` passes all
+2107 cases with values, bit-identically, with zero deferred/failed cases. All
+1800 baseline passes remain passing and all 307 classification deferrals pass.
+Perturbation detects 2107/2107. No case, guard or comparison tolerance changed.
+
+Wiring this exposed 40 `heal.face_props` and two `intersect.curve_class_p4`
+seam-property mismatches in CI run 39864112887. For example, `heal.face_props`
+gen0023 (seed 16562362309779922966) is a tiny revolution surface with face
+tolerance 1.0: C++ reports missing/near-miss seams in both directions (flags
+1, direction 3), Rust neither (flags 0, direction 4). The classification itself
+returned success but left every interval Unknown. `HasSeamProblem` cloned the
+face's surface, dropping its owner before `surface_zone_tol_3d` and selecting
+system tolerance instead of the face tolerance. Borrowing the actual surface
+matches the upstream call and preserves its exact geometry and ownership.
+
+With that correction the five focused units have zero mismatches:
+`heal.face_props` 1430 pass / 98 deferred; `intersect.curve_class_p4` 2914 / 287;
+`topology.face_p4` 5258 / 248; `curve.curve_p2` 3029 / 0; `curve.crv_on_surf`
+2107 / 0. Against main's 89c94bf4b reports (same kernel as 3e811d0c7), the first
+two gain 113 and 149 passes respectively and retain every baseline pass.
+The exposed seam mismatches reach genuine existing deeper stubs after the
+tolerance correction; they are relocated deferrals, not additional pass gains.
 ## blend.fillet_intersector `rv_next_clipped_step`: ULP-level next point once `ComputePointValues` is wired (2026-10-22, open)
 
 Found while landing `blend.fillet_solver_p4` (#212, batch/finish-3, draft PR #564). With
@@ -17262,6 +17297,37 @@ solidcore tests pass. The exception is the Windows-only
 `solids_run_primitive_creation_until_the_next_unported_call` (see the previous entry).
 Every unit is now green or partial. The open PRs #563, #178 and #270 add no units.
 
+## heal.heal_data_p1: retain seam-query gap-cache writes (PR #563)
+
+After integrating main `8c1eaa572`, CI run 39920844387 exposed two previously
+deferred healer cases: gen0125 (seed 8971097847862315981, sphere radius
+1.1017911871514507) and gen0164 (seed 8971097847862316020, radius
+38.77897466460957), both with `init_gaps=false`. Their maximum vertex/face gap
+references agree, but C++ reports raw cached length `-1.23456e-61`
+(`-SM_UNDEF_DOUBLE`) while Rust retained `0.0`, at `values.out[139]` and `[69]`.
+The first divergence is immediately after stage two: step 5 of gen0125 and
+step 12 (after retargeting) of gen0164.
+
+`SmVertexuse::CalcVertexFaceGap` (`SmVertexuse.cpp:1784-1836`) first resets all
+same-vertex, same-face sibling caches, then computes only the requested use.
+The healer's stored maximum-gap reference can therefore point at a cache that a
+later seam query invalidates. Rust already implements that invalidation, but
+`CurveOnClassify` performed it on a discarded B-rep snapshot.
+
+The mutable healer now carries explicit query state through both seam directions
+and applies only the snapshot's vertex/face and edge/face gap-cache values, even
+when a query returns an error. It never resets an unqueried cache or replaces
+the B-rep with a geometry clone. The read-only query APIs still discard their
+cache writes; UV trim, geometry and topology edits remain outside this copy-back.
+`HealData::cache_face_props_stage2` consequently takes `&mut Brep`.
+
+Linux ARM64 native prefix replays now agree bit-for-bit for both complete scripts
+(3183 and 2905 values) and all 25 prefixes (including the empty scripts). The exact
+inputs are retained as `fixtures/heal.heal_data_p1/seam_query_gap_cache.json`.
+Three Rust regressions cover sibling invalidation after classification failure,
+resets before projection failure, and the untouched-cache path. All 2049 kernel
+tests, fmt, workspace Clippy and the wasm check pass. No comparison tolerances,
+existing cases, deferrals, native hang guards or known-mismatch entries changed.
 ## topology.face_p3 `cyl_bspline_uv_trim_*`, boolean.merge_p2 `make_faceuse_sphere`: nested UV trim curve creation while the surface owner is cleared (fixed, PR #586, 2026-10-23)
 
 Follow-up to "PR #463: 27 Rust-vs-C++ mismatches newly reachable once
@@ -17317,3 +17383,194 @@ the Rust op. No kernel change. difftest: 4686 pass / 80 deferred / 23 known ->
 4709 pass / 80 deferred / 0 known. Other runners that import file B-reps through the
 same graph export still start with empty cache slots (`seed_cache_tree_states` is
 available to them).
+
+## intersect.ray_tracer: AddSurfaceToGrid wired, unit green (2026-10-23)
+
+`RayTracer::add_surface_to_grid` was an `Unported(smsurf_GetSurfaceCache)` stub (6 deferred
+cases) because `Grid::expand_hierarchy` holds a bare surface handle and cannot reach the
+`Surface`. It now builds the cache itself and expands with `Grid::expand_hierarchy_with`,
+reading each leaf's `SmBezierPatch` data, pseudo box and polar box from the cache.
+
+- **Trap found by the new comparison.** The surface cache must be built with the surface's
+  tracer index as its handle (`surface_cache(k, surface, Some(index))`). With `None`, every
+  node's `mBA_pSurface` is `None`, so `SurfaceCache::compute_polar_box` fails with the
+  port-only `InvalidInput("node has no surface")` (upstream would dereference a null
+  pointer), `SurfaceCache::polar_box` ignores every failure but `Unported` and returns an
+  *uninitialised* polar box. `polar_box`/`polar_box_unstored` should propagate that
+  `InvalidInput` (only a port bug produces it); not changed here, other units call them.
+  Positions, boxes and mid-point data were still bit-identical to the C++, and most
+  ray walks too, so only the shim's new per-leaf record (pseudo box and polar box state,
+  domain and basis) showed it. Any other caller that builds a cache with no handle and then
+  reads polar boxes has the same silent failure.
+- **Still a dispatch gap:** `Grid::expand_hierarchy` on a bare handle (`geom/grid.rs`), which
+  is what `geom.grid`'s own difftest `Op::Expand` calls (2 deferred cases of `geom.grid`,
+  `surface.surface_p2` 1 and `surface.surface_cache_p1` 1). It needs a store that turns a
+  handle into a `Surface`; `intersect::ray_tracer` does not need it any more.
+- **Second caller:** `blend.hcr` adds its ray surfaces through `add_surface_to_grid`
+  (`blend/hcr.rs`). difftest `blend.hcr`: 386 pass / 48 deferred (`surface.surface_p2` 10)
+  -> 396 pass / 38 deferred, 0 failed, max_rel_err 0, the 10 now compared with the C++.
+  The expansion ignores trims (`surface_cache` is the untrimmed cache; a surface that has a
+  face is `Unported` from `get_tree`), so a `Face` surface whose owner is not set on the
+  `Surface` would get leaves outside its trim loops that upstream skips; no case shows it.
+- Known gaps in the `add_surface` check: the hierarchy element and the grid-element boxes
+  and voxel lists are not in the record (ray walks reach them only through distances);
+  a crafted near-degenerate Bezier net can make the C++ cache build subdivide without
+  bound (Rust stops at `MAX_SUBDIVISION_NODES`), which a `--fuzz` run could hit.
+- difftest `intersect.ray_tracer`: 421 cases, 421 pass, 0 deferred, max_rel_err 0, 6000 extra
+  generated seeds clean; the record now compares `AddSurfaceToGrid`'s status and leaves.
+  The `chance(0.2)` draw in the generator shifts the random stream, so the generated cases
+  after it are different cases than before (same count).
+## curve.crv_on_surf: integrated focused verification (PR #563)
+
+After merging authoritative main `9fd1c67c5`, the focused Linux ARM64 run reports:
+`curve.crv_on_surf` 2107 pass / 0 deferred / 0 failed; `curve.curve_p2` 3029/0/0;
+`query.face_p2` 1326/18/0; `topology.face_p4` 5426/80/0; `heal.face_props`
+1431/97/0; `intersect.curve_class_p4` 2918/283/0. All their compared values are
+bit-identical. CrvOnSurf sensitivity detects 2107/2107 perturbations and the two
+new healer fixtures detect 2/2. Neither gen0125 nor gen0164 is deferred.
+
+Against main's CI reports (run 39923812958), nine focused units convert 649
+original deferrals to native comparisons: CrvOnSurf 307, face props 114, curve
+class part 4 153, face part 4 50, healer part 1 25. The two new fixtures are
+additional passes, not original deferral conversions. Separately, 520 remaining
+deferrals change blocker; they are not included in the 649 gains.
+
+This is not an ARM64 all-green claim. The healer units retain native hash-table
+conversion differences (#448): part 1 has 15 failures, part 2 260, part 3 28.
+Against the earlier local ARM64 run, all 15 + 254 + 28 shared failures have
+identical mismatch details. The six additional part-2 cases were previously
+deferred at `SmEdge::GetTolerance` before main wired it; that generator never
+calls stage two or the new query-cache path. The complete x86_64 CI run is the
+remaining full parity gate; no platform exceptions were added to the harness.
+
+## curve.crv_on_surf: complete case-transition audit and promotions (PR #563)
+
+Code head `01890faa8`, integrated with authoritative main `b65597902`, passes all
+seven checks in x86_64 CI run 39928207576: 260 native units, 173 green, 87 partial,
+zero failed. Local fmt, workspace Clippy, kernel tests and wasm pass. Native
+difftest harness tests also pass. No code, fixtures or guards changed after this
+verification; the final follow-up records evidence and promotes certified units.
+
+The complete ARM64 run produced all 260 reports. Against main's CI artifact
+(run 39927450627), the case-name audit finds exactly:
+
+- 545090 original passes still passing; 1436 original deferrals now passing.
+- 6943 deferrals remain: 1344 change blocker, 5599 keep the same blocker.
+- No original pass becomes deferred; no case is removed; the only two added
+  cases are the passing healer sibling-cache regressions.
+- All 239 rejected cases and five known mismatches keep their classifications.
+- The remaining 738 original x86_64 passes fail only against the ARM64 native
+  oracle in the four documented #448 hash-conversion units: geom.hash_table 435,
+  heal.heal_data_p1 15, p2 260, p3 28. All 732 previously reachable ARM64 failures
+  have identical mismatch details; the six newly reachable p2 cases were formerly
+  blocked by main's edge-tolerance stub and do not call stage two. The x86_64 run
+  passes these cases; no exceptions were added to the harness.
+
+Genuine original deferral-to-pass gains (the separate 1344 moved deferrals are
+not included): curve.crv_on_surf 307; heal.face_props 114; heal.gap 16;
+heal.heal_data_p1 25; intersect.curve_class_p1 4; p4 153; p8 214; p9 18;
+intersect.surface_drop_lib_p1 13; query.tess 11; surface.surface_cache_p2 1;
+surface.surface_p9 40; topology.edgeuse_p2 390; topology.edgeuse_p3 80;
+topology.face_p4 50. Total: 1436, plus the two new passing fixtures.
+
+Promote the six downstream units with no deferred or failed cases, in addition
+to CrvOnSurf: heal.gap 445/445, intersect.curve_class_p8 1127/1127,
+query.tess 676/676, surface.surface_cache_p2 905/905,
+topology.edgeuse_p2 4583/4583, topology.edgeuse_p3 4789/4789. Their compared values
+are bit-identical on both native architectures. All previous passes in these
+seven promoted units are retained. Other partial units stay partial.
+
+Every one of the 1436 deferral-to-pass conversions compares actual floating-point
+values (`values_compared > 0`), with maximum relative error exactly zero. None is
+a status-only or vacuous pass.
+
+## surface.cone_p3 to green: typed iso boundaries (PR #598, 2026-10-23)
+
+- `Surface::create_iso_boundaries` (unit `surface.surface_p9`) now returns the typed iso
+  curves (`Curve`: `SmLine` for plane lines and cone rulings, `SmEllipse` circles for
+  revolution sweeps) instead of their B-spline bases. This fixes the `surface.surface_p11`
+  known disagreement above ("boundaries of an `SmPlane`"). It was found through the 30
+  coincident-cylinder cases of `surface.cone_p3`, where C++ returned `SmLine`/`SmEllipse`
+  (types 14010/14021) and Rust returned B-splines (14033) with otherwise identical data.
+  The `surface.surface_p11` generator still uses patches for the other surface; adding
+  plane cases is left as a follow-up.
+
+## intersect.curve_class_p5 to green: B-rep cases (PR #610, 2026-10-23)
+
+- **C++ raises a vertex tolerance while computing a vertex/face gap; the port does not
+  (`topology.vertexuse`, not a part-5 disagreement).** Found by the part-5 B-rep runner:
+  a box whose vertices are moved off their faces by `1e-4` (raw `m_vPoint` edit), vertex
+  tolerances `1e-5`, face tolerances default, `IntersectVertices` with `bHasBigGaps`.
+  `SmVertexuse::GetVertexFaceGap` -> `CalcVertexFaceGap` -> `ComputeUVPoint(FALSE)`: the
+  local projection lands farther than vertex + face tolerance, so upstream falls back to
+  `smsurf_GetSurfaceCache(face surface)` + `GlobalPointSolve`. After the call C++ has the
+  moved vertex's tolerance at `2e-4` (twice its distance to the edge ends); Rust keeps
+  `1e-5`. Same input with `bHasBigGaps = FALSE` (no gap computed) agrees. Suspected cause:
+  building the face's trimmed surface cache validates its edges, and
+  `SmEdge::ValidateGeometry(TRUE)` (SmEdge.cpp:6188, 6213) sets an end vertex's tolerance
+  to twice its gap; the port has no object caches. Not confirmed by stepping the C++.
+  The part-5 generator keeps such projections local (face tolerances `1e-3` whenever it
+  moves a vertex); the gap value itself still agrees.
+- **Large-gap vertex insertion of `IntersectVertices` is not reached.** Its curve point
+  solve passes `dZero` as the distance limit and `XSectTol3d` as the tolerance; in every
+  fixture and generated case (vertices up to `1e-4` off their faces, curves `6e-5` from
+  the vertex) it returns no drop point beyond `XSectTol3d`, so the projections onto the
+  (owner-cleared) face surface run in no case. The large-gap tolerance itself
+  (`sBigGapXSectTol3d` from real vertex uses) is computed and compared.
+- **The SSS cull's removal branch is not reached**: two drop points of one vertex that
+  snap to the same knot. A cubic loop near a vertex gives two drop points, but a Bezier
+  loop's two parameters straddle its span, so they snap to different knots.
+## query.face_p1 hooks: what still blocks the remaining deferrals (claude/face-p1-hooks, 2026-10-23)
+
+- **Blocker (query.face_p2 code).** `SmFace::EdgeCurveOnClassify` / `Point3DClassify` are now
+  dispatched from `ClassifyFaceInterval` (`intersect::curve_class::p7`) on the B-rep that
+  `ClassGeometry::topology_entity` resolves the face handle to. Every `CurveOnClassify` path
+  (`query::face::p2::curve_on_classify`) wraps the caller's objects in `WithMadeTrimCurves`,
+  which does not forward `topology_entity` / `topology_handle(_in)`, so the face handle stays
+  unresolved and the case keeps its `query.face_p1` deferral. This covers all remaining
+  `query.face_p1` deferrals on main: intersect.curve_class_p4 97, topology.brep_p3 38,
+  heal.face_props 27, topology.face_p2 19, query.face_p2 4, query.face_p4 1, topology.brep_p1 1,
+  and blend.fillet_solver_p5 3 (its runner goes through the same wrapper; not checked on the
+  Mac, where the unit fails at main too). The forwarding exists on `codex/primitive-p2-production`
+  (commit 4526f4aa0).
+- **Latent disagreement (shows up once that forwarding lands).** Mac run of this branch plus
+  4526f4aa0's `p2.rs` hunk: heal.face_props 8 failures (gen0009, gen0205, gen0492, gen0616,
+  gen0620, gen1053, gen1315, gen1483) and intersect.curve_class_p4 2 (gen1841, gen1968). All
+  are on `SmSurfOfRevolution` faces (torus/cylinder kinds). In gen0009 the seam-U classification
+  of `HasSeamProblem` yields these intervals:
+  C++ `[0, 0.44758834428291155]` end **VERTEX** (104), `[.., 0.44823953478617956]` start VERTEX, end
+  EDGE t=0.008715797478860355, `[.., 1]` mid FACE; Rust: the first crossing is **EDGE (103) at edge
+  parameter 1.0** (the edge end) instead of the vertex. Everything else matches. Snapshot effect:
+  `m_bBadNearMissSeam` C++ TRUE / Rust FALSE (`values.v[29]` 1 vs 0), `m_eBadNearMissSeamDir`
+  (`v[30]`) C++ 0/1 vs Rust 4. Suspected cause: the boundary intersection of
+  `CurveOnClassify` (vertex intersection or edge-hit-at-edge-end snapping in `query::face::p2`
+  / curve classification), not query.face_p1. With the vertex found, the Rust side would reach
+  `SmFace::FindVertexSector` (topology.face_p4) and defer, as C++ goes through it.
+- **topology.brep_p3 (fixed here).** `brep_curve_solve` (OrientTrimmedSurfaces ray votes) solved
+  against an empty `BrepCache` with no trees (`SM_ERR_NULL_POINTER` from
+  `TopologyObjects::brep_trees`); it now builds them with `make_brep_cache`, as upstream's
+  `CacheMakeOrValidate`. Only reachable once the face classifiers resolve (7 cases became
+  failures in the combined run before this fix; deferred to topology.face_p2 after it).
+- **Adapter hooks left out.** Giving `query::face::p3::LoopObjectCurves` and
+  `topology::face::p2::UvLineObjects` `topology_entity` / `topology_handle` (patch kept outside
+  the repo) resolves their edges as well; combined with the forwarding it shows 5 more
+  topology.face_p2 failures in `CalculateAnInternalPoint` (internal_bss_tiny, extra00702,
+  extra00744, extra00806, extra01154; earlier deferred at `SmEdge::GetCurve`). No face
+  classifier runs in internal_bss_tiny, so these disagreements are not query.face_p1's.
+  extra00744: C++ (0, 0, 5), Rust (-0.659, -0.2026, 4.952) on sphere.smb.
+## surface.surf_of_extrusion_p2: free-extrusion general intersection resolved (2026-10-23)
+
+- **Cause of gen0413 / gen0448 / gen0732 (entry "Free-extrusion general intersection" above).**
+  All three pass `tol = -1e-6`. Upstream's parameter is `const SmApproxTol3d*`; the shim
+  builds it from the double and `SmTol3d(double)` stores `fabs` (`SmTol.h`, `SmTol.cpp:109`), so
+  the C++ intersector runs with `+1e-6`. The Rust special cases converted the tolerance
+  (`approx_tol3d`), but the general intersection got the raw `-1e-6`: `ExpandAbsolute` then
+  shrinks the zero-width boundary-line boxes, `GlobalCurveIntersect` of the plane with the
+  extrusion's boundary lines finds no solution, and no start point is traced. Both extrusion
+  entries now pass `approx_tol3d(k, t)` to `base_global_surface_intersect_in`; the three cases
+  agree and the unit is green (1373/1373). It was not an ownerless-surface problem.
+- **Possible same gap elsewhere (not checked by a difftest yet).** The other `Surface`
+  dispatchers (plane, cone, sphere, torus, surface of revolution) also forward the caller's
+  `approx_tol_3d` to the general intersector without the `SmApproxTol3d` conversion. Only a
+  negative (or `SM_USE_DEFAULT`) tolerance is affected; a generated negative-tolerance case
+  in those runners would show whether they diverge.
