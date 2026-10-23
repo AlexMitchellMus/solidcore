@@ -141,6 +141,24 @@ impl SolutionObject for StaticHandle {
     fn natural_interval(&self) -> Option<Extent1d> {
         (self.0 == 999 || self.0 == -2).then(|| Extent1d::from_min_max(0.0, 1.0))
     }
+    /// The shim's two planes (`GetNaturalUVDomain`), rebuilt as the scene builds them.
+    fn natural_uv_domain(&self) -> Option<Extent2d> {
+        match self.0 {
+            2002 => Some(static_plane(0.0).natural_uv_domain()),
+            2003 => Some(static_plane(1.0).natural_uv_domain()),
+            _ => None,
+        }
+    }
+}
+/// The shim's `SmPlane` at height `z` over the unit UV square.
+fn static_plane(z: f64) -> Surface {
+    Surface::from(solidcore::surface::plane::Plane::new(
+        Point3::new(0.0, 0.0, z),
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        solidcore::geom::vector2d::Vec2::new(1.0, 1.0),
+        &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+    ))
 }
 struct StaticScene {
     points: Vec<Point3>,
@@ -273,6 +291,29 @@ impl TopologyObjects<StaticHandle> for StaticScene {
     fn shape_member(&self, _: StaticHandle) -> ShapeMember {
         ShapeMember::Other
     }
+    // SmTol::GetZoneTol3d(const SmObject*) of the shim's objects: topology's own
+    // GetTolerance, a curve's edge's or a surface's face's tolerance (the system's
+    // without one, as for the analytic curve), a B-rep's tolerance
+    fn object_zone_tol_3d(&self, k: &Kernel, object: StaticHandle) -> SolidResult<f64> {
+        let system = || {
+            solidcore::geom::tol::zone_tol_3d(k, solidcore::geom::tol::SmallTopoType::NormalSize)
+        };
+        match object.0 {
+            1000 | 1001 => Ok(1e-5),
+            2000 | 2001 => self.face_tolerance(object),
+            2002 | 2003 => match self.surface_face(object)? {
+                Some(face) => self.face_tolerance(face),
+                None => Ok(system()),
+            },
+            2004 => self.edge_tolerance(object),
+            999 => match self.curve_edge(object)? {
+                Some(edge) => self.edge_tolerance(edge),
+                None => Ok(system()),
+            },
+            -2 => Ok(system()),
+            _ => self.vertex_tolerance(object),
+        }
+    }
 }
 fn static_rust(case: &Case) -> Result<Output, HarnessError> {
     let input = static_input(case)?;
@@ -340,15 +381,7 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
         empty_second,
         curve: Curve::from(BSplineCurve::from_nurb(nurb, 3, false)),
         edge_owner: i.entry == 7,
-        surfaces: [0.0, 1.0].map(|z| {
-            Surface::from(solidcore::surface::plane::Plane::new(
-                Point3::new(0.0, 0.0, z),
-                Vec3::new(1.0, 0.0, 0.0),
-                Vec3::new(0.0, 1.0, 0.0),
-                solidcore::geom::vector2d::Vec2::new(1.0, 1.0),
-                &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
-            ))
-        }),
+        surfaces: [0.0, 1.0].map(static_plane),
     };
     let vectors = [Vec3::new(0.0, 0.0, 1.0), Vec3::new(1.0, 0.0, 0.0)];
     let options = TopologySolveOptions {
