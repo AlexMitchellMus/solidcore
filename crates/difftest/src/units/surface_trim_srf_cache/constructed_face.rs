@@ -171,7 +171,7 @@ mod tests {
                 out.as_slice()
             };
             assert_eq!(queries.len(), 24);
-            let classes: Vec<_> = queries.chunks_exact(6).map(|q| q[4]).collect();
+            let classes: Vec<_> = queries.as_chunks::<6>().0.iter().map(|q| q[4]).collect();
             assert_eq!(
                 classes,
                 [
