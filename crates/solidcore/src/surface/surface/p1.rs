@@ -33,7 +33,7 @@
 //! | [`Surface::create_silhouette_curves`]             | `CreateSilhouetteCurves`                         |
 //! | [`Surface::evaluate_1st_derivatives`], [`Surface::evaluate_2nd_derivatives`] | `Evaluate1stDerivatives`, `Evaluate2ndDerivatives` |
 //! | [`Surface::evaluate_step`], [`Surface::evaluate_step_point`], [`Surface::evaluate_simple`] | `EvaluateSTEP`, `EvaluateSTEPPoint`, `EvaluateSimple` |
-//! | [`Surface::domain_with_continuity`]               | `GetDomainWithContinuity`                        |
+//! | [`Surface::domain_with_continuity`], [`Surface::domain_with_continuity_from_cache`] | `GetDomainWithContinuity`                        |
 //! | [`Surface::convert_domain_from_step_to_nurbs`], [`Surface::convert_domain_from_nurbs_to_step`] | `ConvertDomainFromSTEPToNURBS`, `ConvertDomainFromNURBSToSTEP` |
 //! | [`Surface::is_periodic`]                          | `IsPeriodic`                                     |
 //! | [`Surface::is_degenerate_point`], [`base_is_degenerate_point`] | `IsDegeneratePoint`                 |
@@ -55,13 +55,17 @@
 //! | [`CsIntersectEnfo`], [`CsNormalizeEnfo`], [`FindPsNormalEnfo`], [`SspIntersectEnfo`], [`SsiNormalizeEnfo`], [`SsNormalizeEnfo`], [`SssIntersectEnfo`] | the constructors of `SmCSIntersectENFO`, `SmCSNormalizeENFO`, `SmFindPSNormalENFO`, `SmSSPIntersectENFO`, `SmSSINormalizeENFO`, `SmSSNormalizeENFO`, `SmSSSIntersectENFO` |
 //!
 //! Deviations:
+//! - **Nesting.** `StepSurface::new` return `InvalidInput` when the base surface would nest
+//!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
+//!   (32; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   cloning and dropping of nested geometry (no limit upstream).
 //! - **STEP surfaces.** `m_pSurface` is an owned copy ([`Box<Surface>`]) whether or not
 //!   upstream owns it (`m_bOwnsSurface` is kept as a flag); `None` is the empty
 //!   constructor's null pointer, where upstream would crash the methods return
 //!   [`SolidError::InvalidInput`] (or an uninitialised domain). `GetMemoryUsed` and
 //!   `WriteToDB` have no counterpart. Nested STEP surfaces read from a database are
 //!   bounded by the reader's nesting limit. Temporary evaluation copies retain
-//!   exact nested geometry and share `Surface`'s 64-level owned-geometry bound.
+//!   exact nested geometry and share `Surface`'s `MAX_GEOMETRY_NESTING` owned-geometry bound.
 //! - **Caches.** Upstream keeps a surface's cache on the surface and reuses it until it
 //!   changes. [`make_surface_cache`] and [`make_trim_srf_cache`] build a fresh cache for
 //!   the caller (the build is deterministic); [`validate_surface_cache`] is the rest of
@@ -156,9 +160,10 @@ use crate::surface::trim_srf_cache::{CacheFace, TrimSrfCache};
 use crate::topology::database_io::{DatabaseReader, FileType};
 
 use super::p2::{
-    cs_are_perpen_disjoint, evaluate_geometric, intersect_curve_and_split, original_surface,
-    DropCurveFail, IsoCurveLengthIntegrand, LsiGlobalSolver, SurfaceEval, SurfaceEvaluate,
-    STEP_SURFACE_TYPE, SURF_OF_EXTRUSION_TYPE, SURF_OF_REVOLUTION_TYPE,
+    check_geometry_nesting, cs_are_perpen_disjoint, evaluate_geometric, intersect_curve_and_split,
+    original_surface, DropCurveFail, IsoCurveLengthIntegrand, LsiGlobalSolver, NestedGeometry,
+    SurfaceEval, SurfaceEvaluate, STEP_SURFACE_TYPE, SURF_OF_EXTRUSION_TYPE,
+    SURF_OF_REVOLUTION_TYPE,
 };
 use super::p7::{SpGlobalSolver, SsGlobalSolver};
 use super::{Surface, SurfaceKind};
@@ -395,12 +400,21 @@ impl StepSurface {
     pub const CLASS_STRING: &'static str = "SmSTEPSurface";
 
     /// `SmSTEPSurface(rSurface, bOwnsSurface)`.
-    #[must_use]
-    pub fn new(surface: Surface, owns_surface: bool) -> Self {
-        Self {
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` when `surface` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1.
+    pub fn new(surface: Surface, owns_surface: bool) -> Result<Self> {
+        check_geometry_nesting(
+            NestedGeometry::Surface(&surface),
+            1,
+            "surface::surface::p1::StepSurface::new",
+        )?;
+        Ok(Self {
             surface: Some(Box::new(surface)),
             owns_surface,
-        }
+        })
     }
 
     /// The empty constructor for I/O (`SmSTEPSurface()`): no base surface.
@@ -621,7 +635,7 @@ impl StepSurface {
         let base = Surface::read_from_db(k, base_type, db, version)?;
 
         // load object
-        Ok(Self::new(base, true))
+        Self::new(base, true)
     }
 }
 
@@ -1609,7 +1623,37 @@ impl Surface {
             Some(context) => context.build_surface_cache(k, self, handle),
             None => get_surface_cache::<O>(k, self, None),
         }?;
+        self.domain_with_continuity_using(min_continuity, uv, uv_vector, &cache)
+    }
 
+    /// [`Surface::domain_with_continuity`] over a caller-held surface cache
+    /// (`DomainWithContinuity`): upstream's `smsurf_GetSurfaceCache(this)` returns
+    /// the one cache of the surface, including the trimmed cache of a face-owned
+    /// surface. The continuity arrays come from that cache's tree build.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` for an unknown knot position.
+    pub fn domain_with_continuity_from_cache<O: Copy + PartialEq>(
+        &self,
+        min_continuity: ContinuityType,
+        uv: Point2,
+        uv_vector: Vec2,
+        cache: &SurfaceCache<O>,
+    ) -> Result<Extent2d> {
+        if let SurfaceKind::Step(s) = self.kind() {
+            return s.domain_with_continuity();
+        }
+        self.domain_with_continuity_using(min_continuity, uv, uv_vector, cache)
+    }
+
+    fn domain_with_continuity_using<O: Copy + PartialEq>(
+        &self,
+        min_continuity: ContinuityType,
+        uv: Point2,
+        uv_vector: Vec2,
+        cache: &SurfaceCache<O>,
+    ) -> Result<Extent2d> {
         // Start out with natural domain and then shrink it if needed
         let ret_domain = self.natural_uv_domain();
         let mut min = ret_domain.min();
@@ -3855,6 +3899,24 @@ mod tests {
         assert_eq!(at(&step, 1, 0), du);
     }
 
+    /// The caller-held cache overload of `GetDomainWithContinuity` returns the same
+    /// domain as the one that builds the cache itself.
+    #[test]
+    fn domain_with_continuity_from_cache_matches_direct() {
+        let k = &Kernel::default();
+        let s = bilinear();
+        let uv = Point2::new(0.5, 0.5);
+        let dir = Vec2::new(1.0, 0.0);
+        let cache =
+            get_surface_cache::<crate::surface::surface::p4::NoObject>(k, &s, None).unwrap();
+        assert_eq!(
+            s.domain_with_continuity(k, ContinuityType::G1, uv, dir)
+                .unwrap(),
+            s.domain_with_continuity_from_cache(ContinuityType::G1, uv, dir, &cache)
+                .unwrap()
+        );
+    }
+
     fn same_points(a: &Surface, b: &Surface) {
         let k = &Kernel::default();
         for uv in [(0.0, 0.0), (0.25, 0.5), (1.0, 0.75)] {
@@ -3955,7 +4017,9 @@ mod tests {
     fn step_surface_wraps_base() {
         let k = &Kernel::default();
         let base = bilinear();
-        let st = Surface::new(SurfaceKind::Step(StepSurface::new(base.clone(), true)));
+        let st = Surface::new(SurfaceKind::Step(
+            StepSurface::new(base.clone(), true).unwrap(),
+        ));
         assert_eq!(st.type_code(), STEP_SURFACE_TYPE);
         assert!(st.is_kind_of(STEP_SURFACE_TYPE).unwrap());
         let uv = Point2::new(0.5, 0.5);
