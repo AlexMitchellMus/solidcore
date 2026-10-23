@@ -113,8 +113,7 @@ impl<O> FilletExecutiveStore<O> {
     /// Resolve a solver's back pointer to the actual executive it names.
     ///
     /// # Errors
-    /// As [`Self::resolve`]; `Unported` for legacy opaque caller state, which never
-    /// constitutes a registered object binding.
+    /// As [`Self::resolve`]; `InvalidInput` for unresolved caller context.
     pub fn resolve_solver(
         &self,
         solver: &crate::blend::fillet_solver::p1::FilletSolver,
@@ -123,9 +122,9 @@ impl<O> FilletExecutiveStore<O> {
         match solver.executive.as_ref() {
             None => Ok(None),
             Some(FilletExecutiveRef::Registered(reference)) => self.resolve(reference).map(Some),
-            Some(FilletExecutiveRef::Unresolved) => Err(SolidError::unported(
-                "registered fillet executive",
-                "blend.fillet_executive_p1",
+            Some(FilletExecutiveRef::Unresolved) => Err(SolidError::invalid_input(
+                OP,
+                "solver has no registered executive context",
             )),
         }
     }

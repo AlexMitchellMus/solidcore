@@ -418,6 +418,9 @@ mod registration_tests {
         assert_ne!(reference, copy_reference);
         assert!(first.resolve(&copy_reference).is_err());
         solver.set_fillet_executive(Some(FilletExecutiveRef::Unresolved));
-        assert!(first.resolve_solver(&solver).unwrap_err().is_unported());
+        assert!(matches!(
+            first.resolve_solver(&solver),
+            Err(solidcore::SolidError::InvalidInput { .. })
+        ));
     }
 }

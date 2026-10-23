@@ -595,7 +595,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             }
         }
         let executive = self.registration.reference().ok_or_else(|| {
-            SolidError::unported("registered fillet executive", "blend.fillet_executive_p1")
+            SolidError::invalid_input(OP, "executive is not retained in its caller's store")
         })?;
         self.solvers.push(solver);
         access.solver_base_mut(solver)?.set_fillet_executive(Some(

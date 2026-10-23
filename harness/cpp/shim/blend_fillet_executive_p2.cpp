@@ -558,6 +558,7 @@ void op_loader(Rd& rd, std::vector<double>& out)
     }
     int64_t count=rd.idx();
     std::vector<LoaderSolver*> solvers;
+    std::vector<SmSurface*> detached_surfaces;
     SmPlane plane0(SmPoint3d(0,0,0),SmVector3d(0,0,1),box->GetContext());
     SmPlane plane1(SmPoint3d(0,0,0),SmVector3d(0,1,0),box->GetContext());
     SmEdge* closed_edge=NULL;
@@ -581,11 +582,18 @@ void op_loader(Rd& rd, std::vector<double>& out)
                 solver->attach_wire(uses[0],uses[1]);
             }
         }
-        for(ULONG rail=0;rail<2;rail++) if(!(mask&(1<<rail))) solver->SetSurface(rail,NULL);
+        for(ULONG rail=0;rail<2;rail++) if(!(mask&(1<<rail))) {
+            detached_surfaces.push_back(solver->GetSurface(rail));
+            solver->SetSurface(rail,NULL);
+        }
         if(geometry_surfaces) { SmTArray<SmFilletGeom*> geoms;solver->GetFilletGeoms(geoms);solver->SetFilletGeomForSurfaces(geoms[0]); }
         solvers.push_back(solver);
     }
-    if(!rd.ok) { for(auto* solver:solvers) delete solver;delete box;return; }
+    if(!rd.ok) {
+        for(auto* solver:solvers) delete solver;
+        for(auto* surface:detached_surfaces) delete surface;
+        delete box;return;
+    }
     {
         LoaderExecutive ex0(*box->GetContext(),box),ex1(*box->GetContext(),box);
         LoaderExecutive* executives[2]={&ex0,&ex1};
@@ -634,6 +642,7 @@ void op_loader(Rd& rd, std::vector<double>& out)
         }
     }
     for(auto* solver:solvers) delete solver;
+    for(auto* surface:detached_surfaces) delete surface;
     delete box;
 }
 
