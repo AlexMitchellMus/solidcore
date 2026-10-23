@@ -807,14 +807,27 @@ fn domain_values(domain: Extent2d) -> [f64; 4] {
     [lo.x, lo.y, hi.x, hi.y]
 }
 fn rust_projection(kernel: &Kernel, fixture: &Fixture, brep: &Brep) -> HResult<Projection> {
+    // the shim's GetFaces / GetLoops / GetEdges / GetEdgeuses / GetVertices: the live
+    // lists (a deleted record stays in its arena, unreachable, `topology.brep_p3`),
+    // loops through the faces and edge uses through the edges, as upstream walks them
+    let faces = brep_p1::faces(brep, None).map_err(setup)?;
+    let edges = brep_p1::edges(brep, None).map_err(setup)?;
+    let mut loops = 0;
+    for &f in &faces {
+        loops += brep.face(f).map_err(setup)?.loops.len();
+    }
+    let mut uses = 0;
+    for &e in &edges {
+        uses += brep.edge(e).map_err(setup)?.edgeuses.len();
+    }
     let counts = [
         brep.regions().len() as i64,
         brep.shells().len() as i64,
-        brep.faces().len() as i64,
-        brep.loops().len() as i64,
-        brep.edges().len() as i64,
-        brep.edgeuses().len() as i64,
-        brep.vertices().len() as i64,
+        faces.len() as i64,
+        loops as i64,
+        edges.len() as i64,
+        uses as i64,
+        brep_p1::vertices(brep, None).map_err(setup)?.len() as i64,
     ];
     let mut result = Projection {
         counts: projected_counts(fixture, counts),
