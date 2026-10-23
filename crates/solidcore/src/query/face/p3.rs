@@ -640,6 +640,21 @@ impl<O: LoopObject + PartialEq> ClassGeometry<O> for LoopObjectCurves<'_, O> {
             _ => None,
         }
     }
+
+    fn topology_entity(&self, object: O) -> Option<(&Brep, EntityRef)> {
+        if object == self.face {
+            return Some((self.b, EntityRef::Face(self.f)));
+        }
+        Some((self.b, object.as_topology()?))
+    }
+
+    fn topology_handle(&self, entity: EntityRef) -> Option<O> {
+        match entity {
+            EntityRef::Face(f) if f == self.f => Some(self.face),
+            EntityRef::Loop(l) => Some(O::from_loop(l)),
+            e => O::from_topology(e),
+        }
+    }
 }
 
 impl<O: LoopObject + PartialEq> CurveOnClassifyObjects<O> for LoopObjectCurves<'_, O> {
