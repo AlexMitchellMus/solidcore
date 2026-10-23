@@ -46,6 +46,8 @@
 //!   upstream's `NULL` checks (`SM_ERR_INVALID_INPUT`) hold by construction.
 //! - **Statuses.** `SM_ERR_INVALID_INPUT` is [`SolidError::InvalidInput`]; errors of the
 //!   called constructors pass through unchanged.
+//! - [`create_sphere_no_pole_with_tolerance`] additionally exposes an explicit
+//!   B-rep tolerance and the native constructor's boundary-fitting tolerance.
 //! - **Context.** The B-rep entry points take the caller's [`Kernel`] (upstream's API
 //!   context): `new SmBrep()` is [`crate::topology::brep::p3::new_brep`] and
 //!   `SmPrimitiveCreation` runs on it directly (p1 methods) or through a
@@ -539,16 +541,57 @@ pub fn create_partial_sphere(
 /// # Errors
 ///
 /// [`SolidError::InvalidInput`] unless the radius is finite and its magnitude above
-/// `SM_EFF_ZERO`; then [`SolidError::Unported`]
-/// (`SmBrep::SmBrep`).
+/// `SM_EFF_ZERO`, or an error constructing, projecting or stitching the patches.
 pub fn create_sphere_no_pole(k: &mut Kernel, center: Point3, radius: f64) -> Result<Brep> {
+    sphere_no_pole(k, center, radius, None)
+}
+
+/// A pole-free sphere with an explicit B-rep and boundary-fitting tolerance.
+///
+/// The tolerance must be finite and greater than `SM_EFF_ZERO`. Use a tighter
+/// construction tolerance when precise mass properties must resolve the fitted
+/// patch boundaries more accurately than the default `1e-5`.
+///
+/// # Errors
+/// Invalid radius or tolerance, or an error constructing or stitching the patches.
+pub fn create_sphere_no_pole_with_tolerance(
+    k: &mut Kernel,
+    center: Point3,
+    radius: f64,
+    tolerance: f64,
+) -> Result<Brep> {
+    if !is_positive_dim(tolerance) {
+        return Err(SolidError::invalid_input(
+            OP_SPHERE_NO_POLE,
+            "invalid construction tolerance",
+        ));
+    }
+    sphere_no_pole(k, center, radius, Some(tolerance))
+}
+
+fn sphere_no_pole(
+    k: &mut Kernel,
+    center: Point3,
+    radius: f64,
+    tolerance: Option<f64>,
+) -> Result<Brep> {
     if !is_non_zero_radius(radius) {
         return Err(SolidError::invalid_input(OP_SPHERE_NO_POLE, "zero radius"));
     }
     let mut brep = new_brep(k)?;
+    if let Some(tolerance) = tolerance {
+        brep.set_tolerance(tolerance);
+    }
     let mut state = ArenaNotifyState::new(&brep);
     let mut env = state.env(None);
-    PrimitiveCreation::create_sphere_no_pole(k, &mut brep, radius, center, ZONE_TOL_3D, &mut env)?;
+    PrimitiveCreation::create_sphere_no_pole(
+        k,
+        &mut brep,
+        radius,
+        center,
+        tolerance.unwrap_or(ZONE_TOL_3D),
+        &mut env,
+    )?;
     Ok(brep)
 }
 
