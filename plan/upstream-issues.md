@@ -3983,6 +3983,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** Boolean failure (`SM_ERR`), or a wrong body where the caller does not check.
 - **Rust port:** `ProtoTopologyManager::resolve_proto_edge` (`crates/solidcore/src/topology/proto_topology/p2.rs`) treats such a proto edge as degenerate when `split_self_loops_on_vertices` is off, which the Boolean's topology intersector sets (documented deviation); the default keeps upstream's split for the unit's difftest. The full union does not run in Rust yet (`plan/findings.md`, issue #480).
 
+#### WR-254. `ManifoldBoolean` keeps a face lying in the slicing sheet in both parts of `SM_BO_SLICE`
+- **Location:** `source/SMLib/src/SmMerge.cpp`, `SmMerge::ManifoldBoolean`, the coincident-face branches of steps 7.3e (`:3293`-`3306`) and 7.B (`:3527`-`3539`), where `case SM_BO_SLICE:` falls through to the `SM_BO_DIFFERENCE` rule.
+- **What happens:** The difference rule deletes a coincident pair only when both faces are on the same side and not non-solid, judged from the void flags of the regions on each side. A slice's other body is always an oriented sheet (checked at `:2531`), which is void on both sides, so a pair is always either non-solid or on opposite sides and is always kept. A body face lying in the slicing sheet, or the sheet's piece of it, is then kept in both parts. In one part it has void on both sides and sits on non-manifold and lamina edges, so that part fails the check.
+- **Trigger:** A box joined to a slab, sliced with `SM_BO_SLICE` by an oriented sheet on the plane x = -3.5 of the slab's face. Expected: the box part has 6 faces (volume 3434) and the slab part 8 faces (volume 17116.2). Actual: the box part has 7 faces, one at x = -3.5 outside the box. tangency-labs/solidcore#528 (SolidCraft regression rig, tangency-labs/solidcraft branch `kernel-smlib`).
+- **How found:** issue #528.
+- **Confirmed:** yes, by the reporter on the C++ build (SolidCraft rig); not rerun here.
+- **Severity:** wrong result (an invalid part).
+- **Rust port:** `coincident_keep` (`crates/solidcore/src/boolean/merge/p4.rs`) gives `Slice` its own rule in both coincident branches when the primary face bounds material (solid on exactly one side; documented deviation): the pair is kept when that material lies on the side the sheet's `SM_OT_SAME` faceuse bounds, and deleted otherwise. That is the side rule step 7.4d already applies to faces in a radial sector. The coincident faceuses point the same way (`SmEdge::FindRadialSector`), so the test is "the primary faceuse's region is solid" equals "the sheet faceuse is `SM_OT_SAME`". Primary faces with no material side (a sheet primary) or material on both sides keep upstream's difference rule, as do all other operations. The fork's fix (ee2a67b, branch `port-split-coplanar`) is described the same way for a solid. No difftest case reaches these branches yet: the `boolean.merge_p4` slice cases with coincident sheets (`op10-overlap-sheets`, `op10-equal-sheets`) defer earlier, and their primary is a sheet, which keeps upstream's rule.
+
 #### WR-252. `TrimWithDomain` pushes a trim boundary one rounding error inside a knot 10 * SM_EFF_ZERO_SQRT away, leaving a sliver span
 - **Location:** `source/SMLib/src/SmBSplineSurfaceNLib.cpp`, `SmBSplineSurface::TrimWithDomain`, the U snap loop (`if (ul >= dKnot || i == 0) ... else { ul = dKnot - 10.0 * dTolMin; ...}` and the mirrored `ur` branch), and the same in the V loop.
 - **What happens:** a lower trim boundary within `dTolMin = SM_EFF_ZERO_SQRT * (1 + |ul|)` of a knot is snapped onto the knot when it is at or above it, but moved to `knot - 10 * dTolMin` when it is below it, by any amount down to one ULP (upper boundaries likewise). The new surface then starts with a span of `10 * dTolMin`, 2.1e-4 at u = 20. Two faces whose domains differ by one ULP get different knot structures.
@@ -3999,3 +4008,44 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** no (the closed non-rail edge: source only; the harness refuses both paths; the closed squeezed edge crashed once in a generated run, not reproduced in isolation).
 - **Severity:** crash/UB (use after free).
 - **Rust port:** `FilletCorner::squeeze_edge` follows the same loop on ids (no frees), so it returns `NotFound` or deletes consistently; the difftest shim and runner refuse exactly the inputs whose loop reaches a freed vertex use or the dangling survivor, and compare the defined early-error paths (`SM_ERR` for an edge or vertex not in the corner's lists).
+
+## Note: duplicate IDs (2026-10-23)
+
+Parallel PRs gave six IDs to more than one entry. They are not renumbered, because code
+comments, shims, unit notes, findings and PRs already cite them; when citing one of these
+IDs, add the function name so the entry is unambiguous. Each entry, by its section and
+title (other references in the repo in brackets):
+
+- **UB-100:** (a) Surfaces and volumes, `SmDerivSurfDefinition::GetSampleValues` missing
+  tangent reference [`solidcore-ffi` `surface_surface_p6.rs`, `surface.surface_p6`
+  notes, findings]; (b) Intersection, `SmPolyBrep::CalculateBoundingBox` null point array
+  for a pseudo box.
+- **UB-185:** (a) Topology, `SmFilletVertex::CalcMateGeom` unbounded recursion through a
+  cycle of mates [`blend.fillet_geom_p3` notes, `MAX_MATE_DEPTH`]; (b) Numerical
+  integration (near the end of the file), fillet executive `m_bIsInitialized`
+  indeterminate before parameter setup [`blend_fillet_executive_p2`/`p3` shims and FFI,
+  findings].
+- **UB-204:** (a) NLib: matrices and polynomials, `SmMatrix(rows, cols)` uninitialised
+  inline storage used by `SmLocalSolveNd` [difftest `curve_curve_p9.rs`, findings
+  (#94)]; (b) Surfaces and volumes, `SmFilletSolver::GetSurface` unbounded recursion
+  through the geometry set [findings, `blend.fillet_solver_p1` pseudo B-rep entry].
+- **UB-210:** (a) Topology, `SmBrep::DeleteEdge` reads `pSurvF` outside the merge branch
+  [`topology/brep/p4.rs`, `topology.brep_p4` notes]; (b) Topology,
+  `SmFilletEdge::CalcFilletIntFillet` reads the context of a missing fillet corner
+  [`blend_fillet_geom_p3` shim, runner and fixtures, `blend.fillet_geom_p3` notes].
+- **UB-238** (four entries): (a) NLib: knots and basis functions,
+  `SmBSplineCurve::CreateCanonical` heap corruption for a NaN knot [`solidcore-ffi`
+  `primitive_api_curves.rs`, fuzz corpus]; (b) Spatial structures and small geometry,
+  vertex/vertex and edge/edge topology solvers dereference `NULL` in a release
+  `SM_ASSERT` [`solidcore-ffi` `intersect_topology_solver_p1.rs`]; (c) Curves,
+  `SetIntersectionCurveThroughPoint` builds UV trim curves from the address of a pointer
+  slot; (d) Topology, `SmFilletGeom::MakeRailEdgeuse` leaves a deleted vertex use linked
+  in the fillet vertex [`blend_fillet_geom_p5` shim and FFI, `blend.fillet_geom_p5`
+  notes, findings].
+- **WR-190:** (a) Topology, attributes, solvers, `SmFilletSolver::RecordFilletError`
+  reports rail 0 for rail 1 [`blend/fillet_solver/p2.rs`]; (b) Curves,
+  `SmFilletEdge::CalcBlendingRail` builds its Hermite fallback as a degree-2 curve
+  [`blend/fillet_geom/p6.rs`].
+
+New entries take the next free number after the highest in their series, as the
+Numbering paragraph at the top says.
