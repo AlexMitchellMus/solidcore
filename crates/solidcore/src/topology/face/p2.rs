@@ -433,30 +433,6 @@ impl ClassGeometry<UvLineHandle> for UvLineObjects<'_> {
             _ => None,
         }
     }
-    fn topology_entity(&self, o: UvLineHandle) -> Option<(&Brep, EntityRef)> {
-        let e = match o {
-            UvLineHandle::Face => EntityRef::Face(self.f),
-            UvLineHandle::Vertex(v) => EntityRef::Vertex(v),
-            UvLineHandle::Edge(e) => EntityRef::Edge(e),
-            UvLineHandle::Vertexuse(vu) => EntityRef::Vertexuse(vu),
-            UvLineHandle::Edgeuse(eu) => EntityRef::Edgeuse(eu),
-            UvLineHandle::Surface
-            | UvLineHandle::Line
-            | UvLineHandle::EdgeCurve(_)
-            | UvLineHandle::Trim(_) => return None,
-        };
-        Some((self.b, e))
-    }
-    fn topology_handle(&self, e: EntityRef) -> Option<UvLineHandle> {
-        Some(match e {
-            EntityRef::Face(f) if f == self.f => UvLineHandle::Face,
-            EntityRef::Vertex(v) => UvLineHandle::Vertex(v),
-            EntityRef::Edge(e) => UvLineHandle::Edge(e),
-            EntityRef::Vertexuse(vu) => UvLineHandle::Vertexuse(vu),
-            EntityRef::Edgeuse(eu) => UvLineHandle::Edgeuse(eu),
-            _ => return None,
-        })
-    }
 }
 
 impl CurveOnClassifyObjects<UvLineHandle> for UvLineObjects<'_> {
