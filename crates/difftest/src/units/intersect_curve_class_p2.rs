@@ -1273,35 +1273,61 @@ mod tests {
         assert!(deferred * 3 < total, "{deferred} of {total} deferred");
     }
 
+    /// The 17 baseline cases (main before the fallback) that deferred on
+    /// `SmFace::GetSurface`: generated name and seed from the baseline report.
+    const MIXED_TOPOLOGY_CASES: [(&str, u64); 17] = [
+        ("gen0009", 128_163_503_876_321_781_80),
+        ("gen0036", 128_163_503_876_321_782_07),
+        ("gen0039", 128_163_503_876_321_782_10),
+        ("gen0205", 128_163_503_876_321_783_76),
+        ("gen0212", 128_163_503_876_321_783_83),
+        ("gen0519", 128_163_503_876_321_786_90),
+        ("gen0667", 128_163_503_876_321_788_38),
+        ("gen0700", 128_163_503_876_321_788_71),
+        ("gen0722", 128_163_503_876_321_788_93),
+        ("gen0748", 128_163_503_876_321_789_19),
+        ("gen0919", 128_163_503_876_321_790_90),
+        ("gen0971", 128_163_503_876_321_791_42),
+        ("gen0973", 128_163_503_876_321_791_44),
+        ("gen1022", 128_163_503_876_321_791_93),
+        ("gen1025", 128_163_503_876_321_791_96),
+        ("gen1383", 128_163_503_876_321_795_54),
+        ("gen1415", 128_163_503_876_321_795_86),
+    ];
+
     /// A classification face may stay on the base pool's bare face while a real one-face
     /// B-rep is also present. The native `SmFace::GetSurface` answers from that stand-in's
     /// surface, so `GetMinUV` / `GetMaxUV` must compare real values through the bare fallback.
     #[test]
-    fn mixed_real_and_bare_topology_compares() {
-        let mut rng = Rng::new(128_163_503_876_321_781_80);
-        let v = Runner.generate(&mut rng).expect("generated mixed-topology case");
-        let s: Script = serde_json::from_value(v).unwrap();
-        let bare_face = s
-            .objects
-            .iter()
-            .position(|o| matches!(o, ObjIn::Face(Some(_))))
-            .expect("base pool bare face with a surface");
-        assert!(s.face.is_some(), "real one-face B-rep");
-        assert!(
-            s.cc.iter().any(|c| c.face == Some(bare_face)),
-            "classification face stays on the bare stand-in"
-        );
+    fn baseline_mixed_topology_cases_compare() {
+        for (name, seed) in MIXED_TOPOLOGY_CASES {
+            let mut rng = Rng::new(seed);
+            let v = Runner
+                .generate(&mut rng)
+                .unwrap_or_else(|| panic!("{name}: generation rejected"));
+            let s: Script = serde_json::from_value(v).unwrap();
+            let bare_face = s
+                .objects
+                .iter()
+                .position(|o| matches!(o, ObjIn::Face(Some(_))))
+                .unwrap_or_else(|| panic!("{name}: no bare face with a surface"));
+            assert!(s.face.is_some(), "{name}: no real one-face B-rep");
+            assert!(
+                s.cc.iter().any(|c| c.face == Some(bare_face)),
+                "{name}: classification face is not the bare stand-in"
+            );
 
-        let native = cpp(&s).expect("native");
-        let rust_out = rust(&s).expect("rust");
-        assert!(
-            rust_out.deferred.is_none(),
-            "unexpected deferral: {:?}",
-            rust_out.deferred
-        );
-        let diff = crate::compare::compare(&native, &rust_out, &[]);
-        assert!(diff.pass(), "{:?}", diff.mismatches);
-        assert!(diff.values_compared > 0, "no native values compared");
+            let native = cpp(&s).unwrap_or_else(|e| panic!("{name}: native: {e}"));
+            let rust_out = rust(&s).unwrap_or_else(|e| panic!("{name}: rust: {e}"));
+            assert!(
+                rust_out.deferred.is_none(),
+                "{name}: unexpected deferral: {:?}",
+                rust_out.deferred
+            );
+            let diff = crate::compare::compare(&native, &rust_out, &[]);
+            assert!(diff.pass(), "{name}: {:?}", diff.mismatches);
+            assert!(diff.values_compared > 0, "{name}: no native values compared");
+        }
     }
 
     #[test]
