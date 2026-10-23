@@ -2082,10 +2082,10 @@ pub fn get_cci_geometry_in<'g, O: ClassObject, G: ClassGeometry<O>>(
 
 /// The B-rep edge behind edge handle `edge` ([`ClassGeometry::topology_entity`]); an
 /// adapter that cannot resolve it keeps the `SmEdge::GetFaces` deferral.
-fn cci_edge_of<'g, O: ClassObject>(
-    geometry: &'g impl ClassGeometry<O>,
+fn cci_edge_of<O: ClassObject>(
+    geometry: &impl ClassGeometry<O>,
     edge: O,
-) -> Result<(&'g crate::topology::Brep, crate::topology::EdgeId)> {
+) -> Result<(&crate::topology::Brep, crate::topology::EdgeId)> {
     match geometry.topology_entity(edge) {
         Some((b, EntityRef::Edge(e))) => Ok((b, e)),
         Some(_) => Err(SolidError::invalid_input(

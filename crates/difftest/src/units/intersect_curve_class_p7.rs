@@ -362,8 +362,8 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
     if let Some(face) = &s.face {
         add_face(&k, &mut pool, face)?;
     }
-    let mut ccs = [build_cc(&k, &geo, &s.cc[0])?, build_cc(&k, &geo, &s.cc[1])?];
-    let geo = Geo(&geo);
+    let mut ccs = [build_cc(&k, &pool, &s.cc[0])?, build_cc(&k, &pool, &s.cc[1])?];
+    let geo = Geo(&pool);
     let mut o: Vec<f64> = Vec::new();
     for x in &s.ops {
         let (code, t) = x.code_t();
