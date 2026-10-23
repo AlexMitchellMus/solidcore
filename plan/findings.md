@@ -17814,3 +17814,20 @@ The loader contribution excludes #596's owned edgeuse source change.
     `SM_NO_POST_EDIT` notifications (an identity slot plus a context at each geometry
     edit). This is queued as follow-up work. When it lands, remove the six
     `known_mismatches.toml` entries (a listed case that passes fails the unit).
+
+
+### blend.fillet_executive_p1 — standalone validation supersedes dependency assumption
+
+The loader's current standalone fixtures pass without PR #596's edgeuse change:
+89/89 executive p1, 267 passes / 8 deferrals p2, and 245 / 46 p3. Their complete
+records match the prior actual-#596 integration. At `ed5331d30` on main
+`e055c6fbc`, the standalone 260-unit sweep completed 554,897 cases with zero
+failures. After main advanced to `1ba79426f` (including the fillet-law changes),
+the nine affected loader/solver/intersector suites also pass, with all three
+loader records unchanged. This supersedes the earlier statement that the loader
+requires #596 or must remain blocked by that integration's offset failure.
+
+The separate #596 integration's eight `gen0730` offset discrepancies remain
+real. On the standalone sweep this case defers at `SmFace::GetTolerance`
+(`topology.face_p2`, zero values compared); it is not presented as a passing
+comparison or relabeled. No #596-owned source is included in this contribution.
