@@ -1468,7 +1468,7 @@ mod tests {
     }
 
     #[test]
-    fn primitive_access_uses_the_same_brep_and_reports_the_real_constructor_gap() {
+    fn primitive_access_uses_the_same_brep_and_runs_the_planar_face_constructor() {
         let mut store = SweepStore::owned();
         let c = store.insert_kernel(Kernel::default()).unwrap();
         let b = store.create_brep(c).unwrap();
@@ -1483,17 +1483,17 @@ mod tests {
         assert!(store.brep(b).unwrap().editing_enabled());
         store.delete_primitive_faces(b, &[]).unwrap();
         let region = store.brep(b).unwrap().infinite_region().unwrap();
+        // `SmBrep::CreatePlanarFacesWith3DCurves` runs on this B-rep: without curves
+        // there is no plane, so it fails with `SM_ERR` and leaves the B-rep empty.
+        let mut curves = vec![None];
         let mut output = Vec::new();
         let error = store
-            .planar_faces((b, region), &mut Vec::new(), 0.01, &mut output)
+            .planar_faces((b, region), &mut curves, 0.01, &mut output)
             .unwrap_err();
-        assert!(matches!(
-            error,
-            SolidError::Unported {
-                unit: "topology.brep_p8",
-                ..
-            }
-        ));
+        assert!(!error.is_unported(), "{error:?}");
+        assert_eq!(curves.len(), 1);
+        assert!(output.is_empty());
+        assert!(store.brep(b).unwrap().face_list().is_empty());
     }
 
     #[test]
