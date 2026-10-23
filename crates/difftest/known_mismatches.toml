@@ -15,8 +15,3 @@
 unit = "blend.fillet_intersector"
 case = "rv_next_clipped_step"
 why = "StepSolve clipped branch differs by a few ULP from C++; suspected p3 evaluating offset-surface copies vs the solver's own objects; pre-existing, newly reachable via #212 (plan/findings.md: blend.fillet_intersector rv_next_clipped_step)"
-
-[[mismatch]]
-unit = "blend.fillet_solver_p4"
-case = "gen0512"
-why = "Rust makes 1 fillet geometry where C++ makes 0, reachable since DropCurve was wired (plan/findings.md: PR #463 newly reachable mismatches, blend.fillet_solver_p4)"
