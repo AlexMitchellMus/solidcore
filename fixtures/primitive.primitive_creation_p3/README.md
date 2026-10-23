@@ -120,17 +120,19 @@ adapter tracked by #255. The curve-record format also still cannot express
 reversed circular arcs (`end_angle < start_angle`).
 
 The `topology.brep_p8` and `topology.brep_p3` face services of `PrimitiveAccess`
-(`CreatePlanarFace(s)With3DCurves`, `CreateFace(s)FromSurface`, `DeleteFace`) are
-now real trait defaults over `SweepAccess::with_brep_mut`, so the fixture's
-one-B-rep adapter reaches them too. The adapter also keeps a tag store (none on the
-fresh B-rep, untagged curves) and deletes faces through
-`KernelManifoldIntersector::delete_faces_with_keys` under its own face keys, as the
-production `SweepStore` does. Every entry-point record now ends with the face, edge
-and vertex counts of the B-rep, so the construction tails compare real topology:
-the repeated linear wire sweep leaves 2 faces / 7 edges / 6 vertices, the full
-rotation of a line 1 / 3 / 2, the partial rotation, skin, curve sweep and swung
-primitive 1 / 4 / 4, identical to the native B-rep. Face geometry is not compared.
-The gate has 296 cases: 295 pass bit-identically, none defer, 1 is rejected under
-UB-78, and none fail.
-`axis_inside_face` is a trait default too (the `SmFace::CurveOnClassify` axis check
-`SweepStore` already used), so neither the fixture nor `PrimitiveModel` needs its own.
+are shared trait defaults over the caller's real `SweepAccess::with_brep_mut`.
+The differential entry points use `PrimitiveModel`; the small one-B-rep adapter
+remains only in default-adapter tests. Production rotational cleanup calls
+`KernelManifoldIntersector::delete_faces_with_keys` with the model's actual
+notification records and identity callback.
+
+Records retain status, editing/boolean state and output-array sizes, then compare
+owning-list face/edge/vertex counts. Successful constructions also compare vertex
+positions, actual edge intervals and five edge evaluations, and face UV domains
+and nine surface evaluations. The native constructor uses virtual geometry
+methods. Evaluation statuses remain visible in the records.
+
+The gate has 296 cases: 295 pass, none defer, and one retains its UB-78 rejection.
+The shared `axis_inside_face` default calls the existing SweepStore classifier;
+neither production nor test adapters duplicate it. The merged defaults preserve
+consumed curve slots instead of changing their container shape.
