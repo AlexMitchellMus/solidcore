@@ -4554,6 +4554,7 @@ fn zero_header_cases(unit: &str, cases: &[Case]) -> Result<Vec<Case>, HarnessErr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::compare::compare;
 
     fn import_input(name: &str) -> Inputs {
         Inputs {
@@ -4780,5 +4781,118 @@ mod tests {
             let cpp = run_cpp(&input).unwrap();
             assert_eq!(cpp.values["state"], [0.0, 7.0, -6.0]);
         }
+    }
+
+    /// `gen0730`'s op script, as the generated input serialises it.
+    fn gen0730_ops(inputs: &Inputs) -> String {
+        serde_json::to_value(&inputs.ops)
+            .ok()
+            .and_then(|v| v.as_array().cloned())
+            .map(|ops| {
+                ops.iter()
+                    .enumerate()
+                    .map(|(i, op)| {
+                        let name = op
+                            .get("op")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("?");
+                        format!("{i}:{name}")
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_else(|| "<unserializable>".into())
+    }
+
+    /// The state arrays around `center`, plus the full record when it is short enough
+    /// to keep the failure log readable.
+    fn gen0730_state_context(cpp: &Output, rust: &Output, center: usize) -> String {
+        let cpp_state: &[f64] = cpp.values.get("state").map_or(&[], Vec::as_slice);
+        let rust_state: &[f64] = rust.values.get("state").map_or(&[], Vec::as_slice);
+        let mut out = format!(
+            "state lengths: cpp={} rust={}; index {center}\n",
+            cpp_state.len(),
+            rust_state.len()
+        );
+        for (side, values) in [("cpp", cpp_state), ("rust", rust_state)] {
+            let lo = center.saturating_sub(6);
+            let hi = (center + 7).min(values.len());
+            out.push_str(&format!(
+                "{side}.state[{lo}..{hi}]={:?}\n",
+                values.get(lo..hi).unwrap_or(&[])
+            ));
+        }
+        if cpp_state.len() <= 512 && rust_state.len() <= 512 {
+            out.push_str(&format!("cpp.state={cpp_state:?}\nrust.state={rust_state:?}\n"));
+        }
+        out
+    }
+
+    /// Durable replay of generated case 730 (seed `9515163603058763486`), the case
+    /// that first reaches the offset trim/extend mismatch once the face-tolerance
+    /// metadata is preserved. It compares the complete C++ and Rust output with the
+    /// runner's unchanged 1e-9 relative rule and, on failure, prints the exact
+    /// generated input, its op script and the state record around index 87.
+    #[test]
+    fn gen0730_replays_index_730_and_compares_cpp_rust_state() {
+        const UNIT: &str = "offset.offset_geometry_creation";
+        const INDEX: usize = 730;
+        const STATE_INDEX: usize = 87;
+
+        let seed = CaseContext::seed_for(UNIT, INDEX);
+        assert_eq!(
+            seed, 9_515_163_603_058_763_486,
+            "gen0730 seed/unit/index changed; the regression must replay the recorded case"
+        );
+        let mut rng = Rng::new(seed);
+        let inputs = generate(&mut rng).expect("gen0730 generator returned None");
+        let input_json = serde_json::to_string(&inputs).expect("serialize gen0730 input");
+        let case = Case {
+            unit: UNIT.into(),
+            name: format!("gen{INDEX:04}"),
+            source: CaseSource::Generated { seed },
+            inputs: serde_json::to_value(&inputs).expect("serialize gen0730 case"),
+        };
+        assert_eq!(case.name, "gen0730");
+
+        let runner = Runner;
+        let cpp = runner
+            .run_cpp(&case)
+            .unwrap_or_else(|e| panic!("gen0730 C++ harness error: {e}\ninput={input_json}"));
+        let rust = runner
+            .run_rust(&case)
+            .unwrap_or_else(|e| panic!("gen0730 Rust harness error: {e}\ninput={input_json}"));
+        let context = || {
+            format!(
+                "gen0730 seed={seed} ops={}\ninput={}\n{}",
+                gen0730_ops(&inputs),
+                input_json,
+                gen0730_state_context(&cpp, &rust, STATE_INDEX)
+            )
+        };
+
+        assert!(cpp.rejected.is_none(), "C++ rejected gen0730\n{}", context());
+        assert!(rust.rejected.is_none(), "Rust rejected gen0730\n{}", context());
+        assert!(cpp.deferred.is_none(), "C++ deferred gen0730\n{}", context());
+        assert!(rust.deferred.is_none(), "Rust deferred gen0730\n{}", context());
+        assert!(cpp.error.is_none(), "C++ errored on gen0730\n{}", context());
+        assert!(rust.error.is_none(), "Rust errored on gen0730\n{}", context());
+
+        let diff = compare(&cpp, &rust, &[]);
+        assert!(
+            diff.pass(),
+            "gen0730 mismatch (strict 1e-9 relative rule)\n{diff:#?}\n{}",
+            context()
+        );
+        assert!(
+            diff.values_compared > 0,
+            "gen0730 compared no values\n{}",
+            context()
+        );
+        assert!(
+            diff.nonzero_compared > 0,
+            "gen0730 compared only zeros\n{}",
+            context()
+        );
     }
 }

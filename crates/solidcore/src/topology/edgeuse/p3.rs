@@ -1841,17 +1841,15 @@ pub fn evaluate_binormal_uv(
         .ok_or_else(|| null("EvaluateBinormal: edge use without face"))?;
     let face_rec = b.face(f)?;
     let face_surface = {
-        let live = face_rec
+        // `SmEdgeuse::EvaluateBinormal` holds `pFace->GetSurface()` directly
+        // (`SmEdgeuse.cpp:2875`), so the evaluation snapshot must retain the live
+        // surface's owner, exact NURBS and shared cache slot instead of running
+        // `Surface`'s copy constructor.
+        face_rec
             .surface
             .as_ref()
-            .ok_or_else(|| null("EvaluateBinormal: face without surface"))?;
-        // (a copy that keeps the face's owner: the copy constructor resets it)
-        let mut copy = live.clone();
-        copy.set_owner(live.owner());
-        // `set_owner` drops the cached face tolerance; restore the exact value
-        // after the owner, or the snapshot keeps a face handle without its cache.
-        copy.set_owner_zone_tol_3d(live.owner_zone_tol_3d());
-        copy
+            .ok_or_else(|| null("EvaluateBinormal: face without surface"))?
+            .clone_for_evaluation()?
     };
     let domain = face_rec.uv_domain;
     let face_uv_orientation = {
