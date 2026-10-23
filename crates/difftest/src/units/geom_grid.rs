@@ -12,27 +12,46 @@
 //! and boxes of the elements, voxel size, voxel tolerance, current mark), `expand`
 //! (`ExpandHierarchy`) and `add_surface` (`AddElement` with `SM_GE_SURFACE`).
 //!
+//! A case may declare real surfaces (`surfaces`, the ray tracer runner's `SurfIn`:
+//! a clamped single-patch B-spline or a plane). `add_hier` with `real: s` makes a
+//! hierarchy element of surface `s`, `expand` of it runs `ExpandHierarchy` over
+//! the surface's cache, and `add_surface { surface, node, bbox }` adds the node
+//! `node` of that cache's `GetAllTreeNodes` as a surface element (`-4` when the
+//! index is out of range or the node is not an `SM_AD_BEZIER_SURFACE` node). Both
+//! sides keep one cache per surface (`smsurf_GetSurfaceCache` returns the surface's
+//! one cache, with the polar boxes it has built so far).
+//!
 //! Outputs: `ints` (statuses, flags, voxel addresses, element type codes and
-//! object ids, hierarchy indices, 3DDDA steps) and `floats` (boxes, spheres, ray
-//! parameters and the 3DDDA state after every setup and step). `expand` of a
-//! surface hierarchy element and `add_surface` need surface subdivision caches:
-//! the shim does not run them and the Rust side is deferred (they appear only in
-//! fixtures). Every run has at least [`MIN_GENERATED`] generated cases.
+//! object ids, hierarchy indices, 3DDDA steps; a surface element's id is its
+//! surface index) and `floats` (boxes, spheres, ray parameters, the 3DDDA state
+//! after every setup and step, and the 51-value leaf record after the sphere and
+//! box of a surface element in a dump). Every run has at least [`MIN_GENERATED`]
+//! generated cases.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::extent3d::Extent3d;
 use solidcore::geom::grid::{
-    ElementId, ElementSource, Grid, GridItem, HierarchyElement, HierarchyId,
+    ElementId, ElementSource, Grid, GridElement, GridItem, HierarchyElement, HierarchyId,
+    SurfaceGridElement,
 };
-use solidcore::geom::tree::NodeId;
+use solidcore::geom::polar_box::PolarBoxState;
+use solidcore::geom::tree::{AuxDataType, NodeId};
+use solidcore::geom::vector2d::Vec2;
+use solidcore::kernel::Kernel;
 use solidcore::math::{Point3, Vec3, BIG_DOUBLE};
+use solidcore::surface::plane::Plane;
+use solidcore::surface::surface::p2::surface_cache;
+use solidcore::surface::surface::Surface;
+use solidcore::surface::surface_cache::SurfaceCache;
 use solidcore::SolidError;
 use solidcore_ffi::units::geom_grid as ffi;
 
 use crate::case::CaseContext;
 use crate::runner::default_cases;
+use crate::units::intersect_ray_tracer::{rust_surface, SurfIn};
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 
 /// Generated cases per run, whatever `--seeds` says (it can only raise this).
@@ -66,10 +85,16 @@ enum Op {
         bbox: E6,
     },
     AddHier {
+        /// A surface hierarchy element over the fake surface `obj` (it can be dumped, not
+        /// expanded) rather than a base-class one.
         surface: bool,
         obj: i64,
         tol: f64,
         bbox: E6,
+        /// A surface hierarchy element over the real surface of this index (`surface` and
+        /// `obj` are then unused).
+        #[serde(default)]
+        real: Option<usize>,
     },
     Find {
         bbox: E6,
@@ -92,6 +117,10 @@ enum Op {
         h: i64,
     },
     AddSurface {
+        /// The surface whose cache holds the node.
+        surface: usize,
+        /// Index into the cache tree's `GetAllTreeNodes`.
+        node: i64,
         bbox: E6,
     },
 }
@@ -99,6 +128,9 @@ enum Op {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Inputs {
     grid: GridDesc,
+    /// The real surfaces of `add_hier { real }` and `add_surface` (none in older cases).
+    #[serde(default)]
+    surfaces: Vec<SurfIn>,
     ops: Vec<Op>,
 }
 
@@ -132,10 +164,42 @@ fn status_of(e: &SolidError) -> i64 {
     }
 }
 
-fn prog(i: &Inputs) -> Vec<f64> {
+/// The operands of the surface declaration op 11.
+fn put_surface_decl(v: &mut Vec<f64>, s: &SurfIn) -> Result<(), HarnessError> {
+    v.push(11.0);
+    match s {
+        SurfIn::Bezier { p, q, net } => {
+            if net.len() != p + 1 || net.iter().any(|r| r.len() != q + 1) {
+                return Err(harness("surface: control net size"));
+            }
+            v.extend([0.0, *p as f64, *q as f64]);
+            v.extend(net.iter().flatten().flatten());
+        }
+        SurfIn::Plane {
+            o,
+            x,
+            y,
+            scale,
+            domain,
+        } => {
+            v.push(1.0);
+            v.extend(o);
+            v.extend(x);
+            v.extend(y);
+            v.extend(scale);
+            v.extend(domain);
+        }
+    }
+    Ok(())
+}
+
+fn prog(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
     let mut v = vec![0.0];
     v.extend(i.grid.bbox);
     v.extend(i.grid.size.map(|s| s as f64));
+    for s in &i.surfaces {
+        put_surface_decl(&mut v, s)?;
+    }
     for op in &i.ops {
         match op {
             Op::Add { kind, obj, bbox } => {
@@ -145,10 +209,20 @@ fn prog(i: &Inputs) -> Vec<f64> {
                 v.extend(bbox);
             }
             Op::AddHier {
+                real: Some(s),
+                tol,
+                bbox,
+                ..
+            } => {
+                v.extend([12.0, *s as f64, *tol]);
+                v.extend(bbox);
+            }
+            Op::AddHier {
                 surface,
                 obj,
                 tol,
                 bbox,
+                real: None,
             } => {
                 v.extend([2.0, f64::from(u8::from(*surface)), *obj as f64, *tol]);
                 v.extend(bbox);
@@ -173,13 +247,17 @@ fn prog(i: &Inputs) -> Vec<f64> {
             Op::Step { t } => v.extend([7.0, *t]),
             Op::Dump => v.push(8.0),
             Op::Expand { h } => v.extend([9.0, *h as f64]),
-            Op::AddSurface { bbox } => {
-                v.push(10.0);
+            Op::AddSurface {
+                surface,
+                node,
+                bbox,
+            } => {
+                v.extend([10.0, *surface as f64, *node as f64]);
                 v.extend(bbox);
             }
         }
     }
-    v
+    Ok(v)
 }
 
 /// `(type code, object id)` of a grid element.
@@ -189,9 +267,50 @@ fn put_elem(o: &mut Vec<i64>, g: &Grid<i64>, id: ElementId) -> solidcore::Result
     o.push(match e.item() {
         GridItem::Polygon(n) => n.0 as i64,
         GridItem::User(obj) => obj,
-        GridItem::Hierarchy(_) | GridItem::Surface(_) => -2,
+        // the leaf's surface handle is its index in the case's surface list
+        GridItem::Surface(leaf) => leaf.surface,
+        GridItem::Hierarchy(_) => -2,
     });
     Ok(())
+}
+
+/// The 51-value record of a surface leaf (the shim's `put_leaf`): uv domain (4), box
+/// (6), mid point, `du`, `dv` and normal (12), pseudo box basis (9) and intervals (6),
+/// polar box state, domain (4) and basis (9) (zeros without a bound).
+pub(crate) fn put_leaf<O>(o: &mut Vec<f64>, l: &SurfaceGridElement<O>) {
+    let (u0, u1) = (l.uv_domain.min(), l.uv_domain.max());
+    o.extend([u0.x, u0.y, u1.x, u1.y]);
+    put_ext(o, &l.bbox);
+    for v in [l.mid_point, l.mid_du, l.mid_dv, l.mid_normal] {
+        put3(o, v);
+    }
+    for j in 0..3 {
+        put3(o, l.pseudo_box.basis_vector(j).unwrap_or(Vec3::ZERO));
+    }
+    for j in 0..3 {
+        let iv = l.pseudo_box.interval(j).unwrap_or_default();
+        o.extend([iv.min(), iv.max()]);
+    }
+    let polar = &l.polar_box;
+    let state = match polar.state() {
+        PolarBoxState::Uninitialized => 0.0,
+        PolarBoxState::PointWithBasis => 1.0,
+        PolarBoxState::SinglePoint => 2.0,
+        PolarBoxState::Arc => 3.0,
+        PolarBoxState::Region => 4.0,
+        PolarBoxState::Unbounded => 5.0,
+    };
+    o.push(state);
+    let bounded = (2.0..=4.0).contains(&state);
+    let pd = polar.domain();
+    o.extend(if bounded {
+        [pd.min().x, pd.min().y, pd.max().x, pd.max().y]
+    } else {
+        [0.0; 4]
+    });
+    for b in polar.basis() {
+        o.extend(if bounded { [b.x, b.y, b.z] } else { [0.0; 3] });
+    }
 }
 
 fn dump_dda(g: &Grid<i64>, oi: &mut Vec<i64>, of: &mut Vec<f64>) {
@@ -228,11 +347,61 @@ struct Stats {
     exits: usize,
     misses: usize,
     errors: usize,
+    /// Surface elements in the grids at the end of the runs.
+    surface_leaves: usize,
+    /// Ray-walk steps that reported a surface element.
+    surface_step_hits: usize,
+    /// `add_surface` on a Bezier node that succeeded.
+    surface_add_ok: usize,
+    /// `expand` of a real surface, or `add_surface` of a Bezier node, that did not
+    /// return status 0 (the generator keeps its surfaces non-degenerate).
+    surface_failures: usize,
+}
+
+/// A bad program (the FFI rejects the same inputs).
+fn bad_program(reason: &'static str) -> SolidError {
+    SolidError::InvalidInput {
+        operation: "difftest::geom_grid",
+        reason,
+    }
+}
+
+/// One cache per surface, built on first use (`smsurf_GetSurfaceCache` returns the
+/// surface's one cache, whose polar boxes are built lazily). Its handle is the
+/// surface's index.
+struct Caches {
+    surfaces: Vec<Surface>,
+    caches: Vec<Option<SurfaceCache<i64>>>,
+}
+
+impl Caches {
+    fn new(inputs: &[SurfIn]) -> solidcore::Result<Self> {
+        let surfaces = inputs
+            .iter()
+            .map(|s| rust_surface(s).map_err(|_| bad_program("surface")))
+            .collect::<solidcore::Result<Vec<_>>>()?;
+        let caches = surfaces.iter().map(|_| None).collect();
+        Ok(Self { surfaces, caches })
+    }
+
+    fn get(&mut self, k: &Kernel, s: usize) -> solidcore::Result<&mut SurfaceCache<i64>> {
+        let surface = self.surfaces.get(s).ok_or(bad_program("surface index"))?;
+        let slot = self.caches.get_mut(s).ok_or(bad_program("surface index"))?;
+        if slot.is_none() {
+            *slot = Some(surface_cache::<i64>(k, surface, Some(s as i64))?);
+        }
+        slot.as_mut().ok_or(bad_program("surface index"))
+    }
 }
 
 fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<(Vec<i64>, Vec<f64>)> {
+    let k = &Kernel::default();
     let size = i.grid.size.map(|s| s as usize);
     let mut g: Grid<i64> = Grid::new(&ext(i.grid.bbox), size)?;
+    let mut caches = Caches::new(&i.surfaces)?;
+    // per hierarchy element: the real surface it expands, if any (a base-class element
+    // has none and fails before it reads a cache; a fake-surface one cannot expand)
+    let mut hier_surface: Vec<(bool, Option<usize>)> = Vec::new();
     let (mut oi, mut of) = (Vec::new(), Vec::new());
     let mut ready = false;
     for op in &i.ops {
@@ -250,12 +419,20 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<(Vec<i64>, Vec<f64>
                 obj,
                 tol,
                 bbox,
+                real,
             } => {
-                let h = if *surface {
-                    HierarchyElement::new_surface(*obj, *tol)
-                } else {
-                    HierarchyElement::new(*tol)
+                let h = match (real, surface) {
+                    (Some(s), _) => {
+                        if *s >= i.surfaces.len() {
+                            return Err(bad_program("surface index"));
+                        }
+                        HierarchyElement::new_surface(*s as i64, *tol)
+                    }
+                    (None, true) => HierarchyElement::new_surface(*obj, *tol),
+                    (None, false) => HierarchyElement::new(*tol),
                 };
+                // expandable: a base-class element or a real surface one
+                hier_surface.push((real.is_some() || !*surface, *real));
                 g.add_hierarchy_element(h, &ext(*bbox))?;
                 oi.push(0);
             }
@@ -301,6 +478,13 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<(Vec<i64>, Vec<f64>
                         st.hits += usize::from(!h.elements.is_empty());
                         st.multi_hits += usize::from(h.elements.len() > 1);
                         st.exits += usize::from(h.exited_grid);
+                        st.surface_step_hits += h
+                            .elements
+                            .iter()
+                            .filter(|&&id| {
+                                matches!(g.element(id).map(GridElement::item), Ok(GridItem::Surface(_)))
+                            })
+                            .count();
                         oi.push(0);
                         oi.push(i64::from(h.exited_grid));
                         oi.push(h.elements.len() as i64);
@@ -323,18 +507,82 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<(Vec<i64>, Vec<f64>
                 }
             }
             Op::Dump => dump(&g, &mut oi, &mut of)?,
-            Op::Expand { h } => match g.expand_hierarchy(HierarchyId(*h as usize)) {
-                Ok(()) => oi.push(0),
-                Err(e @ SolidError::Unported { .. }) => return Err(e),
-                Err(e) => oi.push(status_of(&e)),
-            },
-            Op::AddSurface { bbox } => {
-                g.add_element(ElementSource::Surface(NodeId(0)), &ext(*bbox))?;
-                oi.push(0);
+            Op::Expand { h } => {
+                let (expandable, real) = usize::try_from(*h)
+                    .ok()
+                    .and_then(|h| hier_surface.get(h))
+                    .copied()
+                    .ok_or(bad_program("hierarchy index"))?;
+                if !expandable {
+                    // the shim would dereference the fake surface
+                    return Err(bad_program("expand of a fake-surface element"));
+                }
+                let id = HierarchyId(*h as usize);
+                let result = match real {
+                    Some(s) => g.expand_hierarchy(k, id, caches.get(k, s)?),
+                    // a base-class element fails before the cache is read
+                    None => g.expand_hierarchy(k, id, &mut placeholder_cache(k)?),
+                };
+                match result {
+                    Ok(()) => oi.push(0),
+                    Err(e @ SolidError::Unported { .. }) => return Err(e),
+                    Err(e) => {
+                        st.surface_failures += usize::from(real.is_some());
+                        oi.push(status_of(&e));
+                    }
+                }
+            }
+            Op::AddSurface {
+                surface,
+                node,
+                bbox,
+            } => {
+                let cache = caches.get(k, *surface)?;
+                let nodes = cache.get_tree(k)?.all_tree_nodes();
+                let found = usize::try_from(*node)
+                    .ok()
+                    .and_then(|n| nodes.get(n))
+                    .copied();
+                let Some(node) = found else {
+                    oi.push(-4);
+                    continue;
+                };
+                let is_bezier = cache.get_tree(k)?.node(node)?.aux_type == AuxDataType::BezierSurface;
+                match g.add_surface_node(k, cache, node, &ext(*bbox)) {
+                    Ok(_) => {
+                        st.surface_add_ok += usize::from(is_bezier);
+                        oi.push(0);
+                    }
+                    Err(e @ SolidError::Unported { .. }) => return Err(e),
+                    // the shim answers a node that is not a Bezier patch node itself
+                    // (upstream would read garbage); the library guard is this error
+                    Err(SolidError::InvalidInput { .. }) if !is_bezier => oi.push(-4),
+                    Err(e) => {
+                        st.surface_failures += usize::from(is_bezier);
+                        oi.push(status_of(&e));
+                    }
+                }
             }
         }
     }
+    st.surface_leaves += g
+        .elements()
+        .iter()
+        .filter(|e| matches!(e.item(), GridItem::Surface(_)))
+        .count();
     Ok((oi, of))
+}
+
+/// A cache for `expand_hierarchy` on a base-class element, which never reads it.
+fn placeholder_cache(k: &Kernel) -> solidcore::Result<SurfaceCache<i64>> {
+    let plane = Surface::from(Plane::new(
+        Vec3::ZERO,
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec2::new(1.0, 1.0),
+        &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+    ));
+    surface_cache::<i64>(k, &plane, None)
 }
 
 fn dump(g: &Grid<i64>, oi: &mut Vec<i64>, of: &mut Vec<f64>) -> solidcore::Result<()> {
@@ -372,6 +620,9 @@ fn dump(g: &Grid<i64>, oi: &mut Vec<i64>, of: &mut Vec<f64>) -> solidcore::Resul
         put3(of, e.sphere_center());
         of.push(e.sphere_radius());
         put_ext(of, e.bounding_box());
+        if let GridItem::Surface(leaf) = e.item() {
+            put_leaf(of, &leaf);
+        }
     }
     for h in g.hierarchy_elements() {
         let ge = h.grid_element();
@@ -510,6 +761,105 @@ fn gen_dir(rng: &mut Rng, g: &Gen, start: P3, boxes: &[E6]) -> P3 {
     }
 }
 
+/// A random unit vector.
+fn unit_dir(rng: &mut Rng) -> P3 {
+    for _ in 0..16 {
+        let v = [
+            rng.uniform(-1.0, 1.0),
+            rng.uniform(-1.0, 1.0),
+            rng.uniform(-1.0, 1.0),
+        ];
+        let n = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+        if (0.1..=1.0).contains(&n) {
+            return v.map(|c| c / n);
+        }
+    }
+    [1.0, 0.0, 0.0]
+}
+
+/// Two independent unit directions.
+fn two_dirs(rng: &mut Rng) -> (P3, P3) {
+    let x = unit_dir(rng);
+    let mut y = unit_dir(rng);
+    let dot = x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
+    if dot.abs() > 0.8 {
+        // nearly parallel: turn `y` to a vector orthogonal to `x` in a coordinate plane
+        y = if x[0].abs() < 0.9 {
+            [0.0, x[2], -x[1]]
+        } else {
+            [x[2], 0.0, -x[0]]
+        };
+        let n = (y[0] * y[0] + y[1] * y[1] + y[2] * y[2]).sqrt();
+        y = y.map(|c| c / n);
+    }
+    (x, y)
+}
+
+/// A non-degenerate surface (a clamped single-patch B-spline of degree 1..=3, or a
+/// plane) inside the grid box, and the box of its control points or corners grown
+/// a little (the hierarchy element's box).
+fn gen_grid_surface(rng: &mut Rng, g: &Gen) -> (SurfIn, E6) {
+    let c = g.center();
+    let side = (0..3)
+        .map(|k| g.ext_len(k))
+        .fold(f64::INFINITY, f64::min);
+    // the half size of the patch: well inside the box
+    let a = rng.uniform(0.15, 0.35) * side;
+    let c = [0, 1, 2].map(|k| at(&c, k) + rng.uniform(-0.1, 0.1) * g.ext_len(k));
+    let (du, dv) = two_dirs(rng);
+    let add = |p: P3, d: P3, s: f64| [p[0] + d[0] * s, p[1] + d[1] * s, p[2] + d[2] * s];
+    let mut hull: E6 = [f64::INFINITY, f64::INFINITY, f64::INFINITY, -f64::INFINITY, -f64::INFINITY, -f64::INFINITY];
+    let mut cover = |p: P3| {
+        for k in 0..3 {
+            let (lo, hi) = (at(&hull, k), at(&hull, k + 3));
+            set(&mut hull, k, lo.min(at(&p, k)));
+            set(&mut hull, k + 3, hi.max(at(&p, k)));
+        }
+    };
+    let surf = if rng.chance(0.4) {
+        let o = add(add(c, du, -a), dv, -a);
+        let s = [2.0 * a, 2.0 * a];
+        for (u, v) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)] {
+            cover(add(add(o, du, u * s[0]), dv, v * s[1]));
+        }
+        SurfIn::Plane {
+            o,
+            x: du,
+            y: dv,
+            scale: s,
+            domain: [0.0, 0.0, 1.0, 1.0],
+        }
+    } else {
+        let p = rng.range_i64(1, 3) as usize;
+        let q = rng.range_i64(1, 3) as usize;
+        let rational = rng.chance(0.3);
+        let net = (0..=p)
+            .map(|i| {
+                (0..=q)
+                    .map(|j| {
+                        let s = (i as f64 / p as f64 - 0.5) * 2.0 * a;
+                        let t = (j as f64 / q as f64 - 0.5) * 2.0 * a;
+                        let n = 0.3 * a;
+                        let pt = add(add(c, du, s), dv, t);
+                        let pt = [
+                            pt[0] + rng.uniform(-n, n),
+                            pt[1] + rng.uniform(-n, n),
+                            pt[2] + rng.uniform(-n, n),
+                        ];
+                        cover(pt);
+                        let w = if rational { rng.uniform(0.5, 2.0) } else { 1.0 };
+                        [pt[0], pt[1], pt[2], w]
+                    })
+                    .collect()
+            })
+            .collect();
+        SurfIn::Bezier { p, q, net }
+    };
+    let grow = 0.05 * a;
+    let hull = [0, 1, 2, 3, 4, 5].map(|k| at(&hull, k) + if k < 3 { -grow } else { grow });
+    (surf, hull)
+}
+
 fn gen_case(rng: &mut Rng) -> Inputs {
     let scale = *rng.choose(&[1.0, 10.0, 1000.0, 1e-3]).unwrap_or(&1.0);
     let size = [
@@ -562,11 +912,48 @@ fn gen_case(rng: &mut Rng) -> Inputs {
             obj: 100 + h,
             tol: rng.uniform(0.0, 0.05) * scale,
             bbox: g.rand_box(rng),
+            real: None,
         });
     }
     if n_hier > 0 && rng.chance(0.2) {
         // Only base-class elements: a surface element would defer the case.
         ops.push(Op::Expand { h: -1 });
+    }
+    // Real surfaces: hierarchy elements over them, expanded before any ray (so the walks
+    // meet surface elements), and nodes of their caches added by hand (an index past the
+    // tree is `-4` on both sides).
+    let mut surfaces = Vec::new();
+    // (not at the 1e-3 scale: the surface cache of a random bicubic patch that small
+    // grows past 400k tree nodes and does not finish in minutes; see plan/findings.md)
+    if rng.chance(0.3) && scale >= 1.0 {
+        for s in 0..rng.range_i64(1, 2) {
+            let (surf, hull) = gen_grid_surface(rng, &g);
+            surfaces.push(surf);
+            boxes.push(hull);
+            ops.push(Op::AddHier {
+                surface: true,
+                obj: 0,
+                tol: rng.uniform(0.0, 0.02) * scale,
+                bbox: hull,
+                real: Some(s as usize),
+            });
+            // the real hierarchy elements follow the base and fake ones
+            ops.push(Op::Expand { h: n_hier + s });
+        }
+        for _ in 0..rng.range_i64(0, 2) {
+            let surface = rng.below(surfaces.len() as u64) as usize;
+            let node = if rng.chance(0.15) {
+                1000
+            } else {
+                rng.range_i64(0, 4)
+            };
+            let hull = boxes.last().copied().unwrap_or_default();
+            ops.push(Op::AddSurface {
+                surface,
+                node,
+                bbox: hull,
+            });
+        }
     }
     for _ in 0..rng.range_i64(0, 3) {
         match rng.below(3) {
@@ -624,15 +1011,15 @@ fn gen_case(rng: &mut Rng) -> Inputs {
     let mut nh = 0i64;
     let mut base = Vec::new();
     for op in &ops {
-        if let Op::AddHier { surface, .. } = op {
-            if !surface {
+        if let Op::AddHier { surface, real, .. } = op {
+            if !surface && real.is_none() {
                 base.push(nh);
             }
             nh += 1;
         }
     }
     ops.retain_mut(|op| match op {
-        Op::Expand { h } => match base.first() {
+        Op::Expand { h } if *h < 0 => match base.first() {
             Some(b) => {
                 *h = *b;
                 true
@@ -646,6 +1033,7 @@ fn gen_case(rng: &mut Rng) -> Inputs {
             bbox: [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]],
             size,
         },
+        surfaces,
         ops,
     }
 }
@@ -657,7 +1045,7 @@ impl UnitDiff for Runner {
 
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
         let i: Inputs = case.parse()?;
-        let (oi, of) = ffi::run(&prog(&i)).map_err(|e| harness(e.to_string()))?;
+        let (oi, of) = ffi::run(&prog(&i)?).map_err(|e| harness(e.to_string()))?;
         Ok(Output::new().ints("ints", oi).values("floats", of))
     }
 
@@ -701,5 +1089,63 @@ mod tests {
         assert!(st.exits > 300, "{st:?}");
         assert!(st.misses > 20, "{st:?}");
         assert!(st.errors > 5, "{st:?}");
+    }
+
+    #[test]
+    fn generator_covers_surface_elements() {
+        let mut st = Stats::default();
+        let mut with_surfaces = 0;
+        for k in 0..MIN_GENERATED as u64 {
+            let mut rng = Rng::new(k);
+            let i = gen_case(&mut rng);
+            with_surfaces += usize::from(!i.surfaces.is_empty());
+            assert!(run_rust(&i, &mut st).is_ok());
+        }
+        // surface leaves appear in ray-walk hits and in dumps, and no generated
+        // `expand` or Bezier `add_surface` fails (the generator keeps its surfaces
+        // non-degenerate, as the statuses of `Init` are not propagated upstream)
+        assert!(with_surfaces > 100, "{with_surfaces} {st:?}");
+        assert!(st.surface_leaves > 100, "{st:?}");
+        assert!(st.surface_step_hits > 50, "{st:?}");
+        assert!(st.surface_add_ok > 20, "{st:?}");
+        assert_eq!(st.surface_failures, 0, "{st:?}");
+    }
+
+    fn fixture_inputs(name: &str) -> Inputs {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/geom.grid/cases.json");
+        let file: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let case = file["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == name)
+            .unwrap();
+        serde_json::from_value(case["inputs"].clone()).unwrap()
+    }
+
+    /// The two surface fixtures once stayed deferred: both sides must now build the leaves
+    /// (status 0) and dump their records, not just agree on an error.
+    #[test]
+    fn surface_fixtures_dump_leaf_records_on_both_sides() {
+        for (name, add_ok) in [
+            ("raytracer_surface_hierarchy_expand", 0),
+            ("surface_leaf_element", 2),
+        ] {
+            let i = fixture_inputs(name);
+            let mut st = Stats::default();
+            let (ri, rf) = run_rust(&i, &mut st).unwrap();
+            let (ci, cf) = ffi::run(&prog(&i).unwrap()).unwrap();
+            assert!(st.surface_leaves > 0, "{name}: {st:?}");
+            assert_eq!(st.surface_failures, 0, "{name}: {st:?}");
+            assert_eq!(st.surface_add_ok, add_ok, "{name}: {st:?}");
+            assert_eq!(ri, ci, "{name}");
+            assert_eq!(rf.len(), cf.len(), "{name}");
+            // a leaf record is 51 values; the last dump holds every surface element's
+            assert!(rf.len() > st.surface_leaves * 51, "{name}: {}", rf.len());
+        }
+        // the third `add_surface` of the second fixture names a node past the tree
+        let i = fixture_inputs("surface_leaf_element");
+        let (ri, _) = run_rust(&i, &mut Stats::default()).unwrap();
+        assert_eq!(ri.get(..3), Some(&[0, 0, -4][..]));
     }
 }

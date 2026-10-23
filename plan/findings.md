@@ -17511,3 +17511,48 @@ a status-only or vacuous pass.
   `approx_tol_3d` to the general intersector without the `SmApproxTol3d` conversion. Only a
   negative (or `SM_USE_DEFAULT`) tolerance is affected; a generated negative-tolerance case
   in those runners would show whether they diverge.
+
+## geom.grid to green: surface grid elements wired (2026-10-23)
+
+- **What was wired.** `SmSurfaceGridElement::Init` is now `SurfaceGridElement::init` (with
+  `from_leaf_data`, the body of `intersect::ray_tracer::surface_leaf`, made generic in the
+  handle type and moved to `geom::grid`). `Grid::expand_hierarchy(k, id, cache)` takes the
+  surface's one cache (`smsurf_GetSurfaceCache`) and `Grid::add_surface_node` is
+  `AddElement(SM_GE_SURFACE)` from a tree node; `ElementSource::Surface` is gone.
+  `RayTracer::add_surface_to_grid` calls `Grid::expand_hierarchy`. Both dispatch gaps of
+  the unit (`smsurf_GetSurfaceCache` on a bare handle, `SmBezierPatch::GetPseudoBox` from a
+  node) are closed.
+- **Harness.** The `geom.grid` shim builds real `SmPlane` / `SmBSplineSurface` surfaces
+  (op 11), makes real surface hierarchy elements (op 12), runs `ExpandHierarchy` (op 9) and
+  `AddElement(node, SM_GE_SURFACE)` for node `i` of the cache tree's `GetAllTreeNodes` (op 10,
+  `-4` for an index past the tree or a node that is not `SM_AD_BEZIER_SURFACE`, which
+  upstream casts and reads garbage). Surface elements are reported as (type, surface index)
+  and carry the 51-value leaf record in the dump (the `intersect.ray_tracer` ADD_SURFACE
+  record, now `difftest::units::geom_grid::put_leaf` on the Rust side). Fixtures
+  `raytracer_surface_hierarchy_expand` and `surface_leaf_element` run the real code on both
+  sides (a runner test asserts status 0 and non-empty records); the generator puts 1-2 real
+  surfaces into about 30% of the cases.
+- **Numbers.** `geom.grid` 615 cases, 613 pass + 2 deferred -> 615 pass, 0 deferred, all 615
+  compare values, max_rel_err 0 (6000 extra seeds clean). `intersect.ray_tracer` and
+  `blend.hcr`: 421 cases, 421 pass, 0 deferred, max_rel_err 0 (unchanged; the 51-value ADD_SURFACE leaf records stay bit-identical); `blend.hcr` 434 cases, 396 pass, 38 deferred (topology.edge 37, topology.face_p2 1), unchanged; `--green --jobs 4`: 260 units, 189 passed, 71 partial, 0 failed.
+- **Statuses.** Upstream `Init` is `void` with `SE`, `ExpandHierarchy` ignores `AddElement`'s
+  status and `AddSurfaceToGrid` ignores `ExpandHierarchy`'s; the port propagates failures
+  (an `Evaluate` that fails even without `non_zero_tangents`, `Unported`). Generated surfaces
+  are non-degenerate and the generator test asserts every generated `expand` / Bezier
+  `add_surface` returns status 0.
+- **No harness surface has a non-Bezier cache node.** The cache trees of single-patch
+  B-splines and planes only hold `SM_AD_BEZIER_SURFACE` nodes (dumped for a plane and two
+  Beziers), so the shim's pre-check for a non-Bezier node is exercised only through
+  out-of-range indices; the library's `InvalidInput` for such a node is covered by the
+  `geom::grid` unit test `add_surface_node_rejects_what_has_no_patch`, which makes
+  `SM_AD_AUX_DATA` children with `subdivide_node`.
+- **Open: surface cache size at tiny scale (not a Rust-vs-C++ difference found).** A random
+  bicubic Bezier patch of size ~1e-3 (net perturbation 30% of the patch size, so not flat)
+  made `Caches::get` + `get_tree` grow past 418,000 tree nodes within 100 s and not finish;
+  the same shape at scale 1 or more finishes in milliseconds (a flat 1e-3 patch: 39 nodes).
+  The generator therefore adds surfaces only at grid scales >= 1. The C++ shim runs the same program
+  (seed 11 of the unfiltered generator, one bicubic patch) to completion in about 15 s per
+  run (the FFI runs the program twice: 30 s), so the large subdivision is shared behaviour
+  and not a Rust-vs-C++ disagreement; the Rust cache is at least 7 times slower on it (no
+  result after 100 s). Which absolute threshold keeps the subdivision going at that size,
+  and why Rust is slower, were not investigated; the FFI does not reject small surfaces.

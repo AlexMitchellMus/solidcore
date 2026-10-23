@@ -27,14 +27,14 @@ use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::extent3d::Extent3d;
 use solidcore::geom::grid::{ElementId, Grid, GridItem, SurfaceGridElement};
-use solidcore::geom::polar_box::{PolarBox, PolarBoxState};
+use solidcore::geom::polar_box::PolarBox;
 use solidcore::geom::pseudo_box::PseudoBox;
 use solidcore::geom::solution_array::Solution;
 use solidcore::geom::vector2d::Vec2;
 use solidcore::geom::vector3d::Vec3;
 use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::intersect::ray_tracer::{
-    surface_leaf, LightSource, Lsi3LocalSolver, RayObject, RayRenderer, RayTracer,
+    LightSource, Lsi3LocalSolver, RayObject, RayRenderer, RayTracer,
 };
 use solidcore::kernel::Kernel;
 use solidcore::math::BIG_DOUBLE;
@@ -68,7 +68,7 @@ fn harness(msg: impl Into<String>) -> HarnessError {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-enum SurfIn {
+pub(crate) enum SurfIn {
     Bezier {
         p: usize,
         q: usize,
@@ -316,7 +316,7 @@ fn cpoint(c: &[f64; 4]) -> CPoint {
     CPoint::new(c[0], c[1], c[2], c[3])
 }
 
-fn rust_surface(s: &SurfIn) -> Result<Surface, HarnessError> {
+pub(crate) fn rust_surface(s: &SurfIn) -> Result<Surface, HarnessError> {
     match s {
         SurfIn::Plane {
             o,
@@ -484,7 +484,7 @@ fn run_rust(k: &Kernel, i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64
                 for v in polar.iter().skip(1) {
                     polar_box.add_vector(v3(*v), None);
                 }
-                let leaf = surface_leaf(
+                let leaf = SurfaceGridElement::from_leaf_data(
                     k, *surface,
                     surf,
                     &ext2(*uv),
@@ -617,41 +617,7 @@ fn run_rust(k: &Kernel, i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64
                 rec.push(status);
                 rec.push(made.len() as f64);
                 for l in &made {
-                    let (u0, u1) = (l.uv_domain.min(), l.uv_domain.max());
-                    rec.extend([u0.x, u0.y, u1.x, u1.y]);
-                    let (b0, b1) = (l.bbox.min(), l.bbox.max());
-                    rec.extend([b0.x, b0.y, b0.z, b1.x, b1.y, b1.z]);
-                    for v in [l.mid_point, l.mid_du, l.mid_dv, l.mid_normal] {
-                        rec.extend([v.x, v.y, v.z]);
-                    }
-                    for j in 0..3 {
-                        let b = l.pseudo_box.basis_vector(j).unwrap_or(Vec3::new(0.0, 0.0, 0.0));
-                        rec.extend([b.x, b.y, b.z]);
-                    }
-                    for j in 0..3 {
-                        let iv = l.pseudo_box.interval(j).unwrap_or_else(Extent1d::new);
-                        rec.extend([iv.min(), iv.max()]);
-                    }
-                    let polar = &l.polar_box;
-                    let state = match polar.state() {
-                        PolarBoxState::Uninitialized => 0.0,
-                        PolarBoxState::PointWithBasis => 1.0,
-                        PolarBoxState::SinglePoint => 2.0,
-                        PolarBoxState::Arc => 3.0,
-                        PolarBoxState::Region => 4.0,
-                        PolarBoxState::Unbounded => 5.0,
-                    };
-                    rec.push(state);
-                    let bounded = (2.0..=4.0).contains(&state);
-                    let pd = polar.domain();
-                    rec.extend(if bounded {
-                        [pd.min().x, pd.min().y, pd.max().x, pd.max().y]
-                    } else {
-                        [0.0; 4]
-                    });
-                    for b in polar.basis() {
-                        rec.extend(if bounded { [b.x, b.y, b.z] } else { [0.0; 3] });
-                    }
+                    crate::units::geom_grid::put_leaf(&mut rec, l);
                 }
             }
             OpIn::Renderer {
