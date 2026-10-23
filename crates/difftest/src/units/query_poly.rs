@@ -629,7 +629,10 @@ fn build_owners(owners: &[OwnerIn]) -> Result<OwnerWorld, Fail> {
             Some(OwnerSurfaceIn::Bezier { net }) => {
                 // Dimensions were checked above; each knot vector is at most 8 entries.
                 let nu = net.len();
-                let nv = net[0].len();
+                let nv = net
+                    .first()
+                    .ok_or_else(|| Fail::Harness(harness("empty owner Bezier net")))?
+                    .len();
                 let mut u = vec![0.0; nu];
                 u.extend(vec![1.0; nu]);
                 let mut v = vec![0.0; nv];
@@ -1094,7 +1097,7 @@ fn run_op(k: &Kernel, b: &mut Built, op: &OpIn, out: &mut Secs) -> Result<(), Fa
                         rs(p.face_set_tolerance(fid(f), tol::zone_tol3d(k, t)))?;
                     }
                     MutIn::SetOriginalFace { f, label } => {
-                        rs(p.face_set_original_face(fid(f), Some(ObjectKey(label as u64)), false))?
+                        rs(p.face_set_original_face(fid(f), Some(ObjectKey(label as u64)), false))?;
                     }
                     MutIn::ClearAux { e } => rs(p.edge_set_aux_data(eid(e), None))?,
                 }
@@ -1261,11 +1264,10 @@ mod owner_tests {
             let expected: &[i64] = match case.name.as_str() {
                 "owner_plane_stretch" => &[0, 0],
                 "owner_plane_compress" | "owner_face_without_surface" => &[0, 1, 0],
-                "owner_u_pole" => &[1, 1],
+                "owner_u_pole" | "owner_shared_face_identity" => &[1, 1],
                 "owner_u_seam_midpoint" => &[0, 0, 1],
                 "owner_partial_pole" | "owner_v_pole" => &[1],
                 "owner_v_seam_midpoint" => &[0, 1],
-                "owner_shared_face_identity" => &[1, 1],
                 "owner_distinct_face_identity" => &[1, 0],
                 _ => &[0],
             };
