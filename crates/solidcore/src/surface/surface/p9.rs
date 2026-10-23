@@ -15,9 +15,11 @@
 //! approximate replacement (the diagonal curves of a cone, sphere or torus, which
 //! the port's B-spline-only `SmCrvOnSurf` cannot carry). Iso curves come from the
 //! kind's own `CreateIsoParametricCurve`, and implicit iso curves evaluate the plane,
-//! cone, sphere and torus through their own evaluation, as upstream's virtuals. Iso
-//! extraction is exact for B-splines, so the public
-//! approximation tolerance has no numerical effect for that supported kind.
+//! cone, sphere and torus through their own evaluation, as upstream's virtuals;
+//! curve-bounded, STEP, offset and in-volume surfaces build both kinds of iso curve
+//! over the surface itself (the `SmSurface` body, with the caller's approximation
+//! tolerance). Iso extraction is exact for B-splines, so the tolerance has no
+//! numerical effect for that kind.
 //! Failed tessellations retain the empty parameter array;
 //! unported errors are propagated even where upstream ignores a status.
 
@@ -72,11 +74,11 @@ fn bss(surface: &Surface) -> Result<Cow<'_, BSplineSurface>> {
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => {
-            // `SmIsoCurve` holds B-spline surfaces only (plan/findings.md, surface.surface_p5)
-            // UNPORTED(curve.iso_curve): SmIsoCurve over a non-B-spline surface
-            Err(SolidError::unported(
-                "SmIsoCurve::SmIsoCurve(non-B-spline surface)",
-                "curve.iso_curve",
+            // (unreachable: the iso curves of these kinds are built over the surface
+            // itself, as upstream's `SmIsoCurve` and `SmSurface::CreateIsoParametricCurve`)
+            Err(SolidError::invalid_input(
+                OP,
+                "surface has no B-spline view",
             ))
         }
     }
@@ -102,8 +104,18 @@ fn typed_iso_curve(
     surface: &Surface,
     direction: SurfParamType,
     value: f64,
+    approx_tol: f64,
 ) -> Result<(BSplineCurve, Curve)> {
     let typed = match surface.kind() {
+        // (no override: the `SmSurface` body, whose approximation uses the tolerance)
+        SurfaceKind::CurveBounded(_)
+        | SurfaceKind::Step(_)
+        | SurfaceKind::OffsetSurface(_)
+        | SurfaceKind::SrfInVolume(_) => {
+            surface
+                .create_iso_parametric_curve(k, direction, value, approx_tol, None, false)?
+                .curve
+        }
         SurfaceKind::Plane(p) => Curve::from(
             p.create_iso_parametric_curve(direction, value, None, false)?
                 .curve,
@@ -150,7 +162,11 @@ pub(super) fn implicit_iso(
     if let SurfaceKind::Plane(_)
     | SurfaceKind::Cone(_)
     | SurfaceKind::Sphere(_)
-    | SurfaceKind::Torus(_) = surface.kind()
+    | SurfaceKind::Torus(_)
+    | SurfaceKind::CurveBounded(_)
+    | SurfaceKind::Step(_)
+    | SurfaceKind::OffsetSurface(_)
+    | SurfaceKind::SrfInVolume(_) = surface.kind()
     {
         return Ok(Curve::from(IsoCurve::from_surface(
             surface.clone_for_evaluation()?,
@@ -207,7 +223,7 @@ impl Surface {
         &self,
         k: &Kernel,
         direction: SurfParamType,
-        _tolerance: f64,
+        tolerance: f64,
     ) -> Result<Option<(Curve, Curve)>> {
         let domain = self.natural_uv_domain();
         let (min, max) = match direction {
@@ -215,8 +231,8 @@ impl Surface {
             SurfParamType::V => (domain.min().y, domain.max().y),
             _ => return Ok(None),
         };
-        let first = typed_iso_curve(k, self, direction, min)?.1;
-        let second = typed_iso_curve(k, self, direction, max)?.1;
+        let first = typed_iso_curve(k, self, direction, min, tolerance)?.1;
+        let second = typed_iso_curve(k, self, direction, max, tolerance)?.1;
         Ok(Some((first, second)))
     }
 
@@ -282,7 +298,7 @@ impl Surface {
                 } else {
                     uv.x
                 };
-                let (curve, typed) = typed_iso_curve(k, self, direction, iso)?;
+                let (curve, typed) = typed_iso_curve(k, self, direction, iso, max_side / 100.0)?;
                 // `pBSC->IsDegenerate()` is virtual: a revolution circle uses
                 // `SmEllipse::IsDegenerate` (radius < tol/2 or arc < tol) and a
                 // plane line `SmLine::IsDegenerate`, not the B-spline test.
