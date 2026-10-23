@@ -61,7 +61,10 @@ pub trait PrimitiveAccess: SweepAccess {
                 fenv,
             )
         })?;
-        curves.clear();
+        // consumed on success: the B-rep owns every curve, each slot stays empty
+        for slot in curves.iter_mut() {
+            *slot = None;
+        }
         Ok(())
     }
     /// Create one planar face from its boundary curves
@@ -198,7 +201,14 @@ pub trait PrimitiveAccess: SweepAccess {
     }
     /// Run `query::face::p2::curve_on_classify` with caller-resolved object handles;
     /// report whether any interval midpoint is `SM_PC_FACE`.
-    fn axis_inside_face(&mut self, face: FaceRef, axis: &Curve) -> Result<bool>;
+    fn axis_inside_face(&mut self, face: FaceRef, axis: &Curve) -> Result<bool> {
+        crate::sweep::topology_sweep::store::classification::axis_inside_face(
+            self.kernel(face.0)?,
+            self.brep(face.0)?,
+            face.1,
+            axis,
+        )
+    }
     /// Linear cap stitch: callback, fast edge compare, no vertex-edge splits,
     /// non-manifold mode, region nesting, default targets and tolerance.
     fn stitch_linear_caps(

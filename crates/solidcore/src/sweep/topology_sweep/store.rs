@@ -15,7 +15,7 @@
 //! is introduced. Destruction releases the Rust-owned registry/attribute state;
 //! the unported native B-rep destructor is not emulated.
 
-mod classification;
+pub(crate) mod classification;
 mod merge;
 
 use std::collections::BTreeMap;
@@ -1106,9 +1106,6 @@ impl PrimitiveAccess for SweepStore<'_> {
             &mut self.attributes,
             &key_of,
         )
-    }
-    fn axis_inside_face(&mut self, face: FaceRef, axis: &Curve) -> Result<bool> {
-        classification::axis_inside_face(self.kernel(face.0)?, self.brep(face.0)?, face.1, axis)
     }
 }
 

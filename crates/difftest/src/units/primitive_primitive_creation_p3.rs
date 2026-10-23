@@ -356,9 +356,6 @@ impl PrimitiveAccess for EmptyModel {
     ) -> Result<T> {
         body(&mut self.k, &mut self.b)
     }
-    fn axis_inside_face(&mut self, _: FaceRef, _: &Curve) -> Result<bool> {
-        unavailable()
-    }
 }
 fn entry(i: &Inputs) -> Result<Vec<f64>> {
     let data = &i.data;

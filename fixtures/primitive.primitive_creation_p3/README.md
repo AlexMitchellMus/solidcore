@@ -113,3 +113,5 @@ rotation of a line 1 / 3 / 2, the partial rotation, skin, curve sweep and swung
 primitive 1 / 4 / 4, identical to the native B-rep. Face geometry is not compared.
 The gate has 296 cases: 295 pass bit-identically, none defer, 1 is rejected under
 UB-78, and none fail.
+`axis_inside_face` is a trait default too (the `SmFace::CurveOnClassify` axis check
+`SweepStore` already used), so neither the fixture nor `PrimitiveModel` needs its own.

@@ -16,8 +16,7 @@
 //! attributes); topology marks use
 //! [`Marks`] per B-rep under the kernel context's mark locks. Services the model does
 //! not resolve yet return [`SolidError::Unported`] naming the upstream call: retaining
-//! an HCR session (`SmHCR`), the face-curve classification of a rotational sweep's
-//! axis (`SmFace::CurveOnClassify`), the topology intersector's face deletion
+//! an HCR session (`SmHCR`), the topology intersector's face deletion
 //! (`SmTopologyIntersector::DeleteFaces`) and `SmBrep::ProjectAndTrim`. Their units are partial: the model, not the unit,
 //! lacks the bridge; each error names the unit that owns the call. No recursion.
 //! Retained merge services remain the responsibility of
@@ -29,7 +28,6 @@ use std::collections::BTreeMap;
 use crate::blend::hcr::Hcr;
 use crate::boolean::topology_intersector::p1::Relations;
 use crate::curve::composite_curve::OffsetMapAttribute;
-use crate::curve::curve::Curve;
 use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::attribute::TagData;
 use crate::geom::context::{MarkLock, MarkType};
@@ -425,12 +423,6 @@ impl PrimitiveAccess for PrimitiveModel<'_> {
         Err(SolidError::unported(
             "SmTopologyIntersector::DeleteFaces",
             "boolean.topology_intersector_p2",
-        ))
-    }
-    fn axis_inside_face(&mut self, _: FaceRef, _: &Curve) -> Result<bool> {
-        Err(SolidError::unported(
-            "SmFace::CurveOnClassify",
-            "query.face_p2",
         ))
     }
 }
