@@ -31,12 +31,14 @@
 //!   `m_bProcessBoundaryCurves`) have nothing to act on because the Rust surface
 //!   solvers build no surface cache. `EvaluateBinormal` first gets the surface cache of
 //!   the face's surface (`smsurf_GetSurfaceCache`), whose construction creates the UV
-//!   trim curves of the face's edge uses (`SmFace::CreateUVTrimCurves`). The Rust
-//!   trimmed surface cache holds its face as an opaque handle without the B-rep, so it
-//!   cannot make that call (a `justified:` stub, plan/findings.md `topology.face_p3`),
-//!   and the paths that reach the global point solve are deferred. The same side effect
-//!   makes `CreateUVTrimCurve` clean up a UV trim curve the cache attached; the clean-up
-//!   is kept.
+//!   trim curves of the face's edge uses (`SmFace::CreateUVTrimCurves`): the port
+//!   builds the face's trimmed surface cache over the B-rep
+//!   ([`crate::query::face::p2::face_surface_cache`], the `&mut Brep` the function
+//!   already takes) for that side effect and drops it. Upstream keeps the cache on the
+//!   surface; the port has no object caches, so it is rebuilt on every call that
+//!   reaches this point. The same
+//!   side effect makes `CreateUVTrimCurve` clean up a UV trim curve the cache attached;
+//!   the clean-up is kept.
 //! - **Out-params.** `CreateUVTrimCurve` returns a [`CreatedUvTrimCurve`]; its optional
 //!   `pdMaxDeviation` is `want_deviation`. `GetOrCreateUVTrimCurve` returns its status
 //!   as [`UvTrimCurveFetch::status`] (upstream's status can be a failure while the
@@ -60,9 +62,10 @@
 //!   produces a curve (`plan/upstream-issues.md` WR-158); the port builds and discards
 //!   it as upstream does. `NormalizedEvaluate` returns `SM_SUCCESS` for a point it
 //!   dropped to the surface even where upstream's trim curve was missing.
-//! - **Unported callees.** `SmSurface::DropCurve` (`intersect.surface_drop_lib_p3`),
-//!   `SmFace::CreateUVTrimCurves`
-//!   (`topology.face_p3`, through the face's surface cache) and the paths of
+//! - **Drop curves.** `SmSurface::DropCurve` is wired (`intersect.surface_drop_lib_p3`;
+//!   a plane runs its own override): the UV curves keep their kind (`Vec<Curve>`),
+//!   and only the two-singular-end-points stitch takes their `SmBSplineCurve` parts.
+//! - **Unported callees.** The paths of
 //!   `SmSurface::DropPoint` / `LocalPointSolve` that reach `LocalPointSolve_1`
 //!   (`surface.surface_point_solve_p3`) return [`SolidError::Unported`];
 //!   `GlobalPointSolve` of a non-plane surface is `surface.surface_point_solve_p3`
@@ -99,7 +102,7 @@ use crate::topology::edgeuse::p1::{
     tolerance, uv_trim_curve, uv_trim_curve_pointer, UvTrimCurveArg,
 };
 use crate::topology::edgeuse::p2::BinormalEval;
-use crate::topology::{Brep, EdgeId, EdgeuseId, ObjectHandle};
+use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, ObjectHandle};
 
 const OP: &str = "topology::edgeuse::p3";
 
@@ -139,14 +142,17 @@ struct DropCurveOut {
     max_dist_to_surf: f64,
     /// `rdMaxApproxDev`.
     max_approx_dev: f64,
-    /// `rUVCurves`.
-    uv_curves: Vec<BSplineCurve>,
+    /// `rUVCurves`: upstream's `SmBSplineCurve*` array, whose elements may be derived
+    /// curves (a plane drops a line to an `SmLine`), so they keep their kind.
+    uv_curves: Vec<Curve>,
 }
 
 /// `SmSurface::DropCurve(ctx, domain, curve, interval, tol, rdMaxDropToSurf,
-/// rdMaxApproxDev, rUVCurves, bKeepAllDropCurves, pDropCurveFail)`: the UV curves the
-/// curve over `interval` drops to (`intersect.surface_drop_lib_p3`).
-#[allow(clippy::too_many_arguments)]
+/// rdMaxApproxDev, rUVCurves, bKeepAllDropCurves, pDropCurveFail)` (virtual, with the
+/// default `bCreatingUVTrimCurve = TRUE`): the UV curves the curve over `interval`
+/// drops to ([`Surface::drop_curve`]: a plane has its own override, which does not use
+/// `pOptDropCurveFail` and passes `NULL` on to the general method; every other kind runs
+/// the general one, `intersect.surface_drop_lib_p3`).
 fn surface_drop_curve(
     k: &Kernel,
     surface: &Surface,
@@ -155,23 +161,36 @@ fn surface_drop_curve(
     interval: &Extent1d,
     approx_tol_3d: f64,
     keep_all_drop_curves: bool,
-    record: Option<&mut DropCurveFail<ObjectHandle>>,
+    record: Option<crate::intersect::surface_drop_lib::p1::DropFailRecord<'_, ObjectHandle>>,
 ) -> Result<DropCurveOut> {
-    let _ = (
+    let d = surface.drop_curve::<ObjectHandle>(
         k,
-        surface,
         domain,
         curve,
         interval,
         approx_tol_3d,
         keep_all_drop_curves,
         record,
-    );
-    // UNPORTED(intersect.surface_drop_lib_p3): SmSurface::DropCurve
-    Err(SolidError::unported(
-        "SmSurface::DropCurve",
-        "intersect.surface_drop_lib_p3",
-    ))
+        true,
+    )?;
+    Ok(DropCurveOut {
+        max_dist_to_surf: d.max_drop_to_surf,
+        max_approx_dev: d.max_approx_dev,
+        uv_curves: d.uv_curves,
+    })
+}
+
+/// The `SmBSplineCurve` an element of a drop's curve array is (a B-spline, or the
+/// B-spline part of a line).
+fn b_spline_of(curve: Curve) -> Result<BSplineCurve> {
+    match curve.into_kind() {
+        CurveKind::BSpline(b) => Ok(b),
+        CurveKind::Line(l) => Ok(l.base_with_nurb()?.into_owned()),
+        _ => Err(SolidError::invalid_input(
+            OP,
+            "drop curve is not an SmBSplineCurve",
+        )),
+    }
 }
 
 /// `pSurface->GetSingularities() != SM_SS_NONE` (the virtual, without pole outputs; it
@@ -256,20 +275,15 @@ fn status<T>(r: Result<T>) -> Result<Option<T>> {
     }
 }
 
-/// `smsurf_GetSurfaceCache(pSurface)` of the surface of a face (`NER`), as
+/// `smsurf_GetSurfaceCache(pSurface)` of the surface of face `f` (`NER`), as
 /// `EvaluateBinormal` calls it before clearing the surface's owner: the face's trimmed
 /// surface cache, whose construction attaches a UV trim curve to every edge use of the
-/// face (`SmFace::CreateUVTrimCurves`, `SmTrimSrfCache.cpp:209`). The Rust surface cache
-/// holds its face as an opaque handle without the B-rep, so it cannot make that call
-/// (`surface::trim_srf_cache`'s own `face_create_uv_trim_curves` stub); building the cache
-/// here without it would drop the side effect on the face's edge uses.
-fn face_surface_cache() -> Result<()> {
-    // UNPORTED(topology.face_p3): SmFace::CreateUVTrimCurves -- justified: findings.md topology.face_p3 "Stubs left for this unit"
-    // (through the trimmed surface cache of the face's surface, which has no B-rep handle)
-    Err(SolidError::unported(
-        "SmFace::CreateUVTrimCurves",
-        "topology.face_p3",
-    ))
+/// face (`SmFace::CreateUVTrimCurves`, `SmTrimSrfCache.cpp:209`), built over the B-rep
+/// ([`crate::query::face::p2::face_surface_cache`]). The cache itself is not kept (the
+/// Rust surface solvers build their own); only its side effect on the face is.
+fn face_surface_cache(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<()> {
+    crate::query::face::p2::face_surface_cache(k, b, f, Some(crate::error::EntityRef::Face(f)))
+        .map(|_| ())
 }
 
 /// `pEdge->SetTolerance(tolerance)` (default arguments).
@@ -541,13 +555,17 @@ pub fn create_uv_trim_curve(
                     &edge_domain,
                     zone_tol,
                     false,
-                    Some(&mut *fail),
+                    Some(crate::intersect::surface_drop_lib::p1::DropFailRecord {
+                        fail: &mut *fail,
+                        surface: Some(surface_handle),
+                        curve: Some(curve_handle),
+                    }),
                 ))?;
                 l_ok = r.is_some();
                 if let Some(out) = r {
                     max_dist_to_surf = out.max_dist_to_surf;
                     max_drop_approx_dev = out.max_approx_dev;
-                    uv_curves = out.uv_curves.into_iter().map(Curve::from).collect();
+                    uv_curves = out.uv_curves;
                 }
             } else {
                 // (ii==1 || ii==3) - Try DropAndTrimCurve branch
@@ -601,7 +619,7 @@ pub fn create_uv_trim_curve(
                 if let Some(out) = r {
                     max_dist_to_surf = out.max_dist_to_surf;
                     max_drop_approx_dev = out.max_approx_dev;
-                    uv_curves = out.uv_curves.into_iter().map(Curve::from).collect();
+                    uv_curves = out.uv_curves;
                 }
 
                 // when reverse curve dropping works
@@ -1164,7 +1182,7 @@ fn two_singular_end_points(
                     // restore parameterization of 1stHalf drop curve
                     if let Some(c) = first_out.uv_curves.first_mut() {
                         let old = new_interval;
-                        c.reverse_parameterization(&old)?;
+                        c.reverse_parameterization(k, &old)?;
                     }
 
                     // stitch the two halves together
@@ -1173,10 +1191,12 @@ fn two_singular_end_points(
                         .pop()
                         .ok_or_else(|| null("two singular end points: no second curve"))?;
                     first_out.uv_curves.push(second_curve_out);
-                    let joined = status(BSplineCurve::create_by_joining(
-                        &mut first_out.uv_curves,
-                        None,
-                    ))?;
+                    let mut halves = first_out
+                        .uv_curves
+                        .into_iter()
+                        .map(b_spline_of)
+                        .collect::<Result<Vec<BSplineCurve>>>()?;
+                    let joined = status(BSplineCurve::create_by_joining(&mut halves, None))?;
 
                     // when stitching worked (the joined curve is dropped with the
                     // second half's array: upstream defect WR-158, module docs)
@@ -1905,10 +1925,12 @@ pub fn evaluate_binormal_uv(
 
         // get and lock the surface cache (of the face's surface: its owner is cleared
         // only below)
-        face_surface_cache()?;
+        face_surface_cache(k, b, f)?;
 
-        // (the surface cache flags are not modelled; module docs). Use surface's
-        // domain instead of Face's domain.
+        // Turn off point testing so GlobalPointSolve() will keep all point solutions
+        // without classifying the solution point against the trim boundaries
+        // (`global_point_solve_point_test_off`; the boundary-curve flag is not
+        // modelled, module docs). Use surface's domain instead of Face's domain.
         let srf_domain = surface.natural_uv_domain();
 
         // This 'turns off point testing' when GPS does not use the cache (a copy of
@@ -1917,7 +1939,7 @@ pub fn evaluate_binormal_uv(
         let _ = solve_surface.set_owner(None::<ObjectRef>);
 
         // Find Surface sUV point for EdgePoint
-        let mut solutions = solve_surface.global_point_solve::<NoObject>(
+        let mut solutions = solve_surface.global_point_solve_point_test_off::<NoObject>(
             k,
             Some(NoObject),
             &srf_domain,
@@ -1930,7 +1952,7 @@ pub fn evaluate_binormal_uv(
         if solutions.is_empty() {
             // try again with a bigger tolerance
             tol *= 1000.0;
-            solutions = solve_surface.global_point_solve::<NoObject>(
+            solutions = solve_surface.global_point_solve_point_test_off::<NoObject>(
                 k,
                 Some(NoObject),
                 &srf_domain,

@@ -237,28 +237,9 @@ fn surface_drop_curve(
     tol: f64,
     keep_all: bool,
 ) -> Result<(Vec<Curve>, f64, f64)> {
-    match surface.kind() {
-        SurfaceKind::Plane(p) => {
-            let d = p.drop_curve(k, domain, curve, interval, tol, keep_all, false)?;
-            Ok((d.uv_curves, d.max_drop_to_surf, d.max_approx_dev))
-        }
-        SurfaceKind::BSpline(_)
-        | SurfaceKind::Cone(_)
-        | SurfaceKind::Sphere(_)
-        | SurfaceKind::Torus(_)
-        | SurfaceKind::CurveBounded(_)
-        | SurfaceKind::SrfInVolume(_)
-        | SurfaceKind::SurfOfRevolution(_)
-        | SurfaceKind::SurfOfExtrusion(_)
-        | SurfaceKind::Step(_)
-        | SurfaceKind::OffsetSurface(_) => {
-            // UNPORTED(intersect.surface_drop_lib_p3): SmSurface::DropCurve
-            Err(SolidError::unported(
-                "SmSurface::DropCurve",
-                "intersect.surface_drop_lib_p3",
-            ))
-        }
-    }
+    let d =
+        surface.drop_curve::<NoObject>(k, domain, curve, interval, tol, keep_all, None, false)?;
+    Ok((d.uv_curves, d.max_drop_to_surf, d.max_approx_dev))
 }
 
 // ---- helpers --------------------------------------------------------------------------------
@@ -1026,11 +1007,17 @@ impl Surface {
         handle: Option<O>,
         op: &'static str,
     ) -> Result<SurfaceCache<O>> {
-        match get_surface_cache::<O>(k, self, handle) {
-            Ok(c) => Ok(c),
-            Err(e) if e.is_unported() => Err(e),
-            Err(_) => Err(SolidError::null_pointer(op)),
+        let mut cache = match get_surface_cache::<O>(k, self, handle) {
+            Ok(c) => c,
+            Err(e) if e.is_unported() => return Err(e),
+            Err(_) => return Err(SolidError::null_pointer(op)),
+        };
+        // the solves' GetTree (NER): a reused cache whose tree is not built yet
+        // (the surface's cache slot) builds it now
+        if cache.tree().is_none() {
+            Self::held_cache(k, &mut cache, op)?;
         }
+        Ok(cache)
     }
 
     fn solve_cache_from_context<O: SolutionObject>(
@@ -1442,7 +1429,7 @@ impl Surface {
         // local Surface Cache
         // (`held`: the caller's cache, which the coincident traces below share)
         let mut held: Option<&mut SurfaceCache<O>> = None;
-        let built;
+        let mut built;
         let mut owned;
         // the trimmed cache's point test (`sm_IsPointValid` -> `PointTest`)
         let mut face_cache: Option<&mut (dyn FaceSolveCache<O> + '_)> = None;
@@ -1476,7 +1463,9 @@ impl Surface {
                         .as_mut()
                         .map(|context| &mut **context as &mut dyn SurfaceSolveContext<O>),
                 )?;
-                &built
+                // pSurfaceCache->GetTree() (NER): a cache made while a boolean operation
+                // delays its tree builds it now
+                Self::held_cache(k, &mut built, OP_LINE)?
             }
             LineCacheSource::Held(kept) => {
                 match kept.get_or_insert_with(|| {

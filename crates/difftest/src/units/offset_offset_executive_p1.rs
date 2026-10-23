@@ -62,7 +62,8 @@ use solidcore::topology::edgeuse::p1::{faceuse_edgeuses, mate as edgeuse_mate};
 use solidcore::topology::topology_traverser::face_edges;
 use solidcore::topology::{
     Brep, Edge, EdgeId, Edgeuse, EdgeuseId, EdgeuseOwner, Face, FaceId, Faceuse, FaceuseId, Loop,
-    LoopEdge, Loopuse, LoopuseStart, Shell, Vertex, VertexId, Vertexuse, VertexuseOwner,
+    LoopEdge, Loopuse, LoopuseStart, Region, RegionId, Shell, Vertex, VertexId, Vertexuse,
+    VertexuseOwner,
 };
 use solidcore::SolidError;
 use solidcore_ffi::units::offset_offset_executive_p1 as ffi;
@@ -996,6 +997,19 @@ fn state(executive: &OffsetExecutive) -> Vec<f64> {
 fn add_wire(k: &Kernel, brep: &mut Brep, curve: Curve, interval: Extent1d) -> HResult<EdgeId> {
     add_wire_with_vertices(k, brep, curve, interval, None)
 }
+/// The region of the shim's `SmBrep` that every shell it builds lives in (`MakeShellVertex`
+/// and `CreateFaceFromSurface` put the shell in the B-rep's region), so `GetBrep()` of an
+/// edge use finds the B-rep, as `SetUVTrimCurve` needs once the plane's `DropCurve` runs.
+fn brep_region(brep: &mut Brep) -> HResult<RegionId> {
+    if let Some((id, _)) = brep.regions().iter().find(|(_, r)| r.in_brep) {
+        return Ok(id);
+    }
+    brep.add_region_record(Region {
+        in_brep: true,
+        ..Region::default()
+    })
+    .map_err(setup)
+}
 fn add_wire_with_vertices(
     k: &Kernel,
     brep: &mut Brep,
@@ -1005,10 +1019,11 @@ fn add_wire_with_vertices(
 ) -> HResult<EdgeId> {
     let start = curve.evaluate_point(k, interval.min()).map_err(setup)?;
     let end = curve.evaluate_point(k, interval.max()).map_err(setup)?;
+    let region = brep_region(brep)?;
     let shell = brep
         .add_shell_record(Shell {
             faces: Vec::new(),
-            region: None,
+            region: Some(region),
             ..Shell::default()
         })
         .map_err(setup)?;
@@ -1098,10 +1113,11 @@ fn face_with_edges(
     surface: Surface,
     edges: &[EdgeId],
 ) -> HResult<(FaceId, FaceuseId)> {
+    let region = brep_region(brep)?;
     let shell = brep
         .add_shell_record(Shell {
             faces: Vec::new(),
-            region: None,
+            region: Some(region),
             ..Shell::default()
         })
         .map_err(setup)?;
@@ -3287,7 +3303,7 @@ mod tests {
         // `status, counts[4], has offset B-rep`: no counts, the offset B-rep kept
         let plain = |status: i64| [status, 0, 0, 0, 0, 1];
         for (branch, dependency, record) in [
-            (Probe::ReplaceEmpty, None, plain(1000)),
+            (Probe::ReplaceEmpty, None::<&str>, plain(1000)),
             (Probe::RemoveNoMerge, None, plain(1000)),
             (Probe::RemoveEmpty, None, plain(1000)),
             (Probe::SideWallNull, None, plain(1000)),
@@ -3301,9 +3317,9 @@ mod tests {
             // PiecewiseMerge succeeds on the empty B-rep (its B-rep box is
             // query.brep's) and hands the offset B-rep on
             (Probe::PiecewiseEmpty, None, [1000, 0, 0, 0, 1, 0]),
-            // MapEdgeuses now evaluates through topology.edgeuse_p3, which must
-            // build the hand-made plane face's missing UV trim curve.
-            (Probe::MapPlane, Some("intersect.surface_drop_lib_p3"), plain(1000)),
+            // MapEdgeuses evaluates through topology.edgeuse_p3, which builds the
+            // hand-made plane face's missing UV trim curve (SmSurface::DropCurve).
+            (Probe::MapPlane, None, plain(1000)),
             (Probe::EdgeusesUnmapped, None, plain(1000)),
         ] {
             let input = Inputs::Probe {
@@ -3322,9 +3338,9 @@ mod tests {
     #[test]
     fn face_tail_fixture_reaches_the_kernel_face_constructor() {
         // The shared MakeFaceWithCurves fixture builds its wire edges
-        // (SmBrep::MakeWireEdgeVertex, topology.brep_p3) and defers in
-        // MakeFaceTopology (ported in full, topology.brep_p6) at the UV trim
-        // curve's SmSurface::DropCurve rather than failing as a harness error.
+        // (SmBrep::MakeWireEdgeVertex, topology.brep_p3) and its face
+        // (MakeFaceTopology, topology.brep_p6, through the UV trim curve's
+        // SmSurface::DropCurve), and the tail maps every edge use.
         let input: Inputs = serde_json::from_value(serde_json::json!({
             "op": "face_tail",
             "offset_distance": 0.25,
@@ -3337,11 +3353,9 @@ mod tests {
         }))
         .unwrap();
         let output = Runner.run_rust(&case(&input)).unwrap();
-        let deferred = output.deferred.unwrap();
-        assert_eq!(
-            (deferred.unit.as_str(), deferred.symbol.as_str()),
-            ("intersect.surface_drop_lib_p3", "SmSurface::DropCurve")
-        );
+        assert!(output.deferred.is_none(), "{:?}", output.deferred);
+        assert_eq!(output.ints["status"], [1000]);
+        assert_eq!(output.ints["mapped"], [1, 1, 1, 1]);
     }
 
     #[test]

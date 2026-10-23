@@ -30,18 +30,34 @@
 //! | [`SrfInVolume::reverse`], [`SrfInVolume::swap_uv`], [`SrfInVolume::trim_with_domain`], [`SrfInVolume::transform`] | `Reverse`, `SwapUV`, `TrimWithDomain`, `Transform` |
 //! | [`SrfInVolume::split_at`]                      | `SplitAt`                                         |
 //! | [`SrfInVolume::create_mirror_surface`]         | `CreateMirrorSurface`                             |
-//! | [`SrfInVolume::make_exact_b_spline_if_possible`] | `MakeExactBSplineIfPossible`                    |
+//! | [`SrfInVolume::make_exact_b_spline_if_possible`], [`SrfInVolume::make_exact_b_spline_if_possible_with`] | `MakeExactBSplineIfPossible` |
+//! | `make_exact_b_spline_out_surface_from_{in,param}_space` (private) | `SmVolume::MakeExactBSplineOutSurfaceFrom{In,Param}Space` |
+//! | `make_exact_b_spline_1st_out_surface` (private) | `SmVolume`/`SmBSplineVolume`/`SmTransform::MakeExactBSpline1stOutSurface` |
+//! | `transform_axis2_placement` (private) | `SmTransform::LoadAxis2Placement`, `IsUnitOrthonormal` |
 //! | [`SrfInVolume::read_from_db`]                  | `ReadFromDB`                                      |
 //!
 //! Deviations:
-//! - Compound evaluation copies carry a depth counter capped at 64 by `Surface`.
+//! - **Nesting.** `new`, `set_base_surface` and `set_volume` return `InvalidInput` when the surface or the volume would nest
+//!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
+//!   (32; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   cloning and dropping of nested geometry (no limit upstream).
+//! - Compound evaluation copies carry a depth counter checked by `Surface` against the same bound.
 //! - **Volumes.** The volume is a [`Volume`] (unit `surface.volume_p1`).
 //!   `InvEvaluatePoint`, `InvMapPoint` and `ReadFromDB` are wired to
 //!   `surface.volume_p2`. `SmVolume::Mirror` is in no unit in `units.json`: co-ported
 //!   here as [`Volume::mirror`] (with `MirrorSimple` of the base class, `SmTransform`
 //!   and `SmBSplineVolume`). `MakeExactBSplineOutSurfaceFrom{Param,In}Space` are in no
-//!   unit either (not `surface.volume_p2`), so they stay [`SolidError::Unported`],
-//!   tagged with this unit as a dispatch gap.
+//!   unit either (not `surface.volume_p2`): they are ported here with the
+//!   `MakeExactBSpline1stOutSurface` of `SmVolume`, `SmBSplineVolume` (both `NULL`)
+//!   and `SmTransform` (with `LoadAxis2Placement` / `IsUnitOrthonormal`), as
+//!   [`SrfInVolume::make_exact_b_spline_if_possible_with`], which takes the kernel the
+//!   surface copy and transform need. The bend, unbend and twist overrides (some 700
+//!   upstream lines, also in no unit) stay [`SolidError::Unported`], tagged with this
+//!   unit as a dispatch gap, as does the kernel-less
+//!   [`SrfInVolume::make_exact_b_spline_if_possible`]. The compounding loops stop with
+//!   `InvalidInput` past `MAX_GEOMETRY_NESTING` maps (upstream walks the whole chain);
+//!   the result is a [`Surface`] (upstream an `SmBSplineSurface*` that may be a
+//!   derived kind).
 //! - **Ownership.** The base surface and the volume are held by value (the surface
 //!   boxed: it is itself a [`Surface`]). Upstream either shares them with the caller
 //!   or owns (and maybe copies) them, as the copy and owner flags say; here the copy
@@ -77,6 +93,9 @@ use crate::error::{ignored, Result, SolidError};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
+use crate::geom::geom_utility::p1::determinate_4x4;
+use crate::geom::tol::is_zero;
+use crate::geom::transform::Transform;
 use crate::geom::vector2d::Point2;
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
@@ -85,18 +104,20 @@ use crate::nurbs::b_spline_surface::{BSplineSurface, LocationType, SurfParamType
 use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::knots::Side;
 use crate::surface::surface::p2::{
-    is_kind_of as surface_is_kind_of, Surface, SurfaceKind, SRF_IN_VOLUME_TYPE,
+    check_geometry_nesting, is_kind_of as surface_is_kind_of, NestedGeometry, Surface, SurfaceKind,
+    B_SPLINE_SURFACE_TYPE, MAX_GEOMETRY_NESTING, SRF_IN_VOLUME_TYPE,
 };
 use crate::surface::volume::p1::{
     lift_first_derivative_srf, lift_second_derivative_srf, lift_third_derivative_srf,
 };
-use crate::surface::volume::{EvalOptions, Volume};
+use crate::surface::volume::{EvalOptions, Volume, VolumeKind};
 use crate::topology::database_io::{DatabaseReader, FileType};
 
 const OP: &str = "surface::srf_in_volume::SrfInVolume";
 const OP_EVAL: &str = "surface::srf_in_volume::SrfInVolume::evaluate";
 const OP_NORMAL: &str = "surface::srf_in_volume::SrfInVolume::evaluate_normal";
 const OP_STEP: &str = "surface::srf_in_volume::SrfInVolume::step_inversion";
+const OP_EXACT: &str = "surface::srf_in_volume::SrfInVolume::make_exact_b_spline_if_possible_with";
 const OP_READ: &str = "surface::srf_in_volume::SrfInVolume::read_from_db";
 
 /// `MAX_DERIVS` of `Evaluate`: the volume lifts go up to third derivatives.
@@ -109,14 +130,15 @@ fn volume_mirror(volume: &mut Volume, plane: &Axis2Placement) -> Result<()> {
     volume.mirror(plane)
 }
 
-/// `SmVolume::MakeExactBSplineOutSurfaceFromParamSpace` / `...FromInSpace`.
+/// `SmVolume::MakeExactBSplineOutSurfaceFromParamSpace` / `...FromInSpace` without a
+/// kernel (see [`SrfInVolume::make_exact_b_spline_if_possible_with`]).
 fn volume_make_exact_b_spline(
     _volume: &Volume,
     _surface: &Surface,
     in_param_space: bool,
 ) -> Result<BSplineSurface> {
-    // DISPATCH GAP: SmVolume::MakeExactBSplineOutSurfaceFrom{Param,In}Space are in no
-    // unit in units.json
+    // DISPATCH GAP: the copy and transform of the exact surface need the kernel; the
+    // kernel-taking port is SrfInVolume::make_exact_b_spline_if_possible_with
     Err(SolidError::unported(
         if in_param_space {
             "SmVolume::MakeExactBSplineOutSurfaceFromParamSpace"
@@ -125,6 +147,148 @@ fn volume_make_exact_b_spline(
         },
         "surface.srf_in_volume",
     ))
+}
+
+/// `SmTransform::LoadAxis2Placement`: the placement of a right-handed, unit,
+/// orthonormal transform (`IsUnitOrthonormal`), else `None` (`SM_ERR`).
+fn transform_axis2_placement(t: &Transform) -> Option<Axis2Placement> {
+    // init output
+    let mut placement = Axis2Placement::default();
+    placement.init();
+
+    // check for right-handed coordinate system (IsUnitOrthonormal)
+    // Determinate must be 1
+    let det = determinate_4x4(t.matrix());
+    if !is_zero(det - 1.0) {
+        return None;
+    }
+    // Each axis length must be one - need only to check two
+    let x = t.to_x_axis();
+    if !is_zero(x.dot(x) - 1.0) {
+        return None;
+    }
+    let y = t.to_y_axis();
+    if !is_zero(y.dot(y) - 1.0) {
+        return None;
+    }
+
+    // set output (SetCanonical's status is ignored)
+    let _ = placement.set_canonical(t.to_disp(), x, y);
+    Some(placement)
+}
+
+/// `MakeExactBSpline1stOutSurface(eInputSpace, rInputSurface, rpNewSurface)` of one map
+/// (no compounding): `None` when the map cannot produce an exact B-spline.
+///
+/// `SmVolume` and `SmBSplineVolume` never can (header bodies); `SmTransform` copies a
+/// B-spline-derived surface and transforms it by its placement when the matrix is a
+/// right-handed unit orthonormal one (upstream asserts the orient map is NULL for a
+/// parameter-space input and uses the same mapping either way).
+fn make_exact_b_spline_1st_out_surface(
+    k: &Kernel,
+    map: &Volume,
+    surface: &Surface,
+) -> Result<Option<Surface>> {
+    match map.kind() {
+        VolumeKind::Base | VolumeKind::BSpline(_) => Ok(None),
+        VolumeKind::Transform(t) => {
+            // for geometry derived from SmBSpline
+            if surface.is_kind_of(B_SPLINE_SURFACE_TYPE)? {
+                // for Transforms which can be represented by SmAxis2Placement mappings
+                if let Some(placement) = transform_axis2_placement(t) {
+                    // copy and transform the surface (statuses ignored)
+                    let mut new_surface = surface.copy(k)?;
+                    ignored(new_surface.transform(k, &placement, None))?;
+                    return Ok(Some(new_surface));
+                }
+            }
+            Ok(None)
+        }
+        // UNPORTED(surface.srf_in_volume): SmBendVolume / SmUnbendVolume / SmTwistVolume
+        // ::MakeExactBSpline1stOutSurface (in no unit in units.json: a dispatch gap)
+        VolumeKind::Bend(_) => Err(SolidError::unported(
+            "SmBendVolume::MakeExactBSpline1stOutSurface",
+            "surface.srf_in_volume",
+        )),
+        VolumeKind::Unbend(_) => Err(SolidError::unported(
+            "SmUnbendVolume::MakeExactBSpline1stOutSurface",
+            "surface.srf_in_volume",
+        )),
+        VolumeKind::Twist(_) => Err(SolidError::unported(
+            "SmTwistVolume::MakeExactBSpline1stOutSurface",
+            "surface.srf_in_volume",
+        )),
+    }
+}
+
+/// `SmVolume::MakeExactBSplineOutSurfaceFromInSpace`: `surface` projected exactly
+/// through every compounded map, or `None` when one cannot.
+fn make_exact_b_spline_out_surface_from_in_space(
+    k: &Kernel,
+    volume: &Volume,
+    in_space_surface: &Surface,
+) -> Result<Option<Surface>> {
+    // init output and locals
+    let mut this_map = Some(volume);
+    let mut this_in_space: Option<Surface> = None;
+
+    // for every compounding map
+    let mut depth = 0;
+    while let Some(map) = this_map {
+        depth += 1;
+        if depth > MAX_GEOMETRY_NESTING {
+            return Err(SolidError::invalid_input(
+                OP_EXACT,
+                "volume chain deeper than MAX_GEOMETRY_NESTING",
+            ));
+        }
+        // see if the current InSpaceSurface can project exactly to the Next OutSpace
+        let input = this_in_space.as_ref().unwrap_or(in_space_surface);
+        let Some(new_surface) = make_exact_b_spline_1st_out_surface(k, map, input)? else {
+            // return NULL when an exact projection was not possible
+            return Ok(None);
+        };
+
+        // set up for the next iteration
+        this_in_space = Some(new_surface);
+        this_map = map.next_map();
+    }
+    Ok(this_in_space)
+}
+
+/// `SmVolume::MakeExactBSplineOutSurfaceFromParamSpace`: the first map from parameter
+/// space, then every compounded map from in-space; `None` when one cannot.
+fn make_exact_b_spline_out_surface_from_param_space(
+    k: &Kernel,
+    volume: &Volume,
+    param_space_surface: &Surface,
+) -> Result<Option<Surface>> {
+    // for 1st volume mapping - Get 1stOutSpace project if possible
+    let Some(mut new_surface) =
+        make_exact_b_spline_1st_out_surface(k, volume, param_space_surface)?
+    else {
+        // return NULL when an exact projection was not possible
+        return Ok(None);
+    };
+
+    // for every subsequent compounding map
+    let mut this_map = volume.next_map();
+    let mut depth = 1;
+    while let Some(map) = this_map {
+        depth += 1;
+        if depth > MAX_GEOMETRY_NESTING {
+            return Err(SolidError::invalid_input(
+                OP_EXACT,
+                "volume chain deeper than MAX_GEOMETRY_NESTING",
+            ));
+        }
+        let Some(next) = make_exact_b_spline_1st_out_surface(k, map, &new_surface)? else {
+            return Ok(None);
+        };
+        new_surface = next;
+        this_map = map.next_map();
+    }
+    Ok(Some(new_surface))
 }
 
 /// `SmSurface::operator==` (the base comparison: the same type; the same-object test
@@ -191,7 +355,7 @@ impl SrfInVolume {
         }
     }
 
-    /// An evaluation copy retaining exact basis data, with Surface's 64-level bound.
+    /// An evaluation copy retaining exact basis data, with Surface's `MAX_GEOMETRY_NESTING` bound.
     pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
         Surface::check_volume_evaluation_copy_depth(&self.volume, depth)?;
         Ok(Self {
@@ -213,7 +377,9 @@ impl SrfInVolume {
     ///
     /// The failure of copying the surface (upstream ignores the status and keeps the
     /// shared surface; the port propagates it only for [`SolidError::Unported`]),
-    /// [`SolidError::Unported`] from copying an unported volume kind.
+    /// [`SolidError::Unported`] from copying an unported volume kind; `InvalidInput`
+    /// when `surface` or `volume` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1.
     pub fn new(
         k: &Kernel,
         surface: Surface,
@@ -222,6 +388,8 @@ impl SrfInVolume {
         copy_flag: u64,
         owner_flag: u64,
     ) -> Result<Self> {
+        check_geometry_nesting(NestedGeometry::Surface(&surface), 1, OP)?;
+        check_geometry_nesting(NestedGeometry::Volume(&volume), 1, OP)?;
         let mut owner_flag = owner_flag;
         let mut surface = surface;
         let mut volume = volume;
@@ -448,7 +616,9 @@ impl SrfInVolume {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] from copying an unported surface kind.
+    /// [`SolidError::Unported`] from copying an unported surface kind; `InvalidInput`
+    /// when `surface` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1 (nothing is changed).
     pub fn set_base_surface(
         &mut self,
         k: &Kernel,
@@ -457,6 +627,7 @@ impl SrfInVolume {
         copy_surface: bool,
         owns_surface: bool,
     ) -> Result<()> {
+        check_geometry_nesting(NestedGeometry::Surface(&surface), 1, OP)?;
         *self.surface = surface;
         self.in_param_space = in_param_space;
         self.owner_flag &= 2; // clear owns surface bit
@@ -477,8 +648,11 @@ impl SrfInVolume {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] from copying an unported volume kind.
+    /// [`SolidError::Unported`] from copying an unported volume kind; `InvalidInput`
+    /// when `volume` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1 (nothing is changed).
     pub fn set_volume(&mut self, volume: Volume, copy: bool, owns_volume: bool) -> Result<()> {
+        check_geometry_nesting(NestedGeometry::Volume(&volume), 1, OP)?;
         self.volume = volume;
         self.owner_flag &= 1; // clear owns volume bit
         if copy {
@@ -504,6 +678,25 @@ impl SrfInVolume {
     pub fn make_exact_b_spline_if_possible(&self) -> Result<BSplineSurface> {
         // Ask Volume to make exact BSpline if Possible - handles compounding
         volume_make_exact_b_spline(&self.volume, &self.surface, self.in_param_space)
+    }
+
+    /// `MakeExactBSplineIfPossible`: the exact B-spline equivalent (upstream an
+    /// `SmBSplineSurface` or a derived kind) of the base surface mapped through every
+    /// compounded map of the volume to its final out-space; `None` (upstream `NULL`
+    /// with `SM_SUCCESS`) when a map cannot produce one.
+    ///
+    /// # Errors
+    ///
+    /// Those of the surface copy and kind query; [`SolidError::Unported`] for a bend,
+    /// unbend or twist map (their `MakeExactBSpline1stOutSurface` are in no unit);
+    /// `InvalidInput` for a volume chain deeper than `MAX_GEOMETRY_NESTING`.
+    pub fn make_exact_b_spline_if_possible_with(&self, k: &Kernel) -> Result<Option<Surface>> {
+        // Ask Volume to make exact BSpline if Possible - handles compounding
+        if self.in_param_space {
+            make_exact_b_spline_out_surface_from_param_space(k, &self.volume, &self.surface)
+        } else {
+            make_exact_b_spline_out_surface_from_in_space(k, &self.volume, &self.surface)
+        }
     }
 
     /// `CreateMirrorSurface`: a copy of this surface whose volume is mirrored about

@@ -107,7 +107,7 @@ use solidcore::surface::surface::p2::{
     DropCurveFail, SurfaceKind, TsectCurveType, CONE_TYPE, CYLINDER_TYPE, SPHERE_TYPE,
     SURF_OF_EXTRUSION_TYPE, SURF_OF_REVOLUTION_TYPE, TORUS_TYPE,
 };
-use solidcore::surface::surface::Surface;
+use solidcore::surface::surface::{CacheTreeState, Surface};
 use solidcore::surface::volume::Volume;
 use solidcore::topology::database_io::{DatabaseReader, FileType, InputStream};
 use solidcore::topology::edge as ed;
@@ -773,6 +773,35 @@ impl Two {
         }
     }
 
+    /// Finds the imported face whose surface reaches `owner`. An offset copy keeps
+    /// its base face's owner key, but its handle is not a face-surface handle; the
+    /// imported face records still carry that key.
+    fn face_handle_for_owner(&self, owner: ObjectRef) -> solidcore::Result<Option<H>> {
+        let mut found = None;
+        for (b, brep) in self.breps.iter().enumerate() {
+            let Some(brep) = brep else {
+                continue;
+            };
+            for f in brep.faces().ids() {
+                let Some(surface) = brep.face(f)?.surface.as_ref() else {
+                    continue;
+                };
+                if surface.face()? != Some(owner) {
+                    continue;
+                }
+                if found.is_some() {
+                    return Err(invalid("surface owner names faces in both B-reps"));
+                }
+                found = Some(hd(
+                    i8::try_from(b).map_err(|_| invalid("B-rep index"))?,
+                    K_FACE,
+                    f.index(),
+                ));
+            }
+        }
+        Ok(found)
+    }
+
     fn brep(&self, h: H) -> Option<&Brep> {
         self.breps.get(usize::try_from(h.b).ok()?)?.as_ref()
     }
@@ -1094,13 +1123,29 @@ impl OffsetBrep<H> for Two {
         };
         use solidcore::surface::surface_cache::face_context::MappedCacheFace;
         use solidcore::surface::trim_srf_cache::CacheFace;
+        // the solve's GetTree: a reused cache whose tree is not built builds it now
+        let with_tree = |mut cache: solidcore::surface::surface_cache::SurfaceCache<H>| {
+            if cache.tree().is_none() {
+                cache.get_tree(k)?;
+            }
+            Ok(cache)
+        };
         let Some(owner) = surface.face()? else {
-            return get_surface_cache(k, surface, handle);
+            return with_tree(get_surface_cache(k, surface, handle)?);
         };
         // The surface handle selects its arena. ObjectRef keys alone deliberately
-        // cannot distinguish equal face indices of these independent B-reps.
-        let Some(h) = handle.filter(|h| h.kind == K_FACE_SURFACE && (h.b == 0 || h.b == 1)) else {
-            return get_surface_cache(k, surface, handle);
+        // cannot distinguish equal face indices of these independent B-reps. An
+        // offset copy keeps its base face's owner key but is not a face-surface
+        // handle; resolve that key against the imported face records instead of
+        // deferring the whole solve.
+        let h = if let Some(h) = handle.filter(|h| h.kind == K_FACE_SURFACE && (h.b == 0 || h.b == 1))
+        {
+            h
+        } else {
+            let Some(h) = self.face_handle_for_owner(owner)? else {
+                return with_tree(get_surface_cache(k, surface, handle)?);
+            };
+            h
         };
         let b = self.brep_m(h)?;
         // The typed surface handle already names its face; the imported owner
@@ -2330,6 +2375,28 @@ fn read_face_surfaces(
     Ok(())
 }
 
+/// Restores the state of every face surface's cache after the C++ build
+/// ([`ffi::split_cache_tree_states`]): reading a file builds the B-rep while doing a
+/// Boolean operation, so face surfaces can keep caches whose trees were never built,
+/// and `GetDomainWithContinuity` / `LiftCurve` read their (empty) continuity arrays.
+fn seed_cache_tree_states(b: &Brep, states: &[u8]) -> Result<(), HarnessError> {
+    if states.len() != b.faces().len() {
+        return Err(harness("cache states do not match the native face list"));
+    }
+    for (i, &s) in states.iter().enumerate() {
+        let f = FaceId::from_index(u32::try_from(i).map_err(|_| harness("face index"))?);
+        let state = match s {
+            0 => CacheTreeState::NoCache,
+            1 => CacheTreeState::Unbuilt,
+            _ => CacheTreeState::Built,
+        };
+        if let Some(surface) = b.face(f).map_err(|e| harness(e.to_string()))?.surface.as_ref() {
+            surface.set_cache_tree_state(state);
+        }
+    }
+    Ok(())
+}
+
 struct Prepared {
     two: Two,
     hdr: RHeader,
@@ -2349,12 +2416,16 @@ fn prepare(i: &Inputs) -> Result<Prepared, Box<Result<Output, HarnessError>>> {
     let (mut brep_a, mut exact_a, types_a) = import_with_types(&a).map_err(|e| Box::new(Err(e)))?;
     read_face_surfaces(&mut brep_a, &mut exact_a, &types_a, &surfaces_a)
         .map_err(|e| Box::new(Err(e)))?;
+    let [states_a, states_b] = ffi::split_cache_tree_states(&ex)
+        .ok_or_else(|| Box::new(Err(harness("cache states"))))?;
+    seed_cache_tree_states(&brep_a, &states_a).map_err(|e| Box::new(Err(e)))?;
     let (brep_b, exact_b) = match &b {
         Some(b) => {
             let (mut brep, mut exact, types) =
                 import_with_types(b).map_err(|e| Box::new(Err(e)))?;
             read_face_surfaces(&mut brep, &mut exact, &types, &surfaces_b)
                 .map_err(|e| Box::new(Err(e)))?;
+            seed_cache_tree_states(&brep, &states_b).map_err(|e| Box::new(Err(e)))?;
             (Some(brep), exact)
         }
         None => (None, Vec::new()),
