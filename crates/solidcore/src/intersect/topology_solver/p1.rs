@@ -24,6 +24,7 @@
 //! | [`TopologySolver::solve_two_trees`]               | `SmTopologySolver::SolveTwoTrees`                |
 //! | [`TopologySolver::best_answer_so_far`], [`best_answer_so_far`] | `SmTopologySolver::GetBestAnswerSoFar`  |
 //! | `GlobalSolve::are_ready_for_local_solve` for [`TopologySolver`] | `SmTopologySolver::AreReadyForLocalSolve` |
+//! | `GlobalSolve::identical_solutions` for [`TopologySolver`], `TopologyDomains` (private) | `SmGlobalSolver::IdenticalSolutions` (not overridden upstream: the solutions' `SmObject*` resolve through [`TopologyObjects`]) |
 //!
 //! Deviations:
 //! - **Objects.** Tree objects and solution objects are a caller-chosen handle `O`
@@ -71,7 +72,9 @@
 //!   the classification would first create UV trims; the solver only reads its
 //!   objects). No trimmed surface cache is passed, so upstream's cache fast path
 //!   (taken when the face's surface has an up-to-date one) is skipped.
-//!   `SmFace::Point3DClassify` still has no dispatch.
+//!   `SmFace::Point3DClassify` is [`crate::query::face::p1::point_3d_classify`] on a
+//!   copy of that B-rep (its UV trim curve and trimmed surface cache additions are not
+//!   kept).
 
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::p2::Curve;
@@ -83,12 +86,12 @@ use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::{Extent3d, LineHit};
 use crate::geom::geom_utility::p1::{line_closest_point, point_project_to_plane};
 use crate::geom::global_solver::{
-    Branch, GlobalSolve, GlobalSolver, ObjectZoneTol, OperationCategory, SolutionRequested,
-    SolverOperation, MAX_SOLVER_TREES,
+    Branch, GlobalSolve, GlobalSolver, ObjectZoneTol, OperationCategory, PreferredSolution,
+    SolutionPairType, SolutionRequested, SolverOperation, MAX_SOLVER_TREES,
 };
 use crate::geom::object::{Shape, ShapeMember};
 use crate::geom::solution_array::{
-    Solution, SolutionArray, SolutionObject, SolutionType, SortKey, MAX_TREES,
+    ParameterDomains, Solution, SolutionArray, SolutionObject, SolutionType, SortKey, MAX_TREES,
 };
 use crate::geom::tol::{zone_tol_3d, SmallTopoType};
 use crate::geom::tree::Tree;
@@ -855,6 +858,54 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for TopologySolver<'t, '_, O
         let k = self.kernel;
         self.local_solve_branch(k, branch)
     }
+
+    /// `SmGlobalSolver::IdenticalSolutions` (upstream does not override it); the
+    /// parameter intervals of the solutions' objects, which upstream reads through
+    /// their `SmObject*`, resolve through the solver's [`TopologyObjects`] when the
+    /// handle itself cannot reach them.
+    fn identical_solutions(
+        &self,
+        sol1: &Solution<O>,
+        sol2: &Solution<O>,
+    ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
+        let domains = TopologyDomains {
+            objects: self.objects,
+        };
+        self.base.identical_solutions_in(sol1, sol2, &domains)
+    }
+}
+
+/// [`ParameterDomains`] of a topology solver's handles: the handle's own hooks, else
+/// the edge interval, curve, face UV domain or surface its [`TopologyObjects`] give.
+struct TopologyDomains<'a, O> {
+    objects: &'a dyn TopologyObjects<O>,
+}
+
+impl<O: SolutionObject> ParameterDomains<O> for TopologyDomains<'_, O> {
+    fn edge_interval(&self, edge: &O) -> Option<Extent1d> {
+        edge.edge_interval()
+            .or_else(|| self.objects.edge_interval(*edge).ok())
+    }
+
+    fn natural_interval(&self, curve: &O) -> Option<Extent1d> {
+        curve
+            .natural_interval()
+            .or_else(|| self.objects.curve(*curve).ok().map(Curve::natural_interval))
+    }
+
+    fn face_uv_domain(&self, face: &O) -> Option<Extent2d> {
+        face.face_uv_domain()
+            .or_else(|| self.objects.face_uv_domain(*face).ok())
+    }
+
+    fn natural_uv_domain(&self, surface: &O) -> Option<Extent2d> {
+        surface.natural_uv_domain().or_else(|| {
+            self.objects
+                .surface(*surface)
+                .ok()
+                .map(Surface::natural_uv_domain)
+        })
+    }
 }
 
 impl<O> Default for LocalSolver<'_, O> {
@@ -1480,7 +1531,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 // surface.  If not then skip it.
                 if sol.solution_type == SolutionType::RangeOfValues {
                     let start = self.point + sol.start.param(0)? * ray;
-                    if !face_classifies_on_face(face, start, tol)? {
+                    if !face_classifies_on_face(ts.kernel, objects, face, start, tol)? {
                         continue;
                     }
                 }
@@ -1488,7 +1539,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 // Handle composite face situation
                 if objects.surface_owner(face_surface)? != Some(face) {
                     let start = self.point + sol.start.param(0)? * ray;
-                    if !face_classifies_on_face(face, start, tol)? {
+                    if !face_classifies_on_face(ts.kernel, objects, face, start, tol)? {
                         continue;
                     }
                 } // end composite face check
@@ -2013,16 +2064,55 @@ pub(super) fn face_point_classify<O>(
 }
 
 /// The `Point3DClassify` test of `SmTLSPointFace::SolveIt`: classify `point`
-/// against the face within `tol`, retrying within `100 * tol` when that fails;
-/// `false` when both fail or the class is not `SM_PC_FACE`.
-fn face_classifies_on_face<O>(_face: O, _point: Point3, _tol: f64) -> Result<bool> {
-    // DISPATCH GAP: SmFace::Point3DClassify is ported (`query::face::p1::point_3d_classify`,
-    // query.face_p1 partial; no UNPORTED marker), but it takes the face's `Brep` and
-    // `FaceId`, which this caller's opaque face handle does not carry.
-    Err(SolidError::unported(
-        "SmFace::Point3DClassify",
-        "query.face_p1",
-    ))
+/// against the face within `tol` (boundary intersections on), retrying within
+/// `100 * tol` when that fails; `false` when both fail or the class is not
+/// `SM_PC_FACE`.
+///
+/// `SmFace::Point3DClassify` is [`crate::query::face::p1::point_3d_classify`] on a
+/// copy of the B-rep [`TopologyObjects::face_entity`] names (the solver holds its
+/// objects shared; upstream's `const` member may add UV trim curves and a trimmed
+/// surface cache to the B-rep, which the copy does not keep). Both tries classify on
+/// the same copy, as upstream's on the same face.
+fn face_classifies_on_face<O>(
+    k: &Kernel,
+    objects: &dyn TopologyObjects<O>,
+    face: O,
+    point: Point3,
+    tol: f64,
+) -> Result<bool> {
+    use crate::error::EntityRef;
+    use crate::intersect::point_class::PointClassType;
+    use crate::query::face::p1::{point_3d_classify, Point3dClassifyOptions};
+    let Some((b, f)) = objects.face_entity(face) else {
+        // DISPATCH GAP: this adapter cannot resolve the face handle to its `Brep` and
+        // `FaceId` (`TopologyObjects::face_entity`).
+        return Err(SolidError::unported(
+            "SmFace::Point3DClassify",
+            "query.face_p1",
+        ));
+    };
+    let mut copy = b.clone();
+    let mut pc = PointClassification::<EntityRef>::new(tol);
+    let mut classify = |tol: f64, pc: &mut PointClassification<EntityRef>| -> Result<bool> {
+        match point_3d_classify(
+            k,
+            &mut copy,
+            f,
+            point,
+            tol,
+            true,
+            pc,
+            Point3dClassifyOptions::default(),
+        ) {
+            Ok(()) => Ok(true),
+            Err(e @ SolidError::Unported { .. }) => Err(e),
+            Err(_) => Ok(false),
+        }
+    };
+    if !classify(tol, &mut pc)? && !classify(tol * 100.0, &mut pc)? {
+        return Ok(false);
+    }
+    Ok(pc.point_class() == PointClassType::Face)
 }
 
 #[cfg(test)]

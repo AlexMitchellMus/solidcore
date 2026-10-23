@@ -1,6 +1,7 @@
 //! Primitive p3 differential comparisons: the native offset ruled-surface helper
-//! and real primitive entry points. The latter defer at unavailable topology;
-//! status-only early exits are kept distinct from surface/curve comparisons.
+//! and real primitive entry points through the production arena adapter. Successful
+//! builds compare owning-list topology counts and sampled vertex/edge/face geometry;
+//! unavailable continuations remain deferred and early exits retain their status.
 #![allow(clippy::indexing_slicing)] // fixed fixture layout validated before indexing
 
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -8,23 +9,32 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use solidcore::curve::curve::Curve;
 use solidcore::error::{Result, SolidError};
+#[cfg(test)]
 use solidcore::geom::attribute::TagData;
 use solidcore::geom::axis2_placement::Axis2Placement;
+#[cfg(test)]
 use solidcore::geom::context::MarkType;
 use solidcore::kernel::Kernel;
 use solidcore::math::Vec3;
 use solidcore::nurbs::b_spline_curve::p1::{BSplineCurve, NurbCircleParam};
+#[cfg(test)]
+use solidcore::primitive::primitive_creation::p3::PrimitiveAccess;
 use solidcore::primitive::primitive_creation::{
+    model::PrimitiveModel,
     p1::PrimitiveCreation,
-    p3::{self as api, PrimitiveAccess, RepeatedSweepOptions},
+    p3::{self as api, RepeatedSweepOptions},
     SweepOptions,
 };
 use solidcore::surface::surface::Surface;
+use solidcore::sweep::topology_sweep::access::SweepAccess;
+#[cfg(test)]
 use solidcore::sweep::topology_sweep::{
-    access::{EdgeRef, FaceRef, SweepAccess, SweepMergeId},
+    access::{EdgeRef, FaceRef, SweepMergeId},
     SweepEntity,
 };
-use solidcore::topology::{Brep, BrepId, FaceId, Region, RegionId};
+use solidcore::topology::Brep;
+#[cfg(test)]
+use solidcore::topology::{BrepId, FaceId, Region};
 use solidcore_ffi::units::primitive_primitive_creation_p3 as ffi;
 
 /// Differential runner.
@@ -149,7 +159,10 @@ fn ruled(data: &[f64]) -> Result<Vec<f64>> {
             for v in 0..=4 {
                 out.extend(
                     surface
-                        .evaluate_point(&k, domain.evaluate(f64::from(u) / 4.0, f64::from(v) / 4.0))?
+                        .evaluate_point(
+                            &k,
+                            domain.evaluate(f64::from(u) / 4.0, f64::from(v) / 4.0),
+                        )?
                         .to_array(),
                 );
             }
@@ -159,9 +172,9 @@ fn ruled(data: &[f64]) -> Result<Vec<f64>> {
     Ok(out)
 }
 
-// The native fixture is a fresh B-rep with only its infinite region. This adapter
-// resolves exactly that state. Unsupported services fail explicitly if a case
-// unexpectedly passes the current construction dependency; no topology is faked.
+// Minimal caller used only by the default-adapter regression tests below.
+// Differential entry points use the production PrimitiveModel.
+#[cfg(test)]
 struct EmptyModel {
     k: Kernel,
     notification_records: std::collections::BTreeMap<
@@ -169,6 +182,8 @@ struct EmptyModel {
         solidcore::topology::topology::Topology,
     >,
     notification_attributes: solidcore::geom::attribute::AttributeStore,
+    // `SmAObject` tag attributes of the swept topology (none on the fresh B-rep).
+    tags: std::collections::BTreeMap<SweepEntity, TagData>,
     b: Brep,
 }
 fn unavailable<T>() -> Result<T> {
@@ -177,6 +192,23 @@ fn unavailable<T>() -> Result<T> {
         "fixture has no topology/service for this call",
     ))
 }
+// The fixture owns this face-key namespace, including future allocations.
+#[cfg(test)]
+fn fixture_face(face: FaceId) -> solidcore::geom::object::ObjectRef {
+    solidcore::geom::object::ObjectRef {
+        type_code: solidcore::geom::assert_array::labels::FACE_TYPE,
+        key: solidcore::geom::attribute::ObjectKey(100_000 + u64::from(face.index()) * 97),
+    }
+}
+#[cfg(test)]
+fn fixture_key(entity: solidcore::EntityRef) -> solidcore::geom::object::ObjectRef {
+    if let solidcore::EntityRef::Face(face) = entity {
+        fixture_face(face)
+    } else {
+        super::boolean_topology_intersector_p1::p9_entity_ref(entity)
+    }
+}
+#[cfg(test)]
 impl EmptyModel {
     fn new() -> Result<Self> {
         let mut b = Brep::new();
@@ -189,10 +221,12 @@ impl EmptyModel {
             k: Kernel::default(),
             notification_records: std::collections::BTreeMap::default(),
             notification_attributes: solidcore::geom::attribute::AttributeStore::default(),
+            tags: std::collections::BTreeMap::default(),
             b,
         })
     }
 }
+#[cfg(test)]
 impl SweepAccess for EmptyModel {
     fn brep(&self, _: BrepId) -> Result<&Brep> {
         Ok(&self.b)
@@ -219,25 +253,13 @@ impl SweepAccess for EmptyModel {
         if id != BrepId::from_index(0) {
             return unavailable();
         }
-        // The fixture owns this face-key namespace, including future allocations.
-        let face_objects = |face: FaceId| solidcore::geom::object::ObjectRef {
-            type_code: solidcore::geom::assert_array::labels::FACE_TYPE,
-            key: solidcore::geom::attribute::ObjectKey(100_000 + u64::from(face.index()) * 97),
-        };
-        let key_of = |entity: solidcore::EntityRef| {
-            if let solidcore::EntityRef::Face(face) = entity {
-                face_objects(face)
-            } else {
-                super::boolean_topology_intersector_p1::p9_entity_ref(entity)
-            }
-        };
         let mut notifications = solidcore::topology::edge::NotifyEnv {
             records: &mut self.notification_records,
             attributes: &mut self.notification_attributes,
             context: None,
-            key_of: &key_of,
+            key_of: &fixture_key,
         };
-        body(&mut self.k, &mut self.b, &face_objects, &mut notifications)
+        body(&mut self.k, &mut self.b, &fixture_face, &mut notifications)
     }
     fn with_breps_mut<T>(
         &mut self,
@@ -264,23 +286,11 @@ impl SweepAccess for EmptyModel {
         if id != BrepId::from_index(0) {
             return unavailable();
         }
-        let key_of = |entity: solidcore::EntityRef| {
-            if let solidcore::EntityRef::Face(face) = entity {
-                solidcore::geom::object::ObjectRef {
-                    type_code: solidcore::geom::assert_array::labels::FACE_TYPE,
-                    key: solidcore::geom::attribute::ObjectKey(
-                        100_000 + u64::from(face.index()) * 97,
-                    ),
-                }
-            } else {
-                super::boolean_topology_intersector_p1::p9_entity_ref(entity)
-            }
-        };
         let mut env = solidcore::topology::edge::NotifyEnv {
             records: &mut self.notification_records,
             attributes: &mut self.notification_attributes,
             context: Some(&mut self.k.context),
-            key_of: &key_of,
+            key_of: &fixture_key,
         };
         body(&mut self.b, &mut env)
     }
@@ -294,24 +304,74 @@ impl SweepAccess for EmptyModel {
         unavailable()
     }
     fn delete_brep(&mut self, _: BrepId) {}
-    fn new_merge(&mut self, _: BrepId, _: BrepId, _: BrepId, _: f64, _: f64) -> Result<SweepMergeId> { Err(SolidError::invalid_input("primitive fixture", "no merge engine")) }
-    fn merge_operands(&self, _: SweepMergeId) -> Result<(BrepId, BrepId)> { Err(SolidError::invalid_input("primitive fixture", "no merge engine")) }
-    fn merge_relations(&mut self, _: SweepMergeId) -> Result<&mut solidcore::boolean::topology_intersector::p1::Relations> { Err(SolidError::invalid_input("primitive fixture", "no merge engine")) }
-    fn piecewise_merge(&mut self, _: SweepMergeId, _: bool, _: bool) -> Result<BrepId> { Err(SolidError::invalid_input("primitive fixture", "no merge engine")) }
-    fn union(&mut self, _: SweepMergeId) -> Result<BrepId> { Err(SolidError::invalid_input("primitive fixture", "no merge engine")) }
-    fn copy_faces(&mut self, source: BrepId, _: &[FaceId], destination: BrepId, _: SweepMergeId, _: &mut solidcore::sweep::topology_sweep::access::BTreeEdgeMap) -> Result<()> {
-        self.brep(source)?; self.brep(destination)?;
+    fn new_merge(
+        &mut self,
+        _: BrepId,
+        _: BrepId,
+        _: BrepId,
+        _: f64,
+        _: f64,
+    ) -> Result<SweepMergeId> {
+        Err(SolidError::invalid_input(
+            "primitive fixture",
+            "no merge engine",
+        ))
+    }
+    fn merge_operands(&self, _: SweepMergeId) -> Result<(BrepId, BrepId)> {
+        Err(SolidError::invalid_input(
+            "primitive fixture",
+            "no merge engine",
+        ))
+    }
+    fn merge_relations(
+        &mut self,
+        _: SweepMergeId,
+    ) -> Result<&mut solidcore::boolean::topology_intersector::p1::Relations> {
+        Err(SolidError::invalid_input(
+            "primitive fixture",
+            "no merge engine",
+        ))
+    }
+    fn piecewise_merge(&mut self, _: SweepMergeId, _: bool, _: bool) -> Result<BrepId> {
+        Err(SolidError::invalid_input(
+            "primitive fixture",
+            "no merge engine",
+        ))
+    }
+    fn union(&mut self, _: SweepMergeId) -> Result<BrepId> {
+        Err(SolidError::invalid_input(
+            "primitive fixture",
+            "no merge engine",
+        ))
+    }
+    fn copy_faces(
+        &mut self,
+        source: BrepId,
+        _: &[FaceId],
+        destination: BrepId,
+        _: SweepMergeId,
+        _: &mut solidcore::sweep::topology_sweep::access::BTreeEdgeMap,
+    ) -> Result<()> {
+        self.brep(source)?;
+        self.brep(destination)?;
         Err(SolidError::invalid_input("fixture", "no merge engine"))
     }
     fn delete_merge(&mut self, _: SweepMergeId) {}
-    fn tag(&self, _: SweepEntity) -> Result<Option<TagData>> {
-        unavailable()
+    fn tag(&self, e: SweepEntity) -> Result<Option<TagData>> {
+        Ok(self.tags.get(&e).copied())
     }
-    fn add_tag(&mut self, _: SweepEntity, _: TagData) -> Result<()> {
-        unavailable()
+    fn add_tag(&mut self, e: SweepEntity, tag: TagData) -> Result<()> {
+        self.tags.insert(e, tag);
+        Ok(())
     }
-    fn curve_tag(&self, _: EdgeRef) -> Result<Option<TagData>> {
-        unavailable()
+    fn curve_tag(&self, edge: EdgeRef) -> Result<Option<TagData>> {
+        // The fixture's curves carry no tag attributes.
+        self.brep(edge.0)?
+            .edge(edge.1)?
+            .curve
+            .as_ref()
+            .ok_or_else(|| SolidError::null_pointer("primitive_p3_fixture"))?;
+        Ok(None)
     }
     fn set_editing(&mut self, _: BrepId, value: bool) -> Result<bool> {
         let previous = self.b.editing_enabled();
@@ -334,9 +394,21 @@ impl SweepAccess for EmptyModel {
         unavailable()
     }
 }
+#[cfg(test)]
 impl PrimitiveAccess for EmptyModel {
-    fn delete_primitive_faces(&mut self, _: BrepId, _: &[FaceId]) -> Result<()> {
-        unavailable()
+    fn delete_primitive_faces(&mut self, id: BrepId, faces: &[FaceId]) -> Result<()> {
+        if id != BrepId::from_index(0) {
+            return unavailable();
+        }
+        // `SmTopologyIntersector::DeleteFaces` under the fixture's own face keys.
+        solidcore::boolean::merge::p4::KernelManifoldIntersector::delete_faces_with_keys(
+            &mut self.k,
+            &mut self.b,
+            faces,
+            &mut self.notification_records,
+            &mut self.notification_attributes,
+            &fixture_key,
+        )
     }
     fn with_primitive_brep<T>(
         &mut self,
@@ -345,21 +417,97 @@ impl PrimitiveAccess for EmptyModel {
     ) -> Result<T> {
         body(&mut self.k, &mut self.b)
     }
-    fn axis_inside_face(&mut self, _: FaceRef, _: &Curve) -> Result<bool> {
-        unavailable()
-    }
 }
+// Keep evaluation errors in the record; missing ported dispatch remains an
+// honest deferred result rather than being normalized to an upstream error.
+fn geometry_point(out: &mut Vec<f64>, value: Result<Vec3>) -> Result<()> {
+    match value {
+        Ok(point) => {
+            out.push(0.0);
+            out.extend(point.to_array());
+        }
+        Err(e) if e.is_unported() => return Err(e),
+        Err(e) => out.push(error(&e)),
+    }
+    Ok(())
+}
+
+// Native owning-list order, with actual evaluated geometry on successful builds.
+// Failed operations still compare their partial owning-list counts without attempting
+// to evaluate geometry the operation did not finish constructing.
+fn construction_geometry(k: &Kernel, b: &Brep, success: bool, out: &mut Vec<f64>) -> Result<()> {
+    out.extend([
+        b.face_list().len() as f64,
+        b.edge_list().len() as f64,
+        b.vertex_list().len() as f64,
+    ]);
+    if !success {
+        return Ok(());
+    }
+    for &id in b.vertex_list() {
+        out.push(1.0); // Native owning lists contain non-null vertices.
+        out.extend(b.vertex(id)?.point.to_array());
+    }
+    for &id in b.edge_list() {
+        let edge = b.edge(id)?;
+        out.push(f64::from(edge.curve.is_some()));
+        if let Some(curve) = &edge.curve {
+            out.extend([edge.interval.min(), edge.interval.max()]);
+            for i in 0..=4 {
+                geometry_point(
+                    out,
+                    curve.evaluate_point(k, edge.interval.evaluate(f64::from(i) / 4.0)),
+                )?;
+            }
+        }
+    }
+    for &id in b.face_list() {
+        let face = b.face(id)?;
+        out.push(f64::from(face.surface.is_some()));
+        if let Some(surface) = &face.surface {
+            let domain = face.uv_domain;
+            out.extend([
+                domain.min().x,
+                domain.min().y,
+                domain.max().x,
+                domain.max().y,
+            ]);
+            for u in 0..=2 {
+                for v in 0..=2 {
+                    geometry_point(
+                        out,
+                        surface.evaluate_point(
+                            k,
+                            domain.evaluate(f64::from(u) / 2.0, f64::from(v) / 2.0),
+                        ),
+                    )?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn entry(i: &Inputs) -> Result<Vec<f64>> {
     let data = &i.data;
-    let mut model = EmptyModel::new()?;
-    let mut primitive = PrimitiveCreation::new(Some(RegionId::from_index(0)), 0, false);
+    // Match the native SmBrep constructor and Pc3Probe(region, 0, false).
+    // The production model resolves the real topology services; the minimal
+    // EmptyModel below is retained only for focused default-adapter tests.
+    let mut kernel = Kernel::default();
+    let brep = solidcore::topology::brep::p3::new_brep(
+        &mut kernel,
+        solidcore::geom::tol::USE_DEFAULT,
+        solidcore::geom::tol::USE_DEFAULT,
+    )?;
+    let mut primitive = PrimitiveCreation::new(brep.infinite_region(), 0, false);
+    let mut model = PrimitiveModel::new(&mut kernel, brep);
     let mut curves: Vec<_> = data[10..]
         .as_chunks::<7>()
         .0
         .iter()
         .map(|v| curve(v).map(|c| Some(Curve::from(c))))
         .collect::<Result<_>>()?;
-    let b = BrepId::from_index(0);
+    let b = PrimitiveModel::MAIN;
     let mut starts = Vec::new();
     let mut sides = Vec::new();
     let mut ends = Vec::new();
@@ -468,14 +616,21 @@ fn entry(i: &Inputs) -> Result<Vec<f64>> {
             return Err(e.clone());
         }
     }
-    Ok(vec![
+    let mut record = vec![
         result.as_ref().err().map_or(0., error),
-        f64::from(model.b.editing_enabled()),
-        f64::from(model.k.context.doing_boolean()),
+        f64::from(model.brep(b)?.editing_enabled()),
+        f64::from(model.kernel(b)?.context.doing_boolean()),
         starts.len() as f64,
         sides.len() as f64,
         ends.len() as f64,
-    ])
+    ];
+    construction_geometry(
+        model.kernel(b)?,
+        model.brep(b)?,
+        result.is_ok(),
+        &mut record,
+    )?;
+    Ok(record)
 }
 impl UnitDiff for Runner {
     fn id(&self) -> &'static str {
@@ -575,6 +730,46 @@ impl UnitDiff for Runner {
 mod tests {
     use super::*;
     use solidcore::sweep::topology_sweep::{TopologySweep, TopologySweepOptions};
+
+    #[cfg(feature = "cpp")]
+    #[test]
+    fn production_constructions_compare_nonempty_native_geometry() {
+        let context = crate::CaseContext {
+            root: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
+            seeds: 0,
+        };
+        let cases = context.fixture_cases(Runner.id()).unwrap();
+        for (name, counts) in [
+            ("linear_repeated_wire", [2.0, 7.0, 6.0]),
+            ("partial_rotation_line", [1.0, 4.0, 4.0]),
+            ("skin_two_lines", [1.0, 4.0, 4.0]),
+            ("curve_sweep_line", [1.0, 4.0, 4.0]),
+            ("swung_one_path_profile", [1.0, 4.0, 4.0]),
+            ("zero_curve_sweep_approximation_tolerance", [1.0, 4.0, 4.0]),
+            (
+                "negative_curve_sweep_approximation_tolerance",
+                [1.0, 4.0, 4.0],
+            ),
+            ("negative_skin_approximation_tolerance", [1.0, 4.0, 4.0]),
+            ("negative_swung_tolerance_with_profile", [1.0, 4.0, 4.0]),
+        ] {
+            let case = cases.iter().find(|case| case.name == name).unwrap();
+            let inputs: Inputs = case.parse().unwrap();
+            let native = ffi::eval(inputs.op, &inputs.data).unwrap();
+            let rust = entry(&inputs).unwrap();
+            assert_eq!(&native[6..9], &counts, "{name}: native topology");
+            assert_eq!(native[0], 0.0, "{name}: native construction success");
+            // Includes actual vertex positions, curve intervals/points and face
+            // domains/points, rather than an empty or status-only success.
+            assert!(native.len() > 100, "{name}: geometry was not exported");
+            if name == "linear_repeated_wire" {
+                // The public FFI starts with 256 slots; this construction must
+                // also exercise its exact-size output-buffer retry.
+                assert!(native.len() > 256);
+            }
+            assert_eq!(rust, native, "{name}: native geometry differs");
+        }
+    }
 
     #[test]
     fn face_box_default_resolves_the_selected_face_and_uses_the_normal_box() {

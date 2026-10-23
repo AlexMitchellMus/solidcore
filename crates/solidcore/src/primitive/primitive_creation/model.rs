@@ -16,9 +16,8 @@
 //! attributes); topology marks use
 //! [`Marks`] per B-rep under the kernel context's mark locks. Services the model does
 //! not resolve yet return [`SolidError::Unported`] naming the upstream call: retaining
-//! an HCR session (`SmHCR`), the face-curve classification of a rotational sweep's
-//! axis (`SmFace::CurveOnClassify`), the topology intersector's face deletion
-//! (`SmTopologyIntersector::DeleteFaces`) and `SmBrep::ProjectAndTrim`. Their units are partial: the model, not the unit,
+//! an HCR session (`SmHCR`) and `SmBrep::ProjectAndTrim`. Their units are
+//! partial: the model, not the unit,
 //! lacks the bridge; each error names the unit that owns the call. No recursion.
 //! Retained merge services remain the responsibility of
 //! [`crate::sweep::topology_sweep::store::SweepStore`]; this adapter preserves its
@@ -29,11 +28,9 @@ use std::collections::BTreeMap;
 use crate::blend::hcr::Hcr;
 use crate::boolean::topology_intersector::p1::Relations;
 use crate::curve::composite_curve::OffsetMapAttribute;
-use crate::curve::curve::Curve;
 use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::attribute::TagData;
 use crate::geom::context::{MarkLock, MarkType};
-use crate::geom::extent2d::Extent2d;
 use crate::geom::object::ObjectRef;
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3};
@@ -41,14 +38,12 @@ use crate::nurbs::b_spline_curve::p1::BSplineCurve;
 use crate::primitive::primitive_creation::p1::PrimitiveCreation;
 use crate::primitive::primitive_creation::p2::PrimitiveCreationAccess;
 use crate::primitive::primitive_creation::p3::PrimitiveAccess;
-use crate::surface::surface::Surface;
 use crate::sweep::topology_sweep::access::{
-    BTreeEdgeMap, EdgeRef, FaceRef, RegionRef, SweepAccess, SweepMergeId,
+    BTreeEdgeMap, EdgeRef, FaceRef, SweepAccess, SweepMergeId,
 };
 use crate::sweep::topology_sweep::SweepEntity;
 use crate::topology::brep::p10::TrimType;
 use crate::topology::brep::p2::ArenaNotifyState;
-use crate::topology::brep::p8::FaceBuildEnv;
 use crate::topology::edge::NotifyEnv;
 use crate::topology::loopuse::notify_ref;
 use crate::topology::topology_traverser::{Entity, Marks};
@@ -175,22 +170,6 @@ impl<'k> PrimitiveModel<'k> {
             .get_mut(id.index() as usize)
             .and_then(Option::as_mut)
             .ok_or_else(|| SolidError::null_pointer(OP))
-    }
-
-    fn with_face_env<T>(
-        &mut self,
-        brep: BrepId,
-        body: impl FnOnce(&mut Kernel, &mut Brep, &mut FaceBuildEnv<'_, '_>) -> Result<T>,
-    ) -> Result<T> {
-        self.with_brep_mut(brep, |k, b, this_face, env| {
-            let mut marks = Marks::default();
-            let mut fenv = FaceBuildEnv {
-                env,
-                marks: &mut marks,
-                this_face,
-            };
-            body(k, b, &mut fenv)
-        })
     }
 }
 
@@ -440,89 +419,20 @@ impl PrimitiveAccess for PrimitiveModel<'_> {
             .ok_or_else(|| SolidError::null_pointer(OP))?;
         body(self.k, b)
     }
-    fn planar_faces(
-        &mut self,
-        region: RegionRef,
-        curves: &mut Vec<Option<Curve>>,
-        tolerance: f64,
-        faces: &mut Vec<FaceId>,
-    ) -> Result<()> {
-        let input: Vec<Curve> = curves.iter().flatten().cloned().collect();
-        *faces = self.with_face_env(region.0, |k, b, fenv| {
-            crate::topology::brep::p8::create_planar_faces_with_3d_curves(
+    fn delete_primitive_faces(&mut self, brep: BrepId, faces: &[FaceId]) -> Result<()> {
+        // The rotational-sweep caller constructs a fresh context-only
+        // intersector (SmPrimitiveCreation.cpp:2982), with no retained mates.
+        // Reuse this model's actual notification records and object identities.
+        self.with_brep_mut(brep, |k, b, _, env| {
+            crate::boolean::merge::p4::KernelManifoldIntersector::delete_faces_with_keys(
                 k,
                 b,
-                Some(region.1),
-                &input,
-                tolerance,
-                fenv,
+                faces,
+                env.records,
+                env.attributes,
+                env.key_of,
             )
-        })?;
-        curves.clear();
-        Ok(())
-    }
-    fn planar_face(
-        &mut self,
-        region: RegionRef,
-        curves: Vec<Curve>,
-        tolerance: f64,
-        face: &mut Option<FaceId>,
-    ) -> Result<()> {
-        *face = self.with_face_env(region.0, |k, b, fenv| {
-            crate::topology::brep::p8::create_planar_face_with_3d_curves(
-                k,
-                b,
-                Some(region.1),
-                &curves,
-                tolerance,
-                fenv,
-            )
-        })?;
-        Ok(())
-    }
-    fn surface_faces(
-        &mut self,
-        brep: BrepId,
-        surface: Surface,
-        domain: Extent2d,
-        faces: &mut Vec<FaceId>,
-    ) -> Result<()> {
-        let made = self.with_face_env(brep, |k, b, fenv| {
-            crate::topology::brep::p8::create_faces_from_surface(
-                k,
-                b,
-                Some(surface),
-                &domain,
-                crate::geom::geom_utility::p2::ContinuityType::G1,
-                fenv,
-            )
-        })?;
-        faces.extend(made);
-        Ok(())
-    }
-    fn surface_face(
-        &mut self,
-        brep: BrepId,
-        surface: Surface,
-        domain: Extent2d,
-        face: &mut Option<FaceId>,
-    ) -> Result<()> {
-        *face = Some(self.with_face_env(brep, |k, b, fenv| {
-            crate::topology::brep::p8::create_face_from_surface(k, b, Some(surface), &domain, fenv)
-        })?);
-        Ok(())
-    }
-    fn delete_primitive_faces(&mut self, _: BrepId, _: &[FaceId]) -> Result<()> {
-        Err(SolidError::unported(
-            "SmTopologyIntersector::DeleteFaces",
-            "boolean.topology_intersector_p2",
-        ))
-    }
-    fn axis_inside_face(&mut self, _: FaceRef, _: &Curve) -> Result<bool> {
-        Err(SolidError::unported(
-            "SmFace::CurveOnClassify",
-            "query.face_p2",
-        ))
+        })
     }
 }
 
@@ -560,5 +470,65 @@ impl PrimitiveCreationAccess for PrimitiveModel<'_> {
             "SmBrep::ProjectAndTrim",
             "topology.brep_p10",
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geom::axis2_placement::Axis2Placement;
+    use crate::geom::extent2d::Extent2d;
+    use crate::math::Point2;
+    use crate::surface::plane::Plane;
+    use crate::surface::surface::Surface;
+
+    fn plane_face(model: &mut PrimitiveModel<'_>, brep: BrepId) -> FaceId {
+        let plane = Plane::create_canonical(&Axis2Placement::IDENTITY).unwrap();
+        let mut face = None;
+        model
+            .surface_face(
+                brep,
+                Surface::from(plane),
+                Extent2d::from_points(Point2::ZERO, Point2::new(1.0, 1.0)),
+                &mut face,
+            )
+            .unwrap();
+        face.unwrap()
+    }
+
+    #[test]
+    fn rotational_face_deletion_edits_only_the_selected_model_brep() {
+        let mut kernel = Kernel::default();
+        let brep = crate::topology::brep::p3::new_brep(
+            &mut kernel,
+            crate::geom::tol::USE_DEFAULT,
+            crate::geom::tol::USE_DEFAULT,
+        )
+        .unwrap();
+        let mut model = PrimitiveModel::new(&mut kernel, brep);
+        let main_face = plane_face(&mut model, PrimitiveModel::MAIN);
+        let second = model.new_brep(PrimitiveModel::MAIN).unwrap();
+        let second_face = plane_face(&mut model, second);
+        // Stable arena indices overlap across these two distinct B-reps.
+        assert_eq!(main_face, second_face);
+        model.set_editing(second, true).unwrap();
+        model
+            .delete_primitive_faces(second, &[second_face])
+            .unwrap();
+        let selected = model.brep(second).unwrap();
+        assert!(selected.face_list().is_empty());
+        assert!(selected.edge_list().is_empty());
+        assert!(selected.vertex_list().is_empty());
+        let main = model.brep(PrimitiveModel::MAIN).unwrap();
+        assert_eq!(main.face_list(), &[main_face]);
+        assert_eq!(main.edge_list().len(), 4);
+        assert_eq!(main.vertex_list().len(), 4);
+        assert!(model
+            .delete_primitive_faces(BrepId::from_index(99), &[main_face])
+            .is_err());
+        assert_eq!(
+            model.brep(PrimitiveModel::MAIN).unwrap().face_list(),
+            &[main_face]
+        );
     }
 }
