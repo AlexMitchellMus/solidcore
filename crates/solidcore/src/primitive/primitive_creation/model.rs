@@ -477,8 +477,10 @@ impl PrimitiveCreationAccess for PrimitiveModel<'_> {
 mod tests {
     use super::*;
     use crate::geom::axis2_placement::Axis2Placement;
+    use crate::geom::extent2d::Extent2d;
     use crate::math::Point2;
     use crate::surface::plane::Plane;
+    use crate::surface::surface::Surface;
 
     fn plane_face(model: &mut PrimitiveModel<'_>, brep: BrepId) -> FaceId {
         let plane = Plane::create_canonical(&Axis2Placement::IDENTITY).unwrap();
