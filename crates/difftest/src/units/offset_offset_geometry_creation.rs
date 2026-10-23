@@ -4788,22 +4788,26 @@ mod tests {
         serde_json::to_value(&inputs.ops)
             .ok()
             .and_then(|v| v.as_array().cloned())
-            .map(|ops| {
-                ops.iter()
-                    .enumerate()
-                    .map(|(i, op)| {
-                        let name = op.get("op").and_then(Value::as_str).unwrap_or("?");
-                        format!("{i}:{name}")
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            })
-            .unwrap_or_else(|| "<unserializable>".into())
+            .map_or_else(
+                || "<unserializable>".into(),
+                |ops| {
+                    ops.iter()
+                        .enumerate()
+                        .map(|(i, op)| {
+                            let name = op.get("op").and_then(Value::as_str).unwrap_or("?");
+                            format!("{i}:{name}")
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                },
+            )
     }
 
     /// The state arrays around `center`, plus the full record when it is short enough
     /// to keep the failure log readable.
     fn gen0730_state_context(cpp: &Output, rust: &Output, center: usize) -> String {
+        use std::fmt::Write as _;
+
         let cpp_state: &[f64] = cpp.values.get("state").map_or(&[], Vec::as_slice);
         let rust_state: &[f64] = rust.values.get("state").map_or(&[], Vec::as_slice);
         let mut out = format!(
@@ -4814,15 +4818,399 @@ mod tests {
         for (side, values) in [("cpp", cpp_state), ("rust", rust_state)] {
             let lo = center.saturating_sub(6);
             let hi = (center + 7).min(values.len());
-            out.push_str(&format!(
-                "{side}.state[{lo}..{hi}]={:?}\n",
+            writeln!(
+                out,
+                "{side}.state[{lo}..{hi}]={:?}",
                 values.get(lo..hi).unwrap_or(&[])
-            ));
+            )
+            .expect("write state diagnostic to String");
         }
         if cpp_state.len() <= 512 && rust_state.len() <= 512 {
-            out.push_str(&format!("cpp.state={cpp_state:?}\nrust.state={rust_state:?}\n"));
+            writeln!(out, "cpp.state={cpp_state:?}\nrust.state={rust_state:?}")
+                .expect("write full state diagnostic to String");
         }
         out
+    }
+
+    // These probes do not instrument ExtendTrimEdges. Only the EdgeState query is
+    // an executed prefix checkpoint; subsequent calls reconstruct isolated UV
+    // operations through existing FFI, always giving both engines the same input.
+    mod gen0730_probes {
+        use super::*;
+        use solidcore::curve::curve::p2::LINE_TYPE;
+        use solidcore::geom::geom_utility::p2::ContinuityType;
+        use solidcore::math::EFF_ZERO_SQRT;
+        use solidcore::nurbs::b_spline_curve_n_lib::TrimMode;
+        use solidcore_ffi::units::{
+            nurbs_b_spline_curve_n_lib as native_ext, nurbs_b_spline_curve_p1 as native_bs,
+            surface_surface_p1 as native_surface,
+        };
+
+        fn take<'a>(rest: &mut &'a [f64], count: usize) -> &'a [f64] {
+            assert!(count <= rest.len(), "truncated gen0730 probe record");
+            let (head, tail) = (*rest).split_at(count);
+            *rest = tail;
+            head
+        }
+
+        fn count(rest: &mut &[f64]) -> usize {
+            let n = take(rest, 1)[0];
+            assert!(n.is_finite() && (0.0..=65_536.0).contains(&n) && n.fract() == 0.0);
+            n as usize
+        }
+
+        fn curve_data(rest: &mut &[f64], dim: u64) -> CrvIn {
+            let (n, p, m) = (count(rest), count(rest), count(rest));
+            assert_eq!(m, n + p + 1);
+            let cpts = take(rest, 4 * (n + 1))
+                .chunks_exact(4)
+                .map(|p| [p[0], p[1], p[2], p[3]])
+                .collect();
+            CrvIn {
+                dim,
+                cpts,
+                p,
+                u: take(rest, m + 1).to_vec(),
+            }
+        }
+
+        fn fixture_curve(rest: &mut &[f64]) -> (f64, Option<CrvIn>) {
+            let kind = take(rest, 1)[0];
+            if kind == -1.0 {
+                return (kind, None);
+            }
+            assert!(kind >= 0.0, "unsupported curve in prefix snapshot: {kind}");
+            let dim = count(rest) as u64;
+            let has_nurb = take(rest, 1)[0];
+            assert!(has_nurb == 0.0 || has_nurb == 1.0);
+            let curve = (has_nurb == 1.0).then(|| curve_data(rest, dim));
+            if kind == LINE_TYPE as f64 {
+                take(rest, 10); // The fixture format's analytic line data.
+            }
+            (kind, curve)
+        }
+
+        fn selected_uv(state: &[f64], slot: usize, expected_eus: usize) -> CrvIn {
+            let mut rest = state;
+            let _ = fixture_curve(&mut rest); // Edge curve, not the selected UV curve.
+            take(&mut rest, 3); // Edge interval and tolerance.
+            if take(&mut rest, 1)[0] == 1.0 {
+                take(&mut rest, 3);
+                if take(&mut rest, 1)[0] == 1.0 {
+                    take(&mut rest, 3);
+                }
+            }
+            let n_eus = count(&mut rest);
+            assert_eq!(n_eus, expected_eus);
+            let mut selected = None;
+            for i in 0..n_eus {
+                let (kind, curve) = fixture_curve(&mut rest);
+                if i == slot {
+                    // Do not slice an analytic UV curve to its B-spline base.
+                    assert_eq!(kind, BSPLINE_CURVE_TYPE as f64);
+                    selected = curve;
+                }
+            }
+            assert!(rest.is_empty(), "unconsumed prefix edge-state fields");
+            let curve = selected.expect("selected edgeuse has no UV NURB");
+            assert_eq!(curve.dim, 2);
+            curve
+        }
+
+        fn clamped_interval(curve: &CrvIn) -> Extent1d {
+            assert!(curve.p < curve.cpts.len());
+            assert_eq!(curve.u.len(), curve.cpts.len() + curve.p + 1);
+            let lo = *curve.u.first().expect("UV curve has no knots");
+            let hi = *curve.u.last().expect("UV curve has no knots");
+            assert_eq!(curve.u.get(curve.p), Some(&lo));
+            assert_eq!(curve.u.get(curve.cpts.len()), Some(&hi));
+            assert!(curve.u.iter().take(curve.p + 1).all(|u| *u == lo));
+            assert!(curve.u.iter().rev().take(curve.p + 1).all(|u| *u == hi));
+            assert!(lo < hi);
+            Extent1d::from_min_max(lo, hi)
+        }
+
+        // Same raw format as surface_p1's C: dim n p m cpts knots. No
+        // coordinate normalization, tolerance, or sentinel conversion occurs here.
+        fn payload(curve: &CrvIn) -> Vec<f64> {
+            let _ = clamped_interval(curve);
+            let mut out = vec![
+                curve.dim as f64,
+                (curve.cpts.len() - 1) as f64,
+                curve.p as f64,
+                (curve.u.len() - 1) as f64,
+            ];
+            out.extend(curve.cpts.iter().flatten());
+            out.extend_from_slice(&curve.u);
+            out
+        }
+
+        fn native_state(rest: &mut &[f64]) -> CrvIn {
+            let header = take(rest, 6);
+            eprintln!("RECONSTRUCTED native curve-state header={header:?}");
+            assert_eq!(header[0], 2.0);
+            assert_eq!(header[5], 1.0, "native replay returned no NURB");
+            curve_data(rest, 2)
+        }
+
+        fn native_input(curve: &CrvIn) -> Vec<f64> {
+            let data = payload(curve);
+            let mut input = vec![data[0], 0.0]; // dim, out-of-bounds disabled
+            input.extend_from_slice(&data[1..]);
+            input
+        }
+
+        fn assert_raw_equal(left: &CrvIn, right: &CrvIn) {
+            assert_eq!(
+                payload(left)
+                    .iter()
+                    .copied()
+                    .map(f64::to_bits)
+                    .collect::<Vec<_>>(),
+                payload(right)
+                    .iter()
+                    .copied()
+                    .map(f64::to_bits)
+                    .collect::<Vec<_>>(),
+                "replay construction changed the raw UV input"
+            );
+        }
+
+        fn rust_input(curve: &CrvIn) -> BSplineCurve {
+            let CurveKind::BSpline(b) = rust_curve(curve).expect("raw UV construction").into_kind()
+            else {
+                panic!("UV replay must retain the concrete B-spline kind");
+            };
+            assert_raw_equal(curve, &rust_state(&b));
+            b
+        }
+
+        fn rust_state(curve: &BSplineCurve) -> CrvIn {
+            let n = curve.gw_nurb().expect("Rust UV replay returned no NURB");
+            CrvIn {
+                dim: curve.dim(),
+                cpts: n.cpts().iter().map(|p| [p.x, p.y, p.z, p.w]).collect(),
+                p: n.degree(),
+                u: n.knots().to_vec(),
+            }
+        }
+
+        fn extend(curve: &CrvIn, target: f64) -> (CrvIn, CrvIn) {
+            let mut input = native_input(curve);
+            input.extend([target, f64::from(ContinuityType::G1G2 as i32), 1.0]);
+            eprintln!("RECONSTRUCTED ExtParam raw_input={input:?}");
+            let output = native_ext::eval(native_ext::Op::ExtParam, &input)
+                .expect("native UV extension harness error (not parity)");
+            let mut rest = output.as_slice();
+            assert_eq!(take(&mut rest, 2), &[0.0, 1.0], "{output:?}");
+            let cpp = native_state(&mut rest);
+            let unchanged_input = native_state(&mut rest);
+            assert_raw_equal(curve, &unchanged_input);
+            assert!(rest.is_empty(), "unconsumed native extension fields");
+            let rust = rust_input(curve)
+                .create_extended_curve(target, ContinuityType::G1G2, true)
+                .expect("Rust UV extension failed")
+                .expect("Rust UV extension returned no curve");
+            (cpp, rust_state(&rust))
+        }
+
+        fn checked_owned_input(curve: &CrvIn) -> Vec<f64> {
+            let mut input = vec![native_bs::Ctor::FastOwned.code()];
+            input.extend(native_input(curve));
+            // All replay shims materialize this same concrete owned B-spline kind.
+            // Stop rather than misreport a constructor's knot fix-up as the op.
+            let before = native_bs::eval(native_bs::Op::State, &input)
+                .expect("native raw UV construction harness error");
+            let mut rest = before.as_slice();
+            assert_eq!(take(&mut rest, 1), &[0.0]);
+            assert_raw_equal(curve, &native_state(&mut rest));
+            assert!(rest.is_empty());
+            input
+        }
+
+        fn remove_extra(curve: &CrvIn) -> (CrvIn, CrvIn) {
+            let mut input = checked_owned_input(curve);
+            let tolerance = EFF_ZERO_SQRT / 100.0;
+            input.push(tolerance);
+            eprintln!("RECONSTRUCTED RemoveExtra raw_input={input:?}");
+            let output = native_bs::eval(native_bs::Op::RemoveExtra, &input)
+                .expect("native knot-removal harness error (not parity)");
+            let mut rest = output.as_slice();
+            assert_eq!(take(&mut rest, 1), &[0.0], "{output:?}");
+            let cpp = native_state(&mut rest);
+            assert!(rest.is_empty(), "unconsumed native knot-removal fields");
+            let mut rust = rust_input(curve);
+            rust.remove_extra_knots(tolerance)
+                .expect("Rust knot removal failed");
+            (cpp, rust_state(&rust))
+        }
+
+        fn compare_stage(stage: &str, cpp: &[f64], rust: &[f64]) -> bool {
+            let diff = compare(
+                &Output::new().values("raw", cpp.to_vec()),
+                &Output::new().values("raw", rust.to_vec()),
+                &[],
+            );
+            eprintln!("{stage}\ncpp={cpp:?}\nrust={rust:?}\nstrict_diff={diff:#?}");
+            diff.pass()
+        }
+
+        fn script_state(output: &Output) -> &[f64] {
+            assert!(
+                output.rejected.is_none() && output.deferred.is_none() && output.error.is_none()
+            );
+            output.values.get("state").expect("missing script state")
+        }
+
+        #[test]
+        fn original_prefix_and_independent_raw_uv_replays() {
+            let seed = CaseContext::seed_for("offset.offset_geometry_creation", 730);
+            assert_eq!(seed, 9_515_163_603_058_763_486);
+            let generated = generate(&mut Rng::new(seed)).expect("gen0730 generator");
+            assert_eq!(generated["brep_a"]["file"], "cone.smb");
+            let input: Inputs = serde_json::from_value(generated.clone()).expect("gen0730 input");
+            assert_eq!(input.ops.len(), 7);
+            eprintln!("gen0730 seed={seed} original_input={generated}");
+            let prepared = prepare(&input).expect("prepare gen0730 handles");
+            let OpIn::ExtendTrimEdges {
+                eu, off, other_off, ..
+            } = prepared.ops[6].op
+            else {
+                panic!("gen0730 op 6 must be opcode 12");
+            };
+            assert!(
+                triple_to_h(other_off).is_none(),
+                "radial UV selection is not covered"
+            );
+            let eu = triple_to_h(eu).expect("base edgeuse");
+            let off = triple_to_h(off).expect("offset edgeuse");
+            let edge = prepared.two.edgeuse_edge(eu).unwrap().unwrap();
+            let eus = prepared.two.edge_edgeuses(edge).unwrap();
+            let slot = eus
+                .iter()
+                .position(|x| *x == eu)
+                .expect("selected edgeuse slot");
+            let off_face = prepared.two.edgeuse_face(off).unwrap().unwrap();
+            let OpIn::UpdateFaceDomain { f, s } = prepared.ops[5].op else {
+                panic!("gen0730 op 5 must report the selected surface domain");
+            };
+            assert_eq!(triple_to_h(f), Some(off_face));
+            assert_eq!(triple_to_h(s), prepared.two.face_surface(off_face).unwrap());
+
+            let mut prefix = input.clone();
+            prefix.ops.truncate(6);
+            prefix.ops.push(OpIn::EdgeState {
+                e: [i64::from(edge.b), i64::from(edge.kind), i64::from(edge.i)],
+            });
+            let cpp_prefix = run_cpp(&prefix).expect("native prefix snapshot");
+            let rust_prefix = run_rust(&prefix).expect("Rust prefix snapshot");
+            let (c, r) = (script_state(&cpp_prefix), script_state(&rust_prefix));
+            // The unchanged first six operations occupy 79 values in this exact case.
+            for state in [c, r] {
+                assert_eq!(&state[79..81], &[17.0, 0.0]);
+                assert_eq!(&state[32..34], &[9.0, 0.0]);
+                assert_eq!(state[38], CONE_TYPE as f64);
+            }
+            eprintln!("ACTUAL PREFIX REPLAY: resolved eu={eu:?}, edge={edge:?}, serialized_uv_slot={slot}");
+            let prefix_matches = compare_stage("ACTUAL PREFIX REPLAY EdgeState", c, r);
+            let cpp_uv = selected_uv(&c[81..], slot, eus.len());
+            let rust_uv = selected_uv(&r[81..], slot, eus.len());
+            let selected_uv_matches = compare_stage(
+                "ACTUAL PREFIX REPLAY selected UV",
+                &payload(&cpp_uv),
+                &payload(&rust_uv),
+            );
+            // Serialized surface domains are umin,umax,vmin,vmax; FFI takes
+            // umin,vmin,umax,vmax. This is the seeded, unextended offset surface.
+            let domain = [c[39], c[41], c[40], c[42]];
+            let original_ivl = clamped_interval(&cpp_uv);
+            let mut first_replay_divergence = None;
+            let mut record = |name: &'static str, cpp: &[f64], rust: &[f64]| {
+                if !compare_stage(&format!("RECONSTRUCTED SAME-INPUT {name}"), cpp, rust)
+                    && first_replay_divergence.is_none()
+                {
+                    first_replay_divergence = Some(name);
+                }
+            };
+            // Each isolated comparison starts both engines from the exact same
+            // native-prefix/reference-chain payload, NOT from different prior outputs.
+            let (cpp1, rust1) = extend(&cpp_uv, original_ivl.min() - 10.0 * original_ivl.length());
+            record("extension 1", &payload(&cpp1), &payload(&rust1));
+            let (cpp2, rust2) = extend(&cpp1, original_ivl.max() + 10.0 * original_ivl.length());
+            record("extension 2", &payload(&cpp2), &payload(&rust2));
+            let extended_ivl = clamped_interval(&cpp2); // captured before RemoveExtraKnots
+            let ext_ivl = [extended_ivl.min(), extended_ivl.max()];
+            let (removed, rust_removed) = remove_extra(&cpp2);
+            record("knot removal", &payload(&removed), &payload(&rust_removed));
+            let _ = checked_owned_input(&removed); // Exact input for FindIvl and Trim below.
+
+            let mut find_input = payload(&removed);
+            find_input.extend([ext_ivl[0], ext_ivl[1], original_ivl.evaluate(0.5)]);
+            find_input.extend(domain);
+            eprintln!("RECONSTRUCTED FindIvl raw_input={find_input:?}");
+            let found = native_surface::eval(native_surface::Op::FindIvl, &find_input)
+                .expect("native domain-selection harness error (not parity)");
+            assert_eq!(found.len(), 3, "{found:?}");
+            assert_eq!(found[0], 0.0, "{found:?}");
+            let k = Kernel::default();
+            let rust_found = solidcore::surface::surface::p1::find_uv_curve_ivl_in_domain::<H>(
+                &k,
+                &SmCurve::from(rust_input(&removed)),
+                &Extent1d::from_min_max(ext_ivl[0], ext_ivl[1]),
+                original_ivl.evaluate(0.5),
+                &Extent2d::from_bounds(domain[0], domain[1], domain[2], domain[3]),
+            )
+            .expect("Rust domain selection failed");
+            record(
+                "selected DOMAIN interval (not TrimExtendedEdge interval)",
+                &found[1..],
+                &[rust_found.min(), rust_found.max()],
+            );
+
+            let mut trim_input = native_input(&removed);
+            trim_input.extend([found[1], found[2], 0.0]); // existing TrimMode::Notify
+            eprintln!("RECONSTRUCTED Trim raw_input={trim_input:?}");
+            let trimmed = native_ext::eval(native_ext::Op::Trim, &trim_input)
+                .expect("native UV-trim harness error (not parity)");
+            let mut rest = trimmed.as_slice();
+            assert_eq!(take(&mut rest, 1), &[0.0], "{trimmed:?}");
+            let cpp_interval = take(&mut rest, 2);
+            let cpp_trim = native_state(&mut rest);
+            assert!(rest.is_empty(), "unconsumed native trim fields");
+            let mut rust_trim = rust_input(&removed);
+            let mut rust_interval = Extent1d::from_min_max(found[1], found[2]);
+            rust_trim
+                .trim(&k, &mut rust_interval, TrimMode::Notify)
+                .expect("Rust UV trim failed");
+            let mut cpp_result = payload(&cpp_trim);
+            cpp_result.extend_from_slice(cpp_interval);
+            let mut rust_result = payload(&rust_state(&rust_trim));
+            rust_result.extend([rust_interval.min(), rust_interval.max()]);
+            record(
+                "UV domain trim and returned interval",
+                &cpp_result,
+                &rust_result,
+            );
+            eprintln!("earliest REPLAY divergence={first_replay_divergence:?}; not proof of the first opcode-12 writer");
+            eprintln!("UNOBSERVED: opcode-12 internal checkpoints and final TrimExtendedEdge selected interval; no SmCircle slicing/replay");
+
+            // Also retain the original failure in this diagnostic test so Cargo's
+            // failure log exposes matching replay stages if divergence occurs later.
+            // The separate durable full regression below is unchanged.
+            let cpp_full = run_cpp(&input).expect("original native run");
+            let rust_full = run_rust(&input).expect("original Rust run");
+            assert_eq!(script_state(&cpp_full).len(), 186);
+            assert_eq!(script_state(&rust_full).len(), 186);
+            let full_diff = compare(&cpp_full, &rust_full, &[]);
+            assert!(
+                prefix_matches
+                    && selected_uv_matches
+                    && first_replay_divergence.is_none()
+                    && full_diff.pass(),
+                "original gen0730 remains subject to strict parity: {full_diff:#?}\n{}",
+                gen0730_state_context(&cpp_full, &rust_full, 87)
+            );
+        }
     }
 
     /// Durable replay of generated case 730 (seed `9515163603058763486`), the case
