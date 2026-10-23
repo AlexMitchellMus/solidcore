@@ -49,7 +49,12 @@
 //! - **`CoverOtherCoincidentSurface`** takes both surfaces `&mut`: the covering surface
 //!   is expanded in place by `CoverCoincidentSurface`, as upstream. A failing
 //!   `CoverCoincidentSurface` leaves `rdMaxDist` at `SM_BIG_DOUBLE` (its first
-//!   statement).
+//!   statement). The `SmFace::RemoveUVTrimCurves` a successful `CoverCoincidentSurface`
+//!   runs on a face-owned covering surface is left to the caller holding the B-rep
+//!   ([`Surface::cover_other_coincident_surface_deferring_trims`] lists the faces in
+//!   [`CoverOtherCoincident::remove_uv_trim_curves_of`], in call order);
+//!   [`Surface::cover_other_coincident_surface`] returns [`SolidError::Unported`]
+//!   (`topology.face_p1`) there, as before.
 //! - **Unported callees** (return [`SolidError::Unported`]): `SmSurface::GetFace`,
 //!   `SmFace::GetTolerance` (for a surface whose B-rep has not cached its face's
 //!   tolerance on it, [`Surface::owner_zone_tol_3d`]), `LocalPointSolve_1`, `sm_GetSurfaceToEvaluate`, the STEP
@@ -68,6 +73,7 @@ use crate::geom::global_solver::{
     GlobalSolver, PreferredSolution, SolutionPairType, SolutionRequested, SolverOperation,
 };
 use crate::geom::local_solve_nd::{BoundaryHandler, LocalSolveNd, TerminationReason};
+use crate::geom::object::ObjectRef;
 use crate::geom::solution_array::{
     OwnDomains, ParameterDomains, Solution, SolutionArray, SolutionObject, SolutionType,
 };
@@ -1399,7 +1405,7 @@ impl Surface {
 // ---- CoverOtherCoincidentSurface --------------------------------------------------------------
 
 /// The result of [`Surface::cover_other_coincident_surface`].
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CoverOtherCoincident {
     /// `pCoveringSurf`: which surface covers the other: `Some(false)` this one,
     /// `Some(true)` the other, `None` when neither can.
@@ -1411,6 +1417,12 @@ pub struct CoverOtherCoincident {
     /// final NURBS parameters; only meaningful with a covering surface, and only when a
     /// merged domain was asked for.
     pub merged_domain: Option<Extent2d>,
+    /// The faces whose `SmFace::RemoveUVTrimCurves` the successful
+    /// `CoverCoincidentSurface` calls ran upstream (a face-owned covering surface), in
+    /// call order, for the caller holding the B-rep to run
+    /// (`topology::face::p1::remove_uv_trim_curves`). Empty unless returned by
+    /// [`Surface::cover_other_coincident_surface_deferring_trims`].
+    pub remove_uv_trim_curves_of: Vec<ObjectRef>,
 }
 
 /// What one `SmSurface::CoverCoincidentSurface` call reports.
@@ -1426,7 +1438,10 @@ struct CoverCoincident {
 
 /// `cover->CoverCoincidentSurface(covered, tol, bSuccess, rdMaxDist, &covered_domain
 /// [, &step_domain])`: whether `cover` covers `covered_domain` of `covered` and the
-/// largest gap. `cover` is expanded on success.
+/// largest gap. `cover` is expanded on success. With `defer_trims` the owner face whose
+/// `RemoveUVTrimCurves` the call runs upstream is appended to `trims`; without it that
+/// call is [`SolidError::Unported`] ([`Surface::cover_coincident_surface`]).
+#[allow(clippy::too_many_arguments)] // upstream's arguments plus the deferred trims
 fn cover_coincident_surface(
     k: &Kernel,
     cover: &mut Surface,
@@ -1434,8 +1449,21 @@ fn cover_coincident_surface(
     tol: f64,
     covered_domain: &Extent2d,
     want_step_domain: bool,
+    trims: &mut Option<&mut Vec<ObjectRef>>,
 ) -> Result<CoverCoincident> {
-    let r = cover.cover_coincident_surface(k, covered, tol, Some(covered_domain))?;
+    let r = match trims {
+        Some(list) => {
+            let r = cover.cover_coincident_surface_deferring_trims(
+                k,
+                covered,
+                tol,
+                Some(covered_domain),
+            )?;
+            list.extend(r.remove_uv_trim_curves_of);
+            r
+        }
+        None => cover.cover_coincident_surface(k, covered, tol, Some(covered_domain))?,
+    };
     Ok(CoverCoincident {
         success: r.success,
         max_dist: r.max_dist,
@@ -1457,6 +1485,8 @@ struct CoverState {
     max_dist: f64,
     /// `*pOptMergedDomain`.
     merged: Option<Extent2d>,
+    /// The faces whose UV trim curves the caller deletes, when it defers them.
+    trims: Option<Vec<ObjectRef>>,
 }
 
 /// The `Cover` lambda: `cover` covers the other surface; returns `bSuccess && eStat ==
@@ -1489,8 +1519,17 @@ fn try_cover(
         st.domain1
     };
 
+    let mut trims = st.trims.as_mut();
     if !want_merged {
-        return match cover_coincident_surface(k, cover, covered, tol, &covered_domain, false) {
+        return match cover_coincident_surface(
+            k,
+            cover,
+            covered,
+            tol,
+            &covered_domain,
+            false,
+            &mut trims,
+        ) {
             Ok(r) => {
                 st.max_dist = r.max_dist;
                 Ok(r.success)
@@ -1511,14 +1550,15 @@ fn try_cover(
         Err(e) if e.is_unported() => return Err(e),
         Err(_) => return Ok(false),
     };
-    let r = match cover_coincident_surface(k, cover, covered, tol, &covered_domain, true) {
-        Ok(r) => r,
-        Err(e) if e.is_unported() => return Err(e),
-        Err(_) => {
-            st.max_dist = BIG_DOUBLE;
-            return Ok(false);
-        }
-    };
+    let r =
+        match cover_coincident_surface(k, cover, covered, tol, &covered_domain, true, &mut trims) {
+            Ok(r) => r,
+            Err(e) if e.is_unported() => return Err(e),
+            Err(_) => {
+                st.max_dist = BIG_DOUBLE;
+                return Ok(false);
+            }
+        };
     st.max_dist = r.max_dist;
     if !r.success {
         return Ok(false);
@@ -1560,6 +1600,59 @@ impl Surface {
         other_domain: Option<&Extent2d>,
         want_merged: bool,
     ) -> Result<CoverOtherCoincident> {
+        self.cover_other_coincident_surface_in(
+            k,
+            other,
+            tol,
+            this_domain,
+            other_domain,
+            want_merged,
+            false,
+        )
+    }
+
+    /// [`Surface::cover_other_coincident_surface`] for a caller holding the B-rep: the
+    /// faces whose UV trim curves the successful `CoverCoincidentSurface` calls delete
+    /// upstream (`SmFace::RemoveUVTrimCurves` of a face-owned covering surface) are
+    /// returned in [`CoverOtherCoincident::remove_uv_trim_curves_of`], in call order,
+    /// and the caller runs `topology::face::p1::remove_uv_trim_curves` on each right
+    /// after this call.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::cover_other_coincident_surface`], without the
+    /// `SmFace::RemoveUVTrimCurves` deferral.
+    pub fn cover_other_coincident_surface_deferring_trims(
+        &mut self,
+        k: &Kernel,
+        other: &mut Self,
+        tol: f64,
+        this_domain: Option<&Extent2d>,
+        other_domain: Option<&Extent2d>,
+        want_merged: bool,
+    ) -> Result<CoverOtherCoincident> {
+        self.cover_other_coincident_surface_in(
+            k,
+            other,
+            tol,
+            this_domain,
+            other_domain,
+            want_merged,
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)] // upstream's arguments plus the trim deferral
+    fn cover_other_coincident_surface_in(
+        &mut self,
+        k: &Kernel,
+        other: &mut Self,
+        tol: f64,
+        this_domain: Option<&Extent2d>,
+        other_domain: Option<&Extent2d>,
+        want_merged: bool,
+        defer_trims: bool,
+    ) -> Result<CoverOtherCoincident> {
         let mut st = CoverState {
             domain0: this_domain
                 .copied()
@@ -1569,11 +1662,13 @@ impl Surface {
                 .unwrap_or_else(|| other.natural_uv_domain()),
             max_dist: BIG_DOUBLE,
             merged: None,
+            trims: defer_trims.then(Vec::new),
         };
-        let done = |st: &CoverState, covering_is_other: bool| CoverOtherCoincident {
+        let done = |st: &mut CoverState, covering_is_other: bool| CoverOtherCoincident {
             covering_is_other: Some(covering_is_other),
             max_dist: st.max_dist,
             merged_domain: st.merged,
+            remove_uv_trim_curves_of: st.trims.take().unwrap_or_default(),
         };
 
         let is_plane = |s: &Self| matches!(s.kind(), SurfaceKind::Plane(_));
@@ -1587,13 +1682,13 @@ impl Surface {
         if is_plane(self) {
             tried0 = true;
             if try_cover(k, &mut st, self, other, false, tol, want_merged)? {
-                return Ok(done(&st, false));
+                return Ok(done(&mut st, false));
             }
         }
         if is_plane(other) {
             tried1 = true;
             if try_cover(k, &mut st, self, other, true, tol, want_merged)? {
-                return Ok(done(&st, true));
+                return Ok(done(&mut st, true));
             }
         }
 
@@ -1601,13 +1696,13 @@ impl Surface {
         if !tried0 && self.is_bilinear() {
             tried0 = true;
             if try_cover(k, &mut st, self, other, false, tol, want_merged)? {
-                return Ok(done(&st, false));
+                return Ok(done(&mut st, false));
             }
         }
         if !tried1 && other.is_bilinear() {
             tried1 = true;
             if try_cover(k, &mut st, self, other, true, tol, want_merged)? {
-                return Ok(done(&st, true));
+                return Ok(done(&mut st, true));
             }
         }
 
@@ -1615,13 +1710,13 @@ impl Surface {
         if !tried0 && is_bspline(self) {
             tried0 = true;
             if try_cover(k, &mut st, self, other, false, tol, want_merged)? {
-                return Ok(done(&st, false));
+                return Ok(done(&mut st, false));
             }
         }
         if !tried1 && is_bspline(other) {
             tried1 = true;
             if try_cover(k, &mut st, self, other, true, tol, want_merged)? {
-                return Ok(done(&st, true));
+                return Ok(done(&mut st, true));
             }
         }
 
@@ -1629,14 +1724,14 @@ impl Surface {
         if !tried0 {
             tried0 = true;
             if try_cover(k, &mut st, self, other, false, tol, want_merged)? {
-                return Ok(done(&st, false));
+                return Ok(done(&mut st, false));
             }
         }
         let _ = tried0;
         if !tried1 {
             tried1 = true;
             if try_cover(k, &mut st, self, other, true, tol, want_merged)? {
-                return Ok(done(&st, true));
+                return Ok(done(&mut st, true));
             }
         }
         let _ = tried1;
@@ -1645,6 +1740,7 @@ impl Surface {
             covering_is_other: None,
             max_dist: st.max_dist,
             merged_domain: st.merged,
+            remove_uv_trim_curves_of: st.trims.take().unwrap_or_default(),
         })
     }
 }

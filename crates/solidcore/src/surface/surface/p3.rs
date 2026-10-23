@@ -39,8 +39,14 @@
 //!   the face props), else the one the B-rep cached on the surface
 //!   ([`Surface::owner_zone_tol_3d`]); a bare face handle without it returns
 //!   [`SolidError::Unported`] (`topology.face_p2`).
-//! - **Unported callees** (return [`SolidError::Unported`]): `SmFace::RemoveUVTrimCurves`
-//!   (`topology.face_p1`) when the surface is owned by a face.
+//! - **`SmFace::RemoveUVTrimCurves` at the end of `CoverCoincidentSurface`.** A surface
+//!   holds only its owner handle, not the B-rep, so it cannot delete its face's UV trim
+//!   curves itself. [`Surface::cover_coincident_surface_deferring_trims`] returns the
+//!   face in [`CoverCoincident::remove_uv_trim_curves_of`] and the caller that holds the
+//!   B-rep runs `topology::face::p1::remove_uv_trim_curves` right after the call (nothing
+//!   runs in between, so the order is upstream's).
+//!   [`Surface::cover_coincident_surface`] keeps returning [`SolidError::Unported`]
+//!   (`topology.face_p1`) for a face-owned surface for callers without the B-rep.
 
 use crate::error::{ignored, Result, SolidError};
 use crate::geom::assert_array::labels;
@@ -52,6 +58,7 @@ use crate::geom::local_solve_nd::{
     BoundaryHandler, EvalNFunctions, LocalSolveNd, TerminationReason,
 };
 use crate::geom::matrix::Matrix;
+use crate::geom::object::ObjectRef;
 use crate::geom::tol::{approx_tol3d, approx_tol_3d, SmallTopoType};
 use crate::geom::vector3d::sqrt as sm_sqrt;
 use crate::kernel::Kernel;
@@ -255,6 +262,12 @@ pub struct CoverCoincident {
     /// `pOptCoveredSTEPDomain`: the covered subset in this surface's STEP parameters,
     /// valid when `success`.
     pub covered_step_domain: Option<Extent2d>,
+    /// The face owning this surface whose `SmFace::RemoveUVTrimCurves` upstream runs at
+    /// the end of a successful call: the caller holding the B-rep runs it
+    /// (`topology::face::p1::remove_uv_trim_curves`) right after the call. `None` on
+    /// failure and for a surface no face owns. Set only by
+    /// [`Surface::cover_coincident_surface_deferring_trims`].
+    pub remove_uv_trim_curves_of: Option<ObjectRef>,
 }
 
 /// A two-surface local solution ([`Surface::local_surface_solve`] and
@@ -720,9 +733,42 @@ impl Surface {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`]: `SmFace::RemoveUVTrimCurves` for a surface owned by a face
-    /// (`topology.face_p1`); those of the evaluations and of `STEPInversion`.
+    /// [`SolidError::Unported`]: `SmFace::RemoveUVTrimCurves` for a successful cover by a
+    /// surface owned by a face (`topology.face_p1`; the surface has been expanded, as
+    /// upstream before that call); those of the evaluations and of `STEPInversion`.
+    /// A caller holding the B-rep uses
+    /// [`Surface::cover_coincident_surface_deferring_trims`] instead.
     pub fn cover_coincident_surface(
+        &mut self,
+        k: &Kernel,
+        other: &Surface,
+        tol: f64,
+        other_domain: Option<&Extent2d>,
+    ) -> Result<CoverCoincident> {
+        let r = self.cover_coincident_surface_deferring_trims(k, other, tol, other_domain)?;
+        if r.remove_uv_trim_curves_of.is_some() {
+            // UNPORTED(topology.face_p1): SmFace::RemoveUVTrimCurves
+            // (ported as topology::face::p1::remove_uv_trim_curves; a caller without
+            // the B-rep of the owner face cannot run it: callers with it use
+            // `cover_coincident_surface_deferring_trims`)
+            return Err(SolidError::unported(
+                "SmFace::RemoveUVTrimCurves",
+                "topology.face_p1",
+            ));
+        }
+        Ok(r)
+    }
+
+    /// [`Surface::cover_coincident_surface`] for a caller holding the B-rep: on success
+    /// for a face-owned surface, the face whose UV trim curves upstream deletes at the
+    /// end of the call (`SmFace::RemoveUVTrimCurves`) is returned in
+    /// [`CoverCoincident::remove_uv_trim_curves_of`], and the caller runs
+    /// `topology::face::p1::remove_uv_trim_curves` on it right after this call.
+    ///
+    /// # Errors
+    ///
+    /// Those of the evaluations and of `STEPInversion`.
+    pub fn cover_coincident_surface_deferring_trims(
         &mut self,
         k: &Kernel,
         other: &Surface,
@@ -754,6 +800,7 @@ impl Surface {
             success: false,
             max_dist: BIG_DOUBLE,
             covered_step_domain: None,
+            remove_uv_trim_curves_of: None,
         };
 
         // We're going to have to expand ourselves right away.
@@ -850,13 +897,13 @@ impl Surface {
             // (status ignored upstream)
             ignored(self.adjust_step_uv_domain(k, &update_domain))?;
 
-            // Have to do this after AdjustSTEPUVDomain call:
-            self.remove_uv_trim_curves_of_owner()?;
-
+            // Have to do this after AdjustSTEPUVDomain call (the caller holding the
+            // B-rep runs SmFace::RemoveUVTrimCurves on the owner face):
             return Ok(CoverCoincident {
                 success: true,
                 max_dist,
                 covered_step_domain: Some(new_domain),
+                remove_uv_trim_curves_of: self.face_owner(),
             });
         }
 
@@ -1040,31 +1087,20 @@ impl Surface {
         // (status ignored upstream)
         ignored(self.adjust_step_uv_domain(k, &update_domain))?;
 
-        // Have to do this after AdjustSTEPUVDomain call:
-        self.remove_uv_trim_curves_of_owner()?;
-
+        // Have to do this after AdjustSTEPUVDomain call (the caller holding the B-rep
+        // runs SmFace::RemoveUVTrimCurves on the owner face):
         Ok(CoverCoincident {
             success: true,
             max_dist,
             covered_step_domain: Some(new_domain),
+            remove_uv_trim_curves_of: self.face_owner(),
         })
     }
 
-    /// `SmFace::RemoveUVTrimCurves` of the face that owns this surface, if any.
-    fn remove_uv_trim_curves_of_owner(&self) -> Result<()> {
-        if self
-            .owner()
-            .is_some_and(|o| o.type_code == labels::FACE_TYPE)
-        {
-            // UNPORTED(topology.face_p1): SmFace::RemoveUVTrimCurves
-            // (ported as topology::face::p1::remove_uv_trim_curves, but a surface cannot
-            // reach the B-rep of its owner face here: the call needs the B-rep passed in)
-            return Err(SolidError::unported(
-                "SmFace::RemoveUVTrimCurves",
-                "topology.face_p1",
-            ));
-        }
-        Ok(())
+    /// The face that owns this surface directly (`GetOwner()` when it is an `SmFace`),
+    /// whose `RemoveUVTrimCurves` `CoverCoincidentSurface` runs.
+    fn face_owner(&self) -> Option<ObjectRef> {
+        self.owner().filter(|o| o.type_code == labels::FACE_TYPE)
     }
 
     /// The point where this surface and `other` meet the plane through `plane_origin`
