@@ -400,6 +400,7 @@ impl ExecutiveAccess<Handle> for Access {
         Ok(self.solver_surface(solver, rail)?.is_some())
     }
     fn edge_g1_knots(&mut self, k: &Kernel, edge: Handle) -> SolidResult<Vec<f64>> {
+        const OP: &str = "SmFilletExecutive::LoadFilletSolver";
         let Handle::Edge(id) = edge else {
             return missing();
         };
@@ -410,10 +411,19 @@ impl ExecutiveAccess<Handle> for Access {
             .edge(id)?
             .curve
             .as_ref()
-            .ok_or_else(missing_error)?;
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
         let knots = curve.knots(k, None)?.0;
         if let std::collections::btree_map::Entry::Vacant(entry) = self.edge_caches.entry(id) {
-            let cache = solidcore::curve::curve::p5::make_curve_cache(k, curve, Some(edge))?;
+            // The cache manager returns null on construction failure; LoadFilletSolver
+            // applies NER to that pointer after GetKnots has succeeded.
+            let cache = solidcore::curve::curve::p5::make_curve_cache(k, curve, Some(edge))
+                .map_err(|error| {
+                    if error.is_unported() {
+                        error
+                    } else {
+                        SolidError::null_pointer(OP)
+                    }
+                })?;
             entry.insert(cache);
         }
         let cache = self.edge_caches.get(&id).ok_or_else(missing_error)?;
