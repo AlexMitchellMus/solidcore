@@ -540,7 +540,7 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
             }
             OpIn::Dead { brep, live, .. } => {
                 // an empty brep, as on the C++ side, or the face's
-                let empty_brep = solidcore::topology::Brep::new();
+                let empty_brep = Brep::new();
                 let target = if *live {
                     Some(&pool.topo.as_ref().ok_or_else(|| harness("no face"))?.brep)
                 } else {
@@ -1306,15 +1306,16 @@ mod tests {
                 .generate(&mut rng)
                 .unwrap_or_else(|| panic!("{name}: generation rejected"));
             let s: Script = serde_json::from_value(v).unwrap();
-            let bare_face = s
-                .objects
-                .iter()
-                .position(|o| matches!(o, ObjIn::Face(Some(_))))
-                .unwrap_or_else(|| panic!("{name}: no bare face with a surface"));
+            assert!(
+                s.objects.iter().any(|o| matches!(o, ObjIn::Face(Some(_)))),
+                "{name}: no bare face with a surface"
+            );
             assert!(s.face.is_some(), "{name}: no real one-face B-rep");
             assert!(
-                s.cc.iter().any(|c| c.face == Some(bare_face)),
-                "{name}: classification face is not the bare stand-in"
+                s.ops
+                    .iter()
+                    .any(|o| matches!(o, OpIn::MinUv { .. } | OpIn::MaxUv { .. })),
+                "{name}: no GetMinUV/GetMaxUV operation"
             );
 
             let native = cpp(&s).unwrap_or_else(|e| panic!("{name}: native: {e}"));
