@@ -102,7 +102,7 @@ use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface::p1::SurfParamType;
 use crate::nurbs::b_spline_surface::BSplineSurface;
-use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::nurbs::b_spline_surface_n_lib::p2::{BlendNeighbour, OrientType};
 use crate::nurbs::crv_fit::p1::ParamMethod;
 use crate::surface::plane::Plane;
 use crate::surface::surface::p1::map_to_2d_dir;
@@ -2075,7 +2075,6 @@ impl FilletBrep {
     /// missing solver, rail, curve, UV curve, face, surface or cross-section edge;
     /// those of the length, arc-length, interpolation, lift and surface creations and
     /// of `SmFilletEdge::CalcBlendingRail`.
-    #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn calc_blending_geom(
         &mut self,
         k: &Kernel,
@@ -2086,6 +2085,30 @@ impl FilletBrep {
         let nul = || SolidError::null_pointer(OP_BLEND);
         let sid = self.geom(g)?.fillet_solver().ok_or_else(nul)?;
         let fil_solver = solver_of(solvers, sid, OP_BLEND)?;
+        self.calc_blending_geom_of_solver(k, g, fil_solver, target)
+    }
+
+    /// [`FilletBrep::calc_blending_geom`] with the geometry's solver
+    /// (`GetFilletSolver()`) given directly: for a caller that is that solver (the
+    /// fillet solver's `CalcFilletGeom`, unit `blend.fillet_solver_p4`, whose
+    /// geometries all name it). A geometry without a solver is still
+    /// `SM_ERR_NULL_POINTER`.
+    ///
+    /// # Errors
+    ///
+    /// As [`FilletBrep::calc_blending_geom`].
+    #[allow(clippy::too_many_lines)] // one upstream routine
+    pub fn calc_blending_geom_of_solver(
+        &mut self,
+        k: &Kernel,
+        g: FilletGeomId,
+        fil_solver: &FilletSolver,
+        target: &Brep,
+    ) -> Result<()> {
+        let nul = || SolidError::null_pointer(OP_BLEND);
+        if self.geom(g)?.fillet_solver().is_none() {
+            return Err(nul());
+        }
         let approx_tol_3d = fil_solver.approx_tol_3d;
         let tangency_tol_radians = fil_solver.tangency_tolerance;
 
@@ -2231,9 +2254,13 @@ impl FilletBrep {
             ordered_3d.push(as_b_spline(c).ok_or_else(nul)?.clone());
             ordered_surfs.push(base_surface);
         }
-        let nets: Vec<Option<&BSplineSurface>> = ordered_surfs
+        let nets: Vec<Option<BlendNeighbour<'_>>> = ordered_surfs
             .iter()
-            .map(|s| s.and_then(b_spline_net))
+            .map(|s| {
+                s.and_then(|surface| {
+                    b_spline_net(surface).map(|b_spline| BlendNeighbour { surface, b_spline })
+                })
+            })
             .collect();
         let surfaces = BSplineSurface::create_corner_blend(
             k,

@@ -8,16 +8,28 @@
 //! ported functions run on both. Edge use arguments are selectors taken modulo the edge
 //! use count.
 //!
-//! `CreateUVTrimCurve` and every path that has to make a UV trim curve reach
-//! `SmSurface::DropCurve` (unit `intersect.surface_drop_lib_p3`), `DropPoint` and
-//! `LocalPointSolve` (`surface.surface_p5`) and the global point solve of non-planes
-//! (`surface.surface_point_solve_p3`): those cases are deferred; the paths with
-//! existing UV trim curves, the 3D evaluation, the null dereferences and the wire edge
-//! uses are compared. The state compared after an op is that of
+//! `CreateUVTrimCurve` and every path that has to make a UV trim curve run
+//! `SmSurface::DropCurve` (the plane override or the general drop, unit
+//! `intersect.surface_drop_lib_p3`) and are compared with the paths with existing UV
+//! trim curves, the 3D evaluation, the null dereferences and the wire edge uses; the
+//! cases that reach a unit not ported yet (the face's `CreateUVTrimCurves`, B-rep
+//! makers, surface kinds, the curve classifier) are deferred. The state compared after an op is that of
 //! `topology.edgeuse_p2`'s `put_eu_state` for the edge use and its mate and the edge's
 //! interval and tolerance. The graph export carries only whether an edge use's maximum
 //! edge/face gap is set, not its length (a B-rep read with `rebuild` has it set), so the
 //! distance `GetOrCreateUVTrimCurve` reports for an existing curve is not compared then.
+//! `EvaluateBinormal` builds the face's trimmed surface cache; on the tiny adversarial
+//! surfaces that tree grows to about 2 million nodes on both sides (2 014 255 in the C++
+//! for the `1e-4`-scale faces), below the port's `MAX_SUBDIVISION_NODES` bound; a case
+//! past that bound would be deferred to `surface.surface_cache_p3`.
+//!
+//! Known mismatches (`known_mismatches.toml`): `EvaluateBinormal` with `bUse3DOnly` on
+//! `Endcap.smb` (a file without UV trim curves). `SmBrep::ReadFromFile`'s healer leaves
+//! an `SmTrimSrfCache` without a tree on each face's surface; `EvaluateBinormal`
+//! reuses it, and its tree is built later with the surface's owner cleared
+//! (`GlobalPointSolve`), so no `CreateUVTrimCurves` runs. The Rust B-rep keeps no
+//! per-surface cache, so the port builds the face's trimmed cache and attaches the UV
+//! trim curves. The graph export does not carry the cache's existence.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -363,6 +375,9 @@ fn run_rust_op(
     }
 }
 
+/// The operation of the port's surface cache subdivision bound.
+const SUBDIVIDE_OP: &str = "surface::surface_cache::p3::SurfaceCache::subdivide_to_tolerances";
+
 fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     let mut s = match setup(i)? {
         Ok(s) => s,
@@ -378,6 +393,18 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
                 return Ok(o);
             }
             match e {
+                // the port's bound on the surface cache tree (`MAX_SUBDIVISION_NODES`),
+                // reached through the face's trimmed surface cache that `EvaluateBinormal`
+                // builds; upstream subdivides on (no fixture reaches it since the bound
+                // became 2^22; plan/findings.md, surface.surface_cache_p3)
+                SolidError::InvalidInput { operation, reason }
+                    if operation == SUBDIVIDE_OP && reason.contains("MAX_SUBDIVISION_NODES") =>
+                {
+                    Ok(Output::deferred(
+                        "surface.surface_cache_p3",
+                        "SmSurfaceCache::SubdivideToTolerances past MAX_SUBDIVISION_NODES (port bound)",
+                    ))
+                }
                 SolidError::InvalidInput { .. } => Ok(Output::err("null_deref")),
                 e => Err(harness(format!("rust: {e}"))),
             }

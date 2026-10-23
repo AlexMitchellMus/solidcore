@@ -83,9 +83,8 @@
 //!   `FindInteriorCurves`' reverse trace, `AddStartPoint`), except
 //!   [`SolidError::Unported`], which is always propagated. `GetSurfaceContinuity`
 //!   at most `SM_CT_C0` only signals upstream (`SE`), so the trace goes on.
-//! - **Unported callees.** `SmSurface::DropCurve` for surfaces other than planes
-//!   (`intersect.surface_drop_lib_p3`) returns [`SolidError::Unported`] (see the
-//!   `UNPORTED` markers).
+//! - **Drop curve.** `SmSurface::DropCurve` is the plane override for planes and the
+//!   base body ([`Surface::drop_curve_base`]) for the other kinds.
 //! - **Undefined behaviour.** `ReverseCurveDirection` on an empty curve is
 //!   `SM_ERR_NULL_POINTER` (upstream `NER`); a `TraceCurve` that ends with an empty
 //!   curve and a `TestPoint` closure check on an empty curve (upstream dereferences
@@ -121,7 +120,7 @@ use crate::nurbs::b_spline_curve::{BSplineCurve, BSplineCurveForm, CanonicalData
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::knots::Side;
 use crate::surface::surface::p2::surface_cache;
-use crate::surface::surface::{Surface, SurfaceKind};
+use crate::surface::surface::Surface;
 use crate::surface::surface_cache::SurfaceCache;
 
 /// `SmSurfaceTracer_TYPE` (`SOLV_BASE_TYPE + 56`).
@@ -1644,29 +1643,10 @@ fn surface_drop_curve(
     interval: &Extent1d,
     approx_tol: f64,
 ) -> Result<(f64, f64, Vec<Curve>)> {
-    match surface.kind() {
-        SurfaceKind::Plane(p) => {
-            let r = p.drop_curve(k, uv_domain, curve, interval, approx_tol, true, false)?;
-            Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
-        }
-
-        SurfaceKind::Cone(_)
-        | SurfaceKind::Sphere(_)
-        | SurfaceKind::Torus(_)
-        | SurfaceKind::BSpline(_)
-        | SurfaceKind::CurveBounded(_)
-        | SurfaceKind::SurfOfRevolution(_)
-        | SurfaceKind::SurfOfExtrusion(_)
-        | SurfaceKind::Step(_)
-        | SurfaceKind::OffsetSurface(_)
-        | SurfaceKind::SrfInVolume(_) => {
-            // UNPORTED(intersect.surface_drop_lib_p3): SmSurface::DropCurve
-            Err(SolidError::unported(
-                "SmSurface::DropCurve",
-                "intersect.surface_drop_lib_p3",
-            ))
-        }
-    }
+    let r = surface.drop_curve::<crate::surface::surface::p4::NoObject>(
+        k, uv_domain, curve, interval, approx_tol, true, None, false,
+    )?;
+    Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
 }
 
 /// `SmSurfaceTracer::FindBoundaryStartPoints`: for each of the four boundary iso
@@ -2159,18 +2139,25 @@ where
     Ok(out)
 }
 
-/// `smsurf_GetSurfaceCache` for the tracer's surface ([`surface_cache`], built fresh):
-/// the cache callers pass to [`SurfaceTrace::do_trace`].
+/// `smsurf_GetSurfaceCache` for the tracer's surface ([`surface_cache`], built fresh)
+/// and the tracer constructor's `pSC->GetTree()` (whose failure the constructor
+/// ignores): the cache callers pass to [`SurfaceTrace::do_trace`]. The tree is built
+/// before the boundary search reads the cache's continuity arrays, also during a
+/// Boolean operation.
 ///
 /// # Errors
 ///
 /// Those of the cache builds (the continuities of the tree build:
-/// `SmSurface::CalculateContinuities`).
+/// `SmSurface::CalculateContinuities`); [`SolidError::Unported`] from the tree build.
 pub fn tracer_surface_cache<O: Copy + PartialEq>(
     k: &Kernel,
     t: &SurfaceTracer<'_>,
 ) -> Result<SurfaceCache<O>> {
-    surface_cache(k, t.surface, None)
+    let mut cache = surface_cache(k, t.surface, None)?;
+    match cache.get_tree(k) {
+        Err(e) if e.is_unported() => Err(e),
+        _ => Ok(cache),
+    }
 }
 
 #[cfg(test)]
