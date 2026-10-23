@@ -5,9 +5,12 @@
 //! upstream API box examples are also run natively and explicitly deferred at
 //! their unported executive-p1 API/setup entrypoints on Rust.
 
+use std::collections::BTreeMap;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use solidcore::blend::fillet_executive::p1::ExecutiveObjects;
+use solidcore::blend::fillet_geom::p1::{FilStatus, FilletEdgeType};
 use solidcore::blend::fillet_executive::p3::{
     ContextMark, CornerView, ErrorInfo, ExecutionOptions, ExecutiveAccess, FilletExecutive,
     StitchAttempt, StitchSettings, TopoEdgeView,
@@ -287,13 +290,10 @@ impl ExecutiveAccess<Handle> for Access {
         _: Handle,
         _: &mut FilletExecutive<Handle>,
     ) -> SolidResult<()> {
-        // No concrete object is constructed here. Future fixtures must dispatch
-        // derived types to their owners, as documented on ExecutiveAccess.
-        // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
-        Err(SolidError::unported(
-            "SmFilletSolver::CalcFilletGeom",
-            "blend.fillet_solver_p4",
-        ))
+        // This fixture builds no solver, so there is nothing to dispatch to: the
+        // base `CalcFilletGeom` is ported (`blend::fillet_solver::p4`) and
+        // `SmSurfaceSurfaceFS`'s override is blend.fillet_standard_solver_p2's.
+        missing()
     }
     fn corner_error_info(
         &self,
@@ -390,6 +390,31 @@ impl ExecutiveAccess<Handle> for Access {
             cascade_to_boundaries,
         )
     }
+    fn stitch_faces(
+        &mut self,
+        k: &mut Kernel,
+        brep: Handle,
+        tolerance: f64,
+        faces: Option<&[Handle]>,
+        allow_spine_edges: bool,
+    ) -> SolidResult<StitchAttempt> {
+        // the fixture has no face handles; both executive call sites stitch every face
+        if faces.is_some() {
+            return missing();
+        }
+        let b = self
+            .breps
+            .get_mut(brep.0)
+            .and_then(Option::as_mut)
+            .ok_or_else(missing_error)?;
+        StitchAttempt::from_stitch(solidcore::topology::brep::p4::stitch_faces(
+            k,
+            b,
+            tolerance,
+            None,
+            allow_spine_edges,
+        ))
+    }
     fn editing_enabled(&self, brep: Handle) -> SolidResult<bool> {
         self.breps
             .get(brep.0)
@@ -482,6 +507,18 @@ impl ExecutiveAccess<Handle> for Access {
         missing()
     }
     fn geom_side_edgeuses(&self, _: Handle) -> SolidResult<Vec<Handle>> {
+        missing()
+    }
+    fn edge_edgeuses(&self, _: Handle) -> SolidResult<Vec<Handle>> {
+        missing()
+    }
+    fn fillet_edge_note(
+        &self,
+        _: Handle,
+    ) -> SolidResult<(Option<&'static str>, FilletEdgeType, FilStatus)> {
+        missing()
+    }
+    fn new_executive_objects(&mut self, _: &mut Kernel) -> SolidResult<ExecutiveObjects<Handle>> {
         missing()
     }
     fn edgeuse_edge(&self, _: Handle) -> SolidResult<Option<Handle>> {
@@ -684,6 +721,11 @@ fn rust(input: &Inputs) -> Result<Output, HarnessError> {
         intersection_edges: vec![],
         intersection_vertices: vec![],
         law_sequence_edges: vec![],
+        pseudo_brep: None,
+        surface_generators: vec![],
+        vertex_corner_map: BTreeMap::new(),
+        edgeuse_solver_map: BTreeMap::new(),
+        self_intersection_handler: None,
     };
     // The executive constructor sets this after constructing its SmMerge base.
     executive.intersector.ignore_tangency = true;

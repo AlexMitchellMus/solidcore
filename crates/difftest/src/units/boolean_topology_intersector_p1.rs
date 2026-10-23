@@ -1258,6 +1258,19 @@ impl solidcore::topology::proto_topology::p3::BrepGlue<H> for Two {
         v2: H,
         opt_wire_edges_in_brep: Option<&[H]>,
     ) -> solidcore::Result<()> {
+        if brep.kind == K_BREP
+            && v1.kind == K_VERTEX
+            && v2.kind == K_VERTEX
+            && v1.b != v2.b
+            && (v1.b == brep.b || v2.b == brep.b)
+        {
+            // UNPORTED(topology.brep_p5): SmBrep::GlueVertices of vertices of two B-reps --
+            // justified: topology::brep::p5::glue_vertices takes one B-rep arena
+            return Err(SolidError::unported(
+                "SmBrep::GlueVertices (vertices of two B-reps)",
+                "topology.brep_p5",
+            ));
+        }
         if brep.kind != K_BREP
             || v1.kind != K_VERTEX
             || v2.kind != K_VERTEX
@@ -1295,6 +1308,9 @@ impl solidcore::topology::proto_topology::p3::BrepGlue<H> for Two {
             Some(vid(v2)),
             wires.as_deref(),
         )
+    }
+    fn delete_edge(&mut self, k: &mut Kernel, brep: H, edge: H) -> solidcore::Result<()> {
+        IntersectorBrep::brep_delete_edge(self, k, brep, edge)
     }
 }
 
@@ -1729,6 +1745,26 @@ impl IntersectorBrep<H> for Two {
                 bp3::DeleteFaceOptions::default(),
             )
             .map(drop)
+        })
+    }
+    fn brep_delete_edge(&mut self, k: &mut Kernel, brep: H, edge: H) -> solidcore::Result<()> {
+        if brep.kind != K_BREP || edge.kind != K_EDGE || edge.b != brep.b {
+            return Err(invalid("edge is not in the B-rep"));
+        }
+        let b = self.brep_m(brep)?;
+        with_edit_env(b, |b, env| {
+            let mut delete = solidcore::topology::brep::p4::DeleteEnv::from_notify(env);
+            solidcore::topology::brep::p4::delete_edge(k, b, &mut delete, eid(edge), None)
+        })
+    }
+    fn brep_delete_vertex(&mut self, k: &mut Kernel, brep: H, vertex: H) -> solidcore::Result<()> {
+        if brep.kind != K_BREP || vertex.kind != K_VERTEX || vertex.b != brep.b {
+            return Err(invalid("vertex is not in the B-rep"));
+        }
+        let b = self.brep_m(brep)?;
+        with_edit_env(b, |b, env| {
+            let mut delete = solidcore::topology::brep::p4::DeleteEnv::from_notify(env);
+            solidcore::topology::brep::p4::delete_vertex(k, b, &mut delete, vid(vertex))
         })
     }
 

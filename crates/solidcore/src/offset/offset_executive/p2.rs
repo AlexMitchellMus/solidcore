@@ -291,7 +291,7 @@ impl OffsetExecutive {
             // GetInfiniteRegion equality; failure is ignored. Finally release the
             // temporary and return the real result. None may be replaced by an
             // empty success here. `_options` is first used at that continuation.
-            // UNPORTED(topology.brep_p4): SmBrep::ShrinkGeometry
+            // UNPORTED(topology.brep_p4): SmBrep::ShrinkGeometry -- justified: plan/findings.md "topology.brep_p4: the last stubs (PR #441)": the stub also marks where this unit's unported DoSolidOffset continuation (cpp:648-1051) begins; wiring the shrink alone would leave that remainder without a stop
             Err(SolidError::unported(
                 "SmBrep::ShrinkGeometry",
                 "topology.brep_p4",
@@ -2773,8 +2773,8 @@ mod tests {
                     &mut notifications.context(),
                 )
             },
-            "SmBrep::ShrinkGeometry",
-            "topology.brep_p4",
+            "SmMerge::PiecewiseMerge",
+            "boolean.merge_p3",
         );
         assert!(exec.offset_brep().is_some());
         // RemoveFaces ran with the temporary's real editing flag before the
@@ -2801,8 +2801,8 @@ mod tests {
                     &mut notifications.context(),
                 )
             },
-            "SmBrep::ShrinkGeometry",
-            "topology.brep_p4",
+            "SmMerge::PiecewiseMerge",
+            "boolean.merge_p3",
         );
         assert!(exec.offset_brep().is_some());
         assert!(!kernel.context.is_mark_locked(MarkType::Mark));
@@ -3166,7 +3166,11 @@ mod tests {
                 assert_status(outcome.result, 1007);
                 assert_eq!(kernel.context.current_mark(MarkType::Mark), 1);
             } else {
-                assert_dependency(outcome.result, "SmBrep::ShrinkGeometry", "topology.brep_p4");
+                assert_dependency(
+                    outcome.result,
+                    "SmMerge::PiecewiseMerge",
+                    "boolean.merge_p3",
+                );
                 assert_eq!(kernel.context.current_mark(MarkType::Mark), 3);
             }
             let retained = outcome.retained_input.as_ref().unwrap();

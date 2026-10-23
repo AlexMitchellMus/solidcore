@@ -723,23 +723,25 @@ impl FilletCorner {
     /// `GetTangentFilletSolver(pFS)` (virtual): the solver of the other filleted edge
     /// use of a 2x2 corner, the solver itself for a 1x1 corner, `None` (`SM_ASSERT_ERR`)
     /// when the corner has another number of filleted edge uses or `fs` is not one of
-    /// their solvers; `None` for the base class (`SM_REF1(pFS)`).
+    /// their solvers; `None` for the base class (`SM_REF1(pFS)`). The closed Nx1 and Nx2
+    /// overrides (unit `blend.fillet_corner_p2`) also test `sm_TestG1Continuity` on the
+    /// filleted edges of `b`, the B-rep being filleted, which the base and the 1x1 / 2x2
+    /// overrides do not read.
     ///
     /// # Errors
     ///
-    /// [`SolidError::InvalidInput`] for a 1x1 or 2x2 corner without `m_pSolverEUs`
-    /// (upstream dereferences it); [`SolidError::Unported`] for the closed Nx1 and Nx2
-    /// corners (their overrides are unit `blend.fillet_corner_p2`; they test
-    /// `sm_TestG1Continuity` on the filleted edges of `b`, the B-rep being filleted,
-    /// which the base and the 1x1 / 2x2 overrides do not read).
+    /// [`SolidError::InvalidInput`] for a 1x1, 2x2, closed Nx1 or Nx2 corner without
+    /// `m_pSolverEUs` (upstream dereferences it); those of
+    /// [`FilletCorner::tangent_fillet_solver_nx1_closed`] and
+    /// [`FilletCorner::tangent_fillet_solver_nx2`].
     pub fn tangent_fillet_solver(
         &self,
+        k: &Kernel,
         b: &Brep,
         exec: &FilletExecutiveData,
         fs: FilletSolverId,
     ) -> Result<Option<FilletSolverId>> {
         const OP: &str = "blend::fillet_corner::p1::tangent_fillet_solver";
-        let _ = b;
         match self.kind {
             FilletCornerKind::OneByOne => {
                 let eus = self
@@ -773,20 +775,8 @@ impl FilletCorner {
                 }
                 Ok(None)
             }
-            FilletCornerKind::NByOneClosed => {
-                // UNPORTED(blend.fillet_corner_p2): SmFilletNx1ClosedCorner::GetTangentFilletSolver
-                Err(SolidError::unported(
-                    "SmFilletNx1ClosedCorner::GetTangentFilletSolver",
-                    "blend.fillet_corner_p2",
-                ))
-            }
-            FilletCornerKind::NByTwo => {
-                // UNPORTED(blend.fillet_corner_p2): SmFilletNx2Corner::GetTangentFilletSolver
-                Err(SolidError::unported(
-                    "SmFilletNx2Corner::GetTangentFilletSolver",
-                    "blend.fillet_corner_p2",
-                ))
-            }
+            FilletCornerKind::NByOneClosed => self.tangent_fillet_solver_nx1_closed(k, b, exec, fs),
+            FilletCornerKind::NByTwo => self.tangent_fillet_solver_nx2(k, b, exec, fs),
             _ => Ok(None),
         }
     }
@@ -1141,7 +1131,7 @@ fn note_fillet_error(
 
 /// `SmBrep::DeleteEdge` on the pseudo B-rep (unit `topology.brep_p4`).
 fn pseudo_brep_delete_edge(_pseudo: &mut FilletBrep, _e: EdgeId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
+    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge -- justified: plan/findings.md "topology.brep_p4: the last stubs (PR #441)": the corner geometry pass holds no Kernel, and the pseudo B-rep's fillet records (edge list, SmFilletEdge/SmFilletVertex members) would have to drop what DeleteEdge deletes
     Err(SolidError::unported(
         "SmBrep::DeleteEdge",
         "topology.brep_p4",

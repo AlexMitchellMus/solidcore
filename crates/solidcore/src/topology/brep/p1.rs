@@ -128,7 +128,7 @@ use crate::math::{max2, Point2, Point3, Vec3, EFF_ZERO, EFF_ZERO_RAD, EFF_ZERO_S
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::{BSplineSurface, SurfParamType};
-use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::nurbs::b_spline_surface_n_lib::p2::{BlendNeighbour, OrientType};
 use crate::nurbs::knots::Side;
 use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::surface::surface::p2::{BlendEndType, CurvatureType, DerivSurfDefinition, SurfaceKind};
@@ -284,7 +284,7 @@ impl Brep {
     ///
     /// [`SolidError::InvalidInput`] otherwise.
     pub fn set_face_list(&mut self, order: Vec<FaceId>) -> Result<()> {
-        check_order(&order, self.faces.len())?;
+        check_order(&order, self.faces.ids())?;
         self.face_list = order;
         Ok(())
     }
@@ -296,7 +296,7 @@ impl Brep {
     ///
     /// [`SolidError::InvalidInput`] otherwise.
     pub fn set_edge_list(&mut self, order: Vec<EdgeId>) -> Result<()> {
-        check_order(&order, self.edges.len())?;
+        check_order(&order, self.edges.ids())?;
         self.edge_list = order;
         Ok(())
     }
@@ -308,7 +308,7 @@ impl Brep {
     ///
     /// [`SolidError::InvalidInput`] otherwise.
     pub fn set_vertex_list(&mut self, order: Vec<VertexId>) -> Result<()> {
-        check_order(&order, self.vertices.len())?;
+        check_order(&order, self.vertices.ids())?;
         self.vertex_list = order;
         Ok(())
     }
@@ -339,16 +339,20 @@ impl Brep {
     }
 }
 
-/// Whether `order` is a permutation of the `count` arena ids.
-fn check_order<I: crate::topology::ArenaId>(order: &[I], count: usize) -> Result<()> {
-    let mut seen = vec![false; count];
+/// Whether `order` is a permutation of the live arena ids `live` (records removed by
+/// `topology.brep_p4`'s deletions leave gaps in the id range).
+fn check_order<I: crate::topology::ArenaId>(
+    order: &[I],
+    live: impl Iterator<Item = I>,
+) -> Result<()> {
+    let mut seen: BTreeMap<u32, bool> = live.map(|id| (id.index(), false)).collect();
     for id in order {
-        match seen.get_mut(id.index() as usize) {
+        match seen.get_mut(&id.index()) {
             Some(s) if !*s => *s = true,
             _ => return Err(null("list order is not a permutation of the records")),
         }
     }
-    if order.len() != count {
+    if order.len() != seen.len() {
         return Err(null("list order is not a permutation of the records"));
     }
     Ok(())
@@ -2108,17 +2112,14 @@ pub fn make_vertex_split_uv_trim_curve(
     // copy UVTrimCurve
     let mut new_uv_curve = uv_trim_curve.copy(k)?;
 
-    // make a 3dCurve from the UVTrimCurve (SmCrvOnSurf(*pNewUVCurve, *pSurface)): its
-    // point evaluation is the UV curve point lifted by the face surface; the Rust
-    // SmCrvOnSurf is built over a B-spline surface only, so the lift goes through the
-    // face surface itself and the local solve of the tessellation branch needs the
-    // B-spline one (DISPATCH GAP as curve.crv_on_surf elsewhere)
+    // make a 3dCurve from the UVTrimCurve (SmCrvOnSurf(*pNewUVCurve, *pSurface)):
+    // its point evaluation is the UV curve point lifted by the face surface.
     let edge_to_split = eu1::edge(b, eu_orig)?
         .ok_or_else(|| null("sm_MakeVertexSplitUVTrimCurve: edge use without edge"))?;
     let face = eu1::face(b, eu_orig)?.ok_or_else(|| SolidError::null_pointer(OP))?; // NER
     let surface = face2::surface(b, face)?
         .ok_or_else(|| SolidError::null_pointer(OP))?
-        .clone(); // NER
+        .clone_for_evaluation()?; // NER
     let lift = |t: f64| -> Result<Point3> {
         let p = new_uv_curve.evaluate_point(k, t)?;
         surface.evaluate_point(k, Point2::new(p.x, p.y))
@@ -2131,19 +2132,10 @@ pub fn make_vertex_split_uv_trim_curve(
     if p3d.distance(split_pnt) > edge::tolerance(b, edge_to_split)? / 100.0 {
         let mut reuse_trim_curve = false;
         if for_tesselation {
-            let SurfaceKind::BSpline(bs) = surface.kind() else {
-                // the port of SmCrvOnSurf takes a B-spline surface only: that partial
-                // unit's own unported part
-                // UNPORTED(curve.crv_on_surf): SmCrvOnSurf::SmCrvOnSurf over a non-B-spline SmSurface
-                return Err(SolidError::unported(
-                    "SmSurface (non-B-spline) in SmCrvOnSurf",
-                    "curve.crv_on_surf",
-                ));
-            };
             let uv_3d_curve = Curve::from(CrvOnSurf::new(
                 k,
-                new_uv_curve.clone(),
-                bs.clone(),
+                new_uv_curve.clone_for_evaluation()?,
+                surface.clone_for_evaluation()?,
                 None,
                 0,
             )?);
@@ -2452,7 +2444,8 @@ pub fn create_corner_blend(
     // SmSurface::CreateCornerBlend locals
     let mut ordered_uv: Vec<Option<BSplineCurve>> = Vec::new();
     let mut ordered_3d: Vec<Curve> = Vec::new();
-    let mut ordered_surfs: Vec<Option<BSplineSurface>> = Vec::new();
+    // (the faces whose surfaces are sOrderedSurfs)
+    let mut ordered_surfs: Vec<Option<FaceId>> = Vec::new();
 
     // for every ordered Edgeuse - load a trimmed copy of Edgeuse->Edge->Curve to sOrdered3D
     //   and when tangency to adjacent surfaces are needed build sOrderedUV and sOrderedSurf arrays
@@ -2489,11 +2482,13 @@ pub fn create_corner_blend(
             };
             ordered_uv.push(Some(uv_bspline));
             let face = eu1::face(b, eu)?.ok_or_else(|| SolidError::null_pointer(OP))?; // NER
-            ordered_surfs.push(
-                face2::surface(b, face)?
-                    .map(|s| bspline_surface(s).cloned())
-                    .transpose()?,
-            );
+
+            // pF->GetSurface(): the face's own surface (kind and owner), read below once
+            // the edge uses are done editing the B-rep
+            if let Some(s) = face2::surface(b, face)? {
+                bspline_surface(s)?;
+            }
+            ordered_surfs.push(Some(face));
         } else {
             ordered_uv.push(None);
             ordered_surfs.push(None);
@@ -2541,8 +2536,24 @@ pub fn create_corner_blend(
     ordered_surfs.rotate_right(1);
 
     // pass the call along (FALSE = bicubic patch through curves and crossTangents)
-    let surfs: Vec<Option<&BSplineSurface>> = ordered_surfs.iter().map(Option::as_ref).collect();
-    let ordered_3d = corner_blend_bspline_curves(&ordered_3d, &ordered_uv, &surfs)?;
+    let b: &Brep = b;
+    let mut surfs: Vec<Option<BlendNeighbour<'_>>> = Vec::with_capacity(ordered_surfs.len());
+    for face in &ordered_surfs {
+        let surface = match face {
+            Some(f) => face2::surface(b, *f)?,
+            None => None,
+        };
+        surfs.push(match surface {
+            Some(surface) => Some(BlendNeighbour {
+                surface,
+                b_spline: bspline_surface(surface)?,
+            }),
+            None => None,
+        });
+    }
+    let b_splines: Vec<Option<&BSplineSurface>> =
+        surfs.iter().map(|s| s.map(|n| n.b_spline)).collect();
+    let ordered_3d = corner_blend_bspline_curves(&ordered_3d, &ordered_uv, &b_splines)?;
     BSplineSurface::create_corner_blend(
         k,
         &ordered_3d,
