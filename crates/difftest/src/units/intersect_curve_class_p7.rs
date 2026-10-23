@@ -301,7 +301,7 @@ impl ClassGeometry<H> for Geo<'_> {
         self.0.topology_handle(e)
     }
     fn topology_handle_in(&self, brep: &Brep, e: EntityRef) -> Option<H> {
-        if self.0.topo.is_some() && core::ptr::eq(brep, &self.0.bare.brep) {
+        if self.0.topo.is_some() && core::ptr::eq(brep, &raw const self.0.bare.brep) {
             return self.0.handles.get(self.0.bare.index_of(e)?).copied();
         }
         self.0.topology_handle(e)
