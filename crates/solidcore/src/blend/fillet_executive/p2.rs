@@ -289,16 +289,6 @@ pub enum SolverSpec<'a, O> {
 
 // ---- unported executive members (blend.fillet_executive_p1) --------------------------------
 
-/// `SmFilletExecutive::LoadFilletSolver(pFS)` (unit `blend.fillet_executive_p1`).
-fn load_fillet_solver<O>(executive: &mut FilletExecutive<O>, solver: O) -> Result<()> {
-    let _ = (executive, solver);
-    // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::LoadFilletSolver
-    Err(SolidError::unported(
-        "SmFilletExecutive::LoadFilletSolver",
-        "blend.fillet_executive_p1",
-    ))
-}
-
 /// `SmFilletExecutive::CreateSmoothEdgeSequence(rSmoothSequence)` (unit
 /// `blend.fillet_executive_p1`).
 fn create_smooth_edge_sequence<O>(
@@ -577,7 +567,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 return Err(status(SM_ERR_INVALID_INPUT));
             };
             let fs = access.new_fillet_solver(k, &spec)?;
-            load_fillet_solver(self, fs)?;
+            self.load_fillet_solver(k, access, fs)?;
 
             // 3. Fillet Surface Generator: switch on cross-section type.
             if !single_xsect_type {
@@ -1173,7 +1163,10 @@ where
     }
 
     // Got the offset intersection. Create the fillet executive object.
-    let mut exec = FilletExecutive::new(None, access.new_executive_objects(k)?);
+    let mut executive_store = super::registration::FilletExecutiveStore::new();
+    let executive_ref =
+        executive_store.insert(FilletExecutive::new(None, access.new_executive_objects(k)?));
+    let exec = executive_store.resolve_mut(&executive_ref)?;
 
     // The fillet surface generator for the cross section (on the stack upstream):
     // 0: linear, 1: approximated circular, 2: exact (rational) circular. All of the
@@ -1236,7 +1229,7 @@ where
         access.set_surface_generator(fs, generator)?;
 
         // Load the fillet solver into the fillet executive
-        load_fillet_solver(&mut exec, fs)?;
+        exec.load_fillet_solver(k, access, fs)?;
     }
 
     // The following allows us to turn off trimming of the original fillet geometry.

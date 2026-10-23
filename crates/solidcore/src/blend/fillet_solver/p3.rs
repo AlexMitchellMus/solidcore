@@ -1900,7 +1900,7 @@ mod tests {
         assert!(matches!(r, Err(SolidError::InvalidInput { .. })), "{r:?}");
         // with one, the corner lookup is blend.fillet_executive_p1's
         let mut fs = fs;
-        fs.executive = Some(crate::blend::fillet_solver::p1::FilletExecutiveRef);
+        fs.executive = Some(crate::blend::fillet_solver::p1::FilletExecutiveRef::Unresolved);
         let r = fs.other_fillet_corner(&Brep::new(), None);
         assert!(r.is_err_and(|e| e.is_unported()));
     }

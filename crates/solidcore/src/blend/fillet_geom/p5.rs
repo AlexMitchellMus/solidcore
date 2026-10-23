@@ -442,7 +442,7 @@ fn fillet_edge_update_split_face(
 fn executive_pseudo_brep(solver: &FilletSolver) -> Result<()> {
     // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetPseudoBrep
     unported_on(
-        solver.executive,
+        solver.executive.as_ref(),
         "SmFilletExecutive::GetPseudoBrep",
         "blend.fillet_executive_p1",
     )

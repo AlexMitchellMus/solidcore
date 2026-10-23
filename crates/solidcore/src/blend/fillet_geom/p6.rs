@@ -2019,6 +2019,7 @@ impl FilletBrep {
             .ok_or_else(|| invalid(OP_ERROR, "fillet geometry without solver"))?;
         let executive = solver_of(solvers, solver_id, OP_ERROR)?
             .executive
+            .as_ref()
             .ok_or_else(|| invalid(OP_ERROR, "solver without fillet executive"))?;
 
         // pass the call along to the FilletExecutive
@@ -2165,7 +2166,7 @@ mod tests {
 
     fn solver(executive: bool) -> FilletSolver {
         let mut s = FilletSolver::new(1e-6, 1e-3, 1e-6);
-        s.executive = executive.then_some(FilletExecutiveRef);
+        s.executive = executive.then_some(FilletExecutiveRef::Unresolved);
         s
     }
 

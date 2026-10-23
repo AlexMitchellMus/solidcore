@@ -26,6 +26,11 @@
 //! edge map only without solvers (their fillet geometry, which `CalcFilletGeom` builds,
 //! has null rails before that).
 
+//! Direct p1 loader records (`LoadSolver`) contain `scale g1 n (edge mask radial
+//! geometry_surfaces)*n m (executive solver)*m clear_after`. Edge12 has no rails;
+//! edge13 is a real closed circular wire. The shim checks the actual rail/vertex
+//! state before the native uninitialized `pVerts` branch; defined early errors run.
+
 use crate::{call_with_buffer, FfiError};
 
 /// Largest accepted magnitude of a numeric parameter.
@@ -48,6 +53,7 @@ pub enum Op {
     SetParams = 2,
     Exec = 3,
     TempRadius = 4,
+    LoadSolver = 5,
 }
 
 mod sys {
@@ -161,6 +167,28 @@ fn validate_op(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
                 ));
             }
             rd.box_block()?;
+        }
+        Op::LoadSolver => {
+            let scale=rd.value()?;
+            if scale<=0.0 { return Err(bad("loader scale must be positive")); }
+            rd.flag()?;
+            let count=rd.index(6)?;
+            let mut specs=Vec::new();
+            for _ in 0..count {
+                let edge=rd.index(BOX_EDGES+1)?;
+                let mask=rd.index(3)?;
+                rd.flag()?;
+                rd.flag()?;
+                specs.push((edge,mask));
+            }
+            let loads=rd.index(16)?;
+            for _ in 0..loads {
+                let executive=rd.index(1)?;
+                let solver=rd.index(count)?;
+                specs.get(solver).ok_or_else(||bad("loader solver index outside pool"))?;
+                let _=executive;
+            }
+            rd.index(loads)?;
         }
         Op::TempRadius => {
             rd.flag()?;

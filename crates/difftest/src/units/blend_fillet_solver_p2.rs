@@ -1202,7 +1202,7 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             fs.base.edgeuses = [eu_id(sel(*eu, n_eu(&c))), None];
             // the executive is not modelled: the report to it is the stop
             // (`SmFilletExecutive::NoteFilletError`, deferred)
-            fs.base.executive = Some(FilletExecutiveRef);
+            fs.base.executive = Some(FilletExecutiveRef::Unresolved);
             let (fb, _) = fillet_geom_model(&k, None)?;
             let pts = [TsectPnt::default()];
             match fs

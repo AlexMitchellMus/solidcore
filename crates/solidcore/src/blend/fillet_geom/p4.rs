@@ -381,7 +381,7 @@ struct TopologyIntersectorRef;
 fn executive_topology_intersector(solver: &FilletSolver) -> Result<TopologyIntersectorRef> {
     // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetTopologyIntersector
     unported_on(
-        solver.executive,
+        solver.executive.as_ref(),
         "SmFilletExecutive::GetTopologyIntersector",
         "blend.fillet_executive_p1",
     )
@@ -391,7 +391,7 @@ fn executive_topology_intersector(solver: &FilletSolver) -> Result<TopologyInter
 fn executive_attribute_e_users(solver: &FilletSolver) -> Result<Vec<EdgeId>> {
     // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::m_pAttributeE->GetUsers
     unported_on(
-        solver.executive,
+        solver.executive.as_ref(),
         "SmFilletExecutive::m_pAttributeE",
         "blend.fillet_executive_p1",
     )
@@ -444,7 +444,7 @@ fn register_existing_ssi(
 fn update_topology_changes(solver: &FilletSolver, attr: u32, face: FaceId) -> Result<()> {
     // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::UpdateTopologyChanges
     unported_on(
-        (solver.executive, attr, face),
+        (solver.executive.as_ref(), attr, face),
         "SmFilletExecutive::UpdateTopologyChanges",
         "blend.fillet_executive_p1",
     )

@@ -2467,7 +2467,7 @@ mod tests {
         assert!(matches!(r, Err(SolidError::InvalidInput { .. })));
         // trimming with an executive: the original face becomes the side face, which the
         // target B-rep lacks (a dangling id), before any stub is reached
-        s.executive = Some(FilletExecutiveRef);
+        s.executive = Some(FilletExecutiveRef::Unresolved);
         let r = s.create_cliff_roll_over_side_fg(
             &k,
             &target,

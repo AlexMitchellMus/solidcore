@@ -107,6 +107,11 @@ fn orient_brep(
 }
 
 impl ExecutiveAccess<Handle> for Access {
+    fn solver_base(&self, _: Handle) -> SolidResult<&solidcore::blend::fillet_solver::p1::FilletSolver> { missing() }
+    fn solver_base_mut(&mut self, _: Handle) -> SolidResult<&mut solidcore::blend::fillet_solver::p1::FilletSolver> { missing() }
+    fn solver_has_surface(&self, _: Handle, _: usize) -> SolidResult<bool> { missing() }
+    fn edge_g1_knots(&mut self, _: &Kernel, _: Handle) -> SolidResult<Vec<f64>> { missing() }
+    fn edgeuse_vertex(&self, _: Handle) -> SolidResult<Option<Handle>> { missing() }
     // This empty-B-rep fixture has no face handles or intersector world. These
     // required adapters reject nonexistent objects; they are not UNPORTED calls
     // to the now-ported face p3, topology intersector p2, stitch p2, fillet geom p4
@@ -723,6 +728,9 @@ fn rust(input: &Inputs) -> Result<Output, HarnessError> {
         law_sequence_edges: vec![],
         pseudo_brep: None,
         surface_generators: vec![],
+        registration: solidcore::blend::fillet_executive::registration::ExecutiveRegistration::default(),
+        filleted_vertices: Vec::new(),
+        pending_corner_edgeuses: BTreeMap::new(),
         vertex_corner_map: BTreeMap::new(),
         edgeuse_solver_map: BTreeMap::new(),
         self_intersection_handler: None,

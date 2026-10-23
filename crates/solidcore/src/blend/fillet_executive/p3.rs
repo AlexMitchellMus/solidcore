@@ -181,6 +181,12 @@ impl Default for ExecutionOptions {
 /// constructor: p1 must supply its constructor/setup defaults and intersector.
 #[derive(Debug, Clone)]
 pub struct FilletExecutive<O> {
+    /// The actual store registration; copies are unregistered objects.
+    pub registration: super::registration::ExecutiveRegistration,
+    /// `m_vFilletedVertices`, in first-insertion order (a null vertex is retained).
+    pub filleted_vertices: Vec<Option<O>>,
+    /// Pending edge-use arrays, kept separately from completed corner identities.
+    pub pending_corner_edgeuses: BTreeMap<Option<O>, Vec<O>>,
     /// `m_pTargetBrep`.
     pub target: Option<O>,
     /// `m_pFilletBrep`.
@@ -301,6 +307,19 @@ impl StitchAttempt {
 /// retain a second executive or intersector; writes must be visible to the next phase.
 /// No claimed solver/corner implementation or record is reproduced here.
 pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
+    /// The actual retained solver base, borrowed from its concrete solver object.
+    fn solver_base(&self, solver: O) -> Result<&crate::blend::fillet_solver::p1::FilletSolver>;
+    /// The same actual solver for a native member write.
+    fn solver_base_mut(
+        &mut self,
+        solver: O,
+    ) -> Result<&mut crate::blend::fillet_solver::p1::FilletSolver>;
+    /// `GetSurface(rail)`, including the actual geometry-for-surfaces fallback.
+    fn solver_has_surface(&self, solver: O, rail: usize) -> Result<bool>;
+    /// G1 knots from the edge's actual knots and existing-or-created curve cache.
+    fn edge_g1_knots(&mut self, k: &Kernel, edge: O) -> Result<Vec<f64>>;
+    /// `edgeuse->GetVertexuse()->GetVertex()`; a null vertex remains null.
+    fn edgeuse_vertex(&self, edgeuse: O) -> Result<Option<O>>;
     /// `GetName`, `GetCornerType`, `GetFilletedVertex` for error reporting only.
     fn corner_error_info(&self, corner: O, executive: &FilletExecutive<O>)
         -> Result<CornerView<O>>;

@@ -3,7 +3,7 @@
 //! the executive object.
 //!
 //! Upstream: `source/SMLib/src/SmFilletExecutive.cpp` (lines 30-292, 488-523,
-//! 1601-1656, 4909-4929, 5126-6132), `source/SMLib/inc/SmFilletExecutive.h`.
+//! 1601-1814, 4909-4929, 5126-6132), `source/SMLib/inc/SmFilletExecutive.h`.
 //!
 //! The law type itself ([`FilletLaw`], [`FilletLawKind`]) was CO-PORTED by unit
 //! `blend.fillet_standard_solver_p1` into
@@ -38,6 +38,7 @@
 //! | [`ErrorInfo::note_error`], [`ErrorInfo::note_edge_error`], [`ErrorInfo::note_merge_error`], [`ErrorInfo::note_corner_error`], [`ErrorInfo::note_fillet_edge_error`], [`ErrorInfo::note_intersection_error`] | the six `SmFilletErrorInfo::NoteError` overloads (cpp:117, 150, 173, 199, 231, 256) |
 //! | `ErrorInfo::assign` (co-port)          | `SmFilletErrorInfo::operator=`                        |
 //! | [`FilletExecutive::new`], [`ExecutiveObjects`] | `SmFilletExecutive::SmFilletExecutive`        |
+//! | [`FilletExecutive::load_fillet_solver`] | `LoadFilletSolver` |
 //! | [`FilletExecutive::add_fillet_surface_generator`] | `AddFilletSurfaceGenerator`                |
 //! | [`FilletExecutive::remove_from_topo_edges`] | `RemoveFromTopoEdges`                            |
 //! | [`FilletExecutive::set_do_global_merge`], [`FilletExecutive::set_do_trimming`], [`FilletExecutive::set_self_intersection_handler`] | `SetDoGlobalMerge`, `SetDoTrimming`, `SetSelfIntersectionHandler` |
@@ -97,6 +98,7 @@ use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::object;
 use crate::geom::solution_array::SolutionObject;
 use crate::intersect::point_class::ClassObject;
+use crate::kernel::Kernel;
 use crate::math::{Point3, EFF_ZERO, EFF_ZERO_SQ, PI};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 
@@ -554,10 +556,118 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             law_sequence_edges: Vec::new(),
             pseudo_brep: Some(objects.pseudo_brep),
             surface_generators: Vec::new(),
+            registration:
+                crate::blend::fillet_executive::registration::ExecutiveRegistration::default(),
+            filleted_vertices: Vec::new(),
+            pending_corner_edgeuses: BTreeMap::new(),
             vertex_corner_map: BTreeMap::new(),
             edgeuse_solver_map: BTreeMap::new(),
             self_intersection_handler: None,
         }
+    }
+
+    /// `LoadFilletSolver`: retain the solver, its actual executive binding and the
+    /// incident edge uses of its vertices, preserving native insertion order.
+    ///
+    /// # Errors
+    /// Missing offset surfaces, unresolved caller objects, or a native undefined
+    /// vertex-array read when an absent rail reaches an existing vertex entry.
+    /// An executive must be retained in a `FilletExecutiveStore` before loading.
+    /// Earlier native mutations remain visible on a later error.
+    pub fn load_fillet_solver<A: ExecutiveAccess<O> + ?Sized>(
+        &mut self,
+        k: &Kernel,
+        access: &mut A,
+        solver: O,
+    ) -> Result<()> {
+        const OP: &str = "blend::fillet_executive::p1::load_fillet_solver";
+        for rail in 0..2 {
+            if !access.solver_has_surface(solver, rail)? {
+                return Err(SolidError::null_pointer(OP));
+            }
+        }
+        if let Some(edgeuse) = access.solver_edgeuse(solver, 0)? {
+            let edge = access
+                .edgeuse_edge(edgeuse)?
+                .ok_or_else(|| SolidError::invalid_input(OP, "edge use without edge"))?;
+            for knot in access.edge_g1_knots(k, edge)? {
+                access.solver_base_mut(solver)?.g1_knots.push(knot);
+            }
+        }
+        let executive = self.registration.reference().ok_or_else(|| {
+            SolidError::unported("registered fillet executive", "blend.fillet_executive_p1")
+        })?;
+        self.solvers.push(solver);
+        access.solver_base_mut(solver)?.set_fillet_executive(Some(
+            crate::blend::fillet_solver::p1::FilletExecutiveRef::Registered(executive),
+        ));
+        let mut edgeuses = [None; 2];
+        // Outer None is an unwritten native pVerts entry; inner None is a null vertex.
+        let mut vertices = [None; 2];
+        for (rail, (edgeuse_slot, vertex_slot)) in
+            edgeuses.iter_mut().zip(vertices.iter_mut()).enumerate()
+        {
+            let edgeuse = access.solver_edgeuse(solver, rail)?;
+            if let Some(edgeuse) = edgeuse {
+                self.edgeuse_solver_map.insert(edgeuse, solver);
+                *vertex_slot = Some(access.edgeuse_vertex(edgeuse)?);
+            }
+            *edgeuse_slot = edgeuse;
+        }
+        let first_edgeuse_present = edgeuses.first().is_some_and(Option::is_some);
+        for (edgeuse, vertex_entry) in edgeuses.into_iter().zip(vertices) {
+            let mut found = false;
+            for &vertex in &self.filleted_vertices {
+                let current = vertex_entry.ok_or_else(|| {
+                    SolidError::invalid_input(
+                        OP,
+                        "native pVerts entry is uninitialized (absent solver rail)",
+                    )
+                })?;
+                if current == vertex {
+                    found = true;
+                    let pending = self
+                        .pending_corner_edgeuses
+                        .get_mut(&vertex)
+                        .ok_or_else(|| SolidError::null_pointer(OP))?;
+                    let edgeuse = edgeuse.ok_or_else(|| {
+                        SolidError::invalid_input(
+                            OP,
+                            "native pending array would read an absent edge use",
+                        )
+                    })?;
+                    let edge = access.edgeuse_edge(edgeuse)?;
+                    let mut coincident = false;
+                    for &pending_edgeuse in pending.iter() {
+                        if edge == access.edgeuse_edge(pending_edgeuse)? {
+                            coincident = true;
+                            break;
+                        }
+                    }
+                    if !coincident {
+                        pending.push(edgeuse);
+                    }
+                    break;
+                }
+            }
+            if !found && first_edgeuse_present {
+                let vertex = vertex_entry.ok_or_else(|| {
+                    SolidError::invalid_input(
+                        OP,
+                        "native pVerts entry is uninitialized (absent solver rail)",
+                    )
+                })?;
+                let edgeuse = edgeuse.ok_or_else(|| {
+                    SolidError::invalid_input(
+                        OP,
+                        "native pending array would store an absent edge use",
+                    )
+                })?;
+                self.filleted_vertices.push(vertex);
+                self.pending_corner_edgeuses.insert(vertex, vec![edgeuse]);
+            }
+        }
+        Ok(())
     }
 
     /// `AddFilletSurfaceGenerator(pFSG)`: the executive owns the generator from now on.
