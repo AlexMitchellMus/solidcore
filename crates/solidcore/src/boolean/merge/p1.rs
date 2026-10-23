@@ -525,6 +525,15 @@ pub fn boolean_post_process(
         }
         // SER(DeleteEdge(pEdge, pSurfToKeep)); the cleanup holds no notification state
         p4::with_local_env(|env| p4::delete_edge(k, brep, env, e, Some(keep)))?;
+        // `pSurfToKeep->GetFace()`: when the face holding the kept surface is the one
+        // merged away, DeleteEdge swaps that surface onto the surviving face first
+        let keep = if brep.face(keep).is_ok() {
+            keep
+        } else if keep == f0 {
+            f1
+        } else {
+            f0
+        };
         // The native output starts as a default SmExtent2d and is written back
         // unconditionally, even if IsTopological left it untouched.
         let domain = topological.merged_face_domain.unwrap_or_default();
