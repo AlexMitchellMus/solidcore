@@ -881,6 +881,25 @@ pub fn make_faceuse_attempt_with(
         .face
         .ok_or(dangling(OP_FACEUSE, "MakeFace made no face"))?;
 
+    // The surface copy (`CopyAndAddAnalytics`: the copy constructor, or
+    // IsNurbSurfacePlane's SM_NO_COPY) copies every attribute of the other face's
+    // surface onto the new surface, a reference attribute (SM_AI_SURFACEMAP) gaining
+    // the copy as a user. A surface goes by its owner's name (the arena name without
+    // one), as the merges' surface identities.
+    let surface_key = |b: &Brep, f: FaceId| -> Result<ObjectRef> {
+        let surface = b.face(f)?.surface.as_ref();
+        let surface = surface.ok_or(dangling(OP_FACEUSE, "face without surface"))?;
+        Ok(surface.owner().unwrap_or_else(|| {
+            crate::topology::brep_cache::arena_identity(
+                crate::topology::brep_cache::CacheObject::Face(f),
+            )
+        }))
+    };
+    let (from, to) = (surface_key(other, face_to_make)?, surface_key(brep, new_face)?);
+    for h in copy.vertices.attributes.attributes(from.key) {
+        copy.vertices.attributes.copy(h, from.key, to.key)?;
+    }
+
     relations.relate_faces(brep, new_face, other, face_to_make)?;
     let (source, dest) = (
         (copy.face_source_key)(face_to_make),
