@@ -7,8 +7,16 @@
 mod checks;
 
 #[test]
-#[ignore = "blocked: SmSurface::DropCurve (intersect.surface_drop_lib_p3) is unported; \
-            SmEdgeuse::CreateUVTrimCurve stops every primitive build"]
+fn pyramid_is_closed_solid_with_analytic_properties() {
+    let pyramid = checks::specs()
+        .into_iter()
+        .find(|spec| spec.name == "pyramid 5 h20")
+        .unwrap();
+    checks::check(&pyramid).unwrap();
+}
+
+#[test]
+#[ignore = "blocked: native curved mass estimates exceed the analytic comparison tolerance"]
 fn primitives_are_closed_solids_with_analytic_properties() {
     let failures: Vec<String> = checks::specs()
         .iter()
@@ -18,11 +26,8 @@ fn primitives_are_closed_solids_with_analytic_properties() {
 }
 
 #[test]
-#[ignore = "blocked: SmSurface::DropCurve (intersect.surface_drop_lib_p3, PR #463); with it, \
-            sphere and torus stop at SmTol::GetZoneTol3d of a ray-fire solution object \
-            (geom.tol, find_infinite_region), the no-pole sphere at SmEdge::GetTolerance in \
-            stitching (topology.edge) and the partial ones at SmFace::CurveOnClassify \
-            (query.face_p2, PrimitiveModel::axis_inside_face)"]
+#[ignore = "blocked: native curved mass estimates exceed the analytic tolerance; \
+            partial sphere/torus construction needs SmFace::CurveOnClassify"]
 fn spheres_and_tori_are_closed_solids_with_analytic_properties() {
     let failures: Vec<String> = checks::curved_specs()
         .iter()

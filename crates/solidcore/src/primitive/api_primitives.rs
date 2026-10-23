@@ -883,30 +883,29 @@ mod tests {
     }
 
     #[test]
-    fn solids_run_primitive_creation_until_the_next_unported_call() {
+    fn complete_solids_construct_and_partial_solids_report_dependencies() {
         let k = &mut Kernel::default();
-        // the faces are built (topology.brep_p8), stitched (topology.brep_p4),
-        // bounded (query.brep), get through SmSurface::DropCurve and their UV trim
-        // curves (topology.face_p3); the box completes, the others' region split ray
-        // fire stops at a UV trim the read-only classification would make, an opaque
-        // curve handle's natural interval, or a face-bound trimmed surface cache
-        assert!(create_box(k, o(), 5.0, 10.0, 20.0).is_ok());
-        for (r, unit) in [
-            (create_pyramid(k, o(), 2.0, 3.0), "topology.edgeuse_p3"),
-            (
-                create_cylindrical_box(k, o(), 10.0, 2.0, 5.0, 0.0, 90.0),
-                "curve.curve_p2",
-            ),
-            (create_cylinder(k, o(), 5.0, 10.0), "surface.trim_srf_cache"),
-            (
-                create_cone(k, o(), 5.0, 2.0, 10.0),
-                "surface.trim_srf_cache",
-            ),
-            (create_sphere(k, o(), 5.0), "topology.face_p2"),
-            (create_torus(k, o(), 10.0, 2.0), "topology.face_p2"),
+        for (built, counts) in [
+            (create_box(k, o(), 5.0, 10.0, 20.0), (6, 12, 8)),
+            (create_pyramid(k, o(), 2.0, 3.0), (5, 8, 5)),
+            (create_cylinder(k, o(), 5.0, 10.0), (3, 3, 2)),
+            (create_cone(k, o(), 5.0, 2.0, 10.0), (3, 3, 2)),
+            (create_sphere(k, o(), 5.0), (1, 1, 2)),
+            (create_sphere_no_pole(k, o(), 5.0), (4, 6, 4)),
+            (create_sphere_no_pole(k, o(), -5.0), (4, 6, 4)),
+            (create_torus(k, o(), 10.0, 2.0), (1, 2, 1)),
         ] {
-            assert_eq!(deferred_at(&r), Some(unit));
+            let b = built.unwrap();
+            let faces = crate::topology::brep::p1::faces(&b, None).unwrap().len();
+            let edges = crate::topology::brep::p1::edges(&b, None).unwrap().len();
+            let vertices = crate::topology::brep::p1::vertices(&b, None).unwrap().len();
+            assert_eq!((faces, edges, vertices), counts);
+            assert!(crate::topology::brep::p2::is_manifold_solid(&b).unwrap());
         }
+        assert_eq!(
+            deferred_at(&create_cylindrical_box(k, o(), 10.0, 2.0, 5.0, 0.0, 90.0)),
+            Some("curve.curve_p2")
+        );
         // partial solids sweep a profile (topology sweep) past SmFace::FindVertexSector
         // and SmBrep::DeleteEdge until SmFace::CurveOnClassify
         for r in [
@@ -916,17 +915,131 @@ mod tests {
         ] {
             assert_eq!(deferred_at(&r), Some("query.face_p2"));
         }
-        // the sphere without poles (a negative radius) gets through SmSurface::DropCurve
-        // and the edge tolerances of its degeneracy check, to the face-bound trimmed
-        // surface cache of its region split's ray fire
-        assert_eq!(
-            deferred_at(&create_sphere_no_pole(k, o(), -5.0)),
-            Some("surface.trim_srf_cache")
-        );
         // edges without an edge use on their face
         let mut brep = Brep::new_with_infinite_region().unwrap();
         let (edge, face) = (EdgeId::from_index(0), FaceId::from_index(0));
         assert!(create_blend_primitive(k, &mut brep, edge, face, edge, face, true).is_err());
+    }
+
+    #[test]
+    fn pole_free_sphere_translates_geometry_with_its_vertices() {
+        let mut k = Kernel::default();
+        let center = Vec3::new(1.0, -2.0, 0.5);
+        let source = create_sphere_no_pole(&mut k, Vec3::ZERO, 3.0).unwrap();
+        let moved = create_sphere_no_pole(&mut k, center, 3.0).unwrap();
+        for (a, b) in crate::topology::brep::p1::faces(&source, None)
+            .unwrap()
+            .into_iter()
+            .zip(crate::topology::brep::p1::faces(&moved, None).unwrap())
+        {
+            let before = source.face(a).unwrap();
+            let after = moved.face(b).unwrap();
+            let uv = before.uv_domain.evaluate(0.37, 0.61);
+            let before = before
+                .surface
+                .as_ref()
+                .unwrap()
+                .evaluate_point(&k, uv)
+                .unwrap();
+            let after = after
+                .surface
+                .as_ref()
+                .unwrap()
+                .evaluate_point(&k, uv)
+                .unwrap();
+            assert!(after.distance(before + center) < 1e-12);
+        }
+        for (a, b) in crate::topology::brep::p1::edges(&source, None)
+            .unwrap()
+            .into_iter()
+            .zip(crate::topology::brep::p1::edges(&moved, None).unwrap())
+        {
+            let before = source.edge(a).unwrap();
+            let after = moved.edge(b).unwrap();
+            let t = before.interval.evaluate(0.37);
+            let before = before
+                .curve
+                .as_ref()
+                .unwrap()
+                .evaluate_point(&k, t)
+                .unwrap();
+            let after = after.curve.as_ref().unwrap().evaluate_point(&k, t).unwrap();
+            assert!(after.distance(before + center) < 1e-12);
+        }
+    }
+
+    #[test]
+    fn pyramid_ray_fire_preserves_lazy_trim_creation() {
+        use crate::intersect::point_class::PointClassType;
+        use crate::query::brep::{BrepIdentity, BrepQuery};
+        use crate::topology::brep::{p1 as bp1, p2 as bp2};
+        use crate::topology::shell::{ray_fire, ShellRayInput, ShellRayState};
+        use crate::topology::BrepId;
+
+        let mut k = Kernel::default();
+        let mut b = create_pyramid(&mut k, o(), 5.0, 20.0).unwrap();
+        let trims = |b: &Brep| {
+            b.edgeuses()
+                .iter()
+                .filter(|(_, eu)| eu.uv_trim_curve.is_some())
+                .count()
+        };
+        // The native constructor leaves two of the sixteen face trims uncreated.
+        // Preparing every face before the solve would create all sixteen.
+        assert_eq!(trims(&b), 14);
+        assert!(crate::topology::brep::p2::is_manifold_solid(&b).unwrap());
+
+        let keys = |object| bp2::caller_cache_key(&crate::topology::loopuse::notify_ref, object);
+        let brep_id = BrepId::from_index(0);
+        let world = BrepQuery::new(BrepIdentity {
+            brep_id,
+            keys: &keys,
+            owner_of: &|_| None,
+        });
+        let shell = bp1::shells(&mut k, &b, None).unwrap()[0];
+        // Native results: miss, side-face hit, then the apex creates the last trims.
+        for (start, direction, class, count) in [
+            (
+                Vec3::new(1000.0, 1000.0, 1000.0),
+                Vec3::X,
+                PointClassType::Unknown,
+                14,
+            ),
+            (Vec3::new(0.0, 0.0, 5.0), Vec3::X, PointClassType::Face, 14),
+            (
+                Vec3::new(0.0, 0.0, 40.0),
+                -Vec3::Z,
+                PointClassType::Vertex,
+                16,
+            ),
+        ] {
+            let result = ray_fire(
+                &mut k,
+                &mut b,
+                brep_id,
+                shell,
+                &world,
+                ShellRayInput {
+                    start,
+                    direction,
+                    zone_tolerance: 1e-5,
+                    sphere_bound: None,
+                    state: ShellRayState {
+                        region: None,
+                        classification: crate::intersect::point_class::PointClassification::new(
+                            1e-5,
+                        ),
+                    },
+                },
+            );
+            result.status.unwrap();
+            assert_eq!(result.state.classification.point_class(), class);
+            assert_eq!(
+                result.state.region.is_some(),
+                class != PointClassType::Unknown
+            );
+            assert_eq!(trims(&b), count);
+        }
     }
 
     #[test]
