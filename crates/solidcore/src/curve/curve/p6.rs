@@ -17,7 +17,10 @@
 //! | [`Curve::global_coincidence_checker`], [`Coincidence`]  | `SmCurve::GlobalCoincidenceChecker`   |
 //! | [`Curve::deform_to_end_point_targets`]                  | `SmCurve::DeformToEndPointTargets`    |
 //!
-//! Deviations:
+//! Deviations: endpoint deformation rejects non-B-spline UV curves with
+//! `InvalidInput`; ordinary UV-drop errors use `Vec2::UNDEF` rather than preserving
+//! partially written native out-params; UV replacement can fail on the Rust-only
+//! evaluation-copy depth guard. Other deviations:
 //! - **Out-params.** Every function returns its outputs ([`DroppedPoint`],
 //!   [`MaxDistance`], [`Coincidence`], the solution list of
 //!   [`Curve::simple_coincidence_checker`], the new curve of
