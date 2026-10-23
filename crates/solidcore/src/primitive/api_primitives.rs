@@ -888,14 +888,14 @@ mod tests {
         // the faces are built (topology.brep_p8), stitched (topology.brep_p4),
         // bounded (query.brep), get through SmSurface::DropCurve and their UV trim
         // curves (topology.face_p3); the box completes, the others' region split ray
-        // fire stops at a UV trim the read-only classification would make, an opaque
-        // curve handle's natural interval, or a face-bound trimmed surface cache
+        // fire stops at a UV trim the read-only classification would make or a
+        // face-bound trimmed surface cache
         assert!(create_box(k, o(), 5.0, 10.0, 20.0).is_ok());
         for (r, unit) in [
             (create_pyramid(k, o(), 2.0, 3.0), "topology.edgeuse_p3"),
             (
                 create_cylindrical_box(k, o(), 10.0, 2.0, 5.0, 0.0, 90.0),
-                "curve.curve_p2",
+                "topology.edgeuse_p3",
             ),
             (create_cylinder(k, o(), 5.0, 10.0), "surface.trim_srf_cache"),
             (
@@ -907,14 +907,24 @@ mod tests {
         ] {
             assert_eq!(deferred_at(&r), Some(unit));
         }
-        // partial solids sweep a profile (topology sweep) past SmFace::FindVertexSector
-        // and SmBrep::DeleteEdge until SmFace::CurveOnClassify
-        for r in [
-            create_partial_sphere(k, o(), 5.0, 0.0, 90.0),
-            create_partial_cylinder(k, o(), 5.0, 10.0, 0.0, 90.0),
-            create_partial_torus(k, o(), 10.0, 2.0, 0.0, 90.0),
+        // partial solids sweep a profile (topology sweep) past SmBrep::DeleteEdge and
+        // the axis' SmFace::CurveOnClassify, until SmFace::FindVertexSector (sphere,
+        // cylinder) or the torus' SmFace::Point3DClassify
+        for (r, unit) in [
+            (
+                create_partial_sphere(k, o(), 5.0, 0.0, 90.0),
+                "topology.face_p4",
+            ),
+            (
+                create_partial_cylinder(k, o(), 5.0, 10.0, 0.0, 90.0),
+                "topology.face_p4",
+            ),
+            (
+                create_partial_torus(k, o(), 10.0, 2.0, 0.0, 90.0),
+                "query.face_p1",
+            ),
         ] {
-            assert_eq!(deferred_at(&r), Some("query.face_p2"));
+            assert_eq!(deferred_at(&r), Some(unit));
         }
         // the sphere without poles (a negative radius) gets through SmSurface::DropCurve
         // and the edge tolerances of its degeneracy check, to the face-bound trimmed
