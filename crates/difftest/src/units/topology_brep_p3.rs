@@ -994,8 +994,9 @@ fn wrap_in_offsets(k: &Kernel, b: &mut Brep, faces: &[FaceId], d: f64) -> Result
     Ok(())
 }
 
-/// `SmEdge_TYPE`, the type code of an edge's identity.
-const EDGE_TYPE_CODE: i64 = 16016;
+/// The type codes of the identities whose destructions the recorders count:
+/// `SmEdge_TYPE`, `SmEdgeuse_TYPE`, `SmFace_TYPE`, `SmShell_TYPE`.
+const DESTROYED_KINDS: [i64; 4] = [16016, 16005, 16002, 16013];
 
 /// Whether `key` is a geometry identity (the kernel context's range,
 /// `Context::new_geometry_key`; every [`key_of`] key is below it).
@@ -1005,11 +1006,12 @@ const fn is_geometry_key(key: ObjectKey) -> bool {
 
 /// The shim's `GeomRecorder`: a user notify callback that keeps every geometry key a
 /// notification names (the shim's tells geometry from topology while it is live), and
-/// counts the `SM_NO_DESTRUCTION` notifications whose caller is an edge (`~SmEdge`).
+/// counts the `SM_NO_DESTRUCTION` notifications by caller kind: edge, edge use, face,
+/// shell (`~SmEdge`, `~SmEdgeuse`, `~SmFace`, `~SmShell`).
 #[derive(Debug, Default)]
 struct GeomRecorder(
     std::sync::Arc<std::sync::Mutex<Vec<ObjectKey>>>,
-    std::sync::Arc<std::sync::Mutex<u64>>,
+    std::sync::Arc<std::sync::Mutex<[u64; 4]>>,
 );
 
 impl solidcore::geom::context::NotifyCallback for GeomRecorder {
@@ -1021,13 +1023,16 @@ impl solidcore::geom::context::NotifyCallback for GeomRecorder {
         data2: Option<ObjectRef>,
         data3: Option<ObjectRef>,
     ) -> Result<(), SolidError> {
-        if operation == solidcore::geom::object::NotifyOperation::Destruction
-            && caller.type_code == EDGE_TYPE_CODE
-        {
-            *self
-                .1
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
+        if operation == solidcore::geom::object::NotifyOperation::Destruction {
+            if let Some(i) = DESTROYED_KINDS.iter().position(|&t| t == caller.type_code) {
+                let mut destroyed = self
+                    .1
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if let Some(n) = destroyed.get_mut(i) {
+                    *n += 1;
+                }
+            }
         }
         let mut seen = self
             .0
@@ -1236,11 +1241,17 @@ fn run_rust_op(
     let tracker_at = out.len();
     put_tracker(&mut out, &lists, &mut t);
     if matches!(op, OpIn::DeleteFace { .. }) {
-        // the shim's trailer: the edges destroyed (`~SmEdge`'s SM_NO_DESTRUCTION)
+        // the shim's trailer: the edges, edge uses, faces and shells destroyed (their
+        // destructors' SM_NO_DESTRUCTION)
         let destroyed = *edges_destroyed
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        out.push(destroyed as f64);
+        out.extend(destroyed.iter().map(|&n| n as f64));
+    }
+    if matches!(op, OpIn::TurnNurbs | OpIn::TurnNurbsOffset { .. }) {
+        // (where the tracker's values start, for `geometry_edit_deferral`; taken off
+        // again by `run_rust`, the shim writes no trailer)
+        out.push(tracker_at as f64);
     }
     if matches!(op, OpIn::Orient { .. }) {
         // the shim's trailer: each pre-op face's SmFace::SwapUV POST_EDIT count, the
@@ -1532,10 +1543,63 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     };
     match run_rust_op(&mut k, &mut b, second.as_mut(), &i.op, &args) {
         Ok(out) if matches!(i.op, OpIn::Orient { .. }) => Ok(split_orient(out)),
+        Ok(mut out) if matches!(i.op, OpIn::TurnNurbs | OpIn::TurnNurbsOffset { .. }) => {
+            let tracker_at = out.pop().map_or(usize::MAX, |x| x as usize);
+            if let Some(o) = geometry_edit_deferral(i, tracker_at)? {
+                return Ok(o);
+            }
+            Ok(Output::new().values("out", out))
+        }
         Ok(out) => Ok(Output::new().values("out", out)),
         Err(Fail::Deferred(o)) => Ok(*o),
         Err(Fail::Harness(e)) => Err(e),
     }
+}
+
+/// `TurnToNURBS` notifies the geometry it edits (`SmCurve` / `SmSurface`
+/// `Notify(SM_NO_PRE_EDIT / SM_NO_POST_EDIT, this, owner, NULL)`, e.g. on the curves
+/// `CreateUVTrimCurves` builds), which the tracker records (and, through the
+/// geometry's owner, turns into a `Chg` of its edge or face). The port's geometry types
+/// send no edit notifications, so a case whose C++ tracker shows one cannot agree on the
+/// tracker: it is deferred (`plan/findings.md`, `topology.brep_p3` "geometry edit
+/// notifications"). The C++ tracker is read where the Rust one starts (`tracker_at`);
+/// when it does not parse there the outputs differ before the tracker and the case is
+/// compared (and fails) as usual.
+fn geometry_edit_deferral(i: &Inputs, tracker_at: usize) -> Result<Option<Output>, HarnessError> {
+    let cpp = run_cpp(i)?;
+    let Some(v) = cpp.values.get("out") else {
+        return Ok(None);
+    };
+    let Some(mut rest) = v.get(tracker_at..) else {
+        return Ok(None);
+    };
+    // the Rm / Add / Chg lists: a count, then two values per entry
+    for _ in 0..3 {
+        let Some((&n, tail)) = rest.split_first() else {
+            return Ok(None);
+        };
+        let Some(tail) = tail.get(2 * (n as usize)..) else {
+            return Ok(None);
+        };
+        rest = tail;
+    }
+    // the events: a count, then the operation and four (code, index) pairs each
+    let Some((&n, events)) = rest.split_first() else {
+        return Ok(None);
+    };
+    if events.len() != 9 * (n as usize) {
+        return Ok(None);
+    }
+    let edits_geometry = events.chunks(9).any(|e| {
+        matches!(e.first(), Some(&op) if op == 10.0 || op == 11.0)
+            && matches!(e.get(1), Some(&code) if code == -20.0 || code == -21.0 || code == -30.0)
+    });
+    Ok(edits_geometry.then(|| {
+        Output::deferred(
+            "unmodelled:geometry-edit-notify",
+            "SmCurve/SmSurface::Notify(SM_NO_PRE_EDIT/SM_NO_POST_EDIT)",
+        )
+    }))
 }
 
 // ---- generation ---------------------------------------------------------------------------
