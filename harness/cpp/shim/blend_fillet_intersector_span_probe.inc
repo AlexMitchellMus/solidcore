@@ -75,10 +75,10 @@ void probe_span(std::vector<double>& events, SmSurface& a, SmSurface& b,
                 const SmExtent2d& d0, const SmExtent2d& d1,
                 const SmTsectPnt& current, const SmTsectPnt& next, double step)
 {
-    SmHermiteCurve uv0(current.UVPos(0), current.UVDeriv(0)*step,
-                       next.UVPos(0), next.UVDeriv(0)*step, 2);
-    SmHermiteCurve uv1(current.UVPos(1), current.UVDeriv(1)*step,
-                       next.UVPos(1), next.UVDeriv(1)*step, 2);
+    SmHermiteCurve uv0(current.m_vUVCurvePV[0][0], current.m_vUVCurvePV[0][1]*step,
+                       next.m_vUVCurvePV[0][0], next.m_vUVCurvePV[0][1]*step, 2);
+    SmHermiteCurve uv1(current.m_vUVCurvePV[1][0], current.m_vUVCurvePV[1][1]*step,
+                       next.m_vUVCurvePV[1][0], next.m_vUVCurvePV[1][1]*step, 2);
     uv0.SetContext(NULL);
     uv1.SetContext(NULL);
     SmCrvOnSurf map0(uv0, a, &d0, 0, NULL);

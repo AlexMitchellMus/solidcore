@@ -58,6 +58,10 @@ fn result_status<T>(r: &KernelResult<T>) -> f64 {
     r.as_ref().err().map_or(0.0, status)
 }
 
+fn probe_error(reason: &'static str) -> SolidError {
+    SolidError::invalid_input("difftest::blend_fillet_intersector::span_probe", reason)
+}
+
 impl SolverOps for Observed {
     delegate_ref! { SolverOps;
         fn solver() -> &FilletSolver;
@@ -95,7 +99,12 @@ impl SolverOps for Observed {
         put_uv(&mut before, uv0);
         put_uv(&mut before, uv1);
         for slot in &self.inner.solver.surfaces {
-            before.push(slot.as_ref().unwrap().surface.offset_distance());
+            before.push(
+                slot.as_ref()
+                    .ok_or_else(|| probe_error("missing solver offset surface"))?
+                    .surface
+                    .offset_distance(),
+            );
         }
         self.events.push(Event {
             tag: 1,
@@ -112,7 +121,8 @@ impl SolverOps for Observed {
             uv1,
             point,
         );
-        let mut after = vec![result_status(&result), flag(*result.as_ref().unwrap())];
+        let found = *result.as_ref().map_err(Clone::clone)?;
+        let mut after = vec![result_status(&result), flag(found)];
         put_point(&mut after, point);
         self.events.push(Event {
             tag: 2,
@@ -195,6 +205,42 @@ impl IntersectorOps for Observed {
     }
 }
 
+fn first_two(values: &[Vec3]) -> KernelResult<[Vec3; 2]> {
+    values
+        .get(..2)
+        .ok_or_else(|| probe_error("missing mapped endpoint derivatives"))?
+        .try_into()
+        .map_err(|_| probe_error("mapped endpoint derivative count"))
+}
+
+fn reconstruct_rail(
+    k: &Kernel,
+    uv: HermiteCurve,
+    surface: &Surface,
+    domain: Extent2d,
+    tag: u32,
+    events: &mut Vec<Event>,
+) -> KernelResult<HermiteCurve> {
+    let map = CrvOnSurf::new(
+        k,
+        Curve::from(uv),
+        surface.clone_for_evaluation()?,
+        Some(domain),
+        0,
+    )?;
+    let interval = map.natural_interval();
+    let start = map.evaluate(k, interval.min(), 1, true, true)?;
+    let end = map.evaluate(k, interval.max(), 1, true, true)?;
+    let [p0, d0] = first_two(&start)?;
+    let [p1, d1] = first_two(&end)?;
+    let mut values = Vec::new();
+    for p in [p0, d0, p1, d1] {
+        put_vec(&mut values, p);
+    }
+    events.push(Event { tag, values });
+    Ok(HermiteCurve::new(p0, d0, p1, d1, 3))
+}
+
 fn reconstruct_span(
     k: &Kernel,
     surfaces: [&Surface; 2],
@@ -202,7 +248,7 @@ fn reconstruct_span(
     current: &TsectPnt,
     next: &TsectPnt,
     step: f64,
-) -> Vec<Event> {
+) -> KernelResult<Vec<Event>> {
     let indices = [SrfIndex::First, SrfIndex::Second];
     let uv = indices.map(|s| {
         HermiteCurve::from_2d(
@@ -213,40 +259,31 @@ fn reconstruct_span(
             2,
         )
     });
+    let [uv0, uv1] = uv;
+    let [surface0, surface1] = surfaces;
+    let [domain0, domain1] = domains;
     let mut events = Vec::new();
-    let rails = std::array::from_fn::<_, 2, _>(|i| {
-        let map = CrvOnSurf::new(
-            k,
-            Curve::from(uv[i]),
-            surfaces[i].clone_for_evaluation().unwrap(),
-            Some(domains[i]),
-            0,
-        )
-        .unwrap();
-        let interval = map.natural_interval();
-        let p0 = map.evaluate(k, interval.min(), 1, true, true).unwrap();
-        let p1 = map.evaluate(k, interval.max(), 1, true, true).unwrap();
-        let mut values = Vec::new();
-        for p in [p0[0], p0[1], p1[0], p1[1]] {
-            put_vec(&mut values, p);
-        }
-        events.push(Event {
-            tag: 11 + i as u32,
-            values,
-        });
-        HermiteCurve::new(p0[0], p0[1], p1[0], p1[1], 3)
-    });
+    let rail0 = reconstruct_rail(k, uv0, surface0, domain0, 11, &mut events)?;
+    let rail1 = reconstruct_rail(k, uv1, surface1, domain1, 12, &mut events)?;
+    let rails = [rail0, rail1];
     let mut maximum = 0.0;
     for (i, t) in [0.5, 0.17, 0.83, 0.33, 0.67].into_iter().enumerate() {
         let raw = uv.map(|c| c.evaluate_point(t));
-        let clamped = std::array::from_fn::<_, 2, _>(|j| {
-            domains[j].clamp_point(Vec2::new(raw[j].x, raw[j].y))
-        });
-        let points =
-            std::array::from_fn::<_, 2, _>(|j| surfaces[j].evaluate_point(k, clamped[j]).unwrap());
+        let [raw0, raw1] = raw;
+        let clamped = [
+            domain0.clamp_point(Vec2::new(raw0.x, raw0.y)),
+            domain1.clamp_point(Vec2::new(raw1.x, raw1.y)),
+        ];
+        let [clamped0, clamped1] = clamped;
+        let points = [
+            surface0.evaluate_point(k, clamped0)?,
+            surface1.evaluate_point(k, clamped1)?,
+        ];
         let curve_points = rails.map(|c| c.evaluate_point(t));
-        let ds0 = points[0].distance_squared(curve_points[0]);
-        let ds1 = points[1].distance_squared(curve_points[1]);
+        let [point0, point1] = points;
+        let [curve_point0, curve_point1] = curve_points;
+        let ds0 = point0.distance_squared(curve_point0);
+        let ds1 = point1.distance_squared(curve_point1);
         let distance = solidcore::math::max2(ds0, ds1);
         if distance > maximum {
             maximum = distance;
@@ -277,27 +314,33 @@ fn reconstruct_span(
         tag: 30,
         values: vec![solidcore::geom::vector3d::sqrt(maximum)],
     });
-    events
+    Ok(events)
 }
 
-fn observed_rust(i: &Inputs) -> (Vec<f64>, Vec<Event>) {
+fn observed_rust(i: &Inputs) -> KernelResult<(Vec<f64>, Vec<Event>)> {
     // Same construction as rust_record, kept here so the ordinary runner does
     // not acquire an instrumentation branch, callback, new record or state.
     let k = Kernel::default();
-    let a = rust_surface(&i.a).unwrap();
-    let b = i.b.as_ref().map(|s| rust_surface(s).unwrap());
+    let a = rust_surface(&i.a).map_err(|_| probe_error("fixture surface construction failed"))?;
+    let b =
+        i.b.as_ref()
+            .map(rust_surface)
+            .transpose()
+            .map_err(|_| probe_error("fixture surface construction failed"))?;
     let bref = b.as_ref().unwrap_or(&a);
     let s = &i.solver;
     let orient = s.orient.map(|f| if f { 1.0 } else { -1.0 });
-    let off0 = rail_offset(&k, s.radii[0] * orient[0], a.clone(), SurfaceId::Free(0))
-        .unwrap_or_else(|_| panic!("first fixture offset construction failed"));
+    let [radius0, radius1] = s.radii;
+    let [orientation0, orientation1] = orient;
+    let off0 = rail_offset(&k, radius0 * orientation0, a.clone(), SurfaceId::Free(0))
+        .map_err(|_| probe_error("fixture offset construction failed"))?;
     let off1 = rail_offset(
         &k,
-        s.radii[1] * orient[1],
+        radius1 * orientation1,
         bref.clone(),
         SurfaceId::Free(u32::from(b.is_some())),
     )
-    .unwrap_or_else(|_| panic!("second fixture offset construction failed"));
+    .map_err(|_| probe_error("fixture offset construction failed"))?;
     let mut inner = ConstantRadiusAssistedFs::from_parts(
         s.tol,
         s.ang_tol,
@@ -313,23 +356,21 @@ fn observed_rust(i: &Inputs) -> (Vec<f64>, Vec<Event>) {
     let mut pseudo = FilletBrep::new();
     inner
         .solver
-        .add_constructor_fillet_geom(&k, &mut pseudo, FilletSolverId(0))
-        .unwrap();
+        .add_constructor_fillet_geom(&k, &mut pseudo, FilletSolverId(0))?;
     let mut solver = Observed {
         inner,
         events: Vec::new(),
         step: None,
     };
-    let mut fi: Fi<'_> =
-        FilletIntersector::new(&k, &a, &ext(i.dom1), bref, &ext(i.dom2), None).unwrap();
+    let mut fi: Fi<'_> = FilletIntersector::new(&k, &a, &ext(i.dom1), bref, &ext(i.dom2), None)?;
     fi.base.base.this_ang_tol_rad = i.ang_tol;
     fi.base.base.this_approx_tol_3d = i.approx_tol;
     fi.base.base.clipped_by_through_point = i.clipped;
     fi.base.base.curve_trace_direction = i.trace_dir;
     for p in &i.points {
-        fi.base
-            .base
-            .alloc_point(rust_point(&point_values(p)).unwrap());
+        fi.base.base.alloc_point(
+            rust_point(&point_values(p)).map_err(|_| probe_error("fixture point import failed"))?,
+        );
     }
     let OpIn::Next {
         a: from,
@@ -337,28 +378,32 @@ fn observed_rust(i: &Inputs) -> (Vec<f64>, Vec<Event>) {
         b: to,
     } = i.op
     else {
-        panic!("fixture must be Next")
+        return Err(probe_error("fixture must be Next"));
     };
-    assert!(
-        !i.clipped,
-        "reconstruction does not model finite-difference adjustment"
-    );
-    let out = fi
-        .compute_next_point(&mut solver, &k, id(from), step, id(to))
-        .unwrap();
-    assert!(out.found_good_point && out.clipped && !out.boundary_hit);
+    if i.clipped {
+        return Err(probe_error(
+            "reconstruction does not model finite-difference adjustment",
+        ));
+    }
+    let out = fi.compute_next_point(&mut solver, &k, id(from), step, id(to))?;
+    if !out.found_good_point || !out.clipped || out.boundary_hit {
+        return Err(probe_error("unexpected Next outcome"));
+    }
     let mut record = vec![
         2.0,
         0.0,
         flag(out.found_good_point),
-        out.deviation_found.unwrap(),
-        out.angle_found_rad.unwrap(),
+        out.deviation_found
+            .ok_or_else(|| probe_error("missing Next deviation"))?,
+        out.angle_found_rad
+            .ok_or_else(|| probe_error("missing Next angle"))?,
         flag(out.clipped),
         flag(out.boundary_hit),
     ];
     let si = &fi.base.base;
-    put_dom(&mut record, &si.uv_domains[0]);
-    put_dom(&mut record, &si.uv_domains[1]);
+    let [domain0, domain1] = si.uv_domains;
+    put_dom(&mut record, &domain0);
+    put_dom(&mut record, &domain1);
     record.extend([
         si.this_ang_tol_rad,
         si.this_approx_tol_3d,
@@ -386,40 +431,63 @@ fn observed_rust(i: &Inputs) -> (Vec<f64>, Vec<Event>) {
         &k,
         [&a, bref],
         si.uv_domains,
-        si.point(id(from)).unwrap(),
-        si.point(id(to)).unwrap(),
-        solver.step.unwrap(),
-    );
+        si.point(id(from))?,
+        si.point(id(to))?,
+        solver
+            .step
+            .ok_or_else(|| probe_error("missing observed step"))?,
+    )?;
     solver.events.extend(reconstruction);
-    (record, solver.events)
+    Ok((record, solver.events))
 }
 
-fn unpack_cpp(raw: &[f64]) -> (Vec<f64>, Vec<Event>) {
-    let count = raw[0] as usize;
-    assert_eq!(count, 189);
-    let record = raw[1..=count].to_vec();
-    let mut rest = &raw[count + 1..];
+fn take_count(raw: &[f64], maximum: usize) -> KernelResult<(usize, &[f64])> {
+    let (&value, rest) = raw
+        .split_first()
+        .ok_or_else(|| probe_error("missing probe header"))?;
+    if !value.is_finite() || value.fract() != 0.0 || !(0.0..=maximum as f64).contains(&value) {
+        return Err(probe_error("invalid probe count or tag"));
+    }
+    Ok((value as usize, rest))
+}
+
+fn unpack_cpp(raw: &[f64]) -> KernelResult<(Vec<f64>, Vec<Event>)> {
+    let (count, payload) = take_count(raw, raw.len())?;
+    if count != 189 {
+        return Err(probe_error("expected original 189-value C++ record"));
+    }
+    let record = payload
+        .get(..count)
+        .ok_or_else(|| probe_error("truncated original record"))?
+        .to_vec();
+    let mut rest = payload
+        .get(count..)
+        .ok_or_else(|| probe_error("truncated original record"))?;
     let mut events = Vec::new();
     while !rest.is_empty() {
-        assert!(rest.len() >= 2);
-        let tag = rest[0] as u32;
-        let len = rest[1] as usize;
-        assert!(rest.len() >= len + 2);
+        let (tag, payload) = take_count(rest, u32::MAX as usize)?;
+        let tag = u32::try_from(tag).map_err(|_| probe_error("probe tag overflow"))?;
+        let (len, payload) = take_count(payload, payload.len())?;
         events.push(Event {
             tag,
-            values: rest[2..len + 2].to_vec(),
+            values: payload
+                .get(..len)
+                .ok_or_else(|| probe_error("truncated checkpoint"))?
+                .to_vec(),
         });
-        rest = &rest[len + 2..];
+        rest = payload
+            .get(len..)
+            .ok_or_else(|| probe_error("truncated checkpoint"))?;
     }
-    (record, events)
+    Ok((record, events))
 }
 
 fn bits(v: &[f64]) -> Vec<u64> {
     v.iter().map(|x| x.to_bits()).collect()
 }
 
-fn label(tag: u32) -> &'static str {
-    match tag {
+fn label(tag: u32) -> KernelResult<&'static str> {
+    Ok(match tag {
         1 => "observed.plane_input.origin_normal_uv_offsets",
         2 => "observed.plane_output.status_found_point80",
         3 => "observed.step_output.rescaled_step_point80",
@@ -427,23 +495,50 @@ fn label(tag: u32) -> &'static str {
         11 | 12 => "reconstruction.rail_endpoints.p0_d0_p1_d1",
         20..=24 => "reconstruction.sample.t_rawuv_clampeduv_surface_rail_delta_dist2_max",
         30 => "reconstruction.span_deviation",
-        _ => panic!("unknown checkpoint tag {tag}"),
-    }
+        _ => return Err(probe_error("unknown checkpoint tag")),
+    })
 }
 
-fn difference(cpp: &Event, rust: &Event) -> Option<Value> {
-    cpp.values
+fn difference(cpp: &Event, rust: &Event) -> KernelResult<Option<Value>> {
+    if cpp.tag != rust.tag || cpp.values.len() != rust.values.len() {
+        return Err(probe_error("checkpoint shapes differ"));
+    }
+    let Some(component) = cpp
+        .values
         .iter()
         .zip(&rust.values)
         .position(|(c, r)| c.to_bits() != r.to_bits())
-        .map(|component| {
-            json!({
-                "tag": cpp.tag, "checkpoint": label(cpp.tag), "component": component,
-                "cpp": cpp.values[component], "rust": rust.values[component],
-                "cpp_bits": cpp.values[component].to_bits(),
-                "rust_bits": rust.values[component].to_bits(),
-            })
-        })
+    else {
+        return Ok(None);
+    };
+    let c = cpp
+        .values
+        .get(component)
+        .ok_or_else(|| probe_error("missing C++ component"))?;
+    let r = rust
+        .values
+        .get(component)
+        .ok_or_else(|| probe_error("missing Rust component"))?;
+    Ok(Some(json!({
+        "tag": cpp.tag, "checkpoint": label(cpp.tag)?, "component": component,
+        "cpp": c, "rust": r, "cpp_bits": c.to_bits(), "rust_bits": r.to_bits(),
+    })))
+}
+
+fn first_difference(cpp: &[Event], rust: &[Event], observed: bool) -> KernelResult<Option<Value>> {
+    if cpp.len() != rust.len() {
+        return Err(probe_error("checkpoint counts differ"));
+    }
+    for (c, r) in cpp.iter().zip(rust) {
+        let selected = if observed { c.tag <= 4 } else { c.tag >= 11 };
+        if !selected {
+            continue;
+        }
+        if let Some(difference) = difference(c, r)? {
+            return Ok(Some(difference));
+        }
+    }
+    Ok(None)
 }
 
 #[test]
@@ -458,8 +553,9 @@ fn original_clipped_step_checkpoint_evidence() {
     let plain_cpp = ffi::run(&ffi_program(&input)).unwrap();
     let plain_rust =
         rust_record(&input).unwrap_or_else(|_| panic!("original Rust operation failed"));
-    let (cpp_record, cpp_events) = unpack_cpp(&ffi::probe_next(&ffi_program(&input)).unwrap());
-    let (rust_record, rust_events) = observed_rust(&input);
+    let (cpp_record, cpp_events) =
+        unpack_cpp(&ffi::probe_next(&ffi_program(&input)).unwrap()).unwrap();
+    let (rust_record, rust_events) = observed_rust(&input).unwrap();
     assert_eq!(plain_cpp.len(), 189);
     assert_eq!(plain_rust.len(), 189);
     assert_eq!(
@@ -496,16 +592,8 @@ fn original_clipped_step_checkpoint_evidence() {
         );
         assert!(events.iter().flat_map(|e| &e.values).all(|v| v.is_finite()));
     }
-    let first_observed = cpp_events
-        .iter()
-        .zip(&rust_events)
-        .filter(|(c, _)| c.tag <= 4)
-        .find_map(|(c, r)| difference(c, r));
-    let first_reconstructed = cpp_events
-        .iter()
-        .zip(&rust_events)
-        .filter(|(c, _)| c.tag >= 11)
-        .find_map(|(c, r)| difference(c, r));
+    let first_observed = first_difference(&cpp_events, &rust_events, true).unwrap();
+    let first_reconstructed = first_difference(&cpp_events, &rust_events, false).unwrap();
     // Direct stdout intentionally survives libtest's passing-test capture, so
     // canonical CI's existing native-feature test job retains the evidence. No
     // new tracing option, environment knob, file or corpus comparison is added.
@@ -528,7 +616,7 @@ fn original_clipped_step_checkpoint_evidence() {
             stdout,
             "FILLET_SPAN_PROBE {}",
             json!({
-                "tag": c.tag, "checkpoint": label(c.tag),
+                "tag": c.tag, "checkpoint": label(c.tag).unwrap(),
                 "cpp": c.values, "rust": r.values,
                 "cpp_bits": bits(&c.values), "rust_bits": bits(&r.values),
             })
