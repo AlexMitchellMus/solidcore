@@ -926,6 +926,13 @@ fn make_faces_rust(i: &Inputs) -> Result<Output, HarnessError> {
     let fixture = ffi::export(&path_of(i)?, &block(i)?).map_err(harness)?;
     counts(&fixture.graph).ok_or_else(|| harness("fixture construction failed"))?;
     let (mut b, _) = shared::import(&fixture.graph)?;
+    // The native fixture owns each edge curve. Ray solves need that owner to
+    // find edge hits before classifying faces and creating their UV trims.
+    for edge in b.edges().ids().collect::<Vec<_>>() {
+        if let Some(curve) = b.edge_mut(edge).map_err(harness)?.curve.as_mut() {
+            curve.set_owner(Some(key_of(EntityRef::Edge(edge))), None);
+        }
+    }
     b.set_key(ObjectKey(0xB000_0000));
     let resolved = resolve(i, &b)?;
     let mut records = seeded_records(&b);
