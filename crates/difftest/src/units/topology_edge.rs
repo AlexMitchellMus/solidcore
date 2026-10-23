@@ -2371,6 +2371,40 @@ mod tests {
         check_revolution_cases(&fixtures);
         check_analytic_surface_cases(&fixtures);
         check_inexact_guard(&fixtures);
+
+        // Temporary diagnostic: list what the formerly exact-geometry-deferred
+        // cases reach now, so the remaining dependency is reported by name.
+        let mut deferred = Vec::new();
+        for case in &fixtures {
+            let i: Inputs = case.parse().unwrap();
+            let former = matches!(&i.brep, BrepIn::File { file, .. }
+                if matches!(
+                    file.as_str(),
+                    "Mouse.smb" | "box_with_large_fillet.smb" | "cone.smb" | "sphere.smb"
+                ))
+                && matches!(
+                    i.op,
+                    OpIn::Seam { .. }
+                        | OpIn::Topological { .. }
+                        | OpIn::Tangent { .. }
+                        | OpIn::Blend { .. }
+                        | OpIn::Radial { .. }
+                );
+            if !former {
+                continue;
+            }
+            let rust = Runner.run_rust(case).unwrap();
+            if let Some(d) = rust.deferred {
+                deferred.push(format!("{}: {} / {}", case.name, d.unit, d.symbol));
+            } else if let Some(e) = rust.error {
+                deferred.push(format!("{}: error {e}", case.name));
+            }
+        }
+        eprintln!("formerly exact-deferred cases now: {deferred:?}");
+        assert!(
+            deferred.iter().all(|text| text.contains("topology.face_p2")),
+            "{deferred:?}"
+        );
     }
 
     /// The analytic surfaces that the shared exact exporter now carries for this runner.
