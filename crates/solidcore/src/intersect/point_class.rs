@@ -561,9 +561,7 @@ impl<O: ClassObject> PointClassification<O> {
             PointClassType::Edgeuse => {
                 let o = self.object.ok_or_else(|| null_object(OP_GEOMETRY))?;
                 match topology_of(geometry, o, "SmEdgeuse::GetBrep", "topology.edgeuse_p1")? {
-                    (b, EntityRef::Edgeuse(eu)) => {
-                        brep_id_of(geometry, edgeuse::p1::brep(b, eu)?)?
-                    }
+                    (b, EntityRef::Edgeuse(eu)) => brep_id_of(geometry, edgeuse::p1::brep(b, eu)?)?,
                     _ => return Err(wrong_entity(OP_GEOMETRY)),
                 }
             }
