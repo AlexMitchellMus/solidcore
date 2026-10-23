@@ -70,13 +70,14 @@
 //!   original edge after `MakeEdgeInFace`; the port has no curve owners (the curve
 //!   copy is a new handle), so there is nothing to reset.
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
-//!   each tagged `UNPORTED(<unit>)`: `SmBrep::DeleteEdge` / `DeleteVertex`
-//!   (`topology.brep_p4`),
+//!   each tagged `UNPORTED(<unit>)`:
 //!   `SmFace::Point3DClassify` (`query.face_p1`), `MergeCurveClasses`
 //!   (`boolean.topology_intersector_p3`, ported in draft PR #211), and the stub of [`p1`](super::p1)
 //!   for `SmFace::FaceIntersect` (`topology.face_p3`). `SmFace::GetEdges` /
 //!   `GetVertices` / `GetBrep` go through [`IntersectorBrep::face_edges`] and siblings. The code after a stub is ported in
-//!   full. `SmBrep::GlueEdgesGeneral` (`topology.brep_p7`) goes through
+//!   full. `SmBrep::DeleteEdge` / `DeleteVertex` (`topology.brep_p4`) go through
+//!   [`IntersectorBrep::brep_delete_edge`] / [`IntersectorBrep::brep_delete_vertex`].
+//!   `SmBrep::GlueEdgesGeneral` (`topology.brep_p7`) goes through
 //!   [`IntersectorBrep::brep_glue_edges_general`] and `SmBrep::MakeEdgeInFace`
 //!   (`topology.brep_p5`) through part 1's `brep_make_edge_in_face`, as in part 1;
 //!   `SmBrep::CombineCoincidentVertices` (`topology.brep_p5`) goes through
@@ -253,24 +254,6 @@ impl<O: Ord + Copy> Mates<O> for MapMates<O> {
 
 // ---- unported callees ----------------------------------------------------------------------
 
-/// `SmBrep::DeleteEdge(pEdge, pOptSurfaceToKeep)`.
-fn brep_delete_edge<O>(_brep: O, _edge: O, _opt_surface_to_keep: Option<O>) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
-    Err(SolidError::unported(
-        "SmBrep::DeleteEdge",
-        "topology.brep_p4",
-    ))
-}
-
-/// `SmBrep::DeleteVertex(pVertex)`.
-fn brep_delete_vertex<O>(_brep: O, _vertex: O) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteVertex
-    Err(SolidError::unported(
-        "SmBrep::DeleteVertex",
-        "topology.brep_p4",
-    ))
-}
-
 /// `SmFace::Point3DClassify(pt, sSrcZoneTol3d, bDoBoundaryIntersections, rPC,
 /// pOptGuessUV, bTgtLoopsOnly, pOptTgtLoops, bUVSpaceOkay)`.
 #[allow(clippy::too_many_arguments)]
@@ -422,6 +405,15 @@ fn curve_of<O: Copy>(geometry: &impl ClassGeometry<O>, curve: Option<O>) -> Resu
 impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     // ---- the intersection table ------------------------------------------------------
 
+    /// Register a known empty surface intersection without a geometry backend.
+    /// This is the empty-array branch of [`Self::register_existing_ssi`].
+    pub(crate) fn register_empty_ssi(&mut self, brep_surface: Option<O>, other_surface: Option<O>) {
+        let table = self.intersection_table.get_or_insert_with(Default::default);
+        table.brep_surfaces.push(brep_surface);
+        table.other_surfaces.push(other_surface);
+        table.results.push(IntersectionResults::default());
+    }
+
     /// `RegisterExistingSSI(pBrepSurface, pOtherSurface, cr3DCurves, crUVCurves1,
     /// crUVCurves2, crCurveTypes, crDeviations)`: adds a table entry (making the table
     /// when there is none) with copies of the curves (each 3D curve must be a B-spline
@@ -446,6 +438,10 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         curve_types: &[TsectCurveType],
         deviations: &[f64],
     ) -> Result<()> {
+        if curves_3d.is_empty() {
+            self.register_empty_ssi(brep_surface, other_surface);
+            return Ok(());
+        }
         let table = self.intersection_table.get_or_insert_with(Default::default);
         table.brep_surfaces.push(brep_surface);
         table.other_surfaces.push(other_surface);
@@ -643,7 +639,6 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     /// # Errors
     ///
     /// Those of `SmBrep::DeleteFace` / `DeleteEdge` / `DeleteVertex`;
-    /// [`SolidError::Unported`] for the edge and vertex deletions (`topology.brep_p4`);
     /// [`SolidError::InvalidInput`] for an unknown handle or an object without B-rep.
     pub fn delete_faces(
         &mut self,
@@ -706,7 +701,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             let b = brep
                 .edge_brep_handle(e)?
                 .ok_or(invalid(OP_DELETE_FACES, "edge without B-rep"))?;
-            brep_delete_edge(b, e, None)?;
+            brep.brep_delete_edge(k, b, e)?;
         }
 
         // iter every vertex of every deleted face looking for ShellVertices to delete
@@ -720,7 +715,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             let b = brep
                 .vertex_brep(v)?
                 .ok_or(invalid(OP_DELETE_FACES, "vertex without B-rep"))?;
-            brep_delete_vertex(b, v)?;
+            brep.brep_delete_vertex(k, b, v)?;
         }
 
         Ok(())

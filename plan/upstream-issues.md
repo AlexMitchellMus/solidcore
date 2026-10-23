@@ -1501,6 +1501,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** no (the difftest wrapper never passes NULL curves).
 - **Severity:** crash.
 - **Rust port:** takes a slice of curves (no NULL entries).
+
+#### UB-210. `SmBrep::DeleteEdge` reads `pSurvF` outside the merge branch that sets it (unreachable on well-formed topology)
+- **Location:** `source/SMLib/src/SmBrep.cpp:6043` (`pOptSurfaceToKeep != pSurvF->GetSurface()`) and `:6046` (`pDelF->GetSurface()`) in `SmBrep::DeleteEdge` (def. `:5752`); `pSurvF`/`pDelF` are set only inside `if(bMergeFace)` (`:5911`), while the surface-swap block's guard (`:6037-6039`) is only `!bSplitLoop && !(both loops inner)`.
+- **What happens:** The two guards differ by the strut test (`bMergeFace = !bSplitLoop && !bVIsStrut && !bVRadIsStrut && !bothInner`). If an end of the edge were a strut end without a split loop, a non-NULL `pOptSurfaceToKeep` would dereference the NULL `pSurvF`.
+- **Reachability:** none on well-formed topology. `SmEdgeuse::IsStrut` (`SmEdgeuse.cpp:294-301`) is `GetRadial() == m_pCW`, and `m_pCW` is in the edge use's own loop use. `pEURad = pEU->GetRadial()`, so `pEU->IsStrut()` puts `pEURad` in `pLU`, i.e. `pLURad == pLU` (`bSplitLoop`). For a manifold edge the edge-use list alternates orientations (`GetRadial`, `SmEdgeuse.cpp:3561-3578`, is the previous use for a use oriented like the primary, the next one otherwise), so `pEURad->GetRadial() == pEU` and `pEURad->IsStrut()` likewise implies `bSplitLoop`. Hence `!bSplitLoop` forces both strut flags false, and with `!bothInner` that is `bMergeFace`: `pSurvF` is set (and `NER`-checked). Only an edge-use list whose orientations do not alternate could reach it.
+- **How found:** read during porting (unit `topology.brep_p4`).
+- **Confirmed:** no; unreachable by the argument above (no fixture B-rep has a non-alternating manifold edge-use list).
+- **Severity:** crash (theoretical; malformed topology only).
+- **Rust port:** `topology::brep::p4::delete_manifold_edge` keeps a defensive `SolidError::InvalidInput` there (code comment cites UB-210).
 #### UB-157. `CreateBlendSurface` with rails of different natural intervals writes past `sIntParams`
 - **Location:** `SmBSplineSurfaceNLib.cpp:5305`-`5378` (`SmBSplineSurface::CreateSkinnedSurface`, reads `sIntParams[lNumSections+ii]` at `:5366` and writes it at `:5378`); reached from `SmSurface::CreateBlendSurface` (`SmSurface.cpp:15375`, via `SmDerivSurfDefinition::SkinDerivSurface`, `:3503`), which passes only one parameter per cross section (`sParams`, 101 values). `CreateBlendSurface` also ignores the statuses of both `GetSampleValues` calls (`SmSurface.cpp:15443`, `:15452`) and goes on with partly filled sample arrays.
 - **What happens:** With two rails, `CreateSkinnedSurface` expects `2 * lNumSections` intersection parameters. When `SyncronizeKnotsOfCurves` changes the natural interval of rail 2, the loop reads and writes past the end of the `SmTArray` copy: heap corruption.
@@ -1936,6 +1945,16 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (SIGSEGV, 4 cases).
 - **Severity:** crash/UB (null dereference). A crafted file with an old healer version reaches it through `ReadFromFile`.
 - **Rust port:** not reached; the `topology.brep_p10` runner rejects healing requests on such data (`crates/difftest/src/units/topology_brep_p10.rs:182` `heal_guard`).
+
+#### UB-252. A variable radius law that cannot be evaluated: `SetupOffsetValues` and `SmTemporaryRadiusChange::SetUp` read its unset output
+- **Location:** `source/SMLib/src/SmFilletStandardSolver.cpp:2414-2434` `SmVariableRadiusFS::SetupOffsetValues`: `m_rLaw->Evaluate` (`:2420`) is called without checking its status, and `dValues[0]` goes into `*pdOffsetDist` (`:2428`) and both offset surfaces' distances (`:2429-2430`) whatever happened. `source/SMLib/src/SmFilletExecutive.cpp:5036-5037` `SmTemporaryRadiusChange::SetUp`: `pLaw->Evaluate(dEdgeT, sEdgeIvl, bRev, adValues)` unchecked, then `dEndRad = adValues[0]` builds the temporary constant law (`:5042-5043`, `:5067-5068`). `source/SMLib/src/SmFilletSolver.cpp:5254` and `:5321` `SmFilletSolver::StepSolve` ignore the status of `SetupOffsetValues`, which the function never reports (it returns `SM_SUCCESS` unconditionally). The other users of the law (`SmFilletStandardSolver.cpp:2075`, `:2539`) do check.
+- **What happens:** `SmBSplineFilletLaw::Evaluate` fails where the law is evaluated past the fillet edge's ends and its curve cannot be extended, and leaves the output array unset. The unset `dValues[0]` (a radius of -3e-314 under the debugger, tangency-labs/solidcore#458) then becomes the offset distance of both offset surfaces, or the radius of the temporary constant law.
+- **Trigger:** a variable round (`SM_FS_VARIABLE_RADIUS`) whose `SmBSplineFilletLaw` curve has zero speed, a constant law laid out as the radius in x and 0 in y (`SmBSplineCurve::CreateExtendedCurve` refuses it), on a cube edge or running into an R5 corner; the law the C API shim of tangency-labs/smlib built before 3759189 (found on tangency-labs/smlib#421).
+- **How found:** issue #458, read at `c9c5979`.
+- **Confirmed:** no (the maintainer saw the unset radius under the debugger; ASan/UBSan do not see an uninitialised read, and the round then fails with 1001 further on; no C++ run here).
+- **Severity:** crash/UB (an uninitialised read).
+- **Fix:** tangency-labs/smlib@9a12ad7 returns the failed evaluation from both (`SetUp` before it changes anything) and checks `SetupOffsetValues` in `StepSolve`.
+- **Rust port:** `VariableRadiusFs::setup_offset_values` (`crates/solidcore/src/blend/fillet_standard_solver/p1.rs`) and `TemporaryRadiusChange::set_up` (`crates/solidcore/src/blend/fillet_executive/p2.rs`) already return the law evaluation's failure, `set_up` before it changes anything. `FilletSolver::step_solve` (`fillet_solver/p3.rs`) dropped the first one's failure with `ignore_status` and went on with the offsets as they were; it now returns it, as the fork's does (test `step_solve_returns_a_failed_setup_of_the_offsets`). Upstream defines nothing for that state, and its `SetupOffsetValues` never fails, so no result the difftest compares changes. The second `StepSolve` call (`:5321`) is behind the variable-radius branch that `step_solve` still defers (`GetOriginalCurve`, unit `blend.fillet_standard_solver_p1`); it must check the status when that branch is ported.
 
 ### Healer target management
 
@@ -2444,7 +2463,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **How found:** read during porting (static scan, `plan/closure.md`).
 - **Confirmed:** no. The fillet units are not ported yet.
 - **Severity:** nondeterminism (order-dependent results).
-- **Rust port:** Not ported yet. The plan is to compute the step per call.
+- **Rust port:** `Kernel::fillet_point_step` latch (per kernel). The `blend.fillet_solver_p4` difftest probes the C++ static (`sc_blend_fillet_solver_p4_static_step`) before every case that can reach the finite-difference block and seeds the latch with it; see `plan/findings.md` (blend.fillet_solver_p4).
 
 ## Wrong result
 
@@ -2743,6 +2762,16 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Severity:** wrong result (the intended recovery is dead code).
 - **Cause:** `s2ndUVCurves.Add(pNewUVTrimCurve)` where `sUVCurves.Add(...)` was meant.
 - **Rust port:** Reproduces it (`topology::edgeuse::p3::create_uv_trim_curve` builds the joined curve into the discarded second-half array and reports the recovery path).
+
+#### WR-190. `SmFilletSolver::RecordFilletError` reports rail 0 for rail 1
+- **Location:** `source/SMLib/src/SmFilletSolver.cpp:7930` (`SmFilletSolver::RecordFilletError`).
+- **What happens:** `if ( pThisGeom->GetRail(1)->GetCurve() != NULL ) { apFilEdges.AddUnique( pThisGeom->GetRail(0) ); }`: the second rail is tested but the first is added, so the fillet edges handed to `SmFilletExecutive::NoteFilletError` never contain a geometry's second rail.
+- **Trigger:** any fillet error recorded after a geometry got its second rail curve.
+- **How found:** read during porting (unit `blend.fillet_solver_p2`).
+- **Confirmed:** no (the fillet geometry queries are unported).
+- **Severity:** wrong result (incomplete error report).
+- **Cause:** copy-paste slip (`GetRail(0)` for `GetRail(1)`).
+- **Rust port:** Reproduced (`FilletSolver::record_fillet_error` adds rail 0 where it tests rail 1); the list only feeds `SmFilletExecutive::NoteFilletError`, an `UNPORTED(blend.fillet_executive_p1)` stop, so it is not observable yet.
 
 #### WR-176. `SmFace::HasSeamProblem` returns TRUE whenever it has to compute the face properties
 - **Location:** `source/SMLib/src/SmFace.cpp:15650`, `SmFace::HasSeamProblem` (def. `:15540`).
@@ -3620,6 +3649,16 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** no (source inspection only; the shim never runs the undefined part).
 - **Severity:** crash/UB. **[PSIRT]:** the cross-pair repeat is reachable from geometry read from a file with well-formed `SmApiSimpleFaceStitch` face lists.
 - **Rust port:** `heal::stitch::p1::Stitch::do_simple_face_stitch` refuses those inputs with `deref` (`InvalidInput`, the null-dereference guard) before removing any face: a repeated delete face, a vertex in more than one entry of the two vertex lists, or a delete vertex no other face uses. The difftest shim refuses exactly the same inputs after a read-only copy of the validation. A repeated vertex whose first entry would free nothing (squeeze skipped, a short manifold common edge, the `m_bMakingManifoldSolid` non-lamina skip, or the loop ending first with upstream's defined `SM_ERR`) is refused too, a deliberate over-refusal.
+
+#### UB-192. `SmFilletSolver::PointOnPlaneSolve` writes solution values past `m_adUserDoubles`
+- **Location:** `source/SMLib/src/SmFilletSolver.cpp:3054`-`3057` (`SmFilletSolver::PointOnPlaneSolve`, the found-solution copy).
+- **What happens:** Every solution value after the four UV values is copied to `rTsectPnt.m_adUserDoubles[i-4]` with no bound; the array holds `SM_MAX_USER_DOUBLES` (4) values. The sibling copies in `RailEdgeuseIntersect` and `RailRailIntersect` check `lCnt == SM_MAX_USER_DOUBLES` and return `SM_ERR`.
+- **Trigger:** a solver whose `GetJacobianSize` / `LoadInitialValues` give a solution vector longer than 8 values (a derived solver of calling code; the shipped solvers stay at or below 8).
+- **How found:** read during porting (unit `blend.fillet_solver_p2`).
+- **Confirmed:** no.
+- **Severity:** crash/UB (out-of-bounds write into the `SmTsectPnt`).
+- **Cause:** missing `SM_MAX_USER_DOUBLES` check.
+- **Rust port:** `blend::fillet_solver::p2::FilletSolver::point_on_plane_solve` returns `InvalidInput` for a fifth extra value.
 
 #### HANG-30. `SmApiStitch(SmBrep*)` never returns on a sheet with a coordinate near the top of the double range
 - **Location:** `source/SM_API/src/SmApiBrep.cpp:1128`-`1151` (`SmApiStitch(pBrep)`) -> `SmBrep::StitchAndOrient` (unit `topology.brep_p5`); the looping routine is not located.

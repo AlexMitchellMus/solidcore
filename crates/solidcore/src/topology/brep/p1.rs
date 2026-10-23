@@ -284,7 +284,7 @@ impl Brep {
     ///
     /// [`SolidError::InvalidInput`] otherwise.
     pub fn set_face_list(&mut self, order: Vec<FaceId>) -> Result<()> {
-        check_order(&order, self.faces.len())?;
+        check_order(&order, self.faces.ids())?;
         self.face_list = order;
         Ok(())
     }
@@ -296,7 +296,7 @@ impl Brep {
     ///
     /// [`SolidError::InvalidInput`] otherwise.
     pub fn set_edge_list(&mut self, order: Vec<EdgeId>) -> Result<()> {
-        check_order(&order, self.edges.len())?;
+        check_order(&order, self.edges.ids())?;
         self.edge_list = order;
         Ok(())
     }
@@ -308,7 +308,7 @@ impl Brep {
     ///
     /// [`SolidError::InvalidInput`] otherwise.
     pub fn set_vertex_list(&mut self, order: Vec<VertexId>) -> Result<()> {
-        check_order(&order, self.vertices.len())?;
+        check_order(&order, self.vertices.ids())?;
         self.vertex_list = order;
         Ok(())
     }
@@ -339,16 +339,20 @@ impl Brep {
     }
 }
 
-/// Whether `order` is a permutation of the `count` arena ids.
-fn check_order<I: crate::topology::ArenaId>(order: &[I], count: usize) -> Result<()> {
-    let mut seen = vec![false; count];
+/// Whether `order` is a permutation of the live arena ids `live` (records removed by
+/// `topology.brep_p4`'s deletions leave gaps in the id range).
+fn check_order<I: crate::topology::ArenaId>(
+    order: &[I],
+    live: impl Iterator<Item = I>,
+) -> Result<()> {
+    let mut seen: BTreeMap<u32, bool> = live.map(|id| (id.index(), false)).collect();
     for id in order {
-        match seen.get_mut(id.index() as usize) {
+        match seen.get_mut(&id.index()) {
             Some(s) if !*s => *s = true,
             _ => return Err(null("list order is not a permutation of the records")),
         }
     }
-    if order.len() != count {
+    if order.len() != seen.len() {
         return Err(null("list order is not a permutation of the records"));
     }
     Ok(())
@@ -575,6 +579,23 @@ pub fn surfaces<'b>(
     b: &'b Brep,
     attribute: Option<&GeometryAttributeFilter<'_>>,
 ) -> Result<Vec<&'b Surface>> {
+    surface_owners(b, attribute, &|id| arena_identity(CacheObject::Face(id)))?
+        .into_iter()
+        .map(|id| {
+            b.face(id)?
+                .surface
+                .as_ref()
+                .ok_or_else(|| null("GetSurfaces: face without surface"))
+        })
+        .collect()
+}
+
+/// The same native geometry collection with caller-supplied owner identities.
+pub(crate) fn surface_owners(
+    b: &Brep,
+    attribute: Option<&GeometryAttributeFilter<'_>>,
+    owner: &dyn Fn(FaceId) -> ObjectRef,
+) -> Result<Vec<FaceId>> {
     let mut out = Vec::new();
     // for every face
     for f in faces(b, None)? {
@@ -584,7 +605,7 @@ pub fn surfaces<'b>(
             .as_ref()
             .ok_or_else(|| null("GetSurfaces: face without surface"))?;
         // add all standalone face->Surfaces to the list
-        if surface.owner() == Some(arena_identity(CacheObject::Face(f)))
+        if surface.owner() == Some(owner(f))
             && attribute.is_none_or(|filter| {
                 filter
                     .attributes
@@ -592,7 +613,7 @@ pub fn surfaces<'b>(
                     .is_some()
             })
         {
-            out.push(surface);
+            out.push(f);
         }
     }
     Ok(out)
@@ -609,6 +630,23 @@ pub fn curves<'b>(
     b: &'b Brep,
     attribute: Option<&GeometryAttributeFilter<'_>>,
 ) -> Result<Vec<&'b Curve>> {
+    curve_owners(b, attribute, &|id| arena_identity(CacheObject::Edge(id)))?
+        .into_iter()
+        .map(|id| {
+            b.edge(id)?
+                .curve
+                .as_ref()
+                .ok_or_else(|| null("GetCurves: edge without curve"))
+        })
+        .collect()
+}
+
+/// The same native geometry collection with caller-supplied owner identities.
+pub(crate) fn curve_owners(
+    b: &Brep,
+    attribute: Option<&GeometryAttributeFilter<'_>>,
+    owner: &dyn Fn(EdgeId) -> ObjectRef,
+) -> Result<Vec<EdgeId>> {
     let mut out = Vec::new();
     for e in edges(b, None)? {
         let curve = b
@@ -616,7 +654,7 @@ pub fn curves<'b>(
             .curve
             .as_ref()
             .ok_or_else(|| null("GetCurves: edge without curve"))?;
-        if curve.owner() == Some(arena_identity(CacheObject::Edge(e)))
+        if curve.owner() == Some(owner(e))
             && attribute.is_none_or(|filter| {
                 filter
                     .attributes
@@ -624,7 +662,7 @@ pub fn curves<'b>(
                     .is_some()
             })
         {
-            out.push(curve);
+            out.push(e);
         }
     }
     Ok(out)
@@ -2074,17 +2112,14 @@ pub fn make_vertex_split_uv_trim_curve(
     // copy UVTrimCurve
     let mut new_uv_curve = uv_trim_curve.copy(k)?;
 
-    // make a 3dCurve from the UVTrimCurve (SmCrvOnSurf(*pNewUVCurve, *pSurface)): its
-    // point evaluation is the UV curve point lifted by the face surface; the Rust
-    // SmCrvOnSurf is built over a B-spline surface only, so the lift goes through the
-    // face surface itself and the local solve of the tessellation branch needs the
-    // B-spline one (DISPATCH GAP as curve.crv_on_surf elsewhere)
+    // make a 3dCurve from the UVTrimCurve (SmCrvOnSurf(*pNewUVCurve, *pSurface)):
+    // its point evaluation is the UV curve point lifted by the face surface.
     let edge_to_split = eu1::edge(b, eu_orig)?
         .ok_or_else(|| null("sm_MakeVertexSplitUVTrimCurve: edge use without edge"))?;
     let face = eu1::face(b, eu_orig)?.ok_or_else(|| SolidError::null_pointer(OP))?; // NER
     let surface = face2::surface(b, face)?
         .ok_or_else(|| SolidError::null_pointer(OP))?
-        .clone(); // NER
+        .clone_for_evaluation()?; // NER
     let lift = |t: f64| -> Result<Point3> {
         let p = new_uv_curve.evaluate_point(k, t)?;
         surface.evaluate_point(k, Point2::new(p.x, p.y))
@@ -2097,19 +2132,10 @@ pub fn make_vertex_split_uv_trim_curve(
     if p3d.distance(split_pnt) > edge::tolerance(b, edge_to_split)? / 100.0 {
         let mut reuse_trim_curve = false;
         if for_tesselation {
-            let SurfaceKind::BSpline(bs) = surface.kind() else {
-                // the port of SmCrvOnSurf takes a B-spline surface only: that partial
-                // unit's own unported part
-                // UNPORTED(curve.crv_on_surf): SmCrvOnSurf::SmCrvOnSurf over a non-B-spline SmSurface
-                return Err(SolidError::unported(
-                    "SmSurface (non-B-spline) in SmCrvOnSurf",
-                    "curve.crv_on_surf",
-                ));
-            };
             let uv_3d_curve = Curve::from(CrvOnSurf::new(
                 k,
-                new_uv_curve.clone(),
-                bs.clone(),
+                new_uv_curve.clone_for_evaluation()?,
+                surface.clone_for_evaluation()?,
                 None,
                 0,
             )?);

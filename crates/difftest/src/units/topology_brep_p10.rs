@@ -34,13 +34,14 @@ use solidcore::math::Vec3;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::surface::surface::Surface;
 use solidcore::topology::brep::p10::{
-    make_topology_from_data, project_and_trim, remove_all_topology, test_closure_split_region,
+    make_topology_from_data, project_and_trim, remove_all_topology_notified, test_closure_split_region,
     MakeTopologyOptions, ProjectAndTrimOptions, ProjectEnv, TopologyEnv, TrimType,
     HEALER_VERSION,
 };
 use solidcore::topology::brep_cache::CacheObject;
 use solidcore::topology::brep_data::{BrepData, TopologyData};
 use solidcore::topology::database_io::FileType;
+use solidcore::topology::edge::NotifyEnv;
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::shell::{ShellMembers, ShellType};
 use solidcore::topology::topology::Topology;
@@ -506,11 +507,17 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
     match i.op {
         OpIn::Make => {}
         OpIn::Closure { do_infinite } => {
-            // harness env: the runner holds no attribute state (default region
-            // records, empty store; see RegionNotifyState)
-            let mut state = solidcore::topology::brep::p2::RegionNotifyState::new(&b);
+            // the split names the B-rep's objects as the build did (`key_of`, the names
+            // its geometry owners carry, which its ray fires look up), over the build's
+            // records and attribute store
+            let mut env = NotifyEnv {
+                records: &mut records,
+                attributes: &mut store,
+                context: None,
+                key_of: &key_of,
+            };
             for &e in &g.edges.items {
-                match test_closure_split_region(&mut k, &mut b, &mut state.env(), do_infinite, e) {
+                match test_closure_split_region(&mut k, &mut b, &mut env, do_infinite, e) {
                     Ok(r) => {
                         out.push(Item::Int(0));
                         out.push(Item::Int(r.new_shells.len() as i64));
@@ -529,7 +536,15 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
         }
         OpIn::RemoveAll { editing } => {
             b.set_editing_enabled(editing);
-            match remove_all_topology(&mut k, &mut b) {
+            // the runner's records: the merged and deleted objects propagate their
+            // flags and user values into the survivors, as upstream's objects do
+            let mut env = NotifyEnv {
+                records: &mut records,
+                attributes: &mut store,
+                context: None,
+                key_of: &key_of,
+            };
+            match remove_all_topology_notified(&mut k, &mut b, &mut env) {
                 Ok(()) => out.push(Item::Int(0)),
                 Err(e @ SolidError::Unported { .. }) => return Ok(Err(e)),
                 Err(e) => out.push(Item::Int(status(&e))),
@@ -1076,8 +1091,8 @@ pub(crate) fn snapshot(k: &Kernel, b: &Brep) -> Result<Output, HarnessError> {
     let mut uv = Vec::new();
     let mut links = Vec::new();
     for id in &g.faceuses.items {
-        let f = b.faceuse(*id).map_err(|e| harness(e.to_string()))?;
-        let (next, last) = f.sibling_links.unwrap_or((None, None));
+        let (next, last) = solidcore::topology::shell::faceuse_sibling_links(b, *id)
+            .map_err(|e| harness(e.to_string()))?;
         links.extend([
             g.faceuses.find(next, FaceuseId::index),
             g.faceuses.find(last, FaceuseId::index),

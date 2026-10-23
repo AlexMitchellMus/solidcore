@@ -10,7 +10,7 @@
 //! | [`make_face`], [`MakeFaceOptions`], [`NewFace`] | `SmBrep::MakeFace`                        |
 //! | [`make_face_with_curves`], [`make_face_with_curves_with_kernel_context`], [`make_face_with_curve_owners`], [`FaceCurvesInput`] | `SmBrep::MakeFaceWithCurves` |
 //! | [`glue_edges_general`]                       | `SmBrep::GlueEdgesGeneral`                   |
-//! | [`copy_faces`]                               | `SmBrep::CopyFaces`                          |
+//! | [`copy_faces`], [`copy_faces_with_merge`]    | `SmBrep::CopyFaces`                          |
 //! | [`merge_self_intersection_curves`], [`SelfIntersectionCurve`] | `SmBrep::MergeSelfIntersectionCurves` |
 //!
 //! Deviations:
@@ -22,10 +22,11 @@
 //!   build for `wasm32-unknown-unknown`); the caller reads the file. The reader is
 //!   [`BrepData::read_from_file`] (unit `topology.brep_data`), which bounds every count it
 //!   reads and the nesting of its polymorphic readers (AGENTS.md section 1).
-//! - **Arena records are never freed.** Upstream `delete`s of edge uses, vertex uses,
-//!   shells, regions and edges unlink the record (it stays in its arena as an orphan).
-//!   The B-rep's edge list is its edge arena, so `m_pEdgeListHead->Remove` has no
-//!   counterpart beyond unlinking the deleted edge's uses. The owning-list edits
+//! - **Arena records.** `GlueEdgesGeneral` destroys the deleted edge's stable arena
+//!   record after its last edgeuse pair moves. Other plain `delete`s of edge uses,
+//!   vertex uses, shells and regions unlink the record (it stays as an orphan).
+//!   `m_pEdgeListHead->Remove` takes the edge off [`Brep::edge_list`] before the
+//!   transfers begin. The owning-list edits
 //!   `SmEdge::Remove(eu)`, `SmVertex::Remove(vu)`, `SmRegion::Remove(shell)` and
 //!   `SmBrep::Remove(region)` (inline `SmOwningTopology` operations) edit the records'
 //!   use lists and back links.
@@ -89,9 +90,9 @@
 //!   back the region and shell it may have made (`MakeFaceWithCurves` warns about it).
 //! - **`GlueEdgesGeneral`**: the arena cannot share one curve between two edges, so
 //!   upstream's `pSurvCurve == pDelCurve` short cut (no `CurveMaxDistanceBetween`) is taken
-//!   only for two edges without curve (`NULL == NULL`). The glued-away edge stays in the edge arena as an orphan without edge uses;
-//!   enumerations of the B-rep's edges must skip edges without edge uses (upstream removes
-//!   it from `m_pEdgeListHead`).
+//!   only for two edges without curve (`NULL == NULL`). The glued-away edge leaves the
+//!   owning list before transfers and is destroyed after its last edgeuse pair moves,
+//!   as upstream does; unrelated typed ids remain valid.
 //! - **Notification context.** Face-from-curves entrypoints share one algorithm.
 //!   The kernel-context variant binds caller-owned stores to the actual kernel only
 //!   during construction notifications; the external-context API keeps its
@@ -99,7 +100,7 @@
 //! - **Bounds.** No recursion; every loop is over input arrays or B-rep lists.
 
 use crate::boolean::merge::p1::{MergeState, VertexCopy};
-use crate::boolean::merge::p2::{make_faceuse, MergeOperand, TopologyCopy};
+use crate::boolean::merge::p2::{make_faceuse_with, MergeContext, MergeOperand, TopologyCopy};
 use crate::boolean::topology_intersector::p1::{Relations, TopologyIntersector};
 use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::curve::curve::p2::CurveKind;
@@ -116,10 +117,11 @@ use crate::math::{Point3, EFF_ZERO, EFF_ZERO_DEG, PI};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_curve_n_lib::InValueType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use crate::surface::surface::{Surface, SurfaceKind};
+use crate::surface::surface::Surface;
 use crate::topology::brep::p1;
 use crate::topology::brep::p10::{self, MakeTopologyOptions, TopologyEnv};
 use crate::topology::brep::p2;
+use crate::topology::brep::p4;
 use crate::topology::brep::p6;
 use crate::topology::brep_data::BrepData;
 use crate::topology::database_io::FileType;
@@ -247,13 +249,11 @@ fn make_wire_edge_vertex(
     )
 }
 
-/// `DeleteEdge(edge)`.
-fn delete_edge(_b: &mut Brep, _e: EdgeId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge
-    Err(SolidError::unported(
-        "SmBrep::DeleteEdge",
-        "topology.brep_p4",
-    ))
+/// `DeleteEdge(edge)` (default `pOptSurfaceToKeep = NULL`), with the caller's
+/// notification records, attributes and identities (and context, else the kernel's).
+fn delete_edge(k: &mut Kernel, b: &mut Brep, e: EdgeId, env: &mut ed::NotifyEnv<'_>) -> Result<()> {
+    let mut d = p4::DeleteEnv::from_notify(env);
+    p4::delete_edge(k, b, &mut d, e, None)
 }
 
 /// `GlueVertices(survivor, other)` (default `pOptWireEdgesInBrep = NULL`), with the
@@ -380,39 +380,13 @@ fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
 /// space of `env` (`this_face` for the new faces): entities whose arena ids coincide share
 /// an identity.
 fn merge_copy_faces(
-    k: &mut Kernel,
+    mut context: MergeContext<'_>,
     src: &mut Brep,
     dest: &mut Brep,
     faces: &[FaceId],
-    this_face: &dyn Fn(FaceId) -> ObjectRef,
-    env: &mut ed::NotifyEnv<'_>,
+    relations: &mut Relations,
+    copy: &mut TopologyCopy<'_>,
 ) -> Result<Vec<FaceId>> {
-    let _merge = MergeState::<TopologyIntersector<MergeOperand>>::with_breps(
-        k,
-        (&*dest, MergeOperand::Primary),
-        Some((&*src, MergeOperand::Other)),
-        dest.tolerance(),
-        20.0 * PI / 180.0,
-        None,
-    )?;
-    // The new merge's mate maps start empty.
-    let mut relations = Relations::default();
-    let key_of = env.key_of;
-    let vertex_key = |v: VertexId| key_of(EntityRef::Vertex(v));
-    let edge_key = |e: EdgeId| key_of(EntityRef::Edge(e));
-    let face_key = |f: FaceId| key_of(EntityRef::Face(f));
-    let mut copy = TopologyCopy {
-        vertices: VertexCopy {
-            records: &mut *env.records,
-            attributes: &mut *env.attributes,
-            source_key: &vertex_key,
-            destination_key: key_of,
-        },
-        edge_source_key: &edge_key,
-        edge_destination_key: &edge_key,
-        face_source_key: &face_key,
-        face_destination_key: this_face,
-    };
     let mut new_faces = Vec::new();
     for &f in faces {
         if !face_in_brep(src, f)? {
@@ -420,21 +394,23 @@ fn merge_copy_faces(
         }
         let faceuse = fp2::upward_faceuse(src, f)?
             .ok_or(SolidError::invalid_input(OP, "face without face use"))?;
-        let doing_boolean = k.context.doing_boolean();
-        k.context.set_doing_boolean(true);
+        let doing_boolean = context.kernel().context.doing_boolean();
+        context.kernel_mut().context.set_doing_boolean(true);
         let mut list = Vec::new();
-        let made = make_faceuse(
-            k,
+        let made = make_faceuse_with(
+            context.reborrow(),
             dest,
             src,
             faceuse,
             None,
-            &mut relations,
-            &mut copy,
-            env.context.as_deref_mut(),
+            relations,
+            copy,
             Some(&mut list),
         );
-        k.context.set_doing_boolean(doing_boolean);
+        context
+            .kernel_mut()
+            .context
+            .set_doing_boolean(doing_boolean);
         ignored(made)?;
         new_faces.extend(list);
     }
@@ -966,22 +942,15 @@ fn make_face_with_curves_impl(
                         .get_mut(index + jj)
                         .ok_or_else(|| null("loop counts exceed the curves"))?;
                     ignore_status(entry.convert_to_2d(k))?;
-                    let uv_curve = entry.clone();
+                    let uv_curve = entry.clone_for_evaluation()?;
                     let new3d = if crv_on_surf {
-                        let base = match surface.kind() {
-                            SurfaceKind::BSpline(s) => s.clone(),
-                            // (a plane's or a surface of revolution's B-spline base would drop
-                            // the kind's evaluation overrides, as every other kind's would)
-                            _ => {
-                                // UNPORTED(curve.crv_on_surf): SmCrvOnSurf over a non-B-spline
-                                // surface (the Rust CrvOnSurf holds only B-spline surfaces)
-                                return Err(SolidError::unported(
-                                    "SmCrvOnSurf (non-B-spline surface)",
-                                    "curve.crv_on_surf",
-                                ));
-                            }
-                        };
-                        let c = CrvOnSurf::new(k, uv_curve, base, Some(*uv_domain), 2)?;
+                        let c = CrvOnSurf::new(
+                            k,
+                            uv_curve,
+                            surface.clone_for_evaluation()?,
+                            Some(*uv_domain),
+                            2,
+                        )?;
                         let c = Curve::from(c);
                         // (IsDegenerate returns a flag upstream: a failed test is "no")
                         if ignored(c.is_degenerate(k, EFF_ZERO, None))?.unwrap_or(false) {
@@ -1358,7 +1327,8 @@ pub fn glue_edges_general(
 
     // a wire edge is just deleted
     if ed::is_wire(b, del)? {
-        delete_edge(b, del)?;
+        // status ignored upstream
+        ignore_status(delete_edge(k, b, del, env))?;
         return Ok(());
     }
 
@@ -1452,6 +1422,10 @@ pub fn glue_edges_general(
 
     let mut surv_wire = ed::is_wire(b, surv)?;
     let to_delete_eus = ed::edgeuses(b, del, None, None)?;
+
+    // Remove Edge from the Brep list - the edge record is not deleted
+    b.remove_from_edge_list(del);
+
     let mut test_split: Vec<FaceuseId> = Vec::new();
 
     // every mated pair, from the end of the list
@@ -1611,6 +1585,10 @@ pub fn glue_edges_general(
             ed::set_tolerance(b, surv, radius, true, true)?;
         }
 
+        // Upstream destroys the deleted edge once its last pair has moved.
+        if b.edge(del)?.edgeuses.is_empty() {
+            b.remove_edge_record(del)?;
+        }
         jj -= 2;
     }
 
@@ -1671,7 +1649,39 @@ pub fn copy_faces(
     if use_merge {
         // (the merge object is made before the face loop; MakeFaceuse's status is
         // ignored)
-        if let Some(made) = ignored(merge_copy_faces(k, src, dest, faces, this_face, env))? {
+        let _merge = MergeState::<TopologyIntersector<MergeOperand>>::with_breps(
+            k,
+            (&*dest, MergeOperand::Primary),
+            Some((&*src, MergeOperand::Other)),
+            dest.tolerance(),
+            20.0 * PI / 180.0,
+            None,
+        )?;
+        let source_key = env.key_of;
+        let mut copy = TopologyCopy {
+            vertices: VertexCopy {
+                records: env.records,
+                attributes: env.attributes,
+                source_key: &|v| source_key(EntityRef::Vertex(v)),
+                destination_key: source_key,
+            },
+            edge_source_key: &|e| source_key(EntityRef::Edge(e)),
+            edge_destination_key: &|e| source_key(EntityRef::Edge(e)),
+            face_source_key: &|f| source_key(EntityRef::Face(f)),
+            face_destination_key: this_face,
+        };
+        let context = match env.context.as_deref_mut() {
+            Some(context) => MergeContext::Lent(k, context),
+            None => MergeContext::Split(k, None),
+        };
+        if let Some(made) = ignored(merge_copy_faces(
+            context,
+            src,
+            dest,
+            faces,
+            &mut Relations::default(),
+            &mut copy,
+        ))? {
             new_faces = made;
         }
         return Ok((new_faces, all_ok));
@@ -1738,6 +1748,31 @@ pub fn copy_faces(
         }
     }
     Ok((new_faces, all_ok))
+}
+
+/// `CopyFaces` with a caller-retained merge's relationships and distinct source
+/// identities. It uses the same face-copy loop as [`copy_faces`]; mate records are
+/// retained even when a later face fails. Ordinary `MakeFaceuse` errors are ignored,
+/// as in C++; dependency and invalid-input errors propagate.
+pub fn copy_faces_with_merge(
+    context: MergeContext<'_>,
+    src: &mut Brep,
+    faces: &[FaceId],
+    dest: &mut Brep,
+    relations: &mut Relations,
+    copy: &mut TopologyCopy<'_>,
+) -> Result<Vec<FaceId>> {
+    brep_set_tolerance(context.kernel(), dest, src.tolerance(), true, true)?;
+    // C++ constructs this local even when the caller supplies a merge object.
+    let _local_merge = MergeState::<TopologyIntersector<MergeOperand>>::with_breps(
+        context.kernel(),
+        (&*dest, MergeOperand::Primary),
+        Some((&*src, MergeOperand::Other)),
+        dest.tolerance(),
+        20.0 * PI / 180.0,
+        None,
+    )?;
+    merge_copy_faces(context, src, dest, faces, relations, copy)
 }
 
 // ---- MergeSelfIntersectionCurves ------------------------------------------------------------
@@ -2135,6 +2170,57 @@ mod tests {
         b.shell_mut(wire).unwrap().members =
             ShellMembers::Edgeuse(b.edge(edges[3]).unwrap().edgeuses[0]);
         (b, edges[3], edges[0], face)
+    }
+
+    #[test]
+    fn glue_destroys_transferred_edge_after_last_pair() {
+        let mut k = Kernel::default();
+        let (mut b, surviving, deleted, _) = glue_notification_fixture();
+        let ends = b.edge(deleted).unwrap().vertices;
+        let shared_ends = [ends[1], ends[0]];
+        // Make the wire coincide with the sheet edge, with opposite direction.
+        // Both edges share vertex identities, as GlueEdgesGeneral requires.
+        let wire_uses = ed::edgeuses(&b, surviving, None, None).unwrap();
+        for (eu, vertex) in wire_uses.into_iter().zip(shared_ends) {
+            let vu = eu1::vertexuse(&b, eu).unwrap().unwrap();
+            let old_vertex = b.vertexuse(vu).unwrap().vertex.unwrap();
+            b.vertex_mut(old_vertex)
+                .unwrap()
+                .vertexuses
+                .retain(|&candidate| candidate != vu);
+            b.vertex_mut(vertex).unwrap().vertexuses.push(vu);
+            b.vertexuse_mut(vu).unwrap().vertex = Some(vertex);
+        }
+        b.edge_mut(surviving).unwrap().vertices = shared_ends;
+        b.edge_mut(surviving).unwrap().curve =
+            Some(Curve::from(crate::curve::line::Line::from_points(
+                b.vertex(shared_ends[0]).unwrap().point,
+                b.vertex(shared_ends[1]).unwrap().point,
+                3,
+            )));
+        let mut records = std::collections::BTreeMap::new();
+        let mut attributes = AttributeStore::default();
+        glue_edges_general(
+            &mut k,
+            &mut b,
+            Some(surviving),
+            OrientType::Opposite,
+            0.0,
+            false,
+            Some(deleted),
+            None,
+            &mut ed::NotifyEnv {
+                records: &mut records,
+                attributes: &mut attributes,
+                context: None,
+                key_of: &key_of,
+            },
+        )
+        .unwrap();
+        assert!(!p1::edges(&b, None).unwrap().contains(&deleted));
+        assert!(b.edge(deleted).is_err());
+        assert_eq!(b.edges().len(), 3);
+        assert_eq!(ed::edgeuses(&b, surviving, None, None).unwrap().len(), 2);
     }
 
     #[test]

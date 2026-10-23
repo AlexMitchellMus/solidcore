@@ -885,29 +885,28 @@ mod tests {
     #[test]
     fn solids_run_primitive_creation_until_the_next_unported_call() {
         let k = &mut Kernel::default();
-        // the faces are built (topology.brep_p8); stitching them stops at
-        // SmBrep::StitchFaces
+        // the faces are built (topology.brep_p8), stitched (topology.brep_p4) and
+        // bounded (query.brep); SmSurface::DropCurve is the next unported call, as it
+        // is for the closed analytic faces after the region split
         for r in [
             create_box(k, o(), 5.0, 10.0, 20.0),
             create_cylinder(k, o(), 5.0, 10.0),
             create_cone(k, o(), 5.0, 2.0, 10.0),
             create_pyramid(k, o(), 2.0, 3.0),
             create_cylindrical_box(k, o(), 10.0, 2.0, 5.0, 0.0, 90.0),
+            create_sphere(k, o(), 5.0),
+            create_torus(k, o(), 10.0, 2.0),
         ] {
-            assert_eq!(deferred_at(&r), Some("topology.brep_p4"));
-        }
-        // the closed analytic face stops in MakeFaceTopology
-        for r in [create_sphere(k, o(), 5.0), create_torus(k, o(), 10.0, 2.0)] {
-            assert_eq!(deferred_at(&r), Some("topology.brep_p6"));
+            assert_eq!(deferred_at(&r), Some("intersect.surface_drop_lib_p3"));
         }
         // partial solids sweep a profile (topology sweep) past SmFace::FindVertexSector
-        // until SmBrep::DeleteEdge
+        // and SmBrep::DeleteEdge until SmFace::CurveOnClassify
         for r in [
             create_partial_sphere(k, o(), 5.0, 0.0, 90.0),
             create_partial_cylinder(k, o(), 5.0, 10.0, 0.0, 90.0),
             create_partial_torus(k, o(), 10.0, 2.0, 0.0, 90.0),
         ] {
-            assert_eq!(deferred_at(&r), Some("topology.brep_p4"));
+            assert_eq!(deferred_at(&r), Some("query.face_p2"));
         }
         assert_eq!(
             deferred_at(&create_sphere_no_pole(k, o(), -5.0)),

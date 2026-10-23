@@ -19,11 +19,14 @@
 //! `CreateFilletCorners` defers to `blend.fillet_executive_p1`, so `SmTemporaryRadiusChange`
 //! (which needs a loaded solver) is not compared yet.
 
+use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use solidcore::blend::fillet_custom_solver::ConstantRadiusAssistedFs;
 use solidcore::blend::fillet_executive::p2::FilletParameters;
+use solidcore::blend::fillet_executive::p1::ExecutiveObjects;
+use solidcore::blend::fillet_geom::p1::{FilStatus, FilletEdgeType};
 use solidcore::blend::fillet_executive::p3::{
     ContextMark, CornerView, ErrorInfo, ExecutionOptions, ExecutiveAccess, FilletExecutive,
     StitchAttempt, StitchSettings, TopoEdgeView,
@@ -521,13 +524,10 @@ impl ExecutiveAccess<Handle> for Access {
         _: Handle,
         _: &mut FilletExecutive<Handle>,
     ) -> SolidResult<()> {
-        // No concrete object is constructed here. Future fixtures must dispatch
-        // derived types to their owners, as documented on ExecutiveAccess.
-        // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
-        Err(SolidError::unported(
-            "SmFilletSolver::CalcFilletGeom",
-            "blend.fillet_solver_p4",
-        ))
+        // This fixture builds no solver, so there is nothing to dispatch to: the
+        // base `CalcFilletGeom` is ported (`blend::fillet_solver::p4`) and
+        // `SmSurfaceSurfaceFS`'s override is blend.fillet_standard_solver_p2's.
+        missing()
     }
     fn corner_error_info(
         &self,
@@ -617,6 +617,22 @@ impl ExecutiveAccess<Handle> for Access {
     fn geom_side_edgeuses(&self, _: Handle) -> SolidResult<Vec<Handle>> {
         missing()
     }
+    fn edge_edgeuses(&self, edge: Handle) -> SolidResult<Vec<Handle>> {
+        let Handle::Edge(e) = edge else {
+            return missing();
+        };
+        let b = self.brep(Handle::Brep(0))?;
+        Ok(edge::edgeuses(b, e, None, None)?.into_iter().map(Handle::Edgeuse).collect())
+    }
+    fn fillet_edge_note(
+        &self,
+        _: Handle,
+    ) -> SolidResult<(Option<&'static str>, FilletEdgeType, FilStatus)> {
+        missing()
+    }
+    fn new_executive_objects(&mut self, _: &mut Kernel) -> SolidResult<ExecutiveObjects<Handle>> {
+        missing()
+    }
     fn edgeuse_edge(&self, _: Handle) -> SolidResult<Option<Handle>> {
         missing()
     }
@@ -657,6 +673,9 @@ impl ExecutiveAccess<Handle> for Access {
     fn solver_edgeuse(&self, _: Handle, _: usize) -> SolidResult<Option<Handle>> {
         missing()
     }
+    fn solver_corner(&self, _: Handle, _: usize) -> SolidResult<Option<Handle>> {
+        missing()
+    }
     fn corner_setback_distance(&self, _: Handle) -> SolidResult<f64> {
         missing()
     }
@@ -683,6 +702,26 @@ impl ExecutiveAccess<Handle> for Access {
             update_only_if_larger,
             cascade_to_boundaries,
         )
+    }
+    fn stitch_faces(
+        &mut self,
+        k: &mut Kernel,
+        brep: Handle,
+        tolerance: f64,
+        faces: Option<&[Handle]>,
+        allow_spine_edges: bool,
+    ) -> SolidResult<StitchAttempt> {
+        // both executive call sites stitch every face (pOptFaces = NULL)
+        if faces.is_some() {
+            return missing();
+        }
+        StitchAttempt::from_stitch(solidcore::topology::brep::p4::stitch_faces(
+            k,
+            self.brep_mut(brep)?,
+            tolerance,
+            None,
+            allow_spine_edges,
+        ))
     }
     fn tolerance(&self, k: &Kernel, brep: Handle, approx: bool) -> SolidResult<f64> {
         let tolerance = self.brep(brep)?.tolerance();
@@ -937,6 +976,11 @@ fn executive(target: Option<Handle>) -> FilletExecutive<Handle> {
         intersection_edges: vec![],
         intersection_vertices: vec![],
         law_sequence_edges: vec![],
+        pseudo_brep: None,
+        surface_generators: vec![],
+        vertex_corner_map: BTreeMap::new(),
+        edgeuse_solver_map: BTreeMap::new(),
+        self_intersection_handler: None,
     };
     executive.intersector.ignore_tangency = true;
     executive
@@ -952,13 +996,14 @@ fn xsect_type(code: usize) -> Result<FilletSurfaceGeneratorType, HarnessError> {
     })
 }
 
+/// `SmFilletSolverType` (`SmFilletSolver.h:47`) from its code.
 fn radius_type(code: usize) -> Result<FilletSolverType, HarnessError> {
     Ok(match code {
         0 => FilletSolverType::Unknown,
-        1 => FilletSolverType::ConstRadius,
-        2 => FilletSolverType::ConstDist,
+        1 => FilletSolverType::SurfSurf,
+        2 => FilletSolverType::ConstRadius,
         3 => FilletSolverType::VariableRadius,
-        4 => FilletSolverType::SurfSurf,
+        4 => FilletSolverType::ConstDist,
         5 => FilletSolverType::CurveBased,
         6 => FilletSolverType::ConstRadiusAssisted,
         _ => return Err(harness("radius type code out of range")),

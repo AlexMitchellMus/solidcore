@@ -363,6 +363,32 @@ pub struct SurfOfRevolution {
 }
 
 impl SurfOfRevolution {
+    /// An evaluation copy with an exact, owner-preserving generator. `depth` is
+    /// the generator's depth in the shared 64-level geometry traversal.
+    pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
+        let gen_curve = self
+            .gen_curve
+            .as_ref()
+            .map(|c| c.clone_for_evaluation_depth(depth))
+            .transpose()?;
+        let polar_curve = self.polar_curve.as_ref().map(|c| {
+            let mut copy = c.clone();
+            *copy.base_mut() = c.base().clone_exact();
+            copy
+        });
+        Ok(Self {
+            base: self.base.clone_exact(),
+            gen_curve,
+            make_nurb_gen_curve: self.make_nurb_gen_curve,
+            planar_generator: self.planar_generator,
+            position: self.position,
+            anal_uv_domain: self.anal_uv_domain,
+            swap_uv: self.swap_uv,
+            polar: self.polar.clone(),
+            polar_curve,
+        })
+    }
+
     /// `SmSurfOfRevolution_TYPE` (`SURF_BASE_TYPE + 20`).
     pub const TYPE: i64 = SURF_OF_REVOLUTION_TYPE;
 
@@ -372,20 +398,17 @@ impl SurfOfRevolution {
     /// knots up, while upstream works on the original objects.
     #[must_use]
     pub fn clone_exact(&self) -> Self {
-        let mut copy = Self {
+        Self {
             base: self.base.clone_exact(),
-            ..self.clone()
-        };
-        if let (Some(dst), Some(src)) = (
-            copy.gen_curve.as_mut().and_then(gen_base_mut),
-            self.gen_curve.as_ref().and_then(|g| gen_base(g).ok()),
-        ) {
-            *dst = src.clone_exact();
+            gen_curve: self.gen_curve.as_ref().map(Curve::clone_exact_bounded),
+            make_nurb_gen_curve: self.make_nurb_gen_curve,
+            planar_generator: self.planar_generator,
+            position: self.position,
+            anal_uv_domain: self.anal_uv_domain,
+            swap_uv: self.swap_uv,
+            polar: self.polar.clone(),
+            polar_curve: self.polar_curve.as_ref().map(Ellipse::clone_exact_bounded),
         }
-        if let (Some(dst), Some(src)) = (copy.polar_curve.as_mut(), self.polar_curve.as_ref()) {
-            dst.base = src.base.clone_exact();
-        }
-        copy
     }
 
     // ---- construction ---------------------------------------------------------------

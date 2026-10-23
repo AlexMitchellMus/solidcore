@@ -382,8 +382,8 @@ pub fn non_manifold_boolean<D: BooleanDriver>(
 /// stable handles in the implementation's canonical storage. Attribute methods
 /// refer to the shared `SM_AI_SURFACEMAP` attribute and its live user list.
 /// No second relationship map or surface table is maintained by this unit.
-/// No kernel implementation exists yet: the canonical engine integration belongs
-/// with `boolean.merge_p2` / `boolean.merge_p4`.
+/// The sweep store supplies its retained merge engine and caller-owned bodies;
+/// the unit's test drivers also exercise skipped-surface bookkeeping.
 pub trait PiecewiseAccess: BooleanDriver {
     /// Stable surface identity (including the containing B-rep).
     type Surface: Copy;
@@ -675,12 +675,8 @@ fn stitch_and_orient(
     )
 }
 
-fn shrink_geometry(_k: &mut Kernel, _brep: &mut Brep) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::ShrinkGeometry
-    Err(SolidError::unported(
-        "SmBrep::ShrinkGeometry",
-        "topology.brep_p4",
-    ))
+fn shrink_geometry(k: &mut Kernel, brep: &mut Brep) -> Result<()> {
+    crate::topology::brep::p4::shrink_geometry(k, brep)
 }
 
 fn boolean_2d(

@@ -824,11 +824,11 @@ fn read_curve(rd: &mut Rd<'_>, uv: bool) -> Result<Option<SmCurve>, HarnessError
             read_curve(rd, true)?.ok_or_else(|| harness("export: CrvOnSurf without UV curve"))?;
         let surface =
             read_surface(rd)?.ok_or_else(|| harness("export: CrvOnSurf without surface"))?;
-        let SurfaceKind::BSpline(base) = surface.kind() else {
+        let SurfaceKind::BSpline(_) = surface.kind() else {
             return Err(harness("export: CrvOnSurf base is not a B-spline surface"));
         };
         let k = Kernel::default();
-        let cos = CrvOnSurf::new(&k, uv_curve, base.clone(), None, 1)
+        let cos = CrvOnSurf::new(&k, uv_curve, surface, None, 1)
             .map_err(|e| harness(format!("export CrvOnSurf: {e}")))?;
         return Ok(Some(SmCurve::from(cos)));
     }

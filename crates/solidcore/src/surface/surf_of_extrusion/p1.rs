@@ -68,7 +68,12 @@
 //!   conversions and `DropPointFast` return `SM_ERR` without a NURB (call
 //!   [`SurfOfExtrusion::make_nurb`] first) instead of reading a `(0, 0, 0, 0)` domain;
 //!   [`SurfOfExtrusion::gen_dir_param_extent`] reads the NURB as it is (an empty
-//!   interval without one). `Reparameterize` makes it.
+//!   interval without one). `Reparameterize` and a non-identity `Transform` make it.
+//!   Inherited `Surface` evaluation and iso-curve queries use a temporary, bounded
+//!   copy via `base_with_nurb`; they do not change the stored copy state. A lazy
+//!   B-spline generator (as returned by the extrusion recogniser) uses the analytic
+//!   domain, swapped when needed, for `Surface::natural_uv_domain`; other lazy
+//!   generator kinds still require an explicit `MakeNurb` for that domain query.
 //! - **Out-of-bounds evaluation.** `SmTemporaryChangeValue` gives the generator the
 //!   surface's out-of-bounds flag for the evaluation / drop; only a B-spline generator
 //!   reads it, so only that kind is copied with the flag changed. `STEPInversion`
@@ -86,6 +91,8 @@
 //!   parameter conversion) is returned. A failed `IntersectWithLine` in
 //!   `CreateDirectrixFromPoint` asks for the general intersection (upstream reads an
 //!   unset flag).
+//! - **Transform nesting.** The generator transform carries the caller's geometry
+//!   depth so volume appends remain subject to the 64-level whole-geometry bound.
 //! - **Unported callees.** `STEPInversion` of a
 //!   generator not perpendicular to the extrusion uses `SmBSplineSurface::STEPInversion`
 //!   (whose solves are in `surface.surface_p1` / `surface.surface_p5`). Those return
@@ -93,6 +100,8 @@
 //! - **`sm_IntersectGenerators`** reads `pOpt3DCurves->GetSize()` before checking the
 //!   pointer and compares offset curves it may not have set; here a missing curve list
 //!   has size 0 and unset offsets compare unequal.
+
+use std::borrow::Cow;
 
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::p8::CurveIntersectOptions;
@@ -316,6 +325,26 @@ pub struct SurfOfExtrusion {
 }
 
 impl SurfOfExtrusion {
+    /// An evaluation copy with an exact, owner-preserving generator. `depth` is
+    /// the generator's depth in the shared 64-level geometry traversal.
+    pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
+        Ok(Self {
+            base: self.base.clone_exact(),
+            gen_curve: self
+                .gen_curve
+                .as_ref()
+                .map(|c| c.clone_for_evaluation_depth(depth))
+                .transpose()?,
+            origin: self.origin,
+            extrusion_vec: self.extrusion_vec,
+            anal_uv_domain: self.anal_uv_domain,
+            orientation: self.orientation,
+            swap_uv: self.swap_uv,
+            curve_point: self.curve_point,
+            curve_vec: self.curve_vec,
+        })
+    }
+
     /// `SmSurfOfExtrusion_TYPE` (`SURF_BASE_TYPE + 30`).
     pub const TYPE: i64 = SURF_OF_EXTRUSION_TYPE;
 
@@ -693,6 +722,37 @@ impl SurfOfExtrusion {
     /// The `SmBSplineSurface` base object, mutably.
     pub fn base_mut(&mut self) -> &mut BSplineSurface {
         &mut self.base
+    }
+
+    /// The inherited NURB for a query, made on a bounded temporary copy when missing.
+    /// An existing (possibly reparameterised) NURB is borrowed unchanged.
+    pub(crate) fn base_with_nurb(&self, k: &Kernel) -> Result<Cow<'_, BSplineSurface>> {
+        if self.base.gw_nurb().is_some() {
+            return Ok(Cow::Borrowed(&self.base));
+        }
+        let mut copy = self.clone_for_evaluation(0)?;
+        copy.make_nurb(k)?;
+        Ok(Cow::Owned(copy.base))
+    }
+
+    /// The recogniser's lazy B-spline generator has the STEP interval as its NURB
+    /// interval. Read that domain without making a NURB or choosing a kernel.
+    pub(crate) fn natural_uv_domain_for_query(&self) -> Extent2d {
+        if self.base.gw_nurb().is_none()
+            && matches!(
+                self.gen_curve.as_ref().map(Curve::kind),
+                Some(CurveKind::BSpline(_))
+            )
+        {
+            let min = self.anal_uv_domain.min();
+            let max = self.anal_uv_domain.max();
+            return if self.swap_uv {
+                Extent2d::from_bounds(min.y, min.x, max.y, max.x)
+            } else {
+                self.anal_uv_domain
+            };
+        }
+        self.base.natural_uv_domain()
     }
 
     /// A temporary evaluation copy: the surface's and the generator's NURBS data are
@@ -1599,6 +1659,17 @@ impl SurfOfExtrusion {
         rotate_n_move: &Axis2Placement,
         scale: Option<Vec3>,
     ) -> Result<()> {
+        self.transform_at_depth(k, rotate_n_move, scale, 0)
+    }
+
+    /// Carries the caller's whole-geometry depth into the generator transform.
+    pub(crate) fn transform_at_depth(
+        &mut self,
+        k: &Kernel,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+        depth: usize,
+    ) -> Result<()> {
         let identity_scale = Vec3::new(1.0, 1.0, 1.0);
 
         // no work - identity transform
@@ -1620,11 +1691,15 @@ impl SurfOfExtrusion {
         }
 
         // transform m_pNurb
+        // SmBSplineSurface::Transform reaches the virtual GetOrCreateGwNurbPointer.
+        if self.base.gw_nurb().is_none() {
+            ignore_status(self.make_nurb(k))?;
+        }
         self.base.transform(rotate_n_move, scale)?;
 
         // transform the rest of the 3d data (status ignored)
         if let Some(gen) = self.gen_curve.as_mut() {
-            ignore_status(gen.transform(k, rotate_n_move, scale))?;
+            ignore_status(gen.transform_at_depth(k, rotate_n_move, scale, depth + 1))?;
         }
 
         // Scale first.
@@ -2129,6 +2204,50 @@ mod tests {
 
     fn k() -> Kernel {
         Kernel::default()
+    }
+
+    #[test]
+    fn lazy_transform_matches_materialized_transform() {
+        let k = k();
+        let mut lazy = SurfOfExtrusion::new(
+            &k,
+            arc_gen(),
+            Point3::ZERO,
+            Vec3::new(0.0, 0.0, 2.0),
+            Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+            false,
+        )
+        .unwrap();
+        assert!(lazy.base().gw_nurb().is_none());
+        lazy.transform(&k, &Axis2Placement::IDENTITY, None).unwrap();
+        assert!(lazy.base().gw_nurb().is_none());
+        assert!(lazy
+            .transform(
+                &k,
+                &Axis2Placement::IDENTITY,
+                Some(Vec3::new(2.0, 3.0, 2.0))
+            )
+            .is_err());
+        assert!(lazy.base().gw_nurb().is_none());
+
+        let mut ready = lazy.clone_exact();
+        ready.make_nurb(&k).unwrap();
+        let mut transform = Axis2Placement::IDENTITY;
+        transform.translate(Vec3::new(3.0, -2.0, 1.0));
+        lazy.transform(&k, &transform, None).unwrap();
+        ready.transform(&k, &transform, None).unwrap();
+        assert!(lazy.base().gw_nurb().is_some());
+        assert_eq!(lazy.origin(), ready.origin());
+        for uv in [
+            Point2::new(0.0, 0.0),
+            Point2::new(0.25, 0.75),
+            Point2::new(1.0, 1.0),
+        ] {
+            assert_eq!(
+                lazy.base().evaluate_point(uv).unwrap(),
+                ready.base().evaluate_point(uv).unwrap()
+            );
+        }
     }
 
     /// A planar quadratic B-spline in the z = 0 plane.

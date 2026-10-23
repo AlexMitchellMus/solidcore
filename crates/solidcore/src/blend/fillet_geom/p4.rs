@@ -161,7 +161,7 @@ fn smin(a: f64, b: f64) -> f64 {
 /// `SmVertex::SetPoint` on a fillet vertex: the `SM_NO_CHANGE_GEOMETRY` notification
 /// resets the cached gaps of every vertex use of the vertex, then the point is stored
 /// (as `blend.fillet_geom_p1` does).
-pub(super) fn set_vertex_point(brep: &mut Brep, v: VertexId, point: Point3) -> Result<()> {
+pub(crate) fn set_vertex_point(brep: &mut Brep, v: VertexId, point: Point3) -> Result<()> {
     for vu in brep.vertex(v)?.vertexuses.clone() {
         let vu = brep.vertexuse_mut(vu)?;
         vu.vertex_edge_gap.reset();
@@ -176,7 +176,7 @@ pub(super) fn set_vertex_point(brep: &mut Brep, v: VertexId, point: Point3) -> R
 /// its cached edge/face gap (its mate's too) and the cached gaps of the edge's vertex
 /// uses; then the curve (possibly `NULL`) replaces the old one (as
 /// `blend.fillet_geom_p1` does for a rail).
-pub(super) fn set_edge_curve(brep: &mut Brep, e: EdgeId, curve: Option<Curve>) -> Result<()> {
+pub(crate) fn set_edge_curve(brep: &mut Brep, e: EdgeId, curve: Option<Curve>) -> Result<()> {
     for eu in edge::edgeuses(brep, e, None, None)? {
         let mate_eu = eu1::mate(brep, eu)?;
         let rec = brep.edgeuse_mut(eu)?;
@@ -2075,7 +2075,6 @@ impl FilletBrep {
     /// missing solver, rail, curve, UV curve, face, surface or cross-section edge;
     /// those of the length, arc-length, interpolation, lift and surface creations and
     /// of `SmFilletEdge::CalcBlendingRail`.
-    #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn calc_blending_geom(
         &mut self,
         k: &Kernel,
@@ -2086,6 +2085,30 @@ impl FilletBrep {
         let nul = || SolidError::null_pointer(OP_BLEND);
         let sid = self.geom(g)?.fillet_solver().ok_or_else(nul)?;
         let fil_solver = solver_of(solvers, sid, OP_BLEND)?;
+        self.calc_blending_geom_of_solver(k, g, fil_solver, target)
+    }
+
+    /// [`FilletBrep::calc_blending_geom`] with the geometry's solver
+    /// (`GetFilletSolver()`) given directly: for a caller that is that solver (the
+    /// fillet solver's `CalcFilletGeom`, unit `blend.fillet_solver_p4`, whose
+    /// geometries all name it). A geometry without a solver is still
+    /// `SM_ERR_NULL_POINTER`.
+    ///
+    /// # Errors
+    ///
+    /// As [`FilletBrep::calc_blending_geom`].
+    #[allow(clippy::too_many_lines)] // one upstream routine
+    pub fn calc_blending_geom_of_solver(
+        &mut self,
+        k: &Kernel,
+        g: FilletGeomId,
+        fil_solver: &FilletSolver,
+        target: &Brep,
+    ) -> Result<()> {
+        let nul = || SolidError::null_pointer(OP_BLEND);
+        if self.geom(g)?.fillet_solver().is_none() {
+            return Err(nul());
+        }
         let approx_tol_3d = fil_solver.approx_tol_3d;
         let tangency_tol_radians = fil_solver.tangency_tolerance;
 

@@ -85,7 +85,7 @@ use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::Surface;
 use crate::topology::edgeuse::{p1 as eu, p2 as edgeuse_p2};
 use crate::topology::face::p2 as face_p2;
-use crate::topology::{edge, loopuse, vertex, Brep, EdgeId, FaceId, VertexId};
+use crate::topology::{edge, loopuse, vertex, Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
 const OP: &str = "blend::fillet_solver::p3";
 
@@ -115,24 +115,15 @@ impl FilletSolver {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`]: the corners come from `GetFilletCorner` (unit
-    /// `blend.fillet_solver_p2`).
+    /// Those of [`FilletSolver::fillet_corner`] (`GetFilletCorner`, which reads the
+    /// filleted edge's vertices in `b`).
     pub fn other_fillet_corner(
         &self,
+        b: &Brep,
         this_corner: Option<FilletCornerId>,
     ) -> Result<Option<FilletCornerId>> {
-        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::GetFilletCorner
-        let corner0: Option<FilletCornerId> = unported_on(
-            (self, 0usize),
-            "SmFilletSolver::GetFilletCorner",
-            "blend.fillet_solver_p2",
-        )?;
-        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::GetFilletCorner
-        let corner1: Option<FilletCornerId> = unported_on(
-            (self, 1usize),
-            "SmFilletSolver::GetFilletCorner",
-            "blend.fillet_solver_p2",
-        )?;
+        let corner0 = self.fillet_corner(b, 0)?;
+        let corner1 = self.fillet_corner(b, 1)?;
         if this_corner == corner0 {
             return Ok(corner1);
         }
@@ -156,9 +147,8 @@ impl FilletSolver {
 /// # Errors
 ///
 /// `SM_ERR_NULL_POINTER` when a surface cache cannot be built; `SM_ERR` when a drop
-/// finds nothing or the plane solve finds no point; those of the drops;
-/// [`SolidError::Unported`] for the plane solve (`SmFilletSolver::PointOnPlaneSolve`,
-/// unit `blend.fillet_solver_p2`).
+/// finds nothing or the plane solve finds no point; those of the drops and of the
+/// solver's `PointOnPlaneSolve`.
 pub fn find_fillet_tsect_pnt(
     ops: &mut dyn FilletSolverOps,
     k: &Kernel,
@@ -298,14 +288,14 @@ impl FilletSolver {
     /// # Errors
     ///
     /// Those of the solver's virtuals (`GetSolverType`, `GetJacobianSize`,
-    /// `LoadInitialValues`), the evaluations and the solvers; `SM_ERR` for a failed
+    /// `SetupOffsetValues` (a radius law that cannot be evaluated), `LoadInitialValues`),
+    /// the evaluations and the solvers; `SM_ERR` for a failed
     /// variable-radius drop, a failed constant-radius-assisted plane solve, or more
     /// extra unknowns than `SM_MAX_USER_DOUBLES`; [`SolidError::InvalidInput`] for a
     /// missing offset surface or a Jacobian size below 4 (upstream indexes past
     /// `sIntervals`); [`SolidError::Unported`] for the variable-radius branch
-    /// (`SmVariableRadiusFS`), a constant-distance solver's distance and the
-    /// constant-radius-assisted plane solve (`PointOnPlaneSolve`, unit
-    /// `blend.fillet_solver_p2`).
+    /// (`SmVariableRadiusFS`) and a constant-distance solver's distance; those of the
+    /// constant-radius-assisted plane solve (the solver's `PointOnPlaneSolve`).
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     pub fn step_solve(
         ops: &mut dyn FilletSolverOps,
@@ -396,7 +386,11 @@ impl FilletSolver {
 
             // locals
             let mut radius = 0.0;
-            ignore_status(ops.setup_offset_values(current, Some(&mut radius)))?;
+            // Upstream ignores the status (its `SetupOffsetValues` never reports one, but sets
+            // the offsets from an unset radius when the law cannot be evaluated: UB-252). The
+            // port's reports that failure, and so does this, as the fork's `StepSolve` does
+            // (tangency-labs/smlib@9a12ad7).
+            ops.setup_offset_values(current, Some(&mut radius))?;
 
             // branch on SolverType
             let solver_type = ops.solver_type()?;
@@ -977,13 +971,14 @@ fn drop_param(
 /// refined; [`SolidError::InvalidInput`] for a classification index past the
 /// intervals (upstream reads out of bounds), an edge classification object that is not
 /// an edge, or a rail without a curve or original face where they are dereferenced;
-/// [`SolidError::Unported`] for `SmFilletSolver::RailEdgeuseIntersect` (unit
-/// `blend.fillet_solver_p2`).
+/// [`SolidError::InvalidInput`] where `RailEdgeuseIntersect` finds no crossing or
+/// fails (its status is `SE`-ignored upstream, which then reads the uninitialised
+/// `dEUParamMin` / `dEUParamMax`); [`SolidError::Unported`] from the solver.
 #[allow(clippy::too_many_arguments)]
 pub fn refine_rail_curve_classification(
     solver: &mut FilletSolver,
     k: &Kernel,
-    target: &Brep,
+    target: &mut Brep,
     fillets: &FilletBrep,
     rail_index: usize,
     small_intervals: &[usize],
@@ -999,6 +994,9 @@ pub fn refine_rail_curve_classification(
     // keeps the previous value
     let mut pnt_min = Point3::UNDEF;
     let mut pnt_max = Point3::UNDEF;
+    // sTsectPntMin / sTsectPntMax too (RailEdgeuseIntersect writes them in place)
+    let mut tsect_min = TsectPnt::default();
+    let mut tsect_max = TsectPnt::default();
     let mut failed = false;
 
     for ii in (1..=num_small_ivls).rev() {
@@ -1036,8 +1034,11 @@ pub fn refine_rail_curve_classification(
         }
 
         let edge_ivl = edge::interval(target, edge)?;
-        let edge_curve =
-            edge::curve(target, edge)?.ok_or_else(|| invalid("edge without a curve"))?;
+        // a copy: the solver below may give the side edge use a UV trim curve
+        let edge_curve = edge::curve(target, edge)?
+            .ok_or_else(|| invalid("edge without a curve"))?
+            .clone();
+        let edge_curve = &edge_curve;
         let zone_tol_3d = edge::tolerance(target, edge)?;
 
         // a guess for the Edge parameter where it crosses the rail at the Ivl min
@@ -1047,11 +1048,14 @@ pub fn refine_rail_curve_classification(
         };
 
         // the Edge parameter where it will cross the rail-to-be-created for Ivl min
-        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::RailEdgeuseIntersect
-        let eu_param_min: f64 = unported_on(
-            (&*solver, rail_index, side_eu, guess_min),
-            "SmFilletSolver::RailEdgeuseIntersect",
-            "blend.fillet_solver_p2",
+        let eu_param_min = rail_edgeuse_param(
+            solver,
+            k,
+            target,
+            rail_index,
+            side_eu,
+            guess_min,
+            &mut tsect_min,
         )?;
 
         // a guess for the Edge parameter at the Ivl max
@@ -1060,11 +1064,14 @@ pub fn refine_rail_curve_classification(
             continue;
         };
 
-        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::RailEdgeuseIntersect
-        let eu_param_max: f64 = unported_on(
-            (&*solver, rail_index, side_eu, guess_max),
-            "SmFilletSolver::RailEdgeuseIntersect",
-            "blend.fillet_solver_p2",
+        let eu_param_max = rail_edgeuse_param(
+            solver,
+            k,
+            target,
+            rail_index,
+            side_eu,
+            guess_max,
+            &mut tsect_max,
         )?;
 
         // Evaluate the params so we can check if the points are within tolerance
@@ -1100,6 +1107,32 @@ pub fn refine_rail_curve_classification(
     Ok(())
 }
 
+/// `SE(pFilletSolver->RailEdgeuseIntersect(lRailIndex, pSideEU, dGuessParam,
+/// bFoundIntersection, rTsectPnt, rdEUParam))` of `sm_RefineRailCurveClassification`:
+/// the edge use parameter. The status is signalled only; without a crossing (or on a
+/// failure) upstream goes on with the uninitialised parameter, which is
+/// [`SolidError::InvalidInput`] here. `Unported` propagates.
+#[allow(clippy::too_many_arguments)]
+fn rail_edgeuse_param(
+    solver: &mut FilletSolver,
+    k: &Kernel,
+    target: &mut Brep,
+    rail_index: usize,
+    side_eu: EdgeuseId,
+    guess: f64,
+    tsect: &mut TsectPnt,
+) -> Result<f64> {
+    match FilletSolver::rail_edgeuse_intersect(solver, k, target, rail_index, side_eu, guess, tsect)
+    {
+        Ok(Some(param)) => Ok(param),
+        Err(e) if e.is_unported() => Err(e),
+        // the uninitialised dEUParamMin / dEUParamMax would be read next
+        Ok(None) | Err(_) => Err(invalid(
+            "RailEdgeuseIntersect found no crossing (uninitialised edge use parameter upstream)",
+        )),
+    }
+}
+
 // ---- sm_CalcRailXEdge -------------------------------------------------------------------
 
 /// `sm_CalcRailXEdge(pFV, pFG, lRailIndex, pRail, pSideEdge, pGuess3DPnt, iDebugLevel)`:
@@ -1115,13 +1148,12 @@ pub fn refine_rail_curve_classification(
 /// `SM_ERR_NULL_POINTER` when the side edge has no edge use on the rail's face or a
 /// rail has no original face; `SM_ERR` when the guess drop or the intersection finds
 /// nothing; [`SolidError::InvalidInput`] where upstream dereferences `NULL`; those of
-/// the drop and the evaluations; [`SolidError::Unported`] for
-/// `SmFilletSolver::RailEdgeuseIntersect` (unit `blend.fillet_solver_p2`).
+/// the drop, the evaluations and `SmFilletSolver::RailEdgeuseIntersect`.
 #[allow(clippy::too_many_arguments)]
 pub fn calc_rail_x_edge(
     solver: &mut FilletSolver,
     k: &Kernel,
-    target: &Brep,
+    target: &mut Brep,
     fillets: &mut FilletBrep,
     vertex: VertexId,
     fillet_geom: FilletGeomId,
@@ -1157,17 +1189,24 @@ pub fn calc_rail_x_edge(
     let vu = fillets
         .vu_at_rail_end(vertex, Some(fillet_geom), None, None)?
         .ok_or_else(|| invalid("no vertex use at the rail end"))?;
+    // rTsectPnt is the vertex use's own point: written in place, also on a failure
+    let mut tsect = fillets.fillet_vertexuse(vu)?.tsect_pnt().clone();
     let mut found_intersection = false;
     for j in 1..=9u32 {
         if !have_guess_t {
             guess_param = ivl.evaluate(0.1 * f64::from(j));
         }
-        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::RailEdgeuseIntersect
-        found_intersection = unported_on(
-            (&*solver, rail_index, side_eu, guess_param, vu),
-            "SmFilletSolver::RailEdgeuseIntersect",
-            "blend.fillet_solver_p2",
-        )?;
+        let r = FilletSolver::rail_edgeuse_intersect(
+            solver,
+            k,
+            target,
+            rail_index,
+            side_eu,
+            guess_param,
+            &mut tsect,
+        );
+        fillets.fillet_vertexuse_mut(vu)?.set_tsect_pnt(&tsect);
+        found_intersection = r?.is_some();
         if have_guess_t || found_intersection {
             break;
         }
@@ -1255,8 +1294,9 @@ impl FilletSolver {
     /// convexity test, the drops and evaluations; [`SolidError::Unported`] from
     /// `sm_SplitRail` (`blend.fillet_solver_p1`, its fillet geometry calls),
     /// `SmFilletEdge::MakeFilletEdge` ([`FilletBrep::make_fillet_edge`], while the
-    /// pseudo B-rep has no infinite region or shell), `CreateCliffRollOverSideFG`
-    /// (`blend.fillet_solver_p2`) and the remaining callees of cliff rail trimming.
+    /// pseudo B-rep has no infinite region or shell), those of
+    /// [`FilletSolver::create_cliff_roll_over_side_fg`] and the remaining callees of
+    /// cliff rail trimming.
     /// The caller's ownership routing and actual geometry solver id are retained.
     #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
     pub fn process_full_roll_over(
@@ -1423,11 +1463,18 @@ impl FilletSolver {
                 .surface
                 .offset_distance()
                 .abs();
-            // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::CreateCliffRollOverSideFG
-            let _new_side_fg: FilletGeomId = unported_on(
-                (rail, side_edge, side_face, trim_side_faces, extension_dist),
-                "SmFilletSolver::CreateCliffRollOverSideFG",
-                "blend.fillet_solver_p2",
+            // `this` is the solver of the geometry being rolled over
+            let solver_id = fillets.geom(geom)?.fillet_solver().ok_or_else(nul)?;
+            let _new_side_fg: Option<FilletGeomId> = self.create_cliff_roll_over_side_fg(
+                k,
+                target,
+                fillets,
+                solver_id,
+                rail,
+                side_edge,
+                side_face,
+                trim_side_faces,
+                extension_dist,
             )?;
 
             if let Some(r) = new_rail {
@@ -1532,6 +1579,8 @@ mod tests {
     struct TestSolver {
         base: FilletSolver,
         ty: FilletSolverType,
+        /// `SetupOffsetValues` fails (a law that cannot be evaluated), before it sets anything.
+        setup_fails: bool,
     }
 
     impl TestSolver {
@@ -1551,7 +1600,11 @@ mod tests {
                 )
                 .expect("set");
             }
-            Self { base, ty }
+            Self {
+                base,
+                ty,
+                setup_fails: false,
+            }
         }
     }
 
@@ -1572,6 +1625,11 @@ mod tests {
             Ok(4)
         }
         fn setup_offset_values(&mut self, _t: &TsectPnt, d: Option<&mut f64>) -> Result<()> {
+            if self.setup_fails {
+                return Err(SolidError::sm_err(
+                    "test: the radius law cannot be evaluated",
+                ));
+            }
             for s in self.base.surfaces.iter_mut().flatten() {
                 s.surface.set_offset_distance(R);
             }
@@ -1663,10 +1721,17 @@ mod tests {
     fn step_flags(
         ty: FilletSolverType,
         y: f64,
+        step: f64,
+    ) -> (Result<()>, StepSolveOutcome, f64, TsectPnt) {
+        step_with(TestSolver::new(ty), y, step)
+    }
+
+    fn step_with(
+        mut fs: TestSolver,
+        y: f64,
         mut step: f64,
     ) -> (Result<()>, StepSolveOutcome, f64, TsectPnt) {
         let k = Kernel::default();
-        let mut fs = TestSolver::new(ty);
         let mut next = TsectPnt::new();
         let mut out = StepSolveOutcome {
             found_good_point: true,
@@ -1734,7 +1799,7 @@ mod tests {
     }
 
     #[test]
-    fn step_solve_defers_where_upstream_casts_or_plane_solves() {
+    fn step_solve_defers_where_upstream_casts_and_runs_the_plane_solve() {
         let (r, _, _) = step(FilletSolverType::VariableRadius, 1.8, 0.5);
         assert!(
             matches!(
@@ -1746,28 +1811,56 @@ mod tests {
             ),
             "{r:?}"
         );
+        // the assisted kind's step ends in the (base) PointOnPlaneSolve, which the test
+        // solver's equations satisfy on the clipped step
         let (r, _, _) = step(FilletSolverType::ConstRadiusAssisted, 1.8, 0.5);
+        let out = r.unwrap();
         assert!(
-            matches!(
-                r,
-                Err(SolidError::Unported {
-                    unit: "blend.fillet_solver_p2",
-                    ..
-                })
-            ),
-            "{r:?}"
+            out.found_good_point && out.clipped && !out.boundary_hit,
+            "{out:?}"
         );
+    }
+
+    /// UB-252: a radius that `SetupOffsetValues` could not set is not stepped on. Upstream ignores
+    /// the status (`SmFilletSolver.cpp:5254`) and goes on with the radius unset; the fork returns
+    /// the failure (tangency-labs/smlib@9a12ad7, tangency-labs/solidcore#458), and so does the
+    /// port. Run in the clipped branch, where the call sits.
+    #[test]
+    fn step_solve_returns_a_failed_setup_of_the_offsets() {
+        for ty in [
+            FilletSolverType::Unknown,
+            FilletSolverType::ConstRadius,
+            FilletSolverType::ConstDist,
+            FilletSolverType::VariableRadius,
+        ] {
+            let mut fs = TestSolver::new(ty);
+            fs.setup_fails = true;
+            let (r, out, _, next) = step_with(fs, 1.8, 0.5);
+            let e = r.expect_err(&format!("{ty:?}: a failed setup is a failed step"));
+            assert!(
+                !e.is_unported(),
+                "{ty:?}: the setup's own failure, not a deferral: {e:?}"
+            );
+            assert!(
+                out.clipped && !out.found_good_point,
+                "{ty:?}: nothing found after the failure: {out:?}"
+            );
+            assert_eq!(
+                next.uv_pos(SrfIndex::First),
+                TsectPnt::new().uv_pos(SrfIndex::First),
+                "{ty:?}: no point stored"
+            );
+        }
     }
 
     #[test]
     fn step_solve_keeps_the_flags_set_before_a_failure() {
-        // the flags start reset; the clip is recorded before the plane solve fails
+        // the flags start reset; the clip is recorded and the plane solve succeeds
         let (r, out, _, _) = step_flags(FilletSolverType::ConstRadiusAssisted, 1.8, 0.5);
-        assert!(r.is_err(), "{r:?}");
-        assert!(out.clipped && !out.boundary_hit, "{out:?}");
+        assert!(r.is_ok(), "{r:?}");
         assert!(
-            out.found_good_point,
-            "found before the plane solve: {out:?}"
+            out.clipped && out.found_good_point && !out.boundary_hit,
+            "{out:?}"
         );
         // the variable-radius cast fails after the clip, before any point is found
         let (r, out, _, _) = step_flags(FilletSolverType::VariableRadius, 1.8, 0.5);
@@ -1779,7 +1872,7 @@ mod tests {
     }
 
     #[test]
-    fn find_fillet_tsect_pnt_defers_at_the_plane_solve() {
+    fn find_fillet_tsect_pnt_solves_on_the_plane() {
         let k = Kernel::default();
         let mut fs = TestSolver::new(FilletSolverType::ConstRadius);
         let (s0, s1) = floor_and_wall();
@@ -1793,22 +1886,23 @@ mod tests {
             Vec3::new(0.0, 1.0, 0.0),
             &mut t,
         );
-        assert!(
-            matches!(
-                r,
-                Err(SolidError::Unported {
-                    unit: "blend.fillet_solver_p2",
-                    ..
-                })
-            ),
-            "{r:?}"
-        );
+        // the base PointOnPlaneSolve finds the ball on the plane; the trace direction is
+        // stored after it
+        assert!(r.is_ok(), "{r:?}");
+        assert_eq!(t.crv_deriv(), Vec3::new(0.0, 1.0, 0.0));
     }
 
     #[test]
-    fn other_fillet_corner_defers() {
+    fn other_fillet_corner_needs_the_executive() {
+        // no executive: GetFilletExecutive() is dereferenced upstream
         let fs = FilletSolver::new(1e-6, 0.1, 0.01);
-        assert!(fs.other_fillet_corner(None).is_err_and(|e| e.is_unported()));
+        let r = fs.other_fillet_corner(&Brep::new(), None);
+        assert!(matches!(r, Err(SolidError::InvalidInput { .. })), "{r:?}");
+        // with one, the corner lookup is blend.fillet_executive_p1's
+        let mut fs = fs;
+        fs.executive = Some(crate::blend::fillet_solver::p1::FilletExecutiveRef);
+        let r = fs.other_fillet_corner(&Brep::new(), None);
+        assert!(r.is_err_and(|e| e.is_unported()));
     }
 
     /// Resolves every handle to the one rail curve.
@@ -1958,13 +2052,13 @@ mod tests {
         let rail = fb.geom(g).unwrap().rail(0).unwrap();
         let mut cc = fb.fillet_edge(rail).unwrap().curve_class.clone().unwrap();
         let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
-        let target = Brep::new();
+        let mut target = Brep::new();
         // interval 1 does not classify to an edge at either end; interval 3 is the
         // interval count
         let r = refine_rail_curve_classification(
             &mut fs,
             &k,
-            &target,
+            &mut target,
             &fb,
             0,
             &[1, 2, 2],
@@ -1986,7 +2080,7 @@ mod tests {
         let b = target.add_vertex(Vec3::new(1.0, 0.0, 0.0)).unwrap();
         let side = target.add_edge(a, b).unwrap();
         let mut fs = FilletSolver::new(1e-6, 0.1, 0.01);
-        let r = calc_rail_x_edge(&mut fs, &k, &target, &mut fb, v, g, 0, rail, side, None);
+        let r = calc_rail_x_edge(&mut fs, &k, &mut target, &mut fb, v, g, 0, rail, side, None);
         assert!(matches!(r, Err(SolidError::Upstream { .. })), "{r:?}");
     }
 

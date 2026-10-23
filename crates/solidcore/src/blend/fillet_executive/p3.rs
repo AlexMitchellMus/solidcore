@@ -31,7 +31,10 @@
 //! Not upstream: [`ExecutiveAccess::shrink_face`] shrinks the new fillet faces with
 //! knot snapping of rounding errors (tangency-labs/solidcore#472).
 
-use crate::blend::fillet_geom::p1::FilletCornerType;
+use std::collections::BTreeMap;
+
+use crate::blend::fillet_executive::p1::ExecutiveObjects;
+use crate::blend::fillet_geom::p1::{FilStatus, FilletCornerType, FilletEdgeType};
 use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::error::{EntityRef, Result, SolidError};
@@ -98,7 +101,7 @@ pub struct ErrorInfo<O> {
     /// `m_pFilletEdges`, including null entries.
     pub edges: Vec<Option<O>>,
     /// `m_pFilletCurves` (not copied by operator=).
-    pub curves: Vec<O>,
+    pub curves: Vec<Option<O>>,
     /// `m_vLocation` (not copied by operator=).
     pub location: Option<Point3>,
     /// `m_cComment` (not copied by operator=).
@@ -113,7 +116,7 @@ impl<O> Default for ErrorInfo<O> {
             code: 0,
             status: 0,
             corner_type: FilletCornerType::Unknown,
-            edge_type: 0,
+            edge_type: FilletEdgeType::Unknown as i32,
             executive: None,
             vertex: None,
             edge: None,
@@ -205,6 +208,21 @@ pub struct FilletExecutive<O> {
     /// `m_sLawSequenceEdgeList`: the edge sequences `CreateSequenceOfLaws` set up, each
     /// in order (added by `blend.fillet_executive_p2`).
     pub law_sequence_edges: Vec<Vec<O>>,
+    /// `m_pPseudoBrep`: the fillet B-rep of fillet edges and vertices (added by
+    /// `blend.fillet_executive_p1`).
+    pub pseudo_brep: Option<O>,
+    /// `m_vFSGs`: the fillet surface generators the executive owns (added by
+    /// `blend.fillet_executive_p1`).
+    pub surface_generators: Vec<O>,
+    /// `m_vVertexCornerMap`: the fillet corner of each filleted vertex (added by
+    /// `blend.fillet_executive_p1`).
+    pub vertex_corner_map: BTreeMap<O, O>,
+    /// `m_vEdgeuseSolverMap`: the fillet solver of each filleted edge use (added by
+    /// `blend.fillet_executive_p1`; `blend::fillet_corner::p3::FilletExecutiveData`
+    /// holds the same map over typed ids).
+    pub edgeuse_solver_map: BTreeMap<O, O>,
+    /// `m_pSelfIntersectionHandler` (added by `blend.fillet_executive_p1`).
+    pub self_intersection_handler: Option<O>,
 }
 
 /// Error-only corner metadata, requested only after a corner operation fails.
@@ -243,6 +261,36 @@ pub struct StitchAttempt {
     pub max_vertex_gap: f64,
     /// `dMaxEGap`.
     pub max_edge_gap: f64,
+}
+
+impl StitchAttempt {
+    /// The attempt a `SmBrep::StitchFaces` call ([`crate::topology::brep::p4::stitch_faces`])
+    /// reports: its counts and gaps, or its failure as `status` with zero counts and
+    /// gaps (the callers read none of them after a failure). [`SolidError::Unported`]
+    /// propagates.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] from the stitch.
+    pub fn from_stitch(r: Result<crate::topology::brep::p4::StitchOutcome>) -> Result<Self> {
+        match r {
+            Ok(o) => Ok(Self {
+                status: None,
+                stitched: u64::from(o.stitched_edges),
+                lamina: u64::from(o.lamina_edges),
+                max_vertex_gap: o.max_vertex_edge_gap,
+                max_edge_gap: o.max_edge_face_trim_curve_gap,
+            }),
+            Err(e) if e.is_unported() => Err(e),
+            Err(e) => Ok(Self {
+                status: Some(e),
+                stitched: 0,
+                lamina: 0,
+                max_vertex_gap: 0.0,
+                max_edge_gap: 0.0,
+            }),
+        }
+    }
 }
 
 /// Dependency access. Handles must preserve object identity across B-reps and
@@ -501,11 +549,12 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         executive: &mut FilletExecutive<O>,
     ) -> Result<()>;
 
-    /// Virtual `CalcFilletGeom` dispatch. The base belongs to
-    /// `blend.fillet_solver_p4`; the `SurfaceSurfaceFS` override belongs to
-    /// `blend.fillet_standard_solver_p2`. Adapters must dispatch by concrete
-    /// solver type and return that owner's `Unported` while it is missing.
-    // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
+    /// Virtual `CalcFilletGeom` dispatch. The base is
+    /// `blend::fillet_solver::p4::FilletSolver::calc_fillet_geom` (it takes the solver
+    /// as its `FilletSolverOps`, the target and pseudo B-reps and the solver table);
+    /// the `SurfaceSurfaceFS` override belongs to `blend.fillet_standard_solver_p2`.
+    /// Adapters must dispatch by concrete solver type and return that owner's
+    /// `Unported` while it is missing.
     // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::CalcFilletGeom -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
     fn calc_fillet_geom(
         &mut self,
@@ -565,21 +614,18 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         executive: &mut FilletExecutive<O>,
     ) -> Result<()>;
 
-    /// `SmBrep::StitchFaces`; waiting for `topology.brep_p4`.
+    /// `SmBrep::StitchFaces(tol, ..., pOptFaces, bAllowSpineEdges)`: delegate to the
+    /// already ported `topology::brep::p4::stitch_faces` (brep p4) on the B-rep `brep`
+    /// resolves to, passing every argument, and report it as
+    /// [`StitchAttempt::from_stitch`] does.
     fn stitch_faces(
         &mut self,
-        _k: &mut Kernel,
-        _brep: O,
-        _tolerance: f64,
-        _faces: Option<&[O]>,
-        _allow_spine_edges: bool,
-    ) -> Result<StitchAttempt> {
-        // UNPORTED(topology.brep_p4): SmBrep::StitchFaces
-        Err(SolidError::unported(
-            "SmBrep::StitchFaces",
-            "topology.brep_p4",
-        ))
-    }
+        k: &mut Kernel,
+        brep: O,
+        tolerance: f64,
+        faces: Option<&[O]>,
+        allow_spine_edges: bool,
+    ) -> Result<StitchAttempt>;
 
     /// `SmFilletExecutive::DoPiecewiseMerge`; waiting for `blend.fillet_executive_p1`.
     fn piecewise_merge(
@@ -765,6 +811,20 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     fn geom_side_edgeuses(&self, geom: O) -> Result<Vec<O>>;
     /// `SmEdgeuse::GetEdge()` / the edge use's owning edge (`None` for null).
     fn edgeuse_edge(&self, edgeuse: O) -> Result<Option<O>>;
+    /// `SmEdge::GetEdgeuses()` (used by `blend.fillet_executive_p1`).
+    fn edge_edgeuses(&self, edge: O) -> Result<Vec<O>>;
+    /// `SmFilletEdge::GetName`, `GetFilletEdgeType()` and `GetStatus()` of a fillet
+    /// edge; the name is `None` for the types `GetName` writes nothing for (used by
+    /// `blend.fillet_executive_p1`).
+    fn fillet_edge_note(
+        &self,
+        fillet_edge: O,
+    ) -> Result<(Option<&'static str>, FilletEdgeType, FilStatus)>;
+    /// The objects `SmFilletExecutive(crContext, pTargetBrep)` allocates: its identity,
+    /// a new pseudo `SmFilletBrep` with editing enabled and a new
+    /// `SmAttribute(SM_AI_ALL_FILLET_EDGES, SM_AB_STANDALONE_REFERENCE)` (used by
+    /// `blend.fillet_executive_p1`).
+    fn new_executive_objects(&mut self, k: &mut Kernel) -> Result<ExecutiveObjects<O>>;
     /// `SmFilletEdge::GetOriginalFace()`.
     fn fillet_edge_original_face(&self, fillet_edge: O) -> Result<Option<O>>;
     /// `SmFilletEdge::GetOriginalEdge()`.
@@ -802,17 +862,13 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// `FilletSolver::edgeuse` (`blend.fillet_solver_p1`).
     fn solver_edgeuse(&self, solver: O, index: usize) -> Result<Option<O>>;
 
-    /// `SmFilletSolver::GetFilletCorner(lIndex)`; waiting for `blend.fillet_solver_p2`.
-    /// A vertex without a corner (`SmFilletCorner::Create` returned `NULL`) yields
-    /// `None`; upstream returns its raw `m_vVertexCornerMap` edge-use array cast to a
-    /// corner (UB-209).
-    fn solver_corner(&self, _solver: O, _index: usize) -> Result<Option<O>> {
-        // UNPORTED(blend.fillet_solver_p2): SmFilletSolver::GetFilletCorner
-        Err(SolidError::unported(
-            "SmFilletSolver::GetFilletCorner",
-            "blend.fillet_solver_p2",
-        ))
-    }
+    /// `SmFilletSolver::GetFilletCorner(lIndex)`: delegate to the solver's
+    /// `FilletSolver::fillet_corner` (`blend.fillet_solver_p2`; its corner lookup,
+    /// `SmFilletExecutive::GetFilletCornerOfVertex`, is unit
+    /// `blend.fillet_executive_p1`'s). A vertex without a corner
+    /// (`SmFilletCorner::Create` returned `NULL`) yields `None`; upstream returns its
+    /// raw `m_vVertexCornerMap` edge-use array cast to a corner (UB-209).
+    fn solver_corner(&self, solver: O, index: usize) -> Result<Option<O>>;
 
     /// `SmFilletSolver::GetOtherFilletCorner(pCorner)`; waiting for
     /// `blend.fillet_solver_p3`.
