@@ -133,7 +133,7 @@ pub(crate) fn rust_side() {
 /// Whether the C++ side of a case in a [`CaseScope`] is running (`false` on the Rust
 /// side and outside [`run_unit`](crate::run_unit)). Rust-side-only work in helpers both
 /// sides share (the importers' cached-gap refill) skips itself there.
-pub(crate) fn on_cpp_side() -> bool {
+pub fn on_cpp_side() -> bool {
     MEMO.with(|m| m.borrow().phase) == Phase::Cpp
 }
 
