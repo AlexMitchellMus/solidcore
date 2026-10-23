@@ -248,7 +248,8 @@ on: close it, and say where the WIP is.
 ### Completion evidence
 
 For new ports and completion changes, include the [completion evidence checklist](docs/completion-evidence.md)
-in the PR description. Identify the owned functions and branches implemented, which
+in the PR description. The evidence table is required for `wire:` PRs that remove
+`UNPORTED` stubs, including when existing fixtures do not reach the continuation. Identify the owned functions and branches implemented, which
 operations actually complete successfully against C++, and which remain unreachable.
 A passing status or empty result is evidence for that case, not proof that the
 operation's successful construction or mutation path works.
