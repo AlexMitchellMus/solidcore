@@ -17705,7 +17705,8 @@ cases stay deferred. It adds only `StaticScene::object_zone_tol_3d`, which turns
   discards what they add (UV trims, caches, tolerance growth); upstream's `const`
   members keep them. Recorded in the `p7` Deviations. Callers should move to the
   mutable entry point.
-- **G30.1 resolved: seam EDGE (Rust, edge parameter 1.0) vs VERTEX (C++).** Cause: the
+- **Resolved: seam EDGE (Rust, edge parameter 1.0) vs VERTEX (C++)** (the latent disagreement
+  recorded under the query.face_p1 hooks entry above). Cause: the
   `heal.face_props` runner built its one-face B-rep without the down face use's side
   (`heal_face_props::add_down_side`, which `SmBrepConstructor` builds and the
   curve_class_p4 runner already adds). With a single edge use per edge,
@@ -17726,12 +17727,12 @@ cases stay deferred. It adds only `StaticScene::object_zone_tol_3d`, which turns
   `m_bHaveTSurfaceCache = 0`, `m_bFaceContainmentDone = 0`: upstream reused a trimmed
   cache built earlier without the face (owner cleared), so no UV trims and no growth.
   Running the queries on a throwaway copy instead (the #614 model) leaves 10
-  disagreements, so neither model matches; the cache history (G8) decides.
+  disagreements, so neither model matches; the object cache history decides.
   Treatment: a face query of the mutable path that raises a vertex or edge tolerance
   returns `Unported { "smsurf_GetSurfaceCache (trimmed surface cache history:
   tolerance growth)", "surface.surface_p2" }`. That defers 54 heal.face_props, 180
   curve_class_p4 and 27 query.face_p3 cases (all deferred on main as well). Not in
-  known_mismatches. Fix: model per-surface object caches (G8).
+  known_mismatches. Fix: model per-surface object caches (face-owned trimmed caches).
 - **Left out: `topology::face::p2::UvLineObjects` hooks.** Giving the UV-line adapter
   `topology_entity` / `topology_handle` (patch from this PR's work, not merged) makes
   topology.face_p4 (80 `SmEdge::GetCurve` deferrals) and topology.topology_traverser
@@ -17742,7 +17743,7 @@ cases stay deferred. It adds only `StaticScene::object_zone_tol_3d`, which turns
   VERTEX-EDGE-VERTEX (a coincidence range with edge 1). The C++ face surface has a
   trimmed cache with face containment done (`have = 1`, `contain = 1`) by then, so
   C++'s `IntersectTSBound` takes the cached leaf-node traversal; `UvLineObjects`
-  supplies no trim cache, so Rust walks every loop use. Also cache history (G8).
+  supplies no trim cache, so Rust walks every loop use. Also cache history.
 - **Not wired: `FindVertexSector` in `boolean::topology_intersector::p1`
   (`HandleFaceEdge::sector`).** Its next call, `SmBrep::MakeEdgeInFaceWithVU`
   (`insert`), is stubbed too and `IntersectorBrep` gives no mutable B-rep; wiring the
