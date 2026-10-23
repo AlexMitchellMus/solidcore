@@ -2400,10 +2400,9 @@ mod tests {
                 deferred.push(format!("{}: error {e}", case.name));
             }
         }
-        eprintln!("formerly exact-deferred cases now: {deferred:?}");
         assert!(
-            deferred.iter().all(|text| text.contains("topology.face_p2")),
-            "{deferred:?}"
+            deferred.is_empty(),
+            "exact-surface cases must not defer; remaining: {deferred:?}"
         );
     }
 
@@ -2454,7 +2453,10 @@ mod tests {
             let mut saw_expected = false;
             for id in faces {
                 let face = im.b.face(id).unwrap();
-                assert!(im.exact_faces[id.index() as usize], "{name}");
+                assert!(
+                    im.exact_faces.get(id.index() as usize).copied().unwrap_or(false),
+                    "{name}"
+                );
                 let surface = face.surface.as_ref().unwrap();
                 saw_expected |= expected.matches(surface.kind());
             }
@@ -2502,10 +2504,10 @@ mod tests {
             .into_iter()
             .next()
             .unwrap();
-        im.exact_faces[face.index() as usize] = false;
+        *im.exact_faces.get_mut(face.index() as usize).unwrap() = false;
         assert!(inexact(&op, &im), "an inexact face must still defer");
-        im.exact_faces[face.index() as usize] = true;
-        im.exact_curves[e as usize] = false;
+        *im.exact_faces.get_mut(face.index() as usize).unwrap() = true;
+        *im.exact_curves.get_mut(e as usize).unwrap() = false;
         assert!(inexact(&op, &im), "an inexact curve must still defer");
     }
 
@@ -2549,7 +2551,9 @@ mod tests {
                     "{}",
                     case.name
                 );
-                assert!(im.exact_faces[id.index() as usize]);
+                assert!(
+                    im.exact_faces.get(id.index() as usize).copied().unwrap_or(false)
+                );
                 assert_eq!(
                     surface.owner(),
                     Some(ObjectRef {
@@ -2611,26 +2615,26 @@ mod tests {
 
     fn check_damaged_surface_records(ex: &[f64]) {
         let block = first_surface_block(ex);
-        assert_eq!(block[0], 2.0);
-        let regular = 6 + block[5] as usize;
-        assert_eq!(block[regular], 0.0);
+        assert_eq!(block.first(), Some(&2.0));
+        let regular = 6 + block.get(5).copied().unwrap() as usize;
+        assert_eq!(block.get(regular), Some(&0.0));
         let fails = |v: &[f64], message: &str| {
             let error = read_surface(&mut Rd { v, at: 0 }).err().unwrap();
             assert!(error.to_string().contains(message), "{error}");
         };
         let mut bad_byte = block.clone();
-        bad_byte[6] = 256.0;
+        *bad_byte.get_mut(6).unwrap() = 256.0;
         fails(&bad_byte, "bad record byte");
-        fails(&block[..regular - 1], "export too short");
+        fails(block.get(..regular - 1).unwrap(), "export too short");
         let mut trailing_byte = block.clone();
         trailing_byte.insert(regular, 0.0);
-        trailing_byte[5] += 1.0;
+        *trailing_byte.get_mut(5).unwrap() += 1.0;
         fails(&trailing_byte, "not read whole");
         let mut mismatched_base = block.clone();
-        mismatched_base[regular + 10] += 1.0;
+        *mismatched_base.get_mut(regular + 10).unwrap() += 1.0;
         fails(&mismatched_base, "B-spline part differs");
         let mut nested_head = block.clone();
-        nested_head[regular] = 2.0;
+        *nested_head.get_mut(regular).unwrap() = 2.0;
         fails(&nested_head, "not a B-spline or plane");
         let mut missing_base = block;
         missing_base.truncate(regular);
