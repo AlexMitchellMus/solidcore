@@ -1372,28 +1372,47 @@ fn _srf_in(s: &SrfIn) -> Result<InlineSrf, HarnessError> {
 mod tests {
     use super::*;
 
-    fn assert_exact_result(name: &str, output: &Output) {
+    fn assert_exact_result(name: &str, output: &Output) -> Result<(), HarnessError> {
         assert!(output.error.is_none(), "{name}: {:?}", output.error);
         assert!(output.deferred.is_none(), "{name}: {:?}", output.deferred);
         assert!(output.rejected.is_none(), "{name}: {:?}", output.rejected);
-        assert_eq!(output.ints["status"], [0], "{name}");
-        let data = &output.values["out"];
+        assert_eq!(
+            output.ints.get("status").map(Vec::as_slice),
+            Some([0].as_slice()),
+            "{name}"
+        );
+        let data = output
+            .values
+            .get("out")
+            .ok_or_else(|| harness("missing exact result"))?;
         if name.contains("_null_") {
             // A successful null result is an observed output, not an empty pass.
             assert_eq!(data, &[0.0], "{name}");
-            return;
+            return Ok(());
         }
 
-        assert_eq!(data[0], 1.0, "{name}: exact surface missing");
-        assert_eq!(data[2], 1.0, "{name}: returned surface has no NURB");
+        assert_eq!(data.first(), Some(&1.0), "{name}: exact surface missing");
+        assert_eq!(
+            data.get(2),
+            Some(&1.0),
+            "{name}: returned surface has no NURB"
+        );
         if name.starts_with("exact_plane_") {
-            assert_eq!(data[1], Plane::TYPE as f64, "{name}: plane was sliced");
+            assert_eq!(
+                data.get(1),
+                Some(&(Plane::TYPE as f64)),
+                "{name}: plane was sliced"
+            );
             assert!(data.len() > 9, "{name}: plane geometry missing");
-            return;
+            return Ok(());
         }
 
-        assert_eq!(data[1], BSplineSurface::TYPE as f64, "{name}");
-        assert_eq!(&data[3..9], &[1.0, 1.0, 1.0, 1.0, 3.0, 3.0], "{name}");
+        assert_eq!(data.get(1), Some(&(BSplineSurface::TYPE as f64)), "{name}");
+        assert_eq!(
+            data.get(3..9),
+            Some([1.0, 1.0, 1.0, 1.0, 3.0, 3.0].as_slice()),
+            "{name}"
+        );
         // Independent homogeneous control nets: translation acts on w, and the
         // noncommuting chain must run in its original order, without dehomogenizing.
         let expected = if name.starts_with("exact_identity_") {
@@ -1412,12 +1431,17 @@ mod tests {
                 -3.0, 3.0,
             ]
         };
-        assert_eq!(&data[9..25], &expected, "{name}: transformed control net");
         assert_eq!(
-            &data[25..],
-            &[-2.0, -2.0, 3.0, 3.0, 4.0, 4.0, 6.0, 6.0],
+            data.get(9..25),
+            Some(expected.as_slice()),
+            "{name}: transformed control net"
+        );
+        assert_eq!(
+            data.get(25..),
+            Some([-2.0, -2.0, 3.0, 3.0, 4.0, 4.0, 6.0, 6.0].as_slice()),
             "{name}: knots"
         );
+        Ok(())
     }
 
     #[test]
@@ -1431,8 +1455,8 @@ mod tests {
             let input: Inputs = serde_json::from_value(fixture["inputs"].clone()).unwrap();
             let native = cpp(&input).unwrap();
             let port = rust(&input).unwrap();
-            assert_exact_result(name, &native);
-            assert_exact_result(name, &port);
+            assert_exact_result(name, &native).unwrap();
+            assert_exact_result(name, &port).unwrap();
             let diff = crate::compare::compare(&native, &port, &[]);
             assert!(diff.pass(), "{name}: {diff:?}");
             assert!(diff.values_compared > 0, "{name}: empty comparison");
