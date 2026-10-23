@@ -57,6 +57,14 @@
 //!   array (UB-121; the port always returns the curves); `LocalSurfaceIntersect`'s
 //!   boundary retries bind `!bFoundSolution` to the minimum test only (WR-99;
 //!   reproduced).
+//! - **Surface cache history.** `LiftCurve` reads the surface cache's continuity arrays
+//!   (its C0 knot splits, and `GetDomainWithContinuity`'s C1 domain around each
+//!   segment's start point) without building the cache's tree, so the arrays are empty
+//!   while no earlier call has built it, and a point off the natural domain then gets
+//!   the whole domain instead of one the end-knot discontinuities shrink to nothing.
+//!   Both reads go through [`continuity_surface_cache`], which follows the surface's
+//!   cache slot ([`Surface::cache_tree_state`]; `plan/findings.md`, "surface cache
+//!   history").
 //! - Debug-only work (`SM_ASSERT`, `SM_DEBUG_CODE` drawing) is not ported.
 
 use crate::curve::composite_curve::CompositeCurve;
@@ -89,7 +97,7 @@ use crate::surface::plane::Plane;
 use crate::surface::surface_cache::p1::{BezierPatch, SurfaceCache};
 
 use super::p1::{
-    get_surface_cache, is_node_valid, surface_to_evaluate, CsGlobalSolver, SsiNormalizeEnfo,
+    continuity_surface_cache, is_node_valid, surface_to_evaluate, CsGlobalSolver, SsiNormalizeEnfo,
     SspIntersectEnfo, SurfaceSolveContext,
 };
 use super::p2::{cs_are_perpen_disjoint_in, intersect_and_split, original_surface, set_up_breaks};
@@ -1971,11 +1979,16 @@ impl Surface {
         } else {
             // Right now step surfaces will not be created that have discontinuities.
             if !matches!(self.kind(), SurfaceKind::Step(_)) {
-                // NER: no surface cache
-                let cache = match context.as_mut() {
-                    Some(context) => context.build_surface_cache(k, self, handle),
-                    None => get_surface_cache::<O>(k, self, None),
-                };
+                // NER: no surface cache (no GetTree: the continuity arrays are empty
+                // unless the cache's tree was built)
+                let cache = continuity_surface_cache(
+                    k,
+                    self,
+                    handle,
+                    context
+                        .as_mut()
+                        .map(|c| &mut **c as &mut dyn SurfaceSolveContext<O>),
+                );
                 let cache = match cache {
                     Ok(c) => c,
                     Err(e) if e.is_unported() => return Err(e),

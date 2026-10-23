@@ -367,7 +367,12 @@ pub trait OffsetBrep<O>: ProtoGeometry<O> {
     where
         O: Copy + PartialEq,
     {
-        crate::surface::surface::p1::get_surface_cache(k, surface, handle)
+        let mut cache = crate::surface::surface::p1::get_surface_cache(k, surface, handle)?;
+        // the solve's GetTree: a reused cache whose tree is not built builds it now
+        if cache.tree().is_none() {
+            cache.get_tree(k)?;
+        }
+        Ok(cache)
     }
 
     /// Read-only face queries after cache preparation. One service resolves all
@@ -756,10 +761,14 @@ fn surface_global_curve_intersect<O: ClassObject + SolutionObject>(
 ) -> Result<SolutionArray<O>> {
     let c = curve_of(geometry, curve)?.clone_for_evaluation()?;
     let s = surface_of(geometry, surface)?.clone_for_evaluation()?;
+    // `GlobalCurveIntersect` reaches the surface's cache through
+    // `smsurf_GetSurfaceCache`; prepare the face-bound cache once and hand it to the
+    // coincidence/drop path as well as the numerical solves.
+    let mut cache = geometry.prepare_surface_solve_cache(k, &s, Some(surface))?;
     s.global_curve_intersect_with_context(
         k,
         [Some(curve), Some(surface)],
-        None,
+        Some(&mut cache),
         &mut OffsetSurfaceSolveContext(geometry),
         domain,
         &c,
@@ -2297,6 +2306,7 @@ impl OffsetGeometryCreation {
                 opt_vectors: None,
                 handle: Some(curve),
                 analytic_handle: None,
+                zone_tol_3d: None,
             },
         )
     }
@@ -3425,6 +3435,7 @@ impl OffsetGeometryCreation {
                                         opt_vectors: Some(&rays),
                                         handle: Some(arc_h),
                                         analytic_handle: None,
+                                        zone_tol_3d: None,
                                     },
                                 )?;
                             if let Some(sol) = sols.get(0) {

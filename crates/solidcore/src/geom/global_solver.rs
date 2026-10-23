@@ -74,6 +74,11 @@
 //!   handle only prints a message upstream and falls through to `TRUE`; here
 //!   it is silently `true`. `SM_ASSERT`s, `Dump` and the `SM_DEBUG_CODE`
 //!   drawing blocks are not ported.
+//! - **Recursion counter.** The tree check above runs only in `solve_it`; overrides
+//!   and direct callers of `SolveBranch` skip it. The base traversal therefore also
+//!   counts its nesting in [`GlobalSolver::solve_depth`] and returns
+//!   [`SolidError::InvalidInput`] past `MAX_SOLVE_DEPTH + 1` nested calls (the top
+//!   call plus one per level, so every tree set the check accepts still runs).
 //! - `SM_SO_SURFACE_PROJECTED_INTERSECT` samples an `SmCrvOnSurf` owner of the
 //!   second tree, which is not ported yet: once the box tests cannot decide,
 //!   a tree without an owner object answers `false` (as upstream) and any
@@ -368,6 +373,52 @@ impl Default for SolveRequest<'_> {
     }
 }
 
+/// The caller's `SmTol::GetZoneTol3d(const SmObject*)` for the solution handles of a
+/// solve: the handles are opaque to the solver, so a caller that can resolve them to
+/// their B-rep entities (vertex, edge, face, or the edge of a curve, the face of a
+/// surface) passes this to the curve and surface solves (see
+/// [`GlobalSolve::object_zone_tol_3d`]).
+#[derive(Clone, Copy)]
+pub struct ObjectZoneTol<'a, O>(pub &'a dyn Fn(O) -> Result<f64>);
+
+impl<O> core::fmt::Debug for ObjectZoneTol<'_, O> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("ObjectZoneTol(..)")
+    }
+}
+
+impl<O> ObjectZoneTol<'_, O> {
+    /// The zone tolerance of `object`.
+    ///
+    /// # Errors
+    ///
+    /// The resolver's.
+    pub fn get(&self, object: O) -> Result<f64> {
+        (self.0)(object)
+    }
+}
+
+/// [`GlobalSolve::object_zone_tol_3d`] for a solver given an optional resolver: the
+/// resolver's answer, else the opaque-handle deferral.
+///
+/// # Errors
+///
+/// The resolver's; [`SolidError::Unported`] without one.
+pub fn resolve_object_zone_tol_3d<O>(
+    resolver: Option<ObjectZoneTol<'_, O>>,
+    object: O,
+) -> Result<f64> {
+    match resolver {
+        Some(r) => r.get(object),
+        // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on a handle the
+        // caller gave no resolver for
+        None => Err(SolidError::Unported {
+            upstream: "SmTol::GetZoneTol3d(const SmObject*)",
+            unit: "geom.tol",
+        }),
+    }
+}
+
 /// The state of a global solve (`SmGlobalSolver`'s data members).
 #[derive(Debug, Clone)]
 pub struct GlobalSolver<'t, O> {
@@ -400,6 +451,9 @@ pub struct GlobalSolver<'t, O> {
     pub opt_vectors: Vec<Vec3>,
     /// `*m_pSolutions`: the sorted solutions.
     pub solutions: SolutionArray<O>,
+    /// Current nesting of the base [`solve_branch`] (not upstream): bounded by
+    /// `MAX_SOLVE_DEPTH + 1`.
+    pub solve_depth: usize,
     /// Branches [`solve_branch`] visited since the solve started (not upstream;
     /// reset by [`GlobalSolve::solve_it`] and the topology solver's `SolveTrees`):
     /// bounded by [`MAX_SOLVE_BRANCHES`].
@@ -494,6 +548,7 @@ impl<'t, O: SolutionObject> GlobalSolver<'t, O> {
             at_distance_sq: 0.0,
             opt_vectors: Vec::new(),
             solutions: SolutionArray::new(),
+            solve_depth: 0,
             branches_visited: 0,
         }
     }
@@ -1497,8 +1552,28 @@ fn combine_min_max<O: SolutionObject>(
 ///
 /// # Errors
 ///
-/// Those of the hooks.
+/// Those of the hooks; [`SolidError::InvalidInput`] past `MAX_SOLVE_DEPTH + 1`
+/// nested calls.
 pub fn solve_branch<'t, O, S>(solver: &mut S, branch: &Branch) -> Result<()>
+where
+    O: SolutionObject + 't,
+    S: GlobalSolve<'t, O> + ?Sized,
+{
+    let depth = solver.solver().solve_depth;
+    if depth > MAX_SOLVE_DEPTH {
+        return Err(SolidError::invalid_input(
+            "geom::global_solver::solve_branch",
+            "solve nesting exceeds MAX_SOLVE_DEPTH",
+        ));
+    }
+    solver.solver_mut().solve_depth = depth + 1;
+    let result = solve_branch_body(solver, branch);
+    solver.solver_mut().solve_depth = depth;
+    result
+}
+
+/// The body of [`solve_branch`] at one nesting level.
+fn solve_branch_body<'t, O, S>(solver: &mut S, branch: &Branch) -> Result<()>
 where
     O: SolutionObject + 't,
     S: GlobalSolve<'t, O> + ?Sized,
@@ -1547,6 +1622,19 @@ pub trait GlobalSolve<'t, O: SolutionObject + 't> {
 
     /// The solver state, mutable.
     fn solver_mut(&mut self) -> &mut GlobalSolver<'t, O>;
+
+    /// `SmTol::GetZoneTol3d(const SmObject*)` of a non-null solution object (read by
+    /// `SmSolution::GetObjectTolerance` in [`GlobalSolve::add_sorted_solution`] for
+    /// [`SolverOperation::Rayfire`]). The handles are opaque here: a solver whose
+    /// caller can resolve them to their B-rep entities (the topology solver, or a
+    /// curve or surface solve given [`ObjectZoneTol`]) overrides this.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] by default (no resolver for the handle).
+    fn object_zone_tol_3d(&self, object: O) -> Result<f64> {
+        resolve_object_zone_tol_3d(None, object)
+    }
 
     /// `BranchMayContainAnswers`: false when `branch` provably holds no
     /// answer.
@@ -1997,10 +2085,12 @@ pub trait GlobalSolve<'t, O: SolutionObject + 't> {
             // To match old behavior, we check the distance between
             // intersection points on the ray.
             if op == SolverOperation::Rayfire {
-                let first_tol = first.object_tolerance(0)?;
-                let last_tol = s.solutions.get_at(last_index)?.object_tolerance(0)?;
+                let last = s.solutions.get_at(last_index)?;
+                let first_tol = first.object_tolerance_with(0, |o| self.object_zone_tol_3d(o))?;
+                let last_tol = last.object_tolerance_with(0, |o| self.object_zone_tol_3d(o))?;
                 this_tol = max2(tol, first_tol + last_tol);
             }
+            let s = self.solver_mut();
 
             while s.solutions.len() > 1
                 && (first.start.solution_value
@@ -2093,6 +2183,55 @@ mod tests {
         assert_eq!(SolutionRequested::Nodes.code(), 3);
         assert_eq!(OperationCategory::Other.code(), 3);
         assert_eq!(SolutionPairType::DiffParameters.code(), 3);
+    }
+
+    #[test]
+    fn solve_depth_is_restored_after_a_recursive_error() {
+        struct Repeating {
+            base: GlobalSolver<'static, Obj>,
+            stop: bool,
+        }
+        impl GlobalSolve<'static, Obj> for Repeating {
+            fn solver(&self) -> &GlobalSolver<'static, Obj> {
+                &self.base
+            }
+
+            fn solver_mut(&mut self) -> &mut GlobalSolver<'static, Obj> {
+                &mut self.base
+            }
+
+            fn branch_may_contain_answers(&mut self, _: &Branch) -> Result<bool> {
+                Ok(!self.stop)
+            }
+
+            fn are_ready_for_local_solve(&self, _: &Branch) -> Result<bool> {
+                Ok(false)
+            }
+
+            fn subdivide(&mut self, branch: &Branch) -> Result<(Branch, Branch)> {
+                Ok((*branch, *branch))
+            }
+        }
+
+        let mut solver = Repeating {
+            base: GlobalSolver::new(),
+            stop: false,
+        };
+        // Exercise the last two recursion levels without filling the test
+        // thread's stack. A cyclic branch must return an error and unwind both.
+        solver.base.solve_depth = MAX_SOLVE_DEPTH - 1;
+        let branch = [None; MAX_SOLVER_TREES];
+        assert!(matches!(
+            solver.solve_branch(&branch),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert_eq!(solver.base.solve_depth, MAX_SOLVE_DEPTH - 1);
+
+        // The same solver remains usable after the error.
+        solver.base.solve_depth = 0;
+        solver.stop = true;
+        solver.solve_branch(&branch).unwrap();
+        assert_eq!(solver.base.solve_depth, 0);
     }
 
     #[test]
