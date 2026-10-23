@@ -151,8 +151,8 @@
 //!   `std::unordered_set`; only membership is used, so the order of work is the same.
 //! - `SM_DEBUG_CODE` blocks, `WARN`, `SE` messages and `SM_ASSERT*` are not ported.
 //! - `IsDegenerate` can resolve an original face through a caller-supplied B-rep
-//!   adapter; the key-only API still defers. Surface evaluation errors propagate
-//!   rather than leaving the points undefined as upstream's ignored statuses can.
+//!   adapter; the key-only API still defers. Surface evaluation errors propagate;
+//!   upstream ignores their statuses.
 
 use crate::error::{Result, SolidError};
 use crate::geom::a_object::{self, AObject, CacheStore};
@@ -1979,7 +1979,7 @@ impl PolyBrep {
     ///
     /// [`SolidError::Unported`] for an unresolved original face; errors of the face
     /// and edge accessors and of surface evaluation. Upstream ignores evaluation
-    /// statuses; this method propagates them rather than reading undefined points.
+    /// statuses; this method propagates them.
     pub fn edge_is_degenerate_with_owner<'a>(
         &self,
         k: &Kernel,
