@@ -10,6 +10,7 @@ use solidcore::geom::attribute::AttributeStore;
 use solidcore::geom::tol::USE_DEFAULT;
 use solidcore::intersect::point_class::PointClassType;
 use solidcore::query::face::p2::BrepCacheFace;
+use solidcore::surface::surface::SurfaceKind;
 use solidcore::topology::brep::{p3, p8};
 use solidcore::topology::edge::NotifyEnv;
 use solidcore::topology::topology_traverser::Marks;
@@ -70,10 +71,17 @@ pub(super) fn run(k: &mut Kernel, surface: BSplineSurface, build: bool, points: 
         .ok_or_else(|| SolidError::null_pointer("difftest::constructed_face"))?;
     // Retain exactly the constructed face's geometry, owner and tolerance, as the
     // native-face lane does. A normal Clone can fix B-spline knots a second time.
-    let mut cache: TrimSrfCache<EntityRef> = TrimSrfCache::new(
-        source.clone_for_evaluation()?,
-        SurfaceCacheOptions::default(),
-    );
+    let SurfaceKind::BSpline(source_bss) = source.kind() else {
+        return Err(SolidError::invalid_input(
+            "difftest::constructed_face",
+            "B-spline face constructor returned a different surface kind",
+        ));
+    };
+    let mut snapshot = Surface::from(source_bss.clone_exact());
+    snapshot.set_owner(source.owner());
+    snapshot.set_owner_zone_tol_3d(source.owner_zone_tol_3d());
+    let mut cache: TrimSrfCache<EntityRef> =
+        TrimSrfCache::new(snapshot, SurfaceCacheOptions::default());
     cache.bind_face(this_face(face), EntityRef::Face(face), record.tolerance)?;
     let mut context = BrepCacheFace {
         b: &mut brep,
