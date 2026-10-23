@@ -59,6 +59,7 @@ use crate::geom::local_solve_nd::{
 };
 use crate::geom::matrix::Matrix;
 use crate::geom::object::ObjectRef;
+use crate::geom::solution_array::SolutionObject;
 use crate::geom::tol::{approx_tol3d, approx_tol_3d, SmallTopoType};
 use crate::geom::vector3d::sqrt as sm_sqrt;
 use crate::kernel::Kernel;
@@ -66,16 +67,18 @@ use crate::math::{
     max2, max3, rad_to_deg, Point2, Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT,
 };
 use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
+use crate::nurbs::b_spline_surface::LocationType;
 use crate::nurbs::knots::Side;
 use crate::surface::plane::Plane;
 
 use super::p1::{
     crossed_seam_or_pole, evaluate_1st_derivatives, evaluate_2nd_derivatives,
     evaluate_normal_section as smsurf_evaluate_normal_section, FindPsNormalEnfo, SsNormalizeEnfo,
-    SspIntersectEnfo, SssIntersectEnfo,
+    SspIntersectEnfo, SssIntersectEnfo, SurfaceSolveContext,
 };
 use super::p2::evaluate_geometric as smsurf_evaluate_geometric;
 use super::p2::{GeometricProperties, SurfaceEvaluate};
+use super::p4::NoObject;
 use super::p7::{approx_derivative_lengths, check_seam_drop};
 use super::{Surface, SurfaceKind};
 
@@ -780,7 +783,39 @@ impl Surface {
         if saved.is_some() {
             set_out_of_bounds_enabled(self, true);
         }
-        let result = self.cover_coincident_surface_inner(k, other, tol, other_domain);
+        let result =
+            self.cover_coincident_surface_inner::<NoObject>(k, other, tol, other_domain, None);
+        if let Some(saved) = saved {
+            set_out_of_bounds_enabled(self, saved);
+        }
+        result
+    }
+
+    /// [`Surface::cover_coincident_surface_deferring_trims`] whose `STEPInversion`
+    /// solves run under the caller's face context (`context`: the solve context and
+    /// this surface's handle in it), so a face-owned surface's drops are classified
+    /// against the face's trims, as upstream's `GlobalPointSolve` does through
+    /// `GetFace()` ([`Surface::step_inversion_with_context`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::cover_coincident_surface_deferring_trims`], with those of the
+    /// context.
+    pub fn cover_coincident_surface_deferring_trims_with_context<O: SolutionObject>(
+        &mut self,
+        k: &Kernel,
+        other: &Surface,
+        tol: f64,
+        other_domain: Option<&Extent2d>,
+        context: (&mut dyn SurfaceSolveContext<O>, Option<O>),
+    ) -> Result<CoverCoincident> {
+        // Expand our domain, for the scope of this routine.
+        let saved = out_of_bounds_enabled(self);
+        if saved.is_some() {
+            set_out_of_bounds_enabled(self, true);
+        }
+        let result =
+            self.cover_coincident_surface_inner(k, other, tol, other_domain, Some(context));
         if let Some(saved) = saved {
             set_out_of_bounds_enabled(self, saved);
         }
@@ -788,12 +823,13 @@ impl Surface {
     }
 
     /// The body of [`Surface::cover_coincident_surface`] with out-of-bounds evaluation on.
-    fn cover_coincident_surface_inner(
+    fn cover_coincident_surface_inner<O: SolutionObject>(
         &mut self,
         k: &Kernel,
         other: &Surface,
         tol: f64,
         other_domain: Option<&Extent2d>,
+        mut context: Option<(&mut dyn SurfaceSolveContext<O>, Option<O>)>,
     ) -> Result<CoverCoincident> {
         // init outputs
         let failure = CoverCoincident {
@@ -832,7 +868,7 @@ impl Surface {
         if let Some(p) = ignored(other.evaluate_point(k, uv_other))? {
             pt = p;
         }
-        if ignored(self.step_inversion(k, &big_domain, pt, tol, None))?.is_none() {
+        if ignored(step_inversion_in(self, k, &big_domain, pt, tol, None, &mut context))?.is_none() {
             return Ok(failure);
         }
 
@@ -845,7 +881,7 @@ impl Surface {
                 }
 
                 let Some((mut uv_this, location)) =
-                    ignored(self.step_inversion(k, &big_domain, pt, tol, None))?
+                    ignored(step_inversion_in(self, k, &big_domain, pt, tol, None, &mut context))?
                 else {
                     return Ok(failure);
                 };
@@ -938,7 +974,7 @@ impl Surface {
                 }
 
                 let Some((mut uv_this, location)) =
-                    ignored(self.step_inversion(k, &big_domain, pt, tol, Some(guess_uv)))?
+                    ignored(step_inversion_in(self, k, &big_domain, pt, tol, Some(guess_uv), &mut context))?
                 else {
                     // If any DropPoint fails, they're not coincident.
                     return Ok(failure);
@@ -1023,7 +1059,7 @@ impl Surface {
                 }
 
                 let Some((mut drop_uv, location)) =
-                    ignored(self.step_inversion(k, &big_domain, pt, tol, Some(guess_uv)))?
+                    ignored(step_inversion_in(self, k, &big_domain, pt, tol, Some(guess_uv), &mut context))?
                 else {
                     // If any DropPoint fails, they're not coincident.
                     return Ok(failure);
@@ -1554,6 +1590,31 @@ impl EvalNFunctions for SssIntersectEnfo<'_> {
         }
 
         Ok(false)
+    }
+}
+
+
+/// `this->STEPInversion(..)` of `CoverCoincidentSurface`, under the caller's face
+/// context when there is one.
+fn step_inversion_in<O: SolutionObject>(
+    surface: &Surface,
+    k: &Kernel,
+    anal_domain: &Extent2d,
+    point: Point3,
+    tol: f64,
+    uv_guess: Option<Point2>,
+    context: &mut Option<(&mut dyn SurfaceSolveContext<O>, Option<O>)>,
+) -> Result<(Point2, LocationType)> {
+    match context {
+        Some((solve, handle)) => surface.step_inversion_with_context(
+            k,
+            anal_domain,
+            point,
+            tol,
+            uv_guess,
+            (&mut **solve, *handle),
+        ),
+        None => surface.step_inversion(k, anal_domain, point, tol, uv_guess),
     }
 }
 
