@@ -4792,10 +4792,7 @@ mod tests {
                 ops.iter()
                     .enumerate()
                     .map(|(i, op)| {
-                        let name = op
-                            .get("op")
-                            .and_then(serde_json::Value::as_str)
-                            .unwrap_or("?");
+                        let name = op.get("op").and_then(Value::as_str).unwrap_or("?");
                         format!("{i}:{name}")
                     })
                     .collect::<Vec<_>>()
@@ -4845,13 +4842,15 @@ mod tests {
             "gen0730 seed/unit/index changed; the regression must replay the recorded case"
         );
         let mut rng = Rng::new(seed);
-        let inputs = generate(&mut rng).expect("gen0730 generator returned None");
-        let input_json = serde_json::to_string(&inputs).expect("serialize gen0730 input");
+        let generated = generate(&mut rng).expect("gen0730 generator returned None");
+        let inputs: Inputs =
+            serde_json::from_value(generated.clone()).expect("deserialize gen0730 input");
+        let input_json = serde_json::to_string(&generated).expect("serialize gen0730 input");
         let case = Case {
             unit: UNIT.into(),
             name: format!("gen{INDEX:04}"),
             source: CaseSource::Generated { seed },
-            inputs: serde_json::to_value(&inputs).expect("serialize gen0730 case"),
+            inputs: generated,
         };
         assert_eq!(case.name, "gen0730");
 
