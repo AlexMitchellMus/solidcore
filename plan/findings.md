@@ -17558,6 +17558,21 @@ a status-only or vacuous pass.
   extra00744, extra00806, extra01154; earlier deferred at `SmEdge::GetCurve`). No face
   classifier runs in internal_bss_tiny, so these disagreements are not query.face_p1's.
   extra00744: C++ (0, 0, 5), Rust (-0.659, -0.2026, 4.952) on sphere.smb.
+## primitive.primitive_creation_p1: arena face records vs SmBrep::GetFaces (2026-10-23, branch claude/edge-handles)
+
+- Once the curve-solver `IdenticalSolutions` reads curve natural intervals (ParameterDomains,
+  same branch), `linear_circle_cap1_distance0` and `linear_analytic_circle_cap1_distance0`
+  (CreateLinearSweep of a full circle, distance 0, capped) run to completion. The runner
+  counted faces as `brep.faces().len()` (every live face record): Rust 4, C++
+  `SmBrep::GetFaces` 2. Two of the four Rust face records have no face use (`faceuse =
+  None`, shells 0 and 6), so a traversal does not reach them. The runner now counts with
+  `topology::brep::p1::faces/edges/vertices` (the `GetFaces` / `GetEdges` / `GetVertices`
+  ports), as the shim and the shape <= 1 branch already do; both cases pass (2 faces, 1
+  edge, 1 vertex) and every former pass is unchanged.
+- Open question for the primitive porters: the two unreachable face records are made by
+  the capped degenerate sweep before `Stitch` (they exist before it). Upstream probably
+  deletes such a face on its failure path; Rust leaves the record in the arena. Not
+  observable through any compared output today.
 ## surface.surf_of_extrusion_p2: free-extrusion general intersection resolved (2026-10-23)
 
 - **Cause of gen0413 / gen0448 / gen0732 (entry "Free-extrusion general intersection" above).**

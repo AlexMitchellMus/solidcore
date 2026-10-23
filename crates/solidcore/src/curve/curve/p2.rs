@@ -58,6 +58,7 @@
 //! | [`find_test_params`]                              | `sm_FindTestParams` (static)                     |
 //! | [`CcGlobalSolver`]                                | `SmCCGlobalSolver` (constructor, `BranchMayContainAnswers`; `LocalSolve` is unit `curve.curve_p9`) |
 //! | [`CpGlobalSolver`]                                | `SmCPGlobalSolver` (constructor, `BranchMayContainAnswers`; `LocalSolve` is unit `curve.curve_p1`) |
+//! | `GlobalSolve::identical_solutions` for [`CcGlobalSolver`] / [`CpGlobalSolver`], `TreeCurves` (private) | `SmGlobalSolver::IdenticalSolutions` (not overridden upstream: a solution's curve handle resolves to the curve its tree decomposes) |
 //! | [`CurvePropertyGs`], [`CurvePropertyType`]        | `SmCurvePropertyGS` (constructor, `FindBestSubdivisionNode`, `BranchMayContainAnswers`), `SmCurvePropertyType` |
 //! | [`CciGlobalSolver`]                               | `SmCCIGlobalSolver` (constructor; `LocalSolve` is unit `curve.curve_p7`) |
 //! | [`LengthIntegrand`]                               | `SmLengthIFEO` (constructor, `Evaluate`)         |
@@ -137,8 +138,6 @@
 //!   needs but the caller did not give are [`SolidError::InvalidInput`] (upstream
 //!   reads through a null or short array). `SmCurvePropertyGS`'s corner loop keeps
 //!   upstream's `dZV = 1.0 * j`.
-//!   Point/curve duplicate comparisons resolve an opaque handle's natural interval
-//!   from the solver's borrowed curve without changing its output identities.
 //! - **Not ported here.** `HasIntervals` / `SetIntervals` of `SmCCIntersectENFO` and
 //!   `SmBestLineFitENFO` and the destructors of the evaluator classes
 //!   (`SmCurvePropertyEFO`, `SmCCTangentIntENFO`, `SmCCIntersectENFO`,
@@ -191,7 +190,8 @@ use crate::geom::global_solver::{
     PreferredSolution, SolutionPairType, SolutionRequested, SolverOperation,
 };
 use crate::geom::object::{NotifyOperation, ObjectRef};
-use crate::geom::solution_array::{ObjectKind, OperandObject, Solution, SolutionObject};
+use crate::geom::solution_array::{ParameterDomains, Solution, SolutionObject};
+
 use crate::geom::tree::{AuxDataType, NodeData, Tree, TreeNode};
 use crate::geom::vector2d::Point2;
 use crate::geom::vector3d::{acos, Point3, Vec3};
@@ -3230,6 +3230,47 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CcGlobalSolver<'t, O> {
     fn local_solve(&mut self, branch: &Branch) -> Result<bool> {
         self.local_solve_branch(branch)
     }
+
+    /// `SmGlobalSolver::IdenticalSolutions` (not overridden upstream), with each
+    /// solution curve's natural interval read from the curve its tree decomposes
+    /// (see [`TreeCurves`]).
+    fn identical_solutions(
+        &self,
+        sol1: &Solution<O>,
+        sol2: &Solution<O>,
+    ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
+        let trees = [self.base.trees[0], self.base.trees[1]];
+        let curves = self
+            .curves
+            .map_or([None, None], |[c1, c2]| [Some(c1), Some(c2)]);
+        let domains = TreeCurves { trees, curves };
+        self.base.identical_solutions_in(sol1, sol2, &domains)
+    }
+}
+
+/// [`ParameterDomains`] of the curve solvers: upstream's solution object is the
+/// `SmCurve*` a curve tree's cache owns (`SmTree::GetOwnerObject`), whose
+/// `GetNaturalInterval` `IdenticalSolutions` reads. A handle the tree names as its
+/// owner object resolves to the curve the solver decomposes with that tree; any
+/// other handle answers for itself.
+struct TreeCurves<'a, O> {
+    trees: [Option<&'a Tree<O>>; 2],
+    curves: [Option<&'a Curve>; 2],
+}
+
+impl<O: SolutionObject> ParameterDomains<O> for TreeCurves<'_, O> {
+    fn natural_interval(&self, curve: &O) -> Option<Extent1d> {
+        curve.natural_interval().or_else(|| {
+            self.trees
+                .iter()
+                .zip(&self.curves)
+                .find_map(|(tree, c)| {
+                    let owner = tree.as_ref()?.owner_object().ok()??;
+                    (owner == *curve).then_some(*c).flatten()
+                })
+                .map(Curve::natural_interval)
+        })
+    }
 }
 
 /// Curve/point global solver (`SmCPGlobalSolver`): a point tree and a curve tree,
@@ -3346,36 +3387,6 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CpGlobalSolver<'t, O> {
         resolve_object_zone_tol_3d(self.zone_tol_3d, object)
     }
 
-    fn identical_solutions(
-        &self,
-        first: &Solution<O>,
-        second: &Solution<O>,
-    ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
-        let object = first.objects.first().copied().flatten();
-        let same_curve = first.num_objects == 1
-            && second.num_objects == 1
-            && object == second.objects.first().copied().flatten()
-            && object.is_some_and(|o| {
-                o.kind().is_kind_of(ObjectKind::Curve) && o.natural_interval().is_none()
-            });
-        let Some(curve) = self.curve.filter(|_| same_curve) else {
-            return self.base.identical_solutions(first, second);
-        };
-        // The live curve supplies the natural interval an arena handle cannot
-        // dereference. Resolve it for comparison; keep the original output handles.
-        let object = OperandObject::Curve(0, curve.natural_interval());
-        let resolved = |s: &Solution<O>| Solution {
-            solution_type: s.solution_type,
-            num_variables: s.num_variables,
-            start: s.start,
-            end: s.end,
-            num_objects: s.num_objects,
-            objects: s.objects.map(|o| o.map(|_| object)),
-            nodes: s.nodes,
-        };
-        GlobalSolver::new().identical_solutions(&resolved(first), &resolved(second))
-    }
-
     fn branch_may_contain_answers(&mut self, branch: &Branch) -> Result<bool> {
         self.may_contain_answers(branch)
     }
@@ -3383,6 +3394,21 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CpGlobalSolver<'t, O> {
     fn local_solve(&mut self, branch: &Branch) -> Result<bool> {
         let k = self.kernel;
         self.local_solve_branch(k, branch)
+    }
+
+    /// `SmGlobalSolver::IdenticalSolutions` (not overridden upstream), with the
+    /// solution curve's natural interval read from the curve the curve tree
+    /// decomposes (see [`TreeCurves`]).
+    fn identical_solutions(
+        &self,
+        sol1: &Solution<O>,
+        sol2: &Solution<O>,
+    ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
+        let domains = TreeCurves {
+            trees: [None, self.base.trees[1]],
+            curves: [None, self.curve],
+        };
+        self.base.identical_solutions_in(sol1, sol2, &domains)
     }
 }
 

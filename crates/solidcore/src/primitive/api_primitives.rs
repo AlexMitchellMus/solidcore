@@ -948,10 +948,13 @@ mod tests {
         // partial solids sweep a profile (topology sweep) past SmBrep::DeleteEdge and
         // the axis' SmFace::CurveOnClassify, until SmFace::FindVertexSector (sphere,
         // cylinder) or the torus' SmFace::Point3DClassify
+
         for (r, unit) in [
+            (create_cylindrical_box(k, o(), 10.0, 2.0, 5.0, 0.0, 90.0), "topology.edgeuse_p3"),
             (
                 create_partial_sphere(k, o(), 5.0, 0.0, 90.0),
                 "topology.face_p4",
+
             ),
             (
                 create_partial_cylinder(k, o(), 5.0, 10.0, 0.0, 90.0),
