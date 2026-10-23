@@ -932,7 +932,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                 let o = self
                     .proto_edge_mut(owner)
                     .ok_or(dangling("owning proto edge is deleted"))?;
-                o.remove_edge_definition(ed)?;
+                let _ = o.remove_edge_definition(ed);
             }
         }
 
