@@ -109,6 +109,9 @@ class BaselineTests(unittest.TestCase):
         with self.assertRaises(b.BaselineError):
             json.loads('{"a":1,"a":2}', object_pairs_hook=b.unique_object)
         with self.assertRaises(b.BaselineError): b.validate_set({"a.b": r}, ["a.b", "missing"])
+        for invalid in ["", "a/b", "a-b"]:
+            with self.subTest(unit=invalid), self.assertRaises(b.BaselineError):
+                b.validate_report(dict(r, unit=invalid), invalid)
 
     def test_atomic_zip_and_digest(self):
         blob = archive([("a.b.json", json.dumps(valid_report()))])

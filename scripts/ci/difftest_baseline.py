@@ -99,7 +99,7 @@ def case_has_values(report, case):
 def validate_report(report, filename_unit):
     if not isinstance(report, dict):
         raise BaselineError("report must be an object")
-    if report.get("unit") != filename_unit:
+    if not re.fullmatch(r"[A-Za-z0-9_.]+", filename_unit) or report.get("unit") != filename_unit:
         raise BaselineError("report unit does not match filename")
     if "schema_version" in report and (type(report["schema_version"]) is not int or report["schema_version"] != 1):
         raise BaselineError("unsupported report schema")
