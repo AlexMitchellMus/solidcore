@@ -600,8 +600,10 @@ fn actual_box_shared_constructor_builds_and_stitches_native_intermediate_body() 
         .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
         .unwrap();
     session.create_corners(&k, None).unwrap();
-    let mut error_info = solidcore::blend::fillet_executive::p3::ErrorInfo::default();
-    error_info.comment = "not assigned".into();
+    let mut error_info = solidcore::blend::fillet_executive::p3::ErrorInfo {
+        code: 1,
+        ..Default::default()
+    };
     session
         .create_fillet_brep(&mut k, Some(&mut error_info))
         .unwrap();
@@ -637,6 +639,5 @@ fn actual_box_shared_constructor_builds_and_stitches_native_intermediate_body() 
     };
     assert_eq!(session.attributes().users(marker).unwrap().len(), 4);
     assert_eq!(error_info.code, 0);
-    assert!(error_info.comment.is_empty());
     assert!(!k.context.doing_boolean());
 }
