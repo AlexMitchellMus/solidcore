@@ -19056,3 +19056,33 @@ preserves all four control nets and u knots exactly, and reproduces the last
 round's complete input and 4125.906 mm net; the other rounds' tiny lower v extension
 bounds can differ in their last bits (at most 7e-20 in the checked run). The saved
 JSON inputs fix every bit for differential testing.
+
+## surface.cone_p3 — resumed validation and reference alignment (#711, 2026-10-24)
+
+Source `6ed9dc73578c4d9435e26af1f3e25a77c477c444` merges main `a5dc2be24`.
+Formatting, strict Clippy with default and C++ features, 2,104 kernel unit tests,
+ten integration tests (four primitive tests run optimized, one pre-existing ignored),
+wasm32 and plan validation pass. Optimized runner tests pass: 288 unit tests,
+33 pre-existing ignored, plus round-trip, saved fuzz corpus, two regression-gate
+integration tests and three selftests. The targeted native comparisons remain:
+
+```text
+FAIL surface.cone_p3 cases=1484 passed=1344 failed=140 deferred=0 max_rel_err=6.666666666666666e-1 with_values=1328 no_values=16 vacuous=0
+PASS nlib.srf_offset cases=438 passed=438 failed=0 deferred=0 max_rel_err=0e0 with_values=438 no_values=0 vacuous=0
+PASS nurbs.b_spline_surface_n_lib_p1 cases=699 passed=699 failed=0 deferred=0 max_rel_err=0e0 with_values=699 no_values=0 vacuous=0
+```
+
+The full 259-unit differential result above belongs to source `7309517ff`; this
+resumed validation checks the cone unit and the two modules changed by the earlier
+main merge of #471. It does not claim a new full-suite or exact-base ratchet run.
+
+The author of #711 has now supplied the fork's C++ patch:
+https://github.com/tangency-labs/solidcore/issues/711#issuecomment-6383839493.
+It derives the axial overlap from the two requested domains converted to STEP.
+The pinned NVIDIA reference is still `c9c5979`; the comment does not update it.
+Adopting a reviewed C++ backport or updating the reference needs an explicit
+project decision. The new exact-base ratchet also rejects dropping a previously
+selected green unit from the comparison set. No waiver is added: the corrected
+Rust implementation remains blocked on reference alignment. The distinction
+between parity and independent correctness was already raised in issues #17 and
+#349; the comment provides a concrete candidate reference fix for this case.
