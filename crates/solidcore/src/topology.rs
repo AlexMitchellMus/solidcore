@@ -788,6 +788,38 @@ impl Brep {
         copy
     }
 
+    /// A private copy of this B-rep that stands for the B-rep itself where upstream
+    /// queries the B-rep in place (a `const` query that still makes missing UV trim
+    /// curves on it): its edge curves, face surfaces and UV trim curves are exact copies
+    /// that keep their owners (and the surfaces share their cache slots), so the copy's
+    /// geometry still names its own edges and faces. A plain `clone` (the copy
+    /// constructor) resets every owner, and a B-rep cache made from it then holds no
+    /// curve or surface.
+    ///
+    /// # Errors
+    ///
+    /// Those of the geometry copies (a geometry nesting deeper than
+    /// `MAX_GEOMETRY_NESTING`).
+    pub fn clone_standing_for_self(&self) -> Result<Self> {
+        let mut copy = self.clone();
+        for (id, edge) in self.edges.iter() {
+            if let Some(curve) = edge.curve.as_ref() {
+                copy.edge_mut(id)?.curve = Some(curve.clone_for_evaluation()?);
+            }
+        }
+        for (id, face) in self.faces.iter() {
+            if let Some(surface) = face.surface.as_ref() {
+                copy.face_mut(id)?.surface = Some(surface.clone_for_evaluation()?);
+            }
+        }
+        for (id, edgeuse) in self.edgeuses.iter() {
+            if let Some(curve) = edgeuse.uv_trim_curve.as_ref() {
+                copy.edgeuse_mut(id)?.uv_trim_curve = Some(curve.clone_for_evaluation()?);
+            }
+        }
+        Ok(copy)
+    }
+
     /// Ends the innermost [`Brep::begin_surface_owner_cleared`] scope of face `f`.
     pub fn end_surface_owner_cleared(&mut self, f: FaceId) {
         if let Some(i) = self.surface_owner_cleared.iter().rposition(|&g| g == f) {
