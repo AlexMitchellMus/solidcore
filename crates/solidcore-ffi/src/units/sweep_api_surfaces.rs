@@ -61,7 +61,6 @@ pub const MAX_DEGREE: usize = 17;
 /// trajectory whose control polygon is longer than `1e-5 / 1e-6 = 10` makes
 /// the tolerance fall below floating-point resolution and hangs.
 pub const MIN_SWEEP_TOL_FRACTION: f64 = 1e-6;
-const SWEEP_FIXED_TOL: f64 = 1e-5;
 mod sys {
     extern "C" {
         pub fn sc_sweep_api_surfaces_run(
@@ -372,29 +371,35 @@ fn path_poly_len(c: &CurveSpec) -> f64 {
     match c {
         CurveSpec::Nurb { cpts, .. } => {
             let mut len = 0.0;
-            for w in cpts.windows(2) {
-                let a = w[0];
-                let b = w[1];
-                let dx = b[0] - a[0];
-                let dy = b[1] - a[1];
-                let dz = if a[2] == NOZ || b[2] == NOZ {
-                    0.0
-                } else {
-                    b[2] - a[2]
-                };
-                len += (dx * dx + dy * dy + dz * dz).sqrt();
+            let mut prev: Option<[f64; 4]> = None;
+            for cp in cpts {
+                if let Some(a) = prev {
+                    let b = *cp;
+                    let dx = b[0] - a[0];
+                    let dy = b[1] - a[1];
+                    let dz = if a[2] == NOZ || b[2] == NOZ {
+                        0.0
+                    } else {
+                        b[2] - a[2]
+                    };
+                    len += (dx * dx + dy * dy + dz * dz).sqrt();
+                }
+                prev = Some(*cp);
             }
             len
         }
         CurveSpec::ApiCurve { points } => {
             let mut len = 0.0;
-            for w in points.windows(2) {
-                let a = w[0];
-                let b = w[1];
-                let dx = b[0] - a[0];
-                let dy = b[1] - a[1];
-                let dz = b[2] - a[2];
-                len += (dx * dx + dy * dy + dz * dz).sqrt();
+            let mut prev: Option<[f64; 3]> = None;
+            for pt in points {
+                if let Some(a) = prev {
+                    let b = *pt;
+                    let dx = b[0] - a[0];
+                    let dy = b[1] - a[1];
+                    let dz = b[2] - a[2];
+                    len += (dx * dx + dy * dy + dz * dz).sqrt();
+                }
+                prev = Some(*pt);
             }
             len
         }

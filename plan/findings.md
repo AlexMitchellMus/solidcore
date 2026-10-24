@@ -18969,3 +18969,21 @@ preserves all four control nets and u knots exactly, and reproduces the last
 round's complete input and 4125.906 mm net; the other rounds' tiny lower v extension
 bounds can differ in their last bits (at most 7e-20 in the checked run). The saved
 JSON inputs fix every bit for differential testing.
+
+- `surface.surf_of_extrusion_p1` (HANG-23 guard follow-up, 2026-10-24): the
+  in-flight centre-cap sketch (`|c| > 1e8`) was replaced after probing the C++
+  directly (`sc_surface_surf_of_extrusion_p1_eval`, 8 s timeouts): the hang is a
+  minor-radius razor, not a centre-distance one. An ellipse extrusion with
+  `rx = 1` and `ry` below `1/DBL_MAX` (5.562684646268003e-309) hangs C++ on
+  `AdjustSTEPUVDomain` for every centre except exactly `0` (`0/0.25/1e-16/0.001/
+  1/2/4/1e10/1e300 pounds all hang at ry = 5e-324; ry is fine for any one
+  centre >= 5.6e-309, including 1e300; `rx / ry` finite never hangs; a denormal
+  MAJOR radius with a normal minor one never hangs; circles with denormal
+  radii never hang). The hang is chaotic inside the subnormal centre edge:
+  `c = 6e-308` and `6.5e-308` pass while `6.1/6.3/6.7e-308` hang, and
+  `c = 1e-300` hangs while `1e-309` passes (with `ry = 5e-324`) — so no closed
+  predicate separates hang from pass inside that sliver; the guard rejects the
+  whole `rx / ry == inf && centre != origin` rectangle, which keeps every
+  probe-passing conic with resolvable radii (the accepted sliver's 21-order
+  noise regime included) documented here. Base counters unchanged (2071 cases,
+  2000-draw fuzz clean: rejected 337, ran 903, 0 timeouts/0 differs).

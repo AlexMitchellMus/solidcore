@@ -522,10 +522,8 @@ pub(crate) fn push_surf(o: &mut Vec<f64>, s: &Surf) -> Result<(), FfiError> {
                 Gen::Circle { .. } => {
                     angular(v0, v1, "surface domain")?;
                 }
-                Gen::Hyperbola { .. } => {
-                    if !(v0 < v1 && v0 >= -10.0 && v1 <= 10.0) {
-                        return Err(bad("surface domain: bad hyperbola v domain"));
-                    }
+                Gen::Hyperbola { .. } if !(v0 < v1 && v0 >= -10.0 && v1 <= 10.0) => {
+                    return Err(bad("surface domain: bad hyperbola v domain"));
                 }
                 _ => {}
             }
