@@ -9,7 +9,6 @@
 //! | Rust                                              | Upstream                                         |
 //! |---------------------------------------------------|--------------------------------------------------|
 //! | [`BSplineSurface`]                                | `SmBSplineSurface`                               |
-//! | [`BSplineSurface::step_inversion_on_tested`]      | `SmBSplineSurface::STEPInversion` with the face's trim test |
 //! | [`BSplineSurface::new`], `Default`                | `SmBSplineSurface()`                             |
 //! | [`BSplineSurface::from_data`]                     | `SmBSplineSurface(n, m, p, q, r, s, Pw, U, V)`   |
 //! | [`BSplineSurface::from_nurb`]                     | `SmBSplineSurface(gw_SURFACE*, SmBoolean, const SmContext*)` |
@@ -564,33 +563,16 @@ fn global_point_solve(
     domain: &Extent2d,
     point: Point3,
     tol_3d: f64,
-    face_test: Option<crate::surface::surface::p4::FaceTest<'_>>,
 ) -> Result<Vec<Point2>> {
-    let starts = if let Some(classify) = face_test {
-        let solutions = surface
-            .global_point_solve_face_tested::<crate::surface::surface::p4::NoObject>(
-                k,
-                Some(crate::surface::surface::p4::NoObject),
-                domain,
-                SolverOperation::Intersect,
-                point,
-                tol_3d,
-                None,
-                SolutionRequested::All,
-                classify,
-            )?;
-        solutions.as_slice().iter().map(|s| s.start).collect()
-    } else {
-        crate::surface::surface::p4::global_point_solve_starts(
-            k,
-            surface,
-            domain,
-            SolverOperation::Intersect,
-            point,
-            tol_3d,
-            SolutionRequested::All,
-        )?
-    };
+    let starts = crate::surface::surface::p4::global_point_solve_starts(
+        k,
+        surface,
+        domain,
+        SolverOperation::Intersect,
+        point,
+        tol_3d,
+        SolutionRequested::All,
+    )?;
     Ok(starts
         .iter()
         .map(|s| {
@@ -1891,36 +1873,6 @@ impl BSplineSurface {
         tol_3d: f64,
         uv_guess: Option<Point2>,
     ) -> Result<(Point2, LocationType)> {
-        self.step_inversion_on_tested(
-            k,
-            surface,
-            anal_domain,
-            point_on_surf,
-            tol_3d,
-            uv_guess,
-            None,
-        )
-    }
-
-    /// [`BSplineSurface::step_inversion_on`] of a face's surface by a caller that holds
-    /// the face: the global point solve's fast-drop trim test is `face_test`
-    /// ([`crate::surface::surface::Surface::global_point_solve_face_tested`]; `None`:
-    /// the surface's own).
-    ///
-    /// # Errors
-    ///
-    /// As [`BSplineSurface::step_inversion_on`], and those of `face_test`.
-    #[allow(clippy::too_many_arguments)]
-    pub fn step_inversion_on_tested(
-        &self,
-        k: &Kernel,
-        surface: &crate::surface::surface::Surface,
-        anal_domain: &Extent2d,
-        point_on_surf: Point3,
-        tol_3d: f64,
-        uv_guess: Option<Point2>,
-        face_test: Option<crate::surface::surface::p4::FaceTest<'_>>,
-    ) -> Result<(Point2, LocationType)> {
         // init output
         let mut location = LocationType::Interior;
 
@@ -1944,7 +1896,6 @@ impl BSplineSurface {
                 anal_domain,
                 point_on_surf,
                 tol_3d,
-                face_test,
             )?);
         }
 

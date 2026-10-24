@@ -14,7 +14,6 @@
 //! | Rust                                              | Upstream                                         |
 //! |---------------------------------------------------|--------------------------------------------------|
 //! | [`Surface`], [`SurfaceKind`]                      | `SmSurface` (and its derived classes)            |
-//! | [`Surface::step_inversion_face_tested`]           | `SmSurface::STEPInversion` of a face-owned surface (trim test on the caller's face) |
 //! | [`SurfaceEvaluate`]                               | the evaluation virtuals generic callers use      |
 //! | `Drop` (implicit), `Clone`                        | `~SmSurface`, copy constructor (owner reset)     |
 //! | [`TYPE`], [`TYPE_STRING`], [`CLASS_STRING`], [`Surface::type_code`], [`Surface::type_string`], [`Surface::class_string`] | `GetType`, `GetTypeString`, `GetClassString` (`SM_COMMON`) |
@@ -462,15 +461,6 @@ impl Clone for Surface {
 }
 
 impl Surface {
-    /// Takes over the geometry of `copy`, an evaluation copy of this surface
-    /// ([`Surface::clone_for_evaluation`]) that an operation changed in place, keeping
-    /// this surface's identity, owner and cache slot: the change then is the one
-    /// upstream makes on the object itself.
-    pub(crate) fn adopt_geometry(&mut self, copy: Self) {
-        self.kind = copy.kind;
-        self.update_owned_bases();
-    }
-
     /// A temporary evaluation copy: retain the owner and exact NURBS data rather
     /// than invoking the upstream copy constructor's knot fix-up.
     pub(crate) fn clone_for_evaluation(&self) -> Result<Self> {
@@ -1731,47 +1721,6 @@ impl Surface {
             SurfaceKind::SurfOfRevolution(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             SurfaceKind::SurfOfExtrusion(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             _ => Ok(base_convert_uv(nurbs_uv)),
-        }
-    }
-
-    /// [`Surface::step_inversion`] of a face's surface by a caller that holds the face:
-    /// the B-spline (and plane) inversion's global point solve tests its solutions with
-    /// `face_test` (`pFace->PointClassify` in `GlobalPointSolve`'s fast drop, as
-    /// [`Surface::global_point_solve_face_tested`]). The other kinds do not reach a
-    /// face test and invert as [`Surface::step_inversion`].
-    ///
-    /// # Errors
-    ///
-    /// As [`Surface::step_inversion`], and those of `face_test`.
-    pub fn step_inversion_face_tested(
-        &self,
-        k: &Kernel,
-        anal_domain: &Extent2d,
-        point_on_surf: Point3,
-        tol_3d: f64,
-        uv_guess: Option<Point2>,
-        face_test: super::p4::FaceTest<'_>,
-    ) -> Result<(Point2, LocationType)> {
-        match &self.kind {
-            SurfaceKind::BSpline(s) => s.step_inversion_on_tested(
-                k,
-                self,
-                anal_domain,
-                point_on_surf,
-                tol_3d,
-                uv_guess,
-                Some(face_test),
-            ),
-            SurfaceKind::Plane(s) => s.base().step_inversion_on_tested(
-                k,
-                self,
-                anal_domain,
-                point_on_surf,
-                tol_3d,
-                uv_guess,
-                Some(face_test),
-            ),
-            _ => self.step_inversion(k, anal_domain, point_on_surf, tol_3d, uv_guess),
         }
     }
 
