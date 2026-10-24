@@ -114,3 +114,38 @@ fn native_api_setup_uses_owned_parameter_algorithm_and_unknown_xsect_default() {
     session.create_corners(&k, None).unwrap();
     assert_eq!(session.executive().corners.len(), 2);
 }
+
+#[test]
+fn real_box_nx1_topology_uses_live_pseudo_objects() {
+    use solidcore::blend::fillet_geom::p1::{FilletEdgeType, FilletVertexType};
+    use solidcore::intersect::point_class::PointClassType;
+
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::new(0.0, 0.0, 0.0), 10.0, 20.0, 30.0).unwrap();
+    let edge = target.edges().ids().next().unwrap();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    session
+        .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+        .unwrap();
+    session.create_corners(&k, None).unwrap();
+    let FilletObject::Corner(id) = session.executive().corners[0] else {
+        panic!("actual corner required");
+    };
+    session.make_nx1_corner_topology(&k, id).unwrap();
+    let corner = session.corner(id).unwrap();
+    assert_eq!(corner.vertices.len(), 2);
+    assert_eq!(corner.edges.len(), 1);
+    for &vertex in &corner.vertices {
+        let vertex = session.pseudo_brep().fillet_vertex(vertex).unwrap();
+        assert_eq!(vertex.fillet_corner(), Some(id));
+        assert_eq!(vertex.fillet_vertex_type(), FilletVertexType::RailXEdgeuse);
+        assert_eq!(vertex.point_class(), PointClassType::Edgeuse);
+        let Some(EntityRef::Edgeuse(original)) = vertex.point_class_object() else {
+            panic!("actual classified target edge use required");
+        };
+        session.target().edgeuse(original).unwrap();
+    }
+    let rib = session.pseudo_brep().fillet_edge(corner.edges[0]).unwrap();
+    assert_eq!(rib.fillet_edge_type(), FilletEdgeType::FilletXSideFace);
+    session.target().face(rib.original_face().unwrap()).unwrap();
+}
