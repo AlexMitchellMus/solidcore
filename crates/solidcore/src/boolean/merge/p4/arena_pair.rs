@@ -445,20 +445,20 @@ impl ClassGeometry<H> for Objs<'_, '_> {
     fn point(&self, o: H) -> Option<Point3> {
         ClassGeometry::point(self.two, o)
     }
-    // The classification reads vertex points and the stored zone tolerance of the
-    // topology it names (`SmTol::GetZoneTol3d`), as through the pair itself.
-    // (`vertex_face_gap` keeps the trait's default, as in the pair.)
+    // the topology handles are those of the pair, so the classification's topology
+    // members (`SmVertex::GetTolerance`, `SmEdge::GetTolerance`, ...) reach the same
+    // entities through either adapter
     fn classification_vertex_point(&self, o: H) -> Option<Point3> {
-        ClassGeometry::classification_vertex_point(self.two, o)
+        self.two.classification_vertex_point(o)
     }
     fn topology_zone_tol_3d(&self, o: H) -> Option<f64> {
-        ClassGeometry::topology_zone_tol_3d(self.two, o)
+        self.two.topology_zone_tol_3d(o)
     }
     fn topology_entity(&self, o: H) -> Option<(&Brep, EntityRef)> {
-        ClassGeometry::topology_entity(self.two, o)
+        self.two.topology_entity(o)
     }
     fn topology_handle_in(&self, brep: &Brep, entity: EntityRef) -> Option<H> {
-        ClassGeometry::topology_handle_in(self.two, brep, entity)
+        self.two.topology_handle_in(brep, entity)
     }
 }
 
