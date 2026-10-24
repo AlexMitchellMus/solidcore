@@ -19053,3 +19053,22 @@ other operand in the merge editing stages (`boolean.merge_p4` /
 `boolean.merge_p2` classification): the contained shell's faces are dropped instead
 of being kept reversed as a void. Listed in `known_mismatches.toml`; the offset
 port itself is not involved after the shell is built.
+
+### 2026-10-24 — Nx1 corner topology co-port for the live fillet session
+
+The real box-edge session creates two `NByOne` corners, then reaches the missing
+`MakeCornerTopology` producer. Neither `SmFilletNx1Corner::MakeCornerTopology` nor
+`sm_FindSurfaceExtensionDistAtCorner` is assigned in `harness/callgraph/units.json`.
+This follow-up co-ports the ordinary Nx1 producer and its three static side-edge /
+convexity helpers into `blend::fillet_corner::topology`, tracked with corner p3.
+It borrows the actual target, pseudo-B-rep, loaded solver and corner identity.
+The first real-box topology test retains two classified corner vertices and one
+end rib bound to the actual target end face; native paired-prefix proof is separate.
+
+Mixed-convexity extension remains unported at the actual missing
+`sm_FindSurfaceExtensionDistAtCorner` call, after the native two-vertex / rail prefix.
+Its `blend.fillet_corner_p1` tracking label is an explicit proposed home for that
+unassigned helper, not a claim of prior callgraph ownership. Keep this continuation
+visible and both corner units partial. No fake radius, solver table or extended
+surface is supplied. The native pseudo owning-vertex list differs from corner-owned
+fillet vertices; compare the two traversals separately.
