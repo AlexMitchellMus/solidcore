@@ -55,8 +55,9 @@
 //!   (`USE_DEFAULT` becomes the zone tolerance, then `fabs`).
 //! - **Surface/surface intersections.** `sm_SrfSrfIntersection` is
 //!   `blend.fillet_geom_p2`'s, called with the fillet vertices' points; its curves are
-//!   used through their B-spline part (an `SmLine` / `SmEllipse` intersection curve
-//!   loses its analytic overrides in the later evaluations here).
+//!   retained as their actual B-spline-derived objects for virtual operations.
+//!   The existing public [`UvCurves`] base-only return contract still projects its
+//!   surface/plane fallback onto the B-spline base.
 //! - **Part 6.** `GetRailIndexOfVertexuse`, `JoinTwoFilletVertsByCurves`,
 //!   `SmFilletEdge::CalcBlendingRail` and `RecordFilletError` are `blend.fillet_geom_p6`'s;
 //!   `MakeFaceBrep`'s 3D curve list holds `Option<Curve>` as the join appends them.
@@ -277,15 +278,14 @@ fn b_spline_net(s: &Surface) -> Option<&BSplineSurface> {
 /// success without a curve) and its UV curves on both surfaces.
 /// Also used by `blend.fillet_geom_p5`.
 pub(super) struct SrfSrfCurves {
-    pub(super) curve_3d: Option<BSplineCurve>,
-    pub(super) uv_curve1: Option<BSplineCurve>,
-    pub(super) uv_curve2: Option<BSplineCurve>,
+    pub(super) curve_3d: Option<Curve>,
+    pub(super) uv_curve1: Option<Curve>,
+    pub(super) uv_curve2: Option<Curve>,
 }
 
 /// `sm_SrfSrfIntersection` ([`super::p2::srf_srf_intersection`]) with fillet vertices
-/// (their points) for its `SmVertex` arguments; the curves continue as their B-spline
-/// part (`SmBSplineCurve*`; an analytic intersection curve keeps only its B-spline
-/// base here, see the module deviations). Also used by `blend.fillet_geom_p5`.
+/// (their points) for its `SmVertex` arguments. The native B-spline casts retain
+/// the actual analytic curve objects. Also used by `blend.fillet_geom_p5`.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn srf_srf_intersection(
     k: &Kernel,
@@ -318,7 +318,7 @@ pub(super) fn srf_srf_intersection(
             ref_point,
         },
     )?;
-    let part = |c: Option<Curve>| c.as_ref().and_then(as_b_spline).cloned();
+    let part = |c: Option<Curve>| c.filter(|curve| as_b_spline(curve).is_some());
     Ok(SrfSrfCurves {
         curve_3d: part(r.curve_3d),
         uv_curve1: part(r.uv_curve1),
@@ -862,8 +862,9 @@ pub fn create_uv_curve(
                 ) {
                     Ok(r) => {
                         // when Srf/Srf worked - don't need 2nd UVcurve
-                        out.curve_3d = r.curve_3d;
-                        out.uv_curve1 = r.uv_curve1;
+                        // Preserve the public base-only UvCurves return contract.
+                        out.curve_3d = r.curve_3d.as_ref().and_then(as_b_spline).cloned();
+                        out.uv_curve1 = r.uv_curve1.as_ref().and_then(as_b_spline).cloned();
                         return Ok(out);
                     }
                     Err(e) if e.is_unported() => return Err(e),
@@ -891,10 +892,10 @@ pub fn create_uv_curve(
 
 /// Which end of the 3D intersection curve `curve` the reference point is nearer to, and
 /// the end points (`EvaluatePoint` at the natural interval's ends).
-fn curve_ends(curve: &BSplineCurve) -> Result<(Extent1d, Point3, Point3)> {
+fn curve_ends(k: &Kernel, curve: &Curve) -> Result<(Extent1d, Point3, Point3)> {
     let ivl = curve.natural_interval();
-    let pnt1 = curve.evaluate_point(ivl.min())?;
-    let pnt2 = curve.evaluate_point(ivl.max())?;
+    let pnt1 = curve.evaluate_point(k, ivl.min())?;
+    let pnt2 = curve.evaluate_point(k, ivl.max())?;
     Ok((ivl, pnt1, pnt2))
 }
 
@@ -944,15 +945,15 @@ impl FilletBrep {
         e: EdgeId,
         prim: EdgeuseId,
         mate: EdgeuseId,
-        curve: BSplineCurve,
+        curve: Curve,
         ivl: &Extent1d,
-        uv_curve1: Option<BSplineCurve>,
-        uv_curve2: Option<BSplineCurve>,
+        uv_curve1: Option<Curve>,
+        uv_curve2: Option<Curve>,
     ) -> Result<()> {
-        set_edge_curve(self.brep_mut(), e, Some(Curve::from(curve)))?;
+        set_edge_curve(self.brep_mut(), e, Some(curve))?;
         edge::set_interval(self.brep_mut(), e, ivl)?;
-        self.set_edgeuse_uv_curve(prim, uv_curve1.map(Curve::from), true, true)?;
-        self.set_edgeuse_uv_curve(mate, uv_curve2.map(Curve::from), true, true)?;
+        self.set_edgeuse_uv_curve(prim, uv_curve1, true, true)?;
+        self.set_edgeuse_uv_curve(mate, uv_curve2, true, true)?;
         Ok(())
     }
 
@@ -1050,7 +1051,7 @@ impl FilletBrep {
             }
         };
 
-        let (_, pnt1, pnt2) = curve_ends(&curve_3d)?;
+        let (_, pnt1, pnt2) = curve_ends(k, &curve_3d)?;
         let mut vert_geom = pnt1;
         if ref_pnt.distance(pnt1) > ref_pnt.distance(pnt2) {
             vert_geom = pnt2;
@@ -1169,7 +1170,7 @@ impl FilletBrep {
             // Determine whether the curves need to be reversed (before they are stored:
             // upstream reverses the stored objects in place)
             let crv_ivl = new_3d_curve.natural_interval();
-            let (mut ivl, pnt1, pnt2) = curve_ends(&new_3d_curve)?;
+            let (mut ivl, pnt1, pnt2) = curve_ends(k, &new_3d_curve)?;
             let near_start = other_pnt.distance(pnt1) < other_pnt.distance(pnt2);
             let reverse_curves = if edge::vertex(self.brep(), curr_edge)? == Some(v) {
                 near_start
@@ -1178,15 +1179,15 @@ impl FilletBrep {
             };
             if reverse_curves {
                 // the UV curves are dereferenced only here upstream
-                ivl = new_3d_curve.reverse_parameterization(&ivl)?;
+                ivl = new_3d_curve.reverse_parameterization(k, &ivl)?;
                 ivl = uv_curve1
                     .as_mut()
                     .ok_or_else(|| SolidError::null_pointer(OP_INT2))?
-                    .reverse_parameterization(&ivl)?;
+                    .reverse_parameterization(k, &ivl)?;
                 let _ = uv_curve2
                     .as_mut()
                     .ok_or_else(|| SolidError::null_pointer(OP_INT2))?
-                    .reverse_parameterization(&ivl)?;
+                    .reverse_parameterization(k, &ivl)?;
             }
             self.set_edge_curves(
                 curr_edge,
@@ -1403,7 +1404,7 @@ impl FilletBrep {
         };
 
         // get surface/surface xSectCurve->endPoints
-        let (mut ivl, pnt1, pnt2) = curve_ends(&new_3d_curve)?;
+        let (mut ivl, pnt1, pnt2) = curve_ends(k, &new_3d_curve)?;
 
         if b3x2_mixed_corner_case {
             // Find which end point lies on the pOnFace (the curves are dropped)
@@ -1459,15 +1460,15 @@ impl FilletBrep {
         // reverse FilletEdge parameterization when needed (the UV curves are
         // dereferenced only here upstream)
         if reverse_curves {
-            ivl = new_3d_curve.reverse_parameterization(&ivl)?;
+            ivl = new_3d_curve.reverse_parameterization(k, &ivl)?;
             ivl = uv_curve1
                 .as_mut()
                 .ok_or_else(|| SolidError::null_pointer(OP_EXT))?
-                .reverse_parameterization(&ivl)?;
+                .reverse_parameterization(k, &ivl)?;
             ivl = uv_curve2
                 .as_mut()
                 .ok_or_else(|| SolidError::null_pointer(OP_EXT))?
-                .reverse_parameterization(&ivl)?;
+                .reverse_parameterization(k, &ivl)?;
         }
 
         // Set edge geometry (pMateEU->SetUVCurve dereferences the mate)
