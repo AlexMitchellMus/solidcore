@@ -149,6 +149,64 @@
           }
         }
       }
+    },
+    {
+      "name": "public_extrusion_odd_reflection",
+      "upstream_ref": "source/SMLib/src/SmBrep.cpp:TurnToNURBS;source/SMLib/src/SmSurfOfExtrusion.cpp",
+      "inputs": {
+        "script": "scale_probe",
+        "obj": {
+          "extrusion_face": {
+            "origin": [
+              2,
+              3,
+              5
+            ],
+            "size": [
+              4,
+              3
+            ]
+          }
+        },
+        "op": {
+          "scale": {
+            "s": [
+              -1,
+              -1,
+              -1
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "public_extrusion_even_reflection",
+      "upstream_ref": "source/SMLib/src/SmBrep.cpp:TurnToNURBS;source/SMLib/src/SmSurfOfExtrusion.cpp",
+      "inputs": {
+        "script": "scale_probe",
+        "obj": {
+          "extrusion_face": {
+            "origin": [
+              2,
+              3,
+              5
+            ],
+            "size": [
+              4,
+              3
+            ]
+          }
+        },
+        "op": {
+          "scale": {
+            "s": [
+              -1,
+              -1,
+              1
+            ]
+          }
+        }
+      }
     }
   ]
 }

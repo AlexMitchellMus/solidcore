@@ -2908,6 +2908,18 @@ fn with_nurb<'a>(k: &Kernel, s: &'a Surface) -> Result<Option<Cow<'a, BSplineSur
                 Some(Cow::Owned(tmp.base().clone()))
             }
         }
+        SurfaceKind::SurfOfExtrusion(x) => {
+            if x.base().gw_nurb().is_some() {
+                Some(Cow::Borrowed(x.base()))
+            } else {
+                let mut tmp = x.as_ref().clone();
+                match tmp.make_nurb(k) {
+                    Err(e) if e.is_unported() => return Err(e),
+                    Ok(()) | Err(_) => {}
+                }
+                Some(Cow::Owned(tmp.base().clone()))
+            }
+        }
         SurfaceKind::Sphere(x) => {
             if x.base().base().gw_nurb().is_some() {
                 Some(Cow::Borrowed(x.base().base()))
@@ -2929,14 +2941,16 @@ const fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
         SurfaceKind::BSpline(x) => Some(x),
         SurfaceKind::Plane(x) => Some(x.base()),
         SurfaceKind::SurfOfRevolution(x) => Some(x.base()),
+        SurfaceKind::SurfOfExtrusion(x) => Some(x.base()),
         SurfaceKind::Sphere(x) => Some(x.base().base()),
         _ => None,
     }
 }
 
 /// `TurnToNURBS`: makes every face surface and edge curve of the B-rep a plain
-/// B-spline: a B-spline kind (`SmPlane`, `SmSurfOfRevolution`, `SmSphere`) gets its B-spline
-/// copy (`ReplaceSurface`, which rebuilds the UV trim curves); an `SmOffsetSurface` of a
+/// B-spline: a B-spline kind (`SmPlane`, `SmSurfOfRevolution`, `SmSphere`,
+/// `SmSurfOfExtrusion`) gets its B-spline copy (`ReplaceSurface`, which rebuilds the
+/// UV trim curves); an `SmOffsetSurface` of a
 /// B-spline kind is approximated (`ApproximateOffsetSurface` at ten times the B-rep
 /// tolerance, chord length; a failed approximation skips the face), extended by 2% of
 /// its box diagonal (`CreateExtendedSurface`, G1) and replaces the face's surface; a
