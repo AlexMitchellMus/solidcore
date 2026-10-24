@@ -2227,10 +2227,10 @@ fn c4_cusp_recovery(
 
     // pCenterLine = GetLastFilletGeom()->GetCenterLineCurve()
     let last = ops.solver().last_fillet_geom()?;
-    let end_pnt = match cx.fillets.geom(last)?.center_line_curve() {
+    let end_pnt = match cx.fillets.geom(last)?.center_line_geometry() {
         // get centerline's endPoint - it's located very near a surface cusp
         Some(center_line) => {
-            Some(center_line.evaluate_point(center_line.natural_interval().max())?)
+            Some(center_line.evaluate_point(cx.k, center_line.natural_interval().max())?)
         }
         None => None,
     };
@@ -2315,8 +2315,8 @@ fn c4_cusp_recovery(
         // gather all fillet centerlines made so far
         let mut curves: Vec<Curve> = Vec::new();
         for id in fillet_geom_ids(ops) {
-            if let Some(center_line) = cx.fillets.geom(id)?.center_line_curve() {
-                curves.push(Curve::from(center_line.clone()));
+            if let Some(center_line) = cx.fillets.geom(id)?.center_line_geometry() {
+                curves.push(center_line.clone());
             }
         }
 
@@ -2822,7 +2822,7 @@ fn c5_undo_reversal(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<()
         }
         if let Some(center_line) = geom.center_line_curve.as_mut() {
             let ivl2 = center_line.natural_interval();
-            center_line.reverse_parameterization(&ivl2)?;
+            center_line.reverse_parameterization(k, &ivl2)?;
         }
         if let Some(fillet_surf) = geom.fillet_surface.as_mut() {
             fillet_surf.reverse(k, SurfParamType::U)?;
@@ -2938,10 +2938,8 @@ mod tests_c5 {
             let (r1, m1) = add_rail(&k, &mut fb, 1.0);
             let mut geom = FilletGeom::new(&k, None, FilletGeomType::Default).unwrap();
             geom.rails = [Some(r0), Some(r1)];
-            geom.center_line_curve = Some(line_bspline(
-                Point3::new(0.0, 0.5, 0.5),
-                Point3::new(1.0, 0.5, 0.5),
-            ));
+            geom.center_line_curve =
+                Some(line_bspline(Point3::new(0.0, 0.5, 0.5), Point3::new(1.0, 0.5, 0.5)).into());
             geom.fillet_surface = Some(strip());
             let g = fb.add_geom(geom);
 
@@ -4131,7 +4129,7 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_>
         geom: &FilletGeomId,
         center_line: BSplineCurve,
     ) -> Result<()> {
-        pseudo.geom_mut(*geom)?.center_line_curve = Some(center_line);
+        pseudo.geom_mut(*geom)?.center_line_curve = Some(Curve::from(center_line));
         Ok(())
     }
 
