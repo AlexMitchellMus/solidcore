@@ -2185,6 +2185,7 @@ fn rust_face_tail(input: &FaceTailIn) -> RResult<Output> {
         &intersections,
         &mut env,
         &offset_key,
+        &curve_key,
     );
     let (status, _) = operation(result)?;
     let brep = executive
@@ -2417,6 +2418,7 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
                     &SsiData::default(),
                     env,
                     offset_key_of,
+                    &curve_key,
                 )
             })
         }
@@ -2470,7 +2472,7 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
             };
             executive.build_offset_of_edgeuses(
                 &mut kernel,
-                &original,
+                &mut original,
                 first,
                 other,
                 MarkType::Mark,

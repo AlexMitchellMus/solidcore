@@ -329,8 +329,9 @@ impl<'keys> ManifoldKernelAdapter<'keys> {
         Ok(())
     }
 
-    /// Clear the two canonical mate maps between piecewise stages.
-    pub(crate) fn clear_relationships(&mut self) -> Result<()> {
+    /// Clear the two canonical mate maps between piecewise stages
+    /// (`m_pBToO->RemoveAll(); m_pOToB->RemoveAll()`).
+    pub fn clear_relationships(&mut self) -> Result<()> {
         self.merge.intersector.with_intersector(
             &mut self.intersector,
             arena_pair::encode,
@@ -340,12 +341,12 @@ impl<'keys> ManifoldKernelAdapter<'keys> {
     }
 
     /// `m_vTI.m_bIntersectWireEdges`.
-    pub(crate) fn set_intersect_wire_edges(&mut self, enabled: bool) {
+    pub fn set_intersect_wire_edges(&mut self, enabled: bool) {
         self.intersector.intersect_wire_edges = enabled;
     }
 
     /// The empty-array `RegisterExistingSSI` call used by `PiecewiseMerge`.
-    pub(crate) fn register_empty_ssi(&mut self, primary: FaceId, other: FaceId) {
+    pub fn register_empty_ssi(&mut self, primary: FaceId, other: FaceId) {
         self.intersector.register_empty_ssi(
             Some(arena_pair::surface_handle(false, primary)),
             Some(arena_pair::surface_handle(true, other)),
@@ -353,7 +354,7 @@ impl<'keys> ManifoldKernelAdapter<'keys> {
     }
 
     /// Clear the piecewise stage's registered surface pairs.
-    pub(crate) fn clear_existing_ssi(&mut self) {
+    pub fn clear_existing_ssi(&mut self) {
         let _ = self.intersector.clear_existing_ssi();
     }
 
@@ -418,7 +419,7 @@ impl<'keys> ManifoldKernelAdapter<'keys> {
     ///
     /// Those of [`TopologyIntersector::delete_faces`] and an over-wide namespace (26 bits,
     /// as [`KernelManifoldIntersector::new`]'s); `InvalidInput` when the kernel
-    /// context's callbacks are already lent ([`Context::with_notification_context`]).
+    /// context's callbacks are already lent (`Context::with_notification_context`).
     pub fn delete_faces_in(
         kernel: &mut Kernel,
         brep: &mut Brep,
@@ -536,6 +537,18 @@ impl<'keys> ManifoldKernelAdapter<'keys> {
     #[must_use]
     pub fn intersect_lamina_edges(&self) -> u64 {
         self.intersector.intersect_lamina_edges
+    }
+
+    /// `m_vTI.m_bIntersectWireEdges`.
+    #[must_use]
+    pub fn intersect_wire_edges(&self) -> bool {
+        self.intersector.intersect_wire_edges
+    }
+
+    /// The partial-merge surface subset ([`Self::set_surface_subset`]), if any.
+    #[must_use]
+    pub fn surface_subset(&self) -> Option<&BTreeSet<ObjectRef>> {
+        self.subset.as_ref()
     }
 
     /// Run the orchestration with the options held in the canonical `MergeState`.
@@ -1010,20 +1023,79 @@ impl ManifoldIntersector for ManifoldKernelAdapter<'_> {
 
     fn fix_face_coincidence(
         &mut self,
+        kernels: &mut BooleanKernels<'_>,
         primary: &mut Brep,
         other: &mut Brep,
+        attributes: &mut AttributeStore,
         face: FaceId,
         other_face: FaceId,
     ) -> Result<(Vec<FaceId>, Vec<FaceId>, bool)> {
         let mates = &self.merge.intersector.edges;
-        p1::fix_found_face_coincidence(
+        let check = p1::check_face_coincidence(
             primary,
             other,
             face,
             other_face,
             mates.primary_to_other(),
             mates.other_to_primary(),
-        )
+        )?;
+        let p1::FaceCoincidenceCheck::NeedsMerge { edge_counts } = check else {
+            return Ok((vec![face], vec![other_face], false));
+        };
+        // `m_vTI.MergeCoincidentSurfaces(pBrepFace->GetSurface(), pOtherFace->GetSurface(),
+        // rBrepFaces, rOtherFaces)` (a failing status is returned as is)
+        let (surface, other_surface) = (
+            arena_pair::surface_handle(false, face),
+            arena_pair::surface_handle(true, other_face),
+        );
+        self.intersector.topology_deleted = self.topology_deleted;
+        let merged = Context::with_notification_context(kernels.primary, |k, context| {
+            let mut pair = ArenaPair::new(
+                primary,
+                Some(other),
+                &mut self.curves,
+                &mut self.extra_curves,
+                &mut self.records,
+                attributes,
+                cache_kernels(k, kernels.other.as_deref(), context),
+                context,
+                kernels.other.as_deref_mut().map(|k| &mut k.context),
+                self.keys,
+            );
+            let result = self.merge.intersector.with_intersector(
+                &mut self.intersector,
+                arena_pair::encode,
+                arena_pair::decode,
+                |ti| {
+                    ti.merge_coincident_surfaces(
+                        k,
+                        &mut pair,
+                        surface,
+                        other_surface,
+                        Some(arena_pair::TI_HANDLE),
+                    )
+                },
+            );
+            self.topology_deleted = self.intersector.topology_deleted;
+            // a curve identity the caller's keys refused during an edit (no rollback)
+            match pair.take_identity_failure() {
+                Some(refused) => Err(refused),
+                None => result,
+            }
+        })??;
+        // (the temporary curves stay in the adapter's stores: handles are stable)
+        let faces = merged
+            .faces
+            .into_iter()
+            .map(|h| arena_pair::merged_face(h, false))
+            .collect::<Result<Vec<_>>>()?;
+        let other_faces = merged
+            .other_faces
+            .into_iter()
+            .map(|h| arena_pair::merged_face(h, true))
+            .collect::<Result<Vec<_>>>()?;
+        let changed = p1::finish_face_coincidence(primary, other, edge_counts)?;
+        Ok((faces, other_faces, changed))
     }
 
     fn process_wires(
@@ -1357,7 +1429,19 @@ mod tests {
             .is_err());
         assert_eq!(adapter.face_mate(f), Some(of));
         assert_eq!(
-            adapter.fix_face_coincidence(&mut a, &mut b, f, of).unwrap(),
+            adapter
+                .fix_face_coincidence(
+                    &mut BooleanKernels {
+                        primary: &mut Kernel::default(),
+                        other: None
+                    },
+                    &mut a,
+                    &mut b,
+                    &mut AttributeStore::new(),
+                    f,
+                    of
+                )
+                .unwrap(),
             (vec![f], vec![of], false)
         );
         let r = a
@@ -1427,9 +1511,50 @@ mod tests {
         let (f, _) = face_on_wire(&mut a, edge);
         let (of, _) = face_on_wire(&mut b, other_edge);
         assert_eq!(
-            adapter.fix_face_coincidence(&mut a, &mut b, f, of).unwrap(),
+            adapter
+                .fix_face_coincidence(
+                    &mut BooleanKernels {
+                        primary: &mut Kernel::default(),
+                        other: None
+                    },
+                    &mut a,
+                    &mut b,
+                    &mut AttributeStore::new(),
+                    f,
+                    of
+                )
+                .unwrap(),
             (vec![f], vec![of], false)
         );
+    }
+
+    /// Faces whose edges are not mated reach `MergeCoincidentSurfaces` itself (it was
+    /// an `UNPORTED(boolean.topology_intersector_p3)` stub): these faces have no
+    /// surfaces, which that merge refuses as upstream's unchecked dereference.
+    #[test]
+    fn unmated_faces_reach_the_coincident_surface_merge() {
+        let mut adapter = KernelManifoldIntersector::new(0).unwrap();
+        let mut a = Brep::new();
+        let mut b = Brep::new();
+        let edge = wire(&mut a);
+        let other_edge = wire(&mut b);
+        let (f, _) = face_on_wire(&mut a, edge);
+        let (of, _) = face_on_wire(&mut b, other_edge);
+        let err = adapter
+            .fix_face_coincidence(
+                &mut BooleanKernels {
+                    primary: &mut Kernel::default(),
+                    other: None,
+                },
+                &mut a,
+                &mut b,
+                &mut AttributeStore::new(),
+                f,
+                of,
+            )
+            .unwrap_err();
+        assert!(!err.is_unported(), "{err:?}");
+        assert!(matches!(err, SolidError::InvalidInput { .. }), "{err:?}");
     }
 
     #[test]

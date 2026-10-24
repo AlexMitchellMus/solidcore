@@ -48,6 +48,10 @@
 //! - `ReplaceSurface` edits `pTopFace = pOld->GetFace()` (`SmBrep.cpp:26316`), the owner of
 //!   the face's surface, which can differ from `pFace` when faces share a surface upstream;
 //!   in the arena model every face owns its own surface, so the port edits `f`.
+//! - `ReplaceSurface`'s `SmFace::SetSurface` notifies `SM_NO_CHANGE_GEOMETRY` with the
+//!   new and the old surface's identities issued by the caller's context
+//!   ([`crate::topology::face::p1::set_surface_notified`]); a caller without a context
+//!   (whose notifications reach no callback) passes null surfaces.
 //! - `MakeShellVertexTopology` / `MakeEdgeVertexTopology` / `MakeEdgeTopology` add their
 //!   records to the arenas as they link them, not all up front; `MakeEdgeTopology`'s
 //!   `TransferChildrenTo` (the one shell call that can fail) runs before any new record
@@ -87,7 +91,6 @@ use crate::intersect::curve_class::ClassificationInit;
 use crate::intersect::point_class::{
     ClassGeometry, ClassObject, PointClassType, PointClassification,
 };
-use crate::intersect::topology_solver::p1::TopologySolver;
 use crate::intersect::topology_solver::p2::TopologySolveOptions;
 use crate::kernel::Kernel;
 use crate::math::{Point2, Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI};
@@ -101,7 +104,7 @@ use crate::query::face::p2::{curve_on_classify, CurveOnClassifyObjects};
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::surface::trim_srf_cache::TrimSrfCache;
 use crate::topology::brep::p1;
-use crate::topology::brep_cache::{self, BrepCache, BrepObjects, CacheObject, CacheSource};
+use crate::topology::brep_cache::{self, BrepCache, CacheObject, CacheSource};
 use crate::topology::edge::{self, AttributeFilter, NotifyEnv, SetCurveOptions};
 use crate::topology::edgeuse::p1::{self as eu1, UvTrimCurveArg};
 use crate::topology::edgeuse::p2 as eu2;
@@ -632,7 +635,7 @@ pub fn notify(
 }
 
 /// The identity of a region in a [`RegionNotifyState`]: its arena identity
-/// ([`loopuse::notify_ref`](crate::topology::loopuse::notify_ref), `SmRegion_TYPE`), the
+/// (`loopuse::notify_ref`, `SmRegion_TYPE`), the
 /// scheme of [`ArenaNotifyState`], so a caller decoding the events' keys (the heal path's
 /// topology tracker) reads every state's keys alike. Any other entity maps to a key
 /// without record (`(0, u64::MAX)`, which no arena identity is and the decoder rejects),
@@ -698,7 +701,7 @@ impl RegionNotifyState {
 /// without a notification environment, the heal path, `CopyEdges`). Upstream every object
 /// carries its `SmTopology` part and attributes; such a caller models neither, so the
 /// notification runs on a default record for every object of the B-rep, keyed by its
-/// arena identity ([`loopuse::notify_ref`](crate::topology::loopuse::notify_ref)), and an
+/// arena identity (`loopuse::notify_ref`), and an
 /// empty attribute store. The records are never read back: they exist so that
 /// `SmTopology::Notify`'s flag propagation finds both objects, as upstream it always does.
 /// The identities are unique within one B-rep only.
@@ -1311,7 +1314,7 @@ pub(crate) fn cache_entity(object: CacheObject) -> Result<EntityRef> {
 
 /// `RayFire`: fires a ray from `start` along `direction` through the B-rep (solver
 /// operation `SM_SO_RAYFIRE` on the B-rep with its `cache`; `brep_id`, `keys` and
-/// `owner_of` as in [`BrepObjects`]) and classifies
+/// `owner_of` as in [`BrepObjects`](crate::topology::brep_cache::BrepObjects)) and classifies
 /// the start point: the infinite region (or the first region when there is none) when
 /// nothing is hit, else the region [`local_curve_sector`] finds stepping back from the
 /// closest, lowest dimensional hit along the ray. `answer_limit` bounds the distance
@@ -1335,6 +1338,39 @@ pub fn ray_fire(
     ray_zone_tol_3d: f64,
     answer_limit: Option<f64>,
 ) -> Result<RayFireResult> {
+    ray_fire_with_solver(
+        k,
+        b,
+        start,
+        direction,
+        ray_zone_tol_3d,
+        answer_limit,
+        |b, point, options| {
+            let identity = crate::query::brep::BrepIdentity {
+                brep_id,
+                keys,
+                owner_of,
+            };
+            crate::query::brep::solve_mutable_brep_point(k, b, &identity, cache, point, options)
+        },
+    )
+}
+
+/// Shared numeric ray selection and sector classification; the caller supplies the
+/// solve's geometry access, including mutable lazy preparation when available.
+pub(crate) fn ray_fire_with_solver(
+    k: &Kernel,
+    b: &mut Brep,
+    start: Point3,
+    direction: Vec3,
+    ray_zone_tol_3d: f64,
+    answer_limit: Option<f64>,
+    solve: impl FnOnce(
+        &mut Brep,
+        Point3,
+        TopologySolveOptions<'_>,
+    ) -> Result<crate::geom::solution_array::SolutionArray<CacheObject>>,
+) -> Result<RayFireResult> {
     // get Brep BoundingBox and BoundingSphere
     let bbox = qbrep::calculate_bounding_box(k, &mut *b, BoundingBoxOptions::default())?;
     let sphere = bbox.sphere_bound();
@@ -1347,17 +1383,8 @@ pub fn ray_fire(
     // cast ray through Brep
     let best_sq = answer_limit.map_or(BIG_DOUBLE, |l| l * l);
     let vectors = [ray];
-    let objects = BrepObjects {
-        brep: b,
-        brep_id,
-        cache: Some(cache),
-        keys,
-        owner_of,
-    };
-    let solutions = TopologySolver::brep_point_solve(
-        k,
-        &objects,
-        Some(CacheObject::Brep),
+    let solutions = solve(
+        b,
         start,
         TopologySolveOptions {
             operation: SolverOperation::Rayfire,
@@ -1471,7 +1498,7 @@ pub enum OldSurface {
 /// [`SolidError::InvalidInput`] for a face without surface (upstream dereferences it);
 /// [`SolidError::Unported`] from the callees of `SmFace::Notify` ([`face3::notify`]:
 /// `GetUpwardEdgeuses`, `topology.face_p4`, for `POST_EDIT`), also reached through
-/// [`face1::set_surface`] and [`face1::remove_uv_trim_curves`], and of
+/// [`face1::set_surface_notified`] and [`face1::remove_uv_trim_curves`], and of
 /// `SmFace::CreateUVTrimCurves` ([`face3::create_uv_trim_curves`]).
 #[allow(clippy::too_many_arguments)] // one upstream routine
 pub fn replace_surface(
@@ -1497,9 +1524,22 @@ pub fn replace_surface(
 
     // change surface<->owner pointers
     let _ = new_surface.set_owner(Some(face_ref));
+    // the surfaces as the notification names them (issued by the caller's context)
+    let surface_refs = match env.context.as_deref_mut() {
+        Some(ctx) => {
+            let new_ref = surface_identity(ctx, &mut new_surface)?;
+            let old_ref = match b.face_mut(top_face)?.surface.as_mut() {
+                Some(s) => Some(surface_identity(ctx, s)?),
+                None => None,
+            };
+            [Some(new_ref), old_ref]
+        }
+        None => [None, None],
+    };
     // calls SmFace::Notify(SM_NO_CHANGE_GEOMETRY, ..) which tells all Face SmEdgeuses
     // and SmVertexuses to delete all their cached data
-    let old_surface = face1::set_surface(b, top_face, face_ref, new_surface, false)?;
+    let old_surface =
+        face1::set_surface_notified(b, env, top_face, face_ref, new_surface, false, surface_refs)?;
 
     // default faceDomain to NewSurface Domain
     face2::set_uv_domain(b, top_face, &new_domain)?;
@@ -1532,6 +1572,19 @@ pub fn replace_surface(
 
     // all done
     Ok((kept, modified))
+}
+
+/// The identity `surface` is notified under through `context` ([`Surface::notify_key`];
+/// issued by `context` when it has none of its domain).
+fn surface_identity(
+    context: &mut crate::geom::context::Context,
+    surface: &mut Surface,
+) -> Result<ObjectRef> {
+    let key = context.geometry_key(surface.notify_identity_slot())?;
+    Ok(ObjectRef {
+        type_code: surface.type_code(),
+        key,
+    })
 }
 
 // ---- topology construction ----------------------------------------------------------------

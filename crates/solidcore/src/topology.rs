@@ -654,6 +654,9 @@ pub struct Brep {
     /// its objects' topology keys hold it (`topology::brep::p3::topology_ref`). A
     /// clone is a new B-rep without one.
     notify_identity: IdentitySlot,
+    /// Edge/face identities supplied when their geometry was bound. These record
+    /// producer provenance; they are never inferred from an opaque geometry owner.
+    geometry_owner_keys: std::collections::BTreeMap<EntityRef, crate::geom::object::ObjectRef>,
 }
 
 impl Default for Brep {
@@ -684,6 +687,7 @@ impl Default for Brep {
             surface_owner_cleared: Vec::new(),
             locked_bounding_box: None,
             notify_identity: IdentitySlot::default(),
+            geometry_owner_keys: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -760,12 +764,37 @@ impl Brep {
     /// [`Brep::end_surface_owner_cleared`] ends it.
     pub fn begin_surface_owner_cleared(&mut self, f: FaceId) {
         self.surface_owner_cleared.push(f);
+        // the surface object (and its copies) learns it too
+        if let Some(s) = self.faces.get(f).and_then(|face| face.surface.as_ref()) {
+            s.begin_owner_cleared(f);
+        }
+    }
+
+    /// A private copy of this B-rep that stands for the B-rep itself (a query's scratch
+    /// copy where upstream works on the B-rep): its face surfaces share the cache slots
+    /// of this B-rep's ([`Surface::share_cache_slot_of`]), so that the surface caches the
+    /// query makes or reuses on the copy are the B-rep's surfaces' own, as upstream's
+    /// are. A plain `clone` (the copy constructor) starts every surface without cache.
+    #[must_use]
+    pub fn clone_sharing_surface_caches(&self) -> Self {
+        let mut copy = self.clone();
+        for (id, face) in self.faces.iter() {
+            if let (Some(original), Ok(face_copy)) = (face.surface.as_ref(), copy.face_mut(id)) {
+                if let Some(surface) = face_copy.surface.as_mut() {
+                    surface.share_cache_slot_of(original);
+                }
+            }
+        }
+        copy
     }
 
     /// Ends the innermost [`Brep::begin_surface_owner_cleared`] scope of face `f`.
     pub fn end_surface_owner_cleared(&mut self, f: FaceId) {
         if let Some(i) = self.surface_owner_cleared.iter().rposition(|&g| g == f) {
             self.surface_owner_cleared.remove(i);
+        }
+        if let Some(s) = self.faces.get(f).and_then(|face| face.surface.as_ref()) {
+            s.end_owner_cleared(f);
         }
     }
 
@@ -1139,6 +1168,7 @@ impl Brep {
             .remove(id)
             .ok_or_else(|| not_found("topology::Brep::remove_face_record", id))?;
         self.face_list.retain(|&x| x != id);
+        self.geometry_owner_keys.remove(&EntityRef::Face(id));
         Ok(face)
     }
 
@@ -1157,6 +1187,7 @@ impl Brep {
             .remove(id)
             .ok_or_else(|| not_found("topology::Brep::remove_edge_record", id))?;
         self.edge_list.retain(|&x| x != id);
+        self.geometry_owner_keys.remove(&EntityRef::Edge(id));
         Ok(edge)
     }
 
