@@ -19144,7 +19144,12 @@ and end on the same one. The port returns `SM_ERR_INVALID_INPUT` there
 (`gen0059` status 1007; in `gen0066` `merge_breps` reports it as `SM_ERR` 1001);
 the C++ reads the freed memory and goes on (status 0, 8 and 7 result records). The
 C++ build cannot be instrumented here, so no input-based rule separates these from
-tiny boxes that do not reach the condition. Listed in `known_mismatches.toml`.
+tiny boxes that do not reach the condition from the inputs alone, so the
+`boolean.api_brep` runner rejects a case on the Rust side when the port reports exactly
+this UB-175 error (the way `primitive.api_primitives` rejects UB-119): the C++ is not
+run, because the input is undefined there. For that the merge's `BooleanTrees` now
+passes an `InvalidInput` from `ManifoldBoolean` through instead of turning it into
+`SM_ERR`.
 
 ## boolean.merge_p3: vertex list order after merges that imprint edges into faces
 
@@ -19162,7 +19167,8 @@ keeps them in their original places (`values.record[18..]` and `[8..]`). The bin
 classification of `UpdateFaces` is not involved (the merge case never evaluates one;
 in the piecewise cases every evaluation succeeds). Suspected cause: a step after the
 imprint in the merge editing stages that moves a region's or shell's topology between
-B-reps upstream and keeps it in place in the port; not traced further. Listed in
+B-reps upstream and keeps it in place in the port. Follow-up: trace which step moves the
+far-side part's topology out of the B-rep and back in upstream. Listed in
 `known_mismatches.toml`.
 
 ## offset.offset_executive_p2: gen0166 leaves extra shells and loops after a failed shell

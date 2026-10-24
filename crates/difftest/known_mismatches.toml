@@ -321,15 +321,7 @@ unit = "offset.offset_executive_p2"
 case = "gen0003"
 why = "Rust ManifoldBoolean Difference drops a fully contained, non-intersecting inset shell: C++ hollow box 12 faces, Rust the original 6 (plan/findings.md: 'offset.offset_executive_p2: inset shell of a box loses the inner shell in the Rust Difference')"
 
-[[mismatch]]
-unit = "boolean.api_brep"
-case = "gen0059"
-why = "UB-175: tiny boxes collapse into shared proto vertices; the port refuses the teardown that reads a freed proto edge (1007), the C++ reads it and succeeds (plan/findings.md: 'boolean.api_brep: tiny-box Booleans reach the UB-175 teardown')"
 
-[[mismatch]]
-unit = "boolean.api_brep"
-case = "gen0066"
-why = "UB-175: tiny boxes collapse into shared proto vertices; the port refuses the teardown that reads a freed proto edge (merge_breps SM_ERR 1001), the C++ reads it and succeeds (plan/findings.md: 'boolean.api_brep: tiny-box Booleans reach the UB-175 teardown')"
 
 [[mismatch]]
 unit = "boolean.merge_p3"
@@ -349,4 +341,4 @@ why = "same result topology and vertex positions, different vertex list order: C
 [[mismatch]]
 unit = "offset.offset_executive_p2"
 case = "gen0166"
-why = "after a failed shell (status 1000 both) the port keeps 7 shells / 16 loops where C++ has 3 / 13 (plan/findings.md: 'offset.offset_executive_p2: gen0166 leaves extra shells and loops after a failed shell')"
+why = "Rust ManifoldBoolean Difference mishandles the inset shell: after a failed shell (status 1000 both) the port keeps 7 shells / 16 loops where C++ has 3 / 13 (plan/findings.md: 'offset.offset_executive_p2: inset shell of a box loses the inner shell in the Rust Difference'; 'offset.offset_executive_p2: gen0166 leaves extra shells and loops after a failed shell')"
