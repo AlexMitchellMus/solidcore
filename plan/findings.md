@@ -19072,3 +19072,19 @@ unassigned helper, not a claim of prior callgraph ownership. Keep this continuat
 visible and both corner units partial. No fake radius, solver table or extended
 surface is supplied. The native pseudo owning-vertex list differs from corner-owned
 fillet vertices; compare the two traversals separately.
+
+### Real-solid fillet checkpoint: corner vertices are outside the pseudo owning list (2026-10-24)
+
+`blend.fillet_executive_p3`, fixture `real_solids.json`, case
+`real-box-first_topology-actual-session`: a 10×20×30 box, edge 0, radius 0.5.
+Actual shared setup and corner creation matched. The first direct Nx1 topology
+operation initially exposed seven integer mismatches: native `GetVertices`
+returned only the pseudo shell placeholder (1), while Rust also linked the two
+corner-owned fillet vertices (3). Their owning-list labels likewise differed.
+
+The producer now allocates those vertices into the arena without linking them
+into the B-rep's owning list. All original checks remain, with additional actual
+FV→corner, edge→corner and edgeuse→fillet-geometry backlinks. Four paired setup/
+corner/topology fixtures pass exactly; the full API fixture remains deferred.
+The direct topology checkpoint stops before vertex geometry and omits smoothing
+on both sides; it does not claim the full executive prelude or a finished fillet.
