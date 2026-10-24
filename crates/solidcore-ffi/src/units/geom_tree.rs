@@ -314,7 +314,7 @@ pub fn validate_patch_lookup(prog: &[f64]) -> Result<(), FfiError> {
     Ok(())
 }
 
-/// Run GetFirstBezierPatch on real patches and temporary B-spline surfaces.
+/// Run `GetFirstBezierPatch` on real patches and temporary B-spline surfaces.
 /// Returns, per query, the selected pool index (-1 absent), then the selected
 /// NURB's `n m p q r s`, homogeneous control net and U/V knot arrays.
 pub fn patch_lookup(prog: &[f64]) -> Result<Vec<f64>, FfiError> {
