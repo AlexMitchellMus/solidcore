@@ -24,8 +24,8 @@ use super::p1::{ExecutiveObjects, SolverLoadingAccess};
 use super::p2::{FilletParameters, FilletParametersAccess, SolverSpec};
 use super::p3::{
     CornerAdjustmentAccess, CornerEdgeAccess, CornerVertexAccess, CornerView, ErrorInfo,
-    FaceConstructionAccess, FilletExecutive, RailClassificationAccess, RailTrimAccess,
-    SolverGeometryAccess, VertexEntry,
+    FaceConstructionAccess, FaceStitchAccess, FilletExecutive, RailClassificationAccess,
+    RailTrimAccess, SolverGeometryAccess, StitchAttempt, VertexEntry,
 };
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_geom::p1::{
@@ -74,6 +74,8 @@ pub enum FilletObject {
     Curve(FilletBody, EdgeId),
     /// The actual intermediate B-rep allocated during face construction.
     IntermediateBrep,
+    /// Actual topology in the separately allocated intermediate body.
+    IntermediateTopology(EntityRef),
     /// A geometry retained in the pseudo-B-rep.
     Geometry(crate::blend::fillet_geom::p1::FilletGeomId),
     /// A concrete solver in the session's solver slots.
@@ -90,7 +92,7 @@ impl ClassObject for FilletObject {
     fn class_kind(&self) -> ClassObjectKind {
         match self {
             Self::Curve(..) => ClassObjectKind::Curve,
-            Self::Topology(_, entity) => match entity {
+            Self::Topology(_, entity) | Self::IntermediateTopology(entity) => match entity {
                 EntityRef::Vertex(_) => ClassObjectKind::Vertex,
                 EntityRef::Edge(_) => ClassObjectKind::Edge,
                 EntityRef::Face(_) => ClassObjectKind::Face,
@@ -111,9 +113,12 @@ impl SolutionObject for FilletObject {
     fn kind(&self) -> ObjectKind {
         match self {
             Self::Curve(..) => ObjectKind::Curve,
-            Self::Topology(_, EntityRef::Vertex(_)) => ObjectKind::Vertex,
-            Self::Topology(_, EntityRef::Edge(_)) => ObjectKind::Edge,
-            Self::Topology(_, EntityRef::Face(_)) => ObjectKind::Face,
+            Self::Topology(_, EntityRef::Vertex(_))
+            | Self::IntermediateTopology(EntityRef::Vertex(_)) => ObjectKind::Vertex,
+            Self::Topology(_, EntityRef::Edge(_))
+            | Self::IntermediateTopology(EntityRef::Edge(_)) => ObjectKind::Edge,
+            Self::Topology(_, EntityRef::Face(_))
+            | Self::IntermediateTopology(EntityRef::Face(_)) => ObjectKind::Face,
             _ => ObjectKind::Other,
         }
     }
@@ -746,6 +751,35 @@ impl<'target> FilletSession<'target> {
         self.objects.intermediate.as_ref()
     }
 
+    /// Resolve topology in the actual intermediate body's issued identity domain.
+    ///
+    /// # Errors
+    /// The intermediate body has not been allocated or has no issued identity.
+    pub fn intermediate_identity(
+        &self,
+        entity: EntityRef,
+    ) -> Result<crate::geom::object::ObjectRef> {
+        let body = self
+            .objects
+            .intermediate
+            .as_ref()
+            .ok_or_else(|| invalid("intermediate body is not allocated"))?;
+        let serial = body
+            .notify_serial()
+            .ok_or_else(|| invalid("intermediate body has no kernel identity"))?;
+        Ok(crate::topology::brep::p3::topology_ref(serial, entity))
+    }
+
+    /// Attach the real executive edge attribute and stitch the actual intermediate body.
+    /// Successful counts and gaps describe this operation; failures retain prior mutations.
+    ///
+    /// # Errors
+    /// Native stitching failure or a genuine missing mutation-context capability.
+    pub fn stitch_fillet_faces(&mut self, k: &mut Kernel) -> Result<StitchAttempt> {
+        self.executive
+            .stitch_fillet_faces(k, &mut self.objects, FilletObject::IntermediateBrep)
+    }
+
     /// Load this actual solver through the native executive algorithm.
     ///
     /// # Errors
@@ -838,6 +872,116 @@ impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
             |context| *context.do_global_merge,
             |context| &mut *context.pseudo,
         )
+    }
+}
+
+impl FaceStitchAccess<FilletObject> for SessionObjects<'_> {
+    fn stitch_edges(&self, body: FilletObject) -> Result<Vec<FilletObject>> {
+        if body != FilletObject::IntermediateBrep {
+            return Err(invalid("stitch body is not the actual intermediate body"));
+        }
+        let body = self
+            .intermediate
+            .as_ref()
+            .ok_or_else(|| invalid("intermediate body is not allocated"))?;
+        Ok(crate::topology::brep::p1::edges(body, None)?
+            .into_iter()
+            .map(|e| FilletObject::IntermediateTopology(EntityRef::Edge(e)))
+            .collect())
+    }
+    fn stitch_attribute(
+        &mut self,
+        edge: FilletObject,
+        attribute: Option<FilletObject>,
+    ) -> Result<()> {
+        let FilletObject::IntermediateTopology(EntityRef::Edge(edge)) = edge else {
+            return Err(invalid("stitch edge is not actual intermediate topology"));
+        };
+        let Some(attribute) = attribute else {
+            return Ok(());
+        };
+        let FilletObject::Attribute(attribute) = attribute else {
+            return Err(invalid(
+                "stitch attribute is not retained in the actual store",
+            ));
+        };
+        let body = self
+            .intermediate
+            .as_ref()
+            .ok_or_else(|| invalid("intermediate body is not allocated"))?;
+        body.edge(edge)?;
+        let serial = body
+            .notify_serial()
+            .ok_or_else(|| invalid("intermediate body has no kernel identity"))?;
+        self.attributes.add_attribute(
+            crate::topology::brep::p3::topology_ref(serial, EntityRef::Edge(edge)).key,
+            attribute,
+        )
+    }
+    fn stitch_body(
+        &mut self,
+        k: &mut Kernel,
+        body: FilletObject,
+        tolerance: f64,
+    ) -> Result<StitchAttempt> {
+        if body != FilletObject::IntermediateBrep {
+            return Err(invalid("stitch body is not the actual intermediate body"));
+        }
+        let body = self
+            .intermediate
+            .as_mut()
+            .ok_or_else(|| invalid("intermediate body is not allocated"))?;
+        let serial = body
+            .notify_serial()
+            .ok_or_else(|| invalid("intermediate body has no kernel identity"))?;
+        let key_of = |entity| crate::topology::brep::p3::topology_ref(serial, entity);
+        let keys = |object| match object {
+            crate::topology::brep_cache::CacheObject::Brep => {
+                key_of(EntityRef::Brep(crate::topology::BrepId::from_index(0)))
+            }
+            crate::topology::brep_cache::CacheObject::Other(owner) => owner,
+            object => crate::topology::brep::p2::caller_cache_key(&key_of, object),
+        };
+        // This owned body binds curves and surfaces directly to its actual topology.
+        // New intermediary geometry cannot enter through the unregistered split seam.
+        let owner_of = |_| None;
+        let identity = crate::query::brep::BrepIdentity {
+            brep_id: crate::topology::BrepId::from_index(
+                u32::try_from(serial)
+                    .map_err(|_| invalid("intermediate body identity exceeds query domain"))?,
+            ),
+            keys: &keys,
+            owner_of: &owner_of,
+        };
+        crate::topology::brep::p3::seed_records(&mut self.notification_records, body, &key_of);
+        crate::topology::brep::p3::with_lent_context(k, |k, context| {
+            let mut env = crate::topology::edge::NotifyEnv {
+                records: &mut self.notification_records,
+                attributes: &mut self.attributes,
+                context: Some(context),
+                key_of: &key_of,
+            };
+            let curve_ref = |_, _| {
+                // UNPORTED(blend.fillet_executive_p3): identity of a newly copied stitch curve.
+                Err(SolidError::unported(
+                    "fillet stitch copied-curve identity",
+                    "blend.fillet_executive_p3",
+                ))
+            };
+            let mut edits = crate::heal::stitch::p1::BorrowedStitchEdits {
+                env: &mut env,
+                curve_ref: &curve_ref,
+            };
+            StitchAttempt::from_stitch(crate::topology::brep::p4::stitch_faces_with_context(
+                k,
+                body,
+                tolerance,
+                None,
+                false,
+                Some(identity),
+                Some(&mut edits),
+            ))
+        })?
     }
 }
 

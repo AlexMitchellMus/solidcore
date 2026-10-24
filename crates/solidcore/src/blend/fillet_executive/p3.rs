@@ -1275,6 +1275,39 @@ where
     }
 }
 
+/// Actual attribute attachment and stitching of the intermediate fillet body.
+pub trait FaceStitchAccess<O: ClassObject + SolutionObject + Ord>:
+    FaceConstructionAccess<O>
+{
+    /// Enumerate actual owning edges.
+    /// # Errors
+    /// Actual body resolution or traversal errors.
+    fn stitch_edges(&self, body: O) -> Result<Vec<O>>;
+    /// Attach the retained executive attribute to the actual edge.
+    /// # Errors
+    /// Actual edge or attribute resolution errors.
+    fn stitch_attribute(&mut self, edge: O, attribute: Option<O>) -> Result<()>;
+    /// Stitch using the actual caller's attributes and notification context.
+    /// # Errors
+    /// Genuine missing context or stitch-operation failures.
+    fn stitch_body(&mut self, k: &mut Kernel, body: O, tolerance: f64) -> Result<StitchAttempt>;
+}
+impl<O, A> FaceStitchAccess<O> for A
+where
+    O: ClassObject + SolutionObject + Ord,
+    A: ExecutiveAccess<O> + ?Sized,
+{
+    fn stitch_edges(&self, body: O) -> Result<Vec<O>> {
+        ExecutiveAccess::edges(self, body)
+    }
+    fn stitch_attribute(&mut self, edge: O, attribute: Option<O>) -> Result<()> {
+        ExecutiveAccess::add_attribute(self, edge, attribute)
+    }
+    fn stitch_body(&mut self, k: &mut Kernel, body: O, tolerance: f64) -> Result<StitchAttempt> {
+        ExecutiveAccess::stitch_faces(self, k, body, tolerance, None, false)
+    }
+}
+
 /// Actual construction operations for the intermediate fillet faces.
 pub trait FaceConstructionAccess<O: ClassObject + SolutionObject + Ord>:
     SolverGeometryAccess<O> + CornerVertexAccess<O>
@@ -1801,6 +1834,35 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         Ok(fillet)
     }
 
+    /// Attach the actual executive edge attribute, then stitch the intermediate body.
+    /// Counts and gaps are returned only after a successful stitch.
+    ///
+    /// # Errors
+    /// Native stitching failure with its original executive error mutation, or a genuine
+    /// missing dependency. Attribute and topology mutations preceding failure remain.
+    pub fn stitch_fillet_faces(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl FaceStitchAccess<O>,
+        fillet: O,
+    ) -> Result<StitchAttempt> {
+        for edge in access.stitch_edges(fillet)? {
+            ignore(access.stitch_attribute(edge, self.edge_attribute))?;
+        }
+        let tolerance = access.faces_tolerance(k, fillet)?;
+        let mut attempt = access.stitch_body(k, fillet, tolerance)?;
+        if let Some(error) = attempt.status.take() {
+            if error.is_unported() {
+                return Err(error);
+            }
+            self.error.code = 7; // SM_FILERR_BAD_MERGE
+            self.error.comment =
+                "Fillet Stitching Failure: Error Stitching Fillets Together".into();
+            return Err(failure());
+        }
+        Ok(attempt)
+    }
+
     /// Construct and stitch the fillet shell, preserving every stage after each
     /// missing dependency call. `error_out` is assigned only on success.
     pub fn create_fillet_brep(
@@ -1824,20 +1886,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         self.trim_solver_rails(k, access)?;
         self.classify_solver_rails(k, access)?;
         let fillet = self.build_fillet_faces(k, access)?;
-        for edge in access.edges(fillet)? {
-            ignore(access.add_attribute(edge, self.edge_attribute))?;
-        }
-        let tolerance = access.tolerance(k, fillet, false)?;
-        let attempt = access.stitch_faces(k, fillet, tolerance, None, false)?;
-        if let Some(error) = attempt.status {
-            if error.is_unported() {
-                return Err(error);
-            }
-            self.error.code = 7; // SM_FILERR_BAD_MERGE
-            self.error.comment =
-                "Fillet Stitching Failure: Error Stitching Fillets Together".into();
-            return Err(failure());
-        }
+        self.stitch_fillet_faces(k, access, fillet)?;
         if let Some(output) = error_out {
             output.assign(&self.error);
         }

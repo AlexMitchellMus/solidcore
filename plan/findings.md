@@ -19254,3 +19254,18 @@ The original full SmApiFilletEdges case still genuinely defers. This proves a re
 A passive addition to the unchanged intermediate-face fixture exposes four genuine identity mismatches while every previous564 exact fields and389 values remain unchanged. Native source FG surface is the very surface consumed into intermediateface0 and owned by that Face(type16002); Rust retains an independent FG surface with owner=None, while its managed face owns a clone. New source_surface_binding indices3/4/5/6 are native1/16002/0/0 versus Rust0/0/-1/-2. No sampled geometry or runtime type is normalized or removed.
 
 Native MakeFaceBrep passes m_pFilletSurface directly/consumed at SmFilletGeom.cpp9616/9639; its destructor9038–9054 does not delete that surface. DoFilleting.cpp2995 then resolves the first FG surface's owner as Face and calls ShrinkGeometry. A stale clone or guessed owner cannot replace this actual managed-surface mutation relationship. The owning kernel worker is implementing a producer-proven Owned→ManagedFace route; this red observer makes the gap visible. All26 previous CPP/Rust real-box records remain byte-identical after removing only the added source_surface_binding key for retention comparison. The new section is never removed from actual difftest comparison.
+### Fillet intermediate stitching: live attributes and notifications
+
+The intermediate body's ordered edges receive the executive's retained E attribute
+before the existing StitchFaces algorithm runs. Its mutating helper calls now accept
+the same borrowed notification records, attribute store and kernel callback context;
+legacy entrypoints retain their existing adapters. The shared executive stage returns
+counts and gaps only after success, preserving BAD_MERGE mutation on ordinary error.
+
+The normal box-edge kernel probe retains the same four marker users and reports zero
+stitched edges, four lamina edges and zero gaps. Paired native proof is pending. This
+is not general stitch-mutation or complete fillet parity: a newly copied split curve
+still requires its actual identity provider, and nested notification-context leases
+remain a limitation for mutation paths that request fresh kernel geometry keys.
+Separately, the face-stage native alias observer exposes a real FG-surface versus
+managed-face ownership mismatch; the stitching adapter does not repair or hide it.

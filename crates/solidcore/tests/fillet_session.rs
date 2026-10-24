@@ -526,4 +526,24 @@ fn actual_box_face_stage_constructs_a_distinct_intermediate_body() {
         session.executive().fillet,
         Some(FilletObject::IntermediateBrep)
     );
+    let edge_keys: Vec<_> = solidcore::topology::brep::p1::edges(body, None)
+        .unwrap()
+        .into_iter()
+        .map(|edge| {
+            session
+                .intermediate_identity(EntityRef::Edge(edge))
+                .unwrap()
+                .key
+        })
+        .collect();
+    let Some(FilletObject::Attribute(marker)) = session.executive().edge_attribute else {
+        panic!("actual executive edge marker must be retained");
+    };
+    assert!(session.attributes().users(marker).unwrap().is_empty());
+    let outcome = session.stitch_fillet_faces(&mut k).unwrap();
+    assert!(outcome.status.is_none());
+    // Independent native box-edge baseline: no glues, four lamina edges.
+    assert_eq!((outcome.stitched, outcome.lamina), (0, 4));
+    assert_eq!((outcome.max_vertex_gap, outcome.max_edge_gap), (0.0, 0.0));
+    assert_eq!(session.attributes().users(marker).unwrap(), edge_keys);
 }
