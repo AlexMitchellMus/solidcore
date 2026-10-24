@@ -372,3 +372,39 @@ fn actual_target_extension_map_retains_native_containing_surface() {
     assert_eq!(std::ptr::from_ref(actual), retained);
     assert_eq!(actual.natural_uv_domain(), domain);
 }
+
+#[test]
+fn actual_box_corner_edges_are_processed_in_retained_corner_order() {
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
+    let edge = target.edges().ids().next().unwrap();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    session
+        .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+        .unwrap();
+    session.create_corners(&k, None).unwrap();
+    session.process_smooth_edge_sequences(&mut k).unwrap();
+    session.create_corner_vertices(&mut k).unwrap();
+    session.adjust_corner_topology(&mut k).unwrap();
+    session.calculate_solver_geometry(&mut k).unwrap();
+    session.calculate_corner_edges(&mut k).unwrap();
+    assert!(!session.executive().corners.is_empty());
+    for &object in &session.executive().corners {
+        let FilletObject::Corner(id) = object else {
+            panic!("actual corner");
+        };
+        let corner = session.corner(id).unwrap();
+        assert!(!corner.edges.is_empty());
+        for &edge_id in &corner.edges {
+            let edge_record = session.pseudo_brep().brep().edge(edge_id).unwrap();
+            let curve = edge_record.curve.as_ref().unwrap();
+            assert_eq!(edge_record.interval, curve.natural_interval());
+            let fillet_edge = session.pseudo_brep().fillet_edge(edge_id).unwrap();
+            assert_eq!(
+                fillet_edge.status,
+                solidcore::blend::fillet_geom::p1::FilStatus::Processed
+            );
+            assert_eq!(fillet_edge.fillet_corner(), Some(id));
+        }
+    }
+}

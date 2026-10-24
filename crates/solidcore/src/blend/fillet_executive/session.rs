@@ -23,13 +23,14 @@ use std::collections::BTreeMap;
 use super::p1::{ExecutiveObjects, SolverLoadingAccess};
 use super::p2::{FilletParameters, FilletParametersAccess, SolverSpec};
 use super::p3::{
-    CornerAdjustmentAccess, CornerVertexAccess, CornerView, ErrorInfo, FilletExecutive,
-    SolverGeometryAccess, VertexEntry,
+    CornerAdjustmentAccess, CornerEdgeAccess, CornerVertexAccess, CornerView, ErrorInfo,
+    FilletExecutive, SolverGeometryAccess, VertexEntry,
 };
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_geom::p1::{
     CornerLookup, FilletBrep, FilletCornerId, FilletCornerType, FilletSolverId, FilletVertexType,
 };
+use crate::blend::fillet_geom::p5::FilletEdgeContext;
 use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, FilletSurfaceGenerator};
 use crate::blend::fillet_solver::p4::FilletGeometryContext;
 use crate::blend::fillet_standard_solver::p1::{
@@ -274,6 +275,33 @@ impl FilletGeometryContext for SessionGeometryContext<'_> {
             .map(SolverObject::base)
             .ok_or_else(|| invalid("peer solver is not live in this session"))
     }
+}
+
+struct SessionEdgeLookup<'a> {
+    solvers: &'a [Option<SolverObject>],
+    extended_surfaces: &'a BTreeMap<FaceId, Surface>,
+}
+
+impl FilletEdgeContext for SessionEdgeLookup<'_> {
+    fn solver(&self, id: FilletSolverId) -> Result<&FilletSolver> {
+        self.solvers
+            .get(id.0 as usize)
+            .and_then(Option::as_ref)
+            .map(SolverObject::base)
+            .ok_or_else(|| invalid("solver is not live in this session"))
+    }
+    fn extended_surface(&self, _corner: &FilletCorner, face: FaceId) -> Result<Option<&Surface>> {
+        Ok(self.extended_surfaces.get(&face))
+    }
+}
+
+struct SessionCornerEdgeContext<'a> {
+    k: &'a Kernel,
+    target: &'a mut Brep,
+    pseudo: &'a mut FilletBrep,
+    lookup: SessionEdgeLookup<'a>,
+    corner: FilletCornerId,
+    do_global_merge: &'a bool,
 }
 
 /// One actual executive and its live target, pseudo-B-rep, solvers and corners.
@@ -641,6 +669,15 @@ impl<'target> FilletSession<'target> {
             .calculate_solver_geometry(k, &mut self.objects)
     }
 
+    /// Complete every corner's post-surface geometry in native corner order.
+    /// Tangent adjustment and repeated vertex calculation precede each edge loop.
+    ///
+    /// # Errors
+    /// Actual geometry failures or unsupported concrete operation contexts.
+    pub fn calculate_corner_edges(&mut self, k: &mut Kernel) -> Result<()> {
+        self.executive.calculate_corner_edges(k, &mut self.objects)
+    }
+
     /// Run the executive's smooth-sequence prelude on its retained solvers.
     ///
     /// The ordinary single-solver path performs no collection, as in native code.
@@ -666,6 +703,91 @@ impl<'target> FilletSession<'target> {
     pub fn load_solver(&mut self, k: &Kernel, solver: FilletSolverId) -> Result<()> {
         self.executive
             .load_fillet_solver(k, &mut self.objects, FilletObject::Solver(solver))
+    }
+}
+
+impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
+    fn edges_adjust_tangent(
+        &mut self,
+        _k: &mut Kernel,
+        corner: FilletObject,
+        _executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let FilletObject::Corner(id) = corner else {
+            return Err(invalid("object is not a corner"));
+        };
+        let corner = self
+            .corners
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| invalid("corner is not live"))?;
+        corner.adjust_tangent_corner_with(
+            &mut (),
+            |_, ()| {
+                // UNPORTED(blend.fillet_executive_p1): actual Nx2 tangent-adjustment context.
+                Err(SolidError::unported(
+                    "SmFilletNx2Corner::AdjustTangentCorner (live context)",
+                    "blend.fillet_executive_p1",
+                ))
+            },
+            |_, ()| {
+                // UNPORTED(blend.fillet_executive_p1): actual closed Nx1 tangent-adjustment context.
+                Err(SolidError::unported(
+                    "SmFilletNx1ClosedCorner::AdjustTangentCorner (live context)",
+                    "blend.fillet_executive_p1",
+                ))
+            },
+        )
+    }
+    fn edges_calculate(
+        &mut self,
+        k: &mut Kernel,
+        corner: FilletObject,
+        executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let FilletObject::Corner(id) = corner else {
+            return Err(invalid("object is not a corner"));
+        };
+        let SessionObjects {
+            target,
+            pseudo,
+            solvers,
+            corners,
+            extended_surfaces,
+            ..
+        } = self;
+        let corner = corners
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| invalid("corner is not live"))?;
+        let mut context = SessionCornerEdgeContext {
+            k,
+            target,
+            pseudo,
+            lookup: SessionEdgeLookup {
+                solvers,
+                extended_surfaces,
+            },
+            corner: id,
+            do_global_merge: &executive.options.global_merge,
+        };
+        corner.calc_corner_edge_geom_with(
+            &mut context,
+            |context, corner, edge| {
+                let corners = CornerLookup {
+                    table: None,
+                    this: Some((Some(context.corner), corner)),
+                    exec: None,
+                };
+                context.pseudo.calc_corner_edge_geom_with_context(
+                    context.k,
+                    edge,
+                    corners,
+                    &context.lookup,
+                    context.target,
+                )
+            },
+            |context| *context.do_global_merge,
+            |context| &mut *context.pseudo,
+        )
     }
 }
 

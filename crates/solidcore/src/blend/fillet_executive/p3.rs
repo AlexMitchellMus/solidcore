@@ -1148,6 +1148,53 @@ where
     }
 }
 
+/// Live operations for each corner's post-surface geometry stage.
+pub trait CornerEdgeAccess<O: ClassObject + SolutionObject + Ord>: CornerVertexAccess<O> {
+    /// Invoke actual tangent topology adjustment.
+    ///
+    /// # Errors
+    /// Concrete context or tangent-adjustment failures.
+    fn edges_adjust_tangent(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
+    /// Calculate the actual corner's boundary edges.
+    ///
+    /// # Errors
+    /// Native curve calculation or concrete context failures.
+    fn edges_calculate(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
+}
+
+impl<O, A> CornerEdgeAccess<O> for A
+where
+    O: ClassObject + SolutionObject + Ord,
+    A: ExecutiveAccess<O> + ?Sized,
+{
+    fn edges_adjust_tangent(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
+        ExecutiveAccess::adjust_tangent_corner(self, k, corner, executive)
+    }
+    fn edges_calculate(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
+        ExecutiveAccess::calc_corner_edges(self, k, corner, executive)
+    }
+}
+
 /// Actual operations for the executive's ordered solver-geometry stage.
 pub trait SolverGeometryAccess<O: ClassObject + SolutionObject + Ord> {
     /// Run the actual retained solver's geometry calculation.
@@ -1426,6 +1473,43 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         Ok(())
     }
 
+    /// Complete tangent adjustment, repeated vertex geometry and boundary edges per corner.
+    ///
+    /// # Errors
+    /// Actual corner failures with native error metadata, or missing dependencies.
+    pub fn calculate_corner_edges(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl CornerEdgeAccess<O>,
+    ) -> Result<()> {
+        let mut index = 0;
+        while let Some(corner) = self.corners.get(index).copied() {
+            if ignore(access.edges_adjust_tangent(k, corner, self))?.is_none() {
+                return self.corner_vertex_failure(
+                    access,
+                    corner,
+                    "Fillet Corner Error: Topology Adjustment Failure",
+                );
+            }
+            if ignore(access.vertices_calculate(k, corner, self))?.is_none() {
+                return self.corner_vertex_failure(
+                    access,
+                    corner,
+                    "Fillet Corner Error: Vertex Computation Failure",
+                );
+            }
+            if ignore(access.edges_calculate(k, corner, self))?.is_none() {
+                return self.corner_vertex_failure(
+                    access,
+                    corner,
+                    "Fillet Corner Error: Corner Edge Computation Failure",
+                );
+            }
+            index += 1;
+        }
+        Ok(())
+    }
+
     /// Construct and stitch the fillet shell, preserving every stage after each
     /// missing dependency call. `error_out` is assigned only on success.
     pub fn create_fillet_brep(
@@ -1445,31 +1529,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         self.create_corner_vertices(k, access)?;
         self.adjust_corner_topology(k, access)?;
         self.calculate_solver_geometry(k, access)?;
-        let mut index = 0;
-        while let Some(corner) = self.corners.get(index).copied() {
-            if ignore(access.adjust_tangent_corner(k, corner, self))?.is_none() {
-                return self.corner_failure(
-                    access,
-                    corner,
-                    "Fillet Corner Error: Topology Adjustment Failure",
-                );
-            }
-            if ignore(access.calc_corner_vertices(k, corner, self))?.is_none() {
-                return self.corner_failure(
-                    access,
-                    corner,
-                    "Fillet Corner Error: Vertex Computation Failure",
-                );
-            }
-            if ignore(access.calc_corner_edges(k, corner, self))?.is_none() {
-                return self.corner_failure(
-                    access,
-                    corner,
-                    "Fillet Corner Error: Corner Edge Computation Failure",
-                );
-            }
-            index += 1;
-        }
+        self.calculate_corner_edges(k, access)?;
         let mut index = 0;
         while let Some(solver) = self.solvers.get(index).copied() {
             if ignore(access.trim_rails(k, solver, self))?.is_none() {
