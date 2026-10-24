@@ -1243,41 +1243,64 @@ impl FilletCorner {
         env: &mut CornerEnv<'_>,
         solvers: &mut [FilletSolver],
     ) -> Result<()> {
-        let num_verts = self.vertices.len();
+        let mut context = (env, solvers);
+        self.calc_corner_vert_geom_with(
+            &mut context,
+            |(env, _), fv| Ok(env.pseudo.fillet_vertex(fv)?.is_processed()),
+            |(env, _), fv| {
+                env.pseudo.calc_corner_vert_geom(
+                    env.k,
+                    fv,
+                    CornerLookup::of_corner(env.corner, self, env.exec),
+                    env.target,
+                    env.solvers,
+                )
+            },
+            |(env, solvers), corner, processed| {
+                corner.adjust_vertex_law_intervals(env, solvers, processed)
+            },
+        )
+    }
+
+    /// Calculate corner vertices in native order using the caller's live objects.
+    ///
+    /// The processed flag is sampled immediately before each calculation. Ordinary
+    /// calculation errors become `SM_ERR`; genuine missing dependencies propagate.
+    /// Law adjustment runs afterward only for a corner calculated as constant radius.
+    /// The explicit context lets both phases borrow one authoritative object store.
+    ///
+    /// # Errors
+    /// Processed-state lookup and law-adjustment errors, `SM_ERR` for a failed
+    /// calculation, or its genuine [`SolidError::Unported`] dependency.
+    pub fn calc_corner_vert_geom_with<C>(
+        &self,
+        context: &mut C,
+        mut is_processed: impl FnMut(&C, VertexId) -> Result<bool>,
+        mut calculate: impl FnMut(&mut C, VertexId) -> Result<()>,
+        adjust_law_intervals: impl FnOnce(&mut C, &Self, &[bool]) -> Result<()>,
+    ) -> Result<()> {
         let mut already_processed = Vec::new();
-
-        // CalcCornerVertGeom() for every FilletVertex.
         for &fv in &self.vertices {
-            // Save this info for later.  [B570]
-            already_processed.push(env.pseudo.fillet_vertex(fv)?.is_processed());
-
-            // switch on FilletVertex->m_eType to call appropriate vertex calculator
-            let status = env.pseudo.calc_corner_vert_geom(
-                env.k,
-                fv,
-                CornerLookup::of_corner(env.corner, self, env.exec),
-                env.target,
-                env.solvers,
-            );
-
-            // for errors
-            match status {
+            already_processed.push(is_processed(context, fv)?);
+            match calculate(context, fv) {
                 Ok(()) => {}
                 Err(e @ SolidError::Unported { .. }) => return Err(e),
                 Err(_) => return Err(SolidError::sm_err(OP_VERT_GEOM)),
             }
         }
-
-        // Now we need to adjust the FilletSolvers' LawIntervals, which map
-        // the variable-radius functions to the Edge intervals.  [B551 B570]
-        // Need to find them all and use the shortest interval.  [B663]
-
-        // We do this only if the original was calculated as a constant-radius blend.
-        let adjust_law_intervals = self.is_calc_as_const_rad();
-        if !adjust_law_intervals {
+        if !self.is_calc_as_const_rad() {
             return Ok(());
         }
+        adjust_law_intervals(context, self, &already_processed)
+    }
 
+    fn adjust_vertex_law_intervals(
+        &self,
+        env: &mut CornerEnv<'_>,
+        solvers: &mut [FilletSolver],
+        already_processed: &[bool],
+    ) -> Result<()> {
+        let num_verts = self.vertices.len();
         // Get the corner vertex, for determining Start or End.
         let corner_vertex = self.filleted_vertex();
 
