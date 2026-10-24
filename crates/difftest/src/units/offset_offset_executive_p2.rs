@@ -2497,7 +2497,7 @@ mod tests {
     fn face_geometry_paths_reach_distinct_actual_callees() {
         // MakeWireEdgeVertex now runs, and concrete-Surface CrvOnSurf construction
         // lets the rounded and extended paths through DropCurve, ShrinkGeometry and
-        // the edge-use offset creator: they stop at the merge or the gap-fill
+        // the edge-use offset creator and PiecewiseMerge: they stop at the gap-fill
         // evaluation, or return a result B-rep that is compared.
         let context = CaseContext {
             root: repo_root(),
@@ -2505,11 +2505,7 @@ mod tests {
         };
         let fixtures = context.fixture_cases(Runner.id()).unwrap();
         for (name, owner, symbol) in [
-            (
-                "static_offset_real_plane_sheet_round",
-                "boolean.merge_p3",
-                "SmMerge::PiecewiseMerge",
-            ),
+            ("static_offset_real_plane_sheet_round", "", RESULT),
             (
                 "static_offset_real_plane_sheet_extended",
                 "",
