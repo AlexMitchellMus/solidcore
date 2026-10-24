@@ -244,6 +244,9 @@ pub(super) enum TObjIn {
     Brep,
     PrimitiveBox { origin: [f64; 3], size: [f64; 3] },
     PrimitiveSphere { origin: [f64; 3], radius: f64 },
+    PrimitiveCylinder { origin: [f64; 3], radius: f64, height: f64 },
+    PrimitiveCone { origin: [f64; 3], radii: [f64; 2], height: f64 },
+    PrimitiveTorus { origin: [f64; 3], radii: [f64; 2] },
     CallerFace { origin: [f64; 3], size: [f64; 2] },
     CopiedBox { origin: [f64; 3], size: [f64; 3] },
     CopiedSphere { origin: [f64; 3], radius: f64 },
@@ -462,6 +465,9 @@ pub(super) fn cpp_input(s: &Script) -> Vec<f64> {
                     v.extend_from_slice(origin);
                     v.push(*radius);
                 }
+                TObjIn::PrimitiveCylinder { origin, radius, height } => { v.push(tobj::PRIMITIVE_CYLINDER as f64); v.extend_from_slice(origin); v.extend([*radius, *height]); }
+                TObjIn::PrimitiveCone { origin, radii, height } => { v.push(tobj::PRIMITIVE_CONE as f64); v.extend_from_slice(origin); v.extend_from_slice(radii); v.push(*height); }
+                TObjIn::PrimitiveTorus { origin, radii } => { v.push(tobj::PRIMITIVE_TORUS as f64); v.extend_from_slice(origin); v.extend_from_slice(radii); }
                 TObjIn::CallerFace { origin, size } => {
                     v.push(tobj::CALLER_FACE as f64);
                     v.extend_from_slice(origin);
@@ -4577,6 +4583,9 @@ fn run_transform(obj: &TObjIn, op: &TOpIn, probe: bool) -> Result<Vec<f64>, Fail
         TObjIn::PrimitiveSphere { origin, radius } | TObjIn::CopiedSphere { origin, radius } => st(solidcore::primitive::api_primitives::create_sphere(
             &mut k, v3(*origin), *radius,
         ))?.map_err(|code| harness(format!("sphere construction status {code}")))?,
+        TObjIn::PrimitiveCylinder { origin, radius, height } => st(solidcore::primitive::api_primitives::create_cylinder(&mut k, v3(*origin), *radius, *height))?.map_err(|code| harness(format!("cylinder construction status {code}")))?,
+        TObjIn::PrimitiveCone { origin, radii: [base, top], height } => st(solidcore::primitive::api_primitives::create_cone(&mut k, v3(*origin), *base, *top, *height))?.map_err(|code| harness(format!("cone construction status {code}")))?,
+        TObjIn::PrimitiveTorus { origin, radii: [major, minor] } => st(solidcore::primitive::api_primitives::create_torus(&mut k, v3(*origin), *major, *minor))?.map_err(|code| harness(format!("torus construction status {code}")))?,
         TObjIn::CallerFace { origin, size: [width, height] } => {
             let mut body = st(solidcore::topology::brep::p3::new_brep(&mut k, solidcore::geom::tol::USE_DEFAULT, solidcore::geom::tol::USE_DEFAULT))?
                 .map_err(|code| harness(format!("caller body status {code}")))?;
@@ -4629,7 +4638,7 @@ fn run_transform(obj: &TObjIn, op: &TOpIn, probe: bool) -> Result<Vec<f64>, Fail
         TObjIn::Plane { .. } | TObjIn::Bsurf { .. } => {
             surface.as_mut().map(TransformObject::Surface)
         }
-        TObjIn::Brep | TObjIn::PrimitiveBox { .. } | TObjIn::PrimitiveSphere { .. } | TObjIn::CallerFace { .. } | TObjIn::CopiedBox { .. } | TObjIn::CopiedSphere { .. } => Some(TransformObject::Brep(&mut brep)),
+        TObjIn::Brep | TObjIn::PrimitiveCylinder { .. } | TObjIn::PrimitiveCone { .. } | TObjIn::PrimitiveTorus { .. } | TObjIn::PrimitiveBox { .. } | TObjIn::PrimitiveSphere { .. } | TObjIn::CallerFace { .. } | TObjIn::CopiedBox { .. } | TObjIn::CopiedSphere { .. } => Some(TransformObject::Brep(&mut brep)),
         TObjIn::Poly | TObjIn::PolyPts { .. } => poly_target
             .as_mut()
             .map(|t| TransformObject::PolyBrep(t as &mut dyn PolyBrepTransform)),
@@ -4658,7 +4667,7 @@ fn run_transform(obj: &TObjIn, op: &TOpIn, probe: bool) -> Result<Vec<f64>, Fail
     };
     let mut o = vec![s];
     if let Some(frame) = &probe_frame { o.push(frame.initial_types.len() as f64); o.extend_from_slice(&frame.initial_types); }
-    if matches!(obj, TObjIn::PrimitiveBox { .. } | TObjIn::PrimitiveSphere { .. } | TObjIn::CallerFace { .. } | TObjIn::CopiedBox { .. } | TObjIn::CopiedSphere { .. }) {
+    if matches!(obj, TObjIn::PrimitiveCylinder { .. } | TObjIn::PrimitiveCone { .. } | TObjIn::PrimitiveTorus { .. } | TObjIn::PrimitiveBox { .. } | TObjIn::PrimitiveSphere { .. } | TObjIn::CallerFace { .. } | TObjIn::CopiedBox { .. } | TObjIn::CopiedSphere { .. }) {
         let vertices = solidcore::topology::brep::p1::vertices(&brep, None).map_err(|e| harness(e.to_string()))?;
         let edges = solidcore::topology::brep::p1::edges(&brep, None).map_err(|e| harness(e.to_string()))?;
         let faces = solidcore::topology::brep::p1::faces(&brep, None).map_err(|e| harness(e.to_string()))?;

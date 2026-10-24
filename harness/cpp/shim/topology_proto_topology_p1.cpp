@@ -4849,6 +4849,9 @@ enum TObj : int64_t
     T_CALLER_FACE = 12,
     T_COPIED_BOX = 13,
     T_COPIED_SPHERE = 14,
+    T_PRIMITIVE_CYLINDER = 15,
+    T_PRIMITIVE_CONE = 16,
+    T_PRIMITIVE_TORUS = 17,
 };
 
 // SmCrvOnSurf's UV-line constructor is protected.
@@ -4902,7 +4905,7 @@ int32_t run_transform(Rd& rd, std::vector<double>& o, bool probe=false)
 {
     const SmContext& ctx = the_context();
     int64_t kind = rd.idx();
-    if(probe && kind!=T_PRIMITIVE_BOX && kind!=T_PRIMITIVE_SPHERE && kind!=T_COPIED_BOX && kind!=T_COPIED_SPHERE) return SC_ERR_ARG;
+    if(probe && kind!=T_PRIMITIVE_CYLINDER && kind!=T_PRIMITIVE_CONE && kind!=T_PRIMITIVE_TORUS && kind!=T_PRIMITIVE_BOX && kind!=T_PRIMITIVE_SPHERE && kind!=T_COPIED_BOX && kind!=T_COPIED_SPHERE) return SC_ERR_ARG;
     SmObject* obj = NULL;
     SmBrep* source = NULL;
     std::vector<double> source_before;
@@ -4945,6 +4948,17 @@ int32_t run_transform(Rd& rd, std::vector<double>& o, bool probe=false)
             body = copy;
         }
         obj = body; break;
+    }
+    case T_PRIMITIVE_CYLINDER:
+    case T_PRIMITIVE_CONE:
+    case T_PRIMITIVE_TORUS:
+    {
+        SmPoint3d origin=rd.vec(); double a=rd.num(), b=rd.num(); SmBrep* body=NULL; SmApiStatus created;
+        if(kind==T_PRIMITIVE_CYLINDER) created=SmApiCreateCylinder(origin,a,b,body);
+        else if(kind==T_PRIMITIVE_TORUS) created=SmApiCreateTorus(origin,a,b,body);
+        else { double height=rd.num(); created=SmApiCreateCone(origin,a,b,height,body); }
+        if(created!=SM_SUCCESS || !body) { o.push_back((double)created); delete body; return SC_OK; }
+        obj=body; break;
     }
     case T_CALLER_FACE:
     {

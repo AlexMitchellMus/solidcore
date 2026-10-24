@@ -431,6 +431,9 @@ pub mod tobj {
     pub const CALLER_FACE: i64 = 12;
     pub const COPIED_BOX: i64 = 13;
     pub const COPIED_SPHERE: i64 = 14;
+    pub const PRIMITIVE_CYLINDER: i64 = 15;
+    pub const PRIMITIVE_CONE: i64 = 16;
+    pub const PRIMITIVE_TORUS: i64 = 17;
 }
 
 const MAX_SLOTS: i64 = 32;
@@ -834,9 +837,11 @@ fn validate_proto(rd: &mut Reader<'_>) -> Result<(), FfiError> {
 }
 
 fn validate_transform(rd: &mut Reader<'_>, probe: bool) -> Result<(), FfiError> {
-    let object = rd.int(0, tobj::COPIED_SPHERE)?;
-    if probe && !matches!(object, tobj::PRIMITIVE_BOX | tobj::PRIMITIVE_SPHERE | tobj::COPIED_BOX | tobj::COPIED_SPHERE) { return Err(bad("scale probe requires constructed solid")); }
+    let object = rd.int(0, tobj::PRIMITIVE_TORUS)?;
+    if probe && !matches!(object, tobj::PRIMITIVE_CYLINDER | tobj::PRIMITIVE_CONE | tobj::PRIMITIVE_TORUS | tobj::PRIMITIVE_BOX | tobj::PRIMITIVE_SPHERE | tobj::COPIED_BOX | tobj::COPIED_SPHERE) { return Err(bad("scale probe requires constructed solid")); }
     match object {
+        tobj::PRIMITIVE_CYLINDER | tobj::PRIMITIVE_TORUS => { rd.vec3()?; for _ in 0..2 { if rd.finite()? <= 1e-12 { return Err(bad("primitive dimension")); } } }
+        tobj::PRIMITIVE_CONE => { rd.vec3()?; for _ in 0..3 { if rd.finite()? <= 1e-12 { return Err(bad("cone dimension")); } } }
         tobj::CALLER_FACE => { rd.vec3()?; for _ in 0..2 { if rd.finite()? <= 1e-12 { return Err(bad("face dimension")); } } }
         tobj::PRIMITIVE_BOX | tobj::COPIED_BOX => { rd.vec3()?; for _ in 0..3 { if rd.finite()? <= 1e-12 { return Err(bad("box dimension")); } } }
         tobj::PRIMITIVE_SPHERE | tobj::COPIED_SPHERE => { rd.vec3()?; if rd.finite()?.abs() <= 1e-12 { return Err(bad("sphere radius")); } }
