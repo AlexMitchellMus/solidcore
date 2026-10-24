@@ -1,4 +1,7 @@
 //! Real-solid public fillet API records. Native and Rust operate on actual bodies.
+#[path = "prefix.rs"]
+mod prefix;
+
 use crate::{HarnessError, Output};
 use serde::{Deserialize, Serialize};
 use solidcore::kernel::Kernel;
@@ -8,8 +11,30 @@ use solidcore::topology::{edge, edgeuse::p1 as eu, face::p2 as face, loopuse, Br
 use solidcore::{Result as SolidResult, SolidError};
 use solidcore_ffi::units::blend_fillet_executive_p3 as ffi;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Checkpoint {
+    #[default]
+    Full,
+    Prepared,
+    Corners,
+    FirstTopology,
+}
+impl Checkpoint {
+    fn code(self) -> u32 {
+        match self {
+            Self::Full => 0,
+            Self::Prepared => 1,
+            Self::Corners => 2,
+            Self::FirstTopology => 3,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct RealSolid {
+    #[serde(default)]
+    checkpoint: Checkpoint,
     dimensions: [f64; 3],
     radius: f64,
     xsect: u32,
@@ -90,6 +115,9 @@ fn output(mut values: &[f64]) -> Result<Output, HarnessError> {
 }
 
 pub(super) fn cpp(input: &RealSolid) -> Result<Output, HarnessError> {
+    if input.checkpoint != Checkpoint::Full {
+        return prefix::cpp(input);
+    }
     let values = ffi::real_solid(&input.wire()).map_err(|e| HarnessError::new(e.to_string()))?;
     output(&values)
 }
@@ -198,6 +226,9 @@ fn run_rust(input: &RealSolid) -> SolidResult<Vec<f64>> {
             }
         }
     }
+    if input.checkpoint != Checkpoint::Full {
+        return prefix::run(&mut k, &mut body, &selected, input, &before);
+    }
     let result = apply(&mut k, &mut body, &selected, input);
     let result_status = match result {
         Ok(()) => 0.0,
@@ -259,7 +290,13 @@ fn apply(_: &mut Kernel, _: &mut Brep, _: &[EdgeId], _: &RealSolid) -> SolidResu
 pub(super) fn rust(input: &RealSolid) -> Result<Output, HarnessError> {
     ffi::validate_real_solid(&input.wire()).map_err(|e| HarnessError::new(e.to_string()))?;
     match run_rust(input) {
-        Ok(values) => output(&values),
+        Ok(values) => {
+            if input.checkpoint == Checkpoint::Full {
+                output(&values)
+            } else {
+                prefix::output(&values)
+            }
+        }
         Err(error) => match Output::unported(&error) {
             Some(deferred) => Ok(deferred),
             None => Err(HarnessError::new(error.to_string())),

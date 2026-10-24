@@ -159,6 +159,41 @@ pub fn real_solid(input: &[f64]) -> Result<Vec<f64>, FfiError> {
     })
 }
 
+extern "C" {
+    fn sc_blend_fillet_executive_p3_real_prefix(
+        input: *const f64,
+        n: i64,
+        checkpoint: i32,
+        out: *mut f64,
+        cap: i64,
+        len: *mut i64,
+    ) -> i32;
+}
+
+/// Execute actual parameter setup (1), corner creation (2), or the first
+/// corner's topology directly (3), stopping before its vertex geometry. Mode 3
+/// omits smooth-sequence processing on both sides; it is not the full executive
+/// prelude or a successful fillet result. Corner status and
+/// uncomputed pseudo geometry are deliberately not read.
+pub fn real_prefix(input: &[f64], checkpoint: u32) -> Result<Vec<f64>, FfiError> {
+    validate_real_solid(input)?;
+    if !(1..=3).contains(&checkpoint) {
+        return Err(FfiError::InvalidArgument(
+            "unknown fillet checkpoint".into(),
+        ));
+    }
+    call_with_buffer(65536, |out, len| unsafe {
+        sc_blend_fillet_executive_p3_real_prefix(
+            input.as_ptr(),
+            input.len() as i64,
+            checkpoint as i32,
+            out.as_mut_ptr(),
+            out.len() as i64,
+            len,
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::validate;

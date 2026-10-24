@@ -1,9 +1,7 @@
-//! Executive p3 parity for explicit states over empty native B-reps. All passing
-//! cases exercise precondition failures and compare status/state values. Actual
-//! fillet construction defers at executive p2 `ProcessSmoothEdgeSequences` (or p1
-//! `CreateFilletCorners`), so no geometry-success coverage is claimed. Seven real
-//! upstream API box examples are also run natively and explicitly deferred at
-//! their unported executive-p1 API/setup entrypoints on Rust.
+//! Executive p3 state/error parity and real-solid fillet session checkpoints.
+//! Setup, corner creation and direct first-Nx1 topology use actual bodies and
+//! owned production solvers. Full fillet construction remains deferred at the
+//! missing public API; native result records do not claim Rust geometry success.
 
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
@@ -112,11 +110,27 @@ fn orient_brep(
 }
 
 impl ExecutiveAccess<Handle> for Access {
-    fn solver_base(&self, _: Handle) -> SolidResult<&solidcore::blend::fillet_solver::p1::FilletSolver> { missing() }
-    fn solver_base_mut(&mut self, _: Handle) -> SolidResult<&mut solidcore::blend::fillet_solver::p1::FilletSolver> { missing() }
-    fn solver_has_surface(&self, _: Handle, _: usize) -> SolidResult<bool> { missing() }
-    fn edge_g1_knots(&mut self, _: &Kernel, _: Handle) -> SolidResult<Vec<f64>> { missing() }
-    fn edgeuse_vertex(&self, _: Handle) -> SolidResult<Option<Handle>> { missing() }
+    fn solver_base(
+        &self,
+        _: Handle,
+    ) -> SolidResult<&solidcore::blend::fillet_solver::p1::FilletSolver> {
+        missing()
+    }
+    fn solver_base_mut(
+        &mut self,
+        _: Handle,
+    ) -> SolidResult<&mut solidcore::blend::fillet_solver::p1::FilletSolver> {
+        missing()
+    }
+    fn solver_has_surface(&self, _: Handle, _: usize) -> SolidResult<bool> {
+        missing()
+    }
+    fn edge_g1_knots(&mut self, _: &Kernel, _: Handle) -> SolidResult<Vec<f64>> {
+        missing()
+    }
+    fn edgeuse_vertex(&self, _: Handle) -> SolidResult<Option<Handle>> {
+        missing()
+    }
     // (the fixture's handles name no corners)
     fn corner_solvers(&self, _: Handle, _: &FilletExecutive<Handle>) -> SolidResult<Vec<Handle>> {
         missing()
