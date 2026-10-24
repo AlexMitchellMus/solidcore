@@ -18969,3 +18969,16 @@ preserves all four control nets and u knots exactly, and reproduces the last
 round's complete input and 4125.906 mm net; the other rounds' tiny lower v extension
 bounds can differ in their last bits (at most 7e-20 in the checked run). The saved
 JSON inputs fix every bit for differential testing.
+
+## Fuzz re-verification (2026-10-24)
+
+Re-ran 2000-draw fuzz per unit on main 76f27c381 with `--fuzz-out fuzz-out/reverify-1024/<unit>`.
+
+- `nurbs.b_spline_curve_p3`: FUZZ-PASS cases=2000 rejected=768 malformed=684 ran=548 differs=0 crashes=0 panics=0 timeouts=0 (9.2 s). No longer reproduces; suspected load-dependent budget flake or fixed since the sweep.
+- `surface.surface_p8`: FUZZ-FAIL cases=2000 rejected=537 malformed=860 ran=602 differs=0 crashes=1 panics=0 timeouts=0 (crash fuzz01012: cpp killed by signal 11 on extreme coordinates ~1e308). Rust side did not crash; classified as upstream UB (C++ consumes garbage). Case saved.
+- `surface.surface_point_solve_p1`: FUZZ-PASS cases=2000 rejected=530 malformed=905 ran=565 differs=0 crashes=0 panics=0 timeouts=0.
+- `surface.surface_point_solve_p2`: FUZZ-PASS cases=2000 rejected=509 malformed=906 ran=585 differs=0 crashes=0 panics=0 timeouts=0 (issue #506 slow path not reproduced in this draw).
+- `surface.surface_point_solve_p3`: FUZZ-FAIL cases=2000 rejected=509 malformed=936 ran=554 differs=0 crashes=0 panics=0 timeouts=1 (timeout fuzz00316: cpp no result after 20 s). Case saved; root cause not yet traced.
+- `surface.plane_p2`: FUZZ-FAIL cases=2000 rejected=305 malformed=842 ran=851 differs=7 crashes=2 panics=0 timeouts=0. Crashes are upstream UB on extreme inputs; differs are rec.len/rec values on malformed records (C++ writes/reads garbage records Rust rejects). Classification pending per case.
+- `curve.curve_p4`: FUZZ-PASS cases=2000 rejected=574 malformed=820 ran=606 differs=0 crashes=0 panics=0 timeouts=0.
+- `curve.curve_p6`: FUZZ-PASS cases=2000 rejected=564 malformed=877 ran=559 differs=0 crashes=0 panics=0 timeouts=0.
