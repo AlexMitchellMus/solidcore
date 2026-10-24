@@ -1,6 +1,7 @@
 //! Actual fillet setup and retained corner/solver checkpoints.
-//! Modes 1–5 omit smoothing on both sides. Modes 6–7 run the real prelude
-//! and stop after adjustment or the first direct solver geometry operation.
+//! Modes 1–5 omit smoothing on both sides. Later modes run the real prelude,
+//! stopping after adjustment, direct first-solver geometry, or all-solver geometry
+//! followed by each corner’s tangent adjustment, repeated vertices and edges.
 #[path = "edge_geometry.rs"]
 mod edge_geometry;
 #[path = "generated_geometry.rs"]

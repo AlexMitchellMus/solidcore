@@ -173,6 +173,8 @@ extern "C" {
 /// Execute actual setup/corner checkpoints (1–5), or the real smooth prelude
 /// followed by shared corner vertices and adjustment (6). Mode 7 adds the first
 /// direct solver geometry operation and samples its actual surface and curves.
+/// Mode 8 runs all solvers, then tangent adjustment, repeated vertex calculation
+/// and boundary curves in each corner’s native order.
 /// These are retained component checkpoints, not completed public fillets.
 /// Uninitialized corner status and uncomputed geometry are never read.
 pub fn real_prefix(input: &[f64], checkpoint: u32) -> Result<Vec<f64>, FfiError> {
