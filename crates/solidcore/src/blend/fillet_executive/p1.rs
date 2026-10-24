@@ -41,6 +41,7 @@
 //! | [`FilletExecutive::load_fillet_solver`] | `LoadFilletSolver` |
 //! | [`FilletExecutive::create_fillet_corners`] | `CreateFilletCorners` |
 //! | [`remove_topo_edges`]                  | `RemoveTopoEdges`                                     |
+//! | [`FilletExecutive::set_bevel_corner`]  | `SetBevelCorner`                                      |
 //! | [`FilletExecutive::add_fillet_surface_generator`] | `AddFilletSurfaceGenerator`                |
 //! | [`FilletExecutive::remove_from_topo_edges`] | `RemoveFromTopoEdges`                            |
 //! | [`FilletExecutive::set_do_global_merge`], [`FilletExecutive::set_do_trimming`], [`FilletExecutive::set_self_intersection_handler`] | `SetDoGlobalMerge`, `SetDoTrimming`, `SetSelfIntersectionHandler` |
@@ -82,8 +83,9 @@
 //!   leaves `m_bIsInitialized` unset; it is `false` here, the value the first upstream
 //!   write (`SetFilletParameters`) gives it. A null surface generator is not
 //!   representable (no upstream caller adds one). `GetContext` is
-//!   not ported (no context object). The destructor (deleting the owned objects) and
-//!   `SetBevelCorner` wait for the owner's object model.
+//!   not ported (no context object). The destructor (deleting the owned objects)
+//!   waits for the owner's object model. `SetBevelCorner` reaches the corner through
+//!   the owner's closure.
 //! - `RemoveTopoEdges` is the free function [`remove_topo_edges`] over the target
 //!   B-rep and the topo edges (the executive holds handles; its owner resolves them and
 //!   calls it from `ExecutiveAccess::remove_topo_edges`). Faces own their surfaces, so
@@ -926,6 +928,33 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             info.assign(&self.error);
         }
         Ok(())
+    }
+
+    /// `SmFilletExecutive::SetBevelCorner`: makes the corner of `vertex` a bevel
+    /// (`SetBevel(TRUE)`) through `set_bevel`, the owner's access to its corner
+    /// objects.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR_NULL_POINTER` ([`SolidError::null_pointer`]) when `vertex` has no entry
+    /// (`NER`); [`SolidError::InvalidInput`] when its entry is still the pending
+    /// edge-use list (upstream casts the list to a corner); those of `set_bevel`.
+    pub fn set_bevel_corner(
+        &self,
+        vertex: Option<O>,
+        set_bevel: impl FnOnce(O) -> Result<()>,
+    ) -> Result<()> {
+        use crate::blend::fillet_executive::p3::VertexEntry;
+
+        const OP: &str = "blend::fillet_executive::p1::FilletExecutive::set_bevel_corner";
+        match self.vertex_corner_map.get(&vertex) {
+            Some(VertexEntry::Corner(corner)) => set_bevel(*corner),
+            Some(VertexEntry::SolverEdgeuses(_)) => Err(SolidError::invalid_input(
+                OP,
+                "no corner created for the vertex",
+            )),
+            None => Err(SolidError::null_pointer(OP)),
+        }
     }
 }
 

@@ -35,6 +35,11 @@
 //!                     GetFilletCornerOfVertex / GetFilletSolverOfEdgeuse
 //! 20 code fe_type status text                             (ExecScript only) a real
 //!                     SmFilletEdge of that type and status, then NoteFilletError(code, it, text)
+//! 21 v                                                    (ExecScript only) a real
+//!                     SmFilletConvexNxNCorner, added to m_vFilletCorners and mapped to v
+//! 22 v                                                    (ExecScript only) query
+//!                     SetBevelCorner(v): `status [is_bevel]` (IsBevelCorner on success);
+//!                     refused when v maps to a fake corner pointer
 //! ```
 //!
 //! In an `ExecScript` calls 2, 3 and 5 go through the matching `NoteFilletError`
@@ -192,9 +197,16 @@ fn text(rd: &mut Reader<'_>) -> Result<(), FfiError> {
 }
 
 /// One call of the script; `exec` allows the executive calls.
-fn call(rd: &mut Reader<'_>, exec: bool) -> Result<(), FfiError> {
+/// Validates one call. `corners` follows `m_vVertexCornerMap`: `true` for a vertex
+/// whose entry is NULL or a real corner (call 21), `false` for a fake corner pointer,
+/// which `SetBevelCorner` (call 22) would dereference.
+fn call(
+    rd: &mut Reader<'_>,
+    exec: bool,
+    corners: &mut std::collections::BTreeMap<usize, bool>,
+) -> Result<(), FfiError> {
     let (code, status, corner, fe_type) = (7, 12, 12, 14);
-    match rd.index(20)? {
+    match rd.index(22)? {
         0 => {
             rd.index(code)?;
             text(rd)
@@ -243,9 +255,27 @@ fn call(rd: &mut Reader<'_>, exec: bool) -> Result<(), FfiError> {
         }
         10 | 11 if exec => rd.flag().map(|_| ()),
         12..=15 | 18 | 19 if exec => handle(rd),
-        16 | 17 if exec => {
+        16 if exec => {
+            let v = rd.index(MAX_HANDLE)?;
+            let c = rd.index(MAX_HANDLE)?;
+            corners.insert(v, c == 0);
+            Ok(())
+        }
+        17 if exec => {
             handle(rd)?;
             handle(rd)
+        }
+        21 if exec => {
+            corners.insert(rd.index(MAX_HANDLE)?, true);
+            Ok(())
+        }
+        22 if exec => {
+            if corners.get(&rd.index(MAX_HANDLE)?) == Some(&false) {
+                return Err(crate::units::blend_fillet_standard_solver_p1::bad(
+                    "SetBevelCorner on a fake corner pointer",
+                ));
+            }
+            Ok(())
         }
         20 if exec => {
             rd.index(code)?;
@@ -274,8 +304,9 @@ fn call(rd: &mut Reader<'_>, exec: bool) -> Result<(), FfiError> {
 pub fn object_eval(op: ObjectOp, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     let mut rd = Reader { input, at: 0 };
     handle(&mut rd)?;
+    let mut corners = std::collections::BTreeMap::new();
     for _ in 0..rd.index(MAX_SCRIPT)? {
-        call(&mut rd, op == ObjectOp::ExecScript)?;
+        call(&mut rd, op == ObjectOp::ExecScript, &mut corners)?;
     }
     rd.done()?;
     call_with_buffer(16384, |buf, len| {
