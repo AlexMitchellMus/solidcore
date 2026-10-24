@@ -1140,6 +1140,20 @@ impl FilletEdge {
     }
 }
 
+/// The one physical storage location of a fillet surface.
+#[derive(Debug, Clone)]
+pub enum FilletSurfaceStorage {
+    /// The geometry still owns the original surface before face installation.
+    Owned(Box<Surface>),
+    /// The actual face owns the original surface after installation.
+    ManagedFace {
+        /// The issued identity of the owning body (not an arena-offset namespace).
+        body: crate::geom::object::ObjectRef,
+        /// The face containing the actual surface, including a failed partial face.
+        face: FaceId,
+    },
+}
+
 /// The geometry of one fillet surface (`SmFilletGeom`): two rails, the optional centre
 /// line, the fillet surface and the records of the topology built on it.
 #[derive(Debug, Clone)]
@@ -1157,7 +1171,7 @@ pub struct FilletGeom {
     /// `m_pCenterLineCurve`.
     pub center_line_curve: Option<Curve>,
     /// `m_pFilletSurface` (`SM_FILLETSURF_TYPE` is `SmSurface`).
-    pub fillet_surface: Option<Surface>,
+    pub fillet_surface: Option<FilletSurfaceStorage>,
     /// `m_pOffSurfs[2]`: this geometry's own offset surfaces (may differ from the
     /// solver's).
     pub off_surfs: [Option<OffsetSurface>; 2],
@@ -1296,10 +1310,36 @@ impl FilletGeom {
         self.center_line_curve.as_ref()
     }
 
-    /// `GetFilletSurface`.
-    #[must_use]
-    pub const fn fillet_surface(&self) -> Option<&Surface> {
-        self.fillet_surface.as_ref()
+    /// Borrow the original surface before it is transferred into a face.
+    ///
+    /// # Errors
+    /// A transferred surface requires the actual owning body to resolve it.
+    pub fn fillet_surface(&self) -> Result<Option<&Surface>> {
+        match self.fillet_surface.as_ref() {
+            None => Ok(None),
+            Some(FilletSurfaceStorage::Owned(surface)) => Ok(Some(surface)),
+            // UNPORTED(blend.fillet_geom_p1): actual owning body is required after transfer.
+            Some(FilletSurfaceStorage::ManagedFace { .. }) => Err(SolidError::unported(
+                "SmFilletGeom::GetFilletSurface (managed face context)",
+                "blend.fillet_geom_p1",
+            )),
+        }
+    }
+
+    /// Mutably borrow the original surface before face installation.
+    ///
+    /// # Errors
+    /// A transferred surface requires the actual owning body to resolve it.
+    pub fn fillet_surface_mut(&mut self) -> Result<Option<&mut Surface>> {
+        match self.fillet_surface.as_mut() {
+            None => Ok(None),
+            Some(FilletSurfaceStorage::Owned(surface)) => Ok(Some(surface)),
+            // UNPORTED(blend.fillet_geom_p1): actual owning body is required after transfer.
+            Some(FilletSurfaceStorage::ManagedFace { .. }) => Err(SolidError::unported(
+                "SmFilletGeom::GetFilletSurface (managed face context)",
+                "blend.fillet_geom_p1",
+            )),
+        }
     }
 
     /// `GetRail(lRailIndex)`; `None` for an index past the two rails (upstream reads
@@ -1354,7 +1394,7 @@ impl FilletGeom {
 
     /// `SetFilletSurface`.
     pub fn set_fillet_surface(&mut self, surface: Option<Surface>) {
-        self.fillet_surface = surface;
+        self.fillet_surface = surface.map(|surface| FilletSurfaceStorage::Owned(Box::new(surface)));
     }
 
     /// `SetFilletGeomType`.
@@ -2310,7 +2350,7 @@ impl FilletBrep {
         }
 
         // Fillet Surface:
-        if let Some(surface) = geom.fillet_surface.as_mut() {
+        if let Some(surface) = geom.fillet_surface_mut()? {
             let mut domain = surface.natural_uv_domain();
             // Trimming is in the u-direction.
             let u_domain = domain.u_interval();
@@ -3328,11 +3368,11 @@ pub fn examine_n_fix_fillet_geoms(
     {
         let surface1 = fb
             .geom(geom1)?
-            .fillet_surface()
+            .fillet_surface()?
             .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
         let surface2 = fb
             .geom(geom2)?
-            .fillet_surface()
+            .fillet_surface()?
             .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
         if surface1.degree(SurfParamType::U) < 3
             || surface2.degree(SurfParamType::U) < 3
@@ -3357,7 +3397,7 @@ pub fn examine_n_fix_fillet_geoms(
     {
         let surface = fb
             .geom(geom)?
-            .fillet_surface()
+            .fillet_surface()?
             .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
         let domain = surface.natural_uv_domain();
         let (uv1, uv2) = if at_start {
@@ -3405,8 +3445,7 @@ pub fn examine_n_fix_fillet_geoms(
     {
         let from_surface = fb
             .geom_mut(from_geom)?
-            .fillet_surface
-            .as_mut()
+            .fillet_surface_mut()?
             .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
         let Some(bs) = b_spline_net_mut(from_surface) else {
             return Ok(());
@@ -3419,8 +3458,7 @@ pub fn examine_n_fix_fillet_geoms(
     {
         let to_surface = fb
             .geom_mut(to_geom)?
-            .fillet_surface
-            .as_mut()
+            .fillet_surface_mut()?
             .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
         let Some(bs) = b_spline_net_mut(to_surface) else {
             return Ok(());
@@ -3464,7 +3502,7 @@ pub fn examine_n_fix_fillet_geoms(
     let (surf_domain, rails) = {
         let g = fb.geom(adjust_fg)?;
         let surface = g
-            .fillet_surface()
+            .fillet_surface()?
             .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
         (surface.natural_uv_domain(), g.rails)
     };
@@ -3481,7 +3519,7 @@ pub fn examine_n_fix_fillet_geoms(
         let iso = {
             let surface = fb
                 .geom(adjust_fg)?
-                .fillet_surface()
+                .fillet_surface()?
                 .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
             surface.create_iso_parametric_curve(
                 k,
@@ -4266,10 +4304,10 @@ mod tests {
             rail0_uses.get_or_insert((eu, vu));
         }
         let mut g0 = FilletGeom::new(k, None, FilletGeomType::Blends).unwrap();
-        g0.fillet_surface = Some(cubic_strip(0.5));
+        g0.set_fillet_surface(Some(cubic_strip(0.5)));
         g0.rails = rails;
         let mut g1 = FilletGeom::new(k, None, FilletGeomType::Blends).unwrap();
-        g1.fillet_surface = Some(cubic_strip(0.0));
+        g1.set_fillet_surface(Some(cubic_strip(0.0)));
         let g0 = fb.add_geom(g0);
         let g1 = fb.add_geom(g1);
         let (eu, vu) = rail0_uses.unwrap();
@@ -4346,7 +4384,7 @@ mod tests {
         );
         // geometry 0's start row is now geometry 1's end row; its other rows are its own
         let near = |a: Point3, b: Point3| a.distance(b) < 1e-12;
-        let s0 = fb.geom(g0).unwrap().fillet_surface().unwrap();
+        let s0 = fb.geom(g0).unwrap().fillet_surface().unwrap().unwrap();
         let at = |u: f64, v: f64| s0.evaluate_point(&k, Point2::new(u, v)).unwrap();
         assert!(near(at(0.0, 0.0), Point3::new(3.0, 0.0, 0.0)));
         assert!(near(at(0.0, 1.0), Point3::new(3.0, 2.0, 0.0)));

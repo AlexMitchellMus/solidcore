@@ -751,6 +751,42 @@ impl<'target> FilletSession<'target> {
         self.objects.intermediate.as_ref()
     }
 
+    /// Borrow the actual fillet surface from its current owned or face-managed location.
+    ///
+    /// # Errors
+    /// Missing geometry, an unavailable owning body, a foreign issued domain, or a
+    /// partial face whose installed surface no longer exists.
+    pub fn fillet_surface(
+        &self,
+        geom: crate::blend::fillet_geom::p1::FilletGeomId,
+    ) -> Result<Option<&Surface>> {
+        use crate::blend::fillet_geom::p1::FilletSurfaceStorage;
+        match self.objects.pseudo.geom(geom)?.fillet_surface.as_ref() {
+            None => Ok(None),
+            Some(FilletSurfaceStorage::Owned(surface)) => Ok(Some(surface)),
+            Some(FilletSurfaceStorage::ManagedFace { body, face }) => {
+                let actual = self.intermediate_identity(EntityRef::Brep(
+                    crate::topology::BrepId::from_index(0),
+                ))?;
+                if *body != actual {
+                    return Err(invalid("fillet surface names a foreign managed body"));
+                }
+                let managed = self
+                    .objects
+                    .intermediate
+                    .as_ref()
+                    .ok_or_else(|| invalid("managed surface body is not allocated"))?;
+                Ok(Some(
+                    managed
+                        .face(*face)?
+                        .surface
+                        .as_ref()
+                        .ok_or_else(|| SolidError::null_pointer(OP))?,
+                ))
+            }
+        }
+    }
+
     /// Resolve topology in the actual intermediate body's issued identity domain.
     ///
     /// # Errors

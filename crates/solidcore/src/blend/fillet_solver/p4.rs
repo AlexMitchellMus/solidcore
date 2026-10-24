@@ -2540,7 +2540,7 @@ fn c5_split_original_fillet(
         let fillet_surface = cx
             .fillets
             .geom(geom0)?
-            .fillet_surface()
+            .fillet_surface()?
             .ok_or_else(|| SolidError::null_pointer(OP))?;
         fillet_surface.split_at(cx.k, split_at_param, SurfParamType::U)?
     };
@@ -2817,14 +2817,14 @@ fn c5_undo_reversal(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<()
 
         let k = cx.k;
         let geom = cx.fillets.geom_mut(g)?;
-        if geom.center_line_curve.is_none() || geom.fillet_surface.is_none() {
+        if geom.center_line_curve.is_none() || geom.fillet_surface()?.is_none() {
             return Err(SolidError::null_pointer(OP));
         }
         if let Some(center_line) = geom.center_line_curve.as_mut() {
             let ivl2 = center_line.natural_interval();
             center_line.reverse_parameterization(k, &ivl2)?;
         }
-        if let Some(fillet_surf) = geom.fillet_surface.as_mut() {
+        if let Some(fillet_surf) = geom.fillet_surface_mut()? {
             fillet_surf.reverse(k, SurfParamType::U)?;
         }
     }
@@ -2940,7 +2940,7 @@ mod tests_c5 {
             geom.rails = [Some(r0), Some(r1)];
             geom.center_line_curve =
                 Some(line_bspline(Point3::new(0.0, 0.5, 0.5), Point3::new(1.0, 0.5, 0.5)).into());
-            geom.fillet_surface = Some(strip());
+            geom.set_fillet_surface(Some(strip()));
             let g = fb.add_geom(geom);
 
             let mut target = Brep::new();
@@ -3016,6 +3016,7 @@ mod tests_c5 {
                 .geom(self.g)
                 .unwrap()
                 .fillet_surface()
+                .unwrap()
                 .unwrap()
                 .evaluate_point(&Kernel::default(), uv)
                 .unwrap()
