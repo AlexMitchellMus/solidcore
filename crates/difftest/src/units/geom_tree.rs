@@ -179,6 +179,7 @@ fn rust_patch_lookup(
         })
         .collect::<solidcore::Result<Vec<_>>>()?;
     let mut tree: Tree<i64> = Tree::new(None);
+    tree.set_owner_object(obj(owner).map(|_| solidcore::geom::tree::TreeOwner::SurfaceCache));
     tree.set_owner_surface(obj(owner));
     for n in nodes {
         let id = tree.add_node(TreeNode {
