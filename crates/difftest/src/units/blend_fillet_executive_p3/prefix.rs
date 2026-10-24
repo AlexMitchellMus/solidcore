@@ -1,7 +1,16 @@
-//! Actual fillet setup and direct/shared corner components.
-//! These checkpoints are not a full `CreateFilletBrep` prelude: neither
-//! side runs smooth-sequence processing. With the one actual solver in these
-//! fixtures, its native `while (count > 1)` loop performs no work.
+//! Actual fillet setup and retained corner/solver checkpoints.
+//! Modes 1–5 omit smoothing on both sides. Later modes run the real prelude,
+//! stopping after adjustment, direct first-solver geometry, or all-solver geometry
+//! followed by each corner’s tangent adjustment, repeated vertices and edges,
+//! actual rail trimming, or enabled classification and adjusted-corner repair.
+#[path = "edge_geometry.rs"]
+mod edge_geometry;
+#[path = "generated_geometry.rs"]
+mod generated_geometry;
+#[path = "rail_classification.rs"]
+mod rail_classification;
+#[path = "rail_metadata.rs"]
+mod rail_metadata;
 use super::{label, section, status, take_section, Checkpoint, RealSolid};
 use crate::{HarnessError, Output};
 use solidcore::blend::fillet_executive::session::{FilletObject, FilletSession, SolverObject};
@@ -150,6 +159,68 @@ fn snapshot(session: &FilletSession<'_>, parameters: &mut Vec<f64>) -> SolidResu
     Ok(state)
 }
 
+fn offset_snapshot(session: &FilletSession<'_>) -> SolidResult<(Vec<f64>, Vec<f64>)> {
+    let mut geometries = Vec::new();
+    for object in &session.executive().solvers {
+        let FilletObject::Solver(id) = *object else {
+            return Err(invalid("actual solver required"));
+        };
+        geometries.extend(session.solver(id)?.base().fillet_geoms.iter().copied());
+    }
+    let mut state = Vec::new();
+    let mut distances = Vec::new();
+    for (index, object) in session.executive().solvers.iter().enumerate() {
+        let FilletObject::Solver(id) = *object else {
+            return Err(invalid("actual solver required"));
+        };
+        let solver = session.solver(id)?.base();
+        state.extend([
+            index as f64,
+            label(&geometries, solver.fillet_geom_for_surfaces()),
+            solver.fillet_geoms.len() as f64,
+        ]);
+        for &geometry_id in &solver.fillet_geoms {
+            let geometry = session.pseudo_brep().geom(geometry_id)?;
+            state.extend([
+                label(&geometries, Some(geometry_id)),
+                f64::from(geometry.fillet_geom_type() as u32),
+            ]);
+            for rail in 0..2 {
+                let own = geometry.off_surfs.get(rail).and_then(Option::as_ref);
+                let original = solver
+                    .surfaces
+                    .get(rail)
+                    .and_then(Option::as_ref)
+                    .map(|slot| &slot.surface);
+                let same_object = own.zip(original).is_some_and(|(a, b)| std::ptr::eq(a, b));
+                let same_base = own
+                    .zip(original)
+                    .is_some_and(|(a, b)| a.base_id == b.base_id);
+                state.extend([
+                    rail as f64,
+                    f64::from(own.is_some()),
+                    f64::from(original.is_some()),
+                    f64::from(own.is_some()),
+                    f64::from(original.is_some()),
+                    f64::from(same_object),
+                    f64::from(same_base),
+                    own.map_or(-1.0, |surface| surface.surface.type_code() as f64),
+                    original.map_or(-1.0, |surface| surface.surface.type_code() as f64),
+                    own.map_or(-1.0, |surface| surface.base_surface().type_code() as f64),
+                    original.map_or(-1.0, |surface| surface.base_surface().type_code() as f64),
+                ]);
+                if let Some(surface) = own {
+                    distances.push(surface.offset_distance());
+                }
+                if let Some(surface) = original {
+                    distances.push(surface.offset_distance());
+                }
+            }
+        }
+    }
+    Ok((state, distances))
+}
+
 pub(super) fn run(
     k: &mut Kernel,
     body: &mut Brep,
@@ -158,7 +229,7 @@ pub(super) fn run(
     before: &[f64],
 ) -> SolidResult<Vec<f64>> {
     let mut session = FilletSession::new(k, body)?;
-    let mut statuses = [-1.0; 4];
+    let mut statuses = [-1.0; 9];
     let prepare = session.prepare_constant_radius_edges(
         k,
         selected,
@@ -172,17 +243,83 @@ pub(super) fn run(
         Err(error) => status(error)?,
     };
     let mut prior = Vec::new();
+    let mut offsets_before = (Vec::new(), Vec::new());
+    let mut rails_before = (Vec::new(), Vec::new());
+    let mut classes_before = (Vec::new(), Vec::new());
+    let mut adjusted = Vec::new();
     if statuses[0] == 0.0 && input.checkpoint != Checkpoint::Prepared {
         statuses[1] = match session.create_corners(k, None) {
             Ok(()) => 0.0,
             Err(error) => status(error)?,
         };
-        if statuses[1] == 0.0 && input.checkpoint == Checkpoint::CornerVerticesComponent {
+        if input.checkpoint.has_offsets() {
+            offsets_before = offset_snapshot(&session)?;
+        }
+        if statuses[1] == 0.0 && input.checkpoint.all_corners() {
             prior = snapshot(&session, &mut Vec::new())?;
-            statuses[2] = match session.create_corner_vertices(k) {
-                Ok(()) => 0.0,
-                Err(error) => status(error)?,
+            let vertices_index = if input.checkpoint.code() >= 6 {
+                statuses[2] = match session.process_smooth_edge_sequences(k) {
+                    Ok(()) => 0.0,
+                    Err(error) => status(error)?,
+                };
+                3
+            } else {
+                2
             };
+            if vertices_index == 2 || statuses[2] == 0.0 {
+                *statuses
+                    .get_mut(vertices_index)
+                    .ok_or_else(|| invalid("corner status slot"))? =
+                    match session.create_corner_vertices(k) {
+                        Ok(()) => 0.0,
+                        Err(error) => status(error)?,
+                    };
+            }
+            if input.checkpoint.code() >= 6 && statuses[3] == 0.0 {
+                statuses[4] = match session.adjust_corner_topology(k) {
+                    Ok(()) => 0.0,
+                    Err(error) => status(error)?,
+                };
+                if input.checkpoint == Checkpoint::SolverGeometry && statuses[4] == 0.0 {
+                    if let Some(FilletObject::Solver(id)) =
+                        session.executive().solvers.first().copied()
+                    {
+                        statuses[5] = match session.calc_solver_geometry(k, id) {
+                            Ok(()) => 0.0,
+                            Err(error) => status(error)?,
+                        };
+                    }
+                }
+                if input.checkpoint.code() >= 8 && statuses[4] == 0.0 {
+                    statuses[5] = match session.calculate_solver_geometry(k) {
+                        Ok(()) => 0.0,
+                        Err(error) => status(error)?,
+                    };
+                    if statuses[5] == 0.0 {
+                        statuses[6] = match session.calculate_corner_edges(k) {
+                            Ok(()) => 0.0,
+                            Err(error) => status(error)?,
+                        };
+                    }
+                    if input.checkpoint.code() >= 9 && statuses[6] == 0.0 {
+                        rails_before = rail_metadata::snapshot(k, &session, false)?;
+                        statuses[7] = match session.trim_solver_rails(k) {
+                            Ok(()) => 0.0,
+                            Err(error) => status(error)?,
+                        };
+                        if input.checkpoint == Checkpoint::ClassifiedRails && statuses[7] == 0.0 {
+                            classes_before = rail_classification::snapshot(k, &session)?;
+                            statuses[8] = match session.classify_solver_rails_with_adjusted(k) {
+                                Ok(ids) => {
+                                    adjusted = ids;
+                                    0.0
+                                }
+                                Err(error) => status(error)?,
+                            };
+                        }
+                    }
+                }
+            }
         }
         if statuses[1] == 0.0
             && matches!(
@@ -209,11 +346,7 @@ pub(super) fn run(
     let state = snapshot(&session, &mut parameters)?;
     let mut out = Vec::new();
     section(&mut out, before);
-    let count = if input.checkpoint == Checkpoint::FirstVertexGeometry {
-        4
-    } else {
-        3
-    };
+    let count = input.checkpoint.status_count();
     out.extend_from_slice(
         statuses
             .get(..count)
@@ -248,7 +381,7 @@ pub(super) fn run(
         section(&mut out, &geometry_state);
         section(&mut out, &geometry_values);
     }
-    if input.checkpoint == Checkpoint::CornerVerticesComponent {
+    if input.checkpoint.all_corners() {
         let mut flags = Vec::new();
         let mut vertex_state = Vec::new();
         let mut geometry = Vec::new();
@@ -287,6 +420,65 @@ pub(super) fn run(
         section(&mut out, &vertex_state);
         section(&mut out, &geometry);
     }
+    if input.checkpoint.has_offsets() {
+        let offsets_after = offset_snapshot(&session)?;
+        section(&mut out, &offsets_before.0);
+        section(&mut out, &offsets_before.1);
+        section(&mut out, &offsets_after.0);
+        section(&mut out, &offsets_after.1);
+    }
+    if input.checkpoint.code() >= 6 {
+        let flags: Vec<_> = session
+            .executive()
+            .corners
+            .iter()
+            .enumerate()
+            .map(|(index, object)| {
+                let FilletObject::Corner(id) = *object else {
+                    return Err(invalid("actual corner required"));
+                };
+                let corner = session.corner(id)?;
+                Ok([
+                    index as f64,
+                    f64::from(corner.is_degenerate_corner()),
+                    f64::from(corner.topology_adjusted),
+                ])
+            })
+            .collect::<SolidResult<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        section(&mut out, &flags);
+    }
+    if input.checkpoint.code() >= 7 {
+        let (state, values) = generated_geometry::snapshot(k, &session)?;
+        section(&mut out, &state);
+        section(&mut out, &values);
+    }
+    if input.checkpoint.code() >= 8 {
+        let (state, values) = edge_geometry::snapshot(k, &session)?;
+        section(&mut out, &state);
+        section(&mut out, &values);
+    }
+    if input.checkpoint.code() >= 9 {
+        let rails_after = rail_metadata::snapshot(k, &session, true)?;
+        section(&mut out, &rails_before.0);
+        section(&mut out, &rails_before.1);
+        section(&mut out, &rails_after.0);
+        section(&mut out, &rails_after.1);
+    }
+    if input.checkpoint == Checkpoint::ClassifiedRails {
+        let after = rail_classification::snapshot(k, &session)?;
+        section(&mut out, &classes_before.0);
+        section(&mut out, &classes_before.1);
+        section(&mut out, &after.0);
+        section(&mut out, &after.1);
+        let labels: Vec<_> = adjusted
+            .iter()
+            .map(|id| label(&session.executive().corners, Some(*id)))
+            .collect();
+        section(&mut out, &labels);
+    }
     Ok(out)
 }
 
@@ -296,11 +488,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
         "selected_edge_before".into(),
         take_section(&mut values)?.to_vec(),
     );
-    let count = if checkpoint == Checkpoint::FirstVertexGeometry {
-        4
-    } else {
-        3
-    };
+    let count = checkpoint.status_count();
     let statuses = values
         .get(..count)
         .ok_or_else(|| HarnessError::new("missing prefix statuses"))?;
@@ -340,7 +528,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             take_section(&mut values)?.to_vec(),
         );
     }
-    if checkpoint == Checkpoint::CornerVerticesComponent {
+    if checkpoint.all_corners() {
         for key in ["corner_calculation_flags", "all_corner_vertex_state"] {
             let state = take_section(&mut values)?;
             if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
@@ -352,6 +540,103 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
         out.values.insert(
             "all_corner_vertices".into(),
             take_section(&mut values)?.to_vec(),
+        );
+    }
+    if checkpoint.has_offsets() {
+        for phase in ["before", "after"] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid offset ownership state"));
+            }
+            out.ints.insert(
+                format!("offsets_{phase}_state"),
+                state.iter().map(|v| *v as i64).collect(),
+            );
+            out.values.insert(
+                format!("offsets_{phase}_distances"),
+                take_section(&mut values)?.to_vec(),
+            );
+        }
+    }
+    if checkpoint.code() >= 6 {
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid adjustment flags"));
+        }
+        out.ints.insert(
+            "corner_adjustment_flags".into(),
+            state.iter().map(|v| *v as i64).collect(),
+        );
+    }
+    if checkpoint.code() >= 7 {
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid generated geometry state"));
+        }
+        out.ints.insert(
+            "generated_geometry_state".into(),
+            state.iter().map(|v| *v as i64).collect(),
+        );
+        out.values.insert(
+            "generated_geometry_samples".into(),
+            take_section(&mut values)?.to_vec(),
+        );
+    }
+    if checkpoint.code() >= 8 {
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid corner edge state"));
+        }
+        out.ints.insert(
+            "corner_edge_geometry_state".into(),
+            state.iter().map(|v| *v as i64).collect(),
+        );
+        out.values.insert(
+            "corner_edge_geometry_samples".into(),
+            take_section(&mut values)?.to_vec(),
+        );
+    }
+    if checkpoint.code() >= 9 {
+        for phase in ["before", "after"] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid rail trim state"));
+            }
+            out.ints.insert(
+                format!("rails_{phase}_trim_state"),
+                state.iter().map(|v| *v as i64).collect(),
+            );
+            out.values.insert(
+                format!("rails_{phase}_trim_geometry"),
+                take_section(&mut values)?.to_vec(),
+            );
+        }
+    }
+    if checkpoint == Checkpoint::ClassifiedRails {
+        for phase in ["before", "after"] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid classification state"));
+            }
+            out.ints.insert(
+                format!("rails_{phase}_classification_state"),
+                state.iter().map(|v| *v as i64).collect(),
+            );
+            out.values.insert(
+                format!("rails_{phase}_classification_parameters"),
+                take_section(&mut values)?.to_vec(),
+            );
+        }
+        let ids = take_section(&mut values)?;
+        if ids
+            .iter()
+            .any(|v| !v.is_finite() || v.fract() != 0.0 || *v < 0.0)
+        {
+            return Err(HarnessError::new("invalid adjusted-corner labels"));
+        }
+        out.ints.insert(
+            "classification_adjusted_corners".into(),
+            ids.iter().map(|v| *v as i64).collect(),
         );
     }
     if !values.is_empty() {
