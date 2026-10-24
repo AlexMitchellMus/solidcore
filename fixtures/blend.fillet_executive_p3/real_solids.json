@@ -292,6 +292,27 @@
           "checkpoint": "stitched_faces"
         }
       }
+    },
+    {
+      "name": "real-box-direct-shrink-actual-session",
+      "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:2990 (direct first-FG owner-face ShrinkGeometry after E/Stitch; unchanged direct context, before target integration)",
+      "inputs": {
+        "real_solid": {
+          "dimensions": [
+            10,
+            20,
+            30
+          ],
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            0
+          ],
+          "checkpoint": "shrunk_faces"
+        }
+      }
     }
   ]
 }

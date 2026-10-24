@@ -13,6 +13,8 @@ mod intermediate_faces;
 mod rail_classification;
 #[path = "rail_metadata.rs"]
 mod rail_metadata;
+#[path = "shrink_state.rs"]
+mod shrink_state;
 #[path = "stitch_state.rs"]
 mod stitch_state;
 use super::{label, section, status, take_section, Checkpoint, RealSolid};
@@ -233,7 +235,7 @@ pub(super) fn run(
     before: &[f64],
 ) -> SolidResult<Vec<f64>> {
     let mut session = FilletSession::new(k, body)?;
-    let mut statuses = [-1.0; 11];
+    let mut statuses = [-1.0; 12];
     let prepare = session.prepare_constant_radius_edges(
         k,
         selected,
@@ -253,6 +255,9 @@ pub(super) fn run(
     let mut adjusted = Vec::new();
     let mut attributes_before = Vec::new();
     let mut stitch_outcome = None;
+    let mut attributes_after = Vec::new();
+    let mut shrink_before = (Vec::new(), Vec::new());
+    let mut shrink_after = (Vec::new(), Vec::new());
     if statuses[0] == 0.0 && input.checkpoint != Checkpoint::Prepared {
         statuses[1] = match session.create_corners(k, None) {
             Ok(()) => 0.0,
@@ -327,9 +332,7 @@ pub(super) fn run(
                                     Ok(()) => 0.0,
                                     Err(error) => status(error)?,
                                 };
-                                if input.checkpoint == Checkpoint::StitchedFaces
-                                    && statuses[9] == 0.0
-                                {
+                                if input.checkpoint.code() >= 12 && statuses[9] == 0.0 {
                                     attributes_before = stitch_state::attributes(&session)?;
                                     statuses[10] = match session.stitch_fillet_faces(k) {
                                         Ok(attempt) => match attempt.status {
@@ -346,6 +349,17 @@ pub(super) fn run(
                                         },
                                         Err(error) => status(error)?,
                                     };
+                                    attributes_after = stitch_state::attributes(&session)?;
+                                    if input.checkpoint == Checkpoint::ShrunkFaces
+                                        && statuses[10] == 0.0
+                                    {
+                                        shrink_before = shrink_state::snapshot(&session)?;
+                                        statuses[11] = match session.shrink_fillet_faces(k) {
+                                            Ok(()) => 0.0,
+                                            Err(error) => status(error)?,
+                                        };
+                                        shrink_after = shrink_state::snapshot(&session)?;
+                                    }
                                 }
                             }
                         }
@@ -517,9 +531,16 @@ pub(super) fn run(
         section(&mut out, &values);
         section(&mut out, &intermediate_faces::source_binding(&session)?);
     }
-    if input.checkpoint == Checkpoint::StitchedFaces {
+    if input.checkpoint.code() >= 12 {
         section(&mut out, &attributes_before);
-        section(&mut out, &stitch_state::attributes(&session)?);
+        section(
+            &mut out,
+            &if attributes_after.is_empty() {
+                stitch_state::attributes(&session)?
+            } else {
+                attributes_after
+            },
+        );
         let (state, values) = match stitch_outcome {
             Some((stitched, lamina, vertex_gap, edge_gap)) => (
                 vec![1.0, stitched as f64, lamina as f64],
@@ -529,6 +550,12 @@ pub(super) fn run(
         };
         section(&mut out, &state);
         section(&mut out, &values);
+    }
+    if input.checkpoint == Checkpoint::ShrunkFaces {
+        for (state, values) in [&shrink_before, &shrink_after] {
+            section(&mut out, state);
+            section(&mut out, values);
+        }
     }
     Ok(out)
 }
@@ -712,7 +739,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             state.iter().map(|v| *v as i64).collect(),
         );
     }
-    if checkpoint == Checkpoint::StitchedFaces {
+    if checkpoint.code() >= 12 {
         for name in [
             "intermediate_attributes_before_stitch",
             "intermediate_attributes_after_stitch",
@@ -729,6 +756,22 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             "intermediate_stitch_gaps".into(),
             take_section(&mut values)?.to_vec(),
         );
+    }
+    if checkpoint == Checkpoint::ShrunkFaces {
+        for phase in ["before", "after"] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid shrink state"));
+            }
+            out.ints.insert(
+                format!("intermediate_shrink_{phase}"),
+                state.iter().map(|v| *v as i64).collect(),
+            );
+            out.values.insert(
+                format!("intermediate_shrink_{phase}"),
+                take_section(&mut values)?.to_vec(),
+            );
+        }
     }
     if !values.is_empty() {
         return Err(HarnessError::new("trailing prefix data"));

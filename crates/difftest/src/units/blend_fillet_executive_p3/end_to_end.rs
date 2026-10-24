@@ -28,6 +28,7 @@ enum Checkpoint {
     ClassifiedRails,
     IntermediateFaces,
     StitchedFaces,
+    ShrunkFaces,
 }
 impl Checkpoint {
     fn all_corners(self) -> bool {
@@ -45,6 +46,7 @@ impl Checkpoint {
             Self::ClassifiedRails => 9,
             Self::IntermediateFaces => 10,
             Self::StitchedFaces => 11,
+            Self::ShrunkFaces => 12,
             Self::FirstVertexGeometry => 4,
             _ => 3,
         }
@@ -64,6 +66,7 @@ impl Checkpoint {
             Self::ClassifiedRails => 10,
             Self::IntermediateFaces => 11,
             Self::StitchedFaces => 12,
+            Self::ShrunkFaces => 13,
         }
     }
 }

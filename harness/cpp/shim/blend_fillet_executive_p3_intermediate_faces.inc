@@ -83,4 +83,25 @@ std::vector<double> source_surface_binding(SmFilletExecutive& exec,SmBrep* body)
     return out;
 }
 
+std::pair<std::vector<double>,std::vector<double>> shrink_state(SmFilletExecutive& exec,SmBrep* body) {
+    std::vector<double> state{double(exec.GetFilletSolvers().GetSize())},values;
+    SmTArray<SmFace*> faces;if(body)body->GetFaces(faces);
+    for(ULONG i=0;i<exec.GetFilletSolvers().GetSize();++i) {
+        SmTArray<SmFilletGeom*> gs;exec.GetFilletSolvers()[i]->GetFilletGeoms(gs);state.push_back(double(gs.GetSize()));
+        auto* surface=gs.GetSize()?gs[0]->GetFilletSurface():nullptr;state.push_back(double(surface!=nullptr));
+        if(surface){auto* owner=surface->GetOwner();double face=-1;
+            for(ULONG f=0;f<faces.GetSize();++f)if(owner&&owner==faces[f]){face=f;break;}
+            state.insert(state.end(),{double(surface->GetType()),double(owner!=nullptr),owner?double(owner->GetType()):0,face});
+            auto d=surface->GetNaturalUVDomain();values.insert(values.end(),{d.GetMin().x,d.GetMin().y,d.GetMax().x,d.GetMax().y});
+            state.push_back(double(face>=0));if(face>=0){auto domain=faces[ULONG(face)]->GetUVDomain();values.insert(values.end(),{domain.GetMin().x,domain.GetMin().y,domain.GetMax().x,domain.GetMax().y});}
+        }
+    }
+    SmTArray<SmEdge*> edges;if(body)body->GetEdges(edges);state.push_back(double(edges.GetSize()));
+    for(ULONG i=0;i<edges.GetSize();++i){auto d=edges[i]->GetInterval();values.insert(values.end(),{d.GetMin(),d.GetMax()});auto* c=edges[i]->GetCurve();state.push_back(double(c!=nullptr));
+        if(c){state.push_back(double(c->GetType()));auto interval=c->GetNaturalInterval();values.insert(values.end(),{interval.GetMin(),interval.GetMax()});}
+        SmTArray<SmEdgeuse*> uses;edges[i]->GetEdgeuses(uses);state.push_back(double(uses.GetSize()));for(ULONG u=0;u<uses.GetSize();++u)state.push_back(double(uses[u]->GetUVTrimCurvePointer()!=nullptr));
+    }
+    return {state,values};
+}
+
 }
