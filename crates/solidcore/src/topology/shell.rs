@@ -59,6 +59,10 @@
 //! faces' own pointers); the B-rep's is [`crate::query::brep::BrepQuery`]. Its view
 //! borrows the B-rep for the shape solve only, since the sector step after it may add
 //! UV trim curves.
+//! The production B-rep world keeps one solve in flight, with immutable evaluation
+//! geometry and live topology services for trims, caches and tolerance reads. A
+//! read-only world's default adapter may instead request preparation and restart;
+//! each edge-use or face request is attempted at most once.
 //! The single-member `Remove` / `PostInsert` co-ports (`topology.brep_p3`, PR #204)
 //! return upstream's `SM_ERR` of `Remove` (a member not in this list) as
 //! [`SolidError::sm_err`], which callers that ignore it can tell apart. `PostInsert`
@@ -291,15 +295,16 @@ impl Shell {
         })??;
         Ok(output)
     }
-    /// Classify whether this is an inner shell: `SmTopologyTraverser::IsInnerShell`
-    /// on this shell's face uses (`GetFaceuses`).
+    /// Classify whether shell `id` of `brep` is an inner shell:
+    /// `SmTopologyTraverser::IsInnerShell` on its face uses (`GetFaceuses`), on `brep`
+    /// itself (the UV trim curves its face queries make stay, as upstream's).
     ///
     /// # Errors
-    /// Invalid member classes and the errors of
+    /// A dangling id, invalid member classes and the errors of
     /// [`crate::topology::topology_traverser::is_inner_shell`] (its `SM_ERR` for an
     /// empty or inconclusive set, `Unported` from its ray intersections).
-    pub fn is_inner_shell(&self, kernel: &mut Kernel, brep: &Brep) -> Result<bool> {
-        let faceuses = self.get_faceuses()?;
+    pub fn is_inner_shell(kernel: &mut Kernel, brep: &mut Brep, id: ShellId) -> Result<bool> {
+        let faceuses = brep.shell(id)?.get_faceuses()?;
         crate::topology::topology_traverser::is_inner_shell(kernel, brep, &faceuses)
     }
 }
@@ -423,7 +428,7 @@ pub fn order_region_shells(kernel: &mut Kernel, brep: &mut Brep, id: RegionId) -
     if faceuse_shells.len() > 1 {
         for &shell in &faceuse_shells {
             if brep.shell(shell)?.is_closed(brep, shell)? {
-                match brep.shell(shell)?.is_inner_shell(kernel, brep) {
+                match Shell::is_inner_shell(kernel, brep, shell) {
                     Ok(true) => {
                         chosen = Some(shell);
                         break;
@@ -500,6 +505,40 @@ pub fn wire_edges(kernel: &mut Kernel, brep: &Brep, id: ShellId) -> Result<Vec<E
         }
     }
     Ok(output)
+}
+
+/// `delete pShell`: `~SmShell` notifies `SM_NO_DESTRUCTION` (`Notify(op, this, NULL,
+/// NULL)`, which `SmShell` passes to `SmTopology::Notify`, through the shell's context,
+/// `GetContext()`: the environment's, else `k`'s), whose status it ignores
+/// ([`SolidError::Unported`] propagates); `~SmAObject` (`ClearAttributes`) removes it
+/// from every attribute it uses.
+///
+/// # Errors
+///
+/// [`SolidError::NotFound`] for a dangling id; the notification's
+/// [`SolidError::Unported`]; those of `ClearAttributes`.
+pub fn destroy(
+    k: &mut Kernel,
+    brep: &mut Brep,
+    id: ShellId,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+) -> Result<()> {
+    brep.shell(id)?;
+    let this = (env.key_of)(crate::error::EntityRef::Shell(id));
+    crate::topology::edge::with_object_context(k, env, |n| {
+        crate::error::ignore_status(crate::topology::topology::notify(
+            &mut *n.records,
+            &mut *n.attributes,
+            n.context.as_deref_mut(),
+            crate::geom::object::NotifyOperation::Destruction,
+            this,
+            Some(this),
+            None,
+            None,
+        ))
+    })?;
+    brep.remove_shell_record(id)?;
+    env.attributes.clear_attributes(this.key)
 }
 
 /// `pRegion->Remove(pShell)` (`SmOwningTopology::Remove`, inline in
@@ -1008,6 +1047,47 @@ pub trait ShellRayWorld<O> {
         brep: (crate::topology::BrepId, &'a Brep),
     ) -> Result<Self::Objects<'a>>;
 
+    /// A read-only view that may request topology preparation from the mutable ray caller.
+    fn objects_for_preparation<'a>(
+        &'a self,
+        brep: (crate::topology::BrepId, &'a Brep),
+        _preparation: &'a crate::query::brep::RayPreparation,
+    ) -> Result<Self::Objects<'a>> {
+        self.objects(brep)
+    }
+
+    /// Solves the shell's ray. Mutable topology services may keep one solve in flight;
+    /// the default releases a read-only view to service explicit preparation requests.
+    fn solve_shape_ray(
+        &self,
+        k: &Kernel,
+        brep: &mut Brep,
+        brep_id: crate::topology::BrepId,
+        shape: &Shape,
+        point: crate::math::Point3,
+        options: crate::intersect::topology_solver::p2::TopologySolveOptions<'_>,
+    ) -> Result<crate::geom::solution_array::SolutionArray<O>>
+    where
+        O: crate::geom::solution_array::SolutionObject,
+    {
+        let mut preparation = crate::query::brep::RayPreparation::default();
+        loop {
+            let result = crate::intersect::topology_solver::p1::TopologySolver::shape_point_solve(
+                k,
+                &self.objects_for_preparation((brep_id, &*brep), &preparation)?,
+                shape,
+                point,
+                options,
+            );
+            match (result, preparation.take_request()) {
+                (Err(SolidError::PreparationRequired { .. }), Some(request)) => {
+                    preparation.prepare(k, brep, request)?;
+                }
+                (result, _) => return result,
+            }
+        }
+    }
+
     /// The shape of the shell's boundary faces (`SmShape(sBreps, sFaces, ...)`) of
     /// `brep`. Worlds that cannot build the real shape (a harness without the B-rep's
     /// cached geometry) defer here instead of failing later.
@@ -1086,7 +1166,7 @@ where
 {
     use crate::geom::global_solver::{SolutionRequested, SolverOperation};
     use crate::intersect::point_class::PointClassType;
-    use crate::intersect::topology_solver::{p1::TopologySolver, p2::TopologySolveOptions};
+    use crate::intersect::topology_solver::p2::TopologySolveOptions;
     use crate::math::{BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT};
     use crate::nurbs::b_spline_curve::BSplineCurve;
     use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
@@ -1130,9 +1210,10 @@ where
         })??;
         let shape = world.shell_ray_shape(kernel, (brep_id, brep), &faces)?;
         let vectors = [direction];
-        let solutions = TopologySolver::shape_point_solve(
+        let solutions = world.solve_shape_ray(
             &*kernel,
-            &world.objects((brep_id, &*brep))?,
+            brep,
+            brep_id,
             &shape,
             input.start,
             TopologySolveOptions {

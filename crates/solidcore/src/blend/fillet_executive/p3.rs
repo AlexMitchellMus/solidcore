@@ -177,10 +177,21 @@ impl Default for ExecutionOptions {
     }
 }
 
+/// The native vertex map's pending solver edge uses or completed corner.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VertexEntry<O> {
+    /// Edge uses collected by `LoadFilletSolver`, in native insertion order.
+    SolverEdgeuses(Vec<O>),
+    /// The corner that replaced the pending list.
+    Corner(O),
+}
+
 /// Executive member state consumed by p3, co-ported from p1. This is not the
 /// constructor: p1 must supply its constructor/setup defaults and intersector.
 #[derive(Debug, Clone)]
 pub struct FilletExecutive<O> {
+    /// `m_vFilletedVertices`, in first-insertion order (a null vertex is retained).
+    pub filleted_vertices: Vec<Option<O>>,
     /// `m_pTargetBrep`.
     pub target: Option<O>,
     /// `m_pFilletBrep`.
@@ -214,9 +225,9 @@ pub struct FilletExecutive<O> {
     /// `m_vFSGs`: the fillet surface generators the executive owns (added by
     /// `blend.fillet_executive_p1`).
     pub surface_generators: Vec<O>,
-    /// `m_vVertexCornerMap`: the fillet corner of each filleted vertex (added by
-    /// `blend.fillet_executive_p1`).
-    pub vertex_corner_map: BTreeMap<O, O>,
+    /// `m_vVertexCornerMap`: one pending-list or completed-corner slot per vertex.
+    /// A null vertex is retained as `None`, matching native loader ordering.
+    pub vertex_corner_map: BTreeMap<Option<O>, VertexEntry<O>>,
     /// `m_vEdgeuseSolverMap`: the fillet solver of each filleted edge use (added by
     /// `blend.fillet_executive_p1`; `blend::fillet_corner::p3::FilletExecutiveData`
     /// holds the same map over typed ids).
@@ -301,6 +312,19 @@ impl StitchAttempt {
 /// retain a second executive or intersector; writes must be visible to the next phase.
 /// No claimed solver/corner implementation or record is reproduced here.
 pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
+    /// The actual retained solver base, borrowed from its concrete solver object.
+    fn solver_base(&self, solver: O) -> Result<&crate::blend::fillet_solver::p1::FilletSolver>;
+    /// The same actual solver for a native member write.
+    fn solver_base_mut(
+        &mut self,
+        solver: O,
+    ) -> Result<&mut crate::blend::fillet_solver::p1::FilletSolver>;
+    /// `GetSurface(rail)`, including the actual geometry-for-surfaces fallback.
+    fn solver_has_surface(&self, solver: O, rail: usize) -> Result<bool>;
+    /// G1 knots from the edge's actual knots and existing-or-created curve cache.
+    fn edge_g1_knots(&mut self, k: &Kernel, edge: O) -> Result<Vec<f64>>;
+    /// `edgeuse->GetVertexuse()->GetVertex()`; a null vertex remains null.
+    fn edgeuse_vertex(&self, edgeuse: O) -> Result<Option<O>>;
     /// `GetName`, `GetCornerType`, `GetFilletedVertex` for error reporting only.
     fn corner_error_info(&self, corner: O, executive: &FilletExecutive<O>)
         -> Result<CornerView<O>>;
@@ -311,14 +335,10 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// `SmFilletCorner::GetFilletSolvers`; called only for tangent blending corners.
     /// This is owned logic, not a field accessor. Upstream repeats the lookup of
     /// `m_pSolverEUs[0]` for every entry, through the current executive's solver list
-    /// (`SmFilletCorner.cpp:4067-4075`); adapters must preserve that quirk.
-    fn corner_solvers(&self, _corner: O, _executive: &FilletExecutive<O>) -> Result<Vec<O>> {
-        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetFilletSolvers
-        Err(SolidError::unported(
-            "SmFilletCorner::GetFilletSolvers",
-            "blend.fillet_corner_p1",
-        ))
-    }
+    /// (`SmFilletCorner.cpp:4067-4075`); adapters must preserve that quirk. Delegate to
+    /// the already ported `blend::fillet_corner::p1::FilletCorner::fillet_solvers`
+    /// (fillet corner p1), which does.
+    fn corner_solvers(&self, corner: O, executive: &FilletExecutive<O>) -> Result<Vec<O>>;
     /// `SmFilletCorner::GetFilletedVertex`.
     fn corner_vertex(&self, corner: O) -> Result<Option<O>>;
     /// `SmFilletCorner::GetThisApproxTol3d`.
@@ -447,44 +467,31 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         _executive: &mut FilletExecutive<O>,
     ) -> Result<()>;
 
-    /// `SmFilletCorner::CalcCornerVertGeom`; waiting for `blend.fillet_corner_p1`.
+    /// `SmFilletCorner::CalcCornerVertGeom`: delegate to the already ported
+    /// `blend::fillet_corner::p1::FilletCorner::calc_corner_vert_geom` (fillet corner
+    /// p1) on the corner `corner` resolves to, with its `CornerEnv`.
     fn calc_corner_vertices(
         &mut self,
-        _k: &mut Kernel,
-        _corner: O,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::CalcCornerVertGeom
-        Err(SolidError::unported(
-            "SmFilletCorner::CalcCornerVertGeom",
-            "blend.fillet_corner_p1",
-        ))
-    }
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
-    /// `SmFilletCorner::CheckAndFixDegeneracy`; waiting for `blend.fillet_corner_p1`.
+    /// `SmFilletCorner::CheckAndFixDegeneracy`: delegate to the already ported
+    /// `blend::fillet_corner::p1::FilletCorner::check_and_fix_degeneracy` (fillet corner
+    /// p1) on the corner `corner` resolves to, with its `CornerEnv`.
     fn check_degeneracy(
         &mut self,
-        _k: &mut Kernel,
-        _corner: O,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<bool> {
-        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::CheckAndFixDegeneracy
-        Err(SolidError::unported(
-            "SmFilletCorner::CheckAndFixDegeneracy",
-            "blend.fillet_corner_p1",
-        ))
-    }
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<bool>;
 
-    /// Virtual `AdjustTopology` dispatch. The base, 4x3 and `NxN` implementations
-    /// belong to `blend.fillet_corner_p1`, and `ConvexNxN` to `blend.fillet_corner_p2`.
-    /// Nx2 (and `ConvexNxN`) go to the already ported
-    /// `blend::fillet_corner::p3::FilletCorner::adjust_topology` (fillet corner p3),
-    /// which runs `SmFilletNx2Corner::AdjustTopology` and returns
-    /// `blend.fillet_corner_p2`'s `Unported` for `ConvexNxN`. Adapters must dispatch
-    /// by concrete corner type and return that owner's `Unported` while it is
-    /// missing, never substitute the base success default.
-    // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AdjustTopology / SmFillet4x3Corner::AdjustTopology / SmFilletNxNCorner::AdjustTopology
-    // UNPORTED(blend.fillet_corner_p2): SmFilletConvexNxNCorner::AdjustTopology
+    /// Virtual `AdjustTopology` dispatch: delegate to the ported
+    /// `blend::fillet_corner::p3::FilletCorner::adjust_topology`, which runs
+    /// `SmFilletNx2Corner::AdjustTopology`, `SmFilletConvexNxNCorner::AdjustTopology`
+    /// (`blend.fillet_corner_p2`) and the base, 4x3 and `NxN` versions
+    /// (`blend.fillet_corner_p1`: `return SM_SUCCESS`).
     fn adjust_topology(
         &mut self,
         k: &mut Kernel,
@@ -492,16 +499,11 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         executive: &mut FilletExecutive<O>,
     ) -> Result<()>;
 
-    /// Virtual `AdjustTangentCorner` dispatch. The base belongs to
-    /// `blend.fillet_corner_p1`, and `Nx1Closed` to `blend.fillet_corner_p2`. Nx2 (and
-    /// `Nx1Closed`) go to the already ported
-    /// `blend::fillet_corner::p3::FilletCorner::adjust_tangent_corner` (fillet corner
-    /// p3), which runs `SmFilletNx2Corner::AdjustTangentCorner` and returns
-    /// `blend.fillet_corner_p2`'s `Unported` for `Nx1Closed`. Adapters must dispatch by
-    /// concrete corner type and return that owner's `Unported` while it is missing,
-    /// never substitute the base success default.
-    // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::AdjustTangentCorner
-    // UNPORTED(blend.fillet_corner_p2): SmFilletNx1ClosedCorner::AdjustTangentCorner
+    /// Virtual `AdjustTangentCorner` dispatch: delegate to the ported
+    /// `blend::fillet_corner::p3::FilletCorner::adjust_tangent_corner`, which runs
+    /// `SmFilletNx2Corner::AdjustTangentCorner`,
+    /// `SmFilletNx1ClosedCorner::AdjustTangentCorner` (`blend.fillet_corner_p2`) and the
+    /// base (`blend.fillet_corner_p1`: `return SM_SUCCESS`).
     fn adjust_tangent_corner(
         &mut self,
         k: &mut Kernel,
@@ -509,33 +511,25 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         executive: &mut FilletExecutive<O>,
     ) -> Result<()>;
 
-    /// `SmFilletCorner::CalcCornerEdgeGeom`; waiting for `blend.fillet_corner_p1`.
+    /// `SmFilletCorner::CalcCornerEdgeGeom`: delegate to the already ported
+    /// `blend::fillet_corner::p1::FilletCorner::calc_corner_edge_geom` (fillet corner
+    /// p1) on the corner `corner` resolves to, with its `CornerEnv`.
     fn calc_corner_edges(
         &mut self,
-        _k: &mut Kernel,
-        _corner: O,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::CalcCornerEdgeGeom
-        Err(SolidError::unported(
-            "SmFilletCorner::CalcCornerEdgeGeom",
-            "blend.fillet_corner_p1",
-        ))
-    }
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
-    /// `SmFilletCorner::ReInitializeCornerEdges`; waiting for `blend.fillet_corner_p1`.
+    /// `SmFilletCorner::ReInitializeCornerEdges`: delegate to the already ported
+    /// `blend::fillet_corner::p1::FilletCorner::re_initialize_corner_edges` (fillet
+    /// corner p1) on the corner `corner` resolves to.
     fn reinitialize_corner_edges(
         &mut self,
-        _k: &mut Kernel,
-        _corner: O,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::ReInitializeCornerEdges
-        Err(SolidError::unported(
-            "SmFilletCorner::ReInitializeCornerEdges",
-            "blend.fillet_corner_p1",
-        ))
-    }
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// `SmFilletCorner::CalcCornerGeom()` (`SmFilletExecutive.cpp:2448`): delegate to
     /// the already ported `blend::fillet_corner::p3::FilletCorner::calc_corner_geom`
@@ -661,19 +655,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         executive: &mut FilletExecutive<O>,
     ) -> Result<()>;
 
-    /// `SmFilletCorner::InsertIntersectionTopology`; waiting for `blend.fillet_corner_p1`.
+    /// `SmFilletCorner::InsertIntersectionTopology()`: delegate to the already ported
+    /// `blend::fillet_corner::p1::FilletCorner::insert_intersection_topology` (fillet
+    /// corner p1) on the corner `corner` resolves to, with its `CornerEnv` (the target
+    /// and fillet B-reps). Its status propagates (`SER`, `SmFilletExecutive.cpp:2758`,
+    /// `:3148`).
     fn insert_corner_topology(
         &mut self,
-        _k: &mut Kernel,
-        _corner: O,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::InsertIntersectionTopology
-        Err(SolidError::unported(
-            "SmFilletCorner::InsertIntersectionTopology",
-            "blend.fillet_corner_p1",
-        ))
-    }
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// Delegate to the live intersector's already ported
     /// `TopologyIntersector::intersect_insert_relate` (boolean intersector p2),
@@ -870,26 +862,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// raw `m_vVertexCornerMap` edge-use array cast to a corner (UB-209).
     fn solver_corner(&self, solver: O, index: usize) -> Result<Option<O>>;
 
-    /// `SmFilletSolver::GetOtherFilletCorner(pCorner)`; waiting for
-    /// `blend.fillet_solver_p3`.
-    fn solver_other_corner(&self, _solver: O, _corner: O) -> Result<Option<O>> {
-        // UNPORTED(blend.fillet_solver_p3): SmFilletSolver::GetOtherFilletCorner
-        Err(SolidError::unported(
-            "SmFilletSolver::GetOtherFilletCorner",
-            "blend.fillet_solver_p3",
-        ))
-    }
+    /// `SmFilletSolver::GetOtherFilletCorner(pCorner)`: delegate to the solver's
+    /// `FilletSolver::other_fillet_corner` (`blend.fillet_solver_p3`), which reads the
+    /// same corners as [`ExecutiveAccess::solver_corner`] (`None` when `corner` is not
+    /// one of the solver's).
+    fn solver_other_corner(&self, solver: O, corner: O) -> Result<Option<O>>;
 
-    /// `SmFilletCorner::GetTangentFilletSolver(pFS)` (virtual); waiting for
-    /// `blend.fillet_corner_p1` (the base, `SmFillet1x1Corner`, `SmFillet2x2Corner`) and
-    /// `blend.fillet_corner_p2` (`SmFilletNx1ClosedCorner`, `SmFilletNx2Corner`).
-    fn corner_tangent_solver(&self, _corner: O, _solver: O) -> Result<Option<O>> {
-        // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::GetTangentFilletSolver
-        Err(SolidError::unported(
-            "SmFilletCorner::GetTangentFilletSolver",
-            "blend.fillet_corner_p1",
-        ))
-    }
+    /// `SmFilletCorner::GetTangentFilletSolver(pFS)` (virtual): delegate to the already
+    /// ported `blend::fillet_corner::p1::FilletCorner::tangent_fillet_solver` (fillet
+    /// corner p1: the base, `SmFillet1x1Corner`, `SmFillet2x2Corner`; it dispatches the
+    /// `SmFilletNx1ClosedCorner` / `SmFilletNx2Corner` overrides to fillet corner p2).
+    fn corner_tangent_solver(&self, corner: O, solver: O) -> Result<Option<O>>;
 
     /// `SmFilletCorner::GetSetBackDist()`: the inline read of `m_dSetBackDist`
     /// (`FilletCorner::set_back_dist`).

@@ -1603,6 +1603,18 @@ void run_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
         for (SmShell* s2 : g.shells)
             v.push_back(s2->*ShPeek::type() == SmFaceuse_TYPE ? (int64_t)list_of(s2->GetList()).size() : -1);
         put_list(o, v);
+        // Owner pointers alone cannot detect stale shell membership after reflection.
+        for (SmShell* s2 : g.shells)
+        {
+            SmTArray<SmFaceuse*> members;
+            s2->GetFaceuses(members);
+            put_found(o, g, 2, members);
+            for (ULONG i = 0; i < members.GetSize(); ++i)
+            {
+                o.push_back((double)g.find(2, members[i]->GetNext()));
+                o.push_back((double)g.find(2, members[i]->GetLast()));
+            }
+        }
         break;
     }
     case OP_RM_LOOP_VU:
@@ -1815,11 +1827,6 @@ void run_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
         double tol = rd.num();
         double ang = rd.num();
         bool want_points = rd.flag();
-        if (g.faces.size() > 0)
-        {
-            o.push_back(-3.0); // SmFace::FaceIntersect: the Rust side defers
-            break;
-        }
         SmTArray<SmCurve*> curves;
         SmTArray<SmPoint3d> points;
         SmStatus s = brep->BrepIntersect(ctx, brep, tol, ang, curves, want_points ? &points : NULL);

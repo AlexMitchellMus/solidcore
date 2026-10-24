@@ -13,7 +13,9 @@
 //! Both sides produce one flat record: the pre-relation statuses, the merge's status
 //! and outputs (only on success: the port returns none with an error), then the state
 //! (counts, every vertex and edge tolerance, and the vertex, edge and face mates sorted
-//! by handle). Handles are the p1 runner's `brep kind index` triples.
+//! by handle). Handles are the p1 runner's `brep kind index` triples, numbered after the
+//! merge by both sides' re-walk of the B-reps (the shim's `walk_all`, `Walk` here), so
+//! records the merge deleted (kept unlinked in the Rust arena) are unknown on both.
 //!
 //! **Selectors.** Generated handles are selectors taken modulo the entity count of
 //! their kind; classification parameters are fractions of the classified edge's
@@ -31,8 +33,10 @@
 //! for a degenerate curve, `SmFace::GetEdges` (`topology.face_p4`) through the face
 //! classification, `SmBrep::DeleteEdge` (`topology.brep_p4`) when repairing an edge
 //! relation, `CombineCoincidentVertices` (`topology.brep_p5`) when squeezing, the
-//! global point solve of `DropPoint` (`curve.curve_p1`) when relating new edges, and the
-//! topology edits of `MergeClassifications`.
+//! global point solve of `DropPoint` (`curve.curve_p1`) when relating new edges. The
+//! topology edits of `MergeClassifications` (`MergeInterval`, `MergePointClass`) and of
+//! the degenerate curve's `MergeIntoObject` run on the adapter's B-reps
+//! (`MergeIntervalBrep`, implemented by the p1 runner's `Two`).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -55,7 +59,9 @@ use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::face::p4 as fp4;
 use solidcore::topology::loopuse as lu;
 use solidcore::topology::proto_topology::ProtoBrep;
-use solidcore::topology::{Brep, EdgeId, EdgeuseId, FaceuseId, LoopuseId, VertexId, VertexuseId};
+use solidcore::topology::{
+    Brep, EdgeId, EdgeuseId, FaceId, FaceuseId, LoopuseId, VertexId, VertexuseId,
+};
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::boolean_topology_intersector_p1 as ffi1;
 use solidcore_ffi::units::boolean_topology_intersector_p3::{self as ffi, Op};
@@ -63,8 +69,10 @@ use solidcore_ffi::units::boolean_topology_intersector_p3::{self as ffi, Op};
 use super::boolean_topology_intersector_p1::{
     brep_block, brep_h, build_failure, eid, fid, flag, harness, hd, path_of, put_h, BrepIn, Hin,
     Two, H, K_BREP, K_EDGE, K_EDGE_CURVE, K_FACE, K_FACE_SURFACE, K_NULL, K_TRIM_CURVE, K_VERTEX,
+    K_VERTEXUSE,
     NULL_DEREF, TI_HANDLE,
 };
+use super::boolean_merge_p1::Canon;
 use super::topology_vertexuse::import;
 use crate::case::{CaseContext, CaseSource};
 use crate::runner::default_cases;
@@ -491,10 +499,58 @@ fn status<T>(r: Result<T, SolidError>, o: &mut Vec<f64>) -> Result<Option<T>, So
     }
 }
 
-fn put_list(o: &mut Vec<f64>, hs: &[H]) {
+fn put_list(o: &mut Vec<f64>, walk: &Walk, hs: &[H]) {
     o.push(hs.len() as f64);
     for &h in hs {
-        put_h(o, Some(h));
+        walk.put(o, Some(h));
+    }
+}
+
+/// The shim's `walk_all` after the merge: both B-reps re-walked
+/// ([`Canon::reachable`], the shim's `walk`), so a vertex, edge or face handle (and an
+/// edge curve's or face surface's) is its position in that walk, and a record the merge
+/// deleted (unlinked, but kept in the Rust arena) is unknown, `-1 -3 -1`, as a deleted
+/// object upstream. Without deletions the walk is the import order (the identity).
+struct Walk([Option<Canon>; 2]);
+
+impl Walk {
+    fn of(two: &Two) -> Self {
+        Self([0i8, 1].map(|b| two.brep(brep_h(b)).map(Canon::reachable)))
+    }
+
+    /// The post-merge triple of `h` (see [`Walk`]).
+    fn triple(&self, h: Option<H>) -> [f64; 3] {
+        let mut o = Vec::with_capacity(3);
+        self.put(&mut o, h);
+        [
+            o.first().copied().unwrap_or(-1.0),
+            o.get(1).copied().unwrap_or(-3.0),
+            o.get(2).copied().unwrap_or(-1.0),
+        ]
+    }
+
+    fn put(&self, o: &mut Vec<f64>, h: Option<H>) {
+        let Some(h) = h else {
+            put_h(o, None);
+            return;
+        };
+        let canon = usize::try_from(h.b)
+            .ok()
+            .and_then(|b| self.0.get(b))
+            .and_then(Option::as_ref);
+        let at = match (canon, h.kind) {
+            (Some(c), K_VERTEX) => c.vertices.of(Some(VertexId::from_index(h.i))),
+            (Some(c), K_EDGE | K_EDGE_CURVE) => c.edges.of(Some(EdgeId::from_index(h.i))),
+            (Some(c), K_FACE | K_FACE_SURFACE) => c.faces.of(Some(FaceId::from_index(h.i))),
+            _ => {
+                put_h(o, Some(h));
+                return;
+            }
+        };
+        match u32::try_from(at) {
+            Ok(i) => put_h(o, Some(hd(h.b, h.kind, i))),
+            Err(_) => o.extend([-1.0, -3.0, -1.0]),
+        }
     }
 }
 
@@ -575,7 +631,11 @@ fn new_class(k: &Kernel, c: &ClassR) -> Result<CurveClassification<H>, SolidErro
     Ok(cc)
 }
 
-fn put_class_out(o: &mut Vec<f64>, cc: &CurveClassification<H>) -> Result<(), SolidError> {
+fn put_class_out(
+    o: &mut Vec<f64>,
+    walk: &Walk,
+    cc: &CurveClassification<H>,
+) -> Result<(), SolidError> {
     o.push(cc.size() as f64);
     for i in 0..cc.size() {
         let ivl = cc.at(i)?;
@@ -583,29 +643,34 @@ fn put_class_out(o: &mut Vec<f64>, cc: &CurveClassification<H>) -> Result<(), So
         o.push(ivl.interval.max());
         for pc in [&ivl.start, &ivl.mid, &ivl.end] {
             o.push(f64::from(pc.point_class().code()));
-            put_h(o, pc.object());
+            walk.put(o, pc.object());
         }
     }
     Ok(())
 }
 
-/// The state after the merge (see the module docs).
-fn put_state(o: &mut Vec<f64>, two: &Two, ti: &TopologyIntersector<H>) -> Result<(), SolidError> {
+/// The state after the merge (see the module docs), in the post-merge walk ([`Walk`]):
+/// the records it reaches, in its order; mates sorted by their post-merge handles.
+fn put_state(
+    o: &mut Vec<f64>,
+    two: &Two,
+    walk: &Walk,
+    ti: &TopologyIntersector<H>,
+) -> Result<(), SolidError> {
     for b in 0..2i8 {
-        let Some(br) = two.brep(brep_h(b)) else {
+        let canon = usize::try_from(b).ok().and_then(|i| walk.0.get(i));
+        let (Some(br), Some(Some(c))) = (two.brep(brep_h(b)), canon) else {
             o.extend([0.0, 0.0, 0.0]);
             continue;
         };
-        o.push(br.vertices().len() as f64);
-        o.push(br.edges().len() as f64);
-        o.push(br.faces().len() as f64);
-        for v in 0..br.vertices().len() {
-            let id = VertexId::from_index(u32::try_from(v).unwrap_or(u32::MAX));
-            o.push(br.vertex(id)?.tolerance);
+        o.push(c.vertices.items.len() as f64);
+        o.push(c.edges.items.len() as f64);
+        o.push(c.faces.items.len() as f64);
+        for &v in &c.vertices.items {
+            o.push(br.vertex(v)?.tolerance);
         }
-        for e in 0..br.edges().len() {
-            let id = EdgeId::from_index(u32::try_from(e).unwrap_or(u32::MAX));
-            o.push(br.edge(id)?.tolerance);
+        for &e in &c.edges.items {
+            o.push(br.edge(e)?.tolerance);
         }
     }
     for kind in [
@@ -613,12 +678,16 @@ fn put_state(o: &mut Vec<f64>, two: &Two, ti: &TopologyIntersector<H>) -> Result
         ClassObjectKind::Edge,
         ClassObjectKind::Face,
     ] {
-        let mut objs = ti.mapped_brep_objects(kind)?;
-        objs.sort();
+        let mut objs: Vec<_> = ti
+            .mapped_brep_objects(kind)?
+            .into_iter()
+            .map(|h| (walk.triple(Some(h)), walk.triple(ti.other_mate(Some(h)))))
+            .collect();
+        objs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         o.push(objs.len() as f64);
-        for h in objs {
-            put_h(o, Some(h));
-            put_h(o, ti.other_mate(Some(h)));
+        for (h, mate) in objs {
+            o.extend(h);
+            o.extend(mate);
         }
     }
     Ok(())
@@ -702,9 +771,10 @@ fn run_rust_merge(i: &Inputs, p: Prepared) -> Result<Vec<f64>, SolidError> {
             };
             let r = ti.merge_curve_on_surfaces(&mut k, &mut two, &input);
             if let Some(m) = status(r, &mut o)? {
+                let walk = Walk::of(&two);
                 o.push(flag(m.deleted_topology));
-                put_list(&mut o, &m.deleted_edges.unwrap_or_default());
-                put_list(&mut o, &m.deleted_vertices.unwrap_or_default());
+                put_list(&mut o, &walk, &m.deleted_edges.unwrap_or_default());
+                put_list(&mut o, &walk, &m.deleted_vertices.unwrap_or_default());
             }
         }
         MergeR::CurveClasses {
@@ -722,11 +792,12 @@ fn run_rust_merge(i: &Inputs, p: Prepared) -> Result<Vec<f64>, SolidError> {
             let r =
                 ti.merge_curve_classes(&mut k, &mut two, &mut cc1, &mut cc2, merge_singularities);
             if let Some(m) = status(r, &mut o)? {
+                let walk = Walk::of(&two);
                 o.push(flag(m.topology_was_deleted));
-                put_list(&mut o, &m.deleted_edges.unwrap_or_default());
-                put_list(&mut o, &m.deleted_vertices.unwrap_or_default());
-                put_class_out(&mut o, &cc1)?;
-                put_class_out(&mut o, &cc2)?;
+                put_list(&mut o, &walk, &m.deleted_edges.unwrap_or_default());
+                put_list(&mut o, &walk, &m.deleted_vertices.unwrap_or_default());
+                put_class_out(&mut o, &walk, &cc1)?;
+                put_class_out(&mut o, &walk, &cc2)?;
             }
         }
         MergeR::CoincidentSurfaces { s1, s2 } => {
@@ -741,12 +812,13 @@ fn run_rust_merge(i: &Inputs, p: Prepared) -> Result<Vec<f64>, SolidError> {
             }
             let r = ti.merge_coincident_surfaces(&mut k, &mut two, s1, s2, Some(TI_HANDLE));
             if let Some(m) = status(r, &mut o)? {
-                put_list(&mut o, &m.faces);
-                put_list(&mut o, &m.other_faces);
+                let walk = Walk::of(&two);
+                put_list(&mut o, &walk, &m.faces);
+                put_list(&mut o, &walk, &m.other_faces);
             }
         }
     }
-    put_state(&mut o, &two, &ti)?;
+    put_state(&mut o, &two, &Walk::of(&two), &ti)?;
     Ok(o)
 }
 
@@ -776,6 +848,34 @@ fn invalid(reason: &'static str) -> SolidError {
 impl IntersectorBrepP3<H> for Two {
     fn surface_face(&self, surface: H) -> solidcore::Result<Option<H>> {
         Ok(face_of_surface(self, surface))
+    }
+
+    fn face_surface_trace_cache(
+        &mut self,
+        k: &Kernel,
+        surface: H,
+    ) -> solidcore::Result<Option<solidcore::surface::surface_cache::SurfaceCache<H>>> {
+        if surface.kind != K_FACE_SURFACE {
+            return Ok(None);
+        }
+        let side = surface.b;
+        let lease = solidcore::query::face::p2::face_surface_cache(
+            k,
+            self.brep_m(surface)?,
+            FaceId::from_index(surface.i),
+        )?;
+        // the cache's objects in this adapter's handles (the B-rep's topology)
+        let mapped = lease.cache.base().map_handles(|e| match e {
+            EntityRef::Vertexuse(vu) => Ok(hd(side, K_VERTEXUSE, vu.index())),
+            e => Two::entity_h(side, e).ok_or_else(|| {
+                SolidError::invalid_input(
+                    "boolean.topology_intersector_p3 runner",
+                    "cache object without a handle",
+                )
+            }),
+        });
+        lease.release();
+        mapped.map(Some)
     }
 
     fn edge_is_manifold(&self, edge: H) -> solidcore::Result<bool> {

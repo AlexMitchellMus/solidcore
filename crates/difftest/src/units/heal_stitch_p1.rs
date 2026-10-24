@@ -585,10 +585,9 @@ pub(crate) fn inexact(types: &ImportTypes) -> Option<Output> {
             ),
         ));
     }
-    if types
-        .edge_curve_types
-        .iter()
-        .any(|&t| t >= 0 && !EXACT_CURVES.contains(&t))
+    if (0..types.edge_curve_types.len())
+        .filter_map(|e| types.inexact_curve(e))
+        .any(|t| t >= 0 && !EXACT_CURVES.contains(&t))
     {
         return Some(Output::deferred(
             HARNESS_ANALYTIC_IMPORT,
@@ -624,7 +623,7 @@ fn run_cpp(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     let Some((_, graph_at)) = counts(&ex) else {
         return Ok(build_failure(&ex));
     };
-    let (b, types) = super::topology_brep_p1::import(&ex, graph_at)?;
+    let (b, types) = super::topology_brep_p1::import_raw(&ex, graph_at)?;
     let Some(op) = resolve(k, &i.op, &b)? else {
         return Ok(no_entity());
     };

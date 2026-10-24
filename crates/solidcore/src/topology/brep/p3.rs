@@ -67,7 +67,7 @@
 //!   distinct per object is the caller's part, as an upstream caller's objects are its
 //!   own; the records and attributes it keeps under them are used as they are (an
 //!   object without a record gets the default one its constructor would make,
-//!   [`seed_records`]). Only objects with no caller key get kernel-issued identities:
+//!   `seed_records`). Only objects with no caller key get kernel-issued identities:
 //!   a curve is `(domain, counter)`, issued once per context domain and kept on the
 //!   [`Curve`] ([`Curve::notify_key`]); a caller without notification state of its own
 //!   ([`with_kernel_callbacks`], the healer's tracked edits) names topology by
@@ -77,7 +77,7 @@
 //!   have no public setter, and a clone (upstream's copy constructor: another object)
 //!   starts without one. Kernel keys have the top bit set (topology `0b10`, geometry
 //!   `0b11`); every edit refuses (`InvalidInput`) a caller key in that range before it
-//!   changes anything ([`check_keys`]), unless it is the object's own kernel identity.
+//!   changes anything (`check_keys`), unless it is the object's own kernel identity.
 //!   The lending adapters are not nestable: one inside another (whose kernel context
 //!   then holds no callbacks) is refused before anything changes
 //!   (`Context::lend_notify`). Independent contexts can issue equal keys by default.
@@ -450,7 +450,8 @@ fn faceuse_remove_loopuse(b: &mut Brep, fu: FaceuseId, lu: LoopuseId) -> Result<
 
 /// `m_pFaceListHead->Remove(pFace); delete pFace`: takes the face off the B-rep's face
 /// list, notifies its destruction (`~SmFace`: `SmFace::Notify`, unit
-/// `topology.face_p3`) and drops the surface it owns.
+/// `topology.face_p3`), drops the surface it owns and removes it from every attribute
+/// it uses (`~SmAObject`'s `ClearAttributes`).
 fn destroy_face(b: &mut Brep, env: &mut NotifyEnv<'_>, f: FaceId) -> Result<()> {
     b.remove_from_face_list(f);
     ignore_soft(face_notify(
@@ -460,6 +461,8 @@ fn destroy_face(b: &mut Brep, env: &mut NotifyEnv<'_>, f: FaceId) -> Result<()> 
         NotifyOperation::Destruction,
         [arg(EntityRef::Face(f)), None, None],
     ))?;
+    env.attributes
+        .clear_attributes((env.key_of)(EntityRef::Face(f)).key)?;
     let face = b.face_mut(f)?;
     face.faceuse = None;
     let owned = face
@@ -933,8 +936,8 @@ pub(crate) fn kernel_named_edit<R>(
 
 /// Runs `edit` for a caller that keeps no notification state of its own (upstream's
 /// objects carry it): through the kernel context's notify callbacks and identity
-/// domain, lent for the edit and given back ([`with_lent_context`]), under the
-/// kernel's identities ([`kernel_named_edit`]).
+/// domain, lent for the edit and given back (`with_lent_context`), under the
+/// kernel's identities (`kernel_named_edit`).
 ///
 /// Not nestable: inside `edit`, notify through the `env` it is given. A
 /// `with_kernel_callbacks` (or the healer's tracked edit) inside `edit` is refused.
@@ -1355,7 +1358,8 @@ fn merge_brep_in(
         } else {
             face_surf.copy(k)?
         };
-        *new_surface.owner_mut() = Some((env.key_of)(EntityRef::Face(new_f)));
+        let owner = (env.key_of)(EntityRef::Face(new_f));
+        *new_surface.owner_mut() = Some(owner);
         let (rect, dom, ftol) = (
             src_face.rectangular_trim,
             src_face.uv_domain,
@@ -1368,6 +1372,8 @@ fn merge_brep_in(
             nf.uv_domain = dom;
             nf.tolerance = ftol;
         }
+
+        b.geometry_owner_keys.insert(EntityRef::Face(new_f), owner);
 
         // add newFace to target Brep FaceList
         b.face_list.push(new_f);
@@ -1495,8 +1501,10 @@ fn merge_brep_in(
             tolerance: etol,
             curve: None,
         })?;
-        let _ = new_c.set_owner(Some((env.key_of)(EntityRef::Edge(new_e))), None);
+        let owner = (env.key_of)(EntityRef::Edge(new_e));
+        let _ = new_c.set_owner(Some(owner), None);
         b.edge_mut(new_e)?.curve = Some(new_c);
+        b.geometry_owner_keys.insert(EntityRef::Edge(new_e), owner);
 
         // Relate the Edges.
         set(
@@ -1982,6 +1990,7 @@ fn delete_face_in(
             return Err(ser()); // Should not happen
         }
         ignore_soft(shell::region_remove_shell(b, del_region, os))?;
+        shell::destroy(k, b, os, env)?;
         other_shell = None;
         for s in region_shells(b, del_region)? {
             ignore_soft(shell::region_remove_shell(b, del_region, s))?;
@@ -2083,6 +2092,10 @@ fn delete_face_in(
                     vertex_remove_vertexuse(b, v1, vu1)?;
                     let (vu2, v2) = eu_vertex(b, mate)?;
                     vertex_remove_vertexuse(b, v2, vu2)?;
+                    // delete pEU; delete pEUMate (the vertex uses' destructors notify
+                    // nothing)
+                    crate::topology::edgeuse::p2::destroy(k, b, eu, env)?;
+                    crate::topology::edgeuse::p2::destroy(k, b, mate, env)?;
                     if any_edgeuse == Some(eu) {
                         any_edgeuse = None;
                     }
@@ -2124,6 +2137,7 @@ fn delete_face_in(
         let res = delete_face_nesting(
             k,
             b,
+            env,
             marks,
             &mut lock,
             shell,
@@ -2164,6 +2178,7 @@ fn delete_face_in(
 fn delete_face_nesting(
     k: &mut Kernel,
     b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
     marks: &mut Marks,
     lock: &mut MarkLock,
     shell: ShellId,
@@ -2177,6 +2192,8 @@ fn delete_face_nesting(
     if any_edgeuse.is_none() && remaining(*vertex_count) == 0 {
         let r = eu1::shell_region(b, shell)?.ok_or(null_deref("shell without region"))?;
         ignore_soft(shell::region_remove_shell(b, r, shell))?;
+        // delete pShell
+        shell::destroy(k, b, shell, env)?;
     } else {
         // See if shell is now a wire shell - if it is point it to an edgeuse
         if shell::shell_list_size(b, shell)? == 0 {
@@ -2309,7 +2326,7 @@ fn delete_face_nesting(
     let r = eu1::shell_region(b, shell)?.ok_or(null_deref("shell without region"))?;
     ignore_soft(shell::transfer_children(k, b, last, shell, None))?;
     ignore_soft(shell::region_remove_shell(b, r, last))?;
-    Ok(())
+    shell::destroy(k, b, last, env)
 }
 
 /// `delete pFU` for each face use (the arena keeps the record): `SmTopology`'s destructor
@@ -3608,13 +3625,14 @@ fn brep_curve_solve(
             &keys,
         )?;
         let owners = |_: ObjectRef| None;
-        let objects = crate::topology::brep_cache::BrepObjects {
-            brep: b,
+        // the solve makes the face caches it reaches on the B-rep
+        // (smsurf_GetSurfaceCache) and classifies on it
+        let identity = crate::query::brep::BrepIdentity {
             brep_id: crate::topology::BrepId::from_index(0),
-            cache: Some(&cache),
             keys: &keys,
             owner_of: &owners,
         };
+        let objects = crate::query::brep::LiveBrepObjects::new(b, &identity, Some(&cache))?;
         let sols = TopologySolver::brep_curve_solve(
             k,
             &objects,
