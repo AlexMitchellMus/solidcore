@@ -15935,6 +15935,31 @@ stitching still have their documented dependencies; merge p3/p4 remain paired
 with the missing p2 merge constructor. Final native/CI evidence is recorded on
 the tested PR head; no tolerance or absolute floor is relaxed.
 
+## topology.face_p1 — UB-137 crash guard replaced by a fork trap (PR #467)
+
+#294 row 13. The shim's UB-137 guard (above, under the unit's **C++ crash guard**) is now
+a trap: the same predicate picks the seam calls that can reach upstream's `SplitAtSeam`
+crash, and the shim runs each of them in a forked child (`fp1_trapped`) instead of
+skipping it. The child sends the op record back through a pipe. A child that dies on a
+signal, runs past its 60 s alarm or sends no whole record answers `-4`. Where the shim
+cannot fork (Windows) or the pipe or the fork fails, the call is skipped (`-3`) as
+before. The child marks itself non-dumpable: a piped `core_pattern` (WSL's
+`wsl-capture-crash`, systemd-coredump) ignores `RLIMIT_CORE`, and capturing each
+expected crash made the unit about 4x slower.
+
+- **Runner.** The Rust side runs every case (its copy of the guard is gone). `run_cpp`
+  reports a `-3`/`-4` record as `Output::deferred("cpp-crash-guard:UB-137",
+  "SmFace::SplitAtSeam")`. The generic runner (`crates/difftest/src/runner.rs`) now
+  defers a case whose C++ side is deferred, and that deferral wins over a Rust-side one:
+  a case the C++ cannot run stays uncomparable once the Rust side's blocker lands.
+- **Result** (Linux, main `1054aeee`): of the 98 guarded cases, 44 pass bit-identical,
+  37 crash (SIGSEGV), 11 defer to `topology.face_p3` and 6 to `topology.face_p4`; none
+  fail. The 37 are the 36 review crash reproducers (`guard_vase_rev_*`, `vase_rev.smb`
+  face 0, `MoveSeam` with split and fabricated crossed-BOTH verdicts) and
+  `vase_rev.smb_1_f5_op9` (the UB-137 trigger). The other 61 run without a crash.
+- **Not done.** The trap still needs the guard's predicate to choose calls (forking every
+  seam call would also work, at the cost of a fork each). The crash cases are not
+  comparable on either platform.
 ## 2026-10-21 — Production SweepAccess store (issue #255, PR #424)
 
 `SweepStore` integrates the PR #222 orchestration with caller-owned B-reps,
@@ -18023,6 +18048,37 @@ labels. Read the first as the proposal to give the runner's `StaticHandle` a
 `natural_uv_domain`, and the second as the missing face-aware `SurfaceSolveContext`
 (global solves on a face's surface should use that face's trimmed surface cache).
 
+## topology.face_p1 fork trap merged with main: 2 MoveSeam-with-split mismatches (2026-10-23)
+
+Carrying the UB-137 fork trap (PR #467) onto main (face Notify #637, cone
+`TrimWithDomain` #670) makes two formerly guarded cases comparable, and they disagree.
+Both are `MoveSeam` with split on face 5, face properties closed in U and V with crossed
+and missing seams BOTH (`props {closed_u 1, closed_v 1, crossed 3, missing 3,
+near_miss 0}`, `center false`, `split true`, B-rep rebuilt):
+
+| case | field | C++ | Rust |
+|------|-------|-----|------|
+| `cone.smb_1_f5_op9` | `out[5]` new seam edges, `out[6]` seam vertices | 2, 1 | 0, 0 |
+| `torus.smb_1_f5_op9` | `out[4]` new faces, `out[5]` edges, `out[6]` vertices | 1, 3, 1 | 0, 0, 0 |
+
+Status and the U/V results agree (U `SM_FSP_NO_CHANGES`, V `SM_FSP_MOVE_OUT_OF_FACE`
+for the cone).
+
+**Cause (found by instrumenting the port).** After moving the seam, `MoveSeam` re-runs
+`HasSeamProblem` before splitting (`SmFace.cpp` `if(bOkToSplit && ...IsFullPeriod())`).
+The face_p1 runner calls `topology::face::p1::move_seam` with its null classification
+handle `H` (names loops only) and `NoGeometry`, so that call fails in
+`BrepSeamObjects::new` with `InvalidInput` ("classification handles cannot name the
+face's topology, curves or seam curves"). `move_seam` treats a failed check as upstream's
+`FALSE` (the status is ignored), so it never splits. Upstream finds a remaining seam
+problem and `SplitAtSeam`'s merges add the edges, vertices and (torus) a face.
+
+**Not a library defect as far as seen:** a handle type that names topology
+(`HealLoopHandle`) would run the check. The fix is a runner change (classifications
+and `MoveSeam`/`SplitAtSeam` over handles that name the B-rep's own entities), after
+which the split's `MergeInterval` imprinting (`intersect.curve_class_p6`, still
+`Unported`) would likely defer these cases instead. Until then both are listed in
+`crates/difftest/known_mismatches.toml`.
 ## sweep.trans_sweep_geometry: op 8 makes its face with CreateFaceFromSurface (PR #692, 2026-10-23)
 
 The `FaceSweepSame` op (op 8) used to build its input face differently on each side: the
