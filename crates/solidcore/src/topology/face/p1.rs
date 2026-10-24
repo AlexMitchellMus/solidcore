@@ -1095,7 +1095,31 @@ pub fn remove_loop(b: &mut Brep, f: FaceId, l: LoopId) -> Result<()> {
 /// `SM_ERR_NULL_POINTER` without face use; those of [`eu1::faceuse_edgeuses`];
 /// [`SolidError::Unported`] (`SmFace::Notify`).
 pub fn remove_uv_trim_curves(b: &mut Brep, f: FaceId) -> Result<()> {
-    face_notify(b, f, NotifyOperation::PreEdit)?;
+    remove_uv_trim_curves_notifying(b, f, &mut |b, op| face_notify(b, f, op))
+}
+
+/// Remove UV trims with the actual face notification records, attributes and context.
+/// Geometry notifications inside lower trim ports retain their existing behavior.
+///
+/// # Errors
+/// Those of [`remove_uv_trim_curves`] and the real face notification.
+pub fn remove_uv_trim_curves_with_notifications(
+    b: &mut Brep,
+    f: FaceId,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+) -> Result<()> {
+    remove_uv_trim_curves_notifying(b, f, &mut |b, op| {
+        let this = (env.key_of)(EntityRef::Face(f));
+        fp3::notify(b, f, env, None, op, [Some(this), None, None])
+    })
+}
+
+fn remove_uv_trim_curves_notifying(
+    b: &mut Brep,
+    f: FaceId,
+    notify: &mut impl FnMut(&mut Brep, NotifyOperation) -> Result<()>,
+) -> Result<()> {
+    notify(b, NotifyOperation::PreEdit)?;
     let fu = fp2::upward_faceuse(b, f)?.ok_or_else(|| SolidError::null_pointer(OP))?;
     for eu in eu1::faceuse_edgeuses(b, fu, false, None)? {
         // status ignored upstream
@@ -1299,6 +1323,35 @@ pub fn shrink_geometry_with(
     key_of: &dyn Fn(EntityRef) -> ObjectRef,
     trim: TrimOptions,
 ) -> Result<()> {
+    shrink_geometry_notifying(k, b, f, key_of, trim, &mut |b, op| face_notify(b, f, op))
+}
+
+/// Shrink with default native trim options and the caller's actual face notifications.
+/// The lower surface/curve ports keep their existing geometry notification behavior.
+///
+/// # Errors
+/// Those of [`shrink_geometry`] and the real face notification.
+pub fn shrink_geometry_with_notifications(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+) -> Result<()> {
+    let key_of = env.key_of;
+    shrink_geometry_notifying(k, b, f, key_of, TrimOptions::default(), &mut |b, op| {
+        let this = (env.key_of)(EntityRef::Face(f));
+        fp3::notify(b, f, env, None, op, [Some(this), None, None])
+    })
+}
+
+fn shrink_geometry_notifying(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    trim: TrimOptions,
+    notify: &mut impl FnMut(&mut Brep, NotifyOperation) -> Result<()>,
+) -> Result<()> {
     // no work - don't work on faces when in an intermediate state
     match fp2::surface(b, f)? {
         Some(s) if s.owner().is_some() => {}
@@ -1338,7 +1391,7 @@ pub fn shrink_geometry_with(
     }
 
     // remove all associated UVTrimCurves (status ignored)
-    ignore_status(remove_uv_trim_curves(b, f))?;
+    ignore_status(remove_uv_trim_curves_notifying(b, f, notify))?;
 
     // Now Trim all Curves to the face edges
     for e in face_edges(b, f)? {
