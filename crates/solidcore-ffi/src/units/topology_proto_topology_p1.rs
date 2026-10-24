@@ -78,6 +78,8 @@ pub mod kind {
     pub const PROTO: i64 = 1;
     /// One API transformation.
     pub const TRANSFORM: i64 = 2;
+    /// Constructed-solid transform with representation and orientation record.
+    pub const SCALE_PROBE: i64 = 4;
 }
 
 /// List-script slot kinds.
@@ -831,8 +833,10 @@ fn validate_proto(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     Ok(())
 }
 
-fn validate_transform(rd: &mut Reader<'_>) -> Result<(), FfiError> {
-    match rd.int(0, tobj::COPIED_SPHERE)? {
+fn validate_transform(rd: &mut Reader<'_>, probe: bool) -> Result<(), FfiError> {
+    let object = rd.int(0, tobj::COPIED_SPHERE)?;
+    if probe && !matches!(object, tobj::PRIMITIVE_BOX | tobj::PRIMITIVE_SPHERE | tobj::COPIED_BOX | tobj::COPIED_SPHERE) { return Err(bad("scale probe requires constructed solid")); }
+    match object {
         tobj::CALLER_FACE => { rd.vec3()?; for _ in 0..2 { if rd.finite()? <= 1e-12 { return Err(bad("face dimension")); } } }
         tobj::PRIMITIVE_BOX | tobj::COPIED_BOX => { rd.vec3()?; for _ in 0..3 { if rd.finite()? <= 1e-12 { return Err(bad("box dimension")); } } }
         tobj::PRIMITIVE_SPHERE | tobj::COPIED_SPHERE => { rd.vec3()?; if rd.finite()?.abs() <= 1e-12 { return Err(bad("sphere radius")); } }
@@ -912,10 +916,12 @@ fn validate_transform(rd: &mut Reader<'_>) -> Result<(), FfiError> {
 /// [`FfiError::InvalidArgument`] for a malformed script.
 pub fn validate(input: &[f64]) -> Result<(), FfiError> {
     let mut rd = Reader::new(input);
-    match rd.int(0, kind::TRANSFORM)? {
+    match rd.int(0, kind::SCALE_PROBE)? {
         kind::LIST => validate_list(&mut rd)?,
         kind::PROTO => validate_proto(&mut rd)?,
-        _ => validate_transform(&mut rd)?,
+        kind::TRANSFORM => validate_transform(&mut rd, false)?,
+        kind::SCALE_PROBE => validate_transform(&mut rd, true)?,
+        _ => return Err(bad("unknown script kind")),
     }
     if rd.at != input.len() {
         return Err(bad("trailing data"));

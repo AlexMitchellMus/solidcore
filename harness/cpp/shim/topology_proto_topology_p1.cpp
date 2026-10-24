@@ -22,6 +22,11 @@
 #include "support/primitive_record.h"
 #include <SmApiPrimitives.h>
 #include <SmApiQueries.h>
+#include <SmFaceuse.h>
+#include <SmVertexuse.h>
+#include <SmRegion.h>
+#include <optional>
+#include <algorithm>
 
 #include "StdAfx.h"
 #include <SmApiGeneral.h>
@@ -4853,10 +4858,50 @@ public:
     ScCos(SmPoint2d& a, SmPoint2d& b, SmSurface& s, const SmContext* ctx) : SmCrvOnSurf(a, b, s, NULL, 0, ctx) {}
 };
 
-int32_t run_transform(Rd& rd, std::vector<double>& o)
+template<class T> double scale_label(const std::vector<T*>& items, T* item) {
+    if (!item) return 0.0;
+    auto it=std::find(items.begin(),items.end(),item);
+    return it==items.end() ? 0.0 : (double)(std::distance(items.begin(),it)+1);
+}
+struct ScaleProbeFrame {
+    std::vector<SmVertex*> vertices;
+    std::vector<SmEdge*> edges;
+    std::vector<SmFace*> faces;
+    std::vector<SmShell*> shells;
+    std::vector<SmRegion*> regions;
+    std::vector<SmEdgeuse*> edgeuses;
+    std::vector<std::pair<SmFaceuse*,SmFaceuse*>> faceuses;
+    explicit ScaleProbeFrame(SmBrep* body) {
+        SmTArray<SmVertex*> vs; body->GetVertices(vs); for(ULONG i=0;i<vs.GetSize();i++) vertices.push_back(vs[i]);
+        SmTArray<SmEdge*> es; body->GetEdges(es); for(ULONG i=0;i<es.GetSize();i++) { edges.push_back(es[i]); SmTArray<SmEdgeuse*> us; es[i]->GetEdgeuses(us); for(ULONG j=0;j<us.GetSize();j++) edgeuses.push_back(us[j]); }
+        SmTArray<SmFace*> fs; body->GetFaces(fs); for(ULONG i=0;i<fs.GetSize();i++) { faces.push_back(fs[i]); SmFaceuse *a=NULL,*b=NULL; fs[i]->GetFaceuses(a,b); faceuses.push_back({a,b}); }
+        SmTArray<SmShell*> ss; body->GetShells(ss); for(ULONG i=0;i<ss.GetSize();i++) shells.push_back(ss[i]);
+        SmTArray<SmRegion*> rs; body->GetRegions(rs); for(ULONG i=0;i<rs.GetSize();i++) regions.push_back(rs[i]);
+    }
+    void append(std::vector<double>& out) const {
+        out.insert(out.end(),{(double)shells.size(),(double)regions.size()});
+        for(auto edge: edges) {
+            out.push_back(edge->GetCurve()?(double)edge->GetCurve()->GetType():0.0);
+            SmTArray<SmEdgeuse*> uses; edge->GetEdgeuses(uses); out.push_back((double)uses.GetSize());
+            for(ULONG i=0;i<uses.GetSize();i++) { auto use=uses[i]; auto vu=use->GetVertexuse();
+                out.insert(out.end(),{scale_label(edgeuses,use),(double)use->GetOrientation(),scale_label(vertices,vu?vu->GetVertex():NULL),scale_label(edgeuses,use->GetMate()),scale_label(edgeuses,use->GetRadial()),scale_label(faces,use->GetFace())});
+            }
+        }
+        for(size_t i=0;i<faces.size();i++) {
+            out.push_back(faces[i]->GetSurface()?(double)faces[i]->GetSurface()->GetType():0.0);
+            for(auto use: {faceuses[i].first,faceuses[i].second}) {
+                if(use) { auto region=use->GetRegion(); out.insert(out.end(),{1.0,(double)use->GetOrientation(),scale_label(shells,use->GetShell()),scale_label(regions,region),region?(double)region->IsVoid():-1.0}); }
+                else out.insert(out.end(),{0.0,0.0,0.0,0.0,-1.0});
+            }
+        }
+    }
+};
+
+int32_t run_transform(Rd& rd, std::vector<double>& o, bool probe=false)
 {
     const SmContext& ctx = the_context();
     int64_t kind = rd.idx();
+    if(probe && kind!=T_PRIMITIVE_BOX && kind!=T_PRIMITIVE_SPHERE && kind!=T_COPIED_BOX && kind!=T_COPIED_SPHERE) return SC_ERR_ARG;
     SmObject* obj = NULL;
     SmBrep* source = NULL;
     std::vector<double> source_before;
@@ -4958,6 +5003,8 @@ int32_t run_transform(Rd& rd, std::vector<double>& o)
     }
     default: return SC_ERR_ARG;
     }
+    std::optional<ScaleProbeFrame> frame;
+    if(probe) frame.emplace((SmBrep*)obj);
     int64_t op = rd.idx();
     SmApiStatus s = 0;
     switch (op)
@@ -5020,6 +5067,7 @@ int32_t run_transform(Rd& rd, std::vector<double>& o)
         primitive_record::append(o,body);
         for (ULONG i=0;i<faces.GetSize();i++) o.push_back((double)faces[i]->GetRectangularTrim());
     }
+    if(frame) frame->append(o);
     if (source) {
         o.insert(o.end(), source_before.begin(), source_before.end());
         primitive_record::append(o, source);
@@ -5059,6 +5107,7 @@ int32_t run(Rd& rd, std::vector<double>& o)
     case 0: s = run_list(rd, o); break;
     case 1: s = run_proto(rd, o); break;
     case 2: s = run_transform(rd, o); break;
+    case 4: s = run_transform(rd, o, true); break;
     default: return SC_ERR_ARG;
     }
     if (s != SC_OK)

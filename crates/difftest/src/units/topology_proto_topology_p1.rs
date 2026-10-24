@@ -310,6 +310,8 @@ pub(super) enum Script {
     },
     /// One object and one API call.
     Transform { obj: TObjIn, op: TOpIn },
+    /// A constructed-solid transform with runtime type and directed topology records.
+    ScaleProbe { obj: TObjIn, op: TOpIn },
 }
 
 // ---- encoding for the C++ side ------------------------------------------------------------
@@ -433,8 +435,8 @@ pub(super) fn cpp_input(s: &Script) -> Vec<f64> {
                 v.extend_from_slice(o);
             }
         }
-        Script::Transform { obj, op } => {
-            v.push(kind::TRANSFORM as f64);
+        Script::Transform { obj, op } | Script::ScaleProbe { obj, op } => {
+            v.push(if matches!(s, Script::ScaleProbe { .. }) { kind::SCALE_PROBE } else { kind::TRANSFORM } as f64);
             match obj {
                 TObjIn::Curve { owned, c } => {
                     v.extend([tobj::CURVE as f64, b(*owned)]);
@@ -4408,7 +4410,67 @@ const ANCHOR: ObjectRef = ObjectRef {
     key: ObjectKey(1),
 };
 
-fn run_transform(obj: &TObjIn, op: &TOpIn) -> Result<Vec<f64>, Fail> {
+fn traversal_label<T: PartialEq>(items: &[T], item: Option<T>) -> f64 {
+    item.and_then(|item| items.iter().position(|entry| *entry == item)).map_or(0.0, |i| (i + 1) as f64)
+}
+
+struct ScaleProbeFrame {
+    vertices: Vec<VertexId>,
+    edges: Vec<solidcore::EdgeId>,
+    faces: Vec<solidcore::FaceId>,
+    shells: Vec<solidcore::ShellId>,
+    regions: Vec<solidcore::topology::RegionId>,
+    edgeuses: Vec<solidcore::topology::EdgeuseId>,
+    faceuses: Vec<(Option<solidcore::topology::FaceuseId>, Option<solidcore::topology::FaceuseId>)>,
+}
+
+impl ScaleProbeFrame {
+    fn new(k: &mut Kernel, body: &Brep) -> solidcore::Result<Self> {
+        use solidcore::topology::brep::p1 as bp;
+        let vertices = bp::vertices(body, None)?;
+        let edges = bp::edges(body, None)?;
+        let faces = bp::faces(body, None)?;
+        let shells = bp::shells(k, body, None)?;
+        let regions = bp::regions(body, None)?;
+        let mut edgeuses = Vec::new();
+        for edge in &edges { edgeuses.extend(solidcore::topology::edge::edgeuses(body, *edge, None, None)?); }
+        let faceuses = faces.iter().map(|face| solidcore::topology::face::p2::faceuses(body, *face)).collect::<solidcore::Result<Vec<_>>>()?;
+        Ok(Self { vertices, edges, faces, shells, regions, edgeuses, faceuses })
+    }
+}
+
+fn append_scale_probe(body: &Brep, frame: &ScaleProbeFrame, out: &mut Vec<f64>) -> solidcore::Result<()> {
+    use solidcore::topology::edgeuse::p1 as eu;
+    out.extend([frame.shells.len() as f64, frame.regions.len() as f64]);
+    for edge in &frame.edges {
+        let record = body.edge(*edge)?;
+        out.push(record.curve.as_ref().map_or(0, Curve::type_code) as f64);
+        let uses = solidcore::topology::edge::edgeuses(body, *edge, None, None)?;
+        out.push(uses.len() as f64);
+        for id in uses {
+            let use_ = body.edgeuse(id)?;
+            let vertex = eu::vertexuse(body, id)?.map(|v| body.vertexuse(v)).transpose()?.and_then(|v| v.vertex);
+            out.extend([traversal_label(&frame.edgeuses, Some(id)), use_.orientation as u8 as f64,
+                traversal_label(&frame.vertices, vertex), traversal_label(&frame.edgeuses, eu::mate(body, id)?),
+                traversal_label(&frame.edgeuses, eu::radial(body, id)?), traversal_label(&frame.faces, eu::face(body, id)?)]);
+        }
+    }
+    for (face, pair) in frame.faces.iter().zip(&frame.faceuses) {
+        let record = body.face(*face)?;
+        out.push(record.surface.as_ref().map_or(0, Surface::type_code) as f64);
+        for id in [pair.0, pair.1] {
+            if let Some(id) = id {
+                let use_ = body.faceuse(id)?;
+                let region = eu::faceuse_region(body, id)?;
+                out.extend([1.0, use_.orientation as u8 as f64, traversal_label(&frame.shells, use_.shell), traversal_label(&frame.regions, region),
+                    region.map(|r| body.region(r)).transpose()?.map_or(-1.0, |r| f64::from(r.is_void))]);
+            } else { out.extend([0.0, 0.0, 0.0, 0.0, -1.0]); }
+        }
+    }
+    Ok(())
+}
+
+fn run_transform(obj: &TObjIn, op: &TOpIn, probe: bool) -> Result<Vec<f64>, Fail> {
     let mut k = Kernel::default();
     let mut curve = None;
     let mut surface = None;
@@ -4554,6 +4616,7 @@ fn run_transform(obj: &TObjIn, op: &TOpIn) -> Result<Vec<f64>, Fail> {
         source = Some(brep);
         brep = copy;
     }
+    let probe_frame = if probe { Some(st(ScaleProbeFrame::new(&mut k, &brep))?.map_err(|code| harness(format!("scale frame status {code}")))?) } else { None };
     let target = match obj {
         TObjIn::Composite { .. } | TObjIn::CrvOnSurf { .. } => {
             special.as_mut().map(TransformObject::Curve)
@@ -4598,6 +4661,7 @@ fn run_transform(obj: &TObjIn, op: &TOpIn) -> Result<Vec<f64>, Fail> {
         st(crate::util::primitive::append(&k, &brep, &mut o))?.map_err(|code| harness(format!("solid geometry status {code}")))?;
         for face in faces { o.push(f64::from(brep.face(face).map_err(|e| harness(e.to_string()))?.rectangular_trim)); }
     }
+    if let Some(frame) = probe_frame { st(append_scale_probe(&brep, &frame, &mut o))?.map_err(|code| harness(format!("scale probe status {code}")))?; }
     if let Some(source) = source {
         o.extend(source_before);
         st(crate::util::primitive::append(&k, &source, &mut o))?
@@ -4637,7 +4701,8 @@ pub(super) fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
             override_tol,
             ops,
         } => run_proto(objects, *approx_tol, *capture, *override_tol, ops),
-        Script::Transform { obj, op } => run_transform(obj, op),
+        Script::Transform { obj, op } => run_transform(obj, op, false),
+        Script::ScaleProbe { obj, op } => run_transform(obj, op, true),
     }
 }
 
