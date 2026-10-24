@@ -115,13 +115,24 @@ pub fn call_with_buffer<T: Copy + Default>(
 /// stubs, see [`unlinked_calls`]).
 pub const LINKED: bool = cfg!(feature = "cpp");
 
+#[cfg(feature = "cpp")]
 extern "C" {
     fn sc_cpp_stdlib_is_libstdcxx() -> i32;
 }
 
 /// Whether the linked C++ reference was built against libstdc++.
+#[cfg(feature = "cpp")]
 pub fn cpp_stdlib_is_libstdcxx() -> bool {
     unsafe { sc_cpp_stdlib_is_libstdcxx() != 0 }
+}
+
+/// Whether the linked C++ reference was built against libstdc++.
+///
+/// Without the C++ kernel there is no probe: nothing links against a C++
+/// standard library, so treat it as "not libstdc++" would never be seen.
+#[cfg(not(feature = "cpp"))]
+pub fn cpp_stdlib_is_libstdcxx() -> bool {
+    false
 }
 
 /// Number of shim calls so far that reached a stub instead of the C++ kernel: always 0
