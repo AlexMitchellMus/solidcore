@@ -24,6 +24,7 @@ use serde_json::Value;
 use solidcore::geom::extent3d::Extent3d;
 use solidcore::geom::tree::{
     AuxDataType, NodeClass, NodeData, NodeGeomType, NodeId, SplitDir, SurfaceAux, Tree, TreeNode,
+    TreeOwner,
 };
 use solidcore::math::Vec3;
 use solidcore::SolidError;
@@ -100,6 +101,9 @@ enum DOp {
     },
     ClearPatch {
         node: i64,
+    },
+    Owner {
+        surface: i64,
     },
 }
 
@@ -369,6 +373,7 @@ fn subdiv_prog(ops: &[DOp]) -> Vec<i64> {
             DOp::FirstPatch { node } => v.extend([4, *node]),
             DOp::OwnerObject { node } => v.extend([5, *node]),
             DOp::ClearPatch { node } => v.extend([6, *node]),
+            DOp::Owner { surface } => v.extend([7, *surface]),
         }
     }
     v
@@ -476,6 +481,10 @@ fn run_subdiv_rust(
                 ));
             }
             DOp::ClearPatch { node } => cleared[*node as usize] = true,
+            DOp::Owner { surface } => {
+                t.set_owner_object((*surface >= 0).then_some(TreeOwner::SurfaceCache));
+                t.set_owner_surface(obj(*surface));
+            }
         }
     }
     Ok((o, values))
@@ -802,6 +811,58 @@ impl UnitDiff for Runner {
                     patch_scale: scale,
                 })
                 .map_err(|e| harness(e.to_string()))?,
+            });
+            let root = NodeDesc {
+                parent: -1,
+                c1: 1,
+                c2: 2,
+                aux: 3,
+                split: 0,
+                marked: false,
+                class: 0,
+                face: -1,
+                surface: 7,
+            };
+            let mut child = root.clone();
+            child.parent = 0;
+            child.c1 = -1;
+            child.c2 = -1;
+            child.aux = 6;
+            child.surface = -1;
+            let mut sibling = child.clone();
+            sibling.aux = 3;
+            sibling.surface = 7;
+            // Keep the explicit parent/child structure: null child surface climbs
+            // to the ancestor only with a non-null owner; matching owner surfaces
+            // on non-root nodes are suppressed, but a root may return its owner.
+            let inputs = Inputs::Subdiv {
+                nodes: vec![root, child, sibling],
+                ops: vec![
+                    DOp::Owner { surface: 7 },
+                    DOp::OwnerObject { node: 0 },
+                    DOp::FirstPatch { node: 1 },
+                    DOp::FirstPatch { node: 2 },
+                    DOp::ClearPatch { node: 2 },
+                    DOp::FirstPatch { node: 2 },
+                    DOp::FirstPatch { node: 0 },
+                    DOp::ClearPatch { node: 0 },
+                    DOp::FirstPatch { node: 1 },
+                    DOp::FirstPatch { node: 0 },
+                    DOp::Owner { surface: 8 },
+                    DOp::FirstPatch { node: 2 },
+                    DOp::FirstPatch { node: 1 },
+                    DOp::Owner { surface: -1 },
+                    DOp::FirstPatch { node: 1 },
+                    DOp::FirstPatch { node: 2 },
+                    DOp::OwnerObject { node: 0 },
+                ],
+                patch_scale: scale,
+            };
+            cases.push(Case {
+                unit: self.id().into(),
+                name: format!("native-first-patch-owner-ancestor-scale-{scale}"),
+                source: crate::case::CaseSource::Inline,
+                inputs: serde_json::to_value(inputs).map_err(|e| harness(e.to_string()))?,
             });
         }
         Ok(cases)

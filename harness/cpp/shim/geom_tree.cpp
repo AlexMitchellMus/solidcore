@@ -36,12 +36,14 @@
 //            floats: native n m p q r s, homogeneous control net, U/V knots.
 //   5 node   SmTreeNode::GetOwnerObject: 0 = NULL
 //   6 node   clear construction Bezier pointer (keep subdivision surface).
+//   7 surface attach a real SmSurfaceCache owner for surface id (-1 = no owner).
 // Native payloads are rational bilinear surfaces: construction seed = node + 1,
 // subdivision seed = surface id + n_nodes + 1. See native_patch in the runner.
 #include "sc_shim.h"
 
 #include <SmBSplineSurface.h>
 #include <SmContext.h>
+#include <SmExtent2d.h>
 #include <SmExtent3d.h>
 #include <SmNurbsSrf.h>
 #include <SmSurfaceCache.h>
@@ -329,10 +331,17 @@ static int32_t run_subdiv(const int64_t* desc, int64_t n_nodes, const int64_t* p
         surfaces.emplace_back(new (ctx) SmBSplineSurface(s, FALSE, nullptr));
         return surfaces.back().get();
     };
+    std::unique_ptr<SmSurfaceCache> owner_cache;
     SmTree tree((SmObject*)nullptr);
     std::vector<SmTreeNode> nodes((size_t)n_nodes);
     std::vector<SmBezierPatch> aux((size_t)n_nodes);
     std::map<int64_t, SmBSplineSurface*> subdivisions;
+    auto surface_for = [&](int64_t id) -> SmBSplineSurface* {
+        auto it = subdivisions.find(id);
+        if (it == subdivisions.end())
+            it = subdivisions.emplace(id, make_surface(id + n_nodes + 1)).first;
+        return it->second;
+    };
     auto ptr = [&](int64_t k) -> SmTreeNode* { return k < 0 ? nullptr : &nodes[(size_t)k]; };
     for (int64_t k = 0; k < n_nodes; k++)
     {
@@ -352,10 +361,7 @@ static int32_t run_subdiv(const int64_t* desc, int64_t n_nodes, const int64_t* p
             a.m_pBezier = make_surface(k + 1)->GetGwNurbPointer();
         if (d[8] >= 0)
         {
-            auto it = subdivisions.find(d[8]);
-            if (it == subdivisions.end())
-                it = subdivisions.emplace(d[8], make_surface(d[8] + n_nodes + 1)).first;
-            a.mBA_pSurface = it->second;
+            a.mBA_pSurface = surface_for(d[8]);
         }
         nd.m_pData = &a;
     }
@@ -363,11 +369,11 @@ static int32_t run_subdiv(const int64_t* desc, int64_t n_nodes, const int64_t* p
     while (i < n_prog)
     {
         int64_t op = prog[i];
-        int64_t sz = op == 0 || op == 1 || op == 4 || op == 5 || op == 6 ? 1 : op == 2 ? 4 : op == 3 ? 0 : -1;
+        int64_t sz = op == 0 || op == 1 || (op >= 4 && op <= 7) ? 1 : op == 2 ? 4 : op == 3 ? 0 : -1;
         if (sz < 0 || i + 1 + sz > n_prog)
             return SC_ERR_ARG;
         const int64_t* a = prog + i + 1;
-        if (sz >= 1 && (a[0] < 0 || a[0] >= n_nodes))
+        if (sz >= 1 && op != 7 && (a[0] < 0 || a[0] >= n_nodes))
             return SC_ERR_ARG;
         switch (op)
         {
@@ -433,6 +439,18 @@ static int32_t run_subdiv(const int64_t* desc, int64_t n_nodes, const int64_t* p
         }
         case 5: o.push_back(nodes[(size_t)a[0]].GetOwnerObject() == nullptr ? 0 : 1); break;
         case 6: aux[(size_t)a[0]].m_pBezier = nullptr; break;
+        case 7:
+            if (a[0] < -1 || a[0] >= kMaxObjects)
+                return SC_ERR_ARG;
+            tree.SetOwnerObject(nullptr);
+            owner_cache.reset();
+            if (a[0] >= 0)
+            {
+                owner_cache.reset(new (ctx) SmSurfaceCache(*surface_for(a[0]),
+                                                          SmExtent2d(-2.0, 0.5, 3.0, 4.0)));
+                tree.SetOwnerObject(owner_cache.get());
+            }
+            break;
         default: return SC_ERR_ARG;
         }
         i += 1 + sz;

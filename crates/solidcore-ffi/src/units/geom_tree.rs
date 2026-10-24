@@ -217,7 +217,7 @@ fn validate_subdiv(desc: &[i64], prog: &[i64]) -> Result<(), FfiError> {
     while i < prog.len() {
         let op = at(prog, i)?;
         let sz = match op {
-            0 | 1 | 4..=6 => 1,
+            0 | 1 | 4..=7 => 1,
             2 => 4,
             3 => 0,
             _ => return Err(bad("op")),
@@ -228,11 +228,14 @@ fn validate_subdiv(desc: &[i64], prog: &[i64]) -> Result<(), FfiError> {
         let a = prog
             .get(i + 1..i + 1 + sz)
             .ok_or_else(|| bad("truncated program"))?;
-        if sz >= 1 && !(0..n_nodes).contains(&at(a, 0)?) {
+        if sz >= 1 && op != 7 && !(0..n_nodes).contains(&at(a, 0)?) {
             return Err(bad("node index"));
         }
         if op == 2 && (!(0..=3).contains(&at(a, 2)?) || !obj(at(a, 3)?)) {
             return Err(bad("set operands"));
+        }
+        if op == 7 && !obj(at(a, 0)?) {
+            return Err(bad("owner surface"));
         }
         i += 1 + sz;
     }
