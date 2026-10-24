@@ -1,11 +1,14 @@
 //! Actual fillet setup and retained corner/solver checkpoints.
 //! Modes 1–5 omit smoothing on both sides. Later modes run the real prelude,
 //! stopping after adjustment, direct first-solver geometry, or all-solver geometry
-//! followed by each corner’s tangent adjustment, repeated vertices and edges.
+//! followed by each corner’s tangent adjustment, repeated vertices and edges,
+//! or actual rail trimming before classification.
 #[path = "edge_geometry.rs"]
 mod edge_geometry;
 #[path = "generated_geometry.rs"]
 mod generated_geometry;
+#[path = "rail_metadata.rs"]
+mod rail_metadata;
 use super::{label, section, status, take_section, Checkpoint, RealSolid};
 use crate::{HarnessError, Output};
 use solidcore::blend::fillet_executive::session::{FilletObject, FilletSession, SolverObject};
@@ -224,7 +227,7 @@ pub(super) fn run(
     before: &[f64],
 ) -> SolidResult<Vec<f64>> {
     let mut session = FilletSession::new(k, body)?;
-    let mut statuses = [-1.0; 7];
+    let mut statuses = [-1.0; 8];
     let prepare = session.prepare_constant_radius_edges(
         k,
         selected,
@@ -239,6 +242,7 @@ pub(super) fn run(
     };
     let mut prior = Vec::new();
     let mut offsets_before = (Vec::new(), Vec::new());
+    let mut rails_before = (Vec::new(), Vec::new());
     if statuses[0] == 0.0 && input.checkpoint != Checkpoint::Prepared {
         statuses[1] = match session.create_corners(k, None) {
             Ok(()) => 0.0,
@@ -282,13 +286,20 @@ pub(super) fn run(
                         };
                     }
                 }
-                if input.checkpoint == Checkpoint::CornerEdges && statuses[4] == 0.0 {
+                if input.checkpoint.code() >= 8 && statuses[4] == 0.0 {
                     statuses[5] = match session.calculate_solver_geometry(k) {
                         Ok(()) => 0.0,
                         Err(error) => status(error)?,
                     };
                     if statuses[5] == 0.0 {
                         statuses[6] = match session.calculate_corner_edges(k) {
+                            Ok(()) => 0.0,
+                            Err(error) => status(error)?,
+                        };
+                    }
+                    if input.checkpoint == Checkpoint::TrimRails && statuses[6] == 0.0 {
+                        rails_before = rail_metadata::snapshot(k, &session, false)?;
+                        statuses[7] = match session.trim_solver_rails(k) {
                             Ok(()) => 0.0,
                             Err(error) => status(error)?,
                         };
@@ -430,10 +441,17 @@ pub(super) fn run(
         section(&mut out, &state);
         section(&mut out, &values);
     }
-    if input.checkpoint == Checkpoint::CornerEdges {
+    if input.checkpoint.code() >= 8 {
         let (state, values) = edge_geometry::snapshot(k, &session)?;
         section(&mut out, &state);
         section(&mut out, &values);
+    }
+    if input.checkpoint == Checkpoint::TrimRails {
+        let rails_after = rail_metadata::snapshot(k, &session, true)?;
+        section(&mut out, &rails_before.0);
+        section(&mut out, &rails_before.1);
+        section(&mut out, &rails_after.0);
+        section(&mut out, &rails_after.1);
     }
     Ok(out)
 }
@@ -538,7 +556,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             take_section(&mut values)?.to_vec(),
         );
     }
-    if checkpoint == Checkpoint::CornerEdges {
+    if checkpoint.code() >= 8 {
         let state = take_section(&mut values)?;
         if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
             return Err(HarnessError::new("invalid corner edge state"));
@@ -551,6 +569,22 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             "corner_edge_geometry_samples".into(),
             take_section(&mut values)?.to_vec(),
         );
+    }
+    if checkpoint == Checkpoint::TrimRails {
+        for phase in ["before", "after"] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid rail trim state"));
+            }
+            out.ints.insert(
+                format!("rails_{phase}_trim_state"),
+                state.iter().map(|v| *v as i64).collect(),
+            );
+            out.values.insert(
+                format!("rails_{phase}_trim_geometry"),
+                take_section(&mut values)?.to_vec(),
+            );
+        }
     }
     if !values.is_empty() {
         return Err(HarnessError::new("trailing prefix data"));

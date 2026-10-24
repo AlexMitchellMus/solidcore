@@ -175,11 +175,13 @@ extern "C" {
 /// direct solver geometry operation and samples its actual surface and curves.
 /// Mode 8 runs all solvers, then tangent adjustment, repeated vertex calculation
 /// and boundary curves in each corner’s native order.
+/// Mode 9 adds actual rail trimming and directed UV-curve observations before
+/// classification, which remains enabled.
 /// These are retained component checkpoints, not completed public fillets.
 /// Uninitialized corner status and uncomputed geometry are never read.
 pub fn real_prefix(input: &[f64], checkpoint: u32) -> Result<Vec<f64>, FfiError> {
     validate_real_solid(input)?;
-    if !(1..=8).contains(&checkpoint) {
+    if !(1..=9).contains(&checkpoint) {
         return Err(FfiError::InvalidArgument(
             "unknown fillet checkpoint".into(),
         ));

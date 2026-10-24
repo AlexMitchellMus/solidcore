@@ -24,6 +24,7 @@ enum Checkpoint {
     AdjustedTopology,
     SolverGeometry,
     CornerEdges,
+    TrimRails,
 }
 impl Checkpoint {
     fn all_corners(self) -> bool {
@@ -37,6 +38,7 @@ impl Checkpoint {
             Self::AdjustedTopology => 5,
             Self::SolverGeometry => 6,
             Self::CornerEdges => 7,
+            Self::TrimRails => 8,
             Self::FirstVertexGeometry => 4,
             _ => 3,
         }
@@ -52,6 +54,7 @@ impl Checkpoint {
             Self::AdjustedTopology => 6,
             Self::SolverGeometry => 7,
             Self::CornerEdges => 8,
+            Self::TrimRails => 9,
         }
     }
 }

@@ -208,6 +208,27 @@
           "checkpoint": "corner_edges"
         }
       }
+    },
+    {
+      "name": "real-box-trim-rails-actual-session",
+      "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:2347 (actual shared solver rail trimming after all corner boundary geometry, before classification)",
+      "inputs": {
+        "real_solid": {
+          "dimensions": [
+            10,
+            20,
+            30
+          ],
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            0
+          ],
+          "checkpoint": "trim_rails"
+        }
+      }
     }
   ]
 }
