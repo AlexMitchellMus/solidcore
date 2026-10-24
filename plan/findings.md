@@ -18938,6 +18938,8 @@ built its `UvLineObjects` with `resolve_topology: false`. Both now resolve.
     follow-up.
 ## boolean.api_brep: the merge cannot ray-fire through a created operand (2026-10-24)
 
+**Resolved** on fix/boolean-api-e2e (PR #816): the merge queries use `BrepQuery::new(BrepIdentity::of_brep(b))`, picking each B-rep's recorded naming scheme (cherry-picked 09706e3d6, bb1945463, 56ae09d46). Both cases now pass and their `known_mismatches.toml` entries are removed; `with_options_difference` / `with_options_keep_other` (box minus the inscribed sphere, compared once Point3DClassify was wired) pass for the same reason.
+
 - **What.** The `boolean.api_brep` runner now builds its operands with the ported
   `SmApiCreateBox` / `SmApiCreateSphere` (`primitive::api_primitives`), as the shim does,
   instead of empty stand-ins. Two cases disagree. In both, the second operand lies entirely
