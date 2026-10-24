@@ -97,14 +97,8 @@ pub(super) fn source_binding(session: &FilletSession<'_>) -> SolidResult<Vec<f64
             if let Some(body) = body {
                 for (index, &id) in faces.iter().enumerate() {
                     if let Some(face_surface) = body.face(id)?.surface.as_ref() {
-                        // This body is produced by Session's canonical NotifyEnv.
-                        let serial = body
-                            .notify_serial()
-                            .ok_or_else(|| super::invalid("managed body identity required"))?;
-                        let face_ref = solidcore::topology::brep::p3::topology_ref(
-                            serial,
-                            solidcore::EntityRef::Face(id),
-                        );
+                        let face_ref =
+                            session.intermediate_identity(solidcore::EntityRef::Face(id))?;
                         if owner == Some(face_ref) {
                             owner_face = index as f64;
                         }

@@ -5,6 +5,26 @@ namespace fillet_real_solid {
 namespace {
 struct FaceExecutive : Executive {
     using Executive::Executive;
+    std::vector<double> attribute_state() {
+        if(!m_pFilletBrep)return {0};
+        SmTArray<SmEdge*> edges;m_pFilletBrep->GetEdges(edges);SmTArray<SmAObject*> users;if(m_pAttributeE)m_pAttributeE->GetUsers(users);
+        std::vector<double> out{1,double(m_pAttributeE!=nullptr),m_pAttributeE?double(m_pAttributeE->GetAttributeID()):0,m_pAttributeE?double(m_pAttributeE->GetType()):0,double(users.GetSize())};
+        for(ULONG i=0;i<users.GetSize();++i){double value=-2;for(ULONG e=0;e<edges.GetSize();++e)if(users[i]==edges[e])value=e;out.push_back(value);}
+        out.push_back(double(edges.GetSize()));
+        for(ULONG i=0;i<edges.GetSize();++i){auto* found=edges[i]->FindAttribute(SM_AI_ALL_FILLET_EDGES);SmTArray<SmAttribute*> own;edges[i]->GetAttributes(own);
+            out.insert(out.end(),{double(found!=nullptr),double(found&&found==m_pAttributeE),double(own.GetSize())});
+            for(ULONG j=0;j<own.GetSize();++j)out.insert(out.end(),{double(own[j]->GetAttributeID()),double(own[j]->GetType())});
+        }
+        return out;
+    }
+    SmStatus stitch_faces_component(std::vector<double>& outcome,std::vector<double>& gaps) {
+        SmTArray<SmEdge*> edges;m_pFilletBrep->GetEdges(edges);
+        for(ULONG i=0;i<edges.GetSize();++i)edges[i]->AddAttribute(m_pAttributeE);
+        ULONG stitched,lamina;double vertex_gap,edge_gap;
+        const auto status=m_pFilletBrep->StitchFaces(m_pFilletBrep->GetTolerance(),stitched,lamina,vertex_gap,edge_gap);
+        if(status!=SM_SUCCESS){outcome={0};GetFilletErrorInfo()->NoteError(SM_FILERR_BAD_MERGE,_T("Fillet Stitching Failure: Error Stitching Fillets Together"));return SM_ERR;}
+        outcome={1,double(stitched),double(lamina)};gaps={vertex_gap,edge_gap};return SM_SUCCESS;
+    }
     SmStatus build_faces() {
         m_pFilletBrep=new(m_crContext) SmBrep();NER(m_pFilletBrep);
         m_pFilletBrep->SetTolerance(m_pTargetBrep->GetTolerance());m_pFilletBrep->m_bEditingEnabled=TRUE;

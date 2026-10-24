@@ -13,6 +13,8 @@ mod intermediate_faces;
 mod rail_classification;
 #[path = "rail_metadata.rs"]
 mod rail_metadata;
+#[path = "stitch_state.rs"]
+mod stitch_state;
 use super::{label, section, status, take_section, Checkpoint, RealSolid};
 use crate::{HarnessError, Output};
 use solidcore::blend::fillet_executive::session::{FilletObject, FilletSession, SolverObject};
@@ -231,7 +233,7 @@ pub(super) fn run(
     before: &[f64],
 ) -> SolidResult<Vec<f64>> {
     let mut session = FilletSession::new(k, body)?;
-    let mut statuses = [-1.0; 10];
+    let mut statuses = [-1.0; 11];
     let prepare = session.prepare_constant_radius_edges(
         k,
         selected,
@@ -249,6 +251,8 @@ pub(super) fn run(
     let mut rails_before = (Vec::new(), Vec::new());
     let mut classes_before = (Vec::new(), Vec::new());
     let mut adjusted = Vec::new();
+    let mut attributes_before = Vec::new();
+    let mut stitch_outcome = None;
     if statuses[0] == 0.0 && input.checkpoint != Checkpoint::Prepared {
         statuses[1] = match session.create_corners(k, None) {
             Ok(()) => 0.0,
@@ -318,13 +322,31 @@ pub(super) fn run(
                                 }
                                 Err(error) => status(error)?,
                             };
-                            if input.checkpoint == Checkpoint::IntermediateFaces
-                                && statuses[8] == 0.0
-                            {
+                            if input.checkpoint.code() >= 11 && statuses[8] == 0.0 {
                                 statuses[9] = match session.build_fillet_faces(k) {
                                     Ok(()) => 0.0,
                                     Err(error) => status(error)?,
                                 };
+                                if input.checkpoint == Checkpoint::StitchedFaces
+                                    && statuses[9] == 0.0
+                                {
+                                    attributes_before = stitch_state::attributes(&session)?;
+                                    statuses[10] = match session.stitch_fillet_faces(k) {
+                                        Ok(attempt) => match attempt.status {
+                                            None => {
+                                                stitch_outcome = Some((
+                                                    attempt.stitched,
+                                                    attempt.lamina,
+                                                    attempt.max_vertex_gap,
+                                                    attempt.max_edge_gap,
+                                                ));
+                                                0.0
+                                            }
+                                            Some(error) => status(error)?,
+                                        },
+                                        Err(error) => status(error)?,
+                                    };
+                                }
                             }
                         }
                     }
@@ -489,11 +511,24 @@ pub(super) fn run(
             .collect();
         section(&mut out, &labels);
     }
-    if input.checkpoint == Checkpoint::IntermediateFaces {
+    if input.checkpoint.code() >= 11 {
         let (state, values) = intermediate_faces::snapshot(k, &session)?;
         section(&mut out, &state);
         section(&mut out, &values);
         section(&mut out, &intermediate_faces::source_binding(&session)?);
+    }
+    if input.checkpoint == Checkpoint::StitchedFaces {
+        section(&mut out, &attributes_before);
+        section(&mut out, &stitch_state::attributes(&session)?);
+        let (state, values) = match stitch_outcome {
+            Some((stitched, lamina, vertex_gap, edge_gap)) => (
+                vec![1.0, stitched as f64, lamina as f64],
+                vec![vertex_gap, edge_gap],
+            ),
+            None => (vec![0.0], Vec::new()),
+        };
+        section(&mut out, &state);
+        section(&mut out, &values);
     }
     Ok(out)
 }
@@ -655,7 +690,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             ids.iter().map(|v| *v as i64).collect(),
         );
     }
-    if checkpoint == Checkpoint::IntermediateFaces {
+    if checkpoint.code() >= 11 {
         let state = take_section(&mut values)?;
         if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
             return Err(HarnessError::new("invalid intermediate topology state"));
@@ -675,6 +710,24 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
         out.ints.insert(
             "source_surface_binding".into(),
             state.iter().map(|v| *v as i64).collect(),
+        );
+    }
+    if checkpoint == Checkpoint::StitchedFaces {
+        for name in [
+            "intermediate_attributes_before_stitch",
+            "intermediate_attributes_after_stitch",
+            "intermediate_stitch_outcome",
+        ] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid stitch state"));
+            }
+            out.ints
+                .insert(name.into(), state.iter().map(|v| *v as i64).collect());
+        }
+        out.values.insert(
+            "intermediate_stitch_gaps".into(),
+            take_section(&mut values)?.to_vec(),
         );
     }
     if !values.is_empty() {
