@@ -185,6 +185,10 @@ into `upstream/` (see README), then run `scripts/fetch-cpp.sh`, or
    `--jobs N` runs N units at a time, each in its own process (`0` = every core; the
    output and reports are the same as a serial run). On a shared machine stay within the
    section 2 budget: `--jobs 4` at most, fewer when the load is high.
+   CI also enforces the 75% value-share floor and exact-base artifact ratchet
+   (`crates/difftest/README.md`, Regression gate). Missing/expired baseline artifacts
+   fail closed; do not extract historical committed reports or waive lost coverage
+   to make a run pass. Local `--baseline` runs must use matching seeds and no filter.
 5. **Before you mark a PR ready**, check each item. Earlier PRs passed CI yet still
    disagreed with the C++ because of these:
    1. **Default arguments** match upstream (e.g. `IsDegenerate()` defaults to
