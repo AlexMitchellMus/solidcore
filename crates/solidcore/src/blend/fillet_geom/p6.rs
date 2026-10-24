@@ -319,6 +319,35 @@ pub fn join_two_fillet_verts_by_curves(
     curve_orients: &mut Vec<OrientType>,
     solvers: &[FilletSolver],
 ) -> Result<bool> {
+    join_two_fillet_verts_by_curves_resolved(
+        k,
+        fb,
+        g,
+        start_fv,
+        end_fv,
+        side_eus,
+        uv_tol,
+        curves_3d,
+        uv_curves,
+        curve_orients,
+        &|id, op| solver_of(solvers, id, op),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn join_two_fillet_verts_by_curves_resolved<'s>(
+    k: &Kernel,
+    fb: &FilletBrep,
+    g: FilletGeomId,
+    start_fv: Option<VertexId>,
+    end_fv: Option<VertexId>,
+    side_eus: &[EdgeuseId],
+    uv_tol: f64,
+    curves_3d: &mut Vec<Option<Curve>>,
+    uv_curves: &mut Vec<Option<Curve>>,
+    curve_orients: &mut Vec<OrientType>,
+    resolve: &impl Fn(FilletSolverId, &'static str) -> Result<&'s FilletSolver>,
+) -> Result<bool> {
     let nul = || SolidError::null_pointer(OP_JOIN);
 
     // locals
@@ -327,7 +356,7 @@ pub fn join_two_fillet_verts_by_curves(
     let solver_id = geom
         .fillet_solver()
         .ok_or_else(|| invalid(OP_JOIN, "fillet geometry without solver"))?;
-    let d3d_tolerance = solver_of(solvers, solver_id, OP_JOIN)?.approx_tol_3d;
+    let d3d_tolerance = resolve(solver_id, OP_JOIN)?.approx_tol_3d;
 
     // when all UVTrimCurves are present - do 2D testing else do more expensive 3D testing
     let do_2d_test = uv_curves.iter().all(Option::is_some);
@@ -2474,6 +2503,61 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, SolidError::InvalidInput { .. }), "{err:?}");
+
+        // The same actual geometry can resolve a nonzero retained solver slot.
+        let retained = [solver(false), solver(false)];
+        let actual_id = FilletSolverId(1);
+        fb.geom_mut(g).unwrap().solver = Some(actual_id);
+        let mut live3 = vec![fb.brep().edge(rails[0]).unwrap().curve.clone()];
+        let mut live_uv = vec![None];
+        let mut live_orients = vec![OrientType::Same];
+        let resolver = |id, _| {
+            assert_eq!(id, actual_id);
+            Ok(&retained[1])
+        };
+        assert!(join_two_fillet_verts_by_curves_resolved(
+            &k,
+            &fb,
+            g,
+            Some(start),
+            Some(end),
+            &sides,
+            1e-6,
+            &mut live3,
+            &mut live_uv,
+            &mut live_orients,
+            &resolver,
+        )
+        .unwrap());
+        assert_eq!(live_orients, orients);
+        assert_eq!(live3.len(), c3.len());
+        assert!(live_uv.iter().all(Option::is_none));
+
+        // A real lookup failure occurs before any curve list is appended.
+        let mut failed3 = vec![fb.brep().edge(rails[0]).unwrap().curve.clone()];
+        let mut failed_uv = vec![None];
+        let mut failed_orients = vec![OrientType::Same];
+        let failed = join_two_fillet_verts_by_curves_resolved(
+            &k,
+            &fb,
+            g,
+            Some(start),
+            Some(end),
+            &sides,
+            1e-6,
+            &mut failed3,
+            &mut failed_uv,
+            &mut failed_orients,
+            &|id, _| {
+                assert_eq!(id, actual_id);
+                Err(SolidError::sm_err("retained solver lookup"))
+            },
+        )
+        .unwrap_err();
+        assert_eq!(code(&failed), Some(SM_ERR));
+        assert_eq!(failed3.len(), 1);
+        assert_eq!(failed_uv.len(), 1);
+        assert_eq!(failed_orients, [OrientType::Same]);
     }
 
     #[test]

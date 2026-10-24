@@ -124,7 +124,7 @@ use super::p1::{
     FilletCornerType, FilletEdgeType, FilletErrorType, FilletGeomId, FilletGeomType,
     FilletSolverId,
 };
-use super::p6::join_two_fillet_verts_by_curves;
+use super::p6::join_two_fillet_verts_by_curves_resolved;
 
 const OP_UV: &str = "blend::fillet_geom::p4::create_uv_curve";
 const OP_NX2: &str = "blend::fillet_geom::p4::FilletBrep::calc_nx2_vert_fillet_x_fillet";
@@ -1532,12 +1532,51 @@ impl FilletBrep {
     /// `SM_ERR_NULL_POINTER` without fillet surface, solver, rails, edge uses or UV
     /// curves; those of the evaluations, `JoinTwoFilletVertsByCurves`, the capping and
     /// the face makers.
-    #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn make_face_brep(
         &mut self,
         k: &mut Kernel,
         g: FilletGeomId,
         solvers: &[FilletSolver],
+        brep: &mut Brep,
+        env: &mut edge::NotifyEnv<'_>,
+    ) -> Result<()> {
+        self.make_face_brep_resolved(k, g, &|id, op| solver_of(solvers, id, op), brep, env)
+    }
+
+    /// Build a face using the actual retained solver without a copied base table.
+    ///
+    /// # Errors
+    /// As [`Self::make_face_brep`], or a geometry naming a different solver.
+    pub fn make_face_brep_with_solver(
+        &mut self,
+        k: &mut Kernel,
+        g: FilletGeomId,
+        solver_id: FilletSolverId,
+        solver: &FilletSolver,
+        brep: &mut Brep,
+        env: &mut edge::NotifyEnv<'_>,
+    ) -> Result<()> {
+        self.make_face_brep_resolved(
+            k,
+            g,
+            &|id, op| {
+                if id == solver_id {
+                    Ok(solver)
+                } else {
+                    Err(SolidError::invalid_input(op, "unresolved geometry solver"))
+                }
+            },
+            brep,
+            env,
+        )
+    }
+
+    #[allow(clippy::too_many_lines)] // one upstream routine
+    fn make_face_brep_resolved<'s>(
+        &mut self,
+        k: &mut Kernel,
+        g: FilletGeomId,
+        resolve: &impl Fn(FilletSolverId, &'static str) -> Result<&'s FilletSolver>,
         brep: &mut Brep,
         env: &mut edge::NotifyEnv<'_>,
     ) -> Result<()> {
@@ -1572,8 +1611,7 @@ impl FilletBrep {
         // pick 2d or 3d tolerance depending on bUseUVCurve
         let sid = geom.fillet_solver().ok_or_else(nul)?;
         // SmApproxTol3d sApproxTol3d = GetThisApproxTol3d(): USE_DEFAULT, then fabs
-        let approx_tol_3d =
-            crate::geom::tol::approx_tol3d(k, solver_of(solvers, sid, OP_FACE)?.approx_tol_3d);
+        let approx_tol_3d = crate::geom::tol::approx_tol3d(k, resolve(sid, OP_FACE)?.approx_tol_3d);
         let d3d_tol = approx_tol_3d;
         let mut uv_tol = d3d_tol;
         if use_uv_curves {
@@ -1672,7 +1710,7 @@ impl FilletBrep {
         }
 
         // Add a sequence of m_vSideEUs->Curves to traverse from pEndFV0 to pEndFV1
-        let made_connection = join_two_fillet_verts_by_curves(
+        let made_connection = join_two_fillet_verts_by_curves_resolved(
             k,
             self,
             g,
@@ -1683,7 +1721,7 @@ impl FilletBrep {
             &mut lists1.curves_3d,
             &mut lists1.uv_curves,
             &mut lists1.orients,
-            solvers,
+            resolve,
         )?;
 
         // when railCurveEnd/FilletEdgeStart has too big a gap: cap it
@@ -1714,7 +1752,7 @@ impl FilletBrep {
         lists1.orients.append(&mut lists2.orients);
 
         // Add in m_vSideEUs Edge sequence to traverse from pStartFV1 to pStartFV0
-        let made_connection = join_two_fillet_verts_by_curves(
+        let made_connection = join_two_fillet_verts_by_curves_resolved(
             k,
             self,
             g,
@@ -1725,7 +1763,7 @@ impl FilletBrep {
             &mut lists1.curves_3d,
             &mut lists1.uv_curves,
             &mut lists1.orients,
-            solvers,
+            resolve,
         )?;
 
         self.geom_mut(g)?.capped[0] = false;

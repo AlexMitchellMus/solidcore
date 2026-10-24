@@ -1275,6 +1275,104 @@ where
     }
 }
 
+/// Actual construction operations for the intermediate fillet faces.
+pub trait FaceConstructionAccess<O: ClassObject + SolutionObject + Ord>:
+    SolverGeometryAccess<O> + CornerVertexAccess<O>
+{
+    /// Allocate and retain the actual intermediate B-rep.
+    ///
+    /// # Errors
+    /// Native construction or identity-allocation errors.
+    fn faces_new_brep(&mut self, k: &mut Kernel) -> Result<O>;
+    /// Read the actual body's zone tolerance.
+    ///
+    /// # Errors
+    /// Actual body resolution errors.
+    fn faces_tolerance(&self, k: &Kernel, body: O) -> Result<f64>;
+    /// Apply native SetTolerance defaults to the actual intermediate body.
+    ///
+    /// # Errors
+    /// Actual body resolution or tolerance-operation errors.
+    fn faces_set_tolerance(&mut self, k: &mut Kernel, body: O, tolerance: f64) -> Result<()>;
+    /// Enable editing on the actual intermediate B-rep.
+    ///
+    /// # Errors
+    /// Actual body resolution errors.
+    fn faces_enable_editing(&mut self, body: O) -> Result<()>;
+    /// Calculate the actual corner patch when its native predicate requires one.
+    ///
+    /// # Errors
+    /// Actual corner resolution or concrete patch-operation failures.
+    fn faces_corner_geometry(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
+    /// Read the actual retained solver's approximation tolerance.
+    ///
+    /// # Errors
+    /// Actual solver resolution errors.
+    fn faces_solver_tolerance(&self, solver: O) -> Result<f64>;
+    /// Resolve the indexed entry in the actual solver's retained geometry list.
+    ///
+    /// # Errors
+    /// Actual solver resolution errors.
+    fn faces_solver_geom(&self, solver: O, index: usize) -> Result<Option<O>>;
+    /// Build the actual geometry's face in the retained intermediate B-rep.
+    ///
+    /// # Errors
+    /// Actual object resolution or face-construction errors.
+    fn faces_make_face(
+        &mut self,
+        k: &mut Kernel,
+        geom: O,
+        body: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
+}
+impl<O, A> FaceConstructionAccess<O> for A
+where
+    O: ClassObject + SolutionObject + Ord,
+    A: ExecutiveAccess<O> + ?Sized,
+{
+    fn faces_new_brep(&mut self, k: &mut Kernel) -> Result<O> {
+        ExecutiveAccess::new_brep(self, k)
+    }
+    fn faces_tolerance(&self, k: &Kernel, body: O) -> Result<f64> {
+        ExecutiveAccess::tolerance(self, k, body, false)
+    }
+    fn faces_set_tolerance(&mut self, k: &mut Kernel, body: O, tolerance: f64) -> Result<()> {
+        ExecutiveAccess::set_brep_tolerance(self, k, body, tolerance, true, true)
+    }
+    fn faces_enable_editing(&mut self, body: O) -> Result<()> {
+        ExecutiveAccess::set_editing_enabled(self, body, true)
+    }
+    fn faces_corner_geometry(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
+        ExecutiveAccess::calc_corner_geom(self, k, corner, executive)
+    }
+    fn faces_solver_tolerance(&self, solver: O) -> Result<f64> {
+        ExecutiveAccess::solver_approx_tolerance(self, solver)
+    }
+    fn faces_solver_geom(&self, solver: O, index: usize) -> Result<Option<O>> {
+        ExecutiveAccess::solver_geom(self, solver, index)
+    }
+    fn faces_make_face(
+        &mut self,
+        k: &mut Kernel,
+        geom: O,
+        body: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
+        ExecutiveAccess::make_face_brep(self, k, geom, body, executive)
+    }
+}
+
 /// Actual operations for the executive's ordered solver-geometry stage.
 pub trait SolverGeometryAccess<O: ClassObject + SolutionObject + Ord> {
     /// Run the actual retained solver's geometry calculation.
@@ -1396,16 +1494,6 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         Ok(())
     }
 
-    fn corner_failure(
-        &mut self,
-        access: &impl ExecutiveAccess<O>,
-        corner: O,
-        comment: &str,
-    ) -> Result<()> {
-        let view = access.corner_error_info(corner, self)?;
-        self.record_corner_failure(view, comment)
-    }
-
     fn record_corner_failure(&mut self, view: CornerView<O>, comment: &str) -> Result<()> {
         self.error.code = 3; // SM_FILERR_VERTEX_PROBLEM
         self.error.status = 2; // SM_FIL_FAILURE
@@ -1418,16 +1506,6 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         self.error.comment = comment.into();
         self.error.entity_name = view.name;
         Err(failure())
-    }
-
-    fn solver_failure(
-        &mut self,
-        access: &impl ExecutiveAccess<O>,
-        solver: O,
-        status: i32,
-        comment: &str,
-    ) -> Result<()> {
-        self.record_solver_failure(access.solver_edge(solver)?, status, comment)
     }
 
     fn record_solver_failure(&mut self, edge: O, status: i32, comment: &str) -> Result<()> {
@@ -1665,6 +1743,64 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         Ok(adjusted)
     }
 
+    /// Allocate the intermediate B-rep and build every corner and solver face in native order.
+    /// Classification and stitching are separate executive stages.
+    ///
+    /// # Errors
+    /// Native operation failures with retained metadata, or genuine missing capabilities.
+    pub fn build_fillet_faces(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl FaceConstructionAccess<O>,
+    ) -> Result<O> {
+        let target = self.target.ok_or(SolidError::Upstream {
+            operation: OP,
+            code: 1006,
+            entity: None,
+        })?;
+        let fillet = access.faces_new_brep(k)?;
+        self.fillet = Some(fillet);
+        let tolerance = access.faces_tolerance(k, target)?;
+        ignore(access.faces_set_tolerance(k, fillet, tolerance))?;
+        access.faces_enable_editing(fillet)?;
+        let mut index = 0;
+        while let Some(corner) = self.corners.get(index).copied() {
+            if ignore(access.faces_corner_geometry(k, corner, self))?.is_none() {
+                self.corner_vertex_failure(
+                    access,
+                    corner,
+                    "Fillet Corner Error: Corner Geometry Computation Failure",
+                )?;
+            }
+            index += 1;
+        }
+        let mut index = 0;
+        while let Some(solver) = self.solvers.get(index).copied() {
+            let tolerance = access.faces_solver_tolerance(solver)?;
+            if access.faces_tolerance(k, fillet)? < tolerance
+                && access.faces_tolerance(k, fillet)? < tolerance
+            {
+                // SM_USE_OLDTOL: repeated comparison and full SetTolerance defaults.
+                // SmBrep.h:700 implicitly constructs SmZoneTol3d at this call.
+                let tolerance = zone_tol3d(k, tolerance);
+                ignore(access.faces_set_tolerance(k, fillet, tolerance))?;
+            }
+            let mut geom_index = 0;
+            while let Some(geom) = access.faces_solver_geom(solver, geom_index)? {
+                if ignore(access.faces_make_face(k, geom, fillet, self))?.is_none() {
+                    self.record_solver_failure(
+                        access.geometry_edge(solver)?,
+                        2,
+                        "Fillet Surface Computation Failure: Fillet Face Creation Error",
+                    )?;
+                }
+                geom_index += 1;
+            }
+            index += 1;
+        }
+        Ok(fillet)
+    }
+
     /// Construct and stitch the fillet shell, preserving every stage after each
     /// missing dependency call. `error_out` is assigned only on success.
     pub fn create_fillet_brep(
@@ -1674,7 +1810,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         error_out: Option<&mut ErrorInfo<O>>,
     ) -> Result<()> {
         // NER: upstream returns SM_ERR_NULL_POINTER, not invalid input.
-        let target = self.target.ok_or(SolidError::Upstream {
+        self.target.ok_or(SolidError::Upstream {
             operation: OP,
             code: 1006,
             entity: None,
@@ -1687,47 +1823,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         self.calculate_corner_edges(k, access)?;
         self.trim_solver_rails(k, access)?;
         self.classify_solver_rails(k, access)?;
-        let fillet = access.new_brep(k)?;
-        self.fillet = Some(fillet);
-        let tolerance = access.tolerance(k, target, false)?;
-        ignore(access.set_brep_tolerance(k, fillet, tolerance, true, true))?;
-        access.set_editing_enabled(fillet, true)?;
-        let mut index = 0;
-        while let Some(corner) = self.corners.get(index).copied() {
-            if ignore(access.calc_corner_geom(k, corner, self))?.is_none() {
-                return self.corner_failure(
-                    access,
-                    corner,
-                    "Fillet Corner Error: Corner Geometry Computation Failure",
-                );
-            }
-            index += 1;
-        }
-        let mut index = 0;
-        while let Some(solver) = self.solvers.get(index).copied() {
-            let tolerance = access.solver_approx_tolerance(solver)?;
-            if access.tolerance(k, fillet, false)? < tolerance
-                && access.tolerance(k, fillet, false)? < tolerance
-            {
-                // SM_USE_OLDTOL: repeated comparison and full SetTolerance defaults.
-                // SmBrep.h:700 implicitly constructs SmZoneTol3d at this call.
-                let tolerance = zone_tol3d(k, tolerance);
-                ignore(access.set_brep_tolerance(k, fillet, tolerance, true, true))?;
-            }
-            let mut geom_index = 0;
-            while let Some(geom) = access.solver_geom(solver, geom_index)? {
-                if ignore(access.make_face_brep(k, geom, fillet, self))?.is_none() {
-                    return self.solver_failure(
-                        access,
-                        solver,
-                        2,
-                        "Fillet Surface Computation Failure: Fillet Face Creation Error",
-                    );
-                }
-                geom_index += 1;
-            }
-            index += 1;
-        }
+        let fillet = self.build_fillet_faces(k, access)?;
         for edge in access.edges(fillet)? {
             ignore(access.add_attribute(edge, self.edge_attribute))?;
         }
