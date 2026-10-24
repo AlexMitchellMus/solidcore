@@ -1289,7 +1289,7 @@ pub trait FaceConstructionAccess<O: ClassObject + SolutionObject + Ord>:
     /// # Errors
     /// Actual body resolution errors.
     fn faces_tolerance(&self, k: &Kernel, body: O) -> Result<f64>;
-    /// Apply native SetTolerance defaults to the actual intermediate body.
+    /// Apply native `SetTolerance` defaults to the actual intermediate body.
     ///
     /// # Errors
     /// Actual body resolution or tolerance-operation errors.
