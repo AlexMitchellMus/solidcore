@@ -33,8 +33,10 @@
 //! Every unavailable dependency is reported at its actual call, including ignored statuses.
 //! Continuations after unconditional missing calls are documented there, not reported as success.
 //! `RemoveExcessFaces` borrows the original B-rep immutably for queries
-//! and uses the existing canonical arena-identity cache adapter; custom geometry owner keys
-//! or indirect owner chains are explicitly unsupported rather than silently skipped.
+//! and keys its cache by each edge's and face's geometry owner (arena identity when
+//! unowned), so geometry owned under a caller's notification keys is found; an owner
+//! shared by two records or naming another record (an indirect owner chain) is
+//! [`SolidError::Unsupported`] rather than silently skipped.
 //! Result-edge enumeration uses `SmBrep::GetEdges` list order (`topology::brep::p1::edges`);
 //! the result B-rep is borrowed mutably because `NormalizedEvaluate` takes the edge use's
 //! B-rep mutably (its 3D evaluation, used here, edits nothing). `BuildSideWallOfEdgeuse` takes
@@ -555,8 +557,9 @@ impl OffsetExecutive {
     /// The source is borrowed immutably while solving, corresponding to the upstream
     /// editing-disabled query. This legacy immutable-kernel entry cannot advance the
     /// real traversal mark at removal; use the kernel-context entry for that step.
-    /// Geometry owners must use [`arena_identity`] directly; custom keys or indirect
-    /// owner chains return [`SolidError::Unsupported`] rather than omitting geometry.
+    /// Each original edge and face is identified by its geometry's owner key
+    /// ([`arena_identity`] when unowned); an owner shared by two records or naming
+    /// another record returns [`SolidError::Unsupported`] rather than omitting geometry.
     /// Cache and solver errors propagate before any result-face removal. Ordinary
     /// evaluation statuses are ignored, but an unported evaluator still defers.
     /// Result edges are visited in upstream edge list order (`SmBrep::GetEdges`).
@@ -622,8 +625,8 @@ impl OffsetExecutive {
             if original_cache.is_none() {
                 original_cache = Some(make_original_brep_cache(kernel, original)?);
             }
-            let cache = required(original_cache.as_ref())?;
-            let solutions = solve_original_brep_point(kernel, original, cache, point)?;
+            let (cache, keys) = required(original_cache.as_ref())?;
+            let solutions = solve_original_brep_point(kernel, original, cache, keys, point)?;
             collect_excess_faces(
                 result,
                 id,
@@ -2337,42 +2340,79 @@ fn extract_gaps(
     Ok(())
 }
 
-fn make_original_brep_cache(kernel: &Kernel, original: &Brep) -> Result<BrepCache> {
-    // The legacy executive API has no caller-provided owner-key or owner-chain adapter.
-    // Reject incompatible owners before cache construction can silently skip them.
-    for (id, edge) in original.edges().iter() {
-        if edge
-            .curve
-            .as_ref()
-            .and_then(Curve::owner)
-            .is_some_and(|owner| owner != arena_identity(CacheObject::Edge(id)))
-        {
-            return Err(SolidError::Unsupported {
-                operation: OP,
-                reason: "point-solve edge owners require direct canonical arena identities",
-            });
+/// The identities `RemoveExcessFaces`' point solve keys the original B-rep by: each
+/// edge (and its curve) and face (and its surface) is identified by the key its
+/// geometry is owned under (upstream compares pointers, so geometry belongs to the
+/// record that holds it), and by [`arena_identity`] when it has no owner; every other
+/// object by [`arena_identity`].
+struct OriginalKeys {
+    edges: BTreeMap<EdgeId, ObjectRef>,
+    faces: BTreeMap<FaceId, ObjectRef>,
+}
+
+impl OriginalKeys {
+    fn new(original: &Brep) -> Result<Self> {
+        let mut edges = BTreeMap::new();
+        for (id, edge) in original.edges().iter() {
+            if let Some(owner) = edge.curve.as_ref().and_then(Curve::owner) {
+                edges.insert(id, owner);
+            }
         }
-    }
-    for (id, face) in original.faces().iter() {
-        if face
-            .surface
-            .as_ref()
-            .and_then(Surface::owner)
-            .is_some_and(|owner| owner != arena_identity(CacheObject::Face(id)))
-        {
-            return Err(SolidError::Unsupported {
-                operation: OP,
-                reason: "point-solve face owners require direct canonical arena identities",
-            });
+        let mut faces = BTreeMap::new();
+        for (id, face) in original.faces().iter() {
+            if let Some(owner) = face.surface.as_ref().and_then(Surface::owner) {
+                faces.insert(id, owner);
+            }
         }
+        let keys = Self { edges, faces };
+        // An owner shared by two records, or naming another record's identity, is an
+        // indirect owner chain: reject it before cache construction can skip geometry.
+        let mut seen = BTreeSet::new();
+        let objects = original
+            .edges()
+            .ids()
+            .map(CacheObject::Edge)
+            .chain(original.faces().ids().map(CacheObject::Face))
+            .chain(original.vertices().ids().map(CacheObject::Vertex))
+            .chain([CacheObject::Brep]);
+        for object in objects {
+            let key = keys.key(object);
+            if !seen.insert(key) {
+                return Err(SolidError::Unsupported {
+                    operation: OP,
+                    reason: "point-solve geometry owners must identify one edge or face each",
+                });
+            }
+        }
+        Ok(keys)
     }
-    make_brep_cache(kernel, CacheSource::Brep(original), &arena_identity)
+
+    fn key(&self, object: CacheObject) -> ObjectRef {
+        let owner = match object {
+            CacheObject::Edge(e) | CacheObject::Curve(e) => self.edges.get(&e),
+            CacheObject::Face(f) | CacheObject::Surface(f) => self.faces.get(&f),
+            _ => None,
+        };
+        owner.copied().unwrap_or_else(|| arena_identity(object))
+    }
+}
+
+fn make_original_brep_cache(
+    kernel: &Kernel,
+    original: &Brep,
+) -> Result<(BrepCache, OriginalKeys)> {
+    let keys = OriginalKeys::new(original)?;
+    let cache = make_brep_cache(kernel, CacheSource::Brep(original), &|object| {
+        keys.key(object)
+    })?;
+    Ok((cache, keys))
 }
 
 fn solve_original_brep_point(
     kernel: &Kernel,
     original: &Brep,
     cache: &BrepCache,
+    keys: &OriginalKeys,
     point: Vec3,
 ) -> Result<SolutionArray<CacheObject>> {
     let objects = BrepObjects {
@@ -2381,8 +2421,8 @@ fn solve_original_brep_point(
         // There is exactly one B-rep in this query adapter's local namespace.
         brep_id: crate::topology::BrepId::from_index(0),
         cache: Some(cache),
-        keys: &arena_identity,
-        // make_original_brep_cache checked that all geometry owners are direct.
+        keys: &|object| keys.key(object),
+        // OriginalKeys identifies every edge and face by its geometry's own owner.
         owner_of: &|_| None,
     };
     TopologySolver::brep_point_solve(
@@ -3166,12 +3206,12 @@ mod tests {
         );
         add_use(&mut result, 0.0, 1.0, 1.0);
         add_use(&mut result, 0.0, 1.0, 2.0);
-        // Multiple arena entries do not establish linked-list order parity: this
-        // prefix must still defer before collecting or removing any result faces.
+        // The edges evaluate and solve against the empty original; the legacy entry
+        // still defers at its removal step without removing any result faces.
         assert_dependency(
             executive.remove_excess_faces(&kernel, &original, &mut result),
-            "SmEdgeuse::NormalizedEvaluate",
-            "topology.edgeuse_p3",
+            "SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)",
+            "offset.offset_executive_p1",
         );
         assert_eq!(result.edges().len(), 2);
         assert_eq!(result.edgeuses().len(), 2);
@@ -3430,8 +3470,9 @@ mod tests {
         let kernel = Kernel::default();
         let original = Brep::new();
         let cache = BrepCache::new(crate::geom::a_object::BREP_TYPE).unwrap();
+        let keys = OriginalKeys::new(&original).unwrap();
         assert!(matches!(
-            solve_original_brep_point(&kernel, &original, &cache, Vec3::ZERO),
+            solve_original_brep_point(&kernel, &original, &cache, &keys, Vec3::ZERO),
             Err(SolidError::Upstream {
                 operation: "intersect::topology_solver::p1::TopologyObjects::brep_trees",
                 code: crate::error::SM_ERR_NULL_POINTER,
@@ -3441,36 +3482,49 @@ mod tests {
     }
 
     #[test]
-    fn original_brep_query_rejects_unmapped_geometry_owners() {
+    fn original_brep_query_keys_records_by_their_geometry_owners() {
         let kernel = Kernel::default();
         let mut original = Brep::new();
-        let edgeuse = add_use(&mut original, 0.0, 1.0, 1.0);
-        let edge_id = edge_of(&original, edgeuse).unwrap();
-        original
-            .edge_mut(edge_id)
-            .unwrap()
-            .curve
-            .as_mut()
-            .unwrap()
-            .set_owner(
-                Some(ObjectRef {
-                    key: ObjectKey(900),
-                    type_code: edge::TYPE,
-                }),
-                None,
-            );
+        let first_use = add_use(&mut original, 0.0, 1.0, 1.0);
+        let second_use = add_use(&mut original, 0.0, 1.0, 1.0);
+        let first = edge_of(&original, first_use).unwrap();
+        let second = edge_of(&original, second_use).unwrap();
+        let custom = ObjectRef {
+            key: ObjectKey(900),
+            type_code: edge::TYPE,
+        };
+        let set_owner = |original: &mut Brep, edge_id: EdgeId, owner: ObjectRef| {
+            original
+                .edge_mut(edge_id)
+                .unwrap()
+                .curve
+                .as_mut()
+                .unwrap()
+                .set_owner(Some(owner), None);
+        };
+        // A custom owner is the edge's identity; an unowned edge keeps its arena one.
+        set_owner(&mut original, first, custom);
+        let (_, keys) = make_original_brep_cache(&kernel, &original).unwrap();
+        assert_eq!(keys.key(CacheObject::Edge(first)), custom);
+        assert_eq!(keys.key(CacheObject::Curve(first)), custom);
+        assert_eq!(
+            keys.key(CacheObject::Edge(second)),
+            arena_identity(CacheObject::Edge(second))
+        );
+        // One owner for two edges, or an owner naming another record, is rejected.
+        set_owner(&mut original, second, custom);
         assert!(matches!(
             make_original_brep_cache(&kernel, &original),
             Err(SolidError::Unsupported { .. })
         ));
-        original
-            .edge_mut(edge_id)
-            .unwrap()
-            .curve
-            .as_mut()
-            .unwrap()
-            .set_owner(Some(arena_identity(CacheObject::Edge(edge_id))), None);
+        set_owner(&mut original, second, arena_identity(CacheObject::Edge(first)));
+        set_owner(&mut original, first, arena_identity(CacheObject::Edge(second)));
         assert!(make_original_brep_cache(&kernel, &original).is_ok());
+        set_owner(&mut original, first, arena_identity(CacheObject::Brep));
+        assert!(matches!(
+            make_original_brep_cache(&kernel, &original),
+            Err(SolidError::Unsupported { .. })
+        ));
     }
 
     #[test]
