@@ -76,6 +76,10 @@ pub struct RunOptions {
     /// Sensitivity check: change one item of each case's Rust output before
     /// comparing (see [`perturb_output`]); every perturbed case must fail.
     pub perturb: bool,
+    /// Opt-in per-case wall-clock limit; when set, a case exceeding it is
+    /// reported as a failed (timed-out) case instead of hanging the worker.
+    /// Default: no limit (byte-identical to the unset behaviour).
+    pub case_timeout: Option<Duration>,
 }
 
 /// Relative perturbation used by [`RunOptions::perturb`] (10x the tolerance).
@@ -310,7 +314,8 @@ impl UnitResult {
             || self.cases.len() == self.rejected()
         {
             UnitStatus::Fail
-        } else if self.deferred() > 0 || self.skipped_platform() > 0 || self.known_mismatches() > 0 {
+        } else if self.deferred() > 0 || self.skipped_platform() > 0 || self.known_mismatches() > 0
+        {
             UnitStatus::Partial
         } else {
             UnitStatus::Green
@@ -367,7 +372,10 @@ impl UnitResult {
 
     /// Number of cases skipped because the platform is not libstdc++.
     pub fn skipped_platform(&self) -> usize {
-        self.cases.iter().filter(|c| c.is_skipped_platform()).count()
+        self.cases
+            .iter()
+            .filter(|c| c.is_skipped_platform())
+            .count()
     }
 
     /// Deferred case count per blocking unit id, sorted by unit id.
@@ -770,6 +778,7 @@ mod tests {
             both_errored: false,
             rejected: None,
             deferred,
+            skipped_platform: None,
             perturbed: None,
             diagnostics: BTreeMap::new(),
             known_mismatch: None,
