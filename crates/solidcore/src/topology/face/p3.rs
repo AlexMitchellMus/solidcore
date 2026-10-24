@@ -1485,7 +1485,9 @@ impl<'a> IntersectObjects<'a> {
         }
     }
 
-    fn curve_of(&self, o: IntersectObject) -> Option<&'a Curve> {
+    /// [`ClassGeometry::curve`] for the borrowed lifetime (a mutable adapter over the
+    /// same objects answers from a view of its own fields).
+    pub(crate) fn object_curve(&self, o: IntersectObject) -> Option<&'a Curve> {
         match o {
             IntersectObject::Curve(i) => self.curves_3d.get(i),
             IntersectObject::UvCurve(i, false) => self.uv1.get(i)?.as_ref(),
@@ -1496,14 +1498,16 @@ impl<'a> IntersectObjects<'a> {
         }
     }
 
-    fn surface_of(&self, o: IntersectObject) -> Option<&'a Surface> {
+    /// [`ClassGeometry::surface`] for the borrowed lifetime.
+    pub(crate) fn object_surface(&self, o: IntersectObject) -> Option<&'a Surface> {
         match o {
             IntersectObject::Surface(f, side) => self.brep(side).face(f).ok()?.surface.as_ref(),
             _ => None,
         }
     }
 
-    fn entity_of(&self, o: IntersectObject) -> Option<(&'a Brep, EntityRef)> {
+    /// [`ClassGeometry::topology_entity`] for the borrowed lifetime.
+    pub(crate) fn object_entity(&self, o: IntersectObject) -> Option<(&'a Brep, EntityRef)> {
         match o {
             IntersectObject::Topology(e, side) => Some((self.brep(side), e)),
             _ => None,
@@ -1532,10 +1536,10 @@ impl ClassGeometry<IntersectObject> for IntersectObjects<'_> {
         }
     }
     fn curve(&self, o: IntersectObject) -> Option<&Curve> {
-        self.curve_of(o)
+        self.object_curve(o)
     }
     fn surface(&self, o: IntersectObject) -> Option<&Surface> {
-        self.surface_of(o)
+        self.object_surface(o)
     }
     fn volume(&self, _o: IntersectObject) -> Option<&Volume> {
         None
@@ -1547,7 +1551,7 @@ impl ClassGeometry<IntersectObject> for IntersectObjects<'_> {
     // queries of the interval classification (`SmFace::PointClassify`,
     // `FindVertexSector`, ...) reach them as upstream's pointers do
     fn topology_entity(&self, o: IntersectObject) -> Option<(&Brep, EntityRef)> {
-        self.entity_of(o)
+        self.object_entity(o)
     }
     fn topology_handle(&self, e: EntityRef) -> Option<IntersectObject> {
         Some(IntersectObject::Topology(e, self.side))
@@ -1597,10 +1601,10 @@ impl ClassGeometry<IntersectObject> for IntersectObjectsMut<'_> {
         self.view().topology_zone_tol_3d(o)
     }
     fn curve(&self, o: IntersectObject) -> Option<&Curve> {
-        self.view().curve_of(o)
+        self.view().object_curve(o)
     }
     fn surface(&self, o: IntersectObject) -> Option<&Surface> {
-        self.view().surface_of(o)
+        self.view().object_surface(o)
     }
     fn volume(&self, _o: IntersectObject) -> Option<&Volume> {
         None
@@ -1609,7 +1613,7 @@ impl ClassGeometry<IntersectObject> for IntersectObjectsMut<'_> {
         None
     }
     fn topology_entity(&self, o: IntersectObject) -> Option<(&Brep, EntityRef)> {
-        self.view().entity_of(o)
+        self.view().object_entity(o)
     }
     fn topology_handle(&self, e: EntityRef) -> Option<IntersectObject> {
         self.view().topology_handle(e)
