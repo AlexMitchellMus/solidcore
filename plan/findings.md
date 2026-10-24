@@ -19252,3 +19252,35 @@ context lending the B-rep (cherry-picked from fix/cover-coincident-face-ctx: 94c
 f8c04179b, dabd7f67d, d88f2c9ca; the context is `query::brep::BrepFaceServices`, main's
 B-rep face solve context, in place of that branch's unlanded `BrepFaceSolveContext`).
 
+## Public boolean e2e (PR #816): cases newly compared once the context stubs were wired (2026-10-24)
+
+Wiring the public-path stubs let 15 cases that were deferred on main reach a comparison. After
+cherry-picking the swarm's fixes (merge_p4/merge_p3 canonical loop starts 940550b4d,
+b07c2bda7, 009558c98, 393565928; MakeFaceuse surface attributes 411f01356/42b55934b;
+BooleanPostProcess merged domain d06819904; offset_executive_p2 live counts 45444f346;
+naming-scheme queries 09706e3d6, bb1945463, 56ae09d46), these still disagree:
+
+- **boolean.api_brep `merge_breps_three_difference`** (TestSmBrep.cpp:1105; box (0,0,0) 10^3
+  minus box (1,1,1.5) 2^3 and box (8,6,3) 4x8x6; operation 3). Record faces/edges/vertices/regions:
+  cpp 16 36 24 3, rust 10 24 16 2: the contained box's cavity is missing. Cause (probed): after the
+  first Difference the result B-rep records `NamingScheme::Notify`, but the faces the merge made
+  own their surfaces under `arena_identity` (face 6: owner key `2<<32 | 6`, notify key `1 + (4<<32) + 6`)
+  while the surviving faces keep their notify keys. `BrepIdentity::of_brep` then keys the cache by
+  the notify scheme, `make_brep_cache` skips the arena-owned faces, and the second Difference's ray
+  fire from inside the box (2,2,2.5) finds no face and answers the infinite region. Fix needs the
+  merge's new faces (MakeFaceuse / split faces) to own their geometry under the result B-rep's
+  recorded naming, without orphaning the surface attributes keyed by the owner name.
+- **boolean.merge_p3 `upstream_merge_breps_operation_0/1/2`, `upstream_piecewise_boxes_0/1`**: the same
+  values in a different vertex order (e.g. operation_0 `values.record[24]` cpp 8 / rust 10,
+  `[25]` cpp 10 / rust 6). Same signature as the existing entry "boolean.merge_p3: vertex list order
+  after merges that imprint edges into faces" (operation_3, piecewise_boxes_2/3), whose cause is not
+  traced; the canonical loop-start digests reduce the mismatch count (operation_0: 12 -> 6) but do not
+  remove it.
+- **offset.offset_executive_p2 `gen0054`, `gen0134`, `gen0177`, `gen0195`, `gen0210`**: region/shell/loop
+  counts differ (gen0054 counts[0..4]: cpp 2 2 11 12, rust 3 6 12 16; gen0134: cpp 3 4 32 32, rust
+  2 2 26 26; gen0210 counts[3] cpp 6 rust 9). Same family as gen0000/gen0003/gen0166 above (Rust
+  merge region/shell handling of the inset shell's Difference); suspected to share the mixed owner
+  naming above, since an inset shell is a contained operand classified by ray fire. Not traced.
+
+These cases stay failing in the draft (no known-mismatch entries).
+
