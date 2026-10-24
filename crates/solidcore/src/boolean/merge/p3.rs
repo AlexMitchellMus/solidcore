@@ -242,6 +242,17 @@ impl BooleanDriver for DependencyMerge {
             operation,
             caller_lock,
         )?;
+        // The engine's notification namespace (and its attribute store) ends with the
+        // merge: geometry the merge made owns under the record's own name in the
+        // B-rep's scheme, as every other record's geometry (upstream's owner is the
+        // record itself).
+        if let Some(namespace) = engine.intersector.namespace() {
+            for (body, is_other) in [(primary.as_mut(), false), (other.as_mut(), true)] {
+                if let Some(body) = body {
+                    crate::boolean::merge::p4::adopt_namespace_owners(body, namespace, is_other)?;
+                }
+            }
+        }
         Ok(if assigned { primary.take() } else { None })
     }
 }

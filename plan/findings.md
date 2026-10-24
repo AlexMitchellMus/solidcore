@@ -19260,16 +19260,16 @@ b07c2bda7, 009558c98, 393565928; MakeFaceuse surface attributes 411f01356/42b559
 BooleanPostProcess merged domain d06819904; offset_executive_p2 live counts 45444f346;
 naming-scheme queries 09706e3d6, bb1945463, 56ae09d46), these still disagree:
 
-- **boolean.api_brep `merge_breps_three_difference`** (TestSmBrep.cpp:1105; box (0,0,0) 10^3
-  minus box (1,1,1.5) 2^3 and box (8,6,3) 4x8x6; operation 3). Record faces/edges/vertices/regions:
-  cpp 16 36 24 3, rust 10 24 16 2: the contained box's cavity is missing. Cause (probed): after the
-  first Difference the result B-rep records `NamingScheme::Notify`, but the faces the merge made
-  own their surfaces under `arena_identity` (face 6: owner key `2<<32 | 6`, notify key `1 + (4<<32) + 6`)
-  while the surviving faces keep their notify keys. `BrepIdentity::of_brep` then keys the cache by
-  the notify scheme, `make_brep_cache` skips the arena-owned faces, and the second Difference's ray
-  fire from inside the box (2,2,2.5) finds no face and answers the infinite region. Fix needs the
-  merge's new faces (MakeFaceuse / split faces) to own their geometry under the result B-rep's
-  recorded naming, without orphaning the surface attributes keyed by the owner name.
+- **boolean.api_brep `merge_breps_three_difference`** (TestSmBrep.cpp:1105): **fixed** on PR #816.
+  The second Difference's ray fire missed the faces the first merge made: they kept the
+  merge engine's namespace owner names (`notification_key(0, false, Face(f))`, e.g. key
+  `2<<32 | 6`) in a B-rep recorded as notify-named. The engine's namespace and attribute
+  store end with the merge, so `DependencyMerge::manifold_boolean` now hands that geometry
+  the record's own name in the B-rep's scheme (`kernel_adapter::adopt_namespace_owners`),
+  as upstream's owner is the record itself. fixer-1's structural-ownership branch also fixes
+  it, but on main it breaks `tests/constructed_transforms.rs`
+  `foreign_and_unowned_geometry_remains_filtered` (an unclaimed foreign face name counts as
+  owned) and needed a tolerance workaround, so it was not taken.
 - **boolean.merge_p3 `upstream_merge_breps_operation_0/1/2`, `upstream_piecewise_boxes_0/1`**: the same
   values in a different vertex order (e.g. operation_0 `values.record[24]` cpp 8 / rust 10,
   `[25]` cpp 10 / rust 6). Same signature as the existing entry "boolean.merge_p3: vertex list order

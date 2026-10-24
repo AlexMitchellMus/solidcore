@@ -49,7 +49,7 @@ use crate::EntityRef;
 mod arena_pair;
 mod kernel_adapter;
 mod notification_keys;
-pub(crate) use kernel_adapter::notification_key;
+pub(crate) use kernel_adapter::{adopt_namespace_owners, notification_key};
 pub use kernel_adapter::{KernelManifoldIntersector, ManifoldKernelAdapter};
 pub use notification_keys::ManifoldNotificationKeys;
 
