@@ -17529,21 +17529,6 @@ cases stay deferred. It adds only `StaticScene::object_zone_tol_3d`, which turns
   The `surface.surface_p11` generator still uses patches for the other surface; adding
   plane cases is left as a follow-up.
 
-## primitive.primitive_creation_p1: arena face records vs SmBrep::GetFaces (2026-10-23, branch claude/edge-handles)
-
-- Once the curve-solver `IdenticalSolutions` reads curve natural intervals (ParameterDomains,
-  same branch), `linear_circle_cap1_distance0` and `linear_analytic_circle_cap1_distance0`
-  (CreateLinearSweep of a full circle, distance 0, capped) run to completion. The runner
-  counted faces as `brep.faces().len()` (every live face record): Rust 4, C++
-  `SmBrep::GetFaces` 2. Two of the four Rust face records have no face use (`faceuse =
-  None`, shells 0 and 6), so a traversal does not reach them. The runner now counts with
-  `topology::brep::p1::faces/edges/vertices` (the `GetFaces` / `GetEdges` / `GetVertices`
-  ports), as the shim and the shape <= 1 branch already do; both cases pass (2 faces, 1
-  edge, 1 vertex) and every former pass is unchanged.
-- Open question for the primitive porters: the two unreachable face records are made by
-  the capped degenerate sweep before `Stitch` (they exist before it). Upstream probably
-  deletes such a face on its failure path; Rust leaves the record in the arena. Not
-  observable through any compared output today.
 ## intersect.curve_class_p5 to green: B-rep cases (PR #610, 2026-10-23)
 
 - **C++ raises a vertex tolerance while computing a vertex/face gap; the port does not
@@ -17607,6 +17592,21 @@ cases stay deferred. It adds only `StaticScene::object_zone_tol_3d`, which turns
   extra00744, extra00806, extra01154; earlier deferred at `SmEdge::GetCurve`). No face
   classifier runs in internal_bss_tiny, so these disagreements are not query.face_p1's.
   extra00744: C++ (0, 0, 5), Rust (-0.659, -0.2026, 4.952) on sphere.smb.
+## primitive.primitive_creation_p1: arena face records vs SmBrep::GetFaces (2026-10-23, branch claude/edge-handles)
+
+- Once the curve-solver `IdenticalSolutions` reads curve natural intervals (ParameterDomains,
+  same branch), `linear_circle_cap1_distance0` and `linear_analytic_circle_cap1_distance0`
+  (CreateLinearSweep of a full circle, distance 0, capped) run to completion. The runner
+  counted faces as `brep.faces().len()` (every live face record): Rust 4, C++
+  `SmBrep::GetFaces` 2. Two of the four Rust face records have no face use (`faceuse =
+  None`, shells 0 and 6), so a traversal does not reach them. The runner now counts with
+  `topology::brep::p1::faces/edges/vertices` (the `GetFaces` / `GetEdges` / `GetVertices`
+  ports), as the shim and the shape <= 1 branch already do; both cases pass (2 faces, 1
+  edge, 1 vertex) and every former pass is unchanged.
+- Open question for the primitive porters: the two unreachable face records are made by
+  the capped degenerate sweep before `Stitch` (they exist before it). Upstream probably
+  deletes such a face on its failure path; Rust leaves the record in the arena. Not
+  observable through any compared output today.
 ## surface.surf_of_extrusion_p2: free-extrusion general intersection resolved (2026-10-23)
 
 - **Cause of gen0413 / gen0448 / gen0732 (entry "Free-extrusion general intersection" above).**
@@ -17624,6 +17624,30 @@ cases stay deferred. It adds only `StaticScene::object_zone_tol_3d`, which turns
   negative (or `SM_USE_DEFAULT`) tolerance is affected; a generated negative-tolerance case
   in those runners would show whether they diverge.
 
+
+## 2026-10-23: Ray preparation order and region-nesting identities (#613)
+
+Expanded primitive comparisons exposed nine flat-pyramid ray discrepancies and
+missing stored UV trims on a tall translated pyramid (`gen1142`, now fixed as
+`regression_pyramid_tall_translated`). Native `SmShell::RayFire` creates trims during
+one solve; restarting after preparation can revisit earlier candidates with larger
+tolerances. Production shell rays now use one mutable solve with exact evaluation
+copies of curves/surfaces and live topology reads. Face classification consults the
+prepared trim cache before the vertex/loop fallback, as native [B537] does.
+
+The tall pyramid's final `SmStitch::DoStitching` also calls B-rep ray fire through
+`FindAndSetInfiniteRegion`. Arena-default query keys omitted geometry constructed
+under notification keys. Stitching now forwards those identities explicitly and
+region nesting reuses the mutable ray adapter. Constructors accepting caller
+notifications use them for all neighbouring faces. This also fixes the cylindrical
+box's per-edge stored-trim counts (`primitive.primitive_creation_p1 / primitive_3`).
+These paths retain numeric operation order and the relative 1e-9 comparison gate.
+
+The generic read-only shell-world fallback remains a bounded preparation/restart
+adapter: each requested edge use or face is attempted once, but complete traversals
+can be quadratic and may revisit raised tolerances. Production `BrepQuery` shell
+rays do not use that fallback. Other read-only entrypoints claimed by #619 remain
+outside this change.
 ## geom.grid to green: surface grid elements wired (2026-10-23)
 
 - **What was wired.** `SmSurfaceGridElement::Init` is now `SurfaceGridElement::init` (with
@@ -17689,6 +17713,22 @@ cases stay deferred. It adds only `StaticScene::object_zone_tol_3d`, which turns
   boolean.merge_p2)` although the unit is ported (34 taper cases); `SweepStore` has the
   merge services.
 
+
+## 2026-10-23: Newly reached spine closure exports (#613)
+
+CI run 39983042271 reached `closure_inf_spine_doubled` and
+`review_spine_doubled_m1_closure_True`, deferred on base main b35cd5ac7.
+`Graph::walk` in the p10 runner enumerated region arena slots; native `GetRegions`
+starts at the owning-list head, which `ResetInfiniteRegion` rotates. Exporting that
+list fixes the apparent reordered geometry/topology (first reported at dbls[339]).
+The resulting strict comparison also exposed nine missing UV-curve owner refs.
+The edge closure query now binds ownerless generated trims to their actual storing
+edge uses under the construction caller's names, completing native `SetUVTrimCurve`
+ownership (SmEdgeuse.cpp:4552-4579). Existing owner refs and the query status remain
+unchanged. All 90 spine_doubled fixtures match C++ bit for bit, including the two CI
+failures; the shared p6 exporter still has 588 passes, no failures and 7 deferrals.
+The full local p10 rerun was superseded before completion; no full-suite pass is
+claimed. No fixture, comparison gate or tolerance was changed.
 ## classification face queries through `ClassGeometryMut` (PR #639, 2026-10-23)
 
 - **What changed.** `query::face::p2::WithMadeTrimCurves` forwards the topology hooks
@@ -17891,6 +17931,46 @@ cases stay deferred. It adds only `StaticScene::object_zone_tol_3d`, which turns
   difftest case. The unit test `slice_keeps_a_coincident_pair_on_the_sheet_same_side_only`
   pins the rule. A slice of a solid with a face in the sheet will differ from the pinned
   C++ here by design, until the pin takes the fork's fix (ee2a67b).
+
+## Region nesting once shell ray face preparation meets the forwarded face hooks (#613 merged with main, 2026-10-24)
+
+- **What.** #613 prepares face geometry (lazy UV trims, trimmed surface cache) for shell
+  ray queries on the original B-rep. #639 made `WithMadeTrimCurves` forward the topology
+  hooks to the caller's geometry. Each change alone leaves the 9 cases below deferred:
+  with #613 but before #639 they stop at `SmEdge::GetCurve` (topology.edge, an
+  unresolved face handle), and on main with #639 they stop at
+  `SmEdgeuse::GetOrCreateUVTrimCurve (unprepared read-only topology)` (topology.edgeuse_p3)
+  or `TrimSrfCache::build_tree_with_face for a face-owned surface` (surface.trim_srf_cache).
+  With both, they run to completion and disagree with C++. Bisected locally by merging
+  #613's head `c28753855` with main just before #639 (`b3f5aa691`: deferred, 0 failed)
+  and with main at #639 (`73e557331`: the primitive_creation_p2 and brep_p6 failures below).
+- **Cases (C++ vs Rust):**
+  - primitive.primitive_creation_p2 `skin_concentric_loops`
+    (`fixtures/primitive.primitive_creation_p2/cases.json#6`, TestSmPrimitives.cpp:642):
+    record[7..9] cpp 1/4/1, rust 2/6/2.
+  - sweep.api_surfaces `skin_primitive_annular` (`upstream.json#14`, TestSmPrimitives.cpp:596):
+    faces[1..3] cpp 1/4/1, rust 2/6/2. The annular cap between the two concentric circles
+    comes out as two faces in Rust, where C++ keeps one face with a hole, so the nesting of
+    the inner loop in the outer one is decided differently.
+  - topology.brep_p6 `make_face.json#89..95` (`two_cubes_at_a_vertex`,
+    `two_disjoint_cubes`, `cube_in_cube`, `cube_with_wire`, `cube_with_inner_wire`,
+    `cube_with_inner_vertex`, `cube_with_outer_vertex`, all through
+    `SmBrep::TestClosureSplitRegion` via `MakeFaceTopology`): Rust exports fewer records,
+    e.g. cube_in_cube geom.len cpp 1368, rust 1164 and state.len cpp 6147, rust 5775;
+    two_cubes_at_a_vertex 1347/1228 and 6102/5885; cube_with_wire 700/632 and 3181/3057.
+- **Ruled out by local probes (reverted):** routing the `query::face::p2`
+  curve-on-classify through the read-only `classify_face_interval` (#614's copy model)
+  instead of `classify_face_interval_mut` leaves the same primitive_creation_p2 and
+  brep_p6 failures, and so does turning off #613's prepared trim-cache fast path in
+  `point_classify_with_topology`. So neither #639's mutable face queries nor #613's
+  cache-first point classification is the cause on its own.
+- **Suspected cause.** A gap further down the region split's ray containment that
+  neither branch reached before. The most likely candidates are the ones already
+  recorded under the #639 entry above: `IntersectTSBound` walking every loop use instead
+  of the face's trimmed-cache leaf nodes, or the face-owned trimmed cache history. Not
+  yet narrowed to a call.
+- **Status.** All 9 cases are listed in `crates/difftest/known_mismatches.toml`. They
+  were deferred on both parents, so no case that previously passed now fails.
 
 ## Status index (2026-10-23, main CI `e33985411`)
 

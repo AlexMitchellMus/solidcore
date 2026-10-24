@@ -77,6 +77,13 @@
 //!   ([`QuadricEdgeData::sort_index`]). `SmPolyVertexClass` (`SmPoly.h`) is defined
 //!   here, the only place that uses it so far.
 
+mod ray;
+
+#[cfg(test)]
+pub(crate) use ray::PreparationRequest;
+pub use ray::RayPreparation;
+pub(crate) use ray::RaySurfaceContext;
+
 use core::cell::OnceCell;
 
 use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
@@ -356,11 +363,11 @@ impl BrepIdentity<'static> {
     }
 }
 
-impl Default for BrepIdentity<'static> {
+impl Default for BrepIdentity<'_> {
     /// [`BrepIdentity::arena`] of the first B-rep of the caller's store (a caller
     /// querying one B-rep at a time).
     fn default() -> Self {
-        Self::arena(BrepId::from_index(0))
+        BrepIdentity::arena(BrepId::from_index(0))
     }
 }
 
@@ -427,6 +434,30 @@ impl<'a> BrepQuery<'a> {
         Ok(self.cache.get_or_init(|| cache))
     }
 
+    /// Mutable ray solve used by region nesting after stitching. Keeps lazy trim
+    /// preparation in the original solve order.
+    pub(crate) fn ray_fire_live(
+        &self,
+        k: &Kernel,
+        b: &mut Brep,
+        start: Point3,
+        direction: Vec3,
+        tolerance: f64,
+    ) -> Result<crate::topology::brep::p2::RayFireResult> {
+        let cache = self.cache(k, b)?;
+        crate::topology::brep::p2::ray_fire_with_solver(
+            k,
+            b,
+            start,
+            direction,
+            tolerance,
+            None,
+            |b, point, options| {
+                ray::solve_mutable_brep_point(k, b, &self.identity, cache, point, options)
+            },
+        )
+    }
+
     /// `SmBrep::Point3DClassify`: classifies `point` (zone tolerance
     /// `point_zone_tol_3d`) against `b`, the B-rep this query was built for. With
     /// `do_boundary_intersections` the lowest dimensional vertex, edge or face the point
@@ -482,6 +513,7 @@ impl<'a> BrepQuery<'a> {
         if do_boundary_intersections {
             let b = target.shared();
             let objects = BrepObjects {
+                preparation: None,
                 brep: b,
                 brep_id,
                 cache: Some(self.cache(k, b)?),
@@ -592,12 +624,41 @@ impl crate::topology::shell::ShellRayWorld<CacheObject> for BrepQuery<'_> {
             ));
         }
         Ok(BrepObjects {
+            preparation: None,
             brep,
             brep_id,
             cache: None,
             keys: self.identity.keys,
             owner_of: self.identity.owner_of,
         })
+    }
+
+    fn objects_for_preparation<'a>(
+        &'a self,
+        brep: (BrepId, &'a Brep),
+        preparation: &'a RayPreparation,
+    ) -> Result<BrepObjects<'a>> {
+        let mut objects = self.objects(brep)?;
+        objects.preparation = Some(preparation);
+        Ok(objects)
+    }
+
+    fn solve_shape_ray(
+        &self,
+        k: &Kernel,
+        brep: &mut Brep,
+        brep_id: BrepId,
+        shape: &crate::geom::object::Shape,
+        point: Point3,
+        options: TopologySolveOptions<'_>,
+    ) -> Result<crate::geom::solution_array::SolutionArray<CacheObject>> {
+        if brep_id != self.identity.brep_id {
+            return Err(SolidError::invalid_input(
+                "query::brep::BrepQuery::solve_shape_ray",
+                "ray fire on another B-rep",
+            ));
+        }
+        ray::solve_mutable_ray(k, brep, &self.identity, shape, point, options)
     }
 
     fn class_entity(&self, object: CacheObject) -> Option<EntityRef> {
