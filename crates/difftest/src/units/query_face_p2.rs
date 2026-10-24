@@ -1269,7 +1269,7 @@ mod trim_cache_tests {
     fn valid_trim_cache_fast_path_is_observed() {
         let mut input: Inputs = serde_json::from_value(serde_json::json!({
             "brep": {"kind": "face", "surface": {"plane": {"o": [2,-3,5], "n": [0,0,1]}}, "dom": [-5,-3,5,3]},
-            "edits": [{"kind": 3, "sel": 0, "value": 0}],
+            "edits": [{"kind": 3, "sel": 0, "value": 0}, {"kind": 0, "sel": 0, "value": 0.001}],
             "op": "point_classify", "face": 0,
             "at": {"mode": "frac", "a": 0.37, "b": 0.41},
             "cache_mode": "valid", "repeats": 2, "pc_tol": 0.0002
@@ -1290,6 +1290,10 @@ mod trim_cache_tests {
             *cache_mode = CacheMode::Absent;
         }
         let uncached = rust(&input).unwrap();
+        assert_eq!(
+            uncached.values["cached_pc"][11], 0.001,
+            "fallback uses the larger face tolerance"
+        );
         assert!(
             !crate::compare::compare(&native, &uncached, &[]).pass(),
             "dropping the prepared cache must be detected"
