@@ -19203,6 +19203,17 @@ live virtual-dispatch seam; they are not converted into an ordinary native fille
 failure. The explicitly named direct Nx1 helpers still validate their own type.
 This slice makes no cylinder, multi-edge, variable-radius or complete API claim.
 
+### Real-box untrimmed fillet centerline loses its native Line subtype (2026-10-24)
+
+An additive actual-session checkpoint retains the original 10×20×30 box, edge0 and radius0.5 through real preparation, corner creation, smooth prelude, shared corner vertices, all adjustment and direct first solver CalcFilletGeom. All six statuses and all sampled geometry agree (max relative error2.775557561562892e-16), but native centerline GetType is SmLine14010 while Rust reports BSpline14033. The only mismatch is ints.generated_geometry_state[15]; surface and both rail runtime types already agree. Native SmFilletSolver.cpp633–637 retains the derived line pointer; Rust solver/p2.rs345 slices it via bspline_part into FilletGeom's BSplineCurve slot. Preserve the actual curve representation; do not normalize the type comparison. Full executive_p3 baseline:300 cases,252 passes,47 existing deferrals,1 failure. The post-adjustment case passes; all14 previous CPP/Rust real-box records are byte-identical. Public SmApiFilletEdges remains genuinely deferred.
+
+Resolution of the real-box centerline subtype finding: retain the canonical actual Curve (including Line) in FilletGeom, use its virtual copy/evaluation/reversal operations, and preserve the legacy borrowed B-spline-base accessor for base-only callers. The new observer reads the actual curve. Same fixtures and enforced runtime types now give 300 executive_p3 cases,253 passes,47 existing deferrals,0 failures,max_rel_err=0; perturb253/253 caught. Seven affected native units total4032 cases,3864 passes,136 existing deferrals,32 defined rejections,0 failures. All3732 existing affected-unit Rust-only per-case digests and all14 previous real-box CPP/Rust output records are unchanged. Full SmApiFilletEdges still genuinely defers; this proves retained untrimmed geometry, not a completed fillet.
+
+### Actual fillet corner boundary curves lose Circle subtype in the SSI adapter (2026-10-24)
+
+The original box/edge/radius case now runs shared all-solver geometry followed by each corner's tangent adjustment, repeated vertex geometry and boundary-edge calculation. All seven stage statuses and sampled points agree exactly, but both native end ribs are Circle14021 and Rust stores plain BSpline14033. New corner_edge_geometry_state indices6 and18 expose the mismatch. Native retains actual derived curves from sm_SrfSrfIntersection. Rust geom/p2's SrfSrfCurves already retains Curve, but the distinct geom/p4 adapter279–324 holds Option<BSplineCurve> and clones only each returned object's base before p5 stores it. Preserve the actual returned curves through this adapter; do not remove type checks or change SSI arithmetic. Red executive_p3 baseline:301 cases,253 passes,47 existing deferrals,1 failure; all18 prior real-box CPP/Rust records are byte-identical. Full public filleting remains genuinely unported.
+
+Resolution of the boundary-Circle finding: the private geom/p4 SSI carrier retains the actual Curve objects accepted by the same native B-spline cast filter; p4 virtual endpoint/reversal/store operations and p5 ownership transfer retain derived objects. The existing public base-only UvCurves API keeps its explicit compatibility projection. With the same fixture and unchanged observer, executive_p3 now has 301 cases,254 passes,47 existing deferrals,0 failures,max_rel_err=0; perturb254/254 caught. Six affected native suites:2615 cases,2431 passes,78 existing deferrals,106 defined rejections,0 failures. All2314 previous affected-unit Rust digests and all18 earlier CPP/Rust box records are unchanged. Full SmApiFilletEdges remains genuinely deferred; the next real component is rail trimming.
 ### Fillet rollover classification: retained body-qualified identities
 
 The production Session's pseudo rail curves and target boundary topology can have
@@ -19219,6 +19230,30 @@ pseudo and geometry handles. The canonical getter exposes scoped handles; indexe
 input conversion is explicit and fallible. These changes do not complete missing
 recovery notifications, custom producer-owner resolution, or the public fillet API.
 
+
+### Paired retained fillet rail classification (2026-10-24)
+
+The unchanged real box/edge/radius now runs enabled TestRollOver after shared TrimRails, then repairs the actual ordered adjusted-corner list. Native and Session both attach classifications to the real pseudo rail curves: each has one interval [0.25,0.75], boundary Target edges and a mid Target face (faces3/1). Rail0 endpoints classify on target edges8/5 at t29.5; rail1 on edges9/1 at t9.5. Actual adjusted-corner lists are empty. Target vertex/edge tolerances remain1e-5; classification remains enabled. DoingBoolean and CC DoingFillets both remain false in this direct component, matching its actual caller context; this does not claim the outer DoFilleting context scope.
+
+The new checkpoint compares 432 exact fields and 282 values, max_rel_err=0, with no preclassification evaluation or lazy geometry lookup. Existing real-box CPP/Rust output records (22) and affected-unit Rust digests (1340, Rust-only retention) remain byte-identical. Five affected native suites total1643 cases,1583 value passes,47 existing deferrals,13 defined rejections,0 failures. Executive_p3:303 cases,256 passes,47 deferrals; perturb256/256 caught. Actual body/role identities replace no target/pseudo IDs with numeric offsets.
+
+This ordinary fixture proves attached CC routing and expected Target Edge/Face identities, not general unexpected non-topology point identity or nonempty rollover repair. The observer preserves an explicit unknown marker for unsupported object roles. Recovery owner notifications and the full SmApiFilletEdges entrypoint remain genuinely Unported; no completed fillet or resultant mass parity is claimed.
+
+
+### Paired intermediate fillet face construction (2026-10-24)
+
+The unchanged box now continues through actual intermediate SmBrep allocation with target tolerance/editing, every corner CalcCornerGeom, then each solver's tolerance propagation and actual MakeFaceBrep. Both native corner predicates return normally; no corner-patch callback is fabricated. The separate intermediate body has4 vertices,4 edges,1 face,1 shell,1 region and8 directed edgeuses, tolerance4.0000000000000003e-5. Actual boundary objects are Line14010/Circle14021/Line14010/Circle14021; the face surface is Cylinder15012. No type normalization is used.
+
+The new checkpoint compares564 exact fields and389 values, max_rel_err0, including ordered edge/loop topology, each edgeuse's startvertex/mate/radial/cw/ccw/face, fixed primary/mate faceuse orientations and shell/region labels, actual geometry domains/statuses/samples, and topology tolerances. All observations follow the actual construction operations; no attributes or stitching stage is skipped into the claim. Existing24 CPP/Rust real-box outputs and1805 affected-unit Rust-only case digests remain byte-identical. Four affected native suites total2109 cases,1878 value passes,132 existing deferrals,99 defined rejections,0 failures. Executive_p3:304 cases,257 value passes,47 existing deferrals; perturb257/257 caught.
+
+The original full SmApiFilletEdges case still genuinely defers. This proves a real retained intermediate fillet face, not a completed target solid or mass properties. Actual attribute attachment, stitching and later target integration remain separate pipeline stages.
+
+
+### Fillet source surface loses its consumed managed-face identity (2026-10-24)
+
+A passive addition to the unchanged intermediate-face fixture exposes four genuine identity mismatches while every previous564 exact fields and389 values remain unchanged. Native source FG surface is the very surface consumed into intermediateface0 and owned by that Face(type16002); Rust retains an independent FG surface with owner=None, while its managed face owns a clone. New source_surface_binding indices3/4/5/6 are native1/16002/0/0 versus Rust0/0/-1/-2. No sampled geometry or runtime type is normalized or removed.
+
+Native MakeFaceBrep passes m_pFilletSurface directly/consumed at SmFilletGeom.cpp9616/9639; its destructor9038–9054 does not delete that surface. DoFilleting.cpp2995 then resolves the first FG surface's owner as Face and calls ShrinkGeometry. A stale clone or guessed owner cannot replace this actual managed-surface mutation relationship. The owning kernel worker is implementing a producer-proven Owned→ManagedFace route; this red observer makes the gap visible. All26 previous CPP/Rust real-box records remain byte-identical after removing only the added source_surface_binding key for retention comparison. The new section is never removed from actual difftest comparison.
 ### Fillet intermediate stitching: live attributes and notifications
 
 The intermediate body's ordered edges receive the executive's retained E attribute
@@ -19255,3 +19290,8 @@ The retained-solver Session successor always uses original-surface transfer; its
 cliff transfer through the trimming tool remains a genuine missing capability at
 the actual final call. No fixture, tolerance, runtime type or ownership observation
 is normalized to hide that boundary.
+### Fillet consumed-surface binding fixed; actual attribute/stitch paired evidence
+
+The unchanged same-box face/stitch checkpoints now resolve the original surface through its actual managed Face. Native and Rust source_surface_binding both equal [1,1,1,1,16002,0,0]; all four prior owner/alias mismatches are fixed without removing any fields. All26 older CPP/Rust box outputs remain identical outside that intentionally corrected binding section. Mode11 retains571 exact fields/389 values; Mode12 retains623 exact fields/391 values, all native values exact. E is the actual executive attribute with four ordered intermediate-edge users. Actual Stitch returns0 stitched,4 lamina and0 gaps. Whole executive_p3:305 cases,258 value passes,47 existing deferrals,0 failures; full API remains honestly deferred.
+
+An affected-suite run caught five legacy cliff cases newly deferred by the initial transfer backend. The explicit indexed compatibility path now preserves their existing behavior: geom_p4 all400 cases pass, with no case/status/tolerance waiver. The actual retained Session path always transfers the original surface and still reports its unavailable cliff transfer honestly. This is ordinary same-box component evidence, not full filleting, target integration, shrink, mass or broad notification parity.
