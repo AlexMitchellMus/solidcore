@@ -2566,6 +2566,77 @@ mod tests {
     use super::*;
 
     #[test]
+    fn edge_failure_retains_completed_prefix_and_reads_live_merge_flag() {
+        use crate::blend::fillet_geom::p1::FilletCornerId;
+        use crate::geom::extent1d::Extent1d;
+        let mut pseudo = FilletBrep::new();
+        let start = pseudo.brep_mut().add_vertex(Point3::ZERO).unwrap();
+        let end = pseudo
+            .brep_mut()
+            .add_vertex(Point3::new(1.0, 0.0, 0.0))
+            .unwrap();
+        let mut edges = Vec::new();
+        for _ in 0..3 {
+            let edge = pseudo
+                .new_fillet_edge(start, end, Some(FilletCornerId(0)))
+                .unwrap();
+            pseudo
+                .fillet_edge_mut(edge)
+                .unwrap()
+                .set_fillet_edge_type(FilletEdgeType::FilletXSideFace);
+            let record = pseudo.brep_mut().edge_mut(edge).unwrap();
+            record.curve = Some(Curve::from(
+                BSplineCurve::create_line_segment(3, Point3::ZERO, Point3::new(1.0, 0.0, 0.0))
+                    .unwrap(),
+            ));
+            record.interval = Extent1d::from_min_max(5.0, 6.0);
+            edges.push(edge);
+        }
+        let mut corner = FilletCorner::new(FilletCornerKind::NByOne, None, None, None, 1e-3, 0.1);
+        corner.edges.clone_from(&edges);
+        let mut context = (pseudo, Vec::new(), true);
+        let result = corner.calc_corner_edge_geom_with(
+            &mut context,
+            |(_, visited, global_merge), _, edge| {
+                visited.push(edge);
+                if edge == edges[1] {
+                    *global_merge = false;
+                    return Err(SolidError::sm_err("defined edge failure"));
+                }
+                Ok(())
+            },
+            |(_, _, global_merge)| *global_merge,
+            |(pseudo, _, _)| pseudo,
+        );
+        assert!(matches!(
+            result,
+            Err(SolidError::Upstream { code: SM_ERR, .. })
+        ));
+        assert_eq!(context.1, edges[..2]);
+        assert_eq!(
+            context.0.fillet_edge(edges[0]).unwrap().status(),
+            FilStatus::Processed
+        );
+        assert_ne!(
+            context.0.fillet_edge(edges[1]).unwrap().status(),
+            FilStatus::Processed
+        );
+        assert_ne!(
+            context.0.fillet_edge(edges[2]).unwrap().status(),
+            FilStatus::Processed
+        );
+        assert_eq!(
+            context.0.brep().edge(edges[0]).unwrap().interval,
+            Extent1d::from_min_max(0.0, 1.0)
+        );
+        assert_eq!(
+            context.0.brep().edge(edges[1]).unwrap().interval,
+            Extent1d::from_min_max(5.0, 6.0)
+        );
+        assert_eq!(corner.edges, edges);
+    }
+
+    #[test]
     fn vertex_geometry_failure_retains_completed_prefix_and_stops_law_adjustment() {
         use crate::blend::fillet_geom::p1::FilletVertex;
 
