@@ -2,11 +2,13 @@
 //! Modes 1–5 omit smoothing on both sides. Later modes run the real prelude,
 //! stopping after adjustment, direct first-solver geometry, or all-solver geometry
 //! followed by each corner’s tangent adjustment, repeated vertices and edges,
-//! or actual rail trimming before classification.
+//! actual rail trimming, or enabled classification and adjusted-corner repair.
 #[path = "edge_geometry.rs"]
 mod edge_geometry;
 #[path = "generated_geometry.rs"]
 mod generated_geometry;
+#[path = "rail_classification.rs"]
+mod rail_classification;
 #[path = "rail_metadata.rs"]
 mod rail_metadata;
 use super::{label, section, status, take_section, Checkpoint, RealSolid};
@@ -227,7 +229,7 @@ pub(super) fn run(
     before: &[f64],
 ) -> SolidResult<Vec<f64>> {
     let mut session = FilletSession::new(k, body)?;
-    let mut statuses = [-1.0; 8];
+    let mut statuses = [-1.0; 9];
     let prepare = session.prepare_constant_radius_edges(
         k,
         selected,
@@ -243,6 +245,8 @@ pub(super) fn run(
     let mut prior = Vec::new();
     let mut offsets_before = (Vec::new(), Vec::new());
     let mut rails_before = (Vec::new(), Vec::new());
+    let mut classes_before = (Vec::new(), Vec::new());
+    let mut adjusted = Vec::new();
     if statuses[0] == 0.0 && input.checkpoint != Checkpoint::Prepared {
         statuses[1] = match session.create_corners(k, None) {
             Ok(()) => 0.0,
@@ -297,12 +301,22 @@ pub(super) fn run(
                             Err(error) => status(error)?,
                         };
                     }
-                    if input.checkpoint == Checkpoint::TrimRails && statuses[6] == 0.0 {
+                    if input.checkpoint.code() >= 9 && statuses[6] == 0.0 {
                         rails_before = rail_metadata::snapshot(k, &session, false)?;
                         statuses[7] = match session.trim_solver_rails(k) {
                             Ok(()) => 0.0,
                             Err(error) => status(error)?,
                         };
+                        if input.checkpoint == Checkpoint::ClassifiedRails && statuses[7] == 0.0 {
+                            classes_before = rail_classification::snapshot(k, &session)?;
+                            statuses[8] = match session.classify_solver_rails_with_adjusted(k) {
+                                Ok(ids) => {
+                                    adjusted = ids;
+                                    0.0
+                                }
+                                Err(error) => status(error)?,
+                            };
+                        }
                     }
                 }
             }
@@ -446,12 +460,24 @@ pub(super) fn run(
         section(&mut out, &state);
         section(&mut out, &values);
     }
-    if input.checkpoint == Checkpoint::TrimRails {
+    if input.checkpoint.code() >= 9 {
         let rails_after = rail_metadata::snapshot(k, &session, true)?;
         section(&mut out, &rails_before.0);
         section(&mut out, &rails_before.1);
         section(&mut out, &rails_after.0);
         section(&mut out, &rails_after.1);
+    }
+    if input.checkpoint == Checkpoint::ClassifiedRails {
+        let after = rail_classification::snapshot(k, &session)?;
+        section(&mut out, &classes_before.0);
+        section(&mut out, &classes_before.1);
+        section(&mut out, &after.0);
+        section(&mut out, &after.1);
+        let labels: Vec<_> = adjusted
+            .iter()
+            .map(|id| label(&session.executive().corners, Some(*id)))
+            .collect();
+        section(&mut out, &labels);
     }
     Ok(out)
 }
@@ -570,7 +596,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             take_section(&mut values)?.to_vec(),
         );
     }
-    if checkpoint == Checkpoint::TrimRails {
+    if checkpoint.code() >= 9 {
         for phase in ["before", "after"] {
             let state = take_section(&mut values)?;
             if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
@@ -585,6 +611,33 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
                 take_section(&mut values)?.to_vec(),
             );
         }
+    }
+    if checkpoint == Checkpoint::ClassifiedRails {
+        for phase in ["before", "after"] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid classification state"));
+            }
+            out.ints.insert(
+                format!("rails_{phase}_classification_state"),
+                state.iter().map(|v| *v as i64).collect(),
+            );
+            out.values.insert(
+                format!("rails_{phase}_classification_parameters"),
+                take_section(&mut values)?.to_vec(),
+            );
+        }
+        let ids = take_section(&mut values)?;
+        if ids
+            .iter()
+            .any(|v| !v.is_finite() || v.fract() != 0.0 || *v < 0.0)
+        {
+            return Err(HarnessError::new("invalid adjusted-corner labels"));
+        }
+        out.ints.insert(
+            "classification_adjusted_corners".into(),
+            ids.iter().map(|v| *v as i64).collect(),
+        );
     }
     if !values.is_empty() {
         return Err(HarnessError::new("trailing prefix data"));

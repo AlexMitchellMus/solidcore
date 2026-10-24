@@ -19229,3 +19229,12 @@ geometry snapshots or owner rebinding. Scoped target-edge projections reject
 pseudo and geometry handles. The canonical getter exposes scoped handles; indexed
 input conversion is explicit and fallible. These changes do not complete missing
 recovery notifications, custom producer-owner resolution, or the public fillet API.
+
+
+### Paired retained fillet rail classification (2026-10-24)
+
+The unchanged real box/edge/radius now runs enabled TestRollOver after shared TrimRails, then repairs the actual ordered adjusted-corner list. Native and Session both attach classifications to the real pseudo rail curves: each has one interval [0.25,0.75], boundary Target edges and a mid Target face (faces3/1). Rail0 endpoints classify on target edges8/5 at t29.5; rail1 on edges9/1 at t9.5. Actual adjusted-corner lists are empty. Target vertex/edge tolerances remain1e-5; classification remains enabled. DoingBoolean and CC DoingFillets both remain false in this direct component, matching its actual caller context; this does not claim the outer DoFilleting context scope.
+
+The new checkpoint compares 432 exact fields and 282 values, max_rel_err=0, with no preclassification evaluation or lazy geometry lookup. Existing real-box CPP/Rust output records (22) and affected-unit Rust digests (1340, Rust-only retention) remain byte-identical. Five affected native suites total1643 cases,1583 value passes,47 existing deferrals,13 defined rejections,0 failures. Executive_p3:303 cases,256 passes,47 deferrals; perturb256/256 caught. Actual body/role identities replace no target/pseudo IDs with numeric offsets.
+
+This ordinary fixture proves attached CC routing and expected Target Edge/Face identities, not general unexpected non-topology point identity or nonempty rollover repair. The observer preserves an explicit unknown marker for unsupported object roles. Recovery owner notifications and the full SmApiFilletEdges entrypoint remain genuinely Unported; no completed fillet or resultant mass parity is claimed.
