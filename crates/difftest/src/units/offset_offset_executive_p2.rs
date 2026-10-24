@@ -33,11 +33,11 @@
 //! on those early paths; independently, Rust checks its complete Debug-visible
 //! arena state and samples before/after the SAME owned input, not a reconstruction.
 //!
-//! Box input scaffolding has real shared vertices/edges, six analytic Plane faces,
-//! mated face/loop uses and two region/shell records, but does NOT reproduce native
-//! stitching/orientation/UV reparameterization or promise face-index geometric
-//! correspondence after stitching. Box parity is deliberately only counts of
-//! faces/edges/vertices, analytic kinds, vertex bounds, provenance and purity.
+//! Box inputs are built as natively, with the real primitive constructor
+//! (`SmApiCreateBox`, compared in `primitive.api_primitives`) and then the fixture
+//! tolerance, so the offset sees the native radial order and face-use orientations.
+//! Box input parity remains counts of faces/edges/vertices, analytic kinds, vertex
+//! bounds, provenance and purity.
 //! Sheet boundary scaffolding follows p1's typed rectangular fixture pattern;
 //! its Line boundaries are not claimed equivalent to native isocurve kinds.
 //! Native sheet/wire construction must preserve the projected counts (1/1/4/8/4
@@ -696,7 +696,10 @@ fn rectangular_face(
     Ok(face)
 }
 
-fn build(kernel: &Kernel, fixture: &Fixture, tolerance: f64) -> HResult<Brep> {
+fn build(kernel: &mut Kernel, fixture: &Fixture, tolerance: f64) -> HResult<Brep> {
+    if let Fixture::Box { origin, size } = *fixture {
+        return build_box(kernel, origin, size, tolerance);
+    }
     let mut brep = Brep::new();
     brep.set_tolerance(tolerance);
     // SmBrep.cpp:532–537: the constructor explicitly creates a void infinite region.
@@ -797,97 +800,32 @@ fn build(kernel: &Kernel, fixture: &Fixture, tolerance: f64) -> HResult<Brep> {
                 ],
             )?;
         }
-        Fixture::Box { origin, size } => build_box(&mut brep, region, origin, size)?,
+        Fixture::Box { .. } => return Err(bad("box fixtures use the primitive constructor")),
     }
     Ok(brep)
 }
 
-// Input-only rectilinear scaffold. Unlike the missing SmBrep copy constructor,
-// this creates distinct analytic geometry and typed topology from DTO scalars.
-fn build_box(brep: &mut Brep, region: RegionId, origin: [f64; 3], size: [f64; 3]) -> HResult<()> {
+/// The native fixture's `SmApiCreateBox(origin, dx, dy, dz)` then
+/// `SetTolerance(tolerance, FALSE)`, through the real primitive constructor: the
+/// stitched, consistently oriented box an offset needs (a hand-made scaffold would
+/// not reproduce the native radial order or face-use orientations).
+fn build_box(
+    kernel: &mut Kernel,
+    origin: [f64; 3],
+    size: [f64; 3],
+    tolerance: f64,
+) -> HResult<Brep> {
     if size.iter().any(|value| *value <= 0.0) {
         return Err(bad("box fixture constructor requires positive dimensions"));
     }
-    let [x, y, z] = origin;
     let [dx, dy, dz] = size;
-    let corners = [
-        [x, y, z],
-        [x + dx, y, z],
-        [x + dx, y + dy, z],
-        [x, y + dy, z],
-        [x, y, z + dz],
-        [x + dx, y, z + dz],
-        [x + dx, y + dy, z + dz],
-        [x, y + dy, z + dz],
-    ];
-    let mut vertices = Vec::new();
-    for point in corners {
-        vertices.push(add_vertex(brep, v3(point))?);
-    }
-    let inside = brep
-        .add_region_record(Region {
-            in_brep: true,
-            ..Region::default()
-        })
+    let mut brep = solidcore::primitive::api_primitives::create_box(kernel, v3(origin), dx, dy, dz)
         .map_err(setup)?;
-    let shells = [add_shell(brep, region)?, add_shell(brep, inside)?];
-    let mut edges: Vec<(usize, usize, EdgeId)> = Vec::new();
-    // Plane construction order follows SmPrimitiveCreation.cpp:287-344. Native
-    // post-stitch face traversal/order is intentionally NOT inferred from it.
-    for (quad, point, x_axis, y_axis, domain) in [
-        ([0, 1, 2, 3], origin, Vec3::X, Vec3::Y, [dx, dy]),
-        ([4, 5, 6, 7], [x, y, z + dz], Vec3::X, Vec3::Y, [dx, dy]),
-        ([0, 3, 7, 4], origin, Vec3::Y, Vec3::Z, [dy, dz]),
-        ([1, 2, 6, 5], [x + dx, y, z], Vec3::Y, Vec3::Z, [dy, dz]),
-        ([0, 1, 5, 4], origin, Vec3::X, Vec3::Z, [dx, dz]),
-        ([3, 2, 6, 7], [x, y + dy, z], Vec3::X, Vec3::Z, [dx, dz]),
-    ] {
-        let mut boundary = Vec::new();
-        for index in 0..4 {
-            let a = *at(&quad, index)?;
-            let b = *at(&quad, (index + 1) % 4)?;
-            if let Some(&(first, _, edge)) = edges.iter().find(|&&(first, second, _)| {
-                (first == a && second == b) || (first == b && second == a)
-            }) {
-                boundary.push((edge, first == a));
-            } else {
-                let curve = line(v3(*at(&corners, a)?), v3(*at(&corners, b)?), [0.0, 1.0], 3)?;
-                let edge = add_edge(
-                    brep,
-                    [*at(&vertices, a)?, *at(&vertices, b)?],
-                    curve,
-                    [0.0, 1.0],
-                )?;
-                edges.push((a, b, edge));
-                boundary.push((edge, true));
-            }
-        }
-        let surface = Surface::from(Plane::new(
-            v3(point),
-            x_axis,
-            y_axis,
-            point2([1.0, 1.0]),
-            &Extent2d::from_bounds(0.0, 0.0, domain[0], domain[1]),
-        ));
-        rectangular_face(
-            brep,
-            surface,
-            shells,
-            [
-                *at(&vertices, quad[0])?,
-                *at(&vertices, quad[1])?,
-                *at(&vertices, quad[2])?,
-                *at(&vertices, quad[3])?,
-            ],
-            [
-                *at(&boundary, 0)?,
-                *at(&boundary, 1)?,
-                *at(&boundary, 2)?,
-                *at(&boundary, 3)?,
-            ],
-        )?;
+    if brep.faces().len() != 6 || brep.edges().len() != 12 || brep.vertices().len() != 8 {
+        return Err(bad("box constructor did not build a closed box"));
     }
-    Ok(())
+    brep.set_tolerance(tolerance);
+    Ok(brep)
 }
 
 const SOURCE: BrepId = BrepId::from_index(17);
@@ -1531,12 +1469,12 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
     let mut source = input
         .source
         .as_ref()
-        .map(|fixture| build(&kernel, fixture, input.tolerance))
+        .map(|fixture| build(&mut kernel, fixture, input.tolerance))
         .transpose()?;
     let mut foreign = input
         .foreign
         .as_ref()
-        .map(|fixture| build(&kernel, fixture, input.tolerance))
+        .map(|fixture| build(&mut kernel, fixture, input.tolerance))
         .transpose()?;
     let mut records = BTreeMap::new();
     let mut attributes = AttributeStore::default();
@@ -2035,8 +1973,8 @@ mod tests {
             .into_iter()
             .chain(result_lists)
             .all(|h| h.type_code == 0));
-        let mut source = build(&Kernel::default(), &sheet([0.0; 3], 1.0, 0), 1e-6).unwrap();
-        let mut foreign = build(&Kernel::default(), &sheet([0.0; 3], 1.0, 0), 1e-6).unwrap();
+        let mut source = build(&mut Kernel::default(), &sheet([0.0; 3], 1.0, 0), 1e-6).unwrap();
+        let mut foreign = build(&mut Kernel::default(), &sheet([0.0; 3], 1.0, 0), 1e-6).unwrap();
         let mut records = BTreeMap::new();
         register_notification_brep(&mut records, &mut source, 1);
         let source_count = records.len();
@@ -2065,7 +2003,7 @@ mod tests {
                 2,
             ),
         ] {
-            let brep = build(&Kernel::default(), &fixture, 1e-6).unwrap();
+            let brep = build(&mut Kernel::default(), &fixture, 1e-6).unwrap();
             assert_eq!(brep.regions().len(), regions);
             assert_eq!(brep.shells().len(), shells);
             let infinite = brep.infinite_region().unwrap();
@@ -2092,13 +2030,13 @@ mod tests {
         let mut input = input(Operation::ApiShell);
         input.foreign = Some(sheet([20.0, 3.0, -4.0], 3.0, 1));
         let source = build(
-            &Kernel::default(),
+            &mut Kernel::default(),
             input.source.as_ref().unwrap(),
             input.tolerance,
         )
         .unwrap();
         let foreign = build(
-            &Kernel::default(),
+            &mut Kernel::default(),
             input.foreign.as_ref().unwrap(),
             input.tolerance,
         )
@@ -2320,7 +2258,7 @@ mod tests {
         let fixture = Fixture::Empty;
         let block = empty_block(3e-12);
         let projection = native_projection(&fixture, &decode_block(&block).unwrap()).unwrap();
-        let brep = build(&Kernel::default(), &fixture, 3e-12).unwrap();
+        let brep = build(&mut Kernel::default(), &fixture, 3e-12).unwrap();
         assert_eq!(
             projection,
             rust_projection(&Kernel::default(), &fixture, &brep).unwrap()
@@ -2413,13 +2351,13 @@ mod tests {
                 Operation::Solid,
                 sheet([0.0; 3], 1.0, 0),
                 false,
-                "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
+                "returned offset B-rep / temporary (no Rust output adapter)",
             ),
             (
                 Operation::Extended,
                 sheet([0.0; 3], 1.0, 0),
                 true,
-                "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
+                "returned offset B-rep / temporary (no Rust output adapter)",
             ),
         ] {
             for distance in [0.0, 1.9999999999999995e-6, 2e-6, 2.0000000000000003e-6] {
@@ -2476,7 +2414,7 @@ mod tests {
             origin: [0.0; 3],
             size: [10.0; 3],
         };
-        let brep = build(&Kernel::default(), &box_fixture, 1e-6).unwrap();
+        let brep = build(&mut Kernel::default(), &box_fixture, 1e-6).unwrap();
         let projection = rust_projection(&Kernel::default(), &box_fixture, &brep).unwrap();
         assert_eq!(projection.counts, [6, 12, 8]);
         assert_eq!(projection.kinds, [1; 6]);
@@ -2498,8 +2436,9 @@ mod tests {
     #[test]
     fn face_geometry_paths_reach_distinct_actual_callees() {
         // MakeWireEdgeVertex now runs, and concrete-Surface CrvOnSurf construction
-        // lets the rounded paths get through DropCurve and ShrinkGeometry too:
-        // both the rounded and the extended ones stop at the edge-use offset adapter.
+        // lets the rounded and extended paths through DropCurve, ShrinkGeometry and
+        // the edge-use offset creator: they stop at the merge, at the gap-fill
+        // evaluation, or return a B-rep the runner cannot yet compare.
         let context = CaseContext {
             root: repo_root(),
             seeds: 0,
@@ -2508,28 +2447,28 @@ mod tests {
         for (name, owner, symbol) in [
             (
                 "static_offset_real_plane_sheet_round",
-                "offset.offset_executive_p1",
-                "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
+                "boolean.merge_p3",
+                "SmMerge::PiecewiseMerge",
             ),
             (
                 "static_offset_real_plane_sheet_extended",
-                "offset.offset_executive_p1",
-                "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
+                "harness:offset-result-adapter",
+                "returned offset B-rep / temporary (no Rust output adapter)",
             ),
             (
                 "member_sheet_round_skip_true_still_real_geometry",
-                "offset.offset_executive_p1",
-                "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
+                "harness:offset-result-adapter",
+                "returned offset B-rep / temporary (no Rust output adapter)",
             ),
             (
                 "member_sheet_extended_dispatch_ignores_skip",
-                "offset.offset_executive_p1",
-                "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
+                "topology.edgeuse_p3",
+                "SmEdgeuse::NormalizedEvaluate",
             ),
             (
                 "extended_sheet_direct_independent_flags",
-                "offset.offset_executive_p1",
-                "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
+                "topology.edgeuse_p3",
+                "SmEdgeuse::NormalizedEvaluate",
             ),
         ] {
             let case = fixtures.iter().find(|case| case.name == name).unwrap();

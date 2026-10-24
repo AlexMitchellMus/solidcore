@@ -333,6 +333,7 @@ impl OffsetExecutive {
                         edgeuse,
                         radial,
                         mark_type,
+                        &marked,
                         notifications,
                     ))?;
                 }
@@ -457,6 +458,7 @@ impl OffsetExecutive {
                             edgeuse,
                             radial,
                             mark_type,
+                            &marked,
                             notifications,
                         )?;
                         marked.insert(radial);
@@ -486,6 +488,7 @@ impl OffsetExecutive {
                     edgeuse,
                     radial,
                     mark_type,
+                    &marked,
                     notifications,
                 )?;
             }
@@ -744,13 +747,15 @@ impl OffsetExecutive {
         Ok(false)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn mapped_edge_prefix(
         &mut self,
         kernel: &mut Kernel,
-        original: &Brep,
+        original: &mut Brep,
         edgeuse: EdgeuseId,
         radial: EdgeuseId,
         mark_type: MarkType,
+        marked: &BTreeSet<EdgeuseId>,
         notifications: &mut OffsetNotifications<'_>,
     ) -> Result<()> {
         let mut stores = NotificationStores {
@@ -758,12 +763,13 @@ impl OffsetExecutive {
             attributes: &mut *notifications.attributes,
             key_of: notifications.original_key_of,
         };
-        self.build_offset_of_edgeuses_with_kernel_context(
+        self.build_offset_of_edgeuses_with_marked(
             kernel,
             original,
             edgeuse,
             radial,
             mark_type,
+            marked,
             &mut stores,
             notifications.result_key_of,
             notifications.result_curve_ref,
@@ -1780,10 +1786,11 @@ mod tests {
                     let mut notifications = NotificationFixture::new(&original);
                     exec.mapped_edge_prefix(
                         &mut kernel,
-                        &original,
+                        &mut original,
                         first,
                         second,
                         MarkType::Mark,
+                        &BTreeSet::new(),
                         &mut notifications.context(),
                     )
                 },
@@ -1793,7 +1800,7 @@ mod tests {
             assert_eq!(kernel.context.current_mark(MarkType::Mark), 1);
             let missing = EdgeuseId::from_index(99);
             assert!(matches!(
-                { let mut notifications = NotificationFixture::new(&original); exec.mapped_edge_prefix(&mut kernel, &original, first, missing, MarkType::Mark, &mut notifications.context()) },
+                { let mut notifications = NotificationFixture::new(&original); exec.mapped_edge_prefix(&mut kernel, &mut original, first, missing, MarkType::Mark, &BTreeSet::new(), &mut notifications.context()) },
                 Err(SolidError::NotFound { entity: EntityRef::Edgeuse(id), .. }) if id == missing
             ));
         }
@@ -2135,17 +2142,25 @@ mod tests {
         let status = with_mark_lock(&mut kernel, ALL_MARKS, |kernel, mark| {
             assert_eq!(mark, MarkType::Mark2);
             let current = kernel.context.current_mark(mark);
-            let result =
-                exec.mapped_edge_prefix(kernel, &original, old, old, mark, &mut fixture.context());
+            let result = exec.mapped_edge_prefix(
+                kernel,
+                &mut original,
+                old,
+                old,
+                mark,
+                &BTreeSet::new(),
+                &mut fixture.context(),
+            );
             assert_eq!(kernel.context.current_mark(mark), current);
             assert!(kernel.context.is_mark_locked(mark));
             result
         })
         .unwrap();
-        assert_dependency(
-            status,
-            "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
-            "offset.offset_executive_p1",
+        // EdgeuseOffset dereferences the wire use's null face (undefined upstream)
+        // only after the edge and vertex notifications below.
+        assert!(
+            matches!(&status, Err(SolidError::InvalidInput { reason, .. }) if *reason == "edge use without face"),
+            "{status:?}"
         );
         for (entity, value) in entities {
             assert_ne!(original_key(entity).key, result_key(entity).key);
