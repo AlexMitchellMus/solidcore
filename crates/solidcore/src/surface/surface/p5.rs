@@ -2636,11 +2636,11 @@ mod tests {
     /// same results and the same (possibly expanded) surfaces as the plain path.
     #[test]
     fn cover_with_context_matches_the_plain_path_without_faces() {
+        type Case = (fn() -> Surface, Option<Extent2d>);
         let k = Kernel::default();
         let tilted = || Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::new(0.0, 1e-3, 1.0)));
         let sub = Extent2d::from_points(Point2::new(0.25, 0.25), Point2::new(0.5, 0.75));
-        let pairs: [(fn() -> Surface, Option<Extent2d>); 3] =
-            [(xy_plane, None), (xy_plane, Some(sub)), (tilted, None)];
+        let pairs: [Case; 3] = [(xy_plane, None), (xy_plane, Some(sub)), (tilted, None)];
         for (other_of, this_domain) in pairs {
             for want_merged in [false, true] {
                 let (mut a0, mut b0) = (xy_plane(), other_of());
