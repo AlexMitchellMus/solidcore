@@ -1268,12 +1268,15 @@ mod trim_cache_tests {
     #[test]
     fn valid_trim_cache_fast_path_is_observed() {
         let mut input: Inputs = serde_json::from_value(serde_json::json!({
-            "brep": {"kind": "face", "surface": {"plane": {"o": [2,-3,5], "n": [0,0,1]}}, "dom": [-5,-3,5,3]},
+            "brep": {"kind": "face", "surface": {"bspline": {
+                "net": [[[0,0,0,1],[0,3,0,1]], [[5,0,0,1],[5,3,0.001,1]]],
+                "p": 1, "q": 1, "u": [0,0,1,1], "v": [0,0,1,1]}}, "dom": [0,0,1,1]},
             "edits": [{"kind": 3, "sel": 0, "value": 0}, {"kind": 0, "sel": 0, "value": 0.001}],
             "op": "point_classify", "face": 0,
             "at": {"mode": "frac", "a": 0.37, "b": 0.41},
             "cache_mode": "valid", "repeats": 2, "pc_tol": 0.0002
-        })).unwrap();
+        }))
+        .unwrap();
         let native = cpp(&Kernel::default(), &input).unwrap();
         let actual = rust(&input).unwrap();
         assert!(crate::compare::compare(&native, &actual, &[]).pass());
