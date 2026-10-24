@@ -249,7 +249,7 @@ impl FilletCorner {
                 geometry,
                 solver_rail,
                 Some(fv),
-                crate::nurbs::b_spline_surface_n_lib::p2::OrientType::Same,
+                crate::nurbs::b_spline_surface_n_lib::p2::OrientType::Unknown,
                 None,
                 solver,
                 target,
