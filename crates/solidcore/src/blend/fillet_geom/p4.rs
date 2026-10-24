@@ -1380,7 +1380,7 @@ impl FilletBrep {
             None,
             None,
             fillet_surface,
-            &surface2,
+            surface2,
             approx_tol,
             ang_tol,
             false,

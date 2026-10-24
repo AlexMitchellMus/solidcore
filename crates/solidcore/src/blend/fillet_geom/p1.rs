@@ -11,6 +11,7 @@
 //! | [`FilletErrorType`], [`FilletCornerType`], [`FilStatus`], [`FilletVertexType`], [`BoundaryTrimmingType`], [`FilletEdgeType`], [`FilletGeomType`] | the enums of `SmFilletGeom.h` |
 //! | [`FilletBrep`]                                  | `SmFilletBrep` (`SmFilletBrep()` CO-PORTED from `blend.fillet_geom_p6`; `~SmFilletBrep` is `Drop`) |
 //! | [`FilletBrep::add_edge`], [`FilletBrep::remove_edge`] | `SmFilletBrep::AddEdge`, `RemoveEdge`  |
+//! | [`CornerLookup`]                                | a vertex's / edge's `GetFilletCorner()` dereferenced (the executive's `m_vFilletCorners`, or the running corner's `this`) and the executive's `m_vExtendedSurfacesMap` |
 //! | [`FilletVertexuse`], [`FilletVertexuse::new`]   | `SmFilletVertexuse` members, `SmFilletVertexuse()` (`~SmFilletVertexuse` is `Drop`) |
 //! | [`FilletVertexuse::tsect_pnt`], [`FilletVertexuse::tsect_pnt_mut`], [`FilletVertexuse::uv_point`], [`FilletVertexuse::set_uv_point`], [`FilletVertexuse::set_tsect_pnt`] | `GetTsectPnt`, `GetUVPoint`, `SetUVPoint`, `SetTsectPnt` |
 //! | [`FilletBrep::set_vertexuse_property`]          | `SmFilletVertexuse::SetProperty`           |

@@ -84,9 +84,11 @@
 //! - **Corner geometry steps.** `CalcCornerVertGeom` / `CalcCornerEdgeGeom` call
 //!   `SmFilletVertex::CalcCornerVertGeom` / `SmFilletEdge::CalcCornerEdgeGeom`
 //!   ([`FilletBrep::calc_corner_vert_geom`] /
-//!   [`FilletBrep::calc_corner_edge_geom_of_corner`]) per vertex / edge, with the
-//!   [`CornerEnv`]'s kernel, target B-rep and solvers. The edge calculators that read the
-//!   edge's corner get this corner (upstream asserts the edge is its own). The variable-radius law-interval adjustment of `CalcCornerVertGeom` is
+//!   [`FilletBrep::calc_corner_edge_geom`]) per vertex / edge, with the
+//!   [`CornerEnv`]'s kernel, target B-rep and solvers. The vertex and edge calculators
+//!   that read the vertex's or edge's corner get this corner and the executive data
+//!   ([`CornerLookup::of_corner`]: upstream's corners only reach their own vertices and
+//!   edges). The variable-radius law-interval adjustment of `CalcCornerVertGeom` is
 //!   ported; resolving a fillet geometry's solver to its variable-radius type
 //!   (`OffsetRadiiCanChange`, the `SmVariableRadiusFS` cast) needs the executive's
 //!   solver store and is `Unported`
