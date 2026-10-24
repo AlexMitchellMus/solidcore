@@ -911,7 +911,13 @@ pub fn make_faceuse_attempt_with(
         .ok_or(dangling(OP_FACEUSE, "MakeFace made no face"))?;
 
     // the surface copy's attributes (`CopyAndAddAnalytics`)
-    copy_surface_attributes(&mut *copy.vertices.attributes, other, face_to_make, brep, new_face)?;
+    copy_surface_attributes(
+        &mut *copy.vertices.attributes,
+        other,
+        face_to_make,
+        brep,
+        new_face,
+    )?;
 
     relations.relate_faces(brep, new_face, other, face_to_make)?;
     let (source, dest) = (
@@ -2104,9 +2110,9 @@ mod tests {
         assert_eq!(copy.vertices.records[&edge_key(edge).key].all_flags(), 17);
     }
 
-    /// MakeFaceuse's surface copy carries the source surface's attributes: a reference
+    /// `MakeFaceuse`'s surface copy carries the source surface's attributes: a reference
     /// `SM_AI_SURFACEMAP` lists both the source surface and its copy as users (as
-    /// PiecewiseMerge's RegisterExistingSSI needs), and an owner-less surface goes by
+    /// `PiecewiseMerge`'s `RegisterExistingSSI` needs), and an owner-less surface goes by
     /// its face's arena name.
     #[test]
     fn surface_copy_carries_the_surface_map_attribute_to_a_second_user() {
@@ -2151,7 +2157,10 @@ mod tests {
         attributes.add_attribute(from.key, map).unwrap();
 
         copy_surface_attributes(&mut attributes, &other, from_face, &brep, to_face).unwrap();
-        assert_eq!(attributes.find_attribute(to.key, ids::SURFACEMAP), Some(map));
+        assert_eq!(
+            attributes.find_attribute(to.key, ids::SURFACEMAP),
+            Some(map)
+        );
         assert_eq!(attributes.users(map).unwrap(), vec![from.key, to.key]);
         // a second copy onto the same surface (the face notification under the same
         // name) adds no second reference
@@ -2172,7 +2181,10 @@ mod tests {
             attributes.find_attribute(arena.key, ids::SURFACEMAP),
             Some(map)
         );
-        assert_eq!(attributes.users(map).unwrap(), vec![from.key, to.key, arena.key]);
+        assert_eq!(
+            attributes.users(map).unwrap(),
+            vec![from.key, to.key, arena.key]
+        );
     }
 
     #[test]
