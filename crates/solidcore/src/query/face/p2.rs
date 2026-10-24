@@ -1647,8 +1647,6 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
     }
 
     // 2. classify each interval relative to the face
-    let snap = snapshot.get_or_insert_with(|| b.clone_sharing_surface_caches());
-    let _ = crate::topology::face::p3::create_uv_trim_curves(k, snap, f, true, None);
     let src_zone_tol_3d = src_zone_tol_3d_of(k, Some(cc));
     let face_handle = objects.face(f);
     for ii in 0..cc.size() {
