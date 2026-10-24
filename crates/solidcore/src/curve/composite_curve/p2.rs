@@ -261,7 +261,7 @@ fn take_cache(
     index: usize,
     handle: Option<PieceHandle>,
 ) -> Option<CurveCache<PieceHandle>> {
-    let slot = 2 * index + handle.map(|h| usize::from(h.1)).unwrap_or(0);
+    let slot = 2 * index + handle.map_or(0, |h| usize::from(h.1));
     let (built_for, cache) = caches.get_mut(slot)?.take()?;
     (Some(built_for) == handle).then_some(cache)
 }
