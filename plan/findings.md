@@ -18969,3 +18969,30 @@ preserves all four control nets and u knots exactly, and reproduces the last
 round's complete input and 4125.906 mm net; the other rounds' tiny lower v extension
 bounds can differ in their last bits (at most 7e-20 in the checked run). The saved
 JSON inputs fix every bit for differential testing.
+
+## Issue #506: SurfaceCache per-evaluation cost in surface_point_solve_p2 (fix/point-solve-perf, 2026-10-24)
+
+Reproduction note: the original `fuzz00474` reproduction file (`fuzz-out/n2000/`, not
+committed) is not available; the deterministic mutation numbering has drifted since the
+sweep (the unit's base-case list changed), so the regenerated `fuzz00474` runs in 0.02 s
+on both sides. The regime is instead reproduced with constructed near-degenerate cases
+(3 x 5 rational B-spline spanning `1e-4`, `wrap = true`, `solver = 10`, smallest v-knot
+span `2.5e-5`), run through `FUZZ_CORPUS_DIR` (both sides agree, as required):
+
+| op | C++ | Rust |
+|---|---|---|
+| rough | 51.0 s | 35.5 s |
+| push | ~40 s | ~40 s |
+| norms | ~43 s | ~43 s |
+| adjust | ~39 s | ~38 s |
+| solve | ~68 s | ~67 s |
+
+The port's sample profile (macOS `sample`, the Rust phase of `rough`, 10 s) puts the
+Rust time in `surface::surface_cache::{p1::compute_bezier_approximation_memo,
+p3::net_constants, p3::patch_boxes}` -> `evaluate_point`/`derivs`/`eval()` ->
+`nurbs::nurbs_srf::compute_surf_constants` over the subdivision tree, i.e. the same
+structure the 2026-10-21 entry ("Fuzz 'Rust-only' hangs") measured: identical call
+counts on both sides, the gap is per-evaluation cost, not more work. On this
+constructed case the C++ is actually slower (51 s to 35 s); the exact original input
+made C++ 11 s / Rust 21 s, so the levers below are checked against bit-identical
+output rather than against wall-clock parity on every input.
