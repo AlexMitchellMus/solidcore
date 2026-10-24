@@ -672,7 +672,13 @@ fn make_face_attempt_with_state(
         return Err(SolidError::null_pointer(OP));
     };
     let mut transfer = p6::FaceSurfaceTransfer::new(surface);
-    let attempt = make_face_transfer_attempt_with_state(
+    let mut attempt = MakeFaceAttempt {
+        status: Ok(()),
+        region: None,
+        shell: None,
+        face: None,
+    };
+    make_face_transfer_attempt_with_state(
         k,
         b,
         region,
@@ -686,12 +692,8 @@ fn make_face_attempt_with_state(
         this_face,
         env,
         true,
-    );
-    if let Err(error) = &attempt.status {
-        if !matches!(error, SolidError::Upstream { .. }) {
-            return Err(error.clone());
-        }
-    }
+        &mut attempt,
+    )?;
     Ok(attempt)
 }
 
@@ -710,70 +712,74 @@ fn make_face_transfer_attempt_with_state(
     this_face: &dyn Fn(FaceId) -> ObjectRef,
     env: &mut ed::NotifyState<'_>,
     legacy: bool,
-) -> MakeFaceAttempt {
-    let mut out = MakeFaceAttempt {
+    out: &mut MakeFaceAttempt,
+) -> Result<()> {
+    *out = MakeFaceAttempt {
         status: Ok(()),
         region: None,
         shell: None,
         face: None,
     };
-    out.status = (|| {
-        transfer.owned_surface()?;
-        let region = region.or(b.infinite_region());
-        let old_owner = transfer.owned_surface()?.owner();
-        let options = p6::FaceTopologyOptions {
-            region,
-            edge_loops: loops,
-            edgeuses,
-            loop_vertices,
-            verify_radial_sectors: opts.verify_radial_sectors,
-            calculate_trims: opts.calculate_trims,
-            uv_curves: opts.uv_curves,
-            surface_key: None,
-        };
-        let attempt = if legacy {
-            let mut copy = p6::FaceSurfaceTransfer::new(transfer.owned_surface()?.clone());
-            p6::make_face_topology_transfer_attempt_with_state(
-                k,
-                b,
-                &mut Marks::default(),
-                env,
-                &mut copy,
-                orientation,
-                &options,
-            )
-        } else {
-            p6::make_face_topology_transfer_attempt_with_state(
-                k,
-                b,
-                &mut Marks::default(),
-                env,
-                transfer,
-                orientation,
-                &options,
-            )
-        };
-        // Native restores the pre-existing owner before checking topology status.
-        transfer.surface_mut(b)?.set_owner(old_owner);
-        out.region = attempt.region;
-        out.shell = attempt.shell;
-        out.face = attempt.face;
-        attempt.status?;
-        let new_face = attempt.face.ok_or_else(|| null("MakeFace made no face"))?;
-        b.face_mut(new_face)?.uv_domain = *uv_domain;
-        let tol = b.tolerance();
-        face_set_tolerance(b, new_face, tol, true, true)?;
-        let owner = this_face(new_face);
-        if legacy {
-            transfer.install(b, new_face)?;
+    transfer.owned_surface()?;
+    let region = region.or(b.infinite_region());
+    let old_owner = transfer.owned_surface()?.owner();
+    let options = p6::FaceTopologyOptions {
+        region,
+        edge_loops: loops,
+        edgeuses,
+        loop_vertices,
+        verify_radial_sectors: opts.verify_radial_sectors,
+        calculate_trims: opts.calculate_trims,
+        uv_curves: opts.uv_curves,
+        surface_key: None,
+    };
+    let attempt = if legacy {
+        let mut copy = p6::FaceSurfaceTransfer::new(transfer.owned_surface()?.clone());
+        p6::make_face_topology_transfer_attempt_with_state(
+            k,
+            b,
+            &mut Marks::default(),
+            env,
+            &mut copy,
+            orientation,
+            &options,
+        )
+    } else {
+        p6::make_face_topology_transfer_attempt_with_state(
+            k,
+            b,
+            &mut Marks::default(),
+            env,
+            transfer,
+            orientation,
+            &options,
+        )
+    };
+    // Native restores the pre-existing owner before checking topology status.
+    transfer.surface_mut(b)?.set_owner(old_owner);
+    out.region = attempt.region;
+    out.shell = attempt.shell;
+    out.face = attempt.face;
+    if let Err(error) = attempt.status {
+        if matches!(error, SolidError::Upstream { .. }) {
+            out.status = Err(error);
+            return Ok(());
         }
-        transfer.surface_mut(b)?.set_owner(Some(owner));
-        b.geometry_owner_keys
-            .insert(EntityRef::Face(new_face), owner);
-        b.sync_face_surface_tolerance(new_face)?;
-        Ok(())
-    })();
-    out
+        return Err(error);
+    }
+    let new_face = attempt.face.ok_or_else(|| null("MakeFace made no face"))?;
+    b.face_mut(new_face)?.uv_domain = *uv_domain;
+    let tol = b.tolerance();
+    face_set_tolerance(b, new_face, tol, true, true)?;
+    let owner = this_face(new_face);
+    if legacy {
+        transfer.install(b, new_face)?;
+    }
+    transfer.surface_mut(b)?.set_owner(Some(owner));
+    b.geometry_owner_keys
+        .insert(EntityRef::Face(new_face), owner);
+    b.sync_face_surface_tolerance(new_face)?;
+    Ok(())
 }
 
 /// `MakeFace`: makes a face on `surface` (over `uv_domain`) in `region` (the infinite
@@ -1466,7 +1472,13 @@ fn make_face_with_curves_transfer_impl(
         }
     }
 
-    let made = make_face_transfer_attempt_with_state(
+    let mut made = MakeFaceAttempt {
+        status: Ok(()),
+        region: None,
+        shell: None,
+        face: None,
+    };
+    let result = make_face_transfer_attempt_with_state(
         k,
         b,
         region,
@@ -1480,12 +1492,14 @@ fn make_face_with_curves_transfer_impl(
         this_face,
         state,
         legacy,
+        &mut made,
     );
     out.region = made.region;
     if made.shell.is_some() && out.shell.is_some() {
         out.shell = made.shell;
     }
     out.face = made.face;
+    result?;
     made.status?;
 
     // with curves on surface: make the UV trim curves from the given UV curves
