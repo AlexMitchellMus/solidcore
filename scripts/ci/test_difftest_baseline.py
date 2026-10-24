@@ -336,6 +336,37 @@ class BaselineTests(unittest.TestCase):
             result = invoke("retained")
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), "--baseline " + str(root / "retained/reports"))
+            # The producer prerequisite adds counts without a schema-version bump.
+            # A length-only known mismatch is ambiguous without that actual count,
+            # even when an unrelated new unit is selected by the current plan.
+            mixed = valid_report()
+            mixed.update(status="partial", cases_total=2, cases_known_mismatch=1)
+            mixed["cases"][0]["exact_compared"] = 1
+            mixed["cases"].append(dict(name="length-only", outcome="known_mismatch",
+                **{"pass": False}, values_compared=0,
+                mismatches=[dict(field="ints.ids.len", cpp="2", rust="1")]))
+            for label, explicit_count in [("legacy-length", False), ("producer-length", True)]:
+                if explicit_count:
+                    mixed["cases"][1]["exact_compared"] = 0
+                migrated = archive([("a.b.json", json.dumps(mixed))])
+                zipped.write_bytes(migrated)
+                art.update(digest="sha256:" + hashlib.sha256(migrated).hexdigest(),
+                           size_in_bytes=len(migrated))
+                for api in [prefix + "runs/101/artifacts?per_page=100&page=1",
+                            prefix + "artifacts/201"]:
+                    Path(paths[api]).write_text(json.dumps(
+                        {"artifacts": [art]} if "/artifacts?" in api else art))
+                result = invoke(label)
+                if explicit_count:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    saved = json.loads((root / label / "reports/a.b.json").read_text())
+                    self.assertEqual(saved["cases"][1]["exact_compared"], 0)
+                    self.assertNotIn("schema_version", saved)
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("legacy known-mismatch integer coverage is ambiguous", result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertFalse((root / label).exists())
             # Explicit diagnostic/first-push semantics remain explicit; PR inputs above did not bypass.
             before = calls.read_text()
             payload.pop("pull_request")
