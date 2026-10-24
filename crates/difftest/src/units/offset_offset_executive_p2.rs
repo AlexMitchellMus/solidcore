@@ -88,6 +88,7 @@ use solidcore::offset::offset_executive::p2::{
 use solidcore::query::api_queries::BrepRef;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::{Surface, SurfaceKind};
+use solidcore::topology::brep::p1 as brep_p1;
 use solidcore::topology::topology::Topology;
 use solidcore::topology::{
     Brep, BrepId, Edge, EdgeId, Edgeuse, EdgeuseOwner, FaceId, Region, RegionId, Shell, ShellId,
