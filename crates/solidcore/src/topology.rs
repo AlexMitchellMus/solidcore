@@ -1371,6 +1371,60 @@ mod tests {
     }
 
     #[test]
+    fn copy_standing_for_the_brep_keeps_geometry_owners() {
+        use crate::curve::line::Line;
+        use crate::geom::object::ObjectRef;
+        use crate::surface::plane::Plane;
+        let mut b = Brep::new();
+        let s = b.add_shell().unwrap();
+        let (v0, v1) = (
+            b.add_vertex(Vec3::ZERO).unwrap(),
+            b.add_vertex(Vec3::X).unwrap(),
+        );
+        let e = b.add_edge(v0, v1).unwrap();
+        let f = b.add_face(s).unwrap();
+        let edge_owner = ObjectRef {
+            type_code: edge::TYPE,
+            key: ObjectKey(u64::from(e.index())),
+        };
+        let face_owner = ObjectRef {
+            type_code: face::p2::TYPE,
+            key: ObjectKey(u64::from(f.index())),
+        };
+        let mut curve =
+            Curve::from(Line::create_line_segment(3, Vec3::ZERO, Vec3::X, None).unwrap());
+        let _ = curve.set_owner(Some(edge_owner), None);
+        b.edge_mut(e).unwrap().curve = Some(curve);
+        let mut surface = Surface::from(Plane::new(
+            Vec3::ZERO,
+            Vec3::X,
+            Vec3::Y,
+            crate::math::Vec2::new(1.0, 1.0),
+            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        ));
+        surface.set_owner(Some(face_owner));
+        b.face_mut(f).unwrap().surface = Some(surface);
+
+        // the copy constructor resets the owners
+        let plain = b.clone();
+        assert_eq!(plain.edge(e).unwrap().curve.as_ref().unwrap().owner(), None);
+        assert_eq!(
+            plain.face(f).unwrap().surface.as_ref().unwrap().owner(),
+            None
+        );
+        // the copy standing for the B-rep keeps them
+        let copy = b.clone_standing_for_self().unwrap();
+        assert_eq!(
+            copy.edge(e).unwrap().curve.as_ref().unwrap().owner(),
+            Some(edge_owner)
+        );
+        assert_eq!(
+            copy.face(f).unwrap().surface.as_ref().unwrap().owner(),
+            Some(face_owner)
+        );
+    }
+
+    #[test]
     fn build_single_triangle_face() {
         let mut b = Brep::new();
         let s = b.add_shell().unwrap();
