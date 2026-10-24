@@ -124,6 +124,27 @@
           "checkpoint": "first_vertex_geometry"
         }
       }
+    },
+    {
+      "name": "real-box-corner-vertices-component-actual-session",
+      "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:1940 (shared corner-vertex component; smoothing omitted on both sides)",
+      "inputs": {
+        "real_solid": {
+          "dimensions": [
+            10,
+            20,
+            30
+          ],
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            0
+          ],
+          "checkpoint": "corner_vertices_component"
+        }
+      }
     }
   ]
 }

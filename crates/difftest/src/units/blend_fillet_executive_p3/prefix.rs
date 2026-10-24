@@ -1,5 +1,5 @@
-//! Actual shared parameter setup, corner creation and direct first-Nx1 topology.
-//! The direct topology checkpoint is not a full `CreateFilletBrep` prelude: neither
+//! Actual fillet setup and direct/shared corner components.
+//! These checkpoints are not a full `CreateFilletBrep` prelude: neither
 //! side runs smooth-sequence processing. With the one actual solver in these
 //! fixtures, its native `while (count > 1)` loop performs no work.
 use super::{label, section, status, take_section, Checkpoint, RealSolid};
@@ -177,6 +177,13 @@ pub(super) fn run(
             Ok(()) => 0.0,
             Err(error) => status(error)?,
         };
+        if statuses[1] == 0.0 && input.checkpoint == Checkpoint::CornerVerticesComponent {
+            prior = snapshot(&session, &mut Vec::new())?;
+            statuses[2] = match session.create_corner_vertices(k) {
+                Ok(()) => 0.0,
+                Err(error) => status(error)?,
+            };
+        }
         if statuses[1] == 0.0
             && matches!(
                 input.checkpoint,
@@ -241,6 +248,45 @@ pub(super) fn run(
         section(&mut out, &geometry_state);
         section(&mut out, &geometry_values);
     }
+    if input.checkpoint == Checkpoint::CornerVerticesComponent {
+        let mut flags = Vec::new();
+        let mut vertex_state = Vec::new();
+        let mut geometry = Vec::new();
+        for (corner_index, object) in session.executive().corners.iter().enumerate() {
+            let FilletObject::Corner(id) = *object else {
+                return Err(invalid("executive corner is not a corner"));
+            };
+            let corner = session.corner(id)?;
+            flags.extend([
+                corner_index as f64,
+                f64::from(corner.is_blending_corner()),
+                f64::from(corner.is_tangent_corner()),
+                f64::from(corner.is_calc_as_const_rad()),
+            ]);
+            for (index, &fv) in corner.vertices.iter().enumerate() {
+                let vertex = session.pseudo_brep().fillet_vertex(fv)?;
+                vertex_state.extend([
+                    corner_index as f64,
+                    index as f64,
+                    f64::from(vertex.status() as u32),
+                    f64::from(vertex.is_processed()),
+                ]);
+                if vertex.is_processed() {
+                    let record = session.pseudo_brep().brep().vertex(fv)?;
+                    geometry.extend([
+                        record.point.x,
+                        record.point.y,
+                        record.point.z,
+                        record.tolerance,
+                        vertex.original_t_param(),
+                    ]);
+                }
+            }
+        }
+        section(&mut out, &flags);
+        section(&mut out, &vertex_state);
+        section(&mut out, &geometry);
+    }
     Ok(out)
 }
 
@@ -291,6 +337,20 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
         );
         out.values.insert(
             "calculated_vertices".into(),
+            take_section(&mut values)?.to_vec(),
+        );
+    }
+    if checkpoint == Checkpoint::CornerVerticesComponent {
+        for key in ["corner_calculation_flags", "all_corner_vertex_state"] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid all-corner state"));
+            }
+            out.ints
+                .insert(key.into(), state.iter().map(|v| *v as i64).collect());
+        }
+        out.values.insert(
+            "all_corner_vertices".into(),
             take_section(&mut values)?.to_vec(),
         );
     }

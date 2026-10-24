@@ -20,6 +20,7 @@ enum Checkpoint {
     Corners,
     FirstTopology,
     FirstVertexGeometry,
+    CornerVerticesComponent,
 }
 impl Checkpoint {
     fn code(self) -> u32 {
@@ -29,6 +30,7 @@ impl Checkpoint {
             Self::Corners => 2,
             Self::FirstTopology => 3,
             Self::FirstVertexGeometry => 4,
+            Self::CornerVerticesComponent => 5,
         }
     }
 }

@@ -19177,3 +19177,19 @@ The same seven retained native/Rust fixtures now give six exact passes, zero
 failures and one later full-API deferral; all four vertex records and full topology
 agree, maximum relative error zero. The first failing comparison is retained as
 evidence that endpoint orientation/list order checks detect this regression.
+
+### Real two-corner fillet stage catches forced rail orientation (2026-10-24)
+
+`real-box-corner-vertices-component-actual-session` runs the shared production
+corner loop and its native counterpart, with smoothing omitted on both sides.
+All four actual vertex geometries and flags matched, but six directed rail
+integers differed: the Nx1 producer passed `Same` where the native omitted
+argument defaults to `Unknown` (SmFilletCorner.cpp6092; SmFilletGeom.h604).
+This forced both ends to insert at the front of each rail. Using the existing
+orientation inference fixes the identical fixture with every field retained.
+Seven real-box cases now give six exact value passes and one full-API deferral.
+The earlier direct vertex checkpoint now passes through the actual borrowed
+offset-surface provider. No finished fillet or mass parity is claimed.
+
+Full p3 after this component: 298 cases, 251 value passes, 47 deferred, zero
+failures, max_rel_err=0. The remaining deferrals belong to executive p1.

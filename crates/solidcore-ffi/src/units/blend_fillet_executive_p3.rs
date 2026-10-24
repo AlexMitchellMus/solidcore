@@ -177,7 +177,7 @@ extern "C" {
 /// uncomputed pseudo geometry are deliberately not read.
 pub fn real_prefix(input: &[f64], checkpoint: u32) -> Result<Vec<f64>, FfiError> {
     validate_real_solid(input)?;
-    if !(1..=4).contains(&checkpoint) {
+    if !(1..=5).contains(&checkpoint) {
         return Err(FfiError::InvalidArgument(
             "unknown fillet checkpoint".into(),
         ));

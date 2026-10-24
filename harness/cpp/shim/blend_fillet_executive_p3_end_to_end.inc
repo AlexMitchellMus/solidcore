@@ -118,6 +118,37 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_solid(
 #include <SmVertexuse.h>
 
 namespace fillet_real_solid {
+// The corner-vertex component of CreateFilletBrep, cpp1940–2059. Its
+// smooth-sequence prelude and later adjustment loop are omitted on BOTH sides.
+SmStatus corner_vertices_component(SmFilletExecutive& exec) {
+    for(ULONG i=0;i<exec.GetFilletCorners().GetSize();++i) {
+        auto* corner=exec.GetFilletCorners()[i];
+        const auto fail=[&](const TCHAR* comment) {
+            TCHAR name[SM_TBLOCK_SIZE];corner->GetName(name,SM_TBLOCK_SIZE);
+            exec.NoteFilletError(SM_FILERR_VERTEX_PROBLEM,corner->GetCornerType(),SM_FIL_FAILURE,
+                name,corner->GetFilletedVertex(),nullptr,nullptr,nullptr,nullptr,comment);
+            return SM_ERR;
+        };
+        if(corner->MakeCornerTopology()!=SM_SUCCESS)
+            return fail(_T("Fillet Corner Error: Unable to Make Topology"));
+        SmBoolean constant=corner->IsBlendingCorner();
+        if(constant && corner->IsTangentCorner()) {
+            SmTArray<SmFilletSolver*> solvers;corner->GetFilletSolvers(solvers);
+            if(solvers.GetSize()==2) {
+                auto* curve=solvers[0]->GetEdgeuse(0)->GetEdge()->GetCurve();
+                SmPoint3d start,end;curve->GetEnds(start,end);
+                const auto point=corner->GetFilletedVertex()->GetPoint();
+                const auto tolerance=2.0*corner->GetThisApproxTol3d();
+                if(start.DistanceBetween(point)>tolerance && end.DistanceBetween(point)>tolerance)
+                    constant=FALSE;
+            }
+        }
+        corner->SetCalcAsConstRad(constant);
+        if(corner->CalcCornerVertGeom()!=SM_SUCCESS)
+            return fail(_T("Fillet Corner Error: Unable to Compute Geometry"));
+    }
+    return SM_SUCCESS;
+}
 std::vector<double> snapshot(SmFilletExecutive& exec,SmTArray<SmVertex*>& target_vertices,SmTArray<SmEdge*>& target_edges,SmTArray<SmFace*>& target_faces, std::vector<double>& parameters) {
     SmTArray<SmEdgeuse*> target_uses;
     for(ULONG i=0;i<target_edges.GetSize();++i) {SmTArray<SmEdgeuse*> uses;target_edges[i]->GetEdgeuses(uses);target_uses.Append(uses);}
@@ -169,7 +200,7 @@ std::vector<double> snapshot(SmFilletExecutive& exec,SmTArray<SmVertex*>& target
 
 SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
     const double* input,int64_t n,int32_t checkpoint,double* out,int64_t cap,int64_t* out_len) {
-    if(checkpoint<1 || checkpoint>4 || !input || n<9) return SC_ERR_ARG;
+    if(checkpoint<1 || checkpoint>5 || !input || n<9) return SC_ERR_ARG;
     for(int64_t i=0;i<n;++i) if(!std::isfinite(input[i])) return SC_ERR_ARG;
     for(int i=0;i<3;++i) if(input[i]<=SM_EFF_ZERO) return SC_ERR_ARG;
     const double ulong_limit=std::ldexp(1.0,std::numeric_limits<ULONG>::digits);
@@ -199,7 +230,7 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
     std::vector<double> prior,parameters;
     if(prepare==SM_SUCCESS && checkpoint>=2) {
         const auto c=exec.CreateFilletCorners();corners=fillet_real_solid::status(c);
-        if(c==SM_SUCCESS && checkpoint>=3) {
+        if(c==SM_SUCCESS && (checkpoint==3 || checkpoint==4)) {
             // Direct first-corner operation after setup/corner creation. This
             // is not the complete CreateFilletBrep prelude: smooth-sequence
             // processing is omitted on BOTH sides, never reported as success.
@@ -210,6 +241,11 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
                 const auto t=corner->MakeCornerTopology();topology=fillet_real_solid::status(t);
                 if(t==SM_SUCCESS && checkpoint==4)vertex_geometry=fillet_real_solid::status(corner->CalcCornerVertGeom());
             }
+        }
+        if(c==SM_SUCCESS && checkpoint==5) {
+            std::vector<double> unused;
+            prior=fillet_real_solid::snapshot(exec,vertices,edges,faces,unused);
+            topology=fillet_real_solid::status(fillet_real_solid::corner_vertices_component(exec));
         }
     }
     auto state=fillet_real_solid::snapshot(exec,vertices,edges,faces,parameters);
@@ -231,6 +267,24 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
             }
         }
         fillet_real_solid::section(values,vertex_state);fillet_real_solid::section(values,vertex_values);
+    }
+    if(checkpoint==5) {
+        std::vector<double> flags,vertex_state,geometry;
+        for(ULONG c=0;c<exec.GetFilletCorners().GetSize();++c) {
+            auto* corner=exec.GetFilletCorners()[c];
+            flags.insert(flags.end(),{double(c),double(corner->IsBlendingCorner()),
+                double(corner->IsTangentCorner()),double(corner->IsCalcAsConstRad())});
+            SmTArray<SmFilletVertex*> vertices;corner->GetFilletVertices(vertices);
+            for(ULONG v=0;v<vertices.GetSize();++v) {
+                auto* vertex=vertices[v];
+                vertex_state.insert(vertex_state.end(),{double(c),double(v),double(vertex->GetStatus()),double(vertex->IsProcessed())});
+                if(vertex->IsProcessed()) {
+                    primitive_record::point(geometry,vertex->GetPoint());
+                    geometry.insert(geometry.end(),{vertex->GetTolerance(),vertex->GetOriginalTParam()});
+                }
+            }
+        }
+        fillet_real_solid::section(values,flags);fillet_real_solid::section(values,vertex_state);fillet_real_solid::section(values,geometry);
     }
     return sc_copy_out(values.data(),int64_t(values.size()),out,cap,out_len);
     SC_CATCH
