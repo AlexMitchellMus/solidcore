@@ -1444,6 +1444,34 @@ impl FilletCorner {
     /// failed edge the merge cannot absorb; `SM_ERR_NULL_POINTER` for a processed edge
     /// without curve; those of the squeeze.
     pub fn calc_corner_edge_geom(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
+        self.calc_corner_edge_geom_with(
+            env,
+            |env, corner, edge| {
+                env.pseudo.calc_corner_edge_geom(
+                    env.k,
+                    edge,
+                    CornerLookup::of_corner(env.corner, corner, env.exec),
+                    env.solvers,
+                    env.target,
+                )
+            },
+            |env| env.exec.do_global_merge,
+            |env| &mut *env.pseudo,
+        )
+    }
+
+    /// Calculate corner edges through live operations, preserving native slot,
+    /// squeeze, deletion and status-update order.
+    ///
+    /// # Errors
+    /// Actual calculator failures or the existing squeeze/deletion dependencies.
+    pub fn calc_corner_edge_geom_with<C>(
+        &mut self,
+        context: &mut C,
+        mut calculate: impl FnMut(&mut C, &Self, EdgeId) -> Result<()>,
+        global_merge: impl Fn(&C) -> bool,
+        mut pseudo: impl for<'p> FnMut(&'p mut C) -> &'p mut FilletBrep,
+    ) -> Result<()> {
         // for every filletEdge (not a rail) ordered around this corner
         let mut slots: Vec<Option<EdgeId>> = self.edges.iter().copied().map(Some).collect();
         for ii in 0..slots.len() {
@@ -1454,13 +1482,7 @@ impl FilletCorner {
 
             // Branch on SmFilletEdge->m_eType to pass call to
             // the appropriate edgeBuilding function
-            let calc = env.pseudo.calc_corner_edge_geom(
-                env.k,
-                curr_edge,
-                CornerLookup::of_corner(env.corner, self, env.exec),
-                env.solvers,
-                env.target,
-            );
+            let calc = calculate(context, self, curr_edge);
             if let Err(e @ SolidError::Unported { .. }) = calc {
                 return Err(e);
             }
@@ -1469,22 +1491,22 @@ impl FilletCorner {
 
                 // Error out if m_bDoGlobalMerge is FALSE or the type of edge is not
                 // qualify for global merge afterwards.
-                if !env.exec.do_global_merge
-                    || env.pseudo.fillet_edge(curr_edge)?.edge_type
+                if !global_merge(context)
+                    || pseudo(context).fillet_edge(curr_edge)?.edge_type
                         != FilletEdgeType::FilletXSideFace
                 {
                     return Err(SolidError::sm_err(OP_EDGE_GEOM));
                 }
-                pseudo_brep_delete_edge(env.pseudo, curr_edge)?;
+                pseudo_brep_delete_edge(pseudo(context), curr_edge)?;
                 if let Some(slot) = slots.get_mut(ii) {
                     *slot = None;
                 }
             } else {
                 // pCurrEdge->CalcCornerEdgeGeom() succeeded
-                if env.pseudo.fillet_edge(curr_edge)?.status == FilStatus::ToBeSqueezed {
+                if pseudo(context).fillet_edge(curr_edge)?.status == FilStatus::ToBeSqueezed {
                     // squeeze and delete it
                     self.edges = slots.iter().copied().flatten().collect();
-                    self.squeeze_edge(env.pseudo, curr_edge)?;
+                    self.squeeze_edge(pseudo(context), curr_edge)?;
                     for slot in &mut slots {
                         if slot.is_some_and(|e| !self.edges.contains(&e)) {
                             *slot = None;
@@ -1494,19 +1516,18 @@ impl FilletCorner {
                 }
 
                 // set currEdge->Interval = currEdge->Curve->NaturalInterval
-                let ivl = env
-                    .pseudo
+                let ivl = pseudo(context)
                     .brep()
                     .edge(curr_edge)?
                     .curve
                     .as_ref()
                     .map(Curve::natural_interval)
                     .ok_or_else(|| SolidError::null_pointer(OP_EDGE_GEOM))?;
-                edge::set_interval(env.pseudo.brep_mut(), curr_edge, &ivl)?;
+                edge::set_interval(pseudo(context).brep_mut(), curr_edge, &ivl)?;
 
                 // increment status to SM_FIL_PROCESSED for all but
                 // SM_FE_CUBIC_RAIL_RAIL_INTERPOLATE cases
-                let fe = env.pseudo.fillet_edge_mut(curr_edge)?;
+                let fe = pseudo(context).fillet_edge_mut(curr_edge)?;
                 if fe.status != FilStatus::CubicRailRailInterpolate {
                     fe.set_status(FilStatus::Processed);
                 }

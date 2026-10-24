@@ -376,6 +376,36 @@ fn executive_pseudo_brep(solver: &FilletSolver) -> Result<()> {
     )
 }
 
+/// Actual solver records and extended surfaces used by a corner edge calculation.
+pub trait FilletEdgeContext {
+    /// Resolve the retained solver for this geometry's actual ID.
+    ///
+    /// # Errors
+    /// Missing or foreign solver identities.
+    fn solver(&self, id: FilletSolverId) -> Result<&FilletSolver>;
+
+    /// Resolve the executive's actual extended surface for the original face.
+    ///
+    /// # Errors
+    /// Missing executive context or actual surface-resolution errors.
+    fn extended_surface(&self, corner: &FilletCorner, face: FaceId) -> Result<Option<&Surface>>;
+}
+
+struct IndexedEdgeContext<'s, 'c> {
+    solvers: &'s [FilletSolver],
+    corners: CornerLookup<'c>,
+}
+
+impl FilletEdgeContext for IndexedEdgeContext<'_, '_> {
+    fn solver(&self, id: FilletSolverId) -> Result<&FilletSolver> {
+        solver_of(self.solvers, id, OP_SIDE)
+    }
+
+    fn extended_surface(&self, corner: &FilletCorner, face: FaceId) -> Result<Option<&Surface>> {
+        self.corners.extended_surface(corner, face)
+    }
+}
+
 // ---- the routines -----------------------------------------------------------------
 
 impl FilletBrep {
@@ -861,6 +891,29 @@ impl FilletBrep {
         solvers: &[FilletSolver],
         target: &Brep,
     ) -> Result<()> {
+        self.calc_fillet_int_side_face_with_context(
+            k,
+            e,
+            corner,
+            corners,
+            &IndexedEdgeContext { solvers, corners },
+            target,
+        )
+    }
+
+    /// Calculate a side-face end rib using actual borrowed solver/surface context.
+    ///
+    /// # Errors
+    /// As [`Self::calc_fillet_int_side_face`], including actual context failures.
+    pub fn calc_fillet_int_side_face_with_context(
+        &mut self,
+        k: &Kernel,
+        e: EdgeId,
+        corner: Option<FilletCornerId>,
+        corners: CornerLookup<'_>,
+        context: &impl FilletEdgeContext,
+        target: &Brep,
+    ) -> Result<()> {
         // get filletEdge->vertices
         let (start_fv, end_fv) = self.edge_ends(e, OP_SIDE)?;
 
@@ -880,7 +933,11 @@ impl FilletBrep {
         let g1 = self
             .eu_geom(prim)?
             .ok_or_else(|| SolidError::null_pointer(OP_SIDE))?;
-        let fs1 = self.geom_solver(g1, solvers, OP_SIDE)?;
+        let fs1 = context.solver(
+            self.geom(g1)?
+                .fillet_solver()
+                .ok_or_else(|| SolidError::null_pointer(OP_SIDE))?,
+        )?;
         let has_curve = edge::curve(self.brep(), e)?.is_some_and(is_b_spline);
 
         // get tolerance
@@ -908,7 +965,7 @@ impl FilletBrep {
                     .fillet_edge(e)?
                     .original_face()
                     .ok_or_else(|| SolidError::null_pointer(OP_SIDE))?;
-                match corners.extended_surface(the_corner, face)? {
+                match context.extended_surface(the_corner, face)? {
                     Some(s) => Some(s.clone()),
                     None => target.face(face)?.surface.clone(),
                 }
