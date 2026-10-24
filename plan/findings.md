@@ -18827,3 +18827,22 @@ entry's reason:
 - **Reproduce:**
   `nice -n 10 cargo test -p solidcore --lib issue711` and
   `nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --unit surface.cone_p3`.
+
+## surface.cone_p3 — final verification of #711 (2026-10-24)
+
+Verified source commit `7309517ff5ee9620a8126dcbb53e6be511de10ce`, after merging
+upstream main `8f4c75622`. The targeted differential result remains exactly
+1484 cases / 1344 passed / 140 failed / 0 deferred as documented above.
+The other green/partial units finish with:
+
+```text
+difftest: 259 unit(s), 211 passed, 48 partial, 0 failed
+```
+
+This covers 553,732 cases with the existing deferral and known-mismatch handling;
+`surface.cone_p3` remains blocked and is compared separately. Formatting, workspace
+Clippy (default and C++ feature), all 2,100 kernel unit tests, five passing kernel
+integration tests (one additional pre-existing ignored test), and wasm32 check pass.
+The optimized difftest runner suite passes 273 unit tests (32 pre-existing ignored),
+plus the floating-point round-trip test, saved fuzz corpus test, and three selftests.
+Plan validation passes for all 261 units. PR: https://github.com/tangency-labs/solidcore/pull/735.

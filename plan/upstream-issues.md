@@ -4087,7 +4087,7 @@ title (other references in the repo in brackets):
 New entries take the next free number after the highest in their series, as the
 Numbering paragraph at the top says.
 
-### WR-257 — parallel-cylinder intersections ignore requested axial domains (#711)
+### WR-258 — parallel-cylinder intersections ignore requested axial domains (#711)
 
 - **Location:** `source/SMLib/src/SmCone.cpp:2791-2810` and `:2968-2969`,
   `SmCone::IntersectWithCone`, pinned upstream `c9c5979`.
