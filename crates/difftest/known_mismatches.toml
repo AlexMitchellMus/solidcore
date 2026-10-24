@@ -42,16 +42,6 @@ case = "gen0241"
 why = "TurnToNURBS tracker: upstream curves/surfaces notify their own SM_NO_PRE_EDIT/SM_NO_POST_EDIT edits, the port's geometry sends none (plan/findings.md: topology.face_p1 SetSurface SM_NO_CHANGE_GEOMETRY wired (PR #637), 'Still deferred: geometry edit notifications')"
 
 [[mismatch]]
-unit = "topology.face_p1"
-case = "cone.smb_1_f5_op9"
-why = "MoveSeam with split: the runner's null classification handles cannot name topology, so the port's post-move HasSeamProblem fails (BrepSeamObjects InvalidInput, ignored as 'no problem') where upstream finds one and splits; reachable once the UB-137 fork trap runs the call (plan/findings.md: topology.face_p1 fork trap merged with main)"
-
-[[mismatch]]
-unit = "topology.face_p1"
-case = "torus.smb_1_f5_op9"
-why = "MoveSeam with split: the runner's null classification handles cannot name topology, so the port's post-move HasSeamProblem fails (BrepSeamObjects InvalidInput, ignored as 'no problem') where upstream finds one and splits; reachable once the UB-137 fork trap runs the call (plan/findings.md: topology.face_p1 fork trap merged with main)"
-
-[[mismatch]]
 unit = "primitive.primitive_creation_p2"
 case = "skin_concentric_loops"
 why = "the annular cap between two concentric loops comes out as two faces (record[7] cpp 1, rust 2): region nesting still differs once IsInnerShell runs on the B-rep with the face surfaces' kept trimmed caches (plan/findings.md: IsInnerShell on the B-rep with the kept trimmed caches)"
