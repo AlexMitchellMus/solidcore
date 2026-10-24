@@ -406,7 +406,7 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         body: impl FnOnce(&mut Self, &mut Kernel, &[ContextMark]) -> Result<T>,
     ) -> Result<T>;
     /// `SmFace::ShrinkGeometry()` with its header defaults; status is ignored.
-    /// Not upstream (tangency-labs/solidcore#472): implementations run
+    /// Legacy indexed adapters (not upstream, tangency-labs/solidcore#472) run
     /// [`crate::topology::face::p1::shrink_geometry_with`] with
     /// [`crate::nurbs::b_spline_surface_n_lib::p2::TrimOptions::snap_roundoff_to_knots`],
     /// so that a fillet face whose domain lies a rounding error inside a knot of its
@@ -1283,7 +1283,8 @@ pub trait FaceShrinkAccess<O: ClassObject + SolutionObject + Ord>:
     /// # Errors
     /// Missing actual geometry or owning-body context.
     fn shrink_geometry_face(&self, geom: O) -> Result<Option<O>>;
-    /// Shrink the actual face using the native default options.
+    /// Shrink the actual face. The live Session uses native default options;
+    /// the blanket adapter retains the legacy [`ExecutiveAccess::shrink_face`] options.
     /// # Errors
     /// Actual shrink-operation or notification-context errors.
     fn shrink_actual_face(&mut self, k: &mut Kernel, face: O) -> Result<()>;
