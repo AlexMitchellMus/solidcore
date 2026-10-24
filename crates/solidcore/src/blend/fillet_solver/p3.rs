@@ -2016,7 +2016,10 @@ mod tests {
                 ci.set_interval(&Extent1d::from_min_max(t0, t1));
                 ci.mid.set_class_object(mid, Some(EntityRef::Edge(rail)));
             }
-            fb.fillet_edge_mut(rail).unwrap().curve_class = Some(cc);
+            fb.fillet_edge_mut(rail)
+                .unwrap()
+                .set_indexed_curve_class(Some(cc))
+                .unwrap();
             geom.set_rail(which, Some(rail));
         }
         let g = fb.add_geom(geom);
@@ -2115,7 +2118,7 @@ mod tests {
         let mut target = Brep::new();
         // interval 1 does not classify to an edge at either end; interval 3 is the
         // interval count
-        let r = refine_rail_curve_classification(
+        let r = refine_rail_curve_classification_scoped(
             &mut fs,
             &k,
             &mut target,

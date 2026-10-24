@@ -169,3 +169,85 @@ impl<T: CurveOnClassifyObjects<EntityRef> + ?Sized> CurveOnClassifyObjects<Fille
         self.0.loop_id(o.legacy()?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::blend::fillet_geom::p1::{FilletBrep, FilletEdge};
+    use crate::intersect::curve_class::p1::CurveClassification;
+    use crate::kernel::Kernel;
+
+    #[test]
+    fn equal_local_ids_do_not_alias_between_actual_bodies_or_roles() {
+        let mut k = Kernel::default();
+        let target =
+            crate::primitive::api_primitives::create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0)
+                .unwrap();
+        let pseudo = crate::primitive::api_primitives::create_box(
+            &mut k,
+            Point3::new(100.0, 0.0, 0.0),
+            10.0,
+            20.0,
+            30.0,
+        )
+        .unwrap();
+        let edge = target.edges().ids().next().unwrap();
+        assert_eq!(Some(edge), pseudo.edges().ids().next());
+        let source = FilletClassObject::Curve(FilletBody::Pseudo, edge);
+        let boundary = FilletClassObject::Curve(FilletBody::Target, edge);
+        let topology = FilletClassObject::Topology(FilletBody::Target, EntityRef::Edge(edge));
+        assert_ne!(source, boundary);
+        assert_ne!(boundary, topology);
+        assert_eq!(topology.target_entity().unwrap(), EntityRef::Edge(edge));
+        assert!(source.target_entity().is_err());
+        assert!(
+            FilletClassObject::Topology(FilletBody::Pseudo, EntityRef::Edge(edge))
+                .target_entity()
+                .is_err()
+        );
+        assert!(source.legacy().is_none());
+    }
+
+    #[test]
+    fn attached_classification_keeps_partial_writes_on_both_error_kinds() {
+        let k = Kernel::default();
+        let mut pseudo = FilletBrep::new();
+        let start = pseudo.brep_mut().add_vertex(Point3::ZERO).unwrap();
+        let end = pseudo
+            .brep_mut()
+            .add_vertex(Point3::new(1.0, 0.0, 0.0))
+            .unwrap();
+        let rail = pseudo.new_fillet_edge(start, end, None).unwrap();
+        let mut record = FilletEdge::with_corner(None);
+        record.set_curve_class(Some(CurveClassification::new(&k)));
+        pseudo.insert_fillet_edge(rail, record);
+        let original = core::ptr::from_ref(pseudo.brep());
+        for missing in [false, true] {
+            let error = pseudo
+                .with_rail_classification(rail, |body, class| {
+                    assert!(core::ptr::eq(body, original));
+                    class.set_curve(
+                        Some(FilletClassObject::Curve(FilletBody::Pseudo, rail)),
+                        false,
+                    );
+                    class.set_src_zone_tol_3d(if missing { 0.25 } else { 0.125 });
+                    if missing {
+                        Err::<(), _>(SolidError::unported(
+                            "classification test boundary",
+                            "blend.fillet_solver_p5",
+                        ))
+                    } else {
+                        Err(SolidError::sm_err("classification test boundary"))
+                    }
+                })
+                .unwrap_err();
+            assert_eq!(error.is_unported(), missing);
+            let class = pseudo.fillet_edge(rail).unwrap().curve_class().unwrap();
+            assert_eq!(
+                class.curve(),
+                Some(FilletClassObject::Curve(FilletBody::Pseudo, rail))
+            );
+            assert_eq!(class.src_zone_tol_3d(), if missing { 0.25 } else { 0.125 });
+        }
+    }
+}
