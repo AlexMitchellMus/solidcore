@@ -18938,6 +18938,8 @@ built its `UvLineObjects` with `resolve_topology: false`. Both now resolve.
     follow-up.
 ## boolean.api_brep: the merge cannot ray-fire through a created operand (2026-10-24)
 
+**Resolved** on fix/boolean-api-e2e (PR #816): the merge queries use `BrepQuery::new(BrepIdentity::of_brep(b))`, picking each B-rep's recorded naming scheme (cherry-picked 09706e3d6, bb1945463, 56ae09d46). Both cases now pass and their `known_mismatches.toml` entries are removed; `with_options_difference` / `with_options_keep_other` (box minus the inscribed sphere, compared once Point3DClassify was wired) pass for the same reason.
+
 - **What.** The `boolean.api_brep` runner now builds its operands with the ported
   `SmApiCreateBox` / `SmApiCreateSphere` (`primitive::api_primitives`), as the shim does,
   instead of empty stand-ins. Two cases disagree. In both, the second operand lies entirely
@@ -19037,6 +19039,48 @@ round's complete input and 4125.906 mm net; the other rounds' tiny lower v exten
 bounds can differ in their last bits (at most 7e-20 in the checked run). The saved
 JSON inputs fix every bit for differential testing.
 
+## Fuzz re-verification (2026-10-24)
+
+Re-ran 2000-draw fuzz per unit on main 76f27c381 with `--fuzz-out fuzz-out/reverify-1024/<unit>`.
+
+- `nurbs.b_spline_curve_p3`: FUZZ-PASS cases=2000 rejected=768 malformed=684 ran=548 differs=0 crashes=0 panics=0 timeouts=0 (9.2 s). No longer reproduces; suspected load-dependent budget flake or fixed since the sweep.
+- `surface.surface_p8`: FUZZ-FAIL cases=2000 rejected=537 malformed=860 ran=602 differs=0 crashes=1 panics=0 timeouts=0 (crash fuzz01012: cpp killed by signal 11 on extreme coordinates ~1e308). Rust side did not crash; classified as upstream UB (C++ consumes garbage). Case saved.
+- `surface.surface_point_solve_p1`: FUZZ-PASS cases=2000 rejected=530 malformed=905 ran=565 differs=0 crashes=0 panics=0 timeouts=0.
+- `surface.surface_point_solve_p2`: FUZZ-PASS cases=2000 rejected=509 malformed=906 ran=585 differs=0 crashes=0 panics=0 timeouts=0 (issue #506 slow path not reproduced in this draw).
+- `surface.surface_point_solve_p3`: FUZZ-FAIL cases=2000 rejected=509 malformed=936 ran=554 differs=0 crashes=0 panics=0 timeouts=1 (timeout fuzz00316: cpp no result after 20 s). Case saved; root cause not yet traced.
+- `surface.plane_p2`: FUZZ-FAIL cases=2000 rejected=305 malformed=842 ran=851 differs=7 crashes=2 panics=0 timeouts=0. Crashes are upstream UB on extreme inputs; differs are rec.len/rec values on malformed records (C++ writes/reads garbage records Rust rejects). Classification pending per case.
+- `curve.curve_p4`: FUZZ-PASS cases=2000 rejected=574 malformed=820 ran=606 differs=0 crashes=0 panics=0 timeouts=0.
+- `curve.curve_p6`: FUZZ-PASS cases=2000 rejected=564 malformed=877 ran=559 differs=0 crashes=0 panics=0 timeouts=0.
+
+### surface.surface_p8 (fuzz re-verification follow-up)
+
+Crash case fuzz01012: C++ killed by signal 11 on a B-spline surface whose net contains ~1e308 coordinates (weight -1.7976931348623157e+308) and tiny control-point values. Rust side did not crash. Classified as upstream UB (C++ consumes garbage / segfaults). FFI guard to reject this input class is deferred to the maintainer's guard pass; documented here and in plan/upstream-issues.md.
+
+### surface.surface_point_solve_p3 (fuzz re-verification follow-up)
+
+Timeout case fuzz00316: cpp no result after 20 s on a B-spline surface with ~1e308 weights and tiny (~1e-6) control points, with wrap=true and a local solver. Root cause is SurfaceCache subdivision not terminating within the time bound on extreme weights; related to issue #506. Bounding the subdivision iteration count is deferred (requires a coordinated guard across surface cache code). Case saved.
+
+### surface.plane_p2 (fuzz re-verification follow-up)
+
+7 differs + 2 C++ crashes on malformed DB records (emptied/truncated knots, p=0, p>n, huge form/kt). Crashes are upstream UB on extreme inputs. Differ cases are rec.len/rec value mismatches where C++ writes/reads garbage records that Rust rejects. Classification per case is pending; guards are retained and no check was loosened. Cases saved under fuzz-out/reverify-1024/surface.plane_p2.
+
+### surface.plane_p2 per-case classification (2026-10-24)
+
+9 saved cases from `fuzz-out/reverify-1024/surface.plane_p2/`:
+
+| case | C++ behavior | Rust behavior | malformed aspect | verdict |
+|------|--------------|---------------|------------------|---------|
+| fuzz00090 | garbage rec (1.001e3) | rejects (1.007e3) | malformed record | guard legitimate |
+| fuzz00263 | 54 records | 1 record | truncated/emptied knots | guard legitimate |
+| fuzz00807 | 54 records | 1 record | truncated/emptied knots | guard legitimate |
+| fuzz00851 | crash (signal 11) | no crash | extreme input | upstream UB |
+| fuzz00977 | 54 records | 1 record | truncated/emptied knots | guard legitimate |
+| fuzz01069 | 54 records | 1 record | truncated/emptied knots | guard legitimate |
+| fuzz01159 | 54 records | 1 record | truncated/emptied knots | guard legitimate |
+| fuzz01255 | crash (signal 11) | no crash | extreme input | upstream UB |
+| fuzz01894 | garbage rec (1.001e3) | rejects (1.007e3) | malformed record | guard legitimate |
+
+No case was identified as Rust wrongly rejecting a valid record C++ handles correctly; all 9 confirm the garbage-class verdict. No Rust code change made.
 ## blend.fillet_geom p2-p5: corner accessors wired through CornerLookup (2026-10-24, PR #747)
 
 The `UNPORTED(blend.fillet_corner_p1)` stubs of the fillet vertex and edge calculators
@@ -19174,6 +19218,57 @@ other operand in the merge editing stages (`boolean.merge_p4` /
 of being kept reversed as a void. Listed in `known_mismatches.toml`; the offset
 port itself is not involved after the shell is built.
 
+## offset.offset_executive_p1: vertex-fixture inline test fails only in debug builds on fp-noise net values (2026-10-24)
+
+Found on upstream/main 859e06bcc, macOS arm64 (diag lane `diag/offset-exec-test`):
+`cargo test -p difftest --features cpp` fails
+`offset_offset_executive_p1::tests::vertex_fixtures_compare_actual_caps_not_only_presence`
+asserting `compare(&native, &rust, &[])` on fixture `vertex_strut_closed_circle_360`
+(vertex.json#8): `values.vertex.surface.net[8]` cpp `1.6653345369377348e-16` vs rust
+`2.7755575615628914e-16` (and 8 more entries, incl. `[20,32,44,...]`), rel_err 0.4.
+
+Classification: **profile-sensitive near-zero disagreement; first causal
+operation untraced.** The observations below do not establish whether the
+cause is code generation, an arithmetic-order difference or a profile-sensitive
+branch; no kernel correction is proposed in this diagnosis. Evidence:
+
+1. The unit runner on the same lane compares the same case:
+   `difftest --unit offset.offset_executive_p1 --jobs 2` → PARTIAL cases=1048
+   passed=909 failed=0 deferred=138 max_rel_err=1.850371707708594e-16; the
+   `vertex_strut_closed_circle_360` entry in `reports/difftest/offset.offset_executive_p1.json`
+   is `outcome: pass, max_rel_err: 0.0` (exact match, 204 values compared).
+2. The same inline test **passes** under `cargo test --release --features cpp` on
+   this machine and **passes** in the optimized difftest-profile runner. It fails
+   only under the unoptimized test (debug) profile. The C++ reference is
+   the same prebuilt `bin/cpp` library in both runs (built `-ffp-contract=off`),
+   so the observed discrepancy depends on the Rust build profile with the
+   native reference held fixed; a codegen cause has not been isolated.
+3. The mismatching magnitudes are 1e-16 arithmetic residue (both `cpp` and `rust`
+   values are multiples of ~5.55e-17 around a should-be-zero net entry); with a
+   pure `|a-b|/max(|a|,|b|)` relative rule the reported pair has relative error
+   0.4 despite an absolute difference of about 1.1e-16. The rule has no absolute
+   epsilon and the unit (`Runner.abs_floors()`, asserted empty in the test)
+   documents none.
+
+So the port's vertex-cap net matches the C++ reference bit-exactly in optimized
+builds, and differs by ~1.1e-16 absolute on 9 near-zero net entries in debug
+builds. A mul-add/summation lowering difference is a hypothesis, not a traced
+cause. The standard CI test job does not exercise this cpp-gated test because it
+does not enable cpp; compile-only coverage does not reproduce the runtime check.
+
+Recommended follow-up (owner brett19 via PR #737, which already touches this
+file — that overlap is why this is diagnose-only):
+- Decide policy for fp-residue keys ("values that should be zero"): either a
+  documented `AbsFloor` for `vertex.surface.net` (~1e-15 would cover the observed
+  residue while keeping real signal, note it in the unit notes per the gate's
+  abs-floor procedure) or an explicit near-zero rule in the test's comparison.
+  Do NOT loosen `REL_TOL`.
+- Or pin the inline test to a fused-math-consistent comparison context (run the
+  fixture both profiles? not portable) — the abs-floor route is simpler.
+- Independently, consider enabling at least one cpp-feature smoke test in CI so
+  this class of failure is exercised on main.
+
+No repo source change, no test change, no tolerance change was made for this.
 
 ### Real-solid fillet checkpoint: corner vertices are outside the pseudo owning list (2026-10-24)
 
@@ -19452,6 +19547,82 @@ C++ and (4, none) in the port. No edge use binormal is evaluated in this case.
 Suspected to be the same Rust merge region/shell handling as `gen0000` / `gen0003`
 above (the inset shell's Difference); not traced further. Listed in
 `known_mismatches.toml`.
+
+## boolean.api_brep / boolean.topology_intersector_p2: UB-175 no longer refused; public booleans end to end (2026-10-24)
+
+`TopologyIntersector::intersect_insert_relate` used to return `InvalidInput` wherever
+upstream's `~SmProtoTopologyManager` reads a freed proto edge (UB-175). Every Boolean
+with a closed intersection loop (a through-hole, a sphere cut by a plane, a torus cut
+in half) has a proto edge whose ends coincide, so this refused the most ordinary
+Booleans; upstream reads freed memory there and in practice goes on. The port's arena
+teardown is defined, so it now goes on with its result and records the condition on
+the kernel (`Kernel::upstream_ub_passed`, `"UB-175"`). The difftest keeps classifying
+these cases as before: `boolean.api_brep`'s C++ guard rejects the input when the Rust
+run records UB-175 (it used to look for the error), and the `boolean.topology_intersector`
+runner reports -2 for `IntersectInsertRelate` when the condition is recorded, as the
+shim's verbatim copy does. No case moves from guarded to compared.
+
+Cross-check against the SMLib reference build (`bin/cpp`, the SMLib API): the seven
+cases of `crates/solidcore/tests/boolean_api.rs` (box minus cylinder through-hole,
+box union box, sphere intersect box, T-pipe, coplanar union, tangent sphere/box union,
+torus minus box), three of which reach UB-175, give the same face counts as SMLib and
+volumes within 1e-11 relative of the SMLib volumes (and within 1e-6 of the analytic
+ones):
+
+| case | Rust volume | SMLib volume | faces |
+|---|---|---|---|
+| box-cyl-hole | 874.336289861456 | 874.336289861 | 7 |
+| box-box-union | 1875 | 1875 | 12 |
+| sphere-and-box | 410.5014651122066 | 410.501465112 | 2 |
+| tpipe | 308.95669741677193 | 308.956697417 | 5 |
+| coplanar-union | 1500 | 1500 | 8 |
+| tangent-sphere-box | 1113.0973391661814 | 1113.09733917 | 7 |
+| torus-minus-box | 111.03306208872733 | 111.033062089 | 3 |
+
+The same change wired the context gaps those Booleans reached on the public path:
+`SmBrep::MakeEdgeInFaceWithVU`'s curve drop now runs the fast-drop trim test on its face
+(`Surface::drop_curve_face_tested`), `SmFace::Point3DClassify` is an `IntersectorBrep`
+method (`ArenaPair` and the runner's `Two` implement it) and runs on the face's B-rep in
+`face_intersect_breps`, `SmBrep::Notify` resolves region attributes against the notifying
+B-rep (`SmRegion::GetBrep`), the surface intersector and the line/curve intersections it
+runs take the trees of the face-aware context's caches as built (that context's
+`GetTree` ran through the face; a second one in the same state rebuilds the same tree),
+and `sm_CoverOtherCoincidentFace` runs its `STEPInversion` solves under a face solve
+context lending the B-rep (cherry-picked from fix/cover-coincident-face-ctx: 94c154d67,
+f8c04179b, dabd7f67d, d88f2c9ca; the context is `query::brep::BrepFaceServices`, main's
+B-rep face solve context, in place of that branch's unlanded `BrepFaceSolveContext`).
+
+## Public boolean e2e (PR #816): cases newly compared once the context stubs were wired (2026-10-24)
+
+Wiring the public-path stubs let 15 cases that were deferred on main reach a comparison. After
+cherry-picking the swarm's fixes (merge_p4/merge_p3 canonical loop starts 940550b4d,
+b07c2bda7, 009558c98, 393565928; MakeFaceuse surface attributes 411f01356/42b55934b;
+BooleanPostProcess merged domain d06819904; offset_executive_p2 live counts 45444f346;
+naming-scheme queries 09706e3d6, bb1945463, 56ae09d46), these still disagree:
+
+- **boolean.api_brep `merge_breps_three_difference`** (TestSmBrep.cpp:1105): **fixed** on PR #816.
+  The second Difference's ray fire missed the faces the first merge made: they kept the
+  merge engine's namespace owner names (`notification_key(0, false, Face(f))`, e.g. key
+  `2<<32 | 6`) in a B-rep recorded as notify-named. The engine's namespace and attribute
+  store end with the merge, so `DependencyMerge::manifold_boolean` now hands that geometry
+  the record's own name in the B-rep's scheme (`kernel_adapter::adopt_namespace_owners`),
+  as upstream's owner is the record itself. fixer-1's structural-ownership branch also fixes
+  it, but on main it breaks `tests/constructed_transforms.rs`
+  `foreign_and_unowned_geometry_remains_filtered` (an unclaimed foreign face name counts as
+  owned) and needed a tolerance workaround, so it was not taken.
+- **boolean.merge_p3 `upstream_merge_breps_operation_0/1/2`, `upstream_piecewise_boxes_0/1`**: the same
+  values in a different vertex order (e.g. operation_0 `values.record[24]` cpp 8 / rust 10,
+  `[25]` cpp 10 / rust 6). Same signature as the existing entry "boolean.merge_p3: vertex list order
+  after merges that imprint edges into faces" (operation_3, piecewise_boxes_2/3), whose cause is not
+  traced; the canonical loop-start digests reduce the mismatch count (operation_0: 12 -> 6) but do not
+  remove it.
+- **offset.offset_executive_p2 `gen0054`, `gen0134`, `gen0177`, `gen0195`, `gen0210`**: region/shell/loop
+  counts differ (gen0054 counts[0..4]: cpp 2 2 11 12, rust 3 6 12 16; gen0134: cpp 3 4 32 32, rust
+  2 2 26 26; gen0210 counts[3] cpp 6 rust 9). Same family as gen0000/gen0003/gen0166 above (Rust
+  merge region/shell handling of the inset shell's Difference); suspected to share the mixed owner
+  naming above, since an inset shell is a contained operand classified by ray fire. Not traced.
+
+These 10 cases are listed per case in `crates/difftest/known_mismatches.toml` (owner decision, PR #816), tracked in issues #832 (merge_p3 vertex order) and #833 (offset_executive_p2 counts).
 
 ## General — macOS-arm64 divergence cluster, wave-2 follow-up (2026-10-24)
 
