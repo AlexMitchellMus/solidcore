@@ -51,7 +51,7 @@
 //!   `SmVector3d` default, `SM_UNDEF_DOUBLE` in every component ([`Vec3::UNDEF`]), or in
 //!   `IsTopologicalVertex` the line vector `IsLine` wrote for that edge. `AngleBetween`
 //!   then sees a zero-length vector and reports `0`, so both answer true; ported as
-//!   such (WR-255; UB-106 assumed the tangent uninitialised). `IsTopologicalVertex`
+//!   such (WR-256; UB-106 assumed the tangent uninitialised). `IsTopologicalVertex`
 //!   returns the failed status of `GetEndTangent` at an edge's start (`SER`) as its
 //!   `SmBoolean`, which is true; ported as such.
 //! - **Curve identity.** Each edge owns its curve, so `pCurve1 != pCurve2` in
@@ -1483,7 +1483,7 @@ mod tests {
         ));
     }
 
-    /// WR-255: a composite curve cannot be evaluated (`SmCompositeCurve` keeps
+    /// WR-256: a composite curve cannot be evaluated (`SmCompositeCurve` keeps
     /// `SmCurve::Evaluate`, which returns `SM_ERR`), so `GetEndTangent` fails at the end
     /// of edge 0 and the tangent stays the `SmVector3d` default; `AngleBetween` of that
     /// zero-length vector reports `0`.

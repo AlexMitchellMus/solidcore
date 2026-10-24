@@ -18203,9 +18203,9 @@ set. At `c9c5979` none of them reads uninitialised memory: `SmVector3d`/`SmPoint
 site reads, and the port:
 
 - **`SmVertex::AreEdgesTangent` / `IsTopologicalVertex`:** the UNDEF tangent (or `IsLine`'s
-  line vector), angle `0`, answer `TRUE` (WR-255, correcting UB-106). The port returned
+  line vector), angle `0`, answer `TRUE` (WR-256, correcting UB-106). The port returned
   `InvalidInput` and the `topology.vertex` shim refused the input; both now follow upstream.
-  No harness input makes `GetEndTangent` fail (it builds line and B-spline edges only; WR-255
+  No harness input makes `GetEndTangent` fail (it builds line and B-spline edges only; WR-256
   *Trigger*), so no case changes value: `topology.vertex` 5578/5578 with the 70 new
   `end_tangents.json` cases. A composite-curve edge, whose evaluation always fails, is
   covered by the unit test `failed_end_tangent_reads_the_default_vector`.

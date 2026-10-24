@@ -1083,7 +1083,7 @@ bool ok_on_pole(SmVertex* v)
 
 // AreEdgesTangent: GetStartVertex and GetEndTangent (a null curve is dereferenced; a
 // failed evaluation leaves the default SmVector3d, SM_UNDEF_DOUBLE, which is defined:
-// WR-255).
+// WR-256).
 bool ok_tangent(SmEdge* e)
 {
     return ok_start(e) && e->GetCurve() != nullptr;
@@ -1092,7 +1092,7 @@ bool ok_tangent(SmEdge* e)
 // IsTopologicalVertex, following its control flow up to the tangent reads (IsOnPole is
 // evaluated here as upstream does; it only fills caches the real call fills as well).
 // Only a null curve whose tangent is read is refused: a failed GetEndTangent leaves the
-// tangent IsLine wrote or the default SmVector3d (WR-255).
+// tangent IsLine wrote or the default SmVector3d (WR-256).
 bool ok_topological(SmVertex* v)
 {
     if (!ok_edges(v))
