@@ -1,6 +1,8 @@
 //! Differential runner for `surface.surface_p9`. Reference: SmSurface.cpp:11644,
 //! 13887, 14877. A quadratic Bezier patch is used on both sides. CSI fixtures use
 //! one planar patch and one line span, so both subdivision trees have one leaf.
+//! Cylinder and cone cases (`analytic_cone` 1 and 2) take the domain as fractions
+//! of the surface's natural domain.
 use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -30,8 +32,11 @@ use solidcore_ffi::units::surface_surface_p9 as ffi;
 
 use solidcore::geom::solution_array::{ObjectKind, SolutionObject};
 
+/// A solution object: `0` the curve, `1` the surface, which carries the natural UV
+/// domain of the real surface (`SmSurface::GetNaturalUVDomain`, as the shim's
+/// surface pointer reaches it).
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Handle(u8);
+struct Handle(u8, Option<Extent2d>);
 impl SolutionObject for Handle {
     fn kind(&self) -> ObjectKind {
         if self.0 == 0 {
@@ -43,6 +48,9 @@ impl SolutionObject for Handle {
     fn natural_interval(&self) -> Option<Extent1d> {
         (self.0 == 0).then(|| Extent1d::from_min_max(0.0, 1.0))
     }
+    fn natural_uv_domain(&self) -> Option<Extent2d> {
+        self.1
+    }
 }
 /// Differential runner for the three owned surface operations.
 pub struct Runner;
@@ -53,6 +61,9 @@ struct Inputs {
     analytic_plane: bool,
     #[serde(default)]
     analytic_revolution: bool,
+    /// 1: the corpus cylinder, 2: a canonical cone (shim kinds 3 and 4).
+    #[serde(default)]
+    analytic_cone: u8,
     net: [[f64; 3]; 9],
     #[serde(default = "domain")]
     domain: [f64; 4],
@@ -73,6 +84,34 @@ fn harness(e: impl std::fmt::Display) -> HarnessError {
     HarnessError::new(e.to_string())
 }
 fn surface(k: &Kernel, i: &Inputs) -> Result<Surface, HarnessError> {
+    if i.analytic_cone == 1 {
+        let mut cylinder = solidcore::surface::cone::Cone::new_cylinder_bounded(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            1.0,
+            0.0,
+            360.0,
+            2.0,
+            false,
+            false,
+            false,
+        );
+        cylinder.make_nurb(k).map_err(harness)?;
+        return Ok(Surface::from(cylinder));
+    }
+    if i.analytic_cone == 2 {
+        let placement = solidcore::geom::axis2_placement::Axis2Placement::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+        let cone = solidcore::surface::cone::Cone::create_canonical(
+            k, &placement, 0.5, 1.5, 2.0, false, false,
+        )
+        .map_err(harness)?;
+        return Ok(Surface::from(cone));
+    }
     if i.analytic_revolution {
         let generator = Curve::from(BSplineCurve::from_nurb(
             NlCurve::new(
@@ -134,7 +173,14 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     let surface = surface(&k, i)?;
     let direction =
         SurfParamType::from_code(i.direction as u64).ok_or_else(|| harness("direction"))?;
-    let domain = Extent2d::from_bounds(i.domain[0], i.domain[1], i.domain[2], i.domain[3]);
+    let mut domain = Extent2d::from_bounds(i.domain[0], i.domain[1], i.domain[2], i.domain[3]);
+    if i.analytic_cone != 0 {
+        let natural = surface.natural_uv_domain();
+        domain = Extent2d::from_points(
+            natural.evaluate(i.domain[0], i.domain[1]),
+            natural.evaluate(i.domain[2], i.domain[3]),
+        );
+    }
     let result = match i.op {
         0 => surface
             .find_tessellation_splits(
@@ -158,7 +204,9 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
                 if let Some((a, b)) = curves {
                     for curve in [a, b] {
                         for n in 0..=4 {
+                            // (virtual EvaluatePoint of the iso curve's own kind)
                             let p = curve.evaluate_point(
+                                &k,
                                 curve.natural_interval().evaluate(f64::from(n) / 4.0),
                             )?;
                             out.extend([p.x, p.y, p.z]);
@@ -188,16 +236,17 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
                     ..CurveCacheOptions::default()
                 },
             );
-            cc.set_curve_handle(Some(Handle(0)));
+            cc.set_curve_handle(Some(Handle(0, None)));
             cc.tessellate(&k)
                 .map_err(|e| harness(format!("CSI fixture cache setup: {e}")))?;
             {
+                let surface_handle = Handle(1, Some(surface.natural_uv_domain()));
                 let mut cache = SurfaceCache::<Handle>::new(
                     surface,
                     Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
                     SurfaceCacheOptions::default(),
                 );
-                cache.set_surface_handle(Some(Handle(1)));
+                cache.set_surface_handle(Some(surface_handle));
                 let uv = cache.uv_domain();
                 let mut bbox = Extent3d::new();
                 for p in i.net {
@@ -224,7 +273,7 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
                         is_marked: false,
                         node_class: NodeClass::Unknown,
                         face: None,
-                        surface: Some(Handle(1)),
+                        surface: Some(surface_handle),
                         slot: Some(0),
                     }),
                     ..TreeNode::new()
@@ -313,7 +362,9 @@ impl UnitDiff for Runner {
         let i: Inputs = case.parse()?;
         ffi::eval_surface_kind(
             i.op,
-            if i.analytic_revolution {
+            if i.analytic_cone != 0 {
+                2 + i32::from(i.analytic_cone)
+            } else if i.analytic_revolution {
                 2
             } else {
                 i32::from(i.analytic_plane)
@@ -398,15 +449,25 @@ impl UnitDiff for Runner {
                 rng.chance(0.5),
             )
         };
+        let analytic_plane = rng.chance(0.1);
+        // (drawn last: the earlier draws, and so the other cases, are unchanged)
+        let analytic_cone = if rng.chance(0.3) {
+            1 + rng.below(2) as u8
+        } else {
+            0
+        };
         serde_json::to_value(Inputs {
             op,
-            analytic_plane: rng.chance(0.1),
+            analytic_plane,
             analytic_revolution: false,
+            analytic_cone,
             net,
             direction,
             domain,
             controls,
-            diagonals,
+            // (the kernel asks for diagonals only for B-spline and extrusion
+            // surfaces, `SubdivideByBlock`; a cone's diagonal `SmCrvOnSurf` is unported)
+            diagonals: diagonals && analytic_cone == 0,
             line: line(),
         })
         .ok()

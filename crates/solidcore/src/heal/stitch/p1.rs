@@ -628,6 +628,8 @@ pub fn test_and_split_edge(
 pub struct Stitch<'c> {
     /// Picks the kept and the deleted object of a glued pair (`m_rStitchCallback`).
     callback: &'c mut dyn StitchCallback,
+    /// Geometry-owner identities for the final region-nesting query.
+    pub(crate) query_identity: Option<crate::query::brep::BrepIdentity<'c>>,
     /// Max 3d distance between coincident edges and vertices (`m_dStitchTol3d`).
     tol_3d: f64,
     /// Find and set the infinite region after gluing (`m_bDoRegionNesting`).
@@ -718,6 +720,7 @@ impl<'c> Stitch<'c> {
     ) -> Self {
         Self {
             callback,
+            query_identity: None,
             tol_3d: stitch_tol_3d,
             do_region_nesting,
             validate_result,
@@ -1033,7 +1036,7 @@ impl<'c> Stitch<'c> {
                     }
                     let (keep, other) = if c.keep_first { (v0, v1) } else { (v1, v0) };
                     if do_squeeze {
-                        squeeze_edge_to(b, squeeze_edge, keep)?;
+                        squeeze_edge_to(k, b, squeeze_edge, keep)?;
                     } else if do_glue {
                         glue_vertices(k, b, keep, other, Some(&wire_edges))?;
                     }
@@ -1171,7 +1174,7 @@ impl<'c> Stitch<'c> {
             // upstream (a failure leaves the default-initialised box)
             let brep_bbox = ignored(qbrep::calculate_bounding_box(
                 k,
-                b,
+                &mut *b,
                 BoundingBoxOptions::default(),
             ))?
             .unwrap_or_default();
@@ -2003,9 +2006,8 @@ fn stitch_and_orient(
     faces_to_swap: Option<&[FaceId]>,
     just_unify: Option<bool>,
 ) -> Result<()> {
-    // The part 5 body reaches no kernel state before its stitching dependency.
-    let _ = k;
     crate::topology::brep::p5::stitch_and_orient(
+        k,
         b,
         &crate::topology::brep::p5::StitchAndOrientOptions {
             stitch_tolerance: stitch_tol_3d,
@@ -2048,17 +2050,28 @@ pub(crate) fn glue_edges_general(
             inside_faceuses,
             &mut env,
         )
-    })
+    })?
 }
 
-/// `SmBrep::SqueezeEdge(edge, keep)` (unit `topology.brep_p3`).
-pub(crate) fn squeeze_edge_to(b: &mut Brep, e: Option<EdgeId>, keep: VertexId) -> Result<()> {
-    let _ = (b, e, keep);
-    // UNPORTED(topology.brep_p3): SmBrep::SqueezeEdge
-    Err(SolidError::unported(
-        "SmBrep::SqueezeEdge",
-        "topology.brep_p3",
-    ))
+/// `SmBrep::SqueezeEdge(edge, keep)` (unit `topology.brep_p3`,
+/// [`crate::topology::brep::p3::squeeze_edge`]), notifying through the kernel
+/// context's callbacks under the kernel's identities
+/// ([`crate::topology::brep::p3::with_kernel_callbacks`]).
+///
+/// # Errors
+///
+/// Those of the squeeze; `SM_ERR_NULL_POINTER` for a null edge (upstream dereferences
+/// it).
+pub(crate) fn squeeze_edge_to(
+    k: &mut Kernel,
+    b: &mut Brep,
+    e: Option<EdgeId>,
+    keep: VertexId,
+) -> Result<()> {
+    let e = e.ok_or_else(|| SolidError::null_pointer("heal::stitch::p1::squeeze_edge_to"))?;
+    crate::topology::brep::p3::with_kernel_callbacks(k, b, |k, b, env| {
+        crate::topology::brep::p3::squeeze_edge(k, b, env, e, keep)
+    })
 }
 
 /// `SmBrep::MakeVertexSplitEdge(edge, t, rpE1, rpE2, rpNewV)` (unit `topology.brep_p9`),
@@ -2474,33 +2487,23 @@ mod tests {
         // Two wire edges between the same vertices: the wrapper runs the part 7 routine
         // (its notifies are live since #149) on the kernel's context, so the installed
         // callback sees the B-rep PreEdit that upstream emits (SmBrep.cpp:9840-9848)
-        // before the wire edge's `SmBrep::DeleteEdge` defers (topology.brep_p4), and
-        // the callback is back on the kernel afterwards. The same edge twice is the
+        // first, then the wire edge's `SmBrep::DeleteEdge` (topology.brep_p4) runs,
+        // and the callback is back on the kernel afterwards. The same edge twice is the
         // upstream no-op.
         let (mut k, events) = recording_kernel();
         let mut b = Brep::new();
         let shell = b.add_shell_record(Shell::default()).unwrap();
         let edges = edges_between(&mut b, EdgeuseOwner::Shell(Some(shell)), 2);
         let (e0, e1) = (edges[0], edges[1]);
-        let err = glue_edges_general(&mut k, &mut b, e0, OrientType::Same, 0.0, false, e1, None)
-            .unwrap_err();
-        assert!(
-            matches!(
-                err,
-                SolidError::Unported {
-                    upstream: "SmBrep::DeleteEdge",
-                    unit: "topology.brep_p4",
-                }
-            ),
-            "{err}"
-        );
+        glue_edges_general(&mut k, &mut b, e0, OrientType::Same, 0.0, false, e1, None).unwrap();
+        let seen = events.lock().unwrap().len();
         assert_eq!(
-            events.lock().unwrap().as_slice(),
-            [NotifyOperation::PreEdit]
+            events.lock().unwrap().first(),
+            Some(&NotifyOperation::PreEdit)
         );
         assert!(k.context.user_notify_callback().is_some());
         glue_edges_general(&mut k, &mut b, e0, OrientType::Same, 0.0, false, e0, None).unwrap();
-        assert_eq!(events.lock().unwrap().len(), 1);
+        assert_eq!(events.lock().unwrap().len(), seen);
     }
 
     #[test]

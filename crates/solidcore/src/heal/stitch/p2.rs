@@ -36,12 +36,12 @@
 //!   reason (the lengths are still computed).
 //! - `SmBrep::Notify(SM_NO_PRE_EDIT)` is `super::p1::brep_notify_pre_edit`
 //!   (`topology::brep::p2::notify`), which still defers inside `topology.brep_p2`.
-//!   This file's own stubs return [`SolidError::Unported`]: `CalculateBoundingBox`
-//!   (`query.brep`), `DeleteFace` (`topology.brep_p3`) and `FindAndSetInfiniteRegion`
-//!   (`topology.brep_p5`, ported there but not wired here yet: it needs the `Kernel`
-//!   and a typed void-type argument). `SqueezeEdge`, `GlueVertices`, `GlueEdgesGeneral`
-//!   and `MakeVertexSplitEdge` (through [`test_and_split_edge`]) defer only where their
-//!   own units still do.
+//!   This file's own stub returns [`SolidError::Unported`]: `CalculateBoundingBox`
+//!   (`query.brep`). `FindAndSetInfiniteRegion` is `topology.brep_p5`'s.
+//!   `DeleteFace` and `SqueezeEdge` are `topology.brep_p3`'s, notifying through the
+//!   kernel context's callbacks; `GlueVertices`, `GlueEdgesGeneral` and
+//!   `MakeVertexSplitEdge` (through [`test_and_split_edge`]) defer only where their own
+//!   units still do.
 
 use super::p1::{
     brep_notify_pre_edit, glue_edges_general, glue_vertices, set_point, sort_by_param,
@@ -322,7 +322,7 @@ impl Stitch<'_> {
                     let surv_v = surv_v.ok_or_else(|| deref("edge without vertex"))?;
                     // remove and delete edge from topology graph by squeezing
                     // [vertex-edge-vertex] into [vertex]
-                    squeeze_edge_to(b, Some(e), surv_v)?;
+                    squeeze_edge_to(k, b, Some(e), surv_v)?;
 
                     if candidate_vertices.is_some() {
                         add_unique(&mut cand_vertices, surv_v); // This becomes a candidate.
@@ -343,7 +343,7 @@ impl Stitch<'_> {
                 // get modified Brep Bounding box (status not checked)
                 let brep_bbox = ignored(qbrep::calculate_bounding_box(
                     k,
-                    b,
+                    &mut *b,
                     BoundingBoxOptions::default(),
                 ))?
                 .unwrap_or_default();
@@ -577,13 +577,13 @@ impl Stitch<'_> {
                     // squeeze or glue vertices together (make pV the retained vertex)
                     if choice.keep_first {
                         if do_squeeze {
-                            squeeze_edge_to(b, squeeze_edge, v)?;
+                            squeeze_edge_to(k, b, squeeze_edge, v)?;
                         } else if do_glue {
                             glue_vertices(k, b, v, cv, Some(&wire_edges))?;
                         }
                     } else {
                         if do_squeeze {
-                            squeeze_edge_to(b, squeeze_edge, cv)?;
+                            squeeze_edge_to(k, b, squeeze_edge, cv)?;
                         } else if do_glue {
                             glue_vertices(k, b, cv, v, Some(&wire_edges))?;
                         }
@@ -638,9 +638,10 @@ impl Stitch<'_> {
         if self.do_region_nesting && bp1::regions(b, None)?.len() > 1 {
             let old = b.editing_enabled();
             b.set_editing_enabled(false);
-            let r = find_and_set_infinite_region(
+            let r = find_and_set_infinite_region_with_identity(
                 k,
                 b,
+                self.query_identity,
                 None,
                 SetRegionVoidType::InfiniteRegionSwap,
                 None,
@@ -1074,14 +1075,14 @@ impl Stitch<'_> {
                 // squeeze or glue vertices together (make pV the retained vertex)
                 if choice.keep_first {
                     if do_squeeze {
-                        squeeze_edge_to(b, squeeze_edge, v)?;
+                        squeeze_edge_to(k, b, squeeze_edge, v)?;
                     } else if do_glue {
                         glue_vertices(k, b, v, cv, None)?;
                     }
                     out.deleted.push(cv);
                 } else {
                     if do_squeeze {
-                        squeeze_edge_to(b, squeeze_edge, cv)?;
+                        squeeze_edge_to(k, b, squeeze_edge, cv)?;
                     } else if do_glue {
                         glue_vertices(k, b, cv, v, None)?;
                     }
@@ -1452,8 +1453,11 @@ pub fn stitch_into_shell(
 // ---- unported callees ----------------------------------------------------------------
 
 /// `SmBrep::DeleteFace(face, bDeleteEdgesVertices, bDoRegionNesting,
-/// pOptDeletedEdgesVertices, pOptRegionToKeep)` (unit `topology.brep_p3`; upstream
-/// defaults `FALSE`, `TRUE`, `NULL`, `NULL`).
+/// pOptDeletedEdgesVertices, pOptRegionToKeep)` ([`crate::topology::brep::p3::delete_face`];
+/// upstream defaults `FALSE`, `TRUE`, `NULL`, `NULL`), notifying through the kernel
+/// context's callbacks ([`crate::topology::brep::p3::with_kernel_callbacks`], as
+/// `super::p1::squeeze_edge_to`). `deleted_edges_vertices` is reset first, as upstream,
+/// and gets the deleted edges and vertices when the deletion succeeds.
 fn delete_face(
     k: &mut Kernel,
     b: &mut Brep,
@@ -1463,25 +1467,29 @@ fn delete_face(
     deleted_edges_vertices: Option<&mut Vec<EntityRef>>,
     region_to_keep: Option<RegionId>,
 ) -> Result<()> {
-    let _ = (
-        k,
-        b,
-        f,
+    use crate::topology::brep::p3 as brep_p3;
+    let options = brep_p3::DeleteFaceOptions {
         delete_edges_vertices,
         do_region_nesting,
-        deleted_edges_vertices,
         region_to_keep,
-    );
-    // UNPORTED(topology.brep_p3): SmBrep::DeleteFace
-    Err(SolidError::unported(
-        "SmBrep::DeleteFace",
-        "topology.brep_p3",
-    ))
+    };
+    let mut out = deleted_edges_vertices;
+    if let Some(out) = out.as_deref_mut() {
+        out.clear();
+    }
+    let deleted = brep_p3::with_kernel_callbacks(k, b, |k, b, env| {
+        let mut marks = crate::topology::topology_traverser::Marks::default();
+        brep_p3::delete_face(k, b, env, &mut marks, f, options)
+    })?;
+    if let Some(out) = out {
+        *out = deleted;
+    }
+    Ok(())
 }
 
 /// `SmBrep::FindAndSetInfiniteRegion(pOptShellToTest, eVoidSettingFlag, pOptBrepBBox)`
-/// (upstream defaults `NULL`, `SM_VS_INFINITEREGION_SWAP`, `NULL`); the box is passed
-/// as a copy.
+/// (upstream defaults `NULL`, `SM_VS_INFINITEREGION_SWAP`, `NULL`), on a fresh
+/// [`crate::query::brep::BrepQuery`] of the B-rep.
 pub(crate) fn find_and_set_infinite_region(
     k: &mut Kernel,
     b: &mut Brep,
@@ -1489,14 +1497,25 @@ pub(crate) fn find_and_set_infinite_region(
     void_setting: SetRegionVoidType,
     brep_bbox: Option<&Extent3d>,
 ) -> Result<()> {
-    let _ = k;
-    let code = match void_setting {
-        SetRegionVoidType::NestedSolid => 0,
-        SetRegionVoidType::InfiniteRegionOnly => 1,
-        SetRegionVoidType::InfiniteRegionSwap => 2,
-    };
-    let mut bbox = brep_bbox.copied();
-    crate::topology::brep::p5::find_and_set_infinite_region(b, shell_to_test, code, bbox.as_mut())
+    find_and_set_infinite_region_with_identity(k, b, None, shell_to_test, void_setting, brep_bbox)
+}
+
+fn find_and_set_infinite_region_with_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    identity: Option<crate::query::brep::BrepIdentity<'_>>,
+    shell_to_test: Option<ShellId>,
+    void_setting: SetRegionVoidType,
+    brep_bbox: Option<&Extent3d>,
+) -> Result<()> {
+    crate::topology::brep::p5::find_and_set_infinite_region(
+        k,
+        b,
+        &crate::query::brep::BrepQuery::new(identity.unwrap_or_default()),
+        shell_to_test,
+        void_setting,
+        brep_bbox,
+    )
 }
 
 /// `SmFace::IsLamina` (unit `topology.face_p3`).

@@ -74,9 +74,10 @@
 //!   cache (the caller-held `SM_OC_BREP` cache is not threaded through
 //!   [`NotifyEnv`]; no Rust caller can build one yet); in `Notify(SM_NO_CHANGE_GEOMETRY)` the B-rep's
 //!   `data3` (`this->GetCurve()`) is the old curve's identity, as in `SetCurve`.
-//!   The constructor's and destructor's notifications and the destructor's context
-//!   `DoingBoolean` toggling are not modelled; the record owns its curve, which is
-//!   dropped with it.
+//!   The constructor's notifications are not modelled; the record owns its curve,
+//!   which is dropped with it. [`destroy`] is `delete pEdge`: the destructor's
+//!   `SM_NO_DESTRUCTION` under the context's `DoingBoolean` toggle and `~SmAObject`'s
+//!   `ClearAttributes` (used by `DeleteEdge` and `GlueEdgesGeneral`).
 //! - **`SetCurve`** takes the new curve by value and returns the old one when it is not
 //!   deleted (its owner cleared when it was this edge, as upstream); a new curve can
 //!   never be the current one, so the early return only applies when both are `None`.
@@ -2192,13 +2193,20 @@ impl core::fmt::Debug for NotificationStores<'_> {
 /// The caller's state [`notify`] and [`set_curve`] pass notifications through.
 /// A missing context means no context callbacks, not the kernel's context.
 pub struct NotifyEnv<'a> {
-    /// The topology records (`SmTopology` members) of the notified objects.
+    /// The topology records (`SmTopology` members) of the notified objects, keyed by
+    /// their notification identities. The caller's own keys ([`NotifyEnv::key_of`]) are
+    /// the caller's to keep distinct; the kernel-issued ones (curves, objects of callers
+    /// without identities of their own) are unique only within one identity domain
+    /// (`geom::context`), so a store holding them belongs to one domain: not shared
+    /// across two contexts, nor across a `Context::take_notify_lease` that is not given
+    /// back.
     pub records: &'a mut BTreeMap<ObjectKey, Topology>,
-    /// The attribute store.
+    /// The attribute store (keyed like [`NotifyEnv::records`], and scoped the same way).
     pub attributes: &'a mut AttributeStore,
     /// The context of the objects (`GetContext`).
     pub context: Option<&'a mut Context>,
-    /// The identity each topology entity is notified under.
+    /// The identity each topology entity is notified under (the caller's; keys from
+    /// `geom::context::KERNEL_KEY_BASE` up are the kernel's).
     pub key_of: &'a dyn Fn(EntityRef) -> ObjectRef,
 }
 
@@ -2291,6 +2299,22 @@ impl<'a> NotifyState<'a> {
             context,
             key_of: self.key_of,
         })
+    }
+
+    /// Like [`Self::with_env`] for an edit that also needs the kernel: a kernel-bound
+    /// state lends the kernel context for the edit
+    /// ([`Context::with_notification_context`]); an external one keeps its context.
+    pub(crate) fn with_kernel_env<T>(
+        &mut self,
+        kernel: &mut Kernel,
+        run: impl FnOnce(&mut Kernel, &mut NotifyEnv<'_>) -> Result<T>,
+    ) -> Result<T> {
+        match self.context {
+            NotifyContext::External(_) => self.with_context(None, |env| run(kernel, env)),
+            NotifyContext::Kernel => Context::with_notification_context(kernel, |kernel, ctx| {
+                self.with_context(Some(ctx), |env| run(kernel, env))
+            })?,
+        }
     }
 
     /// Preserves the legacy two-context Boolean scope, or scopes the single kernel
@@ -2401,6 +2425,65 @@ pub fn notify(
         d2,
         d3,
     )
+}
+
+/// Runs `body` with `env` bound to the object's context (`GetContext()`): the
+/// environment's context, else `k`'s, as a destructor's `Notify` reaches it.
+pub(crate) fn with_object_context<T>(
+    k: &mut Kernel,
+    env: &mut NotifyEnv<'_>,
+    body: impl FnOnce(&mut NotifyEnv<'_>) -> T,
+) -> T {
+    let key_of = env.key_of;
+    let context: &mut Context = match env.context.as_deref_mut() {
+        Some(context) => context,
+        None => &mut k.context,
+    };
+    let mut n = NotifyEnv {
+        records: &mut *env.records,
+        attributes: &mut *env.attributes,
+        context: Some(context),
+        key_of,
+    };
+    body(&mut n)
+}
+
+/// `delete pEdge`: `~SmEdge` sets the context's `DoingBoolean` (`GetContext()`: the
+/// environment's context, else `k`'s) for the duration of its
+/// `Notify(SM_NO_DESTRUCTION, this, NULL, NULL)`, whose status it ignores
+/// ([`SolidError::Unported`] propagates), then restores it; the curve the edge owns is
+/// dropped with its record; `~SmTopology` takes it off its owning list; `~SmAObject`
+/// (`ClearAttributes`) removes the edge from every attribute it uses.
+///
+/// # Errors
+///
+/// [`SolidError::NotFound`] for a dangling id; those of the notification's
+/// [`SolidError::Unported`] and of `ClearAttributes`.
+pub fn destroy(k: &mut Kernel, b: &mut Brep, e: EdgeId, env: &mut NotifyEnv<'_>) -> Result<()> {
+    b.edge(e)?;
+    let this = (env.key_of)(EntityRef::Edge(e));
+    let notified = with_object_context(k, env, |n| {
+        let doing_boolean = n.context.as_deref().is_some_and(Context::doing_boolean);
+        // set its DoingBoolean state to TRUE - delays SurfaceCache construction
+        if let Some(context) = n.context.as_deref_mut() {
+            context.set_doing_boolean(true);
+        }
+        let notified = crate::error::ignore_status(notify(
+            b,
+            e,
+            n,
+            NotifyOperation::Destruction,
+            [Some(this), None, None],
+        ));
+        // restore the context DoingBoolean state
+        if let Some(context) = n.context.as_deref_mut() {
+            context.set_doing_boolean(doing_boolean);
+        }
+        notified
+    });
+    notified?;
+    b.remove_edge_record(e)?;
+    env.attributes.clear_attributes(this.key)
 }
 
 /// The optional arguments of [`set_curve`].

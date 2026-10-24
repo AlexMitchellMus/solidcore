@@ -57,6 +57,14 @@
 //!   array (UB-121; the port always returns the curves); `LocalSurfaceIntersect`'s
 //!   boundary retries bind `!bFoundSolution` to the minimum test only (WR-99;
 //!   reproduced).
+//! - **Surface cache history.** `LiftCurve` reads the surface cache's continuity arrays
+//!   (its C0 knot splits, and `GetDomainWithContinuity`'s C1 domain around each
+//!   segment's start point) without building the cache's tree, so the arrays are empty
+//!   while no earlier call has built it, and a point off the natural domain then gets
+//!   the whole domain instead of one the end-knot discontinuities shrink to nothing.
+//!   Both reads go through [`continuity_surface_cache`], which follows the surface's
+//!   cache slot ([`Surface::cache_tree_state`]; `plan/findings.md`, "surface cache
+//!   history").
 //! - Debug-only work (`SM_ASSERT`, `SM_DEBUG_CODE` drawing) is not ported.
 
 use crate::curve::composite_curve::CompositeCurve;
@@ -89,8 +97,8 @@ use crate::surface::plane::Plane;
 use crate::surface::surface_cache::p1::{BezierPatch, SurfaceCache};
 
 use super::p1::{
-    get_surface_cache, is_node_valid, is_point_valid, surface_to_evaluate, CsGlobalSolver,
-    SsiNormalizeEnfo, SspIntersectEnfo,
+    continuity_surface_cache, is_node_valid, surface_to_evaluate, CsGlobalSolver, SsiNormalizeEnfo,
+    SspIntersectEnfo, SurfaceSolveContext,
 };
 use super::p2::{cs_are_perpen_disjoint_in, intersect_and_split, original_surface, set_up_breaks};
 use super::p5::{cs_identical_solutions, DropPointOptions};
@@ -1054,7 +1062,14 @@ impl<'t, O: SolutionObject + 't> CsGlobalSolver<'t, '_, O> {
                     .local_curve_intersect(k, &uv_domain, curve, &ivl, tol, uv_guess, t_guess)?;
                 if let Some(h) = hit {
                     // for points within the surface's trim boundary
-                    if is_point_valid(surface_tree.owner(), cache, h.uv) {
+                    if super::p1::is_point_valid_with(
+                        k,
+                        surface_tree.owner(),
+                        cache,
+                        h.uv,
+                        None,
+                        self.face_queries,
+                    )? {
                         let mut solution = Solution::new();
                         solution.num_variables = 3;
                         *solution.start.param_mut(0)? = h.t;
@@ -1133,7 +1148,14 @@ impl<'t, O: SolutionObject + 't> CsGlobalSolver<'t, '_, O> {
 
             // for points within the surface's trim boundary
             let uv_found = Point2::new(solution.start.param(1)?, solution.start.param(2)?);
-            if is_point_valid(surface_tree.owner(), cache, uv_found) {
+            if super::p1::is_point_valid_with(
+                k,
+                surface_tree.owner(),
+                cache,
+                uv_found,
+                None,
+                self.face_queries,
+            )? {
                 let key = if op == SolverOperation::Minimize
                     || op == SolverOperation::Maximize
                     || op == SolverOperation::Signed3dDirectedMinimize
@@ -1461,9 +1483,21 @@ impl<'t, O: SolutionObject + 't> SsGlobalSolver<'t, '_, O> {
                     },
                 )?;
                 if let Some(x) = found {
-                    if is_point_valid(tree1.owner(), cache1, x.uv)
-                        && is_point_valid(tree2.owner(), cache2, x.other_uv)
-                    {
+                    if super::p1::is_point_valid_with(
+                        k,
+                        tree1.owner(),
+                        cache1,
+                        x.uv,
+                        None,
+                        self.face_queries,
+                    )? && super::p1::is_point_valid_with(
+                        k,
+                        tree2.owner(),
+                        cache2,
+                        x.other_uv,
+                        None,
+                        self.face_queries,
+                    )? {
                         let mut solution = Solution::new();
                         solution.num_variables = 4;
                         solution.solution_type = SolutionType::SingleValue;
@@ -1575,9 +1609,21 @@ impl<'t, O: SolutionObject + 't> SsGlobalSolver<'t, '_, O> {
             solution.objects[0] = objects[0];
             solution.objects[1] = objects[1];
             let (uv1, uv2) = split(&x);
-            if is_point_valid(tree1.owner(), cache1, uv1)
-                && is_point_valid(tree2.owner(), cache2, uv2)
-            {
+            if super::p1::is_point_valid_with(
+                k,
+                tree1.owner(),
+                cache1,
+                uv1,
+                None,
+                self.face_queries,
+            )? && super::p1::is_point_valid_with(
+                k,
+                tree2.owner(),
+                cache2,
+                uv2,
+                None,
+                self.face_queries,
+            )? {
                 let key = if op == SolverOperation::Minimize || op == SolverOperation::Maximize {
                     SortKey::ByValueWithParameter
                 } else {
@@ -1635,19 +1681,19 @@ fn boundary_curves(
     let (Some((c0, c2)), Some((c1, c3))) = (u, v) else {
         return Err(SolidError::sm_err(OP_ISB));
     };
-    let mut out = vec![Curve::from(c0), Curve::from(c1)];
+    let mut out = vec![c0, c1];
     // (IsClosed of the surface's own kind, default tolerance, no continuity)
     if !surface
         .is_closed(k, uv_domain, SurfParamType::U, None, false)?
         .0
     {
-        out.push(Curve::from(c2));
+        out.push(c2);
     }
     if !surface
         .is_closed(k, uv_domain, SurfParamType::V, None, false)?
         .0
     {
-        out.push(Curve::from(c3));
+        out.push(c3);
     }
     Ok(out)
 }
@@ -1661,7 +1707,8 @@ impl Surface {
     /// that drop distance.
     ///
     /// Dispatch: `CreateIsoBoundaries`, `IsClosed` and `DropPoint` of each surface's
-    /// kind; the boundary curves are B-spline curves.
+    /// kind; the boundary curves keep the kind of the surface's iso curves (lines,
+    /// circles or B-splines).
     ///
     /// # Errors
     ///
@@ -1836,15 +1883,14 @@ impl Surface {
     /// per segment between the surface's C0 knot lines (unless
     /// `skip_continuity_checks`) and joined into one curve.
     ///
-    /// Dispatch: `GetKnots` of the surface's own kind; the curve on surface holds a
-    /// B-spline surface.
+    /// Dispatch: `GetKnots` of the surface's own kind; the curve on surface preserves
+    /// that concrete surface dispatch.
     ///
     /// # Errors
     ///
     /// `SM_ERR` when no segment could be lifted or a segment's continuous domain is
     /// empty; `SM_ERR_NULL_POINTER` without a surface cache; those of the checked
-    /// (`SER`) calls; [`SolidError::Unported`] for a curve on a surface that is not a
-    /// B-spline (`SmCrvOnSurf` holds an `SmBSplineSurface` here).
+    /// (`SER`) calls.
     #[allow(clippy::too_many_lines)]
     pub fn lift_curve(
         &self,
@@ -1854,6 +1900,61 @@ impl Surface {
         interval: &Extent1d,
         approx_tol_3d: f64,
         skip_continuity_checks: bool,
+    ) -> Result<LiftedCurve> {
+        self.lift_curve_in::<crate::surface::surface::p4::NoObject>(
+            k,
+            uv_domain,
+            uv_curve,
+            interval,
+            approx_tol_3d,
+            skip_continuity_checks,
+            None,
+            None,
+        )
+    }
+
+    /// [`Surface::lift_curve`] through the caller's face-aware cache context:
+    /// `handle` names this surface in the cache, so a surface owned by a face can
+    /// reach that face when the continuity checks build its cache.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::lift_curve`] and of the context's cache preparation.
+    #[allow(clippy::too_many_arguments)]
+    pub fn lift_curve_with_context<O: Copy + PartialEq>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        uv_curve: &Curve,
+        interval: &Extent1d,
+        approx_tol_3d: f64,
+        skip_continuity_checks: bool,
+        context: &mut dyn SurfaceSolveContext<O>,
+        handle: Option<O>,
+    ) -> Result<LiftedCurve> {
+        self.lift_curve_in(
+            k,
+            uv_domain,
+            uv_curve,
+            interval,
+            approx_tol_3d,
+            skip_continuity_checks,
+            Some(context),
+            handle,
+        )
+    }
+
+    #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+    fn lift_curve_in<O: Copy + PartialEq>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        uv_curve: &Curve,
+        interval: &Extent1d,
+        approx_tol_3d: f64,
+        skip_continuity_checks: bool,
+        mut context: Option<&mut dyn SurfaceSolveContext<O>>,
+        handle: Option<O>,
     ) -> Result<LiftedCurve> {
         let mut max_approx_dev = 0.0;
 
@@ -1879,8 +1980,17 @@ impl Surface {
         } else {
             // Right now step surfaces will not be created that have discontinuities.
             if !matches!(self.kind(), SurfaceKind::Step(_)) {
-                // NER: no surface cache
-                let cache = match get_surface_cache::<()>(k, self, None) {
+                // NER: no surface cache (no GetTree: the continuity arrays are empty
+                // unless the cache's tree was built)
+                let cache = continuity_surface_cache(
+                    k,
+                    self,
+                    handle,
+                    context
+                        .as_mut()
+                        .map(|c| &mut **c as &mut dyn SurfaceSolveContext<O>),
+                );
+                let cache = match cache {
                     Ok(c) => c,
                     Err(e) if e.is_unported() => return Err(e),
                     Err(_) => return Err(SolidError::null_pointer(OP_LIFT)),
@@ -1950,28 +2060,7 @@ impl Surface {
             }
         }
 
-        let bss = match self.kind() {
-            SurfaceKind::BSpline(b) => b,
-            SurfaceKind::Cone(_)
-            | SurfaceKind::Sphere(_)
-            | SurfaceKind::Torus(_)
-            | SurfaceKind::Plane(_)
-            | SurfaceKind::SurfOfRevolution(_)
-            | SurfaceKind::CurveBounded(_)
-            | SurfaceKind::SrfInVolume(_)
-            | SurfaceKind::Step(_)
-            | SurfaceKind::OffsetSurface(_) => {
-                // DISPATCH GAP: SmCrvOnSurf over a surface that is not a B-spline (the
-                // ported CrvOnSurf holds an SmBSplineSurface and would drop the kind's
-                // evaluation overrides). SmCrvOnSurf is ported, so this is a dispatch gap
-                // rather than a missing unit; the marker keeps it greppable.
-                // UNPORTED(curve.crv_on_surf): SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)
-                return Err(SolidError::unported(
-                    "SmCrvOnSurf::SmCrvOnSurf (non-B-spline surface)",
-                    "curve.crv_on_surf",
-                ));
-            }
-        };
+        let surface = self.clone_for_evaluation()?;
 
         let mut curves_3d: Vec<Curve> = Vec::new();
 
@@ -2002,7 +2091,17 @@ impl Surface {
             let vec = Vec2::new(p1.x, p1.y);
 
             // get surface domain enclosing pnt that is at least SM_CT_C1 continuous
-            let seg_domain = self.domain_with_continuity(k, ContinuityType::C1, pnt, vec)?;
+            let seg_domain = match context.as_mut() {
+                Some(ctx) => self.domain_with_continuity_with_context(
+                    k,
+                    ContinuityType::C1,
+                    pnt,
+                    vec,
+                    &mut **ctx,
+                    handle,
+                )?,
+                None => self.domain_with_continuity(k, ContinuityType::C1, pnt, vec)?,
+            };
 
             // If we don't get some sort of a domain then error out.
             if seg_domain.size().length_squared() < EFF_ZERO_SQ {
@@ -2010,7 +2109,13 @@ impl Surface {
             }
 
             // define 3DCurve = SmCrvOnSurf(segment, thisSurface)
-            let mut trace = CrvOnSurf::new(k, uv_curve.clone(), bss.copy(), Some(seg_domain), 0)?;
+            let mut trace = CrvOnSurf::new(
+                k,
+                uv_curve.clone_for_evaluation()?,
+                surface.clone_for_evaluation()?,
+                Some(seg_domain),
+                0,
+            )?;
 
             // Check for degenerate curve segment (SER: checked)
             let pnt1 = trace.evaluate_point(k, ivl.min())?;

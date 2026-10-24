@@ -134,6 +134,18 @@ pub struct Parabola {
     focal_dist: f64,
 }
 
+impl Parabola {
+    /// Exact evaluation copy without the B-spline copy constructor's knot fix-up.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            base: self.base.clone_exact(),
+            position: self.position,
+            anal_domain: self.anal_domain,
+            focal_dist: self.focal_dist,
+        }
+    }
+}
+
 /// `[max(min, -SM_INFINITE_PARAMETER_SQRT), min(max, SM_INFINITE_PARAMETER_SQRT)]`
 /// (`SetMinMax`, whose status is ignored).
 fn trim_infinite(domain: &mut Extent1d) {
@@ -555,7 +567,10 @@ impl Parabola {
         if let Some(o) = owner {
             // when a SmSurfOfExtrusion GenCurve, look for Parent Surface NURB Interval constraint
             if o.type_code == SURF_OF_EXTRUSION_TYPE {
-                // UNPORTED(surface.surf_of_extrusion_p1): SmSurfOfExtrusion::GetGenDirParamExtent
+                // DISPATCH GAP: SmSurfOfExtrusion::GetGenDirParamExtent (surface.surf_of_extrusion_p1,
+                // ported as SurfOfExtrusion::gen_dir_param_extent; no UNPORTED marker: the owner is an
+                // opaque ObjectRef. An owning extrusion does this step itself (adjust_generator_interval,
+                // SurfOfExtrusion::make_nurb) and never sets its generator's owner, so nothing reaches here)
                 return Err(SolidError::Unported {
                     upstream: "SmSurfOfExtrusion::GetGenDirParamExtent",
                     unit: "surface.surf_of_extrusion_p1",
@@ -567,7 +582,10 @@ impl Parabola {
                 o.type_code,
                 SURF_OF_REVOLUTION_TYPE | CONE_TYPE | CYLINDER_TYPE | SPHERE_TYPE | TORUS_TYPE
             ) {
-                // UNPORTED(surface.surf_of_revolution_p1): SmSurfOfRevolution::GetGenDirParamExtent
+                // DISPATCH GAP: SmSurfOfRevolution::GetGenDirParamExtent (surface.surf_of_revolution_p1,
+                // ported as SurfOfRevolution::gen_dir_param_extent; no UNPORTED marker: the owner is an
+                // opaque ObjectRef. An owning revolution does this step itself (e.g. the cone's
+                // adjust_gen_line_with_owner) and never sets its generator's owner, so nothing reaches here)
                 return Err(SolidError::Unported {
                     upstream: "SmSurfOfRevolution::GetGenDirParamExtent",
                     unit: "surface.surf_of_revolution_p1",

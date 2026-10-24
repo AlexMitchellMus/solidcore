@@ -5,9 +5,12 @@
 //! upstream API box examples are also run natively and explicitly deferred at
 //! their unported executive-p1 API/setup entrypoints on Rust.
 
+use std::collections::BTreeMap;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use solidcore::blend::fillet_executive::p1::ExecutiveObjects;
+use solidcore::blend::fillet_geom::p1::{FilStatus, FilletEdgeType};
 use solidcore::blend::fillet_executive::p3::{
     ContextMark, CornerView, ErrorInfo, ExecutionOptions, ExecutiveAccess, FilletExecutive,
     StitchAttempt, StitchSettings, TopoEdgeView,
@@ -17,6 +20,7 @@ use solidcore::geom::solution_array::{ObjectKind, SolutionObject};
 use solidcore::intersect::point_class::{ClassObject, ClassObjectKind};
 use solidcore::kernel::Kernel;
 use solidcore::math::Point3;
+use solidcore::topology::proto_topology::p1::CopyBrepMap;
 use solidcore::{Result as SolidResult, SolidError};
 use solidcore_ffi::units::blend_fillet_executive_p3 as ffi;
 
@@ -59,6 +63,49 @@ fn missing_error() -> SolidError {
 fn missing<T>() -> SolidResult<T> {
     Err(missing_error())
 }
+/// `target->MergeBrep(other, NULL, NULL, bAddAnalytics)` for this fixture, which keeps no
+/// notification state: `topology::brep::p3::merge_brep` under the kernel's identities
+/// (`with_kernel_callbacks`), `other` enrolled in the same identity domain first so its
+/// objects never share a key with `target`'s.
+fn merge_breps(
+    k: &mut Kernel,
+    target: &mut solidcore::topology::Brep,
+    other: &mut solidcore::topology::Brep,
+    add_analytics: bool,
+) -> SolidResult<()> {
+    use solidcore::topology::brep::p3 as bp3;
+    let serial = bp3::notify_serial(&mut k.context, other)?;
+    let source_key = move |e| bp3::topology_ref(serial, e);
+    let other = &*other;
+    bp3::with_kernel_callbacks(k, target, |k, b, env| {
+        bp3::merge_brep(k, env, b, other, &source_key, None, None, add_analytics)
+    })
+}
+
+/// `brep->OrientTrimmedSurfaces(..)` for this fixture: `topology::brep::p3`'s under the
+/// kernel's identities. The fixture has no face handles, so only an empty
+/// `pOptFacesToSwapUV` list is accepted.
+fn orient_brep(
+    k: &mut Kernel,
+    b: &mut solidcore::topology::Brep,
+    outward: bool,
+    maybe_not_solid: &mut bool,
+    just_unify: bool,
+    faces_to_swap_uv: Option<&mut Vec<Handle>>,
+) -> SolidResult<()> {
+    use solidcore::topology::brep::p3 as bp3;
+    if faces_to_swap_uv.as_ref().is_some_and(|f| !f.is_empty()) {
+        return missing();
+    }
+    let swap: Option<&[solidcore::topology::FaceId]> = faces_to_swap_uv.map(|_| &[][..]);
+    let r = bp3::with_kernel_callbacks(k, b, |k, b, env| {
+        let mut marks = solidcore::topology::topology_traverser::Marks::default();
+        bp3::orient_trimmed_surfaces(k, b, env, &mut marks, outward, just_unify, swap)
+    })?;
+    *maybe_not_solid = r.maybe_not_closed_solid;
+    Ok(())
+}
+
 impl ExecutiveAccess<Handle> for Access {
     // This empty-B-rep fixture has no face handles or intersector world. These
     // required adapters reject nonexistent objects; they are not UNPORTED calls
@@ -91,6 +138,49 @@ impl ExecutiveAccess<Handle> for Access {
         _: Option<&[Handle]>,
     ) -> SolidResult<()> {
         missing()
+    }
+    fn merge_brep(
+        &mut self,
+        k: &mut Kernel,
+        target: Handle,
+        other: Handle,
+        copy_map: Option<&mut CopyBrepMap<Handle>>,
+        reverse_map: Option<&mut CopyBrepMap<Handle>>,
+        add_analytics: bool,
+    ) -> SolidResult<()> {
+        // (the fixture's handles name B-reps only: no copy maps of their objects)
+        if copy_map.is_some() || reverse_map.is_some() {
+            return missing();
+        }
+        let mut src = self
+            .breps
+            .get_mut(other.0)
+            .and_then(Option::take)
+            .ok_or_else(missing_error)?;
+        let r = match self.breps.get_mut(target.0).and_then(Option::as_mut) {
+            Some(dst) => merge_breps(k, dst, &mut src, add_analytics),
+            None => missing(),
+        };
+        if let Some(slot) = self.breps.get_mut(other.0) {
+            *slot = Some(src);
+        }
+        r
+    }
+    fn orient_trimmed_surfaces(
+        &mut self,
+        k: &mut Kernel,
+        brep: Handle,
+        outward: bool,
+        maybe_not_solid: &mut bool,
+        just_unify: bool,
+        faces_to_swap_uv: Option<&mut Vec<Handle>>,
+    ) -> SolidResult<()> {
+        let b = self
+            .breps
+            .get_mut(brep.0)
+            .and_then(Option::as_mut)
+            .ok_or_else(missing_error)?;
+        orient_brep(k, b, outward, maybe_not_solid, just_unify, faces_to_swap_uv)
     }
     fn do_stitching(
         &mut self,
@@ -137,6 +227,15 @@ impl ExecutiveAccess<Handle> for Access {
         &mut self,
         _: &mut Kernel,
         _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
+    fn test_rollover(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut Vec<Handle>,
         _: &mut FilletExecutive<Handle>,
     ) -> SolidResult<()> {
         missing()
@@ -191,13 +290,10 @@ impl ExecutiveAccess<Handle> for Access {
         _: Handle,
         _: &mut FilletExecutive<Handle>,
     ) -> SolidResult<()> {
-        // No concrete object is constructed here. Future fixtures must dispatch
-        // derived types to their owners, as documented on ExecutiveAccess.
-        // UNPORTED(blend.fillet_solver_p4): SmFilletSolver::CalcFilletGeom
-        Err(SolidError::unported(
-            "SmFilletSolver::CalcFilletGeom",
-            "blend.fillet_solver_p4",
-        ))
+        // This fixture builds no solver, so there is nothing to dispatch to: the
+        // base `CalcFilletGeom` is ported (`blend::fillet_solver::p4`) and
+        // `SmSurfaceSurfaceFS`'s override is blend.fillet_standard_solver_p2's.
+        missing()
     }
     fn corner_error_info(
         &self,
@@ -294,6 +390,31 @@ impl ExecutiveAccess<Handle> for Access {
             cascade_to_boundaries,
         )
     }
+    fn stitch_faces(
+        &mut self,
+        k: &mut Kernel,
+        brep: Handle,
+        tolerance: f64,
+        faces: Option<&[Handle]>,
+        allow_spine_edges: bool,
+    ) -> SolidResult<StitchAttempt> {
+        // the fixture has no face handles; both executive call sites stitch every face
+        if faces.is_some() {
+            return missing();
+        }
+        let b = self
+            .breps
+            .get_mut(brep.0)
+            .and_then(Option::as_mut)
+            .ok_or_else(missing_error)?;
+        StitchAttempt::from_stitch(solidcore::topology::brep::p4::stitch_faces(
+            k,
+            b,
+            tolerance,
+            None,
+            allow_spine_edges,
+        ))
+    }
     fn editing_enabled(&self, brep: Handle) -> SolidResult<bool> {
         self.breps
             .get(brep.0)
@@ -320,6 +441,9 @@ impl ExecutiveAccess<Handle> for Access {
             return missing();
         }
         Ok(Vec::new())
+    }
+    fn edge_is_manifold(&self, _: Handle) -> SolidResult<bool> {
+        missing()
     }
     fn vertices(&self, handle: Handle) -> SolidResult<Vec<Handle>> {
         let brep = self
@@ -385,6 +509,18 @@ impl ExecutiveAccess<Handle> for Access {
     fn geom_side_edgeuses(&self, _: Handle) -> SolidResult<Vec<Handle>> {
         missing()
     }
+    fn edge_edgeuses(&self, _: Handle) -> SolidResult<Vec<Handle>> {
+        missing()
+    }
+    fn fillet_edge_note(
+        &self,
+        _: Handle,
+    ) -> SolidResult<(Option<&'static str>, FilletEdgeType, FilStatus)> {
+        missing()
+    }
+    fn new_executive_objects(&mut self, _: &mut Kernel) -> SolidResult<ExecutiveObjects<Handle>> {
+        missing()
+    }
     fn edgeuse_edge(&self, _: Handle) -> SolidResult<Option<Handle>> {
         missing()
     }
@@ -429,6 +565,9 @@ impl ExecutiveAccess<Handle> for Access {
         missing()
     }
     fn solver_edgeuse(&self, _: Handle, _: usize) -> SolidResult<Option<Handle>> {
+        missing()
+    }
+    fn solver_corner(&self, _: Handle, _: usize) -> SolidResult<Option<Handle>> {
         missing()
     }
     fn corner_setback_distance(&self, _: Handle) -> SolidResult<f64> {
@@ -582,6 +721,11 @@ fn rust(input: &Inputs) -> Result<Output, HarnessError> {
         intersection_edges: vec![],
         intersection_vertices: vec![],
         law_sequence_edges: vec![],
+        pseudo_brep: None,
+        surface_generators: vec![],
+        vertex_corner_map: BTreeMap::new(),
+        edgeuse_solver_map: BTreeMap::new(),
+        self_intersection_handler: None,
     };
     // The executive constructor sets this after constructing its SmMerge base.
     executive.intersector.ignore_tangency = true;

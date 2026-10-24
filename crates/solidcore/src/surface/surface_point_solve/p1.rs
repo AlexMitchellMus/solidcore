@@ -287,6 +287,7 @@ fn b_spline_part(surface: &Surface) -> Option<&BSplineSurface> {
         SurfaceKind::Sphere(s) => Some(s.base().base()),
         SurfaceKind::Torus(s) => Some(s.base().base()),
         SurfaceKind::SurfOfRevolution(s) => Some(s.base()),
+        SurfaceKind::SurfOfExtrusion(s) => Some(s.base()),
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
@@ -1296,6 +1297,7 @@ fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<bool> {
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => Ok(surface.is_on_seam(k, uv, None)?.on_seam),
@@ -2110,12 +2112,9 @@ mod tests {
         assert!(t.z > 0.0 && t.x > 1.0 && t.y > 1.0);
 
         // a curve-bounded surface has no B-spline part
-        let cb = Surface::from(CurveBoundedSurface::new(
-            bilinear(0.0),
-            Vec::new(),
-            Vec::new(),
-            true,
-        ));
+        let cb = Surface::from(
+            CurveBoundedSurface::new(bilinear(0.0), Vec::new(), Vec::new(), true).unwrap(),
+        );
         let g = global(&k, &cb, SolverOperation::Minimize, Point3::ZERO);
         assert!(g.base.b_spline().is_none());
         assert!(g.find_polygon_triangle_guess((0, 0)).is_err());
@@ -2395,12 +2394,9 @@ mod tests {
             .unwrap());
         assert!((st.uv().x - 0.2).abs() < 1e-12 && (st.uv().y - 0.7).abs() < 1e-9);
 
-        let cb = Surface::from(CurveBoundedSurface::new(
-            bilinear(0.0),
-            Vec::new(),
-            Vec::new(),
-            true,
-        ));
+        let cb = Surface::from(
+            CurveBoundedSurface::new(bilinear(0.0), Vec::new(), Vec::new(), true).unwrap(),
+        );
         let mut st = SurfPtSolveStepper::new(
             &k,
             &cb,

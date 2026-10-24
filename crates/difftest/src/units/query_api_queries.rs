@@ -520,6 +520,12 @@ impl TopologyObjects<Object> for Objects<'_> {
         };
         Ok(self.b(o)?.edge(e)?.interval)
     }
+    fn edge_tolerance(&self, o: Object) -> Result<f64> {
+        let CacheObject::Edge(e) = o.1 else {
+            return Err(SolidError::sm_err("edge handle"));
+        };
+        Ok(self.b(o)?.edge(e)?.tolerance)
+    }
     fn surface_face(&self, o: Object) -> Result<Option<Object>> {
         let Some(owner) = self.surface(o)?.face()? else {
             return Ok(None);
@@ -564,6 +570,12 @@ impl TopologyObjects<Object> for Objects<'_> {
         };
         Ok(self.b(o)?.face(f)?.tolerance)
     }
+    fn face_entity(&self, o: Object) -> Option<(&Brep, FaceId)> {
+        let CacheObject::Face(f) = o.1 else {
+            return None;
+        };
+        Some((self.b(o).ok()?, f))
+    }
     fn surface_owner(&self, o: Object) -> Result<Option<Object>> {
         self.surface_face(o)
     }
@@ -586,7 +598,7 @@ impl TopologyObjects<Object> for Objects<'_> {
     }
 }
 
-fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>> {
+fn topology(k: &mut Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>> {
     let a = &i.data;
     let point = v([a[11], a[12], a[13]]);
     let index = a[20] as usize;
@@ -649,7 +661,7 @@ fn topology(k: &Kernel, i: &Inputs, b: &Brep, second: &Brep) -> Result<Vec<f64>>
             }
         }
         12 => {
-            let hit = api::find_edge(b, point)?;
+            let hit = api::find_edge(k, b, point)?;
             o.push(hit.index as f64);
             o.push(hit.parameter);
         }
@@ -747,7 +759,7 @@ impl UnitDiff for Runner {
         let i: Inputs = c.parse()?;
         compared_op(i.op)?;
         let a = &i.data;
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         if a[16] != 0. {
             return Err(HarnessError::new(
                 "null pointers have no typed Rust equivalent; use the FFI contract tests",
@@ -797,7 +809,7 @@ impl UnitDiff for Runner {
                 } else {
                     Brep::new()
                 };
-                topology(&k, &i, &b, &second)
+                topology(&mut k, &i, &b, &second)
             }
         };
         Ok(output(i.op, result))

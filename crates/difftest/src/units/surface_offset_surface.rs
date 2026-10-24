@@ -602,16 +602,11 @@ fn rust_srf(k: &Kernel, s: &SrfIn) -> Result<solidcore::Result<Surface>, Harness
         SrfIn::Bspline(b) => Ok(Surface::from(bss_of(b)?)),
         SrfIn::Sms(path) => Ok(Surface::from(bss_of(&read_sms(path)?)?)),
         SrfIn::Plane { o, n } => Ok(Surface::from(Plane::from_normal(v3(*o), v3(*n)))),
-        SrfIn::Bounded { basis, implicit } => rust_srf(k, basis)?.map(|b| {
-            Surface::from(CurveBoundedSurface::new(
-                b,
-                Vec::new(),
-                Vec::new(),
-                *implicit,
-            ))
+        SrfIn::Bounded { basis, implicit } => rust_srf(k, basis)?.and_then(|b| {
+            CurveBoundedSurface::new(b, Vec::new(), Vec::new(), *implicit).map(Surface::from)
         }),
         SrfIn::Step { base } => {
-            rust_srf(k, base)?.map(|b| Surface::from(StepSurface::new(b, true)))
+            rust_srf(k, base)?.and_then(|b| StepSurface::new(b, true).map(Surface::from))
         }
         SrfIn::Revolution(r) => rev::rust_surf(k, r)?.map(Surface::from),
         SrfIn::Offset(o) => rust_off(k, o)?.map(Surface::from),
@@ -653,14 +648,15 @@ fn put_state(k: &Kernel, o: &mut Vec<f64>, s: &OffsetSurface) -> Result<(), Fail
     o.push(f64::from(pu));
     o.push(f64::from(pv_));
     o.push(f64::from(s.singularities()));
-    match s.extended_base_surface() {
+    // GetExtendedBaseSurface (with an extension a `&self` evaluator made)
+    s.with_extended_base_surface(|e| match e {
         Some(e) => {
             o.push(1.0);
             put_dom(o, &e.natural_uv_domain());
             o.push(e.type_code() as f64);
         }
         None => o.push(0.0),
-    }
+    });
     let b = s.base_surface();
     o.push(b.type_code() as f64);
     put_dom(o, &b.natural_uv_domain());
@@ -1210,7 +1206,7 @@ fn tiny_revolution(rng: &mut Rng) -> rev::SurfIn {
                 *bi = *ai + (*bi - *ai) * f;
             }
         }
-        rev::GenIn::BSpline(_) => {}
+        rev::GenIn::BSpline(_) | rev::GenIn::Hyperbola { .. } => {}
     }
     s
 }
@@ -1614,7 +1610,8 @@ fn degree_1_directions(k: &Kernel, off: &OffIn) -> Option<[bool; 2]> {
             | SurfaceKind::Cone(_)
             | SurfaceKind::Sphere(_)
             | SurfaceKind::Torus(_)
-            | SurfaceKind::SurfOfRevolution(_) => {
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_) => {
                 let d = [
                     s.degree(SurfParamType::U) == 1,
                     s.degree(SurfParamType::V) == 1,

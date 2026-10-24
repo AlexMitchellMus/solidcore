@@ -24,7 +24,7 @@
 //!   [`IsoCurve::new`] retains the B-spline constructor; [`IsoCurve::from_surface`]
 //!   also supports the other concrete surface kinds through the same virtual dispatch.
 //!   This extension is needed by `surface.surface_point_solve_p3` boundary solves.
-//!   The general constructor bounds owned geometry nesting to 64 levels before
+//!   The general constructor bounds owned geometry nesting to `MAX_GEOMETRY_NESTING` before
 //!   any recursive surface dispatch; the B-spline constructor cannot nest.
 //! - **Equality.** `operator==` accepts identical surface pointers before comparing the
 //!   surfaces (`SmBSplineSurface::operator==`); the port always compares the surfaces
@@ -82,6 +82,27 @@ pub struct IsoCurve {
 }
 
 impl IsoCurve {
+    /// Exact evaluation copy after the caller validates the geometry depth.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            surface: Box::new(self.surface.clone_exact_bounded()),
+            surf_param: self.surf_param,
+            iso_parameter: self.iso_parameter,
+            from_left: self.from_left,
+        }
+    }
+
+    /// An exact evaluation copy without re-clamping or resetting surface owners.
+    /// `depth` is the surface's depth in the shared `MAX_GEOMETRY_NESTING` (32) geometry traversal.
+    pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
+        Ok(Self {
+            surface: Box::new(self.surface.clone_for_evaluation_depth(depth)?),
+            surf_param: self.surf_param,
+            iso_parameter: self.iso_parameter,
+            from_left: self.from_left,
+        })
+    }
+
     /// `SmIsoCurve_TYPE` (`CURV_BASE_TYPE + 45`).
     pub const TYPE: i64 = ISO_CURVE_TYPE;
 
@@ -110,7 +131,8 @@ impl IsoCurve {
     ///
     /// # Errors
     ///
-    /// `InvalidInput` when owned geometry nesting exceeds 64 levels.
+    /// `InvalidInput` when `surface` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1.
     pub fn from_surface(
         surface: Surface,
         surf_param: SurfParamType,
@@ -118,7 +140,7 @@ impl IsoCurve {
         from_left: bool,
         clamp_input: bool,
     ) -> Result<Self> {
-        surface.check_evaluation_copy_depth(0)?;
+        surface.check_evaluation_copy_depth(1)?;
         Ok(Self::from_surface_inner(
             surface,
             surf_param,

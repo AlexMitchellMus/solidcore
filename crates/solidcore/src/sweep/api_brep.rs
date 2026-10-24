@@ -40,17 +40,22 @@
 //! - **Statuses.** `SM_ERR_INVALID_INPUT` is [`SolidError::InvalidInput`]; errors of
 //!   the curve copies pass through unchanged (`SM_ERR` for a curve kind without
 //!   `Copy`, e.g. a Hermite curve).
-//! - Every entry point validates and copies its inputs as upstream, then returns
-//!   [`SolidError::Unported`]: `SmPrimitiveCreation` (units
-//!   `primitive.primitive_creation_p1..p3`) and the `SmBrep` construction it fills
-//!   (`topology.brep_p1`, `topology.brep_p3`) are not ported yet. The error names the
-//!   `SmPrimitiveCreation` method each entry point wraps.
+//! - Every entry point validates and copies its inputs as upstream, then runs the
+//!   `SmPrimitiveCreation` method it wraps on a new B-rep through a
+//!   [`PrimitiveModel`]. Path and scale curves become their `SmBSplineCurve` part.
+//!   The faces and edges of the curve sweeps are `(&Brep, id)` pairs: upstream
+//!   objects reach their own B-rep.
 
+use crate::curve::curve::p2::CurveKind;
 use crate::curve::curve::Curve;
 use crate::error::{Result, SolidError};
 use crate::geom::tol::ZONE_TOL_3D;
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
+use crate::nurbs::b_spline_curve::p1::BSplineCurve;
+use crate::primitive::primitive_creation::model::PrimitiveModel;
+use crate::primitive::primitive_creation::p1::PrimitiveCreation;
+use crate::primitive::primitive_creation::p3::RepeatedSweepOptions;
 use crate::primitive::primitive_creation::SweepOptions;
 use crate::topology::{Brep, EdgeId, FaceId};
 
@@ -59,6 +64,7 @@ const OP_PIPE: &str = "sweep::api_brep::create_pipe_sweep";
 const OP_PLANAR_PATH: &str = "sweep::api_brep::create_sweep_along_planar_path";
 const OP_CURVE_SWEEP: &str = "sweep::api_brep::create_curve_sweep";
 const OP_FROM_FACES: &str = "sweep::api_brep::create_curve_sweep_from_faces";
+
 const OP_FROM_EDGES: &str = "sweep::api_brep::create_curve_sweep_from_edges";
 const OP_TAPER: &str = "sweep::api_brep::create_taper_extrude";
 const OP_LINEAR_REPS: &str = "sweep::api_brep::create_linear_sweep_with_repetitions";
@@ -112,7 +118,7 @@ fn copy_curves_for_consuming_sweep(
 /// `InvalidInput` for a `None` curve; the error of a failing curve copy;
 /// [`SolidError::Unported`] otherwise (`SmPrimitiveCreation::CreateLinearSweep`).
 pub fn create_linear_sweep(
-    k: &Kernel,
+    k: &mut Kernel,
     curves_to_sweep: &[Option<&Curve>],
     sweep_dir: Vec3,
     sweep_dist: f64,
@@ -121,18 +127,17 @@ pub fn create_linear_sweep(
     // Sweep copies of the inputs: CreateLinearSweep consumes the curves.
     let curve_copies = copy_curves_for_consuming_sweep(k, curves_to_sweep)?;
 
-    // Arguments of the unported call: the copies, the direction and distance, one
-    // repetition and the cap flag (SmPrimitiveCreation(region, 0, true)).
-    let repetitions: u64 = 1;
-    let _ = (curve_copies, sweep_dir, sweep_dist, repetitions, cap_ends);
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    // ported (topology.brep_p1): SmBrep::GetInfiniteRegion is Brep::infinite_region, called
-    // on the new B-rep once the constructor above lands
-    // Ported: primitive::primitive_creation::p1::PrimitiveCreation::new;
-    // instantiate with the new B-rep's infinite region when its constructor lands.
-    // Ported: primitive::primitive_creation::p3::PrimitiveCreation::create_repeated_linear_sweep;
-    // supply the new B-rep through PrimitiveAccess after its constructor is ported.
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+    let mut curve_copies: Vec<Option<Curve>> = curve_copies.into_iter().map(Some).collect();
+    build(k, |pc, model| {
+        pc.create_repeated_linear_sweep(
+            model,
+            PrimitiveModel::MAIN,
+            &mut curve_copies,
+            sweep_dir,
+            sweep_dist,
+            repeated(1, cap_ends),
+        )
+    })
 }
 
 /// The solid swept by revolving `curves_to_sweep` about the axis through `base_pt`
@@ -145,7 +150,7 @@ pub fn create_linear_sweep(
 /// `InvalidInput` for a `None` curve; the error of a failing curve copy;
 /// [`SolidError::Unported`] otherwise (`SmPrimitiveCreation::CreateRotationalSweep`).
 pub fn create_rotational_sweep(
-    k: &Kernel,
+    k: &mut Kernel,
     curves_to_sweep: &[Option<&Curve>],
     base_pt: Point3,
     axis: Vec3,
@@ -155,25 +160,18 @@ pub fn create_rotational_sweep(
     // Sweep copies of the inputs: CreateRotationalSweep consumes the curves.
     let curve_copies = copy_curves_for_consuming_sweep(k, curves_to_sweep)?;
 
-    // Arguments of the unported call: the copies, the axis, the angle, one
-    // repetition and the cap flag (SmPrimitiveCreation(region, 0, true)).
-    let repetitions: u64 = 1;
-    let _ = (
-        curve_copies,
-        base_pt,
-        axis,
-        angle_deg,
-        repetitions,
-        cap_ends,
-    );
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    // ported (topology.brep_p1): SmBrep::GetInfiniteRegion is Brep::infinite_region, called
-    // on the new B-rep once the constructor above lands
-    // Ported: primitive::primitive_creation::p1::PrimitiveCreation::new;
-    // instantiate with the new B-rep's infinite region when its constructor lands.
-    // Ported: primitive::primitive_creation::p3::PrimitiveCreation::create_partial_rotational_sweep;
-    // supply the new B-rep through PrimitiveAccess after its constructor is ported.
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+    let mut curve_copies: Vec<Option<Curve>> = curve_copies.into_iter().map(Some).collect();
+    build(k, |pc, model| {
+        pc.create_partial_rotational_sweep(
+            model,
+            PrimitiveModel::MAIN,
+            &mut curve_copies,
+            base_pt,
+            axis,
+            angle_deg,
+            repeated(1, cap_ends),
+        )
+    })
 }
 
 /// The solid extruded from `curves_to_sweep` to `height` with a draft (taper)
@@ -188,7 +186,7 @@ pub fn create_rotational_sweep(
 /// `InvalidInput` for a `None` curve; the error of a failing curve copy;
 /// [`SolidError::Unported`] otherwise (`SmBrep::SmBrep`, until the B-rep constructor is ported).
 pub fn create_draft_sweep(
-    k: &Kernel,
+    k: &mut Kernel,
     curves_to_sweep: &[Option<&Curve>],
     height: f64,
     angle_deg: f64,
@@ -207,23 +205,19 @@ pub fn create_draft_sweep(
         OffsetCornerType::LinearExtension
     };
 
-    // Arguments of the unported call (SmPrimitiveCreation(region, 0, true)).
-    let _ = (
-        curve_copies,
-        height,
-        angle_deg,
-        cap_ends,
-        crv_normal,
-        corner,
-    );
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    // ported (topology.brep_p1): SmBrep::GetInfiniteRegion is Brep::infinite_region, called
-    // on the new B-rep once the constructor above lands
-    // Ported: primitive::primitive_creation::p1::PrimitiveCreation::new;
-    // instantiate with the new B-rep's infinite region when its constructor lands.
-    // Ported: primitive::primitive_creation::p2::PrimitiveCreation::create_taper_extrude;
-    // supply the new B-rep through PrimitiveCreationAccess after its constructor is ported.
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+    let mut crv_normal = crv_normal;
+    build(k, |pc, model| {
+        pc.create_taper_extrude(
+            model,
+            PrimitiveModel::MAIN,
+            curve_copies,
+            height,
+            angle_deg,
+            cap_ends,
+            &mut crv_normal,
+            corner,
+        )
+    })
 }
 
 /// The pipe of radius `pipe_radius` swept along `path_curve`
@@ -236,7 +230,7 @@ pub fn create_draft_sweep(
 /// upstream); [`SolidError::Unported`] otherwise
 /// (`SmBrep::SmBrep`, until the B-rep constructor is ported).
 pub fn create_pipe_sweep(
-    k: &Kernel,
+    k: &mut Kernel,
     pipe_radius: f64,
     path_curve: Option<&Curve>,
     cap_ends: bool,
@@ -248,20 +242,24 @@ pub fn create_pipe_sweep(
         return Err(SolidError::invalid_input(OP_PIPE, "pipe radius <= 0"));
     }
 
-    // Arguments of the unported call: the radius, the path, an approximation
-    // tolerance of 0.0, the cap flag and not translational
-    // (SmPrimitiveCreation(region, 0, true)).
+    let path = bspline_of(path_curve, OP_PIPE)?;
     let approx_tol = 0.0;
     let translational_sweep = false;
-    let _ = (k, path_curve, approx_tol, cap_ends, translational_sweep);
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    // ported (topology.brep_p1): SmBrep::GetInfiniteRegion is Brep::infinite_region, called
-    // on the new B-rep once the constructor above lands
-    // Ported: primitive::primitive_creation::p1::PrimitiveCreation::new;
-    // instantiate with the new B-rep's infinite region when its constructor lands.
-    // Ported: primitive::primitive_creation::p2::PrimitiveCreation::create_pipe_sweep;
-    // supply the new B-rep through PrimitiveCreationAccess after its constructor is ported.
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+    build(k, |pc, model| {
+        let (mut start, mut side, mut end) = (Vec::new(), Vec::new(), Vec::new());
+        pc.create_pipe_sweep(
+            model,
+            PrimitiveModel::MAIN,
+            pipe_radius,
+            &path,
+            approx_tol,
+            cap_ends,
+            translational_sweep,
+            &mut start,
+            &mut side,
+            &mut end,
+        )
+    })
 }
 
 /// The solid swept by the profile boundary `profile_curves` along the ordered,
@@ -276,7 +274,7 @@ pub fn create_pipe_sweep(
 /// [`SolidError::Unported`] otherwise
 /// (`SmBrep::SmBrep`, until the B-rep constructor is ported).
 pub fn create_sweep_along_planar_path(
-    k: &Kernel,
+    k: &mut Kernel,
     profile_curves: &[&Curve],
     path_curves: &[&Curve],
     move_profile: bool,
@@ -299,22 +297,23 @@ pub fn create_sweep_along_planar_path(
     let cap_start = (cap_ends & 1) != 0;
     let cap_end = (cap_ends & 2) != 0;
 
-    // Arguments of the unported call.
-    let _ = (
-        k,
-        profile_curves,
-        path_curves,
-        tol,
-        cap_start,
-        cap_end,
-        move_profile,
-    );
-    // Ported: primitive::primitive_creation::p2::PrimitiveCreation::create_sweep_along_planar_path,
-    // which builds every piece in a new B-rep: supply them through PrimitiveCreationAccess
-    // once the B-rep constructor is ported. Upstream has no early exit before that
-    // constructor, so it is this wrapper's first unported call.
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+    let profiles: Vec<Curve> = profile_curves.iter().map(|c| (*c).clone()).collect();
+    let paths: Vec<Curve> = path_curves.iter().map(|c| (*c).clone()).collect();
+    // The static entry point makes its own B-rep in the context of the model's.
+    let (_, result) = PrimitiveModel::build_new(k, |_, model| {
+        let id = PrimitiveCreation::create_sweep_along_planar_path(
+            model,
+            PrimitiveModel::MAIN,
+            &profiles,
+            &paths,
+            tol,
+            cap_start,
+            cap_end,
+            move_profile,
+        )?;
+        model.take_brep(id)
+    })?;
+    Ok(result)
 }
 
 /// The solid swept by `profile_curves` along `path_curve`, scaled as
@@ -327,7 +326,7 @@ pub fn create_sweep_along_planar_path(
 /// `InvalidInput` for an empty profile or no path curve; [`SolidError::Unported`]
 /// otherwise (`SmPrimitiveCreation::CreateCurveSweep`).
 pub fn create_curve_sweep(
-    k: &Kernel,
+    k: &mut Kernel,
     profile_curves: &[Option<&Curve>],
     path_curve: Option<&Curve>,
     scale_reference: Option<&Curve>,
@@ -343,36 +342,41 @@ pub fn create_curve_sweep(
 
     let options = options.copied().unwrap_or_default();
 
-    // Arguments of the unported call: the profile, path and scale curves, an
-    // approximation tolerance of SM_ZONE_TOL_3D and the options
-    // (SmPrimitiveCreation(region) with its default arguments). CreateCurveSweep's
-    // trailing bTestContinuity is left at its default, TRUE: the p3 porter must pass
-    // true there.
     let approx_tol = ZONE_TOL_3D;
-    let _ = (k, profile_curves, path_curve, scale_reference, scale_curve);
-    let _ = (approx_tol, options);
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    // ported (topology.brep_p1): SmBrep::GetInfiniteRegion is Brep::infinite_region, called
-    // on the new B-rep once the constructor above lands
-    // Ported: primitive::primitive_creation::p1::PrimitiveCreation::new;
-    // instantiate with the new B-rep's infinite region when its constructor lands.
-    // Ported: primitive::primitive_creation::p3::PrimitiveCreation::create_curve_sweep;
-    // supply the new B-rep through PrimitiveAccess after its constructor is ported.
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+    let path = bspline_of(path_curve, OP_CURVE_SWEEP)?;
+    let scale = scale_curve
+        .map(|c| bspline_of(c, OP_CURVE_SWEEP))
+        .transpose()?;
+    let profiles: Vec<Option<Curve>> = profile_curves.iter().map(|c| c.cloned()).collect();
+    curve_sweep(k, |pc, model, faces| {
+        pc.create_curve_sweep(
+            model,
+            PrimitiveModel::MAIN,
+            &profiles,
+            &path,
+            scale_reference,
+            scale.as_ref(),
+            approx_tol,
+            options,
+            true,
+            &mut faces.0,
+            &mut faces.1,
+            &mut faces.2,
+        )
+    })
 }
 
-/// The solid swept by the boundaries of `faces` of `brep` along `path_curve`
-/// (`SmApiCreateCurveSweepFromFaces`), scaled and optioned as
+/// The solid swept by the boundaries of `faces` (each with its B-rep) along
+/// `path_curve` (`SmApiCreateCurveSweepFromFaces`), scaled and optioned as
 /// [`create_curve_sweep`]. The faces and their curves are not changed.
 ///
 /// # Errors
 ///
-/// `InvalidInput` for no faces or no path curve; [`SolidError::Unported`] otherwise
-/// (`SmBrep::SmBrep`, until the B-rep constructor is ported).
+/// `InvalidInput` for no faces or no path curve; those of
+/// `SmPrimitiveCreation::CreateCurveSweepFromFaces`.
 pub fn create_curve_sweep_from_faces(
-    k: &Kernel,
-    brep: &Brep,
-    faces: &[FaceId],
+    k: &mut Kernel,
+    faces: &[(&Brep, FaceId)],
     path_curve: Option<&Curve>,
     scale_reference: Option<&Curve>,
     scale_curve: Option<&Curve>,
@@ -387,32 +391,38 @@ pub fn create_curve_sweep_from_faces(
 
     let options = options.copied().unwrap_or_default();
 
-    // Arguments of the unported call (as create_curve_sweep).
     let approx_tol = ZONE_TOL_3D;
-    let _ = (k, brep, faces, path_curve, scale_reference, scale_curve);
-    let _ = (approx_tol, options);
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    // ported (topology.brep_p1): SmBrep::GetInfiniteRegion is Brep::infinite_region, called
-    // on the new B-rep once the constructor above lands
-    // Ported: primitive::primitive_creation::p1::PrimitiveCreation::new;
-    // instantiate with the new B-rep's infinite region when its constructor lands.
-    // Ported: primitive::primitive_creation::p2::PrimitiveCreation::create_curve_sweep_from_faces;
-    // supply the new B-rep through PrimitiveCreationAccess after its constructor is ported.
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+    let (path, scale_reference, scale) =
+        sweep_curves(path_curve, scale_reference, scale_curve, OP_FROM_FACES)?;
+    curve_sweep(k, |pc, model, out| {
+        let input = model.add_owner_breps(faces)?;
+        pc.create_curve_sweep_from_faces(
+            model,
+            PrimitiveModel::MAIN,
+            &input,
+            &path,
+            scale_reference.as_ref(),
+            scale.as_ref(),
+            approx_tol,
+            options,
+            &mut out.0,
+            &mut out.1,
+            &mut out.2,
+        )
+    })
 }
 
-/// The solid swept by the curves of `edges` of `brep` along `path_curve`
-/// (`SmApiCreateCurveSweepFromEdges`), scaled and optioned as
+/// The solid swept by the curves of `edges` (each with its B-rep) along
+/// `path_curve` (`SmApiCreateCurveSweepFromEdges`), scaled and optioned as
 /// [`create_curve_sweep`]. The edges and their curves are not changed.
 ///
 /// # Errors
 ///
-/// `InvalidInput` for no edges or no path curve; [`SolidError::Unported`] otherwise
-/// (`SmBrep::SmBrep`, until the B-rep constructor is ported).
+/// `InvalidInput` for no edges or no path curve; those of
+/// `SmPrimitiveCreation::CreateCurveSweepFromEdges`.
 pub fn create_curve_sweep_from_edges(
-    k: &Kernel,
-    brep: &Brep,
-    edges: &[EdgeId],
+    k: &mut Kernel,
+    edges: &[(&Brep, EdgeId)],
     path_curve: Option<&Curve>,
     scale_reference: Option<&Curve>,
     scale_curve: Option<&Curve>,
@@ -427,18 +437,25 @@ pub fn create_curve_sweep_from_edges(
 
     let options = options.copied().unwrap_or_default();
 
-    // Arguments of the unported call (as create_curve_sweep).
     let approx_tol = ZONE_TOL_3D;
-    let _ = (k, brep, edges, path_curve, scale_reference, scale_curve);
-    let _ = (approx_tol, options);
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    // ported (topology.brep_p1): SmBrep::GetInfiniteRegion is Brep::infinite_region, called
-    // on the new B-rep once the constructor above lands
-    // Ported: primitive::primitive_creation::p1::PrimitiveCreation::new;
-    // instantiate with the new B-rep's infinite region when its constructor lands.
-    // Ported: primitive::primitive_creation::p2::PrimitiveCreation::create_curve_sweep_from_edges;
-    // supply the new B-rep through PrimitiveCreationAccess after its constructor is ported.
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+    let (path, scale_reference, scale) =
+        sweep_curves(path_curve, scale_reference, scale_curve, OP_FROM_EDGES)?;
+    curve_sweep(k, |pc, model, out| {
+        let input = model.add_owner_breps(edges)?;
+        pc.create_curve_sweep_from_edges(
+            model,
+            PrimitiveModel::MAIN,
+            &input,
+            &path,
+            scale_reference.as_ref(),
+            scale.as_ref(),
+            approx_tol,
+            options,
+            &mut out.0,
+            &mut out.1,
+            &mut out.2,
+        )
+    })
 }
 
 /// The solid extruded from `curves` to `height` with a draft angle of
@@ -458,7 +475,7 @@ pub fn create_curve_sweep_from_edges(
 /// copy; [`SolidError::Unported`] otherwise
 /// (`SmBrep::SmBrep`, until the B-rep constructor is ported).
 pub fn create_taper_extrude(
-    k: &Kernel,
+    k: &mut Kernel,
     curves: &[Option<&Curve>],
     height: f64,
     draft_angle_deg: f64,
@@ -479,23 +496,19 @@ pub fn create_taper_extrude(
         OffsetCornerType::LinearExtension
     };
 
-    // Arguments of the unported call (SmPrimitiveCreation(region)).
-    let _ = (
-        curve_copies,
-        height,
-        draft_angle_deg,
-        end_caps,
-        normal,
-        corner,
-    );
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    // ported (topology.brep_p1): SmBrep::GetInfiniteRegion is Brep::infinite_region, called
-    // on the new B-rep once the constructor above lands
-    // Ported: primitive::primitive_creation::p1::PrimitiveCreation::new;
-    // instantiate with the new B-rep's infinite region when its constructor lands.
-    // Ported: primitive::primitive_creation::p2::PrimitiveCreation::create_taper_extrude;
-    // supply the new B-rep through PrimitiveCreationAccess after its constructor is ported.
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+    let mut normal = normal;
+    build(k, |pc, model| {
+        pc.create_taper_extrude(
+            model,
+            PrimitiveModel::MAIN,
+            curve_copies,
+            height,
+            draft_angle_deg,
+            end_caps,
+            &mut normal,
+            corner,
+        )
+    })
 }
 
 /// The solid swept by `curves_to_sweep` along `sweep_dir` over `sweep_dist`,
@@ -508,7 +521,7 @@ pub fn create_taper_extrude(
 /// copy; [`SolidError::Unported`] otherwise
 /// (`SmPrimitiveCreation::CreateLinearSweep`).
 pub fn create_linear_sweep_with_repetitions(
-    k: &Kernel,
+    k: &mut Kernel,
     curves_to_sweep: &[Option<&Curve>],
     sweep_dir: Vec3,
     sweep_dist: f64,
@@ -522,16 +535,17 @@ pub fn create_linear_sweep_with_repetitions(
     // Sweep copies of the inputs: CreateLinearSweep consumes the curves.
     let curve_copies = copy_curves_for_consuming_sweep(k, curves_to_sweep)?;
 
-    // Arguments of the unported call (SmPrimitiveCreation(region)).
-    let _ = (curve_copies, sweep_dir, sweep_dist, repetitions, cap_ends);
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    // ported (topology.brep_p1): SmBrep::GetInfiniteRegion is Brep::infinite_region, called
-    // on the new B-rep once the constructor above lands
-    // Ported: primitive::primitive_creation::p1::PrimitiveCreation::new;
-    // instantiate with the new B-rep's infinite region when its constructor lands.
-    // Ported: primitive::primitive_creation::p3::PrimitiveCreation::create_repeated_linear_sweep;
-    // supply the new B-rep through PrimitiveAccess after its constructor is ported.
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+    let mut curve_copies: Vec<Option<Curve>> = curve_copies.into_iter().map(Some).collect();
+    build(k, |pc, model| {
+        pc.create_repeated_linear_sweep(
+            model,
+            PrimitiveModel::MAIN,
+            &mut curve_copies,
+            sweep_dir,
+            sweep_dist,
+            repeated(repetitions, cap_ends),
+        )
+    })
 }
 
 /// The solid swept by revolving `curves_to_sweep` about the axis through `base_pt`
@@ -545,7 +559,7 @@ pub fn create_linear_sweep_with_repetitions(
 /// copy; [`SolidError::Unported`] otherwise
 /// (`SmPrimitiveCreation::CreateRotationalSweep`).
 pub fn create_rotational_sweep_with_repetitions(
-    k: &Kernel,
+    k: &mut Kernel,
     curves_to_sweep: &[Option<&Curve>],
     base_pt: Point3,
     axis: Vec3,
@@ -560,23 +574,88 @@ pub fn create_rotational_sweep_with_repetitions(
     // Sweep copies of the inputs: CreateRotationalSweep consumes the curves.
     let curve_copies = copy_curves_for_consuming_sweep(k, curves_to_sweep)?;
 
-    // Arguments of the unported call (SmPrimitiveCreation(region)).
-    let _ = (
-        curve_copies,
-        base_pt,
-        axis,
-        angle_deg,
+    let mut curve_copies: Vec<Option<Curve>> = curve_copies.into_iter().map(Some).collect();
+    build(k, |pc, model| {
+        pc.create_partial_rotational_sweep(
+            model,
+            PrimitiveModel::MAIN,
+            &mut curve_copies,
+            base_pt,
+            axis,
+            angle_deg,
+            repeated(repetitions, cap_ends),
+        )
+    })
+}
+
+/// `nRepetitions` and `bCapEnds` with `bTestContinuity` at its default, `TRUE`.
+fn repeated(repetitions: u64, cap_ends: bool) -> RepeatedSweepOptions {
+    RepeatedSweepOptions {
         repetitions,
         cap_ends,
-    );
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep
-    // ported (topology.brep_p1): SmBrep::GetInfiniteRegion is Brep::infinite_region, called
-    // on the new B-rep once the constructor above lands
-    // Ported: primitive::primitive_creation::p1::PrimitiveCreation::new;
-    // instantiate with the new B-rep's infinite region when its constructor lands.
-    // Ported: primitive::primitive_creation::p3::PrimitiveCreation::create_partial_rotational_sweep;
-    // supply the new B-rep through PrimitiveAccess after its constructor is ported.
-    Err(SolidError::unported("SmBrep::SmBrep", "topology.brep_p3"))
+        test_continuity: true,
+    }
+}
+
+/// A new B-rep filled by `body` (`new SmBrep()`, `SmPrimitiveCreation`, the call).
+fn build(
+    k: &mut Kernel,
+    body: impl FnOnce(&mut PrimitiveCreation, &mut PrimitiveModel<'_>) -> Result<()>,
+) -> Result<Brep> {
+    PrimitiveModel::build_new(k, body).map(|(brep, ())| brep)
+}
+
+/// The start, side and end faces of a curve sweep.
+type SweepFaces = (Vec<FaceId>, Vec<FaceId>, Vec<FaceId>);
+
+/// A curve sweep into a new B-rep with its face lists.
+fn curve_sweep(
+    k: &mut Kernel,
+    body: impl FnOnce(&mut PrimitiveCreation, &mut PrimitiveModel<'_>, &mut SweepFaces) -> Result<()>,
+) -> Result<CurveSweep> {
+    let (brep, (start_faces, side_faces, end_faces)) =
+        PrimitiveModel::build_new(k, |pc, model| {
+            let mut faces = SweepFaces::default();
+            body(pc, model, &mut faces)?;
+            Ok(faces)
+        })?;
+    Ok(CurveSweep {
+        brep,
+        start_faces,
+        side_faces,
+        end_faces,
+    })
+}
+
+/// The `SmBSplineCurve` a path or scale curve is (upstream's parameter type): a
+/// B-spline, or the B-spline part of a line or conic derived from it.
+fn bspline_of(curve: &Curve, op: &'static str) -> Result<BSplineCurve> {
+    match curve.clone().into_kind() {
+        CurveKind::BSpline(b) => Ok(b),
+        CurveKind::Line(l) => Ok(l.base_with_nurb()?.into_owned()),
+        CurveKind::Ellipse(e) => Ok(e.base().clone()),
+        CurveKind::Hyperbola(h) => Ok(h.base().clone()),
+        CurveKind::Parabola(p) => Ok(p.base().clone()),
+        _ => Err(SolidError::invalid_input(
+            op,
+            "curve is not an SmBSplineCurve",
+        )),
+    }
+}
+
+/// The path, scale-reference and scale curves of a face or edge curve sweep as
+/// `SmBSplineCurve`s.
+fn sweep_curves(
+    path: &Curve,
+    scale_reference: Option<&Curve>,
+    scale: Option<&Curve>,
+    op: &'static str,
+) -> Result<(BSplineCurve, Option<BSplineCurve>, Option<BSplineCurve>)> {
+    Ok((
+        bspline_of(path, op)?,
+        scale_reference.map(|c| bspline_of(c, op)).transpose()?,
+        scale.map(|c| bspline_of(c, op)).transpose()?,
+    ))
 }
 
 #[cfg(test)]
@@ -616,28 +695,47 @@ mod tests {
     }
 
     #[test]
-    fn consuming_sweeps_copy_then_defer() {
-        let k = Kernel::default();
+    fn consuming_sweeps_copy_then_run_or_defer() {
+        let mut k = Kernel::default();
         let (c, l, h) = (circle(), line(), hermite());
         let ok = [Some(&c), Some(&l)];
         let z = Vec3::new(0.0, 0.0, 1.0);
         let o = Point3::new(0.0, 0.0, 0.0);
-        assert!(unported(&create_linear_sweep(&k, &ok, z, 10.0, true)));
-        assert!(unported(&create_linear_sweep(&k, &[], z, 10.0, true)));
+        // the copies are made and the sweep runs (topology.brep_p4 is ported)
+        let b = create_linear_sweep(&mut k, &ok, z, 10.0, true).expect("linear sweep");
+        assert_eq!(
+            (
+                b.face_list().len(),
+                b.edge_list().len(),
+                b.vertex_list().len()
+            ),
+            (2, 7, 6)
+        );
+        // no profile curves: a successful empty sweep, as upstream
+        let b = create_linear_sweep(&mut k, &[], z, 10.0, true).expect("empty sweep");
+        assert!(b.face_list().is_empty());
+        assert!(b.edge_list().is_empty());
+        assert!(b.vertex_list().is_empty());
         assert!(invalid(&create_linear_sweep(
-            &k,
+            &mut k,
             &[Some(&c), None],
             z,
             1.0,
             false
         )));
-        assert!(unported(&create_rotational_sweep(
-            &k, &ok, o, z, 90.0, false
+        // the circle around the axis sweeps a surface degenerate to a curve
+        assert!(invalid(&create_rotational_sweep(
+            &mut k, &ok, o, z, 90.0, false
         )));
-        assert!(unported(&create_draft_sweep(&k, &ok, 10.0, -5.0, true, 3)));
-        assert!(unported(&create_draft_sweep(&k, &[], 10.0, -5.0, false, 3)));
+        assert!(unported(&create_draft_sweep(
+            &mut k, &ok, 10.0, -5.0, true, 3
+        )));
+        // no curves: CreateTaperExtrude's SM_ERR
+        assert!(
+            create_draft_sweep(&mut k, &[], 10.0, -5.0, false, 3).is_err_and(|e| !e.is_unported())
+        );
         assert!(invalid(&create_draft_sweep(
-            &k,
+            &mut k,
             &[None],
             10.0,
             5.0,
@@ -645,7 +743,8 @@ mod tests {
             0
         )));
         // SM_ERR of the Hermite curve's base Copy, before the later NULL is seen
-        let err = create_rotational_sweep(&k, &[Some(&h), None], o, z, 90.0, false).unwrap_err();
+        let err =
+            create_rotational_sweep(&mut k, &[Some(&h), None], o, z, 90.0, false).unwrap_err();
         assert!(matches!(
             err,
             SolidError::Upstream {
@@ -653,29 +752,40 @@ mod tests {
                 ..
             }
         ));
-        assert!(invalid(&create_taper_extrude(&k, &[], 10.0, 5.0, 3, false)));
         assert!(invalid(&create_taper_extrude(
-            &k,
+            &mut k,
+            &[],
+            10.0,
+            5.0,
+            3,
+            false
+        )));
+        assert!(invalid(&create_taper_extrude(
+            &mut k,
             &[Some(&l), None],
             10.0,
             5.0,
             3,
             false
         )));
-        assert!(unported(&create_taper_extrude(&k, &ok, 10.0, 5.0, 3, true)));
+        assert!(unported(&create_taper_extrude(
+            &mut k, &ok, 10.0, 5.0, 3, true
+        )));
         assert!(invalid(&create_linear_sweep_with_repetitions(
-            &k,
+            &mut k,
             &[],
             z,
             5.0,
             2,
             false
         )));
-        assert!(unported(&create_linear_sweep_with_repetitions(
-            &k, &ok, z, 5.0, 0, true
-        )));
+        // capped repeated sweeps need exactly one repetition: SM_ERR
+        assert!(
+            create_linear_sweep_with_repetitions(&mut k, &ok, z, 5.0, 0, true)
+                .is_err_and(|e| !e.is_unported())
+        );
         assert!(invalid(&create_rotational_sweep_with_repetitions(
-            &k,
+            &mut k,
             &[],
             o,
             z,
@@ -683,73 +793,87 @@ mod tests {
             2,
             false
         )));
-        assert!(unported(&create_rotational_sweep_with_repetitions(
-            &k, &ok, o, z, 5.0, 2, false
+        assert!(invalid(&create_rotational_sweep_with_repetitions(
+            &mut k, &ok, o, z, 5.0, 2, false
         )));
     }
 
     #[test]
-    fn pipe_and_planar_path_validate_then_defer() {
-        let k = Kernel::default();
+    fn pipe_and_planar_path_validate_then_run_or_defer() {
+        let mut k = Kernel::default();
         let p = path();
-        assert!(invalid(&create_pipe_sweep(&k, 1.0, None, true)));
-        assert!(invalid(&create_pipe_sweep(&k, 0.0, Some(&p), true)));
-        assert!(invalid(&create_pipe_sweep(&k, -1.0, Some(&p), false)));
-        assert!(unported(&create_pipe_sweep(&k, f64::NAN, Some(&p), false)));
-        assert!(unported(&create_pipe_sweep(&k, 1.0, Some(&p), true)));
+        assert!(invalid(&create_pipe_sweep(&mut k, 1.0, None, true)));
+        assert!(invalid(&create_pipe_sweep(&mut k, 0.0, Some(&p), true)));
+        assert!(invalid(&create_pipe_sweep(&mut k, -1.0, Some(&p), false)));
+        // a NaN radius passes the API's validation; upstream returns an empty B-rep
+        let b = create_pipe_sweep(&mut k, f64::NAN, Some(&p), false).expect("nan pipe");
+        assert!(b.face_list().is_empty());
+        assert!(b.edge_list().is_empty());
+        assert!(b.vertex_list().is_empty());
+        let b = create_pipe_sweep(&mut k, 1.0, Some(&p), false).expect("pipe");
+        assert_eq!(b.face_list().len(), 1);
+        let capped = create_pipe_sweep(&mut k, 1.0, Some(&p), true).expect("capped pipe");
+        assert!(crate::topology::brep::p2::is_manifold_solid(&capped).unwrap());
 
         let (c, l) = (circle(), line());
         assert!(invalid(&create_sweep_along_planar_path(
-            &k,
+            &mut k,
             &[],
             &[&l],
             true,
             3
         )));
         assert!(invalid(&create_sweep_along_planar_path(
-            &k,
+            &mut k,
             &[&c],
             &[],
             true,
             3
         )));
         assert!(invalid(&create_sweep_along_planar_path(
-            &k,
+            &mut k,
             &[&c],
             &[&l],
             true,
             -1
         )));
         assert!(invalid(&create_sweep_along_planar_path(
-            &k,
+            &mut k,
             &[&c],
             &[&l],
             true,
             4
         )));
         for caps in 0..=3 {
-            assert!(unported(&create_sweep_along_planar_path(
-                &k,
-                &[&c],
-                &[&l],
-                false,
-                caps
-            )));
+            let result = create_sweep_along_planar_path(&mut k, &[&c], &[&l], false, caps)
+                .expect("planar path");
+            let cap_count = (caps & 1) + ((caps >> 1) & 1);
+            assert_eq!(
+                (
+                    result.face_list().len(),
+                    result.edge_list().len(),
+                    result.vertex_list().len()
+                ),
+                (1 + cap_count as usize, 3, 2)
+            );
+            assert_eq!(
+                crate::topology::brep::p2::is_manifold_solid(&result).unwrap(),
+                caps == 3
+            );
         }
     }
 
     #[test]
-    fn curve_sweeps_validate_then_defer() {
-        let k = Kernel::default();
+    fn curve_sweeps_validate_then_run_or_defer() {
+        let mut k = Kernel::default();
         let p = path();
         let c = circle();
-        let b = Brep::default();
         let opts = SweepOptions {
             cap_ends: true,
             ..SweepOptions::default()
         };
         assert!(invalid(&create_curve_sweep(
-            &k,
+            &mut k,
             &[],
             Some(&p),
             None,
@@ -757,23 +881,19 @@ mod tests {
             None
         )));
         assert!(invalid(&create_curve_sweep(
-            &k,
+            &mut k,
             &[Some(&c)],
             None,
             None,
             None,
             None
         )));
-        assert!(unported(&create_curve_sweep(
-            &k,
-            &[Some(&c)],
-            Some(&p),
-            Some(&p),
-            None,
-            Some(&opts)
-        )));
-        assert!(unported(&create_curve_sweep(
-            &k,
+        let swept = create_curve_sweep(&mut k, &[Some(&c)], Some(&p), Some(&p), None, Some(&opts))
+            .expect("capped curve sweep");
+        assert!(crate::topology::brep::p2::is_manifold_solid(&swept.brep).unwrap());
+        // no B-spline profile left once the NULL entry is skipped
+        assert!(invalid(&create_curve_sweep(
+            &mut k,
             &[None],
             Some(&p),
             None,
@@ -781,8 +901,7 @@ mod tests {
             None
         )));
         assert!(invalid(&create_curve_sweep_from_faces(
-            &k,
-            &b,
+            &mut k,
             &[],
             Some(&p),
             None,
@@ -790,8 +909,7 @@ mod tests {
             None
         )));
         assert!(invalid(&create_curve_sweep_from_edges(
-            &k,
-            &b,
+            &mut k,
             &[],
             Some(&p),
             None,

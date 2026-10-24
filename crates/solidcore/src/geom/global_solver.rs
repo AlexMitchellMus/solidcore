@@ -32,6 +32,7 @@
 //! | `combine_min_max` (private)                  | `sm_CombineMinMax`                               |
 //! | [`GlobalSolve::add_sorted_solution`]         | `SmGlobalSolver::AddSortedSolution`              |
 //! | [`GlobalSolve::identical_solutions`], [`GlobalSolver::identical_solutions`] | `SmGlobalSolver::IdenticalSolutions` |
+//! | [`GlobalSolver::identical_solutions_in`]     | `SmGlobalSolver::IdenticalSolutions` (object domains read through a caller's resolver) |
 //!
 //! Deviations:
 //! - **Virtual methods.** Derived solvers (curve/curve, surface/surface, ...)
@@ -63,24 +64,47 @@
 //!   recursion upstream) or trees whose heights add up to more than
 //!   [`MAX_SOLVE_DEPTH`] (1000 levels) return [`SolidError::InvalidInput`], so
 //!   the `SolveBranch` recursion depth is bounded.
+//! - **Work bound.** Upstream visits every branch whose boxes cannot be culled;
+//!   boxes of overflowing geometry (`1e300` control points or weights) cull
+//!   nothing, so the visits grow with the product of the tree sizes (fuzz
+//!   `curve.curve_p9` fuzz01043 ran for minutes). [`solve_branch`] counts its
+//!   visits since the solve started ([`GlobalSolver::branches_visited`]) and returns [`SolidError::InvalidInput`]
+//!   past [`MAX_SOLVE_BRANCHES`] (upstream fixtures and the committed difftest
+//!   cases visit at most 56,753 branches in one solve).
+//! - **Owner objects.** A tree node's owner object is a solution handle, not the
+//!   curve, so the `SM_SO_SURFACE_PROJECTED_INTERSECT` test
+//!   ([`GlobalSolver::surface_projected_may_contain_answers`]) takes the second
+//!   curve from its caller (the curve/curve solver); the base solver without one
+//!   returns [`SolidError::InvalidInput`] where the owner object is set. The
+//!   ignored statuses of its `EvaluatePoint`/`EvaluateSurfaceNormal` keep the
+//!   previous sample's point or normal; a failure on the first sample (an
+//!   uninitialised value upstream) is returned.
 //! - The `ERR(SM_ERR)` of `BranchMayContainAnswers` for operations it does not
 //!   handle only prints a message upstream and falls through to `TRUE`; here
 //!   it is silently `true`. `SM_ASSERT`s, `Dump` and the `SM_DEBUG_CODE`
 //!   drawing blocks are not ported.
+//! - **Recursion counter.** The tree check above runs only in `solve_it`; overrides
+//!   and direct callers of `SolveBranch` skip it. The base traversal therefore also
+//!   counts its nesting in [`GlobalSolver::solve_depth`] and returns
+//!   [`SolidError::InvalidInput`] past `MAX_SOLVE_DEPTH + 1` nested calls (the top
+//!   call plus one per level, so every tree set the check accepts still runs).
 //! - `SM_SO_SURFACE_PROJECTED_INTERSECT` samples an `SmCrvOnSurf` owner of the
 //!   second tree, which is not ported yet: once the box tests cannot decide,
 //!   a tree without an owner object answers `false` (as upstream) and any
 //!   owner object returns [`SolidError::Unported`] (see the `UNPORTED` marker).
 
+use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::error::{Result, SolidError};
 use crate::geom::extent3d::Extent3d;
 use crate::geom::geom_utility::p1::{line_closest_point, point_project_to_plane};
 use crate::geom::solution_array::{
-    EndClass, Solution, SolutionArray, SolutionObject, SolutionType, SortKey,
+    EndClass, OwnDomains, ParameterDomains, Solution, SolutionArray, SolutionObject, SolutionType,
+    SortKey,
 };
 use crate::geom::tol::is_zero;
-use crate::geom::tree::{AuxDataType, NodeId, Tree, TreeNode};
+use crate::geom::tree::{AuxDataType, NodeData, NodeId, Tree, TreeNode};
 use crate::geom::vector3d::sqrt;
+use crate::kernel::Kernel;
 use crate::math::{max2, max3, Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, UNDEF_DOUBLE};
 
 /// `SM_GS_MAX_TREES`: most trees a global solver traverses together.
@@ -91,6 +115,11 @@ pub const MAX_SOLVER_TREES: usize = 3;
 /// `SolveBranch` recurses once per level (each subdivision descends one tree by
 /// one level), so this bounds the recursion; upstream trees are far shallower.
 pub const MAX_SOLVE_DEPTH: usize = 1_000;
+
+/// Most branches [`solve_branch`] visits in one solve (not upstream; see the module
+/// deviations): `2^20`, 18 times the most any upstream fixture or committed difftest
+/// case visits (56,753).
+pub const MAX_SOLVE_BRANCHES: u64 = 1 << 20;
 
 /// One node per traversed tree (`SmTreeNode* apBranch[SM_GS_MAX_TREES]`);
 /// `None` is a null pointer. Slots past the solver's tree count are `None`.
@@ -356,6 +385,52 @@ impl Default for SolveRequest<'_> {
     }
 }
 
+/// The caller's `SmTol::GetZoneTol3d(const SmObject*)` for the solution handles of a
+/// solve: the handles are opaque to the solver, so a caller that can resolve them to
+/// their B-rep entities (vertex, edge, face, or the edge of a curve, the face of a
+/// surface) passes this to the curve and surface solves (see
+/// [`GlobalSolve::object_zone_tol_3d`]).
+#[derive(Clone, Copy)]
+pub struct ObjectZoneTol<'a, O>(pub &'a dyn Fn(O) -> Result<f64>);
+
+impl<O> core::fmt::Debug for ObjectZoneTol<'_, O> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("ObjectZoneTol(..)")
+    }
+}
+
+impl<O> ObjectZoneTol<'_, O> {
+    /// The zone tolerance of `object`.
+    ///
+    /// # Errors
+    ///
+    /// The resolver's.
+    pub fn get(&self, object: O) -> Result<f64> {
+        (self.0)(object)
+    }
+}
+
+/// [`GlobalSolve::object_zone_tol_3d`] for a solver given an optional resolver: the
+/// resolver's answer, else the opaque-handle deferral.
+///
+/// # Errors
+///
+/// The resolver's; [`SolidError::Unported`] without one.
+pub fn resolve_object_zone_tol_3d<O>(
+    resolver: Option<ObjectZoneTol<'_, O>>,
+    object: O,
+) -> Result<f64> {
+    match resolver {
+        Some(r) => r.get(object),
+        // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on a handle the
+        // caller gave no resolver for
+        None => Err(SolidError::Unported {
+            upstream: "SmTol::GetZoneTol3d(const SmObject*)",
+            unit: "geom.tol",
+        }),
+    }
+}
+
 /// The state of a global solve (`SmGlobalSolver`'s data members).
 #[derive(Debug, Clone)]
 pub struct GlobalSolver<'t, O> {
@@ -388,6 +463,13 @@ pub struct GlobalSolver<'t, O> {
     pub opt_vectors: Vec<Vec3>,
     /// `*m_pSolutions`: the sorted solutions.
     pub solutions: SolutionArray<O>,
+    /// Current nesting of the base [`solve_branch`] (not upstream): bounded by
+    /// `MAX_SOLVE_DEPTH + 1`.
+    pub solve_depth: usize,
+    /// Branches [`solve_branch`] visited since the solve started (not upstream;
+    /// reset by [`GlobalSolve::solve_it`] and the topology solver's `SolveTrees`):
+    /// bounded by [`MAX_SOLVE_BRANCHES`].
+    pub branches_visited: u64,
 }
 
 /// Height of the subtree of `tree` below `top` along the child links (a leaf
@@ -478,6 +560,8 @@ impl<'t, O: SolutionObject> GlobalSolver<'t, O> {
             at_distance_sq: 0.0,
             opt_vectors: Vec::new(),
             solutions: SolutionArray::new(),
+            solve_depth: 0,
+            branches_visited: 0,
         }
     }
 
@@ -785,7 +869,7 @@ impl<'t, O: SolutionObject> GlobalSolver<'t, O> {
             }
 
             SolverOperation::SurfaceProjectedIntersect => {
-                self.surface_projected_may_contain_answers(branch)
+                self.surface_projected_may_contain_answers(branch, None)
             }
 
             // SM_SO_NORMALIZE, SM_SO_FIND: no optimization here yet.
@@ -1010,7 +1094,25 @@ impl<'t, O: SolutionObject> GlobalSolver<'t, O> {
 
     /// The box and offset-box tests of `BranchMayContainAnswers` for
     /// [`SolverOperation::SurfaceProjectedIntersect`].
-    fn surface_projected_may_contain_answers(&self, branch: &Branch) -> Result<bool> {
+    ///
+    /// `owner` resolves the second tree's owner object (upstream
+    /// `SM_CAST_PTR(SmCrvOnSurf, apBranch[1]->GetOwnerObject())`): the kernel and
+    /// the second curve as a curve on a surface (`None` when it is not one). The
+    /// base solver cannot reach the curve and passes `None`; the curve/curve
+    /// solver passes its curves.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::InvalidInput`] for a null node, an owner object that `owner`
+    /// does not resolve, or span data that is not curve data; the errors of the
+    /// curve-on-surface evaluations upstream would leave its first sample
+    /// undefined with; [`SolidError::Unported`] from those evaluations.
+    pub fn surface_projected_may_contain_answers(
+        &self,
+        branch: &Branch,
+        owner: Option<(&Kernel, Option<&CrvOnSurf>)>,
+    ) -> Result<bool> {
+        const OP: &str = "geom::global_solver::GlobalSolver::branch_may_contain_answers";
         let tol = self.tolerance_3d;
 
         // If the boxes actually intersect, then we can return True.
@@ -1025,23 +1127,80 @@ impl<'t, O: SolutionObject> GlobalSolver<'t, O> {
             return Ok(true);
         }
 
+        // Now we have to see about offsetting sBBox2 along the surface normal.
+        // We can find a reasonable offset distance by comparing BBoxes.
+        let max_dist = bbox1.max_distance(&bbox2);
+
         // If we create a new box by offsetting the surface-curve points
         // along the normal by both the min and max distances,
         // then we will catch any case that could 'intersect'.
         // But we have to sample the surface curve.
-        let node2 = branch.get(1).copied().flatten().ok_or(null_node(
-            "geom::global_solver::GlobalSolver::branch_may_contain_answers",
-        ))?;
-        match self.tree(1)?.node_owner_object(node2)? {
-            None => Ok(false),
-            Some(_) => {
-                // UNPORTED(curve.crv_on_surf): SmCrvOnSurf::EvaluatePoint
-                Err(SolidError::Unported {
-                    upstream: "SmCrvOnSurf::EvaluatePoint",
-                    unit: "curve.crv_on_surf",
-                })
-            }
+        let node2 = branch.get(1).copied().flatten().ok_or(null_node(OP))?;
+        if self.tree(1)?.node_owner_object(node2)?.is_none() {
+            return Ok(false);
         }
+        let Some((k, cos)) = owner else {
+            return Err(SolidError::InvalidInput {
+                operation: OP,
+                reason: "the base solver cannot reach the second tree's owner curve",
+            });
+        };
+        let Some(cos) = cos else {
+            return Ok(false);
+        };
+
+        // Get the vector from the surface box to the 3d curve box.
+        // We'll use that to decide which surface normal (+/-) to use.
+        let diff_vec = bbox1.mid() - bbox2.mid();
+
+        let tree2 = self.tree(1)?;
+        let node = tree2.node(node2)?;
+        if matches!(node.data, NodeData::None) {
+            return Ok(false);
+        }
+        let ivl2 = *tree2.curve_aux(node)?.interval();
+
+        let mut off_box = Extent3d::new();
+        // Upstream's out-parameters keep their previous value when an
+        // evaluation fails (its status is ignored).
+        let mut srf_pt: Option<Point3> = None;
+        let mut norm: Option<Vec3> = None;
+
+        let num_samples: u32 = 10;
+        let d_num_samples = f64::from(num_samples);
+        for ii in 0..=num_samples {
+            let frac = f64::from(ii) / d_num_samples;
+            let t = ivl2.evaluate(frac);
+            match cos.evaluate_point(k, t) {
+                Ok(p) => srf_pt = Some(p),
+                Err(e) if e.is_unported() || srf_pt.is_none() => return Err(e),
+                Err(_) => {}
+            }
+            match cos.evaluate_surface_normal(k, t, false) {
+                Ok(eval) => norm = Some(eval.normal),
+                Err(e) if e.is_unported() || norm.is_none() => return Err(e),
+                Err(_) => {}
+            }
+            let (Some(pt), Some(n)) = (srf_pt, norm.as_mut()) else {
+                return Err(null_node(OP));
+            };
+            if n.dot(diff_vec) < 0.0 {
+                *n *= -1.0;
+            }
+            let n = *n;
+
+            off_box.add_point(pt + min_dist * n);
+            off_box.add_point(pt + max_dist * n);
+        }
+
+        // Expand offset box to account for sampling.
+        off_box.expand_absolute(2.0 * tol);
+
+        if off_box.are_disjoint(&bbox1, 0.0) {
+            return Ok(false);
+        }
+
+        Ok(true) // possible answers in this branch
     }
 
     /// `SmGlobalSolver::AreReadyForLocalSolve`: true when every node of
@@ -1220,6 +1379,21 @@ impl<'t, O: SolutionObject> GlobalSolver<'t, O> {
         sol1: &Solution<O>,
         sol2: &Solution<O>,
     ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
+        self.identical_solutions_in(sol1, sol2, &OwnDomains)
+    }
+
+    /// [`GlobalSolver::identical_solutions`] reading the parameter intervals of the
+    /// solutions' objects through `domains` ([`Solution::parameter_interval_in`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`GlobalSolver::identical_solutions`].
+    pub fn identical_solutions_in(
+        &self,
+        sol1: &Solution<O>,
+        sol2: &Solution<O>,
+        domains: &dyn ParameterDomains<O>,
+    ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
         const OP: &str = "geom::global_solver::GlobalSolver::identical_solutions";
 
         // different ObjectCounts, VariableCounts, SolutionValues, SolutionTypes
@@ -1246,8 +1420,8 @@ impl<'t, O: SolutionObject> GlobalSolver<'t, O> {
 
         // ParameterValues off by more than ScaledZero or more than 1/10000th of the parameter length
         for i in 0..sol1.num_variables {
-            let ivl1 = sol1.parameter_interval(i)?;
-            let ivl2 = sol2.parameter_interval(i)?;
+            let ivl1 = sol1.parameter_interval_in(i, domains)?;
+            let ivl2 = sol2.parameter_interval_in(i, domains)?;
             let length1 = ivl1.map_or(0.0, |ivl| 0.0001 * ivl.length());
             let length2 = ivl2.map_or(0.0, |ivl| 0.0001 * ivl.length());
 
@@ -1480,12 +1654,42 @@ fn combine_min_max<O: SolutionObject>(
 ///
 /// # Errors
 ///
-/// Those of the hooks.
+/// Those of the hooks; [`SolidError::InvalidInput`] past `MAX_SOLVE_DEPTH + 1`
+/// nested calls.
 pub fn solve_branch<'t, O, S>(solver: &mut S, branch: &Branch) -> Result<()>
 where
     O: SolutionObject + 't,
     S: GlobalSolve<'t, O> + ?Sized,
 {
+    let depth = solver.solver().solve_depth;
+    if depth > MAX_SOLVE_DEPTH {
+        return Err(SolidError::invalid_input(
+            "geom::global_solver::solve_branch",
+            "solve nesting exceeds MAX_SOLVE_DEPTH",
+        ));
+    }
+    solver.solver_mut().solve_depth = depth + 1;
+    let result = solve_branch_body(solver, branch);
+    solver.solver_mut().solve_depth = depth;
+    result
+}
+
+/// The body of [`solve_branch`] at one nesting level.
+fn solve_branch_body<'t, O, S>(solver: &mut S, branch: &Branch) -> Result<()>
+where
+    O: SolutionObject + 't,
+    S: GlobalSolve<'t, O> + ?Sized,
+{
+    // (not upstream) bound the work: see MAX_SOLVE_BRANCHES
+    let s = solver.solver_mut();
+    s.branches_visited += 1;
+    if s.branches_visited > MAX_SOLVE_BRANCHES {
+        return Err(SolidError::invalid_input(
+            "geom::global_solver::solve_branch",
+            "solve visits more than MAX_SOLVE_BRANCHES branches",
+        ));
+    }
+
     // no more work - these nodes no longer contain possible answer
     if !solver.branch_may_contain_answers(branch)? {
         return Ok(());
@@ -1520,6 +1724,19 @@ pub trait GlobalSolve<'t, O: SolutionObject + 't> {
 
     /// The solver state, mutable.
     fn solver_mut(&mut self) -> &mut GlobalSolver<'t, O>;
+
+    /// `SmTol::GetZoneTol3d(const SmObject*)` of a non-null solution object (read by
+    /// `SmSolution::GetObjectTolerance` in [`GlobalSolve::add_sorted_solution`] for
+    /// [`SolverOperation::Rayfire`]). The handles are opaque here: a solver whose
+    /// caller can resolve them to their B-rep entities (the topology solver, or a
+    /// curve or surface solve given [`ObjectZoneTol`]) overrides this.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] by default (no resolver for the handle).
+    fn object_zone_tol_3d(&self, object: O) -> Result<f64> {
+        resolve_object_zone_tol_3d(None, object)
+    }
 
     /// `BranchMayContainAnswers`: false when `branch` provably holds no
     /// answer.
@@ -1651,6 +1868,7 @@ pub trait GlobalSolve<'t, O: SolutionObject + 't> {
 
         // store the output array, execute the solver tree/tree iteration
         std::mem::swap(&mut s.solutions, solutions);
+        s.branches_visited = 0;
         let result = self.solve_branch(&start_branch);
         std::mem::swap(&mut self.solver_mut().solutions, solutions);
         result
@@ -1969,10 +2187,12 @@ pub trait GlobalSolve<'t, O: SolutionObject + 't> {
             // To match old behavior, we check the distance between
             // intersection points on the ray.
             if op == SolverOperation::Rayfire {
-                let first_tol = first.object_tolerance(0)?;
-                let last_tol = s.solutions.get_at(last_index)?.object_tolerance(0)?;
+                let last = s.solutions.get_at(last_index)?;
+                let first_tol = first.object_tolerance_with(0, |o| self.object_zone_tol_3d(o))?;
+                let last_tol = last.object_tolerance_with(0, |o| self.object_zone_tol_3d(o))?;
                 this_tol = max2(tol, first_tol + last_tol);
             }
+            let s = self.solver_mut();
 
             while s.solutions.len() > 1
                 && (first.start.solution_value
@@ -2065,6 +2285,55 @@ mod tests {
         assert_eq!(SolutionRequested::Nodes.code(), 3);
         assert_eq!(OperationCategory::Other.code(), 3);
         assert_eq!(SolutionPairType::DiffParameters.code(), 3);
+    }
+
+    #[test]
+    fn solve_depth_is_restored_after_a_recursive_error() {
+        struct Repeating {
+            base: GlobalSolver<'static, Obj>,
+            stop: bool,
+        }
+        impl GlobalSolve<'static, Obj> for Repeating {
+            fn solver(&self) -> &GlobalSolver<'static, Obj> {
+                &self.base
+            }
+
+            fn solver_mut(&mut self) -> &mut GlobalSolver<'static, Obj> {
+                &mut self.base
+            }
+
+            fn branch_may_contain_answers(&mut self, _: &Branch) -> Result<bool> {
+                Ok(!self.stop)
+            }
+
+            fn are_ready_for_local_solve(&self, _: &Branch) -> Result<bool> {
+                Ok(false)
+            }
+
+            fn subdivide(&mut self, branch: &Branch) -> Result<(Branch, Branch)> {
+                Ok((*branch, *branch))
+            }
+        }
+
+        let mut solver = Repeating {
+            base: GlobalSolver::new(),
+            stop: false,
+        };
+        // Exercise the last two recursion levels without filling the test
+        // thread's stack. A cyclic branch must return an error and unwind both.
+        solver.base.solve_depth = MAX_SOLVE_DEPTH - 1;
+        let branch = [None; MAX_SOLVER_TREES];
+        assert!(matches!(
+            solver.solve_branch(&branch),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert_eq!(solver.base.solve_depth, MAX_SOLVE_DEPTH - 1);
+
+        // The same solver remains usable after the error.
+        solver.base.solve_depth = 0;
+        solver.stop = true;
+        solver.solve_branch(&branch).unwrap();
+        assert_eq!(solver.base.solve_depth, 0);
     }
 
     #[test]

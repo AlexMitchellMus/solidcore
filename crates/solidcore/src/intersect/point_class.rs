@@ -57,7 +57,8 @@
 //! | [`object_zone_tol_3d`]                            | `SmTol::GetZoneTol3d(const SmObject*)`           |
 //! | [`PointClassification::xsect_tol_3d`]             | `SmTol::GetXSectTol3d(const SmPointClassification*)` |
 //! | [`PointClassification::set_src_zone_tol_3d`]      | `SetSrcZoneTol3d`                                |
-//! | [`PointClassification::combine`], [`Precedence`]  | `Combine`                                        |
+//! | [`PointClassification::combine`], [`PointClassification::combine_in_brep`], [`Precedence`] | `Combine` |
+//! | [`CombineBrep`]                                   | the arena behind the classified object           |
 //! | [`PointClassification::compute_point_parameters`] | `ComputePointParameters`                         |
 //! | [`PointClassification::find_obj_point_3d`]        | `FindObjPoint3d`                                 |
 //! | [`PointClassification::load_from_intersection`]   | `LoadFromIntersection`                           |
@@ -69,10 +70,12 @@
 //!
 //! Deviations:
 //! - **Mutable topology.** [`BrepMerge`] supplies an arena, resolved target,
-//!   handle mapping and notification environment for [`PointClassification::merge_into_brep`].
-//!   The older opaque-handle entrypoint cannot resolve an edge's arena and returns
-//!   an `Unported(topology.brep_p1)` deferral until the caller supplies that
-//!   context. Region/face owner queries retain their own blockers.
+//!   handle mapping and notification environment for [`PointClassification::merge_into_brep`],
+//!   and [`CombineBrep`] the arena and notifications
+//!   [`PointClassification::combine_in_brep`] writes a propagated vertex point to.
+//!   The older opaque-handle entrypoints cannot resolve their object's arena and return
+//!   an `Unported(topology.brep_p1)` / `Unported(topology.vertex)` deferral until the
+//!   caller supplies that context. Region/face owner queries retain their own blockers.
 //! - **Object handles.** `m_pObject` and `m_cpFace` are caller-chosen handles `O`
 //!   ([`ClassObject`]): equal handles are the same object, and
 //!   [`ClassObject::class_kind`] answers `GetType` / `IsKindOf`. The geometry behind a
@@ -169,10 +172,24 @@ pub struct BrepMerge<'a, 'env, O> {
     pub curve_ref: &'a dyn Fn(EdgeId, i64) -> ObjectRef,
 }
 
+/// The arena [`PointClassification::combine_in_brep`] writes a propagated surf/surf/surf
+/// point to.
+pub struct CombineBrep<'a, 'env, O> {
+    /// Arena graph containing the classified object.
+    pub brep: &'a mut Brep,
+    /// Resolved target in that graph (a vertex for an `SM_PC_VERTEX` classification).
+    pub target: EntityRef,
+    /// Classification handle corresponding to a topology id in this B-rep.
+    pub handle: &'a dyn Fn(EntityRef) -> O,
+    /// Notification storage/identities shared with the caller's other mutations.
+    pub notifications: &'a mut edge::NotifyEnv<'env>,
+}
+
 const OP_GAP: &str = "intersect::point_class::PointClassification::gap_3d";
 const OP_COMPUTE: &str = "intersect::point_class::PointClassification::compute_point_parameters";
 const OP_FIND: &str = "intersect::point_class::PointClassification::find_obj_point_3d";
 const OP_MERGE: &str = "intersect::point_class::PointClassification::merge_into_object";
+const OP_COMBINE: &str = "intersect::point_class::PointClassification::combine";
 const OP_LOAD: &str = "intersect::point_class::PointClassification::load_from_intersection";
 const OP_GEOMETRY: &str = "intersect::point_class::ClassGeometry";
 
@@ -332,6 +349,37 @@ pub trait ClassGeometry<O> {
     /// error for the caller).
     fn topology_handle(&self, entity: EntityRef) -> Option<O> {
         let _ = entity;
+        None
+    }
+    /// The handle of entity `entity` of `brep`, a B-rep that
+    /// [`ClassGeometry::topology_entity`] returned. An adapter over several B-reps
+    /// implements this to tell them apart; the default is
+    /// [`ClassGeometry::topology_handle`].
+    fn topology_handle_in(&self, brep: &Brep, entity: EntityRef) -> Option<O> {
+        let _ = brep;
+        self.topology_handle(entity)
+    }
+    /// The Boolean mate of topology handle `entity` through the topology intersector
+    /// behind handle `ti` (`ti->GetOtherMate(entity) ? .. : ti->GetBrepMate(entity)`):
+    /// `Some(None)` for no mate. `None` (the default) is an adapter that cannot reach
+    /// the intersector; callers keep that lookup as an `Unported` deferral.
+    fn topology_intersector_mate(&self, ti: O, entity: O) -> Option<Option<O>> {
+        let _ = (ti, entity);
+        None
+    }
+    /// The B-rep id a caller's collection gives `brep`, a B-rep that
+    /// [`ClassGeometry::topology_entity`] returned (upstream's `SmBrep*` of `GetBrep`).
+    /// `None` (the default) is an adapter without such ids; `GetBrep` of a topology
+    /// object then stays an `Unported` deferral.
+    fn brep_id(&self, brep: &Brep) -> Option<BrepId> {
+        let _ = brep;
+        None
+    }
+    /// The B-rep entity behind the owner `owner` of a curve or surface (the edge of
+    /// `SmCurve::GetEdge`, the face of `SmSurface::GetFace`), when the adapter can
+    /// resolve object references; `None` (the default) when it cannot.
+    fn owner_entity(&self, owner: ObjectRef) -> Option<(&Brep, EntityRef)> {
+        let _ = owner;
         None
     }
     /// The owner of an intermediate owner on a curve's owner chain (`GetOwner` of a
@@ -507,37 +555,68 @@ impl<O: ClassObject> PointClassification<O> {
     ) -> Result<Option<BrepId>> {
         let brep: Option<BrepId> = match self.point_class {
             PointClassType::Vertex => {
-                // UNPORTED(topology.vertex): SmVertex::GetBrep
-                return Err(SolidError::unported("SmVertex::GetBrep", "topology.vertex"));
+                let o = self.object.ok_or_else(|| null_object(OP_GEOMETRY))?;
+                match topology_of(geometry, o, "SmVertex::GetBrep", "topology.vertex")? {
+                    (b, EntityRef::Vertex(v)) => brep_id_of(geometry, vertex::brep(b, v)?)?,
+                    _ => return Err(wrong_entity(OP_GEOMETRY)),
+                }
             }
             PointClassType::Edge => {
-                // UNPORTED(topology.edge): SmEdge::GetBrep
-                return Err(SolidError::unported("SmEdge::GetBrep", "topology.edge"));
+                let o = self.object.ok_or_else(|| null_object(OP_GEOMETRY))?;
+                match topology_of(geometry, o, "SmEdge::GetBrep", "topology.edge")? {
+                    (b, EntityRef::Edge(e)) => brep_id_of(geometry, edgeuse::p1::edge_brep(b, e)?)?,
+                    _ => return Err(wrong_entity(OP_GEOMETRY)),
+                }
             }
             PointClassType::Face => {
-                // UNPORTED(topology.face_p4): SmFace::GetBrep
-                return Err(SolidError::unported("SmFace::GetBrep", "topology.face_p4"));
+                let o = self.object.ok_or_else(|| null_object(OP_GEOMETRY))?;
+                match topology_of(geometry, o, "SmFace::GetBrep", "topology.face_p4")? {
+                    (b, EntityRef::Face(f)) => brep_id_of(geometry, face::p4::brep(b, f)?)?,
+                    _ => return Err(wrong_entity(OP_GEOMETRY)),
+                }
             }
             PointClassType::Edgeuse => {
-                // UNPORTED(topology.edgeuse_p1): SmEdgeuse::GetBrep
-                return Err(SolidError::unported(
-                    "SmEdgeuse::GetBrep",
-                    "topology.edgeuse_p1",
-                ));
+                let o = self.object.ok_or_else(|| null_object(OP_GEOMETRY))?;
+                match topology_of(geometry, o, "SmEdgeuse::GetBrep", "topology.edgeuse_p1")? {
+                    (b, EntityRef::Edgeuse(eu)) => brep_id_of(geometry, edgeuse::p1::brep(b, eu)?)?,
+                    _ => return Err(wrong_entity(OP_GEOMETRY)),
+                }
             }
             PointClassType::Curve => {
-                if self.curve_of(geometry, OP_GEOMETRY)?.owner().is_some() {
-                    // UNPORTED(topology.edge): SmEdge::GetBrep (of SmCurve::GetEdge)
-                    return Err(SolidError::unported("SmEdge::GetBrep", "topology.edge"));
+                let curve = self.curve_of(geometry, OP_GEOMETRY)?;
+                // SmCurve::GetEdge, then SmEdge::GetBrep
+                match curve.edge(|r| geometry.owner_of(r))? {
+                    None => None,
+                    Some(edge_ref) => match geometry.owner_entity(edge_ref) {
+                        Some((b, EntityRef::Edge(e))) => {
+                            brep_id_of(geometry, edgeuse::p1::edge_brep(b, e)?)?
+                        }
+                        Some(_) => return Err(wrong_entity(OP_GEOMETRY)),
+                        // UNPORTED(topology.edge): SmEdge::GetBrep (of SmCurve::GetEdge; an
+                        // adapter that cannot resolve the owning edge)
+                        None => {
+                            return Err(SolidError::unported("SmEdge::GetBrep", "topology.edge"))
+                        }
+                    },
                 }
-                None
             }
             PointClassType::Surface => {
-                if self.surface_of(geometry, OP_GEOMETRY)?.face()?.is_some() {
-                    // UNPORTED(topology.face_p4): SmFace::GetBrep (of SmSurface::GetFace)
-                    return Err(SolidError::unported("SmFace::GetBrep", "topology.face_p4"));
+                let surface = self.surface_of(geometry, OP_GEOMETRY)?;
+                // SmSurface::GetFace, then SmFace::GetBrep
+                match surface.face()? {
+                    None => None,
+                    Some(face_ref) => match geometry.owner_entity(face_ref) {
+                        Some((b, EntityRef::Face(f))) => {
+                            brep_id_of(geometry, face::p4::brep(b, f)?)?
+                        }
+                        Some(_) => return Err(wrong_entity(OP_GEOMETRY)),
+                        // UNPORTED(topology.face_p4): SmFace::GetBrep (of SmSurface::GetFace;
+                        // an adapter that cannot resolve the owning face)
+                        None => {
+                            return Err(SolidError::unported("SmFace::GetBrep", "topology.face_p4"))
+                        }
+                    },
                 }
-                None
             }
             PointClassType::Volume
             | PointClassType::Point
@@ -765,13 +844,7 @@ impl<O: ClassObject> PointClassification<O> {
         let (upstream, unit) = match o.class_kind() {
             ClassObjectKind::Vertex => ("SmVertex::IsConnectedTo", "topology.vertex"),
             ClassObjectKind::Edge => ("SmEdge::IsConnectedTo", "topology.edge"),
-            ClassObjectKind::Face => {
-                // UNPORTED(topology.face_p4): SmFace::IsConnectedTo
-                return Err(SolidError::unported(
-                    "SmFace::IsConnectedTo",
-                    "topology.face_p4",
-                ));
-            }
+            ClassObjectKind::Face => ("SmFace::IsConnectedTo", "topology.face_p4"),
             ClassObjectKind::Loop => ("SmLoop::IsConnectedTo", "topology.loopuse"),
             ClassObjectKind::Vertexuse => ("SmVertexuse::IsConnectedTo", "topology.vertexuse"),
             ClassObjectKind::Edgeuse => ("SmEdgeuse::IsConnectedTo", "topology.edgeuse_p1"),
@@ -797,6 +870,7 @@ impl<O: ClassObject> PointClassification<O> {
         match entity {
             EntityRef::Vertex(v) => vertex::is_connected_to(b, v, tgt),
             EntityRef::Edge(e) => edge::is_connected_to(b, e, tgt),
+            EntityRef::Face(f) => face::p4::is_connected_to(b, f, tgt),
             EntityRef::Loop(l) => loopuse::loop_is_connected_to(b, l, tgt),
             EntityRef::Vertexuse(vu) => vertexuse::is_connected_to(b, vu, tgt),
             EntityRef::Edgeuse(eu) => edgeuse::p1::is_connected_to(b, eu, tgt),
@@ -937,9 +1011,34 @@ impl<O: ClassObject> PointClassification<O> {
     /// # Errors
     ///
     /// [`SolidError::Unported`] when the surf/surf/surf point is copied to a vertex
-    /// classification (`SmVertex::SetPoint`, unit `topology.vertex`); `self` has the
-    /// point by then.
+    /// classification and no arena is available ([`Self::combine_in_brep`] writes it);
+    /// `self` has the point by then.
     pub fn combine(&mut self, other: &Self) -> Result<Precedence> {
+        self.combine_with(other, None)
+    }
+
+    /// `Combine(other)` with the arena `self`'s topology handle names: a surf/surf/surf
+    /// point propagated to a vertex classification is written to that vertex
+    /// (`SmVertex::SetPoint`).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Self::combine`]; [`SolidError::InvalidInput`] when `target` is not a
+    /// vertex; those of `SmVertex::SetPoint`.
+    pub fn combine_in_brep(
+        &mut self,
+        other: &Self,
+        context: CombineBrep<'_, '_, O>,
+    ) -> Result<Precedence> {
+        self.combine_with(other, Some(context))
+    }
+
+    /// [`Self::combine`] with an optional arena for the propagated vertex point.
+    fn combine_with(
+        &mut self,
+        other: &Self,
+        arena: Option<CombineBrep<'_, '_, O>>,
+    ) -> Result<Precedence> {
         use PointClassType as Pc;
         let this_class = self.point_class;
         let other_class = other.point_class;
@@ -986,11 +1085,40 @@ impl<O: ClassObject> PointClassification<O> {
 
             // set vertex position when appropriate
             if self.point_class == Pc::Vertex {
-                // UNPORTED(topology.vertex): SmVertex::SetPoint
-                return Err(SolidError::unported(
-                    "SmVertex::SetPoint",
-                    "topology.vertex",
-                ));
+                let Some(arena) = arena else {
+                    // UNPORTED(topology.vertex): SmVertex::SetPoint
+                    return Err(SolidError::unported(
+                        "SmVertex::SetPoint",
+                        "topology.vertex",
+                    ));
+                };
+                if self
+                    .object
+                    .is_some_and(|object| (arena.handle)(arena.target) != object)
+                {
+                    return Err(SolidError::invalid_input(
+                        OP_COMBINE,
+                        "target does not resolve classification object",
+                    ));
+                }
+                let EntityRef::Vertex(v) = arena.target else {
+                    return Err(SolidError::invalid_input(
+                        OP_COMBINE,
+                        "combine target is not a vertex",
+                    ));
+                };
+                let key_of = arena.notifications.key_of;
+                let this = key_of(EntityRef::Vertex(v));
+                vertex::set_point(
+                    arena.brep,
+                    v,
+                    self.sss_point,
+                    arena.notifications.records,
+                    arena.notifications.attributes,
+                    arena.notifications.context.as_deref_mut(),
+                    this,
+                    &|vu| key_of(EntityRef::Vertexuse(vu)),
+                )?;
             }
         }
 
@@ -1593,21 +1721,41 @@ pub fn object_zone_tol_3d<O: ClassObject>(
         | ClassObjectKind::Region => Ok(ZONE_TOL_3D),
         ClassObjectKind::Surface => {
             let surface = geometry.surface(o).ok_or_else(|| unresolved(OP_GEOMETRY))?;
-            // GetFace() ? its tolerance (cached on the surface by its B-rep;
-            // UNPORTED(topology.face_p2): SmFace::GetTolerance for a bare face handle)
-            Ok(surface.face_zone_tol_3d()?.unwrap_or(system))
+            // GetFace() ? its tolerance (cached on the surface by its B-rep, else read
+            // from the face the adapter resolves the owner to)
+            match surface.face()? {
+                None => Ok(system),
+                Some(face_ref) => match surface.owner_zone_tol_3d() {
+                    Some(tol) => Ok(tol),
+                    None => match geometry.owner_entity(face_ref) {
+                        Some((b, EntityRef::Face(f))) => face::p2::tolerance(b, f),
+                        Some(_) => Err(wrong_entity(OP_GEOMETRY)),
+                        // UNPORTED(topology.face_p2): SmFace::GetTolerance (a bare face
+                        // owner the adapter cannot resolve)
+                        None => Err(SolidError::unported(
+                            "SmFace::GetTolerance",
+                            "topology.face_p2",
+                        )),
+                    },
+                },
+            }
         }
         ClassObjectKind::Curve => {
             let curve = geometry.curve(o).ok_or_else(|| unresolved(OP_GEOMETRY))?;
             // SmCurve::GetEdge (Curve::edge) walks the owner chain
-            if curve.edge(|r| geometry.owner_of(r))?.is_some() {
-                // UNPORTED(topology.edge): SmEdge::GetTolerance
-                return Err(SolidError::unported(
-                    "SmEdge::GetTolerance",
-                    "topology.edge",
-                ));
+            match curve.edge(|r| geometry.owner_of(r))? {
+                None => Ok(system),
+                Some(edge_ref) => match geometry.owner_entity(edge_ref) {
+                    Some((b, EntityRef::Edge(e))) => edge::tolerance(b, e),
+                    Some(_) => Err(wrong_entity(OP_GEOMETRY)),
+                    // UNPORTED(topology.edge): SmEdge::GetTolerance (an adapter that
+                    // cannot resolve the curve's owning edge)
+                    None => Err(SolidError::unported(
+                        "SmEdge::GetTolerance",
+                        "topology.edge",
+                    )),
+                },
             }
-            Ok(system)
         }
         // SmVolume and other objects: the "unsupported object" branch (it warns)
         ClassObjectKind::Volume | ClassObjectKind::Point | ClassObjectKind::Other => Ok(system),
@@ -1827,6 +1975,18 @@ fn topology_face<'g, O: ClassObject>(
     match topology_of(geometry, o, "SmFace::GetSurface", "topology.face_p2")? {
         (b, EntityRef::Face(f)) => Ok((b, f)),
         _ => Err(wrong_entity(op)),
+    }
+}
+
+/// The caller's id of the B-rep a topology `GetBrep` returned
+/// ([`ClassGeometry::brep_id`]); `None` stays `None` (upstream's `NULL`).
+fn brep_id_of<O>(geometry: &impl ClassGeometry<O>, brep: Option<&Brep>) -> Result<Option<BrepId>> {
+    match brep {
+        None => Ok(None),
+        Some(b) => geometry.brep_id(b).map(Some).ok_or(
+            // UNPORTED(topology.brep_p1): SmBrep identity (an adapter without B-rep ids)
+            SolidError::unported("SmBrep identity of GetBrep", "topology.brep_p1"),
+        ),
     }
 }
 

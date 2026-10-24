@@ -10,16 +10,15 @@
 //! compared as flags, statuses, tolerances, edge use / vertex use states and sampled
 //! curve points (see the FFI module docs for each op's output).
 //!
-//! **Inexact geometry.** The import holds an analytic `SmBSplineSurface` subclass other
-//! than `SmPlane` (cylinder, cone, sphere, torus, surface of revolution or extrusion) and
-//! an `SmBSplineCurve` subclass other than `SmLine` (ellipse, ...) only as its B-spline
-//! part. A geometric op (`LoopOrient` and later) on a B-rep holding such a kind is
-//! deferred to the unit that gives the kind its Rust representation: the `SurfaceKind`
-//! dispatch of `surface.surface_p2` for `SmCone` / `SmCylinder` / `SmSphere` / `SmTorus`
-//! (their own units are ported, but no `Surface` can hold them yet),
-//! `surface.surf_of_extrusion_p2` for the extrusion, `topology.brep_p7`
-//! (`SmBrep::ReadFromFile`) otherwise; the topological ops (`Lamina`, `SetTol`, `Notify`)
-//! are compared on every B-rep.
+//! **Inexact geometry.** The shared export carries an analytic face surface (surface of
+//! revolution, cone, cylinder, sphere, torus, extrusion) exactly, as its upstream database
+//! record, when that record is lossless (`sc_analytic_export.h`); the import then holds
+//! the real `SurfaceKind`. Any other `SmBSplineSurface` subclass than `SmPlane`, and an
+//! `SmBSplineCurve` subclass other than `SmLine` (ellipse, ...), is held only as its
+//! B-spline part. A geometric op (`LoopOrient` and later) on a B-rep holding such a kind is
+//! deferred (the labels of `inexact_geometry`; `topology.brep_p7`, `SmBrep::ReadFromFile`,
+//! for curves); the topological ops (`Lamina`, `SetTol`, `Notify`) are compared on every
+//! B-rep.
 //!
 //! Face, loop and other-face selectors are taken modulo the B-rep's counts, so
 //! generated cases need no counts; a B-rep without faces gives `no face` on both sides.
@@ -29,6 +28,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use solidcore::curve::curve::p2::CurveKind;
 use solidcore::curve::curve::Curve as SmCurve;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::extent2d::Extent2d;
@@ -53,6 +53,21 @@ pub struct Runner;
 
 fn harness(msg: impl Into<String>) -> HarnessError {
     HarnessError::new(msg)
+}
+
+/// Mirrors `new SmBSplineCurve(*c)` in the shim: the native base-class copy slices an
+/// analytic `SmBSplineCurve` subclass, then applies the B-spline copy constructor's
+/// knot fixup. Do not preserve the dynamic curve kind here.
+fn native_bspline_copy(curve: &SmCurve) -> Option<SmCurve> {
+    let base = match curve.kind() {
+        CurveKind::BSpline(bspline) => bspline,
+        CurveKind::Line(line) => line.base(),
+        CurveKind::Ellipse(ellipse) => ellipse.base(),
+        CurveKind::Hyperbola(hyperbola) => hyperbola.base(),
+        CurveKind::Parabola(parabola) => parabola.base(),
+        _ => return None,
+    };
+    Some(SmCurve::from(base.copy()))
 }
 
 /// `SmBSplineSurface_TYPE`, `SmPlane_TYPE`: imported exactly.
@@ -320,7 +335,7 @@ fn run_cpp_case(i: &Inputs) -> Result<Output, HarnessError> {
         Ok(b) => b,
         Err(out) => return Ok(out),
     };
-    let (rb, _) = shared::import(&b.export)?;
+    let (rb, _) = shared::import_raw(&b.export)?;
     let Some(a) = args(&i.op, &b, |f| first_loop(&rb, f)) else {
         return Ok(Output::err("no face"));
     };
@@ -448,14 +463,19 @@ fn is_vertex_loop(b: &Brep, l: LoopId) -> bool {
 
 /// The deferral of a geometric op on a B-rep holding a kind the import has only as its
 /// B-spline part (see the module docs).
-fn inexact_geometry(types: &[f64]) -> Result<Option<Output>, HarnessError> {
+fn inexact_geometry(types: &[f64], exact: &[bool]) -> Result<Option<Output>, HarnessError> {
     let bad = || harness("bad types export");
     let n_f = *types.get(1).ok_or_else(bad)? as usize;
     let surfaces = types.get(2..2 + n_f).ok_or_else(bad)?;
     let n_e = *types.get(2 + n_f).ok_or_else(bad)? as usize;
     let curves = types.get(3 + n_f..3 + n_f + n_e).ok_or_else(bad)?;
-    for &t in surfaces {
+    for (i, &t) in surfaces.iter().enumerate() {
         let t = t as i64;
+        // a face surface the shared export carried exactly (its upstream record, read
+        // by the ported `ReadFromDB`) is the real analytic kind on the Rust side
+        if exact.get(i).copied().unwrap_or(false) {
+            continue;
+        }
         if t >= 0 && !EXACT_SURFACES.contains(&t) {
             // The analytic kinds' own units (`surface.cone_p1`, `surface.sphere`,
             // `surface.torus`) are ported; what is missing is their `SurfaceKind`
@@ -476,9 +496,9 @@ fn inexact_geometry(types: &[f64]) -> Result<Option<Output>, HarnessError> {
                     "SurfaceKind::Torus (SmTorus dispatch)",
                 ),
                 15030 => (
-                    "surface.surf_of_extrusion_p2",
-                    "SurfaceKind::SurfOfExtrusion",
-                ),
+                "harness:analytic-geometry-export",
+                "SmSurfOfExtrusion face surface not exported exactly",
+            ),
                 _ => ("topology.brep_p7", "SmBrep::ReadFromFile"),
             };
             return Ok(Some(Output::deferred(unit, symbol)));
@@ -543,7 +563,7 @@ fn run_rust_case(i: &Inputs) -> Result<Output, HarnessError> {
         Ok(b) => b,
         Err(out) => return Ok(out),
     };
-    let (mut b, _) = shared::import(&built.export)?;
+    let (mut b, exact) = shared::import(&built.export)?;
     let Some(a) = args(&i.op, &built, |f| first_loop(&b, f)) else {
         return Ok(Output::err("no face"));
     };
@@ -554,7 +574,7 @@ fn run_rust_case(i: &Inputs) -> Result<Output, HarnessError> {
     if op as i32 >= Op::LoopOrient as i32 && !vertex_loop {
         let types = ffi::eval(Op::Types, &built.path, &built.block, &[])
             .map_err(|e| harness(format!("c++ types: {e}")))?;
-        if let Some(o) = inexact_geometry(&types)? {
+        if let Some(o) = inexact_geometry(&types, &exact)? {
             return Ok(o);
         }
     }
@@ -685,7 +705,9 @@ fn run_rust_case(i: &Inputs) -> Result<Output, HarnessError> {
                 }
                 for &eu in &face_eus {
                     if let Some(c) = value!(eu1::uv_trim_curve_pointer(&b, eu)) {
-                        own.push(Some(c.clone()));
+                        own.push(Some(native_bspline_copy(c).ok_or_else(|| {
+                            harness("UV trim curve is not an SmBSplineCurve kind")
+                        })?));
                         orients.push(value!(eu1::orientation(&b, eu)));
                     }
                 }
@@ -832,5 +854,45 @@ impl UnitDiff for Runner {
             op: gen_op(rng),
         };
         serde_json::to_value(i).ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solidcore::curve::line::Line;
+    use solidcore::geom::extent1d::Extent1d;
+    use solidcore::kernel::Kernel;
+    use solidcore::math::{Point3, Vec3};
+    use solidcore::nurbs::b_spline_curve::BSplineCurve;
+    use solidcore::nurbs::nurbs_crv::allocate_nurb_curve;
+
+    #[test]
+    fn own_uv_trim_copy_slices_line_to_its_b_spline_base() {
+        let k = Kernel::default();
+        let mut nurb = allocate_nurb_curve(1, 1, 3).unwrap();
+        for (point, x) in nurb.cpts_mut().iter_mut().zip([-5.0, 5.0]) {
+            point.x = x;
+            point.y = -1.753_545_387_010_300_2;
+            point.z = 0.0;
+            point.w = 1.0;
+        }
+        nurb.knots_mut().copy_from_slice(&[0.0, 0.0, 1.0, 1.0]);
+        let line = SmCurve::from(Line::from_parts(
+            BSplineCurve::from_nurb(nurb, 1, false),
+            Point3::new(-5.0, -1.753_545_387_010_300_2, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Extent1d::from_min_max(0.0, 1.0),
+            10.0,
+            false,
+        ));
+        let native_copy = native_bspline_copy(&line).unwrap();
+        let parameter = 1.0 / 7.0;
+
+        assert!(matches!(native_copy.kind(), CurveKind::BSpline(_)));
+        let native_x = native_copy.evaluate_point(&k, parameter).unwrap().x;
+        let analytic_x = line.evaluate_point(&k, parameter).unwrap().x;
+        assert_eq!(native_x, -5.0 * (1.0 - parameter) + 5.0 * parameter);
+        assert_ne!(native_x, analytic_x);
     }
 }

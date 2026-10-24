@@ -489,12 +489,15 @@ impl crate::geom::solution_array::SolutionObject for CacheObject {
 /// Exact B-rep geometry and its cache as seen by the topology solver. Cache
 /// invalidation is the caller's responsibility; both borrows must name one B-rep.
 pub struct BrepObjects<'a> {
+    /// A mutable caller may resolve trim requests after the read-only solve stops.
+    pub preparation: Option<&'a crate::query::brep::RayPreparation>,
     /// Source arenas.
     pub brep: &'a Brep,
     /// Identity of the source B-rep in the caller's shape store.
     pub brep_id: crate::topology::BrepId,
-    /// Cache built from these arenas with identity handles.
-    pub cache: &'a BrepCache,
+    /// Cache built from these arenas with identity handles. Shape solves read the
+    /// shape's own trees, so a view for them needs none (`None`).
+    pub cache: Option<&'a BrepCache>,
     /// Identity of each edge/face record (independent of its arena index).
     pub keys: &'a dyn Fn(CacheObject) -> object::ObjectRef,
     /// Owners of intermediate generated curves and edge uses, as for `Curve::edge`.
@@ -502,11 +505,25 @@ pub struct BrepObjects<'a> {
 }
 
 impl crate::intersect::topology_solver::p1::TopologyObjects<CacheObject> for BrepObjects<'_> {
+    fn surface_solve_context(
+        &self,
+    ) -> Option<Box<dyn crate::surface::surface::p1::SurfaceSolveContext<CacheObject> + '_>> {
+        self.preparation.map(|preparation| {
+            Box::new(crate::query::brep::RaySurfaceContext {
+                brep: self.brep,
+                preparation,
+            }) as Box<dyn crate::surface::surface::p1::SurfaceSolveContext<CacheObject>>
+        })
+    }
+
+    fn uv_trim_preparation(&self) -> Option<&crate::query::brep::RayPreparation> {
+        self.preparation
+    }
     fn brep_cache(&self, object: CacheObject) -> Result<&BrepCache> {
         if object != CacheObject::Brep {
             return Err(SolidError::invalid_input(OP, "expected B-rep handle"));
         }
-        Ok(self.cache)
+        self.cache.ok_or(SolidError::null_pointer(OP))
     }
     fn curve(&self, object: CacheObject) -> Result<&crate::curve::curve::Curve> {
         let CacheObject::Curve(e) = object else {
@@ -556,6 +573,12 @@ impl crate::intersect::topology_solver::p1::TopologyObjects<CacheObject> for Bre
         };
         Ok(self.brep.edge(e)?.interval)
     }
+    fn edge_tolerance(&self, object: CacheObject) -> Result<f64> {
+        let CacheObject::Edge(e) = object else {
+            return Err(SolidError::invalid_input(OP, "expected edge handle"));
+        };
+        Ok(self.brep.edge(e)?.tolerance)
+    }
     fn surface_face(&self, object: CacheObject) -> Result<Option<CacheObject>> {
         let owner = self.surface(object)?.face()?;
         owner
@@ -595,6 +618,12 @@ impl crate::intersect::topology_solver::p1::TopologyObjects<CacheObject> for Bre
         };
         Ok(self.brep.face(f)?.tolerance)
     }
+    fn face_entity(&self, object: CacheObject) -> Option<(&Brep, FaceId)> {
+        match object {
+            CacheObject::Face(f) => Some((self.brep, f)),
+            _ => None,
+        }
+    }
     fn surface_owner(&self, object: CacheObject) -> Result<Option<CacheObject>> {
         self.surface(object)?
             .owner()
@@ -607,6 +636,43 @@ impl crate::intersect::topology_solver::p1::TopologyObjects<CacheObject> for Bre
             })
             .transpose()
     }
+    fn object_zone_tol_3d(&self, k: &Kernel, object: CacheObject) -> Result<f64> {
+        use crate::geom::tol::{zone_tol_3d, SmallTopoType};
+        let system = zone_tol_3d(k, SmallTopoType::NormalSize);
+        match object {
+            // topology: GetTolerance (SM_USE_OLDTOL)
+            CacheObject::Vertex(v) => crate::topology::vertex::tolerance(self.brep, v),
+            CacheObject::Edge(e) => edge::tolerance(self.brep, e),
+            CacheObject::Face(f) => crate::topology::face::p2::tolerance(self.brep, f),
+            // geometry: the tolerance of its edge or face, else the system's
+            CacheObject::Curve(_) => match self.curve_edge(object)? {
+                Some(CacheObject::Edge(e)) => edge::tolerance(self.brep, e),
+                Some(_) => Err(SolidError::invalid_input(OP, "curve edge is not an edge")),
+                None => Ok(system),
+            },
+            CacheObject::Surface(_) => match self.surface_face(object)? {
+                Some(CacheObject::Face(f)) => crate::topology::face::p2::tolerance(self.brep, f),
+                Some(_) => Err(SolidError::invalid_input(OP, "surface face is not a face")),
+                None => Ok(system),
+            },
+            // SmBrep: GetZoneTol3d(const SmBrep*)
+            CacheObject::Brep => Ok(self.brep.tolerance()),
+            // UNPORTED(query.poly): SmPolyVertex/SmPolyEdge/SmPolyFace::GetTolerance (the
+            // poly B-rep is not in this view)
+            CacheObject::PolyVertex(_) | CacheObject::PolyEdge(_) | CacheObject::PolyFace(_) => {
+                Err(SolidError::unported(
+                    "SmPolyVertex::GetTolerance",
+                    "query.poly",
+                ))
+            }
+            // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an owner outside
+            // this view's topology records
+            CacheObject::Other(_) => Err(SolidError::unported(
+                "SmTol::GetZoneTol3d(const SmObject*)",
+                "geom.tol",
+            )),
+        }
+    }
     fn shape_member(&self, object: CacheObject) -> object::ShapeMember {
         use crate::geom::object::ShapeMember;
         let b = self.brep_id;
@@ -615,6 +681,42 @@ impl crate::intersect::topology_solver::p1::TopologyObjects<CacheObject> for Bre
             CacheObject::Edge(e) => ShapeMember::Edge((b, e)),
             CacheObject::Face(f) => ShapeMember::Face((b, f)),
             _ => ShapeMember::Other,
+        }
+    }
+    fn shape_member_object(&self, member: object::ShapeMember) -> Result<CacheObject> {
+        use crate::geom::object::ShapeMember;
+        let (brep, object) = match member {
+            ShapeMember::Vertex((b, v)) => (b, CacheObject::Vertex(v)),
+            ShapeMember::Edge((b, e)) => (b, CacheObject::Edge(e)),
+            ShapeMember::Face((b, f)) => (b, CacheObject::Face(f)),
+            ShapeMember::Other => {
+                return Err(SolidError::invalid_input(OP, "not a shape member"));
+            }
+        };
+        if brep != self.brep_id {
+            return Err(SolidError::invalid_input(
+                OP,
+                "shape member of another B-rep",
+            ));
+        }
+        Ok(object)
+    }
+}
+
+impl crate::intersect::point_class::ClassObject for CacheObject {
+    fn class_kind(&self) -> crate::intersect::point_class::ClassObjectKind {
+        use crate::intersect::point_class::ClassObjectKind;
+        match self {
+            Self::Vertex(_) => ClassObjectKind::Vertex,
+            Self::Curve(_) => ClassObjectKind::Curve,
+            Self::Surface(_) => ClassObjectKind::Surface,
+            Self::Edge(_) => ClassObjectKind::Edge,
+            Self::Face(_) => ClassObjectKind::Face,
+            Self::Brep
+            | Self::Other(_)
+            | Self::PolyVertex(_)
+            | Self::PolyEdge(_)
+            | Self::PolyFace(_) => ClassObjectKind::Other,
         }
     }
 }
@@ -707,9 +809,10 @@ mod tests {
         let cache = BrepCache::new(BREP_TYPE).unwrap();
         let brep_id = BrepId::from_index(7);
         let mut objects = BrepObjects {
+            preparation: None,
             brep: &b,
             brep_id,
-            cache: &cache,
+            cache: Some(&cache),
             keys: &keys,
             owner_of: &owner_of,
         };

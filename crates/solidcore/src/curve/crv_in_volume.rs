@@ -30,6 +30,10 @@
 //! | `SetContext` (dropped)                         | `SetContext`                                      |
 //!
 //! Deviations:
+//! - **Nesting.** `new` returns `InvalidInput` when the curve or the volume would nest
+//!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
+//!   (32; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   cloning and dropping of nested geometry (no limit upstream).
 //! - **Volumes.** The volume is a [`Volume`] (units `surface.volume_p1`, `_p2`);
 //!   the queries of the unported volume kinds return [`SolidError::Unported`].
 //! - **Curve classification.** `GetKnots` classifies the base curve against the
@@ -100,6 +104,7 @@ use crate::intersect::curve_class::p8::volume_discontinuity_intervals;
 use crate::kernel::Kernel;
 use crate::math::{max2, BIG_DOUBLE, BOUNDED_INFINITE_PARAM, EFF_ZERO};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
+use crate::surface::surface::p2::{check_geometry_nesting, NestedGeometry};
 use crate::surface::volume::p1::{
     lift_first_derivative, lift_second_derivative, lift_third_derivative,
 };
@@ -196,20 +201,55 @@ pub struct CrvInVolume {
 }
 
 impl CrvInVolume {
+    /// Exact evaluation copy after the caller validates the geometry depth.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            curve: self.curve.clone_exact_bounded(),
+            in_param_space: self.in_param_space,
+            volume: self.volume.clone(),
+            need_breaks: self.need_breaks,
+            breaks: self.breaks.clone(),
+            conts: self.conts.clone(),
+            owner_flag: self.owner_flag,
+        }
+    }
+
+    /// An exact evaluation copy retaining owners, raw flags and cached breaks.
+    /// Check the entire volume chain against the shared `MAX_GEOMETRY_NESTING` (32) bound before
+    /// the volume's field-wise recursive `Clone`.
+    pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
+        crate::surface::surface::Surface::check_volume_evaluation_copy_depth(&self.volume, depth)?;
+        Ok(Self {
+            curve: self.curve.clone_for_evaluation_depth(depth)?,
+            in_param_space: self.in_param_space,
+            volume: self.volume.clone(),
+            need_breaks: self.need_breaks,
+            breaks: self.breaks.clone(),
+            conts: self.conts.clone(),
+            owner_flag: self.owner_flag,
+        })
+    }
+
     /// `SmCrvInVolume_TYPE`.
     pub const TYPE: i64 = CRV_IN_VOLUME_TYPE;
 
     /// A curve in `volume` (the constructor). `copy_flag` bit 1 (curve) and bit 2
     /// (volume) ask for copies, which upstream then owns: here they set those owner
     /// bits (the parts are held by value). `owner_flag` is the initial owner flag.
-    #[must_use]
-    pub const fn new(
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` when `curve` or `volume` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1.
+    pub fn new(
         curve: Curve,
         in_param_space: bool,
         volume: Volume,
         copy_flag: u64,
         owner_flag: u64,
-    ) -> Self {
+    ) -> Result<Self> {
+        check_geometry_nesting(NestedGeometry::Curve(&curve), 1, OP)?;
+        check_geometry_nesting(NestedGeometry::Volume(&volume), 1, OP)?;
         let mut owner_flag = owner_flag;
         // When Curve is to be copied - copy it
         if copy_flag == 1 || copy_flag == 3 {
@@ -219,7 +259,7 @@ impl CrvInVolume {
         if copy_flag == 2 || copy_flag == 3 {
             owner_flag |= 2;
         }
-        Self {
+        Ok(Self {
             curve,
             in_param_space,
             volume,
@@ -227,7 +267,7 @@ impl CrvInVolume {
             breaks: Vec::new(),
             conts: Vec::new(),
             owner_flag,
-        }
+        })
     }
 
     /// The copy constructor (`Copy`): copies both parts, keeps the break cache when
@@ -1078,8 +1118,19 @@ impl CrvInVolume {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] from the volume.
+    /// Those of [`Volume::transform`], including `InvalidInput` if appending a
+    /// volume map would nest deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING).
     pub fn transform(&mut self, rotate_n_move: &Axis2Placement, scale: Option<Vec3>) -> Result<()> {
+        self.transform_at_depth(rotate_n_move, scale, 0)
+    }
+
+    pub(crate) fn transform_at_depth(
+        &mut self,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+        depth: usize,
+    ) -> Result<()> {
         let identity_scale = Vec3::new(1.0, 1.0, 1.0);
 
         // no work - identity transform
@@ -1089,7 +1140,8 @@ impl CrvInVolume {
         }
 
         // compound the Transform onto the contained volume
-        self.volume.transform(rotate_n_move, scale)
+        self.volume
+            .transform_at_depth(rotate_n_move, scale, depth + 1)
     }
 
     // ---- persistence ----------------------------------------------------------------
@@ -1276,6 +1328,7 @@ mod tests {
             0,
             owner,
         )
+        .unwrap()
     }
 
     fn cached(owner: u64) -> CrvInVolume {
@@ -1313,7 +1366,8 @@ mod tests {
             Volume::new(VolumeKind::Bend(BendVolume::new())),
             3,
             0,
-        );
+        )
+        .unwrap();
         assert_eq!(c.owner_flag(), 3);
         assert!(c.owns_curve() && c.owns_volume());
         let c = CrvInVolume::new(
@@ -1322,7 +1376,8 @@ mod tests {
             Volume::new(VolumeKind::Bend(BendVolume::new())),
             1,
             4,
-        );
+        )
+        .unwrap();
         assert_eq!(c.owner_flag(), 5);
         assert!(!c.owns_curve() && !c.owns_volume());
         assert_eq!(c.copy().owner_flag(), 0);

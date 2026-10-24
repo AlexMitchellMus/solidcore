@@ -141,6 +141,9 @@ impl SolutionObject for StaticHandle {
     fn natural_interval(&self) -> Option<Extent1d> {
         (self.0 == 999 || self.0 == -2).then(|| Extent1d::from_min_max(0.0, 1.0))
     }
+    // No natural_uv_domain: answering it un-defers 12 face cases, 9 of which then
+    // disagree (the C++ solves over the faces' own trimmed surface caches; see
+    // plan/findings.md, "topology_solver_p2 static face solves").
 }
 struct StaticScene {
     points: Vec<Point3>,
@@ -233,6 +236,10 @@ impl TopologyObjects<StaticHandle> for StaticScene {
         self.edge_curve(edge)?;
         Ok(Extent1d::from_min_max(0.0, 1.0))
     }
+    fn edge_tolerance(&self, edge: StaticHandle) -> SolidResult<f64> {
+        self.edge_curve(edge)?;
+        Ok(1e-5)
+    }
     fn surface_face(&self, surface: StaticHandle) -> SolidResult<Option<StaticHandle>> {
         match surface.0 {
             2002 => Ok(Some(StaticHandle(2000))),
@@ -269,6 +276,29 @@ impl TopologyObjects<StaticHandle> for StaticScene {
     fn shape_member(&self, _: StaticHandle) -> ShapeMember {
         ShapeMember::Other
     }
+    // SmTol::GetZoneTol3d(const SmObject*) of the shim's objects: topology's own
+    // GetTolerance, a curve's edge's or a surface's face's tolerance (the system's
+    // without one, as for the analytic curve), a B-rep's tolerance
+    fn object_zone_tol_3d(&self, k: &Kernel, object: StaticHandle) -> SolidResult<f64> {
+        let system = || {
+            solidcore::geom::tol::zone_tol_3d(k, solidcore::geom::tol::SmallTopoType::NormalSize)
+        };
+        match object.0 {
+            1000 | 1001 => Ok(1e-5),
+            2000 | 2001 => self.face_tolerance(object),
+            2002 | 2003 => match self.surface_face(object)? {
+                Some(face) => self.face_tolerance(face),
+                None => Ok(system()),
+            },
+            2004 => self.edge_tolerance(object),
+            999 => match self.curve_edge(object)? {
+                Some(edge) => self.edge_tolerance(edge),
+                None => Ok(system()),
+            },
+            -2 => Ok(system()),
+            _ => self.vertex_tolerance(object),
+        }
+    }
 }
 fn static_rust(case: &Case) -> Result<Output, HarnessError> {
     let input = static_input(case)?;
@@ -283,7 +313,7 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
     {
         return Err(HarnessError::new("unbounded static fixture"));
     }
-    let kernel = Kernel::default();
+    let mut kernel = Kernel::default();
     let first: Vec<Point3> = i
         .first
         .iter()
@@ -362,7 +392,7 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
         handle: StaticHandle(999),
     };
     let interval = Extent1d::from_min_max(0.0, 1.0);
-    let shape = Shape::new(&kernel, &solidcore::geom::object::NoBreps, &[], &[], &[], &[])
+    let shape = Shape::new(&mut kernel, &solidcore::geom::object::NoBreps, &[], &[], &[], &[])
         .map_err(|e| HarnessError::new(e.to_string()))?;
     let result = match i.entry {
         0 => TopologySolver::brep_point_solve(

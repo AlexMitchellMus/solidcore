@@ -5,7 +5,7 @@
 //! snapshot. Successful native mutations on deferred paths are not parity passes.
 use super::boolean_merge_p1::{graph_reachable, Canon};
 use super::topology_edgeuse_p1::{self as spec, BrepIn};
-use super::topology_vertexuse::import;
+use super::topology_vertexuse::{import, import_raw};
 use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -152,6 +152,14 @@ fn rust(i: &Inputs, initial: &[f64]) -> Result<Output, HarnessError> {
             .get(2..)
             .ok_or_else(|| error("missing initial export"))?,
     )?;
+    // As the native B-rep: each edge owns its curve and each face its surface, under the
+    // arena keys op 0's `BrepQuery::default()` names them by (the import leaves curves
+    // unowned and owns face f's surface as `1 + f`), and a face-owned surface carries the
+    // face's tolerance. Without it the B-rep cache trees hold no edges or faces.
+    crate::util::own_arena_geometry(&mut b);
+    for f in b.faces().ids().collect::<Vec<_>>() {
+        b.sync_face_surface_tolerance(f).map_err(|e| error(&e))?;
+    }
     // As the shim, after setup and export: `b->m_bEditingEnabled = editing`.
     b.set_editing_enabled(i.editing);
     let mut k = Kernel::default();
@@ -167,16 +175,12 @@ fn rust(i: &Inputs, initial: &[f64]) -> Result<Output, HarnessError> {
     let result: solidcore::Result<i32> = (|| {
         match i.op {
             0 => {
-                record.push(id(port::find_infinite_region::<
-                    super::topology_shell::NoRayObject,
-                    _,
-                >(
+                record.push(id(port::find_infinite_region(
                     &mut k,
                     &mut b,
-                    solidcore::topology::BrepId::from_index(0),
+                    &solidcore::query::brep::BrepQuery::default(),
                     None,
                     None,
-                    &super::topology_shell::EmptyRayWorld,
                 )?));
                 Ok(0)
             }
@@ -525,7 +529,7 @@ impl UnitDiff for Runner {
             raw.get(2..2 + n)
                 .ok_or_else(|| error("short native record"))?,
         );
-        let (b, _) = import(
+        let (b, _) = import_raw(
             raw.get(2 + n..)
                 .ok_or_else(|| error("short native graph"))?,
         )?;

@@ -51,7 +51,13 @@
 //!   (`NER`); a node whose data is not a leaf span is `InvalidInput` (upstream casts
 //!   whatever `m_pData` holds).
 //! - **`SmFindPCExtremaEFO::Evaluate`** is implemented for [`Curve`] (it calls the
-//!   virtual `IsDegenerate`).
+//!   virtual `IsDegenerate`). An infinite evaluated tangent returns `SM_ERR`
+//!   instead of looping forever while dividing infinity by ten; finite tangents
+//!   retain upstream's exact scaling operations and order. The separate
+//!   [`MAX_PC_SCALE_STEPS`] cap is retained as a backstop and returns
+//!   [`SolidError::InvalidInput`] after 400 divisions (a finite tangent needs at
+//!   most 310). Upstream loops forever on the infinite rational B-spline tangent
+//!   in fuzz `curve.curve_p9` fuzz01222.
 //! - **`SmBestLineFitENFO`** keeps the solver's intervals as copies; its
 //!   `m_dSolutionSize` / `m_dScaledZero` are fields read through
 //!   [`EvalNFunctions::solution_size`] / [`EvalNFunctions::scaled_zero`]. The status
@@ -103,6 +109,12 @@ const OP_CURVE: &str = "curve::curve::p3::local_curve_solve";
 const OP_GS: &str = "curve::curve::p3::CurvePropertyGs::local_solve_branch";
 const OP_PC: &str = "curve::curve::p3::FindPcExtremaEfo::evaluate";
 const OP_LINE_FIT: &str = "curve::curve::p3::BestLineFitEnfo::evaluate";
+
+/// Most divisions by ten `SmFindPCExtremaEFO::Evaluate` makes to bring `|C'|^2` down
+/// to `1e4` (not upstream, which loops forever on an infinite tangent). A finite
+/// tangent needs at most 310: its squared length overflows to infinity until each
+/// component is below about `1e154`, and then needs at most 152 more divisions.
+pub const MAX_PC_SCALE_STEPS: u64 = 400;
 
 /// `SM_ERR_NOT_CONVERGING`.
 const SM_ERR_NOT_CONVERGING: i32 = 1022;
@@ -703,6 +715,17 @@ impl EvalFunction for FindPcExtremaEfo<'_, Curve> {
             }
         } else {
             while pv[1].length_squared() > 1.0e4 {
+                if pv[1].x.is_infinite() || pv[1].y.is_infinite() || pv[1].z.is_infinite() {
+                    return Err(SolidError::sm_err(OP_PC));
+                }
+                // (not upstream) an infinite tangent never scales down: see
+                // MAX_PC_SCALE_STEPS
+                if self.num_scale >= MAX_PC_SCALE_STEPS {
+                    return Err(SolidError::invalid_input(
+                        OP_PC,
+                        "tangent too large to scale (upstream loops forever)",
+                    ));
+                }
                 self.num_scale += 1;
                 sv = div(sv, 10.0);
                 pv[0] = div(pv[0], 10.0);
@@ -1420,7 +1443,7 @@ impl Curve {
             Some(aux_data),
             ProjectionType::Parallel,
             OwnsCurve::No,
-        ));
+        )?);
         let proj2 = Self::from(ProjectedCurve::new(
             other.clone(),
             Some(origin),
@@ -1428,7 +1451,7 @@ impl Curve {
             Some(aux_data),
             ProjectionType::Parallel,
             OwnsCurve::No,
-        ));
+        )?);
 
         // find projected curve intersections
         let isect = local_curve_intersect(
@@ -2173,6 +2196,42 @@ mod tests {
             .unwrap();
         assert!(found);
         assert!((sol.start.parameters[0] - 0.5).abs() < 1e-8);
+    }
+
+    #[test]
+    fn point_extrema_rejects_overflowed_hermite_tangent_without_scaling_forever() {
+        let k = &Kernel::default();
+        let c = hermite(
+            [0.0; 3],
+            [f64::MAX / 2.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0; 3],
+        );
+        let domain = c.natural_interval();
+        let mut evaluator = FindPcExtremaEfo::new(
+            k,
+            &c,
+            Vec3::ZERO,
+            domain,
+            EFF_ZERO_SQ,
+            SolverOperation::Minimize,
+        );
+        let mut value = FunctionValue::default();
+        assert!(matches!(
+            evaluator.evaluate(0.25, &mut value, true),
+            Err(SolidError::Upstream { code: 1001, .. })
+        ));
+        let (found, _): (bool, Solution<()>) = c
+            .local_point_solve(
+                k,
+                &domain,
+                SolverOperation::Minimize,
+                Vec3::ZERO,
+                &PointSolveOptions::default(),
+                0.25,
+            )
+            .unwrap();
+        assert!(!found);
     }
 
     #[test]

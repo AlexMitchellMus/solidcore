@@ -36,6 +36,7 @@
 //! | `SetUv`     | `eu kind [curve] dmax delete has_fail fail_status` | `0` or `-2`, then the edge use's and its mate's state, the edge tolerance, the argument record's B-rep flag |
 //! | `Gaps`      | `eu which flag want_out`                | per `which` (`0` `GetMaxEdgeFaceGap`, `1` `GetEdgeCCWEdgeGap`, `2` `CalcMaxEdgeFaceGap`, `3` `CalcEdgeCCWEdgeGap`) |
 //! | `SetOrient` | `eu orientation`                        | `orient mate radial` |
+//! | `CacheStates` |                                       | `n state*n`: per face (export order), its surface's cache slot: `0` none, `1` a cache whose tree is not built, `2` a cache whose tree is built ([`cache_states`]) |
 //!
 //! The graph export ends with a versioned extension: `3 infinite_region`, then
 //! one raw void flag per region and one raw wire-edge-use/vertex-use head index
@@ -95,6 +96,7 @@ pub enum Op {
     DistDev = 9,
     Seam = 10,
     SetOrient = 11,
+    CacheStates = 12,
 }
 
 impl Op {
@@ -229,7 +231,10 @@ fn check_points(rd: &mut Reader<'_>, k: usize, planar: bool, what: &str) -> Resu
             return Err(bad(format!("{what}: weight out of range")));
         }
         let z = if z == NOZ { 0.0 } else { z };
-        if [x, y, z].iter().any(|c| !c.is_finite() || c.abs() > MAX_COORD) {
+        if [x, y, z]
+            .iter()
+            .any(|c| !c.is_finite() || c.abs() > MAX_COORD)
+        {
             return Err(bad(format!("{what}: point out of range")));
         }
     }
@@ -237,7 +242,7 @@ fn check_points(rd: &mut Reader<'_>, k: usize, planar: bool, what: &str) -> Resu
 }
 
 /// The parameter domain `[u0, v0, u1, v1]` of a surface block, `None` for a plane.
-type Domain = Option<[f64; 4]>;
+pub(crate) type Domain = Option<[f64; 4]>;
 
 /// A surface block; returns its domain.
 pub(crate) fn surface(rd: &mut Reader<'_>) -> Result<Domain, FfiError> {
@@ -297,7 +302,8 @@ fn uv(rd: &mut Reader<'_>, dom: Domain) -> Result<(), FfiError> {
     let v = rd.finite()?;
     if let Some([u0, v0, u1, v1]) = dom {
         let (du, dv) = (u1 - u0, v1 - v0);
-        if u < u0 - 100.0 * du || u > u1 + 100.0 * du || v < v0 - 100.0 * dv || v > v1 + 100.0 * dv {
+        if u < u0 - 100.0 * du || u > u1 + 100.0 * du || v < v0 - 100.0 * dv || v > v1 + 100.0 * dv
+        {
             return Err(bad("uv too far outside the domain"));
         }
     } else if u.abs() > 1e6 || v.abs() > 1e6 {
@@ -314,27 +320,27 @@ pub(crate) fn brep_block(rd: &mut Reader<'_>, path: &str) -> Result<(), FfiError
 /// The surface and parameter domain of a face block (`2`, `6`, and `5` with a face):
 /// whether the surface is a B-spline surface (not a plane).
 pub(crate) fn face_block(rd: &mut Reader<'_>, plane_domain_limit: f64) -> Result<bool, FfiError> {
-        let dom = surface(rd)?;
-        let d = rd.finites(4)?;
-        let (Some(&a), Some(&b2), Some(&c), Some(&e)) = (d.first(), d.get(1), d.get(2), d.get(3))
-        else {
-            return Err(bad("domain too short"));
-        };
-        if a >= c || b2 >= e {
-            return Err(bad("face domain not ordered"));
-        }
-        match dom {
-            Some([u0, v0, u1, v1]) => {
-                if a < u0 || c > u1 || b2 < v0 || e > v1 {
-                    return Err(bad("face domain outside the surface's"));
-                }
-            }
-            None => {
-                if d.iter().any(|x| x.abs() > plane_domain_limit) {
-                    return Err(bad("plane face domain too large"));
-                }
+    let dom = surface(rd)?;
+    let d = rd.finites(4)?;
+    let (Some(&a), Some(&b2), Some(&c), Some(&e)) = (d.first(), d.get(1), d.get(2), d.get(3))
+    else {
+        return Err(bad("domain too short"));
+    };
+    if a >= c || b2 >= e {
+        return Err(bad("face domain not ordered"));
+    }
+    match dom {
+        Some([u0, v0, u1, v1]) => {
+            if a < u0 || c > u1 || b2 < v0 || e > v1 {
+                return Err(bad("face domain outside the surface's"));
             }
         }
+        None => {
+            if d.iter().any(|x| x.abs() > plane_domain_limit) {
+                return Err(bad("plane face domain too large"));
+            }
+        }
+    }
     Ok(dom.is_some())
 }
 
@@ -431,6 +437,35 @@ pub fn counts(export: &[f64]) -> Option<[usize; 10]> {
     Some(c)
 }
 
+/// The per-face cache slot states of a `CacheStates` output (after the build status
+/// `0`): `0` no cache, `1` a cache whose tree is not built, `2` a cache whose tree is
+/// built, in export face order. `None` for a failed build or a malformed output.
+#[must_use]
+pub fn cache_states(out: &[f64]) -> Option<Vec<u8>> {
+    let (status, rest) = out.split_first()?;
+    if *status != 0.0 {
+        return None;
+    }
+    let (n, states) = rest.split_first()?;
+    if n.fract() != 0.0 || *n < 0.0 || *n > states.len() as f64 || (*n as usize) != states.len() {
+        return None;
+    }
+    states
+        .iter()
+        .map(|&v| {
+            if v == 0.0 {
+                Some(0)
+            } else if v == 1.0 {
+                Some(1)
+            } else if v == 2.0 {
+                Some(2)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 /// `SmTopoTypes.h` codes `IsConnectedTo` dispatches on, with the export slot of their
 /// kind.
 const TARGET_TYPES: [(i64, usize); 10] = [
@@ -450,7 +485,7 @@ const TARGET_TYPES: [(i64, usize); 10] = [
 fn brep_args(op: Op, rd: &mut Reader<'_>, c: [usize; 10]) -> Result<(), FfiError> {
     let [_, _, n_fu, _, _, n_loop, n_eu, _, _, n_v] = c;
     match op {
-        Op::Export => {}
+        Op::Export | Op::CacheStates => {}
         Op::EuQuery => {
             rd.below(n_eu)?;
             rd.below_or_none(n_v)?;
@@ -591,7 +626,11 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     // Export constructs the graph but does not run an edge-use geometry
     // operation. Actual native shell probes cover plane domains through 1e6;
     // retain the existing 1e4 bound for the other edge-use operations.
-    let plane_domain_limit = if op == Op::Export { 1e6 } else { 1e4 };
+    let plane_domain_limit = if matches!(op, Op::Export | Op::CacheStates) {
+        1e6
+    } else {
+        1e4
+    };
     brep_block_with_plane_limit(&mut rd, path, plane_domain_limit)?;
     let block = input.get(..rd.at).ok_or_else(|| bad("input too short"))?;
     let export = raw(Op::Export, path, block)?;
@@ -606,4 +645,243 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     brep_args(op, &mut rd, c)?;
     rd.done()?;
     raw(op, path, input)
+}
+
+/// An immutable fixture block and the genuine native export used to validate it.
+///
+/// Construct once for one case, then use it with the edge-use p2/p3 prepared
+/// entry points. Each operation still rebuilds and destroys its own native body;
+/// only an export is retained. Fields are private so callers cannot supply counts
+/// or an unchecked export. File-backed fixtures must remain unchanged during a case.
+#[derive(Debug)]
+pub(crate) struct PreparedBrep {
+    path: String,
+    block: Vec<f64>,
+    export: Vec<f64>,
+}
+
+impl PreparedBrep {
+    /// Validate and export exactly this B-rep block through the ordinary native API.
+    ///
+    /// # Errors
+    /// The same malformed-block and native errors as [`eval`] with [`Op::Export`].
+    pub(crate) fn new(path: &str, block: &[f64]) -> Result<Self, FfiError> {
+        let export = eval(Op::Export, path, block)?;
+        Ok(Self {
+            path: path.to_owned(),
+            block: block.to_vec(),
+            export,
+        })
+    }
+
+    /// The original immutable fixture path.
+    #[must_use]
+    pub(crate) fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// The original immutable fixture block, compared bit for bit by runner memos.
+    #[must_use]
+    pub(crate) fn block(&self) -> &[f64] {
+        &self.block
+    }
+
+    /// The native export produced by construction (including a build-failure record).
+    #[must_use]
+    pub(crate) fn export(&self) -> &[f64] {
+        &self.export
+    }
+}
+
+#[cfg(test)]
+mod prepared_tests {
+    use super::super::{topology_edgeuse_p2 as p2, topology_edgeuse_p3 as p3};
+    use super::*;
+
+    fn bits(r: Result<Vec<f64>, FfiError>) -> Result<Vec<u64>, String> {
+        r.map(|v| v.into_iter().map(f64::to_bits).collect())
+            .map_err(|e| format!("{e:?}"))
+    }
+
+    fn same(block: &[f64], tail: &[f64]) {
+        let prepared = p2::PreparedBrep::new("", block).unwrap();
+        let mut input = block.to_vec();
+        input.extend_from_slice(tail);
+        assert_eq!(
+            bits(p2::eval(p2::Op::Tangent, "", &input)),
+            bits(p2::eval_prepared(p2::Op::Tangent, &prepared, tail))
+        );
+    }
+
+    #[test]
+    fn prepared_validation_matches_default_and_owns_exact_block_bits() {
+        let block = [3.0, 0.0, 0.0];
+        same(&block, &[0.0, 1.0, 0.0, 0.0]);
+        for tail in [
+            vec![],
+            vec![-1.0],
+            vec![0.5],
+            vec![f64::NAN],
+            vec![1e30],
+            vec![10000.0],
+            vec![0.0, 1.0, 2.0, 0.0],
+            vec![0.0, f64::INFINITY, 0.0, 0.0],
+            vec![0.0, 1.0, 0.0, 0.0, 99.0],
+        ] {
+            same(&block, &tail);
+        }
+        // A genuine empty graph still rejects every selector, as ordinary eval does.
+        same(&[4.0, 0.0, 0.0, 0.0], &[0.0, 1.0, 0.0, 0.0]);
+        let mut path = String::from("fixture");
+        let owned_path = PreparedBrep::new(&path, &block).unwrap();
+        path.clear();
+        assert_eq!(owned_path.path(), "fixture");
+        let mut source = vec![3.0, -0.0, 0.0];
+        let prepared = PreparedBrep::new("", &source).unwrap();
+        source[1] = 1.0;
+        assert_eq!(prepared.block()[1].to_bits(), (-0.0f64).to_bits());
+        let positive = PreparedBrep::new("", &[3.0, 0.0, 0.0]).unwrap();
+        assert_ne!(prepared.block()[1].to_bits(), positive.block()[1].to_bits());
+        for block in [
+            vec![],
+            vec![3.0],
+            vec![3.0, 2.0, 0.0],
+            vec![3.0, 0.0, 0.0, 1.0],
+            vec![f64::NAN],
+        ] {
+            assert_eq!(
+                bits(eval(Op::Export, "", &block)),
+                bits(PreparedBrep::new("", &block).map(|p| p.export().to_vec()))
+            );
+        }
+    }
+
+    #[test]
+    fn prepared_operations_rebuild_independent_bodies_and_validate_p3_arguments() {
+        let block = [
+            2.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0,
+        ];
+        let prepared = p3::PreparedBrep::new("", &block).unwrap();
+        let tail = [0.0, 0.5, 0.0, 1.0, 0.0];
+        let mut input = block.to_vec();
+        input.extend(tail);
+        let original = bits(p3::eval(p3::Op::Normalized, "", &input));
+        assert_eq!(
+            bits(p3::eval_prepared(p3::Op::Normalized, &prepared, &tail)),
+            original
+        );
+        // GetOrCreate may create a UV curve, but no native body survives the call.
+        let create = [0.0, 1.0, 1.0, 1.0];
+        let mut create_input = block.to_vec();
+        create_input.extend(create);
+        assert_eq!(
+            bits(p3::eval_prepared(p3::Op::GetOrCreate, &prepared, &create)),
+            bits(p3::eval(p3::Op::GetOrCreate, "", &create_input))
+        );
+        assert_eq!(
+            bits(p3::eval_prepared(p3::Op::Normalized, &prepared, &tail)),
+            original
+        );
+        for tail in [
+            vec![],
+            vec![-1.0],
+            vec![0.0, f64::NAN, 0.0, 1.0, 0.0],
+            vec![0.0, 0.5, 0.0, 2.0, 0.0],
+            vec![0.0, 0.5, 0.0, 1.0, 0.0, 9.0],
+        ] {
+            let mut input = block.to_vec();
+            input.extend_from_slice(&tail);
+            assert_eq!(
+                bits(p3::eval(p3::Op::Normalized, "", &input)),
+                bits(p3::eval_prepared(p3::Op::Normalized, &prepared, &tail))
+            );
+        }
+    }
+
+    #[test]
+    fn prepared_file_change_refuses_stale_index_and_missing_file() {
+        // Each test invocation owns one unique scratch directory; only copies change.
+        let dir = std::env::temp_dir().join(format!("solidcore-prepared-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("fixture.smb");
+        let root =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../upstream/TestFiles/pt_TestFiles");
+        std::fs::copy(root.join("Mouse.smb"), &file).unwrap();
+        let path = file.to_str().unwrap();
+        let block = [0.0, 0.0, 0.0, 0.0];
+        let prepared = p2::PreparedBrep::new(path, &block).unwrap();
+        let prepared_p3 = p3::PreparedBrep::new(path, &block).unwrap();
+        let old_count = counts(prepared.export()).unwrap()[6];
+        std::fs::copy(root.join("plane_square.smb"), &file).unwrap();
+        let current = eval(Op::Export, path, &block).unwrap();
+        let new_count = counts(&current).unwrap()[6];
+        assert!(old_count > new_count);
+        let tail = [(old_count - 1) as f64, 1.0, 0.0, 0.0];
+        assert!(matches!(
+            p2::eval_prepared(p2::Op::Tangent, &prepared, &tail),
+            Err(FfiError::Status(crate::SC_ERR_ARG))
+        ));
+        let tail = [(old_count - 1) as f64, 0.5, 0.0, 1.0, 0.0];
+        assert!(matches!(
+            p3::eval_prepared(p3::Op::Normalized, &prepared_p3, &tail),
+            Err(FfiError::Status(crate::SC_ERR_ARG))
+        ));
+        // A missing file is still refused by the ordinary block parser, before
+        // the prepared export or operation selector can be used.
+        std::fs::remove_file(&file).unwrap();
+        let tail = [f64::NAN];
+        let mut input = block.to_vec();
+        input.extend(tail);
+        assert_eq!(
+            bits(p2::eval(p2::Op::Tangent, path, &input)),
+            bits(p2::eval_prepared(p2::Op::Tangent, &prepared, &tail))
+        );
+        std::fs::remove_dir(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepared_native_open_failure_keeps_original_early_return() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!(
+            "solidcore-prepared-unreadable-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("fixture.smb");
+        let root =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../upstream/TestFiles/pt_TestFiles");
+        std::fs::copy(root.join("plane_square.smb"), &file).unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o0)).unwrap();
+        if std::fs::File::open(&file).is_ok() {
+            // A privileged runner may ignore mode bits; do not pretend its native
+            // open-failure path was exercised, and never use malformed contents.
+            eprintln!("native open-failure branch not exercised: privileged file access");
+            std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+            std::fs::remove_file(file).unwrap();
+            std::fs::remove_dir(dir).unwrap();
+            return;
+        }
+        let path = file.to_str().unwrap();
+        let block = [0.0, 0.0, 0.0, 0.0];
+        let prepared2 = p2::PreparedBrep::new(path, &block).unwrap();
+        let prepared3 = p3::PreparedBrep::new(path, &block).unwrap();
+        assert!(counts(prepared2.export()).is_none());
+        assert!(counts(prepared3.export()).is_none());
+        let tail = [f64::NAN];
+        let mut input = block.to_vec();
+        input.extend(tail);
+        // The failed build is returned before operation arguments are inspected.
+        assert_eq!(
+            bits(p2::eval(p2::Op::Tangent, path, &input)),
+            bits(p2::eval_prepared(p2::Op::Tangent, &prepared2, &tail))
+        );
+        assert_eq!(
+            bits(p3::eval(p3::Op::Normalized, path, &input)),
+            bits(p3::eval_prepared(p3::Op::Normalized, &prepared3, &tail))
+        );
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::remove_file(file).unwrap();
+        std::fs::remove_dir(dir).unwrap();
+    }
 }

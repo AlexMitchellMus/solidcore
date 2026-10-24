@@ -434,10 +434,13 @@ impl TopologySweep {
         // pStrutC is always NULL: its only assignment is in the upstream #if 0.
         self.set_higher(Some(e(original)), Some(f(built.face)));
         let owner = |index: usize| required(built.curve_edges.get(index).copied().flatten());
+        // `s3DCurves.FindElement(curve)`: MakeFaceWithCurves deleted (and nulled the
+        // slot of) a degenerate curve or one coincident with an earlier edge: stale
+        let live = |index: usize| built.curve_edges.get(index).copied().flatten().is_some();
         if let Some(index) = swept.start_curve {
             set_edge_tolerance(a, owner(index)?, swept.start_curve_tol)?;
         }
-        if let Some(index) = swept.far_end_curve.filter(|&i| i < curve_count) {
+        if let Some(index) = swept.far_end_curve.filter(|&i| i < curve_count && live(i)) {
             let new = owner(index)?;
             set_edge_tolerance(a, new, swept.edge_tol)?;
             self.set_same(Some(e(original)), Some(e(new)));
@@ -445,7 +448,10 @@ impl TopologySweep {
         } else {
             self.set_same(Some(e(original)), Some(e(original)));
         }
-        if let Some(index) = swept.start_vert_curve.filter(|&i| i < curve_count) {
+        if let Some(index) = swept
+            .start_vert_curve
+            .filter(|&i| i < curve_count && live(i))
+        {
             let new = owner(index)?;
             set_edge_tolerance(a, new, swept.start_vert_edge_tol)?;
             let (s, t) = endpoints(a, new)?;
@@ -466,7 +472,7 @@ impl TopologySweep {
         } else {
             self.set_same(Some(v(start)), Some(v(start)));
         }
-        if let Some(index) = swept.end_vert_curve.filter(|&i| i < curve_count) {
+        if let Some(index) = swept.end_vert_curve.filter(|&i| i < curve_count && live(i)) {
             let new = owner(index)?;
             set_edge_tolerance(a, new, swept.end_vert_edge_tol)?;
             let (s, t) = endpoints(a, new)?;
@@ -836,7 +842,7 @@ impl TopologySweep {
                 } else if self.do_stitching {
                     let tolerance = a.brep(original)?.tolerance();
                     a.stitch(original, self, tolerance, false)?;
-                    ignore_status(a.orient(original, true, false, true))?;
+                    ignore_status(a.orient(original, true, true))?;
                 }
                 if let WireSweep::Brep(wire_brep) = wire {
                     let geometry_copy = required(g.copy_for_sweep())?;
@@ -1052,7 +1058,6 @@ impl TopologySweep {
                             scene.brep,
                             &scene_faces,
                             original,
-                            true,
                             merge,
                             &mut mates,
                         ))?;
@@ -1178,9 +1183,7 @@ impl TopologySweep {
                     |a, merge| {
                         a.set_editing(back, true)?;
                         let mut mates = super::access::BTreeEdgeMap::new();
-                        ignore_status(
-                            a.copy_faces(original, &backs, back, true, merge, &mut mates),
-                        )?;
+                        ignore_status(a.copy_faces(original, &backs, back, merge, &mut mates))?;
                         let mut remove = Vec::new();
                         for face in backs {
                             if !a.has_lamina_edge((original, face))? {
@@ -1333,7 +1336,9 @@ mod tests {
                 &mut Kernel,
                 &mut Brep,
                 &mut Brep,
+                &dyn Fn(crate::EntityRef) -> crate::geom::object::ObjectRef,
                 &dyn Fn(FaceId) -> crate::geom::object::ObjectRef,
+                Option<&mut crate::geom::context::Context>,
                 &mut edge::NotifyEnv<'_>,
             ) -> Result<T>,
         ) -> Result<T> {
@@ -1365,7 +1370,15 @@ mod tests {
                 context: None,
                 key_of: &key_of,
             };
-            body(&mut self.kernel, src, dst, &face_objects, &mut env)
+            body(
+                &mut self.kernel,
+                src,
+                dst,
+                &|e| service_object(source, e),
+                &face_objects,
+                None,
+                &mut env,
+            )
         }
         fn with_brep_notifications<T>(
             &mut self,
@@ -1436,6 +1449,27 @@ mod tests {
         ) -> Result<SweepMergeId> {
             self.merge_source = Some(source);
             Ok(SweepMergeId(0))
+        }
+        fn merge_operands(&self, _: SweepMergeId) -> Result<(BrepId, BrepId)> {
+            Err(SolidError::invalid_input(
+                OP,
+                "fixture has no retained merge",
+            ))
+        }
+        fn merge_relations(
+            &mut self,
+            _: SweepMergeId,
+        ) -> Result<&mut crate::boolean::topology_intersector::p1::Relations> {
+            Err(SolidError::invalid_input(
+                OP,
+                "fixture has no retained merge",
+            ))
+        }
+        fn piecewise_merge(&mut self, _: SweepMergeId, _: bool, _: bool) -> Result<BrepId> {
+            Err(SolidError::invalid_input(
+                OP,
+                "fixture has no piecewise service",
+            ))
         }
         fn lock_mark(&mut self, _: BrepId, _: i32) -> Result<MarkType> {
             Ok(MarkType::Mark)
@@ -1527,7 +1561,6 @@ mod tests {
             _: BrepId,
             _: &[FaceId],
             _: BrepId,
-            _: bool,
             _: SweepMergeId,
             mates: &mut crate::sweep::topology_sweep::access::BTreeEdgeMap,
         ) -> Result<()> {

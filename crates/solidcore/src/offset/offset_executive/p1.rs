@@ -79,6 +79,7 @@ use crate::offset::offset_geometry_creation::{OffsetGeometryCreation, SsiData};
 use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::brep::p1::{self as bp1, SetRegionVoidType};
+use crate::topology::brep::p4::shrink_geometry;
 use crate::topology::brep::p7::{self as bp7, FaceCurvesInput, SelfIntersectionCurve};
 use crate::topology::brep_cache::{
     arena_identity, make_brep_cache, BrepCache, BrepObjects, CacheObject, CacheSource,
@@ -504,20 +505,35 @@ impl OffsetExecutive {
     }
 
     /// Replaces implicit offset surfaces with approximations (`ReplaceImplicitOffsets`).
-    /// The unconditional initial shrink is owned by `topology.brep_p4`.
+    /// The unconditional initial shrink is `topology.brep_p4`'s `ShrinkGeometry`.
     pub fn replace_implicit_offsets(
-        _kernel: &Kernel,
-        _brep: &mut Brep,
+        kernel: &Kernel,
+        brep: &mut Brep,
         _approximation_tol_3d: f64,
     ) -> Result<()> {
+        // remove curve and surface portions not used by edges and faces (status
+        // ignored upstream)
+        ignore_status(shrink_geometry(kernel, brep))?;
         // Continuation cpp:1978–2035: enumerate offset surfaces, approximate their
         // extended-or-original B-spline bases, then notify/replace each surface.
-        // Neither shrink nor offset surfaces (#62) may be bypassed or co-ported here.
-        // UNPORTED(topology.brep_p4): SmBrep::ShrinkGeometry
-        Err(SolidError::unported(
-            "SmBrep::ShrinkGeometry",
-            "topology.brep_p4",
-        ))
+        // A B-rep without offset surfaces leaves both loops empty (SM_SUCCESS); with
+        // one, the replacement loop's SmBrep::ReplaceSurface is not ported, so the
+        // continuation defers before building any approximation.
+        for f in bp1::faces(brep, None)? {
+            let is_offset = brep
+                .face(f)?
+                .surface
+                .as_ref()
+                .is_some_and(|s| matches!(s.kind(), SurfaceKind::OffsetSurface(_)));
+            if is_offset {
+                // UNPORTED(topology.brep_p2): SmBrep::ReplaceSurface
+                return Err(SolidError::unported(
+                    "SmBrep::ReplaceSurface",
+                    "topology.brep_p2",
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Removes result faces too close to the original (`RemoveExcessFaces`).
@@ -608,7 +624,7 @@ impl OffsetExecutive {
     /// Builds a closing ruled side wall, or succeeds without work for null/ambiguous mappings.
     pub fn build_side_wall_of_edgeuse(
         &mut self,
-        kernel: &Kernel,
+        kernel: &mut Kernel,
         original_brep: &mut Brep,
         original: Option<EdgeuseId>,
     ) -> Result<()> {
@@ -633,7 +649,7 @@ impl OffsetExecutive {
         )?;
         // cpp:2819: m_pOffsetBrep->CreateFaceFromSurface(pNewSurface, natural domain)
         let domain = new_surface.natural_uv_domain();
-        let new_face = create_face_from_surface(offset_brep, &new_surface, &domain)?;
+        let new_face = create_face_from_surface(kernel, offset_brep, &new_surface, &domain)?;
         self.closing_faces.push(new_face); // [B549]
         Ok(())
     }
@@ -1053,13 +1069,15 @@ impl OffsetExecutive {
             }
         }
         self.clear_relations();
+        // Shrink the geometry - this helps some for self intersections
+        shrink_geometry(kernel, required(self.offset_brep.as_mut())?)?;
         // Continuation cpp:2429–2474: construct a merge B-rep with the original
         // tolerance, editing enabled; SmMerge uses 20*PI/180 angular tolerance,
         // PiecewiseMerge(&no_ssi, TRUE, TRUE). It keeps the original offset B-rep.
-        // UNPORTED(topology.brep_p4): SmBrep::ShrinkGeometry
+        // UNPORTED(boolean.merge_p3): SmMerge::PiecewiseMerge
         Err(SolidError::unported(
-            "SmBrep::ShrinkGeometry",
-            "topology.brep_p4",
+            "SmMerge::PiecewiseMerge",
+            "boolean.merge_p3",
         ))
     }
 
@@ -1095,6 +1113,9 @@ impl OffsetExecutive {
                 ignore_status(surface.make_nurb())?;
             }
             SurfaceKind::SurfOfRevolution(surface) if surface.base().gw_nurb().is_none() => {
+                ignore_status(surface.make_nurb(kernel))?;
+            }
+            SurfaceKind::SurfOfExtrusion(surface) if surface.base().gw_nurb().is_none() => {
                 ignore_status(surface.make_nurb(kernel))?;
             }
             _ => {}
@@ -1306,9 +1327,10 @@ impl OffsetExecutive {
                 let original_face = original.face(face_id)?;
                 let uv_domain = original_face.uv_domain;
                 let original_surface = required(original_face.surface.as_ref())?;
-                // Upstream disables the surface cache's point test here; the solver
-                // defers for face-owned surfaces until that switch exists.
-                let solutions = original_surface.global_point_solve(
+                // Upstream turns the surface cache's point test off here so the solve
+                // keeps all solutions without classifying them against the trim
+                // boundaries (`SmOffsetExecutive.cpp:3730-3734`).
+                let solutions = original_surface.global_point_solve_point_test_off(
                     kernel,
                     Some(NoObject),
                     &uv_domain,
@@ -1512,6 +1534,37 @@ impl OffsetExecutive {
         }
         Ok(())
     }
+
+    /// Builds a face while binding source notifications to the supplied kernel context.
+    /// Source and newly-created result entities retain their separate key namespaces.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn build_offset_of_faceuse_with_kernel_context(
+        &mut self,
+        kernel: &mut Kernel,
+        original: &mut Brep,
+        faceuse: FaceuseId,
+        offset_surface: &mut Option<Surface>,
+        self_intersections: &SsiData<Curve>,
+        notifications: &mut NotificationStores<'_>,
+        offset_key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    ) -> Result<()> {
+        crate::geom::context::Context::with_notification_context(kernel, |kernel, context| {
+            self.build_offset_of_faceuse(
+                kernel,
+                original,
+                Some(faceuse),
+                offset_surface,
+                self_intersections,
+                &mut NotifyEnv {
+                    records: &mut *notifications.records,
+                    attributes: &mut *notifications.attributes,
+                    context: Some(context),
+                    key_of: notifications.key_of,
+                },
+                offset_key_of,
+            )
+        })?
+    }
 }
 
 /// The notification environment of offset-side entities: the caller's records,
@@ -1569,13 +1622,33 @@ fn uv_curve_bounding_box(kernel: &Kernel, curve: &mut Curve) -> Result<Extent3d>
 
 /// `SmBrep::CreateFaceFromSurface(pSurface, sDomain, rpNewFace)` (unit
 /// `topology.brep_p8`): the new face.
-fn create_face_from_surface(b: &mut Brep, surface: &Surface, domain: &Extent2d) -> Result<FaceId> {
-    let _ = (b, surface, domain);
-    // UNPORTED(topology.brep_p8): SmBrep::CreateFaceFromSurface
-    Err(SolidError::unported(
-        "SmBrep::CreateFaceFromSurface",
-        "topology.brep_p8",
-    ))
+///
+/// Notifications go to an arena-only store (`ArenaNotifyState`: default records, no
+/// attributes, no context), the new face owning its surface under its arena identity;
+/// the closing face's notifications have no observer here (upstream: the offset B-rep's
+/// context, which the executive does not hold).
+fn create_face_from_surface(
+    kernel: &mut Kernel,
+    b: &mut Brep,
+    surface: &Surface,
+    domain: &Extent2d,
+) -> Result<FaceId> {
+    let mut state = crate::topology::brep::p2::ArenaNotifyState::new(b);
+    let mut env = state.env(None);
+    let mut marks = crate::topology::topology_traverser::Marks::default();
+    let this_face = |f: FaceId| loopuse::notify_ref(EntityRef::Face(f));
+    let mut fenv = crate::topology::brep::p8::FaceBuildEnv {
+        env: &mut env,
+        marks: &mut marks,
+        this_face: &this_face,
+    };
+    crate::topology::brep::p8::create_face_from_surface(
+        kernel,
+        b,
+        Some(surface.clone()),
+        domain,
+        &mut fenv,
+    )
 }
 
 fn required<T>(value: Option<T>) -> Result<T> {
@@ -1782,10 +1855,11 @@ fn solve_original_brep_point(
     point: Vec3,
 ) -> Result<SolutionArray<CacheObject>> {
     let objects = BrepObjects {
+        preparation: None,
         brep: original,
         // There is exactly one B-rep in this query adapter's local namespace.
         brep_id: crate::topology::BrepId::from_index(0),
-        cache,
+        cache: Some(cache),
         keys: &arena_identity,
         // make_original_brep_cache checked that all geometry owners are direct.
         owner_of: &|_| None,
@@ -2510,7 +2584,7 @@ mod tests {
 
     #[test]
     fn sidewalls_handle_null_missing_ambiguous_and_single_mappings() {
-        let kernel = Kernel::default();
+        let mut kernel = Kernel::default();
         let mut executive = executive();
         // B-spline edge curves (a Line whose parameterisation was edited carries no NURB)
         let mut original_brep = Brep::new();
@@ -2519,21 +2593,28 @@ mod tests {
         let offset = add_bspline_use(&mut offset_brep, 1.0);
         executive.set_offset_brep(offset_brep);
         executive
-            .build_side_wall_of_edgeuse(&kernel, &mut original_brep, None)
+            .build_side_wall_of_edgeuse(&mut kernel, &mut original_brep, None)
             .unwrap();
         executive
-            .build_side_wall_of_edgeuse(&kernel, &mut original_brep, Some(original))
+            .build_side_wall_of_edgeuse(&mut kernel, &mut original_brep, Some(original))
             .unwrap();
-        // the ruled blend across the two B-reps runs; the closing face is next
+        // the ruled blend across the two B-reps runs; the closing face is made by
+        // topology.brep_p8 (CreateFaceFromSurface) on the offset B-rep, a bare
+        // `Brep::new()` here (no infinite region), and fails there
         executive.relate_edgeuses(original, offset);
-        assert_dependency(
-            executive.build_side_wall_of_edgeuse(&kernel, &mut original_brep, Some(original)),
-            "SmBrep::CreateFaceFromSurface",
-            "topology.brep_p8",
-        );
+        let r =
+            executive.build_side_wall_of_edgeuse(&mut kernel, &mut original_brep, Some(original));
+        assert!(r.is_err());
+        assert!(!matches!(
+            r,
+            Err(SolidError::Unported {
+                unit: "topology.brep_p8",
+                ..
+            })
+        ));
         executive.relate_edgeuses(original, EdgeuseId::from_index(2));
         executive
-            .build_side_wall_of_edgeuse(&kernel, &mut original_brep, Some(original))
+            .build_side_wall_of_edgeuse(&mut kernel, &mut original_brep, Some(original))
             .unwrap();
     }
 
@@ -2569,11 +2650,10 @@ mod tests {
         assert_eq!(result.edges().len(), 2);
         assert_eq!(result.edgeuses().len(), 2);
         assert!(result.faces().is_empty());
-        assert_dependency(
-            OffsetExecutive::replace_implicit_offsets(&kernel, &mut result, 1.0e-6),
-            "SmBrep::ShrinkGeometry",
-            "topology.brep_p4",
-        );
+        // ShrinkGeometry trims the two edge curves; without offset surfaces the
+        // continuation's loops are empty (SM_SUCCESS)
+        OffsetExecutive::replace_implicit_offsets(&kernel, &mut result, 1.0e-6).unwrap();
+        assert_eq!(result.edges().len(), 2);
     }
 
     #[test]
@@ -2886,10 +2966,12 @@ mod tests {
         executive.set_merge_results(true);
         executive.set_offset_brep(Brep::new());
         executive.relate_edgeuses(EdgeuseId::from_index(1), EdgeuseId::from_index(2));
+        // ShrinkGeometry of the (empty) offset B-rep succeeds; the merge continuation
+        // defers at SmMerge::PiecewiseMerge
         assert_dependency(
             executive.piecewise_merge(&mut kernel, &mut original),
-            "SmBrep::ShrinkGeometry",
-            "topology.brep_p4",
+            "SmMerge::PiecewiseMerge",
+            "boolean.merge_p3",
         );
         assert!(executive.offset_brep().is_some());
         assert_eq!(executive.offset_edgeuse(EdgeuseId::from_index(1)), None);
@@ -3022,7 +3104,7 @@ mod tests {
     }
 
     #[test]
-    fn face_prefix_preserves_unported_uv_evaluation_before_domain_boolean() {
+    fn face_prefix_drops_uv_trim_curve_before_domain_boolean() {
         let mut executive = executive();
         let (mut original, _, face, _) = excess_face_fixture();
         let faceuse = original.face(face).unwrap().faceuse;
@@ -3030,12 +3112,16 @@ mod tests {
         executive.set_offset_brep(Brep::new());
         let mut offset = Some(plane(1.0));
         // Since topology.edgeuse_p3 (#117) builds the UV trim curve, the face prefix
-        // reaches the plane's DropCurve before the domain boolean.
-        assert_dependency(
-            build_face(&mut executive, &mut original, faceuse, &mut offset),
-            "SmSurface::DropCurve",
-            "intersect.surface_drop_lib_p3",
-        );
+        // runs the plane's DropCurve (wired by intersect.surface_drop_lib_p3, #136)
+        // before the domain boolean; the fixture's edge use then has no vertex use to
+        // set the curve on.
+        match build_face(&mut executive, &mut original, faceuse, &mut offset).unwrap_err() {
+            SolidError::InvalidInput { operation, reason } => {
+                assert_eq!(operation, "topology::edgeuse::p1");
+                assert!(reason.starts_with("SetUVTrimCurve"), "{reason}");
+            }
+            other => panic!("expected SetUVTrimCurve to fail, got {other:?}"),
+        }
     }
 
     #[test]

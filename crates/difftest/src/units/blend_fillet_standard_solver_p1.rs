@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use solidcore::blend::fillet_custom_solver::{OffsetSurface, SurfaceId};
+use solidcore::blend::fillet_geom::p1::{FilletBrep, FilletSolverId};
 use solidcore::blend::fillet_solver::p1::{FilletSurfaceGenerator, OffsetSurfaceSlot};
 use solidcore::blend::fillet_standard_solver::p1::{
     constant_radius_from_edgeuse, constant_radius_is_kind_of, BlendCurveCrossSectionFsg,
@@ -42,7 +43,7 @@ use solidcore::blend::fillet_standard_solver::p1::{
     RailSurface, SurfaceSurfaceFs, VariableRadiusFs, CONSTANT_RADIUS_FS_TYPE,
     CONSTANT_RADIUS_FS_TYPE_STRING,
 };
-use solidcore::curve::curve::Curve;
+use solidcore::curve::curve::{Curve, CurveKind};
 use solidcore::curve::hermite_curve::HermiteCurve;
 use solidcore::curve::line::Line;
 use solidcore::geom::axis2_placement::Axis2Placement;
@@ -62,7 +63,7 @@ use solidcore::surface::offset_surface::SS_UNKNOWN;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::Surface;
 use solidcore::topology::edgeuse::p1 as eu1;
-use solidcore::topology::{Brep, EdgeuseId};
+use solidcore::topology::{Brep, EdgeuseId, FaceId};
 use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_standard_solver_p1::{self as ffi, Op};
 use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
@@ -333,6 +334,51 @@ impl Inputs {
 
 fn flag(b: bool) -> f64 {
     f64::from(u8::from(b))
+}
+
+/// The edge-use shims' `put_default_geom`: the constructor's default fillet geometry
+/// (stored in `pseudo`) as `count solver_is_fs` and per rail `own` (its own offset copy,
+/// installed by `FinishConstruction`) and with `own` `offset base_is_face_surface status
+/// P[3]` at the UV fractions `(fu, fv)` of the copy's natural domain. `faces[i]` is rail
+/// `i`'s face.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn put_default_geom(
+    k: &Kernel,
+    v: &mut Vec<f64>,
+    fs: &FilletSolver,
+    id: FilletSolverId,
+    pseudo: &FilletBrep,
+    faces: [Option<FaceId>; 2],
+    fu: f64,
+    fv: f64,
+) -> Result<(), SolidError> {
+    v.push(fs.fillet_geoms.len() as f64);
+    let Some(&g) = fs.fillet_geoms.first() else {
+        return Ok(());
+    };
+    let fg = pseudo.geom(g)?;
+    v.push(flag(fg.fillet_solver() == Some(id)));
+    for (own, face) in fg.off_surfs.iter().zip(faces) {
+        let Some(s) = own else {
+            v.push(0.0);
+            continue;
+        };
+        v.push(1.0);
+        v.push(s.offset_distance());
+        v.push(flag(face.is_some_and(|f| s.base_id == SurfaceId::Face(f))));
+        let d = s.surface.natural_uv_domain();
+        let uv = Point2::new(
+            d.min().x + fu * (d.max().x - d.min().x),
+            d.min().y + fv * (d.max().y - d.min().y),
+        );
+        match s.surface.evaluate_point(k, uv) {
+            Ok(p) => v.extend([0.0, p.x, p.y, p.z]),
+            Err(e) if e.is_unported() => return Err(e),
+            Err(SolidError::Upstream { code, .. }) => v.extend([f64::from(code), 0.0, 0.0, 0.0]),
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 // ---- C++ side -----------------------------------------------------------------------
@@ -799,10 +845,14 @@ fn rust_generator(i: &Inputs) -> Result<Rec, HarnessError> {
                 mirror: *mirror,
                 complement: *complement,
             };
-            let mut c = bcurve_of(center)?;
+            // the shim's centre line is a plain SmBSplineCurve
+            let mut c = Curve::from(bcurve_of(center)?);
             let mut r1 = bcurve_of(rail1)?;
             let mut r2 = bcurve_of(rail2)?;
             let res = fsg.create_surface_from_curves(&k, &mut c, &mut r1, &mut r2, *tol, *g1);
+            let CurveKind::BSpline(c) = c.into_kind() else {
+                return Err(HarnessError::new("centre line changed kind"));
+            };
             (res, [c, r1, r2])
         }
         Inputs::Blend {
@@ -925,8 +975,11 @@ fn cr_of(k: &Kernel, s: &CrIn) -> Result<ConstantRadiusFs, HarnessError> {
         Some(b) => (surface_of(b)?, SurfaceId::Free(1)),
         None => (a.clone(), SurfaceId::Free(0)),
     };
+    // (the constructor's fillet geometry is not compared here)
     ConstantRadiusFs::from_surfaces(
         k,
+        &mut FilletBrep::new(),
+        FilletSolverId(0),
         1.0e-6,
         30.0 * DEG,
         2.0 * DEG,
@@ -1101,6 +1154,8 @@ fn rust_record(i: &Inputs) -> Result<Rec, HarnessError> {
         } => {
             let mut base = ConstantRadiusFs::from_surfaces(
                 &k,
+                &mut FilletBrep::new(),
+                FilletSolverId(0),
                 1.0e-6,
                 30.0 * DEG,
                 2.0 * DEG,
@@ -1578,7 +1633,9 @@ fn rust_edgeuse_body(
         return Ok(vec![-2.0]);
     }
     let mut v = Vec::new();
-    match constant_radius_from_edgeuse(&k, b, tol, ang, tan, r, eu, r2) {
+    let mut pseudo = FilletBrep::new();
+    let id = FilletSolverId(0);
+    match constant_radius_from_edgeuse(&k, b, &mut pseudo, id, tol, ang, tan, r, eu, r2) {
         Ok(fs) => {
             v.push(0.0);
             for i in 0..2 {
@@ -1611,6 +1668,13 @@ fn rust_edgeuse_body(
                     }
                 }
             }
+            let mut faces = [None, None];
+            for (face, e) in faces.iter_mut().zip(fs.solver.edgeuses) {
+                if let Some(e) = e {
+                    *face = eu1::face(b, e)?;
+                }
+            }
+            put_default_geom(&k, &mut v, &fs.solver, id, &pseudo, faces, fu, fv)?;
         }
         Err(SolidError::Upstream { code, .. }) => v.push(f64::from(code)),
         Err(e) => return Err(e),

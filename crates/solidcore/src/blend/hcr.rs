@@ -25,10 +25,13 @@
 //! | [`HcrObject`], `Geometry` (private)          | the `SmObject*` of the classifications    |
 //!
 //! Deviations:
-//! - The scene B-rep copy and its transformation (`SmBrep` copy constructor,
-//!   `Transform`) and its bounding box
-//!   (`SmBrep::CalculateBoundingBox`) belong to unported units, so [`Hcr::with_transform`]
-//!   stops there; [`Hcr::from_scene`] is the rest of `ConstructorInit` for a caller that
+//! - The scene B-rep copy (`SmBrep`'s copy constructor,
+//!   `topology::brep::p3::copy_brep`) notifies through the caller's notification
+//!   environment, naming the copy's objects by its `key_of` and `brep`'s by `source_key`
+//!   (upstream objects are known by address), so [`Hcr::new`] and [`Hcr::with_transform`]
+//!   take the kernel mutably with both. The scene's transformation (`SmBrep::Transform`,
+//!   `topology::brep::p5::transform_with_notifications`) notifies through the same
+//!   environment. [`Hcr::from_scene`] is the rest of `ConstructorInit` for a caller that
 //!   already holds the transformed scene and its box.
 //! - The pointer maps `m_pSilVertices`, `m_pSilEdges` and `m_pBackFacingEdges` are id
 //!   sets; [`Hcr::silhouette_edges`] returns the ids in ascending order (upstream
@@ -172,6 +175,26 @@ impl ClassGeometry<HcrObject> for Geometry<'_> {
             HcrObject::Region(_) => None,
         }
     }
+    /// The vertex, edge and region handles name entities of the scene B-rep, so the
+    /// classification reaches their members (`SmEdge::GetVertex`, ...) as upstream's
+    /// pointers do; a curve handle names no topology.
+    fn topology_entity(&self, o: HcrObject) -> Option<(&Brep, EntityRef)> {
+        let t = match o {
+            HcrObject::Vertex(v) => EntityRef::Vertex(v),
+            HcrObject::Edge(e) => EntityRef::Edge(e),
+            HcrObject::Region(r) => EntityRef::Region(r),
+            HcrObject::Curve(_) => return None,
+        };
+        Some((self.brep, t))
+    }
+    fn topology_handle(&self, entity: EntityRef) -> Option<HcrObject> {
+        match entity {
+            EntityRef::Vertex(v) => Some(HcrObject::Vertex(v)),
+            EntityRef::Edge(e) => Some(HcrObject::Edge(e)),
+            EntityRef::Region(r) => Some(HcrObject::Region(r)),
+            _ => None,
+        }
+    }
 }
 
 /// The solution handle of the unit's curve solves.
@@ -187,36 +210,46 @@ impl SolutionObject for CurveHandle {
     }
 }
 
-// ---- unported callees ---------------------------------------------------------------------
+// ---- callees -------------------------------------------------------------------------------
 
-/// `SmBrep::SmBrep(const SmBrep&)` (unit `topology.brep_p3`).
-fn copy_brep(brep: &Brep) -> Result<Brep> {
-    let _ = brep;
-    // UNPORTED(topology.brep_p3): SmBrep::SmBrep(const SmBrep&)
-    Err(SolidError::unported(
-        "SmBrep::SmBrep(const SmBrep&)",
-        "topology.brep_p3",
-    ))
+/// `new SmBrep(*pBrep)`: the copy constructor with its defaults (no maps,
+/// `bCopyAttributes` and `bAddAnalytics` `TRUE`), [`crate::topology::brep::p3::copy_brep`].
+fn copy_brep(
+    k: &mut Kernel,
+    env: &mut edge::NotifyEnv<'_>,
+    brep: &Brep,
+    source_key: &dyn Fn(EntityRef) -> ObjectRef,
+) -> Result<Brep> {
+    crate::topology::brep::p3::copy_brep(k, env, brep, source_key, None, None, true, true)
 }
 
-/// `SmBrep::Transform` (unit `topology.brep_p5`).
-fn transform_brep(brep: &mut Brep, transform: &Axis2Placement) -> Result<()> {
-    let _ = (brep, transform);
-    // UNPORTED(topology.brep_p5): SmBrep::Transform
-    Err(SolidError::unported(
-        "SmBrep::Transform",
-        "topology.brep_p5",
-    ))
+/// `SmBrep::Transform(crRotateNMove)` with its defaults (no scale, `bScaleTol` `TRUE`),
+/// notifying through the scene copy's environment `env`.
+fn transform_brep(
+    k: &mut Kernel,
+    env: &mut edge::NotifyEnv<'_>,
+    brep: &mut Brep,
+    transform: &Axis2Placement,
+) -> Result<()> {
+    crate::topology::brep::p5::transform_with_notifications(
+        k,
+        brep,
+        transform,
+        None,
+        true,
+        Some(env),
+    )
 }
 
 /// `SmBrep::FindAndSetInfiniteRegion()` with upstream's default arguments (no shell to
 /// test, `SM_VS_INFINITEREGION_SWAP`, no bounding box).
-fn find_and_set_infinite_region(brep: &mut Brep) -> Result<()> {
-    const SM_VS_INFINITEREGION_SWAP: i32 = 2;
+fn find_and_set_infinite_region(k: &mut Kernel, brep: &mut Brep) -> Result<()> {
     crate::topology::brep::p5::find_and_set_infinite_region(
+        k,
         brep,
+        &qbrep::BrepQuery::default(),
         None,
-        SM_VS_INFINITEREGION_SWAP,
+        crate::topology::brep::p1::SetRegionVoidType::InfiniteRegionSwap,
         None,
     )
 }
@@ -363,6 +396,7 @@ fn b_spline_part(surface: &Surface) -> Option<&BSplineSurface> {
         SurfaceKind::BSpline(b) => Some(b),
         SurfaceKind::Plane(p) => Some(p.base()),
         SurfaceKind::SurfOfRevolution(s) => Some(s.base()),
+        SurfaceKind::SurfOfExtrusion(s) => Some(s.base()),
         _ => None,
     }
 }
@@ -481,33 +515,44 @@ impl Hcr {
     /// # Errors
     ///
     /// Those of [`view_transform_for_vector`] and [`Hcr::with_transform`].
-    pub fn new(k: &Kernel, brep: &Brep, view_vector: Vec3, opts: HcrOptions) -> Result<Self> {
+    pub fn new(
+        k: &mut Kernel,
+        env: &mut edge::NotifyEnv<'_>,
+        brep: &Brep,
+        source_key: &dyn Fn(EntityRef) -> ObjectRef,
+        view_vector: Vec3,
+        opts: HcrOptions,
+    ) -> Result<Self> {
         let transform = view_transform_for_vector(view_vector)?;
-        Self::with_transform(k, brep, &transform, opts)
+        Self::with_transform(k, env, brep, source_key, &transform, opts)
     }
 
     /// An HCR object whose scene is `brep` transformed by `view_transform`
     /// (translation ignored) so that the eye looks along +Z (`SmHCR(crContext, pBrep,
-    /// crViewTransformation, ..)`, `ConstructorInit`).
+    /// crViewTransformation, ..)`, `ConstructorInit`). `env` notifies the scene copy's
+    /// objects; `source_key` is the identity of `brep`'s (see the module docs).
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] from the scene copy, transform and box (units
-    /// `topology.brep_p3`, `topology.brep_p5`, `query.brep`).
+    /// Those of the scene copy (`topology::brep::p3::copy_brep`); the transform's and
+    /// `FindAndSetInfiniteRegion`'s failures are ignored as upstream, apart from
+    /// [`SolidError::Unported`] from their callees.
     pub fn with_transform(
-        k: &Kernel,
+        k: &mut Kernel,
+        env: &mut edge::NotifyEnv<'_>,
         brep: &Brep,
+        source_key: &dyn Fn(EntityRef) -> ObjectRef,
         view_transform: &Axis2Placement,
         opts: HcrOptions,
     ) -> Result<Self> {
         let (vt, _) = prepare_transform(view_transform);
         // copy the original Brep
-        let mut scene = copy_brep(brep)?;
+        let mut scene = copy_brep(k, env, brep, source_key)?;
         scene.set_editing_enabled(true);
         // transform the copied Brep to place the eye looking up the Z axis
-        ignore_status(transform_brep(&mut scene, &vt))?;
-        ignore_status(find_and_set_infinite_region(&mut scene))?; // [B23]
-                                                                  // its status is ignored upstream (the box then stays empty)
+        ignore_status(transform_brep(k, env, &mut scene, &vt))?;
+        ignore_status(find_and_set_infinite_region(k, &mut scene))?; // [B23]
+                                                                     // its status is ignored upstream (the box then stays empty)
         let scene_box = ignored(qbrep::calculate_bounding_box(
             k,
             &scene,
@@ -1412,6 +1457,7 @@ impl Hcr {
                 opt_vectors: Some(&view),
                 handle: Some(handle),
                 analytic_handle: None,
+                zone_tol_3d: None,
             };
             // Find projection of vertex on the curve along view vector.
             let sols = curve.global_point_solve(

@@ -1194,7 +1194,7 @@ fn set_first_object<O: SolutionObject>(sol: &mut Solution<O>, surface_obj: Optio
 /// A copy of `surface` with out-of-bounds evaluation enabled, when it is an
 /// `SmBSplineSurface` (B-spline, plane, surface of revolution) without it; `None`
 /// when nothing changes (`SmTemporaryChangeValue` on `GetOutOfBoundsEnabled()`).
-pub(super) fn with_out_of_bounds_enabled(surface: &Surface) -> Result<Option<Surface>> {
+pub(crate) fn with_out_of_bounds_enabled(surface: &Surface) -> Result<Option<Surface>> {
     let enabled = match surface.kind() {
         SurfaceKind::BSpline(b) => b.is_out_of_bounds_enabled(),
         SurfaceKind::Plane(p) => p.base().is_out_of_bounds_enabled(),
@@ -1202,6 +1202,7 @@ pub(super) fn with_out_of_bounds_enabled(surface: &Surface) -> Result<Option<Sur
         SurfaceKind::Sphere(s) => s.base().base().is_out_of_bounds_enabled(),
         SurfaceKind::Torus(s) => s.base().base().is_out_of_bounds_enabled(),
         SurfaceKind::SurfOfRevolution(s) => s.base().is_out_of_bounds_enabled(),
+        SurfaceKind::SurfOfExtrusion(s) => s.base().is_out_of_bounds_enabled(),
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
@@ -1220,6 +1221,7 @@ pub(super) fn with_out_of_bounds_enabled(surface: &Surface) -> Result<Option<Sur
         SurfaceKind::Sphere(s) => *s.base.base_mut().out_of_bounds_enabled_mut() = true,
         SurfaceKind::Torus(s) => *s.base.base_mut().out_of_bounds_enabled_mut() = true,
         SurfaceKind::SurfOfRevolution(s) => *s.base_mut().out_of_bounds_enabled_mut() = true,
+        SurfaceKind::SurfOfExtrusion(s) => *s.base_mut().out_of_bounds_enabled_mut() = true,
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)

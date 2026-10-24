@@ -1393,7 +1393,7 @@ impl Ellipse {
                 || o.type_code == EDGEUSE_TYPE
                 || crate::curve::curve::p2::is_kind_of(o.type_code)
         }) {
-            // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an opaque handle. Every
+            // DISPATCH GAP: SmTol::GetZoneTol3d(const SmObject*) (geom.tol, green) on an opaque handle. Every
             // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
             // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
             // receives the owning B-rep
@@ -1486,7 +1486,10 @@ impl Ellipse {
         // When this is a SmSurfOfExtrusion GenCurve, look for Parent Surface NURB
         // Interval constraint.
         if owner.is_some_and(|o| o.type_code == SURF_OF_EXTRUSION_TYPE) {
-            // UNPORTED(surface.surf_of_extrusion_p1): SmSurfOfExtrusion::GetGenDirParamExtent
+            // DISPATCH GAP: SmSurfOfExtrusion::GetGenDirParamExtent (surface.surf_of_extrusion_p1,
+            // ported as SurfOfExtrusion::gen_dir_param_extent; no UNPORTED marker: the owner is an
+            // opaque ObjectRef. An owning extrusion does this step itself (adjust_generator_interval,
+            // SurfOfExtrusion::make_nurb) and never sets its generator's owner, so nothing reaches here)
             return Err(SolidError::Unported {
                 upstream: "SmSurfOfExtrusion::GetGenDirParamExtent",
                 unit: "surface.surf_of_extrusion_p1",
@@ -1494,7 +1497,10 @@ impl Ellipse {
         }
 
         if owner.is_some_and(|o| o.type_code == SURF_OF_REVOLUTION_TYPE) {
-            // UNPORTED(surface.surf_of_revolution_p1): SmSurfOfRevolution::GetGenDirParamExtent
+            // DISPATCH GAP: SmSurfOfRevolution::GetGenDirParamExtent (surface.surf_of_revolution_p1,
+            // ported as SurfOfRevolution::gen_dir_param_extent; no UNPORTED marker: the owner is an
+            // opaque ObjectRef. An owning revolution does this step itself (e.g. the cone's
+            // adjust_gen_line_with_owner) and never sets its generator's owner, so nothing reaches here)
             return Err(SolidError::Unported {
                 upstream: "SmSurfOfRevolution::GetGenDirParamExtent",
                 unit: "surface.surf_of_revolution_p1",
@@ -1923,6 +1929,30 @@ mod tests {
             &EllipseOptions::default(),
         )
         .unwrap()
+    }
+
+    /// #428 (`WR-211`), as upstream: the polar converter clamps an angle outside the
+    /// current arc to its ends, so an arc moved a turn on (here to `[360, 540]`, past the
+    /// documented `Max <= 360`) gets both ends at one NURBS parameter. The next
+    /// reparameterisation then divides by that zero length: interior knots NaN.
+    #[test]
+    fn step_interval_past_a_turn_collapses_as_upstream() {
+        let k = kernel();
+        let past = Extent1d::from_min_max(360.0, 540.0);
+        for d1 in [360.0, 180.0] {
+            let mut c = circle(&k, 0.0, d1, 2.0);
+            c.adjust_step_interval(&k, &past, None).unwrap();
+            assert_eq!(c.anal_domain, past);
+            let nat = c.base.natural_interval();
+            assert_eq!(nat.min(), nat.max(), "[0, {d1}]");
+        }
+        let mut c = circle(&k, 0.0, 360.0, 2.0);
+        c.adjust_step_interval(&k, &past, None).unwrap();
+        c.base.edit_parameterization(&past).unwrap();
+        let (knots, mults) = c.base.knots(None).unwrap();
+        assert_eq!(mults, [3, 1, 1, 3]);
+        assert_eq!([knots[0], knots[3]], [360.0, 540.0]);
+        assert!(knots[1].is_nan() && knots[2].is_nan());
     }
 
     #[test]

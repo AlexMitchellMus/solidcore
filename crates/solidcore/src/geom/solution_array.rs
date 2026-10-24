@@ -25,7 +25,9 @@
 //! | [`Solution::point_of`]                        | `SmSolution::GetPoint(const SmObject*, ...)`               |
 //! | [`Solution::object_index_for_parameter_index`] | `SmSolution::GetObjectIndexForParameterIndex`             |
 //! | [`Solution::parameter_interval`]              | `SmSolution::GetParameterInterval`                         |
+//! | [`Solution::parameter_interval_in`], [`ParameterDomains`] | `SmSolution::GetParameterInterval` (object domains read through a caller's resolver) |
 //! | [`Solution::object_tolerance`]                | `SmSolution::GetObjectTolerance`                           |
+//! | [`Solution::object_tolerance_with`]           | `SmSolution::GetObjectTolerance` (caller-resolved handle)   |
 //! | [`Solution::is_equal`]                        | `SmSolution::IsEqual`                                      |
 //! | `are_sequential` (private)                    | `sm_AreSequential`                                         |
 //! | [`SolutionObject`], [`ObjectKind`]            | the `SmObject*` of `m_apObjects` and its `IsKindOf` tests  |
@@ -55,7 +57,10 @@
 //!   [`ObjectKind`], which answers the `IsKindOf` tests made here, and, when it
 //!   can reach its object, the geometry read here (natural intervals and domains,
 //!   points, an edge's curve and interval, a face's surface and UV domain: the
-//!   [`SolutionObject`] hooks). Tree nodes (`m_apNodes`) are opaque [`NodeId`]s.
+//!   [`SolutionObject`] hooks). A caller holding the geometry behind opaque handles
+//!   reads parameter domains through its own [`ParameterDomains`] instead
+//!   ([`Solution::parameter_interval_in`]). Tree nodes (`m_apNodes`) are opaque
+//!   [`NodeId`]s.
 //!   Solves whose caller gives no handle name `OperandObject` stand-ins internally
 //!   (upstream's solutions always name the solve's curves and surfaces, whose
 //!   natural intervals and domains `IdenticalSolutions` / `IsEqual` read) and hand
@@ -85,8 +90,9 @@
 //!   [`SolutionArray::with_capacity`] only reserves. The `try_` variants
 //!   ([`SolutionArray::try_set_size`], [`SolutionArray::try_insert_at`],
 //!   [`SolutionArray::try_with_capacity`]) take caller-chosen sizes and return
-//!   [`SolidError::InvalidInput`] when the slots cannot be allocated (upstream
-//!   writes through the `NULL` of a failed `smos_Calloc`). New slots made by growth
+//!   [`SolidError::InvalidInput`] when the slots cannot be allocated or would take
+//!   more than [`crate::limits::MAX_ALLOC_BYTES`] (upstream writes through the
+//!   `NULL` of a failed `smos_Calloc`). New slots made by growth
 //!   are [`Solution::zeroed`] (type [`SolutionType::NodesOnly`], as calloc'd
 //!   memory reads upstream).
 //! - `SmSolution::Dump` and `SmSolutionArray::Dump` print diagnostics only and are
@@ -97,6 +103,7 @@ use crate::error::{Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::object;
 use crate::geom::tree::NodeId;
+use crate::limits::try_reserve_total;
 use crate::math::{max3, Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT};
 
 /// `SM_SA_MAX_TREES`: most objects (and tree nodes) a solution refers to.
@@ -349,6 +356,38 @@ pub trait SolutionObject: Copy + PartialEq {
         None
     }
 }
+
+/// Where `GetParameterInterval` reads the parameter domain of a solution object
+/// ([`Solution::parameter_interval_in`]). Upstream dereferences the `SmObject*`
+/// (`SmEdge::GetInterval`, `SmCurve::GetNaturalInterval`, `SmFace::GetUVDomain`,
+/// `SmSurface::GetNaturalUVDomain`); each method answers for one kind, `None` when
+/// the handle cannot be resolved. The defaults ask the handle itself
+/// ([`SolutionObject::edge_interval`], ...); a caller holding the geometry behind
+/// opaque handles (a topology solver's objects) answers from that geometry instead.
+pub trait ParameterDomains<O: SolutionObject> {
+    /// `SmEdge::GetInterval` of edge handle `edge`.
+    fn edge_interval(&self, edge: &O) -> Option<Extent1d> {
+        edge.edge_interval()
+    }
+    /// `SmCurve::GetNaturalInterval` of curve handle `curve`.
+    fn natural_interval(&self, curve: &O) -> Option<Extent1d> {
+        curve.natural_interval()
+    }
+    /// `SmFace::GetUVDomain` of face handle `face`.
+    fn face_uv_domain(&self, face: &O) -> Option<crate::geom::extent2d::Extent2d> {
+        face.face_uv_domain()
+    }
+    /// `SmSurface::GetNaturalUVDomain` of surface handle `surface`.
+    fn natural_uv_domain(&self, surface: &O) -> Option<crate::geom::extent2d::Extent2d> {
+        surface.natural_uv_domain()
+    }
+}
+
+/// [`ParameterDomains`] that asks each handle itself (the trait's defaults).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OwnDomains;
+
+impl<O: SolutionObject> ParameterDomains<O> for OwnDomains {}
 
 /// The solution object a solve names internally when its caller gives no handle
 /// (`None`): upstream's solutions always name the solve's operands (`this` curve or
@@ -971,6 +1010,20 @@ impl<O: SolutionObject> Solution<O> {
     /// fixed arrays;
     /// [`SolidError::Unported`] for the parameter domain of the object.
     pub fn parameter_interval(&self, param_index: usize) -> Result<Option<Extent1d>> {
+        self.parameter_interval_in(param_index, &OwnDomains)
+    }
+
+    /// [`Solution::parameter_interval`] reading the objects' parameter domains through
+    /// `domains`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Solution::parameter_interval`].
+    pub fn parameter_interval_in(
+        &self,
+        param_index: usize,
+        domains: &dyn ParameterDomains<O>,
+    ) -> Result<Option<Extent1d>> {
         const OP: &str = "geom::solution_array::Solution::parameter_interval";
 
         // get the object and associated domain dir
@@ -984,18 +1037,18 @@ impl<O: SolutionObject> Solution<O> {
 
         // Get the parameter interval from pObject
         let ivl = if kind.is_kind_of(ObjectKind::Edge) {
-            edge_interval(&object)?
+            edge_interval(domains, &object)?
         } else if kind.is_kind_of(ObjectKind::Curve) {
-            curve_natural_interval(&object)?
+            curve_natural_interval(domains, &object)?
         } else if kind.is_kind_of(ObjectKind::Face) {
-            let domain = face_uv_domain(&object)?;
+            let domain = face_uv_domain(domains, &object)?;
             if domain_dir == 0 {
                 domain.u_interval()
             } else {
                 domain.v_interval()
             }
         } else if kind.is_kind_of(ObjectKind::Surface) {
-            let domain = surface_natural_uv_domain(&object)?;
+            let domain = surface_natural_uv_domain(domains, &object)?;
             if domain_dir == 0 {
                 domain.u_interval()
             } else {
@@ -1020,7 +1073,8 @@ impl<O: SolutionObject> Solution<O> {
     }
 
     /// The zone tolerance of object `index`, `0.0` for an index outside the
-    /// objects or a null object (`GetObjectTolerance`).
+    /// objects or a null object (`GetObjectTolerance`), for handles nothing can
+    /// resolve: see [`Solution::object_tolerance_with`].
     ///
     /// # Errors
     ///
@@ -1028,6 +1082,29 @@ impl<O: SolutionObject> Solution<O> {
     /// fixed arrays;
     /// [`SolidError::Unported`] for a non-null object (zone tolerances).
     pub fn object_tolerance(&self, index: usize) -> Result<f64> {
+        self.object_tolerance_with(index, |_| {
+            // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an opaque handle
+            // (callers that can resolve it use `object_tolerance_with`)
+            Err(SolidError::Unported {
+                upstream: "SmTol::GetZoneTol3d(const SmObject*)",
+                unit: "geom.tol",
+            })
+        })
+    }
+
+    /// The zone tolerance of object `index` (`GetObjectTolerance`): `0.0` for an index
+    /// outside the objects or a null object, else `zone_tol_3d` of the object (the
+    /// caller's `SmTol::GetZoneTol3d(const SmObject*)`).
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::InvalidInput`] when a variable or object count exceeds the
+    /// fixed arrays; those of `zone_tol_3d`.
+    pub fn object_tolerance_with(
+        &self,
+        index: usize,
+        zone_tol_3d: impl FnOnce(O) -> Result<f64>,
+    ) -> Result<f64> {
         const OP: &str = "geom::solution_array::Solution::object_tolerance";
         self.check(OP)?;
 
@@ -1038,16 +1115,7 @@ impl<O: SolutionObject> Solution<O> {
 
         // pass the call along
         match self.object(index, OP)? {
-            Some(_) => {
-                // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an opaque handle. Every
-                // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
-                // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
-                // receives the owning B-rep
-                Err(SolidError::Unported {
-                    upstream: "SmTol::GetZoneTol3d(const SmObject*)",
-                    unit: "geom.tol",
-                })
-            }
+            Some(o) => zone_tol_3d(o),
             None => Ok(0.0),
         }
     }
@@ -1136,9 +1204,12 @@ fn edge_curve<O: SolutionObject>(edge: &O) -> Result<O> {
     })
 }
 
-/// `SmEdge::GetInterval`: the handle's [`SolutionObject::edge_interval`].
-fn edge_interval<O: SolutionObject>(edge: &O) -> Result<Extent1d> {
-    if let Some(ivl) = edge.edge_interval() {
+/// `SmEdge::GetInterval`: [`ParameterDomains::edge_interval`].
+fn edge_interval<O: SolutionObject>(
+    domains: &dyn ParameterDomains<O>,
+    edge: &O,
+) -> Result<Extent1d> {
+    if let Some(ivl) = domains.edge_interval(edge) {
         return Ok(ivl);
     }
     // UNPORTED(topology.edge): SmEdge::GetInterval (a handle that cannot reach its edge)
@@ -1162,9 +1233,12 @@ fn evaluate_curve<O: SolutionObject>(curve: &O, t: f64) -> Result<Point3> {
     })
 }
 
-/// `SmCurve::GetNaturalInterval`: the handle's [`SolutionObject::natural_interval`].
-fn curve_natural_interval<O: SolutionObject>(curve: &O) -> Result<Extent1d> {
-    if let Some(ivl) = curve.natural_interval() {
+/// `SmCurve::GetNaturalInterval`: [`ParameterDomains::natural_interval`].
+fn curve_natural_interval<O: SolutionObject>(
+    domains: &dyn ParameterDomains<O>,
+    curve: &O,
+) -> Result<Extent1d> {
+    if let Some(ivl) = domains.natural_interval(curve) {
         return Ok(ivl);
     }
     // UNPORTED(curve.curve_p2): SmCurve::GetNaturalInterval (a handle that cannot
@@ -1188,9 +1262,12 @@ fn face_surface<O: SolutionObject>(face: &O) -> Result<O> {
     })
 }
 
-/// `SmFace::GetUVDomain`: the handle's [`SolutionObject::face_uv_domain`].
-fn face_uv_domain<O: SolutionObject>(face: &O) -> Result<crate::geom::extent2d::Extent2d> {
-    if let Some(d) = face.face_uv_domain() {
+/// `SmFace::GetUVDomain`: [`ParameterDomains::face_uv_domain`].
+fn face_uv_domain<O: SolutionObject>(
+    domains: &dyn ParameterDomains<O>,
+    face: &O,
+) -> Result<crate::geom::extent2d::Extent2d> {
+    if let Some(d) = domains.face_uv_domain(face) {
         return Ok(d);
     }
     // UNPORTED(topology.face_p2): SmFace::GetUVDomain (a handle that cannot reach its
@@ -1215,13 +1292,12 @@ fn evaluate_surface<O: SolutionObject>(surface: &O, u: f64, v: f64) -> Result<Po
     })
 }
 
-/// `SmSurface::GetNaturalUVDomain`. The surface is ported
-/// (`surface::surface::p2::Surface::natural_uv_domain`), but a solution object is an
-/// opaque handle `O` with no way to reach it yet.
+/// `SmSurface::GetNaturalUVDomain`: [`ParameterDomains::natural_uv_domain`].
 fn surface_natural_uv_domain<O: SolutionObject>(
+    domains: &dyn ParameterDomains<O>,
     surface: &O,
 ) -> Result<crate::geom::extent2d::Extent2d> {
-    if let Some(domain) = surface.natural_uv_domain() {
+    if let Some(domain) = domains.natural_uv_domain(surface) {
         return Ok(domain);
     }
     // UNPORTED(surface.surface_p2): SmSurface::GetNaturalUVDomain (a handle that
@@ -1363,12 +1439,13 @@ impl<O: SolutionObject> SolutionArray<O> {
     }
 
     /// Makes room for a total of `size` solutions, `InvalidInput` when that cannot
-    /// be allocated.
+    /// be allocated or would take more than [`crate::limits::MAX_ALLOC_BYTES`].
     fn reserve_to(&mut self, size: usize, operation: &'static str) -> Result<()> {
-        let extra = size.saturating_sub(self.data.len());
-        self.data
-            .try_reserve_exact(extra)
-            .map_err(|_| too_large(operation))
+        if try_reserve_total(&mut self.data, size) {
+            Ok(())
+        } else {
+            Err(too_large(operation))
+        }
     }
 
     /// Removes every solution (`ReSet`).
@@ -1950,10 +2027,13 @@ mod tests {
         a.add(&single(1.0, &[]));
         a.add(&single(2.0, &[]));
         let keep = a.clone();
-        assert!(a.try_set_size(1 << 40).is_err());
+        // Byte counts past isize::MAX, so the reservation fails on every target; sizes
+        // the OS merely cannot back (2^33 solutions, ~2.5 TB) are granted lazily on
+        // macOS and the fill then commits them.
+        assert!(a.try_set_size(1 << 58).is_err());
         assert!(a.try_set_size(usize::MAX).is_err());
         assert!(a
-            .try_insert_at(1 << 32, &single(3.0, &[]), 1 << 32)
+            .try_insert_at(1 << 57, &single(3.0, &[]), 1 << 57)
             .is_err());
         assert!(a.try_insert_at(usize::MAX, &single(3.0, &[]), 1).is_err());
         assert!(a.try_insert_at(1, &single(3.0, &[]), usize::MAX).is_err());

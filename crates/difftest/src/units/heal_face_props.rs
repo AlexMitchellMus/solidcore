@@ -79,6 +79,8 @@ enum H {
     Curve(bool),
     EdgeCurve(EdgeId),
     Trim(EdgeuseId),
+    /// A temporary curve (the seam curves of `SmFace::HasSeamProblem`).
+    Temp(usize),
 }
 
 impl ClassObject for H {
@@ -86,8 +88,14 @@ impl ClassObject for H {
         match self {
             Self::Topo(e) => e.class_kind(),
             Self::Surface(_) => ClassObjectKind::Surface,
-            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) => ClassObjectKind::Curve,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) | Self::Temp(_) => {
+                ClassObjectKind::Curve
+            }
         }
+    }
+
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        (kind == ClassObjectKind::Curve).then_some(Self::Temp(index))
     }
 }
 
@@ -895,7 +903,10 @@ pub(crate) fn seed<O: LoopObject>(p: &mut FaceProps<O>, face: FaceId, field: i64
 fn rust_props(f: &FaceIn, ops: &[[f64; 5]]) -> Result<Output, HarnessError> {
     ffi::validate(&ffi_face(f), &ffi_ops(ops)).map_err(|e| harness(e.to_string()))?;
     let k = Kernel::default();
-    let (b, face) = rust_brep(&k, f)?;
+    let (mut b, face) = rust_brep(&k, f)?;
+    // the down face use's side, as `SmBrepConstructor` builds it: the seam classifications
+    // snap edge-end hits to `GetOtherVertex`, which walks the edge use mates
+    add_down_side(&mut b, face)?;
     let mut p: FaceProps<H> = FaceProps::new();
     let mut out: Vec<f64> = Vec::new();
     for o in ops {

@@ -74,9 +74,9 @@
 //!   (UB-120) cannot be passed.
 //! - **`CheckLoop`** takes the surface separately, as upstream; `CheckFace` passes a
 //!   copy of the face's surface (the edge use UV extremes need the B-rep mutably).
-//! - **Unported callees** return [`SolidError::Unported`]: `SmBrep::MakeFaceWithCurves` (`topology.brep_p7`),
-//!   `SmBrep::MakeFacesWithCurves` (`topology.brep_p8`),
-//!   `SmFace::FlipFaceOrientation` and `SmFace::SplitAtSeam` (`topology.face_p1`),
+//! - **Callees.** `SmBrep::MakeFaceWithCurves` (`topology.brep_p7`) and
+//!   `SmBrep::MakeFacesWithCurves` (`topology.brep_p8`) call their ports. Unported callees
+//!   return [`SolidError::Unported`]: `SmFace::FlipFaceOrientation` and `SmFace::SplitAtSeam` (`topology.face_p1`),
 //!   `SmFace::GetEdges` and `SmFace::HasSeamProblem` (`topology.face_p4`).
 //! - The other members of the class (`FindLoopCurveOrientations`,
 //!   `ComputeLoopOrientation`, `CopyNonDegenerate`, `OrientUVLoops`,
@@ -291,13 +291,52 @@ fn make_face_with_curves(
 }
 
 /// `SmBrep::MakeFacesWithCurves(region, loops, 3d curves, NULL, ...)` (unit
-/// `topology.brep_p8`).
-fn make_faces_with_curves(_b: &mut Brep, _input: TrimInput) -> Result<Vec<FaceId>> {
-    // UNPORTED(topology.brep_p8): SmBrep::MakeFacesWithCurves
-    Err(SolidError::unported(
-        "SmBrep::MakeFacesWithCurves",
-        "topology.brep_p8",
-    ))
+/// `topology.brep_p8`). The new faces own their surfaces under the face identities
+/// `(SmFace_TYPE, 1 + index)`, as [`make_face_with_curves`].
+fn make_faces_with_curves(
+    k: &mut Kernel,
+    b: &mut Brep,
+    region: RegionId,
+    input: TrimInput,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+) -> Result<Vec<FaceId>> {
+    let TrimInput {
+        loop_counts,
+        curves,
+        orientations,
+        loop_points,
+        surface,
+        uv_domain,
+        surface_orientation,
+    } = input;
+    let curves_input = crate::topology::brep::p7::FaceCurvesInput {
+        loops: loop_counts,
+        curves_3d: Some(curves.into_iter().map(Some).collect()),
+        uv_curves: None,
+        orientations,
+        loop_points,
+    };
+    let face_ref = |f: FaceId| crate::geom::object::ObjectRef {
+        type_code: fp2::TYPE,
+        key: crate::geom::attribute::ObjectKey(1 + u64::from(f.index())),
+    };
+    let mut marks = crate::topology::topology_traverser::Marks::default();
+    let mut fenv = crate::topology::brep::p8::FaceBuildEnv {
+        env,
+        marks: &mut marks,
+        this_face: &face_ref,
+    };
+    let made = crate::topology::brep::p8::make_faces_with_curves(
+        k,
+        b,
+        Some(region),
+        curves_input,
+        surface,
+        &uv_domain,
+        surface_orientation,
+        &mut fenv,
+    )?;
+    Ok(made.faces)
 }
 
 /// `SmFace::CreateUVTrimCurves(FALSE, NULL, NULL, ...)`.
@@ -326,64 +365,22 @@ fn face_edges(b: &Brep, f: FaceId) -> Result<Vec<EdgeId>> {
     crate::topology::face::p4::edges(b, f, None, false, None)
 }
 
-/// The classification object of the seam classifications `SplitAtSeams` passes on: the
-/// loop or vertex a point classification names (other objects are not resolved here).
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum SeamObject {
-    /// An `SmLoop`.
-    Loop(LoopId),
-    /// An `SmVertex` (what `sm_RemoveSuspectSplitAtSeamUVTrimCurves` resolves).
-    #[expect(
-        dead_code,
-        reason = "made by SmFace::HasSeamProblem once topology.face_p4 is wired"
-    )]
-    Vertex(crate::topology::VertexId),
-}
+use crate::topology::brep::p1::HealLoopHandle;
 
-impl crate::intersect::point_class::ClassObject for SeamObject {
-    fn class_kind(&self) -> crate::intersect::point_class::ClassObjectKind {
-        match self {
-            Self::Loop(_) => crate::intersect::point_class::ClassObjectKind::Loop,
-            Self::Vertex(_) => crate::intersect::point_class::ClassObjectKind::Vertex,
-        }
-    }
-}
-
-impl crate::heal::face_props::LoopObject for SeamObject {
-    fn from_loop(l: LoopId) -> Self {
-        Self::Loop(l)
-    }
-
-    fn as_loop(&self) -> Option<LoopId> {
-        match self {
-            Self::Loop(l) => Some(*l),
-            Self::Vertex(_) => None,
-        }
-    }
-
-    fn as_vertex(&self) -> Option<crate::topology::VertexId> {
-        match self {
-            Self::Vertex(v) => Some(*v),
-            Self::Loop(_) => None,
-        }
-    }
-}
-
-/// Classification geometry for [`SeamObject`]s: loops and vertices name no curve,
-/// surface, volume or point here (their zone tolerances come from the topology).
+/// Classification geometry for [`HealLoopHandle`]s in seam splits: resolves nothing.
 struct SeamGeometry;
 
-impl crate::intersect::point_class::ClassGeometry<SeamObject> for SeamGeometry {
-    fn curve(&self, _: SeamObject) -> Option<&Curve> {
+impl crate::intersect::point_class::ClassGeometry<HealLoopHandle> for SeamGeometry {
+    fn curve(&self, _: HealLoopHandle) -> Option<&Curve> {
         None
     }
-    fn surface(&self, _: SeamObject) -> Option<&Surface> {
+    fn surface(&self, _: HealLoopHandle) -> Option<&Surface> {
         None
     }
-    fn volume(&self, _: SeamObject) -> Option<&crate::surface::volume::Volume> {
+    fn volume(&self, _: HealLoopHandle) -> Option<&crate::surface::volume::Volume> {
         None
     }
-    fn point(&self, _: SeamObject) -> Option<Point3> {
+    fn point(&self, _: HealLoopHandle) -> Option<Point3> {
         None
     }
 }
@@ -391,19 +388,26 @@ impl crate::intersect::point_class::ClassGeometry<SeamObject> for SeamGeometry {
 /// `SmFace::HasSeamProblem(rCrvClassU, rCrvClassV, eCrossed, eMissing, eNearMiss)` (unit
 /// `topology.face_p4`).
 fn face_has_seam_problem(
-    _k: &Kernel,
-    _b: &mut Brep,
-    _f: FaceId,
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
 ) -> Result<(
     bool,
-    crate::intersect::curve_class::p1::CurveClassification<SeamObject>,
-    crate::intersect::curve_class::p1::CurveClassification<SeamObject>,
+    crate::intersect::curve_class::p1::CurveClassification<HealLoopHandle>,
+    crate::intersect::curve_class::p1::CurveClassification<HealLoopHandle>,
     crate::topology::face::p1::SeamProblem,
 )> {
-    // UNPORTED(topology.face_p4): SmFace::HasSeamProblem
-    Err(SolidError::unported(
-        "SmFace::HasSeamProblem",
-        "topology.face_p4",
+    let check = crate::topology::face::p4::has_seam_problem_in_brep(
+        k,
+        b,
+        f,
+        crate::topology::face::p4::HasSeamProblemOptions::default(),
+    )?;
+    Ok((
+        check.has_problem,
+        check.class_u,
+        check.class_v,
+        check.problem,
     ))
 }
 
@@ -423,9 +427,9 @@ fn face_split_at_seam_problem(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<Vec
         problem,
         None,
         &SeamGeometry,
-        &|o: SeamObject| match o {
-            SeamObject::Vertex(v) => Some(EntityRef::Vertex(v)),
-            SeamObject::Loop(_) => None,
+        &|o: HealLoopHandle| match o {
+            HealLoopHandle::Topo(EntityRef::Vertex(v)) => Some(EntityRef::Vertex(v)),
+            _ => None,
         },
     )?;
     Ok(split.faces)
@@ -500,7 +504,7 @@ pub fn trim_surface_with_model_space_curves(
         vec![make_face_with_curves(k, b, region, input, env)?]
     } else {
         // MakeFacesWithCurves, then clear the UV trim curves of the new faces
-        let faces = make_faces_with_curves(b, input)?;
+        let faces = make_faces_with_curves(k, b, region, input, env)?;
         for &f in &faces {
             clear_uv_trim_curves(b, f)?;
         }
@@ -1916,6 +1920,7 @@ pub fn is_loop_uv_gap_within_tolerance(
             Err(_) => return Ok(false),
         },
         SurfaceKind::SurfOfRevolution(s) => Cow::Borrowed(s.base()),
+        SurfaceKind::SurfOfExtrusion(s) => Cow::Borrowed(s.base()),
         SurfaceKind::Cone(s) => Cow::Borrowed(s.rev().base()),
         SurfaceKind::Sphere(s) => Cow::Borrowed(s.base().base()),
         SurfaceKind::Torus(s) => Cow::Borrowed(s.base().base()),

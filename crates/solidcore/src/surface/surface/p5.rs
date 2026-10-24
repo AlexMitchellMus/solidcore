@@ -371,8 +371,8 @@ impl Surface {
     ///
     /// # Errors
     ///
-    /// Those of `EvaluateNormal` and of unitizing the sum; [`SolidError::Unported`] from
-    /// the singularity test.
+    /// Those of `EvaluateNormal`; `SM_ERR_INVALID_INPUT` when the normals sum to zero
+    /// (`SER(Unitize())`); [`SolidError::Unported`] from the singularity test.
     pub fn evaluate_normal_at_singularity(
         &self,
         k: &Kernel,
@@ -427,7 +427,12 @@ impl Surface {
             }
         }
 
-        norm_sum.unitize()
+        // SER(sNormSum.Unitize()): a zero sum is the SM_ERR_INVALID_INPUT status
+        norm_sum.unitize().map_err(|_| SolidError::Upstream {
+            operation: "surface::surface::p5::evaluate_normal_at_singularity",
+            code: crate::error::SM_ERR_INVALID_INPUT,
+            entity: None,
+        })
     }
 }
 
@@ -485,6 +490,24 @@ impl Surface {
         want_uv_iso_curve: bool,
     ) -> Result<IsoParametricCurve> {
         match self.kind() {
+            // (SmSurfOfExtrusion inherits the B-spline override)
+            SurfaceKind::SurfOfExtrusion(s) => {
+                let opts = crate::nurbs::b_spline_surface::p2::IsoCurveOptions {
+                    domain: domain.copied(),
+                    uv_iso_curve: want_uv_iso_curve,
+                };
+                let r = s.base_with_nurb(k)?.create_iso_parametric_curve(
+                    k,
+                    param,
+                    iso_parameter,
+                    opts,
+                )?;
+                return Ok(IsoParametricCurve {
+                    curve: Curve::from(r.curve),
+                    max_gap_3d: r.max_gap_3d,
+                    uv_iso_curve: r.uv_iso_curve,
+                });
+            }
             SurfaceKind::BSpline(b) => {
                 let opts = crate::nurbs::b_spline_surface::p2::IsoCurveOptions {
                     domain: domain.copied(),

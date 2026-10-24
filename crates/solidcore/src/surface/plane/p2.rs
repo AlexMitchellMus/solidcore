@@ -81,9 +81,9 @@ use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::{BSplineSurface, BoundingBoxRequest};
 use crate::nurbs::knots::Side;
-use crate::surface::surface::p1::evaluate_1st_derivatives;
+use crate::surface::surface::p1::{evaluate_1st_derivatives, SurfaceIntersectContext};
 use crate::surface::surface::p2::{
-    base_global_surface_intersect, SurfaceIntersection, TsectCurveType,
+    base_global_surface_intersect_in, SurfaceIntersection, TsectCurveType,
 };
 use crate::surface::surface::p7::base_evaluate_normal;
 use crate::surface::surface::{Surface, SurfaceKind};
@@ -135,6 +135,21 @@ impl PlaneOwner {
         } else {
             Self::NoFace
         })
+    }
+}
+
+impl PlaneOwner {
+    /// The `expand_tolerance` of a box request on the plane's B-spline part: its face's
+    /// tolerance, `None` (the ownerless `SM_ZONE_TOL_3D`) without face.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] (`SmFace::GetTolerance`) for a bare face handle.
+    pub(crate) fn expand_tolerance(self) -> Result<Option<f64>> {
+        match self {
+            Self::NoFace => Ok(None),
+            Self::Face(_) => zone_tolerance(self).map(Some),
+        }
     }
 }
 
@@ -1383,7 +1398,8 @@ impl Plane {
 ///
 /// Those of [`Plane::intersect_with_plane`]; [`SolidError::Unported`] from the general
 /// intersector.
-pub(crate) fn global_surface_intersect(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn global_surface_intersect_in<O: SolutionObject + Copy + PartialEq>(
     k: &Kernel,
     this: &Surface,
     plane: &Plane,
@@ -1393,6 +1409,7 @@ pub(crate) fn global_surface_intersect(
     use_surface_edges: [bool; 2],
     approx_tol_3d: Option<f64>,
     ang_tol_rad: Option<f64>,
+    context: Option<SurfaceIntersectContext<'_, O>>,
 ) -> Result<SurfaceIntersection> {
     // assume special case intersections will be complete
     let mut need_nurb_intersection = true;
@@ -1459,8 +1476,23 @@ pub(crate) fn global_surface_intersect(
             core::mem::swap(&mut x.surface1_uv_curves, &mut x.surface2_uv_curves);
             (need_nurb_intersection, out) = (need, x);
         }
-        // (the extrusion special case needs a surface kind that is not ported yet; an
-        // SmTorus has no special case: the default branch)
+        // SurfOfExtrusion/plane special case intersection: the orders and the UV curves
+        // are swapped
+        SurfaceKind::SurfOfExtrusion(ext) => {
+            let mut x = ext.intersect_with_plane_on(
+                k,
+                other,
+                other_uv_domain,
+                plane,
+                PlaneOwner::of(this)?,
+                uv_domain,
+                approx_tol_3d,
+            )?;
+            core::mem::swap(&mut x.surface1_uv_curves, &mut x.surface2_uv_curves);
+            need_nurb_intersection = x.needs_more_intersections;
+            out = SurfaceIntersection::from(x);
+        }
+        // (an SmTorus has no special case: the default branch)
         SurfaceKind::Torus(_)
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
@@ -1471,7 +1503,7 @@ pub(crate) fn global_surface_intersect(
 
     // If we're here, then analytic intersection were not found - do general intersection
     if need_nurb_intersection {
-        out = base_global_surface_intersect(
+        out = base_global_surface_intersect_in(
             k,
             this,
             uv_domain,
@@ -1480,6 +1512,7 @@ pub(crate) fn global_surface_intersect(
             use_surface_edges,
             approx_tol_3d,
             ang_tol_rad,
+            context,
         )?;
     }
 

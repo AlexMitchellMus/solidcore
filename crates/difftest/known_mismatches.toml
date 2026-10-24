@@ -1,0 +1,92 @@
+# Known Rust-vs-C++ mismatches (see crates/difftest/src/known.rs).
+#
+# A case listed here still fails its comparison; difftest reports it as
+# `known-mismatch` (summary line `known_mismatch=N`, report `"known_mismatch"`) and
+# the unit is at best `partial`, never green. A listed case that passes, defers or no
+# longer exists fails the unit: remove its entry when the port is fixed. Every entry
+# needs a plan/findings.md entry. Never list a case just to get CI green.
+#
+# [[mismatch]]
+# unit = "curve.curve_p1"
+# case = "gen0042"
+# why = "C++ succeeds with 0 points, Rust returns status_3 (plan/findings.md: ...)"
+
+[[mismatch]]
+unit = "blend.fillet_intersector"
+case = "rv_next_clipped_step"
+why = "StepSolve clipped branch differs by a few ULP from C++; suspected p3 evaluating offset-surface copies vs the solver's own objects; pre-existing, newly reachable via #212 (plan/findings.md: blend.fillet_intersector rv_next_clipped_step)"
+
+[[mismatch]]
+unit = "topology.brep_p3"
+case = "nurbs_off_Mouse_0.1"
+why = "TurnToNURBS tracker: upstream curves/surfaces notify their own SM_NO_PRE_EDIT/SM_NO_POST_EDIT edits, the port's geometry sends none (plan/findings.md: topology.face_p1 SetSurface SM_NO_CHANGE_GEOMETRY wired (PR #637), 'Still deferred: geometry edit notifications')"
+
+[[mismatch]]
+unit = "topology.brep_p3"
+case = "nurbs_off_Mouse_-0.05"
+why = "TurnToNURBS tracker: upstream curves/surfaces notify their own SM_NO_PRE_EDIT/SM_NO_POST_EDIT edits, the port's geometry sends none (plan/findings.md: topology.face_p1 SetSurface SM_NO_CHANGE_GEOMETRY wired (PR #637), 'Still deferred: geometry edit notifications')"
+
+[[mismatch]]
+unit = "topology.brep_p3"
+case = "nurbs_off_toruswvy_0.1"
+why = "TurnToNURBS tracker: upstream curves/surfaces notify their own SM_NO_PRE_EDIT/SM_NO_POST_EDIT edits, the port's geometry sends none (plan/findings.md: topology.face_p1 SetSurface SM_NO_CHANGE_GEOMETRY wired (PR #637), 'Still deferred: geometry edit notifications')"
+
+[[mismatch]]
+unit = "topology.brep_p3"
+case = "gen0138"
+why = "TurnToNURBS tracker: upstream curves/surfaces notify their own SM_NO_PRE_EDIT/SM_NO_POST_EDIT edits, the port's geometry sends none (plan/findings.md: topology.face_p1 SetSurface SM_NO_CHANGE_GEOMETRY wired (PR #637), 'Still deferred: geometry edit notifications')"
+
+[[mismatch]]
+unit = "topology.brep_p3"
+case = "gen0164"
+why = "TurnToNURBS tracker: upstream curves/surfaces notify their own SM_NO_PRE_EDIT/SM_NO_POST_EDIT edits, the port's geometry sends none (plan/findings.md: topology.face_p1 SetSurface SM_NO_CHANGE_GEOMETRY wired (PR #637), 'Still deferred: geometry edit notifications')"
+
+[[mismatch]]
+unit = "topology.brep_p3"
+case = "gen0241"
+why = "TurnToNURBS tracker: upstream curves/surfaces notify their own SM_NO_PRE_EDIT/SM_NO_POST_EDIT edits, the port's geometry sends none (plan/findings.md: topology.face_p1 SetSurface SM_NO_CHANGE_GEOMETRY wired (PR #637), 'Still deferred: geometry edit notifications')"
+
+[[mismatch]]
+unit = "primitive.primitive_creation_p2"
+case = "skin_concentric_loops"
+why = "region nesting differs once #613's shell ray face preparation and #639's forwarded face hooks both reach it; deferred on each alone (plan/findings.md: Region nesting once shell ray face preparation meets the forwarded face hooks)"
+
+[[mismatch]]
+unit = "sweep.api_surfaces"
+case = "skin_primitive_annular"
+why = "region nesting differs once #613's shell ray face preparation and #639's forwarded face hooks both reach it; deferred on each alone (plan/findings.md: Region nesting once shell ray face preparation meets the forwarded face hooks)"
+
+[[mismatch]]
+unit = "topology.brep_p6"
+case = "two_cubes_at_a_vertex"
+why = "region nesting differs once #613's shell ray face preparation and #639's forwarded face hooks both reach it; deferred on each alone (plan/findings.md: Region nesting once shell ray face preparation meets the forwarded face hooks)"
+
+[[mismatch]]
+unit = "topology.brep_p6"
+case = "two_disjoint_cubes"
+why = "region nesting differs once #613's shell ray face preparation and #639's forwarded face hooks both reach it; deferred on each alone (plan/findings.md: Region nesting once shell ray face preparation meets the forwarded face hooks)"
+
+[[mismatch]]
+unit = "topology.brep_p6"
+case = "cube_in_cube"
+why = "region nesting differs once #613's shell ray face preparation and #639's forwarded face hooks both reach it; deferred on each alone (plan/findings.md: Region nesting once shell ray face preparation meets the forwarded face hooks)"
+
+[[mismatch]]
+unit = "topology.brep_p6"
+case = "cube_with_wire"
+why = "region nesting differs once #613's shell ray face preparation and #639's forwarded face hooks both reach it; deferred on each alone (plan/findings.md: Region nesting once shell ray face preparation meets the forwarded face hooks)"
+
+[[mismatch]]
+unit = "topology.brep_p6"
+case = "cube_with_inner_wire"
+why = "region nesting differs once #613's shell ray face preparation and #639's forwarded face hooks both reach it; deferred on each alone (plan/findings.md: Region nesting once shell ray face preparation meets the forwarded face hooks)"
+
+[[mismatch]]
+unit = "topology.brep_p6"
+case = "cube_with_inner_vertex"
+why = "region nesting differs once #613's shell ray face preparation and #639's forwarded face hooks both reach it; deferred on each alone (plan/findings.md: Region nesting once shell ray face preparation meets the forwarded face hooks)"
+
+[[mismatch]]
+unit = "topology.brep_p6"
+case = "cube_with_outer_vertex"
+why = "region nesting differs once #613's shell ray face preparation and #639's forwarded face hooks both reach it; deferred on each alone (plan/findings.md: Region nesting once shell ray face preparation meets the forwarded face hooks)"

@@ -270,7 +270,43 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                 Vec3::new(value(v, 11), value(v, 12), value(v, 13)),
                 Vec3::new(value(v, 14), value(v, 15), value(v, 16)),
             );
-            let mut brep = Brep::new_with_infinite_region()?;
+            if shape <= 1 {
+                // The static constructors return their own B-rep (NULL on failure).
+                let made = if shape == 0 {
+                    api::create_rectangle(&mut k, value(v, 7), value(v, 1), value(v, 2), &frame)
+                } else {
+                    api::create_circle(&mut k, value(v, 7), value(v, 1), &frame)
+                };
+                match made {
+                    Err(e) if e.is_unported() => return Err(e),
+                    Ok(b) => {
+                        record.extend([
+                            0.0,
+                            f64::from(b.editing_enabled()),
+                            0.0,
+                            solidcore::topology::brep::p1::faces(&b, None)?.len() as f64,
+                            solidcore::topology::brep::p1::edges(&b, None)?.len() as f64,
+                            solidcore::topology::brep::p1::vertices(&b, None)?.len() as f64,
+                        ]);
+                        crate::util::primitive::append(&k, &b, &mut record)?;
+                    }
+                    Err(_) => record.extend([
+                        f64::from(solidcore::error::SM_ERR),
+                        -1.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                    ]),
+                }
+                return Ok(record);
+            }
+            // `SmBrep b(SM_USE_DEFAULT, SM_USE_DEFAULT, context)`
+            let mut brep = solidcore::topology::brep::p3::new_brep(
+                &mut k,
+                solidcore::geom::tol::USE_DEFAULT,
+                solidcore::geom::tol::USE_DEFAULT,
+            )?;
             brep.set_editing_enabled(value(v, 17) != 0.0);
             let mut primitive = PrimitiveCreation::new(brep.infinite_region(), 17, true);
             if value(v, 18) != 0.0 {
@@ -280,11 +316,8 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                 );
             }
             let result = match shape {
-                0 => api::create_rectangle(&k, value(v, 7), value(v, 1), value(v, 2), &frame)
-                    .map(|_| ()),
-                1 => api::create_circle(&k, value(v, 7), value(v, 1), &frame).map(|_| ()),
                 2 => primitive.create_box(
-                    &k,
+                    &mut k,
                     &mut brep,
                     value(v, 1),
                     value(v, 2),
@@ -305,15 +338,15 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                     &mut notifications,
                 ),
                 4 => primitive.create_cone(
-                    &k,
+                    &mut k,
                     &mut brep,
                     value(v, 1),
                     value(v, 2),
                     value(v, 3),
                     &frame,
                 ),
-                5 => primitive.create_sphere(&k, &mut brep, value(v, 1), &frame),
-                6 => primitive.create_torus(&k, &mut brep, value(v, 1), value(v, 2), &frame),
+                5 => primitive.create_sphere(&mut k, &mut brep, value(v, 1), &frame),
+                6 => primitive.create_torus(&mut k, &mut brep, value(v, 1), value(v, 2), &frame),
                 7 => PrimitiveCreation::create_sphere_no_pole(
                     &mut k,
                     &mut brep,
@@ -323,7 +356,7 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                     &mut notifications,
                 ),
                 8 => PrimitiveCreation::create_cone_elliptic_ends(
-                    &k,
+                    &mut k,
                     &mut brep,
                     &EllipticCone {
                         radius_front: value(v, 1),
@@ -386,19 +419,28 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
                 Err(solidcore::SolidError::Upstream { code, .. }) => code,
                 Err(_) => solidcore::error::SM_ERR,
             };
+            // `GetFaces` / `GetEdges` / `GetVertices` as the shim reads them (a traversal
+            // of the B-rep, not every record in the arenas)
             record.extend([
                 f64::from(status),
                 f64::from(brep.editing_enabled()),
                 primitive.maps.to_same.len() as f64,
-                brep.faces().len() as f64,
-                brep.edges().len() as f64,
-                brep.vertices().len() as f64,
+                solidcore::topology::brep::p1::faces(&brep, None)?.len() as f64,
+                solidcore::topology::brep::p1::edges(&brep, None)?.len() as f64,
+                solidcore::topology::brep::p1::vertices(&brep, None)?.len() as f64,
             ]);
+            if status == 0 {
+                crate::util::primitive::append(&k, &brep, &mut record)?;
+            }
         }
         5 => {
-            let mut brep = Brep::new();
+            let mut brep = solidcore::topology::brep::p3::new_brep(
+                &mut k,
+                solidcore::geom::tol::USE_DEFAULT,
+                solidcore::geom::tol::USE_DEFAULT,
+            )?;
             let result = api::analytic_rotational_sweep(
-                &k,
+                &mut k,
                 &mut brep,
                 &Curve::from(curve(v.get(..7).unwrap_or_default())?),
                 Vec3::new(value(v, 7), value(v, 8), value(v, 9)),
@@ -470,8 +512,17 @@ fn rust(i: &Inputs) -> solidcore::Result<Vec<f64>> {
     }
     Ok(record)
 }
-fn output(op: i32, data: Vec<f64>) -> Result<Output, HarnessError> {
-    if op == 0 || op == 4 || op == 5 || op == 6 {
+fn output(input: &Inputs, data: Vec<f64>) -> Result<Output, HarnessError> {
+    let op = input.op;
+    if op == 4 {
+        let prefix = if value(&input.data, 0) == 10.0 { 7 } else { 6 };
+        let head = data
+            .get(..prefix)
+            .ok_or_else(|| HarnessError::new("missing primitive topology record"))?;
+        Ok(Output::new()
+            .ints("maps", head.iter().map(|v| *v as i64).collect::<Vec<_>>())
+            .values("geometry", data.get(prefix..).unwrap_or_default().to_vec()))
+    } else if op == 0 || op == 5 || op == 6 {
         Ok(Output::new().ints(
             "maps",
             data.into_iter().map(|v| v as i64).collect::<Vec<_>>(),
@@ -503,7 +554,7 @@ impl UnitDiff for Runner {
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
         let i: Inputs = case.parse()?;
         match ffi::eval(i.op, &i.data) {
-            Ok(data) => output(i.op, data),
+            Ok(data) => output(&i, data),
             Err(solidcore_ffi::FfiError::Status(-1010)) => Ok(Output::rejected(
                 "native fixture preflight rejected undefined construction",
             )),
@@ -514,7 +565,7 @@ impl UnitDiff for Runner {
         let i: Inputs = case.parse()?;
         ffi::validate(i.op, &i.data).map_err(|e| HarnessError::new(e.to_string()))?;
         match rust(&i) {
-            Ok(data) => output(i.op, data),
+            Ok(data) => output(&i, data),
             Err(e) => Ok(Output::unported(&e).unwrap_or_else(|| Output::err(e.to_string()))),
         }
     }

@@ -16,8 +16,9 @@
 //!   box or a full sphere face) with target lists, then a script of heal steps;
 //!   outputs each step's status and results and, at the end, the whole healer state
 //!   (targets, every props record ever allocated, every problem array with its labels,
-//!   histograms, statistics and the vertex voxel model). The C++ side replaces analytic
-//!   geometry by plain B-splines first (what the Rust import rebuilds); the Rust side
+//!   histograms, statistics and the vertex voxel model). The C++ side preserves exactly
+//!   exported analytic surfaces and replaces other surfaces and edge curves by the
+//!   plain B-splines the Rust import rebuilds; the Rust side
 //!   imports the C++ export (the `topology.vertexuse` importer) and restores each
 //!   vertex's vertex use order from the shim.
 //!
@@ -51,7 +52,7 @@ use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::heal_heal_data_p2 as ffi;
 use solidcore_ffi::units::topology_vertexuse::counts;
 
-use super::topology_vertexuse::{gen_brep, import, path_of, push_curve, push_surface, BrepIn};
+use super::topology_vertexuse::{gen_brep, import_raw, path_of, push_curve, push_surface, BrepIn};
 use crate::case::CaseContext;
 use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -71,6 +72,8 @@ enum H {
     Curve(bool),
     EdgeCurve(EdgeId),
     Trim(EdgeuseId),
+    /// A temporary curve (the seam curves of `SmFace::HasSeamProblem`).
+    Temp(usize),
 }
 
 impl ClassObject for H {
@@ -78,8 +81,14 @@ impl ClassObject for H {
         match self {
             Self::Topo(e) => e.class_kind(),
             Self::Surface(_) => ClassObjectKind::Surface,
-            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) => ClassObjectKind::Curve,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) | Self::Temp(_) => {
+                ClassObjectKind::Curve
+            }
         }
+    }
+
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        (kind == ClassObjectKind::Curve).then_some(Self::Temp(index))
     }
 }
 
@@ -1263,7 +1272,8 @@ fn rust_heal(
     ffi::check_heal(&args_of(targets, voxels, steps, n))
         .map_err(|e| harness(format!("heal script: {e}")))?;
     let c = counts(&ex).ok_or_else(|| harness("export counts"))?;
-    let (mut b, exact) = import(&ex)?;
+    // raw: `restore` replaces every cached gap with the C++ record
+    let (mut b, exact) = import_raw(&ex)?;
     if exact.iter().any(|x| !x) {
         return Err(harness("a face surface was not imported exactly"));
     }
@@ -1505,7 +1515,7 @@ fn rust_heal(
                 }
             }
             Step::CacheFacePropsStage2 => {
-                h.cache_face_props_stage2(&k, &b, HealerOpType::CacheFaceprops2)
+                h.cache_face_props_stage2(&k, &mut b, HealerOpType::CacheFaceprops2)
             }
             Step::CacheFacePropsStage3 => {
                 h.cache_face_props_stage3(&k, &b, HealerOpType::CacheFaceprops3)
@@ -1532,7 +1542,7 @@ fn rust_heal(
                 .make_uv_trim_curves(&k, &mut b, *make, HealerOpType::MakeUvtrimcurves)
                 .map(|()| false),
             Step::FixInfiniteRegion => h
-                .fix_infinite_region(&mut b, HealerOpType::FixInfiniteRegions)
+                .fix_infinite_region(&mut k, &mut b, HealerOpType::FixInfiniteRegions)
                 .map(|()| false),
             Step::HealBrep {
                 mode,
@@ -2044,6 +2054,25 @@ impl UnitDiff for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A native analytic face must reach healing as the same surface kind in Rust.
+    /// A plain B-spline copy has the same control net but different UV evaluation.
+    #[test]
+    fn sphere_export_preserves_analytic_surface() {
+        use solidcore::surface::surface::SurfaceKind;
+
+        for swap in [false, true] {
+            let input = BIn::Prim(Prim::Sphere { radius: 3.0, swap });
+            let (path, block) = block_of(&input, false, false).unwrap();
+            let (export, counts) = export_of(&path, &block).unwrap();
+            assert!(counts.is_some(), "sphere construction failed");
+            let (brep, exact) = import_raw(&export).unwrap();
+            assert_eq!(exact, vec![true]);
+            let (_, face) = brep.faces().iter().next().unwrap();
+            let surface = face.surface.as_ref().unwrap();
+            assert!(matches!(surface.kind(), SurfaceKind::Sphere(_)));
+        }
+    }
 
     /// Object counts the C++ guard refuses are a harness error on the Rust side too,
     /// not a capacity-overflow panic or a 32 GiB object list (issue #181).

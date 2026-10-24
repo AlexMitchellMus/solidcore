@@ -70,11 +70,10 @@
 //!   from a UV point to the x and y of the last 3D sample point when picking the
 //!   seam-side solution, as upstream does.
 //! - **Unported callees** return [`SolidError::Unported`] (see the `UNPORTED`
-//!   markers): `SmSurface::DropCurve` (`intersect.surface_drop_lib_p3`) except the
-//!   plane override. The surface point solves defer inside their own units
-//!   (`LocalPointSolve_1`, `GlobalPointSolve_1`). An
-//!   `SmCrvOnSurf` over a surface that is not a B-spline surface is a dispatch gap
-//!   of `curve.crv_on_surf` (the ported curve holds an `SmBSplineSurface`).
+//!   markers). `SmSurface::DropCurve` is the plane override for planes and the base
+//!   body ([`Surface::drop_curve_base`]) otherwise. The surface point solves defer
+//!   inside their own units
+//!   (`LocalPointSolve_1`, `GlobalPointSolve_1`).
 //! - The `SM_DEBUG_CODE` drawing blocks and `Dump` are not ported. No recursion
 //!   depends on input; the seam search loop is bounded (19 steps) as upstream.
 
@@ -189,6 +188,7 @@ fn is_singularity(k: &Kernel, surface: &Surface, uv: Point2) -> Result<(bool, Su
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => {
@@ -226,7 +226,9 @@ fn start_uv(s: &Solution<NoObject>) -> Point2 {
 }
 
 /// `GlobalPointSolve(domain, op, point, tol, pdMaxDropDist, requested, sols)`: the
-/// start parameters of the solutions in order.
+/// start parameters of the solutions in order. `DoTrace` runs with the surface
+/// cache's point testing off (`SmSurfaceDropCurve.cpp:1629`), so the solve must not
+/// build (or classify against) a face-owned surface's trimmed cache.
 #[allow(clippy::too_many_arguments)] // upstream's argument list
 fn surface_global_point_solve(
     k: &Kernel,
@@ -238,7 +240,7 @@ fn surface_global_point_solve(
     max_drop_dist: Option<f64>,
     requested: SolutionRequested,
 ) -> Result<Vec<Point2>> {
-    let sols = surface.global_point_solve::<NoObject>(
+    let sols = surface.global_point_solve_point_test_off::<NoObject>(
         k,
         Some(NoObject),
         uv_domain,
@@ -267,6 +269,7 @@ fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<Option<Vec<Po
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
         | SurfaceKind::SrfInVolume(_) => {
@@ -289,6 +292,12 @@ fn create_iso_parametric_curve(
     match surface.kind() {
         SurfaceKind::BSpline(b) => Ok(Curve::from(
             b.create_iso_parametric_curve(k, param, value, IsoCurveOptions::default())?
+                .curve,
+        )),
+        // (SmSurfOfExtrusion inherits the B-spline CreateIsoParametricCurve)
+        SurfaceKind::SurfOfExtrusion(s) => Ok(Curve::from(
+            s.base()
+                .create_iso_parametric_curve(k, param, value, IsoCurveOptions::default())?
                 .curve,
         )),
         SurfaceKind::Plane(p) => Ok(Curve::from(
@@ -366,36 +375,17 @@ fn surface_drop_curve(
     keep_all: bool,
     creating_uv_trim_curve: bool,
 ) -> Result<(f64, f64, Vec<Curve>)> {
-    match surface.kind() {
-        SurfaceKind::Plane(p) => {
-            let r = p.drop_curve(
-                k,
-                uv_domain,
-                curve,
-                interval,
-                approx_tol,
-                keep_all,
-                creating_uv_trim_curve,
-            )?;
-            Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
-        }
-
-        SurfaceKind::Cone(_)
-        | SurfaceKind::Sphere(_)
-        | SurfaceKind::Torus(_)
-        | SurfaceKind::BSpline(_)
-        | SurfaceKind::CurveBounded(_)
-        | SurfaceKind::SurfOfRevolution(_)
-        | SurfaceKind::Step(_)
-        | SurfaceKind::OffsetSurface(_)
-        | SurfaceKind::SrfInVolume(_) => {
-            // UNPORTED(intersect.surface_drop_lib_p3): SmSurface::DropCurve
-            Err(SolidError::unported(
-                "SmSurface::DropCurve",
-                "intersect.surface_drop_lib_p3",
-            ))
-        }
-    }
+    let r = surface.drop_curve::<NoObject>(
+        k,
+        uv_domain,
+        curve,
+        interval,
+        approx_tol,
+        keep_all,
+        None,
+        creating_uv_trim_curve,
+    )?;
+    Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
 }
 
 /// `IsClosed(domain, param)` (default arguments); a failure answers `false`.
@@ -1015,7 +1005,7 @@ impl<'s> SurfaceDropCurve<'s> {
 
         // Add TargetSurface natural boundary curves to sIsoCurves array
         let iso = cache.iso_boundary_curves(k, &uv_domain, cci_tol / 3.0)?;
-        let mut iso_curves: Vec<Curve> = iso.curves.iter().cloned().map(Curve::from).collect();
+        let mut iso_curves: Vec<Curve> = iso.curves.to_vec();
 
         // add every Surface U internal continuity boundary to sIsoCurves array
         let u_conts: Vec<ContinuityType> = cache.u_continuities().to_vec();
@@ -1122,19 +1112,10 @@ impl<'s> SurfaceDropCurve<'s> {
                     Err(_) => continue,
                 };
 
-                let SurfaceKind::BSpline(bs) = surface.kind() else {
-                    // DISPATCH GAP: SmCrvOnSurf over a non-B-spline SmSurface
-                    // (curve.crv_on_surf, partial; no UNPORTED marker, as in
-                    // intersect::curve_class::p1)
-                    return Err(SolidError::unported(
-                        "SmSurface (non-B-spline) in SmCrvOnSurf",
-                        "curve.crv_on_surf",
-                    ));
-                };
                 let srf_crv = Curve::from(CrvOnSurf::new(
                     k,
                     Curve::from(uv_line),
-                    bs.clone(),
+                    surface.clone_for_evaluation()?,
                     Some(uv_domain),
                     0,
                 )?);
@@ -1649,7 +1630,7 @@ impl<'s> SurfaceDropCurve<'s> {
         let active = self.base.start_points.clone();
         for tsp in active {
             self.base.curve_trace_direction = 1.0;
-            self.trace_curve_2(k, tsp, &mut out)?;
+            self.trace_curve_2_in(k, tsp, &mut out, Some(cache))?;
         }
 
         // trace dropCurve segments that don't start on a BreakPoint
@@ -1673,6 +1654,19 @@ impl<'s> SurfaceDropCurve<'s> {
         start: TracePointId,
         out: &mut TraceOutput,
     ) -> Result<()> {
+        self.trace_curve_2_in::<crate::surface::surface::p4::NoObject>(k, start, out, None)
+    }
+
+    /// [`SurfaceDropCurve::trace_curve_2`] with the cache `DoTrace` checked out
+    /// (`TraceCurve2` reads `GetDomainWithContinuity` through
+    /// `smsurf_GetSurfaceCache`, the same cache the drop holds); `None` builds one.
+    fn trace_curve_2_in<O: Copy + PartialEq>(
+        &mut self,
+        k: &Kernel,
+        start: TracePointId,
+        out: &mut TraceOutput,
+        cache: Option<&SurfaceCache<O>>,
+    ) -> Result<()> {
         self.base.curve_points.push(start);
         let breaks = self
             .curve_breaks
@@ -1691,12 +1685,20 @@ impl<'s> SurfaceDropCurve<'s> {
             }
 
             // let WorkingDomain = Surface G1 continuous SubDomain that contains the StartPoint
-            self.working_uv_domain = surface.domain_with_continuity(
-                k,
-                ContinuityType::G1,
-                start_pnt.curve_uv[0],
-                start_pnt.curve_uv[1],
-            )?;
+            self.working_uv_domain = match cache {
+                Some(cache) => surface.domain_with_continuity_from_cache(
+                    ContinuityType::G1,
+                    start_pnt.curve_uv[0],
+                    start_pnt.curve_uv[1],
+                    cache,
+                )?,
+                None => surface.domain_with_continuity(
+                    k,
+                    ContinuityType::G1,
+                    start_pnt.curve_uv[0],
+                    start_pnt.curve_uv[1],
+                )?,
+            };
 
             // exit case - working domain does not overlap the domain of interest
             if self
@@ -1763,6 +1765,13 @@ impl<'s> SurfaceDropCurve<'s> {
             } else {
                 // more than one solution - probably walking in/out of a boundary:
                 // the SmSurfaceTracer algorithm
+                //
+                // First suspect for a later disagreement (WR-182, plan/findings.md "The
+                // start list after `DoTrace` shares nodes with the curve list"): upstream
+                // TraceCurve2 appends `start` to the intrusive curve ring without taking it
+                // off m_vStartPoints, and this base `TraceCurve` walks the start list too
+                // (end test, AddStartPoint). The port's id `Vec`s do not model that
+                // aliasing; the harness reports such a start list as -3 on both sides.
                 match trace_curve_base(self, k, start, &out.curves_3d) {
                     Ok(()) => flush_curve(k, &mut self.base, out, Some(self.curve))?,
                     Err(e) if e.is_unported() => return Err(e),

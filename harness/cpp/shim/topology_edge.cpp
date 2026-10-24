@@ -24,6 +24,7 @@
 // pointer-to-member access), never the functions under test. Ops whose upstream path
 // would dereference null output -2 instead of calling it.
 #include "sc_shim.h"
+#include "sc_analytic_export.h"
 #include "support/topology_fixture.h"
 
 
@@ -504,11 +505,15 @@ void put_surface(std::vector<double>& o, const SmSurface* s)
         o.push_back(d.GetMax().y);
         return;
     }
+    // Reuse the shared lossless record checks, then always export the regular
+    // B-spline block so the importer can verify the reconstructed base bitwise.
+    if (sc_analytic_export::exact_type(s->GetType()))
+        sc_analytic_export::put_exact_head(o, s, the_context());
     const SmBSplineSurface* b = (const SmBSplineSurface*)s;
     gw_SURFACE* sur = b->GetGwNurbPointer();
     o.push_back(0.0);
-    // the surface's own type: an SmBSplineSurface subclass other than SmPlane is
-    // exported as its B-spline part only
+    // the surface's own type; the importer uses the regular block as a fallback
+    // when the exact head above was not written
     o.push_back((double)s->GetType());
     o.push_back(flg(((SmBSplineSurface*)b)->GetOutOfBoundsEnabled()));
     o.push_back((double)b->GetBSplineSurfaceForm());

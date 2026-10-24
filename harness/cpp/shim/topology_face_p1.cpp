@@ -7,9 +7,9 @@
 // validates every input. The input is a face selector (index into the traversal-order face
 // list, checked by the wrapper), the op's fixed-size arguments, then the B-rep block of
 // unit topology.vertexuse (built by the shared sc_topology_fixture.h), whose graph that
-// unit's Export op exports for the Rust import. As the topology.trimming_tools shim, the
-// faces and edges get the plain B-spline copies of analytic geometry (what the Rust import
-// rebuilds), keeping the surface owner, before the op.
+// unit's Export op exports for the Rust import. As in the topology.trimming_tools shim,
+// exactly exported analytic surfaces keep their dynamic kind; other surfaces and edge
+// curves get the plain B-spline copies the Rust import rebuilds, keeping the owner.
 //
 // Output: `0` (or `-1 status` when the B-rep build failed), then the op record. A slot of
 // `-2` marks a call the shim skips because upstream would dereference null; a seam call
@@ -47,6 +47,7 @@ enum : int32_t
     OP_PROBE = 10,
     OP_MOVE_SEAM = 11,
     OP_SPLIT_AT_SEAM = 12,
+    OP_UV_DOMAIN_AFTER_TRIM_SHIFT = 13,
 };
 
 const double FP1_NULL_DEREF = -2.0;
@@ -171,9 +172,9 @@ struct Fp1LoopPeek : SmLoop
     static SmLoopuse* SmLoop::*lu() { return &Fp1LoopPeek::m_pLU; }
 };
 
-// The Rust import rebuilds NURBs as plain B-splines (and lines, planes): give the C++
-// faces and edges the same geometry. The analytic originals are leaked (they may still be
-// referenced as owners' geometry elsewhere).
+// Match the Rust import: keep exactly exported analytic surfaces and give other
+// surfaces and edge curves their plain B-spline copies (and lines, planes).
+// Replaced originals are leaked: they may still be referenced as owners' geometry.
 void fp1_normalise(Graph& g)
 {
     for (SmFace* f : g.faces)
@@ -181,6 +182,10 @@ void fp1_normalise(Graph& g)
         SmSurface* s = f->*FPeek::srf();
         if (s == nullptr || !s->IsKindOf(SmBSplineSurface_TYPE) || s->GetType() == SmBSplineSurface_TYPE ||
             s->GetType() == SmPlane_TYPE)
+            continue;
+        // Preserve every surface the shared export imports as its exact analytic kind.
+        std::vector<double> head;
+        if (sc_analytic_export::put_exact_head(head, s, the_context()))
             continue;
         SmBSplineSurface* b = (SmBSplineSurface*)s;
         gw_SURFACE* nurb = b->GetGwNurbPointer();
@@ -316,6 +321,7 @@ int64_t fp1_nargs(int32_t op)
 {
     switch (op)
     {
+    case OP_UV_DOMAIN_AFTER_TRIM_SHIFT: return 9;
     case OP_UV_DOMAIN:
     case OP_ORIENTED: return 3;
     case OP_SET_SURFACE:
@@ -356,10 +362,51 @@ void fp1_brep_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
     switch (op)
     {
     case OP_UV_DOMAIN:
+    case OP_UV_DOMAIN_AFTER_TRIM_SHIFT:
     {
         SmBoolean limit = ad.bflag();
         bool want_max = ad.flag();
         bool want_2nd = ad.flag();
+        if (op == OP_UV_DOMAIN_AFTER_TRIM_SHIFT)
+        {
+            if (f->GetSurface() == NULL)
+            {
+                o.push_back(FP1_NULL_DEREF);
+                break;
+            }
+            double tmp;
+            SmStatus prep = f->CreateUVTrimCurves(FALSE, NULL, NULL, tmp, tmp, tmp, tmp, tmp, tmp);
+            if (prep != SM_SUCCESS)
+            {
+                o.push_back(st(prep));
+                return;
+            }
+            SmPoint2d lo = ad.uv(), hi = ad.uv();
+            f->SetUVDomain(SmExtent2d(lo, hi));
+            SmPoint2d delta = ad.uv();
+            SmAxis2Placement transform;
+            transform.Translate(SmVector3d(delta[0], delta[1], 0.0));
+            SmTArray<SmLoopuse*> loops;
+            f->GetUpwardLoopuses(loops);
+            for (int64_t li = 0; li < loops.GetSize(); ++li)
+            {
+                SmTArray<SmEdgeuse*> edges;
+                loops[li]->GetEdgeuses(edges);
+                for (int64_t ei = 0; ei < edges.GetSize(); ++ei)
+                {
+                    SmCurve* curve = edges[ei]->GetUVTrimCurve();
+                    if (curve != NULL)
+                    {
+                        prep = curve->Transform(transform, NULL);
+                        if (prep != SM_SUCCESS)
+                        {
+                            o.push_back(st(prep));
+                            return;
+                        }
+                    }
+                }
+            }
+        }
         SmExtent2d dom;
         double gap = -7.0, gap2 = -7.0;
         SmStatus r = f->CalculateUVDomainFromUVTrimCurves(dom, limit, want_max ? &gap : NULL,

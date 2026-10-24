@@ -43,7 +43,9 @@
 //! `ComputeSilhouettes` and `ComputeGlobalVisibility` are not run: their C++ path reaches
 //! UB-170 on open silhouette chains.
 
-use super::topology_vertexuse::{gen_brep, import, path_of, push_curve, push_surface, sel, BrepIn, CrvIn};
+use super::topology_vertexuse::{
+    gen_brep, import, import_raw, path_of, push_curve, push_surface, sel, BrepIn, CrvIn,
+};
 use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -306,7 +308,7 @@ impl UnitDiff for Runner {
             Err(msg) => return Ok(Output::err(msg)),
         };
         let s = ffi::split(&p.scene).ok_or_else(|| harness("short scene output"))?;
-        let (_, exact_faces) = import(s.export)?;
+        let (_, exact_faces) = import_raw(s.export)?;
         if inexact(&p.r, s.curve_types, &exact_faces) {
             return Ok(Output::err("inexact_geometry"));
         }
@@ -449,11 +451,11 @@ fn run_rust(i: &Inputs, r: &Resolved, scene: Brep, scene_box: Extent3d) -> Resul
         None => view_transform_for_vector(Vec3::new(i.view[0], i.view[1], i.view[2]))?,
         Some([z, x]) => {
             let mut a = Axis2Placement::default();
-            let _ = a.set_step_canonical(
+            a.set_step_canonical(
                 Vec3::new(i.view[0], i.view[1], i.view[2]),
                 Vec3::new(z[0], z[1], z[2]),
                 Vec3::new(x[0], x[1], x[2]),
-            );
+            )?;
             a
         }
     };

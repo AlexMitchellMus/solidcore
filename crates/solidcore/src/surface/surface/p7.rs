@@ -783,6 +783,7 @@ impl Surface {
             | SurfaceKind::Torus(_)
             | SurfaceKind::BSpline(_)
             | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
             | SurfaceKind::Step(_) => base_evaluate_normal(k, self, uv, u_side, v_side),
             SurfaceKind::CurveBounded(s) => s.evaluate_normal(k, uv, u_side, v_side),
             SurfaceKind::SrfInVolume(s) => s.evaluate_normal(k, uv, u_side, v_side),
@@ -822,6 +823,7 @@ impl Surface {
             | SurfaceKind::BSpline(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::OffsetSurface(_)
             | SurfaceKind::SrfInVolume(_) => {
@@ -884,6 +886,11 @@ impl Surface {
                 )
             }
             SurfaceKind::SurfOfRevolution(s) => {
+                let face_tol = self.face_zone_tol_3d()?;
+                Ok(planar_of(k, s.base(), &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
+            }
+            // (and SmSurfOfExtrusion)
+            SurfaceKind::SurfOfExtrusion(s) => {
                 let face_tol = self.face_zone_tol_3d()?;
                 Ok(planar_of(k, s.base(), &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
             }
@@ -2352,6 +2359,8 @@ pub struct SpGlobalSolver<'t, 's, O> {
     /// The cache holding the patches of the surface tree's nodes, read by the leaf
     /// solve (upstream reaches it through the node's tree owner).
     pub surface_cache: Option<&'s SurfaceCache<O>>,
+    /// Prepared face classification shared with other caches in this operation.
+    pub face_queries: Option<&'s dyn crate::surface::surface_cache::face_context::FaceQueries<O>>,
 }
 
 impl<O: SolutionObject> SpGlobalSolver<'_, '_, O> {
@@ -2460,6 +2469,8 @@ pub struct SsGlobalSolver<'t, 's, O> {
     /// (unit `surface.surface_p11`; upstream reaches them through the nodes' tree
     /// owners).
     pub caches: [Option<&'s SurfaceCache<O>>; 2],
+    /// One prepared classifier for both caches, which may belong to one B-rep.
+    pub face_queries: Option<&'s dyn crate::surface::surface_cache::face_context::FaceQueries<O>>,
 }
 
 impl<O: SolutionObject> SsGlobalSolver<'_, '_, O> {

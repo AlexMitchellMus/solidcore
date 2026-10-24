@@ -42,9 +42,9 @@ use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, EFF_ZERO_PARAM};
 use crate::nurbs::b_spline_surface::p1::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::BrepQuery;
 use crate::query::brep::{self as qbrep, BoundingBoxOptions};
-use crate::query::brep::{BrepIdentity, BrepQuery};
-use crate::surface::surface::{Surface, SurfaceKind};
+use crate::surface::surface::Surface;
 use crate::topology::edge;
 use crate::topology::vertex;
 use crate::topology::vertexuse;
@@ -83,25 +83,22 @@ impl SplitEdgeOutput {
 ///
 /// The first call, `GetRegions`, requires the B-rep's native owning-list order.
 /// An arena's allocation order cannot substitute for it. Ray selection and its
-/// single shell retry follow that individual dependency call. `world` supplies
-/// the same real geometry/cache context used by shell ray queries.
+/// single shell retry follow that individual dependency call. `query` (the B-rep's
+/// identities and cache) serves both the shell's ray fires and the B-rep's.
 ///
 /// # Errors
 /// Returns the owning unit's `Unported` error, without selecting a guessed region.
-pub fn find_infinite_region<O, W>(
+pub fn find_infinite_region(
     k: &mut Kernel,
     b: &mut Brep,
-    brep_id: crate::topology::BrepId,
+    query: &BrepQuery<'_>,
     shell: Option<ShellId>,
     bbox: Option<&crate::geom::extent3d::Extent3d>,
-    world: &W,
-) -> Result<Option<RegionId>>
-where
-    O: crate::geom::solution_array::SolutionObject + crate::intersect::point_class::ClassObject,
-    W: crate::topology::shell::ShellRayWorld<O>,
-{
+) -> Result<Option<RegionId>> {
     use crate::intersect::point_class::PointClassification;
+    use crate::topology::brep_cache::CacheObject;
     use crate::topology::shell::{ShellRayInput, ShellRayState};
+    let brep_id = query.identity().brep_id;
     let mut shell_to_test = shell;
     let mut supplied_box = bbox.copied();
     // The native recursive retry drops the optional shell AND bounding box. It
@@ -114,13 +111,13 @@ where
         let tolerance = b.tolerance();
         let mut state = ShellRayState {
             region: None,
-            classification: PointClassification::<O>::new(tolerance),
+            classification: PointClassification::<CacheObject>::new(tolerance),
         };
         let bounds = match supplied_box {
             Some(bounds) => bounds,
             None => crate::error::ignored(qbrep::calculate_bounding_box(
                 k,
-                b,
+                &mut *b,
                 BoundingBoxOptions::default(),
             ))?
             .unwrap_or_else(crate::geom::extent3d::Extent3d::new),
@@ -191,7 +188,7 @@ where
                 b,
                 brep_id,
                 shell,
-                world,
+                query,
                 ShellRayInput {
                     start: ray_start,
                     direction,
@@ -215,7 +212,7 @@ where
                     b,
                     brep_id,
                     shell,
-                    world,
+                    query,
                     ShellRayInput {
                         start: ray_start,
                         direction: point - ray_start,
@@ -234,7 +231,7 @@ where
                         b,
                         brep_id,
                         shell,
-                        world,
+                        query,
                         ShellRayInput {
                             start,
                             direction: point - start,
@@ -302,9 +299,8 @@ where
             }
             direction = ray_direction(direction)?;
             // (the rays solve on one cache: nothing edits the B-rep in between)
-            let query = BrepQuery::new(BrepIdentity::arena(brep_id));
             let mut fire = |b: &mut Brep, start: Point3, direction: Vec3| {
-                brep_ray_fire(k, &query, b, start, direction, tolerance, &mut state)
+                brep_ray_fire(k, query, b, start, direction, tolerance, &mut state)
             };
             if !fire(b, ray_start, direction)? {
                 // Native retries use edges[0], not the closest sampled edge.
@@ -353,16 +349,7 @@ fn brep_ray_fire<O>(
     tolerance: f64,
     state: &mut crate::topology::shell::ShellRayState<O>,
 ) -> Result<bool> {
-    let BrepIdentity {
-        brep_id,
-        keys,
-        owner_of,
-    } = query.identity();
-    let fired = query.cache(k, b).and_then(|cache| {
-        crate::topology::brep::p2::ray_fire(
-            k, b, brep_id, cache, keys, owner_of, start, direction, tolerance, None,
-        )
-    });
+    let fired = query.ray_fire_live(k, b, start, direction, tolerance);
     match crate::error::ignored(fired)? {
         Some(hit) => {
             state.region = hit.region;
@@ -929,6 +916,22 @@ pub(crate) fn make_vertex_split_edge_with_state(
     state: &mut edge::NotifyState<'_>,
     curve_ref: &dyn Fn(EdgeId, i64) -> crate::geom::object::ObjectRef,
 ) -> Result<SplitEdgeOutput> {
+    make_vertex_split_edge_with_identity(k, b, edge_id, parameter, state, &|e, kind| {
+        Ok(curve_ref(e, kind))
+    })
+}
+
+/// The same native split with a caller identity resolver that can refuse an
+/// unregistered newly allocated curve. Partial topology and notifications remain
+/// visible on an identity error, just as on downstream constructor errors.
+pub(crate) fn make_vertex_split_edge_with_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edge_id: EdgeId,
+    parameter: f64,
+    state: &mut edge::NotifyState<'_>,
+    curve_ref: &dyn Fn(EdgeId, i64) -> Result<crate::geom::object::ObjectRef>,
+) -> Result<SplitEdgeOutput> {
     let out = SplitEdgeOutput::default();
     if !b.editing_enabled() {
         return Ok(out);
@@ -1029,8 +1032,8 @@ pub(crate) fn make_vertex_split_edge_with_state(
         let old_curve_type =
             required(b.edge(edge_id)?.curve.as_ref(), "split edge without curve")?.type_code();
         let new_curve_type = copied.type_code();
-        let old_curve_ref = curve_ref(edge_id, old_curve_type);
-        let new_curve_ref = curve_ref(new_edge, new_curve_type);
+        let old_curve_ref = curve_ref(edge_id, old_curve_type)?;
+        let new_curve_ref = curve_ref(new_edge, new_curve_type)?;
         state.with_env(k, |env| {
             ignore_status(edge::set_curve(
                 b,
@@ -2117,6 +2120,7 @@ fn computed_uv_domain(
     .map_or(initial, |out| out.domain))
 }
 
+#[derive(Clone, Copy)]
 struct FacePointInput {
     face: FaceId,
     point: Point3,
@@ -2128,7 +2132,7 @@ struct FacePointInput {
 
 fn classify_with_retries(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     mut input: FacePointInput,
     classify_to_original: bool,
     pc: &mut crate::intersect::point_class::PointClassification<EntityRef>,
@@ -2149,9 +2153,12 @@ fn classify_with_retries(
     Ok(())
 }
 
+/// `pTgtFace->Point3DClassify(point, tol, bDoBoundaryIntersections, sPointClass,
+/// pOptGuessUV, bTgtLoopsOnly)` ([`crate::query::face::p1::point_3d_classify`]), with
+/// no target loop list (the outer loop when `outer_only`).
 fn point_3d_classify(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     input: &FacePointInput,
     pc: &mut crate::intersect::point_class::PointClassification<EntityRef>,
 ) -> Result<()> {
@@ -2162,27 +2169,21 @@ fn point_3d_classify(
         intersect_boundaries,
         guess,
         outer_only,
-    } = input;
-    let _ = (
+    } = *input;
+    crate::query::face::p1::point_3d_classify(
         k,
         b,
         face,
         point,
         tolerance,
         intersect_boundaries,
-        guess,
-        outer_only,
         pc,
-    );
-    // DISPATCH GAP: SmFace::Point3DClassify is ported
-    // (`query::face::p1::point_3d_classify`, query.face_p1 partial; no UNPORTED marker),
-    // but it takes `&mut Brep` (for `query::face::p2::point_classify`) and this caller's
-    // chain holds `&Brep`; wire it when the B-rep can be lent mutably here. Until
-    // then every such case would still defer inside it (topology.face_p2 / query.face_p2).
-    Err(SolidError::unported(
-        "SmFace::Point3DClassify",
-        "query.face_p1",
-    ))
+        crate::query::face::p1::Point3dClassifyOptions {
+            guess_uv: guess,
+            tgt_loops_only: outer_only,
+            ..crate::query::face::p1::Point3dClassifyOptions::default()
+        },
+    )
 }
 
 /// Geometry-only projection sequence used by `MakeEdgeInFaceWithVU`.
@@ -2224,7 +2225,7 @@ pub fn drop_edge_curve(
         None,
     )?;
     Ok(EdgeCurveDrop {
-        uv_curves: dropped.uv_curves.into_iter().map(Curve::from).collect(),
+        uv_curves: dropped.uv_curves,
         max_drop_to_surf: dropped.max_drop_to_surf,
         max_approx_dev: dropped.max_approx_dev,
     })
@@ -2249,19 +2250,15 @@ fn drop_curve(
     interval: &Extent1d,
     tolerance: f64,
 ) -> Result<(Vec<Curve>, f64, f64)> {
-    if let SurfaceKind::Plane(plane) = surface.kind() {
-        // The real SmPlane override; its generic fallback retains the p3 deferral.
-        let dropped = plane.drop_curve(k, domain, curve, interval, tolerance, true, true)?;
-        return Ok((
-            dropped.uv_curves,
-            dropped.max_drop_to_surf,
-            dropped.max_approx_dev,
-        ));
-    }
-    // UNPORTED(intersect.surface_drop_lib_p3): SmSurface::DropCurve
-    Err(SolidError::unported(
-        "SmSurface::DropCurve",
-        "intersect.surface_drop_lib_p3",
+    // the virtual SmSurface::DropCurve with the defaults bKeepAllDropCurves = TRUE,
+    // no failure record, bCreatingUVTrimCurve = TRUE
+    let dropped = surface.drop_curve::<crate::surface::surface::p4::NoObject>(
+        k, domain, curve, interval, tolerance, true, None, true,
+    )?;
+    Ok((
+        dropped.uv_curves,
+        dropped.max_drop_to_surf,
+        dropped.max_approx_dev,
     ))
 }
 

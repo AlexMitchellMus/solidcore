@@ -31,15 +31,15 @@
 //! upstream finds again through `SmCacheMgr::GetObjectCache`: built for a face with
 //! loops, its face containment is done, so `PointClassify` classifies through the
 //! leaf node containing the point before the vertex and loop tests (`query.face_p1`
-//! `gen0160`: C++ FACE from an inside leaf, the vertex test alone gives VERTEX). Its
-//! face walk is [`SolidError::Unported`] today (`SmFace handle of a surface's face`,
-//! `topology.face_p2`), so every face-owned surface defers there. The Rust point solvers
-//! take no cache (as in `topology::vertexuse` and `intersect::curve_class::p1`), so
-//! upstream's temporary switch-off of the cache's point test (SmFace.cpp:12801) and the
-//! cache check-out have nothing to act on. `EdgeCurveOnClassify` lifts a 2D curve to a
+//! `gen0160`: C++ FACE from an inside leaf, the vertex test alone gives VERTEX). The
+//! cache is built with the face ([`make_trim_srf_cache_with_face`] over
+//! [`BrepCacheFace`]: `CreateUVTrimCurves` and the face walk change the B-rep as
+//! upstream's do). Upstream switches the cache's point test off around the point
+//! solves (SmFace.cpp:12801); the Rust solves take no cache, so the global solve is
+//! [`Surface::global_point_solve_point_test_off`] (its face check keeps every
+//! solution without fetching a cache); the cache check-out has nothing to act on. `EdgeCurveOnClassify` lifts a 2D curve to a
 //! curve on the face's surface only when an upward edge use of the face is found (upstream lifts it
-//! first and ignores `SetAll`'s status); an `SmCrvOnSurf` over a surface other than a
-//! B-spline is a dispatch gap (`curve.crv_on_surf`). No recursion.
+//! first and ignores `SetAll`'s status). No recursion.
 
 use crate::curve::crv_on_surf::CrvOnSurf;
 use crate::curve::curve::{Curve, CurveKind};
@@ -55,7 +55,9 @@ use crate::kernel::Kernel;
 use crate::nurbs::b_spline_curve::BoundingBoxRequest;
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use crate::surface::surface::p1::{make_surface_cache, make_trim_srf_cache};
+use crate::query::brep::LazyBrep;
+use crate::query::face::p2::BrepCacheFace;
+use crate::surface::surface::p1::{make_surface_cache, make_trim_srf_cache_with_face};
 use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::surface::volume::Volume;
@@ -108,8 +110,10 @@ pub fn evaluate_curve(k: &Kernel, curve: Option<&Curve>, parameter: f64) -> Resu
 
 // ---- bounding boxes ------------------------------------------------------------------------
 
-fn tight_face_box(k: &Kernel, b: &Brep, f: FaceId) -> Result<Extent3d> {
-    crate::query::face::p3::calculate_tight_bounding_box(k, b, f)
+fn tight_face_box(k: &Kernel, lb: &mut LazyBrep<'_>, f: FaceId) -> Result<Extent3d> {
+    let mut face_bbox = Extent3d::new();
+    crate::query::face::p3::calculate_tight_bounding_box_into(k, lb, f, &mut face_bbox)?;
+    Ok(face_bbox)
 }
 
 const NORMAL_BOX: BoundingBoxRequest = BoundingBoxRequest {
@@ -131,11 +135,32 @@ const NORMAL_BOX: BoundingBoxRequest = BoundingBoxRequest {
 /// or a vertex use without vertex; those of the curve and surface boxes and of the
 /// face's vertex and edge lists; with `tight`, those of
 /// [`crate::query::face::p3::calculate_tight_bounding_box`].
-pub fn calculate_bounding_box(k: &Kernel, b: &Brep, f: FaceId, tight: bool) -> Result<Extent3d> {
+pub fn calculate_bounding_box<'a>(
+    k: &Kernel,
+    b: impl Into<LazyBrep<'a>>,
+    f: FaceId,
+    tight: bool,
+) -> Result<Extent3d> {
+    calculate_bounding_box_in(k, &mut b.into(), f, tight)
+}
+
+/// [`calculate_bounding_box`] on a [`LazyBrep`] the caller keeps (for the B-rep's box,
+/// which runs it for every face).
+///
+/// # Errors
+///
+/// Those of [`calculate_bounding_box`].
+pub fn calculate_bounding_box_in(
+    k: &Kernel,
+    lb: &mut LazyBrep<'_>,
+    f: FaceId,
+    tight: bool,
+) -> Result<Extent3d> {
     // when asked - call expensive TightBoundingBox
     if tight {
-        return tight_face_box(k, b, f);
+        return tight_face_box(k, lb, f);
     }
+    let b = lb.get();
 
     let mut face_box = Extent3d::new();
 
@@ -188,6 +213,7 @@ fn surface_box(
         SurfaceKind::BSpline(_)
         | SurfaceKind::Plane(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Cone(_)
         | SurfaceKind::Sphere(_)
         | SurfaceKind::Torus(_) => {
@@ -446,13 +472,20 @@ pub fn point_3d_classify(
     // its surface cache. PointClassify below finds the trimmed one again
     // (SmCacheMgr::GetObjectCache) and classifies through its leaf nodes first.
     let mut trim_cache = {
+        // (a copy: building the cache with the face changes the B-rep)
         let surface = fp2::surface(b, f)?
-            .ok_or_else(|| SolidError::invalid_input(OP_POINT, "face without surface"))?;
-        match make_trim_srf_cache(k, surface, None::<EntityRef>) {
+            .ok_or_else(|| SolidError::invalid_input(OP_POINT, "face without surface"))?
+            .clone_for_evaluation()?;
+        match make_trim_srf_cache_with_face(
+            k,
+            &surface,
+            None::<EntityRef>,
+            &mut BrepCacheFace { b: &mut *b, f },
+        ) {
             Ok(c) => Some(c),
             Err(e) if e.is_unported() => return Err(e),
             Err(_) => {
-                ignored(make_surface_cache(k, surface, None::<EntityRef>))?;
+                ignored(make_surface_cache(k, &surface, None::<EntityRef>))?;
                 None
             }
         }
@@ -483,7 +516,8 @@ pub fn point_3d_classify(
             uv
         } else {
             // intersect 3DPoint with surface; no retries with larger tolerances
-            let solutions = surface.global_point_solve::<NoObject>(
+            // (the trimmed cache's point testing is off for the solves)
+            let solutions = surface.global_point_solve_point_test_off::<NoObject>(
                 k,
                 Some(NoObject),
                 &uv_domain,
@@ -667,18 +701,10 @@ fn sector_classify_curve_on(
 fn lift_to_face(k: &Kernel, b: &Brep, f: FaceId, curve: &Curve) -> Result<Curve> {
     let surface = fp2::surface(b, f)?
         .ok_or_else(|| SolidError::invalid_input(OP_EDGE_CURVE, "face without surface"))?;
-    let SurfaceKind::BSpline(base) = surface.kind() else {
-        // DISPATCH GAP: Rust's SmCrvOnSurf holds a B-spline surface only (curve.crv_on_surf,
-        // partial; no UNPORTED marker)
-        return Err(SolidError::unported(
-            "SmSurface (non-B-spline) in SmCrvOnSurf",
-            "curve.crv_on_surf",
-        ));
-    };
     Ok(Curve::new(CurveKind::CrvOnSurf(Box::new(CrvOnSurf::new(
         k,
-        curve.clone(),
-        base.clone(),
+        curve.clone_for_evaluation()?,
+        surface.clone_for_evaluation()?,
         None,
         0,
     )?))))
@@ -760,6 +786,69 @@ pub fn edge_curve_on_classify(
 mod tests {
     use super::*;
     use crate::curve::line::Line;
+    use crate::geom::extent2d::Extent2d;
+    use crate::geom::vector2d::Vec2;
+    use crate::nurbs::b_spline_curve::BSplineCurve;
+    use crate::nurbs::crv_basic::Curve as NurbCurve;
+    use crate::nurbs::math::{CPoint, NOW, NOZ};
+    use crate::surface::plane::Plane;
+    use crate::topology::Face;
+
+    #[test]
+    fn lift_to_face_preserves_borrowed_close_uv_knots_and_derivatives() {
+        let k = Kernel::default();
+        let mut b = Brep::default();
+        let shell = b.add_shell().unwrap();
+        let domain = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
+        let z = 2.0;
+        let plane = Plane::new(
+            Point3::new(0.0, 0.0, z),
+            Vec3::X,
+            Vec3::Y,
+            Vec2::new(1.0, 1.0),
+            &domain,
+        );
+        let face = b
+            .add_face_record(Face {
+                surface: Some(Surface::from(plane)),
+                uv_domain: domain,
+                tolerance: 1e-6,
+                ..Face::new(shell)
+            })
+            .unwrap();
+
+        // SmBSplineCurve's constructor/Copy use SM_EFF_ZERO = 1e-12.
+        // sm_FixupKnotVector collapses gaps below max(scaled_zero(0),
+        // scaled_zero(1)) = 2e-12, not the surface's SM_EFF_ZERO_PARAM.
+        let delta = 1e-12;
+        let raw = NurbCurve::new(
+            [(0.1, 0.2), (0.35, 0.2), (0.5, 0.4), (0.7, 0.6), (0.9, 0.8)]
+                .into_iter()
+                .map(|(x, y)| CPoint::new(x, y, NOZ, NOW))
+                .collect(),
+            2,
+            vec![0.0, 0.0, 0.0, delta, 0.5, 1.0, 1.0, 1.0],
+        )
+        .unwrap();
+        let uv = Curve::from(BSplineCurve::from_nurb(raw, 2, true));
+        let sample = 0.75 * delta;
+        let direct = uv.evaluate(&k, sample, 1, false, false).unwrap();
+        let repaired = uv.clone().evaluate(&k, sample, 1, false, false).unwrap();
+        assert!((repaired[0] - direct[0]).length() > 0.01);
+        assert!((repaired[1] - direct[1]).length() > 1e10);
+
+        let lifted = lift_to_face(&k, &b, face, &uv).unwrap();
+        for t in [0.0, sample, delta, 0.25] {
+            let expected = uv.evaluate(&k, t, 1, false, false).unwrap();
+            let actual = lifted.evaluate(&k, t, 1, false, false).unwrap();
+            let point = Point3::new(expected[0].x, expected[0].y, z);
+            let tangent = Vec3::new(expected[1].x, expected[1].y, 0.0);
+            assert!((actual[0] - point).length() <= 1e-12);
+            assert!((actual[1] - tangent).length() <= 1e-12 * tangent.length().max(1.0));
+            let point_only = lifted.evaluate_point(&k, t).unwrap();
+            assert!((point_only - point).length() <= 1e-12);
+        }
+    }
 
     #[test]
     fn evaluate_curve_rejects_null_nan_and_outside() {

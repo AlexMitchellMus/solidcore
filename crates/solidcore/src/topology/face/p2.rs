@@ -61,10 +61,8 @@
 //!   UV trim curves (a line's NURB is made first and its analytic data refreshed
 //!   after, as `SmLine::RefreshAnalytics`); a UV trim curve of another kind is
 //!   [`SolidError::InvalidInput`].
-//! - **`SmCrvOnSurf`** holds an `SmBSplineSurface` in the port: [`find_best_uv_curve`]
-//!   on a surface of another kind returns [`SolidError::Unported`] for unit
-//!   `curve.crv_on_surf` (dispatch gap of that partial unit, as in
-//!   `intersect::curve_class::p1`).
+//! - **`SmCrvOnSurf`** preserves a face surface's concrete dispatch in
+//!   [`find_best_uv_curve`].
 //! - **`sm_FindBestUVCurve`** edits the chosen candidate in place and then moves it out
 //!   of its slot (upstream: returns the pointer and nulls the slot).
 //! - **`SmRescueSurfaceOwner`** is a value holding the saved owner; its destructor is
@@ -390,13 +388,19 @@ pub(crate) struct UvLineObjects<'a> {
     b: &'a Brep,
     f: FaceId,
     line: Option<Curve>,
+    resolve_topology: bool,
 }
 
 impl<'a> UvLineObjects<'a> {
     /// The objects of face `f` of `b`, before `sm_FaceClassifyUVLine` makes its line
     /// (also used by `topology::face::p4`'s `GlobalLineIntersect`).
     pub(crate) const fn new(b: &'a Brep, f: FaceId) -> Self {
-        Self { b, f, line: None }
+        Self {
+            b,
+            f,
+            line: None,
+            resolve_topology: true,
+        }
     }
 }
 
@@ -432,6 +436,36 @@ impl ClassGeometry<UvLineHandle> for UvLineObjects<'_> {
             UvLineHandle::Vertex(v) => self.b.vertex(v).ok().map(|v| v.tolerance),
             UvLineHandle::Edge(e) => self.b.edge(e).ok().map(|e| e.tolerance),
             UvLineHandle::Face => self.b.face(self.f).ok().map(|f| f.tolerance),
+            _ => None,
+        }
+    }
+    fn topology_entity(&self, o: UvLineHandle) -> Option<(&Brep, EntityRef)> {
+        if !self.resolve_topology {
+            return None;
+        }
+        let e = match o {
+            UvLineHandle::Face => EntityRef::Face(self.f),
+            UvLineHandle::Vertex(v) => EntityRef::Vertex(v),
+            UvLineHandle::Edge(e) => EntityRef::Edge(e),
+            UvLineHandle::Vertexuse(vu) => EntityRef::Vertexuse(vu),
+            UvLineHandle::Edgeuse(eu) => EntityRef::Edgeuse(eu),
+            UvLineHandle::Surface
+            | UvLineHandle::Line
+            | UvLineHandle::EdgeCurve(_)
+            | UvLineHandle::Trim(_) => return None,
+        };
+        Some((self.b, e))
+    }
+    fn topology_handle(&self, e: EntityRef) -> Option<UvLineHandle> {
+        if !self.resolve_topology {
+            return None;
+        }
+        match e {
+            EntityRef::Face(f) if f == self.f => Some(UvLineHandle::Face),
+            EntityRef::Vertex(v) => Some(UvLineHandle::Vertex(v)),
+            EntityRef::Edge(e) => Some(UvLineHandle::Edge(e)),
+            EntityRef::Vertexuse(vu) => Some(UvLineHandle::Vertexuse(vu)),
+            EntityRef::Edgeuse(eu) => Some(UvLineHandle::Edgeuse(eu)),
             _ => None,
         }
     }
@@ -724,6 +758,7 @@ fn is_singularity(
         | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::OffsetSurface(_) => {
@@ -1080,7 +1115,12 @@ pub fn calculate_an_internal_point(k: &Kernel, b: &Brep, f: FaceId) -> Result<Po
     }
 
     let mut classification: CurveClassification<UvLineHandle> = CurveClassification::new(k);
-    let mut uv_objects = UvLineObjects { b, f, line: None };
+    let mut uv_objects = UvLineObjects {
+        b,
+        f,
+        line: None,
+        resolve_topology: false,
+    };
 
     // first for constant U then V isoparameter lines
     for ii in 0..2 {
@@ -2370,8 +2410,7 @@ pub fn fix_uv_trim_curves(
 ///
 /// [`SolidError::NotFound`] for a dangling id; [`SolidError::InvalidInput`] for missing
 /// topology or curves upstream dereferences, or an orientation missing for a
-/// candidate; those of the evaluations and edits; [`SolidError::Unported`] for a
-/// surface that is not a B-spline surface (`SmCrvOnSurf`).
+/// candidate; those of the evaluations and edits.
 pub fn find_best_uv_curve(
     k: &Kernel,
     b: &Brep,
@@ -2409,15 +2448,13 @@ pub fn find_best_uv_curve(
         let Some(uv_curve) = slot else { continue };
 
         // project UVTrimCurve into 3D space
-        let SurfaceKind::BSpline(bs) = surface.kind() else {
-            // DISPATCH GAP: SmCrvOnSurf over a non-B-spline SmSurface (curve.crv_on_surf,
-            // partial; no UNPORTED marker, as in intersect::curve_class::p1)
-            return Err(SolidError::unported(
-                "SmSurface (non-B-spline) in SmCrvOnSurf",
-                "curve.crv_on_surf",
-            ));
-        };
-        let crv_on_surf = CrvOnSurf::new(k, uv_curve.clone(), bs.clone(), None, 0)?;
+        let crv_on_surf = CrvOnSurf::new(
+            k,
+            uv_curve.clone_for_evaluation()?,
+            surface.clone_for_evaluation()?,
+            None,
+            0,
+        )?;
 
         // get UVTrimCurve->3DMidPoint and orientation adjusted Tangent
         let interval = crv_on_surf.natural_interval();

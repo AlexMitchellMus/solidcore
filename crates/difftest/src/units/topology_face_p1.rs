@@ -3,8 +3,9 @@
 //!
 //! Every op runs on a B-rep of unit `topology.vertexuse` (upstream `.smb` files, faces of
 //! B-spline surfaces or real `SmPlane`s, wire edges, the `my_test_topology` network): the
-//! C++ side builds a real `SmBrep`, gives its faces and edges the plain B-spline copies of
-//! analytic geometry (what the Rust import rebuilds, keeping the owners) and runs the
+//! C++ side builds a real `SmBrep`, preserves exactly exported analytic surfaces and
+//! gives other surfaces and edge curves the plain B-spline copies the Rust import
+//! rebuilds (keeping the owners), then runs the
 //! `SmFace` member on the selected face; the Rust side imports the graph that unit's shim
 //! exports (with each edge curve owned by its edge, as upstream) and runs the port. Face
 //! and loop selectors are taken modulo their counts. Both sides produce one flat record
@@ -18,15 +19,8 @@
 //! before its first unported callee. With `props` both sides also pass face properties
 //! with the given seam verdicts and closed flags.
 //!
-//! Deferred: every mutating op (`SmFace::Notify`, `topology.face_p3`; `SwapUV`'s
-//! `GetBrep`, `topology.face_p4`), `CalculateUVDomainFromUVTrimCurves` of a face with a
-//! surface (`CreateUVTrimCurves`, `topology.face_p3`), `CreateOrientedTrimBoundary` of a
-//! face with edge loops (`NormalizedEvaluate`, `topology.edgeuse_p3`; or
-//! `CreateUVTrimCurves`), `FindIfRectangularTrim` of a one-loop face with two to four
-//! edges, `ShrinkGeometry` of a face with an owned surface, and the seam ops past their
-//! early returns (`GetUpwardLoopuses`, `HasSeamProblem`, `topology.face_p4`;
-//! `IsCrossedByEdge`, `intersect.curve_class_p7`; the callees `MergeIntervals` of unit
-//! `intersect.curve_class_p5` still defers to).
+//! Deferred: the seam calls behind the C++ crash guard (below) and the cone
+//! `TrimWithDomain` callbacks of `ShrinkGeometry` (`surface.surface_p2`).
 //!
 //! **C++ crash trap.** Upstream `SplitAtSeam`'s U-then-V branch recurses on the wrong
 //! face and crashes (`plan/upstream-issues.md` UB-137). The shim runs every seam call
@@ -37,9 +31,9 @@
 //! fork (Windows) it skips the call (`-3`) as before. The C++ side reports both as
 //! deferred to `cpp-crash-guard:UB-137`; the Rust side runs every case.
 //!
-//! **Not compared.** The normalisation to plain B-splines means `MoveSeam`'s analytic
-//! branch (`CopyAndAddAnalytics` of the joined surface) and the conic UV trim curve and
-//! edge curve paths (`SwapUV`'s conic mirrors) are never compared with the C++.
+//! **Not compared.** Edge curves and UV trim curves are still imported as plain
+//! B-splines (except lines), so conic curve paths (`SwapUV`'s conic mirrors) are not
+//! compared with the C++. Exactly exported analytic surface branches are retained.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -129,6 +123,13 @@ enum OpIn {
         limit: bool,
         want_max: bool,
         want_2nd: bool,
+    },
+    UvDomainAfterTrimShift {
+        limit: bool,
+        want_max: bool,
+        want_2nd: bool,
+        domain: [f64; 4],
+        shift: [f64; 2],
     },
     Oriented {
         param: bool,
@@ -223,6 +224,18 @@ fn op_args(op: &OpIn) -> (Op, Vec<f64>) {
             Op::UvDomain,
             vec![flag(*limit), flag(*want_max), flag(*want_2nd)],
         ),
+        OpIn::UvDomainAfterTrimShift {
+            limit,
+            want_max,
+            want_2nd,
+            domain,
+            shift,
+        } => {
+            let mut args = vec![flag(*limit), flag(*want_max), flag(*want_2nd)];
+            args.extend(domain);
+            args.extend(shift);
+            (Op::UvDomainAfterTrimShift, args)
+        }
         OpIn::Oriented { param, fill, loop_ } => {
             (Op::Oriented, vec![flag(*param), flag(*fill), *loop_ as f64])
         }
@@ -631,18 +644,52 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
             limit,
             want_max,
             want_2nd,
+        }
+        | OpIn::UvDomainAfterTrimShift {
+            limit,
+            want_max,
+            want_2nd,
+            ..
         } => {
-            let r = fp1::calculate_uv_domain_from_uv_trim_curves(
-                &k, &mut b, f, *limit, *want_max, *want_2nd,
+            if let OpIn::UvDomainAfterTrimShift { domain, shift, .. } = &i.op {
+                if fp2::surface(&b, f).map_err(e)?.is_none() {
+                    o.push(NULL_DEREF);
+                    return Ok(o);
+                }
+                solidcore::topology::face::p3::create_uv_trim_curves(&k, &mut b, f, false, None)
+                    .map_err(e)?;
+                b.face_mut(f).map_err(e)?.uv_domain =
+                    Extent2d::from_bounds(domain[0], domain[1], domain[2], domain[3]);
+                let mut transform = solidcore::geom::axis2_placement::Axis2Placement::default();
+                transform.translate(solidcore::math::Vec3::new(shift[0], shift[1], 0.0));
+                for lu in
+                    solidcore::topology::face::p4::upward_loopuses(&b, f, false, None).map_err(e)?
+                {
+                    for eu in eu1::loopuse_edgeuses(&b, lu).map_err(e)? {
+                        let (_, owner) = eu1::uv_trim_curve(&b, eu).map_err(e)?;
+                        if let Some(owner) = owner {
+                            if let Some(curve) =
+                                b.edgeuse_mut(owner).map_err(e)?.uv_trim_curve.as_mut()
+                            {
+                                curve.transform(&k, &transform, None).map_err(e)?;
+                            }
+                        }
+                    }
+                }
+            }
+            let mut d = fp1::UvDomainFromTrim {
+                domain: Extent2d::new(),
+                max_uv_loop_gap: 0.0,
+                second_max_uv_loop_gap: 0.0,
+            };
+            let r = fp1::calculate_uv_domain_from_uv_trim_curves_into(
+                &k, &mut b, f, *limit, *want_max, *want_2nd, &mut d,
             );
             o.push(status(&r)?);
-            if let Ok(d) = r {
-                put_domain(&mut o, &d.domain);
+            put_domain(&mut o, &d.domain);
+            if r.is_ok() {
                 o.extend([d.max_uv_loop_gap, d.second_max_uv_loop_gap]);
             } else {
-                // upstream leaves the face domain in the output (the gaps are not
-                // reported for a failed call)
-                put_domain(&mut o, &b.face(f).map_err(e)?.uv_domain);
                 o.extend([0.0, 0.0]);
             }
         }

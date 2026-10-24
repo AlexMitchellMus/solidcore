@@ -15,8 +15,9 @@
 //!
 //! **B-rep ops** use the B-reps of unit `topology.vertexuse` (upstream `.smb` files and
 //! faces of B-spline surfaces or real `SmPlane`s): the C++ side builds a real `SmBrep`
-//! and gives its faces and edges the plain B-spline copies of analytic geometry (what the
-//! Rust import rebuilds); the Rust side imports the graph that unit's shim exports. Loop,
+//! and preserves exactly exported analytic surfaces. Other surfaces and edge curves
+//! get the plain B-spline copies the Rust import rebuilds; the Rust side imports the
+//! graph that unit's shim exports. Loop,
 //! face and edge use selectors are taken modulo their counts. The mutating ops compare
 //! every edge use's UV trim curve afterwards.
 //!
@@ -968,7 +969,8 @@ fn rust_surface(s: &SrfIn) -> Result<Surface, HarnessError> {
             Vec::new(),
             Vec::new(),
             *implicit,
-        ))),
+        )
+        .map_err(|e| harness(e.to_string()))?)),
         SrfIn::Plane { o, n } => Ok(Surface::from(Plane::from_normal(v3(*o), v3(*n)))),
         SrfIn::Bspline(b) => {
             let net = b

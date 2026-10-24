@@ -48,6 +48,10 @@
 //! - `ReplaceSurface` edits `pTopFace = pOld->GetFace()` (`SmBrep.cpp:26316`), the owner of
 //!   the face's surface, which can differ from `pFace` when faces share a surface upstream;
 //!   in the arena model every face owns its own surface, so the port edits `f`.
+//! - `ReplaceSurface`'s `SmFace::SetSurface` notifies `SM_NO_CHANGE_GEOMETRY` with the
+//!   new and the old surface's identities issued by the caller's context
+//!   ([`crate::topology::face::p1::set_surface_notified`]); a caller without a context
+//!   (whose notifications reach no callback) passes null surfaces.
 //! - `MakeShellVertexTopology` / `MakeEdgeVertexTopology` / `MakeEdgeTopology` add their
 //!   records to the arenas as they link them, not all up front; `MakeEdgeTopology`'s
 //!   `TransferChildrenTo` (the one shell call that can fail) runs before any new record
@@ -350,7 +354,7 @@ pub fn set_tolerance(
         // (status ignored: a failure leaves the initialised box)
         let bbox = crate::error::ignored(qbrep::calculate_bounding_box(
             k,
-            b,
+            &mut *b,
             BoundingBoxOptions::default(),
         ))?
         .unwrap_or_default();
@@ -413,8 +417,9 @@ pub fn rebuild_uv_trim_curves(k: &Kernel, b: &mut Brep) -> Result<()> {
 
     // for every Edgeuse
     for eu in edgeuses(b, None)? {
-        // skip those without UVTrimCurves
-        if b.edgeuse(eu)?.uv_trim_curve.is_none() {
+        // skip those without UVTrimCurves (`GetUVTrimCurve()` reads the mate's slot when
+        // the edge use holds none, so both members of a mated pair are rebuilt)
+        if eu1::uv_trim_curve(b, eu)?.0.is_none() {
             continue;
         }
 
@@ -756,10 +761,20 @@ impl ArenaNotifyState {
 
 /// The identities a rebuilt cache keys its edge/face owners by.
 fn cache_keys(env: &NotifyEnv<'_>, object: CacheObject) -> ObjectRef {
+    caller_cache_key(env.key_of, object)
+}
+
+/// The identity of a cache object under the caller's topology naming `key_of` (the
+/// names its edges, faces and vertices own their geometry under); other objects keep
+/// their [`brep_cache::arena_identity`].
+pub(crate) fn caller_cache_key(
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    object: CacheObject,
+) -> ObjectRef {
     match object {
-        CacheObject::Edge(e) | CacheObject::Curve(e) => (env.key_of)(EntityRef::Edge(e)),
-        CacheObject::Face(f) | CacheObject::Surface(f) => (env.key_of)(EntityRef::Face(f)),
-        CacheObject::Vertex(v) => (env.key_of)(EntityRef::Vertex(v)),
+        CacheObject::Edge(e) | CacheObject::Curve(e) => key_of(EntityRef::Edge(e)),
+        CacheObject::Face(f) | CacheObject::Surface(f) => key_of(EntityRef::Face(f)),
+        CacheObject::Vertex(v) => key_of(EntityRef::Vertex(v)),
         other => brep_cache::arena_identity(other),
     }
 }
@@ -1324,8 +1339,44 @@ pub fn ray_fire(
     ray_zone_tol_3d: f64,
     answer_limit: Option<f64>,
 ) -> Result<RayFireResult> {
+    ray_fire_with_solver(
+        k,
+        b,
+        start,
+        direction,
+        ray_zone_tol_3d,
+        answer_limit,
+        |b, point, options| {
+            let objects = BrepObjects {
+                preparation: None,
+                brep: b,
+                brep_id,
+                cache: Some(cache),
+                keys,
+                owner_of,
+            };
+            TopologySolver::brep_point_solve(k, &objects, Some(CacheObject::Brep), point, options)
+        },
+    )
+}
+
+/// Shared numeric ray selection and sector classification; the caller supplies the
+/// solve's geometry access, including mutable lazy preparation when available.
+pub(crate) fn ray_fire_with_solver(
+    k: &Kernel,
+    b: &mut Brep,
+    start: Point3,
+    direction: Vec3,
+    ray_zone_tol_3d: f64,
+    answer_limit: Option<f64>,
+    solve: impl FnOnce(
+        &mut Brep,
+        Point3,
+        TopologySolveOptions<'_>,
+    ) -> Result<crate::geom::solution_array::SolutionArray<CacheObject>>,
+) -> Result<RayFireResult> {
     // get Brep BoundingBox and BoundingSphere
-    let bbox = qbrep::calculate_bounding_box(k, b, BoundingBoxOptions::default())?;
+    let bbox = qbrep::calculate_bounding_box(k, &mut *b, BoundingBoxOptions::default())?;
     let sphere = bbox.sphere_bound();
     let radius = sphere.radius;
 
@@ -1336,17 +1387,8 @@ pub fn ray_fire(
     // cast ray through Brep
     let best_sq = answer_limit.map_or(BIG_DOUBLE, |l| l * l);
     let vectors = [ray];
-    let objects = BrepObjects {
-        brep: b,
-        brep_id,
-        cache,
-        keys,
-        owner_of,
-    };
-    let solutions = TopologySolver::brep_point_solve(
-        k,
-        &objects,
-        Some(CacheObject::Brep),
+    let solutions = solve(
+        b,
         start,
         TopologySolveOptions {
             operation: SolverOperation::Rayfire,
@@ -1460,7 +1502,7 @@ pub enum OldSurface {
 /// [`SolidError::InvalidInput`] for a face without surface (upstream dereferences it);
 /// [`SolidError::Unported`] from the callees of `SmFace::Notify` ([`face3::notify`]:
 /// `GetUpwardEdgeuses`, `topology.face_p4`, for `POST_EDIT`), also reached through
-/// [`face1::set_surface`] and [`face1::remove_uv_trim_curves`], and of
+/// [`face1::set_surface_notified`] and [`face1::remove_uv_trim_curves`], and of
 /// `SmFace::CreateUVTrimCurves` ([`face3::create_uv_trim_curves`]).
 #[allow(clippy::too_many_arguments)] // one upstream routine
 pub fn replace_surface(
@@ -1486,9 +1528,22 @@ pub fn replace_surface(
 
     // change surface<->owner pointers
     let _ = new_surface.set_owner(Some(face_ref));
+    // the surfaces as the notification names them (issued by the caller's context)
+    let surface_refs = match env.context.as_deref_mut() {
+        Some(ctx) => {
+            let new_ref = surface_identity(ctx, &mut new_surface)?;
+            let old_ref = match b.face_mut(top_face)?.surface.as_mut() {
+                Some(s) => Some(surface_identity(ctx, s)?),
+                None => None,
+            };
+            [Some(new_ref), old_ref]
+        }
+        None => [None, None],
+    };
     // calls SmFace::Notify(SM_NO_CHANGE_GEOMETRY, ..) which tells all Face SmEdgeuses
     // and SmVertexuses to delete all their cached data
-    let old_surface = face1::set_surface(b, top_face, face_ref, new_surface, false)?;
+    let old_surface =
+        face1::set_surface_notified(b, env, top_face, face_ref, new_surface, false, surface_refs)?;
 
     // default faceDomain to NewSurface Domain
     face2::set_uv_domain(b, top_face, &new_domain)?;
@@ -1521,6 +1576,19 @@ pub fn replace_surface(
 
     // all done
     Ok((kept, modified))
+}
+
+/// The identity `surface` is notified under through `context` ([`Surface::notify_key`];
+/// issued by `context` when it has none of its domain).
+fn surface_identity(
+    context: &mut crate::geom::context::Context,
+    surface: &mut Surface,
+) -> Result<ObjectRef> {
+    let key = context.geometry_key(surface.notify_identity_slot())?;
+    Ok(ObjectRef {
+        type_code: surface.type_code(),
+        key,
+    })
 }
 
 // ---- topology construction ----------------------------------------------------------------
