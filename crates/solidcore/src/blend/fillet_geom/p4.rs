@@ -1016,7 +1016,7 @@ impl FilletBrep {
         // seen or the geometry has no fillet surface yet
         let surface_of = |g: Option<FilletGeomId>| -> Result<Option<&Surface>> {
             Ok(match g {
-                Some(g) => self.geom(g)?.fillet_surface(),
+                Some(g) => self.geom(g)?.fillet_surface()?,
                 None => None,
             })
         };
@@ -1115,8 +1115,8 @@ impl FilletBrep {
                 .fillet_geom()
                 .ok_or_else(|| SolidError::null_pointer(OP_INT2))?;
             let (Some(fillet_surface1), Some(fillet_surface2)) = (
-                self.geom(g1)?.fillet_surface(),
-                self.geom(g2)?.fillet_surface(),
+                self.geom(g1)?.fillet_surface()?,
+                self.geom(g2)?.fillet_surface()?,
             ) else {
                 return Ok(()); // Fillet surfaces have not yet been computed
             };
@@ -1298,7 +1298,7 @@ impl FilletBrep {
             .fillet_edgeuse(prim)?
             .fillet_geom()
             .ok_or_else(|| SolidError::null_pointer(OP_EXT))?;
-        if self.geom(fillet_geom)?.fillet_surface().is_none() {
+        if self.geom(fillet_geom)?.fillet_surface()?.is_none() {
             // Need fillet surface, will process it later
             return Ok(());
         }
@@ -1370,7 +1370,7 @@ impl FilletBrep {
         let ang_tol = fil_solver()?.ang_tol_rad;
         let fillet_surface = self
             .geom(fillet_geom)?
-            .fillet_surface()
+            .fillet_surface()?
             .ok_or_else(|| SolidError::null_pointer(OP_EXT))?;
 
         let result = srf_srf_intersection(
@@ -1583,7 +1583,7 @@ impl FilletBrep {
         let nul = || SolidError::null_pointer(OP_FACE);
 
         // check state - must have a FilletSurface
-        let fillet_surface = self.geom(g)?.fillet_surface().ok_or_else(nul)?.clone();
+        let fillet_surface = self.geom(g)?.fillet_surface()?.ok_or_else(nul)?.clone();
         let uv_domain = fillet_surface.natural_uv_domain();
         let geom = self.geom(g)?.clone();
 
@@ -1931,7 +1931,7 @@ impl FilletBrep {
         let ti = executive_topology_intersector(fs)?;
         // GetFilletSurface() is not checked upstream: a NULL surface goes to
         // RegisterExistingSSI as is
-        let fillet_surface = geom.fillet_surface();
+        let fillet_surface = geom.fillet_surface()?;
 
         // aDeletedEdges: one array for the whole routine; MergeCurveOnSurfaces appends
         // to it, so every ClearFilletBrepEdges sees the edges deleted by all the merges
@@ -1995,7 +1995,7 @@ impl FilletBrep {
                         return Err(e);
                     }
                     if let Some(eu) = fs.edgeuse(0)? {
-                        let fillet_surface = self.geom(g)?.fillet_surface().cloned();
+                        let fillet_surface = self.geom(g)?.fillet_surface()?.cloned();
                         self.record_fillet_error(
                             g,
                             FilletErrorType::BadMerge,
@@ -2254,7 +2254,7 @@ impl FilletBrep {
                     let fg = self.fillet_edgeuse(prim)?.fillet_geom().ok_or_else(nul)?;
                     (
                         eu1::uv_trim_curve(self.brep(), prim)?.0,
-                        self.geom(fg)?.fillet_surface(),
+                        self.geom(fg)?.fillet_surface()?,
                     )
                 }
             };

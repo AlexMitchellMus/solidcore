@@ -859,7 +859,7 @@ impl FilletCorner {
                             .fillet_edgeuse(prim_eu)?
                             .fillet_geom()
                             .ok_or_else(|| SolidError::null_pointer(OP_PATCH))?;
-                        base_surface.clone_from(&env.pseudo.geom(g)?.fillet_surface);
+                        base_surface = env.pseudo.geom(g)?.fillet_surface()?.cloned();
                     }
                 }
 

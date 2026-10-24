@@ -524,8 +524,8 @@ impl FilletBrep {
 
             // check state - filletSurface must have been computed by now
             let (Some(surface1), Some(surface2)) = (
-                self.geom(g1)?.fillet_surface().cloned(),
-                self.geom(g2)?.fillet_surface().cloned(),
+                self.geom(g1)?.fillet_surface()?.cloned(),
+                self.geom(g2)?.fillet_surface()?.cloned(),
             ) else {
                 return Ok(()); // Fillet surfaces have not yet been computed
             };
@@ -690,7 +690,7 @@ impl FilletBrep {
             let sid1 = self.geom(g1)?.fillet_solver();
             surface1 = self
                 .geom(g1)?
-                .fillet_surface()
+                .fillet_surface()?
                 .cloned()
                 .ok_or_else(|| SolidError::null_pointer(OP_CROSS))?;
 
@@ -703,7 +703,7 @@ impl FilletBrep {
                 fs2_tol = Some(fs2.approx_tol_3d);
                 surface2 = Some(
                     self.geom(g2)?
-                        .fillet_surface()
+                        .fillet_surface()?
                         .cloned()
                         .ok_or_else(|| SolidError::null_pointer(OP_CROSS))?,
                 );
@@ -948,7 +948,7 @@ impl FilletBrep {
         if !has_curve {
             let fillet_surface1 = self
                 .geom(g1)?
-                .fillet_surface()
+                .fillet_surface()?
                 .cloned()
                 .ok_or_else(|| SolidError::null_pointer(OP_SIDE))?;
             // upstream calls `pCorner->IsExtendedSurfacePatch()` on the missing corner
@@ -1437,7 +1437,7 @@ impl FilletBrep {
         // Create a line between the two UV points and lift the curve.
         let fillet_surface = self
             .geom(g)?
-            .fillet_surface()
+            .fillet_surface()?
             .cloned()
             .ok_or_else(|| SolidError::null_pointer(OP_END))?;
         let mut eus = Vec::with_capacity(2);
@@ -1662,7 +1662,7 @@ impl FilletBrep {
         // check state
         let fillet_surface = self
             .geom(g)?
-            .fillet_surface()
+            .fillet_surface()?
             .cloned()
             .ok_or_else(|| SolidError::null_pointer(OP_TRIM))?;
 
@@ -1958,7 +1958,7 @@ impl FilletBrep {
         let angle_tol = solver.ang_tol_rad;
         let fillet_surface = self
             .geom(g)?
-            .fillet_surface()
+            .fillet_surface()?
             .cloned()
             .ok_or_else(|| SolidError::null_pointer(OP_CLIFF))?;
         let fil_srf_domain = fillet_surface.natural_uv_domain();
@@ -2041,7 +2041,7 @@ impl FilletBrep {
                         self.eu_geom(mate)?
                     };
                     let side_surface = if let Some(sg) = side_fg.filter(|&s| s != g) {
-                        self.geom(sg)?.fillet_surface().cloned()
+                        self.geom(sg)?.fillet_surface()?.cloned()
                     } else {
                         let face = self
                             .fillet_edge(rail)?
