@@ -101,6 +101,17 @@ impl ExecutiveAccess<Handle> for Access {
             "no retained solver",
         ))
     }
+    fn reinitialize_corner_edges(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
+        absent()
+    }
+    fn corner_tangent_solver(&self, _: Handle, _: Handle) -> Result<Option<Handle>> {
+        absent()
+    }
     fn make_corner_topology(
         &mut self,
         _: &mut Kernel,
