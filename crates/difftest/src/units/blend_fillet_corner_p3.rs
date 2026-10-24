@@ -684,10 +684,10 @@ pub(super) fn corner_cpp_op(
 
 fn corner_rust(k: &Kernel, op: CornerOp, model: &Model, ci: &CornerIn) -> Result<Output, HarnessError> {
     corner_rust_with(k, model, ci, |c, env, _| match op {
-        CornerOp::CalcGeom => c.calc_corner_geom(k, env),
-        CornerOp::Patch => c.create_corner_patch(k, env),
-        CornerOp::AdjustTopology => c.adjust_topology(k, env),
-        CornerOp::AdjustTangent => c.adjust_tangent_corner(k, env),
+        CornerOp::CalcGeom => c.calc_corner_geom(env),
+        CornerOp::Patch => c.create_corner_patch(env),
+        CornerOp::AdjustTopology => c.adjust_topology(env),
+        CornerOp::AdjustTangent => c.adjust_tangent_corner(env),
     })
 }
 
@@ -854,7 +854,7 @@ pub(super) fn corner_rust_status(
     let r = {
         let mut exec = FilletExecutiveData::default();
         let mut env = CornerEnv {
-            k: &rm.k,
+            k: &mut rm.k,
             target: &mut rm.target,
             pseudo: &mut rm.fb,
             exec: &mut exec,
@@ -863,6 +863,7 @@ pub(super) fn corner_rust_status(
             tsect_surfaces: &surfaces,
             // the model's geometries have no solver (as the shim's)
             solvers: &mut [],
+            fillet: None,
         };
         run(&mut c, &mut env, &faces)
     };

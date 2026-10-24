@@ -1910,13 +1910,14 @@ fn corner_rust(i: &Inputs) -> Result<Output, HarnessError> {
             let surfaces = BTreeMap::new();
             let r = {
                 let mut env = CornerEnv {
-                    k: &rm.k,
+                    k: &mut rm.k,
                     target: &mut rm.target,
                     pseudo: &mut rm.fb,
                     exec: &mut exec,
                     corner: None,
                     tsect_surfaces: &surfaces,
                     solvers: &mut [],
+                    fillet: None,
                 };
                 match c.method {
                     CornerMethod::VertGeom => fc.calc_corner_vert_geom(&mut env, &mut []),
@@ -1943,13 +1944,14 @@ fn corner_rust(i: &Inputs) -> Result<Output, HarnessError> {
             let surfaces = BTreeMap::new();
             let r = {
                 let mut env = CornerEnv {
-                    k: &rm.k,
+                    k: &mut rm.k,
                     target: &mut rm.target,
                     pseudo: &mut rm.fb,
                     exec: &mut exec,
                     corner: None,
                     tsect_surfaces: &surfaces,
                     solvers: &mut [],
+                    fillet: None,
                 };
                 fc.check_and_fix_degeneracy(&mut env, &[])
             };
