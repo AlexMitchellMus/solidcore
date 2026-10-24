@@ -328,35 +328,8 @@ impl<O: ClassObject> CurveClassification<O> {
             ));
         }
         let Some(visits) = self.ts_bound_cached_visits(k, geometry, face)? else {
-            // `GetOrCreateObjectCache(SM_OC_CURVE, ..)` then `NER(pCC)`: a failed cache
-            // build (e.g. a degenerate source) is a NULL cache, SM_ERR_NULL_POINTER.
-            let cache = match make_curve_cache::<Side>(
-                k,
-                source,
-                Some(Side::Source(source.natural_interval())),
-            ) {
-                Ok(c) => c,
-                Err(e) if e.is_unported() => return Err(e),
-                Err(_) => return Err(SolidError::null_pointer(OP)),
-            };
-            let tree = cache.tree().ok_or(SolidError::null_pointer(OP))?;
-            let top = tree.top_node().ok_or(SolidError::null_pointer(OP))?;
-            let mut domain = Extent2d::from_extent3d(&tree.node(top)?.bbox);
-            domain.expand_absolute(EFF_ZERO_SQRT);
-            let source_zone = src_zone_tol_3d_of(k, Some(self));
             for lp in face.loops {
                 for vertex in &lp.vertices {
-                    let singular = face
-                        .surface
-                        .is_singularity(k, vertex.uv, EFF_ZERO, false)?
-                        .singular;
-                    if !singular {
-                        let zone = vertex.zone_tol_3d;
-                        let tolerance = xsect_tol_3d_from_zones(k, source_zone, zone);
-                        if !domain.contains_point(vertex.uv, tolerance) {
-                            continue;
-                        }
-                    }
                     self.p9_vertex(k, geometry, source, face.surface, *vertex, do_check_3d)?;
                 }
                 for edgeuse in &lp.edges {
