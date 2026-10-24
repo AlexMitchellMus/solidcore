@@ -81,3 +81,36 @@ fn actual_box_solver_stays_authoritative_through_corner_creation() {
         FilletObject::Topology(FilletBody::Pseudo, EntityRef::Edge(edge))
     );
 }
+
+#[test]
+fn native_api_setup_uses_owned_parameter_algorithm_and_unknown_xsect_default() {
+    use solidcore::blend::fillet_executive::session::SolverObject;
+    use solidcore::blend::fillet_solver::p1::FilletSurfaceGeneratorType;
+
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::new(0.0, 0.0, 0.0), 10.0, 20.0, 30.0).unwrap();
+    let edge = target.edges().ids().next().unwrap();
+    let tolerance = edge::tolerance(&target, edge).unwrap();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    session
+        .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 99, 1, 1.0)
+        .unwrap();
+    assert!(session.executive().initialized);
+    // The native SetFilletParameters reset follows the API's earlier TRUE write.
+    assert!(!session.executive().options.global_merge);
+    assert_eq!(session.executive().surface_generators.len(), 1);
+    let [FilletObject::Solver(id)] = session.executive().solvers.as_slice() else {
+        panic!("one actual solver required");
+    };
+    let SolverObject::ConstantRadius(solver) = session.solver(*id).unwrap() else {
+        panic!("actual constant-radius constructor required");
+    };
+    assert_eq!(solver.fillet_radii, [0.5, 0.5]);
+    assert_eq!(solver.solver.approx_tol_3d, 4.0 * tolerance);
+    assert_eq!(
+        solver.solver.fsg.unwrap().fillet_surface_generator_type(),
+        FilletSurfaceGeneratorType::Circular
+    );
+    session.create_corners(&k, None).unwrap();
+    assert_eq!(session.executive().corners.len(), 2);
+}

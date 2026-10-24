@@ -21,13 +21,14 @@
 use std::collections::BTreeMap;
 
 use super::p1::{ExecutiveObjects, SolverLoadingAccess};
+use super::p2::{FilletParameters, FilletParametersAccess, SolverSpec};
 use super::p3::{ErrorInfo, FilletExecutive};
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_geom::p1::{FilletBrep, FilletCornerId, FilletSolverId};
 use crate::blend::fillet_solver::p1::{FilletSolver, FilletSurfaceGenerator};
 use crate::blend::fillet_standard_solver::p1::{
-    constant_radius_from_edgeuse, ConstantDistanceFs, ConstantRadiusFs, SurfaceSurfaceFs,
-    VariableRadiusFs,
+    constant_radius_from_edgeuse, ConstantDistanceFs, ConstantRadiusFs, FilletSolverType,
+    FilletSurfaceGeneratorType, SurfaceSurfaceFs, VariableRadiusFs,
 };
 use crate::curve::curve_cache::CurveCache;
 use crate::error::{EntityRef, Result, SolidError};
@@ -283,10 +284,7 @@ impl<'target> FilletSession<'target> {
         &mut self,
         generator: FilletSurfaceGenerator,
     ) -> Result<FilletObject> {
-        let id = u32::try_from(self.objects.generators.len())
-            .map_err(|_| invalid("too many generators"))?;
-        self.objects.generators.push(generator);
-        let object = FilletObject::Generator(id);
+        let object = self.objects.allocate_generator(generator)?;
         self.executive.add_fillet_surface_generator(object);
         Ok(object)
     }
@@ -305,31 +303,14 @@ impl<'target> FilletSession<'target> {
         ang_tol_rad: f64,
         tan_tol_rad: f64,
     ) -> Result<FilletSolverId> {
-        let id = FilletSolverId(
-            u32::try_from(self.objects.solvers.len()).map_err(|_| invalid("too many solvers"))?,
-        );
-        // Reserve the identity before construction writes a geometry pointing at it;
-        // a later constructor failure must not let another solver reuse that id.
-        self.objects.solvers.push(None);
-        let solver = constant_radius_from_edgeuse(
+        self.objects.allocate_constant_radius_solver(
             k,
-            self.objects.target,
-            &mut self.objects.pseudo,
-            id,
+            edgeuse,
+            radius,
             approx_tol,
             ang_tol_rad,
             tan_tol_rad,
-            radius,
-            edgeuse,
-            None,
-        )?;
-        *self
-            .objects
-            .solvers
-            .get_mut(id.0 as usize)
-            .ok_or_else(|| invalid("lost solver slot"))? =
-            Some(SolverObject::ConstantRadius(Box::new(solver)));
-        Ok(id)
+        )
     }
 
     /// Assign a retained generator's descriptor to the actual solver base.
@@ -343,16 +324,62 @@ impl<'target> FilletSession<'target> {
         solver: FilletSolverId,
         generator: FilletObject,
     ) -> Result<()> {
-        let FilletObject::Generator(id) = generator else {
-            return Err(invalid("object is not a generator"));
+        self.objects.assign_generator(solver, generator)
+    }
+
+    /// Run the exact constant-radius `SmApiFilletEdges` setup through
+    /// `SetFilletParameters`, before topology/geometry execution.
+    ///
+    /// Zero selects linear, two blend-curve, every other cross-section code circular.
+    /// All four tolerance arguments use the native `-1.0` defaults. The native flag
+    /// reset in `SetFilletParameters` is retained after the wrapper's global-merge write.
+    ///
+    /// # Errors
+    /// Native invalid input for an empty edge list; real parameter/constructor/loader errors.
+    pub fn prepare_constant_radius_edges(
+        &mut self,
+        k: &mut Kernel,
+        edges: &[EdgeId],
+        radius: f64,
+        xsect_type: u32,
+        continuity: u32,
+        thumbweight: f64,
+    ) -> Result<()> {
+        if edges.is_empty() {
+            return Err(SolidError::Upstream {
+                operation: OP,
+                code: crate::error::SM_ERR_INVALID_INPUT,
+                entity: None,
+            });
+        }
+        let xsect = match xsect_type {
+            0 => FilletSurfaceGeneratorType::Linear,
+            2 => FilletSurfaceGeneratorType::BlendCurve,
+            _ => FilletSurfaceGeneratorType::Circular,
         };
-        let generator = *self
-            .objects
-            .generators
-            .get(id as usize)
-            .ok_or_else(|| invalid("generator is not live"))?;
-        self.objects.solver_mut(solver)?.base_mut().fsg = Some(generator);
-        Ok(())
+        let edges = edges
+            .iter()
+            .map(|id| FilletObject::Topology(FilletBody::Target, EntityRef::Edge(*id)))
+            .collect::<Vec<_>>();
+        self.executive.set_do_global_merge(true);
+        self.executive.set_fillet_parameters(
+            k,
+            &mut self.objects,
+            &FilletParameters {
+                brep: Some(FilletObject::Body(FilletBody::Target)),
+                edges: &edges,
+                xsect_types: &[xsect],
+                radius_types: &[FilletSolverType::ConstRadius],
+                radius_values: &[radius],
+                var_rad_laws: None,
+                approx_tol: -1.0,
+                ang_tol_deg: -1.0,
+                tan_tol_deg: -1.0,
+                xsect_tol: -1.0,
+                continuity,
+                thumbweight,
+            },
+        )
     }
 
     /// Create and retain the actual corners in native executive order.
@@ -535,5 +562,140 @@ impl SolverLoadingAccess<FilletObject> for SessionObjects<'_> {
             .vertexuse(vertexuse)?
             .vertex
             .map(|id| FilletObject::Topology(FilletBody::Target, EntityRef::Vertex(id))))
+    }
+}
+
+impl SessionObjects<'_> {
+    fn allocate_generator(&mut self, generator: FilletSurfaceGenerator) -> Result<FilletObject> {
+        let id =
+            u32::try_from(self.generators.len()).map_err(|_| invalid("too many generators"))?;
+        self.generators.push(generator);
+        Ok(FilletObject::Generator(id))
+    }
+    #[allow(clippy::too_many_arguments)] // the native constructor's parameters
+    fn allocate_constant_radius_solver(
+        &mut self,
+        k: &Kernel,
+        edgeuse: EdgeuseId,
+        radius: f64,
+        approx_tol: f64,
+        ang_tol_rad: f64,
+        tan_tol_rad: f64,
+    ) -> Result<FilletSolverId> {
+        let id = FilletSolverId(
+            u32::try_from(self.solvers.len()).map_err(|_| invalid("too many solvers"))?,
+        );
+        // Reserve the identity before construction writes a geometry pointing at it;
+        // a later constructor failure must not let another solver reuse that id.
+        self.solvers.push(None);
+        let solver = constant_radius_from_edgeuse(
+            k,
+            self.target,
+            &mut self.pseudo,
+            id,
+            approx_tol,
+            ang_tol_rad,
+            tan_tol_rad,
+            radius,
+            edgeuse,
+            None,
+        )?;
+        *self
+            .solvers
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| invalid("lost solver slot"))? =
+            Some(SolverObject::ConstantRadius(Box::new(solver)));
+        Ok(id)
+    }
+    fn assign_generator(&mut self, solver: FilletSolverId, generator: FilletObject) -> Result<()> {
+        let FilletObject::Generator(id) = generator else {
+            return Err(invalid("object is not a generator"));
+        };
+        let generator = *self
+            .generators
+            .get(id as usize)
+            .ok_or_else(|| invalid("generator is not live"))?;
+        self.solver_mut(solver)?.base_mut().fsg = Some(generator);
+        Ok(())
+    }
+}
+
+impl FilletParametersAccess<FilletObject> for SessionObjects<'_> {
+    fn parameters_tolerance(&self, k: &Kernel, brep: FilletObject, approx: bool) -> Result<f64> {
+        let body = match brep {
+            FilletObject::Body(FilletBody::Target) => &*self.target,
+            FilletObject::Body(FilletBody::Pseudo) => self.pseudo.brep(),
+            _ => return Err(invalid("object is not a session body")),
+        };
+        Ok(if approx {
+            crate::geom::tol::approx_tol3d(k, 0.5 * body.tolerance())
+        } else {
+            body.tolerance()
+        })
+    }
+    fn parameters_new_generator(
+        &mut self,
+        _k: &mut Kernel,
+        generator: FilletSurfaceGenerator,
+    ) -> Result<FilletObject> {
+        self.allocate_generator(generator)
+    }
+    fn parameters_blend_edgeuse(
+        &mut self,
+        k: &mut Kernel,
+        edge: FilletObject,
+    ) -> Result<Option<FilletObject>> {
+        let FilletObject::Topology(FilletBody::Target, EntityRef::Edge(id)) = edge else {
+            return Err(invalid("edge is not in the target"));
+        };
+        Ok(crate::topology::edge::blend_edgeuse(k, self.target, id)?
+            .map(|id| FilletObject::Topology(FilletBody::Target, EntityRef::Edgeuse(id))))
+    }
+    fn parameters_edge_tolerance(&self, edge: FilletObject) -> Result<f64> {
+        let FilletObject::Topology(FilletBody::Target, EntityRef::Edge(id)) = edge else {
+            return Err(invalid("edge is not in the target"));
+        };
+        crate::topology::edge::tolerance(self.target, id)
+    }
+    fn parameters_new_solver(
+        &mut self,
+        k: &mut Kernel,
+        spec: &SolverSpec<'_, FilletObject>,
+    ) -> Result<FilletObject> {
+        let SolverSpec::ConstantRadius {
+            approx_tol,
+            ang_tol_rad,
+            tan_tol_rad,
+            radius,
+            edgeuse,
+        } = *spec
+        else {
+            return Err(invalid(
+                "this session constructor currently supports constant-radius edge solvers",
+            ));
+        };
+        let FilletObject::Topology(FilletBody::Target, EntityRef::Edgeuse(edgeuse)) = edgeuse
+        else {
+            return Err(invalid("solver edge use is not in the target"));
+        };
+        self.allocate_constant_radius_solver(
+            k,
+            edgeuse,
+            radius,
+            approx_tol,
+            ang_tol_rad,
+            tan_tol_rad,
+        )
+        .map(FilletObject::Solver)
+    }
+    fn parameters_set_generator(
+        &mut self,
+        solver: FilletObject,
+        generator: FilletObject,
+    ) -> Result<()> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("object is not a solver"));
+        };
+        self.assign_generator(id, generator)
     }
 }
