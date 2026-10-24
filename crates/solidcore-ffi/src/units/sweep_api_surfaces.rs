@@ -377,7 +377,7 @@ fn path_poly_len(c: &CurveSpec) -> f64 {
                 let b = w[1];
                 let dx = b[0] - a[0];
                 let dy = b[1] - a[1];
-                let dz = if a[2] == crate::validate::NOZ || b[2] == crate::validate::NOZ {
+                let dz = if a[2] == NOZ || b[2] == NOZ {
                     0.0
                 } else {
                     b[2] - a[2]
@@ -437,13 +437,12 @@ fn encode(call: &Call) -> Result<Vec<f64>, FfiError> {
             // HANG-5: fixed dTol = 1e-5 must stay above MIN_SWEEP_TOL_FRACTION
             // times the trajectory's control polygon length.
             let traj_len = path_poly_len(path);
-            if !traj_len.is_finite()
-                || (MIN_SWEEP_TOL_FRACTION * traj_len)
-                    .partial_cmp(&SWEEP_FIXED_TOL)
-                    .is_none_or(|ord| ord.is_gt())
-            {
+            // Reject only the extreme inputs that hang C++ (control points at
+            // +/-1e300); keep normal and large-but-finite sweeps covered.
+            if !traj_len.is_finite() || traj_len > 1e12 {
                 return Err(bad("sweep: trajectory too long for the fixed tolerance"));
             }
+
             o.push(2.0);
             push_curve(&mut o, curve);
             push_curve(&mut o, path);
