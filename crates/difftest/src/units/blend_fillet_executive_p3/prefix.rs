@@ -2,11 +2,13 @@
 //! Modes 1–5 omit smoothing on both sides. Later modes run the real prelude,
 //! stopping after adjustment, direct first-solver geometry, or all-solver geometry
 //! followed by each corner’s tangent adjustment, repeated vertices and edges,
-//! actual rail trimming, or enabled classification and adjusted-corner repair.
+//! actual rail trimming, enabled classification/repair, or intermediate faces.
 #[path = "edge_geometry.rs"]
 mod edge_geometry;
 #[path = "generated_geometry.rs"]
 mod generated_geometry;
+#[path = "intermediate_faces.rs"]
+mod intermediate_faces;
 #[path = "rail_classification.rs"]
 mod rail_classification;
 #[path = "rail_metadata.rs"]
@@ -229,7 +231,7 @@ pub(super) fn run(
     before: &[f64],
 ) -> SolidResult<Vec<f64>> {
     let mut session = FilletSession::new(k, body)?;
-    let mut statuses = [-1.0; 9];
+    let mut statuses = [-1.0; 10];
     let prepare = session.prepare_constant_radius_edges(
         k,
         selected,
@@ -307,7 +309,7 @@ pub(super) fn run(
                             Ok(()) => 0.0,
                             Err(error) => status(error)?,
                         };
-                        if input.checkpoint == Checkpoint::ClassifiedRails && statuses[7] == 0.0 {
+                        if input.checkpoint.code() >= 10 && statuses[7] == 0.0 {
                             classes_before = rail_classification::snapshot(k, &session)?;
                             statuses[8] = match session.classify_solver_rails_with_adjusted(k) {
                                 Ok(ids) => {
@@ -316,6 +318,14 @@ pub(super) fn run(
                                 }
                                 Err(error) => status(error)?,
                             };
+                            if input.checkpoint == Checkpoint::IntermediateFaces
+                                && statuses[8] == 0.0
+                            {
+                                statuses[9] = match session.build_fillet_faces(k) {
+                                    Ok(()) => 0.0,
+                                    Err(error) => status(error)?,
+                                };
+                            }
                         }
                     }
                 }
@@ -467,7 +477,7 @@ pub(super) fn run(
         section(&mut out, &rails_after.0);
         section(&mut out, &rails_after.1);
     }
-    if input.checkpoint == Checkpoint::ClassifiedRails {
+    if input.checkpoint.code() >= 10 {
         let after = rail_classification::snapshot(k, &session)?;
         section(&mut out, &classes_before.0);
         section(&mut out, &classes_before.1);
@@ -478,6 +488,11 @@ pub(super) fn run(
             .map(|id| label(&session.executive().corners, Some(*id)))
             .collect();
         section(&mut out, &labels);
+    }
+    if input.checkpoint == Checkpoint::IntermediateFaces {
+        let (state, values) = intermediate_faces::snapshot(k, &session)?;
+        section(&mut out, &state);
+        section(&mut out, &values);
     }
     Ok(out)
 }
@@ -612,7 +627,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             );
         }
     }
-    if checkpoint == Checkpoint::ClassifiedRails {
+    if checkpoint.code() >= 10 {
         for phase in ["before", "after"] {
             let state = take_section(&mut values)?;
             if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
@@ -637,6 +652,20 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
         out.ints.insert(
             "classification_adjusted_corners".into(),
             ids.iter().map(|v| *v as i64).collect(),
+        );
+    }
+    if checkpoint == Checkpoint::IntermediateFaces {
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid intermediate topology state"));
+        }
+        out.ints.insert(
+            "intermediate_face_topology".into(),
+            state.iter().map(|v| *v as i64).collect(),
+        );
+        out.values.insert(
+            "intermediate_face_geometry".into(),
+            take_section(&mut values)?.to_vec(),
         );
     }
     if !values.is_empty() {
