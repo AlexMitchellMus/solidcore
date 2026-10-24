@@ -401,7 +401,7 @@ impl<O: ClassObject> CurveClassification<O> {
     }
 
     #[allow(clippy::too_many_lines)] // upstream's MergeInterval, in one piece
-    fn merge_interval_in(
+    pub(super) fn merge_interval_in(
         &mut self,
         a: &mut impl Imprint<O>,
         index: usize,
@@ -1102,6 +1102,23 @@ pub trait MergeIntervalBrep<O>: ClassGeometryMut<O> {
     /// region); `None` for a handle the adapter cannot resolve (an invalid-input error
     /// for the caller).
     fn merge_context(&mut self, object: O) -> Option<MergeContext<'_, O>>;
+}
+
+/// `pc.MergeIntoObject(srcPoint)` on the B-rep a [`MergeIntervalBrep`] hands out for the
+/// classification's object ([`PointClassification::merge_into_brep`]); a classification
+/// without object or of an object that is not a vertex, edge, face or region returns
+/// [`PointClassification::merge_into_object`]'s error, as upstream.
+///
+/// # Errors
+/// Those of [`PointClassification::merge_into_brep`]; [`SolidError::InvalidInput`] for
+/// an object the adapter cannot resolve mutably.
+pub fn merge_into_object_mut<O: ClassObject>(
+    k: &mut Kernel,
+    geometry: &mut impl MergeIntervalBrep<O>,
+    pc: &mut PointClassification<O>,
+    src_point: Point3,
+) -> Result<MergeOutputs<O>> {
+    Mutable { k, g: geometry }.merge_into_object(pc, src_point)
 }
 
 /// A `FindVertexSector` call of `MergeInterval` (its other arguments are constant:
