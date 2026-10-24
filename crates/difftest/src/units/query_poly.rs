@@ -13,8 +13,8 @@
 //! (`SM_SUCCESS`) or the `SmStatus`.
 //!
 //! Rejected cases: `IsDegenerate` of an edge whose face has a label for an original
-//! face while the back pointers are valid. Upstream maps the edge's UV points through
-//! `SmFace::GetSurface` of that face, and a label is not an `SmFace`: the call is
+//! face while the back pointers are valid. Upstream then calls `SmFace::GetSurface`
+//! on that face (to map UV points), and a label is not an `SmFace`: the call is
 //! undefined in C++ (AGENTS.md section 4, step 5.6), so the shim does not make it,
 //! `run_cpp` rejects the case and the Rust side, which would defer it at
 //! `SmFace::GetSurface` (`topology.face_p2`) for lack of the face, is not run.
@@ -1233,7 +1233,7 @@ mod owner_tests {
     }
 
     #[test]
-    fn original_corpus_and_opaque_native_outputs_are_retained() {
+    fn original_corpus_is_retained_and_opaque_owner_cases_are_rejected() {
         let cases = Runner
             .cases(&CaseContext {
                 root: repo_root(),
