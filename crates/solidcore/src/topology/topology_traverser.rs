@@ -22,9 +22,10 @@
 //! arrays where early returns preserve optional arrays upstream. Shell ownership
 //! moves through `topology::shell` (`transfer_children`, `move_faceuse`: the
 //! `Remove` / `PostInsert` statuses that `FaceuseShellReplacement` ignores cannot
-//! fail on a consistent B-rep, so an inconsistent one is an error). The ray/face
-//! intersections (`SmFace::GlobalLineIntersect`) classify on a copy of the B-rep.
-//! `IsInnerShell` keeps each target face surface's solve cache for the whole call
+//! fail on a consistent B-rep, so an inconsistent one is an error). `IsInnerShell`'s
+//! face samples and ray/face intersections (`SmFace::GetPointsInFace`,
+//! `SmFace::GlobalLineIntersect`) run on the caller's B-rep, which keeps the UV trim
+//! curves they make, as upstream's `const` queries leave them. `IsInnerShell` keeps each target face surface's solve cache for the whole call
 //! (upstream's surface keeps its cache across the rays); the port otherwise builds one
 //! per intersection, and a failed build is kept too instead of being retried on every
 //! ray (the build is deterministic, so a retry fails the same way).

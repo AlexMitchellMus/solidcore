@@ -82,7 +82,11 @@
 //!   against upstream (`plan/findings.md`). Point counts above
 //!   [`MAX_POINTS_IN_FACE`] are [`SolidError::InvalidInput`] (upstream allocates
 //!   them). The rectangular branch samples from `dUInc` / `dVInc`, not from the
-//!   domain minimum, as upstream does (`plan/upstream-issues.md`).
+//!   domain minimum, as upstream does (`plan/upstream-issues.md`). It takes the
+//!   B-rep mutably: its UV-domain and iso-line classifications run on it (the
+//!   classification's snapshot hands back the UV trim curves, the tolerance growth
+//!   that fits them and the gap caches), so what upstream's `const` queries leave on
+//!   the B-rep stays there.
 //! - **`CreateCurvesByTrimming`** drops its unused `bForceUVClassify` argument; the
 //!   output arrays are asked for with `want_3d` / `want_uv`.
 //! - **Unported callees.** `SmCurveClassification::ReSet` in the constructor of a curve
