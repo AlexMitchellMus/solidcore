@@ -56,8 +56,8 @@ pub(super) fn snapshot(k: &Kernel, session: &FilletSession<'_>) -> Result<(Vec<f
                     }
                 }
             }
-            state.push(f64::from(geometry.center_line_curve().is_some()));
-            if let Some(curve) = geometry.center_line_curve() {
+            state.push(f64::from(geometry.center_line_geometry().is_some()));
+            if let Some(curve) = geometry.center_line_geometry() {
                 state.push(curve.type_code() as f64);
                 let interval = curve.natural_interval();
                 values.extend([interval.min(), interval.max()]);
@@ -65,7 +65,7 @@ pub(super) fn snapshot(k: &Kernel, session: &FilletSession<'_>) -> Result<(Vec<f
                     evaluated(
                         &mut state,
                         &mut values,
-                        curve.evaluate_point(interval.evaluate(fraction)),
+                        curve.evaluate_point(k, interval.evaluate(fraction)),
                     )?;
                 }
             }
