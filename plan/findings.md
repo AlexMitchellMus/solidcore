@@ -19915,7 +19915,7 @@ point, returning `f64` — differs from the trait method's), `swap_uv` → `swap
 | `FilletSession::calc_nx1_corner_vert_geom` (`session.rs:1651`) | vertex dispatch limited to `OnVertex` and `RailXEdgeuse` (`session.rs:1674`–`:1717`); other vertex kinds return `Unported` | No call into `corner_vert_geom`, so the mate recursion is not entered from this session stage |
 | `process_smooth_edge_sequences` (`p3.rs:452` → `fillet_executive/p2.rs:939`) | outer `while solvers.len() > 1` (`p2.rs:950`); collector walks tangent solvers backwards then forwards (`p2.rs:1035`, `:1090`) | Collector step cap `bound = solvers.len() + 1` (`p2.rs:1002`, checked at `:1037`/`:1092`); collector ends with `solvers.retain(Option::is_some)` (`p2.rs:1119`), so a pass strictly shrinks the list. The body `create_smooth_edge_sequence` is still always `Unported` (`p2.rs:295`), so the loop currently exits after one pass. See Q1 |
 | `FilletSession::stitch_fillet_faces` (`p3.rs:1870`) → `session.rs:1032` → `topology/brep/p4.rs:1604` → heal `Stitch` | explicit `f_stack: Vec<FaceId>` with face marks (`heal/stitch/p1.rs:1589`) | Stack pop plus mark check (`:1592`–`:1605`); no call-stack growth |
-| `FilletSession::shrink_fillet_faces` (`p3.rs:1928`) → `session.rs:961` → `topology/face/p1.rs` shrink/notification | per-solver index loop, then one face edit per solver | Notifications are records/attributes only; the edit runs under `with_lent_context` (`session.rs:977`) |
+| `FilletSession::shrink_fillet_faces` (`p3.rs:1928`) → `session.rs:961` → `topology/face/p1.rs` shrink/notification | per-solver index loop, then one face edit per solver | Notification delivery goes through the lent context (`session.rs:977`); a nested crate edit through it is refused (`NOTIFY_LENT`) |
 | Heal stitch edit bridge (`heal/stitch/p1.rs:647`, `BorrowedStitchEdits` `:707`, `edit_glue_edges` `:1002`, `edit_delete_face` `:1057`) | `delete_face` → `topology/brep/p3.rs:1887`; `glue_edges_general` → `brep/p7.rs:1657`; `glue_vertices`/`remove_faces` → `brep/p5.rs` | `delete_face_nesting` (`brep/p3.rs:2178`) is called once (`:2137`); its shell loop (`:2233`) clears marked or shell-owned vertices from `verts` each pass. Glue paths loop over record lists; no self-call |
 | `primitive::primitive_creation::model::Driver` (`model.rs:301`, `model/merge.rs:301`) | delegates to the Boolean engine; `collect_faces` uses an explicit stack with marks (`topology/topology_traverser.rs:186`); `clear_offset_maps` (`model/merge.rs:217`) removes handles per face | Traverser is mark-bounded; the attribute loop breaks on a non-live handle (`:221`–`:224`) |
 | File readers | none changed by the wave | Read nesting bound `MAX_READ_NESTING` = 32 (`topology/database_io.rs:649`) is not exercised by this delta; `topology.brep_data` is #829's |
@@ -19929,14 +19929,16 @@ point, returning `f64` — differs from the trait method's), `swap_uv` → `swap
   (`p3.rs:264`, `:331`), and the degenerate/tangent helpers that call
   `calc_corner_vert_geom_unchecked` (`blend/fillet_corner/p3.rs:1951`) are not
   reached from inside the mate chain, so the bound is not bypassed by a reset in the
-  middle of a chain. The depth error is deliberately not swallowed
-  (`p3.rs:1446`). Regression test by inspection:
+  middle of a chain. The depth error is propagated rather than swallowed
+  (`p3.rs:357`, using `is_depth_error` at `:1446`). Regression test by inspection:
   `mate_cycle_is_bounded` (`p3.rs:1634`), which builds a two-vertex mate cycle and
   asserts the depth error from both entry points.
-- **Nested-edit refusal.** Every edit this wave threads notifications through lends
-  the kernel context (`with_lent_context`, `topology/brep/p3.rs:887`, used by the
+- **Nested-edit refusal.** The edits this wave threads notifications through lend
+  the kernel context: `with_lent_context` (`topology/brep/p3.rs:887`, used by the
   session's shrink/stitch/face paths and by heal `plain_edit` → `with_kernel_callbacks`,
-  `brep/p5.rs:167`/`p3.rs:949`). A nested crate edit through the lent context is
+  `brep/p5.rs:167`/`p3.rs:949`) and `Context::with_notification_context`
+  (`geom/context.rs:455`, used by the heal `glue_edges_general` bridge at
+  `heal/stitch/p1.rs:2428`). A nested crate edit through the lent context is
   refused with `InvalidInput` (`NOTIFY_LENT`, `geom/context.rs:334`–`:339`), so a
   notification callback cannot re-enter the same edit pipeline without bound through
   library code.
