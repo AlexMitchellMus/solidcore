@@ -1,11 +1,22 @@
 //! Actual fillet setup and retained corner/solver checkpoints.
 //! Modes 1–5 omit smoothing on both sides. Later modes run the real prelude,
 //! stopping after adjustment, direct first-solver geometry, or all-solver geometry
-//! followed by each corner’s tangent adjustment, repeated vertices and edges.
+//! followed by each corner’s tangent adjustment, repeated vertices and edges,
+//! actual rail trimming, enabled classification/repair, or intermediate faces.
 #[path = "edge_geometry.rs"]
 mod edge_geometry;
 #[path = "generated_geometry.rs"]
 mod generated_geometry;
+#[path = "intermediate_faces.rs"]
+mod intermediate_faces;
+#[path = "rail_classification.rs"]
+mod rail_classification;
+#[path = "rail_metadata.rs"]
+mod rail_metadata;
+#[path = "shrink_state.rs"]
+mod shrink_state;
+#[path = "stitch_state.rs"]
+mod stitch_state;
 use super::{label, section, status, take_section, Checkpoint, RealSolid};
 use crate::{HarnessError, Output};
 use solidcore::blend::fillet_executive::session::{FilletObject, FilletSession, SolverObject};
@@ -224,7 +235,7 @@ pub(super) fn run(
     before: &[f64],
 ) -> SolidResult<Vec<f64>> {
     let mut session = FilletSession::new(k, body)?;
-    let mut statuses = [-1.0; 7];
+    let mut statuses = [-1.0; 12];
     let prepare = session.prepare_constant_radius_edges(
         k,
         selected,
@@ -239,6 +250,14 @@ pub(super) fn run(
     };
     let mut prior = Vec::new();
     let mut offsets_before = (Vec::new(), Vec::new());
+    let mut rails_before = (Vec::new(), Vec::new());
+    let mut classes_before = (Vec::new(), Vec::new());
+    let mut adjusted = Vec::new();
+    let mut attributes_before = Vec::new();
+    let mut stitch_outcome = None;
+    let mut attributes_after = Vec::new();
+    let mut shrink_before = (Vec::new(), Vec::new());
+    let mut shrink_after = (Vec::new(), Vec::new());
     if statuses[0] == 0.0 && input.checkpoint != Checkpoint::Prepared {
         statuses[1] = match session.create_corners(k, None) {
             Ok(()) => 0.0,
@@ -282,7 +301,7 @@ pub(super) fn run(
                         };
                     }
                 }
-                if input.checkpoint == Checkpoint::CornerEdges && statuses[4] == 0.0 {
+                if input.checkpoint.code() >= 8 && statuses[4] == 0.0 {
                     statuses[5] = match session.calculate_solver_geometry(k) {
                         Ok(()) => 0.0,
                         Err(error) => status(error)?,
@@ -292,6 +311,58 @@ pub(super) fn run(
                             Ok(()) => 0.0,
                             Err(error) => status(error)?,
                         };
+                    }
+                    if input.checkpoint.code() >= 9 && statuses[6] == 0.0 {
+                        rails_before = rail_metadata::snapshot(k, &session, false)?;
+                        statuses[7] = match session.trim_solver_rails(k) {
+                            Ok(()) => 0.0,
+                            Err(error) => status(error)?,
+                        };
+                        if input.checkpoint.code() >= 10 && statuses[7] == 0.0 {
+                            classes_before = rail_classification::snapshot(k, &session)?;
+                            statuses[8] = match session.classify_solver_rails_with_adjusted(k) {
+                                Ok(ids) => {
+                                    adjusted = ids;
+                                    0.0
+                                }
+                                Err(error) => status(error)?,
+                            };
+                            if input.checkpoint.code() >= 11 && statuses[8] == 0.0 {
+                                statuses[9] = match session.build_fillet_faces(k) {
+                                    Ok(()) => 0.0,
+                                    Err(error) => status(error)?,
+                                };
+                                if input.checkpoint.code() >= 12 && statuses[9] == 0.0 {
+                                    attributes_before = stitch_state::attributes(&session)?;
+                                    statuses[10] = match session.stitch_fillet_faces(k) {
+                                        Ok(attempt) => match attempt.status {
+                                            None => {
+                                                stitch_outcome = Some((
+                                                    attempt.stitched,
+                                                    attempt.lamina,
+                                                    attempt.max_vertex_gap,
+                                                    attempt.max_edge_gap,
+                                                ));
+                                                0.0
+                                            }
+                                            Some(error) => status(error)?,
+                                        },
+                                        Err(error) => status(error)?,
+                                    };
+                                    attributes_after = stitch_state::attributes(&session)?;
+                                    if input.checkpoint == Checkpoint::ShrunkFaces
+                                        && statuses[10] == 0.0
+                                    {
+                                        shrink_before = shrink_state::snapshot(&session)?;
+                                        statuses[11] = match session.shrink_fillet_faces(k) {
+                                            Ok(()) => 0.0,
+                                            Err(error) => status(error)?,
+                                        };
+                                        shrink_after = shrink_state::snapshot(&session)?;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -430,10 +501,61 @@ pub(super) fn run(
         section(&mut out, &state);
         section(&mut out, &values);
     }
-    if input.checkpoint == Checkpoint::CornerEdges {
+    if input.checkpoint.code() >= 8 {
         let (state, values) = edge_geometry::snapshot(k, &session)?;
         section(&mut out, &state);
         section(&mut out, &values);
+    }
+    if input.checkpoint.code() >= 9 {
+        let rails_after = rail_metadata::snapshot(k, &session, true)?;
+        section(&mut out, &rails_before.0);
+        section(&mut out, &rails_before.1);
+        section(&mut out, &rails_after.0);
+        section(&mut out, &rails_after.1);
+    }
+    if input.checkpoint.code() >= 10 {
+        let after = rail_classification::snapshot(k, &session)?;
+        section(&mut out, &classes_before.0);
+        section(&mut out, &classes_before.1);
+        section(&mut out, &after.0);
+        section(&mut out, &after.1);
+        let labels: Vec<_> = adjusted
+            .iter()
+            .map(|id| label(&session.executive().corners, Some(*id)))
+            .collect();
+        section(&mut out, &labels);
+    }
+    if input.checkpoint.code() >= 11 {
+        let (state, values) = intermediate_faces::snapshot(k, &session)?;
+        section(&mut out, &state);
+        section(&mut out, &values);
+        section(&mut out, &intermediate_faces::source_binding(&session)?);
+    }
+    if input.checkpoint.code() >= 12 {
+        section(&mut out, &attributes_before);
+        section(
+            &mut out,
+            &if attributes_after.is_empty() {
+                stitch_state::attributes(&session)?
+            } else {
+                attributes_after
+            },
+        );
+        let (state, values) = match stitch_outcome {
+            Some((stitched, lamina, vertex_gap, edge_gap)) => (
+                vec![1.0, stitched as f64, lamina as f64],
+                vec![vertex_gap, edge_gap],
+            ),
+            None => (vec![0.0], Vec::new()),
+        };
+        section(&mut out, &state);
+        section(&mut out, &values);
+    }
+    if input.checkpoint == Checkpoint::ShrunkFaces {
+        for (state, values) in [&shrink_before, &shrink_after] {
+            section(&mut out, state);
+            section(&mut out, values);
+        }
     }
     Ok(out)
 }
@@ -538,7 +660,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             take_section(&mut values)?.to_vec(),
         );
     }
-    if checkpoint == Checkpoint::CornerEdges {
+    if checkpoint.code() >= 8 {
         let state = take_section(&mut values)?;
         if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
             return Err(HarnessError::new("invalid corner edge state"));
@@ -551,6 +673,105 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             "corner_edge_geometry_samples".into(),
             take_section(&mut values)?.to_vec(),
         );
+    }
+    if checkpoint.code() >= 9 {
+        for phase in ["before", "after"] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid rail trim state"));
+            }
+            out.ints.insert(
+                format!("rails_{phase}_trim_state"),
+                state.iter().map(|v| *v as i64).collect(),
+            );
+            out.values.insert(
+                format!("rails_{phase}_trim_geometry"),
+                take_section(&mut values)?.to_vec(),
+            );
+        }
+    }
+    if checkpoint.code() >= 10 {
+        for phase in ["before", "after"] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid classification state"));
+            }
+            out.ints.insert(
+                format!("rails_{phase}_classification_state"),
+                state.iter().map(|v| *v as i64).collect(),
+            );
+            out.values.insert(
+                format!("rails_{phase}_classification_parameters"),
+                take_section(&mut values)?.to_vec(),
+            );
+        }
+        let ids = take_section(&mut values)?;
+        if ids
+            .iter()
+            .any(|v| !v.is_finite() || v.fract() != 0.0 || *v < 0.0)
+        {
+            return Err(HarnessError::new("invalid adjusted-corner labels"));
+        }
+        out.ints.insert(
+            "classification_adjusted_corners".into(),
+            ids.iter().map(|v| *v as i64).collect(),
+        );
+    }
+    if checkpoint.code() >= 11 {
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid intermediate topology state"));
+        }
+        out.ints.insert(
+            "intermediate_face_topology".into(),
+            state.iter().map(|v| *v as i64).collect(),
+        );
+        out.values.insert(
+            "intermediate_face_geometry".into(),
+            take_section(&mut values)?.to_vec(),
+        );
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid source surface binding"));
+        }
+        out.ints.insert(
+            "source_surface_binding".into(),
+            state.iter().map(|v| *v as i64).collect(),
+        );
+    }
+    if checkpoint.code() >= 12 {
+        for name in [
+            "intermediate_attributes_before_stitch",
+            "intermediate_attributes_after_stitch",
+            "intermediate_stitch_outcome",
+        ] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid stitch state"));
+            }
+            out.ints
+                .insert(name.into(), state.iter().map(|v| *v as i64).collect());
+        }
+        out.values.insert(
+            "intermediate_stitch_gaps".into(),
+            take_section(&mut values)?.to_vec(),
+        );
+    }
+    if checkpoint == Checkpoint::ShrunkFaces {
+        for phase in ["before", "after"] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid shrink state"));
+            }
+            out.ints.insert(
+                format!("intermediate_shrink_{phase}"),
+                state.iter().map(|v| *v as i64).collect(),
+            );
+            out.values.insert(
+                format!("intermediate_shrink_{phase}"),
+                take_section(&mut values)?.to_vec(),
+            );
+        }
     }
     if !values.is_empty() {
         return Err(HarnessError::new("trailing prefix data"));

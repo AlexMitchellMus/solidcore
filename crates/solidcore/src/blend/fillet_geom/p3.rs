@@ -606,8 +606,8 @@ impl FilletBrep {
         let g2 = self.geom(fillet_geom2)?;
         let fil_solver1 = solver_of(solvers, g1.fillet_solver().ok_or_else(nul)?, OP_FIF)?;
         let fil_solver2 = solver_of(solvers, g2.fillet_solver().ok_or_else(nul)?, OP_FIF)?;
-        let fillet_surface1 = g1.fillet_surface().ok_or_else(nul)?;
-        let fillet_surface2 = g2.fillet_surface().ok_or_else(nul)?;
+        let fillet_surface1 = g1.fillet_surface()?.ok_or_else(nul)?;
+        let fillet_surface2 = g2.fillet_surface()?.ok_or_else(nul)?;
 
         // pick appoxTol and angTol as tightest filletSolver tolerances
         let approx_tol = smos_min(fil_solver1.approx_tol_3d, fil_solver2.approx_tol_3d);

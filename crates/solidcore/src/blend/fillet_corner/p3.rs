@@ -652,6 +652,18 @@ impl FilletCorner {
     ///
     /// Those of [`FilletCorner::create_corner_patch`].
     pub fn calc_corner_geom(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
+        self.calc_corner_geom_with(env, |corner, env| corner.create_corner_patch(env))
+    }
+
+    /// Apply the native corner-patch predicate before lending the actual patch context.
+    ///
+    /// # Errors
+    /// Those of the actual concrete patch operation when a patch is needed.
+    pub fn calc_corner_geom_with<C>(
+        &mut self,
+        context: &mut C,
+        create_patch: impl FnOnce(&mut Self, &mut C) -> Result<()>,
+    ) -> Result<()> {
         let total_edges = self.edges.len();
         let fillet_edges = self.solver_eus.as_ref().map_or(0, Vec::len);
 
@@ -661,7 +673,7 @@ impl FilletCorner {
         }
 
         // Otherwise, pass the call along to build a Corner->FilletSurface and store it in m_vSurfaces
-        self.create_corner_patch(env)
+        create_patch(self, context)
     }
 
     // ---- CreateCornerPatch -----------------------------------------------------------
@@ -831,7 +843,7 @@ impl FilletCorner {
                             .fillet_edgeuse(prim_eu)?
                             .fillet_geom()
                             .ok_or_else(|| SolidError::null_pointer(OP_PATCH))?;
-                        base_surface.clone_from(&env.pseudo.geom(g)?.fillet_surface);
+                        base_surface = env.pseudo.geom(g)?.fillet_surface()?.cloned();
                     }
                 }
 
