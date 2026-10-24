@@ -8,8 +8,11 @@
 //! | [`CurveClassification::intersect_ts_bound`] | `SmCurveClassification::IntersectTSBound` |
 //!
 //! Deviations: topology is supplied as borrowed views resolved from arena ids, and
-//! the caller supplies the face's trim cache. Cached marks are local ordered lists
-//! of visited handles. No input-driven recursion is added. Temporary surface-owner
+//! the caller supplies the face's trim cache (in its own handle space, mapped to the
+//! caller's by [`BoundaryFace::cache_handle`]). The cached branch claims and locks a
+//! context mark as upstream's `SmNewMarkAndLock` does ([`crate::geom::context::Context::claim_mark`]);
+//! the vertex uses and edge uses it marks are a local ordered list of visited
+//! handles. No input-driven recursion is added. Temporary surface-owner
 //! clearing is represented by a private copy for a lifted 2D source. Concrete
 //! curve-on-surface dispatch is preserved; mutable edge insertion retains its dependency
 //! deferral. Ignored native evaluation
@@ -27,6 +30,7 @@ use crate::curve::curve::p6::DroppedPoint;
 use crate::curve::curve::p8::CurveIntersectOptions;
 use crate::curve::curve::Curve;
 use crate::error::{ignored, Result, SolidError};
+use crate::geom::context::ALL_MARKS;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::SolverOperation;
@@ -96,13 +100,17 @@ pub struct BoundaryLoop<O> {
 
 /// Resolved upward faceuse traversal and the face's actual surface and trim cache.
 /// These views borrow geometry; they do not replace the B-rep arenas.
-pub struct BoundaryFace<'a, O> {
+pub struct BoundaryFace<'a, O, C = O> {
     /// Face surface.
     pub surface: &'a Surface,
     /// Upward loopuses, in native order.
     pub loops: &'a [BoundaryLoop<O>],
-    /// Caller-owned trimmed surface cache (`GetSurfaceCache`).
-    pub cache: &'a TrimSrfCache<O>,
+    /// The face surface's trimmed surface cache (`smsurf_GetSurfaceCache`), whose
+    /// vertex use and edge use handles are `C`.
+    pub cache: &'a TrimSrfCache<C>,
+    /// The caller's handle of a vertex use or edge use the cache's leaf nodes name
+    /// (`None`: not one of the face's).
+    pub cache_handle: &'a dyn Fn(C) -> Option<O>,
 }
 
 /// `IntersectEdges` flags. `has_big_gaps` is required upstream; this Rust options
@@ -291,11 +299,11 @@ impl<O: ClassObject> CurveClassification<O> {
     /// # Errors
     /// Missing geometry/cache records fail; generic surface lifting and mutable
     /// edge insertion retain their existing dependency deferrals.
-    pub fn intersect_ts_bound(
+    pub fn intersect_ts_bound<C: Copy + PartialEq>(
         &mut self,
         k: &Kernel,
         geometry: &impl ClassGeometry<O>,
-        face: &BoundaryFace<'_, O>,
+        face: &BoundaryFace<'_, O, C>,
         do_check_3d: bool,
     ) -> Result<()> {
         let source_handle = self.curve().ok_or(SolidError::null_pointer(OP))?;
@@ -337,6 +345,16 @@ impl<O: ClassObject> CurveClassification<O> {
         let mut domain = Extent2d::from_extent3d(&tree.node(top)?.bbox);
         domain.expand_absolute(EFF_ZERO_SQRT);
         let nodes = base.find_uv_nodes_built(k, &domain, false)?;
+
+        // no work - curve is outside of the domain of the surface
+        if nodes.is_empty() {
+            return Ok(());
+        }
+
+        // increment the mark on the context by 1 (the vertex uses and edge uses it
+        // marks are the ordered `visited` list)
+        let _mark_lock = k.context.claim_mark(ALL_MARKS);
+
         let tree = base.tree().ok_or(SolidError::null_pointer(OP))?;
         let mut visited = Vec::new();
         for &id in &nodes {
@@ -345,6 +363,7 @@ impl<O: ClassObject> CurveClassification<O> {
             }
             for item in &base.aux(id)?.vertex_list {
                 let vu = item.vertexuse.ok_or(SolidError::null_pointer(OP))?;
+                let vu = (face.cache_handle)(vu).ok_or(SolidError::null_pointer(OP))?;
                 if visited.contains(&vu) {
                     continue;
                 }
@@ -365,6 +384,7 @@ impl<O: ClassObject> CurveClassification<O> {
                 continue;
             }
             for &eu in &base.aux(id)?.edgeuse_list {
+                let eu = (face.cache_handle)(eu).ok_or(SolidError::null_pointer(OP))?;
                 if visited.contains(&eu) {
                     continue;
                 }
@@ -673,7 +693,8 @@ mod tests {
                 &BoundaryFace {
                     surface: &surface,
                     loops: &loops,
-                    cache: &cache
+                    cache: &cache,
+                    cache_handle: &Some,
                 },
                 false
             ),

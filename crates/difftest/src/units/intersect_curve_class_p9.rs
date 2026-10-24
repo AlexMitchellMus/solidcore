@@ -546,6 +546,7 @@ fn rust(i: &Input) -> ScResult<Output> {
                 surface: &pool.surface,
                 loops: &loops,
                 cache: &cache,
+                cache_handle: &Some,
             },
             i.check3d,
         )

@@ -170,15 +170,14 @@
 //!   constructor leaves `m_pCacheObj` null. The cache builds of `surface.surface_p1`
 //!   and `surface.surface_cache_p3` keep it in step.
 
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::curve::curve::p3::PointSolveOptions;
 use crate::curve::curve::p7::PropertyAnalysisOptions;
 use crate::curve::curve::p8::CurveIntersectOptions;
 use crate::curve::curve::{Curve, CurvePropertyType};
 use crate::curve::line::Line;
-use crate::error::{ignore_status, Result, SolidError, SM_ERR};
+use crate::error::{ignore_status, EntityRef, Result, SolidError, SM_ERR};
 use crate::geom::a_object::{self, AObject, CacheStore};
 use crate::geom::assert_array::labels::DERIV_SURF_DEFINITION_TYPE;
 use crate::geom::assert_array::{AssertArray, AssertReport, ObjectKey, ReportSpec};
@@ -228,6 +227,7 @@ use crate::surface::surf_of_revolution::{Revolved, SurfOfRevolution};
 use crate::surface::surface::p1::{StepSurface, SurfaceIntersectContext, SurfaceSolveContext};
 use crate::surface::surface::p8::FaceSolveCache;
 use crate::surface::surface_cache::p1::SurfaceCache;
+use crate::surface::trim_srf_cache::TrimSrfCache;
 use crate::surface::torus::Torus;
 use crate::topology::database_io::DatabaseReader;
 use crate::topology::trimming_tools;
@@ -363,35 +363,44 @@ pub enum CacheTreeState {
     Built,
 }
 
-impl CacheTreeState {
-    const fn to_u8(self) -> u8 {
-        match self {
-            Self::NoCache => 0,
-            Self::Unbuilt => 1,
-            Self::Built => 2,
-        }
-    }
+/// The trimmed surface cache a surface's cache slot holds: the `SM_OC_TRIMSRF` entry of
+/// upstream's global cache queue for the surface (`SmCacheMgr::GetObjectCache`), in the
+/// handle space of the surface's face ([`EntityRef`]).
+#[derive(Debug, Default)]
+pub enum TrimCacheSlot {
+    /// No trimmed cache.
+    #[default]
+    Empty,
+    /// The cache, not in use. Its own surface copy does not share the slot (that would
+    /// make the slot own itself).
+    Stored(Box<TrimSrfCache<EntityRef>>),
+    /// The cache is in use: a caller took it out ([`Surface::take_trim_cache`]) and puts
+    /// it back when done. Upstream's lookups in the meantime find that same object
+    /// (it is in the queue before its tree is built).
+    CheckedOut,
+}
 
-    const fn from_u8(v: u8) -> Self {
-        match v {
-            1 => Self::Unbuilt,
-            2 => Self::Built,
-            _ => Self::NoCache,
-        }
-    }
+/// What a [`CacheSlot`] holds.
+#[derive(Debug, Default)]
+struct SlotState {
+    tree: CacheTreeState,
+    trim: TrimCacheSlot,
+    /// The face was modified while the trimmed cache was in use.
+    face_modified_while_out: bool,
 }
 
 /// The cache slot of a surface. Upstream keeps a surface's cache on the surface object
 /// and everything that works on the surface reaches it through a pointer; the port
-/// builds its caches afresh and passes evaluation copies
-/// ([`Surface::clone_for_evaluation`]) where upstream passes that pointer. The slot
-/// records the one part of the cache's history a later reader can observe (whether
-/// its tree was built), shared between a surface and its evaluation copies so that a
-/// tree built through any of them is seen by all; `Clone` (the copy constructor,
-/// which leaves `m_pCacheObj` null) starts an empty slot. Single-threaded use only
-/// orders the accesses, so the result is deterministic.
+/// passes evaluation copies ([`Surface::clone_for_evaluation`]) where upstream passes
+/// that pointer. The slot records what a later reader of the cache can observe, shared
+/// between a surface and its evaluation copies so that what is done through any of
+/// them is seen by all: whether the cache's tree was built ([`CacheTreeState`]) and,
+/// once one has been made, the surface's trimmed surface cache itself
+/// ([`TrimCacheSlot`]). `Clone` (the copy constructor, which leaves `m_pCacheObj` null)
+/// starts an empty slot. Single-threaded use only orders the accesses, so the result
+/// is deterministic.
 #[derive(Debug, Default)]
-struct CacheSlot(Arc<AtomicU8>);
+struct CacheSlot(Arc<Mutex<SlotState>>);
 
 impl CacheSlot {
     /// The same slot (an evaluation copy stands for the same surface object).
@@ -399,12 +408,25 @@ impl CacheSlot {
         Self(Arc::clone(&self.0))
     }
 
+    /// Whether `self` and `other` are the same slot (stand for the same surface
+    /// object): an identity test, never an ordering.
+    fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
+    fn with<R>(&self, f: impl FnOnce(&mut SlotState) -> R) -> R {
+        // a poisoned lock only means a panic unwound through `with`; every write
+        // leaves the state consistent, so it stays usable
+        let mut guard = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        f(&mut guard)
+    }
+
     fn get(&self) -> CacheTreeState {
-        CacheTreeState::from_u8(self.0.load(Ordering::Relaxed))
+        self.with(|s| s.tree)
     }
 
     fn set(&self, state: CacheTreeState) {
-        self.0.store(state.to_u8(), Ordering::Relaxed);
+        self.with(|s| s.tree = state);
     }
 }
 
@@ -870,6 +892,111 @@ impl Surface {
     /// rebuilds a surface which already had a cache upstream (an import) restores it.
     pub fn set_cache_tree_state(&self, state: CacheTreeState) {
         self.cache_slot.set(state);
+    }
+
+    /// Takes this surface's trimmed surface cache out of its cache slot (shared with its
+    /// evaluation copies) for use, leaving [`TrimCacheSlot::CheckedOut`] until
+    /// [`Surface::put_trim_cache`] returns it: [`TrimCacheSlot::Stored`] with the cache,
+    /// whose own surface copy shares this slot again while it is out; otherwise what the
+    /// slot holds ([`TrimCacheSlot::Empty`] or [`TrimCacheSlot::CheckedOut`]), unchanged.
+    #[must_use]
+    pub fn take_trim_cache(&self) -> TrimCacheSlot {
+        let taken = self.cache_slot.with(|s| match &s.trim {
+            TrimCacheSlot::Stored(_) => core::mem::replace(&mut s.trim, TrimCacheSlot::CheckedOut),
+            TrimCacheSlot::Empty => TrimCacheSlot::Empty,
+            TrimCacheSlot::CheckedOut => TrimCacheSlot::CheckedOut,
+        });
+        match taken {
+            TrimCacheSlot::Stored(mut cache) => {
+                cache.base_mut().surface_mut().cache_slot = self.cache_slot.share();
+                TrimCacheSlot::Stored(cache)
+            }
+            other => other,
+        }
+    }
+
+    /// Stores `cache` as the trimmed surface cache of the surface it caches (whose cache
+    /// slot its own surface copy shares: upstream's
+    /// `SmCacheMgr::AddToObjectCache(SM_OC_TRIMSRF, ..)`, or the return of a cache taken
+    /// with [`Surface::take_trim_cache`]), and records its tree state. A face
+    /// modification noted while the cache was out ([`Surface::mark_trim_cache_face_modified`])
+    /// is applied to it. The cache's own surface copy then gets a slot of its own, so
+    /// that the slot does not own itself.
+    pub fn store_trim_cache(mut cache: TrimSrfCache<EntityRef>) {
+        let slot = cache.base().surface().cache_slot.share();
+        cache.base_mut().surface_mut().cache_slot = CacheSlot::default();
+        let tree = if cache.base().tree().is_some() {
+            CacheTreeState::Built
+        } else {
+            CacheTreeState::Unbuilt
+        };
+        slot.with(|s| {
+            if core::mem::take(&mut s.face_modified_while_out) {
+                cache.base_mut().face_was_modified = true;
+            }
+            s.tree = tree;
+            s.trim = TrimCacheSlot::Stored(Box::new(cache));
+        });
+    }
+
+    /// `SmFace::Notify(SM_NO_PRE_EDIT)` on this face surface's trimmed surface cache
+    /// (`GetObjectCache(SM_OC_TRIMSRF, ..)`): sets its `m_bFaceWasModified`; a cache in
+    /// use gets it when it is stored again.
+    pub fn mark_trim_cache_face_modified(&self) {
+        self.cache_slot.with(|s| match &mut s.trim {
+            TrimCacheSlot::Stored(cache) => cache.base_mut().face_was_modified = true,
+            TrimCacheSlot::CheckedOut => s.face_modified_while_out = true,
+            TrimCacheSlot::Empty => {}
+        });
+    }
+
+    /// Takes the owner of `other` (the same surface object as it is now): a cache's
+    /// copy of the surface it caches follows that surface's owner.
+    pub(crate) fn adopt_owner_of(&mut self, other: &Self) {
+        self.owner = other.owner;
+        self.owner_chain_face = other.owner_chain_face;
+        self.owner_zone_tol_3d = other.owner_zone_tol_3d;
+        self.update_owned_bases();
+    }
+
+    /// Marks this surface's trimmed surface cache as in use without one having been
+    /// stored (a cache under construction: upstream adds it to the queue before its
+    /// tree is built).
+    pub fn check_out_trim_cache(&self) {
+        self.cache_slot.with(|s| s.trim = TrimCacheSlot::CheckedOut);
+    }
+
+    /// Deletes this surface's trimmed surface cache (`SmCacheMgr::DeleteObjectsCache(
+    /// SM_OC_TRIMSRF, ..)`), or ends a checkout without returning a cache (a build that
+    /// failed). The tree state is left as it is (the surface cache of `SM_OC_SURFACE`
+    /// keeps its own).
+    pub fn delete_trim_cache(&self) {
+        self.cache_slot.with(|s| {
+            s.trim = TrimCacheSlot::Empty;
+            s.face_modified_while_out = false;
+        });
+    }
+
+    /// Whether this surface's cache slot holds a trimmed surface cache (stored or in
+    /// use).
+    #[must_use]
+    pub fn has_trim_cache(&self) -> bool {
+        self.cache_slot
+            .with(|s| !matches!(s.trim, TrimCacheSlot::Empty))
+    }
+
+    /// Makes this surface share `other`'s cache slot: `self` is a copy that stands for
+    /// the same surface object (a private snapshot of a B-rep standing for the B-rep
+    /// itself).
+    pub fn share_cache_slot_of(&mut self, other: &Self) {
+        self.cache_slot = other.cache_slot.share();
+    }
+
+    /// Whether `self` and `other` share one cache slot (stand for the same surface
+    /// object).
+    #[must_use]
+    pub fn shares_cache_slot_with(&self, other: &Self) -> bool {
+        self.cache_slot.same(&other.cache_slot)
     }
 
     /// The concrete kind.
