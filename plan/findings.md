@@ -19127,3 +19127,15 @@ other operand in the merge editing stages (`boolean.merge_p4` /
 `boolean.merge_p2` classification): the contained shell's faces are dropped instead
 of being kept reversed as a void. Listed in `known_mismatches.toml`; the offset
 port itself is not involved after the shell is built.
+
+## topology.brep_p5: the unlinked-record deferral was stale (2026-10-24)
+
+The runner deferred any result in which a vertex use, edge use or shell stayed in the
+arena unlinked (`SmBrep::~SmBrep`, `topology.brep_p4`, 2 cases: `isolated_op13_*`,
+`CreateWireEdgeFromCurve`). Which record op 13 leaves unlinked was not inspected;
+`boolean_merge_p1::graph` documents the same arena deviation for the vertex-shell vertex
+use of `MakeEdgeVertexTopology`. Since that `graph` compares only the records reachable
+from the B-rep, as the native export walk emits only those, an unlinked record is not
+part of the compared output and the guard only hid the case. A record that is wrongly
+still linked is reached and still compared. Removed: 797/797 pass, `--seeds 6000`
+6285/6285. The arena keeps the deleted record (documented deviation); no library change.
