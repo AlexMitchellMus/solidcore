@@ -36,7 +36,8 @@
 //! and uses the existing canonical arena-identity cache adapter; custom geometry owner keys
 //! or indirect owner chains are explicitly unsupported rather than silently skipped.
 //! Result-edge enumeration uses `SmBrep::GetEdges` list order (`topology::brep::p1::edges`);
-//! nonempty queries still defer at `NormalizedEvaluate`. `BuildSideWallOfEdgeuse` takes
+//! the result B-rep is borrowed mutably because `NormalizedEvaluate` takes the edge use's
+//! B-rep mutably (its 3D evaluation, used here, edits nothing). `BuildSideWallOfEdgeuse` takes
 //! the original B-rep as an argument (upstream reaches it through the edge use pointer).
 //! Edge-offset preparation and gap handling are shared with p2. Preparation can split
 //! result edges and notify through caller-owned stores, using either an external
@@ -55,9 +56,11 @@
 //! one pointer); the temporary planar and domain B-reps notify through arena-only
 //! stores (`ArenaNotifyState`, faces named by `loopuse::notify_ref`), as merge p3's
 //! planar boolean does, and `GetSurfaces` selects the surfaces owned under those
-//! names. Of the shared `NormalizedEvaluate` placeholder, only `MapEdgeuses`
-//! calls `topology::edgeuse::p3`; `RemoveExcessFaces` and `FillGapEdgeuses` keep it in
-//! front of their own unported continuations.
+//! names. `FillGapEdgeuses` builds its corner-blend faces through `make_cap_face`'s
+//! `CreateFaceFromSurface`, notifying through the caller's result-keyed stores; a
+//! null closest edge, same-oriented edge use, end mate or blended face (all
+//! dereferenced upstream) is a null-pointer error, and any failed `CreateCornerBlend`
+//! is `SM_ERR` (`SER(SM_ERR)`), unported callees aside.
 //! No new input-driven recursion; existing topology walks are cycle-bounded.
 //! The lamina clean-up's `DeleteFaces` runs through merge p4's arena intersector over
 //! the offset B-rep alone (both upstream operands are that B-rep); it notifies under
@@ -599,7 +602,7 @@ impl OffsetExecutive {
         &self,
         kernel: &Kernel,
         original: &Brep,
-        result: &Brep,
+        result: &mut Brep,
     ) -> Result<Option<Vec<FaceId>>> {
         if !self.merge_results || !self.shell_faces.is_empty() {
             return Ok(None);
@@ -610,10 +613,12 @@ impl OffsetExecutive {
         // SmBrep::GetEdges (unit topology.brep_p1): the m_pEdgeListHead list order
         for id in crate::topology::brep::p1::edges(result, None)? {
             let primary = required(eu::primary_edgeuse(result, id)?)?;
-            // Upstream ignores the evaluation status and keeps the initialized point.
-            // An unported evaluator must still propagate instead of supplying a fake point.
-            let point =
-                ignored(normalized_evaluate(result, primary, 0.5, false))?.unwrap_or(Vec3::UNDEF);
+            // NormalizedEvaluate(0.5, FALSE, sPnt): 3d. Upstream ignores the evaluation
+            // status and keeps the initialized point.
+            let point = ignored(eu3::normalized_evaluate(
+                kernel, result, primary, 0.5, false, false, true,
+            ))?
+            .map_or(Vec3::UNDEF, |eval| eval.point);
             if original_cache.is_none() {
                 original_cache = Some(make_original_brep_cache(kernel, original)?);
             }
@@ -846,7 +851,14 @@ impl OffsetExecutive {
             self.relate_edge_face(edge, new_face);
         }
 
-        self.fill_offset_edgeuse_gaps(kernel, original, edge, &synchronized, &new_faces)
+        self.fill_offset_edgeuse_gaps(
+            kernel,
+            original,
+            edge,
+            &synchronized,
+            &new_faces,
+            &mut notifications.rekey(offset_key_of),
+        )
     }
 
     /// The geometry creator this executive's scalars stand for
@@ -886,18 +898,32 @@ impl OffsetExecutive {
         Ok(Some((edge, synchronized)))
     }
 
-    /// Notification-free tail after the synchronized pair loop, shared with p2.
+    /// Tail after the synchronized pair loop, shared with p2: the gap fills' blend
+    /// faces notify through `notifications` (keyed by result identities).
     /// Both gap calls run before either status is inspected, as upstream.
     pub(super) fn fill_offset_edgeuse_gaps(
         &mut self,
-        kernel: &Kernel,
+        kernel: &mut Kernel,
         original: &Brep,
         edge: EdgeId,
         synchronized: &SynchronizedEdgeuses,
         new_faces: &[FaceId],
+        notifications: &mut NotifyState<'_>,
     ) -> Result<()> {
-        let first = self.fill_gap_edgeuses(kernel, edge, &synchronized.gaps, new_faces);
-        let second = self.fill_gap_edgeuses(kernel, edge, &synchronized.other_gaps, new_faces);
+        let first = self.fill_gap_edgeuses_with_state(
+            kernel,
+            edge,
+            &synchronized.gaps,
+            new_faces,
+            notifications,
+        );
+        let second = self.fill_gap_edgeuses_with_state(
+            kernel,
+            edge,
+            &synchronized.other_gaps,
+            new_faces,
+            notifications,
+        );
         let mut problems = false;
         for status in [first, second] {
             match status {
@@ -922,30 +948,135 @@ impl OffsetExecutive {
         Ok(())
     }
 
-    /// Fills unmatched edge gaps. Empty gaps succeed without dereferencing any topology.
+    /// Fills unmatched edge gaps (`FillGapEdgeuses`). Empty gaps succeed without
+    /// dereferencing any topology. For each gap use (3D midpoint first), every
+    /// candidate-face vertex within the summed vertex tolerances of either end
+    /// contributes its incident edge whose far vertex is closest to the midpoint; the
+    /// candidate list persists across gap uses. Unless there are exactly two
+    /// candidates this returns success; otherwise the gap use and the candidates'
+    /// same-oriented uses get a corner blend whose surfaces become offset faces,
+    /// related to `edge` and to the faces they blend. `notifications` identifies the
+    /// offset B-rep's entities for the new faces' notifications.
     pub fn fill_gap_edgeuses(
         &mut self,
-        _kernel: &Kernel,
-        _edge: EdgeId,
+        kernel: &mut Kernel,
+        edge: EdgeId,
         gaps: &[EdgeuseId],
         candidate_faces: &[FaceId],
+        notifications: &mut NotifyEnv<'_>,
+    ) -> Result<()> {
+        self.fill_gap_edgeuses_with_state(
+            kernel,
+            edge,
+            gaps,
+            candidate_faces,
+            &mut NotifyState::from_env(notifications),
+        )
+    }
+
+    fn fill_gap_edgeuses_with_state(
+        &mut self,
+        kernel: &mut Kernel,
+        edge: EdgeId,
+        gaps: &[EdgeuseId],
+        candidate_faces: &[FaceId],
+        notifications: &mut NotifyState<'_>,
     ) -> Result<()> {
         if gaps.is_empty() {
             return Ok(());
         }
-        let brep = self.required_offset_brep()?;
         let mut all_vertices = Vec::new();
-        for &face in candidate_faces {
-            all_vertices.extend(face_vertices(brep, face)?);
+        {
+            let brep = self.required_offset_brep()?;
+            for &face in candidate_faces {
+                all_vertices.extend(face_vertices(brep, face)?);
+            }
         }
+        let mut candidate_edges: Vec<Option<EdgeId>> = Vec::new();
         for &gap in gaps {
-            let _midpoint = normalized_evaluate(brep, gap, 0.5, false)?;
-            // Continuation cpp:3149–3214: for each endpoint find coincident candidate
-            // vertices using the sum of vertex tolerances (strict <); take each
-            // closest incident edge. The candidate list persists across gap uses.
-            // Unless exactly two candidates exist return success. Otherwise create
-            // the corner blend (#145), construct its faces and record both relations.
-        }
+            let brep = required(self.offset_brep.as_mut())?;
+            // NormalizedEvaluate(0.5, FALSE, sMidPoint): 3d
+            let mid_point =
+                eu3::normalized_evaluate(kernel, brep, gap, 0.5, false, false, true)?.point;
+
+            // Look at each end of the Gap EU
+            for jj in 0..2 {
+                let end_use = if jj == 1 {
+                    required(eu::mate(brep, gap)?)?
+                } else {
+                    gap
+                };
+                let v = start_vertex(brep, end_use)?;
+                let v_pnt = brep.vertex(v)?.point;
+                let v_tol = vertex::tolerance(brep, v)?;
+
+                // Look at each vertex of the candidate faces
+                for &test_v in &all_vertices {
+                    let tol = vertex::tolerance(brep, test_v)? + v_tol;
+                    let test_pnt = brep.vertex(test_v)?.point;
+
+                    // See if a test vertex is on current end of Gap EU
+                    if test_pnt.distance(v_pnt) < tol {
+                        let mut closest = None;
+                        let mut closest_dist = BIG_DOUBLE;
+                        for e in vertex::edges(brep, test_v, None)? {
+                            let other_v = required(edge::other_vertex(brep, e, Some(test_v))?)?;
+                            let dist = mid_point.distance(brep.vertex(other_v)?.point);
+                            if dist < closest_dist {
+                                closest_dist = dist;
+                                closest = Some(e);
+                            }
+                        }
+                        candidate_edges.push(closest);
+                    }
+                }
+            }
+
+            let [first, second] = candidate_edges.as_slice() else {
+                // MSG(_T("Possible Problem In Offset"));
+                return Ok(());
+            };
+
+            let mut blended_faces: Vec<FaceId> = Vec::new();
+            let mut edgeuses = vec![gap];
+            for candidate in [*first, *second] {
+                // upstream dereferences a null closest edge, edge use or face
+                let e = required(candidate)?;
+                let same = required(edge::same_oriented_edgeuse(brep, e)?)?;
+                edgeuses.push(same);
+                let face = required(eu::face(brep, same)?)?;
+                if !blended_faces.contains(&face) {
+                    blended_faces.push(face);
+                }
+            }
+
+            // We should now have enough information to make a blend.
+            let blend_surfaces = match bp1::create_corner_blend(
+                kernel,
+                brep,
+                &edgeuses,
+                None,
+                self.approximation_tol_3d,
+                self.tangency_tol_radians,
+            ) {
+                Ok(surfaces) => surfaces,
+                Err(error) if error.is_unported() => return Err(error),
+                Err(_) => return Err(SolidError::sm_err(OP)),
+            };
+
+            for surface in blend_surfaces {
+                let new_face = self.make_cap_face(
+                    kernel,
+                    Surface::from(surface),
+                    Vec::new(),
+                    Vec::new(),
+                    &[],
+                    notifications,
+                )?;
+                self.relate_edge_face(edge, new_face);
+                self.blend_to_faces.relate_to_many(new_face, &blended_faces)?;
+            }
+        } // end iter every GapEdgeuse
         Ok(())
     }
 
@@ -2293,15 +2424,6 @@ fn collect_excess_faces(
     Ok(())
 }
 
-fn normalized_evaluate(brep: &Brep, edgeuse: EdgeuseId, _param: f64, _uv: bool) -> Result<Vec3> {
-    brep.edgeuse(edgeuse)?;
-    // UNPORTED(topology.edgeuse_p3): SmEdgeuse::NormalizedEvaluate
-    Err(SolidError::unported(
-        "SmEdgeuse::NormalizedEvaluate",
-        "topology.edgeuse_p3",
-    ))
-}
-
 fn notify_edge_and_vertices(
     original: &Brep,
     old_edge: EdgeId,
@@ -2348,6 +2470,20 @@ mod tests {
     use crate::nurbs::b_spline_surface::BSplineSurface;
     use crate::surface::plane::Plane;
     use crate::topology::{Edge, Edgeuse, Face, Faceuse, ShellId, Vertex, Vertexuse};
+
+    /// Runs `run` with empty notification stores keyed by arena identity.
+    fn with_state<R>(run: impl FnOnce(&mut NotifyState<'_>) -> R) -> R {
+        let mut records = BTreeMap::new();
+        let mut attributes = AttributeStore::default();
+        let key = |entity| loopuse::notify_ref(entity);
+        let mut env = NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &key,
+        };
+        run(&mut NotifyState::from_env(&mut env))
+    }
 
     fn executive() -> OffsetExecutive {
         OffsetExecutive::new(OffsetOperation::SolidOffset, 0.125, 1.0e-6)
@@ -3164,48 +3300,50 @@ mod tests {
 
     #[test]
     fn shared_gap_tail_keeps_empty_success_deferred_errors_and_pipe_fallback() {
-        let kernel = Kernel::default();
+        let mut kernel = Kernel::default();
         let mut original = Brep::new();
         let original_use = add_use(&mut original, 0.0, 1.0, 1.0);
         let edge = edge_of(&original, original_use).unwrap();
         let mut exec = executive();
         assert_eq!(
-            exec.fill_offset_edgeuse_gaps(
-                &kernel,
+            with_state(|state| exec.fill_offset_edgeuse_gaps(
+                &mut kernel,
                 &original,
                 edge,
                 &SynchronizedEdgeuses::default(),
                 &[],
-            ),
+                state,
+            )),
             Ok(())
         );
         assert!(exec.offset_brep().is_none());
         let mut result = Brep::new();
+        // evaluates, but has no vertex use and no mate (upstream dereferences them)
         let live = add_use(&mut result, 0.0, 1.0, 1.0);
         let missing = EdgeuseId::from_index(99);
         exec.set_offset_brep(result);
-        for (first, second) in [(missing, live), (live, missing)] {
+        // Either failing gap fill is a problem; both run, then the pipe fallback.
+        for (first, second) in [(missing, live), (live, missing), (missing, missing)] {
             let synchronized = SynchronizedEdgeuses {
                 gaps: vec![first],
                 other_gaps: vec![second],
                 ..SynchronizedEdgeuses::default()
             };
             assert_dependency(
-                exec.fill_offset_edgeuse_gaps(&kernel, &original, edge, &synchronized, &[]),
-                "SmEdgeuse::NormalizedEvaluate",
-                "topology.edgeuse_p3",
+                with_state(|state| {
+                    exec.fill_offset_edgeuse_gaps(
+                        &mut kernel,
+                        &original,
+                        edge,
+                        &synchronized,
+                        &[],
+                        state,
+                    )
+                }),
+                "SmBrep::CreateFacesFromSurface",
+                "topology.brep_p8",
             );
         }
-        let synchronized = SynchronizedEdgeuses {
-            gaps: vec![missing],
-            other_gaps: vec![missing],
-            ..SynchronizedEdgeuses::default()
-        };
-        assert_dependency(
-            exec.fill_offset_edgeuse_gaps(&kernel, &original, edge, &synchronized, &[]),
-            "SmBrep::CreateFacesFromSurface",
-            "topology.brep_p8",
-        );
     }
 
     #[test]
@@ -3800,9 +3938,16 @@ mod tests {
         }
         assert_eq!(original.tolerance(), 1.0e-6);
         assert_eq!(executive.offset_brep().unwrap().tolerance(), 1.0e-3);
-        executive
-            .fill_gap_edgeuses(&kernel, EdgeId::from_index(u32::MAX), &[], &[])
-            .unwrap();
+        with_state(|state| {
+            executive.fill_gap_edgeuses_with_state(
+                &mut Kernel::default(),
+                EdgeId::from_index(u32::MAX),
+                &[],
+                &[],
+                state,
+            )
+        })
+        .unwrap();
     }
 
     #[test]
