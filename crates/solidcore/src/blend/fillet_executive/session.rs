@@ -21,7 +21,7 @@
 use std::collections::BTreeMap;
 
 use super::p1::{ExecutiveObjects, SolverLoadingAccess};
-use super::p2::{FilletParameters, FilletParametersAccess, SolverSpec};
+use super::p2::{EdgeMapAccess, FilletParameters, FilletParametersAccess, SolverSpec};
 use super::p3::{
     BrepCreationAccess, CornerAdjustmentAccess, CornerEdgeAccess, CornerVertexAccess, CornerView,
     ErrorInfo, FaceConstructionAccess, FaceShrinkAccess, FaceStitchAccess, FilletExecutive,
@@ -217,6 +217,16 @@ impl SessionObjects<'_> {
             }
         }
     }
+    fn mapping_edge(
+        &self,
+        object: FilletObject,
+    ) -> Result<&crate::blend::fillet_geom::p1::FilletEdge> {
+        let FilletObject::Topology(FilletBody::Pseudo, EntityRef::Edge(edge)) = object else {
+            return Err(invalid("mapping edge is not actual pseudo topology"));
+        };
+        self.pseudo.fillet_edge(edge)
+    }
+
     fn solver(&self, id: FilletSolverId) -> Result<&SolverObject> {
         self.solvers
             .get(id.0 as usize)
@@ -843,6 +853,16 @@ impl<'target> FilletSession<'target> {
             .create_fillet_brep(k, &mut self.objects, error_info)
     }
 
+    /// Map actual pseudo fillet edges to the constructed intermediate body's edges.
+    /// The native mapping algorithm reads candidate raw intervals without repairing them.
+    ///
+    /// # Errors
+    /// Native curve-evaluation/mapping errors, preserving prior mappings and error notes.
+    pub fn set_fillet_brep_edge_map(&mut self, k: &mut Kernel) -> Result<()> {
+        self.executive
+            .set_fillet_brep_edge_map(k, &mut self.objects)
+    }
+
     /// Load this actual solver through the native executive algorithm.
     ///
     /// # Errors
@@ -935,6 +955,146 @@ impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
             |context| *context.do_global_merge,
             |context| &mut *context.pseudo,
         )
+    }
+}
+
+impl EdgeMapAccess<FilletObject> for SessionObjects<'_> {
+    fn mapping_edges(&self, body: FilletObject) -> Result<Vec<FilletObject>> {
+        FaceStitchAccess::stitch_edges(self, body)
+    }
+    fn mapping_solver_geoms(&self, solver: FilletObject) -> Result<Vec<FilletObject>> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("mapping solver is not retained"));
+        };
+        Ok(self
+            .solver(id)?
+            .base()
+            .fillet_geoms
+            .iter()
+            .copied()
+            .map(FilletObject::Geometry)
+            .collect())
+    }
+    fn mapping_geom_rails(&self, geom: FilletObject) -> Result<Vec<Option<FilletObject>>> {
+        let FilletObject::Geometry(id) = geom else {
+            return Err(invalid("mapping geometry is not retained"));
+        };
+        let geom = self.pseudo.geom(id)?;
+        Ok(geom
+            .rails
+            .iter()
+            .copied()
+            .chain(geom.other_rails1.iter().copied().map(Some))
+            .chain(geom.other_rails2.iter().copied().map(Some))
+            .map(|edge| {
+                edge.map(|edge| FilletObject::Topology(FilletBody::Pseudo, EntityRef::Edge(edge)))
+            })
+            .collect())
+    }
+    fn mapping_side_edgeuses(&self, geom: FilletObject) -> Result<Vec<FilletObject>> {
+        let FilletObject::Geometry(id) = geom else {
+            return Err(invalid("mapping geometry is not retained"));
+        };
+        Ok(self
+            .pseudo
+            .geom(id)?
+            .side_eus
+            .iter()
+            .copied()
+            .map(|eu| FilletObject::Topology(FilletBody::Pseudo, EntityRef::Edgeuse(eu)))
+            .collect())
+    }
+    fn mapping_edgeuse_edge(&self, edgeuse: FilletObject) -> Result<Option<FilletObject>> {
+        let FilletObject::Topology(FilletBody::Pseudo, EntityRef::Edgeuse(eu)) = edgeuse else {
+            return Err(invalid("mapping edgeuse is not actual pseudo topology"));
+        };
+        Ok(self
+            .pseudo
+            .brep()
+            .edgeuse(eu)?
+            .edge
+            .map(|edge| FilletObject::Topology(FilletBody::Pseudo, EntityRef::Edge(edge))))
+    }
+    fn mapping_original_face(&self, edge: FilletObject) -> Result<Option<FilletObject>> {
+        Ok(self
+            .mapping_edge(edge)?
+            .original_face()
+            .map(|face| FilletObject::Topology(FilletBody::Target, EntityRef::Face(face))))
+    }
+    fn mapping_original_edge(&self, edge: FilletObject) -> Result<Option<FilletObject>> {
+        Ok(self
+            .mapping_edge(edge)?
+            .original_edge()
+            .map(|edge| FilletObject::Topology(FilletBody::Target, EntityRef::Edge(edge))))
+    }
+    fn mapping_corner_edges(&self, corner: FilletObject) -> Result<Vec<Option<FilletObject>>> {
+        let FilletObject::Corner(id) = corner else {
+            return Err(invalid("mapping corner is not retained"));
+        };
+        let corner = self
+            .corners
+            .get(id.0 as usize)
+            .ok_or_else(|| invalid("mapping corner is not live"))?;
+        Ok(corner
+            .edges
+            .iter()
+            .copied()
+            .map(|edge| {
+                Some(FilletObject::Topology(
+                    FilletBody::Pseudo,
+                    EntityRef::Edge(edge),
+                ))
+            })
+            .collect())
+    }
+    fn mapping_setback(&self, corner: FilletObject) -> Result<f64> {
+        let FilletObject::Corner(id) = corner else {
+            return Err(invalid("mapping corner is not retained"));
+        };
+        Ok(self
+            .corners
+            .get(id.0 as usize)
+            .ok_or_else(|| invalid("mapping corner is not live"))?
+            .set_back_dist())
+    }
+    fn mapping_note(
+        &self,
+        edge: FilletObject,
+    ) -> Result<(
+        Option<&'static str>,
+        crate::blend::fillet_geom::p1::FilletEdgeType,
+        crate::blend::fillet_geom::p1::FilStatus,
+    )> {
+        let edge = self.mapping_edge(edge)?;
+        Ok((edge.name(), edge.fillet_edge_type(), edge.status()))
+    }
+    fn mapping_find(
+        &mut self,
+        k: &mut Kernel,
+        edge: FilletObject,
+        candidates: &[FilletObject],
+        multiple: bool,
+    ) -> Result<()> {
+        let FilletObject::Topology(FilletBody::Pseudo, EntityRef::Edge(edge)) = edge else {
+            return Err(invalid("mapping edge is not actual pseudo topology"));
+        };
+        let candidates = candidates
+            .iter()
+            .map(|object| {
+                let FilletObject::IntermediateTopology(EntityRef::Edge(edge)) = *object else {
+                    return Err(invalid(
+                        "mapping candidate is not actual intermediate topology",
+                    ));
+                };
+                Ok(edge)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let body = self
+            .intermediate
+            .as_ref()
+            .ok_or_else(|| invalid("intermediate body is not allocated"))?;
+        self.pseudo
+            .find_fillet_brep_edge(k, edge, body, &candidates, multiple)
     }
 }
 
