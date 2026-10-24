@@ -446,3 +446,45 @@ fn actual_box_rail_trim_preserves_live_rails_and_classification_option() {
         ));
     }
 }
+
+#[test]
+fn actual_box_rollover_keeps_scoped_attached_rail_classifications() {
+    use solidcore::blend::fillet_classification::FilletClassObject;
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
+    let edge = target.edges().ids().next().unwrap();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    session
+        .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+        .unwrap();
+    session.create_corners(&k, None).unwrap();
+    session.process_smooth_edge_sequences(&mut k).unwrap();
+    session.create_corner_vertices(&mut k).unwrap();
+    session.adjust_corner_topology(&mut k).unwrap();
+    session.calculate_solver_geometry(&mut k).unwrap();
+    session.calculate_corner_edges(&mut k).unwrap();
+    session.trim_solver_rails(&mut k).unwrap();
+    assert!(session.executive().options.classification);
+    session.classify_solver_rails(&mut k).unwrap();
+    let rails: Vec<_> = session
+        .pseudo_brep()
+        .geoms()
+        .iter()
+        .flat_map(|geom| geom.rails.into_iter().flatten())
+        .collect();
+    assert!(!rails.is_empty());
+    for rail in rails {
+        let record = session.pseudo_brep().fillet_edge(rail).unwrap();
+        let cc = record.curve_class().unwrap();
+        assert_eq!(
+            cc.curve(),
+            Some(FilletClassObject::Curve(FilletBody::Pseudo, rail))
+        );
+        assert_eq!(
+            cc.face(),
+            record
+                .original_face()
+                .map(|face| FilletClassObject::Topology(FilletBody::Target, EntityRef::Face(face)))
+        );
+    }
+}
