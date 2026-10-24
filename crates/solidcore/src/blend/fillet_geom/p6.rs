@@ -1749,6 +1749,35 @@ impl FilletBrep {
         stat
     }
 
+    /// Intersect with access to the actual geometry's mutable offset objects.
+    ///
+    /// # Errors
+    /// As [`Self::rail_edgeuse_intersect_with_solver_ops`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn rail_edgeuse_intersect_with_geometry(
+        &mut self,
+        k: &Kernel,
+        g: FilletGeomId,
+        solver: &mut dyn FilletSolverOps,
+        target: &mut Brep,
+        rail_index: usize,
+        edgeuse: EdgeuseId,
+        guess: f64,
+        tsect: &mut TsectPnt,
+    ) -> Result<Option<f64>> {
+        let geometry = self.geom_mut(g)?;
+        if geometry.fillet_solver().is_none() {
+            return Err(SolidError::null_pointer(OP_RAIL_EU));
+        }
+        let saved = solver.solver().fillet_geom_for_surfaces();
+        solver.solver_mut().set_fillet_geom_for_surfaces(Some(g));
+        let result = solver.rail_edgeuse_intersect_on_geometry(
+            k, geometry, target, rail_index, edgeuse, guess, tsect,
+        );
+        solver.solver_mut().set_fillet_geom_for_surfaces(saved);
+        result
+    }
+
     /// `SmFilletGeom::TrimOriginalSurfaces(rFilletBrepFacesKept, rOriginalFacesDelete,
     /// rMarkLocks)`: for each rail (and other rail) of geometry `g` of type
     /// `SM_FE_RAIL` whose fillet B-rep edge is mated to a target edge with two faces:
