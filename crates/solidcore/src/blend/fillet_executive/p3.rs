@@ -1099,6 +1099,55 @@ where
     }
 }
 
+/// Live operations for the post-vertex corner topology-adjustment stage.
+pub trait CornerAdjustmentAccess<O: ClassObject + SolutionObject + Ord>:
+    CornerVertexAccess<O>
+{
+    /// Check and fix the actual corner's degeneracy.
+    ///
+    /// # Errors
+    /// Actual lookups or concrete degeneracy-mutation failures.
+    fn adjustment_check_degeneracy(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<bool>;
+    /// Invoke the corner's actual topology-adjustment virtual operation.
+    ///
+    /// # Errors
+    /// Actual context or concrete adjustment failures.
+    fn adjustment_topology(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
+}
+
+impl<O, A> CornerAdjustmentAccess<O> for A
+where
+    O: ClassObject + SolutionObject + Ord,
+    A: ExecutiveAccess<O> + ?Sized,
+{
+    fn adjustment_check_degeneracy(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<bool> {
+        ExecutiveAccess::check_degeneracy(self, k, corner, executive)
+    }
+    fn adjustment_topology(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
+        ExecutiveAccess::adjust_topology(self, k, corner, executive)
+    }
+}
+
 /// The `SmStitch` switches passed to [`ExecutiveAccess::do_stitching`]. `Default` is
 /// the configuration `DoFilleting` builds.
 #[derive(Debug, Clone, Copy)]
@@ -1288,6 +1337,31 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         self.record_corner_failure(view, comment)
     }
 
+    /// Adjust every corner's topology after all corner vertices are calculated.
+    ///
+    /// # Errors
+    /// Actual context/degeneracy errors or native adjustment failure metadata.
+    pub fn adjust_corner_topology(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl CornerAdjustmentAccess<O>,
+    ) -> Result<()> {
+        let mut index = 0;
+        while let Some(corner) = self.corners.get(index).copied() {
+            if !access.adjustment_check_degeneracy(k, corner, self)?
+                && ignore(access.adjustment_topology(k, corner, self))?.is_none()
+            {
+                return self.corner_vertex_failure(
+                    access,
+                    corner,
+                    "Fillet Corner Error: Topology Adjustment Failure",
+                );
+            }
+            index += 1;
+        }
+        Ok(())
+    }
+
     /// Construct and stitch the fillet shell, preserving every stage after each
     /// missing dependency call. `error_out` is assigned only on success.
     pub fn create_fillet_brep(
@@ -1305,19 +1379,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         ignore(access.process_smooth_edge_sequences(k, self))?;
 
         self.create_corner_vertices(k, access)?;
-        let mut index = 0;
-        while let Some(corner) = self.corners.get(index).copied() {
-            if !access.check_degeneracy(k, corner, self)?
-                && ignore(access.adjust_topology(k, corner, self))?.is_none()
-            {
-                return self.corner_failure(
-                    access,
-                    corner,
-                    "Fillet Corner Error: Topology Adjustment Failure",
-                );
-            }
-            index += 1;
-        }
+        self.adjust_corner_topology(k, access)?;
         let mut index = 0;
         while let Some(solver) = self.solvers.get(index).copied() {
             if ignore(access.calc_fillet_geom(k, solver, self))?.is_none() {

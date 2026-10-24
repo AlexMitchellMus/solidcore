@@ -218,3 +218,38 @@ fn real_box_corner_vertex_stage_retains_native_geometry_and_rail_start() {
         Some(first_vertex)
     );
 }
+
+#[test]
+fn real_box_post_vertex_adjustment_preserves_retained_corner_topology() {
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
+    let edge = target.edges().ids().next().unwrap();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    session
+        .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+        .unwrap();
+    session.create_corners(&k, None).unwrap();
+    session.create_corner_vertices(&mut k).unwrap();
+    let corners = session.executive().corners.clone();
+    let edges = session.pseudo_brep().edge_list().to_vec();
+    let mut points = Vec::new();
+    for &object in &corners {
+        let FilletObject::Corner(id) = object else {
+            panic!("actual corner required");
+        };
+        for &vertex in &session.corner(id).unwrap().vertices {
+            points.push((vertex, session.pseudo_brep().vertex_point(vertex).unwrap()));
+        }
+    }
+    session.adjust_corner_topology(&mut k).unwrap();
+    assert_eq!(session.executive().corners, corners);
+    assert_eq!(session.pseudo_brep().edge_list(), edges);
+    for (vertex, point) in points {
+        assert_eq!(session.pseudo_brep().vertex_point(vertex).unwrap(), point);
+        assert!(session
+            .pseudo_brep()
+            .fillet_vertex(vertex)
+            .unwrap()
+            .is_processed());
+    }
+}

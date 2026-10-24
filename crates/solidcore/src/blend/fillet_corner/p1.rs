@@ -1505,6 +1505,36 @@ impl FilletCorner {
         Ok(())
     }
 
+    /// Whether every corner vertex is processed and within the corner tolerance.
+    /// This is the read-only prefix of `CheckAndFixDegeneracy`, before topology edits.
+    ///
+    /// # Errors
+    /// Actual pseudo-vertex record or point lookup failures.
+    pub fn vertices_are_degenerate(
+        &self,
+        pseudo: &FilletBrep,
+        corner_point: Point3,
+    ) -> Result<bool> {
+        // for every corner filletVertex
+        for &fv in &self.vertices {
+            // low work - corners with unprocessed vertices are not degenerate
+            if !pseudo.fillet_vertex(fv)?.is_processed() {
+                return Ok(false);
+            }
+
+            // get corner filletVertex point
+            let pnt = pseudo.vertex_point(fv)?;
+
+            // when filletVertex point is more than tolerance from origVertex point
+            if pnt.distance(corner_point) > self.approx_tol_3d {
+                // the corner is not degenerat
+                return Ok(false);
+            }
+        } // end iter all corner filletVertices
+
+        Ok(true)
+    }
+
     /// `CheckAndFixDegeneracy`: a corner whose processed fillet vertices all lie within
     /// the corner's approximation tolerance of the filleted vertex is degenerate: its
     /// corner edges are deleted (and dropped from the executive's topology edges), its
@@ -1531,22 +1561,9 @@ impl FilletCorner {
         let corner_vertex = self.vertex.ok_or_else(null)?;
         let corner_pnt = env.target.vertex(corner_vertex)?.point;
 
-        // for every corner filletVertex
-        for &fv in &self.vertices {
-            // low work - corners with unprocessed vertices are not degenerate
-            if !env.pseudo.fillet_vertex(fv)?.is_processed() {
-                return Ok(false);
-            }
-
-            // get corner filletVertex point
-            let pnt = env.pseudo.vertex_point(fv)?;
-
-            // when filletVertex point is more than tolerance from origVertex point
-            if pnt.distance(corner_pnt) > self.approx_tol_3d {
-                // the corner is not degenerat
-                return Ok(false);
-            }
-        } // end iter all corner filletVertices
+        if !self.vertices_are_degenerate(env.pseudo, corner_pnt)? {
+            return Ok(false);
+        }
 
         // arrive here when all corner filletVertices are within tolerance
         // of origVertex point

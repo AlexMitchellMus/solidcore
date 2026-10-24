@@ -22,7 +22,9 @@ use std::collections::BTreeMap;
 
 use super::p1::{ExecutiveObjects, SolverLoadingAccess};
 use super::p2::{FilletParameters, FilletParametersAccess, SolverSpec};
-use super::p3::{CornerVertexAccess, CornerView, ErrorInfo, FilletExecutive};
+use super::p3::{
+    CornerAdjustmentAccess, CornerVertexAccess, CornerView, ErrorInfo, FilletExecutive,
+};
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_geom::p1::{
     CornerLookup, FilletBrep, FilletCornerId, FilletCornerType, FilletSolverId, FilletVertexType,
@@ -486,6 +488,17 @@ impl<'target> FilletSession<'target> {
     /// Actual corner operations or lookups, with native failure metadata retained.
     pub fn create_corner_vertices(&mut self, k: &mut Kernel) -> Result<()> {
         self.executive.create_corner_vertices(k, &mut self.objects)
+    }
+
+    /// Run post-vertex corner topology adjustment on the actual retained objects.
+    ///
+    /// Ordinary nondegenerate corners use the inherited native base operation.
+    /// Degenerate mutation and other concrete adjustment contexts remain unported.
+    ///
+    /// # Errors
+    /// Actual point/state lookup failures or missing concrete mutation context.
+    pub fn adjust_corner_topology(&mut self, k: &mut Kernel) -> Result<()> {
+        self.executive.adjust_corner_topology(k, &mut self.objects)
     }
 
     /// Load this actual solver through the native executive algorithm.
@@ -999,5 +1012,59 @@ impl CornerVertexAccess<FilletObject> for SessionObjects<'_> {
             ));
         }
         self.calc_nx1_corner_vert_geom(k, id)
+    }
+}
+
+impl CornerAdjustmentAccess<FilletObject> for SessionObjects<'_> {
+    fn adjustment_check_degeneracy(
+        &mut self,
+        _k: &mut Kernel,
+        corner: FilletObject,
+        _executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<bool> {
+        let corner = self.corner_object(corner)?;
+        let vertex = corner
+            .filleted_vertex()
+            .ok_or_else(|| invalid("corner without original vertex"))?;
+        let point = self.target.vertex(vertex)?.point;
+        if !corner.vertices_are_degenerate(&self.pseudo, point)? {
+            return Ok(false);
+        }
+        // UNPORTED(blend.fillet_executive_p1): actual retained topology/attribute mutation during degeneracy fixing.
+        Err(SolidError::unported(
+            "SmFilletCorner::CheckAndFixDegeneracy (live mutation context)",
+            "blend.fillet_executive_p1",
+        ))
+    }
+    fn adjustment_topology(
+        &mut self,
+        _k: &mut Kernel,
+        corner: FilletObject,
+        _executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let FilletObject::Corner(id) = corner else {
+            return Err(invalid("object is not a corner"));
+        };
+        let corner = self
+            .corners
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| invalid("corner is not live"))?;
+        corner.adjust_topology_with(
+            &mut (),
+            |_, _| {
+                // UNPORTED(blend.fillet_executive_p1): actual retained Nx2 adjustment context.
+                Err(SolidError::unported(
+                    "SmFilletNx2Corner::AdjustTopology (live context)",
+                    "blend.fillet_executive_p1",
+                ))
+            },
+            |_, _| {
+                // UNPORTED(blend.fillet_executive_p1): actual retained NxN adjustment context.
+                Err(SolidError::unported(
+                    "SmFilletNxNCorner::AdjustTopology (live context)",
+                    "blend.fillet_executive_p1",
+                ))
+            },
+        )
     }
 }
