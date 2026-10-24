@@ -29,7 +29,7 @@ use crate::intersect::curve_class::p1::CurveClassification;
 use crate::intersect::curve_class::p5::ClassGeometryMut;
 use crate::intersect::curve_class::p6::{MergeContext, MergeIntervalBrep};
 use crate::intersect::point_class::{
-    ClassGeometry, ClassObject, ClassObjectKind, PointClassType, PointClassification,
+    ClassGeometry, ClassObject, ClassObjectKind, MergeOutputs, PointClassType, PointClassification,
 };
 use crate::intersect::topology_solver::p1::TopologyObjects;
 use crate::kernel::Kernel;
@@ -495,6 +495,16 @@ impl CurveOnClassifyObjects<H> for Objs<'_, '_> {
 }
 
 impl ProtoBrep<H> for ArenaPair<'_> {
+    /// `MergeIntoObject` on the operand the classification's object names, through
+    /// [`MergeIntervalBrep::merge_context`].
+    fn merge_point_class_into_brep(
+        &mut self,
+        k: &mut Kernel,
+        pc: &mut PointClassification<H>,
+        src_point: Point3,
+    ) -> crate::Result<MergeOutputs<H>> {
+        crate::intersect::curve_class::p6::merge_into_object_mut(k, self, pc, src_point)
+    }
     fn edge_interval(&self, edge: H) -> Option<Extent1d> {
         ed::interval(self.brep(edge)?, eid(edge)).ok()
     }
@@ -650,6 +660,64 @@ impl ProtoBrep<H> for ArenaPair<'_> {
             false,
             false,
             true,
+        )
+    }
+
+    /// `SmEdgeuse::EvaluateBinormal(t, FALSE, ..)` on the operand's B-rep
+    /// ([`crate::topology::edgeuse::p3::evaluate_binormal`]).
+    fn edgeuse_evaluate_binormal(
+        &mut self,
+        k: &Kernel,
+        edgeuse: H,
+        param: f64,
+    ) -> crate::Result<crate::math::Vec3> {
+        if edgeuse.kind != K_EDGEUSE {
+            return Err(invalid("not an edge use handle"));
+        }
+        let b = self.brep_m(edgeuse)?;
+        Ok(crate::topology::edgeuse::p3::evaluate_binormal(
+            k,
+            b,
+            EdgeuseId::from_index(edgeuse.i),
+            param,
+            false,
+            &crate::topology::edgeuse::p3::BinormalOptions::default(),
+        )?
+        .binormal)
+    }
+    /// `SmBrep::MakeEdgeInFace` of `brep`'s B-rep, which checks that operand's own
+    /// `m_bEditingEnabled`, through [`MergeIntervalBrep::merge_context`] of the face
+    /// ([`crate::topology::proto_topology::p2::make_edge_in_face_in_context`]).
+    fn brep_make_edge_in_face(
+        &mut self,
+        k: &Kernel,
+        brep: H,
+        face: H,
+        start: H,
+        end: H,
+        curve: SmCurve,
+        uv_curve: Option<SmCurve>,
+        interval: Extent1d,
+        orientation: OrientType,
+        tolerance: f64,
+    ) -> crate::Result<(Option<H>, Option<H>, Option<H>)> {
+        let in_brep = |h: H, kind: u8| brep.kind == K_BREP && h.b == brep.b && h.kind == kind;
+        if !in_brep(face, K_FACE) || !in_brep(start, K_VERTEX) || !in_brep(end, K_VERTEX) {
+            return Err(invalid("face or vertex is not in the B-rep"));
+        }
+        let ctx = self
+            .merge_context(face)
+            .ok_or_else(|| invalid("handle names an absent B-rep"))?;
+        crate::topology::proto_topology::p2::make_edge_in_face_in_context(
+            k,
+            ctx,
+            vid(start),
+            vid(end),
+            curve,
+            uv_curve,
+            interval,
+            orientation,
+            tolerance,
         )
     }
 

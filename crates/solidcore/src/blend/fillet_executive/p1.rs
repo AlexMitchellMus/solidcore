@@ -3,7 +3,7 @@
 //! the executive object.
 //!
 //! Upstream: `source/SMLib/src/SmFilletExecutive.cpp` (lines 30-292, 488-523,
-//! 1601-1656, 4909-4929, 5126-6132), `source/SMLib/inc/SmFilletExecutive.h`.
+//! 1601-1881, 4909-4929, 5126-6132), `source/SMLib/inc/SmFilletExecutive.h`.
 //!
 //! The law type itself ([`FilletLaw`], [`FilletLawKind`]) was CO-PORTED by unit
 //! `blend.fillet_standard_solver_p1` into
@@ -38,6 +38,8 @@
 //! | [`ErrorInfo::note_error`], [`ErrorInfo::note_edge_error`], [`ErrorInfo::note_merge_error`], [`ErrorInfo::note_corner_error`], [`ErrorInfo::note_fillet_edge_error`], [`ErrorInfo::note_intersection_error`] | the six `SmFilletErrorInfo::NoteError` overloads (cpp:117, 150, 173, 199, 231, 256) |
 //! | `ErrorInfo::assign` (co-port)          | `SmFilletErrorInfo::operator=`                        |
 //! | [`FilletExecutive::new`], [`ExecutiveObjects`] | `SmFilletExecutive::SmFilletExecutive`        |
+//! | [`FilletExecutive::load_fillet_solver`] | `LoadFilletSolver` |
+//! | [`FilletExecutive::create_fillet_corners`] | `CreateFilletCorners` |
 //! | [`FilletExecutive::add_fillet_surface_generator`] | `AddFilletSurfaceGenerator`                |
 //! | [`FilletExecutive::remove_from_topo_edges`] | `RemoveFromTopoEdges`                            |
 //! | [`FilletExecutive::set_do_global_merge`], [`FilletExecutive::set_do_trimming`], [`FilletExecutive::set_self_intersection_handler`] | `SetDoGlobalMerge`, `SetDoTrimming`, `SetSelfIntersectionHandler` |
@@ -97,6 +99,7 @@ use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::object;
 use crate::geom::solution_array::SolutionObject;
 use crate::intersect::point_class::ClassObject;
+use crate::kernel::Kernel;
 use crate::math::{Point3, EFF_ZERO, EFF_ZERO_SQ, PI};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 
@@ -554,10 +557,120 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             law_sequence_edges: Vec::new(),
             pseudo_brep: Some(objects.pseudo_brep),
             surface_generators: Vec::new(),
+            filleted_vertices: Vec::new(),
             vertex_corner_map: BTreeMap::new(),
             edgeuse_solver_map: BTreeMap::new(),
             self_intersection_handler: None,
         }
+    }
+
+    /// `LoadFilletSolver`: retain the solver, its actual executive binding and the
+    /// incident edge uses of its vertices, preserving native insertion order.
+    ///
+    /// # Errors
+    /// Missing offset surfaces, unresolved caller objects, or a native undefined
+    /// vertex-array read when an absent rail reaches an existing vertex entry.
+    /// Earlier native mutations remain visible on a later error.
+    pub fn load_fillet_solver<A: ExecutiveAccess<O> + ?Sized>(
+        &mut self,
+        k: &Kernel,
+        access: &mut A,
+        solver: O,
+    ) -> Result<()> {
+        const OP: &str = "blend::fillet_executive::p1::load_fillet_solver";
+        for rail in 0..2 {
+            if !access.solver_has_surface(solver, rail)? {
+                return Err(SolidError::null_pointer(OP));
+            }
+        }
+        if let Some(edgeuse) = access.solver_edgeuse(solver, 0)? {
+            let edge = access
+                .edgeuse_edge(edgeuse)?
+                .ok_or_else(|| SolidError::invalid_input(OP, "edge use without edge"))?;
+            for knot in access.edge_g1_knots(k, edge)? {
+                access.solver_base_mut(solver)?.g1_knots.push(knot);
+            }
+        }
+        self.solvers.push(solver);
+        access
+            .solver_base_mut(solver)?
+            .set_fillet_executive(Some(crate::blend::fillet_solver::p1::FilletExecutiveRef));
+        let mut edgeuses = [None; 2];
+        // Outer None is an unwritten native pVerts entry; inner None is a null vertex.
+        let mut vertices = [None; 2];
+        for (rail, (edgeuse_slot, vertex_slot)) in
+            edgeuses.iter_mut().zip(vertices.iter_mut()).enumerate()
+        {
+            let edgeuse = access.solver_edgeuse(solver, rail)?;
+            if let Some(edgeuse) = edgeuse {
+                self.edgeuse_solver_map.insert(edgeuse, solver);
+                *vertex_slot = Some(access.edgeuse_vertex(edgeuse)?);
+            }
+            *edgeuse_slot = edgeuse;
+        }
+        let first_edgeuse_present = edgeuses.first().is_some_and(Option::is_some);
+        for (edgeuse, vertex_entry) in edgeuses.into_iter().zip(vertices) {
+            let mut found = false;
+            for &vertex in &self.filleted_vertices {
+                let current = vertex_entry.ok_or_else(|| {
+                    SolidError::invalid_input(
+                        OP,
+                        "native pVerts entry is uninitialized (absent solver rail)",
+                    )
+                })?;
+                if current == vertex {
+                    found = true;
+                    let entry = self
+                        .vertex_corner_map
+                        .get_mut(&vertex)
+                        .ok_or_else(|| SolidError::null_pointer(OP))?;
+                    let super::p3::VertexEntry::SolverEdgeuses(pending) = entry else {
+                        return Err(SolidError::invalid_input(
+                            OP,
+                            "native pending list has already been replaced by a corner",
+                        ));
+                    };
+                    let edgeuse = edgeuse.ok_or_else(|| {
+                        SolidError::invalid_input(
+                            OP,
+                            "native pending array would read an absent edge use",
+                        )
+                    })?;
+                    let edge = access.edgeuse_edge(edgeuse)?;
+                    let mut coincident = false;
+                    for &pending_edgeuse in pending.iter() {
+                        if edge == access.edgeuse_edge(pending_edgeuse)? {
+                            coincident = true;
+                            break;
+                        }
+                    }
+                    if !coincident {
+                        pending.push(edgeuse);
+                    }
+                    break;
+                }
+            }
+            if !found && first_edgeuse_present {
+                let vertex = vertex_entry.ok_or_else(|| {
+                    SolidError::invalid_input(
+                        OP,
+                        "native pVerts entry is uninitialized (absent solver rail)",
+                    )
+                })?;
+                let edgeuse = edgeuse.ok_or_else(|| {
+                    SolidError::invalid_input(
+                        OP,
+                        "native pending array would store an absent edge use",
+                    )
+                })?;
+                self.filleted_vertices.push(vertex);
+                self.vertex_corner_map.insert(
+                    vertex,
+                    super::p3::VertexEntry::SolverEdgeuses(vec![edgeuse]),
+                );
+            }
+        }
+        Ok(())
     }
 
     /// `AddFilletSurfaceGenerator(pFSG)`: the executive owns the generator from now on.
@@ -589,9 +702,18 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
 
     /// `GetFilletCornerOfVertex(pVertex)`: the corner at `vertex`, `None` when there is
     /// none.
-    #[must_use]
-    pub fn fillet_corner_of_vertex(&self, vertex: O) -> Option<O> {
-        self.vertex_corner_map.get(&vertex).copied()
+    ///
+    /// # Errors
+    /// A pending solver list is not a completed corner (native UB-209).
+    pub fn fillet_corner_of_vertex(&self, vertex: O) -> Result<Option<O>> {
+        match self.vertex_corner_map.get(&Some(vertex)) {
+            None => Ok(None),
+            Some(super::p3::VertexEntry::Corner(corner)) => Ok(Some(*corner)),
+            Some(super::p3::VertexEntry::SolverEdgeuses(_)) => Err(SolidError::invalid_input(
+                "blend::fillet_executive::p1::fillet_corner_of_vertex",
+                "vertex still contains a pending solver list",
+            )),
+        }
     }
 
     /// `GetFilletSolverOfEdgeuse(pEdgeuse)`: the solver of `edgeuse`, `None` when there
@@ -741,6 +863,52 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             location,
             comment,
         );
+    }
+}
+
+impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
+    /// `SmFilletExecutive::CreateFilletCorners`: create corners in the native
+    /// filleted-vertex order using the owner's actual corner factory and store.
+    ///
+    /// `create` borrows the live executive and pending edge-use list. It returns
+    /// the identity of the corner it allocated, or `None` for an unsupported
+    /// corner. Successful corners replace pending entries; unsupported corners
+    /// remain pending. The optional error info is assigned only after the loop.
+    ///
+    /// # Errors
+    ///
+    /// A missing pending entry is `SM_ERR_NULL_POINTER`, matching native `NER`.
+    /// An already completed entry is `InvalidInput`: native would cast a corner
+    /// to the pending edge-use array. Factory errors preserve completed prefixes
+    /// and leave the optional error info untouched. Null vertices are passed to
+    /// the owner, whose actual factory must reject the invalid topology.
+    pub fn create_fillet_corners(
+        &mut self,
+        k: &Kernel,
+        mut create: impl FnMut(&Kernel, &Self, Option<O>, &[O]) -> Result<Option<O>>,
+        error_info: Option<&mut ErrorInfo<O>>,
+    ) -> Result<()> {
+        use crate::blend::fillet_executive::p3::VertexEntry;
+
+        const OP: &str = "blend::fillet_executive::p1::FilletExecutive::create_fillet_corners";
+        for &vertex in &self.filleted_vertices {
+            let pending = match self.vertex_corner_map.get(&vertex) {
+                Some(VertexEntry::SolverEdgeuses(edgeuses)) => edgeuses,
+                Some(VertexEntry::Corner(_)) => {
+                    return Err(SolidError::invalid_input(OP, "corner already created"));
+                }
+                None => return Err(SolidError::null_pointer(OP)),
+            };
+            if let Some(corner) = create(k, self, vertex, pending)? {
+                self.corners.push(corner);
+                self.vertex_corner_map
+                    .insert(vertex, VertexEntry::Corner(corner));
+            }
+        }
+        if let Some(info) = error_info {
+            info.assign(&self.error);
+        }
+        Ok(())
     }
 }
 
@@ -938,5 +1106,145 @@ mod tests {
             (x.error.executive, x.pseudo_brep),
             (Some(H(9)), Some(H(10)))
         );
+    }
+
+    fn corner_creation_executive() -> FilletExecutive<H> {
+        FilletExecutive::new(
+            Some(H(1)),
+            ExecutiveObjects {
+                executive: H(9),
+                pseudo_brep: H(10),
+                edge_attribute: H(11),
+            },
+        )
+    }
+
+    #[test]
+    fn create_corners_preserves_order_pending_and_final_error_assignment() {
+        use crate::blend::fillet_executive::p3::VertexEntry;
+
+        let k = Kernel::default();
+        let mut executive = corner_creation_executive();
+        executive.filleted_vertices = vec![Some(H(3)), Some(H(2)), Some(H(4))];
+        for &vertex in &executive.filleted_vertices {
+            executive
+                .vertex_corner_map
+                .insert(vertex, VertexEntry::SolverEdgeuses(vec![H(20), H(21)]));
+        }
+        executive.error.code = 17;
+        let mut info = ErrorInfo::new(None);
+        let mut seen = Vec::new();
+        executive
+            .create_fillet_corners(
+                &k,
+                |_, live, vertex, edgeuses| {
+                    seen.push(vertex);
+                    assert_eq!(edgeuses, &[H(20), H(21)]);
+                    assert_eq!(live.corners.len(), usize::from(seen.len() > 1));
+                    Ok(match vertex {
+                        Some(H(3)) => Some(H(30)),
+                        Some(H(4)) => Some(H(40)),
+                        _ => None,
+                    })
+                },
+                Some(&mut info),
+            )
+            .unwrap();
+        assert_eq!(seen, executive.filleted_vertices);
+        assert_eq!(executive.corners, vec![H(30), H(40)]);
+        assert_eq!(
+            executive.vertex_corner_map.get(&Some(H(2))),
+            Some(&VertexEntry::SolverEdgeuses(vec![H(20), H(21)]))
+        );
+        assert_eq!(
+            executive.vertex_corner_map.get(&Some(H(3))),
+            Some(&VertexEntry::Corner(H(30)))
+        );
+        assert_eq!(info.code, 17);
+    }
+
+    #[test]
+    fn create_corners_failure_keeps_completed_prefix_and_error_output() {
+        use crate::blend::fillet_executive::p3::VertexEntry;
+
+        let k = Kernel::default();
+        let mut executive = corner_creation_executive();
+        executive.filleted_vertices = vec![Some(H(2)), Some(H(3)), Some(H(4))];
+        for &vertex in &executive.filleted_vertices {
+            executive
+                .vertex_corner_map
+                .insert(vertex, VertexEntry::SolverEdgeuses(vec![H(20)]));
+        }
+        executive.error.code = 17;
+        let mut info = ErrorInfo::new(None);
+        info.code = 99;
+        let mut seen = Vec::new();
+        let failure = SolidError::invalid_input("corner_creation_test", "factory failure");
+        let result = executive.create_fillet_corners(
+            &k,
+            |_, _, vertex, _| {
+                seen.push(vertex);
+                if seen.len() == 2 {
+                    Err(failure.clone())
+                } else {
+                    Ok(Some(H(30)))
+                }
+            },
+            Some(&mut info),
+        );
+        assert_eq!(result.unwrap_err(), failure);
+        assert_eq!(seen, vec![Some(H(2)), Some(H(3))]);
+        assert_eq!(executive.corners, vec![H(30)]);
+        assert_eq!(
+            executive.vertex_corner_map.get(&Some(H(2))),
+            Some(&VertexEntry::Corner(H(30)))
+        );
+        assert_eq!(
+            executive.vertex_corner_map.get(&Some(H(3))),
+            Some(&VertexEntry::SolverEdgeuses(vec![H(20)]))
+        );
+        assert_eq!(info.code, 99);
+    }
+
+    #[test]
+    fn create_corners_missing_completed_and_null_context_guards() {
+        use crate::blend::fillet_executive::p3::VertexEntry;
+
+        let k = Kernel::default();
+        let mut executive = corner_creation_executive();
+        executive.filleted_vertices.push(Some(H(2)));
+        let result = executive.create_fillet_corners(&k, |_, _, _, _| unreachable!(), None);
+        assert!(matches!(
+            result,
+            Err(SolidError::Upstream { code: 1006, .. })
+        ));
+        executive
+            .vertex_corner_map
+            .insert(Some(H(2)), VertexEntry::Corner(H(30)));
+        let result = executive.create_fillet_corners(&k, |_, _, _, _| unreachable!(), None);
+        assert!(matches!(result, Err(SolidError::InvalidInput { .. })));
+
+        // Rust-only lifecycle guard: never pass null vertices to the native factory.
+        executive.filleted_vertices = vec![None];
+        executive
+            .vertex_corner_map
+            .insert(None, VertexEntry::SolverEdgeuses(vec![H(20)]));
+        let result = executive.create_fillet_corners(
+            &k,
+            |_, _, vertex, _| {
+                assert!(vertex.is_none());
+                Err(SolidError::invalid_input(
+                    "corner_creation_test",
+                    "null vertex",
+                ))
+            },
+            None,
+        );
+        assert!(matches!(result, Err(SolidError::InvalidInput { .. })));
+        assert!(executive.corners.is_empty());
+        assert!(matches!(
+            executive.vertex_corner_map.get(&None),
+            Some(VertexEntry::SolverEdgeuses(_))
+        ));
     }
 }

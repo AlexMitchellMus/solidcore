@@ -48,6 +48,14 @@ pub trait UnitDiff {
     fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
         default_cases(self, ctx)
     }
+
+    /// If this case depends on the C++ standard library being libstdc++ (e.g.
+    /// libc++ differs in `istream` extraction), return a short reason and the
+    /// runner reports the case as `skipped(platform)` instead of running it.
+    /// Only consulted when `solidcore_ffi::cpp_stdlib_is_libstdcxx()` is false.
+    fn skipped_platform(&self, _case: &Case) -> Option<String> {
+        None
+    }
 }
 
 /// Fixture cases followed by generated cases (the default [`UnitDiff::cases`]).
@@ -68,6 +76,10 @@ pub struct RunOptions {
     /// Sensitivity check: change one item of each case's Rust output before
     /// comparing (see [`perturb_output`]); every perturbed case must fail.
     pub perturb: bool,
+    /// Opt-in per-case wall-clock limit; when set, a case exceeding it is
+    /// reported as a failed (timed-out) case instead of hanging the worker.
+    /// Default: no limit (byte-identical to the unset behaviour).
+    pub case_timeout: Option<Duration>,
 }
 
 /// Relative perturbation used by [`RunOptions::perturb`] (10x the tolerance).
@@ -94,6 +106,10 @@ pub struct CaseResult {
     pub rejected: Option<String>,
     /// The Rust side hit an unported callee (case deferred, nothing compared).
     pub deferred: Option<Deferred>,
+    /// The case is skipped because the platform's C++ standard library is not
+    /// libstdc++ (e.g. libc++): the C++ reference is only authoritative on
+    /// libstdc++. Neither pass nor fail.
+    pub skipped_platform: Option<String>,
     /// In perturb mode: what was perturbed (`value`, `int`, `topology`, `error`),
     /// or `None` if the case had nothing to perturb or was deferred.
     pub perturbed: Option<&'static str>,
@@ -115,6 +131,8 @@ pub enum CaseOutcome {
     /// The Rust side returned `Unported` (and the C++ side ran without a harness
     /// error): neither pass nor fail.
     Deferred,
+    /// Skipped because the platform's C++ standard library is not libstdc++.
+    SkippedPlatform,
     /// A mismatch listed in `known_mismatches.toml` ([`crate::known`]): not a pass,
     /// keeps the unit from being green, reported like a failure.
     KnownMismatch,
@@ -128,6 +146,7 @@ impl CaseOutcome {
             Self::Rejected => "rejected",
             Self::Fail => "fail",
             Self::Deferred => "deferred",
+            Self::SkippedPlatform => "skipped(platform)",
             Self::KnownMismatch => "known_mismatch",
         }
     }
@@ -143,6 +162,8 @@ impl CaseResult {
             CaseOutcome::Rejected
         } else if self.deferred.is_some() {
             CaseOutcome::Deferred
+        } else if self.skipped_platform.is_some() {
+            CaseOutcome::SkippedPlatform
         } else if self.diff.pass() {
             CaseOutcome::Pass
         } else if self.known_mismatch.is_some() {
@@ -172,6 +193,11 @@ impl CaseResult {
         self.outcome() == CaseOutcome::Deferred
     }
 
+    /// Case is skipped because the platform is not libstdc++.
+    pub fn is_skipped_platform(&self) -> bool {
+        self.outcome() == CaseOutcome::SkippedPlatform
+    }
+
     /// The comparison checked at least one float, integer or topology entry (not only
     /// an error string both sides agreed on, or empty outputs).
     pub fn compared_values(&self) -> bool {
@@ -191,7 +217,8 @@ impl CaseResult {
 /// Status of a unit run (AGENTS.md section 4a).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnitStatus {
-    /// At least one parity pass, no failures or deferrals (fixture rejections excluded).
+    /// No failures, deferrals or known mismatches (platform skips excluded).
+    /// An entirely platform-skipped run retains this canonical verdict but has no parity passes.
     Green,
     /// No failing case and at least one deferred case or known mismatch.
     Partial,
@@ -291,6 +318,8 @@ impl UnitResult {
         } else if self.deferred() > 0 || self.known_mismatches() > 0 {
             UnitStatus::Partial
         } else {
+            // Platform skips are recorded separately, never as passes. Like the
+            // CI baseline verdict, they do not change the canonical unit status.
             UnitStatus::Green
         }
     }
@@ -341,6 +370,14 @@ impl UnitResult {
     /// Number of deferred cases.
     pub fn deferred(&self) -> usize {
         self.cases.iter().filter(|c| c.is_deferred()).count()
+    }
+
+    /// Number of cases skipped because the platform is not libstdc++.
+    pub fn skipped_platform(&self) -> usize {
+        self.cases
+            .iter()
+            .filter(|c| c.is_skipped_platform())
+            .count()
     }
 
     /// Deferred case count per blocking unit id, sorted by unit id.
@@ -495,6 +532,31 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
                 continue;
             }
         }
+        // Platform-dependent cases (libstdc++-only C++ reference behaviour): on a
+        // non-libstdc++ build report them as skipped(platform) without running.
+        if !solidcore_ffi::cpp_stdlib_is_libstdcxx() {
+            if let Some(reason) = unit.skipped_platform(&case) {
+                let cr = CaseResult {
+                    name: case.name.clone(),
+                    source: case.source.clone(),
+                    inputs: case.inputs.clone(),
+                    diff: CaseDiff::default(),
+                    harness_error: None,
+                    both_errored: false,
+                    rejected: None,
+                    deferred: None,
+                    skipped_platform: Some(reason),
+                    perturbed: None,
+                    diagnostics: BTreeMap::new(),
+                    known_mismatch: known
+                        .iter()
+                        .find(|k| k.case == case.name)
+                        .map(|k| k.why.clone()),
+                };
+                res.cases.push(cr);
+                continue;
+            }
+        }
         // the Rust side reuses this case's C++ fixture exports (`export_memo`)
         let memo = crate::export_memo::CaseScope::new();
         let t0 = Instant::now();
@@ -516,6 +578,7 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
             both_errored: false,
             rejected: None,
             deferred: None,
+            skipped_platform: None,
             perturbed: None,
             diagnostics: BTreeMap::new(),
             known_mismatch: known
@@ -721,6 +784,7 @@ mod tests {
             both_errored: false,
             rejected: None,
             deferred,
+            skipped_platform: None,
             perturbed: None,
             diagnostics: BTreeMap::new(),
             known_mismatch: None,
@@ -761,6 +825,26 @@ mod tests {
         assert_eq!(r.status(), UnitStatus::Fail);
         r.cases.truncate(1);
         assert_eq!(r.status(), UnitStatus::Green);
+        let mut skipped = case(None, true);
+        skipped.skipped_platform = Some("platform-specific C++ reference behaviour".into());
+        assert_eq!(skipped.outcome(), CaseOutcome::SkippedPlatform);
+        assert!(!skipped.pass());
+        r.cases.push(skipped.clone());
+        assert_eq!(r.status(), UnitStatus::Green);
+        assert_eq!((r.passed(), r.failed(), r.skipped_platform()), (1, 0, 1));
+        // An entirely platform-skipped unit (e.g. database_io on libc++) keeps
+        // its canonical verdict without claiming any passing comparisons.
+        r.cases = vec![skipped];
+        assert_eq!(r.status(), UnitStatus::Green);
+        assert_eq!((r.passed(), r.failed(), r.skipped_platform()), (0, 0, 1));
+        let report = crate::report::unit_report(&r);
+        assert_eq!(report["cases"][0]["outcome"], "skipped(platform)");
+        assert_eq!(report["cases"][0]["pass"], false);
+        r.cases.push(case(d(), true));
+        assert_eq!(r.status(), UnitStatus::Partial);
+        r.cases.push(case(None, false));
+        assert_eq!(r.status(), UnitStatus::Fail);
+        r.cases = vec![case(None, true)];
         let mut h = case(d(), true);
         h.harness_error = Some("cpp: bad".into());
         assert_eq!(h.outcome(), CaseOutcome::Fail);

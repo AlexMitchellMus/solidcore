@@ -903,6 +903,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes. ASan on macOS arm64 (harness built with `-fsanitize=address,undefined`) reports `heap-use-after-free` READ at `SmBSplineCurveNLib.cpp:3138`, freed by `N_FreeReal1dArray` <- `N_FreeCrv` <- `N_CrvInsertKnot`, for curve_p6 gen0161 / gen0953 and n_lib gen0695 / gen1279. Latent on x86-64 Linux (benign under glibc malloc). GitHub issue #449.
 - **Severity:** crash/UB (use after free; wrong result on non-glibc allocators).
 - **Rust port:** Reads the live knot vector after each insertion (`crates/solidcore/src/nurbs/b_spline_curve_n_lib.rs`, `curr.knots()` in the insertion loop), which equals the glibc result.
+- **Difftest follow-up (#449, PR #793):** On macOS arm64 only, the ten generated deform cases listed above use the existing `skipped(platform)` outcome, never a pass. The reason cites the upstream use-after-free at `SmBSplineCurveNLib.cpp:3127-3149` and that Rust matches the Linux reference. Linux still runs all ten comparisons; neither the Rust kernel nor the C++ reference is changed.
 
 ### Surfaces and volumes
 
@@ -4114,3 +4115,29 @@ Numbering paragraph at the top says.
 - **Confirmed:** yes, pinned `c9c5979`, x86-64 Linux, unmodified C++ reference.
   The Rust port reproduces the defective control net. See the #471 findings entry
   for the opt-in correction and its validation limits.
+
+#### UB-new. `SmBendVolume::WriteToDB` writes values with no separator before the label [PSIRT]
+- **Location:** `SmBendVolume.cpp:3255-3256` (`m_dBendNeutralDist << "BendVolume ..."`); reader at `SmBendVolume.cpp:3328` (`rFileIn >> pBendNeutralDist[0]`).
+- **What happens:** `WriteToDB` emits `0.758...BendVolume ...` with no separator, so libc++'s greedy `num_get` consumes the leading `B` of `BendVolume` as a hex-float/exponent tail and fails the extraction, while libstdc++ stops at `B`. New upstream defect (missing separator; also a libstdc++-only round trip).
+- **Trigger:** A bend volume written by `WriteToDB` and re-read on a libc++ build (`surface.srf_in_volume` read_db cases).
+- **How found:** macOS libc++ repro, GitHub issue #450.
+- **Confirmed:** yes, 2026-10-24 on macOS arm64 (Apple clang 21, libc++). `surface.srf_in_volume` gen1970: `values.out.len: cpp=70 rust=102`.
+- **Severity:** wrong result / UB.
+- **Rust port:** unchanged; unit is only authoritative on a libstdc++ build.
+- **Platform dependence:** libstdc++ only.
+
+
+- **Confirmed (2026-10-24, issue #450):** UB-5 — macOS libc++ stack-protector abort in `topology.database_io` gen0185 (and gen0576, gen0883, gen1324, gen1363, gen1519, gen1590, gen1652, gen1783).
+- **Confirmed (2026-10-24, issue #450):** UB-6 — hang/segv reached from a subnormal under libc++ in `topology.brep_data` gen0018 (hang) and gen0110 (segv).
+
+#### UB-175 (addendum). Tiny Booleans reach the teardown through the public API
+- **Trigger:** two boxes smaller than the proto vertex capture distance
+  (`max(0.01, 2000 * tol)`, `SmTopologyIntersector.cpp:1159`), e.g. `boolean.api_brep`
+  `gen0059` (`with_options`, operation 3, boxes about 0.005) and `gen0066` (`merge_breps`,
+  operation 2, boxes about 0.008 and 0.004): the intersection points collapse into shared
+  proto vertices, so proto edges start and end on one of them, and the manager's
+  destructor reads the freed edges.
+- **How found:** once `SmEdgeDefinition::Imprint` ran `SmBrep::MakeEdgeInFace` in the
+  port, these cases reached the port's UB-175 check; the C++ goes on (results of 8 and 7
+  records).
+- **Confirmed:** by the port's teardown replay only; the C++ build was not instrumented.
