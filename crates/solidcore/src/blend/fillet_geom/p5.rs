@@ -1123,7 +1123,7 @@ impl FilletBrep {
             .curve_3d
             .ok_or_else(|| SolidError::null_pointer(OP_EXT_EDGE))?;
         // both UV curves are deleted
-        set_edge_curve(self.brep_mut(), e, Some(Curve::from(curve)))?;
+        set_edge_curve(self.brep_mut(), e, Some(curve))?;
         Ok(())
     }
 
