@@ -19,6 +19,8 @@
 // that would not terminate) writes `op -2` and ends the script (the difftest generator
 // drops such ops). Objects live for the whole process unless upstream deletes them.
 #include "sc_shim.h"
+#include "support/primitive_record.h"
+#include <SmApiPrimitives.h>
 
 #include "StdAfx.h"
 #include <SmApiGeneral.h>
@@ -621,6 +623,9 @@ struct PolyVertexHead
     friend type get(PolyVertexHead);
 };
 template struct Rob<PolyVertexHead, &SmPolyBrep::m_pPolyVertexListHead>;
+
+struct BrepModelSize { using type = double (SmBrep::*)(SmBoolean) const; friend type get(BrepModelSize); };
+template struct Rob<BrepModelSize, &SmBrep::GetThisModelSizeEstimate>;
 
 // ---- reading -------------------------------------------------------------------------------
 
@@ -4833,6 +4838,8 @@ enum TObj : int64_t
     T_COMPOSITE = 7,
     T_CRV_ON_SURF = 8,
     T_POLY_PTS = 9,
+    T_PRIMITIVE_BOX = 10,
+    T_PRIMITIVE_SPHERE = 11,
 };
 
 // SmCrvOnSurf's UV-line constructor is protected.
@@ -4867,6 +4874,17 @@ int32_t run_transform(Rd& rd, std::vector<double>& o)
             s->SetOwner(anchor());
         obj = s;
         break;
+    }
+    case T_PRIMITIVE_BOX:
+    case T_PRIMITIVE_SPHERE:
+    {
+        SmPoint3d origin = rd.vec(); SmBrep* body = NULL; SmApiStatus created;
+        if (kind == T_PRIMITIVE_BOX) {
+            double x=rd.num(), y=rd.num(), z=rd.num();
+            created = SmApiCreateBox(origin, x, y, z, body);
+        } else { double radius=rd.num(); created=SmApiCreateSphere(origin, radius, body); }
+        if (created != SM_SUCCESS || !body) { o.push_back((double)created); delete body; return SC_OK; }
+        obj = body; break;
     }
     case T_BREP: obj = new (ctx) SmBrep(); break;
     case T_POLY: obj = new (ctx) SmPolyBrep(SmZoneTol3d(1.0e-5)); break;
@@ -4970,6 +4988,15 @@ int32_t run_transform(Rd& rd, std::vector<double>& o)
     default: return SC_ERR_ARG;
     }
     o.push_back((double)s);
+    if (kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE) {
+        SmBrep* body=(SmBrep*)obj;
+        SmTArray<SmVertex*> vertices; body->GetVertices(vertices);
+        SmTArray<SmEdge*> edges; body->GetEdges(edges);
+        SmTArray<SmFace*> faces; body->GetFaces(faces);
+        o.insert(o.end(), {(double)vertices.GetSize(), (double)edges.GetSize(), (double)faces.GetSize(), (body->*get(BrepModelSize()))(FALSE)});
+        primitive_record::append(o,body);
+        for (ULONG i=0;i<faces.GetSize();i++) o.push_back((double)faces[i]->GetRectangularTrim());
+    }
     if (kind == T_CURVE)
         put_curve(o, (SmCurve*)obj);
     else if (kind == T_PLANE || kind == T_BSURF)
