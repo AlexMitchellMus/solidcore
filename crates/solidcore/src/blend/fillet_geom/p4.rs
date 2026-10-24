@@ -112,9 +112,12 @@ use crate::surface::surface::p1::map_to_2d_dir;
 use crate::surface::surface::p2::CONE_TYPE;
 use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::{Surface, SurfaceKind};
-use crate::topology::brep::p7::{make_face_with_curves_transfer, FaceCurvesInput, NewFace};
+use crate::topology::brep::p7::{
+    make_face_with_curves, make_face_with_curves_transfer, FaceCurvesInput, NewFace,
+};
 use crate::topology::edge;
 use crate::topology::edgeuse::p1::{self as eu1, primary_edgeuse};
+use crate::topology::trimming_tools::{trim_surface_with_model_space_curves, TrimInput};
 use crate::topology::vertex;
 use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
@@ -124,6 +127,14 @@ use super::p1::{
     FilletSolverId,
 };
 use super::p6::join_two_fillet_verts_by_curves_resolved;
+
+/// The indexed value API retains its historical copied-surface behavior. The live
+/// retained-solver API transfers the original surface into its actual managed face.
+#[derive(Clone, Copy)]
+enum FaceSurfaceBackend {
+    IndexedValue,
+    RetainedTransfer,
+}
 
 const OP_UV: &str = "blend::fillet_geom::p4::create_uv_curve";
 const OP_NX2: &str = "blend::fillet_geom::p4::FilletBrep::calc_nx2_vert_fillet_x_fillet";
@@ -1524,7 +1535,9 @@ impl FilletBrep {
     /// capped when the side curves do not connect); with UV curves
     /// (`MakeFaceWithCurves`) unless the geometry is a cliff side patch
     /// (`TrimSurfaceWithModelSpaceCurves`). Sets the geometry's capped flags. `env`
-    /// carries the notifications the face makers send to `brep`'s entities.
+    /// carries the notifications the face makers send to `brep`'s entities. This
+    /// indexed value API retains its historical surface-copy backend; shared surface
+    /// binding requires [`Self::make_face_brep_with_solver`].
     ///
     /// # Errors
     ///
@@ -1539,7 +1552,14 @@ impl FilletBrep {
         brep: &mut Brep,
         env: &mut edge::NotifyEnv<'_>,
     ) -> Result<()> {
-        self.make_face_brep_resolved(k, g, &|id, op| solver_of(solvers, id, op), brep, env)
+        self.make_face_brep_resolved(
+            k,
+            g,
+            &|id, op| solver_of(solvers, id, op),
+            brep,
+            env,
+            FaceSurfaceBackend::IndexedValue,
+        )
     }
 
     /// Build a face using the actual retained solver without a copied base table.
@@ -1567,6 +1587,7 @@ impl FilletBrep {
             },
             brep,
             env,
+            FaceSurfaceBackend::RetainedTransfer,
         )
     }
 
@@ -1578,6 +1599,7 @@ impl FilletBrep {
         resolve: &impl Fn(FilletSolverId, &'static str) -> Result<&'s FilletSolver>,
         brep: &mut Brep,
         env: &mut edge::NotifyEnv<'_>,
+        surface_backend: FaceSurfaceBackend,
     ) -> Result<()> {
         let nul = || SolidError::null_pointer(OP_FACE);
 
@@ -1854,6 +1876,47 @@ impl FilletBrep {
 
         // Make Face: transfer the original surface only at the native call boundary.
         let region = brep.infinite_region();
+        if matches!(surface_backend, FaceSurfaceBackend::IndexedValue) {
+            // Preserve the existing indexed value contract, including its cliff path.
+            // This API does not provide shared source-surface/managed-face binding.
+            let surface = self.geom(g)?.fillet_surface()?.ok_or_else(nul)?.clone();
+            if use_uv_curves {
+                let input = FaceCurvesInput {
+                    loops: curve_loops,
+                    curves_3d: Some(curves_3d.into_iter().map(Some).collect()),
+                    uv_curves: Some(uv_curves),
+                    orientations: lists1.orients,
+                    loop_points: Vec::new(),
+                };
+                let key_of = env.key_of;
+                make_face_with_curves(
+                    k,
+                    brep,
+                    region,
+                    input,
+                    surface,
+                    &uv_domain,
+                    OrientType::Same,
+                    None,
+                    &|face| key_of(EntityRef::Face(face)),
+                    env,
+                )?;
+            } else {
+                let input = TrimInput {
+                    loop_counts: curve_loops,
+                    curves: curves_3d,
+                    orientations: lists1.orients,
+                    loop_points: Vec::new(),
+                    surface,
+                    uv_domain,
+                    surface_orientation: OrientType::Same,
+                };
+                trim_surface_with_model_space_curves(
+                    k, brep, region, d3d_tol, input, true, false, false, env,
+                )?;
+            }
+            return Ok(());
+        }
         if use_uv_curves {
             let input = FaceCurvesInput {
                 loops: curve_loops,
