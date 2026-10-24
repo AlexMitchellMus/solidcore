@@ -187,6 +187,27 @@
           "checkpoint": "solver_geometry"
         }
       }
+    },
+    {
+      "name": "real-box-corner-edges-actual-session",
+      "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:2269 (all actual solvers, then per-corner tangent adjustment, repeated vertices and boundary edges)",
+      "inputs": {
+        "real_solid": {
+          "dimensions": [
+            10,
+            20,
+            30
+          ],
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            0
+          ],
+          "checkpoint": "corner_edges"
+        }
+      }
     }
   ]
 }

@@ -177,7 +177,7 @@ extern "C" {
 /// Uninitialized corner status and uncomputed geometry are never read.
 pub fn real_prefix(input: &[f64], checkpoint: u32) -> Result<Vec<f64>, FfiError> {
     validate_real_solid(input)?;
-    if !(1..=7).contains(&checkpoint) {
+    if !(1..=8).contains(&checkpoint) {
         return Err(FfiError::InvalidArgument(
             "unknown fillet checkpoint".into(),
         ));

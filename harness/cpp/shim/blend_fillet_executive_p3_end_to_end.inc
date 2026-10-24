@@ -241,7 +241,7 @@ std::vector<double> snapshot(SmFilletExecutive& exec,SmTArray<SmVertex*>& target
 
 SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
     const double* input,int64_t n,int32_t checkpoint,double* out,int64_t cap,int64_t* out_len) {
-    if(checkpoint<1 || checkpoint>7 || !input || n<9) return SC_ERR_ARG;
+    if(checkpoint<1 || checkpoint>8 || !input || n<9) return SC_ERR_ARG;
     for(int64_t i=0;i<n;++i) if(!std::isfinite(input[i])) return SC_ERR_ARG;
     for(int i=0;i<3;++i) if(input[i]<=SM_EFF_ZERO) return SC_ERR_ARG;
     const double ulong_limit=std::ldexp(1.0,std::numeric_limits<ULONG>::digits);
@@ -267,7 +267,7 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
     SmFilletExecutive exec(*body->GetContext(),body.get());exec.SetDoGlobalMerge(TRUE);
     const auto xsect=input[4]==0?SM_FSG_LINEAR:input[4]==2?SM_FSG_BLEND_CURVE:SM_FSG_CIRCULAR;
     const auto prepare=exec.SetFilletParameters(body.get(),selected,xsect,SM_FS_CONST_RADIUS,input[3],nullptr,-1,-1,-1,-1,ULONG(input[5]),input[6]);
-    double corners=-1,topology=-1,vertex_geometry=-1,smooth=-1,adjust=-1,solver_geometry=-1;
+    double corners=-1,topology=-1,vertex_geometry=-1,smooth=-1,adjust=-1,solver_geometry=-1,corner_edges=-1;
     std::vector<double> prior,parameters;
     std::pair<std::vector<double>,std::vector<double>> offsets_before;
     if(prepare==SM_SUCCESS && checkpoint>=2) {
@@ -302,6 +302,30 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
                 }
                 if(checkpoint==7 && adjust==0 && exec.GetFilletSolvers().GetSize())
                     solver_geometry=fillet_real_solid::status(exec.GetFilletSolvers()[0]->CalcFilletGeom());
+                if(checkpoint==8 && adjust==0) {
+                    solver_geometry=0;
+                    for(ULONG i=0;i<exec.GetFilletSolvers().GetSize();++i) {
+                        auto* solver=exec.GetFilletSolvers()[i];
+                        if(solver->CalcFilletGeom()!=SM_SUCCESS) {
+                            exec.GetFilletErrorInfo()->NoteError(solver->GetEdgeuse(0)->GetEdge(),SM_FS_SURF_TRACING_FAILURE,SM_FILERR_EDGE_PROBLEM,_T("Fillet Surface Computation Failure"));
+                            solver_geometry=fillet_real_solid::status(SM_ERR);break;
+                        }
+                    }
+                    if(solver_geometry==0) {
+                        corner_edges=0;
+                        for(ULONG i=0;i<exec.GetFilletCorners().GetSize();++i) {
+                            auto* corner=exec.GetFilletCorners()[i];
+                            const auto fail=[&](const TCHAR* comment) {
+                                TCHAR name[SM_TBLOCK_SIZE];corner->GetName(name,SM_TBLOCK_SIZE);
+                                exec.NoteFilletError(SM_FILERR_VERTEX_PROBLEM,corner->GetCornerType(),SM_FIL_FAILURE,name,corner->GetFilletedVertex(),nullptr,nullptr,nullptr,nullptr,comment);
+                                corner_edges=fillet_real_solid::status(SM_ERR);
+                            };
+                            if(corner->AdjustTangentCorner()!=SM_SUCCESS){fail(_T("Fillet Corner Error: Topology Adjustment Failure"));break;}
+                            if(corner->CalcCornerVertGeom()!=SM_SUCCESS){fail(_T("Fillet Corner Error: Vertex Computation Failure"));break;}
+                            if(corner->CalcCornerEdgeGeom()!=SM_SUCCESS){fail(_T("Fillet Corner Error: Corner Edge Computation Failure"));break;}
+                        }
+                    }
+                }
             }
         }
     }
@@ -309,7 +333,8 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
     std::vector<double> values;fillet_real_solid::section(values,before);
     if(checkpoint>=6) {
         values.insert(values.end(),{fillet_real_solid::status(prepare),corners,smooth,topology,adjust});
-        if(checkpoint==7)values.push_back(solver_geometry);
+        if(checkpoint>=7)values.push_back(solver_geometry);
+        if(checkpoint==8)values.push_back(corner_edges);
     } else values.insert(values.end(),{fillet_real_solid::status(prepare),corners,topology});
     if(checkpoint==4)values.push_back(vertex_geometry);
     fillet_real_solid::section(values,prior);fillet_real_solid::section(values,state);fillet_real_solid::section(values,parameters);
@@ -359,7 +384,7 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
         }
         fillet_real_solid::section(values,flags);
     }
-    if(checkpoint==7) {
+    if(checkpoint>=7) {
         std::vector<double> generated_state,generated_values;
         const auto evaluated=[&](SmStatus status,const SmPoint3d& point) {
             generated_state.push_back(fillet_real_solid::status(status));
@@ -399,6 +424,27 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
             }
         }
         fillet_real_solid::section(values,generated_state);fillet_real_solid::section(values,generated_values);
+    }
+    if(checkpoint==8) {
+        std::vector<double> edge_state,edge_values;
+        SmTArray<SmEdge*> edges;exec.GetPseudoBrep()->GetEdges(edges);
+        for(ULONG i=0;i<exec.GetFilletCorners().GetSize();++i) {
+            SmTArray<SmFilletEdge*> owned;exec.GetFilletCorners()[i]->GetFilletEdges(owned);
+            edge_state.insert(edge_state.end(),{double(i),double(owned.GetSize())});
+            for(ULONG j=0;j<owned.GetSize();++j) {
+                auto* edge=owned[j];auto* curve=edge->GetCurve();
+                edge_state.insert(edge_state.end(),{fillet_real_solid::label(edges,static_cast<SmEdge*>(edge)),double(edge->GetFilletEdgeType()),double(edge->GetStatus()),double(curve!=nullptr)});
+                if(curve) {
+                    edge_state.push_back(double(curve->GetType()));const auto interval=curve->GetNaturalInterval();const auto edge_interval=edge->GetInterval();
+                    edge_values.insert(edge_values.end(),{interval.GetMin(),interval.GetMax(),edge_interval.GetMin(),edge_interval.GetMax()});
+                    for(double fraction:{0.0,.17,.37,.83,1.0}) {
+                        SmPoint3d point;auto status=curve->EvaluatePoint(interval.Evaluate(fraction),point);
+                        edge_state.push_back(fillet_real_solid::status(status));if(status==SM_SUCCESS)primitive_record::point(edge_values,point);
+                    }
+                }
+            }
+        }
+        fillet_real_solid::section(values,edge_state);fillet_real_solid::section(values,edge_values);
     }
     return sc_copy_out(values.data(),int64_t(values.size()),out,cap,out_len);
     SC_CATCH

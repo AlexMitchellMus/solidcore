@@ -23,6 +23,7 @@ enum Checkpoint {
     CornerVerticesComponent,
     AdjustedTopology,
     SolverGeometry,
+    CornerEdges,
 }
 impl Checkpoint {
     fn all_corners(self) -> bool {
@@ -35,6 +36,7 @@ impl Checkpoint {
         match self {
             Self::AdjustedTopology => 5,
             Self::SolverGeometry => 6,
+            Self::CornerEdges => 7,
             Self::FirstVertexGeometry => 4,
             _ => 3,
         }
@@ -49,6 +51,7 @@ impl Checkpoint {
             Self::CornerVerticesComponent => 5,
             Self::AdjustedTopology => 6,
             Self::SolverGeometry => 7,
+            Self::CornerEdges => 8,
         }
     }
 }

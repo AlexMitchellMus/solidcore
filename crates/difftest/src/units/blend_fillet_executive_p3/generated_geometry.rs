@@ -5,7 +5,11 @@ use solidcore::kernel::Kernel;
 use solidcore::math::{Point2, Point3};
 use solidcore::{Result, SolidError};
 
-fn evaluated(state: &mut Vec<f64>, values: &mut Vec<f64>, result: Result<Point3>) -> Result<()> {
+pub(super) fn evaluated(
+    state: &mut Vec<f64>,
+    values: &mut Vec<f64>,
+    result: Result<Point3>,
+) -> Result<()> {
     match result {
         Ok(point) => {
             state.push(0.0);

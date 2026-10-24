@@ -1,6 +1,8 @@
 //! Actual fillet setup and retained corner/solver checkpoints.
 //! Modes 1–5 omit smoothing on both sides. Modes 6–7 run the real prelude
 //! and stop after adjustment or the first direct solver geometry operation.
+#[path = "edge_geometry.rs"]
+mod edge_geometry;
 #[path = "generated_geometry.rs"]
 mod generated_geometry;
 use super::{label, section, status, take_section, Checkpoint, RealSolid};
@@ -221,7 +223,7 @@ pub(super) fn run(
     before: &[f64],
 ) -> SolidResult<Vec<f64>> {
     let mut session = FilletSession::new(k, body)?;
-    let mut statuses = [-1.0; 6];
+    let mut statuses = [-1.0; 7];
     let prepare = session.prepare_constant_radius_edges(
         k,
         selected,
@@ -274,6 +276,18 @@ pub(super) fn run(
                         session.executive().solvers.first().copied()
                     {
                         statuses[5] = match session.calc_solver_geometry(k, id) {
+                            Ok(()) => 0.0,
+                            Err(error) => status(error)?,
+                        };
+                    }
+                }
+                if input.checkpoint == Checkpoint::CornerEdges && statuses[4] == 0.0 {
+                    statuses[5] = match session.calculate_solver_geometry(k) {
+                        Ok(()) => 0.0,
+                        Err(error) => status(error)?,
+                    };
+                    if statuses[5] == 0.0 {
+                        statuses[6] = match session.calculate_corner_edges(k) {
                             Ok(()) => 0.0,
                             Err(error) => status(error)?,
                         };
@@ -410,8 +424,13 @@ pub(super) fn run(
             .collect();
         section(&mut out, &flags);
     }
-    if input.checkpoint == Checkpoint::SolverGeometry {
+    if input.checkpoint.code() >= 7 {
         let (state, values) = generated_geometry::snapshot(k, &session)?;
+        section(&mut out, &state);
+        section(&mut out, &values);
+    }
+    if input.checkpoint == Checkpoint::CornerEdges {
+        let (state, values) = edge_geometry::snapshot(k, &session)?;
         section(&mut out, &state);
         section(&mut out, &values);
     }
@@ -504,7 +523,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             state.iter().map(|v| *v as i64).collect(),
         );
     }
-    if checkpoint == Checkpoint::SolverGeometry {
+    if checkpoint.code() >= 7 {
         let state = take_section(&mut values)?;
         if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
             return Err(HarnessError::new("invalid generated geometry state"));
@@ -515,6 +534,20 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
         );
         out.values.insert(
             "generated_geometry_samples".into(),
+            take_section(&mut values)?.to_vec(),
+        );
+    }
+    if checkpoint == Checkpoint::CornerEdges {
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid corner edge state"));
+        }
+        out.ints.insert(
+            "corner_edge_geometry_state".into(),
+            state.iter().map(|v| *v as i64).collect(),
+        );
+        out.values.insert(
+            "corner_edge_geometry_samples".into(),
             take_section(&mut values)?.to_vec(),
         );
     }
