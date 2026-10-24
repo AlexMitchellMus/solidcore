@@ -18534,3 +18534,47 @@ the big face is used), and the start cap came out as 2 faces.
   every other caller were already fresh or unused (the swung-surface loop drops its list).
 - **Result.** Both known-mismatch entries are removed and both cases match C++ bit for
   bit. sweep.api_surfaces is green (882/882).
+
+## boolean.merge_p1: MergeCoincidentSurfaces wired into FixFoundFaceCoincidence (2026-10-24)
+
+`boolean.merge_p1` reaches 0 deferred (248/248; 6000 seeds 6152/6152; main had 244 passed,
+4 deferred on `SmTopologyIntersector::MergeCoincidentSurfaces`). This is the follow-up the
+"Back-edges" bullet of `boolean.topology_intersector_p3` (PR #211) left open.
+
+- **Wiring.** `SmMerge::FixFoundFaceCoincidence` is `p1::check_face_coincidence` (the
+  all-edges-mated return), the merge, then `p1::finish_face_coincidence`
+  (`rbModifiedTopology` from the edge counts taken before the merge). The merge needs
+  `&mut` access to the adapter's own mate store, which `fix_found_face_coincidence` held
+  borrowed as its map arguments, hence the split. `ManifoldKernelAdapter::fix_face_coincidence`
+  (trait `ManifoldIntersector`, now with the kernels and attributes the edits notify through)
+  runs `TopologyIntersector::merge_coincident_surfaces` on an `ArenaPair`, which now
+  implements `IntersectorBrepP3` (modelled on the tested difftest `Two`), with two new handle
+  kinds (loop use, face use). The surfaces passed are the faces' surface handles, as
+  `GetSurface()`. The temporary curves the merge stores stay in the adapter's curve stores
+  (handles are stable; nothing enumerates them).
+- **`Objs` hooks.** The private `ClassGeometry` wrapper of `face_curve_on_classify`
+  returned `None` for `classification_vertex_point`, `topology_zone_tol_3d` and the topology
+  hooks, which surfaced as an `SmVertex::GetTolerance` deferral inside the merge. It now
+  delegates them to the pair (`vertex_face_gap` keeps the trait default, as the pair does).
+  Every existing caller treats `None` as an `Unported`/invalid-input error, so this only turns
+  deferrals into upstream behaviour. All-units difftest (261 units, 0 failed): no unit other
+  than `boolean.merge_p1` changed (`boolean.merge_p4` 311/140/0/168, `boolean.api_brep`
+  287/151/0/136, ... as on main).
+- **Harness.** Op 2 compared only the primary B-rep's graph and the face lists, with the
+  other operand cloned and discarded, so the merge's edits of the other B-rep were invisible.
+  The shim now appends, for op 2, the faces numbered by walks after the call, both directions
+  of `m_vTI`'s edge mates and the other B-rep's raw export; the runner drives the adapter
+  (the context-only `SmMerge` constructor's tolerances `SM_EFF_ZERO_SQ` and 30 degrees) and
+  compares `other_graph` / `other_geometry` and the mates. Not compared: notification
+  records and attributes (op 2 uses fresh ones), the geometry of curves the merge creates.
+- **Not generated, deferred.** Same-plane rectangles that overlap, are contained or touch
+  (the cases where the merge splits faces and edges) were tried in the generator; with
+  `--seeds 6000` each variant defers 148 of 6152 cases with 0 mismatches before the stubs:
+  the imprinting branch of `SmCurveClassification::MergeInterval`
+  (`intersect.curve_class_p6`) for the overlapping, contained and larger rectangles, and
+  `SmFace::FindVertexSector` (`topology.face_p4`) for the touching one and the one sharing
+  edges with the face. Keeping them would
+  stop the unit at partial, so the generator makes the disjoint rectangle (the merge returns
+  at its box test) plus the identical coincident rectangle the fixtures already cover (the
+  full merge, no split). Re-add the variants in `boolean_merge_p1::generate` once those two
+  stubs are wired; the face lists then also exercise the post-call numbering.
