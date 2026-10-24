@@ -398,6 +398,7 @@ fn actual_box_corner_edges_are_processed_in_retained_corner_order() {
         for &edge_id in &corner.edges {
             let edge_record = session.pseudo_brep().brep().edge(edge_id).unwrap();
             let curve = edge_record.curve.as_ref().unwrap();
+            assert_eq!(curve.type_code(), solidcore::curve::curve::p2::CIRCLE_TYPE);
             assert_eq!(edge_record.interval, curve.natural_interval());
             let fillet_edge = session.pseudo_brep().fillet_edge(edge_id).unwrap();
             assert_eq!(

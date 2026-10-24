@@ -71,7 +71,7 @@
 //!   `DropPoint` counts as no drop point.
 //! - **Surface/surface intersection.** `sm_SrfSrfIntersection` (`blend.fillet_geom_p2`)
 //!   runs through `blend.fillet_geom_p4`'s adapter: the fillet vertices go in as their
-//!   points and the curves come back as their `SmBSplineCurve` part, as in p4.
+//!   points and the curves retain their actual B-spline-derived objects through p4.
 //! - **Curve cache.** Upstream keeps one curve cache on the rail across the up to nine
 //!   `DropPoint` calls and the `GlobalPointSolve` of `TrimRailCurves`
 //!   (SmFilletGeom.cpp:10580-10645); [`Curve::drop_point`] and the solve here each build
@@ -583,10 +583,10 @@ impl FilletBrep {
             // save outputs: Curve, Edgeuses->UVCurves, Status = processed
             let (curve, uv1, uv2) = curves;
             let ivl = curve.natural_interval();
-            set_edge_curve(self.brep_mut(), curr_edge, Some(Curve::from(curve)))?;
+            set_edge_curve(self.brep_mut(), curr_edge, Some(curve))?;
             edge::set_interval(self.brep_mut(), curr_edge, &ivl)?;
-            self.set_uv(prim, uv1.map(Curve::from))?;
-            self.set_uv(mate, uv2.map(Curve::from))?;
+            self.set_uv(prim, uv1)?;
+            self.set_uv(mate, uv2)?;
             self.fillet_edge_mut(curr_edge)?
                 .set_status(FilStatus::Processed);
         }
@@ -1033,9 +1033,9 @@ impl FilletBrep {
         // when a new 3DCurve was constructed by surf/surf intersection
         if let Some(c) = new_curves {
             // save 3DCurve and UVTrimCurves, and set the owner
-            set_edge_curve(self.brep_mut(), e, c.curve_3d.map(Curve::from))?;
-            self.set_uv(prim, c.uv_curve1.map(Curve::from))?;
-            self.set_uv(mate, c.uv_curve2.map(Curve::from))?;
+            set_edge_curve(self.brep_mut(), e, c.curve_3d)?;
+            self.set_uv(prim, c.uv_curve1)?;
+            self.set_uv(mate, c.uv_curve2)?;
         }
 
         // connect the sideFilletEdge to the FilletSurfaceFace
@@ -2070,9 +2070,9 @@ impl FilletBrep {
                         .curve_3d
                         .ok_or_else(|| SolidError::null_pointer(OP_CLIFF))?;
                     let ivl = curve.natural_interval();
-                    set_edge_curve(self.brep_mut(), rail, Some(Curve::from(curve)))?;
+                    set_edge_curve(self.brep_mut(), rail, Some(curve))?;
                     edge::set_interval(self.brep_mut(), rail, &ivl)?;
-                    self.set_uv(prim, curves.uv_curve1.map(Curve::from))?;
+                    self.set_uv(prim, curves.uv_curve1)?;
                     self.set_uv(mate, None)?;
                 } else if rail_type == FilletEdgeType::Rail {
                     if start_v == end_v {
