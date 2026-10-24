@@ -759,18 +759,14 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         min_edge_gap: Option<&mut f64>,
     ) -> Result<StitchAttempt>;
 
-    /// `SmFilletExecutive::RemoveTopoEdges`; waiting for `blend.fillet_executive_p1`.
+    /// `SmFilletExecutive::RemoveTopoEdges`: the owner of the B-reps implements it with
+    /// [`crate::blend::fillet_executive::p1::remove_topo_edges`] on the target B-rep and
+    /// the edges of `executive.topo_edges`.
     fn remove_topo_edges(
         &mut self,
-        _k: &mut Kernel,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::RemoveTopoEdges
-        Err(SolidError::unported(
-            "SmFilletExecutive::RemoveTopoEdges",
-            "blend.fillet_executive_p1",
-        ))
-    }
+        k: &mut Kernel,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// `brep->OrientTrimmedSurfaces(bNormalsOutward, rbMaybeNotSolid, bJustUnifyNormals,
     /// pOptFacesToSwapUV)`: the owner of the B-reps implements it with

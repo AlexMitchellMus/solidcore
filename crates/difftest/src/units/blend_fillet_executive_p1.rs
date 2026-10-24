@@ -7,7 +7,8 @@
 //! intervals (forward or reversed), then dumps the extension the B-spline law cached
 //! and `IsKindOf` answers. An object case (`object_eval`) runs a script of `NoteError`
 //! calls on an `SmFilletErrorInfo`, or of those and the setters on a new
-//! `SmFilletExecutive`, and dumps the resulting members.
+//! `SmFilletExecutive`, and dumps the resulting members. A `remove_topo_edges` case
+//! ([`topo`]) runs `RemoveTopoEdges` on a fixture B-rep and compares the B-reps after it.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -36,6 +37,9 @@ use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 
 /// `blend.fillet_executive_p1` runner.
 pub struct Runner;
+
+#[path = "blend_fillet_executive_p1/topo.rs"]
+mod topo;
 
 /// The law to build.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +78,9 @@ struct Inputs {
 enum CaseIn {
     Loader {
         loader: super::blend_fillet_executive_p2::LoaderScript,
+    },
+    Topo {
+        remove_topo_edges: topo::TopoIn,
     },
     Law(Inputs),
     Object(ObjectIn),
@@ -243,6 +250,7 @@ impl UnitDiff for Runner {
 
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
         let flat = match case.parse()? {
+            CaseIn::Topo { remove_topo_edges } => return topo::cpp(&remove_topo_edges),
             CaseIn::Loader { loader } => super::blend_fillet_executive_p2::loader_cpp(&loader),
             CaseIn::Law(i) => ffi::law_eval(&cpp_input(&i)),
             CaseIn::Object(i) => ffi::object_eval(i.parts().0, &object_cpp_input(&i)),
@@ -253,6 +261,7 @@ impl UnitDiff for Runner {
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         match case.parse()? {
+            CaseIn::Topo { remove_topo_edges } => topo::rust(&remove_topo_edges),
             CaseIn::Loader { loader } => super::blend_fillet_executive_p2::loader_rust(&loader),
             CaseIn::Law(i) => rust(&i),
             CaseIn::Object(i) => object_rust(&i),
@@ -260,6 +269,10 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
+        if rng.chance(0.25) {
+            let i = topo::generate(rng)?;
+            return Some(serde_json::json!({ "remove_topo_edges": i }));
+        }
         if rng.chance(0.5) {
             return serde_json::to_value(gen_object(rng)).ok();
         }

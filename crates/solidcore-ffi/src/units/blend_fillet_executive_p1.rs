@@ -81,6 +81,17 @@ mod sys {
             cap: i64,
             out_len: *mut i64,
         ) -> i32;
+        pub fn sc_blend_fillet_executive_p1_remove_topo_edges(
+            path: *const std::ffi::c_char,
+            input: *const f64,
+            n_in: i64,
+            edges: *const i64,
+            n_edges: i64,
+            editing: i32,
+            out: *mut f64,
+            cap: i64,
+            out_len: *mut i64,
+        ) -> i32;
         pub fn sc_blend_fillet_executive_p1_law_eval(
             input: *const f64,
             n_in: i64,
@@ -277,6 +288,50 @@ pub fn object_eval(op: ObjectOp, input: &[f64]) -> Result<Vec<f64>, FfiError> {
                 op as i32,
                 input.as_ptr(),
                 input.len() as i64,
+                buf.as_mut_ptr(),
+                buf.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })
+}
+
+/// `SmFilletExecutive::RemoveTopoEdges` on the fixture B-rep the block `input` builds
+/// (`topology_topology_traverser::export`), its `edges` given as indices into the walk
+/// of that B-rep. Output: `-1` when the fixture does not build, `-3` when two listed
+/// edges share a vertex (the shim's guard), else `status editing graph...` (the
+/// B-rep's exported graph after the call, as the traverser exports it).
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for an edge index out of range or more than
+/// [`MAX_LIST`] edges; those of the traverser export.
+pub fn remove_topo_edges(
+    path: &str,
+    input: &[f64],
+    edges: &[i64],
+    editing: bool,
+) -> Result<Vec<f64>, FfiError> {
+    let fixture = crate::units::topology_topology_traverser::export(path, input)?;
+    let Some(c) = crate::units::topology_vertexuse::counts(&fixture.graph) else {
+        // the fixture does not build: the shim reports it without running anything
+        return Ok(vec![-1.0]);
+    };
+    if edges.len() > MAX_LIST || edges.iter().any(|&e| e < 0 || e as u64 >= c[7] as u64) {
+        return Err(FfiError::InvalidArgument("blend.fillet_executive_p1: edge index".into()));
+    }
+    let cpath = std::ffi::CString::new(path).map_err(|_| FfiError::InvalidArgument("blend.fillet_executive_p1: path".into()))?;
+    call_with_buffer(1 << 16, |buf, len| {
+        // SAFETY: the block was validated by the traverser export above, the edge
+        // indices are in range of the B-rep it builds, and all buffers are owned here.
+        unsafe {
+            sys::sc_blend_fillet_executive_p1_remove_topo_edges(
+                cpath.as_ptr(),
+                input.as_ptr(),
+                input.len() as i64,
+                edges.as_ptr(),
+                edges.len() as i64,
+                i32::from(editing),
                 buf.as_mut_ptr(),
                 buf.len() as i64,
                 &raw mut *len,
