@@ -489,3 +489,103 @@ fn actual_box_rollover_keeps_scoped_attached_rail_classifications() {
         );
     }
 }
+
+#[test]
+fn actual_box_face_stage_constructs_a_distinct_intermediate_body() {
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
+    let edge = target.edges().ids().next().unwrap();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    assert!(session.intermediate_brep().is_none());
+    session
+        .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+        .unwrap();
+    session.create_corners(&k, None).unwrap();
+    session.process_smooth_edge_sequences(&mut k).unwrap();
+    session.create_corner_vertices(&mut k).unwrap();
+    session.adjust_corner_topology(&mut k).unwrap();
+    session.calculate_solver_geometry(&mut k).unwrap();
+    session.calculate_corner_edges(&mut k).unwrap();
+    session.trim_solver_rails(&mut k).unwrap();
+    session.classify_solver_rails(&mut k).unwrap();
+    session.build_fillet_faces(&mut k).unwrap();
+    let body = session.intermediate_brep().unwrap();
+    assert!(body.editing_enabled());
+    assert_eq!(
+        body.key(),
+        solidcore::topology::brep::p3::topology_ref(
+            body.notify_serial().unwrap(),
+            EntityRef::Brep(solidcore::topology::BrepId::from_index(0)),
+        )
+        .key
+    );
+    assert_ne!(body.key(), solidcore::geom::attribute::ObjectKey(0));
+    assert!(!body.faces().is_empty());
+    assert_ne!(body.notify_serial(), session.target().notify_serial());
+    assert_eq!(
+        session.executive().fillet,
+        Some(FilletObject::IntermediateBrep)
+    );
+    for (index, geometry) in session.pseudo_brep().geoms().iter().enumerate() {
+        let id = solidcore::blend::fillet_geom::p1::FilletGeomId(u32::try_from(index).unwrap());
+        let source = session.fillet_surface(id).unwrap().unwrap();
+        let face = body
+            .faces()
+            .ids()
+            .find(|&face| {
+                body.face(face)
+                    .unwrap()
+                    .surface
+                    .as_ref()
+                    .is_some_and(|managed| core::ptr::eq(source, managed))
+            })
+            .expect("native source surface must be the actual managed face surface");
+        assert_eq!(
+            source.owner(),
+            Some(
+                session
+                    .intermediate_identity(EntityRef::Face(face))
+                    .unwrap()
+            )
+        );
+        assert!(geometry.fillet_surface().unwrap_err().is_unported());
+    }
+    let edge_keys: Vec<_> = solidcore::topology::brep::p1::edges(body, None)
+        .unwrap()
+        .into_iter()
+        .map(|edge| {
+            session
+                .intermediate_identity(EntityRef::Edge(edge))
+                .unwrap()
+                .key
+        })
+        .collect();
+    let Some(FilletObject::Attribute(marker)) = session.executive().edge_attribute else {
+        panic!("actual executive edge marker must be retained");
+    };
+    assert!(session.attributes().users(marker).unwrap().is_empty());
+    let outcome = session.stitch_fillet_faces(&mut k).unwrap();
+    assert!(outcome.status.is_none());
+    // Independent native box-edge baseline: no glues, four lamina edges.
+    assert_eq!((outcome.stitched, outcome.lamina), (0, 4));
+    assert_eq!((outcome.max_vertex_gap, outcome.max_edge_gap), (0.0, 0.0));
+    assert_eq!(session.attributes().users(marker).unwrap(), edge_keys);
+    let geom = solidcore::blend::fillet_geom::p1::FilletGeomId(0);
+    let before = session
+        .fillet_surface(geom)
+        .unwrap()
+        .unwrap()
+        .natural_uv_domain();
+    assert_eq!((before.min().x, before.max().x), (0.0, 1.0));
+    let context = k.context.doing_boolean();
+    session.shrink_fillet_faces(&mut k).unwrap();
+    assert_eq!(k.context.doing_boolean(), context);
+    let after = session
+        .fillet_surface(geom)
+        .unwrap()
+        .unwrap()
+        .natural_uv_domain();
+    // Independent native direct-component baseline; default trim options.
+    assert_eq!((after.min().x, after.max().x), (0.25, 0.75));
+    assert_eq!((after.min().y, after.max().y), (0.0, 1.0));
+}

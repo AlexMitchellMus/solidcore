@@ -1385,7 +1385,11 @@ impl FilletSolver {
             .geom_mut(geom)?
             .set_fillet_geom_type(FilletGeomType::CliffRollover);
 
-        let fillet_surface = fillets.geom(geom)?.fillet_surface.clone().ok_or_else(nul)?;
+        let fillet_surface = fillets
+            .geom(geom)?
+            .fillet_surface()?
+            .cloned()
+            .ok_or_else(nul)?;
         let mut rail = fillets
             .geom(geom)?
             .rail(roll_over_rail_index)
@@ -1998,7 +2002,7 @@ mod tests {
         let mut fb = FilletBrep::new();
         let curve = line([0.0; 3], [1.0, 0.0, 0.0]);
         let mut geom = FilletGeom::new(k, None, FilletGeomType::Default).expect("geom");
-        geom.fillet_surface = Some(patch([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]));
+        geom.set_fillet_surface(Some(patch([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0])));
         for (which, cls) in classes.into_iter().enumerate() {
             let v0 = fb.brep_mut().add_vertex(Vec3::new(0.0, 0.0, 0.0)).unwrap();
             let v1 = fb.brep_mut().add_vertex(Vec3::new(1.0, 0.0, 0.0)).unwrap();
