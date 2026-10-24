@@ -17,7 +17,9 @@
 //! | [`ProtoTopologyManager::capture_distance`] | `SmProtoTopologyManager::GetCaptureDistance` (already in `topology::proto_topology`) |
 //! | [`face_vertices`]                     | `SmFace::GetVertices(SmTArray&, ..)` (CO-PORTED, `topology.face_p4`) |
 //! | `ClassObject for EntityRef`           | the `SmObject*` of a classification of B-rep topology |
-//! | [`BrepCacheFace`], [`face_surface_cache`] | `GetFace()` of a face surface's trimmed cache (`SmTrimSrfCache::BuildTree`, `PointClassify`), `smsurf_GetSurfaceCache(GetSurface())` |
+//! | [`BrepCacheFace`] | `GetFace()` of a face surface's trimmed cache (`SmTrimSrfCache::BuildTree`, `PointClassify`) |
+//! | [`face_surface_cache`], [`FaceSurfaceCache`], [`note_face_surface_cache`] | `smsurf_GetSurfaceCache(GetSurface())` through `SmCacheMgrTSrf::CacheMakeOrValidate` |
+//! | [`face_cache_tree`] | `SmSurfaceCache::GetTree` of a face surface's trimmed cache |
 //!
 //! Deviations:
 //! - **Object model.** The face is a record of a [`Brep`]; the functions take the
@@ -29,10 +31,16 @@
 //!   `bDoBoundaryIntersections` and `bUVSpaceOkay` are `NotUsed` upstream; they are
 //!   kept in [`PointClassifyOptions`] and ignored. `bUseUVClassification` only chooses
 //!   between two identical `SM_ERR` returns.
-//! - **Trimmed surface cache.** `SmCacheMgr::GetObjectCache(SM_OC_TRIMSRF, surface)`
-//!   has no counterpart: B-rep surfaces carry no object cache in the port, so the
-//!   caller passes the face surface's [`TrimSrfCache`] (if any) in
-//!   [`PointClassifyOptions::trim_cache`]. The test
+//! - **Trimmed surface cache.** A face surface keeps its trimmed cache in its cache
+//!   slot ([`Surface::take_trim_cache`]; upstream's `SM_OC_TRIMSRF` queue entry), made
+//!   by the first [`face_surface_cache`] and reused by later ones as
+//!   `CacheMakeOrValidate` reuses it (whether it was built with the face or
+//!   standalone, while the owner was cleared). A lookup made while the cache is in use
+//!   (taken out of the slot) gets a cache built the same way that is not kept. The
+//!   global cache queue's size limit (200 trimmed caches, least recently used out) is
+//!   not modelled. `SmCacheMgr::GetObjectCache(SM_OC_TRIMSRF, surface)` of
+//!   `PointClassify` is the caller's [`PointClassifyOptions::trim_cache`], else the
+//!   surface's kept cache (none while it is in use). The test
 //!   `GetSurface()->GetFace() == this` is "the face's surface has a face owner"
 //!   (the owner of a face's surface is that face).
 //! - **Out-of-bounds evaluation.** `SmTemporaryChangeValue` on the surface's
@@ -85,6 +93,16 @@
 //!   caller's [`ClassGeometry`]; a gap error therefore surfaces before the earlier
 //!   vertices are intersected (upstream: a null dereference or the same unported
 //!   callee). A vertex without a face use is unresolved (upstream dereferences null).
+//! - **`IntersectTSBound`** fetches the face surface's trimmed cache itself
+//!   ([`face_surface_cache`] on the classification snapshot, whose face surfaces share
+//!   the B-rep's cache slots: [`Brep::clone_sharing_surface_caches`]); when it is up to
+//!   date the cached branch visits only the vertex uses and edge uses of the leaf nodes
+//!   the curve's box meets, under a context mark
+//!   ([`crate::geom::context::Context::claim_mark`]), and makes a visited edge use's
+//!   missing UV trim curve on the snapshot (`GetOrCreateUVTrimCurve`).
+//!   `IntersectVertices` / `IntersectEdges` clear the surface's owner while they read
+//!   the vertex/face and edge/face gaps, so the gap reads run in an owner-cleared scope
+//!   ([`Brep::begin_surface_owner_cleared`]) and a cache they make is standalone.
 //! - The UV trim curves `IntersectTSBound`'s `ComputeUVPoint` calls make there (upstream
 //!   on the face's own B-rep) stay visible for the rest of the classification through
 //!   the private `WithMadeTrimCurves` geometry. The gap caches and these trim curves

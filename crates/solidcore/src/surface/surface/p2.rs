@@ -160,9 +160,17 @@
 //!   `SmSurfaceEval`, `SmDerivSurfDefinition`, `SmDropCurveFail` and
 //!   `SmLSIGlobalSolver` are implicit `Drop`; the classes themselves belong to other
 //!   units.
-//! - **Cache slot.** The port builds surface caches afresh instead of keeping one on
-//!   the surface (`m_pCacheObj`), but whether that cache's tree has been built is
-//!   observable: `GetDomainWithContinuity`, `LiftCurve`, `GetSurfaceContinuity` and
+//! - **Cache slot.** A face surface keeps its trimmed surface cache in its cache slot
+//!   ([`Surface::take_trim_cache`], [`Surface::store_trim_cache`], [`TrimCacheSlot`]):
+//!   the face lookups (`query::face::p2::face_surface_cache`) make, validate and reuse
+//!   it as `SmCacheMgrTSrf::CacheMakeOrValidate` does, and a face-unaware lookup made
+//!   while the face's `CreateUVTrimCurve(s)` / `IntersectVertices` has cleared the
+//!   owner ([`Surface::begin_owner_cleared`]) keeps the standalone cache it made
+//!   ([`Surface::keep_standalone_trim_cache`]). The stored cache's own surface copy
+//!   gets a slot of its own (no self-reference); a cache taken out shares the slot
+//!   again until it is stored. Other surface caches are built afresh instead of being
+//!   kept on the surface (`m_pCacheObj`), but whether that cache's tree has been built
+//!   is observable: `GetDomainWithContinuity`, `LiftCurve`, `GetSurfaceContinuity` and
 //!   the drop-curve boundary search read the continuity arrays without `GetTree`.
 //!   [`Surface::cache_tree_state`] keeps that bit of history ([`CacheTreeState`]) in a
 //!   slot shared by the surface and its evaluation copies (which stand for upstream's

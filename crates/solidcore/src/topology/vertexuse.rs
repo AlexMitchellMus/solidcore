@@ -65,9 +65,15 @@
 //!   `GlobalPointSolve` / `IsOnSeam` (`surface.surface_p4`; a plane's overrides are
 //!   ported) and `GetSingularities` (`surface.surface_p3`) are wired. The gap evaluation of
 //!   `SmVertexEdgeGap::Set` / `SmVertexFaceGap::Set` is [`crate::heal::gap`].
-//!   `GlobalPointSolve` stands for the surface-cache sequence around it
-//!   (`smsurf_GetSurfaceCache`, the temporary `m_bHaveTSurfaceCache`,
-//!   `m_bProcessBoundaryCurves` and `m_bPointTestEnabled` changes).
+//!   `GlobalPointSolve` runs the surface-cache sequence around it: the face surface's
+//!   kept cache (`smsurf_GetSurfaceCache`, `query::face::p2::face_surface_cache`) is
+//!   checked out for the solve, which stands for the temporary `m_bHaveTSurfaceCache`
+//!   off (the face classifications inside find no cache); its fast drop tests the
+//!   solutions against the face when the cache is trimmed with point testing on (not
+//!   switched off by `bOKToMakeUVTrimCurve`). The Rust solver itself builds no surface
+//!   cache, so `m_bProcessBoundaryCurves` has nothing to act on. A cache already in use
+//!   by an enclosing caller is not fetched again and no point is tested (upstream
+//!   reaches it mostly while its tree is built, with point testing off).
 //! - `GetTurningAngDeg`, `ComputeTPoint`, `GetBrep`, the fresh-gap checks,
 //!   `GetVertexFaceTrimCurveGap`, `RefreshGaps`, `IsOnSeam`,
 //!   `IsSectorGapFreeAndOriented`, `AssertValid`, `Draw*` and the `Dump`s are not
