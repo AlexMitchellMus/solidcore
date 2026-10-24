@@ -910,6 +910,9 @@ fn id<I: Copy>(o: Option<I>, f: impl Fn(I) -> u32) -> i64 {
 }
 
 fn rust_err(e: &SolidError) -> Result<Output, HarnessError> {
+    if matches!(e, SolidError::InvalidInput { operation: "geom::vector3d::Vec3::angle_between", .. }) {
+        return Ok(Output::err("status_1007"));
+    }
     match Output::unported(e) {
         Some(o) => Ok(o),
         None => Err(harness(format!("rust: {e}"))),
@@ -1475,6 +1478,9 @@ impl From<HarnessError> for Fail {
 fn or_null<T>(r: Result<T, SolidError>) -> Result<Option<T>, SolidError> {
     match r {
         Ok(v) => Ok(Some(v)),
+        // A failed angle is a geometry error, not an upstream null dereference
+        // (#521). Keep its status when the tangent predicates propagate it.
+        Err(e @ SolidError::InvalidInput { operation: "geom::vector3d::Vec3::angle_between", .. }) => Err(e),
         Err(SolidError::InvalidInput { .. }) => Ok(None),
         Err(e) => Err(e),
     }
