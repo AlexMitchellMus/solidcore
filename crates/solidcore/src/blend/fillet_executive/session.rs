@@ -450,6 +450,54 @@ impl<'target> FilletSession<'target> {
         )
     }
 
+    /// Build one actual `NByOne` corner's pseudo-topology.
+    ///
+    /// This is a single-corner operation: the executive interleaves topology and
+    /// vertex geometry per corner, so this does not batch-reorder those stages.
+    ///
+    /// # Errors
+    /// Unresolved corner/solver identities or the real concrete topology producer's errors.
+    pub fn make_nx1_corner_topology(&mut self, k: &Kernel, id: FilletCornerId) -> Result<()> {
+        let edgeuse = self
+            .objects
+            .corners
+            .get(id.0 as usize)
+            .and_then(|corner| corner.solver_eus.as_deref())
+            .and_then(|edgeuses| edgeuses.first())
+            .copied()
+            .ok_or_else(|| invalid("corner has no actual solver edge use"))?;
+        let object = FilletObject::Topology(FilletBody::Target, EntityRef::Edgeuse(edgeuse));
+        let Some(FilletObject::Solver(solver)) = self.executive.fillet_solver_of_edgeuse(object)
+        else {
+            return Err(SolidError::null_pointer(
+                "SmFilletNx1Corner::MakeCornerTopology",
+            ));
+        };
+        let SessionObjects {
+            target,
+            pseudo,
+            solvers,
+            corners,
+            ..
+        } = &mut self.objects;
+        let solver = solvers
+            .get(solver.0 as usize)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| invalid("corner solver is not live"))?
+            .base();
+        let corner = corners
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| invalid("corner is not live"))?;
+        corner.make_nx1_corner_topology(crate::blend::fillet_corner::topology::Nx1TopologyEnv {
+            k,
+            target,
+            pseudo,
+            corner: id,
+            solver,
+            do_global_merge: &mut self.executive.options.global_merge,
+        })
+    }
+
     /// Load this actual solver through the native executive algorithm.
     ///
     /// # Errors
