@@ -1589,16 +1589,13 @@ mod tests {
                 continue;
             }
             let bytes = bytes_of(&i).unwrap();
-            match libcxx_rejected_ascii_double(&bytes) {
-                Some(token) => {
-                    let reason = skip.unwrap_or_default();
-                    assert!(reason.contains(&token), "{}: {reason}", case.name);
-                    skipped_file += 1;
-                }
-                None => {
-                    assert_eq!(skip, None, "{}: skipped without a token", case.name);
-                    native_ascii_file += 1;
-                }
+            if let Some(token) = libcxx_rejected_ascii_double(&bytes) {
+                let reason = skip.unwrap_or_default();
+                assert!(reason.contains(&token), "{}: {reason}", case.name);
+                skipped_file += 1;
+            } else {
+                assert_eq!(skip, None, "{}: skipped without a token", case.name);
+                native_ascii_file += 1;
             }
         }
         assert!(skipped_file > 0, "no generated file case is affected");
