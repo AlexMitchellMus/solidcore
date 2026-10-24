@@ -19452,3 +19452,9 @@ C++ and (4, none) in the port. No edge use binormal is evaluated in this case.
 Suspected to be the same Rust merge region/shell handling as `gen0000` / `gen0003`
 above (the inset shell's Difference); not traced further. Listed in
 `known_mismatches.toml`.
+
+### Actual CreateFilletBrep: production constructor matches native on real box
+
+A new same-box checkpoint calls Session::create_fillet_brep directly against native SmFilletExecutive::CreateFilletBrep after shared parameter/corner setup. It returns before the harness's manual component sequence. The actual constructor result has matching directed intermediate B-rep topology, Line/Circle/Cylinder types and geometry samples, actual source-FG-to-managed-Face alias/owner, and retained executive E attributes. New comparison171 exact fields/124 values matches exactly. No internal substage success flags, before-state vectors or Stitch counters are fabricated.
+
+Whole executive_p3 now307 cases/260 value passes/47 existing deferrals/0 failures; same box15 exact passes plus1 honest full SmApiFilletEdges deferral. Every30 prior CPP/Rust output remains byte-identical across actual constructor wiring/latest-main integration; perturb catches15/15 implemented cases. This is actual CreateFilletBrep in unchanged direct context, not DoFilleting, target integration, mass or complete geometry notification/cache parity.
