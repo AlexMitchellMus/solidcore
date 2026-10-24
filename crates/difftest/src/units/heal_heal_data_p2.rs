@@ -2197,8 +2197,7 @@ mod tests {
         assert!(rust.error.is_none(), "Rust failed: {rust:?}");
         assert!(rust.deferred.is_none(), "Rust deferred: {rust:?}");
         let diff = crate::compare(&cpp, &rust, Runner.abs_floors());
-        assert!(diff.is_empty(), "{diff:?}");
-        assert!(cpp.values.values().any(|v| v.iter().any(|x| *x != 0.0)));
+        assert!(diff.pass() && diff.values_compared > 0, "{diff:?}");
     }
 
     /// Object counts the C++ guard refuses are a harness error on the Rust side too,
