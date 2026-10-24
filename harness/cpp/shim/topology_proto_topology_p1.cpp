@@ -4840,6 +4840,7 @@ enum TObj : int64_t
     T_POLY_PTS = 9,
     T_PRIMITIVE_BOX = 10,
     T_PRIMITIVE_SPHERE = 11,
+    T_CALLER_FACE = 12,
 };
 
 // SmCrvOnSurf's UV-line constructor is protected.
@@ -4885,6 +4886,15 @@ int32_t run_transform(Rd& rd, std::vector<double>& o)
         } else { double radius=rd.num(); created=SmApiCreateSphere(origin, radius, body); }
         if (created != SM_SUCCESS || !body) { o.push_back((double)created); delete body; return SC_OK; }
         obj = body; break;
+    }
+    case T_CALLER_FACE:
+    {
+        SmPoint3d origin=rd.vec(); double width=rd.num(), height=rd.num();
+        SmBrep* body=new(ctx) SmBrep(); SmFace* face=NULL;
+        SmPlane* surface=new(ctx) SmPlane(origin,SmVector3d(0,0,1),&ctx);
+        SmStatus created=body->CreateFaceFromSurface(surface,SmExtent2d(0,0,width,height),face);
+        if(created!=SM_SUCCESS || !face) { o.push_back((double)created); delete body; return SC_OK; }
+        obj=body; break;
     }
     case T_BREP: obj = new (ctx) SmBrep(); break;
     case T_POLY: obj = new (ctx) SmPolyBrep(SmZoneTol3d(1.0e-5)); break;
@@ -4988,7 +4998,7 @@ int32_t run_transform(Rd& rd, std::vector<double>& o)
     default: return SC_ERR_ARG;
     }
     o.push_back((double)s);
-    if (kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE) {
+    if (kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE || kind == T_CALLER_FACE) {
         SmBrep* body=(SmBrep*)obj;
         SmTArray<SmVertex*> vertices; body->GetVertices(vertices);
         SmTArray<SmEdge*> edges; body->GetEdges(edges);
