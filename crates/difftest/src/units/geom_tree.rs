@@ -467,7 +467,13 @@ fn run_subdiv_rust(
             DOp::FirstPatch { node } => {
                 let p = t.first_bezier_patch(
                     NodeId(*node as usize),
-                    |id| Ok((!cleared[id.0]).then(|| native_patch(id.0 as i64 + 1, scale))),
+                    |id| {
+                        let is_cleared = cleared.get(id.0).ok_or(SolidError::InvalidInput {
+                            operation: "difftest::geom_tree::first_patch",
+                            reason: "invalid construction patch node",
+                        })?;
+                        Ok((!*is_cleared).then(|| native_patch(id.0 as i64 + 1, scale)))
+                    },
                     |surface| Ok(Some(native_patch(*surface + nodes.len() as i64 + 1, scale))),
                 )?;
                 o.push(i64::from(p.is_some()));
@@ -480,7 +486,14 @@ fn run_subdiv_rust(
                     t.node_owner_object(NodeId(*node as usize))?.is_some(),
                 ));
             }
-            DOp::ClearPatch { node } => cleared[*node as usize] = true,
+            DOp::ClearPatch { node } => {
+                *cleared
+                    .get_mut(*node as usize)
+                    .ok_or(SolidError::InvalidInput {
+                        operation: "difftest::geom_tree::clear_patch",
+                        reason: "invalid construction patch node",
+                    })? = true;
+            }
             DOp::Owner { surface } => {
                 t.set_owner_object((*surface >= 0).then_some(TreeOwner::SurfaceCache));
                 t.set_owner_surface(obj(*surface));
