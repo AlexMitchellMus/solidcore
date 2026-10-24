@@ -406,7 +406,7 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         body: impl FnOnce(&mut Self, &mut Kernel, &[ContextMark]) -> Result<T>,
     ) -> Result<T>;
     /// `SmFace::ShrinkGeometry()` with its header defaults; status is ignored.
-    /// Not upstream (tangency-labs/solidcore#472): implementations run
+    /// Legacy indexed adapters (not upstream, tangency-labs/solidcore#472) run
     /// [`crate::topology::face::p1::shrink_geometry_with`] with
     /// [`crate::nurbs::b_spline_surface_n_lib::p2::TrimOptions::snap_roundoff_to_knots`],
     /// so that a fillet face whose domain lies a rounding error inside a knot of its
@@ -1275,6 +1275,33 @@ where
     }
 }
 
+/// Actual surface-owner resolution and face shrinking after fillet construction.
+pub trait FaceShrinkAccess<O: ClassObject + SolutionObject + Ord>:
+    FaceConstructionAccess<O>
+{
+    /// Resolve the actual face owning this geometry's surface.
+    /// # Errors
+    /// Missing actual geometry or owning-body context.
+    fn shrink_geometry_face(&self, geom: O) -> Result<Option<O>>;
+    /// Shrink the actual face. The live Session uses native default options;
+    /// the blanket adapter retains the legacy [`ExecutiveAccess::shrink_face`] options.
+    /// # Errors
+    /// Actual shrink-operation or notification-context errors.
+    fn shrink_actual_face(&mut self, k: &mut Kernel, face: O) -> Result<()>;
+}
+impl<O, A> FaceShrinkAccess<O> for A
+where
+    O: ClassObject + SolutionObject + Ord,
+    A: ExecutiveAccess<O> + ?Sized,
+{
+    fn shrink_geometry_face(&self, geom: O) -> Result<Option<O>> {
+        ExecutiveAccess::geom_face(self, geom)
+    }
+    fn shrink_actual_face(&mut self, k: &mut Kernel, face: O) -> Result<()> {
+        ExecutiveAccess::shrink_face(self, k, face)
+    }
+}
+
 /// Actual attribute attachment and stitching of the intermediate fillet body.
 pub trait FaceStitchAccess<O: ClassObject + SolutionObject + Ord>:
     FaceConstructionAccess<O>
@@ -1893,6 +1920,28 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         Ok(())
     }
 
+    /// Shrink the surface-owner face of the first geometry in each actual solver.
+    /// Ordinary native errors are ignored; genuine missing dependencies propagate.
+    ///
+    /// # Errors
+    /// Actual object-resolution errors or genuine missing shrink context.
+    pub fn shrink_fillet_faces(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl FaceShrinkAccess<O>,
+    ) -> Result<()> {
+        let mut index = 0;
+        while let Some(solver) = self.solvers.get(index).copied() {
+            if let Some(geom) = access.faces_solver_geom(solver, 0)? {
+                if let Some(face) = access.shrink_geometry_face(geom)? {
+                    ignore(access.shrink_actual_face(k, face))?;
+                }
+            }
+            index += 1;
+        }
+        Ok(())
+    }
+
     /// Build the fillet B-rep and merge it using the selected strategy. The context
     /// Boolean flag and target editing flag are restored on every return.
     pub fn do_filleting(
@@ -1914,15 +1963,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             if access.faces(fillet)?.is_empty() {
                 return Err(failure());
             }
-            let mut index = 0;
-            while let Some(solver) = self.solvers.get(index).copied() {
-                if let Some(geom) = access.solver_geom(solver, 0)? {
-                    if let Some(face) = access.geom_face(geom)? {
-                        ignore(access.shrink_face(k, face))?;
-                    }
-                }
-                index += 1;
-            }
+            self.shrink_fillet_faces(k, access)?;
             let target = self.target.ok_or(invalid("missing target B-rep"))?;
             let editing = access.editing_enabled(target)?;
             access.set_editing_enabled(target, true)?;

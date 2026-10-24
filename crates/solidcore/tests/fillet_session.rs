@@ -570,4 +570,22 @@ fn actual_box_face_stage_constructs_a_distinct_intermediate_body() {
     assert_eq!((outcome.stitched, outcome.lamina), (0, 4));
     assert_eq!((outcome.max_vertex_gap, outcome.max_edge_gap), (0.0, 0.0));
     assert_eq!(session.attributes().users(marker).unwrap(), edge_keys);
+    let geom = solidcore::blend::fillet_geom::p1::FilletGeomId(0);
+    let before = session
+        .fillet_surface(geom)
+        .unwrap()
+        .unwrap()
+        .natural_uv_domain();
+    assert_eq!((before.min().x, before.max().x), (0.0, 1.0));
+    let context = k.context.doing_boolean();
+    session.shrink_fillet_faces(&mut k).unwrap();
+    assert_eq!(k.context.doing_boolean(), context);
+    let after = session
+        .fillet_surface(geom)
+        .unwrap()
+        .unwrap()
+        .natural_uv_domain();
+    // Independent native direct-component baseline; default trim options.
+    assert_eq!((after.min().x, after.max().x), (0.25, 0.75));
+    assert_eq!((after.min().y, after.max().y), (0.0, 1.0));
 }

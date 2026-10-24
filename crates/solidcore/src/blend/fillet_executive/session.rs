@@ -24,8 +24,8 @@ use super::p1::{ExecutiveObjects, SolverLoadingAccess};
 use super::p2::{FilletParameters, FilletParametersAccess, SolverSpec};
 use super::p3::{
     CornerAdjustmentAccess, CornerEdgeAccess, CornerVertexAccess, CornerView, ErrorInfo,
-    FaceConstructionAccess, FaceStitchAccess, FilletExecutive, RailClassificationAccess,
-    RailTrimAccess, SolverGeometryAccess, StitchAttempt, VertexEntry,
+    FaceConstructionAccess, FaceShrinkAccess, FaceStitchAccess, FilletExecutive,
+    RailClassificationAccess, RailTrimAccess, SolverGeometryAccess, StitchAttempt, VertexEntry,
 };
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_geom::p1::{
@@ -178,6 +178,45 @@ struct SessionObjects<'target> {
 }
 
 impl SessionObjects<'_> {
+    fn intermediate_identity(&self, entity: EntityRef) -> Result<crate::geom::object::ObjectRef> {
+        let body = self
+            .intermediate
+            .as_ref()
+            .ok_or_else(|| invalid("intermediate body is not allocated"))?;
+        let serial = body
+            .notify_serial()
+            .ok_or_else(|| invalid("intermediate body has no kernel identity"))?;
+        Ok(crate::topology::brep::p3::topology_ref(serial, entity))
+    }
+    fn fillet_surface(
+        &self,
+        geom: crate::blend::fillet_geom::p1::FilletGeomId,
+    ) -> Result<Option<&Surface>> {
+        use crate::blend::fillet_geom::p1::FilletSurfaceStorage;
+        match self.pseudo.geom(geom)?.fillet_surface.as_ref() {
+            None => Ok(None),
+            Some(FilletSurfaceStorage::Owned(surface)) => Ok(Some(surface)),
+            Some(FilletSurfaceStorage::ManagedFace { body, face }) => {
+                let actual = self.intermediate_identity(EntityRef::Brep(
+                    crate::topology::BrepId::from_index(0),
+                ))?;
+                if *body != actual {
+                    return Err(invalid("fillet surface names a foreign managed body"));
+                }
+                let managed = self
+                    .intermediate
+                    .as_ref()
+                    .ok_or_else(|| invalid("managed surface body is not allocated"))?;
+                Ok(Some(
+                    managed
+                        .face(*face)?
+                        .surface
+                        .as_ref()
+                        .ok_or_else(|| SolidError::null_pointer(OP))?,
+                ))
+            }
+        }
+    }
     fn solver(&self, id: FilletSolverId) -> Result<&SolverObject> {
         self.solvers
             .get(id.0 as usize)
@@ -760,31 +799,7 @@ impl<'target> FilletSession<'target> {
         &self,
         geom: crate::blend::fillet_geom::p1::FilletGeomId,
     ) -> Result<Option<&Surface>> {
-        use crate::blend::fillet_geom::p1::FilletSurfaceStorage;
-        match self.objects.pseudo.geom(geom)?.fillet_surface.as_ref() {
-            None => Ok(None),
-            Some(FilletSurfaceStorage::Owned(surface)) => Ok(Some(surface)),
-            Some(FilletSurfaceStorage::ManagedFace { body, face }) => {
-                let actual = self.intermediate_identity(EntityRef::Brep(
-                    crate::topology::BrepId::from_index(0),
-                ))?;
-                if *body != actual {
-                    return Err(invalid("fillet surface names a foreign managed body"));
-                }
-                let managed = self
-                    .objects
-                    .intermediate
-                    .as_ref()
-                    .ok_or_else(|| invalid("managed surface body is not allocated"))?;
-                Ok(Some(
-                    managed
-                        .face(*face)?
-                        .surface
-                        .as_ref()
-                        .ok_or_else(|| SolidError::null_pointer(OP))?,
-                ))
-            }
-        }
+        self.objects.fillet_surface(geom)
     }
 
     /// Resolve topology in the actual intermediate body's issued identity domain.
@@ -795,15 +810,7 @@ impl<'target> FilletSession<'target> {
         &self,
         entity: EntityRef,
     ) -> Result<crate::geom::object::ObjectRef> {
-        let body = self
-            .objects
-            .intermediate
-            .as_ref()
-            .ok_or_else(|| invalid("intermediate body is not allocated"))?;
-        let serial = body
-            .notify_serial()
-            .ok_or_else(|| invalid("intermediate body has no kernel identity"))?;
-        Ok(crate::topology::brep::p3::topology_ref(serial, entity))
+        self.objects.intermediate_identity(entity)
     }
 
     /// Attach the real executive edge attribute and stitch the actual intermediate body.
@@ -814,6 +821,16 @@ impl<'target> FilletSession<'target> {
     pub fn stitch_fillet_faces(&mut self, k: &mut Kernel) -> Result<StitchAttempt> {
         self.executive
             .stitch_fillet_faces(k, &mut self.objects, FilletObject::IntermediateBrep)
+    }
+
+    /// Shrink the actual surface-owner face of each solver's first geometry.
+    /// This component does not change the caller's Boolean/fillet context flags.
+    ///
+    /// # Errors
+    /// Missing actual ownership or shrink context; ordinary native shrink errors
+    /// are ignored by the shared executive algorithm.
+    pub fn shrink_fillet_faces(&mut self, k: &mut Kernel) -> Result<()> {
+        self.executive.shrink_fillet_faces(k, &mut self.objects)
     }
 
     /// Load this actual solver through the native executive algorithm.
@@ -908,6 +925,64 @@ impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
             |context| *context.do_global_merge,
             |context| &mut *context.pseudo,
         )
+    }
+}
+
+impl FaceShrinkAccess<FilletObject> for SessionObjects<'_> {
+    fn shrink_geometry_face(&self, geom: FilletObject) -> Result<Option<FilletObject>> {
+        use crate::blend::fillet_geom::p1::FilletSurfaceStorage;
+        let FilletObject::Geometry(id) = geom else {
+            return Err(invalid("shrink geometry is not actually retained"));
+        };
+        let Some(surface) = self.fillet_surface(id)? else {
+            return Ok(None);
+        };
+        let Some(owner) = surface.owner() else {
+            return Ok(None);
+        };
+        if owner.type_code != crate::topology::face::p2::TYPE {
+            return Ok(None);
+        }
+        if let Some(FilletSurfaceStorage::ManagedFace { face, .. }) =
+            self.pseudo.geom(id)?.fillet_surface.as_ref()
+        {
+            if owner == self.intermediate_identity(EntityRef::Face(*face))? {
+                return Ok(Some(FilletObject::IntermediateTopology(EntityRef::Face(
+                    *face,
+                ))));
+            }
+        }
+        // UNPORTED(blend.fillet_executive_p3): actual foreign face-owner resolver.
+        Err(SolidError::unported(
+            "SmFilletGeom::GetFilletSurface owner (live face context)",
+            "blend.fillet_executive_p3",
+        ))
+    }
+    fn shrink_actual_face(&mut self, k: &mut Kernel, face: FilletObject) -> Result<()> {
+        let FilletObject::IntermediateTopology(EntityRef::Face(face)) = face else {
+            return Err(invalid("shrink face is not actual intermediate topology"));
+        };
+        let serial = self
+            .intermediate
+            .as_ref()
+            .ok_or_else(|| invalid("intermediate body is not allocated"))?
+            .notify_serial()
+            .ok_or_else(|| invalid("intermediate body has no kernel identity"))?;
+        let key_of = |entity| crate::topology::brep::p3::topology_ref(serial, entity);
+        let body = self
+            .intermediate
+            .as_mut()
+            .ok_or_else(|| invalid("intermediate body is not allocated"))?;
+        crate::topology::brep::p3::seed_records(&mut self.notification_records, body, &key_of);
+        crate::topology::brep::p3::with_lent_context(k, |k, context| {
+            let mut env = crate::topology::edge::NotifyEnv {
+                records: &mut self.notification_records,
+                attributes: &mut self.attributes,
+                context: Some(context),
+                key_of: &key_of,
+            };
+            crate::topology::face::p1::shrink_geometry_with_notifications(k, body, face, &mut env)
+        })?
     }
 }
 
