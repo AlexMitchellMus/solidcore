@@ -246,6 +246,106 @@ class BaselineTests(unittest.TestCase):
             b.fetch_exact(Pending(), BASE, 1)
         sleep.assert_called_once_with(1)
 
+    def test_workflow_checks_empty_selection_before_native_setup(self):
+        workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text()
+        start = workflow.index("      - name: Validate exact-base report artifact\n")
+        block = workflow[start:workflow.index("      - name:", start + 1)]
+        self.assertNotIn("        if:", block)
+        self.assertIn('--current-plan "$GITHUB_WORKSPACE"', block)
+        self.assertLess(start, workflow.index("      - name: Upstream sources, sccache and the C++ reference"))
+
+    def test_script_retains_base_units_when_current_selection_is_empty(self):
+        import os
+        import subprocess
+        import sys
+        helper = Path(__file__).resolve().with_name("difftest-baseline.sh")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan = root / "plan/units/a.b.toml"
+            plan.parent.mkdir(parents=True)
+            plan.write_text('id = "a.b"\nstatus = "green"\n')
+            def git(*args):
+                return subprocess.check_output(["git", *args], cwd=root, text=True).strip()
+            git("init", "--quiet")
+            git("add", "plan")
+            git("-c", "user.name=Gate test", "-c", "user.email=gate@example.invalid",
+                "commit", "--quiet", "-m", "base with one selected unit")
+            base = git("rev-parse", "HEAD")
+            blob = archive([("a.b.json", json.dumps(valid_report()))])
+            run = run_metadata(); run["head_sha"] = base
+            art = artifact()
+            art["workflow_run"]["head_sha"] = base
+            art.update(digest="sha256:" + hashlib.sha256(blob).hexdigest(),
+                       size_in_bytes=len(blob), expires_at="9999-01-01T00:00:00Z")
+            prefix = "repos/" + b.REPOSITORY + "/actions/"
+            responses = {
+                prefix + "workflows/ci.yml": dict(id=b.WORKFLOW_ID, path=b.WORKFLOW_PATH),
+                prefix + f"workflows/ci.yml/runs?branch=main&event=push&head_sha={base}&per_page=100&page=1": {"workflow_runs":[run]},
+                prefix + "runs/101": run,
+                prefix + "runs/101/artifacts?per_page=100&page=1": {"artifacts":[art]},
+                prefix + "artifacts/201": art,
+            }
+            paths = {}
+            for i, (api, response) in enumerate(responses.items()):
+                file = root / f"response-{i}.json"
+                file.write_text(json.dumps(response)); paths[api] = str(file)
+            zipped = root / "reports.zip"; zipped.write_bytes(blob)
+            paths[prefix + "artifacts/201/zip"] = str(zipped)
+            mapping = root / "responses.json"; mapping.write_text(json.dumps(paths))
+            calls = root / "calls"
+            bin_dir = root / "fake-bin"; bin_dir.mkdir()
+            gh = bin_dir / "gh"
+            gh.write_text("#!" + sys.executable + "\n" +
+                "import json,os,pathlib,sys\n"
+                "with open(os.environ['GATE_TEST_CALLS'],'a') as f: f.write(sys.argv[-1]+'\\n')\n"
+                "paths=json.loads(pathlib.Path(os.environ['GATE_TEST_RESPONSES']).read_text())\n"
+                "sys.stdout.buffer.write(pathlib.Path(paths[sys.argv[-1]]).read_bytes())\n")
+            gh.chmod(0o755)
+            event = root / "event.json"
+            payload = dict(repository=dict(id=b.REPOSITORY_ID, full_name=b.REPOSITORY),
+                           pull_request=dict(base=dict(sha=base)), inputs=dict(diagnostic_only=True))
+            event.write_text(json.dumps(payload))
+            env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ["PATH"],
+                       GITHUB_EVENT_PATH=str(event), GATE_TEST_CALLS=str(calls),
+                       GATE_TEST_RESPONSES=str(mapping))
+            def invoke(name, event_name="pull_request", sha=base):
+                return subprocess.run(["bash", str(helper), event_name, sha, str(root / name),
+                    "--wait-seconds", "0", "--current-plan", str(root)], cwd=root, env=env,
+                    text=True, capture_output=True)
+            for state in ["todo", "blocked", "removed", "different_green"]:
+                if state == "different_green":
+                    plan.with_name("new.unit.toml").write_text('id = "new.unit"\nstatus = "green"\n')
+                if state == "removed": plan.unlink()
+                else:
+                    status = "todo" if state == "different_green" else state
+                    plan.write_text(f'id = "a.b"\nstatus = "{status}"\n')
+                result = invoke(state)
+                self.assertNotEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("current --green selection drops exact-base numeric units", result.stderr)
+                self.assertTrue((root / state / "provenance.json").is_file())
+                self.assertIn(prefix + "artifacts/201/zip", calls.read_text())
+            # Empty selection must not bypass artifact integrity checks either.
+            zipped.write_bytes(b"corrupt")
+            result = invoke("corrupt")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("current --green selection drops", result.stderr)
+            self.assertEqual(result.stdout, "")
+            zipped.write_bytes(blob)
+            plan.write_text('id = "a.b"\nstatus = "partial"\n')
+            result = invoke("retained")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "--baseline " + str(root / "retained/reports"))
+            # Explicit diagnostic/first-push semantics remain explicit; PR inputs above did not bypass.
+            before = calls.read_text()
+            payload.pop("pull_request")
+            event.write_text(json.dumps(payload))
+            self.assertEqual(invoke("diagnostic", "workflow_dispatch", "").returncode, 0)
+            payload.update(ref="refs/heads/main", before="0" * 40)
+            event.write_text(json.dumps(payload))
+            self.assertEqual(invoke("bootstrap", "push", "0" * 40).returncode, 0)
+            self.assertEqual(calls.read_text(), before)
+
 
 
 if __name__ == "__main__": unittest.main()

@@ -146,15 +146,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Skip when no unit is green
+      - name: Select optional native execution
         id: green
         run: |
           if grep -Eqs '^\s*status\s*=\s*"(green|partial)"' plan/units/*.toml; then
             echo "any=true" >> "$GITHUB_OUTPUT"
           else
             echo "any=false" >> "$GITHUB_OUTPUT"
-            echo "No green units in plan/units/; nothing to difftest."
+            echo "No current green units; exact-base retention is still required."
           fi
+
+      - name: Validate exact-base report artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.baseline_sha }}
+        run: |
+          arg=$(scripts/ci/difftest-baseline.sh "$EVENT" "$BASE" "$RUNNER_TEMP/difftest-baseline" --current-plan "$GITHUB_WORKSPACE")
+          echo "DIFFTEST_BASELINE=$arg" >> "$GITHUB_ENV"
 
       - name: Upstream sources, sccache and the C++ reference
         if: steps.green.outputs.any == 'true'
@@ -174,16 +183,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/fetch-reports.sh || echo "no previous reports; queue ordered by fixture size"
-
-      - name: Validate exact-base report artifact
-        if: steps.green.outputs.any == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.baseline_sha }}
-        run: |
-          arg=$(scripts/ci/difftest-baseline.sh "$EVENT" "$BASE" "$RUNNER_TEMP/difftest-baseline")
-          echo "DIFFTEST_BASELINE=$arg" >> "$GITHUB_ENV"
 
       - name: Difftest green units
         if: steps.green.outputs.any == 'true'

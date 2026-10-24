@@ -340,6 +340,22 @@ def base_units(base):
     return sorted(units)
 
 
+def validate_current_selection(expected, root):
+    """Prior numeric units must remain selected, even when today's selection is empty."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "harness/plan"))
+    from units import load_units
+    plans = load_units(root)
+    if any(not isinstance(unit.get("status"), str) for unit in plans):
+        raise BaselineError("unsupported current unit plan")
+    selected = {unit["id"] for unit in plans
+                if unit["id"] != "audit.recursion" and unit["status"] in {"green", "partial"}}
+    missing = set(expected) - selected
+    if missing:
+        raise BaselineError("current --green selection drops exact-base numeric units: " + repr(sorted(missing)))
+
+
 def install_zip(blob, out, expected, provenance):
     import hashlib, io, json, pathlib, shutil, stat, tempfile, zipfile
     if len(blob) > MAX_ZIP_BYTES or "sha256:" + hashlib.sha256(blob).hexdigest() != provenance["digest"]:
@@ -390,6 +406,7 @@ def main():
     parser.add_argument("base")
     parser.add_argument("out")
     parser.add_argument("--wait-seconds", type=int, default=600)
+    parser.add_argument("--current-plan", help="working-tree root whose --green selection must retain the base units")
     args = parser.parse_args()
     try:
         if not 0 <= args.wait_seconds <= 600:
@@ -419,6 +436,8 @@ def main():
         if current.get("run_attempt", 1) != run.get("run_attempt", 1):
             raise BaselineError("run attempt changed while downloading")
         install_zip(blob, args.out, expected, provenance)
+        if args.current_plan is not None:
+            validate_current_selection(expected, args.current_plan)
         print("difftest-baseline: validated " + json.dumps(provenance, sort_keys=True), file=sys.stderr)
         print("--baseline " + os.path.join(args.out, "reports"))
         return 0
