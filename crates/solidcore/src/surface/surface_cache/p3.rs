@@ -54,6 +54,20 @@
 //!   cache of a `1e-4`-scale face in the `topology.edgeuse_p3` adversarial fixtures,
 //!   measured on the C++ build), and `2^20` on 32-bit targets (wasm32), whose 4 GB
 //!   address space cannot hold a larger patch array.
+//! - **Non-finite tolerances.** Neither does upstream test a tessellation tolerance for
+//!   finiteness. `SmSurface::CacheMakeOrValidate` derives the chord-height tolerance
+//!   from the surface's size (the sum of four point distances over 40): a surface whose
+//!   coordinates overflow that estimate (a `1e300` control point, as in the
+//!   `surface.surface_point_solve_p*` `*_rust_hang` fuzz inputs) gets an infinite
+//!   tolerance, and `h * h <= inf` then holds for every finite height. The chord test
+//!   becomes vacuous and the 20-degree angle test alone drives the subdivision, which
+//!   such a surface never satisfies (its pseudo box spans `1e299`); upstream would
+//!   split until it runs out of memory. [`SurfaceCache::subdivide_to_tolerances_with`]
+//!   returns [`SolidError::InvalidInput`] when either tolerance is not finite. Measured
+//!   on the `surface.surface_point_solve_p3` corpus input before the bound: still
+//!   splitting after 30 s, 40 000 nodes at 12 s in a debug build. Finite tolerances,
+//!   however large, are unchanged: a `1e8`-unit surface builds the same 31-node tree as
+//!   a unit one.
 //! - **Cyclic trees.** `FindUVNodes` walks the child links of a tree whose links form a
 //!   cycle forever (its stack grows without bound): the port stops after more node
 //!   visits than a tree of that size has (twice the node count plus one) with
@@ -824,7 +838,9 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     ///
     /// # Errors
     ///
-    /// As [`SurfaceCache::subdivide_to_tolerances`], with `tester`'s errors.
+    /// As [`SurfaceCache::subdivide_to_tolerances`], with `tester`'s errors, and
+    /// `InvalidInput` when the cache's tessellation tolerances are not finite (see the
+    /// module deviations).
     pub fn subdivide_to_tolerances_with(
         &mut self,
         k: &Kernel,
@@ -832,6 +848,17 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         depth: u32,
         tester: &mut ToleranceTester<'_, O>,
     ) -> Result<()> {
+        // a tolerance that overflowed to infinity is not a tolerance: the chord test
+        // becomes vacuous (every finite height squared is <= inf) and only the angle
+        // test bounds the tree (see the module deviations)
+        let opts = *self.options();
+        if !opts.chord_height_tolerance.is_finite() || !opts.ang_tol_rad.is_finite() {
+            return Err(invalid(
+                OP_TOL,
+                "tessellation tolerance is not finite (surface size overflowed)",
+            ));
+        }
+
         // performance only: the outermost call memoises the singularity test's pole
         // data for the splits below it (see the deviations of `surface_cache::p1`)
         let owns_memo = self.begin_pole_memo();
@@ -1313,5 +1340,241 @@ fn ignore<T>(r: Result<T>) -> Result<Option<T>> {
         Ok(v) => Ok(Some(v)),
         Err(e) if e.is_unported() => Err(e),
         Err(_) => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::nurbs::math::CPoint;
+    use crate::surface::curve_bounded_surface::CurveBoundedSurface;
+    use crate::surface::surface::p1::{
+        cache_tolerances, make_surface_cache, make_trim_srf_cache, StepSurface,
+    };
+    use crate::surface::surface_cache::p1::SurfaceCacheOptions;
+
+    /// The exact surface of `surface.surface_point_solve_p3`'s `fuzz00349_rust_hang`
+    /// corpus input (`crates/difftest/tests/fuzz_corpus/surface.surface_point_solve_p3.json`),
+    /// built without the difftest/FFI coordinate validators.
+    fn corpus_surface() -> Surface {
+        let net = vec![
+            vec![
+                CPoint::new(
+                    0.000_282_115_039_950_964_9,
+                    0.0,
+                    0.0,
+                    0.940_383_466_503_216_2,
+                ),
+                CPoint::new(
+                    0.000_596_645_716_953_504_6,
+                    0.000_198_881_905_651_168_2,
+                    0.0,
+                    1.988_819_056_511_682,
+                ),
+                CPoint::new(
+                    0.000_413_727_792_694_957_6,
+                    1e300,
+                    0.0,
+                    1.379_092_642_316_525_3,
+                ),
+                CPoint::new(
+                    0.000_544_244_248_406_755,
+                    0.000_544_244_248_406_755,
+                    0.0,
+                    1.814_147_494_689_183_1,
+                ),
+            ],
+            vec![
+                CPoint::new(
+                    -0.000_254_573_732_578_935_63,
+                    0.0,
+                    0.000_190_172_254_527_736_9,
+                    1.059_209_724_859_549_1,
+                ),
+                CPoint::new(
+                    -0.000_222_818_281_601_881_3,
+                    9.270_842_217_628_493e-5,
+                    0.000_166_450_224_589_008_12,
+                    0.927_084_221_762_849_2,
+                ),
+                CPoint::new(
+                    -0.000_158_640_632_839_373_26,
+                    0.000_132_011_813_912_682_52,
+                    0.000_118_508_089_979_063_46,
+                    0.660_059_069_563_412_6,
+                ),
+                CPoint::new(
+                    -0.000_345_623_933_991_531_4,
+                    0.000_431_413_203_930_455,
+                    0.000_258_188_785_151_016_86,
+                    1.438_044_013_101_516_6,
+                ),
+            ],
+        ];
+        let nurb = NurbSurface::new(
+            net,
+            1,
+            3,
+            vec![0.0, 0.0, 1.0, 1.0],
+            vec![-0.767_456_479_409_241_3; 4]
+                .into_iter()
+                .chain(vec![2.150_404_835_288_109_8; 4])
+                .collect(),
+        )
+        .expect("corpus surface");
+        Surface::from(
+            CurveBoundedSurface::new(
+                Surface::from(BSplineSurface::from_nurb(nurb, false)),
+                Vec::new(),
+                Vec::new(),
+                true,
+            )
+            .expect("curve-bounded surface"),
+        )
+    }
+
+    /// The corpus input wraps its surface in an `SmSTEPSurface` (`"wrap": true`): the
+    /// approximation branch whose cache build hung.
+    fn corpus_step_surface() -> Surface {
+        Surface::from(StepSurface::new(corpus_surface(), true).expect("step surface"))
+    }
+
+    /// A cubic B-spline surface of ordinary shape, `scale` wide.
+    fn scaled_surface(scale: f64) -> Surface {
+        let net = (0..4)
+            .map(|i| {
+                (0..4)
+                    .map(|j| {
+                        CPoint::new(
+                            f64::from(i) * scale,
+                            f64::from(j) * scale,
+                            f64::from(i * j) * 0.3 * scale,
+                            1.0,
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
+        let nurb = NurbSurface::new(
+            net,
+            3,
+            3,
+            vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+            vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+        )
+        .expect("scaled surface");
+        Surface::from(BSplineSurface::from_nurb(nurb, false))
+    }
+
+    fn assert_tolerance_guard(error: &SolidError) {
+        assert!(
+            matches!(
+                &error,
+                SolidError::InvalidInput { operation, reason }
+                    if *operation == OP_TOL && reason.contains("not finite")
+            ),
+            "expected the non-finite tolerance guard, got {error:?}"
+        );
+    }
+
+    /// The corpus input's size estimate overflows, so `cache_tolerances` hands the cache
+    /// a chord-height tolerance of infinity. The chord test then accepts every finite
+    /// height (`h * h <= inf`) and only the 20-degree angle test bounds the tree, which
+    /// this surface never satisfies: before the guard the trimmed cache build was still
+    /// splitting after 30 s (40 000 nodes at 12 s in a debug build, 147 MB), and only
+    /// [`MAX_SUBDIVISION_NODES`] could stop it, minutes later. It now returns at once,
+    /// from both cache constructors that `get_surface_cache` tries.
+    #[test]
+    fn overflowing_cache_tolerance_is_refused() {
+        let k = Kernel::default();
+        let surface = corpus_step_surface();
+        let tol = cache_tolerances(&k, &surface).expect("cache tolerances");
+        assert!(
+            !tol.chord_height_tol.is_finite(),
+            "the corpus size estimate no longer overflows: {tol:?}"
+        );
+
+        for error in [
+            make_trim_srf_cache::<i64>(&k, &surface, Some(0)).err(),
+            make_surface_cache::<i64>(&k, &surface, Some(0)).err(),
+        ] {
+            assert_tolerance_guard(&error.expect("an infinite tolerance must be refused"));
+        }
+    }
+
+    /// The other corpus inputs (`surface_point_solve_p2` fuzz01057 holds `-f64::MAX`)
+    /// reach the same regime with a finite coordinate that still overflows the size
+    /// estimate's squared distances.
+    #[test]
+    fn extreme_coordinates_are_refused() {
+        let k = Kernel::default();
+        let net = vec![
+            vec![
+                CPoint::new(0.0, 0.0, 0.0, 1.0),
+                CPoint::new(0.0, 1.0, 0.0, 1.0),
+                CPoint::new(0.0, 2.0, 0.0, 1.0),
+            ],
+            vec![
+                CPoint::new(1.0, 0.0, 0.0, 1.0),
+                CPoint::new(1.0, f64::MAX, 0.0, 1.0),
+                CPoint::new(1.0, 2.0, 0.0, 1.0),
+            ],
+        ];
+        let nurb = NurbSurface::new(
+            net,
+            1,
+            2,
+            vec![0.0, 0.0, 1.0, 1.0],
+            vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        )
+        .expect("extreme surface");
+        let surface = Surface::from(
+            StepSurface::new(Surface::from(BSplineSurface::from_nurb(nurb, false)), true)
+                .expect("step surface"),
+        );
+        let tol = cache_tolerances(&k, &surface).expect("cache tolerances");
+        assert!(!tol.chord_height_tol.is_finite(), "tolerances: {tol:?}");
+        assert_tolerance_guard(
+            &make_surface_cache::<i64>(&k, &surface, Some(0))
+                .expect_err("an infinite tolerance must be refused"),
+        );
+    }
+
+    /// A finite tolerance is never refused, however large: the guard rejects only a
+    /// tolerance that is not finite (see the module deviations).
+    #[test]
+    fn finite_tolerance_is_not_refused() {
+        let k = Kernel::default();
+        let opts = SurfaceCacheOptions {
+            chord_height_tolerance: f64::MAX,
+            ang_tol_rad: 0.0,
+            ..SurfaceCacheOptions::default()
+        };
+        let mut cache: SurfaceCache<i64> = SurfaceCache::new(
+            scaled_surface(1.0),
+            Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+            opts,
+        );
+        cache
+            .build_tree_base(&k)
+            .expect("a finite tolerance must still build");
+    }
+
+    /// Supported sizes keep their behaviour: an ordinary surface and one a hundred
+    /// million units wide (well inside the magnitudes the FFI compares) both have a
+    /// finite size estimate, build in the same 31 nodes, and are not refused.
+    #[test]
+    fn supported_sizes_build() {
+        let k = Kernel::default();
+        for scale in [1.0, 1e8] {
+            let surface =
+                Surface::from(StepSurface::new(scaled_surface(scale), true).expect("step"));
+            let tol = cache_tolerances(&k, &surface).expect("cache tolerances");
+            assert!(tol.chord_height_tol.is_finite(), "scale {scale}: {tol:?}");
+            let cache = make_trim_srf_cache::<i64>(&k, &surface, Some(0))
+                .expect("a supported size must build");
+            let nodes = cache.base().tree().map_or(0, |t| t.nodes().len());
+            assert_eq!(nodes, 31, "scale {scale} node count changed");
+        }
     }
 }
