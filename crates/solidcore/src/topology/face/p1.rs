@@ -2374,6 +2374,73 @@ mod tests {
     }
 
     #[test]
+    fn contextual_uv_removal_preserves_actual_notify_payload_and_null_prefix() {
+        use crate::geom::attribute::{ids, Attribute, AttributeStore, Behavior};
+        use crate::geom::context::Context;
+        use crate::topology::brep::p3::{notify_serial, topology_ref};
+        use crate::topology::edge::notification_test_support as callbacks;
+        use crate::topology::topology::Topology;
+        for mode in 0..3 {
+            let mut k = Kernel::default();
+            let (mut b, f) = if mode == 0 {
+                plane_face()
+            } else {
+                let (b, f, _, _) = plane_face_with_faceuses();
+                (b, f)
+            };
+            let serial = notify_serial(&mut k.context, &mut b).unwrap();
+            let actual_key = |entity| topology_ref(serial, entity);
+            let this = actual_key(EntityRef::Face(f));
+            let events = callbacks::install(&mut k.context);
+            let mut records = std::collections::BTreeMap::new();
+            let mut metadata = Topology::new();
+            metadata.set_user_index1(42);
+            records.insert(this.key, metadata);
+            let mut attributes = AttributeStore::new();
+            let marker = attributes
+                .insert(Attribute::new(
+                    ids::ALL_FILLET_EDGES,
+                    Behavior::StandaloneReference,
+                ))
+                .unwrap();
+            attributes.add_attribute(this.key, marker).unwrap();
+            b.face_mut(f).unwrap().rectangular_trim = 1;
+            let result = Context::with_notification_context(&mut k, |k, context| {
+                let mut env = crate::topology::edge::NotifyEnv {
+                    records: &mut records,
+                    attributes: &mut attributes,
+                    context: Some(context),
+                    key_of: &actual_key,
+                };
+                if mode == 2 {
+                    shrink_geometry_with_notifications(k, &mut b, f, &mut env)
+                } else {
+                    remove_uv_trim_curves_with_notifications(&mut b, f, &mut env)
+                }
+            })
+            .unwrap();
+            if mode == 0 {
+                assert!(is_null_pointer(&result.unwrap_err()));
+            } else {
+                result.unwrap();
+            }
+            assert_eq!(b.face(f).unwrap().rectangular_trim, fp2::UNSURE);
+            assert_eq!(attributes.users(marker).unwrap(), vec![this.key]);
+            assert_eq!(records.get(&this.key).unwrap().user_index1(), 42);
+            let observed = events.lock().unwrap();
+            assert_eq!(observed.len(), 2);
+            for (event, callback) in observed.iter().zip(["user", "system"]) {
+                assert_eq!(event.callback, callback);
+                assert_eq!(event.operation, NotifyOperation::PreEdit);
+                assert_eq!(event.caller, this);
+                assert_eq!(event.data, [Some(this), None, None]);
+            }
+            drop(observed);
+            callbacks::assert_installed(&k.context, &events);
+        }
+    }
+
+    #[test]
     fn shrink_skips_faces_without_owned_surface() {
         let (mut b, f) = bare_face();
         let k = Kernel::default();
