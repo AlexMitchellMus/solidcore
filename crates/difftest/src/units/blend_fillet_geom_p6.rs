@@ -1301,7 +1301,7 @@ impl RustModel {
             for &eu in &geom.ref_eus {
                 self.put_eu(o, eu);
             }
-            dump_surface(o, geom.fillet_surface())?;
+            dump_surface(o, geom.fillet_surface()?)?;
             dump_bcurve(o, geom.center_line_curve());
             o.extend(geom.deviations);
             for off in &geom.off_surfs {

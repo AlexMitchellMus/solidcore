@@ -1583,22 +1583,35 @@ impl FilletBrep {
         let nul = || SolidError::null_pointer(OP_FACE);
 
         // check state - must have a FilletSurface
-        let fillet_surface = self.geom(g)?.fillet_surface()?.ok_or_else(nul)?.clone();
-        let uv_domain = fillet_surface.natural_uv_domain();
-        let geom = self.geom(g)?.clone();
+        let uv_domain = self
+            .geom(g)?
+            .fillet_surface()?
+            .ok_or_else(nul)?
+            .natural_uv_domain();
+        let (geom_type, solver_id, rails, other_rails1, other_rails2, side_eus) = {
+            let geom = self.geom(g)?;
+            (
+                geom.fillet_geom_type(),
+                geom.fillet_solver(),
+                geom.rails,
+                geom.other_rails1.clone(),
+                geom.other_rails2.clone(),
+                geom.side_eus.clone(),
+            )
+        };
 
         // make 1st loop edge the MinV rail curve
         let mut start_rail_indx = 0usize;
         let mut use_uv_curves = false;
 
-        if geom.fillet_geom_type() != FilletGeomType::CliffSidePatch {
+        if geom_type != FilletGeomType::CliffSidePatch {
             // UVTrimCurves are available - work in cheaper UVSpace
             use_uv_curves = true;
 
             // See which rail is at low-v.  Check the midpoint of each.
             let mut test_uv = [Point3::UNDEF; 2];
             for (ii, slot) in test_uv.iter_mut().enumerate() {
-                let this_rail = geom.rail(ii).ok_or_else(nul)?;
+                let this_rail = rails[ii].ok_or_else(nul)?;
                 let prim = primary_edgeuse(self.brep(), this_rail)?.ok_or_else(nul)?;
                 let uv_curve = eu1::uv_trim_curve(self.brep(), prim)?.0.ok_or_else(nul)?;
                 let t = self.brep().edge(this_rail)?.interval.evaluate(0.5);
@@ -1609,7 +1622,7 @@ impl FilletBrep {
         }
 
         // pick 2d or 3d tolerance depending on bUseUVCurve
-        let sid = geom.fillet_solver().ok_or_else(nul)?;
+        let sid = solver_id.ok_or_else(nul)?;
         // SmApproxTol3d sApproxTol3d = GetThisApproxTol3d(): USE_DEFAULT, then fabs
         let approx_tol_3d = crate::geom::tol::approx_tol3d(k, resolve(sid, OP_FACE)?.approx_tol_3d);
         let d3d_tol = approx_tol_3d;
@@ -1617,7 +1630,13 @@ impl FilletBrep {
         if use_uv_curves {
             let uv = uv_domain.mid();
             let uv_dir = Vec2::new(1.0, 0.0);
-            uv_tol = map_to_2d_dir(k, approx_tol_3d, uv, uv_dir, &fillet_surface)?;
+            uv_tol = map_to_2d_dir(
+                k,
+                approx_tol_3d,
+                uv,
+                uv_dir,
+                self.geom(g)?.fillet_surface()?.ok_or_else(nul)?,
+            )?;
         }
 
         let rail_curve = |fb: &Self, e: EdgeId| -> Result<Curve> {
@@ -1631,7 +1650,7 @@ impl FilletBrep {
         let mut lists2 = CurveLists::default();
 
         // First the start rail:
-        let rail0 = geom.rail(start_rail_indx).ok_or_else(nul)?;
+        let rail0 = rails[start_rail_indx].ok_or_else(nul)?;
         let mut prim = primary_edgeuse(self.brep(), rail0)?.ok_or_else(nul)?;
         let uv_curve0 = if use_uv_curves {
             eu_uv_curve(self, prim)?
@@ -1639,9 +1658,9 @@ impl FilletBrep {
             None
         };
         let other_rails = if start_rail_indx == 1 {
-            &geom.other_rails2
+            &other_rails2
         } else {
-            &geom.other_rails1
+            &other_rails1
         };
 
         lists1.curves_3d.push(Some(rail_curve(self, rail0)?));
@@ -1675,13 +1694,13 @@ impl FilletBrep {
         }
 
         // Load MaxV rail(s) into OrderedEdges List2
-        let rail1 = geom.rail(1 - start_rail_indx).ok_or_else(nul)?;
+        let rail1 = rails[1 - start_rail_indx].ok_or_else(nul)?;
         let mut start_fv1 = edge::vertex(self.brep(), rail1)?;
         let mut end_fv1 = edge::other_vertex(self.brep(), rail1, start_fv1)?;
         let other_rails1 = if start_rail_indx == 1 {
-            &geom.other_rails1
+            &other_rails1
         } else {
-            &geom.other_rails2
+            &other_rails2
         };
 
         // For this side go backwards
@@ -1716,7 +1735,7 @@ impl FilletBrep {
             g,
             end_fv0,
             end_fv1,
-            &geom.side_eus,
+            &side_eus,
             uv_tol,
             &mut lists1.curves_3d,
             &mut lists1.uv_curves,
@@ -1734,7 +1753,7 @@ impl FilletBrep {
             Self::cap_gap(
                 k,
                 approx_tol_3d,
-                &fillet_surface,
+                self.geom(g)?.fillet_surface()?.ok_or_else(nul)?,
                 [
                     (last.as_ref(), OrientType::Same),
                     (first.as_ref(), OrientType::Same),
@@ -1758,7 +1777,7 @@ impl FilletBrep {
             g,
             start_fv1,
             start_fv0,
-            &geom.side_eus,
+            &side_eus,
             uv_tol,
             &mut lists1.curves_3d,
             &mut lists1.uv_curves,
@@ -1775,7 +1794,7 @@ impl FilletBrep {
             Self::cap_gap(
                 k,
                 approx_tol_3d,
-                &fillet_surface,
+                self.geom(g)?.fillet_surface()?.ok_or_else(nul)?,
                 [
                     (last.as_ref(), OrientType::Opposite),
                     (first.as_ref(), OrientType::Opposite),
@@ -1827,6 +1846,7 @@ impl FilletBrep {
         }
 
         // Make Face
+        let fillet_surface = self.geom(g)?.fillet_surface()?.ok_or_else(nul)?.clone();
         let region = brep.infinite_region();
         if use_uv_curves {
             let input = FaceCurvesInput {
