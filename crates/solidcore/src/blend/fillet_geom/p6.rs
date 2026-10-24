@@ -319,6 +319,35 @@ pub fn join_two_fillet_verts_by_curves(
     curve_orients: &mut Vec<OrientType>,
     solvers: &[FilletSolver],
 ) -> Result<bool> {
+    join_two_fillet_verts_by_curves_resolved(
+        k,
+        fb,
+        g,
+        start_fv,
+        end_fv,
+        side_eus,
+        uv_tol,
+        curves_3d,
+        uv_curves,
+        curve_orients,
+        &|id, op| solver_of(solvers, id, op),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn join_two_fillet_verts_by_curves_resolved<'s>(
+    k: &Kernel,
+    fb: &FilletBrep,
+    g: FilletGeomId,
+    start_fv: Option<VertexId>,
+    end_fv: Option<VertexId>,
+    side_eus: &[EdgeuseId],
+    uv_tol: f64,
+    curves_3d: &mut Vec<Option<Curve>>,
+    uv_curves: &mut Vec<Option<Curve>>,
+    curve_orients: &mut Vec<OrientType>,
+    resolve: &impl Fn(FilletSolverId, &'static str) -> Result<&'s FilletSolver>,
+) -> Result<bool> {
     let nul = || SolidError::null_pointer(OP_JOIN);
 
     // locals
@@ -327,7 +356,7 @@ pub fn join_two_fillet_verts_by_curves(
     let solver_id = geom
         .fillet_solver()
         .ok_or_else(|| invalid(OP_JOIN, "fillet geometry without solver"))?;
-    let d3d_tolerance = solver_of(solvers, solver_id, OP_JOIN)?.approx_tol_3d;
+    let d3d_tolerance = resolve(solver_id, OP_JOIN)?.approx_tol_3d;
 
     // when all UVTrimCurves are present - do 2D testing else do more expensive 3D testing
     let do_2d_test = uv_curves.iter().all(Option::is_some);
