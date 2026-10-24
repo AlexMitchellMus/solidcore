@@ -261,7 +261,7 @@ mod tests {
         );
         assert!(std::ptr::eq(
             objects.topology_entity(scoped).unwrap().0,
-            &pseudo
+            &raw const pseudo
         ));
         assert_ne!(objects.brep_id(&target), objects.brep_id(&pseudo));
         let actual_owner = target
@@ -278,7 +278,7 @@ mod tests {
         let canonical =
             crate::topology::brep::p3::topology_ref(target.notify_serial().unwrap(), target_entity);
         let (body, entity) = objects.owner_entity(canonical).unwrap();
-        assert!(std::ptr::eq(body, &target));
+        assert!(std::ptr::eq(body, &raw const target));
         assert_eq!(entity, target_entity);
         let foreign = create_box(&mut k, Point3::new(-10.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
         let foreign_edge = foreign.edges().ids().next().unwrap();
