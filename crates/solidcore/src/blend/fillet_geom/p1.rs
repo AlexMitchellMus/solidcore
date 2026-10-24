@@ -1086,10 +1086,9 @@ impl FilletEdge {
     /// Handle-conversion errors; no existing record is replaced on failure.
     pub fn set_indexed_curve_class(
         &mut self,
-        class: Option<CurveClassification<EntityRef>>,
+        class: Option<&CurveClassification<EntityRef>>,
     ) -> Result<()> {
         self.curve_class = class
-            .as_ref()
             .map(|class| class.map_objects(&mut |o| Ok(FilletClassObject::Legacy(o))))
             .transpose()?;
         Ok(())

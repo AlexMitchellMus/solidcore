@@ -795,8 +795,8 @@ impl FilletSolver {
         fillet_geom_index: usize,
         trim_type: BoundaryTrimmingType,
     ) -> Result<()> {
-        let geometry = &LegacyClassificationObjects(geometry);
         const OP_T: &str = "blend::fillet_solver::p3::split_and_trim_fillet_surface";
+        let geometry = &LegacyClassificationObjects(geometry);
         let fillet_geom = *self
             .fillet_geoms
             .get(fillet_geom_index)
@@ -2018,7 +2018,7 @@ mod tests {
             }
             fb.fillet_edge_mut(rail)
                 .unwrap()
-                .set_indexed_curve_class(Some(cc))
+                .set_indexed_curve_class(Some(&cc))
                 .unwrap();
             geom.set_rail(which, Some(rail));
         }

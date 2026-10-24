@@ -416,7 +416,7 @@ mod tests {
                 .unwrap()
                 .mid
                 .set_class_object(PointClassType::Edge, Some(EntityRef::Edge(edge)));
-            record.set_indexed_curve_class(Some(cc)).unwrap();
+            record.set_indexed_curve_class(Some(&cc)).unwrap();
             fb.insert_fillet_edge(edge, record);
             geom.set_rail(i, Some(edge));
         }

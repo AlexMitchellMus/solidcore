@@ -67,7 +67,7 @@ fn rail(k: &Kernel, fb: &mut FilletBrep, ends: &[f64], unknown: bool) -> EdgeId 
             );
         }
     }
-    rec.set_indexed_curve_class(Some(cc)).unwrap();
+    rec.set_indexed_curve_class(Some(&cc)).unwrap();
     fb.insert_fillet_edge(e, rec);
     e
 }
