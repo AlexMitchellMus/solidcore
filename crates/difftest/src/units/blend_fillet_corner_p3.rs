@@ -1001,7 +1001,7 @@ fn put_corner_surfaces(o: &mut Vec<f64>, surfaces: &[Surface]) -> Result<(), Har
 
 /// One surface of [`put_corner_surfaces`] (the shim's `p3_put_surface`; `None` for a
 /// null surface).
-fn put_corner_surface(o: &mut Vec<f64>, s: Option<&Surface>) -> Result<(), HarnessError> {
+pub(super) fn put_corner_surface(o: &mut Vec<f64>, s: Option<&Surface>) -> Result<(), HarnessError> {
     use solidcore::nurbs::b_spline_surface::BSplineSurface;
     let (kind, bs): (f64, Option<BSplineSurface>) = match s.map(Surface::kind) {
         Some(SurfaceKind::Plane(p)) => (1.0, Some(p.base().clone())),

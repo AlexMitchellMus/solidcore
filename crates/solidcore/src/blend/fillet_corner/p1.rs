@@ -6,7 +6,8 @@
 //! [`crate::blend::fillet_corner::p3`]): data access, the predicates and setters, the
 //! tangent-solver lookups, the extended-surface registry, the corner edge
 //! re-initialisation and squeeze, the concave rail-rail test and the Nx1 degeneracy
-//! check.
+//! check, the corner faces in the fillet B-rep, the constant-radius corner fillet and the
+//! insertion of the corner edges into the target B-rep.
 //!
 //! Upstream: `source/SMLib/src/SmFilletCorner.cpp`, `source/SMLib/inc/SmFilletCorner.h`.
 //!
@@ -40,7 +41,10 @@
 //! | [`FilletCorner::calc_corner_edge_geom`]      | `CalcCornerEdgeGeom`                        |
 //! | [`FilletCorner::check_and_fix_degeneracy`]   | `CheckAndFixDegeneracy`                     |
 //! | [`FilletCorner::create_end_patch`]           | `CreateEndPatch`                            |
-//! | [`FilletCorner::make_face_brep`]             | `MakeFaceBrep` (stub, a later batch)        |
+//! | [`FilletCorner::make_face_brep`]             | `MakeFaceBrep`                              |
+//! | [`FilletCorner::make_constant_radius_fillet`] | `MakeConstantRadiusFillet`                 |
+//! | [`FilletCorner::insert_intersection_topology`] | `InsertIntersectionTopology`              |
+//! | `PlainConstantRadiusFs` (private)            | the `SmConstantRadiusFS` virtuals (not the assisted solver's) |
 //! | `p3::FilletCorner::adjust_topology` / `adjust_tangent_corner` (`_` arms) | `SmFilletCorner::AdjustTopology`, `SmFillet4x3Corner::AdjustTopology`, `SmFilletNxNCorner::AdjustTopology`, `SmFilletCorner::AdjustTangentCorner` (all `return SM_SUCCESS`) |
 //!
 //! Deviations:
@@ -92,6 +96,30 @@
 //!   `m_vTopoEdges` (`RemoveFromTopoEdges`, CO-PORTED from `blend.fillet_executive_p1`)
 //!   are fields of [`FilletExecutiveData`]. `m_pBrep->DeleteEdge` (`topology.brep_p4`)
 //!   and `NoteFilletError` (`blend.fillet_executive_p1`) are `Unported` stubs.
+//! - **`MakeFaceBrep`** builds into [`CornerEnv::fillet`] (`m_pExecutive->m_pFilletBrep`;
+//!   `None` is the `NULL` upstream dereferences) through `SmBrep::MakeFaceWithCurves`
+//!   with that B-rep's notification environment; the face gets a clone of the corner
+//!   surface (upstream hands it the pointer `m_vSurfaces` keeps). Fewer than three corner
+//!   edges with one surface (`m_vEdges[2]`) and an edge without curve or vertex are
+//!   [`SolidError::InvalidInput`].
+//! - **`MakeConstantRadiusFillet`** builds its temporary `SmConstantRadiusFS` from the two
+//!   fillet surfaces ([`ConstantRadiusFs::from_surfaces`], identities
+//!   [`SurfaceId::Free`] of their fillet geometries) with the identity one past
+//!   [`CornerEnv::solvers`], and recalculates its geometry through
+//!   `blend.fillet_geom_p3`'s `ReCalcFilletGeom` with the solver's own virtuals
+//!   (`PlainConstantRadiusFs`: [`ConstantRadiusFs`] stands for the assisted solver).
+//!   Upstream deletes the solver on return (not the fillet surface it returns); here
+//!   the solver is dropped and its geometry stays unreferenced in the pseudo B-rep's
+//!   table, as do the two rails whose curves were moved. An unknown surface generator
+//!   type (no solver is made, `pNewFS->SetFilletExecutive` on `NULL`) and the
+//!   `m_vEdges[9999]` read of a corner without a measurable edge are
+//!   [`SolidError::InvalidInput`]; the `FIX_LINEAR_CASE` block is not compiled upstream.
+//! - **`InsertIntersectionTopology`** runs on the fillet executive's topology intersector
+//!   and edge attribute (`m_pAttributeE`), neither of which the port has yet: as in
+//!   `blend.fillet_geom_p4`, `RegisterExistingSSI`, `MergeCurveOnSurfaces`,
+//!   `UpdateTopologyChanges` and the attribute's user list are
+//!   `UNPORTED(blend.fillet_executive_p1)` stubs; the code around them is ported (the
+//!   780 marker attribute travels with the `UpdateTopologyChanges` stub).
 //!
 //! No loops depend on input size beyond the given arrays; there is no recursion.
 
@@ -1591,9 +1619,8 @@ impl FilletCorner {
     ///
     /// `SM_ERR_NULL_POINTER` for such an edge without original face;
     /// [`SolidError::InvalidInput`] for a face without surface (upstream dereferences it);
-    /// those of the copy; [`SolidError::Unported`] from `MakeFaceBrep` (unit
-    /// `blend.fillet_corner_p1`, later batch) and `SmFilletExecutive::NoteFilletError`
-    /// (`blend.fillet_executive_p1`).
+    /// those of the copy; [`SolidError::Unported`] from `SmFilletExecutive::NoteFilletError`
+    /// (`blend.fillet_executive_p1`) after a failed `MakeFaceBrep`.
     pub fn create_end_patch(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
         // for every filletCorner->FilletEdge
         for curr_edge in self.edges.clone() {
@@ -1707,7 +1734,7 @@ impl FilletCorner {
                 self.edges
                     .get(i)
                     .copied()
-                    .ok_or_else(|| SolidError::invalid_input(OP, "fewer than three corner edges"))
+                    .ok_or_else(|| SolidError::invalid_input(OP, NULL_DEREF))
             };
             let (e1, e2) = (edge_at(1)?, edge_at(2)?);
             // let patchNormal = crossProduct of two edge endTangents at one vertex
@@ -1852,7 +1879,7 @@ impl FilletCorner {
             self.edges
                 .get(i)
                 .copied()
-                .ok_or_else(|| SolidError::invalid_input(OP, "corner edge index"))
+                .ok_or_else(|| SolidError::invalid_input(OP, NULL_DEREF))
         };
         let base_e = edge_at(found_index)?; // Shortest Edge
         let tol = self.approx_tol_3d;

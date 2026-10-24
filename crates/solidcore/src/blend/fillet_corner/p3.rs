@@ -38,12 +38,12 @@
 //!   [`FilletCorner::create`] can build every kind. `m_eStatus` (never initialised
 //!   upstream) starts as [`FilStatus::Unprocessed`]; `SmFilletNx2Corner`'s `m_bG1Case`
 //!   (set by its `MakeCornerTopology`) starts as `false`.
-//! - **Unported callees.** `MakeFaceBrep` (unit `blend.fillet_corner_p1`;
-//!   `sm_TestG1Continuity`, `SmFilletNx1Corner::CheckNx1Degeneracy`, `CreateEndPatch`
-//!   and `CalcCornerVertGeom` are [`crate::blend::fillet_corner::p1`]'s, whose
-//!   `SmFilletVertex::CalcCornerVertGeom` is still a `blend.fillet_geom_p3` stub there),
-//!   `TestAndConvertBigRadFillet` and `NoteFilletError` (`blend.fillet_executive_p1`)
-//!   return [`SolidError::Unported`] at the call site. `MakeAnalyticCornerSurface` and
+//! - **Callees.** `MakeFaceBrep`, `sm_TestG1Continuity`,
+//!   `SmFilletNx1Corner::CheckNx1Degeneracy`, `CreateEndPatch` and `CalcCornerVertGeom`
+//!   are [`crate::blend::fillet_corner::p1`]'s. `TestAndConvertBigRadFillet` and
+//!   `NoteFilletError` (`blend.fillet_executive_p1`) return [`SolidError::Unported`] at
+//!   the call site. The corner methods take the kernel through [`CornerEnv::k`]
+//!   (mutable: `MakeFaceBrep`'s `SmBrep::MakeFaceWithCurves` needs it). `MakeAnalyticCornerSurface` and
 //!   the `SmFilletConvexNxNCorner` / `SmFilletNx1ClosedCorner` overrides are
 //!   [`crate::blend::fillet_corner::p2`]'s, `SmFilletEdge::MakeFilletEdge` is
 //!   `FilletBrep::make_fillet_edge` and `ReCalcFilletGeom` is
@@ -682,8 +682,8 @@ impl FilletCorner {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] (`MakeFaceBrep`, `NoteFilletError`, and
-    /// `MakeConstantRadiusFillet` from `MakeAnalyticCornerSurface`); those of
+    /// [`SolidError::Unported`] (`NoteFilletError` after a failed `MakeFaceBrep`); those
+    /// of `MakeFaceBrep`; those of
     /// [`FilletCorner::make_analytic_corner_surface`]; `SM_ERR_NULL_POINTER` for a
     /// fillet edge without fillet geometry where one is needed;
     /// [`SolidError::InvalidInput`] where upstream dereferences null or indexes past the

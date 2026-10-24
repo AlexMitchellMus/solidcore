@@ -678,6 +678,13 @@ double p3_check_patch(int64_t kind, SmFilletCorner* c, Model& M)
         }
         if (onEdge == NULL || onExt == NULL)
             return 0.0;
+        // upstream deletes pFEOnEdge but removes only one m_vEdges entry: a repeated
+        // on-edge edge is used after its free
+        ULONG uses = 0;
+        for (ULONG i = 0; i < 4; ++i)
+            uses += E[i] == onEdge ? 1 : 0;
+        if (uses > 1)
+            return P3C_REFUSE;
         SmFilletVertex* cornerV = (SmFilletVertex*)onEdge->GetVertex();
         if (cornerV == NULL)
             return P3C_REFUSE;
