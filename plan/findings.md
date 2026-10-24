@@ -18392,9 +18392,11 @@ semantics are reverted:
 ## topology.brep_p10: the heal guard after `Set` patches rejects only data that reaches the healer changed (2026-10-23)
 
 - **Before.** The runner's `heal_guard` rejected every healing case with a `Set` patch
-  (`healing after a set patch walks malformed indices`; 14 generated cases). No crash had
-  been observed on that path: the 4 SIGSEGVs of the 2026-10-20 fuzz sweep were all IGES
-  (UB-237).
+  (`healing after a set patch walks malformed indices`; 14 generated cases). One crash
+  had been seen on that path: the 2026-10-20 fuzz sweep's `fuzz01957` (fixture
+  `spine_fan.smb`, `set {field 2, index 1, value 0}`, SIGSEGV), kept in
+  `crates/difftest/tests/fuzz_corpus/topology.brep_p10.json`. It is still rejected (only
+  its reason text changed).
 - **Measured** (guard arm removed, each case in its own process, reference build at the
   pinned harness key). The 14 cases all ran cleanly (12 pass, 1 deferred, 1 then hits the
   IGES arm). A stress generator forcing healing plus one `Set` (fields 0..=15, index
