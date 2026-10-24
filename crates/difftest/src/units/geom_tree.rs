@@ -162,7 +162,9 @@ fn rust_patch_lookup(
         .map(|points| {
             Surface::new(
                 points
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|row| {
                         row.iter()
                             .map(|p| CPoint::new(p[0], p[1], p[2], p[3]))
@@ -202,8 +204,26 @@ fn rust_patch_lookup(
     for &query in queries {
         let selected = tree.first_bezier_patch(
             NodeId(query),
-            |n| Ok(obj(nodes[n.0].patch).map(|i| (i, &surfaces[i as usize]))),
-            |&i| Ok(Some((i, &surfaces[i as usize]))),
+            |n| {
+                let node = nodes.get(n.0).ok_or_else(|| {
+                    SolidError::invalid_input("difftest::patch_lookup", "node index")
+                })?;
+                obj(node.patch)
+                    .map(|i| {
+                        surfaces.get(i as usize).map(|s| (i, s)).ok_or_else(|| {
+                            SolidError::invalid_input("difftest::patch_lookup", "patch index")
+                        })
+                    })
+                    .transpose()
+            },
+            |&i| {
+                surfaces
+                    .get(i as usize)
+                    .map(|s| Some((i, s)))
+                    .ok_or_else(|| {
+                        SolidError::invalid_input("difftest::patch_lookup", "surface index")
+                    })
+            },
         )?;
         let Some((id, surface)) = selected else {
             out.push(-1.0);
