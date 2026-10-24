@@ -17,16 +17,22 @@
 //! does (`SetProps_Stage2`, `ReSet(SM_PROPSTAGE_3)`, the loop props) and exports the
 //! values `ClassifyLoops` reads (stage, closed flags, poles, the loops' seam crossing
 //! and winding counts, the seam classifications' end point classes and vertices, the
-//! seam done-touch lists); both sides then run `ClassifyLoops` on those same props (the
+//! seam done-touch lists, and for the loop bisector and `GetLoopCrossings` the zone
+//! tolerance, no-vertex poles, pole points and missing seam direction); both sides then run `ClassifyLoops` on those same props (the
 //! Rust side imports them; the seam classifications' non-vertex point classifications
 //! carry no object, which `ClassifyLoops` never reads). The target loops are exported
 //! too. With `props` `0` the props are fresh and `ClassifyLoops` computes them itself
 //! (`SetProps_Stage2`; the Rust side runs the port of unit `heal.face_props`).
 //!
-//! **Deferred.** A target loop that crosses no seam the face props classified needs
-//! `sms_FindAndClassifyLoopBisector` (`query.face_p3`) and `GetLoopCrossings`
-//! (`intersect.curve_class_p4`); fresh props of a closed surface need
-//! `SmFace::HasSeamProblem` (`topology.face_p4`).
+//! **Inexact geometry.** Faces whose surface, and edges whose curve, the importer cannot
+//! reproduce exactly (unit `topology.face_p2`'s `Exact`) are not compared when
+//! `ClassifyLoops` may evaluate them: with fresh props (`SetProps_Stage2`), or when a
+//! target loop's imported loop props show no crossing of a closed seam (the loop
+//! bisector and `GetLoopCrossings` evaluate the edge curves). Both sides then report
+//! `inexact_geometry`, decided from the export alone.
+//!
+//! **Deferred.** Fresh props of a closed surface need `SmFace::HasSeamProblem`
+//! (`topology.face_p4`), which reaches its unported callees.
 //!
 //! **Rejected** (both sides report `rejected`): the inputs the FFI wrapper documents,
 //! where `ClassifyLoops` would read outside its arrays.
@@ -50,13 +56,16 @@ use solidcore::intersect::point_class::{ClassObject, ClassObjectKind};
 use solidcore::intersect::curve_class::p1::{CrvDirOnFaceType, CurveClassification, TouchData};
 use solidcore::intersect::point_class::PointClassType;
 use solidcore::kernel::Kernel;
+use solidcore::math::Point3;
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use solidcore::nurbs::b_spline_surface::SurfParamType;
 use solidcore::query::face::p4 as qf4;
-use solidcore::topology::{EdgeId, EdgeuseId, FaceId, LoopId, VertexId};
+use solidcore::topology::face::p2 as face_p2;
+use solidcore::topology::{edgeuse::p1 as eu1, Brep, EdgeId, EdgeuseId, FaceId, LoopId, VertexId};
 use solidcore_ffi::units::query_face_p4::{self as ffi, Op};
 
 use super::topology_edgeuse_p1::{domain, flag, gen_surface, push_surface, SrfIn, FILES};
-use super::topology_face_p2::import;
+use super::topology_face_p2::{import, Exact};
 use crate::case::CaseContext;
 use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -483,6 +492,10 @@ fn result_output(
 }
 
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    // the same rejections as the Rust side (failed build, rejected, inexact geometry)
+    if let Err(out) = export(&Kernel::default(), i)? {
+        return Ok(out);
+    }
     let o = run_ffi(Op::Classify, i)?;
     let mut rd = Rd { v: &o, at: 0 };
     if rd.num()? != 0.0 {
@@ -585,21 +598,81 @@ fn tri(code: i64) -> Result<Tri, HarnessError> {
     })
 }
 
-fn rust(i: &Inputs) -> Result<Output, HarnessError> {
-    let k = Kernel::default();
+/// What the export of a case gives the Rust side.
+struct Exported {
+    b: Brep,
+    face: FaceId,
+    props: FaceProps<H>,
+    loops: Vec<LoopId>,
+}
+
+/// Whether the surface of `face` or an edge curve of its loops or of `loops` was not
+/// imported exactly ([`Exact`]).
+fn face_or_edges_inexact(b: &Brep, exact: &Exact, face: FaceId, loops: &[LoopId]) -> bool {
+    if !exact.faces.get(face.index() as usize).copied().unwrap_or(true) {
+        return true;
+    }
+    let mut all = face_p2::loops(b, face, false, None).unwrap_or_default();
+    all.extend_from_slice(loops);
+    all.into_iter().any(|l| {
+        let Some(lu) = b.loop_(l).ok().and_then(|l| l.loopuse) else {
+            return false;
+        };
+        eu1::loopuse_edgeuses(b, lu).is_ok_and(|eus| {
+            eus.into_iter().any(|eu| {
+                eu1::edge(b, eu).ok().flatten().is_some_and(|e| {
+                    !exact.edges.get(e.index() as usize).copied().unwrap_or(true)
+                })
+            })
+        })
+    })
+}
+
+/// Whether `ClassifyLoops` may evaluate geometry on this input: fresh props (`props` `0`,
+/// computed by `SetProps_Stage2`), or a pass over a target loop whose imported loop props
+/// show no crossing of a closed seam (the loop bisector and `GetLoopCrossings`). With
+/// imported props a seam-crossing pass reads only the exported touch lists.
+fn evaluates_geometry(
+    i: &Inputs,
+    b: &Brep,
+    face: FaceId,
+    props: &FaceProps<H>,
+    loops: &[LoopId],
+) -> bool {
+    if i.props != 1 {
+        return true;
+    }
+    let n = if loops.is_empty() {
+        face_p2::loops(b, face, false, None).map_or(0, |l| l.len())
+    } else {
+        loops.len()
+    };
+    let closed = |t: Tri| !matches!(t, Tri::False);
+    (0..n).any(|ii| {
+        props.loop_props.get(ii).is_some_and(|lp| {
+            !(closed(props.closed_u) && lp.seam_crossing_cnt_u > 0)
+                && !(closed(props.closed_v) && lp.seam_crossing_cnt_v > 0)
+        })
+    })
+}
+
+/// The export of `i`: the imported B-rep, face, props and target loops; `Err(output)` for
+/// a failed build, a rejected case or inexact geometry the call may evaluate (the same
+/// output on both sides).
+fn export(k: &Kernel, i: &Inputs) -> Result<Result<Exported, Output>, HarnessError> {
     let o = run_ffi(Op::Export, i)?;
     if o.first() != Some(&0.0) {
-        return Ok(Output::err(format!(
+        return Ok(Err(Output::err(format!(
             "build_failed: {}",
             o.get(1).copied().unwrap_or(-9.0)
-        )));
+        ))));
     }
     let (graph, block) = ffi::split_export(&o).ok_or_else(|| harness("bad export"))?;
     let mut rd = Rd { v: block, at: 0 };
     if rd.num()? != 0.0 {
-        return Ok(Output::err("rejected"));
+        return Ok(Err(Output::err("rejected")));
     }
-    let (b, _exact) = import(graph)?;
+    let (b, exact) = import(graph)?;
     let face_index = rd.int()?;
     let face = FaceId::from_index(u32::try_from(face_index).map_err(|_| harness("bad face"))?);
 
@@ -620,12 +693,20 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         lp.seam_winding_cnt_v = rd.int()? as u64;
         loop_props.push(lp);
     }
-    let crv_class_u = classification(&k, &mut rd)?;
-    let crv_class_v = classification(&k, &mut rd)?;
+    let crv_class_u = classification(k, &mut rd)?;
+    let crv_class_v = classification(k, &mut rd)?;
     let done_u = touches(&mut rd)?;
     let done_v = touches(&mut rd)?;
+    let zone_tol = rd.num()?;
+    let no_vertex_poles = rd.int()?;
+    let bad_missing_seam = rd.int()?;
+    let n_pp = rd.count()?;
+    let mut pole_points = Vec::new();
+    for _ in 0..n_pp {
+        pole_points.push(Point3::new(rd.num()?, rd.num()?, rd.num()?));
+    }
     let n_loops = rd.count()?;
-    let mut loops = rd
+    let loops = rd
         .ints(n_loops)?
         .into_iter()
         .map(loop_id)
@@ -644,8 +725,40 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         props.crv_class_v = crv_class_v;
         props.done_touch_list_u = done_u;
         props.done_touch_list_v = done_v;
+        props.zone_tol_3d = zone_tol;
+        props.no_vertex_poles =
+            u64::try_from(no_vertex_poles).map_err(|_| harness("bad no-vertex poles"))?;
+        props.bad_missing_seam_dir = u64::try_from(bad_missing_seam)
+            .ok()
+            .and_then(SurfParamType::from_code)
+            .ok_or_else(|| harness("bad SmSurfParamType"))?;
+        props.pole_points = pole_points;
     }
 
+    if face_or_edges_inexact(&b, &exact, face, &loops)
+        && evaluates_geometry(i, &b, face, &props, &loops)
+    {
+        return Ok(Err(Output::err("inexact_geometry")));
+    }
+    Ok(Ok(Exported {
+        b,
+        face,
+        props,
+        loops,
+    }))
+}
+
+fn rust(i: &Inputs) -> Result<Output, HarnessError> {
+    let k = Kernel::default();
+    let Exported {
+        b,
+        face,
+        mut props,
+        mut loops,
+    } = match export(&k, i)? {
+        Ok(e) => e,
+        Err(out) => return Ok(out),
+    };
     let mut out = initial_out();
     let mut scratch: CurveClassification<H> = CurveClassification::new(&k);
     let r = qf4::classify_loops(&k, &b, face, &mut loops, &mut out, &mut scratch, &mut props);
