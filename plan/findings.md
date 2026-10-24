@@ -19994,7 +19994,7 @@ point, returning `f64` — differs from the trait method's), `swap_uv` → `swap
 | `process_smooth_edge_sequences` (`p3.rs:452` → `fillet_executive/p2.rs:939`) | outer `while solvers.len() > 1` (`p2.rs:950`); collector walks tangent solvers backwards then forwards (`p2.rs:1035`, `:1090`) | Collector step cap `bound = solvers.len() + 1` (`p2.rs:1002`, checked at `:1037`/`:1092`); collector ends with `solvers.retain(Option::is_some)` (`p2.rs:1119`), so a pass strictly shrinks the list. The body `create_smooth_edge_sequence` is still always `Unported` (`p2.rs:295`), so the loop currently exits after one pass. See Q1 |
 | `FilletSession::stitch_fillet_faces` (`p3.rs:1870`) → `session.rs:1032` → `topology/brep/p4.rs:1604` → heal `Stitch` | explicit `f_stack: Vec<FaceId>` with face marks (`heal/stitch/p1.rs:1589`) | Stack pop plus mark check (`:1592`–`:1605`); no call-stack growth |
 | `FilletSession::shrink_fillet_faces` (`p3.rs:1928`) → `session.rs:961` → `topology/face/p1.rs` shrink/notification | per-solver index loop, then one face edit per solver | Notification delivery goes through the lent context (`session.rs:977`); a nested crate edit through it is refused (`NOTIFY_LENT`) |
-| Heal stitch edit bridge (`heal/stitch/p1.rs:647`, `BorrowedStitchEdits` `:707`, `edit_glue_edges` `:1002`, `edit_delete_face` `:1057`) | `delete_face` → `topology/brep/p3.rs:1887`; `glue_edges_general` → `brep/p7.rs:1657`; `glue_vertices`/`remove_faces` → `brep/p5.rs` | `delete_face_nesting` (`brep/p3.rs:2178`) is called once (`:2137`); its shell loop (`:2233`) clears marked or shell-owned vertices from `verts` each pass. Glue paths loop over record lists; no self-call |
+| Heal stitch edit bridge (`heal/stitch/p1.rs:647`, `BorrowedStitchEdits` `:707`, `edit_glue_edges` `:1002`, `edit_delete_face` `:1057`) | `delete_face` → `topology/brep/p3.rs:1889`; `glue_edges_general` → `brep/p7.rs:1657`; `glue_vertices`/`remove_faces` → `brep/p5.rs` | `delete_face_nesting` (`brep/p3.rs:2180`) is called once (`:2139`); its shell loop (`:2235`) clears marked or shell-owned vertices from `verts` each pass. Glue paths loop over record lists; no self-call |
 | `primitive::primitive_creation::model::Driver` (`model.rs:301`, `model/merge.rs:301`) | delegates to the Boolean engine; `collect_faces` uses an explicit stack with marks (`topology/topology_traverser.rs:186`); `clear_offset_maps` (`model/merge.rs:217`) removes handles per face | Traverser is mark-bounded; the attribute loop breaks on a non-live handle (`:221`–`:224`) |
 | File readers | none changed by the wave | Read nesting bound `MAX_READ_NESTING` = 32 (`topology/database_io.rs:649`) is not exercised by this delta; `topology.brep_data` is #829's |
 
@@ -20012,9 +20012,9 @@ point, returning `f64` — differs from the trait method's), `swap_uv` → `swap
   `mate_cycle_is_bounded` (`p3.rs:1634`), which builds a two-vertex mate cycle and
   asserts the depth error from both entry points.
 - **Nested-edit refusal.** The edits this wave threads notifications through lend
-  the kernel context: `with_lent_context` (`topology/brep/p3.rs:887`, used by the
+  the kernel context: `with_lent_context` (`topology/brep/p3.rs:889`, used by the
   session's shrink/stitch/face paths and by heal `plain_edit` → `with_kernel_callbacks`,
-  `brep/p5.rs:167`/`p3.rs:949`) and `Context::with_notification_context`
+  `brep/p5.rs:167`/`p3.rs:951`) and `Context::with_notification_context`
   (`geom/context.rs:455`, used by the heal `glue_edges_general` helper's no-edits
   fallback at `heal/stitch/p1.rs:2428`). A nested crate edit through the lent context is
   refused with `InvalidInput` (`NOTIFY_LENT`, `geom/context.rs:334`–`:339`), so a
@@ -20082,3 +20082,18 @@ point, returning `f64` — differs from the trait method's), `swap_uv` → `swap
 `primitive/primitive_creation/model.rs`, `primitive/primitive_creation/model/merge.rs`,
 `sweep/api_brep.rs`, `topology.rs`, `topology/brep/{p4,p6,p7}.rs`,
 `topology/face/p1.rs`.
+
+### Post-review main advance (PR #835, 2026-10-25)
+
+While this review was open, `upstream/main` moved `f1ac1f4c1` → `92454ca6` (#816:
+Boolean naming and evaluation-copy wiring; 28 kernel files, +1517/−414) and this
+branch merges it. Those files are outside the range audited above and are not
+certified here. A screen of that advance found no new self- or mutually recursive
+function and no new input-driven `while` loop: the added control flow is bounded
+`for` loops plus the fixed `[1.0, 10.0, 300.0]` drop-retry ladder in
+`topology/brep/p9.rs`; the recursive helpers the screen met
+(`clone_for_evaluation_depth`, `transform_at_depth`) pre-date the audited range and
+were not changed there. The `topology/brep/p3.rs` advance shifted that file's line
+numbers by +2; the p3 citations above use the post-merge numbers. Recursion
+conclusions remain pinned to `2ca17d8e9..f1ac1f4c1`; a claim about the #816 paths
+needs its own review.
