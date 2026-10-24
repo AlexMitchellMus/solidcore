@@ -115,6 +115,15 @@ pub fn call_with_buffer<T: Copy + Default>(
 /// stubs, see [`unlinked_calls`]).
 pub const LINKED: bool = cfg!(feature = "cpp");
 
+extern "C" {
+    fn sc_cpp_stdlib_is_libstdcxx() -> i32;
+}
+
+/// Whether the linked C++ reference was built against libstdc++.
+pub fn cpp_stdlib_is_libstdcxx() -> bool {
+    unsafe { sc_cpp_stdlib_is_libstdcxx() != 0 }
+}
+
 /// Number of shim calls so far that reached a stub instead of the C++ kernel: always 0
 /// natively; on wasm32 the count kept by the stub module from `scripts/wasm_stub.py`.
 pub fn unlinked_calls() -> u64 {

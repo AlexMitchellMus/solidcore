@@ -202,6 +202,7 @@ mod tests {
                 both_errored: false,
                 rejected: None,
                 deferred: None,
+            skipped_platform: None,
                 perturbed: None,
                 diagnostics: std::collections::BTreeMap::new(),
                 known_mismatch: Some("test comparison".into()),

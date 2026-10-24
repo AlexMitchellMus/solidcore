@@ -94,6 +94,10 @@ pub struct CaseResult {
     pub rejected: Option<String>,
     /// The Rust side hit an unported callee (case deferred, nothing compared).
     pub deferred: Option<Deferred>,
+    /// The case is skipped because the platform's C++ standard library is not
+    /// libstdc++ (e.g. libc++): the C++ reference is only authoritative on
+    /// libstdc++. Neither pass nor fail.
+    pub skipped_platform: Option<String>,
     /// In perturb mode: what was perturbed (`value`, `int`, `topology`, `error`),
     /// or `None` if the case had nothing to perturb or was deferred.
     pub perturbed: Option<&'static str>,
@@ -115,6 +119,8 @@ pub enum CaseOutcome {
     /// The Rust side returned `Unported` (and the C++ side ran without a harness
     /// error): neither pass nor fail.
     Deferred,
+    /// Skipped because the platform's C++ standard library is not libstdc++.
+    SkippedPlatform,
     /// A mismatch listed in `known_mismatches.toml` ([`crate::known`]): not a pass,
     /// keeps the unit from being green, reported like a failure.
     KnownMismatch,
@@ -128,6 +134,7 @@ impl CaseOutcome {
             Self::Rejected => "rejected",
             Self::Fail => "fail",
             Self::Deferred => "deferred",
+            Self::SkippedPlatform => "skipped(platform)",
             Self::KnownMismatch => "known_mismatch",
         }
     }
@@ -143,6 +150,8 @@ impl CaseResult {
             CaseOutcome::Rejected
         } else if self.deferred.is_some() {
             CaseOutcome::Deferred
+        } else if self.skipped_platform.is_some() {
+            CaseOutcome::SkippedPlatform
         } else if self.diff.pass() {
             CaseOutcome::Pass
         } else if self.known_mismatch.is_some() {
@@ -170,6 +179,11 @@ impl CaseResult {
     /// Case is deferred.
     pub fn is_deferred(&self) -> bool {
         self.outcome() == CaseOutcome::Deferred
+    }
+
+    /// Case is skipped because the platform is not libstdc++.
+    pub fn is_skipped_platform(&self) -> bool {
+        self.outcome() == CaseOutcome::SkippedPlatform
     }
 
     /// The comparison checked at least one float, integer or topology entry (not only
@@ -288,7 +302,7 @@ impl UnitResult {
             || self.cases.len() == self.rejected()
         {
             UnitStatus::Fail
-        } else if self.deferred() > 0 || self.known_mismatches() > 0 {
+        } else if self.deferred() > 0 || self.skipped_platform() > 0 || self.known_mismatches() > 0 {
             UnitStatus::Partial
         } else {
             UnitStatus::Green
@@ -341,6 +355,11 @@ impl UnitResult {
     /// Number of deferred cases.
     pub fn deferred(&self) -> usize {
         self.cases.iter().filter(|c| c.is_deferred()).count()
+    }
+
+    /// Number of cases skipped because the platform is not libstdc++.
+    pub fn skipped_platform(&self) -> usize {
+        self.cases.iter().filter(|c| c.is_skipped_platform()).count()
     }
 
     /// Deferred case count per blocking unit id, sorted by unit id.
@@ -516,6 +535,7 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
             both_errored: false,
             rejected: None,
             deferred: None,
+            skipped_platform: None,
             perturbed: None,
             diagnostics: BTreeMap::new(),
             known_mismatch: known
