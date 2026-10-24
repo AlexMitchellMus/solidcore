@@ -18994,3 +18994,21 @@ Timeout case fuzz00316: cpp no result after 20 s on a B-spline surface with ~1e3
 ### surface.plane_p2 (fuzz re-verification follow-up)
 
 7 differs + 2 C++ crashes on malformed DB records (emptied/truncated knots, p=0, p>n, huge form/kt). Crashes are upstream UB on extreme inputs. Differ cases are rec.len/rec value mismatches where C++ writes/reads garbage records that Rust rejects. Classification per case is pending; guards are retained and no check was loosened. Cases saved under fuzz-out/reverify-1024/surface.plane_p2.
+
+### surface.plane_p2 per-case classification (2026-10-24)
+
+9 saved cases from `fuzz-out/reverify-1024/surface.plane_p2/`:
+
+| case | C++ behavior | Rust behavior | malformed aspect | verdict |
+|------|--------------|---------------|------------------|---------|
+| fuzz00090 | garbage rec (1.001e3) | rejects (1.007e3) | malformed record | guard legitimate |
+| fuzz00263 | 54 records | 1 record | truncated/emptied knots | guard legitimate |
+| fuzz00807 | 54 records | 1 record | truncated/emptied knots | guard legitimate |
+| fuzz00851 | crash (signal 11) | no crash | extreme input | upstream UB |
+| fuzz00977 | 54 records | 1 record | truncated/emptied knots | guard legitimate |
+| fuzz01069 | 54 records | 1 record | truncated/emptied knots | guard legitimate |
+| fuzz01159 | 54 records | 1 record | truncated/emptied knots | guard legitimate |
+| fuzz01255 | crash (signal 11) | no crash | extreme input | upstream UB |
+| fuzz01894 | garbage rec (1.001e3) | rejects (1.007e3) | malformed record | guard legitimate |
+
+No case was identified as Rust wrongly rejecting a valid record C++ handles correctly; all 9 confirm the garbage-class verdict. No Rust code change made.
