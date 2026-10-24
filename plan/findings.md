@@ -18660,6 +18660,23 @@ the big face is used), and the start cap came out as 2 faces.
   every other caller were already fresh or unused (the swung-surface loop drops its list).
 - **Result.** Both known-mismatch entries are removed and both cases match C++ bit for
   bit. sweep.api_surfaces is green (882/882).
+## blend.fillet_corner_p3 fuzz: JoinWith of a 1e-300 line in the 3x2 corner patch (2026-10-24, PR #722)
+
+Exposed when PR #722 let `SmFillet3x2MixedConvexityCorner::CreateCornerPatch` run past its
+`JoinWith` (before, the shim stopped there as "not run": `MakeFaceBrep` was a Rust stub).
+`difftest --unit blend.fillet_corner_p3 --fuzz 2000` finds one differing input
+(fuzz00457): the on-extended-edge curve is a cubic from (-1, 0, 0) to (0, 5e-4, 0), the
+on-edge curve a line from (0, 0, 0) to (1e-300, 0, 0). `curve1->JoinWith(1, curve2, 0)`
+succeeds in C++ (the corner then fails later with `SM_ERR_NULL_POINTER`); in Rust
+`BSplineCurve::join_with` fails with `SM_ERR`: the line test is false for the degenerate
+line on both sides (its base vector is below the tolerance), and `create_by_joining`'s
+`degree_elevate` of the degenerate degree-1 segment to degree 3 returns `SM_ERR`
+(`nurbs.b_spline_curve_p2`). Suspected cause: the degree elevation (or a knot / weight
+check before it) of a curve whose control points are 1e-300 apart. Only a fuzzed model
+reaches it; no fixture or generated case does. Not fixed here (unit
+`nurbs.b_spline_curve_p2` / `nurbs.crv_tool_p1`); the same fuzz run also found a C++
+use-after-free (a repeated on-edge corner edge, freed by the 3x2 patch while still in
+`m_vEdges`), now refused by the shim's pre-check.
 ## MergeInterval imprinting through a mutable B-rep adapter (2026-10-24)
 
 `SmCurveClassification::MergeInterval` (`intersect.curve_class_p6`) is ported past its
@@ -18799,6 +18816,37 @@ built its `UvLineObjects` with `resolve_topology: false`. Both now resolve.
     the face handle or a classified entity for `PointClassify` (`unresolved_uv` in
     `intersect/curve_class/p7.rs`). That file is in an open PR, so it is left for a
     follow-up.
+## boolean.api_brep: the merge cannot ray-fire through a created operand (2026-10-24)
+
+- **What.** The `boolean.api_brep` runner now builds its operands with the ported
+  `SmApiCreateBox` / `SmApiCreateSphere` (`primitive::api_primitives`), as the shim does,
+  instead of empty stand-ins. Two cases disagree. In both, the second operand lies entirely
+  inside the first, so no face intersects:
+
+| case | inputs | record (faces edges vertices regions) |
+|---|---|---|
+| `census_difference_cavity` (TestSmBrep.cpp:3309) | box (0,0,0) 10x10x10 minus box (3,3,3) 4x4x4 | cpp 12 24 16 3, rust 6 12 8 2 |
+| `gen0220` | sphere c=(0.00716,1.07511,0.84640) r=1.37304 minus box (-0.56173,1.02171,-0.07353) 1.00673x0.54777x1.47193 | cpp 7 13 10 3, rust 1 1 2 2 |
+
+- **Cause (port instrumented, not committed).** `boolean::merge::p4::classify_remaining`
+  classifies each unintersected face set with `BrepQuery::default()`. That query keys the
+  cache by `brep_cache::arena_identity`, and `make_brep_cache` adds a face's surface only
+  when `surface.owner() == keys(Face)`. The primitive constructors own their face surfaces
+  under the `topology::loopuse::notify_ref` scheme instead (`type 16002`, key
+  `1 + (4 << 32) + index`, set by `SetSurface` through the creation's `NotifyEnv`). So the
+  cache holds no surfaces, every ray from a point inside the box finds no hit, and
+  `RayFire` answers the infinite region. The cavity's faces are then deleted instead of
+  kept. A fresh `BrepQuery::default().point_3d_classify` on a created box puts (5,5,5) in
+  the infinite region too. Imported B-reps (every other merge runner) own their geometry
+  under `arena_identity`, so they never show this.
+- **Scope.** The same assumption is made at every `BrepQuery::default()` in
+  `boolean::merge` (p1, p4, p5). Only the containment cases reach a ray fire here; the
+  intersecting cases classify their faces through the intersection edges.
+- **Fix.** The operands' geometry owners and the merge's query identity must use one
+  scheme: either the primitive constructors own geometry under `arena_identity`, as
+  `BrepIdentity::default` documents for B-reps this crate builds, or the merge keys its
+  queries by the scheme the operands use. Both cases are listed in
+  `crates/difftest/known_mismatches.toml` until then.
 ## nlib.srf_offset: extrusion recognition and sliver-span conditioning (issue #471)
 
 Reproduced the SolidCraft shell/3576 geometry using the pinned C++ reference:
