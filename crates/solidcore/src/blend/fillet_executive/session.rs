@@ -24,8 +24,10 @@ use super::p1::{ExecutiveObjects, SolverLoadingAccess};
 use super::p2::{FilletParameters, FilletParametersAccess, SolverSpec};
 use super::p3::{ErrorInfo, FilletExecutive};
 use crate::blend::fillet_corner::p3::FilletCorner;
-use crate::blend::fillet_geom::p1::{FilletBrep, FilletCornerId, FilletSolverId};
-use crate::blend::fillet_solver::p1::{FilletSolver, FilletSurfaceGenerator};
+use crate::blend::fillet_geom::p1::{
+    CornerLookup, FilletBrep, FilletCornerId, FilletCornerType, FilletSolverId, FilletVertexType,
+};
+use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, FilletSurfaceGenerator};
 use crate::blend::fillet_standard_solver::p1::{
     constant_radius_from_edgeuse, ConstantDistanceFs, ConstantRadiusFs, FilletSolverType,
     FilletSurfaceGeneratorType, SurfaceSurfaceFs, VariableRadiusFs,
@@ -496,6 +498,88 @@ impl<'target> FilletSession<'target> {
             solver,
             do_global_merge: &mut self.executive.options.global_merge,
         })
+    }
+
+    /// Calculate one ordinary `NByOne` corner's vertices using its retained solver.
+    ///
+    /// This follows the shared corner loop and actual derived solver operations.
+    /// Geometry-owned surface resolution and variable-law adjustment remain explicit
+    /// missing context boundaries; this does not complete fillet execution.
+    ///
+    /// # Errors
+    /// Actual topology/solver resolution errors, native calculation failures, or a
+    /// genuine unsupported live-context dependency reached by the calculation.
+    pub fn calc_nx1_corner_vert_geom(&mut self, k: &Kernel, id: FilletCornerId) -> Result<()> {
+        let SessionObjects {
+            target,
+            pseudo,
+            solvers,
+            corners,
+            ..
+        } = &mut self.objects;
+        let corner = corners
+            .get(id.0 as usize)
+            .ok_or_else(|| invalid("corner is not live"))?;
+        if corner.corner_type() != FilletCornerType::NByOne {
+            return Err(invalid("ordinary Nx1 corner required"));
+        }
+        let mut context = (k, target, pseudo, solvers, corners.as_slice());
+        corner.calc_corner_vert_geom_with(
+            &mut context,
+            |(_, _, pseudo, _, _), fv| Ok(pseudo.fillet_vertex(fv)?.is_processed()),
+            |(k, target, pseudo, solvers, corners), fv| {
+                let vertex = pseudo.fillet_vertex(fv)?;
+                if vertex.is_processed() {
+                    return Ok(());
+                }
+                match vertex.fillet_vertex_type() {
+                    FilletVertexType::OnVertex => pseudo.calc_vert_on_vert(fv, target),
+                    FilletVertexType::RailXEdgeuse => {
+                        let geometry = pseudo
+                            .vertex_fillet_geoms(fv)?
+                            .first()
+                            .copied()
+                            .ok_or_else(|| SolidError::null_pointer(OP))?;
+                        let solver_id = pseudo
+                            .geom(geometry)?
+                            .solver
+                            .ok_or_else(|| SolidError::null_pointer(OP))?;
+                        let solver = solvers
+                            .get_mut(solver_id.0 as usize)
+                            .and_then(Option::as_mut)
+                            .ok_or_else(|| invalid("vertex solver is not live"))?;
+                        let ops: &mut dyn FilletSolverOps = match solver {
+                            SolverObject::ConstantRadius(solver) => solver.as_mut(),
+                            SolverObject::VariableRadius(solver) => solver.as_mut(),
+                            _ => return Err(invalid("live rail solver operations unavailable")),
+                        };
+                        pseudo.calc_rail_int_edgeuse_with_solver_ops(
+                            k,
+                            fv,
+                            None,
+                            CornerLookup::table(corners),
+                            solver_id,
+                            ops,
+                            target,
+                        )
+                    }
+                    _ => {
+                        // UNPORTED(blend.fillet_executive_p1): retained solver-store dispatch for other corner vertex types.
+                        Err(SolidError::unported(
+                            "SmFilletVertex::CalcCornerVertGeom (live solver dispatch)",
+                            "blend.fillet_executive_p1",
+                        ))
+                    }
+                }
+            },
+            |_, _, _| {
+                // UNPORTED(blend.fillet_executive_p1): the retained variable-radius solver behind the law-interval adjustment.
+                Err(SolidError::unported(
+                    "SmFilletCorner::CalcCornerVertGeom (live variable-law adjustment)",
+                    "blend.fillet_executive_p1",
+                ))
+            },
+        )
     }
 
     /// Load this actual solver through the native executive algorithm.
