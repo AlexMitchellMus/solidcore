@@ -1873,7 +1873,7 @@ impl FilletBrep {
                     "surface already transferred",
                 ));
             };
-            let mut transfer = crate::topology::brep::p6::FaceSurfaceTransfer::new(surface);
+            let mut transfer = crate::topology::brep::p6::FaceSurfaceTransfer::new(*surface);
             let status = make_face_with_curves_transfer(
                 k,
                 brep,

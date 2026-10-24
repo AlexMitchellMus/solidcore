@@ -1144,7 +1144,7 @@ impl FilletEdge {
 #[derive(Debug, Clone)]
 pub enum FilletSurfaceStorage {
     /// The geometry still owns the original surface before face installation.
-    Owned(Surface),
+    Owned(Box<Surface>),
     /// The actual face owns the original surface after installation.
     ManagedFace {
         /// The issued identity of the owning body (not an arena-offset namespace).
@@ -1394,7 +1394,7 @@ impl FilletGeom {
 
     /// `SetFilletSurface`.
     pub fn set_fillet_surface(&mut self, surface: Option<Surface>) {
-        self.fillet_surface = surface.map(FilletSurfaceStorage::Owned);
+        self.fillet_surface = surface.map(|surface| FilletSurfaceStorage::Owned(Box::new(surface)));
     }
 
     /// `SetFilletGeomType`.
