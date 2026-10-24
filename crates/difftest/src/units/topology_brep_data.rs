@@ -537,7 +537,10 @@ fn libcxx_rejected_ascii_double(bytes: &[u8]) -> Option<String> {
             let Ok(v) = t.parse::<f64>() else {
                 return false;
             };
-            let nonzero_digit = t.bytes().any(|b| b.is_ascii_digit() && b != b'0');
+            let nonzero_digit = t
+                .bytes()
+                .take_while(|b| !matches!(b, b'e' | b'E'))
+                .any(|b| b.is_ascii_digit() && b != b'0');
             v.is_subnormal() || (v == 0.0 && nonzero_digit)
         })
         .map(str::to_string)
@@ -1509,6 +1512,9 @@ mod tests {
         for token in [
             "0",
             "-0e0",
+            "0e-400",
+            "-0e12",
+            "+0.000E+99",
             "0.000",
             "1",
             "-1.5",
@@ -1546,6 +1552,14 @@ mod tests {
             "Version 33\n1 0 0 - Color\n1 1 - Manifold\n",
         ));
         assert_eq!(Runner.skipped_platform(&safe), None);
+
+        // Exponent digits do not turn a zero significand into an underflow.
+        let scientific_zero = case(stream(
+            "file",
+            false,
+            "Version 33\n0e-400 -0e12 +0.000E+99 - Color\n1 1 - Manifold\n",
+        ));
+        assert_eq!(Runner.skipped_platform(&scientific_zero), None);
 
         // The same bytes parsed as binary extract no text: not this platform class.
         let binary = case(stream("file", true, out_of_range));
