@@ -19282,5 +19282,5 @@ naming-scheme queries 09706e3d6, bb1945463, 56ae09d46), these still disagree:
   merge region/shell handling of the inset shell's Difference); suspected to share the mixed owner
   naming above, since an inset shell is a contained operand classified by ray fire. Not traced.
 
-These cases stay failing in the draft (no known-mismatch entries).
+These 10 cases are listed per case in `crates/difftest/known_mismatches.toml` (owner decision, PR #816), tracked in issues #832 (merge_p3 vertex order) and #833 (offset_executive_p2 counts).
 
