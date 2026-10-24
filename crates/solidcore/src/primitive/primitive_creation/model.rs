@@ -14,14 +14,11 @@
 //! notify an arena-only store ([`ArenaNotifyState`]): no observer holds identities for
 //! these objects. Tags and offset-map attributes live in the model (`SmAObject`
 //! attributes); topology marks use
-//! [`Marks`] per B-rep under the kernel context's mark locks. Services the model does
-//! not resolve yet return [`SolidError::Unported`] naming the upstream call: retaining
-//! an HCR session (`SmHCR`) and `SmBrep::ProjectAndTrim`. Their units are
-//! partial: the model, not the unit,
-//! lacks the bridge; each error names the unit that owns the call. No recursion.
-//! Retained merge services remain the responsibility of
-//! [`crate::sweep::topology_sweep::store::SweepStore`]; this adapter preserves its
-//! existing merge-constructor deferral.
+//! [`Marks`] per B-rep under the kernel context's mark locks. `SmMerge` objects are
+//! retained sessions over the model's B-reps (`merge`). Services the model does not
+//! resolve yet return [`SolidError::Unported`] naming the upstream call: retaining an
+//! HCR session (`SmHCR`); its unit is partial: the model, not the unit, lacks the
+//! bridge. No recursion.
 
 use std::collections::BTreeMap;
 

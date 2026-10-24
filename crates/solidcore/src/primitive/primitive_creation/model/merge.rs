@@ -19,7 +19,13 @@
 //! each merge stage they are placed on the operands' face identities in the engine's
 //! attribute store as copy-behaviour pointer attributes to a stage table, so the
 //! stage's copy and split notifications carry them to new faces as upstream's surface
-//! copies do, and are read back from the surviving operands afterwards. No recursion.
+//! copies do, and are read back from the surviving operands afterwards. The model's
+//! geometry is owned under the model's identities (`loopuse::notify_ref`); for each
+//! stage the operands' own geometry is relabelled with the engine's import label
+//! (`brep_cache::arena_identity`, which the engine binds to its operand keys, so its
+//! temporary origin shift moves and restores that geometry) and labelled back on the
+//! survivors afterwards; `PiecewiseMerge`'s surface subset uses the relabelled
+//! identities. No recursion.
 //!
 //! [`DependencyMerge`]: crate::boolean::merge::p3::DependencyMerge
 
@@ -38,6 +44,8 @@ use crate::geom::object::{NotifyOperation, ObjectRef};
 use crate::kernel::Kernel;
 use crate::sweep::topology_sweep::access::FaceRef;
 use crate::topology::brep::p2::ArenaNotifyState;
+use crate::topology::brep_cache::{arena_identity, CacheObject};
+use crate::topology::loopuse::notify_ref;
 use crate::topology::topology_traverser::Marks;
 use crate::topology::{Brep, BrepId, FaceId};
 use std::collections::BTreeMap;
@@ -136,6 +144,73 @@ fn pair_mut(breps: &mut [Option<Brep>], a: BrepId, b: BrepId) -> Result<(&mut Br
 
 fn face_key(other: bool, face: FaceId) -> crate::geom::attribute::ObjectKey {
     notification_key(NAMESPACE, other, EntityRef::Face(face)).key
+}
+
+/// Rebinds the geometry `b`'s edges and faces own under one of their own identities
+/// (the model's [`notify_ref`], the merge engine's import label [`arena_identity`]
+/// or a merge stage's operand key) to `to`'s identity for that edge or face. Shared
+/// geometry (any other owner) is left alone.
+fn rebind_owners(b: &mut Brep, to: impl Fn(EntityRef) -> ObjectRef) -> Result<()> {
+    let own = own_identities;
+    let edges: Vec<_> = b.edges().ids().collect();
+    for edge in edges {
+        let e = EntityRef::Edge(edge);
+        if let Some(curve) = b.edge_mut(edge)?.curve.as_mut() {
+            if curve
+                .owner()
+                .is_some_and(|o| own(e, CacheObject::Edge(edge)).contains(&o))
+            {
+                curve.set_owner(Some(to(e)), None);
+            }
+        }
+    }
+    let faces: Vec<_> = b.faces().ids().collect();
+    for face in faces {
+        let e = EntityRef::Face(face);
+        if let Some(surface) = b.face_mut(face)?.surface.as_mut() {
+            if surface
+                .owner()
+                .is_some_and(|o| own(e, CacheObject::Face(face)).contains(&o))
+            {
+                surface.set_owner(Some(to(e)));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The surface identity the merge engine sees for `face`'s surface once its owner is
+/// rebound ([`rebind_owners`] to [`engine_owner`]): `PiecewiseMerge`'s subset is taken
+/// before the stages rebind the operands.
+fn engine_surface_identity(b: &Brep, face: FaceId) -> Result<ObjectRef> {
+    let identity = KernelManifoldIntersector::surface_identity(b, face)?;
+    let e = EntityRef::Face(face);
+    Ok(
+        if own_identities(e, CacheObject::Face(face)).contains(&identity) {
+            engine_owner(e)
+        } else {
+            identity
+        },
+    )
+}
+
+/// The identities an edge or face of the model owns its geometry under.
+fn own_identities(e: EntityRef, cache: CacheObject) -> [ObjectRef; 4] {
+    [
+        notify_ref(e),
+        arena_identity(cache),
+        notification_key(NAMESPACE, false, e),
+        notification_key(NAMESPACE, true, e),
+    ]
+}
+
+/// The engine's import label of an edge's or face's geometry.
+fn engine_owner(e: EntityRef) -> ObjectRef {
+    match e {
+        EntityRef::Edge(x) => arena_identity(CacheObject::Edge(x)),
+        EntityRef::Face(x) => arena_identity(CacheObject::Face(x)),
+        other => notify_ref(other),
+    }
 }
 
 /// Removes every `SM_AI_OFFSETMAP` attribute from `b`'s faces under `other`'s keys.
@@ -248,6 +323,8 @@ impl Driver<'_> {
         let mut stage = StageMaps { table: Vec::new() };
         stage.place(&mut engine.attributes, self.offset_maps, pa, a, false)?;
         stage.place(&mut engine.attributes, self.offset_maps, pb, b, true)?;
+        rebind_owners(a, engine_owner)?;
+        rebind_owners(b, engine_owner)?;
         crate::topology::brep::p3::seed_records(&mut engine.intersector.records, a, &|e| {
             notification_key(NAMESPACE, false, e)
         });
@@ -266,6 +343,8 @@ impl Driver<'_> {
             &mut engine.state,
             &mut engine.attributes,
         );
+        rebind_owners(a, notify_ref)?;
+        rebind_owners(b, notify_ref)?;
         stage.take_back(&mut engine.attributes, self.offset_maps, pa, a, false)?;
         stage.take_back(&mut engine.attributes, self.offset_maps, pb, b, true)?;
         result
@@ -310,9 +389,7 @@ impl Driver<'_> {
     fn operand_face(&self, operand: Option<BrepId>, surface: ObjectRef) -> Result<FaceId> {
         let b = self.brep(operand.ok_or_else(|| SolidError::null_pointer(OP))?)?;
         for (face, record) in b.faces().iter() {
-            if record.surface.is_some()
-                && KernelManifoldIntersector::surface_identity(b, face)? == surface
-            {
+            if record.surface.is_some() && engine_surface_identity(b, face)? == surface {
                 return Ok(face);
             }
         }
@@ -376,8 +453,8 @@ impl BooleanDriver for Driver<'_> {
                 .and_then(Option::take)
                 .ok_or_else(|| SolidError::null_pointer(OP))
         };
-        let primary_body = take(self.breps, a)?;
-        let other_body = match take(self.breps, b) {
+        let mut primary_body = take(self.breps, a)?;
+        let mut other_body = match take(self.breps, b) {
             Ok(body) => body,
             Err(e) => {
                 if let Some(s) = self.breps.get_mut(a.index() as usize) {
@@ -388,23 +465,27 @@ impl BooleanDriver for Driver<'_> {
         };
         let engine = &mut self.session.engine;
         let mut stage = StageMaps { table: Vec::new() };
-        let placed = stage
-            .place(
-                &mut engine.attributes,
-                self.offset_maps,
-                a,
-                &primary_body,
-                false,
-            )
-            .and_then(|()| {
-                stage.place(
+        let placed = rebind_owners(&mut primary_body, engine_owner)
+            .and_then(|()| rebind_owners(&mut other_body, engine_owner));
+        let placed = placed.and_then(|()| {
+            stage
+                .place(
                     &mut engine.attributes,
                     self.offset_maps,
-                    b,
-                    &other_body,
-                    true,
+                    a,
+                    &primary_body,
+                    false,
                 )
-            });
+                .and_then(|()| {
+                    stage.place(
+                        &mut engine.attributes,
+                        self.offset_maps,
+                        b,
+                        &other_body,
+                        true,
+                    )
+                })
+        });
         let mut operands = (Some(primary_body), Some(other_body));
         let result = placed.and_then(|()| {
             engine.intersector.set_intersect_lamina_edges(*lamina);
@@ -426,8 +507,12 @@ impl BooleanDriver for Driver<'_> {
         // Survivors return to their slots, including after an error; a consumed
         // operand's handle no longer resolves.
         let mut restored = Ok(());
-        for (id, body, is_other) in [(a, operands.0, false), (b, operands.1, true)] {
-            if let Some(body) = &body {
+        for (id, mut body, is_other) in [(a, operands.0, false), (b, operands.1, true)] {
+            if let Some(body) = &mut body {
+                let rebound = rebind_owners(body, notify_ref);
+                if restored.is_ok() {
+                    restored = rebound;
+                }
                 let back =
                     stage.take_back(&mut engine.attributes, self.offset_maps, id, body, is_other);
                 if restored.is_ok() {
@@ -473,7 +558,7 @@ impl PiecewiseAccess for Driver<'_> {
             .into_iter()
             .filter_map(|f| match b.face(f) {
                 Ok(face) if face.surface.is_none() => None,
-                _ => Some(KernelManifoldIntersector::surface_identity(b, f)),
+                _ => Some(engine_surface_identity(b, f)),
             })
             .collect()
     }
