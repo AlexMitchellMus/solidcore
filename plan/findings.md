@@ -19163,3 +19163,17 @@ The ordinary geometry is `SM_FG_DEFAULT`. The contextual tangent-rollover guess 
 needs actual pseudo-B-rep vertex-use context; that genuine branch remains explicitly
 Unported in the borrowed provider. Other concrete solver kinds keep their existing
 missing-context behavior. Existing context-free APIs and fixture coverage remain.
+
+## Nx1 rail endpoint orientation default (2026-10-24)
+
+The actual combined two-corner component caught six topology differences that
+vertex positions alone did not expose: the new Nx1 producer passed `Same` to
+MakeRailEdgeuse, while native omits the argument and defaults to `Unknown`
+(SmFilletGeom.h:604; SmFilletCorner.cpp:6092). Both endpoint uses were inserted at
+the front of the rail list, replacing the observed first endpoint. The producer
+now passes Unknown so the existing helper derives orientation from the actual
+original corner vertex. No shared edge-insertion algorithm or harness field changed.
+The same seven retained native/Rust fixtures now give six exact passes, zero
+failures and one later full-API deferral; all four vertex records and full topology
+agree, maximum relative error zero. The first failing comparison is retained as
+evidence that endpoint orientation/list order checks detect this regression.
