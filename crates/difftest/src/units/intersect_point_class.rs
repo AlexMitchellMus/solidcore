@@ -1130,12 +1130,11 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
             Err(e) => return Err(e),
         }
     }
-    match deferred {
-        Some(d) => Err(Fail::Deferred(d)),
-        None => {
-            o.extend(vertices);
-            Ok(o)
-        }
+    if let Some(d) = deferred {
+        Err(Fail::Deferred(d))
+    } else {
+        o.extend(vertices);
+        Ok(o)
     }
 }
 
