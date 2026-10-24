@@ -19234,3 +19234,24 @@ still requires its actual identity provider, and nested notification-context lea
 remain a limitation for mutation paths that request fresh kernel geometry keys.
 Separately, the face-stage native alias observer exposes a real FG-surface versus
 managed-face ownership mismatch; the stitching adapter does not repair or hide it.
+
+### Fillet surface installation: actual managed binding and indexed compatibility
+
+Native MakeFaceBrep installs its original fillet surface into the generated face.
+The real Session now transfers that surface through the shared p6/p7 construction
+algorithm, retaining either the original owned value or its installed face on every
+return. Partial face allocation alone does not imply installation. Native owner
+restoration and topology-versus-late-error boundaries remain distinct.
+
+The canonical FG slot is Owned or ManagedFace(actual body identity, FaceId).
+Session::fillet_surface resolves the actual object; an owned-only getter reports
+missing body context after transfer rather than silently returning None. The real
+box test observes the same surface object and actual canonical face owner before
+attribute attachment and stitching.
+
+The indexed slice API retains its existing copied-surface construction backend,
+including its prior cliff trimming route. It does not claim shared surface binding.
+The retained-solver Session successor always uses original-surface transfer; its
+cliff transfer through the trimming tool remains a genuine missing capability at
+the actual final call. No fixture, tolerance, runtime type or ownership observation
+is normalized to hide that boundary.
