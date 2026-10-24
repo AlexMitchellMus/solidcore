@@ -624,6 +624,29 @@ impl FilletBrep {
         solvers: &[FilletSolver],
         target: &Brep,
     ) -> Result<()> {
+        self.calc_cross_section_with_lookup(
+            k,
+            e,
+            corner,
+            corners,
+            &|id| solver_of(solvers, id, OP_CROSS),
+            target,
+        )
+    }
+
+    /// Calculate a cross-section using borrowed records from the actual solver store.
+    ///
+    /// # Errors
+    /// As [`Self::calc_cross_section`], including the caller's solver lookup errors.
+    pub fn calc_cross_section_with_lookup<'solver>(
+        &mut self,
+        k: &Kernel,
+        e: EdgeId,
+        corner: Option<FilletCornerId>,
+        corners: CornerLookup<'_>,
+        resolve: &impl Fn(FilletSolverId) -> Result<&'solver FilletSolver>,
+        target: &Brep,
+    ) -> Result<()> {
         let (start_fv, end_fv) = self.edge_ends(e, OP_CROSS)?;
         let (prim, mate) = self.p5_prim_mate(e, OP_CROSS)?;
         let g1 = self.eu_geom(prim)?;
@@ -642,7 +665,11 @@ impl FilletBrep {
                 .ok_or_else(|| SolidError::null_pointer(OP_CROSS))?;
 
             if let Some(g2) = g2.filter(|&g2| g2 != g1) {
-                let fs2 = self.geom_solver(g2, solvers, OP_CROSS)?;
+                let fs2 = resolve(
+                    self.geom(g2)?
+                        .fillet_solver()
+                        .ok_or_else(|| SolidError::null_pointer(OP_CROSS))?,
+                )?;
                 fs2_tol = Some(fs2.approx_tol_3d);
                 surface2 = Some(
                     self.geom(g2)?
@@ -651,11 +678,7 @@ impl FilletBrep {
                         .ok_or_else(|| SolidError::null_pointer(OP_CROSS))?,
                 );
             }
-            let fs1 = solver_of(
-                solvers,
-                sid1.ok_or_else(|| SolidError::null_pointer(OP_CROSS))?,
-                OP_CROSS,
-            )?;
+            let fs1 = resolve(sid1.ok_or_else(|| SolidError::null_pointer(OP_CROSS))?)?;
             tol = fs1.approx_tol_3d;
 
             // Examine the connectivity between two adjacent fillet geoms.
@@ -675,7 +698,11 @@ impl FilletBrep {
                             if g2 == g1 {
                                 return Err(SolidError::null_pointer(OP_CROSS));
                             }
-                            let fs2 = self.geom_solver(g2, solvers, OP_CROSS)?;
+                            let fs2 = resolve(
+                                self.geom(g2)?
+                                    .fillet_solver()
+                                    .ok_or_else(|| SolidError::null_pointer(OP_CROSS))?,
+                            )?;
                             at_start_of_geom2 = fs2.vertex(target, 0)? == filleted_vertex;
                             check_connectivity = true;
                         }
