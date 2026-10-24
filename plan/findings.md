@@ -19060,6 +19060,29 @@ Corner types: the shims' stand-in corners (`blend_fillet_geom_p3.cpp`'s `ShimCor
 new `P2Corner` of `blend_fillet_geom_p2_static.inc`) are `SM_FCR_UNKNOWN`, which no
 `FilletCornerKind` has; the runners use `OneByOne` records. On the compared paths the type
 is only tested against `SM_FCR_N_x_N_CONCAVE`, which neither is. No disagreement.
+## intersect.topology_solver_p2: sm_GetFaceSilhouettes trims through the face (2026-10-24)
+
+- `face_silhouettes` (`sm_GetFaceSilhouettes`) now calls the ported
+  `topology::face::p2::create_curves_by_trimming` on the face that
+  `TopologyObjects::face_entity` resolves, then `AddCurvesToCache` /
+  `HasCachedCurves` on the per-call surface cache as upstream. The static runner's
+  adapter now holds real `CreateFaceFromSurface` faces (each in its own B-rep, as the
+  shim does) and resolves `face_entity` for them. The 8 `SmFace::CreateCurvesByTrimming`
+  cases (operation 14) and the 4 `SmFace::PointClassify` cases now pass; the planes seen
+  along their normal have no silhouette, so the projected cases compare status and an
+  empty solution list.
+- **Vertex/face maximize over a face-owned plane (same class as the GetNaturalUVDomain
+  entry above).** With `face_entity` answered, `face_included_without_shape_limit_5_4_0`
+  and `_5_4_1` (static-shell-vertices.json #124/#125: entry 5 `SmTLSVertexFace`,
+  operation 4 `SM_SO_MAXIMIZE`, request 0, tol 1e-5, vertex (-0.7, 0, 0), plane z=0
+  over [0,1]^2, included) reach `GlobalPointSolve` in the non-projected branch.
+  C++: success, 0 solutions. Rust: success, 1 solution, value 1.972308292331602 at
+  uv (1, 1). A free (not face-owned) `SmPlane` in C++ returns the same single solution
+  as Rust, so the difference is the face's `SmTrimSrfCache`: the adapter's planes are
+  standalone copies, and handing it the face-owned surfaces instead makes Rust stop at
+  `SmFace handle of a surface's face` (no trimmed-face binding for the adapter's
+  handles). The runner defers exactly these inputs (entry 5, maximize, included) under
+  that symbol until a face-aware `SurfaceSolveContext` exists for the static adapter.
 ## Issue #506: SurfaceCache per-evaluation cost in surface_point_solve_p2 (fix/point-solve-perf, 2026-10-24)
 
 Reproduction note: the original `fuzz00474` reproduction file (`fuzz-out/n2000/`, not
@@ -19282,3 +19305,57 @@ This slice makes no cylinder, multi-edge, variable-radius or complete API claim.
 An additive actual-session checkpoint retains the original 10×20×30 box, edge0 and radius0.5 through real preparation, corner creation, smooth prelude, shared corner vertices, all adjustment and direct first solver CalcFilletGeom. All six statuses and all sampled geometry agree (max relative error2.775557561562892e-16), but native centerline GetType is SmLine14010 while Rust reports BSpline14033. The only mismatch is ints.generated_geometry_state[15]; surface and both rail runtime types already agree. Native SmFilletSolver.cpp633–637 retains the derived line pointer; Rust solver/p2.rs345 slices it via bspline_part into FilletGeom's BSplineCurve slot. Preserve the actual curve representation; do not normalize the type comparison. Full executive_p3 baseline:300 cases,252 passes,47 existing deferrals,1 failure. The post-adjustment case passes; all14 previous CPP/Rust real-box records are byte-identical. Public SmApiFilletEdges remains genuinely deferred.
 
 Resolution of the real-box centerline subtype finding: retain the canonical actual Curve (including Line) in FilletGeom, use its virtual copy/evaluation/reversal operations, and preserve the legacy borrowed B-spline-base accessor for base-only callers. The new observer reads the actual curve. Same fixtures and enforced runtime types now give 300 executive_p3 cases,253 passes,47 existing deferrals,0 failures,max_rel_err=0; perturb253/253 caught. Seven affected native units total4032 cases,3864 passes,136 existing deferrals,32 defined rejections,0 failures. All3732 existing affected-unit Rust-only per-case digests and all14 previous real-box CPP/Rust output records are unchanged. Full SmApiFilletEdges still genuinely defers; this proves retained untrimmed geometry, not a completed fillet.
+## boolean.api_brep: tiny-box Booleans reach the UB-175 teardown once edge definitions imprint into faces
+
+Unit `boolean.api_brep`, cases `gen0059` (`with_options`, operation 3, boxes of
+size about 0.005 at (-0.0066, -0.0183, -0.0027) and (-0.0025, -0.0203, -0.0025)) and
+`gen0066` (`merge_breps`, operation 2, boxes of size about 0.008 and 0.004). Until
+`SmEdgeDefinition::Imprint` could run `SmBrep::MakeEdgeInFace` on the owning B-rep
+these cases were deferred there. Both now run to the end of
+`SmTopologyIntersector::IntersectInsertRelate`, where the port's UB-175 check
+(`plan/upstream-issues.md`: `~SmProtoTopologyManager` reads a freed proto edge) finds
+a proto vertex that still lists a freed proto edge: the proto vertex capture distance
+is at least 0.01 (`SmTopologyIntersector.cpp:1159`), larger than the boxes, so the
+intersection points collapse into shared proto vertices and some proto edges start
+and end on the same one. The port returns `SM_ERR_INVALID_INPUT` there
+(`gen0059` status 1007; in `gen0066` `merge_breps` reports it as `SM_ERR` 1001);
+the C++ reads the freed memory and goes on (status 0, 8 and 7 result records). The
+C++ build cannot be instrumented here, so no input-based rule separates these from
+tiny boxes that do not reach the condition from the inputs alone, so the
+`boolean.api_brep` runner rejects a case on the Rust side when the port reports exactly
+this UB-175 error (the way `primitive.api_primitives` rejects UB-119): the C++ is not
+run, because the input is undefined there. For that the merge's `BooleanTrees` now
+passes an `InvalidInput` from `ManifoldBoolean` through instead of turning it into
+`SM_ERR`.
+
+## boolean.merge_p3: vertex list order after merges that imprint edges into faces
+
+Unit `boolean.merge_p3`, cases `upstream_merge_breps_operation_3` (`merge_breps`,
+operation 3, boxes (0,0,0)+10 and (8,6,3)+(4,8,6)), `upstream_piecewise_boxes_2_keep_other`
+and `upstream_piecewise_boxes_3_keep_other` (`PiecewiseMerge` with
+`bCreateNewBrepsForFaces`, boxes (0,0,0)+10 and (5,0,0)+10). Deferred at
+`SmBrep::MakeEdgeInFace` before; now both sides finish with the same counts
+(18/36/22 and 10/20/12 faces/edges/vertices) and the same vertex positions, in a
+different vertex list order. C++ lists the vertices that belong only to the part of
+one operand on the far side of the other (the corners (8,6,3) and (8,6,9) inside the
+first box; the x = 0 corners of the first box in the piecewise cases) after all the
+others, as if that part's vertices were moved out of the B-rep and back in; the port
+keeps them in their original places (`values.record[18..]` and `[8..]`). The binormal
+classification of `UpdateFaces` is not involved (the merge case never evaluates one;
+in the piecewise cases every evaluation succeeds). Suspected cause: a step after the
+imprint in the merge editing stages that moves a region's or shell's topology between
+B-reps upstream and keeps it in place in the port. Follow-up: trace which step moves the
+far-side part's topology out of the B-rep and back in upstream. Listed in
+`known_mismatches.toml`.
+
+## offset.offset_executive_p2: gen0166 leaves extra shells and loops after a failed shell
+
+Unit `offset.offset_executive_p2`, case `gen0166` (`static_shell` of a 20x30x40 box at
+(-8.005, -18.639, -17.799), face 2 selected twice, distance -0.5, tolerance 1e-6).
+Deferred at `SmBrep::MakeEdgeInFace` before; now both sides return status 1000 with
+12 faces, 24 edges and 16 vertices, but the C++ result has 3 regions / 3 shells /
+13 loops and the port 3 / 7 / 16, and the selected faces after the call are (0, 2) in
+C++ and (4, none) in the port. No edge use binormal is evaluated in this case.
+Suspected to be the same Rust merge region/shell handling as `gen0000` / `gen0003`
+above (the inset shell's Difference); not traced further. Listed in
+`known_mismatches.toml`.
