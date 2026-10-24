@@ -163,7 +163,7 @@ fn new_corner_vertex(
     pseudo: &mut FilletBrep,
     corner: FilletCornerId,
 ) -> Result<VertexId> {
-    let vertex = pseudo.brep_mut().add_vertex_record(Vertex {
+    let vertex = pseudo.brep_mut().add_unlinked_vertex_record(Vertex {
         point: Point3::ZERO,
         tolerance: 0.0,
         ..Vertex::default()
