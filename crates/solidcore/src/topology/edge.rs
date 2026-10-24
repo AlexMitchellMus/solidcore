@@ -271,21 +271,53 @@ fn cover_other_coincident_surface(
     domain0: &Extent2d,
     domain1: &Extent2d,
 ) -> Result<Cover> {
-    // move the surfaces out of their faces for the call (keeping their owners) and back
-    let mut this = b
-        .face_mut(face0)?
-        .surface
-        .take()
-        .ok_or_else(|| null("sm_CoverOtherCoincidentFace: face without surface"))?;
-    let Some(mut other) = b.face_mut(face1)?.surface.take() else {
-        b.face_mut(face0)?.surface = Some(this);
-        return Err(null("sm_CoverOtherCoincidentFace: face without surface"));
+    // The cover runs on evaluation copies of the faces' surfaces (keeping their owners),
+    // while the faces keep theirs for the trim tests and `RemoveUVTrimCurves` it runs on
+    // them; the covering surface's change is then made on the face's own surface.
+    let surface_of = |b: &Brep, f: FaceId| -> Result<Surface> {
+        b.face(f)?
+            .surface
+            .as_ref()
+            .ok_or_else(|| null("sm_CoverOtherCoincidentFace: face without surface"))?
+            .clone_for_evaluation()
     };
-    let r =
-        this.cover_other_coincident_surface(k, &mut other, tol, Some(domain0), Some(domain1), true);
-    b.face_mut(face0)?.surface = Some(this);
-    b.face_mut(face1)?.surface = Some(other);
-    let r = r?;
+    let mut this = surface_of(b, face0)?;
+    let mut other = surface_of(b, face1)?;
+    let r = {
+        let brep = core::cell::RefCell::new(&mut *b);
+        let mut held0 = CoverFaceOf {
+            b: &brep,
+            f: face0,
+            test_on: None,
+        };
+        let mut held1 = CoverFaceOf {
+            b: &brep,
+            f: face1,
+            test_on: None,
+        };
+        this.cover_other_coincident_surface_with_faces(
+            k,
+            &mut other,
+            tol,
+            Some(domain0),
+            Some(domain1),
+            true,
+            [Some(&mut held0), Some(&mut held1)],
+        )?
+    };
+    match r.covering_is_other {
+        Some(false) => {
+            if let Some(s) = b.face_mut(face0)?.surface.as_mut() {
+                s.adopt_geometry(this);
+            }
+        }
+        Some(true) => {
+            if let Some(s) = b.face_mut(face1)?.surface.as_mut() {
+                s.adopt_geometry(other);
+            }
+        }
+        None => {}
+    }
     Ok(Cover {
         max_dist: r.max_dist,
         covering: r.covering_is_other.map(|is_other| {
@@ -298,6 +330,43 @@ fn cover_other_coincident_surface(
         merged_domain: r.merged_domain.unwrap_or_else(Extent2d::new),
     })
 }
+
+/// A face of the B-rep held for a cover of its surface
+/// ([`crate::surface::surface::p3::CoverFace`]): the trim test of the cover's point
+/// drops and `RemoveUVTrimCurves` run on it. Both faces of a cover share the B-rep.
+struct CoverFaceOf<'a, 'b> {
+    b: &'a core::cell::RefCell<&'b mut Brep>,
+    f: FaceId,
+    /// Whether the face's cache tests points (decided at the first test).
+    test_on: Option<bool>,
+}
+
+impl crate::surface::surface::p3::CoverFace for CoverFaceOf<'_, '_> {
+    fn point_test(&mut self, k: &Kernel, uv: Point2, src_zone_tol_3d: f64) -> Result<bool> {
+        let mut b = self
+            .b
+            .try_borrow_mut()
+            .map_err(|_| SolidError::invalid_input(OP_COVER, "B-rep already borrowed"))?;
+        crate::intersect::point_class::live_face_fast_drop_test(
+            k,
+            &mut b,
+            self.f,
+            &mut self.test_on,
+            uv,
+            src_zone_tol_3d,
+        )
+    }
+
+    fn remove_uv_trim_curves(&mut self) -> Result<()> {
+        let mut b = self
+            .b
+            .try_borrow_mut()
+            .map_err(|_| SolidError::invalid_input(OP_COVER, "B-rep already borrowed"))?;
+        crate::topology::face::p1::remove_uv_trim_curves(&mut b, self.f)
+    }
+}
+
+const OP_COVER: &str = "topology::edge::cover_other_coincident_surface";
 
 /// `SmFace::CalculateUVDomainFromUVTrimCurves(dom, TRUE)` (unit `topology.face_p1`).
 fn calculate_uv_domain_from_uv_trim_curves(

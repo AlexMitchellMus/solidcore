@@ -62,6 +62,7 @@ fn cache_kernel(k: &Kernel, context: &Context) -> Kernel {
         caches: crate::kernel::Caches::default(),
         context: context.metadata_copy(),
         fillet_point_step: core::cell::Cell::new(k.fillet_point_step.get()),
+        upstream_ub_passed: Vec::new(),
     }
 }
 

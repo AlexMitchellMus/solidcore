@@ -10,6 +10,7 @@
 //! | Rust                                                | Upstream                                      |
 //! |-----------------------------------------------------|-----------------------------------------------|
 //! | [`SurfaceEval::sect_curvature`]                     | `SmSurfaceEval::SectCurvature`                |
+//! | [`Surface::cover_other_coincident_surface_with_faces`], [`CoverFaces`] | `SmSurface::CoverOtherCoincidentSurface` of face-owned surfaces |
 //! | [`Surface::is_singularity`], [`Surface::is_singularity_with_poles`], [`Singularity`] | `IsSingularity` (both overloads; virtual: the `SmPlane` override) |
 //! | [`Surface::evaluate_normal_at_singularity`]         | `EvaluateNormalAtSingularity` (virtual: the `SmCurveBoundedSurface` override) |
 //! | [`Surface::create_iso_parametric_curve`], [`IsoParametricCurve`] | `CreateIsoParametricCurve` (virtual: `SmBSplineSurface`, `SmPlane`; the `SmSurface` body for the rest) |
@@ -79,6 +80,7 @@ use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::knots::Side;
+use crate::surface::surface::p3::CoverFace;
 
 use super::p1::{evaluate_1st_derivatives, get_surface_cache, FindPsNormalEnfo};
 use super::p2::{LsiGlobalSolver, SurfaceEval};
@@ -1424,6 +1426,10 @@ struct CoverCoincident {
     step_domain: Option<Extent2d>,
 }
 
+/// The faces owning this surface and the other one of a cover, when the caller holds
+/// them ([`Surface::cover_other_coincident_surface_with_faces`]).
+pub type CoverFaces<'a> = [Option<&'a mut dyn CoverFace>; 2];
+
 /// `cover->CoverCoincidentSurface(covered, tol, bSuccess, rdMaxDist, &covered_domain
 /// [, &step_domain])`: whether `cover` covers `covered_domain` of `covered` and the
 /// largest gap. `cover` is expanded on success.
@@ -1434,8 +1440,10 @@ fn cover_coincident_surface(
     tol: f64,
     covered_domain: &Extent2d,
     want_step_domain: bool,
+    face: Option<&mut (dyn CoverFace + '_)>,
 ) -> Result<CoverCoincident> {
-    let r = cover.cover_coincident_surface(k, covered, tol, Some(covered_domain))?;
+    let r =
+        cover.cover_coincident_surface_with_face(k, covered, tol, Some(covered_domain), face)?;
     Ok(CoverCoincident {
         success: r.success,
         max_dist: r.max_dist,
@@ -1472,7 +1480,11 @@ fn try_cover(
     cover_is_other: bool,
     tol: f64,
     want_merged: bool,
+    faces: &mut CoverFaces<'_>,
 ) -> Result<bool> {
+    let face = faces
+        .get_mut(usize::from(cover_is_other))
+        .and_then(|f| f.as_deref_mut());
     let (cover, covered): (&mut Surface, &Surface) = if cover_is_other {
         (other, this)
     } else {
@@ -1490,7 +1502,8 @@ fn try_cover(
     };
 
     if !want_merged {
-        return match cover_coincident_surface(k, cover, covered, tol, &covered_domain, false) {
+        return match cover_coincident_surface(k, cover, covered, tol, &covered_domain, false, face)
+        {
             Ok(r) => {
                 st.max_dist = r.max_dist;
                 Ok(r.success)
@@ -1511,7 +1524,7 @@ fn try_cover(
         Err(e) if e.is_unported() => return Err(e),
         Err(_) => return Ok(false),
     };
-    let r = match cover_coincident_surface(k, cover, covered, tol, &covered_domain, true) {
+    let r = match cover_coincident_surface(k, cover, covered, tol, &covered_domain, true, face) {
         Ok(r) => r,
         Err(e) if e.is_unported() => return Err(e),
         Err(_) => {
@@ -1560,6 +1573,36 @@ impl Surface {
         other_domain: Option<&Extent2d>,
         want_merged: bool,
     ) -> Result<CoverOtherCoincident> {
+        self.cover_other_coincident_surface_with_faces(
+            k,
+            other,
+            tol,
+            this_domain,
+            other_domain,
+            want_merged,
+            [None, None],
+        )
+    }
+
+    /// [`Surface::cover_other_coincident_surface`] of surfaces owned by faces the
+    /// caller holds: `faces` are this surface's face and the other's (`None`: not
+    /// held), on which a cover's trim tests and `SmFace::RemoveUVTrimCurves` run
+    /// ([`Surface::cover_coincident_surface_with_face`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::cover_other_coincident_surface`], and those of `faces`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn cover_other_coincident_surface_with_faces(
+        &mut self,
+        k: &Kernel,
+        other: &mut Self,
+        tol: f64,
+        this_domain: Option<&Extent2d>,
+        other_domain: Option<&Extent2d>,
+        want_merged: bool,
+        mut faces: CoverFaces<'_>,
+    ) -> Result<CoverOtherCoincident> {
         let mut st = CoverState {
             domain0: this_domain
                 .copied()
@@ -1586,13 +1629,13 @@ impl Surface {
         // Favor SmPlanes:
         if is_plane(self) {
             tried0 = true;
-            if try_cover(k, &mut st, self, other, false, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, false, tol, want_merged, &mut faces)? {
                 return Ok(done(&st, false));
             }
         }
         if is_plane(other) {
             tried1 = true;
-            if try_cover(k, &mut st, self, other, true, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, true, tol, want_merged, &mut faces)? {
                 return Ok(done(&st, true));
             }
         }
@@ -1600,13 +1643,13 @@ impl Surface {
         // Next look for bilinear.
         if !tried0 && self.is_bilinear() {
             tried0 = true;
-            if try_cover(k, &mut st, self, other, false, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, false, tol, want_merged, &mut faces)? {
                 return Ok(done(&st, false));
             }
         }
         if !tried1 && other.is_bilinear() {
             tried1 = true;
-            if try_cover(k, &mut st, self, other, true, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, true, tol, want_merged, &mut faces)? {
                 return Ok(done(&st, true));
             }
         }
@@ -1614,13 +1657,13 @@ impl Surface {
         // Next, favor SmBSplineSurfaces.
         if !tried0 && is_bspline(self) {
             tried0 = true;
-            if try_cover(k, &mut st, self, other, false, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, false, tol, want_merged, &mut faces)? {
                 return Ok(done(&st, false));
             }
         }
         if !tried1 && is_bspline(other) {
             tried1 = true;
-            if try_cover(k, &mut st, self, other, true, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, true, tol, want_merged, &mut faces)? {
                 return Ok(done(&st, true));
             }
         }
@@ -1628,14 +1671,14 @@ impl Surface {
         // No special cases.
         if !tried0 {
             tried0 = true;
-            if try_cover(k, &mut st, self, other, false, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, false, tol, want_merged, &mut faces)? {
                 return Ok(done(&st, false));
             }
         }
         let _ = tried0;
         if !tried1 {
             tried1 = true;
-            if try_cover(k, &mut st, self, other, true, tol, want_merged)? {
+            if try_cover(k, &mut st, self, other, true, tol, want_merged, &mut faces)? {
                 return Ok(done(&st, true));
             }
         }

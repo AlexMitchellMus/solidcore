@@ -11,6 +11,7 @@
 //! | Rust                                              | Upstream                                         |
 //! |---------------------------------------------------|--------------------------------------------------|
 //! | [`Surface::evaluate_geometric`], [`evaluate_geometric_of`] | `SmSurface::EvaluateGeometric`          |
+//! | [`Surface::cover_coincident_surface_with_face`], [`CoverFace`] | `SmSurface::CoverCoincidentSurface` of a face-owned surface (`STEPInversion`'s trim test and `SmFace::RemoveUVTrimCurves` on the caller's face) |
 //! | [`Surface::evaluate_normal_section`], [`evaluate_normal_section_of`], [`SurfaceNormalSection`] | `SmSurface::EvaluateNormalSection` |
 //! | [`Surface::get_singularities`], [`Surface::get_singularities_of_face`], [`Singularities`] | `SmSurface::GetSingularities`                    |
 //! | [`Surface::cover_coincident_surface`], [`CoverCoincident`] | `SmSurface::CoverCoincidentSurface`     |
@@ -729,12 +730,31 @@ impl Surface {
         tol: f64,
         other_domain: Option<&Extent2d>,
     ) -> Result<CoverCoincident> {
+        self.cover_coincident_surface_with_face(k, other, tol, other_domain, None)
+    }
+
+    /// [`Surface::cover_coincident_surface`] of a surface owned by a face the caller
+    /// holds (`face`): the point drops' trim test and `SmFace::RemoveUVTrimCurves` run
+    /// on that face ([`CoverFace`]). Without `face` a face-owned surface reaches neither
+    /// ([`SolidError::Unported`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::cover_coincident_surface`], and those of `face`.
+    pub fn cover_coincident_surface_with_face(
+        &mut self,
+        k: &Kernel,
+        other: &Surface,
+        tol: f64,
+        other_domain: Option<&Extent2d>,
+        face: Option<&mut (dyn CoverFace + '_)>,
+    ) -> Result<CoverCoincident> {
         // Expand our domain, for the scope of this routine.
         let saved = out_of_bounds_enabled(self);
         if saved.is_some() {
             set_out_of_bounds_enabled(self, true);
         }
-        let result = self.cover_coincident_surface_inner(k, other, tol, other_domain);
+        let result = self.cover_coincident_surface_inner(k, other, tol, other_domain, face);
         if let Some(saved) = saved {
             set_out_of_bounds_enabled(self, saved);
         }
@@ -748,6 +768,7 @@ impl Surface {
         other: &Surface,
         tol: f64,
         other_domain: Option<&Extent2d>,
+        mut face: Option<&mut (dyn CoverFace + '_)>,
     ) -> Result<CoverCoincident> {
         // init outputs
         let failure = CoverCoincident {
@@ -785,7 +806,9 @@ impl Surface {
         if let Some(p) = ignored(other.evaluate_point(k, uv_other))? {
             pt = p;
         }
-        if ignored(self.step_inversion(k, &big_domain, pt, tol, None))?.is_none() {
+        if ignored(self.cover_step_inversion(k, &big_domain, pt, tol, None, face.as_deref_mut()))?
+            .is_none()
+        {
             return Ok(failure);
         }
 
@@ -797,8 +820,14 @@ impl Surface {
                     pt = p;
                 }
 
-                let Some((mut uv_this, location)) =
-                    ignored(self.step_inversion(k, &big_domain, pt, tol, None))?
+                let Some((mut uv_this, location)) = ignored(self.cover_step_inversion(
+                    k,
+                    &big_domain,
+                    pt,
+                    tol,
+                    None,
+                    face.as_deref_mut(),
+                ))?
                 else {
                     return Ok(failure);
                 };
@@ -851,7 +880,7 @@ impl Surface {
             ignored(self.adjust_step_uv_domain(k, &update_domain))?;
 
             // Have to do this after AdjustSTEPUVDomain call:
-            self.remove_uv_trim_curves_of_owner()?;
+            self.remove_uv_trim_curves_of_owner(face.as_deref_mut())?;
 
             return Ok(CoverCoincident {
                 success: true,
@@ -890,8 +919,14 @@ impl Surface {
                     pt = p;
                 }
 
-                let Some((mut uv_this, location)) =
-                    ignored(self.step_inversion(k, &big_domain, pt, tol, Some(guess_uv)))?
+                let Some((mut uv_this, location)) = ignored(self.cover_step_inversion(
+                    k,
+                    &big_domain,
+                    pt,
+                    tol,
+                    Some(guess_uv),
+                    face.as_deref_mut(),
+                ))?
                 else {
                     // If any DropPoint fails, they're not coincident.
                     return Ok(failure);
@@ -975,8 +1010,14 @@ impl Surface {
                     pt = p;
                 }
 
-                let Some((mut drop_uv, location)) =
-                    ignored(self.step_inversion(k, &big_domain, pt, tol, Some(guess_uv)))?
+                let Some((mut drop_uv, location)) = ignored(self.cover_step_inversion(
+                    k,
+                    &big_domain,
+                    pt,
+                    tol,
+                    Some(guess_uv),
+                    face.as_deref_mut(),
+                ))?
                 else {
                     // If any DropPoint fails, they're not coincident.
                     return Ok(failure);
@@ -1041,7 +1082,7 @@ impl Surface {
         ignored(self.adjust_step_uv_domain(k, &update_domain))?;
 
         // Have to do this after AdjustSTEPUVDomain call:
-        self.remove_uv_trim_curves_of_owner()?;
+        self.remove_uv_trim_curves_of_owner(face)?;
 
         Ok(CoverCoincident {
             success: true,
@@ -1050,12 +1091,39 @@ impl Surface {
         })
     }
 
+    /// `STEPInversion` of a cover's point drop: on the owning face's trim test when the
+    /// caller holds the face ([`Surface::step_inversion_face_tested`]).
+    fn cover_step_inversion(
+        &self,
+        k: &Kernel,
+        domain: &Extent2d,
+        point: Point3,
+        tol: f64,
+        guess: Option<Point2>,
+        face: Option<&mut (dyn CoverFace + '_)>,
+    ) -> Result<(Point2, crate::nurbs::b_spline_surface::p1::LocationType)> {
+        match face {
+            Some(face) => {
+                let mut classify =
+                    |k: &Kernel, uv: Point2, src_tol: f64| face.point_test(k, uv, src_tol);
+                self.step_inversion_face_tested(k, domain, point, tol, guess, Some(&mut classify))
+            }
+            None => self.step_inversion(k, domain, point, tol, guess),
+        }
+    }
+
     /// `SmFace::RemoveUVTrimCurves` of the face that owns this surface, if any.
-    fn remove_uv_trim_curves_of_owner(&self) -> Result<()> {
+    fn remove_uv_trim_curves_of_owner(
+        &self,
+        face: Option<&mut (dyn CoverFace + '_)>,
+    ) -> Result<()> {
         if self
             .owner()
             .is_some_and(|o| o.type_code == labels::FACE_TYPE)
         {
+            if let Some(face) = face {
+                return face.remove_uv_trim_curves();
+            }
             // UNPORTED(topology.face_p1): SmFace::RemoveUVTrimCurves
             // (ported as topology::face::p1::remove_uv_trim_curves, but a surface cannot
             // reach the B-rep of its owner face here: the call needs the B-rep passed in)
@@ -1519,6 +1587,25 @@ impl EvalNFunctions for SssIntersectEnfo<'_> {
 
         Ok(false)
     }
+}
+
+/// The face that owns a surface a cover runs on, held by the caller
+/// ([`Surface::cover_coincident_surface_with_face`]).
+pub trait CoverFace {
+    /// `pFace->PointClassify(uv, tol, TRUE, FALSE, ..)` in `GlobalPointSolve`'s fast drop:
+    /// whether a solution at `uv` is kept (also `true` when the face's cache does not
+    /// test points).
+    ///
+    /// # Errors
+    ///
+    /// The classification's [`SolidError::Unported`].
+    fn point_test(&mut self, k: &Kernel, uv: Point2, src_zone_tol_3d: f64) -> Result<bool>;
+    /// `SmFace::RemoveUVTrimCurves()`.
+    ///
+    /// # Errors
+    ///
+    /// Those of `topology::face::p1::remove_uv_trim_curves`.
+    fn remove_uv_trim_curves(&mut self) -> Result<()>;
 }
 
 #[cfg(test)]
