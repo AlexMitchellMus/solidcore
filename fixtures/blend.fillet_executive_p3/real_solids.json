@@ -103,6 +103,27 @@
           "checkpoint": "prepared"
         }
       }
+    },
+    {
+      "name": "real-box-first-vertex-geometry-actual-session",
+      "upstream_ref": "source/SMLib/src/SmFilletCorner.cpp:1471 (direct first corner after topology)",
+      "inputs": {
+        "real_solid": {
+          "dimensions": [
+            10,
+            20,
+            30
+          ],
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            0
+          ],
+          "checkpoint": "first_vertex_geometry"
+        }
+      }
     }
   ]
 }

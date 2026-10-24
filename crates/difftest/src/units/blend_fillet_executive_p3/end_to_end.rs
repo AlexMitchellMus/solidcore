@@ -19,6 +19,7 @@ enum Checkpoint {
     Prepared,
     Corners,
     FirstTopology,
+    FirstVertexGeometry,
 }
 impl Checkpoint {
     fn code(self) -> u32 {
@@ -27,6 +28,7 @@ impl Checkpoint {
             Self::Prepared => 1,
             Self::Corners => 2,
             Self::FirstTopology => 3,
+            Self::FirstVertexGeometry => 4,
         }
     }
 }
@@ -294,7 +296,7 @@ pub(super) fn rust(input: &RealSolid) -> Result<Output, HarnessError> {
             if input.checkpoint == Checkpoint::Full {
                 output(&values)
             } else {
-                prefix::output(&values)
+                prefix::output(&values, input.checkpoint)
             }
         }
         Err(error) => match Output::unported(&error) {

@@ -158,7 +158,7 @@ pub(super) fn run(
     before: &[f64],
 ) -> SolidResult<Vec<f64>> {
     let mut session = FilletSession::new(k, body)?;
-    let mut statuses = [-1.0; 3];
+    let mut statuses = [-1.0; 4];
     let prepare = session.prepare_constant_radius_edges(
         k,
         selected,
@@ -177,13 +177,24 @@ pub(super) fn run(
             Ok(()) => 0.0,
             Err(error) => status(error)?,
         };
-        if statuses[1] == 0.0 && input.checkpoint == Checkpoint::FirstTopology {
+        if statuses[1] == 0.0
+            && matches!(
+                input.checkpoint,
+                Checkpoint::FirstTopology | Checkpoint::FirstVertexGeometry
+            )
+        {
             prior = snapshot(&session, &mut Vec::new())?;
             if let Some(FilletObject::Corner(id)) = session.executive().corners.first().copied() {
                 statuses[2] = match session.make_nx1_corner_topology(k, id) {
                     Ok(()) => 0.0,
                     Err(error) => status(error)?,
                 };
+                if statuses[2] == 0.0 && input.checkpoint == Checkpoint::FirstVertexGeometry {
+                    statuses[3] = match session.calc_nx1_corner_vert_geom(k, id) {
+                        Ok(()) => 0.0,
+                        Err(error) => status(error)?,
+                    };
+                }
             }
         }
     }
@@ -191,21 +202,61 @@ pub(super) fn run(
     let state = snapshot(&session, &mut parameters)?;
     let mut out = Vec::new();
     section(&mut out, before);
-    out.extend(statuses);
+    let count = if input.checkpoint == Checkpoint::FirstVertexGeometry {
+        4
+    } else {
+        3
+    };
+    out.extend_from_slice(
+        statuses
+            .get(..count)
+            .ok_or_else(|| invalid("status record length"))?,
+    );
     section(&mut out, &prior);
     section(&mut out, &state);
     section(&mut out, &parameters);
+    if input.checkpoint == Checkpoint::FirstVertexGeometry {
+        let mut geometry_state = Vec::new();
+        let mut geometry_values = Vec::new();
+        if let Some(FilletObject::Corner(id)) = session.executive().corners.first().copied() {
+            for (index, &fv) in session.corner(id)?.vertices.iter().enumerate() {
+                let vertex = session.pseudo_brep().fillet_vertex(fv)?;
+                geometry_state.extend([
+                    index as f64,
+                    f64::from(vertex.status() as u32),
+                    f64::from(vertex.is_processed()),
+                ]);
+                if vertex.is_processed() {
+                    let record = session.pseudo_brep().brep().vertex(fv)?;
+                    geometry_values.extend([
+                        record.point.x,
+                        record.point.y,
+                        record.point.z,
+                        record.tolerance,
+                        vertex.original_t_param(),
+                    ]);
+                }
+            }
+        }
+        section(&mut out, &geometry_state);
+        section(&mut out, &geometry_values);
+    }
     Ok(out)
 }
 
-pub(super) fn output(mut values: &[f64]) -> Result<Output, HarnessError> {
+pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Output, HarnessError> {
     let mut out = Output::new();
     out.values.insert(
         "selected_edge_before".into(),
         take_section(&mut values)?.to_vec(),
     );
+    let count = if checkpoint == Checkpoint::FirstVertexGeometry {
+        4
+    } else {
+        3
+    };
     let statuses = values
-        .get(..3)
+        .get(..count)
         .ok_or_else(|| HarnessError::new("missing prefix statuses"))?;
     if statuses.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
         return Err(HarnessError::new("invalid prefix statuses"));
@@ -215,7 +266,7 @@ pub(super) fn output(mut values: &[f64]) -> Result<Output, HarnessError> {
         statuses.iter().map(|v| *v as i64).collect(),
     );
     values = values
-        .get(3..)
+        .get(count..)
         .ok_or_else(|| HarnessError::new("missing prefix state"))?;
     for key in ["before_direct_topology", "prefix_state"] {
         let state = take_section(&mut values)?;
@@ -229,6 +280,20 @@ pub(super) fn output(mut values: &[f64]) -> Result<Output, HarnessError> {
         "actual_solver_corner_parameters".into(),
         take_section(&mut values)?.to_vec(),
     );
+    if checkpoint == Checkpoint::FirstVertexGeometry {
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid vertex geometry state"));
+        }
+        out.ints.insert(
+            "calculated_vertex_state".into(),
+            state.iter().map(|v| *v as i64).collect(),
+        );
+        out.values.insert(
+            "calculated_vertices".into(),
+            take_section(&mut values)?.to_vec(),
+        );
+    }
     if !values.is_empty() {
         return Err(HarnessError::new("trailing prefix data"));
     }
@@ -237,5 +302,5 @@ pub(super) fn output(mut values: &[f64]) -> Result<Output, HarnessError> {
 pub(super) fn cpp(input: &RealSolid) -> Result<Output, HarnessError> {
     let values = ffi::real_prefix(&input.wire(), input.checkpoint.code())
         .map_err(|e| HarnessError::new(e.to_string()))?;
-    output(&values)
+    output(&values, input.checkpoint)
 }

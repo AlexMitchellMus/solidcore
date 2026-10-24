@@ -19111,3 +19111,20 @@ unassigned helper, not a claim of prior callgraph ownership. Keep this continuat
 visible and both corner units partial. No fake radius, solver table or extended
 surface is supplied. The native pseudo owning-vertex list differs from corner-owned
 fillet vertices; compare the two traversals separately.
+
+
+### Real fillet first-corner vertex calculation reaches offset-surface context (2026-10-24)
+
+The additive `real-box-first-vertex-geometry-actual-session` case runs shared
+parameter setup, actual corner creation, direct first Nx1 topology, then that
+corner's actual vertex calculation on both sides. It does not claim the complete
+executive prelude. Native returns success and processes both fillet vertices at
+(9.5, 0, 30) and (10, 0, 29.5), with zero tolerance and original parameters 9.5
+and 29.5. Rust reaches genuine `SmFilletGeom::GetOffsetSurface` in
+`blend.fillet_geom_p1`; the case remains deferred, with no fabricated result.
+
+The snapshot reads initialized fillet-vertex status/processed fields and samples
+geometry only after processing. It never reads the uninitialized native corner
+status or unevaluated pseudo-edge geometry. Full p3: 297 cases, 249 value passes,
+48 deferred, zero failures. All five earlier real-solid cases retain their full
+CPP and Rust output records byte-for-byte; no earlier record fields were removed.

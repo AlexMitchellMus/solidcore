@@ -169,7 +169,7 @@ std::vector<double> snapshot(SmFilletExecutive& exec,SmTArray<SmVertex*>& target
 
 SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
     const double* input,int64_t n,int32_t checkpoint,double* out,int64_t cap,int64_t* out_len) {
-    if(checkpoint<1 || checkpoint>3 || !input || n<9) return SC_ERR_ARG;
+    if(checkpoint<1 || checkpoint>4 || !input || n<9) return SC_ERR_ARG;
     for(int64_t i=0;i<n;++i) if(!std::isfinite(input[i])) return SC_ERR_ARG;
     for(int i=0;i<3;++i) if(input[i]<=SM_EFF_ZERO) return SC_ERR_ARG;
     const double ulong_limit=std::ldexp(1.0,std::numeric_limits<ULONG>::digits);
@@ -195,23 +195,43 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
     SmFilletExecutive exec(*body->GetContext(),body.get());exec.SetDoGlobalMerge(TRUE);
     const auto xsect=input[4]==0?SM_FSG_LINEAR:input[4]==2?SM_FSG_BLEND_CURVE:SM_FSG_CIRCULAR;
     const auto prepare=exec.SetFilletParameters(body.get(),selected,xsect,SM_FS_CONST_RADIUS,input[3],nullptr,-1,-1,-1,-1,ULONG(input[5]),input[6]);
-    double corners=-1,topology=-1;
+    double corners=-1,topology=-1,vertex_geometry=-1;
     std::vector<double> prior,parameters;
     if(prepare==SM_SUCCESS && checkpoint>=2) {
         const auto c=exec.CreateFilletCorners();corners=fillet_real_solid::status(c);
-        if(c==SM_SUCCESS && checkpoint==3) {
+        if(c==SM_SUCCESS && checkpoint>=3) {
             // Direct first-corner operation after setup/corner creation. This
             // is not the complete CreateFilletBrep prelude: smooth-sequence
             // processing is omitted on BOTH sides, never reported as success.
             std::vector<double> unused;
             prior=fillet_real_solid::snapshot(exec,vertices,edges,faces,unused);
-            if(exec.GetFilletCorners().GetSize())topology=fillet_real_solid::status(exec.GetFilletCorners()[0]->MakeCornerTopology());
+            if(exec.GetFilletCorners().GetSize()) {
+                auto* corner=exec.GetFilletCorners()[0];
+                const auto t=corner->MakeCornerTopology();topology=fillet_real_solid::status(t);
+                if(t==SM_SUCCESS && checkpoint==4)vertex_geometry=fillet_real_solid::status(corner->CalcCornerVertGeom());
+            }
         }
     }
     auto state=fillet_real_solid::snapshot(exec,vertices,edges,faces,parameters);
     std::vector<double> values;fillet_real_solid::section(values,before);
     values.insert(values.end(),{fillet_real_solid::status(prepare),corners,topology});
+    if(checkpoint==4)values.push_back(vertex_geometry);
     fillet_real_solid::section(values,prior);fillet_real_solid::section(values,state);fillet_real_solid::section(values,parameters);
+    if(checkpoint==4) {
+        std::vector<double> vertex_state,vertex_values;
+        if(exec.GetFilletCorners().GetSize()) {
+            SmTArray<SmFilletVertex*> vertices;exec.GetFilletCorners()[0]->GetFilletVertices(vertices);
+            for(ULONG i=0;i<vertices.GetSize();++i) {
+                auto* vertex=vertices[i];
+                vertex_state.insert(vertex_state.end(),{double(i),double(vertex->GetStatus()),double(vertex->IsProcessed())});
+                if(vertex->IsProcessed()) {
+                    primitive_record::point(vertex_values,vertex->GetPoint());
+                    vertex_values.insert(vertex_values.end(),{vertex->GetTolerance(),vertex->GetOriginalTParam()});
+                }
+            }
+        }
+        fillet_real_solid::section(values,vertex_state);fillet_real_solid::section(values,vertex_values);
+    }
     return sc_copy_out(values.data(),int64_t(values.size()),out,cap,out_len);
     SC_CATCH
 }

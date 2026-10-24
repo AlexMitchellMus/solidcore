@@ -171,13 +171,13 @@ extern "C" {
 }
 
 /// Execute actual parameter setup (1), corner creation (2), or the first
-/// corner's topology directly (3), stopping before its vertex geometry. Mode 3
+/// corner's topology directly (3), or its vertex geometry (4). Modes 3 and 4
 /// omits smooth-sequence processing on both sides; it is not the full executive
 /// prelude or a successful fillet result. Corner status and
 /// uncomputed pseudo geometry are deliberately not read.
 pub fn real_prefix(input: &[f64], checkpoint: u32) -> Result<Vec<f64>, FfiError> {
     validate_real_solid(input)?;
-    if !(1..=3).contains(&checkpoint) {
+    if !(1..=4).contains(&checkpoint) {
         return Err(FfiError::InvalidArgument(
             "unknown fillet checkpoint".into(),
         ));
