@@ -19,6 +19,9 @@
 // that would not terminate) writes `op -2` and ends the script (the difftest generator
 // drops such ops). Objects live for the whole process unless upstream deletes them.
 #include "sc_shim.h"
+#include "support/primitive_record.h"
+#include <SmApiPrimitives.h>
+#include <SmApiQueries.h>
 
 #include "StdAfx.h"
 #include <SmApiGeneral.h>
@@ -625,6 +628,9 @@ struct PolyVertexHead
     friend type get(PolyVertexHead);
 };
 template struct Rob<PolyVertexHead, &SmPolyBrep::m_pPolyVertexListHead>;
+
+struct BrepModelSize { using type = double (SmBrep::*)(SmBoolean) const; friend type get(BrepModelSize); };
+template struct Rob<BrepModelSize, &SmBrep::GetThisModelSizeEstimate>;
 
 // ---- reading -------------------------------------------------------------------------------
 
@@ -5007,6 +5013,11 @@ enum TObj : int64_t
     T_COMPOSITE = 7,
     T_CRV_ON_SURF = 8,
     T_POLY_PTS = 9,
+    T_PRIMITIVE_BOX = 10,
+    T_PRIMITIVE_SPHERE = 11,
+    T_CALLER_FACE = 12,
+    T_COPIED_BOX = 13,
+    T_COPIED_SPHERE = 14,
 };
 
 // SmCrvOnSurf's UV-line constructor is protected.
@@ -5021,6 +5032,8 @@ int32_t run_transform(Rd& rd, std::vector<double>& o)
     const SmContext& ctx = the_context();
     int64_t kind = rd.idx();
     SmObject* obj = NULL;
+    SmBrep* source = NULL;
+    std::vector<double> source_before;
     switch (kind)
     {
     case T_CURVE:
@@ -5041,6 +5054,34 @@ int32_t run_transform(Rd& rd, std::vector<double>& o)
             s->SetOwner(anchor());
         obj = s;
         break;
+    }
+    case T_PRIMITIVE_BOX:
+    case T_PRIMITIVE_SPHERE:
+    case T_COPIED_BOX:
+    case T_COPIED_SPHERE:
+    {
+        SmPoint3d origin = rd.vec(); SmBrep* body = NULL; SmApiStatus created;
+        if (kind == T_PRIMITIVE_BOX || kind == T_COPIED_BOX) {
+            double x=rd.num(), y=rd.num(), z=rd.num();
+            created = SmApiCreateBox(origin, x, y, z, body);
+        } else { double radius=rd.num(); created=SmApiCreateSphere(origin, radius, body); }
+        if (created != SM_SUCCESS || !body) { o.push_back((double)created); delete body; return SC_OK; }
+        if (kind == T_COPIED_BOX || kind == T_COPIED_SPHERE) {
+            source = body; primitive_record::append(source_before, source);
+            SmBrep* copy = NULL; auto copied = SmApiBrepCopy(source, copy);
+            if (copied != SM_SUCCESS || !copy) { o.push_back((double)copied); delete copy; delete source; return SC_OK; }
+            body = copy;
+        }
+        obj = body; break;
+    }
+    case T_CALLER_FACE:
+    {
+        SmPoint3d origin=rd.vec(); double width=rd.num(), height=rd.num();
+        SmBrep* body=new(ctx) SmBrep(); SmFace* face=NULL;
+        SmPlane* surface=new(ctx) SmPlane(origin,SmVector3d(0,0,1),&ctx);
+        SmStatus created=body->CreateFaceFromSurface(surface,SmExtent2d(0,0,width,height),face);
+        if(created!=SM_SUCCESS || !face) { o.push_back((double)created); delete body; return SC_OK; }
+        obj=body; break;
     }
     case T_BREP: obj = new (ctx) SmBrep(); break;
     case T_POLY: obj = new (ctx) SmPolyBrep(SmZoneTol3d(1.0e-5)); break;
@@ -5144,6 +5185,21 @@ int32_t run_transform(Rd& rd, std::vector<double>& o)
     default: return SC_ERR_ARG;
     }
     o.push_back((double)s);
+    if (kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE || kind == T_CALLER_FACE || kind == T_COPIED_BOX || kind == T_COPIED_SPHERE) {
+        SmBrep* body=(SmBrep*)obj;
+        SmTArray<SmVertex*> vertices; body->GetVertices(vertices);
+        SmTArray<SmEdge*> edges; body->GetEdges(edges);
+        SmTArray<SmFace*> faces; body->GetFaces(faces);
+        o.insert(o.end(), {(double)vertices.GetSize(), (double)edges.GetSize(), (double)faces.GetSize(), (body->*get(BrepModelSize()))(FALSE)});
+        primitive_record::append(o,body);
+        for (ULONG i=0;i<faces.GetSize();i++) o.push_back((double)faces[i]->GetRectangularTrim());
+    }
+    if (source) {
+        o.insert(o.end(), source_before.begin(), source_before.end());
+        primitive_record::append(o, source);
+        delete (SmBrep*)obj; obj = NULL;
+        delete source;
+    }
     if (kind == T_CURVE)
         put_curve(o, (SmCurve*)obj);
     else if (kind == T_PLANE || kind == T_BSURF)
