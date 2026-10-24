@@ -707,6 +707,19 @@ impl<'target> FilletSession<'target> {
         self.executive.classify_solver_rails(k, &mut self.objects)
     }
 
+    /// Classify rails through the same shared stage and return actual adjusted-corner IDs.
+    /// The referenced corners remain retained in this session after their repair.
+    ///
+    /// # Errors
+    /// The same operation failures as [`Self::classify_solver_rails`].
+    pub fn classify_solver_rails_with_adjusted(
+        &mut self,
+        k: &mut Kernel,
+    ) -> Result<Vec<FilletObject>> {
+        self.executive
+            .classify_solver_rails_with_adjusted(k, &mut self.objects)
+    }
+
     /// Load this actual solver through the native executive algorithm.
     ///
     /// # Errors
