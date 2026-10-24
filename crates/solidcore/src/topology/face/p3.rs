@@ -86,7 +86,7 @@ use crate::geom::solution_array::{ObjectKind, Solution, SolutionObject, MAX_TREE
 use crate::geom::tol::xsect_tol_3d_from_zones;
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::intersect::curve_class::p1::CurveClassification;
-use crate::intersect::curve_class::p5::ExtractOptions;
+use crate::intersect::curve_class::p5::{ClassGeometryMut, ExtractOptions};
 use crate::intersect::point_class::{
     ClassGeometry, ClassObject, ClassObjectKind, PointClassType, PointClassification,
 };
@@ -1475,13 +1475,38 @@ impl qf2::CurveOnClassifyObjects<IntersectObject> for IntersectObjects<'_> {
     }
 }
 
-impl IntersectObjects<'_> {
+impl<'a> IntersectObjects<'a> {
     /// The B-rep of the objects of `side`.
-    fn brep(&self, side: bool) -> &Brep {
+    fn brep(&self, side: bool) -> &'a Brep {
         if side {
             self.other
         } else {
             self.b
+        }
+    }
+
+    fn curve_of(&self, o: IntersectObject) -> Option<&'a Curve> {
+        match o {
+            IntersectObject::Curve(i) => self.curves_3d.get(i),
+            IntersectObject::UvCurve(i, false) => self.uv1.get(i)?.as_ref(),
+            IntersectObject::UvCurve(i, true) => self.uv2.get(i)?.as_ref(),
+            IntersectObject::EdgeCurve(e, side) => self.brep(side).edge(e).ok()?.curve.as_ref(),
+            IntersectObject::Trim(eu, side) => eu1::uv_trim_curve(self.brep(side), eu).ok()?.0,
+            IntersectObject::Surface(..) | IntersectObject::Topology(..) => None,
+        }
+    }
+
+    fn surface_of(&self, o: IntersectObject) -> Option<&'a Surface> {
+        match o {
+            IntersectObject::Surface(f, side) => self.brep(side).face(f).ok()?.surface.as_ref(),
+            _ => None,
+        }
+    }
+
+    fn entity_of(&self, o: IntersectObject) -> Option<(&'a Brep, EntityRef)> {
+        match o {
+            IntersectObject::Topology(e, side) => Some((self.brep(side), e)),
+            _ => None,
         }
     }
 }
@@ -1507,20 +1532,10 @@ impl ClassGeometry<IntersectObject> for IntersectObjects<'_> {
         }
     }
     fn curve(&self, o: IntersectObject) -> Option<&Curve> {
-        match o {
-            IntersectObject::Curve(i) => self.curves_3d.get(i),
-            IntersectObject::UvCurve(i, false) => self.uv1.get(i)?.as_ref(),
-            IntersectObject::UvCurve(i, true) => self.uv2.get(i)?.as_ref(),
-            IntersectObject::EdgeCurve(e, side) => self.brep(side).edge(e).ok()?.curve.as_ref(),
-            IntersectObject::Trim(eu, side) => eu1::uv_trim_curve(self.brep(side), eu).ok()?.0,
-            IntersectObject::Surface(..) | IntersectObject::Topology(..) => None,
-        }
+        self.curve_of(o)
     }
     fn surface(&self, o: IntersectObject) -> Option<&Surface> {
-        match o {
-            IntersectObject::Surface(f, side) => self.brep(side).face(f).ok()?.surface.as_ref(),
-            _ => None,
-        }
+        self.surface_of(o)
     }
     fn volume(&self, _o: IntersectObject) -> Option<&Volume> {
         None
@@ -1532,10 +1547,7 @@ impl ClassGeometry<IntersectObject> for IntersectObjects<'_> {
     // queries of the interval classification (`SmFace::PointClassify`,
     // `FindVertexSector`, ...) reach them as upstream's pointers do
     fn topology_entity(&self, o: IntersectObject) -> Option<(&Brep, EntityRef)> {
-        match o {
-            IntersectObject::Topology(e, side) => Some((self.brep(side), e)),
-            _ => None,
-        }
+        self.entity_of(o)
     }
     fn topology_handle(&self, e: EntityRef) -> Option<IntersectObject> {
         Some(IntersectObject::Topology(e, self.side))
@@ -1544,6 +1556,84 @@ impl ClassGeometry<IntersectObject> for IntersectObjects<'_> {
         // side `true` only for the other face's B-rep when it is a different one
         let side = !core::ptr::eq(brep, self.b);
         (!side || core::ptr::eq(brep, self.other)).then_some(IntersectObject::Topology(e, side))
+    }
+}
+
+/// [`IntersectObjects`] over the faces' B-reps lent mutably, for the curve
+/// classifications' `ExtractGeometry`: its boundary point drops make the faces'
+/// trimmed surface caches on the B-reps and keep them (`smsurf_GetSurfaceCache`, which
+/// creates the faces' UV trim curves), as upstream does through its face pointers.
+struct IntersectObjectsMut<'a> {
+    /// The B-rep of this face.
+    b: &'a mut Brep,
+    /// The B-rep of the other face when it is a different one.
+    other: Option<&'a mut Brep>,
+    side: bool,
+    curves_3d: &'a [Curve],
+    uv1: &'a [Option<Curve>],
+    uv2: &'a [Option<Curve>],
+}
+
+impl IntersectObjectsMut<'_> {
+    /// The shared view of the same objects.
+    fn view(&self) -> IntersectObjects<'_> {
+        let b: &Brep = self.b;
+        IntersectObjects {
+            b,
+            other: self.other.as_deref().unwrap_or(b),
+            side: self.side,
+            curves_3d: self.curves_3d,
+            uv1: self.uv1,
+            uv2: self.uv2,
+        }
+    }
+}
+
+impl ClassGeometry<IntersectObject> for IntersectObjectsMut<'_> {
+    fn classification_vertex_point(&self, o: IntersectObject) -> Option<Point3> {
+        self.view().classification_vertex_point(o)
+    }
+    fn topology_zone_tol_3d(&self, o: IntersectObject) -> Option<f64> {
+        self.view().topology_zone_tol_3d(o)
+    }
+    fn curve(&self, o: IntersectObject) -> Option<&Curve> {
+        self.view().curve_of(o)
+    }
+    fn surface(&self, o: IntersectObject) -> Option<&Surface> {
+        self.view().surface_of(o)
+    }
+    fn volume(&self, _o: IntersectObject) -> Option<&Volume> {
+        None
+    }
+    fn point(&self, _o: IntersectObject) -> Option<Point3> {
+        None
+    }
+    fn topology_entity(&self, o: IntersectObject) -> Option<(&Brep, EntityRef)> {
+        self.view().entity_of(o)
+    }
+    fn topology_handle(&self, e: EntityRef) -> Option<IntersectObject> {
+        self.view().topology_handle(e)
+    }
+    fn topology_handle_in(&self, brep: &Brep, e: EntityRef) -> Option<IntersectObject> {
+        self.view().topology_handle_in(brep, e)
+    }
+}
+
+impl ClassGeometryMut<IntersectObject> for IntersectObjectsMut<'_> {
+    // the classification curves are the intersection's, which the drops do not edit
+    fn curve_mut(&mut self, _o: IntersectObject) -> Option<&mut Curve> {
+        None
+    }
+    fn topology_entity_mut(&mut self, o: IntersectObject) -> Option<(&mut Brep, EntityRef)> {
+        let IntersectObject::Topology(e, side) = o else {
+            return None;
+        };
+        // side `true` is the other face's B-rep (this one when they are the same)
+        let brep = match (side, self.other.as_deref_mut()) {
+            (true, Some(other)) => other,
+            _ => &mut *self.b,
+        };
+        Some((brep, e))
     }
 }
 
@@ -1744,9 +1834,8 @@ pub fn face_intersect_breps(
         uv_curves2 = r.surface2_uv_curves;
         curve_types = r.curve_types;
     }
-    let (b, ob) = shared_breps(this_brep.as_deref(), other_brep.as_deref(), shared)?;
-
     for (ii, curve) in curves_3d.iter().enumerate() {
+        let (b, ob) = shared_breps(this_brep.as_deref(), other_brep.as_deref(), shared)?;
         let curve_type = curve_types
             .get(ii)
             .copied()
@@ -1819,16 +1908,29 @@ pub fn face_intersect_breps(
             true,
         )?;
 
-        let ex = cc1.extract_geometry(
-            k,
-            &objects,
-            &mut cc2,
-            ExtractOptions {
-                uv_curves1: true,
-                uv_curves2: true,
-                points_3d: true,
-            },
-        )?;
+        let extract = ExtractOptions {
+            uv_curves1: true,
+            uv_curves2: true,
+            points_3d: true,
+        };
+        // the point drops of `Homogenize` make the faces' trimmed caches on their
+        // B-reps (smsurf_GetSurfaceCache) when the B-reps are lent
+        let ex = if this_brep.is_some() {
+            let this = this_brep
+                .as_deref_mut()
+                .ok_or_else(|| null("FaceIntersect: no B-rep"))?;
+            let mut objects = IntersectObjectsMut {
+                b: this,
+                other: other_brep.as_deref_mut(),
+                side: false,
+                curves_3d: &curves_3d,
+                uv1: &uv_curves1,
+                uv2: &uv_curves2,
+            };
+            cc1.extract_geometry_mut(k, &mut objects, &mut cc2, extract)?
+        } else {
+            cc1.extract_geometry(k, &objects, &mut cc2, extract)?
+        };
         let found = !ex.curves_3d.is_empty();
         out.curves_3d.extend(ex.curves_3d);
         if let Some(v) = out.this_uv_curves.as_mut() {
