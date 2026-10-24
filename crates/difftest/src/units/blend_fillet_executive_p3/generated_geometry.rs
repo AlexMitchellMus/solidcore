@@ -34,8 +34,9 @@ pub(super) fn snapshot(k: &Kernel, session: &FilletSession<'_>) -> Result<(Vec<f
         state.extend([solver_index as f64, solver.fillet_geoms.len() as f64]);
         for (index, &id) in solver.fillet_geoms.iter().enumerate() {
             let geometry = session.pseudo_brep().geom(id)?;
-            state.extend([index as f64, f64::from(geometry.fillet_surface().is_some())]);
-            if let Some(surface) = geometry.fillet_surface() {
+            let surface = session.fillet_surface(id)?;
+            state.extend([index as f64, f64::from(surface.is_some())]);
+            if let Some(surface) = surface {
                 state.push(surface.type_code() as f64);
                 let domain = surface.natural_uv_domain();
                 values.extend([
