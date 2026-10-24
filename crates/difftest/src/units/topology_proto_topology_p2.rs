@@ -1237,7 +1237,7 @@ fn real_face_script(rng: &mut Rng) -> Script {
     let mut ops: Vec<Vec<f64>> = Vec::new();
     if rng.chance(0.6) {
         // proto vertices with definitions classified on a face of the split
-        for i in 0..1 + rng.below(3) {
+        for i in 0..=rng.below(3) {
             let (u, v) = uv_at(param(rng), across(rng));
             let pt = eval(u, v);
             let ztol = tol(rng);
@@ -1632,9 +1632,8 @@ mod tests {
         for (name, v) in real_face_update_cases() {
             let s: Script = serde_json::from_value(v).unwrap();
             let Script::Proto { ops, .. } = &s else { panic!("{name}") };
-            let out = match rust_run(&s) {
-                Ok(out) => out,
-                Err(_) => panic!("{name} did not run"),
+            let Ok(out) = rust_run(&s) else {
+                panic!("{name} did not run");
             };
             let mut at = 0;
             for o in ops {
