@@ -23,13 +23,14 @@ use std::collections::BTreeMap;
 use super::p1::{ExecutiveObjects, SolverLoadingAccess};
 use super::p2::{FilletParameters, FilletParametersAccess, SolverSpec};
 use super::p3::{
-    CornerAdjustmentAccess, CornerVertexAccess, CornerView, ErrorInfo, FilletExecutive,
+    CornerAdjustmentAccess, CornerVertexAccess, CornerView, ErrorInfo, FilletExecutive, VertexEntry,
 };
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_geom::p1::{
     CornerLookup, FilletBrep, FilletCornerId, FilletCornerType, FilletSolverId, FilletVertexType,
 };
 use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, FilletSurfaceGenerator};
+use crate::blend::fillet_solver::p4::FilletGeometryContext;
 use crate::blend::fillet_standard_solver::p1::{
     constant_radius_from_edgeuse, ConstantDistanceFs, ConstantRadiusFs, FilletSolverType,
     FilletSurfaceGeneratorType, SurfaceSurfaceFs, VariableRadiusFs,
@@ -41,7 +42,7 @@ use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::intersect::point_class::{ClassObject, ClassObjectKind};
 use crate::kernel::Kernel;
-use crate::topology::{Brep, EdgeId, EdgeuseId};
+use crate::topology::{Brep, EdgeId, EdgeuseId, VertexId};
 
 const OP: &str = "blend::fillet_executive::session";
 
@@ -177,6 +178,58 @@ impl SessionObjects<'_> {
             .get_mut(id.0 as usize)
             .and_then(Option::as_mut)
             .ok_or_else(|| invalid("solver is not live in this session"))
+    }
+}
+
+struct SessionGeometryContext<'a> {
+    current: FilletSolverId,
+    before: &'a [Option<SolverObject>],
+    after: &'a [Option<SolverObject>],
+    executive: &'a FilletExecutive<FilletObject>,
+    corners: &'a [FilletCorner],
+}
+
+impl SessionGeometryContext<'_> {
+    fn corner(&self, vertex: Option<VertexId>) -> Result<&FilletCorner> {
+        let key =
+            vertex.map(|id| FilletObject::Topology(FilletBody::Target, EntityRef::Vertex(id)));
+        let Some(VertexEntry::Corner(FilletObject::Corner(id))) =
+            self.executive.vertex_corner_map.get(&key)
+        else {
+            return Err(invalid("endpoint has no completed actual corner"));
+        };
+        self.corners
+            .get(id.0 as usize)
+            .ok_or_else(|| invalid("corner is not live in this session"))
+    }
+}
+
+impl FilletGeometryContext for SessionGeometryContext<'_> {
+    fn set_extension_flags(&self, solver: &mut dyn FilletSolverOps, target: &Brep) -> Result<()> {
+        solver
+            .solver_mut()
+            .set_extension_flags_with_lookup(target, |vertex| self.corner(vertex))
+    }
+
+    fn solver<'s>(
+        &'s self,
+        id: FilletSolverId,
+        current: &'s FilletSolver,
+    ) -> Result<&'s FilletSolver> {
+        if id == self.current {
+            return Ok(current);
+        }
+        let index = id.0 as usize;
+        let slot = if index < self.current.0 as usize {
+            self.before.get(index)
+        } else {
+            index
+                .checked_sub(self.current.0 as usize + 1)
+                .and_then(|index| self.after.get(index))
+        };
+        slot.and_then(Option::as_ref)
+            .map(SolverObject::base)
+            .ok_or_else(|| invalid("peer solver is not live in this session"))
     }
 }
 
@@ -499,6 +552,48 @@ impl<'target> FilletSession<'target> {
     /// Actual point/state lookup failures or missing concrete mutation context.
     pub fn adjust_corner_topology(&mut self, k: &mut Kernel) -> Result<()> {
         self.executive.adjust_corner_topology(k, &mut self.objects)
+    }
+
+    /// Calculate one retained solver's fillet geometry using its actual context.
+    ///
+    /// Call after the executive's complete corner-vertex and adjustment stages.
+    /// Constant-radius operations use the same owned solver, endpoint corners and
+    /// pseudo-B-rep; unsupported concrete operation contexts remain explicit.
+    ///
+    /// # Errors
+    /// Actual solver/corner resolution, native geometry failures or missing callees.
+    pub fn calc_solver_geometry(&mut self, k: &Kernel, id: FilletSolverId) -> Result<()> {
+        let index = id.0 as usize;
+        if index >= self.objects.solvers.len() {
+            return Err(invalid("solver is not live in this session"));
+        }
+        let (before, rest) = self.objects.solvers.split_at_mut(index);
+        let (current, after) = rest
+            .split_first_mut()
+            .ok_or_else(|| invalid("solver is not live in this session"))?;
+        let current = current
+            .as_mut()
+            .ok_or_else(|| invalid("solver is not live in this session"))?;
+        let context = SessionGeometryContext {
+            current: id,
+            before,
+            after,
+            executive: &self.executive,
+            corners: &self.objects.corners,
+        };
+        match current {
+            SolverObject::ConstantRadius(solver) => FilletSolver::calc_fillet_geom_with_context(
+                solver.as_mut(),
+                k,
+                self.objects.target,
+                &mut self.objects.pseudo,
+                &context,
+            ),
+            _ => Err(SolidError::unported(
+                "live concrete CalcFilletGeom operations",
+                "blend.fillet_executive_p3",
+            )),
+        }
     }
 
     /// Load this actual solver through the native executive algorithm.

@@ -253,3 +253,44 @@ fn real_box_post_vertex_adjustment_preserves_retained_corner_topology() {
             .is_processed());
     }
 }
+
+#[test]
+fn actual_box_solver_builds_surface_and_rails_in_retained_geometry() {
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
+    let edge = target.edges().ids().next().unwrap();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    session
+        .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+        .unwrap();
+    session.create_corners(&k, None).unwrap();
+    session.create_corner_vertices(&mut k).unwrap();
+    session.adjust_corner_topology(&mut k).unwrap();
+    let FilletObject::Solver(id) = session.executive().solvers[0] else {
+        panic!("actual solver");
+    };
+    let actual_base = std::ptr::from_ref(session.solver(id).unwrap().base());
+    let geometries = session.solver(id).unwrap().base().fillet_geoms.clone();
+    assert!(geometries.iter().all(|&geometry| session
+        .pseudo_brep()
+        .geom(geometry)
+        .unwrap()
+        .fillet_surface
+        .is_none()));
+    session.calc_solver_geometry(&k, id).unwrap();
+    let solver = session.solver(id).unwrap().base();
+    assert_eq!(std::ptr::from_ref(solver), actual_base);
+    assert_eq!(solver.fillet_geoms, geometries);
+    assert!(solver.extend_before && solver.extend_after);
+    for geometry in geometries {
+        let geometry = session.pseudo_brep().geom(geometry).unwrap();
+        assert_eq!(geometry.solver, Some(id));
+        assert!(geometry.fillet_surface.is_some());
+        for rail in geometry.rails {
+            let rail = rail.unwrap();
+            assert!(edge::curve(session.pseudo_brep().brep(), rail)
+                .unwrap()
+                .is_some());
+        }
+    }
+}
