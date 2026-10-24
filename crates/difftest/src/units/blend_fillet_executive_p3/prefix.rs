@@ -1,7 +1,8 @@
-//! Actual fillet setup and direct/shared corner components.
-//! These checkpoints are not a full `CreateFilletBrep` prelude: neither
-//! side runs smooth-sequence processing. With the one actual solver in these
-//! fixtures, its native `while (count > 1)` loop performs no work.
+//! Actual fillet setup and retained corner/solver checkpoints.
+//! Modes 1–5 omit smoothing on both sides. Modes 6–7 run the real prelude
+//! and stop after adjustment or the first direct solver geometry operation.
+#[path = "generated_geometry.rs"]
+mod generated_geometry;
 use super::{label, section, status, take_section, Checkpoint, RealSolid};
 use crate::{HarnessError, Output};
 use solidcore::blend::fillet_executive::session::{FilletObject, FilletSession, SolverObject};
@@ -220,7 +221,7 @@ pub(super) fn run(
     before: &[f64],
 ) -> SolidResult<Vec<f64>> {
     let mut session = FilletSession::new(k, body)?;
-    let mut statuses = [-1.0; 4];
+    let mut statuses = [-1.0; 6];
     let prepare = session.prepare_constant_radius_edges(
         k,
         selected,
@@ -240,18 +241,45 @@ pub(super) fn run(
             Ok(()) => 0.0,
             Err(error) => status(error)?,
         };
-        if matches!(
-            input.checkpoint,
-            Checkpoint::FirstVertexGeometry | Checkpoint::CornerVerticesComponent
-        ) {
+        if input.checkpoint.has_offsets() {
             offsets_before = offset_snapshot(&session)?;
         }
-        if statuses[1] == 0.0 && input.checkpoint == Checkpoint::CornerVerticesComponent {
+        if statuses[1] == 0.0 && input.checkpoint.all_corners() {
             prior = snapshot(&session, &mut Vec::new())?;
-            statuses[2] = match session.create_corner_vertices(k) {
-                Ok(()) => 0.0,
-                Err(error) => status(error)?,
+            let vertices_index = if input.checkpoint.code() >= 6 {
+                statuses[2] = match session.process_smooth_edge_sequences(k) {
+                    Ok(()) => 0.0,
+                    Err(error) => status(error)?,
+                };
+                3
+            } else {
+                2
             };
+            if vertices_index == 2 || statuses[2] == 0.0 {
+                *statuses
+                    .get_mut(vertices_index)
+                    .ok_or_else(|| invalid("corner status slot"))? =
+                    match session.create_corner_vertices(k) {
+                        Ok(()) => 0.0,
+                        Err(error) => status(error)?,
+                    };
+            }
+            if input.checkpoint.code() >= 6 && statuses[3] == 0.0 {
+                statuses[4] = match session.adjust_corner_topology(k) {
+                    Ok(()) => 0.0,
+                    Err(error) => status(error)?,
+                };
+                if input.checkpoint == Checkpoint::SolverGeometry && statuses[4] == 0.0 {
+                    if let Some(FilletObject::Solver(id)) =
+                        session.executive().solvers.first().copied()
+                    {
+                        statuses[5] = match session.calc_solver_geometry(k, id) {
+                            Ok(()) => 0.0,
+                            Err(error) => status(error)?,
+                        };
+                    }
+                }
+            }
         }
         if statuses[1] == 0.0
             && matches!(
@@ -278,11 +306,7 @@ pub(super) fn run(
     let state = snapshot(&session, &mut parameters)?;
     let mut out = Vec::new();
     section(&mut out, before);
-    let count = if input.checkpoint == Checkpoint::FirstVertexGeometry {
-        4
-    } else {
-        3
-    };
+    let count = input.checkpoint.status_count();
     out.extend_from_slice(
         statuses
             .get(..count)
@@ -317,7 +341,7 @@ pub(super) fn run(
         section(&mut out, &geometry_state);
         section(&mut out, &geometry_values);
     }
-    if input.checkpoint == Checkpoint::CornerVerticesComponent {
+    if input.checkpoint.all_corners() {
         let mut flags = Vec::new();
         let mut vertex_state = Vec::new();
         let mut geometry = Vec::new();
@@ -356,15 +380,40 @@ pub(super) fn run(
         section(&mut out, &vertex_state);
         section(&mut out, &geometry);
     }
-    if matches!(
-        input.checkpoint,
-        Checkpoint::FirstVertexGeometry | Checkpoint::CornerVerticesComponent
-    ) {
+    if input.checkpoint.has_offsets() {
         let offsets_after = offset_snapshot(&session)?;
         section(&mut out, &offsets_before.0);
         section(&mut out, &offsets_before.1);
         section(&mut out, &offsets_after.0);
         section(&mut out, &offsets_after.1);
+    }
+    if input.checkpoint.code() >= 6 {
+        let flags: Vec<_> = session
+            .executive()
+            .corners
+            .iter()
+            .enumerate()
+            .map(|(index, object)| {
+                let FilletObject::Corner(id) = *object else {
+                    return Err(invalid("actual corner required"));
+                };
+                let corner = session.corner(id)?;
+                Ok([
+                    index as f64,
+                    f64::from(corner.is_degenerate_corner()),
+                    f64::from(corner.topology_adjusted),
+                ])
+            })
+            .collect::<SolidResult<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        section(&mut out, &flags);
+    }
+    if input.checkpoint == Checkpoint::SolverGeometry {
+        let (state, values) = generated_geometry::snapshot(k, &session)?;
+        section(&mut out, &state);
+        section(&mut out, &values);
     }
     Ok(out)
 }
@@ -375,11 +424,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
         "selected_edge_before".into(),
         take_section(&mut values)?.to_vec(),
     );
-    let count = if checkpoint == Checkpoint::FirstVertexGeometry {
-        4
-    } else {
-        3
-    };
+    let count = checkpoint.status_count();
     let statuses = values
         .get(..count)
         .ok_or_else(|| HarnessError::new("missing prefix statuses"))?;
@@ -419,7 +464,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             take_section(&mut values)?.to_vec(),
         );
     }
-    if checkpoint == Checkpoint::CornerVerticesComponent {
+    if checkpoint.all_corners() {
         for key in ["corner_calculation_flags", "all_corner_vertex_state"] {
             let state = take_section(&mut values)?;
             if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
@@ -433,10 +478,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             take_section(&mut values)?.to_vec(),
         );
     }
-    if matches!(
-        checkpoint,
-        Checkpoint::FirstVertexGeometry | Checkpoint::CornerVerticesComponent
-    ) {
+    if checkpoint.has_offsets() {
         for phase in ["before", "after"] {
             let state = take_section(&mut values)?;
             if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
@@ -451,6 +493,30 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
                 take_section(&mut values)?.to_vec(),
             );
         }
+    }
+    if checkpoint.code() >= 6 {
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid adjustment flags"));
+        }
+        out.ints.insert(
+            "corner_adjustment_flags".into(),
+            state.iter().map(|v| *v as i64).collect(),
+        );
+    }
+    if checkpoint == Checkpoint::SolverGeometry {
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid generated geometry state"));
+        }
+        out.ints.insert(
+            "generated_geometry_state".into(),
+            state.iter().map(|v| *v as i64).collect(),
+        );
+        out.values.insert(
+            "generated_geometry_samples".into(),
+            take_section(&mut values)?.to_vec(),
+        );
     }
     if !values.is_empty() {
         return Err(HarnessError::new("trailing prefix data"));

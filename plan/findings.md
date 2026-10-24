@@ -19202,3 +19202,7 @@ concrete rail-solver contexts return `Unported(blend.fillet_executive_p1)` at th
 live virtual-dispatch seam; they are not converted into an ordinary native fillet
 failure. The explicitly named direct Nx1 helpers still validate their own type.
 This slice makes no cylinder, multi-edge, variable-radius or complete API claim.
+
+### Real-box untrimmed fillet centerline loses its native Line subtype (2026-10-24)
+
+An additive actual-session checkpoint retains the original 10×20×30 box, edge0 and radius0.5 through real preparation, corner creation, smooth prelude, shared corner vertices, all adjustment and direct first solver CalcFilletGeom. All six statuses and all sampled geometry agree (max relative error2.775557561562892e-16), but native centerline GetType is SmLine14010 while Rust reports BSpline14033. The only mismatch is ints.generated_geometry_state[15]; surface and both rail runtime types already agree. Native SmFilletSolver.cpp633–637 retains the derived line pointer; Rust solver/p2.rs345 slices it via bspline_part into FilletGeom's BSplineCurve slot. Preserve the actual curve representation; do not normalize the type comparison. Full executive_p3 baseline:300 cases,252 passes,47 existing deferrals,1 failure. The post-adjustment case passes; all14 previous CPP/Rust real-box records are byte-identical. Public SmApiFilletEdges remains genuinely deferred.
