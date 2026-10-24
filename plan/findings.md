@@ -19937,8 +19937,8 @@ point, returning `f64` — differs from the trait method's), `swap_uv` → `swap
   the kernel context: `with_lent_context` (`topology/brep/p3.rs:887`, used by the
   session's shrink/stitch/face paths and by heal `plain_edit` → `with_kernel_callbacks`,
   `brep/p5.rs:167`/`p3.rs:949`) and `Context::with_notification_context`
-  (`geom/context.rs:455`, used by the heal `glue_edges_general` bridge at
-  `heal/stitch/p1.rs:2428`). A nested crate edit through the lent context is
+  (`geom/context.rs:455`, used by the heal `glue_edges_general` helper's no-edits
+  fallback at `heal/stitch/p1.rs:2428`). A nested crate edit through the lent context is
   refused with `InvalidInput` (`NOTIFY_LENT`, `geom/context.rs:334`–`:339`), so a
   notification callback cannot re-enter the same edit pipeline without bound through
   library code.
