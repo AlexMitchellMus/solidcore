@@ -7,6 +7,14 @@ on:
   # The merge queue tests each PR merged with the latest main (and the PRs ahead of it).
   merge_group:
   workflow_dispatch:
+    inputs:
+      baseline_sha:
+        description: "Exact main revision used as baseline"
+        type: string
+      diagnostic_only:
+        description: "Explicitly skip the ratchet for a diagnostic manual run"
+        type: boolean
+        default: false
 
 # Every job runs on Blacksmith's hosted runners (blacksmith.sh; ephemeral VMs, sponsored
 # minutes, outside the org's 20-runner cap): pushes to main, every pull request (fork or not)
@@ -26,7 +34,16 @@ env:
   UPSTREAM_REPO: https://github.com/NVIDIA-Omniverse/usd-brep
   UPSTREAM_COMMIT: c9c5979f04cea8c38213004d4f04df0dcfb40d05  # c9c5979
 
+permissions:
+  contents: read
+
 jobs:
+  ci-scripts:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci/test-difftest-baseline.sh
+
   fmt:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
@@ -139,15 +156,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Skip when no unit is green
+      - name: Select optional native execution
         id: green
         run: |
           if grep -Eqs '^\s*status\s*=\s*"(green|partial)"' plan/units/*.toml; then
             echo "any=true" >> "$GITHUB_OUTPUT"
           else
             echo "any=false" >> "$GITHUB_OUTPUT"
-            echo "No green units in plan/units/; nothing to difftest."
+            echo "No current green units; exact-base retention is still required."
           fi
+
+      - name: Validate exact-base report artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.baseline_sha }}
+        run: |
+          arg=$(scripts/ci/difftest-baseline.sh "$EVENT" "$BASE" "$RUNNER_TEMP/difftest-baseline" --current-plan "$GITHUB_WORKSPACE")
+          echo "DIFFTEST_BASELINE=$arg" >> "$GITHUB_ENV"
 
       - name: Upstream sources, sccache and the C++ reference
         if: steps.green.outputs.any == 'true'
@@ -173,7 +199,16 @@ jobs:
         # Optimised profile (Cargo.toml [profile.difftest]): identical results, about 20x
         # faster than the debug build that used to take ~35 min here. --jobs 0: one child
         # process per unit, one per vCPU (same output and reports as a serial run).
-        run: cargo run --profile difftest -p difftest --features cpp -- --green --jobs 0
+        run: |
+          baseline=()
+          if [ -n "$DIFFTEST_BASELINE" ]; then
+            baseline=(--baseline "$RUNNER_TEMP/difftest-baseline/reports")
+          fi
+          cargo run --profile difftest -p difftest --features cpp -- --green --jobs 0 "${baseline[@]}"
+
+      - name: Difftest perturbation check
+        if: steps.green.outputs.any == 'true'
+        run: cargo run --profile difftest -p difftest --features cpp -- --green --perturb --jobs 0 --no-report
 
       # main's reports are published from here (site, PROGRESS.md case counts,
       # scripts/fetch-reports.sh), never committed.

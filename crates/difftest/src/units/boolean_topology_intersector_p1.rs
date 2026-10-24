@@ -1131,6 +1131,14 @@ impl CurveOnClassifyObjects<H> for Objs<'_> {
 }
 
 impl ProtoBrep<H> for Two {
+    fn merge_point_class_into_brep(
+        &mut self,
+        k: &mut Kernel,
+        pc: &mut PointClassification<H>,
+        src_point: Point3,
+    ) -> solidcore::Result<solidcore::intersect::point_class::MergeOutputs<H>> {
+        solidcore::intersect::curve_class::p6::merge_into_object_mut(k, self, pc, src_point)
+    }
     fn brep_squeeze_edge(
         &mut self,
         k: &mut Kernel,
@@ -2049,6 +2057,7 @@ fn own_geometry(b: &mut Brep, slot: usize) {
         if let Some(surface) = b.face_mut(f).ok().and_then(|x| x.surface.as_mut()) {
             let _ = surface.set_owner(Some(query_key(slot, CacheObject::Face(f))));
         }
+        let _ = b.sync_face_surface_tolerance(f);
     }
 }
 
