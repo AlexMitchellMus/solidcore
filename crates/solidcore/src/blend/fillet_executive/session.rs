@@ -18,6 +18,8 @@
 //! This foundation supports solver construction/loading; it does not substitute a
 //! result for the remaining fillet execution stages. No recursion.
 
+pub mod insertion;
+
 use std::collections::BTreeMap;
 
 use super::p1::{ExecutiveObjects, SolverLoadingAccess};
