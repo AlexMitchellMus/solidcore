@@ -24,7 +24,8 @@ use super::p1::{ExecutiveObjects, SolverLoadingAccess};
 use super::p2::{FilletParameters, FilletParametersAccess, SolverSpec};
 use super::p3::{
     CornerAdjustmentAccess, CornerEdgeAccess, CornerVertexAccess, CornerView, ErrorInfo,
-    FilletExecutive, RailClassificationAccess, RailTrimAccess, SolverGeometryAccess, VertexEntry,
+    FaceConstructionAccess, FilletExecutive, RailClassificationAccess, RailTrimAccess,
+    SolverGeometryAccess, VertexEntry,
 };
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_geom::p1::{
@@ -71,6 +72,10 @@ pub enum FilletObject {
     Topology(FilletBody, EntityRef),
     /// The retained curve of an edge; separate from its topology identity.
     Curve(FilletBody, EdgeId),
+    /// The actual intermediate B-rep allocated during face construction.
+    IntermediateBrep,
+    /// A geometry retained in the pseudo-B-rep.
+    Geometry(crate::blend::fillet_geom::p1::FilletGeomId),
     /// A concrete solver in the session's solver slots.
     Solver(FilletSolverId),
     /// A concrete corner in the session's corner slots.
@@ -155,6 +160,9 @@ impl SolverObject {
 struct SessionObjects<'target> {
     target: &'target mut Brep,
     pseudo: FilletBrep,
+    intermediate: Option<Brep>,
+    notification_records:
+        BTreeMap<crate::geom::attribute::ObjectKey, crate::topology::topology::Topology>,
     solvers: Vec<Option<SolverObject>>,
     corners: Vec<FilletCorner>,
     generators: Vec<FilletSurfaceGenerator>,
@@ -339,6 +347,8 @@ impl<'target> FilletSession<'target> {
             objects: SessionObjects {
                 target,
                 pseudo,
+                intermediate: None,
+                notification_records: BTreeMap::new(),
                 solvers: Vec::new(),
                 corners: Vec::new(),
                 generators: Vec::new(),
@@ -720,6 +730,22 @@ impl<'target> FilletSession<'target> {
             .classify_solver_rails_with_adjusted(k, &mut self.objects)
     }
 
+    /// Allocate the actual intermediate B-rep and construct its corner and solver faces.
+    ///
+    /// # Errors
+    /// Native face-construction failures, or a genuine missing corner-patch context.
+    pub fn build_fillet_faces(&mut self, k: &mut Kernel) -> Result<()> {
+        self.executive
+            .build_fillet_faces(k, &mut self.objects)
+            .map(|_| ())
+    }
+
+    /// The actual intermediate face body, absent until its native allocation stage.
+    #[must_use]
+    pub fn intermediate_brep(&self) -> Option<&Brep> {
+        self.objects.intermediate.as_ref()
+    }
+
     /// Load this actual solver through the native executive algorithm.
     ///
     /// # Errors
@@ -815,6 +841,156 @@ impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
     }
 }
 
+impl FaceConstructionAccess<FilletObject> for SessionObjects<'_> {
+    fn faces_new_brep(&mut self, k: &mut Kernel) -> Result<FilletObject> {
+        let mut body = crate::topology::brep::p3::new_brep(
+            k,
+            crate::geom::tol::USE_DEFAULT,
+            crate::geom::tol::USE_DEFAULT,
+        )?;
+        let serial = body
+            .notify_serial()
+            .ok_or_else(|| invalid("intermediate body has no kernel identity"))?;
+        body.set_key(
+            crate::topology::brep::p3::topology_ref(
+                serial,
+                EntityRef::Brep(crate::topology::BrepId::from_index(0)),
+            )
+            .key,
+        );
+        let key_of = |entity| crate::topology::brep::p3::topology_ref(serial, entity);
+        crate::topology::brep::p3::seed_records(&mut self.notification_records, &body, &key_of);
+        self.intermediate = Some(body);
+        Ok(FilletObject::IntermediateBrep)
+    }
+    fn faces_tolerance(&self, _k: &Kernel, body: FilletObject) -> Result<f64> {
+        match body {
+            FilletObject::Body(FilletBody::Target) => Ok(self.target.tolerance()),
+            FilletObject::IntermediateBrep => self
+                .intermediate
+                .as_ref()
+                .map(Brep::tolerance)
+                .ok_or_else(|| invalid("intermediate body is not allocated")),
+            _ => Err(invalid("face tolerance object is not an actual body")),
+        }
+    }
+    fn faces_set_tolerance(
+        &mut self,
+        k: &mut Kernel,
+        body: FilletObject,
+        tolerance: f64,
+    ) -> Result<()> {
+        if body != FilletObject::IntermediateBrep {
+            return Err(invalid(
+                "face tolerance destination is not the intermediate body",
+            ));
+        }
+        let body = self
+            .intermediate
+            .as_mut()
+            .ok_or_else(|| invalid("intermediate body is not allocated"))?;
+        crate::topology::brep::p2::set_tolerance(k, body, tolerance, true, true)
+    }
+    fn faces_enable_editing(&mut self, body: FilletObject) -> Result<()> {
+        if body != FilletObject::IntermediateBrep {
+            return Err(invalid(
+                "face editing destination is not the intermediate body",
+            ));
+        }
+        self.intermediate
+            .as_mut()
+            .ok_or_else(|| invalid("intermediate body is not allocated"))?
+            .set_editing_enabled(true);
+        Ok(())
+    }
+    fn faces_corner_geometry(
+        &mut self,
+        _k: &mut Kernel,
+        corner: FilletObject,
+        _executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let FilletObject::Corner(id) = corner else {
+            return Err(invalid("corner patch object is not an actual corner"));
+        };
+        self.corners
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| invalid("corner patch is not live"))?
+            .calc_corner_geom_with(&mut (), |_, ()| {
+                // UNPORTED(blend.fillet_corner_p3): actual concrete corner-patch construction context.
+                Err(SolidError::unported(
+                    "SmFilletCorner::CreateCornerPatch (live construction context)",
+                    "blend.fillet_corner_p3",
+                ))
+            })
+    }
+    fn faces_solver_tolerance(&self, solver: FilletObject) -> Result<f64> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("face solver is not an actual solver"));
+        };
+        Ok(self.solver(id)?.base().approx_tol_3d)
+    }
+    fn faces_solver_geom(
+        &self,
+        solver: FilletObject,
+        index: usize,
+    ) -> Result<Option<FilletObject>> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("face solver is not an actual solver"));
+        };
+        Ok(self
+            .solver(id)?
+            .base()
+            .fillet_geoms
+            .get(index)
+            .copied()
+            .map(FilletObject::Geometry))
+    }
+    fn faces_make_face(
+        &mut self,
+        k: &mut Kernel,
+        geom: FilletObject,
+        body: FilletObject,
+        _executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let FilletObject::Geometry(id) = geom else {
+            return Err(invalid("face geometry is not actually retained"));
+        };
+        if body != FilletObject::IntermediateBrep {
+            return Err(invalid("face destination is not the intermediate body"));
+        }
+        let sid = self
+            .pseudo
+            .geom(id)?
+            .fillet_solver()
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
+        let solver = self
+            .solvers
+            .get(sid.0 as usize)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| invalid("face geometry solver is not live"))?
+            .base();
+        let body = self
+            .intermediate
+            .as_mut()
+            .ok_or_else(|| invalid("intermediate body is not allocated"))?;
+        let serial = body
+            .notify_serial()
+            .ok_or_else(|| invalid("intermediate body has no kernel identity"))?;
+        let key_of = |entity| crate::topology::brep::p3::topology_ref(serial, entity);
+        crate::topology::brep::p3::seed_records(&mut self.notification_records, body, &key_of);
+        crate::topology::brep::p3::with_lent_context(k, |k, context| {
+            let mut env = crate::topology::edge::NotifyEnv {
+                records: &mut self.notification_records,
+                attributes: &mut self.attributes,
+                context: Some(context),
+                key_of: &key_of,
+            };
+            self.pseudo
+                .make_face_brep_with_solver(k, id, sid, solver, body, &mut env)
+        })?
+    }
+}
+
 impl RailClassificationAccess<FilletObject> for SessionObjects<'_> {
     fn rails_classify(
         &mut self,
@@ -833,7 +1009,10 @@ impl RailClassificationAccess<FilletObject> for SessionObjects<'_> {
             .ok_or_else(|| invalid("pseudo B-rep has no kernel identity"))?;
         let mut ownership = classification::Ownership {
             serial,
-            brep: crate::topology::brep::p2::brep_ref(self.pseudo.brep()),
+            brep: crate::topology::brep::p3::topology_ref(
+                serial,
+                EntityRef::Brep(crate::topology::BrepId::from_index(0)),
+            ),
         };
         let solver = self
             .solvers

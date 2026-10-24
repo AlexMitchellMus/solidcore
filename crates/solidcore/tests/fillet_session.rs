@@ -489,3 +489,41 @@ fn actual_box_rollover_keeps_scoped_attached_rail_classifications() {
         );
     }
 }
+
+#[test]
+fn actual_box_face_stage_constructs_a_distinct_intermediate_body() {
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
+    let edge = target.edges().ids().next().unwrap();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    assert!(session.intermediate_brep().is_none());
+    session
+        .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+        .unwrap();
+    session.create_corners(&k, None).unwrap();
+    session.process_smooth_edge_sequences(&mut k).unwrap();
+    session.create_corner_vertices(&mut k).unwrap();
+    session.adjust_corner_topology(&mut k).unwrap();
+    session.calculate_solver_geometry(&mut k).unwrap();
+    session.calculate_corner_edges(&mut k).unwrap();
+    session.trim_solver_rails(&mut k).unwrap();
+    session.classify_solver_rails(&mut k).unwrap();
+    session.build_fillet_faces(&mut k).unwrap();
+    let body = session.intermediate_brep().unwrap();
+    assert!(body.editing_enabled());
+    assert_eq!(
+        body.key(),
+        solidcore::topology::brep::p3::topology_ref(
+            body.notify_serial().unwrap(),
+            EntityRef::Brep(solidcore::topology::BrepId::from_index(0)),
+        )
+        .key
+    );
+    assert_ne!(body.key(), solidcore::geom::attribute::ObjectKey(0));
+    assert!(!body.faces().is_empty());
+    assert_ne!(body.notify_serial(), session.target().notify_serial());
+    assert_eq!(
+        session.executive().fillet,
+        Some(FilletObject::IntermediateBrep)
+    );
+}
