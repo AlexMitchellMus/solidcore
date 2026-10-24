@@ -1882,6 +1882,37 @@ mod borrowed_tests {
         assert!(store.bodies.slots.is_empty());
     }
     #[test]
+    fn adopted_bodies_keep_their_identities_and_can_be_taken_back() {
+        let mut k = Kernel::default();
+        let mut records = BTreeMap::new();
+        let mut attributes = AttributeStore::new();
+        let mut next = 4;
+        let mut store = SweepStore::new(&Identities, &mut records, &mut attributes, &mut next);
+        let c = store.register_kernel(&mut k).unwrap();
+        let id = BrepId::from_index(4);
+        let mut wrong = Brep::new();
+        wrong.set_key(ObjectKey(991));
+        assert!(store.adopt_brep(c, wrong).is_err());
+        let mut b = Brep::new_with_infinite_region().unwrap();
+        b.set_key(Identities.topology(id, EntityRef::Brep(id)).key);
+        b.set_tolerance(0.25);
+        assert_eq!(store.adopt_brep(c, b).unwrap(), id);
+        // nothing is re-keyed or registered for the adopted body
+        assert_eq!(
+            store.brep(id).unwrap().key(),
+            Identities.topology(id, EntityRef::Brep(id)).key
+        );
+        assert!(store.records.is_empty());
+        let b = store.take_brep(id).unwrap();
+        assert_eq!(b.tolerance(), 0.25);
+        assert!(!store.contains_brep(id));
+        assert!(store.take_brep(id).is_err());
+        // a store without caller identities cannot adopt
+        let mut owned = SweepStore::owned();
+        let c = owned.insert_kernel(Kernel::default()).unwrap();
+        assert!(owned.adopt_brep(c, Brep::new()).is_err());
+    }
+    #[test]
     fn actual_shared_and_distinct_contexts_and_borrow_orders() {
         let mut k1 = Kernel::default();
         let mut k2 = Kernel::default();

@@ -2751,6 +2751,24 @@ mod tests {
         }
     }
 
+    /// `MakeEdgeTopology` between two shell vertices deletes the end vertex shell
+    /// (`delete pEndShell`): the region keeps one wire shell and the arena no orphan.
+    #[test]
+    fn edge_between_shell_vertices_deletes_the_merged_shell() {
+        let mut k = Kernel::default();
+        let mut b = Brep::new_with_infinite_region().unwrap();
+        let (_, v1) = make_shell_vertex_topology(&mut b, None).unwrap();
+        let (end_shell, v2) = make_shell_vertex_topology(&mut b, None).unwrap();
+        assert_eq!(b.shells().len(), 2);
+        let mut state = ArenaNotifyState::new(&b);
+        let mut env = state.env(None);
+        make_edge_topology(&mut k, &mut b, None, v1, v2, &mut env).unwrap();
+        assert_eq!(b.shells().len(), 1);
+        assert!(b.shell(end_shell).is_err());
+        let region = b.infinite_region().unwrap();
+        assert_eq!(b.region(region).unwrap().shells.len(), 1);
+    }
+
     fn solution(objects: &[CacheObject], params: &[f64]) -> Solution<CacheObject> {
         let mut s = Solution::new();
         for (i, o) in objects.iter().enumerate() {
