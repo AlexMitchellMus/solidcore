@@ -1224,6 +1224,57 @@ where
     }
 }
 
+/// Actual operations for enabled rail classification and adjusted-corner repair.
+pub trait RailClassificationAccess<O: ClassObject + SolutionObject + Ord>:
+    SolverGeometryAccess<O> + CornerEdgeAccess<O>
+{
+    /// Classify the actual solver's rails and append its adjusted corners.
+    ///
+    /// # Errors
+    /// Classification, recovery, or actual object-resolution failures.
+    fn rails_classify(
+        &mut self,
+        k: &mut Kernel,
+        solver: O,
+        adjusted: &mut Vec<O>,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
+    /// Reinitialize the actual adjusted corner's retained edges.
+    ///
+    /// # Errors
+    /// Actual corner resolution or reinitialization failures.
+    fn rails_reinitialize_corner(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
+}
+
+impl<O, A> RailClassificationAccess<O> for A
+where
+    O: ClassObject + SolutionObject + Ord,
+    A: ExecutiveAccess<O> + ?Sized,
+{
+    fn rails_classify(
+        &mut self,
+        k: &mut Kernel,
+        solver: O,
+        adjusted: &mut Vec<O>,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
+        ExecutiveAccess::test_rollover(self, k, solver, adjusted, executive)
+    }
+    fn rails_reinitialize_corner(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
+        ExecutiveAccess::reinitialize_corner_edges(self, k, corner, executive)
+    }
+}
+
 /// Actual operations for the executive's ordered solver-geometry stage.
 pub trait SolverGeometryAccess<O: ClassObject + SolutionObject + Ord> {
     /// Run the actual retained solver's geometry calculation.
@@ -1562,6 +1613,44 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         Ok(())
     }
 
+    /// Classify all retained solver rails, then repair adjusted corners in order.
+    /// Disabled classification performs no solver or corner operations.
+    ///
+    /// # Errors
+    /// Genuine missing capabilities propagate; ordinary operation failures retain
+    /// the native solver/corner failure metadata and every completed mutation.
+    pub fn classify_solver_rails(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl RailClassificationAccess<O>,
+    ) -> Result<()> {
+        if self.options.classification {
+            let mut adjusted = Vec::new();
+            let mut index = 0;
+            while let Some(solver) = self.solvers.get(index).copied() {
+                if ignore(access.rails_classify(k, solver, &mut adjusted, self))?.is_none() {
+                    return self.record_solver_failure(
+                        access.geometry_edge(solver)?,
+                        7,
+                        "Fillet Solver Error: Unable to Process Rollover",
+                    );
+                }
+                index += 1;
+            }
+            for corner in adjusted {
+                ignore(access.rails_reinitialize_corner(k, corner, self))?;
+                if ignore(access.edges_calculate(k, corner, self))?.is_none() {
+                    return self.corner_vertex_failure(
+                        access,
+                        corner,
+                        "Fillet Corner Error: Edge Computation Failure After Rollover Adjustment",
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Construct and stitch the fillet shell, preserving every stage after each
     /// missing dependency call. `error_out` is assigned only on success.
     pub fn create_fillet_brep(
@@ -1583,31 +1672,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         self.calculate_solver_geometry(k, access)?;
         self.calculate_corner_edges(k, access)?;
         self.trim_solver_rails(k, access)?;
-        if self.options.classification {
-            let mut adjusted = Vec::new();
-            let mut index = 0;
-            while let Some(solver) = self.solvers.get(index).copied() {
-                if ignore(access.test_rollover(k, solver, &mut adjusted, self))?.is_none() {
-                    return self.solver_failure(
-                        access,
-                        solver,
-                        7,
-                        "Fillet Solver Error: Unable to Process Rollover",
-                    );
-                }
-                index += 1;
-            }
-            for corner in adjusted {
-                ignore(access.reinitialize_corner_edges(k, corner, self))?;
-                if ignore(access.calc_corner_edges(k, corner, self))?.is_none() {
-                    return self.corner_failure(
-                        access,
-                        corner,
-                        "Fillet Corner Error: Edge Computation Failure After Rollover Adjustment",
-                    );
-                }
-            }
-        }
+        self.classify_solver_rails(k, access)?;
         let fillet = access.new_brep(k)?;
         self.fillet = Some(fillet);
         let tolerance = access.tolerance(k, target, false)?;

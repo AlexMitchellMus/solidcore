@@ -110,6 +110,7 @@
 //! - **Iteration.** No loop here depends on more than the caller's array sizes; there
 //!   is no recursion.
 
+use crate::blend::fillet_classification::{FilletClassObject, LegacyClassificationObjects};
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_custom_solver::{InitialValues, JacobianLoad, OffsetSurface, SurfaceId};
 use crate::blend::fillet_geom::p1::{
@@ -1410,6 +1411,38 @@ impl FilletSolver {
         cc1: &CurveClassification<EntityRef>,
         cc2: &CurveClassification<EntityRef>,
     ) -> Result<()> {
+        let cc1 = cc1.map_objects(&mut |o| Ok(FilletClassObject::Legacy(o)))?;
+        let cc2 = cc2.map_objects(&mut |o| Ok(FilletClassObject::Legacy(o)))?;
+        self.split_fillet_geom_scoped(
+            k,
+            pseudo,
+            &LegacyClassificationObjects(geometry),
+            fillet_geom_index,
+            trim_type,
+            ivls1,
+            ivls2,
+            &cc1,
+            &cc2,
+        )
+    }
+
+    /// Split geometries using retained body-qualified rail classifications.
+    ///
+    /// # Errors
+    /// As [`Self::split_fillet_geom`], or a non-target point classification.
+    #[allow(clippy::too_many_arguments)]
+    pub fn split_fillet_geom_scoped(
+        &mut self,
+        k: &Kernel,
+        pseudo: &mut FilletBrep,
+        geometry: &impl ClassGeometry<FilletClassObject>,
+        fillet_geom_index: usize,
+        trim_type: i32,
+        ivls1: &[Extent1d],
+        ivls2: &[Extent1d],
+        cc1: &CurveClassification<FilletClassObject>,
+        cc2: &CurveClassification<FilletClassObject>,
+    ) -> Result<()> {
         // SM_ASSERT(sizes equal) is a no-op; a shorter crIvls2 is read past its end.
         if ivls2.len() < ivls1.len() {
             return Err(invalid("fewer second intervals than first ones"));
@@ -1478,6 +1511,7 @@ impl FilletSolver {
                 (1, 0, ivl2.min(), pc10),
                 (1, 1, ivl2.max(), pc11),
             ] {
+                let pc = pc.map_objects(&mut FilletClassObject::target_entity)?;
                 pseudo.set_up_rail_point(k, new_fillet_geom, rail, end, t, Some(&pc))?;
             }
 

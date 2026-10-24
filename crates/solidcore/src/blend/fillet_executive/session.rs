@@ -24,7 +24,7 @@ use super::p1::{ExecutiveObjects, SolverLoadingAccess};
 use super::p2::{FilletParameters, FilletParametersAccess, SolverSpec};
 use super::p3::{
     CornerAdjustmentAccess, CornerEdgeAccess, CornerVertexAccess, CornerView, ErrorInfo,
-    FilletExecutive, RailTrimAccess, SolverGeometryAccess, VertexEntry,
+    FilletExecutive, RailClassificationAccess, RailTrimAccess, SolverGeometryAccess, VertexEntry,
 };
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_geom::p1::{
@@ -47,20 +47,15 @@ use crate::kernel::Kernel;
 use crate::surface::surface::Surface;
 use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
+mod classification;
+
 const OP: &str = "blend::fillet_executive::session";
 
 fn invalid(reason: &'static str) -> SolidError {
     SolidError::invalid_input(OP, reason)
 }
 
-/// Which actual body owns a session topology reference.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum FilletBody {
-    /// The caller's borrowed target B-rep.
-    Target,
-    /// The executive's owned `SmFilletBrep`.
-    Pseudo,
-}
+pub use crate::blend::fillet_classification::FilletBody;
 
 /// A reference to an actual object in a single executive's object store.
 ///
@@ -704,6 +699,14 @@ impl<'target> FilletSession<'target> {
             })
     }
 
+    /// Classify real solver rails and repair any adjusted corners in native order.
+    ///
+    /// # Errors
+    /// Real classification/recovery failures, or a genuine missing recovery context.
+    pub fn classify_solver_rails(&mut self, k: &mut Kernel) -> Result<()> {
+        self.executive.classify_solver_rails(k, &mut self.objects)
+    }
+
     /// Load this actual solver through the native executive algorithm.
     ///
     /// # Errors
@@ -796,6 +799,64 @@ impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
             |context| *context.do_global_merge,
             |context| &mut *context.pseudo,
         )
+    }
+}
+
+impl RailClassificationAccess<FilletObject> for SessionObjects<'_> {
+    fn rails_classify(
+        &mut self,
+        k: &mut Kernel,
+        solver: FilletObject,
+        adjusted: &mut Vec<FilletObject>,
+        _executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("rollover object is not an actual solver"));
+        };
+        let serial = self
+            .pseudo
+            .brep()
+            .notify_serial()
+            .ok_or_else(|| invalid("pseudo B-rep has no kernel identity"))?;
+        let mut ownership = classification::Ownership {
+            serial,
+            brep: crate::topology::brep::p2::brep_ref(self.pseudo.brep()),
+        };
+        let solver = self
+            .solvers
+            .get_mut(id.0 as usize)
+            .and_then(Option::as_mut)
+            .ok_or_else(|| invalid("rollover solver is not live"))?;
+        let mut context = classification::Context {
+            corners: &self.corners,
+        };
+        let mut actual_adjusted = Vec::new();
+        let result = solver.base_mut().test_roll_over_with_context(
+            k,
+            self.target,
+            &mut self.pseudo,
+            &mut context,
+            &mut actual_adjusted,
+            &mut ownership,
+        );
+        // Retain append-only adjusted-corner output even if a later rail fails.
+        adjusted.extend(actual_adjusted.into_iter().map(FilletObject::Corner));
+        result
+    }
+    fn rails_reinitialize_corner(
+        &mut self,
+        _k: &mut Kernel,
+        corner: FilletObject,
+        _executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let FilletObject::Corner(id) = corner else {
+            return Err(invalid("adjusted object is not an actual corner"));
+        };
+        let corner = self
+            .corners
+            .get(id.0 as usize)
+            .ok_or_else(|| invalid("adjusted corner is not live"))?;
+        corner.re_initialize_corner_edges(&mut self.pseudo)
     }
 }
 

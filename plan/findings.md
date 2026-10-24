@@ -19214,3 +19214,18 @@ Resolution of the real-box centerline subtype finding: retain the canonical actu
 The original box/edge/radius case now runs shared all-solver geometry followed by each corner's tangent adjustment, repeated vertex geometry and boundary-edge calculation. All seven stage statuses and sampled points agree exactly, but both native end ribs are Circle14021 and Rust stores plain BSpline14033. New corner_edge_geometry_state indices6 and18 expose the mismatch. Native retains actual derived curves from sm_SrfSrfIntersection. Rust geom/p2's SrfSrfCurves already retains Curve, but the distinct geom/p4 adapter279–324 holds Option<BSplineCurve> and clones only each returned object's base before p5 stores it. Preserve the actual returned curves through this adapter; do not remove type checks or change SSI arithmetic. Red executive_p3 baseline:301 cases,253 passes,47 existing deferrals,1 failure; all18 prior real-box CPP/Rust records are byte-identical. Full public filleting remains genuinely unported.
 
 Resolution of the boundary-Circle finding: the private geom/p4 SSI carrier retains the actual Curve objects accepted by the same native B-spline cast filter; p4 virtual endpoint/reversal/store operations and p5 ownership transfer retain derived objects. The existing public base-only UvCurves API keeps its explicit compatibility projection. With the same fixture and unchanged observer, executive_p3 now has 301 cases,254 passes,47 existing deferrals,0 failures,max_rel_err=0; perturb254/254 caught. Six affected native suites:2615 cases,2431 passes,78 existing deferrals,106 defined rejections,0 failures. All2314 previous affected-unit Rust digests and all18 earlier CPP/Rust box records are unchanged. Full SmApiFilletEdges remains genuinely deferred; the next real component is rail trimming.
+### Fillet rollover classification: retained body-qualified identities
+
+The production Session's pseudo rail curves and target boundary topology can have
+equal local arena IDs. The legacy solver-p5 fixture encodes pseudo curves using
+offset edge IDs; that fixture convention is not a production identity resolver.
+Rail classifications now retain explicit body and geometry-role handles, with a
+separate Legacy namespace for indexed entrypoints. Legacy adapters preserve their
+existing algorithms and outputs without applying that offset convention to Session.
+
+The actual classification loan splits pseudo topology from its attached mutable
+classification, preserving partial writes on ordinary and Unported errors without
+geometry snapshots or owner rebinding. Scoped target-edge projections reject
+pseudo and geometry handles. The canonical getter exposes scoped handles; indexed
+input conversion is explicit and fallible. These changes do not complete missing
+recovery notifications, custom producer-owner resolution, or the public fillet API.
