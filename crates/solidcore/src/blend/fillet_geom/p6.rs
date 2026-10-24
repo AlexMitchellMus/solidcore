@@ -1320,10 +1320,10 @@ impl FilletBrep {
             Some(s) => copy_as_b_spline_surface(k, s)?,
             None => None,
         };
-        let copy_curve = to_copy
-            .center_line_geometry()
-            .map(|curve| curve.copy(k))
-            .transpose()?;
+        let copy_curve = match to_copy.center_line_geometry() {
+            Some(curve) => copy_as_b_spline(k, curve)?,
+            None => None,
+        };
         let has_surface = copy_surface.is_some();
         self.geom_mut(g)?.fillet_surface = copy_surface;
         if !has_surface {
