@@ -1026,6 +1026,7 @@ pub fn find_vertex_sector(
         validate_sector,
         uv_space_okay,
     } = args;
+    let uv_curve = uv_curve.or_else(|| (curve_3d.dim() == 2).then_some(curve_3d));
     // the double becomes the `SmZoneTol3d` parameter: `fabs`, and `SM_USE_DEFAULT` -> the
     // system zone tolerance
     let zone_tol_3d = tol::zone_tol3d(k, zone_tol_3d);
