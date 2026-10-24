@@ -1567,7 +1567,7 @@ fn analytic_face_specs() -> Vec<(&'static str, EllipseFaceIn)> {
         ),
         (
             "full",
-            face(false, [2.0, 0.5], [0.0, 360.0], [0.0, 6.283185307179586], false, false),
+            face(false, [2.0, 0.5], [0.0, 360.0], [0.0, std::f64::consts::TAU], false, false),
         ),
     ]
 }
