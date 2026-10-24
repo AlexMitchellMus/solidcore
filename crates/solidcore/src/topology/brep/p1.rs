@@ -2311,10 +2311,12 @@ fn face_intersect(
         want_points: true,
         ..Default::default()
     };
+    // (the B-reps are read shared here: a face-owned surface's cache defers)
     let out = crate::topology::face::p3::face_intersect_breps(
         k,
-        (b, this_face),
-        (other, other_face),
+        crate::topology::face::p3::FaceBreps::Shared(b, other),
+        this_face,
+        other_face,
         approx_tol_3d,
         crv_angle_tolerance_deg,
         &options,
