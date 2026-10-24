@@ -409,3 +409,40 @@ fn actual_box_corner_edges_are_processed_in_retained_corner_order() {
         }
     }
 }
+
+#[test]
+fn actual_box_rail_trim_preserves_live_rails_and_classification_option() {
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
+    let edge = target.edges().ids().next().unwrap();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    session
+        .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+        .unwrap();
+    session.create_corners(&k, None).unwrap();
+    session.process_smooth_edge_sequences(&mut k).unwrap();
+    session.create_corner_vertices(&mut k).unwrap();
+    session.adjust_corner_topology(&mut k).unwrap();
+    session.calculate_solver_geometry(&mut k).unwrap();
+    session.calculate_corner_edges(&mut k).unwrap();
+    assert!(session.executive().options.classification);
+    let rails: Vec<_> = session
+        .pseudo_brep()
+        .geoms()
+        .iter()
+        .flat_map(|geometry| geometry.rails.into_iter().flatten())
+        .collect();
+    assert!(!rails.is_empty());
+    session.trim_solver_rails(&mut k).unwrap();
+    assert!(session.executive().options.classification);
+    for rail in rails {
+        let edge = session.pseudo_brep().brep().edge(rail).unwrap();
+        let curve = edge.curve.as_ref().unwrap();
+        let interval = curve.natural_interval();
+        assert!(interval.min() <= interval.max());
+        assert!(matches!(
+            curve.kind(),
+            solidcore::curve::curve::CurveKind::Line(_)
+        ));
+    }
+}

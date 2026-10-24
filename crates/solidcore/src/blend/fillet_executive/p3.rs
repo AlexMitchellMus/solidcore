@@ -1195,6 +1195,35 @@ where
     }
 }
 
+/// Actual solver operations for the executive's ordered rail-trimming stage.
+pub trait RailTrimAccess<O: ClassObject + SolutionObject + Ord>: SolverGeometryAccess<O> {
+    /// Trim every retained geometry's real rails through the actual solver.
+    ///
+    /// # Errors
+    /// Native trim failures or actual context-resolution errors.
+    fn rails_trim(
+        &mut self,
+        k: &mut Kernel,
+        solver: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
+}
+
+impl<O, A> RailTrimAccess<O> for A
+where
+    O: ClassObject + SolutionObject + Ord,
+    A: ExecutiveAccess<O> + ?Sized,
+{
+    fn rails_trim(
+        &mut self,
+        k: &mut Kernel,
+        solver: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
+        ExecutiveAccess::trim_rails(self, k, solver, executive)
+    }
+}
+
 /// Actual operations for the executive's ordered solver-geometry stage.
 pub trait SolverGeometryAccess<O: ClassObject + SolutionObject + Ord> {
     /// Run the actual retained solver's geometry calculation.
@@ -1510,6 +1539,29 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         Ok(())
     }
 
+    /// Trim every solver's rails after all corner boundary geometry is complete.
+    ///
+    /// # Errors
+    /// Native trim failure metadata or genuine missing dependencies.
+    pub fn trim_solver_rails(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl RailTrimAccess<O>,
+    ) -> Result<()> {
+        let mut index = 0;
+        while let Some(solver) = self.solvers.get(index).copied() {
+            if ignore(access.rails_trim(k, solver, self))?.is_none() {
+                return self.record_solver_failure(
+                    access.geometry_edge(solver)?,
+                    7,
+                    "Fillet Surface Computation Failure: Unable to Trim Rail Curve",
+                );
+            }
+            index += 1;
+        }
+        Ok(())
+    }
+
     /// Construct and stitch the fillet shell, preserving every stage after each
     /// missing dependency call. `error_out` is assigned only on success.
     pub fn create_fillet_brep(
@@ -1530,18 +1582,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         self.adjust_corner_topology(k, access)?;
         self.calculate_solver_geometry(k, access)?;
         self.calculate_corner_edges(k, access)?;
-        let mut index = 0;
-        while let Some(solver) = self.solvers.get(index).copied() {
-            if ignore(access.trim_rails(k, solver, self))?.is_none() {
-                return self.solver_failure(
-                    access,
-                    solver,
-                    7,
-                    "Fillet Surface Computation Failure: Unable to Trim Rail Curve",
-                );
-            }
-            index += 1;
-        }
+        self.trim_solver_rails(k, access)?;
         if self.options.classification {
             let mut adjusted = Vec::new();
             let mut index = 0;
