@@ -12,11 +12,6 @@
 # why = "C++ succeeds with 0 points, Rust returns status_3 (plan/findings.md: ...)"
 
 [[mismatch]]
-unit = "blend.fillet_intersector"
-case = "rv_next_clipped_step"
-why = "StepSolve clipped branch differs by a few ULP from C++; suspected p3 evaluating offset-surface copies vs the solver's own objects; pre-existing, newly reachable via #212 (plan/findings.md: blend.fillet_intersector rv_next_clipped_step)"
-
-[[mismatch]]
 unit = "topology.brep_p3"
 case = "nurbs_off_Mouse_0.1"
 why = "TurnToNURBS tracker: upstream curves/surfaces notify their own SM_NO_PRE_EDIT/SM_NO_POST_EDIT edits, the port's geometry sends none (plan/findings.md: topology.face_p1 SetSurface SM_NO_CHANGE_GEOMETRY wired (PR #637), 'Still deferred: geometry edit notifications')"
@@ -47,36 +42,11 @@ case = "gen0241"
 why = "TurnToNURBS tracker: upstream curves/surfaces notify their own SM_NO_PRE_EDIT/SM_NO_POST_EDIT edits, the port's geometry sends none (plan/findings.md: topology.face_p1 SetSurface SM_NO_CHANGE_GEOMETRY wired (PR #637), 'Still deferred: geometry edit notifications')"
 
 [[mismatch]]
-unit = "topology.brep_p6"
-case = "two_cubes_at_a_vertex"
-why = "geometry matches; only the Mark2 counter differs (one per IsInnerShell sample face): upstream IntersectTSBound takes the face's trimmed-surface-cache branch with SmNewMarkAndLock, the port walks the loop uses (plan/findings.md: IsInnerShell classifies on the B-rep itself)"
+unit = "topology.face_p1"
+case = "cone.smb_1_f5_op9"
+why = "MoveSeam with split: the runner's null classification handles cannot name topology, so the port's post-move HasSeamProblem fails (BrepSeamObjects InvalidInput, ignored as 'no problem') where upstream finds one and splits; reachable once the UB-137 fork trap runs the call (plan/findings.md: topology.face_p1 fork trap merged with main)"
 
 [[mismatch]]
-unit = "topology.brep_p6"
-case = "two_disjoint_cubes"
-why = "geometry matches; only the Mark2 counter differs (one per IsInnerShell sample face): upstream IntersectTSBound takes the face's trimmed-surface-cache branch with SmNewMarkAndLock, the port walks the loop uses (plan/findings.md: IsInnerShell classifies on the B-rep itself)"
-
-[[mismatch]]
-unit = "topology.brep_p6"
-case = "cube_in_cube"
-why = "geometry matches; only the Mark2 counter differs (one per IsInnerShell sample face): upstream IntersectTSBound takes the face's trimmed-surface-cache branch with SmNewMarkAndLock, the port walks the loop uses (plan/findings.md: IsInnerShell classifies on the B-rep itself)"
-
-[[mismatch]]
-unit = "topology.brep_p6"
-case = "cube_with_wire"
-why = "geometry matches; only the Mark2 counter differs (one per IsInnerShell sample face): upstream IntersectTSBound takes the face's trimmed-surface-cache branch with SmNewMarkAndLock, the port walks the loop uses (plan/findings.md: IsInnerShell classifies on the B-rep itself)"
-
-[[mismatch]]
-unit = "topology.brep_p6"
-case = "cube_with_inner_wire"
-why = "geometry matches; only the Mark2 counter differs (one per IsInnerShell sample face): upstream IntersectTSBound takes the face's trimmed-surface-cache branch with SmNewMarkAndLock, the port walks the loop uses (plan/findings.md: IsInnerShell classifies on the B-rep itself)"
-
-[[mismatch]]
-unit = "topology.brep_p6"
-case = "cube_with_inner_vertex"
-why = "geometry matches; only the Mark2 counter differs (one per IsInnerShell sample face): upstream IntersectTSBound takes the face's trimmed-surface-cache branch with SmNewMarkAndLock, the port walks the loop uses (plan/findings.md: IsInnerShell classifies on the B-rep itself)"
-
-[[mismatch]]
-unit = "topology.brep_p6"
-case = "cube_with_outer_vertex"
-why = "geometry matches; only the Mark2 counter differs (one per IsInnerShell sample face): upstream IntersectTSBound takes the face's trimmed-surface-cache branch with SmNewMarkAndLock, the port walks the loop uses (plan/findings.md: IsInnerShell classifies on the B-rep itself)"
+unit = "topology.face_p1"
+case = "torus.smb_1_f5_op9"
+why = "MoveSeam with split: the runner's null classification handles cannot name topology, so the port's post-move HasSeamProblem fails (BrepSeamObjects InvalidInput, ignored as 'no problem') where upstream finds one and splits; reachable once the UB-137 fork trap runs the call (plan/findings.md: topology.face_p1 fork trap merged with main)"
