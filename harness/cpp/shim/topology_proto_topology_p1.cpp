@@ -21,6 +21,7 @@
 #include "sc_shim.h"
 #include "support/primitive_record.h"
 #include <SmApiPrimitives.h>
+#include <SmApiQueries.h>
 
 #include "StdAfx.h"
 #include <SmApiGeneral.h>
@@ -5015,6 +5016,8 @@ enum TObj : int64_t
     T_PRIMITIVE_BOX = 10,
     T_PRIMITIVE_SPHERE = 11,
     T_CALLER_FACE = 12,
+    T_COPIED_BOX = 13,
+    T_COPIED_SPHERE = 14,
 };
 
 // SmCrvOnSurf's UV-line constructor is protected.
@@ -5024,11 +5027,79 @@ public:
     ScCos(SmPoint2d& a, SmPoint2d& b, SmSurface& s, const SmContext* ctx) : SmCrvOnSurf(a, b, s, NULL, 0, ctx) {}
 };
 
+int32_t apply_transform_op(Rd& rd, SmObject* obj, SmApiStatus& s)
+{
+    int64_t op = rd.idx();
+    switch (op)
+    {
+    case 0:
+    {
+        SmPoint3d org = rd.vec();
+        SmVector3d x = rd.vec();
+        SmVector3d y = rd.vec();
+        if (rd.bad)
+            return SC_ERR_ARG;
+        SmAxis2Placement pl(org, x, y);
+        s = SmApiTransform(obj, pl);
+        break;
+    }
+    case 1:
+    {
+        SmVector3d sc = rd.vec();
+        if (rd.bad)
+            return SC_ERR_ARG;
+        s = SmApiScale(obj, sc);
+        break;
+    }
+    case 2:
+    {
+        SmVector3d ref = rd.vec();
+        SmVector3d sc = rd.vec();
+        if (rd.bad)
+            return SC_ERR_ARG;
+        s = SmApiScaleByPt(obj, ref, sc);
+        break;
+    }
+    case 3:
+    {
+        SmVector3d v = rd.vec();
+        if (rd.bad)
+            return SC_ERR_ARG;
+        s = SmApiTranslate(obj, v);
+        break;
+    }
+    case 4:
+    {
+        SmVector3d ref = rd.vec();
+        SmVector3d ax = rd.vec();
+        double deg = rd.num();
+        if (rd.bad)
+            return SC_ERR_ARG;
+        s = SmApiRotate(obj, ref, ax, deg);
+        break;
+    }
+    default: return SC_ERR_ARG;
+    }
+    return SC_OK;
+}
+
+void append_constructed_transform_record(std::vector<double>& o, SmBrep* body)
+{
+        SmTArray<SmVertex*> vertices; body->GetVertices(vertices);
+        SmTArray<SmEdge*> edges; body->GetEdges(edges);
+        SmTArray<SmFace*> faces; body->GetFaces(faces);
+        o.insert(o.end(), {(double)vertices.GetSize(), (double)edges.GetSize(), (double)faces.GetSize(), (body->*get(BrepModelSize()))(FALSE)});
+        primitive_record::append(o,body);
+        for (ULONG i=0;i<faces.GetSize();i++) o.push_back((double)faces[i]->GetRectangularTrim());
+}
+
 int32_t run_transform(Rd& rd, std::vector<double>& o)
 {
     const SmContext& ctx = the_context();
     int64_t kind = rd.idx();
     SmObject* obj = NULL;
+    SmBrep* source = NULL;
+    std::vector<double> source_before;
     switch (kind)
     {
     case T_CURVE:
@@ -5052,13 +5123,21 @@ int32_t run_transform(Rd& rd, std::vector<double>& o)
     }
     case T_PRIMITIVE_BOX:
     case T_PRIMITIVE_SPHERE:
+    case T_COPIED_BOX:
+    case T_COPIED_SPHERE:
     {
         SmPoint3d origin = rd.vec(); SmBrep* body = NULL; SmApiStatus created;
-        if (kind == T_PRIMITIVE_BOX) {
+        if (kind == T_PRIMITIVE_BOX || kind == T_COPIED_BOX) {
             double x=rd.num(), y=rd.num(), z=rd.num();
             created = SmApiCreateBox(origin, x, y, z, body);
         } else { double radius=rd.num(); created=SmApiCreateSphere(origin, radius, body); }
         if (created != SM_SUCCESS || !body) { o.push_back((double)created); delete body; return SC_OK; }
+        if (kind == T_COPIED_BOX || kind == T_COPIED_SPHERE) {
+            source = body; primitive_record::append(source_before, source);
+            SmBrep* copy = NULL; auto copied = SmApiBrepCopy(source, copy);
+            if (copied != SM_SUCCESS || !copy) { o.push_back((double)copied); delete copy; delete source; return SC_OK; }
+            body = copy;
+        }
         obj = body; break;
     }
     case T_CALLER_FACE:
@@ -5119,67 +5198,18 @@ int32_t run_transform(Rd& rd, std::vector<double>& o)
     }
     default: return SC_ERR_ARG;
     }
-    int64_t op = rd.idx();
     SmApiStatus s = 0;
-    switch (op)
-    {
-    case 0:
-    {
-        SmPoint3d org = rd.vec();
-        SmVector3d x = rd.vec();
-        SmVector3d y = rd.vec();
-        if (rd.bad)
-            return SC_ERR_ARG;
-        SmAxis2Placement pl(org, x, y);
-        s = SmApiTransform(obj, pl);
-        break;
-    }
-    case 1:
-    {
-        SmVector3d sc = rd.vec();
-        if (rd.bad)
-            return SC_ERR_ARG;
-        s = SmApiScale(obj, sc);
-        break;
-    }
-    case 2:
-    {
-        SmVector3d ref = rd.vec();
-        SmVector3d sc = rd.vec();
-        if (rd.bad)
-            return SC_ERR_ARG;
-        s = SmApiScaleByPt(obj, ref, sc);
-        break;
-    }
-    case 3:
-    {
-        SmVector3d v = rd.vec();
-        if (rd.bad)
-            return SC_ERR_ARG;
-        s = SmApiTranslate(obj, v);
-        break;
-    }
-    case 4:
-    {
-        SmVector3d ref = rd.vec();
-        SmVector3d ax = rd.vec();
-        double deg = rd.num();
-        if (rd.bad)
-            return SC_ERR_ARG;
-        s = SmApiRotate(obj, ref, ax, deg);
-        break;
-    }
-    default: return SC_ERR_ARG;
-    }
+    int32_t applied = apply_transform_op(rd, obj, s);
+    if (applied != SC_OK) return applied;
     o.push_back((double)s);
-    if (kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE || kind == T_CALLER_FACE) {
-        SmBrep* body=(SmBrep*)obj;
-        SmTArray<SmVertex*> vertices; body->GetVertices(vertices);
-        SmTArray<SmEdge*> edges; body->GetEdges(edges);
-        SmTArray<SmFace*> faces; body->GetFaces(faces);
-        o.insert(o.end(), {(double)vertices.GetSize(), (double)edges.GetSize(), (double)faces.GetSize(), (body->*get(BrepModelSize()))(FALSE)});
-        primitive_record::append(o,body);
-        for (ULONG i=0;i<faces.GetSize();i++) o.push_back((double)faces[i]->GetRectangularTrim());
+    if (kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE || kind == T_CALLER_FACE || kind == T_COPIED_BOX || kind == T_COPIED_SPHERE) {
+        append_constructed_transform_record(o, (SmBrep*)obj);
+    }
+    if (source) {
+        o.insert(o.end(), source_before.begin(), source_before.end());
+        primitive_record::append(o, source);
+        delete (SmBrep*)obj; obj = NULL;
+        delete source;
     }
     if (kind == T_CURVE)
         put_curve(o, (SmCurve*)obj);
@@ -5205,6 +5235,44 @@ int32_t run_transform(Rd& rd, std::vector<double>& o)
     return SC_OK;
 }
 
+int32_t run_transform_sequence(Rd& rd, std::vector<double>& o)
+{
+    const SmContext& ctx = the_context();
+    const int64_t kind = rd.idx();
+    SmBrep* body = NULL;
+    SmApiStatus created = SM_SUCCESS;
+    if (kind == T_PRIMITIVE_BOX) {
+        SmPoint3d origin = rd.vec();
+        double x=rd.num(), y=rd.num(), z=rd.num();
+        created = SmApiCreateBox(origin, x, y, z, body);
+    } else if (kind == T_PRIMITIVE_SPHERE) {
+        SmPoint3d origin = rd.vec(); double radius=rd.num();
+        created = SmApiCreateSphere(origin, radius, body);
+    } else if (kind == T_CALLER_FACE) {
+        SmPoint3d origin=rd.vec(); double width=rd.num(), height=rd.num();
+        body=new(ctx) SmBrep(); SmFace* face=NULL;
+        SmPlane* surface=new(ctx) SmPlane(origin,SmVector3d(0,0,1),&ctx);
+        created=body->CreateFaceFromSurface(surface,SmExtent2d(0,0,width,height),face);
+        if (!face && created == SM_SUCCESS) created=SM_ERR_NULL_POINTER;
+    } else { return SC_ERR_ARG; }
+    if (created != SM_SUCCESS || !body) { delete body; return SC_ERR_ARG; }
+    const int64_t count=rd.idx();
+    if (rd.bad || count<2 || count>8) { delete body; return SC_ERR_ARG; }
+    o.push_back((double)count);
+    for (int64_t i=0; i<count; i++) {
+        SmApiStatus status=0;
+        const int32_t applied=apply_transform_op(rd,body,status);
+        if (applied!=SC_OK) { delete body; return applied; }
+        std::vector<double> record;
+        append_constructed_transform_record(record,body);
+        o.push_back((double)status);
+        o.push_back((double)record.size());
+        o.insert(o.end(),record.begin(),record.end());
+    }
+    delete body;
+    return SC_OK;
+}
+
 int32_t run(Rd& rd, std::vector<double>& o)
 {
     int64_t kind = rd.idx();
@@ -5214,6 +5282,7 @@ int32_t run(Rd& rd, std::vector<double>& o)
     case 0: s = run_list(rd, o); break;
     case 1: s = run_proto(rd, o); break;
     case 2: s = run_transform(rd, o); break;
+    case 3: s = run_transform_sequence(rd, o); break;
     default: return SC_ERR_ARG;
     }
     if (s != SC_OK)
