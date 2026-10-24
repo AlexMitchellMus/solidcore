@@ -19205,3 +19205,19 @@ C++ and (4, none) in the port. No edge use binormal is evaluated in this case.
 Suspected to be the same Rust merge region/shell handling as `gen0000` / `gen0003`
 above (the inset shell's Difference); not traced further. Listed in
 `known_mismatches.toml`.
+
+## boolean.topology_intersector_p2: gen0111 failed imprint, UB-242 vs UB-175
+
+Unit `boolean.topology_intersector_p2`, case `gen0111` (`IntersectInsertRelate` of
+`torus.smb` with `ellips_ts2.smb`, approx and angle tolerance 1e-3). It deferred
+before, when `FaceIntersect`'s homogenization could not build a face's trimmed surface
+cache on read-only topology; with the B-reps lent to that drop it now runs through.
+`ImprintIntersections` fails on both sides with `SM_ERR_NULL_POINTER` (1006; the C++
+status was checked with a temporary print in the shim's verbatim
+`IntersectInsertRelate`, not kept). The port then deletes the manager and returns that
+error (the UB-242 fix in `plan/upstream-issues.md`, `values.state[2]` = 1006). The
+verbatim C++ copy only reports it, runs `SetRelationships` (status 1000), and its manager
+teardown would read a freed proto edge (UB-175), so the shim answers `-2`. No input rule
+predicts a failed imprint, so the case is listed in `known_mismatches.toml`. Follow-up:
+a runner classification for runs where both sides stop at a failed imprint, or a shim
+copy that carries the UB-242 fix.
