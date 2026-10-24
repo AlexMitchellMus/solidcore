@@ -2500,6 +2500,54 @@ fn make_face(
 mod tests {
     use super::*;
 
+    #[test]
+    fn vertex_geometry_failure_retains_completed_prefix_and_stops_law_adjustment() {
+        use crate::blend::fillet_geom::p1::FilletVertex;
+
+        let k = Kernel::default();
+        let mut pseudo = FilletBrep::new();
+        let first = pseudo.brep_mut().add_vertex(Point3::ZERO).unwrap();
+        let second = pseudo.brep_mut().add_vertex(Point3::ZERO).unwrap();
+        let third = pseudo.brep_mut().add_vertex(Point3::ZERO).unwrap();
+        for vertex in [first, second, third] {
+            pseudo.insert_fillet_vertex(vertex, FilletVertex::new(&k, None));
+        }
+        let mut corner = FilletCorner::new(FilletCornerKind::NByOne, None, None, None, 1e-3, 0.1);
+        corner.vertices = vec![first, second, third];
+        corner.set_calc_as_const_rad(true);
+        let mut context = (pseudo, Vec::new(), false);
+        let result = corner.calc_corner_vert_geom_with(
+            &mut context,
+            |(pseudo, _, _), vertex| Ok(pseudo.fillet_vertex(vertex)?.is_processed()),
+            |(pseudo, visited, _), vertex| {
+                visited.push(vertex);
+                if vertex == second {
+                    return Err(SolidError::null_pointer("defined calculator failure"));
+                }
+                pseudo
+                    .fillet_vertex_mut(vertex)?
+                    .set_status(FilStatus::Processed);
+                Ok(())
+            },
+            |(_, _, adjusted), _, _| {
+                *adjusted = true;
+                Ok(())
+            },
+        );
+        assert!(matches!(
+            result,
+            Err(SolidError::Upstream {
+                code: SM_ERR,
+                ..
+            })
+        ));
+        assert_eq!(context.1, [first, second]);
+        assert!(context.0.fillet_vertex(first).unwrap().is_processed());
+        assert!(!context.0.fillet_vertex(second).unwrap().is_processed());
+        assert!(!context.0.fillet_vertex(third).unwrap().is_processed());
+        assert!(!context.2);
+    }
+
     /// `SqueezeEdge` moves one rail vertex use at a time: a closed rail at the vertex to
     /// delete keeps its other end there when the loop stops with `SM_ERR` at a non-rail
     /// edge that is not the corner's (reviewer's scenario: rail use, missing edge, rail
