@@ -19202,3 +19202,19 @@ concrete rail-solver contexts return `Unported(blend.fillet_executive_p1)` at th
 live virtual-dispatch seam; they are not converted into an ordinary native fillet
 failure. The explicitly named direct Nx1 helpers still validate their own type.
 This slice makes no cylinder, multi-edge, variable-radius or complete API claim.
+
+### Fillet rollover classification: retained body-qualified identities
+
+The production Session's pseudo rail curves and target boundary topology can have
+equal local arena IDs. The legacy solver-p5 fixture encodes pseudo curves using
+offset edge IDs; that fixture convention is not a production identity resolver.
+Rail classifications now retain explicit body and geometry-role handles, with a
+separate Legacy namespace for indexed entrypoints. Legacy adapters preserve their
+existing algorithms and outputs without applying that offset convention to Session.
+
+The actual classification loan splits pseudo topology from its attached mutable
+classification, preserving partial writes on ordinary and Unported errors without
+geometry snapshots or owner rebinding. Scoped target-edge projections reject
+pseudo and geometry handles. The canonical getter exposes scoped handles; indexed
+input conversion is explicit and fallible. These changes do not complete missing
+recovery notifications, custom producer-owner resolution, or the public fillet API.
