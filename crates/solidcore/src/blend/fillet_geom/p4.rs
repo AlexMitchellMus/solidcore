@@ -112,10 +112,9 @@ use crate::surface::surface::p1::map_to_2d_dir;
 use crate::surface::surface::p2::CONE_TYPE;
 use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::{Surface, SurfaceKind};
-use crate::topology::brep::p7::{make_face_with_curves, FaceCurvesInput};
+use crate::topology::brep::p7::{make_face_with_curves_transfer, FaceCurvesInput, NewFace};
 use crate::topology::edge;
 use crate::topology::edgeuse::p1::{self as eu1, primary_edgeuse};
-use crate::topology::trimming_tools::{trim_surface_with_model_space_curves, TrimInput};
 use crate::topology::vertex;
 use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
@@ -1845,8 +1844,7 @@ impl FilletBrep {
             }
         }
 
-        // Make Face
-        let fillet_surface = self.geom(g)?.fillet_surface()?.ok_or_else(nul)?.clone();
+        // Make Face: transfer the original surface only at the native call boundary.
         let region = brep.infinite_region();
         if use_uv_curves {
             let input = FaceCurvesInput {
@@ -1858,31 +1856,51 @@ impl FilletBrep {
             };
             let key_of = env.key_of;
             let face_ref = |f: FaceId| key_of(EntityRef::Face(f));
-            make_face_with_curves(
+            let owned = self.geom_mut(g)?.fillet_surface.take().ok_or_else(nul)?;
+            let super::p1::FilletSurfaceStorage::Owned(surface) = owned else {
+                // Earlier checked reads already reject a transferred surface.
+                self.geom_mut(g)?.fillet_surface = Some(owned);
+                return Err(SolidError::invalid_input(
+                    OP_FACE,
+                    "surface already transferred",
+                ));
+            };
+            let mut transfer = crate::topology::brep::p6::FaceSurfaceTransfer::new(surface);
+            let status = make_face_with_curves_transfer(
                 k,
                 brep,
                 region,
                 input,
-                fillet_surface,
+                &mut transfer,
                 &uv_domain,
                 OrientType::Same,
                 None,
                 &face_ref,
                 env,
-            )?;
-        } else {
-            let input = TrimInput {
-                loop_counts: curve_loops,
-                curves: curves_3d,
-                orientations: lists1.orients,
-                loop_points: Vec::new(),
-                surface: fillet_surface,
-                uv_domain,
-                surface_orientation: OrientType::Same,
+                &mut NewFace::default(),
+            );
+            let installed = transfer.installed_face();
+            let location = match transfer.into_location()? {
+                crate::topology::brep::p6::FaceSurfaceLocation::Owned(surface) => {
+                    super::p1::FilletSurfaceStorage::Owned(surface)
+                }
+                crate::topology::brep::p6::FaceSurfaceLocation::Installed(face) => {
+                    debug_assert_eq!(installed, Some(face));
+                    super::p1::FilletSurfaceStorage::ManagedFace {
+                        body: key_of(EntityRef::Brep(crate::topology::BrepId::from_index(0))),
+                        face,
+                    }
+                }
             };
-            trim_surface_with_model_space_curves(
-                k, brep, region, d3d_tol, input, true, false, false, env,
-            )?;
+            // Preserve the actual storage location even when construction failed.
+            self.geom_mut(g)?.fillet_surface = Some(location);
+            status?;
+        } else {
+            // UNPORTED(blend.fillet_geom_p4): original-surface transfer through the cliff trim tool.
+            return Err(SolidError::unported(
+                "SmFilletGeom::MakeFaceBrep (cliff surface transfer)",
+                "blend.fillet_geom_p4",
+            ));
         }
 
         Ok(())

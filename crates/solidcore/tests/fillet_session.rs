@@ -526,6 +526,30 @@ fn actual_box_face_stage_constructs_a_distinct_intermediate_body() {
         session.executive().fillet,
         Some(FilletObject::IntermediateBrep)
     );
+    for (index, geometry) in session.pseudo_brep().geoms().iter().enumerate() {
+        let id = solidcore::blend::fillet_geom::p1::FilletGeomId(u32::try_from(index).unwrap());
+        let source = session.fillet_surface(id).unwrap().unwrap();
+        let face = body
+            .faces()
+            .ids()
+            .find(|&face| {
+                body.face(face)
+                    .unwrap()
+                    .surface
+                    .as_ref()
+                    .is_some_and(|managed| core::ptr::eq(source, managed))
+            })
+            .expect("native source surface must be the actual managed face surface");
+        assert_eq!(
+            source.owner(),
+            Some(
+                session
+                    .intermediate_identity(EntityRef::Face(face))
+                    .unwrap()
+            )
+        );
+        assert!(geometry.fillet_surface().unwrap_err().is_unported());
+    }
     let edge_keys: Vec<_> = solidcore::topology::brep::p1::edges(body, None)
         .unwrap()
         .into_iter()
