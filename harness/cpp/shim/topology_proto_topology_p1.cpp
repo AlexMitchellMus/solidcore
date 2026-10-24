@@ -4864,6 +4864,7 @@ template<class T> double scale_label(const std::vector<T*>& items, T* item) {
     return it==items.end() ? 0.0 : (double)(std::distance(items.begin(),it)+1);
 }
 struct ScaleProbeFrame {
+    std::vector<double> initial_types;
     std::vector<SmVertex*> vertices;
     std::vector<SmEdge*> edges;
     std::vector<SmFace*> faces;
@@ -4873,8 +4874,8 @@ struct ScaleProbeFrame {
     std::vector<std::pair<SmFaceuse*,SmFaceuse*>> faceuses;
     explicit ScaleProbeFrame(SmBrep* body) {
         SmTArray<SmVertex*> vs; body->GetVertices(vs); for(ULONG i=0;i<vs.GetSize();i++) vertices.push_back(vs[i]);
-        SmTArray<SmEdge*> es; body->GetEdges(es); for(ULONG i=0;i<es.GetSize();i++) { edges.push_back(es[i]); SmTArray<SmEdgeuse*> us; es[i]->GetEdgeuses(us); for(ULONG j=0;j<us.GetSize();j++) edgeuses.push_back(us[j]); }
-        SmTArray<SmFace*> fs; body->GetFaces(fs); for(ULONG i=0;i<fs.GetSize();i++) { faces.push_back(fs[i]); SmFaceuse *a=NULL,*b=NULL; fs[i]->GetFaceuses(a,b); faceuses.push_back({a,b}); }
+        SmTArray<SmEdge*> es; body->GetEdges(es); for(ULONG i=0;i<es.GetSize();i++) { edges.push_back(es[i]); initial_types.push_back(es[i]->GetCurve()?(double)es[i]->GetCurve()->GetType():0.0); SmTArray<SmEdgeuse*> us; es[i]->GetEdgeuses(us); for(ULONG j=0;j<us.GetSize();j++) edgeuses.push_back(us[j]); }
+        SmTArray<SmFace*> fs; body->GetFaces(fs); for(ULONG i=0;i<fs.GetSize();i++) { faces.push_back(fs[i]); initial_types.push_back(fs[i]->GetSurface()?(double)fs[i]->GetSurface()->GetType():0.0); SmFaceuse *a=NULL,*b=NULL; fs[i]->GetFaceuses(a,b); faceuses.push_back({a,b}); }
         SmTArray<SmShell*> ss; body->GetShells(ss); for(ULONG i=0;i<ss.GetSize();i++) shells.push_back(ss[i]);
         SmTArray<SmRegion*> rs; body->GetRegions(rs); for(ULONG i=0;i<rs.GetSize();i++) regions.push_back(rs[i]);
     }
@@ -5058,6 +5059,7 @@ int32_t run_transform(Rd& rd, std::vector<double>& o, bool probe=false)
     default: return SC_ERR_ARG;
     }
     o.push_back((double)s);
+    if(frame) { o.push_back((double)frame->initial_types.size()); o.insert(o.end(),frame->initial_types.begin(),frame->initial_types.end()); }
     if (kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE || kind == T_CALLER_FACE || kind == T_COPIED_BOX || kind == T_COPIED_SPHERE) {
         SmBrep* body=(SmBrep*)obj;
         SmTArray<SmVertex*> vertices; body->GetVertices(vertices);

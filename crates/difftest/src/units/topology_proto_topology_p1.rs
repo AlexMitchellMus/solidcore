@@ -4415,6 +4415,7 @@ fn traversal_label<T: PartialEq>(items: &[T], item: Option<T>) -> f64 {
 }
 
 struct ScaleProbeFrame {
+    initial_types: Vec<f64>,
     vertices: Vec<VertexId>,
     edges: Vec<solidcore::EdgeId>,
     faces: Vec<solidcore::FaceId>,
@@ -4432,10 +4433,13 @@ impl ScaleProbeFrame {
         let faces = bp::faces(body, None)?;
         let shells = bp::shells(k, body, None)?;
         let regions = bp::regions(body, None)?;
+        let mut initial_types = Vec::new();
+        for edge in &edges { initial_types.push(body.edge(*edge)?.curve.as_ref().map_or(0, Curve::type_code) as f64); }
+        for face in &faces { initial_types.push(body.face(*face)?.surface.as_ref().map_or(0, Surface::type_code) as f64); }
         let mut edgeuses = Vec::new();
         for edge in &edges { edgeuses.extend(solidcore::topology::edge::edgeuses(body, *edge, None, None)?); }
         let faceuses = faces.iter().map(|face| solidcore::topology::face::p2::faceuses(body, *face)).collect::<solidcore::Result<Vec<_>>>()?;
-        Ok(Self { vertices, edges, faces, shells, regions, edgeuses, faceuses })
+        Ok(Self { initial_types, vertices, edges, faces, shells, regions, edgeuses, faceuses })
     }
 }
 
@@ -4450,7 +4454,7 @@ fn append_scale_probe(body: &Brep, frame: &ScaleProbeFrame, out: &mut Vec<f64>) 
         for id in uses {
             let use_ = body.edgeuse(id)?;
             let vertex = eu::vertexuse(body, id)?.map(|v| body.vertexuse(v)).transpose()?.and_then(|v| v.vertex);
-            out.extend([traversal_label(&frame.edgeuses, Some(id)), use_.orientation as u8 as f64,
+            out.extend([traversal_label(&frame.edgeuses, Some(id)), f64::from(use_.orientation as u8),
                 traversal_label(&frame.vertices, vertex), traversal_label(&frame.edgeuses, eu::mate(body, id)?),
                 traversal_label(&frame.edgeuses, eu::radial(body, id)?), traversal_label(&frame.faces, eu::face(body, id)?)]);
         }
@@ -4462,7 +4466,7 @@ fn append_scale_probe(body: &Brep, frame: &ScaleProbeFrame, out: &mut Vec<f64>) 
             if let Some(id) = id {
                 let use_ = body.faceuse(id)?;
                 let region = eu::faceuse_region(body, id)?;
-                out.extend([1.0, use_.orientation as u8 as f64, traversal_label(&frame.shells, use_.shell), traversal_label(&frame.regions, region),
+                out.extend([1.0, f64::from(use_.orientation as u8), traversal_label(&frame.shells, use_.shell), traversal_label(&frame.regions, region),
                     region.map(|r| body.region(r)).transpose()?.map_or(-1.0, |r| f64::from(r.is_void))]);
             } else { out.extend([0.0, 0.0, 0.0, 0.0, -1.0]); }
         }
@@ -4653,6 +4657,7 @@ fn run_transform(obj: &TObjIn, op: &TOpIn, probe: bool) -> Result<Vec<f64>, Fail
         },
     };
     let mut o = vec![s];
+    if let Some(frame) = &probe_frame { o.push(frame.initial_types.len() as f64); o.extend_from_slice(&frame.initial_types); }
     if matches!(obj, TObjIn::PrimitiveBox { .. } | TObjIn::PrimitiveSphere { .. } | TObjIn::CallerFace { .. } | TObjIn::CopiedBox { .. } | TObjIn::CopiedSphere { .. }) {
         let vertices = solidcore::topology::brep::p1::vertices(&brep, None).map_err(|e| harness(e.to_string()))?;
         let edges = solidcore::topology::brep::p1::edges(&brep, None).map_err(|e| harness(e.to_string()))?;

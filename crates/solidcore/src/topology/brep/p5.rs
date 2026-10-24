@@ -2392,7 +2392,7 @@ fn transform_in(
             || !crate::geom::tol::are_same(s.x, s.z)
             || s.x < crate::math::EFF_ZERO
     }) {
-        crate::error::ignore_status(turn_to_nurbs(k, b, notifications.as_deref_mut()))?;
+        crate::error::ignore_status(turn_to_nurbs(k, b, notifications.as_deref_mut(), owners))?;
     }
     let mut bbox = Extent3d::new();
     let vertices = brep_vertices(b)?;
@@ -2520,13 +2520,28 @@ fn turn_to_nurbs(
     k: &mut Kernel,
     b: &mut Brep,
     notifications: Option<&mut EditNotifyEnv<'_>>,
+    owners: Option<&std::collections::BTreeMap<crate::EntityRef, ObjectRef>>,
 ) -> Result<()> {
-    with_p3_notifications(
-        k,
-        b,
-        notifications,
-        crate::topology::brep::p3::turn_to_nurbs_with_geometry_owners,
-    )
+    with_p3_notifications(k, b, notifications, |k, b, env| {
+        let key_of = env.key_of;
+        let mut selection = std::collections::BTreeMap::new();
+        for entity in brep_faces(b)?
+            .into_iter()
+            .map(crate::EntityRef::Face)
+            .chain(brep_edges(b)?.into_iter().map(crate::EntityRef::Edge))
+        {
+            selection.insert(
+                entity,
+                transform_owner_key(b, owners, entity, key_of(entity)),
+            );
+        }
+        crate::topology::brep::p3::turn_to_nurbs_with_geometry_owners(k, b, env, &|entity| {
+            selection
+                .get(&entity)
+                .copied()
+                .unwrap_or_else(|| key_of(entity))
+        })
+    })
 }
 fn notify_edge_pre_edit(
     k: &mut Kernel,
