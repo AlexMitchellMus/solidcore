@@ -464,7 +464,6 @@ fn read_regular_curve(rd: &mut Rd<'_>, uv: bool) -> Result<(Option<SmCurve>, boo
     Ok((Some(SmCurve::from(base)), ty == BSPLINE_CURVE_TYPE))
 }
 
-
 fn read_surface(rd: &mut Rd<'_>) -> Result<(Option<Surface>, bool), HarnessError> {
     if rd.v.get(rd.at) != Some(&2.0) {
         return read_regular_surface(rd);

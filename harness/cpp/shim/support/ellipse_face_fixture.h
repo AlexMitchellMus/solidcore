@@ -68,7 +68,7 @@ SmStatus ellipse_face(SmBrep* brep, Reader& rd, const SmContext& ctx)
     SmFace* face = nullptr;
     // MakeFaceWithCurves consumes (and discards) supplied UV curves in the
     // pinned reference. Attach our exact trims through the native setter after
-    // it has built the topology, so this fixture does not depend on that defect.
+    // it has built the topology, preserving the fixture's exact parameterized trims.
     SmCurve* analytic = edge.release();
     SmCurve* closing = chord.release();
     SmStatus status = brep->MakeFaceWithCurves(brep->GetInfiniteRegion(), loops, &curves, nullptr,
