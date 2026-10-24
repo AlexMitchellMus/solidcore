@@ -15935,6 +15935,31 @@ stitching still have their documented dependencies; merge p3/p4 remain paired
 with the missing p2 merge constructor. Final native/CI evidence is recorded on
 the tested PR head; no tolerance or absolute floor is relaxed.
 
+## topology.face_p1 — UB-137 crash guard replaced by a fork trap (PR #467)
+
+#294 row 13. The shim's UB-137 guard (above, under the unit's **C++ crash guard**) is now
+a trap: the same predicate picks the seam calls that can reach upstream's `SplitAtSeam`
+crash, and the shim runs each of them in a forked child (`fp1_trapped`) instead of
+skipping it. The child sends the op record back through a pipe. A child that dies on a
+signal, runs past its 60 s alarm or sends no whole record answers `-4`. Where the shim
+cannot fork (Windows) or the pipe or the fork fails, the call is skipped (`-3`) as
+before. The child marks itself non-dumpable: a piped `core_pattern` (WSL's
+`wsl-capture-crash`, systemd-coredump) ignores `RLIMIT_CORE`, and capturing each
+expected crash made the unit about 4x slower.
+
+- **Runner.** The Rust side runs every case (its copy of the guard is gone). `run_cpp`
+  reports a `-3`/`-4` record as `Output::deferred("cpp-crash-guard:UB-137",
+  "SmFace::SplitAtSeam")`. The generic runner (`crates/difftest/src/runner.rs`) now
+  defers a case whose C++ side is deferred, and that deferral wins over a Rust-side one:
+  a case the C++ cannot run stays uncomparable once the Rust side's blocker lands.
+- **Result** (Linux, main `1054aeee`): of the 98 guarded cases, 44 pass bit-identical,
+  37 crash (SIGSEGV), 11 defer to `topology.face_p3` and 6 to `topology.face_p4`; none
+  fail. The 37 are the 36 review crash reproducers (`guard_vase_rev_*`, `vase_rev.smb`
+  face 0, `MoveSeam` with split and fabricated crossed-BOTH verdicts) and
+  `vase_rev.smb_1_f5_op9` (the UB-137 trigger). The other 61 run without a crash.
+- **Not done.** The trap still needs the guard's predicate to choose calls (forking every
+  seam call would also work, at the cost of a fork each). The crash cases are not
+  comparable on either platform.
 ## 2026-10-21 — Production SweepAccess store (issue #255, PR #424)
 
 `SweepStore` integrates the PR #222 orchestration with caller-owned B-reps,
@@ -18023,6 +18048,116 @@ labels. Read the first as the proposal to give the runner's `StaticHandle` a
 `natural_uv_domain`, and the second as the missing face-aware `SurfaceSolveContext`
 (global solves on a face's surface should use that face's trimmed surface cache).
 
+## topology.face_p1 fork trap merged with main: 2 MoveSeam-with-split mismatches (2026-10-23)
+
+Carrying the UB-137 fork trap (PR #467) onto main (face Notify #637, cone
+`TrimWithDomain` #670) makes two formerly guarded cases comparable, and they disagree.
+Both are `MoveSeam` with split on face 5, face properties closed in U and V with crossed
+and missing seams BOTH (`props {closed_u 1, closed_v 1, crossed 3, missing 3,
+near_miss 0}`, `center false`, `split true`, B-rep rebuilt):
+
+| case | field | C++ | Rust |
+|------|-------|-----|------|
+| `cone.smb_1_f5_op9` | `out[5]` new seam edges, `out[6]` seam vertices | 2, 1 | 0, 0 |
+| `torus.smb_1_f5_op9` | `out[4]` new faces, `out[5]` edges, `out[6]` vertices | 1, 3, 1 | 0, 0, 0 |
+
+Status and the U/V results agree (U `SM_FSP_NO_CHANGES`, V `SM_FSP_MOVE_OUT_OF_FACE`
+for the cone).
+
+**Cause (found by instrumenting the port).** After moving the seam, `MoveSeam` re-runs
+`HasSeamProblem` before splitting (`SmFace.cpp` `if(bOkToSplit && ...IsFullPeriod())`).
+The face_p1 runner calls `topology::face::p1::move_seam` with its null classification
+handle `H` (names loops only) and `NoGeometry`, so that call fails in
+`BrepSeamObjects::new` with `InvalidInput` ("classification handles cannot name the
+face's topology, curves or seam curves"). `move_seam` treats a failed check as upstream's
+`FALSE` (the status is ignored), so it never splits. Upstream finds a remaining seam
+problem and `SplitAtSeam`'s merges add the edges, vertices and (torus) a face.
+
+**Not a library defect as far as seen:** a handle type that names topology
+(`HealLoopHandle`) would run the check. The fix is a runner change (classifications
+and `MoveSeam`/`SplitAtSeam` over handles that name the B-rep's own entities), after
+which the split's `MergeInterval` imprinting (`intersect.curve_class_p6`, still
+`Unported`) would likely defer these cases instead. Until then both are listed in
+`crates/difftest/known_mismatches.toml`.
+## sweep.trans_sweep_geometry: op 8 makes its face with CreateFaceFromSurface (PR #692, 2026-10-23)
+
+The `FaceSweepSame` op (op 8) used to build its input face differently on each side: the
+shim calls `SmBrep::CreateFaceFromSurface(surface, natural domain)` on a `new SmBrep()`,
+while the Rust runner pushed a bare face record (no loop, no infinite region) and set its
+surface by hand. When `CreateFaceFromSurface` failed, the shim returned `SC_ERR_ARG` and
+the case was recorded as a rejected "native fixture constructor", so 11 cases never
+compared anything. All 11 failed with `SM_ERR` (1001) inside `MakeFaceWithCurves`: the
+B-spline extrusion of a 1e-9-scale or near-degenerate profile curve degenerates to a
+curve (`nanoscale_fixture_{0,1,2,4,5}_8`, `gen0147`, `gen0256`, `gen0337`, `gen0386`,
+`gen0405`, `gen0471`).
+
+Now the Rust runner makes the face with `topology::brep::p8::create_face_from_surface`
+on `topology::brep::p3::new_brep(k, USE_DEFAULT, USE_DEFAULT)` (the B-rep needs its
+infinite region, as `new SmBrep()` has), and the shim returns a failed
+`CreateFaceFromSurface` status as the case's output instead of rejecting. All 11 cases
+compare `[1001]` on both sides. No FFI guard was removed: `SC_ERR_ARG` is still
+returned when the profile curve constructor fails, when the profile is not a
+`SmBSplineCurve`, when `SmBSplineSurface::CreateLinearSweep` fails, and when
+`CreateFaceFromSurface` succeeds without a face.
+
+- **Still rejected (op 8):** `rejected_constructor_0_8` and `rejected_constructor_2_8`.
+  Their profile curve constructor fails (a 1e-15 line segment, a 1e-15 radius circle)
+  before any face exists, exactly like their op 5-7 siblings, so the sweep is never
+  reached. The unit keeps 8 rejected fixtures, all curve-constructor failures.
+- **New deferral:** `gen0411` (op 8, a circle profile of radius about 1.5e-6 extruded
+  into a closed B-spline surface) passed before, against the bare face record, and now
+  defers on `topology.face_p2` ("SmFace handle of a surface's face",
+  `surface/surface_cache/p1.rs` `SurfaceCache::face`). Natively `CreateFaceFromSurface`
+  succeeds. In Rust, `MakeFaceWithCurves` splits the closed face (`split_closed` ->
+  `find_and_set_infinite_region` -> `find_infinite_region`), which ray-fires the shell;
+  the line/surface solve on the now face-owned surface builds a trimmed surface cache
+  that needs the owning face's caller handle. That is the shell ray-fire gap that the
+  open face-geometry-for-shell-ray-queries work addresses. It is the unit's only
+  deferral, so the unit goes from green to partial.
+
+Before: 788 cases, 769 pass, 0 deferred, 19 rejected. After: 788 cases, 779 pass
+(the 11 re-covered cases included), 0 failed, 1 deferred (`gen0411`), 8 rejected,
+max_rel_err 0.
+
+## Small fixture rejections explained: fillet_geom_p3, merge_p4, offset_executive_p2 (PR #692, 2026-10-23)
+
+These rejections had no reason recorded in `plan/`. None is a wrong guard, so their
+behaviour is unchanged.
+
+- **blend.fillet_geom_p3 `regress_corner_edge_on_edge` (1 case).** The shim refuses
+  (`SC_ERR_ARG`) `CalcCornerEdgeGeom` on an edge whose type is computed by another
+  unit's calculator (`Model::other_unit_edge`: cross section, fillet x side face, on
+  edge, on extended edge, fillet end, setback rail, rail extension). This fixture is an
+  `SM_FE_ON_EDGE` edge on the shim's `network` model: `CalcEdgeOnEdge`
+  (`blend.fillet_geom_p6`) crashed natively on it in fuzzing, since the shim does not
+  build the solver data that calculator reads. The guard covers every other-unit edge
+  type, not only the crashing one; those calculators are tested in their own units.
+  The other five `regress_*` rejections are documented in `plan/upstream-issues.md`
+  (UB-211 `regress_on_vertex_unclassified`, UB-185 `regress_mate_cycle`, UB-208
+  `regress_recalc_no_dir_all_*`, UB-210 `regress_fif_no_curve_no_corner`).
+- **blend.fillet_geom_p3 `regress_recalc_analytic_default` (1 case).** `ReCalcFilletGeom`
+  with `analytic = TRUE` on a geometry that is not `SM_FG_TANGENT_ROLLOVER` runs
+  `CalcConeFilletGeom`/`CalcTorusFilletGeom` (`blend.fillet_solver_p2`), which read
+  solver data the shim's base `SmFilletSolver` does not build; it crashed natively. The
+  shim refuses every analytic recalculation except on a tangent rollover.
+- **boolean.merge_p4 `plane-domain-constructor-rejection`, `gen0008`, `gen0013` (3
+  cases).** An operand of kind 3 is a `SmPlane(point, normal)`, whose natural UV domain
+  is `±SM_INFINITE_PARAMETER` (1234567). The shim makes its face with
+  `CreateFaceFromSurface` on `[0, u] x [0, v]`; when `u` or `v` exceeds 1234567 (2e6 in
+  the fixture; `v` = 1889531 and 1242370 in the generated `other` operands at the 1e6
+  scale), upstream's domain-containment check returns `SM_ERR`. The shim then returns
+  `[-1]`. The Rust operands are imported from the native export, so there is no Rust
+  operand to merge and nothing to compare.
+- **offset.offset_executive_p2 `review_sheet_*` (9 cases).** The native plane-sheet
+  fixture (a unit square made with `CreateFaceFromSurface` on a B-rep whose tolerance
+  is 0.9 or 1000) is refused with `SM_ERR` by `representable_topology`: with a
+  tolerance that large compared with the edges, upstream merges or drops boundary
+  vertices and edges, so the result is not 1 face, 1 loop, 4 edges, 8 edge uses and 4
+  vertices. The Rust fixture builds that 4-edge sheet by hand and cannot represent the
+  collapsed topology, so the offset operation is never run on either side. The runner
+  test `incomplete_native_sheets_are_rejected_without_hiding_valid_controls` pins the
+  9 rejections and the 4 compared controls (tolerance 0.5, and 1000 on a 1e4-scale
+  sheet).
 ## blend.fillet_intersector `rv_next_clipped_step`: fixed, the wrong `PointOnPlaneSolve` override (2026-10-23, follows the open entry above)
 
 - **Root cause.** Not the offset-surface extension state. `SmFilletSolver::StepSolve`'s clipped
@@ -18108,3 +18243,81 @@ nesting once shell ray face preparation meets the forwarded face hooks".
   creation_p2 gen0201 and gen0214 pass. `skin_concentric_loops` still differs
   (record[7] cpp 1, rust 2: the annular cap comes
   out as two faces), so #694 keeps that known mismatch; `skin_primitive_annular` (sweep.api_surfaces) was not re-run after the last change.
+## #521 audit: values read after a failed call, per site, at `c9c5979` (2026-10-24)
+
+Issue #521 (filed from the fork) lists sites where SMLib reads a value a failed call never
+set. At `c9c5979` none of them reads uninitialised memory: `SmVector3d`/`SmPoint3d`/
+`SmPoint2d` default to `SM_UNDEF_DOUBLE` (`SmVector3d.h:56-58`), `SmExtent1d` to
+`[SM_BIG_DOUBLE, -SM_BIG_DOUBLE]`, and `AngleBetween` writes `0` before it can fail. What each
+site reads, and the port:
+
+- **`SmVertex::AreEdgesTangent` / `IsTopologicalVertex`:** the UNDEF tangent (or `IsLine`'s
+  line vector), angle `0`, answer `TRUE` (WR-256, correcting UB-106). The port returned
+  `InvalidInput` and the `topology.vertex` shim refused the input; both now follow upstream.
+  No harness input makes `GetEndTangent` fail (it builds line and B-spline edges only; WR-256
+  *Trigger*), so no case changes value: `topology.vertex` 5578/5578 with the 70 new
+  `end_tangents.json` cases. A composite-curve edge, whose evaluation always fails, is
+  covered by the unit test `failed_end_tangent_reads_the_default_vector`.
+- **`SmLoop::GetUVCornerBoundaries`:** the issue's "keeps the previous edgeuse's curve" does
+  not hold here: `GetOrCreateUVTrimCurve` sets its out-pointer to the cached curve
+  (`SmEdgeuse.cpp:4275`) before building, so a failed build leaves NULL and the drop-point
+  branch runs. A failed `EvaluatePoint`/`DropPoint` there leaves the previous edge use's UV end
+  (the points are declared outside the loop). `topology::loopuse::uv_corner_boundaries`
+  is faithful on both.
+- **`SmEdge::ReverseOrientation`:** a failed `ReverseParameterization` leaves the default
+  interval, and the edge uses are still flipped. Faithful (`topology::edge`, Deviations).
+- **`SmLoop::ContainsUVPoint`:** the four ignored evaluations (`SmLoop.cpp:546`, `743`, `815`,
+  `1011`) leave UNDEF points or, at `1011`, the previous step's derivatives; they fail only for
+  a failing surface evaluation, a NaN parameter or a degenerate knot span. The port returns the
+  error there (`query::loop`, Deviations); the other ignored calls (`DropPoint`,
+  `LocalPointSolve`, `smgu_LinePointDistance`, the zero-length-edge loop state) are faithful.
+- **Edge-use loop-gap / dog-leg checks:** `GetStartPointUVLoopGap` reads UNDEF points or the
+  drop guess after failed calls; `topology::edgeuse::p1` is faithful. `GetEndPointUVLoopGap`
+  and `HasDogLegNearPole` are unreachable (`harness/callgraph/unused_functions.txt`) and not
+  ported.
+- **`sm_CalcDistAndDev`:** a failed `Evaluate1stDerivatives` leaves UNDEF point and tangents
+  (`Vec3::UNDEF` in `calc_dist_and_dev`, faithful). Open: the port propagates an error from
+  `evaluate_normal` (`edgeuse/p1.rs`) where upstream ignores it; that differs only for a
+  zero-radius sphere (upstream's failed `Unitize` has stored `(0, 0, 1)`) or a `SrfInVolume`
+  whose evaluation fails.
+- **`SmFaceProps::SetProps_Stage3`:** no read of an unset value. A failed Stage 3 leaves
+  `m_ePropStage` at `3a`, so a later call returns success with the reset values; the port
+  copies that.
+## topology.face_p1 UB-137 crash-trap cases are rejected, not deferred
+
+Follows the fork crash trap of PRs #467/#696 (entry "UB-137 crash guard replaced by a fork
+trap" above). Difftest must not decide deferrals from C++ output, so that entry's runner
+semantics are reverted:
+
+- **face_p1.** A seam call whose forked child crashed (`-4`: signal, alarm or no whole
+  record), or that the shim skipped because it could not fork (`-3`), is an input
+  undefined in C++ (`plan/upstream-issues.md` UB-137; AGENTS.md section 4, step 5.6). The
+  runner's `run_cpp` now returns `Output::rejected` with a reason naming UB-137 and the
+  trap, the same mechanism other units' FFI guards use: the harness skips the Rust side
+  and compares nothing. Seam calls the trap runs to completion compare as before.
+- **Runner.** `crates/difftest/src/runner.rs` no longer lets a C++-side deferral win: a
+  `deferred` output from `run_cpp` is a harness error (fails the case). The runner test
+  `cpp_side_deferral_is_a_harness_error_and_crash_traps_reject` covers both. No other
+  unit's `run_cpp` returned a deferral (every other `Output::deferred` is on a Rust path).
+- **Result** (Linux): 2315 cases, 2276 pass, 0 failed, 0 deferred, 37 rejected (the 36
+  `guard_vase_rev_*` review reproducers and `vase_rev.smb_1_f5_op9`), 2 known mismatches
+  (`cone.smb_1_f5_op9`, `torus.smb_1_f5_op9`); was 37 deferred to
+  `cpp-crash-guard:UB-137`. The unit stays partial because of the known mismatches.
+## topology.face_p2: `sm_FixUVTrimCurves` no longer stretches the UV trims (issue #570, 2026-10-24)
+
+- **Change.** `fix_uv_trim_curves` follows tangency-labs/smlib@5af7070: the vertex's UV
+  point is no longer dropped onto the two trims, which are no longer `Trim`med there and
+  `EditParameterization`ed back over their intervals. Only their end control points move,
+  by the UV gap. Upstream's stretch slides every interior parameter of a trim off its
+  edge's (`plan/upstream-issues.md` WR-255). Documented deviation in the module header.
+- **Difftest.** Unchanged: no case reaches the removed branch. The `FixUv` cases of
+  `topology.face_p2` call the function on the fixture B-reps' own trims, whose ends lie on
+  their vertices' UV points, with a nominal `uv_dist_between`. The drop point is then the
+  trim's end, so upstream's `Trim` is skipped (`SM_ARE_SAME(dTCurr, dTCurrNew)`), and the
+  callers (`CreateUVTrimCurves` in `topology.face_p3`, `CheckAndFixUVTrimCurves` in
+  `topology.brep_p2` / `p7`) see the same. topology.face_p2 2692/2596/0/96, face_p3
+  1781/1604/0/177, brep_p2 1709/1673/0/36, brep_p7 348/289/0/59 (cases/passed/failed/
+  deferred), as on main. A case with a corner gap along the trim would show the
+  deviation; the runner has no op that moves a trim's end, so the only coverage is the
+  unit test `fix_uv_trim_curves_keeps_interior_parameters`, which fails on the upstream
+  code path (interior knots 3.3333 -> 3.3324 for a 1e-3 overshoot) and passes here.
