@@ -81,45 +81,45 @@ use crate::surface::surface::Surface;
 
 /// Actual retained objects used by the native fillet-edge mapping algorithm.
 pub trait EdgeMapAccess<O: ClassObject + SolutionObject + Ord> {
-    /// Resolve the actual `edges` input in its native traversal order.
+    /// Body edges in native order.
     /// # Errors
-    /// Missing actual object or invalid lifecycle context.
+    /// Invalid or missing object.
     fn mapping_edges(&self, body: O) -> Result<Vec<O>>;
-    /// Resolve the actual `solver_geoms` input in its native traversal order.
+    /// Geometry retained by this solver, in native order.
     /// # Errors
-    /// Missing actual object or invalid lifecycle context.
+    /// Invalid or missing object.
     fn mapping_solver_geoms(&self, solver: O) -> Result<Vec<O>>;
-    /// Resolve the actual `geom_rails` input in its native traversal order.
+    /// Primary and additional rails in native order.
     /// # Errors
-    /// Missing actual object or invalid lifecycle context.
+    /// Invalid or missing object.
     fn mapping_geom_rails(&self, geom: O) -> Result<Vec<Option<O>>>;
-    /// Resolve the actual `geom_side_edgeuses` input in its native traversal order.
+    /// Side edge uses in native order.
     /// # Errors
-    /// Missing actual object or invalid lifecycle context.
+    /// Invalid or missing object.
     fn mapping_side_edgeuses(&self, geom: O) -> Result<Vec<O>>;
-    /// Resolve the actual `edgeuse_edge` input in its native traversal order.
+    /// The edge owning this edge use.
     /// # Errors
-    /// Missing actual object or invalid lifecycle context.
+    /// Invalid or missing object.
     fn mapping_edgeuse_edge(&self, edgeuse: O) -> Result<Option<O>>;
-    /// Resolve the actual `fillet_edge_original_face` input in its native traversal order.
+    /// The source face of a fillet edge.
     /// # Errors
-    /// Missing actual object or invalid lifecycle context.
+    /// Invalid or missing object.
     fn mapping_original_face(&self, edge: O) -> Result<Option<O>>;
-    /// Resolve the actual `fillet_edge_original_edge` input in its native traversal order.
+    /// The source edge of a fillet edge.
     /// # Errors
-    /// Missing actual object or invalid lifecycle context.
+    /// Invalid or missing object.
     fn mapping_original_edge(&self, edge: O) -> Result<Option<O>>;
-    /// Resolve the actual `corner_edges` input in its native traversal order.
+    /// Corner edges in native order.
     /// # Errors
-    /// Missing actual object or invalid lifecycle context.
+    /// Invalid or missing object.
     fn mapping_corner_edges(&self, corner: O) -> Result<Vec<Option<O>>>;
-    /// Resolve the actual `corner_setback_distance` input in its native traversal order.
+    /// The corner setback distance.
     /// # Errors
-    /// Missing actual object or invalid lifecycle context.
+    /// Invalid or missing object.
     fn mapping_setback(&self, corner: O) -> Result<f64>;
-    /// Resolve the actual `fillet_edge_note` input in its native traversal order.
+    /// The edge name, type and status used in error reports.
     /// # Errors
-    /// Missing actual object or invalid lifecycle context.
+    /// Invalid or missing object.
     fn mapping_note(&self, edge: O) -> Result<(Option<&'static str>, FilletEdgeType, FilStatus)>;
     /// Map the actual pseudo edge to the actual intermediate candidate edges.
     /// # Errors
