@@ -465,7 +465,8 @@ fn actual_box_rollover_keeps_scoped_attached_rail_classifications() {
     session.calculate_corner_edges(&mut k).unwrap();
     session.trim_solver_rails(&mut k).unwrap();
     assert!(session.executive().options.classification);
-    session.classify_solver_rails(&mut k).unwrap();
+    let adjusted = session.classify_solver_rails_with_adjusted(&mut k).unwrap();
+    assert!(adjusted.is_empty());
     let rails: Vec<_> = session
         .pseudo_brep()
         .geoms()
