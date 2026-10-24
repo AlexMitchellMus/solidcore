@@ -19095,3 +19095,20 @@ unassigned helper, not a claim of prior callgraph ownership. Keep this continuat
 visible and both corner units partial. No fake radius, solver table or extended
 surface is supplied. The native pseudo owning-vertex list differs from corner-owned
 fillet vertices; compare the two traversals separately.
+
+## Fillet session: retained solver reaches geometry-owned offset-surface boundary
+
+The actual constant-radius box-edge setup (`10 x 20 x 30`, first owning edge,
+radius `0.5`, circular/G1) now reaches `CalcCornerVertGeom` through the production
+session, after ordered parameter setup, corner creation and first ordinary Nx1
+topology. The retained concrete solver runs through the live rail provider; it
+returns `Unported("SmFilletGeom::GetOffsetSurface", "blend.fillet_geom_p1")` when
+native-order `m_pFGForSurfaces` selects the real geometry. `FilletSolver::surface`
+and `surface_mut` do not yet resolve that geometry-owned slot.
+
+The normal native full-API box fixture succeeds; a separate direct vertex-stage
+comparison is being added. This is a missing live-object context boundary, not
+successful end-to-end execution. Resolution must preserve actual geometry-owned
+offset surfaces, solver fallback and write-through semantics (`SmFilletSolver.cpp`
+130–162; `SmFilletGeom.cpp` 9672–9680). Clearing the selected geometry, copying a
+solver base, or swapping unrelated surface state would conceal the missing path.
