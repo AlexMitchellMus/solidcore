@@ -60,6 +60,7 @@ use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::p2::{DropCurveFail, B_SPLINE_SURFACE_TYPE};
 use solidcore::surface::surface::Surface;
 use solidcore::topology::edge as ed;
+use solidcore::topology::database_io::{DatabaseReader, FileType, InputStream};
 use solidcore::topology::{
     Brep, Edge, EdgeId, Edgeuse, EdgeuseId, EdgeuseOwner, Face, FaceId, Faceuse, FaceuseId,
     Loop, LoopId, Loopuse, LoopuseId, LoopuseStart, ObjectHandle, Region, RegionId, Shell,
@@ -431,7 +432,6 @@ fn read_curve(rd: &mut Rd<'_>, uv: bool) -> Result<(Option<SmCurve>, bool), Harn
     for _ in 0..n {
         bytes.push(integer(rd, 255.0)? as u8);
     }
-    use solidcore::topology::database_io::{DatabaseReader, FileType, InputStream};
     let mut db = DatabaseReader::with_stream(FileType::Binary, InputStream::new(bytes));
     db.set_version(version);
     let mut exact = SmCurve::read_from_db(&Kernel::default(), ty, &mut db, dim, version)
