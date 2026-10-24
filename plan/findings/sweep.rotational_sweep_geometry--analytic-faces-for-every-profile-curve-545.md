@@ -34,5 +34,14 @@ follows the issue's description). Upstream `WR-268` (`plan/upstream-issues/WR-26
   defer there, as their `SurfOfRevolution` faces did. Partial turns of a closed
   profile defer as before (`topology.face_p4` or `surface.trim_srf_cache`), so no
   partial solid is certified end to end yet.
+- **Recognition is tight.** The first CI run failed `sweep.api_surfaces` `gen0102`: a
+  0.1 mm interpolated wave (scale 1e-5) revolved 180 degrees lay within the B-rep
+  tolerance (1e-6) of an arc, so it became a torus 2.2e-7 off the C++'s B-spline
+  (`revolution_points[0]`: cpp 0, rust 2.2e-7). The line/arc recognition and layout
+  tests now use at most `1e-9 * (1 + size)` (`FIT_REL`), so only curves that are lines
+  or arcs to rounding qualify (test `a_curve_only_near_an_arc_keeps_the_upstream_surface`).
+  A real line or arc revolved through `SmApiCreateSurfaceRevolution` would still differ
+  from the C++ inside the domain (the analytic surface is parameterised by angle, the
+  B-spline rationally); no `api_surfaces` case revolves one.
 - A torus tube range always starts in [0, 360): issue #386 reports a range starting
   below 0 is refused or built wrong.

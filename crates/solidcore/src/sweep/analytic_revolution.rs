@@ -39,6 +39,12 @@ use crate::surface::torus::{Torus, TorusOptions};
 /// Curve samples tested for lying in the half-plane through the axis.
 const PLANE_SAMPLES: u32 = 8;
 
+/// The largest distance, relative to the size of the geometry, by which the analytic
+/// surface may miss the B-spline one. The surface replaces the B-spline, so the curve
+/// must be a line or arc to rounding, not only within the caller's (B-rep) tolerance:
+/// a short wavy curve lies within a B-rep tolerance of 1e-6 of some arc.
+const FIT_REL: f64 = 1.0e-9;
+
 /// The analytic surface swept by revolving `curve` (over its natural interval) by
 /// `angle_deg` degrees about the axis through `base_pt` along `axis`: a cylinder for a
 /// line parallel to the axis, a cone for another line that is not perpendicular to
@@ -47,7 +53,9 @@ const PLANE_SAMPLES: u32 = 8;
 /// the B-spline surface of revolution (see the module header): when `reference` is
 /// given (that B-spline), the result must reproduce its corners, its tangent along the
 /// curve at the start and its sense of turn, else the layout the curve itself gives.
-/// `tol` is the distance tolerance of those tests and of the shape recognition.
+/// `tol` is the distance tolerance of those tests and of the shape recognition, capped
+/// at `FIT_REL` times the size of the curve and axis point (`1 +` their largest
+/// coordinate), so that only a curve that is a line or arc to rounding qualifies.
 ///
 /// `None` for any other curve (a line perpendicular to the axis sweeps a plane), a
 /// curve not in one half-plane through the axis, or a surface that does not pass.
@@ -73,6 +81,15 @@ pub fn analytic_revolution(
     if !usable {
         return Ok(None);
     }
+    let Some(ends) = ignored(curve.ends(k))? else {
+        return Ok(None);
+    };
+    let size = ends
+        .start
+        .max_dimension()
+        .max(ends.end.max_dimension())
+        .max(base_pt.max_dimension());
+    let tol = tol.min(FIT_REL * (1.0 + size));
     let Some(Some(candidate)) = ignored(candidate(k, curve, base_pt, axis, angle_deg, tol))? else {
         return Ok(None);
     };
@@ -611,6 +628,63 @@ mod tests {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn a_curve_only_near_an_arc_keeps_the_upstream_surface() {
+        // sweep.api_surfaces gen0102: a 0.1 mm wave lies within a 1e-6 tolerance of an
+        // arc, but its B-spline surface is not that torus (2.2e-7 off at a corner)
+        let k = Kernel::default();
+        let ys = [
+            4.6447970745125225e-5,
+            4.436047980382209e-5,
+            3.1159569933491e-5,
+            2.843411450601963e-5,
+            1.5526105242107882e-5,
+            2.5365927447340398e-5,
+        ];
+        let points: Vec<_> = ys
+            .iter()
+            .enumerate()
+            .map(|(i, &y)| Vec3::new(2e-5 * i as f64, y, 0.0))
+            .collect();
+        let wave = Curve::from(crate::primitive::api_curves::create_curve(&points).unwrap());
+        for tol in [1e-6, 1e-9] {
+            let r = analytic_revolution(&k, &wave, Vec3::ZERO, Vec3::X, 180.03, tol, None);
+            assert!(r.unwrap().is_none(), "{tol}");
+        }
+        // true lines and arcs still qualify at any scale
+        for s in [1e-5, 1.0, 1e5] {
+            let cases = [
+                (
+                    line(Vec3::new(2.0, 0.0, 0.0) * s, Vec3::new(1.0, 0.0, 3.0) * s),
+                    "cone",
+                ),
+                (
+                    arc(
+                        Vec3::new(5.0, 0.0, 0.0) * s,
+                        -Vec3::Z,
+                        Vec3::X,
+                        1.5 * s,
+                        0.0,
+                        360.0,
+                    ),
+                    "torus",
+                ),
+                (
+                    arc(Vec3::ZERO, Vec3::X, Vec3::Z, 2.0 * s, 0.0, 90.0),
+                    "sphere",
+                ),
+            ];
+            for (c, expected) in cases {
+                let reference = bspline_rev(&k, &c, 90.0);
+                let r =
+                    analytic_revolution(&k, &c, Vec3::ZERO, Vec3::Z, 90.0, 1e-6, Some(&reference))
+                        .unwrap()
+                        .unwrap_or_else(|| panic!("{expected} at {s}"));
+                assert_eq!(kind(&r), expected, "{s}");
             }
         }
     }
