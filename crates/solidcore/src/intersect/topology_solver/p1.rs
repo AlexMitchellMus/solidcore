@@ -100,7 +100,9 @@ use crate::geom::vector3d::sqrt;
 use crate::intersect::point_class::PointClassification;
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI};
-use crate::query::face::p2::{point_classify_prepared, PointClassifyOptions};
+use crate::query::face::p2::{
+    point_classify_prepared, point_classify_requested, PointClassifyOptions,
+};
 use crate::surface::surface::p2::{surface_cache, Surface, SurfaceKind};
 use crate::surface::surface_cache::p1::{AltCacheKey, AltSrfCacheType};
 use crate::surface::trim_srf_cache::POINT_CLASS_UNKNOWN;
@@ -128,6 +130,45 @@ const fn null_deref(operation: &'static str, reason: &'static str) -> SolidError
 /// call (upstream reaches these through casts of `SmObject*` and the
 /// `SmVertex`/`SmEdge`/`SmFace`/`SmSurface` members).
 pub trait TopologyObjects<O> {
+    /// Optional owning-face cache service for surface solves.
+    fn surface_solve_context(
+        &self,
+    ) -> Option<Box<dyn crate::surface::surface::p1::SurfaceSolveContext<O> + '_>>
+    where
+        O: Copy + PartialEq,
+    {
+        None
+    }
+
+    /// An optional live topology classifier for callers that can prepare trims in place.
+    fn classify_face_point(
+        &self,
+        _k: &Kernel,
+        _face: O,
+        _uv: crate::math::Point2,
+        _tolerance: f64,
+        _boundaries: bool,
+        _use_uv: bool,
+    ) -> Option<Result<i32>> {
+        None
+    }
+
+    /// Optional live `Point3DClassify` test, including the native tolerance retry.
+    fn classifies_on_face(
+        &self,
+        _k: &Kernel,
+        _face: O,
+        _point: Point3,
+        _tolerance: f64,
+    ) -> Option<Result<bool>> {
+        None
+    }
+
+    /// Optional operation-local request for a UV trim needed by classification.
+    fn uv_trim_preparation(&self) -> Option<&crate::query::brep::RayPreparation> {
+        None
+    }
+
     /// The cache associated with a B-rep handle. Adapters that expose B-reps
     /// provide this, or override `brep_trees` with their own tree storage.
     fn brep_cache(&self, _brep: O) -> Result<&crate::topology::brep_cache::BrepCache<O>> {
@@ -1497,16 +1538,34 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             let face_tol = objects.face_tolerance(face)?;
             // pFace->GetSurface()->GlobalLineIntersect(uv_domain, point, line_vec, NULL,
             // ray_fire, tol, solutions) (SER)
-            let solutions = objects.surface(face_surface)?.global_line_intersect(
-                ts.kernel,
-                face_surface,
-                &uv_domain,
-                self.point,
-                line_vec,
-                None,
-                ray_fire,
-                tol + face_tol,
-            )?;
+            let mut context = objects.surface_solve_context();
+            let solutions = if let Some(context) = context.as_deref_mut() {
+                objects
+                    .surface(face_surface)?
+                    .global_line_intersect_with_context(
+                        ts.kernel,
+                        Some(face_surface),
+                        None,
+                        context,
+                        &uv_domain,
+                        self.point,
+                        line_vec,
+                        None,
+                        ray_fire,
+                        tol + face_tol,
+                    )?
+            } else {
+                objects.surface(face_surface)?.global_line_intersect(
+                    ts.kernel,
+                    face_surface,
+                    &uv_domain,
+                    self.point,
+                    line_vec,
+                    None,
+                    ray_fire,
+                    tol + face_tol,
+                )?
+            };
 
             for found in solutions.as_slice() {
                 let mut sol = *found;
@@ -1585,10 +1644,14 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
             let face_surface = objects.face_surface(face)?;
             let uv_domain = objects.face_uv_domain(face)?;
             let face_tol = objects.face_tolerance(face)?;
+            // (SER) the surface reaches its face's cache through the caller's
+            // context (`smsurf_GetSurfaceCache`), when it provides one
+            let mut context = objects.surface_solve_context();
             let solutions = surface_global_point_solve(
                 ts.kernel,
                 face_surface,
                 objects.surface(face_surface)?,
+                context.as_deref_mut(),
                 &uv_domain,
                 op,
                 self.point,
@@ -1914,27 +1977,48 @@ pub(super) fn face_silhouettes<O: Copy + PartialEq>(
 }
 
 /// `pFace->GetSurface()->GlobalPointSolve(uv_domain, op, point, tol,
-/// pdBestAnswer, SM_SR_ALL, solutions)`.
+/// pdBestAnswer, SM_SR_ALL, solutions)`. `context` is the caller's owning-face
+/// service: the fast drop's trim test reaches the face's cache and classifies
+/// through it.
+#[allow(clippy::too_many_arguments)]
 fn surface_global_point_solve<O: SolutionObject>(
     kernel: &Kernel,
     handle: O,
     surface: &Surface,
+    context: Option<&mut (dyn crate::surface::surface::p1::SurfaceSolveContext<O> + '_)>,
     uv_domain: &Extent2d,
     op: SolverOperation,
     point: Point3,
     tol: f64,
     best_answer: Option<f64>,
 ) -> Result<SolutionArray<O>> {
-    surface.global_point_solve::<O>(
+    let Some(context) = context else {
+        return surface.global_point_solve::<O>(
+            kernel,
+            Some(handle),
+            uv_domain,
+            op,
+            point,
+            tol,
+            best_answer,
+            SolutionRequested::All,
+        );
+    };
+    let mut solutions = SolutionArray::new();
+    surface.global_point_solve_into_with_context(
         kernel,
         Some(handle),
+        None,
+        context,
         uv_domain,
         op,
         point,
         tol,
         best_answer,
         SolutionRequested::All,
-    )
+        &mut solutions,
+    )?;
+    Ok(solutions)
 }
 
 /// The arguments of `SmCurve::GlobalCurveSolve` after the two curves and their
@@ -2022,10 +2106,11 @@ pub(super) fn curve_zone_tol_3d<O>(
 ///
 /// The solver only reads its objects, so this is the read-only
 /// [`point_classify_prepared`]: a classification that would have to create a UV trim
-/// curve or build a trim-cache tree first is [`SolidError::Unported`]. No trimmed
+/// curve or build a trim-cache tree first is [`SolidError::Unported`]. An object view
+/// may also record the visited edge use for its mutable caller to prepare. No trimmed
 /// surface cache is passed (the solver's objects expose none), so upstream's cache
 /// fast path is skipped and the loops classify the point.
-pub(super) fn face_point_classify<O>(
+pub(super) fn face_point_classify<O: Copy>(
     k: &Kernel,
     objects: &dyn TopologyObjects<O>,
     face: O,
@@ -2034,6 +2119,11 @@ pub(super) fn face_point_classify<O>(
     do_boundaries: bool,
     use_uv: bool,
 ) -> Result<i32> {
+    if let Some(result) =
+        objects.classify_face_point(k, face, uv, src_zone_tol, do_boundaries, use_uv)
+    {
+        return result;
+    }
     let Some((b, f)) = objects.face_entity(face) else {
         // DISPATCH GAP: SmFace::PointClassify is ported (`query::face::p2`, query.face_p2
         // partial; no UNPORTED marker), but this adapter cannot resolve the face handle
@@ -2044,20 +2134,22 @@ pub(super) fn face_point_classify<O>(
         ));
     };
     let mut pc = PointClassification::new(src_zone_tol);
-    match point_classify_prepared(
-        k,
-        b,
-        f,
-        uv,
-        &mut pc,
-        PointClassifyOptions {
-            src_zone_tol_3d: src_zone_tol,
-            do_boundary_intersections: do_boundaries,
-            use_uv_classification: use_uv,
-            ..PointClassifyOptions::default()
-        },
-    ) {
-        Err(e @ (SolidError::Unported { .. } | SolidError::InvalidInput { .. })) => Err(e),
+    let options = PointClassifyOptions {
+        src_zone_tol_3d: src_zone_tol,
+        do_boundary_intersections: do_boundaries,
+        use_uv_classification: use_uv,
+        ..PointClassifyOptions::default()
+    };
+    let result = match objects.uv_trim_preparation() {
+        Some(preparation) => point_classify_requested(k, b, f, uv, &mut pc, options, preparation),
+        None => point_classify_prepared(k, b, f, uv, &mut pc, options),
+    };
+    match result {
+        Err(
+            e @ (SolidError::Unported { .. }
+            | SolidError::InvalidInput { .. }
+            | SolidError::PreparationRequired { .. }),
+        ) => Err(e),
         // (status ignored, as upstream)
         Ok(()) | Err(_) => Ok(pc.point_class().code()),
     }
@@ -2073,7 +2165,7 @@ pub(super) fn face_point_classify<O>(
 /// objects shared; upstream's `const` member may add UV trim curves and a trimmed
 /// surface cache to the B-rep, which the copy does not keep). Both tries classify on
 /// the same copy, as upstream's on the same face.
-fn face_classifies_on_face<O>(
+fn face_classifies_on_face<O: Copy>(
     k: &Kernel,
     objects: &dyn TopologyObjects<O>,
     face: O,
@@ -2083,6 +2175,9 @@ fn face_classifies_on_face<O>(
     use crate::error::EntityRef;
     use crate::intersect::point_class::PointClassType;
     use crate::query::face::p1::{point_3d_classify, Point3dClassifyOptions};
+    if let Some(result) = objects.classifies_on_face(k, face, point, tol) {
+        return result;
+    }
     let Some((b, f)) = objects.face_entity(face) else {
         // DISPATCH GAP: this adapter cannot resolve the face handle to its `Brep` and
         // `FaceId` (`TopologyObjects::face_entity`).
@@ -2429,6 +2524,7 @@ pub(crate) mod tests {
         let mut b = Brep::new();
         let f = crate::query::face::p2::tests::square(&mut b);
         let objects = BrepObjects {
+            preparation: None,
             brep: &b,
             brep_id: BrepId::from_index(0),
             cache: None,
@@ -2458,6 +2554,7 @@ pub(crate) mod tests {
                 .uv_trim_curve = None;
         }
         let objects = BrepObjects {
+            preparation: None,
             brep: &b,
             ..objects
         };

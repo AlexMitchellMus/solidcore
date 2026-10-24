@@ -3,7 +3,7 @@
 //! are constructed in C++ and imported as raw arena records before either helper
 //! runs, following the topology units. Deferred paths still run the native helper.
 use super::topology_edgeuse_p1::{self as spec, BrepIn};
-use super::topology_vertexuse::import;
+use super::topology_vertexuse::{import, import_raw};
 use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -923,16 +923,17 @@ fn run_rust(i: &Inputs, b: &mut Brep, other: &Brep) -> Result<Vec<f64>, SolidErr
         7 => {
             let mut other = other.clone();
             // The native probe constructs and immediately destroys its shift.
-            let transform = |_: &mut Brep, _: bool, _: &_, _: Option<_>, _: bool| {
-                // UNPORTED(topology.brep_p5): SmBrep::Transform
-                Err(SolidError::unported(
-                    "SmBrep::Transform",
-                    "topology.brep_p5",
-                ))
-            };
-            port::temporary_brep_transform(&k, &k, b, &other)?
-                .apply(b, &mut other, transform)?
-                .restore(Some(b), Some(&mut other), transform)?;
+            let shift = port::temporary_brep_transform(&k, &k, b, &other)?;
+            // SmBrep::Transform, both operands in the one kernel
+            let mut transform =
+                |brep: &mut Brep, _: bool, xfm: &_, scale: Option<_>, scale_tol: bool| {
+                    solidcore::topology::brep::p5::transform(&mut k, brep, xfm, scale, scale_tol)
+                };
+            shift.apply(b, &mut other, &mut transform)?.restore(
+                Some(b),
+                Some(&mut other),
+                &mut transform,
+            )?;
         }
         8 | 9 => {
             let sec = EdgeuseId::from_index(u32::from(a) % b.edgeuses().len() as u32);
@@ -1008,7 +1009,7 @@ impl UnitDiff for Runner {
             .checked_add(2)
             .ok_or_else(|| harness("record count overflow"))?;
         let raw = v.get(end..).ok_or_else(|| harness("short graph"))?;
-        let (b, _) = import(raw)?;
+        let (b, _) = import_raw(raw)?;
         let record = v.get(2..end).ok_or_else(|| harness("short record"))?;
         Ok(graph(&b, record.to_vec()))
     }
