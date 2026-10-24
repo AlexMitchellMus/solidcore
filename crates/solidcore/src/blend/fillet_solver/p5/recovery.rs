@@ -23,6 +23,7 @@ use super::{
     FilletCornerId, FilletCornerType, FilletGeomId, FilletGeomType, FilletSolver, Kernel,
     PointClassType, Result, RolloverOwnership, SolidError, SurfOfRevolution, OP,
 };
+use crate::blend::fillet_classification::FilletClassObject;
 use crate::blend::fillet_custom_solver::{OffsetSurface, SurfaceId};
 use crate::blend::fillet_geom::p1::{
     CliffHandle, CornerLookup, FilStatus, FilletEdgeType, FilletVertex, FilletVertexType,
@@ -62,7 +63,7 @@ pub(super) struct SideHit {
 }
 
 pub(super) struct SideSearch<'a> {
-    pub classification: &'a CurveClassification<EntityRef>,
+    pub classification: &'a CurveClassification<FilletClassObject>,
     pub index: &'a mut usize,
     pub rail: EdgeId,
     pub original_curve: &'a Curve,
@@ -114,8 +115,8 @@ pub(super) trait RecoveryOps {
             rollover_corner_v: *corner_vertex,
             ..Default::default()
         };
-        let edge_of = |o: EntityRef| match o {
-            EntityRef::Edge(e) => Some(e),
+        let edge_of = |o: FilletClassObject| match o.target_entity().ok() {
+            Some(EntityRef::Edge(e)) => Some(e),
             _ => None,
         };
         let r = crate::blend::fillet_solver::p2::find_rollover_side_edge(

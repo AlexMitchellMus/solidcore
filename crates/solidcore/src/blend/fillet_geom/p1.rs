@@ -186,6 +186,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::blend::fillet_classification::FilletClassObject;
 use crate::blend::fillet_corner::p3::{FilletCorner, FilletExecutiveData};
 use crate::blend::fillet_custom_solver::{ConstantRadiusAssistedFs, OffsetSurface};
 use crate::blend::fillet_solver::p1::FilletSolver;
@@ -963,7 +964,7 @@ pub struct FilletEdge {
     /// edge.
     pub split_faces: Vec<FaceId>,
     /// `m_pCurveClass`: the classification of the rail.
-    pub curve_class: Option<CurveClassification<EntityRef>>,
+    pub curve_class: Option<CurveClassification<FilletClassObject>>,
     /// `m_cpCorner`: the fillet corner that made this edge.
     pub corner: Option<FilletCornerId>,
     /// `m_eStatus`.
@@ -996,7 +997,7 @@ impl FilletEdge {
 
     /// `GetCurveClass`.
     #[must_use]
-    pub const fn curve_class(&self) -> Option<&CurveClassification<EntityRef>> {
+    pub const fn curve_class(&self) -> Option<&CurveClassification<FilletClassObject>> {
         self.curve_class.as_ref()
     }
 
@@ -1075,8 +1076,23 @@ impl FilletEdge {
     }
 
     /// `SetCurveClass`.
-    pub fn set_curve_class(&mut self, curve_class: Option<CurveClassification<EntityRef>>) {
+    pub fn set_curve_class(&mut self, curve_class: Option<CurveClassification<FilletClassObject>>) {
         self.curve_class = curve_class;
+    }
+
+    /// Install an indexed classification with its explicit legacy namespace.
+    ///
+    /// # Errors
+    /// Handle-conversion errors; no existing record is replaced on failure.
+    pub fn set_indexed_curve_class(
+        &mut self,
+        class: Option<CurveClassification<EntityRef>>,
+    ) -> Result<()> {
+        self.curve_class = class
+            .as_ref()
+            .map(|class| class.map_objects(&mut |o| Ok(FilletClassObject::Legacy(o))))
+            .transpose()?;
+        Ok(())
     }
 
     /// `SetFilletEdgeType`.
@@ -1595,6 +1611,27 @@ impl FilletBrep {
             operation: OP_EDGE,
             entity: EntityRef::Edge(e),
         })
+    }
+
+    /// Lend actual pseudo topology and its attached rail classification separately.
+    ///
+    /// # Errors
+    /// Missing rail/classification, or the callback's error with partial writes retained.
+    pub fn with_rail_classification<T>(
+        &mut self,
+        rail: EdgeId,
+        call: impl FnOnce(&Brep, &mut CurveClassification<FilletClassObject>) -> Result<T>,
+    ) -> Result<T> {
+        let record = self.edges.get_mut(&rail).ok_or_else(|| {
+            SolidError::invalid_input(
+                "blend::fillet_geom::with_rail_classification",
+                "fillet edge is not live",
+            )
+        })?;
+        let class = record.curve_class.as_mut().ok_or_else(|| {
+            SolidError::null_pointer("blend::fillet_geom::with_rail_classification")
+        })?;
+        call(&self.brep, class)
     }
 
     /// The fillet members of edge use `eu`.

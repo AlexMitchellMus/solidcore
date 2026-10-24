@@ -53,14 +53,7 @@ fn invalid(reason: &'static str) -> SolidError {
     SolidError::invalid_input(OP, reason)
 }
 
-/// Which actual body owns a session topology reference.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum FilletBody {
-    /// The caller's borrowed target B-rep.
-    Target,
-    /// The executive's owned `SmFilletBrep`.
-    Pseudo,
-}
+pub use crate::blend::fillet_classification::FilletBody;
 
 /// A reference to an actual object in a single executive's object store.
 ///
