@@ -21,7 +21,7 @@
 //! entity count.
 //!
 //! **Trimmed surface caches.** Reading a file can leave a trimmed surface cache on a face
-//! surface. Existing fixtures clear it. PointClassify additionally accepts `cache_mode`
+//! surface. Existing fixtures clear it. `PointClassify` additionally accepts `cache_mode`
 //! (`absent`, `valid`, `modified`) and `repeats` (default 1). Explicit cached/repeated
 //! cases build real face-owned caches and compare their state before/after every
 //! query, including the classification, without rebuilding between queries.
@@ -1235,5 +1235,64 @@ impl UnitDiff for Runner {
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
         serde_json::to_value(gen_case(rng)).ok()
+    }
+}
+
+#[cfg(test)]
+mod trim_cache_tests {
+    use super::*;
+
+    #[test]
+    fn trim_cache_fixtures_compare_values_and_repeated_state() {
+        let file = crate::case::repo_root().join("fixtures/query.face_p2/trim_cache.json");
+        let fixtures: Value =
+            serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+        for case in fixtures["cases"].as_array().unwrap() {
+            let input: Inputs = serde_json::from_value(case["inputs"].clone()).unwrap();
+            let native = cpp(&Kernel::default(), &input).unwrap();
+            let actual = rust(&input).unwrap();
+            assert!(native.error.is_none(), "{}: {:?}", case["name"], native);
+            assert!(actual.error.is_none(), "{}: {:?}", case["name"], actual);
+            assert!(
+                crate::compare::compare(&native, &actual, &[]).pass(),
+                "{}: native={native:?} actual={actual:?}",
+                case["name"]
+            );
+            let trace = actual.values.get("cached_pc").unwrap();
+            assert_eq!(trace.len(), 44, "{}", case["name"]);
+            assert_eq!(trace[5], 0.0, "first query status: {}", case["name"]);
+            assert_eq!(trace[27], 0.0, "second query status: {}", case["name"]);
+        }
+    }
+
+    #[test]
+    fn valid_trim_cache_fast_path_is_observed() {
+        let mut input: Inputs = serde_json::from_value(serde_json::json!({
+            "brep": {"kind": "face", "surface": {"plane": {"o": [2,-3,5], "n": [0,0,1]}}, "dom": [-5,-3,5,3]},
+            "edits": [{"kind": 3, "sel": 0, "value": 0}],
+            "op": "point_classify", "face": 0,
+            "at": {"mode": "frac", "a": 0.37, "b": 0.41},
+            "cache_mode": "valid", "repeats": 2, "pc_tol": 0.0002
+        })).unwrap();
+        let native = cpp(&Kernel::default(), &input).unwrap();
+        let actual = rust(&input).unwrap();
+        assert!(crate::compare::compare(&native, &actual, &[]).pass());
+        let trace = &actual.values["cached_pc"];
+        assert_eq!(&trace[..5], &[1., 1., 1., 0., 1.]);
+        assert_eq!(&trace[17..22], &trace[..5]);
+        assert_eq!(&trace[22..27], &trace[..5]);
+        assert_eq!(trace[7], 102.0);
+        assert_eq!(
+            trace[11], 0.0002,
+            "fast path retains the classification source tolerance"
+        );
+        if let OpIn::PointClassify { cache_mode, .. } = &mut input.op {
+            *cache_mode = CacheMode::Absent;
+        }
+        let uncached = rust(&input).unwrap();
+        assert!(
+            !crate::compare::compare(&native, &uncached, &[]).pass(),
+            "dropping the prepared cache must be detected"
+        );
     }
 }
