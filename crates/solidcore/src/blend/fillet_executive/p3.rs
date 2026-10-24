@@ -1624,31 +1624,45 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         k: &mut Kernel,
         access: &mut impl RailClassificationAccess<O>,
     ) -> Result<()> {
+        self.classify_solver_rails_with_adjusted(k, access)
+            .map(|_| ())
+    }
+
+    /// Run the same classification stage and return its actual ordered adjusted corners.
+    /// The returned IDs name retained corners; their repairs have already completed.
+    ///
+    /// # Errors
+    /// The same failures and retained mutation prefixes as [`Self::classify_solver_rails`].
+    pub fn classify_solver_rails_with_adjusted(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl RailClassificationAccess<O>,
+    ) -> Result<Vec<O>> {
+        let mut adjusted = Vec::new();
         if self.options.classification {
-            let mut adjusted = Vec::new();
             let mut index = 0;
             while let Some(solver) = self.solvers.get(index).copied() {
                 if ignore(access.rails_classify(k, solver, &mut adjusted, self))?.is_none() {
-                    return self.record_solver_failure(
+                    self.record_solver_failure(
                         access.geometry_edge(solver)?,
                         7,
                         "Fillet Solver Error: Unable to Process Rollover",
-                    );
+                    )?;
                 }
                 index += 1;
             }
-            for corner in adjusted {
+            for corner in adjusted.iter().copied() {
                 ignore(access.rails_reinitialize_corner(k, corner, self))?;
                 if ignore(access.edges_calculate(k, corner, self))?.is_none() {
-                    return self.corner_vertex_failure(
+                    self.corner_vertex_failure(
                         access,
                         corner,
                         "Fillet Corner Error: Edge Computation Failure After Rollover Adjustment",
-                    );
+                    )?;
                 }
             }
         }
-        Ok(())
+        Ok(adjusted)
     }
 
     /// Construct and stitch the fillet shell, preserving every stage after each
