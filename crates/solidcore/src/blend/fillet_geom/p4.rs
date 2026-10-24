@@ -1610,7 +1610,7 @@ impl FilletBrep {
             // See which rail is at low-v.  Check the midpoint of each.
             let mut test_uv = [Point3::UNDEF; 2];
             for (ii, slot) in test_uv.iter_mut().enumerate() {
-                let this_rail = rails[ii].ok_or_else(nul)?;
+                let this_rail = rails.get(ii).copied().flatten().ok_or_else(nul)?;
                 let prim = primary_edgeuse(self.brep(), this_rail)?.ok_or_else(nul)?;
                 let uv_curve = eu1::uv_trim_curve(self.brep(), prim)?.0.ok_or_else(nul)?;
                 let t = self.brep().edge(this_rail)?.interval.evaluate(0.5);
@@ -1649,7 +1649,11 @@ impl FilletBrep {
         let mut lists2 = CurveLists::default();
 
         // First the start rail:
-        let rail0 = rails[start_rail_indx].ok_or_else(nul)?;
+        let rail0 = rails
+            .get(start_rail_indx)
+            .copied()
+            .flatten()
+            .ok_or_else(nul)?;
         let mut prim = primary_edgeuse(self.brep(), rail0)?.ok_or_else(nul)?;
         let uv_curve0 = if use_uv_curves {
             eu_uv_curve(self, prim)?
@@ -1693,7 +1697,11 @@ impl FilletBrep {
         }
 
         // Load MaxV rail(s) into OrderedEdges List2
-        let rail1 = rails[1 - start_rail_indx].ok_or_else(nul)?;
+        let rail1 = rails
+            .get(1 - start_rail_indx)
+            .copied()
+            .flatten()
+            .ok_or_else(nul)?;
         let mut start_fv1 = edge::vertex(self.brep(), rail1)?;
         let mut end_fv1 = edge::other_vertex(self.brep(), rail1, start_fv1)?;
         let other_rails1 = if start_rail_indx == 1 {
