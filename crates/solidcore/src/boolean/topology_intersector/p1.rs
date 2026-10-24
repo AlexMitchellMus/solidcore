@@ -66,7 +66,7 @@
 //!   [`proto_topology`](crate::topology::proto_topology). The B-reps are read and
 //!   edited through [`IntersectorBrep`], which the owner of the B-reps implements
 //!   (its methods name the ported function each one stands for); geometry is reached
-//!   through [`ClassGeometry`](crate::intersect::point_class::ClassGeometry).
+//!   through [`ClassGeometry`].
 //! - **Pointer maps.** `m_pBToO` / `m_pOToB` (`SmMapPtrToPtr`, an
 //!   `std::unordered_map` keyed by address) are `BTreeMap`s over the handles.
 //!   `GetMappedBrepObjects` lists the map's values in upstream's *hash order*
@@ -239,13 +239,15 @@ pub(super) fn find_common_elements<O: Copy + PartialEq>(this: &[O], other: &[O])
 
 /// What the intersector reads from and writes to its two B-reps (the `SmBrep`,
 /// `SmVertex`, `SmEdge` and `SmFace` members it calls), implemented by the owner of
-/// the B-reps on top of [`ProtoBrep`] (whose [`ProtoTopology`](crate::topology::proto_topology::ProtoTopology) walks, `vertex_point`,
+/// the B-reps on top of [`ProtoBrep`] (whose [`ProtoTopology`](crate::topology::proto_topology::p1::proto::ProtoTopology) walks, `vertex_point`,
 /// `edge_start_vertex` and `edge_other_vertex`, serve here too). Each method names the
 /// upstream function and
 /// the ported function that implements it. A method returns `Ok(None)` /
 /// `Err(InvalidInput)` where upstream would dereference null.
 pub trait IntersectorBrep<O>:
-    ProtoBrep<O> + crate::topology::proto_topology::p3::BrepGlue<O>
+    ProtoBrep<O>
+    + crate::topology::proto_topology::p3::BrepGlue<O>
+    + crate::intersect::curve_class::p5::ClassGeometryMut<O>
 {
     /// `SmBrep::MakeVertexLoop` with its default opposite orientation, using the
     /// caller's mutable arenas and notification state (`topology::brep::p9`).
@@ -274,7 +276,7 @@ pub trait IntersectorBrep<O>:
     /// [`SolidError::InvalidInput`] for a handle that names no B-rep.
     fn brep_arena(&self, brep: O) -> Result<&Brep>;
     /// `SmEdge::GetBrep` (`topology::edge::brep`): the B-rep handle of an edge
-    /// ([`ProtoTopology::edge_brep`](crate::topology::proto_topology::ProtoTopology::edge_brep) gives its key; the intersector edits the B-rep
+    /// ([`ProtoTopology::edge_brep`](crate::topology::proto_topology::p1::proto::ProtoTopology::edge_brep) gives its key; the intersector edits the B-rep
     /// through its handle).
     ///
     /// # Errors
@@ -2612,12 +2614,12 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                             .cc1
                             .get_mut(kk)
                             .ok_or(dangling("classification lists differ"))?;
-                        ignore_soft(cc1.set_point_class_parameters(k, brep, true))?;
+                        ignore_soft(cc1.set_point_class_parameters_mut(k, brep, true))?;
                         let cc2 = fi
                             .cc2
                             .get_mut(kk)
                             .ok_or(dangling("classification lists differ"))?;
-                        ignore_soft(cc2.set_point_class_parameters(k, brep, true))?;
+                        ignore_soft(cc2.set_point_class_parameters_mut(k, brep, true))?;
                     }
 
                     // For each interval in the classification

@@ -335,7 +335,7 @@ fn run_cpp_case(i: &Inputs) -> Result<Output, HarnessError> {
         Ok(b) => b,
         Err(out) => return Ok(out),
     };
-    let (rb, _) = shared::import(&b.export)?;
+    let (rb, _) = shared::import_raw(&b.export)?;
     let Some(a) = args(&i.op, &b, |f| first_loop(&rb, f)) else {
         return Ok(Output::err("no face"));
     };
@@ -743,7 +743,7 @@ fn run_rust_case(i: &Inputs) -> Result<Output, HarnessError> {
                 coincidence: (a[4] >= 0.0).then_some(a[4] > 0.5),
                 ..p3::FaceIntersectOptions::default()
             };
-            match status!(p3::face_intersect(&k, &b, f, other, a[2], a[3], &options)) {
+            match status!(p3::face_intersect(&k, &mut b, f, other, a[2], a[3], &options)) {
                 Ok(r) => {
                     out.push(0.0);
                     out.push(r.curves_3d.len() as f64);

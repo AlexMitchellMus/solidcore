@@ -16,11 +16,15 @@
 //! together only for the existing paired mark-lock API. No input-driven recursion
 //! is introduced; the two retry loops retain upstream's ten-attempt limits.
 //! Global cache queue limits are absent (the port has no global caches).
-//! The temporary origin shift still waits on `query.brep` through `merge_p1`,
-//! before any topology mutation. Its inverse token spans the entire operation,
+//! The temporary origin shift goes through `merge_p1`, before any topology
+//! mutation. Its inverse token spans the entire operation,
 //! including error/imprint exits, extraction and deletion of either operand.
 //! The complete subsequent stages remain here.
 //! Component face copies use `brep::p7::copy_faces` with the native merge defaults.
+//! `SM_BO_SLICE` gets its own coincident-face rule in steps 7.3e and 7.B for a primary
+//! face bounding material (keep the pair on the sheet's `SM_OT_SAME` side only) instead
+//! of upstream's difference rule, which keeps a face lying in the sheet in both parts
+//! (issue #528, WR-254).
 
 use super::p1::{self, MergeOptions};
 use crate::error::{Result, SolidError};
@@ -212,11 +216,15 @@ pub trait ManifoldIntersector {
         other: &mut Brep,
         other_face: FaceId,
     ) -> Result<()>;
-    /// `FixFoundFaceCoincidence`: adapter target is `merge_p1` with the live edge maps.
+    /// `FixFoundFaceCoincidence`: adapter target is `merge_p1` with the live edge maps;
+    /// a mismatch runs `MergeCoincidentSurfaces` on the operands with these kernels and
+    /// the attributes its edits notify.
     fn fix_face_coincidence(
         &mut self,
+        kernels: &mut BooleanKernels<'_>,
         primary: &mut Brep,
         other: &mut Brep,
+        attributes: &mut AttributeStore,
         face: FaceId,
         other_face: FaceId,
     ) -> Result<(Vec<FaceId>, Vec<FaceId>, bool)>;
@@ -375,10 +383,22 @@ struct Faces {
     other_sets: Vec<Vec<FaceId>>,
 }
 
-fn coincident_keep(operation: BooleanOperation, same_side: bool, non_solid: bool) -> Option<bool> {
+// `slice_same` (`Slice` with a primary face bounding material only): that material lies
+// on the side the sheet's `SM_OT_SAME` faceuse bounds. Upstream gives `SM_BO_SLICE` the
+// difference rule, which never deletes a pair against a sheet (void on both sides), so a
+// face lying in the slicing sheet is kept in both parts (issue #528, WR-254). The port
+// keeps such a pair on the sheet's same side only, the rule step 7.4d uses for radial
+// sectors; other primary faces keep the difference rule.
+fn coincident_keep(
+    operation: BooleanOperation,
+    same_side: bool,
+    non_solid: bool,
+    slice_same: Option<bool>,
+) -> Option<bool> {
     match operation {
         BooleanOperation::Union | BooleanOperation::Intersection => Some(same_side || non_solid),
-        BooleanOperation::Difference | BooleanOperation::Slice => Some(!same_side || non_solid),
+        BooleanOperation::Difference => Some(!same_side || non_solid),
+        BooleanOperation::Slice => Some(slice_same.unwrap_or(!same_side || non_solid)),
         BooleanOperation::ExclusiveOr => Some(false),
         BooleanOperation::Merge | BooleanOperation::PartialMerge => Some(true),
         _ => None,
@@ -536,6 +556,7 @@ fn classify_edge_faces(
     kernels: &mut BooleanKernels<'_>,
     primary: &mut Brep,
     other: &mut Brep,
+    attributes: &mut AttributeStore,
     state: &mut ManifoldState,
     intersector: &mut impl ManifoldIntersector,
     operation: BooleanOperation,
@@ -610,6 +631,19 @@ fn classify_edge_faces(
             let second_equal = void(primary, pf_regions.1)? == void(other, of_regions.1)?;
             let same_side = first_equal && second_equal;
             let non_solid = first_equal && !second_equal;
+            // the coincident faceuses point the same way (FindRadialSector): when the
+            // primary face bounds material, its faceuse faces it if its region is solid
+            let slice_same = if operation == BooleanOperation::Slice {
+                let solid = void(primary, pf_regions.0)? == 0;
+                if solid == (void(primary, pf_regions.1)? == 0) {
+                    None
+                } else {
+                    let other_fu = if reverse { source_fu } else { found };
+                    Some(solid == (eu::faceuse_orientation(other, other_fu)? == OrientType::Same))
+                }
+            } else {
+                None
+            };
             if if reverse {
                 state
                     .primary_marks
@@ -622,7 +656,7 @@ fn classify_edge_faces(
                 continue;
             }
             let (compatible, other_compatible, modified) =
-                intersector.fix_face_coincidence(primary, other, pf, of)?;
+                intersector.fix_face_coincidence(kernels, primary, other, attributes, pf, of)?;
             if modified {
                 return Ok(false);
             }
@@ -638,7 +672,7 @@ fn classify_edge_faces(
                 state
                     .other_marks
                     .mark(kernels.other(), Entity::Face(of), marks.1);
-                if let Some(keep) = coincident_keep(operation, same_side, non_solid) {
+                if let Some(keep) = coincident_keep(operation, same_side, non_solid, slice_same) {
                     if keep {
                         faces.keep.push(pf);
                         faces.other_keep.push(of);
@@ -1236,6 +1270,7 @@ fn editing_stages(
                 kernels,
                 primary,
                 other,
+                attributes,
                 state,
                 intersector,
                 operation,
@@ -1248,6 +1283,7 @@ fn editing_stages(
                 kernels,
                 primary,
                 other,
+                attributes,
                 state,
                 intersector,
                 operation,
@@ -1665,6 +1701,44 @@ mod tests {
                     );
                     assert_eq!(result.is_err(), late == 2);
                     assert_eq!(kernels.primary.context.doing_boolean(), late == 2);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn slice_keeps_a_coincident_pair_on_the_sheet_same_side_only() {
+        // issue #528: against a sheet (void on both sides) a coincident pair is either
+        // non-solid or on opposite sides, which the difference rule always keeps
+        for (same_side, non_solid) in [(false, false), (false, true), (true, false)] {
+            let difference = Some(!same_side || non_solid);
+            assert_eq!(
+                coincident_keep(BooleanOperation::Difference, same_side, non_solid, None),
+                difference
+            );
+            // a primary face not bounding material keeps the difference rule
+            assert_eq!(
+                coincident_keep(BooleanOperation::Slice, same_side, non_solid, None),
+                difference
+            );
+            for slice_same in [Some(false), Some(true)] {
+                assert_eq!(
+                    coincident_keep(BooleanOperation::Slice, same_side, non_solid, slice_same),
+                    slice_same
+                );
+                for operation in [
+                    BooleanOperation::Union,
+                    BooleanOperation::Intersection,
+                    BooleanOperation::Difference,
+                    BooleanOperation::ExclusiveOr,
+                    BooleanOperation::Merge,
+                    BooleanOperation::PartialMerge,
+                    BooleanOperation::ExtractSeparate,
+                ] {
+                    assert_eq!(
+                        coincident_keep(operation, same_side, non_solid, slice_same),
+                        coincident_keep(operation, same_side, non_solid, None)
+                    );
                 }
             }
         }
