@@ -55,7 +55,7 @@
 //!
 //! This unit is necessarily PARTIAL: current positive geometry operations reach
 //! genuine missing manifold/copy/face-construction/shrink/merge/stitch work.
-//! Empty rounded offset still calls `ShrinkGeometry`; static shell queries manifold
+//! Empty rounded offset runs through `ShrinkGeometry` to its result; static shell queries manifold
 //! BEFORE its strict radius guard; valid API shell selections copy BEFORE shelling.
 //! Fixtures retain those native paths for future wiring, not manufactured success.
 //! Source test references are reductions of tests read at
@@ -2402,17 +2402,18 @@ mod tests {
     fn positive_geometry_and_strict_boundaries_preserve_explicit_partial_paths() {
         for (operation, fixture, extend, symbol) in [
             (Operation::ApiShell, Fixture::Empty, false, "SmBrep::SmBrep"),
+            // An empty rounded offset completes and returns its (empty) result.
             (
                 Operation::StaticOffset,
                 Fixture::Empty,
                 false,
-                "SmBrep::ShrinkGeometry",
+                "returned offset B-rep / temporary (no Rust output adapter)",
             ),
             (
                 Operation::Solid,
                 sheet([0.0; 3], 1.0, 0),
                 false,
-                "SmBrep::ShrinkGeometry",
+                "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
             ),
             (
                 Operation::Extended,
@@ -2456,7 +2457,7 @@ mod tests {
             assert!(crate::compare::compare(&native, &output, Runner.abs_floors()).pass());
         }
         // The guard is strict: exactly 2*tolerance and the adjacent value above
-        // it proceed into DoSolidOffset and its ShrinkGeometry back-edge.
+        // it proceed into DoSolidOffset, which completes on the empty input.
         for distance in [2e-6, 2.0000000000000003e-6, -2e-6, -2.0000000000000003e-6] {
             let mut input = input(Operation::StaticShell);
             input.source = Some(Fixture::Empty);
@@ -2468,7 +2469,7 @@ mod tests {
                     .deferred
                     .unwrap()
                     .symbol,
-                "SmBrep::ShrinkGeometry"
+                "returned offset B-rep / temporary (no Rust output adapter)"
             );
         }
         let box_fixture = Fixture::Box {
@@ -2497,8 +2498,8 @@ mod tests {
     #[test]
     fn face_geometry_paths_reach_distinct_actual_callees() {
         // MakeWireEdgeVertex now runs, and concrete-Surface CrvOnSurf construction
-        // lets the rounded paths get through DropCurve too: they stop at
-        // SmBrep::ShrinkGeometry, the extended ones at the edge-use offset adapter.
+        // lets the rounded paths get through DropCurve and ShrinkGeometry too:
+        // both the rounded and the extended ones stop at the edge-use offset adapter.
         let context = CaseContext {
             root: repo_root(),
             seeds: 0,
@@ -2507,8 +2508,8 @@ mod tests {
         for (name, owner, symbol) in [
             (
                 "static_offset_real_plane_sheet_round",
-                "topology.brep_p4",
-                "SmBrep::ShrinkGeometry",
+                "offset.offset_executive_p1",
+                "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
             ),
             (
                 "static_offset_real_plane_sheet_extended",
@@ -2517,8 +2518,8 @@ mod tests {
             ),
             (
                 "member_sheet_round_skip_true_still_real_geometry",
-                "topology.brep_p4",
-                "SmBrep::ShrinkGeometry",
+                "offset.offset_executive_p1",
+                "SmOffsetExecutive::BuildOffsetOfEdgeuses (geometry-creation adapter)",
             ),
             (
                 "member_sheet_extended_dispatch_ignores_skip",

@@ -965,6 +965,64 @@ impl OffsetExecutive {
             bounding_edges,
         )
     }
+
+    /// Builds a cap face for a new edge or vertex cap surface in the offset B-rep:
+    /// `CreateFaceFromSurface` over the surface's natural domain without trimming
+    /// curves, else `MakeFaceWithCurves` in the infinite region with one loop of all
+    /// curves, no UV curves, `SM_OT_SAME` and the caller's loop points.
+    /// `notifications` must be keyed by result identities.
+    pub(super) fn make_cap_face(
+        &mut self,
+        kernel: &mut Kernel,
+        surface: Surface,
+        curves: Vec<Curve>,
+        orientations: Vec<OrientType>,
+        loop_points: &[Vec3],
+        notifications: &mut NotifyState<'_>,
+    ) -> Result<FaceId> {
+        let domain = surface.natural_uv_domain();
+        let key_of = notifications.key_of;
+        let this_face = |face: FaceId| key_of(EntityRef::Face(face));
+        let brep = required(self.offset_brep.as_mut())?;
+        if curves.is_empty() {
+            return notifications.with_kernel_env(kernel, |kernel, env| {
+                let mut marks = crate::topology::topology_traverser::Marks::default();
+                let mut fenv = crate::topology::brep::p8::FaceBuildEnv {
+                    env,
+                    marks: &mut marks,
+                    this_face: &this_face,
+                };
+                crate::topology::brep::p8::create_face_from_surface(
+                    kernel,
+                    brep,
+                    Some(surface),
+                    &domain,
+                    &mut fenv,
+                )
+            });
+        }
+        let region = brep.infinite_region();
+        let input = FaceCurvesInput {
+            loops: vec![curves.len()],
+            curves_3d: Some(curves.into_iter().map(Some).collect()),
+            uv_curves: None,
+            orientations,
+            loop_points: loop_points.to_vec(),
+        };
+        let made = bp7::make_face_with_curves_with_state(
+            kernel,
+            brep,
+            region,
+            input,
+            surface,
+            &domain,
+            OrientType::Same,
+            None,
+            &this_face,
+            notifications,
+        )?;
+        required(made.face)
+    }
 }
 
 impl OffsetExecutive {
