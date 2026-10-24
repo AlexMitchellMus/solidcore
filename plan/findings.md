@@ -19193,3 +19193,12 @@ offset-surface provider. No finished fillet or mass parity is claimed.
 
 Full p3 after this component: 298 cases, 251 value passes, 47 deferred, zero
 failures, max_rel_err=0. The remaining deferrals belong to executive p1.
+
+### Retained corner-stage capability boundary
+
+The shared Session corner-vertex component currently dispatches ordinary `NByOne`
+corner topology/geometry. Other valid concrete corner contexts and unsupported
+concrete rail-solver contexts return `Unported(blend.fillet_executive_p1)` at the
+live virtual-dispatch seam; they are not converted into an ordinary native fillet
+failure. The explicitly named direct Nx1 helpers still validate their own type.
+This slice makes no cylinder, multi-edge, variable-radius or complete API claim.

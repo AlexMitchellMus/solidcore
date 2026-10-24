@@ -466,9 +466,8 @@ impl<'target> FilletSession<'target> {
 
     /// Calculate one ordinary `NByOne` corner's vertices using its retained solver.
     ///
-    /// This follows the shared corner loop and actual derived solver operations.
-    /// Geometry-owned surface resolution and variable-law adjustment remain explicit
-    /// missing context boundaries; this does not complete fillet execution.
+    /// This follows the shared corner loop, actual derived solver operations and
+    /// geometry-owned offset surfaces. Variable-law adjustment remains unwired.
     ///
     /// # Errors
     /// Actual topology/solver resolution errors, native calculation failures, or a
@@ -480,7 +479,8 @@ impl<'target> FilletSession<'target> {
     /// Run the actual executive corner-vertex component in native corner order.
     ///
     /// Each corner's topology, calculation flag and vertex geometry complete before
-    /// the next corner starts. Smoothing and later topology adjustment are separate.
+    /// the next corner starts. Ordinary `NByOne` corners are supported; other concrete
+    /// corner context remains unported. Smoothing and later adjustment are separate.
     ///
     /// # Errors
     /// Actual corner operations or lookups, with native failure metadata retained.
@@ -824,7 +824,13 @@ impl SessionObjects<'_> {
                         let ops: &mut dyn FilletSolverOps = match solver {
                             SolverObject::ConstantRadius(solver) => solver.as_mut(),
                             SolverObject::VariableRadius(solver) => solver.as_mut(),
-                            _ => return Err(invalid("live rail solver operations unavailable")),
+                            _ => {
+                                // UNPORTED(blend.fillet_executive_p1): retained virtual operations for other concrete solver types.
+                                return Err(SolidError::unported(
+                                    "SmFilletSolver::RailEdgeuseIntersect (live concrete dispatch)",
+                                    "blend.fillet_executive_p1",
+                                ));
+                            }
                         };
                         pseudo.calc_rail_int_edgeuse_with_solver_ops(
                             k,
@@ -875,6 +881,13 @@ impl CornerVertexAccess<FilletObject> for SessionObjects<'_> {
         let FilletObject::Corner(id) = corner else {
             return Err(invalid("object is not a corner"));
         };
+        if self.corner_object(corner)?.corner_type() != FilletCornerType::NByOne {
+            // UNPORTED(blend.fillet_executive_p1): retained context for other concrete corners.
+            return Err(SolidError::unported(
+                "SmFilletCorner::MakeCornerTopology (live concrete dispatch)",
+                "blend.fillet_executive_p1",
+            ));
+        }
         self.make_nx1_corner_topology(k, id, executive)
     }
     fn vertices_error_info(
@@ -978,6 +991,13 @@ impl CornerVertexAccess<FilletObject> for SessionObjects<'_> {
         let FilletObject::Corner(id) = corner else {
             return Err(invalid("object is not a corner"));
         };
+        if self.corner_object(corner)?.corner_type() != FilletCornerType::NByOne {
+            // UNPORTED(blend.fillet_executive_p1): retained context for other concrete corners.
+            return Err(SolidError::unported(
+                "SmFilletCorner::CalcCornerVertGeom (live concrete dispatch)",
+                "blend.fillet_executive_p1",
+            ));
+        }
         self.calc_nx1_corner_vert_geom(k, id)
     }
 }
