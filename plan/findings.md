@@ -19269,3 +19269,9 @@ still requires its actual identity provider, and nested notification-context lea
 remain a limitation for mutation paths that request fresh kernel geometry keys.
 Separately, the face-stage native alias observer exposes a real FG-surface versus
 managed-face ownership mismatch; the stitching adapter does not repair or hide it.
+
+### Fillet consumed-surface binding fixed; actual attribute/stitch paired evidence
+
+The unchanged same-box face/stitch checkpoints now resolve the original surface through its actual managed Face. Native and Rust source_surface_binding both equal [1,1,1,1,16002,0,0]; all four prior owner/alias mismatches are fixed without removing any fields. All26 older CPP/Rust box outputs remain identical outside that intentionally corrected binding section. Mode11 retains571 exact fields/389 values; Mode12 retains623 exact fields/391 values, all native values exact. E is the actual executive attribute with four ordered intermediate-edge users. Actual Stitch returns0 stitched,4 lamina and0 gaps. Whole executive_p3:305 cases,258 value passes,47 existing deferrals,0 failures; full API remains honestly deferred.
+
+An affected-suite run caught five legacy cliff cases newly deferred by the initial transfer backend. The explicit indexed compatibility path now preserves their existing behavior: geom_p4 all400 cases pass, with no case/status/tolerance waiver. The actual retained Session path always transfers the original surface and still reports its unavailable cliff transfer honestly. This is ordinary same-box component evidence, not full filleting, target integration, shrink, mass or broad notification parity.
