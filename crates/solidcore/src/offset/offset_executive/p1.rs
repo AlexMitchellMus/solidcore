@@ -628,11 +628,24 @@ impl OffsetExecutive {
     }
 
     /// Builds a closing ruled side wall, or succeeds without work for null/ambiguous mappings.
+    /// The new face is named in an arena-only store (`topology::loopuse::notify_ref`).
     pub fn build_side_wall_of_edgeuse(
         &mut self,
         kernel: &mut Kernel,
         original_brep: &mut Brep,
         original: Option<EdgeuseId>,
+    ) -> Result<()> {
+        self.build_side_wall_of_edgeuse_with(kernel, original_brep, original, None)
+    }
+
+    /// [`Self::build_side_wall_of_edgeuse`] notifying the new face through
+    /// `notifications`, keyed by result identities (`None`: an arena-only store).
+    pub(super) fn build_side_wall_of_edgeuse_with(
+        &mut self,
+        kernel: &mut Kernel,
+        original_brep: &mut Brep,
+        original: Option<EdgeuseId>,
+        notifications: Option<&mut NotifyState<'_>>,
     ) -> Result<()> {
         let Some(original) = original else {
             return Ok(());
@@ -655,7 +668,28 @@ impl OffsetExecutive {
         )?;
         // cpp:2819: m_pOffsetBrep->CreateFaceFromSurface(pNewSurface, natural domain)
         let domain = new_surface.natural_uv_domain();
-        let new_face = create_face_from_surface(kernel, offset_brep, &new_surface, &domain)?;
+        let new_face = match notifications {
+            Some(notifications) => {
+                let key_of = notifications.key_of;
+                let this_face = |face: FaceId| key_of(EntityRef::Face(face));
+                notifications.with_kernel_env(kernel, |kernel, env| {
+                    let mut marks = crate::topology::topology_traverser::Marks::default();
+                    let mut fenv = crate::topology::brep::p8::FaceBuildEnv {
+                        env,
+                        marks: &mut marks,
+                        this_face: &this_face,
+                    };
+                    crate::topology::brep::p8::create_face_from_surface(
+                        kernel,
+                        offset_brep,
+                        Some(new_surface),
+                        &domain,
+                        &mut fenv,
+                    )
+                })?
+            }
+            None => create_face_from_surface(kernel, offset_brep, &new_surface, &domain)?,
+        };
         self.closing_faces.push(new_face); // [B549]
         Ok(())
     }

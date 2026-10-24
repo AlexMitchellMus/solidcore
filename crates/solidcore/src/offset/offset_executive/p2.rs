@@ -353,10 +353,16 @@ impl OffsetExecutive {
                 for &edgeuse in &offset_edgeuses {
                     let edge = required(eu::edge(original, edgeuse)?, OP_SOLID)?;
                     if eu::edge_is_lamina(original, edge)? {
-                        crate::error::ignore_status(self.build_side_wall_of_edgeuse(
+                        let mut stores = NotificationStores {
+                            records: &mut *notifications.records,
+                            attributes: &mut *notifications.attributes,
+                            key_of: notifications.result_key_of,
+                        };
+                        crate::error::ignore_status(self.build_side_wall_of_edgeuse_with(
                             kernel,
                             original,
                             Some(edgeuse),
+                            Some(&mut NotifyState::from_kernel_stores(&mut stores)),
                         ))?;
                     }
                 }
@@ -513,10 +519,16 @@ impl OffsetExecutive {
                     let edge = required(eu::edge(original, edgeuse)?, OP_EXTENDED)?;
                     if eu::edge_is_lamina(original, edge)? {
                         // SE, not SER, upstream: propagate Unported, ignore other errors.
-                        crate::error::ignore_status(self.build_side_wall_of_edgeuse(
+                        let mut stores = NotificationStores {
+                            records: &mut *notifications.records,
+                            attributes: &mut *notifications.attributes,
+                            key_of: notifications.result_key_of,
+                        };
+                        crate::error::ignore_status(self.build_side_wall_of_edgeuse_with(
                             kernel,
                             original,
                             Some(edgeuse),
+                            Some(&mut NotifyState::from_kernel_stores(&mut stores)),
                         ))?;
                     }
                 }
