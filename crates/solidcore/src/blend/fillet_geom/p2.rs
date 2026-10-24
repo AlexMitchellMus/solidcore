@@ -511,7 +511,7 @@ fn point_on_plane_solve(
 /// as upstream's `SetFilletGeomForSurfaces(this)`.
 #[allow(clippy::too_many_arguments)]
 fn rail_edgeuse_intersect(
-    fb: &FilletBrep,
+    fb: &mut FilletBrep,
     k: &Kernel,
     g: FilletGeomId,
     solvers: &mut RailSolvers<'_>,
@@ -523,7 +523,7 @@ fn rail_edgeuse_intersect(
 ) -> Result<Option<f64>> {
     let si = RailSolvers::geom_solver(fb, g)?;
     let fs = solvers.solver_ops_mut(si)?;
-    fb.rail_edgeuse_intersect_with_solver_ops(k, g, fs, target, rail_index, side_eu, guess, tsect)
+    fb.rail_edgeuse_intersect_with_geometry(k, g, fs, target, rail_index, side_eu, guess, tsect)
 }
 
 /// `SmTemporaryRadiusChange(pFS, lRailIndex, pSideEU)` (unit
