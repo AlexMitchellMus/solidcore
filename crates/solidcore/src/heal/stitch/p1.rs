@@ -2790,6 +2790,79 @@ mod tests {
         assert!((s.stitch_tol_3d() - 0.01).abs() < 1e-15);
     }
 
+    #[test]
+    fn contextual_notifications_use_actual_attribute_users_and_callback() {
+        use crate::geom::attribute::{ids, Attribute, Behavior};
+        use crate::topology::brep::p3::{notify_serial, topology_ref};
+        let (mut k, events) = recording_kernel();
+        let mut b = Brep::new();
+        let shell = b.add_shell().unwrap();
+        let face = b.add_face(shell).unwrap();
+        let copied_face = b.add_face(shell).unwrap();
+        let vertex = b.add_vertex(Point3::ZERO).unwrap();
+        let serial = notify_serial(&mut k.context, &mut b).unwrap();
+        let key_of = |entity| topology_ref(serial, entity);
+        let face_key = key_of(EntityRef::Face(face)).key;
+        let vertex_key = key_of(EntityRef::Vertex(vertex)).key;
+        let copied_face_key = key_of(EntityRef::Face(copied_face)).key;
+        let mut attributes = AttributeStore::new();
+        let marker = attributes
+            .insert(Attribute::new(
+                ids::ALL_FILLET_EDGES,
+                Behavior::StandaloneReference,
+            ))
+            .unwrap();
+        attributes.add_attribute(face_key, marker).unwrap();
+        attributes.add_attribute(vertex_key, marker).unwrap();
+        let mut records = BTreeMap::new();
+        records.insert(face_key, Topology::new());
+        records.insert(copied_face_key, Topology::new());
+        records.insert(vertex_key, Topology::new());
+        let reject_curve = |_, _| {
+            Err(SolidError::Unported {
+                upstream: "unregistered split curve",
+                unit: "topology.brep_p9",
+            })
+        };
+        Context::with_notification_context(&mut k, |k, context| {
+            let mut env = edge::NotifyEnv {
+                records: &mut records,
+                attributes: &mut attributes,
+                context: Some(context),
+                key_of: &key_of,
+            };
+            let mut edits = BorrowedStitchEdits {
+                env: &mut env,
+                curve_ref: &reject_curve,
+            };
+            let mut callback = DefaultStitchCallback::new();
+            let mut stitch = Stitch::new(&mut callback, 0.01, true, true);
+            stitch.edits = Some(&mut edits);
+            stitch.edit_set_point(k, &mut b, vertex, Point3::X).unwrap();
+            stitch
+                .edit_face_notify(
+                    &mut b,
+                    face,
+                    NotifyOperation::Copy,
+                    Some(EntityRef::Face(copied_face)),
+                    None,
+                )
+                .unwrap();
+        })
+        .unwrap();
+        assert_eq!(b.vertex(vertex).unwrap().point, Point3::X);
+        assert_eq!(
+            attributes.users(marker).unwrap(),
+            vec![face_key, vertex_key, copied_face_key]
+        );
+        assert_eq!(attributes.attributes(copied_face_key), vec![marker]);
+        assert!(events
+            .lock()
+            .unwrap()
+            .contains(&NotifyOperation::ChangeGeometry));
+        assert!(events.lock().unwrap().contains(&NotifyOperation::Copy));
+    }
+
     /// A notify callback that records the operations it sees.
     #[derive(Debug, Default)]
     struct Recorder(std::sync::Arc<std::sync::Mutex<Vec<NotifyOperation>>>);
