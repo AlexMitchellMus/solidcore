@@ -851,6 +851,18 @@ impl FilletCorner {
         &self,
         exec: &FilletExecutiveData,
     ) -> Result<Vec<Option<FilletSolverId>>> {
+        self.fillet_solvers_with_lookup(|edgeuse| Ok(exec.fillet_solver_of_edgeuse(edgeuse)))
+    }
+
+    /// Resolve the actual corner solvers through a borrowed executive lookup.
+    /// The native repeated-first-edgeuse lookup is retained.
+    ///
+    /// # Errors
+    /// Missing corner edge uses or actual solver lookup failures.
+    pub fn fillet_solvers_with_lookup(
+        &self,
+        mut solver_of: impl FnMut(EdgeuseId) -> Result<Option<FilletSolverId>>,
+    ) -> Result<Vec<Option<FilletSolverId>>> {
         let eus = self
             .solver_eus
             .as_deref()
@@ -860,7 +872,7 @@ impl FilletCorner {
             let first = eus
                 .first()
                 .ok_or_else(|| SolidError::invalid_input(OP_SOLVERS, "empty solver edge uses"))?;
-            solvers.push(exec.fillet_solver_of_edgeuse(*first));
+            solvers.push(solver_of(*first)?);
         }
         Ok(solvers)
     }
@@ -2536,10 +2548,7 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(SolidError::Upstream {
-                code: SM_ERR,
-                ..
-            })
+            Err(SolidError::Upstream { code: SM_ERR, .. })
         ));
         assert_eq!(context.1, [first, second]);
         assert!(context.0.fillet_vertex(first).unwrap().is_processed());

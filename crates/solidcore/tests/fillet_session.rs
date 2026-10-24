@@ -149,3 +149,42 @@ fn real_box_nx1_topology_uses_live_pseudo_objects() {
     assert_eq!(rib.fillet_edge_type(), FilletEdgeType::FilletXSideFace);
     session.target().face(rib.original_face().unwrap()).unwrap();
 }
+
+#[test]
+fn real_box_corner_vertex_stage_matches_native_both_corner_points() {
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
+    let edge = target.edges().ids().next().unwrap();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    session
+        .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+        .unwrap();
+    session.create_corners(&k, None).unwrap();
+    session.create_corner_vertices(&mut k).unwrap();
+    let mut points = Vec::new();
+    for &object in &session.executive().corners {
+        let FilletObject::Corner(id) = object else {
+            panic!("actual corner required");
+        };
+        let corner = session.corner(id).unwrap();
+        assert!(!corner.is_calc_as_const_rad());
+        for &vertex in &corner.vertices {
+            assert!(session
+                .pseudo_brep()
+                .fillet_vertex(vertex)
+                .unwrap()
+                .is_processed());
+            points.push(session.pseudo_brep().vertex_point(vertex).unwrap());
+        }
+    }
+    // Direct native box-edge component trace, in actual corner/FV order.
+    assert_eq!(
+        points,
+        [
+            Point3::new(9.5, 0.0, 30.0),
+            Point3::new(10.0, 0.0, 29.5),
+            Point3::new(10.0, 20.0, 29.5),
+            Point3::new(9.5, 20.0, 30.0),
+        ]
+    );
+}
