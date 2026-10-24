@@ -170,14 +170,16 @@ extern "C" {
     ) -> i32;
 }
 
-/// Execute actual parameter setup (1), corner creation (2), or the first
-/// corner's topology directly (3), or its vertex geometry (4). Modes 3 and 4
-/// omits smooth-sequence processing on both sides; it is not the full executive
-/// prelude or a successful fillet result. Corner status and
-/// uncomputed pseudo geometry are deliberately not read.
+/// Execute actual setup/corner checkpoints (1–5), or the real smooth prelude
+/// followed by shared corner vertices and adjustment (6). Mode 7 adds the first
+/// direct solver geometry operation and samples its actual surface and curves.
+/// Mode 8 runs all solvers, then tangent adjustment, repeated vertex calculation
+/// and boundary curves in each corner’s native order.
+/// These are retained component checkpoints, not completed public fillets.
+/// Uninitialized corner status and uncomputed geometry are never read.
 pub fn real_prefix(input: &[f64], checkpoint: u32) -> Result<Vec<f64>, FfiError> {
     validate_real_solid(input)?;
-    if !(1..=5).contains(&checkpoint) {
+    if !(1..=8).contains(&checkpoint) {
         return Err(FfiError::InvalidArgument(
             "unknown fillet checkpoint".into(),
         ));
