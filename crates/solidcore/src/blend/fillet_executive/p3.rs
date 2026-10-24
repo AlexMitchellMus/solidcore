@@ -177,16 +177,21 @@ impl Default for ExecutionOptions {
     }
 }
 
+/// The native vertex map's pending solver edge uses or completed corner.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VertexEntry<O> {
+    /// Edge uses collected by `LoadFilletSolver`, in native insertion order.
+    SolverEdgeuses(Vec<O>),
+    /// The corner that replaced the pending list.
+    Corner(O),
+}
+
 /// Executive member state consumed by p3, co-ported from p1. This is not the
 /// constructor: p1 must supply its constructor/setup defaults and intersector.
 #[derive(Debug, Clone)]
 pub struct FilletExecutive<O> {
-    /// The actual store registration; copies are unregistered objects.
-    pub registration: super::registration::ExecutiveRegistration,
     /// `m_vFilletedVertices`, in first-insertion order (a null vertex is retained).
     pub filleted_vertices: Vec<Option<O>>,
-    /// Pending edge-use arrays, kept separately from completed corner identities.
-    pub pending_corner_edgeuses: BTreeMap<Option<O>, Vec<O>>,
     /// `m_pTargetBrep`.
     pub target: Option<O>,
     /// `m_pFilletBrep`.
@@ -220,9 +225,9 @@ pub struct FilletExecutive<O> {
     /// `m_vFSGs`: the fillet surface generators the executive owns (added by
     /// `blend.fillet_executive_p1`).
     pub surface_generators: Vec<O>,
-    /// `m_vVertexCornerMap`: the fillet corner of each filleted vertex (added by
-    /// `blend.fillet_executive_p1`).
-    pub vertex_corner_map: BTreeMap<O, O>,
+    /// `m_vVertexCornerMap`: one pending-list or completed-corner slot per vertex.
+    /// A null vertex is retained as `None`, matching native loader ordering.
+    pub vertex_corner_map: BTreeMap<Option<O>, VertexEntry<O>>,
     /// `m_vEdgeuseSolverMap`: the fillet solver of each filleted edge use (added by
     /// `blend.fillet_executive_p1`; `blend::fillet_corner::p3::FilletExecutiveData`
     /// holds the same map over typed ids).

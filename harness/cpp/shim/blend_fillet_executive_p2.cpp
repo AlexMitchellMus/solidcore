@@ -477,7 +477,7 @@ struct LoaderSolver : SmConstantRadiusFS
 };
 
 // Native loader fixtures retain real constant-radius solvers and real box topology.
-// Only the fixture owns the solvers: repeated registrations deliberately share them.
+// Only the fixture owns the solvers: repeated loads retain the same solver more than once.
 struct LoaderExecutive : Executive
 {
     using Executive::Executive;
@@ -595,8 +595,7 @@ void op_loader(Rd& rd, std::vector<double>& out)
         delete box;return;
     }
     {
-        LoaderExecutive ex0(*box->GetContext(),box),ex1(*box->GetContext(),box);
-        LoaderExecutive* executives[2]={&ex0,&ex1};
+        LoaderExecutive executive(*box->GetContext(),box);
         out.push_back(0.0);
         // Compare actual edge domains and geometry before loader mutations.
         out.push_back((double)edges.GetSize());
@@ -619,23 +618,23 @@ void op_loader(Rd& rd, std::vector<double>& out)
             }
         }
         int64_t loads=rd.idx();
-        std::vector<int64_t> targets,which;
-        for(int64_t i=0;i<loads;i++) {targets.push_back(rd.idx());which.push_back(rd.idx());}
+        std::vector<int64_t> which;
+        for(int64_t i=0;i<loads;i++) { if(rd.idx()!=0) rd.ok=false; which.push_back(rd.idx()); }
         int64_t clear_after=rd.idx();
         for(int64_t i=0;i<loads;i++) {
-            LoaderExecutive* executive=executives[targets[(size_t)i]];
+            LoaderExecutive* current=&executive;
             LoaderSolver* target=solvers[(size_t)which[(size_t)i]];
             // With no rails and an existing vertex list the native loop reads
             // uninitialized pVerts. Guard that actual state before calling it.
-            if(target->GetSurface(0) && target->GetSurface(1) && !target->GetEdgeuse(0) && !target->GetEdgeuse(1) && executive->has_vertices()) { rd.ok=false;break; }
-            out.push_back(st(executive->load(target)));
-            if(clear_after==i+1) executive->clear_first_pending();
-            ex0.put_loader(out,solvers,edges);ex1.put_loader(out,solvers,edges);
+            if(target->GetSurface(0) && target->GetSurface(1) && !target->GetEdgeuse(0) && !target->GetEdgeuse(1) && current->has_vertices()) { rd.ok=false;break; }
+            out.push_back(st(current->load(target)));
+            if(clear_after==i+1) current->clear_first_pending();
+            current->put_loader(out,solvers,edges);
             for(auto* solver:solvers) {
                 SmFilletExecutive* owner=solver->GetFilletExecutive();
-                out.push_back(owner==&ex0 ? 1.0 : owner==&ex1 ? 2.0 : 0.0);
+                out.push_back(owner ? 1.0 : 0.0);
                 SmFilletBrep* pseudo=owner ? owner->GetPseudoBrep() : NULL;
-                out.push_back(pseudo==ex0.GetPseudoBrep() ? 1.0 : pseudo==ex1.GetPseudoBrep() ? 2.0 : 0.0);
+                out.push_back(owner && pseudo==current->GetPseudoBrep() ? 1.0 : 0.0);
                 out.push_back((double)solver->g1_knots().GetSize());
                 for(ULONG j=0;j<solver->g1_knots().GetSize();j++) out.push_back(solver->g1_knots()[j]);
             }

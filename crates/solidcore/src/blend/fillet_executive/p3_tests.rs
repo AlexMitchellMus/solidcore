@@ -726,10 +726,7 @@ fn state() -> FilletExecutive<Handle> {
         law_sequence_edges: vec![],
         pseudo_brep: None,
         surface_generators: vec![],
-        registration: crate::blend::fillet_executive::registration::ExecutiveRegistration::default(
-        ),
         filleted_vertices: Vec::new(),
-        pending_corner_edgeuses: BTreeMap::new(),
         vertex_corner_map: BTreeMap::new(),
         edgeuse_solver_map: BTreeMap::new(),
         self_intersection_handler: None,

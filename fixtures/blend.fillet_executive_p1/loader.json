@@ -199,7 +199,7 @@
       }
     },
     {
-      "name": "loader_two_executives",
+      "name": "loader_distinct_incident_solvers",
       "inputs": {
         "loader": {
           "scale": 1.0,
@@ -207,6 +207,16 @@
           "solvers": [
             {
               "edge": 0,
+              "mask": 3,
+              "radial": false
+            },
+            {
+              "edge": 0,
+              "mask": 3,
+              "radial": false
+            },
+            {
+              "edge": 1,
               "mask": 3,
               "radial": false
             },
@@ -222,16 +232,16 @@
               0
             ],
             [
-              1,
-              0
-            ],
-            [
               0,
               1
             ],
             [
-              1,
-              1
+              0,
+              2
+            ],
+            [
+              0,
+              3
             ]
           ]
         }
@@ -304,7 +314,7 @@
       }
     },
     {
-      "name": "loader_surface_rejection_after_registered",
+      "name": "loader_surface_rejection_after_load",
       "inputs": {
         "loader": {
           "scale": 1.0,
@@ -313,6 +323,11 @@
             {
               "edge": 0,
               "mask": 3,
+              "radial": false
+            },
+            {
+              "edge": 1,
+              "mask": 2,
               "radial": false
             },
             {
@@ -331,8 +346,8 @@
               1
             ],
             [
-              1,
-              1
+              0,
+              2
             ]
           ]
         }
@@ -396,7 +411,7 @@
       }
     },
     {
-      "name": "loader_no_edgeuses_second_executive",
+      "name": "loader_no_edgeuses_before_edge",
       "inputs": {
         "loader": {
           "scale": 1.0,
@@ -416,11 +431,11 @@
           "loads": [
             [
               0,
-              0
+              1
             ],
             [
-              1,
-              1
+              0,
+              0
             ]
           ]
         }
@@ -551,7 +566,7 @@
       }
     },
     {
-      "name": "loader_g1_two_executives",
+      "name": "loader_g1_distinct_radial_solvers",
       "inputs": {
         "loader": {
           "scale": 1.0,
@@ -566,6 +581,11 @@
               "edge": 0,
               "mask": 3,
               "radial": true
+            },
+            {
+              "edge": 0,
+              "mask": 3,
+              "radial": false
             }
           ],
           "loads": [
@@ -574,12 +594,12 @@
               0
             ],
             [
-              1,
+              0,
               1
             ],
             [
-              1,
-              0
+              0,
+              2
             ]
           ]
         }
@@ -811,6 +831,11 @@
               "edge": 0,
               "mask": 3,
               "geometry_surfaces": true
+            },
+            {
+              "edge": 0,
+              "mask": 3,
+              "geometry_surfaces": true
             }
           ],
           "loads": [
@@ -819,8 +844,8 @@
               0
             ],
             [
-              1,
-              0
+              0,
+              1
             ]
           ]
         }
@@ -836,6 +861,11 @@
               "edge": 0,
               "mask": 0,
               "geometry_surfaces": true
+            },
+            {
+              "edge": 0,
+              "mask": 0,
+              "geometry_surfaces": true
             }
           ],
           "loads": [
@@ -844,8 +874,8 @@
               0
             ],
             [
-              1,
-              0
+              0,
+              1
             ]
           ]
         }

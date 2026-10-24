@@ -2616,8 +2616,7 @@ mod tests {
             s.self_intersection_handler().unwrap_err(),
             SolidError::InvalidInput { .. }
         ));
-        s.solver
-            .set_fillet_executive(Some(FilletExecutiveRef::Unresolved));
+        s.solver.set_fillet_executive(Some(FilletExecutiveRef));
         assert!(matches!(
             s.self_intersection_handler().unwrap_err(),
             SolidError::Unported {

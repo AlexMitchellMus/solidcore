@@ -1042,7 +1042,7 @@ impl RustModel {
                     .map_err(h)?;
                 }
             }
-            fs.executive = s.exec.then_some(FilletExecutiveRef::Unresolved);
+            fs.executive = s.exec.then_some(FilletExecutiveRef);
             fs.reverse_trim = s.reverse_trim;
             solvers.push(fs);
         }

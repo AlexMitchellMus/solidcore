@@ -27,7 +27,7 @@
 //! has null rails before that).
 
 //! Direct p1 loader records (`LoadSolver`) contain `scale g1 n (edge mask radial
-//! geometry_surfaces)*n m (executive solver)*m clear_after`. Edge12 has no rails;
+//! geometry_surfaces)*n m (reserved_zero solver)*m clear_after`. Edge12 has no rails;
 //! edge13 is a real closed circular wire. The shim checks the actual rail/vertex
 //! state before the native uninitialized `pVerts` branch; defined early errors run.
 
@@ -188,7 +188,7 @@ fn validate_op(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
             }
             let loads=rd.index(16)?;
             for _ in 0..loads {
-                let executive=rd.index(1)?;
+                let executive=rd.index(0)?;
                 let solver=rd.index(count)?;
                 specs.get(solver).ok_or_else(||bad("loader solver index outside pool"))?;
                 let _=executive;

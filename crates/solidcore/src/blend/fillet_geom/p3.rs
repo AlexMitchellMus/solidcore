@@ -1515,7 +1515,7 @@ mod tests {
 
     fn solver(executive: bool) -> FilletSolver {
         let mut s = FilletSolver::new(1e-6, 1e-3, 1e-6);
-        s.executive = executive.then_some(FilletExecutiveRef::Unresolved);
+        s.executive = executive.then_some(FilletExecutiveRef);
         s
     }
 

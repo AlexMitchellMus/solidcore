@@ -826,12 +826,12 @@ fn exec_step(
         Step::AddTopoEdge { h } => x.topo_edges.push(opt(*h)),
         Step::RemoveTopoEdge { h } => x.remove_from_topo_edges(opt(*h)),
         Step::MapCorner { v, c } => {
-            x.vertex_corner_map.insert(H(*v), H(*c));
+            x.vertex_corner_map.insert(Some(H(*v)), solidcore::blend::fillet_executive::p3::VertexEntry::Corner(H(*c)));
         }
         Step::MapSolver { eu, s } => {
             x.edgeuse_solver_map.insert(H(*eu), H(*s));
         }
-        Step::CornerOf { v } => q.push(out_handle(x.fillet_corner_of_vertex(H(*v)))),
+        Step::CornerOf { v } => q.push(out_handle(x.fillet_corner_of_vertex(H(*v)).map_err(|e| HarnessError::new(e.to_string()))?)),
         Step::SolverOf { eu } => q.push(out_handle(x.fillet_solver_of_edgeuse(H(*eu)))),
         Step::NoteFilletError {
             code,

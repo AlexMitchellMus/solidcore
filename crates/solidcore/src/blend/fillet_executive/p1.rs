@@ -556,10 +556,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             law_sequence_edges: Vec::new(),
             pseudo_brep: Some(objects.pseudo_brep),
             surface_generators: Vec::new(),
-            registration:
-                crate::blend::fillet_executive::registration::ExecutiveRegistration::default(),
             filleted_vertices: Vec::new(),
-            pending_corner_edgeuses: BTreeMap::new(),
             vertex_corner_map: BTreeMap::new(),
             edgeuse_solver_map: BTreeMap::new(),
             self_intersection_handler: None,
@@ -572,7 +569,6 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     /// # Errors
     /// Missing offset surfaces, unresolved caller objects, or a native undefined
     /// vertex-array read when an absent rail reaches an existing vertex entry.
-    /// An executive must be retained in a `FilletExecutiveStore` before loading.
     /// Earlier native mutations remain visible on a later error.
     pub fn load_fillet_solver<A: ExecutiveAccess<O> + ?Sized>(
         &mut self,
@@ -594,13 +590,10 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 access.solver_base_mut(solver)?.g1_knots.push(knot);
             }
         }
-        let executive = self.registration.reference().ok_or_else(|| {
-            SolidError::invalid_input(OP, "executive is not retained in its caller's store")
-        })?;
         self.solvers.push(solver);
-        access.solver_base_mut(solver)?.set_fillet_executive(Some(
-            crate::blend::fillet_solver::p1::FilletExecutiveRef::Registered(executive),
-        ));
+        access
+            .solver_base_mut(solver)?
+            .set_fillet_executive(Some(crate::blend::fillet_solver::p1::FilletExecutiveRef));
         let mut edgeuses = [None; 2];
         // Outer None is an unwritten native pVerts entry; inner None is a null vertex.
         let mut vertices = [None; 2];
@@ -626,10 +619,16 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 })?;
                 if current == vertex {
                     found = true;
-                    let pending = self
-                        .pending_corner_edgeuses
+                    let entry = self
+                        .vertex_corner_map
                         .get_mut(&vertex)
                         .ok_or_else(|| SolidError::null_pointer(OP))?;
+                    let super::p3::VertexEntry::SolverEdgeuses(pending) = entry else {
+                        return Err(SolidError::invalid_input(
+                            OP,
+                            "native pending list has already been replaced by a corner",
+                        ));
+                    };
                     let edgeuse = edgeuse.ok_or_else(|| {
                         SolidError::invalid_input(
                             OP,
@@ -664,7 +663,10 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                     )
                 })?;
                 self.filleted_vertices.push(vertex);
-                self.pending_corner_edgeuses.insert(vertex, vec![edgeuse]);
+                self.vertex_corner_map.insert(
+                    vertex,
+                    super::p3::VertexEntry::SolverEdgeuses(vec![edgeuse]),
+                );
             }
         }
         Ok(())
@@ -699,9 +701,18 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
 
     /// `GetFilletCornerOfVertex(pVertex)`: the corner at `vertex`, `None` when there is
     /// none.
-    #[must_use]
-    pub fn fillet_corner_of_vertex(&self, vertex: O) -> Option<O> {
-        self.vertex_corner_map.get(&vertex).copied()
+    ///
+    /// # Errors
+    /// A pending solver list is not a completed corner (native UB-209).
+    pub fn fillet_corner_of_vertex(&self, vertex: O) -> Result<Option<O>> {
+        match self.vertex_corner_map.get(&Some(vertex)) {
+            None => Ok(None),
+            Some(super::p3::VertexEntry::Corner(corner)) => Ok(Some(*corner)),
+            Some(super::p3::VertexEntry::SolverEdgeuses(_)) => Err(SolidError::invalid_input(
+                "blend::fillet_executive::p1::fillet_corner_of_vertex",
+                "vertex still contains a pending solver list",
+            )),
+        }
     }
 
     /// `GetFilletSolverOfEdgeuse(pEdgeuse)`: the solver of `edgeuse`, `None` when there

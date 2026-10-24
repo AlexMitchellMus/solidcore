@@ -1066,7 +1066,7 @@ fn rollover_topology_split_preserves_actual_solver_id_and_partial_edits() {
     let id = f.geom;
     let solver_id = crate::blend::fillet_geom::p1::FilletSolverId(37);
     f.fb.geom_mut(id).unwrap().solver = Some(solver_id);
-    f.solver.executive = Some(crate::blend::fillet_solver::p1::FilletExecutiveRef::Unresolved);
+    f.solver.executive = Some(crate::blend::fillet_solver::p1::FilletExecutiveRef);
     for rail in f.fb.geom(id).unwrap().rails.into_iter().flatten() {
         f.fb.fillet_edge_mut(rail)
             .unwrap()

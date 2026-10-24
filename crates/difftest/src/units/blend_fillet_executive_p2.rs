@@ -264,8 +264,7 @@ enum Handle {
     Solver(usize),
     Law(usize),
     Geom(solidcore::blend::fillet_geom::p1::FilletGeomId),
-    Executive(usize),
-    Pseudo(usize),
+    Pseudo,
 }
 impl ClassObject for Handle {
     fn class_kind(&self) -> ClassObjectKind {
@@ -282,7 +281,6 @@ struct Access {
     breps: Vec<Brep>,
     /// The executive's pseudo B-rep (`m_pPseudoBrep`): the solvers' fillet geometries.
     pseudo: FilletBrep,
-    extra_pseudos: Vec<FilletBrep>,
     generators: Vec<FilletSurfaceGenerator>,
     solvers: Vec<ConstantRadiusAssistedFs>,
     laws: Vec<FilletLaw>,
@@ -313,16 +311,14 @@ impl Access {
     fn brep(&self, h: Handle) -> SolidResult<&Brep> {
         match h {
             Handle::Brep(i) => self.breps.get(i).ok_or_else(missing_error),
-            Handle::Pseudo(0) => Ok(self.pseudo.brep()),
-            Handle::Pseudo(i) => self.extra_pseudos.get(i-1).map(FilletBrep::brep).ok_or_else(missing_error),
+            Handle::Pseudo => Ok(self.pseudo.brep()),
             _ => missing(),
         }
     }
     fn brep_mut(&mut self, h: Handle) -> SolidResult<&mut Brep> {
         match h {
             Handle::Brep(i) => self.breps.get_mut(i).ok_or_else(missing_error),
-            Handle::Pseudo(0) => Ok(self.pseudo.brep_mut()),
-            Handle::Pseudo(i) => self.extra_pseudos.get_mut(i-1).map(FilletBrep::brep_mut).ok_or_else(missing_error),
+            Handle::Pseudo => Ok(self.pseudo.brep_mut()),
             _ => missing(),
         }
     }
@@ -1043,7 +1039,6 @@ fn box_access(bx: &BoxIn) -> Result<Result<Access, Output>, HarnessError> {
     Ok(Ok(Access {
         breps: vec![b],
         pseudo: FilletBrep::new(),
-        extra_pseudos: Vec::new(),
         generators: Vec::new(),
         solvers: Vec::new(),
         laws: Vec::new(),
@@ -1080,9 +1075,7 @@ fn executive(target: Option<Handle>) -> FilletExecutive<Handle> {
         law_sequence_edges: vec![],
         pseudo_brep: None,
         surface_generators: vec![],
-        registration: solidcore::blend::fillet_executive::registration::ExecutiveRegistration::default(),
         filleted_vertices: Vec::new(),
-        pending_corner_edgeuses: BTreeMap::new(),
         vertex_corner_map: BTreeMap::new(),
         edgeuse_solver_map: BTreeMap::new(),
         self_intersection_handler: None,
@@ -1177,9 +1170,8 @@ fn set_params(
         thumbweight,
     };
     let mut k = Kernel::default();
-    let mut executive_store = solidcore::blend::fillet_executive::registration::FilletExecutiveStore::new();
-    let executive_ref = executive_store.insert(executive(None));
-    let ex = executive_store.resolve_mut(&executive_ref).map_err(|e| harness(e.to_string()))?;
+    let mut executive = executive(None);
+    let ex = &mut executive;
     let status = match ex.set_fillet_parameters(&mut k, &mut access, &params) {
         Ok(()) => 0.0,
         Err(e) if e.is_unported() => return Ok(error_output(&e)),
@@ -1233,12 +1225,8 @@ fn exec(sub: usize, n: usize, bx: &BoxIn) -> Result<Output, HarnessError> {
         Err(o) => return Ok(o),
     };
     let mut k = Kernel::default();
-    let mut executive_store =
-        solidcore::blend::fillet_executive::registration::FilletExecutiveStore::new();
-    let executive_ref = executive_store.insert(executive(Some(Handle::Brep(0))));
-    let ex = executive_store
-        .resolve_mut(&executive_ref)
-        .map_err(|e| harness(e.to_string()))?;
+    let mut executive = executive(Some(Handle::Brep(0)));
+    let ex = &mut executive;
     if n > 0 {
         if let Err(e) = load_solvers(&mut k, &mut access, ex, n) {
             return Ok(error_output(&e));
@@ -1303,12 +1291,8 @@ fn temp_radius(variable: bool, start: f64, end: f64, bx: &BoxIn) -> Result<Outpu
         thumbweight: 1.0,
     };
     let mut k = Kernel::default();
-    let mut executive_store =
-        solidcore::blend::fillet_executive::registration::FilletExecutiveStore::new();
-    let executive_ref = executive_store.insert(executive(Some(Handle::Brep(0))));
-    let ex = executive_store
-        .resolve_mut(&executive_ref)
-        .map_err(|e| harness(e.to_string()))?;
+    let mut executive = executive(Some(Handle::Brep(0)));
+    let ex = &mut executive;
     if let Err(e) = ex.set_fillet_parameters(&mut k, &mut access, &params) {
         Ok(error_output(&e))
     } else {

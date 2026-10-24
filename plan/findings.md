@@ -18639,3 +18639,25 @@ the big face is used), and the start cap came out as 2 faces.
   every other caller were already fresh or unused (the swung-surface loop drops its list).
 - **Result.** Both known-mismatch entries are removed and both cases match C++ bit for
   bit. sweep.api_surfaces is green (882/882).
+
+
+### blend.fillet_executive_p1 — review alignment with single executive context (#665)
+
+Removed the executive registry, identity tokens, foreign-store checks and the
+registration-only load failure. `FilletExecutive` remains the one mutable state;
+solver `FilletExecutiveRef` records only native back-pointer presence. The loader
+sets it immediately after appending the solver. `VertexEntry` unifies pending
+solver edgeuses and completed corners in one map with nullable vertex keys;
+requesting a corner from a pending entry reports the native type-pun precondition
+instead of returning a fabricated corner. Full production-session and corner
+factory migration remain separate work coordinated with #641's author.
+
+All 28 direct native loader cases now use one executive. Former cross-executive
+cases construct distinct owned solvers; explicit repeat-load cases keep their
+controlled fixture ownership. Snapshots compare native solver/vertex/pending
+order, edgeuse identity, geometry, G1 knots and the actual back-pointer getter.
+The p1 runner enumerates these cases; p2 only houses their shared shim helper.
+The mutation review's p2 replay therefore did not run these 28 p1 records.
+The unrelated legacy geometry executive-access stubs are unchanged from main;
+`SurfaceSurfaceFillet` still lacks a direct successful-result harness operation,
+so no coverage claim is made for a returned nonempty B-rep from that API.

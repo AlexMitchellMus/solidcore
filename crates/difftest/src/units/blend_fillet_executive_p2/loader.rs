@@ -3,10 +3,10 @@
 use super::{
     box_access, constant_radius_from_edgeuse, edge, error_output, executive, ffi, flag, harness,
     missing, missing_error, status_of, Access, BoxIn, ConstantRadiusAssistedFs, Deserialize,
-    EdgeId, Extent1d, FilletBrep, FilletExecutive, FilletSolverId, Handle, HarnessError, Kernel,
-    Op, Output, Point3, Serialize, SolidResult,
+    EdgeId, Extent1d, FilletExecutive, FilletSolverId, Handle, HarnessError, Kernel, Op, Output,
+    Point3, Serialize, SolidResult,
 };
-use solidcore::blend::fillet_executive::registration::FilletExecutiveStore;
+use solidcore::blend::fillet_executive::p3::VertexEntry;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct LoaderSolverIn {
@@ -94,7 +94,11 @@ fn loader_snapshot(
                 .point;
             out.extend([p.x, p.y, p.z]);
         }
-        let pending = executive.pending_corner_edgeuses.get(vertex);
+        let pending = match executive.vertex_corner_map.get(vertex) {
+            Some(VertexEntry::SolverEdgeuses(pending)) => Some(pending),
+            None => None,
+            Some(VertexEntry::Corner(_)) => return missing(),
+        };
         out.push(flag(pending.is_some()));
         if let Some(pending) = pending {
             out.push(pending.len() as f64);
@@ -317,15 +321,8 @@ pub(crate) fn loader_rust(i: &LoaderScript) -> Result<Output, HarnessError> {
         }
         access.solvers.push(solver);
     }
-    let mut store = FilletExecutiveStore::new();
-    let mut references = Vec::new();
-    access.extra_pseudos.push(FilletBrep::new());
-    for index in 0..2 {
-        let mut executive = executive(Some(Handle::Brep(0)));
-        executive.pseudo_brep = Some(Handle::Pseudo(index));
-        executive.error.executive = Some(Handle::Executive(index));
-        references.push(store.insert(executive));
-    }
+    let mut executive = executive(Some(Handle::Brep(0)));
+    executive.pseudo_brep = Some(Handle::Pseudo);
     let run = (|| -> SolidResult<Vec<f64>> {
         let mut out = vec![0.0];
         let b = access.brep(Handle::Brep(0))?;
@@ -355,8 +352,9 @@ pub(crate) fn loader_rust(i: &LoaderScript) -> Result<Output, HarnessError> {
             }
         }
         for (at, &[which, solver]) in i.loads.iter().enumerate() {
-            let reference = references.get(which).ok_or_else(missing_error)?;
-            let executive = store.resolve_mut(reference)?;
+            if which != 0 {
+                return missing();
+            }
             out.push(
                 match executive.load_fillet_solver(&k, &mut access, Handle::Solver(solver)) {
                     Ok(()) => 0.0,
@@ -366,38 +364,20 @@ pub(crate) fn loader_rust(i: &LoaderScript) -> Result<Output, HarnessError> {
             );
             if i.drop_pending_after == Some(at) {
                 if let Some(vertex) = executive.filleted_vertices.first().copied() {
-                    executive.pending_corner_edgeuses.remove(&vertex);
+                    executive.vertex_corner_map.remove(&vertex);
                 }
             }
-            for reference in &references {
-                loader_snapshot(&access, store.resolve(reference)?, &mut out)?;
-            }
+            loader_snapshot(&access, &executive, &mut out)?;
             for solver in &access.solvers {
-                let resolved = store.resolve_solver(&solver.solver)?;
-                let label = match resolved.and_then(|executive| executive.error.executive) {
-                    Some(Handle::Executive(index)) => index as f64 + 1.0,
-                    None => 0.0,
-                    _ => return missing(),
+                let back_pointer_set = solver.solver.fillet_executive().is_some();
+                out.push(flag(back_pointer_set));
+                let same_pseudo = if back_pointer_set {
+                    let pseudo = executive.pseudo_brep.ok_or_else(missing_error)?;
+                    std::ptr::eq(access.brep(pseudo)?, access.pseudo.brep())
+                } else {
+                    false
                 };
-                out.push(label);
-                let pseudo = resolved
-                    .and_then(|executive| executive.pseudo_brep)
-                    .map(|handle| access.brep(handle))
-                    .transpose()?;
-                let pseudo_label = match pseudo {
-                    Some(pseudo) if std::ptr::eq(pseudo, access.pseudo.brep()) => 1.0,
-                    Some(pseudo)
-                        if access
-                            .extra_pseudos
-                            .first()
-                            .is_some_and(|value| std::ptr::eq(pseudo, value.brep())) =>
-                    {
-                        2.0
-                    }
-                    None => 0.0,
-                    _ => return missing(),
-                };
-                out.push(pseudo_label);
+                out.push(flag(same_pseudo));
                 out.push(solver.solver.g1_knots.len() as f64);
                 out.extend(&solver.solver.g1_knots);
             }
@@ -408,40 +388,4 @@ pub(crate) fn loader_rust(i: &LoaderScript) -> Result<Output, HarnessError> {
         Ok(out) => super::super::blend_fillet_executive_p1::to_output(&out),
         Err(e) => error_output(&e),
     })
-}
-
-#[cfg(test)]
-mod registration_tests {
-    use super::executive;
-    use solidcore::blend::fillet_executive::registration::FilletExecutiveStore;
-    use solidcore::blend::fillet_solver::p1::{FilletExecutiveRef, FilletSolver};
-
-    #[test]
-    fn actual_executive_references_reject_foreign_stores_and_copies() {
-        let mut first = FilletExecutiveStore::new();
-        let mut second = FilletExecutiveStore::new();
-        let reference = first.insert(executive(None));
-        let foreign = second.insert(executive(None));
-        assert_ne!(reference, foreign);
-        assert!(second.resolve(&reference).is_err());
-        let mut solver = FilletSolver::new(1e-6, 0.1, 0.01);
-        solver.set_fillet_executive(Some(FilletExecutiveRef::Registered(reference.clone())));
-        let actual = first.resolve_solver(&solver).unwrap().unwrap();
-        assert!(std::ptr::eq(actual, first.resolve(&reference).unwrap()));
-        let copy = actual.clone();
-        for _ in 0..32 {
-            first.insert(executive(None));
-        }
-        let retained = first.resolve_solver(&solver).unwrap().unwrap();
-        assert_eq!(retained.registration.reference(), Some(reference.clone()));
-        assert!(copy.registration.reference().is_none());
-        let copy_reference = second.insert(copy);
-        assert_ne!(reference, copy_reference);
-        assert!(first.resolve(&copy_reference).is_err());
-        solver.set_fillet_executive(Some(FilletExecutiveRef::Unresolved));
-        assert!(matches!(
-            first.resolve_solver(&solver),
-            Err(solidcore::SolidError::InvalidInput { .. })
-        ));
-    }
 }
