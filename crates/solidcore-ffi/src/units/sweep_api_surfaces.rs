@@ -56,6 +56,12 @@ use crate::{call_with_buffer, FfiError};
 pub const MAX_INDEX: usize = 512;
 /// Largest NURB degree accepted by [`run`].
 pub const MAX_DEGREE: usize = 17;
+/// Minimum sweep tolerance as a fraction of the trajectory's control polygon
+/// length (HANG-5): `SmApiCreateSweep` uses a fixed `dTol = 1e-5`, so a
+/// trajectory whose control polygon is longer than `1e-5 / 1e-6 = 10` makes
+/// the tolerance fall below floating-point resolution and hangs.
+pub const MIN_SWEEP_TOL_FRACTION: f64 = 1e-6;
+const SWEEP_FIXED_TOL: f64 = 1e-5;
 mod sys {
     extern "C" {
         pub fn sc_sweep_api_surfaces_run(
@@ -361,6 +367,59 @@ fn push_curve(o: &mut Vec<f64>, c: &CurveSpec) {
     }
 }
 
+/// Control-polygon length of a sweep trajectory, for the HANG-5 tolerance guard.
+fn path_poly_len(c: &CurveSpec) -> f64 {
+    match c {
+        CurveSpec::Nurb { cpts, .. } => {
+            let mut len = 0.0;
+            for w in cpts.windows(2) {
+                let a = w[0];
+                let b = w[1];
+                let dx = b[0] - a[0];
+                let dy = b[1] - a[1];
+                let dz = if a[2] == crate::validate::NOZ || b[2] == crate::validate::NOZ {
+                    0.0
+                } else {
+                    b[2] - a[2]
+                };
+                len += (dx * dx + dy * dy + dz * dz).sqrt();
+            }
+            len
+        }
+        CurveSpec::ApiCurve { points } => {
+            let mut len = 0.0;
+            for w in points.windows(2) {
+                let a = w[0];
+                let b = w[1];
+                let dx = b[0] - a[0];
+                let dy = b[1] - a[1];
+                let dz = b[2] - a[2];
+                len += (dx * dx + dy * dy + dz * dz).sqrt();
+            }
+            len
+        }
+        CurveSpec::ApiArc {
+            center: _,
+            radius,
+            start_deg,
+            end_deg,
+        } => {
+            let rad = (end_deg - start_deg).abs() * std::f64::consts::PI / 180.0;
+            radius.abs() * rad
+        }
+        CurveSpec::ApiCircle { radius, .. } | CurveSpec::AnalyticCircle { radius, .. } => {
+            2.0 * std::f64::consts::PI * radius.abs()
+        }
+        CurveSpec::LineSegment { start, end } => {
+            let dx = end[0] - start[0];
+            let dy = end[1] - start[1];
+            let dz = end[2] - start[2];
+            (dx * dx + dy * dy + dz * dz).sqrt()
+        }
+        CurveSpec::Null => 0.0,
+    }
+}
+
 /// Validates `call` and encodes it as the shim's program.
 fn encode(call: &Call) -> Result<Vec<f64>, FfiError> {
     let mut o = Vec::new();
@@ -375,6 +434,16 @@ fn encode(call: &Call) -> Result<Vec<f64>, FfiError> {
         Call::Sweep { curve, path } => {
             check_curve(curve, Need::BSplinePosWeights, false)?;
             check_curve(path, Need::BSplinePosWeights, false)?;
+            // HANG-5: fixed dTol = 1e-5 must stay above MIN_SWEEP_TOL_FRACTION
+            // times the trajectory's control polygon length.
+            let traj_len = path_poly_len(path);
+            if !traj_len.is_finite()
+                || (MIN_SWEEP_TOL_FRACTION * traj_len)
+                    .partial_cmp(&SWEEP_FIXED_TOL)
+                    .is_none_or(|ord| ord.is_gt())
+            {
+                return Err(bad("sweep: trajectory too long for the fixed tolerance"));
+            }
             o.push(2.0);
             push_curve(&mut o, curve);
             push_curve(&mut o, path);

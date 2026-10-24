@@ -735,6 +735,15 @@ pub fn surface_op(s: &Surf, op: &Op) -> Result<Vec<f64>, FfiError> {
             "eval: order 5 of a B-spline generator overruns NL_MAXDER",
         ));
     }
+    // `AdjustSTEPUVDomain` of an ellipse/circle extrusion to an angular u end
+    // outside [-360, 360] hangs in C++ (HANG-23): the polar set-up shifts one
+    // turn per iteration. Bound the STEP u domain like the generator's angular
+    // domain.
+    if let Op::Adjust { dom } = op {
+        if matches!(s.gen, Gen::Circle { .. } | Gen::Ellipse { .. }) {
+            angular(dom[0], dom[2], "adjust domain")?;
+        }
+    }
     let mut input = Vec::new();
     push_surf(&mut input, s)?;
     push_op(&mut input, op)?;
