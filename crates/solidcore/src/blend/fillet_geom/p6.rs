@@ -1320,7 +1320,10 @@ impl FilletBrep {
             Some(s) => copy_as_b_spline_surface(k, s)?,
             None => None,
         };
-        let copy_curve = to_copy.center_line_curve().map(BSplineCurve::copy);
+        let copy_curve = to_copy
+            .center_line_geometry()
+            .map(|curve| curve.copy(k))
+            .transpose()?;
         let has_surface = copy_surface.is_some();
         self.geom_mut(g)?.fillet_surface = copy_surface;
         if !has_surface {
@@ -2393,7 +2396,8 @@ mod tests {
                 Point3::new(0.0, 0.5, 1.0),
                 Point3::new(1.0, 0.5, 1.0),
             )
-            .unwrap(),
+            .unwrap()
+            .into(),
         );
         fb.geom_mut(a).unwrap().deviations = [1e-3, 2e-3];
         let rail_a = fb.geom(a).unwrap().rail(0).unwrap();

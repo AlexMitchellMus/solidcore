@@ -40,7 +40,7 @@
 //! | [`fillet_edge_is_kind_of`], [`FILLET_EDGE_TYPE`], [`FILLET_EDGE_CLASS_STRING`], [`FILLET_EDGE_TYPE_STRING`] | `SmFilletEdge::IsKindOf`, `GetType`, `GetClassString`, `GetTypeString` |
 //! | [`FilletGeom`], [`FilletGeom::new`]             | `SmFilletGeom` members, `SmFilletGeom(SmFilletSolver*, SmFilletGeomType)` (CO-PORTED from `blend.fillet_geom_p5`) |
 //! | [`FilletGeom::add_referenced_fillet_edgeuse`], [`FilletGeom::add_side_fillet_edgeuse`] | `AddReferencedFilletEdgeuse`, `AddSideFilletEdgeuse` |
-//! | [`FilletGeom::fillet_geom_type`], [`FilletGeom::fillet_solver`], [`FilletGeom::status`], [`FilletGeom::split_flag`], [`FilletGeom::fillet_edges`], [`FilletGeom::center_line_curve`], [`FilletGeom::fillet_surface`], [`FilletGeom::rail`] | `GetFilletGeomType`, `GetFilletSolver`, `GetStatus`, `GetSplitFlag`, `GetFilletEdges`, `GetCenterLineCurve`, `GetFilletSurface`, `GetRail` |
+//! | [`FilletGeom::fillet_geom_type`], [`FilletGeom::fillet_solver`], [`FilletGeom::status`], [`FilletGeom::split_flag`], [`FilletGeom::fillet_edges`], [`FilletGeom::center_line_curve`], [`FilletGeom::center_line_geometry`], [`FilletGeom::fillet_surface`], [`FilletGeom::rail`] | `GetFilletGeomType`, `GetFilletSolver`, `GetStatus`, `GetSplitFlag`, `GetFilletEdges`, `GetCenterLineCurve`, `GetFilletSurface`, `GetRail` |
 //! | [`FilletGeom::offset_surface`], [`FilletGeom::set_offset_surface`] | `GetOffsetSurface`, `SetOffsetSurface` |
 //! | [`FilletBrep::rail_vertexuse`]                  | `SmFilletGeom::GetRailVertexuse`           |
 //! | [`FilletGeom::set_fillet_surface`], [`FilletGeom::set_fillet_geom_type`], [`FilletGeom::set_rail`] | `SetFilletSurface`, `SetFilletGeomType`, `SetRail` |
@@ -1140,7 +1140,7 @@ pub struct FilletGeom {
     /// `m_vOtherRails2`: rail edges appended to rail 1.
     pub other_rails2: Vec<EdgeId>,
     /// `m_pCenterLineCurve`.
-    pub center_line_curve: Option<BSplineCurve>,
+    pub center_line_curve: Option<Curve>,
     /// `m_pFilletSurface` (`SM_FILLETSURF_TYPE` is `SmSurface`).
     pub fillet_surface: Option<Surface>,
     /// `m_pOffSurfs[2]`: this geometry's own offset surfaces (may differ from the
@@ -1260,9 +1260,24 @@ impl FilletGeom {
         edges.extend_from_slice(&self.edges);
     }
 
-    /// `GetCenterLineCurve`.
+    /// The B-spline base of the actual retained centerline, for base-only callers.
+    /// Virtual operations must use [`Self::center_line_geometry`] to retain analytic state.
     #[must_use]
-    pub const fn center_line_curve(&self) -> Option<&BSplineCurve> {
+    pub fn center_line_curve(&self) -> Option<&BSplineCurve> {
+        use crate::curve::curve::CurveKind;
+        match self.center_line_curve.as_ref()?.kind() {
+            CurveKind::BSpline(curve) => Some(curve),
+            CurveKind::Line(curve) => Some(curve.base()),
+            CurveKind::Ellipse(curve) => Some(curve.base()),
+            CurveKind::Hyperbola(curve) => Some(curve.base()),
+            CurveKind::Parabola(curve) => Some(curve.base()),
+            _ => None,
+        }
+    }
+
+    /// `GetCenterLineCurve`: the actual object, including its analytic derived type.
+    #[must_use]
+    pub const fn center_line_geometry(&self) -> Option<&Curve> {
         self.center_line_curve.as_ref()
     }
 

@@ -2480,7 +2480,8 @@ mod tests {
                 Point3::new(0.0, 0.0, 0.0),
                 Point3::new(1.0, 0.0, 0.0),
             )
-            .unwrap(),
+            .unwrap()
+            .into(),
         );
         fb.destroy_geom(g).unwrap();
         assert!(fb.geom(g).unwrap().center_line_curve.is_none());
