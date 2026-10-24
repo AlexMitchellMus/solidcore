@@ -151,7 +151,7 @@ fn real_box_nx1_topology_uses_live_pseudo_objects() {
 }
 
 #[test]
-fn real_box_corner_vertex_stage_matches_native_both_corner_points() {
+fn real_box_corner_vertex_stage_retains_native_geometry_and_rail_start() {
     let mut k = Kernel::default();
     let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
     let edge = target.edges().ids().next().unwrap();
@@ -186,5 +186,35 @@ fn real_box_corner_vertex_stage_matches_native_both_corner_points() {
             Point3::new(10.0, 20.0, 29.5),
             Point3::new(9.5, 20.0, 30.0),
         ]
+    );
+    let rail = session.pseudo_brep().edge_list()[0];
+    assert_eq!(
+        session
+            .pseudo_brep()
+            .fillet_edge(rail)
+            .unwrap()
+            .fillet_edge_type(),
+        solidcore::blend::fillet_geom::p1::FilletEdgeType::Rail
+    );
+    let first_use = session.pseudo_brep().brep().edge(rail).unwrap().edgeuses[0];
+    let FilletObject::Corner(first_corner) = session.executive().corners[0] else {
+        panic!("actual first corner required");
+    };
+    let first_vertex = session.corner(first_corner).unwrap().vertices[0];
+    let vertexuse = session
+        .pseudo_brep()
+        .brep()
+        .edgeuse(first_use)
+        .unwrap()
+        .vertexuse
+        .unwrap();
+    assert_eq!(
+        session
+            .pseudo_brep()
+            .brep()
+            .vertexuse(vertexuse)
+            .unwrap()
+            .vertex,
+        Some(first_vertex)
     );
 }
