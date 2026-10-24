@@ -1603,24 +1603,23 @@ fn try_cover<O: SolutionObject>(
         Err(e) if e.is_unported() => return Err(e),
         Err(_) => return Ok(false),
     };
-    let r =
-        match cover_coincident_surface(
-            k,
-            cover,
-            covered,
-            tol,
-            &covered_domain,
-            true,
-            &mut trims,
-            cover_context(context, cover_handle),
-        ) {
-            Ok(r) => r,
-            Err(e) if e.is_unported() => return Err(e),
-            Err(_) => {
-                st.max_dist = BIG_DOUBLE;
-                return Ok(false);
-            }
-        };
+    let r = match cover_coincident_surface(
+        k,
+        cover,
+        covered,
+        tol,
+        &covered_domain,
+        true,
+        &mut trims,
+        cover_context(context, cover_handle),
+    ) {
+        Ok(r) => r,
+        Err(e) if e.is_unported() => return Err(e),
+        Err(_) => {
+            st.max_dist = BIG_DOUBLE;
+            return Ok(false);
+        }
+    };
     st.max_dist = r.max_dist;
     if !r.success {
         return Ok(false);
@@ -1778,13 +1777,31 @@ impl Surface {
         // Favor SmPlanes:
         if is_plane(self) {
             tried0 = true;
-            if try_cover(k, &mut st, self, other, false, tol, want_merged, &mut context)? {
+            if try_cover(
+                k,
+                &mut st,
+                self,
+                other,
+                false,
+                tol,
+                want_merged,
+                &mut context,
+            )? {
                 return Ok(done(&mut st, false));
             }
         }
         if is_plane(other) {
             tried1 = true;
-            if try_cover(k, &mut st, self, other, true, tol, want_merged, &mut context)? {
+            if try_cover(
+                k,
+                &mut st,
+                self,
+                other,
+                true,
+                tol,
+                want_merged,
+                &mut context,
+            )? {
                 return Ok(done(&mut st, true));
             }
         }
@@ -1792,13 +1809,31 @@ impl Surface {
         // Next look for bilinear.
         if !tried0 && self.is_bilinear() {
             tried0 = true;
-            if try_cover(k, &mut st, self, other, false, tol, want_merged, &mut context)? {
+            if try_cover(
+                k,
+                &mut st,
+                self,
+                other,
+                false,
+                tol,
+                want_merged,
+                &mut context,
+            )? {
                 return Ok(done(&mut st, false));
             }
         }
         if !tried1 && other.is_bilinear() {
             tried1 = true;
-            if try_cover(k, &mut st, self, other, true, tol, want_merged, &mut context)? {
+            if try_cover(
+                k,
+                &mut st,
+                self,
+                other,
+                true,
+                tol,
+                want_merged,
+                &mut context,
+            )? {
                 return Ok(done(&mut st, true));
             }
         }
@@ -1806,13 +1841,31 @@ impl Surface {
         // Next, favor SmBSplineSurfaces.
         if !tried0 && is_bspline(self) {
             tried0 = true;
-            if try_cover(k, &mut st, self, other, false, tol, want_merged, &mut context)? {
+            if try_cover(
+                k,
+                &mut st,
+                self,
+                other,
+                false,
+                tol,
+                want_merged,
+                &mut context,
+            )? {
                 return Ok(done(&mut st, false));
             }
         }
         if !tried1 && is_bspline(other) {
             tried1 = true;
-            if try_cover(k, &mut st, self, other, true, tol, want_merged, &mut context)? {
+            if try_cover(
+                k,
+                &mut st,
+                self,
+                other,
+                true,
+                tol,
+                want_merged,
+                &mut context,
+            )? {
                 return Ok(done(&mut st, true));
             }
         }
@@ -1820,14 +1873,32 @@ impl Surface {
         // No special cases.
         if !tried0 {
             tried0 = true;
-            if try_cover(k, &mut st, self, other, false, tol, want_merged, &mut context)? {
+            if try_cover(
+                k,
+                &mut st,
+                self,
+                other,
+                false,
+                tol,
+                want_merged,
+                &mut context,
+            )? {
                 return Ok(done(&mut st, false));
             }
         }
         let _ = tried0;
         if !tried1 {
             tried1 = true;
-            if try_cover(k, &mut st, self, other, true, tol, want_merged, &mut context)? {
+            if try_cover(
+                k,
+                &mut st,
+                self,
+                other,
+                true,
+                tol,
+                want_merged,
+                &mut context,
+            )? {
                 return Ok(done(&mut st, true));
             }
         }

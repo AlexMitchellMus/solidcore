@@ -66,8 +66,8 @@ use crate::kernel::Kernel;
 use crate::math::{
     max2, max3, rad_to_deg, Point2, Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT,
 };
-use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::b_spline_surface::LocationType;
+use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::knots::Side;
 use crate::surface::plane::Plane;
 
@@ -868,7 +868,17 @@ impl Surface {
         if let Some(p) = ignored(other.evaluate_point(k, uv_other))? {
             pt = p;
         }
-        if ignored(step_inversion_in(self, k, &big_domain, pt, tol, None, &mut context))?.is_none() {
+        if ignored(step_inversion_in(
+            self,
+            k,
+            &big_domain,
+            pt,
+            tol,
+            None,
+            &mut context,
+        ))?
+        .is_none()
+        {
             return Ok(failure);
         }
 
@@ -880,8 +890,15 @@ impl Surface {
                     pt = p;
                 }
 
-                let Some((mut uv_this, location)) =
-                    ignored(step_inversion_in(self, k, &big_domain, pt, tol, None, &mut context))?
+                let Some((mut uv_this, location)) = ignored(step_inversion_in(
+                    self,
+                    k,
+                    &big_domain,
+                    pt,
+                    tol,
+                    None,
+                    &mut context,
+                ))?
                 else {
                     return Ok(failure);
                 };
@@ -973,8 +990,15 @@ impl Surface {
                     pt = p;
                 }
 
-                let Some((mut uv_this, location)) =
-                    ignored(step_inversion_in(self, k, &big_domain, pt, tol, Some(guess_uv), &mut context))?
+                let Some((mut uv_this, location)) = ignored(step_inversion_in(
+                    self,
+                    k,
+                    &big_domain,
+                    pt,
+                    tol,
+                    Some(guess_uv),
+                    &mut context,
+                ))?
                 else {
                     // If any DropPoint fails, they're not coincident.
                     return Ok(failure);
@@ -1058,8 +1082,15 @@ impl Surface {
                     pt = p;
                 }
 
-                let Some((mut drop_uv, location)) =
-                    ignored(step_inversion_in(self, k, &big_domain, pt, tol, Some(guess_uv), &mut context))?
+                let Some((mut drop_uv, location)) = ignored(step_inversion_in(
+                    self,
+                    k,
+                    &big_domain,
+                    pt,
+                    tol,
+                    Some(guess_uv),
+                    &mut context,
+                ))?
                 else {
                     // If any DropPoint fails, they're not coincident.
                     return Ok(failure);
@@ -1592,7 +1623,6 @@ impl EvalNFunctions for SssIntersectEnfo<'_> {
         Ok(false)
     }
 }
-
 
 /// `this->STEPInversion(..)` of `CoverCoincidentSurface`, under the caller's face
 /// context when there is one.
