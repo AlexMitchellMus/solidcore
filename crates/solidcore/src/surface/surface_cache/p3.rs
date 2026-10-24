@@ -54,20 +54,21 @@
 //!   cache of a `1e-4`-scale face in the `topology.edgeuse_p3` adversarial fixtures,
 //!   measured on the C++ build), and `2^20` on 32-bit targets (wasm32), whose 4 GB
 //!   address space cannot hold a larger patch array.
-//! - **Non-finite tolerances.** Neither does upstream test a tessellation tolerance for
-//!   finiteness. `SmSurface::CacheMakeOrValidate` derives the chord-height tolerance
-//!   from the surface's size (the sum of four point distances over 40): a surface whose
-//!   coordinates overflow that estimate (a `1e300` control point, as in the
-//!   `surface.surface_point_solve_p*` `*_rust_hang` fuzz inputs) gets an infinite
-//!   tolerance, and `h * h <= inf` then holds for every finite height. The chord test
-//!   becomes vacuous and the 20-degree angle test alone drives the subdivision, which
-//!   such a surface never satisfies (its pseudo box spans `1e299`); upstream would
-//!   split until it runs out of memory. [`SurfaceCache::subdivide_to_tolerances_with`]
-//!   returns [`SolidError::InvalidInput`] when either tolerance is not finite. Measured
-//!   on the `surface.surface_point_solve_p3` corpus input before the bound: still
-//!   splitting after 30 s, 40 000 nodes at 12 s in a debug build. Finite tolerances,
-//!   however large, are unchanged: a `1e8`-unit surface builds the same 31-node tree as
-//!   a unit one.
+//! - **Node extent.** Neither does upstream bound how large a node may be. A surface
+//!   whose extent exceeds about `sqrt(f64::MAX)` cannot be measured by the tessellation
+//!   tests at all: every squared length they compare (a chord height squared, a normal's
+//!   squared components) overflows to infinity, so subdivision can never be shown to
+//!   converge and the tree grows until [`MAX_SUBDIVISION_NODES`] stops it, minutes and
+//!   gigabytes later. Measured on the `surface.surface_point_solve_p3` `*_rust_hang`
+//!   corpus input (a `1e300` control point): still splitting after 30 s, 40 000 nodes at
+//!   12 s in a debug build, pseudo boxes spanning `5.5e299`.
+//!   [`SurfaceCache::subdivide_to_tolerances_with`] returns [`SolidError::InvalidInput`]
+//!   for a node below the root beyond [`MAX_TESSELLATION_EXTENT`] as soon as its test
+//!   asks for a split (the root's box is the coarse box of the whole surface: the
+//!   HANG-20 `1e307` boundary fixtures overflow it at the root only, 6.6e306, and are
+//!   below the bound one split down). Upstream fixtures stay far below it otherwise (the
+//!   FFI bounds the same HANG-29 regime at `1e150`); ordinary and `1e8`-unit surfaces
+//!   build unchanged (31 nodes each), as do those boundary fixtures.
 //! - **Cyclic trees.** `FindUVNodes` walks the child links of a tree whose links form a
 //!   cycle forever (its stack grows without bound): the port stops after more node
 //!   visits than a tree of that size has (twice the node count plus one) with
@@ -158,6 +159,12 @@ pub const MAX_SUBDIVISION_NODES: usize = 1 << 22;
 /// 4 GB address space holds.
 #[cfg(not(target_pointer_width = "64"))]
 pub const MAX_SUBDIVISION_NODES: usize = 1 << 20;
+
+/// Largest node extent the tessellation tests can measure (see the module deviations):
+/// `sqrt(f64::MAX)`, past which every squared length (a chord height squared, a normal's
+/// squared components) overflows to infinity, so no test can report progress. A root
+/// node is exempt: its box is the coarse box of the whole surface.
+pub const MAX_TESSELLATION_EXTENT: f64 = 1.340_780_792_994_259_5e154;
 
 /// `SM_SS_UMIN` .. `SM_SS_VMAX`: the singular sides of a surface.
 const SS_UMIN: u32 = 1;
@@ -848,17 +855,6 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         depth: u32,
         tester: &mut ToleranceTester<'_, O>,
     ) -> Result<()> {
-        // a tolerance that overflowed to infinity is not a tolerance: the chord test
-        // becomes vacuous (every finite height squared is <= inf) and only the angle
-        // test bounds the tree (see the module deviations)
-        let opts = *self.options();
-        if !opts.chord_height_tolerance.is_finite() || !opts.ang_tol_rad.is_finite() {
-            return Err(invalid(
-                OP_TOL,
-                "tessellation tolerance is not finite (surface size overflowed)",
-            ));
-        }
-
         // performance only: the outermost call memoises the singularity test's pole
         // data for the splits below it (see the deviations of `surface_cache::p1`)
         let owns_memo = self.begin_pole_memo();
@@ -888,6 +884,26 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         // no work - patch currently within tolerance
         if !test.needs_subdivision {
             return Ok(());
+        }
+
+        // a node below the root this large cannot be measured: its squared lengths
+        // overflow (see the module deviations), so subdividing it cannot be shown to
+        // converge. The root's box is the coarse box of the whole surface, which an
+        // exact rational patch can overflow even when the evaluated surface is ordinary
+        // (the HANG-20 boundary fixtures: 6.6e306 at the root, below the bound one split
+        // down), so it is exempt.
+        if depth > 0 {
+            let bbox = self.tree_or(OP_TOL)?.node(node)?.bbox;
+            let (min, max) = (bbox.min(), bbox.max());
+            let far = [min.x, min.y, min.z, max.x, max.y, max.z]
+                .into_iter()
+                .fold(0.0_f64, |a, v| a.max(v.abs()));
+            if far > MAX_TESSELLATION_EXTENT {
+                return Err(invalid(
+                    OP_TOL,
+                    "subdivision node exceeds MAX_TESSELLATION_EXTENT",
+                ));
+            }
         }
 
         // switch between subdivision strategies
@@ -1466,82 +1482,98 @@ mod tests {
         Surface::from(BSplineSurface::from_nurb(nurb, false))
     }
 
-    fn assert_tolerance_guard(error: &SolidError) {
+    fn assert_extent_guard(error: &SolidError) {
         assert!(
             matches!(
-                &error,
+                error,
                 SolidError::InvalidInput { operation, reason }
-                    if *operation == OP_TOL && reason.contains("not finite")
+                    if *operation == OP_TOL && reason.contains("MAX_TESSELLATION_EXTENT")
             ),
-            "expected the non-finite tolerance guard, got {error:?}"
+            "expected the node extent guard, got {error:?}"
         );
     }
 
-    /// The corpus input's size estimate overflows, so `cache_tolerances` hands the cache
-    /// a chord-height tolerance of infinity. The chord test then accepts every finite
-    /// height (`h * h <= inf`) and only the 20-degree angle test bounds the tree, which
-    /// this surface never satisfies: before the guard the trimmed cache build was still
-    /// splitting after 30 s (40 000 nodes at 12 s in a debug build, 147 MB), and only
-    /// [`MAX_SUBDIVISION_NODES`] could stop it, minutes later. It now returns at once,
-    /// from both cache constructors that `get_surface_cache` tries.
+    /// The corpus input's surface is `1e299` wide once its `1e300` control point is
+    /// divided by its weight, so every squared length in the tessellation tests
+    /// overflows: the chord test is vacuous (`h * h <= inf`) and the angle test can
+    /// never report progress, so the tree grows exponentially. Before the guard the
+    /// trimmed cache build was still splitting after 30 s (40 000 nodes at 12 s in a
+    /// debug build, 147 MB); only [`MAX_SUBDIVISION_NODES`] could stop it, minutes
+    /// later. It now returns at once, from both cache constructors that
+    /// `get_surface_cache` tries.
     #[test]
-    fn overflowing_cache_tolerance_is_refused() {
+    fn unmeasurable_corpus_surface_is_refused() {
         let k = Kernel::default();
         let surface = corpus_step_surface();
-        let tol = cache_tolerances(&k, &surface).expect("cache tolerances");
-        assert!(
-            !tol.chord_height_tol.is_finite(),
-            "the corpus size estimate no longer overflows: {tol:?}"
-        );
 
         for error in [
             make_trim_srf_cache::<i64>(&k, &surface, Some(0)).err(),
             make_surface_cache::<i64>(&k, &surface, Some(0)).err(),
         ] {
-            assert_tolerance_guard(&error.expect("an infinite tolerance must be refused"));
+            assert_extent_guard(&error.expect("an unmeasurable node must be refused"));
         }
     }
 
-    /// The other corpus inputs (`surface_point_solve_p2` fuzz01057 holds `-f64::MAX`)
-    /// reach the same regime with a finite coordinate that still overflows the size
-    /// estimate's squared distances.
+    /// The HANG-20 boundary fixtures the FFI compares (`blend.fillet_geom_p1`'s
+    /// `*_hang20_boundary_1e307`) hold `1e307` control points with extreme weights:
+    /// their evaluated surface is ordinary-sized (`P / w`), it subdivides and
+    /// converges in milliseconds, and the guard must not touch it.
     #[test]
-    fn extreme_coordinates_are_refused() {
+    fn huge_control_points_with_small_geometry_build() {
         let k = Kernel::default();
         let net = vec![
             vec![
-                CPoint::new(0.0, 0.0, 0.0, 1.0),
-                CPoint::new(0.0, 1.0, 0.0, 1.0),
-                CPoint::new(0.0, 2.0, 0.0, 1.0),
+                CPoint::new(-57.74e306, -4.79e306, -20.02e306, 1e306),
+                CPoint::new(-9e306, 3.69e306, -2.39e306, 1e306),
             ],
             vec![
-                CPoint::new(1.0, 0.0, 0.0, 1.0),
-                CPoint::new(1.0, f64::MAX, 0.0, 1.0),
-                CPoint::new(1.0, 2.0, 0.0, 1.0),
+                CPoint::new(3.65e306, -7.33e306, -5.68e306, 1e306),
+                CPoint::new(-9e306, 4.03e306, -8.00e305, 1e306),
+            ],
+            vec![
+                CPoint::new(6.12e306, -7.88e305, 2.96e306, 1e306),
+                CPoint::new(6.83e306, 4.25e306, 1.05e306, 1e306),
             ],
         ];
         let nurb = NurbSurface::new(
             net,
-            1,
             2,
-            vec![0.0, 0.0, 1.0, 1.0],
+            1,
             vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            vec![0.0, 0.0, 1.0, 1.0],
         )
-        .expect("extreme surface");
-        let surface = Surface::from(
-            StepSurface::new(Surface::from(BSplineSurface::from_nurb(nurb, false)), true)
-                .expect("step surface"),
-        );
-        let tol = cache_tolerances(&k, &surface).expect("cache tolerances");
-        assert!(!tol.chord_height_tol.is_finite(), "tolerances: {tol:?}");
-        assert_tolerance_guard(
-            &make_surface_cache::<i64>(&k, &surface, Some(0))
-                .expect_err("an infinite tolerance must be refused"),
-        );
+        .expect("boundary surface");
+        // the fixture's cache is the B-spline one (exact rational patches, whose
+        // projective control points are `P / w`, i.e. tiny)
+        let surface = Surface::from(BSplineSurface::from_nurb(nurb, false));
+
+        let cache = make_trim_srf_cache::<i64>(&k, &surface, Some(0))
+            .expect("a normalizing huge control net must still build");
+        let nodes = cache.base().tree().map_or(0, |t| t.nodes().len());
+        eprintln!("boundary nodes {nodes}");
     }
 
-    /// A finite tolerance is never refused, however large: the guard rejects only a
-    /// tolerance that is not finite (see the module deviations).
+    /// Supported sizes keep their behaviour: an ordinary surface and one a hundred
+    /// million units wide both build the same 31-node tree.
+    #[test]
+    fn supported_sizes_build() {
+        let k = Kernel::default();
+        for scale in [1.0, 1e8] {
+            let surface =
+                Surface::from(StepSurface::new(scaled_surface(scale), true).expect("step"));
+            let tol = cache_tolerances(&k, &surface).expect("cache tolerances");
+            assert!(tol.chord_height_tol.is_finite(), "scale {scale}: {tol:?}");
+            let cache = make_trim_srf_cache::<i64>(&k, &surface, Some(0))
+                .expect("a supported size must build");
+            assert_eq!(
+                cache.base().tree().map_or(0, |t| t.nodes().len()),
+                31,
+                "scale {scale} node count changed"
+            );
+        }
+    }
+
+    /// A finite tolerance is never refused, however large (the guard is geometric).
     #[test]
     fn finite_tolerance_is_not_refused() {
         let k = Kernel::default();
@@ -1558,23 +1590,5 @@ mod tests {
         cache
             .build_tree_base(&k)
             .expect("a finite tolerance must still build");
-    }
-
-    /// Supported sizes keep their behaviour: an ordinary surface and one a hundred
-    /// million units wide (well inside the magnitudes the FFI compares) both have a
-    /// finite size estimate, build in the same 31 nodes, and are not refused.
-    #[test]
-    fn supported_sizes_build() {
-        let k = Kernel::default();
-        for scale in [1.0, 1e8] {
-            let surface =
-                Surface::from(StepSurface::new(scaled_surface(scale), true).expect("step"));
-            let tol = cache_tolerances(&k, &surface).expect("cache tolerances");
-            assert!(tol.chord_height_tol.is_finite(), "scale {scale}: {tol:?}");
-            let cache = make_trim_srf_cache::<i64>(&k, &surface, Some(0))
-                .expect("a supported size must build");
-            let nodes = cache.base().tree().map_or(0, |t| t.nodes().len());
-            assert_eq!(nodes, 31, "scale {scale} node count changed");
-        }
     }
 }
