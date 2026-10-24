@@ -19077,6 +19077,22 @@ other operand in the merge editing stages (`boolean.merge_p4` /
 of being kept reversed as a void. Listed in `known_mismatches.toml`; the offset
 port itself is not involved after the shell is built.
 
+
+### Real-solid fillet checkpoint: corner vertices are outside the pseudo owning list (2026-10-24)
+
+`blend.fillet_executive_p3`, fixture `real_solids.json`, case
+`real-box-first_topology-actual-session`: a 10×20×30 box, edge 0, radius 0.5.
+Actual shared setup and corner creation matched. The first direct Nx1 topology
+operation initially exposed seven integer mismatches: native `GetVertices`
+returned only the pseudo shell placeholder (1), while Rust also linked the two
+corner-owned fillet vertices (3). Their owning-list labels likewise differed.
+
+The producer now allocates those vertices into the arena without linking them
+into the B-rep's owning list. All original checks remain, with additional actual
+FV→corner, edge→corner and edgeuse→fillet-geometry backlinks. Four paired setup/
+corner/topology fixtures pass exactly; the full API fixture remains deferred.
+The direct topology checkpoint stops before vertex geometry and omits smoothing
+on both sides; it does not claim the full executive prelude or a finished fillet.
 ### 2026-10-24 — Nx1 corner topology co-port for the live fillet session
 
 The real box-edge session creates two `NByOne` corners, then reaches the missing
@@ -19112,3 +19128,19 @@ successful end-to-end execution. Resolution must preserve actual geometry-owned
 offset surfaces, solver fallback and write-through semantics (`SmFilletSolver.cpp`
 130–162; `SmFilletGeom.cpp` 9672–9680). Clearing the selected geometry, copying a
 solver base, or swapping unrelated surface state would conceal the missing path.
+
+### Real fillet first-corner vertex calculation reaches offset-surface context (2026-10-24)
+
+The additive `real-box-first-vertex-geometry-actual-session` case runs shared
+parameter setup, actual corner creation, direct first Nx1 topology, then that
+corner's actual vertex calculation on both sides. It does not claim the complete
+executive prelude. Native returns success and processes both fillet vertices at
+(9.5, 0, 30) and (10, 0, 29.5), with zero tolerance and original parameters 9.5
+and 29.5. Rust reaches genuine `SmFilletGeom::GetOffsetSurface` in
+`blend.fillet_geom_p1`; the case remains deferred, with no fabricated result.
+
+The snapshot reads initialized fillet-vertex status/processed fields and samples
+geometry only after processing. It never reads the uninitialized native corner
+status or unevaluated pseudo-edge geometry. Full p3: 297 cases, 249 value passes,
+48 deferred, zero failures. All five earlier real-solid cases retain their full
+CPP and Rust output records byte-for-byte; no earlier record fields were removed.
