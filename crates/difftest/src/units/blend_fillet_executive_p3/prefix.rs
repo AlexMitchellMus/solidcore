@@ -150,6 +150,68 @@ fn snapshot(session: &FilletSession<'_>, parameters: &mut Vec<f64>) -> SolidResu
     Ok(state)
 }
 
+fn offset_snapshot(session: &FilletSession<'_>) -> SolidResult<(Vec<f64>, Vec<f64>)> {
+    let mut geometries = Vec::new();
+    for object in &session.executive().solvers {
+        let FilletObject::Solver(id) = *object else {
+            return Err(invalid("actual solver required"));
+        };
+        geometries.extend(session.solver(id)?.base().fillet_geoms.iter().copied());
+    }
+    let mut state = Vec::new();
+    let mut distances = Vec::new();
+    for (index, object) in session.executive().solvers.iter().enumerate() {
+        let FilletObject::Solver(id) = *object else {
+            return Err(invalid("actual solver required"));
+        };
+        let solver = session.solver(id)?.base();
+        state.extend([
+            index as f64,
+            label(&geometries, solver.fillet_geom_for_surfaces()),
+            solver.fillet_geoms.len() as f64,
+        ]);
+        for &geometry_id in &solver.fillet_geoms {
+            let geometry = session.pseudo_brep().geom(geometry_id)?;
+            state.extend([
+                label(&geometries, Some(geometry_id)),
+                f64::from(geometry.fillet_geom_type() as u32),
+            ]);
+            for rail in 0..2 {
+                let own = geometry.off_surfs.get(rail).and_then(Option::as_ref);
+                let original = solver
+                    .surfaces
+                    .get(rail)
+                    .and_then(Option::as_ref)
+                    .map(|slot| &slot.surface);
+                let same_object = own.zip(original).is_some_and(|(a, b)| std::ptr::eq(a, b));
+                let same_base = own
+                    .zip(original)
+                    .is_some_and(|(a, b)| a.base_id == b.base_id);
+                state.extend([
+                    rail as f64,
+                    f64::from(own.is_some()),
+                    f64::from(original.is_some()),
+                    f64::from(own.is_some()),
+                    f64::from(original.is_some()),
+                    f64::from(same_object),
+                    f64::from(same_base),
+                    own.map_or(-1.0, |surface| surface.surface.type_code() as f64),
+                    original.map_or(-1.0, |surface| surface.surface.type_code() as f64),
+                    own.map_or(-1.0, |surface| surface.base_surface().type_code() as f64),
+                    original.map_or(-1.0, |surface| surface.base_surface().type_code() as f64),
+                ]);
+                if let Some(surface) = own {
+                    distances.push(surface.offset_distance());
+                }
+                if let Some(surface) = original {
+                    distances.push(surface.offset_distance());
+                }
+            }
+        }
+    }
+    Ok((state, distances))
+}
+
 pub(super) fn run(
     k: &mut Kernel,
     body: &mut Brep,
@@ -172,11 +234,18 @@ pub(super) fn run(
         Err(error) => status(error)?,
     };
     let mut prior = Vec::new();
+    let mut offsets_before = (Vec::new(), Vec::new());
     if statuses[0] == 0.0 && input.checkpoint != Checkpoint::Prepared {
         statuses[1] = match session.create_corners(k, None) {
             Ok(()) => 0.0,
             Err(error) => status(error)?,
         };
+        if matches!(
+            input.checkpoint,
+            Checkpoint::FirstVertexGeometry | Checkpoint::CornerVerticesComponent
+        ) {
+            offsets_before = offset_snapshot(&session)?;
+        }
         if statuses[1] == 0.0 && input.checkpoint == Checkpoint::CornerVerticesComponent {
             prior = snapshot(&session, &mut Vec::new())?;
             statuses[2] = match session.create_corner_vertices(k) {
@@ -287,6 +356,16 @@ pub(super) fn run(
         section(&mut out, &vertex_state);
         section(&mut out, &geometry);
     }
+    if matches!(
+        input.checkpoint,
+        Checkpoint::FirstVertexGeometry | Checkpoint::CornerVerticesComponent
+    ) {
+        let offsets_after = offset_snapshot(&session)?;
+        section(&mut out, &offsets_before.0);
+        section(&mut out, &offsets_before.1);
+        section(&mut out, &offsets_after.0);
+        section(&mut out, &offsets_after.1);
+    }
     Ok(out)
 }
 
@@ -353,6 +432,25 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             "all_corner_vertices".into(),
             take_section(&mut values)?.to_vec(),
         );
+    }
+    if matches!(
+        checkpoint,
+        Checkpoint::FirstVertexGeometry | Checkpoint::CornerVerticesComponent
+    ) {
+        for phase in ["before", "after"] {
+            let state = take_section(&mut values)?;
+            if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                return Err(HarnessError::new("invalid offset ownership state"));
+            }
+            out.ints.insert(
+                format!("offsets_{phase}_state"),
+                state.iter().map(|v| *v as i64).collect(),
+            );
+            out.values.insert(
+                format!("offsets_{phase}_distances"),
+                take_section(&mut values)?.to_vec(),
+            );
+        }
     }
     if !values.is_empty() {
         return Err(HarnessError::new("trailing prefix data"));

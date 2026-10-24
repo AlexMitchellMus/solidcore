@@ -117,6 +117,47 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_solid(
 #include <SmFilletStandardSolver.h>
 #include <SmVertexuse.h>
 
+namespace {
+struct GeometryOffsetsMember {
+    using type = SmOffsetSurface* (SmFilletGeom::*)[2];
+    friend type member(GeometryOffsetsMember);
+};
+struct SolverOffsetsMember {
+    using type = SmOffsetSurface* (SmFilletSolver::*)[2];
+    friend type member(SolverOffsetsMember);
+};
+template struct ObserveMember<GeometryOffsetsMember, &SmFilletGeom::m_pOffSurfs>;
+template struct ObserveMember<SolverOffsetsMember, &SmFilletSolver::m_pSurfaces>;
+}
+
+namespace fillet_real_solid {
+std::pair<std::vector<double>,std::vector<double>> offset_snapshot(SmFilletExecutive& exec) {
+    SmTArray<SmFilletGeom*> geometries;
+    for(ULONG i=0;i<exec.GetFilletSolvers().GetSize();++i) {
+        SmTArray<SmFilletGeom*> own;exec.GetFilletSolvers()[i]->GetFilletGeoms(own);geometries.Append(own);
+    }
+    std::vector<double> state,distances;
+    for(ULONG i=0;i<exec.GetFilletSolvers().GetSize();++i) {
+        auto* solver=exec.GetFilletSolvers()[i];SmTArray<SmFilletGeom*> own;solver->GetFilletGeoms(own);
+        state.insert(state.end(),{double(i),label(geometries,solver->GetFilletGeomForSurfaces()),double(own.GetSize())});
+        for(ULONG g=0;g<own.GetSize();++g) {
+            auto* geometry=own[g];state.insert(state.end(),{label(geometries,geometry),double(geometry->GetFilletGeomType())});
+            for(ULONG rail=0;rail<2;++rail) {
+                auto* a=(geometry->*member(GeometryOffsetsMember{}))[rail];
+                auto* b=(solver->*member(SolverOffsetsMember{}))[rail];
+                auto* base_a=a?a->GetBaseSurface():nullptr;auto* base_b=b?b->GetBaseSurface():nullptr;
+                state.insert(state.end(),{double(rail),double(a!=nullptr),double(b!=nullptr),
+                    double(base_a!=nullptr),double(base_b!=nullptr),double(a && b && a==b),
+                    double(base_a && base_b && base_a==base_b),a?double(a->GetType()):-1.0,b?double(b->GetType()):-1.0,
+                    base_a?double(base_a->GetType()):-1.0,base_b?double(base_b->GetType()):-1.0});
+                if(a)distances.push_back(a->GetOffsetDistance());if(b)distances.push_back(b->GetOffsetDistance());
+            }
+        }
+    }
+    return {std::move(state),std::move(distances)};
+}
+}
+
 namespace fillet_real_solid {
 // The corner-vertex component of CreateFilletBrep, cpp1940–2059. Its
 // smooth-sequence prelude and later adjustment loop are omitted on BOTH sides.
@@ -228,8 +269,10 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
     const auto prepare=exec.SetFilletParameters(body.get(),selected,xsect,SM_FS_CONST_RADIUS,input[3],nullptr,-1,-1,-1,-1,ULONG(input[5]),input[6]);
     double corners=-1,topology=-1,vertex_geometry=-1;
     std::vector<double> prior,parameters;
+    std::pair<std::vector<double>,std::vector<double>> offsets_before;
     if(prepare==SM_SUCCESS && checkpoint>=2) {
         const auto c=exec.CreateFilletCorners();corners=fillet_real_solid::status(c);
+        if(checkpoint==4 || checkpoint==5)offsets_before=fillet_real_solid::offset_snapshot(exec);
         if(c==SM_SUCCESS && (checkpoint==3 || checkpoint==4)) {
             // Direct first-corner operation after setup/corner creation. This
             // is not the complete CreateFilletBrep prelude: smooth-sequence
@@ -285,6 +328,11 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
             }
         }
         fillet_real_solid::section(values,flags);fillet_real_solid::section(values,vertex_state);fillet_real_solid::section(values,geometry);
+    }
+    if(checkpoint==4 || checkpoint==5) {
+        const auto after=fillet_real_solid::offset_snapshot(exec);
+        fillet_real_solid::section(values,offsets_before.first);fillet_real_solid::section(values,offsets_before.second);
+        fillet_real_solid::section(values,after.first);fillet_real_solid::section(values,after.second);
     }
     return sc_copy_out(values.data(),int64_t(values.size()),out,cap,out_len);
     SC_CATCH
