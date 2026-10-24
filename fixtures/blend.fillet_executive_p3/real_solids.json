@@ -1,0 +1,11 @@
+{
+  "cases": [{
+    "name": "real-box-single-edge-radius-half",
+    "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+    "inputs": {"real_solid": {
+      "dimensions": [10, 20, 30], "radius": 0.5,
+      "xsect": 1, "continuity": 1, "thumbweight": 1,
+      "edges": [0]
+    }}
+  }]
+}

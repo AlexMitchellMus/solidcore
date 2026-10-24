@@ -5,16 +5,15 @@
 //! upstream API box examples are also run natively and explicitly deferred at
 //! their unported executive-p1 API/setup entrypoints on Rust.
 
-use std::collections::BTreeMap;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use solidcore::blend::fillet_executive::p1::ExecutiveObjects;
-use solidcore::blend::fillet_geom::p1::{FilStatus, FilletEdgeType};
 use solidcore::blend::fillet_executive::p3::{
     ContextMark, CornerView, ErrorInfo, ExecutionOptions, ExecutiveAccess, FilletExecutive,
     StitchAttempt, StitchSettings, TopoEdgeView,
 };
+use solidcore::blend::fillet_geom::p1::{FilStatus, FilletEdgeType};
 use solidcore::boolean::topology_intersector::p1::TopologyIntersector;
 use solidcore::geom::solution_array::{ObjectKind, SolutionObject};
 use solidcore::intersect::point_class::{ClassObject, ClassObjectKind};
@@ -23,6 +22,10 @@ use solidcore::math::Point3;
 use solidcore::topology::proto_topology::p1::CopyBrepMap;
 use solidcore::{Result as SolidResult, SolidError};
 use solidcore_ffi::units::blend_fillet_executive_p3 as ffi;
+use std::collections::BTreeMap;
+
+#[path = "blend_fillet_executive_p3/end_to_end.rs"]
+mod end_to_end;
 
 /// Parity runner for the three executive orchestration methods.
 pub struct Runner;
@@ -33,6 +36,8 @@ struct Inputs {
     record: Vec<f64>,
     #[serde(default)]
     upstream_case: Option<usize>,
+    #[serde(default)]
+    real_solid: Option<end_to_end::RealSolid>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -869,6 +874,12 @@ impl UnitDiff for Runner {
     }
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
         let input = case.parse::<Inputs>()?;
+        if let Some(real) = &input.real_solid {
+            if input.upstream_case.is_some() || !input.record.is_empty() {
+                return Err(HarnessError::new("mixed fixture forms"));
+            }
+            return end_to_end::cpp(real);
+        }
         if let Some(example) = input.upstream_case {
             if !input.record.is_empty() {
                 return Err(HarnessError::new("mixed fixture forms"));
@@ -885,7 +896,14 @@ impl UnitDiff for Runner {
         output(&ffi::eval(&input.record).map_err(|e| HarnessError::new(e.to_string()))?)
     }
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        rust(&case.parse::<Inputs>()?)
+        let input = case.parse::<Inputs>()?;
+        if let Some(real) = &input.real_solid {
+            if input.upstream_case.is_some() || !input.record.is_empty() {
+                return Err(HarnessError::new("mixed fixture forms"));
+            }
+            return end_to_end::rust(real);
+        }
+        rust(&input)
     }
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
         let tolerance = *rng.choose(&[0.0, 1e-300, 1e-9, 1e-5, 1.0, 1e100])?;
