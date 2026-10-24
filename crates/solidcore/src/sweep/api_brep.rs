@@ -1002,21 +1002,14 @@ mod tests {
         })
         .unwrap();
         assert_eq!(face_kinds(&b), ["revolution", "revolution"]);
-        // these stitch through the face-bound trimmed surface cache, as their
-        // SmSurfOfRevolution faces do (their surfaces: analytic_revolution's tests)
-        for curves in [[Some(&dome), Some(&rim)], [Some(&outer), Some(&inner)]] {
-            let r = create_rotational_sweep(&mut k, &curves, Vec3::ZERO, Vec3::Z, 360.0, false);
-            assert!(
-                matches!(
-                    &r,
-                    Err(SolidError::Unported {
-                        unit: "surface.trim_srf_cache",
-                        ..
-                    })
-                ),
-                "{:?}",
-                r.map(|b| face_kinds(&b))
-            );
+        for (curves, expected) in [
+            ([Some(&dome), Some(&rim)], ["sphere", "plane"]),
+            ([Some(&outer), Some(&inner)], ["torus", "torus"]),
+        ] {
+            let b = create_rotational_sweep(&mut k, &curves, Vec3::ZERO, Vec3::Z, 360.0, false)
+                .unwrap();
+            assert_eq!(face_kinds(&b), expected);
+            assert!(crate::topology::brep::p2::is_manifold_solid(&b).unwrap());
         }
     }
 }

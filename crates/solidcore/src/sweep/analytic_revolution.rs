@@ -24,17 +24,18 @@
 
 use crate::curve::curve::Curve;
 use crate::error::{ignored, Result};
-use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::geom_utility::p1::{line_closest_point, line_point_distance};
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
 use crate::math::{EFF_ZERO, PI};
+use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::surface::cone::Cone;
 use crate::surface::sphere::{Sphere, SphereOptions};
 use crate::surface::surface::Surface;
 use crate::surface::torus::{Torus, TorusOptions};
+use crate::sweep::rotational_sweep_geometry::create_rot_srf;
 
 /// Curve samples tested for lying in the half-plane through the axis.
 const PLANE_SAMPLES: u32 = 8;
@@ -50,9 +51,10 @@ const FIT_REL: f64 = 1.0e-9;
 /// line parallel to the axis, a cone for another line that is not perpendicular to
 /// it, a sphere for a circular arc centred on the axis and a torus for one off it, the
 /// arc in a plane through the axis. Bounded to the curve and the turn, and laid out as
-/// the B-spline surface of revolution (see the module header): when `reference` is
-/// given (that B-spline), the result must reproduce its corners, its tangent along the
-/// curve at the start and its sense of turn, else the layout the curve itself gives.
+/// the B-spline surface of revolution `reference` (`sm_CreateRotSrf`'s, made here when
+/// `None`; see the module header): the result must reproduce its corners, its tangent
+/// along the curve at the start and its sense of turn, and its natural boundary must
+/// have the B-spline's: the same degenerate sides and the other sides' lengths.
 /// `tol` is the distance tolerance of those tests and of the shape recognition, capped
 /// at `FIT_REL` times the size of the curve and axis point (`1 +` their largest
 /// coordinate), so that only a curve that is a line or arc to rounding qualifies.
@@ -93,15 +95,72 @@ pub fn analytic_revolution(
     let Some(Some(candidate)) = ignored(candidate(k, curve, base_pt, axis, angle_deg, tol))? else {
         return Ok(None);
     };
-    let expected = match reference {
-        Some(surface) => ignored(Layout::of(k, surface, base_pt, axis))?,
-        None => ignored(Layout::of_curve(k, curve, base_pt, axis, angle_deg))?,
+    let made;
+    let reference = if let Some(surface) = reference {
+        surface
+    } else {
+        let Some(surface) = ignored(create_rot_srf(k, curve, base_pt, axis, angle_deg))? else {
+            return Ok(None);
+        };
+        made = Surface::from(surface);
+        &made
     };
+    let expected = ignored(Layout::of(k, reference, base_pt, axis))?;
     let actual = ignored(Layout::of(k, &candidate, base_pt, axis))?;
+    let same_layout = matches!((expected, actual),
+        (Some(expected), Some(actual)) if actual.matches(&expected, tol));
+    if !same_layout {
+        return Ok(None);
+    }
+    // the face is trimmed by the natural boundary: a side the analytic surface makes
+    // wrong (a torus's full minor circle off angle 0 collapses in
+    // SmEllipse::AdjustSTEPInterval, WR-211) keeps the B-spline
+    let expected = ignored(boundary(k, reference, tol))?;
+    let actual = ignored(boundary(k, &candidate, tol))?;
     Ok(match (expected, actual) {
-        (Some(expected), Some(actual)) if actual.matches(&expected, tol) => Some(candidate),
+        (Some(expected), Some(actual)) if same_boundary(&expected, &actual) => Some(candidate),
         _ => None,
     })
+}
+
+/// Relative difference allowed between the lengths of matching boundary sides: the
+/// lengths are polyline estimates, which depend on the parameterisation.
+const LENGTH_REL: f64 = 1.0e-3;
+
+/// Samples of each boundary side's length estimate.
+const LENGTH_SAMPLES: usize = 16;
+
+/// The natural boundary sides of `surface` (from the umin side, as `EdgeSweepHigher`
+/// asks for them): each one's estimated length and whether it is degenerate within
+/// `tol`.
+fn boundary(k: &Kernel, surface: &Surface, tol: f64) -> Result<Vec<(f64, bool)>> {
+    let sides = surface.create_natural_uv_trim_curves(
+        k,
+        &surface.natural_uv_domain(),
+        SurfParamType::U,
+        false,
+    )?;
+    sides
+        .curves_3d
+        .iter()
+        .map(|c| {
+            let ivl = c.natural_interval();
+            Ok((
+                c.approximate_length(k, &ivl, LENGTH_SAMPLES, false)?.0,
+                c.is_degenerate(k, tol, None)?,
+            ))
+        })
+        .collect()
+}
+
+/// Whether two boundaries have the same sides: the same count, the same degenerate
+/// ones and the others' lengths within [`LENGTH_REL`].
+fn same_boundary(expected: &[(f64, bool)], actual: &[(f64, bool)]) -> bool {
+    expected.len() == actual.len()
+        && expected
+            .iter()
+            .zip(actual)
+            .all(|(&(le, de), &(la, da))| de == da && (de || (la - le).abs() <= LENGTH_REL * le))
 }
 
 /// The unit direction from the axis to `point`, `None` within `tol` of the axis.
@@ -112,13 +171,30 @@ fn radial(base_pt: Point3, axis: Vec3, point: Point3, tol: f64) -> Option<Vec3> 
     (length > tol).then(|| offset / length)
 }
 
-/// An angle in degrees taken into `[0, 360)`.
+/// An angle in degrees taken into `[0, 360)`; within `360 * SM_EFF_ZERO` below a
+/// whole turn it is `0`.
 fn turn_into_range(angle_deg: f64) -> f64 {
     let a = angle_deg % 360.0;
-    if a < 0.0 {
-        a + 360.0
+    let a = if a < 0.0 { a + 360.0 } else { a };
+    if 360.0 - a <= 360.0 * EFF_ZERO {
+        0.0
     } else {
         a
+    }
+}
+
+/// The tube angle range of an arc starting at `start_deg` and sweeping `sweep_deg`,
+/// inside `[-360, 360]`: `SmEllipse::AdjustSTEPInterval` (through the torus's iso
+/// circles) documents `-360 <= Min <= Max <= 360` and collapses an arc past it to one
+/// parameter (`WR-211`). It starts in `[0, 360)` when the arc ends by `360`, else a
+/// turn lower (the horn torus of `CreateTorus` also starts below 0).
+fn tube_range(start_deg: f64, sweep_deg: f64) -> (f64, f64) {
+    let low = turn_into_range(start_deg);
+    let high = low + sweep_deg;
+    if high <= 360.0 * (1.0 + EFF_ZERO) {
+        (low, high.min(360.0))
+    } else {
+        (low - 360.0, high - 360.0)
     }
 }
 
@@ -286,19 +362,18 @@ fn candidate(
         d.dot(axis).atan2(d.dot(x)) * to_deg
     };
     let rising = frame.z_axis().dot(-y) > 0.0;
-    // the tube angle range starts in [0, 360): one starting below 0 is refused or
-    // built wrong upstream (tangency-labs/solidcore#386)
-    let (low, inside_out) = if rising {
-        (turn_into_range(minor_angle(ends.start)), false)
+    let (start, inside_out) = if rising {
+        (minor_angle(ends.start), false)
     } else {
-        (turn_into_range(minor_angle(ends.end)), true)
+        (minor_angle(ends.end), true)
     };
+    let (low, high) = tube_range(start, sweep);
     let mut torus = Torus::new(
         k,
         origin,
         x,
         y,
-        Extent2d::from_bounds(0.0, low, angle_deg, low + sweep),
+        Extent2d::from_bounds(0.0, low, angle_deg, high),
         centre_dist,
         radius,
         TorusOptions {
@@ -357,37 +432,6 @@ impl Layout {
         })
     }
 
-    /// The layout of the B-spline surface of revolution of `curve` by `angle_deg`
-    /// degrees: `v` along the curve from its start, `u` turning positively.
-    fn of_curve(
-        k: &Kernel,
-        curve: &Curve,
-        base_pt: Point3,
-        axis: Vec3,
-        angle_deg: f64,
-    ) -> Result<Self> {
-        let interval = curve.natural_interval();
-        let start = curve.evaluate(k, interval.min(), 1, false, true)?;
-        let start_pt = start.first().copied().unwrap_or(Vec3::UNDEF);
-        let start_tangent = start.get(1).copied().unwrap_or(Vec3::ZERO);
-        let end_pt = curve.evaluate_point(k, interval.max())?;
-        let mut turn = Axis2Placement::default();
-        turn.init();
-        if angle_deg < 360.0 - EFF_ZERO {
-            turn.rotate_about_axis_at_point(angle_deg * (PI / 180.0), base_pt, axis);
-        }
-        Ok(Self {
-            corners: [
-                start_pt,
-                end_pt,
-                turn.transform_point(start_pt),
-                turn.transform_point(end_pt),
-            ],
-            start_tangent,
-            turn: 1.0,
-        })
-    }
-
     /// Whether this layout is `other`'s: the corners within `tol`, the start
     /// tangents the same way and the same, defined, sense of turn.
     fn matches(&self, other: &Self, tol: f64) -> bool {
@@ -405,6 +449,7 @@ impl Layout {
 mod tests {
     use super::*;
     use crate::curve::curve::CurveKind;
+    use crate::geom::axis2_placement::Axis2Placement;
     use crate::nurbs::b_spline_curve::{BSplineCurve, NurbCircleParam};
     use crate::nurbs::b_spline_surface::BSplineSurface;
 
@@ -457,6 +502,9 @@ mod tests {
             _ => "other",
         }
     }
+
+    /// The expected kind of a profile that keeps the B-spline surface.
+    const UPSTREAM: &str = "upstream";
 
     /// Every profile kind, both ways along the curve: (name, curve, expected kind).
     fn profiles() -> Vec<(&'static str, Curve, &'static str)> {
@@ -513,14 +561,27 @@ mod tests {
             arc(Vec3::ZERO, Vec3::Z, Vec3::X, 2.0, 0.0, 90.0),
             "sphere",
         ));
-        // the partial torus's minor circle: x = -Z, about Y, from the bottom
+        // a full minor circle from its outer point (tube angle 0)
         out.push((
             "minor circle",
-            arc(Vec3::new(5.0, 0.0, 0.0), -Vec3::Z, Vec3::X, 1.5, 0.0, 360.0),
+            arc(Vec3::new(5.0, 0.0, 0.0), Vec3::X, Vec3::Z, 1.5, 0.0, 360.0),
             "torus",
         ));
         out.push((
             "minor circle reversed",
+            arc(Vec3::new(5.0, 0.0, 0.0), Vec3::X, -Vec3::Z, 1.5, 0.0, 360.0),
+            "torus",
+        ));
+        // full minor circles from another point: the torus's iso circle there
+        // collapses (SmEllipse::AdjustSTEPInterval, WR-211), so the B-spline stays.
+        // The partial torus's circle: x = -Z, about Y, from the bottom
+        out.push((
+            "minor circle from the bottom",
+            arc(Vec3::new(5.0, 0.0, 0.0), -Vec3::Z, Vec3::X, 1.5, 0.0, 360.0),
+            UPSTREAM,
+        ));
+        out.push((
+            "minor circle from the bottom reversed",
             arc(
                 Vec3::new(5.0, 0.0, 0.0),
                 -Vec3::Z,
@@ -529,7 +590,7 @@ mod tests {
                 0.0,
                 360.0,
             ),
-            "torus",
+            UPSTREAM,
         ));
         out.push((
             "horn minor circle",
@@ -541,7 +602,7 @@ mod tests {
                 -180.0,
                 180.0,
             ),
-            "torus",
+            UPSTREAM,
         ));
         out.push((
             "fillet arc",
@@ -569,17 +630,14 @@ mod tests {
         for angle in [90.0, 200.0, 360.0] {
             for (name, curve, expected) in profiles() {
                 let reference = bspline_rev(&k, &curve, angle);
-                let from_curve = Layout::of_curve(&k, &curve, Vec3::ZERO, Vec3::Z, angle).unwrap();
-                let b_layout = Layout::of(&k, &reference, Vec3::ZERO, Vec3::Z).unwrap();
-                assert!(
-                    b_layout.matches(&from_curve, 1e-9),
-                    "{name} {angle}: B-spline {b_layout:?} curve {from_curve:?}"
-                );
                 for r in [None, Some(&reference)] {
                     let s = analytic_revolution(&k, &curve, Vec3::ZERO, Vec3::Z, angle, 1e-6, r)
-                        .unwrap()
-                        .unwrap_or_else(|| panic!("{name} {angle}: no analytic surface"));
-                    assert_eq!(kind(&s), expected, "{name} {angle}");
+                        .unwrap();
+                    assert_eq!(
+                        s.as_ref().map_or(UPSTREAM, kind),
+                        expected,
+                        "{name} {angle}"
+                    );
                 }
             }
         }
@@ -601,7 +659,10 @@ mod tests {
     #[test]
     fn the_analytic_surface_is_the_swept_one() {
         let k = Kernel::default();
-        for (name, curve, _) in profiles() {
+        for (name, curve, expected) in profiles() {
+            if expected == UPSTREAM {
+                continue;
+            }
             let reference = bspline_rev(&k, &curve, 120.0);
             let s = analytic_revolution(
                 &k,
@@ -665,8 +726,8 @@ mod tests {
                 (
                     arc(
                         Vec3::new(5.0, 0.0, 0.0) * s,
-                        -Vec3::Z,
                         Vec3::X,
+                        Vec3::Z,
                         1.5 * s,
                         0.0,
                         360.0,
@@ -687,6 +748,16 @@ mod tests {
                 assert_eq!(kind(&r), expected, "{s}");
             }
         }
+    }
+
+    #[test]
+    fn tube_ranges_stay_inside_a_turn_each_way() {
+        assert_eq!(tube_range(-90.0, 360.0), (-90.0, 270.0));
+        assert_eq!(tube_range(0.0, 360.0), (0.0, 360.0));
+        assert_eq!(tube_range(-1e-14, 360.0), (0.0, 360.0));
+        assert_eq!(tube_range(270.0, 90.0), (270.0, 360.0));
+        assert_eq!(tube_range(300.0, 90.0), (-60.0, 30.0));
+        assert_eq!(tube_range(-180.0, 360.0), (-180.0, 180.0));
     }
 
     #[test]

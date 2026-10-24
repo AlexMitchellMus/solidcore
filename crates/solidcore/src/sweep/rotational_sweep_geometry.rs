@@ -340,7 +340,7 @@ fn check_edge_on_axis(
 /// a B-spline kind) about the axis through `base_pt` along `axis` by `angle_deg`
 /// degrees, its circular direction v (the start trim curve parameter is always
 /// `SM_SP_U`).
-fn create_rot_srf(
+pub(crate) fn create_rot_srf(
     k: &Kernel,
     curve: &Curve,
     base_pt: Point3,
@@ -1418,11 +1418,22 @@ mod tests {
             ("dome", arc(Vec3::ZERO, Vec3::X, Vec3::Z, 2.0, 0.0, 90.0)),
             (
                 "torus",
+                arc(Vec3::new(5.0, 0.0, 0.0), Vec3::X, Vec3::Z, 1.5, 0.0, 360.0),
+            ),
+            // a full minor circle from the bottom (the partial torus's): its iso
+            // circle would collapse (WR-211), so the B-spline surface stays
+            (
+                "upstream",
                 arc(Vec3::new(5.0, 0.0, 0.0), -Vec3::Z, Vec3::X, 1.5, 0.0, 360.0),
             ),
             (
                 "fillet",
                 arc(Vec3::new(4.0, 0.0, 1.0), Vec3::Z, Vec3::X, 1.0, 0.0, 90.0),
+            ),
+            // a tube range across 0 degrees (-60..30 from X towards Z)
+            (
+                "fillet",
+                arc(Vec3::new(4.0, 0.0, 1.0), Vec3::X, Vec3::Z, 1.0, -60.0, 30.0),
             ),
         ];
         for (name, (b, e)) in cases {
@@ -1450,6 +1461,7 @@ mod tests {
                 "dome" => "sphere",
                 "drill point" => "cone",
                 "fillet" => "torus",
+                "upstream" => "other",
                 n => n,
             };
             assert_eq!(analytic, expected, "{name}");
@@ -1477,6 +1489,14 @@ mod tests {
             // each 3D trim has the B-spline trim's ends and lies on the new surface
             for (i, (c, d)) in new.trim_curves.iter().zip(&old.trim_curves).enumerate() {
                 let (ci, di) = (c.natural_interval(), d.natural_interval());
+                // (a closed trim collapsed to a point still has matching ends)
+                let lc = c.approximate_length(&k, &ci, 16, false).unwrap().0;
+                let ld = d.approximate_length(&k, &di, 16, false).unwrap().0;
+                assert!(
+                    (lc - ld).abs() <= 1e-3 * ld,
+                    "{name} trim {i}: length {lc} {ld}"
+                );
+                assert!(!c.is_degenerate(&k, 1e-6, None).unwrap(), "{name} trim {i}");
                 for (t, s) in [(ci.min(), di.min()), (ci.max(), di.max())] {
                     let p = c.evaluate_point(&k, t).unwrap();
                     let q = d.evaluate_point(&k, s).unwrap();

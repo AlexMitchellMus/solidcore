@@ -45,3 +45,21 @@ follows the issue's description). Upstream `WR-268` (`plan/upstream-issues/WR-26
   B-spline rationally); no `api_surfaces` case revolves one.
 - A torus tube range always starts in [0, 360): issue #386 reports a range starting
   below 0 is refused or built wrong.
+- **Boundary check; full minor circles.** After merging main (`surface.trim_srf_cache`
+  now builds face-owned caches), `create_partial_torus` failed with
+  `SM_ERR_NULL_POINTER` in the topology sweep: its profile is a full minor circle from
+  the bottom (tube angle -90), and the torus's iso circle on that side
+  (`torus.rs` `iso_curve`, faithful) asks for `[270, 630]`, which
+  `SmEllipse::AdjustSTEPInterval` collapses to one parameter (`WR-211`; the fork's
+  74bed94 fixes it, the port does not). `MakeFaceWithCurves` then dropped those
+  degenerate trims. `analytic_revolution` now also requires the analytic surface's
+  natural boundary to have the B-spline's (the same sides degenerate, the others' lengths
+  within 1e-3), so a full minor circle not starting at tube angle 0 keeps the B-spline
+  (the partial torus, and `sweep.api_brep`'s full-circle profiles: those cases are back
+  on main's path, so the deferral described above no longer happens). Tube ranges stay
+  inside `[-360, 360]` (`tube_range`). With the merge, the whole-turn dome on its disc
+  (sphere + plane) and the torus of two half circles (two tori) build closed manifold
+  solids.
+- `crates/solidcore/tests/primitives_solid.rs` `precise_sphere_properties_scale_and_translate`
+  (from main) fails on Windows with or without the switches (`create_sphere` never
+  reaches this code); main's Linux CI passes it.
