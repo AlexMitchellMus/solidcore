@@ -19144,3 +19144,36 @@ geometry only after processing. It never reads the uninitialized native corner
 status or unevaluated pseudo-edge geometry. Full p3: 297 cases, 249 value passes,
 48 deferred, zero failures. All five earlier real-solid cases retain their full
 CPP and Rust output records byte-for-byte; no earlier record fields were removed.
+
+## Retained constant-radius geometry offsets (2026-10-24)
+
+The real box session reached `SmFilletGeom::GetOffsetSurface` while native calculated
+both first-corner vertices. The context-free solver getter could not resolve the
+selected fillet geometry. A borrowed constant-radius rail context now reads and
+mutates that actual geometry's offsets, including nested initial-value extension
+state and Jacobian offset resets. The concrete solver and its separate offsets
+remain retained; selected geometry is restored after success or failure. No surface
+swap, selected-FG clearing, cloned solver table or invented offset identity is used.
+The six real-box checkpoints now give five exact value passes, zero failures and
+one later full-API deferral (`blend.fillet_executive_p1`); maximum relative error is
+zero. This proves direct first-corner vertex geometry, not a full fillet result.
+
+The ordinary geometry is `SM_FG_DEFAULT`. The contextual tangent-rollover guess in
+`SmConstantRadiusFS::LoadInitialValues` (`SmFilletStandardSolver.cpp:493–537`) still
+needs actual pseudo-B-rep vertex-use context; that genuine branch remains explicitly
+Unported in the borrowed provider. Other concrete solver kinds keep their existing
+missing-context behavior. Existing context-free APIs and fixture coverage remain.
+
+## Nx1 rail endpoint orientation default (2026-10-24)
+
+The actual combined two-corner component caught six topology differences that
+vertex positions alone did not expose: the new Nx1 producer passed `Same` to
+MakeRailEdgeuse, while native omits the argument and defaults to `Unknown`
+(SmFilletGeom.h:604; SmFilletCorner.cpp:6092). Both endpoint uses were inserted at
+the front of the rail list, replacing the observed first endpoint. The producer
+now passes Unknown so the existing helper derives orientation from the actual
+original corner vertex. No shared edge-insertion algorithm or harness field changed.
+The same seven retained native/Rust fixtures now give six exact passes, zero
+failures and one later full-API deferral; all four vertex records and full topology
+agree, maximum relative error zero. The first failing comparison is retained as
+evidence that endpoint orientation/list order checks detect this regression.

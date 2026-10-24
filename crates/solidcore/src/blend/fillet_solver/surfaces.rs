@@ -180,3 +180,183 @@ pub(crate) fn rail_edgeuse_intersect(
         tsect,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::blend::fillet_custom_solver::SurfaceId;
+    use crate::blend::fillet_geom::p1::{FilletBrep, FilletGeomId, FilletSolverId};
+    use crate::math::Point3;
+    use crate::nurbs::b_spline_surface::BSplineSurface;
+    use crate::nurbs::math::{CPoint, NOW};
+    use crate::surface::offset_surface::SS_UNKNOWN;
+
+    fn offset(k: &Kernel, distance: f64) -> OffsetSurface {
+        let net = vec![
+            vec![
+                CPoint::new(0.0, 0.0, 0.0, NOW),
+                CPoint::new(0.0, 1.0, 0.0, NOW),
+            ],
+            vec![
+                CPoint::new(1.0, 0.0, 0.0, NOW),
+                CPoint::new(1.0, 1.0, 0.0, NOW),
+            ],
+        ];
+        let nurb = crate::nurbs::srf_basic::Surface::new(
+            net,
+            1,
+            1,
+            vec![0.0, 0.0, 1.0, 1.0],
+            vec![0.0, 0.0, 1.0, 1.0],
+        )
+        .unwrap();
+        OffsetSurface::new(
+            k,
+            distance,
+            Surface::from(BSplineSurface::from_nurb(nurb, false)),
+            SurfaceId::Free(8),
+            SS_UNKNOWN,
+        )
+        .unwrap()
+    }
+
+    fn actual(k: &Kernel) -> ConstantRadiusAssistedFs {
+        ConstantRadiusAssistedFs::from_parts(
+            1e-5,
+            1e-3,
+            0.01,
+            [0.5, 0.5],
+            [Some(offset(k, 99.0)), Some(offset(k, 101.0))],
+            [-1.0, -1.0],
+            [None, None],
+        )
+    }
+
+    fn geometry(k: &Kernel) -> FilletGeom {
+        let mut geometry = FilletGeom::new(k, None, FilletGeomType::Default).unwrap();
+        geometry.solver = Some(FilletSolverId(37));
+        geometry.off_surfs = [Some(offset(k, 7.0)), Some(offset(k, 8.0))];
+        geometry
+    }
+
+    #[test]
+    fn selected_objects_and_nested_jacobian_writes_stay_in_actual_geometry() {
+        let k = Kernel::default();
+        let mut actual = actual(&k);
+        actual
+            .solver
+            .set_fillet_geom_for_surfaces(Some(FilletGeomId(57)));
+        let mut geometry = geometry(&k);
+        let selected = std::ptr::from_ref(geometry.off_surfs[0].as_ref().unwrap());
+        let mut view = GeometrySolver {
+            actual: &mut actual,
+            geometry: &mut geometry,
+        };
+        assert!(std::ptr::eq(
+            view.solver_surface(0).unwrap().unwrap(),
+            selected
+        ));
+        assert_eq!(
+            view.solver_surface(0).unwrap().unwrap().offset_distance(),
+            7.0
+        );
+        let mut load = JacobianLoad {
+            rail_index: 0,
+            surface1: None,
+            surface2: None,
+            surf1_offset: 0,
+            surf2_offset: 0,
+            x: &[0.25, 0.75, 0.25, 0.75],
+        };
+        let mut equations = 0;
+        let mut parameters = 0;
+        assert!(view
+            .load_jacobian(
+                &k,
+                &mut equations,
+                &mut parameters,
+                &mut load,
+                &mut [0.0; 3],
+                None
+            )
+            .unwrap());
+        assert_eq!(
+            view.solver_surface(0).unwrap().unwrap().offset_distance(),
+            -0.5
+        );
+        assert_eq!(
+            view.solver_surface(1).unwrap().unwrap().offset_distance(),
+            -0.5
+        );
+        assert_eq!(
+            view.actual.solver.surfaces[0]
+                .as_ref()
+                .unwrap()
+                .surface
+                .offset_distance(),
+            99.0
+        );
+        assert_eq!(
+            view.actual.solver.surfaces[1]
+                .as_ref()
+                .unwrap()
+                .surface
+                .offset_distance(),
+            101.0
+        );
+        assert_eq!(
+            view.actual.solver.fillet_geom_for_surfaces(),
+            Some(FilletGeomId(57))
+        );
+        assert_eq!(equations, 3);
+        assert_eq!(parameters, 4);
+    }
+
+    #[test]
+    fn actual_geometry_context_is_restored_on_target_lookup_failure() {
+        let k = Kernel::default();
+        let mut actual = actual(&k);
+        let saved = Some(FilletGeomId(57));
+        actual.solver.set_fillet_geom_for_surfaces(saved);
+        let mut pseudo = FilletBrep::new();
+        let g = pseudo.add_geom(geometry(&k));
+        let error = pseudo
+            .rail_edgeuse_intersect_with_geometry(
+                &k,
+                g,
+                &mut actual,
+                &mut Brep::new(),
+                0,
+                EdgeuseId::from_index(0),
+                0.5,
+                &mut TsectPnt::default(),
+            )
+            .unwrap_err();
+        assert!(!error.is_unported(), "{error:?}");
+        assert_eq!(actual.solver.fillet_geom_for_surfaces(), saved);
+        assert_eq!(
+            actual.solver.surfaces[0]
+                .as_ref()
+                .unwrap()
+                .surface
+                .offset_distance(),
+            99.0
+        );
+        assert_eq!(
+            pseudo.geom(g).unwrap().off_surfs[0]
+                .as_ref()
+                .unwrap()
+                .offset_distance(),
+            7.0
+        );
+        assert_eq!(
+            pseudo.geom_mut(g).unwrap().off_surfs[0]
+                .as_mut()
+                .unwrap()
+                .surface
+                .evaluate_point_extending(&k, crate::geom::vector2d::Point2::new(0.25, 0.75))
+                .unwrap(),
+            Point3::new(0.25, 0.75, 7.0)
+        );
+    }
+}
