@@ -5,6 +5,8 @@
 //! actual rail trimming, enabled classification/repair, or intermediate faces.
 #[path = "edge_geometry.rs"]
 mod edge_geometry;
+#[path = "edge_map_state.rs"]
+mod edge_map_state;
 #[path = "generated_geometry.rs"]
 mod generated_geometry;
 #[path = "intermediate_faces.rs"]
@@ -248,7 +250,10 @@ pub(super) fn run(
         Ok(()) => 0.0,
         Err(error) => status(error)?,
     };
-    if input.checkpoint == Checkpoint::CreatedFilletBrep {
+    if matches!(
+        input.checkpoint,
+        Checkpoint::CreatedFilletBrep | Checkpoint::MappedFilletEdges
+    ) {
         if statuses[0] == 0.0 {
             statuses[1] = match session.create_corners(k, None) {
                 Ok(()) => 0.0,
@@ -261,14 +266,43 @@ pub(super) fn run(
                 };
             }
         }
+        let mut maps_before = (vec![0.0], Vec::new());
+        let mut maps_after = (vec![0.0], Vec::new());
+        if input.checkpoint == Checkpoint::MappedFilletEdges && statuses[2] == 0.0 {
+            statuses[3] = match session.shrink_fillet_faces(k) {
+                Ok(()) => 0.0,
+                Err(error) => status(error)?,
+            };
+            if statuses[3] == 0.0 {
+                maps_before = edge_map_state::snapshot(&session)?;
+                statuses[4] = match session.set_fillet_brep_edge_map(k) {
+                    Ok(()) => 0.0,
+                    Err(error) => status(error)?,
+                };
+                maps_after = edge_map_state::snapshot(&session)?;
+            }
+        }
         let mut out = Vec::new();
         section(&mut out, before);
-        section(&mut out, &statuses[..3]);
+        section(
+            &mut out,
+            &statuses[..if input.checkpoint == Checkpoint::MappedFilletEdges {
+                5
+            } else {
+                3
+            }],
+        );
         let (state, values) = intermediate_faces::snapshot(k, &session)?;
         section(&mut out, &state);
         section(&mut out, &values);
         section(&mut out, &intermediate_faces::source_binding(&session)?);
         section(&mut out, &stitch_state::attributes(&session)?);
+        if input.checkpoint == Checkpoint::MappedFilletEdges {
+            for (state, values) in [&maps_before, &maps_after] {
+                section(&mut out, state);
+                section(&mut out, values);
+            }
+        }
         return Ok(out);
     }
     let mut prior = Vec::new();
@@ -589,7 +623,10 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
         "selected_edge_before".into(),
         take_section(&mut values)?.to_vec(),
     );
-    if checkpoint == Checkpoint::CreatedFilletBrep {
+    if matches!(
+        checkpoint,
+        Checkpoint::CreatedFilletBrep | Checkpoint::MappedFilletEdges
+    ) {
         for name in ["constructor_statuses", "intermediate_face_topology"] {
             let state = take_section(&mut values)?;
             if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
@@ -602,16 +639,34 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
             "intermediate_face_geometry".into(),
             take_section(&mut values)?.to_vec(),
         );
-        for name in [
-            "source_surface_binding",
-            "intermediate_attributes_after_constructor",
-        ] {
+        let attributes_key = if checkpoint == Checkpoint::MappedFilletEdges {
+            "intermediate_attributes_after_edge_map"
+        } else {
+            "intermediate_attributes_after_constructor"
+        };
+        for name in ["source_surface_binding", attributes_key] {
             let state = take_section(&mut values)?;
             if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
                 return Err(HarnessError::new("invalid constructor state"));
             }
             out.ints
                 .insert(name.into(), state.iter().map(|v| *v as i64).collect());
+        }
+        if checkpoint == Checkpoint::MappedFilletEdges {
+            for phase in ["before", "after"] {
+                let state = take_section(&mut values)?;
+                if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+                    return Err(HarnessError::new("invalid edge map state"));
+                }
+                out.ints.insert(
+                    format!("edge_map_{phase}"),
+                    state.iter().map(|v| *v as i64).collect(),
+                );
+                out.values.insert(
+                    format!("edge_map_raw_intervals_{phase}"),
+                    take_section(&mut values)?.to_vec(),
+                );
+            }
         }
         if !values.is_empty() {
             return Err(HarnessError::new("trailing constructor data"));
