@@ -18016,6 +18016,28 @@ claimed. No fixture, comparison gate or tolerance was changed.
   `query::face::p2` curve-on-classify between the read-only and mutable interval
   classification changed nothing for these cases (probe recorded in the #685 entry).
   This fix does not change that path.
+- **Blocker: topology.topology_traverser (green on main) loses 14 passes.** Running
+  `IsInnerShell` on the caller's B-rep turns its op-7 cases (constructed_05..07,
+  adversarial_02..06, upstream_files_00/01, gen0001/0003/0012/0013) from pass to
+  deferred at `SmFace handle of a surface's face` (topology.face_p2). The backtrace runs
+  `is_inner_shell` -> `face::p4::global_line_intersect_held` ->
+  `surface::p1::get_surface_cache` -> `make_trim_srf_cache`.
+  - On main the scratch copy came from `Brep::clone`, which drops geometry owners
+    (open PR #681). The ray's surface looked free, so the port built an untrimmed
+    cache. On the caller's B-rep the surface keeps its face owner, and a face-owned
+    trimmed cache needs a face handle bound to it (`bind_trimmed_face`), which the
+    ray path (`RaySurface` handles) does not supply.
+  - The values matched C++ before only because both sides' answers agree for
+    these inputs. Upstream builds the face's `SmTrimSrfCache`.
+  - Neither copy-back is the cause: putting `CalculateUVDomainFromUVTrimCurves`
+    back on a copy, or dropping `apply_uv_trim_updates`, leaves the 14 deferrals.
+- **Proposed fix (larger than this change).** Give `global_line_intersect_held` (and
+  the ray world of `IsInnerShell`) a face-bound trimmed surface cache, as
+  `smsurf_GetSurfaceCache` builds for a face-owned surface. Then port
+  `IntersectTSBound`'s cached branch with its `SmNewMarkAndLock`, taking
+  `&mut Kernel`. Together these unblock the traverser cases, the skin cases'
+  `build_tree_with_face` deferral, and the brep_p6 Mark2 counter. Until then the
+  in-place `IsInnerShell` cannot land without turning a green unit partial.
 
 ## Status index (2026-10-23, main CI `e33985411`)
 
