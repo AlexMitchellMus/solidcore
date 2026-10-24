@@ -251,6 +251,10 @@ impl FilletCorner {
                 Some(fv),
                 crate::nurbs::b_spline_surface_n_lib::p2::OrientType::Unknown,
                 None,
+                crate::blend::fillet_geom::p1::CornerLookup {
+                    this: Some((Some(corner), self)),
+                    ..Default::default()
+                },
                 solver,
                 target,
             )?;
