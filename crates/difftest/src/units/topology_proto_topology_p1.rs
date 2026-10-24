@@ -4830,7 +4830,7 @@ struct ScaleProbeFrame {
     initial_types: Vec<f64>,
     vertices: Vec<VertexId>,
     edges: Vec<solidcore::EdgeId>,
-    faces: Vec<solidcore::FaceId>,
+    faces: Vec<FaceId>,
     shells: Vec<solidcore::ShellId>,
     regions: Vec<solidcore::topology::RegionId>,
     edgeuses: Vec<solidcore::topology::EdgeuseId>,
