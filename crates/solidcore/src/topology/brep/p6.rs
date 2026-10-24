@@ -203,7 +203,7 @@ pub struct FaceTopologyAttempt {
 /// The single canonical location of a face-construction input surface.
 #[derive(Debug)]
 pub(crate) enum FaceSurfaceLocation {
-    Owned(Surface),
+    Owned(Box<Surface>),
     Installed(FaceId),
 }
 
@@ -229,7 +229,7 @@ impl FaceSurfaceTransfer {
 
     pub(crate) fn into_location(self) -> Result<FaceSurfaceLocation> {
         match (self.owned, self.installed_face) {
-            (Some(surface), None) => Ok(FaceSurfaceLocation::Owned(surface)),
+            (Some(surface), None) => Ok(FaceSurfaceLocation::Owned(Box::new(surface))),
             (None, Some(face)) => Ok(FaceSurfaceLocation::Installed(face)),
             _ => Err(SolidError::invalid_input(
                 OP,

@@ -1272,7 +1272,7 @@ fn make_face_with_curves_transfer_impl(
                         InValueType::Unconstrained,
                         None,
                         InValueType::Unconstrained,
-                        Some((&surface, None)),
+                        Some((surface, None)),
                     ))?
                     .flatten();
                     if let Some(d) = deformed {
