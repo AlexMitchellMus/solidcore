@@ -73,3 +73,55 @@ pub(super) fn snapshot(
     crate::util::primitive::append(k, body, &mut geometry)?;
     Ok((state, geometry))
 }
+
+/// Passive relationship between the original FG surface and the managed face.
+pub(super) fn source_binding(session: &FilletSession<'_>) -> SolidResult<Vec<f64>> {
+    use solidcore::blend::fillet_executive::session::FilletObject;
+    let body = session.intermediate_brep();
+    let faces = body
+        .map(|body| p1::faces(body, None))
+        .transpose()?
+        .unwrap_or_default();
+    let mut out = vec![session.executive().solvers.len() as f64];
+    for object in &session.executive().solvers {
+        let FilletObject::Solver(id) = *object else {
+            return Err(super::invalid("actual solver required"));
+        };
+        let solver = session.solver(id)?.base();
+        out.push(solver.fillet_geoms.len() as f64);
+        for &id in &solver.fillet_geoms {
+            let surface = session.pseudo_brep().geom(id)?.fillet_surface();
+            let owner = surface.and_then(|surface| surface.owner());
+            let mut owner_face = if owner.is_some() { -2.0 } else { -1.0 };
+            let mut alias_face = if surface.is_some() { -2.0 } else { -1.0 };
+            if let Some(body) = body {
+                for (index, &id) in faces.iter().enumerate() {
+                    if let Some(face_surface) = body.face(id)?.surface.as_ref() {
+                        // This body is produced by Session's canonical NotifyEnv.
+                        let serial = body
+                            .notify_serial()
+                            .ok_or_else(|| super::invalid("managed body identity required"))?;
+                        let face_ref = solidcore::topology::brep::p3::topology_ref(
+                            serial,
+                            solidcore::EntityRef::Face(id),
+                        );
+                        if owner == Some(face_ref) {
+                            owner_face = index as f64;
+                        }
+                        if surface.is_some_and(|surface| std::ptr::eq(surface, face_surface)) {
+                            alias_face = index as f64;
+                        }
+                    }
+                }
+            }
+            out.extend([
+                f64::from(surface.is_some()),
+                f64::from(owner.is_some()),
+                owner.map_or(0.0, |owner| owner.type_code as f64),
+                owner_face,
+                alias_face,
+            ]);
+        }
+    }
+    Ok(out)
+}

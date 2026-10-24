@@ -493,6 +493,7 @@ pub(super) fn run(
         let (state, values) = intermediate_faces::snapshot(k, &session)?;
         section(&mut out, &state);
         section(&mut out, &values);
+        section(&mut out, &intermediate_faces::source_binding(&session)?);
     }
     Ok(out)
 }
@@ -666,6 +667,14 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
         out.values.insert(
             "intermediate_face_geometry".into(),
             take_section(&mut values)?.to_vec(),
+        );
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid source surface binding"));
+        }
+        out.ints.insert(
+            "source_surface_binding".into(),
+            state.iter().map(|v| *v as i64).collect(),
         );
     }
     if !values.is_empty() {

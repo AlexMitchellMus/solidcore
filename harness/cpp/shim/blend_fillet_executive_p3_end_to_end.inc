@@ -538,6 +538,7 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_prefix(
     if(checkpoint==11) {
         const auto record=fillet_real_solid::intermediate_faces(exec.GetFilletBrep());
         fillet_real_solid::section(values,record.first);fillet_real_solid::section(values,record.second);
+        fillet_real_solid::section(values,fillet_real_solid::source_surface_binding(exec,exec.GetFilletBrep()));
     }
     return sc_copy_out(values.data(),int64_t(values.size()),out,cap,out_len);
     SC_CATCH

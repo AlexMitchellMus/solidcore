@@ -49,4 +49,18 @@ std::pair<std::vector<double>,std::vector<double>> intermediate_faces(SmBrep* bo
     std::vector<double> geometry{body->GetTolerance()};primitive_record::append(geometry,body);
     return {std::move(state),std::move(geometry)};
 }
+std::vector<double> source_surface_binding(SmFilletExecutive& exec,SmBrep* body) {
+    SmTArray<SmFace*> faces;if(body)body->GetFaces(faces);
+    std::vector<double> out{double(exec.GetFilletSolvers().GetSize())};
+    for(ULONG solver=0;solver<exec.GetFilletSolvers().GetSize();++solver) {
+        SmTArray<SmFilletGeom*> geometries;exec.GetFilletSolvers()[solver]->GetFilletGeoms(geometries);out.push_back(double(geometries.GetSize()));
+        for(ULONG g=0;g<geometries.GetSize();++g){auto* surface=geometries[g]->GetFilletSurface();auto* owner=surface?surface->GetOwner():nullptr;
+            double owner_face=owner?-2:-1,alias_face=surface?-2:-1;
+            for(ULONG f=0;f<faces.GetSize();++f){if(owner&&owner==faces[f])owner_face=f;if(surface&&surface==faces[f]->GetSurface())alias_face=f;}
+            out.insert(out.end(),{double(surface!=nullptr),double(owner!=nullptr),owner?double(owner->GetType()):0,owner_face,alias_face});
+        }
+    }
+    return out;
+}
+
 }
