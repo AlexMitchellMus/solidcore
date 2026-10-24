@@ -253,7 +253,6 @@ fn decode(
         curves,
         points,
         deferred: None,
-        skipped_platform: None,
     })
 }
 

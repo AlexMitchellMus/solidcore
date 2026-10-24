@@ -48,6 +48,14 @@ pub trait UnitDiff {
     fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
         default_cases(self, ctx)
     }
+
+    /// If this case depends on the C++ standard library being libstdc++ (e.g.
+    /// libc++ differs in `istream` extraction), return a short reason and the
+    /// runner reports the case as `skipped(platform)` instead of running it.
+    /// Only consulted when `solidcore_ffi::cpp_stdlib_is_libstdcxx()` is false.
+    fn skipped_platform(&self, _case: &Case) -> Option<String> {
+        None
+    }
 }
 
 /// Fixture cases followed by generated cases (the default [`UnitDiff::cases`]).
@@ -511,6 +519,31 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
     for case in cases {
         if let Some(f) = &opts.filter {
             if !case.name.contains(f.as_str()) {
+                continue;
+            }
+        }
+        // Platform-dependent cases (libstdc++-only C++ reference behaviour): on a
+        // non-libstdc++ build report them as skipped(platform) without running.
+        if !solidcore_ffi::cpp_stdlib_is_libstdcxx() {
+            if let Some(reason) = unit.skipped_platform(&case) {
+                let cr = CaseResult {
+                    name: case.name.clone(),
+                    source: case.source.clone(),
+                    inputs: case.inputs.clone(),
+                    diff: CaseDiff::default(),
+                    harness_error: None,
+                    both_errored: false,
+                    rejected: None,
+                    deferred: None,
+                    skipped_platform: Some(reason),
+                    perturbed: None,
+                    diagnostics: BTreeMap::new(),
+                    known_mismatch: known
+                        .iter()
+                        .find(|k| k.case == case.name)
+                        .map(|k| k.why.clone()),
+                };
+                res.cases.push(cr);
                 continue;
             }
         }
