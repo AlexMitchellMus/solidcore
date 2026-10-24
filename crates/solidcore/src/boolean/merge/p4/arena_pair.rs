@@ -22,10 +22,12 @@ use crate::geom::context::Context;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::Extent3d;
-use crate::geom::object::ShapeMember;
+use crate::geom::object::{ObjectRef, ShapeMember};
 use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::geom::tol::{update_object_tolerance, TopologyToUpdate};
 use crate::intersect::curve_class::p1::CurveClassification;
+use crate::intersect::curve_class::p5::ClassGeometryMut;
+use crate::intersect::curve_class::p6::{MergeContext, MergeIntervalBrep};
 use crate::intersect::point_class::{
     ClassGeometry, ClassObject, ClassObjectKind, PointClassification,
 };
@@ -55,10 +57,13 @@ use crate::topology::proto_topology::{ProtoBrep, ProtoGeometry};
 use crate::topology::topology::Topology;
 use crate::topology::vertex as vx;
 use crate::topology::{
-    Brep, BrepId, EdgeId, EdgeuseId, FaceId, FaceuseId, LoopId, LoopuseId, VertexId, VertexuseId,
+    Brep, BrepId, EdgeId, EdgeuseId, FaceId, FaceuseId, LoopId, LoopuseId, RegionId, VertexId,
+    VertexuseId,
 };
 use crate::{EntityRef, SolidError};
+use std::cell::Cell;
 use std::collections::BTreeMap;
+use std::rc::Rc;
 const K_VERTEX: u8 = 0;
 const K_EDGE: u8 = 1;
 const K_FACE: u8 = 2;
@@ -182,9 +187,55 @@ pub(super) struct ArenaPair<'a> {
     primary_context: &'a mut Context,
     other_context: Option<&'a mut Context>,
     keys: NotificationKeys<'a>,
+    identities: Identities<'a>,
     cache_kernels: [Kernel; 2],
     caches: [std::cell::OnceCell<BrepCache<H>>; 2],
 }
+
+/// The identity callbacks of each operand's edits that a [`MergeContext`] borrows for as
+/// long as it borrows the pair (`NotificationKeys` builds its identities on the call).
+/// A curve identity the caller's keys refuse cannot be returned through the context's
+/// infallible callback: the first refusal is kept (with a placeholder identity returned)
+/// and [`ArenaPair::take_identity_failure`] reports it, so the merge fails with it.
+struct Identities<'a> {
+    objects: [Box<dyn Fn(EntityRef) -> ObjectRef + 'a>; 2],
+    curves: [Box<dyn Fn(EdgeId, i64) -> ObjectRef + 'a>; 2],
+    failure: Rc<Cell<Option<SolidError>>>,
+}
+
+impl core::fmt::Debug for Identities<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Identities").finish_non_exhaustive()
+    }
+}
+
+impl<'a> Identities<'a> {
+    fn new(keys: NotificationKeys<'a>) -> Self {
+        let failure: Rc<Cell<Option<SolidError>>> = Rc::new(Cell::new(None));
+        let object = move |other: bool| -> Box<dyn Fn(EntityRef) -> ObjectRef + 'a> {
+            Box::new(move |e| keys.object(other, e))
+        };
+        let curve = |other: bool| -> Box<dyn Fn(EdgeId, i64) -> ObjectRef + 'a> {
+            let failure = Rc::clone(&failure);
+            Box::new(move |e, kind| {
+                keys.curve(other, e, kind).unwrap_or_else(|err| {
+                    let first = failure.take();
+                    failure.set(first.or(Some(err)));
+                    ObjectRef {
+                        key: ObjectKey(u64::MAX),
+                        type_code: kind,
+                    }
+                })
+            })
+        };
+        Self {
+            objects: [object(false), object(true)],
+            curves: [curve(false), curve(true)],
+            failure,
+        }
+    }
+}
+
 fn invalid(reason: &'static str) -> SolidError {
     SolidError::invalid_input("boolean::merge::p4::arena_pair", reason)
 }
@@ -219,9 +270,16 @@ impl ArenaPair<'_> {
             primary_context,
             other_context,
             keys,
+            identities: Identities::new(keys),
             cache_kernels,
             caches: [std::cell::OnceCell::new(), std::cell::OnceCell::new()],
         }
+    }
+
+    /// The first curve identity the caller's keys refused during a [`MergeContext`] edit
+    /// (see [`Identities`]); `None` when there was none.
+    pub(super) fn take_identity_failure(&self) -> Option<SolidError> {
+        self.identities.failure.take()
     }
     fn brep(&self, h: H) -> Option<&Brep> {
         self.breps.get(usize::try_from(h.b).ok()?)?.as_deref()
@@ -339,7 +397,7 @@ impl ClassGeometry<H> for ArenaPair<'_> {
             K_LOOP => EntityRef::Loop(LoopId::from_index(o.i)),
             K_EDGEUSE => EntityRef::Edgeuse(EdgeuseId::from_index(o.i)),
             K_VERTEXUSE => EntityRef::Vertexuse(VertexuseId::from_index(o.i)),
-            K_REGION => EntityRef::Region(crate::topology::RegionId::from_index(o.i)),
+            K_REGION => EntityRef::Region(RegionId::from_index(o.i)),
             _ => return None,
         };
         Some((self.brep(o)?, t))
@@ -1374,6 +1432,61 @@ impl IntersectorBrepP2<H> for ArenaPair<'_> {
             .into_iter()
             .map(|f| hd(vertex.b, K_FACE, f.index()))
             .collect())
+    }
+}
+
+/// The mutable access the classifications' imprinting (`MergeInterval`,
+/// `MergePointClass`) edits the B-reps through: the curve or the B-rep and entity behind a
+/// handle.
+impl ClassGeometryMut<H> for ArenaPair<'_> {
+    fn curve_mut(&mut self, o: H) -> Option<&mut SmCurve> {
+        ProtoGeometry::curve_mut(self, o)
+    }
+    fn topology_entity_mut(&mut self, o: H) -> Option<(&mut Brep, EntityRef)> {
+        let (_, entity) = ClassGeometry::topology_entity(self, o)?;
+        Some((self.brep_mut(o)?, entity))
+    }
+}
+
+/// The mutable context of a topology handle's B-rep: its arena, the entity, the handles
+/// of the entities an edit makes, and the pair's notification records, attributes and
+/// identities. An edit deletes the B-rep's cache (`SmBrep::Notify` `PRE_EDIT`); the next
+/// use rebuilds it.
+impl MergeIntervalBrep<H> for ArenaPair<'_> {
+    fn merge_context(&mut self, o: H) -> Option<MergeContext<'_, H>> {
+        let target = match o.kind {
+            K_VERTEX => EntityRef::Vertex(vid(o)),
+            K_EDGE => EntityRef::Edge(eid(o)),
+            K_FACE => EntityRef::Face(fid(o)),
+            K_REGION => EntityRef::Region(RegionId::from_index(o.i)),
+            _ => return None,
+        };
+        let slot = usize::try_from(o.b).ok()?;
+        self.caches.get_mut(slot)?.take();
+        let brep = self.breps.get_mut(slot)?.as_deref_mut()?;
+        let key_of: &dyn Fn(EntityRef) -> ObjectRef = self.identities.objects.get(slot)?.as_ref();
+        let curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef =
+            self.identities.curves.get(slot)?.as_ref();
+        let context: &mut Context = match self.other_context.as_deref_mut() {
+            Some(other) if o.b == 1 => other,
+            _ => &mut *self.primary_context,
+        };
+        let b = o.b;
+        Some(MergeContext {
+            brep,
+            target,
+            handle: Box::new(move |e| match e {
+                EntityRef::Vertexuse(vu) => hd(b, K_VERTEXUSE, vu.index()),
+                e => ArenaPair::entity_h(b, e).unwrap_or(hd(b, K_NULL, 0)),
+            }),
+            notifications: ed::NotifyEnv {
+                records: self.records,
+                attributes: self.attributes,
+                context: Some(context),
+                key_of,
+            },
+            curve_ref,
+        })
     }
 }
 

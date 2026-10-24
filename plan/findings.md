@@ -18678,6 +18678,13 @@ the big face is used), and the start cap came out as 2 faces.
   kinds (loop use, face use). The surfaces passed are the faces' surface handles, as
   `GetSurface()`. The temporary curves the merge stores stay in the adapter's curve stores
   (handles are stable; nothing enumerates them).
+- **After #721.** `IntersectorBrepP3` requires `MergeIntervalBrep` (so `ClassGeometryMut`);
+  `ArenaPair` implements both. `merge_context` hands out the operand's arena, the entity,
+  the handle mapping and the pair's records, attributes and context; the identity callbacks
+  it borrows are held by the pair (`Identities`), built from its notification keys. A curve
+  identity that caller-supplied keys refuse cannot pass through the context's infallible
+  callback: the first refusal is kept and the merge fails with it (the edit in progress is
+  not rolled back, as for the other adapter errors).
 - **`Objs` hooks.** The private `ClassGeometry` wrapper of `face_curve_on_classify`
   returned `None` for `classification_vertex_point`, `topology_zone_tol_3d` and the topology
   hooks, which surfaced as an `SmVertex::GetTolerance` deferral inside the merge. It now
@@ -18693,17 +18700,19 @@ the big face is used), and the start cap came out as 2 faces.
   (the context-only `SmMerge` constructor's tolerances `SM_EFF_ZERO_SQ` and 30 degrees) and
   compares `other_graph` / `other_geometry` and the mates. Not compared: notification
   records and attributes (op 2 uses fresh ones), the geometry of curves the merge creates.
-- **Not generated, deferred.** Same-plane rectangles that overlap, are contained or touch
-  (the cases where the merge splits faces and edges) were tried in the generator; with
-  `--seeds 6000` each variant defers 148 of 6152 cases with 0 mismatches before the stubs:
-  the imprinting branch of `SmCurveClassification::MergeInterval`
-  (`intersect.curve_class_p6`) for the overlapping, contained and larger rectangles, and
-  `SmFace::FindVertexSector` (`topology.face_p4`) for the touching one and the one sharing
-  edges with the face. Keeping them would
-  stop the unit at partial, so the generator makes the disjoint rectangle (the merge returns
-  at its box test) plus the identical coincident rectangle the fixtures already cover (the
-  full merge, no split). Re-add the variants in `boolean_merge_p1::generate` once those two
-  stubs are wired; the face lists then also exercise the post-call numbering.
+- **Rectangle variants.** Op 2's generator also gives `other` another rectangle of the
+  face's plane (the face's is [-2, -1, 3, 4]): overlapping, contained, enclosing, touching,
+  sharing edges, and disjoint ones. Before #718 (`SmFace::FindVertexSector`,
+  `topology.face_p4`) and #721 (the imprinting `MergeInterval`, `intersect.curve_class_p6`)
+  each of the first five deferred 148 of 6152 cases (`--seeds 6000`, one variant at a time)
+  with 0 mismatches; with both on main they all pass with 0 deferred. The touching and the
+  disjoint rectangles compare the two B-reps (`with_values` 6140); for the overlapping,
+  contained, enclosing and edge-sharing ones the merge returns an error status that C++
+  and Rust agree on (`both_errored`, `no_values` 160 against 12). They therefore check the
+  status, not the topology; a rectangle on which the merge succeeds and splits faces is
+  not among them, so the post-call face numbering and the edge-mate comparison are written
+  for that case but not yet exercised by a splitting merge.
+
 ## MergeInterval imprinting through a mutable B-rep adapter (2026-10-24)
 
 `SmCurveClassification::MergeInterval` (`intersect.curve_class_p6`) is ported past its

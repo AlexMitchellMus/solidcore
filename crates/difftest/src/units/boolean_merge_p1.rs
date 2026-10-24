@@ -1197,14 +1197,18 @@ impl UnitDiff for Runner {
         let mut case = json!({"op":op,"args":[rng.below(2),rng.below(3),rng.below(2)],"brep":brep,
           "tolerances":[*[1e-5,1e-3,1e-1].get(rng.below(3) as usize)?,*[1e-5,1e-3,1e-1].get(rng.below(3) as usize)?]});
         if op == 2 && !wire && rng.below(3) != 0 {
-            // The same plane with a rectangle that does not meet the face: the edges do not
-            // mate and `MergeCoincidentSurfaces` stops at its disjoint-boxes return. Rectangles
-            // that overlap, are contained or touch are NOT generated: they reach
-            // `SmFace::FindVertexSector` (`topology.face_p4`) and the imprinting
-            // `MergeInterval` (`intersect.curve_class_p6`), and would defer (0 mismatches
-            // before those stubs; numbers in plan/findings.md, boolean.merge_p1). Add them
-            // back once those are wired.
-            let doms: [[f64; 4]; 3] = [
+            // The same plane with another rectangle (the face's is [-2, -1, 3, 4]): the edges
+            // do not mate, so `MergeCoincidentSurfaces` runs on rectangles that overlap, are
+            // contained, enclose it, touch it, share edges with it, or do not meet it (the
+            // merge then stops at its disjoint-boxes return). The touching and disjoint
+            // ones compare the B-reps; the others end in an error status that C++ and Rust
+            // agree on (`both_errored`; see plan/findings.md, boolean.merge_p1).
+            let doms: [[f64; 4]; 8] = [
+                [0.0, 0.0, 5.0, 5.0],
+                [0.0, 0.0, 1.0, 1.0],
+                [-4.0, -3.0, 6.0, 7.0],
+                [3.0, 4.0, 6.0, 8.0],
+                [-2.0, -1.0, 3.0, 1.5],
                 [10.0, 10.0, 12.0, 12.0],
                 [-20.0, -20.0, -18.0, -18.0],
                 [6.0, 0.0, 9.0, 3.0],

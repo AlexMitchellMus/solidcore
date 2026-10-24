@@ -1064,7 +1064,11 @@ impl ManifoldIntersector for ManifoldKernelAdapter<'_> {
                 },
             );
             self.topology_deleted = self.intersector.topology_deleted;
-            result
+            // a curve identity the caller's keys refused during an edit (no rollback)
+            match pair.take_identity_failure() {
+                Some(refused) => Err(refused),
+                None => result,
+            }
         })??;
         // (the temporary curves stay in the adapter's stores: handles are stable)
         let faces = merged
