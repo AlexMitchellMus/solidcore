@@ -3,7 +3,8 @@
 //! `combine_target` compares only the old-tol target stage against the surviving
 //! vertex after real native `CombineCoincidentVertices`. Other operations compare
 //! status/output lifecycle and the semantic graph or explicitly defer. Successful
-//! topology mutation and nonidentity transformation are not certified here.
+//! topology mutation is compared only for `CreateWireEdgeFromCurve` (op 13, fixtures);
+//! nonidentity transformation is not certified here.
 //! Inputs the FFI guards refuse (undefined natively) are `rejected`, not failed.
 
 use serde::{Deserialize, Serialize};
