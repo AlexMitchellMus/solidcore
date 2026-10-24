@@ -477,7 +477,7 @@ fn main() -> ExitCode {
         } else if res.status() == UnitStatus::SkippedPlatform {
             skipped += 1;
         }
-        if !args.no_report {
+        if !args.no_report && !args.perturb {
             match report::write_unit_report(&report_dir, &res) {
                 Ok(p) => println!(
                     "  report: {}",
