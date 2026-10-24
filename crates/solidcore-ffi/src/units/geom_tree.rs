@@ -217,7 +217,7 @@ fn validate_subdiv(desc: &[i64], prog: &[i64]) -> Result<(), FfiError> {
     while i < prog.len() {
         let op = at(prog, i)?;
         let sz = match op {
-            0 | 1 | 4 | 5 | 6 => 1,
+            0 | 1 | 4..=6 => 1,
             2 => 4,
             3 => 0,
             _ => return Err(bad("op")),
