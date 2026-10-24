@@ -1667,7 +1667,7 @@ impl Surface {
 
             // Check Surface/LineSegment Coincidence (its point solve reaches the
             // surface's face through the caller's context, when there is one)
-            let found = if let Some(context) = context.as_deref_mut() {
+            let found = if let Some(context) = context {
                 self.simple_coincidence_checker_with_context::<O>(
                     k,
                     uv_domain,
