@@ -24,7 +24,7 @@ use super::p1::{ExecutiveObjects, SolverLoadingAccess};
 use super::p2::{FilletParameters, FilletParametersAccess, SolverSpec};
 use super::p3::{
     CornerAdjustmentAccess, CornerEdgeAccess, CornerVertexAccess, CornerView, ErrorInfo,
-    FilletExecutive, SolverGeometryAccess, VertexEntry,
+    FilletExecutive, RailTrimAccess, SolverGeometryAccess, VertexEntry,
 };
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_geom::p1::{
@@ -678,6 +678,14 @@ impl<'target> FilletSession<'target> {
         self.executive.calculate_corner_edges(k, &mut self.objects)
     }
 
+    /// Trim the actual solvers' rail curves after all corner geometry is complete.
+    ///
+    /// # Errors
+    /// Actual solver/geometry lookup or native trimming failures.
+    pub fn trim_solver_rails(&mut self, k: &mut Kernel) -> Result<()> {
+        self.executive.trim_solver_rails(k, &mut self.objects)
+    }
+
     /// Run the executive's smooth-sequence prelude on its retained solvers.
     ///
     /// The ordinary single-solver path performs no collection, as in native code.
@@ -788,6 +796,33 @@ impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
             |context| *context.do_global_merge,
             |context| &mut *context.pseudo,
         )
+    }
+}
+
+impl RailTrimAccess<FilletObject> for SessionObjects<'_> {
+    fn rails_trim(
+        &mut self,
+        k: &mut Kernel,
+        solver: FilletObject,
+        _executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("object is not a solver"));
+        };
+        let SessionObjects {
+            target,
+            pseudo,
+            solvers,
+            ..
+        } = self;
+        let solver = solvers
+            .get(id.0 as usize)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| invalid("solver is not live in this session"))?
+            .base();
+        solver.trim_rails_with(|geometry, actual_solver| {
+            pseudo.trim_rail_curves_with_solver(k, geometry, id, actual_solver, target)
+        })
     }
 }
 
