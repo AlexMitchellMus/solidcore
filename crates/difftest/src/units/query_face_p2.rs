@@ -829,7 +829,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         ];
         return Ok(Output::new().values("proto", out));
     }
-    let m = match model(i)? {
+    let mut m = match model(i)? {
         Ok(m) => m,
         Err(o) => return Ok(o),
     };
@@ -868,8 +868,10 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 .iter()
                 .map(|&l| LoopId::from_index(l as u32))
                 .collect();
-            let mut b = b.clone();
-            if let Err(e) = prepare_trim_cache(&k, &mut b, f, *cache_mode) {
+            // A plain B-rep clone invokes Surface's copy constructor and clears
+            // its owner, disabling PointClassify's face-owned trim-cache path.
+            let b = &mut m.brep;
+            if let Err(e) = prepare_trim_cache(&k, b, f, *cache_mode) {
                 return Ok(rust_err(&e));
             }
             let traced = *cache_mode != CacheMode::Absent || *repeats != 1;
@@ -877,7 +879,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let mut last = Output::new();
             for _ in 0..*repeats {
                 if traced {
-                    trace.extend(cache_state(&b, f).map_err(|e| harness(e.to_string()))?);
+                    trace.extend(cache_state(b, f).map_err(|e| harness(e.to_string()))?);
                 }
                 let has_cache = b
                     .face(f)
@@ -895,7 +897,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                     uv_space_okay: *uv_ok,
                     trim_cache: None,
                 };
-                let status = match qf::point_classify(&k, &mut b, f, uv, &mut pc, opts) {
+                let status = match qf::point_classify(&k, b, f, uv, &mut pc, opts) {
                     Ok(()) => 0.0,
                     Err(SolidError::Upstream { code, .. }) => f64::from(code),
                     Err(e) => return Ok(rust_err(&e)),
@@ -910,7 +912,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 if traced {
                     trace.extend([status, flag(has_cache)]);
                     trace.extend(pc_block(&pc));
-                    trace.extend(cache_state(&b, f).map_err(|e| harness(e.to_string()))?);
+                    trace.extend(cache_state(b, f).map_err(|e| harness(e.to_string()))?);
                 }
             }
             Ok(if traced {
