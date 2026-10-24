@@ -3013,7 +3013,7 @@ mod tests {
         let mut visited = Vec::new();
         let error = solver
             .trim_rails_with(|id, actual| {
-                assert!(core::ptr::eq(actual, &solver));
+                assert!(core::ptr::eq(actual, &raw const solver));
                 visited.push(id);
                 if Some(&id) == ids.get(1) {
                     return Err(SolidError::sm_err("second geometry trim"));
