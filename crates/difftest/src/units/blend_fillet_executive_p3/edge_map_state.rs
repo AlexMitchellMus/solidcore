@@ -55,8 +55,8 @@ pub(super) fn snapshot(session: &FilletSession<'_>) -> SolidResult<(Vec<f64>, Ve
         let maps = fe.fillet_brep_edges();
         state.extend([
             index as f64,
-            fe.fillet_edge_type() as i32 as f64,
-            fe.status() as i32 as f64,
+            f64::from(fe.fillet_edge_type() as i32),
+            f64::from(fe.status() as i32),
             mapped(&managed, fe.fillet_brep_edge())?,
             maps.len() as f64,
         ]);

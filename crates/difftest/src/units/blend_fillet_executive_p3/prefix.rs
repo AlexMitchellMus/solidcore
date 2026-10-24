@@ -284,13 +284,16 @@ pub(super) fn run(
         }
         let mut out = Vec::new();
         section(&mut out, before);
+        let status_count = if input.checkpoint == Checkpoint::MappedFilletEdges {
+            5
+        } else {
+            3
+        };
         section(
             &mut out,
-            &statuses[..if input.checkpoint == Checkpoint::MappedFilletEdges {
-                5
-            } else {
-                3
-            }],
+            statuses
+                .get(..status_count)
+                .ok_or_else(|| invalid("missing constructor statuses"))?,
         );
         let (state, values) = intermediate_faces::snapshot(k, &session)?;
         section(&mut out, &state);
