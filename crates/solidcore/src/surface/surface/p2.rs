@@ -231,6 +231,7 @@ use crate::surface::torus::Torus;
 use crate::surface::trim_srf_cache::TrimSrfCache;
 use crate::topology::database_io::DatabaseReader;
 use crate::topology::trimming_tools;
+use crate::topology::FaceId;
 
 // ---- type codes ---------------------------------------------------------------------
 
@@ -387,6 +388,10 @@ struct SlotState {
     trim: TrimCacheSlot,
     /// The face was modified while the trimmed cache was in use.
     face_modified_while_out: bool,
+    /// The faces whose `CreateUVTrimCurve(s)` has cleared this surface's owner (one
+    /// entry per active clearing, innermost last; see
+    /// [`Surface::begin_owner_cleared`]).
+    cleared_for: Vec<FaceId>,
 }
 
 /// The cache slot of a surface. Upstream keeps a surface's cache on the surface object
@@ -939,6 +944,26 @@ impl Surface {
         });
     }
 
+    /// `SetCacheObj(new SmTrimSrfCache(*this))`: attaches a new trimmed surface cache
+    /// with the default tolerances and no tree, set up by `configure`, as this
+    /// surface's (a caller that makes the cache itself).
+    ///
+    /// # Errors
+    ///
+    /// Those of the surface copy.
+    pub fn attach_trim_cache(
+        &self,
+        configure: impl FnOnce(&mut TrimSrfCache<EntityRef>),
+    ) -> Result<()> {
+        let mut cache = TrimSrfCache::new(
+            self.clone_for_evaluation()?,
+            crate::surface::surface_cache::p1::SurfaceCacheOptions::default(),
+        );
+        configure(&mut cache);
+        Self::store_trim_cache(cache);
+        Ok(())
+    }
+
     /// `SmFace::Notify(SM_NO_PRE_EDIT)` on this face surface's trimmed surface cache
     /// (`GetObjectCache(SM_OC_TRIMSRF, ..)`): sets its `m_bFaceWasModified`; a cache in
     /// use gets it when it is stored again.
@@ -983,6 +1008,53 @@ impl Surface {
     pub fn has_trim_cache(&self) -> bool {
         self.cache_slot
             .with(|s| !matches!(s.trim, TrimCacheSlot::Empty))
+    }
+
+    /// Records that face `f`'s `CreateUVTrimCurve(s)` cleared this face surface's owner
+    /// (the start of its `SmTemporaryChangeValue<SmObject*>(m_pOwner, NULL)` scope), for
+    /// this surface and every copy that shares its cache slot: a face-unaware
+    /// `smsurf_GetSurfaceCache` of it in the meantime makes the standalone trimmed cache
+    /// upstream keeps on the surface ([`Surface::keep_standalone_trim_cache`]).
+    /// [`Surface::end_owner_cleared`] ends it.
+    pub fn begin_owner_cleared(&self, f: FaceId) {
+        self.cache_slot.with(|s| s.cleared_for.push(f));
+    }
+
+    /// Ends the innermost [`Surface::begin_owner_cleared`] scope of face `f`.
+    pub fn end_owner_cleared(&self, f: FaceId) {
+        self.cache_slot.with(|s| {
+            if let Some(i) = s.cleared_for.iter().rposition(|&g| g == f) {
+                s.cleared_for.remove(i);
+            }
+        });
+    }
+
+    /// `SmCacheMgrTSrf::CacheMakeOrValidate` keeping the trimmed cache it made with
+    /// the surface: for a face surface whose owner is cleared
+    /// ([`Surface::begin_owner_cleared`]) and that has no trimmed cache yet, a copy of
+    /// the standalone `cache` just built for it (its handles all name the surface,
+    /// which becomes the face's) is stored as the surface's trimmed cache, so that the
+    /// face's later lookups reuse it as upstream's do. Any other surface keeps nothing
+    /// (the port builds its caches afresh).
+    ///
+    /// # Errors
+    ///
+    /// Those of the handle mapping (a cache of this surface has only the surface's
+    /// handle, so none in practice).
+    pub fn keep_standalone_trim_cache<O: Copy + PartialEq>(
+        &self,
+        cache: &TrimSrfCache<O>,
+    ) -> Result<()> {
+        let face = self.cache_slot.with(|s| match s.trim {
+            TrimCacheSlot::Empty => s.cleared_for.last().copied(),
+            TrimCacheSlot::Stored(_) | TrimCacheSlot::CheckedOut => None,
+        });
+        if let Some(f) = face {
+            if cache.base().surface().shares_cache_slot_with(self) {
+                Self::store_trim_cache(cache.map_handles(|_| Ok(EntityRef::Face(f)))?);
+            }
+        }
+        Ok(())
     }
 
     /// Whether this surface's trimmed surface cache is in use (taken out of its slot

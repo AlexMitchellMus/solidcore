@@ -2067,7 +2067,7 @@ impl<O: LoopObject> ClassGeometry<O> for BrepSeamObjects<'_, O> {
                 .map(|(f, _)| f)?,
         };
         let vu = vertex::vertexuse_of_face(self.b, v, Some(f)).ok()??;
-        let mut snapshot = self.b.clone();
+        let mut snapshot = self.b.clone_sharing_surface_caches();
         let gap = vertexuse::vertex_face_gap(self.k, &mut snapshot, vu, false).ok()?;
         Some(gap.map_or(0.0, |g| g.gap_3d))
     }

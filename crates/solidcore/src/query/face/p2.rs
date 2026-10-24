@@ -1139,21 +1139,6 @@ pub(crate) struct CurveOnClassifyCache {
     snapshot: Option<Brep>,
 }
 
-/// A private snapshot of `b` standing for `b` itself: a copy whose face surfaces share
-/// the cache slots of `b`'s ([`Surface::share_cache_slot_of`]), so that the surface
-/// caches the classification makes or uses on it are the B-rep's surfaces' own.
-fn snapshot_of(b: &Brep) -> Brep {
-    let mut snapshot = b.clone();
-    for (id, face) in b.faces().iter() {
-        if let (Some(original), Ok(copy)) = (face.surface.as_ref(), snapshot.face_mut(id)) {
-            if let Some(copy) = copy.surface.as_mut() {
-                copy.share_cache_slot_of(original);
-            }
-        }
-    }
-    snapshot
-}
-
 impl CurveOnClassifyCache {
     pub(crate) fn apply_gap_updates(self, b: &mut Brep) -> Result<()> {
         if let Some(snapshot) = self.snapshot {
@@ -1530,7 +1515,7 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
         if curve.dim() == 2 {
             // 2D Curve branch - work in surface's uv space directly on the Face's UVcurves
             cc.set_surface1(objects.face_surface(f));
-            let snapshot = snapshot.get_or_insert_with(|| snapshot_of(b));
+            let snapshot = snapshot.get_or_insert_with(|| b.clone_sharing_surface_caches());
             match intersect_ts_bound(k, b, snapshot, objects, &mut made_trims, cc, f, do_check_3d) {
                 Ok(()) => {}
                 Err(e) if e.is_unported() => return Err(e),
@@ -1557,8 +1542,12 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
             // bHasBigGaps: each vertex's GetVertexuseOfFace(pFace)->GetVertexFaceGap()
             // (pFace is this face, set on the classification above)
             let gaps = if has_big_gaps {
-                let snapshot = snapshot.get_or_insert_with(|| snapshot_of(b));
-                vertices
+                let snapshot = snapshot.get_or_insert_with(|| b.clone_sharing_surface_caches());
+                // IntersectVertices reads them with the surface's owner cleared
+                // (SmTemporaryChangeValue on m_pOwner), so a surface cache made for
+                // them is a standalone one
+                snapshot.begin_surface_owner_cleared(f);
+                let gaps = vertices
                     .iter()
                     .map(|&v| {
                         Ok((
@@ -1566,7 +1555,9 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
                             vertex_face_gap_length(k, snapshot, v, f)?,
                         ))
                     })
-                    .collect::<Result<Vec<_>>>()?
+                    .collect::<Result<Vec<_>>>();
+                snapshot.end_surface_owner_cleared(f);
+                gaps?
             } else {
                 Vec::new()
             };
@@ -1585,7 +1576,7 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
             intersect_edges(
                 k,
                 b,
-                snapshot.get_or_insert_with(|| snapshot_of(b)),
+                snapshot.get_or_insert_with(|| b.clone_sharing_surface_caches()),
                 objects,
                 cc,
                 &edges,
@@ -1630,7 +1621,7 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
                     inner: objects,
                     trims: made_trims.as_slice(),
                     brep: b,
-                    snapshot: snapshot.get_or_insert_with(|| snapshot_of(b)),
+                    snapshot: snapshot.get_or_insert_with(|| b.clone_sharing_surface_caches()),
                 },
                 ii,
                 do_point_classify,
@@ -1855,10 +1846,15 @@ fn intersect_edges<O: ClassObject>(
         .surface
         .as_ref()
         .ok_or(SolidError::null_pointer(OP_CURVE))?;
+    // IntersectEdges reads the edge/face gaps with the surface's owner cleared
+    // (SmTemporaryChangeValue on m_pOwner)
+    snapshot.begin_surface_owner_cleared(face);
     let views = edges
         .iter()
         .map(|&edge| boundary_edge(k, snapshot, objects, face, edge, has_big_gaps))
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>();
+    snapshot.end_surface_owner_cleared(face);
+    let views = views?;
     cc.intersect_edges(
         k,
         objects,
@@ -2116,7 +2112,7 @@ pub(crate) mod tests {
     fn a_classification_snapshot_shares_the_surface_caches() {
         let mut b = Brep::new();
         let f = square(&mut b);
-        let snapshot = snapshot_of(&b);
+        let snapshot = b.clone_sharing_surface_caches();
         let original = b.face(f).unwrap().surface.as_ref().unwrap();
         let copy = snapshot.face(f).unwrap().surface.as_ref().unwrap();
         assert!(copy.shares_cache_slot_with(original));
