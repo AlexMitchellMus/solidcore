@@ -19218,3 +19218,19 @@ geometry snapshots or owner rebinding. Scoped target-edge projections reject
 pseudo and geometry handles. The canonical getter exposes scoped handles; indexed
 input conversion is explicit and fallible. These changes do not complete missing
 recovery notifications, custom producer-owner resolution, or the public fillet API.
+
+### Fillet intermediate stitching: live attributes and notifications
+
+The intermediate body's ordered edges receive the executive's retained E attribute
+before the existing StitchFaces algorithm runs. Its mutating helper calls now accept
+the same borrowed notification records, attribute store and kernel callback context;
+legacy entrypoints retain their existing adapters. The shared executive stage returns
+counts and gaps only after success, preserving BAD_MERGE mutation on ordinary error.
+
+The normal box-edge kernel probe retains the same four marker users and reports zero
+stitched edges, four lamina edges and zero gaps. Paired native proof is pending. This
+is not general stitch-mutation or complete fillet parity: a newly copied split curve
+still requires its actual identity provider, and nested notification-context leases
+remain a limitation for mutation paths that request fresh kernel geometry keys.
+Separately, the face-stage native alias observer exposes a real FG-surface versus
+managed-face ownership mismatch; the stitching adapter does not repair or hide it.
