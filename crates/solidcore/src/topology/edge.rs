@@ -280,8 +280,9 @@ fn cover_other_coincident_surface(
     domain0: &Extent2d,
     domain1: &Extent2d,
 ) -> Result<Cover> {
-    use crate::query::face::p2::{BrepFaceSolveContext, FaceSolveHandle};
+    use crate::query::brep::BrepFaceServices;
     use crate::surface::surface::p5::CoverSolveContext;
+    use crate::topology::brep_cache::CacheObject;
 
     // the evaluation copies standing in the faces while their surfaces are out
     let stand_in = |b: &Brep, f: FaceId| -> Result<Surface> {
@@ -311,10 +312,10 @@ fn cover_other_coincident_surface(
         Some(domain1),
         true,
         CoverSolveContext {
-            context: &mut BrepFaceSolveContext::new(&mut *b),
+            context: &mut BrepFaceServices::new(&mut *b),
             handles: [
-                Some(FaceSolveHandle::FaceSurface(face0)),
-                Some(FaceSolveHandle::FaceSurface(face1)),
+                Some(CacheObject::Surface(face0)),
+                Some(CacheObject::Surface(face1)),
             ],
         },
     );
@@ -2522,7 +2523,7 @@ pub fn destroy(k: &mut Kernel, b: &mut Brep, e: EdgeId, env: &mut NotifyEnv<'_>)
         if let Some(context) = n.context.as_deref_mut() {
             context.set_doing_boolean(true);
         }
-        let notified = crate::error::ignore_status(notify(
+        let notified = ignore_status(notify(
             b,
             e,
             n,

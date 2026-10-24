@@ -19222,8 +19222,8 @@ method (`ArenaPair` and the runner's `Two` implement it) and runs on the face's 
 B-rep (`SmRegion::GetBrep`), the surface intersector and the line/curve intersections it
 runs take the trees of the face-aware context's caches as built (that context's
 `GetTree` ran through the face; a second one in the same state rebuilds the same tree),
-and `sm_CoverOtherCoincidentFace` runs the cover on evaluation copies with both faces held
-(`CoverFace`: the trim test of `STEPInversion`'s point drops and
-`SmFace::RemoveUVTrimCurves`), then makes the covering surface's change on the face's own
-surface.
+and `sm_CoverOtherCoincidentFace` runs its `STEPInversion` solves under a face solve
+context lending the B-rep (cherry-picked from fix/cover-coincident-face-ctx: 94c154d67,
+f8c04179b, dabd7f67d, d88f2c9ca; the context is `query::brep::BrepFaceServices`, main's
+B-rep face solve context, in place of that branch's unlanded `BrepFaceSolveContext`).
 

@@ -1741,7 +1741,7 @@ impl Surface {
         point_on_surf: Point3,
         tol_3d: f64,
         uv_guess: Option<Point2>,
-        context: (&mut dyn super::p1::SurfaceSolveContext<O>, Option<O>),
+        context: (&mut dyn SurfaceSolveContext<O>, Option<O>),
     ) -> Result<(Point2, LocationType)> {
         match &self.kind {
             SurfaceKind::BSpline(s) => s.step_inversion_on_with_context(
