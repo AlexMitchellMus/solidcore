@@ -52,6 +52,7 @@
 #include <SmNurbsSrf.h>
 #include <SmOwningTopology.h>
 #include <SmPlane.h>
+#include <SmSurfOfExtrusion.h>
 #include <SmPointClass.h>
 #include <SmPoly.h>
 #include <SmProtoTopology.h>
@@ -4847,6 +4848,7 @@ enum TObj : int64_t
     T_PRIMITIVE_BOX = 10,
     T_PRIMITIVE_SPHERE = 11,
     T_CALLER_FACE = 12,
+    T_EXTRUSION_FACE = 18,
     T_COPIED_BOX = 13,
     T_COPIED_SPHERE = 14,
 };
@@ -4902,7 +4904,7 @@ int32_t run_transform(Rd& rd, std::vector<double>& o, bool probe=false)
 {
     const SmContext& ctx = the_context();
     int64_t kind = rd.idx();
-    if(probe && kind!=T_PRIMITIVE_BOX && kind!=T_PRIMITIVE_SPHERE && kind!=T_COPIED_BOX && kind!=T_COPIED_SPHERE) return SC_ERR_ARG;
+    if(probe && kind!=T_PRIMITIVE_BOX && kind!=T_PRIMITIVE_SPHERE && kind!=T_COPIED_BOX && kind!=T_COPIED_SPHERE && kind!=T_EXTRUSION_FACE) return SC_ERR_ARG;
     SmObject* obj = NULL;
     SmBrep* source = NULL;
     std::vector<double> source_before;
@@ -4947,11 +4949,29 @@ int32_t run_transform(Rd& rd, std::vector<double>& o, bool probe=false)
         obj = body; break;
     }
     case T_CALLER_FACE:
+    case T_EXTRUSION_FACE:
     {
         SmPoint3d origin=rd.vec(); double width=rd.num(), height=rd.num();
         SmBrep* body=new(ctx) SmBrep(); SmFace* face=NULL;
-        SmPlane* surface=new(ctx) SmPlane(origin,SmVector3d(0,0,1),&ctx);
-        SmStatus created=body->CreateFaceFromSurface(surface,SmExtent2d(0,0,width,height),face);
+        SmSurface* surface=NULL;
+        SmExtent2d domain(0,0,width,height);
+        if(kind==T_EXTRUSION_FACE) {
+            gw_CURVE* nurb=sm_AllocateNurbCurve(2,2,5);
+            for(int i=0;i<3;++i) {
+                nurb->pol->Pw[i].x=origin.x+width*i/2.0;
+                nurb->pol->Pw[i].y=origin.y+(i==1?1.0:0.0);
+                nurb->pol->Pw[i].z=origin.z;
+                nurb->pol->Pw[i].w=1.0;
+            }
+            for(int i=0;i<6;++i) nurb->knt->U[i]=(i<3?0.0:1.0);
+            SmBSplineCurve* generator=new(ctx) SmBSplineCurve(nurb,3,FALSE);
+            domain=SmExtent2d(0,0,1,height);
+            SmSurfOfExtrusion* extrusion=new(ctx) SmSurfOfExtrusion(generator,origin,SmVector3d(0,0,1),domain,FALSE);
+            SmStatus made=extrusion->MakeNurb();
+            if(made!=SM_SUCCESS) { o.push_back((double)made); delete extrusion; delete body; return SC_OK; }
+            surface=extrusion;
+        } else surface=new(ctx) SmPlane(origin,SmVector3d(0,0,1),&ctx);
+        SmStatus created=body->CreateFaceFromSurface(surface,domain,face);
         if(created!=SM_SUCCESS || !face) { o.push_back((double)created); delete body; return SC_OK; }
         obj=body; break;
     }
@@ -5060,7 +5080,7 @@ int32_t run_transform(Rd& rd, std::vector<double>& o, bool probe=false)
     }
     o.push_back((double)s);
     if(frame) { o.push_back((double)frame->initial_types.size()); o.insert(o.end(),frame->initial_types.begin(),frame->initial_types.end()); }
-    if (kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE || kind == T_CALLER_FACE || kind == T_COPIED_BOX || kind == T_COPIED_SPHERE) {
+    if (kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE || kind == T_CALLER_FACE || kind == T_EXTRUSION_FACE || kind == T_COPIED_BOX || kind == T_COPIED_SPHERE) {
         SmBrep* body=(SmBrep*)obj;
         SmTArray<SmVertex*> vertices; body->GetVertices(vertices);
         SmTArray<SmEdge*> edges; body->GetEdges(edges);
