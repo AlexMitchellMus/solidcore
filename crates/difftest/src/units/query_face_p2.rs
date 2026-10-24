@@ -5,7 +5,7 @@
 //! file, optionally with rebuilt UV trim curves, or `CreateFaceFromSurface` over a
 //! B-spline surface or a real `SmPlane`), optionally overwrites stored face, edge and
 //! vertex tolerances, then runs `SmFace::PointClassify`, `sm_ClassifyParamOnFaces` (a
-//! verbatim copy) or `SmFace::CurveOnClassify`. There is no Rust B-rep reader or builde
+//! verbatim copy) or `SmFace::CurveOnClassify`. There is no Rust B-rep reader or builder
 //! yet, so the Rust side imports the edited graph the shim exports (unit
 //! `topology.face_p2`'s layout and importer: topology, tolerances, UV domains, planes and
 //! B-spline surfaces, B-spline and line curves, UV trim curves) and runs the port on it.
@@ -712,7 +712,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             Ok(id) => id,
             Err(e) => return Ok(rust_err(&e)),
         };
-        let pv = mg
+        let pv = mgr
             .proto_vertex(id)
             .ok_or_else(|| harness("proto vertex missing"))?;
         let qp = Vec3::new(qx, qy, qz);
