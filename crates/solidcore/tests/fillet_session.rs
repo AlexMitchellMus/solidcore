@@ -298,6 +298,35 @@ fn actual_box_solver_builds_surface_and_rails_in_retained_geometry() {
 }
 
 #[test]
+fn actual_box_all_solver_stage_builds_retained_fillet_surface() {
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
+    let edge = target.edges().ids().next().unwrap();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    session
+        .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+        .unwrap();
+    session.create_corners(&k, None).unwrap();
+    session.process_smooth_edge_sequences(&mut k).unwrap();
+    session.create_corner_vertices(&mut k).unwrap();
+    session.adjust_corner_topology(&mut k).unwrap();
+    session.calculate_solver_geometry(&mut k).unwrap();
+    assert!(!session.executive().solvers.is_empty());
+    for &object in &session.executive().solvers {
+        let FilletObject::Solver(id) = object else {
+            panic!("actual solver");
+        };
+        let solver = session.solver(id).unwrap().base();
+        assert!(!solver.fillet_geoms.is_empty());
+        for &geometry in &solver.fillet_geoms {
+            let geometry = session.pseudo_brep().geom(geometry).unwrap();
+            assert_eq!(geometry.solver, Some(id));
+            assert!(geometry.fillet_surface.is_some());
+        }
+    }
+}
+
+#[test]
 fn smooth_prelude_requires_live_tangent_context_for_multiple_solvers() {
     let mut k = Kernel::default();
     let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
@@ -312,4 +341,26 @@ fn smooth_prelude_requires_live_tangent_context_for_multiple_solvers() {
     let error = session.process_smooth_edge_sequences(&mut k).unwrap_err();
     assert!(error.is_unported());
     assert_eq!(session.executive().solvers, solvers);
+}
+
+#[test]
+fn actual_target_extension_map_retains_native_containing_surface() {
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
+    let face = target.faces().ids().next().unwrap();
+    let surface = target.face(face).unwrap().surface.as_ref().unwrap().clone();
+    let domain = surface.natural_uv_domain();
+    let duplicate = surface.clone();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    assert!(session.extended_surface(face).is_none());
+    session
+        .add_extended_original_surface(face, surface)
+        .unwrap();
+    let retained = std::ptr::from_ref(session.extended_surface(face).unwrap());
+    session
+        .add_extended_original_surface(face, duplicate)
+        .unwrap();
+    let actual = session.extended_surface(face).unwrap();
+    assert_eq!(std::ptr::from_ref(actual), retained);
+    assert_eq!(actual.natural_uv_domain(), domain);
 }

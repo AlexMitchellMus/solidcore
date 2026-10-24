@@ -125,6 +125,8 @@
 //!
 //! No loops depend on input size beyond the given arrays; there is no recursion.
 
+use std::collections::BTreeMap;
+
 use crate::blend::fillet_corner::p2::is_b_spline_kind;
 use crate::blend::fillet_corner::p3::{
     CornerEnv, FilletCorner, FilletCornerKind, FilletExecutiveData,
@@ -898,7 +900,21 @@ impl FilletCorner {
         original_face: FaceId,
         ext_surface: Surface,
     ) {
-        if let Some(old_surface) = exec.extended_surfaces_map.get(&original_face) {
+        Self::add_extended_original_surface_with_map(
+            &mut exec.extended_surfaces_map,
+            original_face,
+            ext_surface,
+        );
+    }
+
+    /// Register an actual extended surface in the executive's owned face map.
+    /// The same native domain-containment rule is used by both executive adapters.
+    pub fn add_extended_original_surface_with_map(
+        map: &mut BTreeMap<FaceId, Surface>,
+        original_face: FaceId,
+        ext_surface: Surface,
+    ) {
+        if let Some(old_surface) = map.get(&original_face) {
             let new_domain = ext_surface.natural_uv_domain();
             let old_domain = old_surface.natural_uv_domain();
             if new_domain.is_contained_by(&old_domain, EFF_ZERO) {
@@ -907,8 +923,7 @@ impl FilletCorner {
             }
             // else: the old surface is deleted (replaced below)
         }
-        exec.extended_surfaces_map
-            .insert(original_face, ext_surface);
+        map.insert(original_face, ext_surface);
     }
 
     /// `ReInitializeCornerEdges`: `SetCurve(NULL, TRUE)` on every corner fillet edge

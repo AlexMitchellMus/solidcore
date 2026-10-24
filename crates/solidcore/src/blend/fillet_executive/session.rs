@@ -23,7 +23,8 @@ use std::collections::BTreeMap;
 use super::p1::{ExecutiveObjects, SolverLoadingAccess};
 use super::p2::{FilletParameters, FilletParametersAccess, SolverSpec};
 use super::p3::{
-    CornerAdjustmentAccess, CornerVertexAccess, CornerView, ErrorInfo, FilletExecutive, VertexEntry,
+    CornerAdjustmentAccess, CornerVertexAccess, CornerView, ErrorInfo, FilletExecutive,
+    SolverGeometryAccess, VertexEntry,
 };
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_geom::p1::{
@@ -42,7 +43,8 @@ use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::intersect::point_class::{ClassObject, ClassObjectKind};
 use crate::kernel::Kernel;
-use crate::topology::{Brep, EdgeId, EdgeuseId, VertexId};
+use crate::surface::surface::Surface;
+use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
 const OP: &str = "blend::fillet_executive::session";
 
@@ -161,6 +163,7 @@ struct SessionObjects<'target> {
     corners: Vec<FilletCorner>,
     generators: Vec<FilletSurfaceGenerator>,
     attributes: AttributeStore,
+    extended_surfaces: BTreeMap<FaceId, Surface>,
     edge_caches: BTreeMap<EdgeId, CurveCache<FilletObject>>,
     target_serial: u64,
 }
@@ -178,6 +181,45 @@ impl SessionObjects<'_> {
             .get_mut(id.0 as usize)
             .and_then(Option::as_mut)
             .ok_or_else(|| invalid("solver is not live in this session"))
+    }
+    fn calc_solver_geometry(
+        &mut self,
+        k: &Kernel,
+        id: FilletSolverId,
+        executive: &FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let index = id.0 as usize;
+        if index >= self.solvers.len() {
+            return Err(invalid("solver is not live in this session"));
+        }
+        let (before, rest) = self.solvers.split_at_mut(index);
+        let (current, after) = rest
+            .split_first_mut()
+            .ok_or_else(|| invalid("solver is not live in this session"))?;
+        let current = current
+            .as_mut()
+            .ok_or_else(|| invalid("solver is not live in this session"))?;
+        let context = SessionGeometryContext {
+            current: id,
+            before,
+            after,
+            executive,
+            corners: &self.corners,
+        };
+        match current {
+            SolverObject::ConstantRadius(solver) => FilletSolver::calc_fillet_geom_with_context(
+                solver.as_mut(),
+                k,
+                self.target,
+                &mut self.pseudo,
+                &context,
+            ),
+            // UNPORTED(blend.fillet_executive_p3): actual derived solver operation contexts.
+            _ => Err(SolidError::unported(
+                "live concrete CalcFilletGeom operations",
+                "blend.fillet_executive_p3",
+            )),
+        }
     }
 }
 
@@ -278,10 +320,33 @@ impl<'target> FilletSession<'target> {
                 corners: Vec::new(),
                 generators: Vec::new(),
                 attributes,
+                extended_surfaces: BTreeMap::new(),
                 edge_caches: BTreeMap::new(),
                 target_serial,
             },
         })
+    }
+
+    /// Borrow the actual extended surface registered for a target face.
+    /// Faces and this owning map belong to this session's target identity domain.
+    #[must_use]
+    pub fn extended_surface(&self, face: FaceId) -> Option<&Surface> {
+        self.objects.extended_surfaces.get(&face)
+    }
+
+    /// Retain an actual target-face extension using the native domain-selection rule.
+    /// The session owns the selected surface; later producers and readers share this map.
+    ///
+    /// # Errors
+    /// A face absent from the actual target.
+    pub fn add_extended_original_surface(&mut self, face: FaceId, surface: Surface) -> Result<()> {
+        self.objects.target.face(face)?;
+        FilletCorner::add_extended_original_surface_with_map(
+            &mut self.objects.extended_surfaces,
+            face,
+            surface,
+        );
+        Ok(())
     }
 
     /// The actual executive, for shared reads.
@@ -564,38 +629,16 @@ impl<'target> FilletSession<'target> {
     /// # Errors
     /// Actual solver/corner resolution, native geometry failures or missing callees.
     pub fn calc_solver_geometry(&mut self, k: &Kernel, id: FilletSolverId) -> Result<()> {
-        let index = id.0 as usize;
-        if index >= self.objects.solvers.len() {
-            return Err(invalid("solver is not live in this session"));
-        }
-        let (before, rest) = self.objects.solvers.split_at_mut(index);
-        let (current, after) = rest
-            .split_first_mut()
-            .ok_or_else(|| invalid("solver is not live in this session"))?;
-        let current = current
-            .as_mut()
-            .ok_or_else(|| invalid("solver is not live in this session"))?;
-        let context = SessionGeometryContext {
-            current: id,
-            before,
-            after,
-            executive: &self.executive,
-            corners: &self.objects.corners,
-        };
-        match current {
-            SolverObject::ConstantRadius(solver) => FilletSolver::calc_fillet_geom_with_context(
-                solver.as_mut(),
-                k,
-                self.objects.target,
-                &mut self.objects.pseudo,
-                &context,
-            ),
-            // UNPORTED(blend.fillet_executive_p3): actual derived solver operation contexts.
-            _ => Err(SolidError::unported(
-                "live concrete CalcFilletGeom operations",
-                "blend.fillet_executive_p3",
-            )),
-        }
+        self.objects.calc_solver_geometry(k, id, &self.executive)
+    }
+
+    /// Calculate all actual solver geometries through the shared executive stage.
+    ///
+    /// # Errors
+    /// Actual solver failures with native failure metadata, or missing dependencies.
+    pub fn calculate_solver_geometry(&mut self, k: &mut Kernel) -> Result<()> {
+        self.executive
+            .calculate_solver_geometry(k, &mut self.objects)
     }
 
     /// Run the executive's smooth-sequence prelude on its retained solvers.
@@ -623,6 +666,36 @@ impl<'target> FilletSession<'target> {
     pub fn load_solver(&mut self, k: &Kernel, solver: FilletSolverId) -> Result<()> {
         self.executive
             .load_fillet_solver(k, &mut self.objects, FilletObject::Solver(solver))
+    }
+}
+
+impl SolverGeometryAccess<FilletObject> for SessionObjects<'_> {
+    fn geometry_calculate(
+        &mut self,
+        k: &mut Kernel,
+        solver: FilletObject,
+        executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("object is not a solver"));
+        };
+        self.calc_solver_geometry(k, id, executive)
+    }
+    fn geometry_edge(&self, solver: FilletObject) -> Result<FilletObject> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("object is not a solver"));
+        };
+        let edgeuse = self
+            .solver(id)?
+            .base()
+            .edgeuse(0)?
+            .ok_or_else(|| invalid("solver without first edgeuse"))?;
+        let edge = crate::topology::edgeuse::p1::edge(self.target, edgeuse)?
+            .ok_or_else(|| invalid("solver edgeuse without edge"))?;
+        Ok(FilletObject::Topology(
+            FilletBody::Target,
+            EntityRef::Edge(edge),
+        ))
     }
 }
 
