@@ -227,8 +227,8 @@ use crate::surface::surf_of_revolution::{Revolved, SurfOfRevolution};
 use crate::surface::surface::p1::{StepSurface, SurfaceIntersectContext, SurfaceSolveContext};
 use crate::surface::surface::p8::FaceSolveCache;
 use crate::surface::surface_cache::p1::SurfaceCache;
-use crate::surface::trim_srf_cache::TrimSrfCache;
 use crate::surface::torus::Torus;
+use crate::surface::trim_srf_cache::TrimSrfCache;
 use crate::topology::database_io::DatabaseReader;
 use crate::topology::trimming_tools;
 
@@ -983,6 +983,14 @@ impl Surface {
     pub fn has_trim_cache(&self) -> bool {
         self.cache_slot
             .with(|s| !matches!(s.trim, TrimCacheSlot::Empty))
+    }
+
+    /// Whether this surface's trimmed surface cache is in use (taken out of its slot
+    /// by a caller that has not given it back yet).
+    #[must_use]
+    pub fn trim_cache_in_use(&self) -> bool {
+        self.cache_slot
+            .with(|s| matches!(s.trim, TrimCacheSlot::CheckedOut))
     }
 
     /// Makes this surface share `other`'s cache slot: `self` is a copy that stands for

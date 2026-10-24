@@ -123,8 +123,7 @@ use crate::nurbs::b_spline_surface::p1::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::query::face::p2::{
     curve_on_classify_cached, face_cache_tree, face_surface_cache, point_classify, BrepCacheFace,
-    FaceSurfaceCache,
-    CurveOnClassifyCache, CurveOnClassifyObjects, PointClassifyOptions,
+    CurveOnClassifyCache, CurveOnClassifyObjects, FaceSurfaceCache, PointClassifyOptions,
 };
 use crate::surface::surface::p5::{SS_NONE, SS_UMAX, SS_UMIN, SS_VMAX, SS_VMIN};
 use crate::surface::surface::p8::{FaceSolveCache, HeldSolveCache};
@@ -666,9 +665,7 @@ fn global_line_intersect_with<O: SolutionObject>(
         if sol.solution_type == SolutionType::SingleValue {
             // Get uv on surface
             let uv = Point2::new(sol.start.parameters[1], sol.start.parameters[2]);
-            if classify_uv_point(k, b, f, uv, src_zone_tol_3d, None)?
-                == PointClassType::Unknown
-            {
+            if classify_uv_point(k, b, f, uv, src_zone_tol_3d, None)? == PointClassType::Unknown {
                 removal_indices.push(ii);
                 ii += 1;
                 continue;

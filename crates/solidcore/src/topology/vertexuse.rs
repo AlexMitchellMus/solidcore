@@ -768,37 +768,84 @@ fn local_point_solve(
     ))
 }
 
-/// `pSurface->GlobalPointSolve(domain, op, point, tol, NULL, request, solutions)` on
-/// the surface's cache made to look standalone (`m_bHaveTSurfaceCache = FALSE`) with
-/// boundary curve processing on and, when `point_test` is false, point testing off
-/// (all restored afterwards); `NER` of a missing surface cache.
+/// `pSurface->GlobalPointSolve(domain, op, point, tol, NULL, request, solutions)` of
+/// face `f`'s surface, on the surface's cache (`smsurf_GetSurfaceCache`, `NER`) checked
+/// out and made to look standalone (`m_bHaveTSurfaceCache = FALSE`) with boundary
+/// curve processing on and, when `point_test` is false, point testing off (all restored
+/// afterwards). The cache stays out of the surface's slot during the solve, so the
+/// face classifications in it walk the loops as upstream's do with
+/// `m_bHaveTSurfaceCache` off. The fast drop's trim test classifies on the B-rep when
+/// the cache is a trimmed one with point testing on and its face not modified. A cache
+/// already in use by an enclosing caller (upstream the same object, e.g. while its
+/// tree is built with point testing off) is not fetched again, and the solve tests no
+/// point.
+#[allow(clippy::too_many_arguments)]
 fn global_point_solve(
     k: &Kernel,
-    surface: &Surface,
+    b: &mut Brep,
+    f: FaceId,
     domain: &Extent2d,
     op: SolverOperation,
     point: Point3,
     tol: f64,
     request: SolutionRequested,
-    _point_test: bool,
+    point_test: bool,
 ) -> Result<Vec<PointDrop>> {
-    // smsurf_GetSurfaceCache(pSurface): the surface's cache slot (its tree is not built
-    // during a Boolean operation, which later continuity readers can observe)
-    crate::surface::surface::p1::note_surface_cache(k, surface);
-    // The Rust surface solver builds no surface cache, so the cache flags upstream
-    // switches around the call (point testing, boundary curves, `m_bHaveTSurfaceCache`)
-    // have nothing to act on; a face-owned surface is Unported (query.face_p2) inside.
-    let solutions = surface.global_point_solve::<crate::surface::surface::p4::NoObject>(
-        k,
-        Some(crate::surface::surface::p4::NoObject),
-        domain,
-        op,
-        point,
-        tol,
-        None,
-        request,
-    )?;
-    solutions
+    use crate::intersect::point_class::{PointClassType, PointClassification};
+    use crate::query::face::p2::{face_surface_cache, point_classify, PointClassifyOptions};
+
+    let surface = face_surface(b, f)?.clone_for_evaluation()?;
+    let lease = if surface.trim_cache_in_use() {
+        None
+    } else {
+        Some(face_surface_cache(k, b, f)?)
+    };
+    let test_on = point_test
+        && lease.as_ref().is_some_and(|l| {
+            l.trimmed && l.cache.base().point_test_enabled && !l.cache.base().face_was_modified
+        });
+    let mut classify = |k: &Kernel, uv: Point2, src_tol: f64| -> Result<bool> {
+        // pFace->PointClassify(uv, tol, TRUE, FALSE, sPtClass): good on SM_SUCCESS and
+        // a face, edge or vertex class
+        let mut pc = PointClassification::new(src_tol);
+        let status = point_classify(
+            k,
+            b,
+            f,
+            uv,
+            &mut pc,
+            PointClassifyOptions {
+                src_zone_tol_3d: src_tol,
+                do_boundary_intersections: true,
+                use_uv_classification: false,
+                ..PointClassifyOptions::default()
+            },
+        );
+        match status {
+            Err(e) if e.is_unported() => Err(e),
+            Err(_) => Ok(false),
+            Ok(()) => Ok(matches!(
+                pc.point_class(),
+                PointClassType::Face | PointClassType::Edge | PointClassType::Vertex
+            )),
+        }
+    };
+    let solutions = surface
+        .global_point_solve_face_tested::<crate::surface::surface::p4::NoObject>(
+            k,
+            Some(crate::surface::surface::p4::NoObject),
+            domain,
+            op,
+            point,
+            tol,
+            None,
+            request,
+            if test_on { Some(&mut classify) } else { None },
+        );
+    if let Some(lease) = lease {
+        lease.release();
+    }
+    solutions?
         .as_slice()
         .iter()
         .map(|s| {
@@ -1048,7 +1095,8 @@ pub fn compute_uv_point(
             let face_tol = face_tolerance(b, f)?;
             let sols = global_point_solve(
                 k,
-                face_surface(b, f)?,
+                b,
+                f,
                 &uv_domain,
                 SolverOperation::Minimize,
                 vertex_pnt,
@@ -1081,10 +1129,11 @@ pub fn compute_uv_point(
     } else if is_loop_vertexuse(b, vu)? {
         // project point down to face's surface
         let face_tol = face_tolerance(b, f)?;
-        let surface = face_surface(b, f)?;
+
         let mut sols = global_point_solve(
             k,
-            surface,
+            b,
+            f,
             &uv_domain,
             SolverOperation::Intersect,
             vertex_pnt,
@@ -1096,7 +1145,8 @@ pub fn compute_uv_point(
         if sols.is_empty() {
             sols = global_point_solve(
                 k,
-                surface,
+                b,
+                f,
                 &uv_domain,
                 SolverOperation::Minimize,
                 vertex_pnt,

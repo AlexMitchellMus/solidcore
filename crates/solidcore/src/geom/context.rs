@@ -690,8 +690,10 @@ impl Context {
     pub fn current_mark(&self, mark_type: MarkType) -> u64 {
         match mark_type {
             MarkType::NoMark => {
-                let [m1, m2, m3, mio, massert] =
-                    self.current_marks.each_ref().map(|m| m.load(Ordering::Relaxed));
+                let [m1, m2, m3, mio, massert] = self
+                    .current_marks
+                    .each_ref()
+                    .map(|m| m.load(Ordering::Relaxed));
                 1 + max5(m1, m2, m3, mio, massert)
             }
             _ => self
@@ -1117,6 +1119,24 @@ pub fn get_or_create_context(slot: &mut Option<Context>) -> &mut Context {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_shared_context_claims_and_unlocks_a_mark() {
+        let mut k = Kernel::default();
+        let before = k.context.current_mark(MarkType::Mark2);
+        let m = with_mark_lock(&mut k, ALL_MARKS, |k, outer| {
+            assert_eq!(outer, MarkType::Mark);
+            let lock = k.context.claim_mark(ALL_MARKS);
+            // the first mark is locked by the enclosing lock: the second is claimed
+            assert_eq!(lock.mark_type(), MarkType::Mark2);
+            assert!(k.context.is_mark_locked(MarkType::Mark2));
+            lock.mark_type()
+        })
+        .unwrap();
+        assert_eq!(m, MarkType::Mark2);
+        assert!(!k.context.is_mark_locked(MarkType::Mark2));
+        assert_eq!(k.context.current_mark(MarkType::Mark2), before + 2);
+    }
+
     use super::*;
 
     const ALL: [MarkType; 7] = [
