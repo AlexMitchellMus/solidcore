@@ -40,3 +40,8 @@ why = "TurnToNURBS tracker: upstream curves/surfaces notify their own SM_NO_PRE_
 unit = "topology.brep_p3"
 case = "gen0241"
 why = "TurnToNURBS tracker: upstream curves/surfaces notify their own SM_NO_PRE_EDIT/SM_NO_POST_EDIT edits, the port's geometry sends none (plan/findings.md: topology.face_p1 SetSurface SM_NO_CHANGE_GEOMETRY wired (PR #637), 'Still deferred: geometry edit notifications')"
+
+[[mismatch]]
+unit = "topology.brep_p10"
+case = "project_t0_Defeature_brep1"
+why = "ProjectAndTrim removes every face; C++ keeps the former solid region as the infinite region, the port keeps the original one (its SmTopology fields differ: cpp 99999999, rust 0) (plan/findings.md: 'topology.brep_p10 project_t0_Defeature_brep1: the region left after ProjectAndTrim')"

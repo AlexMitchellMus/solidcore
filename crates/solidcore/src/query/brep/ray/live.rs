@@ -350,11 +350,15 @@ impl SurfaceSolveContext<CacheObject> for LiveSurfaceContext<'_, '_, '_> {
     fn build_surface_cache(
         &mut self,
         k: &Kernel,
-        _: &Surface,
+        surface: &Surface,
         handle: Option<CacheObject>,
     ) -> Result<SurfaceCache<CacheObject>> {
-        let Some(CacheObject::Surface(face)) = handle else {
-            return Err(SolidError::invalid_input(OP, "expected surface handle"));
+        let face = match handle {
+            Some(CacheObject::Surface(face)) => face,
+            // a surface outside the B-rep (no handle): its own cache, as a solve
+            // without context builds it
+            None => return crate::surface::surface::p2::surface_cache(k, surface, None),
+            Some(_) => return Err(SolidError::invalid_input(OP, "expected surface handle")),
         };
         self.0.cache(k, face)
     }
