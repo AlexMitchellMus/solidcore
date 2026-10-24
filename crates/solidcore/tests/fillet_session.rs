@@ -288,6 +288,14 @@ fn actual_box_solver_builds_surface_and_rails_in_retained_geometry() {
         let geometry = session.pseudo_brep().geom(geometry).unwrap();
         assert_eq!(geometry.solver, Some(id));
         assert!(geometry.fillet_surface.is_some());
+        let center = geometry.center_line_geometry().unwrap();
+        let solidcore::curve::curve::CurveKind::Line(line) = center.kind() else {
+            panic!("actual native analytic centerline must remain a line");
+        };
+        assert!(std::ptr::eq(
+            geometry.center_line_curve().unwrap(),
+            line.base()
+        ));
         for rail in geometry.rails {
             let rail = rail.unwrap();
             assert!(edge::curve(session.pseudo_brep().brep(), rail)
