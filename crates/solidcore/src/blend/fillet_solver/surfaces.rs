@@ -55,6 +55,17 @@ impl ConstantRadiusOps for GeometrySolver<'_> {
         Ok(())
     }
 
+    fn check_tangent_rollover_guess_context(&self) -> Result<()> {
+        if self.geometry.fillet_geom_type() == FilletGeomType::TangentRollover {
+            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantRadiusFS::LoadInitialValues tangent-rollover vertex-use context
+            return Err(SolidError::unported(
+                "SmConstantRadiusFS::LoadInitialValues tangent-rollover vertex-use context",
+                "blend.fillet_standard_solver_p2",
+            ));
+        }
+        Ok(())
+    }
+
     fn setup_offset_extension(
         &self,
         k: &Kernel,
@@ -106,13 +117,6 @@ impl FilletSolverOps for GeometrySolver<'_> {
         periodicities: &mut Vec<bool>,
         guess_t: &mut Vec<f64>,
     ) -> Result<Option<InitialValues>> {
-        if do_surf2_calcs && self.geometry.fillet_geom_type() == FilletGeomType::TangentRollover {
-            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantRadiusFS::LoadInitialValues tangent-rollover vertex-use context
-            return Err(SolidError::unported(
-                "SmConstantRadiusFS::LoadInitialValues tangent-rollover vertex-use context",
-                "blend.fillet_standard_solver_p2",
-            ));
-        }
         constant_radius_load_initial_values(
             self,
             k,

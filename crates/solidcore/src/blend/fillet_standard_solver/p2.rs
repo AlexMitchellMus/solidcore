@@ -352,6 +352,12 @@ pub trait ConstantRadiusOps {
         self.constant_radius_mut().set_offset_by_radius(rail)
     }
 
+    /// Resolve the selected geometry's tangent-rollover guess at its native branch.
+    /// Context-free callers have no selected geometry.
+    fn check_tangent_rollover_guess_context(&self) -> Result<()> {
+        Ok(())
+    }
+
     /// `SetupOffsetExtension(pSurf, rDomain)` of the solver's class.
     ///
     /// # Errors
@@ -503,7 +509,7 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
     );
     let pnt = offset_evaluate_point(k, surface1, uv)?;
 
-    // (GetFilletGeomForSurfaces() is NULL: no tangent-rollover guess)
+    solver.check_tangent_rollover_guess_context()?;
     let mut srf2_guess_uv = Point3::UNDEF;
     let mut found_uv = false;
 
