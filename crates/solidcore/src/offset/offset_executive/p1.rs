@@ -60,9 +60,9 @@
 //! planar boolean does, and `GetSurfaces` selects the surfaces owned under those
 //! names. `FillGapEdgeuses` builds its corner-blend faces through `make_cap_face`'s
 //! `CreateFaceFromSurface`, notifying through the caller's result-keyed stores; a
-//! null closest edge, same-oriented edge use, end mate or blended face (all
-//! dereferenced upstream) is a null-pointer error, and any failed `CreateCornerBlend`
-//! is `SM_ERR` (`SER(SM_ERR)`), unported callees aside.
+//! null closest edge, same-oriented edge use or end mate (dereferenced upstream) is a
+//! null-pointer error, a null blended face is `RelatePair`'s invalid input, and any
+//! failed `CreateCornerBlend` is `SM_ERR` (`SER(SM_ERR)`), unported callees aside.
 //! No new input-driven recursion; existing topology walks are cycle-bounded.
 //! The lamina clean-up's `DeleteFaces` runs through merge p4's arena intersector over
 //! the offset B-rep alone (both upstream operands are that B-rep); it notifies under
@@ -1040,14 +1040,15 @@ impl OffsetExecutive {
                 return Ok(());
             };
 
-            let mut blended_faces: Vec<FaceId> = Vec::new();
+            // sBlendedFaces may hold a null face (a wire edge use); RelatePair rejects it.
+            let mut blended_faces: Vec<Option<FaceId>> = Vec::new();
             let mut edgeuses = vec![gap];
             for candidate in [*first, *second] {
-                // upstream dereferences a null closest edge, edge use or face
+                // upstream dereferences a null closest edge or same-oriented edge use
                 let e = required(candidate)?;
                 let same = required(edge::same_oriented_edgeuse(brep, e)?)?;
                 edgeuses.push(same);
-                let face = required(eu::face(brep, same)?)?;
+                let face = eu::face(brep, same)?;
                 if !blended_faces.contains(&face) {
                     blended_faces.push(face);
                 }
@@ -1077,7 +1078,14 @@ impl OffsetExecutive {
                     notifications,
                 )?;
                 self.relate_edge_face(edge, new_face);
-                self.blend_to_faces.relate_to_many(new_face, &blended_faces)?;
+                // SER(m_vBlendToFaces.RelateToMany(pNewFace, sBlendedFaces)): pairs
+                // before a null face stay related.
+                for &face in &blended_faces {
+                    let face = face.ok_or_else(|| {
+                        SolidError::invalid_input(OP, "RelatePair: null blended face")
+                    })?;
+                    self.blend_to_faces.relate_pair(new_face, face)?;
+                }
             }
         } // end iter every GapEdgeuse
         Ok(())
@@ -2397,10 +2405,7 @@ impl OriginalKeys {
     }
 }
 
-fn make_original_brep_cache(
-    kernel: &Kernel,
-    original: &Brep,
-) -> Result<(BrepCache, OriginalKeys)> {
+fn make_original_brep_cache(kernel: &Kernel, original: &Brep) -> Result<(BrepCache, OriginalKeys)> {
     let keys = OriginalKeys::new(original)?;
     let cache = make_brep_cache(kernel, CacheSource::Brep(original), &|object| {
         keys.key(object)
@@ -3517,8 +3522,16 @@ mod tests {
             make_original_brep_cache(&kernel, &original),
             Err(SolidError::Unsupported { .. })
         ));
-        set_owner(&mut original, second, arena_identity(CacheObject::Edge(first)));
-        set_owner(&mut original, first, arena_identity(CacheObject::Edge(second)));
+        set_owner(
+            &mut original,
+            second,
+            arena_identity(CacheObject::Edge(first)),
+        );
+        set_owner(
+            &mut original,
+            first,
+            arena_identity(CacheObject::Edge(second)),
+        );
         assert!(make_original_brep_cache(&kernel, &original).is_ok());
         set_owner(&mut original, first, arena_identity(CacheObject::Brep));
         assert!(matches!(
