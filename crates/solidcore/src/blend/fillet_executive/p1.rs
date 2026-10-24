@@ -527,7 +527,10 @@ pub trait SolverLoadingAccess<O: ClassObject + SolutionObject + Ord> {
     ///
     /// # Errors
     /// Caller object resolution or the delegated native query failure.
-    fn load_solver_base_mut(&mut self, solver: O) -> Result<&mut crate::blend::fillet_solver::p1::FilletSolver>;
+    fn load_solver_base_mut(
+        &mut self,
+        solver: O,
+    ) -> Result<&mut crate::blend::fillet_solver::p1::FilletSolver>;
     /// Actual `GetSurface(rail)`, including geometry-backed surfaces.
     ///
     /// # Errors
@@ -560,7 +563,10 @@ where
     O: ClassObject + SolutionObject + Ord,
     A: ExecutiveAccess<O> + ?Sized,
 {
-    fn load_solver_base_mut(&mut self, solver: O) -> Result<&mut crate::blend::fillet_solver::p1::FilletSolver> {
+    fn load_solver_base_mut(
+        &mut self,
+        solver: O,
+    ) -> Result<&mut crate::blend::fillet_solver::p1::FilletSolver> {
         ExecutiveAccess::solver_base_mut(self, solver)
     }
     fn load_solver_has_surface(&self, solver: O, rail: usize) -> Result<bool> {
