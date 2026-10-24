@@ -2771,6 +2771,122 @@ mod tests {
     }
 
     #[test]
+    fn transfer_installs_original_surface_identity_in_actual_face() {
+        let mut k = Kernel::default();
+        let mut b = Brep::new_with_infinite_region().unwrap();
+        let mut surface = plane();
+        let key = k
+            .context
+            .geometry_key(surface.notify_identity_slot())
+            .unwrap();
+        let mut transfer = p6::FaceSurfaceTransfer::new(surface);
+        let mut out = NewFace::default();
+        let mut records = std::collections::BTreeMap::new();
+        let mut attributes = AttributeStore::default();
+        let mut env = ed::NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &key_of,
+        };
+        make_face_with_curves_transfer(
+            &mut k,
+            &mut b,
+            None,
+            FaceCurvesInput {
+                loops: vec![1],
+                curves_3d: Some(vec![None]),
+                orientations: vec![OrientType::Same],
+                ..Default::default()
+            },
+            &mut transfer,
+            &dom(),
+            OrientType::Same,
+            None,
+            &face_ref,
+            &mut env,
+            &mut out,
+        )
+        .unwrap();
+        let face = out.face.unwrap();
+        assert_eq!(transfer.installed_face(), Some(face));
+        assert!(
+            matches!(transfer.into_location().unwrap(), p6::FaceSurfaceLocation::Installed(id) if id==face)
+        );
+        let installed = b.face(face).unwrap().surface.as_ref().unwrap();
+        // Clone resets the issued identity: this proves transfer of the original,
+        // rather than merely equal geometry or a copied owner field.
+        assert_eq!(installed.notify_key(), Some(key));
+        assert_eq!(installed.owner(), Some(face_ref(face)));
+    }
+
+    #[test]
+    fn failed_transfer_retains_original_surface_and_partial_wire_topology() {
+        let mut k = Kernel::default();
+        let mut b = Brep::new_with_infinite_region().unwrap();
+        let mut surface = plane();
+        let key = k
+            .context
+            .geometry_key(surface.notify_identity_slot())
+            .unwrap();
+        let mut transfer = p6::FaceSurfaceTransfer::new(surface);
+        let mut out = NewFace::default();
+        let mut records = std::collections::BTreeMap::new();
+        let mut attributes = AttributeStore::default();
+        let mut env = ed::NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &key_of,
+        };
+        let error = make_face_with_curves_transfer(
+            &mut k,
+            &mut b,
+            None,
+            FaceCurvesInput {
+                loops: vec![1],
+                curves_3d: Some(vec![Some(Curve::from(
+                    crate::curve::line::Line::from_points(Point3::ZERO, Point3::X, 3),
+                ))]),
+                orientations: vec![OrientType::Same],
+                ..Default::default()
+            },
+            &mut transfer,
+            &dom(),
+            OrientType::Same,
+            None,
+            &face_ref,
+            &mut env,
+            &mut out,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            SolidError::InvalidInput {
+                reason: "loop does not close",
+                ..
+            }
+        ));
+        assert_eq!(out.face, None);
+        assert_eq!(transfer.installed_face(), None);
+        match transfer.into_location().unwrap() {
+            p6::FaceSurfaceLocation::Owned(surface) => {
+                assert_eq!(surface.notify_key(), Some(key));
+                assert_eq!(surface.owner(), None);
+            }
+            p6::FaceSurfaceLocation::Installed(_) => {
+                panic!("surface installed before failed loop construction")
+            }
+        }
+        assert_eq!(b.vertices().len(), 1);
+        assert_eq!(b.shells().len(), 1);
+        assert_eq!(b.vertexuses().len(), 1);
+        assert!(b.faces().is_empty());
+        let (vertex, _) = b.vertices().iter().next().unwrap();
+        assert!(records.contains_key(&key_of(EntityRef::Vertex(vertex)).key));
+    }
+
+    #[test]
     fn face_with_curves_forwards_owner_keys_in_both_context_modes() {
         use crate::geom::context::Context;
         use crate::topology::edge::notification_test_support as callbacks;
