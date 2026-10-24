@@ -833,7 +833,10 @@ impl RailClassificationAccess<FilletObject> for SessionObjects<'_> {
             .ok_or_else(|| invalid("pseudo B-rep has no kernel identity"))?;
         let mut ownership = classification::Ownership {
             serial,
-            brep: crate::topology::brep::p2::brep_ref(self.pseudo.brep()),
+            brep: crate::topology::brep::p3::topology_ref(
+                serial,
+                EntityRef::Brep(crate::topology::BrepId::from_index(0)),
+            ),
         };
         let solver = self
             .solvers
