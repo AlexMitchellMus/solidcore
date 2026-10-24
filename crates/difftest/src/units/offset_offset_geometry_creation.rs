@@ -44,14 +44,19 @@
 //! compared output changes at zero), so only a negative tolerance is refused, and the
 //! runner mirrors that refusal (`approx_negative`) as it does the B-rep guards.
 //!
-//! **Hang guards (`-6`, the script stops; the case defers).** The shim does not run two
-//! ops the Rust side defers at anyway, as they can take minutes or not return (the
+//! **Hang guards (rejected).** Two ops can take minutes or not return upstream (the
 //! fuzz allows 20 s a side): a non-local `FaceuseOffset` of an exactly
-//! `SmSurfOfRevolution` surface with self-intersection enabled (`upstream:HANG-26`),
-//! or an unsupported concrete surface kind (`harness:analytic-geometry-export`), and an `EdgeuseOffset` with
-//! `|offset distance| > 1e6` (deferred under `upstream:HANG-27`, the rail's
-//! `SmCrvOnSurf::ApproximateCurve`). The generator's distances (0.001 to 100) never
-//! reach the distance bound. HANG-26 remains guarded independently of exact imports.
+//! `SmSurfOfRevolution` surface with self-intersection enabled (HANG-26), and an
+//! `EdgeuseOffset` with `|offset distance| > 1e6` (HANG-27, the rail's
+//! `SmCrvOnSurf::ApproximateCurve`). Such inputs are undefined in C++ (AGENTS.md
+//! section 4, step 5.6): the runner's `run_cpp` first follows the Rust script on the
+//! same inputs and, when it stops at such an op, returns `Output::rejected` naming the
+//! issue, so neither side runs and nothing is compared. The decision reads only the
+//! inputs and the Rust side. The shim keeps its own stop at those ops (`-6`, the script
+//! stops) as a safety net, as for a non-local `FaceuseOffset` of an unsupported
+//! concrete surface kind, where the Rust side defers
+//! (`harness:analytic-geometry-export`). The generator's distances (0.001 to 100) never
+//! reach the HANG-27 bound. HANG-26 remains guarded independently of exact imports.
 //!
 //! **Analytic faces.** The shared importer brings an `SmBSplineSurface` subclass in as its
 //! B-spline part; revolution, extrusion, cone, cylinder, sphere and torus face surfaces
@@ -125,7 +130,7 @@ use solidcore::topology::{
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::offset_offset_geometry_creation::{self as ffi, Op};
 
-use super::topology_vertexuse::{import_with_types, refill_face_gaps};
+use super::topology_vertexuse::{import_raw_with_types, recalc_gaps};
 use crate::case::{CaseContext, CaseSource};
 use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -148,10 +153,11 @@ const NULL_DEREF: f64 = -2.0;
 const ANALYTIC_EXPORT: &str = "harness:analytic-geometry-export";
 /// The native offset self-intersection of an exactly `SmSurfOfRevolution` surface
 /// can take minutes (HANG-26); restoring its concrete kind does not remove this guard.
+/// The hang guard's label (the case is rejected, see [`hang_guard`]).
 const HANG_26: &str = "upstream:HANG-26";
-/// The deferral label of an `EdgeuseOffset` whose offset distance is beyond the
+/// The hang guard's label of an `EdgeuseOffset` whose offset distance is beyond the
 /// shim's HANG-27 bound (`plan/upstream-issues.md`): upstream's rail approximation does
-/// not return in time there, so neither side runs the op.
+/// not return in time there, so neither side runs the op (the case is rejected).
 const HANG_27: &str = "upstream:HANG-27";
 /// The shim's `SURFACE_DB_VERSION`: the database version of concrete surface records.
 const SURFACE_DB_VERSION: u64 = 33;
@@ -2401,7 +2407,7 @@ struct Prepared {
     two: Two,
     hdr: RHeader,
     ops: Vec<ROp>,
-    /// The failure of [`refill_face_gaps`] on either B-rep, which only the Rust side
+    /// The failure of [`recalc_gaps`] on either B-rep, which only the Rust side
     /// reports.
     refill: Option<SolidError>,
 }
@@ -2416,25 +2422,26 @@ fn prepare(i: &Inputs) -> Result<Prepared, Box<Result<Output, HarnessError>>> {
     };
     let [surfaces_a, surfaces_b] =
         ffi::split_surface_records(&ex).ok_or_else(|| Box::new(Err(harness("surface records"))))?;
-    let (mut brep_a, mut exact_a, types_a) = import_with_types(&a).map_err(|e| Box::new(Err(e)))?;
+    let (mut brep_a, mut exact_a, types_a) = import_raw_with_types(&a).map_err(|e| Box::new(Err(e)))?;
     read_face_surfaces(&mut brep_a, &mut exact_a, &types_a, &surfaces_a)
         .map_err(|e| Box::new(Err(e)))?;
-    // The export says which vertex uses have their vertex/face gap cached, not its
-    // values (the importer leaves the face UV at SM_UNDEF_DOUBLE): recompute them on
-    // the restored face surfaces, as the topology.vertexuse runner does, before the
-    // cache tree states are seeded (the native gaps were computed before its export).
-    let mut refill = refill_face_gaps(&mut brep_a).err();
+    // The export says which gaps are cached, not their values (the raw import leaves
+    // them at SM_UNDEF_DOUBLE): recompute them on the restored face surfaces, as the
+    // refilling importers do, before the cache tree states are seeded (the native gaps
+    // were computed before its export). This runs on both sides; only the Rust side
+    // reports a failure.
+    let mut refill = recalc_gaps(&mut brep_a).err();
     let [states_a, states_b] = ffi::split_cache_tree_states(&ex)
         .ok_or_else(|| Box::new(Err(harness("cache states"))))?;
     seed_cache_tree_states(&brep_a, &states_a).map_err(|e| Box::new(Err(e)))?;
     let (brep_b, exact_b) = match &b {
         Some(b) => {
             let (mut brep, mut exact, types) =
-                import_with_types(b).map_err(|e| Box::new(Err(e)))?;
+                import_raw_with_types(b).map_err(|e| Box::new(Err(e)))?;
             read_face_surfaces(&mut brep, &mut exact, &types, &surfaces_b)
                 .map_err(|e| Box::new(Err(e)))?;
             if refill.is_none() {
-                refill = refill_face_gaps(&mut brep).err();
+                refill = recalc_gaps(&mut brep).err();
             }
             seed_cache_tree_states(&brep, &states_b).map_err(|e| Box::new(Err(e)))?;
             (Some(brep), exact)
@@ -2469,6 +2476,9 @@ fn prepare(i: &Inputs) -> Result<Prepared, Box<Result<Output, HarnessError>>> {
 }
 
 fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    if let Some(reason) = hang_guard(i) {
+        return Ok(Output::rejected(reason));
+    }
     let p = match prepare(i) {
         Ok(p) => p,
         Err(r) => return *r,
@@ -2483,12 +2493,39 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
     Ok(Output::new().values("state", out))
 }
 
+/// The rejection reason of a script that reaches an op upstream does not return in
+/// time on (`plan/upstream-issues.md` HANG-26, HANG-27; AGENTS.md section 4, step 5.6):
+/// the Rust script on the same inputs stops at that op ([`Fail::Hang`]). Decided from
+/// the inputs and the Rust side only, never from C++ output; the shim's own `-6` stop
+/// at that op stays as a safety net. A script the Rust side cannot follow that far (an
+/// unported callee first) runs in C++ as before, and the Rust side defers it.
+fn hang_guard(i: &Inputs) -> Option<&'static str> {
+    let p = prepare(i).ok()?;
+    if p.refill.is_some() {
+        return None;
+    }
+    match run_rust_script(i, p) {
+        Err(Fail::Hang(HANG_26)) => Some(
+            "HANG-26: FaceuseOffset self-intersection of a surface of revolution does not \
+             return in time; not run",
+        ),
+        Err(Fail::Hang(_)) => Some(
+            "HANG-27: EdgeuseOffset beyond the distance bound (SmCrvOnSurf::ApproximateCurve \
+             of the rail) does not return in time; not run",
+        ),
+        _ => None,
+    }
+}
+
 // ---- the script, Rust side --------------------------------------------------------------
 
-/// A failure of the Rust side: an error to report or an unported callee.
+/// A failure of the Rust side: an error to report or an unported callee, or an op
+/// the script stops at because upstream does not return in time there (the label of
+/// the hang guard [`run_cpp`] rejects the case for).
 enum Fail {
     Solid(SolidError),
     Harness(HarnessError),
+    Hang(&'static str),
 }
 
 impl From<SolidError> for Fail {
@@ -2844,10 +2881,7 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<Vec<f64>, Fail> {
                         && ClassGeometry::surface(&two, surface)
                             .is_some_and(|s| s.type_code() == SURF_OF_REVOLUTION_TYPE)
                     {
-                        return Err(Fail::Solid(SolidError::Unported {
-                            upstream: "FaceuseOffset self-intersection of a surface of revolution (HANG-26)",
-                            unit: HANG_26,
-                        }));
+                        return Err(Fail::Hang(HANG_26));
                     }
                 }
                 let r = if is_local {
@@ -3181,10 +3215,7 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<Vec<f64>, Fail> {
                 }
                 if i.dist.abs() > MAX_EDGEUSE_OFFSET_DISTANCE {
                     // the shim stops the script here (HANG-27)
-                    return Err(Fail::Solid(SolidError::Unported {
-                        upstream: "EdgeuseOffset beyond the HANG-27 distance bound (SmCrvOnSurf::ApproximateCurve of the rail)",
-                        unit: HANG_27,
-                    }));
+                    return Err(Fail::Hang(HANG_27));
                 }
                 if exec.extend_convex_edges() {
                     // a tangent or lamina edge goes to ExtendTrimEdges, which dereferences
@@ -3301,7 +3332,7 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     if let Some(e) = &p.refill {
         return match Output::unported(e) {
             Some(o) => Ok(o),
-            None => Err(harness(format!("rust: vertex/face gap refill: {e}"))),
+            None => Err(harness(format!("rust: cached gap refill: {e}"))),
         };
     }
     match run_rust_script(i, p) {
@@ -3311,6 +3342,10 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
             None => Err(harness(format!("rust: {e}"))),
         },
         Err(Fail::Harness(h)) => Err(h),
+        // (the C++ side rejects such a script before either side runs it)
+        Err(Fail::Hang(label)) => Err(harness(format!(
+            "rust: the script reaches the {label} hang guard, which the C++ side rejects"
+        ))),
     }
 }
 
@@ -4641,7 +4676,7 @@ mod tests {
             let (a, b) = ffi::split_exports(&out).unwrap();
             let records = ffi::split_surface_records(&out).unwrap();
             for (block, records) in [a, b.unwrap()].iter().zip(&records) {
-                let (mut brep, mut exact, types) = import_with_types(block).unwrap();
+                let (mut brep, mut exact, types) = import_raw_with_types(block).unwrap();
                 assert!(types.contains(&Some(expected_type)), "{name}: {types:?}");
                 let before: Vec<_> = brep
                     .faces()
@@ -4678,7 +4713,7 @@ mod tests {
         let records = ffi::split_surface_records(&out).unwrap();
         for (arena, (block, records)) in [a, b.unwrap()].iter().zip(&records).enumerate() {
             for unowned in [false, true] {
-                let (mut brep, mut exact, types) = import_with_types(block).unwrap();
+                let (mut brep, mut exact, types) = import_raw_with_types(block).unwrap();
                 let faces: Vec<_> = brep.faces().ids().collect();
                 for &face_id in &faces {
                     let face = brep.face_mut(face_id).unwrap();
@@ -4764,7 +4799,7 @@ mod tests {
         let [records, _] = ffi::split_surface_records(&out).unwrap();
         let index = records.iter().position(Option::is_some).unwrap();
         for mutation in 0..5 {
-            let (mut brep, mut exact, mut types) = import_with_types(&a).unwrap();
+            let (mut brep, mut exact, mut types) = import_raw_with_types(&a).unwrap();
             let mut records = records.clone();
             match mutation {
                 0 => {
@@ -4800,10 +4835,16 @@ mod tests {
                 fu: h(0, K_FACEUSE, i64::from(faceuse.index())),
                 skip: false,
             }];
-            let rust = run_rust(&input).unwrap();
-            assert_eq!(rust.deferred.unwrap().unit, HANG_26);
+            assert!(run_rust(&input).is_err_and(|e| e.0.contains(HANG_26)));
             let cpp = run_cpp(&input).unwrap();
-            assert_eq!(cpp.values["state"], [0.0, 7.0, -6.0]);
+            assert!(cpp.rejected.unwrap().starts_with("HANG-26:"));
+            // the shim's own stop at the op, should the runner's guard miss it
+            let p = prepare(&input).unwrap();
+            let encoded = encode(&input, &p.hdr, &p.ops).unwrap();
+            let pa = path_of(Some(&input.brep_a)).unwrap();
+            let pb = path_of(None).unwrap();
+            let out = ffi::eval(Op::Run, [&pa, &pb], &encoded).unwrap();
+            assert_eq!(out, [0.0, 7.0, -6.0]);
         }
     }
 
