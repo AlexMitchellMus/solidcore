@@ -99,8 +99,8 @@ mod tests {
                 &unit,
                 &ctx,
                 &RunOptions {
-                    filter: None,
                     perturb,
+                    ..RunOptions::default()
                 },
             );
             assert_eq!(r.status(), crate::UnitStatus::SkippedPlatform);
