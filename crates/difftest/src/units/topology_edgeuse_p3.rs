@@ -16,7 +16,7 @@
 //! makers, surface kinds, the curve classifier) are deferred. The state compared after an op is that of
 //! `topology.edgeuse_p2`'s `put_eu_state` for the edge use and its mate and the edge's
 //! interval and tolerance. A unit-local auxiliary export carries the complete initial
-//! maximum edge/face gap cache, so GetOrCreateUVTrimCurve compares cached distances too.
+//! maximum edge/face gap cache, so `GetOrCreateUVTrimCurve` compares cached distances too.
 //! `EvaluateBinormal` builds the face's trimmed surface cache; on the tiny adversarial
 //! surfaces that tree grows to about 2 million nodes on both sides (2 014 255 in the C++
 //! for the `1e-4`-scale faces), below the port's `MAX_SUBDIVISION_NODES` bound; a case
@@ -166,10 +166,15 @@ fn import_gaps(brep: &mut Brep, data: &[f64], count: usize) -> Result<(), Harnes
     {
         return Err(harness("invalid gap snapshot"));
     }
-    for (index, values) in data[2..].chunks_exact(5).enumerate() {
-        let [owner, gap_3d, edge_t, u, v] = *values else {
-            return Err(harness("gap record"));
-        };
+    for (index, values) in data
+        .get(2..)
+        .ok_or_else(|| harness("gap records"))?
+        .as_chunks::<5>()
+        .0
+        .iter()
+        .enumerate()
+    {
+        let &[owner, gap_3d, edge_t, u, v] = values;
         if owner.fract() != 0.0 || owner < -1.0 || owner >= count as f64 {
             return Err(harness("invalid gap owner"));
         }
@@ -240,11 +245,11 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
         .ok_or_else(|| harness("missing prepared fixture"))?;
     let out = ffi::eval_prepared(op, prepared, &input).map_err(|e| harness(format!("c++: {e}")))?;
     let body = out.get(1..).ok_or_else(|| harness("c++: empty output"))?;
-    Ok(output_of(body.to_vec()))
+    Ok(output_of(body))
 }
 
 /// The output of an op body (after the build status), as both sides build it.
-fn output_of(body: Vec<f64>) -> Output {
+fn output_of(body: &[f64]) -> Output {
     let first = body.first().copied().unwrap_or(f64::NAN);
     if first == NULL_DEREF {
         return Output::err("null_deref");
@@ -434,7 +439,7 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     // the face surfaces' caches as the C++ build left them
     seed_cache_tree_states(&s.brep, &s.path, &s.block)?;
     match run_rust_op(&i.op, &mut s.brep, s.eu) {
-        Ok(body) => Ok(output_of(body)),
+        Ok(body) => Ok(output_of(&body)),
         Err(e) => {
             if let Some(o) = Output::unported(&e) {
                 return Ok(o);
@@ -628,7 +633,7 @@ mod tests {
         let cached = s.brep.edgeuse_mut(s.eu).unwrap();
         assert!(cached.max_edge_face_gap.is_init());
         cached.max_edge_face_gap.gap_3d += 0.125;
-        let changed = output_of(run_rust_op(&i.op, &mut s.brep, s.eu).unwrap());
+        let changed = output_of(&run_rust_op(&i.op, &mut s.brep, s.eu).unwrap());
         assert!(!crate::compare::compare(&cpp, &changed, &[]).pass());
         assert_ne!(changed.values["state"][0], -2.0);
     }
