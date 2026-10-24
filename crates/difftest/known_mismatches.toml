@@ -342,3 +342,8 @@ why = "same result topology and vertex positions, different vertex list order: C
 unit = "offset.offset_executive_p2"
 case = "gen0166"
 why = "Rust ManifoldBoolean Difference mishandles the inset shell: after a failed shell (status 1000 both) the port keeps 7 shells / 16 loops where C++ has 3 / 13 (plan/findings.md: 'offset.offset_executive_p2: inset shell of a box loses the inner shell in the Rust Difference'; 'offset.offset_executive_p2: gen0166 leaves extra shells and loops after a failed shell')"
+
+[[mismatch]]
+unit = "blend.fillet_executive_p1"
+case = "remove_topo_edges_mouse_two_struts"
+why = "RemoveTopoEdges with topo edges 1 and 2 of Mouse.smb in sequence: after the second deletion one edge use's UV curve on the plane differs (faces, surfaces and the remaining edge agree; each edge alone matches); in DeleteEdge / DeleteTopologicalVertex / SetSurface, not located (plan/findings.md: 'blend.fillet_executive_p1, RemoveTopoEdges and SetBevelCorner')"

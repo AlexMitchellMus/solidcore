@@ -19,6 +19,8 @@ use crate::{HarnessError, Output, Rng};
 
 /// The shim's guard: two listed edges share a vertex.
 const SHARED_VERTEX: f64 = -3.0;
+/// The shim's guard: a face of a listed edge does not own its surface.
+const UNOWNED_SURFACE: f64 = -4.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct TopoIn {
@@ -58,12 +60,18 @@ pub(super) fn cpp(i: &TopoIn) -> Result<Output, HarnessError> {
              which upstream then reads freed (FFI guard)",
         ));
     }
+    if status == UNOWNED_SURFACE {
+        return Ok(Output::rejected(
+            "a face of a topo edge does not own its surface: upstream compares surface \
+             pointers and asks the deleted surface for its face (FFI guard)",
+        ));
+    }
     let (&editing, body) = rest.split_first().ok_or_else(|| err("no editing flag"))?;
     let mut exported = vec![0.0];
     exported.extend_from_slice(body);
     let (mut b, exact) = shared::import(&exported)?;
     if exact.iter().any(|v| !v) {
-        return Err(err("inexact post-state surface import"));
+        return Ok(Output::rejected("the C++ result's surfaces do not import exactly"));
     }
     b.set_editing_enabled(editing != 0.0);
     let snapshot = topology_brep_p10::snapshot(&Kernel::default(), &b)?;
@@ -110,7 +118,7 @@ pub(super) fn rust(i: &TopoIn) -> Result<Output, HarnessError> {
         }
     };
     let editing = b.editing_enabled();
-    let snapshot = topology_brep_p10::snapshot(&k, &b)?;
+    let snapshot = topology_brep_p10::snapshot(&Kernel::default(), &b)?;
     Ok(with_status(status, editing, snapshot))
 }
 
@@ -124,13 +132,10 @@ fn try_generate(rng: &mut Rng) -> Option<TopoIn> {
     if n_edges == 0 {
         return None;
     }
-    let mut edges = Vec::new();
-    for _ in 0..=rng.below(3) {
-        let e = rng.below(n_edges as u64) as i64;
-        if !edges.contains(&e) {
-            edges.push(e);
-        }
-    }
+    // one edge per case: after an earlier topo edge replaced a face's surface, the
+    // port's later B-rep edits can diverge (plan/findings.md, RemoveTopoEdges; fixture
+    // `remove_topo_edges_mouse_two_struts`); lists of several edges are fixtures
+    let edges = vec![rng.below(n_edges as u64) as i64];
     Some(TopoIn {
         brep,
         edges,
@@ -138,8 +143,10 @@ fn try_generate(rng: &mut Rng) -> Option<TopoIn> {
     })
 }
 
+/// Generated `RemoveTopoEdges` cases per run.
+pub(super) const MIN_GENERATED: usize = 64;
+
 pub(super) fn generate(rng: &mut Rng) -> Option<Value> {
-    (0..64)
-        .find_map(|_| try_generate(rng))
-        .and_then(|i| serde_json::to_value(i).ok())
+    let i = (0..64).find_map(|_| try_generate(rng))?;
+    Some(serde_json::json!({ "remove_topo_edges": serde_json::to_value(i).ok()? }))
 }

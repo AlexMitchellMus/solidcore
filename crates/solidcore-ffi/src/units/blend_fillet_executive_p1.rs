@@ -196,8 +196,7 @@ fn text(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     Ok(())
 }
 
-/// One call of the script; `exec` allows the executive calls.
-/// Validates one call. `corners` follows `m_vVertexCornerMap`: `true` for a vertex
+/// Validates one call of the script; `exec` allows the executive calls. `corners` follows `m_vVertexCornerMap`: `true` for a vertex
 /// whose entry is NULL or a real corner (call 21), `false` for a fake corner pointer,
 /// which `SetBevelCorner` (call 22) would dereference.
 fn call(
@@ -330,7 +329,8 @@ pub fn object_eval(op: ObjectOp, input: &[f64]) -> Result<Vec<f64>, FfiError> {
 /// `SmFilletExecutive::RemoveTopoEdges` on the fixture B-rep the block `input` builds
 /// (`topology_topology_traverser::export`), its `edges` given as indices into the walk
 /// of that B-rep. Output: `-1` when the fixture does not build, `-3` when two listed
-/// edges share a vertex (the shim's guard), else `status editing graph...` (the
+/// edges share a vertex and `-4` when a face of one does not own its surface (the
+/// shim's guards), else `status editing graph...` (the
 /// B-rep's exported graph after the call, as the traverser exports it).
 ///
 /// # Errors

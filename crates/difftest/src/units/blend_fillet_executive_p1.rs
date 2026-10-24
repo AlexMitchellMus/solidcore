@@ -34,7 +34,8 @@ use super::blend_fillet_standard_solver_p1::{
     bcurve_of, dump_curve, push_crv, status, uniform_knots, InlineCrv,
 };
 use crate::util::flag;
-use crate::{Case, HarnessError, Output, Rng, UnitDiff};
+use crate::runner::default_cases;
+use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 
 /// `blend.fillet_executive_p1` runner.
 pub struct Runner;
@@ -269,11 +270,23 @@ impl UnitDiff for Runner {
         }
     }
 
-    fn generate(&self, rng: &mut Rng) -> Option<Value> {
-        if rng.chance(0.25) {
-            let i = topo::generate(rng)?;
-            return Some(serde_json::json!({ "remove_topo_edges": i }));
+    fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
+        let mut v = default_cases(self, ctx)?;
+        // the `RemoveTopoEdges` cases under their own names and seeds, so that each
+        // `gen` case stays the one the baseline has
+        let topo_ctx = CaseContext {
+            seeds: ctx.seeds.max(topo::MIN_GENERATED),
+            ..ctx.clone()
+        };
+        for mut c in topo_ctx.generated_cases("blend.fillet_executive_p1:topo", topo::generate) {
+            c.unit = self.id().to_string();
+            c.name = c.name.replacen("gen", "topo", 1);
+            v.push(c);
         }
+        Ok(v)
+    }
+
+    fn generate(&self, rng: &mut Rng) -> Option<Value> {
         if rng.chance(0.5) {
             return serde_json::to_value(gen_object(rng)).ok();
         }

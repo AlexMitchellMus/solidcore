@@ -7,7 +7,9 @@
 // Input: the fixture block, then the topo edges as indices into the walk of the built B-rep.
 // Output: `-1` when the fixture does not build; `-3` when two listed edges share a vertex
 // (the guard: merging the edges at a vertex can delete a later listed edge, whose pointer
-// upstream then reads freed); else `status editing graph...`, the B-rep's editing flag and
+// upstream then reads freed); `-4` when a face of a listed edge does not own its surface
+// (upstream compares surface pointers and asks the deleted surface for its face; the
+// port's faces own their surfaces); else `status editing graph...`, the B-rep's editing flag and
 // its exported graph after the call.
 #include "sc_topology_fixture.h"
 #include <SmFilletExecutive.h>
@@ -66,6 +68,17 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p1_remove_topo_edges(const char* pat
             if (!seen.insert(verts[j]).second)
             {
                 o.push_back(-3.0);
+                return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
+            }
+        }
+        SmTArray<SmFace*> faces;
+        e->GetFaces(faces);
+        for (ULONG j = 0; j < faces.GetSize(); j++)
+        {
+            SmSurface* s = faces[j]->GetSurface();
+            if (s && s->GetOwner() != (SmObject*)faces[j])
+            {
+                o.push_back(-4.0);
                 return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
             }
         }

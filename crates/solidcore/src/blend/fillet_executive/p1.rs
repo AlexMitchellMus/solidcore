@@ -95,7 +95,11 @@
 //!   surface named its face by. An edge or vertex freed by an earlier deletion is
 //!   [`SolidError::NotFound`] (upstream reads freed memory). A failed
 //!   `DeleteTopologicalVertex` is ignored as upstream does, except
-//!   [`SolidError::Unported`].
+//!   [`SolidError::Unported`] and the port's own [`SolidError::InvalidInput`] /
+//!   [`SolidError::NotFound`]. The deletions run with local notification
+//!   environments, and the replaced surface is dropped without a destruction
+//!   notification: an owner whose attributes (the fillet-edges attribute the topo
+//!   edges are users of) must follow the deletions keeps them itself.
 //! - No recursion.
 
 use std::collections::BTreeMap;
@@ -970,11 +974,13 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
 /// deleted. Then the edge is deleted, its vertices left without edges are deleted,
 /// and a vertex left between two different manifold edges (four vertex uses) is
 /// removed by `DeleteTopologicalVertex`, merging the edges; when that fails the
-/// vertex stays, as upstream ignores the status.
+/// vertex stays, as upstream ignores the status. The faces of `b` own their surfaces
+/// (as every face here does); the edits notify through local environments only.
 ///
 /// # Errors
 ///
-/// The statuses of `DeleteEdge`, `DeleteVertex` and `CopyAndAddAnalytics`;
+/// The statuses of `DeleteEdge`, `DeleteVertex` and `CopyAndAddAnalytics`; the port's
+/// own errors from `DeleteTopologicalVertex`;
 /// [`SolidError::InvalidInput`] for a null edge or vertex, or for one face with a
 /// surface and one without, where upstream dereferences null;
 /// [`SolidError::NotFound`] for an edge or vertex an earlier deletion removed
@@ -992,7 +998,6 @@ pub fn remove_topo_edges(k: &mut Kernel, b: &mut Brep, edges: &[Option<EdgeId>])
         // copy one surface, delete the other, and map its face to the copy
         if let [f0, f1] = faces[..] {
             let domains = match (face_p2::surface(b, f0)?, face_p2::surface(b, f1)?) {
-                _ if f0 == f1 => None,
                 (None, None) => None,
                 (Some(s0), Some(s1)) => Some((s0.natural_uv_domain(), s1.natural_uv_domain())),
                 _ => return Err(SolidError::invalid_input(OP, "face without surface")),
@@ -1038,13 +1043,16 @@ pub fn remove_topo_edges(k: &mut Kernel, b: &mut Brep, edges: &[Option<EdgeId>])
                     // Not passing in an edge to delete will remove the shorter edge;
                     // when unable to really combine edges, go on
                     let editing = b.editing_enabled();
-                    crate::error::ignore_status(brep_p5::delete_topological_vertex(
-                        k,
-                        b,
-                        editing,
-                        Some(vertex),
-                        None,
-                    ))?;
+                    if let Err(
+                        e @ (SolidError::Unported { .. }
+                        | SolidError::InvalidInput { .. }
+                        | SolidError::NotFound { .. }),
+                    ) = brep_p5::delete_topological_vertex(k, b, editing, Some(vertex), None)
+                    {
+                        // the port's own failures (a dangling id, a modelled null
+                        // dereference) are not upstream statuses
+                        return Err(e);
+                    }
                 }
                 _ => {}
             }
