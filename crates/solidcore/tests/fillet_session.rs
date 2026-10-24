@@ -160,6 +160,7 @@ fn real_box_corner_vertex_stage_retains_native_geometry_and_rail_start() {
         .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
         .unwrap();
     session.create_corners(&k, None).unwrap();
+    session.process_smooth_edge_sequences(&mut k).unwrap();
     session.create_corner_vertices(&mut k).unwrap();
     let mut points = Vec::new();
     for &object in &session.executive().corners {
@@ -264,6 +265,7 @@ fn actual_box_solver_builds_surface_and_rails_in_retained_geometry() {
         .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
         .unwrap();
     session.create_corners(&k, None).unwrap();
+    session.process_smooth_edge_sequences(&mut k).unwrap();
     session.create_corner_vertices(&mut k).unwrap();
     session.adjust_corner_topology(&mut k).unwrap();
     let FilletObject::Solver(id) = session.executive().solvers[0] else {
@@ -293,4 +295,21 @@ fn actual_box_solver_builds_surface_and_rails_in_retained_geometry() {
                 .is_some());
         }
     }
+}
+
+#[test]
+fn smooth_prelude_requires_live_tangent_context_for_multiple_solvers() {
+    let mut k = Kernel::default();
+    let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
+    let edges: Vec<_> = target.edges().ids().take(2).collect();
+    let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+    session.process_smooth_edge_sequences(&mut k).unwrap();
+    session
+        .prepare_constant_radius_edges(&mut k, &edges, 0.5, 1, 1, 1.0)
+        .unwrap();
+    assert_eq!(session.executive().solvers.len(), 2);
+    let solvers = session.executive().solvers.clone();
+    let error = session.process_smooth_edge_sequences(&mut k).unwrap_err();
+    assert!(error.is_unported());
+    assert_eq!(session.executive().solvers, solvers);
 }

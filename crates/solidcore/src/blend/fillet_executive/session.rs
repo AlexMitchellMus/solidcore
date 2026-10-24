@@ -598,6 +598,24 @@ impl<'target> FilletSession<'target> {
         }
     }
 
+    /// Run the executive's smooth-sequence prelude on its retained solvers.
+    ///
+    /// The ordinary single-solver path performs no collection, as in native code.
+    /// Multiple solvers still require the live tangent-corner lookup context.
+    ///
+    /// # Errors
+    /// Missing live tangent collection when more than one solver is retained.
+    pub fn process_smooth_edge_sequences(&mut self, k: &mut Kernel) -> Result<()> {
+        self.executive
+            .process_smooth_edge_sequences_with(k, |_, _, _| {
+                // UNPORTED(blend.fillet_executive_p2): retained tangent-corner context for CollectTangentEdgeSequence.
+                Err(SolidError::unported(
+                    "SmFilletExecutive::CollectTangentEdgeSequence (live corner context)",
+                    "blend.fillet_executive_p2",
+                ))
+            })
+    }
+
     /// Load this actual solver through the native executive algorithm.
     ///
     /// # Errors
