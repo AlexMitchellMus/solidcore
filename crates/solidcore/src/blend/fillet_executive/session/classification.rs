@@ -272,7 +272,12 @@ mod tests {
             .unwrap()
             .owner()
             .unwrap();
-        let (body, entity) = objects.owner_entity(actual_owner).unwrap();
+        // Primitive construction retains its supplied producer key. This provider
+        // does not infer a canonical body identity from that opaque key.
+        assert!(objects.owner_entity(actual_owner).is_none());
+        let canonical =
+            crate::topology::brep::p3::topology_ref(target.notify_serial().unwrap(), target_entity);
+        let (body, entity) = objects.owner_entity(canonical).unwrap();
         assert!(std::ptr::eq(body, &target));
         assert_eq!(entity, target_entity);
         let foreign = create_box(&mut k, Point3::new(-10.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
@@ -286,6 +291,11 @@ mod tests {
             .owner()
             .unwrap();
         assert!(objects.owner_entity(foreign_owner).is_none());
+        let foreign_canonical = crate::topology::brep::p3::topology_ref(
+            foreign.notify_serial().unwrap(),
+            EntityRef::Edge(foreign_edge),
+        );
+        assert!(objects.owner_entity(foreign_canonical).is_none());
         assert!(objects
             .topology_handle_in(&foreign, EntityRef::Edge(foreign_edge))
             .is_none());
