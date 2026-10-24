@@ -2503,6 +2503,61 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, SolidError::InvalidInput { .. }), "{err:?}");
+
+        // The same actual geometry can resolve a nonzero retained solver slot.
+        let retained = [solver(false), solver(false)];
+        let actual_id = FilletSolverId(1);
+        fb.geom_mut(g).unwrap().solver = Some(actual_id);
+        let mut live3 = vec![fb.brep().edge(rails[0]).unwrap().curve.clone()];
+        let mut live_uv = vec![None];
+        let mut live_orients = vec![OrientType::Same];
+        let resolver = |id, _| {
+            assert_eq!(id, actual_id);
+            Ok(&retained[1])
+        };
+        assert!(join_two_fillet_verts_by_curves_resolved(
+            &k,
+            &fb,
+            g,
+            Some(start),
+            Some(end),
+            &sides,
+            1e-6,
+            &mut live3,
+            &mut live_uv,
+            &mut live_orients,
+            &resolver,
+        )
+        .unwrap());
+        assert_eq!(live_orients, orients);
+        assert_eq!(live3.len(), c3.len());
+        assert!(live_uv.iter().all(Option::is_none));
+
+        // A real lookup failure occurs before any curve list is appended.
+        let mut failed3 = vec![fb.brep().edge(rails[0]).unwrap().curve.clone()];
+        let mut failed_uv = vec![None];
+        let mut failed_orients = vec![OrientType::Same];
+        let failed = join_two_fillet_verts_by_curves_resolved(
+            &k,
+            &fb,
+            g,
+            Some(start),
+            Some(end),
+            &sides,
+            1e-6,
+            &mut failed3,
+            &mut failed_uv,
+            &mut failed_orients,
+            &|id, _| {
+                assert_eq!(id, actual_id);
+                Err(SolidError::sm_err("retained solver lookup"))
+            },
+        )
+        .unwrap_err();
+        assert_eq!(code(&failed), Some(SM_ERR));
+        assert_eq!(failed3.len(), 1);
+        assert_eq!(failed_uv.len(), 1);
+        assert_eq!(failed_orients, [OrientType::Same]);
     }
 
     #[test]
