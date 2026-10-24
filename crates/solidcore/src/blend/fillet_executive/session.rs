@@ -346,12 +346,11 @@ impl<'target> FilletSession<'target> {
         let FilletObject::Generator(id) = generator else {
             return Err(invalid("object is not a generator"));
         };
-        let generator = self
+        let generator = *self
             .objects
             .generators
             .get(id as usize)
-            .ok_or_else(|| invalid("generator is not live"))?
-            .clone();
+            .ok_or_else(|| invalid("generator is not live"))?;
         self.objects.solver_mut(solver)?.base_mut().fsg = Some(generator);
         Ok(())
     }
