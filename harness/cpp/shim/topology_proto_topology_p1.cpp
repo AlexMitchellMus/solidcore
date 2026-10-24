@@ -5074,7 +5074,7 @@ int32_t run_transform(Rd& rd, std::vector<double>& o, bool probe=false)
     }
     o.push_back((double)s);
     if(frame) { o.push_back((double)frame->initial_types.size()); o.insert(o.end(),frame->initial_types.begin(),frame->initial_types.end()); }
-    if (kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE || kind == T_CALLER_FACE || kind == T_COPIED_BOX || kind == T_COPIED_SPHERE) {
+    if (kind == T_PRIMITIVE_CYLINDER || kind == T_PRIMITIVE_CONE || kind == T_PRIMITIVE_TORUS || kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE || kind == T_CALLER_FACE || kind == T_COPIED_BOX || kind == T_COPIED_SPHERE) {
         SmBrep* body=(SmBrep*)obj;
         SmTArray<SmVertex*> vertices; body->GetVertices(vertices);
         SmTArray<SmEdge*> edges; body->GetEdges(edges);
