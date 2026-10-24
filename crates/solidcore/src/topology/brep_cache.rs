@@ -489,6 +489,8 @@ impl crate::geom::solution_array::SolutionObject for CacheObject {
 /// Exact B-rep geometry and its cache as seen by the topology solver. Cache
 /// invalidation is the caller's responsibility; both borrows must name one B-rep.
 pub struct BrepObjects<'a> {
+    /// A mutable caller may resolve trim requests after the read-only solve stops.
+    pub preparation: Option<&'a crate::query::brep::RayPreparation>,
     /// Source arenas.
     pub brep: &'a Brep,
     /// Identity of the source B-rep in the caller's shape store.
@@ -503,6 +505,20 @@ pub struct BrepObjects<'a> {
 }
 
 impl crate::intersect::topology_solver::p1::TopologyObjects<CacheObject> for BrepObjects<'_> {
+    fn surface_solve_context(
+        &self,
+    ) -> Option<Box<dyn crate::surface::surface::p1::SurfaceSolveContext<CacheObject> + '_>> {
+        self.preparation.map(|preparation| {
+            Box::new(crate::query::brep::RaySurfaceContext {
+                brep: self.brep,
+                preparation,
+            }) as Box<dyn crate::surface::surface::p1::SurfaceSolveContext<CacheObject>>
+        })
+    }
+
+    fn uv_trim_preparation(&self) -> Option<&crate::query::brep::RayPreparation> {
+        self.preparation
+    }
     fn brep_cache(&self, object: CacheObject) -> Result<&BrepCache> {
         if object != CacheObject::Brep {
             return Err(SolidError::invalid_input(OP, "expected B-rep handle"));
@@ -535,6 +551,12 @@ impl crate::intersect::topology_solver::p1::TopologyObjects<CacheObject> for Bre
         Ok(self.brep.vertex(v)?.tolerance)
     }
     fn curve_edge(&self, object: CacheObject) -> Result<Option<CacheObject>> {
+        // a solve's own curve outside the B-rep's records (e.g. the line a caller
+        // intersects the B-rep with): no edge of the B-rep owns it, so its
+        // `GetEdge()` is null
+        if let CacheObject::Other(_) = object {
+            return Ok(None);
+        }
         let owner = self.curve(object)?.edge(self.owner_of)?;
         owner
             .map(|o| edge_id(self.brep, o, self.keys).map(CacheObject::Edge))
@@ -793,6 +815,7 @@ mod tests {
         let cache = BrepCache::new(BREP_TYPE).unwrap();
         let brep_id = BrepId::from_index(7);
         let mut objects = BrepObjects {
+            preparation: None,
             brep: &b,
             brep_id,
             cache: Some(&cache),

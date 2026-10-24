@@ -18,19 +18,18 @@
 //! same `-2`, so a refusal on one side only is a mismatch. The two conservative guards of
 //! the shim (a duplicated entry in the list a resolve deletes from, zero-length intervals
 //! where a reparameterisation can follow, plan/upstream-issues.md HANG-12) are mirrored
-//! here explicitly.
+//! here explicitly, as is its `Imprint` guard for a merge into a bare region, face or
+//! edge stand-in, whose `GetBrep` is `NULL` ([`imprint_reaches_missing_brep`]).
 //!
 //! The pool's bare edges and vertices carry the interval and zone tolerance the shim gives
 //! its stand-ins (`ObjIn::EdgeIvl`, `ObjIn::VertexTol`); the pool answers the port's
 //! [`ProtoBrep`](solidcore::topology::proto_topology::ProtoBrep) queries with them.
 //!
-//! Deferred: everything past `SmBrep::MakeEdgeInFace` (unit `topology.brep_p5`), the
-//! merges of `SmPointClassification::MergeIntoObject` (unresolved region/face
-//! owners and vertex methods), `UpdateFaces` (`SmFace::CalculateUVDomainFromUVTrimCurves`, unit
-//! `topology.face_p1`), the B-rep walks of `sm_AreConnected` and point classifications on
-//! bare topology (units `topology.edge`, `topology.vertex`, `topology.face_p2`), and
-//! `SmProtoVertex::ContainsPoint` (unit `query.face_p2`). Bare-edge merges without
-//! an arena defer to `topology.brep_p9` until mutable arena context is supplied.
+//! Deferred: everything past `SmBrep::MakeEdgeInFace` (unit `topology.brep_p5`),
+//! bare-face `UpdateFaces` scripts without owning geometry, the B-rep walks of
+//! `sm_AreConnected` and point classifications on bare topology (units `topology.edge`,
+//! `topology.vertex`, `topology.face_p2`), and `SmProtoVertex::ContainsPoint` (unit
+//! `query.face_p2`).
 
 use serde_json::{json, Value};
 
@@ -77,6 +76,30 @@ fn res<T>(r: solidcore::Result<T>, status_out: &mut f64, skip: &mut bool) -> Res
             Ok(None)
         }
     }
+}
+
+/// The shim's guard of `SmVertexDefinition::Imprint`, mirrored from the inputs: its
+/// `MergeIntoObject` calls `GetBrep()->...` on a region, face or edge, and the pool's bare
+/// stand-ins have no B-rep (upstream dereferences `NULL`); a vertex merges, after which
+/// the manager is reached through the proto vertex (`NULL` without one). The shim checks
+/// both classifications before the call, so the whole op is refused, as here.
+fn imprint_reaches_missing_brep(r: &ProtoRun, d: VertexDefId) -> bool {
+    use solidcore::intersect::point_class::ClassObjectKind as K;
+    let Some(v) = r.mgr.vertex_def(d) else {
+        return false;
+    };
+    for which in [1, 2] {
+        let Some(H(_, kind)) = v.brep_point_classif(which).object() else {
+            break;
+        };
+        match kind {
+            K::Region | K::Face | K::Edge => return true,
+            K::Vertex if v.proto_vertex().is_none() => return true,
+            K::Vertex => {}
+            _ => break,
+        }
+    }
+    false
 }
 
 /// The objects calls made get the next ids of their kinds (the shim numbers them after the
@@ -156,6 +179,58 @@ fn ed_tangent_ok(k: &solidcore::kernel::Kernel, r: &ProtoRun, ed: solidcore::top
     }
 }
 
+fn unit_segment(curve: &solidcore::curve::curve::Curve, dim: u64) -> bool {
+    use solidcore::curve::curve::CurveKind;
+    let CurveKind::BSpline(bs) = curve.kind() else { return false; };
+    let Some(nurb) = bs.gw_nurb() else { return false; };
+    curve.dim() == dim && matches!(bs.degree(), Ok(1))
+        && matches!(bs.number_control_points(), Ok(2)) && matches!(bs.is_rational(), Ok(false))
+        && nurb.knots() == [0.0, 0.0, 1.0, 1.0]
+        && nurb.cpts().iter().all(|p| p.x.is_finite() && p.y.is_finite() && p.z.is_finite())
+}
+
+fn face_update_edges_ok(r: &ProtoRun, which: i32, old_face: H) -> Result<bool, Fail> {
+    use solidcore::intersect::point_class::ClassGeometry;
+    if r.n_ed == 0 { return Ok(true); }
+    let (Some(ed_id), Some(pe_id), Some(pv0), Some(pv1)) = (r.ed(0), r.pe(0), r.pv(0), r.pv(1)) else {
+        return Ok(false);
+    };
+    if r.n_ed != 1 || r.n_pe != 1 || r.n_pv != 2 || r.first_ed_final_initialized != 3
+        || r.mgr.proto_edges() != [pe_id] || r.mgr.proto_vertices() != [pv0, pv1] {
+        return Ok(false);
+    }
+    let (Some(ed), Some(pe)) = (r.mgr.edge_def(ed_id), r.mgr.proto_edge(pe_id)) else { return Ok(false); };
+    if pe.start_proto_vertex() != Some(pv0) || pe.end_proto_vertex() != Some(pv1)
+        || pe.edge_definitions() != [ed_id] || ed.proto_edge() != Some(pe_id)
+        || pe.xsect_interval().min() != 0.0 || pe.xsect_interval().max() != 1.0 {
+        return Ok(false);
+    }
+    for vertex in [pv0, pv1] {
+        if r.mgr.proto_vertex(vertex).is_none_or(|pv| pv.proto_edges() != [pe_id]) {
+            return Ok(false);
+        }
+    }
+    let (Some(other), Some(c3), Some(uv)) = (ed.src_topo(3 - which), ed.xsect_curve_3d(), ed.xsect_uv_curve(which)) else {
+        return Ok(false);
+    };
+    if ed.src_topo(which) != Some(old_face) || !r.pool.is(other.0 as i64, pk::REGION)
+        || c3 == uv || ed.xsect_uv_curve(3 - which).is_some()
+        || ed.xsect_interval().min() != 0.0 || ed.xsect_interval().max() != 1.0 {
+        return Ok(false);
+    }
+    let (Some(c3), Some(uv)) = (r.pool.curve(c3), r.pool.curve(uv)) else { return Ok(false); };
+    if !unit_segment(c3, 3) || !unit_segment(uv, 2) { return Ok(false); }
+    // The native preflight excludes its DropPoint fallback. A Rust-only ordinary
+    // evaluation failure must fail the harness rather than exclude this fixture.
+    let point = super::topology_proto_topology_p1::st(uv.evaluate_point(&r.k, 0.5))?;
+    match point {
+        Ok(point) if point.x.is_finite() && point.y.is_finite() => Ok(true),
+        _ => Err(super::topology_proto_topology_p1::harness(
+            "admitted UpdateFaces UV segment did not evaluate to a finite midpoint",
+        ).into()),
+    }
+}
+
 /// Runs one op of this unit (its code already read) against the port, as the shim's
 /// `run_p2_op` runs it against upstream.
 #[allow(clippy::too_many_lines)]
@@ -178,7 +253,11 @@ pub(super) fn run_op(
                 *skip = true;
                 return Ok(());
             };
-            let _ = res(r.mgr.imprint_vertex_definition(&r.k, &mut r.pool, d), st, skip)?;
+            if imprint_reaches_missing_brep(r, d) {
+                *skip = true;
+                return Ok(());
+            }
+            let _ = res(r.mgr.imprint_vertex_definition(&mut r.k, &mut r.pool, d), st, skip)?;
             if let Some(v) = r.mgr.vertex_def(d) {
                 out.push(r.pool.id(v.final_vertex(1)));
                 out.push(r.pool.id(v.final_vertex(2)));
@@ -522,6 +601,23 @@ pub(super) fn run_op(
             let edge = |j: i64| r.pool.is(j, pk::EDGE).then(|| r.pool.h(j));
             match (face(fo), face(fne)) {
                 (Some(f1), Some(f2)) if (1..=2).contains(&w) => {
+                    if !r.pool.is_owned_face(f1, w)
+                        || !r.pool.is_owned_face(f2, w)
+                        || se != -1
+                        || oe != -1
+                        || ed != -1
+                        || r.n_pf != 0
+                    {
+                        return Err(Fail::Deferred(Box::new(Output::deferred(
+                            "harness:proto-real-face-update",
+                            "UpdateFaces needs audited real owned-face fixtures",
+                        ))));
+                    }
+                    if !face_update_edges_ok(r, w as i32, f1)? {
+                        return Err(Fail::Deferred(Box::new(Output::deferred(
+                            "harness:proto-real-face-update", "UpdateFaces edge continuation needs audited direct-UV fixtures",
+                        ))));
+                    }
                     let (se, oe, ed) = (edge(se), edge(oe), r.ed(ed));
                     let _ = res(
                         r.mgr
@@ -529,11 +625,13 @@ pub(super) fn run_op(
                         st,
                         skip,
                     )?;
+                    if !*skip {
+                        r.pool.put_owned_face(f1, out)?;
+                        r.pool.put_owned_face(f2, out)?;
+                    }
                 }
-                _ => {}
+                _ => *skip = true,
             }
-            // the shim never runs it on its bare faces
-            *skip = true;
         }
         q::MGR_CAN_COMBINE_VDS => {
             let d1 = r.vd(rd.idx());
