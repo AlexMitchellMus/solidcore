@@ -1148,14 +1148,14 @@ impl CornerAdjustmentAccess<FilletObject> for SessionObjects<'_> {
             .ok_or_else(|| invalid("corner is not live"))?;
         corner.adjust_topology_with(
             &mut (),
-            |_, _| {
+            |_, ()| {
                 // UNPORTED(blend.fillet_executive_p1): actual retained Nx2 adjustment context.
                 Err(SolidError::unported(
                     "SmFilletNx2Corner::AdjustTopology (live context)",
                     "blend.fillet_executive_p1",
                 ))
             },
-            |_, _| {
+            |_, ()| {
                 // UNPORTED(blend.fillet_executive_p1): actual retained NxN adjustment context.
                 Err(SolidError::unported(
                     "SmFilletNxNCorner::AdjustTopology (live context)",
