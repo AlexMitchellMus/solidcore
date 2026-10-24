@@ -223,8 +223,9 @@ impl FilletGeometryContext for SessionGeometryContext<'_> {
         let slot = if index < self.current.0 as usize {
             self.before.get(index)
         } else {
-            index
-                .checked_sub(self.current.0 as usize + 1)
+            (self.current.0 as usize)
+                .checked_add(1)
+                .and_then(|first| index.checked_sub(first))
                 .and_then(|index| self.after.get(index))
         };
         slot.and_then(Option::as_ref)
@@ -589,6 +590,7 @@ impl<'target> FilletSession<'target> {
                 &mut self.objects.pseudo,
                 &context,
             ),
+            // UNPORTED(blend.fillet_executive_p3): actual derived solver operation contexts.
             _ => Err(SolidError::unported(
                 "live concrete CalcFilletGeom operations",
                 "blend.fillet_executive_p3",
