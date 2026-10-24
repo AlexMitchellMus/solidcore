@@ -91,7 +91,7 @@ pub(super) fn source_binding(session: &FilletSession<'_>) -> SolidResult<Vec<f64
         out.push(solver.fillet_geoms.len() as f64);
         for &id in &solver.fillet_geoms {
             let surface = session.pseudo_brep().geom(id)?.fillet_surface();
-            let owner = surface.and_then(|surface| surface.owner());
+            let owner = surface.and_then(solidcore::surface::surface::Surface::owner);
             let mut owner_face = if owner.is_some() { -2.0 } else { -1.0 };
             let mut alias_face = if surface.is_some() { -2.0 } else { -1.0 };
             if let Some(body) = body {
