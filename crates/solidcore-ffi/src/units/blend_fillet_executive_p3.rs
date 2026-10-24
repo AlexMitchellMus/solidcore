@@ -177,11 +177,15 @@ extern "C" {
 /// and boundary curves in each corner’s native order.
 /// Mode 9 adds actual rail trimming and directed UV-curve observations before
 /// classification, which remains enabled.
+/// Mode 10 executes enabled rail classification and actual adjusted-corner repairs,
+/// recording the attached classifications and returned corner identities.
+/// Mode 11 allocates the actual intermediate body, runs all corner geometry then
+/// all solver face construction, and records its directed topology and geometry.
 /// These are retained component checkpoints, not completed public fillets.
 /// Uninitialized corner status and uncomputed geometry are never read.
 pub fn real_prefix(input: &[f64], checkpoint: u32) -> Result<Vec<f64>, FfiError> {
     validate_real_solid(input)?;
-    if !(1..=9).contains(&checkpoint) {
+    if !(1..=13).contains(&checkpoint) {
         return Err(FfiError::InvalidArgument(
             "unknown fillet checkpoint".into(),
         ));

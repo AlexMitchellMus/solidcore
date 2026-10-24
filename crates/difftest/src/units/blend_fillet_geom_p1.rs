@@ -1896,7 +1896,7 @@ impl RustModel {
                 o.push(self.edge_index(Some(e)));
             }
             dump_bcurve(o, g.center_line_curve());
-            dump_surface(o, g.fillet_surface())?;
+            dump_surface(o, g.fillet_surface().map_err(h)?)?;
             o.push(g.ref_eus.len() as f64);
             for &eu in &g.ref_eus {
                 self.put_eu(o, Some(eu));
