@@ -35,7 +35,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use solidcore::blend::fillet_geom::p1::FilletSolverId;
+use solidcore::blend::fillet_geom::p1::{CornerLookup, FilletSolverId};
 use solidcore::blend::fillet_geom::p2::{srf_srf_intersection, SrfSrfOptions};
 use solidcore::blend::fillet_solver::p1::FilletSolver;
 use solidcore::curve::curve::Curve;
@@ -493,9 +493,11 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
         | Query::CrossSection { v, .. }
         | Query::SetBack { v } => {
             let vid = rm.vertex(*v)?;
+            // the queried vertex has no corner (module docs)
+            let no_corners = CornerLookup::default();
             let r = match &i.query {
                 Query::RailIntRail { .. } => {
-                    rm.fb.calc_rail_int_rail(&k, vid, &mut solvers, &mut rm.target)
+                    rm.fb.calc_rail_int_rail(&k, vid, no_corners, &mut solvers, &mut rm.target)
                 }
                 Query::RailIntEdgeuse { g, .. } => {
                     let g = match usize::try_from(*g) {
@@ -503,13 +505,13 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                         Err(_) => None,
                     };
                     rm.fb
-                        .calc_rail_int_edgeuse(&k, vid, g, &mut solvers, &mut rm.target)
+                        .calc_rail_int_edgeuse(&k, vid, g, no_corners, &mut solvers, &mut rm.target)
                 }
                 Query::CrossSection { param, .. } => {
                     rm.fb
-                        .calc_vert_on_cross_section(&k, vid, *param, &mut solvers, &mut rm.target)
+                        .calc_vert_on_cross_section(&k, vid, *param, no_corners, &mut solvers, &mut rm.target)
                 }
-                _ => rm.fb.calc_set_back_vert(&k, vid, &mut solvers, &rm.target),
+                _ => rm.fb.calc_set_back_vert(&k, vid, no_corners, &mut solvers, &rm.target),
             };
             o.push(status_of!(r));
             let p: Point3 = rm.fb.vertex_point(vid).map_err(h)?;
@@ -541,9 +543,10 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                     .set_original_face(Some(f));
             }
             o.push(0.0);
+            let no_corners = CornerLookup::default(); // no corner: the shim's are opaque tags
             let r = rm
                 .fb
-                .calc_rail_rail_interpolation(&k, eid, None, &mut solvers, &mut rm.target);
+                .calc_rail_rail_interpolation(&k, eid, None, no_corners, &mut solvers, &mut rm.target);
             o.push(status_of!(r));
             o.push(rm.fb.fillet_edge(eid).map_err(h)?.status() as i64 as f64);
             let brep = rm.fb.brep();

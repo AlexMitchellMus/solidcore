@@ -129,8 +129,8 @@ use crate::blend::fillet_corner::p3::{
 };
 use crate::blend::fillet_custom_solver::{InitialValues, JacobianLoad, OffsetSurface, SurfaceId};
 use crate::blend::fillet_geom::p1::{
-    FilStatus, FilletBrep, FilletCornerType, FilletEdgeType, FilletErrorType, FilletGeomId,
-    FilletGeomType, FilletSolverId, FilletVertexType,
+    CornerLookup, FilStatus, FilletBrep, FilletCornerType, FilletEdgeType, FilletErrorType,
+    FilletGeomId, FilletGeomType, FilletSolverId, FilletVertexType,
 };
 use crate::blend::fillet_geom::p4::set_edge_curve;
 use crate::blend::fillet_solver::p1::{
@@ -1250,9 +1250,13 @@ impl FilletCorner {
             already_processed.push(env.pseudo.fillet_vertex(fv)?.is_processed());
 
             // switch on FilletVertex->m_eType to call appropriate vertex calculator
-            let status = env
-                .pseudo
-                .calc_corner_vert_geom(env.k, fv, env.target, env.solvers);
+            let status = env.pseudo.calc_corner_vert_geom(
+                env.k,
+                fv,
+                CornerLookup::of_corner(env.corner, self, env.exec),
+                env.target,
+                env.solvers,
+            );
 
             // for errors
             match status {
@@ -1398,10 +1402,10 @@ impl FilletCorner {
 
             // Branch on SmFilletEdge->m_eType to pass call to
             // the appropriate edgeBuilding function
-            let calc = env.pseudo.calc_corner_edge_geom_of_corner(
+            let calc = env.pseudo.calc_corner_edge_geom(
                 env.k,
                 curr_edge,
-                (env.corner, &*self),
+                CornerLookup::of_corner(env.corner, self, env.exec),
                 env.solvers,
                 env.target,
             );
