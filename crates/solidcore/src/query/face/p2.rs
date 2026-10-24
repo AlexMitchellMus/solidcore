@@ -24,7 +24,7 @@
 //! Deviations:
 //! - **Object model.** The face is a record of a [`Brep`]; the functions take the
 //!   B-rep and the face's id. Classification objects are [`EntityRef`]s (the face, edge
-//!   or vertex). `SmFace::PointClassify`'s status is the result: `Ok(())` for
+//!   or vertex). `SmFace::PointClassify`'s status is the result: `Ok(())` fo
 //!   `SM_SUCCESS`, [`SolidError::Upstream`] `SM_ERR` when no loop classifies the point
 //!   (the classification is still updated, as upstream).
 //! - **Unused parameters.** `PointClassify`'s `sSrcZoneTol3d`,
@@ -34,7 +34,7 @@
 //! - **Trimmed surface cache.** A face surface keeps its trimmed cache in its cache
 //!   slot ([`Surface::take_trim_cache`]; upstream's `SM_OC_TRIMSRF` queue entry), made
 //!   by the first [`face_surface_cache`] and reused by later ones as
-//!   `CacheMakeOrValidate` reuses it (whether it was built with the face or
+//!   `CacheMakeOrValidate` reuses it (whether it was built with the face o
 //!   standalone, while the owner was cleared). A lookup made while the cache is in use
 //!   (taken out of the slot) gets a cache built the same way that is not kept. The
 //!   global cache queue's size limit (200 trimmed caches, least recently used out) is
@@ -66,7 +66,7 @@
 //! - **Null dereferences** upstream (a face, loop, edge use or vertex use without the
 //!   object it points to) are [`SolidError::InvalidInput`]; a face without surface is
 //!   `NER` ([`SolidError::null_pointer`]).
-//! - **`sm_ClassifyParamOnFaces`** takes the faces' tolerances for
+//! - **`sm_ClassifyParamOnFaces`** takes the faces' tolerances fo
 //!   `SmTol::GetZoneTol3d_ForXSectResult(pFace1, pFace2)` (`SM_USE_OLDTOL`:
 //!   `SmFace::GetTolerance`).
 //! - **`SmProtoVertex`** keeps no pointer to its manager; the manager is passed.
@@ -90,7 +90,7 @@
 //!   computes them from the B-rep (on one private snapshot per call, which keeps the
 //!   gap caches across both passes) for the face's vertices before the vertex
 //!   intersections, and answers [`ClassGeometry::vertex_face_gap`] for them around the
-//!   caller's [`ClassGeometry`]; a gap error therefore surfaces before the earlier
+//!   caller's [`ClassGeometry`]; a gap error therefore surfaces before the earlie
 //!   vertices are intersected (upstream: a null dereference or the same unported
 //!   callee). A vertex without a face use is unresolved (upstream dereferences null).
 //! - **`IntersectTSBound`** fetches the face surface's trimmed cache itself
@@ -583,7 +583,7 @@ pub struct PointClassifyOptions<'a> {
     /// `bTgtLoopsOnly`: only classify against [`PointClassifyOptions::tgt_loops`]
     /// (default `false`: all loops of the face).
     pub tgt_loops_only: bool,
-    /// `pOptTgtLoops`: with `tgt_loops_only`, the loops to classify against (`None` or
+    /// `pOptTgtLoops`: with `tgt_loops_only`, the loops to classify against (`None` o
     /// empty: the outer loop).
     pub tgt_loops: Option<&'a [LoopId]>,
     /// `bUVSpaceOkay` (`NotUsed` upstream; upstream default `TRUE`).
@@ -622,7 +622,7 @@ impl Default for PointClassifyOptions<'_> {
 ///
 /// # Errors
 ///
-/// [`SolidError::Upstream`] `SM_ERR` when the point is neither outside nor inside nor
+/// [`SolidError::Upstream`] `SM_ERR` when the point is neither outside nor inside no
 /// on the checked loops (a loop that cannot classify it, or only inner loops checked
 /// without the point being outside all of them); `SM_ERR_NULL_POINTER` for a face
 /// without surface; those of the trimmed surface cache search, of [`face_vertices`]
@@ -1021,7 +1021,7 @@ fn set_on_edge(
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] from the classifications; their
+/// [`SolidError::Unported`] from the classifications; thei
 /// [`SolidError::InvalidInput`] and [`SolidError::NotFound`] (malformed B-rep).
 pub fn classify_param_on_faces(
     k: &Kernel,
@@ -1088,7 +1088,7 @@ pub fn classify_param_on_faces(
         return Ok(0);
     }
 
-    // arrive here when the UVPoint did not classify cleanly to one face or the other
+    // arrive here when the UVPoint did not classify cleanly to one face or the othe
     Ok(0)
 }
 
@@ -1391,7 +1391,7 @@ impl<O: ClassObject, G: ClassGeometry<O>> ClassGeometry<O> for WithMadeTrimCurve
         self.inner.topology_handle(entity)
     }
     fn topology_handle_in(&self, brep: &Brep, entity: EntityRef) -> Option<O> {
-        self.inner
+        self.inne
             .topology_handle_in(self.caller_brep(brep), entity)
     }
     fn topology_intersector_mate(&self, ti: O, entity: O) -> Option<Option<O>> {
@@ -1562,7 +1562,7 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
     // for two iterations to allow the surf/surf/surf intersection heuristic a chance to
     // update curve and edge shapes.
     for ii in 0..2 {
-        // skip 2nd classification when its not needed else set up for DoOver
+        // skip 2nd classification when its not needed else set up for DoOve
         if ii > 0 {
             if cc.is_curve_current() {
                 continue;
@@ -1604,7 +1604,7 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
             let gaps = if has_big_gaps {
                 let snapshot = snapshot.get_or_insert_with(|| b.clone_sharing_surface_caches());
                 // IntersectVertices reads them with the surface's owner cleared
-                // (SmTemporaryChangeValue on m_pOwner), so a surface cache made for
+                // (SmTemporaryChangeValue on m_pOwner), so a surface cache made fo
                 // them is a standalone one
                 snapshot.begin_surface_owner_cleared(f);
                 let gaps = vertices
@@ -1647,6 +1647,8 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
     }
 
     // 2. classify each interval relative to the face
+    let snap = snapshot.get_or_insert_with(|| b.clone_sharing_surface_caches());
+    let _ = crate::topology::face::p3::create_uv_trim_curves(k, snap, f, true, None);
     let src_zone_tol_3d = src_zone_tol_3d_of(k, Some(cc));
     let face_handle = objects.face(f);
     for ii in 0..cc.size() {
@@ -2354,7 +2356,7 @@ pub(crate) mod tests {
             0.0,
         )
         .unwrap();
-        let id = mgr
+        let id = mg
             .new_proto_vertex(Point3::new(0.0, 0.0, 0.0), 0.1)
             .unwrap();
         let pv = mgr.proto_vertex(id).unwrap().clone();

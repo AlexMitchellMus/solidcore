@@ -5,7 +5,7 @@
 //! file, optionally with rebuilt UV trim curves, or `CreateFaceFromSurface` over a
 //! B-spline surface or a real `SmPlane`), optionally overwrites stored face, edge and
 //! vertex tolerances, then runs `SmFace::PointClassify`, `sm_ClassifyParamOnFaces` (a
-//! verbatim copy) or `SmFace::CurveOnClassify`. There is no Rust B-rep reader or builder
+//! verbatim copy) or `SmFace::CurveOnClassify`. There is no Rust B-rep reader or builde
 //! yet, so the Rust side imports the edited graph the shim exports (unit
 //! `topology.face_p2`'s layout and importer: topology, tolerances, UV domains, planes and
 //! B-spline surfaces, B-spline and line curves, UV trim curves) and runs the port on it.
@@ -651,6 +651,27 @@ impl solidcore::intersect::point_class::ClassGeometry<H> for Objects<'_> {
     fn point(&self, _o: H) -> Option<solidcore::math::Point3> {
         None
     }
+    fn topology_entity(&self, o: H) -> Option<(&Brep, EntityRef)> {
+        let e = match o {
+            H::Face(f) => EntityRef::Face(f),
+            H::Vertex(v) => EntityRef::Vertex(v),
+            H::Edge(e) => EntityRef::Edge(e),
+            H::Vertexuse(vu) => EntityRef::Vertexuse(vu),
+            H::Edgeuse(eu) => EntityRef::Edgeuse(eu),
+            _ => return None,
+        };
+        Some((self.brep, e))
+    }
+    fn topology_handle(&self, e: EntityRef) -> Option<H> {
+        Some(match e {
+            EntityRef::Face(f) => H::Face(f),
+            EntityRef::Vertex(v) => H::Vertex(v),
+            EntityRef::Edge(e) => H::Edge(e),
+            EntityRef::Vertexuse(vu) => H::Vertexuse(vu),
+            EntityRef::Edgeuse(eu) => H::Edgeuse(eu),
+            _ => return None,
+        })
+    }
 }
 
 /// A Rust error as the case outcome: deferred for [`SolidError::Unported`], else an
@@ -691,7 +712,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             Ok(id) => id,
             Err(e) => return Ok(rust_err(&e)),
         };
-        let pv = mgr
+        let pv = mg
             .proto_vertex(id)
             .ok_or_else(|| harness("proto vertex missing"))?;
         let qp = Vec3::new(qx, qy, qz);
@@ -803,8 +824,10 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let curve = Curve::from(line);
             let interval = curve.natural_interval();
             let objects = Objects { brep: b, curve };
+            let tol_val = zone_tol3d(&k, *tol);
+            let src_tol = if tol_val > 0.0 { tol_val } else { 1.23456e-61 };
             let mut cc: CurveClassification<H> =
-                CurveClassification::with_curve_interval(&k, H::Curve, interval, zone_tol3d(&k, *tol));
+                CurveClassification::with_curve_interval(&k, H::Curve, interval, src_tol);
             let (status, modified) =
                 match qf::curve_on_classify(&k, b, f, &objects, *do_pc, &mut cc, *big_gaps, *check3d, true) {
                     Ok(modified) => (0.0, modified),
