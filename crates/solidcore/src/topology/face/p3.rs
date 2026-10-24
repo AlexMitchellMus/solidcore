@@ -1682,7 +1682,14 @@ pub fn face_intersect_breps(
         // (smsurf_GetSurfaceCache); exact evaluation copies, as the caches are made
         // on the B-reps meanwhile
         let surface = surface_of(b, f)?.clone_for_evaluation()?;
-        let other_surface = surface_of(ob, other)?.clone_for_evaluation()?;
+        let other_copy = surface_of(ob, other)?.clone_for_evaluation()?;
+        // a face intersected with itself intersects one surface object with itself
+        // (the intersectors compare the two surfaces by identity)
+        let other_surface = if !other_side && other == f {
+            &surface
+        } else {
+            &other_copy
+        };
         let (domain, other_domain) = (face2::uv_domain(b, f)?, face2::uv_domain(ob, other)?);
         let r = if let Some(this_brep) = this_brep.as_deref_mut() {
             let mut services = vec![BrepFaceServices::new(this_brep)];
@@ -1698,7 +1705,7 @@ pub fn face_intersect_breps(
                 ],
                 &mut SidedFaceServices(services),
                 &domain,
-                &other_surface,
+                other_surface,
                 &other_domain,
                 use_surface_edges,
                 Some(approx_tol_3d),
@@ -1708,7 +1715,7 @@ pub fn face_intersect_breps(
             surface.global_surface_intersect(
                 k,
                 &domain,
-                &other_surface,
+                other_surface,
                 &other_domain,
                 use_surface_edges,
                 Some(approx_tol_3d),
