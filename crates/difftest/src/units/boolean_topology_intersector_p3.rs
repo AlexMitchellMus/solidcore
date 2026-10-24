@@ -51,7 +51,7 @@ use solidcore::intersect::point_class::{
     ClassGeometry, ClassObjectKind, PointClassType, PointClassification,
 };
 use solidcore::kernel::Kernel;
-use solidcore::math::Point3;
+use solidcore::math::{Point2, Point3};
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::query::face::p1 as qf1;
 use solidcore::topology::edge as ed;
