@@ -1464,9 +1464,27 @@ impl FilletCorner {
     /// Those of [`FilletCorner::adjust_tangent_corner_nx2`] and
     /// [`FilletCorner::adjust_tangent_corner_nx1_closed`].
     pub fn adjust_tangent_corner(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
+        self.adjust_tangent_corner_with(
+            env,
+            |corner, env| corner.adjust_tangent_corner_nx2(env),
+            |corner, env| corner.adjust_tangent_corner_nx1_closed(env),
+        )
+    }
+
+    /// Dispatch tangent adjustment against the caller's actual derived context.
+    /// The inherited native base operation requires no context.
+    ///
+    /// # Errors
+    /// The selected concrete callback's failures.
+    pub fn adjust_tangent_corner_with<C>(
+        &mut self,
+        context: &mut C,
+        nx2: impl FnOnce(&mut Self, &mut C) -> Result<()>,
+        nx1_closed: impl FnOnce(&mut Self, &mut C) -> Result<()>,
+    ) -> Result<()> {
         match self.kind {
-            FilletCornerKind::NByTwo => self.adjust_tangent_corner_nx2(env),
-            FilletCornerKind::NByOneClosed => self.adjust_tangent_corner_nx1_closed(env),
+            FilletCornerKind::NByTwo => nx2(self, context),
+            FilletCornerKind::NByOneClosed => nx1_closed(self, context),
             _ => Ok(()),
         }
     }
