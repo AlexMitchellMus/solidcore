@@ -83,6 +83,7 @@ pub fn unit_report(r: &UnitResult) -> Value {
         .collect();
     let errored = r.cases.iter().filter(|c| c.both_errored).count();
     let mut m = Map::new();
+    m.insert("schema_version".into(), json!(1));
     m.insert("unit".into(), json!(r.unit));
     m.insert("pass".into(), json!(r.pass()));
     m.insert("status".into(), json!(r.status().as_str()));
@@ -125,6 +126,75 @@ pub fn write_unit_report(dir: &Path, r: &UnitResult) -> Result<PathBuf, HarnessE
     fs::write(&path, to_canonical_string(&unit_report(r)))
         .map_err(|e| HarnessError::new(format!("{}: {e}", path.display())))?;
     Ok(path)
+}
+
+/// Aggregate counts recorded in a report (including vacuous and known outcomes).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReportCounts {
+    /// `green`, `partial` or `fail`.
+    pub status: String,
+    /// All cases.
+    pub total: u64,
+    /// Passing cases.
+    pub passed: u64,
+    /// Failing cases.
+    pub failed: u64,
+    /// Deferred cases.
+    pub deferred: u64,
+    /// Rejected native fixtures.
+    pub rejected: u64,
+    /// Known mismatches (never counted as passing cases).
+    pub known: u64,
+    /// Successful cases with no numeric/topological comparisons.
+    pub vacuous: u64,
+}
+
+impl ReportCounts {
+    /// Counts of a run.
+    pub fn of(r: &UnitResult) -> Self {
+        let n = |x: usize| u64::try_from(x).unwrap_or(u64::MAX);
+        Self {
+            status: r.status().as_str().to_string(),
+            total: n(r.cases.len()),
+            passed: n(r.passed()),
+            failed: n(r.failed()),
+            deferred: n(r.deferred()),
+            rejected: n(r.rejected()),
+            known: n(r.known_mismatches()),
+            vacuous: n(r.vacuous()),
+        }
+    }
+
+    /// Counts recorded in report text; `None` if it is not a unit report.
+    pub fn parse(text: &str) -> Option<Self> {
+        let v: Value = serde_json::from_str(text).ok()?;
+        let n = |k: &str| v.get(k).and_then(Value::as_u64);
+        Some(Self {
+            status: v.get("status")?.as_str()?.to_string(),
+            total: n("cases_total")?,
+            passed: n("cases_passed")?,
+            failed: n("cases_failed")?,
+            deferred: n("cases_deferred")?,
+            rejected: n("cases_rejected").unwrap_or(0),
+            known: n("cases_known_mismatch").unwrap_or(0),
+            vacuous: n("cases_vacuous").unwrap_or(0),
+        })
+    }
+
+    /// `status=… cases=… passed=… failed=… deferred=… rejected=…`.
+    pub fn describe(&self) -> String {
+        format!(
+            "status={} cases={} passed={} failed={} deferred={} rejected={} known={} vacuous={}",
+            self.status,
+            self.total,
+            self.passed,
+            self.failed,
+            self.deferred,
+            self.rejected,
+            self.known,
+            self.vacuous
+        )
+    }
 }
 
 /// One-line summary, e.g.
@@ -179,6 +249,35 @@ pub fn summary_line(r: &UnitResult) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn counts_round_trip_through_a_report() {
+        let r = UnitResult {
+            unit: "a.b".into(),
+            cases: Vec::new(),
+            harness_error: None,
+            abs_floors: Vec::new(),
+            seeds: 16,
+            timing: crate::runner::UnitTiming::default(),
+        };
+        let text = to_canonical_string(&unit_report(&r));
+        assert_eq!(ReportCounts::parse(&text), Some(ReportCounts::of(&r)));
+        assert_eq!(
+            ReportCounts::of(&r).describe(),
+            "status=fail cases=0 passed=0 failed=0 deferred=0 rejected=0 known=0 vacuous=0"
+        );
+    }
+
+    #[test]
+    fn old_reports_without_rejected_parse() {
+        let c = ReportCounts::parse(
+            r#"{"status":"partial","cases_total":3,"cases_passed":1,"cases_failed":0,"cases_deferred":2}"#,
+        )
+        .unwrap();
+        assert_eq!((c.deferred, c.rejected), (2, 0));
+        assert_eq!(ReportCounts::parse(r#"{"unit":"x"}"#), None);
+    }
+
     use crate::case::CaseSource;
     use crate::compare::compare;
     use crate::output::Output;
