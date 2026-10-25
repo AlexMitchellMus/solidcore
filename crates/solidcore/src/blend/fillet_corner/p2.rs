@@ -77,8 +77,8 @@
 //!   (`blend.fillet_corner_p3`): `CalcCornerVertGeom` with its status ignored, the
 //!   seam moves of the rail ends' UV points and the two `ReCalcFilletGeom`s with the
 //!   solver's geometry for the surfaces set to each half.
-//! - **Unported callees.** `SmFilletCorner::MakeConstantRadiusFillet` (unit
-//!   `blend.fillet_corner_p1`, not ported there) returns [`SolidError::Unported`].
+//! - **`MakeConstantRadiusFillet`** is unit `blend.fillet_corner_p1`'s
+//!   [`FilletCorner::make_constant_radius_fillet`].
 //!
 //! Every loop runs over a given list once; there is no recursion.
 
@@ -93,7 +93,7 @@ use crate::blend::fillet_corner::p3::{
     unchecked_point, CornerEnv, FilletCorner, FilletExecutiveData,
 };
 use crate::blend::fillet_custom_solver::{OffsetSurface, SurfaceId};
-use crate::blend::fillet_executive::p3::FilletExecutive;
+use crate::blend::fillet_executive::p3::{ErrorInfo, FilletExecutive};
 use crate::blend::fillet_geom::p1::FilletErrorType;
 use crate::blend::fillet_geom::p1::{
     check_seam_out, set_surface_closure, FilStatus, FilletBrep, FilletCornerType, FilletEdgeType,
@@ -887,7 +887,7 @@ impl FilletCorner {
         let fillet_srf = env
             .pseudo
             .geom(orig_fg)?
-            .fillet_surface()
+            .fillet_surface()?
             .ok_or_else(|| invalid(OP, "fillet geometry without fillet surface"))?;
 
         let srf_domain = fillet_srf.natural_uv_domain();
@@ -1363,7 +1363,7 @@ impl FilletCorner {
                         .ok_or_else(|| invalid(OP, "fillet edge use without fillet geometry"))?;
                     let fs = solver_ref(env, fillet_geom, OP)?;
                     (
-                        env.pseudo.geom(fillet_geom)?.fillet_surface().cloned(),
+                        env.pseudo.geom(fillet_geom)?.fillet_surface()?.cloned(),
                         fs.this_approx_tol_3d(),
                         fs.this_ang_tol_rad(),
                     )
@@ -1435,7 +1435,7 @@ impl FilletCorner {
                 None => {
                     // When a Sphere could not be found to fill Boundary Curves try to
                     // convert it to a constant-radius fillet.
-                    match soft(make_constant_radius_fillet(self, env))? {
+                    match soft(self.make_constant_radius_fillet(env))? {
                         Some(s) => s,
                         // when both tries fail - quit
                         None => return Ok(false),
@@ -1584,13 +1584,12 @@ impl FilletCorner {
 
             // Drop pE's end points to center line to compute radius, axis & origin of
             // cross section
-            let center_line = Curve::from(
-                env.pseudo
-                    .geom(fg)?
-                    .center_line_curve()
-                    .cloned()
-                    .ok_or_else(null)?,
-            );
+            let center_line = env
+                .pseudo
+                .geom(fg)?
+                .center_line_geometry()
+                .cloned()
+                .ok_or_else(null)?;
             let center_line_ivl = center_line.natural_interval();
             let v = vertex_of(e)?;
             let start_pnt = env.pseudo.vertex_point(v)?;
@@ -1656,7 +1655,7 @@ impl FilletCorner {
         let opposite_fillet = env
             .pseudo
             .geom(opposite_fg)?
-            .fillet_surface()
+            .fillet_surface()?
             .cloned()
             .ok_or_else(null)?;
         let opposite_fs = solver_of_geom(env, opposite_fg, OP)?;
@@ -2019,13 +2018,37 @@ impl FilletCorner {
         // set output
         env.pseudo
             .geom(new_fg)?
-            .fillet_surface()
+            .fillet_surface()?
             .cloned()
             .ok_or_else(|| invalid(OP, "new fillet geometry without fillet surface"))
     }
 }
 
 impl FilletCorner {
+    /// `SmFilletCorner::RecordFilletError(eErrorType, pFilletSurface1, pFilletSurface2,
+    /// pStartFV, pEndFV, cComment)` into a standalone [`ErrorInfo`] (`NoteFilletError`
+    /// -> `GetFilletErrorInfo()->NoteError`).
+    pub fn record_fillet_error_in<O: Copy + PartialEq>(
+        &self,
+        error: &mut ErrorInfo<O>,
+        error_type: FilletErrorType,
+        filleted_vertex: Option<O>,
+        surfaces: [Option<O>; 2],
+        fillet_vertices: [Option<O>; 2],
+        comment: Option<&str>,
+    ) {
+        error.note_corner_error(
+            error_type,
+            self.corner_type(),
+            self.status,
+            Some(self.kind.name()),
+            filleted_vertex,
+            surfaces,
+            fillet_vertices,
+            comment,
+        );
+    }
+
     /// `SmFilletCorner::RecordFilletError(eErrorType, pFilletSurface1, pFilletSurface2,
     /// pStartFV, pEndFV, cComment)`: tells the fillet executive about a corner error
     /// (`NoteFilletError` with this corner's type, status and name and its filleted
@@ -2042,11 +2065,9 @@ impl FilletCorner {
         comment: Option<&str>,
     ) {
         // Pass the call along to the FilletExectutive
-        executive.note_fillet_corner_error(
+        self.record_fillet_error_in(
+            &mut executive.error,
             error_type,
-            self.corner_type(),
-            self.status,
-            Some(self.kind.name()),
             filleted_vertex,
             surfaces,
             fillet_vertices,
@@ -2065,18 +2086,6 @@ fn unitize_ser(v: Vec3, operation: &'static str) -> Result<Vec3> {
     })
 }
 
-/// `SmFilletCorner::MakeConstantRadiusFillet` (unit `blend.fillet_corner_p1`).
-fn make_constant_radius_fillet(
-    _corner: &FilletCorner,
-    _env: &mut CornerEnv<'_>,
-) -> Result<Surface> {
-    // UNPORTED(blend.fillet_corner_p1): SmFilletCorner::MakeConstantRadiusFillet
-    Err(SolidError::unported(
-        "SmFilletCorner::MakeConstantRadiusFillet",
-        "blend.fillet_corner_p1",
-    ))
-}
-
 /// A call whose failing status upstream turns into a soft `FALSE` / `SM_ERR` return
 /// (`if (SM_SUCCESS != f(..)) return FALSE;`): `None` on failure;
 /// [`SolidError::Unported`] and [`SolidError::InvalidInput`] (undefined upstream) still
@@ -2091,7 +2100,7 @@ fn soft<T>(r: Result<T>) -> Result<Option<T>> {
 
 /// `SM_CAST_PTR(SmBSplineCurve, pCurve)` succeeds: a B-spline or one of the analytic
 /// curves derived from it.
-const fn is_b_spline_kind(c: &Curve) -> bool {
+pub(super) const fn is_b_spline_kind(c: &Curve) -> bool {
     matches!(
         c.kind(),
         CurveKind::BSpline(_)
@@ -2257,18 +2266,19 @@ mod tests {
     }
 
     fn with_env<T>(pseudo: &mut FilletBrep, run: impl FnOnce(&mut CornerEnv<'_>) -> T) -> T {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
         let mut target = Brep::new();
         let surfaces = std::collections::BTreeMap::new();
         let mut exec = FilletExecutiveData::default();
         let mut env = CornerEnv {
-            k: &k,
+            k: &mut k,
             target: &mut target,
             pseudo,
             exec: &mut exec,
             corner: None,
             tsect_surfaces: &surfaces,
             solvers: &mut [],
+            fillet: None,
         };
         run(&mut env)
     }

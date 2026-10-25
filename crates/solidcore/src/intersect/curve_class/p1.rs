@@ -59,16 +59,15 @@
 //! | [`CurveClassification::set_is_curve_current`]          | `SetIsCurveCurrent`                              |
 //! | [`CurveClassification::remove_at`]                     | `RemoveAt`                                       |
 //! | [`CurveClassification::set_size`], [`MAX_INTERVALS`]   | `SetSize`                                        |
-//! | [`CurveClassification::set_point_class_parameters`]    | `SetPointClassParameters`                        |
+//! | [`CurveClassification::set_point_class_parameters`], [`CurveClassification::set_point_class_parameters_mut`]| `SetPointClassParameters`                        |
 //! | [`CurveClassification::find_best_squeeze_end`]         | `FindBestSqueezeEnd`                             |
 //! | [`CurveClassification::is_referenced`]                 | `IsReferenced`                                   |
 //! | [`src_zone_tol_3d_of`]                                 | `SmTol::GetSrcZoneTol3d(const SmCurveClassification*)`, `SmTol::GetSrcZoneTol3d(const SmCurveInterval*)` |
 //! | [`interval_obj_zone_tol_3d`]                           | `SmTol::GetObjZoneTol3d(const SmCurveInterval*)` |
 //! | `ScaledZero for CurveInterval`                         | `SmTol::GetScaledZero(const SmCurveInterval&)`   |
 //! | [`set_xsect_curve_through_point`], [`XSectThroughPoint`] | `sm_SetXSectCurveThroughPoint` (static)        |
-//! | [`set_xsect_edge_through_point`], [`set_xsect_edge_through_point_in`] | `sm_SetXSectEdgeThroughPoint` (static)           |
+//! | [`set_xsect_edge_through_point_in`]                    | `sm_SetXSectEdgeThroughPoint` (static)           |
 //! | [`get_cci_surface_gaps`], [`CciSurfaceGaps`]           | `sm_GetCCISurfaceGaps` (static)                  |
-//! | [`get_cci_geometry`], [`CciGeometry`]                  | `sm_GetCCIGeometry` (static)                     |
 //! | [`get_cci_geometry_in`], [`CciGeometryRefs`]           | `sm_GetCCIGeometry` (static), through an adapter |
 //! | [`apply_point_solution`], [`ApplyPointSolutionInput`], [`ApplyPointSolution`] | `sm_ApplyPointSolution` (static) |
 //! | [`apply_point_solution_in`], [`ApplyPointSolutionEdges`] | `sm_ApplyPointSolution` with `pEdge`/`pEMate` |
@@ -129,6 +128,11 @@
 //!   `SmTol::MapTo2d(.., SmCurve, SmSurface)` (`SmSurface::DropPoint`,
 //!   `surface.surface_p5`; its UV-curve branch is co-ported as
 //!   [`map_to_2d_on_curve`]).
+//! - **Mutable topology.** `SetPointClassParameters` has a read-only form and one over
+//!   topology the point solves may change
+//!   ([`CurveClassification::set_point_class_parameters_mut`], through
+//!   [`PointClassification::compute_point_parameters_mut`]): a face surface's point
+//!   solve makes the face's trimmed surface cache there, as upstream.
 //! - **Recursion.** None.
 
 use std::borrow::Cow;
@@ -485,6 +489,52 @@ pub struct CurveClassification<O> {
     pub(super) allocated: bool,
     /// `m_bIgnoreTangency`.
     pub(super) ignore_tangency: bool,
+}
+
+/// How `SetPointClassParameters` reaches the classifications' objects: read-only, or
+/// with topology the point solves may change.
+pub(super) trait PointParams<O> {
+    type Geometry: ClassGeometry<O>;
+    fn geometry(&self) -> &Self::Geometry;
+    /// `pc.ComputePointParameters(point)`.
+    fn compute(&mut self, k: &Kernel, pc: &mut PointClassification<O>, point: Point3)
+        -> Result<()>;
+}
+
+/// Read-only access ([`CurveClassification::set_point_class_parameters`]).
+pub(super) struct ReadOnlyParams<'g, G>(pub(super) &'g G);
+
+impl<O: ClassObject, G: ClassGeometry<O>> PointParams<O> for ReadOnlyParams<'_, G> {
+    type Geometry = G;
+    fn geometry(&self) -> &G {
+        self.0
+    }
+    fn compute(
+        &mut self,
+        k: &Kernel,
+        pc: &mut PointClassification<O>,
+        point: Point3,
+    ) -> Result<()> {
+        pc.compute_point_parameters(k, self.0, point)
+    }
+}
+
+/// Mutable access ([`CurveClassification::set_point_class_parameters_mut`]).
+pub(super) struct MutableParams<'g, G>(pub(super) &'g mut G);
+
+impl<O: ClassObject, G: super::p5::ClassGeometryMut<O>> PointParams<O> for MutableParams<'_, G> {
+    type Geometry = G;
+    fn geometry(&self) -> &G {
+        self.0
+    }
+    fn compute(
+        &mut self,
+        k: &Kernel,
+        pc: &mut PointClassification<O>,
+        point: Point3,
+    ) -> Result<()> {
+        pc.compute_point_parameters_mut(k, self.0, point)
+    }
 }
 
 impl<O: ClassObject> CurveClassification<O> {
@@ -987,6 +1037,32 @@ impl<O: ClassObject> CurveClassification<O> {
         geometry: &impl ClassGeometry<O>,
         set_mids: bool,
     ) -> Result<()> {
+        self.set_point_class_parameters_in(k, &mut ReadOnlyParams(geometry), set_mids)
+    }
+
+    /// [`CurveClassification::set_point_class_parameters`] over topology it may change:
+    /// each classification's parameters are computed with
+    /// [`PointClassification::compute_point_parameters_mut`] (a face surface's point
+    /// solve may make the face's trimmed surface cache, as upstream).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`CurveClassification::set_point_class_parameters`].
+    pub fn set_point_class_parameters_mut(
+        &mut self,
+        k: &Kernel,
+        geometry: &mut impl super::p5::ClassGeometryMut<O>,
+        set_mids: bool,
+    ) -> Result<()> {
+        self.set_point_class_parameters_in(k, &mut MutableParams(geometry), set_mids)
+    }
+
+    fn set_point_class_parameters_in(
+        &mut self,
+        k: &Kernel,
+        access: &mut impl PointParams<O>,
+        set_mids: bool,
+    ) -> Result<()> {
         let num_cis = self.data.len();
         let mut ret: Result<()> = Ok(());
         let mut pt = Vec3::UNDEF;
@@ -1009,14 +1085,14 @@ impl<O: ClassObject> CurveClassification<O> {
             if !start_set {
                 if ii == 0 {
                     let param = self.at(ii)?.interval.min();
-                    match self.curve_geometry(geometry)?.evaluate_point(k, param) {
+                    match self
+                        .curve_geometry(access.geometry())?
+                        .evaluate_point(k, param)
+                    {
                         Ok(p) => pt = p,
                         Err(e) => record(Err(e))?,
                     }
-                    let r = self
-                        .at_mut(ii)?
-                        .start
-                        .compute_point_parameters(k, geometry, pt);
+                    let r = access.compute(k, &mut self.at_mut(ii)?.start, pt);
                     record(r)?;
                 } else {
                     let prev_end = self.at(ii - 1)?.end;
@@ -1027,28 +1103,28 @@ impl<O: ClassObject> CurveClassification<O> {
             // End:
             if !self.at(ii)?.end.are_parameters_set() {
                 let param = self.at(ii)?.interval.max();
-                match self.curve_geometry(geometry)?.evaluate_point(k, param) {
+                match self
+                    .curve_geometry(access.geometry())?
+                    .evaluate_point(k, param)
+                {
                     Ok(p) => pt = p,
                     Err(e) => record(Err(e))?,
                 }
-                let r = self
-                    .at_mut(ii)?
-                    .end
-                    .compute_point_parameters(k, geometry, pt);
+                let r = access.compute(k, &mut self.at_mut(ii)?.end, pt);
                 record(r)?;
             }
 
             // Mid:
             if set_mids && !self.at(ii)?.mid.are_parameters_set() {
                 let param = self.at(ii)?.interval.mid();
-                match self.curve_geometry(geometry)?.evaluate_point(k, param) {
+                match self
+                    .curve_geometry(access.geometry())?
+                    .evaluate_point(k, param)
+                {
                     Ok(p) => pt = p,
                     Err(e) => record(Err(e))?,
                 }
-                let r = self
-                    .at_mut(ii)?
-                    .mid
-                    .compute_point_parameters(k, geometry, pt);
+                let r = access.compute(k, &mut self.at_mut(ii)?.mid, pt);
                 record(r)?;
             }
         } // End for each CurveInterval
@@ -1475,28 +1551,8 @@ pub fn set_xsect_curve_through_point(
     Ok(out)
 }
 
-/// `sm_SetXSectEdgeThroughPoint`: [`set_xsect_curve_through_point`] for an edge and all
-/// of its UV trim curves.
-///
-/// # Errors
-///
-/// [`SolidError::Unported`]: the edge's curve, tolerance and faces come first
-/// (`SmEdge::GetCurve`, unit `topology.edge`).
-pub fn set_xsect_edge_through_point<O>(
-    edge: O,
-    through_point: Point3,
-    surfaces: &[&Surface],
-    uv_points: &[Vec2],
-    param: f64,
-) -> Result<XSectThroughPoint> {
-    let _ = (edge, through_point, surfaces, uv_points, param);
-    // UNPORTED(topology.edge): SmEdge::GetCurve (an opaque edge handle; the B-rep form
-    // is set_xsect_edge_through_point_in)
-    Err(SolidError::unported("SmEdge::GetCurve", "topology.edge"))
-}
-
-/// [`set_xsect_edge_through_point`] on edge `e` of the B-rep `b`
-/// (`sm_SetXSectEdgeThroughPoint`): `through_point` is projected onto the edge curve
+/// `sm_SetXSectEdgeThroughPoint`: [`set_xsect_curve_through_point`] for edge `e` of the
+/// B-rep `b` and all of its UV trim curves: `through_point` is projected onto the edge curve
 /// over the edge interval near `param`; when the two surfaces at `uv_points` meet
 /// there within the intersection tolerance and their intersection tangent is defined
 /// and within six angular tolerances of the curve tangent, a B-spline edge curve
@@ -1846,62 +1902,8 @@ pub fn get_cci_surface_gaps<S: Copy>(
     Ok(out)
 }
 
-/// The surfaces, edge uses and UV trim curves around a classification-curve / edge
-/// intersection ([`get_cci_geometry`]).
-#[derive(Debug, Clone, PartialEq)]
-pub struct CciGeometry<O> {
-    /// `pEMate`: the edge's Boolean mate.
-    pub emate: Option<O>,
-    /// `rSurfaces`: curve surfaces, edge surfaces, the common surface again, mate
-    /// surfaces.
-    pub surfaces: Vec<O>,
-    /// `rEdgeuses`: the edge use of each surface (none for the curve's).
-    pub edgeuses: Vec<Option<O>>,
-    /// `rUVCurves`: the UV trim curve of each surface.
-    pub uv_curves: Vec<Option<O>>,
-    /// `lEdgeSurfaceCount`.
-    pub edge_surface_count: usize,
-}
-
-/// `sm_GetCCIGeometry`: the surfaces, edge uses and UV trim curves at a
-/// classification-curve / `edge` intersection.
-///
-/// # Errors
-///
-/// [`SolidError::Unported`]: the faces of the edge (`SmEdge::GetFaces`, unit
-/// `topology.edge`) follow the classification's surfaces.
-pub fn get_cci_geometry<O: ClassObject>(
-    classification: &CurveClassification<O>,
-    edge: O,
-) -> Result<CciGeometry<O>> {
-    let _ = edge;
-    let mut out = CciGeometry {
-        emate: None,
-        surfaces: Vec::new(),
-        edgeuses: Vec::new(),
-        uv_curves: Vec::new(),
-        edge_surface_count: 0,
-    };
-
-    // gather the ClassCurve Surfaces and UVTrimCurves
-    if let Some(s) = classification.surface1() {
-        out.surfaces.push(s);
-        out.edgeuses.push(None);
-        out.uv_curves.push(classification.uv_curve1());
-    }
-    if let Some(s) = classification.surface2() {
-        out.surfaces.push(s);
-        out.edgeuses.push(None);
-        out.uv_curves.push(classification.uv_curve2());
-    }
-
-    // get Faces connected to Edge and Edge->BooleanMate: this entry point has no
-    // adapter to resolve `edge` to its B-rep ([`get_cci_geometry_in`] has one).
-    // UNPORTED(topology.edge): SmEdge::GetFaces
-    Err(SolidError::unported("SmEdge::GetFaces", "topology.edge"))
-}
-
-/// [`get_cci_geometry`] over the geometry the handles resolve to: the classification's
+/// The result of [`get_cci_geometry_in`] (`sm_GetCCIGeometry`), over the geometry the
+/// handles resolve to: the classification's
 /// surfaces and UV curves through the adapter, the edge's (and its Boolean mate's)
 /// faces, edge uses and UV trim curves through [`ClassGeometry::topology_entity`].
 /// Surfaces are told apart by identity, as upstream compares `SmSurface*`.

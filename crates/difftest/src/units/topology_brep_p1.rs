@@ -14,9 +14,9 @@
 //! op needing an entity the B-rep lacks is rejected (nothing runs on either side).
 //!
 //! **Inexact geometry.** The export carries plain B-spline curves and `SmLine`s and
-//! B-spline surfaces, `SmPlane`s and `SmSurfOfRevolution`s exactly; other analytic
-//! kinds (cone, cylinder, sphere, torus, extrusion; ellipse and circle edges) arrive as
-//! their B-spline part. The ops evaluating curves and surfaces (`topological` lists,
+//! B-spline surfaces, planes and supported analytic surface records exactly.
+//! Ellipse/circle edges retain their native kind, stored NURB and trim parameters.
+//! Unsupported or lossy records retain their B-spline part. The ops evaluating curves and surfaces (`topological` lists,
 //! `check_uv`) defer when the geometry they touch is inexact (as `topology.edgeuse_p1`).
 
 use serde::{Deserialize, Serialize};
@@ -1124,10 +1124,10 @@ fn inexact(
         }
     }
     let curve_types: Vec<i64> = match edges {
-        None => types.edge_curve_types.clone(),
+        None => (0..types.edge_curve_types.len()).filter_map(|e| types.inexact_curve(e)).collect(),
         Some(es) => es
             .iter()
-            .filter_map(|e| types.edge_curve_types.get(e.index() as usize).copied())
+            .filter_map(|e| types.inexact_curve(e.index() as usize))
             .collect(),
     };
     for t in curve_types {
@@ -1696,6 +1696,17 @@ fn run_rust_op(
                         })
                         .collect();
                     o.extend(list_of(&counts));
+                    for (_, shell) in b.shells().iter() {
+                        let members = shell.get_faceuses()?;
+                        o.extend(ids(&members));
+                        for member in members {
+                            let (next, previous) =
+                                solidcore::topology::shell::faceuse_sibling_links(b, member)?;
+                            o.extend([next, previous].map(|id| {
+                                id.map_or(-1.0, |id| f64::from(id.index()))
+                            }));
+                        }
+                    }
                 }
                 Err(e) => o.push(status_of(&e)),
             }
@@ -1946,8 +1957,8 @@ fn run_rust_op(
             ang,
             want_points,
         } => {
-            let other = b.clone();
-            let (curves, points) = bp1::brep_intersect(k, b, &other, *tol, *ang, *want_points)?;
+            // the B-rep against itself, as the shim's `brep->BrepIntersect(ctx, brep, ..)`
+            let (curves, points) = bp1::brep_intersect_self(k, b, *tol, *ang, *want_points)?;
             o.extend([
                 0.0,
                 curves.len() as f64,

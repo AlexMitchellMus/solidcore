@@ -1156,8 +1156,56 @@ impl Surface {
         opt_target_distance: Option<f64>,
         requested: SolutionRequested,
     ) -> Result<SolutionArray<O>> {
+        self.global_point_solve_0_in(
+            k,
+            surface,
+            None,
+            None,
+            false,
+            uv_domain,
+            op,
+            test_point,
+            distance_tolerance,
+            opt_target_distance,
+            requested,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn global_point_solve_0_in<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        surface: O,
+        cache: Option<&SurfaceCache<O>>,
+        mut context: Option<&mut dyn SurfaceSolveContext<O>>,
+        point_test_off: bool,
+        uv_domain: &Extent2d,
+        op: SolverOperation,
+        test_point: Point3,
+        distance_tolerance: f64,
+        opt_target_distance: Option<f64>,
+        requested: SolutionRequested,
+    ) -> Result<SolutionArray<O>> {
         // get surface spatial decomposition tree from Surface's cache
-        let cache = self.solve_cache(k, surface, OP_SOLVE)?;
+        let mut owned;
+        let cache = if let Some(c) = cache {
+            if point_test_off {
+                owned = c.clone();
+                owned.point_test_enabled = false;
+                &owned
+            } else {
+                c
+            }
+        } else {
+            owned = match context.as_deref_mut() {
+                Some(ctx) => solve_surface_cache_with(k, self, Some(surface), ctx)?,
+                None => self.solve_cache(k, surface, OP_SOLVE)?,
+            };
+            if point_test_off {
+                owned.point_test_enabled = false;
+            }
+            &owned
+        };
         let surface_tree = cache.tree().ok_or(SolidError::null_pointer(OP_SOLVE))?;
 
         // put point into a single node PointTree
@@ -1165,7 +1213,10 @@ impl Surface {
 
         // instance global Surface/Point solver
         let mut gs = SpGlobalSolver::new(k, &point_tree, surface_tree, Some(self), *uv_domain);
-        gs.surface_cache = Some(&cache);
+        gs.surface_cache = Some(cache);
+        if let Some(ctx) = context.as_deref() {
+            gs.face_queries = ctx.face_queries();
+        }
 
         // init solver.dBestAnswerSoFarSq to properly handle SM_SR_SINGLE requests
         let best = point_solve_best_answer_sq(op, opt_target_distance)?;
@@ -1293,7 +1344,9 @@ impl Surface {
         let curve_cache = match crate::curve::curve::p5::make_curve_cache::<O>(k, curve, handles[0])
         {
             Ok(c) => c,
-            Err(e) if e.is_unported() => return Err(e),
+            Err(e) if e.is_unported() || matches!(e, SolidError::PreparationRequired { .. }) => {
+                return Err(e);
+            }
             Err(_) => return Err(SolidError::null_pointer(OP_SOLVE)),
         };
         let curve_tree = curve_cache
@@ -1313,13 +1366,13 @@ impl Surface {
         gs.surface_cache = Some(&surface_cache);
         if let Some(context) = context.as_deref() {
             gs.face_queries = context.face_queries();
-            gs.operands = Some(SolveOperands {
-                operands: [
-                    handles[0].map(|h| (h, OperandDomain::Curve(curve.natural_interval()))),
-                    handles[1].map(|h| (h, OperandDomain::Surface(self.natural_uv_domain()))),
-                ],
-            });
         }
+        gs.operands = Some(SolveOperands {
+            operands: [
+                handles[0].map(|h| (h, OperandDomain::Curve(curve.natural_interval()))),
+                handles[1].map(|h| (h, OperandDomain::Surface(self.natural_uv_domain()))),
+            ],
+        });
 
         let best = pair_solve_best_answer_sq(op, opt_target_distance, false)?;
         if op == SolverOperation::AtDistance {
@@ -1502,13 +1555,13 @@ impl Surface {
         gs.caches = [Some(&cache1), Some(&cache2)];
         if let Some(context) = context.as_deref() {
             gs.face_queries = context.face_queries();
-            gs.operands = Some(SolveOperands {
-                operands: [
-                    handles[0].map(|h| (h, OperandDomain::Surface(self.natural_uv_domain()))),
-                    handles[1].map(|h| (h, OperandDomain::Surface(other.natural_uv_domain()))),
-                ],
-            });
         }
+        gs.operands = Some(SolveOperands {
+            operands: [
+                handles[0].map(|h| (h, OperandDomain::Surface(self.natural_uv_domain()))),
+                handles[1].map(|h| (h, OperandDomain::Surface(other.natural_uv_domain()))),
+            ],
+        });
 
         let best = pair_solve_best_answer_sq(op, opt_target_distance, true)?;
         if op == SolverOperation::AtDistance {
@@ -1648,6 +1701,64 @@ impl Surface {
         opt_approx_tol_3d: Option<f64>,
         opt_angle_tol_rad: Option<f64>,
     ) -> Result<(Vec<Curve>, Vec<Option<Curve>>)> {
+        self.create_parallel_projection_curves_in::<super::p4::NoObject>(
+            k,
+            uv_domain,
+            curve,
+            projection_vector,
+            opt_projection_distance,
+            opt_approx_tol_3d,
+            opt_angle_tol_rad,
+            None,
+        )
+    }
+
+    /// [`Surface::create_parallel_projection_curves`] of a face's surface by a caller
+    /// that holds the face: `context` makes this surface's cache from `handle`
+    /// (`smsurf_GetSurfaceCache`, the face's trimmed cache) for the continuity check
+    /// and the intersection, and the swept surface's (no handle) as its own.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::create_parallel_projection_curves`], and those of the context's
+    /// cache preparation.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_parallel_projection_curves_with_context<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &BSplineCurve,
+        projection_vector: Vec3,
+        opt_projection_distance: Option<f64>,
+        opt_approx_tol_3d: Option<f64>,
+        opt_angle_tol_rad: Option<f64>,
+        context: &mut dyn SurfaceSolveContext<O>,
+        handle: Option<O>,
+    ) -> Result<(Vec<Curve>, Vec<Option<Curve>>)> {
+        self.create_parallel_projection_curves_in(
+            k,
+            uv_domain,
+            curve,
+            projection_vector,
+            opt_projection_distance,
+            opt_approx_tol_3d,
+            opt_angle_tol_rad,
+            Some((context, handle)),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn create_parallel_projection_curves_in<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &BSplineCurve,
+        projection_vector: Vec3,
+        opt_projection_distance: Option<f64>,
+        opt_approx_tol_3d: Option<f64>,
+        opt_angle_tol_rad: Option<f64>,
+        mut context: Option<(&mut dyn SurfaceSolveContext<O>, Option<O>)>,
+    ) -> Result<(Vec<Curve>, Vec<Option<Curve>>)> {
         // check input (ZERO_VEC_ER: fails unless |v|^2 >= SM_EFF_ZERO_SQ, so also for NaN)
         if projection_vector
             .length_squared()
@@ -1659,14 +1770,22 @@ impl Surface {
 
         // check state - internal surface continuities are better than C0 (NER; the
         // continuity is only reported)
-        let cache = super::p2::surface_cache::<()>(k, self, None).map_err(|e| {
+        let ner = |e: SolidError| {
             if e.is_unported() {
                 e
             } else {
                 SolidError::null_pointer(OP_PROJ)
             }
-        })?;
-        cache.surface_continuity(uv_domain)?;
+        };
+        match context.as_mut() {
+            Some((context, handle)) => context
+                .build_surface_cache(k, self, *handle)
+                .map_err(ner)?
+                .surface_continuity(uv_domain)?,
+            None => super::p2::surface_cache::<()>(k, self, None)
+                .map_err(ner)?
+                .surface_continuity(uv_domain)?,
+        };
 
         // check state - internal curve continuities are better than C0 (only reported)
         curve.calculate_continuities(k, CONTINUITY_ANGLE)?;
@@ -1712,16 +1831,32 @@ impl Surface {
 
         // intersection
         let projection_domain = projection_surface.natural_uv_domain();
-        let x = crate::intersect::surface_intersector::p5::do_intersection(
-            k,
-            self,
-            uv_domain,
-            &projection_surface,
-            &projection_domain,
-            [true, true],
-            opt_approx_tol_3d,
-            opt_angle_tol_rad,
-        )?;
+        let x = match context {
+            Some((context, handle)) => {
+                crate::intersect::surface_intersector::p5::do_intersection_with_context(
+                    k,
+                    self,
+                    uv_domain,
+                    &projection_surface,
+                    &projection_domain,
+                    [true, true],
+                    opt_approx_tol_3d,
+                    opt_angle_tol_rad,
+                    context,
+                    [handle, None],
+                )?
+            }
+            None => crate::intersect::surface_intersector::p5::do_intersection(
+                k,
+                self,
+                uv_domain,
+                &projection_surface,
+                &projection_domain,
+                [true, true],
+                opt_approx_tol_3d,
+                opt_angle_tol_rad,
+            )?,
+        };
         Ok((x.curves_3d, x.surface1_uv_curves))
     }
 }
@@ -1821,12 +1956,14 @@ fn solve_surface_cache_with<O: SolutionObject>(
 ) -> Result<SurfaceCache<O>> {
     let mut cache = match context.build_surface_cache(k, surface, handle) {
         Ok(c) => c,
-        Err(e) if e.is_unported() => return Err(e),
+        Err(e) if e.is_unported() || matches!(e, SolidError::PreparationRequired { .. }) => {
+            return Err(e);
+        }
         Err(_) => return Err(SolidError::null_pointer(OP_SOLVE)),
     };
     match cache.get_tree(k) {
         Ok(_) => Ok(cache),
-        Err(e) if e.is_unported() => Err(e),
+        Err(e) if e.is_unported() || matches!(e, SolidError::PreparationRequired { .. }) => Err(e),
         Err(_) => Err(SolidError::null_pointer(OP_SOLVE)),
     }
 }

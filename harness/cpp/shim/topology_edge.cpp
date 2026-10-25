@@ -25,6 +25,7 @@
 // would dereference null output -2 instead of calling it.
 #include "sc_shim.h"
 #include "sc_analytic_export.h"
+#include "sc_exact_curve_export.h"
 #include "support/topology_fixture.h"
 
 
@@ -35,9 +36,11 @@
 #include <SmBSplineSurface.h>
 #include <SmBrep.h>
 #include <SmContext.h>
+#include <SmCircle.h>
 #include <SmCurve.h>
 #include <SmEdge.h>
 #include <SmEdgeuse.h>
+#include <SmEllipse.h>
 #include <SmExtent1d.h>
 #include <SmExtent2d.h>
 #include <SmFace.h>
@@ -63,6 +66,9 @@
 #include <nurbs.h>
 
 #include <map>
+#include <cstring>
+#include <memory>
+#include <stdexcept>
 #include <vector>
 
 #include "sc_sm.h"
@@ -439,7 +445,7 @@ void walk(SmBrep* brep, Graph& g)
 
 // A curve block: `-1` (none), `-2` (not an SmBSplineCurve), else `type dim has_nurb
 // [n p m cpts(x y z w) knots]` and, for an SmLine, `P[3] V[3] a0 a1 scale inside_out`.
-void put_curve(std::vector<double>& o, const SmCurve* c)
+void put_curve_base(std::vector<double>& o, const SmCurve* c)
 {
     if (c == nullptr || !c->IsKindOf(SmBSplineCurve_TYPE))
     {
@@ -477,6 +483,17 @@ void put_curve(std::vector<double>& o, const SmCurve* c)
         o.push_back(l->GetLineScale());
         o.push_back(flg(l->GetInsideOut()));
     }
+}
+
+// Operation fingerprints and graph records use the same lossless curve transport.
+void put_curve(std::vector<double>& o, const SmCurve* c)
+{
+    sc_exact_curve_export::put_curve(o, c, put_curve_base);
+}
+
+void put_export_curve(std::vector<double>& o, const SmCurve* c)
+{
+    sc_exact_curve_export::put_export_curve(o, c, the_context(), put_curve_base);
 }
 
 void put_surface(std::vector<double>& o, const SmSurface* s)
@@ -620,7 +637,7 @@ void export_graph(SmBrep* brep, Graph& g, std::vector<double>& o)
         o.push_back((double)g.find(8, p->*EuPeek::vu()));
         o.push_back((double)p->GetOrientation());
         SmBSplineCurve* uv = p->*EuPeek::uv();
-        put_curve(o, uv);
+        put_export_curve(o, uv);
         o.push_back(uv ? (double)g.find(6, uv->GetOwner()) : -1.0);
         SmDropCurveFail* fail = p->*EuPeek::fail();
         o.push_back(fail ? 1.0 : 0.0);
@@ -640,7 +657,7 @@ void export_graph(SmBrep* brep, Graph& g, std::vector<double>& o)
         for (SmTopology* t : list_of(p->GetList()))
             v.push_back(g.find(6, t));
         put_list(o, v);
-        put_curve(o, p->GetCurve());
+        put_export_curve(o, p->GetCurve());
         o.push_back(p->GetCurve() && p->GetCurve()->GetOwner() == (SmObject*)p ? 1.0 : 0.0);
     }
     for (SmVertexuse* p : g.vertexuses)
@@ -698,6 +715,44 @@ SmBrep* build(Rd& rd, const char* path, SmStatus& status)
         SmPoint2d a = rd.uv(), b = rd.uv();
         SmFace* pFace = nullptr;
         status = brep->CreateFaceFromSurface(s, SmExtent2d(a, b), pFace);
+    }
+    else if (kind == 5)
+    {
+        bool circle = rd.flag();
+        SmPoint3d center = rd.vec();
+        SmVector3d x = rd.vec(), y = rd.vec();
+        double a = rd.num(), b = rd.num(), rx = rd.num(), ry = rd.num();
+        SmBoolean inside_out = rd.bflag();
+        double n0 = rd.num(), n1 = rd.num(), f0 = rd.num(), f1 = rd.num();
+        SmBoolean oob = rd.bflag();
+        double tolerance = rd.num();
+        SmOrientType orientation = (SmOrientType)rd.idx();
+        std::unique_ptr<SmEllipse> held(circle
+            ? (SmEllipse*)new (ctx) SmCircle(center, x, y, SmExtent1d(a, b), rx, 3, &ctx, NULL, inside_out)
+            : new (ctx) SmEllipse(center, x, y, SmExtent1d(a, b), rx, ry, 3, &ctx, NULL, inside_out));
+        SmEllipse* curve = held.get();
+        const SM_TYPE expected = circle ? SmCircle_TYPE : SmEllipse_TYPE;
+        if (curve->GetType() != expected)
+            throw std::runtime_error("analytic wire constructor changed its type");
+        status = curve->GetGwNurbPointer() == nullptr
+            ? SM_ERR : curve->EditParameterization(SmExtent1d(n0, n1));
+        if (status == SM_SUCCESS)
+        {
+            curve->SetOutOfBoundsEnabled(oob);
+            SmEdge* edge = nullptr;
+            SmExtent1d natural = curve->GetNaturalInterval();
+            status = brep->CreateWireEdgeFromCurve(
+                curve, SmExtent1d(natural.Evaluate(f0), natural.Evaluate(f1)), edge);
+            if (curve->GetOwner() != nullptr)
+                held.release();
+            if (status == SM_SUCCESS)
+            {
+                if (edge == nullptr || edge->GetCurve() != curve || edge->GetCurve()->GetType() != expected)
+                    throw std::runtime_error("analytic wire builder changed the curve kind");
+                edge->SetTolerance(tolerance, FALSE, FALSE);
+                edge->SetOrientation(orientation);
+            }
+        }
     }
     else if (kind == 4)
     {

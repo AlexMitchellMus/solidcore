@@ -77,15 +77,20 @@
 //!   so their additions are discarded. A handle the adapter cannot resolve keeps the
 //!   [`SolidError::Unported`] dispatch-gap deferral. An edge of another B-rep has no
 //!   use on the face: not inside, as upstream's use walk finds. **Cache history:** a
-//!   face query on the mutable path that raises a vertex or edge tolerance (a trimmed
-//!   surface cache built with the face's UV trim curves, `smsurf_GetSurfaceCache`)
-//!   defers on `surface.surface_p2`: upstream reuses an `SmTrimSrfCache` made earlier
-//!   without the face (no UV trims, no tolerance growth) when one exists, which the port
-//!   cannot know (`plan/findings.md`, "classification face queries through
-//!   `ClassGeometryMut`").
-//! - **`SmFace::FindVertexSector` / `PointClassify`** still return
-//!   [`SolidError::Unported`] (`topology.face_p4`, `query.face_p2`) on both paths;
-//!   wiring them exposes disagreements that are being fixed separately (findings).
+//!   face query on the mutable path may build the face surface's trimmed surface cache
+//!   with the face (`smsurf_GetSurfaceCache`), whose UV trim curves raise vertex and
+//!   edge tolerances, or reuse the one the surface already holds (made earlier, with or
+//!   without the face). The surface's cache slot keeps that history
+//!   ([`crate::query::face::p2::face_surface_cache`]), so the query does what upstream
+//!   does and the raised tolerances stay on the B-rep (`plan/findings.md`, "trimmed
+//!   surface cache history: tolerance-growth deferral removed").
+//! - **`SmFace::FindVertexSector`** runs on the mutable path only; the read-only
+//!   path returns [`SolidError::Unported`] (`topology.face_p4`).
+//! - **`SmFace::PointClassify`** ([`crate::query::face::p2::point_classify`]) runs on
+//!   the resolved B-rep on the mutable path, so the UV trim curves its loop walk makes
+//!   stay there. The read-only path runs the same classification over the unchanged
+//!   topology ([`crate::query::face::p2::point_classify_prepared`], no copy): a loop
+//!   walk that needs a UV trim curve made returns [`SolidError::Unported`].
 //! - **Callees in units not ported yet** return [`SolidError::Unported`]: the topology
 //!   zone tolerances of point classifications (through `intersect.point_class`).
 //! - **Recursion.** None.
@@ -111,6 +116,7 @@ use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::query::face::p1 as qf1;
+use crate::query::face::p2 as qf2;
 use crate::surface::surface::Surface;
 use crate::topology::{edge, vertex, Brep, EdgeId, FaceId, VertexId};
 
@@ -894,8 +900,8 @@ impl<O: ClassObject> CurveClassification<O> {
     /// [`SolidError::InvalidInput`] for `index >= size()` or a missing curve where it is
     /// used; `SM_ERR_NULL_POINTER` for a vertex or edge end without its object; those
     /// of the curve evaluations and face queries; [`SolidError::Unported`] for
-    /// `FindVertexSector` and `PointClassify` (units `topology.face_p4`,
-    /// `query.face_p2`) and for face or edge handles the adapter cannot resolve.
+    /// `FindVertexSector` (unit `topology.face_p4`), for a `PointClassify` that needs
+    /// a UV trim curve made, and for face or edge handles the adapter cannot resolve.
     pub fn classify_face_interval(
         &mut self,
         k: &Kernel,
@@ -921,7 +927,7 @@ impl<O: ClassObject> CurveClassification<O> {
 
     /// [`CurveClassification::classify_face_interval`] with mutable access to the
     /// B-rep behind the face handle: the face queries (`SmFace::EdgeCurveOnClassify`,
-    /// `Point3DClassify`; `FindVertexSector` and `PointClassify` still defer) run on the B-rep that
+    /// `Point3DClassify`, `FindVertexSector`, `PointClassify`) run on the B-rep that
     /// [`ClassGeometryMut::topology_entity_mut`] resolves the face handle to, so the
     /// UV trim curves and caches they make stay there, as upstream's `const` members
     /// leave them on the face's B-rep.
@@ -1989,8 +1995,9 @@ trait FilletAccess<O: ClassObject> {
 }
 
 /// A read-only adapter: `EdgeCurveOnClassify` and `Point3DClassify` run on a copy of
-/// the face's B-rep (#614); `FindVertexSector` and `PointClassify` defer until the
-/// caller gives mutable access ([`CurveClassification::classify_face_interval_mut`]).
+/// the face's B-rep (#614); `PointClassify` runs over the unchanged topology (a UV trim
+/// it would make defers); `FindVertexSector` defers until the caller gives mutable
+/// access ([`CurveClassification::classify_face_interval_mut`]).
 struct ReadOnly<'g, G>(&'g G);
 
 impl<O: ClassObject, G: ClassGeometry<O>> FilletAccess<O> for ReadOnly<'_, G> {
@@ -2074,19 +2081,34 @@ impl<O: ClassObject, G: ClassGeometry<O>> FaceQueries<O> for ReadOnly<'_, G> {
     }
     fn point_classify(
         &mut self,
-        _k: &Kernel,
-        _face: O,
-        _uv: Point2,
-        _src_zone_tol_3d: f64,
-        _do_xsects: bool,
-        _use_uv: bool,
-        _point_class: &mut PointClassification<O>,
+        k: &Kernel,
+        face: O,
+        uv: Point2,
+        src_zone_tol_3d: f64,
+        do_xsects: bool,
+        use_uv: bool,
+        point_class: &mut PointClassification<O>,
     ) -> Result<()> {
-        // UNPORTED(query.face_p2): SmFace::PointClassify
-        Err(SolidError::unported(
-            "SmFace::PointClassify",
-            "query.face_p2",
-        ))
+        let geometry = self.0;
+        let (b, f) = resolve_face(geometry, face).ok_or_else(unresolved_uv)?;
+        let mut pc = point_class.map_objects(&mut |o| {
+            geometry
+                .topology_entity(o)
+                .map(|(_, e)| e)
+                .ok_or_else(unresolved_uv)
+        })?;
+        // read-only topology: a UV trim the walk would create is `Unported`
+        let r = qf2::point_classify_prepared(
+            k,
+            b,
+            f,
+            uv,
+            &mut pc,
+            point_classify_options(src_zone_tol_3d, do_xsects, use_uv),
+        );
+        *point_class =
+            pc.map_objects(&mut |e| geometry.topology_handle_in(b, e).ok_or_else(unresolved_uv))?;
+        r
     }
     fn point_3d_classify(
         &mut self,
@@ -2164,7 +2186,6 @@ impl<O: ClassObject, G: ClassGeometryMut<O>> FaceQueries<O> for Mutable<'_, G> {
                 uv_space_okay,
             );
         };
-        let before = Tolerances::of(b);
         let r = find_vertex_sector_in(
             k,
             b,
@@ -2178,7 +2199,6 @@ impl<O: ClassObject, G: ClassGeometryMut<O>> FaceQueries<O> for Mutable<'_, G> {
             src_zone_tol_3d,
             uv_space_okay,
         )?;
-        before.check_unchanged(b, "SmFace::FindVertexSector")?;
         Ok(r)
     }
     fn edge_curve_on_classify(
@@ -2221,7 +2241,6 @@ impl<O: ClassObject, G: ClassGeometryMut<O>> FaceQueries<O> for Mutable<'_, G> {
                 face_index,
             );
         };
-        let before = Tolerances::of(b);
         let r = edge_curve_on_classify_in(
             k,
             b,
@@ -2235,7 +2254,6 @@ impl<O: ClassObject, G: ClassGeometryMut<O>> FaceQueries<O> for Mutable<'_, G> {
             uv_space_okay,
             face_index,
         )?;
-        before.check_unchanged(b, "SmFace::EdgeCurveOnClassify")?;
         Ok(r)
     }
     fn point_classify(
@@ -2248,16 +2266,37 @@ impl<O: ClassObject, G: ClassGeometryMut<O>> FaceQueries<O> for Mutable<'_, G> {
         use_uv: bool,
         point_class: &mut PointClassification<O>,
     ) -> Result<()> {
-        // (not yet wired on the mutable path: the read-only deferral)
-        ReadOnly(&*self.0).point_classify(
+        resolve_face(&*self.0, face).ok_or_else(unresolved_uv)?;
+        let mut pc = point_class.map_objects(&mut |o| {
+            self.0
+                .topology_entity(o)
+                .map(|(_, e)| e)
+                .ok_or_else(unresolved_uv)
+        })?;
+        let Some((b, f)) = resolve_face_mut(self.0, face) else {
+            return ReadOnly(&*self.0).point_classify(
+                k,
+                face,
+                uv,
+                src_zone_tol_3d,
+                do_xsects,
+                use_uv,
+                point_class,
+            );
+        };
+        let r = qf2::point_classify(
             k,
-            face,
+            b,
+            f,
             uv,
-            src_zone_tol_3d,
-            do_xsects,
-            use_uv,
-            point_class,
-        )
+            &mut pc,
+            point_classify_options(src_zone_tol_3d, do_xsects, use_uv),
+        );
+        let geometry = &*self.0;
+        let (b, _) = resolve_face(geometry, face).ok_or_else(unresolved_uv)?;
+        *point_class =
+            pc.map_objects(&mut |e| geometry.topology_handle_in(b, e).ok_or_else(unresolved_uv))?;
+        r
     }
     fn point_3d_classify(
         &mut self,
@@ -2285,7 +2324,6 @@ impl<O: ClassObject, G: ClassGeometryMut<O>> FaceQueries<O> for Mutable<'_, G> {
                 point_class,
             );
         };
-        let before = Tolerances::of(b);
         let r = qf1::point_3d_classify(
             k,
             b,
@@ -2296,7 +2334,6 @@ impl<O: ClassObject, G: ClassGeometryMut<O>> FaceQueries<O> for Mutable<'_, G> {
             &mut pc,
             qf1::Point3dClassifyOptions::default(),
         );
-        before.check_unchanged(b, "SmFace::Point3DClassify")?;
         let geometry = &*self.0;
         let (b, _) = resolve_face(geometry, face).ok_or_else(unresolved_3d)?;
         *point_class =
@@ -2330,50 +2367,6 @@ impl<O: ClassObject, G: ClassGeometryMut<O>> FilletAccess<O> for Mutable<'_, G> 
     }
 }
 
-/// The vertex and edge zone tolerances of a B-rep, taken before a face query of the
-/// mutable path.
-///
-/// A face query may build the face surface's trimmed surface cache
-/// (`smsurf_GetSurfaceCache`), whose `CreateUVTrimCurves` raises the tolerances of
-/// edges far from the surface. Upstream does that only when the surface has no
-/// trimmed cache yet: an `SmTrimSrfCache` made earlier while the surface had no
-/// owner face (no UV trim curves) is reused as is. The port keeps no object caches,
-/// so whether upstream grew the tolerances here depends on cache history it cannot
-/// know; a query that grew one defers (module Deviations).
-struct Tolerances {
-    vertices: Vec<f64>,
-    edges: Vec<f64>,
-}
-
-impl Tolerances {
-    fn of(b: &Brep) -> Self {
-        Self {
-            vertices: b.vertices().iter().map(|(_, v)| v.tolerance).collect(),
-            edges: b.edges().iter().map(|(_, e)| e.tolerance).collect(),
-        }
-    }
-
-    /// `Unported` when face query `query` raised a tolerance of `b`.
-    fn check_unchanged(&self, b: &Brep, query: &'static str) -> Result<()> {
-        let after = Self::of(b);
-        let grew = |before: &[f64], after: &[f64]| {
-            after
-                .iter()
-                .zip(before.iter().chain(core::iter::repeat(&f64::NEG_INFINITY)))
-                .any(|(a, b)| a > b)
-        };
-        if grew(&self.vertices, &after.vertices) || grew(&self.edges, &after.edges) {
-            let _ = query;
-            // UNPORTED(surface.surface_p2): smsurf_GetSurfaceCache object cache history
-            return Err(SolidError::unported(
-                "smsurf_GetSurfaceCache (trimmed surface cache history: tolerance growth)",
-                "surface.surface_p2",
-            ));
-        }
-        Ok(())
-    }
-}
-
 /// The B-rep and face behind face handle `face` ([`ClassGeometry::topology_entity`]);
 /// `None` for an adapter that cannot resolve it.
 fn resolve_face<O: ClassObject>(
@@ -2386,12 +2379,13 @@ fn resolve_face<O: ClassObject>(
     }
 }
 
-/// [`resolve_face`], mutably ([`ClassGeometryMut::topology_entity_mut`]).
+/// [`resolve_face`], mutably for the classification queries
+/// ([`ClassGeometryMut::topology_entity_for_query`]).
 fn resolve_face_mut<O: ClassObject>(
     geometry: &mut impl ClassGeometryMut<O>,
     face: O,
 ) -> Option<(&mut Brep, FaceId)> {
-    match geometry.topology_entity_mut(face)? {
+    match geometry.topology_entity_for_query(face)? {
         (b, EntityRef::Face(f)) => Some((b, f)),
         _ => None,
     }
@@ -2513,6 +2507,29 @@ fn unresolved_3d() -> SolidError {
     // DISPATCH GAP: the adapter cannot resolve the face handle to its `Brep` face
     // (`ClassGeometry::topology_entity`) or a classified entity back to a handle.
     SolidError::unported("SmFace::Point3DClassify", "query.face_p1")
+}
+
+/// The error of a `PointClassify` whose face or classified entity the adapter cannot
+/// resolve.
+fn unresolved_uv() -> SolidError {
+    // DISPATCH GAP: the adapter cannot resolve the face handle to its `Brep` face
+    // (`ClassGeometry::topology_entity`) or a classified entity back to a handle.
+    SolidError::unported("SmFace::PointClassify", "query.face_p2")
+}
+
+/// `PointClassify(uv, sSrcZoneTol3d, bDoXSects, bUseUV, pc)`'s arguments (the others
+/// at their defaults).
+fn point_classify_options(
+    src_zone_tol_3d: f64,
+    do_xsects: bool,
+    use_uv: bool,
+) -> qf2::PointClassifyOptions<'static> {
+    qf2::PointClassifyOptions {
+        src_zone_tol_3d,
+        do_boundary_intersections: do_xsects,
+        use_uv_classification: use_uv,
+        ..qf2::PointClassifyOptions::default()
+    }
 }
 
 /// [`qf1::point_3d_classify`] of face `f` on `work` (the face's B-rep `b`, or a copy
