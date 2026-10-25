@@ -844,6 +844,9 @@ pub struct CombineContext<'a, O> {
     pub curve_handle: Option<O>,
     /// The surface's handle (upstream `&crSurface`).
     pub surface_handle: Option<O>,
+    /// The tolerance of the curve's owning edge (`pCurveOwner->GetTolerance()` of
+    /// `sm_ClassifyCurveSurfaceXSectPoint`), when the caller resolves it.
+    pub edge_tolerance: Option<f64>,
 }
 
 impl<O> Default for CombineContext<'_, O> {
@@ -853,6 +856,7 @@ impl<O> Default for CombineContext<'_, O> {
             surface_cache: None,
             curve_handle: None,
             surface_handle: None,
+            edge_tolerance: None,
         }
     }
 }
@@ -925,18 +929,27 @@ impl<O: SolutionObject> CombineContext<'_, O> {
 
 /// The point classification of the combination: whether `solution`'s start point is
 /// classified `SM_TC_COINCIDENT` (status ignored upstream).
+#[allow(clippy::too_many_arguments)]
 fn is_coincident_point<O>(
     k: &Kernel,
     surface: &Surface,
     uv_domain: &Extent2d,
     curve: &Curve,
     interval: &Extent1d,
+    edge_tolerance: Option<f64>,
     solution: &Solution<O>,
 ) -> Result<bool> {
     let uv = Point2::new(p(&solution.start, 1)?, p(&solution.start, 2)?);
     let t = p(&solution.start, 0)?;
-    let class = ignored(classify_curve_surface_xsect_point(
-        k, surface, uv_domain, curve, interval, uv, t,
+    let class = ignored(p4::classify_curve_surface_xsect_point_with(
+        k,
+        surface,
+        uv_domain,
+        curve,
+        interval,
+        uv,
+        t,
+        edge_tolerance,
     ))?;
     Ok(class.is_some_and(|c| c.point_type == TsectCurveType::Coincident))
 }
@@ -1010,7 +1023,15 @@ pub fn global_curve_intersect_combine_solutions<O: SolutionObject>(
         } else {
             last_interval = NO_INDEX;
             last_point = 0;
-            if is_coincident_point(k, surface, uv_domain, curve, interval, &first)? {
+            if is_coincident_point(
+                k,
+                surface,
+                uv_domain,
+                curve,
+                interval,
+                ctx.edge_tolerance,
+                &first,
+            )? {
                 found_coincidence = true;
             }
         }
@@ -1141,7 +1162,15 @@ pub fn global_curve_intersect_combine_solutions<O: SolutionObject>(
 
                 // see if points bound a coincident segment region (the first solution)
                 let first = solutions.get_at(0)?;
-                if is_coincident_point(k, surface, uv_domain, curve, interval, &first)? {
+                if is_coincident_point(
+                    k,
+                    surface,
+                    uv_domain,
+                    curve,
+                    interval,
+                    ctx.edge_tolerance,
+                    &first,
+                )? {
                     found_coincidence = true;
                 }
             }

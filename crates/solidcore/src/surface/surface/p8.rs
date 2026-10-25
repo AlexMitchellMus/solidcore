@@ -2323,6 +2323,22 @@ impl Surface {
         gs.curve = Some(curve);
         gs.surface_cache = Some(surface_cache);
         gs.face_queries = face_queries;
+        if context.is_some() {
+            // a face-aware caller's handles name its own objects: their domains are
+            // the solve's operands
+            gs.operands = Some(super::p1::SolveOperands {
+                operands: [
+                    curve_handle
+                        .map(|h| (h, super::p1::OperandDomain::Curve(curve.natural_interval()))),
+                    surface_handle.map(|h| {
+                        (
+                            h,
+                            super::p1::OperandDomain::Surface(self.natural_uv_domain()),
+                        )
+                    }),
+                ],
+            });
+        }
 
         // traverse curve and surface sub-division trees
         // for each sub-division leaf pair that has intersecting boundaries
@@ -2352,6 +2368,7 @@ impl Surface {
                 surface_cache: Some(surface_cache),
                 curve_handle,
                 surface_handle,
+                edge_tolerance: super::p9::curve_edge_tolerance(curve, curve_handle, face_queries)?,
             },
             &mut sols,
         ))?;
