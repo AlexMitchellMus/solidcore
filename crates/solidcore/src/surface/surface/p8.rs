@@ -38,10 +38,10 @@
 //! run when the solve fetches its cache (`smsurf_GetSurfaceCache`), so the tree is
 //! the face's and the coincident traces share it. The
 //! optional `SmDerivSurfDefinition` of `CreateBlendSurface` is copied, so its caller
-//! does not see the fields upstream overwrites. `CreateBlendSurface` returns `SM_ERR`
-//! as soon as one of the sample evaluations fails (upstream ignores the status, goes
-//! on with the partial arrays and fails later, except when both sets of samples fail
-//! at the same index). `CreateBlendSurface` of a curve that is not a B-spline kind
+//! does not see the fields upstream overwrites. `CreateBlendSurface` retains the
+//! sampler's partial, zero-filled arrays when ignoring an ordinary sampling error,
+//! as upstream does; `Unported` and count-safety failures still propagate.
+//! `CreateBlendSurface` of a curve that is not a B-spline kind
 //! returns `InvalidInput` (upstream signals the error and casts anyway).
 //! `SmSPGlobalSolver::LocalSolve` returns `InvalidInput` when the original surface of
 //! the leaf node is not the surface of the cache the solver was given (upstream reads
@@ -52,7 +52,8 @@
 //! status. Recursion: none.
 
 use super::p1::{
-    get_surface_cache, is_node_valid, is_point_valid_with as is_point_valid, SurfaceSolveContext,
+    get_surface_cache, is_node_valid, is_point_valid_with as is_point_valid, OperandDomain,
+    SolveOperands, SurfaceSolveContext,
 };
 use super::p2::{
     original_surface, CrossSectionValues, DerivSurfDefinition, LsiGlobalSolver, Surface,
@@ -852,7 +853,7 @@ impl Surface {
     /// # Errors
     ///
     /// `InvalidInput` for a curve that is not a B-spline kind; `SM_ERR` for an invalid
-    /// definition, a failing sample evaluation or a failing skin;
+    /// definition or a failing skin; count-safety failures from the sampler;
     /// [`SolidError::Unported`] from the evaluations (`surface.surface_p5`,
     /// `DropPoint`).
     #[allow(clippy::too_many_arguments)]
@@ -914,7 +915,7 @@ impl Surface {
 
         // Get Sample Values from Face1/Edge1 using edge2 as tangentReference
         def.tangent_reference = Some(curve2);
-        let start = def.sample_values(
+        let (start, start_status) = def.sample_values_with_status(
             k,
             self,
             curve1,
@@ -925,10 +926,13 @@ impl Surface {
                 want_higher,
             },
         )?;
+        ignore_status(start_status)?;
 
         // Get Sample Values from Face2/Edge2 using edge1 as tangentReference
         def.tangent_reference = Some(curve1);
-        let end = def.sample_values(
+        // Native reuses sParams, but GetSampleValues first calls ReSet, which
+        // zeroes its previous contents. The independent end.params matches that.
+        let (end, end_status) = def.sample_values_with_status(
             k,
             surface2,
             curve2,
@@ -939,6 +943,7 @@ impl Surface {
                 want_higher,
             },
         )?;
+        ignore_status(end_status)?;
 
         // use samples to build cross-section curves that capture the G1/G2/G3 shapes
         // (the status is not checked upstream; the curves built before a failure stay in
@@ -2365,22 +2370,20 @@ impl Surface {
         gs.curve = Some(curve);
         gs.surface_cache = Some(surface_cache);
         gs.face_queries = face_queries;
-        if context.is_some() {
-            // a face-aware caller's handles name its own objects: their domains are
-            // the solve's operands
-            gs.operands = Some(super::p1::SolveOperands {
-                operands: [
-                    curve_handle
-                        .map(|h| (h, super::p1::OperandDomain::Curve(curve.natural_interval()))),
-                    surface_handle.map(|h| {
-                        (
-                            h,
-                            super::p1::OperandDomain::Surface(self.natural_uv_domain()),
-                        )
-                    }),
-                ],
-            });
-        }
+        // the solutions name the trees' owners (LocalSolve: the curve, sm_GetOriginalSurface)
+        gs.operands = Some(SolveOperands {
+            operands: [
+                curve_tree
+                    .owner_object()?
+                    .map(|h| (h, OperandDomain::Curve(curve.natural_interval()))),
+                surface_tree.owner_object()?.map(|h| {
+                    (
+                        h,
+                        OperandDomain::Surface(surface_cache.surface().natural_uv_domain()),
+                    )
+                }),
+            ],
+        });
 
         // traverse curve and surface sub-division trees
         // for each sub-division leaf pair that has intersecting boundaries
@@ -3626,5 +3629,54 @@ mod tests {
             r.is_ok() || matches!(&r, Err(e) if e.is_unported()),
             "{r:?}"
         );
+    }
+
+    /// Opaque solution handles, as a B-rep's: they cannot reach their geometry.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Opaque {
+        Curve,
+        Surface,
+    }
+
+    impl SolutionObject for Opaque {
+        fn kind(&self) -> crate::geom::solution_array::ObjectKind {
+            match self {
+                Self::Curve => crate::geom::solution_array::ObjectKind::Curve,
+                Self::Surface => crate::geom::solution_array::ObjectKind::Surface,
+            }
+        }
+    }
+
+    #[test]
+    fn tree_intersection_compares_solutions_of_opaque_handles() {
+        // A cubic dipping through the bilinear patch crosses it twice: the tree solve
+        // compares the two solutions (IdenticalSolutions), whose parameter domains come
+        // from the solve's curve and surface, not from the handles.
+        let k = Kernel::default();
+        let s = bilinear();
+        let pts =
+            [(0.5, 1.0), (0.8, -1.0), (1.2, -1.0), (1.5, 1.0)].map(|(x, z)| Vec3::new(x, 1.5, z));
+        let c = Curve::from(crate::primitive::api_curves::create_curve(&pts).unwrap());
+        let sols = s
+            .global_curve_intersect(
+                &k,
+                [Opaque::Curve, Opaque::Surface],
+                &s.natural_uv_domain(),
+                &c,
+                &c.natural_interval(),
+                1e-6,
+            )
+            .unwrap();
+        assert_eq!(sols.as_slice().len(), 2);
+        for sol in sols.as_slice() {
+            let t = sol.start.param(0).unwrap();
+            let uv = Point2::new(sol.start.param(1).unwrap(), sol.start.param(2).unwrap());
+            let on_curve = c.evaluate_point(&k, t).unwrap();
+            let on_surface = s.evaluate_point(&k, uv).unwrap();
+            assert!(
+                on_curve.closer_than(1e-6, on_surface),
+                "{on_curve:?} {on_surface:?}"
+            );
+        }
     }
 }
