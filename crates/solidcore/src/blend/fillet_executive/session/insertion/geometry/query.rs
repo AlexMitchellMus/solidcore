@@ -1,6 +1,9 @@
 //! Body-qualified handles for an actual owning-face query.
 
-use super::*;
+use super::{
+    invalid, Brep, BrepId, ClassGeometry, Curve, EntityRef, FaceId, FilletBody, FilletObject,
+    InsertionBody, InsertionGeometry, ObjectRef, Point3, Result, Surface, Volume,
+};
 use crate::intersect::curve_class::CurveClassification;
 use crate::query::face::p2::{
     curve_on_classify_cached, CurveOnClassifyCache, CurveOnClassifyObjects,
