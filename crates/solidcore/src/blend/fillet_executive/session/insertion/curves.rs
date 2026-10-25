@@ -7,13 +7,23 @@ use crate::{Result, SolidError};
 
 /// An issued identity and its live operation-owned Curve slot.
 /// Valid only while the issuing store and object remain alive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CurveBinding {
     slot: usize,
     identity: ObjectRef,
     // Last only to keep valid-store ordering determined by slot and issued identity.
     // Equality checks the actual live object; expired-store handles are invalid.
     instance: usize,
+}
+
+impl std::fmt::Debug for CurveBinding {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CurveBinding")
+            .field("slot", &self.slot)
+            .field("identity", &self.identity)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Curves retained for the whole insertion operation, including partial failures.
