@@ -87,6 +87,7 @@ use crate::intersect::topology_solver::p1::TopologySolver;
 use crate::intersect::topology_solver::p2::TopologySolveOptions;
 use crate::kernel::Kernel;
 use crate::math::{Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI};
+use crate::nurbs::b_spline_surface_n_lib::p1::OffsetParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
 use crate::offset::offset_geometry_creation::{OffsetGeometryCreation, SsiData};
@@ -523,32 +524,93 @@ impl OffsetExecutive {
 
     /// Replaces implicit offset surfaces with approximations (`ReplaceImplicitOffsets`).
     /// The unconditional initial shrink is `topology.brep_p4`'s `ShrinkGeometry`.
+    ///
+    /// Every face with an `SmOffsetSurface` gets a cubic approximation of the offset of
+    /// its extended (else its own) base, which must be a B-spline surface, within
+    /// `approximation_tol_3d`. All approximations are built before any face is
+    /// changed; each face is then notified (`PRE_EDIT`), given the new surface's
+    /// natural domain and the surface (`SmBrep::ReplaceSurface`, old surface to the
+    /// deleted list, UV trim curves rebuilt) and notified again (`POST_EDIT`), in
+    /// face order. `notifications` must be keyed by `brep`'s identities.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR` for a base that is not a B-spline surface; those of the approximation
+    /// and of `ReplaceSurface` (`SER`). The notifications' statuses are not checked.
     pub fn replace_implicit_offsets(
-        kernel: &Kernel,
+        kernel: &mut Kernel,
         brep: &mut Brep,
-        _approximation_tol_3d: f64,
+        approximation_tol_3d: f64,
+        notifications: &mut NotificationStores<'_>,
     ) -> Result<()> {
         // remove curve and surface portions not used by edges and faces (status
         // ignored upstream)
         ignore_status(shrink_geometry(kernel, brep))?;
-        // Continuation cpp:1978–2035: enumerate offset surfaces, approximate their
-        // extended-or-original B-spline bases, then notify/replace each surface.
-        // A B-rep without offset surfaces leaves both loops empty (SM_SUCCESS); with
-        // one, the replacement loop's SmBrep::ReplaceSurface is not ported, so the
-        // continuation defers before building any approximation.
+
+        // for every face
+        let mut fix = Vec::new();
         for f in bp1::faces(brep, None)? {
-            let is_offset = brep
-                .face(f)?
-                .surface
-                .as_ref()
-                .is_some_and(|s| matches!(s.kind(), SurfaceKind::OffsetSurface(_)));
-            if is_offset {
-                // UNPORTED(topology.brep_p2): SmBrep::ReplaceSurface
-                return Err(SolidError::unported(
-                    "SmBrep::ReplaceSurface",
-                    "topology.brep_p2",
-                ));
-            }
+            // skip non SmOffsetSurfaces
+            let Some(SurfaceKind::OffsetSurface(offset)) =
+                brep.face(f)?.surface.as_ref().map(Surface::kind)
+            else {
+                continue;
+            };
+            // get SmOffsetSurface base (use extended surface if there is one)
+            let base = offset
+                .extended_base_surface()
+                .unwrap_or_else(|| offset.base_surface());
+            // make sure base surface is an SmBSplineSurface
+            let SurfaceKind::BSpline(nurb) = base.kind() else {
+                return Err(SolidError::sm_err(OP));
+            };
+            // use NLIB function to build offset surface approximation
+            let approximation = nurb.approximate_offset_surface(
+                offset.offset_distance(),
+                approximation_tol_3d,
+                OffsetParamType::Inherited,
+            )?;
+            // remember face/surface pair
+            fix.push((f, Surface::from(approximation)));
+        }
+
+        // for every face that had an approximate surface built for an exact offset
+        // surface
+        let mut state = NotifyState::from_kernel_stores(notifications);
+        for (f, new_surface) in fix {
+            state.with_kernel_env(kernel, |kernel, env| {
+                let face_ref = (env.key_of)(EntityRef::Face(f));
+                // SM_NO_GET_BREP is NULL in the pinned reference
+                ignore_status(face3::notify(
+                    brep,
+                    f,
+                    env,
+                    None,
+                    NotifyOperation::PreEdit,
+                    [Some(face_ref), None, None],
+                ))?;
+                let domain = new_surface.natural_uv_domain();
+                crate::topology::face::p2::set_uv_domain(brep, f, &domain)?;
+                // swap the approx surface for the exact offset surface
+                crate::topology::brep::p2::replace_surface(
+                    kernel,
+                    brep,
+                    env,
+                    f,
+                    new_surface,
+                    face_ref,
+                    crate::topology::brep::p2::OldSurface::AddToDeletedList,
+                    true,
+                )?;
+                ignore_status(face3::notify(
+                    brep,
+                    f,
+                    env,
+                    None,
+                    NotifyOperation::PostEdit,
+                    [Some(face_ref), None, None],
+                ))
+            })?;
         }
         Ok(())
     }
@@ -3285,8 +3347,84 @@ mod tests {
         assert!(original.editing_enabled());
         // ShrinkGeometry trims the two edge curves; without offset surfaces the
         // continuation's loops are empty (SM_SUCCESS)
-        OffsetExecutive::replace_implicit_offsets(&kernel, &mut result, 1.0e-6).unwrap();
+        let (mut records, mut attributes) = (BTreeMap::new(), AttributeStore::default());
+        OffsetExecutive::replace_implicit_offsets(
+            &mut Kernel::default(),
+            &mut result,
+            1.0e-6,
+            &mut NotificationStores {
+                records: &mut records,
+                attributes: &mut attributes,
+                key_of: &loopuse::notify_ref,
+            },
+        )
+        .unwrap();
         assert_eq!(result.edges().len(), 2);
+    }
+
+    #[test]
+    fn implicit_offsets_are_replaced_by_approximations_of_their_base() {
+        use crate::surface::offset_surface::OffsetSurface;
+        let patch = || {
+            BSplineSurface::create_bilinear_surface(
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(1.0, 1.0, 0.0),
+            )
+            .unwrap()
+        };
+        let kernel = Kernel::default();
+        let offset = OffsetSurface::new(&kernel, 0.25, patch().into(), true, 0).unwrap();
+        let mut brep = Brep::new();
+        let (plain, _) = add_face(&mut brep, plane(0.0));
+        let (offset_face, _) = add_face(&mut brep, Surface::from(offset));
+        let (mut records, mut attributes) = (BTreeMap::new(), AttributeStore::default());
+        let mut kernel = kernel;
+        OffsetExecutive::replace_implicit_offsets(
+            &mut kernel,
+            &mut brep,
+            1.0e-6,
+            &mut NotificationStores {
+                records: &mut records,
+                attributes: &mut attributes,
+                key_of: &loopuse::notify_ref,
+            },
+        )
+        .unwrap();
+        // the plane is untouched; the offset face gets the approximation of its base
+        // offset (the bilinear patch at z = 0.25) and that surface's natural domain
+        assert!(matches!(
+            brep.face(plain).unwrap().surface.as_ref().unwrap().kind(),
+            SurfaceKind::Plane(_)
+        ));
+        let face = brep.face(offset_face).unwrap();
+        let surface = face.surface.as_ref().unwrap();
+        assert!(matches!(surface.kind(), SurfaceKind::BSpline(_)));
+        assert_eq!(face.uv_domain, surface.natural_uv_domain());
+        let p = surface
+            .evaluate_point(&kernel, Vec2::new(0.5, 0.5))
+            .unwrap();
+        assert!((p.z - 0.25).abs() < 1.0e-6, "{p:?}");
+
+        // a base that is not a B-spline surface is SM_ERR
+        let offset = OffsetSurface::new(&kernel, 0.25, plane(0.0), true, 0).unwrap();
+        let mut brep = Brep::new();
+        add_face(&mut brep, Surface::from(offset));
+        let status = OffsetExecutive::replace_implicit_offsets(
+            &mut kernel,
+            &mut brep,
+            1.0e-6,
+            &mut NotificationStores {
+                records: &mut records,
+                attributes: &mut attributes,
+                key_of: &loopuse::notify_ref,
+            },
+        );
+        assert!(
+            matches!(status, Err(SolidError::Upstream { code: 1001, .. })),
+            "{status:?}"
+        );
     }
 
     #[test]
