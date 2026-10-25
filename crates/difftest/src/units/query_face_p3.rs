@@ -350,7 +350,10 @@ fn export(i: &Inputs) -> Result<Result<(Brep, Resolved), Output>, HarnessError> 
     if rd.num()? != 0.0 {
         return Ok(Err(Output::err("rejected")));
     }
-    let (b, exact) = import(graph)?;
+    let (mut b, exact) = import(graph)?;
+    // the cached gaps the export only marks as set get their values (unit
+    // `query.face_p4`'s runner does the same)
+    super::topology_vertexuse::refill_gaps(&mut b);
     let face = FaceId::from_index(rd.index()?);
     let resolved = match &i.op {
         OpIn::Tight | OpIn::Internal => {
