@@ -1,6 +1,7 @@
 //! Actual executive stores lent to intersection insertion. No second intersector,
 //! solver table or attribute store is constructed here.
 
+pub mod curves;
 pub mod geometry;
 
 use super::{
@@ -19,6 +20,8 @@ use std::collections::BTreeMap;
 pub struct InsertionState<'a> {
     /// Actual inherited intersector.
     pub intersector: &'a mut TopologyIntersector<FilletObject>,
+    /// Actual operation-owned curve copies retained across merge failures.
+    pub curves: &'a mut curves::InsertionCurves,
     /// Actual standalone-reference edge attribute.
     pub edge_attribute: AttributeHandle,
     /// Actual attribute users and values.
@@ -65,6 +68,7 @@ impl FilletSession<'_> {
             .ok_or_else(|| invalid("intermediate body is not allocated"))?;
         Ok(InsertionState {
             intersector: &mut self.executive.intersector,
+            curves: &mut self.objects.insertion_curves,
             edge_attribute,
             attributes: &mut self.objects.attributes,
             notification_records: &mut self.objects.notification_records,

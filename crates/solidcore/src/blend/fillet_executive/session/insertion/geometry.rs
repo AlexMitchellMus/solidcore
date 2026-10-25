@@ -1,8 +1,10 @@
 //! Actual target/intermediate topology and pseudo-curve bindings for insertion.
 
 use super::super::{FilletBody, FilletObject};
+use super::curves::InsertionCurves;
 use crate::blend::fillet_geom::p1::{FilletBrep, FilletGeomId, FilletSurfaceStorage};
 use crate::curve::curve::Curve;
+use crate::geom::attribute::AttributeStore;
 use crate::geom::attribute::ObjectKey;
 use crate::geom::context::Context;
 use crate::geom::object::ObjectRef;
@@ -13,8 +15,10 @@ use crate::surface::surface::Surface;
 use crate::surface::volume::Volume;
 use crate::topology::brep::p3::topology_ref;
 use crate::topology::proto_topology::p1::{ProtoGeometry, ProtoTopology};
+use crate::topology::topology::Topology;
 use crate::topology::{Brep, BrepId, FaceId};
 use crate::{EntityRef, Result, SolidError};
+use std::collections::BTreeMap;
 
 const OP: &str = "blend::fillet_executive::insertion_geometry";
 fn invalid(reason: &'static str) -> SolidError {
@@ -63,6 +67,18 @@ pub struct InsertionGeometry<'a> {
     target: &'a mut Brep,
     pseudo: &'a mut FilletBrep,
     intermediate: &'a mut Brep,
+    curves: Option<&'a mut InsertionCurves>,
+    notifications: Option<InsertionNotifications<'a>>,
+}
+
+/// Actual retained edit stores and the already lent notification context.
+pub struct InsertionNotifications<'a> {
+    /// Actual topology notification records.
+    pub records: &'a mut BTreeMap<ObjectKey, Topology>,
+    /// Actual attributes, including executive E and active face markers.
+    pub attributes: &'a mut AttributeStore,
+    /// Actual context lease, supplied by `with_lent_context`.
+    pub context: &'a mut Context,
 }
 impl<'a> InsertionGeometry<'a> {
     /// Borrow the actual Session bodies in their established identity domains.
@@ -77,6 +93,8 @@ impl<'a> InsertionGeometry<'a> {
             target,
             pseudo,
             intermediate,
+            curves: None,
+            notifications: None,
         };
         let mut identities = Vec::new();
         for role in [
@@ -91,6 +109,65 @@ impl<'a> InsertionGeometry<'a> {
             identities.push(identity);
         }
         Ok(view)
+    }
+    /// Supply actual operation-owned curves and retained notification stores.
+    /// The context must be the real lease used by this Session's edits.
+    #[must_use]
+    pub fn with_notifications(
+        mut self,
+        curves: &'a mut InsertionCurves,
+        notifications: InsertionNotifications<'a>,
+    ) -> Self {
+        self.curves = Some(curves);
+        self.notifications = Some(notifications);
+        self
+    }
+    /// Retain a real curve copy and return its actual issued operation handle.
+    /// # Errors
+    /// Missing actual edit stores or identity issuance failure.
+    pub fn insert_curve_copy(&mut self, curve: Curve) -> Result<FilletObject> {
+        let notifications = self
+            .notifications
+            .as_mut()
+            .ok_or_else(|| invalid("missing insertion notification context"))?;
+        let curves = self
+            .curves
+            .as_mut()
+            .ok_or_else(|| invalid("missing insertion curve ownership"))?;
+        Ok(FilletObject::InsertionCurve(
+            curves.insert(notifications.context, curve)?,
+        ))
+    }
+    /// Run one edit against the actual body and retained notification stores.
+    /// # Errors
+    /// Missing actual context or the original edit failure, with partial writes retained.
+    pub fn with_edit<T>(
+        &mut self,
+        role: InsertionBody,
+        edit: impl FnOnce(&mut Brep, &mut crate::topology::edge::NotifyEnv<'_>) -> Result<T>,
+    ) -> Result<T> {
+        let serial = self
+            .body(role)
+            .notify_serial()
+            .ok_or_else(|| invalid("missing issued body identity"))?;
+        let key_of = |entity| topology_ref(serial, entity);
+        let body = match role {
+            InsertionBody::Target => &mut *self.target,
+            InsertionBody::Pseudo => self.pseudo.brep_mut(),
+            InsertionBody::Intermediate => &mut *self.intermediate,
+        };
+        let notifications = self
+            .notifications
+            .as_mut()
+            .ok_or_else(|| invalid("missing insertion notification context"))?;
+        crate::topology::brep::p3::seed_records(notifications.records, body, &key_of);
+        let mut env = crate::topology::edge::NotifyEnv {
+            records: notifications.records,
+            attributes: notifications.attributes,
+            context: Some(notifications.context),
+            key_of: &key_of,
+        };
+        edit(body, &mut env)
     }
     fn body(&self, role: InsertionBody) -> &Brep {
         match role {
@@ -270,6 +347,7 @@ impl<'a> InsertionGeometry<'a> {
 impl ClassGeometry<FilletObject> for InsertionGeometry<'_> {
     fn curve(&self, object: FilletObject) -> Option<&Curve> {
         match object {
+            FilletObject::InsertionCurve(binding) => self.curves.as_ref()?.get(binding),
             FilletObject::Curve(body, edge) => self
                 .body(match body {
                     FilletBody::Target => InsertionBody::Target,
@@ -347,6 +425,7 @@ impl ClassGeometry<FilletObject> for InsertionGeometry<'_> {
 impl ClassGeometryMut<FilletObject> for InsertionGeometry<'_> {
     fn curve_mut(&mut self, object: FilletObject) -> Option<&mut Curve> {
         match object {
+            FilletObject::InsertionCurve(binding) => self.curves.as_mut()?.get_mut(binding),
             FilletObject::Curve(body, edge) => self
                 .body_mut(match body {
                     FilletBody::Target => InsertionBody::Target,
@@ -535,5 +614,96 @@ mod tests {
         let actual = replacement.face_mut(face).unwrap().surface.take();
         view.intermediate.face_mut(face).unwrap().surface = actual;
         assert!(view.bound_surface(binding).is_err());
+    }
+    #[test]
+    fn retained_curves_and_lent_notifications_survive_partial_edit_failure() {
+        use crate::geom::context::NotifyCallback;
+        use crate::geom::object::NotifyOperation;
+        use std::sync::{Arc, Mutex};
+        #[derive(Debug)]
+        struct Capture(Arc<Mutex<Vec<(NotifyOperation, ObjectRef)>>>);
+        impl NotifyCallback for Capture {
+            fn execute(
+                &mut self,
+                op: NotifyOperation,
+                caller: ObjectRef,
+                _one: Option<ObjectRef>,
+                _two: Option<ObjectRef>,
+                _three: Option<ObjectRef>,
+            ) -> Result<()> {
+                self.0.lock().unwrap().push((op, caller));
+                Ok(())
+            }
+        }
+        let mut k = Kernel::default();
+        let mut target = box_at(&mut k, 0.0);
+        let mut intermediate = box_at(&mut k, 100.0);
+        let mut source = box_at(&mut k, 300.0);
+        let edge = source
+            .edges()
+            .ids()
+            .find(|&id| source.edge(id).unwrap().curve.is_some())
+            .unwrap();
+        let curve = source.edge_mut(edge).unwrap().curve.take().unwrap();
+        let owner = curve.owner();
+        let mut pseudo = FilletBrep::new();
+        *pseudo.brep_mut() = box_at(&mut k, 200.0);
+        let vertex = target.vertices().ids().next().unwrap();
+        let serial = target.notify_serial().unwrap();
+        let caller = topology_ref(serial, EntityRef::Vertex(vertex));
+        let changed = Point3::new(17.0, 18.0, 19.0);
+        let mut curves = InsertionCurves::default();
+        let mut records = BTreeMap::new();
+        let mut attributes = AttributeStore::default();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        k.context
+            .set_user_notify_callback(Some(Box::new(Capture(events.clone()))));
+        let binding = crate::topology::brep::p3::with_lent_context(
+            &mut k,
+            |_, context| -> Result<FilletObject> {
+                let mut view = InsertionGeometry::new(&mut target, &mut pseudo, &mut intermediate)?
+                    .with_notifications(
+                        &mut curves,
+                        InsertionNotifications {
+                            records: &mut records,
+                            attributes: &mut attributes,
+                            context,
+                        },
+                    );
+                let binding = view.insert_curve_copy(curve)?;
+                assert_eq!(view.curve(binding).unwrap().owner(), owner);
+                assert!(ClassGeometryMut::curve_mut(&mut view, binding).is_some());
+                let result: Result<()> = view.with_edit(InsertionBody::Target, |body, env| {
+                    let vu_ref = |id| topology_ref(serial, EntityRef::Vertexuse(id));
+                    crate::topology::vertex::set_point(
+                        body,
+                        vertex,
+                        changed,
+                        env.records,
+                        env.attributes,
+                        env.context.as_deref_mut(),
+                        caller,
+                        &vu_ref,
+                    )?;
+                    Err(invalid("deliberate failure after actual vertex edit"))
+                });
+                assert!(result.is_err());
+                assert_eq!(view.target.vertex(vertex)?.point, changed);
+                Ok(binding)
+            },
+        )
+        .unwrap()
+        .unwrap();
+        let FilletObject::InsertionCurve(binding) = binding else {
+            panic!("actual curve binding required")
+        };
+        assert_eq!(curves.checked(binding).unwrap().owner(), owner);
+        assert!(InsertionCurves::default().get(binding).is_none());
+        assert!(records.contains_key(&caller.key));
+        assert!(events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|&(op, object)| op == NotifyOperation::ChangeGeometry && object == caller));
     }
 }

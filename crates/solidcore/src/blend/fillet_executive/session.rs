@@ -76,6 +76,8 @@ pub enum FilletObject {
     Curve(FilletBody, EdgeId),
     /// Actual curve retained by an intermediate edge.
     IntermediateCurve(EdgeId),
+    /// An actual operation-owned curve copy with checked issued identity.
+    InsertionCurve(insertion::curves::CurveBinding),
     /// Actual trim curve retained by an edge use.
     UvCurve(FilletBody, EdgeuseId),
     /// Actual intermediate edge-use trim curve.
@@ -103,6 +105,7 @@ impl ClassObject for FilletObject {
         match self {
             Self::Curve(..)
             | Self::IntermediateCurve(_)
+            | Self::InsertionCurve(_)
             | Self::UvCurve(..)
             | Self::IntermediateUvCurve(_) => ClassObjectKind::Curve,
             Self::Surface(_) => ClassObjectKind::Surface,
@@ -128,6 +131,7 @@ impl SolutionObject for FilletObject {
         match self {
             Self::Curve(..)
             | Self::IntermediateCurve(_)
+            | Self::InsertionCurve(_)
             | Self::UvCurve(..)
             | Self::IntermediateUvCurve(_) => ObjectKind::Curve,
             Self::Surface(_) => ObjectKind::Surface,
@@ -184,6 +188,7 @@ struct SessionObjects<'target> {
     target: &'target mut Brep,
     pseudo: FilletBrep,
     intermediate: Option<Brep>,
+    insertion_curves: insertion::curves::InsertionCurves,
     notification_records:
         BTreeMap<crate::geom::attribute::ObjectKey, crate::topology::topology::Topology>,
     solvers: Vec<Option<SolverObject>>,
@@ -420,6 +425,7 @@ impl<'target> FilletSession<'target> {
                 target,
                 pseudo,
                 intermediate: None,
+                insertion_curves: insertion::curves::InsertionCurves::default(),
                 notification_records: BTreeMap::new(),
                 solvers: Vec::new(),
                 corners: Vec::new(),
