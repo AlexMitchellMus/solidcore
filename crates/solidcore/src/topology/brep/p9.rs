@@ -1423,7 +1423,7 @@ pub fn make_edge_in_face_with_vu(
     )
 }
 
-/// Install the actual input Curve using checked identity issuance before SetCurve.
+/// Install the actual input Curve using checked identity issuance before `SetCurve`.
 /// # Errors
 /// Original construction/notification errors or checked identity issuance errors.
 pub fn make_edge_in_face_with_vu_with_curve_identity(
@@ -2541,6 +2541,137 @@ mod tests {
                 b.edge_mut(edge).unwrap().edgeuses.push(eu);
             }
             (b, edge)
+        }
+
+        #[test]
+        fn actual_split_issues_copied_curve_identity_and_retains_refusal_prefix() {
+            use std::cell::RefCell;
+
+            for refuse_copy in [false, true] {
+                let mut k = Kernel::default();
+                let mut b = crate::primitive::api_primitives::create_box(
+                    &mut k,
+                    Point3::ZERO,
+                    10.0,
+                    20.0,
+                    30.0,
+                )
+                .unwrap();
+                b.set_editing_enabled(true);
+                let edge = b.edge_list()[0];
+                let serial = b.notify_serial().unwrap();
+                let key_of = |entity| crate::topology::brep::p3::topology_ref(serial, entity);
+                let interval = b.edge(edge).unwrap().interval;
+                let parameter = (interval.min() + interval.max()) * 0.5;
+                let primary = edge::primary_edgeuse(&b, edge).unwrap().unwrap();
+                let same = b.edgeuse(primary).unwrap().orientation == OrientType::Same;
+                let expected_interval = if same {
+                    Extent1d::from_min_max(interval.min(), parameter)
+                } else {
+                    Extent1d::from_min_max(parameter, interval.max())
+                };
+                let original = b.edge_mut(edge).unwrap().curve.as_mut().unwrap();
+                let original_key = k
+                    .context
+                    .geometry_key(original.notify_identity_slot())
+                    .unwrap();
+                let original_ref = ObjectRef {
+                    key: original_key,
+                    type_code: original.type_code(),
+                };
+                let before = (b.edge_list().len(), b.vertex_list().len());
+                let mut records = BTreeMap::new();
+                crate::topology::brep::p3::seed_records(&mut records, &b, &key_of);
+                let mut attributes = AttributeStore::default();
+                let label = attributes
+                    .insert(Attribute::long(ids::USER_1, 73, Behavior::Copy))
+                    .unwrap();
+                attributes.add_attribute(original_key, label).unwrap();
+                let events = callbacks::install(&mut k.context);
+                let issued = RefCell::new(Vec::new());
+                let issuer = |id: EdgeId, curve: &mut Curve, env: &mut edge::NotifyEnv<'_>| {
+                    let before = curve.notify_key();
+                    assert!(env.context.as_deref().unwrap().doing_boolean());
+                    if refuse_copy && id != edge {
+                        assert_eq!(before, None);
+                        return Err(SolidError::invalid_input(
+                            "test curve issuer",
+                            "refused copied curve",
+                        ));
+                    }
+                    let reference = issue_curve_identity(id, curve, env)?;
+                    issued.borrow_mut().push((id, before, reference));
+                    Ok(reference)
+                };
+                let result = make_vertex_split_edge_with_kernel_curve_identity(
+                    &mut k,
+                    &mut b,
+                    edge,
+                    parameter,
+                    &mut edge::NotificationStores {
+                        records: &mut records,
+                        attributes: &mut attributes,
+                        key_of: &key_of,
+                    },
+                    CurveIdentity::Actual(&issuer),
+                );
+                assert!(!k.context.doing_boolean());
+                callbacks::assert_installed(&k.context, &events);
+                assert_eq!(
+                    (b.edge_list().len(), b.vertex_list().len()),
+                    (before.0 + 1, before.1 + 1)
+                );
+                assert_eq!(b.edge(edge).unwrap().interval, expected_interval);
+                assert_eq!(issued.borrow()[0], (edge, Some(original_key), original_ref));
+                let new_edge = *b.edge_list().last().unwrap();
+                let events = events.lock().unwrap();
+                if refuse_copy {
+                    assert!(result.is_err());
+                    assert_eq!(issued.borrow().len(), 1);
+                    assert!(b.edge(new_edge).unwrap().curve.is_none());
+                    assert!(events
+                        .iter()
+                        .any(|event| event.operation == NotifyOperation::PreEdit));
+                    assert!(!events
+                        .iter()
+                        .any(|event| event.operation == NotifyOperation::Split));
+                } else {
+                    let output = result.unwrap();
+                    assert!(output.split);
+                    assert_eq!(issued.borrow().len(), 2);
+                    let (id, before, new_ref) = issued.borrow()[1];
+                    assert_eq!((id, before), (new_edge, None));
+                    assert_ne!(new_ref.key, original_key);
+                    assert_ne!(new_ref.key, key_of(EntityRef::Edge(new_edge)).key);
+                    let installed = b.edge(new_edge).unwrap().curve.as_ref().unwrap();
+                    assert_eq!(installed.notify_key(), Some(new_ref.key));
+                    assert_eq!(installed.owner(), Some(key_of(EntityRef::Edge(new_edge))));
+                    let copied = attributes.find_attribute(new_ref.key, ids::USER_1).unwrap();
+                    assert_ne!(copied, label);
+                    assert_eq!(attributes.get(copied).unwrap().long_value(), Some(73));
+                    let split: Vec<_> = events
+                        .iter()
+                        .filter(|event| event.operation == NotifyOperation::Split)
+                        .collect();
+                    assert_eq!(split.len(), 2);
+                    assert_eq!((split[0].callback, split[1].callback), ("user", "system"));
+                    for event in split {
+                        assert_eq!(event.caller, original_ref);
+                        assert_eq!(
+                            event.data,
+                            [
+                                Some(original_ref),
+                                Some(new_ref),
+                                Some(key_of(EntityRef::Edge(edge)))
+                            ]
+                        );
+                    }
+                }
+                assert_eq!(
+                    b.edge(edge).unwrap().curve.as_ref().unwrap().notify_key(),
+                    Some(original_key)
+                );
+            }
         }
 
         #[test]
