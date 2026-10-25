@@ -91,8 +91,3 @@ unit = "offset.offset_geometry_creation"
 case = "gen0508"
 why = "deferred on main at the extended surface's cache (SmFace handle of a surface's face); compared since the drop onto the other extended surface reaches its face's cache: the trace's output differs (plan/findings.md: 'offset.offset_geometry_creation: drops onto a seeded extended surface through a freshly built face cache')"
 
-[[mismatch]]
-unit = "primitive.primitive_creation_p2"
-case = "gen0071"
-why = "planar-path sweep at 1e4-1e6 scale (formerly deferred at TrimSrfCache without a face handle in CreateParallelProjectionCurves): C++ succeeds, Rust's union of the ProjectAndTrim pieces returns SM_ERR (boolean::merge::p3); same family as gen0003..gen0252 (plan/findings.md: 'primitive.primitive_creation_p2: planar-path sweeps at 1e4-1e6 scale fail their union after ProjectAndTrim')"
-
