@@ -54,7 +54,7 @@ fn extrude(curve: CurveSpec) -> Call {
     }
 }
 
-fn assert_rejected(call: Call) {
+fn assert_rejected(call: &Call) {
     DISPATCHES.with_borrow_mut(Vec::clear);
     assert!(matches!(run(&call), Err(FfiError::InvalidArgument(_))));
     DISPATCHES.with_borrow(|calls| assert!(calls.is_empty()));
@@ -86,7 +86,7 @@ fn extrude_real_circle_dispatches_exact_payload() {
 
 #[test]
 fn null_curve_is_rejected_before_dispatch() {
-    assert_rejected(extrude(CurveSpec::Null));
+    assert_rejected(&extrude(CurveSpec::Null));
 }
 
 #[test]
@@ -95,20 +95,20 @@ fn nonfinite_coordinates_are_rejected_before_dispatch() {
         for axis in 0..3 {
             let mut point = [0.0; 3];
             point[axis] = value;
-            assert_rejected(extrude(CurveSpec::LineSegment {
+            assert_rejected(&extrude(CurveSpec::LineSegment {
                 start: point,
                 end: [1.0, 0.0, 0.0],
             }));
-            assert_rejected(extrude(CurveSpec::LineSegment {
+            assert_rejected(&extrude(CurveSpec::LineSegment {
                 start: [0.0; 3],
                 end: point,
             }));
-            assert_rejected(extrude(CurveSpec::AnalyticCircle {
+            assert_rejected(&extrude(CurveSpec::AnalyticCircle {
                 center: point,
                 radius: 1.0,
             }));
             for curve in [line(), circle()] {
-                assert_rejected(Call::Extrude {
+                assert_rejected(&Call::Extrude {
                     curve,
                     vector: point,
                 });
