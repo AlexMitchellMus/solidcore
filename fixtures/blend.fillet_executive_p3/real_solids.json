@@ -418,6 +418,27 @@
           "checkpoint": "deleted_original_faces"
         }
       }
+    },
+    {
+      "name": "real-box-merge-fillet-faces-true-context",
+      "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:3243-3530 (same original mark scope, actual selection/DeleteFaces, temporary edge tagging and MergeBrep; stops before TI clear, managed deletion and final Stitch)",
+      "inputs": {
+        "real_solid": {
+          "dimensions": [
+            10,
+            20,
+            30
+          ],
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            0
+          ],
+          "checkpoint": "merged_fillet_faces"
+        }
+      }
     }
   ]
 }

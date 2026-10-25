@@ -1,7 +1,7 @@
 //! One call to the actual retained insertion endpoint under its production scope.
 use super::{
-    insertion_state, intermediate_faces, original_deletion, original_selection, section, status,
-    Checkpoint, FilletSession, RealSolid, SolidResult,
+    insertion_state, intermediate_faces, original_deletion, original_merge, original_selection,
+    section, status, Checkpoint, FilletSession, RealSolid, SolidResult,
 };
 use solidcore::kernel::Kernel;
 use solidcore::topology::{Brep, EdgeId};
@@ -60,7 +60,10 @@ pub(super) fn run(
         if input.checkpoint == Checkpoint::SelectedOriginalSurfaces {
             section(&mut out, selection);
         }
-        if input.checkpoint == Checkpoint::DeletedOriginalFaces {
+        if matches!(
+            input.checkpoint,
+            Checkpoint::DeletedOriginalFaces | Checkpoint::MergedFilletFaces
+        ) {
             section(&mut out, selection);
             section(&mut out, selection_intervals);
         }
@@ -100,8 +103,10 @@ pub(super) fn run(
             }
         }
         let (selection, intervals, complete) = if statuses[4] == 0.0
-            && input.checkpoint == Checkpoint::DeletedOriginalFaces
+            && input.checkpoint == Checkpoint::MergedFilletFaces
         {
+            original_merge::run(k, session)?
+        } else if statuses[4] == 0.0 && input.checkpoint == Checkpoint::DeletedOriginalFaces {
             original_deletion::run(k, session)?
         } else if statuses[4] == 0.0 && input.checkpoint == Checkpoint::SelectedOriginalSurfaces {
             let (selection, complete) = original_selection::run(k, session)?;

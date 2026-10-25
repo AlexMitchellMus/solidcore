@@ -1,7 +1,7 @@
 // Actual true-context constructor through ordered geometry/corner insertion.
 namespace fillet_real_solid {
 inline std::vector<double> insertion_checkpoint(FaceExecutive& exec,SmBrep* target,
-                                               SmStatus prepare,const std::vector<double>& before,bool select_original=false,bool delete_original=false) {
+                                               SmStatus prepare,const std::vector<double>& before,bool select_original=false,bool delete_original=false,bool merge_original=false) {
     auto* context=const_cast<SmContext*>(exec.GetContext());
     const auto old_boolean=context->GetDoingBoolean();
     const auto old_edit=target->m_bEditingEnabled;
@@ -51,6 +51,7 @@ inline std::vector<double> insertion_checkpoint(FaceExecutive& exec,SmBrep* targ
         statuses[4]=status(result);target->m_bEditingEnabled=old_edit;observe(passive_after,intervals_after);
         if(result==SM_SUCCESS && select_original)selection=original_selection(exec,target,result);
         if(result==SM_SUCCESS && delete_original)selection=original_deletion(exec,target,result,selection_intervals);
+        if(result==SM_SUCCESS && merge_original)selection=original_merge(exec,target,result,selection_intervals);
     }
     std::vector<double> out;section(out,before);section(out,statuses);section(out,passive_before);section(out,intervals_before);section(out,passive_after);section(out,intervals_after);
     // Failure snapshots remain passive until that partial geometry's query safety is audited.
@@ -61,7 +62,7 @@ inline std::vector<double> insertion_checkpoint(FaceExecutive& exec,SmBrep* targ
         section(out,managed_record.first);section(out,managed_record.second);
     }
     if(select_original)section(out,selection);
-    if(delete_original){section(out,selection);section(out,selection_intervals);}
+    if(delete_original||merge_original){section(out,selection);section(out,selection_intervals);}
     return out;
 }
 }

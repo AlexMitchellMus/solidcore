@@ -15,8 +15,12 @@ mod insertion_checkpoint;
 mod insertion_state;
 #[path = "intermediate_faces.rs"]
 mod intermediate_faces;
+#[path = "merge_attributes.rs"]
+mod merge_attributes;
 #[path = "original_deletion.rs"]
 mod original_deletion;
+#[path = "original_merge.rs"]
+mod original_merge;
 #[path = "original_selection.rs"]
 mod original_selection;
 #[path = "rail_classification.rs"]
@@ -249,6 +253,7 @@ pub(super) fn run(
         Checkpoint::InsertedIntersectionTopology
             | Checkpoint::SelectedOriginalSurfaces
             | Checkpoint::DeletedOriginalFaces
+            | Checkpoint::MergedFilletFaces
     ) {
         return insertion_checkpoint::run(k, body, selected, input, before);
     }
@@ -643,6 +648,7 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
         Checkpoint::InsertedIntersectionTopology
             | Checkpoint::SelectedOriginalSurfaces
             | Checkpoint::DeletedOriginalFaces
+            | Checkpoint::MergedFilletFaces
     ) {
         return insertion_output(values, checkpoint);
     }
@@ -950,7 +956,9 @@ fn insertion_output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Output
         return Err(HarnessError::new("invalid insertion completion"));
     }
     values = tail;
-    let geometry_kind = if checkpoint == Checkpoint::DeletedOriginalFaces {
+    let geometry_kind = if checkpoint == Checkpoint::MergedFilletFaces {
+        "merge"
+    } else if checkpoint == Checkpoint::DeletedOriginalFaces {
         "deletion"
     } else {
         "insertion"
@@ -996,6 +1004,23 @@ fn insertion_output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Output
         );
         out.values.insert(
             "original_surface_deletion_raw_intervals".into(),
+            take_section(&mut values)?.to_vec(),
+        );
+    }
+    if checkpoint == Checkpoint::MergedFilletFaces {
+        let state = take_section(&mut values)?;
+        if state
+            .iter()
+            .any(|value| !value.is_finite() || value.fract() != 0.0)
+        {
+            return Err(HarnessError::new("invalid retained merge state"));
+        }
+        out.ints.insert(
+            "original_faces_merge".into(),
+            state.iter().map(|value| *value as i64).collect(),
+        );
+        out.values.insert(
+            "original_faces_merge_raw_intervals".into(),
             take_section(&mut values)?.to_vec(),
         );
     }

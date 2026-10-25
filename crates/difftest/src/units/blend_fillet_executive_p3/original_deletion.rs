@@ -11,11 +11,11 @@ use solidcore::topology::brep::{p1, p3::topology_ref};
 use solidcore::topology::Brep;
 use solidcore::EntityRef;
 
-struct Frame {
-    entities: [Vec<EntityRef>; 3],
-    marks: [Vec<u64>; 3],
+pub(super) struct Frame {
+    pub(super) entities: [Vec<EntityRef>; 3],
+    pub(super) marks: [Vec<u64>; 3],
 }
-fn entities(body: &Brep) -> SolidResult<[Vec<EntityRef>; 3]> {
+pub(super) fn entities(body: &Brep) -> SolidResult<[Vec<EntityRef>; 3]> {
     Ok([
         p1::vertices(body, None)?
             .into_iter()
@@ -31,7 +31,7 @@ fn entities(body: &Brep) -> SolidResult<[Vec<EntityRef>; 3]> {
             .collect(),
     ])
 }
-fn frames(session: &mut FilletSession<'_>) -> SolidResult<Vec<Frame>> {
+pub(super) fn frames(session: &mut FilletSession<'_>) -> SolidResult<Vec<Frame>> {
     let state = session.insertion_state()?;
     let managed = state
         .intermediate
@@ -57,7 +57,7 @@ fn frames(session: &mut FilletSession<'_>) -> SolidResult<Vec<Frame>> {
     }
     Ok(frames)
 }
-fn face_labels(values: &[FilletObject], frames: &[Frame]) -> SolidResult<Vec<f64>> {
+pub(super) fn face_labels(values: &[FilletObject], frames: &[Frame]) -> SolidResult<Vec<f64>> {
     let mut out = Vec::new();
     for object in values {
         let (body, entity) = match object {
