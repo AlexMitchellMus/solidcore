@@ -225,6 +225,34 @@ impl<O: ClassObject + SolutionObject + Ord, A: ExecutiveAccess<O>> OriginalSurfa
     }
 }
 
+/// Native face-list completion and deletion through the retained intersector.
+pub trait OriginalSurfaceDeletionAccess<O: ClassObject + SolutionObject + Ord> {
+    /// Current owning faces of the actual fillet body, in traversal order.
+    fn original_managed_faces(&self, body: O) -> Result<Vec<O>>;
+    /// Delete the qualified list through the actual intersector and body provider.
+    fn original_delete_faces(
+        &mut self,
+        k: &mut Kernel,
+        intersector: &mut TopologyIntersector<O>,
+        faces: &[O],
+    ) -> Result<()>;
+}
+impl<O: ClassObject + SolutionObject + Ord, A: ExecutiveAccess<O>> OriginalSurfaceDeletionAccess<O>
+    for A
+{
+    fn original_managed_faces(&self, body: O) -> Result<Vec<O>> {
+        self.faces(body)
+    }
+    fn original_delete_faces(
+        &mut self,
+        k: &mut Kernel,
+        intersector: &mut TopologyIntersector<O>,
+        faces: &[O],
+    ) -> Result<()> {
+        self.delete_faces(k, intersector, faces, None)
+    }
+}
+
 /// Executive member state consumed by p3, co-ported from p1. This is not the
 /// constructor: p1 must supply its constructor/setup defaults and intersector.
 #[derive(Debug, Clone)]
@@ -2191,6 +2219,27 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         Ok(())
     }
 
+    /// Append unkept fillet faces and delete the combined qualified list.
+    /// The caller keeps its original mark scope alive across this operation.
+    ///
+    /// # Errors
+    /// The original face traversal or deletion error; list and topology prefixes remain.
+    pub fn delete_original_surface_faces(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl OriginalSurfaceDeletionAccess<O>,
+        fillet: O,
+        kept: &[O],
+        deleted: &mut Vec<O>,
+    ) -> Result<()> {
+        for face in access.original_managed_faces(fillet)? {
+            if !kept.contains(&face) && !deleted.contains(&face) {
+                deleted.push(face);
+            }
+        }
+        access.original_delete_faces(k, &mut self.intersector, deleted)
+    }
+
     fn trim_and_merge(
         &mut self,
         k: &mut Kernel,
@@ -2207,12 +2256,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             &mut kept,
             &mut deleted,
         )?;
-        for face in access.faces(fillet)? {
-            if !kept.contains(&face) && !deleted.contains(&face) {
-                deleted.push(face);
-            }
-        }
-        access.delete_faces(k, &mut self.intersector, &deleted, None)?;
+        self.delete_original_surface_faces(k, access, fillet, &kept, &mut deleted)?;
         let mut attributes = Vec::new();
         let result = (|| {
             let edges = access.edges(fillet)?; // re-walk after DeleteFaces
