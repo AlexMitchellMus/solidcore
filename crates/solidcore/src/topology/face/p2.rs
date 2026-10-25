@@ -2498,23 +2498,9 @@ pub fn fix_uv_trim_curves_notified(
     // move PrevCurve endPoint to target point
     if held_curve(b, prev_holder)?.is_rational()? {
         let p = uv_vertex_3d * w_prev;
-        notified_end_point_edit(
-            b,
-            env,
-            prev_holder,
-            p,
-            edit_prev_start,
-            Some(w_prev),
-        )?;
+        notified_end_point_edit(b, env, prev_holder, p, edit_prev_start, Some(w_prev))?;
     } else {
-        notified_end_point_edit(
-            b,
-            env,
-            prev_holder,
-            uv_vertex_3d,
-            edit_prev_start,
-            None,
-        )?;
+        notified_end_point_edit(b, env, prev_holder, uv_vertex_3d, edit_prev_start, None)?;
     }
 
     // all done
