@@ -19605,6 +19605,21 @@ Whole executive_p3 now307 cases/260 value passes/47 existing deferrals/0 failure
 The same ordinary box calls actual CreateFilletBrep, shared first-FG owner-face shrink, then Session::set_fillet_brep_edge_map against native. All four owning pseudo edges begin unmapped and map in order to managed-edge labels [0,2,3,1], each with one actual entry. Source and observations preserve raw rail intervals [+1e20,-1e20]: native evaluates the pseudo CURVE natural-interval midpoint and managed EDGE raw-interval midpoint. No interval fallback or repair is introduced.
 
 New checkpoint255 exact fields/140 values agrees exactly, including before/after type/status/raw intervals, first/ordered mappings, actual error code/target handles/comment bytes, whole body geometry, surface alias and E attributes. Unknown managed-map identities are harness errors rather than shared foreign sentinels. Whole executive_p3=308cases261valuepasses47existingdeferrals0fail; all32 prior CPP/Rust outputs byte-identical; perturb16/16 caught. Direct context flags remain unchanged. Target insertion/merge, full DoFilleting/public API and lower geometry notification/cache parity remain unfinished.
+## boolean.topology_intersector_p2: gen0111 failed imprint, UB-242 vs UB-175
+
+Unit `boolean.topology_intersector_p2`, case `gen0111` (`IntersectInsertRelate` of
+`torus.smb` with `ellips_ts2.smb`, approx and angle tolerance 1e-3). It deferred
+before, when `FaceIntersect`'s homogenization could not build a face's trimmed surface
+cache on read-only topology; with the B-reps lent to that drop it now runs through.
+`ImprintIntersections` fails on both sides with `SM_ERR_NULL_POINTER` (1006; the C++
+status was checked with a temporary print in the shim's verbatim
+`IntersectInsertRelate`, not kept). The port then deletes the manager and returns that
+error (the UB-242 fix in `plan/upstream-issues.md`, `values.state[2]` = 1006). The
+verbatim C++ copy only reports it, runs `SetRelationships` (status 1000), and its manager
+teardown would read a freed proto edge (UB-175), so the shim answers `-2`. No input rule
+predicts a failed imprint, so the case is listed in `known_mismatches.toml`. Follow-up:
+a runner classification for runs where both sides stop at a failed imprint, or a shim
+copy that carries the UB-242 fix.
 ## boolean.api_brep / boolean.topology_intersector_p2: UB-175 no longer refused; public booleans end to end (2026-10-24)
 
 `TopologyIntersector::intersect_insert_relate` used to return `InvalidInput` wherever
@@ -20004,6 +20019,17 @@ correction is gated by its own exact-head canonical CI, independently of the
 unresolved product findings. No tolerance, waiver, input, plan status or
 existing PR (#773) was changed to obtain green.
 
+## boolean.topology_intersector_p2: gen0498 failed imprint, as gen0111
+
+Unit `boolean.topology_intersector_p2`, case `gen0498` (`Endcap.smb` and `toruswvy.smb`
+rebuilt, two relates, then `IntersectInsertRelate`, approx 1e-6, angle 0.349). The
+same disagreement as `gen0111` above (`values.state[10]`: the port 1006, the shim -2).
+It deferred at `FaceIntersect`'s read-only trimmed-cache lookup, and later in main also
+at `Point3DClassify` (wired by PR #816). With both gone, `ImprintIntersections` fails
+with `SM_ERR_NULL_POINTER` on both sides (the C++ status was checked with a temporary shim
+print, not kept; the port's comes from `topology::brep::p5`). The port stops there
+(UB-242 fix); the verbatim C++ copy runs `SetRelationships` (1000) and its teardown
+reaches UB-175. Listed in `known_mismatches.toml`.
 ## audit.recursion: source review of the fillet/heal/topology wave `2ca17d8e9..f1ac1f4c1` (PR #835, 2026-10-25)
 
 SOURCE-ONLY follow-up to the whole-crate audit of PR #273. This is not a fresh
