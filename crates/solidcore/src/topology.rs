@@ -40,6 +40,7 @@
 
 pub mod brep;
 pub mod brep_cache;
+pub mod brep_constructor;
 pub mod brep_data;
 pub mod database_io;
 pub mod edge;

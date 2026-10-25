@@ -17,6 +17,12 @@
 //! differing stage is reported. A Rust stage that reaches unported code is `DEFERRED`
 //! with its unit. This is a report, not a gate: verdicts never fail the run, and it is
 //! not part of CI (the files are not in the repository).
+//!
+//! With `--constructor` each body is built instead through `SmBrepConstructor`
+//! ([`step_import::script::from_body`], run by [`crate::constructor`] and the
+//! `topology.brep_constructor` shim): shared edges joined by the importer, face
+//! orientations from the file, no stitching; the stages after construction are the same
+//! (`construct` replaces `faces` and `stitch`).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -175,7 +181,11 @@ fn usizes(m: &[u32]) -> Vec<usize> {
 
 /// The curve bounded to `[lo, hi]` (an edge) or unbounded (a swept curve), as the shim's
 /// `make_curve`.
-fn make_curve(k: &Kernel, c: &sm::Curve, bounds: Option<(f64, f64)>) -> Result<Curve, SolidError> {
+pub(crate) fn make_curve(
+    k: &Kernel,
+    c: &sm::Curve,
+    bounds: Option<(f64, f64)>,
+) -> Result<Curve, SolidError> {
     match c {
         sm::Curve::Line {
             origin,
@@ -247,7 +257,7 @@ fn make_curve(k: &Kernel, c: &sm::Curve, bounds: Option<(f64, f64)>) -> Result<C
     }
 }
 
-fn make_surface(k: &Kernel, s: &sm::Surface) -> Result<Surface, SolidError> {
+pub(crate) fn make_surface(k: &Kernel, s: &sm::Surface) -> Result<Surface, SolidError> {
     Ok(match s {
         sm::Surface::Plane { frame } => Surface::from(Plane::create_canonical(&a2p(frame))?),
         sm::Surface::Cylinder { frame, radius } => {
@@ -558,6 +568,91 @@ pub fn build_cpp(body: &Body) -> Result<Record, String> {
     })
 }
 
+/// Stage names of the constructor path's blocks 101..108 (as the stitch path's).
+const CONSTRUCTOR_STAGES: [&str; 8] = [
+    "counts",
+    "manifold",
+    "area",
+    "volume",
+    "heal",
+    "healed_counts",
+    "healed_manifold",
+    "healed_volume",
+];
+
+/// A constructor run's blocks as a record: `construct` (calls, failed calls, first failed
+/// call's index, code and status, the call upstream crashed in, geometry failures,
+/// B-rep made, `IsManifold`), then the stages after construction.
+fn constructor_record(out: &[f64]) -> Result<Record, String> {
+    let mut rec = Record::default();
+    let (mut n_ops, mut failed, mut first) = (0.0, 0.0, [-1.0, -1.0, 0.0]);
+    let (mut crash, mut geometry_failed, mut state) = (-1.0, 0.0, [0.0, 0.0]);
+    let mut after = Vec::new();
+    for (tag, v) in crate::constructor::blocks(out)? {
+        match tag {
+            1 => geometry_failed = v.iter().filter(|&&x| x != 0.0).count() as f64,
+            2 => {
+                if let (Some(&code), Some(&st)) = (v.first(), v.get(1)) {
+                    if st != 0.0 {
+                        if failed == 0.0 {
+                            first = [n_ops, code, st];
+                        }
+                        failed += 1.0;
+                    }
+                }
+                n_ops += 1.0;
+            }
+            3 => crash = v.first().copied().unwrap_or(-1.0),
+            6 => {
+                state = [
+                    v.first().copied().unwrap_or(0.0),
+                    v.get(1).copied().unwrap_or(0.0),
+                ];
+            }
+            101..=108 => {
+                let name = CONSTRUCTOR_STAGES
+                    .get((tag - 101) as usize)
+                    .ok_or("stage id")?;
+                after.push(((*name).to_string(), v));
+            }
+            other => return Err(format!("unexpected block {other}")),
+        }
+    }
+    let mut construct = vec![n_ops, failed];
+    construct.extend_from_slice(&first);
+    construct.extend_from_slice(&[crash, geometry_failed]);
+    construct.extend_from_slice(&state);
+    rec.stages.push(("construct".into(), construct));
+    rec.stages.extend(after);
+    Ok(rec)
+}
+
+/// Builds `body` through the Rust `BrepConstructor`.
+pub fn build_rust_constructor(body: &Body) -> Record {
+    let script =
+        step_import::script::from_body(body, step_import::script::FromBodyOptions::default());
+    let mut notes = Vec::new();
+    let (out, deferred) = crate::constructor::run(&script, 1, ACCURACY, &mut notes);
+    let mut rec = constructor_record(&out).unwrap_or_else(|e| Record {
+        notes: vec![e],
+        ..Record::default()
+    });
+    rec.deferred = deferred.map(|crate::constructor::Deferred(u, s)| (u, s));
+    rec.notes.extend(notes);
+    rec
+}
+
+/// Builds `body` through the C++ `SmBrepConstructor`.
+#[cfg(feature = "cpp")]
+pub fn build_cpp_constructor(body: &Body) -> Result<Record, String> {
+    use solidcore_ffi::units::topology_brep_constructor as ffi;
+    let script =
+        step_import::script::from_body(body, step_import::script::FromBodyOptions::default());
+    let out =
+        ffi::run(&step_import::script::encode(&script), 1, ACCURACY).map_err(|e| e.to_string())?;
+    constructor_record(&out)
+}
+
 fn load_body(path: &Path, index: usize) -> Result<Body, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let model = step_import::import(&bytes, &step_import::Limits::default())
@@ -573,8 +668,14 @@ fn load_body(path: &Path, index: usize) -> Result<Body, String> {
 
 /// `--step-case <file> <body> <cpp|rust> <out.json>`: one kernel on one body.
 pub fn run_child(args: &[String]) -> ExitCode {
+    let (args, constructor) = match args {
+        [rest @ .., last] if last == "--constructor" => (rest, true),
+        _ => (args, false),
+    };
     let [file, index, side, out] = args else {
-        eprintln!("usage: difftest --step-case <file.stp> <body> <cpp|rust> <out.json>");
+        eprintln!(
+            "usage: difftest --step-case <file.stp> <body> <cpp|rust> <out.json> [--constructor]"
+        );
         return ExitCode::from(2);
     };
     let Ok(index) = index.parse::<usize>() else {
@@ -589,7 +690,10 @@ pub fn run_child(args: &[String]) -> ExitCode {
         }
     };
     let rec = match side.as_str() {
+        "rust" if constructor => Ok(build_rust_constructor(&body)),
         "rust" => Ok(build_rust(&body)),
+        #[cfg(feature = "cpp")]
+        "cpp" if constructor => build_cpp_constructor(&body),
         #[cfg(feature = "cpp")]
         "cpp" => build_cpp(&body),
         other => Err(format!("side `{other}` not available in this build")),
@@ -623,6 +727,8 @@ pub struct CorpusOptions {
     pub report_dir: Option<PathBuf>,
     /// Write no report.
     pub no_report: bool,
+    /// Build through `SmBrepConstructor` instead of `CreateFacesWithCurves` and stitching.
+    pub constructor: bool,
 }
 
 /// The sides this build runs.
@@ -673,6 +779,7 @@ fn run_children(
     work: &[(PathBuf, usize, String)],
     raw: &Path,
     jobs: usize,
+    constructor: bool,
 ) -> Result<Vec<Vec<RunResult>>, HarnessError> {
     let exe =
         std::env::current_exe().map_err(|e| HarnessError::new(format!("current_exe: {e}")))?;
@@ -699,12 +806,16 @@ fn run_children(
             let log_err = log_file
                 .try_clone()
                 .map_err(|err| HarnessError::new(format!("{}: {err}", log.display())))?;
-            let child = Command::new(&exe)
-                .arg("--step-case")
+            let mut cmd = Command::new(&exe);
+            cmd.arg("--step-case")
                 .arg(file)
                 .arg(body.to_string())
                 .arg(side)
-                .arg(&out)
+                .arg(&out);
+            if constructor {
+                cmd.arg("--constructor");
+            }
+            let child = cmd
                 .stdin(Stdio::null())
                 .stdout(log_file)
                 .stderr(log_err)
@@ -784,6 +895,7 @@ fn side_summary(r: &RunResult) -> Value {
                 .stage("faces")
                 .map(|v| json!({"total": v.first(), "made": v.get(1), "failed": v.get(2)}));
             json!({
+                "construct": rec.stage("construct"),
                 "faces": faces,
                 "stitch": rec.stage("stitch"),
                 "counts": rec.stage("counts"),
@@ -928,7 +1040,7 @@ fn run_corpus_inner(root: &Path, opts: &CorpusOptions) -> Result<(), HarnessErro
         }
     }
 
-    let results = run_children(&work, &raw, opts.jobs)?;
+    let results = run_children(&work, &raw, opts.jobs, opts.constructor)?;
     let mut tally: BTreeMap<String, usize> = BTreeMap::new();
     let mut deferred_units: BTreeMap<String, usize> = BTreeMap::new();
     let mut diff_stages: BTreeMap<String, usize> = BTreeMap::new();
@@ -977,6 +1089,15 @@ fn run_corpus_inner(root: &Path, opts: &CorpusOptions) -> Result<(), HarnessErro
                 match r {
                     None => "-".into(),
                     Some(Err(_)) => "crash".into(),
+                    Some(Ok(rec)) if rec.stage("construct").is_some() => {
+                        let c = rec.stage("construct").unwrap_or(&[]);
+                        let failed = c.get(1).copied().unwrap_or(0.0);
+                        let solid = rec
+                            .stage("manifold")
+                            .and_then(|s| s.get(1))
+                            .is_some_and(|&x| x == 1.0);
+                        format!("{failed} failed {}", if solid { "solid" } else { "-" })
+                    }
                     Some(Ok(rec)) => {
                         let f = rec.stage("faces").unwrap_or(&[]);
                         let made = f.get(1).copied().unwrap_or(0.0);
@@ -1015,7 +1136,12 @@ fn run_corpus_inner(root: &Path, opts: &CorpusOptions) -> Result<(), HarnessErro
     }
     let summary: Vec<String> = tally.iter().map(|(k, v)| format!("{k}={v}")).collect();
     println!(
-        "STEP-CORPUS files={} bodies={} {}",
+        "STEP-CORPUS{} files={} bodies={} {}",
+        if opts.constructor {
+            " build=constructor"
+        } else {
+            ""
+        },
         files.len(),
         work.len(),
         summary.join(" ")
@@ -1032,6 +1158,7 @@ fn run_corpus_inner(root: &Path, opts: &CorpusOptions) -> Result<(), HarnessErro
     if !opts.no_report {
         let report = json!({
             "corpus": CORPUS_DIR,
+            "build": if opts.constructor { "constructor" } else { "faces+stitch" },
             "accuracy": ACCURACY,
             "sides": sides(),
             "tally": tally,

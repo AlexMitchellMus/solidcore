@@ -1,0 +1,12 @@
+id = "topology.brep_validate_pointers"
+upstream = ["source/SMLib/src/SmBrep.cpp", "source/SMLib/inc/SmBrep.h"]
+rust_module = "topology::brep::validate_pointers"
+depends_on = []
+soft_depends_on = []
+est_lines = 1189
+layer = 51
+tests = []
+status = "todo"
+claimed_by = ""
+claimed_at = ""
+notes = "Not in the original plan (harness/callgraph/unused_functions.txt): SmBrep::ValidatePointers (SmBrep.cpp:30890, 1053 lines) and its static sm_CheckEdgeuseGeometry (SmBrep.cpp:29752, 136 lines). Added by topology.brep_constructor (PR #1000): SmBrepConstructor::EndShell(TRUE) calls ValidatePointers before stitching and ignores its status, but sm_CheckEdgeuseGeometry evaluates edge uses with SmEdgeuse::NormalizedEvaluate(.., TRUE), which makes the missing UV trim curves of every face that already has one (found with gdb on the fan_three_shared_stitched case). Stub: UNPORTED(topology.brep_validate_pointers) in crates/solidcore/src/topology/brep_constructor.rs. depends_on not computed by harness/plan (the callgraph never assigned these functions)."
