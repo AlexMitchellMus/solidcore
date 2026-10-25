@@ -1468,8 +1468,9 @@ impl DerivSurfDefinition<'_> {
             Ok(())
         })();
         if initialized {
-            // Upstream sizes all arrays before sampling, and each unwritten slot
-            // remains calloc-zero even when a later sample fails.
+            // GetSampleValues calls ReSet before SetSize: even the shared blend
+            // parameter buffer is zeroed, not inherited from the first sampler.
+            // Each unwritten vector slot also remains zero after a sample fails.
             out.params.resize(count, 0.0);
             out.positions.resize(count, Vec3::ZERO);
             out.first_derivs.resize(count, Vec3::ZERO);

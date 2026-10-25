@@ -923,6 +923,8 @@ impl Surface {
 
         // Get Sample Values from Face2/Edge2 using edge1 as tangentReference
         def.tangent_reference = Some(curve1);
+        // Native reuses sParams, but GetSampleValues first calls ReSet, which
+        // zeroes its previous contents. The independent end.params matches that.
         let (end, end_status) = def.sample_values_with_status(
             k,
             surface2,
