@@ -34,9 +34,8 @@
 //! Before, it imported their B-spline parts only: the loop bisector then ran on
 //! approximated geometry and flipped a loop classification in three cylinder cases (two
 //! at scale `1e-3`, and `gen0360` on macOS), now the named regressions `cyl_*` in
-//! `cases.json`. Geometry still imported as
-//! a B-spline part (unit `topology.face_p2`'s `Exact`) stays compared, since the loop
-//! classification is integer-valued. The export marks the gap caches the shim's props
+//! `cases.json`. Geometry still imported as a B-spline part (unit `topology.face_p2`'s
+//! `Exact`) stays compared, since the loop classification is integer-valued. The export marks the gap caches the shim's props
 //! build filled but carries no values; the import refills them
 //! (`topology_vertexuse::refill_gaps`), since the bisector's `CurveOnClassify` reads the
 //! edge/face gaps (plan/findings/query.face_p4--gen0360-macos-exact-records.md).
