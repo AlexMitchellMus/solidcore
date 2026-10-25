@@ -18,7 +18,7 @@
 //! | [`Plane::adjust_step_uv_domain`]              | `AdjustSTEPUVDomain`                              |
 //! | [`Plane::coincidence_check`], [`Coincidence`] | `CoincidenceCheck`                                |
 //! | [`Plane::create_iso_parametric_curve`], [`PlaneIsoCurve`] | `CreateIsoParametricCurve`            |
-//! | [`Plane::drop_curve`], [`PlaneDropCurve`]     | `DropCurve`                                       |
+//! | [`Plane::drop_curve`], [`PlaneDropCurve`], `drop_curve_owned_by` (crate) | `DropCurve`                |
 //! | [`Plane::drop_point_fast`]                    | `DropPointFast`                                   |
 //! | [`Plane::evaluate_point`], [`Plane::evaluate_point_fast`] | `EvaluatePoint`, `EvaluatePointFast`  |
 //! | [`Plane::evaluate`], [`Plane::evaluate_simple`] | `Evaluate`, `EvaluateSimple` (inline)           |
@@ -118,6 +118,7 @@ use crate::geom::tol::{are_same, scaled_zero, tol3d};
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::sqrt;
 use crate::geom::vector3d::{Point3, Vec3};
+use crate::intersect::surface_drop_lib::p3::DropSolveContext;
 use crate::kernel::Kernel;
 use crate::math::{
     max2, min2, rad_to_deg, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_DEG, EFF_ZERO_SQ, EFF_ZERO_SQRT,
@@ -132,6 +133,7 @@ use crate::nurbs::knots::Side;
 use crate::nurbs::math::MAX_DERIVATIVE;
 use crate::surface::surface::p1::{self as surface_p1, SecondDerivatives};
 use crate::surface::surface::p2::{Surface, SurfaceKind, PLANE_TYPE};
+use crate::surface::surface::p4::FaceTest;
 use crate::surface::surface_cache::p1::SurfaceCache;
 
 const OP_EVAL: &str = "surface::plane::p1::Plane::evaluate";
@@ -1390,8 +1392,10 @@ impl Plane {
     /// than `approx_tol`, and is kept when `keep_all` or every control point drops
     /// within `approx_tol`. Everything else is the general `SmSurface::DropCurve`, run
     /// on the plane with its `owner` (the plane's `m_pOwner`, which a bare [`Plane`]
-    /// does not carry: pass the owning [`Surface`]'s [`Surface::owner`]; a face owner
-    /// makes the general drop return `Unported`, as for every other kind).
+    /// does not carry: pass the owning [`Surface`]'s [`Surface::owner`]; without the
+    /// face tolerance its B-rep records on that surface, which the crate's
+    /// `drop_curve_owned_by` also passes, a face owner makes the general drop return
+    /// `Unported`).
     ///
     /// # Errors
     ///
@@ -1407,6 +1411,137 @@ impl Plane {
         keep_all: bool,
         creating_uv_trim_curve: bool,
         owner: Option<ObjectRef>,
+    ) -> Result<PlaneDropCurve> {
+        self.drop_curve_in(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol,
+            keep_all,
+            creating_uv_trim_curve,
+            owner,
+            None,
+            None::<DropSolveContext<'_, crate::surface::surface::p4::NoObject>>,
+            None,
+        )
+    }
+
+    /// [`Plane::drop_curve`] of the plane held by `surface`: the general
+    /// `SmSurface::DropCurve` runs on the plane with `surface`'s owner and the face
+    /// tolerance its B-rep recorded on it ([`Surface::owner_zone_tol_3d`]), as upstream
+    /// runs it on the same `SmPlane` object.
+    ///
+    /// # Errors
+    ///
+    /// As [`Plane::drop_curve`].
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drop_curve_owned_by(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol: f64,
+        keep_all: bool,
+        creating_uv_trim_curve: bool,
+        surface: &Surface,
+    ) -> Result<PlaneDropCurve> {
+        self.drop_curve_owned_by_with_context::<crate::surface::surface::p4::NoObject>(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol,
+            keep_all,
+            creating_uv_trim_curve,
+            surface,
+            None,
+        )
+    }
+
+    /// [`Plane::drop_curve_owned_by`] whose general fallback's start point drop tests
+    /// the face's trim boundary with `classify`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Plane::drop_curve`], and those of `classify`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drop_curve_owned_by_face_tested(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol: f64,
+        keep_all: bool,
+        creating_uv_trim_curve: bool,
+        surface: &Surface,
+        classify: FaceTest<'_>,
+    ) -> Result<PlaneDropCurve> {
+        self.drop_curve_in::<crate::surface::surface::p4::NoObject>(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol,
+            keep_all,
+            creating_uv_trim_curve,
+            surface.owner(),
+            surface.owner_zone_tol_3d(),
+            None,
+            Some(classify),
+        )
+    }
+
+    /// [`Plane::drop_curve_owned_by`] whose general fallback solves under the caller's
+    /// face context.
+    ///
+    /// # Errors
+    ///
+    /// As [`Plane::drop_curve`], and those of the context.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drop_curve_owned_by_with_context<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol: f64,
+        keep_all: bool,
+        creating_uv_trim_curve: bool,
+        surface: &Surface,
+        context: Option<DropSolveContext<'_, O>>,
+    ) -> Result<PlaneDropCurve> {
+        self.drop_curve_in(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol,
+            keep_all,
+            creating_uv_trim_curve,
+            surface.owner(),
+            surface.owner_zone_tol_3d(),
+            context,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    fn drop_curve_in<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol: f64,
+        keep_all: bool,
+        creating_uv_trim_curve: bool,
+        owner: Option<ObjectRef>,
+        owner_zone_tol_3d: Option<f64>,
+        context: Option<DropSolveContext<'_, O>>,
+        face_test: Option<FaceTest<'_>>,
     ) -> Result<PlaneDropCurve> {
         // init output
         let mut out = PlaneDropCurve {
@@ -1515,7 +1650,17 @@ impl Plane {
         if curve.is_kind_of(BSplineCurve::TYPE) {
             let Some(b_spline) = b_spline_part(curve) else {
                 return surface_drop_curve(
-                    k, self, uv_domain, curve, &ivl, approx_tol, keep_all, owner,
+                    k,
+                    self,
+                    uv_domain,
+                    curve,
+                    &ivl,
+                    approx_tol,
+                    keep_all,
+                    owner,
+                    owner_zone_tol_3d,
+                    context,
+                    face_test,
                 );
             };
 
@@ -1554,7 +1699,17 @@ impl Plane {
                 // if clamping moves the control point - give up - pass the call along
                 if dev_from_srf_nrm_line > approx_tol {
                     return surface_drop_curve(
-                        k, self, uv_domain, curve, &ivl, approx_tol, keep_all, owner,
+                        k,
+                        self,
+                        uv_domain,
+                        curve,
+                        &ivl,
+                        approx_tol,
+                        keep_all,
+                        owner,
+                        owner_zone_tol_3d,
+                        context,
+                        face_test,
                     );
                 }
 
@@ -1589,7 +1744,19 @@ impl Plane {
         }
 
         // else pass the call along to the general DropCurve method
-        surface_drop_curve(k, self, uv_domain, curve, &ivl, approx_tol, keep_all, owner)
+        surface_drop_curve(
+            k,
+            self,
+            uv_domain,
+            curve,
+            &ivl,
+            approx_tol,
+            keep_all,
+            owner,
+            owner_zone_tol_3d,
+            context,
+            face_test,
+        )
     }
 
     // ---- coincidence ------------------------------------------------------------------
@@ -2189,8 +2356,10 @@ fn surface_drop_point(
 }
 
 /// The general `SmSurface::DropCurve(ctx, domain, curve, interval, tol, .., keep_all,
-/// NULL, ..)` on the plane (a copy with the plane's `owner`).
-fn surface_drop_curve(
+/// NULL, ..)` on the plane (a copy with the plane's `owner`, carrying the owning face's
+/// tolerance `owner_zone_tol_3d` when the caller has it).
+#[allow(clippy::too_many_arguments)]
+fn surface_drop_curve<O: SolutionObject>(
     k: &Kernel,
     plane: &Plane,
     uv_domain: &Extent2d,
@@ -2199,12 +2368,23 @@ fn surface_drop_curve(
     approx_tol: f64,
     keep_all: bool,
     owner: Option<ObjectRef>,
+    owner_zone_tol_3d: Option<f64>,
+    context: Option<DropSolveContext<'_, O>>,
+    face_test: Option<FaceTest<'_>>,
 ) -> Result<PlaneDropCurve> {
     let mut surface = Surface::from(plane.clone());
     *surface.owner_mut() = owner;
-    let r = surface.drop_curve_base::<crate::surface::surface::p4::NoObject>(
-        k, uv_domain, curve, interval, approx_tol, keep_all, None,
-    )?;
+    surface.set_owner_zone_tol_3d(owner_zone_tol_3d);
+    let r = match (context, face_test) {
+        (None, Some(classify)) => surface.drop_curve_base_face_tested::<O>(
+            k, uv_domain, curve, interval, approx_tol, keep_all, None, classify,
+        )?,
+        (Some(context), _) => surface.drop_curve_base_with_context::<O>(
+            k, uv_domain, curve, interval, approx_tol, keep_all, None, context,
+        )?,
+        (None, None) => surface
+            .drop_curve_base::<O>(k, uv_domain, curve, interval, approx_tol, keep_all, None)?,
+    };
     Ok(PlaneDropCurve {
         max_drop_to_surf: r.max_drop_to_surf,
         max_approx_dev: r.max_approx_dev,

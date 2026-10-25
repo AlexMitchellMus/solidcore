@@ -295,7 +295,7 @@ pub fn find_brep_region_of_other_face(
         // (the classification's construction tolerance, the edge's, is not read)
         let Some(pc) = ignore_failure(classify_point_editing_disabled(
             k,
-            &BrepQuery::default(),
+            &BrepQuery::of_brep(brep),
             brep,
             point,
             0.0,
@@ -525,6 +525,15 @@ pub fn boolean_post_process(
         }
         // SER(DeleteEdge(pEdge, pSurfToKeep)); the cleanup holds no notification state
         p4::with_local_env(|env| p4::delete_edge(k, brep, env, e, Some(keep)))?;
+        // `pSurfToKeep->GetFace()`: when the face holding the kept surface is the one
+        // merged away, DeleteEdge swaps that surface onto the surviving face first
+        let keep = if brep.face(keep).is_ok() {
+            keep
+        } else if keep == f0 {
+            f1
+        } else {
+            f0
+        };
         // The native output starts as a default SmExtent2d and is written back
         // unconditionally, even if IsTopological left it untouched.
         let domain = topological.merged_face_domain.unwrap_or_default();
@@ -561,6 +570,7 @@ pub fn boolean_post_process(
                         .curve
                         .as_ref()
                         .and_then(crate::curve::curve::p2::Curve::owner),
+                    brep.geometry_owner_key(EntityRef::Edge(e)),
                 ));
             }
             ignore_failure(crate::topology::brep::p5::delete_topological_vertex(
@@ -570,14 +580,19 @@ pub fn boolean_post_process(
                 Some(v),
                 None,
             ))?;
-            for (e, owner) in owners {
+            for (e, owner, proven) in owners {
                 if !brep.edge_list().contains(&e) {
                     continue;
                 }
-                if let Some(curve) = brep.edge_mut(e)?.curve.as_mut() {
-                    if curve.owner() != owner {
+                let restored = brep.edge_mut(e)?.curve.as_mut().is_some_and(|curve| {
+                    let changed = curve.owner() != owner;
+                    if changed {
                         curve.set_owner(owner, None);
                     }
+                    changed
+                });
+                if restored {
+                    brep.set_geometry_owner_key(EntityRef::Edge(e), proven);
                 }
             }
         }
