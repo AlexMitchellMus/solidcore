@@ -9,6 +9,10 @@ mod edge_geometry;
 mod edge_map_state;
 #[path = "generated_geometry.rs"]
 mod generated_geometry;
+#[path = "insertion_checkpoint.rs"]
+mod insertion_checkpoint;
+#[path = "insertion_state.rs"]
+mod insertion_state;
 #[path = "intermediate_faces.rs"]
 mod intermediate_faces;
 #[path = "rail_classification.rs"]
@@ -237,10 +241,7 @@ pub(super) fn run(
     before: &[f64],
 ) -> SolidResult<Vec<f64>> {
     if input.checkpoint == Checkpoint::InsertedIntersectionTopology {
-        return Err(SolidError::unported(
-            "SmFilletExecutive::DoFilleting (retained topology-insertion Session provider)",
-            "blend.fillet_executive_p1",
-        ));
+        return insertion_checkpoint::run(k, body, selected, input, before);
     }
     let mut session = FilletSession::new(k, body)?;
     let mut statuses = [-1.0; 12];
