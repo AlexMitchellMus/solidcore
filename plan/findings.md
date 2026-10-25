@@ -20709,33 +20709,6 @@ clears it only on its success exits (`:3114`, `:4148`, `:5095`); its `SER` error
 returns leave it set, as the port's `manifold_boolean_translated` does. No change.
 ## intersect.surface_drop_lib_p3: DropCurve's start drop keeps every solution (2026-10-25)
 
-## primitive.primitive_creation_p2 planar-path union failures: an edge imprint that edits nothing need not stop the Boolean (2026-10-25)
-
-Resolves "planar-path union failures: narrowed to an edge definition's proto vertices"
-(cases `gen0003`, `gen0028`, `gen0039`, `gen0178`, `gen0200`, `gen0208`, `gen0252`).
-With temporary `-Wl,--wrap` instrumentation of `SmEdgeDefinition::Imprint` and
-`SmTopologyIntersector::IntersectInsertRelate` in the C++ shim, and a matching log in
-the port's imprint loop, every case imprints the same edge definitions in the same
-order with the same statuses on both sides: 3 or 4 succeed, then the last (Edge/Edge
-sources, both ends on one proto vertex) returns `SM_ERR_NULL_POINTER (1006)` from
-`GetFinalVertex` in both. So the intersector is not where they diverge. C++ removes
-the edge definition, goes on (`SE_MSG`) and `IntersectInsertRelate` returns
-`SM_SUCCESS` from `SetRelationships`. The port stopped there because it carries the
-SolidCraft fix for UB-242 (tangency-labs/smlib af8db37), which ends the Boolean on any
-imprint error.
-
-UB-242's hazard is a B-rep left half edited by a failed `MakeEdgeInFace`. The failure here
-comes from `SmEdgeDefinition::Imprint`'s `NER` checks on the four `GetFinalVertex`
-results, a `const` lookup before any edit (`SmProtoTopology.cpp:1375-1386`), so both
-B-reps stay consistent and upstream's continuation is defined. The port now stops only
-when a failing imprint may have edited a B-rep: any vertex-definition or glue failure,
-or an edge-definition failure at or after its first `MakeEdgeInFace`
-(`ImprintOutcome::failure_edited`,
-`ProtoTopologyManager::imprint_edge_definition_reporting_edits`). An edge definition
-that stops before that point only warns, as upstream. The `boolean.topology_intersector_p2`
-shim's copy of `IntersectInsertRelate` follows the same rule through a verbatim copy of
-`ImprintIntersections`, which tests the same `const` lookups before each edge imprint.
-All 7 cases now pass with values. Their known-mismatch entries are removed.
 The SolidCraft case `a52-wire-harness/harness_bplus_planar_run` (a circle swept along a
 5-segment planar path, `SmApiCreateSweepAlongPlanarPath`; runner step and fixture in #883)
 deferred at `query.face_p2: SmFace::PointClassify`, reached from the sweep's internal
@@ -20875,19 +20848,6 @@ All 8 vertex-order known mismatches (`upstream_merge_breps_operation_0..3`,
    `Brep::geometry_owner_key`, so `PiecewiseMerge` sees all 10 split faces of `Box_1`
    instead of dropping the 4 newly split faces.
 
-## offset.offset_executive_p2 shell_boundary_negative_exactly_two_tol: CI-only disagreement, not caused by the narrowed UB-242 stop (2026-10-25)
-
-PR #884's CI difftest-sweep (head `f23c532dc`) reported `values.result.geometry[6]` C++
-`9.999985000000001e-1`, Rust `9.99999e-1` (rel err 5.0e-7). These are the same values as
-the entry "shell_boundary_negative_exactly_two_tol after PR #849" above. Locally, the same
-head, and that head merged with main `2d37267fe`, pass the case with every value
-bit-identical (34 values, max rel err 0). With temporary logging, none of the case's
-`IntersectInsertRelate` calls has a failing imprint, so the narrowed UB-242 stop does not
-apply. The CI run of an unrelated branch (`difftest/endcap-file-load-cache-seed`,
-`88c9219dc`), which still lists `gen0235` as a known mismatch and so lacks that change,
-fails the same case with the same values. The exact-tolerance boundary (shell boundary at
-exactly twice the tolerance) evidently resolves differently on the CI runners. Not parked
-as a known mismatch, because it passes locally and the gate would reject the entry.
 ## blend.fillet_executive_p1: `remove_topo_edges_mouse_two_struts` resolved (2026-10-25)
 
 - **Root cause.** After deleting Edge 1 of `Mouse.smb`, `EdgeId(0)`'s stored zone
