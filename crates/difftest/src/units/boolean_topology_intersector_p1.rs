@@ -825,12 +825,17 @@ impl Two {
     /// Upstream notifies, reads the faces of `v2` and the shells of both vertices, then
     /// looks for a shell pair in one region (`NER(pSurvVShell)`). A region belongs to one
     /// B-rep, so a pair that shares none ends the call with `SM_ERR_NULL_POINTER`
-    /// before any edit. The notifications go to call-local records, which nothing here
-    /// observes, so they are not delivered across the two arenas.
+    /// before any edit. The caller has already deleted the cache of `this`
+    /// (`Notify(SM_NO_PRE_EDIT, this)`). The remaining notifications are not delivered
+    /// across the two arenas: the shim registers no context callbacks, and each face of
+    /// the vertex to delete was already notified `PRE_EDIT` when the vertex was made
+    /// (`MakeVertexLoop` / `MakeVertexSplitEdge`), with nothing recomputing its
+    /// rectangular-trim flag or trim cache in between.
     ///
     /// # Errors
     ///
-    /// `SM_ERR_NULL_POINTER`; [`SolidError::InvalidInput`] for shells of both B-reps
+    /// [`SolidError::Upstream`] with `SM_ERR_NULL_POINTER` (upstream's `NER`);
+    /// [`SolidError::InvalidInput`] for shells of both B-reps
     /// without a region (`NULL == NULL`: upstream would go on to merge shells across
     /// B-reps) or a missing arena.
     fn glue_vertices_of_two_breps(&self, survivor: H, deleted: H) -> solidcore::Result<()> {
@@ -856,7 +861,7 @@ impl Two {
             }
         }
         Err(SolidError::null_pointer(
-            "difftest::boolean_topology_intersector_p1::Two::glue_vertices",
+            "difftest::boolean_topology_intersector_p1::Two::glue_vertices_of_two_breps",
         ))
     }
 
@@ -1534,6 +1539,9 @@ impl solidcore::topology::proto_topology::p3::BrepGlue<H> for Two {
             && v1.b != v2.b
             && (v1.b == brep.b || v2.b == brep.b)
         {
+            // Notify(SM_NO_PRE_EDIT, this) deletes the cache of the B-rep the call is on,
+            // before anything can fail
+            self.delete_cache(brep)?;
             return self.glue_vertices_of_two_breps(v1, v2);
         }
         if brep.kind != K_BREP
@@ -5529,4 +5537,58 @@ fn edge_cases() -> Vec<(String, Value)> {
         );
     }
     out
+}
+
+#[cfg(test)]
+mod glue_tests {
+    use super::*;
+    use solidcore::primitive::api_primitives::create_box;
+    use solidcore::topology::proto_topology::p3::BrepGlue;
+
+    fn two_boxes() -> (Kernel, Two) {
+        let mut k = Kernel::default();
+        let a = create_box(&mut k, Point3::new(0.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
+        let b = create_box(&mut k, Point3::new(5.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
+        (k, Two::new(a, Some(b)))
+    }
+
+    /// `GlueVertices` on `this` with vertices of two B-reps: `Notify(SM_NO_PRE_EDIT, this)`
+    /// deletes the cache of `this`, then `NER(pSurvVShell)` (no region is shared) edits
+    /// nothing.
+    #[test]
+    fn glue_of_two_breps_drops_this_cache_and_returns_null_pointer() {
+        for this_slot in [0i8, 1] {
+            let (mut k, mut two) = two_boxes();
+            two.brep_cache(hd(0, K_BREP, 0)).unwrap();
+            two.brep_cache(hd(1, K_BREP, 0)).unwrap();
+            let counts = |two: &Two| {
+                two.breps
+                    .iter()
+                    .flatten()
+                    .map(|b| (b.vertices().len(), b.edges().len(), b.faces().len()))
+                    .collect::<Vec<_>>()
+            };
+            let before = counts(&two);
+            let first_vertex = |slot: usize| {
+                let id = two.breps[slot].as_ref().unwrap().vertices().ids().next();
+                hd(slot as i8, K_VERTEX, id.unwrap().index())
+            };
+            let (v0, v1) = (first_vertex(0), first_vertex(1));
+            let r = two.glue_vertices(&mut k, hd(this_slot, K_BREP, 0), v0, v1, None);
+            assert!(
+                matches!(
+                    r,
+                    Err(SolidError::Upstream { code: solidcore::error::SM_ERR_NULL_POINTER, .. })
+                ),
+                "this={this_slot}: {r:?}"
+            );
+            assert_eq!(counts(&two), before, "no topology edit");
+            let cached = |i: usize| two.caches[i].get().is_some();
+            assert_eq!(
+                (cached(0), cached(1)),
+                (this_slot != 0, this_slot != 1),
+                "only the cache of `this` is deleted"
+            );
+        }
+    }
 }
