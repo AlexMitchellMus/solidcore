@@ -341,22 +341,23 @@ fn store_parts(
         }
     }
     if let Some(center_line) = center_line {
-        // m_pCenterLineCurve is an SmBSplineCurve*: the part of the SmLine / SmCurve
-        pseudo.geom_mut(g)?.center_line_curve = Some(bspline_part(&center_line)?);
+        // The native base pointer retains the actual derived curve object.
+        bspline_part(&center_line)?;
+        pseudo.geom_mut(g)?.center_line_curve = Some(center_line);
     }
     Ok(())
 }
 
 /// The `SmBSplineCurve` part of a curve (`SM_CAST_PTR(SmBSplineCurve, ..)`: the analytic
 /// curves derive from it upstream).
-fn bspline_part(curve: &Curve) -> Result<BSplineCurve> {
+fn bspline_part(curve: &Curve) -> Result<&BSplineCurve> {
     use crate::curve::curve::CurveKind;
     match curve.kind() {
-        CurveKind::BSpline(c) => Ok(c.clone()),
-        CurveKind::Line(c) => Ok(c.base.clone()),
-        CurveKind::Ellipse(c) => Ok(c.base().clone()),
-        CurveKind::Hyperbola(c) => Ok(c.base().clone()),
-        CurveKind::Parabola(c) => Ok(c.base().clone()),
+        CurveKind::BSpline(c) => Ok(c),
+        CurveKind::Line(c) => Ok(c.base()),
+        CurveKind::Ellipse(c) => Ok(c.base()),
+        CurveKind::Hyperbola(c) => Ok(c.base()),
+        CurveKind::Parabola(c) => Ok(c.base()),
         _ => Err(SolidError::null_pointer(OP)),
     }
 }
@@ -1882,7 +1883,7 @@ impl FilletSolver {
         let mut fil_edges: Vec<EdgeId> = Vec::new();
         for g in self.fillet_geoms() {
             let this_geom = pseudo.geom(g)?;
-            if this_geom.fillet_surface().is_some() && !fil_surfs.contains(&g) {
+            if this_geom.fillet_surface()?.is_some() && !fil_surfs.contains(&g) {
                 fil_surfs.push(g);
             }
             if this_geom.center_line_curve().is_some() && !fil_curvs.contains(&g) {
