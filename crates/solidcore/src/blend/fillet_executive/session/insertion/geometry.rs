@@ -3,6 +3,7 @@
 mod edits;
 mod proto;
 mod query;
+mod topology_objects;
 
 use super::super::{FilletBody, FilletObject};
 use super::curves::InsertionCurves;
@@ -1008,6 +1009,58 @@ mod tests {
         body.vertex_mut(vertex).unwrap().point.x += 7.0;
         assert_eq!(view.target.vertex(vertex).unwrap().point, before);
         assert_ne!(view.pseudo.brep().vertex(vertex).unwrap().point, before);
+    }
+
+    #[test]
+    fn topology_solver_preserves_body_roles_and_does_not_infer_curve_ownership() {
+        use crate::intersect::topology_solver::p1::TopologyObjects;
+        let mut k = Kernel::default();
+        let mut target = box_at(&mut k, 0.0);
+        let mut intermediate = box_at(&mut k, 100.0);
+        let mut pseudo = FilletBrep::new();
+        *pseudo.brep_mut() = box_at(&mut k, 200.0);
+        let edge = target
+            .edges()
+            .ids()
+            .find(|&e| target.edge(e).unwrap().curve.is_some())
+            .unwrap();
+        let vertex = target.vertices().ids().next().unwrap();
+        let view = InsertionGeometry::new(&mut target, &mut pseudo, &mut intermediate).unwrap();
+        let target_vertex = FilletObject::Topology(FilletBody::Target, EntityRef::Vertex(vertex));
+        let other_vertex = FilletObject::IntermediateTopology(EntityRef::Vertex(vertex));
+        let first = TopologyObjects::vertex_point(&view, target_vertex).unwrap();
+        let second = TopologyObjects::vertex_point(&view, other_vertex).unwrap();
+        assert_eq!(second.x - first.x, 100.0);
+        let curve = FilletObject::Curve(FilletBody::Target, edge);
+        view.target
+            .edge_mut(edge)
+            .unwrap()
+            .curve
+            .as_mut()
+            .unwrap()
+            .set_owner(None, None);
+        assert_eq!(TopologyObjects::curve_edge(&view, curve).unwrap(), None);
+        let foreign = ObjectRef {
+            type_code: -123,
+            key: ObjectKey(u64::MAX),
+        };
+        view.target
+            .edge_mut(edge)
+            .unwrap()
+            .curve
+            .as_mut()
+            .unwrap()
+            .set_owner(Some(foreign), None);
+        assert!(TopologyObjects::curve_edge(&view, curve)
+            .unwrap_err()
+            .is_unported());
+        assert_eq!(
+            ClassGeometry::curve(&view, curve).unwrap().owner(),
+            Some(foreign)
+        );
+        assert!(
+            TopologyObjects::brep_cache(&view, FilletObject::Body(FilletBody::Target)).is_err()
+        );
     }
 
     #[test]
