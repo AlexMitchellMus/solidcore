@@ -65,7 +65,7 @@ impl FilletSession<'_> {
         ) -> Result<T>,
     ) -> Result<T> {
         let state = self.insertion_state()?;
-        crate::topology::brep::p3::with_lent_context(k, |k, context| {
+        crate::geom::context::Context::with_notification_context(k, |k, context| {
             let mut geometry =
                 geometry::InsertionGeometry::new(state.target, state.pseudo, state.intermediate)?
                     .with_notifications(
