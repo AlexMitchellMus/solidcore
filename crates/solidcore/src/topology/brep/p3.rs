@@ -67,7 +67,7 @@
 //!   distinct per object is the caller's part, as an upstream caller's objects are its
 //!   own; the records and attributes it keeps under them are used as they are (an
 //!   object without a record gets the default one its constructor would make,
-//!   [`seed_records`]). Only objects with no caller key get kernel-issued identities:
+//!   `seed_records`). Only objects with no caller key get kernel-issued identities:
 //!   a curve is `(domain, counter)`, issued once per context domain and kept on the
 //!   [`Curve`] ([`Curve::notify_key`]); a caller without notification state of its own
 //!   ([`with_kernel_callbacks`], the healer's tracked edits) names topology by
@@ -77,7 +77,7 @@
 //!   have no public setter, and a clone (upstream's copy constructor: another object)
 //!   starts without one. Kernel keys have the top bit set (topology `0b10`, geometry
 //!   `0b11`); every edit refuses (`InvalidInput`) a caller key in that range before it
-//!   changes anything ([`check_keys`]), unless it is the object's own kernel identity.
+//!   changes anything (`check_keys`), unless it is the object's own kernel identity.
 //!   The lending adapters are not nestable: one inside another (whose kernel context
 //!   then holds no callbacks) is refused before anything changes
 //!   (`Context::lend_notify`). Independent contexts can issue equal keys by default.
@@ -521,6 +521,8 @@ fn new_brep_in(
     caller_key: Option<ObjectKey>,
 ) -> Result<Brep> {
     let mut b = Brep::new();
+    // (its Euler operators name geometry owners by their notification identities)
+    b.set_naming(crate::topology::NamingScheme::Notify);
 
     // When asked (should be extremly rare) set SystemTolerance sizes
     b.set_this_model_size_estimate(k, model_size_estimate);
@@ -936,8 +938,8 @@ pub(crate) fn kernel_named_edit<R>(
 
 /// Runs `edit` for a caller that keeps no notification state of its own (upstream's
 /// objects carry it): through the kernel context's notify callbacks and identity
-/// domain, lent for the edit and given back ([`with_lent_context`]), under the
-/// kernel's identities ([`kernel_named_edit`]).
+/// domain, lent for the edit and given back (`with_lent_context`), under the
+/// kernel's identities (`kernel_named_edit`).
 ///
 /// Not nestable: inside `edit`, notify through the `env` it is given. A
 /// `with_kernel_callbacks` (or the healer's tracked edit) inside `edit` is refused.
@@ -1374,6 +1376,7 @@ fn merge_brep_in(
         }
 
         b.geometry_owner_keys.insert(EntityRef::Face(new_f), owner);
+        b.sync_face_surface_tolerance(new_f)?;
 
         // add newFace to target Brep FaceList
         b.face_list.push(new_f);
@@ -2444,6 +2447,7 @@ fn bind_wire_curve(
     if let Some(c) = b.edge_mut(e)?.curve.as_mut() {
         let _ = c.set_owner(Some(edge_ref), None);
     }
+    b.set_geometry_owner_key(EntityRef::Edge(e), Some(edge_ref));
     Ok(())
 }
 
@@ -3146,6 +3150,7 @@ fn turn_to_nurbs_in(
         if let Some(c) = b.edge_mut(e)?.curve.as_mut() {
             let _ = c.set_owner(Some(edge_ref), None);
         }
+        b.set_geometry_owner_key(EntityRef::Edge(e), Some(edge_ref));
     }
     Ok(())
 }

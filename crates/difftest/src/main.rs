@@ -12,6 +12,7 @@
 //!          --jobs N (-j; default 1, 0 = all cores)   # units in N child processes (`difftest::jobs`)
 //! cargo run -p difftest --features cpp -- --unit <id> --fuzz N [--fuzz-out <dir>]   # FFI guard probing
 //! cargo run -p difftest --features cpp -- --ssi-corpus [--tol 1e-6|default] [--jobs N] [glob]
+//! cargo run -p difftest -- --ssi-corpus [glob]   # the `ssi` engine only; no `cpp` feature needed
 //! cargo run -p difftest -- --solidcraft-cases [glob]   # Rust only; no `cpp` feature needed
 //! cargo run -p difftest --features cpp -- --green --digest-dir <dir> [--digest-debug]   # Rust side
 //!          only, one `<dir>/<unit>.digest` per unit (native vs wasm32: scripts/wasm-digest.sh)
@@ -70,6 +71,7 @@ struct Args {
     fuzz_out: Option<PathBuf>,
     digest_dir: Option<PathBuf>,
     digest_debug: bool,
+    case_timeout: Option<u64>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -106,6 +108,10 @@ fn parse_args() -> Result<Args, String> {
             "--fuzz-out" => a.fuzz_out = Some(PathBuf::from(val("--fuzz-out")?)),
             "--digest-dir" => a.digest_dir = Some(PathBuf::from(val("--digest-dir")?)),
             "--digest-debug" => a.digest_debug = true,
+            "--case-timeout" => {
+                let v = val("--case-timeout")?;
+                a.case_timeout = Some(v.parse().map_err(|_| format!("bad --case-timeout `{v}`"))?);
+            }
             "-h" | "--help" => return Err(String::new()),
             other
                 if (a.ssi_corpus || a.solidcraft_cases)
@@ -127,13 +133,7 @@ fn main() -> ExitCode {
         difftest::jobs::watch_parent();
     }
     if raw.first().map(String::as_str) == Some("--ssi-case") {
-        #[cfg(feature = "cpp")]
         return difftest::ssi::run_child(raw.get(1..).unwrap_or(&[]));
-        #[cfg(not(feature = "cpp"))]
-        {
-            eprintln!("difftest: --ssi-case needs feature `cpp`");
-            return ExitCode::from(2);
-        }
     }
     // Child of `--fuzz`: one batch of fuzz cases (see `difftest::fuzz::run_child`).
     if raw.first().map(String::as_str) == Some("--fuzz-exec") {
@@ -180,14 +180,7 @@ fn main() -> ExitCode {
         return difftest::solidcraft::run_cases(&root, &opts);
     }
 
-    if !solidcore_ffi::LINKED {
-        eprintln!(
-            "difftest: built without the C++ kernel; run with \
-             `cargo run -p difftest --features cpp -- ...`"
-        );
-        return ExitCode::from(2);
-    }
-
+    // Without the C++ kernel it runs the `ssi` engine alone.
     if args.ssi_corpus {
         let opts = difftest::ssi::CorpusOptions {
             tol: args
@@ -200,6 +193,14 @@ fn main() -> ExitCode {
             no_report: args.no_report,
         };
         return difftest::ssi::run_corpus(&root, &opts);
+    }
+
+    if !solidcore_ffi::LINKED {
+        eprintln!(
+            "difftest: built without the C++ kernel; run with \
+             `cargo run -p difftest --features cpp -- ...`"
+        );
+        return ExitCode::from(2);
     }
     if args.tol.is_some() {
         eprintln!("difftest: --tol only applies to --ssi-corpus");
@@ -246,6 +247,7 @@ fn main() -> ExitCode {
                 let opts = RunOptions {
                     filter: args.filter.clone(),
                     perturb: false,
+                    case_timeout: args.case_timeout.map(std::time::Duration::from_secs),
                 };
                 let res = run_unit(unit.as_ref(), &ctx, &opts);
                 // The value-share floor is part of the gate (`--green` enforces it too).
@@ -347,6 +349,7 @@ fn main() -> ExitCode {
     let opts = RunOptions {
         filter: args.filter.clone(),
         perturb: args.perturb,
+        case_timeout: args.case_timeout.map(std::time::Duration::from_secs),
     };
     let report_dir = args
         .report_dir

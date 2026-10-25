@@ -622,7 +622,11 @@ pub fn notify(
     // Propagate notification up hierarchy
     let refs = [d1, d2, d3].map(|d| d.map(|a| a.object_ref(env)));
     let [r1, r2, r3] = refs;
-    a_object::sag_notify(
+    let regions = BrepRegions {
+        b,
+        key_of: env.key_of,
+    };
+    a_object::sag_notify_with_regions(
         &mut *env.records,
         &mut *env.attributes,
         env.context.as_deref_mut(),
@@ -631,11 +635,38 @@ pub fn notify(
         r1,
         r2,
         r3,
+        Some(&regions),
     )
 }
 
+/// The regions of the notifying B-rep, by the identities its notifications carry
+/// (`SmRegion::GetBrep` and the region flags of the attribute handlers reached from
+/// [`notify`]): a region attribute names a region by [`NotifyEnv::key_of`]. A key that
+/// is no region of this B-rep stays unresolved ([`SolidError::Unported`], as without a
+/// lookup).
+struct BrepRegions<'a> {
+    b: &'a Brep,
+    key_of: &'a dyn Fn(EntityRef) -> ObjectRef,
+}
+
+impl shell::RegionLookup for BrepRegions<'_> {
+    fn resolve_region(&self, object: ObjectKey) -> Result<shell::RegionRef<'_>> {
+        for (region_id, _) in self.b.regions().iter() {
+            if (self.key_of)(EntityRef::Region(region_id)).key == object {
+                return Ok(shell::RegionRef {
+                    brep: self.b,
+                    brep_id: BrepId::from_index(0),
+                    region_id,
+                });
+            }
+        }
+        // UNPORTED(topology.shell): SmRegion::GetBrep of a region outside the notifying B-rep
+        Err(SolidError::unported("SmRegion::GetBrep", "topology.shell"))
+    }
+}
+
 /// The identity of a region in a [`RegionNotifyState`]: its arena identity
-/// ([`loopuse::notify_ref`](crate::topology::loopuse::notify_ref), `SmRegion_TYPE`), the
+/// (`loopuse::notify_ref`, `SmRegion_TYPE`), the
 /// scheme of [`ArenaNotifyState`], so a caller decoding the events' keys (the heal path's
 /// topology tracker) reads every state's keys alike. Any other entity maps to a key
 /// without record (`(0, u64::MAX)`, which no arena identity is and the decoder rejects),
@@ -701,7 +732,7 @@ impl RegionNotifyState {
 /// without a notification environment, the heal path, `CopyEdges`). Upstream every object
 /// carries its `SmTopology` part and attributes; such a caller models neither, so the
 /// notification runs on a default record for every object of the B-rep, keyed by its
-/// arena identity ([`loopuse::notify_ref`](crate::topology::loopuse::notify_ref)), and an
+/// arena identity (`loopuse::notify_ref`), and an
 /// empty attribute store. The records are never read back: they exist so that
 /// `SmTopology::Notify`'s flag propagation finds both objects, as upstream it always does.
 /// The identities are unique within one B-rep only.
@@ -1314,7 +1345,7 @@ pub(crate) fn cache_entity(object: CacheObject) -> Result<EntityRef> {
 
 /// `RayFire`: fires a ray from `start` along `direction` through the B-rep (solver
 /// operation `SM_SO_RAYFIRE` on the B-rep with its `cache`; `brep_id`, `keys` and
-/// `owner_of` as in [`BrepObjects`]) and classifies
+/// `owner_of` as in [`BrepObjects`](crate::topology::brep_cache::BrepObjects)) and classifies
 /// the start point: the infinite region (or the first region when there is none) when
 /// nothing is hit, else the region [`local_curve_sector`] finds stepping back from the
 /// closest, lowest dimensional hit along the ray. `answer_limit` bounds the distance

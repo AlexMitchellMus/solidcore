@@ -528,7 +528,7 @@ impl Target {
 
     /// Whether target edge `e`'s curve is imported exactly.
     fn exact_edge(&self, e: Option<EdgeId>) -> bool {
-        e.and_then(|e| self.types.edge_curve_types.get(e.index() as usize).copied())
+        e.and_then(|e| self.types.inexact_curve(e.index() as usize))
             .is_none_or(|t| t < 0 || EXACT_CURVES.contains(&t))
     }
 
@@ -1107,7 +1107,7 @@ impl RustModel {
                 geom.set_fillet_surface(Some(surface_of(s)?));
             }
             if let Some(c) = &g.center {
-                geom.center_line_curve = Some(bspline_of(c)?);
+                geom.center_line_curve = Some(Curve::from(bspline_of(c)?));
             }
             geom.deviations = g.devs;
             for (rail, off) in g.offs.iter().enumerate() {
@@ -1301,7 +1301,7 @@ impl RustModel {
             for &eu in &geom.ref_eus {
                 self.put_eu(o, eu);
             }
-            dump_surface(o, geom.fillet_surface())?;
+            dump_surface(o, geom.fillet_surface().map_err(h)?)?;
             dump_bcurve(o, geom.center_line_curve());
             o.extend(geom.deviations);
             for off in &geom.off_surfs {

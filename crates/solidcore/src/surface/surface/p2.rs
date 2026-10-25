@@ -909,7 +909,7 @@ impl Surface {
 
     /// Takes this surface's trimmed surface cache out of its cache slot (shared with its
     /// evaluation copies) for use, leaving [`TrimCacheSlot::CheckedOut`] until
-    /// [`Surface::put_trim_cache`] returns it: [`TrimCacheSlot::Stored`] with the cache,
+    /// [`Surface::store_trim_cache`] returns it: [`TrimCacheSlot::Stored`] with the cache,
     /// whose own surface copy shares this slot again while it is out; otherwise what the
     /// slot holds ([`TrimCacheSlot::Empty`] or [`TrimCacheSlot::CheckedOut`]), unchanged.
     #[must_use]
@@ -1721,6 +1721,48 @@ impl Surface {
             SurfaceKind::SurfOfRevolution(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             SurfaceKind::SurfOfExtrusion(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             _ => Ok(base_convert_uv(nurbs_uv)),
+        }
+    }
+
+    /// [`Surface::step_inversion`] whose `GlobalPointSolve` runs under the caller's
+    /// face context (`context`: the solve context and this surface's handle in it), so
+    /// a face-owned surface's solutions are classified against the face's trims
+    /// (upstream reaches the face through `GetFace()`). The B-spline and plane kinds
+    /// (`SmBSplineSurface::STEPInversion`) take the context; the other kinds' overrides
+    /// run as [`Surface::step_inversion`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::step_inversion`], with those of the context.
+    pub fn step_inversion_with_context<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        anal_domain: &Extent2d,
+        point_on_surf: Point3,
+        tol_3d: f64,
+        uv_guess: Option<Point2>,
+        context: (&mut dyn SurfaceSolveContext<O>, Option<O>),
+    ) -> Result<(Point2, LocationType)> {
+        match &self.kind {
+            SurfaceKind::BSpline(s) => s.step_inversion_on_with_context(
+                k,
+                self,
+                anal_domain,
+                point_on_surf,
+                tol_3d,
+                uv_guess,
+                context,
+            ),
+            SurfaceKind::Plane(s) => s.base().step_inversion_on_with_context(
+                k,
+                self,
+                anal_domain,
+                point_on_surf,
+                tol_3d,
+                uv_guess,
+                context,
+            ),
+            _ => self.step_inversion(k, anal_domain, point_on_surf, tol_3d, uv_guess),
         }
     }
 

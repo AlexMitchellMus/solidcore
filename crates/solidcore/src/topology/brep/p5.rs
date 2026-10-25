@@ -9,7 +9,7 @@
 //! | [`delete_topological_vertex`] | `SmBrep::DeleteTopologicalVertex` |
 //! | [`find_and_set_infinite_region`] | `SmBrep::FindAndSetInfiniteRegion` |
 //! | [`glue_vertices`] | `SmBrep::GlueVertices` |
-//! | [`make_edge_in_face`], [`make_edge_in_face_with_uv_curve`] | `SmBrep::MakeEdgeInFace` |
+//! | [`make_edge_in_face`], [`make_edge_in_face_with_uv_curve`], [`make_edge_in_face_in`] | `SmBrep::MakeEdgeInFace` |
 //! | [`make_manifold`] | `SmBrep::MakeManifold` |
 //! | [`remove_topological_edges_and_vertices`] | `SmBrep::RemoveTopologicalEdgesAndVertices` |
 //! | [`remove_faces`] | `SmBrep::RemoveFaces` |
@@ -983,6 +983,7 @@ fn set_edge_curve_owner(
             .as_mut()
             .ok_or_else(|| SolidError::null_pointer(OP))?;
         let _ = curve.set_owner(Some(owner), Some(brep));
+        b.set_geometry_owner_key(crate::error::EntityRef::Edge(edge), Some(owner));
         Ok(())
     })
 }
@@ -1394,7 +1395,12 @@ pub fn make_edge_in_face_with_uv_curve(
 ) -> Result<()> {
     with_p3_notifications(k, b, notifications, |k, b, env| {
         make_edge_with_backend(
-            &mut ArenaFaceEdge { k, b, env },
+            &mut ArenaFaceEdge {
+                k,
+                b,
+                env,
+                curve_ref: &edge_curve_identity,
+            },
             editing_enabled,
             face,
             start,
@@ -1407,6 +1413,50 @@ pub fn make_edge_in_face_with_uv_curve(
             output,
         )
     })
+}
+
+/// [`make_edge_in_face_with_uv_curve`] inside a caller's edit: notifying through the
+/// caller's `env`, with the new edge's curve identified by the caller's `curve_ref`
+/// (as [`super::p9::make_edge_in_face_with_vu`] takes it). The editing check reads
+/// `b`'s own `m_bEditingEnabled` ([`Brep::editing_enabled`]), as upstream's member does.
+///
+/// # Errors
+///
+/// Those of [`make_edge_in_face_with_uv_curve`].
+pub fn make_edge_in_face_in(
+    k: &Kernel,
+    b: &mut Brep,
+    face: Option<FaceId>,
+    start: Option<VertexId>,
+    end: Option<VertexId>,
+    curve: Curve,
+    uv_curve: Option<Curve>,
+    interval: Extent1d,
+    orientation: OrientType,
+    max_gap_3d: f64,
+    output: &mut EdgeInFace,
+    env: &mut EditNotifyEnv<'_>,
+    curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
+) -> Result<()> {
+    let editing_enabled = b.editing_enabled();
+    make_edge_with_backend(
+        &mut ArenaFaceEdge {
+            k,
+            b,
+            env,
+            curve_ref,
+        },
+        editing_enabled,
+        face,
+        start,
+        end,
+        curve,
+        uv_curve,
+        interval,
+        orientation,
+        max_gap_3d,
+        output,
+    )
 }
 
 /// Handle adapter for the shared owned control flow. Missing sector/insertion
@@ -1511,6 +1561,7 @@ struct ArenaFaceEdge<'a, 'e> {
     k: &'a Kernel,
     b: &'a mut Brep,
     env: &'a mut EditNotifyEnv<'e>,
+    curve_ref: &'a dyn Fn(EdgeId, i64) -> ObjectRef,
 }
 impl FaceEdgeBackend for ArenaFaceEdge<'_, '_> {
     type Face = FaceId;
@@ -1576,6 +1627,7 @@ impl FaceEdgeBackend for ArenaFaceEdge<'_, '_> {
             orientation,
             gap,
             out,
+            self.curve_ref,
         )
     }
 }
@@ -1620,8 +1672,8 @@ fn find_vertex_sector(
 
 /// `SmBrep::MakeEdgeInFaceWithVU(face, first, last, curve, uv, interval, orientation,
 /// max_gap_3d, ...)` without drop-curve state ([`super::p9::make_edge_in_face_with_vu`]).
-/// The double gap becomes the `SmZoneTol3d` parameter. Curves carry no identity in this
-/// port (module docs): the new edge's curve gets a call-local one.
+/// The double gap becomes the `SmZoneTol3d` parameter. The new edge's curve takes its
+/// identity from `curve_ref` (a call-local one for the plain entry points, module docs).
 #[allow(clippy::too_many_arguments)]
 fn make_edge_in_face_with_vu(
     k: &Kernel,
@@ -1636,6 +1688,7 @@ fn make_edge_in_face_with_vu(
     orientation: OrientType,
     max_gap_3d: f64,
     output: &mut EdgeInFace,
+    curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
 ) -> Result<()> {
     let made = super::p9::make_edge_in_face_with_vu(
         k,
@@ -1651,7 +1704,7 @@ fn make_edge_in_face_with_vu(
             curve_zone_tol_3d: crate::geom::tol::zone_tol3d(k, max_gap_3d),
         },
         env,
-        &edge_curve_identity,
+        curve_ref,
     )?;
     *output = EdgeInFace {
         edge: Some(made.edge),
@@ -1957,7 +2010,7 @@ pub fn remove_faces(
 }
 
 /// [`remove_faces`] under the caller's notification environment `env` (the objects'
-/// `SmTopology` records and attributes), instead of the kernel's ([`plain_edit`]).
+/// `SmTopology` records and attributes), instead of the kernel's (`plain_edit`).
 ///
 /// # Errors
 ///
@@ -2361,11 +2414,10 @@ pub fn transform_with_notifications(
     notifications: Option<&mut EditNotifyEnv<'_>>,
 ) -> Result<()> {
     if let Some(env) = notifications {
-        transform_in(k, b, placement, scale, scale_tolerances, env, None)
+        transform_in(k, b, placement, scale, scale_tolerances, env)
     } else {
-        let owners = b.geometry_owner_keys.clone();
         plain_edit(k, b, |k, b, env| {
-            transform_in(k, b, placement, scale, scale_tolerances, env, Some(&owners))
+            transform_in(k, b, placement, scale, scale_tolerances, env)
         })
     }
 }
@@ -2377,7 +2429,6 @@ fn transform_in(
     scale: Option<Vec3>,
     scale_tolerances: bool,
     env: &mut EditNotifyEnv<'_>,
-    owners: Option<&std::collections::BTreeMap<crate::EntityRef, ObjectRef>>,
 ) -> Result<()> {
     let owner_keys = env.key_of;
     let mut notifications = Some(env);
@@ -2416,7 +2467,6 @@ fn transform_in(
     for edge in crate::topology::brep::p1::curve_owners(b, None, &|e| {
         transform_owner_key(
             b,
-            owners,
             crate::EntityRef::Edge(e),
             owner_keys(crate::EntityRef::Edge(e)),
         )
@@ -2445,7 +2495,6 @@ fn transform_in(
     for face in crate::topology::brep::p1::surface_owners(b, None, &|f| {
         transform_owner_key(
             b,
-            owners,
             crate::EntityRef::Face(f),
             owner_keys(crate::EntityRef::Face(f)),
         )
@@ -2561,15 +2610,11 @@ fn notify_edge_pre_edit(
     )
 }
 
-// Geometry may retain a constructor's caller keys while plain-edit notifications
-// use unique kernel identities. Match only a proven producer key or the actual
-// issued kernel identity; foreign and unowned geometry keep the native filter.
-fn transform_owner_key(
-    b: &Brep,
-    owners: Option<&std::collections::BTreeMap<crate::EntityRef, ObjectRef>>,
-    entity: crate::EntityRef,
-    kernel_key: ObjectRef,
-) -> ObjectRef {
+// Geometry may retain a constructor's caller keys while plain-edit or temporary
+// transform notifications use distinct identities. Match only a proven producer
+// key or the issued notification identity; foreign and unowned geometry keep the
+// native filter.
+fn transform_owner_key(b: &Brep, entity: crate::EntityRef, kernel_key: ObjectRef) -> ObjectRef {
     let owner = match entity {
         crate::EntityRef::Edge(edge) => b
             .edges()
@@ -2586,10 +2631,7 @@ fn transform_owner_key(
     if owner == Some(kernel_key) {
         kernel_key
     } else {
-        owners
-            .and_then(|keys| keys.get(&entity))
-            .copied()
-            .unwrap_or(kernel_key)
+        b.geometry_owner_key(entity).unwrap_or(kernel_key)
     }
 }
 
