@@ -158,7 +158,7 @@
 //!   interface.
 //! - **Recursion.** None.
 
-use core::cell::Cell;
+use core::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Most faces the working lists of [`TopologyIntersector::face_face_intersect`] may
@@ -3386,9 +3386,9 @@ struct FaceCaches<O> {
     /// UV trim curves the face classifications of the solve asked for
     /// (`SmEdgeuse::GetOrCreateUVTrimCurve`), made on the B-rep between attempts.
     trims: crate::query::brep::RayPreparation,
-    /// The face whose B-rep the last classification resolved: the owner of the edge
-    /// use a trim request names.
-    classified_face: Cell<Option<O>>,
+    /// The faces the classifications of the attempt resolved to B-rep entities, from
+    /// which the face owning a trim request's edge use is found.
+    classified_faces: RefCell<Vec<O>>,
 }
 
 /// The intersector's topology objects with the face caches of [`FaceCaches`]: the
@@ -3596,7 +3596,10 @@ impl<O: ClassObject + SolutionObject + Ord, G: IntersectorBrep<O> + ?Sized> Topo
     fn face_entity(&self, face: O) -> Option<(&Brep, FaceId)> {
         let entity = self.inner().face_entity(face);
         if entity.is_some() {
-            self.caches.classified_face.set(Some(face));
+            let mut faces = self.caches.classified_faces.borrow_mut();
+            if !faces.contains(&face) {
+                faces.push(face);
+            }
         }
         entity
     }
@@ -3661,6 +3664,62 @@ where
     with_face_caches(k, geometry, |objects| solve(&mut FaceCacheContext(objects)))
 }
 
+/// The face owning the edge use of a UV trim request: among the faces the attempt's
+/// classifications resolved on the requesting B-rep, the one whose loop use holds the
+/// edge use (`SmEdgeuse::GetLoopuse`, `GetFaceuse`, `GetFace`).
+fn trim_request_face<O, G>(
+    geometry: &G,
+    caches: &FaceCaches<O>,
+    request: crate::query::brep::PreparationRequest,
+) -> Result<O>
+where
+    O: ClassObject + SolutionObject + Ord,
+    G: IntersectorBrep<O> + ?Sized,
+{
+    let crate::query::brep::PreparationRequest::UvTrim(eu) = request else {
+        return Err(SolidError::invalid_input(
+            OP_FACE_CACHES,
+            "unexpected preparation request",
+        ));
+    };
+    let faces = caches.classified_faces.borrow();
+    let candidates: Vec<(O, &Brep, FaceId)> = faces
+        .iter()
+        .filter_map(|&face| {
+            let (b, f) = geometry.topology_objects().face_entity(face)?;
+            Some((face, b, f))
+        })
+        .collect();
+    trim_owner_face(&candidates, |b| caches.trims.trim_requested_on(b), eu)
+        .ok_or(SolidError::null_pointer(OP_FACE_CACHES))
+}
+
+/// The candidate face whose B-rep `requested_on` accepts and whose loop uses hold `eu`
+/// (`SmEdgeuse::GetLoopuse`, `SmLoopuse::GetFaceuse`, `GetFace`).
+fn trim_owner_face<O: Copy>(
+    candidates: &[(O, &Brep, FaceId)],
+    requested_on: impl Fn(&Brep) -> bool,
+    eu: crate::topology::EdgeuseId,
+) -> Option<O> {
+    for &(face, b, f) in candidates {
+        if !requested_on(b) {
+            continue;
+        }
+        let owner = match crate::topology::edgeuse::p1::loopuse(b, eu) {
+            Ok(Some(lu)) => crate::topology::loopuse::faceuse(b, lu).and_then(|fu| {
+                fu.map_or(Ok(None), |fu| {
+                    crate::topology::edgeuse::p1::faceuse_face(b, fu)
+                })
+            }),
+            Ok(None) | Err(_) => Ok(None),
+        };
+        if owner.ok().flatten() == Some(f) {
+            return Some(face);
+        }
+    }
+    None
+}
+
 /// The attempts of [`solve_with_face_caches`] and [`surface_solve_with_face_caches`].
 fn with_face_caches<O, G, R>(
     k: &Kernel,
@@ -3675,9 +3734,10 @@ where
         pending: Cell::new(None),
         built: BTreeMap::new(),
         trims: crate::query::brep::RayPreparation::default(),
-        classified_face: Cell::new(None),
+        classified_faces: RefCell::new(Vec::new()),
     };
     loop {
+        caches.classified_faces.borrow_mut().clear();
         let result = solve(&FaceCacheObjects {
             geometry: &*geometry,
             caches: &caches,
@@ -3689,10 +3749,7 @@ where
         if let (Err(SolidError::PreparationRequired { .. }), Some(request)) =
             (&result, caches.trims.take_request())
         {
-            let face = caches
-                .classified_face
-                .take()
-                .ok_or(SolidError::null_pointer(OP_FACE_CACHES))?;
+            let face = trim_request_face(geometry, &caches, request)?;
             let target = geometry.face_cache_target(face)?;
             caches.trims.prepare(k, target.brep, request)?;
             continue;
@@ -4785,6 +4842,49 @@ impl Relations {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn trim_owner_is_found_through_the_edge_use_not_the_last_face() {
+        let mut k = Kernel::default();
+        let b = crate::primitive::api_primitives::create_box(&mut k, Point3::ZERO, 1.0, 1.0, 1.0)
+            .unwrap();
+        let other = b.clone();
+        let faces: Vec<FaceId> = b.faces().ids().collect();
+        let (first, last) = (faces[0], faces[faces.len() - 1]);
+        // an edge use of `first`'s loop
+        let eu = b
+            .edgeuses()
+            .ids()
+            .find(|&e| {
+                crate::topology::edgeuse::p1::loopuse(&b, e)
+                    .ok()
+                    .flatten()
+                    .and_then(|lu| crate::topology::loopuse::faceuse(&b, lu).ok().flatten())
+                    .and_then(|fu| {
+                        crate::topology::edgeuse::p1::faceuse_face(&b, fu)
+                            .ok()
+                            .flatten()
+                    })
+                    == Some(first)
+            })
+            .unwrap();
+        // both faces resolved before the request, the owner first; the same face index
+        // of an identical copy is resolved too and must be refused by identity
+        let candidates = [(1u8, &b, first), (2, &b, last), (3, &other, first)];
+        let on_b = |x: &Brep| core::ptr::eq(x, core::ptr::from_ref(&b));
+        assert_eq!(trim_owner_face(&candidates, on_b, eu), Some(1));
+        let reversed = [(3u8, &other, first), (2, &b, last), (1, &b, first)];
+        assert_eq!(trim_owner_face(&reversed, on_b, eu), Some(1));
+        assert_eq!(
+            trim_owner_face(
+                &candidates,
+                |x| core::ptr::eq(x, core::ptr::from_ref(&other)),
+                eu
+            ),
+            Some(3)
+        );
+        assert_eq!(trim_owner_face(&candidates[1..2], on_b, eu), None);
+    }
     use super::*;
     use crate::geom::extent1d::Extent1d;
     use crate::geom::solution_array::{Solution, SolutionArray};
