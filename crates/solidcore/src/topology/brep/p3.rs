@@ -461,16 +461,18 @@ fn destroy_face(b: &mut Brep, env: &mut NotifyEnv<'_>, f: FaceId) -> Result<()> 
         NotifyOperation::Destruction,
         [arg(EntityRef::Face(f)), None, None],
     ))?;
-    env.attributes
-        .clear_attributes((env.key_of)(EntityRef::Face(f)).key)?;
+    let fref = (env.key_of)(EntityRef::Face(f));
+    env.attributes.clear_attributes(fref.key)?;
+    let expected = p1::default_face_owner(b, f);
     let face = b.face_mut(f)?;
     face.faceuse = None;
     let owned = face
         .surface
         .as_ref()
-        .is_some_and(|s| s.owner() == Some(arena_identity(CacheObject::Face(f))));
+        .is_some_and(|s| s.owner().is_some_and(|o| o == expected || o == fref));
     if owned {
         face.surface = None;
+        b.set_geometry_owner_key(EntityRef::Face(f), None);
     }
     Ok(())
 }
@@ -2501,7 +2503,7 @@ fn make_wire_edge_in(
     let region = region_or_infinite(b, region);
 
     // make new edge connected to vertices and region
-    let e = p2::make_edge_topology(k, b, region, start, end)?;
+    let e = p2::make_edge_topology(k, b, region, start, end, env)?;
 
     // Set edge parameters
     let t = b.tolerance();
@@ -2818,13 +2820,15 @@ fn squeeze_edge_in(
         NotifyOperation::Destruction,
         [Some(eref), None, None],
     ))?;
+    let expected = p1::default_edge_owner(b, e);
     let owned = b
         .edge(e)?
         .curve
         .as_ref()
-        .is_some_and(|c| c.owner() == Some(arena_identity(CacheObject::Edge(e))));
+        .is_some_and(|c| c.owner().is_some_and(|o| o == expected || o == eref));
     if owned {
         b.edge_mut(e)?.curve = None;
+        b.set_geometry_owner_key(EntityRef::Edge(e), None);
     }
     b.remove_from_edge_list(e);
     Ok(())
@@ -3146,7 +3150,7 @@ fn turn_to_nurbs_in(
             env,
             [Some(r), None],
         )?;
-        let edge_ref = arena_identity(CacheObject::Edge(e));
+        let edge_ref = edge_owner(e);
         if let Some(c) = b.edge_mut(e)?.curve.as_mut() {
             let _ = c.set_owner(Some(edge_ref), None);
         }
@@ -3515,15 +3519,23 @@ fn orient_ray_votes(
 
             // Get Surface Normal for this point.
             let dom = b.face(face)?.uv_domain;
-            let sols = surface.global_point_solve::<CacheObject>(
+            // the face's surface reaches its face's cache (smsurf_GetSurfaceCache),
+            // made on the B-rep: an exact evaluation copy of the surface meanwhile
+            let surface = surface.clone_for_evaluation()?;
+            let tolerance_3d = b.tolerance();
+            let mut sols = crate::geom::solution_array::SolutionArray::new();
+            surface.global_point_solve_into_with_context::<CacheObject>(
                 k,
+                Some(CacheObject::Surface(face)),
                 None,
+                &mut crate::query::brep::BrepFaceServices::new(b),
                 &dom,
                 crate::geom::global_solver::SolverOperation::Minimize,
                 point_in_face,
-                b.tolerance(),
+                tolerance_3d,
                 None,
                 crate::geom::global_solver::SolutionRequested::Single,
+                &mut sols,
             )?;
             let sol = *sols.get(0).ok_or_else(ser)?;
             let uv = crate::math::Point2::new(sol.start.param(0)?, sol.start.param(1)?);
@@ -3622,22 +3634,13 @@ fn brep_curve_solve(
     let editing = b.editing_enabled();
     b.set_editing_enabled(false);
     let res = (|| -> Result<Vec<(usize, f64)>> {
-        let keys = |o: CacheObject| arena_identity(o);
+        let query = crate::query::brep::BrepQuery::of_brep(b);
         // (CacheMakeOrValidate: the cache with its vertex, curve and surface trees)
-        let cache = crate::topology::brep_cache::make_brep_cache(
-            k,
-            crate::topology::brep_cache::CacheSource::Brep(b),
-            &keys,
-        )?;
-        let owners = |_: ObjectRef| None;
+        let cache = query.cache(k, b)?;
         // the solve makes the face caches it reaches on the B-rep
         // (smsurf_GetSurfaceCache) and classifies on it
-        let identity = crate::query::brep::BrepIdentity {
-            brep_id: crate::topology::BrepId::from_index(0),
-            keys: &keys,
-            owner_of: &owners,
-        };
-        let objects = crate::query::brep::LiveBrepObjects::new(b, &identity, Some(&cache))?;
+        let identity = query.effective_identity();
+        let objects = crate::query::brep::LiveBrepObjects::new(b, &identity, Some(cache))?;
         let sols = TopologySolver::brep_curve_solve(
             k,
             &objects,

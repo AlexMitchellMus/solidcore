@@ -100,7 +100,10 @@ use crate::nurbs::srf_basic::{Direction, Surface};
 use crate::nurbs::srf_tool::p1::extract_patch;
 use crate::surface::surface::Surface as SmSurface;
 
-use super::p1::{create_nlib_curve, create_nlib_surface, create_non_rational_curve, make_knots};
+use super::p1::{
+    create_nlib_curve, create_nlib_surface, create_non_rational_curve_with_context, make_knots,
+};
+use crate::intersect::surface_drop_lib::p3::DropSolveContext;
 
 /// `SM_ZONE_TOL_3D`.
 const ZONE_TOL_3D: f64 = 1.0e-5;
@@ -729,6 +732,83 @@ impl BSplineSurface {
         tangency_tol_radians: f64,
         create_bilinear_patch: bool,
     ) -> Result<Vec<Self>> {
+        let refs: Vec<Option<&BSplineCurve>> = curves_3d.iter().map(Some).collect();
+        Self::create_corner_blend_in::<crate::surface::surface::p4::NoObject>(
+            k,
+            &refs,
+            curve_orients,
+            uv_curves,
+            neighbours,
+            approx_tol,
+            tangency_tol_radians,
+            create_bilinear_patch,
+            None,
+        )
+    }
+
+    /// [`BSplineSurface::create_corner_blend`] over general 3D [`SmCurve`]s
+    /// (`const SmTArray<SmCurve *>&`, downcast per curve via `SM_CAST_PTR(SmBSplineCurve,
+    /// pCurve)` in loop order) whose rational-curve drops onto the neighbour surfaces
+    /// run under the caller's face context: `context` builds the surface caches and
+    /// `handles[i]` names `neighbours[i]` in them.
+    ///
+    /// # Errors
+    ///
+    /// As [`BSplineSurface::create_corner_blend`], `SM_ERR_NULL_POINTER` when a reached
+    /// 3D curve is not `SmBSplineCurve`-derived, and those of the context.
+    pub fn create_corner_blend_with_context<O: crate::geom::solution_array::SolutionObject>(
+        k: &crate::kernel::Kernel,
+        curves_3d: &[SmCurve],
+        curve_orients: &[OrientType],
+        uv_curves: &[Option<BSplineCurve>],
+        neighbours: &[Option<BlendNeighbour<'_>>],
+        approx_tol: f64,
+        tangency_tol_radians: f64,
+        create_bilinear_patch: bool,
+        context: Option<(
+            &mut dyn crate::surface::surface::p1::SurfaceSolveContext<O>,
+            &[Option<O>],
+        )>,
+    ) -> Result<Vec<Self>> {
+        let refs: Vec<Option<&BSplineCurve>> = curves_3d
+            .iter()
+            .map(|c| match c.kind() {
+                CurveKind::BSpline(b) => Some(b),
+                CurveKind::Line(l) => Some(&l.base),
+                CurveKind::Ellipse(e) => Some(e.base()),
+                CurveKind::Hyperbola(h) => Some(h.base()),
+                CurveKind::Parabola(p) => Some(p.base()),
+                _ => None,
+            })
+            .collect();
+        Self::create_corner_blend_in(
+            k,
+            &refs,
+            curve_orients,
+            uv_curves,
+            neighbours,
+            approx_tol,
+            tangency_tol_radians,
+            create_bilinear_patch,
+            context,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn create_corner_blend_in<O: crate::geom::solution_array::SolutionObject>(
+        k: &crate::kernel::Kernel,
+        curves_3d: &[Option<&BSplineCurve>],
+        curve_orients: &[OrientType],
+        uv_curves: &[Option<BSplineCurve>],
+        neighbours: &[Option<BlendNeighbour<'_>>],
+        approx_tol: f64,
+        tangency_tol_radians: f64,
+        create_bilinear_patch: bool,
+        mut context: Option<(
+            &mut dyn crate::surface::surface::p1::SurfaceSolveContext<O>,
+            &[Option<O>],
+        )>,
+    ) -> Result<Vec<Self>> {
         const OP: &str = OP_CORNER;
 
         // check state - must have 4 or more edges
@@ -769,14 +849,26 @@ impl BSplineSurface {
         }
 
         // convert all input edges from NURBs to NUBs
-        let mut boundaries: Vec<BSplineCurve> = Vec::with_capacity(curve_cnt);
-        let mut uv_crvs: Vec<Option<BSplineCurve>> = Vec::with_capacity(curve_cnt);
-        for ((curve, uv), srf) in curves_3d.iter().zip(uv_curves).zip(neighbours) {
+        let mut boundaries: Vec<BSplineCurve> = Vec::new();
+        let mut uv_crvs: Vec<Option<BSplineCurve>> = Vec::new();
+        for (i, ((curve, uv), srf)) in curves_3d.iter().zip(uv_curves).zip(neighbours).enumerate() {
+            // sm_CreateNonRationalCurve: SmBSplineCurve *pNurb = SM_CAST_PTR(SmBSplineCurve, pCurve); NER(pNurb);
+            let curve = (*curve).ok_or_else(|| SolidError::null_pointer(OP))?;
             // copy NUBs and their UVTrimCurves, approx NURBs and drop them to make their
             // UVTrimCurves
             let base = srf.map(|n| n.surface);
-            let (boundary, ps_curve) =
-                create_non_rational_curve(k, curve, uv.as_ref(), base, approx_tol / 2.0)?;
+            let ctx = context.as_mut().map(|(solver, handles)| DropSolveContext {
+                solver: &mut **solver,
+                handle: handles.get(i).copied().flatten(),
+            });
+            let (boundary, ps_curve) = create_non_rational_curve_with_context(
+                k,
+                curve,
+                uv.as_ref(),
+                base,
+                approx_tol / 2.0,
+                ctx,
+            )?;
             boundaries.push(boundary); // cleaned up 3d boundary curves
             uv_crvs.push(ps_curve); // associated UVTrimCurves
         }
