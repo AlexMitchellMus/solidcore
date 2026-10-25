@@ -196,3 +196,37 @@ unit = "offset.offset_executive_p2"
 case = "gen0235"
 why = "deferred on main at RemoveExcessFaces' BrepPointSolve (SmFace handle of a surface's face); compared since that solve reaches its faces' caches: Rust stops with SM_ERR_NULL_POINTER in ProtoTopologyManager::imprint_edge_definition, C++ succeeds (plan/findings.md: 'offset.offset_executive_p2 gen0235: imprint edge definition without its source topology')"
 
+[[mismatch]]
+unit = "primitive.primitive_creation_p2"
+case = "gen0003"
+why = "planar-path sweep at 1e4-1e6 scale: C++ succeeds, Rust's union of the ProjectAndTrim pieces returns SM_ERR (boolean::merge::p3) and leaves DoingBoolean set; cause not traced (plan/findings.md: 'primitive.primitive_creation_p2: planar-path sweeps at 1e4-1e6 scale fail their union after ProjectAndTrim')"
+
+[[mismatch]]
+unit = "primitive.primitive_creation_p2"
+case = "gen0028"
+why = "planar-path sweep at 1e4-1e6 scale: C++ succeeds, Rust's union of the ProjectAndTrim pieces returns SM_ERR (boolean::merge::p3) and leaves DoingBoolean set; cause not traced (plan/findings.md: 'primitive.primitive_creation_p2: planar-path sweeps at 1e4-1e6 scale fail their union after ProjectAndTrim')"
+
+[[mismatch]]
+unit = "primitive.primitive_creation_p2"
+case = "gen0039"
+why = "planar-path sweep at 1e4-1e6 scale: C++ succeeds, Rust's union of the ProjectAndTrim pieces returns SM_ERR (boolean::merge::p3) and leaves DoingBoolean set; cause not traced (plan/findings.md: 'primitive.primitive_creation_p2: planar-path sweeps at 1e4-1e6 scale fail their union after ProjectAndTrim')"
+
+[[mismatch]]
+unit = "primitive.primitive_creation_p2"
+case = "gen0178"
+why = "planar-path sweep at 1e4-1e6 scale: C++ succeeds, Rust's union of the ProjectAndTrim pieces returns SM_ERR (boolean::merge::p3) and leaves DoingBoolean set; cause not traced (plan/findings.md: 'primitive.primitive_creation_p2: planar-path sweeps at 1e4-1e6 scale fail their union after ProjectAndTrim')"
+
+[[mismatch]]
+unit = "primitive.primitive_creation_p2"
+case = "gen0200"
+why = "planar-path sweep at 1e4-1e6 scale: C++ succeeds, Rust's union of the ProjectAndTrim pieces returns SM_ERR (boolean::merge::p3) and leaves DoingBoolean set; cause not traced (plan/findings.md: 'primitive.primitive_creation_p2: planar-path sweeps at 1e4-1e6 scale fail their union after ProjectAndTrim')"
+
+[[mismatch]]
+unit = "primitive.primitive_creation_p2"
+case = "gen0208"
+why = "planar-path sweep at 1e4-1e6 scale: C++ succeeds, Rust's union of the ProjectAndTrim pieces returns SM_ERR (boolean::merge::p3) and leaves DoingBoolean set; cause not traced (plan/findings.md: 'primitive.primitive_creation_p2: planar-path sweeps at 1e4-1e6 scale fail their union after ProjectAndTrim')"
+
+[[mismatch]]
+unit = "primitive.primitive_creation_p2"
+case = "gen0252"
+why = "planar-path sweep at 1e4-1e6 scale: C++ succeeds, Rust's union of the ProjectAndTrim pieces returns SM_ERR (boolean::merge::p3) and leaves DoingBoolean set; cause not traced (plan/findings.md: 'primitive.primitive_creation_p2: planar-path sweeps at 1e4-1e6 scale fail their union after ProjectAndTrim')"
