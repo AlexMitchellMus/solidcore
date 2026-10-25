@@ -113,7 +113,7 @@ use crate::topology::face::p2 as face2;
 use crate::topology::face::p3 as face3;
 use crate::topology::shell::{self, ShellMembers, ShellType};
 use crate::topology::topology::Topology;
-use crate::topology::topology_traverser::{self, shell_traversal, Entity, Marks};
+use crate::topology::topology_traverser::{self, Entity, Marks};
 use crate::topology::{
     loopuse, vertex, vertexuse, Brep, EdgeId, EdgeuseId, EdgeuseOwner, FaceId, FaceuseId, Loop,
     LoopId, Loopuse, LoopuseId, LoopuseStart, RegionId, Shell, ShellId, VertexId, VertexuseId,
@@ -198,6 +198,17 @@ fn brep_notify(
     operation: NotifyOperation,
     data: [Option<NotifyArg>; 3],
 ) -> Result<()> {
+    brep_notify_with_identity(k, b, env, operation, data, None)
+}
+
+fn brep_notify_with_identity(
+    k: &mut Kernel,
+    b: &Brep,
+    env: &mut DeleteEnv<'_>,
+    operation: NotifyOperation,
+    data: [Option<NotifyArg>; 3],
+    body: Option<ObjectRef>,
+) -> Result<()> {
     let key_of = env.key_of;
     let mut n = NotifyEnv {
         records: env.records,
@@ -205,12 +216,19 @@ fn brep_notify(
         context: Some(env.context.as_deref_mut().unwrap_or(&mut k.context)),
         key_of,
     };
-    brep2::notify(b, &mut n, None, operation, data)
+    match body {
+        Some(body) => brep2::notify_with_body_identity(b, &mut n, None, operation, data, body),
+        None => brep2::notify(b, &mut n, None, operation, data),
+    }
 }
 
 /// The B-rep as a notification argument (`this`).
 fn brep_arg(b: &Brep) -> NotifyArg {
     NotifyArg::Object(brep_ref(b))
+}
+
+fn brep_arg_with_identity(b: &Brep, body: Option<ObjectRef>) -> NotifyArg {
+    NotifyArg::Object(body.unwrap_or_else(|| brep_ref(b)))
 }
 
 /// `pFace->Notify(op, pFace, this, NULL)`: [`face3::notify`] with the caller's records,
@@ -222,9 +240,14 @@ fn face_notify(
     env: &mut DeleteEnv<'_>,
     f: FaceId,
     operation: NotifyOperation,
+    body: Option<ObjectRef>,
 ) -> Result<()> {
     let key_of = env.key_of;
-    let data = [Some(key_of(EntityRef::Face(f))), Some(brep_ref(b)), None];
+    let data = [
+        Some(key_of(EntityRef::Face(f))),
+        Some(body.unwrap_or_else(|| brep_ref(b))),
+        None,
+    ];
     let mut n = NotifyEnv {
         records: env.records,
         attributes: env.attributes,
@@ -232,6 +255,25 @@ fn face_notify(
         key_of,
     };
     face3::notify(b, f, &mut n, None, operation, data)
+}
+
+fn remove_uv_trim_curves(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut DeleteEnv<'_>,
+    face: FaceId,
+    body: Option<ObjectRef>,
+) -> Result<()> {
+    if body.is_none() {
+        return face1::remove_uv_trim_curves(b, face);
+    }
+    let mut notify = NotifyEnv {
+        records: env.records,
+        attributes: env.attributes,
+        key_of: env.key_of,
+        context: Some(env.context.as_deref_mut().unwrap_or(&mut k.context)),
+    };
+    face1::remove_uv_trim_curves_with_notifications(b, face, &mut notify)
 }
 
 /// `SmFace::ComputeLoopOrientation(pLoop, eOrient)` (default `pUVBounds = NULL`,
@@ -597,7 +639,13 @@ fn make_vertex_loop(b: &mut Brep, vu: VertexuseId, lu: LoopuseId) -> Result<()> 
 }
 
 /// `SmVertex::Notify(SM_NO_PRE_EDIT, vertex, NULL, NULL)`.
-fn notify_vertex(k: &mut Kernel, b: &mut Brep, env: &mut DeleteEnv<'_>, v: VertexId) -> Result<()> {
+fn notify_vertex(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut DeleteEnv<'_>,
+    v: VertexId,
+    body: Option<ObjectRef>,
+) -> Result<()> {
     let key_of = env.key_of;
     let this = key_of(EntityRef::Vertex(v));
     vertex::notify(
@@ -605,7 +653,11 @@ fn notify_vertex(k: &mut Kernel, b: &mut Brep, env: &mut DeleteEnv<'_>, v: Verte
         v,
         env.records,
         env.attributes,
-        Some(&mut k.context),
+        Some(if body.is_some() {
+            env.context.as_deref_mut().unwrap_or(&mut k.context)
+        } else {
+            &mut k.context
+        }),
         NotifyOperation::PreEdit,
         this,
         [Some(this), None, None],
@@ -708,6 +760,32 @@ pub fn delete_edge(
     e: EdgeId,
     surface_to_keep: Option<FaceId>,
 ) -> Result<()> {
+    delete_edge_in(k, b, env, e, surface_to_keep, None)
+}
+
+/// [`delete_edge`] with the caller's issued body identity and retained traversal records.
+///
+/// # Errors
+/// Those of [`delete_edge`]; completed edits and marks remain on failure.
+pub fn delete_edge_with_body_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut DeleteEnv<'_>,
+    e: EdgeId,
+    surface_to_keep: Option<FaceId>,
+    body: ObjectRef,
+) -> Result<()> {
+    delete_edge_in(k, b, env, e, surface_to_keep, Some(body))
+}
+
+fn delete_edge_in(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut DeleteEnv<'_>,
+    e: EdgeId,
+    surface_to_keep: Option<FaceId>,
+    body: Option<ObjectRef>,
+) -> Result<()> {
     const OP: &str = OP_DELETE_EDGE;
     // check state - m_bEditingEnabled must be on
     if !b.editing_enabled() {
@@ -721,22 +799,24 @@ pub fn delete_edge(
     }
 
     // prepare the public - notify the Brep it's about to be edited
-    let this = brep_arg(b);
+    let this = brep_arg_with_identity(b, body);
     let edge_arg = NotifyArg::Entity(EntityRef::Edge(e));
-    ignore_status(brep_notify(
+    ignore_status(brep_notify_with_identity(
         k,
         b,
         env,
         NotifyOperation::PreEdit,
         [Some(this), None, None],
+        body,
     ))?;
     ignore_status(notify_edge(k, b, env, e))?;
-    ignore_status(brep_notify(
+    ignore_status(brep_notify_with_identity(
         k,
         b,
         env,
         NotifyOperation::RmFromBrep,
         [Some(edge_arg), Some(this), None],
+        body,
     ))?;
 
     // get radial/mate list starters
@@ -744,11 +824,11 @@ pub fn delete_edge(
     let eu_mate = deref(eu1::mate(b, eu)?, OP)?;
 
     if is_manifold {
-        delete_manifold_edge(k, b, env, e, eu, eu_mate, surface_to_keep)
+        delete_manifold_edge(k, b, env, e, eu, eu_mate, surface_to_keep, body)
     } else if edge::is_lamina(b, e)? {
-        delete_lamina_edge(k, b, env, e, eu, eu_mate)
+        delete_lamina_edge(k, b, env, e, eu, eu_mate, body)
     } else {
-        delete_wire_edge(k, b, env, e, eu, eu_mate)
+        delete_wire_edge(k, b, env, e, eu, eu_mate, body)
     }
 }
 
@@ -761,6 +841,7 @@ fn delete_manifold_edge(
     eu: EdgeuseId,
     eu_mate: EdgeuseId,
     surface_to_keep: Option<FaceId>,
+    body: Option<ObjectRef>,
 ) -> Result<()> {
     const OP: &str = OP_DELETE_EDGE;
     // get Radial/Mate neighbor Edgeuses
@@ -857,24 +938,38 @@ fn delete_manifold_edge(
     let single_closed_loop_isolated = lu != lu_rad && eu_single && eu_rad_single;
 
     // notify the face and the radial face of the upcoming edit
-    ignore_status(face_notify(k, b, env, face, NotifyOperation::PreEdit))?;
-    ignore_status(face_notify(k, b, env, face_rad, NotifyOperation::PreEdit))?;
+    ignore_status(face_notify(k, b, env, face, NotifyOperation::PreEdit, body))?;
+    ignore_status(face_notify(
+        k,
+        b,
+        env,
+        face_rad,
+        NotifyOperation::PreEdit,
+        body,
+    ))?;
 
     if merge_face {
         // inform the public about this upcoming merge in Brep
         let data = [
             surv_f.map(|f| NotifyArg::Entity(EntityRef::Face(f))),
             del_f.map(|f| NotifyArg::Entity(EntityRef::Face(f))),
-            Some(brep_arg(b)),
+            Some(brep_arg_with_identity(b, body)),
         ];
-        ignore_status(brep_notify(k, b, env, NotifyOperation::MergeInBrep, data))?;
+        ignore_status(brep_notify_with_identity(
+            k,
+            b,
+            env,
+            NotifyOperation::MergeInBrep,
+            data,
+            body,
+        ))?;
     }
 
     // Remove parameter space curves from both faces if they do not have the same
     // underlying surface
     if !split_loop && surface_of(b, face)? != surface_of(b, face_rad)? {
-        face1::remove_uv_trim_curves(b, face)?;
-        face1::remove_uv_trim_curves(b, face_rad)?;
+        remove_uv_trim_curves(k, b, env, face, body)?;
+        remove_uv_trim_curves(k, b, env, face_rad, body)?;
     }
 
     // When merging two faces - see if Face Surfaces need to be swapped
@@ -1165,6 +1260,7 @@ fn delete_lamina_edge(
     e: EdgeId,
     eu: EdgeuseId,
     eu_mate: EdgeuseId,
+    body: Option<ObjectRef>,
 ) -> Result<()> {
     const OP: &str = OP_DELETE_EDGE;
     let lu = ner(eu1::loopuse(b, eu)?, OP)?;
@@ -1172,7 +1268,7 @@ fn delete_lamina_edge(
     let faceuse = ner(loopuse::faceuse(b, lu)?, OP)?;
     let face = ner(eu1::faceuse_face(b, faceuse)?, OP)?;
 
-    ignore_status(face_notify(k, b, env, face, NotifyOperation::PreEdit))?;
+    ignore_status(face_notify(k, b, env, face, NotifyOperation::PreEdit, body))?;
 
     let v_is_strut = eu1::is_strut(b, eu)?;
     let v_other_is_strut = eu1::is_strut(b, eu_mate)?;
@@ -1248,6 +1344,7 @@ fn delete_wire_edge(
     e: EdgeId,
     eu: EdgeuseId,
     eu_mate: EdgeuseId,
+    body: Option<ObjectRef>,
 ) -> Result<()> {
     const OP: &str = OP_DELETE_EDGE;
     let shell = ner(eu1::shell(b, eu)?, OP)?;
@@ -1325,7 +1422,7 @@ fn delete_wire_edge(
     }
 
     let mut lock = MarkLock::new(core::slice::from_mut(&mut k.context), 0, ALL_MARKS)?;
-    let r = wire_split_shell(k, b, env, &lock, shell, v1, v2, eu, eu_mate);
+    let r = wire_split_shell(k, b, env, &lock, shell, v1, v2, eu, eu_mate, body);
     lock.release(core::slice::from_mut(&mut k.context))?;
     r
 }
@@ -1341,38 +1438,49 @@ fn wire_split_shell(
     v2: VertexId,
     eu: EdgeuseId,
     eu_mate: EdgeuseId,
+    body: Option<ObjectRef>,
 ) -> Result<()> {
     const OP: &str = OP_DELETE_EDGE;
-    let mut marks = Marks::default();
+    let mut indexed = body.is_none().then(Marks::default);
+    let mut marks = match indexed.as_mut() {
+        Some(marks) => super::p3::DeletionMarks::Indexed(marks),
+        None => super::p3::DeletionMarks::Retained,
+    };
     let mut edgeuses1 = Vec::new();
     let mut faceuses1 = Vec::new();
-    shell_traversal(
-        k,
-        b,
-        &mut marks,
-        v1,
-        shell,
-        Some(&mut edgeuses1),
-        Some(&mut faceuses1),
-        lock,
-    )?;
-    let split_shell = !marks.is_marked(k, Entity::Vertex(v2), lock.mark_type());
+    marks.with_marks(env.records, env.key_of, |marks| {
+        topology_traverser::shell_traversal_with_marks(
+            k,
+            b,
+            marks,
+            v1,
+            shell,
+            Some(&mut edgeuses1),
+            Some(&mut faceuses1),
+            lock,
+        )
+    })?;
+    let split_shell = !marks.with_marks(env.records, env.key_of, |marks| {
+        marks.is_marked(k, Entity::Vertex(v2), lock.mark_type())
+    });
     if split_shell {
         let new_shell = b.add_shell_record(Shell::default())?;
         let region = shell_region(b, shell)?;
         region_post_insert(b, region, new_shell)?;
         let mut edgeuses2 = Vec::new();
         let mut faceuses2 = Vec::new();
-        shell_traversal(
-            k,
-            b,
-            &mut marks,
-            v2,
-            shell,
-            Some(&mut edgeuses2),
-            Some(&mut faceuses2),
-            lock,
-        )?;
+        marks.with_marks(env.records, env.key_of, |marks| {
+            topology_traverser::shell_traversal_with_marks(
+                k,
+                b,
+                marks,
+                v2,
+                shell,
+                Some(&mut edgeuses2),
+                Some(&mut faceuses2),
+                lock,
+            )
+        })?;
         if faceuses2.is_empty() {
             // NewShell is a wireShell - set first edge and ShellType (an empty
             // edge-use list keeps the NULL head; upstream only asserts)
@@ -1431,6 +1539,30 @@ pub fn delete_vertex(
     env: &mut DeleteEnv<'_>,
     v: VertexId,
 ) -> Result<()> {
+    delete_vertex_in(k, b, env, v, None)
+}
+
+/// [`delete_vertex`] with the caller's issued body identity and retained traversal records.
+///
+/// # Errors
+/// Those of [`delete_vertex`]; completed edits and marks remain on failure.
+pub fn delete_vertex_with_body_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut DeleteEnv<'_>,
+    v: VertexId,
+    body: ObjectRef,
+) -> Result<()> {
+    delete_vertex_in(k, b, env, v, Some(body))
+}
+
+fn delete_vertex_in(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut DeleteEnv<'_>,
+    v: VertexId,
+    body: Option<ObjectRef>,
+) -> Result<()> {
     const OP: &str = OP_DELETE_VERTEX;
     // check state - m_bEditingEnabled must be on
     if !b.editing_enabled() {
@@ -1438,22 +1570,24 @@ pub fn delete_vertex(
     }
 
     // inform the public of upcoming change
-    let this = brep_arg(b);
+    let this = brep_arg_with_identity(b, body);
     let vertex_arg = NotifyArg::Entity(EntityRef::Vertex(v));
-    ignore_status(brep_notify(
+    ignore_status(brep_notify_with_identity(
         k,
         b,
         env,
         NotifyOperation::PreEdit,
         [Some(this), None, None],
+        body,
     ))?;
-    ignore_status(notify_vertex(k, b, env, v))?;
-    ignore_status(brep_notify(
+    ignore_status(notify_vertex(k, b, env, v, body))?;
+    ignore_status(brep_notify_with_identity(
         k,
         b,
         env,
         NotifyOperation::RmFromBrep,
         [Some(vertex_arg), Some(this), None],
+        body,
     ))?;
 
     // vertices should be disconnected from edges prior to delete
@@ -1510,7 +1644,7 @@ pub fn delete_vertex(
         let fu1 = deref(loopuse::faceuse(b, lu1)?, OP)?;
         let f = ner(eu1::faceuse_face(b, fu1)?, OP)?;
 
-        ignore_status(face_notify(k, b, env, f, NotifyOperation::PreEdit))?;
+        ignore_status(face_notify(k, b, env, f, NotifyOperation::PreEdit, body))?;
 
         // remove and delete vertex to loop connections
         ignore_status(faceuse_remove(b, fu1, lu1, OP))?;
