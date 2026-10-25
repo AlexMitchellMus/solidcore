@@ -1,5 +1,8 @@
 # Findings
 
+> **Frozen archive (2026-10-25).** Do not add entries here: every new finding is its own
+> file under [`plan/findings/`](findings/README.md), so parallel PRs never conflict.
+
 Rust-vs-C++ disagreements, upstream bugs, nondeterminism and other facts later agents
 need. Add entries under a heading per unit (or "General"); keep the newest at the end
 of each section.
@@ -5296,6 +5299,10 @@ there is no new SSI implementation or external corpus use.
   UB-171..174 (first UB-99..102, then UB-116..119, then UB-162..165, then UB-165..168),
   WR-160..166 (first WR-81..87, then WR-97..103, then WR-159..165), HANG-21 and HANG-22
   (first HANG-13/14, then HANG-14/15, then HANG-17/18, then HANG-19/20).
+
+## topology.topology_traverser (audit #294, 2026-10-20)
+
+Generated traversal operations require entity kinds present in the native fixture; RemoveShell uses distinct source and target shells. Fixed null/missing-seed fixtures remain covered. This removes matched missing-seed errors from generated parity coverage without changing kernel code or tolerances. Historical 2026-10-21 head f9c3add35 passed full Linux CI; the 2026-10-22 independent verification also passed 909 cases (898 passed, 11 deferred, 0 failed). The earlier macOS stall was absent on Linux. Current main has since promoted the unit to green through kernel dependency repairs; fresh validation of the merged generator change is required before merge.
 
 ## topology.vertexuse (`SmVertexuse`, 2026-10-14; partial, no disagreements)
 
@@ -19330,6 +19337,21 @@ other operand in the merge editing stages (`boolean.merge_p4` /
 of being kept reversed as a void. Listed in `known_mismatches.toml`; the offset
 port itself is not involved after the shell is built.
 
+## intersect.curve_class_p1: sm_ComputeFacePointClass crashes the C++ reference on a single-point UV domain
+
+Unit `intersect.curve_class_p1`, op 50 (`sm_ComputeFacePointClass`) on the one-face
+B-rep of a `heal.face_props` face with `domain = [0, 0, 1e-300, 1e-300]` (face
+tolerance 1e-6, plane, three edge loops, any point). The shim's `SmFace::GetUVDomain()`
+is then the single point (0,0)-(0,0) (the 1e-300 size is lost when the face is built),
+and the C++ run ends in a segmentation fault; no Rust comparison is reached. Domains
+of size 1e-9, 1e-14 and 1e-100 run and agree. Cause inside the upstream point solve
+not located (no debugger on the box). The shim rejects such a face (`SC_ERR_ARG`)
+for this op, so the generator drops those scripts. The guard also rejects a domain that is zero on one axis
+only, which no generator produces and which was not tried (it is a precaution, not a measured crash).
+Hypothesis for a later agent with a debugger: `smsurf_GetSurfaceCache` returns NULL when the
+trimmed-surface-cache build fails on the point domain, and `SmCurveClass.cpp:3956-3963` then
+dereferences `pSC->m_bPointTestEnabled` unchecked (the Rust port models that branch as
+`SM_ERR_NULL_POINTER`). Not confirmed.
 ## offset.offset_executive_p2 / topology.brep_p2 / topology.brep_p7: orphaned shells changed result shell counts (PR #796)
 
 Wiring `SmOffsetExecutive::PiecewiseMerge` to `SmMerge::PiecewiseMerge` made the offset
@@ -20685,6 +20707,7 @@ after each call:
 `SmMerge::BooleanManifold` sets `SetDoingBoolean(TRUE)` (`SmMerge.cpp:2551`) and
 clears it only on its success exits (`:3114`, `:4148`, `:5095`); its `SER` error
 returns leave it set, as the port's `manifold_boolean_translated` does. No change.
+## intersect.surface_drop_lib_p3: DropCurve's start drop keeps every solution (2026-10-25)
 
 ## primitive.primitive_creation_p2 planar-path union failures: an edge imprint that edits nothing need not stop the Boolean (2026-10-25)
 
@@ -20713,6 +20736,43 @@ that stops before that point only warns, as upstream. The `boolean.topology_inte
 shim's copy of `IntersectInsertRelate` follows the same rule through a verbatim copy of
 `ImprintIntersections`, which tests the same `const` lookups before each edge imprint.
 All 7 cases now pass with values. Their known-mismatch entries are removed.
+The SolidCraft case `a52-wire-harness/harness_bplus_planar_run` (a circle swept along a
+5-segment planar path, `SmApiCreateSweepAlongPlanarPath`; runner step and fixture in #883)
+deferred at `query.face_p2: SmFace::PointClassify`, reached from the sweep's internal
+boolean: the cone/face intersect -> `AdvSurfaceIntersector::AddBoundaryCurve` ->
+`DropAndTrimCurve` -> `DoTrace` -> `TraceCurve2` -> `SmSurface::DropCurve` ->
+`GlobalPointSolve` on a face-owned surface whose caller passes neither a face test nor a
+solve context.
+
+`SmSurface::DropCurve` (`SmSurfaceDropLib.cpp:4310-4316`) sets the surface cache's
+`m_bPointTestEnabled` to FALSE for its whole body, so its start-point `GlobalPointSolve`
+(`:4389`) skips the fast drop's `pFace->PointClassify` trim test (`SmSurface.cpp:20069`).
+`Surface::drop_curve_base_in` now calls `global_point_solve_point_test_off` when the
+caller gives no face test or context, instead of the `global_point_solve` that stubbed the
+trim test. With #883's step the case passes (volume 989.2761449134 vs 989.2758217705,
+tolerance 0.01; 7/12/7 faces/edges/vertices): SolidCraft cases PASS 39 -> 40, FAIL 0,
+ERROR 4 (the known 3665 cases). 23 touched units compared with C++: identical to main.
+
+Not changed: the face-tested (#816) and context (#875) paths of the start drop still
+classify on the face when its cache has point testing on; by the same C++ lines that test
+is off inside `DropCurve`, so those paths may drop solutions upstream keeps. Unmeasured.
+
+## topology.brep_p10 edge/vertex tolerance last bits: SmSurfOfExtrusion::DropPointFast without NURB (2026-10-25)
+
+Follow-up to the 2026-10-25 brep_p10 heal/notify fixes on main. `read_Fillet_bottle`,
+`read_Fillet_cyl_cyl_shell`, `read_Fillet_fillet0227`, `read_Solids_InsetTaperedExtrude`
+and `read_Solids_extrusion2` differed only in edge tolerances set by the healer's
+`Fix_TolSizes` (`CalcEdgeZoneTol3d` of the edge's max edge/face gap) and the vertex
+tolerances raised from them (rel 5e-12 to 2.6e-11). Instrumented both sides at
+`Fix_TolSizes`, `SmEdgeuse::CalcMaxEdgeFaceGap`, `SmCrvSrfGapFunction::Evaluate` and
+`SmSurface::DropPoint`: the gap function's drops onto `SmSurfOfExtrusion` faces had the
+same inputs, but C++ `DropPointFast` succeeded (2 solutions; its `GetNaturalUVDomain`
+makes the missing NURB lazily) while the port's returned `SM_ERR` because the surface,
+read from file, had no NURB yet. The port then fell through to `LocalPointSolve`, whose
+result is within an ulp or so of the analytic one, and the max gap length moved in the
+last bits. `SurfOfExtrusion::drop_point_fast` now solves on an evaluation copy with the
+NURB made (as the inherited queries already do via `base_with_nurb`) when the NURB is
+missing. All five cases match bit for bit; entries removed from `known_mismatches.toml`.
 ## topology.brep_p3: TurnToNURBS UV trim curve edits notify (2026-10-25)
 
 - **What.** Four of the six `TurnToNURBS` known mismatches (`gen0138`, `gen0164`,
@@ -20828,6 +20888,26 @@ apply. The CI run of an unrelated branch (`difftest/endcap-file-load-cache-seed`
 fails the same case with the same values. The exact-tolerance boundary (shell boundary at
 exactly twice the tolerance) evidently resolves differently on the CI runners. Not parked
 as a known mismatch, because it passes locally and the gate would reject the entry.
+## blend.fillet_executive_p1: `remove_topo_edges_mouse_two_struts` resolved (2026-10-25)
+
+- **Root cause.** After deleting Edge 1 of `Mouse.smb`, `EdgeId(0)`'s stored zone
+  tolerance grows to `2.613347926652509`. When deleting Edge 2, `DeleteTopologicalVertex`
+  joins `EdgeId(0)` and `EdgeId(4)` into a closed 250-cpt cubic `BSplineCurve` over
+  `[0.0, 32.5553347035394]` and calls `GetOrCreateUVTrimCurve` on `EdgeId(0)`'s edge uses:
+  first `Dome` (`FaceId(2)`, `SmBSplineSurface`, not the plane face) attaches a 250-cpt
+  closed UV curve, then `SideWall` (`FaceId(1)`) drops `[0.8477229801834114,
+  27.525179625915907]` at `ii = 3` and triggers `bEditUVMin` / `bEditUVMax`, calling
+  `trim_other_uv_curves` (`topology::edgeuse::p3`) to `Trim` `Dome`'s already-attached UV
+  curve twice. Upstream `SmBSplineCurve::Trim` reads `SmTol::GetZoneTol3d(this)` ->
+  `SmCurve::GetEdge()` -> `pEdge->GetTolerance()` (`2.613347926652509`), triggering
+  `N_CrvRemoveDegenSegs` on the ~80 short Dome UV spans (`~0.35 < 2.6133`) and collapsing
+  `Dome`'s UV curve to a 1-span 4-cpt cubic Bezier, whereas owner-less `Curve::trim` read
+  the system zone tolerance (`1e-5`) from `k`.
+- **Fix.** `topology::edgeuse::p3::trim_other_uv_curves` now trims sibling UV curves with
+  an edge-tolerance `Kernel` (`zone_tol3d(k, edge::tolerance(b, e)?)`, matching
+  `sm_TrimRail` in `blend::fillet_solver::p1`). `remove_topo_edges_mouse_two_struts` now
+  passes bit-identically (`max_rel_err = 0.0`, `155/155` pass, `0` `known_mismatch` in
+  `blend.fillet_executive_p1`).
 
 ## topology.brep_p10, topology.brep_p1, sweep.api_brep: heal/notify/ProjectAndTrim fixes and `read_Solids_fillet_ts` UAF root cause (2026-10-25)
 
