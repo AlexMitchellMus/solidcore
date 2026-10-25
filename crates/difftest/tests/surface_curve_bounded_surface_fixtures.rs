@@ -2,7 +2,7 @@
 
 pub use difftest::HarnessError;
 
-#[path = "../src/units/surface_curve_bounded_surface_fixtures.rs"]
+#[path = "../src/units/fixtures/surface_curve_bounded_surface_fixtures.rs"]
 mod fixtures;
 
 fn assert_rejected(text: &str, sms: bool, message: &str) {

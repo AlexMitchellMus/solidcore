@@ -26,7 +26,7 @@
 //! tokens before constructing storage, and grow it incrementally. Valid fixture
 //! coordinates, weights, point ordering and knots retain their original decoding.
 
-#[path = "surface_curve_bounded_surface_fixtures.rs"]
+#[path = "fixtures/surface_curve_bounded_surface_fixtures.rs"]
 mod fixtures;
 
 use serde::{Deserialize, Serialize};
