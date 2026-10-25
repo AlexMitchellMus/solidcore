@@ -74,6 +74,14 @@ pub enum FilletObject {
     Topology(FilletBody, EntityRef),
     /// The retained curve of an edge; separate from its topology identity.
     Curve(FilletBody, EdgeId),
+    /// Actual curve retained by an intermediate edge.
+    IntermediateCurve(EdgeId),
+    /// Actual trim curve retained by an edge use.
+    UvCurve(FilletBody, EdgeuseId),
+    /// Actual intermediate edge-use trim curve.
+    IntermediateUvCurve(EdgeuseId),
+    /// Original Surface instance with checked body and geometry identity.
+    Surface(insertion::geometry::SurfaceBinding),
     /// The actual intermediate B-rep allocated during face construction.
     IntermediateBrep,
     /// Actual topology in the separately allocated intermediate body.
@@ -93,7 +101,11 @@ pub enum FilletObject {
 impl ClassObject for FilletObject {
     fn class_kind(&self) -> ClassObjectKind {
         match self {
-            Self::Curve(..) => ClassObjectKind::Curve,
+            Self::Curve(..)
+            | Self::IntermediateCurve(_)
+            | Self::UvCurve(..)
+            | Self::IntermediateUvCurve(_) => ClassObjectKind::Curve,
+            Self::Surface(_) => ClassObjectKind::Surface,
             Self::Topology(_, entity) | Self::IntermediateTopology(entity) => match entity {
                 EntityRef::Vertex(_) => ClassObjectKind::Vertex,
                 EntityRef::Edge(_) => ClassObjectKind::Edge,
@@ -114,7 +126,11 @@ impl ClassObject for FilletObject {
 impl SolutionObject for FilletObject {
     fn kind(&self) -> ObjectKind {
         match self {
-            Self::Curve(..) => ObjectKind::Curve,
+            Self::Curve(..)
+            | Self::IntermediateCurve(_)
+            | Self::UvCurve(..)
+            | Self::IntermediateUvCurve(_) => ObjectKind::Curve,
+            Self::Surface(_) => ObjectKind::Surface,
             Self::Topology(_, EntityRef::Vertex(_))
             | Self::IntermediateTopology(EntityRef::Vertex(_)) => ObjectKind::Vertex,
             Self::Topology(_, EntityRef::Edge(_))
