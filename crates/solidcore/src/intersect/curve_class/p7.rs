@@ -1155,7 +1155,7 @@ pub fn set_do_filleting_geometry<O: ClassObject>(
     other: Option<&CurveClassification<O>>,
     todo: u64,
 ) -> Result<()> {
-    set_do_filleting_geometry_with(k, &mut ReadOnly(geometry), index, this, other, todo)
+    set_do_filleting_geometry_with(k, &mut ReadOnly(geometry), index, this, other, todo, false)
 }
 
 /// [`set_do_filleting_geometry`] with mutable access to the B-rep behind the topology
@@ -1172,7 +1172,51 @@ pub fn set_do_filleting_geometry_mut<O: ClassObject>(
     other: Option<&CurveClassification<O>>,
     todo: u64,
 ) -> Result<()> {
-    set_do_filleting_geometry_with(k, &mut Mutable(geometry), index, this, other, todo)
+    set_do_filleting_geometry_with(k, &mut Mutable(geometry), index, this, other, todo, false)
+}
+
+/// The same operation with an explicitly linked, actual local peer.
+/// # Errors
+/// The shared fillet geometry operation fails or lacks editing context.
+pub(super) fn set_do_filleting_geometry_linked<O: ClassObject>(
+    k: &Kernel,
+    geometry: &impl ClassGeometry<O>,
+    index: usize,
+    this: &CurveClassification<O>,
+    other: &CurveClassification<O>,
+    todo: u64,
+) -> Result<()> {
+    set_do_filleting_geometry_with(
+        k,
+        &mut ReadOnly(geometry),
+        index,
+        this,
+        Some(other),
+        todo,
+        true,
+    )
+}
+
+/// The linked-peer operation over actual mutable topology.
+/// # Errors
+/// The shared fillet geometry operation fails or lacks editing context.
+pub(super) fn set_do_filleting_geometry_mut_linked<O: ClassObject>(
+    k: &Kernel,
+    geometry: &mut impl ClassGeometryMut<O>,
+    index: usize,
+    this: &CurveClassification<O>,
+    other: &CurveClassification<O>,
+    todo: u64,
+) -> Result<()> {
+    set_do_filleting_geometry_with(
+        k,
+        &mut Mutable(geometry),
+        index,
+        this,
+        Some(other),
+        todo,
+        true,
+    )
 }
 
 fn set_do_filleting_geometry_with<O: ClassObject>(
@@ -1182,9 +1226,10 @@ fn set_do_filleting_geometry_with<O: ClassObject>(
     this: &CurveClassification<O>,
     other: Option<&CurveClassification<O>>,
     todo: u64,
+    linked: bool,
 ) -> Result<()> {
     // no work - don't have DoingFillet Data
-    if !this.doing_fillets() || this.other_classification().is_none() {
+    if !this.doing_fillets() || (!linked && this.other_classification().is_none()) {
         return Ok(());
     }
 
