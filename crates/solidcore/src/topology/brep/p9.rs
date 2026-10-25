@@ -56,6 +56,58 @@ use crate::EntityRef;
 
 const OP: &str = "topology::brep::p9";
 
+/// Identity transport at the actual curve construction event. Legacy callbacks
+/// keep their existing domain; Actual receives the original object and live stores.
+#[derive(Clone, Copy)]
+pub enum CurveIdentity<'a> {
+    /// Existing infallible edge/type resolver.
+    Legacy(&'a dyn Fn(EdgeId, i64) -> crate::geom::object::ObjectRef),
+    /// Existing checked edge/type resolver.
+    Checked(&'a dyn Fn(EdgeId, i64) -> Result<crate::geom::object::ObjectRef>),
+    /// Checked issuer with the real curve, including a not-yet-installed copy.
+    Actual(
+        &'a dyn Fn(
+            EdgeId,
+            &mut Curve,
+            &mut edge::NotifyEnv<'_>,
+        ) -> Result<crate::geom::object::ObjectRef>,
+    ),
+}
+impl CurveIdentity<'_> {
+    pub(crate) fn resolve(
+        self,
+        edge: EdgeId,
+        curve: &mut Curve,
+        env: &mut edge::NotifyEnv<'_>,
+    ) -> Result<crate::geom::object::ObjectRef> {
+        match self {
+            Self::Legacy(resolve) => Ok(resolve(edge, curve.type_code())),
+            Self::Checked(resolve) => resolve(edge, curve.type_code()),
+            Self::Actual(issue) => issue(edge, curve, env),
+        }
+    }
+}
+
+/// Issue the real Curve identity through the caller's retained notification context.
+/// No topology key or temporary kernel context substitutes for the geometry slot.
+/// # Errors
+/// Missing notification context or a geometry identity owned by another context.
+pub fn issue_curve_identity(
+    _edge: EdgeId,
+    curve: &mut Curve,
+    env: &mut edge::NotifyEnv<'_>,
+) -> Result<crate::geom::object::ObjectRef> {
+    let type_code = curve.type_code();
+    let context = env.context.as_deref_mut().ok_or_else(|| {
+        SolidError::invalid_input(
+            OP,
+            "curve identity requires the actual notification context",
+        )
+    })?;
+    let key = context.geometry_key(curve.notify_identity_slot())?;
+    Ok(crate::geom::object::ObjectRef { type_code, key })
+}
+
 /// Outputs of `MakeVertexSplitEdge`, including the endpoint on ordinary failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SplitEdgeOutput {
@@ -933,6 +985,66 @@ pub(crate) fn make_vertex_split_edge_with_identity(
     state: &mut edge::NotifyState<'_>,
     curve_ref: &dyn Fn(EdgeId, i64) -> Result<crate::geom::object::ObjectRef>,
 ) -> Result<SplitEdgeOutput> {
+    make_vertex_split_edge_with_curve_identity_state(
+        k,
+        b,
+        edge_id,
+        parameter,
+        state,
+        CurveIdentity::Checked(curve_ref),
+    )
+}
+
+/// Split with an actual-curve issuer at Copy/SetCurve, retaining the native prefix.
+/// # Errors
+/// The original split/notification errors or checked identity issuance errors.
+pub fn make_vertex_split_edge_with_curve_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edge_id: EdgeId,
+    parameter: f64,
+    env: &mut edge::NotifyEnv<'_>,
+    curve_identity: CurveIdentity<'_>,
+) -> Result<SplitEdgeOutput> {
+    make_vertex_split_edge_with_curve_identity_state(
+        k,
+        b,
+        edge_id,
+        parameter,
+        &mut edge::NotifyState::from_env(env),
+        curve_identity,
+    )
+}
+
+/// Split through the actual kernel context with checked curve identity issuance.
+/// # Errors
+/// Original split errors or identity issuance failure after the retained prefix.
+pub fn make_vertex_split_edge_with_kernel_curve_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edge_id: EdgeId,
+    parameter: f64,
+    stores: &mut edge::NotificationStores<'_>,
+    curve_identity: CurveIdentity<'_>,
+) -> Result<SplitEdgeOutput> {
+    make_vertex_split_edge_with_curve_identity_state(
+        k,
+        b,
+        edge_id,
+        parameter,
+        &mut edge::NotifyState::from_kernel_stores(stores),
+        curve_identity,
+    )
+}
+
+pub(crate) fn make_vertex_split_edge_with_curve_identity_state(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edge_id: EdgeId,
+    parameter: f64,
+    state: &mut edge::NotifyState<'_>,
+    curve_identity: CurveIdentity<'_>,
+) -> Result<SplitEdgeOutput> {
     let out = SplitEdgeOutput::default();
     if !b.editing_enabled() {
         return Ok(out);
@@ -1028,13 +1140,17 @@ pub(crate) fn make_vertex_split_edge_with_identity(
         let same = b.edgeuse(primary)?.orientation == OrientType::Same;
         b.edge_mut(edge_id)?.interval = if same { ivl1 } else { ivl2 };
         b.edge_mut(new_edge)?.interval = if same { ivl2 } else { ivl1 };
-        let copied =
+        let mut copied =
             required(b.edge(edge_id)?.curve.as_ref(), "split edge without curve")?.copy(k)?;
-        let old_curve_type =
-            required(b.edge(edge_id)?.curve.as_ref(), "split edge without curve")?.type_code();
-        let new_curve_type = copied.type_code();
-        let old_curve_ref = curve_ref(edge_id, old_curve_type)?;
-        let new_curve_ref = curve_ref(new_edge, new_curve_type)?;
+        let old_curve_ref = state.with_env(k, |env| {
+            let curve = required(
+                b.edge_mut(edge_id)?.curve.as_mut(),
+                "split edge without curve",
+            )?;
+            curve_identity.resolve(edge_id, curve, env)
+        })?;
+        let new_curve_ref =
+            state.with_env(k, |env| curve_identity.resolve(new_edge, &mut copied, env))?;
         state.with_env(k, |env| {
             ignore_status(edge::set_curve(
                 b,
@@ -1298,12 +1414,31 @@ pub fn make_edge_in_face_with_vu(
     env: &mut edge::NotifyEnv<'_>,
     curve_ref: &dyn Fn(EdgeId, i64) -> crate::geom::object::ObjectRef,
 ) -> Result<EdgeInFaceOutput> {
+    make_edge_in_face_with_vu_with_curve_identity(
+        k,
+        b,
+        input,
+        env,
+        CurveIdentity::Legacy(curve_ref),
+    )
+}
+
+/// Install the actual input Curve using checked identity issuance before SetCurve.
+/// # Errors
+/// Original construction/notification errors or checked identity issuance errors.
+pub fn make_edge_in_face_with_vu_with_curve_identity(
+    k: &Kernel,
+    b: &mut Brep,
+    input: EdgeInFaceInput,
+    env: &mut edge::NotifyEnv<'_>,
+    curve_identity: CurveIdentity<'_>,
+) -> Result<EdgeInFaceOutput> {
     use crate::topology::{
         face::{p1 as fp1, p2 as fp2},
         loopuse as lu,
     };
     let face = input.face.ok_or_else(|| SolidError::null_pointer(OP))?;
-    let curve = input.curve.ok_or_else(|| SolidError::null_pointer(OP))?;
+    let mut curve = input.curve.ok_or_else(|| SolidError::null_pointer(OP))?;
     if !b.editing_enabled() {
         return Err(SolidError::sm_err(OP));
     }
@@ -1395,7 +1530,7 @@ pub fn make_edge_in_face_with_vu(
             // native signature, so projection cannot populate this pointer.
         }
     }
-    let curve_identity = curve_ref(edge_id, curve.type_code());
+    let curve_identity = curve_identity.resolve(edge_id, &mut curve, env)?;
     // The native excessive-distance SE(SM_ERR) is logging-only.
     ignore_status(edge::set_curve(
         b,

@@ -66,8 +66,8 @@ use crate::geom::global_solver::SolverOperation;
 use crate::geom::object::ObjectRef;
 use crate::geom::tol::{xsect_tol_3d_from_zones, zone_tol3d, ScaledZero};
 use crate::intersect::point_class::{
-    object_zone_tol_3d, BrepMerge, ClassGeometry, ClassObject, ClassObjectKind, MergeOutputs,
-    PointClassType as Pc, PointClassification, Precedence,
+    object_zone_tol_3d, BrepMergeWithIdentity, ClassGeometry, ClassObject, ClassObjectKind,
+    MergeOutputs, PointClassType as Pc, PointClassification, Precedence,
 };
 use crate::kernel::Kernel;
 use crate::math::{Point3, BIG_DOUBLE};
@@ -1181,6 +1181,31 @@ pub struct MergeContext<'a, O> {
     pub curve_ref: &'a dyn Fn(EdgeId, i64) -> ObjectRef,
 }
 
+/// The actual mutable merge view with checked curve-construction identity.
+pub struct MergeContextWithIdentity<'a, O> {
+    /// Actual arena.
+    pub brep: &'a mut Brep,
+    /// Target in that arena.
+    pub target: EntityRef,
+    /// Caller handle for each arena entity.
+    pub handle: Box<dyn Fn(EntityRef) -> O + 'a>,
+    /// Retained notification records, attributes and context.
+    pub notifications: edge::NotifyEnv<'a>,
+    /// Authority for the actual original or newly constructed Curve.
+    pub curve_identity: crate::topology::brep::p9::CurveIdentity<'a>,
+}
+impl<'a, O> From<MergeContext<'a, O>> for MergeContextWithIdentity<'a, O> {
+    fn from(context: MergeContext<'a, O>) -> Self {
+        Self {
+            brep: context.brep,
+            target: context.target,
+            handle: context.handle,
+            notifications: context.notifications,
+            curve_identity: crate::topology::brep::p9::CurveIdentity::Legacy(context.curve_ref),
+        }
+    }
+}
+
 /// Mutable access to the B-reps of a classification's topology handles, for the
 /// edits of [`CurveClassification::merge_interval_mut`] and
 /// [`CurveClassification::merge_point_class_mut`] (upstream edits the objects behind
@@ -1190,6 +1215,14 @@ pub trait MergeIntervalBrep<O>: ClassGeometryMut<O> {
     /// region); `None` for a handle the adapter cannot resolve (an invalid-input error
     /// for the caller).
     fn merge_context(&mut self, object: O) -> Option<MergeContext<'_, O>>;
+    /// Actual-curve identity successor. Existing providers keep their old context;
+    /// actual issuers override this method without manufacturing a legacy callback.
+    fn merge_context_with_curve_identity(
+        &mut self,
+        object: O,
+    ) -> Option<MergeContextWithIdentity<'_, O>> {
+        self.merge_context(object).map(Into::into)
+    }
 }
 
 /// `pc.MergeIntoObject(srcPoint)` on the B-rep a [`MergeIntervalBrep`] hands out for the
@@ -1466,13 +1499,15 @@ fn context_with<'g, O: ClassObject, G: MergeIntervalBrep<O>>(
     g: &'g mut G,
     object: O,
     members: &[O],
-) -> Result<(MergeContext<'g, O>, Vec<Option<EntityRef>>)> {
+) -> Result<(MergeContextWithIdentity<'g, O>, Vec<Option<EntityRef>>)> {
     let mut ids = Vec::new();
     for &m in members {
         let (_, e) = g.topology_entity(m).ok_or_else(unresolved_mut)?;
         ids.push(e);
     }
-    let ctx = g.merge_context(object).ok_or_else(unresolved_mut)?;
+    let ctx = g
+        .merge_context_with_curve_identity(object)
+        .ok_or_else(unresolved_mut)?;
     let ids = members
         .iter()
         .zip(ids)
@@ -1526,22 +1561,25 @@ impl<O: ClassObject, G: MergeIntervalBrep<O>> Imprint<O> for Mutable<'_, G> {
             // no object, or not topology: upstream's error returns, before any edit
             return pc.merge_into_object(self.k, src_point);
         };
-        let MergeContext {
+        let MergeContextWithIdentity {
             brep,
             target,
             handle,
             mut notifications,
-            curve_ref,
-        } = self.g.merge_context(object).ok_or_else(unresolved_mut)?;
-        pc.merge_into_brep(
+            curve_identity,
+        } = self
+            .g
+            .merge_context_with_curve_identity(object)
+            .ok_or_else(unresolved_mut)?;
+        pc.merge_into_brep_with_curve_identity(
             self.k,
             src_point,
-            BrepMerge {
+            BrepMergeWithIdentity {
                 brep,
                 target,
                 handle: &*handle,
                 notifications: &mut notifications,
-                curve_ref,
+                curve_identity,
             },
         )
     }
@@ -1684,7 +1722,7 @@ impl<O: ClassObject, G: MergeIntervalBrep<O>> Imprint<O> for Mutable<'_, G> {
             return Err(wrong_target("handle does not name a face"));
         };
         let [start, end] = vertexuses;
-        let made = crate::topology::brep::p9::make_edge_in_face_with_vu(
+        let made = crate::topology::brep::p9::make_edge_in_face_with_vu_with_curve_identity(
             self.k,
             ctx.brep,
             EdgeInFaceInput {
@@ -1698,7 +1736,7 @@ impl<O: ClassObject, G: MergeIntervalBrep<O>> Imprint<O> for Mutable<'_, G> {
                 curve_zone_tol_3d,
             },
             &mut ctx.notifications,
-            ctx.curve_ref,
+            ctx.curve_identity,
         )?;
         Ok((
             (ctx.handle)(EntityRef::Edge(made.edge)),
