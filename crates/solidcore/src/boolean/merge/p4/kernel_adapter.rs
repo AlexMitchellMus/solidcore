@@ -129,22 +129,30 @@ pub(crate) fn adopt_namespace_owners(b: &mut Brep, namespace: u32, other: bool) 
         .collect();
     for (f, own) in faces {
         let merged = notification_key(namespace, other, EntityRef::Face(f));
-        let face = b.face_mut(f)?;
-        if let Some(surface) = face.surface.as_mut() {
-            if surface.owner() == Some(merged) {
+        let adopted = b.face_mut(f)?.surface.as_mut().is_some_and(|surface| {
+            let matched = surface.owner() == Some(merged);
+            if matched {
                 surface.set_owner(Some(own));
-                b.sync_face_surface_tolerance(f)?;
             }
+            matched
+        });
+        if adopted {
+            b.set_geometry_owner_key(EntityRef::Face(f), Some(own));
+            b.sync_face_surface_tolerance(f)?;
         }
     }
     for (e, own) in edges {
         let merged = notification_key(namespace, other, EntityRef::Edge(e));
-        if let Some(curve) = b.edge_mut(e)?.curve.as_mut() {
-            if curve.owner().map(|o| o.key) == Some(merged.key)
-                && curve.owner().map(|o| o.type_code) == Some(merged.type_code)
-            {
+        let adopted = b.edge_mut(e)?.curve.as_mut().is_some_and(|curve| {
+            let matched = curve.owner().map(|o| o.key) == Some(merged.key)
+                && curve.owner().map(|o| o.type_code) == Some(merged.type_code);
+            if matched {
                 curve.set_owner(Some(own), None);
             }
+            matched
+        });
+        if adopted {
+            b.set_geometry_owner_key(EntityRef::Edge(e), Some(own));
         }
     }
     Ok(())

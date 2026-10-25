@@ -2446,6 +2446,7 @@ fn bind_wire_curve(
     if let Some(c) = b.edge_mut(e)?.curve.as_mut() {
         let _ = c.set_owner(Some(edge_ref), None);
     }
+    b.set_geometry_owner_key(EntityRef::Edge(e), Some(edge_ref));
     Ok(())
 }
 
@@ -3148,6 +3149,7 @@ fn turn_to_nurbs_in(
         if let Some(c) = b.edge_mut(e)?.curve.as_mut() {
             let _ = c.set_owner(Some(edge_ref), None);
         }
+        b.set_geometry_owner_key(EntityRef::Edge(e), Some(edge_ref));
     }
     Ok(())
 }
