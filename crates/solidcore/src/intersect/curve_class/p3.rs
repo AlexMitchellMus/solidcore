@@ -36,7 +36,8 @@
 //!   to whatever interval now sits in that slot, and drops the write when the collapse
 //!   left the slot past the end (upstream writes a spare slot of the array that `SetSize`
 //!   resets before reuse), instead of failing on the index. This copies an upstream defect
-//!   on purpose (plan/upstream-issues.md UB-255).
+//!   on purpose (UB-256,
+//!   `plan/upstream-issues/UB-256--insert-point-class-stale-interval-reference.md`).
 //! - **Out-params.** `FindInterval` returns a [`FoundInterval`]; `InsertPointClass` returns
 //!   `rbInsertionMade`; `sm_ChangeEdgePointClassToNearVertex` returns
 //!   `rbChangedToVertexFlag`; `MergePointClass`'s optional output arrays are
@@ -266,8 +267,9 @@ fn insert_at<O: ClassObject>(
 /// `EditIntervalMax` that may collapse an interval: after a collapse the slot holds the
 /// interval that moved down into it, or lies past the end (`None`: the write lands in a
 /// spare slot of the array that `SetSize` resets before it is used again). This copies an
-/// upstream defect on purpose, for parity (plan/upstream-issues.md UB-255): the write
-/// can land on the interval that moved into the slot.
+/// upstream defect on purpose, for parity (UB-256,
+/// `plan/upstream-issues/UB-256--insert-point-class-stale-interval-reference.md`): the
+/// write can land on the interval that moved into the slot.
 fn slot_mut<O: ClassObject>(
     cc: &mut CurveClassification<O>,
     index: usize,
@@ -1094,7 +1096,7 @@ impl<O: ClassObject> CurveClassification<O> {
                             pt_class_pre_snap_param,
                             true,
                         ))?;
-                        // (upstream's stale reference to slot `index`, UB-255 parity: `slot_mut`)
+                        // (upstream's stale reference to slot `index`, UB-256 parity: `slot_mut`)
                         if let Some(slot) = slot_mut(self, index) {
                             slot.start = *point_class;
                         }
@@ -1107,7 +1109,7 @@ impl<O: ClassObject> CurveClassification<O> {
                             pt_class_pre_snap_param,
                             true,
                         ))?;
-                        // (upstream's stale reference to slot `index`, UB-255 parity: `slot_mut`)
+                        // (upstream's stale reference to slot `index`, UB-256 parity: `slot_mut`)
                         if let Some(slot) = slot_mut(self, index) {
                             slot.end = *point_class;
                         }
