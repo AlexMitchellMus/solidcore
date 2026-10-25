@@ -433,9 +433,9 @@ pub fn owned_surface_cache(
 /// The cache a numerical solve on `surface` (owned by face `f`, owner key `owner`)
 /// gets through `smsurf_GetSurfaceCache` / `GetTree`: the surface's trimmed cache
 /// ([`owned_surface_cache`]: the one it keeps, else one made with the face and kept),
-/// its tree built with the face when it has none, handed out as a copy in the solve's
-/// handle space (`map`, with the solve's surface `handle`) while the kept cache goes
-/// back to the surface. `None` when no trimmed cache could be made (the caller builds
+/// its tree built with the face as `GetTree` builds it ([`face_cache_tree`]), handed
+/// out as a copy in the solve's handle space (`map`, with the solve's surface `handle`)
+/// while the kept cache goes back to the surface. `None` when no trimmed cache could be made (the caller builds
 /// the plain surface cache, as upstream falls back to it).
 ///
 /// # Errors
@@ -455,14 +455,11 @@ pub fn solve_surface_cache_of_face<O: Copy + PartialEq>(
         return Ok(None);
     }
     let built = (|| {
-        let mut face = BrepCacheFace { b, f };
-        let tolerance = face.zone_tol_3d(k, EntityRef::Face(f))?;
+        let tolerance = BrepCacheFace { b: &mut *b, f }.zone_tol_3d(k, EntityRef::Face(f))?;
         lease
             .cache
             .bind_face(owner, EntityRef::Face(f), tolerance)?;
-        if lease.cache.base().tree().is_none() {
-            lease.cache.build_tree_with_face(k, &mut face)?;
-        }
+        face_cache_tree(k, b, f, &mut lease.cache)?;
         let mut copy = lease.cache.map_handles(&map)?;
         copy.base_mut().set_surface_handle(handle);
         Ok(copy.into_base())
