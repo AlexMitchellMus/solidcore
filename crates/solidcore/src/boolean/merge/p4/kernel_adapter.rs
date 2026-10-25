@@ -62,6 +62,7 @@ fn cache_kernel(k: &Kernel, context: &Context) -> Kernel {
         caches: crate::kernel::Caches::default(),
         context: context.metadata_copy(),
         fillet_point_step: core::cell::Cell::new(k.fillet_point_step.get()),
+        upstream_ub_passed: Vec::new(),
     }
 }
 
@@ -93,6 +94,70 @@ pub(crate) fn notification_key(namespace: u32, other: bool, entity: EntityRef) -
     }
 }
 
+/// Hands the geometry a merge made under the adapter's namespace back to the B-rep's
+/// own naming: a face's surface (an edge's curve) owned under that face's (edge's)
+/// [`notification_key`] in `namespace` is the record's own geometry (upstream's owner
+/// is the record), so it takes the record's name in `b`'s recorded scheme
+/// ([`Brep::naming`](crate::topology::Brep::naming): notification or arena identity)
+/// and the face's tolerance is re-recorded on it. Called when the namespace ends with
+/// the merge (its records and attributes go with it); a B-rep of another or unknown
+/// scheme is left as it is.
+///
+/// # Errors
+///
+/// [`SolidError::NotFound`] for a dangling record (none in practice).
+pub(crate) fn adopt_namespace_owners(b: &mut Brep, namespace: u32, other: bool) -> Result<()> {
+    use crate::topology::NamingScheme;
+    let name = |e: EntityRef| -> Option<ObjectRef> {
+        match b.naming() {
+            NamingScheme::Notify => Some(crate::topology::loopuse::notify_ref(e)),
+            NamingScheme::Arena => Some(match e {
+                EntityRef::Face(f) => arena_identity(CacheObject::Face(f)),
+                EntityRef::Edge(x) => arena_identity(CacheObject::Edge(x)),
+                _ => return None,
+            }),
+            _ => None,
+        }
+    };
+    let faces: Vec<(FaceId, ObjectRef)> = bp::faces(b, None)?
+        .into_iter()
+        .filter_map(|f| name(EntityRef::Face(f)).map(|n| (f, n)))
+        .collect();
+    let edges: Vec<(EdgeId, ObjectRef)> = bp::edges(b, None)?
+        .into_iter()
+        .filter_map(|e| name(EntityRef::Edge(e)).map(|n| (e, n)))
+        .collect();
+    for (f, own) in faces {
+        let merged = notification_key(namespace, other, EntityRef::Face(f));
+        let adopted = b.face_mut(f)?.surface.as_mut().is_some_and(|surface| {
+            let matched = surface.owner() == Some(merged);
+            if matched {
+                surface.set_owner(Some(own));
+            }
+            matched
+        });
+        if adopted {
+            b.set_geometry_owner_key(EntityRef::Face(f), Some(own));
+            b.sync_face_surface_tolerance(f)?;
+        }
+    }
+    for (e, own) in edges {
+        let merged = notification_key(namespace, other, EntityRef::Edge(e));
+        let adopted = b.edge_mut(e)?.curve.as_mut().is_some_and(|curve| {
+            let matched = curve.owner().map(|o| o.key) == Some(merged.key)
+                && curve.owner().map(|o| o.type_code) == Some(merged.type_code);
+            if matched {
+                curve.set_owner(Some(own), None);
+            }
+            matched
+        });
+        if adopted {
+            b.set_geometry_owner_key(EntityRef::Edge(e), Some(own));
+        }
+    }
+    Ok(())
+}
+
 // The original namespace adapter imports geometry with arena owner labels.
 // Temporarily bind those owned objects to the same identities as its notifications
 // while a native edit runs. Caller-key stores already use their actual identities.
@@ -122,11 +187,22 @@ impl<'a, 'keys> GeometryOwnerScope<'a, 'keys> {
                 }
             }
             for face in crate::topology::brep::p1::faces(scope.body, None)? {
-                if let Some(surface) = scope.body.face_mut(face)?.surface.as_mut() {
-                    if surface.owner() == Some(arena_identity(CacheObject::Face(face))) {
-                        scope.faces.push(face);
-                        surface.set_owner(Some(keys.object(other, EntityRef::Face(face))));
-                    }
+                let rebound = scope
+                    .body
+                    .face_mut(face)?
+                    .surface
+                    .as_mut()
+                    .is_some_and(|surface| {
+                        let matched =
+                            surface.owner() == Some(arena_identity(CacheObject::Face(face)));
+                        if matched {
+                            surface.set_owner(Some(keys.object(other, EntityRef::Face(face))));
+                        }
+                        matched
+                    });
+                if rebound {
+                    scope.faces.push(face);
+                    scope.body.sync_face_surface_tolerance(face)?;
                 }
             }
         }
@@ -145,13 +221,18 @@ impl Drop for GeometryOwnerScope<'_, '_> {
             }
         }
         for &face in &self.faces {
-            if let Ok(record) = self.body.face_mut(face) {
-                if let Some(surface) = record.surface.as_mut() {
-                    if surface.owner() == Some(self.keys.object(self.other, EntityRef::Face(face)))
-                    {
+            let restored = self.body.face_mut(face).is_ok_and(|record| {
+                record.surface.as_mut().is_some_and(|surface| {
+                    let matched = surface.owner()
+                        == Some(self.keys.object(self.other, EntityRef::Face(face)));
+                    if matched {
                         surface.set_owner(Some(arena_identity(CacheObject::Face(face))));
                     }
-                }
+                    matched
+                })
+            });
+            if restored {
+                let _ = self.body.sync_face_surface_tolerance(face);
             }
         }
     }
@@ -210,6 +291,16 @@ impl KernelManifoldIntersector {
             ));
         }
         Ok(Self::from_keys(NotificationKeys::Namespace(namespace)))
+    }
+
+    /// The notification namespace of an adapter that names the operands' objects itself
+    /// ([`Self::new`]); `None` for one using the caller's identities.
+    #[must_use]
+    pub(crate) const fn namespace(&self) -> Option<u32> {
+        match self.keys {
+            NotificationKeys::Namespace(n) => Some(n),
+            NotificationKeys::Caller(_) => None,
+        }
     }
 
     /// Borrow caller identities and move the actual records through one scoped
