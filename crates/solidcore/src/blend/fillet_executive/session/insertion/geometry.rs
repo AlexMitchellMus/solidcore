@@ -3,6 +3,7 @@
 use super::super::{FilletBody, FilletObject};
 use crate::blend::fillet_geom::p1::{FilletBrep, FilletGeomId, FilletSurfaceStorage};
 use crate::curve::curve::Curve;
+use crate::geom::attribute::ObjectKey;
 use crate::geom::context::Context;
 use crate::geom::object::ObjectRef;
 use crate::intersect::curve_class::p5::ClassGeometryMut;
@@ -11,6 +12,7 @@ use crate::math::Point3;
 use crate::surface::surface::Surface;
 use crate::surface::volume::Volume;
 use crate::topology::brep::p3::topology_ref;
+use crate::topology::proto_topology::p1::{ProtoGeometry, ProtoTopology};
 use crate::topology::{Brep, BrepId, FaceId};
 use crate::{EntityRef, Result, SolidError};
 
@@ -381,6 +383,73 @@ impl ClassGeometryMut<FilletObject> for InsertionGeometry<'_> {
     }
 }
 
+impl ProtoGeometry<FilletObject> for InsertionGeometry<'_> {
+    fn curve_mut(&mut self, object: FilletObject) -> Option<&mut Curve> {
+        ClassGeometryMut::curve_mut(self, object)
+    }
+}
+
+impl ProtoTopology<FilletObject> for InsertionGeometry<'_> {
+    fn vertex_use_faces(&self, vertex: FilletObject) -> Result<Vec<Option<FilletObject>>> {
+        let (role, entity) = Self::topology(vertex).ok_or(invalid("unknown topology role"))?;
+        Ok(ProtoTopology::vertex_use_faces(self.body(role), entity)?
+            .into_iter()
+            .map(|value| value.map(|entity| Self::handle(role, entity)))
+            .collect())
+    }
+    fn edge_use_faces(&self, edge: FilletObject) -> Result<Vec<Option<FilletObject>>> {
+        let (role, entity) = Self::topology(edge).ok_or(invalid("unknown topology role"))?;
+        Ok(ProtoTopology::edge_use_faces(self.body(role), entity)?
+            .into_iter()
+            .map(|value| value.map(|entity| Self::handle(role, entity)))
+            .collect())
+    }
+    fn edge_start_vertex(&self, edge: FilletObject) -> Result<Option<FilletObject>> {
+        let (role, entity) = Self::topology(edge).ok_or(invalid("unknown topology role"))?;
+        Ok(ProtoTopology::edge_start_vertex(self.body(role), entity)?
+            .map(|entity| Self::handle(role, entity)))
+    }
+    fn edge_other_vertex(
+        &self,
+        edge: FilletObject,
+        vertex: Option<FilletObject>,
+    ) -> Result<Option<FilletObject>> {
+        let (role, entity) = Self::topology(edge).ok_or(invalid("unknown topology role"))?;
+        let vertex = vertex
+            .map(|vertex| {
+                let (other_role, vertex) =
+                    Self::topology(vertex).ok_or(invalid("unknown vertex role"))?;
+                if role != other_role {
+                    return Err(invalid("edge and vertex belong to different bodies"));
+                }
+                Ok(vertex)
+            })
+            .transpose()?;
+        Ok(
+            ProtoTopology::edge_other_vertex(self.body(role), entity, vertex)?
+                .map(|entity| Self::handle(role, entity)),
+        )
+    }
+    fn vertex_point(&self, vertex: FilletObject) -> Result<Point3> {
+        let (role, entity) = Self::topology(vertex).ok_or(invalid("unknown topology role"))?;
+        ProtoTopology::vertex_point(self.body(role), entity)
+    }
+    fn edge_brep(&self, edge: FilletObject) -> Result<Option<ObjectKey>> {
+        let (role, entity) = Self::topology(edge).ok_or(invalid("unknown topology role"))?;
+        let actual_body = ProtoTopology::edge_brep(self.body(role), entity)?;
+        actual_body
+            .map(|_| self.body_identity(role).map(|identity| identity.key))
+            .transpose()
+    }
+    fn edge_faces(&self, edge: FilletObject) -> Result<Vec<FilletObject>> {
+        let (role, entity) = Self::topology(edge).ok_or(invalid("unknown topology role"))?;
+        Ok(ProtoTopology::edge_faces(self.body(role), entity)?
+            .into_iter()
+            .map(|entity| Self::handle(role, entity))
+            .collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -426,6 +495,22 @@ mod tests {
             view.curve(FilletObject::IntermediateCurve(edge)).unwrap()
         ));
         let vertex = view.target.vertices().ids().next().unwrap();
+        let target_edge = FilletObject::Topology(FilletBody::Target, EntityRef::Edge(edge));
+        let start = view.edge_start_vertex(target_edge).unwrap().unwrap();
+        assert!(matches!(
+            start,
+            FilletObject::Topology(FilletBody::Target, EntityRef::Vertex(_))
+        ));
+        assert!(view
+            .edge_faces(target_edge)
+            .unwrap()
+            .iter()
+            .all(|face| matches!(
+                face,
+                FilletObject::Topology(FilletBody::Target, EntityRef::Face(_))
+            )));
+        let foreign = FilletObject::Topology(FilletBody::Pseudo, EntityRef::Vertex(vertex));
+        assert!(view.edge_other_vertex(target_edge, Some(foreign)).is_err());
         let before = view.target.vertex(vertex).unwrap().point;
         let object = FilletObject::Topology(FilletBody::Pseudo, EntityRef::Vertex(vertex));
         let (body, _) = view.topology_entity_mut(object).unwrap();
