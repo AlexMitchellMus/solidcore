@@ -1463,7 +1463,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (ASan, in the fork's C API tests); not reproduced in the solidcore difftest.
 - **Severity:** crash/UB (use-after-free).
 - **Fix:** tangency-labs/smlib af8db37: `IntersectInsertRelate` deletes the proto topology manager and returns the imprint's error, and `PiecewiseMerge` returns the error of its first `IntersectInsertRelate` (`SER`); the callers already propagate it.
-- **Rust port:** carries the fix (`TopologyIntersector::intersect_insert_relate`, `merge::p3::piecewise_merge`; test `piecewise_merge_ends_on_a_failed_intersect_insert_relate`).
+- **Rust port:** carries the fix (`TopologyIntersector::intersect_insert_relate`, `merge::p3::piecewise_merge`; test `piecewise_merge_ends_on_a_failed_intersect_insert_relate`). Since 2026-10-24 `intersect_insert_relate` also records `"UB-242"` in `Kernel::upstream_ub_passed`. The `boolean.topology_intersector_p2` shim's copy of `IntersectInsertRelate` now stops after a failed imprint in the same way, and both sides answer `-2`. Two generated cases (gen0111 torus/ellipsoid, gen0498 Endcap/toruswvy) reach it once `FaceIntersect` makes face caches on the lent B-reps. In both, the C++ `SmEdgeDefinition::Imprint` and `ImprintIntersections` return `SM_ERR_NULL_POINTER` exactly as the port does (checked with gdb).
 
 ### Topology
 
