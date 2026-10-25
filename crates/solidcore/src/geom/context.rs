@@ -16,11 +16,13 @@
 //! | `Context::share_geometry_sequence` (crate) | store-owned allocation of geometry notification keys |
 //! | [`Context::doing_boolean_mut`]            | `SmContext::GetDoingBooleanRef`                 |
 //! | [`Context::set_doing_boolean`]            | `SmContext::SetDoingBoolean`                    |
+//! | [`Context::trim_uv_curves_at_corner_drops`], [`Context::set_trim_uv_curves_at_corner_drops`] | (none: pinned-`c9c5979` compatibility toggle for WR-255 / #570; `false` by default) |
 //! | [`Context::user_notify_callback`]         | `SmContext::GetUserNotifyCallback`              |
 //! | [`Context::set_user_notify_callback`]     | `SmContext::SetUserNotifyCallback` (unused upstream) |
 //! | [`Context::sys_notify_callback`]          | `SmContext::GetSysNotifyCallback`               |
 //! | [`Context::user_notify_callback_mut`], [`Context::sys_notify_callback_mut`] | the same getters, for `Execute` |
 //! | [`NotifyCallback`], [`NotifyCallback::execute`] | `SmNotifyCallback`, `SmNotifyCallback::Execute` |
+//! | [`NotifyCallback::owner_link`]            | (none: the `GetOwner()` / `GetEdge()` a callback reads) |
 //! | [`Context::set_sys_notify_callback`]      | `SmContext::SetSysNotifyCallback`               |
 //! | [`Context::this_model_size_estimate`]     | `SmContext::GetThisModelSizeEstimate`           |
 //! | [`Context::set_this_model_size_estimate`] | `SmContext::SetThisModelSizeEstimate` (inline, `SM_USE_OLDTOL` build) |
@@ -185,6 +187,17 @@ pub trait NotifyCallback: std::fmt::Debug + Send {
     fn as_any(&self) -> Option<&dyn core::any::Any> {
         None
     }
+
+    /// Records the object `object` is owned by (`SmCurve::GetOwner`,
+    /// `SmSurface::GetOwner`, `SmEdgeuse::GetEdge`; `None` for a null owner) for the
+    /// notifications that follow. An upstream callback reads these links from the
+    /// notified objects themselves; an [`object::ObjectRef`] carries none, so the
+    /// notifying code reports a link no notification announces (a UV trim curve's edge
+    /// use, that edge use's edge) before the notification a callback needs it for
+    /// ([`object::report_owner_link`]). The default ignores it.
+    fn owner_link(&mut self, object: ObjectKey, owner: Option<object::ObjectRef>) {
+        let _ = (object, owner);
+    }
 }
 
 /// Shared modeling state (`SmContext`): traversal marks, the Boolean flag, notify
@@ -202,6 +215,9 @@ pub struct Context {
     mark_locks: [AtomicBool; 5],
     /// `m_bDoingBoolean`.
     doing_boolean: bool,
+    /// Whether `sm_FixUVTrimCurves` runs upstream `c9c5979`'s drop/trim/reparameterize
+    /// stretch before moving corner control points (`false` by default: #570 / WR-255).
+    trim_uv_curves_at_corner_drops: bool,
     /// `m_dThisModelSizeEstimate`.
     model_size_estimate: f64,
     /// `m_dThisLargeSmallSizeRatio`.
@@ -477,6 +493,7 @@ impl Context {
                 .each_ref()
                 .map(|l| AtomicBool::new(l.load(Ordering::Relaxed))),
             doing_boolean: self.doing_boolean,
+            trim_uv_curves_at_corner_drops: self.trim_uv_curves_at_corner_drops,
             model_size_estimate: self.model_size_estimate,
             large_small_size_ratio: self.large_small_size_ratio,
             zone_tol_3d: self.zone_tol_3d,
@@ -496,6 +513,7 @@ impl Context {
             current_marks: [1; 5].map(AtomicU64::new),
             mark_locks: [false; 5].map(AtomicBool::new),
             doing_boolean: false,
+            trim_uv_curves_at_corner_drops: false,
             model_size_estimate,
             large_small_size_ratio,
             zone_tol_3d: tol::size_estimate_to_zone_tol_3d(model_size_estimate),
@@ -519,6 +537,19 @@ impl Context {
     /// Sets the Boolean flag (`SetDoingBoolean`).
     pub fn set_doing_boolean(&mut self, doing_boolean: bool) {
         self.doing_boolean = doing_boolean;
+    }
+
+    /// Whether `sm_FixUVTrimCurves` trims UV curves at dropped corner points and
+    /// stretches their intervals (`false` by default, following `tangency-labs/smlib@5af7070`
+    /// / #570 / WR-255; `true` reproduces pinned `c9c5979`). Not upstream.
+    #[must_use]
+    pub const fn trim_uv_curves_at_corner_drops(&self) -> bool {
+        self.trim_uv_curves_at_corner_drops
+    }
+
+    /// Sets [`Context::trim_uv_curves_at_corner_drops`]. Not upstream.
+    pub fn set_trim_uv_curves_at_corner_drops(&mut self, trim: bool) {
+        self.trim_uv_curves_at_corner_drops = trim;
     }
 
     /// The application's notify callback (`GetUserNotifyCallback`).
@@ -571,7 +602,7 @@ impl Context {
     /// # Errors
     ///
     /// `InvalidInput`, before anything moves, while a crate edit has lent this context's
-    /// callbacks ([`Context::lend_notify`]): swapping the lent context's placeholder would
+    /// callbacks (`Context::lend_notify`): swapping the lent context's placeholder would
     /// let a nested edit through, notifying nobody.
     pub fn take_notify_lease(&mut self) -> Result<NotifyLease> {
         self.check_not_lent()?;

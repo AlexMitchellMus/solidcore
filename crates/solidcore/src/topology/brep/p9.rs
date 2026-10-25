@@ -807,6 +807,7 @@ fn set_curve_owner(
     let owner = (env.key_of)(EntityRef::Edge(edge_id));
     let curve = required(b.edge_mut(edge_id)?.curve.as_mut(), "edge without curve")?;
     let (_, change) = curve.set_owner(Some(owner), None);
+    b.set_geometry_owner_key(EntityRef::Edge(edge_id), Some(owner));
     if let Some(change) = change {
         ignore_status(crate::geom::a_object::notify(
             env.attributes,
@@ -1371,14 +1372,19 @@ pub fn make_edge_in_face_with_vu(
     if uv_trim.is_none() {
         drop_fail = None;
         let face_record = b.face(face)?;
-        let surface = required(face_record.surface.as_ref(), "face without surface")?;
-        let dropped = drop_edge_curve(
+        let surface = required(face_record.surface.as_ref(), "face without surface")?
+            .clone_for_evaluation()?;
+        let uv_domain = face_record.uv_domain;
+        let face_tolerance = face_record.tolerance;
+        let dropped = drop_edge_curve_in_face(
             k,
-            surface,
-            &face_record.uv_domain,
+            b,
+            face,
+            &surface,
+            &uv_domain,
             &curve,
             &input.interval,
-            face_record.tolerance,
+            face_tolerance,
         )?;
         let mut curves = dropped.uv_curves;
         max_dist = dropped.max_drop_to_surf;
@@ -1534,8 +1540,10 @@ pub fn make_edge_in_face_with_vu(
         let new_face = b.add_face_record(crate::topology::Face::new(b.face(face)?.shell))?;
         let mut surface = required(b.face(face)?.surface.as_ref(), "split face without surface")?
             .copy_and_add_analytics(k)?;
-        surface.set_owner(Some((env.key_of)(EntityRef::Face(new_face))));
+        let new_face_owner = (env.key_of)(EntityRef::Face(new_face));
+        surface.set_owner(Some(new_face_owner));
         b.face_mut(new_face)?.surface = Some(surface);
+        b.set_geometry_owner_key(EntityRef::Face(new_face), Some(new_face_owner));
         set_face_tolerance(b, new_face, b.tolerance(), true, true)?;
         b.face_mut(new_face)?.uv_domain = b.face(face)?.uv_domain;
         let new_fu1 = b.add_faceuse_record(crate::topology::Faceuse::default())?;
@@ -2240,6 +2248,102 @@ pub struct EdgeCurveDrop {
     pub max_drop_to_surf: f64,
     /// Largest approximation deviation from the surface normal line.
     pub max_approx_dev: f64,
+}
+
+/// [`drop_edge_curve`] onto the surface of face `face` of `b` with the face's own
+/// UV domain and tolerance: the projection prefix of `MakeEdgeInFaceWithVU` for a
+/// face-owned surface, which classifies and builds its caches through the face.
+///
+/// # Errors
+/// As [`drop_edge_curve`], and those of the face classification.
+pub fn drop_edge_curve_on_face(
+    k: &Kernel,
+    b: &mut Brep,
+    face: FaceId,
+    curve: &Curve,
+    interval: &Extent1d,
+) -> Result<EdgeCurveDrop> {
+    let record = b.face(face)?;
+    let surface =
+        required(record.surface.as_ref(), "face without surface")?.clone_for_evaluation()?;
+    let (uv_domain, tolerance) = (record.uv_domain, record.tolerance);
+    drop_edge_curve_in_face(k, b, face, &surface, &uv_domain, curve, interval, tolerance)
+}
+
+/// [`drop_edge_curve`] onto face `face` of `b`, whose surface `surface` is (a copy for
+/// evaluation): upstream's surface is owned by the face, so the start point drop's
+/// fast-drop trim test classifies on the face
+/// ([`crate::intersect::point_class::live_face_fast_drop_test`]).
+#[allow(clippy::too_many_arguments)]
+fn drop_edge_curve_in_face(
+    k: &Kernel,
+    b: &mut Brep,
+    face: FaceId,
+    surface: &Surface,
+    domain: &crate::geom::extent2d::Extent2d,
+    curve: &Curve,
+    interval: &Extent1d,
+    face_tolerance: f64,
+) -> Result<EdgeCurveDrop> {
+    let mut test_on: Option<bool> = None;
+    for factor in [1.0, 10.0, 300.0] {
+        let mut classify = |k: &Kernel, uv: crate::math::Point2, src_tol: f64| -> Result<bool> {
+            crate::intersect::point_class::live_face_fast_drop_test(
+                k,
+                b,
+                face,
+                &mut test_on,
+                uv,
+                src_tol,
+            )
+        };
+        // the virtual SmSurface::DropCurve with the defaults bKeepAllDropCurves = TRUE,
+        // no failure record, bCreatingUVTrimCurve = TRUE
+        let dropped = surface.drop_curve_face_tested::<crate::surface::surface::p4::NoObject>(
+            k,
+            domain,
+            curve,
+            interval,
+            face_tolerance * factor,
+            true,
+            None,
+            true,
+            Some(&mut classify),
+        )?;
+        if !dropped.uv_curves.is_empty() {
+            return Ok(EdgeCurveDrop {
+                uv_curves: dropped.uv_curves,
+                max_drop_to_surf: dropped.max_drop_to_surf,
+                max_approx_dev: dropped.max_approx_dev,
+            });
+        }
+    }
+    // the face's surface cache (upstream's tracer fetches it for the face-owned surface)
+    let mut cache = crate::surface::surface::p1::SurfaceSolveContext::build_surface_cache(
+        &mut crate::query::brep::BrepFaceServices::new(&mut *b),
+        k,
+        surface,
+        Some(crate::topology::brep_cache::CacheObject::Surface(face)),
+    )?;
+    let dropped = surface.drop_and_trim_curve_in::<
+        crate::topology::ObjectHandle,
+        crate::topology::brep_cache::CacheObject,
+    >(
+        k,
+        Some(&mut cache),
+        domain,
+        curve,
+        interval,
+        face_tolerance * 100.0,
+        true,
+        true,
+        None,
+    )?;
+    Ok(EdgeCurveDrop {
+        uv_curves: dropped.uv_curves,
+        max_drop_to_surf: dropped.max_drop_to_surf,
+        max_approx_dev: dropped.max_approx_dev,
+    })
 }
 
 fn drop_curve(

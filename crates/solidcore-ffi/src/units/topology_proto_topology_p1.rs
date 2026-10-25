@@ -40,6 +40,10 @@
 //!   kinds). Constructed B-reps (10–12) append reachable vertex/edge/face counts, raw
 //!   model-size estimate, the primitive geometry record and face rectangular flags.
 //!
+//! * **transform sequence** (`3 constructed-object n (op args)*n`): retains one real
+//!   body across 2–8 calls. Output: `n (status record-length constructed-record)*n`,
+//!   sampled immediately after each call, before any subsequent operation or query.
+//!
 //! Each list or proto op writes `op status n outputs*n`. An op the shim refuses because it
 //! is undefined upstream (a dangling or null pointer dereference, a double delete, a crash
 //! of the bare topology stand-ins, a list that would not terminate, or any op leaving a
@@ -78,7 +82,8 @@ pub mod kind {
     pub const PROTO: i64 = 1;
     /// One API transformation.
     pub const TRANSFORM: i64 = 2;
-    /// Constructed-solid transform with representation and orientation record.
+    /// A constructed body retained across two to eight API transformations.
+    pub const TRANSFORM_SEQUENCE: i64 = 3;
     pub const SCALE_PROBE: i64 = 4;
 }
 
@@ -845,13 +850,31 @@ fn validate_proto(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     Ok(())
 }
 
-fn validate_transform(rd: &mut Reader<'_>, probe: bool) -> Result<(), FfiError> {
-    let object = rd.int(0, tobj::COPIED_SPHERE)?;
-    if probe && !matches!(object, tobj::PRIMITIVE_BOX | tobj::PRIMITIVE_SPHERE | tobj::COPIED_BOX | tobj::COPIED_SPHERE) { return Err(bad("scale probe requires constructed solid")); }
-    match object {
-        tobj::CALLER_FACE => { rd.vec3()?; for _ in 0..2 { if rd.finite()? <= 1e-12 { return Err(bad("face dimension")); } } }
-        tobj::PRIMITIVE_BOX | tobj::COPIED_BOX => { rd.vec3()?; for _ in 0..3 { if rd.finite()? <= 1e-12 { return Err(bad("box dimension")); } } }
-        tobj::PRIMITIVE_SPHERE | tobj::COPIED_SPHERE => { rd.vec3()?; if rd.finite()?.abs() <= 1e-12 { return Err(bad("sphere radius")); } }
+fn validate_transform_object(rd: &mut Reader<'_>) -> Result<i64, FfiError> {
+    let kind = rd.int(0, tobj::COPIED_SPHERE)?;
+    match kind {
+        tobj::CALLER_FACE => {
+            rd.vec3()?;
+            for _ in 0..2 {
+                if rd.finite()? <= 1e-12 {
+                    return Err(bad("face dimension"));
+                }
+            }
+        }
+        tobj::PRIMITIVE_BOX | tobj::COPIED_BOX => {
+            rd.vec3()?;
+            for _ in 0..3 {
+                if rd.finite()? <= 1e-12 {
+                    return Err(bad("box dimension"));
+                }
+            }
+        }
+        tobj::PRIMITIVE_SPHERE | tobj::COPIED_SPHERE => {
+            rd.vec3()?;
+            if rd.finite()?.abs() <= 1e-12 {
+                return Err(bad("sphere radius"));
+            }
+        }
         tobj::POLY_PTS => {
             let n = rd.int(1, 4)?;
             for _ in 0..n {
@@ -888,6 +911,10 @@ fn validate_transform(rd: &mut Reader<'_>, probe: bool) -> Result<(), FfiError> 
         }
         _ => {}
     }
+    Ok(kind)
+}
+
+fn validate_transform_op(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     match rd.int(0, 4)? {
         0 => {
             rd.vec3()?;
@@ -920,6 +947,33 @@ fn validate_transform(rd: &mut Reader<'_>, probe: bool) -> Result<(), FfiError> 
     }
     Ok(())
 }
+fn validate_transform(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+    validate_transform_object(rd)?;
+    validate_transform_op(rd)
+}
+
+fn validate_scale_probe(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+    let object = validate_transform_object(rd)?;
+    if !matches!(object, tobj::PRIMITIVE_BOX | tobj::PRIMITIVE_SPHERE | tobj::COPIED_BOX | tobj::COPIED_SPHERE) {
+        return Err(bad("scale probe object"));
+    }
+    validate_transform_op(rd)
+}
+
+fn validate_transform_sequence(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+    let kind = validate_transform_object(rd)?;
+    if !matches!(
+        kind,
+        tobj::PRIMITIVE_BOX | tobj::PRIMITIVE_SPHERE | tobj::CALLER_FACE
+    ) {
+        return Err(bad("sequence requires a constructed body"));
+    }
+    let count = rd.int(2, 8)?;
+    for _ in 0..count {
+        validate_transform_op(rd)?;
+    }
+    Ok(())
+}
 
 /// Checks the static shape of a script (see the module docs).
 ///
@@ -931,9 +985,9 @@ pub fn validate(input: &[f64]) -> Result<(), FfiError> {
     match rd.int(0, kind::SCALE_PROBE)? {
         kind::LIST => validate_list(&mut rd)?,
         kind::PROTO => validate_proto(&mut rd)?,
-        kind::TRANSFORM => validate_transform(&mut rd, false)?,
-        kind::SCALE_PROBE => validate_transform(&mut rd, true)?,
-        _ => return Err(bad("unknown script kind")),
+        kind::TRANSFORM => validate_transform(&mut rd)?,
+        kind::TRANSFORM_SEQUENCE => validate_transform_sequence(&mut rd)?,
+        _ => validate_scale_probe(&mut rd)?,
     }
     if rd.at != input.len() {
         return Err(bad("trailing data"));

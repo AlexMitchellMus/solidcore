@@ -2185,6 +2185,7 @@ fn rust_face_tail(input: &FaceTailIn) -> RResult<Output> {
         &intersections,
         &mut env,
         &offset_key,
+        &curve_key,
     );
     let (status, _) = operation(result)?;
     let brep = executive
@@ -2344,13 +2345,24 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
     let mut offsets = Vec::new();
     let result = match branch {
         Probe::ReplaceEmpty => {
-            OffsetExecutive::replace_implicit_offsets(&kernel, &mut original, tolerance)
+            probe_env(|env, _| {
+                OffsetExecutive::replace_implicit_offsets(
+                    &mut kernel,
+                    &mut original,
+                    tolerance,
+                    &mut solidcore::topology::edge::NotificationStores {
+                        records: &mut *env.records,
+                        attributes: &mut *env.attributes,
+                        key_of: env.key_of,
+                    },
+                )
+            })
         }
         Probe::RemoveNoMerge | Probe::RemoveEmpty => {
             executive.set_merge_results(matches!(branch, Probe::RemoveEmpty));
             executive.remove_excess_faces_with_kernel_context(
                 &mut kernel,
-                &original,
+                &mut original,
                 &mut Brep::new(),
             )
         }
@@ -2360,9 +2372,9 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
             let eu = primary(&original, edge)?;
             executive.build_side_wall_of_edgeuse(&mut kernel, &mut original, Some(eu))
         }
-        Probe::FillEmpty => {
-            executive.fill_gap_edgeuses(&kernel, EdgeId::from_index(u32::MAX), &[], &[])
-        }
+        Probe::FillEmpty => probe_env(|env, _| {
+            executive.fill_gap_edgeuses(&mut kernel, EdgeId::from_index(u32::MAX), &[], &[], env)
+        }),
         Probe::VertexNull | Probe::VertexIsolated => {
             let vertex = if matches!(branch, Probe::VertexIsolated) {
                 let shell = original
@@ -2417,11 +2429,12 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
                     &SsiData::default(),
                     env,
                     offset_key_of,
+                    &curve_key,
                 )
             })
         }
         Probe::PiecewiseEmpty => executive
-            .piecewise_merge(&mut kernel, &mut original)
+            .piecewise_merge(&mut kernel, &mut original, None)
             .map(|_| {
                 counts = [0, 0, 0, 1];
             }),
@@ -2470,7 +2483,7 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
             };
             executive.build_offset_of_edgeuses(
                 &mut kernel,
-                &original,
+                &mut original,
                 first,
                 other,
                 MarkType::Mark,

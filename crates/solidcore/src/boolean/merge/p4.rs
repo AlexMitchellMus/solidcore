@@ -25,6 +25,12 @@
 //! face bounding material (keep the pair on the sheet's `SM_OT_SAME` side only) instead
 //! of upstream's difference rule, which keeps a face lying in the sheet in both parts
 //! (issue #528, WR-254).
+//! After step 8, a Union, Difference or Intersection whose result is a manifold
+//! solid with a nested shell runs `SetRegionIsVoidFlagsForNestedSolids`, so every
+//! region's outer shell is first: a union that seals a void left the void's shell
+//! first and failed `SmBrep::AssertValid` test 12 (the fork's fix,
+//! tangency-labs/smlib `abastran/void-shell-check`; WR-265,
+//! `plan/upstream-issues/WR-265--manifold-boolean-void-shell-first.md`).
 
 use super::p1::{self, MergeOptions};
 use crate::error::{Result, SolidError};
@@ -49,7 +55,7 @@ use crate::EntityRef;
 mod arena_pair;
 mod kernel_adapter;
 mod notification_keys;
-pub(crate) use kernel_adapter::notification_key;
+pub(crate) use kernel_adapter::{adopt_namespace_owners, notification_key};
 pub use kernel_adapter::{KernelManifoldIntersector, ManifoldKernelAdapter};
 pub use notification_keys::ManifoldNotificationKeys;
 
@@ -769,8 +775,9 @@ fn classify_remaining(
                 marks.0,
             )
         };
-        // The pass only reads `opposite`, so one query (and its cache) serves every face.
-        let query = BrepQuery::default();
+        // The pass only reads `opposite`, so one query (and its cache) serves every face;
+        // its geometry owners named by `opposite`'s naming scheme and proven owners.
+        let query = BrepQuery::of_brep(opposite);
         for f in bp::faces(source, None)? {
             if source_marks.is_marked(source_k, Entity::Face(f), mark) {
                 continue;
@@ -1143,6 +1150,35 @@ fn result_solid(operation: BooleanOperation, data: &MergeRegionData, was_solid: 
     }
 }
 
+/// Every region's enclosing shell first, the region's outer shell that
+/// `SmBrep::AssertValid` test 12 takes it to be (the fork's fix, tangency-labs/smlib
+/// `abastran/void-shell-check`; documented deviation). Step 6 merges regions and
+/// appends the merged region's shells after the survivor's own, so when a union
+/// seals a void the void's shell can come first; step 8 only swaps void flags.
+/// [`bp::set_region_is_void_flags_for_nested_solids`] walks the nesting from the
+/// infinite region and makes each nested region's outer shell its list head; on a
+/// manifold solid its void flags are the ones step 7 set.
+fn put_outer_shells_first(
+    kernels: &mut BooleanKernels<'_>,
+    primary: &mut Brep,
+    operation: BooleanOperation,
+) -> Result<()> {
+    if !matches!(
+        operation,
+        BooleanOperation::Union | BooleanOperation::Difference | BooleanOperation::Intersection
+    ) {
+        return Ok(());
+    }
+    let regions = bp::regions(primary, None)?;
+    if regions.len() > 2
+        && regions.first() == primary.infinite_region().as_ref()
+        && crate::topology::brep::p2::is_manifold_solid(primary)?
+    {
+        bp::set_region_is_void_flags_for_nested_solids(kernels.primary, primary)?;
+    }
+    Ok(())
+}
+
 fn find_and_set_infinite(
     kernels: &mut BooleanKernels<'_>,
     primary: &mut Brep,
@@ -1150,10 +1186,12 @@ fn find_and_set_infinite(
     void_setting: bp::SetRegionVoidType,
     bounding_box: Option<&crate::geom::extent3d::Extent3d>,
 ) -> Result<()> {
+    // (the query's geometry owners named by `primary`'s naming scheme and proven owners)
+    let query = BrepQuery::of_brep(primary);
     crate::topology::brep::p5::find_and_set_infinite_region(
         kernels.primary,
         primary,
-        &BrepQuery::default(),
+        &query,
         shell,
         void_setting,
         bounding_box,
@@ -1368,6 +1406,7 @@ fn editing_stages(
             None,
         ))?;
     }
+    put_outer_shells_first(kernels, primary, operation)?;
     ignored(intersector.propagate_regions(kernels, primary, other, attributes, operation))?;
     if options.boolean_post_process
         && matches!(
@@ -1401,6 +1440,45 @@ fn editing_stages(
 /// or inverse-transform error can follow deletion of `other`. `Err` does not
 /// promise retained ownership or rollback of topology, records or attributes.
 pub fn manifold_boolean(
+    kernels: &mut BooleanKernels<'_>,
+    primary: &mut Option<Brep>,
+    other: &mut Option<Brep>,
+    intersector: &mut impl ManifoldIntersector,
+    state: &mut ManifoldState,
+    attributes: &mut AttributeStore,
+    options: MergeOptions,
+    manifold: bool,
+    operation: BooleanOperation,
+    caller_lock: Option<&mut MarkLock>,
+) -> Result<bool> {
+    // Not upstream (WR-259): the cone intersection tests parallel-cylinder lines at their
+    // middle for the whole Boolean, restored on every exit.
+    let previous = kernels.primary.cone_parallel_midpoint_test.replace(true);
+    let previous_other = kernels
+        .other
+        .as_deref()
+        .map(|k| k.cone_parallel_midpoint_test.replace(true));
+    let result = manifold_boolean_transformed(
+        kernels,
+        primary,
+        other,
+        intersector,
+        state,
+        attributes,
+        options,
+        manifold,
+        operation,
+        caller_lock,
+    );
+    kernels.primary.cone_parallel_midpoint_test.set(previous);
+    if let (Some(k), Some(previous)) = (kernels.other.as_deref(), previous_other) {
+        k.cone_parallel_midpoint_test.set(previous);
+    }
+    result
+}
+
+/// [`manifold_boolean`] after the flags are set.
+fn manifold_boolean_transformed(
     kernels: &mut BooleanKernels<'_>,
     primary: &mut Option<Brep>,
     other: &mut Option<Brep>,
@@ -1770,5 +1848,51 @@ mod tests {
             attributes.find_attribute(ObjectKey(13), ids::BOOLEAN_DELETE),
             attributes.find_attribute(ObjectKey(14), ids::BOOLEAN_DELETE)
         );
+    }
+
+    /// A union that seals a void (the fork's fix, see [`put_outer_shells_first`]): a
+    /// cube 100 hollowed to an open cup (walls and floor 10) joined with a lid over its
+    /// top 10 closes the cavity 80 x 80 x 80. The solid region has two shells and the
+    /// first is the outer one, the one mated to the infinite region; upstream left the
+    /// cavity's shell first, which `SmBrep::AssertValid` test 12 refuses.
+    #[test]
+    fn union_sealing_a_void_puts_the_outer_shell_first() {
+        use crate::boolean::api_brep::boolean;
+        use crate::math::Point3;
+        use crate::primitive::api_primitives::create_box;
+        for lid_first in [false, true] {
+            let mut k = Kernel::default();
+            let cube = create_box(&mut k, Point3::new(0.0, 0.0, 0.0), 100.0, 100.0, 100.0).unwrap();
+            let hollow =
+                create_box(&mut k, Point3::new(10.0, 10.0, 10.0), 80.0, 80.0, 100.0).unwrap();
+            let lid = create_box(&mut k, Point3::new(0.0, 0.0, 90.0), 100.0, 100.0, 10.0).unwrap();
+            // The whole Boolean does not run in the port yet (`SmFace::GetBrep`, unit
+            // `topology.face_p4`, is unported); until it does, this test checks nothing.
+            let cup = match boolean(&mut k, cube, hollow, BooleanOperation::Difference) {
+                Err(e) if e.is_unported() => return,
+                r => r.unwrap().result,
+            };
+            let (a, b) = if lid_first { (lid, cup) } else { (cup, lid) };
+            let r = match boolean(&mut k, a, b, BooleanOperation::Union) {
+                Err(e) if e.is_unported() => return,
+                r => r.unwrap().result,
+            };
+            let infinite = r.infinite_region().unwrap();
+            let solids: Vec<RegionId> = bp::regions(&r, None)
+                .unwrap()
+                .into_iter()
+                .filter(|&g| r.region(g).unwrap().is_void() == 0)
+                .collect();
+            assert_eq!(solids.len(), 1, "lid first: {lid_first}");
+            let shells = r.region(solids[0]).unwrap().shells.clone();
+            assert_eq!(shells.len(), 2, "lid first: {lid_first}");
+            for (i, &shell) in shells.iter().enumerate() {
+                let mated = r.shell(shell).unwrap().mated_shells(&mut k, &r).unwrap();
+                let outer = mated
+                    .iter()
+                    .all(|&m| r.shell(m).unwrap().region == Some(infinite));
+                assert_eq!(outer, i == 0, "lid first: {lid_first}, shell {i}");
+            }
+        }
     }
 }
