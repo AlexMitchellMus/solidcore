@@ -2207,11 +2207,63 @@ impl Surface {
         approx_tol_3d: Option<f64>,
         ang_tol_rad: Option<f64>,
     ) -> Result<(Vec<Curve>, Vec<Curve>)> {
-        const OP: &str = "surface::surface::p1::create_silhouette_curves";
-
         // test to see if this surface has color: not modelled (see the doc comment)
 
-        let mut cache = get_surface_cache::<SilhouetteObject>(k, self, None)?;
+        let cache = get_surface_cache::<SilhouetteObject>(k, self, None)?;
+        self.create_silhouette_curves_in(
+            k,
+            cache,
+            uv_domain,
+            eye_point_or_view_vector,
+            perspective,
+            approx_tol_3d,
+            ang_tol_rad,
+        )
+    }
+
+    /// [`Surface::create_silhouette_curves`] of a face's surface by a caller that holds
+    /// the face: `cache` is the surface's cache (`smsurf_GetSurfaceCache`, the face's
+    /// trimmed cache) the caller made. The trace keeps no solution objects, so the
+    /// cache's handles are not used.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::create_silhouette_curves`].
+    pub(crate) fn create_silhouette_curves_with_cache<O: Copy + PartialEq>(
+        &self,
+        k: &Kernel,
+        cache: &SurfaceCache<O>,
+        uv_domain: &Extent2d,
+        eye_point_or_view_vector: Point3,
+        perspective: bool,
+        approx_tol_3d: Option<f64>,
+        ang_tol_rad: Option<f64>,
+    ) -> Result<(Vec<Curve>, Vec<Curve>)> {
+        let cache = cache.map_handles(|_| Ok(SilhouetteObject))?;
+        self.create_silhouette_curves_in(
+            k,
+            cache,
+            uv_domain,
+            eye_point_or_view_vector,
+            perspective,
+            approx_tol_3d,
+            ang_tol_rad,
+        )
+    }
+
+    /// The body of [`Surface::create_silhouette_curves`] after the cache lookup.
+    #[allow(clippy::too_many_arguments)]
+    fn create_silhouette_curves_in(
+        &self,
+        k: &Kernel,
+        mut cache: SurfaceCache<SilhouetteObject>,
+        uv_domain: &Extent2d,
+        eye_point_or_view_vector: Point3,
+        perspective: bool,
+        approx_tol_3d: Option<f64>,
+        ang_tol_rad: Option<f64>,
+    ) -> Result<(Vec<Curve>, Vec<Curve>)> {
+        const OP: &str = "surface::surface::p1::create_silhouette_curves";
 
         // Check to make sure internal surface continuities are better then C0 (the
         // check only signals upstream)

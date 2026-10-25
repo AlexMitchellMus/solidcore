@@ -1910,8 +1910,10 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
 /// vector `opt_vectors[0]` (3D curves and their UV trim curves), taken from the
 /// surface cache's alternate caches or made and cached there (silhouette curves of
 /// the surface to ten times `tolerance_3d` and 20 degrees, trimmed by the face).
-/// The surface cache is the per-call [`surface_cache`], so the alternate caches it
-/// searches first hold only what this call adds. The trimming works on the face
+/// The surface cache is the one the caller's
+/// [`TopologyObjects::surface_solve_context`] makes for the face's surface (else the
+/// per-call [`surface_cache`]); either is this call's copy, so the alternate caches
+/// it searches first hold only what this call adds. The trimming works on the face
 /// [`TopologyObjects::face_entity`] resolves; an adapter that resolves none returns
 /// [`SolidError::Unported`] for `SmFace::CreateCurvesByTrimming`. A trimmed UV curve
 /// that is not a B-spline (upstream caches it as NULL and `GetCopyOfCurves` fails
@@ -1926,7 +1928,12 @@ pub(super) fn face_silhouettes<O: Copy + PartialEq>(
     // locals and temporaries
     let surface = objects.face_surface(face)?;
     let srf = objects.surface(surface)?;
-    let mut cache = surface_cache(k, srf, Some(surface))?;
+    // (smsurf_GetSurfaceCache) a face's surface reaches its face's trimmed cache
+    // through the caller's context, when it provides one
+    let mut cache = match objects.surface_solve_context() {
+        Some(mut context) => context.build_surface_cache(k, srf, Some(surface))?,
+        None => surface_cache(k, srf, Some(surface))?,
+    };
     let view = *opt_vectors
         .first()
         .ok_or(null_deref(OP_FACE_SIL, "no view vector"))?;
@@ -1965,8 +1972,10 @@ pub(super) fn face_silhouettes<O: Copy + PartialEq>(
     }
 
     // Create the planar section curves from the brep and the plane
-    let (curves_3d, curves_uv) = srf.create_silhouette_curves(
+    // (the surface's cache is the one above, as upstream's smsurf_GetSurfaceCache)
+    let (curves_3d, curves_uv) = srf.create_silhouette_curves_with_cache(
         k,
+        &cache,
         &objects.face_uv_domain(face)?,
         view,
         false,

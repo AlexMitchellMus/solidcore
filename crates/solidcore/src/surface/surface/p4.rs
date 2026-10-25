@@ -1508,7 +1508,7 @@ impl Surface {
         k: &Kernel,
         surface: Option<O>,
         cache: Option<&crate::surface::surface_cache::SurfaceCache<O>>,
-        context: Option<&mut dyn super::p1::SurfaceSolveContext<O>>,
+        mut context: Option<&mut dyn super::p1::SurfaceSolveContext<O>>,
         uv_domain: &Extent2d,
         op: SolverOperation,
         test_point: Point3,
@@ -1578,7 +1578,7 @@ impl Surface {
                                 }
                             }
                         }
-                    } else if let Some(context) = context {
+                    } else if let Some(context) = context.as_deref_mut() {
                         let built;
                         let cache = if let Some(cache) = cache {
                             cache
@@ -1671,7 +1671,8 @@ impl Surface {
             )?
             .without_objects()
         } else if let Some(surface) = surface {
-            self.global_point_solve_0(
+            // (the caller's context makes a face's surface cache, as for the fast drop)
+            self.global_point_solve_0_in(
                 k,
                 surface,
                 uv_domain,
@@ -1680,6 +1681,7 @@ impl Surface {
                 src_zone_tol_3d,
                 opt_target_distance,
                 requested,
+                context,
             )?
         } else {
             // no handle for the solutions' objects (upstream passes `this`): solve with

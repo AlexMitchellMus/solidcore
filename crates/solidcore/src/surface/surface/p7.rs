@@ -1156,8 +1156,46 @@ impl Surface {
         opt_target_distance: Option<f64>,
         requested: SolutionRequested,
     ) -> Result<SolutionArray<O>> {
+        self.global_point_solve_0_in(
+            k,
+            surface,
+            uv_domain,
+            op,
+            test_point,
+            distance_tolerance,
+            opt_target_distance,
+            requested,
+            None,
+        )
+    }
+
+    /// [`Surface::global_point_solve_0`] of a face's surface by a caller that holds
+    /// the face: `context` makes the surface's cache (`smsurf_GetSurfaceCache`, the
+    /// face's trimmed cache) from `surface`, and its face queries serve the leaf
+    /// solve's trim tests.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::global_point_solve_0`], and those of the context's cache
+    /// preparation.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn global_point_solve_0_in<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        surface: O,
+        uv_domain: &Extent2d,
+        op: SolverOperation,
+        test_point: Point3,
+        distance_tolerance: f64,
+        opt_target_distance: Option<f64>,
+        requested: SolutionRequested,
+        mut context: Option<&mut dyn SurfaceSolveContext<O>>,
+    ) -> Result<SolutionArray<O>> {
         // get surface spatial decomposition tree from Surface's cache
-        let cache = self.solve_cache(k, surface, OP_SOLVE)?;
+        let cache = match context.as_deref_mut() {
+            Some(context) => solve_surface_cache_with(k, self, Some(surface), context)?,
+            None => self.solve_cache(k, surface, OP_SOLVE)?,
+        };
         let surface_tree = cache.tree().ok_or(SolidError::null_pointer(OP_SOLVE))?;
 
         // put point into a single node PointTree
@@ -1166,6 +1204,9 @@ impl Surface {
         // instance global Surface/Point solver
         let mut gs = SpGlobalSolver::new(k, &point_tree, surface_tree, Some(self), *uv_domain);
         gs.surface_cache = Some(&cache);
+        if let Some(context) = context.as_deref() {
+            gs.face_queries = context.face_queries();
+        }
 
         // init solver.dBestAnswerSoFarSq to properly handle SM_SR_SINGLE requests
         let best = point_solve_best_answer_sq(op, opt_target_distance)?;
