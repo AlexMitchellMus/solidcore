@@ -2207,12 +2207,10 @@ impl Surface {
         approx_tol_3d: Option<f64>,
         ang_tol_rad: Option<f64>,
     ) -> Result<(Vec<Curve>, Vec<Curve>)> {
-        // test to see if this surface has color: not modelled (see the doc comment)
-
-        let cache = get_surface_cache::<SilhouetteObject>(k, self, None)?;
-        self.create_silhouette_curves_in(
+        let mut cache = get_surface_cache::<SilhouetteObject>(k, self, None)?;
+        self.create_silhouette_curves_with_cache(
             k,
-            cache,
+            &mut cache,
             uv_domain,
             eye_point_or_view_vector,
             perspective,
@@ -2221,42 +2219,16 @@ impl Surface {
         )
     }
 
-    /// [`Surface::create_silhouette_curves`] of a face's surface by a caller that holds
-    /// the face: `cache` is the surface's cache (`smsurf_GetSurfaceCache`, the face's
-    /// trimmed cache) the caller made. The trace keeps no solution objects, so the
-    /// cache's handles are not used.
+    /// [`Surface::create_silhouette_curves`] using an already-resolved surface cache
+    /// (`smsurf_GetSurfaceCache(this)` in callers holding the owning face's cache).
     ///
     /// # Errors
     ///
     /// As [`Surface::create_silhouette_curves`].
-    pub(crate) fn create_silhouette_curves_with_cache<O: Copy + PartialEq>(
+    pub fn create_silhouette_curves_with_cache<O: SolutionObject>(
         &self,
         k: &Kernel,
-        cache: &SurfaceCache<O>,
-        uv_domain: &Extent2d,
-        eye_point_or_view_vector: Point3,
-        perspective: bool,
-        approx_tol_3d: Option<f64>,
-        ang_tol_rad: Option<f64>,
-    ) -> Result<(Vec<Curve>, Vec<Curve>)> {
-        let cache = cache.map_handles(|_| Ok(SilhouetteObject))?;
-        self.create_silhouette_curves_in(
-            k,
-            cache,
-            uv_domain,
-            eye_point_or_view_vector,
-            perspective,
-            approx_tol_3d,
-            ang_tol_rad,
-        )
-    }
-
-    /// The body of [`Surface::create_silhouette_curves`] after the cache lookup.
-    #[allow(clippy::too_many_arguments)]
-    fn create_silhouette_curves_in(
-        &self,
-        k: &Kernel,
-        mut cache: SurfaceCache<SilhouetteObject>,
+        cache: &mut SurfaceCache<O>,
         uv_domain: &Extent2d,
         eye_point_or_view_vector: Point3,
         perspective: bool,
@@ -2264,6 +2236,8 @@ impl Surface {
         ang_tol_rad: Option<f64>,
     ) -> Result<(Vec<Curve>, Vec<Curve>)> {
         const OP: &str = "surface::surface::p1::create_silhouette_curves";
+
+        // test to see if this surface has color: not modelled (see the doc comment)
 
         // Check to make sure internal surface continuities are better then C0 (the
         // check only signals upstream)
@@ -2277,7 +2251,7 @@ impl Surface {
                 return Err(e);
             }
         }
-        let traced = silhouette.do_trace(k, &mut cache, approx_tol_3d, ang_tol_rad)?;
+        let traced = silhouette.do_trace(k, cache, approx_tol_3d, ang_tol_rad)?;
         let mut curves_3d = traced.curves_3d;
         let mut curves_uv = traced.uv_curves;
 

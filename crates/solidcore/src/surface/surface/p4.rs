@@ -1671,24 +1671,28 @@ impl Surface {
             )?
             .without_objects()
         } else if let Some(surface) = surface {
-            // (the caller's context makes a face's surface cache, as for the fast drop)
             self.global_point_solve_0_in(
                 k,
                 surface,
+                cache,
+                context,
+                point_test_off,
                 uv_domain,
                 op,
                 test_point,
                 src_zone_tol_3d,
                 opt_target_distance,
                 requested,
-                context,
             )?
         } else {
             // no handle for the solutions' objects (upstream passes `this`): solve with
             // a stand-in and leave the objects null
-            let found = self.global_point_solve_0(
+            let found = self.global_point_solve_0_in(
                 k,
                 NoObject,
+                None,
+                None,
+                point_test_off,
                 uv_domain,
                 op,
                 test_point,

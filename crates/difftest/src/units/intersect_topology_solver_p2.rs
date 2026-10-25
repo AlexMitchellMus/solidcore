@@ -8,7 +8,7 @@ use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 use serde::Deserialize;
 use serde_json::Value;
 use solidcore::curve::curve::Curve;
-use solidcore::error::{Result as SolidResult, SolidError};
+use solidcore::error::{EntityRef, Result as SolidResult, SolidError};
 use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::extent3d::Extent3d;
@@ -19,19 +19,19 @@ use solidcore::geom::tree::{NodeGeomType, Tree};
 use solidcore::intersect::topology_solver::p1::{CurveRef, TopologyObjects, TopologySolver};
 use solidcore::intersect::topology_solver::p2::{TopologySolveOptions, TopologyTrees};
 use solidcore::kernel::Kernel;
-use solidcore::math::{Point3, Vec3};
+use solidcore::math::{Point2, Point3, Vec3};
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::crv_basic::Curve as NlCurve;
 use solidcore::nurbs::math::{CPoint, NOW};
-use solidcore::surface::surface::Surface;
-use solidcore::math::Point2;
-use solidcore::query::brep::{BrepFaceServices, SideObject, SidedFaceServices};
 use solidcore::surface::surface::p1::SurfaceSolveContext;
+use solidcore::surface::surface::Surface;
+use solidcore::surface::surface_cache::face_context::{
+    prepare_face_surface_cache, FaceQueries, PreparedFaceQueries,
+};
 use solidcore::surface::surface_cache::SurfaceCache;
-use solidcore::surface::surface_cache::face_context::FaceQueries;
-use solidcore::topology::brep_cache::CacheObject;
 use solidcore::topology::{Brep, FaceId};
 use solidcore_ffi::units::intersect_topology_solver_p2 as ffi;
+use std::cell::RefCell;
 
 /// Topology solver p2 differential runner.
 pub struct Runner;
@@ -138,7 +138,7 @@ impl SolutionObject for StaticHandle {
     fn kind(&self) -> ObjectKind {
         match self.0 {
             999 | -2 => ObjectKind::Curve,
-            1000 | 1001 | 3000 | 3001 => ObjectKind::Other,
+            1000 | 1001 | 10_000.. => ObjectKind::Other,
             2000 | 2001 => ObjectKind::Face,
             2002 | 2003 => ObjectKind::Surface,
             2004 => ObjectKind::Edge,
@@ -148,95 +148,12 @@ impl SolutionObject for StaticHandle {
     fn natural_interval(&self) -> Option<Extent1d> {
         (self.0 == 999 || self.0 == -2).then(|| Extent1d::from_min_max(0.0, 1.0))
     }
-    /// The shim's planes over [0,1]^2 (`SmSurface::GetNaturalUVDomain`).
     fn natural_uv_domain(&self) -> Option<Extent2d> {
         (self.0 == 2002 || self.0 == 2003).then(|| Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0))
     }
 }
-/// The handle of B-rep side `side`'s face (2000, 2001) or face surface (2002, 2003);
-/// any other record of a face's B-rep (its loop edges and vertices) is 3000 + side.
-fn static_side_handle(side: usize, object: CacheObject) -> StaticHandle {
-    let side = side as i32;
-    match object {
-        CacheObject::Face(_) => StaticHandle(2000 + side),
-        CacheObject::Surface(_) => StaticHandle(2002 + side),
-        _ => StaticHandle(3000 + side),
-    }
-}
-/// The face services of the shim's two face B-reps on `StaticHandle`s: a face's
-/// surface solves use that face's trimmed surface cache (`smsurf_GetSurfaceCache`),
-/// made the first time a solve asks for it, as upstream's face-owned planes do.
-struct StaticFaceContext<'s, 'a> {
-    services: std::cell::RefMut<'s, SidedFaceServices<'a>>,
-    faces: &'s [(Brep, FaceId)],
-}
-impl std::fmt::Debug for StaticFaceContext<'_, '_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("StaticFaceContext").finish_non_exhaustive()
-    }
-}
-impl StaticFaceContext<'_, '_> {
-    fn side(&self, handle: StaticHandle) -> SolidResult<SideObject> {
-        let (side, surface) = match handle.0 {
-            2000 | 2001 => ((handle.0 - 2000) as usize, false),
-            2002 | 2003 => ((handle.0 - 2002) as usize, true),
-            _ => return Err(static_error()),
-        };
-        let (_, face) = self.faces.get(side).ok_or_else(static_error)?;
-        let object = if surface {
-            CacheObject::Surface(*face)
-        } else {
-            CacheObject::Face(*face)
-        };
-        Ok(SideObject(side, object))
-    }
-}
-impl SurfaceSolveContext<StaticHandle> for StaticFaceContext<'_, '_> {
-    fn build_surface_cache(
-        &mut self,
-        k: &Kernel,
-        surface: &Surface,
-        handle: Option<StaticHandle>,
-    ) -> SolidResult<SurfaceCache<StaticHandle>> {
-        let object = handle.map(|h| self.side(h)).transpose()?;
-        self.services
-            .build_surface_cache(k, surface, object)?
-            .map_handles(|SideObject(side, c)| Ok(static_side_handle(side, c)))
-    }
-    fn face_queries(&self) -> Option<&dyn FaceQueries<StaticHandle>> {
-        Some(self)
-    }
-}
-impl FaceQueries<StaticHandle> for StaticFaceContext<'_, '_> {
-    fn face_zone_tol_3d(&self, face: StaticHandle) -> SolidResult<f64> {
-        self.services.face_zone_tol_3d(self.side(face)?)
-    }
-    fn face_point_classify(
-        &self,
-        k: &Kernel,
-        face: StaticHandle,
-        uv: Point2,
-        src_tol: f64,
-    ) -> SolidResult<(i32, Option<StaticHandle>)> {
-        let (class, object) = self
-            .services
-            .face_point_classify(k, self.side(face)?, uv, src_tol)?;
-        Ok((class, object.map(|SideObject(i, c)| static_side_handle(i, c))))
-    }
-    fn face_point_classify_fast_drop(
-        &self,
-        k: &Kernel,
-        face: StaticHandle,
-        uv: Point2,
-        src_tol: f64,
-    ) -> SolidResult<(i32, Option<StaticHandle>)> {
-        let (class, object) =
-            self.services
-                .face_point_classify_fast_drop(k, self.side(face)?, uv, src_tol)?;
-        Ok((class, object.map(|SideObject(i, c)| static_side_handle(i, c))))
-    }
-}
-struct StaticScene<'a> {
+#[derive(Debug)]
+struct StaticScene {
     points: Vec<Point3>,
     first: Tree<StaticHandle>,
     second: Tree<StaticHandle>,
@@ -246,11 +163,90 @@ struct StaticScene<'a> {
     edge_owner: bool,
     surfaces: [Surface; 2],
     /// The shim's `CreateFaceFromSurface` faces (handles 2000, 2001), each in its
-    /// own B-rep as `first` / `second` (entries 5 to 8 only).
+    /// own B-rep as `first` / `second` (entries 5 to 8 only), with their prepared
+    /// trimmed surface caches and entity handle tables.
     faces: Vec<(Brep, FaceId)>,
-    /// The face services of copies of `faces`' B-reps (entries 5 to 8 only): the
-    /// trimmed caches are made on them, so `face_entity` stays a shared borrow.
-    services: Option<std::cell::RefCell<SidedFaceServices<'a>>>,
+    face_caches: Vec<SurfaceCache<StaticHandle>>,
+    face_entities: Vec<RefCell<Vec<EntityRef>>>,
+}
+struct StaticSurfaceContext<'a>(&'a StaticScene);
+impl SurfaceSolveContext<StaticHandle> for StaticSurfaceContext<'_> {
+    fn build_surface_cache(
+        &mut self,
+        _k: &Kernel,
+        _surface: &Surface,
+        handle: Option<StaticHandle>,
+    ) -> SolidResult<SurfaceCache<StaticHandle>> {
+        let at = match handle.map(|h| h.0) {
+            Some(2002) => 0,
+            Some(2003) => 1,
+            _ => return Err(static_error()),
+        };
+        self.0.face_caches.get(at).cloned().ok_or_else(static_error)
+    }
+    fn face_queries(&self) -> Option<&dyn FaceQueries<StaticHandle>> {
+        Some(self.0)
+    }
+}
+impl StaticScene {
+    fn classify_prepared(
+        &self,
+        k: &Kernel,
+        face: StaticHandle,
+        uv: Point2,
+        src_tol: f64,
+        fast_drop: bool,
+    ) -> SolidResult<(i32, Option<StaticHandle>)> {
+        let at = match face.0 {
+            2000 => 0,
+            2001 => 1,
+            _ => return Err(static_error()),
+        };
+        let (b, f) = self.faces.get(at).ok_or_else(static_error)?;
+        let entities = self.face_entities.get(at).ok_or_else(static_error)?;
+        let base = 10_000 * (at as i32 + 1);
+        let handle_of = |entity: EntityRef| -> SolidResult<StaticHandle> {
+            if entity == EntityRef::Face(*f) {
+                return Ok(face);
+            }
+            let mut table = entities.borrow_mut();
+            if let Some(idx) = table.iter().position(|&e| e == entity) {
+                return Ok(StaticHandle(base + idx as i32));
+            }
+            let idx = table.len() as i32;
+            table.push(entity);
+            Ok(StaticHandle(base + idx))
+        };
+        let prepared = PreparedFaceQueries::new(b, *f, &handle_of)?;
+        if fast_drop {
+            prepared.face_point_classify_fast_drop(k, face, uv, src_tol)
+        } else {
+            prepared.face_point_classify(k, face, uv, src_tol)
+        }
+    }
+}
+impl FaceQueries<StaticHandle> for StaticScene {
+    fn face_zone_tol_3d(&self, face: StaticHandle) -> SolidResult<f64> {
+        self.face_tolerance(face)
+    }
+    fn face_point_classify(
+        &self,
+        k: &Kernel,
+        face: StaticHandle,
+        uv: Point2,
+        src_tol: f64,
+    ) -> SolidResult<(i32, Option<StaticHandle>)> {
+        self.classify_prepared(k, face, uv, src_tol, false)
+    }
+    fn face_point_classify_fast_drop(
+        &self,
+        k: &Kernel,
+        face: StaticHandle,
+        uv: Point2,
+        src_tol: f64,
+    ) -> SolidResult<(i32, Option<StaticHandle>)> {
+        self.classify_prepared(k, face, uv, src_tol, true)
+    }
 }
 fn static_error() -> SolidError {
     SolidError::invalid_input(
@@ -285,13 +281,10 @@ fn static_tree(
     }
     Ok(tree)
 }
-impl TopologyObjects<StaticHandle> for StaticScene<'_> {
+impl TopologyObjects<StaticHandle> for StaticScene {
     fn surface_solve_context(&self) -> Option<Box<dyn SurfaceSolveContext<StaticHandle> + '_>> {
-        let services = self.services.as_ref()?.try_borrow_mut().ok()?;
-        Some(Box::new(StaticFaceContext {
-            services,
-            faces: &self.faces,
-        }))
+        (!self.face_caches.is_empty())
+            .then(|| Box::new(StaticSurfaceContext(self)) as Box<dyn SurfaceSolveContext<StaticHandle> + '_>)
     }
     fn brep_trees(&self, brep: StaticHandle) -> SolidResult<TopologyTrees<'_, StaticHandle>> {
         let (vertices, empty) = match brep.0 {
@@ -358,7 +351,6 @@ impl TopologyObjects<StaticHandle> for StaticScene<'_> {
             _ => Err(static_error()),
         }
     }
-    // the faces' own (face-owned) planes when the shim made faces, else its planes
     fn surface(&self, surface: StaticHandle) -> SolidResult<&Surface> {
         let at = match surface.0 {
             2002 => 0,
@@ -483,24 +475,55 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
             &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
         ))
     });
-    // the shim's faces, and an identical second build of them for the face services
-    // (a cloned B-rep does not keep its surfaces' owners)
     let mut faces = Vec::new();
-    let mut copies = Vec::new();
+    let mut face_caches = Vec::new();
+    let mut face_entities = Vec::new();
     if i.entry >= 5 {
-        for plane in &planes {
-            for built in [&mut faces, &mut copies] {
-                // new SmBrep(SM_USE_DEFAULT, SM_USE_DEFAULT, &context)
-                let mut b = super::blend_fillet_geom_p1::new_brep(&mut kernel)?;
-                let f = super::sweep_trans_sweep_geometry::create_face(
-                    &mut kernel,
-                    &mut b,
-                    plane.clone(),
-                    &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
-                )
-                .map_err(|e| HarnessError::new(format!("CreateFaceFromSurface: {e}")))?;
-                built.push((b, f));
-            }
+        for (which, plane) in planes.iter().enumerate() {
+            // new SmBrep(SM_USE_DEFAULT, SM_USE_DEFAULT, &context)
+            let mut b = super::blend_fillet_geom_p1::new_brep(&mut kernel)?;
+            let f = super::sweep_trans_sweep_geometry::create_face(
+                &mut kernel,
+                &mut b,
+                plane.clone(),
+                &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+            )
+            .map_err(|e| HarnessError::new(format!("CreateFaceFromSurface: {e}")))?;
+            let face_handle = StaticHandle(2000 + which as i32);
+            let surface_handle = StaticHandle(2002 + which as i32);
+            let base = 10_000 * (which as i32 + 1);
+            let entities = RefCell::new(Vec::new());
+            let handle_of = |entity: EntityRef| -> SolidResult<StaticHandle> {
+                if entity == EntityRef::Face(f) {
+                    return Ok(face_handle);
+                }
+                let mut table = entities.borrow_mut();
+                if let Some(idx) = table.iter().position(|&e| e == entity) {
+                    return Ok(StaticHandle(base + idx as i32));
+                }
+                let idx = table.len() as i32;
+                table.push(entity);
+                Ok(StaticHandle(base + idx))
+            };
+            let entity_of = |handle: StaticHandle| -> SolidResult<EntityRef> {
+                if handle == face_handle {
+                    return Ok(EntityRef::Face(f));
+                }
+                let idx = usize::try_from(handle.0 - base).map_err(|_| static_error())?;
+                entities.borrow().get(idx).copied().ok_or_else(static_error)
+            };
+            let cache = prepare_face_surface_cache(
+                &kernel,
+                &mut b,
+                f,
+                surface_handle,
+                &handle_of,
+                &entity_of,
+            )
+            .map_err(|e| HarnessError::new(format!("prepare_face_surface_cache: {e}")))?;
+            faces.push((b, f));
+            face_caches.push(cache);
+            face_entities.push(entities);
         }
     }
     let scene = StaticScene {
@@ -512,12 +535,9 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
         curve: Curve::from(BSplineCurve::from_nurb(nurb, 3, false)),
         edge_owner: i.entry == 7,
         surfaces: planes,
-        services: (!faces.is_empty()).then(|| {
-            std::cell::RefCell::new(SidedFaceServices(
-                copies.iter_mut().map(|(b, _)| BrepFaceServices::new(b)).collect(),
-            ))
-        }),
         faces,
+        face_caches,
+        face_entities,
     };
     let vectors = [Vec3::new(0.0, 0.0, 1.0), Vec3::new(1.0, 0.0, 0.0)];
     let options = TopologySolveOptions {

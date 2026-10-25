@@ -1918,7 +1918,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
 /// [`SolidError::Unported`] for `SmFace::CreateCurvesByTrimming`. A trimmed UV curve
 /// that is not a B-spline (upstream caches it as NULL and `GetCopyOfCurves` fails
 /// on it) is `SM_ERR_NULL_POINTER`.
-pub(super) fn face_silhouettes<O: Copy + PartialEq>(
+pub(super) fn face_silhouettes<O: SolutionObject>(
     k: &Kernel,
     objects: &dyn TopologyObjects<O>,
     face: O,
@@ -1928,10 +1928,8 @@ pub(super) fn face_silhouettes<O: Copy + PartialEq>(
     // locals and temporaries
     let surface = objects.face_surface(face)?;
     let srf = objects.surface(surface)?;
-    // (smsurf_GetSurfaceCache) a face's surface reaches its face's trimmed cache
-    // through the caller's context, when it provides one
     let mut cache = match objects.surface_solve_context() {
-        Some(mut context) => context.build_surface_cache(k, srf, Some(surface))?,
+        Some(mut ctx) => ctx.build_surface_cache(k, srf, Some(surface))?,
         None => surface_cache(k, srf, Some(surface))?,
     };
     let view = *opt_vectors
@@ -1972,10 +1970,9 @@ pub(super) fn face_silhouettes<O: Copy + PartialEq>(
     }
 
     // Create the planar section curves from the brep and the plane
-    // (the surface's cache is the one above, as upstream's smsurf_GetSurfaceCache)
     let (curves_3d, curves_uv) = srf.create_silhouette_curves_with_cache(
         k,
-        &cache,
+        &mut cache,
         &objects.face_uv_domain(face)?,
         view,
         false,
