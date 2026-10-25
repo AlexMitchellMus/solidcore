@@ -37,6 +37,68 @@ fn edge(role: InsertionBody, object: FilletObject) -> Result<EdgeId> {
 }
 
 impl InsertionGeometry<'_> {
+    /// Native p7 SetCurve(TRUE, TRUE, TRUE), followed by SetOwner on the actual copy.
+    pub(super) fn replace_filleting_curve(
+        &mut self,
+        object: FilletObject,
+        mut curve: super::Curve,
+    ) -> Result<()> {
+        let (role, EntityRef::Edge(edge)) = Self::topology(object)
+            .ok_or_else(|| invalid("filleting Curve target has no actual body"))?
+        else {
+            return Err(invalid("filleting Curve target is not an Edge"));
+        };
+        self.with_edit(role, |body, env| {
+            let old_ref = match body.edge_mut(edge)?.curve.as_mut() {
+                Some(old) => Some(crate::topology::brep::p9::issue_curve_identity(
+                    edge, old, env,
+                )?),
+                None => None,
+            };
+            let new_ref = crate::topology::brep::p9::issue_curve_identity(edge, &mut curve, env)?;
+            let body_ref = (env.key_of)(EntityRef::Brep(crate::topology::BrepId::from_index(0)));
+            crate::error::ignore_status(crate::topology::edge::set_curve_with_body_identity(
+                body,
+                edge,
+                Some(curve),
+                crate::topology::edge::SetCurveOptions {
+                    delete_old_curve: true,
+                    dbg_warn_leaks: true,
+                    call_notify: true,
+                },
+                env,
+                [Some(new_ref), old_ref],
+                body_ref,
+            ))?;
+            let owner = (env.key_of)(EntityRef::Edge(edge));
+            let installed = body
+                .edge_mut(edge)?
+                .curve
+                .as_mut()
+                .ok_or_else(|| invalid("native SetCurve did not retain its actual Curve"))?;
+            if installed.notify_key() != Some(new_ref.key)
+                || installed.type_code() != new_ref.type_code
+            {
+                return Err(invalid(
+                    "SetCurve retained a different Curve after notification failure",
+                ));
+            }
+            let (_, change) = installed.set_owner(Some(owner), None);
+            body.set_geometry_owner_key(EntityRef::Edge(edge), Some(owner));
+            if let Some(change) = change {
+                crate::error::ignore_status(crate::geom::a_object::notify(
+                    env.attributes,
+                    env.context.as_deref_mut(),
+                    crate::geom::object::NotifyOperation::ChangeOwner,
+                    new_ref,
+                    change.new_owner,
+                    change.new_owner_brep,
+                    change.old_owner,
+                ))?;
+            }
+            Ok(())
+        })
+    }
     /// Squeeze an actual edge through the existing notified producer.
     /// # Errors
     /// Cross-body operands or the original squeeze failure.

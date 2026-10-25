@@ -790,6 +790,9 @@ impl ClassGeometry<FilletObject> for InsertionGeometry<'_> {
     }
 }
 impl ClassGeometryMut<FilletObject> for InsertionGeometry<'_> {
+    fn set_filleting_edge_curve(&mut self, object: FilletObject, curve: Curve) -> Result<()> {
+        self.replace_filleting_curve(object, curve)
+    }
     fn curve_mut(&mut self, object: FilletObject) -> Option<&mut Curve> {
         match object {
             FilletObject::InsertionCurve(binding) => self.curves.as_mut()?.get_mut(binding),
