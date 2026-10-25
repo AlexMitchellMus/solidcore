@@ -759,18 +759,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         min_edge_gap: Option<&mut f64>,
     ) -> Result<StitchAttempt>;
 
-    /// `SmFilletExecutive::RemoveTopoEdges`; waiting for `blend.fillet_executive_p1`.
+    /// `SmFilletExecutive::RemoveTopoEdges`: the owner of the B-reps implements it with
+    /// [`crate::blend::fillet_executive::p1::remove_topo_edges`] on the target B-rep and
+    /// the edges of `executive.topo_edges`. That function notifies through local
+    /// environments only, so an owner tracking attribute users or identities of the
+    /// deleted edges, vertices and surfaces (the topo edges are the fillet-edges
+    /// attribute's users) updates them itself.
     fn remove_topo_edges(
         &mut self,
-        _k: &mut Kernel,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::RemoveTopoEdges
-        Err(SolidError::unported(
-            "SmFilletExecutive::RemoveTopoEdges",
-            "blend.fillet_executive_p1",
-        ))
-    }
+        k: &mut Kernel,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
 
     /// `brep->OrientTrimmedSurfaces(bNormalsOutward, rbMaybeNotSolid, bJustUnifyNormals,
     /// pOptFacesToSwapUV)`: the owner of the B-reps implements it with
@@ -1272,6 +1271,36 @@ where
         executive: &mut FilletExecutive<O>,
     ) -> Result<()> {
         ExecutiveAccess::reinitialize_corner_edges(self, k, corner, executive)
+    }
+}
+
+/// Actual capabilities used by the complete intermediate-body constructor.
+/// Every stage delegates its existing algorithm and the caller's real object stores.
+pub trait BrepCreationAccess<O: ClassObject + SolutionObject + Ord>:
+    FaceStitchAccess<O>
+    + CornerAdjustmentAccess<O>
+    + CornerEdgeAccess<O>
+    + RailTrimAccess<O>
+    + RailClassificationAccess<O>
+{
+    /// Execute the actual smooth-sequence prelude on this executive.
+    ///
+    /// # Errors
+    /// Real smoothing or missing live tangent-collection context.
+    fn creation_smooth(&mut self, k: &mut Kernel, executive: &mut FilletExecutive<O>)
+        -> Result<()>;
+}
+impl<O, A> BrepCreationAccess<O> for A
+where
+    O: ClassObject + SolutionObject + Ord,
+    A: ExecutiveAccess<O> + ?Sized,
+{
+    fn creation_smooth(
+        &mut self,
+        k: &mut Kernel,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
+        ExecutiveAccess::process_smooth_edge_sequences(self, k, executive)
     }
 }
 
@@ -1895,7 +1924,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     pub fn create_fillet_brep(
         &mut self,
         k: &mut Kernel,
-        access: &mut impl ExecutiveAccess<O>,
+        access: &mut impl BrepCreationAccess<O>,
         error_out: Option<&mut ErrorInfo<O>>,
     ) -> Result<()> {
         // NER: upstream returns SM_ERR_NULL_POINTER, not invalid input.
@@ -1904,7 +1933,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             code: 1006,
             entity: None,
         })?;
-        ignore(access.process_smooth_edge_sequences(k, self))?;
+        ignore(access.creation_smooth(k, self))?;
 
         self.create_corner_vertices(k, access)?;
         self.adjust_corner_topology(k, access)?;

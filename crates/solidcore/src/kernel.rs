@@ -19,6 +19,7 @@
 //! | [`Rng`]                                | C `rand()` / `srand(time(NULL))` (e.g. `SmShell.cpp`) |
 //! | [`Caches`]                             | `SmCacheMgr`, `SmCacheMgrCrv/Srf/TSrf/Brep` |
 //! | [`Kernel::fillet_point_step`], [`Kernel::latch_fillet_point_step`] | the function-static `sdStaticStep` of `SmFilletSolver::ComputePointValues` |
+//! | [`Kernel::upstream_ub_passed`], [`Kernel::note_upstream_ub`] | (none: upstream undefined behaviour the port went past) |
 //!
 //! Upstream seeds `rand()` from the clock in a few places; the port replaces that with
 //! [`Rng`], seeded from [`KernelOptions::seed`], so runs are reproducible. Results that
@@ -179,6 +180,19 @@ pub struct Kernel {
     /// (the kernel stays `Send`). Difftest runners seed it with the value the C++
     /// process has latched; see [`Kernel::latch_fillet_point_step`].
     pub fillet_point_step: Cell<Option<f64>>,
+    /// The upstream undefined-behaviour conditions (their `plan/upstream-issues.md`
+    /// ids, e.g. `"UB-175"`) that operations on this kernel met and went past with the
+    /// port's defined semantics, each listed once in the order first met. Upstream's
+    /// result for such an input is undefined, so a comparison against the C++ (the
+    /// difftest) reads this to classify the case; no operation reads it.
+    pub upstream_ub_passed: Vec<&'static str>,
+    /// Not upstream (WR-259, `plan/upstream-issues.md`): whether
+    /// `Cone::intersect_with_cone` tests the lines of two parallel cylinders at their
+    /// middle (`true`) instead of their bottom end (`false`, upstream and the default),
+    /// which skips a line crossing a face domain trimmed above the surface's bottom. The
+    /// Boolean sets it for its duration (`boolean::merge::p4::manifold_boolean`). A
+    /// [`Cell`] because the intersectors take `&Kernel`.
+    pub cone_parallel_midpoint_test: Cell<bool>,
 }
 
 impl Default for Kernel {
@@ -197,6 +211,16 @@ impl Kernel {
             caches: Caches::default(),
             context: Context::default(),
             fillet_point_step: Cell::new(None),
+            upstream_ub_passed: Vec::new(),
+            cone_parallel_midpoint_test: Cell::new(false),
+        }
+    }
+
+    /// Records that an operation went past upstream undefined behaviour `id` (see
+    /// [`Kernel::upstream_ub_passed`]).
+    pub fn note_upstream_ub(&mut self, id: &'static str) {
+        if !self.upstream_ub_passed.contains(&id) {
+            self.upstream_ub_passed.push(id);
         }
     }
 
