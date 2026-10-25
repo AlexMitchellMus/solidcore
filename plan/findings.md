@@ -19609,6 +19609,12 @@ teardown would read a freed proto edge (UB-175), so the shim answers `-2`. No in
 predicts a failed imprint, so the case is listed in `known_mismatches.toml`. Follow-up:
 a runner classification for runs where both sides stop at a failed imprint, or a shim
 copy that carries the UB-242 fix.
+
+**Resolved (PR #839).** The shim copy now carries the UB-242 fix: it stops after a failed
+imprint and answers `-2`. The port records `"UB-242"` in `Kernel::upstream_ub_passed`
+at that point, and the runner answers `-2` for it. gen0111 and gen0498 pass and are no
+longer listed. gdb confirms that the C++ `SmEdgeDefinition::Imprint` and
+`ImprintIntersections` return 1006 in both.
 ## boolean.api_brep / boolean.topology_intersector_p2: UB-175 no longer refused; public booleans end to end (2026-10-24)
 
 `TopologyIntersector::intersect_insert_relate` used to return `InvalidInput` wherever
