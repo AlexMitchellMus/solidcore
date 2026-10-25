@@ -85,7 +85,8 @@ pub(super) fn run_rust(value: &Value) -> Result<Output, HarnessError> {
                     poly_edge: id as i64,
                     start: Point3::new(edge.start[0], edge.start[1], edge.start[2]),
                     end: Point3::new(edge.end[0], edge.end[1], edge.end[2]),
-                    tolerance: edge.tolerance,
+                    // The native fixture constructs SmZoneTol3d before GetTolerance.
+                    tolerance: edge.tolerance.abs(),
                     surface: &original,
                 },
                 NodeId(edge.node),

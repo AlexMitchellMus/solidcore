@@ -333,9 +333,8 @@ fn validate_op(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
             let count = rd.index(8)?;
             for _ in 0..count {
                 rd.finites(6)?;
-                if rd.finite()? <= 0.0 {
-                    return Err(bad("polygon tolerance must be positive"));
-                }
+                // SmZoneTol3d accepts zero and stores abs(value) for negatives.
+                rd.finite()?;
                 rd.index(n - 1)?;
             }
             rd.flag()?;
@@ -468,7 +467,11 @@ mod tests {
         input[node] = 1.0; // one past the final node
         assert!(validate(Op::ImplantPoly, &input).is_err());
         input[node] = 0.0;
+        input[node - 1] = 0.0;
+        assert!(validate(Op::ImplantPoly, &input).is_ok());
         input[node - 1] = -0.001;
+        assert!(validate(Op::ImplantPoly, &input).is_ok());
+        input[node - 1] = f64::NAN;
         assert!(validate(Op::ImplantPoly, &input).is_err());
     }
 }
