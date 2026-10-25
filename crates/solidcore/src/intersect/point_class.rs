@@ -57,7 +57,7 @@
 //! | [`object_zone_tol_3d`]                            | `SmTol::GetZoneTol3d(const SmObject*)`           |
 //! | [`PointClassification::xsect_tol_3d`]             | `SmTol::GetXSectTol3d(const SmPointClassification*)` |
 //! | [`PointClassification::set_src_zone_tol_3d`]      | `SetSrcZoneTol3d`                                |
-//! | [`PointClassification::combine`], [`PointClassification::combine_in_brep`], [`Precedence`] | `Combine` |
+//! | [`PointClassification::combine`], [`PointClassification::combine_in_brep`], [`PointClassification::combine_setting_vertex_point`], [`Precedence`] | `Combine` |
 //! | [`CombineBrep`]                                   | the arena behind the classified object           |
 //! | [`PointClassification::compute_point_parameters`], [`PointClassification::compute_point_parameters_mut`]| `ComputePointParameters`                         |
 //! | [`PointClassification::find_obj_point_3d`]        | `FindObjPoint3d`                                 |
@@ -72,7 +72,9 @@
 //! - **Mutable topology.** [`BrepMerge`] supplies an arena, resolved target,
 //!   handle mapping and notification environment for [`PointClassification::merge_into_brep`],
 //!   and [`CombineBrep`] the arena and notifications
-//!   [`PointClassification::combine_in_brep`] writes a propagated vertex point to.
+//!   [`PointClassification::combine_in_brep`] writes a propagated vertex point to;
+//!   [`PointClassification::combine_setting_vertex_point`] takes the caller's
+//!   `SmVertex::SetPoint` instead (an adapter resolving the vertex on demand).
 //!   The older opaque-handle entrypoints cannot resolve their object's arena and return
 //!   an `Unported(topology.brep_p1)` / `Unported(topology.vertex)` deferral until the
 //!   caller supplies that context. Region/face owner queries retain their own blockers.
@@ -1045,14 +1047,66 @@ impl<O: ClassObject> PointClassification<O> {
         other: &Self,
         context: CombineBrep<'_, '_, O>,
     ) -> Result<Precedence> {
-        self.combine_with(other, Some(context))
+        let CombineBrep {
+            brep,
+            target,
+            handle,
+            notifications,
+        } = context;
+        self.combine_with(
+            other,
+            Some(&mut |object: Option<O>, point: Point3| {
+                if object.is_some_and(|object| handle(target) != object) {
+                    return Err(SolidError::invalid_input(
+                        OP_COMBINE,
+                        "target does not resolve classification object",
+                    ));
+                }
+                let EntityRef::Vertex(v) = target else {
+                    return Err(SolidError::invalid_input(
+                        OP_COMBINE,
+                        "combine target is not a vertex",
+                    ));
+                };
+                let key_of = notifications.key_of;
+                let this = key_of(EntityRef::Vertex(v));
+                vertex::set_point(
+                    brep,
+                    v,
+                    point,
+                    notifications.records,
+                    notifications.attributes,
+                    notifications.context.as_deref_mut(),
+                    this,
+                    &|vu| key_of(EntityRef::Vertexuse(vu)),
+                )
+            }),
+        )
     }
 
-    /// [`Self::combine`] with an optional arena for the propagated vertex point.
+    /// `Combine(other)` with the caller's `SmVertex::SetPoint`: a surf/surf/surf point
+    /// propagated to a vertex classification is written by
+    /// `set_vertex_point(object, point)`, with this classification's object (the
+    /// vertex upstream casts `m_pObject` to) and the point, at the moment upstream
+    /// calls `pVertex->SetPoint(m_vSSSPoint)`.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Self::combine`], without the deferral; those of `set_vertex_point`.
+    pub fn combine_setting_vertex_point(
+        &mut self,
+        other: &Self,
+        set_vertex_point: &mut dyn FnMut(Option<O>, Point3) -> Result<()>,
+    ) -> Result<Precedence> {
+        self.combine_with(other, Some(set_vertex_point))
+    }
+
+    /// [`Self::combine`] with an optional `SmVertex::SetPoint` for the propagated vertex
+    /// point.
     fn combine_with(
         &mut self,
         other: &Self,
-        arena: Option<CombineBrep<'_, '_, O>>,
+        set_vertex_point: Option<&mut dyn FnMut(Option<O>, Point3) -> Result<()>>,
     ) -> Result<Precedence> {
         use PointClassType as Pc;
         let this_class = self.point_class;
@@ -1100,40 +1154,14 @@ impl<O: ClassObject> PointClassification<O> {
 
             // set vertex position when appropriate
             if self.point_class == Pc::Vertex {
-                let Some(arena) = arena else {
+                let Some(set_vertex_point) = set_vertex_point else {
                     // UNPORTED(topology.vertex): SmVertex::SetPoint
                     return Err(SolidError::unported(
                         "SmVertex::SetPoint",
                         "topology.vertex",
                     ));
                 };
-                if self
-                    .object
-                    .is_some_and(|object| (arena.handle)(arena.target) != object)
-                {
-                    return Err(SolidError::invalid_input(
-                        OP_COMBINE,
-                        "target does not resolve classification object",
-                    ));
-                }
-                let EntityRef::Vertex(v) = arena.target else {
-                    return Err(SolidError::invalid_input(
-                        OP_COMBINE,
-                        "combine target is not a vertex",
-                    ));
-                };
-                let key_of = arena.notifications.key_of;
-                let this = key_of(EntityRef::Vertex(v));
-                vertex::set_point(
-                    arena.brep,
-                    v,
-                    self.sss_point,
-                    arena.notifications.records,
-                    arena.notifications.attributes,
-                    arena.notifications.context.as_deref_mut(),
-                    this,
-                    &|vu| key_of(EntityRef::Vertexuse(vu)),
-                )?;
+                set_vertex_point(self.object, self.sss_point)?;
             }
         }
 
@@ -1410,9 +1438,9 @@ impl<O: ClassObject> PointClassification<O> {
     /// # Errors
     ///
     /// `SM_ERR_NULL_POINTER` for no object (upstream's `NER`); `SM_ERR` for an object
-    /// that is not a region, face, edge or vertex; unresolved region/face owners
-    /// return `Unported`. An opaque edge needs [`Self::merge_into_brep`] to supply
-    /// its mutable arena and defers the split here until it is supplied.
+    /// that is not a region, face, edge or vertex. A region, face or edge is edited in
+    /// its owning B-rep, which [`Self::merge_into_brep`] takes mutably: through an
+    /// opaque handle the edit returns `Unported` here.
     pub fn merge_into_object(&mut self, k: &Kernel, src_point: Point3) -> Result<MergeOutputs<O>> {
         let _ = k;
         let object = self.object.ok_or_else(|| null_object(OP_MERGE))?;
@@ -1424,19 +1452,16 @@ impl<O: ClassObject> PointClassification<O> {
 
         // the vertex the point merges into
         let new_v: O = match object.class_kind() {
-            ClassObjectKind::Region | ClassObjectKind::Edge => {
-                // The opaque API has no mutable owning-arena lookup. The actual
-                // p9 operation is available through merge_into_brep; canonical
-                // B-rep owner storage remains part 1's integration boundary.
+            ClassObjectKind::Region | ClassObjectKind::Face | ClassObjectKind::Edge => {
+                // `GetBrep()->MakeShellVertex / MakeVertexLoop / MakeVertexSplitEdge`
+                // edit the B-rep that owns the object, which an opaque handle cannot
+                // reach mutably (the face's `GetBrep` itself is ported): the edit runs
+                // through merge_into_brep, which callers with the B-rep use.
                 // UNPORTED(topology.brep_p1): SmBrep mutable owning context
                 return Err(SolidError::unported(
                     "SmBrep mutable owning context",
                     "topology.brep_p1",
                 ));
-            }
-            ClassObjectKind::Face => {
-                // UNPORTED(topology.face_p4): SmFace::GetBrep
-                return Err(SolidError::unported("SmFace::GetBrep", "topology.face_p4"));
             }
             // Almost no work to do. There is already a vertex here.
             ClassObjectKind::Vertex => object,
@@ -1924,6 +1949,54 @@ fn surface_global_point_solve(
     face_tested_point_solve(k, surface, uv_domain, point, zone_tol_3d, &mut classify)
 }
 
+/// The fast drop's trim test of face `f`'s surface (`pFace->PointClassify(uv, tol,
+/// TRUE, FALSE, ..)` in `SmSurface::GlobalPointSolve`) with the face's B-rep at hand:
+/// `true` keeps the solution. Whether the test runs at all (the face's surface cache is
+/// trimmed, point testing is on and its face was not modified; `GetOwner()` is not
+/// cleared) is decided on the first call and kept in `test_on`. The face's trimmed
+/// surface cache is made when it has none
+/// ([`crate::query::face::p2::face_surface_cache`]).
+///
+/// # Errors
+///
+/// Those of the cache lookup and the classification's [`SolidError::Unported`].
+pub(crate) fn live_face_fast_drop_test(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    test_on: &mut Option<bool>,
+    uv: Point2,
+    src_tol: f64,
+) -> Result<bool> {
+    let on = if let Some(on) = *test_on {
+        on
+    } else {
+        // `GetOwner()` is NULL while `CreateUVTrimCurve(s)` clears it: no face
+        let on = !b.is_surface_owner_cleared(f) && {
+            let lease = crate::query::face::p2::face_surface_cache(k, b, f)?;
+            let base = lease.cache.base();
+            let on = lease.trimmed && base.point_test_enabled && !base.face_was_modified;
+            lease.release();
+            on
+        };
+        *test_on = Some(on);
+        on
+    };
+    if !on {
+        return Ok(true);
+    }
+    let mut pc = PointClassification::new(src_tol);
+    let status = crate::query::face::p2::point_classify(
+        k,
+        b,
+        f,
+        uv,
+        &mut pc,
+        fast_drop_classify_options(src_tol),
+    );
+    fast_drop_good_point(status, &pc)
+}
+
 /// [`surface_global_point_solve`] of face `f`'s surface with the face's B-rep at hand:
 /// the trim test makes the face's trimmed surface cache when it has none
 /// ([`crate::query::face::p2::face_surface_cache`], kept on the surface as upstream's
@@ -1947,33 +2020,7 @@ fn live_surface_global_point_solve(
         .clone_for_evaluation()?;
     let mut test_on: Option<bool> = None;
     let mut classify = |k: &Kernel, uv: Point2, src_tol: f64| -> Result<bool> {
-        let on = if let Some(on) = test_on {
-            on
-        } else {
-            // `GetOwner()` is NULL while `CreateUVTrimCurve(s)` clears it: no face
-            let on = !b.is_surface_owner_cleared(f) && {
-                let lease = crate::query::face::p2::face_surface_cache(k, b, f)?;
-                let base = lease.cache.base();
-                let on = lease.trimmed && base.point_test_enabled && !base.face_was_modified;
-                lease.release();
-                on
-            };
-            test_on = Some(on);
-            on
-        };
-        if !on {
-            return Ok(true);
-        }
-        let mut pc = PointClassification::new(src_tol);
-        let status = crate::query::face::p2::point_classify(
-            k,
-            b,
-            f,
-            uv,
-            &mut pc,
-            fast_drop_classify_options(src_tol),
-        );
-        fast_drop_good_point(status, &pc)
+        live_face_fast_drop_test(k, b, f, &mut test_on, uv, src_tol)
     };
     face_tested_point_solve(k, &surface, uv_domain, point, zone_tol_3d, &mut classify)
 }

@@ -57,7 +57,7 @@
 //!   leaves the index unset upstream) is an error.
 //! - **Intersection-point user pointers.** `SmTsectPnt::m_apUserPointer[0..2]` (the two
 //!   surfaces of a fillet vertex use's intersection point, read by
-//!   `AdjustTangentCorner`) are not members of the Rust [`TsectPnt`]: the caller passes
+//!   `AdjustTangentCorner`) are not members of the Rust [`TsectPnt`](crate::intersect::surface_intersector::p1::TsectPnt): the caller passes
 //!   them per vertex use in [`CornerEnv::tsect_surfaces`]. `SmTemporaryChangeValue`
 //!   enabling out-of-bounds evaluation of the user surfaces (every `SmBSplineSurface`,
 //!   which includes `SmPlane` and `SmSurfOfRevolution`) is applied to copies.
@@ -335,22 +335,6 @@ fn bspline_part(curve: &Curve) -> Option<BSplineCurve> {
         CurveKind::Hyperbola(c) => Some(c.base().clone()),
         CurveKind::Parabola(c) => Some(c.base().clone()),
         _ => None,
-    }
-}
-
-/// The neighbour surface `SmBSplineSurface::CreateCornerBlend` gets (see
-/// `topology::brep::p1`).
-fn bspline_surface(surface: &Surface) -> Result<&BSplineSurface> {
-    match surface.kind() {
-        SurfaceKind::BSpline(s) => Ok(s),
-        SurfaceKind::Plane(p) => Ok(p.base()),
-        SurfaceKind::SurfOfRevolution(s) => Ok(s.base()),
-        SurfaceKind::SurfOfExtrusion(s) => Ok(s.base()),
-        // UNPORTED(nurbs.b_spline_surface_n_lib_p2): SmBSplineSurface::CreateCornerBlend with a non-B-spline neighbour surface
-        _ => Err(unported(
-            "SmBSplineSurface::CreateCornerBlend (non-B-spline neighbour SmSurface)",
-            "nurbs.b_spline_surface_n_lib_p2",
-        )),
     }
 }
 
@@ -912,17 +896,10 @@ impl FilletCorner {
                         .ok_or_else(|| invalid(OP_PATCH, "boundary curve is not a B-spline"))?,
                 );
             }
-            let mut surfs: Vec<Option<BlendNeighbour<'_>>> =
-                Vec::with_capacity(ordered_surfs.len());
-            for s in &ordered_surfs {
-                surfs.push(match s {
-                    Some(surface) => Some(BlendNeighbour {
-                        surface,
-                        b_spline: bspline_surface(surface)?,
-                    }),
-                    None => None,
-                });
-            }
+            let surfs: Vec<Option<BlendNeighbour<'_>>> = ordered_surfs
+                .iter()
+                .map(|s| s.as_ref().map(|surface| BlendNeighbour { surface }))
+                .collect();
             let blends = BSplineSurface::create_corner_blend(
                 env.k,
                 &curves_3d,
