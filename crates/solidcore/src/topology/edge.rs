@@ -2430,6 +2430,17 @@ pub fn notify(
     operation: NotifyOperation,
     data: [Option<ObjectRef>; 3],
 ) -> Result<()> {
+    notify_with_body_identity(b, e, env, operation, data, None)
+}
+
+fn notify_with_body_identity(
+    b: &mut Brep,
+    e: EdgeId,
+    env: &mut NotifyEnv<'_>,
+    operation: NotifyOperation,
+    data: [Option<ObjectRef>; 3],
+    body: Option<ObjectRef>,
+) -> Result<()> {
     use NotifyOperation as N;
     let [d1, d2, d3] = data;
     if operation == N::ChangeGeometry {
@@ -2440,8 +2451,22 @@ pub fn notify(
         if has_brep {
             // this->GetCurve() is still the old geometry (data3)
             let obj = |d: Option<ObjectRef>| d.map(BrepNotifyArg::Object);
-            brep_notify(b, env, N::RmFromBrep, obj(d3), d3)?;
-            brep_notify(b, env, N::AddToBrep, obj(d1), d3)?;
+            brep_notify_with_body_identity(
+                b,
+                env,
+                N::RmFromBrep,
+                obj(d3),
+                d3,
+                body.unwrap_or_else(|| brep_p2::brep_ref(b)),
+            )?;
+            brep_notify_with_body_identity(
+                b,
+                env,
+                N::AddToBrep,
+                obj(d1),
+                d3,
+                body.unwrap_or_else(|| brep_p2::brep_ref(b)),
+            )?;
         }
     }
     if matches!(
@@ -2632,12 +2657,13 @@ fn set_curve_with_identity(
 
     // side effect: delete all UVTrimCurves
     if options.call_notify {
-        notify(
+        notify_with_body_identity(
             b,
             e,
             env,
             NotifyOperation::ChangeGeometry,
             [new_ref, None, old_ref],
+            body,
         )?;
         if has_brep {
             // side effect: remove from spatial cache.
