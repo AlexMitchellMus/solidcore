@@ -2932,6 +2932,124 @@ mod tests {
     use crate::topology::{EdgeuseOwner, Region, Shell, Vertex, Vertexuse, VertexuseOwner};
 
     #[test]
+    fn retained_curve_replacement_invalidates_real_uv_and_uses_issued_body() {
+        use crate::geom::attribute::{ids, Attribute, Behavior};
+        use crate::topology::edge::notification_test_support as callbacks;
+
+        let mut k = Kernel::default();
+        let mut b =
+            crate::primitive::api_primitives::create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0)
+                .unwrap();
+        let legacy_key = b.key();
+        let serial = b.notify_serial().unwrap();
+        let key_of = |entity| crate::topology::brep::p3::topology_ref(serial, entity);
+        let body = key_of(EntityRef::Brep(crate::topology::BrepId::from_index(0)));
+        assert_ne!(legacy_key, body.key);
+        let id = b.edge_list()[0];
+        let uses = edgeuses(&b, id, None, None).unwrap();
+        for &eu in &uses {
+            eu3::get_or_create_uv_trim_curve(&k, &mut b, eu, false, false, true)
+                .unwrap()
+                .status
+                .unwrap();
+        }
+        assert!(uses
+            .iter()
+            .any(|&eu| b.edgeuse(eu).unwrap().uv_trim_curve.is_some()));
+        let curve = b.edge_mut(id).unwrap().curve.as_mut().unwrap();
+        let old_ref = ObjectRef {
+            type_code: curve.type_code(),
+            key: k
+                .context
+                .geometry_key(curve.notify_identity_slot())
+                .unwrap(),
+        };
+        let mut copy = b
+            .edge(id)
+            .unwrap()
+            .curve
+            .as_ref()
+            .unwrap()
+            .copy(&k)
+            .unwrap();
+        let interval = b.edge(id).unwrap().interval;
+        let before = b
+            .edge(id)
+            .unwrap()
+            .curve
+            .as_ref()
+            .unwrap()
+            .evaluate_point(&k, interval.evaluate(0.37))
+            .unwrap();
+        let mut records = BTreeMap::new();
+        crate::topology::brep::p3::seed_records(&mut records, &b, &key_of);
+        let mut attributes = AttributeStore::default();
+        let marker = attributes
+            .insert(Attribute::long(ids::USER_1, 917, Behavior::Reference))
+            .unwrap();
+        attributes.add_attribute(body.key, marker).unwrap();
+        let events = callbacks::install(&mut k.context);
+        k.context.set_doing_boolean(true);
+        let new_ref = Context::with_notification_context(&mut k, |_k, context| {
+            let mut env = NotifyEnv {
+                records: &mut records,
+                attributes: &mut attributes,
+                context: Some(context),
+                key_of: &key_of,
+            };
+            assert!(env.context.as_deref().unwrap().doing_boolean());
+            let new_ref = crate::topology::brep::p9::issue_curve_identity(id, &mut copy, &mut env)?;
+            set_curve_with_body_identity(
+                &mut b,
+                id,
+                Some(copy),
+                SetCurveOptions {
+                    delete_old_curve: true,
+                    ..Default::default()
+                },
+                &mut env,
+                [Some(new_ref), Some(old_ref)],
+                body,
+            )?;
+            Ok::<_, SolidError>(new_ref)
+        })
+        .unwrap()
+        .unwrap();
+        assert!(k.context.doing_boolean());
+        callbacks::assert_installed(&k.context, &events);
+        assert_eq!(b.key(), legacy_key);
+        assert_ne!(new_ref.key, old_ref.key);
+        let installed = b.edge(id).unwrap().curve.as_ref().unwrap();
+        assert_eq!(installed.notify_key(), Some(new_ref.key));
+        assert_eq!(
+            installed
+                .evaluate_point(&k, interval.evaluate(0.37))
+                .unwrap(),
+            before
+        );
+        assert!(uses
+            .iter()
+            .all(|&eu| b.edgeuse(eu).unwrap().uv_trim_curve.is_none()));
+        assert_eq!(attributes.users(marker).unwrap(), &[body.key]);
+        let events = events.lock().unwrap();
+        let body_events: Vec<_> = events
+            .iter()
+            .filter(|event| event.caller.type_code == BREP_TYPE)
+            .collect();
+        assert_eq!(body_events.len(), 8);
+        for event in body_events {
+            assert_eq!(event.caller, body);
+            assert_eq!(event.data[1], Some(body));
+        }
+        assert!(events
+            .iter()
+            .any(|event| event.caller == key_of(EntityRef::Edge(id))
+                && event.operation == NotifyOperation::ChangeGeometry
+                && event.data == [Some(new_ref), None, Some(old_ref)]));
+        assert!(!events.iter().any(|event| event.caller.key == legacy_key));
+    }
+
+    #[test]
     fn kernel_notification_state_rekeys_real_stores_and_restores_scopes() {
         use crate::geom::context::{with_mark_lock, MarkType, ALL_MARKS};
         use crate::topology::edge::notification_test_support as callbacks;

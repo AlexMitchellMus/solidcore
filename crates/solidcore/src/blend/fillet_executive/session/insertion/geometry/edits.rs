@@ -37,7 +37,7 @@ fn edge(role: InsertionBody, object: FilletObject) -> Result<EdgeId> {
 }
 
 impl InsertionGeometry<'_> {
-    /// Native p7 SetCurve(TRUE, TRUE, TRUE), followed by SetOwner on the actual copy.
+    /// Native p7 `SetCurve(TRUE, TRUE, TRUE)`, followed by `SetOwner` on the actual copy.
     pub(super) fn replace_filleting_curve(
         &mut self,
         object: FilletObject,
