@@ -507,7 +507,7 @@ pub trait IntersectionTopologyContext {
     fn register_intersection(
         &mut self,
         pseudo: &FilletBrep,
-        target: &Brep,
+        target: &mut Brep,
         face: FaceId,
         surface: &Option<Self::SurfaceBinding>,
     ) -> Result<()>;
@@ -610,7 +610,7 @@ impl IntersectionTopologyContext for IndexedInsertionContext<'_> {
     fn register_intersection(
         &mut self,
         _pseudo: &FilletBrep,
-        _target: &Brep,
+        _target: &mut Brep,
         face: FaceId,
         surface: &Option<Surface>,
     ) -> Result<()> {

@@ -52,6 +52,49 @@ pub struct SurfaceBinding {
     geometry: ObjectRef,
 }
 impl SurfaceBinding {
+    pub(super) fn capture_in_body(
+        context: &mut Context,
+        body: &mut Brep,
+        role: InsertionBody,
+        face: FaceId,
+    ) -> Result<Self> {
+        let serial = context
+            .issued_brep_serial(body.notify_identity_slot())
+            .ok_or_else(|| invalid("Surface body is outside the actual Context domain"))?;
+        let body_identity = topology_ref(serial, EntityRef::Brep(BrepId::from_index(0)));
+        let surface = body
+            .face_mut(face)?
+            .surface
+            .as_mut()
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
+        let type_code = surface.type_code();
+        let key = context.geometry_key(surface.notify_identity_slot())?;
+        Ok(Self {
+            role,
+            body: body_identity,
+            face,
+            geometry: ObjectRef { type_code, key },
+        })
+    }
+    pub(super) fn resolve_in_body(self, body: &Brep) -> Result<&Surface> {
+        let serial = body
+            .notify_serial()
+            .ok_or_else(|| invalid("Surface body has no issued identity"))?;
+        if self.body != topology_ref(serial, EntityRef::Brep(BrepId::from_index(0))) {
+            return Err(invalid("Surface binding belongs to a foreign body"));
+        }
+        let surface = body
+            .face(self.face)?
+            .surface
+            .as_ref()
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
+        if surface.notify_key() != Some(self.geometry.key)
+            || surface.type_code() != self.geometry.type_code
+        {
+            return Err(invalid("original insertion Surface was replaced"));
+        }
+        Ok(surface)
+    }
     /// Actual body role.
     #[must_use]
     pub const fn body_role(self) -> InsertionBody {
@@ -572,21 +615,7 @@ impl<'a> InsertionGeometry<'a> {
         role: InsertionBody,
         face: FaceId,
     ) -> Result<SurfaceBinding> {
-        let body = self.body_identity(role)?;
-        let surface = self
-            .body_mut(role)
-            .face_mut(face)?
-            .surface
-            .as_mut()
-            .ok_or_else(|| SolidError::null_pointer(OP))?;
-        let type_code = surface.type_code();
-        let key = context.geometry_key(surface.notify_identity_slot())?;
-        Ok(SurfaceBinding {
-            role,
-            body,
-            face,
-            geometry: ObjectRef { type_code, key },
-        })
+        SurfaceBinding::capture_in_body(context, self.body_mut(role), role, face)
     }
     /// Capture the actual managed fillet Surface without a numerical copy.
     /// # Errors
@@ -619,21 +648,7 @@ impl<'a> InsertionGeometry<'a> {
     /// # Errors
     /// Foreign body, deleted Face/Surface or replaced geometry identity.
     pub fn bound_surface(&self, binding: SurfaceBinding) -> Result<&Surface> {
-        if binding.body != self.body_identity(binding.role)? {
-            return Err(invalid("Surface binding belongs to a foreign body"));
-        }
-        let surface = self
-            .body(binding.role)
-            .face(binding.face)?
-            .surface
-            .as_ref()
-            .ok_or_else(|| SolidError::null_pointer(OP))?;
-        if surface.notify_key() != Some(binding.geometry.key)
-            || surface.type_code() != binding.geometry.type_code
-        {
-            return Err(invalid("original insertion Surface was replaced"));
-        }
-        Ok(surface)
+        binding.resolve_in_body(self.body(binding.role))
     }
     /// Actual owner Face, including the real Surface owner check.
     /// # Errors

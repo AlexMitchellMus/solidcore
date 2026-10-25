@@ -1,8 +1,10 @@
 //! Actual executive stores lent to intersection insertion. No second intersector,
 //! solver table or attribute store is constructed here.
 
+mod corner;
 pub mod curves;
 pub mod geometry;
+mod live;
 
 use super::{
     invalid, Attribute, AttributeHandle, AttributeStore, Behavior, Brep, EdgeId, EntityRef,
