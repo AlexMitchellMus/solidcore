@@ -1,0 +1,12 @@
+id = "topology.brep_constructor"
+upstream = ["source/SMLib/inc/SmBrepData.h", "source/SMLib/src/SmBrepData.cpp"]
+rust_module = "topology::brep_constructor"
+depends_on = ["curve.curve_p2", "curve.curve_p4", "curve.curve_p6", "geom.extent1d", "geom.tol", "heal.stitch_p1", "heal.stitch_p2", "surface.surface_p11", "topology.brep_p1", "topology.brep_p3", "topology.edge", "topology.edgeuse_p1", "topology.face_p4", "topology.loopuse", "topology.shell", "topology.vertex"]
+soft_depends_on = []
+est_lines = 850
+layer = 51
+tests = ["prog_test:my_test_seam_uv_redistribution_at_poles", "prog_test:my_test_single_periodic_vertexuse", "prog_test:my_test_doubly_periodic_vertexuse_corners", "prog_test:my_test_heal_single_vertex_sphere"]
+status = "claimed"
+claimed_by = ""
+claimed_at = ""
+notes = "SmBrepConstructor (SmBrepData.cpp lines 78-1189, SmBrepData.h SmVertexNode/SmBrepConstructor): top-down B-rep construction from shells, faces, loops and shared edges with orientations; the faithful build path for B-rep file importers (STEP, PR #985). Not in the original plan (its functions were in harness/callgraph/unused_functions.txt)."
