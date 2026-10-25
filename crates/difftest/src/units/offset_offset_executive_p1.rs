@@ -2351,7 +2351,7 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
             executive.set_merge_results(matches!(branch, Probe::RemoveEmpty));
             executive.remove_excess_faces_with_kernel_context(
                 &mut kernel,
-                &original,
+                &mut original,
                 &mut Brep::new(),
             )
         }

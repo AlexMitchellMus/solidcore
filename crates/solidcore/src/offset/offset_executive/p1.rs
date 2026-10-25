@@ -567,7 +567,7 @@ impl OffsetExecutive {
     pub fn remove_excess_faces(
         &self,
         kernel: &Kernel,
-        original: &Brep,
+        original: &mut Brep,
         result: &mut Brep,
     ) -> Result<()> {
         if self.excess_faces(kernel, original, result)?.is_none() {
@@ -585,7 +585,7 @@ impl OffsetExecutive {
     pub fn remove_excess_faces_with_kernel_context(
         &self,
         kernel: &mut Kernel,
-        original: &Brep,
+        original: &mut Brep,
         result: &mut Brep,
     ) -> Result<()> {
         let Some(delete_faces) = self.excess_faces(kernel, original, result)? else {
@@ -605,7 +605,7 @@ impl OffsetExecutive {
     fn excess_faces(
         &self,
         kernel: &Kernel,
-        original: &Brep,
+        original: &mut Brep,
         result: &mut Brep,
     ) -> Result<Option<Vec<FaceId>>> {
         if !self.merge_results || !self.shell_faces.is_empty() {
@@ -623,11 +623,15 @@ impl OffsetExecutive {
                 kernel, result, primary, 0.5, false, false, true,
             ))?
             .map_or(Vec3::UNDEF, |eval| eval.point);
+            // cpp:2069–2072: the solve runs with the original's editing disabled and
+            // leaves it enabled afterwards (still disabled when the solve fails)
+            original.set_editing_enabled(false);
             if original_cache.is_none() {
                 original_cache = Some(make_original_brep_cache(kernel, original)?);
             }
             let (cache, keys) = required(original_cache.as_ref())?;
             let solutions = solve_original_brep_point(kernel, original, cache, keys, point)?;
+            original.set_editing_enabled(true);
             collect_excess_faces(
                 result,
                 id,
@@ -3247,19 +3251,21 @@ mod tests {
     fn excess_face_early_returns_and_actual_dependencies() {
         let kernel = Kernel::default();
         let mut executive = executive();
-        let original = Brep::new();
+        let mut original = Brep::new();
         let mut result = Brep::new();
         executive
-            .remove_excess_faces(&kernel, &original, &mut result)
+            .remove_excess_faces(&kernel, &mut original, &mut result)
             .unwrap();
         executive.set_merge_results(true);
         executive.set_shell_faces(&[FaceId::from_index(1)]);
         executive
-            .remove_excess_faces(&kernel, &original, &mut result)
+            .remove_excess_faces(&kernel, &mut original, &mut result)
             .unwrap();
         executive.set_shell_faces(&[]);
+        // No result edge: the original's editing flag is not touched.
+        assert!(!original.editing_enabled());
         assert_dependency(
-            executive.remove_excess_faces(&kernel, &original, &mut result),
+            executive.remove_excess_faces(&kernel, &mut original, &mut result),
             "SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)",
             "offset.offset_executive_p1",
         );
@@ -3268,13 +3274,15 @@ mod tests {
         // The edges evaluate and solve against the empty original; the legacy entry
         // still defers at its removal step without removing any result faces.
         assert_dependency(
-            executive.remove_excess_faces(&kernel, &original, &mut result),
+            executive.remove_excess_faces(&kernel, &mut original, &mut result),
             "SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)",
             "offset.offset_executive_p1",
         );
         assert_eq!(result.edges().len(), 2);
         assert_eq!(result.edgeuses().len(), 2);
         assert!(result.faces().is_empty());
+        // Each edge's solve leaves the original's editing enabled (cpp:2069–2072).
+        assert!(original.editing_enabled());
         // ShrinkGeometry trims the two edge curves; without offset surfaces the
         // continuation's loops are empty (SM_SUCCESS)
         OffsetExecutive::replace_implicit_offsets(&kernel, &mut result, 1.0e-6).unwrap();
@@ -3284,13 +3292,13 @@ mod tests {
     #[test]
     fn kernel_context_removal_uses_actual_editing_flag_and_releases_nested_mark() {
         let mut kernel = Kernel::default();
-        let original = Brep::new();
+        let mut original = Brep::new();
         let mut result = Brep::new_with_infinite_region().unwrap();
         let mut exec = executive();
         exec.set_merge_results(true);
         // Native RemoveExcessFaces ignores the editing-disabled refusal from
         // RemoveFaces. No traversal mark is acquired by that refused inner call.
-        exec.remove_excess_faces_with_kernel_context(&mut kernel, &original, &mut result)
+        exec.remove_excess_faces_with_kernel_context(&mut kernel, &mut original, &mut result)
             .unwrap();
         assert!(!result.editing_enabled());
         assert_eq!(kernel.context.current_mark(MarkType::Mark), 1);
@@ -3300,7 +3308,7 @@ mod tests {
             crate::geom::context::ALL_MARKS,
             |kernel, mark| {
                 assert_eq!(mark, MarkType::Mark);
-                exec.remove_excess_faces_with_kernel_context(kernel, &original, &mut result)
+                exec.remove_excess_faces_with_kernel_context(kernel, &mut original, &mut result)
                     .unwrap();
                 assert!(kernel.context.is_mark_locked(mark));
                 assert!(!kernel.context.is_mark_locked(MarkType::Mark2));
