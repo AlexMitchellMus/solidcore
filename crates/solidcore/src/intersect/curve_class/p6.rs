@@ -117,6 +117,13 @@ fn combine_in<O: ClassObject>(
     Ok(())
 }
 
+/// Peer supplied through legacy handle metadata or an explicitly linked local pair.
+#[derive(Clone, Copy)]
+pub(super) enum FilletPeer<'a, O> {
+    Metadata(Option<&'a CurveClassification<O>>),
+    Linked(&'a CurveClassification<O>),
+}
+
 impl<O: ClassObject> CurveClassification<O> {
     /// Inserts each distinct boundary into the paired classification (`Homogenize`).
     /// Near boundaries retain upstream's sliding/squeezing heuristics.
@@ -462,13 +469,23 @@ impl<O: ClassObject> CurveClassification<O> {
         self.merge_interval_in(&mut Mutable { k, g: geometry }, index, vertices_only, other)
     }
 
-    #[allow(clippy::too_many_lines)] // upstream's MergeInterval, in one piece
     pub(super) fn merge_interval_in(
         &mut self,
         a: &mut impl Imprint<O>,
         index: usize,
         vertices_only: bool,
         other: Option<&CurveClassification<O>>,
+    ) -> Result<MergeIntervalOutput<O>> {
+        self.merge_interval_using_peer(a, index, vertices_only, FilletPeer::Metadata(other))
+    }
+
+    #[allow(clippy::too_many_lines)] // upstream's MergeInterval, in one piece
+    pub(super) fn merge_interval_using_peer(
+        &mut self,
+        a: &mut impl Imprint<O>,
+        index: usize,
+        vertices_only: bool,
+        peer: FilletPeer<'_, O>,
     ) -> Result<MergeIntervalOutput<O>> {
         // init outputs
         let mut out = MergeIntervalOutput::default();
@@ -490,7 +507,7 @@ impl<O: ClassObject> CurveClassification<O> {
             // When DoingFillets with FilletData: make sure to use the FilletGeometry and
             // not the OriginalBrep Geometry (1 | 2 | 4: start vertex, end vertex and mid
             // edge)
-            self.fillet_geometry(a, index, other, 7)?;
+            self.fillet_geometry(a, index, peer, 7)?;
             return Ok(out);
         }
 
@@ -643,7 +660,7 @@ impl<O: ClassObject> CurveClassification<O> {
                 }
 
                 // When DoingFillets with FilletData (1: start vertex)
-                self.fillet_geometry(a, index, other, 1)?;
+                self.fillet_geometry(a, index, peer, 1)?;
 
                 // make nextPointClassification = thisPointClassification (cleans up
                 // tolerances)
@@ -685,7 +702,7 @@ impl<O: ClassObject> CurveClassification<O> {
 
                 // When doing a fillet - use FilletGeometry and not OriginalBrep Geometry
                 // for tighter tols (1 | 2: start and end vertices)
-                self.fillet_geometry(a, index, other, 3)?;
+                self.fillet_geometry(a, index, peer, 3)?;
             }
         }
 
@@ -744,18 +761,18 @@ impl<O: ClassObject> CurveClassification<O> {
                 .set_class_object(Pc::Edge, Some(new_e));
 
             // When DoingFillets with FilletData (4: mid edge)
-            self.fillet_geometry(a, index, other, 4)?;
+            self.fillet_geometry(a, index, peer, 4)?;
             return Ok(out);
         }
 
         // when merging an interval that classifies to a face
         if ivl.mid.point_class() == Pc::Face {
-            return self.merge_face_interval(a, index, start_v, end_v, other, out);
+            return self.merge_face_interval(a, index, start_v, end_v, peer, out);
         }
 
         // when merging an interval that classifies to a coincident edge
         if ivl.mid.point_class() == Pc::Edge {
-            self.merge_edge_interval(a, index, other)?;
+            self.merge_edge_interval(a, index, peer)?;
             return Ok(out);
         }
 
@@ -772,7 +789,7 @@ impl<O: ClassObject> CurveClassification<O> {
         index: usize,
         start_v: O,
         end_v: O,
-        other: Option<&CurveClassification<O>>,
+        peer: FilletPeer<'_, O>,
         mut out: MergeIntervalOutput<O>,
     ) -> Result<MergeIntervalOutput<O>> {
         let src_zone_tol_3d = src_zone_tol_3d_of(a.kernel(), Some(&*self));
@@ -973,7 +990,7 @@ impl<O: ClassObject> CurveClassification<O> {
             .set_class_object(Pc::Edge, Some(new_e));
 
         // When DoingFillets with FilletData (4: mid edge)
-        self.fillet_geometry(a, index, other, 4)?;
+        self.fillet_geometry(a, index, peer, 4)?;
 
         // Update interval Mids that classify to pFace to see if they now classify to
         // pNewF
@@ -998,10 +1015,10 @@ impl<O: ClassObject> CurveClassification<O> {
         &mut self,
         a: &mut impl Imprint<O>,
         index: usize,
-        other: Option<&CurveClassification<O>>,
+        peer: FilletPeer<'_, O>,
     ) -> Result<()> {
         // When DoingFillets with FilletData (4: mid edge)
-        self.fillet_geometry(a, index, other, 4)?;
+        self.fillet_geometry(a, index, peer, 4)?;
 
         // edge locals
         let ivl = *self.at(index)?;
@@ -1094,20 +1111,29 @@ impl<O: ClassObject> CurveClassification<O> {
         &self,
         a: &mut impl Imprint<O>,
         index: usize,
-        other: Option<&CurveClassification<O>>,
+        peer: FilletPeer<'_, O>,
         todo: u64,
     ) -> Result<()> {
-        if !(self.doing_fillets() && self.other_classification().is_some()) {
+        if !self.doing_fillets() {
             return Ok(());
         }
-        let Some(other) = other else {
-            // the caller did not supply the classification the handle names
-            return Err(SolidError::unported(
-                "SmCurveClassification::GetOtherClassification",
-                "intersect.curve_class_p7",
-            ));
-        };
-        ignore_status(a.set_do_filleting_geometry(self, index, Some(other), todo))
+        match peer {
+            FilletPeer::Linked(other) => {
+                ignore_status(a.set_do_filleting_geometry_linked(self, index, other, todo))
+            }
+            FilletPeer::Metadata(other) => {
+                if self.other_classification().is_none() {
+                    return Ok(());
+                }
+                let Some(other) = other else {
+                    return Err(SolidError::unported(
+                        "SmCurveClassification::GetOtherClassification",
+                        "intersect.curve_class_p7",
+                    ));
+                };
+                ignore_status(a.set_do_filleting_geometry(self, index, Some(other), todo))
+            }
+        }
     }
 
     /// `SmTol::IsDegenerate(m_cpCurve, rIvl.m_vInterval, &tol)`.
@@ -1223,6 +1249,19 @@ pub(super) trait Imprint<O: ClassObject> {
         other: Option<&CurveClassification<O>>,
         todo: u64,
     ) -> Result<()>;
+    /// Explicitly linked actual local peer, without an opaque classification handle.
+    fn set_do_filleting_geometry_linked(
+        &mut self,
+        _this: &CurveClassification<O>,
+        _index: usize,
+        _other: &CurveClassification<O>,
+        _todo: u64,
+    ) -> Result<()> {
+        Err(SolidError::unported(
+            "sm_SetDoFilletingGeometry (linked peer context)",
+            "intersect.curve_class_p7",
+        ))
+    }
     /// `ClassifyFaceInterval(index, TRUE, pNewF, pFace)` (other arguments at their
     /// defaults).
     fn classify_face_interval(
@@ -1320,6 +1359,15 @@ impl<O: ClassObject, G: ClassGeometry<O>> Imprint<O> for ReadOnly<'_, G> {
         todo: u64,
     ) -> Result<()> {
         super::p7::set_do_filleting_geometry(self.k, self.g, index, this, other, todo)
+    }
+    fn set_do_filleting_geometry_linked(
+        &mut self,
+        this: &CurveClassification<O>,
+        index: usize,
+        other: &CurveClassification<O>,
+        todo: u64,
+    ) -> Result<()> {
+        super::p7::set_do_filleting_geometry_linked(self.k, self.g, index, this, other, todo)
     }
     fn classify_face_interval(
         &mut self,
@@ -1526,6 +1574,15 @@ impl<O: ClassObject, G: MergeIntervalBrep<O>> Imprint<O> for Mutable<'_, G> {
         todo: u64,
     ) -> Result<()> {
         super::p7::set_do_filleting_geometry_mut(self.k, self.g, index, this, other, todo)
+    }
+    fn set_do_filleting_geometry_linked(
+        &mut self,
+        this: &CurveClassification<O>,
+        index: usize,
+        other: &CurveClassification<O>,
+        todo: u64,
+    ) -> Result<()> {
+        super::p7::set_do_filleting_geometry_mut_linked(self.k, self.g, index, this, other, todo)
     }
     fn classify_face_interval(
         &mut self,
