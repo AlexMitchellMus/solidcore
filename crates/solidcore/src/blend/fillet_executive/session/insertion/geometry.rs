@@ -169,6 +169,218 @@ impl<'a> InsertionGeometry<'a> {
         };
         edit(body, &mut env)
     }
+    /// Native edge interval, including actual curve-domain fallback.
+    #[must_use]
+    pub fn edge_interval(&self, edge: FilletObject) -> Option<crate::geom::extent1d::Extent1d> {
+        let (role, EntityRef::Edge(edge)) = Self::topology(edge)? else {
+            return None;
+        };
+        crate::topology::edge::interval(self.body(role), edge).ok()
+    }
+    /// Current edge Curve getter; distinct from the Edge topology object.
+    #[must_use]
+    pub fn edge_curve(&self, edge: FilletObject) -> Option<Option<FilletObject>> {
+        let (role, EntityRef::Edge(edge)) = Self::topology(edge)? else {
+            return None;
+        };
+        Some(
+            self.body(role)
+                .edge(edge)
+                .ok()?
+                .curve
+                .as_ref()
+                .map(|_| match role {
+                    InsertionBody::Target => FilletObject::Curve(FilletBody::Target, edge),
+                    InsertionBody::Pseudo => FilletObject::Curve(FilletBody::Pseudo, edge),
+                    InsertionBody::Intermediate => FilletObject::IntermediateCurve(edge),
+                }),
+        )
+    }
+    /// Current Face UV domain.
+    #[must_use]
+    pub fn face_uv_domain(&self, face: FilletObject) -> Option<crate::geom::extent2d::Extent2d> {
+        let (role, EntityRef::Face(face)) = Self::topology(face)? else {
+            return None;
+        };
+        crate::topology::face::p2::uv_domain(self.body(role), face).ok()
+    }
+    /// Write the actual Face UV domain through its existing setter.
+    pub fn set_face_uv_domain(
+        &mut self,
+        face: FilletObject,
+        domain: crate::geom::extent2d::Extent2d,
+    ) -> Option<()> {
+        let (role, EntityRef::Face(face)) = Self::topology(face)? else {
+            return None;
+        };
+        crate::topology::face::p2::set_uv_domain(self.body_mut(role), face, &domain).ok()
+    }
+    /// Current Face Surface getter, distinct from a captured original binding.
+    #[must_use]
+    pub fn face_surface(&self, face: FilletObject) -> Option<Option<FilletObject>> {
+        let (role, EntityRef::Face(face)) = Self::topology(face)? else {
+            return None;
+        };
+        Some(
+            self.body(role)
+                .face(face)
+                .ok()?
+                .surface
+                .as_ref()
+                .map(|_| FilletObject::FaceSurface(role, face)),
+        )
+    }
+    /// Find the actual edge use belonging to a Face in the same body.
+    /// # Errors
+    /// Invalid Edge/Face handles or topology walk failures.
+    pub fn edge_edgeuse_of_face(
+        &self,
+        edge: FilletObject,
+        face: FilletObject,
+    ) -> Result<Option<FilletObject>> {
+        let (role, EntityRef::Edge(edge)) =
+            Self::topology(edge).ok_or_else(|| invalid("unknown Edge role"))?
+        else {
+            return Err(invalid("handle is not an Edge"));
+        };
+        let (face_role, EntityRef::Face(face)) =
+            Self::topology(face).ok_or_else(|| invalid("unknown Face role"))?
+        else {
+            return Err(invalid("handle is not a Face"));
+        };
+        if role != face_role {
+            return Ok(None);
+        }
+        Ok(
+            crate::topology::edge::edgeuse_of_face(self.body(role), edge, Some(face))?
+                .map(|eu| Self::handle(role, EntityRef::Edgeuse(eu))),
+        )
+    }
+    /// Test connectivity through the actual Edge topology.
+    /// # Errors
+    /// Invalid handles or topology walk failures.
+    pub fn edge_is_connected_to_face(
+        &self,
+        edge: FilletObject,
+        face: FilletObject,
+    ) -> Result<bool> {
+        let (role, EntityRef::Edge(edge)) =
+            Self::topology(edge).ok_or_else(|| invalid("unknown Edge role"))?
+        else {
+            return Err(invalid("handle is not an Edge"));
+        };
+        let (face_role, EntityRef::Face(face)) =
+            Self::topology(face).ok_or_else(|| invalid("unknown Face role"))?
+        else {
+            return Err(invalid("handle is not a Face"));
+        };
+        if role != face_role {
+            return Ok(false);
+        }
+        crate::topology::edge::is_connected_to_face(self.body(role), edge, Some(face))
+    }
+    /// Common edges of actual same-body vertices.
+    /// # Errors
+    /// Invalid/cross-body operands or topology walk failures.
+    pub fn vertex_common_edges(
+        &self,
+        first: FilletObject,
+        second: FilletObject,
+    ) -> Result<Vec<FilletObject>> {
+        let (role, EntityRef::Vertex(first)) =
+            Self::topology(first).ok_or_else(|| invalid("unknown Vertex role"))?
+        else {
+            return Err(invalid("handle is not a Vertex"));
+        };
+        let (other, EntityRef::Vertex(second)) =
+            Self::topology(second).ok_or_else(|| invalid("unknown Vertex role"))?
+        else {
+            return Err(invalid("handle is not a Vertex"));
+        };
+        if role != other {
+            return Err(invalid("vertices belong to different bodies"));
+        }
+        Ok(
+            crate::topology::vertex::common_edges(self.body(role), first, Some(second), None)?
+                .into_iter()
+                .map(|edge| Self::handle(role, EntityRef::Edge(edge)))
+                .collect(),
+        )
+    }
+    /// Calculate the actual (including partial) trim-derived UV domain.
+    /// # Errors
+    /// Invalid owning Face or a genuine missing lower capability.
+    pub fn face_trim_uv_domain(
+        &mut self,
+        k: &crate::Kernel,
+        face: FilletObject,
+    ) -> Result<crate::geom::extent2d::Extent2d> {
+        let (role, EntityRef::Face(face)) =
+            Self::topology(face).ok_or_else(|| invalid("unknown Face role"))?
+        else {
+            return Err(invalid("handle is not a Face"));
+        };
+        let body = self.body_mut(role);
+        body.face(face)?;
+        let mut output = crate::topology::face::p1::UvDomainFromTrim {
+            domain: crate::geom::extent2d::Extent2d::new(),
+            max_uv_loop_gap: 0.0,
+            second_max_uv_loop_gap: 0.0,
+        };
+        let result = crate::topology::face::p1::calculate_uv_domain_from_uv_trim_curves_into(
+            k,
+            body,
+            face,
+            true,
+            false,
+            false,
+            &mut output,
+        );
+        if let Err(error) = result {
+            if error.is_unported() {
+                return Err(error);
+            }
+        }
+        Ok(output.domain)
+    }
+    /// Classify UV on the actual Face using native ignored ordinary-status semantics.
+    /// # Errors
+    /// Invalid owning Face or a genuine missing lower capability.
+    pub fn face_point_classify_uv(
+        &mut self,
+        k: &crate::Kernel,
+        face: FilletObject,
+        uv: crate::math::Point2,
+        tolerance: f64,
+    ) -> Result<crate::intersect::point_class::PointClassType> {
+        let (role, EntityRef::Face(face)) =
+            Self::topology(face).ok_or_else(|| invalid("unknown Face role"))?
+        else {
+            return Err(invalid("handle is not a Face"));
+        };
+        let body = self.body_mut(role);
+        body.face(face)?;
+        let mut output = crate::intersect::point_class::PointClassification::new(tolerance);
+        let result = crate::query::face::p2::point_classify(
+            k,
+            body,
+            face,
+            uv,
+            &mut output,
+            crate::query::face::p2::PointClassifyOptions {
+                src_zone_tol_3d: tolerance,
+                do_boundary_intersections: true,
+                use_uv_classification: true,
+                ..crate::query::face::p2::PointClassifyOptions::default()
+            },
+        );
+        if let Err(error) = result {
+            if error.is_unported() {
+                return Err(error);
+            }
+        }
+        Ok(output.point_class())
+    }
     fn body(&self, role: InsertionBody) -> &Brep {
         match role {
             InsertionBody::Target => self.target,
@@ -376,10 +588,13 @@ impl ClassGeometry<FilletObject> for InsertionGeometry<'_> {
         }
     }
     fn surface(&self, object: FilletObject) -> Option<&Surface> {
-        let FilletObject::Surface(binding) = object else {
-            return None;
-        };
-        self.bound_surface(binding).ok()
+        match object {
+            FilletObject::Surface(binding) => self.bound_surface(binding).ok(),
+            FilletObject::FaceSurface(role, face) => {
+                self.body(role).face(face).ok()?.surface.as_ref()
+            }
+            _ => None,
+        }
     }
     fn volume(&self, _: FilletObject) -> Option<&Volume> {
         None
@@ -588,6 +803,31 @@ mod tests {
                 face,
                 FilletObject::Topology(FilletBody::Target, EntityRef::Face(_))
             )));
+        let faces = view.edge_faces(target_edge).unwrap();
+        let actual_face = faces.first().copied().unwrap();
+        assert!(view
+            .edge_is_connected_to_face(target_edge, actual_face)
+            .unwrap());
+        assert!(view
+            .edge_edgeuse_of_face(target_edge, actual_face)
+            .unwrap()
+            .is_some());
+        let FilletObject::Topology(_, EntityRef::Face(face_id)) = actual_face else {
+            panic!("actual Face expected")
+        };
+        let foreign_face = FilletObject::IntermediateTopology(EntityRef::Face(face_id));
+        assert!(!view
+            .edge_is_connected_to_face(target_edge, foreign_face)
+            .unwrap());
+        assert!(view
+            .edge_edgeuse_of_face(target_edge, foreign_face)
+            .unwrap()
+            .is_none());
+        let current = view.face_surface(actual_face).unwrap().unwrap();
+        assert!(std::ptr::eq(
+            view.surface(current).unwrap(),
+            view.target.face(face_id).unwrap().surface.as_ref().unwrap()
+        ));
         let foreign = FilletObject::Topology(FilletBody::Pseudo, EntityRef::Vertex(vertex));
         assert!(view.edge_other_vertex(target_edge, Some(foreign)).is_err());
         let before = view.target.vertex(vertex).unwrap().point;
@@ -614,6 +854,19 @@ mod tests {
         let actual = replacement.face_mut(face).unwrap().surface.take();
         view.intermediate.face_mut(face).unwrap().surface = actual;
         assert!(view.bound_surface(binding).is_err());
+        let current = view
+            .face_surface(FilletObject::IntermediateTopology(EntityRef::Face(face)))
+            .unwrap()
+            .unwrap();
+        assert!(std::ptr::eq(
+            view.surface(current).unwrap(),
+            view.intermediate
+                .face(face)
+                .unwrap()
+                .surface
+                .as_ref()
+                .unwrap()
+        ));
     }
     #[test]
     fn retained_curves_and_lent_notifications_survive_partial_edit_failure() {

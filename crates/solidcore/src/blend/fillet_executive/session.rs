@@ -84,6 +84,8 @@ pub enum FilletObject {
     IntermediateUvCurve(EdgeuseId),
     /// Original Surface instance with checked body and geometry identity.
     Surface(insertion::geometry::SurfaceBinding),
+    /// The current actual Surface of a body-qualified Face getter.
+    FaceSurface(insertion::geometry::InsertionBody, FaceId),
     /// The actual intermediate B-rep allocated during face construction.
     IntermediateBrep,
     /// Actual topology in the separately allocated intermediate body.
@@ -108,7 +110,7 @@ impl ClassObject for FilletObject {
             | Self::InsertionCurve(_)
             | Self::UvCurve(..)
             | Self::IntermediateUvCurve(_) => ClassObjectKind::Curve,
-            Self::Surface(_) => ClassObjectKind::Surface,
+            Self::Surface(_) | Self::FaceSurface(..) => ClassObjectKind::Surface,
             Self::Topology(_, entity) | Self::IntermediateTopology(entity) => match entity {
                 EntityRef::Vertex(_) => ClassObjectKind::Vertex,
                 EntityRef::Edge(_) => ClassObjectKind::Edge,
@@ -134,7 +136,7 @@ impl SolutionObject for FilletObject {
             | Self::InsertionCurve(_)
             | Self::UvCurve(..)
             | Self::IntermediateUvCurve(_) => ObjectKind::Curve,
-            Self::Surface(_) => ObjectKind::Surface,
+            Self::Surface(_) | Self::FaceSurface(..) => ObjectKind::Surface,
             Self::Topology(_, EntityRef::Vertex(_))
             | Self::IntermediateTopology(EntityRef::Vertex(_)) => ObjectKind::Vertex,
             Self::Topology(_, EntityRef::Edge(_))
