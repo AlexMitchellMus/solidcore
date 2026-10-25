@@ -2019,6 +2019,10 @@ pub fn project_and_trim(
     let result = project_and_trim_body(
         k, b, env, notify, curve, direction, reference, trim_type, options, &projected, tol,
     );
+    // the UV trim curves the projection's face queries and the merges' edge splits
+    // made, owned by their edge uses as upstream's SetUVTrimCurve does
+    let bound = bind_uv_trim_owners(b, notify.key_of);
+    let result = result.and(bound);
     k.context.set_doing_boolean(previous);
     result
 }
@@ -2356,7 +2360,16 @@ fn find_and_set_infinite_region(
     );
     // Lazy face queries attach new curves to typed edge-use slots. Complete the
     // native SetUVTrimCurve owner binding under the construction caller's names.
-    // Keep existing owners so a foreign or incorrect owner remains detectable.
+    bind_uv_trim_owners(b, key_of)?;
+    status
+}
+
+/// Completes the native `SetUVTrimCurve` owner binding (`pUVTrimCurve->SetOwner(eu)`)
+/// under the caller's names `key_of` for the UV trim curves the B-rep's own routines
+/// left without owner (a B-rep under [`crate::topology::NamingScheme::Caller`]: lazy
+/// face queries, edge splits). Existing owners are kept so a foreign or incorrect
+/// owner remains detectable.
+fn bind_uv_trim_owners(b: &mut Brep, key_of: &dyn Fn(EntityRef) -> ObjectRef) -> Result<()> {
     for edge in p1::edges(b, None)? {
         for id in b.edge(edge)?.edgeuses.clone() {
             if let Some(curve) = b.edgeuse_mut(id)?.uv_trim_curve.as_mut() {
@@ -2366,7 +2379,7 @@ fn find_and_set_infinite_region(
             }
         }
     }
-    status
+    Ok(())
 }
 
 /// `GetMate()->GetRadial()`: the next edge use pair around the edge in the same
