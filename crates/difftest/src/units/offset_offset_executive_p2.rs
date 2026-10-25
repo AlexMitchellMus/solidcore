@@ -89,6 +89,7 @@ use solidcore::query::api_queries::BrepRef;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::{Surface, SurfaceKind};
 use solidcore::sweep::topology_sweep::store::SweepIdentities;
+use solidcore::topology::brep::p1 as brep_p1;
 use solidcore::topology::topology::Topology;
 use solidcore::topology::{
     Brep, BrepId, Edge, EdgeId, Edgeuse, EdgeuseOwner, FaceId, Region, RegionId, Shell, ShellId,
@@ -749,10 +750,17 @@ fn observe_selections(
     selections: &[Option<FaceKey>],
     source: Option<&Brep>,
     foreign: Option<&Brep>,
+    before: Option<&[[i64; 2]]>,
 ) -> Vec<[i64; 2]> {
     selections
         .iter()
-        .map(|selection| {
+        .enumerate()
+        .map(|(i, selection)| {
+            if let Some(prev) = before.and_then(|prev| prev.get(i)) {
+                if source.is_none() && prev[0] == 0 {
+                    return [3, prev[1]];
+                }
+            }
             let Some((owner, face)) = selection else {
                 return [2, -1];
             };
@@ -761,7 +769,8 @@ fn observe_selections(
             } else {
                 (1, foreign)
             };
-            let index = brep.and_then(|brep| brep.faces().iter().position(|(id, _)| id == *face));
+            let index =
+                brep.and_then(|brep| brep.face_list().iter().position(|id| id == face));
             index.map_or([4, -1], |index| [origin, index as i64])
         })
         .collect()
@@ -808,14 +817,41 @@ fn domain_values(domain: Extent2d) -> [f64; 4] {
     [lo.x, lo.y, hi.x, hi.y]
 }
 fn rust_projection(kernel: &Kernel, fixture: &Fixture, brep: &Brep) -> HResult<Projection> {
+    // the shim's GetRegions / GetShells / GetFaces / GetLoops / GetEdges / GetEdgeuses /
+    // GetVertices: the live lists (a deleted record stays in its arena, unreachable,
+    // `topology.brep_p3`), loops through the faces and edge uses through the edges, as
+    // upstream walks them
+    let regions = brep_p1::regions(brep, None).map_err(setup)?;
+    let mut shells = std::collections::BTreeSet::new();
+    for &r in &regions {
+        shells.extend(brep.region(r).map_err(setup)?.shells.iter().copied());
+    }
+    let faces = brep_p1::faces(brep, None).map_err(setup)?;
+    let edges = brep_p1::edges(brep, None).map_err(setup)?;
+    let vertices = brep_p1::vertices(brep, None).map_err(setup)?;
+    let mut loops = 0;
+    for &f in &faces {
+        let face = brep.face(f).map_err(setup)?;
+        loops += if face.faceuse.is_some() {
+            solidcore::topology::face::p2::loops(brep, f, false, None)
+                .map_err(setup)?
+                .len()
+        } else {
+            face.loops.len()
+        };
+    }
+    let mut uses = 0;
+    for &e in &edges {
+        uses += brep.edge(e).map_err(setup)?.edgeuses.len();
+    }
     let counts = [
-        brep.regions().len() as i64,
-        brep.shells().len() as i64,
-        brep.faces().len() as i64,
-        brep.loops().len() as i64,
-        brep.edges().len() as i64,
-        brep.edgeuses().len() as i64,
-        brep.vertices().len() as i64,
+        regions.len() as i64,
+        shells.len() as i64,
+        faces.len() as i64,
+        loops as i64,
+        edges.len() as i64,
+        uses as i64,
+        vertices.len() as i64,
     ];
     let mut result = Projection {
         counts: projected_counts(fixture, counts),
@@ -823,7 +859,8 @@ fn rust_projection(kernel: &Kernel, fixture: &Fixture, brep: &Brep) -> HResult<P
         statuses: Vec::new(),
         values: vec![brep.tolerance()],
     };
-    for (_, face) in brep.faces().iter() {
+    for &face_id in &faces {
+        let face = brep.face(face_id).map_err(setup)?;
         let surface = face
             .surface
             .as_ref()
@@ -856,7 +893,8 @@ fn rust_projection(kernel: &Kernel, fixture: &Fixture, brep: &Brep) -> HResult<P
         }
     }
     if matches!(fixture, Fixture::Wire { .. }) {
-        for (_, edge) in brep.edges().iter() {
+        for &edge_id in &edges {
+            let edge = brep.edge(edge_id).map_err(setup)?;
             let curve = edge
                 .curve
                 .as_ref()
@@ -881,9 +919,11 @@ fn rust_projection(kernel: &Kernel, fixture: &Fixture, brep: &Brep) -> HResult<P
         }
     }
     if matches!(fixture, Fixture::Box { .. } | Fixture::Wire { .. }) {
-        result.values.extend(bounds(
-            brep.vertices().iter().map(|(_, vertex)| xyz(vertex.point)),
-        ));
+        let mut vertex_points = Vec::with_capacity(vertices.len());
+        for &vertex_id in &vertices {
+            vertex_points.push(xyz(brep.vertex(vertex_id).map_err(setup)?.point));
+        }
+        result.values.extend(bounds(vertex_points.into_iter()));
     }
     Ok(result)
 }
@@ -1129,31 +1169,54 @@ fn curve_kind(curve: Option<&Curve>) -> i64 {
     }
 }
 fn rust_result_projection(brep: &Brep) -> HResult<ResultProjection> {
+    let regions = brep_p1::regions(brep, None).map_err(setup)?;
+    let mut shells = std::collections::BTreeSet::new();
+    for &r in &regions {
+        shells.extend(brep.region(r).map_err(setup)?.shells.iter().copied());
+    }
+    let faces = brep_p1::faces(brep, None).map_err(setup)?;
+    let edges = brep_p1::edges(brep, None).map_err(setup)?;
+    let vertices = brep_p1::vertices(brep, None).map_err(setup)?;
+    let mut loops = 0;
+    for &f in &faces {
+        let face = brep.face(f).map_err(setup)?;
+        loops += if face.faceuse.is_some() {
+            solidcore::topology::face::p2::loops(brep, f, false, None)
+                .map_err(setup)?
+                .len()
+        } else {
+            face.loops.len()
+        };
+    }
+    let mut edgeuses = 0;
+    for &e in &edges {
+        edgeuses += brep.edge(e).map_err(setup)?.edgeuses.len();
+    }
     let counts = vec![
-        brep.regions().len() as i64,
-        brep.shells().len() as i64,
-        brep.faces().len() as i64,
-        brep.loops().len() as i64,
-        brep.edges().len() as i64,
-        brep.edgeuses().len() as i64,
-        brep.vertices().len() as i64,
+        regions.len() as i64,
+        shells.len() as i64,
+        faces.len() as i64,
+        loops as i64,
+        edges.len() as i64,
+        edgeuses as i64,
+        vertices.len() as i64,
     ];
-    let mut face_kinds = brep
-        .faces()
-        .iter()
-        .map(|(_, face)| surface_kind(face.surface.as_ref()))
-        .collect::<HResult<Vec<_>>>()?;
-    let mut edge_kinds: Vec<i64> = brep
-        .edges()
-        .iter()
-        .map(|(_, edge)| curve_kind(edge.curve.as_ref()))
-        .collect();
+    let mut face_kinds = Vec::with_capacity(faces.len());
+    for &f in &faces {
+        face_kinds.push(surface_kind(brep.face(f).map_err(setup)?.surface.as_ref())?);
+    }
+    let mut edge_kinds = Vec::with_capacity(edges.len());
+    for &e in &edges {
+        edge_kinds.push(curve_kind(brep.edge(e).map_err(setup)?.curve.as_ref()));
+    }
     face_kinds.sort_unstable();
     edge_kinds.sort_unstable();
     let mut values = vec![brep.tolerance()];
-    values.extend(bounds(
-        brep.vertices().iter().map(|(_, vertex)| xyz(vertex.point)),
-    ));
+    let mut vertex_points = Vec::with_capacity(vertices.len());
+    for &v in &vertices {
+        vertex_points.push(xyz(brep.vertex(v).map_err(setup)?.point));
+    }
+    values.extend(bounds(vertex_points.into_iter()));
     Ok(ResultProjection {
         counts,
         face_kinds,
@@ -1550,7 +1613,7 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
         merge_identities: Some(&MergeBodies),
     };
     let keys = selections(input, source.as_ref(), foreign.as_ref())?;
-    let selected_before = observe_selections(&keys, source.as_ref(), foreign.as_ref());
+    let selected_before = observe_selections(&keys, source.as_ref(), foreign.as_ref(), None);
     let source_state_before = source.as_ref().map(purity_state);
     let foreign_state_before = foreign.as_ref().map(purity_state);
     let source_before = input
@@ -1652,12 +1715,13 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
         (Some(_), false) => 1,
     };
     let state = exec.as_ref().map(executive_state);
-    let selected_after = observe_selections(&keys, source.as_ref(), foreign.as_ref());
-    // The native source snapshot after the call is the live source, which is the
-    // result when the result is the source.
+    // The native source snapshot and selector observation after the call inspect the
+    // live source, which is the result when the result is the source.
     let live_source = source
         .as_ref()
         .or_else(|| result.as_ref().filter(|_| result_is_source));
+    let selected_after =
+        observe_selections(&keys, live_source, foreign.as_ref(), Some(&selected_before));
     let source_after = input
         .source
         .as_ref()
@@ -2135,7 +2199,7 @@ mod tests {
                 })
                 .collect();
             assert_eq!(
-                observe_selections(&keys, Some(&source), Some(&foreign)),
+                observe_selections(&keys, Some(&source), Some(&foreign), None),
                 expected
             );
             input.config.offset_distance = 0.0;
@@ -2518,13 +2582,13 @@ mod tests {
             ),
             (
                 "member_sheet_extended_dispatch_ignores_skip",
-                "topology.edgeuse_p3",
-                "SmEdgeuse::NormalizedEvaluate",
+                "topology.face_p2",
+                "SmFace handle of a surface's face",
             ),
             (
                 "extended_sheet_direct_independent_flags",
-                "topology.edgeuse_p3",
-                "SmEdgeuse::NormalizedEvaluate",
+                "topology.face_p2",
+                "SmFace handle of a surface's face",
             ),
         ] {
             let case = fixtures.iter().find(|case| case.name == name).unwrap();
