@@ -129,16 +129,6 @@ pub struct DropSolveContext<'a, O: SolutionObject> {
     pub handle: Option<O>,
 }
 
-impl<O: SolutionObject> DropSolveContext<'_, O> {
-    /// The same context lent for a shorter call.
-    pub(crate) fn reborrow(&mut self) -> DropSolveContext<'_, O> {
-        DropSolveContext {
-            solver: &mut *self.solver,
-            handle: self.handle,
-        }
-    }
-}
-
 /// What [`Surface::drop_curve_base`] made (`DropCurve`'s outputs).
 #[derive(Debug, Clone)]
 pub struct DropCurveOut {
