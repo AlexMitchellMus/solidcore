@@ -1,5 +1,6 @@
 //! Actual target/intermediate topology and pseudo-curve bindings for insertion.
 
+mod edits;
 mod query;
 
 use super::super::{FilletBody, FilletObject};
@@ -435,6 +436,18 @@ impl<'a> InsertionGeometry<'a> {
     }
     fn topology(object: FilletObject) -> Option<(InsertionBody, EntityRef)> {
         match object {
+            FilletObject::Body(FilletBody::Target) => Some((
+                InsertionBody::Target,
+                EntityRef::Brep(BrepId::from_index(0)),
+            )),
+            FilletObject::Body(FilletBody::Pseudo) => Some((
+                InsertionBody::Pseudo,
+                EntityRef::Brep(BrepId::from_index(0)),
+            )),
+            FilletObject::IntermediateBrep => Some((
+                InsertionBody::Intermediate,
+                EntityRef::Brep(BrepId::from_index(0)),
+            )),
             FilletObject::Topology(FilletBody::Target, e) => Some((InsertionBody::Target, e)),
             FilletObject::Topology(FilletBody::Pseudo, e) => Some((InsertionBody::Pseudo, e)),
             FilletObject::IntermediateTopology(e) => Some((InsertionBody::Intermediate, e)),
@@ -442,6 +455,13 @@ impl<'a> InsertionGeometry<'a> {
         }
     }
     fn handle(role: InsertionBody, entity: EntityRef) -> FilletObject {
+        if matches!(entity, EntityRef::Brep(_)) {
+            return match role {
+                InsertionBody::Target => FilletObject::Body(FilletBody::Target),
+                InsertionBody::Pseudo => FilletObject::Body(FilletBody::Pseudo),
+                InsertionBody::Intermediate => FilletObject::IntermediateBrep,
+            };
+        }
         match role {
             InsertionBody::Target => FilletObject::Topology(FilletBody::Target, entity),
             InsertionBody::Pseudo => FilletObject::Topology(FilletBody::Pseudo, entity),
@@ -944,7 +964,7 @@ mod tests {
             .set_user_notify_callback(Some(Box::new(Capture(events.clone()))));
         let binding = crate::topology::brep::p3::with_lent_context(
             &mut k,
-            |_, context| -> Result<FilletObject> {
+            |k, context| -> Result<FilletObject> {
                 let mut view = InsertionGeometry::new(&mut target, &mut pseudo, &mut intermediate)?
                     .with_notifications(
                         &mut curves,
@@ -954,6 +974,17 @@ mod tests {
                             context,
                         },
                     )?;
+                let foreign = FilletObject::Topology(FilletBody::Pseudo, EntityRef::Vertex(vertex));
+                let own = FilletObject::Topology(FilletBody::Target, EntityRef::Vertex(vertex));
+                let rejected = crate::topology::proto_topology::p3::BrepGlue::glue_vertices(
+                    &mut view,
+                    k,
+                    FilletObject::Body(FilletBody::Target),
+                    own,
+                    foreign,
+                    None,
+                );
+                assert!(rejected.is_err());
                 let binding = view.insert_curve_copy(curve)?;
                 assert_eq!(view.curve(binding).unwrap().owner(), owner);
                 assert!(ClassGeometryMut::curve_mut(&mut view, binding).is_some());
