@@ -1718,7 +1718,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             if r.is_ok() {
                 results.push(f64::from(info.code));
                 results.push(f64::from(info.status));
-                results.push(info.edge_type as i64 as f64);
+                results.push(f64::from(info.edge_type));
                 results.push(match info.edge {
                     Some(GeomErrorObject::FilletedEdge(e)) => f64::from(e.index()),
                     _ => -1.0,
