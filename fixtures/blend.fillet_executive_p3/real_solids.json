@@ -355,6 +355,27 @@
           "checkpoint": "mapped_fillet_edges"
         }
       }
+    },
+    {
+      "name": "real-box-insert-intersection-true-context",
+      "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:2920,3048,3074 (actual true-context constructor, shrink, map, all geometry then corner insertion; prefix only)",
+      "inputs": {
+        "real_solid": {
+          "dimensions": [
+            10,
+            20,
+            30
+          ],
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            0
+          ],
+          "checkpoint": "inserted_intersection_topology"
+        }
+      }
     }
   ]
 }
