@@ -903,6 +903,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes. ASan on macOS arm64 (harness built with `-fsanitize=address,undefined`) reports `heap-use-after-free` READ at `SmBSplineCurveNLib.cpp:3138`, freed by `N_FreeReal1dArray` <- `N_FreeCrv` <- `N_CrvInsertKnot`, for curve_p6 gen0161 / gen0953 and n_lib gen0695 / gen1279. Latent on x86-64 Linux (benign under glibc malloc). GitHub issue #449.
 - **Severity:** crash/UB (use after free; wrong result on non-glibc allocators).
 - **Rust port:** Reads the live knot vector after each insertion (`crates/solidcore/src/nurbs/b_spline_curve_n_lib.rs`, `curr.knots()` in the insertion loop), which equals the glibc result.
+- **Difftest follow-up (#449, PR #793):** On macOS arm64 only, the ten generated deform cases listed above use the existing `skipped(platform)` outcome, never a pass. The reason cites the upstream use-after-free at `SmBSplineCurveNLib.cpp:3127-3149` and that Rust matches the Linux reference. Linux still runs all ten comparisons; neither the Rust kernel nor the C++ reference is changed.
 
 ### Surfaces and volumes
 
@@ -1452,7 +1453,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (valgrind "Invalid read" in `SmProtoEdge::RemoveProtoVertex <- ~SmProtoVertex <- ~SmProtoTopologyManager <- IntersectInsertRelate`, on a block freed in the same destructor and allocated by `CreateProtoEdge`; all frames are upstream code).
 - **Security ([PSIRT]):** reachable from file data. Two B-reps read from files whose boolean (or fillet merge) produces such a proto edge reach it through the public boolean API, with no bad argument from the caller. The impact looks low: `~SmProtoEdge` nulls the fields that are read just before the block is freed, and nothing is allocated between the free and the read in single-threaded use, so the conditional write needs the block to have been reused. It is still a use-after-free on ordinary inputs, so it should be reported.
 - **Severity:** crash/UB (use-after-free), after every output is final.
-- **Rust port:** The arena teardown (`ProtoTopologyManager::destroy`) skips edges already deleted, so it is defined. `IntersectInsertRelate` detects the condition before the teardown (replaying the unlisting) and returns `SolidError::InvalidInput` after destroying the manager. The difftest shim runs a verbatim copy of `IntersectInsertRelate` that unlinks the stale entries before the delete and answers `-2` in that case; the shim's own manager teardown unlinks them too.
+- **Rust port:** The arena teardown (`ProtoTopologyManager::destroy`) skips edges already deleted, so it is defined. `IntersectInsertRelate` detects the condition before the teardown (replaying the unlisting); since 2026-10-24 it no longer refuses the input (every Boolean with a closed intersection loop reaches it) but goes on with the defined result and records `"UB-175"` in `Kernel::upstream_ub_passed`. The difftest shim runs a verbatim copy of `IntersectInsertRelate` that unlinks the stale entries before the delete and answers `-2` in that case (the Rust runner answers `-2` when the kernel records the condition); `boolean.api_brep` rejects such inputs on the C++ side. Cross-checked against the SMLib reference volumes and face counts in `crates/solidcore/tests/boolean_api.rs` (box minus cylinder, sphere intersect box and torus minus box reach the condition; see `plan/findings.md`).
 
 #### UB-242. A failed imprint is ignored, and the boolean goes on with half-edited B-reps
 - **Location:** `source/SMLib/src/SmTopologyIntersector.cpp:1233` `IntersectInsertRelate` (def. `:1092`): the status of `ImprintIntersections` only reaches `SE_MSG` and is overwritten by `SetRelationships` (`:1264`); `source/SMLib/src/SmMerge.cpp:394` `PiecewiseMerge` (def. `:341`) ignores the status of its first `IntersectInsertRelate`.
@@ -2366,6 +2367,19 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Rust port:** Returns `NotConverged` after `curve::ellipse::p2::MAX_PERIOD_SHIFTS` (2^20) shifts or when a shift no longer changes the midpoint; the callers ignore that status as upstream ignores the set-up's, leaving the converter impossible.
 - **Harness:** the `surface.cone_p3` FFI accepts cone angles only within upstream's documented `[-360, 360]` (`SmCone.h:205-206`). A first guard at about `3.8e8` degrees (the Rust bound) still let fuzzed intersections run past 20 s natively: every surface evaluation of such a cone goes through `SmEllipse::STEPInversion` and `SmExtent1d::PeriodicWrap`, one turn per iteration (HANG-1), confirmed with gdb backtraces.
 - **Fuzz sweep trigger (2026-10-20):** `SmSurfOfExtrusion::AdjustSTEPUVDomain` of an ellipse extrusion to a domain whose u end is `9223372036854775807` degrees (`surface.surf_of_extrusion_p1` `fuzz00222`, `fuzz01418`); a revolution (sphere part / torus generator circle) whose v domain bound is `±2^63` or `-1e300` degrees, through `DropPoint` / `ConvertUVFromSTEPToNURBS` (`surface.surf_of_revolution_p3` `fuzz00476`, `fuzz01129`, `fuzz01853`). Confirmed: yes (C++ timeouts; the loop was not traced, so HANG-1 `PeriodicWrap` may be the one spinning). Not guarded yet (open).
+- **Fuzz sweep trigger (2026-10-24, PR #750):** `SmSurfOfExtrusion::AdjustSTEPUVDomain`
+  of an ellipse extrusion whose minor radius is below `1/DBL_MAX`
+  (`5.562684646268003e-309`, so `rx / ry` overflows) with a centre that is not exactly
+  `0` hangs C++ (`surface.surf_of_extrusion_p1` `fuzz01428`: centre `2^32`,
+  `ry = 5e-324`). Direct probes (8 s timeouts) confirm: every centre
+  `1e-16 .. 1e300` hangs while the origin returns via the degenerate branch;
+  `ry >= 5.6e-309` passes at any centre up to `1e300`; denormal major radii and
+  denormal circles never hang. Inside the subnormal centre edge the hang is
+  chaotic (`c = 6e-308/6.5e-308` pass, `6.1/6.3/6.7e-308` hang; `c = 1e-300`
+  hangs, `1e-309` passes, both with `ry = 5e-324`), so the loop was not isolated
+  (not traced; the point-inversion `SM_CP_POINT_INVERSION` inside the polar
+  converter's `ConvertToNURBSParameter` is the suspected non-converging solver).
+  Guarded: the FFI rejects the `rx / ry == inf && centre != origin` rectangle.
 #### HANG-35. Closed shells a few zone tolerances across take minutes to place in their region
 - **Location:** `source/SMLib/src/SmBrep.cpp:8666` `SmBrep::FindAndSetInfiniteRegion` -> `:8004` `FindInfiniteRegion` (ray fire at `:8417`) -> `source/SMLib/src/SmShell.cpp:592` `SmShell::RayFire` -> `SmSurface::GlobalLineIntersect`. The solver tree (`SmGlobalSolver::SolveBranch`, more than twenty levels) checks each new solution with `SmLSIGlobalSolver::IdenticalSolutions` (`SmSurface.cpp:18843`) or `LocalCurveIntersect`, which re-derive the surface's singularities (`SmSurface::GetSingularities`, `:12384`) every time. Reached from `TestClosureSplitRegion` (`SmBrep.cpp:27654`, `:27845`), both through `CreateFaceFromSurface` -> `MakeFaceWithCurves` for an analytic face and through `SmStitch::DoStitching` -> `GlueEdgesGeneral` for a stitched sweep.
 - **What happens:** Placing a small closed shell in its region takes minutes.
@@ -2512,6 +2526,15 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** no. The fillet units are not ported yet.
 - **Severity:** nondeterminism (order-dependent results).
 - **Rust port:** `Kernel::fillet_point_step` latch (per kernel). The `blend.fillet_solver_p4` difftest probes the C++ static (`sc_blend_fillet_solver_p4_static_step`) before every case that can reach the finite-difference block and seeds the latch with it; see `plan/findings.md` (blend.fillet_solver_p4).
+
+#### ND-258. `BooleanPostProcess` deletes intersection edges in pointer-hash order, so loop starts depend on the heap
+- **Location:** `source/SMLib/src/SmMerge.cpp:2718` (`SmMerge::ManifoldBoolean` STEP 1: `m_sIntersectionEdges` filled from `m_vTI.GetMappedBrepObjects(SmEdge_TYPE, ..)`, `SmTopologyIntersector.cpp:945`, which iterates the pointer-keyed `m_pOToB` map, ND-2); consumed by `SmMerge::BooleanPostProcess` (`SmMerge.cpp:848`, `:857` loop over `sEdges = m_sIntersectionEdges`), whose `SmBrep::DeleteEdge` (`SmBrep.cpp:6451`/`:6459`) calls `SmLoopuse::CollectEdgeuses` (`SmLoopuse.cpp:77`), which resets the loop use's start edge use (`m_pEUorVU`).
+- **What happens:** The intersection edges are deleted in an order that follows heap addresses, and each deletion re-picks the start of the loops it merges, so the result's loop starts (and anything numbered by walking the loops from their starts) vary with the allocator. The topology itself (faces, loops, edge cycles, geometry) is the same up to where each loop's cycle begins.
+- **Trigger:** `boolean.merge_p4` op1 on two overlapping unit sheets (`primary [3,0,0,0,1,1,0]`, `other [3,0.5,0.5,0,1,1,0]`: `op1-overlap-sheets`, `op1-option0`..`op1-option4`). Under gdb on `difftest-dbg` the same input gave four different `m_sIntersectionEdges` orders in one process; the native walk then numbers the edge uses with their loop uses swapped and the edges rotated (all values a permutation of each other). Which cases fail flips with `GLIBC_TUNABLES=glibc.malloc.tcache_count=0` / `MALLOC_ARENA_MAX=1 ..top_pad=1048576` (3 failures) versus default / `mmap_threshold=4096` (2), with the case filter (cases run before), and with `--dump`.
+- **How found:** a cycle-21 attribution counted one extra merge_p4 failure against unrelated branches; reruns showed the C++ output, not the Rust, changing (2026-10-23).
+- **Confirmed:** yes (gdb watchpoints on the result loop uses' `m_pEUorVU`: the last writes are `CollectEdgeuses` from `BooleanPostProcess`'s `DeleteEdge`; the edge order printed at the end of STEP 1 differs between runs of the same input).
+- **Severity:** nondeterminism (loop start order exposed through result walks).
+- **Rust port:** the merge's intersection edges are an ordered set over arena handles, so its order is deterministic. The `boolean.merge_p4` runner compares both sides with each edge loop use's start rotated to a canonical edge use (least own vertex point, then its CCW neighbour's, exact `total_cmp`; an exact tie is a harness error), on both sides; all values are still compared at 1e-9.
 
 ## Wrong result
 
@@ -4115,6 +4138,21 @@ Numbering paragraph at the top says.
   The Rust port reproduces the defective control net. See the #471 findings entry
   for the opt-in correction and its validation limits.
 
+### Surface
+
+#### UB (next free). `SmSurface::...` (surface_p8) segfaults on extreme ~1e308 B-spline weights [PSIRT]
+- **Location:** `source/SMLib` surface evaluation path reached via `surface.surface_p8` difftest (extreme coordinate ~1e308 with tiny control points).
+- **What happens:** The C++ reference is killed by signal 11 (segfault) on a crafted B-spline surface whose net contains ~1e308 weights and ~1e-6 control points. Rust side does not crash.
+- **How found:** generated difftest case (fuzz01012, saved under `fuzz-out/reverify-1024/surface.surface_p8/`).
+- **Confirmed:** yes (crash in the C++ reference run).
+
+### Surface
+
+#### HANG-50. `SmSurfacePointSolve` / `SmSurfaceCache` subdivision does not terminate on extreme-weight B-spline surfaces [PSIRT]
+- **Location:** `source/SMLib` surface point-solve / surface-cache subdivision path (reached via `surface.surface_point_solve_p3`).
+- **What happens:** The C++ reference does not return within the 20 s per-case budget on a crafted B-spline surface whose net contains ~1e308 weights (the non-rational sentinel `-DBL_MAX`) and ~1e-6 control points, with `wrap = true` and a local solver. Related to issue #506 (SurfaceCache subdivision perf, 21 s Rust vs 11 s C++).
+- **How found:** generated difftest case (fuzz00316, saved under `fuzz-out/reverify-1024/surface.surface_point_solve_p3/`).
+- **Confirmed:** yes (C++ timeout at the 20 s budget).
 #### UB-new. `SmBendVolume::WriteToDB` writes values with no separator before the label [PSIRT]
 - **Location:** `SmBendVolume.cpp:3255-3256` (`m_dBendNeutralDist << "BendVolume ..."`); reader at `SmBendVolume.cpp:3328` (`rFileIn >> pBendNeutralDist[0]`).
 - **What happens:** `WriteToDB` emits `0.758...BendVolume ...` with no separator, so libc++'s greedy `num_get` consumes the leading `B` of `BendVolume` as a hex-float/exponent tail and fails the extraction, while libstdc++ stops at `B`. New upstream defect (missing separator; also a libstdc++-only round trip).
@@ -4128,3 +4166,15 @@ Numbering paragraph at the top says.
 
 - **Confirmed (2026-10-24, issue #450):** UB-5 — macOS libc++ stack-protector abort in `topology.database_io` gen0185 (and gen0576, gen0883, gen1324, gen1363, gen1519, gen1590, gen1652, gen1783).
 - **Confirmed (2026-10-24, issue #450):** UB-6 — hang/segv reached from a subnormal under libc++ in `topology.brep_data` gen0018 (hang) and gen0110 (segv).
+
+#### UB-175 (addendum). Tiny Booleans reach the teardown through the public API
+- **Trigger:** two boxes smaller than the proto vertex capture distance
+  (`max(0.01, 2000 * tol)`, `SmTopologyIntersector.cpp:1159`), e.g. `boolean.api_brep`
+  `gen0059` (`with_options`, operation 3, boxes about 0.005) and `gen0066` (`merge_breps`,
+  operation 2, boxes about 0.008 and 0.004): the intersection points collapse into shared
+  proto vertices, so proto edges start and end on one of them, and the manager's
+  destructor reads the freed edges.
+- **How found:** once `SmEdgeDefinition::Imprint` ran `SmBrep::MakeEdgeInFace` in the
+  port, these cases reached the port's UB-175 check; the C++ goes on (results of 8 and 7
+  records).
+- **Confirmed:** by the port's teardown replay only; the C++ build was not instrumented.

@@ -338,22 +338,6 @@ fn bspline_part(curve: &Curve) -> Option<BSplineCurve> {
     }
 }
 
-/// The neighbour surface `SmBSplineSurface::CreateCornerBlend` gets (see
-/// `topology::brep::p1`).
-fn bspline_surface(surface: &Surface) -> Result<&BSplineSurface> {
-    match surface.kind() {
-        SurfaceKind::BSpline(s) => Ok(s),
-        SurfaceKind::Plane(p) => Ok(p.base()),
-        SurfaceKind::SurfOfRevolution(s) => Ok(s.base()),
-        SurfaceKind::SurfOfExtrusion(s) => Ok(s.base()),
-        // UNPORTED(nurbs.b_spline_surface_n_lib_p2): SmBSplineSurface::CreateCornerBlend with a non-B-spline neighbour surface
-        _ => Err(unported(
-            "SmBSplineSurface::CreateCornerBlend (non-B-spline neighbour SmSurface)",
-            "nurbs.b_spline_surface_n_lib_p2",
-        )),
-    }
-}
-
 /// The primary edge use of a pseudo-B-rep edge (`GetPrimaryEdgeuse`), required.
 pub(super) fn primary_eu(pseudo: &FilletBrep, e: EdgeId, op: &'static str) -> Result<EdgeuseId> {
     eu1::primary_edgeuse(pseudo.brep(), e)?.ok_or_else(|| SolidError::null_pointer(op))
@@ -668,6 +652,18 @@ impl FilletCorner {
     ///
     /// Those of [`FilletCorner::create_corner_patch`].
     pub fn calc_corner_geom(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
+        self.calc_corner_geom_with(env, |corner, env| corner.create_corner_patch(env))
+    }
+
+    /// Apply the native corner-patch predicate before lending the actual patch context.
+    ///
+    /// # Errors
+    /// Those of the actual concrete patch operation when a patch is needed.
+    pub fn calc_corner_geom_with<C>(
+        &mut self,
+        context: &mut C,
+        create_patch: impl FnOnce(&mut Self, &mut C) -> Result<()>,
+    ) -> Result<()> {
         let total_edges = self.edges.len();
         let fillet_edges = self.solver_eus.as_ref().map_or(0, Vec::len);
 
@@ -677,7 +673,7 @@ impl FilletCorner {
         }
 
         // Otherwise, pass the call along to build a Corner->FilletSurface and store it in m_vSurfaces
-        self.create_corner_patch(env)
+        create_patch(self, context)
     }
 
     // ---- CreateCornerPatch -----------------------------------------------------------
@@ -847,7 +843,7 @@ impl FilletCorner {
                             .fillet_edgeuse(prim_eu)?
                             .fillet_geom()
                             .ok_or_else(|| SolidError::null_pointer(OP_PATCH))?;
-                        base_surface.clone_from(&env.pseudo.geom(g)?.fillet_surface);
+                        base_surface = env.pseudo.geom(g)?.fillet_surface()?.cloned();
                     }
                 }
 
@@ -900,17 +896,10 @@ impl FilletCorner {
                         .ok_or_else(|| invalid(OP_PATCH, "boundary curve is not a B-spline"))?,
                 );
             }
-            let mut surfs: Vec<Option<BlendNeighbour<'_>>> =
-                Vec::with_capacity(ordered_surfs.len());
-            for s in &ordered_surfs {
-                surfs.push(match s {
-                    Some(surface) => Some(BlendNeighbour {
-                        surface,
-                        b_spline: bspline_surface(surface)?,
-                    }),
-                    None => None,
-                });
-            }
+            let surfs: Vec<Option<BlendNeighbour<'_>>> = ordered_surfs
+                .iter()
+                .map(|s| s.as_ref().map(|surface| BlendNeighbour { surface }))
+                .collect();
             let blends = BSplineSurface::create_corner_blend(
                 env.k,
                 &curves_3d,
@@ -1183,11 +1172,27 @@ impl FilletCorner {
     /// Those of [`FilletCorner::adjust_topology_nx2`] and
     /// [`FilletCorner::adjust_topology_convex_nxn`].
     pub fn adjust_topology(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
+        self.adjust_topology_with(
+            env,
+            Self::adjust_topology_nx2,
+            Self::adjust_topology_convex_nxn,
+        )
+    }
+
+    /// Dispatch topology adjustment using the caller's live derived-corner context.
+    /// The inherited native base implementation needs no context and returns success.
+    ///
+    /// # Errors
+    /// The selected concrete adjustment callback's errors.
+    pub fn adjust_topology_with<C>(
+        &mut self,
+        context: &mut C,
+        nx2: impl FnOnce(&mut Self, &mut C) -> Result<()>,
+        nxn: impl FnOnce(&mut Self, &mut C) -> Result<()>,
+    ) -> Result<()> {
         match self.kind {
-            FilletCornerKind::NByTwo => self.adjust_topology_nx2(env),
-            FilletCornerKind::ConvexNByN | FilletCornerKind::ConcaveNByN => {
-                self.adjust_topology_convex_nxn(env)
-            }
+            FilletCornerKind::NByTwo => nx2(self, context),
+            FilletCornerKind::ConvexNByN | FilletCornerKind::ConcaveNByN => nxn(self, context),
             _ => Ok(()),
         }
     }
@@ -1448,9 +1453,27 @@ impl FilletCorner {
     /// Those of [`FilletCorner::adjust_tangent_corner_nx2`] and
     /// [`FilletCorner::adjust_tangent_corner_nx1_closed`].
     pub fn adjust_tangent_corner(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
+        self.adjust_tangent_corner_with(
+            env,
+            |corner, env| corner.adjust_tangent_corner_nx2(env),
+            |corner, env| corner.adjust_tangent_corner_nx1_closed(env),
+        )
+    }
+
+    /// Dispatch tangent adjustment against the caller's actual derived context.
+    /// The inherited native base operation requires no context.
+    ///
+    /// # Errors
+    /// The selected concrete callback's failures.
+    pub fn adjust_tangent_corner_with<C>(
+        &mut self,
+        context: &mut C,
+        nx2: impl FnOnce(&mut Self, &mut C) -> Result<()>,
+        nx1_closed: impl FnOnce(&mut Self, &mut C) -> Result<()>,
+    ) -> Result<()> {
         match self.kind {
-            FilletCornerKind::NByTwo => self.adjust_tangent_corner_nx2(env),
-            FilletCornerKind::NByOneClosed => self.adjust_tangent_corner_nx1_closed(env),
+            FilletCornerKind::NByTwo => nx2(self, context),
+            FilletCornerKind::NByOneClosed => nx1_closed(self, context),
             _ => Ok(()),
         }
     }
