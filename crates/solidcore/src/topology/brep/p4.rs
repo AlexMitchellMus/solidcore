@@ -1941,6 +1941,93 @@ mod tests {
     /// `SM_NO_DESTRUCTION` once per installed callback, the record leaves its arena and
     /// the object leaves its attributes while the other users stay.
     #[test]
+    fn retained_edge_and_vertex_deletion_notify_the_actual_body() {
+        use crate::geom::attribute::{ids, Attribute, Behavior};
+        use crate::math::Point3;
+        use crate::topology::edge::notification_test_support as callbacks;
+
+        for delete_connected_vertex in [true, false] {
+            let mut k = Kernel::default();
+            let mut b = crate::primitive::api_primitives::create_box(
+                &mut k,
+                Point3::ZERO,
+                10.0,
+                20.0,
+                30.0,
+            )
+            .unwrap();
+            let serial = b.notify_serial().unwrap();
+            b.set_editing_enabled(true);
+            let legacy_key = b.key();
+            let key_of = |entity| super::super::p3::topology_ref(serial, entity);
+            let body = key_of(EntityRef::Brep(crate::topology::BrepId::from_index(0)));
+            assert_ne!(legacy_key, body.key);
+            let edge = b.edge_list()[0];
+            let vertex = b.vertex_list()[0];
+            let mut records = BTreeMap::new();
+            super::super::p3::seed_records(&mut records, &b, &key_of);
+            let mut attributes = AttributeStore::default();
+            let marker = attributes
+                .insert(Attribute::long(ids::USER_1, 917, Behavior::Reference))
+                .unwrap();
+            attributes.add_attribute(body.key, marker).unwrap();
+            let events = callbacks::install(&mut k.context);
+            k.context.set_doing_boolean(true);
+            let result = Context::with_notification_context(&mut k, |k, context| {
+                let mut env = DeleteEnv {
+                    records: &mut records,
+                    attributes: &mut attributes,
+                    key_of: &key_of,
+                    context: Some(context),
+                };
+                if delete_connected_vertex {
+                    delete_vertex_with_body_identity(k, &mut b, &mut env, vertex, body)
+                } else {
+                    delete_edge_with_body_identity(k, &mut b, &mut env, edge, None, body)
+                }
+            })
+            .unwrap();
+            let entity = if delete_connected_vertex {
+                EntityRef::Vertex(vertex)
+            } else {
+                EntityRef::Edge(edge)
+            };
+            if delete_connected_vertex {
+                assert!(
+                    matches!(result, Err(SolidError::Upstream { code, .. }) if code == crate::error::SM_ERR)
+                );
+                b.vertex(vertex).unwrap();
+            } else {
+                result.unwrap();
+                assert!(!b.edge_list().contains(&edge));
+            }
+            assert_eq!(b.key(), legacy_key);
+            assert!(k.context.doing_boolean());
+            assert_eq!(attributes.users(marker).unwrap(), &[body.key]);
+            callbacks::assert_installed(&k.context, &events);
+            let events = events.lock().unwrap();
+            assert_eq!(events[0].caller, body);
+            assert_eq!(events[0].operation, NotifyOperation::PreEdit);
+            assert_eq!(events[0].data, [Some(body), None, None]);
+            assert!(events.iter().any(|event| event.caller == key_of(entity)
+                && event.operation == NotifyOperation::PreEdit));
+            for event in events
+                .iter()
+                .filter(|event| event.caller.type_code == body.type_code)
+            {
+                assert_eq!(event.caller, body);
+                match event.operation {
+                    NotifyOperation::PreEdit => assert_eq!(event.data[0], Some(body)),
+                    NotifyOperation::RmFromBrep => assert_eq!(event.data[1], Some(body)),
+                    NotifyOperation::MergeInBrep => assert_eq!(event.data[2], Some(body)),
+                    _ => (),
+                }
+            }
+            assert!(!events.iter().any(|event| event.caller.key == legacy_key));
+        }
+    }
+
+    #[test]
     fn edgeuse_shell_and_face_destructors_notify_and_clear_attributes() {
         use crate::curve::curve::Curve;
         use crate::geom::attribute::{Attribute, Behavior};

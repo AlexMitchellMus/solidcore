@@ -3817,6 +3817,124 @@ mod tests {
     /// `GetOrCreateGwNurbPointer`: a bounded plane built without `MakeNurb` gets its
     /// NURB and domain, not the empty B-spline part.
     #[test]
+    fn retained_face_deletion_uses_real_marks_body_callbacks_and_failure_prefix() {
+        use crate::geom::attribute::{ids, Attribute, AttributeStore, Behavior};
+        use crate::topology::edge::notification_test_support as callbacks;
+
+        for fail_after_notifications in [false, true] {
+            let mut k = Kernel::default();
+            let mut b = crate::primitive::api_primitives::create_box(
+                &mut k,
+                Point3::ZERO,
+                10.0,
+                20.0,
+                30.0,
+            )
+            .unwrap();
+            b.set_editing_enabled(true);
+            let legacy_key = b.key();
+            let serial = b.notify_serial().unwrap();
+            let key_of = |entity| topology_ref(serial, entity);
+            let body = key_of(EntityRef::Brep(crate::topology::BrepId::from_index(0)));
+            assert_ne!(legacy_key, body.key);
+            let face = b.face_list()[0];
+            let face_ref = key_of(EntityRef::Face(face));
+            if fail_after_notifications {
+                // Defined NER after the actual public-edit notification prefix.
+                b.face_mut(face).unwrap().faceuse = None;
+            }
+            let mut records = BTreeMap::new();
+            seed_records(&mut records, &b, &key_of);
+            records.get_mut(&face_ref.key).unwrap().set_user_index1(73);
+            let mut attributes = AttributeStore::default();
+            let marker = attributes
+                .insert(Attribute::long(ids::USER_1, 917, Behavior::Reference))
+                .unwrap();
+            attributes.add_attribute(body.key, marker).unwrap();
+            let events = callbacks::install(&mut k.context);
+            k.context.set_doing_boolean(true);
+            let mut outer =
+                MarkLock::new(core::slice::from_mut(&mut k.context), 0, ALL_MARKS).unwrap();
+            let outer_type = outer.mark_type();
+            let outer_value = k.context.current_mark(outer_type);
+            let nested_before = k.context.current_mark(MarkType::Mark2);
+            let result = Context::with_notification_context(&mut k, |k, context| {
+                let mut env = NotifyEnv {
+                    records: &mut records,
+                    attributes: &mut attributes,
+                    context: Some(context),
+                    key_of: &key_of,
+                };
+                delete_face_with_body_identity(
+                    k,
+                    &mut b,
+                    &mut env,
+                    face,
+                    DeleteFaceOptions::default(),
+                    body,
+                )
+            })
+            .unwrap();
+            assert!(k.context.is_mark_locked(outer_type));
+            assert_eq!(k.context.current_mark(outer_type), outer_value);
+            assert!(!k.context.is_mark_locked(MarkType::Mark2));
+            assert!(!k.context.is_mark_locked(MarkType::Mark3));
+            if fail_after_notifications {
+                assert!(
+                    matches!(result, Err(SolidError::Upstream { code, .. }) if code == crate::error::SM_ERR_NULL_POINTER)
+                );
+                assert!(b.face(face).is_ok());
+                assert_eq!(records[&face_ref.key].user_index1(), 73);
+                assert_eq!(k.context.current_mark(MarkType::Mark2), nested_before);
+            } else {
+                result.unwrap();
+                assert!(!b.face_list().contains(&face));
+                assert!(k.context.current_mark(MarkType::Mark2) > nested_before);
+                assert!(records
+                    .values()
+                    .any(|record| record.get_mark(MarkType::Mark2) > 0));
+            }
+            outer
+                .release(core::slice::from_mut(&mut k.context))
+                .unwrap();
+            assert_eq!(b.key(), legacy_key);
+            assert_eq!(attributes.users(marker).unwrap(), &[body.key]);
+            assert!(k.context.doing_boolean());
+            callbacks::assert_installed(&k.context, &events);
+            let events = events.lock().unwrap();
+            assert!(events.len() >= 6);
+            for pair in events.chunks_exact(2) {
+                assert_eq!(pair[0].callback, "user");
+                assert_eq!(pair[1].callback, "system");
+                assert_eq!(pair[0].caller, pair[1].caller);
+                assert_eq!(pair[0].operation, pair[1].operation);
+                assert_eq!(pair[0].data, pair[1].data);
+            }
+            assert_eq!(events[0].caller, body);
+            assert_eq!(events[0].operation, NotifyOperation::PreEdit);
+            assert_eq!(events[0].data, [Some(body), None, None]);
+            assert_eq!(events[2].caller, face_ref);
+            assert_eq!(events[2].operation, NotifyOperation::PreEdit);
+            assert_eq!(events[4].caller, body);
+            assert_eq!(events[4].operation, NotifyOperation::RmFromBrep);
+            assert_eq!(events[4].data, [Some(face_ref), Some(body), None]);
+            for event in events
+                .iter()
+                .filter(|event| event.caller.type_code == body.type_code)
+            {
+                assert_eq!(event.caller, body);
+                match event.operation {
+                    NotifyOperation::PreEdit => assert_eq!(event.data[0], Some(body)),
+                    NotifyOperation::RmFromBrep => assert_eq!(event.data[1], Some(body)),
+                    NotifyOperation::MergeInBrep => assert_eq!(event.data[2], Some(body)),
+                    _ => (),
+                }
+            }
+            assert!(!events.iter().any(|event| event.caller.key == legacy_key));
+        }
+    }
+
+    #[test]
     fn lazy_plane_gets_its_nurb_before_the_copy() {
         use crate::geom::extent2d::Extent2d;
         use crate::geom::vector2d::Vec2;
