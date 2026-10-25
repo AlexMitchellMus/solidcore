@@ -1,8 +1,17 @@
-//! Ordered coincidence checks. Upstream: `SmBrep.cpp`, `ContainsCoincidentTopology`
-//! and `sm_FindCoinFace`. Deviations: local spatial indices and endpoint/outer-loop
-//! membership indices prune impossible candidates; accepted pairs keep native order.
-//! No recursion. The native exhaustive-search boolean is always true (bCheck starts
-//! false); it is preserved, independently of whether any pairs were found.
+//! Ordered B-rep coincidence checks with conservative spatial pruning.
+//!
+//! Upstream: `source/SMLib/src/SmBrep.cpp`, `source/SMLib/inc/SmBrep.h`.
+//!
+//! | Rust | Upstream |
+//! |------|----------|
+//! | [`contains_coincident_topology`] | `SmBrep::ContainsCoincidentTopology` |
+//! | Face candidate search (inline) | `sm_FindCoinFace` |
+//! | [`CoincidenceResult`] | Boolean and paired topology out-parameters |
+//!
+//! Deviations: local spatial indices and endpoint/outer-loop membership indices
+//! prune impossible candidates; accepted pairs keep native order. No recursion.
+//! The native exhaustive-search boolean is always true (`bCheck` starts false);
+//! it is preserved, independently of whether any pairs were found.
 use super::spatial::SpatialIndex;
 use super::{invalid, required, Reports};
 use crate::error::{EntityRef, Result};
