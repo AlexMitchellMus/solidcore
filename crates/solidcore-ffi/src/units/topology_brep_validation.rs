@@ -19,7 +19,7 @@ mod sys {
     }
 }
 /// Fixture export (0), pointer validation (1), or coincidence search (2).
-/// Arguments: level, walk, tolerance, find_all, mutation kind/index/value.
+/// Arguments: level, walk, tolerance, `find_all`, mutation kind/index/value.
 /// Mutations 8 through 10 remove required pointers and are pointer-check only;
 /// they are restored by the native fixture before destruction.
 pub fn eval(op: u8, path: &str, block: &[f64], args: [f64; 7]) -> Result<Vec<f64>, FfiError> {
@@ -48,6 +48,10 @@ pub fn eval(op: u8, path: &str, block: &[f64], args: [f64; 7]) -> Result<Vec<f64
     }
     if block.first() == Some(&100.0) {
         if !matches!(block, [_, count] if count.fract() == 0.0 && (1.0..=512.0).contains(count)) {
+            return Err(bad());
+        }
+    } else if block.first() == Some(&101.0) {
+        if !matches!(block, [_, mode] if *mode == 1.0 || *mode == 2.0) {
             return Err(bad());
         }
     } else {

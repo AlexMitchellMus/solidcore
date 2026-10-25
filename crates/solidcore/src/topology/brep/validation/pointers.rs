@@ -1071,8 +1071,13 @@ fn check_edge_geometry(
             let f = required(eu1::face(b, eu)?)?;
             let s = required(b.face(f)?.surface.as_ref())?;
             let domain = trim.natural_interval();
-            let on_surface =
-                crate::curve::crv_on_surf::CrvOnSurf::new(k, trim.clone(), s.clone(), None, 0)?;
+            let on_surface = crate::curve::crv_on_surf::CrvOnSurf::new(
+                k,
+                trim.clone_for_evaluation()?,
+                s.clone_for_evaluation()?,
+                None,
+                0,
+            )?;
             let on_surface = crate::curve::curve::Curve::from(on_surface);
             if let Err(err) = required(b.edge(e)?.curve.as_ref())?.curve_max_distance_between(
                 k,

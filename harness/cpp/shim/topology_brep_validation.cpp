@@ -7,20 +7,27 @@
 #include <array>
 
 namespace {
-SmBrep* sheet_grid(size_t count,SmStatus& status){
+SmBrep* sheet_grid(size_t count,SmStatus& status,int shared=0){
     const SmContext& ctx=the_context();
     SmBrepConstructor builder;SmBrep* b=builder.StartBrep(ctx);
     SmShell *outer=nullptr,*inner=nullptr;
     if(!b||builder.StartShell(outer,inner)!=SM_SUCCESS){delete b;status=SM_ERR;return nullptr;}
+    SmEdge* first_edges[4]={nullptr,nullptr,nullptr,nullptr};
     for(size_t i=0;i<count;i++){
-        double x=(double)i*4.0;
+        double x=shared?0.0:(double)i*4.0;
         SmFace* face=builder.StartFace(SM_OT_SAME);
         SmPlane* surface=new(ctx)SmPlane(SmPoint3d(x,0,0),SmVector3d(1,0,0),SmVector3d(0,1,0),SmVector2d(1,1),SmExtent2d(SmPoint2d(0,0),SmPoint2d(1,1)),&ctx);
         if(!face||builder.SetFaceSurface(surface,surface->GetNaturalUVDomain())!=SM_SUCCESS||!builder.StartLoop(SM_OT_SAME)){status=SM_ERR;delete b;return nullptr;}
         SmPoint3d p[4]={SmPoint3d(x,0,0),SmPoint3d(x+1,0,0),SmPoint3d(x+1,1,0),SmPoint3d(x,1,0)};
         for(size_t j=0;j<4;j++){
             size_t k=(j+1)%4;
-            if(!builder.StartEdge(SM_OT_SAME,nullptr,nullptr,nullptr)){status=SM_ERR;delete b;return nullptr;}
+            SmEdge* original=i&&shared?first_edges[j]:nullptr;
+            SmEdge* edge=builder.StartEdge(SM_OT_SAME,shared==1?original:nullptr,
+                original&&shared==2?original->GetVertex():nullptr,
+                original&&shared==2?original->GetOtherVertex(original->GetVertex()):nullptr);
+            if(!edge){status=SM_ERR;delete b;return nullptr;}
+            if(!i)first_edges[j]=edge;
+            if(original&&shared==1){if(builder.EndEdge()!=SM_SUCCESS){status=SM_ERR;delete b;return nullptr;}continue;}
             SmCurve* c=new(ctx)SmLine(p[k],p[(k+1)%4],3,&ctx);
             SmExtent1d ivl=c->GetNaturalInterval();
             if(builder.SetEdgeCurve(c,FALSE)!=SM_SUCCESS||builder.SetLimits(SmVertexNode(ivl.GetMin()),SmVertexNode(ivl.GetMax()))!=SM_SUCCESS||builder.EndEdge()!=SM_SUCCESS){status=SM_ERR;delete b;return nullptr;}
@@ -111,8 +118,9 @@ struct Mutation {
 SC_EXPORT int32_t sc_topology_brep_validation_eval(int32_t op,const char* path,const double* input,int64_t n,const double* args,int64_t na,double* out,int64_t cap,int64_t* len){
     if(op<0||op>2||!input||n<1||!args||na!=7)return SC_ERR_ARG;
     if(input[0]==100.0&&(n!=2||input[1]<1||input[1]>512||input[1]!=(double)(int)input[1]))return SC_ERR_ARG;
+    if(input[0]==101.0&&(n!=2||(input[1]!=1.0&&input[1]!=2.0)))return SC_ERR_ARG;
     SC_TRY
-    Rd rd{input,0};SmStatus status=SM_SUCCESS;Built built;built.brep=(input[0]==100.0)?sheet_grid((size_t)input[1],status):build(rd,path,status);
+    Rd rd{input,0};SmStatus status=SM_SUCCESS;Built built;built.brep=(input[0]==100.0)?sheet_grid((size_t)input[1],status):(input[0]==101.0)?sheet_grid(2,status,(int)input[1]):build(rd,path,status);
     std::vector<double> values;
     if(!built.brep){values={-1,(double)status};return sc_copy_out(values.data(),(int64_t)values.size(),out,cap,len);}
     Graph g;walk(built.brep,g);values.push_back(0);

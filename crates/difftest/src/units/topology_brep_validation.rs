@@ -25,6 +25,8 @@ struct Inputs {
     #[serde(default)]
     grid_faces: Option<usize>,
     #[serde(default)]
+    shared_boundaries: Option<u8>,
+    #[serde(default)]
     coincidence: bool,
     #[serde(default = "level_two")]
     level: u8,
@@ -53,8 +55,8 @@ fn level_two() -> u8 {
 fn default_tol() -> f64 {
     -1.0
 }
-fn herr(e: impl ToString) -> HarnessError {
-    HarnessError::new(e.to_string())
+fn herr(e: impl Into<String>) -> HarnessError {
+    HarnessError::new(e)
 }
 fn info(e: EntityRef) -> (i64, u32) {
     match e {
@@ -162,14 +164,19 @@ fn args(i: &Inputs) -> [f64; 7] {
     ]
 }
 fn exported(i: &Inputs) -> Result<(String, Vec<f64>, Vec<f64>), HarnessError> {
+    if let Some(mode) = i.shared_boundaries {
+        let block = vec![101.0, f64::from(mode)];
+        let export = ffi::eval(0, "", &block, args(i)).map_err(|e| herr(e.to_string()))?;
+        return Ok((String::new(), block, export));
+    }
     if let Some(count) = i.grid_faces {
         let block = vec![100.0, count as f64];
-        let export = ffi::eval(0, "", &block, args(i)).map_err(herr)?;
+        let export = ffi::eval(0, "", &block, args(i)).map_err(|e| herr(e.to_string()))?;
         return Ok((String::new(), block, export));
     }
     let path = path_of(Some(&i.brep))?;
     let block = brep_block_of(Some(&i.brep), false, false)?;
-    let export = ffi::eval(0, &path, &block, args(i)).map_err(herr)?;
+    let export = ffi::eval(0, &path, &block, args(i)).map_err(|e| herr(e.to_string()))?;
     Ok((path, block, export))
 }
 fn imported(export: &[f64]) -> Result<Brep, HarnessError> {
@@ -194,36 +201,43 @@ fn imported(export: &[f64]) -> Result<Brep, HarnessError> {
             .map(|i| FaceId::from_index(i as u32))
             .collect(),
     )
-    .map_err(herr)?;
+    .map_err(|e| herr(e.to_string()))?;
     b.set_edge_list(
         rd.list()?
             .into_iter()
             .map(|i| EdgeId::from_index(i as u32))
             .collect(),
     )
-    .map_err(herr)?;
+    .map_err(|e| herr(e.to_string()))?;
     b.set_vertex_list(
         rd.list()?
             .into_iter()
             .map(|i| VertexId::from_index(i as u32))
             .collect(),
     )
-    .map_err(herr)?;
+    .map_err(|e| herr(e.to_string()))?;
     for index in 0..b.faces().len() {
         let f = FaceId::from_index(index as u32);
         let fu = rd.num()? as i64;
-        b.face_mut(f).map_err(herr)?.faceuse = u32::try_from(fu).ok().map(FaceuseId::from_index);
+        b.face_mut(f).map_err(|e| herr(e.to_string()))?.faceuse =
+            u32::try_from(fu).ok().map(FaceuseId::from_index);
         let owner = rd.owner()?;
-        if let Some(s) = b.face_mut(f).map_err(herr)?.surface.as_mut() {
+        if let Some(s) = b
+            .face_mut(f)
+            .map_err(|e| herr(e.to_string()))?
+            .surface
+            .as_mut()
+        {
             s.set_owner(owner);
         }
-        b.sync_face_surface_tolerance(f).map_err(herr)?;
+        b.sync_face_surface_tolerance(f)
+            .map_err(|e| herr(e.to_string()))?;
     }
     for index in 0..b.edges().len() {
         let owner = rd.owner()?;
         if let Some(c) = b
             .edge_mut(EdgeId::from_index(index as u32))
-            .map_err(herr)?
+            .map_err(|e| herr(e.to_string()))?
             .curve
             .as_mut()
         {
@@ -261,51 +275,60 @@ fn mutate(b: &mut Brep, i: &Inputs) -> Result<(), HarnessError> {
     match i.mutation {
         1 => {
             b.vertex_mut(VertexId::from_index(index))
-                .map_err(herr)?
-                .tolerance = i.value
+                .map_err(|e| herr(e.to_string()))?
+                .tolerance = i.value;
         }
         2 => {
             b.edge_mut(EdgeId::from_index(index))
-                .map_err(herr)?
-                .tolerance = i.value
+                .map_err(|e| herr(e.to_string()))?
+                .tolerance = i.value;
         }
         3 => {
             let f = FaceId::from_index(index);
-            b.face_mut(f).map_err(herr)?.tolerance = i.value;
-            b.sync_face_surface_tolerance(f).map_err(herr)?;
+            b.face_mut(f).map_err(|e| herr(e.to_string()))?.tolerance = i.value;
+            b.sync_face_surface_tolerance(f)
+                .map_err(|e| herr(e.to_string()))?;
         }
         4 => {
             b.faceuse_mut(FaceuseId::from_index(index))
-                .map_err(herr)?
-                .orientation = orient(i.value)
+                .map_err(|e| herr(e.to_string()))?
+                .orientation = orient(i.value);
         }
         5 => {
             b.loopuse_mut(LoopuseId::from_index(index))
-                .map_err(herr)?
-                .orientation = orient(i.value)
+                .map_err(|e| herr(e.to_string()))?
+                .orientation = orient(i.value);
         }
         6 => {
             b.vertex_mut(VertexId::from_index(index))
-                .map_err(herr)?
+                .map_err(|e| herr(e.to_string()))?
                 .point
-                .x += i.value
+                .x += i.value;
         }
         7 => {
             if let Some(c) = b
                 .edge_mut(EdgeId::from_index(index))
-                .map_err(herr)?
+                .map_err(|e| herr(e.to_string()))?
                 .curve
                 .as_mut()
             {
                 c.set_owner(None, None);
             }
         }
-        8 => b.face_mut(FaceId::from_index(index)).map_err(herr)?.surface = None,
-        9 => b.edge_mut(EdgeId::from_index(index)).map_err(herr)?.curve = None,
+        8 => {
+            b.face_mut(FaceId::from_index(index))
+                .map_err(|e| herr(e.to_string()))?
+                .surface = None;
+        }
+        9 => {
+            b.edge_mut(EdgeId::from_index(index))
+                .map_err(|e| herr(e.to_string()))?
+                .curve = None;
+        }
         10 => {
             b.edgeuse_mut(EdgeuseId::from_index(index))
-                .map_err(herr)?
-                .ccw = None
+                .map_err(|e| herr(e.to_string()))?
+                .ccw = None;
         }
         _ => {}
     }
@@ -374,7 +397,7 @@ fn rust_protocol(
         for i in 0..5 {
             match curve.evaluate_point(&kernel, domain.evaluate(f64::from(i) / 4.0)) {
                 Ok(p) => out.extend([1000.0, p.x, p.y, p.z]),
-                Err(e) if e.is_unported() => return Err(herr(e)),
+                Err(e) if e.is_unported() => return Err(herr(e.to_string())),
                 Err(_) => out.push(1001.0),
             }
         }
@@ -447,7 +470,8 @@ impl UnitDiff for Runner {
         let i: Inputs = case.parse()?;
         let (path, block, _) = exported(&i)?;
         output(
-            &ffi::eval(if i.coincidence { 2 } else { 1 }, &path, &block, args(&i)).map_err(herr)?,
+            &ffi::eval(if i.coincidence { 2 } else { 1 }, &path, &block, args(&i))
+                .map_err(|e| herr(e.to_string()))?,
         )
     }
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
@@ -521,6 +545,7 @@ impl UnitDiff for Runner {
         serde_json::to_value(Inputs {
             brep,
             grid_faces: None,
+            shared_boundaries: None,
             coincidence,
             level: rng.below(5) as u8,
             walk: rng.below(2) == 0,
@@ -531,5 +556,39 @@ impl UnitDiff for Runner {
             value,
         })
         .ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_boundaries_reach_positive_edge_and_face_comparisons() {
+        for (mode, expected_type) in [(1, 16002), (2, 16016)] {
+            let case = Case {
+                unit: "topology.brep_validation".into(),
+                name: format!("positive_shared_boundaries_{mode}"),
+                source: crate::CaseSource::Inline,
+                inputs: serde_json::json!({"shared_boundaries": mode, "coincidence": true}),
+            };
+            let cpp = Runner
+                .run_cpp(&case)
+                .expect("native shared-boundary fixture");
+            let rust = Runner
+                .run_rust(&case)
+                .expect("Rust shared-boundary fixture");
+            for result in [&cpp, &rust] {
+                assert!(result.error.is_none());
+                assert!(result.rejected.is_none());
+                assert!(result.deferred.is_none());
+                assert!(result.ints["pairs"]
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|p| p[0] == expected_type && p[2] == expected_type));
+            }
+            assert_eq!(cpp, rust);
+        }
     }
 }
