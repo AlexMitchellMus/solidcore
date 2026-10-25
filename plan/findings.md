@@ -20328,3 +20328,5 @@ their actual peers) it disagrees in one value: `values.result.geometry[6]` C++
 boundary at exactly twice the tolerance, so a classification-interval merge at that
 boundary picks a different end point. Suspected cause: #849's peer forwarding in the
 interval merge differs from upstream at an exact-tolerance boundary; not analysed here.
+
+Update (2026-10-25): with main merged at the state after #851, #856 and #861, `offset.offset_executive_p2` `shell_boundary_negative_exactly_two_tol` passes again; its known-mismatch entry is removed.
