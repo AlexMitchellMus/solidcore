@@ -19,6 +19,7 @@ pub mod map;
 pub mod model;
 pub mod part21;
 pub mod script;
+pub mod validate;
 
 pub use model::Model;
 pub use part21::{Limits, ParseError};
