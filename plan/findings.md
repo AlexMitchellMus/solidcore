@@ -20302,3 +20302,16 @@ All 8 known mismatches in `offset.offset_executive_p2` (`gen0000`, `gen0003`, `g
 
 - **Constructed/imported geometry owner records in `BrepQuery`, `ArenaPair`, and `transform_with_notifications`.** `BrepIdentity::of_brep` keyed attached face surfaces and edge curves unconditionally without `Kernel::geometry_owners`, so `BrepQuery::new` rejected those keys against an empty `proven_owners` map unless the caller went through `BrepIdentity::of_brep_in(kernel, brep)`. `Brep::geometry_owner_keys` already records proven topology ownership at `Brep` construction, topological mutation (`set_surface_owner`, `set_curve_owner`, `make_wire_edge`, `make_edge_in_face`, `turn_to_nurbs`, `make_topology_from_data`, `rebind_owners`), and Boolean/offset assembly (`edge_set_curve`, `adopt_namespace_owners`, `boolean_post_process`). Consulting `Brep::geometry_owner_key` in `BrepQuery::of_brep` / `of_brep_with_id`, `ArenaPair::brep_cache`, and `topology::brep::p5::transform_owner_key` lets `FindAndSetInfiniteRegion`, `ManifoldBoolean` point classification, and `SmTemporaryBrepTransform` include owned geometry on `create_box` and `MakeShellFromFaces` shapes while still filtering unowned or foreign-owned geometry (`tests/constructed_transforms.rs`).
 - **Live topology projection in `crates/difftest/src/units/offset_offset_executive_p2.rs`.** After Boolean/stitch post-processing (`gen0054`, `gen0134`, `gen0177`, `gen0195`, `gen0210`), arena tombstones and `Face::loops` skeleton lists diverge from the live doubly linked lists walked by `SmBrep::GetRegions`, `SmBrep::GetFaces`, `SmFace::GetLoops`, `SmBrep::GetEdges`, and `SmBrep::GetVertices`, and `SmOffsetExecutive::ShellBrep` returns the mutated input `Brep` in place (`result == source`), where the C++ shim passes `source = nullptr` to `observe_selections`. Matching the live topology walkers (`topology::brep::p1::{regions, faces, edges, vertices}` and `topology::face::p2::loops`) and nulling `live_source` when `source` was consumed in place aligns all 8 cases with C++.
+
+## trimmed surface cache history after the loop bisector fix (2026-10-25)
+
+Follow-up to "trimmed surface cache history: tolerance-growth deferral removed", re-run
+after merging main's `SmFace::ClassifyLoops` loop bisector fix (the bisector's `IsSeam` and
+classifications now share one snapshot and keep their UV trims and tolerance growth).
+- `heal.heal_data_p1` `file_Endcap` and `file_Endcap_rebuild_reverse` (Endcap.smb HealTgts)
+  now pass, so their known-mismatch entries are removed.
+- `topology.brep_p1` `Endcap_heal` (Endcap.smb HealBrep, healer op 26) still disagrees, now
+  in the output length: C++ 245 values, port 256 (previously out[234] and out[238]
+  differed). Cause still not found; it stays a known mismatch.
+- The 9 torus seam cases (`heal.face_props` gen0646/gen0790/gen1312, `intersect.curve_class_p4`
+  gen1570/gen1622/gen1841/gen1876/gen1968/gen2061) and `query.face_p4`'s 2 entries are unchanged.

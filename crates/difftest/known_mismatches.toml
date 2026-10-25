@@ -167,19 +167,9 @@ case = "gen2061"
 why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ on a torus face with edges far off the surface after the trimmed cache raised edge tolerances (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
 
 [[mismatch]]
-unit = "heal.heal_data_p1"
-case = "file_Endcap"
-why = "Endcap.smb HealTgts: out[215] C++ unset sentinel, port 7.6925e-4; cache creation order matches (gdb), cause not found (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
-
-[[mismatch]]
-unit = "heal.heal_data_p1"
-case = "file_Endcap_rebuild_reverse"
-why = "Endcap.smb HealTgts: out[215] C++ unset sentinel, port 7.6925e-4; cache creation order matches (gdb), cause not found (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
-
-[[mismatch]]
 unit = "topology.brep_p1"
 case = "Endcap_heal"
-why = "Endcap.smb HealBrep: a healed topology record differs (out[234], out[238]); cache creation order matches (gdb), cause not found (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
+why = "Endcap.smb HealBrep: the healed output differs (values.out length C++ 245, port 256); cache creation order matches (gdb), cause not found (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed'; 'trimmed surface cache history after the loop bisector fix')"
 
 [[mismatch]]
 unit = "boolean.merge_p3"
