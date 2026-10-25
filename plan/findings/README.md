@@ -8,7 +8,11 @@ Never append to a shared file. Findings from before 2026-10-25 are in the frozen
 - **Name:** `<unit id or general>--<short-slug>.md`, lowercase, e.g.
   `topology.brep_p3--turn-to-nurbs-uv-trim-notify.md`. Pick a slug nobody else will.
 - **Content:** start with `# <unit>: <title> (<YYYY-MM-DD>)`, then the unit, inputs, both
-  values, suspected cause and the PR. Later updates go in the same file, or a new file
-  that links to it.
+  values, suspected cause and the PR.
+- **Records are not edited later (like ADRs).** To update, resolve or supersede a finding
+  (here or in the archive), add an addendum: a new file
+  `<same name without .md>--addendum-<YYYY-MM-DD>-<slug>.md` whose first line after the
+  title is `Updates: <path>` (plus the archive heading, for an archive entry). Fixing a
+  typo in your own PR's file before it merges is fine.
 - **References** from code, `known_mismatches.toml` or unit notes give the file path,
   e.g. `plan/findings/topology.brep_p3--turn-to-nurbs-uv-trim-notify.md`.

@@ -25,3 +25,8 @@ The site (`site/build.py`) renders the archive and every file here, in name orde
   `Severity` is one of `Crash / undefined behaviour`, `Hang`, `Nondeterminism`,
   `Wrong result`, `Docs`. `Area` is free text, ideally one of the archive's section
   headings.
+
+- **Updates** (now confirmed, fixed upstream, renumbered, withdrawn) are addenda, not
+  edits: a new file `<ID>--addendum-<YYYY-MM-DD>-<slug>.md` starting with
+  `Updates: <ID>` and what changed. This applies to archive entries too: CI rejects any
+  line added to the frozen archives.
