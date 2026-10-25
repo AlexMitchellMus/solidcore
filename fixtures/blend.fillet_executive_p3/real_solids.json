@@ -376,6 +376,27 @@
           "checkpoint": "inserted_intersection_topology"
         }
       }
+    },
+    {
+      "name": "real-box-select-original-surfaces-true-context",
+      "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:3243-3386 (actual common mate marking, real lock, all-FG original face selection; stops before deletion)",
+      "inputs": {
+        "real_solid": {
+          "dimensions": [
+            10,
+            20,
+            30
+          ],
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            0
+          ],
+          "checkpoint": "selected_original_surfaces"
+        }
+      }
     }
   ]
 }

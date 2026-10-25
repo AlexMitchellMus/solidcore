@@ -15,6 +15,8 @@ mod insertion_checkpoint;
 mod insertion_state;
 #[path = "intermediate_faces.rs"]
 mod intermediate_faces;
+#[path = "original_selection.rs"]
+mod original_selection;
 #[path = "rail_classification.rs"]
 mod rail_classification;
 #[path = "rail_metadata.rs"]
@@ -240,7 +242,10 @@ pub(super) fn run(
     input: &RealSolid,
     before: &[f64],
 ) -> SolidResult<Vec<f64>> {
-    if input.checkpoint == Checkpoint::InsertedIntersectionTopology {
+    if matches!(
+        input.checkpoint,
+        Checkpoint::InsertedIntersectionTopology | Checkpoint::SelectedOriginalSurfaces
+    ) {
         return insertion_checkpoint::run(k, body, selected, input, before);
     }
     let mut session = FilletSession::new(k, body)?;
@@ -629,8 +634,11 @@ pub(super) fn run(
 
 pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Output, HarnessError> {
     let mut out = Output::new();
-    if checkpoint == Checkpoint::InsertedIntersectionTopology {
-        return insertion_output(values);
+    if matches!(
+        checkpoint,
+        Checkpoint::InsertedIntersectionTopology | Checkpoint::SelectedOriginalSurfaces
+    ) {
+        return insertion_output(values, checkpoint);
     }
 
     out.values.insert(
@@ -905,7 +913,7 @@ pub(super) fn cpp(input: &RealSolid) -> Result<Output, HarnessError> {
     output(&values, input.checkpoint)
 }
 
-fn insertion_output(mut values: &[f64]) -> Result<Output, HarnessError> {
+fn insertion_output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Output, HarnessError> {
     let mut out = Output::new();
     out.values.insert(
         "selected_edge_before".into(),
@@ -955,6 +963,16 @@ fn insertion_output(mut values: &[f64]) -> Result<Output, HarnessError> {
                 take_section(&mut values)?.to_vec(),
             );
         }
+    }
+    if checkpoint == Checkpoint::SelectedOriginalSurfaces {
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid original selection state"));
+        }
+        out.ints.insert(
+            "original_surface_selection".into(),
+            state.iter().map(|v| *v as i64).collect(),
+        );
     }
     if !values.is_empty() {
         return Err(HarnessError::new("trailing insertion data"));

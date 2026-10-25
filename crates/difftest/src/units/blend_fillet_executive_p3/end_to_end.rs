@@ -32,6 +32,7 @@ enum Checkpoint {
     CreatedFilletBrep,
     MappedFilletEdges,
     InsertedIntersectionTopology,
+    SelectedOriginalSurfaces,
 }
 impl Checkpoint {
     fn all_corners(self) -> bool {
@@ -73,6 +74,7 @@ impl Checkpoint {
             Self::CreatedFilletBrep => 14,
             Self::MappedFilletEdges => 15,
             Self::InsertedIntersectionTopology => 16,
+            Self::SelectedOriginalSurfaces => 17,
         }
     }
 }
