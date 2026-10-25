@@ -8,7 +8,7 @@ use solidcore::kernel::Kernel;
 use solidcore::topology::brep::{p1, p3::topology_ref};
 use solidcore::EntityRef;
 
-const MARK_TYPES: [MarkType; 5] = [
+pub(super) const MARK_TYPES: [MarkType; 5] = [
     MarkType::Mark,
     MarkType::Mark2,
     MarkType::Mark3,
@@ -16,7 +16,11 @@ const MARK_TYPES: [MarkType; 5] = [
     MarkType::MarkAssert,
 ];
 
-fn context(k: &Kernel, out: &mut Vec<f64>, before: Option<&[u64; 5]>) -> SolidResult<()> {
+pub(super) fn context(
+    k: &Kernel,
+    out: &mut Vec<f64>,
+    before: Option<&[u64; 5]>,
+) -> SolidResult<()> {
     for (index, mark) in MARK_TYPES.into_iter().enumerate() {
         out.extend([
             f64::from(mark as i32),

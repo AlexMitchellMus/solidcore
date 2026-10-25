@@ -1,7 +1,7 @@
 //! One call to the actual retained insertion endpoint under its production scope.
 use super::{
-    insertion_state, intermediate_faces, original_selection, section, status, Checkpoint,
-    FilletSession, RealSolid, SolidResult,
+    insertion_state, intermediate_faces, original_deletion, original_selection, section, status,
+    Checkpoint, FilletSession, RealSolid, SolidResult,
 };
 use solidcore::kernel::Kernel;
 use solidcore::topology::{Brep, EdgeId};
@@ -38,7 +38,8 @@ pub(super) fn run(
                 prior: &(Vec<f64>, Vec<f64>),
                 after: &(Vec<f64>, Vec<f64>),
                 complete: bool,
-                selection: &[f64]|
+                selection: &[f64],
+                selection_intervals: &[f64]|
      -> SolidResult<Vec<f64>> {
         let mut out = Vec::new();
         section(&mut out, before);
@@ -59,6 +60,10 @@ pub(super) fn run(
         if input.checkpoint == Checkpoint::SelectedOriginalSurfaces {
             section(&mut out, selection);
         }
+        if input.checkpoint == Checkpoint::DeletedOriginalFaces {
+            section(&mut out, selection);
+            section(&mut out, selection_intervals);
+        }
         Ok(out)
     };
     if statuses[1] != 0.0 {
@@ -69,6 +74,7 @@ pub(super) fn run(
             &(Vec::new(), Vec::new()),
             &(Vec::new(), Vec::new()),
             false,
+            &[],
             &[],
         );
     }
@@ -93,12 +99,18 @@ pub(super) fn run(
                 after = insertion_state::snapshot(k, session)?;
             }
         }
-        let (selection, complete) =
-            if statuses[4] == 0.0 && input.checkpoint == Checkpoint::SelectedOriginalSurfaces {
-                original_selection::run(k, session)?
-            } else {
-                (Vec::new(), statuses[4] == 0.0)
-            };
-        pack(k, session, &statuses, &prior, &after, complete, &selection)
+        let (selection, intervals, complete) = if statuses[4] == 0.0
+            && input.checkpoint == Checkpoint::DeletedOriginalFaces
+        {
+            original_deletion::run(k, session)?
+        } else if statuses[4] == 0.0 && input.checkpoint == Checkpoint::SelectedOriginalSurfaces {
+            let (selection, complete) = original_selection::run(k, session)?;
+            (selection, Vec::new(), complete)
+        } else {
+            (Vec::new(), Vec::new(), statuses[4] == 0.0)
+        };
+        pack(
+            k, session, &statuses, &prior, &after, complete, &selection, &intervals,
+        )
     })
 }

@@ -397,6 +397,27 @@
           "checkpoint": "selected_original_surfaces"
         }
       }
+    },
+    {
+      "name": "real-box-delete-original-faces-true-context",
+      "upstream_ref": "source/SMLib/src/SmFilletExecutive.cpp:3243-3455 (actual same-lock selection, unkept managed append, real TI.DeleteFaces; stops before attribute tagging/merge)",
+      "inputs": {
+        "real_solid": {
+          "dimensions": [
+            10,
+            20,
+            30
+          ],
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            0
+          ],
+          "checkpoint": "deleted_original_faces"
+        }
+      }
     }
   ]
 }

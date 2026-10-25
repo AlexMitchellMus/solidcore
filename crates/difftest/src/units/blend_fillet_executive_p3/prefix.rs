@@ -15,6 +15,8 @@ mod insertion_checkpoint;
 mod insertion_state;
 #[path = "intermediate_faces.rs"]
 mod intermediate_faces;
+#[path = "original_deletion.rs"]
+mod original_deletion;
 #[path = "original_selection.rs"]
 mod original_selection;
 #[path = "rail_classification.rs"]
@@ -244,7 +246,9 @@ pub(super) fn run(
 ) -> SolidResult<Vec<f64>> {
     if matches!(
         input.checkpoint,
-        Checkpoint::InsertedIntersectionTopology | Checkpoint::SelectedOriginalSurfaces
+        Checkpoint::InsertedIntersectionTopology
+            | Checkpoint::SelectedOriginalSurfaces
+            | Checkpoint::DeletedOriginalFaces
     ) {
         return insertion_checkpoint::run(k, body, selected, input, before);
     }
@@ -636,7 +640,9 @@ pub(super) fn output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Outpu
     let mut out = Output::new();
     if matches!(
         checkpoint,
-        Checkpoint::InsertedIntersectionTopology | Checkpoint::SelectedOriginalSurfaces
+        Checkpoint::InsertedIntersectionTopology
+            | Checkpoint::SelectedOriginalSurfaces
+            | Checkpoint::DeletedOriginalFaces
     ) {
         return insertion_output(values, checkpoint);
     }
@@ -944,8 +950,13 @@ fn insertion_output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Output
         return Err(HarnessError::new("invalid insertion completion"));
     }
     values = tail;
+    let geometry_kind = if checkpoint == Checkpoint::DeletedOriginalFaces {
+        "deletion"
+    } else {
+        "insertion"
+    };
     out.ints.insert(
-        "insertion_geometry_present".into(),
+        format!("{geometry_kind}_geometry_present"),
         vec![i64::from(complete == 1.0)],
     );
     if complete == 1.0 {
@@ -955,11 +966,11 @@ fn insertion_output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Output
                 return Err(HarnessError::new("invalid insertion topology"));
             }
             out.ints.insert(
-                format!("insertion_{body}_topology"),
+                format!("{geometry_kind}_{body}_topology"),
                 state.iter().map(|v| *v as i64).collect(),
             );
             out.values.insert(
-                format!("insertion_{body}_geometry"),
+                format!("{geometry_kind}_{body}_geometry"),
                 take_section(&mut values)?.to_vec(),
             );
         }
@@ -972,6 +983,20 @@ fn insertion_output(mut values: &[f64], checkpoint: Checkpoint) -> Result<Output
         out.ints.insert(
             "original_surface_selection".into(),
             state.iter().map(|v| *v as i64).collect(),
+        );
+    }
+    if checkpoint == Checkpoint::DeletedOriginalFaces {
+        let state = take_section(&mut values)?;
+        if state.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid original deletion state"));
+        }
+        out.ints.insert(
+            "original_surface_deletion".into(),
+            state.iter().map(|v| *v as i64).collect(),
+        );
+        out.values.insert(
+            "original_surface_deletion_raw_intervals".into(),
+            take_section(&mut values)?.to_vec(),
         );
     }
     if !values.is_empty() {
