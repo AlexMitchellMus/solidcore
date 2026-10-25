@@ -170,3 +170,28 @@ why = "shell vertex on a box edge: C++ splits the edge (13 edges), Rust imprints
 unit = "boolean.merge_p3"
 case = "piecewise_box_other_shell_vertex_imprint_3"
 why = "shell vertex on a box edge: C++ splits the edge (13 edges), Rust imprints it on a face (12 edges); deferred on main at the face solve's surface cache (SmFace handle of a surface's face), compared since the intersector's solves reach their faces' caches (plan/findings.md: 'boolean.merge_p3: shell vertex on a box edge finds no edge solution')"
+
+[[mismatch]]
+unit = "offset.offset_geometry_creation"
+case = "gen0248"
+why = "deferred on main at the extended surface's cache (SmFace handle of a surface's face); compared since the drop onto the other extended surface reaches its face's cache: the trace's output differs (plan/findings.md: 'offset.offset_geometry_creation: drops onto a seeded extended surface through a freshly built face cache')"
+
+[[mismatch]]
+unit = "offset.offset_geometry_creation"
+case = "gen0346"
+why = "deferred on main at the extended surface's cache (SmFace handle of a surface's face); compared since the drop onto the other extended surface reaches its face's cache: the trace's output differs (plan/findings.md: 'offset.offset_geometry_creation: drops onto a seeded extended surface through a freshly built face cache')"
+
+[[mismatch]]
+unit = "offset.offset_geometry_creation"
+case = "gen0350"
+why = "deferred on main at the extended surface's cache (SmFace handle of a surface's face); compared since the drop onto the other extended surface reaches its face's cache: the trace's output differs (plan/findings.md: 'offset.offset_geometry_creation: drops onto a seeded extended surface through a freshly built face cache')"
+
+[[mismatch]]
+unit = "offset.offset_geometry_creation"
+case = "gen0508"
+why = "deferred on main at the extended surface's cache (SmFace handle of a surface's face); compared since the drop onto the other extended surface reaches its face's cache: the trace's output differs (plan/findings.md: 'offset.offset_geometry_creation: drops onto a seeded extended surface through a freshly built face cache')"
+
+[[mismatch]]
+unit = "offset.offset_executive_p2"
+case = "gen0235"
+why = "deferred on main at RemoveExcessFaces' BrepPointSolve (SmFace handle of a surface's face); compared since that solve reaches its faces' caches: Rust stops with SM_ERR_NULL_POINTER in ProtoTopologyManager::imprint_edge_definition, C++ succeeds (plan/findings.md: 'offset.offset_executive_p2 gen0235: imprint edge definition without its source topology')"
