@@ -91,6 +91,13 @@ pub trait ClassGeometryMut<O>: ClassGeometry<O> {
     /// [`ClassGeometry::topology_entity`]); `None` for a handle the adapter cannot
     /// resolve (an invalid-input error for the caller).
     fn topology_entity_mut(&mut self, o: O) -> Option<(&mut Brep, EntityRef)>;
+    /// [`ClassGeometryMut::topology_entity_mut`] for a query (a classification or a
+    /// point solve on a face) that only makes caches and UV trim curves on the B-rep,
+    /// as upstream's queries of a face make them without editing it. An adapter that
+    /// keeps caches of the B-rep's faces keeps them over such a lend.
+    fn topology_entity_for_query(&mut self, o: O) -> Option<(&mut Brep, EntityRef)> {
+        self.topology_entity_mut(o)
+    }
 }
 
 /// The edits of part 5 over either kind of adapter.
@@ -1256,11 +1263,22 @@ impl<O: ClassObject> CurveClassification<O> {
         geometry: &mut impl MergeIntervalBrep<O>,
         vertices_only: bool,
     ) -> Result<MergedTopology<O>> {
+        self.merge_intervals_mut_with_partial(k, geometry, vertices_only)
+            .map_err(|e| e.error)
+    }
+
+    /// [`CurveClassification::merge_intervals_mut`] with the completed-interval output
+    /// also on failure (upstream fills its output lists as the intervals merge).
+    pub(crate) fn merge_intervals_mut_with_partial(
+        &mut self,
+        k: &mut Kernel,
+        geometry: &mut impl MergeIntervalBrep<O>,
+        vertices_only: bool,
+    ) -> Result<MergedTopology<O>, PartialMergeError<O>> {
         let mut a = MutableImprint { k, g: geometry };
         self.merge_intervals_using(vertices_only, |c, j, v| {
             Self::p5_merge_interval_in(c, &mut a, j, v, None)
         })
-        .map_err(|e| e.error)
     }
 
     fn merge_intervals_using(

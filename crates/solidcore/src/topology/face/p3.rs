@@ -8,7 +8,7 @@
 //! |----------------------------------------------|-------------------------------------------|
 //! | [`compute_loop_orientation`]                 | `SmFace::ComputeLoopOrientation`          |
 //! | [`create_composites`]                        | `SmFace::CreateComposites`                |
-//! | [`create_uv_trim_curves`], [`UvTrimCurveGaps`] | `SmFace::CreateUVTrimCurves`            |
+//! | [`create_uv_trim_curves`], [`create_uv_trim_curves_notified`], [`UvTrimCurveGaps`] | `SmFace::CreateUVTrimCurves` |
 //! | [`face_intersect`], [`FaceIntersectOptions`], [`FaceIntersection`], [`IntersectObject`] | `SmFace::FaceIntersect` |
 //! | [`notify`]                                   | `SmFace::Notify`                          |
 //! | [`set_tolerance`]                            | `SmFace::SetTolerance` (`SM_USE_OLDTOL`)  |
@@ -18,6 +18,11 @@
 //! | [`has_lamina_edge`]                          | `SmFace::HasLaminaEdge` (CO-PORTED in `topology.topology_traverser`, re-exported) |
 //!
 //! Deviations:
+//! - **UV trim curve edit notifications.** Only the end point moves of
+//!   `sm_FixUVTrimCurves` notify ([`create_uv_trim_curves_notified`], through the
+//!   caller's [`NotifyEnv`]); `SmBSplineCurve::EditParameterization` of the curves
+//!   `SmSurface::DropIsoCurve` builds notifies nobody (no edge use owns them yet, so no
+//!   change tracker records it; `plan/findings.md`).
 //! - **Object model.** A face is a record in the [`Brep`]'s arenas; the methods are free
 //!   functions taking the B-rep and the face's id. Out-parameters are return values.
 //!   Where upstream dereferences null (a face without surface, an edge without curve, an
@@ -95,7 +100,7 @@ use crate::math::{Point3, Vec3, EFF_ZERO, PI};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use crate::query::brep::{BrepFaceServices, SideObject, SidedFaceServices};
+use crate::query::brep::{BrepFaceServices, FaceCaches, SideObject, SidedFaceServices};
 use crate::query::face::p2 as qf2;
 use crate::surface::surface::p2::{smos_max, TsectCurveType};
 use crate::surface::surface::p4::NoObject;
@@ -813,6 +818,25 @@ pub fn create_uv_trim_curves(
     adjust_tolerances: bool,
     opt_uv_curves: Option<(&mut [Option<Curve>], &[OrientType])>,
 ) -> Result<UvTrimCurveGaps> {
+    create_uv_trim_curves_notified(k, b, f, adjust_tolerances, opt_uv_curves, None)
+}
+
+/// [`create_uv_trim_curves`] whose UV trim curve edits notify through `env`: the end
+/// point moves of `sm_FixUVTrimCurves` ([`face2::fix_uv_trim_curves_notified`]). The
+/// other geometry edits on the way (`EditParameterization` of the curves
+/// `DropIsoCurve` builds, before any edge use owns them) still notify nobody.
+///
+/// # Errors
+///
+/// Those of [`create_uv_trim_curves`]; those of the notifications.
+pub fn create_uv_trim_curves_notified(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    adjust_tolerances: bool,
+    opt_uv_curves: Option<(&mut [Option<Curve>], &[OrientType])>,
+    env: Option<&mut NotifyEnv<'_>>,
+) -> Result<UvTrimCurveGaps> {
     // queried before the surface owner is cleared, as upstream: the surface is still
     // face-owned, so `GetSingularities`' approximation tolerance
     // (`SmTol::GetApproxTol3d(this)`) is the face's
@@ -831,7 +855,7 @@ pub fn create_uv_trim_curves(
     // (recorded on the B-rep: a nested `smsurf_GetSurfaceCache` of the face's surface
     // then finds no face, so it does not build the face's UV trim curves itself)
     b.begin_surface_owner_cleared(f);
-    let result = create_uv_trim_curves_body(k, b, f, adjust_tolerances, opt_uv_curves, &pre);
+    let result = create_uv_trim_curves_body(k, b, f, adjust_tolerances, opt_uv_curves, &pre, env);
     // SmRescueSurfaceOwner's destructor restores the owner on every return
     b.end_surface_owner_cleared(f);
     if let Some(s) = b.face_mut(f)?.surface.as_mut() {
@@ -858,6 +882,7 @@ fn create_uv_trim_curves_body(
     adjust_tolerances: bool,
     mut opt_uv_curves: Option<(&mut [Option<Curve>], &[OrientType])>,
     pre: &PreRescue,
+    mut env: Option<&mut NotifyEnv<'_>>,
 ) -> Result<UvTrimCurveGaps> {
     let mut mean_cs_gap = 0.0;
     let mut max_cs_gap = 0.0_f64;
@@ -992,7 +1017,7 @@ fn create_uv_trim_curves_body(
                     );
 
                     // status ignored upstream
-                    let fixed = ignored(face2::fix_uv_trim_curves(
+                    let fixed = ignored(face2::fix_uv_trim_curves_notified(
                         k,
                         b,
                         eu,
@@ -1001,6 +1026,7 @@ fn create_uv_trim_curves_body(
                         tol_3d,
                         uv_gap_size,
                         &uv_domain,
+                        env.as_deref_mut(),
                     ))?
                     .unwrap_or(false);
 
@@ -1580,6 +1606,8 @@ struct IntersectObjectsMut<'a> {
     curves_3d: &'a [Curve],
     uv1: &'a [Option<Curve>],
     uv2: &'a [Option<Curve>],
+    /// Set when an edit lent a B-rep ([`ClassGeometryMut::topology_entity_mut`]).
+    edited: bool,
 }
 
 impl IntersectObjectsMut<'_> {
@@ -1633,6 +1661,10 @@ impl ClassGeometryMut<IntersectObject> for IntersectObjectsMut<'_> {
         None
     }
     fn topology_entity_mut(&mut self, o: IntersectObject) -> Option<(&mut Brep, EntityRef)> {
+        self.edited = true;
+        self.topology_entity_for_query(o)
+    }
+    fn topology_entity_for_query(&mut self, o: IntersectObject) -> Option<(&mut Brep, EntityRef)> {
         let IntersectObject::Topology(e, side) = o else {
             return None;
         };
@@ -1716,7 +1748,6 @@ pub enum FaceBreps<'a> {
 /// # Errors
 ///
 /// Those of [`face_intersect`].
-#[allow(clippy::too_many_lines)] // one upstream routine
 pub fn face_intersect_breps(
     k: &Kernel,
     breps: FaceBreps<'_>,
@@ -1725,6 +1756,40 @@ pub fn face_intersect_breps(
     approx_tol_3d: f64,
     crv_ang_tol_deg: f64,
     options: &FaceIntersectOptions,
+) -> Result<FaceIntersection> {
+    face_intersect_breps_cached(
+        k,
+        breps,
+        f,
+        other,
+        approx_tol_3d,
+        crv_ang_tol_deg,
+        options,
+        [None, None],
+    )
+}
+
+/// [`face_intersect_breps`] keeping the trimmed surface caches the surface
+/// intersection makes on the lent B-reps in `face_caches` (this face's B-rep's, then
+/// the other face's; the second is unused with [`FaceBreps::One`]) for the next call
+/// on the same unchanged B-reps, as upstream keeps each face's cache on its surface.
+/// The caches must have been made on the B-rep they are given with, and the B-rep
+/// must not have changed since.
+///
+/// # Errors
+///
+/// Those of [`face_intersect`].
+#[allow(clippy::too_many_lines)] // one upstream routine
+#[allow(clippy::too_many_arguments)]
+pub fn face_intersect_breps_cached(
+    k: &Kernel,
+    breps: FaceBreps<'_>,
+    f: FaceId,
+    other: FaceId,
+    approx_tol_3d: f64,
+    crv_ang_tol_deg: f64,
+    options: &FaceIntersectOptions,
+    mut face_caches: [Option<&mut FaceCaches>; 2],
 ) -> Result<FaceIntersection> {
     let (mut this_brep, mut other_brep, shared) = match breps {
         FaceBreps::One(b) => (Some(b), None, None),
@@ -1807,25 +1872,37 @@ pub fn face_intersect_breps(
         };
         let (domain, other_domain) = (face2::uv_domain(b, f)?, face2::uv_domain(ob, other)?);
         let r = if let Some(this_brep) = this_brep.as_deref_mut() {
-            let mut services = vec![BrepFaceServices::new(this_brep)];
+            let [this_caches, other_caches] = &mut face_caches;
+            let taken = |slot: &mut Option<&mut FaceCaches>| {
+                slot.as_deref_mut().map(core::mem::take).unwrap_or_default()
+            };
+            let mut services = vec![BrepFaceServices::with_caches(this_brep, taken(this_caches))];
             if let Some(ob) = other_brep.as_deref_mut() {
-                services.push(BrepFaceServices::new(ob));
+                services.push(BrepFaceServices::with_caches(ob, taken(other_caches)));
             }
             let other_index = usize::from(other_side);
-            surface.global_surface_intersect_with_context(
+            let mut sided = SidedFaceServices(services);
+            let r = surface.global_surface_intersect_with_context(
                 k,
                 [
                     Some(SideObject(0, CacheObject::Surface(f))),
                     Some(SideObject(other_index, CacheObject::Surface(other))),
                 ],
-                &mut SidedFaceServices(services),
+                &mut sided,
                 &domain,
                 other_surface,
                 &other_domain,
                 use_surface_edges,
                 Some(approx_tol_3d),
                 Some(ang_tol_rad),
-            )?
+            );
+            // hand the caches back for the next call
+            for (service, slot) in sided.0.into_iter().zip(face_caches.iter_mut()) {
+                if let Some(slot) = slot.as_deref_mut() {
+                    *slot = service.into_caches();
+                }
+            }
+            r?
         } else {
             surface.global_surface_intersect(
                 k,
@@ -1945,8 +2022,17 @@ pub fn face_intersect_breps(
                 curves_3d: &curves_3d,
                 uv1: &uv_curves1,
                 uv2: &uv_curves2,
+                edited: false,
             };
-            cc1.extract_geometry_mut(k, &mut objects, &mut cc2, extract)?
+            let ex = cc1.extract_geometry_mut(k, &mut objects, &mut cc2, extract);
+            // an edit of the B-reps (not a query) may change what the kept face
+            // caches were made from
+            if objects.edited {
+                for slot in face_caches.iter_mut().flatten() {
+                    slot.clear();
+                }
+            }
+            ex?
         } else {
             cc1.extract_geometry(k, &objects, &mut cc2, extract)?
         };

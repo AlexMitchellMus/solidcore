@@ -780,6 +780,63 @@ impl Brep {
         self.naming = naming;
     }
 
+    /// Relabels geometry owned by this B-rep's own topology records under
+    /// [`NamingScheme::Arena`] ([`brep_cache::arena_identity`]), preserving shared or
+    /// unowned geometry and syncing face surface tolerances.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::NotFound`] for a dangling face or edge id (none in practice).
+    pub fn use_arena_naming(&mut self) -> Result<()> {
+        let edges: Vec<EdgeId> = self.edges.ids().collect();
+        for edge in edges {
+            let entity = EntityRef::Edge(edge);
+            let arena = brep_cache::arena_identity(brep_cache::CacheObject::Edge(edge));
+            let notify = loopuse::notify_ref(entity);
+            let proven = self.geometry_owner_key(entity);
+            let rebound = self.edge_mut(edge)?.curve.as_mut().is_some_and(|curve| {
+                let matched = curve.owner().is_some_and(|o| {
+                    o == arena
+                        || (o.key, o.type_code) == (notify.key, notify.type_code)
+                        || Some(o) == proven
+                });
+                if matched {
+                    curve.set_owner(Some(arena), None);
+                }
+                matched
+            });
+            if rebound {
+                self.set_geometry_owner_key(entity, Some(arena));
+            }
+        }
+        let faces: Vec<FaceId> = self.faces.ids().collect();
+        for face in faces {
+            let entity = EntityRef::Face(face);
+            let arena = brep_cache::arena_identity(brep_cache::CacheObject::Face(face));
+            let notify = loopuse::notify_ref(entity);
+            let proven = self.geometry_owner_key(entity);
+            let rebound = self
+                .face_mut(face)?
+                .surface
+                .as_mut()
+                .is_some_and(|surface| {
+                    let matched = surface
+                        .owner()
+                        .is_some_and(|o| o == arena || o == notify || Some(o) == proven);
+                    if matched {
+                        surface.set_owner(Some(arena));
+                    }
+                    matched
+                });
+            if rebound {
+                self.set_geometry_owner_key(entity, Some(arena));
+                self.sync_face_surface_tolerance(face)?;
+            }
+        }
+        self.naming = NamingScheme::Arena;
+        Ok(())
+    }
+
     /// Producer-supplied owner identity recorded when geometry was bound to `entity`.
     #[must_use]
     pub(crate) fn geometry_owner_key(
@@ -847,7 +904,10 @@ impl Brep {
     /// copy where upstream works on the B-rep): its face surfaces share the cache slots
     /// of this B-rep's ([`Surface::share_cache_slot_of`]), so that the surface caches the
     /// query makes or reuses on the copy are the B-rep's surfaces' own, as upstream's
-    /// are. A plain `clone` (the copy constructor) starts every surface without cache.
+    /// are. They also keep their owners (and the face tolerance cached on them), so
+    /// that `GetFace()` of the copy's surfaces finds the face as upstream's in-place
+    /// queries do (`SmTol::GetZoneTol3d(pSurface)` reads the face tolerance). A plain
+    /// `clone` (the copy constructor) starts every surface without cache or owner.
     #[must_use]
     pub fn clone_sharing_surface_caches(&self) -> Self {
         let mut copy = self.clone();
@@ -855,6 +915,7 @@ impl Brep {
             if let (Some(original), Ok(face_copy)) = (face.surface.as_ref(), copy.face_mut(id)) {
                 if let Some(surface) = face_copy.surface.as_mut() {
                     surface.share_cache_slot_of(original);
+                    face::p2::RescueSurfaceOwner::new(original).restore(surface);
                 }
             }
         }
