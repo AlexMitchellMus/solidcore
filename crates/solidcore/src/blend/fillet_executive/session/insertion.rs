@@ -67,13 +67,13 @@ impl FilletSession<'_> {
             let mut geometry =
                 geometry::InsertionGeometry::new(state.target, state.pseudo, state.intermediate)?
                     .with_notifications(
-                        state.curves,
-                        geometry::InsertionNotifications {
-                            records: state.notification_records,
-                            attributes: state.attributes,
-                            context,
-                        },
-                    );
+                    state.curves,
+                    geometry::InsertionNotifications {
+                        records: state.notification_records,
+                        attributes: state.attributes,
+                        context,
+                    },
+                )?;
             operation(k, state.intersector, &mut geometry)
         })?
     }

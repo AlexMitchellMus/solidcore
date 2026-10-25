@@ -36,7 +36,8 @@ pub enum InsertionBody {
     Intermediate,
 }
 
-/// An actual Surface instance, distinct from its owning Face slot.
+/// An actual Surface instance within this Session, distinct from its owning Face slot.
+/// Bindings from different Sessions or identity domains must not be mixed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SurfaceBinding {
     role: InsertionBody,
@@ -112,15 +113,31 @@ impl<'a> InsertionGeometry<'a> {
     }
     /// Supply actual operation-owned curves and retained notification stores.
     /// The context must be the real lease used by this Session's edits.
-    #[must_use]
+    /// # Errors
+    /// A body's existing identity belongs to another context domain. No identity is reissued.
     pub fn with_notifications(
         mut self,
         curves: &'a mut InsertionCurves,
         notifications: InsertionNotifications<'a>,
-    ) -> Self {
+    ) -> Result<Self> {
+        for role in [
+            InsertionBody::Target,
+            InsertionBody::Pseudo,
+            InsertionBody::Intermediate,
+        ] {
+            if notifications
+                .context
+                .issued_brep_serial(self.body_mut(role).notify_identity_slot())
+                .is_none()
+            {
+                return Err(invalid(
+                    "insertion body is outside the actual notification domain",
+                ));
+            }
+        }
         self.curves = Some(curves);
         self.notifications = Some(notifications);
-        self
+        Ok(self)
     }
     /// Retain a real curve copy and return its actual issued operation handle.
     /// # Errors
@@ -922,7 +939,7 @@ mod tests {
                             attributes: &mut attributes,
                             context,
                         },
-                    );
+                    )?;
                 let binding = view.insert_curve_copy(curve)?;
                 assert_eq!(view.curve(binding).unwrap().owner(), owner);
                 assert!(ClassGeometryMut::curve_mut(&mut view, binding).is_some());
@@ -958,5 +975,42 @@ mod tests {
             .unwrap()
             .iter()
             .any(|&(op, object)| op == NotifyOperation::ChangeGeometry && object == caller));
+    }
+    #[test]
+    fn foreign_notification_domain_is_rejected_without_reissuing_body_identity() {
+        let mut k = Kernel::default();
+        let mut foreign = Kernel::default();
+        let mut target = box_at(&mut k, 0.0);
+        let mut intermediate = box_at(&mut k, 100.0);
+        let mut pseudo = FilletBrep::new();
+        *pseudo.brep_mut() = box_at(&mut k, 200.0);
+        let serials = [
+            target.notify_serial(),
+            pseudo.brep().notify_serial(),
+            intermediate.notify_serial(),
+        ];
+        let mut curves = InsertionCurves::default();
+        let mut records = BTreeMap::new();
+        let mut attributes = AttributeStore::default();
+        let result = InsertionGeometry::new(&mut target, &mut pseudo, &mut intermediate)
+            .unwrap()
+            .with_notifications(
+                &mut curves,
+                InsertionNotifications {
+                    records: &mut records,
+                    attributes: &mut attributes,
+                    context: &mut foreign.context,
+                },
+            );
+        assert!(result.is_err());
+        assert_eq!(
+            [
+                target.notify_serial(),
+                pseudo.brep().notify_serial(),
+                intermediate.notify_serial()
+            ],
+            serials
+        );
+        assert!(records.is_empty());
     }
 }
