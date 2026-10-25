@@ -35,8 +35,10 @@ pub struct Solution {
 /// `SolveCubicEqn` (4) or `SolveQuarticEqn` (5) on `coefficients` (ascending
 /// powers) with zero tolerance `tol`.
 ///
-/// Quartics with `tol > 1` are rejected: upstream then reads an uninitialised
-/// resolvent-cubic root (undefined behaviour).
+/// Quartics with `tol > 1` are rejected unless `|coefficients[4]| < tol`, when
+/// upstream falls back to the lower-degree solver. Otherwise upstream reads an
+/// uninitialised resolvent-cubic root (undefined behaviour). Equality and NaN
+/// leading coefficients do not take that fallback and remain rejected.
 pub fn solve(coefficients: &[f64], tol: f64) -> Result<Solution, FfiError> {
     let degree = match coefficients.len() {
         3 => 2,
@@ -44,7 +46,7 @@ pub fn solve(coefficients: &[f64], tol: f64) -> Result<Solution, FfiError> {
         5 => 4,
         n => return Err(FfiError::InvalidArgument(format!("{n} coefficients"))),
     };
-    if degree == 4 && tol > 1.0 {
+    if degree == 4 && tol > 1.0 && !(coefficients[4].abs() < tol) {
         return Err(FfiError::InvalidArgument(format!("quartic tol {tol}")));
     }
     let mut out = [0.0f64; 4];
