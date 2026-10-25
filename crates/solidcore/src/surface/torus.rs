@@ -1407,10 +1407,10 @@ mod tests {
                         t.inside_out = inside_out;
                         let domain = t.base.base.natural_uv_domain();
                         for minor in [true, false] {
-                            let param = if minor != swap {
-                                SurfParamType::U
-                            } else {
+                            let param = if minor == swap {
                                 SurfParamType::V
+                            } else {
+                                SurfParamType::U
                             };
                             let fixed = if param == SurfParamType::U {
                                 domain.u_interval().evaluate(0.25)
