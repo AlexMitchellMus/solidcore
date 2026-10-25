@@ -16,12 +16,7 @@ use crate::blend::fillet_geom::p4::{IntersectionFaceRole, IntersectionTopologyCo
 use crate::blend::fillet_solver::p1::FilletSolver;
 use crate::boolean::topology_intersector::{p1::TopologyIntersector, p3::CurveOnSurfaces};
 use crate::geom::{attribute::ObjectKey, context::Context, object::ObjectRef};
-use crate::topology::{
-    brep::p3::{topology_ref, with_lent_context},
-    edgeuse,
-    topology::Topology,
-    BrepId,
-};
+use crate::topology::{brep::p3::topology_ref, edgeuse, topology::Topology, BrepId};
 use std::collections::BTreeMap;
 
 /// Captured actual Curve slot and its issued identity in this Session.
@@ -520,7 +515,7 @@ impl FilletSession<'_> {
                 .intersector
                 .set_other_brep(Some(FilletObject::IntermediateBrep));
             self.set_fillet_brep_edge_map(k)?;
-            with_lent_context(k, |k, context| {
+            Context::with_notification_context(k, |k, context| {
                 self.executive.insert_intersection_topology(
                     k,
                     &mut LiveInsertionAccess {
@@ -560,6 +555,97 @@ mod tests {
         assert!(!k.context.doing_boolean());
         assert!(session.executive.intersector.doing_fillets);
     }
+    #[test]
+    fn actual_edit_loan_preserves_boolean_metadata_callbacks_and_failure_prefix() {
+        use crate::geom::context::{with_mark_lock, MarkType, NotifyCallback, ALL_MARKS};
+        use crate::geom::object::NotifyOperation;
+        use std::sync::{Arc, Mutex};
+        #[derive(Debug)]
+        struct Capture(Arc<Mutex<Vec<(NotifyOperation, ObjectRef)>>>);
+        impl NotifyCallback for Capture {
+            fn execute(
+                &mut self,
+                op: NotifyOperation,
+                caller: ObjectRef,
+                _one: Option<ObjectRef>,
+                _two: Option<ObjectRef>,
+                _three: Option<ObjectRef>,
+            ) -> Result<()> {
+                self.0.lock().unwrap().push((op, caller));
+                Ok(())
+            }
+        }
+        let mut k = Kernel::default();
+        let mut target = crate::primitive::api_primitives::create_box(
+            &mut k,
+            Point3::new(0.0, 0.0, 0.0),
+            10.0,
+            20.0,
+            30.0,
+        )
+        .unwrap();
+        let edge = target.edges().ids().next().unwrap();
+        let vertex = target.vertices().ids().next().unwrap();
+        let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+        session
+            .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+            .unwrap();
+        session.create_corners(&k, None).unwrap();
+        session.create_fillet_brep(&mut k, None).unwrap();
+        k.context.set_this_model_size_estimate(1234.5);
+        k.context.set_this_large_small_size_ratio(37.0);
+        with_mark_lock(&mut k, ALL_MARKS, |_k, _mark| {}).unwrap();
+        let mark = k.context.current_mark(MarkType::Mark);
+        let zone = k.context.this_zone_tol_3d();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        k.context
+            .set_user_notify_callback(Some(Box::new(Capture(events.clone()))));
+        let caller = session.target_identity(EntityRef::Vertex(vertex));
+        let changed = Point3::new(17.0, 18.0, 19.0);
+        let result: Result<()> = session.with_filleting_context(&mut k, |session, k| {
+            session.with_insertion_geometry(k, |_k, _ti, geometry| {
+                geometry.with_edit(InsertionBody::Target, |body, env| {
+                    let context = env.context.as_deref().unwrap();
+                    assert!(context.doing_boolean());
+                    assert_eq!(context.stored_model_size_estimate(), 1234.5);
+                    assert_eq!(context.stored_large_small_size_ratio(), 37.0);
+                    assert_eq!(context.this_zone_tol_3d(), zone);
+                    assert_eq!(context.current_mark(MarkType::Mark), mark);
+                    let key_of = env.key_of;
+                    crate::topology::vertex::set_point(
+                        body,
+                        vertex,
+                        changed,
+                        env.records,
+                        env.attributes,
+                        env.context.as_deref_mut(),
+                        caller,
+                        &|vu| key_of(EntityRef::Vertexuse(vu)),
+                    )?;
+                    Err(SolidError::sm_err("ordinary failure after actual edit"))
+                })
+            })
+        });
+        assert!(result.is_err());
+        assert_eq!(session.target().vertex(vertex).unwrap().point, changed);
+        assert!(!k.context.doing_boolean());
+        assert_eq!(k.context.stored_model_size_estimate(), 1234.5);
+        assert_eq!(k.context.stored_large_small_size_ratio(), 37.0);
+        assert_eq!(k.context.current_mark(MarkType::Mark), mark);
+        assert!(events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|&(op, object)| op == NotifyOperation::ChangeGeometry && object == caller));
+        assert!(k.context.user_notify_callback().is_some());
+        let mut later = crate::curve::curve::Curve::from(crate::curve::line::Line::from_points(
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            3,
+        ));
+        assert!(k.context.geometry_key(later.notify_identity_slot()).is_ok());
+    }
+
     #[test]
     fn actual_box_insertion_runs_the_shared_geometry_and_corner_stage() {
         let mut k = Kernel::default();
