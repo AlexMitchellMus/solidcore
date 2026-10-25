@@ -217,15 +217,27 @@ fn brep_notify(
     data1: Option<BrepNotifyArg>,
     data3: Option<ObjectRef>,
 ) -> Result<()> {
-    let brep = BrepNotifyArg::Object(brep_p2::brep_ref(b));
+    brep_notify_with_body_identity(b, env, operation, data1, data3, brep_p2::brep_ref(b))
+}
+
+fn brep_notify_with_body_identity(
+    b: &Brep,
+    env: &mut NotifyEnv<'_>,
+    operation: NotifyOperation,
+    data1: Option<BrepNotifyArg>,
+    data3: Option<ObjectRef>,
+    body: ObjectRef,
+) -> Result<()> {
+    let brep = BrepNotifyArg::Object(body);
     // the caller-held SM_OC_BREP cache is not threaded through `NotifyEnv` (no Rust
     // caller can build one yet: `make_brep_cache` needs `query.brep`)
-    brep_p2::notify(
+    brep_p2::notify_with_body_identity(
         b,
         env,
         None,
         operation,
         [data1, Some(brep), data3.map(BrepNotifyArg::Object)],
+        body,
     )
 }
 
@@ -2581,6 +2593,36 @@ pub fn set_curve(
     env: &mut NotifyEnv<'_>,
     curve_refs: [Option<ObjectRef>; 2],
 ) -> Result<Option<Curve>> {
+    set_curve_with_identity(b, e, new_curve, options, env, curve_refs, None)
+}
+
+/// Replace the actual edge curve while notifying its body's issued identity.
+/// The cache, UV invalidation and curve lifecycle share [`set_curve`]'s body.
+/// Other edge APIs retain their existing identity contract.
+///
+/// # Errors
+/// The same ordered notification errors as [`set_curve`].
+pub fn set_curve_with_body_identity(
+    b: &mut Brep,
+    e: EdgeId,
+    new_curve: Option<Curve>,
+    options: SetCurveOptions,
+    env: &mut NotifyEnv<'_>,
+    curve_refs: [Option<ObjectRef>; 2],
+    body: ObjectRef,
+) -> Result<Option<Curve>> {
+    set_curve_with_identity(b, e, new_curve, options, env, curve_refs, Some(body))
+}
+
+fn set_curve_with_identity(
+    b: &mut Brep,
+    e: EdgeId,
+    new_curve: Option<Curve>,
+    options: SetCurveOptions,
+    env: &mut NotifyEnv<'_>,
+    curve_refs: [Option<ObjectRef>; 2],
+    body: Option<ObjectRef>,
+) -> Result<Option<Curve>> {
     let [new_ref, old_ref] = curve_refs;
     if new_curve.is_none() && b.edge(e)?.curve.is_none() {
         return Ok(None);
@@ -2600,7 +2642,14 @@ pub fn set_curve(
         if has_brep {
             // side effect: remove from spatial cache.
             let this = Some(BrepNotifyArg::Entity(EntityRef::Edge(e)));
-            brep_notify(b, env, NotifyOperation::RmFromBrep, this, old_ref)?;
+            brep_notify_with_body_identity(
+                b,
+                env,
+                NotifyOperation::RmFromBrep,
+                this,
+                old_ref,
+                body.unwrap_or_else(|| brep_p2::brep_ref(b)),
+            )?;
         }
     }
 
@@ -2636,7 +2685,14 @@ pub fn set_curve(
     // side effect: Add to spatial cache.
     if options.call_notify && has_brep {
         let this = Some(BrepNotifyArg::Entity(EntityRef::Edge(e)));
-        brep_notify(b, env, NotifyOperation::AddToBrep, this, new_ref)?;
+        brep_notify_with_body_identity(
+            b,
+            env,
+            NotifyOperation::AddToBrep,
+            this,
+            new_ref,
+            body.unwrap_or_else(|| brep_p2::brep_ref(b)),
+        )?;
     }
     Ok(returned)
 }
