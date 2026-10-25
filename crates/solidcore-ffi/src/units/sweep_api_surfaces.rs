@@ -308,7 +308,7 @@ fn check_curve(c: &CurveSpec, need: Need, nullable: bool) -> Result<(), FfiError
             }
             if matches!(c, CurveSpec::AnalyticCircle { .. }) && need == Need::BSplinePosWeights {
                 return Err(bad(
-                    "analytic circle subclass is only admitted for Extrude or AnyCurve calls",
+                    "analytic circle where upstream takes an SmBSplineCurve",
                 ));
             }
         }
@@ -316,9 +316,7 @@ fn check_curve(c: &CurveSpec, need: Need, nullable: bool) -> Result<(), FfiError
             finite(start, "line")?;
             finite(end, "line")?;
             if need == Need::BSplinePosWeights {
-                return Err(bad(
-                    "line subclass is only admitted for Extrude or AnyCurve calls",
-                ));
+                return Err(bad("line where upstream takes an SmBSplineCurve"));
             }
         }
     }

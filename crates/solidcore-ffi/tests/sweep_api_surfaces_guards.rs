@@ -134,6 +134,12 @@ fn other_bspline_needs_still_reject_subclasses() {
         radius: 1.0,
     };
     for curve in [line(), circle()] {
+        // The unchanged rejection paths keep their exact pre-existing messages.
+        let expected = if matches!(curve, CurveSpec::LineSegment { .. }) {
+            "line where upstream takes an SmBSplineCurve"
+        } else {
+            "analytic circle where upstream takes an SmBSplineCurve"
+        };
         for call in [
             Call::Sweep {
                 curve: curve.clone(),
@@ -161,7 +167,12 @@ fn other_bspline_needs_still_reject_subclasses() {
                 profiles: vec![curve],
             },
         ] {
-            assert_rejected(call);
+            let err = run(&call).unwrap_err();
+            assert!(
+                matches!(&err, FfiError::InvalidArgument(message) if message.as_str() == expected),
+                "{err:?}"
+            );
+            DISPATCHES.with_borrow(|calls| assert!(calls.is_empty()));
         }
     }
 }
