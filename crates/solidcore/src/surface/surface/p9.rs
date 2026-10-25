@@ -597,13 +597,32 @@ impl<'a, O: SolutionObject + 'a> GlobalSolve<'a, O> for CsiGlobalSolver<'a, '_, 
         second: &Solution<O>,
     ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
         let k = self.kernel;
-        let domains = super::p1::SolveOperands {
-            operands: [
-                super::p5::curve_operand(&self.base, 0, self.curve),
-                super::p5::surface_operand(&self.base, 1, self.surface_cache, self.surface),
-            ],
-        };
-        super::p5::csi_identical_solutions_in(k, &self.base, self.surface, first, second, &domains)
+        // the solutions name the solve's curve and surface (the trees' owners)
+        if let Some(operands) = &self.operands {
+            super::p5::csi_identical_solutions_in(
+                k,
+                &self.base,
+                self.surface,
+                first,
+                second,
+                operands,
+            )
+        } else {
+            let domains = super::p1::SolveOperands {
+                operands: [
+                    super::p5::curve_operand(&self.base, 0, self.curve),
+                    super::p5::surface_operand(&self.base, 1, self.surface_cache, self.surface),
+                ],
+            };
+            super::p5::csi_identical_solutions_in(
+                k,
+                &self.base,
+                self.surface,
+                first,
+                second,
+                &domains,
+            )
+        }
     }
 }
 
