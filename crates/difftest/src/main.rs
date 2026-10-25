@@ -96,7 +96,7 @@ fn parse_args() -> Result<Args, String> {
             "--no-report" => a.no_report = true,
             "--baseline" => a.baseline = Some(PathBuf::from(val("--baseline")?)),
             "--compare-reports" => {
-                a.compare_reports = Some(PathBuf::from(val("--compare-reports")?))
+                a.compare_reports = Some(PathBuf::from(val("--compare-reports")?));
             }
             "--ssi-corpus" => a.ssi_corpus = true,
             "--solidcraft-cases" => a.solidcraft_cases = true,
@@ -199,6 +199,17 @@ fn main() -> ExitCode {
         return difftest::ssi::run_corpus(&root, &opts);
     }
 
+    // Reports only: no C++ kernel needed.
+    if let Some(current) = &args.compare_reports {
+        return match Waivers::load(&root) {
+            Ok(waivers) => compare_reports_main(&args, current, &waivers),
+            Err(e) => {
+                eprintln!("difftest: {e}");
+                ExitCode::from(2)
+            }
+        };
+    }
+
     if !solidcore_ffi::LINKED {
         eprintln!(
             "difftest: built without the C++ kernel; run with \
@@ -227,10 +238,6 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-
-    if let Some(current) = &args.compare_reports {
-        return compare_reports_main(&args, current, &waivers);
-    }
 
     if args.list {
         for u in &reg {
