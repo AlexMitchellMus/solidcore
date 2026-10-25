@@ -440,21 +440,22 @@ mod tests {
     /// Prints curve count and line records (point, vector, interval) of both sides for
     /// the parallel-cylinder cases; run with `--nocapture`.
     fn lines(v: &[f64]) -> String {
+        use std::fmt::Write as _;
         let n = at(v, 2) as usize;
         let mut s = format!("status={} more={} curves={n}", at(v, 0), at(v, 1));
-        let p = 3;
-        for _ in 0..n {
+        // the first curve only: later offsets depend on NURB sizes
+        if n > 0 {
             // [1, type, dim, point3, vector3, ivl2, ...] for line curves
+            let p = 3;
             let f = |a: usize| v.get(p + a..p + a + 3).map(<[f64]>::to_vec);
-            s += &format!(
+            let _ = write!(
+                s,
                 "\n    type={} pt={:?} vec={:?} ivl={:?}",
                 at(v, p + 1),
                 f(3),
                 f(6),
                 v.get(p + 9..p + 11)
             );
-            // stop after the first curve: later offsets depend on NURB sizes
-            break;
         }
         s
     }
