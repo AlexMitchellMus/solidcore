@@ -86,10 +86,10 @@ use crate::math::{max2, min2, EFF_ZERO, EFF_ZERO_PARAM};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::surface::plane::PlaneDropCurve;
+use crate::surface::surface::p1::SurfaceSolveContext;
 use crate::surface::surface::p2::{
     CreateUvTrimCurvePathType, DropCurveFailArgs, SurfaceKind, UNSURE,
 };
-use crate::surface::surface::p1::SurfaceSolveContext;
 use crate::surface::surface::p4::FaceTest;
 use crate::surface::surface::p7::approx_derivative_lengths;
 use crate::surface::surface::Surface;
@@ -129,7 +129,7 @@ pub struct DropSolveContext<'a, O: SolutionObject> {
     pub handle: Option<O>,
 }
 
-impl<'a, O: SolutionObject> DropSolveContext<'a, O> {
+impl<O: SolutionObject> DropSolveContext<'_, O> {
     /// The same context lent for a shorter call.
     pub(crate) fn reborrow(&mut self) -> DropSolveContext<'_, O> {
         DropSolveContext {
@@ -433,6 +433,36 @@ impl Surface {
         )
     }
 
+    /// [`Surface::drop_curve_base`] whose start point drop's trim test is `classify`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::drop_curve_base`], and those of `classify`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drop_curve_base_face_tested<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol_3d: f64,
+        keep_all_drop_curves: bool,
+        record: Option<DropFailRecord<'_, O>>,
+        classify: FaceTest<'_>,
+    ) -> Result<DropCurveOut> {
+        self.drop_curve_base_in(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol_3d,
+            keep_all_drop_curves,
+            record,
+            Some(classify),
+            None,
+        )
+    }
+
     /// [`Surface::drop_curve_base`] under the caller's face context: the start point
     /// drop's cache lookup (`smsurf_GetSurfaceCache` of a face-owned surface) is built
     /// by `context`, so the face's trim boundary test is available.
@@ -537,7 +567,7 @@ impl Surface {
         classify: FaceTest<'_>,
     ) -> Result<PlaneDropCurve> {
         if let SurfaceKind::Plane(p) = self.kind() {
-            return p.drop_curve(
+            return p.drop_curve_owned_by_face_tested(
                 k,
                 uv_domain,
                 curve,
@@ -545,7 +575,8 @@ impl Surface {
                 approx_tol_3d,
                 keep_all_drop_curves,
                 creating_uv_trim_curve,
-                self.owner(),
+                self,
+                classify,
             );
         }
         let d = self.drop_curve_base_in::<O>(

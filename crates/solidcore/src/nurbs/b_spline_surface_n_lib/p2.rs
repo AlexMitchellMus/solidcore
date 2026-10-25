@@ -808,8 +808,7 @@ impl BSplineSurface {
         // convert all input edges from NURBs to NUBs
         let mut boundaries: Vec<BSplineCurve> = Vec::with_capacity(curve_cnt);
         let mut uv_crvs: Vec<Option<BSplineCurve>> = Vec::with_capacity(curve_cnt);
-        for (i, ((curve, uv), srf)) in curves_3d.iter().zip(uv_curves).zip(neighbours).enumerate()
-        {
+        for (i, ((curve, uv), srf)) in curves_3d.iter().zip(uv_curves).zip(neighbours).enumerate() {
             // copy NUBs and their UVTrimCurves, approx NURBs and drop them to make their
             // UVTrimCurves
             let base = srf.map(|n| n.surface);
