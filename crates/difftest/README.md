@@ -378,7 +378,7 @@ ratchet waivers once the PR has merged.
 * **Absolute floor** only where the runner documents one via
   `abs_floors()` (key + value + reason, written into the report). Do not add a
   floor to make a case pass; if the C++ and Rust genuinely disagree, record it in
-  `plan/findings.md` and leave the unit non-green.
+  a new `plan/findings/<slug>.md` and leave the unit non-green.
 * Key sets and array lengths must match. A case with a harness error (bad
   input, panic) fails. A unit with zero cases fails.
 
@@ -689,6 +689,9 @@ nice -n 10 cargo run -p difftest -- --solidcraft-cases '3526-*'        # ids (<f
   glob): per case its source links, verdict, deferral, measured values and checks.
 * `cargo test -p difftest --lib solidcraft` checks that every case file loads, every
   case runs to a verdict, and every deferral names a plan unit.
+* **Adding cases:** add a new `fixtures/solidcraft/<issue>-<slug>.json`. Files load in
+  sorted order and nothing counts them, so no Rust file changes unless the case needs
+  a new step kind.
 
 ### Sheet flange corner overlap (SolidCraft #3170, PR #3472)
 
