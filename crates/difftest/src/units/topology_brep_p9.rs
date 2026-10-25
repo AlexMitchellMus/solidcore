@@ -5,7 +5,7 @@
 //! snapshot. Successful native mutations on deferred paths are not parity passes.
 use super::boolean_merge_p1::{graph_reachable, Canon};
 use super::topology_edgeuse_p1::{self as spec, BrepIn};
-use super::topology_vertexuse::import;
+use super::topology_vertexuse::{import, import_raw};
 use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -152,6 +152,14 @@ fn rust(i: &Inputs, initial: &[f64]) -> Result<Output, HarnessError> {
             .get(2..)
             .ok_or_else(|| error("missing initial export"))?,
     )?;
+    // As the native B-rep: each edge owns its curve and each face its surface, under the
+    // arena keys op 0's `BrepQuery::default()` names them by (the import leaves curves
+    // unowned and owns face f's surface as `1 + f`), and a face-owned surface carries the
+    // face's tolerance. Without it the B-rep cache trees hold no edges or faces.
+    crate::util::own_arena_geometry(&mut b);
+    for f in b.faces().ids().collect::<Vec<_>>() {
+        b.sync_face_surface_tolerance(f).map_err(|e| error(&e))?;
+    }
     // As the shim, after setup and export: `b->m_bEditingEnabled = editing`.
     b.set_editing_enabled(i.editing);
     let mut k = Kernel::default();
@@ -167,16 +175,12 @@ fn rust(i: &Inputs, initial: &[f64]) -> Result<Output, HarnessError> {
     let result: solidcore::Result<i32> = (|| {
         match i.op {
             0 => {
-                record.push(id(port::find_infinite_region::<
-                    super::topology_shell::NoRayObject,
-                    _,
-                >(
+                record.push(id(port::find_infinite_region(
                     &mut k,
                     &mut b,
-                    solidcore::topology::BrepId::from_index(0),
+                    &solidcore::query::brep::BrepQuery::default(),
                     None,
                     None,
-                    &super::topology_shell::EmptyRayWorld,
                 )?));
                 Ok(0)
             }
@@ -365,7 +369,8 @@ fn rust(i: &Inputs, initial: &[f64]) -> Result<Output, HarnessError> {
                 let surface = f
                     .surface
                     .as_ref()
-                    .ok_or_else(|| SolidError::sm_err("difftest::brep_p9"))?;
+                    .ok_or_else(|| SolidError::sm_err("difftest::brep_p9"))?
+                    .clone();
                 let y = if i.variant == 1 { 2.0 } else { 0.5 };
                 let (x0, x1) = if i.variant == 2 {
                     (0.25, 0.75)
@@ -374,19 +379,14 @@ fn rust(i: &Inputs, initial: &[f64]) -> Result<Output, HarnessError> {
                 };
                 let interval = Extent1d::from_min_max(-3.0, 7.0);
                 let mut line = Line::from_points(
-                    surface.evaluate_point(Point2::new(x0, y))?,
-                    surface.evaluate_point(Point2::new(x1, y))?,
+                    surface.evaluate_point(&k, Point2::new(x0, y))?,
+                    surface.evaluate_point(&k, Point2::new(x1, y))?,
                     3,
                 );
                 line.edit_parameterization(&interval)?;
-                let dropped = port::drop_edge_curve(
-                    &k,
-                    surface,
-                    &f.uv_domain,
-                    &Curve::from(line),
-                    &interval,
-                    f.tolerance,
-                )?;
+                // the face-owned surface: the drop reaches its face
+                let dropped =
+                    port::drop_edge_curve_on_face(&k, &mut b, face, &Curve::from(line), &interval)?;
                 record.extend([
                     dropped.max_drop_to_surf,
                     dropped.max_approx_dev,
@@ -396,7 +396,7 @@ fn rust(i: &Inputs, initial: &[f64]) -> Result<Output, HarnessError> {
                     let d = curve.natural_interval();
                     record.extend([d.min(), d.max()]);
                     for t in [d.min(), d.min() + 0.5 * (d.max() - d.min()), d.max()] {
-                        let p = curve.evaluate_point(t)?;
+                        let p = curve.evaluate_point(&k, t)?;
                         record.extend([p.x, p.y, p.z]);
                     }
                 }
@@ -525,7 +525,7 @@ impl UnitDiff for Runner {
             raw.get(2..2 + n)
                 .ok_or_else(|| error("short native record"))?,
         );
-        let (b, _) = import(
+        let (b, _) = import_raw(
             raw.get(2 + n..)
                 .ok_or_else(|| error("short native graph"))?,
         )?;

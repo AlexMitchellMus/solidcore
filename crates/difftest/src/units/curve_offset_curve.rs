@@ -349,7 +349,7 @@ fn build_base(c: &BaseIn) -> Result<Curve, HarnessError> {
     }
 }
 
-fn build_offset(base: Curve, s: &SpecIn) -> Curve {
+fn build_offset(base: Curve, s: &SpecIn) -> solidcore::Result<Curve> {
     let mut c = Curve::from(OffsetCurve::new(
         s.dim,
         base,
@@ -357,23 +357,37 @@ fn build_offset(base: Curve, s: &SpecIn) -> Curve {
         v3(s.normal),
         s.dist,
         s.owns,
-    ));
+    )?);
     for _ in 0..s.nrev {
         let ivl = c.natural_interval();
         // (status ignored by the shim; the offset reversal cannot fail)
         let _ = c.reverse_parameterization(&Kernel::default(), &ivl);
     }
-    c
+    Ok(c)
 }
+
+/// Most reversals the runner applies (`ffi::MAX_REVERSALS`, the guard's bound): the
+/// `nrev` loop is runner code, so a fuzzed count must not make it run for hours.
+const MAX_RUNNER_REVERSALS: usize = 4;
 
 /// The base curve and the op's curve.
 fn build(i: &Inputs) -> Result<(Curve, Curve), HarnessError> {
+    let other = match &i.op {
+        OpIn::Eq { other, .. } => other.as_ref(),
+        _ => None,
+    };
+    for s in [i.spec.as_ref(), i.outer.as_ref(), other].into_iter().flatten() {
+        if s.nrev > MAX_RUNNER_REVERSALS {
+            return Err(harness("nrev above the runner's reversal bound"));
+        }
+    }
     let base = build_base(i.base.as_ref().ok_or_else(|| harness("no base"))?)?;
     let spec = i.spec.as_ref().ok_or_else(|| harness("no spec"))?;
-    let inner = build_offset(base.clone(), spec);
+    let built = |base: Curve, spec: &SpecIn| build_offset(base, spec).map_err(|e| harness(e.to_string()));
+    let inner = built(base.clone(), spec)?;
     Ok(match &i.outer {
         None => (base, inner),
-        Some(o) => (inner.clone(), build_offset(inner, o)),
+        Some(o) => (inner.clone(), built(inner, o)?),
     })
 }
 
@@ -391,7 +405,7 @@ fn pv(o: &mut Vec<f64>, v: Vec3) {
     o.extend([v.x, v.y, v.z]);
 }
 
-fn state(o: &mut Vec<f64>, c: &Curve) -> Result<(), SolidError> {
+fn state(k: &Kernel, o: &mut Vec<f64>, c: &Curve) -> Result<(), SolidError> {
     o.extend([c.type_code() as f64, c.dim() as f64]);
     let solidcore::curve::curve::p2::CurveKind::Offset(off) = c.kind() else {
         o.push(-1.0);
@@ -409,15 +423,15 @@ fn state(o: &mut Vec<f64>, c: &Curve) -> Result<(), SolidError> {
         None => o.extend([-1.0, -1.0]),
         Some(bc) => {
             o.push(bc.type_code() as f64);
-            o.push(off.number_natural_knots()? as f64);
+            o.push(off.number_natural_knots(k)? as f64);
         }
     }
     Ok(())
 }
 
-fn probes(o: &mut Vec<f64>, c: &Curve, ts: &[f64]) -> Result<(), SolidError> {
+fn probes(k: &Kernel, o: &mut Vec<f64>, c: &Curve, ts: &[f64]) -> Result<(), SolidError> {
     for &t in ts {
-        match c.evaluate_point(t) {
+        match c.evaluate_point(k, t) {
             Ok(p) => {
                 o.push(0.0);
                 pv(o, p);
@@ -425,7 +439,7 @@ fn probes(o: &mut Vec<f64>, c: &Curve, ts: &[f64]) -> Result<(), SolidError> {
             Err(e @ SolidError::Unported { .. }) => return Err(e),
             Err(e) => o.push(status(&e)),
         }
-        match c.evaluate(t, 3, true, true) {
+        match c.evaluate(k, t, 3, true, true) {
             Ok(v) => {
                 o.push(0.0);
                 for x in v {
@@ -440,7 +454,7 @@ fn probes(o: &mut Vec<f64>, c: &Curve, ts: &[f64]) -> Result<(), SolidError> {
 }
 
 /// Runs the op; `Err` is a Rust failure of the op itself (reported as its status).
-fn rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
+fn rust_op(k: &Kernel, i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
     if let OpIn::ReadDb {
         binary,
         version,
@@ -464,8 +478,8 @@ fn rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
         );
         let c = Curve::from(OffsetCurve::read_from_db(&Kernel::default(), &mut db, *version)?);
         o.push(0.0);
-        state(o, &c)?;
-        return probes(o, &c, ts);
+        state(k, o, &c)?;
+        return probes(k, o, &c, ts);
     }
     let (under, mut c) = build(i).map_err(|_| SolidError::InvalidInput {
         operation: "difftest",
@@ -474,7 +488,7 @@ fn rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
     match &i.op {
         OpIn::State => {
             o.push(0.0);
-            state(o, &c)?;
+            state(k, o, &c)?;
         }
         OpIn::Eval {
             t,
@@ -482,20 +496,20 @@ fn rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
             left,
             nonzero,
         } => {
-            let v = c.evaluate(*t, *n, *left, *nonzero)?;
+            let v = c.evaluate(k, *t, *n, *left, *nonzero)?;
             o.push(0.0);
             for x in v {
                 pv(o, x);
             }
         }
         OpIn::EvalPoint { t } => {
-            let p = c.evaluate_point(*t)?;
+            let p = c.evaluate_point(k, *t)?;
             o.push(0.0);
             pv(o, p);
         }
         OpIn::Knots { ivl, mults } => {
             let ivl = ivl.map(|[a, bb]| Extent1d::from_min_max(a, bb));
-            let (k, m) = c.knots(ivl.as_ref())?;
+            let (k, m) = c.knots(k, ivl.as_ref())?;
             o.push(0.0);
             o.push(k.len() as f64);
             o.extend(&k);
@@ -507,7 +521,7 @@ fn rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
             }
         }
         OpIn::Continuities { angle } => {
-            let (min, all) = c.calculate_continuities(*angle)?;
+            let (min, all) = c.calculate_continuities(k, *angle)?;
             o.push(0.0);
             o.push(f64::from(min as i32));
             o.push(all.len() as f64);
@@ -516,8 +530,8 @@ fn rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
         OpIn::Reverse { a, b: bb, probes: ts } => {
             let ivl = c.reverse_parameterization(&Kernel::default(), &Extent1d::from_min_max(*a, *bb))?;
             o.extend([0.0, ivl.min(), ivl.max()]);
-            state(o, &c)?;
-            probes(o, &c, ts)?;
+            state(k, o, &c)?;
+            probes(k, o, &c, ts)?;
         }
         OpIn::Trim {
             a,
@@ -538,17 +552,17 @@ fn rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
                 Err(e) => status(&e),
             };
             o.extend([s, ivl.min(), ivl.max()]);
-            state(o, &c)?;
-            probes(o, &c, ts)?;
+            state(&k, o, &c)?;
+            probes(&k, o, &c, ts)?;
         }
         OpIn::Eq { this, copy, other } => {
             o.push(0.0);
             if *this {
-                o.push(b(c.approx_eq(&c)?));
+                o.push(b(c.approx_eq(k, &c)?));
             } else if *copy {
                 let cp = c.copy(&Kernel::default())?;
-                o.push(b(c.approx_eq(&cp)?));
-                o.push(b(cp.approx_eq(&c)?));
+                o.push(b(c.approx_eq(k, &cp)?));
+                o.push(b(cp.approx_eq(k, &c)?));
             } else {
                 let s = other.as_ref().ok_or(SolidError::InvalidInput {
                     operation: "difftest",
@@ -556,16 +570,16 @@ fn rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
                 })?;
                 let mut s = s.clone();
                 s.owns = false;
-                let c2 = build_offset(under, &s);
-                o.push(b(c.approx_eq(&c2)?));
-                o.push(b(c2.approx_eq(&c)?));
+                let c2 = build_offset(under, &s)?;
+                o.push(b(c.approx_eq(k, &c2)?));
+                o.push(b(c2.approx_eq(k, &c)?));
             }
         }
         OpIn::Copy { probes: ts } => {
             let cp = c.copy(&Kernel::default())?;
             o.push(0.0);
-            state(o, &cp)?;
-            probes(o, &cp, ts)?;
+            state(k, o, &cp)?;
+            probes(k, o, &cp, ts)?;
         }
         OpIn::IsKindOf { type_code } => {
             o.push(0.0);
@@ -576,9 +590,9 @@ fn rust_op(i: &Inputs, o: &mut Vec<f64>) -> Result<(), SolidError> {
     Ok(())
 }
 
-fn rust(i: &Inputs) -> Result<Output, HarnessError> {
+fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     let mut o = Vec::new();
-    let Err(e) = rust_op(i, &mut o) else {
+    let Err(e) = rust_op(k, i, &mut o) else {
         return Ok(to_output(&o));
     };
     if let Some(d) = Output::unported(&e) {
@@ -934,6 +948,7 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        rust(&case.parse()?)
+        let k = &Kernel::default();
+        rust(k, &case.parse()?)
     }
 }

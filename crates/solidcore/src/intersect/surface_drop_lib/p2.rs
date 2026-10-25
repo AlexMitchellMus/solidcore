@@ -46,7 +46,9 @@
 //! - **Kernel.** `SmSurface::IsSingularity` and `SmSurface::LocalPointSolve` take the
 //!   caller's [`Kernel`]; `sm_AddToCurve` takes it (for `IsSingularity`) in place of
 //!   its unused `crContext`. `EvaluateGeometric`'s status is ignored, as upstream: a
-//!   failed evaluation leaves the principal curvatures at their initial `0.0`.
+//!   failed evaluation leaves the principal curvatures at their initial `0.0`. So is
+//!   `SetProperties`' offset `EvaluateDirectionalDerivs` (it fails at a pole): the
+//!   derivatives then stay `SM_UNDEF_DOUBLE` and the tangent drop tests bad.
 //! - **Unported callees.** The offset surface evaluations (`surface.offset_surface`)
 //!   return [`SolidError::Unported`].
 //! - **Not ported here.** The `SM_DEBUG_CODE` blocks, the `SM_ASSERT`s and the
@@ -166,7 +168,7 @@ impl DropOffset {
         vector: Vec3,
     ) -> Result<Vec2> {
         let off = offset.offset_of(k, surface)?;
-        drop_vectors_at(&off, uv, side(from_left_u), side(from_left_v), &[vector])?
+        drop_vectors_at(k, &off, uv, side(from_left_u), side(from_left_v), &[vector])?
             .first()
             .copied()
             .ok_or_else(|| SolidError::sm_err(OP_SET))
@@ -185,7 +187,7 @@ impl DropOffset {
         from_left_v: bool,
     ) -> Result<[Point3; 2]> {
         let off = offset.offset_of(k, surface)?;
-        let d = off.evaluate_directional_derivs(uv, uv_dir, 1, from_left_u, from_left_v)?;
+        let d = off.evaluate_directional_derivs(k, uv, uv_dir, 1, from_left_u, from_left_v)?;
         match d.as_slice() {
             [p, d1, ..] => Ok([*p, *d1]),
             _ => Err(SolidError::sm_err(OP_SET)),
@@ -286,13 +288,14 @@ fn local_point_solve(
 /// curvatures. Upstream ignores the status; the caller's locals start at `0.0`, so a
 /// failed evaluation gives `(0.0, 0.0)`.
 fn evaluate_principal_curvatures(
+    k: &Kernel,
     surface: &Surface,
     uv: Point2,
     from_left_u: bool,
     from_left_v: bool,
 ) -> Result<(f64, f64)> {
     Ok(
-        ignored(surface.evaluate_geometric(uv, side(from_left_u), side(from_left_v)))?
+        ignored(surface.evaluate_geometric(k, uv, side(from_left_u), side(from_left_v)))?
             .map_or((0.0, 0.0), |g| {
                 (g.principle_curvature1, g.principle_curvature2)
             }),
@@ -302,13 +305,14 @@ fn evaluate_principal_curvatures(
 /// `crSurface.FindDegenParamForDirection(uv, dir, bDirFromPole, eDir, 0.0001)` with
 /// its status ignored: the moved point, or `uv` when the call fails before moving it.
 fn find_degen_param(
+    k: &Kernel,
     surface: &Surface,
     uv: Point2,
     dir: Vec3,
     dir_from_pole: bool,
     singular_dir: SurfParamType,
 ) -> Result<Point2> {
-    match surface.find_degen_param_for_direction(uv, dir, dir_from_pole, singular_dir, 0.0001) {
+    match surface.find_degen_param_for_direction(k, uv, dir, dir_from_pole, singular_dir, 0.0001) {
         Ok(d) => Ok(d.uv),
         Err(e) if e.is_unported() => Err(e),
         Err(_) => Ok(uv),
@@ -364,6 +368,7 @@ impl DropPt {
             // find degenParam value at a singularity that matches the dropCurve UV
             // direction
             self.uv_pd[0] = find_degen_param(
+                k,
                 surface,
                 self.uv_pd[0],
                 self.crv_pd[1],
@@ -374,7 +379,7 @@ impl DropPt {
 
         // Surface pos and Srf U and V Derivs
         let (mut p3d, mut srf_du, mut srf_dv) =
-            surface.evaluate_1st_derivatives(self.uv_pd[0], true, true)?;
+            surface.evaluate_1st_derivatives(k, self.uv_pd[0], true, true)?;
 
         // set m_bFromLeftU and m_bFromLeftV
         let from_left_u = srf_du.dot(self.crv_pd[1]) >= 0.0;
@@ -386,21 +391,23 @@ impl DropPt {
         // reevaluate when on knot boundaries as needed
         if !from_left_u || !from_left_v {
             (p3d, srf_du, srf_dv) =
-                surface.evaluate_1st_derivatives(self.uv_pd[0], from_left_u, from_left_v)?;
+                surface.evaluate_1st_derivatives(k, self.uv_pd[0], from_left_u, from_left_v)?;
             self.pd_3d[0] = p3d;
         }
 
         // SurfaceNormal at DropPoint
         self.srf_normal =
-            surface.evaluate_normal(self.uv_pd[0], side(from_left_u), side(from_left_v))?;
+            surface.evaluate_normal(k, self.uv_pd[0], side(from_left_u), side(from_left_v))?;
         let start_gap = self.crv_pd[0] - self.pd_3d[0];
 
         // UDir tolerance
         let interval_u = uv_domain.u_interval();
         let interval_v = uv_domain.v_interval();
         let zone_tol = zone_tol_3d(k, surface)?;
-        let zone_tol_2d_u = map_to_2d_dir(zone_tol, self.uv_pd[0], Vec2::new(1.0, 0.0), surface)?;
-        let zone_tol_2d_v = map_to_2d_dir(zone_tol, self.uv_pd[0], Vec2::new(0.0, 1.0), surface)?;
+        let zone_tol_2d_u =
+            map_to_2d_dir(k, zone_tol, self.uv_pd[0], Vec2::new(1.0, 0.0), surface)?;
+        let zone_tol_2d_v =
+            map_to_2d_dir(k, zone_tol, self.uv_pd[0], Vec2::new(0.0, 1.0), surface)?;
         let limit_rad = deg_to_rad(30.0);
 
         // Classify DropPoint against UVDomain
@@ -505,6 +512,7 @@ impl DropPt {
             if self.approx_dev < 1000.0 * scaled_tol {
                 // get the surface principle curvatures (status ignored upstream)
                 let (curv1, curv2) = evaluate_principal_curvatures(
+                    k,
                     surface,
                     self.uv_pd[0],
                     from_left_u,
@@ -582,7 +590,9 @@ impl DropPt {
         // the curve tangent
         if self.degen_curve != Some(true) {
             if !self.uv_pd[1].is_zero(EFF_ZERO) {
-                let [_, mut offset_d1] = DropOffset::evaluate_directional_derivs(
+                // (status ignored upstream: a failed evaluation, e.g. the offset at a
+                // pole, leaves `sOffsetPD` at its default `SM_UNDEF_DOUBLE` values)
+                let [_, mut offset_d1] = ignored(DropOffset::evaluate_directional_derivs(
                     offset,
                     k,
                     surface,
@@ -590,7 +600,8 @@ impl DropPt {
                     self.uv_pd[1],
                     from_left_u,
                     from_left_v,
-                )?;
+                ))?
+                .unwrap_or([Point3::UNDEF; 2]);
                 let uv_speed = self.uv_pd[1].length();
                 offset_d1 = uv_speed * offset_d1;
 
@@ -695,6 +706,7 @@ impl DropPt {
 
         // get StartPoint Surf DU, DV, DUU, DVV, DUV values (status ignored upstream)
         let [_, srf_u, srf_v, srf_uv, srf_uu, srf_vv] = surface.evaluate_2nd_derivatives(
+            k,
             start.uv_pd[0],
             start.from_left_u != Some(false),
             start.from_left_v != Some(false),
@@ -726,7 +738,7 @@ impl DropPt {
         end.uv_pd[0] = uv_domain.clamp_point(end.uv_pd[0]);
 
         // get SpanEnd[CrvPt Crv1stDeriv]
-        let crv = curve.evaluate(end.t, 2, false, true)?;
+        let crv = curve.evaluate(k, end.t, 2, false, true)?;
         for (dst, src) in end.crv_pd.iter_mut().zip(crv.iter()) {
             *dst = *src;
         }
@@ -805,6 +817,7 @@ impl DropPt {
             };
             if singular {
                 end.uv_pd[0] = find_degen_param(
+                    k,
                     surface,
                     end.uv_pd[0],
                     end.crv_pd[1],
@@ -815,7 +828,7 @@ impl DropPt {
 
             // Correct an ambiguous seam-side choice only within the 3D tolerance.
             // A larger correction rejects this candidate without moving the endpoint.
-            match start.check_seam_jump(surface, srf_closure, approx_tol_3d, end) {
+            match start.check_seam_jump(k, surface, srf_closure, approx_tol_3d, end) {
                 Ok(()) => {}
                 Err(SolidError::Upstream {
                     code: SM_ERR_OUTSIDE_OF_DOMAIN,

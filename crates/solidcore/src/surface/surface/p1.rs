@@ -7,7 +7,8 @@
 //! few standalone helpers (`smsurf_EvaluateNormalSection`, `sm_CrossedSeamOrPole`, the
 //! tree node validity tests).
 //!
-//! Deviations: compound evaluation copies carry a depth counter capped at 64 by Surface. The caches
+//! Deviations: compound evaluation copies carry a depth counter checked by Surface against
+//! [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING). The caches
 //! hold an exact copy of their surface (`clone_for_evaluation`) where upstream holds a
 //! pointer to it: `Clone` is the copy constructor, whose second knot fixup changed a
 //! knot vector the first fixup had left non-monotone (PR #147 round 4). Unlike `Clone`
@@ -26,13 +27,15 @@
 //! | [`Surface::calculate_bounding_box`], [`SurfaceBoxes`] | `CalculateBoundingBox` (base body)           |
 //! | [`Surface::approximate_size`]                     | `ApproximateSize`                                |
 //! | [`validate_surface_cache`], [`make_surface_cache`], [`make_trim_srf_cache`], [`cache_tolerances`] | `CacheMakeOrValidate` |
+//! | [`make_trim_srf_cache_with_face`], [`get_surface_cache_with_face`] | `CacheMakeOrValidate(SM_OC_TRIMSRF)`, `smsurf_GetSurfaceCache` of a face's surface |
+//! | [`cache_tree_built_on_get`], [`continuity_surface_cache`], [`note_surface_cache`] | the tree state of the cache `smsurf_GetSurfaceCache` hands out (`m_pCacheObj` reused or made) |
 //! | [`Surface::compute_param_direction`]              | `ComputeParamDirection`                          |
 //! | [`Surface::evaluate_directional_derivs`]          | `EvaluateDirectionalDerivs`                      |
 //! | [`Surface::create_offset_surface`]                | `CreateOffsetSurface`                            |
 //! | [`Surface::create_silhouette_curves`]             | `CreateSilhouetteCurves`                         |
 //! | [`Surface::evaluate_1st_derivatives`], [`Surface::evaluate_2nd_derivatives`] | `Evaluate1stDerivatives`, `Evaluate2ndDerivatives` |
 //! | [`Surface::evaluate_step`], [`Surface::evaluate_step_point`], [`Surface::evaluate_simple`] | `EvaluateSTEP`, `EvaluateSTEPPoint`, `EvaluateSimple` |
-//! | [`Surface::domain_with_continuity`]               | `GetDomainWithContinuity`                        |
+//! | [`Surface::domain_with_continuity`], [`Surface::domain_with_continuity_from_cache`] | `GetDomainWithContinuity`                        |
 //! | [`Surface::convert_domain_from_step_to_nurbs`], [`Surface::convert_domain_from_nurbs_to_step`] | `ConvertDomainFromSTEPToNURBS`, `ConvertDomainFromNURBSToSTEP` |
 //! | [`Surface::is_periodic`]                          | `IsPeriodic`                                     |
 //! | [`Surface::is_degenerate_point`], [`base_is_degenerate_point`] | `IsDegeneratePoint`                 |
@@ -54,21 +57,44 @@
 //! | [`CsIntersectEnfo`], [`CsNormalizeEnfo`], [`FindPsNormalEnfo`], [`SspIntersectEnfo`], [`SsiNormalizeEnfo`], [`SsNormalizeEnfo`], [`SssIntersectEnfo`] | the constructors of `SmCSIntersectENFO`, `SmCSNormalizeENFO`, `SmFindPSNormalENFO`, `SmSSPIntersectENFO`, `SmSSINormalizeENFO`, `SmSSNormalizeENFO`, `SmSSSIntersectENFO` |
 //!
 //! Deviations:
+//! - **Nesting.** `StepSurface::new` returns `InvalidInput` when the base surface would nest
+//!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
+//!   (32; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   cloning and dropping of nested geometry (no limit upstream).
 //! - **STEP surfaces.** `m_pSurface` is an owned copy ([`Box<Surface>`]) whether or not
 //!   upstream owns it (`m_bOwnsSurface` is kept as a flag); `None` is the empty
 //!   constructor's null pointer, where upstream would crash the methods return
 //!   [`SolidError::InvalidInput`] (or an uninitialised domain). `GetMemoryUsed` and
 //!   `WriteToDB` have no counterpart. Nested STEP surfaces read from a database are
 //!   bounded by the reader's nesting limit. Temporary evaluation copies retain
-//!   exact nested geometry and share `Surface`'s 64-level owned-geometry bound.
+//!   exact nested geometry and share `Surface`'s `MAX_GEOMETRY_NESTING` owned-geometry bound.
 //! - **Caches.** Upstream keeps a surface's cache on the surface and reuses it until it
 //!   changes. [`make_surface_cache`] and [`make_trim_srf_cache`] build a fresh cache for
 //!   the caller (the build is deterministic); [`validate_surface_cache`] is the rest of
 //!   `CacheMakeOrValidate` (the cache type check and the reuse of an existing cache,
 //!   whose face state the caller passes in). The members that query a cache
 //!   (`CalculateBoundingBox`, `GetDomainWithContinuity`, `CreateSilhouetteCurves`)
-//!   build one as `smsurf_GetSurfaceCache` would: the trimmed surface cache. The
-//!   debug cache counters are not modelled.
+//!   build one as `smsurf_GetSurfaceCache` would: the trimmed surface cache. Whether
+//!   upstream's cache of that surface object has its tree (`GetTree` builds it lazily;
+//!   one made during a Boolean operation has none, and its continuity arrays stay empty)
+//!   is the surface's cache slot ([`Surface::cache_tree_state`]): a new cache honours it
+//!   (no tree for an `Unbuilt` slot, the continuities alone for a `Built` slot during a
+//!   Boolean operation) and records it, and the readers of the continuity arrays that
+//!   call no `GetTree` (`GetDomainWithContinuity`, `LiftCurve`) take their cache from
+//!   [`continuity_surface_cache`]. The rest of the cache (its UV domain, face
+//!   containment and modified-face state) is rebuilt as before. The debug cache
+//!   counters are not modelled. The owner of a face's surface is an
+//!   [`ObjectRef`] the surface cannot follow to the B-rep: a caller holding the face
+//!   builds the cache with [`make_trim_srf_cache_with_face`] /
+//!   [`get_surface_cache_with_face`], giving `GetFace()` as a
+//!   [`CacheFace`]; without it a face-owned surface's trimmed cache stops at
+//!   `GetFace` ([`SolidError::Unported`]).
+//! - **Silhouettes.** `CreateSilhouetteCurves` always computes both the 3D and the
+//!   UV curves (upstream's output arrays are optional) and returns them. It does not
+//!   copy the surface's `SM_AI_COLOR` attribute onto the traced curves: a free
+//!   [`Surface`] or [`Curve`] has no attribute list, so a caller holding the
+//!   surface's attributes adds it. A traced curve or UV curve that is not a B-spline
+//!   (upstream's `SM_CAST_PTR` null, then dereferenced) is `SM_ERR_NULL_POINTER`.
 //! - **Owners.** `m_pOwner` is an [`ObjectRef`]. `SetOwner`'s `SM_NO_CHANGE_OWNER`
 //!   notification is the object layer's (see part 2's `notify`). `GetFace` follows
 //!   owner chains through surfaces upstream; the owning surfaces (`SmOffsetSurface`,
@@ -83,11 +109,12 @@
 //!   the array on to their basis; an offset's failure after a partial write keeps the
 //!   previous values) and keeps upstream's `SER` inside a boolean function: a failing
 //!   `Unitize` returns `TRUE`.
-//! - **Unported callees.** `CreateSilhouetteCurves` needs `SmSurfaceSilhouette`
-//!   (`intersect.surface_silhouette`), `ApproximateSize` of kinds other than B-splines needs
+//! - **Unported callees.** `ApproximateSize` of kinds other than B-splines needs
 //!   `SmIsoCurve` over any surface (the ported iso curve holds a B-spline), the zone
-//!   tolerance of a surface with a face needs `SmFace::GetTolerance`
-//!   (`topology.face_p2`): those calls return [`SolidError::Unported`]. Every tree build
+//!   tolerance of a surface with a face is the one its B-rep cached on it
+//!   ([`Surface::owner_zone_tol_3d`]) and needs `SmFace::GetTolerance`
+//!   (`topology.face_p2`) for a bare face handle without it: those calls return
+//!   [`SolidError::Unported`]. Every tree build
 //!   needs `SmSurface::CalculateContinuities` (`surface.surface_p6`), whose iso curves
 //!   exist for the B-spline, plane and revolution kinds.
 //!   [`map_to_2d_on_curve`] ports the UV-curve and the general 3D branch of
@@ -99,10 +126,12 @@
 //! - **`SmDropCurveFail` copy constructor.** [`DropCurveFail::copy_of`]; the derived
 //!   `Clone` also copies the UV curves of a record without context.
 
-use crate::curve::curve::Curve;
+use crate::curve::curve::p2::CurvePropertyType;
+use crate::curve::curve::p7::PropertyAnalysisOptions;
+use crate::curve::curve::{Curve, CurveKind};
 use crate::curve::iso_curve::IsoCurve;
 use crate::curve::line::Line;
-use crate::error::{ignored, Result, SolidError};
+use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::a_object::{CacheId, ObjectCacheType};
 use crate::geom::assert_array::labels::FACE_TYPE;
 use crate::geom::extent1d::Extent1d;
@@ -115,7 +144,7 @@ use crate::geom::local_solve1d::{EvalFunction, FunctionValue};
 use crate::geom::object::ObjectRef;
 use crate::geom::polar_box::PolarBox;
 use crate::geom::pseudo_box::PseudoBox;
-use crate::geom::solution_array::SolutionObject;
+use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::geom::tol::{
     is_zero_to_tol, scaled_zero2, tol3d, zone_tol_3d as kernel_zone_tol_3d, ScaledZero,
     SmallTopoType, ANG_TOL_RAD,
@@ -123,26 +152,31 @@ use crate::geom::tol::{
 use crate::geom::tree::{AuxDataType, NodeClass, NodeData, Tree, TreeNode, TreeOwner};
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::{Point3, Vec3};
+use crate::intersect::surface_silhouette::SurfaceSilhouette;
+use crate::intersect::surface_tracer::SurfaceTrace;
 use crate::kernel::Kernel;
 #[cfg(test)]
 use crate::math::EFF_ZERO_DEG;
 use crate::math::{max2, min2, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT, PI};
+use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::knots::Side;
 use crate::surface::offset_surface::{OffsetSurface, SS_UNKNOWN};
 use crate::surface::plane::Plane;
+use crate::surface::surface_cache::face_context::FaceQueries;
 use crate::surface::surface_cache::p1::{SurfaceCache, SurfaceCacheOptions};
-use crate::surface::trim_srf_cache::TrimSrfCache;
+use crate::surface::trim_srf_cache::{CacheFace, TrimSrfCache};
 use crate::topology::database_io::{DatabaseReader, FileType};
 
 use super::p2::{
-    cs_are_perpen_disjoint, evaluate_geometric, intersect_curve_and_split, original_surface,
-    DropCurveFail, IsoCurveLengthIntegrand, LsiGlobalSolver, SurfaceEval, SurfaceEvaluate,
-    STEP_SURFACE_TYPE, SURF_OF_EXTRUSION_TYPE, SURF_OF_REVOLUTION_TYPE,
+    check_geometry_nesting, cs_are_perpen_disjoint, evaluate_geometric, intersect_curve_and_split,
+    original_surface, DropCurveFail, IsoCurveLengthIntegrand, LsiGlobalSolver, NestedGeometry,
+    SurfaceEval, SurfaceEvaluate, STEP_SURFACE_TYPE, SURF_OF_EXTRUSION_TYPE,
+    SURF_OF_REVOLUTION_TYPE,
 };
 use super::p7::{SpGlobalSolver, SsGlobalSolver};
-use super::{Surface, SurfaceKind};
+use super::{CacheTreeState, Surface, SurfaceKind};
 
 const OP_STEP: &str = "surface::surface::p1::StepSurface";
 const OP_CACHE: &str = "surface::surface::p1::validate_surface_cache";
@@ -229,12 +263,13 @@ const fn side_flags(u_side: Side, v_side: Side, non_zero_tangents: bool) -> Eval
 ///
 /// Those of the surface's `Evaluate`.
 pub fn evaluate_1st_derivatives<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv: Point2,
     u_side: Side,
     v_side: Side,
 ) -> Result<(Point3, Vec3, Vec3)> {
-    let m = surface.evaluate(uv, 1, 1, side_flags(u_side, v_side, true))?;
+    let m = surface.evaluate(k, uv, 1, 1, side_flags(u_side, v_side, true))?;
     Ok((
         at_checked(&m, 0, 0)?,
         at_checked(&m, 1, 0)?,
@@ -267,12 +302,13 @@ pub struct SecondDerivatives {
 ///
 /// Those of the surface's `Evaluate`.
 pub fn evaluate_2nd_derivatives<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv: Point2,
     u_side: Side,
     v_side: Side,
 ) -> Result<SecondDerivatives> {
-    let m = surface.evaluate(uv, 2, 2, side_flags(u_side, v_side, true))?;
+    let m = surface.evaluate(k, uv, 2, 2, side_flags(u_side, v_side, true))?;
     Ok(SecondDerivatives {
         point: at_checked(&m, 0, 0)?,
         du: at_checked(&m, 1, 0)?,
@@ -291,6 +327,7 @@ pub fn evaluate_2nd_derivatives<S: SurfaceEvaluate + ?Sized>(
 ///
 /// `SM_ERR` for `highest_deriv > 3`; those of `Evaluate` and `smgu_DirectionalDerivs`.
 pub fn evaluate_directional_derivs<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv: Point2,
     uv_dir: Vec2,
@@ -306,6 +343,7 @@ pub fn evaluate_directional_derivs<S: SurfaceEvaluate + ?Sized>(
 
     // make the surface evaluation
     let m = surface.evaluate(
+        k,
         uv,
         highest_deriv,
         highest_deriv,
@@ -355,18 +393,38 @@ impl StepSurface {
         })
     }
 
+    /// Exact evaluation copy; the caller validates the complete geometry graph first.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            surface: self
+                .surface
+                .as_deref()
+                .map(|s| Box::new(s.clone_exact_bounded())),
+            owns_surface: self.owns_surface,
+        }
+    }
+
     /// `GetTypeString()`.
     pub const TYPE_STRING: &'static str = "SmSTEPSurface_TYPE";
     /// `GetClassString()`.
     pub const CLASS_STRING: &'static str = "SmSTEPSurface";
 
     /// `SmSTEPSurface(rSurface, bOwnsSurface)`.
-    #[must_use]
-    pub fn new(surface: Surface, owns_surface: bool) -> Self {
-        Self {
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` when `surface` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1.
+    pub fn new(surface: Surface, owns_surface: bool) -> Result<Self> {
+        check_geometry_nesting(
+            NestedGeometry::Surface(&surface),
+            1,
+            "surface::surface::p1::StepSurface::new",
+        )?;
+        Ok(Self {
             surface: Some(Box::new(surface)),
             owns_surface,
-        }
+        })
     }
 
     /// The empty constructor for I/O (`SmSTEPSurface()`): no base surface.
@@ -437,8 +495,8 @@ impl StepSurface {
     /// # Errors
     ///
     /// `InvalidInput` without base surface; those of [`Surface::evaluate_step_point`].
-    pub fn evaluate_point(&self, uv: Point2) -> Result<Point3> {
-        self.base()?.evaluate_step_point(uv)
+    pub fn evaluate_point(&self, k: &Kernel, uv: Point2) -> Result<Point3> {
+        self.base()?.evaluate_step_point(k, uv)
     }
 
     /// The base surface's STEP derivatives at `uv` (`Evaluate`;
@@ -449,13 +507,14 @@ impl StepSurface {
     /// `InvalidInput` without base surface; those of [`Surface::evaluate_step`].
     pub fn evaluate(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
         flags: EvaluateFlags,
     ) -> Result<Vec<Vec<Vec3>>> {
         self.base()?
-            .evaluate_step(uv, highest_u_deriv, highest_v_deriv, flags)
+            .evaluate_step(k, uv, highest_u_deriv, highest_v_deriv, flags)
     }
 
     /// [`StepSurface::evaluate`] for a caller that ignores its status: what the base
@@ -468,13 +527,14 @@ impl StepSurface {
     /// [`Surface::evaluate_step_ignoring_status`].
     pub fn evaluate_ignoring_status(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
         flags: EvaluateFlags,
     ) -> Result<Option<Vec<Vec<Vec3>>>> {
         self.base()?
-            .evaluate_step_ignoring_status(uv, highest_u_deriv, highest_v_deriv, flags)
+            .evaluate_step_ignoring_status(k, uv, highest_u_deriv, highest_v_deriv, flags)
     }
 
     /// The base surface's STEP domain (`GetDomainWithContinuity`: the continuity, the
@@ -537,7 +597,7 @@ impl StepSurface {
     /// # Errors
     ///
     /// Those of the base surfaces' [`Surface::approx_eq`].
-    pub fn approx_eq(&self, other: &Surface) -> Result<bool> {
+    pub fn approx_eq(&self, k: &Kernel, other: &Surface) -> Result<bool> {
         let SurfaceKind::Step(o) = other.kind() else {
             // first check the base: a different type
             return Ok(false);
@@ -550,7 +610,7 @@ impl StepSurface {
         // check equivalence of these objects
         match (self.surface.as_deref(), o.surface.as_deref()) {
             (None, None) => Ok(true),
-            (Some(a), Some(b)) => Ok(core::ptr::eq(a, b) || a.approx_eq(b)?),
+            (Some(a), Some(b)) => Ok(core::ptr::eq(a, b) || a.approx_eq(k, b)?),
             _ => Ok(false),
         }
     }
@@ -585,26 +645,24 @@ impl StepSurface {
         let base = Surface::read_from_db(k, base_type, db, version)?;
 
         // load object
-        Ok(Self::new(base, true))
+        Self::new(base, true)
     }
 }
 
 // ---- tolerances of surfaces (SmTol co-ports) ----------------------------------------------
 
 /// `SmTol::GetZoneTol3d(const SmObject*)` of a surface: its face's tolerance when it
-/// has a face, else the system zone tolerance.
+/// has a face (the tolerance the B-rep cached on the surface,
+/// [`Surface::owner_zone_tol_3d`]), else the system zone tolerance.
 ///
 /// # Errors
 ///
-/// Those of [`Surface::face`]; [`SolidError::Unported`]: `SmFace::GetTolerance`
-/// (`topology.face_p2`) for a surface with a face.
+/// Those of [`Surface::face_zone_tol_3d`]: [`SolidError::Unported`]
+/// (`SmFace::GetTolerance`, `topology.face_p2`) for a surface with a face whose
+/// tolerance was not cached on it.
 pub fn zone_tol_3d(k: &Kernel, surface: &Surface) -> Result<f64> {
-    match surface.face()? {
-        // UNPORTED(topology.face_p2): SmFace::GetTolerance
-        Some(_) => Err(SolidError::unported(
-            "SmFace::GetTolerance",
-            "topology.face_p2",
-        )),
+    match surface.face_zone_tol_3d()? {
+        Some(tol) => Ok(tol),
         None => Ok(kernel_zone_tol_3d(k, SmallTopoType::NormalSize)),
     }
 }
@@ -618,9 +676,15 @@ pub fn zone_tol_3d(k: &Kernel, surface: &Surface) -> Result<f64> {
 ///
 /// [`SolidError::Unported`] from the evaluation (its other failures are ignored, as
 /// upstream: the derivatives are then zero).
-pub fn map_to_2d_dir(tol_3d: f64, uv: Point2, uv_dir: Vec2, surface: &Surface) -> Result<f64> {
+pub fn map_to_2d_dir(
+    k: &Kernel,
+    tol_3d: f64,
+    uv: Point2,
+    uv_dir: Vec2,
+    surface: &Surface,
+) -> Result<f64> {
     // evaluate SurfacePt = rSurface(rUVTrimCurve(dParam))
-    let (_, du, dv) = first_derivatives_or_zero(surface, uv)?;
+    let (_, du, dv) = first_derivatives_or_zero(k, surface, uv)?;
 
     // locals
     let uv_domain = surface.natural_uv_domain();
@@ -657,9 +721,9 @@ pub fn map_to_2d_dir(tol_3d: f64, uv: Point2, uv_dir: Vec2, surface: &Surface) -
 /// # Errors
 ///
 /// Those of [`map_to_2d_dir`].
-pub fn map_to_2d(tol_3d: f64, uv: Point2, surface: &Surface) -> Result<f64> {
+pub fn map_to_2d(k: &Kernel, tol_3d: f64, uv: Point2, surface: &Surface) -> Result<f64> {
     // evaluate SurfacePt = rSurface(rUVTrimCurve(dParam))
-    let (_, du, dv) = first_derivatives_or_zero(surface, uv)?;
+    let (_, du, dv) = first_derivatives_or_zero(k, surface, uv)?;
 
     // pick the max 1st deriv direction
     let uv_dir = if du.length_squared() > dv.length_squared() {
@@ -669,7 +733,7 @@ pub fn map_to_2d(tol_3d: f64, uv: Point2, surface: &Surface) -> Result<f64> {
     };
 
     // pass the call along for Max 1st deriv (yields Min Tol2d value)
-    map_to_2d_dir(tol_3d, uv, uv_dir, surface)
+    map_to_2d_dir(k, tol_3d, uv, uv_dir, surface)
 }
 
 /// `SmTol::MapTo2d(rTol3d, dParam, rTrimCurve, rSurface)` (the result as an
@@ -695,10 +759,7 @@ pub fn map_to_2d_on_curve(
 ) -> Result<f64> {
     // the same-surface SmCrvOnSurf branch evaluates the curve's own UV curve (an identity
     // test on the base surface that the port cannot make)
-    if matches!(
-        trim_curve.kind(),
-        crate::curve::curve::CurveKind::CrvOnSurf(_)
-    ) {
+    if matches!(trim_curve.kind(), CurveKind::CrvOnSurf(_)) {
         // UNPORTED(surface.surface_p1): SmTol::MapTo2d (SmCrvOnSurf branch, SmTol.cpp:1118-1123)
         return Err(SolidError::unported(
             "SmTol::MapTo2d(SmCrvOnSurf)",
@@ -708,7 +769,7 @@ pub fn map_to_2d_on_curve(
 
     // evaluate SurfacePt = rSurface(rUVTrimCurve(dParam)) for UVTrimCurves
     let mut pd = [Vec3::UNDEF; 2];
-    if let Some(d) = ignored(trim_curve.evaluate(param, 1, true, true))? {
+    if let Some(d) = ignored(trim_curve.evaluate(k, param, 1, true, true))? {
         for (slot, v) in pd.iter_mut().zip(d) {
             *slot = v;
         }
@@ -727,6 +788,7 @@ pub fn map_to_2d_on_curve(
         ))?;
         let uv = drop.map_or(Point2::UNDEF, |d| d.result_uv);
         let uv_dir = ignored(crate::surface::surface::p7::drop_vectors_at(
+            k,
             surface,
             uv,
             Side::Left,
@@ -739,13 +801,17 @@ pub fn map_to_2d_on_curve(
     };
 
     // pass the call along
-    Ok(tol3d(map_to_2d_dir(tol_3d, uv, uv_dir, surface)?))
+    Ok(tol3d(map_to_2d_dir(k, tol_3d, uv, uv_dir, surface)?))
 }
 
 /// `Evaluate1stDerivatives(uv, TRUE, TRUE, ..)` with its status ignored: zero
 /// vectors on failure, except [`SolidError::Unported`], which is returned.
-fn first_derivatives_or_zero(surface: &Surface, uv: Point2) -> Result<(Point3, Vec3, Vec3)> {
-    match surface.evaluate_1st_derivatives(uv, true, true) {
+fn first_derivatives_or_zero(
+    k: &Kernel,
+    surface: &Surface,
+    uv: Point2,
+) -> Result<(Point3, Vec3, Vec3)> {
+    match surface.evaluate_1st_derivatives(k, uv, true, true) {
         Ok(d) => Ok(d),
         Err(e @ SolidError::Unported { .. }) => Err(e),
         Err(_) => Ok((Vec3::ZERO, Vec3::ZERO, Vec3::ZERO)),
@@ -759,13 +825,13 @@ fn first_derivatives_or_zero(surface: &Surface, uv: Point2) -> Result<(Point3, V
 ///
 /// [`SolidError::Unported`] from the size or the evaluation (their other failures are
 /// ignored: zero size, zero point).
-pub fn scaled_zero_of_surface(surface: &Surface) -> Result<f64> {
-    let size = match surface.approximate_size(None) {
+pub fn scaled_zero_of_surface(k: &Kernel, surface: &Surface) -> Result<f64> {
+    let size = match surface.approximate_size(k, None) {
         Ok(s) => s,
         Err(e @ SolidError::Unported { .. }) => return Err(e),
         Err(_) => Vec2::ZERO,
     };
-    let pnt = match surface.evaluate_point(surface.natural_uv_domain().evaluate(0.5, 0.5)) {
+    let pnt = match surface.evaluate_point(k, surface.natural_uv_domain().evaluate(0.5, 0.5)) {
         Ok(p) => p,
         Err(e @ SolidError::Unported { .. }) => return Err(e),
         Err(_) => Point3::ZERO,
@@ -793,14 +859,14 @@ pub struct CacheTolerances {
 /// # Errors
 ///
 /// Those of the evaluations.
-pub fn cache_tolerances(surface: &Surface) -> Result<CacheTolerances> {
+pub fn cache_tolerances(k: &Kernel, surface: &Surface) -> Result<CacheTolerances> {
     // Get some point positions scattered over the Surface's Natural Domain.
     let uv_domain = surface.natural_uv_domain();
-    let p1 = surface.evaluate_point(uv_domain.min())?;
-    let p_mid = surface.evaluate_point(uv_domain.evaluate(0.5, 0.5))?;
-    let p_mid2 = surface.evaluate_point(uv_domain.evaluate(0.9, 0.1))?;
-    let p_mid3 = surface.evaluate_point(uv_domain.evaluate(0.1, 0.9))?;
-    let p2 = surface.evaluate_point(uv_domain.max())?;
+    let p1 = surface.evaluate_point(k, uv_domain.min())?;
+    let p_mid = surface.evaluate_point(k, uv_domain.evaluate(0.5, 0.5))?;
+    let p_mid2 = surface.evaluate_point(k, uv_domain.evaluate(0.9, 0.1))?;
+    let p_mid3 = surface.evaluate_point(k, uv_domain.evaluate(0.1, 0.9))?;
+    let p2 = surface.evaluate_point(k, uv_domain.max())?;
 
     // get an Idea of surface's size.
     let size =
@@ -871,7 +937,7 @@ pub fn make_surface_cache<O: Copy + PartialEq>(
     surface: &Surface,
     handle: Option<O>,
 ) -> Result<SurfaceCache<O>> {
-    let tol = cache_tolerances(surface)?;
+    let tol = cache_tolerances(k, surface)?;
 
     // construct new SurfaceCache Object
     let uv_domain = surface.natural_uv_domain();
@@ -889,10 +955,57 @@ pub fn make_surface_cache<O: Copy + PartialEq>(
     Ok(cache)
 }
 
+/// Whether `smsurf_GetSurfaceCache` hands out a cache whose tree is built, given the
+/// surface's cache slot: a new cache is built unless the context is doing a Boolean
+/// operation; an existing one is reused as it is.
+#[must_use]
+pub fn cache_tree_built_on_get(k: &Kernel, state: CacheTreeState) -> bool {
+    match state {
+        CacheTreeState::NoCache => !k.context.doing_boolean(),
+        CacheTreeState::Unbuilt => false,
+        CacheTreeState::Built => true,
+    }
+}
+
+/// The tree step of `CacheMakeOrValidate(SM_OC_TRIMSRF, ..)` on a cache the port has
+/// just made, given the surface's cache slot (`state`): a new cache (`NoCache`) is
+/// built unless the context is doing a Boolean operation; upstream reuses an existing
+/// one, so an `Unbuilt` cache stays without tree (even outside a Boolean operation)
+/// and a `Built` one has its continuities (built here outside a Boolean operation,
+/// else only the continuity arrays are restored and the tree waits for `GetTree`).
+/// `build` builds the tree (and marks the slot built). A new cache left without tree
+/// marks the slot `Unbuilt`.
+fn trim_srf_cache_tree<O: Copy + PartialEq>(
+    k: &Kernel,
+    surface: &Surface,
+    state: CacheTreeState,
+    cache: &mut TrimSrfCache<O>,
+    build: impl FnOnce(&mut TrimSrfCache<O>) -> Result<()>,
+) -> Result<()> {
+    let doing_boolean = k.context.doing_boolean();
+    match state {
+        // when we are not doing a boolean operation
+        //  - during a boolean operation delay surface cache tree construction
+        //    until some function calls SmSurfaceCache::GetTree()
+        CacheTreeState::NoCache | CacheTreeState::Built if !doing_boolean => {
+            // build the surface subdivision tree annotated with UVTrimBoundary
+            // classifications
+            build(cache)
+        }
+        CacheTreeState::NoCache => {
+            surface.set_cache_tree_state(CacheTreeState::Unbuilt);
+            Ok(())
+        }
+        CacheTreeState::Built => cache.base_mut().restore_continuities(k),
+        CacheTreeState::Unbuilt => Ok(()),
+    }
+}
+
 /// `SmSurface::CacheMakeOrValidate(SM_OC_TRIMSRF, ..)` building a new cache: the
 /// surface's [`TrimSrfCache`] with the [`cache_tolerances`], its tree built unless
 /// the context is doing a Boolean operation (then [`SurfaceCache::get_tree`] builds
-/// it on first use).
+/// it on first use) or the surface's cache slot says upstream reuses a cache whose
+/// tree is not built ([`Surface::cache_tree_state`]; see `trim_srf_cache_tree`).
 ///
 /// # Errors
 ///
@@ -902,22 +1015,103 @@ pub fn make_trim_srf_cache<O: Copy + PartialEq>(
     surface: &Surface,
     handle: Option<O>,
 ) -> Result<TrimSrfCache<O>> {
-    let tol = cache_tolerances(surface)?;
+    let tol = cache_tolerances(k, surface)?;
 
     // construct new SurfaceCache Object
     // the cache refers to the surface itself upstream (`m_cpSurface`): an exact copy,
     // not `Clone` (the copy constructor, which fixes the knot vectors up again)
+    let state = surface.cache_tree_state();
     let mut cache = TrimSrfCache::new(surface.clone_for_evaluation()?, cache_options(tol));
     cache.base_mut().set_surface_handle(handle);
-
-    // when we are not doing a boolean operation
-    //  - during a boolean operation delay surface cache tree construction
-    //    until some function calls SmSurfaceCache::GetTree()
-    if !k.context.doing_boolean() {
-        // build the surface subdivision tree annotated with UVTrimBoundary classifications
-        cache.build_tree(k)?;
-    }
+    trim_srf_cache_tree(k, surface, state, &mut cache, |c| c.build_tree(k))?;
+    // a face surface whose owner is cleared keeps it (SmCacheMgr::AddToObjectCache)
+    surface.keep_standalone_trim_cache(&cache)?;
     Ok(cache)
+}
+
+/// [`make_trim_srf_cache`] for a surface owned by `face` (`GetFace()`): the tree build
+/// creates the face's UV trim curves and implants its boundary
+/// ([`TrimSrfCache::build_tree_with_face`]). `surface` is the face's surface (a copy:
+/// the face's B-rep is changed through `face` while the cache is built).
+///
+/// # Errors
+///
+/// As [`make_trim_srf_cache`], and those of the face reads.
+pub fn make_trim_srf_cache_with_face<O: Copy + PartialEq>(
+    k: &Kernel,
+    surface: &Surface,
+    handle: Option<O>,
+    face: &mut dyn CacheFace<O>,
+) -> Result<TrimSrfCache<O>> {
+    let tol = cache_tolerances(k, surface)?;
+
+    // construct new SurfaceCache Object
+    let state = surface.cache_tree_state();
+    let mut cache = TrimSrfCache::new(surface.clone_for_evaluation()?, cache_options(tol));
+    cache.base_mut().set_surface_handle(handle);
+    if let Some(owner) = surface.face()? {
+        cache.bind_face(owner, face.face(), face.zone_tol_3d(k, face.face())?)?;
+    }
+    trim_srf_cache_tree(k, surface, state, &mut cache, |c| {
+        c.build_tree_with_face(k, face)
+    })?;
+    Ok(cache)
+}
+
+/// `smsurf_GetSurfaceCache` of a surface owned by `face`: its trimmed surface cache
+/// ([`make_trim_srf_cache_with_face`]), else its surface cache, built fresh and
+/// wrapped as it is ([`TrimSrfCache::from_base`]: no trimmed cache state, so the face
+/// classification does not consult it, as upstream finds no trimmed cache then).
+///
+/// # Errors
+///
+/// As [`get_surface_cache`].
+pub fn get_surface_cache_with_face<O: Copy + PartialEq>(
+    k: &Kernel,
+    surface: &Surface,
+    handle: Option<O>,
+    face: &mut dyn CacheFace<O>,
+) -> Result<TrimSrfCache<O>> {
+    // if possible - get or make TrimSrfCache
+    match make_trim_srf_cache_with_face(k, surface, handle, face) {
+        Ok(c) => Ok(c),
+        Err(
+            e @ (SolidError::Unported { .. }
+            | SolidError::InvalidInput { .. }
+            | SolidError::NotFound { .. }),
+        ) => Err(e),
+        // else - get or make SurfaceCache
+        Err(_) => Ok(TrimSrfCache::from_base(make_surface_cache(
+            k, surface, handle,
+        )?)),
+    }
+}
+
+/// `smsurf_GetSurfaceCache` of a surface without face (`GetFace()` is `NULL`): its
+/// trimmed surface cache built standalone ([`make_trim_srf_cache`]), else its surface
+/// cache wrapped as one, as [`get_surface_cache_with_face`] wraps it.
+///
+/// # Errors
+///
+/// As [`get_surface_cache_with_face`].
+pub fn get_trim_surface_cache<O: Copy + PartialEq>(
+    k: &Kernel,
+    surface: &Surface,
+    handle: Option<O>,
+) -> Result<TrimSrfCache<O>> {
+    // if possible - get or make TrimSrfCache
+    match make_trim_srf_cache(k, surface, handle) {
+        Ok(c) => Ok(c),
+        Err(
+            e @ (SolidError::Unported { .. }
+            | SolidError::InvalidInput { .. }
+            | SolidError::NotFound { .. }),
+        ) => Err(e),
+        // else - get or make SurfaceCache
+        Err(_) => Ok(TrimSrfCache::from_base(make_surface_cache(
+            k, surface, handle,
+        )?)),
+    }
 }
 
 /// `smsurf_GetSurfaceCache`: the surface's trimmed surface cache, else its surface
@@ -941,6 +1135,82 @@ pub fn get_surface_cache<O: Copy + PartialEq>(
     }
 }
 
+/// The cache-slot side of `smsurf_GetSurfaceCache` for a caller that uses no cache
+/// object from it (the port's solve that follows makes its own): a surface without a
+/// cache gets one, whose tree is built unless the context is doing a Boolean
+/// operation ([`Surface::cache_tree_state`]).
+pub fn note_surface_cache(k: &Kernel, surface: &Surface) {
+    if surface.cache_tree_state() == CacheTreeState::NoCache {
+        surface.set_cache_tree_state(if k.context.doing_boolean() {
+            CacheTreeState::Unbuilt
+        } else {
+            CacheTreeState::Built
+        });
+    }
+}
+
+/// `smsurf_GetSurfaceCache` for a reader of the cache's continuity arrays that does not
+/// call `GetTree` (`GetDomainWithContinuity`, `LiftCurve`): the arrays are filled only
+/// when the cache's tree has been built. When upstream's cache has its tree (the
+/// surface's cache slot is built, or a new cache is made outside a Boolean operation)
+/// the cache comes from the caller's `context` as for a solve (else
+/// [`get_surface_cache`]); otherwise upstream's cache has no tree and its arrays are
+/// empty: [`get_surface_cache`] makes it so (a new cache marks the slot unbuilt).
+///
+/// # Errors
+///
+/// Those of [`get_surface_cache`] and of the context's cache preparation.
+pub fn continuity_surface_cache<O: Copy + PartialEq>(
+    k: &Kernel,
+    surface: &Surface,
+    handle: Option<O>,
+    context: Option<&mut dyn SurfaceSolveContext<O>>,
+) -> Result<SurfaceCache<O>> {
+    match context {
+        Some(context) if cache_tree_built_on_get(k, surface.cache_tree_state()) => {
+            context.build_surface_cache(k, surface, handle)
+        }
+        _ => get_surface_cache(k, surface, handle),
+    }
+}
+
+/// The caller's operation-scoped topology access for surface solves. Cache
+/// preparation is mutable (it may attach UV trims); classification borrows the
+/// prepared topology afterward. One context can serve several surfaces of the
+/// same B-rep without keeping overlapping mutable borrows in their caches.
+/// Preparation may update trims and tolerance metadata, not the input surface's
+/// evaluated geometry or the intersected 3D curve. Numerical evaluation uses the
+/// returned cache's exact surface copy, refreshed with the final face tolerance.
+/// Retained caches are valid only for the same edit-free geometry/topology state.
+pub trait SurfaceSolveContext<O: Copy + PartialEq> {
+    /// Builds this surface's cache at the point the numerical operation first
+    /// requests it, with its decomposition tree ready for the solve.
+    ///
+    /// # Errors
+    /// Those of cache preparation and the caller's identity resolution.
+    fn build_surface_cache(
+        &mut self,
+        k: &Kernel,
+        surface: &Surface,
+        handle: Option<O>,
+    ) -> Result<SurfaceCache<O>>;
+
+    /// Read-only classification of the topology prepared by this context.
+    fn face_queries(&self) -> Option<&dyn FaceQueries<O>>;
+}
+
+/// The caller's face-aware cache preparation for a surface/surface intersection.
+///
+/// `handles` name the two intersected surfaces in their caches (the first is the
+/// dispatching surface, the second its argument); each is passed to
+/// [`SurfaceSolveContext::build_surface_cache`] when a cache is first requested.
+pub struct SurfaceIntersectContext<'a, O: Copy + PartialEq> {
+    /// The operation-scoped cache and face service.
+    pub solver: &'a mut dyn SurfaceSolveContext<O>,
+    /// The handles naming the two surfaces in their caches.
+    pub handles: [Option<O>; 2],
+}
+
 // ---- bounding boxes -------------------------------------------------------------------
 
 /// The boxes [`Surface::calculate_bounding_box`] computes (those asked for).
@@ -952,6 +1222,35 @@ pub struct SurfaceBoxes {
     pub pseudo_box: Option<PseudoBox>,
     /// The box of the normal vectors (`pPolarBox`).
     pub polar_box: Option<PolarBox>,
+}
+
+/// The solution object of [`Surface::create_silhouette_curves`]'s surface cache (its
+/// trace solves keep no objects).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SilhouetteObject;
+
+impl SolutionObject for SilhouetteObject {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Surface
+    }
+}
+
+/// The traced curve named by the solutions of [`Surface::create_silhouette_curves`]'s
+/// `GlobalPropertyAnalysis` (upstream's `pCurve`): its natural interval, which
+/// `IdenticalSolutions` scales its merge tolerance by.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SilhouetteCurve {
+    natural_interval: Extent1d,
+}
+
+impl SolutionObject for SilhouetteCurve {
+    fn kind(&self) -> ObjectKind {
+        ObjectKind::Curve
+    }
+
+    fn natural_interval(&self) -> Option<Extent1d> {
+        Some(self.natural_interval)
+    }
 }
 
 // ---- the SmSurface members of this unit ---------------------------------------------------
@@ -974,32 +1273,41 @@ impl Surface {
     /// # Errors
     ///
     /// Those of the kinds' comparisons.
-    pub fn approx_eq(&self, other: &Self) -> Result<bool> {
+    pub fn approx_eq(&self, k: &Kernel, other: &Self) -> Result<bool> {
         if core::ptr::eq(self, other) {
             return Ok(true);
         }
         match (self.kind(), other.kind()) {
-            (SurfaceKind::CurveBounded(s), _) => s.approx_eq(other),
-            (SurfaceKind::Step(s), _) => s.approx_eq(other),
-            (SurfaceKind::OffsetSurface(s), _) => s.approx_eq(other),
+            (SurfaceKind::CurveBounded(s), _) => s.approx_eq(k, other),
+            (SurfaceKind::Step(s), _) => s.approx_eq(k, other),
+            (SurfaceKind::OffsetSurface(s), _) => s.approx_eq(k, other),
             // SmBSplineSurface::operator==: SmSurface::operator== first
             (SurfaceKind::BSpline(a), SurfaceKind::BSpline(b)) => Ok(a.approx_eq(b)),
             // SmPlane::operator==: SmBSplineSurface::operator== first
             (SurfaceKind::Plane(a), SurfaceKind::Plane(b)) => Ok(a.approx_eq(b)),
+            (SurfaceKind::Cone(a), SurfaceKind::Cone(b)) => Ok(a.approx_eq(b)),
             (SurfaceKind::SurfOfRevolution(a), SurfaceKind::SurfOfRevolution(b)) => {
-                a.approx_eq(&Kernel::default(), b)
+                a.approx_eq(k, b)
             }
-            (SurfaceKind::SrfInVolume(a), SurfaceKind::SrfInVolume(b)) => a.approx_eq(b),
+            (SurfaceKind::SurfOfExtrusion(a), SurfaceKind::SurfOfExtrusion(b)) => a.approx_eq(k, b),
+            (SurfaceKind::SrfInVolume(a), SurfaceKind::SrfInVolume(b)) => a.approx_eq(k, b),
             _ => Ok(false),
         }
     }
 
-    /// Sets the owner and returns the previous one (`SetOwner`).
+    /// Sets the owner and returns the previous one (`SetOwner`). A different owner
+    /// drops the cached face tolerance ([`Surface::owner_zone_tol_3d`]): the B-rep
+    /// records the new face's ([`Surface::set_owner_zone_tol_3d`]).
     pub fn set_owner(&mut self, new_owner: Option<ObjectRef>) -> Option<ObjectRef> {
         // (notify when pNewOwner is NULL or a Face: the object layer's notify)
         let old = core::mem::replace(self.owner_mut(), new_owner);
-        // the bases this surface owns reach the face through it
-        self.update_owned_bases();
+        if old == new_owner {
+            // the bases this surface owns reach the face through it
+            self.update_owned_bases();
+        } else {
+            // (also passes the face down to the bases this surface owns)
+            self.set_owner_zone_tol_3d(None);
+        }
         old
     }
 
@@ -1041,11 +1349,12 @@ impl Surface {
     /// Those of [`Surface::evaluate`].
     pub fn evaluate_1st_derivatives(
         &self,
+        k: &Kernel,
         uv: Point2,
         u_from_left: bool,
         v_from_left: bool,
     ) -> Result<(Point3, Vec3, Vec3)> {
-        evaluate_1st_derivatives(self, uv, side(u_from_left), side(v_from_left))
+        evaluate_1st_derivatives(k, self, uv, side(u_from_left), side(v_from_left))
     }
 
     /// The point, first and second derivatives at `uv` with non-zero tangents
@@ -1056,11 +1365,12 @@ impl Surface {
     /// Those of [`Surface::evaluate`].
     pub fn evaluate_2nd_derivatives(
         &self,
+        k: &Kernel,
         uv: Point2,
         u_from_left: bool,
         v_from_left: bool,
     ) -> Result<[Vec3; 6]> {
-        let d = evaluate_2nd_derivatives(self, uv, side(u_from_left), side(v_from_left))?;
+        let d = evaluate_2nd_derivatives(k, self, uv, side(u_from_left), side(v_from_left))?;
         Ok([d.point, d.du, d.dv, d.duv, d.duu, d.dvv])
     }
 
@@ -1073,23 +1383,48 @@ impl Surface {
     /// Those of the evaluation.
     pub fn evaluate_step(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
         flags: EvaluateFlags,
     ) -> Result<Vec<Vec<Vec3>>> {
+        self.check_evaluation_copy_depth(0)?;
         match self.kind() {
             SurfaceKind::CurveBounded(s) => {
                 s.basis()
-                    .evaluate_step(uv, highest_u_deriv, highest_v_deriv, flags)
+                    .evaluate_step(k, uv, highest_u_deriv, highest_v_deriv, flags)
             }
             // the SmSurfOfRevolution override (the side and half flags are not used)
+            SurfaceKind::Cone(s) => Ok(s
+                .evaluate_step(uv, highest_u_deriv, highest_v_deriv)?
+                .chunks(highest_v_deriv + 1)
+                .map(<[Vec3]>::to_vec)
+                .collect()),
+            // the SmSphere override (the side and half flags are not used)
+            SurfaceKind::Sphere(s) => Ok(s
+                .evaluate_step(uv, highest_u_deriv, highest_v_deriv)?
+                .chunks(highest_v_deriv + 1)
+                .map(<[Vec3]>::to_vec)
+                .collect()),
             SurfaceKind::SurfOfRevolution(s) => {
-                let d = s.evaluate_step_at(uv, highest_u_deriv, highest_v_deriv)?;
+                let d = s.evaluate_step_at(k, uv, highest_u_deriv, highest_v_deriv)?;
                 Ok(d.chunks(highest_v_deriv + 1)
                     .map(<[Vec3]>::to_vec)
                     .collect())
             }
+            // the SmSurfOfExtrusion override (the side and half flags are not used)
+            SurfaceKind::SurfOfExtrusion(s) => Ok(s
+                .evaluate_step(k, uv, highest_u_deriv, highest_v_deriv)?
+                .chunks(highest_v_deriv + 1)
+                .map(<[Vec3]>::to_vec)
+                .collect()),
+            // the SmTorus override (the side and half flags are not used)
+            SurfaceKind::Torus(s) => Ok(s
+                .evaluate_step(uv, highest_u_deriv, highest_v_deriv)?
+                .chunks(highest_v_deriv + 1)
+                .map(<[Vec3]>::to_vec)
+                .collect()),
             SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::Step(_)
@@ -1097,6 +1432,7 @@ impl Surface {
             | SurfaceKind::SrfInVolume(_) => {
                 // pass the call along
                 self.evaluate(
+                    k,
                     uv,
                     highest_u_deriv,
                     highest_v_deriv,
@@ -1120,24 +1456,33 @@ impl Surface {
     /// Those of [`Surface::evaluate_ignoring_status`]; [`SolidError::Unported`].
     pub fn evaluate_step_ignoring_status(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
         flags: EvaluateFlags,
     ) -> Result<Option<Vec<Vec<Vec3>>>> {
         match self.kind() {
-            SurfaceKind::CurveBounded(s) => {
-                s.basis()
-                    .evaluate_step_ignoring_status(uv, highest_u_deriv, highest_v_deriv, flags)
-            }
-            SurfaceKind::SurfOfRevolution(_) => {
-                ignored(self.evaluate_step(uv, highest_u_deriv, highest_v_deriv, flags))
+            SurfaceKind::CurveBounded(s) => s.basis().evaluate_step_ignoring_status(
+                k,
+                uv,
+                highest_u_deriv,
+                highest_v_deriv,
+                flags,
+            ),
+            SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
+            | SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_) => {
+                ignored(self.evaluate_step(k, uv, highest_u_deriv, highest_v_deriv, flags))
             }
             SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::OffsetSurface(_)
             | SurfaceKind::SrfInVolume(_) => self.evaluate_ignoring_status(
+                k,
                 uv,
                 highest_u_deriv,
                 highest_v_deriv,
@@ -1155,15 +1500,20 @@ impl Surface {
     /// # Errors
     ///
     /// Those of the evaluation.
-    pub fn evaluate_step_point(&self, uv: Point2) -> Result<Point3> {
+    pub fn evaluate_step_point(&self, k: &Kernel, uv: Point2) -> Result<Point3> {
+        self.check_evaluation_copy_depth(0)?;
         match self.kind() {
-            SurfaceKind::CurveBounded(s) => s.basis().evaluate_step_point(uv),
-            SurfaceKind::SurfOfRevolution(s) => s.evaluate_step_point_at(uv),
+            SurfaceKind::CurveBounded(s) => s.basis().evaluate_step_point(k, uv),
+            SurfaceKind::Cone(s) => s.evaluate_step_point(uv),
+            SurfaceKind::Sphere(s) => s.evaluate_step_point(uv),
+            SurfaceKind::Torus(s) => s.evaluate_step_point(uv),
+            SurfaceKind::SurfOfRevolution(s) => s.evaluate_step_point_at(k, uv),
+            SurfaceKind::SurfOfExtrusion(s) => s.evaluate_step_point(k, uv),
             SurfaceKind::BSpline(_)
             | SurfaceKind::Plane(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::OffsetSurface(_)
-            | SurfaceKind::SrfInVolume(_) => self.evaluate_point(uv),
+            | SurfaceKind::SrfInVolume(_) => self.evaluate_point(k, uv),
         }
     }
 
@@ -1176,11 +1526,13 @@ impl Surface {
     /// Those of the evaluation.
     pub fn evaluate_simple(
         &self,
+        k: &Kernel,
         uv: Point2,
         highest_u_deriv: usize,
         highest_v_deriv: usize,
         flags: EvaluateFlags,
     ) -> Result<Vec<Vec<Vec3>>> {
+        self.check_evaluation_copy_depth(0)?;
         match self.kind() {
             SurfaceKind::BSpline(s) => s.evaluate_simple(
                 uv,
@@ -1191,7 +1543,39 @@ impl Surface {
                 flags.only_upper_half,
             ),
             // inherited from SmBSplineSurface
+            SurfaceKind::Cone(s) => s.rev().base().evaluate_simple(
+                uv,
+                highest_u_deriv,
+                highest_v_deriv,
+                flags.u_side == Side::Left,
+                flags.v_side == Side::Left,
+                flags.only_upper_half,
+            ),
             SurfaceKind::SurfOfRevolution(s) => s.base().evaluate_simple(
+                uv,
+                highest_u_deriv,
+                highest_v_deriv,
+                flags.u_side == Side::Left,
+                flags.v_side == Side::Left,
+                flags.only_upper_half,
+            ),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().evaluate_simple(
+                uv,
+                highest_u_deriv,
+                highest_v_deriv,
+                flags.u_side == Side::Left,
+                flags.v_side == Side::Left,
+                flags.only_upper_half,
+            ),
+            SurfaceKind::Sphere(s) => s.base().base().evaluate_simple(
+                uv,
+                highest_u_deriv,
+                highest_v_deriv,
+                flags.u_side == Side::Left,
+                flags.v_side == Side::Left,
+                flags.only_upper_half,
+            ),
+            SurfaceKind::Torus(s) => s.base().base().evaluate_simple(
                 uv,
                 highest_u_deriv,
                 highest_v_deriv,
@@ -1204,12 +1588,13 @@ impl Surface {
             }
             SurfaceKind::CurveBounded(s) => {
                 s.basis()
-                    .evaluate_simple(uv, highest_u_deriv, highest_v_deriv, flags)
+                    .evaluate_simple(k, uv, highest_u_deriv, highest_v_deriv, flags)
             }
             SurfaceKind::OffsetSurface(s) => {
-                s.evaluate_simple(uv, highest_u_deriv, highest_v_deriv, flags)
+                s.evaluate_simple(k, uv, highest_u_deriv, highest_v_deriv, flags)
             }
             SurfaceKind::SrfInVolume(s) => s.evaluate_simple(
+                k,
                 uv,
                 highest_u_deriv,
                 highest_v_deriv,
@@ -1220,6 +1605,7 @@ impl Surface {
             SurfaceKind::Step(_) => {
                 // pass the call along
                 self.evaluate(
+                    k,
                     uv,
                     highest_u_deriv,
                     highest_v_deriv,
@@ -1241,13 +1627,13 @@ impl Surface {
     ///
     /// [`SolidError::Unported`] from the evaluation (its other failures are ignored);
     /// those of [`vec_lin_comb_two_vectors`] (parallel first derivatives).
-    pub fn compute_param_direction(&self, uv: Point2, vec: Vec3) -> Result<Vec2> {
+    pub fn compute_param_direction(&self, k: &Kernel, uv: Point2, vec: Vec3) -> Result<Vec2> {
         // clamp input when outOfBounds evals are disabled (the clamped point is only
         // checked; it always lies in the domain)
         let _domain = self.natural_uv_domain();
 
         // surface eval (status ignored)
-        let derivs = match self.evaluate(uv, 1, 1, upper_flags(false)) {
+        let derivs = match self.evaluate(k, uv, 1, 1, upper_flags(false)) {
             Ok(m) => first_block(&m),
             Err(e @ SolidError::Unported { .. }) => return Err(e),
             Err(_) => [[Vec3::ZERO; 2]; 2],
@@ -1268,6 +1654,7 @@ impl Surface {
     /// [`directional_derivs`].
     pub fn evaluate_directional_derivs(
         &self,
+        k: &Kernel,
         uv: Point2,
         uv_dir: Vec2,
         highest_deriv: usize,
@@ -1275,6 +1662,7 @@ impl Surface {
         v_from_left: bool,
     ) -> Result<Vec<Vec3>> {
         evaluate_directional_derivs(
+            k,
             self,
             uv,
             uv_dir,
@@ -1302,11 +1690,83 @@ impl Surface {
         uv: Point2,
         uv_vector: Vec2,
     ) -> Result<Extent2d> {
+        self.domain_with_continuity_in::<crate::surface::surface::p4::NoObject>(
+            k,
+            min_continuity,
+            uv,
+            uv_vector,
+            None,
+            None,
+        )
+    }
+
+    /// [`Surface::domain_with_continuity`] through the caller's face-aware cache
+    /// context: `handle` names this surface in the cache, so a surface owned by a
+    /// face can reach that face when the continuity domain builds its cache.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::domain_with_continuity`] and of the context's cache
+    /// preparation.
+    #[allow(clippy::too_many_arguments)]
+    pub fn domain_with_continuity_with_context<O: Copy + PartialEq>(
+        &self,
+        k: &Kernel,
+        min_continuity: ContinuityType,
+        uv: Point2,
+        uv_vector: Vec2,
+        context: &mut dyn SurfaceSolveContext<O>,
+        handle: Option<O>,
+    ) -> Result<Extent2d> {
+        self.domain_with_continuity_in(k, min_continuity, uv, uv_vector, Some(context), handle)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn domain_with_continuity_in<O: Copy + PartialEq>(
+        &self,
+        k: &Kernel,
+        min_continuity: ContinuityType,
+        uv: Point2,
+        uv_vector: Vec2,
+        context: Option<&mut dyn SurfaceSolveContext<O>>,
+        handle: Option<O>,
+    ) -> Result<Extent2d> {
         if let SurfaceKind::Step(s) = self.kind() {
             return s.domain_with_continuity();
         }
-        let cache = get_surface_cache::<()>(k, self, None)?;
+        // (no GetTree: the continuity arrays are empty unless the cache's tree was built)
+        let cache = continuity_surface_cache(k, self, handle, context)?;
+        self.domain_with_continuity_using(min_continuity, uv, uv_vector, &cache)
+    }
 
+    /// [`Surface::domain_with_continuity`] over a caller-held surface cache
+    /// (`DomainWithContinuity`): upstream's `smsurf_GetSurfaceCache(this)` returns
+    /// the one cache of the surface, including the trimmed cache of a face-owned
+    /// surface. The continuity arrays come from that cache's tree build.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` for an unknown knot position.
+    pub fn domain_with_continuity_from_cache<O: Copy + PartialEq>(
+        &self,
+        min_continuity: ContinuityType,
+        uv: Point2,
+        uv_vector: Vec2,
+        cache: &SurfaceCache<O>,
+    ) -> Result<Extent2d> {
+        if let SurfaceKind::Step(s) = self.kind() {
+            return s.domain_with_continuity();
+        }
+        self.domain_with_continuity_using(min_continuity, uv, uv_vector, cache)
+    }
+
+    fn domain_with_continuity_using<O: Copy + PartialEq>(
+        &self,
+        min_continuity: ContinuityType,
+        uv: Point2,
+        uv_vector: Vec2,
+        cache: &SurfaceCache<O>,
+    ) -> Result<Extent2d> {
         // Start out with natural domain and then shrink it if needed
         let ret_domain = self.natural_uv_domain();
         let mut min = ret_domain.min();
@@ -1456,7 +1916,8 @@ impl Surface {
     ///
     /// Those of the surface cache and of the polar box; [`SolidError::Unported`]:
     /// `SmFace::GetTolerance` (`topology.face_p2`) when a B-spline or plane with a
-    /// face expands its boxes.
+    /// face expands its boxes and the face's tolerance is not cached on the surface
+    /// ([`Surface::owner_zone_tol_3d`]).
     pub fn calculate_bounding_box(
         &self,
         k: &Kernel,
@@ -1466,17 +1927,22 @@ impl Surface {
     ) -> Result<SurfaceBoxes> {
         match self.kind() {
             // (SmSurfOfRevolution inherits the B-spline override)
-            SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) | SurfaceKind::SurfOfRevolution(_) => {
+            SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
+            | SurfaceKind::BSpline(_)
+            | SurfaceKind::Plane(_)
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_) => {
                 // the B-spline override expands by its face's tolerance (GetFace()):
-                // the owner is held here, not by the B-spline
-                if expand_pos_boxes_by_zone_tol_3d && (want[0] || want[1]) && self.face()?.is_some()
-                {
-                    // UNPORTED(topology.face_p2): SmFace::GetTolerance
-                    return Err(SolidError::unported(
-                        "SmFace::GetTolerance",
-                        "topology.face_p2",
-                    ));
-                }
+                // the owner is held here, not by the B-spline, so the face's cached
+                // tolerance is passed down (the GetBrep() arm is reached only without
+                // a face, where a surface's GetBrep is null: SM_ZONE_TOL_3D)
+                let expand_tolerance = if expand_pos_boxes_by_zone_tol_3d && (want[0] || want[1]) {
+                    self.face_zone_tol_3d()?
+                } else {
+                    None
+                };
                 let req = crate::nurbs::b_spline_surface::BoundingBoxRequest {
                     normal: want[0],
                     pseudo: want[1],
@@ -1484,13 +1950,34 @@ impl Surface {
                     pseudo_guess: None,
                     polar_guess: None,
                     expand_by_zone_tol: expand_pos_boxes_by_zone_tol_3d,
+                    expand_tolerance,
                 };
                 let r = match self.kind() {
-                    SurfaceKind::BSpline(s) => s.calculate_bounding_box(uv_domain, &req)?,
-                    SurfaceKind::SurfOfRevolution(s) => {
-                        s.base().calculate_bounding_box(uv_domain, &req)?
+                    SurfaceKind::BSpline(s) => s.calculate_bounding_box(k, uv_domain, &req)?,
+                    SurfaceKind::Cone(s) => {
+                        s.rev()
+                            .base()
+                            .calculate_bounding_box_of(k, uv_domain, &req, Some(self))?
                     }
-                    SurfaceKind::Plane(p) => plane_bounding_box(p, uv_domain, &req)?,
+                    SurfaceKind::Sphere(s) => {
+                        s.base()
+                            .base()
+                            .calculate_bounding_box_of(k, uv_domain, &req, Some(self))?
+                    }
+                    SurfaceKind::Torus(s) => {
+                        s.base()
+                            .base()
+                            .calculate_bounding_box_of(k, uv_domain, &req, Some(self))?
+                    }
+                    SurfaceKind::SurfOfRevolution(s) => {
+                        s.base()
+                            .calculate_bounding_box_of(k, uv_domain, &req, Some(self))?
+                    }
+                    SurfaceKind::SurfOfExtrusion(s) => {
+                        s.base()
+                            .calculate_bounding_box_of(k, uv_domain, &req, Some(self))?
+                    }
+                    SurfaceKind::Plane(p) => plane_bounding_box(k, p, uv_domain, &req)?,
                     _ => unreachable_kind()?,
                 };
                 Ok(SurfaceBoxes {
@@ -1598,7 +2085,7 @@ impl Surface {
 
         // set the polar box = cached polar box increased by a small amount
         if want[2] {
-            out.polar_box = Some(cache.polar_box(top)?);
+            out.polar_box = Some(cache.polar_box(k, top)?);
         }
         Ok(out)
     }
@@ -1610,42 +2097,31 @@ impl Surface {
     ///
     /// # Errors
     ///
-    /// Those of the length; [`SolidError::Unported`] for kinds other than B-splines
-    /// (the ported `SmIsoCurve` holds a B-spline surface).
-    pub fn approximate_size(&self, domain: Option<&Extent2d>) -> Result<Vec2> {
+    /// Those of the evaluation copy and of the length.
+    pub fn approximate_size(&self, k: &Kernel, domain: Option<&Extent2d>) -> Result<Vec2> {
         let dom = domain.copied().unwrap_or_else(|| self.natural_uv_domain());
         let param = 0.5;
         let uv_mid = dom.evaluate(param, param);
 
-        let SurfaceKind::BSpline(bs) = self.kind() else {
-            // DISPATCH GAP: SmIsoCurve::SmIsoCurve (curve.iso_curve, ported; no UNPORTED
-            // marker: the ported iso curve holds an SmBSplineSurface, not any surface)
-            return Err(SolidError::unported(
-                "SmIsoCurve over a non-B-spline surface",
-                "curve.iso_curve",
-            ));
+        // upstream's SmIsoCurve holds the surface itself and evaluates through its
+        // virtual Evaluate; a B-spline keeps the plain copy it always used
+        let iso = |param: SurfParamType, value: f64| -> Result<Curve> {
+            Ok(Curve::from(match self.kind() {
+                SurfaceKind::BSpline(bs) => IsoCurve::new(bs.clone(), param, value, true, true),
+                _ => {
+                    IsoCurve::from_surface(self.clone_for_evaluation()?, param, value, true, true)?
+                }
+            }))
         };
 
-        let iso1 = Curve::from(IsoCurve::new(
-            bs.clone(),
-            SurfParamType::U,
-            uv_mid.x,
-            true,
-            true,
-        ));
+        let iso1 = iso(SurfParamType::U, uv_mid.x)?;
         let size_v = iso1
-            .approximate_length(&iso1.natural_interval(), 5, false)?
+            .approximate_length(k, &iso1.natural_interval(), 5, false)?
             .0;
 
-        let iso2 = Curve::from(IsoCurve::new(
-            bs.clone(),
-            SurfParamType::V,
-            uv_mid.y,
-            true,
-            true,
-        ));
+        let iso2 = iso(SurfParamType::V, uv_mid.y)?;
         let size_u = iso2
-            .approximate_length(&iso2.natural_interval(), 5, false)?
+            .approximate_length(k, &iso2.natural_interval(), 5, false)?
             .0;
 
         Ok(Vec2::new(size_u, size_v))
@@ -1653,11 +2129,12 @@ impl Surface {
 
     /// The offset of this surface by `signed_offset_distance` (`CreateOffsetSurface`,
     /// virtual): a plane moves a copy along its normal, a surface of revolution offsets
-    /// its generator within `approx_tol_3d`, an offset surface offsets its base by the
-    /// compound distance; the other kinds run the base body (also what
-    /// `SmBSplineSurface`'s override calls), an `SmOffsetSurface` that owns a copy of
-    /// this surface (default singularities). Only the surface of revolution uses
-    /// `approx_tol_3d`.
+    /// its generator within `approx_tol_3d`, a cone offsets its radii within
+    /// `approx_tol_3d`, an offset surface offsets its base by the compound distance;
+    /// the other kinds run the base body (also what `SmBSplineSurface`'s override
+    /// calls), an `SmOffsetSurface` that owns a copy of this surface (default
+    /// singularities). A fully collapsed cone offset succeeds with no surface
+    /// (`Ok(None)`, upstream's `SM_OK` with a `NULL` output).
     ///
     /// # Errors
     ///
@@ -1667,22 +2144,35 @@ impl Surface {
         k: &Kernel,
         signed_offset_distance: f64,
         approx_tol_3d: f64,
-    ) -> Result<Self> {
+    ) -> Result<Option<Self>> {
         match self.kind() {
-            SurfaceKind::Plane(p) => {
-                Ok(Self::from(p.create_offset_surface(signed_offset_distance)?))
-            }
-            SurfaceKind::SurfOfRevolution(s) => Ok(Self::from(s.create_offset_surface(
+            SurfaceKind::Plane(p) => Ok(Some(Self::from(
+                p.create_offset_surface(k, signed_offset_distance)?,
+            ))),
+            SurfaceKind::SurfOfRevolution(s) => Ok(Some(Self::from(s.create_offset_surface(
                 k,
                 signed_offset_distance,
                 approx_tol_3d,
-            )?)),
-            SurfaceKind::OffsetSurface(s) => s.create_offset_surface(k, signed_offset_distance),
+            )?))),
+            SurfaceKind::Cone(s) => Ok(s
+                .create_offset_surface(k, signed_offset_distance, approx_tol_3d)?
+                .map(Self::from)),
+            SurfaceKind::Sphere(s) => Ok(s
+                .create_offset_surface(k, signed_offset_distance, approx_tol_3d)?
+                .map(Self::from)),
+            SurfaceKind::OffsetSurface(s) => {
+                s.create_offset_surface(k, signed_offset_distance).map(Some)
+            }
+            SurfaceKind::Torus(s) => Ok(s
+                .create_offset_surface(k, signed_offset_distance, approx_tol_3d)?
+                .map(Self::from)),
+            // (SmSurfOfExtrusion's override is commented out upstream)
             SurfaceKind::BSpline(_)
+            | SurfaceKind::SurfOfExtrusion(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::SrfInVolume(_) => {
-                base_create_offset_surface(k, self, signed_offset_distance)
+                base_create_offset_surface(k, self, signed_offset_distance).map(Some)
             }
         }
     }
@@ -1690,32 +2180,123 @@ impl Surface {
     /// The silhouette curves of the surface over `uv_domain` for a parallel
     /// (`eye_point_or_view_vector` the view vector) or perspective projection
     /// (`CreateSilhouetteCurves`), with the walk tolerances `pOptApproxTol3d` and
-    /// `cpdOptAngleTolRadians`.
+    /// `cpdOptAngleTolRadians`: the 3D and UV curves the silhouette tracer
+    /// ([`SurfaceSilhouette`]) finds. For a parallel projection each curve is then split
+    /// at its interior points with a tangent parallel to the view vector
+    /// (`GlobalPropertyAnalysis(SM_CP_PARALLEL_TO_VECTOR)` within
+    /// `100 * SM_EFF_ZERO_SQRT`): the leading pieces are trimmed copies appended after
+    /// the traced curves, the traced curve keeps the last piece; its UV curve is split
+    /// at the same (snapped) intervals.
+    ///
+    /// Upstream also adds the surface's `SM_AI_COLOR` attribute to each traced curve of
+    /// a parallel projection; a free [`Surface`] or [`Curve`] carries no attribute list
+    /// here, so a caller holding the surface's attributes copies it.
     ///
     /// # Errors
     ///
-    /// Those of the surface cache; [`SolidError::Unported`]: `SmSurfaceTracer::DoTrace`
-    /// (`intersect.surface_tracer`).
+    /// Those of the surface cache, of the trace and of the property analysis;
+    /// `SM_ERR_NULL_POINTER` for a traced curve that is not a B-spline (upstream's
+    /// `SM_CAST_PTR` null) or a missing UV curve. The trims' statuses are ignored, as
+    /// upstream (but [`SolidError::Unported`] is propagated).
     pub fn create_silhouette_curves(
         &self,
         k: &Kernel,
         uv_domain: &Extent2d,
-        _eye_point_or_view_vector: Point3,
-        _perspective: bool,
-        _approx_tol_3d: Option<f64>,
-        _ang_tol_rad: Option<f64>,
+        eye_point_or_view_vector: Point3,
+        perspective: bool,
+        approx_tol_3d: Option<f64>,
+        ang_tol_rad: Option<f64>,
     ) -> Result<(Vec<Curve>, Vec<Curve>)> {
-        let cache = get_surface_cache::<()>(k, self, None)?;
+        const OP: &str = "surface::surface::p1::create_silhouette_curves";
+
+        // test to see if this surface has color: not modelled (see the doc comment)
+
+        let mut cache = get_surface_cache::<SilhouetteObject>(k, self, None)?;
 
         // Check to make sure internal surface continuities are better then C0 (the
         // check only signals upstream)
         let _ = (cache.surface_continuity(uv_domain)? as i32) <= (ContinuityType::C0 as i32);
 
-        // UNPORTED(intersect.surface_tracer): SmSurfaceTracer::DoTrace (inherited by SmSurfaceSilhouette)
-        Err(SolidError::unported(
-            "SmSurfaceTracer::DoTrace",
-            "intersect.surface_tracer",
-        ))
+        let mut silhouette =
+            SurfaceSilhouette::new(k, self, uv_domain, perspective, eye_point_or_view_vector)?;
+        // (the tracer constructor's pSC->GetTree(), whose failure it ignores)
+        if let Err(e) = cache.get_tree(k) {
+            if e.is_unported() {
+                return Err(e);
+            }
+        }
+        let traced = silhouette.do_trace(k, &mut cache, approx_tol_3d, ang_tol_rad)?;
+        let mut curves_3d = traced.curves_3d;
+        let mut curves_uv = traced.uv_curves;
+
+        // Post process silhouettes and break them up where the curve is parallel to
+        // the view vector.
+        if !perspective {
+            let mut new_curves: Vec<Curve> = Vec::new();
+            let mut new_uv_curves: Vec<Curve> = Vec::new();
+            let vectors = [eye_point_or_view_vector];
+            for (ii, curve) in curves_3d.iter_mut().enumerate() {
+                // SM_CAST_PTR(SmBSplineCurve, ..): NULL (then dereferenced) otherwise
+                if !matches!(curve.kind(), CurveKind::BSpline(_)) {
+                    return Err(SolidError::null_pointer(OP));
+                }
+
+                // To add color attribute for curve from color of surface: not modelled
+
+                let mut ivl = curve.natural_interval();
+                // the solutions name the curve
+                let opts = PropertyAnalysisOptions {
+                    property_value: None,
+                    opt_vectors: &vectors,
+                    want_comb: false,
+                    handle: Some(SilhouetteCurve {
+                        natural_interval: ivl,
+                    }),
+                };
+                let solutions = curve
+                    .global_property_analysis(
+                        k,
+                        &ivl,
+                        CurvePropertyType::ParallelToVector,
+                        EFF_ZERO_SQRT * 100.0,
+                        &opts,
+                    )?
+                    .solutions;
+
+                for sol in solutions.as_slice() {
+                    let param = sol.start.param(0)?;
+                    if param < ivl.min() + EFF_ZERO_SQRT || param > ivl.max() - EFF_ZERO_SQRT {
+                        continue;
+                    }
+
+                    let mut new_bsc = curve.clone();
+                    let mut trim1 = Extent1d::from_min_max(param, ivl.max());
+                    let mut trim2 = Extent1d::from_min_max(ivl.min(), param);
+                    // may snap sIvl by tol to existing knots
+                    ignore_status(new_bsc.trim(k, &mut trim2, TrimMode::Notify))?;
+
+                    new_curves.push(new_bsc);
+                    // may snap sIvl by tol to existing knots
+                    ignore_status(curve.trim(k, &mut trim1, TrimMode::Notify))?;
+
+                    let uv_curve = curves_uv.get_mut(ii).ok_or(SolidError::null_pointer(OP))?;
+                    if !matches!(uv_curve.kind(), CurveKind::BSpline(_)) {
+                        return Err(SolidError::null_pointer(OP));
+                    }
+                    let mut new_uv_bsc = uv_curve.clone();
+                    // may snap sIvl by tol to existing knots
+                    ignore_status(new_uv_bsc.trim(k, &mut trim2, TrimMode::Notify))?;
+                    new_uv_curves.push(new_uv_bsc);
+                    // may snap sIvl by tol to existing knots
+                    ignore_status(uv_curve.trim(k, &mut trim1, TrimMode::Notify))?;
+                    ivl = trim1;
+                }
+            }
+            curves_3d.append(&mut new_curves);
+            curves_uv.append(&mut new_uv_curves);
+        }
+
+        Ok((curves_3d, curves_uv))
     }
 
     // ---- shape tests ----------------------------------------------------------------
@@ -1734,7 +2315,12 @@ impl Surface {
     ///
     /// Those of [`Surface::evaluate_ignoring_status`]. A failing `Unitize` returns
     /// `true`, as upstream's `SER` inside a boolean function.
-    pub fn is_periodic(&self, uv_domain: &Extent2d, surf_param: SurfParamType) -> Result<bool> {
+    pub fn is_periodic(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        surf_param: SurfParamType,
+    ) -> Result<bool> {
         const NUM_TEST_POINTS: u32 = 7;
 
         // locals
@@ -1759,10 +2345,10 @@ impl Surface {
             }
 
             // surface evaluations on either side of the possible seam (statuses ignored)
-            if let Some(d) = self.evaluate_ignoring_status(uv_min, 1, 1, upper_flags(true))? {
+            if let Some(d) = self.evaluate_ignoring_status(k, uv_min, 1, 1, upper_flags(true))? {
                 p_min = first_block(&d);
             }
-            if let Some(d) = self.evaluate_ignoring_status(uv_max, 1, 1, upper_flags(true))? {
+            if let Some(d) = self.evaluate_ignoring_status(k, uv_max, 1, 1, upper_flags(true))? {
                 p_max = first_block(&d);
             }
 
@@ -1799,16 +2385,31 @@ impl Surface {
     /// # Errors
     ///
     /// Those of the evaluations.
-    pub fn is_degenerate_point(&self, tol_3d: f64, uv_domain: Option<&Extent2d>) -> Result<bool> {
+    pub fn is_degenerate_point(
+        &self,
+        k: &Kernel,
+        tol_3d: f64,
+        uv_domain: Option<&Extent2d>,
+    ) -> Result<bool> {
         match self.kind() {
-            SurfaceKind::BSpline(s) => s.is_degenerate_point(tol_3d, uv_domain),
+            SurfaceKind::BSpline(s) => s.is_degenerate_point(k, tol_3d, uv_domain),
             // inherited from SmBSplineSurface
-            SurfaceKind::SurfOfRevolution(s) => s.base().is_degenerate_point(tol_3d, uv_domain),
-            SurfaceKind::Plane(p) => p.base_for_query().is_degenerate_point(tol_3d, uv_domain),
+            SurfaceKind::Cone(s) => {
+                if uv_domain.is_some_and(|d| !d.are_equal(&self.natural_uv_domain(), EFF_ZERO)) {
+                    base_is_degenerate_point(k, self, tol_3d, uv_domain)
+                } else {
+                    s.rev().base().is_degenerate_point(k, tol_3d, uv_domain)
+                }
+            }
+            SurfaceKind::SurfOfRevolution(s) => s.base().is_degenerate_point(k, tol_3d, uv_domain),
+            SurfaceKind::SurfOfExtrusion(s) => s.base().is_degenerate_point(k, tol_3d, uv_domain),
+            SurfaceKind::Sphere(s) => s.base().base().is_degenerate_point(k, tol_3d, uv_domain),
+            SurfaceKind::Torus(s) => s.base().base().is_degenerate_point(k, tol_3d, uv_domain),
+            SurfaceKind::Plane(p) => p.base_for_query().is_degenerate_point(k, tol_3d, uv_domain),
             SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::OffsetSurface(_)
-            | SurfaceKind::SrfInVolume(_) => base_is_degenerate_point(self, tol_3d, uv_domain),
+            | SurfaceKind::SrfInVolume(_) => base_is_degenerate_point(k, self, tol_3d, uv_domain),
         }
     }
 
@@ -1821,26 +2422,44 @@ impl Surface {
     /// Those of the evaluations.
     pub fn is_degenerate_curve(
         &self,
+        k: &Kernel,
         angle_tol_deg: f64,
         uv_domain: Option<&Extent2d>,
         opt_3d_tol: f64,
     ) -> Result<bool> {
         match self.kind() {
-            SurfaceKind::BSpline(s) => s.is_degenerate_curve(angle_tol_deg, uv_domain, opt_3d_tol),
+            SurfaceKind::BSpline(s) => {
+                s.is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
+            }
             // inherited from SmBSplineSurface
             SurfaceKind::SurfOfRevolution(s) => {
                 s.base()
-                    .is_degenerate_curve(angle_tol_deg, uv_domain, opt_3d_tol)
+                    .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
+            }
+            SurfaceKind::SurfOfExtrusion(s) => {
+                s.base()
+                    .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
+            }
+            SurfaceKind::Sphere(s) => {
+                s.base()
+                    .base()
+                    .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
+            }
+            SurfaceKind::Torus(s) => {
+                s.base()
+                    .base()
+                    .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
             }
             SurfaceKind::Plane(p) => {
                 p.base_for_query()
-                    .is_degenerate_curve(angle_tol_deg, uv_domain, opt_3d_tol)
+                    .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
             }
-            SurfaceKind::CurveBounded(_)
+            SurfaceKind::Cone(_)
+            | SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::OffsetSurface(_)
             | SurfaceKind::SrfInVolume(_) => {
-                base_is_degenerate_curve(self, angle_tol_deg, uv_domain, opt_3d_tol)
+                base_is_degenerate_curve(k, self, angle_tol_deg, uv_domain, opt_3d_tol)
             }
         }
     }
@@ -1853,7 +2472,7 @@ impl Surface {
     /// Those of the evaluation.
     pub fn is_flat_corner(&self, k: &Kernel, uv: Point2, angle_tol_deg: f64) -> Result<bool> {
         // Surface Eval
-        let d = first_block(&self.evaluate(uv, 1, 1, upper_flags(false))?);
+        let d = first_block(&self.evaluate(k, uv, 1, 1, upper_flags(false))?);
 
         // 1st Derivatives
         let du = d[1][0];
@@ -1892,8 +2511,8 @@ impl Surface {
             None => zone_tol_3d(k, self)?,
         };
 
-        let tol_2d_u = map_to_2d_dir(tol_3d, uv_point, Vec2::new(1.0, 0.0), self)?;
-        let tol_2d_v = map_to_2d_dir(tol_3d, uv_point, Vec2::new(0.0, 1.0), self)?;
+        let tol_2d_u = map_to_2d_dir(k, tol_3d, uv_point, Vec2::new(1.0, 0.0), self)?;
+        let tol_2d_v = map_to_2d_dir(k, tol_3d, uv_point, Vec2::new(0.0, 1.0), self)?;
 
         // test point against boundaries
         let (b_u, o_u) = uv_domain
@@ -1943,8 +2562,8 @@ impl Surface {
             None => zone_tol_3d(k, self)?,
         };
 
-        let tol_2d_u = map_to_2d_dir(tol_3d, uv_point, Vec2::new(1.0, 0.0), self)?;
-        let tol_2d_v = map_to_2d_dir(tol_3d, uv_point, Vec2::new(0.0, 1.0), self)?;
+        let tol_2d_u = map_to_2d_dir(k, tol_3d, uv_point, Vec2::new(1.0, 0.0), self)?;
+        let tol_2d_v = map_to_2d_dir(k, tol_3d, uv_point, Vec2::new(0.0, 1.0), self)?;
 
         // return boundary value while making sure point is in natural domain
         let natural = self.natural_uv_domain();
@@ -2012,6 +2631,7 @@ fn knot_at(knots: &[f64], i: usize) -> Result<f64> {
 ///
 /// Those of the B-spline body.
 pub(crate) fn plane_bounding_box(
+    k: &Kernel,
     plane: &Plane,
     uv_domain: &Extent2d,
     req: &crate::nurbs::b_spline_surface::BoundingBoxRequest<'_>,
@@ -2023,7 +2643,7 @@ pub(crate) fn plane_bounding_box(
     };
     let mut r = plane
         .base_for_query()
-        .calculate_bounding_box(uv_domain, &base_req)?;
+        .calculate_bounding_box(k, uv_domain, &base_req)?;
     if req.polar {
         let mut pb = PolarBox::new();
         pb.add_vector(plane.evaluate_normal(), None);
@@ -2076,6 +2696,7 @@ pub fn base_create_offset_surface(
 ///
 /// Those of the evaluations (upstream ignores them).
 pub fn base_is_degenerate_point(
+    k: &Kernel,
     surface: &Surface,
     tol_3d: f64,
     uv_domain: Option<&Extent2d>,
@@ -2099,6 +2720,7 @@ pub fn base_is_degenerate_point(
 
     let eval = |uv: Point2| -> Result<[[Vec3; 2]; 2]> {
         Ok(first_block(&surface.evaluate(
+            k,
             uv,
             1,
             1,
@@ -2173,6 +2795,7 @@ pub fn base_is_degenerate_point(
 ///
 /// Those of the evaluations (upstream ignores them).
 pub fn base_is_degenerate_curve(
+    k: &Kernel,
     surface: &Surface,
     angle_tol_deg: f64,
     uv_domain: Option<&Extent2d>,
@@ -2227,6 +2850,7 @@ pub fn base_is_degenerate_curve(
 
     let eval = |uv: Point2| -> Result<[[Vec3; 2]; 2]> {
         Ok(first_block(&surface.evaluate(
+            k,
             uv,
             1,
             1,
@@ -2461,8 +3085,32 @@ pub fn crossed_seam_or_pole(
             }
         }
         // an SmSurfOfRevolution is an SmBSplineSurface
+        SurfaceKind::Cone(s) => {
+            let b = s.rev().base();
+            if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
+                return false;
+            }
+        }
         SurfaceKind::SurfOfRevolution(s) => {
             let b = s.base();
+            if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
+                return false;
+            }
+        }
+        SurfaceKind::SurfOfExtrusion(s) => {
+            let b = s.base();
+            if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
+                return false;
+            }
+        }
+        SurfaceKind::Sphere(s) => {
+            let b = s.base().base();
+            if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
+                return false;
+            }
+        }
+        SurfaceKind::Torus(s) => {
+            let b = s.base().base();
             if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
                 return false;
             }
@@ -2494,7 +3142,7 @@ pub fn surface_to_evaluate<O: Copy + PartialEq>(tree: &Tree<O>, node: &TreeNode<
 
 /// Whether the tree of a surface cache owner kind `owner` is a surface cache's
 /// (`IsKindOf(SmSurfaceCache_TYPE)`: surface, trimmed and tessellation caches).
-const fn is_surface_cache_owner(owner: Option<TreeOwner>) -> bool {
+pub(crate) const fn is_surface_cache_owner(owner: Option<TreeOwner>) -> bool {
     matches!(
         owner,
         Some(TreeOwner::SurfaceCache | TreeOwner::TrimSrfCache | TreeOwner::TessSrfCache)
@@ -2504,17 +3152,48 @@ const fn is_surface_cache_owner(owner: Option<TreeOwner>) -> bool {
 /// `sm_IsPointValid`: whether a potential solution at `uv` should be kept: always
 /// unless the tree (owner kind `owner`) is a surface cache's, then the cache's point
 /// test.
-#[must_use]
 pub fn is_point_valid<O: Copy + PartialEq>(
     owner: Option<TreeOwner>,
     cache: &SurfaceCache<O>,
     uv: Point2,
-) -> bool {
+) -> Result<bool> {
     // keep all points when SurfaceNode has no trim boundaries
     if !is_surface_cache_owner(owner) {
-        return true;
+        return Ok(true);
     }
     cache.point_test(uv)
+}
+
+/// [`is_point_valid`] with the trimmed cache's operation-scoped face queries.
+/// As upstream's `sm_IsPointValid`, a failed native classification keeps the
+/// candidate; an unavailable Rust capability still propagates as `Unported`.
+///
+/// # Errors
+/// Missing owning-face context and unported classification dependencies.
+pub fn is_point_valid_with<O: Copy + PartialEq>(
+    k: &Kernel,
+    owner: Option<TreeOwner>,
+    cache: &SurfaceCache<O>,
+    uv: Point2,
+    tolerance: Option<f64>,
+    faces: Option<&dyn FaceQueries<O>>,
+) -> Result<bool> {
+    if !is_surface_cache_owner(owner) {
+        return Ok(true);
+    }
+    Ok(
+        ignore_native_classification(cache.point_test_with(k, uv, tolerance, faces))?
+            .is_none_or(|(valid, _)| valid),
+    )
+}
+
+/// A failed native classification has caller-specific keep/remove behavior; a
+/// malformed identity or dangling Rust arena reference is not a native status.
+pub(super) fn ignore_native_classification<T>(result: Result<T>) -> Result<Option<T>> {
+    match result {
+        Err(error @ (SolidError::InvalidInput { .. } | SolidError::NotFound { .. })) => Err(error),
+        native => ignored(native),
+    }
 }
 
 /// `sm_IsNodeValid`: false only when `node` of a surface cache's tree (owner kind
@@ -2653,11 +3332,11 @@ impl IsoCurveLengthIntegrand<'_> {
     /// # Errors
     ///
     /// Those of the evaluation.
-    pub fn evaluate(&self, t: f64) -> Result<f64> {
+    pub fn evaluate(&self, k: &Kernel, t: f64) -> Result<f64> {
         let uv = Point2::new(self.u_iso_value, t);
 
         // evaluate UVPoint(UIsoValue, dT)
-        let pv = first_block(&self.surface.evaluate(uv, 1, 1, upper_flags(false))?);
+        let pv = first_block(&self.surface.evaluate(k, uv, 1, 1, upper_flags(false))?);
 
         // compute integrand of Area = Integral( sqrt(E*G - F*F) ) du dv (overwritten)
         let norm = pv[1][0].cross(pv[0][1]);
@@ -2683,7 +3362,7 @@ impl AreaIntegrand<'_> {
     /// # Errors
     ///
     /// Those of the surface evaluator; scalar numerical failures yield zero upstream.
-    pub fn evaluate(&self, t: f64) -> Result<f64> {
+    pub fn evaluate(&self, k: &Kernel, t: f64) -> Result<f64> {
         // set up the strip integral of [deltaX, IntervalY]
         let eval = IsoCurveLengthIntegrand::new(self.surface, t);
         crate::mass::integrator::integrate(
@@ -2691,7 +3370,7 @@ impl AreaIntegrand<'_> {
             self.uv_domain.max().y,
             crate::mass::integrator::IntegrationAlgorithm::Romberg,
             self.iso_curve_accuracy,
-            |v| eval.evaluate(v),
+            |v| eval.evaluate(k, v),
         )
     }
 }
@@ -2704,6 +3383,9 @@ impl AreaIntegrand<'_> {
 /// across the singular direction at `(s, t)` (`t` from `uv`).
 #[derive(Debug, Clone, Copy)]
 pub struct FindSingularParamWithGivenTangentDir<'s> {
+    /// Caller context retained by evaluation callbacks.
+    pub kernel: &'s Kernel,
+
     /// `m_pSurface`.
     pub surface: &'s Surface,
     /// `m_rUV`: its `t` coordinate picks the boundary.
@@ -2720,6 +3402,7 @@ impl<'s> FindSingularParamWithGivenTangentDir<'s> {
     /// The constructor.
     #[must_use]
     pub const fn new(
+        k: &'s Kernel,
         surface: &'s Surface,
         uv: Point2,
         dir: Vec3,
@@ -2727,6 +3410,7 @@ impl<'s> FindSingularParamWithGivenTangentDir<'s> {
         dist_tol_3d: f64,
     ) -> Self {
         Self {
+            kernel: k,
             surface,
             uv,
             dir,
@@ -2742,6 +3426,7 @@ impl<'s> FindSingularParamWithGivenTangentDir<'s> {
     ///
     /// Those of the evaluation.
     pub fn evaluate(&self, param: f64) -> Result<(f64, f64, bool)> {
+        let k = self.kernel;
         // branch on parametric direction to build local values
         let (uv_point, w, ws, wss) = if self.singular_direction == SurfParamType::U {
             (Point2::new(param, self.uv.y), (0, 1), (1, 1), (2, 1))
@@ -2750,7 +3435,9 @@ impl<'s> FindSingularParamWithGivenTangentDir<'s> {
         };
 
         // evaluate Surface to get Surf derivatives w, w', and w"
-        let m = self.surface.evaluate(uv_point, 3, 3, upper_flags(true))?;
+        let m = self
+            .surface
+            .evaluate(k, uv_point, 3, 3, upper_flags(true))?;
 
         // compute Unitized derivitaves of w (using w' and w") (status ignored)
         let [unit_t, unit_tt] = at(&m, w.0, w.1)
@@ -2782,14 +3469,17 @@ impl EvalFunction for FindSingularParamWithGivenTangentDir<'_> {
 /// unit `surface.surface_p9`.
 #[derive(Debug)]
 pub struct CsiGlobalSolver<'t, 's, O> {
+    /// Caller context for virtual evaluations.
+    pub kernel: &'s Kernel,
+
     /// The `SmGlobalSolver` state.
     pub base: GlobalSolver<'t, O>,
     /// Curve geometry supplied by the caller for leaf solves (part 9).
     pub curve: Option<&'s Curve>,
     /// Cache supplying the surface patches for leaf solves (part 9).
     pub surface_cache: Option<&'s SurfaceCache<O>>,
-    /// Geometry context supplied for leaf solves (part 9).
-    pub kernel: Option<&'s Kernel>,
+    /// The prepared owning-face classifier for trimmed candidate acceptance.
+    pub face_queries: Option<&'s dyn FaceQueries<O>>,
     /// `m_pSurf`.
     pub surface: Option<&'s Surface>,
     /// `m_bFoundCoincidence`.
@@ -2798,12 +3488,17 @@ pub struct CsiGlobalSolver<'t, 's, O> {
     pub interval: Extent1d,
     /// `m_crUVDomain`.
     pub uv_domain: Extent2d,
+    /// The handles and parameter domains of the solve's curve and surface, which the
+    /// solutions name (`IdenticalSolutions` reads them through upstream's objects);
+    /// `None` reads them from the handles themselves.
+    pub operands: Option<SolveOperands<O>>,
 }
 
 impl<'t, 's, O: SolutionObject> CsiGlobalSolver<'t, 's, O> {
     /// The constructor: two trees, three variables.
     #[must_use]
     pub fn new(
+        k: &'s Kernel,
         curve_tree: &'t Tree<O>,
         surface_tree: &'t Tree<O>,
         surface: Option<&'s Surface>,
@@ -2812,14 +3507,16 @@ impl<'t, 's, O: SolutionObject> CsiGlobalSolver<'t, 's, O> {
         uv_domain: Extent2d,
     ) -> Self {
         Self {
+            kernel: k,
             base: GlobalSolver::with_trees(curve_tree, surface_tree, 3),
             curve: None,
             surface_cache: None,
-            kernel: None,
+            face_queries: None,
             surface,
             found_coincidence,
             interval,
             uv_domain,
+            operands: None,
         }
     }
 }
@@ -2841,15 +3538,61 @@ pub struct CsGlobalSolver<'t, 's, O> {
     /// The cache holding the patches of the surface tree's nodes, for the leaf solve
     /// (part 11; upstream reaches it through the node's tree owner).
     pub surface_cache: Option<&'s SurfaceCache<O>>,
+    /// The prepared owning-face classifier for trimmed candidate acceptance.
+    pub face_queries: Option<&'s dyn FaceQueries<O>>,
+    /// The handles and parameter domains of the solve's curve and surface, which the
+    /// solutions name (`IdenticalSolutions` reads them through upstream's objects);
+    /// `None` reads them from the handles themselves.
+    pub operands: Option<SolveOperands<O>>,
     /// The kernel (upstream's `SmContext`) the leaf solve's evaluations and solves run
     /// with (part 11).
-    pub kernel: Option<&'s Kernel>,
+    pub kernel: &'s Kernel,
+}
+
+/// The parameter domain of a solve's operand (see [`SolveOperands`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OperandDomain {
+    /// A curve and its natural interval (`GetNaturalInterval`).
+    Curve(Extent1d),
+    /// A surface and its natural UV domain (`GetNaturalUVDomain`).
+    Surface(Extent2d),
+}
+
+/// The operands of a curve/surface or surface/surface solve as its solutions name
+/// them: each operand's handle and parameter domain, which `IdenticalSolutions`
+/// reads through upstream's objects (`&crCurve`, `this`, `&crOtherSurface`). A
+/// handle's own hooks answer first.
+#[derive(Debug, Clone, Copy)]
+pub struct SolveOperands<O> {
+    /// The handles of the operands and their domains.
+    pub operands: [Option<(O, OperandDomain)>; 2],
+}
+
+impl<O: SolutionObject> crate::geom::solution_array::ParameterDomains<O> for SolveOperands<O> {
+    fn natural_interval(&self, curve: &O) -> Option<Extent1d> {
+        curve.natural_interval().or_else(|| {
+            self.operands.iter().flatten().find_map(|(h, d)| match d {
+                OperandDomain::Curve(ivl) if h == curve => Some(*ivl),
+                _ => None,
+            })
+        })
+    }
+
+    fn natural_uv_domain(&self, surface: &O) -> Option<Extent2d> {
+        surface.natural_uv_domain().or_else(|| {
+            self.operands.iter().flatten().find_map(|(h, d)| match d {
+                OperandDomain::Surface(domain) if h == surface => Some(*domain),
+                _ => None,
+            })
+        })
+    }
 }
 
 impl<'t, 's, O: SolutionObject> CsGlobalSolver<'t, 's, O> {
     /// The constructor: two trees, three variables.
     #[must_use]
     pub fn new(
+        k: &'s Kernel,
         curve_tree: &'t Tree<O>,
         surface_tree: &'t Tree<O>,
         surface: Option<&'s Surface>,
@@ -2863,7 +3606,9 @@ impl<'t, 's, O: SolutionObject> CsGlobalSolver<'t, 's, O> {
             uv_domain,
             curve: None,
             surface_cache: None,
-            kernel: None,
+            face_queries: None,
+            operands: None,
+            kernel: k,
         }
     }
 
@@ -2876,6 +3621,7 @@ impl<'t, 's, O: SolutionObject> CsGlobalSolver<'t, 's, O> {
     ///
     /// Those of the branch lookup and of the tests.
     pub fn branch_may_contain_answers(&self, branch: &Branch) -> Result<bool> {
+        let k = self.kernel;
         // If we are normalizing and have a node with a surface do the
         // angular test using the Gauss map of the normal.
         if self.base.operation == SolverOperation::Normalize {
@@ -2886,6 +3632,7 @@ impl<'t, 's, O: SolutionObject> CsGlobalSolver<'t, 's, O> {
             // the patch's polar box is reachable
             let disjoint = match (self.surface_cache, branch.get(1).copied().flatten()) {
                 (Some(cache), Some(surface_id)) => super::p2::cs_are_perpen_disjoint_in(
+                    k,
                     curve_tree,
                     curve_node,
                     surface_node,
@@ -2907,6 +3654,7 @@ impl<'t, 's, O: SolutionObject> LsiGlobalSolver<'t, 's, O> {
     #[must_use]
     #[allow(clippy::too_many_arguments)] // upstream's constructor arguments
     pub fn new(
+        k: &'s Kernel,
         surface_tree: &'t Tree<O>,
         surface: Option<&'s Surface>,
         uv_domain: Extent2d,
@@ -2917,6 +3665,7 @@ impl<'t, 's, O: SolutionObject> LsiGlobalSolver<'t, 's, O> {
         distance_tolerance: f64,
     ) -> Self {
         Self {
+            kernel: k,
             base: GlobalSolver::with_tree(surface_tree, 2),
             surface,
             uv_domain,
@@ -2926,7 +3675,8 @@ impl<'t, 's, O: SolutionObject> LsiGlobalSolver<'t, 's, O> {
             ray_fire,
             distance_tolerance,
             surface_cache: None,
-            kernel: None,
+            face_queries: None,
+            face_cache: None,
         }
     }
 }
@@ -2936,17 +3686,19 @@ impl<'t, 's, O: SolutionObject> SpGlobalSolver<'t, 's, O> {
     /// variables.
     #[must_use]
     pub fn new(
+        k: &'s Kernel,
         point_tree: &'t Tree<O>,
         surface_tree: &'t Tree<O>,
         surface: Option<&'s Surface>,
         uv_domain: Extent2d,
     ) -> Self {
         Self {
+            kernel: k,
             base: GlobalSolver::with_trees(point_tree, surface_tree, 2),
             surface,
             uv_domain,
             surface_cache: None,
-            kernel: None,
+            face_queries: None,
         }
     }
 }
@@ -2970,6 +3722,8 @@ impl<'t, 's, O: SolutionObject> SsGlobalSolver<'t, 's, O> {
             uv_domain2,
             kernel,
             caches: [None, None],
+            face_queries: None,
+            operands: None,
         }
     }
 }
@@ -2980,6 +3734,9 @@ impl<'t, 's, O: SolutionObject> SsGlobalSolver<'t, 's, O> {
 /// `surface.surface_p4` (`EvalNFunctions`).
 #[derive(Debug, Clone, Copy)]
 pub struct CsIntersectEnfo<'a> {
+    /// Caller context retained by evaluation callbacks.
+    pub kernel: &'a Kernel,
+
     /// `m_crCurve`.
     pub curve: &'a Curve,
     /// `m_crSurface`.
@@ -2997,8 +3754,14 @@ pub struct CsIntersectEnfo<'a> {
 impl<'a> CsIntersectEnfo<'a> {
     /// The constructor: no calls yet, intersecting (not minimizing).
     #[must_use]
-    pub const fn new(curve: &'a Curve, surface: &'a Surface, squared_tolerance: f64) -> Self {
+    pub const fn new(
+        k: &'a Kernel,
+        curve: &'a Curve,
+        surface: &'a Surface,
+        squared_tolerance: f64,
+    ) -> Self {
         Self {
+            kernel: k,
             curve,
             surface,
             squared_tolerance,
@@ -3012,6 +3775,9 @@ impl<'a> CsIntersectEnfo<'a> {
 /// Curve/surface normal equations (`SmCSNormalizeENFO`).
 #[derive(Debug, Clone, Copy)]
 pub struct CsNormalizeEnfo<'a> {
+    /// Caller context retained by evaluation callbacks.
+    pub kernel: &'a Kernel,
+
     /// `m_crCurve`.
     pub curve: &'a Curve,
     /// `m_crSurface`.
@@ -3030,6 +3796,7 @@ impl<'a> CsNormalizeEnfo<'a> {
     /// The constructor.
     #[must_use]
     pub const fn new(
+        k: &'a Kernel,
         curve: &'a Curve,
         surface: &'a Surface,
         solver_operation: SolverOperation,
@@ -3038,6 +3805,7 @@ impl<'a> CsNormalizeEnfo<'a> {
         squared_tolerance: f64,
     ) -> Self {
         Self {
+            kernel: k,
             curve,
             surface,
             solver_operation,
@@ -3051,6 +3819,9 @@ impl<'a> CsNormalizeEnfo<'a> {
 /// Point/surface normal equations (`SmFindPSNormalENFO`).
 #[derive(Debug, Clone, Copy)]
 pub struct FindPsNormalEnfo<'a> {
+    /// Caller context retained by evaluation callbacks.
+    pub kernel: &'a Kernel,
+
     /// `m_crPoint`.
     pub point: Point3,
     /// `m_crSurface`.
@@ -3065,12 +3836,14 @@ impl<'a> FindPsNormalEnfo<'a> {
     /// The constructor.
     #[must_use]
     pub const fn new(
+        k: &'a Kernel,
         point: Point3,
         surface: &'a Surface,
         squared_tolerance: f64,
         solver_operation: SolverOperation,
     ) -> Self {
         Self {
+            kernel: k,
             point,
             surface,
             squared_tolerance,
@@ -3082,6 +3855,9 @@ impl<'a> FindPsNormalEnfo<'a> {
 /// Surface/surface/plane intersection equations (`SmSSPIntersectENFO`).
 #[derive(Debug, Clone, Copy)]
 pub struct SspIntersectEnfo<'a> {
+    /// Caller context retained by evaluation callbacks.
+    pub kernel: &'a Kernel,
+
     /// `m_crSurface`.
     pub surface: &'a Surface,
     /// `m_crOtherSurface`.
@@ -3098,6 +3874,7 @@ impl<'a> SspIntersectEnfo<'a> {
     /// The constructor.
     #[must_use]
     pub const fn new(
+        k: &'a Kernel,
         surface: &'a Surface,
         other_surface: &'a Surface,
         steepest_descent: bool,
@@ -3105,6 +3882,7 @@ impl<'a> SspIntersectEnfo<'a> {
         squared_tolerance: f64,
     ) -> Self {
         Self {
+            kernel: k,
             surface,
             other_surface,
             steepest_descent,
@@ -3117,6 +3895,9 @@ impl<'a> SspIntersectEnfo<'a> {
 /// Surface/surface intersection on a plane, normalizing (`SmSSINormalizeENFO`).
 #[derive(Debug, Clone, Copy)]
 pub struct SsiNormalizeEnfo<'a> {
+    /// Caller context retained by evaluation callbacks.
+    pub kernel: &'a Kernel,
+
     /// `m_crSurface`.
     pub surface: &'a Surface,
     /// `m_crOtherSurface`.
@@ -3133,6 +3914,7 @@ impl<'a> SsiNormalizeEnfo<'a> {
     /// The constructor.
     #[must_use]
     pub const fn new(
+        k: &'a Kernel,
         surface: &'a Surface,
         other_surface: &'a Surface,
         squared_tolerance: f64,
@@ -3140,6 +3922,7 @@ impl<'a> SsiNormalizeEnfo<'a> {
         plane_d: f64,
     ) -> Self {
         Self {
+            kernel: k,
             surface,
             other_surface,
             squared_tolerance,
@@ -3152,6 +3935,9 @@ impl<'a> SsiNormalizeEnfo<'a> {
 /// Surface/surface normal equations (`SmSSNormalizeENFO`).
 #[derive(Debug, Clone, Copy)]
 pub struct SsNormalizeEnfo<'a> {
+    /// Caller context retained by evaluation callbacks.
+    pub kernel: &'a Kernel,
+
     /// `m_crSurface`.
     pub surface: &'a Surface,
     /// `m_crOtherSurface`.
@@ -3168,6 +3954,7 @@ impl<'a> SsNormalizeEnfo<'a> {
     /// The constructor.
     #[must_use]
     pub const fn new(
+        k: &'a Kernel,
         surface: &'a Surface,
         other_surface: &'a Surface,
         solver_operation: SolverOperation,
@@ -3175,6 +3962,7 @@ impl<'a> SsNormalizeEnfo<'a> {
         squared_tolerance: f64,
     ) -> Self {
         Self {
+            kernel: k,
             surface,
             other_surface,
             solver_operation,
@@ -3188,6 +3976,9 @@ impl<'a> SsNormalizeEnfo<'a> {
 /// and tangents are filled by its `Evaluate`.
 #[derive(Debug, Clone, Copy)]
 pub struct SssIntersectEnfo<'a> {
+    /// Caller context retained by evaluation callbacks.
+    pub kernel: &'a Kernel,
+
     /// `m_crSurface1`.
     pub surface1: &'a Surface,
     /// `m_crSurface2`.
@@ -3209,6 +4000,7 @@ impl<'a> SssIntersectEnfo<'a> {
     /// undefined default.
     #[must_use]
     pub const fn new(
+        k: &'a Kernel,
         surface1: &'a Surface,
         surface2: &'a Surface,
         surface3: &'a Surface,
@@ -3220,6 +4012,7 @@ impl<'a> SssIntersectEnfo<'a> {
             crate::math::UNDEF_DOUBLE,
         );
         Self {
+            kernel: k,
             surface1,
             surface2,
             surface3,
@@ -3251,22 +4044,45 @@ mod tests {
 
     #[test]
     fn evaluation_wrappers() {
+        let k = &Kernel::default();
         let s = bilinear();
         let uv = Point2::new(0.25, 0.5);
-        let (p, du, dv) = s.evaluate_1st_derivatives(uv, true, true).unwrap();
-        let d2 = s.evaluate_2nd_derivatives(uv, true, true).unwrap();
+        let (p, du, dv) = s.evaluate_1st_derivatives(k, uv, true, true).unwrap();
+        let d2 = s.evaluate_2nd_derivatives(k, uv, true, true).unwrap();
         assert_eq!(p, d2[0]);
         assert_eq!(du, d2[1]);
         assert_eq!(dv, d2[2]);
-        assert_eq!(s.evaluate_step_point(uv).unwrap(), p);
-        let step = s.evaluate_step(uv, 1, 1, upper_flags(false)).unwrap();
+        assert_eq!(s.evaluate_step_point(k, uv).unwrap(), p);
+        let step = s.evaluate_step(k, uv, 1, 1, upper_flags(false)).unwrap();
         assert_eq!(at(&step, 1, 0), du);
     }
 
+    /// The caller-held cache overload of `GetDomainWithContinuity` returns the same
+    /// domain as the one that builds the cache itself.
+    #[test]
+    fn domain_with_continuity_from_cache_matches_direct() {
+        let k = &Kernel::default();
+        let s = bilinear();
+        let uv = Point2::new(0.5, 0.5);
+        let dir = Vec2::new(1.0, 0.0);
+        let cache =
+            get_surface_cache::<crate::surface::surface::p4::NoObject>(k, &s, None).unwrap();
+        assert_eq!(
+            s.domain_with_continuity(k, ContinuityType::G1, uv, dir)
+                .unwrap(),
+            s.domain_with_continuity_from_cache(ContinuityType::G1, uv, dir, &cache)
+                .unwrap()
+        );
+    }
+
     fn same_points(a: &Surface, b: &Surface) {
+        let k = &Kernel::default();
         for uv in [(0.0, 0.0), (0.25, 0.5), (1.0, 0.75)] {
             let uv = Point2::new(uv.0, uv.1);
-            assert_eq!(a.evaluate_point(uv).unwrap(), b.evaluate_point(uv).unwrap());
+            assert_eq!(
+                a.evaluate_point(k, uv).unwrap(),
+                b.evaluate_point(k, uv).unwrap()
+            );
         }
     }
 
@@ -3278,16 +4094,17 @@ mod tests {
         let plane = Plane::from_normal(Point3::new(1.0, 2.0, 3.0), Vec3::Z);
         let off = Surface::from(plane.clone())
             .create_offset_surface(&k, 2.0, 1e-3)
+            .unwrap()
             .unwrap();
         assert!(matches!(off.kind(), SurfaceKind::Plane(_)));
         same_points(
             &off,
-            &Surface::from(plane.create_offset_surface(2.0).unwrap()),
+            &Surface::from(plane.create_offset_surface(&k, 2.0).unwrap()),
         );
         let base = Surface::from(plane)
-            .evaluate_point(Point2::new(0.25, 0.5))
+            .evaluate_point(&k, Point2::new(0.25, 0.5))
             .unwrap();
-        let moved = off.evaluate_point(Point2::new(0.25, 0.5)).unwrap();
+        let moved = off.evaluate_point(&k, Point2::new(0.25, 0.5)).unwrap();
         assert_eq!(moved - base, Vec3::new(0.0, 0.0, 2.0));
     }
 
@@ -3308,6 +4125,7 @@ mod tests {
         for tol in [1e-6, 1e-2] {
             let off = Surface::from(rev.clone())
                 .create_offset_surface(&k, 0.25, tol)
+                .unwrap()
                 .unwrap();
             assert!(matches!(off.kind(), SurfaceKind::SurfOfRevolution(_)));
             let direct = Surface::from(rev.create_offset_surface(&k, 0.25, tol).unwrap());
@@ -3322,6 +4140,7 @@ mod tests {
     fn is_periodic_ignores_failed_tangent_repairs() {
         use crate::nurbs::math::{CPoint, NOW};
         use crate::nurbs::srf_basic::Surface as NlSurface;
+        let k = &Kernel::default();
         let net = vec![vec![CPoint::new(1.0, 2.0, 3.0, NOW); 4]; 4];
         let knots = vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
         let nl = NlSurface::new(net, 3, 3, knots.clone(), knots).unwrap();
@@ -3329,10 +4148,10 @@ mod tests {
         let dom = s.natural_uv_domain();
         // the plain evaluation reports the failed repair
         assert!(s
-            .evaluate(Point2::new(0.5, 0.5), 1, 1, upper_flags(true))
+            .evaluate(k, Point2::new(0.5, 0.5), 1, 1, upper_flags(true))
             .is_err());
-        assert!(s.is_periodic(&dom, SurfParamType::U).unwrap());
-        assert!(s.is_periodic(&dom, SurfParamType::V).unwrap());
+        assert!(s.is_periodic(k, &dom, SurfParamType::U).unwrap());
+        assert!(s.is_periodic(k, &dom, SurfParamType::V).unwrap());
         let k = Kernel::default();
         let off = OffsetSurface::new(&k, 1.0, s, true, 0).unwrap();
         assert_eq!(off.is_periodic(), [1, 1]);
@@ -3342,7 +4161,10 @@ mod tests {
     #[test]
     fn create_offset_surface_wraps_b_spline() {
         let k = Kernel::default();
-        let off = bilinear().create_offset_surface(&k, 0.5, 1e-3).unwrap();
+        let off = bilinear()
+            .create_offset_surface(&k, 0.5, 1e-3)
+            .unwrap()
+            .unwrap();
         let SurfaceKind::OffsetSurface(o) = off.kind() else {
             panic!("expected an offset surface");
         };
@@ -3351,35 +4173,39 @@ mod tests {
 
     #[test]
     fn step_surface_wraps_base() {
+        let k = &Kernel::default();
         let base = bilinear();
-        let st = Surface::new(SurfaceKind::Step(StepSurface::new(base.clone(), true)));
+        let st = Surface::new(SurfaceKind::Step(
+            StepSurface::new(base.clone(), true).unwrap(),
+        ));
         assert_eq!(st.type_code(), STEP_SURFACE_TYPE);
         assert!(st.is_kind_of(STEP_SURFACE_TYPE).unwrap());
         let uv = Point2::new(0.5, 0.5);
         assert_eq!(
-            st.evaluate_point(uv).unwrap(),
-            base.evaluate_point(uv).unwrap()
+            st.evaluate_point(k, uv).unwrap(),
+            base.evaluate_point(k, uv).unwrap()
         );
         let (knots, mults) = st.knots(SurfParamType::U, None).unwrap();
         assert_eq!(knots, vec![0.0, 1.0]);
         assert_eq!(mults, vec![2, 2]);
-        assert!(st.approx_eq(&st.clone()).unwrap());
-        assert!(!st.approx_eq(&base).unwrap());
+        assert!(st.approx_eq(k, &st.clone()).unwrap());
+        assert!(!st.approx_eq(k, &base).unwrap());
         let empty = StepSurface::empty();
-        assert!(empty.evaluate_point(uv).is_err());
+        assert!(empty.evaluate_point(k, uv).is_err());
     }
 
     #[test]
     fn degeneracy_and_periodicity() {
+        let k = &Kernel::default();
         let s = bilinear();
-        assert!(!base_is_degenerate_point(&s, DEGENERATE_TOL_3D, None).unwrap());
-        assert!(!base_is_degenerate_curve(&s, EFF_ZERO_DEG, None, DEGENERATE_TOL_3D).unwrap());
+        assert!(!base_is_degenerate_point(k, &s, DEGENERATE_TOL_3D, None).unwrap());
+        assert!(!base_is_degenerate_curve(k, &s, EFF_ZERO_DEG, None, DEGENERATE_TOL_3D).unwrap());
         let line = Extent2d::from_bounds(0.5, 0.0, 0.5, 1.0);
         assert!(
-            base_is_degenerate_curve(&s, EFF_ZERO_DEG, Some(&line), DEGENERATE_TOL_3D).unwrap()
+            base_is_degenerate_curve(k, &s, EFF_ZERO_DEG, Some(&line), DEGENERATE_TOL_3D).unwrap()
         );
         let d = s.natural_uv_domain();
-        assert!(!s.is_periodic(&d, SurfParamType::U).unwrap());
+        assert!(!s.is_periodic(k, &d, SurfParamType::U).unwrap());
         assert!(!s.is_analytic().unwrap());
     }
 

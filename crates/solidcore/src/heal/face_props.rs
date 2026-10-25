@@ -61,11 +61,17 @@
 //!   of the reference build). The unreachable `SmCurveClassification::ReSet` branch of
 //!   `SetProps_Stage2` (the classifications are deleted by `ReSet(SM_PROPSTAGE_2)`
 //!   first) is kept and calls [`CurveClassification::reset`].
-//! - **Unported callees** (`UNPORTED` stubs): `SmFace::HasSeamProblem`
-//!   (`topology.face_p4`). The `SmLoop` queries (`topology.loopuse`),
+//! - **Callees.** `SmFace::HasSeamProblem` of [`FaceProps::set_props_stage2`] runs
+//!   [`crate::topology::face::p4::has_seam_problem_in_brep`] on the face's own B-rep
+//!   objects, so the handle type must name them
+//!   ([`crate::topology::face::p4::BrepSeamObjects`]; otherwise
+//!   [`SolidError::InvalidInput`]). The `SmLoop` queries (`topology.loopuse`),
 //!   `SmCurveClassification::ReSet` (`intersect.curve_class_p2`) and
 //!   `SmFace::ClassifyLoops` ([`crate::query::face::p4::classify_loops`], whose status
 //!   `SetProps_Stage3` ignores as upstream) are wired.
+//! - **Query caches.** The mutable healer explicitly applies the vertex/face and
+//!   edge/face gap caches produced by seam queries, even on errors. Read-only props
+//!   queries still leave the B-rep unchanged; no geometry or topology is copied back.
 
 use crate::error::{ignored, EntityRef, Result, SolidError};
 use crate::geom::tol::{calc_face_zone_tol_3d, xsect_tol_3d_from_zones};
@@ -79,6 +85,7 @@ use crate::kernel::Kernel;
 use crate::math::EFF_ZERO;
 use crate::nurbs::b_spline_surface::p1::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::face::p2::CurveOnClassifyCache;
 use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::face::p2 as face_p2;
 use crate::topology::loopuse;
@@ -1145,22 +1152,39 @@ pub type SeamProblemFn<'f, O> = dyn FnMut(
 
 /// `m_pFace->HasSeamProblem(*m_pCrvClassU, *m_pCrvClassV, crossed, missing, nearMiss,
 /// FALSE, &m_bClosedU, &m_bClosedV, this)` for the callers of
-/// [`FaceProps::set_props_stage2`], which have no classification objects for
-/// [`crate::topology::face::p4::has_seam_problem`] (callers that have them use
-/// [`FaceProps::set_props_stage2_with`]).
+/// [`FaceProps::set_props_stage2`], which hold no classification objects: the face's own
+/// B-rep objects ([`crate::topology::face::p4::has_seam_problem_in_brep`]; callers that
+/// have their own objects use [`FaceProps::set_props_stage2_with`]). An `UNSURE` closed
+/// flag reads as `TRUE`; the returned flag is dropped, as upstream.
 fn face_has_seam_problem<O: LoopObject>(
-    _b: &Brep,
-    _f: FaceId,
-    _class_u: &mut CurveClassification<O>,
-    _class_v: &mut CurveClassification<O>,
-    _props: &mut FaceProps<O>,
+    k: &Kernel,
+    b: &Brep,
+    f: FaceId,
+    class_u: &mut CurveClassification<O>,
+    class_v: &mut CurveClassification<O>,
+    props: &mut FaceProps<O>,
+    cache: &mut CurveOnClassifyCache,
 ) -> Result<SeamProblem> {
-    // UNPORTED(topology.face_p4): SmFace::HasSeamProblem without a classification-object
-    // mapper (face::p4::has_seam_problem takes one; see set_props_stage2_with)
-    Err(SolidError::unported(
-        "SmFace::HasSeamProblem",
-        "topology.face_p4",
-    ))
+    let (closed_u, closed_v) = (props.closed_u != Tri::False, props.closed_v != Tri::False);
+    let check = crate::topology::face::p4::has_seam_problem_in_brep_cached(
+        k,
+        b,
+        f,
+        crate::topology::face::p4::HasSeamProblemOptions {
+            outer_loop_only: false,
+            periodic_u: Some(closed_u),
+            periodic_v: Some(closed_v),
+            face_props: Some(props),
+        },
+        cache,
+    )?;
+    *class_u = check.class_u;
+    *class_v = check.class_v;
+    Ok(SeamProblem {
+        crossed: check.problem.crossed,
+        missing: check.problem.missing,
+        near_miss: check.problem.near_miss,
+    })
 }
 
 /// `SmCurveClassification::ReSet()` of an existing seam classification.
@@ -1593,6 +1617,41 @@ impl<O: LoopObject> FaceProps<O> {
         face_index: u64,
         exe_heal_op: HealerOpType,
     ) -> Result<()> {
+        let mut cache = CurveOnClassifyCache::default();
+        self.set_props_with_seam(k, b, stage, face, face_index, exe_heal_op, &mut cache)
+    }
+
+    /// The healer's `SetProps` call on its B-rep: what the lazy queries left on their
+    /// snapshot (the UV trim curves `HasSeamProblem` and `ClassifyLoops`' bisectors make,
+    /// the tolerance growth and the gap caches) stays on `b`, as upstream's `const` face
+    /// queries leave it. Apply writes even if a query fails after invalidating a
+    /// sibling's cache.
+    pub(crate) fn set_props_with_query_gaps(
+        &mut self,
+        k: &Kernel,
+        b: &mut Brep,
+        stage: PropStage,
+        face: FaceId,
+        face_index: u64,
+        exe_heal_op: HealerOpType,
+    ) -> Result<()> {
+        let mut cache = CurveOnClassifyCache::default();
+        let result =
+            self.set_props_with_seam(k, b, stage, face, face_index, exe_heal_op, &mut cache);
+        cache.apply_uv_trim_updates(b)?;
+        result
+    }
+
+    fn set_props_with_seam(
+        &mut self,
+        k: &Kernel,
+        b: &Brep,
+        stage: PropStage,
+        face: FaceId,
+        face_index: u64,
+        exe_heal_op: HealerOpType,
+        cache: &mut CurveOnClassifyCache,
+    ) -> Result<()> {
         // init rtn
         let mut rtn: Result<()> = Ok(());
         let some_face = Some(face);
@@ -1609,7 +1668,14 @@ impl<O: LoopObject> FaceProps<O> {
         if stage == PropStage::Stage2
             || (stage > PropStage::Stage2 && !self.has_props(PropStage::Stage2, some_face))
         {
-            rtn = self.set_props_stage2(k, b, face, face_index, exe_heal_op);
+            rtn = self.set_props_stage2_with(
+                k,
+                b,
+                face,
+                face_index,
+                exe_heal_op,
+                &mut |k, b, f, cu, cv, p| face_has_seam_problem(k, b, f, cu, cv, p, &mut *cache),
+            );
             keep_unported(&rtn)?;
         }
 
@@ -1617,7 +1683,7 @@ impl<O: LoopObject> FaceProps<O> {
         if stage == PropStage::Stage3
             || (stage > PropStage::Stage3 && !self.has_props(PropStage::Stage3, some_face))
         {
-            rtn = self.set_props_stage3(k, b, face, face_index, exe_heal_op);
+            rtn = self.set_props_stage3_cached(k, b, face, face_index, exe_heal_op, cache);
             keep_unported(&rtn)?;
         }
 
@@ -1680,8 +1746,9 @@ impl<O: LoopObject> FaceProps<O> {
     ///
     /// `SM_ERR` ([`SolidError::Upstream`]) when `exe_heal_op` is before
     /// [`HealerOpType::FixTolsizes`]; [`SolidError::InvalidInput`] for a face without
-    /// surface or face use; [`SolidError::Unported`] for `SmFace::HasSeamProblem`
-    /// (`topology.face_p4`); the errors of the surface queries.
+    /// surface or face use, and for a handle type that cannot name the face's B-rep
+    /// objects (`SmFace::HasSeamProblem`, see the module docs); the errors of the
+    /// surface queries and the seam check.
     pub fn set_props_stage2(
         &mut self,
         k: &Kernel,
@@ -1690,13 +1757,14 @@ impl<O: LoopObject> FaceProps<O> {
         face_index: u64,
         exe_heal_op: HealerOpType,
     ) -> Result<()> {
+        let mut cache = CurveOnClassifyCache::default();
         self.set_props_stage2_with(
             k,
             b,
             face,
             face_index,
             exe_heal_op,
-            &mut |_, b, f, cu, cv, p| face_has_seam_problem(b, f, cu, cv, p),
+            &mut |k, b, f, cu, cv, p| face_has_seam_problem(k, b, f, cu, cv, p, &mut cache),
         )
     }
 
@@ -1789,6 +1857,7 @@ impl<O: LoopObject> FaceProps<O> {
         // Closed pFace->Surface classification: m_bClosedU, m_bClosedV, m_eClosedValU,
         // m_eClosedValV
         let (closed_u, val_u) = surface.is_closed(
+            k,
             &self.natural_uv_domain,
             SurfParamType::U,
             Some(xsect_tol_3d),
@@ -1799,6 +1868,7 @@ impl<O: LoopObject> FaceProps<O> {
             self.closed_val_u = c;
         }
         let (closed_v, val_v) = surface.is_closed(
+            k,
             &self.natural_uv_domain,
             SurfParamType::V,
             Some(xsect_tol_3d),
@@ -1918,6 +1988,22 @@ impl<O: LoopObject> FaceProps<O> {
         face_index: u64,
         exe_heal_op: HealerOpType,
     ) -> Result<()> {
+        let mut cache = CurveOnClassifyCache::default();
+        self.set_props_stage3_cached(k, b, face, face_index, exe_heal_op, &mut cache)
+    }
+
+    /// [`FaceProps::set_props_stage3`] on the query state `cache`: what `ClassifyLoops`'
+    /// loop bisectors leave on its snapshot stays there for the caller to keep
+    /// ([`CurveOnClassifyCache::apply_uv_trim_updates`]).
+    pub(crate) fn set_props_stage3_cached(
+        &mut self,
+        k: &Kernel,
+        b: &Brep,
+        face: FaceId,
+        face_index: u64,
+        exe_heal_op: HealerOpType,
+        cache: &mut CurveOnClassifyCache,
+    ) -> Result<()> {
         // no work - already done or being done
         if self.prop_stage >= PropStage::Stage3A {
             return Ok(());
@@ -1966,7 +2052,7 @@ impl<O: LoopObject> FaceProps<O> {
         let mut target_loops = closed_loops;
         // (the status is only reported upstream; a handle type that cannot name the
         // loop bisector's objects is a limitation of the caller, not a status)
-        let classify_status = match crate::query::face::p4::classify_loops(
+        let classify_status = match crate::query::face::p4::classify_loops_cached(
             k,
             b,
             m_face,
@@ -1974,6 +2060,7 @@ impl<O: LoopObject> FaceProps<O> {
             &mut classified,
             &mut scratch,
             self,
+            cache,
         ) {
             Err(e @ SolidError::InvalidInput { reason, .. })
                 if reason == crate::query::face::p3::NO_CURVE_HANDLES =>

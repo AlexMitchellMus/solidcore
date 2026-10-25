@@ -8,7 +8,7 @@
 //! | Rust                                       | Upstream                                          |
 //! |--------------------------------------------|---------------------------------------------------|
 //! | [`Plane::create_offset_surface`]           | `CreateOffsetSurface`                             |
-//! | [`global_surface_intersect`] (via [`Surface::global_surface_intersect`]) | `GlobalSurfaceIntersect` |
+//! | `global_surface_intersect_in` (via [`Surface::global_surface_intersect`]) | `GlobalSurfaceIntersect` |
 //! | [`Plane::intersect_with_plane`]            | `IntersectWithPlane`                              |
 //! | [`Plane::trim_curve_to_plane_domain`]      | `TrimCurveToPlaneDomain`                          |
 //! | [`Plane::is_nurb_surface_plane`]           | `IsNurbSurfacePlane` (static)                     |
@@ -29,8 +29,9 @@
 //!   tolerance of the plane's face ([`Surface::face`], `SmSurface::GetFace`), else
 //!   `SM_ZONE_TOL_3D`. A bare [`Plane`] has no owner (the owner lives on [`Surface`]), so
 //!   it uses `SM_ZONE_TOL_3D`; through [`Surface::global_surface_intersect`] a plane with
-//!   a face returns [`SolidError::Unported`] there (`SmFace::GetTolerance`, unit
-//!   `topology.face_p2`).
+//!   a face uses the face tolerance its B-rep cached on the surface
+//!   ([`Surface::owner_zone_tol_3d`]), and returns [`SolidError::Unported`] there
+//!   without it (`SmFace::GetTolerance`, unit `topology.face_p2`).
 //! - **NURB.** `IntersectWithPlane`'s parallel case tests whether both planes hold a
 //!   NURB (`m_pNurb`), as upstream; the boxes are computed on a NURB made on a copy
 //!   when the plane has none (upstream makes it in place, a `const_cast`). Because the
@@ -46,8 +47,9 @@
 //!   `SmMatrix::SolveLinearSystem`'s near-singular warning, which upstream returns
 //!   through `SER`, is [`SolidError::Upstream`] with `SM_ERR_WARNING`.
 //! - **Recognisers** after the plane in `GlobalSurfaceIntersect`: the surface of
-//!   revolution's special case runs; the cone, cylinder, sphere and extrusion need
-//!   surface kinds not in [`SurfaceKind`] yet. Against a surface of revolution, a plane
+//!   revolution's and the cone's (`SmCone::IntersectWithPlane`, also for a cylinder)
+//!   special cases run; the sphere and extrusion need surface kinds not in
+//!   [`SurfaceKind`] yet. Against a surface of revolution, a plane
 //!   with a face returns [`SolidError::Unported`] (`SmFace::GetTolerance`) even where
 //!   the special case would not reach the plane's box. The general
 //!   `SmSurface::GlobalSurfaceIntersect` runs `SmSurfaceIntersector::DoIntersection`
@@ -79,9 +81,9 @@ use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::{BSplineSurface, BoundingBoxRequest};
 use crate::nurbs::knots::Side;
-use crate::surface::surface::p1::evaluate_1st_derivatives;
+use crate::surface::surface::p1::{evaluate_1st_derivatives, SurfaceIntersectContext};
 use crate::surface::surface::p2::{
-    base_global_surface_intersect, SurfaceIntersection, TsectCurveType,
+    base_global_surface_intersect_in, SurfaceIntersection, TsectCurveType,
 };
 use crate::surface::surface::p7::base_evaluate_normal;
 use crate::surface::surface::{Surface, SurfaceKind};
@@ -111,18 +113,60 @@ impl SolutionObject for CurveHandle {
     }
 }
 
-/// The tolerance of a plane's face (`GetFace()->GetTolerance()`, when `owned`: the
-/// plane has a face), else `SM_ZONE_TOL_3D` (the `bExpandPosBoxesByZoneTol3d`
-/// expansion of `CalculateBoundingBox`).
-fn zone_tolerance(owned: bool) -> Result<f64> {
-    if owned {
-        // UNPORTED(topology.face_p2): SmFace::GetTolerance
-        return Err(SolidError::unported(
+/// Whether a plane has a face (`SmSurface::GetFace`), and that face's tolerance as its
+/// B-rep cached it on the [`Surface`] ([`Surface::owner_zone_tol_3d`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum PlaneOwner {
+    /// No face: the boxes expand by `SM_ZONE_TOL_3D`.
+    NoFace,
+    /// A face, with its cached tolerance (`None`: a bare face handle).
+    Face(Option<f64>),
+}
+
+impl PlaneOwner {
+    /// The owner state of a plane held by `surface`.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::face`].
+    pub(crate) fn of(surface: &Surface) -> Result<Self> {
+        Ok(if surface.face()?.is_some() {
+            Self::Face(surface.owner_zone_tol_3d())
+        } else {
+            Self::NoFace
+        })
+    }
+}
+
+impl PlaneOwner {
+    /// The `expand_tolerance` of a box request on the plane's B-spline part: its face's
+    /// tolerance, `None` (the ownerless `SM_ZONE_TOL_3D`) without face.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] (`SmFace::GetTolerance`) for a bare face handle.
+    pub(crate) fn expand_tolerance(self) -> Result<Option<f64>> {
+        match self {
+            Self::NoFace => Ok(None),
+            Self::Face(_) => zone_tolerance(self).map(Some),
+        }
+    }
+}
+
+/// The tolerance of a plane's face (`GetFace()->GetTolerance()`, when the plane has a
+/// face), else `SM_ZONE_TOL_3D` (the `bExpandPosBoxesByZoneTol3d` expansion of
+/// `CalculateBoundingBox`).
+fn zone_tolerance(owner: PlaneOwner) -> Result<f64> {
+    match owner {
+        PlaneOwner::NoFace => Ok(ZONE_TOL_3D),
+        PlaneOwner::Face(Some(tol)) => Ok(tol),
+        // UNPORTED(topology.face_p2): SmFace::GetTolerance (a bare face handle without
+        // the tolerance its B-rep caches on the surface)
+        PlaneOwner::Face(None) => Err(SolidError::unported(
             "SmFace::GetTolerance",
             "topology.face_p2",
-        ));
+        )),
     }
-    Ok(ZONE_TOL_3D)
 }
 
 impl Plane {
@@ -134,7 +178,7 @@ impl Plane {
     /// # Errors
     ///
     /// Those of [`Plane::transform`].
-    pub fn create_offset_surface(&self, signed_offset_distance: f64) -> Result<Self> {
+    pub fn create_offset_surface(&self, k: &Kernel, signed_offset_distance: f64) -> Result<Self> {
         // construct plane copy
         let mut off_plane = self.copy();
 
@@ -142,7 +186,7 @@ impl Plane {
         let mut trans = Axis2Placement::IDENTITY;
         let mv = self.position.z_axis() * signed_offset_distance;
         trans.translate(mv);
-        off_plane.transform(&trans, None)?;
+        off_plane.transform(k, &trans, None)?;
 
         // set output
         Ok(off_plane)
@@ -160,7 +204,12 @@ impl Plane {
     /// Those of [`BSplineSurface::transform`]; `SM_ERR` for a non-isotropic scale (the
     /// NURB is already transformed, as upstream) or when the transformed NURB is not
     /// recognised as a plane; those of [`Plane::is_nurb_surface_plane`].
-    pub fn transform(&mut self, rotate_n_move: &Axis2Placement, scale: Option<Vec3>) -> Result<()> {
+    pub fn transform(
+        &mut self,
+        k: &Kernel,
+        rotate_n_move: &Axis2Placement,
+        scale: Option<Vec3>,
+    ) -> Result<()> {
         let identity_scale = Vec3::new(1.0, 1.0, 1.0);
 
         // no work - identity transform
@@ -191,7 +240,7 @@ impl Plane {
         let bss = BSplineSurface::from_nurb(nurb.clone(), true);
         let mut plane = None;
         for tol_scale in [1.0, 10.0, 100.0, 1000.0] {
-            plane = Self::is_nurb_surface_plane(&bss, tol_scale)?;
+            plane = Self::is_nurb_surface_plane(k, &bss, tol_scale)?;
             if plane.is_some() {
                 break;
             }
@@ -341,6 +390,7 @@ impl Plane {
     /// failing test-point evaluation, a degenerate Y axis; [`SolidError::Unported`]
     /// from the evaluations.
     pub fn is_nurb_surface_plane(
+        k: &Kernel,
         test: &BSplineSurface,
         tolerance_scale: f64,
     ) -> Result<Option<Self>> {
@@ -355,6 +405,7 @@ impl Plane {
         // get surface throughPoint, tangents, and normal at natural domain upper corner
         // (SE: a failed evaluation keeps the previous values)
         if let Some((p, du, dv)) = ignored(evaluate_1st_derivatives(
+            k,
             test,
             uv_domain.evaluate(1.0, 1.0),
             Side::Left,
@@ -378,6 +429,7 @@ impl Plane {
 
         // get surface throughPoint, tangents, and normal at natural domain lower corner
         if let Some((p, du, dv)) = ignored(evaluate_1st_derivatives(
+            k,
             test,
             uv_domain.evaluate(0.0, 0.0),
             Side::Left,
@@ -399,6 +451,7 @@ impl Plane {
 
         // get normal near domain center (SE)
         if let Some(n) = ignored(base_evaluate_normal(
+            k,
             test,
             uv_domain.evaluate(0.45, 0.56),
             Side::Left,
@@ -468,8 +521,9 @@ impl Plane {
     /// zone-tolerance expansion).
     pub(crate) fn bounding_boxes(
         &self,
+        k: &Kernel,
         uv_domain: &Extent2d,
-        owned: bool,
+        owner: PlaneOwner,
     ) -> Result<(Extent3d, PseudoBox)> {
         let req = BoundingBoxRequest {
             normal: true,
@@ -479,12 +533,12 @@ impl Plane {
         };
         let b = self
             .base_with_nurb()?
-            .calculate_bounding_box(uv_domain, &req)?;
+            .calculate_bounding_box(k, uv_domain, &req)?;
         let mut bbox = b.normal.ok_or(SolidError::null_pointer(OP_PP))?;
         let mut pbox = b.pseudo.ok_or(SolidError::null_pointer(OP_PP))?;
         // When asked, expand the normal and pseudo boxes by the zone tolerance
-        bbox.expand_absolute(zone_tolerance(owned)?);
-        pbox.expand_absolute(zone_tolerance(owned)?);
+        bbox.expand_absolute(zone_tolerance(owner)?);
+        pbox.expand_absolute(zone_tolerance(owner)?);
         Ok((bbox, pbox))
     }
 
@@ -505,30 +559,33 @@ impl Plane {
     /// singular); those of [`BSplineCurve::create_degenerate_curve`].
     pub fn intersect_with_plane(
         &self,
+        k: &Kernel,
         uv_domain: &Extent2d,
         other: &Self,
         other_uv_domain: &Extent2d,
         approx_tol_3d: Option<f64>,
     ) -> Result<(bool, SurfaceIntersection)> {
         self.intersect_with_plane_owned(
+            k,
             uv_domain,
             other,
             other_uv_domain,
             approx_tol_3d,
-            [false, false],
+            [PlaneOwner::NoFace, PlaneOwner::NoFace],
         )
     }
 
-    /// [`Plane::intersect_with_plane`] with the planes' ownership (for the zone
+    /// [`Plane::intersect_with_plane`] with the planes' owners (for the zone
     /// tolerance).
     #[allow(clippy::too_many_lines)] // one upstream function
     pub(crate) fn intersect_with_plane_owned(
         &self,
+        k: &Kernel,
         uv_domain: &Extent2d,
         other: &Self,
         other_uv_domain: &Extent2d,
         approx_tol_3d: Option<f64>,
-        owned: [bool; 2],
+        owners: [PlaneOwner; 2],
     ) -> Result<(bool, SurfaceIntersection)> {
         // init output
         let mut out = SurfaceIntersection::default();
@@ -568,8 +625,8 @@ impl Plane {
             }
 
             // get plane1 and plane2 bounding and pseudo boxes
-            let (bbox1, pbox1) = self.bounding_boxes(uv_domain, owned[0])?;
-            let (bbox2, pbox2) = other.bounding_boxes(other_uv_domain, owned[1])?;
+            let (bbox1, pbox1) = self.bounding_boxes(k, uv_domain, owners[0])?;
+            let (bbox2, pbox2) = other.bounding_boxes(k, other_uv_domain, owners[1])?;
 
             // no work - when bounding or pseudo boxes are disjoint
             if bbox1.are_disjoint(&bbox2, 0.0) || pbox1.are_disjoint(&pbox2, None) {
@@ -653,7 +710,7 @@ impl Plane {
 
         // get size of bounded ThisPlane
         if this_bounded {
-            (bbox1, pbox1) = self.bounding_boxes(uv_domain, owned[0])?;
+            (bbox1, pbox1) = self.bounding_boxes(k, uv_domain, owners[0])?;
             let radius1 = bbox1.sphere_bound().radius;
             bbox1.expand_absolute(tol / 2.0);
             pbox1.expand_absolute(tol / 2.0);
@@ -662,7 +719,7 @@ impl Plane {
 
         // get size of bounded OtherPlane
         if other_bounded {
-            (bbox2, pbox2) = other.bounding_boxes(other_uv_domain, owned[1])?;
+            (bbox2, pbox2) = other.bounding_boxes(k, other_uv_domain, owners[1])?;
             let radius2 = bbox2.sphere_bound().radius;
             bbox2.expand_absolute(tol / 2.0);
             pbox2.expand_absolute(tol / 2.0);
@@ -821,6 +878,7 @@ impl Plane {
                 // Skip grazing solutions.  [Boolean Restructure]
                 if solution.solution_type == SolutionType::SingleValue
                     && is_grazing_intersection(
+                        k,
                         curve,
                         solution.start.param(0)?,
                         line,
@@ -849,8 +907,8 @@ impl Plane {
 
             // skip zero length intervals at the curve start, curve end, and
             // PlaneCorner/curve intersections (statuses ignored)
-            let start_point = curve.evaluate(s_param, 1, true, true)?;
-            let end_point = curve.evaluate_point(e_param)?;
+            let start_point = curve.evaluate(k, s_param, 1, true, true)?;
+            let end_point = curve.evaluate_point(k, e_param)?;
             let p0 = start_point.first().copied().unwrap_or(Vec3::UNDEF);
             let d0 = start_point.get(1).copied().unwrap_or(Vec3::UNDEF);
             let dist = p0.distance(end_point);
@@ -894,7 +952,7 @@ impl Plane {
 
             // drop curve interval midPoint to inside of trimmed plane (statuses ignored)
             let t = (s_param + e_param) / 2.0;
-            let mid_point = curve.evaluate_point(t)?;
+            let mid_point = curve.evaluate_point(k, t)?;
             let mut t_solutions = self.drop_point_fast(
                 uv_domain,
                 SolverOperation::Normalize,
@@ -910,7 +968,7 @@ impl Plane {
                 if uv_domain.is_point_on_boundary(pt_uv, 2.0 * tol_3d).0 {
                     let frac = 0.3579; // Make it not quite the midpoint.
                     let param = s_param * frac + e_param * (1.0 - frac);
-                    let mid_point = curve.evaluate_point(param)?;
+                    let mid_point = curve.evaluate_point(k, param)?;
                     t_solutions = self.drop_point_fast(
                         uv_domain,
                         SolverOperation::Normalize,
@@ -932,7 +990,7 @@ impl Plane {
             // degenerate curves for tangency intersections
             if keep == 0 && prev_keep == Some(0) {
                 // Create a degenerate curve - at the curve point (statuses ignored)
-                let point = curve.evaluate_point(s_param)?;
+                let point = curve.evaluate_point(k, s_param)?;
                 let bsp = BSplineCurve::create_degenerate_curve(3, point)?;
                 curves_3d.push(Curve::from(bsp));
             }
@@ -1340,7 +1398,8 @@ impl Plane {
 ///
 /// Those of [`Plane::intersect_with_plane`]; [`SolidError::Unported`] from the general
 /// intersector.
-pub(crate) fn global_surface_intersect(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn global_surface_intersect_in<O: SolutionObject + Copy + PartialEq>(
     k: &Kernel,
     this: &Surface,
     plane: &Plane,
@@ -1350,6 +1409,7 @@ pub(crate) fn global_surface_intersect(
     use_surface_edges: [bool; 2],
     approx_tol_3d: Option<f64>,
     ang_tol_rad: Option<f64>,
+    context: Option<SurfaceIntersectContext<'_, O>>,
 ) -> Result<SurfaceIntersection> {
     // assume special case intersections will be complete
     let mut need_nurb_intersection = true;
@@ -1359,32 +1419,82 @@ pub(crate) fn global_surface_intersect(
     match other.kind() {
         // plane/plane special case intersection
         SurfaceKind::Plane(other_plane) => {
-            // (whether each plane has a face: SmSurface::GetFace)
-            let owned = [this.face()?.is_some(), other.face()?.is_some()];
+            // (whether each plane has a face: SmSurface::GetFace, and its tolerance)
+            let owners = [PlaneOwner::of(this)?, PlaneOwner::of(other)?];
             (need_nurb_intersection, out) = plane.intersect_with_plane_owned(
+                k,
                 uv_domain,
                 other_plane,
                 other_uv_domain,
                 approx_tol_3d,
-                owned,
+                owners,
             )?;
+        }
+        // cone/plane special case intersection (SmCone_TYPE and SmCylinder_TYPE):
+        // SmCone::IntersectWithPlane, which hides the surface of revolution's; the
+        // orders and the UV curves are swapped
+        SurfaceKind::Cone(cone) => {
+            // the plane's boxes take its face's tolerance
+            let (need, mut x) = cone.intersect_with_plane_owned(
+                k,
+                other_uv_domain,
+                plane,
+                PlaneOwner::of(this)?,
+                uv_domain,
+                approx_tol_3d,
+            )?;
+            core::mem::swap(&mut x.surface1_uv_curves, &mut x.surface2_uv_curves);
+            (need_nurb_intersection, out) = (need, x);
         }
         // SurfOfRevolution/plane special case intersection: the orders and the UV
         // curves are swapped (the surface of revolution's edge flags and angle
         // tolerance are not used by it)
         SurfaceKind::SurfOfRevolution(rev) => {
-            // the plane's boxes take its face's tolerance (taken as without owner
-            // there; see the module header)
-            if this.face()?.is_some() {
-                zone_tolerance(true)?;
-            }
-            let (need, mut x) = rev.intersect_with_plane(k, plane, uv_domain, approx_tol_3d)?;
+            // the plane's boxes take its face's tolerance
+            let (need, mut x) = rev.intersect_with_plane_owned(
+                k,
+                plane,
+                PlaneOwner::of(this)?,
+                uv_domain,
+                approx_tol_3d,
+            )?;
             core::mem::swap(&mut x.surface1_uv_curves, &mut x.surface2_uv_curves);
             (need_nurb_intersection, out) = (need, x);
         }
-        // (the cone, cylinder, sphere and extrusion special cases need surface kinds
-        // that are not ported yet)
-        SurfaceKind::BSpline(_)
+        // sphere/plane special case intersection: the orders and the UV curves are
+        // swapped
+        SurfaceKind::Sphere(sphere) => {
+            // the plane's boxes take its face's tolerance
+            let (need, mut x) = sphere.intersect_with_plane_owned(
+                k,
+                other_uv_domain,
+                plane,
+                PlaneOwner::of(this)?,
+                uv_domain,
+                approx_tol_3d,
+            )?;
+            core::mem::swap(&mut x.surface1_uv_curves, &mut x.surface2_uv_curves);
+            (need_nurb_intersection, out) = (need, x);
+        }
+        // SurfOfExtrusion/plane special case intersection: the orders and the UV curves
+        // are swapped
+        SurfaceKind::SurfOfExtrusion(ext) => {
+            let mut x = ext.intersect_with_plane_on(
+                k,
+                other,
+                other_uv_domain,
+                plane,
+                PlaneOwner::of(this)?,
+                uv_domain,
+                approx_tol_3d,
+            )?;
+            core::mem::swap(&mut x.surface1_uv_curves, &mut x.surface2_uv_curves);
+            need_nurb_intersection = x.needs_more_intersections;
+            out = SurfaceIntersection::from(x);
+        }
+        // (an SmTorus has no special case: the default branch)
+        SurfaceKind::Torus(_)
+        | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::OffsetSurface(_)
@@ -1393,7 +1503,7 @@ pub(crate) fn global_surface_intersect(
 
     // If we're here, then analytic intersection were not found - do general intersection
     if need_nurb_intersection {
-        out = base_global_surface_intersect(
+        out = base_global_surface_intersect_in(
             k,
             this,
             uv_domain,
@@ -1402,6 +1512,7 @@ pub(crate) fn global_surface_intersect(
             use_surface_edges,
             approx_tol_3d,
             ang_tol_rad,
+            context,
         )?;
     }
 
@@ -1431,18 +1542,20 @@ mod tests {
 
     #[test]
     fn offset_moves_along_normal() {
-        let p = rect().create_offset_surface(2.0).unwrap();
+        let k = &Kernel::default();
+        let p = rect().create_offset_surface(k, 2.0).unwrap();
         assert_eq!(p.position().origin(), Vec3::new(0.0, 0.0, 2.0));
         assert_eq!(p.step_uv_domain(), dom());
     }
 
     #[test]
     fn transform_rejects_anisotropic_scale() {
+        let k = &Kernel::default();
         let mut p = rect();
-        let r = p.transform(&Axis2Placement::IDENTITY, Some(Vec3::new(2.0, 1.0, 1.0)));
+        let r = p.transform(k, &Axis2Placement::IDENTITY, Some(Vec3::new(2.0, 1.0, 1.0)));
         assert!(r.is_err());
         let mut q = rect();
-        q.transform(&Axis2Placement::IDENTITY, Some(Vec3::new(2.0, 2.0, 2.0)))
+        q.transform(k, &Axis2Placement::IDENTITY, Some(Vec3::new(2.0, 2.0, 2.0)))
             .unwrap();
         let o = q.evaluate_point(Point2::new(5.0, 3.0));
         assert!((o - Vec3::new(10.0, 6.0, 0.0)).length() < 1e-12);
@@ -1464,6 +1577,7 @@ mod tests {
 
     #[test]
     fn recognises_bilinear_plane() {
+        let k = &Kernel::default();
         let s = BSplineSurface::create_bilinear_surface(
             Vec3::ZERO,
             Vec3::new(2.0, 0.0, 0.0),
@@ -1471,7 +1585,7 @@ mod tests {
             Vec3::new(2.0, 3.0, 0.0),
         )
         .unwrap();
-        let p = Plane::is_nurb_surface_plane(&s, 1.0).unwrap().unwrap();
+        let p = Plane::is_nurb_surface_plane(k, &s, 1.0).unwrap().unwrap();
         assert!(p.base().gw_nurb().is_some());
         let twisted = BSplineSurface::create_bilinear_surface(
             Vec3::ZERO,
@@ -1480,17 +1594,18 @@ mod tests {
             Vec3::new(2.0, 3.0, 1.0),
         )
         .unwrap();
-        assert!(Plane::is_nurb_surface_plane(&twisted, 1.0)
+        assert!(Plane::is_nurb_surface_plane(k, &twisted, 1.0)
             .unwrap()
             .is_none());
     }
 
     #[test]
     fn plane_plane_intersections() {
+        let k = &Kernel::default();
         let a = Plane::from_normal(Vec3::ZERO, Vec3::Z);
         let b = Plane::from_normal(Vec3::new(1.0, 0.0, 0.0), Vec3::X);
         let d = Extent2d::from_bounds(-1.0, -1.0, 1.0, 1.0);
-        let (more, x) = a.intersect_with_plane(&d, &b, &d, None).unwrap();
+        let (more, x) = a.intersect_with_plane(k, &d, &b, &d, None).unwrap();
         assert!(!more);
         assert_eq!(x.curves_3d.len(), 1);
         assert_eq!(x.curve_types, vec![TsectCurveType::Crossing]);
@@ -1506,17 +1621,17 @@ mod tests {
         );
         c.make_nurb().unwrap();
         let (_, x) = rect()
-            .intersect_with_plane(&dom(), &c, &c.step_uv_domain(), None)
+            .intersect_with_plane(k, &dom(), &c, &c.step_uv_domain(), None)
             .unwrap();
         assert_eq!(x.curves_3d.len(), 1);
 
         // coincident planes need the general intersector, parallel ones give nothing
         let (more, x) = rect()
-            .intersect_with_plane(&dom(), &rect(), &dom(), None)
+            .intersect_with_plane(k, &dom(), &rect(), &dom(), None)
             .unwrap();
         assert!(more && x.curves_3d.is_empty());
         let r = rect();
-        let (more, _) = r.intersect_with_plane(&dom(), &r, &dom(), None).unwrap();
+        let (more, _) = r.intersect_with_plane(k, &dom(), &r, &dom(), None).unwrap();
         assert!(!more);
     }
 

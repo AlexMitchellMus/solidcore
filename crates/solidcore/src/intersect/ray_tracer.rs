@@ -20,7 +20,7 @@
 //! | [`RayRenderer::do_render`], [`RayRenderer::render_pixel`], [`RayRenderer::render_ray`] | `SmRayRenderer::DoRender`, `RenderPixel`, `RenderRay` |
 //! | [`RayRenderer::set_sample_rate`], [`RayRenderer::add_light_source`], [`RayRenderer::pixels_shaded`] | `SetSampleRate`, `AddLightSource`, `GetPixelsShaded` |
 //! | [`RayObject`]                                   | the `SmObject*` of `SmSolution::m_apObjects` |
-//! | [`surface_leaf`]                                  | `SmSurfaceGridElement::Init` (the part after the Bezier patch data) |
+//! | [`SurfaceGridElement::from_leaf_data`], [`SurfaceGridElement::init`] | `SmSurfaceGridElement::Init` (ported in `geom::grid`) |
 //! | `line_plane_intersect` (private)                  | `sm_LinePlaneIntersect`                   |
 //! | `is_point_valid` (private)                        | `sm_IsPointValid`                         |
 //! | `convert_to_parameter_delta` (private)            | `sm_ConvertToParameterDelta`              |
@@ -48,15 +48,17 @@
 //! - **Grid elements of other types.** `FireRay` asserts (debug builds only) that a
 //!   non-polygon element is a surface element and casts it regardless; an element
 //!   of another type (user data, hierarchy) is [`SolidError::InvalidInput`] here.
-//! - **Surface leaf data.** `SmSurfaceGridElement::Init` is unported
-//!   (`geom::grid`), so surface leaves enter the grid through
-//!   [`Grid::add_surface_element`] with their data filled in
-//!   ([`SurfaceGridElement`] is co-ported by this unit).
+//! - **Surface leaf data.** `SmSurfaceGridElement::Init` lives in `geom::grid`
+//!   ([`SurfaceGridElement::init`], and [`SurfaceGridElement::from_leaf_data`] for the
+//!   part after the Bezier patch data). [`RayTracer::add_surface_to_grid`] makes the
+//!   leaves as `ExpandHierarchy` does ([`Grid::expand_hierarchy`] over the surface's
+//!   cache, which holds the surface by its index in the tracer's list); the
+//!   `AddLeaf` test op fills a leaf in itself and adds it with
+//!   [`Grid::add_surface_element`].
 //! - **`SE` in `SmSurfaceGridElement::Init`.** Upstream signals an error and carries
-//!   on. [`surface_leaf`] retries a failed `Evaluate` without `non_zero_tangents`
-//!   (the failure comes after the plain NLib derivatives are in `sEval`, before the
-//!   fixed-up tangents are written back) and keeps the cross product when
-//!   `EvaluateNormal` fails; [`SolidError::Unported`] is always propagated.
+//!   on; see the status deviation of `geom::grid` (a failed `Evaluate` is retried
+//!   without `non_zero_tangents`, a failed `EvaluateNormal` keeps the cross product,
+//!   [`SolidError::Unported`] is always propagated).
 //! - **Polygon elements.** `sm_FindPolyHit` walks the `SmBrepCache` tree of a
 //!   polygon grid element and tests `SmPolyFace`s: neither exists yet, so a polygon
 //!   element in the ray's path is [`SolidError::Unported`], as is
@@ -70,7 +72,7 @@
 //!   upstream leaves unset before `DoRender` are black; the hit node `RenderRay`
 //!   passes as the skip element is `m_apNodes[0]`, which `FireRay` always clears, so
 //!   no element is skipped; unsigned products wrap as upstream's `ULONG`.
-//! - **Unported callees.** `SmFace::PointClassify` (`query.face_p2`), `Grid::expand_hierarchy` and the poly
+//! - **Unported callees.** `SmFace::PointClassify` (`query.face_p2`) and the poly
 //!   types return [`SolidError::Unported`] (see the `UNPORTED` markers). The surface
 //!   cache and its tree (`smsurf_GetSurfaceCache`, `GetTree`) are ported.
 //! - `SM_ERR` results the upstream ignores or `SER`s keep their behaviour; the
@@ -89,21 +91,21 @@ use crate::geom::geom_utility::p1::{
     circle_coplanar_circle_intersect, line_closest_point, line_coplanar_circle_intersect,
     line_plane_intersect_uv, CircleCircle,
 };
-use crate::geom::grid::{ElementId, Grid, GridItem, HierarchyElement, SurfaceGridElement};
+use crate::geom::grid::{
+    ElementId, Grid, GridItem, HierarchyElement, HierarchyId, SurfaceGridElement,
+};
 use crate::geom::object::ObjectRef;
-use crate::geom::polar_box::PolarBox;
-use crate::geom::pseudo_box::PseudoBox;
 use crate::geom::solution_array::{ObjectKind, Solution, SolutionObject, SolutionType};
 use crate::geom::tree::NodeId;
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
 use crate::math::{BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, PI};
-use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::knots::Side;
 use crate::surface::surface::p1::evaluate_1st_derivatives;
 use crate::surface::surface::p2::surface_cache;
 use crate::surface::surface::Surface;
+use crate::surface::surface_cache::p1::SurfaceCache;
 use crate::topology::{EdgeId, FaceId, VertexId};
 
 /// A light source (`SmLightSource`): white light from a point or in a direction.
@@ -163,11 +165,12 @@ pub struct NormalSection {
 
 /// `SmSurface::EvaluateNormalSection` (`bUFromLeft`, `bVFromLeft` both true).
 fn surface_evaluate_normal_section(
+    k: &Kernel,
     surface: &Surface,
     uv: Point2,
     direction: Vec3,
 ) -> Result<NormalSection> {
-    let s = surface.evaluate_normal_section(uv, Side::Left, Side::Left, direction)?;
+    let s = surface.evaluate_normal_section(k, uv, Side::Left, Side::Left, direction)?;
     Ok(NormalSection {
         tangent_plane_direction: s.tangent,
         curvature: s.curvature,
@@ -178,75 +181,6 @@ fn surface_evaluate_normal_section(
 /// `SmSurface::GetFace`: the face owning the surface, if any.
 fn surface_face(surface: &Surface) -> Result<Option<ObjectRef>> {
     surface.face()
-}
-
-/// The leaf data `SmSurfaceGridElement::Init` derives from the surface once it has the
-/// Bezier patch data (domain, box, pseudo box and polar box): the surface point,
-/// derivatives and unit normal at the middle of the domain. `surface_index` is the
-/// surface's index in the tracer's surface list.
-///
-/// # Errors
-///
-/// Only [`SolidError::Unported`], or an `Evaluate` that also fails without
-/// `non_zero_tangents`: upstream signals those with `SE` and carries on.
-pub fn surface_leaf(
-    surface_index: usize,
-    surface: &Surface,
-    uv_domain: &Extent2d,
-    bbox: &Extent3d,
-    pseudo_box: &PseudoBox,
-    polar_box: &PolarBox,
-) -> Result<SurfaceGridElement<usize>> {
-    // Precomputation of derivative information for this little patch
-    let uv_mid = uv_domain.evaluate(0.5, 0.5);
-    let eval_flags = |non_zero_tangents: bool| EvaluateFlags {
-        u_side: Side::Left,
-        v_side: Side::Left,
-        only_upper_half: true,
-        non_zero_tangents,
-    };
-    // `SE(Evaluate)` signals the error and carries on. Asking for (1,1) derivatives
-    // makes `SmBSplineSurface::Evaluate` take its "not enough derivatives" branch,
-    // `SER(Evaluate(crUV, 2, 2, ...))` (SmBSplineSurfaceNLib.cpp:8335), which returns
-    // before the fixed-up tangents are written back: `sEval` keeps the plain NLib
-    // derivatives, which is what `non_zero_tangents: false` gives.
-    let eval = match surface.evaluate(uv_mid, 1, 1, eval_flags(true)) {
-        Ok(eval) => eval,
-        Err(e) if e.is_unported() => return Err(e),
-        Err(_) => surface.evaluate(uv_mid, 1, 1, eval_flags(false))?,
-    };
-    let at = |i: usize, j: usize| -> Result<Vec3> {
-        eval.get(i)
-            .and_then(|r| r.get(j))
-            .copied()
-            .ok_or_else(|| SolidError::sm_err("intersect::ray_tracer::surface_leaf"))
-    };
-    let mid_point = at(0, 0)?;
-    let mid_du = at(1, 0)?;
-    let mid_dv = at(0, 1)?;
-    let mut mid_normal = mid_du.cross(mid_dv);
-    if mid_normal.length_squared() > EFF_ZERO {
-        mid_normal = mid_normal.unitize()?;
-    } else {
-        // `SE(EvaluateNormal)`: on failure keep the cross product (the unit's
-        // `m_sMidNormal` is whatever the call left in it; see findings.md)
-        mid_normal = match surface.evaluate_normal(uv_mid, Side::Left, Side::Left) {
-            Ok(n) => n,
-            Err(e) if e.is_unported() => return Err(e),
-            Err(_) => mid_normal,
-        };
-    }
-    Ok(SurfaceGridElement {
-        surface: surface_index,
-        uv_domain: *uv_domain,
-        bbox: *bbox,
-        pseudo_box: *pseudo_box,
-        polar_box: *polar_box,
-        mid_point,
-        mid_du,
-        mid_dv,
-        mid_normal,
-    })
 }
 
 /// `sm_LinePlaneIntersect`: the line against the plane `plane_point + u * plane_u +
@@ -264,24 +198,51 @@ fn line_plane_intersect(
     Some((line_point + t * line_vector, Vec2::new(u, v), t))
 }
 
+/// Classifies a point of a face-owned surface against the surface's face
+/// (`SmFace::PointClassify` of `sm_IsPointValid`), for a tracer whose surfaces are
+/// faces of a B-rep the caller prepared.
+pub trait RayFaceClassifier: core::fmt::Debug {
+    /// Whether `uv` is a valid point of the tracer's surface `surface` (index in the
+    /// tracer's list) and the topology object coincident with it. A classification
+    /// error keeps the point (`TRUE`, no object), as upstream; [`SolidError::Unported`]
+    /// is returned as an error.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] from the classification.
+    fn is_point_valid(
+        &self,
+        k: &Kernel,
+        surface: usize,
+        uv: Point2,
+        src_zone_tol: f64,
+    ) -> Result<(bool, Option<RayObject>)>;
+}
+
 /// `sm_IsPointValid`: whether `uv` is a valid point of the surface (inside its face,
 /// or its natural domain when it has no face), and the topology object coincident
 /// with the point.
 fn is_point_valid(
+    k: &Kernel,
     surface: &Surface,
+    index: usize,
+    faces: Option<&dyn RayFaceClassifier>,
     uv: Point2,
-    _src_zone_tol: f64,
+    src_zone_tol: f64,
 ) -> Result<(bool, Option<RayObject>)> {
     match surface_face(surface)? {
         // no face - check uv against the natural domain
         None => Ok((surface.natural_uv_domain().contains_point(uv, 0.0), None)),
-        Some(_face) => {
-            // UNPORTED(query.face_p2): SmFace::PointClassify
-            Err(SolidError::unported(
-                "SmFace::PointClassify",
-                "query.face_p2",
-            ))
-        }
+        Some(_face) => match faces {
+            Some(faces) => faces.is_point_valid(k, index, uv, src_zone_tol),
+            None => {
+                // UNPORTED(query.face_p2): SmFace::PointClassify
+                Err(SolidError::unported(
+                    "SmFace::PointClassify",
+                    "query.face_p2",
+                ))
+            }
+        },
     }
 }
 
@@ -311,6 +272,7 @@ struct TangentGuess {
 /// `sm_FindAdditionalTangentGuess`: near a tangential ray/surface contact, a second
 /// intersection guess from the circles of the surface normal section and the curve.
 fn find_additional_tangent_guess(
+    k: &Kernel,
     surface: &Surface,
     uv_domain: &Extent2d,
     curve: &Curve,
@@ -325,8 +287,8 @@ fn find_additional_tangent_guess(
     };
     let no_guess = guess;
 
-    let mut normal = surface.evaluate_normal(current_uv, Side::Left, Side::Left)?;
-    let pv = curve.evaluate(current_t, 1, true, true)?;
+    let mut normal = surface.evaluate_normal(k, current_uv, Side::Left, Side::Left)?;
+    let pv = curve.evaluate(k, current_t, 1, true, true)?;
     let (pv0, pv1) = match pv.as_slice() {
         [a, b, ..] => (*a, *b),
         _ => return Err(SolidError::sm_err("intersect::ray_tracer")),
@@ -340,16 +302,16 @@ fn find_additional_tangent_guess(
     // Lets take a normal section on the surface along the direction of the tangent
     // of the curve.  This should give us two circles or a line and a circle to
     // intersect.
-    let section = surface_evaluate_normal_section(surface, current_uv, pv1)?;
+    let section = surface_evaluate_normal_section(k, surface, current_uv, pv1)?;
     let tan_plane_proj = section.tangent_plane_direction;
     let normal_curvature = section.curvature;
     normal = section.normal;
 
     // First compute the projected tangent vector.
-    let surf_point = surface.evaluate_point(current_uv)?;
+    let surf_point = surface.evaluate_point(k, current_uv)?;
 
     // Get the geometric properties of the curve at the intersection
-    let geom_vec = evaluate_geometric(curve, current_t, 2, true)?;
+    let geom_vec = evaluate_geometric(k, curve, current_t, 2, true)?;
     let mut curvature_vector = *geom_vec
         .get(2)
         .ok_or_else(|| SolidError::sm_err("intersect::ray_tracer"))?;
@@ -482,7 +444,8 @@ fn find_additional_tangent_guess(
 
     // Use the found vector to compute an approximate step in the curve and surface
     // parameters.
-    let (_point, du, dv) = evaluate_1st_derivatives(surface, current_uv, Side::Left, Side::Left)?;
+    let (_point, du, dv) =
+        evaluate_1st_derivatives(k, surface, current_uv, Side::Left, Side::Left)?;
 
     guess.found = true;
     guess.t = current_t + convert_to_parameter_delta(pv1, found_vector);
@@ -603,8 +566,10 @@ impl Lsi3LocalSolver {
     #[must_use]
     pub fn local_solve(
         &self,
+        k: &Kernel,
         surface: &Surface,
         element: &SurfaceGridElement<usize>,
+        faces: Option<&dyn RayFaceClassifier>,
     ) -> LocalSolveResult {
         let mut out = LocalSolveResult {
             status: Ok(()),
@@ -612,14 +577,16 @@ impl Lsi3LocalSolver {
             found_intersection: false,
             solution: Solution::new(),
         };
-        out.status = self.local_solve_into(surface, element, &mut out);
+        out.status = self.local_solve_into(k, surface, element, faces, &mut out);
         out
     }
 
     fn local_solve_into(
         &self,
+        k: &Kernel,
         surface: &Surface,
         element: &SurfaceGridElement<usize>,
+        faces: Option<&dyn RayFaceClassifier>,
         out: &mut LocalSolveResult,
     ) -> Result<()> {
         // locals
@@ -720,6 +687,7 @@ impl Lsi3LocalSolver {
 
             // SmSurface::LocalLineIntersect (SER)
             let hit = surface.local_line_intersect(
+                k,
                 uv_domain,
                 self.line_point,
                 self.line_vector,
@@ -738,7 +706,14 @@ impl Lsi3LocalSolver {
             // save solution with lowest in-range ray parameter value
             if hit.t < min_t_found && self.line_interval.contains_value(hit.t, 0.0) {
                 // see if point is valid (within surface trim boundaries)
-                let (valid, object) = is_point_valid(surface, hit.uv, self.d3d_tolerance)?;
+                let (valid, object) = is_point_valid(
+                    k,
+                    surface,
+                    element.surface,
+                    faces,
+                    hit.uv,
+                    self.d3d_tolerance,
+                )?;
                 if valid {
                     // save the solution
                     out.found_intersection = true;
@@ -804,7 +779,7 @@ impl Lsi3LocalSolver {
                 let tmp_line =
                     Curve::from(Line::infinite(self.line_point, self.line_vector, 3, false));
                 let guess = find_additional_tangent_guess(
-                    surface, uv_domain, &tmp_line, &tmp_ivl, hit.uv, hit.t,
+                    k, surface, uv_domain, &tmp_line, &tmp_ivl, hit.uv, hit.t,
                 )?;
                 if guess.found {
                     total_points += 1;
@@ -853,6 +828,8 @@ pub struct RayTracer<'s> {
     surfaces: Vec<&'s Surface>,
     /// `m_pSkipElement`: an element `FireRay` does not test.
     pub skip_element: Option<ElementId>,
+    /// How a face-owned surface's points are classified against its face.
+    faces: Option<&'s dyn RayFaceClassifier>,
     /// `m_bHitAnyThing`: stop at the first hit instead of finding the closest.
     pub hit_any_thing: bool,
 }
@@ -881,6 +858,7 @@ impl<'s> RayTracer<'s> {
             grid,
             solver,
             surfaces: Vec::new(),
+            faces: None,
             skip_element: None,
             hit_any_thing: false,
         }
@@ -927,6 +905,12 @@ impl<'s> RayTracer<'s> {
         self.surfaces.len() - 1
     }
 
+    /// Sets how the points of face-owned surfaces are classified against their faces
+    /// (`SmFace::PointClassify` of `sm_IsPointValid`).
+    pub fn set_face_classifier(&mut self, faces: &'s dyn RayFaceClassifier) {
+        self.faces = Some(faces);
+    }
+
     /// The surfaces added so far (`m_sSurfaces`).
     #[must_use]
     pub fn surfaces(&self) -> &[&'s Surface] {
@@ -944,6 +928,7 @@ impl<'s> RayTracer<'s> {
     /// surface nor a polygon element or whose surface is not registered.
     pub fn fire_ray(
         &mut self,
+        k: &Kernel,
         ray_point: Point3,
         ray_vector: Vec3,
         max_ray_parameter: f64,
@@ -1047,7 +1032,7 @@ impl<'s> RayTracer<'s> {
                         operation: OP,
                         reason: "surface grid element refers to an unregistered surface",
                     })?;
-                let solved = self.solver.local_solve(surface, &leaf);
+                let solved = self.solver.local_solve(k, surface, &leaf, self.faces);
                 // (the status is ignored; Unported always propagates)
                 if let Err(e) = &solved.status {
                     if e.is_unported() {
@@ -1113,17 +1098,41 @@ impl<'s> RayTracer<'s> {
     /// # Errors
     ///
     /// `SM_ERR` when the surface cache or its tree is missing (or has no top node),
-    /// and those of the cache and tree builds and of
-    /// [`RayTracer::add_surface_with_bbox`] (its [`Grid::expand_hierarchy`] is
-    /// [`SolidError::Unported`] today).
+    /// and those of the cache and tree builds, of
+    /// [`RayTracer::add_surface_with_bbox`] and of [`Grid::expand_hierarchy`].
     pub fn add_surface_to_grid(&mut self, k: &Kernel, surface: &'s Surface) -> Result<()> {
-        const OP: &str = "intersect::ray_tracer::add_surface_to_grid";
-        // build the surface spatial decomposition by building the surface cache
-        let mut cache = surface_cache::<usize>(k, surface, None)?;
-        let tree = cache.get_tree(k)?;
-        let top = tree.top_node().ok_or(SolidError::sm_err(OP))?;
-        let bbox = tree.node(top)?.bbox;
-        self.add_surface_with_bbox(surface, &bbox)
+        // build the surface spatial decomposition by building the surface cache; its
+        // nodes refer to the surface (`mBA_pSurface`) by the index the tracer lists it
+        // under below
+        let cache = surface_cache::<usize>(k, surface, Some(self.surfaces.len()))?;
+        self.add_surface_with_cache(k, surface, cache)
+    }
+
+    /// [`RayTracer::add_surface_to_grid`] for a caller that built the surface's cache
+    /// itself, as upstream's `smsurf_GetSurfaceCache` does for a face-owned surface
+    /// through its face. `cache` was built with the surface handle
+    /// `self.surfaces().len()`.
+    ///
+    /// # Errors
+    ///
+    /// As [`RayTracer::add_surface_to_grid`] after the cache build.
+    pub fn add_surface_with_cache(
+        &mut self,
+        k: &Kernel,
+        surface: &'s Surface,
+        mut cache: SurfaceCache<usize>,
+    ) -> Result<()> {
+        const OP: &str = "intersect::ray_tracer::add_surface_with_cache";
+        let top = cache
+            .get_tree(k)?
+            .top_node()
+            .ok_or(SolidError::sm_err(OP))?;
+        let bbox = cache.get_tree(k)?.node(top)?.bbox;
+        let id = self.add_surface_with_bbox(surface, &bbox)?;
+
+        // Expand the hierarchy element to avoid recomputing the surface cache a 2nd
+        // time: every lowest Bezier leaf becomes `SmSurfaceGridElement::Init`
+        self.grid.expand_hierarchy(k, id, &mut cache)
     }
 
     /// Embeds the faces of a poly B-rep in the grid (`AddPolyBrepToGrid`).
@@ -1141,20 +1150,20 @@ impl<'s> RayTracer<'s> {
         Err(SolidError::unported("SmPolyBrep::Notify", "query.poly"))
     }
 
-    /// `AddSurfaceToGrid` from the point where the top node of the surface cache's
-    /// tree is known: `top_node_bbox` is that node's box. Lists the surface, adds a
-    /// surface hierarchy element for it over the box grown by a twentieth of its
-    /// bounding sphere radius, and expands it.
+    /// `AddSurfaceToGrid` up to the expansion, from the point where the top node of
+    /// the surface cache's tree is known: `top_node_bbox` is that node's box. Lists
+    /// the surface and adds a surface hierarchy element for it over the box grown by
+    /// a twentieth of its bounding sphere radius. The element is still to be expanded
+    /// ([`Grid::expand_hierarchy`] over the surface's cache).
     ///
     /// # Errors
     ///
-    /// Those of [`Grid::add_hierarchy_element`] and [`Grid::expand_hierarchy`]
-    /// (the latter is [`SolidError::Unported`] today).
+    /// Those of [`Grid::add_hierarchy_element`].
     pub fn add_surface_with_bbox(
         &mut self,
         surface: &'s Surface,
         top_node_bbox: &Extent3d,
-    ) -> Result<()> {
+    ) -> Result<HierarchyId> {
         // set the bounding box = cached normal box increased by a small amount
         let mut surf_bbox = *top_node_bbox;
 
@@ -1167,11 +1176,7 @@ impl<'s> RayTracer<'s> {
 
         // add the surface to the grid's hierarchical element list
         let hierarchy = HierarchyElement::new_surface(index, self.ray_tolerance);
-        let id = self.grid.add_hierarchy_element(hierarchy, &surf_bbox)?;
-
-        // Expand the hierarchy element to avoid recomputing the surface cache a 2nd
-        // time
-        self.grid.expand_hierarchy(id)
+        self.grid.add_hierarchy_element(hierarchy, &surf_bbox)
     }
 }
 
@@ -1270,6 +1275,7 @@ impl<'s> RayRenderer<'s> {
     /// Those of [`RayRenderer::render_pixel`].
     pub fn do_render(
         &mut self,
+        k: &Kernel,
         do_shadows: bool,
         background_color: Vec3,
         default_object_color: Vec3,
@@ -1284,7 +1290,7 @@ impl<'s> RayRenderer<'s> {
             for ix in 0..self.num_x_pixels {
                 // Here we are working on pixel ix,iy as measured from the upper left
                 // hand corner.
-                image.push(self.render_pixel(ix, iy)?);
+                image.push(self.render_pixel(k, ix, iy)?);
             }
         }
         Ok(image)
@@ -1296,7 +1302,7 @@ impl<'s> RayRenderer<'s> {
     /// # Errors
     ///
     /// Those of [`RayRenderer::render_ray`].
-    pub fn render_pixel(&mut self, pixel_x: u64, pixel_y: u64) -> Result<Vec3> {
+    pub fn render_pixel(&mut self, k: &Kernel, pixel_x: u64, pixel_y: u64) -> Result<Vec3> {
         // init output
         let mut pixel_color = Vec3::new(0.0, 0.0, 0.0);
 
@@ -1321,7 +1327,7 @@ impl<'s> RayRenderer<'s> {
                 let ray_point = self.view_volume.evaluate(eval_x, eval_y, 1.0);
 
                 // fire ray into model and pick an associated color
-                let ray_color = self.render_ray(ray_point, ray_vector)?;
+                let ray_color = self.render_ray(k, ray_point, ray_vector)?;
 
                 // accumulate sample point color values
                 pixel_color += ray_color;
@@ -1339,7 +1345,7 @@ impl<'s> RayRenderer<'s> {
     /// # Errors
     ///
     /// Those of [`RayTracer::fire_ray`].
-    pub fn render_ray(&mut self, ray_point: Point3, ray_vector: Vec3) -> Result<Vec3> {
+    pub fn render_ray(&mut self, k: &Kernel, ray_point: Point3, ray_vector: Vec3) -> Result<Vec3> {
         // init state for upcoming Ray intersection
         self.ray_tracer.hit_any_thing = false; // Only take closest hit
         self.ray_tracer.skip_element = None;
@@ -1347,7 +1353,7 @@ impl<'s> RayRenderer<'s> {
         // intersect ray with shapes stored within m_pRayTracer
         let hit = self
             .ray_tracer
-            .fire_ray(ray_point, ray_vector, BIG_DOUBLE)?;
+            .fire_ray(k, ray_point, ray_vector, BIG_DOUBLE)?;
 
         // when nothing was hit - set output color to Background color
         if !hit.hits_something {
@@ -1389,7 +1395,7 @@ impl<'s> RayRenderer<'s> {
                 // shoot the ray to the light - see if anything else is hit
                 let shadow = self
                     .ray_tracer
-                    .fire_ray(shadow_point, shadow_vec, BIG_DOUBLE)?;
+                    .fire_ray(k, shadow_point, shadow_vec, BIG_DOUBLE)?;
 
                 // something was hit - set dDot to zero to remember this point is in
                 // shadow
@@ -1473,9 +1479,11 @@ mod tests {
 
     #[test]
     fn a_ray_that_misses_the_grid_hits_nothing() {
+        let k = &Kernel::default();
         let mut t = RayTracer::new(grid(), 1e-4, 1e-8);
         let r = t
             .fire_ray(
+                k,
                 Vec3::new(-5.0, 20.0, 5.0),
                 Vec3::new(1.0, 0.0, 0.0),
                 BIG_DOUBLE,
@@ -1487,9 +1495,11 @@ mod tests {
 
     #[test]
     fn a_ray_through_an_empty_grid_walks_out() {
+        let k = &Kernel::default();
         let mut t = RayTracer::new(grid(), 1e-4, 1e-8);
         let r = t
             .fire_ray(
+                k,
                 Vec3::new(-5.0, 5.0, 5.0),
                 Vec3::new(1.0, 0.0, 0.0),
                 BIG_DOUBLE,
@@ -1500,6 +1510,7 @@ mod tests {
 
     #[test]
     fn a_leaf_the_ray_cannot_reach_is_rejected_before_the_solver() {
+        let k = &Kernel::default();
         let plane = Surface::from(crate::surface::plane::Plane::new(
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(1.0, 0.0, 0.0),
@@ -1525,6 +1536,7 @@ mod tests {
         t.grid_mut().add_surface_element(leaf, &far).unwrap();
         let r = t
             .fire_ray(
+                k,
                 Vec3::new(-5.0, 5.0, 1.0),
                 Vec3::new(1.0, 0.0, 0.0),
                 BIG_DOUBLE,
@@ -1534,7 +1546,7 @@ mod tests {
     }
 
     #[test]
-    fn adding_a_surface_needs_the_surface_cache() {
+    fn adding_a_surface_expands_it_into_surface_leaves() {
         let plane = Surface::from(crate::surface::plane::Plane::new(
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(1.0, 0.0, 0.0),
@@ -1543,9 +1555,46 @@ mod tests {
             &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
         ));
         let mut t = RayTracer::new(grid(), 1e-4, 1e-8);
+        t.add_surface_to_grid(&Kernel::default(), &plane).unwrap();
+        let leaves: Vec<_> = t
+            .grid_mut()
+            .elements()
+            .iter()
+            .filter_map(|e| match e.item() {
+                GridItem::Surface(leaf) => Some(leaf),
+                _ => None,
+            })
+            .collect();
+        assert!(!leaves.is_empty());
+        assert!(leaves.iter().all(|l| l.surface == 0));
+        // a plane's normals are one vector: the leaf's polar box has it
+        assert!(leaves
+            .iter()
+            .all(|l| l.polar_box.state() == crate::geom::polar_box::PolarBoxState::SinglePoint));
+    }
+
+    #[test]
+    fn a_face_owned_surface_needs_the_trimmed_cache_of_its_face() {
+        use crate::geom::assert_array::labels::FACE_TYPE;
+        use crate::geom::attribute::ObjectKey;
+        let mut plane = Surface::from(crate::surface::plane::Plane::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        ));
+        plane.set_owner(Some(ObjectRef {
+            type_code: FACE_TYPE,
+            key: ObjectKey(1),
+        }));
+        let mut t = RayTracer::new(grid(), 1e-4, 1e-8);
         assert!(matches!(
             t.add_surface_to_grid(&Kernel::default(), &plane),
             Err(SolidError::Unported { .. })
         ));
+        // nothing was added: upstream's leaves would be the trimmed ones
+        assert!(t.surfaces().is_empty());
+        assert!(t.grid_mut().elements().is_empty());
     }
 }

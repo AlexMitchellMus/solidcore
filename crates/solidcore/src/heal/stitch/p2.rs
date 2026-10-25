@@ -36,18 +36,14 @@
 //!   reason (the lengths are still computed).
 //! - `SmBrep::Notify(SM_NO_PRE_EDIT)` is `super::p1::brep_notify_pre_edit`
 //!   (`topology::brep::p2::notify`), which still defers inside `topology.brep_p2`.
-//!   This file's own stubs return [`SolidError::Unported`]: `CalculateBoundingBox`
-//!   (`query.brep`), `DeleteFace` (`topology.brep_p3`) and `FindAndSetInfiniteRegion`
-//!   (`topology.brep_p5`, ported there but not wired here yet: it needs the `Kernel`
-//!   and a typed void-type argument). `SqueezeEdge`, `GlueVertices`, `GlueEdgesGeneral`
-//!   and `MakeVertexSplitEdge` (through [`test_and_split_edge`]) defer only where their
-//!   own units still do.
+//!   This file's own stub returns [`SolidError::Unported`]: `CalculateBoundingBox`
+//!   (`query.brep`). `FindAndSetInfiniteRegion` is `topology.brep_p5`'s.
+//!   `DeleteFace` and `SqueezeEdge` are `topology.brep_p3`'s, notifying through the
+//!   kernel context's callbacks; `GlueVertices`, `GlueEdgesGeneral` and
+//!   `MakeVertexSplitEdge` (through [`super::p1::test_and_split_edge`]) defer only where their own
+//!   units still do.
 
-use super::p1::{
-    brep_notify_pre_edit, glue_edges_general, glue_vertices, set_point, sort_by_param,
-    squeeze_edge_to, test_and_split_edge, AdvancedStitch, DefaultStitchCallback, SplitReason,
-    Stitch,
-};
+use super::p1::{sort_by_param, AdvancedStitch, DefaultStitchCallback, SplitReason, Stitch};
 use crate::curve::curve::Curve;
 use crate::error::{ignore_status, ignored, EntityRef, SM_ERR};
 use crate::geom::extent3d::Extent3d;
@@ -59,6 +55,7 @@ use crate::kernel::Kernel;
 use crate::math::{Vec3, BIG_DOUBLE};
 use crate::nurbs::b_spline_curve::p2::BoundingBoxRequest;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::topology::brep::p1::{self as bp1, SetRegionVoidType};
 use crate::topology::{edge, vertex, Brep, EdgeId, FaceId, RegionId, ShellId, VertexId};
 use crate::{Result, SolidError};
@@ -140,9 +137,9 @@ fn edge_box(k: &Kernel, b: &Brep, e: EdgeId) -> Result<Extent3d> {
 }
 
 /// `SmCurve::ApproximateLength(edge interval, samples)` of the edge's curve.
-fn edge_length(b: &Brep, e: EdgeId, samples: usize) -> Result<f64> {
+fn edge_length(k: &Kernel, b: &Brep, e: EdgeId, samples: usize) -> Result<f64> {
     Ok(curve_of(b, e)?
-        .approximate_length(&edge::interval(b, e)?, samples, false)?
+        .approximate_length(k, &edge::interval(b, e)?, samples, false)?
         .0)
 }
 
@@ -264,7 +261,7 @@ impl Stitch<'_> {
     ) -> Result<()> {
         let tol_3d = self.stitch_tol_3d();
         // (status not checked)
-        ignore_status(brep_notify_pre_edit(b))?;
+        ignore_status(self.edit_brep_pre_edit(k, b))?;
 
         // when asked find and remove sliver laminar faces
         if self.remove_laminar_slivers {
@@ -273,7 +270,7 @@ impl Stitch<'_> {
                 // when face is a lamina sliver
                 if face_is_lamina(b, f)? && face_is_degenerate(k, b, f, true, Some(zone_tol))? {
                     // delete Face and its boundary edges and vertices from the Brep
-                    ignore_status(delete_face(k, b, f, true, true, None, None))?;
+                    ignore_status(self.edit_delete_face(k, b, f, true, true, None, None))?;
                 }
             }
         }
@@ -296,7 +293,7 @@ impl Stitch<'_> {
                 }
 
                 // get edge->curve approximate length
-                let length = edge_length(b, e, 5)?;
+                let length = edge_length(k, b, e, 5)?;
 
                 // when edge is shorter than stitching tolerance and open (else upstream
                 // only tightens dMinEdgeLength, which nothing reads)
@@ -321,7 +318,7 @@ impl Stitch<'_> {
                     let surv_v = surv_v.ok_or_else(|| deref("edge without vertex"))?;
                     // remove and delete edge from topology graph by squeezing
                     // [vertex-edge-vertex] into [vertex]
-                    squeeze_edge_to(b, Some(e), surv_v)?;
+                    self.edit_squeeze_edge(k, b, Some(e), surv_v)?;
 
                     if candidate_vertices.is_some() {
                         add_unique(&mut cand_vertices, surv_v); // This becomes a candidate.
@@ -340,8 +337,12 @@ impl Stitch<'_> {
             // Check for Vertices coincident with Edges if asked.
             if self.split_edges_with_vertices {
                 // get modified Brep Bounding box (status not checked)
-                let brep_bbox =
-                    ignored(brep_bounding_box(b, false, false, true))?.unwrap_or_default();
+                let brep_bbox = ignored(qbrep::calculate_bounding_box(
+                    k,
+                    &mut *b,
+                    BoundingBoxOptions::default(),
+                ))?
+                .unwrap_or_default();
 
                 // build modified Brep Edge spatial tree (lNumPerNode only sizes the
                 // memory blocks)
@@ -397,7 +398,8 @@ impl Stitch<'_> {
                         // split edges when vertex is within tolerance
                         let this_tol =
                             smos_max(tol_3d, vertex::tolerance(b, v)? + edge::tolerance(b, e)?);
-                        let split = test_and_split_edge(k, b, e, vertex::point(b, v)?, this_tol)?;
+                        let split =
+                            self.edit_test_and_split_edge(k, b, e, vertex::point(b, v)?, this_tol)?;
 
                         // when split created a new vertex
                         if let Some(new_v) = split.new_vertex {
@@ -561,7 +563,8 @@ impl Stitch<'_> {
                         continue; // Don't stitch it if distance gets too big.
                     }
 
-                    let (do_glue, do_squeeze, squeeze_edge) = glue_or_squeeze(b, v, cv, dist_to_v)?;
+                    let (do_glue, do_squeeze, squeeze_edge) =
+                        glue_or_squeeze(k, b, v, cv, dist_to_v)?;
 
                     // skip squeezing vertices when m_bSqueezeSmallEdges is FALSE
                     if do_squeeze && !self.squeeze_small_edges {
@@ -571,15 +574,15 @@ impl Stitch<'_> {
                     // squeeze or glue vertices together (make pV the retained vertex)
                     if choice.keep_first {
                         if do_squeeze {
-                            squeeze_edge_to(b, squeeze_edge, v)?;
+                            self.edit_squeeze_edge(k, b, squeeze_edge, v)?;
                         } else if do_glue {
-                            glue_vertices(k, b, v, cv, Some(&wire_edges))?;
+                            self.edit_glue_vertices(k, b, v, cv, Some(&wire_edges))?;
                         }
                     } else {
                         if do_squeeze {
-                            squeeze_edge_to(b, squeeze_edge, cv)?;
+                            self.edit_squeeze_edge(k, b, squeeze_edge, cv)?;
                         } else if do_glue {
-                            glue_vertices(k, b, cv, v, Some(&wire_edges))?;
+                            self.edit_glue_vertices(k, b, cv, v, Some(&wire_edges))?;
                         }
                         v = cv;
                     }
@@ -615,9 +618,9 @@ impl Stitch<'_> {
 
         // if edges were stitched - notify all modified Brep faces of impending change
         if out.stitched_edges > 0 {
-            ignore_status(brep_notify_pre_edit(b))?;
+            ignore_status(self.edit_brep_pre_edit(k, b))?;
             for f in bp1::faces(b, None)? {
-                ignore_status(face_notify(
+                ignore_status(self.edit_face_notify(
                     b,
                     f,
                     NotifyOperation::PreEdit,
@@ -632,9 +635,10 @@ impl Stitch<'_> {
         if self.do_region_nesting && bp1::regions(b, None)?.len() > 1 {
             let old = b.editing_enabled();
             b.set_editing_enabled(false);
-            let r = find_and_set_infinite_region(
+            let r = find_and_set_infinite_region_with_identity(
                 k,
                 b,
+                self.query_identity,
                 None,
                 SetRegionVoidType::InfiniteRegionSwap,
                 None,
@@ -728,7 +732,7 @@ impl Stitch<'_> {
                     let this_tol =
                         smos_max(tol_3d, edge::tolerance(b, test_e)? + edge::tolerance(b, e)?);
 
-                    let mid_pnt = e_curve.evaluate_point(e_ivl.evaluate(0.5))?;
+                    let mid_pnt = e_curve.evaluate_point(k, e_ivl.evaluate(0.5))?;
 
                     // If we're finding pdMinUnstitchedEdgeGap, collect every solution.
                     let guess = te_ivl.mid();
@@ -765,8 +769,8 @@ impl Stitch<'_> {
                     }
 
                     // Check relative orientation of the edge curves.
-                    let pv = e_curve.evaluate(e_ivl.evaluate(0.5), 1, true, true)?;
-                    let pv_test = te_curve.evaluate(dropped.parameter, 1, true, true)?;
+                    let pv = e_curve.evaluate(k, e_ivl.evaluate(0.5), 1, true, true)?;
+                    let pv_test = te_curve.evaluate(k, dropped.parameter, 1, true, true)?;
 
                     let mut orientation = OrientType::Same;
                     let mut t_start = te_ivl.min();
@@ -778,8 +782,8 @@ impl Stitch<'_> {
 
                     // skip edge pairs not within tolerance of one another
                     let edges_are_lines = (e_curve.degree()? == 1
-                        && e_curve.number_natural_knots()? == 4)
-                        && (te_curve.degree()? == 1 && te_curve.number_natural_knots()? == 4);
+                        && e_curve.number_natural_knots(k)? == 4)
+                        && (te_curve.degree()? == 1 && te_curve.number_natural_knots(k)? == 4);
                     dist_to_curve = 0.0;
                     if !edges_are_lines {
                         // do a quick 5 point distance check
@@ -859,7 +863,8 @@ impl Stitch<'_> {
                     for f in edge::faces(b, delete, None)? {
                         add_unique(modified_faces, f);
                     }
-                    match glue_edges_general(
+                    match self.edit_glue_edges(
+                        k,
                         b,
                         keep,
                         orientation,
@@ -1057,7 +1062,7 @@ impl Stitch<'_> {
                     continue; // Don't stitch it if distance gets too big.
                 }
 
-                let (do_glue, do_squeeze, squeeze_edge) = glue_or_squeeze(b, v, cv, dist_to_v)?;
+                let (do_glue, do_squeeze, squeeze_edge) = glue_or_squeeze(k, b, v, cv, dist_to_v)?;
 
                 // skip squeezing vertices when m_bSqueezeSmallEdges is set to FALSE
                 if do_squeeze && !self.squeeze_small_edges {
@@ -1067,16 +1072,16 @@ impl Stitch<'_> {
                 // squeeze or glue vertices together (make pV the retained vertex)
                 if choice.keep_first {
                     if do_squeeze {
-                        squeeze_edge_to(b, squeeze_edge, v)?;
+                        self.edit_squeeze_edge(k, b, squeeze_edge, v)?;
                     } else if do_glue {
-                        glue_vertices(k, b, v, cv, None)?;
+                        self.edit_glue_vertices(k, b, v, cv, None)?;
                     }
                     out.deleted.push(cv);
                 } else {
                     if do_squeeze {
-                        squeeze_edge_to(b, squeeze_edge, cv)?;
+                        self.edit_squeeze_edge(k, b, squeeze_edge, cv)?;
                     } else if do_glue {
-                        glue_vertices(k, b, cv, v, None)?;
+                        self.edit_glue_vertices(k, b, cv, v, None)?;
                     }
                     out.deleted.push(v);
                     v = cv;
@@ -1105,7 +1110,7 @@ impl Stitch<'_> {
     ///
     /// # Errors
     ///
-    /// Those of [`test_and_split_edge`] unless [`Stitch::ignore_problems`];
+    /// Those of [`super::p1::test_and_split_edge`] unless [`Stitch::ignore_problems`];
     /// [`SolidError::InvalidInput`] past the per-vertex split bound.
     pub fn split_edges_with_vertices(
         &mut self,
@@ -1166,7 +1171,7 @@ impl Stitch<'_> {
 
                 let this_tol = smos_max(tol_3d, vertex::tolerance(b, v)? + edge::tolerance(b, e)?);
 
-                let split = match test_and_split_edge(k, b, e, pv_point, this_tol) {
+                let split = match self.edit_test_and_split_edge(k, b, e, pv_point, this_tol) {
                     Ok(s) => s,
                     Err(err) if err.is_unported() => return Err(err),
                     Err(_) if self.ignore_problems => continue,
@@ -1193,10 +1198,10 @@ impl Stitch<'_> {
                     // First set the position of the surviving vertex to the midpoint
                     // of the two, to keep tolerances from growing excessively.
                     let mid = (vertex::point(b, v)? + vertex::point(b, new_v)?) * 0.5;
-                    set_point(k, b, v, mid)?;
+                    self.edit_set_point(k, b, v, mid)?;
 
                     // (status not checked)
-                    ignore_status(glue_vertices(k, b, v, new_v, None))?;
+                    ignore_status(self.edit_glue_vertices(k, b, v, new_v, None))?;
                     out.processed.push(v);
                     set_none(verts, ii)?;
 
@@ -1257,6 +1262,7 @@ impl Stitch<'_> {
 /// wire; neither when it is manifold or a second short edge exists. Returns
 /// `(glue, squeeze, first short lamina/wire edge)`.
 fn glue_or_squeeze(
+    k: &Kernel,
     b: &Brep,
     v: VertexId,
     other: VertexId,
@@ -1268,7 +1274,7 @@ fn glue_or_squeeze(
 
     // for every common edge between the vertices
     for e in vertex::common_edges(b, v, Some(other), None)? {
-        let edge_length = edge_length(b, e, 10)?;
+        let edge_length = edge_length(k, b, e, 10)?;
 
         // if edge is short
         if edge_length < 2.0 * dist {
@@ -1301,8 +1307,15 @@ fn glue_or_squeeze(
 /// # Errors
 ///
 /// Those of `CalculateBoundingBox`.
-pub fn solid_stitch_start(b: &Brep) -> Result<(f64, f64)> {
-    let bbox = brep_bounding_box(b, true, false, true)?; // TRUE: Approx is fine [B259]
+pub fn solid_stitch_start(k: &Kernel, b: &Brep) -> Result<(f64, f64)> {
+    let bbox = qbrep::calculate_bounding_box(
+        k,
+        b,
+        BoundingBoxOptions {
+            approx: true,
+            ..BoundingBoxOptions::default()
+        },
+    )?; // TRUE: Approx is fine [B259]
     let dist = bbox.size().length();
     // This tol will be iteratively increased:
     Ok((b.tolerance() / 10.0, dist))
@@ -1327,7 +1340,7 @@ pub fn stitch_into_solid(k: &mut Kernel, b: &mut Brep) -> Result<AdvancedStitch>
         max_edge_gap: 0.0,
     };
 
-    let (mut stitch_tol_3d, dist) = solid_stitch_start(b)?;
+    let (mut stitch_tol_3d, dist) = solid_stitch_start(k, b)?;
 
     // First try stitching down to 1/10000 of the size of the part.
     let mut num_lamina = 0u64;
@@ -1436,26 +1449,13 @@ pub fn stitch_into_shell(
 
 // ---- unported callees ----------------------------------------------------------------
 
-/// `SmBrep::CalculateBoundingBox(rBox, bApprox, bTight, bExpandByZoneTol3d)` (unit
-/// `query.brep`; upstream defaults `FALSE`, `FALSE`, `TRUE`).
-fn brep_bounding_box(
-    b: &Brep,
-    approx: bool,
-    tight: bool,
-    expand_by_zone_tol: bool,
-) -> Result<Extent3d> {
-    let _ = (b, approx, tight, expand_by_zone_tol);
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmBrep::CalculateBoundingBox",
-        "query.brep",
-    ))
-}
-
 /// `SmBrep::DeleteFace(face, bDeleteEdgesVertices, bDoRegionNesting,
-/// pOptDeletedEdgesVertices, pOptRegionToKeep)` (unit `topology.brep_p3`; upstream
-/// defaults `FALSE`, `TRUE`, `NULL`, `NULL`).
-fn delete_face(
+/// pOptDeletedEdgesVertices, pOptRegionToKeep)` ([`crate::topology::brep::p3::delete_face`];
+/// upstream defaults `FALSE`, `TRUE`, `NULL`, `NULL`), notifying through the kernel
+/// context's callbacks ([`crate::topology::brep::p3::with_kernel_callbacks`], as
+/// `super::p1::squeeze_edge_to`). `deleted_edges_vertices` is reset first, as upstream,
+/// and gets the deleted edges and vertices when the deletion succeeds.
+pub(super) fn delete_face(
     k: &mut Kernel,
     b: &mut Brep,
     f: FaceId,
@@ -1464,25 +1464,29 @@ fn delete_face(
     deleted_edges_vertices: Option<&mut Vec<EntityRef>>,
     region_to_keep: Option<RegionId>,
 ) -> Result<()> {
-    let _ = (
-        k,
-        b,
-        f,
+    use crate::topology::brep::p3 as brep_p3;
+    let options = brep_p3::DeleteFaceOptions {
         delete_edges_vertices,
         do_region_nesting,
-        deleted_edges_vertices,
         region_to_keep,
-    );
-    // UNPORTED(topology.brep_p3): SmBrep::DeleteFace
-    Err(SolidError::unported(
-        "SmBrep::DeleteFace",
-        "topology.brep_p3",
-    ))
+    };
+    let mut out = deleted_edges_vertices;
+    if let Some(out) = out.as_deref_mut() {
+        out.clear();
+    }
+    let deleted = brep_p3::with_kernel_callbacks(k, b, |k, b, env| {
+        let mut marks = crate::topology::topology_traverser::Marks::default();
+        brep_p3::delete_face(k, b, env, &mut marks, f, options)
+    })?;
+    if let Some(out) = out {
+        *out = deleted;
+    }
+    Ok(())
 }
 
 /// `SmBrep::FindAndSetInfiniteRegion(pOptShellToTest, eVoidSettingFlag, pOptBrepBBox)`
-/// (upstream defaults `NULL`, `SM_VS_INFINITEREGION_SWAP`, `NULL`); the box is passed
-/// as a copy.
+/// (upstream defaults `NULL`, `SM_VS_INFINITEREGION_SWAP`, `NULL`), on a fresh
+/// [`crate::query::brep::BrepQuery`] of the B-rep.
 pub(crate) fn find_and_set_infinite_region(
     k: &mut Kernel,
     b: &mut Brep,
@@ -1490,14 +1494,29 @@ pub(crate) fn find_and_set_infinite_region(
     void_setting: SetRegionVoidType,
     brep_bbox: Option<&Extent3d>,
 ) -> Result<()> {
-    let _ = k;
-    let code = match void_setting {
-        SetRegionVoidType::NestedSolid => 0,
-        SetRegionVoidType::InfiniteRegionOnly => 1,
-        SetRegionVoidType::InfiniteRegionSwap => 2,
+    find_and_set_infinite_region_with_identity(k, b, None, shell_to_test, void_setting, brep_bbox)
+}
+
+fn find_and_set_infinite_region_with_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    identity: Option<crate::query::brep::BrepIdentity<'_>>,
+    shell_to_test: Option<ShellId>,
+    void_setting: SetRegionVoidType,
+    brep_bbox: Option<&Extent3d>,
+) -> Result<()> {
+    let query = match identity {
+        Some(identity) => crate::query::brep::BrepQuery::new(identity),
+        None => crate::query::brep::BrepQuery::of_brep(b),
     };
-    let mut bbox = brep_bbox.copied();
-    crate::topology::brep::p5::find_and_set_infinite_region(b, shell_to_test, code, bbox.as_mut())
+    crate::topology::brep::p5::find_and_set_infinite_region(
+        k,
+        b,
+        &query,
+        shell_to_test,
+        void_setting,
+        brep_bbox,
+    )
 }
 
 /// `SmFace::IsLamina` (unit `topology.face_p3`).
@@ -1520,7 +1539,7 @@ fn face_is_degenerate(
 /// `SmFace::Notify(eNotifyOperation, pData1, pData2, pData3)` (unit
 /// `topology.face_p3`) with `pData2 = SM_NO_GET_BREP(pF)` (null), the only form used
 /// here.
-fn face_notify(
+pub(super) fn face_notify(
     b: &mut Brep,
     f: FaceId,
     operation: NotifyOperation,
@@ -1536,6 +1555,7 @@ mod tests {
 
     #[test]
     fn glue_or_squeeze_defaults_to_glue() {
+        let k = &Kernel::default();
         // no common edge: glue
         let mut b = Brep::new();
         let v1 = b
@@ -1544,7 +1564,7 @@ mod tests {
         let v2 = b
             .add_vertex(crate::math::Point3::new(1.0, 0.0, 0.0))
             .unwrap();
-        let (glue, squeeze, e) = glue_or_squeeze(&b, v1, v2, 1.0).unwrap();
+        let (glue, squeeze, e) = glue_or_squeeze(k, &b, v1, v2, 1.0).unwrap();
         assert!(glue && !squeeze && e.is_none());
     }
 

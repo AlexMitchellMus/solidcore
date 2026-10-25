@@ -26,6 +26,10 @@
 //!   [`create_regular_polygon`] return the new segments instead of appending to a
 //!   caller array (upstream rolls the array back on failure, so the observable result
 //!   is the same).
+//! - **Memory.** [`create_regular_polygon`] reserves its `num_sides` result slots
+//!   fallibly up front: a side count whose segments cannot fit in memory, or in
+//!   [`crate::limits::MAX_ALLOC_BYTES`], is `InvalidInput` (upstream keeps
+//!   allocating segments until allocation fails).
 //! - **Context.** `SmApiGetOrCreateContext()` is the caller's [`Kernel`]; the
 //!   B-spline and line constructors take no context in the port.
 //! - **Statuses.** `SM_ERR_INVALID_INPUT` is [`SolidError::InvalidInput`];
@@ -45,6 +49,7 @@ use crate::error::{Result, SolidError};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::vector3d::{is_valid_double, Point3, Vec3};
 use crate::kernel::Kernel;
+use crate::limits::try_reserve_total;
 use crate::math::{BIG_DOUBLE, EFF_ZERO, PI};
 use crate::nurbs::b_spline_curve::{
     BSplineCurve, BSplineCurveForm, CanonicalData, KnotType, NurbCircleParam,
@@ -448,8 +453,10 @@ fn segments(points: &[Point3], operation: &'static str) -> Result<Vec<Line>> {
 ///
 /// # Errors
 ///
-/// `InvalidInput` for fewer than 3 sides, a radius not above zero (or NaN), or a
-/// center / extent that is not a valid double; `SM_ERR` when a segment cannot be
+/// `InvalidInput` for fewer than 3 sides, a radius not above zero (or NaN), a
+/// center / extent that is not a valid double, or more sides than fit in memory or in
+/// [`crate::limits::MAX_ALLOC_BYTES`];
+/// `SM_ERR` when a segment cannot be
 /// made (vertices that coincide in double precision).
 pub fn create_regular_polygon(center: Point3, num_sides: u64, radius: f64) -> Result<Vec<Line>> {
     // Negated test so a NaN radius is rejected too.
@@ -477,7 +484,17 @@ pub fn create_regular_polygon(center: Point3, num_sides: u64, radius: f64) -> Re
 
     let angle_step = 2.0 * PI / num_sides as f64;
 
+    // Upstream appends every segment, whatever the count, until memory runs out;
+    // reserve the whole result fallibly (at most `MAX_ALLOC_BYTES`) so an absurd side
+    // count is an error.
+    let too_many = || SolidError::invalid_input(OP_POLYGON, "too many sides for memory");
     let mut result = Vec::new();
+    if !try_reserve_total(
+        &mut result,
+        usize::try_from(num_sides).map_err(|_| too_many())?,
+    ) {
+        return Err(too_many());
+    }
     for ii in 0..num_sides {
         let a0 = angle_step * ii as f64;
         let a1 = angle_step * (ii + 1) as f64;
@@ -719,5 +736,15 @@ mod tests {
                 Err(SolidError::InvalidInput { .. })
             ));
         }
+    }
+
+    #[test]
+    fn polygon_with_absurd_side_count_is_an_error() {
+        // fuzz regression (primitive.api_curves fuzz00060): 2^32 sides exhausted
+        // memory segment by segment
+        let c = p(1.0, 2.0, 3.0);
+        // (beyond the 47-bit address space, so no test machine can grant it)
+        assert!(create_regular_polygon(c, 1 << 47, 5.0).is_err());
+        assert!(create_regular_polygon(c, u64::MAX, 5.0).is_err());
     }
 }

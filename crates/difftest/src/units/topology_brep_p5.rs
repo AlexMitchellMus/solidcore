@@ -16,6 +16,7 @@ use solidcore::geom::extent1d::Extent1d;
 use solidcore::kernel::Kernel;
 use solidcore::math::Vec3;
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use solidcore::topology::brep::p1::SetRegionVoidType;
 use solidcore::topology::brep::p5;
 use solidcore::topology::{Brep, EdgeId, FaceId, LoopId, RegionId, VertexId};
 use solidcore::{Result as SolidResult, SolidError};
@@ -23,7 +24,7 @@ use solidcore_ffi::units::topology_brep_p5::{self as ffi, Op};
 use solidcore_ffi::FfiError;
 
 use super::boolean_merge_p1::graph;
-use super::topology_vertexuse::import;
+use super::topology_vertexuse::{import, import_raw};
 use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 
 /// Part 5's runner.
@@ -186,12 +187,28 @@ fn rust_record(k: &mut Kernel, b: &mut Brep, i: &Inputs) -> SolidResult<Vec<f64>
         3 => vec![status(p5::delete_topological_vertex(
             k, b, i.editing, v1, e,
         ))?],
-        4 => vec![status(p5::find_and_set_infinite_region(
-            b,
-            None,
-            i32::from(i.mode),
-            None,
-        ))?],
+        4 => {
+            // the shim casts the mode to SmSetRegionVoidType; only its three values exist
+            let void_setting = match i.mode {
+                0 => SetRegionVoidType::NestedSolid,
+                1 => SetRegionVoidType::InfiniteRegionOnly,
+                2 => SetRegionVoidType::InfiniteRegionSwap,
+                _ => {
+                    return Err(SolidError::invalid_input(
+                        "difftest::topology_brep_p5",
+                        "void setting outside SmSetRegionVoidType",
+                    ))
+                }
+            };
+            vec![status(p5::find_and_set_infinite_region(
+                k,
+                b,
+                &solidcore::query::brep::BrepQuery::default(),
+                None,
+                void_setting,
+                None,
+            ))?]
+        }
         5 => vec![status(p5::glue_vertices(k, b, v1, v2, None))?],
         6 => {
             let old = p5::EdgeInFace {
@@ -201,6 +218,7 @@ fn rust_record(k: &mut Kernel, b: &mut Brep, i: &Inputs) -> SolidResult<Vec<f64>
             };
             let mut out = old;
             let st = status(p5::make_edge_in_face(
+                k,
                 b,
                 i.editing,
                 face,
@@ -212,6 +230,7 @@ fn rust_record(k: &mut Kernel, b: &mut Brep, i: &Inputs) -> SolidResult<Vec<f64>
                 OrientType::Same,
                 0.,
                 &mut out,
+                None,
             ))?;
             vec![
                 st,
@@ -227,6 +246,7 @@ fn rust_record(k: &mut Kernel, b: &mut Brep, i: &Inputs) -> SolidResult<Vec<f64>
                 Vec::new()
             };
             vec![status(p5::make_manifold(
+                k,
                 b,
                 if i.mode == 0 { None } else { Some(&regions) },
                 i.flag,
@@ -274,6 +294,7 @@ fn rust_record(k: &mut Kernel, b: &mut Brep, i: &Inputs) -> SolidResult<Vec<f64>
             out
         }
         10 => vec![status(p5::stitch_and_orient(
+            k,
             b,
             &p5::StitchAndOrientOptions {
                 stitch_tolerance: i.tolerance,
@@ -322,6 +343,27 @@ fn rust_record(k: &mut Kernel, b: &mut Brep, i: &Inputs) -> SolidResult<Vec<f64>
         }
     };
     Ok(r)
+}
+
+/// Whether `b` holds a vertex use, edge use or shell its owner no longer lists (an
+/// unlinked record upstream deletes).
+fn has_unlinked_records(b: &Brep) -> bool {
+    let vu = b.vertexuses().iter().any(|(id, r)| {
+        r.vertex
+            .and_then(|v| b.vertex(v).ok())
+            .is_some_and(|v| !v.vertexuses.contains(&id))
+    });
+    let eu = b.edgeuses().iter().any(|(id, r)| {
+        r.edge
+            .and_then(|e| b.edge(e).ok())
+            .is_some_and(|e| !e.edgeuses.contains(&id))
+    });
+    let sh = b.shells().iter().any(|(id, r)| {
+        r.region
+            .and_then(|x| b.region(x).ok())
+            .is_some_and(|x| !x.shells.contains(&id))
+    });
+    vu || eu || sh
 }
 
 fn notification_record(b: &Brep, i: &Inputs) -> SolidResult<Vec<f64>> {
@@ -447,6 +489,31 @@ fn notification_values(lists: &solidcore::topology::topology::TopologyChangeList
     out
 }
 
+// The native fixture's geometry retains its actual edge/face owners. The import
+// uses arena labels; a plain kernel edit notifies under kernel-issued topology
+// identities. Bind owned geometry into that same context before transforming it.
+fn bind_transform_owners(k: &mut Kernel, b: &mut Brep) -> SolidResult<()> {
+    use solidcore::topology::brep::p3::{notify_serial, topology_ref};
+    use solidcore::EntityRef;
+    let serial = notify_serial(&mut k.context, b)?;
+    let edges: Vec<_> = b.edges().ids().collect();
+    for edge in edges {
+        if let Some(curve) = b.edge_mut(edge)?.curve.as_mut() {
+            // Every fixture edge owns the distinct curve constructed for it.
+            curve.set_owner(Some(topology_ref(serial, EntityRef::Edge(edge))), None);
+        }
+    }
+    let faces: Vec<_> = b.faces().ids().collect();
+    for face in faces {
+        if let Some(surface) = b.face_mut(face)?.surface.as_mut() {
+            if surface.owner().is_some() {
+                surface.set_owner(Some(topology_ref(serial, EntityRef::Face(face))));
+            }
+        }
+    }
+    Ok(())
+}
+
 impl UnitDiff for Runner {
     fn id(&self) -> &'static str {
         "topology.brep_p5"
@@ -477,7 +544,7 @@ impl UnitDiff for Runner {
             .get(1..=n)
             .ok_or_else(|| HarnessError::new("short record"))?
             .to_vec();
-        let (b, _) = import(
+        let (b, _) = import_raw(
             raw.get(n + 1..)
                 .ok_or_else(|| HarnessError::new("short graph"))?,
         )?;
@@ -488,14 +555,27 @@ impl UnitDiff for Runner {
         let raw = ffi::eval(Op::Export, &i.fixture, &args(&i))
             .map_err(|e| HarnessError::new(e.to_string()))?;
         let (mut b, _) = import(&raw)?;
+        // The shim sets `m_bEditingEnabled` from the editing argument for every op.
+        b.set_editing_enabled(i.editing);
         if i.op == 15 {
             return Ok(Output::new().values(
                 "notification_stage",
                 notification_record(&b, &i).map_err(|e| HarnessError::new(e.to_string()))?,
             ));
         }
-        match rust_record(&mut Kernel::default(), &mut b, &i) {
+        let mut kernel = Kernel::default();
+        if i.op == 12 {
+            bind_transform_owners(&mut kernel, &mut b).map_err(|e| HarnessError::new(e.to_string()))?;
+        }
+        match rust_record(&mut kernel, &mut b, &i) {
             Ok(record) if i.op == 2 => Ok(Output::new().values("target_stage", record)),
+            // a use or shell the edit unlinked stays in its arena (append-only records)
+            // where upstream deletes it, and [`graph`] lists unreachable records too: the
+            // record erasure is the B-rep storage integration of topology.brep_p4
+            Ok(_) if has_unlinked_records(&b) => Ok(Output::deferred(
+                "topology.brep_p4",
+                "SmBrep::~SmBrep (stable owning record erasure)",
+            )),
             Ok(record) => Ok(graph(&b, record)),
             Err(e) => Output::unported(&e).ok_or_else(|| HarnessError::new(e.to_string())),
         }

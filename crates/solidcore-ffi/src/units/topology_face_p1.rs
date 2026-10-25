@@ -10,11 +10,14 @@
 //! B-rep cannot be built). A curve is `dim t0 t1 (x y z)*5` (samples at `t0 + i/4 (t1 -
 //! t0)`), or `-1`; a domain `u0 v0 u1 v1`. "orientation" is, per face, its upward face use;
 //! per face use its orientation, loop use count and loop uses; per loop its primary loop
-//! use. `-2` marks a call the shim skips because upstream would dereference null.
+//! use. `-2` marks a call the shim skips because upstream would dereference null. A seam
+//! call that can reach upstream's `SplitAtSeam` crash (UB-137) runs in a forked child:
+//! its record is `-4` when the child crashed, `-3` when the shim could not fork.
 //!
 //! | [`Op`]          | args | record |
 //! |-----------------|------|--------|
 //! | `UvDomain`      | `limit want_max want_2nd` | `status domain gap gap2` (`CalculateUVDomainFromUVTrimCurves`) |
+//! | `UvDomainAfterTrimShift` | `limit want_max want_2nd u0 v0 u1 v1 du dv` | as `UvDomain`, after setting the face domain and translating its real UV trims |
 //! | `Oriented`      | `param fill loop` (`loop` `-1` none) | `-2 \| status nl counts*nl nc curve*nc` (`CreateOrientedTrimBoundary`) |
 //! | `Rect`          | - | `status domain rect natural` (`FindIfRectangularTrim`) |
 //! | `Flip`          | - | `status orientation` (`FlipFaceOrientation`) |
@@ -24,8 +27,8 @@
 //! | `SwapUv`        | - | `-2 \| status domain orientation curve*n_eu` (`SwapUV`) |
 //! | `Shrink`        | - | `status domain (surface_domain \| -1)` (`ShrinkGeometry`) |
 //! | `Probe`         | - | `-2 \| has crossed missing near_miss class_u class_v` (`HasSeamProblem`; a class is `tgt_only n mid_class*n`) |
-//! | `MoveSeam`      | `props crossed missing near closed_u closed_v center split` | `-2 \| status res_u res_v n_faces n_edges n_vertices` |
-//! | `SplitAtSeam`   | as `MoveSeam` | `-2 \| status n_faces n_edges n_vertices` |
+//! | `MoveSeam`      | `props crossed missing near closed_u closed_v center split` | `-2 \| -3 \| -4 \| status res_u res_v n_faces n_edges n_vertices` |
+//! | `SplitAtSeam`   | as `MoveSeam` | `-2 \| -3 \| -4 \| status n_faces n_edges n_vertices` |
 //!
 //! The seam ops classify the face's seams with `HasSeamProblem` first and pass its
 //! classifications and enums on; with `props` an `SmFaceProps` carrying the given
@@ -52,6 +55,7 @@ pub enum Op {
     Probe = 10,
     MoveSeam = 11,
     SplitAtSeam = 12,
+    UvDomainAfterTrimShift = 13,
 }
 
 impl Op {
@@ -65,6 +69,7 @@ impl Op {
     #[must_use]
     pub fn n_args(self) -> usize {
         match self {
+            Self::UvDomainAfterTrimShift => 9,
             Self::UvDomain | Self::Oriented => 3,
             Self::SetSurface | Self::LoopRoundTrip => 1,
             Self::MoveSeam | Self::SplitAtSeam => 8,
@@ -139,6 +144,14 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
             flag(*a, "limit")?;
             flag(*b, "want_max")?;
             flag(*c, "want_2nd")?;
+        }
+        (Op::UvDomainAfterTrimShift, [a, b, c, u0, v0, u1, v1, du, dv]) => {
+            flag(*a, "limit")?;
+            flag(*b, "want_max")?;
+            flag(*c, "want_2nd")?;
+            if [u0, v0, u1, v1, du, dv].iter().any(|x| !x.is_finite()) || u0 > u1 || v0 > v1 {
+                return Err(bad("invalid trim-shift preparation"));
+            }
         }
         (Op::Oriented, [a, b, l]) => {
             flag(*a, "param")?;

@@ -17,12 +17,13 @@
 //! B-spline surface or `SmSurface::LocalSurfaceSolve` (normals within 3 degrees of a
 //! known previous point), `ClassifyBoundaryStartPointIntersection` sampling a tangent
 //! boundary (`SmSurface::LocalPointSolve`), `DoBoundaryPlaneTest` on a plane
-//! (`SmPlane::CreateIsoParametricCurve`), and `ComputeLawPointValues` with a valid
-//! plane (`SmFilletLaw::Evaluate`).
+//! (`SmPlane::CreateIsoParametricCurve`). `ComputeLawPointValues` with a valid plane
+//! evaluates the shim's default-constructed base `SmFilletLaw` (`SM_ERR`, compared).
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use solidcore::blend::fillet_standard_solver::p1::{FilletLaw, FilletLawKind};
 use solidcore::curve::curve::{Curve, CurveKind};
 use solidcore::curve::line::Line;
 use solidcore::geom::extent1d::{Extent1d, ExtentPointType};
@@ -406,7 +407,7 @@ fn rust_surface(s: &SurfaceIn) -> Result<Surface, Fail> {
             Vec::new(),
             Vec::new(),
             true,
-        ))),
+        ).map_err(|e| HarnessError::new(e.to_string()))?)),
     }
 }
 
@@ -621,7 +622,7 @@ fn run_op(
                 let r = if matches!(op, OpIn::AddCurve { .. }) {
                     si.add_point_to_curve(id(*i))
                 } else {
-                    si.add_start_point(id(*i))
+                    si.add_start_point(k, id(*i))
                 };
                 st(o, r)?;
             }
@@ -646,7 +647,7 @@ fn run_op(
             }
         }
         OpIn::Flush => {
-            if st(o, si.flush_curve(outs))?.is_some() {
+            if st(o, si.flush_curve(k, outs))?.is_some() {
                 put_outs(o, outs, curves.len())?;
             }
         }
@@ -657,7 +658,7 @@ fn run_op(
                 .map(|&j| pt_of(si, j.index()))
                 .collect::<Result<Vec<_>, _>>()?;
             let refs: Vec<&TsectPnt> = starts.iter().collect();
-            let r = is_point_unique(v3(*p), &refs, &outs.curves_3d, *tol);
+            let r = is_point_unique(k, v3(*p), &refs, &outs.curves_3d, *tol);
             if let Some(f) = st(o, r)? {
                 o.push(b(f));
             }
@@ -686,7 +687,6 @@ fn run_op(
                 .get(l.curve)
                 .ok_or_else(|| harness("curve index"))?;
             let opts = LawPointOptions {
-                law: &(),
                 law_orient: l.orient,
                 point_curve: curve,
                 point_curve_interval: Extent1d::from_min_max(l.interval[0], l.interval[1]),
@@ -695,11 +695,13 @@ fn run_op(
                 surface_orientations: l.orientations,
             };
             let r = si.compute_law_point_values(
-                l.param,
+                k, l.param,
                 p2(l.uv0),
                 p2(l.uv1),
                 l.delta,
                 &opts,
+                // the shim's default-constructed base `SmFilletLaw`
+                &mut FilletLaw::new(FilletLawKind::Base),
                 l.skip,
                 &mut p,
             );
@@ -751,7 +753,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
         .map(rust_curve)
         .collect::<Result<Vec<_>, _>>()?;
     let mut o = Vec::new();
-    let mut si = match SurfaceIntersector::new(&a, &ext(i.dom1), b_ref, &ext(i.dom2), i.fillet) {
+    let mut si = match SurfaceIntersector::new(&k, &a, &ext(i.dom1), b_ref, &ext(i.dom2), i.fillet) {
         Ok(si) => si,
         Err(e) => {
             if let Some(d) = Output::unported(&e) {
@@ -1237,7 +1239,7 @@ fn gen_ops(rng: &mut Rng, g: &GenCtx) -> Vec<OpIn> {
 }
 
 fn gen_law(rng: &mut Rng, g: &GenCtx) -> OpIn {
-    // mostly a zero plane normal (compared); else deferred at the fillet law
+    // mostly a zero plane normal; else the base fillet law's SM_ERR
     let zero = rng.chance(0.85);
     let normals = if zero {
         [[0.0; 3], [0.0; 3]]

@@ -68,7 +68,8 @@
 //! - **Undefined behaviour.** Where upstream would read an uninitialised value (an
 //!   unreadable ASCII count or flag, a failed `ConvertTFromSTEPToNURBS` in
 //!   `AssertValid`, a missing polar curve in `ConvertToPolarParameter`'s callers,
-//!   `ConvertTo2D`'s quadratic with fewer than two roots, the 3-point circle of
+//!   `ConvertTo2D`'s quadratic without a root (with one root only the unused
+//!   `dThetaYRad` reads the uninitialised second, and the port goes on), the 3-point circle of
 //!   collinear points) or index past a table (polar tables shorter than the knot
 //!   list), the port returns [`SolidError::InvalidInput`] (or the solver's status).
 //! - **Statuses ignored upstream** stay ignored, except [`SolidError::Unported`],
@@ -259,7 +260,7 @@ impl PolarConversion {
         let exact = true;
 
         // make sure to return the proper end value for closed curve seam conversions
-        if is_closed_base(&curve.base, &curve.base.natural_interval(), 0.0)? {
+        if is_closed_base(k, &curve.base, &curve.base.natural_interval(), 0.0)? {
             let inside_out = curve.inside_out;
             let knots = &self.natural_knots;
             let angles = &self.angles;
@@ -875,11 +876,12 @@ impl Ellipse {
     /// # Errors
     ///
     /// Those of [`crate::curve::curve::p5::is_arc_base`].
-    pub fn is_arc(&self, num_samples: u64, tol: f64) -> Result<Option<ArcData>> {
+    pub fn is_arc(&self, k: &Kernel, num_samples: u64, tol: f64) -> Result<Option<ArcData>> {
         if self.circle {
             return Ok(Some(self.arc_data()));
         }
         crate::curve::curve::p5::is_arc_base(
+            k,
             &self.base,
             |_, tol| Ok(self.is_degenerate(tol)),
             num_samples,
@@ -1073,7 +1075,7 @@ impl Ellipse {
             // (status ignored: a failed conversion leaves the polar table's guess)
             let Some(nurb_t) = self
                 .polar
-                .convert_to_nurbs_parameter_or_written(self, step_t, 0.0)?
+                .convert_to_nurbs_parameter_or_written(k, self, step_t, 0.0)?
             else {
                 return Err(SolidError::invalid_input(
                     OP_ASSERT,
@@ -1234,8 +1236,8 @@ impl Ellipse {
     ///
     /// # Errors
     ///
-    /// `InvalidInput` when the extremal radius quadratic has fewer than two roots
-    /// (upstream: uninitialised values).
+    /// `InvalidInput` when the extremal radius quadratic has no root (upstream:
+    /// uninitialised values).
     pub fn convert_to_2d(&mut self, k: &Kernel) -> Result<()> {
         // modify the NURB
         ignore_status(self.base.convert_to_2d())?;
@@ -1270,15 +1272,17 @@ impl Ellipse {
                 ry * rx * x_dot_y,
             ];
             let sols = solve_quadratic(&coefs, scaled_zero);
-            if sols.len() != 2 {
+            // Upstream only uses the first root: it also computes ThetaY from the second
+            // (uninitialised when the solver finds one root, e.g. a degenerate radius
+            // makes the equation linear) but never uses it. Without any root the first
+            // is uninitialised too.
+            let Some(&first_root) = sols.first() else {
                 return Err(SolidError::invalid_input(
                     OP_TO_2D,
-                    "extremal radius quadratic without two roots",
+                    "extremal radius quadratic without a root",
                 ));
-            }
-            // upstream also computes ThetaY (from the second root, plus PI when below
-            // ThetaX) but uses ThetaX for both vectors
-            let theta_x_rad = sols.first().copied().unwrap_or(0.0).atan();
+            };
+            let theta_x_rad = first_root.atan();
 
             // get max vectors for each angle
             let v = rx * theta_x_rad.cos() * x_axis + ry * theta_x_rad.sin() * y_axis;
@@ -1389,7 +1393,7 @@ impl Ellipse {
                 || o.type_code == EDGEUSE_TYPE
                 || crate::curve::curve::p2::is_kind_of(o.type_code)
         }) {
-            // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an opaque handle. Every
+            // DISPATCH GAP: SmTol::GetZoneTol3d(const SmObject*) (geom.tol, green) on an opaque handle. Every
             // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
             // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
             // receives the owning B-rep
@@ -1482,7 +1486,10 @@ impl Ellipse {
         // When this is a SmSurfOfExtrusion GenCurve, look for Parent Surface NURB
         // Interval constraint.
         if owner.is_some_and(|o| o.type_code == SURF_OF_EXTRUSION_TYPE) {
-            // UNPORTED(surface.surf_of_extrusion_p1): SmSurfOfExtrusion::GetGenDirParamExtent
+            // DISPATCH GAP: SmSurfOfExtrusion::GetGenDirParamExtent (surface.surf_of_extrusion_p1,
+            // ported as SurfOfExtrusion::gen_dir_param_extent; no UNPORTED marker: the owner is an
+            // opaque ObjectRef. An owning extrusion does this step itself (adjust_generator_interval,
+            // SurfOfExtrusion::make_nurb) and never sets its generator's owner, so nothing reaches here)
             return Err(SolidError::Unported {
                 upstream: "SmSurfOfExtrusion::GetGenDirParamExtent",
                 unit: "surface.surf_of_extrusion_p1",
@@ -1490,7 +1497,10 @@ impl Ellipse {
         }
 
         if owner.is_some_and(|o| o.type_code == SURF_OF_REVOLUTION_TYPE) {
-            // UNPORTED(surface.surf_of_revolution_p1): SmSurfOfRevolution::GetGenDirParamExtent
+            // DISPATCH GAP: SmSurfOfRevolution::GetGenDirParamExtent (surface.surf_of_revolution_p1,
+            // ported as SurfOfRevolution::gen_dir_param_extent; no UNPORTED marker: the owner is an
+            // opaque ObjectRef. An owning revolution does this step itself (e.g. the cone's
+            // adjust_gen_line_with_owner) and never sets its generator's owner, so nothing reaches here)
             return Err(SolidError::Unported {
                 upstream: "SmSurfOfRevolution::GetGenDirParamExtent",
                 unit: "surface.surf_of_revolution_p1",
@@ -1576,8 +1586,14 @@ impl Ellipse {
         let step_t1 = new_interval.max();
 
         // After these calls, the conversion may not be reciprocal.
-        let nurbs_t0 = self.polar.convert_to_nurbs_parameter(self, step_t0, 0.0)?.0;
-        let nurbs_t1 = self.polar.convert_to_nurbs_parameter(self, step_t1, 0.0)?.0;
+        let nurbs_t0 = self
+            .polar
+            .convert_to_nurbs_parameter(k, self, step_t0, 0.0)?
+            .0;
+        let nurbs_t1 = self
+            .polar
+            .convert_to_nurbs_parameter(k, self, step_t1, 0.0)?
+            .0;
         let new_nurbs_ivl = Extent1d::from_min_max(nurbs_t0, nurbs_t1);
 
         // save the input
@@ -1915,6 +1931,30 @@ mod tests {
         .unwrap()
     }
 
+    /// #428 (`WR-211`), as upstream: the polar converter clamps an angle outside the
+    /// current arc to its ends, so an arc moved a turn on (here to `[360, 540]`, past the
+    /// documented `Max <= 360`) gets both ends at one NURBS parameter. The next
+    /// reparameterisation then divides by that zero length: interior knots NaN.
+    #[test]
+    fn step_interval_past_a_turn_collapses_as_upstream() {
+        let k = kernel();
+        let past = Extent1d::from_min_max(360.0, 540.0);
+        for d1 in [360.0, 180.0] {
+            let mut c = circle(&k, 0.0, d1, 2.0);
+            c.adjust_step_interval(&k, &past, None).unwrap();
+            assert_eq!(c.anal_domain, past);
+            let nat = c.base.natural_interval();
+            assert_eq!(nat.min(), nat.max(), "[0, {d1}]");
+        }
+        let mut c = circle(&k, 0.0, 360.0, 2.0);
+        c.adjust_step_interval(&k, &past, None).unwrap();
+        c.base.edit_parameterization(&past).unwrap();
+        let (knots, mults) = c.base.knots(None).unwrap();
+        assert_eq!(mults, [3, 1, 1, 3]);
+        assert_eq!([knots[0], knots[3]], [360.0, 540.0]);
+        assert!(knots[1].is_nan() && knots[2].is_nan());
+    }
+
     #[test]
     fn circle_class_and_types() {
         let k = kernel();
@@ -1926,7 +1966,7 @@ mod tests {
         assert_eq!(c.class_string(), "SmCircle");
         assert_eq!(c.base().form, BSplineCurveForm::CircularArc);
         assert_eq!(c.radius(), 2.0);
-        let (_, r, a, b) = c.is_arc(5, 0.0).unwrap().unwrap();
+        let (_, r, a, b) = c.is_arc(&k, 5, 0.0).unwrap().unwrap();
         assert_eq!((r, a, b), (2.0, 0.0, 90.0));
     }
 
@@ -1938,7 +1978,7 @@ mod tests {
         let s = c
             .convert_t_from_nurbs_to_step(&k, ivl.evaluate(0.3))
             .unwrap();
-        let t = c.convert_t_from_step_to_nurbs(s).unwrap();
+        let t = c.convert_t_from_step_to_nurbs(&k, s).unwrap();
         assert!((t - ivl.evaluate(0.3)).abs() < 1e-9);
         let mut l = AssertArray::new();
         assert!(c

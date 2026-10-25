@@ -351,32 +351,34 @@ fn surface_of(k: &Kernel, s: &SrfIn) -> Result<Option<Surface>, HarnessError> {
 }
 
 /// A solution object: the op's curve (with its natural interval) or surface (with its
-/// natural domain).
+/// natural domain), or an opaque handle of either that cannot reach its geometry.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Obj {
     Curve([f64; 2]),
     Surface([f64; 4]),
+    OpaqueCurve,
+    OpaqueSurface,
 }
 
 impl SolutionObject for Obj {
     fn kind(&self) -> ObjectKind {
         match self {
-            Obj::Curve(_) => ObjectKind::Curve,
-            Obj::Surface(_) => ObjectKind::Surface,
+            Obj::Curve(_) | Obj::OpaqueCurve => ObjectKind::Curve,
+            Obj::Surface(_) | Obj::OpaqueSurface => ObjectKind::Surface,
         }
     }
 
     fn natural_interval(&self) -> Option<Extent1d> {
         match self {
             Obj::Curve(i) => Some(ivl_of(*i)),
-            Obj::Surface(_) => None,
+            _ => None,
         }
     }
 
     fn natural_uv_domain(&self) -> Option<Extent2d> {
         match self {
             Obj::Surface(d) => Some(dom_of(*d)),
-            Obj::Curve(_) => None,
+            _ => None,
         }
     }
 }
@@ -503,20 +505,36 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             let Some(c) = curve_of(curve)? else {
                 return Ok(vec![-3.0]);
             };
-            let (co, so) = (curve_obj(&c), surface_obj(&s));
-            match st(s.global_curve_intersect::<Obj>(
-                &k,
-                [co, so],
-                &dom_of(*dom),
-                &c,
-                &ivl_of(*ivl),
-                *tol,
-            ))? {
-                Ok(sols) => {
-                    o.push(0.0);
-                    put_solutions(&mut o, &sols, Some(co), so);
+            // Once with handles that know their domains, once with opaque handles (as a
+            // B-rep's, which cannot reach their geometry): both must give the C++ result,
+            // so a difference reports both runs, which cannot match it.
+            let mut runs = Vec::new();
+            for (co, so) in [
+                (curve_obj(&c), surface_obj(&s)),
+                (Obj::OpaqueCurve, Obj::OpaqueSurface),
+            ] {
+                let mut r = Vec::new();
+                match st(s.global_curve_intersect::<Obj>(
+                    &k,
+                    [co, so],
+                    &dom_of(*dom),
+                    &c,
+                    &ivl_of(*ivl),
+                    *tol,
+                ))? {
+                    Ok(sols) => {
+                        r.push(0.0);
+                        put_solutions(&mut r, &sols, Some(co), so);
+                    }
+                    Err(c) => r.push(c),
                 }
-                Err(c) => o.push(c),
+                runs.push(r);
+            }
+            let opaque = runs.pop().unwrap_or_default();
+            o = runs.pop().unwrap_or_default();
+            if o != opaque {
+                o.push(-9.0);
+                o.extend(opaque);
             }
         }
         OpIn::LocalLine {
@@ -527,7 +545,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             dtol,
             atol,
             uv,
-        } => match st(s.local_line_intersect(
+        } => match st(s.local_line_intersect(&k, 
             &dom_of(*dom),
             v3(*p),
             v3(*v),
@@ -586,7 +604,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
                     for a in 0..=4 {
                         for c in 0..=4 {
                             let uv = nd.evaluate(f64::from(a) / 4.0, f64::from(c) / 4.0);
-                            match st(blend.evaluate_point(uv))? {
+                            match st(blend.evaluate_point(&k, uv))? {
                                 Ok(p) => pv(&mut o, p),
                                 Err(_) => o.extend([f64::NAN; 3]),
                             }
@@ -622,9 +640,8 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             let stree = cache.tree().ok_or_else(|| harness("surface tree"))?;
             let leaf = first_leaf(stree)?;
             let mut solver =
-                SpGlobalSolver::new(&point_tree, stree, Some(cache.surface()), dom_of(*dom));
+                SpGlobalSolver::new(&k, &point_tree, stree, Some(cache.surface()), dom_of(*dom));
             solver.surface_cache = Some(&cache);
-            solver.kernel = Some(&k);
             solver.base.operation = sop_of(*sop)?;
             solver.base.tolerance_3d = *tol;
             solver.base.best_answer_so_far_sq = *best_sq;
@@ -680,7 +697,7 @@ fn gen_surface(rng: &mut Rng) -> SrfIn {
 }
 
 /// A point near the surface (on it at a random uv when its shape is known) and a direction.
-fn gen_line(rng: &mut Rng, surface: &SrfIn) -> ([f64; 3], [f64; 3]) {
+fn gen_line(k: &Kernel, rng: &mut Rng, surface: &SrfIn) -> ([f64; 3], [f64; 3]) {
     let d = natural_domain(surface);
     let kk = Kernel::default();
     let target = surface_of(&kk, surface)
@@ -691,7 +708,7 @@ fn gen_line(rng: &mut Rng, surface: &SrfIn) -> ([f64; 3], [f64; 3]) {
                 d[0] + (d[2] - d[0]) * rng.uniform(0.0, 1.0),
                 d[1] + (d[3] - d[1]) * rng.uniform(0.0, 1.0),
             );
-            s.evaluate_point(uv).ok()
+            s.evaluate_point(k, uv).ok()
         })
         .map_or([0.5, 0.5, 0.0], |p| [p.x, p.y, p.z]);
     let dir = match rng.below(6) {
@@ -719,7 +736,7 @@ fn gen_tol(rng: &mut Rng) -> f64 {
 }
 
 #[allow(clippy::too_many_lines)]
-fn gen_case(rng: &mut Rng) -> Inputs {
+fn gen_case(k: &Kernel, rng: &mut Rng) -> Inputs {
     match rng.below(24) {
         0..=1 => Inputs {
             surface: gen_surface(rng),
@@ -752,7 +769,7 @@ fn gen_case(rng: &mut Rng) -> Inputs {
         7..=11 => {
             let surface = gen_surface(rng);
             let dom = gen_subdomain(rng, natural_domain(&surface));
-            let (p, v) = gen_line(rng, &surface);
+            let (p, v) = gen_line(k, rng, &surface);
             let ivl = rng.chance(0.5).then(|| {
                 let a = rng.uniform(-6.0, 1.0);
                 [a, a + rng.uniform(0.5, 12.0)]
@@ -773,7 +790,7 @@ fn gen_case(rng: &mut Rng) -> Inputs {
             let surface = gen_surface(rng);
             let dom = gen_subdomain(rng, natural_domain(&surface));
             let (curve, ivl) = if rng.chance(0.5) {
-                let (p, v) = gen_line(rng, &surface);
+                let (p, v) = gen_line(k, rng, &surface);
                 let t = rng.uniform(0.5, 4.0);
                 (
                     CrvIn::Line {
@@ -798,7 +815,7 @@ fn gen_case(rng: &mut Rng) -> Inputs {
         16..=18 => {
             let surface = gen_surface(rng);
             let dom = gen_subdomain(rng, natural_domain(&surface));
-            let (p, v) = gen_line(rng, &surface);
+            let (p, v) = gen_line(k, rng, &surface);
             let nd = natural_domain(&surface);
             let uv = [
                 nd[0] + (nd[2] - nd[0]) * rng.uniform(0.0, 1.0),
@@ -835,7 +852,7 @@ fn gen_case(rng: &mut Rng) -> Inputs {
             let base = surface_of(&kk, &surface)
                 .ok()
                 .flatten()
-                .and_then(|s| s.evaluate_point(Point2::new(uv[0], uv[1])).ok())
+                .and_then(|s| s.evaluate_point(k, Point2::new(uv[0], uv[1])).ok())
                 .map_or([0.0; 3], |p| [p.x, p.y, p.z]);
             let off = rng.point3(-0.3, 0.3);
             let p = [base[0] + off[0], base[1] + off[1], base[2] + off[2]];
@@ -876,7 +893,7 @@ fn gen_case(rng: &mut Rng) -> Inputs {
             // a flat B-spline patch and a point near, inside or far from it
             let surface = SrfIn::Bspline(gen_bss(rng, Shape::Flat));
             let nd = natural_domain(&surface);
-            let (p, _) = gen_line(rng, &surface);
+            let (p, _) = gen_line(k, rng, &surface);
             Inputs {
                 surface,
                 op: OpIn::SpLocal {
@@ -931,8 +948,9 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
+        let k = &Kernel::default();
         for _ in 0..64 {
-            let i = gen_case(rng);
+            let i = gen_case(k, rng);
             let Ok((op, input)) = cpp_input(&i) else {
                 continue;
             };
@@ -960,7 +978,12 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        rust(&case.parse()?)
+        let i = case.parse()?;
+        // Run only what the FFI accepts, as the C++ side: its guards refuse inputs
+        // upstream (and the faithful port) never finish on (fuzz Rust-side hangs).
+        let (code, input) = cpp_input(&i)?;
+        ffi::validate(code, &input).map_err(|e| HarnessError::new(format!("c++: {e}")))?;
+        rust(&i)
     }
 }
 

@@ -21,8 +21,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use solidcore::boolean::merge::p1::{MergeOptions, MergeState, VertexCopy};
 use solidcore::boolean::merge::p2::{
-    make_faceuse, merge_edge, MergeAddedOptions, MergeBrep, SplitEdges, StitchSettings,
-    StitchedEdges, StitchedVertices, TopologyCopy,
+    make_faceuse_attempt, merge_edge, MergeAddedOptions, MergeBrep, SplitEdges,
+    StitchSettings, StitchedEdges, StitchedVertices, TopologyCopy,
 };
 use solidcore::boolean::topology_intersector::p1::{Relations, TopologyIntersector};
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
@@ -32,6 +32,7 @@ use solidcore::geom::object::{NotifyOperation, ObjectRef};
 use solidcore::heal::stitch::p1::{DefaultStitchCallback, Stitch};
 use solidcore::kernel::Kernel;
 use solidcore::topology;
+use solidcore::topology::brep_cache::{arena_identity, CacheObject};
 use solidcore::topology::topology::Topology;
 use solidcore::topology::topology_traverser::Marks;
 use solidcore::topology::{
@@ -389,6 +390,28 @@ impl MergeBrep<H> for Two {
     fn is_manifold_solid(&self, brep: H) -> solidcore::Result<bool> {
         topology::brep::p2::is_manifold_solid(self.brep_r(brep)?)
     }
+    fn orient_trimmed_surfaces(
+        &mut self,
+        k: &mut Kernel,
+        brep: H,
+        outward: bool,
+        just_unify: bool,
+    ) -> solidcore::Result<bool> {
+        use solidcore::topology::brep::p3 as bp3;
+        let b = self.brep_m(brep)?;
+        let r = bp3::with_kernel_callbacks(k, b, |k, b, env| {
+            bp3::orient_trimmed_surfaces(
+                k,
+                b,
+                env,
+                &mut Marks::default(),
+                outward,
+                just_unify,
+                None,
+            )
+        })?;
+        Ok(r.maybe_not_closed_solid)
+    }
     fn faceuse_shell(&self, fu: H) -> solidcore::Result<Option<H>> {
         let b = self.brep_r(fu)?;
         Ok(edgeuse::p1::faceuse_shell(b, FaceuseId::from_index(fu.i))?
@@ -473,9 +496,16 @@ impl MergeBrep<H> for Two {
             min_unstitched_edge_gap: r.min_unstitched_edge_gap,
         })
     }
-    fn find_and_set_infinite_region(&mut self, _k: &mut Kernel, brep: H) -> solidcore::Result<()> {
-        // pOptShellToTest = NULL, SM_VS_INFINITEREGION_SWAP (2), no bounding box
-        topology::brep::p5::find_and_set_infinite_region(self.brep_m(brep)?, None, 2, None)
+    fn find_and_set_infinite_region(&mut self, k: &mut Kernel, brep: H) -> solidcore::Result<()> {
+        // pOptShellToTest = NULL, SM_VS_INFINITEREGION_SWAP, no bounding box
+        topology::brep::p5::find_and_set_infinite_region(
+            k,
+            self.brep_m(brep)?,
+            &solidcore::query::brep::BrepQuery::default(),
+            None,
+            topology::brep::p1::SetRegionVoidType::InfiniteRegionSwap,
+            None,
+        )
     }
 }
 
@@ -524,7 +554,7 @@ fn run_rust(i: &Inputs, p: &Prepared) -> Result<Output, HarnessError> {
     let mut a = import_operand(&p.a)?;
     let mut b = p.b.as_ref().map(import_operand).transpose()?;
     let options = i.options.map(options_of);
-    let k = Kernel::default();
+    let mut k = Kernel::default();
     let mut ids = Vec::new();
     let mut values = Vec::new();
     match &i.op {
@@ -608,6 +638,14 @@ fn run_rust(i: &Inputs, p: &Prepared) -> Result<Output, HarnessError> {
             let edge_dest = |e: EdgeId| key(2_000_000, edge::TYPE, e.index());
             let face_source = |f: FaceId| key(5_000_000, face::p2::TYPE, f.index());
             let face_dest = |f: FaceId| key(4_000_000, face::p2::TYPE, f.index());
+            // The operands' edges and faces own their curves and surfaces under these
+            // names, as the library names them (`MakeFace`'s infinite-region rays solve
+            // on a B-rep cache whose trees hold only geometry owned under them).
+            let brep = Some(arena_identity(CacheObject::Brep));
+            crate::util::own_edge_curves(&mut a, &edge_dest, brep);
+            crate::util::own_face_surfaces(&mut a, &face_dest);
+            crate::util::own_edge_curves(b, &edge_source, brep);
+            crate::util::own_face_surfaces(b, &face_source);
             let mut copy = TopologyCopy {
                 vertices: VertexCopy {
                     records: &mut records,
@@ -623,7 +661,7 @@ fn run_rust(i: &Inputs, p: &Prepared) -> Result<Output, HarnessError> {
             match &i.op {
                 Op::MergeEdge { edgeuse, region } => {
                     match merge_edge(
-                        &k,
+                        &mut k,
                         &mut a,
                         b,
                         opt_id::<EdgeuseId>(*edgeuse),
@@ -645,8 +683,8 @@ fn run_rust(i: &Inputs, p: &Prepared) -> Result<Output, HarnessError> {
                     new_faces,
                 } => {
                     let mut made = Vec::new();
-                    match make_faceuse(
-                        &k,
+                    match make_faceuse_attempt(
+                        &mut k,
                         &mut a,
                         b,
                         FaceuseId::from_index(u32::try_from(*faceuse).map_err(|e| err(&e))?),
@@ -657,8 +695,17 @@ fn run_rust(i: &Inputs, p: &Prepared) -> Result<Output, HarnessError> {
                         new_faces.then_some(&mut made),
                     ) {
                         Ok(r) => {
-                            ids.extend([0, id(r.old_region), id(r.new_region), made.len() as i64]);
-                            ids.extend(made.iter().map(|f| i64::from(f.index())));
+                            let stat = match &r.status {
+                                Ok(()) => 0,
+                                Err(e) if e.is_unported() => {
+                                    return Output::unported(e).ok_or_else(|| err(e))
+                                }
+                                Err(e) => status(e),
+                            };
+                            ids.extend([stat, id(r.old_region), id(r.new_region), made.len() as i64]);
+                            if r.status.is_ok() {
+                                ids.extend(made.iter().map(|f| i64::from(f.index())));
+                            }
                         }
                         Err(e) if e.is_unported() => {
                             return Output::unported(&e).ok_or_else(|| err(&e))
