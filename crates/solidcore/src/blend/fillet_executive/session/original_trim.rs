@@ -272,43 +272,53 @@ impl FilletSession<'_> {
         let editing = self.objects.target.editing_enabled();
         self.objects.target.set_editing_enabled(true);
         let result = self.with_original_trim_marks(k, |session, k, locks, serial| {
-            let mut selection = OriginalSurfaceSelection::default();
-            let selected = session.executive.select_original_surfaces(
-                k,
-                &mut TrimAccess {
-                    objects: &mut session.objects,
-                    locks,
-                    fillet_serial: serial,
-                },
-                &mut selection.kept,
-                &mut selection.deleted,
-            );
-            output.kept = selection
-                .kept
-                .into_iter()
-                .map(|face| FilletObject::IntermediateTopology(EntityRef::Face(face)))
-                .collect();
-            output.deleted = selection
-                .deleted
-                .into_iter()
-                .map(|face| FilletObject::Topology(FilletBody::Target, EntityRef::Face(face)))
-                .collect();
-            selected?;
-            session.executive.delete_original_surface_faces(
-                k,
-                &mut DeleteAccess(&mut session.objects),
-                FilletObject::IntermediateBrep,
-                &output.kept,
-                &mut output.deleted,
-            )
+            session.select_and_delete_with_marks(k, locks, serial, output)
         });
         self.objects.target.set_editing_enabled(editing);
         result
     }
 
+    pub(super) fn select_and_delete_with_marks(
+        &mut self,
+        k: &mut Kernel,
+        locks: &[MarkLock],
+        serial: u64,
+        output: &mut OriginalSurfaceDeletion,
+    ) -> Result<()> {
+        let mut selection = OriginalSurfaceSelection::default();
+        let selected = self.executive.select_original_surfaces(
+            k,
+            &mut TrimAccess {
+                objects: &mut self.objects,
+                locks,
+                fillet_serial: serial,
+            },
+            &mut selection.kept,
+            &mut selection.deleted,
+        );
+        output.kept = selection
+            .kept
+            .into_iter()
+            .map(|face| FilletObject::IntermediateTopology(EntityRef::Face(face)))
+            .collect();
+        output.deleted = selection
+            .deleted
+            .into_iter()
+            .map(|face| FilletObject::Topology(FilletBody::Target, EntityRef::Face(face)))
+            .collect();
+        selected?;
+        self.executive.delete_original_surface_faces(
+            k,
+            &mut DeleteAccess(&mut self.objects),
+            FilletObject::IntermediateBrep,
+            &output.kept,
+            &mut output.deleted,
+        )
+    }
+
     // The lock scope can also enclose later native trim continuation without
     // advancing marks or copying the authoritative record map between components.
-    fn with_original_trim_marks<T>(
+    pub(super) fn with_original_trim_marks<T>(
         &mut self,
         k: &mut Kernel,
         body: impl FnOnce(&mut Self, &mut Kernel, &[MarkLock], u64) -> Result<T>,

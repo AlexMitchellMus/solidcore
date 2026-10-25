@@ -51,6 +51,7 @@ use crate::surface::surface::Surface;
 use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
 mod classification;
+mod original_merge;
 mod original_trim;
 pub use original_trim::{OriginalSurfaceDeletion, OriginalSurfaceSelection};
 
@@ -201,6 +202,7 @@ struct SessionObjects<'target> {
     corners: Vec<FilletCorner>,
     generators: Vec<FilletSurfaceGenerator>,
     attributes: AttributeStore,
+    merge_attributes: Option<Vec<AttributeHandle>>,
     extended_surfaces: BTreeMap<FaceId, Surface>,
     edge_caches: BTreeMap<EdgeId, CurveCache<FilletObject>>,
     target_serial: u64,
@@ -437,6 +439,7 @@ impl<'target> FilletSession<'target> {
                 corners: Vec::new(),
                 generators: Vec::new(),
                 attributes,
+                merge_attributes: None,
                 extended_surfaces: BTreeMap::new(),
                 edge_caches: BTreeMap::new(),
                 target_serial,
