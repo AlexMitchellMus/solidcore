@@ -4194,3 +4194,13 @@ Numbering paragraph at the top says.
 - **Severity:** Boolean failure (`SM_ERR`), or a body with the crossing missing where the caller does not check.
 - **Fix:** test the line at its middle, `sLinePt + 0.5 (dMax - dMin) * axis`, instead of its bottom end. A line that overlaps both domains only away from its middle is still dropped; clipping `[dMin, dMax]` to both domains' v ranges would cover that.
 - **Rust port:** `crates/solidcore/src/surface/cone/p3.rs` tests the middle only when `Kernel::cone_parallel_midpoint_test` is set. It is off by default, so `surface.cone_p3` keeps upstream's bottom-end test and matches the C++ bit for bit; `boolean::merge::p4::manifold_boolean` sets it for the duration of a Boolean and restores it on exit. Documented in the file header's Deviations. With it, the four FAIL-3665 cases pass.
+
+## `SmOffsetExecutive::DoSolidOffset`: degenerate-wall vertex positions depend on heap addresses
+
+- **Location:** `SmRelation` / `SmMapPtrToPtrs` (`SmMapPtrToPtr.h:115`, `std::unordered_map` keyed by object address) iterated in `SmOffsetExecutive::DoSolidOffset` (`SmOffsetExecutive.cpp:1419`, `m_vEUToEU.GetAllFirsts`).
+- **Trigger:** `SmOffsetExecutive::ShellBrep` of a plane sheet (2 x 3 at z = 1, tolerance 1e-6) by exactly -2*tol with extend, merge and create-solid set. The side walls are degenerate and their vertices are merged by midpoint averaging in an order that follows the map's bucket order, so the result's vertex positions depend on the process heap layout: max z is 0.999999 or 0.9999985 in different processes of the same binary inputs.
+- **How found:** the `offset.offset_executive_p2` difftest case `shell_boundary_negative_exactly_two_tol` failed in some CI runs only; reproduced locally by pre-fragmenting the heap with an `LD_PRELOAD` constructor (see plan/findings.md, "offset.offset_executive_p2: exact-2tol shell vertex bounds follow native heap layout").
+- **Confirmed:** yes, on the C++ reference (Ubuntu 24.04 x86_64 prebuilt, glibc 2.39 on CI and 2.43 locally): the same native call gives either value depending only on prior heap allocations.
+- **Severity:** run-to-run nondeterministic geometry (within the merge tolerance) for degenerate offsets; results are not reproducible across builds or processes.
+- **Fix:** iterate the relations in a deterministic order (insertion order, or sorted by a stable object id) wherever the order reaches geometry.
+- **Rust port:** `geom::tol::Relation` iterates sorted handles, so the port is deterministic; the difftest omits only that case's result vertex bounds.
