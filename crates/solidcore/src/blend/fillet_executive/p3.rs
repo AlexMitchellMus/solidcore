@@ -186,6 +186,45 @@ pub enum VertexEntry<O> {
     Corner(O),
 }
 
+/// Actual face-selection capabilities, sharing the executive's ordered loop.
+pub trait OriginalSurfaceTrimAccess<O: Copy + Ord, F> {
+    /// Retained geometries of the actual solver, in order.
+    fn original_trim_geometries(&self, solver: O) -> Result<Vec<O>>;
+    /// Execute one geometry's selection with the caller's existing marks and outputs.
+    fn original_trim_geometry(
+        &mut self,
+        k: &mut Kernel,
+        geom: O,
+        kept: &mut Vec<F>,
+        deleted: &mut Vec<F>,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
+}
+
+struct IndexedOriginalTrim<'a, A> {
+    access: &'a mut A,
+    marks: &'a [ContextMark],
+}
+
+impl<O: ClassObject + SolutionObject + Ord, A: ExecutiveAccess<O>> OriginalSurfaceTrimAccess<O, O>
+    for IndexedOriginalTrim<'_, A>
+{
+    fn original_trim_geometries(&self, solver: O) -> Result<Vec<O>> {
+        self.access.solver_geoms(solver)
+    }
+    fn original_trim_geometry(
+        &mut self,
+        k: &mut Kernel,
+        geom: O,
+        kept: &mut Vec<O>,
+        deleted: &mut Vec<O>,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
+        self.access
+            .trim_original_surfaces(k, geom, kept, deleted, self.marks, executive)
+    }
+}
+
 /// Executive member state consumed by p3, co-ported from p1. This is not the
 /// constructor: p1 must supply its constructor/setup defaults and intersector.
 #[derive(Debug, Clone)]
@@ -2131,6 +2170,27 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         Ok(())
     }
 
+    /// Select faces in native solver and geometry order under the caller's live mark scope.
+    ///
+    /// # Errors
+    /// The first geometry failure; previously accumulated faces and marks remain.
+    pub fn select_original_surfaces<F>(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl OriginalSurfaceTrimAccess<O, F>,
+        kept: &mut Vec<F>,
+        deleted: &mut Vec<F>,
+    ) -> Result<()> {
+        let mut index = 0;
+        while let Some(solver) = self.solvers.get(index).copied() {
+            for geom in access.original_trim_geometries(solver)? {
+                access.original_trim_geometry(k, geom, kept, deleted, self)?;
+            }
+            index += 1;
+        }
+        Ok(())
+    }
+
     fn trim_and_merge(
         &mut self,
         k: &mut Kernel,
@@ -2141,13 +2201,12 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     ) -> Result<()> {
         let mut deleted = Vec::new();
         let mut kept = Vec::new();
-        let mut index = 0;
-        while let Some(solver) = self.solvers.get(index).copied() {
-            for geom in access.solver_geoms(solver)? {
-                access.trim_original_surfaces(k, geom, &mut kept, &mut deleted, marks, self)?;
-            }
-            index += 1;
-        }
+        self.select_original_surfaces(
+            k,
+            &mut IndexedOriginalTrim { access, marks },
+            &mut kept,
+            &mut deleted,
+        )?;
         for face in access.faces(fillet)? {
             if !kept.contains(&face) && !deleted.contains(&face) {
                 deleted.push(face);
