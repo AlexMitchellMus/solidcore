@@ -1119,7 +1119,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         } else {
             // Intersect this curve with the topology objects of this face.
             let tf = this_face.ok_or(dangling("no face"))?;
-            brep.face_curve_on_classify(k, tf, true, &mut crv_class1)?;
+            brep.face_curve_on_classify_mut(k, tf, true, &mut crv_class1)?;
         }
 
         // If classification found no intersections, quit.
@@ -1151,7 +1151,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         } else {
             // Intersect this curve with the topology objects of this OtherFace.
             let of = other_face.ok_or(dangling("no other face"))?;
-            brep.face_curve_on_classify(k, of, true, &mut crv_class2)?;
+            brep.face_curve_on_classify_mut(k, of, true, &mut crv_class2)?;
 
             // make sure the obsolete bit is the same in both classifications
             crv_class1.set_is_curve_current(crv_class2.is_curve_current());
@@ -1255,7 +1255,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         } else {
             new_class1.set_surface1(input.surface);
         }
-        brep.face_curve_on_classify(k, this_face, true, &mut new_class1)?;
+        brep.face_curve_on_classify_mut(k, this_face, true, &mut new_class1)?;
 
         // classify the coincident curve against face2
         let mut new_class2 = new_classification(k, new_curve, new_natural, None, new_tol)?;
@@ -1270,7 +1270,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         } else {
             new_class2.set_surface1(input.other_surface);
         }
-        brep.face_curve_on_classify(k, other_face, true, &mut new_class2)?;
+        brep.face_curve_on_classify_mut(k, other_face, true, &mut new_class2)?;
 
         // merge those curves into their respective SmBreps
         let m = self.merge_curve_classes(k, brep, &mut new_class1, &mut new_class2, false)?;
@@ -1301,7 +1301,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         if let Some(be) = input.brep_edge {
             set_edge_class(k, &*brep, &mut crv_class12, be)?;
         } else {
-            brep.face_curve_on_classify(k, this_face, true, &mut crv_class12)?;
+            brep.face_curve_on_classify_mut(k, this_face, true, &mut crv_class12)?;
         }
 
         // classify the curve against face 2 for the 2nd time
@@ -1326,7 +1326,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         if let Some(oe) = input.other_edge {
             set_edge_class(k, &*brep, &mut crv_class22, oe)?;
         } else {
-            brep.face_curve_on_classify(k, other_face, true, &mut crv_class22)?;
+            brep.face_curve_on_classify_mut(k, other_face, true, &mut crv_class22)?;
         }
 
         let m = self.merge_curve_classes(k, brep, &mut crv_class12, &mut crv_class22, false)?;

@@ -1,5 +1,7 @@
 //! Actual target/intermediate topology and pseudo-curve bindings for insertion.
 
+mod query;
+
 use super::super::{FilletBody, FilletObject};
 use super::curves::InsertionCurves;
 use crate::blend::fillet_geom::p1::{FilletBrep, FilletGeomId, FilletSurfaceStorage};
@@ -323,6 +325,18 @@ impl<'a> InsertionGeometry<'a> {
                 .map(|edge| Self::handle(role, EntityRef::Edge(edge)))
                 .collect(),
         )
+    }
+    /// Classify against an actual Face and retain lazy UV/gap edits on every result.
+    /// # Errors
+    /// Invalid owning Face, query failure or query-state synchronization failure.
+    pub fn face_curve_on_classify_mut(
+        &mut self,
+        k: &crate::Kernel,
+        face: FilletObject,
+        do_point_classify: bool,
+        cc: &mut crate::intersect::curve_class::CurveClassification<FilletObject>,
+    ) -> Result<bool> {
+        query::classify(self, k, face, do_point_classify, cc)
     }
     /// Calculate the actual (including partial) trim-derived UV domain.
     /// # Errors
@@ -1012,5 +1026,39 @@ mod tests {
             serials
         );
         assert!(records.is_empty());
+    }
+    #[test]
+    fn actual_constructed_fillet_rail_classifies_on_its_original_face() {
+        use crate::blend::fillet_executive::session::FilletSession;
+        use crate::intersect::curve_class::CurveClassification;
+        let mut k = Kernel::default();
+        let mut target = box_at(&mut k, 0.0);
+        let edge = target.edges().ids().next().unwrap();
+        let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+        session
+            .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+            .unwrap();
+        session.create_corners(&k, None).unwrap();
+        session.create_fillet_brep(&mut k, None).unwrap();
+        session.shrink_fillet_faces(&mut k).unwrap();
+        session.set_fillet_brep_edge_map(&mut k).unwrap();
+        session
+            .with_insertion_geometry(&mut k, |k, _, geometry| {
+                let rail = geometry.pseudo.geom(FilletGeomId(0))?.rail(0).unwrap();
+                let record = geometry.pseudo.fillet_edge(rail)?;
+                let face = record.original_face().unwrap();
+                let managed = record.fillet_brep_edge().unwrap();
+                let tolerance = geometry.intermediate.edge(managed)?.tolerance;
+                let curve = FilletObject::Curve(FilletBody::Pseudo, rail);
+                let interval = geometry.curve(curve).unwrap().natural_interval();
+                let mut cc =
+                    CurveClassification::with_curve_interval(k, curve, interval, tolerance);
+                let face = FilletObject::Topology(FilletBody::Target, EntityRef::Face(face));
+                cc.set_surface1(geometry.face_surface(face).unwrap());
+                geometry.face_curve_on_classify_mut(k, face, true, &mut cc)?;
+                assert!(cc.size() > 0);
+                Ok(())
+            })
+            .unwrap();
     }
 }
