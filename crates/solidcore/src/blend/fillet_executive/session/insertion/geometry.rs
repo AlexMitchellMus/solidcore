@@ -1291,12 +1291,12 @@ mod tests {
         let mut target = box_at(&mut k, 0.0);
         let edge = target.edges().ids().next().unwrap();
         let mut session = FilletSession::new(&mut k, &mut target).unwrap();
-        k.context.set_doing_boolean(true);
-        session.executive.intersector.doing_fillets = true;
         session
             .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
             .unwrap();
         session.create_corners(&k, None).unwrap();
+        k.context.set_doing_boolean(true);
+        session.executive.intersector.doing_fillets = true;
         session.create_fillet_brep(&mut k, None).unwrap();
         session.shrink_fillet_faces(&mut k).unwrap();
         session.set_fillet_brep_edge_map(&mut k).unwrap();
