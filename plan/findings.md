@@ -20730,10 +20730,6 @@ Not changed: the face-tested (#816) and context (#875) paths of the start drop s
 classify on the face when its cache has point testing on; by the same C++ lines that test
 is off inside `DropCurve`, so those paths may drop solutions upstream keeps. Unmeasured.
 
-### `GetNaturalUVDomain` global-solver operand domains & `SmBSplineSurface::CreateCornerBlend` general `SmCurve` inputs (2026-10-25)
-
-- **Global solver `SolveOperands`**: `CsiGlobalSolver`, `LsiGlobalSolver`, `SpGlobalSolver`, and the context-free paths of `CsGlobalSolver` / `SsGlobalSolver` / `global_curve_solve_in` / `global_surface_solve_in` now supply `SolveOperands` built from their tree/cache handles and operand geometry instead of falling back to `OwnDomains` (`SmSurface::GetNaturalUVDomain` unported). `global_point_solve_0_in` and `face_silhouettes` (`create_silhouette_curves_with_cache`) also forward the caller's `SurfaceSolveContext` / face cache, and `intersect_topology_solver_p2`'s `StaticScene` prepares its `CreateFaceFromSurface` faces' `TrimSrfCache`s (`intersect.topology_solver_p2` `2415 -> 2429` passed, `0` deferred -> `green`; `boolean.topology_intersector_p1` `823 -> 826`; `primitive.primitive_creation_p2` `283 -> 285`).
-- **`SmBSplineSurface::CreateCornerBlend`**: `BSplineSurface::create_corner_blend_with_context` now accepts `&[SmCurve]` and downcasts each curve via `SM_CAST_PTR(SmBSplineCurve, pCurve)` (`NER(pNurb)`) in loop order inside `create_corner_blend_in`, matching upstream error precedence when a rational B-spline curve precedes a non-B-spline curve (`topology.brep_p1` `cos_*_3210`: `2604 -> 2609` passed, `6 -> 1` deferred).
 ## topology.brep_p10 edge/vertex tolerance last bits: SmSurfOfExtrusion::DropPointFast without NURB (2026-10-25)
 
 Follow-up to the 2026-10-25 brep_p10 heal/notify fixes on main. `read_Fillet_bottle`,
