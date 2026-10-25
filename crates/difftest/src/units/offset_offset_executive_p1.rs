@@ -2345,7 +2345,18 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
     let mut offsets = Vec::new();
     let result = match branch {
         Probe::ReplaceEmpty => {
-            OffsetExecutive::replace_implicit_offsets(&kernel, &mut original, tolerance)
+            probe_env(|env, _| {
+                OffsetExecutive::replace_implicit_offsets(
+                    &mut kernel,
+                    &mut original,
+                    tolerance,
+                    &mut solidcore::topology::edge::NotificationStores {
+                        records: &mut *env.records,
+                        attributes: &mut *env.attributes,
+                        key_of: env.key_of,
+                    },
+                )
+            })
         }
         Probe::RemoveNoMerge | Probe::RemoveEmpty => {
             executive.set_merge_results(matches!(branch, Probe::RemoveEmpty));
