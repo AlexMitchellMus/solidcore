@@ -1058,7 +1058,7 @@ mod tests {
     #[test]
     fn crv_extend_degree_seventeen_reverses_and_ignores_extra_points() {
         let mut pw: Vec<_> = (0..18)
-            .map(|i| cp(i as f64, (i % 3) as f64, (i % 5) as f64))
+            .map(|i| cp(f64::from(i), f64::from(i % 3), f64::from(i % 5)))
             .collect();
         pw.push(cp(999.0, -999.0, 123.0));
         for whr in [ExtendAt::Start, ExtendAt::End] {
