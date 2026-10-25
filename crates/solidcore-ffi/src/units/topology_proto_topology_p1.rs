@@ -439,6 +439,9 @@ pub mod tobj {
     pub const COPIED_BOX: i64 = 13;
     pub const COPIED_SPHERE: i64 = 14;
     pub const EXTRUSION_FACE: i64 = 18;
+    pub const PRIMITIVE_CYLINDER: i64 = 15;
+    pub const PRIMITIVE_CONE: i64 = 16;
+    pub const PRIMITIVE_TORUS: i64 = 17;
 }
 
 const MAX_SLOTS: i64 = 32;
@@ -852,9 +855,10 @@ fn validate_proto(rd: &mut Reader<'_>) -> Result<(), FfiError> {
 }
 
 fn validate_transform_object(rd: &mut Reader<'_>) -> Result<i64, FfiError> {
-    let kind = rd.int(0, tobj::EXTRUSION_FACE)?;
+    let kind = rd.int(0, tobj::PRIMITIVE_TORUS)?;
     match kind {
-        15..=17 => return Err(bad("reserved transform object")),
+        tobj::PRIMITIVE_CYLINDER | tobj::PRIMITIVE_TORUS => { rd.vec3()?; for _ in 0..2 { if rd.finite()? <= 1e-12 { return Err(bad("primitive dimension")); } } }
+        tobj::PRIMITIVE_CONE => { rd.vec3()?; let base=rd.finite()?; let top=rd.finite()?; let height=rd.finite()?; if base<0.0 || top<0.0 || (base<=1e-12 && top<=1e-12) || height<=1e-12 { return Err(bad("cone dimension")); } }
         tobj::CALLER_FACE | tobj::EXTRUSION_FACE => {
             rd.vec3()?;
             for _ in 0..2 {
@@ -956,7 +960,7 @@ fn validate_transform(rd: &mut Reader<'_>) -> Result<(), FfiError> {
 
 fn validate_scale_probe(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     let object = validate_transform_object(rd)?;
-    if !matches!(object, tobj::EXTRUSION_FACE | tobj::PRIMITIVE_BOX | tobj::PRIMITIVE_SPHERE | tobj::COPIED_BOX | tobj::COPIED_SPHERE) {
+    if !matches!(object, tobj::PRIMITIVE_CYLINDER | tobj::PRIMITIVE_CONE | tobj::PRIMITIVE_TORUS | tobj::PRIMITIVE_BOX | tobj::PRIMITIVE_SPHERE | tobj::COPIED_BOX | tobj::COPIED_SPHERE) {
         return Err(bad("scale probe object"));
     }
     validate_transform_op(rd)

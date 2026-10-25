@@ -5021,6 +5021,9 @@ enum TObj : int64_t
     T_EXTRUSION_FACE = 18,
     T_COPIED_BOX = 13,
     T_COPIED_SPHERE = 14,
+    T_PRIMITIVE_CYLINDER = 15,
+    T_PRIMITIVE_CONE = 16,
+    T_PRIMITIVE_TORUS = 17,
 };
 
 // SmCrvOnSurf's UV-line constructor is protected.
@@ -5170,7 +5173,7 @@ int32_t run_transform(Rd& rd, std::vector<double>& o, bool probe=false)
     case T_COPIED_SPHERE:
     {
         SmPoint3d origin = rd.vec(); SmBrep* body = NULL; SmApiStatus created;
-        if (kind == T_PRIMITIVE_BOX || kind == T_COPIED_BOX) {
+        if (kind == T_PRIMITIVE_CYLINDER || kind == T_PRIMITIVE_CONE || kind == T_PRIMITIVE_TORUS || kind == T_PRIMITIVE_BOX || kind == T_COPIED_BOX) {
             double x=rd.num(), y=rd.num(), z=rd.num();
             created = SmApiCreateBox(origin, x, y, z, body);
         } else { double radius=rd.num(); created=SmApiCreateSphere(origin, radius, body); }
@@ -5182,6 +5185,17 @@ int32_t run_transform(Rd& rd, std::vector<double>& o, bool probe=false)
             body = copy;
         }
         obj = body; break;
+    }
+    case T_PRIMITIVE_CYLINDER:
+    case T_PRIMITIVE_CONE:
+    case T_PRIMITIVE_TORUS:
+    {
+        SmPoint3d origin=rd.vec(); double a=rd.num(), b=rd.num(); SmBrep* body=NULL; SmApiStatus created;
+        if(kind==T_PRIMITIVE_CYLINDER) created=SmApiCreateCylinder(origin,a,b,body);
+        else if(kind==T_PRIMITIVE_TORUS) created=SmApiCreateTorus(origin,a,b,body);
+        else { double height=rd.num(); created=SmApiCreateCone(origin,a,b,height,body); }
+        if(created!=SM_SUCCESS || !body) { o.push_back((double)created); delete body; return SC_OK; }
+        obj=body; break;
     }
     case T_CALLER_FACE:
     case T_EXTRUSION_FACE:
@@ -5266,7 +5280,7 @@ int32_t run_transform(Rd& rd, std::vector<double>& o, bool probe=false)
     if (applied != SC_OK) return applied;
     o.push_back((double)s);
     if (frame) { o.push_back((double)frame->initial_types.size()); o.insert(o.end(), frame->initial_types.begin(), frame->initial_types.end()); }
-    if (kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE || kind == T_EXTRUSION_FACE || kind == T_CALLER_FACE || kind == T_COPIED_BOX || kind == T_COPIED_SPHERE) {
+    if (kind == T_PRIMITIVE_CYLINDER || kind == T_PRIMITIVE_CONE || kind == T_PRIMITIVE_TORUS || kind == T_PRIMITIVE_BOX || kind == T_PRIMITIVE_SPHERE || kind == T_EXTRUSION_FACE || kind == T_CALLER_FACE || kind == T_COPIED_BOX || kind == T_COPIED_SPHERE) {
         append_constructed_transform_record(o, (SmBrep*)obj);
     }
     if (frame) frame->append(o);
@@ -5306,7 +5320,7 @@ int32_t run_transform_sequence(Rd& rd, std::vector<double>& o)
     const int64_t kind = rd.idx();
     SmBrep* body = NULL;
     SmApiStatus created = SM_SUCCESS;
-    if (kind == T_PRIMITIVE_BOX) {
+    if (kind == T_PRIMITIVE_CYLINDER || kind == T_PRIMITIVE_CONE || kind == T_PRIMITIVE_TORUS || kind == T_PRIMITIVE_BOX) {
         SmPoint3d origin = rd.vec();
         double x=rd.num(), y=rd.num(), z=rd.num();
         created = SmApiCreateBox(origin, x, y, z, body);
