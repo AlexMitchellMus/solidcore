@@ -7,6 +7,8 @@
 //! |---------------|------------------------------------------------------------|
 //! | [`spatial`]   | `sc_geom_tree_spatial_ints`, `sc_geom_tree_spatial_floats` |
 //! | [`subdiv`]    | `sc_geom_tree_subdiv`                                      |
+//! | [`subdiv_patches`] | `sc_geom_tree_subdiv_patches`                         |
+//! | [`patch_lookup`] | `sc_geom_tree_patch_lookup`                              |
 //!
 //! Both run a small program against an upstream tree; the encodings are
 //! documented in the shim and validated here before any call.
@@ -16,6 +18,13 @@ use crate::{call_with_buffer, FfiError};
 
 mod sys {
     extern "C" {
+        pub fn sc_geom_tree_patch_lookup(
+            prog: *const f64,
+            n: i64,
+            out: *mut f64,
+            cap: i64,
+            out_len: *mut i64,
+        ) -> i32;
         pub fn sc_geom_tree_spatial_ints(
             prog: *const f64,
             n: i64,
@@ -36,6 +45,16 @@ mod sys {
             prog: *const i64,
             n_prog: i64,
             out: *mut i64,
+            cap: i64,
+            out_len: *mut i64,
+        ) -> i32;
+        pub fn sc_geom_tree_subdiv_patches(
+            desc: *const i64,
+            n_nodes: i64,
+            prog: *const i64,
+            n_prog: i64,
+            scale: f64,
+            out: *mut f64,
             cap: i64,
             out_len: *mut i64,
         ) -> i32;
@@ -181,9 +200,8 @@ fn well_formed(desc: &[i64], n_nodes: i64) -> Result<(), FfiError> {
     Ok(())
 }
 
-/// Runs a subdivision-tree program over `desc` (9 ints per node, see the shim);
-/// returns its output stream.
-pub fn subdiv(desc: &[i64], prog: &[i64]) -> Result<Vec<i64>, FfiError> {
+/// Checks a subdivision descriptor (9 ints per node) and its program.
+fn validate_subdiv(desc: &[i64], prog: &[i64]) -> Result<(), FfiError> {
     if desc.is_empty() || !desc.len().is_multiple_of(9) {
         return Err(bad("desc"));
     }
@@ -207,7 +225,7 @@ pub fn subdiv(desc: &[i64], prog: &[i64]) -> Result<Vec<i64>, FfiError> {
     while i < prog.len() {
         let op = at(prog, i)?;
         let sz = match op {
-            0 | 1 | 4 | 5 => 1,
+            0 | 1 | 4..=7 => 1,
             2 => 4,
             3 => 0,
             _ => return Err(bad("op")),
@@ -218,14 +236,24 @@ pub fn subdiv(desc: &[i64], prog: &[i64]) -> Result<Vec<i64>, FfiError> {
         let a = prog
             .get(i + 1..i + 1 + sz)
             .ok_or_else(|| bad("truncated program"))?;
-        if sz >= 1 && !(0..n_nodes).contains(&at(a, 0)?) {
+        if sz >= 1 && op != 7 && !(0..n_nodes).contains(&at(a, 0)?) {
             return Err(bad("node index"));
         }
         if op == 2 && (!(0..=3).contains(&at(a, 2)?) || !obj(at(a, 3)?)) {
             return Err(bad("set operands"));
         }
+        if op == 7 && !obj(at(a, 0)?) {
+            return Err(bad("owner surface"));
+        }
         i += 1 + sz;
     }
+    Ok(())
+}
+
+/// Runs a subdivision-tree program, returning presence flags and node relations.
+pub fn subdiv(desc: &[i64], prog: &[i64]) -> Result<Vec<i64>, FfiError> {
+    validate_subdiv(desc, prog)?;
+    let n_nodes = (desc.len() / 9) as i64;
     call_with_buffer(256, |buf: &mut [i64], len| {
         // SAFETY: desc/prog valid for their lengths (checked above); buf valid for
         // buf.len() writes; len valid.
@@ -235,6 +263,117 @@ pub fn subdiv(desc: &[i64], prog: &[i64]) -> Result<Vec<i64>, FfiError> {
                 n_nodes,
                 prog.as_ptr(),
                 prog.len() as i64,
+                buf.as_mut_ptr(),
+                buf.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })
+}
+
+/// Validate a real-patch lookup fixture: `ns owner`, `ns * 16` homogeneous control
+/// point values (bilinear 2x2 surfaces), `nn`, `nn * (parent aux patch surface)`,
+/// `nq`, query node indices. Each parent precedes its child; the native walk is
+/// bounded to 64 nodes. Surface and patch indices use -1 for absence.
+pub fn validate_patch_lookup(prog: &[f64]) -> Result<(), FfiError> {
+    let mut cursor = 0;
+    let mut number = || {
+        let v = at(prog, cursor)?;
+        cursor += 1;
+        Ok::<_, FfiError>(v)
+    };
+    let integer = |v: f64, lo: i64, hi: i64| -> Result<i64, FfiError> {
+        if !v.is_finite() || v.fract() != 0.0 || v < lo as f64 || v > hi as f64 {
+            return Err(bad("patch fixture index/count"));
+        }
+        Ok(v as i64)
+    };
+    let ns = integer(number()?, 1, 16)?;
+    integer(number()?, -1, ns - 1)?;
+    for _ in 0..ns * 4 {
+        for _ in 0..3 {
+            let v = number()?;
+            if !v.is_finite() || v.abs() > 1e50 {
+                return Err(bad("patch coordinate"));
+            }
+        }
+        let weight = number()?;
+        if !weight.is_finite() || !(1e-6..=1e6).contains(&weight) {
+            return Err(bad("patch weight"));
+        }
+    }
+    let nn = integer(number()?, 1, 64)?;
+    let mut children = [0; 64];
+    for i in 0..nn {
+        let parent = integer(number()?, -1, i - 1)?;
+        if parent >= 0 {
+            let count = children
+                .get_mut(parent as usize)
+                .ok_or_else(|| bad("patch parent"))?;
+            *count += 1;
+            if *count > 2 {
+                return Err(bad("nonbinary patch tree"));
+            }
+        }
+        let aux = integer(number()?, 0, 6)?;
+        if ![0, 3, 4, 6].contains(&aux) {
+            return Err(bad("patch aux type"));
+        }
+        let patch = integer(number()?, -1, ns - 1)?;
+        integer(number()?, -1, ns - 1)?;
+        if aux != 3 && patch != -1 {
+            return Err(bad("patch requires Bezier aux"));
+        }
+    }
+    let nq = integer(number()?, 1, 128)?;
+    for _ in 0..nq {
+        integer(number()?, 0, nn - 1)?;
+    }
+    if cursor != prog.len() {
+        return Err(bad("trailing patch fixture data"));
+    }
+    Ok(())
+}
+
+/// Run `GetFirstBezierPatch` on real patches and temporary B-spline surfaces.
+/// Returns, per query, the selected pool index (-1 absent), then the selected
+/// NURB's `n m p q r s`, homogeneous control net and U/V knot arrays.
+pub fn patch_lookup(prog: &[f64]) -> Result<Vec<f64>, FfiError> {
+    validate_patch_lookup(prog)?;
+    call_with_buffer(4096, |buf, len| {
+        // SAFETY: validation checks every count, index and record before the shim
+        // reads it. The shim honours the output capacity; all buffers live here.
+        unsafe {
+            sys::sc_geom_tree_patch_lookup(
+                prog.as_ptr(),
+                prog.len() as i64,
+                buf.as_mut_ptr(),
+                buf.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })
+}
+
+/// Exports each non-null `GetFirstBezierPatch` result as native NURBS data:
+/// `n m p q r s`, homogeneous control points (V fastest), then U and V knots.
+/// The shim constructs rational bilinear patches using the documented seed recipe
+/// in `geom_tree.cpp`; `scale` multiplies their Cartesian coordinates.
+pub fn subdiv_patches(desc: &[i64], prog: &[i64], scale: f64) -> Result<Vec<f64>, FfiError> {
+    validate_subdiv(desc, prog)?;
+    if !scale.is_finite() {
+        return Err(bad("patch scale"));
+    }
+    call_with_buffer(256, |buf: &mut [f64], len| {
+        // SAFETY: validated, well-formed node links and complete program; all buffers
+        // are valid for their supplied lengths, and len is a valid output pointer.
+        unsafe {
+            sys::sc_geom_tree_subdiv_patches(
+                desc.as_ptr(),
+                (desc.len() / 9) as i64,
+                prog.as_ptr(),
+                prog.len() as i64,
+                scale,
                 buf.as_mut_ptr(),
                 buf.len() as i64,
                 &raw mut *len,

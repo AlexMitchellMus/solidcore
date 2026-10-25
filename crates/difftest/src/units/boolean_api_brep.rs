@@ -222,9 +222,29 @@ fn to_output(o: &[f64]) -> Result<Output, HarnessError> {
 }
 
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    if ub_175(i)? {
+        return Ok(Output::rejected(
+            "UB-175: ~SmProtoTopologyManager reads a freed proto edge (proto vertices \
+             collapsed below the 0.01 capture distance); not run",
+        ));
+    }
     match ffi::run(&to_call(i)) {
         Ok(o) => to_output(&o),
         Err(e) => Err(harness(format!("cpp: {e}"))),
+    }
+}
+
+/// Whether the Boolean reaches UB-175 (`plan/upstream-issues.md`): the teardown of
+/// `IntersectInsertRelate`'s proto topology manager reads a proto edge it already
+/// freed, so the input is undefined in C++ (AGENTS.md section 4, step 5.6) and [`cpp`]
+/// rejects it. Decided from the inputs and the Rust side only: the port replays the
+/// teardown, goes on with its defined result and records `"UB-175"` on the kernel
+/// ([`Kernel::upstream_ub_passed`]).
+fn ub_175(i: &Inputs) -> Result<bool, HarnessError> {
+    let mut k = Kernel::default();
+    match rust_call_with(&mut k, i, &|_| {}) {
+        Ok(_) | Err(Stop::Deferred(_)) => Ok(k.upstream_ub_passed.contains(&"UB-175")),
+        Err(Stop::Harness(e)) => Err(e),
     }
 }
 
@@ -351,6 +371,15 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
 }
 
 fn rust_call(k: &mut Kernel, i: &Inputs) -> Result<Output, Stop> {
+    rust_call_with(k, i, &|_| {})
+}
+
+/// [`rust_call`], showing every error the API returned to `seen`.
+fn rust_call_with(k: &mut Kernel, i: &Inputs, seen: &dyn Fn(&SolidError)) -> Result<Output, Stop> {
+    let err_output = |e: &SolidError| {
+        seen(e);
+        err_output(e)
+    };
     let two = |r: solidcore::Result<api::BooleanOutcome>, kept: bool| match r {
         Ok(out) => two_record(&out, kept),
         Err(e) => Ok(err_output(&e)),
@@ -413,6 +442,7 @@ fn rust_call(k: &mut Kernel, i: &Inputs) -> Result<Output, Stop> {
                 }
                 // Rejected: no result (`cleared`) and the list untouched.
                 Err(e) if matches!(e, SolidError::InvalidInput { .. }) => {
+                    seen(&e);
                     Ok(record(status(&e), vec![1, count(v.len())?]))
                 }
                 Err(e) => Ok(err_output(&e)),
