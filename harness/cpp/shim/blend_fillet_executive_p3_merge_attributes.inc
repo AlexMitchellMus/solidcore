@@ -19,7 +19,7 @@ inline std::vector<double> merge_attribute_state(FaceExecutive& exec,SmBrep* tar
     for(const auto* edges:{&target_edges,&managed_edges}){out.push_back(double(edges->GetSize()));for(ULONG i=0;i<edges->GetSize();++i){SmTArray<SmAttribute*> own,relevant;(*edges)[i]->GetAttributes(own);
         for(ULONG a=0;a<own.GetSize();++a){auto id=own[a]->GetAttributeID();if(id==SM_AI_FILLET_EDGES||id==SM_AI_ALL_FILLET_EDGES)relevant.Add(own[a]);}
         out.push_back(double(relevant.GetSize()));for(ULONG a=0;a<relevant.GetSize();++a){auto* attribute=relevant[a];if(attribute->GetAttributeID()==SM_AI_ALL_FILLET_EDGES&&attribute!=expected)throw std::runtime_error("unexpected unrelated executive edge attribute");
-            out.insert(out.end(),{double(attribute->GetAttributeID()),double(attribute==expected),label(tags,attribute)});}
+            out.insert(out.end(),{double(attribute->GetAttributeID()),double(attribute==expected),attribute->GetAttributeID()==SM_AI_FILLET_EDGES?label(tags,attribute):-1.0});}
     }}return out;
 }
 }

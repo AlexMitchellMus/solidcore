@@ -15,7 +15,7 @@ struct MergeLifetimes:SmNotifyCallback{
 };
 template<class T> void merge_marks(std::vector<double>& out,SmBrep* body,const SmTArray<T*>& before,const std::vector<ULONG>& history,size_t& index,const MergeLifetimes& lifetimes){
     SmTArray<T*> current;deletion_current(body,current);std::vector<double> marks{double(current.GetSize())};
-    for(ULONG i=0;i<current.GetSize();++i){auto prior=lifetimes.retired(current[i])?-1:label(before,current[i]);marks.insert(marks.end(),{double(prior>=0),prior,double(current[i]->IsMarked(SM_MT_MARK)),double(current[i]->IsUnMarked(SM_MT_MARK))});
+    for(ULONG i=0;i<current.GetSize();++i){auto found=label(before,current[i]);auto prior=found>=0&&!lifetimes.retired(current[i])?found:-1.0;marks.insert(marks.end(),{double(prior>=0),prior,double(current[i]->IsMarked(SM_MT_MARK)),double(current[i]->IsUnMarked(SM_MT_MARK))});
         if(prior>=0)marks.push_back(double(history.at(index+size_t(prior))==current[i]->GetMark(SM_MT_MARK)));}
     index+=before.GetSize();section(out,marks);
 }
