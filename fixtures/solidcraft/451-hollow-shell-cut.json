@@ -186,7 +186,7 @@
     "volume": {
      "value": 653.3429089562032,
      "tol": 0.01,
-     "formula": "F(18.5) - 8*64, F(18.5) = 1165.3429089562, F(R) = int_{-4}^{4} int_{-4}^{4} sqrt(R^2 - y^2 - z^2) dy dz = 4*G(4, 4), G(x, y) = [x*(3R^2 - x^2)*atan(y/s) + y*(3R^2 - y^2)*atan(x/s) + 2*x*y*s - 2R^3*atan(x*y/(R*s))]/6, s = sqrt(R^2 - x^2 - y^2); the inner sphere stays between x = 8 and 20 over the section (sqrt(18.5^2 - 32) = 17.60 > 8, 18.5 < 20)"
+     "formula": "F(18.5) - 8*64, F(18.5) = 1165.3429089562, F(R) = int_{-4}^{4} int_{-4}^{4} sqrt(R^2 - y^2 - z^2) dy dz = 4*G(4, 4), G(x, y) = [x*(3R^2 - x^2)*atan(y/s) + y*(3R^2 - y^2)*atan(x/s) + 2*x*y*s - 2R^3*atan(x*y/(R*s))]/6, s = sqrt(R^2 - x^2 - y^2); the inner sphere stays between x = 8 and 20 over the section (sqrt(18.5^2 - 32) = 17.61 > 8, 18.5 < 20)"
     }
    }
   },
