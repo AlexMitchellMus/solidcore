@@ -1,7 +1,13 @@
 //! Polygon-edge implantation followed by edge-use-driven subdivision.
 //! Both kernels receive the original face surface separately from the cache surface.
 
-use super::*;
+use super::{
+    bss_of, build_tree, cache_of, class_code, cpp_input, curve_of, dom_of, domain_of_srf, ffi,
+    flag, gen_cache_dom, gen_srf, harness, link, push_crv, push_dom, push_srf, push_tree, status,
+    to_output, BssIn, CallIn, Case, CaseContext, Crv2In, Deserialize, Extent2d, HarnessError,
+    InlineSrf, Inputs, Kernel, NodeData, NodeId, NodeIn, Op, OpIn, Output, Rng, Run, Serialize,
+    SolidError, SplitDir, SrfIn, Surface, Value, DEFAULT_OPTS, NOW,
+};
 use crate::case::CaseSource;
 use solidcore::geom::vector3d::Point3;
 use solidcore::surface::trim_srf_cache::PolyEdgeInput;
@@ -156,7 +162,12 @@ pub(super) fn cases() -> Result<Vec<Case>, HarnessError> {
         let natural = domain_of_srf(&cache_srf);
         let dom = gen_cache_dom(&mut rng, natural, false);
         let mut original_srf = cache_srf.clone();
-        let scale = [1e-6, 1e-3, 1.0, 1e3][index % 4];
+        let scale = match index % 4 {
+            0 => 1e-6,
+            1 => 1e-3,
+            2 => 1.0,
+            _ => 1e3,
+        };
         for row in &mut original_srf.net {
             for p in row {
                 for c in &mut p[..3] {
