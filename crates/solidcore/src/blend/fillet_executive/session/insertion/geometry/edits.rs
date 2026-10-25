@@ -36,6 +36,26 @@ fn edge(role: InsertionBody, object: FilletObject) -> Result<EdgeId> {
     Ok(id)
 }
 
+impl InsertionGeometry<'_> {
+    /// Squeeze an actual edge through the existing notified producer.
+    /// # Errors
+    /// Cross-body operands or the original squeeze failure.
+    pub fn brep_squeeze_edge(
+        &mut self,
+        k: &mut Kernel,
+        body: FilletObject,
+        object: FilletObject,
+        survivor: FilletObject,
+    ) -> Result<()> {
+        let role = body_role(body)?;
+        let object = edge(role, object)?;
+        let survivor = vertex(role, survivor)?;
+        self.with_edit(role, |body, env| {
+            crate::topology::brep::p3::squeeze_edge(k, body, env, object, survivor)
+        })
+    }
+}
+
 impl BrepGlue<FilletObject> for InsertionGeometry<'_> {
     fn glue_vertices(
         &mut self,

@@ -327,6 +327,58 @@ impl<'a> InsertionGeometry<'a> {
                 .collect(),
         )
     }
+    /// Classify against the actual B-rep with its existing proven-owner query provider.
+    /// # Errors
+    /// Invalid body handle or the original point-query failure.
+    pub fn brep_point_3d_classify(
+        &mut self,
+        k: &crate::Kernel,
+        body: FilletObject,
+        point: Point3,
+        tolerance: f64,
+        boundary_intersections: bool,
+    ) -> Result<crate::intersect::point_class::PointClassification<FilletObject>> {
+        let (role, EntityRef::Brep(_)) =
+            Self::topology(body).ok_or_else(|| invalid("unknown B-rep role"))?
+        else {
+            return Err(invalid("handle is not a B-rep"));
+        };
+        let body = self.body_mut(role);
+        let serial = u32::try_from(
+            body.notify_serial()
+                .ok_or_else(|| invalid("missing issued B-rep identity"))?,
+        )
+        .map_err(|_| invalid("B-rep identity is outside query ID range"))?;
+        let query =
+            crate::query::brep::BrepQuery::of_brep_with_id(BrepId::from_index(serial), body);
+        query
+            .point_3d_classify(k, body, point, tolerance, boundary_intersections)?
+            .map_objects(&mut |entity| Ok(Self::handle(role, entity)))
+    }
+    /// Evaluate the actual edge-use binormal with native FALSE/default options.
+    /// # Errors
+    /// Invalid edge-use handle or the original evaluator failure.
+    pub fn edgeuse_evaluate_binormal(
+        &mut self,
+        k: &crate::Kernel,
+        edgeuse: FilletObject,
+        parameter: f64,
+    ) -> Result<crate::math::Vec3> {
+        let (role, EntityRef::Edgeuse(edgeuse)) =
+            Self::topology(edgeuse).ok_or_else(|| invalid("unknown Edgeuse role"))?
+        else {
+            return Err(invalid("handle is not an Edgeuse"));
+        };
+        Ok(crate::topology::edgeuse::p3::evaluate_binormal(
+            k,
+            self.body_mut(role),
+            edgeuse,
+            parameter,
+            false,
+            &crate::topology::edgeuse::p3::BinormalOptions::default(),
+        )?
+        .binormal)
+    }
     /// Classify against an actual Face and retain lazy UV/gap edits on every result.
     /// # Errors
     /// Invalid owning Face, query failure or query-state synchronization failure.
@@ -881,6 +933,43 @@ mod tests {
         ));
         let foreign = FilletObject::Topology(FilletBody::Pseudo, EntityRef::Vertex(vertex));
         assert!(view.edge_other_vertex(target_edge, Some(foreign)).is_err());
+        let inside_target = view
+            .brep_point_3d_classify(
+                &k,
+                FilletObject::Body(FilletBody::Target),
+                Point3::new(5.0, 10.0, 15.0),
+                1e-5,
+                false,
+            )
+            .unwrap();
+        let inside_intermediate = view
+            .brep_point_3d_classify(
+                &k,
+                FilletObject::IntermediateBrep,
+                Point3::new(105.0, 10.0, 15.0),
+                1e-5,
+                false,
+            )
+            .unwrap();
+        assert_eq!(
+            inside_target.point_class(),
+            crate::intersect::point_class::PointClassType::Region
+        );
+        assert_eq!(
+            inside_intermediate.point_class(),
+            crate::intersect::point_class::PointClassType::Region
+        );
+        assert!(matches!(
+            inside_target.object(),
+            Some(FilletObject::Topology(
+                FilletBody::Target,
+                EntityRef::Region(_)
+            ))
+        ));
+        assert!(matches!(
+            inside_intermediate.object(),
+            Some(FilletObject::IntermediateTopology(EntityRef::Region(_)))
+        ));
         let before = view.target.vertex(vertex).unwrap().point;
         let object = FilletObject::Topology(FilletBody::Pseudo, EntityRef::Vertex(vertex));
         let (body, _) = view.topology_entity_mut(object).unwrap();
