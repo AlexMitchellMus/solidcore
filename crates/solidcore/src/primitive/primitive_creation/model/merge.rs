@@ -184,6 +184,7 @@ fn rebind_owners(b: &mut Brep, to: impl Fn(EntityRef) -> ObjectRef) -> Result<()
         });
         if rebound {
             b.set_geometry_owner_key(e, Some(new_owner));
+            b.sync_face_surface_tolerance(face)?;
         }
     }
     Ok(())

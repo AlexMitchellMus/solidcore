@@ -187,11 +187,22 @@ impl<'a, 'keys> GeometryOwnerScope<'a, 'keys> {
                 }
             }
             for face in crate::topology::brep::p1::faces(scope.body, None)? {
-                if let Some(surface) = scope.body.face_mut(face)?.surface.as_mut() {
-                    if surface.owner() == Some(arena_identity(CacheObject::Face(face))) {
-                        scope.faces.push(face);
-                        surface.set_owner(Some(keys.object(other, EntityRef::Face(face))));
-                    }
+                let rebound = scope
+                    .body
+                    .face_mut(face)?
+                    .surface
+                    .as_mut()
+                    .is_some_and(|surface| {
+                        let matched =
+                            surface.owner() == Some(arena_identity(CacheObject::Face(face)));
+                        if matched {
+                            surface.set_owner(Some(keys.object(other, EntityRef::Face(face))));
+                        }
+                        matched
+                    });
+                if rebound {
+                    scope.faces.push(face);
+                    scope.body.sync_face_surface_tolerance(face)?;
                 }
             }
         }
@@ -210,13 +221,18 @@ impl Drop for GeometryOwnerScope<'_, '_> {
             }
         }
         for &face in &self.faces {
-            if let Ok(record) = self.body.face_mut(face) {
-                if let Some(surface) = record.surface.as_mut() {
-                    if surface.owner() == Some(self.keys.object(self.other, EntityRef::Face(face)))
-                    {
+            let restored = self.body.face_mut(face).is_ok_and(|record| {
+                record.surface.as_mut().is_some_and(|surface| {
+                    let matched = surface.owner()
+                        == Some(self.keys.object(self.other, EntityRef::Face(face)));
+                    if matched {
                         surface.set_owner(Some(arena_identity(CacheObject::Face(face))));
                     }
-                }
+                    matched
+                })
+            });
+            if restored {
+                let _ = self.body.sync_face_surface_tolerance(face);
             }
         }
     }
