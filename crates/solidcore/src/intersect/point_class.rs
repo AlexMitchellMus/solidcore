@@ -186,6 +186,31 @@ pub struct BrepMerge<'a, 'env, O> {
     pub curve_ref: &'a dyn Fn(EdgeId, i64) -> ObjectRef,
 }
 
+/// Actual merge context with checked identity access to newly constructed curves.
+pub struct BrepMergeWithIdentity<'a, 'env, O> {
+    /// Actual arena containing the classified object.
+    pub brep: &'a mut Brep,
+    /// Target in that arena.
+    pub target: EntityRef,
+    /// Caller handle for each arena entity.
+    pub handle: &'a dyn Fn(EntityRef) -> O,
+    /// Retained records, attributes and notification context.
+    pub notifications: &'a mut edge::NotifyEnv<'env>,
+    /// Legacy or actual-curve identity authority at construction.
+    pub curve_identity: crate::topology::brep::p9::CurveIdentity<'a>,
+}
+impl<'a, 'env, O> From<BrepMerge<'a, 'env, O>> for BrepMergeWithIdentity<'a, 'env, O> {
+    fn from(context: BrepMerge<'a, 'env, O>) -> Self {
+        Self {
+            brep: context.brep,
+            target: context.target,
+            handle: context.handle,
+            notifications: context.notifications,
+            curve_identity: crate::topology::brep::p9::CurveIdentity::Legacy(context.curve_ref),
+        }
+    }
+}
+
 /// The arena [`PointClassification::combine_in_brep`] writes a propagated surf/surf/surf
 /// point to.
 pub struct CombineBrep<'a, 'env, O> {
@@ -1528,15 +1553,27 @@ impl<O: ClassObject> PointClassification<O> {
         src_point: Point3,
         context: BrepMerge<'_, '_, O>,
     ) -> Result<MergeOutputs<O>> {
+        self.merge_into_brep_with_curve_identity(k, src_point, context.into())
+    }
+
+    /// The same merge with checked identity issuance for actual copied curves.
+    /// # Errors
+    /// Original merge errors and identity failures, retaining prior edits.
+    pub fn merge_into_brep_with_curve_identity(
+        &mut self,
+        k: &mut Kernel,
+        src_point: Point3,
+        context: BrepMergeWithIdentity<'_, '_, O>,
+    ) -> Result<MergeOutputs<O>> {
         use crate::error::EntityRef;
         use crate::geom::tol::ScaledZero;
         use crate::topology::{brep::p9, vertex};
-        let BrepMerge {
+        let BrepMergeWithIdentity {
             brep: b,
             target,
             handle,
             notifications: env,
-            curve_ref,
+            curve_identity,
         } = context;
         let object = self.object.ok_or_else(|| null_object(OP_MERGE))?;
         let kind = match target {
@@ -1574,7 +1611,14 @@ impl<O: ClassObject> PointClassification<O> {
                 v
             }
             EntityRef::Edge(e) => {
-                let split = p9::make_vertex_split_edge(k, b, e, self.t_param(), env, curve_ref)?;
+                let split = p9::make_vertex_split_edge_with_curve_identity(
+                    k,
+                    b,
+                    e,
+                    self.t_param(),
+                    env,
+                    curve_identity,
+                )?;
                 let v = split.vertex.ok_or_else(|| SolidError::sm_err(OP_MERGE))?;
                 if !split.split {
                     // Native assigns these two fields directly; in particular an
@@ -1949,6 +1993,54 @@ fn surface_global_point_solve(
     face_tested_point_solve(k, surface, uv_domain, point, zone_tol_3d, &mut classify)
 }
 
+/// The fast drop's trim test of face `f`'s surface (`pFace->PointClassify(uv, tol,
+/// TRUE, FALSE, ..)` in `SmSurface::GlobalPointSolve`) with the face's B-rep at hand:
+/// `true` keeps the solution. Whether the test runs at all (the face's surface cache is
+/// trimmed, point testing is on and its face was not modified; `GetOwner()` is not
+/// cleared) is decided on the first call and kept in `test_on`. The face's trimmed
+/// surface cache is made when it has none
+/// ([`crate::query::face::p2::face_surface_cache`]).
+///
+/// # Errors
+///
+/// Those of the cache lookup and the classification's [`SolidError::Unported`].
+pub(crate) fn live_face_fast_drop_test(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    test_on: &mut Option<bool>,
+    uv: Point2,
+    src_tol: f64,
+) -> Result<bool> {
+    let on = if let Some(on) = *test_on {
+        on
+    } else {
+        // `GetOwner()` is NULL while `CreateUVTrimCurve(s)` clears it: no face
+        let on = !b.is_surface_owner_cleared(f) && {
+            let lease = crate::query::face::p2::face_surface_cache(k, b, f)?;
+            let base = lease.cache.base();
+            let on = lease.trimmed && base.point_test_enabled && !base.face_was_modified;
+            lease.release();
+            on
+        };
+        *test_on = Some(on);
+        on
+    };
+    if !on {
+        return Ok(true);
+    }
+    let mut pc = PointClassification::new(src_tol);
+    let status = crate::query::face::p2::point_classify(
+        k,
+        b,
+        f,
+        uv,
+        &mut pc,
+        fast_drop_classify_options(src_tol),
+    );
+    fast_drop_good_point(status, &pc)
+}
+
 /// [`surface_global_point_solve`] of face `f`'s surface with the face's B-rep at hand:
 /// the trim test makes the face's trimmed surface cache when it has none
 /// ([`crate::query::face::p2::face_surface_cache`], kept on the surface as upstream's
@@ -1972,33 +2064,7 @@ fn live_surface_global_point_solve(
         .clone_for_evaluation()?;
     let mut test_on: Option<bool> = None;
     let mut classify = |k: &Kernel, uv: Point2, src_tol: f64| -> Result<bool> {
-        let on = if let Some(on) = test_on {
-            on
-        } else {
-            // `GetOwner()` is NULL while `CreateUVTrimCurve(s)` clears it: no face
-            let on = !b.is_surface_owner_cleared(f) && {
-                let lease = crate::query::face::p2::face_surface_cache(k, b, f)?;
-                let base = lease.cache.base();
-                let on = lease.trimmed && base.point_test_enabled && !base.face_was_modified;
-                lease.release();
-                on
-            };
-            test_on = Some(on);
-            on
-        };
-        if !on {
-            return Ok(true);
-        }
-        let mut pc = PointClassification::new(src_tol);
-        let status = crate::query::face::p2::point_classify(
-            k,
-            b,
-            f,
-            uv,
-            &mut pc,
-            fast_drop_classify_options(src_tol),
-        );
-        fast_drop_good_point(status, &pc)
+        live_face_fast_drop_test(k, b, f, &mut test_on, uv, src_tol)
     };
     face_tested_point_solve(k, &surface, uv_domain, point, zone_tol_3d, &mut classify)
 }

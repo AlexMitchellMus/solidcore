@@ -5,7 +5,7 @@
 //! | Rust | Upstream |
 //! |------|----------|
 //! | [`insert_solutions`], [`insert_solutions_mut`] | `sm_InsertSolutions` (static) |
-//! | [`CurveClassification::extract_geometry`] | `SmCurveClassification::ExtractGeometry` |
+//! | [`CurveClassification::extract_geometry`], [`CurveClassification::extract_geometry_mut`] | `SmCurveClassification::ExtractGeometry` |
 //! | [`CurveClassification::fixup_classification`] | `SmCurveClassification::FixupClassification` |
 //! | [`CurveClassification::insert_topology_intersections`] | `SmCurveClassification::InsertTopologyIntersections` |
 //! | [`CurveClassification::intersect_vertices`], [`CurveClassification::intersect_vertices_mut`] | `SmCurveClassification::IntersectVertices` |
@@ -52,7 +52,7 @@
 use super::p1::{out_of_bounds, set_xsect_curve_through_point};
 use super::p2::refine_cci_to_surfaces_in;
 use super::p6::{
-    Imprint, MergeIntervalBrep, Mutable as MutableImprint, ReadOnly as ReadOnlyImprint,
+    FilletPeer, Imprint, MergeIntervalBrep, Mutable as MutableImprint, ReadOnly as ReadOnlyImprint,
 };
 use super::{
     make_consistent_classifications, src_zone_tol_3d_of, CurveClassification, CurveInterval,
@@ -173,6 +173,12 @@ impl SolutionObject for NoObject {
     fn kind(&self) -> ObjectKind {
         ObjectKind::Curve
     }
+}
+
+#[derive(Clone, Copy)]
+enum PairLink {
+    Metadata,
+    Linked,
 }
 
 const OP: &str = "intersect::curve_class::p5";
@@ -421,8 +427,9 @@ impl<O: ClassObject> CurveClassification<O> {
         a: &mut impl Imprint<O>,
         index: usize,
         vertices_only: bool,
+        peer: FilletPeer<'_, O>,
     ) -> Result<MergedTopology<O>> {
-        let merged = classification.merge_interval_in(a, index, vertices_only, None)?;
+        let merged = classification.merge_interval_using_peer(a, index, vertices_only, peer)?;
         Ok(MergedTopology {
             faces: merged.new_faces,
             edges: merged.new_edges,
@@ -441,8 +448,36 @@ impl<O: ClassObject> CurveClassification<O> {
         other: &mut Self,
         options: ExtractOptions,
     ) -> Result<ExtractedGeometry> {
-        let mut out = ExtractedGeometry::default();
         self.homogenize(k, geometry, other)?;
+        self.extract_homogenized(k, geometry, other, options)
+    }
+
+    /// [`CurveClassification::extract_geometry`] over topology the homogenization's
+    /// point drops may change ([`CurveClassification::homogenize_mut`]): a drop onto a
+    /// face makes and keeps the face's trimmed surface cache on its B-rep, as upstream.
+    ///
+    /// # Errors
+    /// Those of [`CurveClassification::extract_geometry`].
+    pub fn extract_geometry_mut(
+        &mut self,
+        k: &Kernel,
+        geometry: &mut impl ClassGeometryMut<O>,
+        other: &mut Self,
+        options: ExtractOptions,
+    ) -> Result<ExtractedGeometry> {
+        self.homogenize_mut(k, geometry, other)?;
+        self.extract_homogenized(k, &*geometry, other, options)
+    }
+
+    /// `ExtractGeometry` after its `Homogenize`.
+    fn extract_homogenized(
+        &mut self,
+        k: &Kernel,
+        geometry: &impl ClassGeometry<O>,
+        other: &mut Self,
+        options: ExtractOptions,
+    ) -> Result<ExtractedGeometry> {
+        let mut out = ExtractedGeometry::default();
         self.cleanup_and_validate(k, geometry, other)?;
         if self.size() != other.size() {
             return Err(SolidError::sm_err(OP));
@@ -1097,6 +1132,7 @@ impl<O: ClassObject> CurveClassification<O> {
             &mut ReadOnlyImprint { k, g: geometry },
             other,
             merge_singularities,
+            PairLink::Metadata,
         )
     }
 
@@ -1117,6 +1153,28 @@ impl<O: ClassObject> CurveClassification<O> {
             &mut MutableImprint { k, g: geometry },
             other,
             merge_singularities,
+            PairLink::Metadata,
+        )
+    }
+
+    /// Merge an actual local pair whose native peer pointers are linked for this
+    /// call. No opaque handle is assigned; each peer is borrowed directly. Existing
+    /// metadata-based entrypoints retain their original absence semantics.
+    ///
+    /// # Errors
+    /// Those of [`Self::merge_classifications_mut`].
+    pub fn merge_classifications_linked_mut(
+        &mut self,
+        k: &mut Kernel,
+        geometry: &mut impl MergeIntervalBrep<O>,
+        other: &mut Self,
+        merge_singularities: bool,
+    ) -> Result<(MergedTopology<O>, MergedTopology<O>)> {
+        self.merge_classifications_in(
+            &mut MutableImprint { k, g: geometry },
+            other,
+            merge_singularities,
+            PairLink::Linked,
         )
     }
 
@@ -1125,6 +1183,7 @@ impl<O: ClassObject> CurveClassification<O> {
         a: &mut impl Imprint<O>,
         other: &mut Self,
         merge_singularities: bool,
+        link: PairLink,
     ) -> Result<(MergedTopology<O>, MergedTopology<O>)> {
         if self.size() != other.size() {
             return Err(SolidError::sm_err(OP));
@@ -1140,11 +1199,29 @@ impl<O: ClassObject> CurveClassification<O> {
             {
                 continue;
             }
-            scratch = Self::p5_merge_interval_in(self, a, i, false)?;
+            scratch = Self::p5_merge_interval_in(
+                self,
+                a,
+                i,
+                false,
+                match link {
+                    PairLink::Metadata => FilletPeer::Metadata(Some(other)),
+                    PairLink::Linked => FilletPeer::Linked(other),
+                },
+            )?;
             append_unique(&mut out.faces, scratch.faces.iter().copied());
             append_unique(&mut out.edges, scratch.edges.iter().copied());
             append_unique(&mut out.vertices, scratch.vertices.iter().copied());
-            scratch_other = Self::p5_merge_interval_in(other, a, i, false)?;
+            scratch_other = Self::p5_merge_interval_in(
+                other,
+                a,
+                i,
+                false,
+                match link {
+                    PairLink::Metadata => FilletPeer::Metadata(Some(self)),
+                    PairLink::Linked => FilletPeer::Linked(self),
+                },
+            )?;
             append_unique(&mut out_other.faces, scratch_other.faces.iter().copied());
             append_unique(&mut out_other.edges, scratch_other.edges.iter().copied());
             append_unique(
@@ -1229,7 +1306,7 @@ impl<O: ClassObject> CurveClassification<O> {
     ) -> Result<MergedTopology<O>> {
         let mut a = MutableImprint { k, g: geometry };
         self.merge_intervals_using(vertices_only, |c, j, v| {
-            Self::p5_merge_interval_in(c, &mut a, j, v)
+            Self::p5_merge_interval_in(c, &mut a, j, v, FilletPeer::Metadata(None))
         })
         .map_err(|e| e.error)
     }
