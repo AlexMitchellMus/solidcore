@@ -36,6 +36,7 @@
 //! | [`PolyBrep::edge_bounding_box`]              | `SmPolyEdge::CalculateBoundingBox`                |
 //! | [`PolyBrep::edge_is_2d_or_zero`]             | `SmPolyEdge::Is2dOrZero`                          |
 //! | [`PolyBrep::edge_is_degenerate`]             | `SmPolyEdge::IsDegenerate`                        |
+//! | [`PolyBrep::edge_is_degenerate_with_owner`]  | `SmPolyEdge::IsDegenerate` (real-face adapter)    |
 //! | [`PolyBrep::delete_loop`]                    | `SmPolyLoop::~SmPolyLoop`                         |
 //! | [`PolyBrep::loop_poly_face`], [`PolyBrep::loop_first_poly_edge`], [`PolyBrep::loop_is_closed`], [`PolyBrep::loop_poly_edges`] | `SmPolyLoop::GetPolyFace`, `GetFirstPolyEdge`, `IsClosed`, `GetPolyEdges` (`GetPolyBrep` is `self`) |
 //! | [`PolyBrep::loop_contains_point`]            | `SmPolyLoop::ContainsPoint`                       |
@@ -104,8 +105,9 @@
 //!   the back pointers are valid and a face is set; `SetOriginalFace` with attribute
 //!   propagation calls `SmFace::Notify` (unit `topology.face_p3`); the destructor of a
 //!   poly B-rep with valid back pointers clears `SmVertex::m_pPolyVertex`
-//!   (`GetPolyVertex` / `SetPolyVertex`, unit `topology.vertex`). These return
-//!   [`SolidError::Unported`].
+//!   (`GetPolyVertex` / `SetPolyVertex`, unit `topology.vertex`). The key-only APIs
+//!   return [`SolidError::Unported`]; `IsDegenerate` additionally offers the explicit
+//!   [`PolyBrep::edge_is_degenerate_with_owner`] adapter.
 //! - `SmPolyBrep::CalculateBoundingBox` asked for a pseudo box without a point array
 //!   dereferences the null `pOptPolyPoints` (it builds `sPolyPoints` and then reads the
 //!   caller's pointer); Rust returns [`SolidError::InvalidInput`] (see
@@ -148,12 +150,16 @@
 //!   transformed in an ordered list instead of upstream's pointer-hashed
 //!   `std::unordered_set`; only membership is used, so the order of work is the same.
 //! - `SM_DEBUG_CODE` blocks, `WARN`, `SE` messages and `SM_ASSERT*` are not ported.
+//! - `IsDegenerate` can resolve an original face through a caller-supplied B-rep
+//!   adapter; the key-only API still defers. Surface evaluation errors propagate;
+//!   upstream ignores their statuses.
 
 use crate::error::{Result, SolidError};
 use crate::geom::a_object::{self, AObject, CacheStore};
 use crate::geom::attribute::{AttributeStore, ObjectKey};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::context::Context;
+use crate::geom::extent1d::ExtentPointType;
 use crate::geom::extent3d::Extent3d;
 use crate::geom::geom_utility::p1::polygon_area;
 use crate::geom::geom_utility::p2::is_point_on_segment;
@@ -163,8 +169,9 @@ use crate::geom::pseudo_box::PseudoBox;
 use crate::geom::tol;
 use crate::geom::vector2d::Vec2;
 use crate::kernel::Kernel;
-use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, UNDEF_DOUBLE};
+use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_PARAM, EFF_ZERO_SQ, UNDEF_DOUBLE};
 use crate::topology::topology::TopologyRecords;
+use crate::topology::{Brep, FaceId};
 
 /// `SM_UNDEF_ULONG` on LP64 (`0xFFFFFFFFFFFFFFFE`... upstream's `ULONG_MAX - 1`).
 pub const UNDEF_ULONG: u64 = u64::MAX - 1;
@@ -1138,10 +1145,13 @@ impl PolyBrep {
     ///
     /// # Errors
     ///
-    /// [`SolidError::InvalidInput`] for unknown ids.
+    /// [`SolidError::InvalidInput`] for unknown ids, without modifying the B-rep.
     pub fn edge_set_aux_data(&mut self, edge: PolyEdgeId, aux: Option<PolyAuxId>) -> Result<()> {
         const OP: &str = "query::poly::PolyBrep::edge_set_aux_data";
         let old = slot(&self.edge_slots, edge.0, OP)?.aux;
+        if let Some(a) = aux {
+            slot(&self.aux_slots, a.0, OP)?;
+        }
         if old == aux {
             return Ok(());
         }
@@ -1957,18 +1967,44 @@ impl PolyBrep {
         e: PolyEdgeId,
         xsect_tol: Option<f64>,
     ) -> Result<bool> {
+        self.edge_is_degenerate_with_owner(k, e, xsect_tol, |_| None)
+    }
+
+    /// `SmPolyEdge::IsDegenerate` with access to the original face's real B-rep.
+    ///
+    /// `resolve` maps the original face key to its owning B-rep and face id. `None`
+    /// means unresolved, not a face without a surface: the latter is represented by
+    /// a valid face whose `surface` is `None`. With valid back pointers, 2D endpoints
+    /// are evaluated on that surface, including upstream's pole/seam midpoint test.
+    /// A resolver is not consulted when the back pointers are invalid.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] for an unresolved original face; errors of the face
+    /// and edge accessors and of surface evaluation. Upstream ignores evaluation
+    /// statuses; this method propagates them.
+    pub fn edge_is_degenerate_with_owner<'a>(
+        &self,
+        k: &Kernel,
+        e: PolyEdgeId,
+        xsect_tol: Option<f64>,
+        resolve: impl FnOnce(ObjectKey) -> Option<(&'a Brep, FaceId)>,
+    ) -> Result<bool> {
         let face = self.edge_poly_face(e)?;
         // a deleted face has cleared its back pointer
         let orig_face = face
             .and_then(|f| self.face_slots.get(f.0 as usize).and_then(Option::as_ref))
             .and_then(|x| x.original_face);
-        if orig_face.is_some() && self.edge_ok_back_ptrs(e)? {
-            // UNPORTED(topology.face_p2): SmFace::GetSurface
-            return Err(SolidError::unported(
-                "SmFace::GetSurface",
-                "topology.face_p2",
-            ));
-        }
+        let surface = match orig_face {
+            Some(key) if self.edge_ok_back_ptrs(e)? => {
+                // DISPATCH GAP: an opaque key alone cannot identify an owning B-rep.
+                let (brep, face) = resolve(key).ok_or_else(|| {
+                    SolidError::unported("SmFace::GetSurface", "topology.face_p2")
+                })?;
+                crate::topology::face::p2::surface(brep, face)?
+            }
+            _ => None,
+        };
 
         // Use a local tolerance instead of SmScaledZero
         let xsect = if let Some(t) = xsect_tol {
@@ -1998,15 +2034,59 @@ impl PolyBrep {
         // Get PolyEdge endPoints.
         let mut start = self.edge_start_point(e)?;
         let mut end = self.edge_end_point(e)?;
+        let start_uv = Vec2::new(start.x, start.y);
+        let end_uv = Vec2::new(end.x, end.y);
+        let mut mid = (start + end) / 2.0;
+        let (mut su, mut sv, mut eu, mut ev) = (
+            ExtentPointType::Unknown,
+            ExtentPointType::Unknown,
+            ExtentPointType::Unknown,
+            ExtentPointType::Unknown,
+        );
+        let mut check_pole = false;
 
-        // map or clean up chord pts as appropriate (no surface here)
+        // Match SmPolyEdge::IsDegenerate's imperfect UV/XYZ test, not a new one.
         if self.edge_is_2d_or_zero(e)? {
-            start.z = 0.0;
-            end.z = 0.0;
+            if let Some(surface) = surface {
+                let domain = surface.natural_uv_domain();
+                (su, sv) = domain.classify_point(start_uv, EFF_ZERO_PARAM, None);
+                (eu, ev) = domain.classify_point(end_uv, EFF_ZERO_PARAM, None);
+                if su != ExtentPointType::Outside && sv != ExtentPointType::Outside {
+                    check_pole = (su == eu
+                        && matches!(su, ExtentPointType::Start | ExtentPointType::End))
+                        || (sv == ev
+                            && matches!(sv, ExtentPointType::Start | ExtentPointType::End));
+                }
+                start = surface.evaluate_point(k, start_uv)?;
+                end = surface.evaluate_point(k, end_uv)?;
+            } else {
+                start.z = 0.0;
+                end.z = 0.0;
+                mid.z = 0.0;
+            }
         }
 
-        // check the PolyEdge ChordLengths to scaled zero (the seam check needs a surface)
-        Ok(start.closer_than(xsect, end))
+        let mut degenerate = start.closer_than(xsect, end);
+        if degenerate && self.edge_is_2d_or_zero(e)? {
+            if let Some(surface) = surface {
+                let opposite = |a, b| {
+                    (a == ExtentPointType::Start && b == ExtentPointType::End)
+                        || (a == ExtentPointType::End && b == ExtentPointType::Start)
+                };
+                let mut check_seam =
+                    opposite(su, eu) && (start_uv.y - end_uv.y).abs() < EFF_ZERO_PARAM;
+                if !check_seam {
+                    check_seam = opposite(sv, ev) && (start_uv.x - end_uv.x).abs() < EFF_ZERO_PARAM;
+                }
+                if check_seam {
+                    if check_pole {
+                        mid = surface.evaluate_point(k, (start_uv + end_uv) / 2.0)?;
+                    }
+                    degenerate = start.closer_than(xsect, mid);
+                }
+            }
+        }
+        Ok(degenerate)
     }
 
     // ---- loops ----------------------------------------------------------------------
@@ -3317,6 +3397,86 @@ mod tests {
     }
 
     #[test]
+    fn edge_set_aux_data_rejects_invalid_replacement_without_mutation() {
+        let k = Kernel::default();
+        for has_old in [false, true] {
+            for deleted in [false, true] {
+                let (mut b, _, l, es) = square(&k);
+                let old = if has_old {
+                    let a = b.add_aux_data(Vec3::ZERO, Vec2::new(0.0, 0.0)).unwrap();
+                    b.edge_set_aux_data(es[0], Some(a)).unwrap();
+                    Some(a)
+                } else {
+                    None
+                };
+                let invalid = if deleted {
+                    let a = b.add_aux_data(Vec3::ZERO, Vec2::new(0.0, 0.0)).unwrap();
+                    b.aux_delete_if_no_users(a).unwrap();
+                    a
+                } else {
+                    PolyAuxId::from_index(u32::MAX)
+                };
+                let before = b.clone();
+                assert!(matches!(
+                    b.edge_set_aux_data(es[0], Some(invalid)),
+                    Err(SolidError::InvalidInput { .. })
+                ));
+                assert_eq!(b, before);
+
+                b.delete_edge(es[0]).unwrap();
+                assert_eq!(b.loop_poly_edges(l).unwrap(), es[1..]);
+                assert!(b.edge_aux_data(es[0]).is_err());
+                if let Some(a) = old {
+                    assert!(b.aux_data(a).is_err());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn edge_set_aux_data_same_live_id_preserves_counts() {
+        let k = Kernel::default();
+        let (mut b, _, _, es) = square(&k);
+        let a = b.add_aux_data(Vec3::ZERO, Vec2::new(0.0, 0.0)).unwrap();
+        b.edge_set_aux_data(es[0], Some(a)).unwrap();
+        assert_eq!(b.aux_data(a).unwrap().num_users(), 1);
+        let before = b.clone();
+        b.edge_set_aux_data(es[0], Some(a)).unwrap();
+        assert_eq!(b, before);
+        assert_eq!(b.aux_data(a).unwrap().num_users(), 1);
+    }
+
+    #[test]
+    fn edge_set_aux_data_replacement_deletes_exclusively_owned_record() {
+        let k = Kernel::default();
+        let (mut b, _, _, es) = square(&k);
+        let old = b.add_aux_data(Vec3::ZERO, Vec2::new(0.0, 0.0)).unwrap();
+        let new = b.add_aux_data(Vec3::ZERO, Vec2::new(1.0, 1.0)).unwrap();
+        b.edge_set_aux_data(es[0], Some(old)).unwrap();
+        b.edge_set_aux_data(es[0], Some(new)).unwrap();
+        assert_eq!(b.edge_aux_data(es[0]).unwrap(), Some(new));
+        assert!(b.aux_data(old).is_err());
+        assert_eq!(b.aux_data(new).unwrap().num_users(), 1);
+    }
+
+    #[test]
+    fn edge_set_aux_data_shared_record_survives_until_last_user_clears() {
+        let k = Kernel::default();
+        let (mut b, _, _, es) = square(&k);
+        let a = b.add_aux_data(Vec3::ZERO, Vec2::new(0.0, 0.0)).unwrap();
+        b.edge_set_aux_data(es[0], Some(a)).unwrap();
+        b.edge_set_aux_data(es[1], Some(a)).unwrap();
+        assert_eq!(b.aux_data(a).unwrap().num_users(), 2);
+        b.edge_set_aux_data(es[0], None).unwrap();
+        assert_eq!(b.edge_aux_data(es[0]).unwrap(), None);
+        assert_eq!(b.edge_aux_data(es[1]).unwrap(), Some(a));
+        assert_eq!(b.aux_data(a).unwrap().num_users(), 1);
+        b.edge_set_aux_data(es[1], None).unwrap();
+        assert_eq!(b.edge_aux_data(es[1]).unwrap(), None);
+        assert!(b.aux_data(a).is_err());
+    }
+
+    #[test]
     fn delete_edge_unlinks() {
         let k = Kernel::default();
         let (mut b, _, l, es) = square(&k);
@@ -3388,6 +3548,56 @@ mod tests {
         assert_eq!(b.face_poly_edges(c).unwrap().len(), 4);
         assert!(b.face_bounding_box(c).is_ok());
         assert!(b.face_normal(&k, c, true, true).is_ok());
+    }
+
+    #[test]
+    fn degeneracy_resolves_real_face_but_not_an_opaque_key() {
+        let k = Kernel::default();
+        let (mut poly, face, _, edges) = square(&k);
+        let edge = edges[0];
+        poly.face_set_original_face(face, Some(ObjectKey(7)), false)
+            .unwrap();
+        poly.set_ok_back_ptrs(true);
+        assert!(poly
+            .edge_is_degenerate(&k, edge, Some(0.5))
+            .is_err_and(|e| e.is_unported()));
+
+        let mut owner = Brep::new();
+        let shell = owner
+            .add_shell_record(crate::topology::Shell::default())
+            .unwrap();
+        let f = owner
+            .add_face_record(crate::topology::Face::new(shell))
+            .unwrap();
+        // A resolved face without geometry takes upstream's no-surface branch.
+        assert!(!poly
+            .edge_is_degenerate_with_owner(&k, edge, Some(0.5), |_| Some((&owner, f)))
+            .unwrap());
+        owner.face_mut(f).unwrap().surface = Some(crate::surface::surface::Surface::from(
+            crate::surface::plane::Plane::new(
+                Vec3::ZERO,
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec2::new(0.25, 1.0),
+                &crate::geom::extent2d::Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+            ),
+        ));
+        assert!(poly
+            .edge_is_degenerate_with_owner(&k, edge, Some(0.5), |_| Some((&owner, f)))
+            .unwrap());
+        assert!(poly
+            .edge_is_degenerate_with_owner(&k, edge, Some(0.5), |_| Some((
+                &owner,
+                FaceId::from_index(u32::MAX)
+            )))
+            .is_err());
+
+        poly.set_ok_back_ptrs(false);
+        assert!(!poly
+            .edge_is_degenerate_with_owner(&k, edge, Some(0.5), |_| panic!(
+                "invalid back pointers must not resolve the owner"
+            ))
+            .unwrap());
     }
 
     #[test]

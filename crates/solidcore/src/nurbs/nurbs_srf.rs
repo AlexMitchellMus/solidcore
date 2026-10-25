@@ -22,6 +22,10 @@
 //!   [`ConstantsRequest`] in and [`NetConstants`] (`Some` for each requested value)
 //!   out; which outputs are requested still steers the control flow exactly as the
 //!   NULL tests do upstream.
+//! - Angle walks also report a non-finite segment length before normalization in
+//!   [`NetConstants::nonfinite_angle_length`]. This diagnostic does not change the
+//!   evaluations, arithmetic, branches or numeric outputs; approximate surface caches
+//!   use it to refuse further refinement driven by an invalid angle measurement.
 //! - The `const SmSurface*` of both routines is an evaluator closure standing for
 //!   `SmSurface::EvaluatePoint` (the virtual call, unit `surface.surface_p2`), so the
 //!   routines do not depend on the surface class hierarchy. Its errors propagate as
@@ -38,7 +42,8 @@
 //! - The memory-layout helpers (`sm_ComputeNurbSurfaceSize`,
 //!   `sm_InitNurbSurfaceMemory`) have no counterpart: [`Surface`] owns its storage.
 //!   [`allocate_nurb_surface`] returns a zero-filled surface (upstream
-//!   `smos_Calloc`); [`copy_nurb_surface`] returns a compact copy (upstream returns
+//!   `smos_Calloc`), allocated fallibly: `InvalidInput` where the size overflows or
+//!   does not fit in memory (upstream: `NULL`); [`copy_nurb_surface`] returns a compact copy (upstream returns
 //!   NULL for a surface without a net, which a [`Surface`] cannot be).
 //! - `sm_DecomposeSrf` fills a caller-allocated array of `nsu * nsv` patches (degrees
 //!   `p`, `q`, highest knot indices `2p+1`, `2q+1`, as its caller
@@ -139,6 +144,10 @@ pub struct NetConstants {
     pub v_angle_deg: Option<f64>,
     /// Largest distance of a diagonal sample from its base segment.
     pub uv_chord_height: Option<f64>,
+    /// A requested angle walk encountered an infinite or NaN segment length before
+    /// normalization. Numeric outputs retain upstream's IEEE arithmetic, which can
+    /// hide this failure (e.g. division by infinity produces a zero direction).
+    pub nonfinite_angle_length: bool,
 }
 
 /// Accumulated (squared) outputs before the final conversion.
@@ -149,6 +158,7 @@ struct Acc {
     uv_ch: f64,
     max_u_ang_rad: f64,
     max_v_ang_rad: f64,
+    nonfinite_angle_length: bool,
 }
 
 impl Acc {
@@ -161,6 +171,7 @@ impl Acc {
             u_chord_height: req.u_chord_height.then(|| sqrt(self.u_ch)),
             v_chord_height: req.v_chord_height.then(|| sqrt(self.v_ch)),
             uv_chord_height: req.uv_chord_height.then(|| sqrt(self.uv_ch)),
+            nonfinite_angle_length: self.nonfinite_angle_length,
         }
     }
 }
@@ -283,6 +294,7 @@ pub fn compute_net_constants(
 
                 let mut curr_vec = next - curr;
                 let dist = curr_vec.length();
+                acc.nonfinite_angle_length |= !dist.is_finite();
 
                 // Skip control points within the zone tolerance.
                 if dist < zone_tol3d {
@@ -360,6 +372,7 @@ pub fn compute_net_constants(
 
                 let mut curr_vec = next - curr;
                 let dist = curr_vec.length();
+                acc.nonfinite_angle_length |= !dist.is_finite();
 
                 // Skip control points within the zone tolerance (coincident points).
                 if dist < zone_tol3d {
@@ -559,6 +572,7 @@ pub fn compute_surf_constants(
             if req.v_angle_deg {
                 let mut curr_vec = next - curr;
                 let dist = curr_vec.length();
+                acc.nonfinite_angle_length |= !dist.is_finite();
                 if dist < EFF_ZERO {
                     break; // avoid a divide by zero
                 }
@@ -621,6 +635,7 @@ pub fn compute_surf_constants(
             if req.u_angle_deg {
                 let mut curr_vec = next - curr;
                 let dist = curr_vec.length();
+                acc.nonfinite_angle_length |= !dist.is_finite();
                 if dist < EFF_ZERO {
                     break;
                 }
@@ -686,7 +701,8 @@ pub fn compute_surf_constants(
 /// `q` and highest knot indices `r`, `s` (`sm_AllocateNurbSurface`, memory from
 /// `smos_Calloc`).
 ///
-/// Errors with `InvalidInput` when an index is `usize::MAX` (no storage size).
+/// Errors with `InvalidInput` when an index is `usize::MAX` (no storage size) or the
+/// storage does not fit in memory (upstream: `smos_Calloc` returns `NULL`).
 pub fn allocate_nurb_surface(
     n: usize,
     m: usize,
@@ -701,9 +717,39 @@ pub fn allocate_nurb_surface(
     };
     let rows = n.checked_add(1).ok_or_else(too_big)?;
     let cols = m.checked_add(1).ok_or_else(too_big)?;
-    let net = vec![vec![CPoint::default(); cols]; rows];
-    let u = vec![0.0; r.checked_add(1).ok_or_else(too_big)?];
-    let v = vec![0.0; s.checked_add(1).ok_or_else(too_big)?];
+    let u_len = r.checked_add(1).ok_or_else(too_big)?;
+    let v_len = s.checked_add(1).ok_or_else(too_big)?;
+    let no_memory = || SolidError::InvalidInput {
+        operation: OP_ALLOC,
+        reason: "storage too large for memory",
+    };
+    // upstream allocates the whole surface as one smos_Calloc block and returns NULL
+    // (NERN) when that fails: reserve (and release) a block of that size first, so
+    // an absurd size fails before any row is allocated
+    let total = rows
+        .checked_mul(cols)
+        .and_then(|k| k.checked_mul(size_of::<CPoint>()))
+        .and_then(|b| b.checked_add(u_len.checked_add(v_len)?.checked_mul(size_of::<f64>())?))
+        .ok_or_else(too_big)?;
+    Vec::<u8>::new()
+        .try_reserve_exact(total)
+        .map_err(|_| no_memory())?;
+    let filled = |len: usize, value: f64| -> Result<Vec<f64>> {
+        let mut a = Vec::new();
+        a.try_reserve_exact(len).map_err(|_| no_memory())?;
+        a.resize(len, value);
+        Ok(a)
+    };
+    let mut net: Vec<Vec<CPoint>> = Vec::new();
+    net.try_reserve_exact(rows).map_err(|_| no_memory())?;
+    for _ in 0..rows {
+        let mut row = Vec::new();
+        row.try_reserve_exact(cols).map_err(|_| no_memory())?;
+        row.resize(cols, CPoint::default());
+        net.push(row);
+    }
+    let u = filled(u_len, 0.0)?;
+    let v = filled(v_len, 0.0)?;
     Surface::new(net, p, q, u, v)
 }
 
@@ -1133,6 +1179,42 @@ mod tests {
         assert_eq!(c.u_chord_height, Some(0.0));
         assert_eq!(c.uv_chord_height, Some(0.0));
         assert_eq!(c.u_angle_deg, Some(0.0));
+        assert!(!c.nonfinite_angle_length);
+    }
+
+    #[test]
+    fn angle_length_diagnostic_uses_differences_not_positions() {
+        let dom = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
+        let angles = ConstantsRequest {
+            u_chord_height: false,
+            v_chord_height: false,
+            uv_chord_height: false,
+            ..ConstantsRequest::ALL
+        };
+        for x in [0.0, 1e155] {
+            let mut eval = |uv: Point2| Ok(Vec3::new(x, uv.x, uv.y));
+            let c = compute_surf_constants(&mut eval, &dom, angles).unwrap();
+            assert!(!c.nonfinite_angle_length, "translation {x}");
+            assert_eq!((c.u_angle_deg, c.v_angle_deg), (Some(0.0), Some(0.0)));
+        }
+
+        let mut eval = |uv: Point2| Ok(Vec3::new(uv.x * 1e300, uv.y, 0.0));
+        let c = compute_surf_constants(&mut eval, &dom, angles).unwrap();
+        assert!(c.nonfinite_angle_length);
+        // Preserve the original computed outputs, even though division by infinity
+        // turns the u-direction into zero and reports spurious 90-degree turns.
+        assert_eq!((c.u_angle_deg, c.v_angle_deg), (Some(270.0), Some(0.0)));
+
+        let no_angles = ConstantsRequest {
+            u_angle_deg: false,
+            v_angle_deg: false,
+            ..angles
+        };
+        let c = compute_surf_constants(&mut eval, &dom, no_angles).unwrap();
+        assert!(
+            !c.nonfinite_angle_length,
+            "unrequested measurements must not run"
+        );
     }
 
     #[test]
@@ -1187,5 +1269,16 @@ mod tests {
         assert_eq!(copy_nurb_surface(&s), s);
         assert!(!is_nsrf_degenerate(&s, EFF_ZERO).unwrap());
         assert!(is_nsrf_degenerate(&s, 100.0).unwrap());
+    }
+
+    #[test]
+    fn allocate_absurd_surface_is_an_error() {
+        // fuzz regressions (nurbs.nurbs_srf fuzz00748, fuzz01665): absurd sizes
+        // aborted the allocation
+        // (sizes beyond the 47-bit address space, so no test machine can grant them)
+        assert!(allocate_nurb_surface(1 << 46, 1, 1, 1, 3, 3).is_err());
+        assert!(allocate_nurb_surface(1 << 62, 1 << 62, 1, 1, 3, 3).is_err());
+        assert!(allocate_nurb_surface(1, 1, 1, 1, 1 << 47, 3).is_err());
+        assert!(allocate_nurb_surface(1, 1, 1, 1, 3, 3).is_ok());
     }
 }

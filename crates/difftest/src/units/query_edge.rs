@@ -481,8 +481,10 @@ fn scene(k: &Kernel, i: &Inputs) -> Result<Result<Scene, Output>, HarnessError> 
     let block = brep_block(&i.brep)?;
     let mut plain = block.clone();
     plain.extend(edit_block(None, 0));
-    let first =
-        ffi::eval(Op::Export, &path, &plain).map_err(|e| harness(format!("c++ export: {e}")))?;
+    let first = crate::export_memo::export("query_edge", &[&path], &plain, || {
+        ffi::eval(Op::Export, &path, &plain)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     let Some(c) = ffi::counts(&first) else {
         let st = first.get(1).copied().unwrap_or(0.0);
         return Ok(Err(Output::err(format!("brep_build_status_{st}"))));
@@ -490,15 +492,18 @@ fn scene(k: &Kernel, i: &Inputs) -> Result<Result<Scene, Output>, HarnessError> 
     let n_edges = c[7];
     let mut prefix = block;
     prefix.extend(edit_block(i.edits.as_ref(), n_edges));
-    let ex =
-        ffi::eval(Op::Export, &path, &prefix).map_err(|e| harness(format!("c++ export: {e}")))?;
+    let ex = crate::export_memo::export("query_edge", &[&path], &prefix, || {
+        ffi::eval(Op::Export, &path, &prefix)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     // the edge curve kinds follow the graph
     let split = ex
         .len()
         .checked_sub(n_edges)
         .ok_or_else(|| harness("export without curve kinds"))?;
     let (graph, kinds) = ex.split_at(split);
-    let mut brep = crate::units::topology_edgeuse_p1::import(graph)?;
+    // raw: the wire edge curves are set below, so the cached gaps are refilled after
+    let (mut brep, _) = crate::units::topology_edgeuse_p1::import_raw_with_types(graph)?;
     for (e, &kind) in kinds.iter().enumerate() {
         let kind = kind as i64;
         let id = EdgeId::from_index(e as u32);
@@ -518,6 +523,7 @@ fn scene(k: &Kernel, i: &Inputs) -> Result<Result<Scene, Output>, HarnessError> 
             }
         }
     }
+    crate::units::topology_vertexuse::refill_gaps(&mut brep);
     let loop_eus = brep
         .edgeuses()
         .ids()
@@ -562,14 +568,14 @@ enum Resolved {
 
 /// The edge curve's point at normalised edge parameter `nt` (`None` without curve or
 /// when it cannot be evaluated) and the parameter.
-fn edge_point(br: &Brep, e: EdgeId, nt: f64) -> Option<(f64, Vec3)> {
+fn edge_point(k: &Kernel, br: &Brep, e: EdgeId, nt: f64) -> Option<(f64, Vec3)> {
     let edge = br.edge(e).ok()?;
     let t = edge.interval.evaluate(nt);
-    let p = edge.curve.as_ref()?.evaluate_point(t).ok()?;
+    let p = edge.curve.as_ref()?.evaluate_point(k, t).ok()?;
     Some((t, p))
 }
 
-fn resolve(s: &Scene, op: &OpIn) -> Option<Resolved> {
+fn resolve(k: &Kernel, s: &Scene, op: &OpIn) -> Option<Resolved> {
     let n_e = s.brep.edges().len();
     let n_l = s.loop_eus.len();
     let eid = |i: usize| EdgeId::from_index(i as u32);
@@ -594,7 +600,7 @@ fn resolve(s: &Scene, op: &OpIn) -> Option<Resolved> {
         },
         OpIn::Closest { edge, nt, offset } => {
             let e = sel(edge, n_e)?;
-            let base = edge_point(&s.brep, eid(e), nt).map_or(Vec3::ZERO, |(_, p)| p);
+            let base = edge_point(k, &s.brep, eid(e), nt).map_or(Vec3::ZERO, |(_, p)| p);
             Resolved::Closest {
                 edge: e,
                 point: base + v3(offset),
@@ -619,7 +625,7 @@ fn resolve(s: &Scene, op: &OpIn) -> Option<Resolved> {
         } => {
             let id = *s.loop_eus.get(sel(eu, n_l)?)?;
             let e = s.brep.edgeuse(id).ok()?.edge?;
-            let (t, p) = edge_point(&s.brep, e, nt)?;
+            let (t, p) = edge_point(k, &s.brep, e, nt)?;
             Resolved::RadialCurve {
                 eu: id.index() as usize,
                 t,
@@ -701,7 +707,7 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
         Ok(s) => s,
         Err(o) => return Ok(o),
     };
-    let Some(r) = resolve(&s, &i.op) else {
+    let Some(r) = resolve(&k, &s, &i.op) else {
         return Ok(no_entity());
     };
     let (op, args) = op_args(&r);
@@ -818,7 +824,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         Ok(s) => s,
         Err(o) => return Ok(o),
     };
-    let Some(r) = resolve(&s, &i.op) else {
+    let Some(r) = resolve(&k, &s, &i.op) else {
         return Ok(no_entity());
     };
     let br = &mut s.brep;

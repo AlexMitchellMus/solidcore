@@ -13,13 +13,14 @@ commit date of `HEAD`.
 
 | Page | Data |
 |------|------|
-| Overview (`index.html`) | `plan/modules.toml` via `harness/plan/progress.py` (`summary`, `is_ready`), claims from the "In progress" section of `plan/PROGRESS.md`, `reports/ssi-corpus.json`, and `plan/modules.toml` along `main`'s first-parent git history for the timeline. The history is read once; overall, per-module and per-unit series come from the same pass |
-| Module pages (`areas/<module>.html`) | `plan/modules.toml` and its history: the same chart as the overview, over that module's units only |
-| Units (`units/index.html`) | `plan/modules.toml`, `harness/callgraph/units.json`, `reports/difftest/*.json` (`cases_*`, `deferred_by_unit`) |
+| Overview (`index.html`) | `plan/units/*.toml` via `harness/plan/progress.py` (`summary`, `is_ready`), claims from the "In progress" section of `plan/PROGRESS.md`, `reports/ssi-corpus.json`, and the plan along `main`'s first-parent git history for the timeline (`plan/units/`, or `plan/modules.toml` before the per-unit split). The history is read once; overall, per-module and per-unit series come from the same pass |
+| Module pages (`areas/<module>.html`) | `plan/units/` and its history: the same chart as the overview, over that module's units only |
+| Units (`units/index.html`) | `plan/units/*.toml`, `harness/callgraph/units.json`, `reports/difftest/*.json` (`cases_*`, `deferred_by_unit`; copied to `reports/<unit>.json` on the site). Reports are not committed: CI fetches main's latest set with `scripts/fetch-reports.sh` before building; run it locally too |
 | Unit pages (`units/<id>.html`) | the above, plus the `//! | Rust | Upstream |` table in the module's file header and the unit's status history from the timeline |
-| Dependency graph (`graph.html`, `assets/graph.json`) | `plan/modules.toml` (`depends_on`, module, status) and claims, laid out as one force-directed cluster per module; lists of ready and most-blocking units are rendered server-side, the graph by `site/assets/graph.js` |
+| Dependency graph (`graph.html`, `assets/graph.json`) | `plan/units/*.toml` (`depends_on`, module, status) and claims, laid out as one force-directed cluster per module; lists of ready and most-blocking units are rendered server-side, the graph by `site/assets/graph.js` |
 | Upstream issues (`issues.html`) | `plan/upstream-issues.md`, split at `#### <SERIES>-<n>.` headings |
 | SSI corpus (`ssi.html`) | `reports/ssi-corpus.json` |
+| Solids (`solids.html`; tile on the overview) | `reports/solids/solids.json`: the `primitives` example's `--json` output (schema in `crates/solidcore/examples/primitives/main.rs`; copied to `reports/solids.json` on the site). Not committed: CI's test job uploads it from `main` as the `solids-report` artifact and the Pages build fetches it with `scripts/fetch-solids.sh`. Without it the page says "no data yet". The "Corpus (real models)" section is a placeholder until `corpus.models` is filled |
 
 Text from the repository is HTML-escaped before a small markdown subset (inline code,
 bold, italic, http(s) links, nested `- ` lists) is applied, so raw HTML written in a PR

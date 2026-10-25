@@ -9,7 +9,7 @@
 //! | [`TYPE`], [`TYPE_STRING`], [`CLASS_STRING`], [`is_kind_of`] | `SmVertexuse::GetType`, `GetTypeString`, `GetClassString`, `IsKindOf` |
 //! | [`crate::topology::Vertexuse`]              | `SmVertexuse` (members; `Default` is `SmVertexuse()`, `Drop` `~SmVertexuse`) |
 //! | [`vertexuse_type`]                          | `SmVertexuse::GetVertexuseType`                  |
-//! | [`vertex`]                                  | `SmVertexuse::GetVertex`                         |
+//! | [`vertex()`]                                | `SmVertexuse::GetVertex`                         |
 //! | [`is_loop_vertexuse`], [`is_shell_vertexuse`], [`is_edge_vertexuse`] | `SmVertexuse::IsLoopVertexuse`, `IsShellVertexuse`, `IsEdgeVertexuse` |
 //! | [`edgeuse`], [`faceuse`], [`loopuse`], [`shell`] | `SmVertexuse::GetEdgeuse`, `GetFaceuse`, `GetLoopuse`, `GetShell` |
 //! | [`has_vertex_edge_gap`], [`has_vertex_face_gap`] | `SmVertexuse::HasVertexEdgeGap`, `HasVertexFaceGap` |
@@ -65,9 +65,15 @@
 //!   `GlobalPointSolve` / `IsOnSeam` (`surface.surface_p4`; a plane's overrides are
 //!   ported) and `GetSingularities` (`surface.surface_p3`) are wired. The gap evaluation of
 //!   `SmVertexEdgeGap::Set` / `SmVertexFaceGap::Set` is [`crate::heal::gap`].
-//!   `GlobalPointSolve` stands for the surface-cache sequence around it
-//!   (`smsurf_GetSurfaceCache`, the temporary `m_bHaveTSurfaceCache`,
-//!   `m_bProcessBoundaryCurves` and `m_bPointTestEnabled` changes).
+//!   `GlobalPointSolve` runs the surface-cache sequence around it: the face surface's
+//!   kept cache (`smsurf_GetSurfaceCache`, `query::face::p2::face_surface_cache`) is
+//!   checked out for the solve, which stands for the temporary `m_bHaveTSurfaceCache`
+//!   off (the face classifications inside find no cache); its fast drop tests the
+//!   solutions against the face when the cache is trimmed with point testing on (not
+//!   switched off by `bOKToMakeUVTrimCurve`). The Rust solver itself builds no surface
+//!   cache, so `m_bProcessBoundaryCurves` has nothing to act on. A cache already in use
+//!   by an enclosing caller is not fetched again and no point is tested (upstream
+//!   reaches it mostly while its tree is built, with point testing off).
 //! - `GetTurningAngDeg`, `ComputeTPoint`, `GetBrep`, the fresh-gap checks,
 //!   `GetVertexFaceTrimCurveGap`, `RefreshGaps`, `IsOnSeam`,
 //!   `IsSectorGapFreeAndOriented`, `AssertValid`, `Draw*` and the `Dump`s are not
@@ -768,34 +774,84 @@ fn local_point_solve(
     ))
 }
 
-/// `pSurface->GlobalPointSolve(domain, op, point, tol, NULL, request, solutions)` on
-/// the surface's cache made to look standalone (`m_bHaveTSurfaceCache = FALSE`) with
-/// boundary curve processing on and, when `point_test` is false, point testing off
-/// (all restored afterwards); `NER` of a missing surface cache.
+/// `pSurface->GlobalPointSolve(domain, op, point, tol, NULL, request, solutions)` of
+/// face `f`'s surface, on the surface's cache (`smsurf_GetSurfaceCache`, `NER`) checked
+/// out and made to look standalone (`m_bHaveTSurfaceCache = FALSE`) with boundary
+/// curve processing on and, when `point_test` is false, point testing off (all restored
+/// afterwards). The cache stays out of the surface's slot during the solve, so the
+/// face classifications in it walk the loops as upstream's do with
+/// `m_bHaveTSurfaceCache` off. The fast drop's trim test classifies on the B-rep when
+/// the cache is a trimmed one with point testing on and its face not modified. A cache
+/// already in use by an enclosing caller (upstream the same object, e.g. while its
+/// tree is built with point testing off) is not fetched again, and the solve tests no
+/// point.
+#[allow(clippy::too_many_arguments)]
 fn global_point_solve(
     k: &Kernel,
-    surface: &Surface,
+    b: &mut Brep,
+    f: FaceId,
     domain: &Extent2d,
     op: SolverOperation,
     point: Point3,
     tol: f64,
     request: SolutionRequested,
-    _point_test: bool,
+    point_test: bool,
 ) -> Result<Vec<PointDrop>> {
-    // The Rust surface solver builds no surface cache, so the cache flags upstream
-    // switches around the call (point testing, boundary curves, `m_bHaveTSurfaceCache`)
-    // have nothing to act on; a face-owned surface is Unported (query.face_p2) inside.
-    let solutions = surface.global_point_solve::<crate::surface::surface::p4::NoObject>(
-        k,
-        Some(crate::surface::surface::p4::NoObject),
-        domain,
-        op,
-        point,
-        tol,
-        None,
-        request,
-    )?;
-    solutions
+    use crate::intersect::point_class::{PointClassType, PointClassification};
+    use crate::query::face::p2::{face_surface_cache, point_classify, PointClassifyOptions};
+
+    let surface = face_surface(b, f)?.clone_for_evaluation()?;
+    let lease = if surface.trim_cache_in_use() {
+        None
+    } else {
+        Some(face_surface_cache(k, b, f)?)
+    };
+    let test_on = point_test
+        && lease.as_ref().is_some_and(|l| {
+            l.trimmed && l.cache.base().point_test_enabled && !l.cache.base().face_was_modified
+        });
+    let mut classify = |k: &Kernel, uv: Point2, src_tol: f64| -> Result<bool> {
+        // pFace->PointClassify(uv, tol, TRUE, FALSE, sPtClass): good on SM_SUCCESS and
+        // a face, edge or vertex class
+        let mut pc = PointClassification::new(src_tol);
+        let status = point_classify(
+            k,
+            b,
+            f,
+            uv,
+            &mut pc,
+            PointClassifyOptions {
+                src_zone_tol_3d: src_tol,
+                do_boundary_intersections: true,
+                use_uv_classification: false,
+                ..PointClassifyOptions::default()
+            },
+        );
+        match status {
+            Err(e) if e.is_unported() => Err(e),
+            Err(_) => Ok(false),
+            Ok(()) => Ok(matches!(
+                pc.point_class(),
+                PointClassType::Face | PointClassType::Edge | PointClassType::Vertex
+            )),
+        }
+    };
+    let solutions = surface
+        .global_point_solve_face_tested::<crate::surface::surface::p4::NoObject>(
+            k,
+            Some(crate::surface::surface::p4::NoObject),
+            domain,
+            op,
+            point,
+            tol,
+            None,
+            request,
+            if test_on { Some(&mut classify) } else { None },
+        );
+    if let Some(lease) = lease {
+        lease.release();
+    }
+    solutions?
         .as_slice()
         .iter()
         .map(|s| {
@@ -817,9 +873,14 @@ fn is_singularity(
 ) -> Result<(bool, SurfParamType)> {
     match surface.kind() {
         SurfaceKind::Plane(p) => Ok(p.is_singularity()),
-        SurfaceKind::BSpline(_)
+
+        SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
+        | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::OffsetSurface(_) => {
@@ -834,9 +895,14 @@ fn is_singularity(
 fn is_on_seam(k: &Kernel, surface: &Surface, uv: Point2) -> Result<(bool, SurfParamType)> {
     match surface.kind() {
         SurfaceKind::Plane(p) => Ok(p.is_on_seam()),
-        SurfaceKind::BSpline(_)
+
+        SurfaceKind::Cone(_)
+        | SurfaceKind::Sphere(_)
+        | SurfaceKind::Torus(_)
+        | SurfaceKind::BSpline(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::SurfOfRevolution(_)
+        | SurfaceKind::SurfOfExtrusion(_)
         | SurfaceKind::Step(_)
         | SurfaceKind::SrfInVolume(_)
         | SurfaceKind::OffsetSurface(_) => {
@@ -925,10 +991,10 @@ pub fn compute_uv_point(
         let domain_length_v = surf_uv_domain.y_length();
         if dist_u > domain_length_u / 4.0 || dist_v > domain_length_v / 4.0 {
             let closed_u = surface
-                .is_closed(&surf_uv_domain, SurfParamType::U, None, false)?
+                .is_closed(k, &surf_uv_domain, SurfParamType::U, None, false)?
                 .0;
             let closed_v = surface
-                .is_closed(&surf_uv_domain, SurfParamType::V, None, false)?
+                .is_closed(k, &surf_uv_domain, SurfParamType::V, None, false)?
                 .0;
             let tol_1000 = EFF_ZERO_PARAM * 1000.0;
 
@@ -1035,7 +1101,8 @@ pub fn compute_uv_point(
             let face_tol = face_tolerance(b, f)?;
             let sols = global_point_solve(
                 k,
-                face_surface(b, f)?,
+                b,
+                f,
                 &uv_domain,
                 SolverOperation::Minimize,
                 vertex_pnt,
@@ -1068,10 +1135,11 @@ pub fn compute_uv_point(
     } else if is_loop_vertexuse(b, vu)? {
         // project point down to face's surface
         let face_tol = face_tolerance(b, f)?;
-        let surface = face_surface(b, f)?;
+
         let mut sols = global_point_solve(
             k,
-            surface,
+            b,
+            f,
             &uv_domain,
             SolverOperation::Intersect,
             vertex_pnt,
@@ -1083,7 +1151,8 @@ pub fn compute_uv_point(
         if sols.is_empty() {
             sols = global_point_solve(
                 k,
-                surface,
+                b,
+                f,
                 &uv_domain,
                 SolverOperation::Minimize,
                 vertex_pnt,
@@ -1320,7 +1389,7 @@ pub fn compute_uv_sector(
                     .curve
                     .as_ref()
                     .ok_or_else(|| null("ComputeUVSector: edge without curve"))?;
-                let pv = c.evaluate(t, 1, true, true)?;
+                let pv = c.evaluate(k, t, 1, true, true)?;
                 pv.get(1)
                     .copied()
                     .ok_or_else(|| null("ComputeUVSector: short evaluation"))
@@ -1343,6 +1412,7 @@ pub fn compute_uv_sector(
             if on_pole {
                 // Find DegenParam for BegEdge and EndEdge (statuses ignored)
                 if let Some(d) = ignored(surface.find_degen_param_for_direction(
+                    k,
                     io.beg_edge_uv_point,
                     beg_tan,
                     true,
@@ -1352,6 +1422,7 @@ pub fn compute_uv_sector(
                     io.beg_edge_uv_point = d.uv;
                 }
                 if let Some(d) = ignored(surface.find_degen_param_for_direction(
+                    k,
                     io.end_edge_uv_point,
                     end_tan,
                     true,
@@ -1369,7 +1440,7 @@ pub fn compute_uv_sector(
                 // on a FlatCorner - look for special case of Edges running along
                 // SurfaceBoundaries
                 let (_, mut du, mut dv) =
-                    surface.evaluate_1st_derivatives(io.beg_edge_uv_point, true, true)?;
+                    surface.evaluate_1st_derivatives(k, io.beg_edge_uv_point, true, true)?;
 
                 // as needed negate sDU and sDV to point into the surface
                 let mid_uv = uv_domain.mid();
@@ -1411,9 +1482,14 @@ pub fn compute_uv_sector(
                     (io.beg_edge_uv_point, beg_tan, &mut io.beg_edge_uv_tan),
                     (io.end_edge_uv_point, end_tan, &mut io.end_edge_uv_tan),
                 ] {
-                    if let Some(d) =
-                        ignored(drop_vectors_at(surface, uv, Side::Left, Side::Left, &[tan]))?
-                    {
+                    if let Some(d) = ignored(drop_vectors_at(
+                        k,
+                        surface,
+                        uv,
+                        Side::Left,
+                        Side::Left,
+                        &[tan],
+                    ))? {
                         if let Some(&t) = d.first() {
                             *out = t;
                         }
@@ -1457,9 +1533,9 @@ pub fn compute_uv_sector(
             // When Vertex is on a SurfaceSeam - check for Missing SeamEdge
             if on_seam {
                 let (_, beg_du, beg_dv) =
-                    surface.evaluate_1st_derivatives(io.beg_edge_uv_point, true, true)?;
+                    surface.evaluate_1st_derivatives(k, io.beg_edge_uv_point, true, true)?;
                 let (_, end_du, end_dv) =
-                    surface.evaluate_1st_derivatives(io.end_edge_uv_point, true, true)?;
+                    surface.evaluate_1st_derivatives(k, io.end_edge_uv_point, true, true)?;
                 let rad_limit = 0.5 / 180.0 * PI;
                 let in_range = |a: f64| a > rad_limit && a < PI - rad_limit;
                 let angle = |a: Vec3, d: Vec3| -> Result<f64> {

@@ -1,4 +1,4 @@
-//! Precise edge, face and B-rep properties and their SM_API query contracts.
+//! Precise edge, face and B-rep properties and their `SM_API` query contracts.
 //!
 //! Upstream: `source/SMLib/src/SmEdge.cpp`, `source/SMLib/src/SmFace.cpp`,
 //! `source/SMLib/src/SmBrep.cpp`, `source/SMLib/inc/SmTopoTypes.h`,
@@ -28,11 +28,12 @@ use crate::geom::extent3d::Extent3d;
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, PI};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
 use crate::surface::surface::Surface;
 use crate::topology::face::p2::{
     OdeArea, PrecisePropertyLayout, PPF_ALL, PPF_AREA, PPF_AREA_FIRST_MOMENTS,
 };
-use crate::topology::{edge, vertex, Brep, EdgeId, FaceId, RegionId, VertexId};
+use crate::topology::{edge, vertex, Brep, EdgeId, FaceId, FaceuseId, RegionId, VertexId};
 use crate::{EntityRef, Result, SolidError};
 
 const OP: &str = "mass::integrator::properties";
@@ -121,6 +122,7 @@ impl PropertyAttributes<'_> {
 
 /// `SmEdge::ComputePreciseProperties` on a live edge.
 pub fn edge_properties(
+    k: &Kernel,
     b: &Brep,
     e: EdgeId,
     accuracy: f64,
@@ -128,10 +130,11 @@ pub fn edge_properties(
     radius: f64,
 ) -> Result<EdgeProperties> {
     let curve = edge::curve(b, e)?.ok_or_else(|| SolidError::null_pointer(OP))?;
-    curve_properties(curve, &edge::interval(b, e)?, accuracy, origin, radius)
+    curve_properties(k, curve, &edge::interval(b, e)?, accuracy, origin, radius)
 }
 /// The precise edge integration on an already-bound curve and interval.
 pub fn curve_properties(
+    k: &Kernel,
     curve: &Curve,
     interval: &Extent1d,
     accuracy: f64,
@@ -139,7 +142,7 @@ pub fn curve_properties(
     radius: f64,
 ) -> Result<EdgeProperties> {
     let eval = edge::OdeEdgeLength::new(curve, origin, radius);
-    let approx = curve.approximate_length(interval, 10, false)?.0;
+    let approx = curve.approximate_length(k, interval, 10, false)?.0;
     let mut y = [0.0; 27];
     let mut scale = [BIG_DOUBLE; 27];
     if let Some(s) = scale.first_mut() {
@@ -157,7 +160,7 @@ pub fn curve_properties(
             scale: Some(&scale),
         },
         |t, _, dy| {
-            eval.evaluate(t, &mut scratch)?;
+            eval.evaluate(k, t, &mut scratch)?;
             for (d, v) in dy.iter_mut().zip(scratch.iter().skip(1)) {
                 *d = *v;
             }
@@ -182,11 +185,9 @@ pub fn curve_properties(
 }
 
 /// `SmFace::CreateOrientedTrimBoundary(ctx, TRUE, TRUE, ..)` (unit `topology.face_p1`) on
-/// a copy of the B-rep (the caller holds it shared; the UV trim curves the call makes are
-/// not kept; the copy is a whole-B-rep clone per face). The copied curves' edge-use
-/// owners are not read here.
-fn boundary(k: &Kernel, b: &Brep, f: FaceId) -> Result<Vec<Curve>> {
-    let mut copy = b.clone();
+/// the caller's B-rep: the UV trim curves it makes stay there, as upstream. The returned
+/// curves' edge-use owners are not read here.
+fn boundary(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<Vec<Curve>> {
     let key_of = |e: EntityRef| crate::geom::object::ObjectRef {
         type_code: 0,
         key: ObjectKey(match e {
@@ -194,15 +195,14 @@ fn boundary(k: &Kernel, b: &Brep, f: FaceId) -> Result<Vec<Curve>> {
             _ => 0,
         }),
     };
-    crate::topology::face::p1::create_oriented_trim_boundary(
-        k, &mut copy, f, true, true, None, &key_of,
-    )
-    .map(|t| t.curves)
+    crate::topology::face::p1::create_oriented_trim_boundary(k, b, f, true, true, None, &key_of)
+        .map(|t| t.curves)
 }
-/// `SmFace::ComputePreciseProperties`; the default property mask is `PPF_ALL`.
+/// `SmFace::ComputePreciseProperties`; the default property mask is `PPF_ALL`. Missing UV
+/// trim curves of the face are made on `b`.
 pub fn face_properties(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     f: FaceId,
     orientation: OrientType,
     accuracy: f64,
@@ -307,7 +307,7 @@ pub fn boundary_properties(
                         for (s, d) in scratch.iter_mut().skip(1).zip(dy.iter()) {
                             *s = *d;
                         }
-                        eval.evaluate(t, &mut scratch)?;
+                        eval.evaluate(k, t, &mut scratch)?;
                         for (d, v) in dy.iter_mut().zip(scratch.iter().skip(1)) {
                             *d = *v;
                         }
@@ -348,13 +348,6 @@ pub fn boundary_properties(
     Ok(result)
 }
 
-fn brep_box(_b: &Brep) -> Result<Extent3d> {
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmBrep::CalculateBoundingBox",
-        "query.brep",
-    ))
-}
 fn face_box(k: &Kernel, b: &Brep, f: FaceId) -> Result<Extent3d> {
     crate::query::face::p1::calculate_bounding_box(k, b, f, false)
 }
@@ -366,6 +359,16 @@ fn edges(b: &Brep) -> Result<Vec<EdgeId>> {
 }
 fn vertices(b: &Brep) -> Result<Vec<VertexId>> {
     crate::topology::brep::p1::vertices(b, None)
+}
+/// The region on the side of face use `fu`.
+fn faceuse_region(b: &Brep, fu: FaceuseId) -> Result<RegionId> {
+    let shell = b
+        .faceuse(fu)?
+        .shell
+        .ok_or_else(|| SolidError::null_pointer(OP))?;
+    b.shell(shell)?
+        .region
+        .ok_or_else(|| SolidError::null_pointer(OP))
 }
 /// `SmRegion::IsVoid` as a C truth value (`UNSURE`, 2, counts as void).
 fn region_void(b: &Brep, r: RegionId) -> Result<bool> {
@@ -388,15 +391,16 @@ fn add(total: &mut PreciseProperties, delta: &PreciseProperties, density: f64) {
     }
 }
 /// `SmBrep::ComputePreciseProperties`, including density attributes and wire/point solids.
+/// Missing UV trim curves of the integrated faces are made on `b`.
 pub fn brep_properties(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     accuracy: f64,
     origin: Point3,
     behavior: MassPropertyBehavior,
     attributes: &PropertyAttributes<'_>,
 ) -> Result<PreciseProperties> {
-    let bbox = brep_box(b)?;
+    let bbox = qbrep::calculate_bounding_box(k, &mut *b, BoundingBoxOptions::default())?;
     let size = bbox.size();
     let estimated = size.z.max(size.x.max(size.y));
     let estimated = estimated * estimated / 100.0;
@@ -417,16 +421,7 @@ pub fn brep_properties(
             .faceuse(up)?
             .mate
             .ok_or_else(|| SolidError::null_pointer(OP))?;
-        let region = |fu| -> Result<RegionId> {
-            let shell = b
-                .faceuse(fu)?
-                .shell
-                .ok_or_else(|| SolidError::null_pointer(OP))?;
-            b.shell(shell)?
-                .region
-                .ok_or_else(|| SolidError::null_pointer(OP))
-        };
-        let mut separating = region(up)? != region(mate)?;
+        let mut separating = faceuse_region(b, up)? != faceuse_region(b, mate)?;
         for (j, fu) in [up, mate].into_iter().enumerate() {
             let mut do_area = false;
             let mut do_volume = false;
@@ -442,7 +437,9 @@ pub fn brep_properties(
                         .faceuse(fu)?
                         .mate
                         .ok_or_else(|| SolidError::null_pointer(OP))?;
-                    if !region_void(b, region(fu)?)? && region_void(b, region(other)?)? {
+                    if !region_void(b, faceuse_region(b, fu)?)?
+                        && region_void(b, faceuse_region(b, other)?)?
+                    {
                         do_area = true;
                     }
                 }
@@ -454,18 +451,19 @@ pub fn brep_properties(
                 2 => do_area = true,
                 _ => {}
             }
-            if behavior.face_volume == 0 && !region_void(b, region(fu)?)? {
+            if behavior.face_volume == 0 && !region_void(b, faceuse_region(b, fu)?)? {
                 do_volume = true;
             }
             if !(do_area || do_volume) {
                 continue;
             }
             if separating || mass.y > EFF_ZERO {
+                let orientation = b.faceuse(fu)?.orientation;
                 let delta = face_properties(
                     k,
                     b,
                     f,
-                    b.faceuse(fu)?.orientation,
+                    orientation,
                     accuracy,
                     origin,
                     estimated,
@@ -487,7 +485,7 @@ pub fn brep_properties(
             EntityRef::Edge(e),
             Vec3::new(behavior.density, behavior.edge_radius, 0.0),
         )?;
-        let delta = edge_properties(b, e, accuracy, origin, mass.y)?;
+        let delta = edge_properties(k, b, e, accuracy, origin, mass.y)?;
         if mass.x < EFF_ZERO {
             mass.x = 1.0;
         }
@@ -542,7 +540,7 @@ fn area_estimate(bbox: &Extent3d) -> f64 {
     d * d / 100.0
 }
 /// `SmApiFaceComputeArea`: clamps accuracy and integrates only area.
-pub fn face_area(k: &Kernel, b: &Brep, f: FaceId, accuracy: f64) -> Result<f64> {
+pub fn face_area(k: &Kernel, b: &mut Brep, f: FaceId, accuracy: f64) -> Result<f64> {
     let bbox = face_box(k, b, f)?;
     Ok(face_properties(
         k,
@@ -559,7 +557,7 @@ pub fn face_area(k: &Kernel, b: &Brep, f: FaceId, accuracy: f64) -> Result<f64> 
     .abs())
 }
 /// `SmApiFaceComputeCentroid`: one area/first-moment integration.
-pub fn face_centroid(k: &Kernel, b: &Brep, f: FaceId, accuracy: f64) -> Result<(f64, Point3)> {
+pub fn face_centroid(k: &Kernel, b: &mut Brep, f: FaceId, accuracy: f64) -> Result<(f64, Point3)> {
     let bbox = face_box(k, b, f)?;
     let origin = bbox.mid();
     let p = face_properties(
@@ -582,7 +580,7 @@ pub fn face_centroid(k: &Kernel, b: &Brep, f: FaceId, accuracy: f64) -> Result<(
     ))
 }
 /// `SmApiBrepComputeArea`, including open shells and sheets.
-pub fn brep_area(k: &Kernel, b: &Brep, accuracy: f64) -> Result<f64> {
+pub fn brep_area(k: &Kernel, b: &mut Brep, accuracy: f64) -> Result<f64> {
     valid_api_number(accuracy)?;
     let mut area = 0.0;
     for f in faces(b)? {
@@ -593,12 +591,12 @@ pub fn brep_area(k: &Kernel, b: &Brep, accuracy: f64) -> Result<f64> {
 /// `SmApiBrepComputeVolume`, computed about the bounding-box midpoint.
 pub fn brep_volume(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     accuracy: f64,
     attributes: &PropertyAttributes<'_>,
 ) -> Result<f64> {
     valid_api_number(accuracy)?;
-    let bbox = brep_box(b)?;
+    let bbox = qbrep::calculate_bounding_box(k, &mut *b, BoundingBoxOptions::default())?;
     Ok(brep_properties(
         k,
         b,
@@ -631,7 +629,7 @@ fn valid_api_number(value: f64) -> Result<()> {
 /// `SmApiBrepComputeMassProperties`, with upstream validation and accuracy clamping.
 pub fn brep_mass_properties(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     accuracy: f64,
     density: f64,
     origin: Point3,
@@ -728,5 +726,25 @@ mod tests {
                 value
             );
         }
+    }
+    #[test]
+    fn face_area_makes_missing_uv_trims_on_the_callers_brep() {
+        // Upstream's `SmFace::ComputePreciseProperties` builds its oriented trim boundary on
+        // the face itself, so the UV trims it makes stay on the B-rep.
+        let mut k = Kernel::default();
+        let mut b =
+            crate::primitive::api_primitives::create_box(&mut k, Point3::ZERO, 1.0, 1.0, 1.0)
+                .unwrap();
+        let uses: Vec<_> = b.edgeuses().ids().collect();
+        for u in uses {
+            b.edgeuse_mut(u).unwrap().uv_trim_curve = None;
+        }
+        let f = *faces(&b).unwrap().first().unwrap();
+        let area = face_area(&k, &mut b, f, 1e-6).unwrap();
+        assert!((area - 1.0).abs() <= 1e-9, "{area}");
+        assert!(
+            b.edgeuses().iter().any(|(_, u)| u.uv_trim_curve.is_some()),
+            "the trims are made on the box itself"
+        );
     }
 }

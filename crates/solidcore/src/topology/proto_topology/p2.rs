@@ -7,7 +7,7 @@
 //!
 //! | Rust | Upstream |
 //! |------|----------|
-//! | [`ProtoBrep`] | the B-rep members these functions read through `SmEdge*` / `SmFace*` / `SmVertex*` (`GetInterval`, `GetCurve`, `GetTolerance`, `GetUVDomain`, `SetUVDomain`, `GetSurface`, `GetEdgeuseOfFace`, `IsConnectedToFace`) and `SmCurve::Copy`'s allocation |
+//! | [`ProtoBrep`] | the B-rep members these functions read through `SmEdge*` / `SmFace*` / `SmVertex*` (`GetInterval`, `GetCurve`, `GetTolerance`, `GetUVDomain`, `SetUVDomain`, `GetSurface`, `GetEdgeuseOfFace`, `IsConnectedToFace`), `SmCurve::Copy`'s allocation, and the B-rep edits of `SmPointClassification::MergeIntoObject` ([`ProtoBrep::merge_point_class_into_brep`]) |
 //! | [`ProtoTopologyManager::imprint_vertex_definition`] | `SmVertexDefinition::Imprint` |
 //! | [`ProtoTopologyManager::imprint_edge_definition`] | `SmEdgeDefinition::Imprint` |
 //! | [`ProtoTopologyManager::resolve_proto_vertex`] | `SmProtoVertex::Resolve` |
@@ -26,6 +26,7 @@
 //! | [`ProtoTopologyManager::update_edges`] | `SmProtoTopologyManager::UpdateEdges` |
 //! | [`ProtoTopologyManager::update_faces`] | `SmProtoTopologyManager::UpdateFaces` |
 //! | [`ProtoTopologyManager::can_combine_vertex_definitions`] | `SmProtoTopologyManager::CanCombineVertexDefinitions` |
+//! | [`ProtoBrep::brep_make_edge_in_face`], [`make_edge_in_face_in_context`] | `SmBrep::MakeEdgeInFace` of `SmEdgeDefinition::Imprint` on `GetWhichBrep(i)` |
 //!
 //! Deviations:
 //! - **B-rep access.** The topology objects are the caller's handles `O`, as in
@@ -35,6 +36,14 @@
 //!   (upstream reaches them through the pointers). `SmTol::GetZoneTol3d` of a vertex,
 //!   edge or face is [`ProtoBrep::topology_tolerance`]; of any other object
 //!   [`object_zone_tol_3d`].
+//! - **Imprinting into a face.** `SmBrep::MakeEdgeInFace` of `SmEdgeDefinition::Imprint`
+//!   is [`ProtoBrep::brep_make_edge_in_face`]: the owner runs part 5's arena entry point
+//!   on the B-rep behind its handles (most through [`make_edge_in_face_in_context`]),
+//!   which checks that B-rep's own `m_bEditingEnabled`. The curves it consumes are
+//!   passed by value (the definition's 3D curve is cloned out of the owner's store,
+//!   where its handle stays valid for the later `Copy` for B-rep 2, as upstream's
+//!   pointer does); `SM_CAST_PTR(SmBSplineCurve, m_pXSectUVCurve<i>)` passes the UV
+//!   curve only when it is of a B-spline kind.
 //! - **Deleted curves.** Functions that delete curves (through `Destruct` or the
 //!   destructors) return the handles deleted, as in [`p1`](super::p1).
 //! - **Undefined behaviour upstream** is [`SolidError::InvalidInput`]: dereferencing a
@@ -53,33 +62,56 @@
 //! - **Curve intervals** are passed with the classification they belong to (upstream
 //!   reaches it through the interval's back pointer; `SmCurveInterval::GetCurve` is the
 //!   classification's curve).
+//! - **Not upstream: no split on a vertex** (tangency-labs/solidcore#480).
+//!   `SmProtoEdge::Resolve` splits a proto edge that runs from a proto vertex back to
+//!   itself along an open curve longer than `2 * m_dTol` by adding a vertex definition
+//!   that copies the first one's classifications. `CanCombineVertexDefinitions` has
+//!   just merged definitions up to `5 * (tol1 + tol2)` apart into that proto vertex,
+//!   keeping the one on a vertex. When the copied definition is on a vertex in either
+//!   B-rep, both ends land on that one vertex there (moved twice, to their midpoint)
+//!   while the other B-rep gets a short edge between two vertices; the merge then
+//!   fails in `MakeFaceuse` (a union whose coplanar faces' rims cross 4e-5 to 2e-4 mm
+//!   from a vertex, `SM_ERR`). With
+//!   [`ProtoTopologyManager::set_split_self_loops_on_vertices`]`(false)`, which the
+//!   Boolean's topology intersector sets, [`ProtoTopologyManager::resolve_proto_edge`]
+//!   treats such a proto edge as degenerate instead, as upstream does for one shorter
+//!   than `2 * m_dTol`. The default keeps upstream's split, so this unit's difftest
+//!   still compares the faithful port (7 generated cases reach the branch).
+//!   Confirmed on the C++ build (plan/upstream-issues.md WR-214).
 //! - `UpdateEdges` trims a definition at the split point; its alternative of splitting
 //!   the proto edge (`SmProtoEdge::Split`) sits behind `static constexpr SmBoolean
 //!   cbiDoSplit = FALSE` and is not ported.
 //! - The `SM_DEBUG_CODE` blocks (dumps, drawing) are not ported; release `SM_ASSERT`s
 //!   are expression statements whose only effect is the dereference they make.
-//! - **Callees not ported yet** return [`SolidError::Unported`]: the owning B-rep editing metadata for `SmBrep::MakeEdgeInFace`
-//!   (`topology.brep_p1`; part 5's typed arena entry point is available), `SmFace::CalculateUVDomainFromUVTrimCurves`
-//!   (`topology.face_p1`), `sm_ClassifyParamOnFaces` (`query.face_p2`),
-//!   `SmSurface::DropPoint` (`surface.surface_p5`) and `SmEdgeuse::EvaluateBinormal`
-//!   (`topology.edgeuse_p3`).
+//! - **Edge use binormals.** `SmEdgeuse::EvaluateBinormal` of `UpdateFaces` is
+//!   [`ProtoBrep::edgeuse_evaluate_binormal`] on the owner's B-rep. Its status is ignored
+//!   as upstream: a failed evaluation leaves the binormal at its previous value
+//!   (`SM_UNDEF_DOUBLE` components before the first success), and a missing splitting
+//!   edge, which upstream dereferences, is [`SolidError::InvalidInput`].
 //! - **Recursion.** None.
 
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::p2::Curve;
+use crate::curve::curve::p2::BSPLINE_CURVE_TYPE;
+use crate::error::EntityRef;
 use crate::error::{Result, SolidError, SM_ERR_NULL_POINTER};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::geom::tol::{xsect_tol3d, ScaledZero};
+use crate::intersect::curve_class::p6::MergeContext;
 use crate::intersect::curve_class::{CurveClassification, CurveInterval};
 use crate::intersect::point_class::{
-    object_zone_tol_3d, ClassObject, ClassObjectKind, PointClassType, PointClassification,
+    object_zone_tol_3d, ClassObject, ClassObjectKind, MergeOutputs, PointClassType,
+    PointClassification,
 };
 use crate::kernel::Kernel;
-use crate::math::{max2, max3, max4, Point2, Point3, Vec3};
+use crate::math::{max2, max3, max4, Point2, Point3, Vec3, EFF_ZERO};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
+use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::topology::brep::p5::{make_edge_in_face_in, EdgeInFace};
+use crate::topology::VertexId;
 
 use super::p1::proto::{are_connected, can_imprint, find_position_from_pcs, topo_dimension};
 use super::p1::{
@@ -117,6 +149,26 @@ pub trait ProtoBrep<O>: ProtoGeometry<O> + ProtoTopology<O> {
     fn topology_tolerance(&self, topo: O) -> Option<f64>;
     /// `SmFace::GetUVDomain`.
     fn face_uv_domain(&self, face: O) -> Option<Extent2d>;
+    /// Trim-derived UV domain with native's ignored ordinary status. Retains the
+    /// initialized or partial domain on failure.
+    ///
+    /// # Errors
+    ///
+    /// Invalid or stale owning-face handles and genuine unported callees.
+    fn face_trim_uv_domain(&mut self, k: &Kernel, face: O) -> Result<Extent2d>;
+    /// The actual (possibly partial) UV point classification with the native
+    /// `PointClassify(uv, tolerance, TRUE, TRUE, pc)` flags and ignored ordinary status.
+    ///
+    /// # Errors
+    ///
+    /// Invalid or stale owning-face handles and genuine unported callees.
+    fn face_point_classify_uv(
+        &mut self,
+        k: &Kernel,
+        face: O,
+        uv: Point2,
+        source_tolerance: f64,
+    ) -> Result<PointClassType>;
     /// `SmFace::SetUVDomain`.
     fn set_face_uv_domain(&mut self, face: O, domain: Extent2d) -> Option<()>;
     /// `SmFace::GetSurface`: the handle of the face's surface (`Some(None)` for none).
@@ -142,6 +194,15 @@ pub trait ProtoBrep<O>: ProtoGeometry<O> + ProtoTopology<O> {
     ///
     /// Those of the implementation's topology walk.
     fn vertex_common_edges(&self, v1: O, v2: O) -> Result<Vec<O>>;
+    /// `SmBrep::SqueezeEdge(pEdge, pSurvivingVertex)` on the B-rep `brep` (called by
+    /// `topology.proto_topology_p3` on `GetWhichBrep`): the owner of a real B-rep
+    /// implements it with `topology::brep::p3::squeeze_edge`.
+    ///
+    /// # Errors
+    ///
+    /// Those of the edit; an owner with no B-rep behind its handles returns
+    /// [`SolidError::Unported`] under a `harness:` label.
+    fn brep_squeeze_edge(&mut self, k: &mut Kernel, brep: O, edge: O, survivor: O) -> Result<()>;
     /// `SmFace::CurveOnClassify(bDoPointClassify, cc)` with upstream's other arguments at
     /// their defaults (`FALSE`), read by `topology.proto_topology_p3`: the B-rep owner
     /// implements it with `query::face::p2::curve_on_classify`. Returns
@@ -157,6 +218,84 @@ pub trait ProtoBrep<O>: ProtoGeometry<O> + ProtoTopology<O> {
         do_point_classify: bool,
         cc: &mut CurveClassification<O>,
     ) -> Result<bool>;
+    /// `SmBrep::Point3DClassify(point, tolerance, bDoBoundaryIntersections, sPC)` of the
+    /// B-rep `brep` names, read by `topology.proto_topology_p3`: the B-rep owner
+    /// implements it with `query::brep::BrepQuery::point_3d_classify` on its B-rep and
+    /// maps the classification's objects to its handles.
+    ///
+    /// # Errors
+    ///
+    /// Those of `point_3d_classify`; [`SolidError::InvalidInput`] for a handle that
+    /// names no B-rep or an object without a handle.
+    fn brep_point_3d_classify(
+        &mut self,
+        k: &Kernel,
+        brep: O,
+        point: Point3,
+        tolerance: f64,
+        boundary_intersections: bool,
+    ) -> Result<PointClassification<O>>;
+    /// `pBrep->MakeEdgeInFace(pFace, pStartVtx, pEndVtx, pCurve, pTempUV, ivl, eOrient,
+    /// dTol, rpNewEdge, rpNewLoop, rpNewFace)` of `SmEdgeDefinition::Imprint` on the
+    /// B-rep `brep` (`GetWhichBrep`): the owner of real B-reps runs
+    /// [`make_edge_in_face_in`] on the B-rep behind the handles, whose own
+    /// `m_bEditingEnabled` it checks (most owners through
+    /// [`make_edge_in_face_in_context`]). `curve` and `uv_curve` are consumed. Returns
+    /// the new edge, loop and face, each `None` when not made.
+    ///
+    /// # Errors
+    ///
+    /// Those of the edit; [`SolidError::InvalidInput`] for a face or vertex that is not
+    /// in `brep`; an owner with no B-rep behind its handles returns
+    /// [`SolidError::Unported`] under a `harness:` label.
+    fn brep_make_edge_in_face(
+        &mut self,
+        k: &Kernel,
+        brep: O,
+        face: O,
+        start: O,
+        end: O,
+        curve: Curve,
+        uv_curve: Option<Curve>,
+        interval: Extent1d,
+        orientation: OrientType,
+        tolerance: f64,
+    ) -> Result<(Option<O>, Option<O>, Option<O>)>;
+    /// `SmEdgeuse::EvaluateBinormal(dParam, FALSE, rPt, rBinormal)` of the edge use
+    /// `edgeuse` (read by `UpdateFaces`): the owner of real B-reps runs
+    /// [`evaluate_binormal`](crate::topology::edgeuse::p3::evaluate_binormal) on the
+    /// B-rep behind the handle (which may build the edge use's UV trim curve, as
+    /// upstream) and returns the binormal.
+    ///
+    /// # Errors
+    ///
+    /// Those of `evaluate_binormal`; [`SolidError::InvalidInput`] for a handle that
+    /// names no edge use; an owner with no B-rep behind its handles returns
+    /// [`SolidError::Unported`] under a `harness:` label.
+    fn edgeuse_evaluate_binormal(&mut self, k: &Kernel, edgeuse: O, param: f64) -> Result<Vec3>;
+    /// `rPC.MergeIntoObject(srcPoint, &newEdges, &newVertices)` of
+    /// `SmVertexDefinition::Imprint`: the classification's point merged into the B-rep
+    /// behind its object, which upstream edits through the object's pointer (a new
+    /// shell vertex, vertex loop or edge split, or the existing vertex moved by
+    /// `SmVertex::SetPoint`). The owner of mutable B-reps implements it with
+    /// [`merge_into_object_mut`](crate::intersect::curve_class::p6::merge_into_object_mut);
+    /// the default has no mutable owning context and returns
+    /// [`PointClassification::merge_into_object`]'s result.
+    ///
+    /// # Errors
+    ///
+    /// Those of the merge.
+    fn merge_point_class_into_brep(
+        &mut self,
+        k: &mut Kernel,
+        pc: &mut PointClassification<O>,
+        src_point: Point3,
+    ) -> Result<MergeOutputs<O>>
+    where
+        O: ClassObject,
+    {
+        pc.merge_into_object(k, src_point)
+    }
 }
 
 /// The handle the curve point solves name (only the solution count and values are
@@ -217,8 +356,8 @@ fn as_kind<O: ClassObject>(o: Option<O>, kind: ClassObjectKind) -> Option<O> {
 }
 
 /// `EvaluatePoint` with its status ignored: the point, `SM_UNDEF` on failure.
-fn eval_point(curve: &Curve, t: f64) -> Result<Point3> {
-    Ok(ignore_soft(curve.evaluate_point(t))?.unwrap_or(Vec3::UNDEF))
+fn eval_point(k: &Kernel, curve: &Curve, t: f64) -> Result<Point3> {
+    Ok(ignore_soft(curve.evaluate_point(k, t))?.unwrap_or(Vec3::UNDEF))
 }
 
 /// `SmTol::GetZoneTol3d(const SmObject*)`: a vertex's, edge's or face's own tolerance,
@@ -332,33 +471,75 @@ fn edge_point_solve<O: ClassObject>(
 
 // ---- callees in units not ported yet -------------------------------------------------------
 
-/// `SmBrep::MakeEdgeInFace`: the new edge, loop and face.
-fn make_edge_in_face<O>() -> Result<(Option<O>, Option<O>, Option<O>)> {
-    // The handle-only ProtoBrep store has no owning B-rep editing metadata.
-    // Part 5's arena entry point requires the actual flag; do not assume TRUE.
-    // UNPORTED(topology.brep_p1): SmBrep::m_bEditingEnabled
-    Err(SolidError::unported(
-        "SmBrep::m_bEditingEnabled",
-        "topology.brep_p1",
+/// `SM_CAST_PTR(SmBSplineCurve, pUVCurve)` of a definition's UV curve: a copy of the
+/// curve when it is of a B-spline kind, `None` for none or another kind.
+fn bspline_uv_curve<O: Copy>(brep: &impl ProtoBrep<O>, uv: Option<O>) -> Result<Option<Curve>> {
+    match uv {
+        None => Ok(None),
+        Some(o) => {
+            let c = brep
+                .curve(o)
+                .ok_or(dangling("UV curve handle is unknown"))?;
+            Ok(c.is_kind_of(BSPLINE_CURVE_TYPE).then(|| c.clone()))
+        }
+    }
+}
+
+/// [`ProtoBrep::brep_make_edge_in_face`] for an owner that reaches its B-reps through a
+/// [`MergeContext`] (`MergeIntervalBrep::merge_context` of the face handle): runs
+/// [`make_edge_in_face_in`] on the context's B-rep, which checks that B-rep's own
+/// `m_bEditingEnabled`, notifying through the context and naming the new edge's curve
+/// with its `curve_ref`. `start` and `end` are the vertices in that B-rep.
+///
+/// # Errors
+///
+/// [`SolidError::InvalidInput`] for a context whose target is not a face; those of
+/// [`make_edge_in_face_in`].
+pub fn make_edge_in_face_in_context<O>(
+    k: &Kernel,
+    ctx: MergeContext<'_, O>,
+    start: VertexId,
+    end: VertexId,
+    curve: Curve,
+    uv_curve: Option<Curve>,
+    interval: Extent1d,
+    orientation: OrientType,
+    tolerance: f64,
+) -> Result<(Option<O>, Option<O>, Option<O>)> {
+    let mut ctx = ctx;
+    let EntityRef::Face(face) = ctx.target else {
+        return Err(SolidError::invalid_input(
+            OP,
+            "MakeEdgeInFace target is not a face",
+        ));
+    };
+    let mut out = EdgeInFace::default();
+    make_edge_in_face_in(
+        k,
+        ctx.brep,
+        Some(face),
+        Some(start),
+        Some(end),
+        curve,
+        uv_curve,
+        interval,
+        orientation,
+        tolerance,
+        &mut out,
+        &mut ctx.notifications,
+        ctx.curve_ref,
+    )?;
+    Ok((
+        out.edge.map(|e| (ctx.handle)(EntityRef::Edge(e))),
+        out.loop_.map(|l| (ctx.handle)(EntityRef::Loop(l))),
+        out.face.map(|f| (ctx.handle)(EntityRef::Face(f))),
     ))
 }
 
-/// `SmFace::CalculateUVDomainFromUVTrimCurves`.
-fn calculate_uv_domain_from_uv_trim_curves<O: Copy>(face: O) -> Result<Extent2d> {
-    let _ = face;
-    // UNPORTED(topology.face_p1): SmFace::CalculateUVDomainFromUVTrimCurves
-    // (ported as topology::face::p1::calculate_uv_domain_from_uv_trim_curves, which takes
-    // a Brep face; a ProtoBrep face handle cannot reach it until the ProtoBrep trait has
-    // a B-rep face query)
-    Err(SolidError::unported(
-        "SmFace::CalculateUVDomainFromUVTrimCurves",
-        "topology.face_p1",
-    ))
-}
-
-/// `sm_ClassifyParamOnFaces`: 1 on the first face only, 2 on the second only, 0
-/// otherwise.
-fn classify_param_on_faces<O: Copy>(
+/// `sm_ClassifyParamOnFaces`: first matching face interior, or zero.
+fn classify_param_on_faces<O: ClassObject>(
+    k: &Kernel,
+    brep: &mut impl ProtoBrep<O>,
     uv: Point2,
     zone_tol_3d: f64,
     face1: O,
@@ -366,12 +547,26 @@ fn classify_param_on_faces<O: Copy>(
     face2: O,
     domain2: &Extent2d,
 ) -> Result<i32> {
-    let _ = (uv, zone_tol_3d, face1, domain1, face2, domain2);
-    // UNPORTED(query.face_p2): sm_ClassifyParamOnFaces
-    Err(SolidError::unported(
-        "sm_ClassifyParamOnFaces",
-        "query.face_p2",
-    ))
+    let in_face1 = domain1.contains_point(uv, EFF_ZERO);
+    let in_face2 = domain2.contains_point(uv, EFF_ZERO);
+    if in_face1 && !in_face2 {
+        return Ok(1);
+    }
+    if !in_face1 && in_face2 {
+        return Ok(2);
+    }
+    let tolerance = if zone_tol_3d > EFF_ZERO {
+        zone_tol_3d
+    } else {
+        zone_tol_for_xsect_result(k, brep, face1, face2)?
+    };
+    if brep.face_point_classify_uv(k, face1, uv, tolerance)? == PointClassType::Face {
+        return Ok(1);
+    }
+    if brep.face_point_classify_uv(k, face2, uv, tolerance)? == PointClassType::Face {
+        return Ok(2);
+    }
+    Ok(0)
 }
 
 /// `SmSurface::DropPoint(pt, GetNaturalUVDomain(), NULL, .., SM_SO_NORMALIZE)`: the
@@ -394,17 +589,17 @@ fn surface_drop_point<O: Copy>(
     Ok(r.success.then_some(r.result_uv))
 }
 
-/// `SmEdgeuse::EvaluateBinormal(dParam, FALSE, rPt, rBinormal)`: the binormal.
-fn edgeuse_evaluate_binormal<O: Copy>(edgeuse: O, param: f64) -> Result<Vec3> {
-    let _ = (edgeuse, param);
-    // UNPORTED(topology.edgeuse_p3): SmEdgeuse::EvaluateBinormal (justified: findings.md topology.edgeuse_p3)
-    // justified: findings.md, topology.edgeuse_p3 (proto topology stub): the proto topology
-    // sees the edge use only as an opaque handle (`ProtoBrep`, no `Brep`/`Kernel` to call
-    // `topology::edgeuse::p3::evaluate_binormal` on)
-    Err(SolidError::unported(
-        "SmEdgeuse::EvaluateBinormal",
-        "topology.edgeuse_p3",
-    ))
+/// `pEU->EvaluateBinormal(dParam, FALSE, sBinormPt, rBinormal)` with its status ignored
+/// ([`ProtoBrep::edgeuse_evaluate_binormal`]): the binormal, or `previous` (what
+/// `rBinormal` held, which upstream writes only on success) when the evaluation failed.
+fn edgeuse_evaluate_binormal<O: Copy>(
+    k: &Kernel,
+    brep: &mut impl ProtoBrep<O>,
+    edgeuse: O,
+    param: f64,
+    previous: Vec3,
+) -> Result<Vec3> {
+    Ok(ignore_soft(brep.edgeuse_evaluate_binormal(k, edgeuse, param))?.unwrap_or(previous))
 }
 
 impl<O: ClassObject> ProtoTopologyManager<O> {
@@ -459,13 +654,13 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     ///
     /// # Errors
     ///
-    /// Those of [`PointClassification::merge_into_object`]; `SM_ERR` when a merge
+    /// Those of [`ProtoBrep::merge_point_class_into_brep`]; `SM_ERR` when a merge
     /// made no single vertex and the classification is not on a vertex; those of
     /// [`ProtoTopologyManager::update_edges`]; [`SolidError::InvalidInput`] for a
     /// definition without a proto vertex (upstream reaches the manager through it).
     pub fn imprint_vertex_definition(
         &mut self,
-        k: &Kernel,
+        k: &mut Kernel,
         brep: &mut impl ProtoBrep<O>,
         vd: VertexDefId,
     ) -> Result<()> {
@@ -481,9 +676,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
             let position = v.position();
 
             let v = self.vd_mut(vd)?;
-            let outputs = v
-                .brep_point_classif_mut(which)
-                .merge_into_object(k, position)?;
+            let outputs =
+                brep.merge_point_class_into_brep(k, v.brep_point_classif_mut(which), position)?;
 
             if outputs.new_vertices.len() == 1 {
                 v.set_final_vertex(which, outputs.new_vertices.first().copied());
@@ -527,9 +721,9 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     ///
     /// `SM_ERR_NULL_POINTER` when a proto vertex has no final vertex for the
     /// definition; those of [`ProtoTopologyManager::proto_vertex_final_vertex`];
-    /// [`SolidError::Unported`] for a face source (`SmBrep::MakeEdgeInFace`, unit
-    /// `topology.brep_p5`); [`SolidError::InvalidInput`] for a definition without a
-    /// proto edge, or a proto edge without both proto vertices.
+    /// those of [`ProtoBrep::brep_make_edge_in_face`] for a face source;
+    /// [`SolidError::InvalidInput`] for a definition without a proto edge, or a proto
+    /// edge without both proto vertices.
     pub fn imprint_edge_definition(
         &mut self,
         k: &Kernel,
@@ -544,18 +738,19 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
 
         let null = || SolidError::null_pointer(OP_IMPRINT_ED);
         let start_vtx1 = self
-            .proto_vertex_final_vertex(brep, start_pv, 1, ed, true)?
+            .proto_vertex_final_vertex(k, brep, start_pv, 1, ed, true)?
             .ok_or_else(null)?;
         let end_vtx1 = self
-            .proto_vertex_final_vertex(brep, end_pv, 1, ed, false)?
+            .proto_vertex_final_vertex(k, brep, end_pv, 1, ed, false)?
             .ok_or_else(null)?;
         let start_vtx2 = self
-            .proto_vertex_final_vertex(brep, start_pv, 2, ed, true)?
+            .proto_vertex_final_vertex(k, brep, start_pv, 2, ed, true)?
             .ok_or_else(null)?;
         let end_vtx2 = self
-            .proto_vertex_final_vertex(brep, end_pv, 2, ed, false)?
+            .proto_vertex_final_vertex(k, brep, end_pv, 2, ed, false)?
             .ok_or_else(null)?;
-        let _ = (start_vtx1, end_vtx1, start_vtx2, end_vtx2);
+        let brep1 = self.which_brep(1);
+        let brep2 = self.which_brep(2);
 
         let d = self.ed_ref(ed)?;
         let type1 = d.src_topo_type(1);
@@ -572,10 +767,24 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
             let face_tol = brep
                 .topology_tolerance(face)
                 .ok_or(dangling("face handle is unknown"))?;
-            let _this_tol = max2(face_tol, d.raw_tolerance());
+            let this_tol = max2(face_tol, d.raw_tolerance());
+            let temp_uv = bspline_uv_curve(brep, d.xsect_uv_curve(1))?;
+            let curve = curve_of(brep, d.xsect_curve_3d())?.clone();
+            let interval = d.xsect_interval();
 
             // Note, input curves are consumed:
-            match make_edge_in_face::<O>() {
+            match brep.brep_make_edge_in_face(
+                k,
+                brep1,
+                face,
+                start_vtx1,
+                end_vtx1,
+                curve,
+                temp_uv,
+                interval,
+                OrientType::Same,
+                this_tol,
+            ) {
                 Ok((e, _l, f)) => {
                     new_e1 = e;
                     new_f1 = f;
@@ -599,15 +808,31 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         if type2 == PointClassType::Face {
             // m_pXSectCurve3d went into Brep1. Make a copy for the other Brep (status
             // ignored).
-            let _copy = ignore_soft(curve_of(brep, d.xsect_curve_3d())?.copy(k))?;
+            let copy = ignore_soft(curve_of(brep, d.xsect_curve_3d())?.copy(k))?;
 
             let old_f2 = as_kind(d.src_topo(2), ClassObjectKind::Face).ok_or_else(null)?;
             let face_tol = brep
                 .topology_tolerance(old_f2)
                 .ok_or(dangling("face handle is unknown"))?;
-            let _this_tol = max2(face_tol, d.raw_tolerance());
+            let this_tol = max2(face_tol, d.raw_tolerance());
 
-            let (new_e2, new_f2) = match make_edge_in_face::<O>() {
+            let temp_uv = bspline_uv_curve(brep, d.xsect_uv_curve(2))?;
+            let interval = d.xsect_interval();
+            // a failed copy is a null curve, dereferenced in MakeEdgeInFace
+            let copy = copy.ok_or(dangling("copy of the 3D curve failed"))?;
+            let made = brep.brep_make_edge_in_face(
+                k,
+                brep2,
+                old_f2,
+                start_vtx2,
+                end_vtx2,
+                copy,
+                temp_uv,
+                interval,
+                OrientType::Same,
+                this_tol,
+            );
+            let (new_e2, new_f2) = match made {
                 Ok((e, _l, f)) => (e, f),
                 Err(e) => {
                     if !e.is_unported() {
@@ -868,10 +1093,10 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         } else {
             let pe_ivl = e.xsect_interval();
             let uninit = || dangling("mid tangent is uninitialised (evaluation failed)");
-            let pe_tan = ignore_soft(self.proto_edge_evaluate_mid(brep, pe, false, true))?
+            let pe_tan = ignore_soft(self.proto_edge_evaluate_mid(k, brep, pe, false, true))?
                 .and_then(|(_, t)| t)
                 .ok_or_else(uninit)?;
-            let ed_tan = ignore_soft(self.ed_ref(ed)?.evaluate_mid(brep, false, true))?
+            let ed_tan = ignore_soft(self.ed_ref(ed)?.evaluate_mid(k, brep, false, true))?
                 .and_then(|(_, t)| t)
                 .ok_or_else(uninit)?;
 
@@ -1055,8 +1280,12 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     /// itself loses its definitions when its first curve is shorter than twice its
     /// tolerance; when it is longer with ends farther apart than that, the start proto
     /// vertex gets a second vertex definition at the curve's end (unless the ends are
-    /// already closest to different definitions). Then, of every pair of definitions
-    /// that can be combined, the redundant one is deleted. Returns the curves deleted.
+    /// already closest to different definitions). Not upstream: unless
+    /// [`ProtoTopologyManager::split_self_loops_on_vertices`] (the default), when the
+    /// definition to split is on a vertex in either B-rep, the proto edge loses its
+    /// definitions instead (tangency-labs/solidcore#480; see the module notes). Then, of every pair
+    /// of definitions that can be combined, the redundant one is deleted. Returns the
+    /// curves deleted.
     ///
     /// # Errors
     ///
@@ -1087,7 +1316,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         if start == end {
             let first = *eds.first().ok_or(dangling("no edge definition"))?;
             let int_curve = curve_of(brep, self.ed_ref(first)?.xsect_curve_3d())?;
-            let (len, _) = int_curve.approximate_length(&pe_ivl, 5, false)?;
+            let (len, _) = int_curve.approximate_length(k, &pe_ivl, 5, false)?;
 
             if len < 2.0 * pe_tol {
                 // remove all of our EdgeDefinitions
@@ -1099,7 +1328,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                     .clear_edge_definitions();
             } else {
                 // Our IntCurve is longer than tolerance. Check start & end points.
-                let ends = int_curve.ends()?;
+                let ends = int_curve.ends(k)?;
                 let (pt0, pt1) = (ends.start, ends.end);
                 let dist = pt0.distance(pt1);
                 if dist > 2.0 * pe_tol {
@@ -1119,7 +1348,28 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                         }
                     }
 
-                    if add_vtx_def {
+                    // Not upstream (tangency-labs/solidcore#480): the new definition
+                    // copies vd0's classifications, so when vd0 is on a vertex in
+                    // either B-rep both ends land on that one vertex there while the
+                    // other B-rep gets an edge between two vertices. Treat the proto
+                    // edge as degenerate instead, as the short-curve branch above does,
+                    // unless the caller keeps upstream's split.
+                    let on_vertex = match vd0 {
+                        Some(vd0) if !self.split_self_loops_on_vertices() => {
+                            let v0 = self.vd_ref(vd0)?;
+                            v0.src_topo_type(1) == PointClassType::Vertex
+                                || v0.src_topo_type(2) == PointClassType::Vertex
+                        }
+                        _ => false,
+                    };
+                    if add_vtx_def && on_vertex {
+                        for &ed in &eds {
+                            deleted.extend(self.destruct_and_delete(ed));
+                        }
+                        self.proto_edge_mut(pe)
+                            .ok_or(dangling("proto edge is deleted"))?
+                            .clear_edge_definitions();
+                    } else if add_vtx_def {
                         // Create a new VtxDef, and set pVD0 to sPt0, and NewVD to sPt1.
                         let vd0 = vd0.ok_or(dangling("proto vertex has no vertex definition"))?;
                         let v0 = self.vd_ref(vd0)?;
@@ -1470,6 +1720,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
 
         if remove_owner_if_empty && o.num_edge_definitions() < 1 {
             ignore_soft(self.remove_proto_edge(owner))?;
+            // SolidCraft fix 93efd6d (UB-239): drop the references to it first
+            self.forget_proto_edge(owner);
             let _ = self.delete_proto_edge_object(owner);
         }
         Ok(())
@@ -1566,7 +1818,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
             old_ivl.min()
         };
         let old_curve = edge_curve_of(brep, old_edge)?;
-        let split_pt = eval_point(curve_of(brep, Some(old_curve))?, end_param)?;
+        let split_pt = eval_point(k, curve_of(brep, Some(old_curve))?, end_param)?;
 
         let calling_vd = calling_vd.ok_or(dangling("calling vertex definition is null"))?;
         let calling_pv = self.vd_ref(calling_vd)?.proto_vertex();
@@ -1637,7 +1889,7 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
 
             // Found a ProtoEdge on the edge that was split: drop the midpoint of the
             // definition to both edges' curves.
-            let mid_pt = match d.evaluate_mid(brep, true, false) {
+            let mid_pt = match d.evaluate_mid(k, brep, true, false) {
                 Ok((Some(p), _)) => p,
                 Err(e) if e.is_unported() || matches!(e, SolidError::InvalidInput { .. }) => {
                     return Err(e)
@@ -1689,12 +1941,10 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`]: the faces' UV domains from their trim curves
-    /// (`SmFace::CalculateUVDomainFromUVTrimCurves`, unit `topology.face_p1`), the
-    /// face classification of UV points (`sm_ClassifyParamOnFaces`, unit
-    /// `query.face_p2`), the surface drops (unit `surface.surface_p5`) and the edge
-    /// use binormals (unit `topology.edgeuse_p3`); [`SolidError::InvalidInput`] for
-    /// deleted objects or unknown handles.
+    /// Those of the owning-face domain and classification callbacks and of
+    /// [`ProtoBrep::edgeuse_evaluate_binormal`] (other than its ignored statuses);
+    /// [`SolidError::InvalidInput`] for deleted objects, unknown handles or a missing
+    /// splitting edge.
     pub fn update_faces(
         &mut self,
         k: &Kernel,
@@ -1710,10 +1960,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
 
         // Face UVDomains = Min(current FaceUVDomain, UVTrimCurve domain) (statuses
         // ignored)
-        let old_domain =
-            ignore_soft(calculate_uv_domain_from_uv_trim_curves(old_face))?.unwrap_or_default();
-        let new_domain =
-            ignore_soft(calculate_uv_domain_from_uv_trim_curves(new_face))?.unwrap_or_default();
+        let old_domain = brep.face_trim_uv_domain(k, old_face)?;
+        let new_domain = brep.face_trim_uv_domain(k, new_face)?;
 
         if !brep
             .face_uv_domain(old_face)
@@ -1746,6 +1994,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
             let uv = v.brep_uv_param(which);
             let zone_tol = zone_tol_for_xsect_result(k, brep, old_face, new_face)?;
             let which_face = classify_param_on_faces(
+                k,
+                brep,
                 uv,
                 zone_tol,
                 old_face,
@@ -1778,14 +2028,16 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
             let uv_curve = d.xsect_uv_curve(which);
             let mid_param = d.xsect_interval().mid();
             if uv_curve.is_some() {
-                if let Some(p) = ignore_soft(curve_of(brep, uv_curve)?.evaluate_point(mid_param))? {
+                if let Some(p) =
+                    ignore_soft(curve_of(brep, uv_curve)?.evaluate_point(k, mid_param))?
+                {
                     face_uv = Some(Point2::new(p.x, p.y));
                 }
             }
             if face_uv.is_none() {
                 // drop a 3d MidPoint to the surface.
                 let surface = brep.face_surface(old_face).ok_or_else(unknown)?;
-                let mid_pt = match d.evaluate_mid(brep, true, false) {
+                let mid_pt = match d.evaluate_mid(k, brep, true, false) {
                     Ok((Some(p), _)) => p,
                     Err(e) if e.is_unported() => return Err(e),
                     _ => Vec3::UNDEF,
@@ -1796,6 +2048,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
 
             let zone_tol = zone_tol_for_xsect_result(k, brep, old_face, new_face)?;
             let which_face = classify_param_on_faces(
+                k,
+                brep,
                 face_uv,
                 zone_tol,
                 old_face,
@@ -1811,7 +2065,10 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
 
         // See if ProtoFaces on the split face need to be split as well (the faces
         // this loop creates are not processed).
-        let mut binormals: Option<(Vec3, Vec3)> = None;
+        let mut binorm_old = Vec3::UNDEF;
+        let mut binorm_new = Vec3::UNDEF;
+        let mut binorm_other = Vec3::UNDEF;
+        let mut got_binormals = false;
         let pfs = self.proto_faces().to_vec();
         for pf in pfs {
             let f = self
@@ -1836,18 +2093,18 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
             let mut which_face = 0;
 
             if let Some(eu) = eu {
-                if binormals.is_none() {
-                    if let Some(se) = splitting_edge {
-                        if let Some(this_eu) = brep.edge_edgeuse_of_face(se, old_face)? {
-                            let mid = brep
-                                .edge_interval(se)
-                                .ok_or(dangling("edge handle is unknown"))?
-                                .mid();
-                            let b_old = edgeuse_evaluate_binormal(this_eu, mid)?;
-                            if let Some(this_eu) = brep.edge_edgeuse_of_face(se, new_face)? {
-                                let b_new = edgeuse_evaluate_binormal(this_eu, mid)?;
-                                binormals = Some((b_old, b_new));
-                            }
+                if !got_binormals {
+                    let se = splitting_edge.ok_or(dangling("splitting edge is null"))?;
+                    if let Some(this_eu) = brep.edge_edgeuse_of_face(se, old_face)? {
+                        let mid = brep
+                            .edge_interval(se)
+                            .ok_or(dangling("edge handle is unknown"))?
+                            .mid();
+                        binorm_old = edgeuse_evaluate_binormal(k, brep, this_eu, mid, binorm_old)?;
+                        if let Some(this_eu) = brep.edge_edgeuse_of_face(se, new_face)? {
+                            binorm_new =
+                                edgeuse_evaluate_binormal(k, brep, this_eu, mid, binorm_new)?;
+                            got_binormals = true;
                         }
                     }
                 }
@@ -1856,10 +2113,9 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                     .edge_interval(oe)
                     .ok_or(dangling("edge handle is unknown"))?
                     .mid();
-                let b_other = edgeuse_evaluate_binormal(eu, mid)?;
-                let (b_old, b_new) = binormals.ok_or(dangling("binormals are uninitialised"))?;
-                let dot_old = b_old.dot(b_other);
-                let dot_new = b_new.dot(b_other);
+                binorm_other = edgeuse_evaluate_binormal(k, brep, eu, mid, binorm_other)?;
+                let dot_old = binorm_old.dot(binorm_other);
+                let dot_new = binorm_new.dot(binorm_other);
                 which_face = if dot_old > 0.0 && dot_new < 0.0 {
                     1
                 } else if dot_old < 0.0 && dot_new > 0.0 {
@@ -1883,7 +2139,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
 
             if !did_reclassify {
                 for &coinc_pe in coinc_pes.iter().flatten() {
-                    let mid_pt = match self.proto_edge_evaluate_mid(brep, coinc_pe, true, false) {
+                    let mid_pt = match self.proto_edge_evaluate_mid(k, brep, coinc_pe, true, false)
+                    {
                         Ok((Some(p), _)) => p,
                         Err(e) if e.is_unported() => return Err(e),
                         _ => Vec3::UNDEF,
@@ -1896,6 +2153,8 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
                     };
                     let zone_tol = zone_tol_for_xsect_result(k, brep, old_face, new_face)?;
                     which_face = classify_param_on_faces(
+                        k,
+                        brep,
                         face_uv,
                         zone_tol,
                         old_face,
@@ -2082,6 +2341,7 @@ mod tests {
     struct Geo {
         curves: Vec<Curve>,
         edge_ivl: Vec<(usize, Extent1d, f64, usize)>,
+        points: Vec<Point3>,
     }
 
     impl ClassGeometry<H> for Geo {
@@ -2096,8 +2356,17 @@ mod tests {
         fn volume(&self, _o: H) -> Option<&Volume> {
             None
         }
-        fn point(&self, _o: H) -> Option<Point3> {
-            None
+        fn point(&self, o: H) -> Option<Point3> {
+            (o.1 == ClassObjectKind::Point)
+                .then(|| self.points.get(o.0))
+                .flatten()
+                .copied()
+        }
+        fn classification_vertex_point(&self, vertex: H) -> Option<Point3> {
+            (vertex.1 == ClassObjectKind::Vertex)
+                .then(|| self.points.get(vertex.0))
+                .flatten()
+                .copied()
         }
     }
 
@@ -2136,6 +2405,36 @@ mod tests {
     }
 
     impl ProtoBrep<H> for Geo {
+        fn brep_make_edge_in_face(
+            &mut self,
+            _k: &Kernel,
+            _b: H,
+            _f: H,
+            _v1: H,
+            _v2: H,
+            _c: Curve,
+            _uv: Option<Curve>,
+            _ivl: Extent1d,
+            _o: OrientType,
+            _tol: f64,
+        ) -> Result<(Option<H>, Option<H>, Option<H>)> {
+            Err(SolidError::unported(
+                "SmBrep::MakeEdgeInFace (no B-rep behind the test handles)",
+                "harness:proto-test-brep-edit",
+            ))
+        }
+        fn edgeuse_evaluate_binormal(&mut self, _k: &Kernel, _eu: H, _t: f64) -> Result<Vec3> {
+            Err(SolidError::unported(
+                "SmEdgeuse::EvaluateBinormal (no B-rep behind the test handles)",
+                "harness:proto-test-brep-edit",
+            ))
+        }
+        fn brep_squeeze_edge(&mut self, _k: &mut Kernel, _b: H, _e: H, _v: H) -> Result<()> {
+            Err(SolidError::unported(
+                "SmBrep::SqueezeEdge (no B-rep behind the test handles)",
+                "harness:proto-test-brep-edit",
+            ))
+        }
         fn edge_interval(&self, edge: H) -> Option<Extent1d> {
             self.edge_ivl.iter().find(|e| e.0 == edge.0).map(|e| e.1)
         }
@@ -2155,6 +2454,18 @@ mod tests {
         }
         fn face_uv_domain(&self, _face: H) -> Option<Extent2d> {
             None
+        }
+        fn face_trim_uv_domain(&mut self, _k: &Kernel, _face: H) -> Result<Extent2d> {
+            Err(dangling("test handle has no owning face"))
+        }
+        fn face_point_classify_uv(
+            &mut self,
+            _k: &Kernel,
+            _face: H,
+            _uv: Point2,
+            _tolerance: f64,
+        ) -> Result<PointClassType> {
+            Err(dangling("test handle has no owning face"))
         }
         fn set_face_uv_domain(&mut self, _face: H, _domain: Extent2d) -> Option<()> {
             None
@@ -2183,6 +2494,21 @@ mod tests {
             _cc: &mut CurveClassification<H>,
         ) -> Result<bool> {
             Ok(false)
+        }
+        fn brep_point_3d_classify(
+            &mut self,
+            _k: &Kernel,
+            _brep: H,
+            point: Point3,
+            tolerance: f64,
+            _boundary_intersections: bool,
+        ) -> Result<PointClassification<H>> {
+            let idx = self.points.len();
+            self.points.push(point);
+            let v = H(idx, ClassObjectKind::Vertex);
+            let mut pc = PointClassification::new(tolerance);
+            pc.set_class_object(PointClassType::Vertex, Some(v));
+            Ok(pc)
         }
     }
 
@@ -2239,6 +2565,109 @@ mod tests {
         m.resolve_proto_vertex(&k, &geo, pv).unwrap();
         assert_eq!(m.proto_vertex(pv).unwrap().vertex_definitions(), &[b, c]);
         assert!(m.vertex_def(a).is_none());
+    }
+
+    /// A proto edge from a proto vertex back to itself along an open curve 5e-5 long
+    /// (longer than twice the 1e-5 tolerance, ends as far apart), the proto vertex
+    /// holding one vertex definition with `pc1` and `pc2`, resolved with
+    /// `split_self_loops_on_vertices` set to `split`. Returns the manager, the proto
+    /// vertex and edge, and what `resolve_proto_edge` returned.
+    fn resolve_self_loop(
+        pc1: &PointClassification<H>,
+        pc2: &PointClassification<H>,
+        split: bool,
+    ) -> (
+        ProtoTopologyManager<H>,
+        ProtoVertexId,
+        ProtoEdgeId,
+        Result<Vec<H>>,
+    ) {
+        let k = Kernel::default();
+        let mut geo = Geo::default();
+        geo.curves.push(line([0.0, 0.0, 0.0], [5e-5, 0.0, 0.0]));
+        let c0 = H(0, ClassObjectKind::Curve);
+        let mut m = manager();
+        assert!(
+            m.split_self_loops_on_vertices(),
+            "upstream's split is the default"
+        );
+        m.set_split_self_loops_on_vertices(split);
+        let p = Point3::new(0.0, 0.0, 0.0);
+        let pv = m.new_proto_vertex(p, 1e-5).unwrap();
+        m.add_proto_vertex(pv);
+        let vd = VertexDefinition::new(&k, &geo, pc1, pc2, p, 1e-5, 1e-9, None).unwrap();
+        let vd = m.insert_vertex_definition(vd).unwrap();
+        m.add_vertex_definition(pv, vd).unwrap();
+
+        let mut cc = CurveClassification::new(&k);
+        cc.set_curve(Some(c0), false);
+        let ivl = geo.curves[0].natural_interval();
+        let mut ci1 = CurveInterval::with_interval(&k, &ivl, Some(&cc));
+        ci1.mid = region_pc(R0);
+        let mut ci2 = CurveInterval::with_interval(&k, &ivl, Some(&cc));
+        ci2.mid = region_pc(R1);
+        let pe = m
+            .create_proto_edge(&k, &mut geo, Some(pv), Some(pv), &cc, &ci1, &cc, &ci2)
+            .unwrap();
+        assert_eq!(m.proto_edge(pe).unwrap().num_edge_definitions(), 1);
+        let deleted = m.resolve_proto_edge(&k, &mut geo, pe);
+        (m, pv, pe, deleted)
+    }
+
+    fn vertex_pc() -> PointClassification<H> {
+        let mut pc = PointClassification::new(1e-5);
+        pc.set_class_object(PointClassType::Vertex, Some(H(20, ClassObjectKind::Vertex)));
+        pc
+    }
+
+    /// upstream: the proto vertex gets a second definition for the curve's end.
+    /// These pool stand-ins have no surfaces or vertex records, so
+    /// `CreateVertexDefinition` stops (no position found, UB-115; or the unported
+    /// `SmVertex::GetPoint`): reaching it shows the split branch ran, edge kept.
+    fn assert_split_attempted(
+        pc1: &PointClassification<H>,
+        pc2: &PointClassification<H>,
+        split: bool,
+    ) {
+        let (m, pv, pe, result) = resolve_self_loop(pc1, pc2, split);
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("no position found") || msg.contains("SmVertex::GetPoint"),
+            "{msg}"
+        );
+        assert_eq!(m.proto_edge(pe).unwrap().num_edge_definitions(), 1);
+        assert_eq!(m.proto_vertex(pv).unwrap().vertex_definitions().len(), 1);
+    }
+
+    #[test]
+    fn resolve_self_loop_off_a_vertex_still_splits() {
+        for split in [true, false] {
+            assert_split_attempted(&region_pc(R0), &region_pc(R1), split);
+        }
+    }
+
+    #[test]
+    fn resolve_self_loop_on_a_vertex_splits_by_default() {
+        // upstream's behaviour, which this unit's difftest compares
+        assert_split_attempted(&vertex_pc(), &region_pc(R1), true);
+        assert_split_attempted(&region_pc(R0), &vertex_pc(), true);
+    }
+
+    #[test]
+    fn resolve_self_loop_on_a_vertex_is_degenerate() {
+        // tangency-labs/solidcore#480: a definition on a vertex in either B-rep is not
+        // split (both ends would be that vertex there); the proto edge is dropped
+        for (pc1, pc2) in [(vertex_pc(), region_pc(R1)), (region_pc(R0), vertex_pc())] {
+            let (m, pv, pe, deleted) = resolve_self_loop(&pc1, &pc2, false);
+            assert_eq!(
+                deleted.unwrap().len(),
+                1,
+                "the definition's curve copy is deleted"
+            );
+            assert_eq!(m.proto_edge(pe).unwrap().num_edge_definitions(), 0);
+            assert_eq!(m.proto_vertex(pv).unwrap().vertex_definitions().len(), 1);
+        }
     }
 
     #[test]
@@ -2428,5 +2857,48 @@ mod tests {
         m.update_edges(&k, &mut geo, 1, Some(e_old), &[e_old, e_new], Some(calling))
             .unwrap();
         assert_eq!(m.vertex_def(moved).unwrap().src_topo(1), Some(e_new));
+    }
+
+    #[test]
+    fn edge_definition_split_starts_unowned() {
+        // tangency-labs/solidcore#518: SmEdgeDefinition::Split's new EdgeDefinition
+        // starts unowned, so adding it to the upper proto edge does not fail attempting
+        // to remove it from the original proto edge.
+        let k = Kernel::default();
+        let mut geo = Geo::default();
+        geo.curves.push(line([0.0, 0.0, 0.0], [2.0, 0.0, 0.0]));
+        let c0 = H(0, ClassObjectKind::Curve);
+        let mut m = manager();
+        let v0 = m
+            .new_proto_vertex(Point3::new(0.0, 0.0, 0.0), 1e-5)
+            .unwrap();
+        let v1 = m
+            .new_proto_vertex(Point3::new(2.0, 0.0, 0.0), 1e-5)
+            .unwrap();
+        m.add_proto_vertex(v0);
+        m.add_proto_vertex(v1);
+
+        let mut cc = CurveClassification::new(&k);
+        cc.set_curve(Some(c0), false);
+        let ivl = geo.curves[0].natural_interval();
+        let mut ci1 = CurveInterval::with_interval(&k, &ivl, Some(&cc));
+        ci1.mid = region_pc(R0);
+        let mut ci2 = CurveInterval::with_interval(&k, &ivl, Some(&cc));
+        ci2.mid = region_pc(R1);
+
+        let pe = m
+            .create_proto_edge(&k, &mut geo, Some(v0), Some(v1), &cc, &ci1, &cc, &ci2)
+            .unwrap();
+        assert_eq!(m.proto_edge(pe).unwrap().num_edge_definitions(), 1);
+
+        // Split the proto edge at its midpoint parameter
+        let (new_pv, new_pe) = m.proto_edge_split(&k, &mut geo, pe, ivl.mid()).unwrap();
+        let new_pe = new_pe.expect("proto edge was split");
+        assert!(new_pv.is_some());
+
+        // The lower proto edge retains its edge definition, and the upper proto edge
+        // receives the new split edge definition without error.
+        assert_eq!(m.proto_edge(pe).unwrap().num_edge_definitions(), 1);
+        assert_eq!(m.proto_edge(new_pe).unwrap().num_edge_definitions(), 1);
     }
 }

@@ -7,19 +7,19 @@
 //! way on both sides: the `SM_API` curve constructors (`SmApiCreateCurve`,
 //! `SmApiCreateArc`, `SmApiCreateCircle`, `SmApiCreateLineSegment`, ported in
 //! `primitive.api_curves`), or a 3D `SmHermiteCurve` (a curve without `Copy`). Faces
-//! and edges come from `SmApiCreatePlanarCircle` B-reps on the C++ side; the Rust side
-//! cannot build those yet and passes placeholder ids (only their count is read before
-//! the unported kernel call). Both sides produce the flat record documented in the FFI
-//! module, split into keys: `status` (`0` = `SM_SUCCESS`, else the `SmStatus`: `1001`
-//! `SM_ERR`, `1007` `SM_ERR_INVALID_INPUT`; `-1` on the Rust side for an error upstream
-//! cannot produce), then on success `has`, `counts` (faces, edges, vertices) and, for
-//! the curve sweeps, `faces` (start, side, end).
+//! and edges come from `SmApiCreatePlanarCircle` B-reps on both sides. Both sides
+//! produce the flat record documented in the FFI module, split into keys: `status`
+//! (`0` = `SM_SUCCESS`, else the `SmStatus`: `1001` `SM_ERR`, `1007`
+//! `SM_ERR_INVALID_INPUT`; `-1` on the Rust side for an error upstream cannot produce),
+//! then on success `has`, `counts` (faces, edges, vertices) and, for the curve sweeps,
+//! `faces` (start, side, end).
 //!
-//! Every call that reaches `SmPrimitiveCreation` is deferred on the Rust side
-//! (`primitive.primitive_creation_p2` / `_p3`); the input validation and curve copies
-//! before it (`NULL` curves, curves without `Copy`, empty inputs, a missing path, a
-//! non-positive pipe radius, a cap selector out of range) are compared. Every run has at
-//! least [`MIN_GENERATED`] generated cases.
+//! A call runs on the Rust side until the next unported callee; a case that reaches one
+//! is deferred. A successful call is compared by its status, presence and counts, so
+//! both the input validation and curve copies (`NULL` curves, curves without `Copy`,
+//! empty inputs, a missing path, a non-positive pipe radius, a cap selector out of
+//! range) and the sweep results are covered. Every run has at least [`MIN_GENERATED`]
+//! generated cases.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -375,6 +375,25 @@ fn to_output(i: &Inputs, flat: &[f64]) -> Result<Output, HarnessError> {
 
 // ---- Rust side ----------------------------------------------------------------------
 
+/// `SmApiCreatePlanarCircle` B-reps of the circles; an unported construction defers.
+fn discs(k: &mut Kernel, circles: &[(P3, f64)]) -> solidcore::Result<Vec<Brep>> {
+    circles
+        .iter()
+        .map(|(c, r)| solidcore::primitive::api_primitives::create_planar_circle(k, pt(c), *r))
+        .collect()
+}
+
+/// Every face of the disc B-reps, with its B-rep.
+fn disc_faces(discs: &[Brep]) -> solidcore::Result<Vec<(&Brep, FaceId)>> {
+    let mut faces = Vec::new();
+    for b in discs {
+        for f in solidcore::topology::brep::p1::faces(b, None)? {
+            faces.push((b, f));
+        }
+    }
+    Ok(faces)
+}
+
 fn pt(p: &P3) -> Point3 {
     Point3::new(p[0], p[1], p[2])
 }
@@ -451,12 +470,53 @@ fn status(e: &SolidError) -> f64 {
     }
 }
 
+/// The result of a successful sweep call: a bare B-rep, or a curve sweep's B-rep with
+/// its start, side and end faces.
+enum Swept {
+    /// The B-rep-returning entry points.
+    Brep(Brep),
+    /// `SmApiCreateCurveSweep` and the face / edge variants.
+    CurveSweep(api::CurveSweep),
+}
+
+/// The record of a successful call (layout in the FFI module docs): the status, the
+/// B-rep's presence and its face, edge and vertex counts, plus the curve sweep's start,
+/// side and end face counts.
+fn success(s: &Swept) -> Output {
+    let (brep, faces) = match s {
+        Swept::Brep(b) => (b, None),
+        Swept::CurveSweep(c) => (
+            &c.brep,
+            Some([
+                c.start_faces.len() as f64,
+                c.side_faces.len() as f64,
+                c.end_faces.len() as f64,
+            ]),
+        ),
+    };
+    let mut out = Output::new()
+        .scalar("status", 0.0)
+        .scalar("has", 1.0)
+        .values(
+            "counts",
+            [
+                brep.face_list().len() as f64,
+                brep.edge_list().len() as f64,
+                brep.vertex_list().len() as f64,
+            ],
+        );
+    if let Some(f) = faces {
+        out = out.values("faces", f);
+    }
+    out
+}
+
 fn rust(i: &Inputs) -> Result<Output, HarnessError> {
-    let k = Kernel::default();
+    let mut k = Kernel::default();
     let v = |p: &P3| Vec3::new(p[0], p[1], p[2]);
-    let b = Brep::default();
-    // `Ok(())` only on success, which the stubbed entry points cannot reach yet.
-    let res: solidcore::Result<()> = match i {
+    // A successful call is compared by its status, presence and counts; a path that
+    // reaches an unported callee is deferred.
+    let res: solidcore::Result<Swept> = match i {
         Inputs::Linear {
             curves: cs,
             dir,
@@ -464,7 +524,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             cap,
         } => {
             let cs = curves(&k, cs)?;
-            api::create_linear_sweep(&k, &refs(&cs), v(dir), *dist, *cap).map(drop)
+            api::create_linear_sweep(&mut k, &refs(&cs), v(dir), *dist, *cap).map(Swept::Brep)
         }
         Inputs::Rotational {
             curves: cs,
@@ -474,8 +534,8 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             cap,
         } => {
             let cs = curves(&k, cs)?;
-            api::create_rotational_sweep(&k, &refs(&cs), pt(base), v(axis), *angle_deg, *cap)
-                .map(drop)
+            api::create_rotational_sweep(&mut k, &refs(&cs), pt(base), v(axis), *angle_deg, *cap)
+                .map(Swept::Brep)
         }
         Inputs::Draft {
             curves: cs,
@@ -485,11 +545,12 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             caps,
         } => {
             let cs = curves(&k, cs)?;
-            api::create_draft_sweep(&k, &refs(&cs), *height, *angle_deg, *corner, *caps).map(drop)
+            api::create_draft_sweep(&mut k, &refs(&cs), *height, *angle_deg, *corner, *caps)
+                .map(Swept::Brep)
         }
         Inputs::Pipe { radius, path, cap } => {
             let p = curve(&k, path)?;
-            api::create_pipe_sweep(&k, *radius, p.as_ref(), *cap).map(drop)
+            api::create_pipe_sweep(&mut k, *radius, p.as_ref(), *cap).map(Swept::Brep)
         }
         Inputs::PlanarPath {
             profile,
@@ -500,13 +561,13 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let pc = curves(&k, profile)?;
             let pp = curves(&k, path)?;
             api::create_sweep_along_planar_path(
-                &k,
+                &mut k,
                 &non_null(&pc)?,
                 &non_null(&pp)?,
                 *move_profile,
                 *caps,
             )
-            .map(drop)
+            .map(Swept::Brep)
         }
         Inputs::CurveSweep { profile, sweep } => {
             let pc = curves(&k, profile)?;
@@ -515,48 +576,52 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             let scl = curve(&k, &sweep.scale_curve)?;
             let opts = options_of(sweep.options);
             api::create_curve_sweep(
-                &k,
+                &mut k,
                 &refs(&pc),
                 path.as_ref(),
                 sref.as_ref(),
                 scl.as_ref(),
                 opts.as_ref(),
             )
-            .map(drop)
+            .map(Swept::CurveSweep)
         }
         Inputs::FromFaces { circles, sweep } | Inputs::FromEdges { circles, sweep } => {
             let path = curve(&k, &sweep.path)?;
             let sref = curve(&k, &sweep.scale_reference)?;
             let scl = curve(&k, &sweep.scale_curve)?;
             let opts = options_of(sweep.options);
-            // Placeholder ids, one per planar circle: `SmApiCreatePlanarCircle` cannot be
-            // built in Rust yet and only the count is read before the kernel call.
-            let n = u32::try_from(circles.len()).map_err(|_| harness("too many circles"))?;
-            if matches!(i, Inputs::FromFaces { .. }) {
-                let faces: Vec<FaceId> = (0..n).map(FaceId::from_index).collect();
-                api::create_curve_sweep_from_faces(
-                    &k,
-                    &b,
-                    &faces,
-                    path.as_ref(),
-                    sref.as_ref(),
-                    scl.as_ref(),
-                    opts.as_ref(),
-                )
-                .map(drop)
-            } else {
-                let edges: Vec<EdgeId> = (0..n).map(EdgeId::from_index).collect();
-                api::create_curve_sweep_from_edges(
-                    &k,
-                    &b,
-                    &edges,
-                    path.as_ref(),
-                    sref.as_ref(),
-                    scl.as_ref(),
-                    opts.as_ref(),
-                )
-                .map(drop)
-            }
+            // The faces of `SmApiCreatePlanarCircle` B-reps, as the C++ side.
+            let from_faces = matches!(i, Inputs::FromFaces { .. });
+            (|| -> solidcore::Result<Swept> {
+                let discs = discs(&mut k, circles)?;
+                let faces = disc_faces(&discs)?;
+                if from_faces {
+                    api::create_curve_sweep_from_faces(
+                        &mut k,
+                        &faces,
+                        path.as_ref(),
+                        sref.as_ref(),
+                        scl.as_ref(),
+                        opts.as_ref(),
+                    )
+                    .map(Swept::CurveSweep)
+                } else {
+                    let mut edges: Vec<(&Brep, EdgeId)> = Vec::new();
+                    for (b, f) in &faces {
+                        let fe = solidcore::topology::face::p4::edges(b, *f, None, false, None)?;
+                        edges.extend(fe.into_iter().map(|e| (*b, e)));
+                    }
+                    api::create_curve_sweep_from_edges(
+                        &mut k,
+                        &edges,
+                        path.as_ref(),
+                        sref.as_ref(),
+                        scl.as_ref(),
+                        opts.as_ref(),
+                    )
+                    .map(Swept::CurveSweep)
+                }
+            })()
         }
         Inputs::Taper {
             curves: cs,
@@ -566,7 +631,8 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             caps,
         } => {
             let cs = curves(&k, cs)?;
-            api::create_taper_extrude(&k, &refs(&cs), *height, *angle_deg, *caps, *fillet).map(drop)
+            api::create_taper_extrude(&mut k, &refs(&cs), *height, *angle_deg, *caps, *fillet)
+                .map(Swept::Brep)
         }
         Inputs::LinearReps {
             curves: cs,
@@ -576,8 +642,15 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             cap,
         } => {
             let cs = curves(&k, cs)?;
-            api::create_linear_sweep_with_repetitions(&k, &refs(&cs), v(dir), *dist, *reps, *cap)
-                .map(drop)
+            api::create_linear_sweep_with_repetitions(
+                &mut k,
+                &refs(&cs),
+                v(dir),
+                *dist,
+                *reps,
+                *cap,
+            )
+            .map(Swept::Brep)
         }
         Inputs::RotationalReps {
             curves: cs,
@@ -589,7 +662,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         } => {
             let cs = curves(&k, cs)?;
             api::create_rotational_sweep_with_repetitions(
-                &k,
+                &mut k,
                 &refs(&cs),
                 pt(base),
                 v(axis),
@@ -597,11 +670,11 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 *reps,
                 *cap,
             )
-            .map(drop)
+            .map(Swept::Brep)
         }
     };
     match res {
-        Ok(()) => Err(harness("rust: a stubbed sweep cannot succeed yet")),
+        Ok(s) => Ok(success(&s)),
         Err(e) => match Output::unported(&e) {
             Some(out) => Ok(out),
             None => to_output(i, &[status(&e)]),
@@ -1013,10 +1086,24 @@ mod tests {
                 .keys()
                 .any(|(o, k)| o == op && k.starts_with("status:"));
             assert!(failed, "{op} never compared");
-            let deferred = tally
+        }
+        // Valid inputs must reach a successful kernel call or an unported callee.
+        for op in [
+            "rotational",
+            "draft",
+            "pipe",
+            "planar_path",
+            "curve_sweep",
+            "from_faces",
+            "from_edges",
+            "taper",
+            "linear_reps",
+            "rotational_reps",
+        ] {
+            let reached_kernel = tally
                 .keys()
-                .any(|(o, k)| o == op && k.starts_with("deferred:"));
-            assert!(deferred, "{op} never reaches the kernel");
+                .any(|(o, k)| o == op && (k == "status:0" || k.starts_with("deferred:")));
+            assert!(reached_kernel, "{op} never reaches the kernel");
         }
         let compared: usize = tally
             .iter()

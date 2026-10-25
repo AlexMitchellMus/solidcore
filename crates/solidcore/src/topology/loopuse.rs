@@ -76,6 +76,9 @@
 //!   is wired (`topology.edgeuse_p3`, whose own deferred callees still return it).
 //!   `SmShell::GetRegion` is the co-port
 //!   [`eu1::shell_region`].
+//! - **Prepared queries.** The shared UV-corner walk can also borrow prepared topology
+//!   without mutation. It reports [`SolidError::Unported`] only if a trim curve needs
+//!   creating at the point where the mutable walk would create it.
 //! - The `std::unordered_set` overloads of `GetEdges` / `GetVertices`,
 //!   `GetEdgeusesAndVertexuses`, `CalculateBoundingBox`, `GetTurningAngDeg`,
 //!   `IsLoopuseSideInSurface`, `SmLoop::GetMaxSameDimGap3d`, `IsLamina`, `IsManifold`,
@@ -83,6 +86,7 @@
 //!   and `Dump` are not part of this unit.
 
 use std::collections::BTreeMap;
+use std::ops::Deref;
 
 use crate::curve::curve::Curve;
 use crate::error::{EntityRef, Result, SolidError};
@@ -108,6 +112,73 @@ use crate::topology::{
 };
 
 const OP: &str = "topology::loopuse";
+
+/// Topology access shared by mutable queries and queries over prepared UV trims.
+/// Only the mutable view may create a missing trim, at the original lazy call site.
+pub(crate) enum QueryTopology<'a> {
+    /// The ordinary query path, which may attach missing UV trim curves lazily.
+    Mutable(&'a mut Brep),
+    /// A read-only query; missing trims are reported only when actually needed.
+    Prepared(&'a Brep),
+    /// A read-only solve that can ask its caller to create an actually visited trim.
+    Requested(&'a Brep, &'a crate::query::brep::RayPreparation),
+}
+
+impl Deref for QueryTopology<'_> {
+    type Target = Brep;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Mutable(b) => b,
+            Self::Prepared(b) | Self::Requested(b, _) => b,
+        }
+    }
+}
+
+impl QueryTopology<'_> {
+    /// `GetOrCreateUVTrimCurve` with the flags used by the containment/corner walks.
+    /// The result tests both its status and the presence of the returned curve;
+    /// callers that ignore the upstream status may ignore this boolean too.
+    pub(crate) fn ensure_trim_curve(&mut self, k: &Kernel, eu: EdgeuseId) -> Result<bool> {
+        match self {
+            Self::Mutable(b) => {
+                let fetch = crate::topology::edgeuse::p3::get_or_create_uv_trim_curve(
+                    k, b, eu, false, false, true,
+                )?;
+                Ok(fetch.status.is_ok() && eu1::uv_trim_curve(b, eu)?.0.is_some())
+            }
+            Self::Prepared(b) => prepared_trim(b, eu, None),
+            Self::Requested(b, preparation) => prepared_trim(b, eu, Some(preparation)),
+        }
+    }
+}
+
+fn prepared_trim(
+    b: &Brep,
+    eu: EdgeuseId,
+    preparation: Option<&crate::query::brep::RayPreparation>,
+) -> Result<bool> {
+    if preparation.is_some_and(|preparation| preparation.trim_failed(eu)) {
+        return Ok(false);
+    }
+    if eu1::uv_trim_curve(b, eu)?.0.is_none() {
+        if let Some(preparation) = preparation {
+            preparation.request_trim(b, eu);
+            return Err(SolidError::PreparationRequired {
+                operation: "topology::loopuse::prepared_trim",
+            });
+        }
+        return Err(SolidError::unported(
+            "SmEdgeuse::GetOrCreateUVTrimCurve (unprepared read-only topology)",
+            "topology.edgeuse_p3",
+        ));
+    }
+    // The use's own failure record applies even when its mate owns the curve.
+    Ok(b.edgeuse(eu)?
+        .drop_curve_fail
+        .as_deref()
+        .is_none_or(|f| f.fail_status == crate::intersect::surface_drop_lib::p1::SM_SUCCESS))
+}
 
 /// `SmLoopuse_TYPE` (`TOPO_BASE_TYPE + 4`).
 pub const TYPE: i64 = 16004;
@@ -566,7 +637,13 @@ pub struct Closed3d {
 
 /// The 3D point of an edge use's end (`start` true: its start) on its edge curve;
 /// `prev` when the evaluation fails (its status is ignored upstream).
-fn edgeuse_end_point(b: &Brep, eu: EdgeuseId, start: bool, prev: Point3) -> Result<Point3> {
+fn edgeuse_end_point(
+    k: &Kernel,
+    b: &Brep,
+    eu: EdgeuseId,
+    start: bool,
+    prev: Point3,
+) -> Result<Point3> {
     let r = b.edgeuse(eu)?;
     let e = r
         .edge
@@ -579,7 +656,7 @@ fn edgeuse_end_point(b: &Brep, eu: EdgeuseId, start: bool, prev: Point3) -> Resu
     let ivl = edge.interval;
     let same = r.orientation == OrientType::Same;
     let t = if same == start { ivl.min() } else { ivl.max() };
-    match curve.evaluate_point(t) {
+    match curve.evaluate_point(k, t) {
         Ok(p) => Ok(p),
         Err(e) if e.is_unported() => Err(e),
         Err(_) => Ok(prev),
@@ -626,7 +703,7 @@ pub fn is_closed_3d(k: &Kernel, b: &Brep, lu: LoopuseId, check_all_gaps: bool) -
     for (ii, &this_eu) in eus.iter().enumerate() {
         // This Edgeuse End Point
         let this_zone_tol_3d = tol::zone_tol3d(k, eu1::tolerance(b, this_eu)?);
-        this_end_point = edgeuse_end_point(b, this_eu, false, this_end_point)?;
+        this_end_point = edgeuse_end_point(k, b, this_eu, false, this_end_point)?;
 
         // Next Edgeuse Start Point
         let next_eu = eus
@@ -634,7 +711,7 @@ pub fn is_closed_3d(k: &Kernel, b: &Brep, lu: LoopuseId, check_all_gaps: bool) -
             .copied()
             .ok_or_else(|| null("IsClosed3d: index"))?;
         let next_zone_tol_3d = tol::zone_tol3d(k, eu1::tolerance(b, next_eu)?);
-        next_start_point = edgeuse_end_point(b, next_eu, true, next_start_point)?;
+        next_start_point = edgeuse_end_point(k, b, next_eu, true, next_start_point)?;
 
         // ThisEndPoint to NextStartPoint gap
         let gap_3d_sq = this_end_point.distance_squared(next_start_point);
@@ -790,8 +867,8 @@ pub fn is_missing_seam_at_vertices(k: &Kernel, b: &mut Brep, lu: LoopuseId) -> R
         return Ok(false);
     };
     let dom = surface.natural_uv_domain();
-    if !surface.is_closed(&dom, SurfParamType::U, None, false)?.0
-        && !surface.is_closed(&dom, SurfParamType::V, None, false)?.0
+    if !surface.is_closed(k, &dom, SurfParamType::U, None, false)?.0
+        && !surface.is_closed(k, &dom, SurfParamType::V, None, false)?.0
     {
         return Ok(false);
     }
@@ -904,10 +981,12 @@ pub(crate) fn notify_ref(e: EntityRef) -> ObjectRef {
 }
 
 /// The entity [`notify_ref`] gives the key `key`, if any (its inverse on keys). A
-/// caller decoding notification keys (the heal path's topology tracker) relies on every
-/// event of the edit being keyed by [`notify_ref`], as
-/// [`ArenaNotifyState`](crate::topology::brep::p2::ArenaNotifyState) does; a change of
-/// that scheme changes this decoder with it.
+/// caller decoding notification keys relies on every event of the edit being keyed by
+/// [`notify_ref`], as [`ArenaNotifyState`](crate::topology::brep::p2::ArenaNotifyState)
+/// does; a change of that scheme changes this decoder with it. (The heal path's
+/// tracker now decodes kernel identities, `topology::brep::p3::topology_entity`, since
+/// part 5's plain edits run under them; this inverse stays for the arena scheme's tests.)
+#[cfg(test)]
 pub(crate) fn entity_of_notify_key(key: ObjectKey) -> Option<EntityRef> {
     let raw = key.0.checked_sub(1)?;
     let kind = raw >> 32;
@@ -1180,9 +1259,12 @@ pub struct UvCorners {
 
 /// `pEdgeuse->GetOrCreateUVTrimCurve(pUVTrimCurve)`: the curve after the call (its status
 /// is ignored upstream; `None` when it could not be made).
-fn get_or_create_uv_trim_curve(k: &Kernel, b: &mut Brep, eu: EdgeuseId) -> Result<Option<Curve>> {
-    let _ =
-        crate::topology::edgeuse::p3::get_or_create_uv_trim_curve(k, b, eu, false, false, true)?;
+fn get_or_create_uv_trim_curve(
+    k: &Kernel,
+    b: &mut QueryTopology<'_>,
+    eu: EdgeuseId,
+) -> Result<Option<Curve>> {
+    let _ = b.ensure_trim_curve(k, eu)?;
     Ok(crate::topology::edgeuse::p1::uv_trim_curve(b, eu)?
         .0
         .cloned())
@@ -1226,6 +1308,17 @@ pub fn uv_corner_boundaries(
     uv_domain: &Extent2d,
     tol: f64,
 ) -> Result<UvCorners> {
+    uv_corner_boundaries_with_topology(k, &mut QueryTopology::Mutable(b), l, uv_domain, tol)
+}
+
+/// Shared corner walk; prepared topology rejects missing trims only when visited.
+pub(crate) fn uv_corner_boundaries_with_topology(
+    k: &Kernel,
+    b: &mut QueryTopology<'_>,
+    l: LoopId,
+    uv_domain: &Extent2d,
+    tol: f64,
+) -> Result<UvCorners> {
     // init return values
     let mut out = UvCorners {
         boundaries: SS_NONE,
@@ -1252,10 +1345,10 @@ pub fn uv_corner_boundaries(
         if let Some(trim) = trim {
             // end points
             ivl = trim.natural_interval();
-            if let Some(p) = ignored(trim.evaluate_point(ivl.evaluate(0.0)))? {
+            if let Some(p) = ignored(trim.evaluate_point(k, ivl.evaluate(0.0)))? {
                 uv_beg = p;
             }
-            if let Some(p) = ignored(trim.evaluate_point(ivl.evaluate(1.0)))? {
+            if let Some(p) = ignored(trim.evaluate_point(k, ivl.evaluate(1.0)))? {
                 uv_end = p;
             }
             uv_pnt_beg = Point2::new(uv_beg.x, uv_beg.y);
@@ -1276,8 +1369,8 @@ pub fn uv_corner_boundaries(
                 .as_ref()
                 .ok_or_else(|| null("GetUVCornerBoundaries: no curve"))?;
             ivl = edge.interval;
-            let beg = ignored(c.evaluate_point(ivl.min()))?.unwrap_or(Vec3::UNDEF);
-            let end = ignored(c.evaluate_point(ivl.max()))?.unwrap_or(Vec3::UNDEF);
+            let beg = ignored(c.evaluate_point(k, ivl.min()))?.unwrap_or(Vec3::UNDEF);
+            let end = ignored(c.evaluate_point(k, ivl.max()))?.unwrap_or(Vec3::UNDEF);
             if let Some(p) = drop_point(k, s, &dom, beg)? {
                 uv_pnt_beg = p;
             }
@@ -1700,5 +1793,108 @@ mod tests {
         assert_eq!(calc_quad_num(o, o), 0);
         assert_eq!(calc_quad_num(o, Vec3::new(1.0, 0.0, 0.0)), 3);
         assert_eq!(calc_quad_num(o, Vec3::new(0.0, 1.0, 0.0)), 1);
+    }
+
+    #[test]
+    fn requested_trim_prepares_only_the_visited_use_and_bounds_retries() {
+        let mut k = Kernel::default();
+        let mut b = crate::primitive::api_primitives::create_pyramid(&mut k, Vec3::ZERO, 5.0, 20.0)
+            .unwrap();
+        let edgeuse = crate::topology::brep::p1::edges(&b, None)
+            .unwrap()
+            .into_iter()
+            .flat_map(|e| b.edge(e).unwrap().edgeuses.iter().copied())
+            .find(|&eu| eu1::uv_trim_curve(&b, eu).unwrap().0.is_none())
+            .unwrap();
+        let count = |b: &Brep| {
+            b.edgeuses()
+                .iter()
+                .filter(|(_, eu)| eu.uv_trim_curve.is_some())
+                .count()
+        };
+        let before = count(&b);
+        let mut preparation = crate::query::brep::RayPreparation::default();
+        assert!(QueryTopology::Requested(&b, &preparation)
+            .ensure_trim_curve(&k, edgeuse)
+            .is_err_and(|e| matches!(e, SolidError::PreparationRequired { .. })));
+        assert_eq!(
+            preparation.take_request(),
+            Some(crate::query::brep::PreparationRequest::UvTrim(edgeuse))
+        );
+        assert_eq!(count(&b), before);
+        preparation
+            .prepare(
+                &k,
+                &mut b,
+                crate::query::brep::PreparationRequest::UvTrim(edgeuse),
+            )
+            .unwrap();
+        assert_eq!(count(&b), before + 1);
+        assert!(QueryTopology::Requested(&b, &preparation)
+            .ensure_trim_curve(&k, edgeuse)
+            .unwrap());
+        assert_eq!(preparation.take_request(), None);
+        assert!(matches!(
+            preparation.prepare(
+                &k,
+                &mut b,
+                crate::query::brep::PreparationRequest::UvTrim(edgeuse)
+            ),
+            Err(SolidError::InvalidInput { .. })
+        ));
+    }
+
+    #[test]
+    fn prepared_trims_preserve_own_failure_status_and_corner_behavior() {
+        let k = Kernel::default();
+        let mut b = square(0.0);
+        for i in 0..4 {
+            let trim = b.edge(EdgeId::from_index(i)).unwrap().curve.clone();
+            b.edgeuse_mut(eu(2 * i)).unwrap().uv_trim_curve = trim;
+        }
+        b.edgeuse_mut(eu(0)).unwrap().drop_curve_fail =
+            Some(Box::new(crate::surface::surface::p2::DropCurveFail {
+                fail_status: crate::error::SM_ERR,
+                ..crate::surface::surface::p2::DropCurveFail::default()
+            }));
+        // This use's recorded failure is observed; its mate uses the same trim
+        // but must not inherit that failure (GetOrCreateUVTrimCurve semantics).
+        for (edgeuse, expected) in [(eu(0), false), (eu(1), true)] {
+            let preparation = crate::query::brep::RayPreparation::default();
+            assert_eq!(
+                QueryTopology::Requested(&b, &preparation)
+                    .ensure_trim_curve(&k, edgeuse)
+                    .unwrap(),
+                expected
+            );
+            assert_eq!(preparation.take_request(), None);
+            assert_eq!(
+                QueryTopology::Prepared(&b)
+                    .ensure_trim_curve(&k, edgeuse)
+                    .unwrap(),
+                expected,
+            );
+            assert_eq!(
+                QueryTopology::Mutable(&mut b)
+                    .ensure_trim_curve(&k, edgeuse)
+                    .unwrap(),
+                expected,
+            );
+        }
+        // Corner classification ignores the recorded status, unlike containment.
+        let domain = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
+        let prepared = uv_corner_boundaries_with_topology(
+            &k,
+            &mut QueryTopology::Prepared(&b),
+            LoopId::from_index(0),
+            &domain,
+            1e-6,
+        )
+        .unwrap();
+        assert_ne!(prepared.boundaries, SS_NONE);
+        assert_eq!(
+            prepared,
+            uv_corner_boundaries(&k, &mut b, LoopId::from_index(0), &domain, 1e-6).unwrap(),
+        );
     }
 }

@@ -19,6 +19,9 @@
 //! | `CheckSet` | `adjust has_fail fail_status curve`           | `-2`, or `status dmax replaced`, the edge use's and its mate's state, the edge tolerance, the record's B-rep flag (`dmax` is `-1` when not set) |
 //! | `Notify`   | `operation`                                   | `-2`, or `0`, the edge use's and its mate's state, their edge/face gap flags |
 //!
+//! Blocks with a value above [`super::topology_edgeuse_p2::MAX_BLOCK_MAGNITUDE`] are
+//! refused first (HANG-29).
+//!
 //! An edge use state is that of the `topology.edgeuse_p1` `SetUv` op. [`eval`] accepts
 //! what [`super::topology_edgeuse_p1::eval`] accepts for the block, an edge use index
 //! inside the export, a well-formed clamped B-spline curve (up to [`MAX_UV_INDEX`]), finite parameters, a
@@ -27,6 +30,30 @@
 
 use super::topology_edgeuse_p1::{self as p1, bad, brep_block, curve_up_to, Reader};
 use crate::{call_with_buffer, FfiError};
+
+/// Largest magnitude of a B-rep block value (the `±f64::MAX` markers `NL_NOW` / no-`z`
+/// aside) that [`eval`] (and the `topology.edgeuse_p3`, `topology.loopuse` and
+/// `topology.face_p3` wrappers) accept. HANG-29: with a surface or curve coordinate whose
+/// square overflows (from about `1.34e154`), building the face (`CreateUVTrimCurve` ->
+/// `SmCurve::GlobalCoincidenceChecker` -> `DropPoint`) never returns; with weights in
+/// `1e-3..=1e3` this bound keeps every Euclidean point under that regime.
+pub const MAX_BLOCK_MAGNITUDE: f64 = 1.0e150;
+
+/// Rejects a B-rep block holding a value above [`MAX_BLOCK_MAGNITUDE`] (HANG-29). Runs
+/// before the block's `Export`, which already builds the B-rep in upstream.
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for such a value.
+pub fn check_block_magnitudes(block: &[f64]) -> Result<(), FfiError> {
+    if block.iter().any(|v| {
+        let a = v.abs();
+        a > MAX_BLOCK_MAGNITUDE && a < f64::MAX
+    }) {
+        return Err(bad("B-rep value above 1e150 (HANG-29)"));
+    }
+    Ok(())
+}
 
 /// Largest control point index of a `CheckSet` UV curve (UV trim curves of the
 /// upstream test files reach ~70).
@@ -107,7 +134,8 @@ fn raw(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     call_with_buffer(4096, |buf, len| {
         // SAFETY: cpath is a valid NUL-terminated string; input is valid for
         // input.len() reads and holds what the shim reads for `op` (validated by
-        // `eval`); buf is valid for buf.len() writes and the shim honours the capacity;
+        // `eval_impl` for both public entry points); buf is valid for buf.len() writes
+        // and the shim honours the capacity;
         // len is valid.
         unsafe {
             sys::sc_topology_edgeuse_p2_eval(
@@ -131,13 +159,84 @@ fn raw(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
 /// [`FfiError::InvalidArgument`] for a malformed input; [`FfiError::Status`] for a shim
 /// failure.
 pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
+    eval_impl(op, path, input, None)
+}
+
+/// An immutable fixture exported only after this unit's guards accept its block.
+///
+/// Private fields prevent a weaker unit's export or caller-supplied counts from
+/// constructing this proof. Each prepared operation still builds a fresh native body.
+#[derive(Debug)]
+pub struct PreparedBrep {
+    fixture: p1::PreparedBrep,
+}
+
+impl PreparedBrep {
+    /// Validate all fixture-block guards before performing the genuine native export.
+    ///
+    /// # Errors
+    /// The unit's malformed-block refusals, or the native export's error.
+    pub fn new(path: &str, block: &[f64]) -> Result<Self, FfiError> {
+        Self::with_export(path, block, || p1::PreparedBrep::new(path, block))
+    }
+
+    fn with_export(
+        path: &str,
+        block: &[f64],
+        export: impl FnOnce() -> Result<p1::PreparedBrep, FfiError>,
+    ) -> Result<Self, FfiError> {
+        let mut rd = Reader {
+            input: block,
+            at: 0,
+        };
+        brep_block(&mut rd, path)?;
+        rd.done()?;
+        check_block_magnitudes(block)?;
+        Ok(Self { fixture: export()? })
+    }
+
+    /// The immutable genuine native export, including a possible build-failure record.
+    #[must_use]
+    pub fn export(&self) -> &[f64] {
+        self.fixture.export()
+    }
+}
+
+/// Run an operation on a freshly rebuilt copy of a prepared fixture.
+///
+/// `tail` contains the edge-use index and operation arguments, without the B-rep
+/// block. All ordinary block, magnitude, index and argument checks still run;
+/// only the redundant validating export is reused. No mutable native body is kept.
+///
+/// # Errors
+/// The same validation and native errors as [`eval`]. A changed file fixture whose
+/// selected edge use no longer exists is refused by the native bounds check.
+pub fn eval_prepared(op: Op, prepared: &PreparedBrep, tail: &[f64]) -> Result<Vec<f64>, FfiError> {
+    let mut input = prepared.fixture.block().to_vec();
+    input.extend_from_slice(tail);
+    eval_impl(op, prepared.fixture.path(), &input, Some(prepared.export()))
+}
+
+fn eval_impl(
+    op: Op,
+    path: &str,
+    input: &[f64],
+    prepared_export: Option<&[f64]>,
+) -> Result<Vec<f64>, FfiError> {
     let mut rd = Reader { input, at: 0 };
     brep_block(&mut rd, path)?;
     let block = input.get(..rd.at).ok_or_else(|| bad("input too short"))?;
-    let export = p1::eval(p1::Op::Export, path, block)?;
-    let Some(c) = p1::counts(&export) else {
+    check_block_magnitudes(block)?;
+    let fresh_export;
+    let export = if let Some(export) = prepared_export {
+        export
+    } else {
+        fresh_export = p1::eval(p1::Op::Export, path, block)?;
+        &fresh_export
+    };
+    let Some(c) = p1::counts(export) else {
         // the B-rep could not be built: the op reports the same failure
-        return Ok(export);
+        return Ok(export.to_vec());
     };
     let n_eu = c.get(6).copied().unwrap_or(0);
     rd.below(n_eu)?;
@@ -146,3 +245,26 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     raw(op, path, input)
 }
 
+#[cfg(test)]
+mod prepared_guard_tests {
+    use super::*;
+
+    #[test]
+    fn magnitude_refusal_precedes_native_export() {
+        let called = std::cell::Cell::new(false);
+        // Syntactically valid point block accepted by p1's coordinate parser, but
+        // unsafe for this unit. The callback never calls native code, even if a
+        // regression accidentally removes the guard.
+        let block = [4.0, 1.0, 1e200, 0.0, 0.0, 0.0, 0.0];
+        let error = PreparedBrep::with_export("", &block, || {
+            called.set(true);
+            Err(bad("unexpected export callback"))
+        })
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "invalid argument: B-rep value above 1e150 (HANG-29)"
+        );
+        assert!(!called.get());
+    }
+}

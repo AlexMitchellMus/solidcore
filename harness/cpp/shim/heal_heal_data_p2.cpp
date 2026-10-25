@@ -10,9 +10,10 @@
 // validates every input. B-rep blocks are those of sc_topology_fixture.h (kinds 0..3)
 // plus kind 4 (SmPrimitiveCreation::CreateBox, as prog_test
 // my_test_squeeze_edge_tracks_removal) and kind 5 (a full SmSphere face, as prog_test
-// my_test_closed_sphere_properties). Analytic face surfaces and edge curves other than
-// SmPlane / SmLine are replaced by plain B-spline copies (what the Rust import
-// rebuilds, as the heal.gap shim does), then the graph is walked (with the vertex
+// my_test_closed_sphere_properties). Surfaces and edge curves the shared exporters can
+// carry as their exact analytic kind (planes, circles and ellipses) are kept; any other
+// surface or edge curve is replaced by a plain B-spline copy (what the Rust import
+// rebuilds, as the heal.gap shim does). Then the graph is walked (with the vertex
 // lists) and exported, followed by each vertex's vertex use list.
 #include "sc_topology_fixture.h"
 
@@ -55,8 +56,21 @@ SmBSplineCurve* plain_curve(SmCurve* c)
     return new (the_context()) SmBSplineCurve(sm_AllocateAndCopyNurbCurve(nurb), b->GetDim(), FALSE);
 }
 
-// Gives every analytic face and edge of the B-rep a plain B-spline copy (the
-// originals are left unowned and leaked), as the heal.gap shim does.
+// Whether the shared graph exporter transports `c` as its exact analytic kind.
+// Probe that exporter instead of duplicating its eligibility and round-trip rules,
+// so normalise() keeps exactly the curves the Rust import rebuilds natively.
+bool exact_curve(const SmCurve* c)
+{
+    if (c == nullptr || (c->GetType() != SmEllipse_TYPE && c->GetType() != SmCircle_TYPE))
+        return false;
+    std::vector<double> head;
+    sc_exact_curve_export::put_export_curve(head, c, the_context(), put_curve);
+    return !head.empty() && head.front() == -3.0;
+}
+
+// Match the shared export/import: preserve exact analytic surfaces and edge curves,
+// and replace other surfaces and edge curves with plain B-splines, as the heal.gap
+// shim does. Replaced originals are left unowned and leaked.
 void normalise(Graph& g)
 {
     for (SmFace* f : g.faces)
@@ -64,6 +78,10 @@ void normalise(Graph& g)
         SmSurface* s = f->*FPeek::srf();
         if (s == nullptr || !s->IsKindOf(SmBSplineSurface_TYPE) || s->GetType() == SmBSplineSurface_TYPE ||
             s->GetType() == SmPlane_TYPE)
+            continue;
+        // Preserve every surface the shared export imports as its exact analytic kind.
+        std::vector<double> head;
+        if (sc_analytic_export::put_exact_head(head, s, the_context()))
             continue;
         SmBSplineSurface* b = (SmBSplineSurface*)s;
         gw_SURFACE* nurb = b->GetGwNurbPointer();
@@ -76,7 +94,12 @@ void normalise(Graph& g)
     }
     for (SmEdge* e : g.edges)
     {
-        SmBSplineCurve* nc = plain_curve(e->*EdgePeek::curve());
+        SmCurve* c = e->*EdgePeek::curve();
+        // Keep circles/ellipses that the shared exporter can carry exactly; the
+        // healer then sees the same native kind as the imported Rust B-rep.
+        if (exact_curve(c))
+            continue;
+        SmBSplineCurve* nc = plain_curve(c);
         if (nc != nullptr)
             e->*EdgePeek::curve() = nc;
     }
@@ -550,6 +573,40 @@ struct VxPeek : SmObjsInVoxels<SmVertexProps*>
 {
     static SmExtent3d SmObjsInVoxels<SmVertexProps*>::*box() { return &VxPeek::m_sBBox; }
 };
+
+// An add naming a live target that the same step does not remove gives that entity a
+// second props record (upstream adds only topology it has just created). A catch-up
+// that can delete topology then frees the entity through one record and dereferences
+// it through the other (fuzz: SmEdge::GetVertices in Fix_DegenEdges).
+bool readds_live_target(SmHealData& h, SmBrep* brep, SmTArray<SmTopology*>& removed,
+                        SmTArray<SmTopology*>& added)
+{
+    for (ULONG i = 0; i < added.GetSize(); ++i)
+    {
+        SmTopology* t = added[i];
+        ULONG idx;
+        if (t == NULL || !brep->IsLiveTopologyMember(t) || removed.FindElement(t, idx))
+            continue;
+        if ((t->IsKindOf(SmFace_TYPE) && h.m_sTgtFaces.FindElement((SmFace*)t, idx)) ||
+            (t->IsKindOf(SmEdge_TYPE) && h.m_sTgtEdges.FindElement((SmEdge*)t, idx)) ||
+            (t->IsKindOf(SmVertex_TYPE) && h.m_sTgtVertices.FindElement((SmVertex*)t, idx)))
+            return true;
+    }
+    return false;
+}
+
+// A seed step that would queue a face props record a second time (upstream queues each
+// once; the repair then works on the record twice).
+bool degen_face_seeded(SmHealData& h)
+{
+    for (ULONG i = 0; i < h.m_sTgtFaceProps.GetSize(); ++i)
+    {
+        ULONG idx;
+        if (h.m_sBadFaceProps_DegenFaces.m_sProbArray.FindElement(h.m_sTgtFaceProps[i], idx))
+            return true;
+    }
+    return false;
+}
 
 // Get*Props_ForTgts indexes props by the matching target's position.
 template<class T, class P>
@@ -1430,6 +1487,13 @@ void run_heal(Rd& rd, const char* path, std::vector<double>& o)
                 stop = true;
                 continue;
             }
+            if ((op < h->m_eDoneHealOp ? op : h->m_eDoneHealOp) >= SM_HO_FIX_COIN_VERTICES &&
+                readds_live_target(*h, brep, removed, added))
+            {
+                o.push_back(ST_NULL_DEREF);
+                stop = true;
+                continue;
+            }
             // Native UpdateTargetLists sizes every props list to its TARGET
             // count. Reject holes left by removing an uncached props record,
             // including drift already introduced by a prior Remove*Props step.
@@ -1475,6 +1539,12 @@ void run_heal(Rd& rd, const char* path, std::vector<double>& o)
         case 42:
         {
             bool null_face = rd.flag();
+            if (degen_face_seeded(*h))
+            {
+                o.push_back(ST_NULL_DEREF);
+                stop = true;
+                continue;
+            }
             for (ULONG i = 0; i < h->m_sTgtFaceProps.GetSize(); ++i)
             {
                 SmFaceProps* p = h->m_sTgtFaceProps[i];
@@ -1488,6 +1558,12 @@ void run_heal(Rd& rd, const char* path, std::vector<double>& o)
             break;
         }
         case 41:
+            if (degen_face_seeded(*h))
+            {
+                o.push_back(ST_NULL_DEREF);
+                stop = true;
+                continue;
+            }
             for (ULONG i = 0; i < h->m_sTgtFaceProps.GetSize(); ++i)
             {
                 SmFaceProps* p = h->m_sTgtFaceProps[i];

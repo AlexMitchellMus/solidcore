@@ -7,17 +7,29 @@
 // validates every input. The input is a face selector (index into the traversal-order face
 // list, checked by the wrapper), the op's fixed-size arguments, then the B-rep block of
 // unit topology.vertexuse (built by the shared sc_topology_fixture.h), whose graph that
-// unit's Export op exports for the Rust import. As the topology.trimming_tools shim, the
-// faces and edges get the plain B-spline copies of analytic geometry (what the Rust import
-// rebuilds), keeping the surface owner, before the op.
+// unit's Export op exports for the Rust import. As in the topology.trimming_tools shim,
+// exactly exported analytic surfaces keep their dynamic kind; other surfaces and edge
+// curves get the plain B-spline copies the Rust import rebuilds, keeping the owner.
 //
 // Output: `0` (or `-1 status` when the B-rep build failed), then the op record. A slot of
-// `-2` marks a call the shim skips because upstream would dereference null, `-3` one it
-// skips because upstream crashes there and the Rust side defers it (see the seam ops).
+// `-2` marks a call the shim skips because upstream would dereference null; a seam call
+// that can reach upstream's crash runs in a forked child, and `-4` marks one whose child
+// crashed, `-3` one the shim skipped because it cannot fork (see fp1_trapped).
 #include "sc_topology_fixture.h"
 
 #include <SmCurveClass.h>
 #include <SmFaceProps.h>
+
+#ifndef _WIN32
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <cstdio>
+#endif
 
 namespace
 {
@@ -35,11 +47,121 @@ enum : int32_t
     OP_PROBE = 10,
     OP_MOVE_SEAM = 11,
     OP_SPLIT_AT_SEAM = 12,
+    OP_UV_DOMAIN_AFTER_TRIM_SHIFT = 13,
 };
 
 const double FP1_NULL_DEREF = -2.0;
-// A call the shim skips because upstream crashes there and the Rust side defers it.
+// A seam call the shim skips because upstream may crash there and it cannot fork.
 const double FP1_NOT_RUN = -3.0;
+// A seam call whose child process crashed, hung or sent no whole record (UB-137).
+const double FP1_CRASHED = -4.0;
+
+#ifndef _WIN32
+
+bool fp1_write_all(int fd, const void* p, size_t n)
+{
+    const char* c = (const char*)p;
+    while (n > 0)
+    {
+        ssize_t w = write(fd, c, n);
+        if (w <= 0)
+            return false;
+        c += w;
+        n -= (size_t)w;
+    }
+    return true;
+}
+
+bool fp1_read_all(int fd, void* p, size_t n)
+{
+    char* c = (char*)p;
+    while (n > 0)
+    {
+        ssize_t r = read(fd, c, n);
+        if (r <= 0)
+            return false;
+        c += r;
+        n -= (size_t)r;
+    }
+    return true;
+}
+
+#endif
+
+// Runs `fn` (appending its record to `o`) in place, or, when `trap`, in a forked child so
+// that upstream's SplitAtSeam crash (plan/upstream-issues.md UB-137) ends the child, not
+// the run. The parent appends the child's record, or FP1_CRASHED when the child died on a
+// signal, timed out or did not send a whole record. Without fork (Windows), and when the
+// pipe or the fork fails, a trapped call is skipped (FP1_NOT_RUN).
+template <class F> void fp1_trapped(bool trap, std::vector<double>& o, F fn)
+{
+    if (!trap)
+    {
+        fn(o);
+        return;
+    }
+#ifdef _WIN32
+    o.push_back(FP1_NOT_RUN);
+#else
+    int fd[2];
+    if (pipe(fd) != 0)
+    {
+        o.push_back(FP1_NOT_RUN);
+        return;
+    }
+    fflush(stdout);
+    fflush(stderr);
+    pid_t pid = fork();
+    if (pid < 0)
+    {
+        close(fd[0]);
+        close(fd[1]);
+        o.push_back(FP1_NOT_RUN);
+        return;
+    }
+    if (pid == 0)
+    {
+        close(fd[0]);
+#ifdef __linux__
+        // (no core dump of an expected crash: a piped core_pattern ignores RLIMIT_CORE)
+        prctl(PR_SET_DUMPABLE, 0);
+#endif
+        alarm(60);
+        int code = 1;
+        try
+        {
+            std::vector<double> c;
+            fn(c);
+            int64_t n = (int64_t)c.size();
+            if (fp1_write_all(fd[1], &n, sizeof n) && fp1_write_all(fd[1], c.data(), c.size() * sizeof(double)))
+                code = 0;
+        }
+        catch (...)
+        {
+        }
+        _exit(code);
+    }
+    close(fd[1]);
+    std::vector<double> c;
+    int64_t n = -1;
+    bool got = fp1_read_all(fd[0], &n, sizeof n) && n >= 0 && n < (1 << 20);
+    if (got)
+    {
+        c.resize((size_t)n);
+        got = fp1_read_all(fd[0], c.data(), c.size() * sizeof(double));
+    }
+    close(fd[0]);
+    int ws = 0;
+    pid_t w;
+    do
+        w = waitpid(pid, &ws, 0);
+    while (w < 0 && errno == EINTR);
+    if (got && w == pid && WIFEXITED(ws) && WEXITSTATUS(ws) == 0)
+        o.insert(o.end(), c.begin(), c.end());
+    else
+        o.push_back(FP1_CRASHED);
+#endif
+}
 
 struct Fp1EdgePeek : SmEdge
 {
@@ -50,9 +172,9 @@ struct Fp1LoopPeek : SmLoop
     static SmLoopuse* SmLoop::*lu() { return &Fp1LoopPeek::m_pLU; }
 };
 
-// The Rust import rebuilds NURBs as plain B-splines (and lines, planes): give the C++
-// faces and edges the same geometry. The analytic originals are leaked (they may still be
-// referenced as owners' geometry elsewhere).
+// Match the Rust import: keep exactly exported analytic surfaces and give other
+// surfaces and edge curves their plain B-spline copies (and lines, planes).
+// Replaced originals are leaked: they may still be referenced as owners' geometry.
 void fp1_normalise(Graph& g)
 {
     for (SmFace* f : g.faces)
@@ -60,6 +182,10 @@ void fp1_normalise(Graph& g)
         SmSurface* s = f->*FPeek::srf();
         if (s == nullptr || !s->IsKindOf(SmBSplineSurface_TYPE) || s->GetType() == SmBSplineSurface_TYPE ||
             s->GetType() == SmPlane_TYPE)
+            continue;
+        // Preserve every surface the shared export imports as its exact analytic kind.
+        std::vector<double> head;
+        if (sc_analytic_export::put_exact_head(head, s, the_context()))
             continue;
         SmBSplineSurface* b = (SmBSplineSurface*)s;
         gw_SURFACE* nurb = b->GetGwNurbPointer();
@@ -195,6 +321,7 @@ int64_t fp1_nargs(int32_t op)
 {
     switch (op)
     {
+    case OP_UV_DOMAIN_AFTER_TRIM_SHIFT: return 9;
     case OP_UV_DOMAIN:
     case OP_ORIENTED: return 3;
     case OP_SET_SURFACE:
@@ -235,10 +362,51 @@ void fp1_brep_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
     switch (op)
     {
     case OP_UV_DOMAIN:
+    case OP_UV_DOMAIN_AFTER_TRIM_SHIFT:
     {
         SmBoolean limit = ad.bflag();
         bool want_max = ad.flag();
         bool want_2nd = ad.flag();
+        if (op == OP_UV_DOMAIN_AFTER_TRIM_SHIFT)
+        {
+            if (f->GetSurface() == NULL)
+            {
+                o.push_back(FP1_NULL_DEREF);
+                break;
+            }
+            double tmp;
+            SmStatus prep = f->CreateUVTrimCurves(FALSE, NULL, NULL, tmp, tmp, tmp, tmp, tmp, tmp);
+            if (prep != SM_SUCCESS)
+            {
+                o.push_back(st(prep));
+                return;
+            }
+            SmPoint2d lo = ad.uv(), hi = ad.uv();
+            f->SetUVDomain(SmExtent2d(lo, hi));
+            SmPoint2d delta = ad.uv();
+            SmAxis2Placement transform;
+            transform.Translate(SmVector3d(delta[0], delta[1], 0.0));
+            SmTArray<SmLoopuse*> loops;
+            f->GetUpwardLoopuses(loops);
+            for (int64_t li = 0; li < loops.GetSize(); ++li)
+            {
+                SmTArray<SmEdgeuse*> edges;
+                loops[li]->GetEdgeuses(edges);
+                for (int64_t ei = 0; ei < edges.GetSize(); ++ei)
+                {
+                    SmCurve* curve = edges[ei]->GetUVTrimCurve();
+                    if (curve != NULL)
+                    {
+                        prep = curve->Transform(transform, NULL);
+                        if (prep != SM_SUCCESS)
+                        {
+                            o.push_back(st(prep));
+                            return;
+                        }
+                    }
+                }
+            }
+        }
         SmExtent2d dom;
         double gap = -7.0, gap2 = -7.0;
         SmStatus r = f->CalculateUVDomainFromUVTrimCurves(dom, limit, want_max ? &gap : NULL,
@@ -412,14 +580,16 @@ void fp1_brep_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
             props.m_bClosedV = si.closed_v;
         }
         SmFaceProps* pp = si.props ? &props : NULL;
+        bool trap = false;
 
         // Upstream SplitAtSeam, after a U merge that made new faces, recurses on `this`
         // with the classifications of each new face (not on that face), and
         // SmCurveClassification::MergeInterval then crashes (plan/upstream-issues.md).
-        // Skip (FP1_NOT_RUN) every call that can reach that branch: a SplitAtSeam asked
+        // Trap (fp1_trapped) every call that can reach that branch: a SplitAtSeam asked
         // to merge in both directions on a face periodic in either, and every MoveSeam
-        // with split that gets past its early return. The runner defers these cases under
-        // the crash-guard label `cpp-crash-guard:UB-137`: they never become comparable.
+        // with split that gets past its early return. No input predicate separates the
+        // calls that crash, so the trap runs them all; the runner rejects those whose child
+        // crashed (inputs undefined in C++, UB-137), so neither side is compared.
         SmSurface* srf = f->GetSurface();
         SmExtent2d nat = srf->GetNaturalUVDomain();
         // (the face properties' closed flags decide SplitAtSeam's own periodicity test,
@@ -434,10 +604,7 @@ void fp1_brep_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
             bool no_missing = si.props && (si.missing == SM_SP_NEITHER || si.missing == SM_SP_UNKNOWN);
             // (the U-then-V branch needs both merges and either direction periodic)
             if (!no_missing && (per_u || per_v) && merge_u && merge_v)
-            {
-                o.push_back(FP1_NOT_RUN);
-                break;
-            }
+                trap = true;
         }
         else if (split)
         {
@@ -457,28 +624,27 @@ void fp1_brep_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
             // (MoveSeam recomputes the seam problem before splitting, so any split it
             // makes can reach the U-then-V branch)
             if (!quiet)
+                trap = true;
+        }
+        fp1_trapped(trap, o, [&](std::vector<double>& to) {
+            SmTArray<SmFace*> fs;
+            SmTArray<SmEdge*> es;
+            SmTArray<SmVertex*> vs;
+            if (op == OP_MOVE_SEAM)
             {
-                o.push_back(FP1_NOT_RUN);
-                break;
+                SmFixSeamPlanType ru = SmFixSeamPlanType::SM_FSP_UNKNOWN;
+                SmFixSeamPlanType rv = SmFixSeamPlanType::SM_FSP_UNKNOWN;
+                SmStatus r = f->MoveSeam(ru, rv, cu, cv, c, m, n, center, split, &fs, &es, &vs, pp);
+                to.push_back(st(r));
+                to.push_back((double)(int)ru);
+                to.push_back((double)(int)rv);
             }
-        }
-        SmTArray<SmFace*> fs;
-        SmTArray<SmEdge*> es;
-        SmTArray<SmVertex*> vs;
-        if (op == OP_MOVE_SEAM)
-        {
-            SmFixSeamPlanType ru = SmFixSeamPlanType::SM_FSP_UNKNOWN;
-            SmFixSeamPlanType rv = SmFixSeamPlanType::SM_FSP_UNKNOWN;
-            SmStatus r = f->MoveSeam(ru, rv, cu, cv, c, m, n, center, split, &fs, &es, &vs, pp);
-            o.push_back(st(r));
-            o.push_back((double)(int)ru);
-            o.push_back((double)(int)rv);
-        }
-        else
-        {
-            o.push_back(st(f->SplitAtSeam(cu, cv, c, m, n, &fs, &es, &vs, pp)));
-        }
-        fp1_put_split(o, fs, es, vs);
+            else
+            {
+                to.push_back(st(f->SplitAtSeam(cu, cv, c, m, n, &fs, &es, &vs, pp)));
+            }
+            fp1_put_split(to, fs, es, vs);
+        });
         break;
     }
     default: o.push_back((double)SC_ERR_ARG); break;

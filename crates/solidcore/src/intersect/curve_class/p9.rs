@@ -8,11 +8,14 @@
 //! | [`CurveClassification::intersect_ts_bound`] | `SmCurveClassification::IntersectTSBound` |
 //!
 //! Deviations: topology is supplied as borrowed views resolved from arena ids, and
-//! the caller supplies the face's trim cache. Cached marks are local ordered lists
-//! of visited handles. No input-driven recursion is added. Temporary surface-owner
-//! clearing is represented by a private copy for a lifted 2D source. Missing generic
-//! curve-on-surface dispatch and mutable edge insertion retain their dependency
-//! deferrals; no synthetic classification is inserted. Ignored native evaluation
+//! the caller supplies the face's trim cache (in its own handle space, mapped to the
+//! caller's by [`BoundaryFace::cache_handle`]). The cached branch claims and locks a
+//! context mark as upstream's `SmNewMarkAndLock` does ([`crate::geom::context::Context::claim_mark`]);
+//! the vertex uses and edge uses it marks are a local ordered list of visited
+//! handles. No input-driven recursion is added. Temporary surface-owner
+//! clearing is represented by a private copy for a lifted 2D source. Concrete
+//! curve-on-surface dispatch is preserved; mutable edge insertion retains its dependency
+//! deferral. Ignored native evaluation
 //! and drop statuses preserve initialized outputs; unported errors propagate. The
 //! native checked-drop guess aliases its output and is reset to zero before solving;
 //! the Rust call explicitly uses that zero guess. A 3D trim-boundary source returns
@@ -27,6 +30,7 @@ use crate::curve::curve::p6::DroppedPoint;
 use crate::curve::curve::p8::CurveIntersectOptions;
 use crate::curve::curve::Curve;
 use crate::error::{ignored, Result, SolidError};
+use crate::geom::context::ALL_MARKS;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::SolverOperation;
@@ -38,7 +42,7 @@ use crate::intersect::point_class::{
 use crate::kernel::Kernel;
 use crate::math::{max2, min2, Point2, Point3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT};
 use crate::surface::surface::p1::{map_to_2d, map_to_2d_on_curve};
-use crate::surface::surface::{Surface, SurfaceKind};
+use crate::surface::surface::Surface;
 use crate::surface::surface_cache::p1::FaceContainment;
 use crate::surface::trim_srf_cache::TrimSrfCache;
 
@@ -96,13 +100,30 @@ pub struct BoundaryLoop<O> {
 
 /// Resolved upward faceuse traversal and the face's actual surface and trim cache.
 /// These views borrow geometry; they do not replace the B-rep arenas.
-pub struct BoundaryFace<'a, O> {
+pub struct BoundaryFace<'a, O, C = O> {
     /// Face surface.
     pub surface: &'a Surface,
     /// Upward loopuses, in native order.
     pub loops: &'a [BoundaryLoop<O>],
-    /// Caller-owned trimmed surface cache (`GetSurfaceCache`).
-    pub cache: &'a TrimSrfCache<O>,
+    /// The face surface's trimmed surface cache (`smsurf_GetSurfaceCache`), whose
+    /// vertex use and edge use handles are `C`.
+    pub cache: &'a TrimSrfCache<C>,
+    /// The caller's handle of a vertex use or edge use the cache's leaf nodes name
+    /// (`None`: not one of the face's).
+    pub cache_handle: &'a dyn Fn(C) -> Option<O>,
+}
+
+/// What the cached branch of `IntersectTSBound` visits
+/// ([`CurveClassification::ts_bound_cached_visits`]).
+#[derive(Debug, Clone)]
+pub struct CachedVisits<O> {
+    /// No cache node meets the source curve's UV box: nothing to do, and no mark is
+    /// claimed.
+    pub no_nodes: bool,
+    /// The vertex uses of the leaf nodes, each once, with the cache's UV points.
+    pub vertices: Vec<BoundaryVertex<O>>,
+    /// The edge uses of the leaf nodes, each once.
+    pub edgeuses: Vec<BoundaryEdgeuse<O>>,
 }
 
 /// `IntersectEdges` flags. `has_big_gaps` is required upstream; this Rust options
@@ -123,14 +144,22 @@ impl Default for IntersectEdgesOptions {
     }
 }
 
+/// The source and target curves of a curve/curve intersection here, with their
+/// natural intervals (upstream's objects are the curves, whose natural intervals
+/// `IdenticalSolutions` reads).
 #[derive(Clone, Copy, PartialEq)]
 enum Side {
-    Source,
-    Target,
+    Source(Extent1d),
+    Target(Extent1d),
 }
 impl SolutionObject for Side {
     fn kind(&self) -> ObjectKind {
         ObjectKind::Curve
+    }
+    fn natural_interval(&self) -> Option<Extent1d> {
+        match self {
+            Self::Source(ivl) | Self::Target(ivl) => Some(*ivl),
+        }
     }
 }
 
@@ -138,17 +167,10 @@ fn curve<O: ClassObject>(g: &impl ClassGeometry<O>, handle: O) -> Result<&Curve>
     g.curve(handle).ok_or(SolidError::null_pointer(OP))
 }
 fn lifted(k: &Kernel, uv: &Curve, surface: &Surface) -> Result<Curve> {
-    let SurfaceKind::BSpline(bs) = surface.kind() else {
-        // DISPATCH GAP(curve.crv_on_surf): owned generic Surface in SmCrvOnSurf.
-        return Err(SolidError::unported(
-            "SmCrvOnSurf over a generic Surface",
-            "curve.crv_on_surf",
-        ));
-    };
     Ok(Curve::from(CrvOnSurf::new(
         k,
-        uv.clone(),
-        bs.clone(),
+        uv.clone_for_evaluation()?,
+        surface.clone_for_evaluation()?,
         Some(surface.natural_uv_domain()),
         0,
     )?))
@@ -184,8 +206,8 @@ fn named<O: Copy>(s: &Solution<Side>, source: O, target: O) -> Solution<O> {
     out.nodes = s.nodes;
     for (to, from) in out.objects.iter_mut().zip(s.objects) {
         *to = from.map(|x| match x {
-            Side::Source => source,
-            Side::Target => target,
+            Side::Source(_) => source,
+            Side::Target(_) => target,
         });
     }
     out
@@ -196,7 +218,7 @@ impl<O: ClassObject> CurveClassification<O> {
     /// A shared curve uses the exact interval-overlap shortcut before insertion.
     ///
     /// # Errors
-    /// Missing geometry fails; unavailable generic surface lifting or mutable edge
+    /// Missing geometry fails; unavailable surface evaluation or mutable edge
     /// insertion defers to its dependency. Earlier successful insertions are retained.
     pub fn intersect_edges(
         &mut self,
@@ -210,8 +232,8 @@ impl<O: ClassObject> CurveClassification<O> {
         let source = curve(geometry, source_handle)?;
         let lift;
         let working = if !options.uv_space_okay && source.dim() == 2 {
-            let mut unowned = surface.clone();
-            *unowned.owner_mut() = None;
+            let mut unowned = surface.clone_for_evaluation()?;
+            let _ = unowned.set_owner(None);
             lift = lifted(k, source, &unowned)?;
             &lift
         } else {
@@ -255,7 +277,10 @@ impl<O: ClassObject> CurveClassification<O> {
                     &edge.interval,
                     tolerance,
                     &CurveIntersectOptions {
-                        handles: [Some(Side::Source), Some(Side::Target)],
+                        handles: [
+                            Some(Side::Source(working.natural_interval())),
+                            Some(Side::Target(target.natural_interval())),
+                        ],
                         ..CurveIntersectOptions::default()
                     },
                 )?;
@@ -287,11 +312,11 @@ impl<O: ClassObject> CurveClassification<O> {
     /// # Errors
     /// Missing geometry/cache records fail; generic surface lifting and mutable
     /// edge insertion retain their existing dependency deferrals.
-    pub fn intersect_ts_bound(
+    pub fn intersect_ts_bound<C: Copy + PartialEq>(
         &mut self,
         k: &Kernel,
         geometry: &impl ClassGeometry<O>,
-        face: &BoundaryFace<'_, O>,
+        face: &BoundaryFace<'_, O, C>,
         do_check_3d: bool,
     ) -> Result<()> {
         let source_handle = self.curve().ok_or(SolidError::null_pointer(OP))?;
@@ -302,11 +327,7 @@ impl<O: ClassObject> CurveClassification<O> {
                 "trim boundary source must be 2D",
             ));
         }
-        let base = face.cache.base();
-        if base.face_was_modified
-            || !base.have_t_surface_cache
-            || base.face_containment_done == FaceContainment::NotDone
-        {
+        let Some(visits) = self.ts_bound_cached_visits(k, geometry, face)? else {
             for lp in face.loops {
                 for vertex in &lp.vertices {
                     self.p9_vertex(k, geometry, source, face.surface, *vertex, do_check_3d)?;
@@ -316,10 +337,56 @@ impl<O: ClassObject> CurveClassification<O> {
                 }
             }
             return Ok(());
+        };
+        // no work - curve is outside of the domain of the surface
+        if visits.no_nodes {
+            return Ok(());
+        }
+        // increment the mark on the context by 1 (the vertex uses and edge uses it
+        // marks are the ordered visit lists)
+        let _mark_lock = k.context.claim_mark(ALL_MARKS);
+        for vertex in &visits.vertices {
+            self.ts_bound_vertex(k, geometry, face.surface, *vertex, do_check_3d)?;
+        }
+        for edgeuse in &visits.edgeuses {
+            self.ts_bound_edgeuse(k, geometry, face.surface, *edgeuse)?;
+        }
+        Ok(())
+    }
+
+    /// The cached branch of `IntersectTSBound`, up to its traversals: `None` when the
+    /// face's trimmed cache is not up to date (the loop-use branch runs instead), else
+    /// the vertex uses (with the cache's UV points) and then the edge uses of the
+    /// cache's leaf nodes that meet the source curve's UV box, each once, in the order
+    /// upstream visits (marks) them. The caller claims the context mark when there are
+    /// nodes ([`CachedVisits::no_nodes`] is false), then intersects them with
+    /// [`Self::ts_bound_vertex`] and [`Self::ts_bound_edgeuse`].
+    ///
+    /// # Errors
+    /// Missing geometry or cache records; a source curve whose curve cache cannot be
+    /// built (`SM_ERR_NULL_POINTER`).
+    pub fn ts_bound_cached_visits<C: Copy + PartialEq>(
+        &self,
+        k: &Kernel,
+        geometry: &impl ClassGeometry<O>,
+        face: &BoundaryFace<'_, O, C>,
+    ) -> Result<Option<CachedVisits<O>>> {
+        let source_handle = self.curve().ok_or(SolidError::null_pointer(OP))?;
+        let source = curve(geometry, source_handle)?;
+        let base = face.cache.base();
+        if base.face_was_modified
+            || !base.have_t_surface_cache
+            || base.face_containment_done == FaceContainment::NotDone
+        {
+            return Ok(None);
         }
         // `GetOrCreateObjectCache(SM_OC_CURVE, ..)` then `NER(pCC)`: a failed cache
         // build (e.g. a degenerate source) is a NULL cache, SM_ERR_NULL_POINTER.
-        let cache = match make_curve_cache::<Side>(k, source, Some(Side::Source)) {
+        let cache = match make_curve_cache::<Side>(
+            k,
+            source,
+            Some(Side::Source(source.natural_interval())),
+        ) {
             Ok(c) => c,
             Err(e) if e.is_unported() => return Err(e),
             Err(_) => return Err(SolidError::null_pointer(OP)),
@@ -329,18 +396,28 @@ impl<O: ClassObject> CurveClassification<O> {
         let mut domain = Extent2d::from_extent3d(&tree.node(top)?.bbox);
         domain.expand_absolute(EFF_ZERO_SQRT);
         let nodes = base.find_uv_nodes_built(k, &domain, false)?;
+        let mut visits = CachedVisits {
+            no_nodes: nodes.is_empty(),
+            vertices: Vec::new(),
+            edgeuses: Vec::new(),
+        };
+        if visits.no_nodes {
+            return Ok(Some(visits));
+        }
+
         let tree = base.tree().ok_or(SolidError::null_pointer(OP))?;
-        let mut visited = Vec::new();
         for &id in &nodes {
+            // skip all but the leaf nodes
             if tree.node(id)?.child1.is_some() {
                 continue;
             }
             for item in &base.aux(id)?.vertex_list {
                 let vu = item.vertexuse.ok_or(SolidError::null_pointer(OP))?;
-                if visited.contains(&vu) {
+                let vu = (face.cache_handle)(vu).ok_or(SolidError::null_pointer(OP))?;
+                // skip vertices that have already been processed
+                if visits.vertices.iter().any(|v| v.vertexuse == vu) {
                     continue;
                 }
-                visited.push(vu);
                 let mut vertex = face
                     .loops
                     .iter()
@@ -349,7 +426,7 @@ impl<O: ClassObject> CurveClassification<O> {
                     .copied()
                     .ok_or(SolidError::null_pointer(OP))?;
                 vertex.uv = item.uv_point;
-                self.p9_vertex(k, geometry, source, face.surface, vertex, do_check_3d)?;
+                visits.vertices.push(vertex);
             }
         }
         for &id in &nodes {
@@ -357,10 +434,11 @@ impl<O: ClassObject> CurveClassification<O> {
                 continue;
             }
             for &eu in &base.aux(id)?.edgeuse_list {
-                if visited.contains(&eu) {
+                let eu = (face.cache_handle)(eu).ok_or(SolidError::null_pointer(OP))?;
+                // skip edgeuses already processed
+                if visits.edgeuses.iter().any(|e| e.edgeuse == eu) {
                     continue;
                 }
-                visited.push(eu);
                 let edgeuse = face
                     .loops
                     .iter()
@@ -368,10 +446,45 @@ impl<O: ClassObject> CurveClassification<O> {
                     .find(|e| e.edgeuse == eu)
                     .copied()
                     .ok_or(SolidError::null_pointer(OP))?;
-                self.p9_edgeuse(k, geometry, source_handle, face.surface, edgeuse, true)?;
+                visits.edgeuses.push(edgeuse);
             }
         }
-        Ok(())
+        Ok(Some(visits))
+    }
+
+    /// One vertex use of the cached branch of `IntersectTSBound` (see
+    /// [`Self::ts_bound_cached_visits`]).
+    ///
+    /// # Errors
+    /// As [`Self::intersect_ts_bound`].
+    pub fn ts_bound_vertex(
+        &mut self,
+        k: &Kernel,
+        geometry: &impl ClassGeometry<O>,
+        surface: &Surface,
+        vertex: BoundaryVertex<O>,
+        do_check_3d: bool,
+    ) -> Result<()> {
+        let source_handle = self.curve().ok_or(SolidError::null_pointer(OP))?;
+        let source = curve(geometry, source_handle)?;
+        self.p9_vertex(k, geometry, source, surface, vertex, do_check_3d)
+    }
+
+    /// One edge use of the cached branch of `IntersectTSBound` (see
+    /// [`Self::ts_bound_cached_visits`]); its UV trim curve (`GetOrCreateUVTrimCurve`)
+    /// must be in `edgeuse`.
+    ///
+    /// # Errors
+    /// As [`Self::intersect_ts_bound`].
+    pub fn ts_bound_edgeuse(
+        &mut self,
+        k: &Kernel,
+        geometry: &impl ClassGeometry<O>,
+        surface: &Surface,
+        edgeuse: BoundaryEdgeuse<O>,
+    ) -> Result<()> {
+        let source_handle = self.curve().ok_or(SolidError::null_pointer(OP))?;
+        self.p9_edgeuse(k, geometry, source_handle, surface, edgeuse, true)
     }
 
     fn p9_vertex(
@@ -392,13 +505,13 @@ impl<O: ClassObject> CurveClassification<O> {
         let lift;
         let (drop_curve, point, distance_tol) = if singular {
             lift = lifted(k, source, surface)?;
-            let point = ignored(surface.evaluate_point(vertex.uv))?.unwrap_or(Point3::UNDEF);
+            let point = ignored(surface.evaluate_point(k, vertex.uv))?.unwrap_or(Point3::UNDEF);
             (&lift, point, tolerance)
         } else {
             (
                 source,
                 Point3::from(vertex.uv),
-                xsect_tol3d(k, map_to_2d(tolerance, vertex.uv, surface)?),
+                xsect_tol3d(k, map_to_2d(k, tolerance, vertex.uv, surface)?),
             )
         };
         let mut found = drop_curve.drop_point(
@@ -421,7 +534,7 @@ impl<O: ClassObject> CurveClassification<O> {
             // A failed checked solve must not retain the earlier UV success.
             found = checked_vertex_drop(k, &lift, &self.interval(), point, tolerance)?;
             let on_surface =
-                ignored(lift.evaluate_point(found.parameter))?.unwrap_or(Point3::UNDEF);
+                ignored(lift.evaluate_point(k, found.parameter))?.unwrap_or(Point3::UNDEF);
             distance_3d = point.distance(on_surface);
         }
         if found.success && (!do_check_3d || distance_3d < tolerance) {
@@ -484,7 +597,10 @@ impl<O: ClassObject> CurveClassification<O> {
             &trim.natural_interval(),
             tol2d,
             &CurveIntersectOptions {
-                handles: [Some(Side::Source), Some(Side::Target)],
+                handles: [
+                    Some(Side::Source(source.natural_interval())),
+                    Some(Side::Target(trim.natural_interval())),
+                ],
                 ..CurveIntersectOptions::default()
             },
         )?;
@@ -662,7 +778,8 @@ mod tests {
                 &BoundaryFace {
                     surface: &surface,
                     loops: &loops,
-                    cache: &cache
+                    cache: &cache,
+                    cache_handle: &Some,
                 },
                 false
             ),

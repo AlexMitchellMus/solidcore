@@ -1,0 +1,75 @@
+name: Nightly difftest
+
+# Slow checks that are too expensive for every pull request:
+# * `--fuzz` on every green or partial unit (probes the FFI guards for crashes, panics
+#   and hangs; see crates/difftest/README.md). Failing inputs are uploaded as an artifact;
+#   copy them into fixtures/<unit>/ as regression cases once fixed.
+# Runs on GitHub's runners, like Run workflow in ci.yml.
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+    inputs:
+      fuzz_cases:
+        description: "Fuzz cases per unit"
+        default: "300"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Must match ci.yml.
+  UPSTREAM_REPO: https://github.com/NVIDIA-Omniverse/usd-brep
+  UPSTREAM_COMMIT: c9c5979f04cea8c38213004d4f04df0dcfb40d05  # c9c5979
+
+jobs:
+  fuzz:
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 240
+    env:
+      SOLIDCORE_CPP_DIR: ${{ github.workspace }}/.cpp
+      FUZZ_CASES: ${{ github.event.inputs.fuzz_cases || '300' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upstream sources, sccache and C++ reference
+        uses: ./.github/actions/cpp-reference
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> bin"
+          key: difftest
+
+      - name: Build difftest
+        run: cargo build --profile difftest -p difftest --features cpp
+
+      # One unit at a time so a failure names its unit and the rest still run.
+      - name: Fuzz every green or partial unit
+        run: |
+          case "$FUZZ_CASES" in
+            ''|*[!0-9]*) echo "fuzz_cases must be a positive integer" >&2; exit 2 ;;
+          esac
+          test "$FUZZ_CASES" -gt 0
+          bin=bin/difftest/difftest
+          units=$(python3 scripts/ci/fuzz-units.py)
+          test -n "$units" || { echo "no green/partial units were selected" >&2; exit 1; }
+          failed=0
+          for u in $units; do
+            "$bin" --unit "$u" --fuzz "$FUZZ_CASES" --fuzz-out bin/fuzz || failed=$((failed + 1))
+          done
+          echo "fuzz: $failed unit(s) failed"
+          test "$failed" -eq 0
+
+      - name: Upload failing fuzz inputs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-failures
+          path: bin/fuzz
+          if-no-files-found: ignore

@@ -18,7 +18,8 @@
 //! imported B-rep (identically for both sides).
 //!
 //! **Inexact geometry.** The export carries B-spline curves, `SmLine`s, B-spline
-//! surfaces and `SmPlane`s exactly; other analytic kinds arrive as their B-spline part,
+//! surfaces, `SmPlane`s and `SmSurfOfRevolution`s exactly; other analytic kinds arrive
+//! as their B-spline part,
 //! so the ops evaluating geometry defer on B-reps holding them (as `topology.brep_p1`).
 
 use serde::{Deserialize, Serialize};
@@ -211,7 +212,11 @@ pub(crate) fn path(b: &StitchBrep) -> Result<String, HarnessError> {
 
 /// The C++ export of the case's B-rep.
 pub(crate) fn export(b: &StitchBrep) -> Result<Vec<f64>, HarnessError> {
-    ffi::eval(Op::Export, &path(b)?, &block_of(b)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let (path, block) = (path(b)?, block_of(b)?);
+    crate::export_memo::export("heal_stitch_p1", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 pub(crate) fn build_failure(export: &[f64]) -> Output {
@@ -322,7 +327,7 @@ fn param(b: &Brep, e: EdgeId, s: f64) -> Result<f64, HarnessError> {
     Ok(ivl.min() + (ivl.max() - ivl.min()) * s)
 }
 
-fn resolve(op: &OpIn, b: &Brep) -> Result<Option<Resolved>, HarnessError> {
+fn resolve(k: &Kernel, op: &OpIn, b: &Brep) -> Result<Option<Resolved>, HarnessError> {
     let ne = b.edges().len();
     Ok(Some(match op {
         OpIn::Export => Resolved::Export,
@@ -360,7 +365,7 @@ fn resolve(op: &OpIn, b: &Brep) -> Result<Option<Resolved>, HarnessError> {
                 .map_err(|e| harness(e.to_string()))?
                 .ok_or_else(|| harness("edge without curve"))?;
             let on = c
-                .evaluate_point(t)
+                .evaluate_point(k, t)
                 .map_err(|e| harness(format!("split point: {e}")))?;
             let p = Point3::new(on.x + offset[0], on.y + offset[1], on.z + offset[2]);
             Resolved::Split {
@@ -568,20 +573,21 @@ fn args(op: &Resolved) -> (Op, Vec<f64>) {
 
 /// The deferral of an op evaluating geometry on a B-rep with inexact geometry.
 pub(crate) fn inexact(types: &ImportTypes) -> Option<Output> {
-    if types
-        .face_surface_types
-        .iter()
-        .any(|&t| t >= 0 && !EXACT_SURFACES.contains(&t))
+    if let Some(t) = (0..types.face_surface_types.len())
+        .filter_map(|f| types.inexact_surface(f))
+        .find(|t| !EXACT_SURFACES.contains(t))
     {
         return Some(Output::deferred(
             HARNESS_ANALYTIC_IMPORT,
-            "analytic face surface exported as its B-spline part",
+            format!(
+                "{} face surface exported as its B-spline part",
+                super::topology_edgeuse_p1::surface_class_name(t)
+            ),
         ));
     }
-    if types
-        .edge_curve_types
-        .iter()
-        .any(|&t| t >= 0 && !EXACT_CURVES.contains(&t))
+    if (0..types.edge_curve_types.len())
+        .filter_map(|e| types.inexact_curve(e))
+        .any(|t| t >= 0 && !EXACT_CURVES.contains(&t))
     {
         return Some(Output::deferred(
             HARNESS_ANALYTIC_IMPORT,
@@ -612,13 +618,13 @@ fn guarded_output(o: Vec<f64>) -> Output {
     }
 }
 
-fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
+fn run_cpp(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     let ex = export(&i.brep)?;
     let Some((_, graph_at)) = counts(&ex) else {
         return Ok(build_failure(&ex));
     };
-    let (b, types) = super::topology_brep_p1::import(&ex, graph_at)?;
-    let Some(op) = resolve(&i.op, &b)? else {
+    let (b, types) = super::topology_brep_p1::import_raw(&ex, graph_at)?;
+    let Some(op) = resolve(k, &i.op, &b)? else {
         return Ok(no_entity());
     };
     if evaluates_geometry(&op) {
@@ -714,7 +720,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
             )
         }
         Resolved::Interior { edge, t, tol } => {
-            status_or(st::check_interior_edge(b, *edge, *t, *tol), |r| {
+            status_or(st::check_interior_edge(k, b, *edge, *t, *tol), |r| {
                 vec![flag(r)]
             })
         }
@@ -880,13 +886,13 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
     }
 }
 
-fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
+fn run_rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     let ex = export(&i.brep)?;
     let Some((_, graph_at)) = counts(&ex) else {
         return Ok(build_failure(&ex));
     };
     let (mut b, types) = super::topology_brep_p1::import(&ex, graph_at)?;
-    let Some(op) = resolve(&i.op, &b)? else {
+    let Some(op) = resolve(k, &i.op, &b)? else {
         return Ok(no_entity());
     };
     if evaluates_geometry(&op) {
@@ -1069,11 +1075,13 @@ impl UnitDiff for Runner {
     }
 
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
-        run_cpp(&case.parse::<Inputs>()?)
+        let k = &Kernel::default();
+        run_cpp(k, &case.parse::<Inputs>()?)
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        run_rust(&case.parse::<Inputs>()?)
+        let k = &Kernel::default();
+        run_rust(k, &case.parse::<Inputs>()?)
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {

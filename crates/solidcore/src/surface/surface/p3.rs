@@ -34,12 +34,19 @@
 //!   outputs keep their previous values (initially undefined); the port does the same
 //!   and still propagates [`SolidError::Unported`].
 //! - **Tolerance of a surface.** `SmTol::GetApproxTol3d(this)` is the system value for a
-//!   surface without an owner; for an owned surface it needs the face tolerance
-//!   (`topology.face_p2`) and returns [`SolidError::Unported`], unless the caller that
-//!   has the face passes it ([`Surface::get_singularities_of_face`], used by the face
-//!   props).
-//! - **Unported callees** (return [`SolidError::Unported`]): `SmFace::RemoveUVTrimCurves`
-//!   (`topology.face_p1`) when the surface is owned by a face.
+//!   surface without an owner; for an owned surface it is half the face tolerance the
+//!   caller that has the face passes ([`Surface::get_singularities_of_face`], used by
+//!   the face props), else the one the B-rep cached on the surface
+//!   ([`Surface::owner_zone_tol_3d`]); a bare face handle without it returns
+//!   [`SolidError::Unported`] (`topology.face_p2`).
+//! - **`SmFace::RemoveUVTrimCurves` at the end of `CoverCoincidentSurface`.** A surface
+//!   holds only its owner handle, not the B-rep, so it cannot delete its face's UV trim
+//!   curves itself. [`Surface::cover_coincident_surface_deferring_trims`] returns the
+//!   face in [`CoverCoincident::remove_uv_trim_curves_of`] and the caller that holds the
+//!   B-rep runs `topology::face::p1::remove_uv_trim_curves` right after the call (nothing
+//!   runs in between, so the order is upstream's).
+//!   [`Surface::cover_coincident_surface`] keeps returning [`SolidError::Unported`]
+//!   (`topology.face_p1`) for a face-owned surface for callers without the B-rep.
 
 use crate::error::{ignored, Result, SolidError};
 use crate::geom::assert_array::labels;
@@ -51,12 +58,15 @@ use crate::geom::local_solve_nd::{
     BoundaryHandler, EvalNFunctions, LocalSolveNd, TerminationReason,
 };
 use crate::geom::matrix::Matrix;
+use crate::geom::object::ObjectRef;
+use crate::geom::solution_array::SolutionObject;
 use crate::geom::tol::{approx_tol3d, approx_tol_3d, SmallTopoType};
 use crate::geom::vector3d::sqrt as sm_sqrt;
 use crate::kernel::Kernel;
 use crate::math::{
     max2, max3, rad_to_deg, Point2, Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT,
 };
+use crate::nurbs::b_spline_surface::LocationType;
 use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::knots::Side;
 use crate::surface::plane::Plane;
@@ -64,10 +74,11 @@ use crate::surface::plane::Plane;
 use super::p1::{
     crossed_seam_or_pole, evaluate_1st_derivatives, evaluate_2nd_derivatives,
     evaluate_normal_section as smsurf_evaluate_normal_section, FindPsNormalEnfo, SsNormalizeEnfo,
-    SspIntersectEnfo, SssIntersectEnfo,
+    SspIntersectEnfo, SssIntersectEnfo, SurfaceSolveContext,
 };
 use super::p2::evaluate_geometric as smsurf_evaluate_geometric;
 use super::p2::{GeometricProperties, SurfaceEvaluate};
+use super::p4::NoObject;
 use super::p7::{approx_derivative_lengths, check_seam_drop};
 use super::{Surface, SurfaceKind};
 
@@ -99,7 +110,9 @@ const fn side(from_left: bool) -> Side {
 /// A [`Surface`] holds only an owner handle, not the B-rep, so the face's tolerance
 /// (`SmFace::GetTolerance`, `topology.face_p2`) is passed by a caller that has the face:
 /// `face_tolerance` is `Some` for a surface known to be that face's own surface, and the
-/// zone tolerance of the face is then used whether or not the handle is set.
+/// zone tolerance of the face is then used whether or not the handle is set. Otherwise
+/// a surface with a face uses the tolerance its B-rep cached on it
+/// ([`Surface::owner_zone_tol_3d`]).
 fn surface_approx_tol_3d(
     k: &Kernel,
     surface: &Surface,
@@ -111,27 +124,29 @@ fn surface_approx_tol_3d(
     }
     // SmTol::GetApproxTol3d(this) = .5 * GetZoneTol3d(this): GetFace() ? its tolerance
     // : the system's (a surface owned by an offset with no face uses the latter)
-    if surface.face()?.is_some() {
-        // UNPORTED(topology.face_p2): SmFace::GetTolerance of the owner, for the callers
-        // that cannot pass it (a surface does not reach its B-rep; justified: plan/findings.md,
-        // heal.face_props, "Why UNPORTED(topology.face_p2) stays"); the face props pass it through `get_singularities_of_face`
-        return Err(SolidError::unported(
-            "SmFace::GetTolerance",
-            "topology.face_p2",
-        ));
+    // the face's tolerance cached on the surface by its B-rep; a bare face handle
+    // without it stays UNPORTED(topology.face_p2): SmFace::GetTolerance
+    // (`Surface::face_zone_tol_3d`); the face props pass it through
+    // `get_singularities_of_face`
+    if let Some(zone) = surface.face_zone_tol_3d()? {
+        return Ok(approx_tol3d(k, 0.5 * zone));
     }
     Ok(approx_tol_3d(k, SmallTopoType::NormalSize))
 }
 
 /// `GetOutOfBoundsEnabled` of a surface that is an `SmBSplineSurface` (a B-spline
-/// surface, a plane or a surface of revolution); `None` for the other kinds
+/// surface, a plane, an analytic kind or a surface of revolution or extrusion); `None` for the other kinds
 /// (`SM_CAST_NONNULL_PTR(SmBSplineSurface, ..)` is null, so `SmTemporaryChangeValue`
 /// changes a local instead). An `SmSTEPSurface` is an `SmSurface`, not a B-spline surface.
 pub(crate) fn out_of_bounds_enabled(surface: &Surface) -> Option<bool> {
     match surface.kind() {
         SurfaceKind::BSpline(s) => Some(s.is_out_of_bounds_enabled()),
         SurfaceKind::Plane(s) => Some(s.is_out_of_bounds_enabled()),
+        SurfaceKind::Cone(s) => Some(s.rev().is_out_of_bounds_enabled()),
+        SurfaceKind::Sphere(s) => Some(s.base().is_out_of_bounds_enabled()),
+        SurfaceKind::Torus(s) => Some(s.base().is_out_of_bounds_enabled()),
         SurfaceKind::SurfOfRevolution(s) => Some(s.is_out_of_bounds_enabled()),
+        SurfaceKind::SurfOfExtrusion(s) => Some(s.is_out_of_bounds_enabled()),
         SurfaceKind::OffsetSurface(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
@@ -147,7 +162,11 @@ pub(crate) fn set_out_of_bounds_enabled(surface: &mut Surface, enabled: bool) {
     match surface.kind_mut() {
         SurfaceKind::BSpline(s) => *s.out_of_bounds_enabled_mut() = enabled,
         SurfaceKind::Plane(s) => s.set_out_of_bounds_enabled(enabled),
+        SurfaceKind::Cone(s) => *s.rev.base_mut().out_of_bounds_enabled_mut() = enabled,
+        SurfaceKind::Sphere(s) => *s.base.base_mut().out_of_bounds_enabled_mut() = enabled,
+        SurfaceKind::Torus(s) => *s.base.base_mut().out_of_bounds_enabled_mut() = enabled,
         SurfaceKind::SurfOfRevolution(s) => *s.base_mut().out_of_bounds_enabled_mut() = enabled,
+        SurfaceKind::SurfOfExtrusion(s) => *s.base_mut().out_of_bounds_enabled_mut() = enabled,
         SurfaceKind::OffsetSurface(_)
         | SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
@@ -171,12 +190,14 @@ fn out_of_bounds_copy(surface: &Surface) -> Option<Surface> {
 /// derivative `i` times in `u` and `j` times in `v`; the entries of the lower half (not
 /// computed) are undefined.
 fn evaluate_pvv<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv: Point2,
     u_side: Side,
     v_side: Side,
 ) -> Result<[[Vec3; 3]; 3]> {
     let m = surface.evaluate(
+        k,
         uv,
         2,
         2,
@@ -244,6 +265,12 @@ pub struct CoverCoincident {
     /// `pOptCoveredSTEPDomain`: the covered subset in this surface's STEP parameters,
     /// valid when `success`.
     pub covered_step_domain: Option<Extent2d>,
+    /// The face owning this surface whose `SmFace::RemoveUVTrimCurves` upstream runs at
+    /// the end of a successful call: the caller holding the B-rep runs it
+    /// (`topology::face::p1::remove_uv_trim_curves`) right after the call. `None` on
+    /// failure and for a surface no face owns. Set only by
+    /// [`Surface::cover_coincident_surface_deferring_trims`].
+    pub remove_uv_trim_curves_of: Option<ObjectRef>,
 }
 
 /// A two-surface local solution ([`Surface::local_surface_solve`] and
@@ -383,18 +410,19 @@ pub fn check_shape_match(
 ///
 /// Those of the evaluations and of `smsurf_EvaluateGeometric`.
 pub fn evaluate_geometric_of<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv: Point2,
     u_side: Side,
     v_side: Side,
 ) -> Result<GeometricProperties> {
     // Evaluate Target parameter for position and derivatives
-    let mut pvv = evaluate_pvv(surface, uv, u_side, v_side)?; // exact Tangent values
+    let mut pvv = evaluate_pvv(k, surface, uv, u_side, v_side)?; // exact Tangent values
 
     // make sure there is a normal vector - even at singular points
     let norm = pvv[0][1].cross(pvv[1][0]);
     if norm.length_squared() < EFF_ZERO {
-        pvv[2][2] = surface.evaluate_normal(uv, u_side, v_side)?;
+        pvv[2][2] = surface.evaluate_normal(k, uv, u_side, v_side)?;
     }
 
     // pass the call along
@@ -409,6 +437,7 @@ pub fn evaluate_geometric_of<S: SurfaceEvaluate + ?Sized>(
 /// Those of the evaluations, the zero-length-vector status for a vanishing normal and those of
 /// `smsurf_EvaluateNormalSection`.
 pub fn evaluate_normal_section_of<S: SurfaceEvaluate + ?Sized>(
+    k: &Kernel,
     surface: &S,
     uv: Point2,
     u_side: Side,
@@ -416,12 +445,12 @@ pub fn evaluate_normal_section_of<S: SurfaceEvaluate + ?Sized>(
     direction: Vec3,
 ) -> Result<SurfaceNormalSection> {
     // Get SurfacePoint Evaluation
-    let mut pvv = evaluate_pvv(surface, uv, u_side, v_side)?; // exact Tangent values
+    let mut pvv = evaluate_pvv(k, surface, uv, u_side, v_side)?; // exact Tangent values
 
     // get surface Normal
     let mut surface_normal = pvv[1][0].cross(pvv[0][1]);
     if surface_normal.length_squared() < EFF_ZERO_SQ {
-        surface_normal = surface.evaluate_normal(uv, u_side, v_side)?;
+        surface_normal = surface.evaluate_normal(k, uv, u_side, v_side)?;
     } else {
         surface_normal = surface_normal.unitize()?;
     }
@@ -445,11 +474,12 @@ impl Surface {
     /// Those of the evaluations and of `smsurf_EvaluateGeometric`.
     pub fn evaluate_geometric(
         &self,
+        k: &Kernel,
         uv: Point2,
         u_side: Side,
         v_side: Side,
     ) -> Result<GeometricProperties> {
-        evaluate_geometric_of(self, uv, u_side, v_side)
+        evaluate_geometric_of(k, self, uv, u_side, v_side)
     }
 
     /// The tangent-plane direction, curvature and unit normal of the normal section
@@ -461,12 +491,13 @@ impl Surface {
     /// `smsurf_EvaluateNormalSection`.
     pub fn evaluate_normal_section(
         &self,
+        k: &Kernel,
         uv: Point2,
         u_side: Side,
         v_side: Side,
         direction: Vec3,
     ) -> Result<SurfaceNormalSection> {
-        evaluate_normal_section_of(self, uv, u_side, v_side, direction)
+        evaluate_normal_section_of(k, self, uv, u_side, v_side, direction)
     }
 
     /// The singular sides: a natural boundary is singular (or approximately singular)
@@ -527,7 +558,7 @@ impl Surface {
         // multiplied by the various basis derivatives and added together.  Any
         // numerical noise in the basis derivs is multiplied by the size of the control
         // point numbers.  On very large parts, this can cause problems.  [B253]
-        let mut size = approx_derivative_lengths(self, &uv_domain)?;
+        let mut size = approx_derivative_lengths(k, self, &uv_domain)?;
         // Multiply by domain size.
         size.x *= uv_domain.x_length();
         size.y *= uv_domain.y_length();
@@ -581,6 +612,7 @@ impl Surface {
                 // evaluate this surface point - the 1st derivative needing checking is
                 // in p1stDir
                 if let Some(m) = ignored(self.evaluate(
+                    k,
                     uv,
                     1,
                     1,
@@ -656,7 +688,7 @@ impl Surface {
             ];
             for (slot, (flag, uv)) in points.iter_mut().zip(sides) {
                 if is_pole(flag) {
-                    if let Some(p) = ignored(self.evaluate_point(uv))? {
+                    if let Some(p) = ignored(self.evaluate_point(k, uv))? {
                         *slot = p;
                     }
                 }
@@ -677,7 +709,8 @@ impl Surface {
             ];
             for (slot, (flag, uv, u_left, v_left)) in normals.iter_mut().zip(sides) {
                 if is_pole(flag) {
-                    if let Some(n) = ignored(self.evaluate_normal(uv, side(u_left), side(v_left)))?
+                    if let Some(n) =
+                        ignored(self.evaluate_normal(k, uv, side(u_left), side(v_left)))?
                     {
                         *slot = n;
                     }
@@ -703,9 +736,42 @@ impl Surface {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`]: `SmFace::RemoveUVTrimCurves` for a surface owned by a face
-    /// (`topology.face_p1`); those of the evaluations and of `STEPInversion`.
+    /// [`SolidError::Unported`]: `SmFace::RemoveUVTrimCurves` for a successful cover by a
+    /// surface owned by a face (`topology.face_p1`; the surface has been expanded, as
+    /// upstream before that call); those of the evaluations and of `STEPInversion`.
+    /// A caller holding the B-rep uses
+    /// [`Surface::cover_coincident_surface_deferring_trims`] instead.
     pub fn cover_coincident_surface(
+        &mut self,
+        k: &Kernel,
+        other: &Surface,
+        tol: f64,
+        other_domain: Option<&Extent2d>,
+    ) -> Result<CoverCoincident> {
+        let r = self.cover_coincident_surface_deferring_trims(k, other, tol, other_domain)?;
+        if r.remove_uv_trim_curves_of.is_some() {
+            // UNPORTED(topology.face_p1): SmFace::RemoveUVTrimCurves
+            // (ported as topology::face::p1::remove_uv_trim_curves; a caller without
+            // the B-rep of the owner face cannot run it: callers with it use
+            // `cover_coincident_surface_deferring_trims`)
+            return Err(SolidError::unported(
+                "SmFace::RemoveUVTrimCurves",
+                "topology.face_p1",
+            ));
+        }
+        Ok(r)
+    }
+
+    /// [`Surface::cover_coincident_surface`] for a caller holding the B-rep: on success
+    /// for a face-owned surface, the face whose UV trim curves upstream deletes at the
+    /// end of the call (`SmFace::RemoveUVTrimCurves`) is returned in
+    /// [`CoverCoincident::remove_uv_trim_curves_of`], and the caller runs
+    /// `topology::face::p1::remove_uv_trim_curves` on it right after this call.
+    ///
+    /// # Errors
+    ///
+    /// Those of the evaluations and of `STEPInversion`.
+    pub fn cover_coincident_surface_deferring_trims(
         &mut self,
         k: &Kernel,
         other: &Surface,
@@ -717,7 +783,39 @@ impl Surface {
         if saved.is_some() {
             set_out_of_bounds_enabled(self, true);
         }
-        let result = self.cover_coincident_surface_inner(k, other, tol, other_domain);
+        let result =
+            self.cover_coincident_surface_inner::<NoObject>(k, other, tol, other_domain, None);
+        if let Some(saved) = saved {
+            set_out_of_bounds_enabled(self, saved);
+        }
+        result
+    }
+
+    /// [`Surface::cover_coincident_surface_deferring_trims`] whose `STEPInversion`
+    /// solves run under the caller's face context (`context`: the solve context and
+    /// this surface's handle in it), so a face-owned surface's drops are classified
+    /// against the face's trims, as upstream's `GlobalPointSolve` does through
+    /// `GetFace()` ([`Surface::step_inversion_with_context`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::cover_coincident_surface_deferring_trims`], with those of the
+    /// context.
+    pub fn cover_coincident_surface_deferring_trims_with_context<O: SolutionObject>(
+        &mut self,
+        k: &Kernel,
+        other: &Surface,
+        tol: f64,
+        other_domain: Option<&Extent2d>,
+        context: (&mut dyn SurfaceSolveContext<O>, Option<O>),
+    ) -> Result<CoverCoincident> {
+        // Expand our domain, for the scope of this routine.
+        let saved = out_of_bounds_enabled(self);
+        if saved.is_some() {
+            set_out_of_bounds_enabled(self, true);
+        }
+        let result =
+            self.cover_coincident_surface_inner(k, other, tol, other_domain, Some(context));
         if let Some(saved) = saved {
             set_out_of_bounds_enabled(self, saved);
         }
@@ -725,22 +823,24 @@ impl Surface {
     }
 
     /// The body of [`Surface::cover_coincident_surface`] with out-of-bounds evaluation on.
-    fn cover_coincident_surface_inner(
+    fn cover_coincident_surface_inner<O: SolutionObject>(
         &mut self,
         k: &Kernel,
         other: &Surface,
         tol: f64,
         other_domain: Option<&Extent2d>,
+        mut context: Option<(&mut dyn SurfaceSolveContext<O>, Option<O>)>,
     ) -> Result<CoverCoincident> {
         // init outputs
         let failure = CoverCoincident {
             success: false,
             max_dist: BIG_DOUBLE,
             covered_step_domain: None,
+            remove_uv_trim_curves_of: None,
         };
 
         // We're going to have to expand ourselves right away.
-        let big_domain = self.max_analytic_domain()?;
+        let big_domain = self.max_analytic_domain(k)?;
         if big_domain.is_degenerate(0.0) {
             return Ok(failure);
         }
@@ -765,10 +865,20 @@ impl Surface {
         // out most, and save lots of drops on corners and edges.  (Picture two fillet
         // surfaces end to end that form a closed loop.)
         let uv_other = other_dom.evaluate(0.5, 0.5);
-        if let Some(p) = ignored(other.evaluate_point(uv_other))? {
+        if let Some(p) = ignored(other.evaluate_point(k, uv_other))? {
             pt = p;
         }
-        if ignored(self.step_inversion(k, &big_domain, pt, tol, None))?.is_none() {
+        if ignored(step_inversion_in(
+            self,
+            k,
+            &big_domain,
+            pt,
+            tol,
+            None,
+            &mut context,
+        ))?
+        .is_none()
+        {
             return Ok(failure);
         }
 
@@ -776,17 +886,25 @@ impl Surface {
         for ii in 0..2_usize {
             for jj in 0..2_usize {
                 let uv_other = other_dom.evaluate(ii as f64, jj as f64);
-                if let Some(p) = ignored(other.evaluate_point(uv_other))? {
+                if let Some(p) = ignored(other.evaluate_point(k, uv_other))? {
                     pt = p;
                 }
 
-                let Some((mut uv_this, location)) =
-                    ignored(self.step_inversion(k, &big_domain, pt, tol, None))?
+                let Some((mut uv_this, location)) = ignored(step_inversion_in(
+                    self,
+                    k,
+                    &big_domain,
+                    pt,
+                    tol,
+                    None,
+                    &mut context,
+                ))?
                 else {
                     return Ok(failure);
                 };
 
                 match ignored(check_seam_drop(
+                    k,
                     self,
                     uv_this,
                     &big_domain,
@@ -809,7 +927,7 @@ impl Surface {
                 new_domain.add_point(uv_this);
 
                 // Check max distance.
-                if let Some(p) = ignored(self.evaluate_step_point(uv_this))? {
+                if let Some(p) = ignored(self.evaluate_step_point(k, uv_this))? {
                     pt2 = p;
                 }
                 let dist = pt.distance(pt2);
@@ -832,13 +950,13 @@ impl Surface {
             // (status ignored upstream)
             ignored(self.adjust_step_uv_domain(k, &update_domain))?;
 
-            // Have to do this after AdjustSTEPUVDomain call:
-            self.remove_uv_trim_curves_of_owner()?;
-
+            // Have to do this after AdjustSTEPUVDomain call (the caller holding the
+            // B-rep runs SmFace::RemoveUVTrimCurves on the owner face):
             return Ok(CoverCoincident {
                 success: true,
                 max_dist,
                 covered_step_domain: Some(new_domain),
+                remove_uv_trim_curves_of: self.face_owner(),
             });
         }
 
@@ -868,18 +986,26 @@ impl Surface {
                 let dv = kk as f64 / denom;
 
                 let uv_other = other_dom.evaluate(du, dv);
-                if let Some(p) = ignored(other.evaluate_point(uv_other))? {
+                if let Some(p) = ignored(other.evaluate_point(k, uv_other))? {
                     pt = p;
                 }
 
-                let Some((mut uv_this, location)) =
-                    ignored(self.step_inversion(k, &big_domain, pt, tol, Some(guess_uv)))?
+                let Some((mut uv_this, location)) = ignored(step_inversion_in(
+                    self,
+                    k,
+                    &big_domain,
+                    pt,
+                    tol,
+                    Some(guess_uv),
+                    &mut context,
+                ))?
                 else {
                     // If any DropPoint fails, they're not coincident.
                     return Ok(failure);
                 };
 
                 match ignored(check_seam_drop(
+                    k,
                     self,
                     uv_this,
                     &big_domain,
@@ -893,7 +1019,7 @@ impl Surface {
                 }
 
                 // Check max distance.
-                if let Some(p) = ignored(self.evaluate_step_point(uv_this))? {
+                if let Some(p) = ignored(self.evaluate_step_point(k, uv_this))? {
                     pt2 = p;
                 }
                 let dist = pt.distance(pt2);
@@ -952,18 +1078,26 @@ impl Surface {
                 };
 
                 // Do the drop.
-                if let Some(p) = ignored(other.evaluate_point(uv_other))? {
+                if let Some(p) = ignored(other.evaluate_point(k, uv_other))? {
                     pt = p;
                 }
 
-                let Some((mut drop_uv, location)) =
-                    ignored(self.step_inversion(k, &big_domain, pt, tol, Some(guess_uv)))?
+                let Some((mut drop_uv, location)) = ignored(step_inversion_in(
+                    self,
+                    k,
+                    &big_domain,
+                    pt,
+                    tol,
+                    Some(guess_uv),
+                    &mut context,
+                ))?
                 else {
                     // If any DropPoint fails, they're not coincident.
                     return Ok(failure);
                 };
 
                 match ignored(check_seam_drop(
+                    k,
                     self,
                     drop_uv,
                     &big_domain,
@@ -982,7 +1116,7 @@ impl Surface {
                 }
 
                 // Check max distance.
-                if let Some(p) = ignored(self.evaluate_step_point(drop_uv))? {
+                if let Some(p) = ignored(self.evaluate_step_point(k, drop_uv))? {
                     pt2 = p;
                 }
                 let dist = pt.distance(pt2);
@@ -1020,31 +1154,20 @@ impl Surface {
         // (status ignored upstream)
         ignored(self.adjust_step_uv_domain(k, &update_domain))?;
 
-        // Have to do this after AdjustSTEPUVDomain call:
-        self.remove_uv_trim_curves_of_owner()?;
-
+        // Have to do this after AdjustSTEPUVDomain call (the caller holding the B-rep
+        // runs SmFace::RemoveUVTrimCurves on the owner face):
         Ok(CoverCoincident {
             success: true,
             max_dist,
             covered_step_domain: Some(new_domain),
+            remove_uv_trim_curves_of: self.face_owner(),
         })
     }
 
-    /// `SmFace::RemoveUVTrimCurves` of the face that owns this surface, if any.
-    fn remove_uv_trim_curves_of_owner(&self) -> Result<()> {
-        if self
-            .owner()
-            .is_some_and(|o| o.type_code == labels::FACE_TYPE)
-        {
-            // UNPORTED(topology.face_p1): SmFace::RemoveUVTrimCurves
-            // (ported as topology::face::p1::remove_uv_trim_curves, but a surface cannot
-            // reach the B-rep of its owner face here: the call needs the B-rep passed in)
-            return Err(SolidError::unported(
-                "SmFace::RemoveUVTrimCurves",
-                "topology.face_p1",
-            ));
-        }
-        Ok(())
+    /// The face that owns this surface directly (`GetOwner()` when it is an `SmFace`),
+    /// whose `RemoveUVTrimCurves` `CoverCoincidentSurface` runs.
+    fn face_owner(&self) -> Option<ObjectRef> {
+        self.owner().filter(|o| o.type_code == labels::FACE_TYPE)
     }
 
     /// The point where this surface and `other` meet the plane through `plane_origin`
@@ -1056,6 +1179,7 @@ impl Surface {
     /// Those of the solver and of the evaluations.
     pub fn local_plane_surface_intersect(
         &self,
+        k: &Kernel,
         uv_domain: &Extent2d,
         other: &Surface,
         other_uv_domain: &Extent2d,
@@ -1085,6 +1209,7 @@ impl Surface {
         let node_tol = xsect_tol_3d / 100.0; // max allowed Param Space deviations for solution
         let sq_node_tol = node_tol * node_tol;
         let mut equations = SspIntersectEnfo::new(
+            k,
             self,
             other,
             steepest_descent,
@@ -1103,9 +1228,9 @@ impl Surface {
         // when a solution was found
         if solution.found {
             let uv = uv_at(&solution.x, 0, OP_LOCAL_SOLVE)?;
-            let p1 = self.evaluate_point(uv)?;
+            let p1 = self.evaluate_point(k, uv)?;
             let other_uv = uv_at(&solution.x, 2, OP_LOCAL_SOLVE)?;
-            let p2 = other.evaluate_point(other_uv)?;
+            let p2 = other.evaluate_point(k, other_uv)?;
             let dist = p1.distance(p2);
 
             // when dist between surf pts is less than dist Tolerance - save a solution
@@ -1132,6 +1257,7 @@ impl Surface {
     /// solve without a vector (upstream dereferences `NULL`).
     pub fn local_surface_solve(
         &self,
+        k: &Kernel,
         uv_domain: &Extent2d,
         other: &Surface,
         other_uv_domain: &Extent2d,
@@ -1159,7 +1285,7 @@ impl Surface {
         let periodicities = periodicities.get(..n).unwrap_or(&[]);
 
         let mut equations =
-            SsNormalizeEnfo::new(self, other, operation, Some(opt_vectors), EFF_ZERO_SQ);
+            SsNormalizeEnfo::new(k, self, other, operation, Some(opt_vectors), EFF_ZERO_SQ);
         let mut solver = LocalSolveNd::new(&mut equations, Some(&intervals), Some(periodicities));
         solver.set_boundary_handler(BoundaryHandler::TotalBoundaryHits, 8);
 
@@ -1181,9 +1307,9 @@ impl Surface {
 
         // compute Surf1Point/Surf2Point gap distance
         let uv = uv_at(&solution.x, 0, OP_LOCAL_SOLVE)?;
-        let p1 = self.evaluate_point(uv)?;
+        let p1 = self.evaluate_point(k, uv)?;
         let other_uv = uv_at(&solution.x, 2, OP_LOCAL_SOLVE)?;
-        let p2 = other.evaluate_point(other_uv)?;
+        let p2 = other.evaluate_point(k, other_uv)?;
         let mut dist = p1.distance(p2);
         if signed {
             // Gap Vector going from surface1Point to surface2Point
@@ -1212,6 +1338,7 @@ impl Surface {
     /// Those of the solver and of the evaluations.
     pub fn local_surface_surface_intersect(
         &self,
+        k: &Kernel,
         uv_domain1: &Extent2d,
         surface2: &Surface,
         uv_domain2: &Extent2d,
@@ -1246,7 +1373,7 @@ impl Surface {
         ];
 
         // Construct the Newton-Raphson Solver class with the surf/surf/surf equation set
-        let mut equations = SssIntersectEnfo::new(s1, s2, s3, EFF_ZERO_SQ);
+        let mut equations = SssIntersectEnfo::new(k, s1, s2, s3, EFF_ZERO_SQ);
         let mut solver = LocalSolveNd::new(&mut equations, Some(&intervals), Some(&periodicities));
 
         // set the solver's exit behavior for solutions that run outside the boundary
@@ -1299,6 +1426,7 @@ impl EvalNFunctions for FindPsNormalEnfo<'_> {
         f: &mut [f64],
         jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
+        let k = self.kernel;
         let (Some(&u), Some(&v)) = (x.first(), x.get(1)) else {
             return Err(SolidError::sm_err(OP_FIND_PS_NORMAL));
         };
@@ -1311,7 +1439,7 @@ impl EvalNFunctions for FindPsNormalEnfo<'_> {
 
         // get Surface evaluations
         let uv = Point2::new(u, v);
-        let d = evaluate_2nd_derivatives(self.surface, uv, Side::Left, Side::Left)?;
+        let d = evaluate_2nd_derivatives(k, self.surface, uv, Side::Left, Side::Left)?;
         let (point, su, sv, suv, suu, svv) = (d.point, d.du, d.dv, d.duv, d.duu, d.dvv);
 
         // failure - zero length surface tangents
@@ -1409,6 +1537,7 @@ impl EvalNFunctions for SssIntersectEnfo<'_> {
         f: &mut [f64],
         jacobian: Option<&mut Matrix>,
     ) -> Result<bool> {
+        let k = self.kernel;
         if x.len() != 6 || f.len() != 6 {
             return Err(SolidError::invalid_input(
                 OP_SSS_INTERSECT,
@@ -1421,7 +1550,7 @@ impl EvalNFunctions for SssIntersectEnfo<'_> {
         let surfaces = [self.surface1, self.surface2, self.surface3];
         for (i, surface) in surfaces.iter().enumerate() {
             let uv = uv_at(x, 2 * i, OP_SSS_INTERSECT)?;
-            let (p, du, dv) = evaluate_1st_derivatives(*surface, uv, Side::Left, Side::Left)?;
+            let (p, du, dv) = evaluate_1st_derivatives(k, *surface, uv, Side::Left, Side::Left)?;
             if let (Some(sp), Some(st)) = (self.srf_points.get_mut(i), self.srf_tangents.get_mut(i))
             {
                 *sp = p;
@@ -1495,6 +1624,30 @@ impl EvalNFunctions for SssIntersectEnfo<'_> {
     }
 }
 
+/// `this->STEPInversion(..)` of `CoverCoincidentSurface`, under the caller's face
+/// context when there is one.
+fn step_inversion_in<O: SolutionObject>(
+    surface: &Surface,
+    k: &Kernel,
+    anal_domain: &Extent2d,
+    point: Point3,
+    tol: f64,
+    uv_guess: Option<Point2>,
+    context: &mut Option<(&mut dyn SurfaceSolveContext<O>, Option<O>)>,
+) -> Result<(Point2, LocationType)> {
+    match context {
+        Some((solve, handle)) => surface.step_inversion_with_context(
+            k,
+            anal_domain,
+            point,
+            tol,
+            uv_guess,
+            (&mut **solve, *handle),
+        ),
+        None => surface.step_inversion(k, anal_domain, point, tol, uv_guess),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1517,6 +1670,11 @@ mod tests {
                 .unwrap();
         rev.set_out_of_bounds_enabled(false);
         let gen_flag = |s: &Surface| match s.kind() {
+            SurfaceKind::Cone(r) => r
+                .rev()
+                .gen_curve()
+                .and_then(|g| gen_base(g).ok())
+                .map(Bsc::is_out_of_bounds_enabled),
             SurfaceKind::SurfOfRevolution(r) => r
                 .gen_curve()
                 .and_then(|g| gen_base(g).ok())

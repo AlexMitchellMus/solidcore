@@ -29,7 +29,7 @@
 //! | [`Tree::objects_in_box`]               | `SmTree::GetObjectsInBox`                       |
 //! | [`Tree::intersects_box`]               | `SmTree::IntersectsBox`                         |
 //! | [`Tree::find_object`]                  | `SmObjectList::FindObject`                      |
-//! | [`Tree::first_bezier_patch`]           | `SmTreeNode::GetFirstBezierPatch`               |
+//! | [`Tree::first_bezier_patch`]           | `SmTreeNode::GetFirstBezierPatch` (patch data through caller resolvers) |
 //! | [`Tree::propagate_to_parents`]         | `SmTreeNode::PropagateToParents`                |
 //! | [`Tree::neighbors`]                    | `SmTreeNode::GetNeighbors`                      |
 //! | [`Tree::left_neighbors`] .. [`Tree::top_neighbors`] | `SmTreeNode::GetLeftNeighbors` .. `GetTopNeighbors` |
@@ -49,6 +49,12 @@
 //!   a memory manager clears its arena. Block-size arguments have no counterpart.
 //! - Objects are a caller-chosen `Copy + PartialEq` handle `O` (upstream
 //!   `SmObject*`); a null object pointer is `None`.
+//! - **Recursion.** `AddToSpatialTree` re-inserts every object after growing the top
+//!   box around all of them, so a re-insertion never rebuilds again (NaN sides
+//!   compare as contained). The nesting is still capped at
+//!   [`MAX_SPATIAL_REBUILD_DEPTH`] (1: each level re-inserts every object); a deeper
+//!   rebuild is [`SolidError::InvalidInput`], ignored by the re-inserting caller as
+//!   upstream ignores its status.
 //! - `SmTreeNode::m_pData` is [`NodeData`]: the head of an object list, the
 //!   [`SurfaceAux`] subdivision data, or nothing. Code that would cast `m_pData` to
 //!   the wrong type (undefined behaviour upstream) returns
@@ -57,7 +63,9 @@
 //! - The neighbour searches return a new `Vec` instead of appending to the
 //!   caller's `SmTArray`; the four direction-specific recursions (and the four
 //!   `Get*Side` functions) share one body parameterised by the
-//!   search direction, with the parent recursion turned into a loop.
+//!   search direction. Parent recursion is a loop; side descent uses an explicit
+//!   DFS continuation stack in the same child order, retaining the cycle guard
+//!   at depth > node count without an arbitrary geometry-depth bound.
 //! - The single-point constructor always allocates its node (and object-list
 //!   item) in the tree's arenas; upstream can also use caller-owned memory, which
 //!   is then invisible to `GetAllTreeNodes`/`GetNodeCount`.
@@ -69,10 +77,10 @@
 //!   ([`crate::surface::surface_cache::p1::SurfaceCache`]) hands its surface handle
 //!   to its tree ([`Tree::set_owner_surface`]); `GetOwnerObject` of a surface tree
 //!   returns it. The surface decomposition data (`SmBezierPatch`, subdivision
-//!   surfaces) stays in the cache, so the `GetFirstBezierPatch` paths that read it
-//!   return [`SolidError::Unported`] until the tree construction hands it over (see
-//!   the `UNPORTED` markers; `SurfaceCache::first_bezier_patch` answers from the
-//!   cache).
+//!   surfaces) stays in the cache, so [`Tree::first_bezier_patch`] takes the two
+//!   reads that need it as caller resolvers (`SmBezierPatch::GetBezierPtr` of a
+//!   patch node, `SmBSplineSurface::GetGwNurbPointer` of a subdivision surface);
+//!   `SurfaceCache::first_bezier_patch` answers the same walk from the cache.
 //! - `SM_ASSERT`, `WARN` (bad split-direction data) and debug drawing are not
 //!   ported; a `WARN` branch simply adds nothing, as upstream.
 
@@ -84,6 +92,10 @@ use crate::math::{Point3, EFF_ZERO, EFF_ZERO_SQ};
 
 /// `SmTree_TYPE` (`CONT_BASE_TYPE + 150`).
 const SM_TREE_TYPE: i32 = 12150;
+
+/// Deepest nesting of top-box rebuilds in [`Tree::add_to_spatial_tree`] (see the
+/// module's Deviations).
+pub const MAX_SPATIAL_REBUILD_DEPTH: usize = 1;
 
 /// Index of a node in [`Tree::nodes`] (upstream `SmTreeNode*`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -389,12 +401,6 @@ pub enum TreeOwner {
     /// Any other object.
     Other,
 }
-
-/// Result of [`Tree::first_bezier_patch`] (upstream `gw_SURFACE*`). Every path
-/// that yields a patch calls into a unit that is not ported yet, so this type
-/// has no values until those units land.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BezierPatchRef {}
 
 /// A binary tree of boxes (`SmTree`): an object spatial tree, a single point
 /// tree, or the skeleton of a curve/surface subdivision tree.
@@ -886,11 +892,28 @@ impl<O: Copy + PartialEq> Tree<O> {
         object: Option<O>,
         geom_type: NodeGeomType,
     ) -> Result<()> {
+        self.add_to_spatial_tree_at(extent, object, geom_type, 0)
+    }
+
+    /// [`Tree::add_to_spatial_tree`] nested `depth` rebuilds deep.
+    fn add_to_spatial_tree_at(
+        &mut self,
+        extent: &Extent3d,
+        object: Option<O>,
+        geom_type: NodeGeomType,
+        depth: usize,
+    ) -> Result<()> {
         const OP: &str = "geom::tree::Tree::add_to_spatial_tree";
         let top = self.top_id(OP)?;
 
         // rebuild the tree with a larger box when the extent sticks out
         if !extent.is_contained_by(&self.node(top)?.bbox, EFF_ZERO) {
+            if depth >= MAX_SPATIAL_REBUILD_DEPTH {
+                return Err(SolidError::invalid_input(
+                    OP,
+                    "re-inserted box outside the rebuilt top box",
+                ));
+            }
             let all = self.object_list()?;
             let mut union = *extent;
             let mut objects = Vec::with_capacity(all.len());
@@ -921,7 +944,7 @@ impl<O: Copy + PartialEq> Tree<O> {
 
             for (bbox, obj) in extents.iter().zip(objects) {
                 // upstream ignores the status of the re-insertions
-                let _status = self.add_to_spatial_tree(bbox, obj, geom_type);
+                let _status = self.add_to_spatial_tree_at(bbox, obj, geom_type, depth + 1);
             }
         }
 
@@ -1201,42 +1224,48 @@ impl<O: Copy + PartialEq> Tree<O> {
     /// The Bezier patch describing `node`'s shape, falling back to ancestors
     /// (`GetFirstBezierPatch`). `None` for nodes that are not surface
     /// subdivision nodes or have no shape.
-    pub fn first_bezier_patch(&self, node: NodeId) -> Result<Option<BezierPatchRef>> {
+    ///
+    /// The patch data lives in the owning surface cache, so the two reads of it are
+    /// resolvers: `bezier(node)` is `SmBezierPatch::GetBezierPtr` of a
+    /// `SM_AD_BEZIER_SURFACE` node (`None`: no construction Bezier, the walk goes
+    /// on), `nurb(surface)` is `SmBSplineSurface::GetGwNurbPointer` of a node's
+    /// subdivision surface (upstream casts unchecked).
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` for nodes without surface data or cyclic parent links; those
+    /// of the resolvers.
+    pub fn first_bezier_patch<P>(
+        &self,
+        node: NodeId,
+        mut bezier: impl FnMut(NodeId) -> Result<Option<P>>,
+        mut nurb: impl FnMut(&O) -> Result<Option<P>>,
+    ) -> Result<Option<P>> {
         const OP: &str = "geom::tree::Tree::first_bezier_patch";
         // upstream recurses into the parent; a loop with a cycle guard here
         let mut cur = node;
         for _ in 0..=self.nodes.len() {
             let n = self.node(cur)?;
+            // check the AuxData Object for type SmBezier Patch
             if n.aux_type == AuxDataType::BezierSurface {
-                // The patch data lives in the owning surface cache's arenas
-                // (crate::surface::surface_cache::p1::SurfaceCache::first_bezier_patch
-                // answers from there); the tree reaches it once the tree construction
-                // hands it over, as the curve cache does with set_curve_data.
-                // DISPATCH GAP: SmBezierPatch::GetBezierPtr (surface.surface_cache_p1,
-                // ported; no UNPORTED marker: the callee is ported, the tree cannot reach the cache's data yet)
-                return Err(SolidError::Unported {
-                    upstream: "SmBezierPatch::GetBezierPtr",
-                    unit: "surface.surface_cache_p1",
-                });
+                if let Some(b) = bezier(cur)? {
+                    return Ok(Some(b));
+                }
             }
+            // check AuxData object for type SmBezierAux2d
             if !n.aux_type.is_surface_subdivision() {
                 return Ok(None);
             }
             let owner_surface = self.owner_object()?;
             // (SM_ASSERT on SmSurface::IsKindOf: debug only)
             let aux = self.surface_aux(cur, OP)?;
-            if aux.surface.is_some() && (n.parent.is_none() || owner_surface != aux.surface) {
-                // SmBSplineSurface::GetGwNurbPointer is ported (nurbs.b_spline_surface_p1),
-                // but the surface behind the opaque handle `O` is held by the surface
-                // cache (SurfaceCache::first_bezier_patch resolves it there); the tree
-                // reaches it once the tree construction hands it over.
-                // DISPATCH GAP: SmBSplineSurface::GetGwNurbPointer
-                // (nurbs.b_spline_surface_p1, ported; no UNPORTED marker: the callee is ported, the tree cannot reach the cache's data yet)
-                return Err(SolidError::Unported {
-                    upstream: "SmBSplineSurface::GetGwNurbPointer",
-                    unit: "nurbs.b_spline_surface_p1",
-                });
+            // if the AuxData has a temporary Subdivision Surface pointer - use it
+            if let Some(surface) = &aux.surface {
+                if n.parent.is_none() || owner_surface.as_ref() != Some(surface) {
+                    return nurb(surface);
+                }
             }
+            // else try to get the parent's shape - skip the owner surface
             match n.parent {
                 Some(p) if owner_surface != aux.surface => cur = p,
                 _ => return Ok(None),
@@ -1438,42 +1467,57 @@ impl<O: Copy + PartialEq> Tree<O> {
         node: NodeId,
         out: &mut Vec<NodeId>,
         search: &SideSearch,
-        mut bits: u64,
+        bits: u64,
         count: u64,
         depth: usize,
     ) -> Result<()> {
-        if depth > self.nodes.len() {
-            return Err(cyclic_links(search.op));
+        enum Frame {
+            Visit(NodeId, u64, u64, usize),
+            // Resolve child 2 only after child 1 finishes, preserving error timing.
+            SecondChild(NodeId, u64, u64, usize),
         }
-        let n = self.node(node)?;
-        if !n.aux_type.is_surface_subdivision() {
-            return Ok(());
-        }
-        if count == 0 {
-            bits = 0;
-        }
-        let split = self.surface_aux(node, search.op)?.split_dir;
-        let facing = search.facing.axis;
-        let cross = match facing {
-            SplitDir::U => SplitDir::V,
-            SplitDir::V => SplitDir::U,
-            SplitDir::Unknown => SplitDir::Unknown,
-        };
-        if n.child1.is_none() {
-            out.push(node);
-        } else if split == facing {
-            let c = self.child(node, search.facing.first, search.op)?;
-            self.side(c, out, search, bits, count, depth + 1)?;
-        } else if split == cross {
-            let (b1, b2) =
-                Self::split_targets(search.target_bits, search.target_count, bits, count);
-            if b1 {
-                let c1 = self.child(node, true, search.op)?;
-                self.side(c1, out, search, bits << 1, count + 1, depth + 1)?;
+
+        let mut stack = vec![Frame::Visit(node, bits, count, depth)];
+        while let Some(frame) = stack.pop() {
+            let (node, mut bits, count, depth) = match frame {
+                Frame::Visit(node, bits, count, depth) => (node, bits, count, depth),
+                Frame::SecondChild(node, bits, count, depth) => {
+                    let c2 = self.child(node, false, search.op)?;
+                    (c2, (bits << 1) | 1, count + 1, depth + 1)
+                }
+            };
+            if depth > self.nodes.len() {
+                return Err(cyclic_links(search.op));
             }
-            if b2 {
-                let c2 = self.child(node, false, search.op)?;
-                self.side(c2, out, search, (bits << 1) | 1, count + 1, depth + 1)?;
+            let n = self.node(node)?;
+            if !n.aux_type.is_surface_subdivision() {
+                continue;
+            }
+            if count == 0 {
+                bits = 0;
+            }
+            let split = self.surface_aux(node, search.op)?.split_dir;
+            let facing = search.facing.axis;
+            let cross = match facing {
+                SplitDir::U => SplitDir::V,
+                SplitDir::V => SplitDir::U,
+                SplitDir::Unknown => SplitDir::Unknown,
+            };
+            if n.child1.is_none() {
+                out.push(node);
+            } else if split == facing {
+                let c = self.child(node, search.facing.first, search.op)?;
+                stack.push(Frame::Visit(c, bits, count, depth + 1));
+            } else if split == cross {
+                let (b1, b2) =
+                    Self::split_targets(search.target_bits, search.target_count, bits, count);
+                if b2 {
+                    stack.push(Frame::SecondChild(node, bits, count, depth));
+                }
+                if b1 {
+                    let c1 = self.child(node, true, search.op)?;
+                    stack.push(Frame::Visit(c1, bits << 1, count + 1, depth + 1));
+                }
             }
         }
         Ok(())
@@ -1556,6 +1600,18 @@ mod tests {
         t.add_to_spatial_tree(&ext([-9.0; 3], [0.0; 3]), None, NodeGeomType::Default)
             .unwrap();
         assert_eq!(t.object_list().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn non_finite_boxes_rebuild_at_most_once() {
+        let mut t: Tree<u32> = Tree::new_spatial(&unit_box());
+        t.add_to_spatial_tree(&unit_box(), Some(1), NodeGeomType::Default)
+            .unwrap();
+        let nan = ext([f64::NAN, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let _ = t.add_to_spatial_tree(&nan, Some(2), NodeGeomType::Default);
+        let inf = ext([f64::NEG_INFINITY; 3], [f64::INFINITY; 3]);
+        let _ = t.add_to_spatial_tree(&inf, Some(3), NodeGeomType::Default);
+        assert!(t.object_list().is_ok());
     }
 
     #[test]
@@ -1674,6 +1730,80 @@ mod tests {
         ));
     }
 
+    fn surface_leaf(t: &mut Tree<u32>, parent: Option<NodeId>) -> NodeId {
+        t.add_node(TreeNode {
+            parent,
+            aux_type: AuxDataType::AuxData,
+            data: surf(SplitDir::Unknown),
+            ..TreeNode::new()
+        })
+    }
+
+    fn split_surface_leaf(t: &mut Tree<u32>, node: NodeId, split: SplitDir) -> [NodeId; 2] {
+        let c1 = surface_leaf(t, Some(node));
+        let c2 = surface_leaf(t, Some(node));
+        let n = t.node_mut(node).unwrap();
+        n.data = surf(split);
+        n.child1 = Some(c1);
+        n.child2 = Some(c2);
+        [c1, c2]
+    }
+
+    #[test]
+    fn right_neighbors_deep_u_split_sibling_chain() {
+        let mut t = Tree::new(None);
+        let root = surface_leaf(&mut t, None);
+        t.set_top_node(Some(root));
+        let [left, mut facing] = split_surface_leaf(&mut t, root, SplitDir::U);
+        // Linear-time public-API construction: append two arena nodes and update
+        // just their parent per level, with no ancestor walks or tree cloning.
+        for _ in 0..20_000 {
+            [facing, _] = split_surface_leaf(&mut t, facing, SplitDir::U);
+        }
+        assert_eq!(t.right_neighbors(left).unwrap(), vec![facing]);
+    }
+
+    #[test]
+    fn mixed_split_neighbors_preserve_depth_first_order() {
+        let mut t = Tree::new(None);
+        let root = surface_leaf(&mut t, None);
+        t.set_top_node(Some(root));
+        let [left, right] = split_surface_leaf(&mut t, root, SplitDir::U);
+        let [lb, lt] = split_surface_leaf(&mut t, left, SplitDir::V);
+        let [rb, rt] = split_surface_leaf(&mut t, right, SplitDir::V);
+        let [rb_facing, _] = split_surface_leaf(&mut t, rb, SplitDir::U);
+        let [rbb, rbt] = split_surface_leaf(&mut t, rb_facing, SplitDir::V);
+        let [rbt_facing, _] = split_surface_leaf(&mut t, rbt, SplitDir::U);
+        let [rtb, rtt] = split_surface_leaf(&mut t, rt, SplitDir::V);
+        assert_eq!(
+            t.right_neighbors(left).unwrap(),
+            vec![rbb, rbt_facing, rtb, rtt]
+        );
+        // The left V split supplies nonzero target_count and both target bits.
+        assert_eq!(t.right_neighbors(lb).unwrap(), vec![rbb, rbt_facing]);
+        assert_eq!(t.right_neighbors(lt).unwrap(), vec![rtb, rtt]);
+    }
+
+    #[test]
+    fn downward_side_cycles_preserve_error_timing() {
+        for split in [SplitDir::U, SplitDir::V] {
+            let (mut t, [_, left, right, ..]) = grid();
+            let n = t.node_mut(right).unwrap();
+            n.data = surf(split);
+            n.child1 = Some(right);
+            // For a cross split, child 2 must not be resolved before the cyclic
+            // child-1 descent returns its error.
+            n.child2 = None;
+            assert!(matches!(
+                t.right_neighbors(left),
+                Err(SolidError::InvalidInput {
+                    operation: "geom::tree::Tree::right_neighbors",
+                    reason: "tree node links are cyclic",
+                })
+            ));
+        }
+    }
+
     #[test]
     fn propagate_marks_and_classes() {
         let (mut t, [root, l, _, lb, lt, _, _]) = grid();
@@ -1697,14 +1827,20 @@ mod tests {
     #[test]
     fn bezier_patch_and_owner() {
         let (mut t, [root, ..]) = grid();
-        assert_eq!(t.first_bezier_patch(root).unwrap(), None);
+        let none = |_: NodeId| -> Result<Option<i32>> { Ok(None) };
+        let nurb = |s: &u32| -> Result<Option<i32>> { Ok(Some(100 + *s as i32)) };
+        assert_eq!(t.first_bezier_patch(root, none, nurb).unwrap(), None);
         t.set_owner_object(Some(TreeOwner::SurfaceCache));
         assert_eq!(t.owner_object().unwrap(), None);
         t.set_owner_surface(Some(5));
         assert_eq!(t.owner_object().unwrap(), Some(5));
-        assert_eq!(t.first_bezier_patch(root).unwrap(), None);
+        assert_eq!(t.first_bezier_patch(root, none, nurb).unwrap(), None);
         t.node_mut(root).unwrap().aux_type = AuxDataType::BezierSurface;
-        assert!(t.first_bezier_patch(root).is_err());
+        let patch = |n: NodeId| -> Result<Option<i32>> { Ok(Some(n.0 as i32)) };
+        assert_eq!(
+            t.first_bezier_patch(root, patch, nurb).unwrap(),
+            Some(root.0 as i32)
+        );
         t.set_owner_object(Some(TreeOwner::BrepCache));
         assert_eq!(t.owner_object().unwrap(), None);
     }

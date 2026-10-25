@@ -25,6 +25,10 @@
 //! | [`OffsetCurve::is_kind_of`]                  | `IsKindOf`                                       |
 //!
 //! Deviations:
+//! - **Nesting.** `new` returns `InvalidInput` when the base curve would nest
+//!   deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING)
+//!   (32; upstream fixtures nest at most 3), which bounds the recursive dispatch,
+//!   cloning and dropping of nested geometry (no limit upstream).
 //! - **Base curve.** Upstream keeps a pointer to the base curve, owned (deleted with
 //!   the offset, deep-copied by the copy constructor) or shared (`bOwnsCurve =
 //!   FALSE`). The port always owns its base curve by value ([`Box<Curve>`]): a
@@ -60,6 +64,10 @@
 //!   (unused upstream), `GetMemoryUsed`, `Dump`, `GetBaseCurve`, `GetRootCurve`,
 //!   `GetOffsetDistance`, `GetOffsetNormal` and `GetMaxAnalyticDomain` are not part
 //!   of this unit; plain getters are provided for the data.
+//! - **Derivative order bound.** `Evaluate` returns [`SolidError::InvalidInput`] when
+//!   `num_derivs` exceeds [`crate::curve::MAX_EVAL_DERIVS`] (upstream fills a
+//!   caller-supplied array of any length; the port's output `Vec` must not be sized by
+//!   an unbounded caller value).
 
 use crate::curve::curve::p2::{is_kind_of as curve_is_kind_of, Curve, OFFSET_CURVE_TYPE};
 use crate::error::{Result, SolidError};
@@ -69,6 +77,7 @@ use crate::geom::tol::is_zero;
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
 use crate::math::{EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT, UNDEF_DOUBLE};
+use crate::surface::surface::p2::{check_geometry_nesting, NestedGeometry};
 use crate::topology::database_io::{DatabaseReader, FileType, InputStream};
 
 const OP_EVAL: &str = "curve::offset_curve::OffsetCurve::evaluate";
@@ -110,13 +119,51 @@ pub struct OffsetCurve {
 }
 
 impl OffsetCurve {
+    /// Exact evaluation copy after the caller validates the geometry depth.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            dim: self.dim,
+            base: self
+                .base
+                .as_deref()
+                .map(|c| Box::new(c.clone_exact_bounded())),
+            normal: self.normal,
+            distance: self.distance,
+            interval: self.interval,
+            reversed: self.reversed,
+            owns_curve: self.owns_curve,
+        }
+    }
+
+    /// An exact evaluation copy, retaining raw flags and the base curve's owner.
+    /// `depth` is the base's depth in the shared `MAX_GEOMETRY_NESTING` (32) geometry traversal.
+    pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
+        Ok(Self {
+            dim: self.dim,
+            base: self
+                .base
+                .as_deref()
+                .map(|c| c.clone_for_evaluation_depth(depth).map(Box::new))
+                .transpose()?,
+            normal: self.normal,
+            distance: self.distance,
+            interval: self.interval,
+            reversed: self.reversed,
+            owns_curve: self.owns_curve,
+        })
+    }
+
     /// `SmOffsetCurve_TYPE` (`CURV_BASE_TYPE + 36`).
     pub const TYPE: i64 = OFFSET_CURVE_TYPE;
 
     /// The offset of `base` over `interval` at `distance` in the plane with normal
     /// `normal` (unitised; a zero vector becomes `(0, 0, 1)` as upstream), of image
     /// dimension `dim`. `owns_curve` is upstream's `bOwnsCurve` (default `FALSE`).
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` when `base` nests deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING) - 1.
     pub fn new(
         dim: u64,
         base: Curve,
@@ -124,8 +171,9 @@ impl OffsetCurve {
         normal: Vec3,
         distance: f64,
         owns_curve: bool,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        check_geometry_nesting(NestedGeometry::Curve(&base), 1, OP_BASE)?;
+        Ok(Self {
             dim,
             base: Some(Box::new(base)),
             // SE(m_vOffsetPlaneNorm.Unitize()): status ignored
@@ -134,7 +182,7 @@ impl OffsetCurve {
             interval,
             reversed: 0,
             owns_curve: i32::from(owns_curve),
-        }
+        })
     }
 
     /// The empty curve built for reading (`SmOffsetCurve()`): dimension 3, no base
@@ -219,7 +267,7 @@ impl OffsetCurve {
     /// # Errors
     ///
     /// Those of [`Curve::approx_eq`] on the base curves.
-    pub fn approx_eq(&self, other: &Self) -> Result<bool> {
+    pub fn approx_eq(&self, k: &Kernel, other: &Self) -> Result<bool> {
         // low work
         if core::ptr::eq(self, other) {
             return Ok(true);
@@ -233,7 +281,7 @@ impl OffsetCurve {
         // check equivalence of these objects
         let bases = match (&self.base, &other.base) {
             (None, None) => true,
-            (Some(a), Some(b)) => a.approx_eq(b)?,
+            (Some(a), Some(b)) => a.approx_eq(k, b)?,
             _ => false,
         };
         Ok(bases
@@ -272,11 +320,14 @@ impl OffsetCurve {
     /// evaluator.
     pub fn evaluate(
         &self,
+        k: &Kernel,
         input_t: f64,
         num_derivs: usize,
         from_left: bool,
         non_zero_tangents: bool,
     ) -> Result<Vec<Vec3>> {
+        // The output holds `num_derivs + 1` vectors: bound the caller's order.
+        crate::curve::check_eval_derivs(num_derivs, OP_EVAL)?;
         let base = self.base()?;
         let mut from_left = from_left;
 
@@ -286,7 +337,7 @@ impl OffsetCurve {
         // If offset dist is zero, just evaluate base curve (upstream does not return
         // here: the result is overwritten below).
         if self.distance.abs() < EFF_ZERO {
-            base.evaluate(t, num_derivs, from_left, true)?;
+            base.evaluate(k, t, num_derivs, from_left, true)?;
         }
 
         // init output.
@@ -300,7 +351,7 @@ impl OffsetCurve {
         if is_zero(t - self.interval.max()) {
             from_left = false;
         }
-        let ev = base.evaluate(t, num_calc + 1, from_left, true)?;
+        let ev = base.evaluate(k, t, num_calc + 1, from_left, true)?;
         for (dst, src) in pv.iter_mut().zip(ev) {
             *dst = src;
         }
@@ -315,7 +366,7 @@ impl OffsetCurve {
                 t += EFF_ZERO_SQRT * self.interval.length();
             }
             let mut pv2 = [Vec3::UNDEF; 4];
-            let ev2 = base.evaluate(t, num_calc, from_left, true)?;
+            let ev2 = base.evaluate(k, t, num_calc, from_left, true)?;
             for (dst, src) in pv2.iter_mut().zip(ev2) {
                 *dst = src;
             }
@@ -416,7 +467,7 @@ impl OffsetCurve {
                 if num_derivs < 2 {
                     // recurse back to this function so the next section sets the 1st
                     // derivative (status ignored upstream)
-                    let vals = match self.evaluate(t, 2, from_left, true) {
+                    let vals = match self.evaluate(k, t, 2, from_left, true) {
                         Ok(v) => v,
                         Err(e @ SolidError::Unported { .. }) => return Err(e),
                         Err(_) => vec![Vec3::UNDEF; 3],
@@ -456,21 +507,21 @@ impl OffsetCurve {
     /// `SM_ERR` when the base curve's first derivative stays zero after a
     /// finite-difference retry or the binormal is zero; those of the base curve's
     /// evaluator.
-    pub fn evaluate_point(&self, input_t: f64) -> Result<Point3> {
+    pub fn evaluate_point(&self, k: &Kernel, input_t: f64) -> Result<Point3> {
         let base = self.base()?;
 
         // Adjust parameter if reversed: mirror within the interval.
         let mut t = self.base_parameter(input_t);
 
         if self.distance.abs() < EFF_ZERO {
-            return base.evaluate_point(t);
+            return base.evaluate_point(k, t);
         }
         let mut pv = [Vec3::UNDEF; 2];
         let mut from_left = true;
         if is_zero(t - self.interval.max()) {
             from_left = false;
         }
-        let ev = base.evaluate(t, 1, from_left, true)?;
+        let ev = base.evaluate(k, t, 1, from_left, true)?;
         for (dst, src) in pv.iter_mut().zip(ev) {
             *dst = src;
         }
@@ -483,7 +534,7 @@ impl OffsetCurve {
                 t += EFF_ZERO_SQRT * self.interval.length();
             }
             let mut pv2 = [Vec3::UNDEF; 2];
-            let ev2 = base.evaluate(t, 1, from_left, true)?;
+            let ev2 = base.evaluate(k, t, 1, from_left, true)?;
             for (dst, src) in pv2.iter_mut().zip(ev2) {
                 *dst = src;
             }
@@ -509,8 +560,8 @@ impl OffsetCurve {
     /// # Errors
     ///
     /// Those of the base curve's `GetKnots`.
-    pub fn knots(&self, interval: Option<&Extent1d>) -> Result<(Vec<f64>, Vec<usize>)> {
-        self.base()?.knots(interval)
+    pub fn knots(&self, k: &Kernel, interval: Option<&Extent1d>) -> Result<(Vec<f64>, Vec<usize>)> {
+        self.base()?.knots(k, interval)
     }
 
     /// The base curve's natural knot count (`GetNumberNaturalKnots`).
@@ -518,8 +569,8 @@ impl OffsetCurve {
     /// # Errors
     ///
     /// Those of the base curve.
-    pub fn number_natural_knots(&self) -> Result<usize> {
-        self.base()?.number_natural_knots()
+    pub fn number_natural_knots(&self, k: &Kernel) -> Result<usize> {
+        self.base()?.number_natural_knots(k)
     }
 
     /// The base curve's continuities (`CalculateContinuities`).
@@ -529,9 +580,10 @@ impl OffsetCurve {
     /// Those of the base curve.
     pub fn calculate_continuities(
         &self,
+        k: &Kernel,
         angle_tol: f64,
     ) -> Result<(ContinuityType, Vec<ContinuityType>)> {
-        self.base()?.calculate_continuities(angle_tol)
+        self.base()?.calculate_continuities(k, angle_tol)
     }
 
     /// `SetContext`: contexts are not modelled, nothing to do.
@@ -705,16 +757,40 @@ mod tests {
             d,
             true,
         )
+        .unwrap()
+    }
+
+    #[test]
+    fn huge_derivative_orders_are_rejected() {
+        // fuzz: `n = 2^31` / `usize::MAX` sized the output allocation (abort)
+        let c = offset(0.5);
+        for n in [crate::curve::MAX_EVAL_DERIVS + 1, 1 << 31, usize::MAX] {
+            assert!(matches!(
+                c.evaluate(&Kernel::default(), 0.25, n, true, true),
+                Err(SolidError::InvalidInput { .. })
+            ));
+        }
+        let e = c
+            .evaluate(
+                &Kernel::default(),
+                0.25,
+                crate::curve::MAX_EVAL_DERIVS,
+                true,
+                true,
+            )
+            .unwrap();
+        assert_eq!(e.len(), crate::curve::MAX_EVAL_DERIVS + 1);
     }
 
     #[test]
     fn offsets_a_line_to_the_right() {
+        let k = &Kernel::default();
         let c = offset(0.5);
         assert_eq!(c.offset_normal(), Vec3::new(0.0, 0.0, 1.0));
-        let p = c.evaluate_point(0.25).unwrap();
+        let p = c.evaluate_point(k, 0.25).unwrap();
         // x cross z = -y: right of the curve seen from +z
         assert!((p.y + 0.5).abs() < 1e-15 && (p.x - 0.25).abs() < 1e-15);
-        let e = c.evaluate(0.25, 5, true, true).unwrap();
+        let e = c.evaluate(k, 0.25, 5, true, true).unwrap();
         assert_eq!(e.len(), 6);
         assert!((e[0] - p).length() < 1e-15);
         assert!((e[1] - Vec3::new(1.0, 0.0, 0.0)).length() < 1e-12);
@@ -723,14 +799,15 @@ mod tests {
 
     #[test]
     fn reverse_and_trim() {
+        let k = &Kernel::default();
         let mut c = offset(0.5);
-        let p = c.evaluate_point(0.25).unwrap();
+        let p = c.evaluate_point(k, 0.25).unwrap();
         let ivl = c.reverse_parameterization(&Extent1d::from_min_max(0.0, 0.5));
         assert_eq!((ivl.min(), ivl.max()), (0.5, 1.0));
         assert!(c.is_reversed());
-        let q = c.evaluate_point(0.75).unwrap();
+        let q = c.evaluate_point(k, 0.75).unwrap();
         assert!((p - q).length() < 1e-15);
-        let d = c.evaluate(0.75, 1, true, true).unwrap();
+        let d = c.evaluate(k, 0.75, 1, true, true).unwrap();
         assert!(d[1].x < 0.0);
         c.trim(&Extent1d::from_min_max(0.2, 0.4), false).unwrap();
         assert_eq!(c.natural_interval(), Extent1d::from_min_max(0.2, 0.4));
@@ -741,20 +818,22 @@ mod tests {
 
     #[test]
     fn equality_copy_and_types() {
+        let k = &Kernel::default();
         let a = offset(0.5);
         let b = a.copy();
-        assert!(a.approx_eq(&b).unwrap());
-        assert!(!a.approx_eq(&offset(0.6)).unwrap());
+        assert!(a.approx_eq(k, &b).unwrap());
+        assert!(!a.approx_eq(k, &offset(0.6)).unwrap());
         assert!(a.is_kind_of(OffsetCurve::TYPE));
         assert!(a.is_kind_of(crate::curve::curve::p2::TYPE));
         assert!(!a.is_kind_of(HermiteCurve::TYPE));
         assert_eq!(a.type_string(), "SmOffsetCurve_TYPE");
         assert_eq!(a.class_string(), "SmOffsetCurve");
-        assert!(OffsetCurve::empty().evaluate_point(0.0).is_err());
+        assert!(OffsetCurve::empty().evaluate_point(k, 0.0).is_err());
     }
 
     #[test]
     fn evolute_point_gets_a_tangent_from_the_second_derivative() {
+        let k = &Kernel::default();
         // y = x^2 as a quadratic Bezier; at x = 0.5 the radius of curvature is sqrt(2)
         let mut cur = crate::nurbs::nurbs_crv::allocate_nurb_curve(2, 2, 5).unwrap();
         for (d, s) in cur
@@ -779,21 +858,23 @@ mod tests {
             Vec3::new(0.0, 0.0, 1.0),
             -core::f64::consts::SQRT_2,
             false,
-        );
-        let exact = c.evaluate(0.75, 2, true, false).unwrap();
+        )
+        .unwrap();
+        let exact = c.evaluate(k, 0.75, 2, true, false).unwrap();
         assert!(exact[1].length() < 1e-13);
-        let fixed = c.evaluate(0.75, 2, true, true).unwrap();
+        let fixed = c.evaluate(k, 0.75, 2, true, true).unwrap();
         let new_len = 1.1 * EFF_ZERO * (1.0 + fixed[0].max_dimension());
         assert!((fixed[1].length() - new_len).abs() < 1e-24);
         // past the middle the tangent is opposite to the 2nd derivative
         assert!(fixed[1].dot(fixed[2]) < 0.0);
         // one derivative: recursion with two
-        let one = c.evaluate(0.75, 1, true, true).unwrap();
+        let one = c.evaluate(k, 0.75, 1, true, true).unwrap();
         assert_eq!(one[1], fixed[1]);
     }
 
     #[test]
     fn parallel_normal_fails() {
+        let k = &Kernel::default();
         let c = OffsetCurve::new(
             3,
             line(),
@@ -801,8 +882,9 @@ mod tests {
             Vec3::new(1.0, 0.0, 0.0),
             0.5,
             false,
-        );
-        assert!(c.evaluate_point(0.5).is_err());
-        assert!(c.evaluate(0.5, 2, true, true).is_err());
+        )
+        .unwrap();
+        assert!(c.evaluate_point(k, 0.5).is_err());
+        assert!(c.evaluate(k, 0.5, 2, true, true).is_err());
     }
 }

@@ -35,10 +35,16 @@
 //!   edge's curve becomes a real `SmLine` through its end points) and arc edges (`n (edge cx
 //!   cy cz r d0 d1)..`: the curve becomes a real `SmCircle` centred at `c` with axes X, Y,
 //!   radius `r` > `SM_EFF_ZERO` and degree domain `[d0, d1]` within `[-360, 360]`, of
-//!   length in `(SM_EFF_ZERO, 360 + SM_EFF_ZERO]`). Output: `-2` (refused), `-3` (not run), else
+//!   length in `(SM_EFF_ZERO, 360 + SM_EFF_ZERO]`); [`Op::UpdateSplitFace`] (unit
+//!   `blend.fillet_corner_p2`) takes two more, `orig split` (target faces); it classifies
+//!   points on the target faces (surface caches), so the shim returns `SC_ERR_ARG` for a
+//!   model surface whose constructed v knots crash the cache (UB-166, as
+//!   `blend.fillet_geom_p1`'s `FbSplitFace`). Output: `-2` (refused), `-3` (not run), else
 //!   the op status, `n_verts verts.. n_edges edges.. bevel blending chamfer degenerate
-//!   const_rad adjusted ext_patch setback n_surfs` and the model export of
-//!   `blend.fillet_geom_p1`.
+//!   const_rad adjusted ext_patch setback n_surfs`, the model export of
+//!   `blend.fillet_geom_p1` and the corner's surfaces (`n (kind surface)..`: `kind` `1`
+//!   `SmPlane`, `2` `SmSurfOfRevolution`, `0` any other, then the B-spline record of
+//!   `blend.fillet_geom_p1`'s surface export).
 //!
 //! The shims refuse exactly the inputs that would make upstream dereference null, read
 //! past an array or free the harness's own objects on a path the Rust side does not
@@ -64,6 +70,11 @@ pub enum Op {
     AdjustTopology = 2,
     /// The virtual `AdjustTangentCorner`.
     AdjustTangent = 3,
+    /// `SmFilletCorner::UpdateSplitFace(orig, split)` (unit `blend.fillet_corner_p2`).
+    UpdateSplitFace = 4,
+    /// `SmFilletCorner::MakeAnalyticCornerSurface` (unit `blend.fillet_corner_p2`): its
+    /// `SmBoolean` is the status (`1` / `0`; a `SER` / `NER` status reads as `1`).
+    AnalyticSurface = 5,
 }
 
 mod sys {
@@ -112,7 +123,9 @@ pub fn create(path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     rd.below(n_v)?;
     let ns = rd.index(MAX_SOLVER_EUS)?;
     if ns == 0 {
-        return Err(bad("no filleted edge use (upstream reads (*pSolverEUs)[0])"));
+        return Err(bad(
+            "no filleted edge use (upstream reads (*pSolverEUs)[0])",
+        ));
     }
     for _ in 0..ns {
         rd.below(n_eu)?;
@@ -157,6 +170,15 @@ fn eu_list(rd: &mut P1Reader<'_>, nt: usize) -> Result<(), FfiError> {
 ///
 /// [`FfiError::InvalidArgument`] for an input upstream could not handle safely.
 pub fn validate_corner(input: &[f64]) -> Result<(), FfiError> {
+    validate_corner_op(Op::CalcGeom, input)
+}
+
+/// Validates the input of [`corner`] for `op` (layout in the module docs).
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for an input upstream could not handle safely.
+pub fn validate_corner_op(op: Op, input: &[f64]) -> Result<(), FfiError> {
     let mut rd = P1Reader {
         cursor: crate::reader::Cursor::new(input),
         bound: MAX_MAGNITUDE,
@@ -199,16 +221,20 @@ pub fn validate_corner(input: &[f64]) -> Result<(), FfiError> {
     }
     let no = rd.index(MAX_LIST)?;
     for _ in 0..no {
-        rd.opt_index(b.ne())?.ok_or_else(|| bad("original face: edge -1"))?;
-        rd.opt_index(b.nf)?.ok_or_else(|| bad("original face: face -1"))?;
+        rd.opt_index(b.ne())?
+            .ok_or_else(|| bad("original face: edge -1"))?;
+        rd.opt_index(b.nf)?
+            .ok_or_else(|| bad("original face: face -1"))?;
     }
     let nl = rd.index(MAX_LIST)?;
     for _ in 0..nl {
-        rd.opt_index(b.ne())?.ok_or_else(|| bad("line edge: edge -1"))?;
+        rd.opt_index(b.ne())?
+            .ok_or_else(|| bad("line edge: edge -1"))?;
     }
     let na = rd.index(MAX_LIST)?;
     for _ in 0..na {
-        rd.opt_index(b.ne())?.ok_or_else(|| bad("arc edge: edge -1"))?;
+        rd.opt_index(b.ne())?
+            .ok_or_else(|| bad("arc edge: edge -1"))?;
         rd.finites(3)?;
         // SmCircle asserts dRadius > SM_EFF_ZERO and takes a domain in [-360, 360];
         // SmEllipse asserts its length is in (SM_EFF_ZERO, 360 + SM_EFF_ZERO]
@@ -227,6 +253,12 @@ pub fn validate_corner(input: &[f64]) -> Result<(), FfiError> {
             }
         }
     }
+    if op == Op::UpdateSplitFace {
+        for _ in 0..2 {
+            rd.opt_index(b.nf)?
+                .ok_or_else(|| bad("split face: face -1"))?;
+        }
+    }
     rd.done()
 }
 
@@ -237,7 +269,7 @@ pub fn validate_corner(input: &[f64]) -> Result<(), FfiError> {
 /// [`FfiError::InvalidArgument`] for an input upstream could not handle safely;
 /// [`FfiError::Status`] for a shim error.
 pub fn corner(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
-    validate_corner(input)?;
+    validate_corner_op(op, input)?;
     call_with_buffer(4096, |buf, len| {
         // SAFETY: input is valid for input.len() reads (validated above); buf is valid
         // for buf.len() writes; len is a valid pointer.

@@ -20,6 +20,7 @@
 //! | [`CurveClassification::interval_min_uv`]                    | `SmCurveInterval::GetMinUV`                           |
 //! | [`CurveClassification::interval_max_uv`]                    | `SmCurveInterval::GetMaxUV`                           |
 //! | [`refine_cci_to_surfaces`], [`RefineCci`]                   | `sm_RefineCCIToSurfaces`                              |
+//! | [`refine_cci_to_surfaces_in`]                               | `sm_RefineCCIToSurfaces`, through an adapter          |
 //!
 //! Deviations:
 //! - **Handles.** As in part 1, every object is a caller handle `O` resolved through a
@@ -48,12 +49,17 @@
 //!   index, which is now the stale slot past `m_lSize` (a copy of the last interval, as
 //!   `RemoveAt` leaves it), and its `CollapseInterval` then fails (status ignored). This
 //!   port reads the copy of the last interval the same way.
-//! - **`sm_RefineCCIToSurfaces`** is ported up to its first topology call: everything
-//!   after the entry checks starts with `SmEdge::GetCurve` (unit `topology.edge`) and
-//!   then walks the edge's faces, edge uses and Boolean mate. That remainder (the
-//!   surf/surf/surf, surface/edge and edge/surface refinements) is to be ported with the
-//!   `UNPORTED(topology.edge)` site below; it recurses through upstream's own counter
-//!   (`lRecursionCount`, at most 5 levels), which [`RefineCci::recursion_count`] carries.
+//! - **`sm_RefineCCIToSurfaces`** is ported through its no-work gate:
+//!   [`refine_cci_to_surfaces_in`] resolves the edge, its faces, edge uses, UV trim
+//!   curves and Boolean mate through the adapter (`sm_GetCCIGeometry`), measures the
+//!   gaps (`sm_GetCCISurfaceGaps`) and returns unchanged when they are within the edge
+//!   zone tolerance / 2000 or a point fails to drop, as upstream. The large-gap tail
+//!   (the surf/surf/surf, surface/edge and edge/surface refinements, which rewrite the
+//!   classification curve, the edge curve and its UV trim curves and then recurse)
+//!   needs the mutable B-rep and stays `UNPORTED(intersect.curve_class_p2)`; it recurses
+//!   through upstream's own counter (`lRecursionCount`, at most 5 levels), which
+//!   [`RefineCci::recursion_count`] carries. [`refine_cci_to_surfaces`], which has no
+//!   adapter, still defers at the edge.
 //! - **Topology callees** return [`SolidError::Unported`]: `SmEdge::GetCurve`
 //!   (`topology.edge`) and `SmFace::GetSurface` (`topology.face_p2`) are called on
 //!   opaque edge / face handles that carry no B-rep the port can reach (as in part 3
@@ -73,12 +79,17 @@ use crate::intersect::point_class::{
 };
 use crate::kernel::Kernel;
 use crate::math::{Point2, Point3, Vec3};
+use crate::surface::surface::p5::DropPointOptions;
+use crate::topology::brep::p1::is_live_topology_member;
+use crate::topology::face::p2 as face_p2;
 use crate::topology::Brep;
+use crate::EntityRef;
 
 use super::p1::{
     xsect_tol_2d_or_3d_for_classify_pair, CurveClassification, CurveInterval, IntervalPosition,
 };
 use super::p3::curve_is_degenerate;
+use super::p7::NoObject;
 
 const OP_CC: &str = "intersect::curve_class::p2::CurveClassification";
 const OP_INSERT: &str = "intersect::curve_class::p2::insert_at";
@@ -239,16 +250,21 @@ impl<O: ClassObject> CurveClassification<O> {
 
     /// Whether a vertex, edge or face of an interval boundary classification is no
     /// longer live topology of `brep` (`HasDeadTopologyPointObject`); false for no brep
-    /// and for an empty classification.
+    /// and for an empty classification. The objects resolve through
+    /// [`ClassGeometry::topology_entity`]; one of another B-rep is not a member of `brep`.
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] for any such topology object
-    /// (`SmBrep::IsLiveTopologyMember`, unit `topology.brep_p1`).
-    pub fn has_dead_topology_point_object(&self, brep: Option<&Brep>) -> Result<bool> {
-        if brep.is_none() {
+    /// [`SolidError::Unported`] for a topology object the adapter cannot resolve to a
+    /// B-rep (`SmBrep::IsLiveTopologyMember`, unit `topology.brep_p1`).
+    pub fn has_dead_topology_point_object(
+        &self,
+        geometry: &impl ClassGeometry<O>,
+        brep: Option<&Brep>,
+    ) -> Result<bool> {
+        let Some(brep) = brep else {
             return Ok(false);
-        }
+        };
         if self.size() == 0 {
             return Ok(false); // empty classification has no interval boundaries to inspect
         }
@@ -256,19 +272,21 @@ impl<O: ClassObject> CurveClassification<O> {
         // point classifications: 0..IvlCnt inclusive
         for i in 0..=self.size() {
             let (point_class, _) = self.point_class_by_index(i)?;
-            if point_class.object().is_none() {
+            let Some(obj) = point_class.object() else {
                 continue;
-            }
+            };
             let obj_class = point_class.point_class();
             if obj_class == PointClassType::Vertex
                 || obj_class == PointClassType::Edge
                 || obj_class == PointClassType::Face
             {
-                // UNPORTED(topology.brep_p1): SmBrep::IsLiveTopologyMember
-                return Err(SolidError::unported(
+                let (b, e) = geometry.topology_entity(obj).ok_or(SolidError::unported(
                     "SmBrep::IsLiveTopologyMember",
                     "topology.brep_p1",
-                ));
+                ))?;
+                if !(std::ptr::eq(b, brep) && is_live_topology_member(brep, Some(e))) {
+                    return Ok(true);
+                }
             }
         }
 
@@ -285,13 +303,17 @@ impl<O: ClassObject> CurveClassification<O> {
     /// [`CurveClassification::classify_crv_loc`].
     pub fn classify_crv_loc_by_index(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         index: usize,
     ) -> Result<(Point3, f64)> {
         let (point_class, param) = self.point_class_by_index(index)?;
 
         // all done: return SSS point if possible else m_cpCurve(dCurveParameter)
-        Ok((self.classify_crv_loc(geometry, point_class, param)?, param))
+        Ok((
+            self.classify_crv_loc(k, geometry, point_class, param)?,
+            param,
+        ))
     }
 
     /// Inserts `interval` at `index` (`InsertAt`): past the end the classification
@@ -583,7 +605,7 @@ impl<O: ClassObject> CurveClassification<O> {
             // if the neighbor interval has shrunk to zero length
             if collapse_degen_intervals {
                 let curve = self.curve_geometry(geometry)?;
-                if curve_is_degenerate(Some(curve), &self.at(index - 1)?.interval, tol)? {
+                if curve_is_degenerate(k, Some(curve), &self.at(index - 1)?.interval, tol)? {
                     // remove the interval from the SmCurveClassification (status ignored)
                     ignore_status(self.collapse_interval(k, geometry, index - 1))?;
                 }
@@ -652,7 +674,7 @@ impl<O: ClassObject> CurveClassification<O> {
             // if the neighbor interval has shrunk to zero length
             if collapse_degen_intervals {
                 let curve = self.curve_geometry(geometry)?;
-                if curve_is_degenerate(Some(curve), &self.at(index + 1)?.interval, tol)? {
+                if curve_is_degenerate(k, Some(curve), &self.at(index + 1)?.interval, tol)? {
                     // remove the interval from the SmCurveClassification (status ignored)
                     ignore_status(self.collapse_interval(k, geometry, index + 1))?;
                 }
@@ -721,7 +743,7 @@ impl<O: ClassObject> CurveClassification<O> {
             ivl.interval.max(),
             ivl.end.obj_zone_tol_3d(k, geometry)?,
         )?;
-        if collapse && curve_is_degenerate(Some(curve), &ivl.interval, tol)? {
+        if collapse && curve_is_degenerate(k, Some(curve), &ivl.interval, tol)? {
             // remove the interval from the SmCurveClassification (status ignored)
             ignore_status(self.collapse_interval(k, geometry, index))?;
         }
@@ -736,16 +758,18 @@ impl<O: ClassObject> CurveClassification<O> {
     /// # Errors
     ///
     /// [`SolidError::InvalidInput`] for `index >= size()` or no curve; `SM_ERR` for a 3D
-    /// curve without a face; [`SolidError::Unported`] with a face (`SmFace::GetSurface`,
-    /// unit `topology.face_p2`).
+    /// curve without a face or face surface; [`SolidError::Unported`] for a face the
+    /// adapter cannot resolve to a B-rep ([`ClassGeometry::topology_entity`];
+    /// `SmFace::GetSurface`, unit `topology.face_p2`); those of the surface drop.
     pub fn interval_min_uv(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         index: usize,
         uv: Point2,
     ) -> Result<Point2> {
         let param = self.at(index)?.interval.min();
-        self.interval_uv_at(geometry, param, uv)
+        self.interval_uv_at(k, geometry, param, uv)
     }
 
     /// The UV point of the end of interval `index` (`SmCurveInterval::GetMaxUV`; see
@@ -756,17 +780,19 @@ impl<O: ClassObject> CurveClassification<O> {
     /// As [`CurveClassification::interval_min_uv`].
     pub fn interval_max_uv(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         index: usize,
         uv: Point2,
     ) -> Result<Point2> {
         let param = self.at(index)?.interval.max();
-        self.interval_uv_at(geometry, param, uv)
+        self.interval_uv_at(k, geometry, param, uv)
     }
 
     /// `GetMinUV` / `GetMaxUV` at curve parameter `param`.
     fn interval_uv_at(
         &self,
+        k: &Kernel,
         geometry: &impl ClassGeometry<O>,
         param: f64,
         uv: Point2,
@@ -776,31 +802,51 @@ impl<O: ClassObject> CurveClassification<O> {
         // set output - UV point
         if curve.dim() == 2 {
             // (status ignored: an undefined point on failure)
-            let p = ignored(curve.evaluate_point(param))?.unwrap_or(Vec3::UNDEF);
+            let p = ignored(curve.evaluate_point(k, param))?.unwrap_or(Vec3::UNDEF);
             return Ok(Point2::new(p.x, p.y));
         }
         if let CurveKind::CrvOnSurf(c) = curve.kind() {
             // (status ignored: rUV unchanged on failure)
-            return Ok(ignored(c.evaluate_uv_point(param))?.unwrap_or(uv));
+            return Ok(ignored(c.evaluate_uv_point(k, param))?.unwrap_or(uv));
         }
 
         // Curve is 3d branch - Use drop point
-        if self.face.is_none() {
+        let Some(face) = self.face else {
             // check state - the surface must be given
             return Err(SolidError::sm_err(OP_UV));
-        }
-        // UNPORTED(topology.face_p2): SmFace::GetSurface (then SmSurface::DropPoint,
-        // unit surface.surface_p5)
-        Err(SolidError::unported(
-            "SmFace::GetSurface",
-            "topology.face_p2",
-        ))
+        };
+        let surface = match geometry.topology_entity(face) {
+            Some((b, EntityRef::Face(f))) => face_p2::surface(b, f)?,
+            Some(_) => {
+                return Err(SolidError::invalid_input(
+                    OP_UV,
+                    "face handle is not a face",
+                ))
+            }
+            None => {
+                return Err(SolidError::unported(
+                    "SmFace::GetSurface",
+                    "topology.face_p2",
+                ))
+            }
+        };
+        let surface = surface.ok_or(SolidError::sm_err(OP_UV))?;
+
+        // (EvaluatePoint's status is ignored upstream: an undefined point on failure)
+        let point = ignored(curve.evaluate_point(k, param))?.unwrap_or(Vec3::UNDEF);
+        let drop = surface.drop_point::<NoObject>(
+            k,
+            point,
+            &surface.natural_uv_domain(),
+            &DropPointOptions::default(),
+        )?;
+        Ok(drop.result_uv)
     }
 }
 
 /// Tightens a classification-curve / `edge` intersection `solution` onto its surfaces
 /// (`sm_RefineCCIToSurfaces`). The recursion counter is bumped first and nothing is
-/// done past [`MAX_REFINE_RECURSION`] (5) levels; nothing is done either for a solution
+/// done past `MAX_REFINE_RECURSION` (5) levels; nothing is done either for a solution
 /// that is not a point (a range whose curve parameters differ at both ends) or for a
 /// classification without both its surfaces. `sss_point` is the caller's value of the
 /// output point.
@@ -842,9 +888,106 @@ pub fn refine_cci_to_surfaces<O: ClassObject, S: Copy>(
     if edge.is_none() {
         return Err(SolidError::invalid_input(OP_CC, "no edge"));
     }
-    // UNPORTED(topology.edge): SmEdge::GetCurve (the rest of sm_RefineCCIToSurfaces walks
-    // the edge's faces, edge uses and Boolean mate; port it when wiring this site)
+    // this entry point has no adapter to resolve the edge ([`refine_cci_to_surfaces_in`]
+    // has one)
+    // UNPORTED(topology.edge): SmEdge::GetCurve
     Err(SolidError::unported("SmEdge::GetCurve", "topology.edge"))
+}
+
+/// [`refine_cci_to_surfaces`] with an adapter: the edge, its faces, edge uses, UV trim
+/// curves and Boolean mate resolve through `geometry`
+/// ([`get_cci_geometry_in`](super::p1::get_cci_geometry_in)). When the classification
+/// curve, the edge curve and their surfaces already meet within the no-work tolerance
+/// (edge zone tolerance / 2000), or a point does not drop to a connected surface,
+/// nothing changes, as upstream.
+///
+/// # Errors
+///
+/// [`SolidError::Unported`] when the gaps are large: upstream then moves the point to a
+/// surf/surf/surf intersection and rewrites the classification curve, the edge curve
+/// and its UV trim curves, which needs the mutable B-rep
+/// (`UNPORTED(intersect.curve_class_p2)`); those of
+/// [`get_cci_geometry_in`](super::p1::get_cci_geometry_in) and
+/// [`get_cci_surface_gaps`](super::p1::get_cci_surface_gaps);
+/// [`SolidError::InvalidInput`] for a classification without a curve or an edge
+/// without one (upstream dereferences them).
+pub fn refine_cci_to_surfaces_in<O: ClassObject, S: Copy>(
+    k: &Kernel,
+    geometry: &impl ClassGeometry<O>,
+    classification: &CurveClassification<O>,
+    solution: &Solution<S>,
+    edge: O,
+    sss_point: Point3,
+    recursion_count: u64,
+) -> Result<RefineCci> {
+    // init outputs
+    let out = RefineCci {
+        sss_point_flag: false,
+        sss_point,
+        deviation: 0.0,
+        recursion_count: recursion_count.saturating_add(1),
+    };
+
+    if recursion_count > MAX_REFINE_RECURSION {
+        return Ok(out); // just return with no changes.
+    }
+
+    // no work case - Not an intersection curve point solution
+    let point_solution = solution.solution_type == SolutionType::SingleValue
+        || are_same(solution.start.param(0)?, solution.end.param(0)?)
+        || are_same(solution.start.param(1)?, solution.end.param(1)?);
+    if !point_solution || classification.surface1().is_none() || classification.surface2().is_none()
+    {
+        return Ok(out);
+    }
+
+    // get ClassCurve and EdgeCurve xsect points
+    let src_curve = classification.curve_geometry(geometry)?;
+    let edge_curve = super::p3::edge_curve(geometry, edge)?
+        .ok_or(SolidError::invalid_input(OP_CC, "edge without a curve"))?;
+
+    let edge_zone_tol_3d =
+        crate::intersect::point_class::object_zone_tol_3d(k, geometry, Some(edge))?;
+    let no_work_xsect_tol_3d = edge_zone_tol_3d / 2000.0; // usually about 1e-8 = ApproxTol/1000 (2 gets ApproxTol)
+
+    // (the statuses of both evaluations are ignored upstream)
+    let src_curve_pt =
+        ignored(src_curve.evaluate_point(k, solution.start.param(0)?))?.unwrap_or(Vec3::UNDEF);
+    let edge_curve_pt =
+        ignored(edge_curve.evaluate_point(k, solution.start.param(1)?))?.unwrap_or(Vec3::UNDEF);
+
+    // get cci connected geometry and topology (sm_GetCCIGeometry always succeeds)
+    let cci = super::p1::get_cci_geometry_in(geometry, classification, edge)?;
+
+    // get CurvePoint/EdgePoint, CurvePoint/Surface, and EdgePoint/Surface gaps
+    let gaps = super::p1::get_cci_surface_gaps(
+        k,
+        src_curve_pt,
+        edge_curve_pt,
+        solution,
+        &cci.surfaces,
+        &cci.uv_curves,
+        cci.edge_surface_count,
+    )?;
+
+    // no work case - gaps are fine or current solution failed to project to all surfaces
+    if !gaps.success
+        || (gaps.curve_edge_gap < no_work_xsect_tol_3d
+            && gaps.curve_surface_gap < no_work_xsect_tol_3d
+            && gaps.edge_surface_gap < no_work_xsect_tol_3d)
+    {
+        return Ok(out);
+    }
+
+    // Part 2 - Fix Large Gaps: moves the point to a surf/surf/surf or surface/edge
+    // intersection and rewrites the classification curve, the edge curve and its UV trim
+    // curves (sm_ApplyPointSolution, SmEdgeuse::SetUVTrimCurve), then recurses.
+    // UNPORTED(intersect.curve_class_p2): sm_RefineCCIToSurfaces (large-gap refinement
+    // of the mutable B-rep's curves)
+    Err(SolidError::unported(
+        "sm_RefineCCIToSurfaces (large-gap refinement)",
+        "intersect.curve_class_p2",
+    ))
 }
 
 #[cfg(test)]
@@ -1001,14 +1144,14 @@ mod tests {
         let k = Kernel::default();
         let g = line();
         let c = cc(&k, &[0.0, 0.5, 1.0]);
-        let (p, t) = c.classify_crv_loc_by_index(&g, 2).unwrap();
+        let (p, t) = c.classify_crv_loc_by_index(&k, &g, 2).unwrap();
         assert_eq!((p.x, t), (1.0, 1.0));
-        assert!(c.classify_crv_loc_by_index(&g, 3).is_err());
+        assert!(c.classify_crv_loc_by_index(&k, &g, 3).is_err());
         assert!(!c
-            .has_dead_topology_point_object(Some(&Brep::new()))
+            .has_dead_topology_point_object(&g, Some(&Brep::new()))
             .unwrap());
         assert!(c
-            .interval_min_uv(&g, 0, Point2::new(0.0, 0.0))
+            .interval_min_uv(&k, &g, 0, Point2::new(0.0, 0.0))
             .is_err_and(|e| !e.is_unported()));
         let s: Solution<H> = Solution::new();
         let r = refine_cci_to_surfaces(&c, &s, None, Point3::new(1.0, 2.0, 3.0), 6).unwrap();

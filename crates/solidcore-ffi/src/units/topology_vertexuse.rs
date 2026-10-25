@@ -12,6 +12,11 @@
 //! | `1 curve t0 t1 validate_only init_gaps`       | `CreateWireEdgeFromCurve(curve, [t0, t1])`|
 //! | `2 surface u0 v0 u1 v1 validate_only init_gaps` | `CreateFaceFromSurface(surface, dom)`   |
 //! | `3 validate_only init_gaps`                   | the wire network of `prog_test` `my_test_topology` |
+//! | `5 np P[3]*np ne (a b has_curve [curve])*ne validate_only init_gaps` | `MakeShellVertex` at each point, then `MakeEdgeTopology` edges (a line, or the curve) as in the wire network |
+//!
+//! Kind `9` accepts the exact ellipse/circle face fixture documented in
+//! [`super::topology_edgeuse_p1`]. Its native curve record prefixes the regular
+//! B-spline edge block; UV trims retain their original NURB parameters.
 //!
 //! A surface block is `0 oob form n m p q r s cpts(x y z w) u v` (`SmBSplineSurface`) or
 //! `1 O[3] N[3]` (`SmPlane(O, N)`); a curve block `dim n p m cpts(x y z w) knots`
@@ -19,7 +24,10 @@
 //! starts with `0`, or with `-1 status` when the B-rep could not be built (nothing else
 //! follows). `-2` in an output is "upstream would dereference null" (the shim did not
 //! call it). "gap states" are the vertex/edge and vertex/face cache states of every
-//! vertex use, in order.
+//! vertex use, in order. A face's surface in the graph export may start with an exact
+//! analytic head, `2 type version surf_oob gen_oob nbytes byte*nbytes` (an
+//! `SmSurfOfRevolution`: its binary `WriteToDB` record,
+//! `harness/cpp/shim/sc_analytic_export.h`), followed by the regular surface block.
 //!
 //! | [`Op`]         | parameters after the block | outputs |
 //! |----------------|----------------------------|---------|
@@ -36,9 +44,12 @@
 //! [`eval`] accepts only what upstream handles without undefined behaviour: existing
 //! `.smb` files, well-formed clamped B-splines, planes with a non-zero normal, indices
 //! inside the B-rep's export (it builds the B-rep once more to count), finite inputs.
+//! Blocks with a value above [`super::topology_edgeuse_p2::MAX_BLOCK_MAGNITUDE`] are
+//! refused first (HANG-29: building the face never returns upstream).
 
 use std::path::Path;
 
+use super::topology_edgeuse_p2::check_block_magnitudes;
 use crate::validate::{bad, check_knots, NOW, NOZ};
 use crate::{call_with_buffer, FfiError};
 
@@ -242,7 +253,7 @@ pub(crate) fn brep_block_at(input: &[f64], path: &str) -> Result<usize, FfiError
 
 /// A B-rep block.
 fn brep_block(rd: &mut Reader<'_>, path: &str) -> Result<(), FfiError> {
-    let kind = rd.index(4)?;
+    let kind = rd.index(9)?;
     match kind {
         0 => {
             let p = Path::new(path);
@@ -292,12 +303,44 @@ fn brep_block(rd: &mut Reader<'_>, path: &str) -> Result<(), FfiError> {
                 }
             }
         }
-        _ => {}
+        5 => {
+            // shell vertices, then edges between two distinct ones (a line or a curve)
+            let np = rd.index(MAX_NETWORK_POINTS)?;
+            for _ in 0..np {
+                let p = rd.vec3()?;
+                if p.iter().any(|c| c.abs() > 1e6) {
+                    return Err(bad("network point out of range"));
+                }
+            }
+            let ne = rd.index(MAX_NETWORK_EDGES)?;
+            for _ in 0..ne {
+                let a = rd.index(np.saturating_sub(1))?;
+                let b = rd.index(np.saturating_sub(1))?;
+                if np == 0 || a == b {
+                    return Err(bad("network edge needs two distinct points"));
+                }
+                if rd.flag()? {
+                    curve(rd)?;
+                }
+            }
+        }
+        9 => {
+            rd.at += super::topology_edgeuse_p1::ellipse_face_block(
+                rd.input.get(rd.at..).ok_or_else(|| bad("short ellipse face"))?
+            )?;
+        }
+        3 => {}
+        _ => return Err(bad("unsupported B-rep kind")),
     }
     rd.flag()?;
     rd.flag()?;
     Ok(())
 }
+
+/// Most points of a kind-5 network block.
+pub const MAX_NETWORK_POINTS: usize = 64;
+/// Most edges of a kind-5 network block.
+pub const MAX_NETWORK_EDGES: usize = 128;
 
 /// The entity counts of an export, in the shim's order: regions, shells, face uses,
 /// faces, loop uses, loops, edge uses, edges, vertex uses, vertices. `None` when the
@@ -408,6 +451,7 @@ pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     let mut rd = Reader::new(input);
     brep_block(&mut rd, path)?;
     let block = input.get(..rd.at).ok_or_else(|| bad("input too short"))?;
+    check_block_magnitudes(block)?;
     let export = raw(Op::Export, path, block)?;
     if op == Op::Export {
         rd.done()?;
