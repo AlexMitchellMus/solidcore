@@ -394,8 +394,11 @@ pub fn make_topology_from_data(
     let previous = k.context.doing_boolean();
     k.context.set_doing_boolean(true);
     let result = make_topology(k, b, data, env, options);
+    // the UV trim curves the healer's lazy face queries made (upstream's
+    // SetUVTrimCurve owns them by their edge uses)
+    let bound = bind_uv_trim_owners(b, env.key_of);
     k.context.set_doing_boolean(previous);
-    result
+    result.and(bound)
 }
 
 /// The ids built for the B-rep data records (upstream's `m_p*` record members).

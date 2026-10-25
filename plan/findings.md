@@ -20601,3 +20601,44 @@ after each call:
 `SmMerge::BooleanManifold` sets `SetDoingBoolean(TRUE)` (`SmMerge.cpp:2551`) and
 clears it only on its success exits (`:3114`, `:4148`, `:5095`); its `SER` error
 returns leave it set, as the port's `manifold_boolean_translated` does. No change.
+
+## topology.brep_p10 healer-snapshot mismatches traced: 4 fixed, 2 explained, 6 not the snapshot (2026-10-25)
+
+Follow-up to "ClassifyLoops' loop bisector keeps its B-rep edits: 37 of 49 listed cases
+match, 12 topology.brep_p10 cases still differ". Rust and C++ outputs dumped per case
+with labelled positions, plus an instrumented copy of `SmFace.cpp` / `SmHealData.cpp`
+linked into a private difftest binary (not committed).
+
+- **Fixed (4, entries removed):** `healer10_always_Defeature_inset_cube`, `gen0040`,
+  `gen0117`, `gen0165`. The first difference (`cpp 1 rust 0`) is the UV trim curve's
+  owner check, not a missing trim. The healer's lazy face queries (`IsSeam` ->
+  `GetOrCreateUVTrimCurve` -> `SetUVTrimCurve`, from `ClassifyLoops`' bisector) make the
+  trim on a B-rep under the caller's naming (`NamingScheme::Caller`), so it has no owner;
+  upstream's `SetUVTrimCurve` owns it by the edge use. `make_topology_from_data` now
+  binds those owners under `TopologyEnv::key_of` after the build and heal
+  (`bind_uv_trim_owners`, as `ProjectAndTrim` already does). The snapshot copy-back was
+  not the cause.
+- **`gen0115`: documented deviation.** `Fillet/open_shell.smb`, UV trims made by the
+  healer's `Make_UVTrimCurves` -> `CreateUVTrimCurves`, which closes a 5.3e-6 UV corner
+  gap with `sm_FixUVTrimCurves`. The C++ inputs match the port's (same tolerances, gap,
+  gap cache). Upstream's `DropPoint` moves the trim's end parameter (1 ->
+  0.99999946883), so it `Trim`s and `EditParameterization`s the trim and its interior
+  points move (rel ~1.6e-7). The port follows the issue #570 fix and only moves the end
+  control points. This is the first case found that reaches that branch (the 2026-10-24
+  #570 entry found none). Stays parked.
+- **`read_Solids_fillet_ts`: C++ depends on the earlier cases.** Run alone it matches
+  bit for bit. In the unit run the C++ result changes with the cases before it
+  (`values.dbls.len` 1659, 1663 or 1667 against 1683). `Fix_CoinVertices` merges stale
+  pairs: deleted `SmVertexProps` stay in `m_pVerticesInVoxels`, and a new props at a
+  freed address passes `Cache_CoinVertices`' live check (UB-256 in
+  `plan/upstream-issues.md`). A fresh `SmContext` per case in the shim does not change
+  this. Stays parked.
+- **Not the snapshot, not traced (6, reasons updated):** each differs the same way when
+  run alone. `read_Boolean_extrudeHoles1`: the C++ heal leaves 5 shells and 11 vertices,
+  the port 8 and 14 (3 more vertex shells). `read_Fillet_bottle`,
+  `read_Fillet_cyl_cyl_shell`, `read_Fillet_fillet0227`,
+  `read_Solids_InsetTaperedExtrude`, `read_Solids_extrusion2`: only some edge tolerances
+  and the vertex tolerances raised from them differ, in the last bits (rel 5e-12 to
+  2.6e-11). The values are within `1e-9`; the runner also compares the bits. No
+  `sm_FixUVTrimCurves` call on these paths.
+- `project_t0_Defeature_brep1` (ProjectAndTrim infinite region) was not looked at.

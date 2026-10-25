@@ -4194,3 +4194,28 @@ Numbering paragraph at the top says.
 - **Severity:** Boolean failure (`SM_ERR`), or a body with the crossing missing where the caller does not check.
 - **Fix:** test the line at its middle, `sLinePt + 0.5 (dMax - dMin) * axis`, instead of its bottom end. A line that overlaps both domains only away from its middle is still dropped; clipping `[dMin, dMax]` to both domains' v ranges would cover that.
 - **Rust port:** `crates/solidcore/src/surface/cone/p3.rs` tests the middle only when `Kernel::cone_parallel_midpoint_test` is set. It is off by default, so `surface.cone_p3` keeps upstream's bottom-end test and matches the C++ bit for bit; `boolean::merge::p4::manifold_boolean` sets it for the duration of a Boolean and restores it on exit. Documented in the file header's Deviations. With it, the four FAIL-3665 cases pass.
+
+#### UB-256. `SmHealData` keeps deleted vertex props in its coincident-vertex voxels (address reuse)
+- **Location:** `source/SMLib/src/SmHealData.cpp`: `UpdateTargetLists` deletes the merged
+  vertices' `SmVertexProps` (`:1143`-`1149`, after `RemoveVertexProps_FromLists`, which
+  takes them out of every list but `m_pVerticesInVoxels`) and allocates props for new
+  vertices (`:1226`). `Cache_CoinVertices` adds only the new props to the voxels and keeps
+  a found pair when both items are in `m_sTgtVertexProps` (`:3231`).
+- **What happens:** a voxel item still holds a freed `SmVertexProps*` and the point it was
+  added with. When a later `new SmVertexProps` gets the freed address, the stale item
+  passes the live check and pairs the new vertex by the old point, so
+  `Fix_CoinVertices` merges vertices that are not coincident. Whether it happens depends
+  on the heap's history (use after free, undefined behaviour).
+- **Trigger:** `topology.brep_p10` `read_Solids_fillet_ts` (`Solids/fillet_ts.smb`, read
+  with healing): run alone, `Fix_CoinVertices` takes the B-rep from 34 to 25 vertices
+  (2 shells) and the port agrees bit for bit; after other cases in the same process the
+  C++ goes to 20 or 21 vertices (1 shell; `values.dbls.len` 1659, 1663 or 1667 against
+  1683, depending on the cases before it).
+- **How found:** an instrumented copy of `SmHealData.cpp` linked into the difftest binary
+  (vertex count after each heal step, and every pair `Cache_CoinVertices` keeps), run on
+  the case alone and after the `read_` cases.
+- **Confirmed:** yes, on the C++ reference (Ubuntu 24.04, x86_64, prebuilt library at the
+  pinned harness key): the result changes with the cases run before it in one process.
+- **Fix:** remove the props from `m_pVerticesInVoxels` in `RemoveVertexProps_FromLists`
+  (or rebuild the voxels after a merge) before deleting them.
+- **Rust port:** unchanged; its result is the one upstream gives with no address reused.
