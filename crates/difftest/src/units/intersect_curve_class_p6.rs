@@ -568,7 +568,10 @@ impl UnitDiff for Runner {
     }
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
         if case.inputs.get("paired_fillet").and_then(Value::as_bool) == Some(true) {
-            return paired_fillet::cpp();
+            return paired_fillet::cpp(paired_fillet::Mode::Metadata);
+        }
+        if let Some(mode) = paired_fillet::Mode::from_input(&case.inputs) {
+            return paired_fillet::cpp(mode);
         }
         let i: Fixture = case.parse()?;
         let result = ffi::run_picked(
@@ -583,7 +586,10 @@ impl UnitDiff for Runner {
     }
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         if case.inputs.get("paired_fillet").and_then(Value::as_bool) == Some(true) {
-            return paired_fillet::rust();
+            return paired_fillet::rust(paired_fillet::Mode::Metadata);
+        }
+        if let Some(mode) = paired_fillet::Mode::from_input(&case.inputs) {
+            return paired_fillet::rust(mode);
         }
         let i: Fixture = case.parse()?;
         let validation = ffi::validate_picked(
@@ -668,6 +674,18 @@ impl UnitDiff for Runner {
             source: CaseSource::Inline,
             inputs: serde_json::json!({"paired_fillet":true}),
         });
+        for (name, mode) in [
+            ("linked", "linked"),
+            ("legacy-no-peer", "legacy-none"),
+            ("linked-disabled", "linked-disabled"),
+        ] {
+            out.push(Case {
+                unit: self.id().into(),
+                name: format!("paired-fillet-real-boxes-{name}"),
+                source: CaseSource::Inline,
+                inputs: serde_json::json!({"paired_fillet":mode}),
+            });
+        }
         for kind in 0..5 {
             // Competing classifications exercise receiver/argument order, gap
             // precedence and saved-point propagation, rather than only assigning

@@ -7,6 +7,32 @@ use super::{
 };
 use solidcore::topology::{EdgeId, VertexId};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Mode {
+    Metadata,
+    Linked,
+    LegacyNone,
+    LinkedDisabled,
+}
+impl Mode {
+    pub(super) fn from_input(input: &serde_json::Value) -> Option<Self> {
+        match input.get("paired_fillet")?.as_str()? {
+            "linked" => Some(Self::Linked),
+            "legacy-none" => Some(Self::LegacyNone),
+            "linked-disabled" => Some(Self::LinkedDisabled),
+            _ => None,
+        }
+    }
+    fn code(self) -> i32 {
+        match self {
+            Self::Metadata => 0,
+            Self::Linked => 1,
+            Self::LegacyNone => 2,
+            Self::LinkedDisabled => 3,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Side {
     Target,
@@ -200,12 +226,17 @@ fn classification(
     };
     Ok(cc)
 }
-pub(super) fn cpp() -> Result<Output, HarnessError> {
-    ffi::paired_fillet()
+pub(super) fn cpp(mode: Mode) -> Result<Output, HarnessError> {
+    let result = if mode == Mode::Metadata {
+        ffi::paired_fillet()
+    } else {
+        ffi::paired_fillet_scoped(mode.code())
+    };
+    result
         .map(|v| Output::new().values("out", v))
         .map_err(|e| h(e.to_string()))
 }
-pub(super) fn rust() -> Result<Output, HarnessError> {
+pub(super) fn rust(mode: Mode) -> Result<Output, HarnessError> {
     let mut k = Kernel::default();
     let mut bodies = [box_at([0.; 3])?, box_at([1e-7, 0., 0.])?];
     let [target, other] = &bodies;
@@ -218,10 +249,21 @@ pub(super) fn rust() -> Result<Output, HarnessError> {
     let mut pair = Pair { bodies, curves };
     let mut left = classification(&k, &pair, Side::Target, a, av)?;
     let mut right = classification(&k, &pair, Side::Other, b, bv)?;
-    left.set_fillet_data(Some(Object::Classification(Side::Other)), true);
-    right.set_fillet_data(Some(Object::Classification(Side::Target)), true);
+    let doing = mode != Mode::LinkedDisabled;
+    left.set_fillet_data(
+        (mode == Mode::Metadata).then_some(Object::Classification(Side::Other)),
+        doing,
+    );
+    right.set_fillet_data(
+        (mode == Mode::Metadata).then_some(Object::Classification(Side::Target)),
+        doing,
+    );
     let before = snapshot(&k, &pair, [a, b], [av, bv])?;
-    let result = left.merge_classifications_mut(&mut k, &mut pair, &mut right, false);
+    let result = if matches!(mode, Mode::Linked | Mode::LinkedDisabled) {
+        left.merge_classifications_linked_mut(&mut k, &mut pair, &mut right, false)
+    } else {
+        left.merge_classifications_mut(&mut k, &mut pair, &mut right, false)
+    };
     let mut out = vec![];
     match result {
         Ok((a, b)) => out.extend([
@@ -240,5 +282,13 @@ pub(super) fn rust() -> Result<Output, HarnessError> {
     }
     out.extend(before);
     out.extend(snapshot(&k, &pair, [a, b], [av, bv])?);
+    if mode != Mode::Metadata {
+        out.extend([
+            f64::from(left.other_classification().is_some()),
+            f64::from(left.doing_fillets()),
+            f64::from(right.other_classification().is_some()),
+            f64::from(right.doing_fillets()),
+        ]);
+    }
     Ok(Output::new().values("out", out))
 }
