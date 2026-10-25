@@ -146,3 +146,31 @@ pub(super) fn classify(
     cache.apply_uv_trim_updates(geometry.body_mut(role))?;
     result
 }
+
+/// Legacy const query entry; owning native paths call `classify` instead.
+pub(super) fn classify_readonly(
+    geometry: &InsertionGeometry<'_>,
+    k: &crate::Kernel,
+    face: FilletObject,
+    do_point_classify: bool,
+    cc: &mut CurveClassification<FilletObject>,
+) -> Result<bool> {
+    let (role, EntityRef::Face(face)) =
+        InsertionGeometry::topology(face).ok_or_else(|| invalid("unknown Face role"))?
+    else {
+        return Err(invalid("handle is not a Face"));
+    };
+    geometry.body(role).face(face)?;
+    let objects = FaceObjects { geometry, role };
+    crate::query::face::p2::curve_on_classify(
+        k,
+        geometry.body(role),
+        face,
+        &objects,
+        do_point_classify,
+        cc,
+        false,
+        false,
+        true,
+    )
+}

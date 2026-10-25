@@ -5,7 +5,7 @@ use crate::topology::proto_topology::p3::BrepGlue;
 use crate::topology::{EdgeId, VertexId};
 use crate::Kernel;
 
-fn body_role(object: FilletObject) -> Result<InsertionBody> {
+pub(super) fn body_role(object: FilletObject) -> Result<InsertionBody> {
     let (role, EntityRef::Brep(_)) =
         InsertionGeometry::topology(object).ok_or_else(|| invalid("unknown body role"))?
     else {
@@ -13,7 +13,7 @@ fn body_role(object: FilletObject) -> Result<InsertionBody> {
     };
     Ok(role)
 }
-fn vertex(role: InsertionBody, object: FilletObject) -> Result<VertexId> {
+pub(super) fn vertex(role: InsertionBody, object: FilletObject) -> Result<VertexId> {
     let (actual, EntityRef::Vertex(id)) =
         InsertionGeometry::topology(object).ok_or_else(|| invalid("unknown Vertex role"))?
     else {
@@ -99,5 +99,51 @@ impl BrepGlue<FilletObject> for InsertionGeometry<'_> {
             let mut delete = crate::topology::brep::p4::DeleteEnv::from_notify(env);
             crate::topology::brep::p4::delete_edge(k, body, &mut delete, id, None)
         })
+    }
+}
+
+impl crate::intersect::curve_class::p6::MergeIntervalBrep<FilletObject> for InsertionGeometry<'_> {
+    fn merge_context(
+        &mut self,
+        _object: FilletObject,
+    ) -> Option<crate::intersect::curve_class::p6::MergeContext<'_, FilletObject>> {
+        // The legacy infallible callback cannot represent an actual new Curve identity.
+        None
+    }
+    fn merge_context_with_curve_identity(
+        &mut self,
+        object: FilletObject,
+    ) -> Option<crate::intersect::curve_class::p6::MergeContextWithIdentity<'_, FilletObject>> {
+        let (role, target) = Self::topology(object)?;
+        if !matches!(
+            target,
+            EntityRef::Vertex(_) | EntityRef::Edge(_) | EntityRef::Face(_) | EntityRef::Region(_)
+        ) {
+            return None;
+        }
+        let key_of = self.topology_keys.as_ref()?.key_of(role);
+        let body = match role {
+            InsertionBody::Target => &mut *self.target,
+            InsertionBody::Pseudo => self.pseudo.brep_mut(),
+            InsertionBody::Intermediate => &mut *self.intermediate,
+        };
+        let notifications = self.notifications.as_mut()?;
+        crate::topology::brep::p3::seed_records(notifications.records, body, key_of);
+        Some(
+            crate::intersect::curve_class::p6::MergeContextWithIdentity {
+                brep: body,
+                target,
+                handle: Box::new(move |entity| Self::handle(role, entity)),
+                notifications: crate::topology::edge::NotifyEnv {
+                    records: notifications.records,
+                    attributes: notifications.attributes,
+                    context: Some(notifications.context),
+                    key_of,
+                },
+                curve_identity: crate::topology::brep::p9::CurveIdentity::Actual(
+                    &crate::topology::brep::p9::issue_curve_identity,
+                ),
+            },
+        )
     }
 }

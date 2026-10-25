@@ -1,6 +1,7 @@
 //! Actual target/intermediate topology and pseudo-curve bindings for insertion.
 
 mod edits;
+mod proto;
 mod query;
 
 use super::super::{FilletBody, FilletObject};
@@ -73,6 +74,23 @@ pub struct InsertionGeometry<'a> {
     intermediate: &'a mut Brep,
     curves: Option<&'a mut InsertionCurves>,
     notifications: Option<InsertionNotifications<'a>>,
+    topology_keys: Option<BodyKeys<'a>>,
+}
+
+type TopologyKey<'a> = Box<dyn Fn(EntityRef) -> ObjectRef + 'a>;
+struct BodyKeys<'a> {
+    target: TopologyKey<'a>,
+    pseudo: TopologyKey<'a>,
+    intermediate: TopologyKey<'a>,
+}
+impl BodyKeys<'_> {
+    fn key_of(&self, role: InsertionBody) -> &dyn Fn(EntityRef) -> ObjectRef {
+        match role {
+            InsertionBody::Target => &*self.target,
+            InsertionBody::Pseudo => &*self.pseudo,
+            InsertionBody::Intermediate => &*self.intermediate,
+        }
+    }
 }
 
 /// Actual retained edit stores and the already lent notification context.
@@ -93,12 +111,13 @@ impl<'a> InsertionGeometry<'a> {
         pseudo: &'a mut FilletBrep,
         intermediate: &'a mut Brep,
     ) -> Result<Self> {
-        let view = Self {
+        let mut view = Self {
             target,
             pseudo,
             intermediate,
             curves: None,
             notifications: None,
+            topology_keys: None,
         };
         let mut identities = Vec::new();
         for role in [
@@ -112,6 +131,19 @@ impl<'a> InsertionGeometry<'a> {
             }
             identities.push(identity);
         }
+        let key = |role| -> Result<TopologyKey<'a>> {
+            let serial = view
+                .body(role)
+                .notify_serial()
+                .ok_or_else(|| invalid("missing actual body identity"))?;
+            Ok(Box::new(move |entity| topology_ref(serial, entity)))
+        };
+        let keys = BodyKeys {
+            target: key(InsertionBody::Target)?,
+            pseudo: key(InsertionBody::Pseudo)?,
+            intermediate: key(InsertionBody::Intermediate)?,
+        };
+        view.topology_keys = Some(keys);
         Ok(view)
     }
     /// Supply actual operation-owned curves and retained notification stores.
@@ -1137,6 +1169,7 @@ mod tests {
                 },
             );
         assert!(result.is_err());
+        drop(result);
         assert_eq!(
             [
                 target.notify_serial(),
@@ -1180,5 +1213,72 @@ mod tests {
                 Ok(())
             })
             .unwrap();
+    }
+    #[test]
+    fn actual_point_imprint_split_issues_identity_on_the_retained_curve_objects() {
+        use crate::intersect::curve_class::p6::merge_into_object_mut;
+        use crate::intersect::point_class::{PointClassType, PointClassification};
+        let mut k = Kernel::default();
+        let mut target = box_at(&mut k, 0.0);
+        target.set_editing_enabled(true);
+        let edge = target
+            .edges()
+            .ids()
+            .find(|&id| target.edge(id).unwrap().curve.is_some())
+            .unwrap();
+        let interval = crate::topology::edge::interval(&target, edge).unwrap();
+        let parameter = interval.evaluate(0.5);
+        let point = target
+            .edge(edge)
+            .unwrap()
+            .curve
+            .as_ref()
+            .unwrap()
+            .evaluate_point(&k, parameter)
+            .unwrap();
+        let mut intermediate = box_at(&mut k, 100.0);
+        let mut pseudo = FilletBrep::new();
+        *pseudo.brep_mut() = box_at(&mut k, 200.0);
+        let mut curves = InsertionCurves::default();
+        let mut records = BTreeMap::new();
+        let mut attributes = AttributeStore::default();
+        crate::topology::brep::p3::with_lent_context(&mut k, |k, context| -> Result<()> {
+            let mut view = InsertionGeometry::new(&mut target, &mut pseudo, &mut intermediate)?
+                .with_notifications(
+                    &mut curves,
+                    InsertionNotifications {
+                        records: &mut records,
+                        attributes: &mut attributes,
+                        context,
+                    },
+                )?;
+            let mut pc = PointClassification::new(1e-5);
+            pc.set_class_object(
+                PointClassType::Edge,
+                Some(FilletObject::Topology(
+                    FilletBody::Target,
+                    EntityRef::Edge(edge),
+                )),
+            );
+            pc.set_t_param(parameter, false);
+            let output = merge_into_object_mut(k, &mut view, &mut pc, point)?;
+            assert_eq!(output.new_edges.len(), 2);
+            assert_eq!(output.new_vertices.len(), 1);
+            let mut identities = Vec::new();
+            for handle in output.new_edges {
+                let FilletObject::Topology(FilletBody::Target, EntityRef::Edge(edge)) = handle
+                else {
+                    panic!("actual target Edge required")
+                };
+                let curve = view.target.edge(edge)?.curve.as_ref().unwrap();
+                identities.push(curve.notify_key().unwrap());
+            }
+            assert_ne!(identities.first(), identities.get(1));
+            let vertex = output.new_vertices.first().copied().unwrap();
+            assert_eq!(view.point(vertex), Some(point));
+            Ok(())
+        })
+        .unwrap()
+        .unwrap();
     }
 }
