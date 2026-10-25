@@ -210,16 +210,6 @@ fn get_or_create_uv_trim_curve(k: &Kernel, b: &mut Brep, eu: EdgeuseId) -> Resul
 }
 
 /// `pBrep->Notify(operation, data1, pBrep, data3)` (unit `topology.brep_p2`).
-fn brep_notify(
-    b: &Brep,
-    env: &mut NotifyEnv<'_>,
-    operation: NotifyOperation,
-    data1: Option<BrepNotifyArg>,
-    data3: Option<ObjectRef>,
-) -> Result<()> {
-    brep_notify_with_body_identity(b, env, operation, data1, data3, brep_p2::brep_ref(b))
-}
-
 fn brep_notify_with_body_identity(
     b: &Brep,
     env: &mut NotifyEnv<'_>,
