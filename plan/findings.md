@@ -20855,3 +20855,26 @@ All 8 vertex-order known mismatches (`upstream_merge_breps_operation_0..3`,
     C++ on `(4,11)`, `(3,12)`, and `(2,8)`, leaving `22` vertices and `1` shell in C++ vs
     `25` vertices (`+V8`, `+V11`, `+V12`) and `2` shells in Rust (`PropsArena` never
     aliases freed `VertexPropsId`s). Kept in `known_mismatches.toml`.
+
+## Issue #651: remaining default-identity query and owner-cleanup sites resolved (2026-10-25)
+
+- **Context.** PRs #840 and #905 added `NamingScheme`, `Brep::geometry_owner_keys`, and
+  `BrepQuery::of_brep(_with_id)`, updating `boolean::merge::{p1,p4,p5}` and
+  `topology::brep::p1::{surfaces,curves}`. Nine remaining library sites still hardcoded
+  `BrepIdentity::default()`, `BrepQuery::default()`, `arena_identity(...)`, or
+  `BrepQuery::new(identity)` (dropping `geometry_owner_keys` overrides on mixed-scheme
+  stitches/splits).
+- **Fix.**
+  - Generalized `BrepQuery::with_proven_owners(identity, b)` for any lifetime `'a`,
+    exposed `BrepQuery::effective_identity`, and added `BrepClassifier::of_brep` /
+    `of_brep_with_id`.
+  - Updated `query::api_queries` (`Target::new`), `blend::hcr`
+    (`find_and_set_infinite_region` and `brep_surfaces`), `heal::heal_data::p1`
+    (`brep_find_and_set_infinite_region`), `heal::stitch::p2`
+    (`find_and_set_infinite_region_with_identity`), `topology::brep::p1`
+    (`create_parallel_projection_curves`), `topology::brep::p3` (`destroy_face`,
+    `squeeze_edge`, `turn_to_nurbs_in`, and `brep_curve_solve`), and
+    `topology::brep::p6` (`split_closed`) to resolve geometry owners via the B-rep's
+    naming scheme and proven owner keys.
+  - Added regression tests verifying that `create_box` (`NamingScheme::Notify`) builds
+    full spatial trees and classifies interior points into its finite solid region.
