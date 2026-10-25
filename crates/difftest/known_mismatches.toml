@@ -58,11 +58,6 @@ why = "not the healer snapshot: still differs with the healer's UV trim owners b
 
 [[mismatch]]
 unit = "topology.brep_p10"
-case = "read_Solids_InsetTaperedExtrude"
-why = "not the healer snapshot: still differs with the healer's UV trim owners bound; cause not traced (plan/findings.md: 'topology.brep_p10 healer-snapshot mismatches traced') [ints.dbl_bits[805] cpp 4556438595713448769 rust 4556438595713597268]"
-
-[[mismatch]]
-unit = "topology.brep_p10"
 case = "read_Solids_fillet_ts"
 why = "C++ result depends on the earlier cases in the process: Fix_CoinVertices merges 34 -> 25 vertices run alone (matches the port bit for bit) and 34 -> 20/21 after other cases; SmHealData deletes merged SmVertexProps without taking them out of m_pVerticesInVoxels, so a new props allocated at a freed address passes Cache_CoinVertices' live check (UB-256 in plan/upstream-issues.md; plan/findings.md: 'topology.brep_p10 healer-snapshot mismatches traced')"
 
@@ -70,26 +65,6 @@ why = "C++ result depends on the earlier cases in the process: Fix_CoinVertices 
 unit = "topology.brep_p10"
 case = "gen0115"
 why = "the documented sm_FixUVTrimCurves deviation (issue #570): CreateUVTrimCurves (healer Make_UVTrimCurves) closes a 5.3e-6 UV corner gap on Fillet/open_shell.smb; upstream's DropPoint moves the trim end parameter (1 -> 0.99999946883), so it Trims and stretches the trim and its interior points move, the port only moves the end control points (plan/findings.md: 'topology.brep_p10 healer-snapshot mismatches traced')"
-
-[[mismatch]]
-unit = "topology.brep_p10"
-case = "read_Fillet_bottle"
-why = "not the healer snapshot: still differs with the healer's UV trim owners bound; cause not traced (plan/findings.md: 'topology.brep_p10 healer-snapshot mismatches traced') [ints.dbl_bits[2437] cpp 4533227276183232325 rust 4533227276183193973]"
-
-[[mismatch]]
-unit = "topology.brep_p10"
-case = "read_Fillet_cyl_cyl_shell"
-why = "not the healer snapshot: still differs with the healer's UV trim owners bound; cause not traced (plan/findings.md: 'topology.brep_p10 healer-snapshot mismatches traced') [ints.dbl_bits[351] cpp 4541087340294538906 rust 4541087340294541262]"
-
-[[mismatch]]
-unit = "topology.brep_p10"
-case = "read_Fillet_fillet0227"
-why = "not the healer snapshot: still differs with the healer's UV trim owners bound; cause not traced (plan/findings.md: 'topology.brep_p10 healer-snapshot mismatches traced') [ints.dbl_bits[587] cpp 4584643767240576693 rust 4584643767240344909]"
-
-[[mismatch]]
-unit = "topology.brep_p10"
-case = "read_Solids_extrusion2"
-why = "not the healer snapshot: still differs with the healer's UV trim owners bound; cause not traced (plan/findings.md: 'topology.brep_p10 healer-snapshot mismatches traced') [ints.dbl_bits[3949] cpp 4566519071875143604 rust 4566519071875138963]"
 
 [[mismatch]]
 unit = "topology.brep_p10"
