@@ -49,6 +49,35 @@ pub struct InsertionState<'a> {
 }
 
 impl FilletSession<'_> {
+    /// Run an insertion component with the retained intersector and actual edit stores.
+    /// The real Context lease is restored after success or failure.
+    /// # Errors
+    /// Missing actual insertion state or the original component error.
+    pub fn with_insertion_geometry<T>(
+        &mut self,
+        k: &mut Kernel,
+        operation: impl FnOnce(
+            &mut Kernel,
+            &mut TopologyIntersector<FilletObject>,
+            &mut geometry::InsertionGeometry<'_>,
+        ) -> Result<T>,
+    ) -> Result<T> {
+        let state = self.insertion_state()?;
+        crate::topology::brep::p3::with_lent_context(k, |k, context| {
+            let mut geometry =
+                geometry::InsertionGeometry::new(state.target, state.pseudo, state.intermediate)?
+                    .with_notifications(
+                        state.curves,
+                        geometry::InsertionNotifications {
+                            records: state.notification_records,
+                            attributes: state.attributes,
+                            context,
+                        },
+                    );
+            operation(k, state.intersector, &mut geometry)
+        })?
+    }
+
     /// Lend the actual stores after intermediate construction for insertion.
     /// No topology is changed and no intersector is copied or reinitialized.
     /// # Errors
@@ -442,5 +471,14 @@ mod tests {
             );
         }
         assert!(session.executive.intersector.topology_deleted);
+        let result: Result<()> = session.with_insertion_geometry(&mut k, |_, ti, _| {
+            ti.ignore_tangency = true;
+            Err(SolidError::sm_err("actual component failure"))
+        });
+        assert!(result.is_err());
+        assert!(session.executive.intersector.ignore_tangency);
+        // Returning the real lease leaves the original Context usable.
+        let mut slot = crate::geom::context::IdentitySlot::new();
+        assert!(k.context.geometry_key(&mut slot).is_ok());
     }
 }
