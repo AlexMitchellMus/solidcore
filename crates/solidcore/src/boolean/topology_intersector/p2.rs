@@ -109,7 +109,7 @@ use crate::intersect::point_class::{
 use crate::intersect::topology_solver::p1::{CurveRef, TopologySolver};
 use crate::intersect::topology_solver::p2::TopologySolveOptions;
 use crate::kernel::Kernel;
-use crate::math::{max2, max3, min2, Point2, Point3, BIG_DOUBLE, EFF_ZERO_SQRT};
+use crate::math::{max2, max3, min2, Point3, BIG_DOUBLE, EFF_ZERO_SQRT};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::surface::surface::p2::TsectCurveType;
 use crate::topology::proto_topology::p3::Mates;
@@ -119,8 +119,8 @@ use super::p1::{
     add_unique, brep_make_edge_in_face, can_imprint, cc_insert_topology_intersections, contains,
     eval_curve_point, face_face_intersect_curves, find_common_elements, ignore_soft,
     intersect_shell_vertices, intersect_wire_lamina_edges, new_curve_classification,
-    set_edge_class, surface_coincidence_check, FaceIntersectOutputs, IntersectionCurves,
-    IntersectionResults, IntersectorBrep, TopologyIntersector,
+    set_edge_class, solve_with_face_caches, surface_coincidence_check, FaceIntersectOutputs,
+    IntersectionCurves, IntersectionResults, IntersectorBrep, TopologyIntersector,
 };
 
 const OP_REGISTER: &str = "boolean::topology_intersector::p2::register_existing_ssi";
@@ -253,30 +253,6 @@ impl<O: Ord + Copy> Mates<O> for MapMates<O> {
 }
 
 // ---- unported callees ----------------------------------------------------------------------
-
-/// `SmFace::Point3DClassify(pt, sSrcZoneTol3d, bDoBoundaryIntersections, rPC,
-/// pOptGuessUV, bTgtLoopsOnly, pOptTgtLoops, bUVSpaceOkay)`.
-#[allow(clippy::too_many_arguments)]
-fn face_point_3d_classify<O>(
-    _face: O,
-    _point: Point3,
-    _src_zone_tol_3d: f64,
-    _do_boundary_intersections: bool,
-    _pc: &mut PointClassification<O>,
-    _opt_guess_uv: Option<Point2>,
-    _tgt_loops_only: bool,
-    _opt_tgt_loops: Option<&[O]>,
-    _uv_space_okay: bool,
-) -> Result<()> {
-    // DISPATCH GAP: SmFace::Point3DClassify is ported
-    // (`query::face::p1::point_3d_classify`, query.face_p1 partial; no UNPORTED marker),
-    // but it takes the face's `Brep` and `FaceId`, which this caller's opaque face handle
-    // does not carry.
-    Err(SolidError::unported(
-        "SmFace::Point3DClassify",
-        "query.face_p1",
-    ))
-}
 
 /// `MergeCurveClasses(rCrvClass1, rCrvClass2, bMergeSingularities, rbTopologyWasDeleted,
 /// paDeletedEdges, paDeletedVertices)`: what it deleted. Draft PR #211 ports it as
@@ -890,8 +866,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
         // temporarily disable EditingEnabled bit; Intersect Edge->Curve with Brep
         let old_edit = brep.set_editing_enabled(target, false)?;
-        let solved = {
-            let objects = brep.topology_objects();
+        let solved = solve_with_face_caches(k, brep, |objects| {
             let curve_ref = CurveRef {
                 curve: objects.curve(curve)?,
                 handle: curve,
@@ -910,7 +885,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     opt_vectors: &[],
                 },
             )
-        };
+        });
         brep.set_editing_enabled(target, old_edit)?;
         let solutions = solved?;
 
@@ -1129,8 +1104,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             .ok_or(invalid(OP_CLOSE_LOOP, "edge handle is unknown"))?;
         let tolerance = tol_of(geometry, edge)?;
         let old_edit = geometry.set_editing_enabled(brep, false)?;
-        let solved = {
-            let objects = geometry.topology_objects();
+        let solved = solve_with_face_caches(k, geometry, |objects| {
             let curve_ref = CurveRef {
                 curve: objects.curve(curve)?,
                 handle: curve,
@@ -1149,7 +1123,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     opt_vectors: &[],
                 },
             )
-        };
+        });
         geometry.set_editing_enabled(brep, old_edit)?;
 
         // check every solution - for a coincident solution
@@ -1172,10 +1146,11 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     /// Those of the manager's construction, `IntersectTopology` and
     /// `ResolveIntersections` (the manager then stays installed, as upstream leaks
     /// it); every error of the imprint, after deleting the manager (SolidCraft fix
-    /// af8db37: upstream goes on with the half-imprinted B-reps);
-    /// [`SolidError::InvalidInput`] without both B-reps, and when the manager's
-    /// destructor would read a freed proto edge (UB-175; the manager is still
-    /// destroyed and every other effect has happened).
+    /// af8db37: upstream goes on with the half-imprinted B-reps, UB-242, which
+    /// [`Kernel::note_upstream_ub`] records);
+    /// [`SolidError::InvalidInput`] without both B-reps. Where the manager's
+    /// destructor would read a freed proto edge upstream (UB-175) the port's defined
+    /// teardown goes on and [`Kernel::note_upstream_ub`] records `"UB-175"`.
     pub fn intersect_insert_relate(
         &mut self,
         k: &mut Kernel,
@@ -1225,6 +1200,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 if let Some(mut mgr) = self.proto_topo_mgr.take() {
                     let _ = mgr.destroy();
                 }
+                // upstream goes on here with the half-imprinted B-reps (UB-242)
+                k.note_upstream_ub("UB-242");
                 return Err(e);
             }
         }
@@ -1240,10 +1217,9 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         }
         status?;
         if reads_freed {
-            return Err(invalid(
-                OP_INSERT_RELATE,
-                "~SmProtoTopologyManager reads a freed proto edge (UB-175)",
-            ));
+            // Upstream reads a freed proto edge here (UB-175); the arena teardown above
+            // is defined, so the port goes on with its result and records the condition.
+            k.note_upstream_ub("UB-175");
         }
         Ok(deleted)
     }
@@ -1427,28 +1403,10 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     let mut pc2 = PointClassification::new(f2_zone_tol);
 
                     // classify the point against both faces; skip what doesn't classify
-                    let st1 = face_point_3d_classify(
-                        f1,
-                        pt,
-                        f1_zone_tol,
-                        true,
-                        &mut pc1,
-                        None,
-                        false,
-                        None,
-                        true,
-                    );
-                    let st2 = face_point_3d_classify(
-                        f2,
-                        pt,
-                        f2_zone_tol,
-                        true,
-                        &mut pc2,
-                        None,
-                        false,
-                        None,
-                        true,
-                    );
+                    let st1 =
+                        brep.face_point_3d_classify(k, f1, pt, f1_zone_tol, true, &mut pc1, None);
+                    let st2 =
+                        brep.face_point_3d_classify(k, f2, pt, f2_zone_tol, true, &mut pc2, None);
                     if ignore_soft(st1)?.is_none() {
                         continue;
                     }
@@ -2078,16 +2036,14 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     let crv_pt = eval_curve_point(k, brep, curve_h, edge_dom.evaluate(0.38))?;
                     // Allow any part of the Face: including Edges and Vertices
                     // (status unchecked).
-                    ignore_soft(face_point_3d_classify(
+                    ignore_soft(brep.face_point_3d_classify(
+                        k,
                         f,
                         crv_pt,
                         edge_zone_tol,
                         false,
                         &mut pt_class,
                         None,
-                        false,
-                        None,
-                        true,
                     ))?;
                     if !matches!(
                         pt_class.point_class(),
@@ -2100,16 +2056,14 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     }
 
                     let crv_pt = eval_curve_point(k, brep, curve_h, edge_dom.evaluate(0.71))?;
-                    ignore_soft(face_point_3d_classify(
+                    ignore_soft(brep.face_point_3d_classify(
+                        k,
                         f,
                         crv_pt,
                         approx_tol,
                         false,
                         &mut pt_class,
                         None,
-                        false,
-                        None,
-                        true,
                     ))?;
                     if !matches!(
                         pt_class.point_class(),
