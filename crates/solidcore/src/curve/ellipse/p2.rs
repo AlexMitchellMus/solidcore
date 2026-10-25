@@ -37,6 +37,7 @@
 //! | [`Ellipse::step_interval`], [`Ellipse::set_step_interval`], [`Ellipse::degree`] | `GetSTEPInterval`, `SetSTEPInterval`, `GetDegree` (inline) |
 //! | [`Ellipse::start_angle_deg`], [`Ellipse::end_angle_deg`], [`Ellipse::position`] | `GetStartAngleDeg`, `GetEndAngleDeg`, `GetPosition` (inline) |
 //! | [`Ellipse::x_radius`], [`Ellipse::y_radius`], [`Ellipse::inside_out`] | `GetXRadius`, `GetYRadius`, `GetInsideOut` (inline) |
+//! | [`Ellipse::set_out_of_bounds_enabled`]             | inherited `SmBSplineCurve::SetOutOfBoundsEnabled` |
 //! | [`Ellipse::is_analytic`], [`Ellipse::is_domain_boundary`] | `IsAnalytic`, `IsDomainBoundary` (inline)  |
 //! | [`MAX_PERIOD_SHIFTS`]                             | no counterpart (loop bound)                      |
 //!
@@ -65,7 +66,8 @@
 //!   STEP interval are bounded: where upstream would loop forever (a shift that no
 //!   longer changes the midpoint, from STEP angles beyond about 2^61 (~2.3e18) degrees) or for more
 //!   than [`MAX_PERIOD_SHIFTS`] shifts, the set-up returns
-//!   [`SolidError::NotConverged`] with the converter left impossible.
+//!   [`SolidError::NotConverged`] with the converter left impossible and the saved
+//!   STEP interval restored, so the temporary full-circle domain does not leak.
 //! - **Notifications.** `SmBSplineCurve::SetFromGwNurb` and `Transform` send
 //!   `SM_NO_POST_EDIT`, whose `SmEllipse::Notify` override rebuilds the polar
 //!   converter (status ignored); the port calls [`Ellipse::set_up_polar_conversion`]
@@ -931,6 +933,12 @@ impl Ellipse {
     #[must_use]
     pub const fn base(&self) -> &BSplineCurve {
         &self.base
+    }
+
+    /// Enables evaluation beyond the natural interval, without changing the NURB
+    /// or STEP domain (inherited `SmBSplineCurve::SetOutOfBoundsEnabled`).
+    pub fn set_out_of_bounds_enabled(&mut self, enabled: bool) {
+        self.base.set_out_of_bounds_enabled(enabled);
     }
 
     /// The `SmBSplineCurve` base object, mutable (for the base-class edits).
@@ -2103,6 +2111,7 @@ pub(crate) fn set_up_polar_conversion(
             let next_mid = this_mid - 360.0;
             shifts += 1;
             if next_mid == this_mid || shifts > MAX_PERIOD_SHIFTS {
+                e.set_step_interval(anal_ivl);
                 return Err(stuck());
             }
             lowest_deg -= 360.0;
@@ -2113,6 +2122,7 @@ pub(crate) fn set_up_polar_conversion(
             let next_mid = this_mid + 360.0;
             shifts += 1;
             if next_mid == this_mid || shifts > MAX_PERIOD_SHIFTS {
+                e.set_step_interval(anal_ivl);
                 return Err(stuck());
             }
             lowest_deg += 360.0;
@@ -2333,13 +2343,23 @@ mod tests {
             assert!(e.polar.is_polar_conversion_possible());
         }
         // Upstream never ends: adding a turn no longer changes the midpoint.
-        let mut e = arc(9.223_372_036_854_776e18);
-        let err = e.set_up_polar_conversion(&k).unwrap_err();
-        assert!(matches!(err, SolidError::NotConverged { .. }), "{err:?}");
-        assert!(!e.polar.is_polar_conversion_possible());
         // Representable shifts beyond the bound stop as well.
-        let mut e = arc(1e12);
-        assert!(e.set_up_polar_conversion(&k).is_err());
+        for start in [
+            9.223_372_036_854_776e18,
+            -9.223_372_036_854_776e18,
+            1e12,
+            -1e12,
+        ] {
+            let mut e = arc(start);
+            let original = e.step_interval();
+            for _ in 0..2 {
+                let err = e.set_up_polar_conversion(&k).unwrap_err();
+                assert!(matches!(err, SolidError::NotConverged { .. }), "{err:?}");
+                assert!(!e.polar.is_polar_conversion_possible());
+                assert_eq!(e.step_interval().min(), original.min());
+                assert_eq!(e.step_interval().max(), original.max());
+            }
+        }
     }
 
     #[test]
@@ -2538,5 +2558,21 @@ mod tests {
         assert_eq!(c.class_string(), "SmEllipse");
         assert_eq!(c.is_domain_boundary(), SurfParamType::Neither);
         assert!(c.approx_eq(&c.clone()));
+    }
+
+    #[test]
+    fn out_of_bounds_flag_controls_evaluation_without_editing_geometry() {
+        let k = kernel();
+        let mut c = circle(&k, 15.0, 225.0, 2.0, false);
+        let nurb = c.base().gw_nurb().unwrap().clone();
+        let interval = c.step_interval();
+        let clamped = c.base().evaluate_point(-0.1).unwrap();
+        c.set_out_of_bounds_enabled(true);
+        let extended = c.base().evaluate_point(-0.1).unwrap();
+        assert_ne!(clamped, extended);
+        assert_eq!(c.base().gw_nurb(), Some(&nurb));
+        assert_eq!(c.step_interval(), interval);
+        c.set_out_of_bounds_enabled(false);
+        assert_eq!(c.base().evaluate_point(-0.1).unwrap(), clamped);
     }
 }

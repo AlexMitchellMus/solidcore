@@ -16,7 +16,9 @@
 //! copying their implementations. Tree inputs retain null slots on failure;
 //! invalid indices and null operands dereferenced by a binary operation return
 //! `InvalidInput` instead of upstream
-//! undefined behavior. List inputs are copied once, as upstream requires. Debug
+//! undefined behavior, and an `InvalidInput` from `ManifoldBoolean` (undefined
+//! behaviour the port detects) is returned as is rather than as
+//! `SM_ERR`. List inputs are copied once, as upstream requires. Debug
 //! drawing and the compile-time false IO experiment are omitted. No recursion;
 //! connected-component extraction is bounded by the initial face count, with an
 //! error if removal fails to make progress.
@@ -142,6 +144,26 @@ impl MergeEngine {
             attributes: AttributeStore::default(),
         })
     }
+
+    /// Hand geometry created under this engine's notification namespace back to each
+    /// operand's recorded naming scheme ([`Brep::naming`](crate::topology::Brep::naming)).
+    ///
+    /// # Errors
+    /// [`SolidError::NotFound`] for a dangling topology record (none in practice).
+    pub fn adopt_operand_owners(
+        &self,
+        primary: Option<&mut Brep>,
+        other: Option<&mut Brep>,
+    ) -> Result<()> {
+        if let Some(namespace) = self.intersector.namespace() {
+            for (body, is_other) in [(primary, false), (other, true)] {
+                if let Some(body) = body {
+                    crate::boolean::merge::p4::adopt_namespace_owners(body, namespace, is_other)?;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl DependencyMerge {
@@ -240,13 +262,19 @@ impl BooleanDriver for DependencyMerge {
             operation,
             caller_lock,
         )?;
+        // The engine's notification namespace (and its attribute store) ends with the
+        // merge: geometry the merge made owns under the record's own name in the
+        // B-rep's scheme, as every other record's geometry (upstream's owner is the
+        // record itself).
+        engine.adopt_operand_owners(primary.as_mut(), other.as_mut())?;
         Ok(if assigned { primary.take() } else { None })
     }
 }
 
 /// Evaluate all postfix trees, then append unused operands in original order.
 /// Leaves transfer an operand to the stack and clear its input slot immediately.
-/// Ordinary failures of `ManifoldBoolean` become `SM_ERR`; Unported propagates.
+/// Ordinary failures of `ManifoldBoolean` become `SM_ERR`; Unported propagates, and so
+/// does `InvalidInput`, the port's report of undefined behaviour upstream.
 /// The token array is read-only, matching upstream despite its mutable signature.
 pub fn boolean_trees<D: BooleanDriver>(
     k: &mut Kernel,
@@ -297,7 +325,9 @@ pub fn boolean_trees<D: BooleanDriver>(
                     None,
                 )
                 .map_err(|e| {
-                    if e.is_unported() {
+                    // undefined behaviour the port detects (InvalidInput) keeps its
+                    // error, as Unported does
+                    if e.is_unported() || matches!(e, SolidError::InvalidInput { .. }) {
                         e
                     } else {
                         SolidError::sm_err(OP)
@@ -587,7 +617,7 @@ fn copy_brep(
     add_analytics: bool,
 ) -> Result<Brep> {
     let mut state = crate::topology::brep::p2::ArenaNotifyState::default();
-    crate::topology::brep::p3::copy_brep(
+    let mut brep = crate::topology::brep::p3::copy_brep(
         k,
         &mut state.env(None),
         source,
@@ -596,7 +626,9 @@ fn copy_brep(
         reverse_map,
         copy_attributes,
         add_analytics,
-    )
+    )?;
+    brep.set_naming(crate::topology::NamingScheme::Notify);
+    Ok(brep)
 }
 
 /// `SmBrep::MergeBrep(source, pOptCopyBrepMap, pOptReverseMap, bAddAnalytics)`
@@ -961,6 +993,7 @@ mod tests {
     struct Trace {
         pairs: Vec<(Option<i64>, Option<i64>)>,
         fail: bool,
+        undefined: bool,
         unported: bool,
         observed: Option<(bool, u64, BooleanOperation)>,
     }
@@ -994,7 +1027,13 @@ mod tests {
         ) -> Result<Option<i64>> {
             self.observed = Some((*manifold, *lamina, operation));
             if self.fail {
-                return Err(SolidError::invalid_input(OP, "test driver failure"));
+                return Err(SolidError::null_pointer("test driver failure"));
+            }
+            if self.undefined {
+                return Err(SolidError::invalid_input(
+                    OP,
+                    "test driver undefined behaviour",
+                ));
             }
             if self.unported {
                 return Err(SolidError::unported("test driver", "test.unit"));
@@ -1104,16 +1143,27 @@ mod tests {
                 operation,
                 Some(&mut state.env(None)),
             );
-            assert!(
-                matches!(
-                    result,
-                    Err(SolidError::Unported {
-                        upstream: "SmTopologyIntersector::IntersectInsertRelate",
-                        unit: "boolean.topology_intersector_p2",
-                    })
-                ),
-                "{operation:?}: {result:?}"
+            // IntersectInsertRelate runs (the edge-less fixture faces relate nothing);
+            // copying an unrelated B face then needs its face use, which a bare face
+            // record lacks, so Union, ExclusiveOr and Merge stop there
+            let copies = matches!(
+                operation,
+                BooleanOperation::Union | BooleanOperation::ExclusiveOr | BooleanOperation::Merge
             );
+            if copies {
+                assert!(
+                    matches!(
+                        result,
+                        Err(SolidError::InvalidInput {
+                            operation: "topology::face::p2",
+                            ..
+                        })
+                    ),
+                    "{operation:?}: {result:?}"
+                );
+            } else {
+                assert!(result.is_ok(), "{operation:?}: {result:?}");
+            }
             assert!(kernel.context.doing_boolean());
         }
         let mut kernel = Kernel::default();
@@ -1205,6 +1255,14 @@ mod tests {
         let mut input = vec![Some(1), Some(2)];
         let error = boolean_trees(&mut k, &mut input, &[0, 1, -1], None, &mut driver).unwrap_err();
         assert!(error.is_unported());
+        // so does the port's report of upstream undefined behaviour (InvalidInput)
+        let mut driver = Trace {
+            undefined: true,
+            ..Trace::default()
+        };
+        let mut input = vec![Some(1), Some(2)];
+        let error = boolean_trees(&mut k, &mut input, &[0, 1, -1], None, &mut driver).unwrap_err();
+        assert!(matches!(error, SolidError::InvalidInput { .. }));
         // the real engine's ordinary failure (empty operands) is mapped too
         let mut driver = DependencyMerge::default();
         let mut input = vec![Some(Brep::new()), Some(Brep::new())];
@@ -1326,7 +1384,13 @@ mod tests {
             BooleanOperation::Difference,
         )
         .unwrap_err();
-        assert!(matches!(error, SolidError::InvalidInput { .. }));
+        assert!(matches!(
+            error,
+            SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            }
+        ));
         assert_eq!(
             driver.observed,
             Some((false, 1, BooleanOperation::Difference))

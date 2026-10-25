@@ -12,7 +12,7 @@
 //! | [`build_nlib_curve`]                                  | `sm_BuildNlibCurve` (static)                     |
 //! | [`create_nlib_curve`]                                 | `sm_CreateNlibCurve` (static)                    |
 //! | [`create_nlib_surface`]                               | `sm_CreateNlibSurface` (static)                  |
-//! | [`BSplineSurface::approximate_offset_surface`], [`OffsetParamType`] | `ApproximateOffsetSurface`         |
+//! | [`BSplineSurface::approximate_offset_surface`], [`BSplineSurface::approximate_offset_surface_with`], [`OffsetParamType`] | `ApproximateOffsetSurface` |
 //! | [`create_non_rational_curve`]                         | `sm_CreateNonRationalCurve` (static)             |
 //! | [`create_coons_srf`], [`CoonsWarning`]                | `sm_CreateCoonsSrf` (static)                     |
 //! | [`BSplineSurface::create_coons_patch`]                | `CreateCoonsPatch`                               |
@@ -38,6 +38,9 @@
 //! other units.
 //!
 //! Deviations:
+//! - `approximate_offset_surface_with` exposes the opt-in corrections of
+//!   [`crate::nurbs::srf_offset::OffsetOptions`] for issue #471; the original entry
+//!   point retains SMLib's behavior.
 //! - **Memory and contexts.** `SmNLibStackHandler`, the `NL_STACKS` arguments and the
 //!   `SmContext` arguments only manage memory and are dropped; new surfaces and curves
 //!   are return values (upstream out-params), surface lists are `Vec`s.
@@ -241,20 +244,24 @@ struct DroppedCurves {
 /// with the surface's owner) for a plane, the base body
 /// ([`crate::surface::surface::Surface::drop_curve_base`]) otherwise. The surface is
 /// the caller's (a face's surface keeps its owner).
-fn drop_curve(
+fn drop_curve<O: crate::geom::solution_array::SolutionObject>(
     k: &Kernel,
     srf: &crate::surface::surface::Surface,
     domain: &Extent2d,
     curve: &BSplineCurve,
     interval: &Extent1d,
     approx_tol: f64,
+    context: Option<crate::intersect::surface_drop_lib::p3::DropSolveContext<'_, O>>,
 ) -> Result<DroppedCurves> {
     use crate::curve::curve::{Curve as AnyCurve, CurveKind};
 
     let curve = AnyCurve::from(curve.clone());
-    let out = srf.drop_curve::<crate::surface::surface::p4::NoObject>(
-        k, domain, &curve, interval, approx_tol, true, None, true,
-    )?;
+    let out = match context {
+        Some(context) => srf.drop_curve_with_context::<O>(
+            k, domain, &curve, interval, approx_tol, true, None, true, context,
+        )?,
+        None => srf.drop_curve::<O>(k, domain, &curve, interval, approx_tol, true, None, true)?,
+    };
     // the drop gives `SmBSplineCurve`s (for a plane a UV `SmLine` or B-spline)
     let uv_curves = out
         .uv_curves
@@ -979,6 +986,30 @@ pub fn create_non_rational_curve(
     opt_base_surface: Option<&crate::surface::surface::Surface>,
     approx_tol: f64,
 ) -> Result<(BSplineCurve, Option<BSplineCurve>)> {
+    create_non_rational_curve_with_context::<crate::surface::surface::p4::NoObject>(
+        k,
+        curve,
+        opt_uv_trim_curve,
+        opt_base_surface,
+        approx_tol,
+        None,
+    )
+}
+
+/// [`create_non_rational_curve`] whose drop onto `opt_base_surface` runs under the
+/// caller's face context.
+///
+/// # Errors
+///
+/// As [`create_non_rational_curve`], and those of the context.
+pub fn create_non_rational_curve_with_context<O: crate::geom::solution_array::SolutionObject>(
+    k: &Kernel,
+    curve: &BSplineCurve,
+    opt_uv_trim_curve: Option<&BSplineCurve>,
+    opt_base_surface: Option<&crate::surface::surface::Surface>,
+    approx_tol: f64,
+    context: Option<crate::intersect::surface_drop_lib::p3::DropSolveContext<'_, O>>,
+) -> Result<(BSplineCurve, Option<BSplineCurve>)> {
     // for rational curves
     if curve.is_rational()? {
         // Build arc-length parameterized nonRational curve approximation
@@ -990,7 +1021,7 @@ pub fn create_non_rational_curve(
         if let Some(base) = opt_base_surface {
             let trim_ivl = new_curve.natural_interval();
             let domain = base.natural_uv_domain();
-            let dropped = drop_curve(k, base, &domain, &new_curve, &trim_ivl, approx_tol)?;
+            let dropped = drop_curve(k, base, &domain, &new_curve, &trim_ivl, approx_tol, context)?;
             new_uv_trim_curve = Some(
                 dropped
                     .uv_curves
@@ -1023,6 +1054,24 @@ impl BSplineSurface {
         approx_tol_3d: f64,
         param_type: OffsetParamType,
     ) -> Result<BSplineSurface> {
+        self.approximate_offset_surface_with(
+            offset_distance,
+            approx_tol_3d,
+            param_type,
+            crate::nurbs::srf_offset::OffsetOptions::default(),
+        )
+    }
+
+    /// [`BSplineSurface::approximate_offset_surface`] with explicit corrections for
+    /// extrusion recognition and sliver-span sampling (issue #471).
+    /// The default [`crate::nurbs::srf_offset::OffsetOptions`] preserves SMLib.
+    pub fn approximate_offset_surface_with(
+        &self,
+        offset_distance: f64,
+        approx_tol_3d: f64,
+        param_type: OffsetParamType,
+        options: crate::nurbs::srf_offset::OffsetOptions,
+    ) -> Result<BSplineSurface> {
         let nl_surf_p = self
             .nurb
             .as_ref()
@@ -1047,13 +1096,14 @@ impl BSplineSurface {
 
         // pass the call along to NLib
         let mut nl_surf = nl_surf_p
-            .offset(
+            .offset_with(
                 offset_distance,
                 ln_deg,
                 ln_deg,
                 nl_param,
                 10.0 * approx_tol_3d,
                 approx_tol_3d,
+                options,
             )
             .map_err(SolidError::nl_ser(OP_OFFSET))?;
 

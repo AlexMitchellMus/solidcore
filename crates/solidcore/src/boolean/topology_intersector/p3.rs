@@ -29,7 +29,7 @@
 //!   and vertices of `MergeClassifications` are not asked for (upstream passes `NULL`).
 //! - **Temporary curves.** The curve copies, the trimmed coincident curve and the
 //!   dropped UV curves that upstream deletes on return (`SmObjDelete`, `SmObjsDelete`)
-//!   are stored with [`ProtoBrep::insert_curve`] to get a handle; their handles are
+//!   are stored with [`ProtoBrep::insert_curve`](crate::topology::proto_topology::ProtoBrep::insert_curve) to get a handle; their handles are
 //!   returned in `deleted_curves` for the caller to free. On an error return they are
 //!   not reported.
 //! - **Owners of the curve copies.** As upstream, the edge-curve copy each edge pass merges
@@ -85,7 +85,7 @@ use crate::intersect::point_class::{
     ClassObject, ClassObjectKind, PointClassType, PointClassification,
 };
 use crate::kernel::Kernel;
-use crate::math::{max2, Point3, BIG_DOUBLE};
+use crate::math::{max2, BIG_DOUBLE};
 use crate::nurbs::b_spline_curve::p2::BoundingBoxRequest;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
@@ -118,6 +118,26 @@ pub trait IntersectorBrepP3<O>: IntersectorBrepP2<O> + MergeIntervalBrep<O> {
     ///
     /// Those of the lookup.
     fn surface_face(&self, surface: O) -> Result<Option<O>>;
+    /// `smsurf_GetSurfaceCache(pSurface)` of a face's surface, the cache
+    /// `SmSurfaceDropCurve::DoTrace` traces on: the face's trimmed cache, made on its
+    /// B-rep (`query::face::p2::face_surface_cache`). `None` (the default) is an
+    /// adapter that cannot reach the face's B-rep mutably; the trace then builds the
+    /// surface's cache itself.
+    ///
+    /// # Errors
+    ///
+    /// Those of the cache lookup.
+    fn face_surface_trace_cache(
+        &mut self,
+        k: &Kernel,
+        surface: O,
+    ) -> Result<Option<crate::surface::surface_cache::SurfaceCache<O>>>
+    where
+        O: Copy + PartialEq,
+    {
+        let _ = (k, surface);
+        Ok(None)
+    }
     /// `SmEdge::IsManifold` (`topology::edge::is_manifold`).
     ///
     /// # Errors
@@ -169,24 +189,6 @@ pub trait IntersectorBrepP3<O>: IntersectorBrepP2<O> + MergeIntervalBrep<O> {
         classify_edgeuse: O,
         required_orientation: OrientType,
     ) -> Result<(Option<O>, Option<O>)>;
-    /// `SmFace::Point3DClassify(rPnt, sSrcZoneTol3d, bDoBoundaryIntersections,
-    /// rPointClass)` with the remaining arguments at their defaults (unit
-    /// `query.face_p1`: `query::face::p1::point_3d_classify` on the B-rep behind the
-    /// handle). Mutable: the classification may build missing UV trim curves.
-    ///
-    /// # Errors
-    ///
-    /// Those of `point_3d_classify`; [`SolidError::InvalidInput`] for a handle that is
-    /// not a face of a known B-rep.
-    fn face_point_3d_classify(
-        &mut self,
-        k: &Kernel,
-        face: O,
-        point: Point3,
-        src_zone_tol_3d: f64,
-        do_boundary_intersections: bool,
-        pc: &mut PointClassification<O>,
-    ) -> Result<()>;
     /// `SmFace::CalculateBoundingBox(rBox)` (`bTight = FALSE`; unit `query.face_p1`:
     /// `query::face::p1::calculate_bounding_box`).
     ///
@@ -980,8 +982,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             let mut point_class2 = PointClassification::new(curve_zone_tol);
             let tf = this_face.ok_or(dangling("no face"))?;
             let of = other_face.ok_or(dangling("no other face"))?;
-            brep.face_point_3d_classify(k, tf, pnt, curve_zone_tol, true, &mut point_class1)?;
-            brep.face_point_3d_classify(k, of, pnt, curve_zone_tol, true, &mut point_class2)?;
+            brep.face_point_3d_classify(k, tf, pnt, curve_zone_tol, true, &mut point_class1, None)?;
+            brep.face_point_3d_classify(k, of, pnt, curve_zone_tol, true, &mut point_class2, None)?;
 
             // when point was classified on both faces
             if point_class1.point_class() != PointClassType::Unknown
@@ -1577,11 +1579,21 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 let target_uv_domain = brep
                     .face_uv_domain(target_face)
                     .ok_or(dangling("face handle is unknown"))?;
-                let target = brep
+                let mut target = brep
                     .surface(target_surface)
-                    .ok_or(dangling("surface handle cannot be resolved"))?;
-                let dropped = ignore_soft(target.drop_and_trim_curve::<O>(
+                    .ok_or(dangling("surface handle cannot be resolved"))?
+                    .clone_for_evaluation()?;
+                let _ = target.set_owner(None::<crate::geom::object::ObjectRef>);
+                // DoTrace traces on the surface's cache (smsurf_GetSurfaceCache: the
+                // face's trimmed cache); a cache that cannot be had fails the drop
+                let mut cache = match brep.face_surface_trace_cache(k, target_surface) {
+                    Ok(cache) => cache,
+                    Err(e) if e.is_unported() => return Err(e),
+                    Err(_) => continue,
+                };
+                let dropped = ignore_soft(target.drop_and_trim_curve_in::<O, O>(
                     k,
+                    cache.as_mut(),
                     &target_uv_domain,
                     &copy,
                     &copy.natural_interval(),
