@@ -2,8 +2,9 @@
 
 Migrated PR #700 record. Later addenda describe the final scope; older draft
 claims and validation figures below retain their original bases. Its upstream
-issue IDs WR-257 through WR-263 are renumbered WR-260 through WR-266 to avoid
-existing main records; the underlying evidence is unchanged.
+issue IDs WR-257 through WR-263 are now WR-260 through WR-264, WR-266 and
+WR-268. The Stage3-classification report moved from WR-265 to WR-268 after main
+merged a different WR-265; the underlying evidence is unchanged.
 
 Related addenda: [scope after #704](general--521-topology-evaluation-status--addendum-2026-10-24-after-704.md), [cache-wrapper integration](general--521-topology-evaluation-status--addendum-2026-10-25-cache-wrapper.md), [cache-owner validation](general--521-topology-evaluation-status--addendum-2026-10-25-cache-owner.md).
 

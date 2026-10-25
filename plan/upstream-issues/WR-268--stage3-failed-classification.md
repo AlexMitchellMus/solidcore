@@ -1,4 +1,4 @@
-#### WR-265. `SetProps_Stage3` consumes failed loop-classification outputs
+#### WR-268. `SetProps_Stage3` consumes failed loop-classification outputs
 - **Severity:** Wrong result
 - **Area:** Topology and healing
 - **How found:** Source audit of #521, with the regression/reference evidence below.
