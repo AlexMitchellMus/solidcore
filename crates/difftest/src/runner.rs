@@ -545,6 +545,9 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
             return res;
         }
     }
+    // Entries for another C library are checked for existence above but do not apply
+    // here: their cases run as ordinary cases.
+    let known: Vec<_> = known.into_iter().filter(|k| k.applies()).collect();
     for case in cases {
         if let Some(f) = &opts.filter {
             if !case.name.contains(f.as_str()) {
