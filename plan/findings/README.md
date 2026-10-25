@@ -14,7 +14,8 @@ wrong results, wrong docs) also get their own file under
   add an addendum: a new file `<same name without .md>--addendum-<YYYY-MM-DD>-<slug>.md`
   whose first line after the title is `Updates: <path>`. Fixing a typo in your own PR's
   file before it merges is fine.
-- **References** from code, `known_mismatches.toml` or unit notes give the file path,
+- **References** from code, `crates/difftest/known_mismatches/<unit>.toml` or unit notes
+  give the file path,
   e.g. `plan/findings/topology.brep_p3--turn-to-nurbs-uv-trim-notify.md`.
 - **Older references** to `plan/findings.md: <heading>`: grep the heading under this
   directory (`grep -rlF '<heading>' plan/findings/`). The heading is the first line of its

@@ -236,6 +236,9 @@ into `upstream/` (see README), then run `scripts/fetch-cpp.sh`, or
   an update is an addendum file. The old shared `plan/findings.md` and
   `plan/upstream-issues.md` were split into those directories; CI fails if either comes
   back. Two PRs that each add a file never conflict.
+  Known difftest mismatches likewise live in `crates/difftest/known_mismatches/<unit id>.toml`
+  (one file per unit; see `crates/difftest/src/known.rs`), and SolidCraft cases in
+  `fixtures/solidcraft/<issue>-<slug>.json` (one file per issue).
   The same goes for anything new you design: a registry or log is a directory of
   per-entry files that tools read in sorted order, never one file everybody appends to.
 - **Branches from before the per-unit split** (they edit `plan/modules.toml` or commit
