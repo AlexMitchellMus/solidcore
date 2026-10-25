@@ -86,7 +86,7 @@ use crate::curve::curve::p2::BSPLINE_CURVE_TYPE;
 use crate::curve::curve::Curve;
 use crate::curve::hermite_curve::HermiteCurve;
 use crate::error::{ignored, EntityRef, Result, SolidError};
-use crate::geom::context::MarkLock;
+use crate::geom::context::{MarkLock, MarkType};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::geom_utility::p1::line_line_closest_point;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
@@ -111,7 +111,7 @@ use crate::topology::edge;
 use crate::topology::edgeuse::p1::{self as eu1, primary_edgeuse};
 use crate::topology::edgeuse::p3::{evaluate_binormal, BinormalOptions};
 use crate::topology::face::p2 as face2;
-use crate::topology::topology_traverser::{collect_faces, Entity, Marks};
+use crate::topology::topology_traverser::{collect_faces, Entity, FaceTraversalMarks, Marks};
 use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId, VertexuseId};
 
 use super::p1::{
@@ -286,6 +286,67 @@ impl core::fmt::Debug for TrimOriginalSurfacesEnv<'_> {
         f.debug_struct("TrimOriginalSurfacesEnv")
             .field("target_context", &self.target_context)
             .finish_non_exhaustive()
+    }
+}
+
+/// The B-rep whose topology marks a trim traversal reads or writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrimOriginalBody {
+    /// The constructed fillet B-rep.
+    Fillet,
+    /// The original target B-rep.
+    Target,
+}
+
+/// Borrowed mark authority for the two B-reps in `TrimOriginalSurfaces`.
+/// Implementations retain writes, including those made before an error.
+pub trait TrimOriginalSurfacesMarks {
+    /// Query one body's entity using the current kernel mark value.
+    fn is_marked(&self, k: &Kernel, body: TrimOriginalBody, entity: Entity, mark: MarkType)
+        -> bool;
+    /// Mark one body's entity using the current kernel mark value.
+    fn mark(&mut self, k: &Kernel, body: TrimOriginalBody, entity: Entity, mark: MarkType);
+}
+
+struct TrimTraversalMarks<'a, M> {
+    marks: &'a mut M,
+    body: TrimOriginalBody,
+}
+
+impl<M: TrimOriginalSurfacesMarks> FaceTraversalMarks for TrimTraversalMarks<'_, M> {
+    fn is_marked(&self, k: &Kernel, entity: Entity, mark: MarkType) -> bool {
+        self.marks.is_marked(k, self.body, entity, mark)
+    }
+
+    fn mark(&mut self, k: &Kernel, entity: Entity, mark: MarkType) {
+        self.marks.mark(k, self.body, entity, mark);
+    }
+}
+
+struct IndexedTrimMarks<'a> {
+    fillet: &'a mut Marks,
+    target: &'a mut Marks,
+}
+
+impl TrimOriginalSurfacesMarks for IndexedTrimMarks<'_> {
+    fn is_marked(
+        &self,
+        k: &Kernel,
+        body: TrimOriginalBody,
+        entity: Entity,
+        mark: MarkType,
+    ) -> bool {
+        match body {
+            TrimOriginalBody::Fillet => self.fillet.is_marked(k, entity, mark),
+            TrimOriginalBody::Target => self.target.is_marked(k, entity, mark),
+        }
+    }
+
+    fn mark(&mut self, k: &Kernel, body: TrimOriginalBody, entity: Entity, mark: MarkType) {
+        match body {
+            TrimOriginalBody::Fillet => self.fillet.mark(k, entity, mark),
+            TrimOriginalBody::Target => self.target.mark(k, entity, mark),
+        }
     }
 }
 
@@ -1845,12 +1906,88 @@ impl FilletBrep {
         env: &TrimOriginalSurfacesEnv<'_>,
         solvers: &[FilletSolver],
     ) -> Result<()> {
+        let mut marks = IndexedTrimMarks {
+            fillet: fillet_marks,
+            target: target_marks,
+        };
+        self.trim_original_surfaces_resolved(
+            k,
+            g,
+            fillet_brep,
+            target,
+            &mut marks,
+            kept,
+            deleted,
+            mark_locks,
+            env,
+            |id| solver_of(solvers, id, OP_TRIM),
+        )
+    }
+
+    /// Trim original surfaces using one retained solver and body-qualified marks.
+    /// The solver is checked at the same point as the indexed entrypoint's lookup.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Self::trim_original_surfaces`], including a mismatched solver id.
+    #[allow(clippy::too_many_arguments)]
+    pub fn trim_original_surfaces_with_solver(
+        &self,
+        k: &Kernel,
+        g: FilletGeomId,
+        fillet_brep: &mut Brep,
+        target: &mut Brep,
+        marks: &mut impl TrimOriginalSurfacesMarks,
+        kept: &mut Vec<FaceId>,
+        deleted: &mut Vec<FaceId>,
+        mark_locks: &[MarkLock],
+        env: &TrimOriginalSurfacesEnv<'_>,
+        solver_id: FilletSolverId,
+        solver: &FilletSolver,
+    ) -> Result<()> {
+        self.trim_original_surfaces_resolved(
+            k,
+            g,
+            fillet_brep,
+            target,
+            marks,
+            kept,
+            deleted,
+            mark_locks,
+            env,
+            |id| {
+                if id == solver_id {
+                    Ok(solver)
+                } else {
+                    Err(invalid(
+                        OP_TRIM,
+                        "fillet geometry solver does not match retained solver",
+                    ))
+                }
+            },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    fn trim_original_surfaces_resolved<'s>(
+        &self,
+        k: &Kernel,
+        g: FilletGeomId,
+        fillet_brep: &mut Brep,
+        target: &mut Brep,
+        marks: &mut impl TrimOriginalSurfacesMarks,
+        kept: &mut Vec<FaceId>,
+        deleted: &mut Vec<FaceId>,
+        mark_locks: &[MarkLock],
+        env: &TrimOriginalSurfacesEnv<'_>,
+        solver: impl FnOnce(FilletSolverId) -> Result<&'s FilletSolver>,
+    ) -> Result<()> {
         // locals
         let geom = self.geom(g)?;
         let solver_id = geom
             .fillet_solver()
             .ok_or_else(|| invalid(OP_TRIM, "fillet geometry without solver"))?;
-        let fs = solver_of(solvers, solver_id, OP_TRIM)?;
+        let fs = solver(solver_id)?;
         let fillet_mark_type = mark_locks
             .first()
             .ok_or_else(|| invalid(OP_TRIM, "no mark locks"))?
@@ -1926,7 +2063,10 @@ impl FilletBrep {
                 collect_faces(
                     k,
                     fillet_brep,
-                    fillet_marks,
+                    &mut TrimTraversalMarks {
+                        marks,
+                        body: TrimOriginalBody::Fillet,
+                    },
                     fb_face,
                     fillet_mark_type,
                     &mut collected_faces,
@@ -2044,7 +2184,10 @@ impl FilletBrep {
                         collect_faces(
                             k,
                             target,
-                            target_marks,
+                            &mut TrimTraversalMarks {
+                                marks,
+                                body: TrimOriginalBody::Target,
+                            },
                             matched_orig_face,
                             orig_mark_type,
                             &mut collected_faces,
@@ -2063,7 +2206,12 @@ impl FilletBrep {
                             if !del_faces.contains(&f) {
                                 del_faces.push(f);
                             }
-                            target_marks.mark(k, Entity::Face(f), orig_mark_type);
+                            marks.mark(
+                                k,
+                                TrimOriginalBody::Target,
+                                Entity::Face(f),
+                                orig_mark_type,
+                            );
                         }
                     }
                 } // end iter kk, every RailEdge->Edgeuse
