@@ -304,6 +304,57 @@ impl StitchAttempt {
     }
 }
 
+/// Retained operations for the native ordered geometry/corner insertion component.
+pub trait TopologyInsertionAccess<O: ClassObject + SolutionObject + Ord> {
+    /// Copy the current solver's geometry list at its native traversal position.
+    /// # Errors
+    /// Missing actual solver context.
+    fn insertion_solver_geoms(&self, solver: O) -> Result<Vec<O>>;
+    /// Insert one actual geometry through the retained intersector.
+    /// # Errors
+    /// The original geometry insertion error.
+    fn insertion_geom_topology(
+        &mut self,
+        k: &mut Kernel,
+        geom: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
+    /// Insert one actual corner after all solver geometries.
+    /// # Errors
+    /// The original corner insertion error.
+    fn insertion_corner_topology(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()>;
+}
+impl<O, A> TopologyInsertionAccess<O> for A
+where
+    O: ClassObject + SolutionObject + Ord,
+    A: ExecutiveAccess<O> + ?Sized,
+{
+    fn insertion_solver_geoms(&self, solver: O) -> Result<Vec<O>> {
+        ExecutiveAccess::solver_geoms(self, solver)
+    }
+    fn insertion_geom_topology(
+        &mut self,
+        k: &mut Kernel,
+        geom: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
+        ExecutiveAccess::insert_geom_topology(self, k, geom, executive)
+    }
+    fn insertion_corner_topology(
+        &mut self,
+        k: &mut Kernel,
+        corner: O,
+        executive: &mut FilletExecutive<O>,
+    ) -> Result<()> {
+        ExecutiveAccess::insert_corner_topology(self, k, corner, executive)
+    }
+}
+
 /// Dependency access. Handles must preserve object identity across B-reps and
 /// resolve topology through typed `Brep` arenas. Required methods read dependency
 /// records or adapt existing APIs; default methods are precisely the missing calls, with complete arguments.
@@ -2004,6 +2055,33 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         result
     }
 
+    /// Insert solver geometries, then corners, in the native retained-list order.
+    /// The caller establishes the actual intersector bodies and edge map first.
+    /// # Errors
+    /// The first geometry/corner insertion error, retaining all earlier mutations.
+    pub fn insert_intersection_topology(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl TopologyInsertionAccess<O>,
+    ) -> Result<()> {
+        if self.options.topology_insertion {
+            let mut index = 0;
+            while let Some(solver) = self.solvers.get(index).copied() {
+                // GetFilletGeoms copies the array before its inner loop.
+                for geom in access.insertion_solver_geoms(solver)? {
+                    access.insertion_geom_topology(k, geom, self)?;
+                }
+                index += 1;
+            }
+            let mut index = 0;
+            while let Some(corner) = self.corners.get(index).copied() {
+                access.insertion_corner_topology(k, corner, self)?;
+                index += 1;
+            }
+        }
+        Ok(())
+    }
+
     fn merge_fillet(
         &mut self,
         k: &mut Kernel,
@@ -2022,21 +2100,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             return Ok(());
         }
         access.set_fillet_brep_edge_map(k, self)?;
-        if self.options.topology_insertion {
-            let mut index = 0;
-            while let Some(solver) = self.solvers.get(index).copied() {
-                // GetFilletGeoms copies the array before its inner loop.
-                for geom in access.solver_geoms(solver)? {
-                    access.insert_geom_topology(k, geom, self)?;
-                }
-                index += 1;
-            }
-            let mut index = 0;
-            while let Some(corner) = self.corners.get(index).copied() {
-                access.insert_corner_topology(k, corner, self)?;
-                index += 1;
-            }
-        }
+        self.insert_intersection_topology(k, access)?;
         // Upstream cbi_MAP_TOPO_EDGES=0: do not collect mapped intersections.
         if self.options.global_merge {
             self.intersector
