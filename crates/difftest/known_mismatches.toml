@@ -154,7 +154,7 @@ why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ (gen1570: a sphere 
 [[mismatch]]
 unit = "topology.brep_p1"
 case = "Endcap_heal"
-why = "Endcap.smb HealBrep: the healed output differs (values.out length C++ 245, port 256); cache creation order matches (gdb), cause not found (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed'; 'trimmed surface cache history after the loop bisector fix')"
+why = "Endcap.smb HealBrep: Cache_FaceProps_Stage3 builds a trimmed surface cache (CreateUVTrimCurves: a UV trim curve, tolerance growth) where C++ reuses the one its load-time heal (ReadFromFile -> MakeTopologyFromData) kept on the surface; the import from the C++ export carries no surface cache (plan/findings.md: \'topology.brep_p1 Endcap_heal: the load-time heal\'s trimmed cache is not imported\')"
 
 [[mismatch]]
 unit = "boolean.merge_p3"
