@@ -10,6 +10,7 @@
 //! |---------------------------------------|---------------------------------------------------|
 //! | [`point_classify`], [`point_classify_prepared`], [`PointClassifyOptions`] | `SmFace::PointClassify` |
 //! | [`curve_on_classify`], [`CurveOnClassifyObjects`] | `SmFace::CurveOnClassify`             |
+//! | [`curve_on_classify_mut`], [`CurveOnClassifyBrep`], [`FaceBrep`] | `SmFace::CurveOnClassify` on the face's own B-rep |
 //! | [`classify_param_on_faces`]           | `sm_ClassifyParamOnFaces` (file static)           |
 //! | [`proto_vertex_distance_to`]          | `SmProtoVertex::DistanceTo`                       |
 //! | [`proto_vertex_capture_distance`]     | `SmProtoVertex::GetCaptureDistance`               |
@@ -17,9 +18,21 @@
 //! | [`ProtoTopologyManager::capture_distance`] | `SmProtoTopologyManager::GetCaptureDistance` (already in `topology::proto_topology`) |
 //! | [`face_vertices`]                     | `SmFace::GetVertices(SmTArray&, ..)` (CO-PORTED, `topology.face_p4`) |
 //! | `ClassObject for EntityRef`           | the `SmObject*` of a classification of B-rep topology |
-//! | [`BrepCacheFace`], [`face_surface_cache`] | `GetFace()` of a face surface's trimmed cache (`SmTrimSrfCache::BuildTree`, `PointClassify`), `smsurf_GetSurfaceCache(GetSurface())` |
+//! | [`BrepCacheFace`] | `GetFace()` of a face surface's trimmed cache (`SmTrimSrfCache::BuildTree`, `PointClassify`) |
+//! | [`face_surface_cache`], [`FaceSurfaceCache`], [`note_face_surface_cache`] | `smsurf_GetSurfaceCache(GetSurface())` through `SmCacheMgrTSrf::CacheMakeOrValidate` |
+//! | [`face_cache_tree`] | `SmSurfaceCache::GetTree` of a face surface's trimmed cache |
 //!
 //! Deviations:
+//! - **Classification B-rep (temporary).** [`curve_on_classify_mut`] runs on the face's own
+//!   B-rep through [`CurveOnClassifyBrep`] and makes upstream's lazy edits (UV trim curves,
+//!   gap caches, the trimmed cache's tolerance growth) on it in place, in upstream order.
+//!   Callers that still hold only `&Brep` use [`curve_on_classify`] /
+//!   `curve_on_classify_cached`, which run the same code on a private copy of the B-rep
+//!   (`SnapshotObjects` over `CurveOnClassifyCache`'s snapshot; the healer copies some of
+//!   its edits back). That entry goes once its last callers are converted: the stage 3 /
+//!   `ClassifyLoops` path, the `topology::face::p2` and `topology::brep::p10` adapters, the
+//!   leaf callers (sweep, `topology::brep::p7`, `topology::face::p1`, trimming tools), and
+//!   the boolean, proto-topology, `topology::face::p3` and fillet classifiers.
 //! - **Object model.** The face is a record of a [`Brep`]; the functions take the
 //!   B-rep and the face's id. Classification objects are [`EntityRef`]s (the face, edge
 //!   or vertex). `SmFace::PointClassify`'s status is the result: `Ok(())` for
@@ -29,10 +42,16 @@
 //!   `bDoBoundaryIntersections` and `bUVSpaceOkay` are `NotUsed` upstream; they are
 //!   kept in [`PointClassifyOptions`] and ignored. `bUseUVClassification` only chooses
 //!   between two identical `SM_ERR` returns.
-//! - **Trimmed surface cache.** `SmCacheMgr::GetObjectCache(SM_OC_TRIMSRF, surface)`
-//!   has no counterpart: B-rep surfaces carry no object cache in the port, so the
-//!   caller passes the face surface's [`TrimSrfCache`] (if any) in
-//!   [`PointClassifyOptions::trim_cache`]. The test
+//! - **Trimmed surface cache.** A face surface keeps its trimmed cache in its cache
+//!   slot ([`Surface::take_trim_cache`]; upstream's `SM_OC_TRIMSRF` queue entry), made
+//!   by the first [`face_surface_cache`] and reused by later ones as
+//!   `CacheMakeOrValidate` reuses it (whether it was built with the face or
+//!   standalone, while the owner was cleared). A lookup made while the cache is in use
+//!   (taken out of the slot) gets a cache built the same way that is not kept. The
+//!   global cache queue's size limit (200 trimmed caches, least recently used out) is
+//!   not modelled. `SmCacheMgr::GetObjectCache(SM_OC_TRIMSRF, surface)` of
+//!   `PointClassify` is the caller's [`PointClassifyOptions::trim_cache`], else the
+//!   surface's kept cache (none while it is in use). The test
 //!   `GetSurface()->GetFace() == this` is "the face's surface has a face owner"
 //!   (the owner of a face's surface is that face).
 //! - **Out-of-bounds evaluation.** `SmTemporaryChangeValue` on the surface's
@@ -85,11 +104,28 @@
 //!   caller's [`ClassGeometry`]; a gap error therefore surfaces before the earlier
 //!   vertices are intersected (upstream: a null dereference or the same unported
 //!   callee). A vertex without a face use is unresolved (upstream dereferences null).
+//! - **`IntersectTSBound`** fetches the face surface's trimmed cache itself
+//!   ([`face_surface_cache`] on the classification snapshot, whose face surfaces share
+//!   the B-rep's cache slots: [`Brep::clone_sharing_surface_caches`]); when it is up to
+//!   date the cached branch visits only the vertex uses and edge uses of the leaf nodes
+//!   the curve's box meets, under a context mark
+//!   ([`crate::geom::context::Context::claim_mark`]), and makes a visited edge use's
+//!   missing UV trim curve on the snapshot (`GetOrCreateUVTrimCurve`).
+//!   `IntersectVertices` / `IntersectEdges` clear the surface's owner while they read
+//!   the vertex/face and edge/face gaps, so the gap reads run in an owner-cleared scope
+//!   ([`Brep::begin_surface_owner_cleared`]) and a cache they make is standalone.
 //! - The UV trim curves `IntersectTSBound`'s `ComputeUVPoint` calls make there (upstream
 //!   on the face's own B-rep) stay visible for the rest of the classification through
 //!   the private `WithMadeTrimCurves` geometry. The gap caches and these trim curves
 //!   share one snapshot per call, as upstream mutates the one B-rep. The healer shares
 //!   that snapshot across both seam directions before applying its gap-cache values.
+//!   `WithMadeTrimCurves` forwards the topology hooks (`topology_entity`,
+//!   `topology_handle(_in)`, `brep_id`, `owner_entity`, the intersector mate) to the
+//!   caller's geometry with the face's B-rep resolved in the snapshot, and is the
+//!   [`ClassGeometryMut`] of `ClassifyFaceInterval`
+//!   ([`CurveClassification::classify_face_interval_mut`]): its face queries edit the
+//!   snapshot, so their UV trims and tolerance changes stay for the rest of the
+//!   classification (not for the caller's B-rep).
 //! - No recursion.
 
 use crate::curve::curve::{Curve, CurveKind};
@@ -99,6 +135,7 @@ use crate::geom::point_set::PointContainment;
 use crate::geom::tree::{NodeClass, NodeData};
 use crate::intersect::curve_class::p1::{src_zone_tol_3d_of, CurveClassification};
 use crate::intersect::curve_class::p2::ResetOptions;
+use crate::intersect::curve_class::p5::ClassGeometryMut;
 use crate::intersect::curve_class::p9::{
     BoundaryEdge, BoundaryEdgeuse, BoundaryFace, BoundaryLoop, BoundaryVertex,
     IntersectEdgesOptions,
@@ -110,9 +147,12 @@ use crate::kernel::Kernel;
 use crate::math::{max2, Point2, Point3, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::query::r#loop::{contains_uv_point_with_topology, UvContainment};
-use crate::surface::surface::p1::{get_surface_cache_with_face, get_trim_surface_cache};
-use crate::surface::surface::{Surface, SurfaceKind};
-use crate::surface::surface_cache::p1::{FaceContainment, SurfaceCacheOptions};
+use crate::surface::surface::p1::{
+    get_surface_cache_with_face, get_trim_surface_cache, make_surface_cache, make_trim_srf_cache,
+    make_trim_srf_cache_with_face,
+};
+use crate::surface::surface::{Surface, SurfaceKind, TrimCacheSlot};
+use crate::surface::surface_cache::p1::{FaceContainment, SurfaceCache};
 use crate::surface::trim_srf_cache::{CacheFace, TrimSrfCache};
 use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::face::p2 as fp2;
@@ -295,24 +335,63 @@ impl CacheFace<EntityRef> for BrepCacheFace<'_> {
     }
 }
 
-/// `smsurf_GetSurfaceCache(pFace->GetSurface())`: the trimmed surface cache of face
-/// `f`'s surface built with the face ([`get_surface_cache_with_face`]; this creates
-/// the face's UV trim curves), else its plain surface cache wrapped as one. `handle`
-/// is the surface's handle in the cache's object space. While the surface's owner is
-/// cleared ([`Brep::is_surface_owner_cleared`], inside `CreateUVTrimCurve(s)`) the
-/// surface has no face upstream, so the cache is built standalone
-/// ([`get_trim_surface_cache`]) and makes no UV trim curves.
+/// A face surface's cache as `smsurf_GetSurfaceCache` hands it out
+/// ([`face_surface_cache`]).
+#[derive(Debug)]
+pub struct FaceSurfaceCache {
+    /// The cache. Its handles are the face's topology ([`EntityRef`]); the surface's
+    /// own handle is the face.
+    pub cache: TrimSrfCache<EntityRef>,
+    /// Whether [`FaceSurfaceCache::cache`] is the surface's trimmed surface cache
+    /// (`SM_OC_TRIMSRF`), else the surface cache (`SM_OC_SURFACE`) the lookup falls back
+    /// to when no trimmed cache could be made, wrapped as one
+    /// ([`TrimSrfCache::from_base`]).
+    pub trimmed: bool,
+    /// Whether the cache was taken out of the surface's cache slot (the surface's own
+    /// trimmed cache, put back by [`FaceSurfaceCache::release`]).
+    kept: bool,
+}
+
+impl FaceSurfaceCache {
+    /// Ends the use of the cache: the surface's own trimmed cache goes back into its
+    /// cache slot (shared with every copy of the surface), with what the use did to it
+    /// (a tree built on demand, a face containment computed); any other cache is
+    /// dropped.
+    pub fn release(self) {
+        if self.kept {
+            Surface::store_trim_cache(self.cache);
+        }
+    }
+}
+
+/// `smsurf_GetSurfaceCache(pFace->GetSurface())` (through
+/// `SmCacheMgrTSrf::CacheMakeOrValidate`): the trimmed surface cache of face `f`'s
+/// surface, else its plain surface cache wrapped as one. Like upstream's, the trimmed
+/// cache is an object of the surface ([`Surface::take_trim_cache`]), made by the first
+/// lookup and reused by every later one:
+/// - a cache the surface already has is reused as it is (whether or not it was built
+///   with the face), unless its face was modified (`m_bFaceWasModified`) and the
+///   face's B-rep is not being edited, when it is deleted and made again;
+/// - a new cache is built with the face ([`make_trim_srf_cache_with_face`]; this creates
+///   the face's UV trim curves) unless the surface's owner is cleared
+///   ([`Brep::is_surface_owner_cleared`], inside `CreateUVTrimCurve(s)`): the surface
+///   then has no face upstream, so the cache is built standalone
+///   ([`make_trim_srf_cache`]) and makes no UV trim curves; either way it is kept;
+/// - a lookup while the cache is in use (taken out of the slot by an enclosing lookup,
+///   upstream the same object, e.g. during its construction) gets a cache built the
+///   same way that is not kept.
+///
+/// When no trimmed cache can be made, the surface cache is built fresh and not kept
+/// ([`FaceSurfaceCache::trimmed`] is false). The caller ends the use with
+/// [`FaceSurfaceCache::release`].
 ///
 /// # Errors
 ///
-/// `SM_ERR_NULL_POINTER` for a face without surface; those of
-/// [`get_surface_cache_with_face`].
-pub fn face_surface_cache(
-    k: &Kernel,
-    b: &mut Brep,
-    f: FaceId,
-    handle: Option<EntityRef>,
-) -> Result<TrimSrfCache<EntityRef>> {
+/// `SM_ERR_NULL_POINTER` for a face without surface; those of the surface cache build
+/// when neither cache can be made; [`SolidError::Unported`],
+/// [`SolidError::InvalidInput`] and [`SolidError::NotFound`] from the trimmed cache
+/// build.
+pub fn face_surface_cache(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<FaceSurfaceCache> {
     // the cache copies the surface; the face's B-rep is changed while it is built
     let surface = b
         .face(f)?
@@ -320,13 +399,119 @@ pub fn face_surface_cache(
         .as_ref()
         .ok_or(SolidError::null_pointer(OP_CACHE_FACE))?
         .clone_for_evaluation()?;
-    if b.is_surface_owner_cleared(f) {
-        // `GetFace()` is NULL while the owner is cleared
-        let mut surface = surface;
-        let _ = surface.set_owner(None::<crate::geom::object::ObjectRef>);
-        return get_trim_surface_cache(k, &surface, handle);
+    // `GetFace()` is NULL while the owner is cleared
+    let cleared = b.is_surface_owner_cleared(f);
+    let mut standalone = surface.clone_for_evaluation()?;
+    if cleared {
+        let _ = standalone.set_owner(None::<crate::geom::object::ObjectRef>);
     }
-    get_surface_cache_with_face(k, &surface, handle, &mut BrepCacheFace { b, f })
+    let handle = Some(EntityRef::Face(f));
+    match surface.take_trim_cache() {
+        TrimCacheSlot::Stored(mut cache) => {
+            // the cache's surface is the face's surface: its owner as it is now
+            cache.base_mut().surface_mut().adopt_owner_of(if cleared {
+                &standalone
+            } else {
+                &surface
+            });
+            // If the face was modified and Brep editing is no longer enabled
+            // then delete the old cache and create a new one.
+            if !(cache.base().face_was_modified && !cleared && !b.editing_enabled()) {
+                // the Face was not modified or m_bEditingEnabled == TRUE,
+                // then use the old cache
+                return Ok(FaceSurfaceCache {
+                    cache: *cache,
+                    trimmed: true,
+                    kept: true,
+                });
+            }
+            surface.delete_trim_cache();
+        }
+        TrimCacheSlot::CheckedOut => {
+            // the enclosing lookup's cache: build one the same way, not kept
+            let built = if cleared {
+                get_trim_surface_cache(k, &standalone, handle)
+            } else {
+                get_surface_cache_with_face(k, &surface, handle, &mut BrepCacheFace { b, f })
+            }?;
+            let trimmed = built.base().trimmed_dispatch;
+            return Ok(FaceSurfaceCache {
+                cache: built,
+                trimmed,
+                kept: false,
+            });
+        }
+        TrimCacheSlot::Empty => {}
+    }
+
+    // next create a new SmTrimSrfCache and store it with the surface (before its tree
+    // is built: lookups during the build find it in use)
+    surface.check_out_trim_cache();
+    let built = if cleared {
+        make_trim_srf_cache(k, &standalone, handle)
+    } else {
+        make_trim_srf_cache_with_face(k, &surface, handle, &mut BrepCacheFace { b, f })
+    };
+    match built {
+        Ok(cache) => Ok(FaceSurfaceCache {
+            cache,
+            trimmed: true,
+            kept: true,
+        }),
+        Err(e) => {
+            // when construction failed - the cache is deleted
+            surface.delete_trim_cache();
+            match e {
+                SolidError::Unported { .. }
+                | SolidError::InvalidInput { .. }
+                | SolidError::NotFound { .. } => Err(e),
+                // else - get or make SurfaceCache
+                _ => Ok(FaceSurfaceCache {
+                    cache: TrimSrfCache::from_base(make_surface_cache(
+                        k,
+                        if cleared { &standalone } else { &surface },
+                        handle,
+                    )?),
+                    trimmed: false,
+                    kept: false,
+                }),
+            }
+        }
+    }
+}
+
+/// [`face_surface_cache`] for a caller that only needs its side effects on the face
+/// (the UV trim curves a new cache creates) and the cache kept on the surface.
+///
+/// # Errors
+///
+/// Those of [`face_surface_cache`].
+pub fn note_face_surface_cache(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<()> {
+    face_surface_cache(k, b, f).map(FaceSurfaceCache::release)
+}
+
+/// `SmSurfaceCache::GetTree` of a face surface's trimmed cache: builds the tree with the
+/// face when there is none, or when the surface belongs to a face whose boundary is
+/// not in the tree yet and no build is under way.
+///
+/// # Errors
+///
+/// Those of [`TrimSrfCache::build_tree_with_face`].
+pub fn face_cache_tree(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    cache: &mut TrimSrfCache<EntityRef>,
+) -> Result<()> {
+    let base = cache.base();
+    if base.tree().is_none()
+        || (!base.have_t_surface_cache
+            && base.surface().face()?.is_some()
+            && base.face_containment_done != FaceContainment::UnderConstruction)
+    {
+        cache.build_tree_with_face(k, &mut BrepCacheFace { b, f })?;
+    }
+    Ok(())
 }
 
 // ---- co-ported topology access ----------------------------------------------------------
@@ -442,7 +627,7 @@ impl Default for PointClassifyOptions<'_> {
 /// trimmed surface cache answers first when it is up to date; then the point's
 /// surface position is tested against every face vertex (within the larger of the
 /// face, vertex and `pc` tolerances), then the point against every loop
-/// ([`crate::query::r#loop::contains_uv_point`]). With `tgt_loops_only`, only the
+/// (`query::loop::contains_uv_point`). With `tgt_loops_only`, only the
 /// selected loops (and their vertices) are used. `pc` keeps its other members; its
 /// tolerance (`GetTolerance`) enters the vertex and loop tolerances.
 ///
@@ -452,7 +637,7 @@ impl Default for PointClassifyOptions<'_> {
 /// on the checked loops (a loop that cannot classify it, or only inner loops checked
 /// without the point being outside all of them); `SM_ERR_NULL_POINTER` for a face
 /// without surface; those of the trimmed surface cache search, of [`face_vertices`]
-/// and [`crate::query::r#loop::contains_uv_point`]; [`SolidError::InvalidInput`] for an
+/// and `query::loop::contains_uv_point`; [`SolidError::InvalidInput`] for an
 /// on-boundary edge without curve.
 pub fn point_classify(
     k: &Kernel,
@@ -462,7 +647,7 @@ pub fn point_classify(
     pc: &mut PointClassification<EntityRef>,
     opts: PointClassifyOptions<'_>,
 ) -> Result<()> {
-    point_classify_with_topology(k, &mut QueryTopology::Mutable(b), f, uv, pc, opts)
+    point_classify_with_topology(k, &mut QueryTopology::Mutable(b), f, uv, pc, opts, None)
 }
 
 /// Classify `uv` against face `f` without mutating its prepared topology.
@@ -484,7 +669,116 @@ pub fn point_classify_prepared(
     pc: &mut PointClassification<EntityRef>,
     opts: PointClassifyOptions<'_>,
 ) -> Result<()> {
-    point_classify_with_topology(k, &mut QueryTopology::Prepared(b), f, uv, pc, opts)
+    point_classify_with_topology(k, &mut QueryTopology::Prepared(b), f, uv, pc, opts, None)
+}
+
+pub(crate) fn point_classify_requested(
+    k: &Kernel,
+    b: &Brep,
+    f: FaceId,
+    uv: Point2,
+    pc: &mut PointClassification<EntityRef>,
+    opts: PointClassifyOptions<'_>,
+    preparation: &crate::query::brep::RayPreparation,
+) -> Result<()> {
+    point_classify_with_topology(
+        k,
+        &mut QueryTopology::Requested(b, preparation),
+        f,
+        uv,
+        pc,
+        opts,
+        None,
+    )
+}
+
+pub(crate) fn point_classify_live(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    uv: Point2,
+    pc: &mut PointClassification<EntityRef>,
+    opts: PointClassifyOptions<'_>,
+    cache: Option<&SurfaceCache<crate::topology::brep_cache::CacheObject>>,
+) -> Result<()> {
+    point_classify_with_topology(k, &mut QueryTopology::Mutable(b), f, uv, pc, opts, cache)
+}
+
+fn cache_is_current<O: Copy + PartialEq>(cache: &SurfaceCache<O>) -> bool {
+    cache.have_t_surface_cache
+        && cache.face_containment_done == FaceContainment::Done
+        && !cache.face_was_modified
+}
+
+fn classify_trim_cache<O: Copy + PartialEq>(
+    k: &Kernel,
+    cache: &SurfaceCache<O>,
+    uv: Point2,
+    pc: &mut PointClassification<EntityRef>,
+    entity_of: impl Fn(O) -> Result<EntityRef>,
+) -> Result<bool> {
+    let nodes = cache.find_uv_nodes_built(k, &Extent2d::from_point(uv), false)?;
+    let tree = cache
+        .tree()
+        .ok_or_else(|| null(OP_CLASSIFY, "trimmed surface cache without tree"))?;
+    for node in nodes {
+        let node = tree.node(node)?;
+        if node.child1.is_some() {
+            continue;
+        }
+        let NodeData::Surface(aux) = &node.data else {
+            return Err(null(OP_CLASSIFY, "leaf node without surface data"));
+        };
+        if aux.node_class == NodeClass::Outside {
+            pc.set_class_object(PointClassType::Unknown, None);
+            return Ok(true);
+        }
+        if aux.node_class == NodeClass::Inside {
+            pc.set_class_object(PointClassType::Face, aux.face.map(&entity_of).transpose()?);
+            pc.set_gap_3d(0.0);
+            pc.set_pre_snap_param(BIG_DOUBLE);
+            pc.set_uv_param(uv);
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// `PointClassify`'s fast classification by the face surface's trimmed cache `tsc`
+/// when it is up to date (`own`: the surface's own cache, whose tree is built with the
+/// face when it has none): `true` when the cache decided the point.
+#[allow(clippy::too_many_arguments)]
+fn classify_by_trim_cache(
+    k: &Kernel,
+    b: &mut QueryTopology<'_>,
+    f: FaceId,
+    tsc: &mut TrimSrfCache<EntityRef>,
+    own: bool,
+    face_owned: bool,
+    uv: Point2,
+    pc: &mut PointClassification<EntityRef>,
+) -> Result<bool> {
+    if !(tsc.base().have_t_surface_cache
+        && tsc.base().face_containment_done == FaceContainment::Done
+        && !tsc.base().face_was_modified
+        && face_owned)
+    {
+        return Ok(false);
+    }
+    // get every TrimSrfCache leaf node intersecting the UVPoint
+    if tsc.base().tree().is_none() {
+        match b {
+            QueryTopology::Prepared(_) | QueryTopology::Requested(..) => {
+                return Err(SolidError::Unported {
+                    upstream: "SmSurfaceCache::BuildTree (prepared query requires a built tree)",
+                    unit: "surface.surface_cache_p1",
+                });
+            }
+            QueryTopology::Mutable(b) if own => face_cache_tree(k, b, f, tsc)?,
+            QueryTopology::Mutable(_) => tsc.build_tree(k)?,
+        }
+    }
+    classify_trim_cache(k, tsc.base(), uv, pc, Ok)
 }
 
 fn point_classify_with_topology(
@@ -494,6 +788,7 @@ fn point_classify_with_topology(
     uv: Point2,
     pc: &mut PointClassification<EntityRef>,
     opts: PointClassifyOptions<'_>,
+    prepared_cache: Option<&SurfaceCache<crate::topology::brep_cache::CacheObject>>,
 ) -> Result<()> {
     let PointClassifyOptions {
         tgt_loops_only,
@@ -519,64 +814,55 @@ fn point_classify_with_topology(
     // locals
     let surface = face.surface.as_ref();
 
+    // The operation cache is the same cache the preceding surface solve built.
+    // Consult its native fast path before the vertex/loop fallback.
+    if !tgt_loops_only && surface.map_or(Ok(false), |s| s.face().map(|f| f.is_some()))? {
+        let cache = prepared_cache.or_else(|| match &*b {
+            QueryTopology::Requested(_, preparation) => preparation.prepared_cache(f),
+            _ => None,
+        });
+        if let Some(cache) = cache {
+            if cache_is_current(cache)
+                && classify_trim_cache(k, cache, uv, pc, |object| match object {
+                    crate::topology::brep_cache::CacheObject::Face(face) => {
+                        Ok(EntityRef::Face(face))
+                    }
+                    _ => Err(SolidError::invalid_input(
+                        OP_CLASSIFY,
+                        "trim cache leaf without face",
+                    )),
+                })?
+            {
+                return Ok(());
+            }
+        }
+    }
+
     // when doing all loops
     if !tgt_loops_only {
+        let face_owned = surface.map_or(Ok(false), |s| s.face().map(|o| o.is_some()))?;
         // 1. try fast point TrimSrfCache classification.
-        // First try to get the cache - will be NULL when object has no cache
+        // First try to get the cache - will be NULL when object has no cache: the
+        // caller's, else the surface's own (taken out of its slot while it is used)
         let tsc = if surface.is_some() { trim_cache } else { None };
-        if let Some(tsc) = tsc {
-            if tsc.base().have_t_surface_cache
-                && tsc.base().face_containment_done == FaceContainment::Done
-                && !tsc.base().face_was_modified
-                && surface.map_or(Ok(false), |s| s.face().map(|o| o.is_some()))?
-            {
-                // get every TrimSrfCache leaf node intersecting the UVPoint
-                let uv_ext = Extent2d::from_point(uv);
-                if tsc.base().tree().is_none() {
-                    if matches!(b, QueryTopology::Prepared(_)) {
-                        return Err(SolidError::Unported {
-                            upstream:
-                                "SmSurfaceCache::BuildTree (prepared query requires a built tree)",
-                            unit: "surface.surface_cache_p1",
-                        });
-                    }
-                    tsc.build_tree(k)?;
-                }
-                let nodes = tsc.base().find_uv_nodes_built(k, &uv_ext, false)?;
-                let tree = tsc
-                    .base()
-                    .tree()
-                    .ok_or_else(|| null(OP_CLASSIFY, "trimmed surface cache without tree"))?;
-                let mut leaf_nodes = Vec::new();
-                for n in nodes {
-                    if tree.node(n)?.child1.is_some() {
-                        continue;
-                    }
-                    leaf_nodes.push(n);
-                } // end selecting intersecting leafNodes
-
-                // search for a INSIDE/OUTSIDE classified intersecting leaf node
-                for n in leaf_nodes {
-                    let NodeData::Surface(aux) = &tree.node(n)?.data else {
-                        return Err(null(OP_CLASSIFY, "leaf node without surface data"));
-                    };
-
-                    // when leaf node is classified OUTSIDE of surface->Face
-                    if aux.node_class == NodeClass::Outside {
-                        pc.set_class_object(PointClassType::Unknown, None);
-                        return Ok(());
-                    }
-
-                    // when leaf node is classified INSIDE of surface->Face
-                    if aux.node_class == NodeClass::Inside {
-                        pc.set_class_object(PointClassType::Face, aux.face);
-                        pc.set_gap_3d(0.0);
-                        pc.set_pre_snap_param(BIG_DOUBLE);
-                        pc.set_uv_param(uv);
-                        return Ok(());
-                    }
-                } // end iter every leaf node containing UVPoint
-            } // end up-to-date TrimSrfCache check
+        let own = match (&tsc, surface) {
+            (None, Some(s)) => match s.take_trim_cache() {
+                TrimCacheSlot::Stored(cache) => Some(*cache),
+                TrimCacheSlot::Empty | TrimCacheSlot::CheckedOut => None,
+            },
+            _ => None,
+        };
+        let classified = if let Some(tsc) = tsc {
+            classify_by_trim_cache(k, b, f, tsc, false, face_owned, uv, pc)
+        } else if let Some(mut own) = own {
+            let classified = classify_by_trim_cache(k, b, f, &mut own, true, face_owned, uv, pc);
+            Surface::store_trim_cache(own);
+            classified
+        } else {
+            Ok(false)
+        };
+        if classified? {
+            return Ok(());
         }
     } // end when doing all loops
 
@@ -587,7 +873,11 @@ fn point_classify_with_topology(
 
     // We must enable out-of-bounds evaluation, otherwise a point outside the surface
     // domain will be classified on a boundary.
-    let surface = surface.ok_or(SolidError::null_pointer(OP_CLASSIFY))?;
+    let surface = b
+        .face(f)?
+        .surface
+        .as_ref()
+        .ok_or(SolidError::null_pointer(OP_CLASSIFY))?;
     // (an owned surface: the loop classification edits the B-rep while it walks)
     let surface: Surface = if let Some(copy) = with_out_of_bounds_enabled(surface)? {
         copy
@@ -867,9 +1157,53 @@ pub trait CurveOnClassifyObjects<O: ClassObject>: ClassGeometry<O> {
     fn face_surface(&self, f: FaceId) -> Option<O>;
     /// The loop behind a target loop handle.
     fn loop_id(&self, tgt_loop: O) -> Option<LoopId>;
-    /// Existing face trim cache, if supplied by the caller's cache storage.
-    fn trim_cache(&self, _f: FaceId) -> Option<&TrimSrfCache<O>> {
-        None
+}
+
+/// The B-rep of the face a classification runs on (`SmFace`'s owning `SmBrep`), as the
+/// calls so far have left it.
+pub trait FaceBrep {
+    /// The B-rep.
+    fn brep(&self) -> &Brep;
+}
+
+impl FaceBrep for &Brep {
+    fn brep(&self) -> &Brep {
+        self
+    }
+}
+
+impl FaceBrep for &mut Brep {
+    fn brep(&self) -> &Brep {
+        self
+    }
+}
+
+/// What [`curve_on_classify_mut`] needs: the caller's classification handles over the
+/// face's own B-rep, which the classification edits in place where upstream's `const` face
+/// queries edit theirs. The adapter owns the B-rep borrow; its [`ClassGeometry`] reads
+/// must read [`FaceBrep::brep`] as it is now (raised tolerances, made UV trim curves).
+pub trait CurveOnClassifyBrep<O: ClassObject>:
+    CurveOnClassifyObjects<O> + ClassGeometryMut<O> + FaceBrep
+{
+    /// The face's B-rep, mutably.
+    fn brep_mut(&mut self) -> &mut Brep;
+    /// The surface of face `f` the classification evaluates (`Face->GetSurface()`).
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::NotFound`] for a dangling face id.
+    fn classify_surface(&self, f: FaceId) -> Result<Option<&Surface>> {
+        Ok(self.brep().face(f)?.surface.as_ref())
+    }
+    /// Whether a UV trim curve the classification makes on `eu` must be carried with
+    /// the classification because [`ClassGeometry::curve`] cannot resolve it: `false`
+    /// for an adapter that reads the B-rep it edits.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::NotFound`] for a dangling edge use.
+    fn keeps_made_trim(&self, _eu: EdgeuseId) -> Result<bool> {
+        Ok(false)
     }
 }
 
@@ -883,6 +1217,40 @@ pub(crate) struct CurveOnClassifyCache {
 }
 
 impl CurveOnClassifyCache {
+    /// The B-rep as the queries sharing this state have left it: a copy of `b` (sharing
+    /// its surface caches) made on first use.
+    pub(crate) fn snapshot(&mut self, b: &Brep) -> &mut Brep {
+        self.snapshot
+            .get_or_insert_with(|| b.clone_sharing_surface_caches())
+    }
+
+    /// Copy back what the classification's lazy queries left on its snapshot that
+    /// upstream keeps on the face's B-rep: the gap caches ([`Self::apply_gap_updates`]),
+    /// the edge uses' UV trim curves and the edge and vertex tolerances
+    /// `SetUVTrimCurve` raised to fit them.
+    pub(crate) fn apply_uv_trim_updates(self, b: &mut Brep) -> Result<()> {
+        if let Some(snapshot) = &self.snapshot {
+            for (id, eu) in snapshot.edgeuses().iter() {
+                if b.edgeuse(id)?.uv_trim_curve.is_none() && eu.uv_trim_curve.is_some() {
+                    b.edgeuse_mut(id)?
+                        .uv_trim_curve
+                        .clone_from(&eu.uv_trim_curve);
+                }
+            }
+            for (id, e) in snapshot.edges().iter() {
+                if e.tolerance > b.edge(id)?.tolerance {
+                    b.edge_mut(id)?.tolerance = e.tolerance;
+                }
+            }
+            for (id, v) in snapshot.vertices().iter() {
+                if v.tolerance > b.vertex(id)?.tolerance {
+                    b.vertex_mut(id)?.tolerance = v.tolerance;
+                }
+            }
+        }
+        self.apply_gap_updates(b)
+    }
+
     pub(crate) fn apply_gap_updates(self, b: &mut Brep) -> Result<()> {
         if let Some(snapshot) = self.snapshot {
             for (id, vu) in snapshot.vertexuses().iter() {
@@ -964,25 +1332,24 @@ impl<G: ClassGeometry<O>, O: ClassObject> ClassGeometry<O> for WithVertexFaceGap
     }
 }
 
-/// Resolve stored edge data and its optional gap on this face. The snapshot
-/// retains lazy gap-cache updates without mutating the caller's borrowed B-rep.
+/// Resolve stored edge data and its optional gap on this face, on the face's B-rep
+/// (whose gap cache `GetMaxEdgeFaceGap` fills).
 fn boundary_edge<O: ClassObject>(
     k: &Kernel,
-    b: &mut Brep,
-    objects: &impl CurveOnClassifyObjects<O>,
+    objects: &mut impl CurveOnClassifyBrep<O>,
     face: FaceId,
     edge: EdgeId,
     has_big_gaps: bool,
 ) -> Result<BoundaryEdge<O>> {
     let face_gap = if has_big_gaps {
-        match crate::topology::edge::edgeuse_of_face(b, edge, Some(face))? {
-            Some(eu) => eu1::max_edge_face_gap(k, b, eu, false)?.map(|g| g.gap_3d),
+        match crate::topology::edge::edgeuse_of_face(objects.brep(), edge, Some(face))? {
+            Some(eu) => eu1::max_edge_face_gap(k, objects.brep_mut(), eu, false)?.map(|g| g.gap_3d),
             None => None,
         }
     } else {
         None
     };
-    let record = b.edge(edge)?;
+    let record = objects.brep().edge(edge)?;
     if record.curve.is_none() {
         return Err(SolidError::null_pointer(OP_CURVE));
     }
@@ -995,22 +1362,208 @@ fn boundary_edge<O: ClassObject>(
     })
 }
 
-/// The caller's classification geometry plus the UV trim curves the classification
-/// made on its private B-rep snapshot (`trims`: their handles and curves).
+/// The caller's classification objects `inner` over a private copy `snapshot` of the
+/// face's B-rep `brep` (see the module Deviations: a temporary stand-in for callers that
+/// hold only `&Brep`).
+///
+/// The topology hooks forward to the caller's geometry, with `brep`'s entities
+/// resolved in the snapshot (and the snapshot's handles and B-rep id looked up as
+/// `brep`'s), so the topology members the classification calls read the B-rep as
+/// upstream's calls leave it. Through [`ClassGeometryMut`] the face queries of
+/// `ClassifyFaceInterval` edit the snapshot, as upstream's `const` members edit the
+/// face's B-rep. Entities of another B-rep resolve as the caller's geometry resolves
+/// them (read-only). The UV trim curves the classification makes on the snapshot are
+/// unknown to `inner`; they are carried with the classification
+/// ([`CurveOnClassifyBrep::keeps_made_trim`]).
+pub(crate) struct SnapshotObjects<'g, G> {
+    inner: &'g G,
+    brep: &'g Brep,
+    snapshot: &'g mut Brep,
+}
+
+impl<'g, G> SnapshotObjects<'g, G> {
+    /// `inner` over `brep`, classifying on `snapshot` (a copy of `brep` sharing its
+    /// surface caches, [`Brep::clone_sharing_surface_caches`]).
+    pub(crate) fn new(inner: &'g G, brep: &'g Brep, snapshot: &'g mut Brep) -> Self {
+        Self {
+            inner,
+            brep,
+            snapshot,
+        }
+    }
+    /// `b` as the caller's geometry knows it: the snapshot stands for `brep`.
+    fn caller_brep<'a>(&'a self, b: &'a Brep) -> &'a Brep {
+        if core::ptr::eq(b, &raw const *self.snapshot) {
+            self.brep
+        } else {
+            b
+        }
+    }
+    /// An entity the caller's geometry resolved, with `brep`'s moved to the snapshot.
+    fn in_snapshot<'a>(
+        &'a self,
+        r: Option<(&'a Brep, EntityRef)>,
+    ) -> Option<(&'a Brep, EntityRef)> {
+        match r {
+            Some((b, e)) if core::ptr::eq(b, self.brep) => Some((&*self.snapshot, e)),
+            other => other,
+        }
+    }
+}
+
+impl<O: ClassObject, G: ClassGeometry<O>> ClassGeometry<O> for SnapshotObjects<'_, G> {
+    fn curve(&self, o: O) -> Option<&Curve> {
+        self.inner.curve(o)
+    }
+    fn surface(&self, o: O) -> Option<&Surface> {
+        self.inner.surface(o)
+    }
+    fn volume(&self, o: O) -> Option<&crate::surface::volume::Volume> {
+        self.inner.volume(o)
+    }
+    fn point(&self, o: O) -> Option<Point3> {
+        self.inner.point(o)
+    }
+    fn classification_vertex_point(&self, vertex: O) -> Option<Point3> {
+        self.inner.classification_vertex_point(vertex)
+    }
+    fn topology_zone_tol_3d(&self, object: O) -> Option<f64> {
+        // `SmTol::GetZoneTol3d` of an entity of the face's B-rep reads it as the
+        // classification has left it: the trimmed cache it builds on the snapshot
+        // (`smsurf_GetSurfaceCache`, upstream on the face's own B-rep) can raise vertex
+        // and edge tolerances
+        match self.inner.topology_entity(object) {
+            Some((b, e)) if core::ptr::eq(b, self.brep) => {
+                let s: &Brep = self.snapshot;
+                match e {
+                    EntityRef::Vertex(v) => s.vertex(v).ok().map(|v| v.tolerance),
+                    EntityRef::Edge(ed) => s.edge(ed).ok().map(|ed| ed.tolerance),
+                    EntityRef::Face(f) => s.face(f).ok().map(|f| f.tolerance),
+                    _ => self.inner.topology_zone_tol_3d(object),
+                }
+            }
+            _ => self.inner.topology_zone_tol_3d(object),
+        }
+    }
+    fn vertex_face_gap(&self, vertex: O, surface: &Surface, face: Option<O>) -> Option<f64> {
+        self.inner.vertex_face_gap(vertex, surface, face)
+    }
+    fn topology_entity(&self, object: O) -> Option<(&Brep, EntityRef)> {
+        self.in_snapshot(self.inner.topology_entity(object))
+    }
+    fn topology_handle(&self, entity: EntityRef) -> Option<O> {
+        self.inner.topology_handle(entity)
+    }
+    fn topology_handle_in(&self, brep: &Brep, entity: EntityRef) -> Option<O> {
+        self.inner
+            .topology_handle_in(self.caller_brep(brep), entity)
+    }
+    fn topology_intersector_mate(&self, ti: O, entity: O) -> Option<Option<O>> {
+        self.inner.topology_intersector_mate(ti, entity)
+    }
+    fn brep_id(&self, brep: &Brep) -> Option<crate::topology::BrepId> {
+        self.inner.brep_id(self.caller_brep(brep))
+    }
+    fn owner_entity(&self, owner: crate::geom::object::ObjectRef) -> Option<(&Brep, EntityRef)> {
+        self.in_snapshot(self.inner.owner_entity(owner))
+    }
+    fn owner_of(
+        &self,
+        owner: crate::geom::object::ObjectRef,
+    ) -> Option<crate::geom::object::ObjectRef> {
+        self.inner.owner_of(owner)
+    }
+}
+
+impl<O: ClassObject, G: CurveOnClassifyObjects<O>> CurveOnClassifyObjects<O>
+    for SnapshotObjects<'_, G>
+{
+    fn face(&self, f: FaceId) -> O {
+        self.inner.face(f)
+    }
+    fn vertex(&self, v: VertexId) -> O {
+        self.inner.vertex(v)
+    }
+    fn edge(&self, e: EdgeId) -> O {
+        self.inner.edge(e)
+    }
+    fn vertexuse(&self, vu: VertexuseId) -> O {
+        self.inner.vertexuse(vu)
+    }
+    fn edgeuse(&self, eu: EdgeuseId) -> O {
+        self.inner.edgeuse(eu)
+    }
+    fn edge_curve(&self, e: EdgeId) -> O {
+        self.inner.edge_curve(e)
+    }
+    fn trim_curve(&self, eu: EdgeuseId) -> O {
+        self.inner.trim_curve(eu)
+    }
+    fn face_surface(&self, f: FaceId) -> Option<O> {
+        self.inner.face_surface(f)
+    }
+    fn loop_id(&self, tgt_loop: O) -> Option<LoopId> {
+        self.inner.loop_id(tgt_loop)
+    }
+}
+
+impl<O: ClassObject, G: ClassGeometry<O>> ClassGeometryMut<O> for SnapshotObjects<'_, G> {
+    fn curve_mut(&mut self, _o: O) -> Option<&mut Curve> {
+        // the classification curve is the caller's (read-only); ClassifyFaceInterval
+        // does not edit it
+        None
+    }
+    fn topology_entity_mut(&mut self, o: O) -> Option<(&mut Brep, EntityRef)> {
+        match self.inner.topology_entity(o) {
+            Some((b, e)) if core::ptr::eq(b, self.brep) => Some((&mut *self.snapshot, e)),
+            _ => None,
+        }
+    }
+}
+
+impl<G> FaceBrep for SnapshotObjects<'_, G> {
+    fn brep(&self) -> &Brep {
+        self.snapshot
+    }
+}
+
+impl<O: ClassObject, G: CurveOnClassifyObjects<O>> CurveOnClassifyBrep<O>
+    for SnapshotObjects<'_, G>
+{
+    fn brep_mut(&mut self) -> &mut Brep {
+        self.snapshot
+    }
+    fn classify_surface(&self, f: FaceId) -> Result<Option<&Surface>> {
+        // the caller's surface: its handles and gap lookups know that one
+        Ok(self.brep.face(f)?.surface.as_ref())
+    }
+    fn keeps_made_trim(&self, eu: EdgeuseId) -> Result<bool> {
+        Ok(eu1::uv_trim_curve(self.brep, eu)?.0.is_none())
+    }
+}
+
+/// The classification objects `inner` (`&G` or `&mut G`) plus the UV trim curves the
+/// classification made that `inner` cannot resolve (`trims`: their handles and curves;
+/// empty for an adapter over the face's own B-rep).
 ///
 /// `IntersectTSBound`'s `pVertexuse->ComputeUVPoint(sUV)` (SmCurveClass.cpp:15964,
 /// `bOKToMakeUVTrimCurve = TRUE`) makes the missing UV trim curves of the vertex use's
 /// edge use and its predecessor (`NormalizedEvaluate(.., bOKToMakeUVTrimCurve)`,
 /// SmVertexuse.cpp:223-226) on the face's B-rep, so the edge use pass after it
 /// (`pEU->GetUVTrimCurve(); NER(..)`, SmCurveClass.cpp:16092) and the interval
-/// classification see them. The port makes them on the snapshot; their handles
-/// resolve here, the others through the caller's geometry.
-struct WithMadeTrimCurves<'g, O, G> {
-    inner: &'g G,
-    trims: &'g [(O, Curve)],
+/// classification see them.
+///
+/// Every [`ClassGeometry`] and [`ClassGeometryMut`] method must be forwarded to
+/// `inner` here, including any added later.
+struct WithMadeTrimCurves<'t, O, R> {
+    inner: R,
+    trims: &'t [(O, Curve)],
 }
 
-impl<O: ClassObject, G: ClassGeometry<O>> ClassGeometry<O> for WithMadeTrimCurves<'_, O, G> {
+impl<O: ClassObject, R: core::ops::Deref> ClassGeometry<O> for WithMadeTrimCurves<'_, O, R>
+where
+    R::Target: ClassGeometry<O>,
+{
     fn curve(&self, o: O) -> Option<&Curve> {
         match self.trims.iter().find(|(h, _)| *h == o) {
             Some((_, c)) => Some(c),
@@ -1035,6 +1588,24 @@ impl<O: ClassObject, G: ClassGeometry<O>> ClassGeometry<O> for WithMadeTrimCurve
     fn vertex_face_gap(&self, vertex: O, surface: &Surface, face: Option<O>) -> Option<f64> {
         self.inner.vertex_face_gap(vertex, surface, face)
     }
+    fn topology_entity(&self, object: O) -> Option<(&Brep, EntityRef)> {
+        self.inner.topology_entity(object)
+    }
+    fn topology_handle(&self, entity: EntityRef) -> Option<O> {
+        self.inner.topology_handle(entity)
+    }
+    fn topology_handle_in(&self, brep: &Brep, entity: EntityRef) -> Option<O> {
+        self.inner.topology_handle_in(brep, entity)
+    }
+    fn topology_intersector_mate(&self, ti: O, entity: O) -> Option<Option<O>> {
+        self.inner.topology_intersector_mate(ti, entity)
+    }
+    fn brep_id(&self, brep: &Brep) -> Option<crate::topology::BrepId> {
+        self.inner.brep_id(brep)
+    }
+    fn owner_entity(&self, owner: crate::geom::object::ObjectRef) -> Option<(&Brep, EntityRef)> {
+        self.inner.owner_entity(owner)
+    }
     fn owner_of(
         &self,
         owner: crate::geom::object::ObjectRef,
@@ -1043,63 +1614,106 @@ impl<O: ClassObject, G: ClassGeometry<O>> ClassGeometry<O> for WithMadeTrimCurve
     }
 }
 
+impl<O: ClassObject, R: core::ops::DerefMut> ClassGeometryMut<O> for WithMadeTrimCurves<'_, O, R>
+where
+    R::Target: ClassGeometryMut<O>,
+{
+    fn curve_mut(&mut self, o: O) -> Option<&mut Curve> {
+        self.inner.curve_mut(o)
+    }
+    fn topology_entity_mut(&mut self, o: O) -> Option<(&mut Brep, EntityRef)> {
+        self.inner.topology_entity_mut(o)
+    }
+}
+
+/// The start of an `SmTemporaryChangeValue<SmObject*>(pSurface->m_pOwner, NULL)` scope
+/// on the snapshot's face `f`: its surface loses its owner (so `GetFace()` finds no face
+/// and the system zone tolerance applies), recorded on the B-rep
+/// ([`Brep::begin_surface_owner_cleared`]); [`restore_surface_owner`] ends it.
+fn clear_surface_owner(snapshot: &mut Brep, f: FaceId) -> Result<Option<fp2::RescueSurfaceOwner>> {
+    let rescue = snapshot
+        .face(f)?
+        .surface
+        .as_ref()
+        .map(fp2::RescueSurfaceOwner::new);
+    if let Some(s) = snapshot.face_mut(f)?.surface.as_mut() {
+        s.set_owner(None);
+    }
+    snapshot.begin_surface_owner_cleared(f);
+    Ok(rescue)
+}
+
+/// The end of a [`clear_surface_owner`] scope: the owner and face tolerance come back.
+fn restore_surface_owner(
+    snapshot: &mut Brep,
+    f: FaceId,
+    rescue: Option<fp2::RescueSurfaceOwner>,
+) -> Result<()> {
+    snapshot.end_surface_owner_cleared(f);
+    if let (Some(rescue), Some(s)) = (rescue, snapshot.face_mut(f)?.surface.as_mut()) {
+        rescue.restore(s);
+    }
+    snapshot.sync_face_surface_tolerance(f)
+}
+
 /// Build real ordered topology views; only handle identity is caller-specific.
-/// UV computation uses the existing vertexuse port on the private arena `snapshot`;
-/// the UV trim curves it makes (missing from `b`) are added to `made_trims`.
+/// UV computation uses the existing vertexuse port on the face's B-rep; the UV trim
+/// curves it makes that `objects` cannot resolve are added to `made_trims`.
 fn boundary_loops<O: ClassObject>(
     k: &Kernel,
-    b: &Brep,
-    snapshot: &mut Brep,
-    objects: &impl CurveOnClassifyObjects<O>,
+    objects: &mut impl CurveOnClassifyBrep<O>,
     made_trims: &mut Vec<(O, Curve)>,
     face: FaceId,
+    cached: bool,
 ) -> Result<Vec<BoundaryLoop<O>>> {
-    let fu = fp2::upward_faceuse(b, face)?.ok_or(SolidError::null_pointer(OP_CURVE))?;
-    let cached = objects.trim_cache(face).is_some_and(|cache| {
-        let base = cache.base();
-        !base.face_was_modified
-            && base.have_t_surface_cache
-            && base.face_containment_done != FaceContainment::NotDone
-    });
+    let fu =
+        fp2::upward_faceuse(objects.brep(), face)?.ok_or(SolidError::null_pointer(OP_CURVE))?;
+    let loopuses = objects.brep().faceuse(fu)?.loopuses.clone();
     let mut loops = Vec::new();
-    for &lu in &b.faceuse(fu)?.loopuses {
+    for lu in loopuses {
         let mut vertices = Vec::new();
-        for vu in loopuse::vertexuses(b, lu, None)? {
+        for vu in loopuse::vertexuses(objects.brep(), lu, None)? {
             let vu = vu.ok_or(SolidError::null_pointer(OP_CURVE))?;
+            let b = objects.brep();
             let vertex = b
                 .vertexuse(vu)?
                 .vertex
                 .ok_or(SolidError::null_pointer(OP_CURVE))?;
             let record = b.vertex(vertex)?;
+            let (point, zone_tol_3d) = (record.point, record.tolerance);
+            // Cached traversal supplies its own UV only for visited vertices.
+            let uv = if cached {
+                Point2::UNDEF
+            } else {
+                ignored(crate::topology::vertexuse::compute_uv_point(
+                    k,
+                    objects.brep_mut(),
+                    vu,
+                    true,
+                ))?
+                .unwrap_or(Point2::UNDEF)
+            };
             vertices.push(BoundaryVertex {
                 vertexuse: objects.vertexuse(vu),
                 vertex: objects.vertex(vertex),
-                // Cached traversal supplies its own UV only for visited vertices.
-                uv: if cached {
-                    Point2::UNDEF
-                } else {
-                    ignored(crate::topology::vertexuse::compute_uv_point(
-                        k, snapshot, vu, true,
-                    ))?
-                    .unwrap_or(Point2::UNDEF)
-                },
-                point: record.point,
-                zone_tol_3d: record.tolerance,
+                uv,
+                point,
+                zone_tol_3d,
             });
         }
         let mut edges = Vec::new();
-        for eu in loopuse::edgeuses(b, lu, None, None)? {
-            let edge = b
+        for eu in loopuse::edgeuses(objects.brep(), lu, None, None)? {
+            let edge = objects
+                .brep()
                 .edgeuse(eu)?
                 .edge
                 .ok_or(SolidError::null_pointer(OP_CURVE))?;
             // the trim curve as of now: ComputeUVPoint above may have made it
-            let (trim, owner) = eu1::uv_trim_curve(snapshot, eu)?;
+            let (trim, owner) = eu1::uv_trim_curve(objects.brep(), eu)?;
             let trim_curve = match (trim, owner) {
                 (Some(trim), Some(owner)) => {
                     let handle = objects.trim_curve(owner);
-                    if eu1::uv_trim_curve(b, eu)?.0.is_none()
-                        && !made_trims.iter().any(|(h, _)| *h == handle)
+                    if objects.keeps_made_trim(eu)? && !made_trims.iter().any(|(h, _)| *h == handle)
                     {
                         made_trims.push((handle, trim.clone()));
                     }
@@ -1109,7 +1723,7 @@ fn boundary_loops<O: ClassObject>(
             };
             edges.push(BoundaryEdgeuse {
                 edgeuse: objects.edgeuse(eu),
-                edge: boundary_edge(k, snapshot, objects, face, edge, false)?,
+                edge: boundary_edge(k, objects, face, edge, false)?,
                 trim_curve,
             });
         }
@@ -1124,6 +1738,9 @@ fn boundary_loops<O: ClassObject>(
 /// classifies each interval in, out or on the face (by the interval end
 /// classifications, or by point classification with `do_point_classify`). Returns
 /// `pbOptModifiedCurve`: whether the curve was modified and the classification rebuilt.
+///
+/// Runs on a private copy of `b` (module Deviations); callers that can lend the face's
+/// B-rep mutably use [`curve_on_classify_mut`].
 ///
 /// # Errors
 ///
@@ -1157,8 +1774,9 @@ pub fn curve_on_classify<O: ClassObject>(
     )
 }
 
-/// The same classification with explicit query state, shared by the healer's seam
-/// directions and retained even when the classification returns an error.
+/// The same classification with explicit query state (the private copy of `b` it runs
+/// on), shared by the healer's seam directions and retained even when the
+/// classification returns an error.
 #[allow(clippy::fn_params_excessive_bools)] // upstream's SmBoolean arguments
 pub(crate) fn curve_on_classify_cached<O: ClassObject>(
     k: &Kernel,
@@ -1172,14 +1790,44 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
     uv_space_okay: bool,
     cache: &mut CurveOnClassifyCache,
 ) -> Result<bool> {
+    curve_on_classify_mut(
+        k,
+        f,
+        &mut SnapshotObjects::new(objects, b, cache.snapshot(b)),
+        do_point_classify,
+        cc,
+        has_big_gaps,
+        do_check_3d,
+        uv_space_okay,
+    )
+}
+
+/// [`curve_on_classify`] on the face's own B-rep (`objects`' [`FaceBrep::brep`]): the
+/// UV trim curves `ComputeUVPoint` / `GetOrCreateUVTrimCurve` make, the gap caches
+/// `GetVertexFaceGap` / `GetMaxEdgeFaceGap` fill, the trimmed surface cache and the
+/// tolerance growth it brings, and the edits of `ClassifyFaceInterval`'s face queries
+/// stay on that B-rep, made in upstream's order.
+///
+/// # Errors
+///
+/// As [`curve_on_classify`].
+#[allow(clippy::fn_params_excessive_bools)] // upstream's SmBoolean arguments
+pub fn curve_on_classify_mut<O: ClassObject>(
+    k: &Kernel,
+    f: FaceId,
+    objects: &mut impl CurveOnClassifyBrep<O>,
+    do_point_classify: bool,
+    cc: &mut CurveClassification<O>,
+    has_big_gaps: bool,
+    do_check_3d: bool,
+    uv_space_okay: bool,
+) -> Result<bool> {
     // init output
     reset_classification(k, cc)?;
     cc.set_face(Some(objects.face(f)));
     let mut modified = false;
-    // the B-rep as upstream's calls leave it: UV trim curves made by the trim boundary
-    // intersection's ComputeUVPoint calls (see WithMadeTrimCurves) and the vertex/face
-    // gap caches GetVertexFaceGap fills
-    let snapshot = &mut cache.snapshot;
+    // the UV trim curves made by the trim boundary intersection's ComputeUVPoint calls
+    // that `objects` cannot resolve (see WithMadeTrimCurves)
     let mut made_trims: Vec<(O, Curve)> = Vec::new();
 
     // for two iterations to allow the surf/surf/surf intersection heuristic a chance to
@@ -1194,12 +1842,11 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
             reset_classification(k, cc)?;
         }
 
-        let curve = classification_curve(objects, cc)?;
+        let curve = classification_curve(&*objects, cc)?;
         if curve.dim() == 2 {
             // 2D Curve branch - work in surface's uv space directly on the Face's UVcurves
             cc.set_surface1(objects.face_surface(f));
-            let snapshot = snapshot.get_or_insert_with(|| b.clone());
-            match intersect_ts_bound(k, b, snapshot, objects, &mut made_trims, cc, f, do_check_3d) {
+            match intersect_ts_bound(k, objects, &mut made_trims, cc, f, do_check_3d) {
                 Ok(()) => {}
                 Err(e) if e.is_unported() => return Err(e),
                 Err(_) => return Err(SolidError::sm_err(OP_CURVE)),
@@ -1216,25 +1863,33 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
                         .ok_or_else(|| null(OP_CURVE, "unresolvable target loop"))
                 })
                 .collect::<Result<Vec<_>>>()?;
-            let vertices = face_vertices(b, f, cc.tgt_loops_only(), Some(&tgt_loops))?;
-            let surface = b
-                .face(f)?
-                .surface
-                .as_ref()
-                .ok_or_else(|| null(OP_CURVE, "face without surface"))?;
+            let vertices = face_vertices(objects.brep(), f, cc.tgt_loops_only(), Some(&tgt_loops))?;
+            if objects.classify_surface(f)?.is_none() {
+                return Err(null(OP_CURVE, "face without surface"));
+            }
             // bHasBigGaps: each vertex's GetVertexuseOfFace(pFace)->GetVertexFaceGap()
             // (pFace is this face, set on the classification above)
             let gaps = if has_big_gaps {
-                let snapshot = snapshot.get_or_insert_with(|| b.clone());
-                vertices
-                    .iter()
-                    .map(|&v| {
-                        Ok((
-                            objects.vertex(v),
-                            vertex_face_gap_length(k, snapshot, v, f)?,
-                        ))
-                    })
-                    .collect::<Result<Vec<_>>>()?
+                // IntersectVertices reads them with the surface's owner cleared
+                // (SmTemporaryChangeValue on m_pOwner), so a surface cache made for
+                // them is a standalone one
+                let rescue = clear_surface_owner(objects.brep_mut(), f)?;
+                let mut gaps = Ok(Vec::new());
+                for &v in &vertices {
+                    match vertex_face_gap_length(k, objects.brep_mut(), v, f) {
+                        Ok(gap) => {
+                            if let Ok(g) = gaps.as_mut() {
+                                g.push((objects.vertex(v), gap));
+                            }
+                        }
+                        Err(e) => {
+                            gaps = Err(e);
+                            break;
+                        }
+                    }
+                }
+                restore_surface_owner(objects.brep_mut(), f, rescue)?;
+                gaps?
             } else {
                 Vec::new()
             };
@@ -1242,24 +1897,18 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
                 .iter()
                 .map(|&v| objects.vertex(v))
                 .collect::<Vec<_>>();
+            let surface = objects
+                .classify_surface(f)?
+                .ok_or_else(|| null(OP_CURVE, "face without surface"))?;
             let geometry = WithVertexFaceGaps {
-                inner: objects,
+                inner: &*objects,
                 gaps,
             };
             cc.intersect_vertices(k, &geometry, &vertices, surface, has_big_gaps, true)?;
 
             // 2nd intersect face edges with the curve
-            let edges = face_edges(b, f, cc.tgt_loops_only(), Some(&tgt_loops))?;
-            intersect_edges(
-                k,
-                b,
-                snapshot.get_or_insert_with(|| b.clone()),
-                objects,
-                cc,
-                &edges,
-                f,
-                has_big_gaps,
-            )?;
+            let edges = face_edges(objects.brep(), f, cc.tgt_loops_only(), Some(&tgt_loops))?;
+            intersect_edges(k, objects, cc, &edges, f, has_big_gaps)?;
         }
     }
 
@@ -1267,7 +1916,7 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
     let src_zone_tol_3d = src_zone_tol_3d_of(k, Some(cc));
     let face_handle = objects.face(f);
     for ii in 0..cc.size() {
-        let degenerate = classification_curve(objects, cc)?.is_degenerate(k, EFF_ZERO, None)?;
+        let degenerate = classification_curve(&*objects, cc)?.is_degenerate(k, EFF_ZERO, None)?;
         let ivl = cc.at_mut(ii)?;
 
         // set Face_BackPtr and SrcZoneTol3d values in interval's PointClassifications
@@ -1292,10 +1941,10 @@ pub(crate) fn curve_on_classify_cached<O: ClassObject>(
 
         // classify the interval - avoiding point classification if possible
         if ivl.mid.point_class() == PointClassType::Unknown {
-            cc.classify_face_interval(
+            cc.classify_face_interval_mut(
                 k,
-                &WithMadeTrimCurves {
-                    inner: objects,
+                &mut WithMadeTrimCurves {
+                    inner: &mut *objects,
                     trims: made_trims.as_slice(),
                 },
                 ii,
@@ -1325,45 +1974,151 @@ fn reset_classification<O: ClassObject>(k: &Kernel, cc: &mut CurveClassification
     cc.reset(k, &ResetOptions::default())
 }
 
-/// `SmCurveClassification::IntersectTSBound(this, bDoCheck3d)`, on the private
-/// `snapshot` of `b` (see [`WithMadeTrimCurves`]).
-#[allow(clippy::too_many_arguments)]
+/// `SmCurveClassification::IntersectTSBound(this, bDoCheck3d)`, on the face's B-rep
+/// (see [`WithMadeTrimCurves`]).
 fn intersect_ts_bound<O: ClassObject>(
     k: &Kernel,
-    b: &Brep,
-    snapshot: &mut Brep,
-    objects: &impl CurveOnClassifyObjects<O>,
+    objects: &mut impl CurveOnClassifyBrep<O>,
     made_trims: &mut Vec<(O, Curve)>,
     cc: &mut CurveClassification<O>,
     face: FaceId,
     do_check_3d: bool,
 ) -> Result<()> {
-    let surface = b
-        .face(face)?
-        .surface
-        .as_ref()
-        .ok_or(SolidError::null_pointer(OP_CURVE))?;
-    let loops = boundary_loops(k, b, snapshot, objects, made_trims, face)?;
-    let fresh;
-    let cache = if let Some(cache) = objects.trim_cache(face) {
-        cache
-    } else {
-        fresh = TrimSrfCache::new(surface.clone(), SurfaceCacheOptions::default());
-        &fresh
-    };
-    cc.intersect_ts_bound(
-        k,
-        &WithMadeTrimCurves {
-            inner: objects,
-            trims: made_trims.as_slice(),
-        },
-        &BoundaryFace {
+    if objects.classify_surface(face)?.is_none() {
+        return Err(SolidError::null_pointer(OP_CURVE));
+    }
+    // Face->surface and TrimCache: smsurf_GetSurfaceCache(pSurface) (made on the
+    // face's B-rep); NER of a surface cache that is not a trimmed one
+    let lease = face_surface_cache(k, objects.brep_mut(), face)?;
+    if !lease.trimmed {
+        lease.release();
+        return Err(SolidError::null_pointer(OP_CURVE));
+    }
+    // the cached branch reads the vertex uses' UV points from the cache
+    let base = lease.cache.base();
+    let cached = !base.face_was_modified
+        && base.have_t_surface_cache
+        && base.face_containment_done != FaceContainment::NotDone;
+    let result = boundary_loops(k, objects, made_trims, face, cached).and_then(|loops| {
+        let visits = {
+            let surface = objects
+                .classify_surface(face)?
+                .ok_or(SolidError::null_pointer(OP_CURVE))?;
+            let objects_r = &*objects;
+            let cache_handle = |h: EntityRef| match h {
+                EntityRef::Vertexuse(vu) => Some(objects_r.vertexuse(vu)),
+                EntityRef::Edgeuse(eu) => Some(objects_r.edgeuse(eu)),
+                _ => None,
+            };
+            let boundary = BoundaryFace {
+                surface,
+                loops: &loops,
+                cache: &lease.cache,
+                cache_handle: &cache_handle,
+            };
+            let geometry = WithMadeTrimCurves {
+                inner: objects_r,
+                trims: made_trims.as_slice(),
+            };
+            match cc.ts_bound_cached_visits(k, &geometry, &boundary)? {
+                // no up-to-date trimmed cache: every vertex use and edge use of the face
+                None => return cc.intersect_ts_bound(k, &geometry, &boundary, do_check_3d),
+                // no work - curve is outside of the domain of the surface
+                Some(visits) if visits.no_nodes => return Ok(()),
+                Some(visits) => visits,
+            }
+        };
+        cached_ts_bound(k, objects, made_trims, cc, face, visits, do_check_3d)
+    });
+    lease.release();
+    result
+}
+
+/// The traversals of `IntersectTSBound`'s up-to-date trimmed cache branch, under its
+/// context mark (`SmNewMarkAndLock`): the vertex uses, then the edge uses, whose
+/// `GetOrCreateUVTrimCurve` makes a missing UV trim curve on the face's B-rep (status
+/// ignored, `SE`) and whose edge tolerance is read when it is visited.
+fn cached_ts_bound<O: ClassObject>(
+    k: &Kernel,
+    objects: &mut impl CurveOnClassifyBrep<O>,
+    made_trims: &mut Vec<(O, Curve)>,
+    cc: &mut CurveClassification<O>,
+    face: FaceId,
+    visits: crate::intersect::curve_class::p9::CachedVisits<O>,
+    do_check_3d: bool,
+) -> Result<()> {
+    // the face's edge uses behind the handles
+    let b = objects.brep();
+    let fu = fp2::upward_faceuse(b, face)?.ok_or(SolidError::null_pointer(OP_CURVE))?;
+    let mut ids = Vec::new();
+    for &lu in &b.faceuse(fu)?.loopuses {
+        for eu in loopuse::edgeuses(b, lu, None, None)? {
+            let edge = b
+                .edgeuse(eu)?
+                .edge
+                .ok_or(SolidError::null_pointer(OP_CURVE))?;
+            ids.push((objects.edgeuse(eu), eu, edge));
+        }
+    }
+
+    // increment the mark on the context by 1
+    let _mark_lock = k.context.claim_mark(crate::geom::context::ALL_MARKS);
+    for vertex in visits.vertices {
+        let surface = objects
+            .classify_surface(face)?
+            .ok_or(SolidError::null_pointer(OP_CURVE))?;
+        cc.ts_bound_vertex(
+            k,
+            &WithMadeTrimCurves {
+                inner: &*objects,
+                trims: made_trims.as_slice(),
+            },
             surface,
-            loops: &loops,
-            cache,
-        },
-        do_check_3d,
-    )
+            vertex,
+            do_check_3d,
+        )?;
+    }
+    for mut edgeuse in visits.edgeuses {
+        let &(_, eu, edge) = ids
+            .iter()
+            .find(|(h, _, _)| *h == edgeuse.edgeuse)
+            .ok_or(SolidError::null_pointer(OP_CURVE))?;
+        // get/create the UVCurve for this Edgeuse
+        if edgeuse.trim_curve.is_none() {
+            let fetch = crate::topology::edgeuse::p3::get_or_create_uv_trim_curve(
+                k,
+                objects.brep_mut(),
+                eu,
+                false,
+                false,
+                true,
+            )?;
+            // SE: a failed status is only reported
+            let _ = fetch.status;
+            if let (Some(trim), Some(owner)) = eu1::uv_trim_curve(objects.brep(), eu)? {
+                let handle = objects.trim_curve(owner);
+                if objects.keeps_made_trim(eu)? && !made_trims.iter().any(|(h, _)| *h == handle) {
+                    made_trims.push((handle, trim.clone()));
+                }
+                edgeuse.trim_curve = Some(handle);
+            }
+        }
+        // SmTol::GetZoneTol3d(pE) as it is now
+        edgeuse.edge = boundary_edge(k, objects, face, edge, false)?;
+        let surface = objects
+            .classify_surface(face)?
+            .ok_or(SolidError::null_pointer(OP_CURVE))?;
+        cc.ts_bound_edgeuse(
+            k,
+            &WithMadeTrimCurves {
+                inner: &*objects,
+                trims: made_trims.as_slice(),
+            },
+            surface,
+            edgeuse,
+        )?;
+    }
+    Ok(())
 }
 
 /// `SmFace::GetEdges(SmTArray&, NULL, bTgtLoopsOnly, pOptTgtLoops)`.
@@ -1376,29 +2131,44 @@ fn face_edges(
     crate::topology::face::p4::edges(b, f, None, tgt_loops_only, tgt_loops)
 }
 
-/// `SmCurveClassification::IntersectEdges(edges, *this, bHasBigGaps)`.
+/// `SmCurveClassification::IntersectEdges(edges, *this, bHasBigGaps)`, its gap reads on
+/// the face's B-rep.
 fn intersect_edges<O: ClassObject>(
     k: &Kernel,
-    b: &Brep,
-    snapshot: &mut Brep,
-    objects: &impl CurveOnClassifyObjects<O>,
+    objects: &mut impl CurveOnClassifyBrep<O>,
     cc: &mut CurveClassification<O>,
     edges: &[EdgeId],
     face: FaceId,
     has_big_gaps: bool,
 ) -> Result<()> {
-    let surface = b
-        .face(face)?
-        .surface
-        .as_ref()
+    if objects.classify_surface(face)?.is_none() {
+        return Err(SolidError::null_pointer(OP_CURVE));
+    }
+    // IntersectEdges reads the edge/face gaps with the surface's owner cleared
+    // (SmTemporaryChangeValue on m_pOwner)
+    let rescue = clear_surface_owner(objects.brep_mut(), face)?;
+    let mut views = Ok(Vec::new());
+    for &edge in edges {
+        match boundary_edge(k, objects, face, edge, has_big_gaps) {
+            Ok(view) => {
+                if let Ok(v) = views.as_mut() {
+                    v.push(view);
+                }
+            }
+            Err(e) => {
+                views = Err(e);
+                break;
+            }
+        }
+    }
+    restore_surface_owner(objects.brep_mut(), face, rescue)?;
+    let views = views?;
+    let surface = objects
+        .classify_surface(face)?
         .ok_or(SolidError::null_pointer(OP_CURVE))?;
-    let views = edges
-        .iter()
-        .map(|&edge| boundary_edge(k, snapshot, objects, face, edge, has_big_gaps))
-        .collect::<Result<Vec<_>>>()?;
     cc.intersect_edges(
         k,
-        objects,
+        &*objects,
         &views,
         surface,
         IntersectEdgesOptions {
@@ -1570,6 +2340,97 @@ pub(crate) mod tests {
         assert_eq!(pc.object(), Some(EntityRef::Face(f)));
         assert_eq!(pc.uv_param(), Point2::new(0.25, 0.5));
         assert_eq!(pc.src_zone_tol_3d(), 1e-6);
+    }
+
+    #[test]
+    fn face_surface_cache_is_kept_on_the_surface_and_reused() {
+        let k = Kernel::default();
+        let mut b = Brep::new();
+        let f = square(&mut b);
+        let surface = || b.face(f).unwrap().surface.as_ref().unwrap();
+        assert!(!surface().has_trim_cache());
+
+        // the first lookup makes the cache and keeps it on the surface
+        let mut lease = face_surface_cache(&k, &mut b, f).unwrap();
+        assert!(lease.trimmed);
+        let surface = b.face(f).unwrap().surface.as_ref().unwrap();
+        assert!(surface.trim_cache_in_use());
+        // a lookup while it is in use gets a cache that is not kept
+        let nested = face_surface_cache(&k, &mut b, f).unwrap();
+        assert!(!nested.kept);
+        nested.release();
+        // a later lookup finds the same object, with what its use did to it
+        lease.cache.base_mut().process_boundary_curves = true;
+        let flag_before = lease.cache.base().point_test_enabled;
+        lease.cache.base_mut().point_test_enabled = !flag_before;
+        lease.release();
+        let surface = b.face(f).unwrap().surface.as_ref().unwrap();
+        assert!(surface.has_trim_cache() && !surface.trim_cache_in_use());
+        let mut lease = face_surface_cache(&k, &mut b, f).unwrap();
+        assert!(lease.kept);
+        assert_eq!(lease.cache.base().point_test_enabled, !flag_before);
+
+        // a modified face while its B-rep is edited: still reused
+        lease.cache.base_mut().face_was_modified = true;
+        lease.release();
+        b.set_editing_enabled(true);
+        let lease = face_surface_cache(&k, &mut b, f).unwrap();
+        assert!(lease.cache.base().face_was_modified);
+        lease.release();
+        // editing over: deleted and made again
+        b.set_editing_enabled(false);
+        let lease = face_surface_cache(&k, &mut b, f).unwrap();
+        assert!(!lease.cache.base().face_was_modified);
+        assert_eq!(lease.cache.base().point_test_enabled, flag_before);
+        lease.release();
+
+        // a pre-edit notification marks the kept cache modified, also while in use
+        let surface = b.face(f).unwrap().surface.as_ref().unwrap();
+        surface.mark_trim_cache_face_modified();
+        let lease = face_surface_cache(&k, &mut b, f).unwrap();
+        // (editing is off: the modified cache was made again)
+        assert!(!lease.cache.base().face_was_modified);
+        b.face(f)
+            .unwrap()
+            .surface
+            .as_ref()
+            .unwrap()
+            .mark_trim_cache_face_modified();
+        lease.release();
+        b.set_editing_enabled(true);
+        let lease = face_surface_cache(&k, &mut b, f).unwrap();
+        assert!(lease.cache.base().face_was_modified);
+        lease.release();
+    }
+
+    #[test]
+    fn a_cache_made_while_the_owner_is_cleared_is_standalone_and_kept() {
+        let k = Kernel::default();
+        let mut b = Brep::new();
+        let f = square(&mut b);
+        b.begin_surface_owner_cleared(f);
+        let lease = face_surface_cache(&k, &mut b, f).unwrap();
+        assert!(lease.kept && !lease.cache.base().have_t_surface_cache);
+        lease.release();
+        b.end_surface_owner_cleared(f);
+        // reused as it is: no face data, so IntersectTSBound walks the loop uses
+        let lease = face_surface_cache(&k, &mut b, f).unwrap();
+        assert!(lease.kept && !lease.cache.base().have_t_surface_cache);
+        lease.release();
+    }
+
+    #[test]
+    fn a_classification_snapshot_shares_the_surface_caches() {
+        let mut b = Brep::new();
+        let f = square(&mut b);
+        let snapshot = b.clone_sharing_surface_caches();
+        let original = b.face(f).unwrap().surface.as_ref().unwrap();
+        let copy = snapshot.face(f).unwrap().surface.as_ref().unwrap();
+        assert!(copy.shares_cache_slot_with(original));
+        // a plain copy (the copy constructor) does not
+        let plain = b.clone();
+        let copy = plain.face(f).unwrap().surface.as_ref().unwrap();
+        assert!(!copy.shares_cache_slot_with(original));
     }
 
     #[test]
@@ -1790,7 +2651,6 @@ pub(crate) mod tests {
     struct Handles<'a> {
         b: &'a Brep,
         source: Curve,
-        cache: Option<TrimSrfCache<Handle>>,
     }
     impl ClassGeometry<Handle> for Handles<'_> {
         fn curve(&self, h: Handle) -> Option<&Curve> {
@@ -1852,9 +2712,6 @@ pub(crate) mod tests {
         fn loop_id(&self, _: Handle) -> Option<LoopId> {
             None
         }
-        fn trim_cache(&self, _: FaceId) -> Option<&TrimSrfCache<Handle>> {
-            self.cache.as_ref()
-        }
     }
 
     fn with_same_face_sibling(b: &mut Brep) -> (FaceId, VertexuseId) {
@@ -1892,7 +2749,6 @@ pub(crate) mod tests {
         let objects = Handles {
             b: &b,
             source: Curve::from(Line::from_points(Vec3::ZERO, Vec3::X, 3)),
-            cache: None,
         };
         let mut cc = CurveClassification::with_curve_interval(
             &k,
@@ -1985,14 +2841,22 @@ pub(crate) mod tests {
             LoopuseStart::Vertexuse(Some(VertexuseId::from_index(0)));
         let objects = Handles {
             b: &b,
-            cache: None,
+
             source: Curve::from(Line::from_points(
                 Point3::new(0.2, 1.5, 0.),
                 Point3::new(0.8, 1.5, 0.),
                 2,
             )),
         };
-        let loops = boundary_loops(&k, &b, &mut b.clone(), &objects, &mut Vec::new(), f).unwrap();
+        let mut copy = b.clone();
+        let loops = boundary_loops(
+            &k,
+            &mut SnapshotObjects::new(&objects, &b, &mut copy),
+            &mut Vec::new(),
+            f,
+            false,
+        )
+        .unwrap();
         assert_eq!(loops.len(), 1);
         assert_eq!(loops[0].vertices.len(), 1);
         assert!(loops[0].edges.is_empty());
@@ -2010,9 +2874,7 @@ pub(crate) mod tests {
         let mut made = Vec::new();
         intersect_ts_bound(
             &k,
-            &b,
-            &mut snapshot,
-            &objects,
+            &mut SnapshotObjects::new(&objects, &b, &mut snapshot),
             &mut made,
             &mut cc,
             f,
@@ -2022,18 +2884,17 @@ pub(crate) mod tests {
         assert_eq!(cc.size(), 1);
         let objects = Handles {
             b: &b,
-            cache: None,
+
             source: Curve::from(Line::from_points(
                 Point3::new(0.2, 0.5, 2.),
                 Point3::new(0.8, 0.5, 2.),
                 3,
             )),
         };
+        let mut copy = b.clone();
         intersect_edges(
             &k,
-            &b,
-            &mut b.clone(),
-            &objects,
+            &mut SnapshotObjects::new(&objects, &b, &mut copy),
             &mut cc,
             &[EdgeId::from_index(0)],
             f,
@@ -2047,19 +2908,19 @@ pub(crate) mod tests {
         let k = Kernel::default();
         let mut b = Brep::new();
         let f = square(&mut b);
-        let mut cache = TrimSrfCache::new(
-            b.face(f).unwrap().surface.clone().unwrap(),
-            SurfaceCacheOptions::default(),
-        );
-        cache.base_mut().have_t_surface_cache = true;
-        cache.base_mut().face_was_modified = false;
-        cache.base_mut().face_containment_done = FaceContainment::Done;
         let objects = Handles {
             b: &b,
-            cache: Some(cache),
             source: Curve::from(Line::from_points(Vec3::ZERO, Vec3::X, 2)),
         };
-        let loops = boundary_loops(&k, &b, &mut b.clone(), &objects, &mut Vec::new(), f).unwrap();
+        let mut copy = b.clone();
+        let loops = boundary_loops(
+            &k,
+            &mut SnapshotObjects::new(&objects, &b, &mut copy),
+            &mut Vec::new(),
+            f,
+            true,
+        )
+        .unwrap();
         assert_eq!(loops[0].vertices.len(), 4);
         assert_eq!(loops[0].edges.len(), 4);
         for eu in &loops[0].edges {

@@ -281,13 +281,13 @@ fn status<T>(r: Result<T>) -> Result<Option<T>> {
 
 /// `smsurf_GetSurfaceCache(pSurface)` of the surface of face `f` (`NER`), as
 /// `EvaluateBinormal` calls it before clearing the surface's owner: the face's trimmed
-/// surface cache, whose construction attaches a UV trim curve to every edge use of the
-/// face (`SmFace::CreateUVTrimCurves`, `SmTrimSrfCache.cpp:209`), built over the B-rep
-/// ([`crate::query::face::p2::face_surface_cache`]). The cache itself is not kept (the
-/// Rust surface solvers build their own); only its side effect on the face is.
+/// surface cache, kept on the surface, whose construction (when the surface has none
+/// yet) attaches a UV trim curve to every edge use of the face
+/// (`SmFace::CreateUVTrimCurves`, `SmTrimSrfCache.cpp:209`), built over the B-rep
+/// ([`crate::query::face::p2::face_surface_cache`]). The Rust surface solve that
+/// follows builds its own cache; only the face's and the surface's state is kept.
 fn face_surface_cache(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<()> {
-    crate::query::face::p2::face_surface_cache(k, b, f, Some(crate::error::EntityRef::Face(f)))
-        .map(|_| ())
+    crate::query::face::p2::note_face_surface_cache(k, b, f)
 }
 
 /// `pEdge->SetTolerance(tolerance)` (default arguments).
@@ -1088,6 +1088,11 @@ fn finish(
 
 /// Trims the UV trim curves of the edge's other edge uses to `new_ivl` (their statuses
 /// are ignored; the snapped interval carries over from one to the next).
+///
+/// Upstream `SmBSplineCurve::Trim` reads `SmTol::GetZoneTol3d(this)`, which walks an
+/// attached UV trim curve's `SmEdgeuse` owner to `e` and returns `pEdge->GetTolerance()`
+/// (`SM_USE_OLDTOL`), rather than the system zone tolerance that owner-less
+/// [`Curve::trim`] reads from `k` (as in `sm_TrimRail`, `blend::fillet_solver::p1`).
 fn trim_other_uv_curves(
     k: &Kernel,
     b: &mut Brep,
@@ -1095,6 +1100,14 @@ fn trim_other_uv_curves(
     this: EdgeuseId,
     new_ivl: &mut Extent1d,
 ) -> Result<()> {
+    let mut tk = Kernel::new(&crate::kernel::KernelOptions {
+        tolerances: crate::kernel::Tolerances {
+            zone_tol_3d: crate::geom::tol::zone_tol3d(k, crate::topology::edge::tolerance(b, e)?),
+            ..k.tolerances
+        },
+        ..crate::kernel::KernelOptions::default()
+    });
+    tk.rng = k.rng.clone();
     for x in crate::topology::edge::edgeuses(b, e, None, None)? {
         if x == this {
             continue;
@@ -1104,7 +1117,7 @@ fn trim_other_uv_curves(
         }
         if let Some(c) = b.edgeuse_mut(x)?.uv_trim_curve.as_mut() {
             // may snap sIvl by tol to existing knots
-            let _ = ignored(c.trim(k, new_ivl, TrimMode::Notify))?;
+            let _ = ignored(c.trim(&tk, new_ivl, TrimMode::Notify))?;
         }
     }
     Ok(())
@@ -1841,14 +1854,15 @@ pub fn evaluate_binormal_uv(
         .ok_or_else(|| null("EvaluateBinormal: edge use without face"))?;
     let face_rec = b.face(f)?;
     let face_surface = {
-        let live = face_rec
+        // `SmEdgeuse::EvaluateBinormal` holds `pFace->GetSurface()` directly
+        // (`SmEdgeuse.cpp:2875`), so the evaluation snapshot must retain the live
+        // surface's owner, exact NURBS and shared cache slot instead of running
+        // `Surface`'s copy constructor.
+        face_rec
             .surface
             .as_ref()
-            .ok_or_else(|| null("EvaluateBinormal: face without surface"))?;
-        // (a copy that keeps the face's owner: the copy constructor resets it)
-        let mut copy = live.clone();
-        copy.set_owner(live.owner());
-        copy
+            .ok_or_else(|| null("EvaluateBinormal: face without surface"))?
+            .clone_for_evaluation()?
     };
     let domain = face_rec.uv_domain;
     let face_uv_orientation = {

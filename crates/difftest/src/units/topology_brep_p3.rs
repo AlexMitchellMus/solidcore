@@ -17,7 +17,9 @@
 //! on the Rust side), whose objects the Rust side notifies under identities of their
 //! own ([`source_key_of`]). `DeleteFace` always passes a deleted list
 //! (`pOptDeletedEdgesVertices`); the header default `NULL` only skips its `Add`s and
-//! is not compared.
+//! is not compared. `CopyVertices` also appends the source and existing destination
+//! vertex coordinates before/after copying, then the returned vertices' destination
+//! walk indices and coordinates in returned order.
 //!
 //! `Orient` outputs three values ([`split_orient`]): `out` (status, flag, face domains
 //! and upward face uses, counts), `swapped` (each face's `SmFace::SwapUV` `POST_EDIT`
@@ -443,6 +445,9 @@ fn rust_brep(path: &str, h: &[f64], c: &[usize; 10]) -> Result<Brep, HarnessErro
                 let _ = surface.set_owner(Some(arena_identity(CacheObject::Face(id))));
             }
         }
+        // the face's tolerance, as the face upstream answers GetTolerance with
+        b.sync_face_surface_tolerance(id)
+            .map_err(|e| harness(e.to_string()))?;
     }
     // the shared import leaves `m_pFU` unset: the face's upward (SAME) face use
     let ups: Vec<(FaceId, FaceuseId)> = b
@@ -1248,11 +1253,6 @@ fn run_rust_op(
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         out.extend(destroyed.iter().map(|&n| n as f64));
     }
-    if matches!(op, OpIn::TurnNurbs | OpIn::TurnNurbsOffset { .. }) {
-        // (where the tracker's values start, for `geometry_edit_deferral`; taken off
-        // again by `run_rust`, the shim writes no trailer)
-        out.push(tracker_at as f64);
-    }
     if matches!(op, OpIn::Orient { .. }) {
         // the shim's trailer: each pre-op face's SmFace::SwapUV POST_EDIT count, the
         // face count and where the tracker's values start (see split_orient)
@@ -1380,14 +1380,30 @@ fn run_rust_op_in(
         }
         OpIn::CopyVertices { .. } => {
             let dst = second.ok_or_else(|| Fail::Harness(harness("no second B-rep")))?;
+            let source = must(bp1::vertices(b, None))?;
+            let existing = must(bp1::vertices(dst, None))?;
+            let mut geometry = Vec::new();
+            put_vertex_points(&mut geometry, b, &source)?;
+            put_vertex_points(&mut geometry, dst, &existing)?;
             let n = arg(0)? as usize;
             let vs: Vec<VertexId> = (0..n)
                 .map(|j| arg(1 + j).map(|x| VertexId::from_index(x as u32)))
                 .collect::<Result<_, _>>()?;
             let (s, r) = status(bp3::copy_vertices(k, b, &vs, dst, &mut env, &source_key_of))?;
             out.push(s);
-            out.push(r.map_or(0.0, |x| x.len() as f64));
+            out.push(r.as_ref().map_or(0.0, |x| x.len() as f64));
             put_counts(&mut out, dst)?;
+            put_vertex_points(&mut geometry, b, &source)?;
+            put_vertex_points(&mut geometry, dst, &existing)?;
+            let copied = r.unwrap_or_default();
+            let post = walk(dst)?;
+            geometry.push(copied.len() as f64);
+            for v in copied {
+                geometry.push(post.find(9, Some(v.index())));
+                let p = must(solidcore::topology::vertex::point(dst, v))?;
+                geometry.extend([p.x, p.y, p.z]);
+            }
+            out.extend(geometry);
         }
         OpIn::DeleteFace { .. } => {
             let f = FaceId::from_index(arg(0)? as u32);
@@ -1516,6 +1532,15 @@ fn run_rust_op_in(
     Ok(out)
 }
 
+fn put_vertex_points(o: &mut Vec<f64>, b: &Brep, vertices: &[VertexId]) -> Result<(), Fail> {
+    o.push(vertices.len() as f64);
+    for &v in vertices {
+        let p = must(solidcore::topology::vertex::point(b, v))?;
+        o.extend([p.x, p.y, p.z]);
+    }
+    Ok(())
+}
+
 fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     let mut k = Kernel::default();
     if standalone(&i.op) {
@@ -1543,63 +1568,10 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     };
     match run_rust_op(&mut k, &mut b, second.as_mut(), &i.op, &args) {
         Ok(out) if matches!(i.op, OpIn::Orient { .. }) => Ok(split_orient(out)),
-        Ok(mut out) if matches!(i.op, OpIn::TurnNurbs | OpIn::TurnNurbsOffset { .. }) => {
-            let tracker_at = out.pop().map_or(usize::MAX, |x| x as usize);
-            if let Some(o) = geometry_edit_deferral(i, tracker_at)? {
-                return Ok(o);
-            }
-            Ok(Output::new().values("out", out))
-        }
         Ok(out) => Ok(Output::new().values("out", out)),
         Err(Fail::Deferred(o)) => Ok(*o),
         Err(Fail::Harness(e)) => Err(e),
     }
-}
-
-/// `TurnToNURBS` notifies the geometry it edits (`SmCurve` / `SmSurface`
-/// `Notify(SM_NO_PRE_EDIT / SM_NO_POST_EDIT, this, owner, NULL)`, e.g. on the curves
-/// `CreateUVTrimCurves` builds), which the tracker records (and, through the
-/// geometry's owner, turns into a `Chg` of its edge or face). The port's geometry types
-/// send no edit notifications, so a case whose C++ tracker shows one cannot agree on the
-/// tracker: it is deferred (`plan/findings.md`, `topology.brep_p3` "geometry edit
-/// notifications"). The C++ tracker is read where the Rust one starts (`tracker_at`);
-/// when it does not parse there the outputs differ before the tracker and the case is
-/// compared (and fails) as usual.
-fn geometry_edit_deferral(i: &Inputs, tracker_at: usize) -> Result<Option<Output>, HarnessError> {
-    let cpp = run_cpp(i)?;
-    let Some(v) = cpp.values.get("out") else {
-        return Ok(None);
-    };
-    let Some(mut rest) = v.get(tracker_at..) else {
-        return Ok(None);
-    };
-    // the Rm / Add / Chg lists: a count, then two values per entry
-    for _ in 0..3 {
-        let Some((&n, tail)) = rest.split_first() else {
-            return Ok(None);
-        };
-        let Some(tail) = tail.get(2 * (n as usize)..) else {
-            return Ok(None);
-        };
-        rest = tail;
-    }
-    // the events: a count, then the operation and four (code, index) pairs each
-    let Some((&n, events)) = rest.split_first() else {
-        return Ok(None);
-    };
-    if events.len() != 9 * (n as usize) {
-        return Ok(None);
-    }
-    let edits_geometry = events.chunks(9).any(|e| {
-        matches!(e.first(), Some(&op) if op == 10.0 || op == 11.0)
-            && matches!(e.get(1), Some(&code) if code == -20.0 || code == -21.0 || code == -30.0)
-    });
-    Ok(edits_geometry.then(|| {
-        Output::deferred(
-            "unmodelled:geometry-edit-notify",
-            "SmCurve/SmSurface::Notify(SM_NO_PRE_EDIT/SM_NO_POST_EDIT)",
-        )
-    }))
 }
 
 // ---- generation ---------------------------------------------------------------------------
@@ -1756,6 +1728,33 @@ impl UnitDiff for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_vertices_observes_returned_geometry_and_order() {
+        let i: Inputs = serde_json::from_value(serde_json::json!({
+            "brep": { "kind": "wire", "curve": { "dim": 3, "p": 1,
+                "cpts": [[2, -3, 5, 1], [7, 11, -13, 1]], "u": [0, 0, 1, 1] },
+                "t0": 0, "t1": 1 },
+            "editing": -1, "op": "copy_vertices", "vertices": [1, 0, 1]
+        }))
+        .unwrap();
+        let cpp = run_cpp(&i).unwrap();
+        let mut rust = run_rust(&i).unwrap();
+        assert!(crate::compare::compare(&cpp, &rust, &[]).pass());
+        let out = rust.values.get_mut("out").unwrap();
+        let tail = &out[out.len() - 13..];
+        assert_eq!(tail[0], 3.0);
+        assert_eq!(&tail[2..5], &[7.0, 11.0, -13.0]);
+        assert_eq!(&tail[6..9], &[2.0, -3.0, 5.0]);
+        assert_eq!(&tail[10..13], &[7.0, 11.0, -13.0]);
+        assert_ne!(
+            tail[1], tail[9],
+            "repeated input must yield distinct copies"
+        );
+        // A wrong copied coordinate must fail independently of counts and graph.
+        *out.last_mut().unwrap() += 1.0;
+        assert!(!crate::compare::compare(&cpp, &rust, &[]).pass());
+    }
 
     /// Classifies the passing cases of the committed report by op and C++ status
     /// (`out[0]` the build status, `out[1]` the op's), the split the PR and the

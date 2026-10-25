@@ -17,11 +17,12 @@
 //! and UVs can be given relative to the target (a fraction of an edge's interval or of a
 //! face's surface domain); both sides get the resolved values.
 //!
-//! An op that evaluates a target face surface or edge curve of an analytic kind (cone,
-//! cylinder, torus, sphere, surface of revolution or extrusion; ellipse, circle and the
-//! other analytic curves) is deferred under `harness:analytic-geometry-export`: the
-//! shared B-rep export carries those as their B-spline part, so the Rust side would
-//! evaluate different geometry (`plan/findings.md`).
+//! Analytic target geometry the shared B-rep export carries exactly (cone, cylinder,
+//! sphere, torus, surfaces of revolution and extrusion rebuilt from their upstream
+//! database record; lossless ellipses and circles) is compared as its own kind, through
+//! `ImportTypes::inexact_surface` / `inexact_curve`. An op that evaluates a face surface
+//! or edge curve the import still holds only as its B-spline part is deferred under
+//! `harness:analytic-geometry-export` (`plan/findings.md`).
 //!
 //! `SmFilletGeom::TrimOriginalSurfaces` is not compared: it needs a fillet B-rep and the
 //! executive's topology intersector mates the shim does not build; its Rust port is
@@ -515,20 +516,19 @@ impl Target {
         self.counts[9]
     }
 
-    /// Whether target face `f`'s surface is imported exactly.
+    /// Whether target face `f`'s surface is imported exactly (a plane, a B-spline surface
+    /// or an analytic surface rebuilt from its upstream database record).
     fn exact_face(&self, f: Option<FaceId>) -> bool {
-        f.and_then(|f| {
+        f.is_none_or(|f| {
             self.types
-                .face_surface_types
-                .get(f.index() as usize)
-                .copied()
+                .inexact_surface(f.index() as usize)
+                .is_none_or(|t| EXACT_SURFACES.contains(&t))
         })
-        .is_none_or(|t| t < 0 || EXACT_SURFACES.contains(&t))
     }
 
     /// Whether target edge `e`'s curve is imported exactly.
     fn exact_edge(&self, e: Option<EdgeId>) -> bool {
-        e.and_then(|e| self.types.edge_curve_types.get(e.index() as usize).copied())
+        e.and_then(|e| self.types.inexact_curve(e.index() as usize))
             .is_none_or(|t| t < 0 || EXACT_CURVES.contains(&t))
     }
 
@@ -1107,7 +1107,7 @@ impl RustModel {
                 geom.set_fillet_surface(Some(surface_of(s)?));
             }
             if let Some(c) = &g.center {
-                geom.center_line_curve = Some(bspline_of(c)?);
+                geom.center_line_curve = Some(Curve::from(bspline_of(c)?));
             }
             geom.deviations = g.devs;
             for (rail, off) in g.offs.iter().enumerate() {
@@ -1301,7 +1301,7 @@ impl RustModel {
             for &eu in &geom.ref_eus {
                 self.put_eu(o, eu);
             }
-            dump_surface(o, geom.fillet_surface())?;
+            dump_surface(o, geom.fillet_surface().map_err(h)?)?;
             dump_bcurve(o, geom.center_line_curve());
             o.extend(geom.deviations);
             for off in &geom.off_surfs {

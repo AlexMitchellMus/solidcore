@@ -120,8 +120,26 @@ fn create_face(k: &mut Kernel, b: &mut Brep, surface: Surface, domain: Extent2d)
 }
 
 fn stitch(k: &mut Kernel, b: &mut Brep) -> Result<()> {
-    use crate::topology::brep::p5::{stitch_and_orient, StitchAndOrientOptions};
-    stitch_and_orient(k, b, &StitchAndOrientOptions::default())
+    stitch_with_keys(k, b, &crate::topology::loopuse::notify_ref)
+}
+
+fn stitch_with_keys(
+    k: &mut Kernel,
+    b: &mut Brep,
+    key_of: &dyn Fn(crate::error::EntityRef) -> crate::geom::object::ObjectRef,
+) -> Result<()> {
+    use crate::query::brep::BrepIdentity;
+    use crate::topology::brep::p5::{stitch_and_orient_with_identity, StitchAndOrientOptions};
+    let keys = |object| crate::topology::brep::p2::caller_cache_key(key_of, object);
+    stitch_and_orient_with_identity(
+        k,
+        b,
+        &StitchAndOrientOptions::default(),
+        Some(BrepIdentity {
+            keys: &keys,
+            ..BrepIdentity::default()
+        }),
+    )
 }
 
 /// `CreatePlanarFaceWith3DCurves`; `None` when the curves bound no face.
@@ -201,6 +219,25 @@ fn create_face_id(
         crate::topology::brep::p8::create_face_from_surface(k, b, Some(surface), &domain, fenv)
     })
 }
+/// Face construction under the same caller identities as its trimmed neighbours.
+fn create_face_with_notifications(
+    k: &mut Kernel,
+    b: &mut Brep,
+    surface: Surface,
+    domain: Extent2d,
+    notifications: &mut NotifyEnv<'_>,
+) -> Result<FaceId> {
+    let key_of = notifications.key_of;
+    let mut marks = crate::topology::topology_traverser::Marks::default();
+    let this_face = |face| key_of(crate::error::EntityRef::Face(face));
+    let mut fenv = crate::topology::brep::p8::FaceBuildEnv {
+        env: notifications,
+        marks: &mut marks,
+        this_face: &this_face,
+    };
+    crate::topology::brep::p8::create_face_from_surface(k, b, Some(surface), &domain, &mut fenv)
+}
+
 /// `SmFace::GetEdges(rEdges)` with its defaults (`topology::face::p4::edges`).
 fn face_edges(_k: &Kernel, b: &Brep, face: FaceId) -> Result<Vec<crate::topology::EdgeId>> {
     crate::topology::face::p4::edges(b, face, None, false, None)
@@ -283,9 +320,6 @@ fn drop_uv_curves(
 /// `bAllowSpineEdges = FALSE`); the counts and gaps are unused.
 pub(super) fn stitch_faces(k: &mut Kernel, b: &mut Brep, tolerance: f64) -> Result<()> {
     crate::topology::brep::p4::stitch_faces(k, b, tolerance, None, false).map(drop)
-}
-fn transform_brep(k: &mut Kernel, b: &mut Brep, placement: &Axis2Placement) -> Result<()> {
-    crate::topology::brep::p5::transform(k, b, placement, None, true)
 }
 
 enum AnalyticSurface {
@@ -497,21 +531,28 @@ impl PrimitiveCreation {
                 plane.adjust_step_uv_domain(&Extent2d::from_bounds(inner, 0.0, outer, length)),
             )?;
             let domain = plane.natural_uv_domain();
-            ignore_status(create_face(k, brep, Surface::from(plane), domain))?;
+            ignore_status(create_face_with_notifications(
+                k,
+                brep,
+                Surface::from(plane),
+                domain,
+                notifications,
+            ))?;
         }
         for radius in [inner, outer] {
             let mut cylinder = Cone::create_canonical_cylinder(k, frame, radius)?;
             ignore_status(
                 cylinder.adjust_step_uv_domain(k, &Extent2d::from_bounds(start, 0.0, end, length)),
             )?;
-            ignore_status(cone_face(
+            ignore_status(create_face_with_notifications(
                 k,
                 brep,
-                &cylinder,
+                Surface::from(cylinder.clone()),
                 cylinder.rev.base().natural_uv_domain(),
+                notifications,
             ))?;
         }
-        ignore_status(stitch(k, brep))?;
+        ignore_status(stitch_with_keys(k, brep, notifications.key_of))?;
         brep.set_editing_enabled(false);
         Ok(())
     }
@@ -676,47 +717,38 @@ impl PrimitiveCreation {
                     }
                 }
             }
-            // Move the first surface out temporarily so Rust can borrow the
-            // remaining faces independently. Restore it on every exit.
-            let mut first_surface = a
-                .face_mut(first)?
+            // extend the first surface's domain to cover all other face domains
+            for (in_a, faces) in [
+                (true, faces_a.get(1..).unwrap_or_default()),
+                (false, faces_b.as_slice()),
+            ] {
+                for face in faces {
+                    let brep: &Brep = if in_a { &*a } else { &*b };
+                    let record = brep.face(*face)?;
+                    let other_domain = record.uv_domain;
+                    let other = record
+                        .surface
+                        .as_ref()
+                        .ok_or_else(|| SolidError::null_pointer(op))?
+                        .clone_for_evaluation()?;
+                    cover_face_surface(k, a, first, &other, tolerance * 2.0, Some(&other_domain))?;
+                }
+            }
+            // extend the rest of the surface domains to cover the first surface's domain
+            let first_surface = a
+                .face(first)?
                 .surface
-                .take()
-                .ok_or_else(|| SolidError::null_pointer(op))?;
-            let covered = (|| {
-                for (brep, faces) in [
-                    (&*a, faces_a.get(1..).unwrap_or_default()),
-                    (&*b, faces_b.as_slice()),
-                ] {
-                    for face in faces {
-                        let record = brep.face(*face)?;
-                        first_surface.cover_coincident_surface(
-                            k,
-                            record
-                                .surface
-                                .as_ref()
-                                .ok_or_else(|| SolidError::null_pointer(op))?,
-                            tolerance * 2.0,
-                            Some(&record.uv_domain),
-                        )?;
-                    }
+                .as_ref()
+                .ok_or_else(|| SolidError::null_pointer(op))?
+                .clone_for_evaluation()?;
+            for (brep, faces) in [
+                (&mut *a, faces_a.get(1..).unwrap_or_default()),
+                (&mut *b, faces_b.as_slice()),
+            ] {
+                for face in faces {
+                    cover_face_surface(k, brep, *face, &first_surface, tolerance * 2.0, None)?;
                 }
-                for (brep, faces) in [
-                    (&mut *a, faces_a.get(1..).unwrap_or_default()),
-                    (&mut *b, faces_b.as_slice()),
-                ] {
-                    for face in faces {
-                        brep.face_mut(*face)?
-                            .surface
-                            .as_mut()
-                            .ok_or_else(|| SolidError::null_pointer(op))?
-                            .cover_coincident_surface(k, &first_surface, tolerance * 2.0, None)?;
-                    }
-                }
-                Ok(())
-            })();
-            a.face_mut(first)?.surface = Some(first_surface);
-            covered?;
+            }
             super::boolean::finish(k, a, b, first, operation, output, marks, notifications)?;
             selected_result = true;
             Ok(())
@@ -731,6 +763,58 @@ impl PrimitiveCreation {
         }
         result
     }
+}
+
+/// `pFace->GetSurface()->CoverCoincidentSurface(pOther, tol, ..)` of `Boolean2D` on the
+/// surface of face `face` of `brep`, followed by the `SmFace::RemoveUVTrimCurves`
+/// (status ignored) a successful cover of a face-owned surface ends with.
+///
+/// Upstream's `STEPInversion` solves inside run on the face's own surface, whose
+/// `GlobalPointSolve` classifies drops against the face (`GetFace()->PointClassify`).
+/// The surface is moved out of its face for the call (keeping its owner, so the cache
+/// it builds is its own) and lent with the B-rep through a face solve context; while it
+/// is out, the face holds an evaluation copy of it for the B-rep reads of that cache
+/// build. The real surface, possibly expanded, replaces the copy afterwards on every
+/// exit, and the face tolerance a solve raised on the copy is synced back.
+fn cover_face_surface(
+    k: &Kernel,
+    brep: &mut Brep,
+    face: FaceId,
+    other: &Surface,
+    tol: f64,
+    other_domain: Option<&Extent2d>,
+) -> Result<()> {
+    use crate::query::brep::BrepFaceServices;
+    use crate::topology::brep_cache::CacheObject;
+
+    let op = "primitive::primitive_creation::p1::boolean_2d";
+    let stand_in = brep
+        .face(face)?
+        .surface
+        .as_ref()
+        .ok_or_else(|| SolidError::null_pointer(op))?
+        .clone_for_evaluation()?;
+    let mut surface = brep
+        .face_mut(face)?
+        .surface
+        .replace(stand_in)
+        .ok_or_else(|| SolidError::null_pointer(op))?;
+    let r = surface.cover_coincident_surface_deferring_trims_with_context(
+        k,
+        other,
+        tol,
+        other_domain,
+        (
+            &mut BrepFaceServices::new(&mut *brep),
+            Some(CacheObject::Surface(face)),
+        ),
+    );
+    brep.face_mut(face)?.surface = Some(surface);
+    brep.sync_face_surface_tolerance(face)?;
+    if r?.remove_uv_trim_curves_of.is_some() {
+        ignore_status(crate::topology::face::p1::remove_uv_trim_curves(brep, face))?;
+    }
+    Ok(())
 }
 
 impl PrimitiveCreation {
@@ -881,20 +965,22 @@ impl PrimitiveCreation {
         )?;
         let mut patch = revolved_srf(&mut arc, Vec3::ZERO, Vec3::Y, 180.0, ConicType::Quadratic)?;
         let first_surface = BSplineSurface::from_gw_nurb(&patch);
-        let first = create_face_id(
+        let first = create_face_with_notifications(
             k,
             brep,
             Surface::from(first_surface.clone()),
             first_surface.natural_uv_domain(),
+            notifications,
         )?;
         let first_edges = face_edges(k, brep, first)?;
         patch.rotate_at_pt(Vec3::ZERO, Vec3::Y, 180.0)?;
         let second_surface = BSplineSurface::from_gw_nurb(&patch);
-        let second = create_face_id(
+        let second = create_face_with_notifications(
             k,
             brep,
             Surface::from(second_surface.clone()),
             second_surface.natural_uv_domain(),
+            notifications,
         )?;
         let second_edges = face_edges(k, brep, second)?;
         let mut dropped = Vec::new();
@@ -949,13 +1035,35 @@ impl PrimitiveCreation {
                 notifications,
             ))?;
         }
-        let status = match stitch_faces(k, brep, 10.0 * tolerance) {
+        let keys =
+            |object| crate::topology::brep::p2::caller_cache_key(notifications.key_of, object);
+        let identity = crate::query::brep::BrepIdentity {
+            keys: &keys,
+            ..crate::query::brep::BrepIdentity::default()
+        };
+        let status = match crate::topology::brep::p4::stitch_faces_with_identity(
+            k,
+            brep,
+            10.0 * tolerance,
+            None,
+            false,
+            Some(identity),
+        )
+        .map(drop)
+        {
             Err(e) if e.is_unported() => return Err(e),
             other => other,
         };
         let mut translation = Axis2Placement::IDENTITY;
         translation.translate(center);
-        ignore_status(transform_brep(k, brep, &translation))?;
+        ignore_status(crate::topology::brep::p5::transform_with_notifications(
+            k,
+            brep,
+            &translation,
+            None,
+            true,
+            Some(notifications),
+        ))?;
         status
     }
 
@@ -1264,13 +1372,18 @@ mod tests {
                 &mut notifications,
             )
             .unwrap_err();
-        assert!(matches!(
-            error,
-            SolidError::Unported {
-                unit: "boolean.topology_intersector_p2",
-                ..
-            }
-        ));
+        // past IntersectInsertRelate: copying B's unrelated face needs its face use,
+        // which the bare fixture face record lacks
+        assert!(
+            matches!(
+                error,
+                SolidError::InvalidInput {
+                    operation: "topology::face::p2",
+                    ..
+                }
+            ),
+            "{error:?}"
+        );
         let covered_a = a
             .face(fa)
             .unwrap()
@@ -1325,14 +1438,17 @@ mod tests {
                     &mut notifications,
                 )
                 .unwrap_err();
-            if invalid {
-                assert!(
-                    matches!(error, SolidError::InvalidInput { .. }),
-                    "{angle}: {error}"
-                );
+            // a coplanar pair goes on through IntersectInsertRelate and stops copying
+            // B's bare face record (no face use); the others fail the coplanar check
+            let expected = if invalid {
+                "primitive::primitive_creation::p1::boolean_2d"
             } else {
-                assert!(error.is_unported(), "{angle}: {error}");
-            }
+                "topology::face::p2"
+            };
+            assert!(
+                matches!(error, SolidError::InvalidInput { operation, .. } if operation == expected),
+                "{angle}: {error}"
+            );
             assert!(!a.editing_enabled());
             assert!(b.editing_enabled());
             assert!(!k.context.doing_boolean());

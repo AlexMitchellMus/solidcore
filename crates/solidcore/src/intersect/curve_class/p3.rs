@@ -11,7 +11,7 @@
 //! | [`CurveClassification::find_interval`], [`FoundInterval`] | `SmCurveClassification::FindInterval`          |
 //! | [`CurveClassification::find_point_class`]               | `SmCurveClassification::FindPointClass`          |
 //! | [`CurveClassification::is_coincident`]                  | `SmCurveClassification::IsCoincident`            |
-//! | [`CurveClassification::insert_point_class`]             | `SmCurveClassification::InsertPointClass`        |
+//! | [`CurveClassification::insert_point_class`], [`CurveClassification::insert_point_class_mut`] | `SmCurveClassification::InsertPointClass` |
 //! | [`CurveClassification::remove_point_class`]             | `SmCurveClassification::RemovePointClass`        |
 //! | [`CurveClassification::merge_point_class`]              | `SmCurveClassification::MergePointClass`         |
 //! | [`CurveClassification::cleanup_and_validate`]           | `SmCurveClassification::CleanupAndValidate`      |
@@ -26,6 +26,18 @@
 //!   through [`ClassGeometry::topology_entity`] (and [`ClassGeometry::topology_handle`]
 //!   for the vertices of an edge); an adapter without those hooks keeps the
 //!   [`SolidError::Unported`] deferral, as in `intersect::point_class`.
+//! - **Vertex moves.** The `Combine` of a boundary merge moves the vertex of a vertex
+//!   classification to a propagated surf/surf/surf point (`SmVertex::SetPoint`):
+//!   [`CurveClassification::insert_point_class_mut`] makes it through a
+//!   [`MergeIntervalBrep`]; [`CurveClassification::insert_point_class`] defers there.
+//! - **Interval reference.** `InsertPointClass` writes the input classification through
+//!   the reference `rPtClass_Interval` to slot `lIndex` it took before an
+//!   `EditIntervalMin` / `EditIntervalMax` that may collapse an interval: the port writes
+//!   to whatever interval now sits in that slot, and drops the write when the collapse
+//!   left the slot past the end (upstream writes a spare slot of the array that `SetSize`
+//!   resets before reuse), instead of failing on the index. This copies an upstream defect
+//!   on purpose (UB-256,
+//!   `plan/upstream-issues/UB-256--insert-point-class-stale-interval-reference.md`).
 //! - **Out-params.** `FindInterval` returns a [`FoundInterval`]; `InsertPointClass` returns
 //!   `rbInsertionMade`; `sm_ChangeEdgePointClassToNearVertex` returns
 //!   `rbChangedToVertexFlag`; `MergePointClass`'s optional output arrays are
@@ -38,8 +50,8 @@
 //!   interval); past it `SM_ERR` is returned where upstream would recurse without end.
 //! - **Pointers into the interval array.** `GetPointClassByIndex` /
 //!   `GetPointClassMateByIndex` return pointers; the helpers below return a
-//!   [`PointClassLoc`] (interval, end) that [`CurveClassification::pc_at`] /
-//!   [`CurveClassification::pc_at_mut`] resolve.
+//!   `PointClassLoc` (interval, end) that `CurveClassification::pc_at` /
+//!   `CurveClassification::pc_at_mut` resolve.
 //! - **Undefined behaviour upstream** is an error here: a `FindInterval` / `IsCoincident` /
 //!   `InsertPointClass` over a classification without intervals (the code reads
 //!   `m_pData[0]`), an `IsCoincident` interval whose end classifications walk off the
@@ -71,6 +83,7 @@ use crate::intersect::curve_class::p1::{
     object_dimension, xsect_tol_2d_or_3d_for_classify_pair, CurveClassification, CurveInterval,
     IntervalPosition,
 };
+use crate::intersect::curve_class::p6::{Imprint, MergeIntervalBrep, Mutable, ReadOnly};
 use crate::intersect::curve_class::p7::{edge_of, vertex_of, CoincidentMaybe};
 use crate::intersect::point_class::{
     object_zone_tol_3d, ClassGeometry, ClassObject, ClassObjectKind, PointClassType,
@@ -247,6 +260,25 @@ fn insert_at<O: ClassObject>(
     interval: &CurveInterval<O>,
 ) -> Result<()> {
     cc.insert_at(k, index, *interval)
+}
+
+/// Slot `index` of the interval array, as `InsertPointClass` reaches it through the
+/// reference `rPtClass_Interval = (*this)[lIndex]` it took before an `EditIntervalMin` /
+/// `EditIntervalMax` that may collapse an interval: after a collapse the slot holds the
+/// interval that moved down into it, or lies past the end (`None`: the write lands in a
+/// spare slot of the array that `SetSize` resets before it is used again). This copies an
+/// upstream defect on purpose, for parity (UB-256,
+/// `plan/upstream-issues/UB-256--insert-point-class-stale-interval-reference.md`): the
+/// write can land on the interval that moved into the slot.
+fn slot_mut<O: ClassObject>(
+    cc: &mut CurveClassification<O>,
+    index: usize,
+) -> Option<&mut CurveInterval<O>> {
+    if index < cc.size() {
+        cc.at_mut(index).ok()
+    } else {
+        None
+    }
 }
 
 /// `SmCurveClassification::EditIntervalMin(index, param, collapseDegenerateIntervals)`.
@@ -796,7 +828,9 @@ impl<O: ClassObject> CurveClassification<O> {
     ///
     /// Those of [`CurveClassification::find_interval`] and
     /// [`CurveClassification::insert_at`]; [`SolidError::Unported`] for topology
-    /// objects.
+    /// objects, and for a surf/surf/surf point a merge propagates to a vertex
+    /// classification (`SmVertex::SetPoint`; [`Self::insert_point_class_mut`] makes
+    /// the move).
     pub fn insert_point_class(
         &mut self,
         k: &Kernel,
@@ -806,6 +840,53 @@ impl<O: ClassObject> CurveClassification<O> {
         last_curve_param: f64,
         force_insertion: bool,
     ) -> Result<bool> {
+        self.insert_point_class_in(
+            &mut ReadOnly { k, g: geometry },
+            point_class,
+            curve_param,
+            last_curve_param,
+            force_insertion,
+        )
+    }
+
+    /// [`CurveClassification::insert_point_class`] moving the vertex of a boundary
+    /// classification a merged surf/surf/surf point propagates to
+    /// (`SmVertex::SetPoint` of `Combine`) in the B-rep a [`MergeIntervalBrep`] hands
+    /// out.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`CurveClassification::insert_point_class`], without the deferral of
+    /// the move; [`SolidError::InvalidInput`] for a vertex the adapter cannot resolve
+    /// mutably.
+    pub fn insert_point_class_mut(
+        &mut self,
+        k: &mut Kernel,
+        geometry: &mut impl MergeIntervalBrep<O>,
+        point_class: &PointClassification<O>,
+        curve_param: f64,
+        last_curve_param: f64,
+        force_insertion: bool,
+    ) -> Result<bool> {
+        self.insert_point_class_in(
+            &mut Mutable { k, g: geometry },
+            point_class,
+            curve_param,
+            last_curve_param,
+            force_insertion,
+        )
+    }
+
+    /// `InsertPointClass` over either kind of adapter.
+    pub(super) fn insert_point_class_in(
+        &mut self,
+        a: &mut impl Imprint<O>,
+        point_class: &PointClassification<O>,
+        curve_param: f64,
+        last_curve_param: f64,
+        force_insertion: bool,
+    ) -> Result<bool> {
+        let (k, geometry) = (a.kernel(), a.geometry());
         // init output
         let mut insertion_made = false;
         let mut curve_param = curve_param;
@@ -1015,7 +1096,10 @@ impl<O: ClassObject> CurveClassification<O> {
                             pt_class_pre_snap_param,
                             true,
                         ))?;
-                        self.at_mut(index)?.start = *point_class;
+                        // (upstream's stale reference to slot `index`, UB-256 parity: `slot_mut`)
+                        if let Some(slot) = slot_mut(self, index) {
+                            slot.start = *point_class;
+                        }
                     } else {
                         ignore_status(edit_interval_max(
                             k,
@@ -1025,7 +1109,10 @@ impl<O: ClassObject> CurveClassification<O> {
                             pt_class_pre_snap_param,
                             true,
                         ))?;
-                        self.at_mut(index)?.end = *point_class;
+                        // (upstream's stale reference to slot `index`, UB-256 parity: `slot_mut`)
+                        if let Some(slot) = slot_mut(self, index) {
+                            slot.end = *point_class;
+                        }
                     }
 
                     // no need to insert point
@@ -1193,7 +1280,7 @@ impl<O: ClassObject> CurveClassification<O> {
         // when merging a start boundary point classification
         else if position == IntervalPosition::Start {
             let found_ivl = self.at_mut(index)?;
-            if found_ivl.start.combine(point_class)? == Precedence::Other {
+            if a.combine(&mut found_ivl.start, point_class)? == Precedence::Other {
                 found_ivl.start = *point_class;
             }
             insertion_made = true;
@@ -1201,7 +1288,7 @@ impl<O: ClassObject> CurveClassification<O> {
             // remember to merge the neighbor interval's boundary point
             if index > 0 {
                 let found2 = self.at_mut(index - 1)?;
-                if found2.end.combine(point_class)? == Precedence::Other {
+                if a.combine(&mut found2.end, point_class)? == Precedence::Other {
                     found2.end = *point_class;
                 }
             }
@@ -1209,7 +1296,7 @@ impl<O: ClassObject> CurveClassification<O> {
         // when merging an end boundary point classification
         else if position == IntervalPosition::End {
             let found_ivl = self.at_mut(index)?;
-            if found_ivl.end.combine(point_class)? == Precedence::Other {
+            if a.combine(&mut found_ivl.end, point_class)? == Precedence::Other {
                 found_ivl.end = *point_class;
             }
             insertion_made = true;
@@ -1217,7 +1304,7 @@ impl<O: ClassObject> CurveClassification<O> {
             // remember to merge the neighbor interval's boundary point
             if index + 1 < self.size() {
                 let found2 = self.at_mut(index + 1)?;
-                if found2.start.combine(point_class)? == Precedence::Other {
+                if a.combine(&mut found2.start, point_class)? == Precedence::Other {
                     found2.start = *point_class;
                 }
             }
@@ -1298,16 +1385,58 @@ impl<O: ClassObject> CurveClassification<O> {
         opt_new_edges: Option<&mut Vec<O>>,
         opt_new_vertices: Option<&mut Vec<O>>,
     ) -> Result<()> {
+        self.merge_point_class_in(
+            &mut ReadOnly { k, g: geometry },
+            index,
+            opt_new_edges,
+            opt_new_vertices,
+        )
+    }
+
+    /// [`CurveClassification::merge_point_class`] editing the B-rep behind the
+    /// classification object through a [`MergeIntervalBrep`]
+    /// ([`PointClassification::merge_into_brep`]): the region, face, edge or vertex
+    /// the point classifies to gets (or is) the vertex.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`CurveClassification::merge_point_class`], without the deferral of the
+    /// edit; [`SolidError::InvalidInput`] for an object the adapter cannot resolve
+    /// mutably.
+    pub fn merge_point_class_mut(
+        &mut self,
+        k: &mut Kernel,
+        geometry: &mut impl MergeIntervalBrep<O>,
+        index: usize,
+        opt_new_edges: Option<&mut Vec<O>>,
+        opt_new_vertices: Option<&mut Vec<O>>,
+    ) -> Result<()> {
+        self.merge_point_class_in(
+            &mut Mutable { k, g: geometry },
+            index,
+            opt_new_edges,
+            opt_new_vertices,
+        )
+    }
+
+    /// `MergePointClass` over either kind of adapter.
+    pub(super) fn merge_point_class_in(
+        &mut self,
+        a: &mut impl Imprint<O>,
+        index: usize,
+        opt_new_edges: Option<&mut Vec<O>>,
+        opt_new_vertices: Option<&mut Vec<O>>,
+    ) -> Result<()> {
         // get the min point's classification and param value for this interval
         let loc = point_class_loc_by_index(self, index)?;
 
         // Get the PointClass from the adjacent interval that corresponds to the same
         // location as this one (the first and last have a mate only for closed curves).
-        let adjacent = point_class_mate_loc_by_index(k, geometry, self, index)?;
+        let adjacent = point_class_mate_loc_by_index(a.kernel(), a.geometry(), self, index)?;
 
         // evaluate the interval's min-point's position in 3 space using the curve
         // definition (gets SSSPoint when available else the curve point)
-        let vert_pnt = classify_crv_loc_by_index(k, geometry, self, index)?;
+        let vert_pnt = classify_crv_loc_by_index(a.kernel(), a.geometry(), self, index)?;
 
         // when the point classifies to an edge - remember that edge
         let (point_class_type, point_class_object) = {
@@ -1322,7 +1451,10 @@ impl<O: ClassObject> CurveClassification<O> {
 
         // merge the point classification into its m_pObject's topology structure
         let src_zone_tol_3d = self.src_zone_tol_3d();
-        let merged = self.pc_at_mut(loc)?.merge_into_object(k, vert_pnt)?;
+        let mut pc = *self.pc_at(loc)?;
+        let merged = a.merge_into_object(&mut pc, vert_pnt);
+        *self.pc_at_mut(loc)? = pc;
+        let merged = merged?;
         let new_edges = merged.new_edges;
         if let Some(vertices) = opt_new_vertices {
             vertices.extend(merged.new_vertices);
@@ -1345,6 +1477,7 @@ impl<O: ClassObject> CurveClassification<O> {
 
         // when a vertex splits an existing edge - set interval m_pObject = One of NewEdges
         if let [new_e1, new_e2] = new_edges[..] {
+            let (k, geometry) = (a.kernel(), a.geometry());
             // update old edge pointers
 
             // for every classification interval

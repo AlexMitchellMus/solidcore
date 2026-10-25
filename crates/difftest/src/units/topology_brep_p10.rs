@@ -12,8 +12,8 @@
 //! call), patches to the read B-rep data and an op. Both sides read the file
 //! (`SmBrepData::ReadFromFile` / [`BrepData::read_from_file`]), patch it, build the
 //! B-rep and dump the result in the layout documented in the FFI module: integers to
-//! `ints`, doubles to `dbls` (subnormals as 0) and bit for bit to `dbl_bits`, `kinds`
-//! the interleaving. A Rust `InvalidInput` is the guard's `-2`.
+//! `ints`, doubles to `dbls` (subnormals as 0; pure reader/build cases also audit raw
+//! `dbl_bits`), `kinds` the interleaving. A Rust `InvalidInput` is the guard's `-2`.
 //!
 //! Generated cases pick a file, flags and patches (zone tolerance, manifold flag,
 //! healer version, borrowed geometry, flag stamps, the implied regions of an IGES
@@ -136,7 +136,18 @@ fn path_of(i: &Inputs) -> Result<String, HarnessError> {
         .into_owned())
 }
 
-fn to_output(items: &[Item]) -> Output {
+/// Whether `i` runs only the `.smb` reader and pointer-wiring build (no analytic
+/// surface recognition, healer, closure ray-fire or curve projection), so every float
+/// can be audited bit for bit (`dbl_bits`). Once geometry solvers run, 1–3 ULP
+/// transcendental (`sin`/`cos`/`atan2`) differences between system `libm` and Rust are
+/// compared through `dbls` under the standard `1e-9` relative tolerance (as in
+/// [`snapshot`]).
+fn bit_audit(i: &Inputs) -> bool {
+    let [_, add_analytics, _, _, _, healer_enabled] = i.options;
+    !add_analytics && !healer_enabled && matches!(i.op, OpIn::Make | OpIn::RemoveAll { .. })
+}
+
+fn to_output(items: &[Item], include_bits: bool) -> Output {
     let ints: Vec<i64> = items
         .iter()
         .filter_map(|x| match x {
@@ -160,19 +171,28 @@ fn to_output(items: &[Item]) -> Output {
         .into_iter()
         .map(|v| if v.is_subnormal() { 0.0 } else { v })
         .collect();
-    Output::new()
+    let out = Output::new()
         .ints("ints", ints)
         .values("dbls", dbls)
-        .ints("dbl_bits", bits)
-        .ints("kinds", kinds)
+        .ints("kinds", kinds);
+    if include_bits {
+        out.ints("dbl_bits", bits)
+    } else {
+        out
+    }
 }
 
 /// Why the C++ side must not build these inputs, if it must not: requests on which
 /// `MakeTopologyFromData` runs the healer (`bHealerIsEnabled` and either `bAlwaysHeal`
 /// or an old healer version) over a B-rep it builds unchecked from patched records.
 ///
-/// * After a `Set` patch: the healer walks the malformed indices the build kept (as
-///   the ops after the build would; the FFI refuses those itself).
+/// * After `Set` patches that change the data and leave records the build accepts
+///   (the Rust build, healing off, does not return `InvalidInput`; data it refuses is
+///   the shim's `-2`, and upstream never runs): the build keeps edge uses linked into
+///   loops their records do not name, loop rings of the wrong length or edges on
+///   another edge's curve, and the healer walks that B-rep unchecked (SIGSEGV and
+///   hangs in the C++ reference, UB-164; the ops after the build would too, and the
+///   FFI refuses those itself). A `Set` that changes nothing is compared.
 /// * After an `Iges` patch whose kept shells leave a face use record in no face use
 ///   shell (the crafted spine fixtures: region 1 has no shells): that face use is built
 ///   without a shell and `SmHealData::Fix_BadSheets` hands it to
@@ -188,13 +208,13 @@ fn heal_guard(i: &Inputs) -> Option<&'static str> {
     let path = path_of(i).ok()?;
     let bytes = std::fs::read(&path).ok()?;
     let k = Kernel::default();
-    let mut data = BrepData::read_from_file(&k, bytes, FileType::Ascii).ok()?;
+    let mut data = BrepData::read_from_file(&k, bytes.clone(), FileType::Ascii).ok()?;
     apply_patches(&mut data, &i.patches).ok()?;
     if !(always_heal || data.healer_version() < HEALER_VERSION) {
         return None;
     }
-    if i.patches.iter().any(|p| matches!(p, PatchIn::Set { .. })) {
-        return Some("healing after a set patch walks malformed indices");
+    if changes_indices(&k, &bytes, &i.patches) && builds(i, &data) {
+        return Some("healing a b-rep a set patch left inconsistent");
     }
     if i.patches.iter().any(|p| matches!(p, PatchIn::Iges)) {
         let in_shell = |f: usize| {
@@ -211,6 +231,62 @@ fn heal_guard(i: &Inputs) -> Option<&'static str> {
         }
     }
     None
+}
+
+/// Whether the case's `Set` patches change the patched data: the data with every patch
+/// differs from the data with the same patches but its `Set` patches left out. A `Set`
+/// past its array, or of a field to the value it holds, changes nothing.
+fn changes_indices(k: &Kernel, bytes: &[u8], patches: &[PatchIn]) -> bool {
+    let without: Vec<PatchIn> = patches
+        .iter()
+        .filter(|p| !matches!(p, PatchIn::Set { .. }))
+        .copied()
+        .collect();
+    let patched = |ps: &[PatchIn]| {
+        let mut d = BrepData::read_from_file(k, bytes.to_vec(), FileType::Ascii).ok()?;
+        apply_patches(&mut d, ps).ok()?;
+        Some(format!("{d:?}"))
+    };
+    match (patched(patches), patched(&without)) {
+        (Some(a), Some(b)) => a != b,
+        _ => true,
+    }
+}
+
+/// Whether upstream gets past the build to the healer: false only when the Rust build
+/// (healing off) returns `InvalidInput`, the data the shim's simulation of the build's
+/// record indexing keeps from upstream (`-2`, UB-164), so upstream never runs.
+fn builds(i: &Inputs, data: &BrepData) -> bool {
+    let mut k = Kernel::default();
+    // Compare against pinned C++ c9c5979 (pre-tangency-labs/smlib@5af7070, WR-255 / #570).
+    k.context.set_trim_uv_curves_at_corner_drops(true);
+    let mut data = data.clone();
+    let Ok(mut b) = Brep::new_with_infinite_region() else {
+        return true;
+    };
+    let mut store = AttributeStore::new();
+    let mut records: BTreeMap<ObjectKey, Topology> = BTreeMap::new();
+    let mut env = TopologyEnv {
+        all_attributes: &[],
+        attributes: &mut store,
+        key_of: &key_of,
+        records: &mut records,
+        next_key: 1u64 << 50,
+    };
+    let [make_uv_trim_curves, add_analytics, force_same_tol, check_uv_trim_curves, always_heal, _] =
+        i.options;
+    let options = MakeTopologyOptions {
+        make_uv_trim_curves,
+        add_analytics,
+        force_same_tol,
+        check_uv_trim_curves,
+        always_heal,
+        healer_enabled: false,
+    };
+    !matches!(
+        make_topology_from_data(&mut k, &mut b, &mut data, &mut env, options),
+        Err(SolidError::InvalidInput { .. })
+    )
 }
 
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
@@ -271,8 +347,9 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
         patches,
         op,
     };
+    let include_bits = bit_audit(i);
     ffi::run(&req)
-        .map(|items| to_output(&items))
+        .map(|items| to_output(&items, include_bits))
         .map_err(|e| harness(format!("ffi: {e}")))
 }
 
@@ -463,6 +540,8 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
     let path = path_of(i)?;
     let bytes = std::fs::read(&path).map_err(|e| harness(format!("{path}: {e}")))?;
     let mut k = Kernel::default();
+    // Compare against pinned C++ c9c5979 (pre-tangency-labs/smlib@5af7070, WR-255 / #570).
+    k.context.set_trim_uv_curves_at_corner_drops(true);
     let mut data = match BrepData::read_from_file(&k, bytes, FileType::Ascii) {
         Ok(d) => d,
         Err(e @ SolidError::Unported { .. }) => return Ok(Err(e)),
@@ -595,10 +674,19 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
                 angle_tol_radians: angle_tol,
                 subset_faces: None,
             };
+            // the merges' edits notify the build's records and attribute store under
+            // the build's names
+            let mut notify = NotifyEnv {
+                records: &mut records,
+                attributes: &mut store,
+                context: None,
+                key_of: &key_of,
+            };
             match project_and_trim(
                 &mut k,
                 &mut b,
                 &penv,
+                &mut notify,
                 &curve,
                 v(dir),
                 v(reference),
@@ -693,10 +781,10 @@ impl Graph {
             vertexuses: Reg::new(),
             vertices: Reg::new(),
         };
-        for (id, r) in b.regions().iter() {
-            if r.in_brep {
-                g.regions.add(Some(id), RegionId::index);
-            }
+        // GetRegions starts at the owning list head, which ResetInfiniteRegion
+        // changes without reallocating the region records.
+        for id in solidcore::topology::brep::p1::regions(b, None)? {
+            g.regions.add(Some(id), RegionId::index);
         }
         let (mut r, mut s, mut fu, mut lu, mut eu, mut vu, mut l, mut e, mut v) =
             (0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -1074,9 +1162,8 @@ pub(crate) fn snapshot(k: &Kernel, b: &Brep) -> Result<Output, HarnessError> {
     let g = Graph::walk(b).map_err(|e| harness(e.to_string()))?;
     let mut items = Vec::new();
     export(k, b, &g, &BTreeMap::new(), &mut items).map_err(|e| harness(e.to_string()))?;
-    let mut output = to_output(&items).int("validate_only", i64::from(b.validate_only()));
     // This caller uses the normal relative comparison, not p10's bit audit.
-    output.ints.remove("dbl_bits");
+    let mut output = to_output(&items, false).int("validate_only", i64::from(b.validate_only()));
     output.values.insert(
         "dbls".into(),
         items
@@ -1143,8 +1230,10 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        match rust(&case.parse()?)? {
-            Ok(items) => Ok(to_output(&items)),
+        let inputs: Inputs = case.parse()?;
+        let include_bits = bit_audit(&inputs);
+        match rust(&inputs)? {
+            Ok(items) => Ok(to_output(&items, include_bits)),
             Err(e) => Ok(Output::unported(&e).unwrap_or_else(|| Output::err(e.to_string()))),
         }
     }

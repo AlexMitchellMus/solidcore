@@ -76,6 +76,9 @@
 //!   is wired (`topology.edgeuse_p3`, whose own deferred callees still return it).
 //!   `SmShell::GetRegion` is the co-port
 //!   [`eu1::shell_region`].
+//! - **Collections.** Ordered membership sets deduplicate edges and vertices
+//!   while the result vector preserves first occurrence and filter evaluation
+//!   order, avoiding quadratic `AddUnique` scans on long loops (#431).
 //! - **Prepared queries.** The shared UV-corner walk can also borrow prepared topology
 //!   without mutation. It reports [`SolidError::Unported`] only if a trim curve needs
 //!   creating at the point where the mutable walk would create it.
@@ -85,7 +88,7 @@
 //!   `IsEmbedded`, `ContainsUVPoint`, `RebuildFromEdgeCurves`, `AssertValid`, `Draw`
 //!   and `Dump` are not part of this unit.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Deref;
 
 use crate::curve::curve::Curve;
@@ -120,6 +123,8 @@ pub(crate) enum QueryTopology<'a> {
     Mutable(&'a mut Brep),
     /// A read-only query; missing trims are reported only when actually needed.
     Prepared(&'a Brep),
+    /// A read-only solve that can ask its caller to create an actually visited trim.
+    Requested(&'a Brep, &'a crate::query::brep::RayPreparation),
 }
 
 impl Deref for QueryTopology<'_> {
@@ -128,7 +133,7 @@ impl Deref for QueryTopology<'_> {
     fn deref(&self) -> &Self::Target {
         match self {
             Self::Mutable(b) => b,
-            Self::Prepared(b) => b,
+            Self::Prepared(b) | Self::Requested(b, _) => b,
         }
     }
 }
@@ -145,22 +150,37 @@ impl QueryTopology<'_> {
                 )?;
                 Ok(fetch.status.is_ok() && eu1::uv_trim_curve(b, eu)?.0.is_some())
             }
-            Self::Prepared(b) => {
-                if eu1::uv_trim_curve(b, eu)?.0.is_none() {
-                    return Err(SolidError::Unported {
-                        upstream:
-                            "SmEdgeuse::GetOrCreateUVTrimCurve (unprepared read-only topology)",
-                        unit: "topology.edgeuse_p3",
-                    });
-                }
-                // GetOrCreateUVTrimCurve checks this use's own failure record, even
-                // when the curve is stored on its mate. Do not read the mate's record.
-                Ok(b.edgeuse(eu)?.drop_curve_fail.as_deref().is_none_or(|f| {
-                    f.fail_status == crate::intersect::surface_drop_lib::p1::SM_SUCCESS
-                }))
-            }
+            Self::Prepared(b) => prepared_trim(b, eu, None),
+            Self::Requested(b, preparation) => prepared_trim(b, eu, Some(preparation)),
         }
     }
+}
+
+fn prepared_trim(
+    b: &Brep,
+    eu: EdgeuseId,
+    preparation: Option<&crate::query::brep::RayPreparation>,
+) -> Result<bool> {
+    if preparation.is_some_and(|preparation| preparation.trim_failed(eu)) {
+        return Ok(false);
+    }
+    if eu1::uv_trim_curve(b, eu)?.0.is_none() {
+        if let Some(preparation) = preparation {
+            preparation.request_trim(b, eu);
+            return Err(SolidError::PreparationRequired {
+                operation: "topology::loopuse::prepared_trim",
+            });
+        }
+        return Err(SolidError::unported(
+            "SmEdgeuse::GetOrCreateUVTrimCurve (unprepared read-only topology)",
+            "topology.edgeuse_p3",
+        ));
+    }
+    // The use's own failure record applies even when its mate owns the curve.
+    Ok(b.edgeuse(eu)?
+        .drop_curve_fail
+        .as_deref()
+        .is_none_or(|f| f.fail_status == crate::intersect::surface_drop_lib::p1::SM_SUCCESS))
 }
 
 /// `SmLoopuse_TYPE` (`TOPO_BASE_TYPE + 4`).
@@ -486,6 +506,7 @@ pub fn edges(
         return Ok(Vec::new());
     };
     let mut out: Vec<Option<EdgeId>> = Vec::new();
+    let mut seen = BTreeSet::new();
     for eu in ccw_walk(b, start)? {
         let e = b.edgeuse(eu)?.edge;
         let ok = match (attribute, e) {
@@ -493,7 +514,7 @@ pub fn edges(
             (Some(f), Some(e)) => f(EntityRef::Edge(e)),
             (Some(_), None) => return Err(null("GetEdges: FindAttribute on a null edge")),
         };
-        if ok && !out.contains(&e) {
+        if ok && seen.insert(e) {
             out.push(e);
         }
     }
@@ -594,9 +615,10 @@ pub fn vertices(
         return Ok(if test(v)? { vec![v] } else { Vec::new() });
     };
     let mut out: Vec<Option<VertexId>> = Vec::new();
+    let mut seen = BTreeSet::new();
     for eu in ccw_walk(b, start)? {
         let v = vertex_of(b.edgeuse(eu)?.vertexuse)?;
-        if test(v)? && !out.contains(&v) {
+        if test(v)? && seen.insert(v) {
             out.push(v);
         }
     }
@@ -1779,6 +1801,55 @@ mod tests {
     }
 
     #[test]
+    fn requested_trim_prepares_only_the_visited_use_and_bounds_retries() {
+        let mut k = Kernel::default();
+        let mut b = crate::primitive::api_primitives::create_pyramid(&mut k, Vec3::ZERO, 5.0, 20.0)
+            .unwrap();
+        let edgeuse = crate::topology::brep::p1::edges(&b, None)
+            .unwrap()
+            .into_iter()
+            .flat_map(|e| b.edge(e).unwrap().edgeuses.iter().copied())
+            .find(|&eu| eu1::uv_trim_curve(&b, eu).unwrap().0.is_none())
+            .unwrap();
+        let count = |b: &Brep| {
+            b.edgeuses()
+                .iter()
+                .filter(|(_, eu)| eu.uv_trim_curve.is_some())
+                .count()
+        };
+        let before = count(&b);
+        let mut preparation = crate::query::brep::RayPreparation::default();
+        assert!(QueryTopology::Requested(&b, &preparation)
+            .ensure_trim_curve(&k, edgeuse)
+            .is_err_and(|e| matches!(e, SolidError::PreparationRequired { .. })));
+        assert_eq!(
+            preparation.take_request(),
+            Some(crate::query::brep::PreparationRequest::UvTrim(edgeuse))
+        );
+        assert_eq!(count(&b), before);
+        preparation
+            .prepare(
+                &k,
+                &mut b,
+                crate::query::brep::PreparationRequest::UvTrim(edgeuse),
+            )
+            .unwrap();
+        assert_eq!(count(&b), before + 1);
+        assert!(QueryTopology::Requested(&b, &preparation)
+            .ensure_trim_curve(&k, edgeuse)
+            .unwrap());
+        assert_eq!(preparation.take_request(), None);
+        assert!(matches!(
+            preparation.prepare(
+                &k,
+                &mut b,
+                crate::query::brep::PreparationRequest::UvTrim(edgeuse)
+            ),
+            Err(SolidError::InvalidInput { .. })
+        ));
+    }
+
+    #[test]
     fn prepared_trims_preserve_own_failure_status_and_corner_behavior() {
         let k = Kernel::default();
         let mut b = square(0.0);
@@ -1794,6 +1865,14 @@ mod tests {
         // This use's recorded failure is observed; its mate uses the same trim
         // but must not inherit that failure (GetOrCreateUVTrimCurve semantics).
         for (edgeuse, expected) in [(eu(0), false), (eu(1), true)] {
+            let preparation = crate::query::brep::RayPreparation::default();
+            assert_eq!(
+                QueryTopology::Requested(&b, &preparation)
+                    .ensure_trim_curve(&k, edgeuse)
+                    .unwrap(),
+                expected
+            );
+            assert_eq!(preparation.take_request(), None);
             assert_eq!(
                 QueryTopology::Prepared(&b)
                     .ensure_trim_curve(&k, edgeuse)

@@ -9,7 +9,7 @@
 //! | [`delete_topological_vertex`] | `SmBrep::DeleteTopologicalVertex` |
 //! | [`find_and_set_infinite_region`] | `SmBrep::FindAndSetInfiniteRegion` |
 //! | [`glue_vertices`] | `SmBrep::GlueVertices` |
-//! | [`make_edge_in_face`], [`make_edge_in_face_with_uv_curve`] | `SmBrep::MakeEdgeInFace` |
+//! | [`make_edge_in_face`], [`make_edge_in_face_with_uv_curve`], [`make_edge_in_face_in`] | `SmBrep::MakeEdgeInFace` |
 //! | [`make_manifold`] | `SmBrep::MakeManifold` |
 //! | [`remove_topological_edges_and_vertices`] | `SmBrep::RemoveTopologicalEdgesAndVertices` |
 //! | [`remove_faces`] | `SmBrep::RemoveFaces` |
@@ -117,10 +117,6 @@ impl<T> Drop for PendingTopology<'_, T> {
 }
 
 const OP: &str = "topology::brep::p5";
-
-fn missing<T>(symbol: &'static str, unit: &'static str) -> Result<T> {
-    Err(SolidError::unported(symbol, unit))
-}
 
 /// Runs `f` with the caller's notification environment, or, for a plain entry point
 /// (`notifications` is `None`: the caller keeps no notification state of its own),
@@ -416,7 +412,7 @@ pub fn combine_with_notifications(
             notifications.as_deref_mut(),
         ))?;
     }
-    set_vertex_point(k, b, survivor, target.point, notifications)?;
+    set_vertex_point(k, b, survivor, target.point, notifications.as_deref_mut())?;
     crate::error::ignore_status(vertex::set_tolerance(
         b,
         survivor,
@@ -424,7 +420,8 @@ pub fn combine_with_notifications(
         true,
         true,
     ))?;
-    update_vertex_edge_intervals(b, survivor)
+    let env = notifications.ok_or_else(|| SolidError::null_pointer(OP))?;
+    crate::topology::brep::p1::update_vertex_edge_intervals(k, b, env, survivor)
 }
 
 /// `Notify(SM_NO_MERGE_IN_BREP, pSurvivingVertex, pVertexToDelete, this)`
@@ -551,11 +548,6 @@ fn set_vertex_point(
             ))
         },
     )
-}
-
-fn update_vertex_edge_intervals(_b: &mut Brep, _vertex: VertexId) -> Result<()> {
-    // UNPORTED(topology.brep_p1): SmBrep::UpdateVertexEdgeIntervals
-    missing("SmBrep::UpdateVertexEdgeIntervals", "topology.brep_p1")
 }
 
 /// Makes a wire edge over the caller's curve interval. Evaluates start before end,
@@ -738,7 +730,10 @@ pub fn delete_topological_vertex_with_notifications(
                 &survivor_range,
                 0.001,
                 true,
-                [Some(JoinCurve::Deleted), Some(JoinCurve::Survivor)],
+                [
+                    Some(JoinCurve::Deleted(deleted_range)),
+                    Some(JoinCurve::Survivor(survivor_range)),
+                ],
             ))?;
         if let Some(coincidence) = coincidence {
             if let [solution] = coincidence.solutions.as_slice() {
@@ -878,14 +873,22 @@ fn edge_curve(b: &Brep, edge: EdgeId) -> Result<&Curve> {
         .as_ref()
         .ok_or_else(|| SolidError::null_pointer(OP))
 }
+/// The two curves of `DeleteTopologicalVertex`'s coincidence check as its solutions
+/// name them (upstream's `pDeleteCurve`, `pSurviveCurve`), with the natural interval
+/// `IdenticalSolutions` reads through them (`SmCurve::GetNaturalInterval`).
 #[derive(Clone, Copy, PartialEq)]
 enum JoinCurve {
-    Deleted,
-    Survivor,
+    Deleted(Extent1d),
+    Survivor(Extent1d),
 }
 impl crate::geom::solution_array::SolutionObject for JoinCurve {
     fn kind(&self) -> crate::geom::solution_array::ObjectKind {
         crate::geom::solution_array::ObjectKind::Curve
+    }
+    fn natural_interval(&self) -> Option<Extent1d> {
+        match self {
+            Self::Deleted(range) | Self::Survivor(range) => Some(*range),
+        }
     }
 }
 fn join_copied_curves(
@@ -991,6 +994,7 @@ fn set_edge_curve_owner(
             .as_mut()
             .ok_or_else(|| SolidError::null_pointer(OP))?;
         let _ = curve.set_owner(Some(owner), Some(brep));
+        b.set_geometry_owner_key(crate::error::EntityRef::Edge(edge), Some(owner));
         Ok(())
     })
 }
@@ -1402,7 +1406,12 @@ pub fn make_edge_in_face_with_uv_curve(
 ) -> Result<()> {
     with_p3_notifications(k, b, notifications, |k, b, env| {
         make_edge_with_backend(
-            &mut ArenaFaceEdge { k, b, env },
+            &mut ArenaFaceEdge {
+                k,
+                b,
+                env,
+                curve_ref: &edge_curve_identity,
+            },
             editing_enabled,
             face,
             start,
@@ -1415,6 +1424,50 @@ pub fn make_edge_in_face_with_uv_curve(
             output,
         )
     })
+}
+
+/// [`make_edge_in_face_with_uv_curve`] inside a caller's edit: notifying through the
+/// caller's `env`, with the new edge's curve identified by the caller's `curve_ref`
+/// (as [`super::p9::make_edge_in_face_with_vu`] takes it). The editing check reads
+/// `b`'s own `m_bEditingEnabled` ([`Brep::editing_enabled`]), as upstream's member does.
+///
+/// # Errors
+///
+/// Those of [`make_edge_in_face_with_uv_curve`].
+pub fn make_edge_in_face_in(
+    k: &Kernel,
+    b: &mut Brep,
+    face: Option<FaceId>,
+    start: Option<VertexId>,
+    end: Option<VertexId>,
+    curve: Curve,
+    uv_curve: Option<Curve>,
+    interval: Extent1d,
+    orientation: OrientType,
+    max_gap_3d: f64,
+    output: &mut EdgeInFace,
+    env: &mut EditNotifyEnv<'_>,
+    curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
+) -> Result<()> {
+    let editing_enabled = b.editing_enabled();
+    make_edge_with_backend(
+        &mut ArenaFaceEdge {
+            k,
+            b,
+            env,
+            curve_ref,
+        },
+        editing_enabled,
+        face,
+        start,
+        end,
+        curve,
+        uv_curve,
+        interval,
+        orientation,
+        max_gap_3d,
+        output,
+    )
 }
 
 /// Handle adapter for the shared owned control flow. Missing sector/insertion
@@ -1519,6 +1572,7 @@ struct ArenaFaceEdge<'a, 'e> {
     k: &'a Kernel,
     b: &'a mut Brep,
     env: &'a mut EditNotifyEnv<'e>,
+    curve_ref: &'a dyn Fn(EdgeId, i64) -> ObjectRef,
 }
 impl FaceEdgeBackend for ArenaFaceEdge<'_, '_> {
     type Face = FaceId;
@@ -1584,6 +1638,7 @@ impl FaceEdgeBackend for ArenaFaceEdge<'_, '_> {
             orientation,
             gap,
             out,
+            self.curve_ref,
         )
     }
 }
@@ -1628,8 +1683,8 @@ fn find_vertex_sector(
 
 /// `SmBrep::MakeEdgeInFaceWithVU(face, first, last, curve, uv, interval, orientation,
 /// max_gap_3d, ...)` without drop-curve state ([`super::p9::make_edge_in_face_with_vu`]).
-/// The double gap becomes the `SmZoneTol3d` parameter. Curves carry no identity in this
-/// port (module docs): the new edge's curve gets a call-local one.
+/// The double gap becomes the `SmZoneTol3d` parameter. The new edge's curve takes its
+/// identity from `curve_ref` (a call-local one for the plain entry points, module docs).
 #[allow(clippy::too_many_arguments)]
 fn make_edge_in_face_with_vu(
     k: &Kernel,
@@ -1644,6 +1699,7 @@ fn make_edge_in_face_with_vu(
     orientation: OrientType,
     max_gap_3d: f64,
     output: &mut EdgeInFace,
+    curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
 ) -> Result<()> {
     let made = super::p9::make_edge_in_face_with_vu(
         k,
@@ -1659,7 +1715,7 @@ fn make_edge_in_face_with_vu(
             curve_zone_tol_3d: crate::geom::tol::zone_tol3d(k, max_gap_3d),
         },
         env,
-        &edge_curve_identity,
+        curve_ref,
     )?;
     *output = EdgeInFace {
         edge: Some(made.edge),
@@ -1965,7 +2021,7 @@ pub fn remove_faces(
 }
 
 /// [`remove_faces`] under the caller's notification environment `env` (the objects'
-/// `SmTopology` records and attributes), instead of the kernel's ([`plain_edit`]).
+/// `SmTopology` records and attributes), instead of the kernel's (`plain_edit`).
 ///
 /// # Errors
 ///
@@ -2085,6 +2141,15 @@ pub fn stitch_and_orient(
     b: &mut Brep,
     options: &StitchAndOrientOptions,
 ) -> Result<()> {
+    stitch_and_orient_with_identity(k, b, options, None)
+}
+
+pub(crate) fn stitch_and_orient_with_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    options: &StitchAndOrientOptions,
+    identity: Option<crate::query::brep::BrepIdentity<'_>>,
+) -> Result<()> {
     let mut lamina = 0;
     let mut tolerance = initial_stitch_tolerance(b.tolerance(), options.stitch_tolerance);
     crate::error::ignore_status(stitch_faces(
@@ -2093,6 +2158,7 @@ pub fn stitch_and_orient(
         tolerance,
         options.allow_spine_edges,
         &mut lamina,
+        identity,
     ))?;
     if lamina > 1 {
         tolerance = if options.stitch_tolerance <= 0.0 {
@@ -2106,6 +2172,7 @@ pub fn stitch_and_orient(
             tolerance,
             options.allow_spine_edges,
             &mut lamina,
+            identity,
         ))?;
     }
     plain_edit(k, b, |k, b, env| {
@@ -2129,8 +2196,16 @@ fn stitch_faces(
     tolerance: f64,
     allow_spine: bool,
     lamina: &mut usize,
+    identity: Option<crate::query::brep::BrepIdentity<'_>>,
 ) -> Result<()> {
-    let out = crate::topology::brep::p4::stitch_faces(k, b, tolerance, None, allow_spine)?;
+    let out = crate::topology::brep::p4::stitch_faces_with_identity(
+        k,
+        b,
+        tolerance,
+        None,
+        allow_spine,
+        identity,
+    )?;
     *lamina = usize::try_from(out.lamina_edges)
         .map_err(|_| SolidError::invalid_input(OP, "lamina edge count"))?;
     Ok(())
@@ -2210,7 +2285,14 @@ fn squeeze_face_in(
         // DoRegionNesting, FastEdgeCompare, IgnoreProblems, ValidateResult,
         // SqueezeSmallEdges, MakingManifoldSolid, RemoveLaminarSlivers.
         // SplitEdgesWithVertices retains the manager's native default TRUE.
-        let mut stitch = squeeze_stitch(tolerance, [false, true, true, false, true, false, false])?;
+        let mut callback = crate::heal::stitch::p1::DefaultStitchCallback::new();
+        let mut stitch =
+            crate::heal::stitch::p1::Stitch::new(&mut callback, tolerance, false, false);
+        stitch.fast_edge_compare = true;
+        stitch.ignore_problems = true;
+        stitch.squeeze_small_edges = true;
+        stitch.making_manifold_solid = false;
+        stitch.remove_laminar_slivers = false;
         let mut vertices: Vec<_> = face_vertices(b, face)?.into_iter().map(Some).collect();
         let mut edges: Vec<_> = face_edges(b, face)?.into_iter().map(Some).collect();
         let (shell1, shell2) = face_shells(b, face)?;
@@ -2244,61 +2326,42 @@ fn squeeze_face_in(
         // After face deletion, ordinary stitch failures record SM_ERR but do
         // not suppress the remaining cleanup calls or their partially filled outputs.
         let mut failed = false;
-        let mut surviving = Vec::new();
-        let mut deleted_vertices = Vec::new();
-        let mut deleted_edges = Vec::new();
-        // `dMaxVertexGap, dMinUnStitchVertGap`: uninitialised upstream, written by
-        // each stitch step and passed on to the next.
-        let mut max_vertex_gap = 0.0;
-        let mut min_unstitched_vertex_gap = 0.0;
-        cleanup_status(
-            stitch_vertex_pairs(
-                &mut stitch,
-                b,
-                &mut vertices,
-                &mut surviving,
-                &mut deleted_vertices,
-                &mut deleted_edges,
-                &mut max_vertex_gap,
-                &mut min_unstitched_vertex_gap,
-            ),
-            &mut failed,
-        )?;
+        let vlist_opt = crate::error::ignored(stitch.stitch_vertex_list(k, b, &mut vertices))?;
+        let (surviving, deleted_vertices, deleted_edges) = if let Some(vlist) = vlist_opt {
+            (
+                vlist.surviving.into_iter().map(Some).collect::<Vec<_>>(),
+                vlist.deleted,
+                vlist.deleted_edges,
+            )
+        } else {
+            failed = true;
+            (Vec::new(), Vec::new(), Vec::new())
+        };
         edges.retain(|edge| !edge.is_some_and(|e| deleted_edges.contains(&e)));
         output.deleted_edges.extend_from_slice(&deleted_edges);
         vertices.clone_from(&surviving);
-        deleted_edges.clear();
-        let mut processed = Vec::new();
-        let mut split = Vec::new();
-        let mut new_edges = Vec::new();
-        cleanup_status(
-            split_edges_with_vertices(
-                &mut stitch,
-                b,
-                &mut vertices,
-                &mut edges,
-                &mut processed,
-                &mut split,
-                &mut new_edges,
-                &mut max_vertex_gap,
-                &mut min_unstitched_vertex_gap,
-            ),
-            &mut failed,
-        )?;
-        let mut glued = Vec::new();
-        cleanup_status(
-            stitch_edges_of_vertices(
-                &mut stitch,
-                b,
-                &surviving,
-                &mut glued,
-                &mut deleted_edges,
-                &mut processed,
-                &mut max_vertex_gap,
-                &mut min_unstitched_vertex_gap,
-            ),
-            &mut failed,
-        )?;
+
+        let split_opt = crate::error::ignored(stitch.split_edges_with_vertices(
+            k,
+            b,
+            &mut vertices,
+            &mut edges,
+        ))?;
+        let mut new_edges = if let Some(res) = split_opt {
+            res.new_edges
+        } else {
+            failed = true;
+            Vec::new()
+        };
+
+        let edge_opt = crate::error::ignored(stitch.stitch_edges_of_vertices(k, b, &surviving))?;
+        let mut deleted_edges = if let Some(res) = edge_opt {
+            res.deleted
+        } else {
+            failed = true;
+            Vec::new()
+        };
+
         let temporary: Vec<_> = new_edges
             .iter()
             .copied()
@@ -2328,55 +2391,7 @@ fn region_is_infinite(b: &Brep, region: RegionId) -> Result<bool> {
     Ok(b.region(region)?.is_infinite_region(b, region))
 }
 
-// Type boundary only: this is never constructed as a substitute manager. Wiring
-// the constructor requires the actual SmStitch owner/type, shared across all
-// three subsequent calls; constructing a fresh manager per call changes state.
-struct SqueezeStitch;
-/// `SmStitch sStitch(sCallBack, dXSectTol3d)` with a default `SmStitchCallback`.
-fn squeeze_stitch(_tolerance: f64, _flags: [bool; 7]) -> Result<SqueezeStitch> {
-    // UNPORTED(heal.stitch_p1): SmStitch::SmStitch
-    missing("SmStitch::SmStitch", "heal.stitch_p1")
-}
-fn stitch_vertex_pairs(
-    _stitch: &mut SqueezeStitch,
-    _b: &mut Brep,
-    _vertices: &mut Vec<Option<VertexId>>,
-    _surviving: &mut Vec<Option<VertexId>>,
-    _deleted_vertices: &mut Vec<VertexId>,
-    _deleted_edges: &mut Vec<EdgeId>,
-    _max_vertex_gap: &mut f64,
-    _min_unstitched_vertex_gap: &mut f64,
-) -> Result<()> {
-    // UNPORTED(heal.stitch_p2): SmStitch::StitchVertexPairs
-    missing("SmStitch::StitchVertexPairs", "heal.stitch_p2")
-}
-fn split_edges_with_vertices(
-    _stitch: &mut SqueezeStitch,
-    _b: &mut Brep,
-    _vertices: &mut Vec<Option<VertexId>>,
-    _edges: &mut Vec<Option<EdgeId>>,
-    _processed: &mut Vec<VertexId>,
-    _split: &mut Vec<EdgeId>,
-    _new: &mut Vec<EdgeId>,
-    _max_vertex_gap: &mut f64,
-    _min_unstitched_vertex_gap: &mut f64,
-) -> Result<()> {
-    // UNPORTED(heal.stitch_p2): SmStitch::SplitEdgesWithVertices
-    missing("SmStitch::SplitEdgesWithVertices", "heal.stitch_p2")
-}
-fn stitch_edges_of_vertices(
-    _stitch: &mut SqueezeStitch,
-    _b: &mut Brep,
-    _vertices: &[Option<VertexId>],
-    _glued: &mut Vec<EdgeId>,
-    _deleted: &mut Vec<EdgeId>,
-    _processed: &mut Vec<VertexId>,
-    _max_edge_gap: &mut f64,
-    _min_unstitched_edge_gap: &mut f64,
-) -> Result<()> {
-    // UNPORTED(heal.stitch_p1): SmStitch::StitchEdgesOfVertices
-    missing("SmStitch::StitchEdgesOfVertices", "heal.stitch_p1")
-}
+#[cfg(test)]
 fn cleanup_status(result: Result<()>, failed: &mut bool) -> Result<()> {
     // After deleting the face, every native stitch failure sets SM_ERR but
     // continues cleanup and output appends. Only missing implementation defers.
@@ -2409,11 +2424,23 @@ pub fn transform_with_notifications(
     scale_tolerances: bool,
     notifications: Option<&mut EditNotifyEnv<'_>>,
 ) -> Result<()> {
-    let Some(env) = notifications else {
-        return plain_edit(k, b, |k, b, env| {
-            transform_with_notifications(k, b, placement, scale, scale_tolerances, Some(env))
-        });
-    };
+    if let Some(env) = notifications {
+        transform_in(k, b, placement, scale, scale_tolerances, env)
+    } else {
+        plain_edit(k, b, |k, b, env| {
+            transform_in(k, b, placement, scale, scale_tolerances, env)
+        })
+    }
+}
+
+fn transform_in(
+    k: &mut Kernel,
+    b: &mut Brep,
+    placement: &Axis2Placement,
+    scale: Option<Vec3>,
+    scale_tolerances: bool,
+    env: &mut EditNotifyEnv<'_>,
+) -> Result<()> {
     let owner_keys = env.key_of;
     let mut notifications = Some(env);
     if placement.is_identity(crate::math::EFF_ZERO)
@@ -2449,7 +2476,11 @@ pub fn transform_with_notifications(
         bbox.add_point(point);
     }
     for edge in crate::topology::brep::p1::curve_owners(b, None, &|e| {
-        owner_keys(crate::EntityRef::Edge(e))
+        transform_owner_key(
+            b,
+            crate::EntityRef::Edge(e),
+            owner_keys(crate::EntityRef::Edge(e)),
+        )
     })? {
         crate::error::ignore_status(notify_edge_pre_edit(
             k,
@@ -2473,7 +2504,11 @@ pub fn transform_with_notifications(
         }
     }
     for face in crate::topology::brep::p1::surface_owners(b, None, &|f| {
-        owner_keys(crate::EntityRef::Face(f))
+        transform_owner_key(
+            b,
+            crate::EntityRef::Face(f),
+            owner_keys(crate::EntityRef::Face(f)),
+        )
     })? {
         crate::error::ignore_status(notify_face_pre_edit(
             k,
@@ -2585,6 +2620,32 @@ fn notify_edge_pre_edit(
         },
     )
 }
+
+// Geometry may retain a constructor's caller keys while plain-edit or temporary
+// transform notifications use distinct identities. Match only a proven producer
+// key or the issued notification identity; foreign and unowned geometry keep the
+// native filter.
+fn transform_owner_key(b: &Brep, entity: crate::EntityRef, kernel_key: ObjectRef) -> ObjectRef {
+    let owner = match entity {
+        crate::EntityRef::Edge(edge) => b
+            .edges()
+            .get(edge)
+            .and_then(|e| e.curve.as_ref())
+            .and_then(Curve::owner),
+        crate::EntityRef::Face(face) => b
+            .faces()
+            .get(face)
+            .and_then(|f| f.surface.as_ref())
+            .and_then(crate::surface::surface::Surface::owner),
+        _ => None,
+    };
+    if owner == Some(kernel_key) {
+        kernel_key
+    } else {
+        b.geometry_owner_key(entity).unwrap_or(kernel_key)
+    }
+}
+
 fn transformed_surface_base(
     k: &Kernel,
     surface: &mut crate::surface::surface::Surface,

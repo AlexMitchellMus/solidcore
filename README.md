@@ -26,12 +26,17 @@ C++ to `1e-9` relative with identical topology, verified unit by unit.
 
 ## Status
 
-About a third ported and verified against the C++: the math, NURBS and curve layers,
-with surfaces and topology under way. **Checklist: [`plan/PROGRESS.md`](plan/PROGRESS.md)**
-(updated automatically). Notes and handoff: [`plan/STATUS.md`](plan/STATUS.md).
-The same data, browsable, is on the progress site built by
+The planned kernel modules have Rust ports, and primitive construction is exercised
+end to end. Integration remains in progress: partial units, deferred paths and known
+mismatches still limit coverage. The API is experimental (0.0.x).
+
+Use the [live unit results](https://tangency-labs.github.io/solidcore/units/index.html)
+for current differential coverage and blockers, and the
+[primitive checks](https://tangency-labs.github.io/solidcore/solids.html) for whole-solid
+results. Per-unit plans and notes live in [`plan/units/`](plan/units/); the generated
+checklist is [`plan/PROGRESS.md`](plan/PROGRESS.md), with handoff notes in
+[`plan/STATUS.md`](plan/STATUS.md). The progress site is built by
 [`site/build.py`](site/README.md) (`python3 site/build.py` -> `bin/site/`).
-Nothing is usable end to end yet (no primitives, booleans or fillets).
 
 ## Layout
 
@@ -96,8 +101,8 @@ Rust-only builds do not need these C++ build tools.
 git clone https://github.com/NVIDIA-Omniverse/usd-brep upstream
 git -C upstream checkout c9c5979
 scripts/fetch-cpp.sh                                  # C++ reference -> bin/cpp (prebuilt, or built)
-cargo run -p difftest --features cpp -- --green       # all units marked green
-cargo run -p difftest --features cpp -- --unit <unit id>   # one unit
+cargo run --profile difftest -p difftest --features cpp -- --green   # all green and partial units
+cargo run --profile difftest -p difftest --features cpp -- --unit <unit id>   # one unit
 ```
 
 `solidcore-ffi` and `difftest` compile without the C++ build; only the `cpp` feature
@@ -107,24 +112,29 @@ so they are cached like the Rust crates.
 
 ## Contributing
 
-Contributions are pull requests, and AI agents are welcome:
+Contributions go through pull requests, and AI agents are welcome. Useful work includes
+connecting ported units, resolving deferred comparisons, adding operation regressions
+and fixing bugs.
 
-1. Find an unclaimed unit in [`plan/PROGRESS.md`](plan/PROGRESS.md), or a concrete
-   completion task in an existing unit: a missing function, back-edge, exact runner
-   import, coverage gap or parity bug. Green reports alone do not prove every
-   upstream branch is exercised.
-2. Search open PR titles and bodies for the unit, symbols and paths. Claim the
-   specific work in a draft PR; initial ports use `port: <unit id>`. A claim covers
-   its stated scope, so independent tasks in the same unit remain available.
-   Coordinate overlapping functions or shared interfaces in the existing PR first.
-3. Describe the intended behavior, affected paths, related PRs and validation in the
-   draft, and list independent follow-ups others can take. Prove the change against
-   the C++ reference before marking it ready. See [AGENTS.md, section 4](AGENTS.md#4-porting-a-unit-pr-workflow)
-   for the claim template, handoffs and inactivity rules.
+1. Check the [live unit results](https://tangency-labs.github.io/solidcore/units/index.html),
+   [open issues](https://github.com/tangency-labs/solidcore/issues) and
+   [open PRs](https://github.com/tangency-labs/solidcore/pulls). Choose an unclaimed
+   unit or a specific completion task: a missing function, back-edge, exact import,
+   coverage gap or parity bug. Green reports do not prove every branch is exercised.
+2. Search PR titles and bodies for the unit, symbols and paths. Claim the specific
+   work in a draft PR; initial ports use `port: <unit id>`. A claim covers its stated
+   scope, leaving independent tasks in the same unit available. Coordinate overlapping
+   functions or shared interfaces in the existing PR before editing them.
+3. Describe the intended behavior, affected paths, related PRs and validation, and
+   list independent follow-ups others can take. Compare against C++ and rerun affected
+   units with existing tolerances and coverage. CI is the merge gate. See
+   [AGENTS.md, section 4](AGENTS.md#4-porting-a-unit-pr-workflow) for the claim template,
+   handoffs and inactivity rules.
 
 To keep parallel PRs from conflicting: edit only your unit's `plan/units/<unit id>.toml`,
-never commit `reports/difftest/` (CI generates them), and only append to
-`plan/findings.md` and `plan/upstream-issues.md`. A branch started before the per-unit
+never commit `reports/difftest/` (CI generates them), and put each finding or upstream issue
+in its own new file under `plan/findings/` or `plan/upstream-issues/` (never append to a
+shared file). A branch started before the per-unit
 split migrates with `git fetch origin && git merge origin/main;
 scripts/units-migrate-branch.sh && git commit --no-edit`.
 

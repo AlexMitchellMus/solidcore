@@ -417,6 +417,12 @@ fn loop_vertex_uv(k: &Kernel, surface: &Surface, point: Vec3, zone: f64) -> ScRe
         ..Vertexuse::default()
     })?;
     b.loopuse_mut(lu)?.start = LoopuseStart::Vertexuse(Some(vu));
+    // The shim attaches its cache to the surface first, with point testing off, so
+    // ComputeUVPoint's smsurf_GetSurfaceCache reuses it instead of building a trimmed
+    // cache of the face: give the Rust surface the same kind of cache.
+    if let Some(s) = b.face(f)?.surface.as_ref() {
+        s.attach_trim_cache(|c| c.base_mut().point_test_enabled = false)?;
+    }
     solidcore::topology::vertexuse::compute_uv_point(k, &mut b, vu, true)
 }
 fn rust(i: &Input) -> ScResult<Output> {
@@ -468,12 +474,20 @@ fn rust(i: &Input) -> ScResult<Output> {
         {
             pool.vertices.push(a * i.scale);
             pool.edge_zones.push(0.);
-            pool.edges
-                .push(Curve::from(BSplineCurve::create_line_segment(
-                    3,
-                    a * i.scale,
-                    b * i.scale,
-                )?));
+            let curve = Curve::from(BSplineCurve::create_line_segment(
+                3,
+                a * i.scale,
+                b * i.scale,
+            )?);
+            pool.edges.push(curve.clone());
+            let wire = solidcore::topology::brep::p5::create_wire_edge_from_curve(
+                &mut k,
+                &mut pool.wires,
+                curve,
+                Extent1d::from_min_max(0., 1.),
+            )?;
+            solidcore::topology::edge::set_tolerance(&mut pool.wires, wire, 0., false, true)?;
+            pool.wire_edges.push(wire);
             pool.trims
                 .push(Curve::from(BSplineCurve::create_line_segment(2, a, b)?));
             lp.vertices.push(BoundaryVertex {
@@ -538,6 +552,7 @@ fn rust(i: &Input) -> ScResult<Output> {
                 surface: &pool.surface,
                 loops: &loops,
                 cache: &cache,
+                cache_handle: &Some,
             },
             i.check3d,
         )

@@ -1005,7 +1005,7 @@ fn trim_srf_cache_tree<O: Copy + PartialEq>(
 /// surface's [`TrimSrfCache`] with the [`cache_tolerances`], its tree built unless
 /// the context is doing a Boolean operation (then [`SurfaceCache::get_tree`] builds
 /// it on first use) or the surface's cache slot says upstream reuses a cache whose
-/// tree is not built ([`Surface::cache_tree_state`]; see [`trim_srf_cache_tree`]).
+/// tree is not built ([`Surface::cache_tree_state`]; see `trim_srf_cache_tree`).
 ///
 /// # Errors
 ///
@@ -1024,6 +1024,8 @@ pub fn make_trim_srf_cache<O: Copy + PartialEq>(
     let mut cache = TrimSrfCache::new(surface.clone_for_evaluation()?, cache_options(tol));
     cache.base_mut().set_surface_handle(handle);
     trim_srf_cache_tree(k, surface, state, &mut cache, |c| c.build_tree(k))?;
+    // a face surface whose owner is cleared keeps it (SmCacheMgr::AddToObjectCache)
+    surface.keep_standalone_trim_cache(&cache)?;
     Ok(cache)
 }
 
@@ -2205,11 +2207,37 @@ impl Surface {
         approx_tol_3d: Option<f64>,
         ang_tol_rad: Option<f64>,
     ) -> Result<(Vec<Curve>, Vec<Curve>)> {
+        let mut cache = get_surface_cache::<SilhouetteObject>(k, self, None)?;
+        self.create_silhouette_curves_with_cache(
+            k,
+            &mut cache,
+            uv_domain,
+            eye_point_or_view_vector,
+            perspective,
+            approx_tol_3d,
+            ang_tol_rad,
+        )
+    }
+
+    /// [`Surface::create_silhouette_curves`] using an already-resolved surface cache
+    /// (`smsurf_GetSurfaceCache(this)` in callers holding the owning face's cache).
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::create_silhouette_curves`].
+    pub fn create_silhouette_curves_with_cache<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        cache: &mut SurfaceCache<O>,
+        uv_domain: &Extent2d,
+        eye_point_or_view_vector: Point3,
+        perspective: bool,
+        approx_tol_3d: Option<f64>,
+        ang_tol_rad: Option<f64>,
+    ) -> Result<(Vec<Curve>, Vec<Curve>)> {
         const OP: &str = "surface::surface::p1::create_silhouette_curves";
 
         // test to see if this surface has color: not modelled (see the doc comment)
-
-        let mut cache = get_surface_cache::<SilhouetteObject>(k, self, None)?;
 
         // Check to make sure internal surface continuities are better then C0 (the
         // check only signals upstream)
@@ -2223,7 +2251,7 @@ impl Surface {
                 return Err(e);
             }
         }
-        let traced = silhouette.do_trace(k, &mut cache, approx_tol_3d, ang_tol_rad)?;
+        let traced = silhouette.do_trace(k, cache, approx_tol_3d, ang_tol_rad)?;
         let mut curves_3d = traced.curves_3d;
         let mut curves_uv = traced.uv_curves;
 
@@ -3486,6 +3514,10 @@ pub struct CsiGlobalSolver<'t, 's, O> {
     pub interval: Extent1d,
     /// `m_crUVDomain`.
     pub uv_domain: Extent2d,
+    /// The handles and parameter domains of the solve's curve and surface, which the
+    /// solutions name (`IdenticalSolutions` reads them through upstream's objects);
+    /// `None` reads them from the handles themselves.
+    pub operands: Option<SolveOperands<O>>,
 }
 
 impl<'t, 's, O: SolutionObject> CsiGlobalSolver<'t, 's, O> {
@@ -3510,6 +3542,7 @@ impl<'t, 's, O: SolutionObject> CsiGlobalSolver<'t, 's, O> {
             found_coincidence,
             interval,
             uv_domain,
+            operands: None,
         }
     }
 }
@@ -3533,9 +3566,52 @@ pub struct CsGlobalSolver<'t, 's, O> {
     pub surface_cache: Option<&'s SurfaceCache<O>>,
     /// The prepared owning-face classifier for trimmed candidate acceptance.
     pub face_queries: Option<&'s dyn FaceQueries<O>>,
+    /// The handles and parameter domains of the solve's curve and surface, which the
+    /// solutions name (`IdenticalSolutions` reads them through upstream's objects);
+    /// `None` reads them from the handles themselves.
+    pub operands: Option<SolveOperands<O>>,
     /// The kernel (upstream's `SmContext`) the leaf solve's evaluations and solves run
     /// with (part 11).
     pub kernel: &'s Kernel,
+}
+
+/// The parameter domain of a solve's operand (see [`SolveOperands`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OperandDomain {
+    /// A curve and its natural interval (`GetNaturalInterval`).
+    Curve(Extent1d),
+    /// A surface and its natural UV domain (`GetNaturalUVDomain`).
+    Surface(Extent2d),
+}
+
+/// The operands of a curve/surface or surface/surface solve as its solutions name
+/// them: each operand's handle and parameter domain, which `IdenticalSolutions`
+/// reads through upstream's objects (`&crCurve`, `this`, `&crOtherSurface`). A
+/// handle's own hooks answer first.
+#[derive(Debug, Clone, Copy)]
+pub struct SolveOperands<O> {
+    /// The handles of the operands and their domains.
+    pub operands: [Option<(O, OperandDomain)>; 2],
+}
+
+impl<O: SolutionObject> crate::geom::solution_array::ParameterDomains<O> for SolveOperands<O> {
+    fn natural_interval(&self, curve: &O) -> Option<Extent1d> {
+        curve.natural_interval().or_else(|| {
+            self.operands.iter().flatten().find_map(|(h, d)| match d {
+                OperandDomain::Curve(ivl) if h == curve => Some(*ivl),
+                _ => None,
+            })
+        })
+    }
+
+    fn natural_uv_domain(&self, surface: &O) -> Option<Extent2d> {
+        surface.natural_uv_domain().or_else(|| {
+            self.operands.iter().flatten().find_map(|(h, d)| match d {
+                OperandDomain::Surface(domain) if h == surface => Some(*domain),
+                _ => None,
+            })
+        })
+    }
 }
 
 impl<'t, 's, O: SolutionObject> CsGlobalSolver<'t, 's, O> {
@@ -3557,6 +3633,7 @@ impl<'t, 's, O: SolutionObject> CsGlobalSolver<'t, 's, O> {
             curve: None,
             surface_cache: None,
             face_queries: None,
+            operands: None,
             kernel: k,
         }
     }
@@ -3672,6 +3749,7 @@ impl<'t, 's, O: SolutionObject> SsGlobalSolver<'t, 's, O> {
             kernel,
             caches: [None, None],
             face_queries: None,
+            operands: None,
         }
     }
 }

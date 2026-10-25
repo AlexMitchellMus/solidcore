@@ -5,7 +5,7 @@
 //! snapshot. Successful native mutations on deferred paths are not parity passes.
 use super::boolean_merge_p1::{graph_reachable, Canon};
 use super::topology_edgeuse_p1::{self as spec, BrepIn};
-use super::topology_vertexuse::import;
+use super::topology_vertexuse::{import, import_raw};
 use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -369,7 +369,8 @@ fn rust(i: &Inputs, initial: &[f64]) -> Result<Output, HarnessError> {
                 let surface = f
                     .surface
                     .as_ref()
-                    .ok_or_else(|| SolidError::sm_err("difftest::brep_p9"))?;
+                    .ok_or_else(|| SolidError::sm_err("difftest::brep_p9"))?
+                    .clone();
                 let y = if i.variant == 1 { 2.0 } else { 0.5 };
                 let (x0, x1) = if i.variant == 2 {
                     (0.25, 0.75)
@@ -383,14 +384,9 @@ fn rust(i: &Inputs, initial: &[f64]) -> Result<Output, HarnessError> {
                     3,
                 );
                 line.edit_parameterization(&interval)?;
-                let dropped = port::drop_edge_curve(
-                    &k,
-                    surface,
-                    &f.uv_domain,
-                    &Curve::from(line),
-                    &interval,
-                    f.tolerance,
-                )?;
+                // the face-owned surface: the drop reaches its face
+                let dropped =
+                    port::drop_edge_curve_on_face(&k, &mut b, face, &Curve::from(line), &interval)?;
                 record.extend([
                     dropped.max_drop_to_surf,
                     dropped.max_approx_dev,
@@ -529,7 +525,7 @@ impl UnitDiff for Runner {
             raw.get(2..2 + n)
                 .ok_or_else(|| error("short native record"))?,
         );
-        let (b, _) = import(
+        let (b, _) = import_raw(
             raw.get(2 + n..)
                 .ok_or_else(|| error("short native graph"))?,
         )?;

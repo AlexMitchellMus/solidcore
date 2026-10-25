@@ -24,12 +24,18 @@
 //!   constant-distance solver's distance through [`FilletSolverOps::constant_distance`]
 //!   (both added to the trait for this unit). The variable-radius branch casts to
 //!   `SmVariableRadiusFS` (unit `blend.fillet_standard_solver_p1`) and is a stub.
-//! - **Offset surface copies.** As in `blend.fillet_solver_p1`, offset evaluations
-//!   (`EvaluateNormal`, the iso curve and its `LocalCurveIntersect`) run on copies of
-//!   the solver's offset surfaces; `LoadInitialValues` receives a copy of the first one
-//!   (upstream passes `*GetSurface(0)` as a `const` reference). Upstream's `SmIsoCurve`
-//!   holds a pointer to the solver's surface, so after `SetSurfacesToZeroOffset` it
-//!   evaluates at zero offset: the copy is rebuilt from the zeroed surface there.
+//! - **Offset surface copies.** As in `blend.fillet_solver_p1`, the iso curve and its
+//!   `LocalCurveIntersect` run on copies of the solver's offset surfaces;
+//!   `LoadInitialValues` receives a copy of the first one (upstream passes
+//!   `*GetSurface(0)` as a `const` reference). Upstream evaluates the solver's own
+//!   `SmOffsetSurface`s, whose `const` evaluators store the base extension they make
+//!   (`m_pExtendedSurface`), so after each use the solver's offsets take the copies'
+//!   extensions back (`FilletSolver::keep_extension_of_copy`; a copy starts from the
+//!   solver's extension and nothing else evaluates the solver's surface meanwhile, so
+//!   the history matches upstream's one object). `EvaluateNormal` runs on the solver's
+//!   own surface. Upstream's `SmIsoCurve` holds a pointer to the solver's surface, so
+//!   after `SetSurfacesToZeroOffset` it evaluates at zero offset: the copy is rebuilt
+//!   from the zeroed surface there.
 //! - **Out-params.** `StepSolve`'s three flags are a [`StepSolveOutcome`] the caller
 //!   passes in, written where upstream writes them, so on an error they keep what was
 //!   set before it (upstream's `SmFilletIntersector` reads `bClipped` / `bBoundaryHit`
@@ -56,6 +62,7 @@ use super::p1::{
     FilletSolver, FilletSolverOps, FilletSolverType, FilletSphereSolveEnfo, FindClippedRadiusEfo,
     RailOwnership,
 };
+use crate::blend::fillet_classification::{FilletClassObject, LegacyClassificationObjects};
 use crate::blend::fillet_geom::p1::{
     BoundaryTrimmingType, FilStatus, FilletBrep, FilletCornerId, FilletEdgeType, FilletGeomId,
     FilletGeomType, FilletVertex, FilletVertexType,
@@ -468,7 +475,13 @@ impl FilletSolver {
                     ops.solver().this_approx_tol_3d(),
                     get2(&uv, oi),
                     guess,
-                )?;
+                );
+                // upstream evaluates the solver's own offsets: they keep the extensions
+                // (also on a failure)
+                ops.solver_mut()
+                    .keep_extension_of_iso_copy(si, &iso_curve)?;
+                ops.solver_mut().keep_extension_of_copy(oi, &other)?;
+                let found = found?;
                 out.found_good_point = found.is_some();
 
                 // when an intersection point was found
@@ -495,11 +508,14 @@ impl FilletSolver {
 
                         // the iso curve points at the (now zero-offset) surface
                         let iso_curve = iso_curve_of(ops.solver(), si, surf_param, iso_param)?;
-                        let plane_orig = iso_curve.evaluate_point(k, t_found)?;
+                        let plane_orig = iso_curve.evaluate_point(k, t_found);
+                        ops.solver_mut()
+                            .keep_extension_of_iso_copy(si, &iso_curve)?;
+                        let plane_orig = plane_orig?;
 
                         // get railcurve point surface normals
-                        let normal1 = offset_normal(k, ops.solver(), 0, uv[0])?;
-                        let normal2 = offset_normal(k, ops.solver(), 1, uv[1])?;
+                        let normal1 = offset_normal(k, ops.solver_mut(), 0, uv[0])?;
+                        let normal2 = offset_normal(k, ops.solver_mut(), 1, uv[1])?;
                         let plane_normal = normal1.cross(normal2).unitize()?;
 
                         // find two railcurve points on plane at radius distance from
@@ -594,8 +610,16 @@ impl FilletSolver {
             &mut intervals,
             &mut periodicities,
             &mut guess_t,
-        )?;
-        if let Some(iv) = initial {
+        );
+        // upstream passes the solver's own surface: it keeps the extensions the
+        // evaluations made (also on a failure)
+        ops.solver_mut()
+            .surface_mut(0)?
+            .ok_or_else(|| invalid("no first offset surface"))?
+            .surface
+            .surface
+            .take_extension_of(&surface1.surface);
+        if let Some(iv) = initial? {
             surf2_index = iv.surface2_index;
         }
 
@@ -675,14 +699,14 @@ fn iso_curve_of(
     )?))
 }
 
-/// `GetSurface(rail)->EvaluateNormal(uv, TRUE, TRUE, ..)` on a copy.
-fn offset_normal(k: &Kernel, solver: &FilletSolver, rail: usize, uv: Point2) -> Result<Vec3> {
-    let mut s = solver
-        .surface(rail)?
+/// `GetSurface(rail)->EvaluateNormal(uv, TRUE, TRUE, ..)` on the solver's own offset
+/// surface, which keeps an extension the evaluation makes (as upstream's).
+fn offset_normal(k: &Kernel, solver: &mut FilletSolver, rail: usize, uv: Point2) -> Result<Vec3> {
+    solver
+        .surface_mut(rail)?
         .ok_or_else(|| invalid("no offset surface"))?
         .surface
-        .clone();
-    s.surface
+        .surface
         .evaluate_normal_extending(k, uv, Side::Left, Side::Left)
 }
 
@@ -772,6 +796,7 @@ impl FilletSolver {
         trim_type: BoundaryTrimmingType,
     ) -> Result<()> {
         const OP_T: &str = "blend::fillet_solver::p3::split_and_trim_fillet_surface";
+        let geometry = &LegacyClassificationObjects(geometry);
         let fillet_geom = *self
             .fillet_geoms
             .get(fillet_geom_index)
@@ -789,13 +814,13 @@ impl FilletSolver {
         };
         let cc1 = rail_class(fillets, 0)?;
         let cc2 = rail_class(fillets, 1)?;
-        let interval_of = |cc: &CurveClassification<EntityRef>, i: usize| -> Result<Extent1d> {
-            Ok(cc.at(i)?.interval)
-        };
+        let interval_of = |cc: &CurveClassification<FilletClassObject>,
+                           i: usize|
+         -> Result<Extent1d> { Ok(cc.at(i)?.interval) };
 
         // Find first interval to be used (sm_FindNextGoodInterval leaves the index
         // unchanged when it finds nothing)
-        let next_good = |cc: &CurveClassification<EntityRef>, start: &mut usize| -> bool {
+        let next_good = |cc: &CurveClassification<FilletClassObject>, start: &mut usize| -> bool {
             match find_next_good_interval(cc, *start) {
                 Some(i) => {
                     *start = i;
@@ -875,7 +900,7 @@ impl FilletSolver {
         }
 
         if found_intersection {
-            self.split_fillet_geom(
+            self.split_fillet_geom_scoped(
                 k,
                 fillets,
                 geometry,
@@ -896,8 +921,8 @@ impl FilletSolver {
 
 /// `pCC->GetCurve()`, dereferenced.
 fn class_curve<'g>(
-    geometry: &'g impl ClassGeometry<EntityRef>,
-    cc: &CurveClassification<EntityRef>,
+    geometry: &'g impl ClassGeometry<FilletClassObject>,
+    cc: &CurveClassification<FilletClassObject>,
 ) -> Result<&'g Curve> {
     cc.curve()
         .and_then(|c| geometry.curve(c))
@@ -909,13 +934,15 @@ fn class_curve<'g>(
 /// `GetEdgeObject()` of a point classification: the target edge, `None` when the
 /// point is not on an edge.
 fn edge_object(
-    pc: &crate::intersect::point_class::PointClassification<EntityRef>,
+    pc: &crate::intersect::point_class::PointClassification<FilletClassObject>,
 ) -> Result<Option<EdgeId>> {
     match pc.edge_object() {
         None => Ok(None),
-        Some(EntityRef::Edge(e)) => Ok(Some(e)),
+        Some(object) => match object.target_entity()? {
+            EntityRef::Edge(e) => Ok(Some(e)),
+            _ => Err(invalid("edge classification object is not an edge")),
+        },
         // upstream casts the object to SmEdge* blindly
-        Some(_) => Err(invalid("edge classification object is not an edge")),
     }
 }
 
@@ -984,6 +1011,39 @@ pub fn refine_rail_curve_classification(
     small_intervals: &[usize],
     rail: EdgeId,
     classification: &mut CurveClassification<EntityRef>,
+) -> Result<()> {
+    let mut scoped = classification.map_objects(&mut |o| Ok(FilletClassObject::Legacy(o)))?;
+    let result = refine_rail_curve_classification_scoped(
+        solver,
+        k,
+        target,
+        fillets,
+        rail_index,
+        small_intervals,
+        rail,
+        &mut scoped,
+    );
+    *classification = scoped.map_objects(&mut |o| {
+        o.legacy()
+            .ok_or_else(|| invalid("scoped classification reached indexed caller"))
+    })?;
+    result
+}
+
+/// Refine a retained classification without losing target/pseudo provenance.
+///
+/// # Errors
+/// As [`refine_rail_curve_classification`], including wrong-body edge handles.
+#[allow(clippy::too_many_arguments)]
+pub fn refine_rail_curve_classification_scoped(
+    solver: &mut FilletSolver,
+    k: &Kernel,
+    target: &mut Brep,
+    fillets: &FilletBrep,
+    rail_index: usize,
+    small_intervals: &[usize],
+    rail: EdgeId,
+    classification: &mut CurveClassification<FilletClassObject>,
 ) -> Result<()> {
     const OP_R: &str = "blend::fillet_solver::p3::refine_rail_curve_classification";
     // Locals
@@ -1325,7 +1385,11 @@ impl FilletSolver {
             .geom_mut(geom)?
             .set_fillet_geom_type(FilletGeomType::CliffRollover);
 
-        let fillet_surface = fillets.geom(geom)?.fillet_surface.clone().ok_or_else(nul)?;
+        let fillet_surface = fillets
+            .geom(geom)?
+            .fillet_surface()?
+            .cloned()
+            .ok_or_else(nul)?;
         let mut rail = fillets
             .geom(geom)?
             .rail(roll_over_rail_index)
@@ -1938,7 +2002,7 @@ mod tests {
         let mut fb = FilletBrep::new();
         let curve = line([0.0; 3], [1.0, 0.0, 0.0]);
         let mut geom = FilletGeom::new(k, None, FilletGeomType::Default).expect("geom");
-        geom.fillet_surface = Some(patch([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]));
+        geom.set_fillet_surface(Some(patch([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0])));
         for (which, cls) in classes.into_iter().enumerate() {
             let v0 = fb.brep_mut().add_vertex(Vec3::new(0.0, 0.0, 0.0)).unwrap();
             let v1 = fb.brep_mut().add_vertex(Vec3::new(1.0, 0.0, 0.0)).unwrap();
@@ -1956,7 +2020,10 @@ mod tests {
                 ci.set_interval(&Extent1d::from_min_max(t0, t1));
                 ci.mid.set_class_object(mid, Some(EntityRef::Edge(rail)));
             }
-            fb.fillet_edge_mut(rail).unwrap().curve_class = Some(cc);
+            fb.fillet_edge_mut(rail)
+                .unwrap()
+                .set_indexed_curve_class(Some(&cc))
+                .unwrap();
             geom.set_rail(which, Some(rail));
         }
         let g = fb.add_geom(geom);
@@ -2055,7 +2122,7 @@ mod tests {
         let mut target = Brep::new();
         // interval 1 does not classify to an edge at either end; interval 3 is the
         // interval count
-        let r = refine_rail_curve_classification(
+        let r = refine_rail_curve_classification_scoped(
             &mut fs,
             &k,
             &mut target,

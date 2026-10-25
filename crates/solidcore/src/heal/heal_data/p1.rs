@@ -122,10 +122,11 @@ fn brep_regions_from_infinite(b: &Brep) -> Result<Vec<RegionId>> {
 /// `pBrep->FindAndSetInfiniteRegion()`: ray casts for the infinite region and moves
 /// it to the head of the region list.
 fn brep_find_and_set_infinite_region(k: &mut Kernel, b: &mut Brep) -> Result<()> {
+    let query = crate::query::brep::BrepQuery::of_brep(b);
     crate::topology::brep::p5::find_and_set_infinite_region(
         k,
         b,
-        &crate::query::brep::BrepQuery::default(),
+        &query,
         None,
         // SM_VS_INFINITEREGION_SWAP: SmBrep.h's native default.
         crate::topology::brep::p1::SetRegionVoidType::InfiniteRegionSwap,
@@ -591,7 +592,7 @@ impl<O: LoopObject> HealData<O> {
     pub fn cache_face_props_stage3(
         &mut self,
         k: &Kernel,
-        b: &Brep,
+        b: &mut Brep,
         _this_healer_op: HealerOpType,
     ) -> Result<bool> {
         // init output
@@ -619,7 +620,14 @@ impl<O: LoopObject> HealData<O> {
                     return Err(no_face());
                 };
                 let face_index = p.face_index;
-                let rtn = p.set_props(k, b, PropStage::Stage3, face, face_index, done_heal_op);
+                let rtn = p.set_props_with_query_gaps(
+                    k,
+                    b,
+                    PropStage::Stage3,
+                    face,
+                    face_index,
+                    done_heal_op,
+                );
 
                 match rtn {
                     // When Face has NotYet supported problems
@@ -940,7 +948,7 @@ mod tests {
             .cache_face_props_stage2(&k, &mut b, HealerOpType::CacheFaceprops2)
             .unwrap());
         assert!(!h
-            .cache_face_props_stage3(&k, &b, HealerOpType::CacheFaceprops3)
+            .cache_face_props_stage3(&k, &mut b, HealerOpType::CacheFaceprops3)
             .unwrap());
         let mut b = Brep::default();
         h.make_uv_trim_curves(&k, &mut b, true, HealerOpType::MakeUvtrimcurves)
@@ -955,7 +963,7 @@ mod tests {
         let mut h: HealData<H> = HealData::with_targets(&v, &e, &f);
         let r = h.cache_face_props_stage2(&k, &mut b, HealerOpType::CacheFaceprops2);
         assert!(matches!(r, Err(SolidError::InvalidInput { .. })));
-        let r = h.cache_face_props_stage3(&k, &b, HealerOpType::CacheFaceprops3);
+        let r = h.cache_face_props_stage3(&k, &mut b, HealerOpType::CacheFaceprops3);
         assert!(matches!(r, Err(SolidError::InvalidInput { .. })));
     }
 
@@ -1002,14 +1010,7 @@ mod tests {
         let face = b
             .add_face_record(Face::new(ShellId::from_index(0)))
             .unwrap();
-        assert!(matches!(
-            api_heal_brep(&mut k, Some(&mut b)),
-            Err(SolidError::Unported {
-                upstream: "SmStitch::SmStitch",
-                unit: "heal.stitch_p1",
-                ..
-            })
-        ));
+        assert!(api_heal_brep(&mut k, Some(&mut b)).is_ok());
         let r = h.heal_brep(
             &mut k,
             Some(&mut b),
@@ -1017,14 +1018,7 @@ mod tests {
             HealBrepTargets::default(),
             false,
         );
-        assert!(matches!(
-            r,
-            Err(SolidError::Unported {
-                upstream: "SmStitch::SmStitch",
-                unit: "heal.stitch_p1",
-                ..
-            })
-        ));
+        assert!(matches!(r, Err(SolidError::InvalidInput { .. })));
         assert_eq!(b.face(face).unwrap().tolerance, 1e-5);
         assert_eq!(h.tgt_faces, vec![face]);
         let (v, e, f) = ids();
