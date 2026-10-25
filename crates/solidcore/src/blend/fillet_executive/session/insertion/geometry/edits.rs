@@ -160,8 +160,16 @@ impl BrepGlue<FilletObject> for InsertionGeometry<'_> {
         let role = body_role(body)?;
         let id = edge(role, object)?;
         self.with_edit(role, |body, env| {
+            let identity = (env.key_of)(EntityRef::Brep(crate::topology::BrepId::from_index(0)));
             let mut delete = crate::topology::brep::p4::DeleteEnv::from_notify(env);
-            crate::topology::brep::p4::delete_edge(k, body, &mut delete, id, None)
+            crate::topology::brep::p4::delete_edge_with_body_identity(
+                k,
+                body,
+                &mut delete,
+                id,
+                None,
+                identity,
+            )
         })
     }
 }

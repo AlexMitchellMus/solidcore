@@ -52,7 +52,7 @@ use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
 mod classification;
 mod original_trim;
-pub use original_trim::OriginalSurfaceSelection;
+pub use original_trim::{OriginalSurfaceDeletion, OriginalSurfaceSelection};
 
 const OP: &str = "blend::fillet_executive::session";
 

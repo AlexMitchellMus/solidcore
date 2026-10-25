@@ -1,7 +1,9 @@
 //! Original-face selection using the session's actual topology marks.
 
 use super::{invalid, FilletBody, FilletObject, FilletSession, SessionObjects};
-use crate::blend::fillet_executive::p3::{FilletExecutive, OriginalSurfaceTrimAccess};
+use crate::blend::fillet_executive::p3::{
+    FilletExecutive, OriginalSurfaceDeletionAccess, OriginalSurfaceTrimAccess,
+};
 use crate::blend::fillet_geom::p6::{
     TrimOriginalBody, TrimOriginalSurfacesEnv, TrimOriginalSurfacesMarks,
 };
@@ -24,6 +26,66 @@ pub struct OriginalSurfaceSelection {
     pub kept: Vec<FaceId>,
     /// Target faces selected for deletion, in discovery order.
     pub deleted: Vec<FaceId>,
+}
+
+/// Body-qualified face lists retained across selection and deletion failures.
+#[derive(Debug, Default)]
+pub struct OriginalSurfaceDeletion {
+    /// Selected intermediate faces; actual handles may be invalidated by later edits.
+    pub kept: Vec<FilletObject>,
+    /// Target faces first, then unkept intermediate faces in owning traversal order.
+    /// Deleted handles remain diagnostic identities and must not be dereferenced.
+    pub deleted: Vec<FilletObject>,
+}
+
+struct DeleteAccess<'a, 'target>(&'a mut SessionObjects<'target>);
+impl OriginalSurfaceDeletionAccess<FilletObject> for DeleteAccess<'_, '_> {
+    fn original_managed_faces(&self, body: FilletObject) -> Result<Vec<FilletObject>> {
+        if body != FilletObject::IntermediateBrep {
+            return Err(invalid(
+                "deletion fillet body is not the actual intermediate",
+            ));
+        }
+        let body = self
+            .0
+            .intermediate
+            .as_ref()
+            .ok_or_else(|| invalid("intermediate body is not allocated"))?;
+        Ok(p1::faces(body, None)?
+            .into_iter()
+            .map(|face| FilletObject::IntermediateTopology(EntityRef::Face(face)))
+            .collect())
+    }
+    fn original_delete_faces(
+        &mut self,
+        k: &mut Kernel,
+        intersector: &mut crate::boolean::topology_intersector::p1::TopologyIntersector<
+            FilletObject,
+        >,
+        faces: &[FilletObject],
+    ) -> Result<()> {
+        crate::geom::context::Context::with_notification_context(k, |k, context| {
+            let intermediate = self
+                .0
+                .intermediate
+                .as_mut()
+                .ok_or_else(|| invalid("intermediate body is not allocated"))?;
+            let mut geometry = super::insertion::geometry::InsertionGeometry::new(
+                self.0.target,
+                &mut self.0.pseudo,
+                intermediate,
+            )?
+            .with_notifications(
+                &mut self.0.insertion_curves,
+                super::insertion::geometry::InsertionNotifications {
+                    records: &mut self.0.notification_records,
+                    attributes: &mut self.0.attributes,
+                    context,
+                },
+            )?;
+            intersector.delete_faces(k, &mut geometry, faces, None)
+        })?
+    }
 }
 
 struct TrimMarks<'a> {
@@ -188,6 +250,56 @@ impl FilletSession<'_> {
                 },
                 &mut selection.kept,
                 &mut selection.deleted,
+            )
+        });
+        self.objects.target.set_editing_enabled(editing);
+        result
+    }
+
+    /// Select and delete original faces under the same actual mark lock.
+    /// The output is replaced by this attempt's body-qualified partial lists.
+    /// Stops before native attribute tagging and merging.
+    ///
+    /// # Errors
+    /// Original selection/deletion errors, retaining completed list and store mutations.
+    /// Locks and target editing are restored on every returned result.
+    pub fn trim_and_delete_original_fillet_faces(
+        &mut self,
+        k: &mut Kernel,
+        output: &mut OriginalSurfaceDeletion,
+    ) -> Result<()> {
+        *output = OriginalSurfaceDeletion::default();
+        let editing = self.objects.target.editing_enabled();
+        self.objects.target.set_editing_enabled(true);
+        let result = self.with_original_trim_marks(k, |session, k, locks, serial| {
+            let mut selection = OriginalSurfaceSelection::default();
+            let selected = session.executive.select_original_surfaces(
+                k,
+                &mut TrimAccess {
+                    objects: &mut session.objects,
+                    locks,
+                    fillet_serial: serial,
+                },
+                &mut selection.kept,
+                &mut selection.deleted,
+            );
+            output.kept = selection
+                .kept
+                .into_iter()
+                .map(|face| FilletObject::IntermediateTopology(EntityRef::Face(face)))
+                .collect();
+            output.deleted = selection
+                .deleted
+                .into_iter()
+                .map(|face| FilletObject::Topology(FilletBody::Target, EntityRef::Face(face)))
+                .collect();
+            selected?;
+            session.executive.delete_original_surface_faces(
+                k,
+                &mut DeleteAccess(&mut session.objects),
+                FilletObject::IntermediateBrep,
+                &output.kept,
+                &mut output.deleted,
             )
         });
         self.objects.target.set_editing_enabled(editing);
@@ -456,5 +568,183 @@ mod tests {
         for mark in [MarkType::Mark, MarkType::Mark2, MarkType::Mark3] {
             assert!(!k.context.is_mark_locked(mark));
         }
+    }
+    #[test]
+    fn qualified_deletion_list_keeps_equal_face_ids_and_error_prefix() {
+        use crate::topology::Brep;
+        struct RefuseDeletion<'a> {
+            managed: &'a Brep,
+            mark: MarkType,
+        }
+        impl OriginalSurfaceDeletionAccess<FilletObject> for RefuseDeletion<'_> {
+            fn original_managed_faces(&self, body: FilletObject) -> Result<Vec<FilletObject>> {
+                assert_eq!(body, FilletObject::IntermediateBrep);
+                Ok(p1::faces(self.managed, None)?
+                    .into_iter()
+                    .map(|face| FilletObject::IntermediateTopology(EntityRef::Face(face)))
+                    .collect())
+            }
+            fn original_delete_faces(
+                &mut self,
+                k: &mut Kernel,
+                _: &mut crate::boolean::topology_intersector::p1::TopologyIntersector<FilletObject>,
+                _: &[FilletObject],
+            ) -> Result<()> {
+                assert!(k.context.is_mark_locked(self.mark));
+                Err(invalid("defined deletion callback refusal"))
+            }
+        }
+        let mut k = Kernel::default();
+        let mut target = crate::primitive::api_primitives::create_box(
+            &mut k,
+            Point3::new(0., 0., 0.),
+            1.,
+            1.,
+            1.,
+        )
+        .unwrap();
+        let mut managed = crate::primitive::api_primitives::create_box(
+            &mut k,
+            Point3::new(2., 0., 0.),
+            1.,
+            1.,
+            1.,
+        )
+        .unwrap();
+        crate::topology::brep::p3::notify_serial(&mut k.context, &mut managed).unwrap();
+        let target_face = p1::faces(&target, None).unwrap()[0];
+        let managed_faces = p1::faces(&managed, None).unwrap();
+        assert_eq!(target_face, managed_faces[0]);
+        let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+        session.objects.intermediate = Some(managed);
+        let kept: Vec<_> = managed_faces
+            .iter()
+            .skip(1)
+            .map(|face| FilletObject::IntermediateTopology(EntityRef::Face(*face)))
+            .collect();
+        let original = FilletObject::Topology(FilletBody::Target, EntityRef::Face(target_face));
+        let other = FilletObject::IntermediateTopology(EntityRef::Face(managed_faces[0]));
+        let mut deleted = vec![original];
+        let mut mark = None;
+        let result = session.with_original_trim_marks(&mut k, |session, k, locks, _| {
+            let actual_mark = locks[0].mark_type();
+            mark = Some(actual_mark);
+            session.executive.delete_original_surface_faces(
+                k,
+                &mut RefuseDeletion {
+                    managed: session.objects.intermediate.as_ref().unwrap(),
+                    mark: actual_mark,
+                },
+                FilletObject::IntermediateBrep,
+                &kept,
+                &mut deleted,
+            )
+        });
+        assert!(result.is_err());
+        assert_eq!(deleted, [original, other]);
+        assert!(!k.context.is_mark_locked(mark.unwrap()));
+        assert_eq!(p1::faces(session.target(), None).unwrap().len(), 6);
+        assert_eq!(
+            p1::faces(session.intermediate_brep().unwrap(), None)
+                .unwrap()
+                .len(),
+            6
+        );
+    }
+    #[test]
+    fn actual_box_deletion_retains_issued_callbacks_and_releases_mark_scope() {
+        use crate::geom::{
+            context::NotifyCallback,
+            object::{NotifyOperation, ObjectRef},
+        };
+        use std::sync::{Arc, Mutex};
+        #[derive(Debug)]
+        struct Capture(Arc<Mutex<Vec<ObjectRef>>>);
+        impl NotifyCallback for Capture {
+            fn execute(
+                &mut self,
+                _: NotifyOperation,
+                caller: ObjectRef,
+                one: Option<ObjectRef>,
+                two: Option<ObjectRef>,
+                three: Option<ObjectRef>,
+            ) -> Result<()> {
+                let mut calls = self.0.lock().unwrap();
+                calls.push(caller);
+                calls.extend([one, two, three].into_iter().flatten());
+                Ok(())
+            }
+        }
+        let mut k = Kernel::default();
+        let mut target = crate::primitive::api_primitives::create_box(
+            &mut k,
+            Point3::new(0., 0., 0.),
+            10.,
+            20.,
+            30.,
+        )
+        .unwrap();
+        let edge = target.edges().ids().next().unwrap();
+        let key = target.key();
+        let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+        session
+            .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.)
+            .unwrap();
+        session.create_corners(&k, None).unwrap();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mut output = OriginalSurfaceDeletion::default();
+        let expected =
+            session.target_identity(EntityRef::Brep(crate::topology::BrepId::from_index(0)));
+        session
+            .with_filleting_context(&mut k, |session, k| {
+                session.create_fillet_brep(k, None)?;
+                session.shrink_fillet_faces(k)?;
+                session.insert_fillet_intersection_topology(k)?;
+                let faces_before = p1::faces(session.target(), None)?;
+                let editing = session.target().editing_enabled();
+                let outer_epoch = k.context.current_mark(MarkType::Mark);
+                let nested_epoch = k.context.current_mark(MarkType::Mark2);
+                k.context
+                    .set_user_notify_callback(Some(Box::new(Capture(Arc::clone(&calls)))));
+                let result = session.trim_and_delete_original_fillet_faces(k, &mut output);
+                assert_eq!(session.target().editing_enabled(), editing);
+                result?;
+                assert_eq!(output.kept.len(), 1);
+                assert_eq!(output.deleted.len(), 4);
+                for object in &output.deleted {
+                    let FilletObject::Topology(FilletBody::Target, EntityRef::Face(face)) = object
+                    else {
+                        panic!("unexpected deletion role");
+                    };
+                    assert!(faces_before.contains(face));
+                    // The existing safe arena retains unlinked records; native
+                    // body membership is the owning face list, not arena lookup.
+                    assert!(!p1::faces(session.target(), None)?.contains(face));
+                }
+                assert_eq!(p1::vertices(session.target(), None)?.len(), 10);
+                assert_eq!(p1::edges(session.target(), None)?.len(), 15);
+                assert_eq!(p1::faces(session.target(), None)?.len(), 6);
+                assert_eq!(k.context.current_mark(MarkType::Mark) - outer_epoch, 2);
+                assert_eq!(k.context.current_mark(MarkType::Mark2) - nested_epoch, 28);
+                assert!(!session.executive.intersector.topology_deleted);
+                assert_eq!(
+                    p1::faces(session.intermediate_brep().unwrap(), None)?.len(),
+                    1
+                );
+                assert_eq!(session.target().key(), key);
+                for mark in [MarkType::Mark, MarkType::Mark2, MarkType::Mark3] {
+                    assert!(!k.context.is_mark_locked(mark));
+                }
+                Ok(())
+            })
+            .unwrap();
+        let calls = calls.lock().unwrap();
+        let bodies: Vec<_> = calls
+            .iter()
+            .filter(|object| object.type_code == expected.type_code)
+            .collect();
+        assert!(!bodies.is_empty());
+        assert!(bodies.iter().all(|object| **object == expected));
+        assert!(!k.context.doing_boolean());
     }
 }

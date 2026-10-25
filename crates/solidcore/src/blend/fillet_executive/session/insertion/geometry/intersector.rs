@@ -486,13 +486,14 @@ impl ti::IntersectorBrep<FilletObject> for InsertionGeometry<'_> {
         let (a, f) = fid(object)?;
         same(r, a)?;
         self.with_edit(r, |b, env| {
-            brep::p3::delete_face(
+            let body = (env.key_of)(EntityRef::Brep(crate::topology::BrepId::from_index(0)));
+            brep::p3::delete_face_with_body_identity(
                 k,
                 b,
                 env,
-                &mut crate::topology::topology_traverser::Marks::default(),
                 f,
                 brep::p3::DeleteFaceOptions::default(),
+                body,
             )
             .map(drop)
         })
@@ -515,7 +516,14 @@ impl ti::IntersectorBrep<FilletObject> for InsertionGeometry<'_> {
         let (a, v) = vid(object)?;
         same(r, a)?;
         self.with_edit(r, |b, env| {
-            brep::p4::delete_vertex(k, b, &mut brep::p4::DeleteEnv::from_notify(env), v)
+            let body = (env.key_of)(EntityRef::Brep(crate::topology::BrepId::from_index(0)));
+            brep::p4::delete_vertex_with_body_identity(
+                k,
+                b,
+                &mut brep::p4::DeleteEnv::from_notify(env),
+                v,
+                body,
+            )
         })
     }
     fn brep_glue_edges_general(
