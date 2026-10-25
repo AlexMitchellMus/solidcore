@@ -3383,6 +3383,12 @@ const OP_FACE_CACHES: &str = "boolean::topology_intersector::p1::solve_with_face
 struct FaceCaches<O> {
     pending: Cell<Option<O>>,
     built: BTreeMap<O, Result<SurfaceCache<O>>>,
+    /// UV trim curves the face classifications of the solve asked for
+    /// (`SmEdgeuse::GetOrCreateUVTrimCurve`), made on the B-rep between attempts.
+    trims: crate::query::brep::RayPreparation,
+    /// The face whose B-rep the last classification resolved: the owner of the edge
+    /// use a trim request names.
+    classified_face: Cell<Option<O>>,
 }
 
 /// The intersector's topology objects with the face caches of [`FaceCaches`]: the
@@ -3533,9 +3539,6 @@ impl<O: ClassObject + SolutionObject + Ord, G: IntersectorBrep<O> + ?Sized> Topo
     ) -> Option<Result<bool>> {
         self.inner().classifies_on_face(k, face, point, tolerance)
     }
-    fn uv_trim_preparation(&self) -> Option<&crate::query::brep::RayPreparation> {
-        self.inner().uv_trim_preparation()
-    }
     fn brep_cache(&self, brep: O) -> Result<&crate::topology::brep_cache::BrepCache<O>> {
         self.inner().brep_cache(brep)
     }
@@ -3591,7 +3594,16 @@ impl<O: ClassObject + SolutionObject + Ord, G: IntersectorBrep<O> + ?Sized> Topo
         self.inner().face_tolerance(face)
     }
     fn face_entity(&self, face: O) -> Option<(&Brep, FaceId)> {
-        self.inner().face_entity(face)
+        let entity = self.inner().face_entity(face);
+        if entity.is_some() {
+            self.caches.classified_face.set(Some(face));
+        }
+        entity
+    }
+    fn uv_trim_preparation(&self) -> Option<&crate::query::brep::RayPreparation> {
+        self.inner()
+            .uv_trim_preparation()
+            .or(Some(&self.caches.trims))
     }
     fn surface_owner(&self, surface: O) -> Result<Option<O>> {
         self.inner().surface_owner(surface)
@@ -3662,6 +3674,8 @@ where
     let mut caches = FaceCaches {
         pending: Cell::new(None),
         built: BTreeMap::new(),
+        trims: crate::query::brep::RayPreparation::default(),
+        classified_face: Cell::new(None),
     };
     loop {
         let result = solve(&FaceCacheObjects {
@@ -3670,6 +3684,19 @@ where
         });
         // (a request is answered even when the solve did not stop at it: upstream's
         // solve has the cache there)
+        // a UV trim the classification needed is made on the face's B-rep, and the solve
+        // runs again from its start (upstream creates it lazily inside the walk)
+        if let (Err(SolidError::PreparationRequired { .. }), Some(request)) =
+            (&result, caches.trims.take_request())
+        {
+            let face = caches
+                .classified_face
+                .take()
+                .ok_or(SolidError::null_pointer(OP_FACE_CACHES))?;
+            let target = geometry.face_cache_target(face)?;
+            caches.trims.prepare(k, target.brep, request)?;
+            continue;
+        }
         let Some(face) = caches.pending.take() else {
             return result;
         };
