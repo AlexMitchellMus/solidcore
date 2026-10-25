@@ -1,4 +1,4 @@
-#### WR-260. Offset UV-curve fallback copies slice an `SmLine` to a plain B-spline
+#### WR-267. Offset UV-curve fallback copies slice an `SmLine` to a plain B-spline
 - **Severity:** Wrong result
 - **Area:** Topology
 - **Location:** `source/SMLib/src/SmOffsetGeometryCreation.cpp:1655`, `SmOffsetGeometryCreation::EdgeuseOffset` / its `TrimExtendedEdge` setup, and `:1181`, `ExtendTrimEdges`.
