@@ -4195,27 +4195,13 @@ Numbering paragraph at the top says.
 - **Fix:** test the line at its middle, `sLinePt + 0.5 (dMax - dMin) * axis`, instead of its bottom end. A line that overlaps both domains only away from its middle is still dropped; clipping `[dMin, dMax]` to both domains' v ranges would cover that.
 - **Rust port:** `crates/solidcore/src/surface/cone/p3.rs` tests the middle only when `Kernel::cone_parallel_midpoint_test` is set. It is off by default, so `surface.cone_p3` keeps upstream's bottom-end test and matches the C++ bit for bit; `boolean::merge::p4::manifold_boolean` sets it for the duration of a Boolean and restores it on exit. Documented in the file header's Deviations. With it, the four FAIL-3665 cases pass.
 
-#### UB-256. `SmHealData` keeps deleted vertex props in its coincident-vertex voxels (address reuse)
-- **Location:** `source/SMLib/src/SmHealData.cpp`: `UpdateTargetLists` deletes the merged
-  vertices' `SmVertexProps` (`:1143`-`1149`, after `RemoveVertexProps_FromLists`, which
-  takes them out of every list but `m_pVerticesInVoxels`) and allocates props for new
-  vertices (`:1226`). `Cache_CoinVertices` adds only the new props to the voxels and keeps
-  a found pair when both items are in `m_sTgtVertexProps` (`:3231`).
-- **What happens:** a voxel item still holds a freed `SmVertexProps*` and the point it was
-  added with. When a later `new SmVertexProps` gets the freed address, the stale item
-  passes the live check and pairs the new vertex by the old point, so
-  `Fix_CoinVertices` merges vertices that are not coincident. Whether it happens depends
-  on the heap's history (use after free, undefined behaviour).
-- **Trigger:** `topology.brep_p10` `read_Solids_fillet_ts` (`Solids/fillet_ts.smb`, read
-  with healing): run alone, `Fix_CoinVertices` takes the B-rep from 34 to 25 vertices
-  (2 shells) and the port agrees bit for bit; after other cases in the same process the
-  C++ goes to 20 or 21 vertices (1 shell; `values.dbls.len` 1659, 1663 or 1667 against
-  1683, depending on the cases before it).
-- **How found:** an instrumented copy of `SmHealData.cpp` linked into the difftest binary
-  (vertex count after each heal step, and every pair `Cache_CoinVertices` keeps), run on
-  the case alone and after the `read_` cases.
-- **Confirmed:** yes, on the C++ reference (Ubuntu 24.04, x86_64, prebuilt library at the
-  pinned harness key): the result changes with the cases run before it in one process.
-- **Fix:** remove the props from `m_pVerticesInVoxels` in `RemoveVertexProps_FromLists`
-  (or rebuild the voxels after a merge) before deleting them.
-- **Rust port:** unchanged; its result is the one upstream gives with no address reused.
+
+### Heal
+
+#### UB-255. `SmHealData::Fix_CoinVertices` rewrites `sProbArray` with a freed `SmVertexProps*` pointer and relies on allocator address reuse for 3-way+ clusters [PSIRT]
+- **Location:** `source/SMLib/src/SmHealData.cpp:3299-3361` (`SmHealData::Fix_CoinVertices`), via `SmTopologyChangeCallback::Execute` (`source/SMLib/src/SmTrackTopologyChanges.cpp:297-313`, `SM_NO_MERGE_IN_BREP`) and `SmHealData::UpdateTargetLists` (`source/SMLib/src/SmHealData.cpp:1101, 1143-1150, 1226`).
+- **Trigger:** Healing a B-rep (`ReadFromFile(..., bHeal = TRUE)` or `HealBrep`) containing coincident clusters of 3 or more vertices, such as `TestFiles/pt_TestFiles/Solids/fillet_ts.smb` (`topology.brep_p10` `read_Solids_fillet_ts`).
+- **What happens:** `sProbArray` snapshots `(SmVertexProps*, SmVertexProps*)` pairs before the merge loop. When a pair `(pSurvivorProps, pDeletedProps)` merges, `CombineCoincidentVertices` fires `SM_NO_MERGE_IN_BREP`, which appends **both** `pSurvivingVertex` and `pVertexToDelete` to `m_pRmList` and `pSurvivingVertex` to `m_pAddList`. `UpdateTargetLists` `delete`s **both** `pSurvivorProps` and `pDeletedProps` and allocates one `new SmVertexProps(cpContext)` for `pSurvivingVertex` at a newly returned heap address. Lines `3356-3360` then rewrite `pDeletedProps -> pSurvivorProps` in `sProbArray` using the already-freed `pSurvivorProps` pointer, and subsequent iterations test `m_sTgtVertexProps.FindElement(pSurvivorProps, lIdx)` (`:3319`). On x86-64 Linux (glibc `TCACHE_FILL_COUNT = 7`), the first 5 merges pop `pDeletedProps` (LIFO) and leave `pSurvivorProps` dead in `tcache` (skipping 3rd/4th cluster members), whereas once the `tcache` bin holds `6/7` entries (Merge 6 onward), `delete pSurvivorProps` fills slot `7/7`, `delete pDeletedProps` spills to `fastbins`, and `new SmVertexProps` reuses `pSurvivorProps`'s exact address, causing later 3-way clusters (`{4,20,11}`, `{3,15,12}`, `{2,27,8}` in `Solids/fillet_ts.smb`) to merge `22` vertices / `1` shell instead of `25` vertices / `2` shells depending on allocator state.
+- **How found:** difftest mismatch on `topology.brep_p10` `read_Solids_fillet_ts`, traced through `SmHealData::Fix_CoinVertices` / `UpdateTargetLists` and verified by comparing surviving vertex sets (`V8`, `V11`, `V12`).
+- **Confirmed:** yes, on the x86-64 Linux C++ reference build (`Solids/fillet_ts.smb`: C++ `22` vertices / `1` shell vs generation-safe `PropsArena` `25` vertices / `2` shells).
+- **Rust port:** `PropsArena` uses monotonic `VertexPropsId` keys that never alias freed entries, so a freed survivor `VertexPropsId` never matches the newly inserted `VertexPropsId`. `read_Solids_fillet_ts` is recorded in `crates/difftest/known_mismatches.toml`.

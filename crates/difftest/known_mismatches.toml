@@ -32,26 +32,6 @@ case = "gen0300"
 why = "the importer's approximation of the analytic edge curves moves the loop bisector's UV line (rel 1.6e-8) across a loop at scale 1e-3 (plan/findings.md: query.face_p4: two scale-1e-3 cylinder cases move with the importer's curve approximation) [ints.classify_loop_ios[2] cpp 2 rust 1]"
 
 [[mismatch]]
-unit = "topology.brep_p10"
-case = "read_Boolean_extrudeHoles1"
-why = "not the healer snapshot: still differs with the healer's UV trim owners bound; cause not traced (plan/findings.md: 'topology.brep_p10 healer-snapshot mismatches traced') [values.dbls.len cpp 909 rust 921]"
-
-[[mismatch]]
-unit = "topology.brep_p10"
-case = "read_Solids_fillet_ts"
-why = "C++ result depends on the earlier cases in the process: Fix_CoinVertices merges 34 -> 25 vertices run alone (matches the port bit for bit) and 34 -> 20/21 after other cases; SmHealData deletes merged SmVertexProps without taking them out of m_pVerticesInVoxels, so a new props allocated at a freed address passes Cache_CoinVertices' live check (UB-256 in plan/upstream-issues.md; plan/findings.md: 'topology.brep_p10 healer-snapshot mismatches traced')"
-
-[[mismatch]]
-unit = "topology.brep_p10"
-case = "gen0115"
-why = "the documented sm_FixUVTrimCurves deviation (issue #570): CreateUVTrimCurves (healer Make_UVTrimCurves) closes a 5.3e-6 UV corner gap on Fillet/open_shell.smb; upstream's DropPoint moves the trim end parameter (1 -> 0.99999946883), so it Trims and stretches the trim and its interior points move, the port only moves the end control points (plan/findings.md: 'topology.brep_p10 healer-snapshot mismatches traced')"
-
-[[mismatch]]
-unit = "topology.brep_p10"
-case = "project_t0_Defeature_brep1"
-why = "ProjectAndTrim removes every face; C++ keeps the former solid region as the infinite region, the port keeps the original one (its SmTopology fields differ: cpp 99999999, rust 0) (plan/findings.md: 'topology.brep_p10 project_t0_Defeature_brep1: the region left after ProjectAndTrim')"
-
-[[mismatch]]
 unit = "intersect.curve_class_p4"
 case = "gen1570"
 why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ (gen1570: a sphere face with a vertex at the pole); unchanged by keeping snapshot surface owners, cause not found (plan/findings.md: 'snapshot surfaces keep their face owner')"
@@ -82,9 +62,9 @@ case = "gen2061"
 why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ (gen1570: a sphere face with a vertex at the pole); unchanged by keeping snapshot surface owners, cause not found (plan/findings.md: 'snapshot surfaces keep their face owner')"
 
 [[mismatch]]
-unit = "topology.brep_p1"
-case = "Endcap_heal"
-why = "Endcap.smb HealBrep: Cache_FaceProps_Stage3 builds a trimmed surface cache (CreateUVTrimCurves: a UV trim curve, tolerance growth) where C++ reuses the one its load-time heal (ReadFromFile -> MakeTopologyFromData) kept on the surface; the import from the C++ export carries no surface cache (plan/findings.md: 'topology.brep_p1 Endcap_heal: the load-time heal's trimmed cache is not imported')"
+unit = "topology.brep_p10"
+case = "read_Solids_fillet_ts"
+why = "SmHealData::Fix_CoinVertices dangling-pointer heap reuse (UB-255): UpdateTargetLists frees both pSurvivorProps and pDeletedProps on SM_NO_MERGE_IN_BREP, Fix_CoinVertices rewrites sProbArray to the freed pSurvivorProps, and once glibc's 7-slot tcache bin fills on the 6th merge, new SmVertexProps reuses pSurvivorProps's address so C++ merges 3 extra 3-way vertex clusters (22 vertices, 1 shell vs Rust's fresh-id 25 vertices, 2 shells; plan/findings.md: 'topology.brep_p10, topology.brep_p1, sweep.api_brep: heal/notify/ProjectAndTrim fixes and `read_Solids_fillet_ts` UAF root cause')"
 
 [[mismatch]]
 unit = "blend.fillet_executive_p1"
@@ -150,3 +130,8 @@ why = "planar-path sweep at 1e4-1e6 scale: C++ succeeds, Rust's union of the Pro
 unit = "primitive.primitive_creation_p2"
 case = "gen0252"
 why = "planar-path sweep at 1e4-1e6 scale: C++ succeeds, Rust's union of the ProjectAndTrim pieces returns SM_ERR (boolean::merge::p3) and leaves DoingBoolean set; cause not traced (plan/findings.md: 'primitive.primitive_creation_p2: planar-path sweeps at 1e4-1e6 scale fail their union after ProjectAndTrim')"
+
+[[mismatch]]
+unit = "primitive.primitive_creation_p2"
+case = "gen0071"
+why = "planar-path sweep at 1e4-1e6 scale (formerly deferred at TrimSrfCache without a face handle in CreateParallelProjectionCurves): C++ succeeds, Rust's union of the ProjectAndTrim pieces returns SM_ERR (boolean::merge::p3); same family as gen0003..gen0252 (plan/findings.md: 'primitive.primitive_creation_p2: planar-path sweeps at 1e4-1e6 scale fail their union after ProjectAndTrim')"

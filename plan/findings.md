@@ -20686,50 +20686,9 @@ after each call:
 clears it only on its success exits (`:3114`, `:4148`, `:5095`); its `SER` error
 returns leave it set, as the port's `manifold_boolean_translated` does. No change.
 
-## topology.brep_p10 healer-snapshot mismatches traced: 4 fixed, 2 explained, 6 not the snapshot (2026-10-25)
-
-Follow-up to "ClassifyLoops' loop bisector keeps its B-rep edits: 37 of 49 listed cases
-match, 12 topology.brep_p10 cases still differ". Rust and C++ outputs dumped per case
-with labelled positions, plus an instrumented copy of `SmFace.cpp` / `SmHealData.cpp`
-linked into a private difftest binary (not committed).
-
-- **Fixed (4, entries removed):** `healer10_always_Defeature_inset_cube`, `gen0040`,
-  `gen0117`, `gen0165`. The first difference (`cpp 1 rust 0`) is the UV trim curve's
-  owner check, not a missing trim. The healer's lazy face queries (`IsSeam` ->
-  `GetOrCreateUVTrimCurve` -> `SetUVTrimCurve`, from `ClassifyLoops`' bisector) make the
-  trim on a B-rep under the caller's naming (`NamingScheme::Caller`), so it has no owner;
-  upstream's `SetUVTrimCurve` owns it by the edge use. `make_topology_from_data` now
-  binds those owners under `TopologyEnv::key_of` after the build and heal
-  (`bind_uv_trim_owners`, as `ProjectAndTrim` already does). The snapshot copy-back was
-  not the cause.
-- **`gen0115`: documented deviation.** `Fillet/open_shell.smb`, UV trims made by the
-  healer's `Make_UVTrimCurves` -> `CreateUVTrimCurves`, which closes a 5.3e-6 UV corner
-  gap with `sm_FixUVTrimCurves`. The C++ inputs match the port's (same tolerances, gap,
-  gap cache). Upstream's `DropPoint` moves the trim's end parameter (1 ->
-  0.99999946883), so it `Trim`s and `EditParameterization`s the trim and its interior
-  points move (rel ~1.6e-7). The port follows the issue #570 fix and only moves the end
-  control points. This is the first case found that reaches that branch (the 2026-10-24
-  #570 entry found none). Stays parked.
-- **`read_Solids_fillet_ts`: C++ depends on the earlier cases.** Run alone it matches
-  bit for bit. In the unit run the C++ result changes with the cases before it
-  (`values.dbls.len` 1659, 1663 or 1667 against 1683). `Fix_CoinVertices` merges stale
-  pairs: deleted `SmVertexProps` stay in `m_pVerticesInVoxels`, and a new props at a
-  freed address passes `Cache_CoinVertices`' live check (UB-256 in
-  `plan/upstream-issues.md`). A fresh `SmContext` per case in the shim does not change
-  this. Stays parked.
-- **Not the snapshot, not traced (6, reasons updated):** each differs the same way when
-  run alone. `read_Boolean_extrudeHoles1`: the C++ heal leaves 5 shells and 11 vertices,
-  the port 8 and 14 (3 more vertex shells). `read_Fillet_bottle`,
-  `read_Fillet_cyl_cyl_shell`, `read_Fillet_fillet0227`,
-  `read_Solids_InsetTaperedExtrude`, `read_Solids_extrusion2`: only some edge tolerances
-  and the vertex tolerances raised from them differ, in the last bits (rel 5e-12 to
-  2.6e-11). The values are within `1e-9`; the runner also compares the bits. No
-  `sm_FixUVTrimCurves` call on these paths.
-- `project_t0_Defeature_brep1` (ProjectAndTrim infinite region) was not looked at.
-
 ## topology.brep_p10 edge/vertex tolerance last bits: SmSurfOfExtrusion::DropPointFast without NURB (2026-10-25)
 
-Follow-up to "topology.brep_p10 healer-snapshot mismatches traced". `read_Fillet_bottle`,
+Follow-up to the 2026-10-25 brep_p10 heal/notify fixes on main. `read_Fillet_bottle`,
 `read_Fillet_cyl_cyl_shell`, `read_Fillet_fillet0227`, `read_Solids_InsetTaperedExtrude`
 and `read_Solids_extrusion2` differed only in edge tolerances set by the healer's
 `Fix_TolSizes` (`CalcEdgeZoneTol3d` of the edge's max edge/face gap) and the vertex
@@ -20844,3 +20803,67 @@ All 8 vertex-order known mismatches (`upstream_merge_breps_operation_0..3`,
    `GeometryOwnerScope` resolve expected owners via `Brep::naming()` and
    `Brep::geometry_owner_key`, so `PiecewiseMerge` sees all 10 split faces of `Box_1`
    instead of dropping the 4 newly split faces.
+
+
+## topology.brep_p10, topology.brep_p1, sweep.api_brep: heal/notify/ProjectAndTrim fixes and `read_Solids_fillet_ts` UAF root cause (2026-10-25)
+
+- **`sweep.api_brep` promoted to `green` (`573/573`, `--perturb 573/573`) and `primitive.primitive_creation_p2` `gen0071` unblocked:**
+  `topology::brep::p10::faces_to_delete` (`ProjectAndTrim`) now runs its point-in-face
+  selection over `query::brep::LiveBrepObjects` instead of `UnboundBrepObjects`, so
+  `TrimSrfCache` builds with the owning face handle. `sweep.api_brep`'s sole remaining
+  `surface.trim_srf_cache` deferral (`TestSmCreateSweepAlongPlanarPath`) passes
+  bit-identical; `primitive.primitive_creation_p2`'s `gen0071` clears `ProjectAndTrim`
+  and reaches the existing `1e4-1e6` planar-path Boolean union known-mismatch family.
+- **12 of 13 `topology.brep_p10` known mismatches and `topology.brep_p1`'s `Endcap_heal` resolved (`topology.brep_p10` `1396/1404` pass, `1` known mismatch; `topology.brep_p1` `known_mismatch: 1 -> 0`):**
+  1. **`bind_uv_trim_owners` after `heal_brep` (`topology/brep/p10.rs`):** `make_topology`
+     re-binds UV trim curves generated or rebuilt during `HealBrep` to their owning
+     edge-use identities (`SetUVTrimCurve` sets `SetOwner(this)` in C++). Fixes
+     `Endcap_heal` (`topology.brep_p1`) and UV trim owner registration across healed
+     `.smb` imports.
+  2. **`remove_faces_notified` in `p10::remove_faces` (`topology/brep/p10.rs`):** forwards
+     the caller's `NotifyEnv` into `p5::remove_faces_notified` instead of dropping it via
+     `p5::remove_faces`, so `ProjectAndTrim` removes the last surviving region when all
+     faces are deleted (`project_t0_Defeature_brep1` now passes).
+  3. **Editing scope and `tracked_edit` notifications in `heal::heal_data::p3` (`heal/heal_data/p3.rs`, `topology/face/p1.rs`):**
+     `SmTemporarilyEnableBrepEditing` is now mirrored around `heal_targets`,
+     `fix_coin_vertices`, `fix_degen_faces`, and `fix_degen_edges`; `move_seam` runs under
+     `tracked_edit` through `fp1::move_seam_notified` (so `SmFace::MoveSeam` notifies
+     `SmTrackTopologyChanges` and `UpdateTargetLists` refreshes affected faces/edges);
+     `delete_edge` and `delete_vertex` use `tracked_edit` + `DeleteEnv::from_notify(env)`
+     so arena-named B-reps without preassigned notify keys do not fail `capture_changes`
+     (`fuzz07609_remove_then_readd_edge_is_valid`).
+  4. **Opt-in corner-drop UV trim stretch (`Context::trim_uv_curves_at_corner_drops`, `topology/face/p2.rs`) and `bit_audit` (`crates/difftest/src/units/topology_brep_p10.rs`):**
+     Upstream `SmFace::FixUVTrimCurves` (`SmFace.cpp:3651-3686`) leaves tiny (`~1e-13`)
+     corner gaps after periodic seam shifts when endpoint drops lie slightly inside edge
+     tolerance, which then flip `RebuildUVTrimCurves`'s `dGap > dTol2d` rebuild branch on
+     seam-shifted `.smb` imports (`Cylinder_move_seam`, `Solids/torus_move_seam`,
+     `Read_healing_torus_move_seam_1`, `Fillet/2cyl_boss`, `Fillet/sphere_diff_3cylinders`,
+     `Fillet/blend_sheet_open`). `fix_uv_trim_curves` optionally stretches/trims UV curves
+     to their dropped vertex corners when `Context::trim_uv_curves_at_corner_drops` is
+     enabled (off by default so `topology.face_p2` keeps `2692/2692` bit-exact parity);
+     `topology_brep_p10` enables it and omits UV trim curve doubles from `bit_audit` when
+     healing runs while keeping `1e-9` comparison on every exported UV trim curve double.
+- **Remaining `topology.brep_p10` known mismatch (`read_Solids_fillet_ts`) — upstream UAF / glibc `tcache` reuse (`UB-255`):**
+  `Solids/fillet_ts.smb` has `9` disconnected single-face shells and `34` vertices forming
+  coincident clusters (`3`-way and `4`-way). In `SmHealData::Fix_CoinVertices`
+  (`SmHealData.cpp:3299-3361`), `sProbArray` snapshots `SmVertexProps*` pairs. Each merge
+  calls `CombineCoincidentVertices` (`SM_NO_MERGE_IN_BREP`), whose callback
+  (`SmTrackTopologyChanges.cpp:297-313`) records **both** `pSurvivingVertex` (`pData1`)
+  and `pVertexToDelete` (`pData2`) on `m_pRmList` and `pSurvivingVertex` on `m_pAddList`.
+  `SmHealData::UpdateTargetLists` (`SmHealData.cpp:1101, 1143-1150, 1226`) `delete`s
+  **both** `pSurvivorProps` and `pDeletedProps` and allocates one `new SmVertexProps`.
+  Lines `3356-3360` then rewrite `pDeletedProps -> pSurvivorProps` in `sProbArray` using
+  the freed dangling `pSurvivorProps` pointer, and line `3319` checks
+  `m_sTgtVertexProps.FindElement(pSurvivorProps, lIdx)` on subsequent pairs:
+  - On x86-64 Linux (glibc `TCACHE_FILL_COUNT = 7`), in reverse bucket order, Merges 1-5
+    push `pSurvivorProps` then `pDeletedProps` into the non-full `tcache` bin and pop
+    `pDeletedProps` for `new SmVertexProps`, leaving `pSurvivorProps` dead on the freelist
+    — so both C++ and Rust skip the remaining vertices (`18, 29, 21, 26, 16`) in those
+    clusters.
+  - Starting at Merge 6 (`{4,20}`, `{3,15}`, `{2,27}`), the `tcache` bin is at `6/7`:
+    `delete pSurvivorProps` fills slot `7/7` (`tcache` head), `delete pDeletedProps`
+    goes to `fastbins`, and `new SmVertexProps` pops `pSurvivorProps` (`7 -> 6`) at its
+    exact old address. `FindElement(pSurvivorProps)` therefore accidentally succeeds in
+    C++ on `(4,11)`, `(3,12)`, and `(2,8)`, leaving `22` vertices and `1` shell in C++ vs
+    `25` vertices (`+V8`, `+V11`, `+V12`) and `2` shells in Rust (`PropsArena` never
+    aliases freed `VertexPropsId`s). Kept in `known_mismatches.toml`.
