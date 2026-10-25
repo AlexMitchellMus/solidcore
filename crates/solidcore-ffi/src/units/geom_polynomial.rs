@@ -49,7 +49,17 @@ pub fn solve(coefficients: &[f64], tol: f64) -> Result<Solution, FfiError> {
         5 => 4,
         n => return Err(FfiError::InvalidArgument(format!("{n} coefficients"))),
     };
-    if degree == 4 && tol > 1.0 && !(coefficients[4].abs() < tol) {
+    // Resolvent reachable ⟺ NOT (|c4| < tol): exactly `|c4| >= tol || |c4| is
+    // NaN` (a negated `!(a < b)` would trip `neg_cmp_op_on_partial_ord` while
+    // changing nothing; NaN reaches the resolvent upstream too, so it stays
+    // rejected). `get` avoids the denied direct indexing.
+    if degree == 4
+        && tol > 1.0
+        && coefficients
+            .get(4)
+            .copied()
+            .is_some_and(|a| a.abs() >= tol || a.abs().is_nan())
+    {
         return Err(FfiError::InvalidArgument(format!("quartic tol {tol}")));
     }
     let mut out = [0.0f64; 4];
