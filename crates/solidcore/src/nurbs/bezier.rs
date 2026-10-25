@@ -1062,16 +1062,42 @@ mod tests {
             .collect();
         pw.push(cp(999.0, -999.0, 123.0));
         for whr in [ExtendAt::Start, ExtendAt::End] {
-            // The reversal semantics are upstream's mirrored extension. For
-            // this nonlinear fixture the naive expectation (full-vector
-            // reverse of the forward result) does not hold, so only assert
-            // length and that reversing twice reproduces the forward result.
-            // All arithmetic is integer-valued, so exact equality stays
-            // appropriate.
+            // NL_Bezier.cpp:5417-5558 seeds the chosen endpoint and builds
+            // outward from it. Without rev, the point at distance i from the
+            // seed is sum_j C(i,j) * 2^(i-j) * (-1)^j * P[j] (Start), or
+            // the same sum using P[17-j] (End). Check the seed, the first
+            // point that differs from rev for this fixture, and the far end.
+            // These integer-valued sums are exactly representable in f64.
             let forward = crv_extend(&pw[..18], 17, whr, false).unwrap();
             assert_eq!(forward.len(), 18);
+            match whr {
+                ExtendAt::Start => {
+                    assert_eq!(forward[17], pw[0]);
+                    assert_eq!(forward[13], cp(-4.0, 17.0, -4.0));
+                    assert_eq!(forward[0], cp(-17.0, -17_539_616.0, 49_838_048.0));
+                }
+                ExtendAt::End => {
+                    assert_eq!(forward[0], pw[17]);
+                    assert_eq!(forward[4], cp(21.0, -15.0, -29.0));
+                    assert_eq!(forward[17], cp(34.0, 17_539_618.0, 22_894_754.0));
+                }
+            }
             let reversed = crv_extend(&pw[..18], 17, whr, true).unwrap();
             assert_eq!(reversed.len(), 18);
+            // The rev branches instead scale Dw by -1 (Start) or by
+            // alternating +1/-1 (End). Substitution in the binomial recurrence
+            // gives Q[j] = 2 * endpoint - P[j], NOT forward[17-j] or -P[j].
+            // Check every coordinate, including the unchanged unit weight.
+            for (j, point) in reversed.iter().enumerate() {
+                let j = i32::try_from(j).unwrap();
+                let (x, y, z) = match whr {
+                    ExtendAt::Start => (-j, -(j % 3), -(j % 5)),
+                    ExtendAt::End => (34 - j, 4 - j % 3, 4 - j % 5),
+                };
+                assert_eq!(*point, cp(f64::from(x), f64::from(y), f64::from(z)));
+            }
+            // Only P[0..=17] participates: P[18] is dropped, not clamped
+            // into the endpoint or included in either recurrence.
             for rev in [false, true] {
                 assert_eq!(
                     crv_extend(&pw, 17, whr, rev).unwrap(),
