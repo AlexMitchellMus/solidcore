@@ -17,7 +17,9 @@
 //! on the Rust side), whose objects the Rust side notifies under identities of their
 //! own ([`source_key_of`]). `DeleteFace` always passes a deleted list
 //! (`pOptDeletedEdgesVertices`); the header default `NULL` only skips its `Add`s and
-//! is not compared.
+//! is not compared. `CopyVertices` also appends the source and existing destination
+//! vertex coordinates before/after copying, then the returned vertices' destination
+//! walk indices and coordinates in returned order.
 //!
 //! `Orient` outputs three values ([`split_orient`]): `out` (status, flag, face domains
 //! and upward face uses, counts), `swapped` (each face's `SmFace::SwapUV` `POST_EDIT`
@@ -443,6 +445,9 @@ fn rust_brep(path: &str, h: &[f64], c: &[usize; 10]) -> Result<Brep, HarnessErro
                 let _ = surface.set_owner(Some(arena_identity(CacheObject::Face(id))));
             }
         }
+        // the face's tolerance, as the face upstream answers GetTolerance with
+        b.sync_face_surface_tolerance(id)
+            .map_err(|e| harness(e.to_string()))?;
     }
     // the shared import leaves `m_pFU` unset: the face's upward (SAME) face use
     let ups: Vec<(FaceId, FaceuseId)> = b
@@ -994,8 +999,9 @@ fn wrap_in_offsets(k: &Kernel, b: &mut Brep, faces: &[FaceId], d: f64) -> Result
     Ok(())
 }
 
-/// `SmEdge_TYPE`, the type code of an edge's identity.
-const EDGE_TYPE_CODE: i64 = 16016;
+/// The type codes of the identities whose destructions the recorders count:
+/// `SmEdge_TYPE`, `SmEdgeuse_TYPE`, `SmFace_TYPE`, `SmShell_TYPE`.
+const DESTROYED_KINDS: [i64; 4] = [16016, 16005, 16002, 16013];
 
 /// Whether `key` is a geometry identity (the kernel context's range,
 /// `Context::new_geometry_key`; every [`key_of`] key is below it).
@@ -1005,11 +1011,12 @@ const fn is_geometry_key(key: ObjectKey) -> bool {
 
 /// The shim's `GeomRecorder`: a user notify callback that keeps every geometry key a
 /// notification names (the shim's tells geometry from topology while it is live), and
-/// counts the `SM_NO_DESTRUCTION` notifications whose caller is an edge (`~SmEdge`).
+/// counts the `SM_NO_DESTRUCTION` notifications by caller kind: edge, edge use, face,
+/// shell (`~SmEdge`, `~SmEdgeuse`, `~SmFace`, `~SmShell`).
 #[derive(Debug, Default)]
 struct GeomRecorder(
     std::sync::Arc<std::sync::Mutex<Vec<ObjectKey>>>,
-    std::sync::Arc<std::sync::Mutex<u64>>,
+    std::sync::Arc<std::sync::Mutex<[u64; 4]>>,
 );
 
 impl solidcore::geom::context::NotifyCallback for GeomRecorder {
@@ -1021,13 +1028,16 @@ impl solidcore::geom::context::NotifyCallback for GeomRecorder {
         data2: Option<ObjectRef>,
         data3: Option<ObjectRef>,
     ) -> Result<(), SolidError> {
-        if operation == solidcore::geom::object::NotifyOperation::Destruction
-            && caller.type_code == EDGE_TYPE_CODE
-        {
-            *self
-                .1
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
+        if operation == solidcore::geom::object::NotifyOperation::Destruction {
+            if let Some(i) = DESTROYED_KINDS.iter().position(|&t| t == caller.type_code) {
+                let mut destroyed = self
+                    .1
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if let Some(n) = destroyed.get_mut(i) {
+                    *n += 1;
+                }
+            }
         }
         let mut seen = self
             .0
@@ -1236,11 +1246,12 @@ fn run_rust_op(
     let tracker_at = out.len();
     put_tracker(&mut out, &lists, &mut t);
     if matches!(op, OpIn::DeleteFace { .. }) {
-        // the shim's trailer: the edges destroyed (`~SmEdge`'s SM_NO_DESTRUCTION)
+        // the shim's trailer: the edges, edge uses, faces and shells destroyed (their
+        // destructors' SM_NO_DESTRUCTION)
         let destroyed = *edges_destroyed
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        out.push(destroyed as f64);
+        out.extend(destroyed.iter().map(|&n| n as f64));
     }
     if matches!(op, OpIn::Orient { .. }) {
         // the shim's trailer: each pre-op face's SmFace::SwapUV POST_EDIT count, the
@@ -1369,14 +1380,30 @@ fn run_rust_op_in(
         }
         OpIn::CopyVertices { .. } => {
             let dst = second.ok_or_else(|| Fail::Harness(harness("no second B-rep")))?;
+            let source = must(bp1::vertices(b, None))?;
+            let existing = must(bp1::vertices(dst, None))?;
+            let mut geometry = Vec::new();
+            put_vertex_points(&mut geometry, b, &source)?;
+            put_vertex_points(&mut geometry, dst, &existing)?;
             let n = arg(0)? as usize;
             let vs: Vec<VertexId> = (0..n)
                 .map(|j| arg(1 + j).map(|x| VertexId::from_index(x as u32)))
                 .collect::<Result<_, _>>()?;
             let (s, r) = status(bp3::copy_vertices(k, b, &vs, dst, &mut env, &source_key_of))?;
             out.push(s);
-            out.push(r.map_or(0.0, |x| x.len() as f64));
+            out.push(r.as_ref().map_or(0.0, |x| x.len() as f64));
             put_counts(&mut out, dst)?;
+            put_vertex_points(&mut geometry, b, &source)?;
+            put_vertex_points(&mut geometry, dst, &existing)?;
+            let copied = r.unwrap_or_default();
+            let post = walk(dst)?;
+            geometry.push(copied.len() as f64);
+            for v in copied {
+                geometry.push(post.find(9, Some(v.index())));
+                let p = must(solidcore::topology::vertex::point(dst, v))?;
+                geometry.extend([p.x, p.y, p.z]);
+            }
+            out.extend(geometry);
         }
         OpIn::DeleteFace { .. } => {
             let f = FaceId::from_index(arg(0)? as u32);
@@ -1503,6 +1530,15 @@ fn run_rust_op_in(
         }
     }
     Ok(out)
+}
+
+fn put_vertex_points(o: &mut Vec<f64>, b: &Brep, vertices: &[VertexId]) -> Result<(), Fail> {
+    o.push(vertices.len() as f64);
+    for &v in vertices {
+        let p = must(solidcore::topology::vertex::point(b, v))?;
+        o.extend([p.x, p.y, p.z]);
+    }
+    Ok(())
 }
 
 fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
@@ -1692,6 +1728,33 @@ impl UnitDiff for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_vertices_observes_returned_geometry_and_order() {
+        let i: Inputs = serde_json::from_value(serde_json::json!({
+            "brep": { "kind": "wire", "curve": { "dim": 3, "p": 1,
+                "cpts": [[2, -3, 5, 1], [7, 11, -13, 1]], "u": [0, 0, 1, 1] },
+                "t0": 0, "t1": 1 },
+            "editing": -1, "op": "copy_vertices", "vertices": [1, 0, 1]
+        }))
+        .unwrap();
+        let cpp = run_cpp(&i).unwrap();
+        let mut rust = run_rust(&i).unwrap();
+        assert!(crate::compare::compare(&cpp, &rust, &[]).pass());
+        let out = rust.values.get_mut("out").unwrap();
+        let tail = &out[out.len() - 13..];
+        assert_eq!(tail[0], 3.0);
+        assert_eq!(&tail[2..5], &[7.0, 11.0, -13.0]);
+        assert_eq!(&tail[6..9], &[2.0, -3.0, 5.0]);
+        assert_eq!(&tail[10..13], &[7.0, 11.0, -13.0]);
+        assert_ne!(
+            tail[1], tail[9],
+            "repeated input must yield distinct copies"
+        );
+        // A wrong copied coordinate must fail independently of counts and graph.
+        *out.last_mut().unwrap() += 1.0;
+        assert!(!crate::compare::compare(&cpp, &rust, &[]).pass());
+    }
 
     /// Classifies the passing cases of the committed report by op and C++ status
     /// (`out[0]` the build status, `out[1]` the op's), the split the PR and the

@@ -382,6 +382,9 @@ pub fn make_topology_from_data(
     env: &mut TopologyEnv<'_>,
     options: MakeTopologyOptions,
 ) -> Result<()> {
+    // the B-rep's topology owns its geometry under the caller's identities
+    // (`TopologyEnv::key_of`)
+    b.set_naming(crate::topology::NamingScheme::Caller);
     // tell context Brep->TopologyGraph is under construction
     let previous = k.context.doing_boolean();
     k.context.set_doing_boolean(true);
@@ -1690,7 +1693,7 @@ struct ProjectionCurves {
 
 fn create_parallel_projection_curves(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     curve: &BSplineCurve,
     direction: Vec3,
     tol: f64,
@@ -2060,6 +2063,7 @@ fn faces_to_delete(
 
             let cache = make_brep_cache(k, CacheSource::Brep(b), env.keys)?;
             let objects = BrepObjects {
+                preparation: None,
                 brep: b,
                 brep_id: env.brep_id,
                 cache: Some(&cache),
@@ -2244,14 +2248,27 @@ fn find_and_set_infinite_region(
     });
     // SmBrep::FindAndSetInfiniteRegion() with its defaults (topology.brep_p5): no shell
     // to test, SM_VS_INFINITEREGION_SWAP, no box
-    super::p5::find_and_set_infinite_region(
+    let status = super::p5::find_and_set_infinite_region(
         k,
         b,
         &query,
         None,
         p1::SetRegionVoidType::InfiniteRegionSwap,
         None,
-    )
+    );
+    // Lazy face queries attach new curves to typed edge-use slots. Complete the
+    // native SetUVTrimCurve owner binding under the construction caller's names.
+    // Keep existing owners so a foreign or incorrect owner remains detectable.
+    for edge in p1::edges(b, None)? {
+        for id in b.edge(edge)?.edgeuses.clone() {
+            if let Some(curve) = b.edgeuse_mut(id)?.uv_trim_curve.as_mut() {
+                if curve.owner().is_none() {
+                    curve.set_owner(Some(key_of(EntityRef::Edgeuse(id))), None);
+                }
+            }
+        }
+    }
+    status
 }
 
 /// `GetMate()->GetRadial()`: the next edge use pair around the edge in the same

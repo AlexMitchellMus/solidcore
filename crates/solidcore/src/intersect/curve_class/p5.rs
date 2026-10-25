@@ -5,7 +5,7 @@
 //! | Rust | Upstream |
 //! |------|----------|
 //! | [`insert_solutions`], [`insert_solutions_mut`] | `sm_InsertSolutions` (static) |
-//! | [`CurveClassification::extract_geometry`] | `SmCurveClassification::ExtractGeometry` |
+//! | [`CurveClassification::extract_geometry`], [`CurveClassification::extract_geometry_mut`] | `SmCurveClassification::ExtractGeometry` |
 //! | [`CurveClassification::fixup_classification`] | `SmCurveClassification::FixupClassification` |
 //! | [`CurveClassification::insert_topology_intersections`] | `SmCurveClassification::InsertTopologyIntersections` |
 //! | [`CurveClassification::intersect_vertices`], [`CurveClassification::intersect_vertices_mut`] | `SmCurveClassification::IntersectVertices` |
@@ -51,6 +51,9 @@
 
 use super::p1::{out_of_bounds, set_xsect_curve_through_point};
 use super::p2::refine_cci_to_surfaces_in;
+use super::p6::{
+    Imprint, MergeIntervalBrep, Mutable as MutableImprint, ReadOnly as ReadOnlyImprint,
+};
 use super::{
     make_consistent_classifications, src_zone_tol_3d_of, CurveClassification, CurveInterval,
 };
@@ -413,6 +416,20 @@ impl<O: ClassObject> CurveClassification<O> {
         })
     }
 
+    fn p5_merge_interval_in(
+        classification: &mut Self,
+        a: &mut impl Imprint<O>,
+        index: usize,
+        vertices_only: bool,
+    ) -> Result<MergedTopology<O>> {
+        let merged = classification.merge_interval_in(a, index, vertices_only, None)?;
+        Ok(MergedTopology {
+            faces: merged.new_faces,
+            edges: merged.new_edges,
+            vertices: merged.new_vertices,
+        })
+    }
+
     /// Extracts common geometry after homogenizing and cleaning both classifications.
     ///
     /// # Errors
@@ -424,8 +441,36 @@ impl<O: ClassObject> CurveClassification<O> {
         other: &mut Self,
         options: ExtractOptions,
     ) -> Result<ExtractedGeometry> {
-        let mut out = ExtractedGeometry::default();
         self.homogenize(k, geometry, other)?;
+        self.extract_homogenized(k, geometry, other, options)
+    }
+
+    /// [`CurveClassification::extract_geometry`] over topology the homogenization's
+    /// point drops may change ([`CurveClassification::homogenize_mut`]): a drop onto a
+    /// face makes and keeps the face's trimmed surface cache on its B-rep, as upstream.
+    ///
+    /// # Errors
+    /// Those of [`CurveClassification::extract_geometry`].
+    pub fn extract_geometry_mut(
+        &mut self,
+        k: &Kernel,
+        geometry: &mut impl ClassGeometryMut<O>,
+        other: &mut Self,
+        options: ExtractOptions,
+    ) -> Result<ExtractedGeometry> {
+        self.homogenize_mut(k, geometry, other)?;
+        self.extract_homogenized(k, &*geometry, other, options)
+    }
+
+    /// `ExtractGeometry` after its `Homogenize`.
+    fn extract_homogenized(
+        &mut self,
+        k: &Kernel,
+        geometry: &impl ClassGeometry<O>,
+        other: &mut Self,
+        options: ExtractOptions,
+    ) -> Result<ExtractedGeometry> {
+        let mut out = ExtractedGeometry::default();
         self.cleanup_and_validate(k, geometry, other)?;
         if self.size() != other.size() {
             return Err(SolidError::sm_err(OP));
@@ -1076,6 +1121,39 @@ impl<O: ClassObject> CurveClassification<O> {
         other: &mut Self,
         merge_singularities: bool,
     ) -> Result<(MergedTopology<O>, MergedTopology<O>)> {
+        self.merge_classifications_in(
+            &mut ReadOnlyImprint { k, g: geometry },
+            other,
+            merge_singularities,
+        )
+    }
+
+    /// [`CurveClassification::merge_classifications`] editing the B-reps behind the
+    /// classifications' topology handles ([`CurveClassification::merge_interval_mut`],
+    /// [`CurveClassification::merge_point_class_mut`]).
+    ///
+    /// # Errors
+    /// Those of [`CurveClassification::merge_classifications`] and of the B-rep edits.
+    pub fn merge_classifications_mut(
+        &mut self,
+        k: &mut Kernel,
+        geometry: &mut impl MergeIntervalBrep<O>,
+        other: &mut Self,
+        merge_singularities: bool,
+    ) -> Result<(MergedTopology<O>, MergedTopology<O>)> {
+        self.merge_classifications_in(
+            &mut MutableImprint { k, g: geometry },
+            other,
+            merge_singularities,
+        )
+    }
+
+    fn merge_classifications_in(
+        &mut self,
+        a: &mut impl Imprint<O>,
+        other: &mut Self,
+        merge_singularities: bool,
+    ) -> Result<(MergedTopology<O>, MergedTopology<O>)> {
         if self.size() != other.size() {
             return Err(SolidError::sm_err(OP));
         }
@@ -1083,18 +1161,18 @@ impl<O: ClassObject> CurveClassification<O> {
         let mut out_other = MergedTopology::default();
         let mut scratch = MergedTopology::default();
         let mut scratch_other = MergedTopology::default();
-        let closed = self.p5_closed(k, geometry)?;
+        let closed = self.p5_closed(a.kernel(), a.geometry())?;
         for i in 0..self.size() {
             if !contained_mid(self.at(i)?.mid.point_class())
                 || !contained_mid(other.at(i)?.mid.point_class())
             {
                 continue;
             }
-            scratch = Self::p5_merge_interval(self, k, geometry, i, false)?;
+            scratch = Self::p5_merge_interval_in(self, a, i, false)?;
             append_unique(&mut out.faces, scratch.faces.iter().copied());
             append_unique(&mut out.edges, scratch.edges.iter().copied());
             append_unique(&mut out.vertices, scratch.vertices.iter().copied());
-            scratch_other = Self::p5_merge_interval(other, k, geometry, i, false)?;
+            scratch_other = Self::p5_merge_interval_in(other, a, i, false)?;
             append_unique(&mut out_other.faces, scratch_other.faces.iter().copied());
             append_unique(&mut out_other.edges, scratch_other.edges.iter().copied());
             append_unique(
@@ -1112,9 +1190,8 @@ impl<O: ClassObject> CurveClassification<O> {
                 if contained_point(Self::p5_point_class_by_index(self, j)?.0.point_class())
                     && contained_point(Self::p5_point_class_by_index(other, j)?.0.point_class())
                 {
-                    self.merge_point_class(
-                        k,
-                        geometry,
+                    self.merge_point_class_in(
+                        a,
                         j,
                         Some(&mut scratch.edges),
                         Some(&mut scratch.vertices),
@@ -1123,9 +1200,8 @@ impl<O: ClassObject> CurveClassification<O> {
                     // Append copies the whole lists, retaining repeated prefixes.
                     out.edges.extend_from_slice(&scratch.edges);
                     out.vertices.extend_from_slice(&scratch.vertices);
-                    other.merge_point_class(
-                        k,
-                        geometry,
+                    other.merge_point_class_in(
+                        a,
                         j,
                         Some(&mut scratch_other.edges),
                         Some(&mut scratch_other.vertices),
@@ -1166,6 +1242,24 @@ impl<O: ClassObject> CurveClassification<O> {
         self.merge_intervals_using(vertices_only, |c, j, v| {
             Self::p5_merge_interval(c, k, geometry, j, v)
         })
+    }
+
+    /// [`CurveClassification::merge_intervals`] editing the B-reps behind the
+    /// classification's topology handles ([`CurveClassification::merge_interval_mut`]).
+    ///
+    /// # Errors
+    /// Those of [`CurveClassification::merge_intervals`] and of the B-rep edits.
+    pub fn merge_intervals_mut(
+        &mut self,
+        k: &mut Kernel,
+        geometry: &mut impl MergeIntervalBrep<O>,
+        vertices_only: bool,
+    ) -> Result<MergedTopology<O>> {
+        let mut a = MutableImprint { k, g: geometry };
+        self.merge_intervals_using(vertices_only, |c, j, v| {
+            Self::p5_merge_interval_in(c, &mut a, j, v)
+        })
+        .map_err(|e| e.error)
     }
 
     fn merge_intervals_using(

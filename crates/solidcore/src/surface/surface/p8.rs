@@ -1441,15 +1441,24 @@ impl Surface {
                     Err(_) => return Err(SolidError::null_pointer(OP_LINE)),
                 };
                 face_cache = Some(source);
+                // the face's source ran the trimmed cache's own GetTree: the base
+                // cache's cannot rebuild a face-owned tree
+                let has_tree = owned.tree().is_some();
                 held = Some(&mut owned);
                 match held.as_deref_mut() {
+                    Some(c) if has_tree => &*c,
                     Some(c) => Self::held_cache(k, c, OP_LINE)?,
                     None => return Err(SolidError::null_pointer(OP_LINE)),
                 }
             }
             LineCacheSource::Caller(c) => {
+                // A caller solving through a face-aware context holds a cache that
+                // context built, which already ran the owning face's virtual GetTree;
+                // the bare base cache cannot rebuild a face-owned tree.
+                let ready = context.is_some() && c.tree().is_some();
                 held = Some(c);
                 match held.as_deref_mut() {
+                    Some(c) if ready => &*c,
                     Some(c) => Self::held_cache(k, c, OP_LINE)?,
                     None => return Err(SolidError::null_pointer(OP_LINE)),
                 }
@@ -1465,7 +1474,13 @@ impl Surface {
                 )?;
                 // pSurfaceCache->GetTree() (NER): a cache made while a boolean operation
                 // delays its tree builds it now
-                Self::held_cache(k, &mut built, OP_LINE)?
+                // The context already performed the owning face's virtual GetTree.
+                // Re-entering the bare base cache cannot rebuild a face-owned tree.
+                if context.is_some() && built.tree().is_some() {
+                    &built
+                } else {
+                    Self::held_cache(k, &mut built, OP_LINE)?
+                }
             }
             LineCacheSource::Held(kept) => {
                 match kept.get_or_insert_with(|| {
@@ -1655,16 +1670,31 @@ impl Surface {
             ignore_status(line.edit_parameterization(&line_interval_used))?;
             let line = Curve::from(line);
 
-            // Check Surface/LineSegment Coincidence
-            let found = self.simple_coincidence_checker::<O>(
-                k,
-                uv_domain,
-                &line,
-                &line_interval_used,
-                distance_tolerance,
-                true, // bAllowPartialCoinc [B122]
-                [None, surface],
-            )?;
+            // Check Surface/LineSegment Coincidence (its point solve reaches the
+            // surface's face through the caller's context, when there is one)
+            let found = if let Some(context) = context {
+                self.simple_coincidence_checker_with_context::<O>(
+                    k,
+                    uv_domain,
+                    &line,
+                    &line_interval_used,
+                    distance_tolerance,
+                    true, // bAllowPartialCoinc [B122]
+                    [None, surface],
+                    Some(cache),
+                    context,
+                )?
+            } else {
+                self.simple_coincidence_checker::<O>(
+                    k,
+                    uv_domain,
+                    &line,
+                    &line_interval_used,
+                    distance_tolerance,
+                    true, // bAllowPartialCoinc [B122]
+                    [None, surface],
+                )?
+            };
 
             // Put the end points of the intersection into separate solutions
             if found.is_some() {
@@ -2236,7 +2266,13 @@ impl Surface {
         // cache right out of the queue. So get the curve's cache afterwards.)
         let built;
         let surface_cache = if let Some(c) = cache {
-            Self::held_cache(k, c, OP_CURVE)?
+            // (a cache of a face-aware context already ran the face's GetTree, as in
+            // the line intersection)
+            if context.is_some() && c.tree().is_some() {
+                &*c
+            } else {
+                Self::held_cache(k, c, OP_CURVE)?
+            }
         } else {
             built = self.solve_cache_from_context(
                 k,

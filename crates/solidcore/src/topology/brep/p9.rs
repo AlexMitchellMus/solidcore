@@ -42,8 +42,8 @@ use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, EFF_ZERO_PARAM};
 use crate::nurbs::b_spline_surface::p1::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+use crate::query::brep::BrepQuery;
 use crate::query::brep::{self as qbrep, BoundingBoxOptions};
-use crate::query::brep::{BrepIdentity, BrepQuery};
 use crate::surface::surface::Surface;
 use crate::topology::edge;
 use crate::topology::vertex;
@@ -349,16 +349,7 @@ fn brep_ray_fire<O>(
     tolerance: f64,
     state: &mut crate::topology::shell::ShellRayState<O>,
 ) -> Result<bool> {
-    let BrepIdentity {
-        brep_id,
-        keys,
-        owner_of,
-    } = query.identity();
-    let fired = query.cache(k, b).and_then(|cache| {
-        crate::topology::brep::p2::ray_fire(
-            k, b, brep_id, cache, keys, owner_of, start, direction, tolerance, None,
-        )
-    });
+    let fired = query.ray_fire_live(k, b, start, direction, tolerance);
     match crate::error::ignored(fired)? {
         Some(hit) => {
             state.region = hit.region;
@@ -1380,14 +1371,19 @@ pub fn make_edge_in_face_with_vu(
     if uv_trim.is_none() {
         drop_fail = None;
         let face_record = b.face(face)?;
-        let surface = required(face_record.surface.as_ref(), "face without surface")?;
-        let dropped = drop_edge_curve(
+        let surface = required(face_record.surface.as_ref(), "face without surface")?
+            .clone_for_evaluation()?;
+        let uv_domain = face_record.uv_domain;
+        let face_tolerance = face_record.tolerance;
+        let dropped = drop_edge_curve_in_face(
             k,
-            surface,
-            &face_record.uv_domain,
+            b,
+            face,
+            &surface,
+            &uv_domain,
             &curve,
             &input.interval,
-            face_record.tolerance,
+            face_tolerance,
         )?;
         let mut curves = dropped.uv_curves;
         max_dist = dropped.max_drop_to_surf;
@@ -2249,6 +2245,71 @@ pub struct EdgeCurveDrop {
     pub max_drop_to_surf: f64,
     /// Largest approximation deviation from the surface normal line.
     pub max_approx_dev: f64,
+}
+
+/// [`drop_edge_curve`] onto face `face` of `b`, whose surface `surface` is (a copy for
+/// evaluation): upstream's surface is owned by the face, so the start point drop's
+/// fast-drop trim test classifies on the face
+/// ([`crate::intersect::point_class::live_face_fast_drop_test`]).
+#[allow(clippy::too_many_arguments)]
+fn drop_edge_curve_in_face(
+    k: &Kernel,
+    b: &mut Brep,
+    face: FaceId,
+    surface: &Surface,
+    domain: &crate::geom::extent2d::Extent2d,
+    curve: &Curve,
+    interval: &Extent1d,
+    face_tolerance: f64,
+) -> Result<EdgeCurveDrop> {
+    let mut test_on: Option<bool> = None;
+    for factor in [1.0, 10.0, 300.0] {
+        let mut classify = |k: &Kernel, uv: crate::math::Point2, src_tol: f64| -> Result<bool> {
+            crate::intersect::point_class::live_face_fast_drop_test(
+                k,
+                b,
+                face,
+                &mut test_on,
+                uv,
+                src_tol,
+            )
+        };
+        // the virtual SmSurface::DropCurve with the defaults bKeepAllDropCurves = TRUE,
+        // no failure record, bCreatingUVTrimCurve = TRUE
+        let dropped = surface.drop_curve_face_tested::<crate::surface::surface::p4::NoObject>(
+            k,
+            domain,
+            curve,
+            interval,
+            face_tolerance * factor,
+            true,
+            None,
+            true,
+            Some(&mut classify),
+        )?;
+        if !dropped.uv_curves.is_empty() {
+            return Ok(EdgeCurveDrop {
+                uv_curves: dropped.uv_curves,
+                max_drop_to_surf: dropped.max_drop_to_surf,
+                max_approx_dev: dropped.max_approx_dev,
+            });
+        }
+    }
+    let dropped = surface.drop_and_trim_curve::<crate::topology::ObjectHandle>(
+        k,
+        domain,
+        curve,
+        interval,
+        face_tolerance * 100.0,
+        true,
+        true,
+        None,
+    )?;
+    Ok(EdgeCurveDrop {
+        uv_curves: dropped.uv_curves,
+        max_drop_to_surf: dropped.max_drop_to_surf,
+        max_approx_dev: dropped.max_approx_dev,
+    })
 }
 
 fn drop_curve(

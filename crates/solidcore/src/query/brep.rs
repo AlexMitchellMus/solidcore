@@ -77,6 +77,15 @@
 //!   ([`QuadricEdgeData::sort_index`]). `SmPolyVertexClass` (`SmPoly.h`) is defined
 //!   here, the only place that uses it so far.
 
+mod ray;
+
+pub(crate) use ray::solve_mutable_brep_point;
+#[cfg(test)]
+pub(crate) use ray::PreparationRequest;
+pub use ray::RayPreparation;
+pub(crate) use ray::RaySurfaceContext;
+pub use ray::{BrepFaceServices, LiveBrepObjects, SideObject, SidedFaceServices};
+
 use core::cell::OnceCell;
 
 use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
@@ -98,7 +107,7 @@ use crate::topology::brep::{p1 as bp1, p2 as bp2};
 use crate::topology::brep_cache::{
     arena_identity, make_brep_cache, BrepCache, BrepObjects, CacheObject, CacheSource,
 };
-use crate::topology::{edge, face, vertex, Brep, BrepId, RegionId};
+use crate::topology::{edge, face, vertex, Brep, BrepId, NamingScheme, RegionId};
 
 const OP_CLASSIFY: &str = "query::brep::BrepQuery::point_3d_classify";
 const OP_EVAL_POINT: &str = "query::brep::evaluate_surface_point";
@@ -356,11 +365,37 @@ impl BrepIdentity<'static> {
     }
 }
 
-impl Default for BrepIdentity<'static> {
+impl BrepIdentity<'static> {
+    /// The identities `b`'s geometry owners use by its recorded naming scheme
+    /// ([`Brep::naming`]): the Euler operators' notification identities for a
+    /// [`NamingScheme::Notify`] B-rep (one built through `new_brep` and the face
+    /// builders), else [`BrepIdentity::arena`]. A query under the wrong scheme resolves
+    /// no geometry owner and silently finds nothing (`plan/findings.md`, "two
+    /// owner-naming schemes").
+    #[must_use]
+    pub fn of_brep(b: &Brep) -> Self {
+        match b.naming() {
+            NamingScheme::Notify => Self {
+                brep_id: BrepId::from_index(0),
+                keys: &notify_identity,
+                owner_of: &no_owner,
+            },
+            _ => Self::arena(BrepId::from_index(0)),
+        }
+    }
+}
+
+/// The cache-object identities of a [`NamingScheme::Notify`] B-rep
+/// ([`crate::topology::loopuse::notify_ref`] for its edges, faces and vertices).
+fn notify_identity(object: CacheObject) -> ObjectRef {
+    crate::topology::brep::p2::caller_cache_key(&crate::topology::loopuse::notify_ref, object)
+}
+
+impl Default for BrepIdentity<'_> {
     /// [`BrepIdentity::arena`] of the first B-rep of the caller's store (a caller
     /// querying one B-rep at a time).
     fn default() -> Self {
-        Self::arena(BrepId::from_index(0))
+        BrepIdentity::arena(BrepId::from_index(0))
     }
 }
 
@@ -427,6 +462,30 @@ impl<'a> BrepQuery<'a> {
         Ok(self.cache.get_or_init(|| cache))
     }
 
+    /// Mutable ray solve used by region nesting after stitching. Keeps lazy trim
+    /// preparation in the original solve order.
+    pub(crate) fn ray_fire_live(
+        &self,
+        k: &Kernel,
+        b: &mut Brep,
+        start: Point3,
+        direction: Vec3,
+        tolerance: f64,
+    ) -> Result<crate::topology::brep::p2::RayFireResult> {
+        let cache = self.cache(k, b)?;
+        crate::topology::brep::p2::ray_fire_with_solver(
+            k,
+            b,
+            start,
+            direction,
+            tolerance,
+            None,
+            |b, point, options| {
+                solve_mutable_brep_point(k, b, &self.identity, cache, point, options)
+            },
+        )
+    }
+
     /// `SmBrep::Point3DClassify`: classifies `point` (zone tolerance
     /// `point_zone_tol_3d`) against `b`, the B-rep this query was built for. With
     /// `do_boundary_intersections` the lowest dimensional vertex, edge or face the point
@@ -480,29 +539,39 @@ impl<'a> BrepQuery<'a> {
 
         // Intersect the point with the boundary elements of the Brep
         if do_boundary_intersections {
-            let b = target.shared();
-            let objects = BrepObjects {
-                brep: b,
-                brep_id,
-                cache: Some(self.cache(k, b)?),
-                keys,
-                owner_of,
+            let options = TopologySolveOptions {
+                operation: SolverOperation::Intersect,
+                requested: SolutionRequested::Single,
+                tolerance_3d: point_zone_tol_3d,
+                best_answer_so_far_sq: 0.0,
+                opt_vectors: &[],
             };
             // XSects point with the Brep verts, edges, and faces returning lowest dim
             // topology intersection found.
-            let solutions = TopologySolver::brep_point_solve(
-                k,
-                &objects,
-                Some(CacheObject::Brep),
-                point,
-                TopologySolveOptions {
-                    operation: SolverOperation::Intersect,
-                    requested: SolutionRequested::Single,
-                    tolerance_3d: point_zone_tol_3d,
-                    best_answer_so_far_sq: 0.0,
-                    opt_vectors: &[],
-                },
-            )?;
+            let solutions = match &mut target {
+                Target::Own(b) => {
+                    let cache = self.cache(k, b)?;
+                    solve_mutable_brep_point(k, b, &self.identity, cache, point, options)?
+                }
+                Target::Shared { .. } => {
+                    let b = target.shared();
+                    let objects = BrepObjects {
+                        preparation: None,
+                        brep: b,
+                        brep_id,
+                        cache: Some(self.cache(k, b)?),
+                        keys,
+                        owner_of,
+                    };
+                    TopologySolver::brep_point_solve(
+                        k,
+                        &objects,
+                        Some(CacheObject::Brep),
+                        point,
+                        options,
+                    )?
+                }
+            };
 
             // when the point is on a Brep Face
             if let Some(sol) = solutions.get(0) {
@@ -592,12 +661,41 @@ impl crate::topology::shell::ShellRayWorld<CacheObject> for BrepQuery<'_> {
             ));
         }
         Ok(BrepObjects {
+            preparation: None,
             brep,
             brep_id,
             cache: None,
             keys: self.identity.keys,
             owner_of: self.identity.owner_of,
         })
+    }
+
+    fn objects_for_preparation<'a>(
+        &'a self,
+        brep: (BrepId, &'a Brep),
+        preparation: &'a RayPreparation,
+    ) -> Result<BrepObjects<'a>> {
+        let mut objects = self.objects(brep)?;
+        objects.preparation = Some(preparation);
+        Ok(objects)
+    }
+
+    fn solve_shape_ray(
+        &self,
+        k: &Kernel,
+        brep: &mut Brep,
+        brep_id: BrepId,
+        shape: &crate::geom::object::Shape,
+        point: Point3,
+        options: TopologySolveOptions<'_>,
+    ) -> Result<crate::geom::solution_array::SolutionArray<CacheObject>> {
+        if brep_id != self.identity.brep_id {
+            return Err(SolidError::invalid_input(
+                "query::brep::BrepQuery::solve_shape_ray",
+                "ray fire on another B-rep",
+            ));
+        }
+        ray::solve_mutable_ray(k, brep, &self.identity, shape, point, options)
     }
 
     fn class_entity(&self, object: CacheObject) -> Option<EntityRef> {
@@ -1065,6 +1163,59 @@ mod tests {
         let _ = classifier.point_3d_classify(&k, Point3::new(3.0, 2.0, 1.0), 1e-6, false);
         assert!(core::ptr::eq(classifier.brep(), copied), "copied once");
         assert_eq!(format!("{b:?}"), before);
+    }
+
+    /// A unit box from `create_box` without its UV trims (upstream's classification
+    /// makes the ones its loop walks reach), and a query under the box's own keys
+    /// (`notify_ref`, as `create_box` owns its geometry).
+    fn box_without_trims(k: &mut Kernel) -> (Brep, BrepQuery<'static>) {
+        fn keys(o: CacheObject) -> ObjectRef {
+            use crate::topology::loopuse::notify_ref;
+            match o {
+                CacheObject::Edge(e) | CacheObject::Curve(e) => notify_ref(EntityRef::Edge(e)),
+                CacheObject::Face(f) | CacheObject::Surface(f) => notify_ref(EntityRef::Face(f)),
+                CacheObject::Vertex(v) => notify_ref(EntityRef::Vertex(v)),
+                _ => notify_ref(EntityRef::Brep(BrepId::from_index(0))),
+            }
+        }
+        fn no_owner(_: ObjectRef) -> Option<ObjectRef> {
+            None
+        }
+        let mut b =
+            crate::primitive::api_primitives::create_box(k, Point3::ZERO, 1.0, 1.0, 1.0).unwrap();
+        let uses: Vec<_> = b.edgeuses().ids().collect();
+        for u in uses {
+            b.edgeuse_mut(u).unwrap().uv_trim_curve = None;
+        }
+        let query = BrepQuery::new(BrepIdentity {
+            brep_id: BrepId::from_index(0),
+            keys: &keys,
+            owner_of: &no_owner,
+        });
+        (b, query)
+    }
+
+    fn trim_count(b: &Brep) -> usize {
+        b.edgeuses()
+            .iter()
+            .filter(|(_, u)| u.uv_trim_curve.is_some())
+            .count()
+    }
+
+    #[test]
+    fn ray_fires_make_missing_uv_trims_on_the_callers_brep() {
+        let mut k = Kernel::default();
+        let (mut b, query) = box_without_trims(&mut k);
+        let solid = b
+            .regions()
+            .ids()
+            .find(|&r| Some(r) != b.infinite_region())
+            .map(EntityRef::Region);
+        let inside = query
+            .point_3d_classify(&k, &mut b, Point3::new(0.5, 0.5, 0.5), 1e-6, false)
+            .unwrap();
+        assert_eq!(inside.object(), solid);
+        assert!(trim_count(&b) > 0, "the trims are made on the box itself");
     }
 
     #[test]

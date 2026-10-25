@@ -10,11 +10,11 @@
 //! |----------------------------------------------|----------------------------------------------|
 //! | [`crate::topology::Face::new`]               | `SmFace::SmFace`                             |
 //! | [`destroy`]                                  | `SmFace::~SmFace`                            |
-//! | [`calculate_uv_domain_from_uv_trim_curves`], [`UvDomainFromTrim`] | `SmFace::CalculateUVDomainFromUVTrimCurves` |
+//! | [`calculate_uv_domain_from_uv_trim_curves`], [`calculate_uv_domain_from_uv_trim_curves_into`], [`UvDomainFromTrim`] | `SmFace::CalculateUVDomainFromUVTrimCurves` |
 //! | [`create_oriented_trim_boundary`], [`OrientedTrimBoundary`] | `SmFace::CreateOrientedTrimBoundary` |
 //! | [`find_if_rectangular_trim`], [`RectangularTrim`] | `SmFace::FindIfRectangularTrim`          |
 //! | [`flip_face_orientation`]                    | `SmFace::FlipFaceOrientation`                |
-//! | [`set_surface`]                              | `SmFace::SetSurface`                         |
+//! | [`set_surface`], [`set_surface_notified`]    | `SmFace::SetSurface`                         |
 //! | [`insert_loop`]                              | `SmFace::InsertLoop`                         |
 //! | [`remove_loop`]                              | `SmFace::RemoveLoop`                         |
 //! | [`remove_uv_trim_curves`]                    | `SmFace::RemoveUVTrimCurves`                 |
@@ -26,7 +26,8 @@
 //!
 //! Deviations:
 //! - **Object model.** A face is a record in the [`Brep`]'s arenas; the methods are free
-//!   functions taking the B-rep and the face's id, out-parameters are return values.
+//!   functions taking the B-rep and the face's id. Out-parameters are return values,
+//!   with an additional UV-domain `_into` entry point for partial outputs on error.
 //!   Where upstream dereferences null (a face without surface or face use, a loop
 //!   without loop uses, an edge use without edge, an edge without curve, a loop use
 //!   without face use) the port returns [`SolidError::InvalidInput`]. The identity a
@@ -92,9 +93,15 @@
 //! - **Notifications** (`SmFace::Notify`, `topology.face_p3`) run with the empty
 //!   notification environment a B-rep face carries (as `topology::loopuse`'s do):
 //!   `SM_NO_PRE_EDIT` / `SM_NO_POST_EDIT` / `SM_NO_DESTRUCTION` with the face as the
-//!   first data argument. Only `SetSurface`'s `SM_NO_CHANGE_GEOMETRY` (its data are the
-//!   new and the old surface, which have no identity in the B-rep model) stays
-//!   [`SolidError::Unported`], justified in `plan/findings.md` (`topology.face_p3`).
+//!   first data argument. `SetSurface`'s `SM_NO_CHANGE_GEOMETRY` has two forms:
+//!   [`set_surface`] runs it in that empty environment with null data (upstream: the
+//!   new surface, `SM_NO_GET_BREP(this)` (null) and the old surface). Upstream the
+//!   surfaces only reach `SmTopology::Notify`, which copies the old surface's
+//!   attributes to the new one (`SmAObject::Notify`) and hands them to the context's
+//!   callbacks; the empty environment has no attribute store or callbacks to give them
+//!   to. [`set_surface_notified`] (`SmBrep::ReplaceSurface`'s call) runs it in the
+//!   caller's environment with the surfaces' identities ([`Surface::notify_key`]) the
+//!   caller's context issued, so a change tracker sees the same event as upstream.
 //!   `CreateUVTrimCurves` is `topology::face::p3::create_uv_trim_curves`.
 //! - **`HasSeamProblem`** (`topology.face_p4`) runs on the face's own B-rep objects
 //!   ([`crate::topology::face::p4::has_seam_problem_in_brep`]), so the classification
@@ -192,14 +199,13 @@ fn face_notify(b: &mut Brep, f: FaceId, operation: NotifyOperation) -> Result<()
     lu1::face_notify_edit(b, f, operation)
 }
 
-/// `Notify(SM_NO_CHANGE_GEOMETRY, pSurface, SM_NO_GET_BREP(this), m_pSurface)`: the
-/// notification carries the new and the old surface as its first and third data
-/// arguments.
-fn face_notify_change_geometry(_b: &mut Brep, _f: FaceId) -> Result<()> {
-    // UNPORTED(topology.face_p3): SmFace::Notify -- justified: findings.md topology.face_p3 "Stubs left for this unit"
-    // (a surface owned by a face has no object identity in the B-rep model, so the
-    // data arguments cannot be formed)
-    Err(SolidError::unported("SmFace::Notify", "topology.face_p3"))
+/// `Notify(SM_NO_CHANGE_GEOMETRY, pSurface, SM_NO_GET_BREP(this), m_pSurface)`:
+/// [`fp3::notify`] under the empty notification environment of
+/// [`lu1::face_notify_data`]. The new and the old surface (data 1 and 3) have no object
+/// identity in the B-rep model and the B-rep (data 2) none either, so all three data
+/// arguments are null (see the Deviations).
+fn face_notify_change_geometry(b: &mut Brep, f: FaceId) -> Result<()> {
+    lu1::face_notify_data(b, f, NotifyOperation::ChangeGeometry, [None; 3])
 }
 
 /// `SmFace::CreateUVTrimCurves(FALSE, NULL, NULL, ..)`.
@@ -510,8 +516,43 @@ pub fn calculate_uv_domain_from_uv_trim_curves(
     want_max_gap: bool,
     want_2nd_max_gap: bool,
 ) -> Result<UvDomainFromTrim> {
-    // Init output
     let mut out = UvDomainFromTrim {
+        domain: Extent2d::new(),
+        max_uv_loop_gap: 0.0,
+        second_max_uv_loop_gap: 0.0,
+    };
+    calculate_uv_domain_from_uv_trim_curves_into(
+        k,
+        b,
+        f,
+        limit_domain,
+        want_max_gap,
+        want_2nd_max_gap,
+        &mut out,
+    )?;
+    Ok(out)
+}
+
+/// Calculates the trim domain, retaining initialized and partial outputs on error.
+///
+/// The output follows native assignment order: the face/surface intersection remains
+/// available if a later bounding-box, loop-gap, or final domain intersection fails.
+/// If the face id is invalid, `out` is unchanged.
+///
+/// # Errors
+///
+/// As [`calculate_uv_domain_from_uv_trim_curves`].
+pub fn calculate_uv_domain_from_uv_trim_curves_into(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    limit_domain: bool,
+    want_max_gap: bool,
+    want_2nd_max_gap: bool,
+    out: &mut UvDomainFromTrim,
+) -> Result<()> {
+    // Init output
+    *out = UvDomainFromTrim {
         domain: fp2::uv_domain(b, f)?,
         max_uv_loop_gap: 0.0,
         second_max_uv_loop_gap: 0.0,
@@ -519,7 +560,7 @@ pub fn calculate_uv_domain_from_uv_trim_curves(
 
     // Check State - no Face->Surface
     let Some(surface) = fp2::surface(b, f)? else {
-        return Ok(out);
+        return Ok(());
     };
     let surf_domain = surface.natural_uv_domain();
 
@@ -535,7 +576,7 @@ pub fn calculate_uv_domain_from_uv_trim_curves(
         Ok(()) => {}
         Err(e) if e.is_unported() => return Err(e),
         // Return the default from above.
-        Err(_) => return Ok(out),
+        Err(_) => return Ok(()),
     }
     let loopuses = upward_loopuses(b, f)?;
 
@@ -596,7 +637,7 @@ pub fn calculate_uv_domain_from_uv_trim_curves(
 
     // all done - set output and return
     out.domain = face_domain;
-    Ok(out)
+    Ok(())
 }
 
 // ---- oriented trim boundary ---------------------------------------------------------------
@@ -907,21 +948,64 @@ pub fn flip_face_orientation(b: &mut Brep, f: FaceId) -> Result<()> {
 
 /// `SetSurface`: gives the face `surface` (owned by the face, `this`) and its natural
 /// domain. The previous surface is dropped with `delete_current`, else returned.
+/// The `SM_NO_CHANGE_GEOMETRY` notification runs with the empty notification
+/// environment of a B-rep face and null data (see [`set_surface_notified`] for a
+/// caller's environment and the surfaces' identities).
 ///
 /// # Errors
 ///
-/// [`SolidError::NotFound`] for a dangling id; [`SolidError::Unported`]
-/// (`SmFace::Notify`).
+/// [`SolidError::NotFound`] for a dangling id; those of the `SM_NO_CHANGE_GEOMETRY`
+/// notification ([`fp3::notify`]).
 pub fn set_surface(
+    b: &mut Brep,
+    f: FaceId,
+    this: ObjectRef,
+    surface: Surface,
+    delete_current: bool,
+) -> Result<Option<Surface>> {
+    // inform the public
+    face_notify_change_geometry(b, f)?;
+    store_surface(b, f, this, surface, delete_current)
+}
+
+/// [`set_surface`] notified through the caller's `env`: `SM_NO_CHANGE_GEOMETRY` carries
+/// `surface_refs` (the new and the old surface's identities, `None` for a surface
+/// without one) as its first and third data arguments; the second
+/// (`SM_NO_GET_BREP(this)`) is null, as upstream's macro.
+///
+/// # Errors
+///
+/// As [`set_surface`].
+pub fn set_surface_notified(
+    b: &mut Brep,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+    f: FaceId,
+    this: ObjectRef,
+    surface: Surface,
+    delete_current: bool,
+    surface_refs: [Option<ObjectRef>; 2],
+) -> Result<Option<Surface>> {
+    let [new_ref, old_ref] = surface_refs;
+    // inform the public
+    fp3::notify(
+        b,
+        f,
+        env,
+        None,
+        NotifyOperation::ChangeGeometry,
+        [new_ref, None, old_ref],
+    )?;
+    store_surface(b, f, this, surface, delete_current)
+}
+
+/// `SetSurface` after its notification.
+fn store_surface(
     b: &mut Brep,
     f: FaceId,
     this: ObjectRef,
     mut surface: Surface,
     delete_current: bool,
 ) -> Result<Option<Surface>> {
-    // inform the public
-    face_notify_change_geometry(b, f)?;
-
     // when asked - delete current surface
     let face = b.face_mut(f)?;
     let mut old = face.surface.take();
@@ -933,6 +1017,7 @@ pub fn set_surface(
     face.uv_domain = surface.natural_uv_domain();
     surface.set_owner(Some(this));
     face.surface = Some(surface);
+    b.geometry_owner_keys.insert(EntityRef::Face(f), this);
     // the surface reads the face's tolerance through GetFace()
     b.sync_face_surface_tolerance(f)?;
     Ok(old)
@@ -1010,7 +1095,31 @@ pub fn remove_loop(b: &mut Brep, f: FaceId, l: LoopId) -> Result<()> {
 /// `SM_ERR_NULL_POINTER` without face use; those of [`eu1::faceuse_edgeuses`];
 /// [`SolidError::Unported`] (`SmFace::Notify`).
 pub fn remove_uv_trim_curves(b: &mut Brep, f: FaceId) -> Result<()> {
-    face_notify(b, f, NotifyOperation::PreEdit)?;
+    remove_uv_trim_curves_notifying(b, f, &mut |b, op| face_notify(b, f, op))
+}
+
+/// Remove UV trims with the actual face notification records, attributes and context.
+/// Geometry notifications inside lower trim ports retain their existing behavior.
+///
+/// # Errors
+/// Those of [`remove_uv_trim_curves`] and the real face notification.
+pub fn remove_uv_trim_curves_with_notifications(
+    b: &mut Brep,
+    f: FaceId,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+) -> Result<()> {
+    remove_uv_trim_curves_notifying(b, f, &mut |b, op| {
+        let this = (env.key_of)(EntityRef::Face(f));
+        fp3::notify(b, f, env, None, op, [Some(this), None, None])
+    })
+}
+
+fn remove_uv_trim_curves_notifying(
+    b: &mut Brep,
+    f: FaceId,
+    notify: &mut impl FnMut(&mut Brep, NotifyOperation) -> Result<()>,
+) -> Result<()> {
+    notify(b, NotifyOperation::PreEdit)?;
     let fu = fp2::upward_faceuse(b, f)?.ok_or_else(|| SolidError::null_pointer(OP))?;
     for eu in eu1::faceuse_edgeuses(b, fu, false, None)? {
         // status ignored upstream
@@ -1214,6 +1323,35 @@ pub fn shrink_geometry_with(
     key_of: &dyn Fn(EntityRef) -> ObjectRef,
     trim: TrimOptions,
 ) -> Result<()> {
+    shrink_geometry_notifying(k, b, f, key_of, trim, &mut |b, op| face_notify(b, f, op))
+}
+
+/// Shrink with default native trim options and the caller's actual face notifications.
+/// The lower surface/curve ports keep their existing geometry notification behavior.
+///
+/// # Errors
+/// Those of [`shrink_geometry`] and the real face notification.
+pub fn shrink_geometry_with_notifications(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+) -> Result<()> {
+    let key_of = env.key_of;
+    shrink_geometry_notifying(k, b, f, key_of, TrimOptions::default(), &mut |b, op| {
+        let this = (env.key_of)(EntityRef::Face(f));
+        fp3::notify(b, f, env, None, op, [Some(this), None, None])
+    })
+}
+
+fn shrink_geometry_notifying(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    trim: TrimOptions,
+    notify: &mut impl FnMut(&mut Brep, NotifyOperation) -> Result<()>,
+) -> Result<()> {
     // no work - don't work on faces when in an intermediate state
     match fp2::surface(b, f)? {
         Some(s) if s.owner().is_some() => {}
@@ -1253,7 +1391,7 @@ pub fn shrink_geometry_with(
     }
 
     // remove all associated UVTrimCurves (status ignored)
-    ignore_status(remove_uv_trim_curves(b, f))?;
+    ignore_status(remove_uv_trim_curves_notifying(b, f, notify))?;
 
     // Now Trim all Curves to the face edges
     for e in face_edges(b, f)? {
@@ -2141,14 +2279,6 @@ mod tests {
         assert_eq!(r.uv_domain, Extent2d::new());
     }
 
-    /// The unit that owns the stub an error names (`None` for a real status).
-    fn unported_unit(e: &SolidError) -> Option<&'static str> {
-        match e {
-            SolidError::Unported { unit, .. } => Some(unit),
-            _ => None,
-        }
-    }
-
     fn is_null_pointer(e: &SolidError) -> bool {
         matches!(
             e,
@@ -2217,12 +2347,18 @@ mod tests {
         assert_eq!(b.faceuse(top).unwrap().orientation, OrientType::Opposite);
         assert_eq!(b.faceuse(bot).unwrap().orientation, OrientType::Same);
 
-        // SetSurface: the change-geometry notification's data arguments cannot be
-        // formed (a surface owned by a face has no object identity), see findings.md
-        let (mut b, f) = plane_face();
-        let s = b.face(f).unwrap().surface.clone().unwrap();
-        let e = set_surface(&mut b, f, me(f), s, true).unwrap_err();
-        assert_eq!(unported_unit(&e), Some("topology.face_p3"));
+        // SetSurface: the change-geometry notification (null data) runs through
+        // `GetUpwardEdgeuses`, then the surface and its natural domain are stored and the
+        // old surface is dropped (`bDeleteCurrFace`) or handed back
+        let (mut b, f, _, _) = plane_face_with_faceuses();
+        let s = Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::X));
+        let domain = s.natural_uv_domain();
+        assert!(set_surface(&mut b, f, me(f), s, true).unwrap().is_none());
+        let face = b.face(f).unwrap();
+        assert_eq!(face.uv_domain, domain);
+        assert_eq!(face.surface.as_ref().unwrap().owner(), Some(me(f)));
+        let s = Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::Y));
+        assert!(set_surface(&mut b, f, me(f), s, false).unwrap().is_some());
 
         // SwapUV starts at `GetBrep()->GetContext()`: null without a B-rep
         let (mut b, f) = plane_face();
@@ -2235,6 +2371,73 @@ mod tests {
         destroy(&mut b, f, me(f)).unwrap();
         let face = b.face(f).unwrap();
         assert!(face.faceuse.is_none() && face.surface.is_none());
+    }
+
+    #[test]
+    fn contextual_uv_removal_preserves_actual_notify_payload_and_null_prefix() {
+        use crate::geom::attribute::{ids, Attribute, AttributeStore, Behavior};
+        use crate::geom::context::Context;
+        use crate::topology::brep::p3::{notify_serial, topology_ref};
+        use crate::topology::edge::notification_test_support as callbacks;
+        use crate::topology::topology::Topology;
+        for mode in 0..3 {
+            let mut k = Kernel::default();
+            let (mut b, f) = if mode == 0 {
+                plane_face()
+            } else {
+                let (b, f, _, _) = plane_face_with_faceuses();
+                (b, f)
+            };
+            let serial = notify_serial(&mut k.context, &mut b).unwrap();
+            let actual_key = |entity| topology_ref(serial, entity);
+            let this = actual_key(EntityRef::Face(f));
+            let events = callbacks::install(&mut k.context);
+            let mut records = std::collections::BTreeMap::new();
+            let mut metadata = Topology::new();
+            metadata.set_user_index1(42);
+            records.insert(this.key, metadata);
+            let mut attributes = AttributeStore::new();
+            let marker = attributes
+                .insert(Attribute::new(
+                    ids::ALL_FILLET_EDGES,
+                    Behavior::StandaloneReference,
+                ))
+                .unwrap();
+            attributes.add_attribute(this.key, marker).unwrap();
+            b.face_mut(f).unwrap().rectangular_trim = 1;
+            let result = Context::with_notification_context(&mut k, |k, context| {
+                let mut env = crate::topology::edge::NotifyEnv {
+                    records: &mut records,
+                    attributes: &mut attributes,
+                    context: Some(context),
+                    key_of: &actual_key,
+                };
+                if mode == 2 {
+                    shrink_geometry_with_notifications(k, &mut b, f, &mut env)
+                } else {
+                    remove_uv_trim_curves_with_notifications(&mut b, f, &mut env)
+                }
+            })
+            .unwrap();
+            if mode == 0 {
+                assert!(is_null_pointer(&result.unwrap_err()));
+            } else {
+                result.unwrap();
+            }
+            assert_eq!(b.face(f).unwrap().rectangular_trim, fp2::UNSURE);
+            assert_eq!(attributes.users(marker).unwrap(), vec![this.key]);
+            assert_eq!(records.get(&this.key).unwrap().user_index1(), 42);
+            let observed = events.lock().unwrap();
+            assert_eq!(observed.len(), 2);
+            for (event, callback) in observed.iter().zip(["user", "system"]) {
+                assert_eq!(event.callback, callback);
+                assert_eq!(event.operation, NotifyOperation::PreEdit);
+                assert_eq!(event.caller, this);
+                assert_eq!(event.data, [Some(this), None, None]);
+            }
+            drop(observed);
+            callbacks::assert_installed(&k.context, &events);
+        }
     }
 
     #[test]

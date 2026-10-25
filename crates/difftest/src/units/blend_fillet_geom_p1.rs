@@ -1249,6 +1249,14 @@ fn dump_surface(o: &mut Vec<f64>, s: Option<&Surface>) -> Result<(), HarnessErro
         Some(SurfaceKind::BSpline(bs)) => Some(bs),
         _ => None,
     };
+    dump_bspline_surface(o, bs)
+}
+
+/// The shim's `put_surface` record of a B-spline surface (`0` for none).
+pub(crate) fn dump_bspline_surface(
+    o: &mut Vec<f64>,
+    bs: Option<&BSplineSurface>,
+) -> Result<(), HarnessError> {
     let Some(sur) = bs.and_then(BSplineSurface::gw_nurb) else {
         o.push(0.0);
         return Ok(());
@@ -1533,7 +1541,7 @@ impl RustModel {
             let mut geom = FilletGeom::new(&k, None, gtype).map_err(h)?;
             geom.status = FilStatus::from_code(g.status).ok_or_else(|| harness("bad status"))?;
             if let Some(c) = &g.center {
-                geom.center_line_curve = Some(curve_of(c)?);
+                geom.center_line_curve = Some(Curve::from(curve_of(c)?));
             }
             if let Some(s) = &g.surface {
                 geom.set_fillet_surface(Some(surface_of(s)?));
@@ -1888,7 +1896,7 @@ impl RustModel {
                 o.push(self.edge_index(Some(e)));
             }
             dump_bcurve(o, g.center_line_curve());
-            dump_surface(o, g.fillet_surface())?;
+            dump_surface(o, g.fillet_surface().map_err(h)?)?;
             o.push(g.ref_eus.len() as f64);
             for &eu in &g.ref_eus {
                 self.put_eu(o, Some(eu));

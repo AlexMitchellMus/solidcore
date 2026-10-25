@@ -2185,6 +2185,7 @@ fn rust_face_tail(input: &FaceTailIn) -> RResult<Output> {
         &intersections,
         &mut env,
         &offset_key,
+        &curve_key,
     );
     let (status, _) = operation(result)?;
     let brep = executive
@@ -2360,9 +2361,9 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
             let eu = primary(&original, edge)?;
             executive.build_side_wall_of_edgeuse(&mut kernel, &mut original, Some(eu))
         }
-        Probe::FillEmpty => {
-            executive.fill_gap_edgeuses(&kernel, EdgeId::from_index(u32::MAX), &[], &[])
-        }
+        Probe::FillEmpty => probe_env(|env, _| {
+            executive.fill_gap_edgeuses(&mut kernel, EdgeId::from_index(u32::MAX), &[], &[], env)
+        }),
         Probe::VertexNull | Probe::VertexIsolated => {
             let vertex = if matches!(branch, Probe::VertexIsolated) {
                 let shell = original
@@ -2417,6 +2418,7 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
                     &SsiData::default(),
                     env,
                     offset_key_of,
+                    &curve_key,
                 )
             })
         }
@@ -2470,7 +2472,7 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
             };
             executive.build_offset_of_edgeuses(
                 &mut kernel,
-                &original,
+                &mut original,
                 first,
                 other,
                 MarkType::Mark,

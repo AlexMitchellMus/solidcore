@@ -24,6 +24,7 @@ use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::crv_basic::Curve as NlCurve;
 use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::surface::surface::Surface;
+use solidcore::topology::{Brep, FaceId};
 use solidcore_ffi::units::intersect_topology_solver_p2 as ffi;
 
 /// Topology solver p2 differential runner.
@@ -141,6 +142,9 @@ impl SolutionObject for StaticHandle {
     fn natural_interval(&self) -> Option<Extent1d> {
         (self.0 == 999 || self.0 == -2).then(|| Extent1d::from_min_max(0.0, 1.0))
     }
+    // No natural_uv_domain: answering it un-defers 12 face cases, 9 of which then
+    // disagree (the C++ solves over the faces' own trimmed surface caches; see
+    // plan/findings.md, "topology_solver_p2 static face solves").
 }
 struct StaticScene {
     points: Vec<Point3>,
@@ -151,6 +155,9 @@ struct StaticScene {
     curve: Curve,
     edge_owner: bool,
     surfaces: [Surface; 2],
+    /// The shim's `CreateFaceFromSurface` faces (handles 2000, 2001), each in its
+    /// own B-rep as `first` / `second` (entries 5 to 8 only).
+    faces: Vec<(Brep, FaceId)>,
 }
 fn static_error() -> SolidError {
     SolidError::invalid_input(
@@ -267,11 +274,42 @@ impl TopologyObjects<StaticHandle> for StaticScene {
         self.face_surface(face)?;
         Ok(1e-5)
     }
+    fn face_entity(&self, face: StaticHandle) -> Option<(&Brep, FaceId)> {
+        let at = match face.0 {
+            2000 => 0,
+            2001 => 1,
+            _ => return None,
+        };
+        self.faces.get(at).map(|(b, f)| (b, *f))
+    }
     fn surface_owner(&self, surface: StaticHandle) -> SolidResult<Option<StaticHandle>> {
         self.surface_face(surface)
     }
     fn shape_member(&self, _: StaticHandle) -> ShapeMember {
         ShapeMember::Other
+    }
+    // SmTol::GetZoneTol3d(const SmObject*) of the shim's objects: topology's own
+    // GetTolerance, a curve's edge's or a surface's face's tolerance (the system's
+    // without one, as for the analytic curve), a B-rep's tolerance
+    fn object_zone_tol_3d(&self, k: &Kernel, object: StaticHandle) -> SolidResult<f64> {
+        let system = || {
+            solidcore::geom::tol::zone_tol_3d(k, solidcore::geom::tol::SmallTopoType::NormalSize)
+        };
+        match object.0 {
+            1000 | 1001 => Ok(1e-5),
+            2000 | 2001 => self.face_tolerance(object),
+            2002 | 2003 => match self.surface_face(object)? {
+                Some(face) => self.face_tolerance(face),
+                None => Ok(system()),
+            },
+            2004 => self.edge_tolerance(object),
+            999 => match self.curve_edge(object)? {
+                Some(edge) => self.edge_tolerance(edge),
+                None => Ok(system()),
+            },
+            -2 => Ok(system()),
+            _ => self.vertex_tolerance(object),
+        }
     }
 }
 fn static_rust(case: &Case) -> Result<Output, HarnessError> {
@@ -332,6 +370,39 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
         vec![0.0, 0.0, 1.0, 1.0],
     )
     .map_err(|e| HarnessError::new(e.to_string()))?;
+    let planes = [0.0, 1.0].map(|z| {
+        Surface::from(solidcore::surface::plane::Plane::new(
+            Point3::new(0.0, 0.0, z),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            solidcore::geom::vector2d::Vec2::new(1.0, 1.0),
+            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        ))
+    });
+    // The adapter's planes stand in for the shim's face-owned surfaces: it has no
+    // trimmed surface cache bound to its faces, and a vertex/face maximize solves
+    // GlobalPointSolve over that cache (SmTLSPointFace::SolveIt's non-projected branch).
+    if i.entry == 5 && i.included && i.operation == 4 {
+        return Ok(Output::deferred(
+            "topology.face_p2",
+            "SmFace handle of a surface's face",
+        ));
+    }
+    let mut faces = Vec::new();
+    if i.entry >= 5 {
+        for plane in &planes {
+            // new SmBrep(SM_USE_DEFAULT, SM_USE_DEFAULT, &context)
+            let mut b = super::blend_fillet_geom_p1::new_brep(&mut kernel)?;
+            let f = super::sweep_trans_sweep_geometry::create_face(
+                &mut kernel,
+                &mut b,
+                plane.clone(),
+                &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+            )
+            .map_err(|e| HarnessError::new(format!("CreateFaceFromSurface: {e}")))?;
+            faces.push((b, f));
+        }
+    }
     let scene = StaticScene {
         points: all,
         first: tree1,
@@ -340,15 +411,8 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
         empty_second,
         curve: Curve::from(BSplineCurve::from_nurb(nurb, 3, false)),
         edge_owner: i.entry == 7,
-        surfaces: [0.0, 1.0].map(|z| {
-            Surface::from(solidcore::surface::plane::Plane::new(
-                Point3::new(0.0, 0.0, z),
-                Vec3::new(1.0, 0.0, 0.0),
-                Vec3::new(0.0, 1.0, 0.0),
-                solidcore::geom::vector2d::Vec2::new(1.0, 1.0),
-                &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
-            ))
-        }),
+        surfaces: planes,
+        faces,
     };
     let vectors = [Vec3::new(0.0, 0.0, 1.0), Vec3::new(1.0, 0.0, 0.0)];
     let options = TopologySolveOptions {

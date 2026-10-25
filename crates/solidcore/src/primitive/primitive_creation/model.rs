@@ -14,14 +14,11 @@
 //! notify an arena-only store ([`ArenaNotifyState`]): no observer holds identities for
 //! these objects. Tags and offset-map attributes live in the model (`SmAObject`
 //! attributes); topology marks use
-//! [`Marks`] per B-rep under the kernel context's mark locks. Services the model does
-//! not resolve yet return [`SolidError::Unported`] naming the upstream call: retaining
-//! an HCR session (`SmHCR`), the topology intersector's face deletion
-//! (`SmTopologyIntersector::DeleteFaces`) and `SmBrep::ProjectAndTrim`. Their units are partial: the model, not the unit,
-//! lacks the bridge; each error names the unit that owns the call. No recursion.
-//! Retained merge services remain the responsibility of
-//! [`crate::sweep::topology_sweep::store::SweepStore`]; this adapter preserves its
-//! existing merge-constructor deferral.
+//! [`Marks`] per B-rep under the kernel context's mark locks. `SmMerge` objects are
+//! retained sessions over the model's B-reps (`merge`). Services the model does not
+//! resolve yet return [`SolidError::Unported`] naming the upstream call: retaining an
+//! HCR session (`SmHCR`); its unit is partial: the model, not the unit, lacks the
+//! bridge. No recursion.
 
 use std::collections::BTreeMap;
 
@@ -49,6 +46,8 @@ use crate::topology::loopuse::notify_ref;
 use crate::topology::topology_traverser::{Entity, Marks};
 use crate::topology::{Brep, BrepId, FaceId};
 
+mod merge;
+
 const OP: &str = "primitive::primitive_creation::model";
 
 fn face_ref(f: FaceId) -> ObjectRef {
@@ -64,6 +63,7 @@ pub struct PrimitiveModel<'k> {
     tags: BTreeMap<SweepEntity, TagData>,
     offset_maps: BTreeMap<FaceRef, OffsetMapAttribute>,
     locks: Vec<(MarkType, MarkLock)>,
+    merges: Vec<Option<merge::Session>>,
 }
 
 impl<'k> PrimitiveModel<'k> {
@@ -79,6 +79,7 @@ impl<'k> PrimitiveModel<'k> {
             tags: BTreeMap::new(),
             offset_maps: BTreeMap::new(),
             locks: Vec::new(),
+            merges: Vec::new(),
         }
     }
 
@@ -163,6 +164,33 @@ impl<'k> PrimitiveModel<'k> {
             .get_mut(id.index() as usize)
             .and_then(Option::take)
             .ok_or_else(|| SolidError::null_pointer(OP))
+    }
+
+    /// Runs `action` on merge `id` with the model's kernel; the session returns to its
+    /// slot afterwards, also on error.
+    fn run_merge<T>(
+        &mut self,
+        id: SweepMergeId,
+        action: impl FnOnce(&mut Kernel, &mut merge::Driver<'_>) -> Result<T>,
+    ) -> Result<T> {
+        let slot = self
+            .merges
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| SolidError::invalid_input(OP, "unknown merge"))?;
+        let mut session = slot
+            .take()
+            .ok_or_else(|| SolidError::invalid_input(OP, "unknown merge"))?;
+        let mut driver = merge::Driver {
+            breps: &mut self.breps,
+            marks: &mut self.marks,
+            offset_maps: &mut self.offset_maps,
+            session: &mut session,
+        };
+        let result = action(self.k, &mut driver);
+        if let Some(slot) = self.merges.get_mut(id.0 as usize) {
+            *slot = Some(session);
+        }
+        result
     }
 
     fn slot(&mut self, id: BrepId) -> Result<&mut Brep> {
@@ -291,40 +319,80 @@ impl SweepAccess for PrimitiveModel<'_> {
             }
         }
     }
-    fn delete_merge(&mut self, _: SweepMergeId) {}
+    fn delete_merge(&mut self, merge: SweepMergeId) {
+        if let Some(session) = self.merges.get_mut(merge.0 as usize).and_then(Option::take) {
+            for brep in session.temporaries {
+                self.delete_brep(brep);
+            }
+        }
+    }
     fn new_merge(
         &mut self,
-        _: BrepId,
-        _: BrepId,
-        _: BrepId,
-        _: f64,
-        _: f64,
+        _context_of: BrepId,
+        destination: BrepId,
+        source: BrepId,
+        tolerance: f64,
+        angle: f64,
     ) -> Result<SweepMergeId> {
-        // Preserve the inherited boundary of main's standalone SM_API adapter.
-        // UNPORTED(boolean.merge_p2): SmMerge::SmMerge (retained model binding)
-        Err(SolidError::unported("SmMerge::SmMerge", "boolean.merge_p2"))
+        // SmMerge(*pContext, destination, source, tolerance, angle): the model has one
+        // context.
+        let session =
+            merge::Session::new(self.k, &self.breps, destination, source, tolerance, angle)?;
+        let id = SweepMergeId(
+            u32::try_from(self.merges.len())
+                .map_err(|_| SolidError::invalid_input(OP, "too many merges"))?,
+        );
+        self.merges.push(Some(session));
+        Ok(id)
     }
-    fn merge_operands(&self, _: SweepMergeId) -> Result<(BrepId, BrepId)> {
-        Err(SolidError::invalid_input(OP, "unknown merge"))
+    fn merge_operands(&self, merge: SweepMergeId) -> Result<(BrepId, BrepId)> {
+        self.merges
+            .get(merge.0 as usize)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| SolidError::invalid_input(OP, "unknown merge"))?
+            .operands()
     }
-    fn merge_relations(&mut self, _: SweepMergeId) -> Result<&mut Relations> {
-        Err(SolidError::invalid_input(OP, "unknown merge"))
+    fn merge_relations(&mut self, merge: SweepMergeId) -> Result<&mut Relations> {
+        Ok(self
+            .merges
+            .get_mut(merge.0 as usize)
+            .and_then(Option::as_mut)
+            .ok_or_else(|| SolidError::invalid_input(OP, "unknown merge"))?
+            .relations())
     }
     fn copy_faces(
         &mut self,
-        _: BrepId,
-        _: &[FaceId],
-        _: BrepId,
-        _: SweepMergeId,
-        _: &mut BTreeEdgeMap,
+        source: BrepId,
+        faces: &[FaceId],
+        destination: BrepId,
+        merge: SweepMergeId,
+        edge_mates: &mut BTreeEdgeMap,
     ) -> Result<()> {
-        Err(SolidError::invalid_input(OP, "unknown merge"))
+        let result = self.run_merge(merge, |k, driver| {
+            driver.copy_faces(k, source, faces, destination)
+        });
+        edge_mates.extend(self.merge_relations(merge)?.edges.other_to_primary());
+        result
     }
-    fn piecewise_merge(&mut self, _: SweepMergeId, _: bool, _: bool) -> Result<BrepId> {
-        Err(SolidError::invalid_input(OP, "unknown merge"))
+    fn piecewise_merge(
+        &mut self,
+        merge: SweepMergeId,
+        use_existing_topology: bool,
+        create_new_breps_for_faces: bool,
+    ) -> Result<BrepId> {
+        self.run_merge(merge, |k, driver| {
+            crate::boolean::merge::p3::piecewise_merge(
+                k,
+                driver,
+                None,
+                use_existing_topology,
+                create_new_breps_for_faces,
+            )?
+            .ok_or_else(|| SolidError::null_pointer(OP))
+        })
     }
-    fn union(&mut self, _: SweepMergeId) -> Result<BrepId> {
-        Err(SolidError::invalid_input(OP, "unknown merge"))
+    fn union(&mut self, merge: SweepMergeId) -> Result<BrepId> {
+        self.run_merge(merge, |k, driver| driver.union(k))
     }
     fn tag(&self, e: SweepEntity) -> Result<Option<TagData>> {
         Ok(self.tags.get(&e).copied())
@@ -419,11 +487,20 @@ impl PrimitiveAccess for PrimitiveModel<'_> {
             .ok_or_else(|| SolidError::null_pointer(OP))?;
         body(self.k, b)
     }
-    fn delete_primitive_faces(&mut self, _: BrepId, _: &[FaceId]) -> Result<()> {
-        Err(SolidError::unported(
-            "SmTopologyIntersector::DeleteFaces",
-            "boolean.topology_intersector_p2",
-        ))
+    fn delete_primitive_faces(&mut self, brep: BrepId, faces: &[FaceId]) -> Result<()> {
+        // The rotational-sweep caller constructs a fresh context-only
+        // intersector (SmPrimitiveCreation.cpp:2982), with no retained mates.
+        // Reuse this model's actual notification records and object identities.
+        self.with_brep_mut(brep, |k, b, _, env| {
+            crate::boolean::merge::p4::KernelManifoldIntersector::delete_faces_with_keys(
+                k,
+                b,
+                faces,
+                env.records,
+                env.attributes,
+                env.key_of,
+            )
+        })
     }
 }
 
@@ -450,16 +527,98 @@ impl PrimitiveCreationAccess for PrimitiveModel<'_> {
     }
     fn project_and_trim(
         &mut self,
-        _: BrepId,
-        _: &BSplineCurve,
-        _: Vec3,
-        _: Point3,
-        _: TrimType,
-        _: f64,
+        brep: BrepId,
+        curve: &BSplineCurve,
+        direction: Vec3,
+        reference: Point3,
+        trim_type: TrimType,
+        approx_tol: f64,
     ) -> Result<()> {
-        Err(SolidError::unported(
-            "SmBrep::ProjectAndTrim",
-            "topology.brep_p10",
-        ))
+        // `ProjectAndTrim(curve, direction, reference, type, &tol, NULL, NULL)`: the
+        // B-rep's objects keep the model's identities (`loopuse::notify_ref`).
+        let keys = |object| crate::topology::brep::p2::caller_cache_key(&notify_ref, object);
+        let env = crate::topology::brep::p10::ProjectEnv {
+            brep_id: brep,
+            keys: &keys,
+            owner_of: &|_| None,
+        };
+        let b = self
+            .breps
+            .get_mut(brep.index() as usize)
+            .and_then(Option::as_mut)
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
+        crate::topology::brep::p10::project_and_trim(
+            self.k,
+            b,
+            &env,
+            curve,
+            direction,
+            reference,
+            trim_type,
+            &crate::topology::brep::p10::ProjectAndTrimOptions {
+                approximation_tol_3d: Some(approx_tol),
+                ..Default::default()
+            },
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geom::axis2_placement::Axis2Placement;
+    use crate::geom::extent2d::Extent2d;
+    use crate::math::Point2;
+    use crate::surface::plane::Plane;
+    use crate::surface::surface::Surface;
+
+    fn plane_face(model: &mut PrimitiveModel<'_>, brep: BrepId) -> FaceId {
+        let plane = Plane::create_canonical(&Axis2Placement::IDENTITY).unwrap();
+        let mut face = None;
+        model
+            .surface_face(
+                brep,
+                Surface::from(plane),
+                Extent2d::from_points(Point2::ZERO, Point2::new(1.0, 1.0)),
+                &mut face,
+            )
+            .unwrap();
+        face.unwrap()
+    }
+
+    #[test]
+    fn rotational_face_deletion_edits_only_the_selected_model_brep() {
+        let mut kernel = Kernel::default();
+        let brep = crate::topology::brep::p3::new_brep(
+            &mut kernel,
+            crate::geom::tol::USE_DEFAULT,
+            crate::geom::tol::USE_DEFAULT,
+        )
+        .unwrap();
+        let mut model = PrimitiveModel::new(&mut kernel, brep);
+        let main_face = plane_face(&mut model, PrimitiveModel::MAIN);
+        let second = model.new_brep(PrimitiveModel::MAIN).unwrap();
+        let second_face = plane_face(&mut model, second);
+        // Stable arena indices overlap across these two distinct B-reps.
+        assert_eq!(main_face, second_face);
+        model.set_editing(second, true).unwrap();
+        model
+            .delete_primitive_faces(second, &[second_face])
+            .unwrap();
+        let selected = model.brep(second).unwrap();
+        assert!(selected.face_list().is_empty());
+        assert!(selected.edge_list().is_empty());
+        assert!(selected.vertex_list().is_empty());
+        let main = model.brep(PrimitiveModel::MAIN).unwrap();
+        assert_eq!(main.face_list(), &[main_face]);
+        assert_eq!(main.edge_list().len(), 4);
+        assert_eq!(main.vertex_list().len(), 4);
+        assert!(model
+            .delete_primitive_faces(BrepId::from_index(99), &[main_face])
+            .is_err());
+        assert_eq!(
+            model.brep(PrimitiveModel::MAIN).unwrap().face_list(),
+            &[main_face]
+        );
     }
 }

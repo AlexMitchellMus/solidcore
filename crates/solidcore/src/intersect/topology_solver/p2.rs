@@ -52,13 +52,14 @@ use crate::geom::tol::{are_same, zone_tol3d};
 use crate::geom::tree::{AuxDataType, Tree};
 use crate::intersect::curve_class::p1::CurveClassification;
 use crate::intersect::curve_class::p4::ClassificationInit;
-use crate::intersect::point_class::{ClassObject, ClassObjectKind};
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec2};
 use crate::nurbs::b_spline_curve::BoundingBoxRequest;
-use crate::surface::surface::p4::global_point_solve_starts;
+use crate::query::face::p2 as qf2;
+use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::Surface;
 use crate::surface::trim_srf_cache::POINT_CLASS_UNKNOWN;
+use crate::topology::face::p3::{IntersectObject, IntersectObjects};
 
 const OP_LOCAL: &str = "intersect::topology_solver::p2::TopologySolver::local_solve_branch";
 const OP_VF: &str = "intersect::topology_solver::p2::LocalSolver::solve_vertex_face";
@@ -198,29 +199,24 @@ fn name_curve_face<O: Copy + PartialEq>(
     solution.num_variables = 3;
 }
 
-/// The classification handle of this solver's curve (`m_pCurve`): the curve itself is passed
-/// alongside.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct SolverCurveHandle;
-
-impl ClassObject for SolverCurveHandle {
-    fn class_kind(&self) -> ClassObjectKind {
-        ClassObjectKind::Curve
-    }
-}
-
 /// `SmCurveClassification sCurveClass(m_pCurve, interval, NULL, tol, 10, sCIData)` followed
-/// by `pFace->CurveOnClassify(TRUE, sCurveClass)`: the intervals and their interior point
-/// classes.
-fn classified_curve_intervals<O>(
+/// by `pFace->CurveOnClassify(TRUE, sCurveClass)` (the remaining arguments default): the
+/// intervals and their interior point classes.
+///
+/// The face is the B-rep face [`TopologyObjects::face_entity`] names; the classification
+/// runs on that B-rep through [`qf2::curve_on_classify`], with the solver's curve as the
+/// classified curve ([`IntersectObject::Curve`] over a one-curve slice) and the face's
+/// topology as handles of the B-rep.
+fn classified_curve_intervals<O: Copy>(
     kernel: &Kernel,
-    _curve: &Curve,
+    objects: &dyn TopologyObjects<O>,
+    curve: &Curve,
     interval: &Extent1d,
-    _face: O,
+    face: O,
     tol: f64,
 ) -> Result<Vec<(Extent1d, i32)>> {
     let init = ClassificationInit {
-        curve: Some(SolverCurveHandle),
+        curve: Some(IntersectObject::Curve(0)),
         interval: *interval,
         uv_curve: None,
         // the double converts to the SmZoneTol3d parameter
@@ -233,15 +229,62 @@ fn classified_curve_intervals<O>(
         uv_curve2: None,
         ti: None,
     };
-    let _classification = CurveClassification::with_curve(kernel, &init)?;
-    // UNPORTED(query.face_p2): SmFace::CurveOnClassify -- justified: plan/findings.md
-    // "intersect.curve_class_p4" (the solver's object adapter has no face -> (Brep, FaceId) /
-    // CurveOnClassifyObjects resolution for its handle `O`, as for PointClassify in
-    // topology_solver::p1)
-    Err(SolidError::unported(
-        "SmFace::CurveOnClassify",
-        "query.face_p2",
-    ))
+    let mut classification = CurveClassification::with_curve(kernel, &init)?;
+    let Some((b, f)) = objects.face_entity(face) else {
+        // DISPATCH GAP: SmFace::CurveOnClassify is ported (`query::face::p2`), but this
+        // adapter cannot resolve the face handle to its `Brep` and `FaceId`
+        // (`TopologyObjects::face_entity`).
+        return Err(SolidError::unported(
+            "SmFace::CurveOnClassify",
+            "query.face_p2",
+        ));
+    };
+    let classify_objects = IntersectObjects {
+        b,
+        other: b,
+        side: false,
+        curves_3d: core::slice::from_ref(curve),
+        uv1: &[],
+        uv2: &[],
+    };
+    qf2::curve_on_classify(
+        kernel,
+        b,
+        f,
+        &classify_objects,
+        true,
+        &mut classification,
+        false,
+        false,
+        true,
+    )?;
+    Ok(classification
+        .intervals()
+        .iter()
+        .map(|i| (i.interval, i.mid.point_class().code()))
+        .collect())
+}
+
+/// The start ends of `pSurface->GlobalPointSolve(domain, SM_SO_INTERSECT, point, tol,
+/// NULL, SM_SR_ALL, ..)` with the surface cache's point test switched off.
+fn point_test_off_starts(
+    kernel: &Kernel,
+    surface: &Surface,
+    face_domain: &Extent2d,
+    point: Point3,
+    tol: f64,
+) -> Result<Vec<crate::geom::solution_array::SolutionEnd>> {
+    let solutions = surface.global_point_solve_point_test_off::<NoObject>(
+        kernel,
+        Some(NoObject),
+        face_domain,
+        SolverOperation::Intersect,
+        point,
+        tol,
+        None,
+        SolutionRequested::All,
+    )?;
+    Ok(solutions.as_slice().iter().map(|s| s.start).collect())
 }
 
 fn untrimmed_range_endpoints<O>(
@@ -253,31 +296,15 @@ fn untrimmed_range_endpoints<O>(
     end: Point3,
     tol: f64,
 ) -> Result<Option<(Vec2, Vec2)>> {
-    // Upstream switches the surface cache's point test off around both solves. The
-    // solver here keeps every solution of a surface that owns no face, and a face-owned
-    // surface is Unported (query.face_p2) inside `Surface::global_point_solve`.
-    let first = global_point_solve_starts(
-        kernel,
-        surface,
-        face_domain,
-        SolverOperation::Intersect,
-        start,
-        tol,
-        SolutionRequested::All,
-    )?;
+    // Upstream switches the surface cache's point test off around both solves
+    // (`SmTemporaryChangeValue` on `m_bPointTestEnabled`), so every point solution is
+    // kept without classifying it against the face's trim boundaries.
+    let first = point_test_off_starts(kernel, surface, face_domain, start, tol)?;
     let Some(s) = first.first() else {
         return Ok(None); // error - something is wrong here - quit
     };
     let uv_start = Vec2::new(s.param(0)?, s.param(1)?);
-    let second = global_point_solve_starts(
-        kernel,
-        surface,
-        face_domain,
-        SolverOperation::Intersect,
-        end,
-        tol,
-        SolutionRequested::All,
-    )?;
+    let second = point_test_off_starts(kernel, surface, face_domain, end, tol)?;
     let Some(e) = second.first() else {
         return Ok(None);
     };
@@ -411,17 +438,33 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
         let surface = ts.objects.surface(face_surface_handle)?;
         let domain = ts.objects.face_uv_domain(face)?;
         let tol = ts.base.tolerance_3d + ts.objects.face_tolerance(face)?;
+        // the surface reaches its face's cache through the caller's context
+        // (`smsurf_GetSurfaceCache`), when it provides one
+        let mut context = ts.objects.surface_solve_context();
         let solutions = if ts.base.operation == SolverOperation::Intersect {
             // surface->GlobalCurveIntersect(domain, curve, interval, tol, solutions)
             // (SER): the solutions name the curve and the surface
-            surface.global_curve_intersect(
-                ts.kernel,
-                [curve.handle, surface_handle],
-                &domain,
-                curve.curve,
-                &self.interval,
-                tol,
-            )?
+            if let Some(context) = context.as_deref_mut() {
+                surface.global_curve_intersect_with_context(
+                    ts.kernel,
+                    [Some(curve.handle), Some(surface_handle)],
+                    None,
+                    context,
+                    &domain,
+                    curve.curve,
+                    &self.interval,
+                    tol,
+                )?
+            } else {
+                surface.global_curve_intersect(
+                    ts.kernel,
+                    [curve.handle, surface_handle],
+                    &domain,
+                    curve.curve,
+                    &self.interval,
+                    tol,
+                )?
+            }
         } else {
             let mut vectors = ts.base.opt_vectors.clone();
             if ts.base.operation == SolverOperation::Signed3dDirectedMinimize && self.swap_order {
@@ -431,18 +474,34 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                 *vector = -*vector;
                 vectors.truncate(1);
             }
-            surface.global_curve_solve(
-                ts.kernel,
-                &domain,
-                curve.curve,
-                &self.interval,
-                ts.base.operation,
-                tol,
-                best,
-                &vectors,
-                SolutionRequested::All,
-                [Some(curve.handle), Some(face_surface_handle)],
-            )?
+            if let Some(context) = context.as_deref_mut() {
+                surface.global_curve_solve_with_context(
+                    ts.kernel,
+                    &domain,
+                    curve.curve,
+                    &self.interval,
+                    ts.base.operation,
+                    tol,
+                    best,
+                    &vectors,
+                    SolutionRequested::All,
+                    [Some(curve.handle), Some(face_surface_handle)],
+                    context,
+                )?
+            } else {
+                surface.global_curve_solve(
+                    ts.kernel,
+                    &domain,
+                    curve.curve,
+                    &self.interval,
+                    ts.base.operation,
+                    tol,
+                    best,
+                    &vectors,
+                    SolutionRequested::All,
+                    [Some(curve.handle), Some(face_surface_handle)],
+                )?
+            }
         };
         for found in solutions.as_slice() {
             let mut solution = *found;
@@ -454,6 +513,7 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
                         Extent1d::from_min_max(solution.start.param(0)?, solution.end.param(0)?);
                     let intervals = classified_curve_intervals(
                         ts.kernel,
+                        ts.objects,
                         curve.curve,
                         &interval,
                         face,
@@ -564,18 +624,37 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
         } else {
             let a = ts.objects.surface(surface1)?;
             let b = ts.objects.surface(surface2)?;
-            let solutions = a.global_surface_solve(
-                ts.kernel,
-                &ts.objects.face_uv_domain(face1)?,
-                b,
-                &ts.objects.face_uv_domain(face2)?,
-                ts.base.operation,
-                ts.base.tolerance_3d,
-                best,
-                &ts.base.opt_vectors,
-                ts.base.solution_requested,
-                [Some(surface1), Some(surface2)],
-            )?;
+            // the surfaces reach their faces' caches through the caller's context
+            // (`smsurf_GetSurfaceCache`), when it provides one
+            let mut context = ts.objects.surface_solve_context();
+            let solutions = if let Some(context) = context.as_deref_mut() {
+                a.global_surface_solve_with_context(
+                    ts.kernel,
+                    &ts.objects.face_uv_domain(face1)?,
+                    b,
+                    &ts.objects.face_uv_domain(face2)?,
+                    ts.base.operation,
+                    ts.base.tolerance_3d,
+                    best,
+                    &ts.base.opt_vectors,
+                    ts.base.solution_requested,
+                    [Some(surface1), Some(surface2)],
+                    context,
+                )?
+            } else {
+                a.global_surface_solve(
+                    ts.kernel,
+                    &ts.objects.face_uv_domain(face1)?,
+                    b,
+                    &ts.objects.face_uv_domain(face2)?,
+                    ts.base.operation,
+                    ts.base.tolerance_3d,
+                    best,
+                    &ts.base.opt_vectors,
+                    ts.base.solution_requested,
+                    [Some(surface1), Some(surface2)],
+                )?
+            };
             for found in solutions.as_slice() {
                 let mut solution = *found;
                 solution.objects[0] = Some(face1);

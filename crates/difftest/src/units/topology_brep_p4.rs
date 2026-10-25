@@ -126,7 +126,7 @@ fn check_knots(surface: &impl Serialize) -> Result<(), HarnessError> {
 }
 
 /// The fixture block of `brep` (validate-only off, no cached gaps).
-fn block(brep: &BrepIn) -> Result<(String, Vec<f64>), HarnessError> {
+pub(crate) fn block(brep: &BrepIn) -> Result<(String, Vec<f64>), HarnessError> {
     let mut v = Vec::new();
     match brep {
         BrepIn::File { rebuild, .. } => v.extend([0.0, f64::from(u8::from(*rebuild))]),
@@ -189,7 +189,7 @@ fn request(i: &Inputs) -> Request {
 }
 
 /// The imported fixture with the vertex use lists in their raw order.
-fn import(
+pub(crate) fn import(
     f: &solidcore_ffi::units::topology_topology_traverser::Fixture,
 ) -> Result<Brep, HarnessError> {
     let (mut b, _) = shared::import(&f.graph)?;
@@ -714,7 +714,7 @@ fn face_owner(index: u32) -> ObjectRef {
 
 /// The importer names an owned surface's face `1 + index`; the B-rep names it by its
 /// arena identity ([`face_owner`]). Surfaces the C++ face owns stay owned.
-fn own_surfaces(b: &mut Brep) -> Result<(), HarnessError> {
+pub(crate) fn own_surfaces(b: &mut Brep) -> Result<(), HarnessError> {
     let ids: Vec<FaceId> = b.faces().ids().collect();
     for f in ids {
         let imported = ObjectRef {
@@ -726,6 +726,8 @@ fn own_surfaces(b: &mut Brep) -> Result<(), HarnessError> {
                 let _ = s.set_owner(Some(face_owner(f.index())));
             }
         }
+        // the face's tolerance, as the face upstream answers GetTolerance with
+        b.sync_face_surface_tolerance(f).map_err(|e| err(&e))?;
     }
     // the edge curves' owners (`SmCurve::GetOwner`/`GetEdge`, set by the B-rep build
     // upstream): the edge's arena identity, which `SmBrep::GetCurves`
@@ -842,6 +844,19 @@ impl UnitDiff for Runner {
         }
         let mut b = import(&f)?;
         own_surfaces(&mut b)?;
+        // reading a file heals the B-rep during a Boolean operation, which leaves its
+        // face surfaces with trimmed caches whose trees are not built (and that later
+        // smsurf_GetSurfaceCache calls reuse): the face surfaces' cache states as the
+        // C++ read left them
+        if let BrepIn::File { .. } = &i.brep {
+            use super::topology_edgeuse_p1 as eu1;
+            let file = eu1::BrepIn::File {
+                file: String::new(),
+                rebuild: false,
+            };
+            let blk = eu1::brep_block_of(Some(&file), false, false)?;
+            eu1::seed_cache_tree_states(&b, &path, &blk)?;
+        }
         damage(&mut b, i.damage)?;
         b.set_editing_enabled(i.editing);
         let pre = record_counts(&b);

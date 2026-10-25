@@ -38,6 +38,7 @@ nice -n 10 cargo test -p difftest --features cpp                     # harness s
 | `--seeds N` | generated cases per unit (default 16) |
 | `--filter S` | only cases whose name contains `S` |
 | `--perturb` | change one item of each case's Rust output (below); passes only if **every** perturbed case is caught. No report written. |
+| `--baseline D` | regression ratchet: compare each unit with its earlier report `D/<unit>.json` (see [Regression gate](#regression-gate---baseline-value-share)). CI passes the exact base revision's validated report artifact |
 | `--report-dir D` / `--no-report` | report location (default `reports/difftest/`) / skip writing |
 | `--fuzz N` | with `--unit`: probe the unit's FFI guard with N mutated cases, each run in a child process (below). No report written. |
 | `--fuzz-out D` | where `--fuzz` writes failing inputs (default `bin/fuzz/`; files go to `D/<unit>/`) |
@@ -184,6 +185,9 @@ Rust port), then copy the case into `fixtures/<unit>/` as a regression case
 failure. A `differs` case is printed as a `note (differs)` line with its file and
 is written the same way (so it can be re-run), but does not fail the run.
 
+`.github/workflows/nightly.yml` runs `--fuzz 300` on every green and partial unit
+each night and uploads failing inputs as the `fuzz-failures` artifact.
+
 ## Fuzzing the `.smb` readers (`examples/reader_fuzz.rs`)
 
 A mutation fuzzer for the Rust database readers only (no C++, not part of the
@@ -261,6 +265,77 @@ excludes the case from parity passes, failures and sensitivity counts. Reports a
 summaries include a rejected count when nonzero. A run containing only rejected
 fixtures fails the gate: rejection cannot establish parity. Layout errors, native
 exceptions and errors from the operation itself must not be classified this way.
+
+The same mechanism covers inputs that are undefined in C++ (AGENTS.md section 4,
+step 5.6): an FFI guard that refuses an input upstream would crash on, or a shim's
+crash trap that ran the call in a forked child and saw it crash, returns
+`Output::rejected(reason)` with the reason naming the upstream issue (e.g.
+`topology.face_p1`'s UB-137 seam calls). The C++ side never returns
+`Output::deferred`: deferrals are decided by the Rust side only, and a C++-side
+deferral is a harness error.
+
+## Regression gate (`--baseline`, value share)
+
+Passing cases must retain their identities, outcomes and value coverage.
+`--baseline D` compares a full unit run against `D/<unit>.json`: passing cases
+must remain passing, including against `known_mismatch`; cases that compared
+float/integer/topology values must keep value coverage. Deferred, failing and
+known-mismatch cases cannot disappear. A known mismatch must remain known or
+become a genuine pass; it cannot become deferred or rejected. Every retained case
+that compared values must keep value coverage. Rejected fixture constructors may be
+removed; new passing cases and genuine fixes are allowed. Changed seeds and
+`--filter` with `--baseline` are errors, so generated cases cannot silently vanish.
+With `--green`, dropped baseline units fail in the parent before parallel workers
+start. Children receive `--baseline` and enforce the same per-unit gates.
+Whole-set `--green`/`--all` preflight validates every report. Explicit `--unit`
+preflight validates selected reports and refuses an empty baseline; new units may
+have no earlier report. This avoids parsing the full corpus in every worker.
+
+The separate value-share floor remains 75% of a unit's passing cases and at
+least one value-bearing case. Both-error and vacuous passes stay in the
+denominator. Known mismatches are not passes and cannot waive new discrepancies.
+
+CI retrieves the exact base SHA's successful push/main CI artifact through
+`scripts/ci/difftest-baseline.sh`. PRs use `pull_request.base.sha` and main pushes
+use `before`. For a merge queue, the helper snapshots the trusted repository's
+`main` SHA once and uses its merge base with `merge_group.base_sha`. Later queue
+entries have speculative bases with no push/main run; their cumulative changes
+are checked against this common main ancestor. If main has advanced, only changes
+already in the queue's ancestry can advance its baseline. The event base, main
+snapshot and resolved baseline are recorded in provenance. Resolution happens
+before looking for artifacts and is never changed to find a successful run.
+Absent or pending exact-base runs are retried for up to 25 minutes (configurable
+downwards with `--wait-seconds`); failed runs are rejected immediately. Repository/workflow,
+run/attempt, artifact ownership, SHA256 and complete report set must validate.
+Missing/expired/corrupt baselines fail closed; no latest-main or committed-report
+fallback is allowed. Only a genuine zero-before first push, or a manual run with
+explicit `diagnostic_only`, skips the ratchet with a notice. Manual validation
+runs supply `baseline_sha`. The crate-wide `audit.recursion` review is excluded
+only when the exact base's selector explicitly declares this non-runner policy;
+other missing runner/report units fail. Provenance is stored beside the reports.
+
+Modern reports serialize actual `exact_compared` counts (including zero) with
+`schema_version = 1`. Old #550 reports omitted those counts, but their vacuity
+marker proves boolean integer coverage for a zero-float pass that is neither
+vacuous nor both-error. This bridge never invents an integer comparison count. Legacy known mismatches
+with zero floats need an indexed integer mismatch as proof of exact-value
+coverage; missing or ambiguous proof fails closed.
+Ambiguous older schemas fail rather than silently discarding coverage.
+Reports remain generated artifacts; never regenerate-and-commit baseline reports.
+
+A legitimate regression (a wrong fixture removed, a case renamed) needs a waiver
+in `plan/difftest-waivers.toml`, reviewed with the PR:
+
+```toml
+[[waiver]]
+unit = "nlib.knots"
+check = "ratchet"          # or "value-share"
+case = "insert_at_end"     # ratchet only; omit to waive every case of the unit
+reason = "fixture asserted the pre-#123 clamp; replaced by insert_at_end_clamped"
+```
+
+A waiver is only needed until the base commit's reports catch up, so remove
+ratchet waivers once the PR has merged.
 
 ## Pass criteria (fixed; never weaken)
 

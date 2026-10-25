@@ -111,7 +111,7 @@
 use std::collections::BTreeMap;
 
 use crate::curve::curve::{Curve, CurveKind};
-use crate::error::{EntityRef, Result, SolidError};
+use crate::error::{ignore_status, EntityRef, Result, SolidError};
 use crate::geom::a_object;
 use crate::geom::attribute::{AttributeStore, ObjectKey};
 use crate::geom::context::Context;
@@ -194,7 +194,7 @@ impl Edge {
     }
 }
 
-// ---- unported callees -------------------------------------------------------------------
+// ---- edge use callees (topology.edgeuse_p3) ----------------------------------------------
 
 /// `SmEdgeuse::NormalizedEvaluate(t, TRUE, ..)`: the UV point at the normalised
 /// parameter `t` (a missing UV trim curve is made).
@@ -261,6 +261,15 @@ struct Cover {
 /// of `face0` and `face1` (two different faces). The covering surface may be expanded
 /// in place, as upstream. A merged domain that was not written stays the caller's
 /// default-constructed `sMergedDomain`.
+///
+/// Upstream's `STEPInversion` solves inside run on the faces' own surfaces, whose
+/// `smsurf_GetSurfaceCache` sees each face (`GetFace()`). The surfaces are moved out of
+/// their faces for the call (keeping their owners, so the caches they build are their
+/// own) and lent with the B-rep through a face solve context; while they are out, each
+/// face holds an evaluation copy of its surface (same owner, face tolerance and cache
+/// slot) for the B-rep reads of that cache build (UV trim curves, tolerances), whose
+/// edits land on the B-rep itself. The real surfaces, possibly expanded, replace the
+/// copies afterwards.
 #[allow(clippy::too_many_arguments)] // upstream's argument list plus the B-rep
 fn cover_other_coincident_surface(
     k: &Kernel,
@@ -271,21 +280,67 @@ fn cover_other_coincident_surface(
     domain0: &Extent2d,
     domain1: &Extent2d,
 ) -> Result<Cover> {
+    use crate::query::brep::BrepFaceServices;
+    use crate::surface::surface::p5::CoverSolveContext;
+    use crate::topology::brep_cache::CacheObject;
+
+    // the evaluation copies standing in the faces while their surfaces are out
+    let stand_in = |b: &Brep, f: FaceId| -> Result<Surface> {
+        b.face(f)?
+            .surface
+            .as_ref()
+            .ok_or_else(|| null("sm_CoverOtherCoincidentFace: face without surface"))?
+            .clone_for_evaluation()
+    };
+    let (copy0, copy1) = (stand_in(b, face0)?, stand_in(b, face1)?);
     // move the surfaces out of their faces for the call (keeping their owners) and back
     let mut this = b
         .face_mut(face0)?
         .surface
-        .take()
+        .replace(copy0)
         .ok_or_else(|| null("sm_CoverOtherCoincidentFace: face without surface"))?;
-    let Some(mut other) = b.face_mut(face1)?.surface.take() else {
+    let Some(mut other) = b.face_mut(face1)?.surface.replace(copy1) else {
         b.face_mut(face0)?.surface = Some(this);
         return Err(null("sm_CoverOtherCoincidentFace: face without surface"));
     };
-    let r =
-        this.cover_other_coincident_surface(k, &mut other, tol, Some(domain0), Some(domain1), true);
+    let (owner0, owner1) = (this.owner(), other.owner());
+    let r = this.cover_other_coincident_surface_deferring_trims_with_context(
+        k,
+        &mut other,
+        tol,
+        Some(domain0),
+        Some(domain1),
+        true,
+        CoverSolveContext {
+            context: &mut BrepFaceServices::new(&mut *b),
+            handles: [
+                Some(CacheObject::Surface(face0)),
+                Some(CacheObject::Surface(face1)),
+            ],
+        },
+    );
     b.face_mut(face0)?.surface = Some(this);
     b.face_mut(face1)?.surface = Some(other);
+    // a face tolerance the solves raised was recorded on the copy: the real surface
+    // records its face's current one (the B-rep invariant)
+    b.sync_face_surface_tolerance(face0)?;
+    b.sync_face_surface_tolerance(face1)?;
     let r = r?;
+    // the SmFace::RemoveUVTrimCurves (status ignored) each successful
+    // CoverCoincidentSurface of a face-owned surface ends with, in call order
+    for owner in &r.remove_uv_trim_curves_of {
+        let face = if Some(*owner) == owner0 {
+            face0
+        } else if Some(*owner) == owner1 {
+            face1
+        } else {
+            return Err(SolidError::invalid_input(
+                "topology::edge::cover_other_coincident_surface",
+                "covered surface owned by another face",
+            ));
+        };
+        ignore_status(crate::topology::face::p1::remove_uv_trim_curves(b, face))?;
+    }
     Ok(Cover {
         max_dist: r.max_dist,
         covering: r.covering_is_other.map(|is_other| {
@@ -1556,7 +1611,7 @@ pub fn is_seam(k: &Kernel, b: &mut Brep, e: EdgeId) -> Result<bool> {
 ///
 /// [`SolidError::InvalidInput`] for a face without surface or an edge use without
 /// face (upstream dereferences them); those of the surface queries;
-/// [`SolidError::Unported`] from `SmEdgeuse::NormalizedEvaluate`.
+/// [`SolidError::Unported`] from `SmEdgeuse::NormalizedEvaluate`'s unported callees.
 pub fn is_seam_of_surface(
     k: &Kernel,
     b: &mut Brep,
@@ -1705,8 +1760,8 @@ fn cover_other_coincident_face(
 ///
 /// [`SolidError::InvalidInput`] where upstream dereferences null (an edge use without
 /// face, a face without surface); those of the surface queries;
-/// [`SolidError::Unported`] from `SmEdgeuse::NormalizedEvaluate` and the coverage
-/// test.
+/// [`SolidError::Unported`] from `SmEdgeuse::NormalizedEvaluate`'s unported callees and
+/// the coverage test.
 pub fn is_topological(
     k: &Kernel,
     b: &mut Brep,
@@ -2427,6 +2482,27 @@ pub fn notify(
     )
 }
 
+/// Runs `body` with `env` bound to the object's context (`GetContext()`): the
+/// environment's context, else `k`'s, as a destructor's `Notify` reaches it.
+pub(crate) fn with_object_context<T>(
+    k: &mut Kernel,
+    env: &mut NotifyEnv<'_>,
+    body: impl FnOnce(&mut NotifyEnv<'_>) -> T,
+) -> T {
+    let key_of = env.key_of;
+    let context: &mut Context = match env.context.as_deref_mut() {
+        Some(context) => context,
+        None => &mut k.context,
+    };
+    let mut n = NotifyEnv {
+        records: &mut *env.records,
+        attributes: &mut *env.attributes,
+        context: Some(context),
+        key_of,
+    };
+    body(&mut n)
+}
+
 /// `delete pEdge`: `~SmEdge` sets the context's `DoingBoolean` (`GetContext()`: the
 /// environment's context, else `k`'s) for the duration of its
 /// `Notify(SM_NO_DESTRUCTION, this, NULL, NULL)`, whose status it ignores
@@ -2440,32 +2516,26 @@ pub fn notify(
 /// [`SolidError::Unported`] and of `ClearAttributes`.
 pub fn destroy(k: &mut Kernel, b: &mut Brep, e: EdgeId, env: &mut NotifyEnv<'_>) -> Result<()> {
     b.edge(e)?;
-    let key_of = env.key_of;
-    let this = key_of(EntityRef::Edge(e));
-    let context: &mut Context = match env.context.as_deref_mut() {
-        Some(context) => context,
-        None => &mut k.context,
-    };
-    let doing_boolean = context.doing_boolean();
-    // set its DoingBoolean state to TRUE - delays SurfaceCache construction
-    context.set_doing_boolean(true);
-    let mut n = NotifyEnv {
-        records: &mut *env.records,
-        attributes: &mut *env.attributes,
-        context: Some(context),
-        key_of,
-    };
-    let notified = crate::error::ignore_status(notify(
-        b,
-        e,
-        &mut n,
-        NotifyOperation::Destruction,
-        [Some(this), None, None],
-    ));
-    // restore the context DoingBoolean state
-    if let Some(context) = n.context.as_deref_mut() {
-        context.set_doing_boolean(doing_boolean);
-    }
+    let this = (env.key_of)(EntityRef::Edge(e));
+    let notified = with_object_context(k, env, |n| {
+        let doing_boolean = n.context.as_deref().is_some_and(Context::doing_boolean);
+        // set its DoingBoolean state to TRUE - delays SurfaceCache construction
+        if let Some(context) = n.context.as_deref_mut() {
+            context.set_doing_boolean(true);
+        }
+        let notified = ignore_status(notify(
+            b,
+            e,
+            n,
+            NotifyOperation::Destruction,
+            [Some(this), None, None],
+        ));
+        // restore the context DoingBoolean state
+        if let Some(context) = n.context.as_deref_mut() {
+            context.set_doing_boolean(doing_boolean);
+        }
+        notified
+    });
     notified?;
     b.remove_edge_record(e)?;
     env.attributes.clear_attributes(this.key)
@@ -2561,6 +2631,7 @@ pub fn set_curve(
 
     // update the value
     b.edge_mut(e)?.curve = new_curve;
+    b.geometry_owner_keys.insert(EntityRef::Edge(e), this);
 
     // side effect: Add to spatial cache.
     if options.call_notify && has_brep {
