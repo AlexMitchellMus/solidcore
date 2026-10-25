@@ -7,14 +7,17 @@ mod records;
 
 fn assert_rejected(input: &[f64], message: &str) {
     // Panics and capacity overflows fail the test rather than count as rejection.
-    let error = records::parse_records(input).expect_err("malformed records accepted");
-    assert!(error.to_string().contains(message), "{error}");
+    let result = records::parse_records(input);
+    assert!(result.is_err(), "malformed records accepted");
+    if let Err(error) = result {
+        let error = error.to_string();
+        assert!(error.contains(message), "{error}");
+    }
 }
 
 fn assert_bad_counts(value: f64) {
     for kind in 0..10 {
-        let mut input = [0.0; 10];
-        input[kind] = value;
+        let input: [f64; 10] = std::array::from_fn(|i| if i == kind { value } else { 0.0 });
         assert_rejected(&input, "bad record count");
     }
     // Minimal records for every kind with a list; indices locate list counts.
@@ -24,7 +27,9 @@ fn assert_bad_counts(value: f64) {
         (7, vec![7.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0], 4),
         (9, vec![7.0, 0.0, 0.0, 0.0, 0.0, 0.0], 5),
     ] {
-        record[list_at] = value;
+        if let Some(slot) = record.get_mut(list_at) {
+            *slot = value;
+        }
         let mut input = vec![0.0; kind];
         input.push(1.0);
         input.extend(record);
@@ -66,8 +71,7 @@ fn exclusive_usize_limit_and_larger_counts_are_rejected() {
 fn huge_representable_record_counts_are_rejected_before_iteration() {
     let large = 2.0_f64.powi(usize::BITS as i32 - 1);
     for kind in 0..10 {
-        let mut input = [0.0; 10];
-        input[kind] = large;
+        let input: [f64; 10] = std::array::from_fn(|i| if i == kind { large } else { 0.0 });
         assert_rejected(&input, "short record output: record count");
     }
 }
