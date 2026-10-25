@@ -593,6 +593,30 @@ impl Default for Vertexuse {
     }
 }
 
+/// How a B-rep names its topology entities as the owners of its geometry (upstream's
+/// owner pointers): the port has no object pointers, so a geometry owner is an
+/// [`ObjectRef`](crate::geom::object::ObjectRef) under one of these schemes. A routine
+/// that attaches new geometry to topology (`SmEdgeuse::SetUVTrimCurve`'s `SetOwner`)
+/// names its owner by the B-rep's scheme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NamingScheme {
+    /// Not recorded: such routines leave the new geometry without owner (the caller
+    /// names it with its own identities).
+    #[default]
+    Unknown,
+    /// The Euler operators' notification identities
+    /// (`topology::loopuse::notify_ref`).
+    Notify,
+    /// A caller's own identities (a `TopologyEnv` / `NotifyEnv` `key_of`): such routines
+    /// leave the new geometry without owner, and the operation that holds the
+    /// caller's naming names it.
+    Caller,
+    /// The arena identities the crate's imported B-reps use
+    /// ([`brep_cache::arena_identity`](crate::topology::brep_cache::arena_identity):
+    /// the entity's type code and arena index).
+    Arena,
+}
+
 /// A boundary representation (`SmBrep`): arenas of shells, faces, loops, edges and
 /// vertices linked by typed ids.
 #[derive(Debug, Clone)]
@@ -644,6 +668,9 @@ pub struct Brep {
     /// the port's surface owners (not set on every imported face surface) cannot
     /// express on their own.
     surface_owner_cleared: Vec<FaceId>,
+    /// (not upstream) How the B-rep names its topology as an owner of geometry
+    /// ([`NamingScheme`]).
+    naming: NamingScheme,
     /// `m_pLockedBoundingBox` (unit `query.brep`): the box
     /// [`crate::query::brep::lock_bounding_box`] saved, which
     /// [`crate::query::brep::calculate_bounding_box`] returns while it is set. A clone
@@ -685,6 +712,7 @@ impl Default for Brep {
             large_small_size_ratio: USE_DEFAULT,
             deleted_surfaces: Vec::new(),
             surface_owner_cleared: Vec::new(),
+            naming: NamingScheme::Unknown,
             locked_bounding_box: None,
             notify_identity: IdentitySlot::default(),
             geometry_owner_keys: std::collections::BTreeMap::new(),
@@ -740,6 +768,51 @@ impl Brep {
         self.infinite_region = region;
     }
 
+    /// How this B-rep names its topology as the owner of geometry ([`NamingScheme`]).
+    #[must_use]
+    pub const fn naming(&self) -> NamingScheme {
+        self.naming
+    }
+
+    /// Records how this B-rep names its topology as the owner of geometry: set where a
+    /// B-rep is built or its geometry owners are relabelled.
+    pub fn set_naming(&mut self, naming: NamingScheme) {
+        self.naming = naming;
+    }
+
+    /// Producer-supplied owner identity recorded when geometry was bound to `entity`.
+    #[must_use]
+    pub(crate) fn geometry_owner_key(
+        &self,
+        entity: EntityRef,
+    ) -> Option<crate::geom::object::ObjectRef> {
+        self.geometry_owner_keys.get(&entity).copied()
+    }
+
+    /// All producer-supplied geometry owner identities recorded on this B-rep.
+    #[must_use]
+    pub(crate) const fn geometry_owner_keys(
+        &self,
+    ) -> &std::collections::BTreeMap<EntityRef, crate::geom::object::ObjectRef> {
+        &self.geometry_owner_keys
+    }
+
+    /// Updates or clears the producer-supplied geometry owner identity of `entity`.
+    pub(crate) fn set_geometry_owner_key(
+        &mut self,
+        entity: EntityRef,
+        owner: Option<crate::geom::object::ObjectRef>,
+    ) {
+        match owner {
+            Some(owner) => {
+                self.geometry_owner_keys.insert(entity, owner);
+            }
+            None => {
+                self.geometry_owner_keys.remove(&entity);
+            }
+        }
+    }
+
     /// `m_bEditingEnabled`.
     #[must_use]
     pub const fn editing_enabled(&self) -> bool {
@@ -786,6 +859,38 @@ impl Brep {
             }
         }
         copy
+    }
+
+    /// A private copy of this B-rep that stands for the B-rep itself where upstream
+    /// queries the B-rep in place (a `const` query that still makes missing UV trim
+    /// curves on it): its edge curves, face surfaces and UV trim curves are exact copies
+    /// that keep their owners (and the surfaces share their cache slots), so the copy's
+    /// geometry still names its own edges and faces. A plain `clone` (the copy
+    /// constructor) resets every owner, and a B-rep cache made from it then holds no
+    /// curve or surface.
+    ///
+    /// # Errors
+    ///
+    /// Those of the geometry copies (a geometry nesting deeper than
+    /// `MAX_GEOMETRY_NESTING`).
+    pub fn clone_standing_for_self(&self) -> Result<Self> {
+        let mut copy = self.clone();
+        for (id, edge) in self.edges.iter() {
+            if let Some(curve) = edge.curve.as_ref() {
+                copy.edge_mut(id)?.curve = Some(curve.clone_for_evaluation()?);
+            }
+        }
+        for (id, face) in self.faces.iter() {
+            if let Some(surface) = face.surface.as_ref() {
+                copy.face_mut(id)?.surface = Some(surface.clone_for_evaluation()?);
+            }
+        }
+        for (id, edgeuse) in self.edgeuses.iter() {
+            if let Some(curve) = edgeuse.uv_trim_curve.as_ref() {
+                copy.edgeuse_mut(id)?.uv_trim_curve = Some(curve.clone_for_evaluation()?);
+            }
+        }
+        Ok(copy)
     }
 
     /// Ends the innermost [`Brep::begin_surface_owner_cleared`] scope of face `f`.
@@ -1342,6 +1447,60 @@ mod tests {
         // an unmatched end is a no-op
         b.end_surface_owner_cleared(g);
         assert!(!b.is_surface_owner_cleared(g));
+    }
+
+    #[test]
+    fn copy_standing_for_the_brep_keeps_geometry_owners() {
+        use crate::curve::line::Line;
+        use crate::geom::object::ObjectRef;
+        use crate::surface::plane::Plane;
+        let mut b = Brep::new();
+        let s = b.add_shell().unwrap();
+        let (v0, v1) = (
+            b.add_vertex(Vec3::ZERO).unwrap(),
+            b.add_vertex(Vec3::X).unwrap(),
+        );
+        let e = b.add_edge(v0, v1).unwrap();
+        let f = b.add_face(s).unwrap();
+        let edge_owner = ObjectRef {
+            type_code: edge::TYPE,
+            key: ObjectKey(u64::from(e.index())),
+        };
+        let face_owner = ObjectRef {
+            type_code: face::p2::TYPE,
+            key: ObjectKey(u64::from(f.index())),
+        };
+        let mut curve =
+            Curve::from(Line::create_line_segment(3, Vec3::ZERO, Vec3::X, None).unwrap());
+        let _ = curve.set_owner(Some(edge_owner), None);
+        b.edge_mut(e).unwrap().curve = Some(curve);
+        let mut surface = Surface::from(Plane::new(
+            Vec3::ZERO,
+            Vec3::X,
+            Vec3::Y,
+            crate::math::Vec2::new(1.0, 1.0),
+            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        ));
+        surface.set_owner(Some(face_owner));
+        b.face_mut(f).unwrap().surface = Some(surface);
+
+        // the copy constructor resets the owners
+        let plain = b.clone();
+        assert_eq!(plain.edge(e).unwrap().curve.as_ref().unwrap().owner(), None);
+        assert_eq!(
+            plain.face(f).unwrap().surface.as_ref().unwrap().owner(),
+            None
+        );
+        // the copy standing for the B-rep keeps them
+        let copy = b.clone_standing_for_self().unwrap();
+        assert_eq!(
+            copy.edge(e).unwrap().curve.as_ref().unwrap().owner(),
+            Some(edge_owner)
+        );
+        assert_eq!(
+            copy.face(f).unwrap().surface.as_ref().unwrap().owner(),
+            Some(face_owner)
+        );
     }
 
     #[test]

@@ -24,12 +24,20 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use solidcore::boolean::api_brep as boolean;
+use solidcore::curve::curve::Curve;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
+use solidcore::geom::object::ObjectRef;
 use solidcore::geom::vector3d::{Point3, Vec3};
 use solidcore::kernel::Kernel;
 use solidcore::mass::integrator::properties::{brep_volume, PropertyAttributes};
+use solidcore::primitive::api_curves as curves;
 use solidcore::primitive::api_primitives as primitives;
+use solidcore::surface::surface::p2::SurfaceKind;
+use solidcore::surface::surface::Surface;
+use solidcore::sweep::api_brep as sweeps;
 use solidcore::topology::brep::p1::regions;
+use solidcore::topology::brep::p2::ArenaNotifyState;
+use solidcore::topology::brep::p3;
 use solidcore::topology::proto_topology::p1::api_transform::{
     api_rotate, api_translate, TransformObject,
 };
@@ -39,8 +47,12 @@ use solidcore::SolidError;
 use crate::ssi::glob_match;
 use crate::HarnessError;
 
-/// Accuracy passed to `SmApiBrepComputeVolume`.
-pub const VOLUME_ACCURACY: f64 = 1e-6;
+/// Relative accuracy passed to `SmApiBrepComputeVolume`: its finest (upstream clamps
+/// to `[1e-8, 1e-1]`). The cases check volumes to absolute tolerances as tight as
+/// `0.01` on `30603` (3e-7 relative), finer than `1e-6` integrates: at `1e-6` both
+/// engines measure the same B-rep of #3396's stack `0.157` over its closed form, at
+/// `1e-8` `0.0008`.
+pub const VOLUME_ACCURACY: f64 = 1e-8;
 
 /// The body a case's expectations are checked on.
 pub const RESULT: &str = "result";
@@ -150,6 +162,56 @@ pub enum Step {
         /// Tool.
         b: String,
     },
+    /// `SmApiCreateLinearSweep`: the closed `profile` (built in `plane`, moved by
+    /// `origin`) swept `distance` along the plane's normal, capped at both ends.
+    Extrude {
+        /// Body written.
+        id: String,
+        /// Closed loops of segments, in the plane's (u, v) coordinates.
+        profile: Vec<Seg>,
+        /// Plane of the profile (default XY).
+        #[serde(default)]
+        plane: ProfilePlane,
+        /// Where the plane's origin sits.
+        #[serde(default)]
+        origin: P3,
+        /// Sweep length along the normal.
+        distance: f64,
+    },
+    /// `SmApiCreateRotationalSweep`: the closed `profile` (built in `plane`, moved by
+    /// `origin`) turned `angle_deg` about the axis through `axis_point` along
+    /// `axis_dir`, capped at both ends.
+    Revolve {
+        /// Body written.
+        id: String,
+        /// Closed loops of segments, in the plane's (u, v) coordinates.
+        profile: Vec<Seg>,
+        /// Plane of the profile (default XY).
+        #[serde(default)]
+        plane: ProfilePlane,
+        /// Where the plane's origin sits.
+        #[serde(default)]
+        origin: P3,
+        /// A point on the axis (global coordinates).
+        axis_point: P3,
+        /// Axis direction (global coordinates).
+        axis_dir: P3,
+        /// Turn in degrees.
+        angle_deg: f64,
+    },
+    /// Reflection of `body` in the plane `normal = at`; the original is not changed, join
+    /// the two with a `union` step. `SM_API` has no mirror, so this defers (see `step_rust`).
+    Mirror {
+        /// Body written.
+        id: String,
+        /// Body reflected.
+        body: String,
+        /// Axis the mirror plane is perpendicular to.
+        normal: MirrorAxis,
+        /// Where the plane cuts that axis.
+        #[serde(default)]
+        at: f64,
+    },
     /// `SmApiFilletEdges`, circular section.
     Fillet {
         /// Body written.
@@ -202,6 +264,69 @@ pub enum Step {
         /// Overlap length: half the thickness for Partial, the thickness for Full.
         overlap: f64,
     },
+}
+
+/// One piece of a profile, in the profile plane's (u, v) coordinates. Pieces that share
+/// end points form closed loops; a profile may hold several (outer boundary and holes).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Seg {
+    /// `SmApiCreateLineSegment`.
+    Line {
+        /// Start.
+        from: [f64; 2],
+        /// End.
+        to: [f64; 2],
+    },
+    /// A closed polygon: one line segment per consecutive pair, the last back to the
+    /// first.
+    Polygon {
+        /// Corners, at least three.
+        points: Vec<[f64; 2]>,
+    },
+    /// `SmApiCreateArc`, counter-clockwise from `start_deg` to `end_deg`.
+    Arc {
+        /// Centre.
+        center: [f64; 2],
+        /// Radius.
+        radius: f64,
+        /// Start angle from +u.
+        start_deg: f64,
+        /// End angle from +u.
+        end_deg: f64,
+    },
+    /// `SmApiCreateCircle`, analytic.
+    Circle {
+        /// Centre.
+        center: [f64; 2],
+        /// Radius.
+        radius: f64,
+    },
+}
+
+/// The plane a profile is drawn in, as a right-handed rotation of XY.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfilePlane {
+    /// u along X, v along Y, normal +Z.
+    #[default]
+    Xy,
+    /// u along Y, v along Z, normal +X.
+    Yz,
+    /// u along Z, v along X, normal +Y.
+    Zx,
+}
+
+/// The axis a mirror plane is perpendicular to.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MirrorAxis {
+    /// The plane `x = at`.
+    X,
+    /// The plane `y = at`.
+    Y,
+    /// The plane `z = at`.
+    Z,
 }
 
 /// A grid of positions: `pitch[0] * i + pitch[1] * j` for `i < count[0]`,
@@ -339,6 +464,9 @@ impl Step {
             | Self::Union { id, .. }
             | Self::Difference { id, .. }
             | Self::Intersection { id, .. }
+            | Self::Extrude { id, .. }
+            | Self::Revolve { id, .. }
+            | Self::Mirror { id, .. }
             | Self::Fillet { id, .. }
             | Self::OffsetFaces { id, .. }
             | Self::SheetCorner { id, .. } => id,
@@ -351,13 +479,34 @@ impl Step {
             Self::Box { .. }
             | Self::Sphere { .. }
             | Self::Cylinder { .. }
+            | Self::Extrude { .. }
+            | Self::Revolve { .. }
             | Self::SheetCorner { .. } => Vec::new(),
             Self::Union { a, b, .. }
             | Self::Difference { a, b, .. }
             | Self::Intersection { a, b, .. } => vec![a, b],
-            Self::Fillet { body, .. } | Self::OffsetFaces { body, .. } => vec![body],
+            Self::Fillet { body, .. }
+            | Self::OffsetFaces { body, .. }
+            | Self::Mirror { body, .. } => vec![body],
         }
     }
+}
+
+/// A profile has pieces, and every number in them is finite.
+fn valid_profile(profile: &[Seg]) -> bool {
+    let pt = |p: &[f64; 2]| p.iter().all(|x| x.is_finite());
+    !profile.is_empty()
+        && profile.iter().all(|s| match s {
+            Seg::Line { from, to } => pt(from) && pt(to),
+            Seg::Polygon { points } => points.len() >= 3 && points.iter().all(pt),
+            Seg::Arc {
+                center,
+                radius,
+                start_deg,
+                end_deg,
+            } => pt(center) && radius.is_finite() && start_deg.is_finite() && end_deg.is_finite(),
+            Seg::Circle { center, radius } => pt(center) && radius.is_finite(),
+        })
 }
 
 /// Every step reads only bodies written before it, the last step writes [`RESULT`],
@@ -393,6 +542,33 @@ pub fn validate(case: &Case) -> Result<(), String> {
             Step::Difference {
                 pattern: Some(p), ..
             } => p.pitch.iter().flatten().all(|x| x.is_finite()),
+            Step::Extrude {
+                profile,
+                origin,
+                distance,
+                ..
+            } => {
+                origin.iter().all(|x| x.is_finite())
+                    && distance.is_finite()
+                    && valid_profile(profile)
+            }
+            Step::Revolve {
+                profile,
+                origin,
+                axis_point,
+                axis_dir,
+                angle_deg,
+                ..
+            } => {
+                origin
+                    .iter()
+                    .chain(axis_point)
+                    .chain(axis_dir)
+                    .all(|x| x.is_finite())
+                    && angle_deg.is_finite()
+                    && valid_profile(profile)
+            }
+            Step::Mirror { at, .. } => at.is_finite(),
             Step::Fillet { edges, radius, .. } => {
                 edges.iter().flatten().all(|x| x.is_finite()) && radius.is_finite()
             }
@@ -486,6 +662,10 @@ pub struct Measured {
     pub volume: f64,
     /// Regions other than the infinite one.
     pub lumps: usize,
+    /// Faces, edges and vertices (`GetNumFaces`, `GetNumEdges`, `GetNumVertices`).
+    pub topology: [usize; 3],
+    /// Faces on a cylinder (`SmCone::IsCylinder`).
+    pub cylinder_faces: usize,
 }
 
 /// How a case's run ended.
@@ -521,6 +701,25 @@ fn take(bodies: &BTreeMap<String, Brep>, id: &str) -> Result<Brep, Run> {
         .ok_or_else(|| Run::Error(format!("no body `{id}`")))
 }
 
+/// `SmApiBrepCopy(b)`: a copy that owns its geometry, so a later `SmApiTranslate`
+/// moves its curves and surfaces with its vertices. A plain [`Clone`] is not upstream's
+/// copy: its geometry keeps the source's owner names and stays put when the clone is
+/// transformed. Copy `n` names its objects in its own key domain.
+fn copy(k: &mut Kernel, b: &Brep, n: u64) -> Result<Brep, Run> {
+    let named = |entity, domain: u64| {
+        let r = p3::topology_ref(0, entity);
+        ObjectRef {
+            type_code: r.type_code,
+            key: ObjectKey(domain + r.type_code as u64 * 1_000_000 + (r.key.0 & 0xffff_ffff)),
+        }
+    };
+    let target_key = |entity| named(entity, n * 100_000_000);
+    let mut state = ArenaNotifyState::new(&Brep::new());
+    let mut env = state.env(None);
+    env.key_of = &target_key;
+    p3::api_brep_copy(k, &mut env, Some(b), &|entity| named(entity, 0)).map_err(|e| solid(&e))
+}
+
 /// A cylinder along Z turned onto `axis` about `origin`.
 fn cylinder(k: &mut Kernel, origin: P3, axis: P3, radius: f64, height: f64) -> Result<Brep, Run> {
     let mut b =
@@ -544,6 +743,69 @@ fn cylinder(k: &mut Kernel, origin: P3, axis: P3, radius: f64, height: f64) -> R
         .map_err(|e| solid(&e))?;
     }
     Ok(b)
+}
+
+/// The curves of `profile`, drawn in XY, turned onto `plane` about the origin and moved
+/// by `origin`.
+fn profile_curves(
+    k: &mut Kernel,
+    profile: &[Seg],
+    plane: ProfilePlane,
+    origin: P3,
+) -> Result<Vec<Curve>, Run> {
+    let at = |[u, v]: [f64; 2]| Vec3::new(u, v, 0.0);
+    let mut out: Vec<Curve> = Vec::new();
+    for seg in profile {
+        match seg {
+            Seg::Line { from, to } => {
+                let l = curves::create_line_segment(at(*from), at(*to)).map_err(|e| solid(&e))?;
+                out.push(Curve::from(l));
+            }
+            Seg::Polygon { points } => {
+                // Each point to the next, the last back to the first.
+                for (from, to) in points.iter().zip(points.iter().cycle().skip(1)) {
+                    let l =
+                        curves::create_line_segment(at(*from), at(*to)).map_err(|e| solid(&e))?;
+                    out.push(Curve::from(l));
+                }
+            }
+            Seg::Arc {
+                center,
+                radius,
+                start_deg,
+                end_deg,
+            } => {
+                let a = curves::create_arc(at(*center), *radius, *start_deg, *end_deg)
+                    .map_err(|e| solid(&e))?;
+                out.push(Curve::from(a));
+            }
+            Seg::Circle { center, radius } => {
+                let c = curves::create_analytic_circle(k, at(*center), *radius)
+                    .map_err(|e| solid(&e))?;
+                out.push(Curve::from(c));
+            }
+        }
+    }
+    // XY -> YZ is the turn x -> y -> z -> x: 120 degrees about (1, 1, 1); ZX is 240.
+    let turn = match plane {
+        ProfilePlane::Xy => None,
+        ProfilePlane::Yz => Some(120.0),
+        ProfilePlane::Zx => Some(240.0),
+    };
+    for c in &mut out {
+        if let Some(deg) = turn {
+            api_rotate(
+                k,
+                Some(TransformObject::Curve(c)),
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(1.0, 1.0, 1.0),
+                deg,
+            )
+            .map_err(|e| solid(&e))?;
+        }
+        api_translate(k, Some(TransformObject::Curve(c)), p3(origin)).map_err(|e| solid(&e))?;
+    }
+    Ok(out)
 }
 
 fn step_rust(k: &mut Kernel, bodies: &mut BTreeMap<String, Brep>, step: &Step) -> Result<(), Run> {
@@ -583,10 +845,13 @@ fn step_rust(k: &mut Kernel, bodies: &mut BTreeMap<String, Brep>, step: &Step) -
             ..
         } => {
             let mut target = take(bodies, a)?;
+            let tool_source = take(bodies, b)?;
+            let mut copies = 0;
             let [p0, p1] = p.pitch;
             for j in 0..p.count[1] {
                 for i in 0..p.count[0] {
-                    let mut tool = take(bodies, b)?;
+                    copies += 1;
+                    let mut tool = copy(k, &tool_source, copies)?;
                     let (fi, fj) = (i as f64, j as f64);
                     let shift = Vec3::new(
                         p0[0] * fi + p1[0] * fj,
@@ -599,6 +864,58 @@ fn step_rust(k: &mut Kernel, bodies: &mut BTreeMap<String, Brep>, step: &Step) -
                 }
             }
             target
+        }
+        Step::Extrude {
+            profile,
+            plane,
+            origin,
+            distance,
+            ..
+        } => {
+            let cs = profile_curves(k, profile, *plane, *origin)?;
+            let refs: Vec<Option<&Curve>> = cs.iter().map(Some).collect();
+            let normal = match plane {
+                ProfilePlane::Xy => Vec3::new(0.0, 0.0, 1.0),
+                ProfilePlane::Yz => Vec3::new(1.0, 0.0, 0.0),
+                ProfilePlane::Zx => Vec3::new(0.0, 1.0, 0.0),
+            };
+            sweeps::create_linear_sweep(k, &refs, normal, *distance, true).map_err(|e| solid(&e))?
+        }
+        Step::Revolve {
+            profile,
+            plane,
+            origin,
+            axis_point,
+            axis_dir,
+            angle_deg,
+            ..
+        } => {
+            let cs = profile_curves(k, profile, *plane, *origin)?;
+            let refs: Vec<Option<&Curve>> = cs.iter().map(Some).collect();
+            sweeps::create_rotational_sweep(
+                k,
+                &refs,
+                p3(*axis_point),
+                p3(*axis_dir),
+                *angle_deg,
+                true,
+            )
+            .map_err(|e| solid(&e))?
+        }
+        // SM_API has no mirror and no matrix transform: SmBrep::Mirror and
+        // SmBrep::Transform(double[4][4]) are SMLib-level and not ported. The nearest
+        // SM_API route, SmApiScaleByPt with a reflecting scale, is refused for any body
+        // with a circular edge (SmEllipse::Transform takes uniform scales only), and a
+        // uniform -1 scale plus a half turn leaves bodies built by booleans inside out
+        // (negative volume): SmBrep::Transform skips the FindAndSetInfiniteRegion and
+        // UV-trim rebuild that SmBrep::Mirror does. Neither is run as a mirror.
+        Step::Mirror { .. } => {
+            return Err(Run::Deferred(Deferral {
+                blocked_by: "no SM_API entry point".into(),
+                symbol: "mirror of a body (SmBrep::Mirror is not in SM_API; SmApiScaleByPt \
+                          with a reflecting scale fails or inverts boolean results)"
+                    .into(),
+            }))
         }
         // No Rust `SmApiFilletEdges` yet: it belongs to `blend.fillet_executive_p1`.
         Step::Fillet { .. } => {
@@ -638,16 +955,38 @@ fn measure(k: &Kernel, b: &mut Brep) -> Result<Measured, SolidError> {
         .into_iter()
         .filter(|r| Some(*r) != infinite)
         .count();
-    Ok(Measured { volume, lumps })
+    let mut cylinder_faces = 0;
+    for &f in b.face_list() {
+        if let Some(SurfaceKind::Cone(c)) = b.face(f)?.surface.as_ref().map(Surface::kind) {
+            if c.is_cylinder() {
+                cylinder_faces += 1;
+            }
+        }
+    }
+    Ok(Measured {
+        volume,
+        lumps,
+        topology: [
+            b.face_list().len(),
+            b.edge_list().len(),
+            b.vertex_list().len(),
+        ],
+        cylinder_faces,
+    })
 }
 
 /// Runs `case` on solidcore.
 pub fn run_rust(case: &Case) -> Run {
     let mut k = Kernel::default();
     let mut bodies = BTreeMap::new();
-    for step in &case.steps {
-        if let Err(stop) = step_rust(&mut k, &mut bodies, step) {
-            return stop;
+    for (n, step) in case.steps.iter().enumerate() {
+        match step_rust(&mut k, &mut bodies, step) {
+            Ok(()) => {}
+            // Name the failing step (1-based) and the body it writes.
+            Err(Run::Error(msg)) => {
+                return Run::Error(format!("step {} (`{}`): {msg}", n + 1, step.id()))
+            }
+            Err(stop) => return stop,
         }
     }
     match bodies.get_mut(RESULT) {
@@ -695,8 +1034,8 @@ pub fn checks(e: &Expect, m: &Measured) -> Vec<Check> {
     if let Some(n) = e.cylinder_faces_max {
         out.push(Check {
             name: "cylinder_faces_max",
-            status: "unchecked",
-            detail: format!("at most {n}; solidcore has no cylinder surface kind yet"),
+            status: pass(m.cylinder_faces <= n),
+            detail: format!("at most {n}, got {}", m.cylinder_faces),
         });
     }
     if e.sheet_corner.is_some() {
@@ -755,7 +1094,14 @@ fn run_entry(run: &Run, verdict: &str, checks: &[Check]) -> Value {
         Run::Done(m) => {
             e.insert(
                 "measured".into(),
-                json!({"volume": crate::json::num(m.volume), "lumps": m.lumps}),
+                json!({
+                    "volume": crate::json::num(m.volume),
+                    "lumps": m.lumps,
+                    "faces": m.topology[0],
+                    "edges": m.topology[1],
+                    "vertices": m.topology[2],
+                    "cylinder_faces": m.cylinder_faces,
+                }),
             );
             e.insert(
                 "checks".into(),
@@ -806,11 +1152,15 @@ pub fn run_cases(root: &Path, opts: &CasesOptions) -> ExitCode {
                 format!("{}: {}", d.blocked_by, d.symbol)
             }
             Run::Error(msg) => msg.clone(),
-            Run::Done(_) => c
-                .iter()
-                .map(|c| format!("{} {}: {}", c.name, c.status, c.detail))
-                .collect::<Vec<_>>()
-                .join("; "),
+            Run::Done(m) => {
+                let [f, e, v] = m.topology;
+                let checked = c
+                    .iter()
+                    .map(|c| format!("{} {}: {}", c.name, c.status, c.detail))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                format!("{checked} [F/E/V {f}/{e}/{v}]")
+            }
         };
         println!("{:<64} rust {v:<10} {detail}", l.id);
         entries.push(json!({
@@ -882,13 +1232,14 @@ mod tests {
         let cases = all();
         assert_eq!(
             cases.len(),
-            61,
+            72,
             "{:?}",
             cases.iter().map(|c| &c.id).collect::<Vec<_>>()
         );
         for l in &cases {
             assert!(
-                l.file.issue.contains("/issues/") && l.file.pr.contains("/pull/"),
+                l.id.starts_with("a52-")
+                    || (l.file.issue.contains("/issues/") && l.file.pr.contains("/pull/")),
                 "{}",
                 l.id
             );
@@ -948,12 +1299,16 @@ mod tests {
         let ok = Measured {
             volume: 268.02,
             lumps: 2,
+            topology: [4, 4, 4],
+            cylinder_faces: 0,
         };
         assert_eq!(verdict(&e, &Run::Done(ok)).0, "PASS");
         // The bug: the whole intersect came out empty.
         let empty = Measured {
             volume: 0.0,
             lumps: 0,
+            topology: [0, 0, 0],
+            cylinder_faces: 0,
         };
         let (v, c) = verdict(&e, &Run::Done(empty));
         assert_eq!(v, "FAIL");
@@ -961,13 +1316,19 @@ mod tests {
         let nan = Measured {
             volume: f64::NAN,
             lumps: 2,
+            ..ok
         };
         assert_eq!(verdict(&e, &Run::Done(nan)).0, "FAIL");
         let faces = Expect {
             cylinder_faces_max: Some(4),
             ..e.clone()
         };
-        assert_eq!(verdict(&faces, &Run::Done(ok)).0, "UNCHECKED");
+        assert_eq!(verdict(&faces, &Run::Done(ok)).0, "PASS");
+        let split = Measured {
+            cylinder_faces: 5,
+            ..ok
+        };
+        assert_eq!(verdict(&faces, &Run::Done(split)).0, "FAIL");
         assert_eq!(verdict(&faces, &Run::Done(empty)).0, "FAIL");
         let d = Run::Deferred(Deferral {
             blocked_by: "u".into(),
@@ -1035,7 +1396,9 @@ mod tests {
                     &loaded.case.expect,
                     &Run::Done(Measured {
                         volume: 1.0,
-                        lumps: 1
+                        lumps: 1,
+                        topology: [1, 0, 0],
+                        cylinder_faces: 0,
                     })
                 )
                 .0,
@@ -1108,5 +1471,20 @@ mod tests {
         )
         .is_err());
         assert!(serde_json::from_str::<Step>(r#"{"op": "chamfer", "id": "a"}"#).is_err());
+        let ext = r#"{"op": "extrude", "id": "result", "distance": 1, "profile": [{"kind": "polygon", "points": [[0, 0], [1, 0], [1, 1]]}]}"#;
+        assert!(validate(&case(vec![step(ext)])).is_ok());
+        let flat = ext.replace("[[0, 0], [1, 0], [1, 1]]", "[[0, 0], [1, 0]]");
+        assert!(validate(&case(vec![step(&flat)])).is_err());
+        let empty = ext.replace(
+            r#"[{"kind": "polygon", "points": [[0, 0], [1, 0], [1, 1]]}]"#,
+            "[]",
+        );
+        assert!(validate(&case(vec![step(&empty)])).is_err());
+        let mirror = r#"{"op": "mirror", "id": "result", "body": "nope", "normal": "y"}"#;
+        assert!(validate(&case(vec![step(mirror)])).is_err());
+        assert!(serde_json::from_str::<Step>(
+            r#"{"op": "mirror", "id": "a", "body": "b", "normal": "w"}"#
+        )
+        .is_err());
     }
 }
