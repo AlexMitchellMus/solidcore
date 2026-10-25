@@ -9,7 +9,6 @@
 //! |---------------------------------------------------------|--------------------------------------------------|
 //! | [`CurveClassification::with_curve`], [`ClassificationInit`] | `SmCurveClassification(cpCurve, crInterval, cpUVCurve, sSrcZoneTol3d, lOptDataSize, pOptBorrowedData, bIsCurveOwned, bIsCurveCurrent, cpSurface1, cpSurface2, cpUVCurve2, cpTI)` |
 //! | [`CurveClassification::get_loop_crossings`], [`LoopCrossings`] | `SmCurveClassification::GetLoopCrossings`  |
-//! | [`CurveClassification::get_loop_crossings_keeping_edits`], [`BrepQueryEdits`] | `GetLoopCrossings` (what it leaves on the B-rep) |
 //! | [`CurveClassification::ivl_bound_edgeuse_obj`]          | `SmCurveInterval::GetIvlBound_EdgeuseObj`        |
 //! | [`squeeze_out_smallest_interval`]                       | `sm_SqueezeOutSmallestInterval` (static)         |
 //!
@@ -34,12 +33,6 @@
 //! - **Face properties.** `pOptFaceProps` is the real [`FaceProps`] (unit `heal.face_props`);
 //!   its `UNSURE` tri-states read as true, as `if(m_bClosedU)` does. `SetProps_Stage2` runs
 //!   on the B-rep and face id the face handle of `loops[0]` resolves to.
-//! - **B-rep edits.** Upstream's `const` `SetProps_Stage2` seam check leaves the UV trim
-//!   curves the face's trimmed surface cache makes (with their edge and vertex tolerance
-//!   growth) and the gap caches on the B-rep. The port's B-rep is read through `&G`, so
-//!   they are made on a private copy:
-//!   [`CurveClassification::get_loop_crossings_keeping_edits`] hands them to the caller
-//!   ([`BrepQueryEdits::apply`]); [`CurveClassification::get_loop_crossings`] drops them.
 //! - **`ComputeUVSector`** takes `&mut Brep` in the port; with `bOkToMake` false it creates
 //!   nothing, so it runs on a copy of the B-rep. Its status is ignored as upstream, but an
 //!   error it returns (a failed evaluation, `Unported`) propagates instead of leaving the
@@ -89,6 +82,7 @@ use crate::intersect::curve_class::p1::{
 };
 use crate::intersect::curve_class::p2::ResetOptions;
 use crate::intersect::curve_class::p3::curve_is_degenerate;
+use crate::intersect::curve_class::p5::ClassGeometryMut;
 use crate::intersect::point_class::{
     object_zone_tol_3d, ClassGeometry, ClassObject, PointClassType, PointClassification,
 };
@@ -97,7 +91,6 @@ use crate::math::{Point2, Point3, Vec2, Vec3, PI, UNDEF_DOUBLE};
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
-use crate::query::face::p2::CurveOnClassifyCache;
 use crate::surface::surface::p1::{map_to_2d, map_to_2d_dir};
 use crate::surface::surface::p5::DropPointOptions;
 use crate::surface::surface::p7::drop_vectors_at;
@@ -146,29 +139,6 @@ pub struct ClassificationInit<O> {
     pub uv_curve2: Option<O>,
     /// `cpTI`.
     pub ti: Option<O>,
-}
-
-/// What [`CurveClassification::get_loop_crossings_keeping_edits`] left on its face's
-/// B-rep: upstream's `const` queries make the edge uses' missing UV trim curves (with
-/// their edge and vertex tolerance growth) and fill the gap caches on the B-rep itself;
-/// the port makes them on a private copy and keeps them here.
-#[derive(Default)]
-pub struct BrepQueryEdits {
-    cache: CurveOnClassifyCache,
-}
-
-impl BrepQueryEdits {
-    /// Leaves the edits on `b`, the B-rep the loops' face handle resolved to: the UV trim
-    /// curves its edge uses lack, the larger edge and vertex tolerances and the gap
-    /// caches.
-    ///
-    /// # Errors
-    ///
-    /// [`SolidError::NotFound`] when `b` lacks an entity of the B-rep the edits were
-    /// made on.
-    pub fn apply(self, b: &mut Brep) -> Result<()> {
-        self.cache.apply_uv_trim_updates(b)
-    }
 }
 
 /// The outputs of [`CurveClassification::get_loop_crossings`].
@@ -337,8 +307,7 @@ fn vertexuse_id<'g, O: ClassObject, G: ClassGeometry<O>>(
 }
 
 /// `SmFaceProps::SetProps_Stage2(face, faceIndex, SM_HO_ALL)` (unit `heal.face_props`) on
-/// the face of `face` on the query state `cache` (what it leaves on the B-rep is kept
-/// there), its status ignored as upstream; a `NULL` face (dereferenced upstream,
+/// the face of `face`, its status ignored as upstream; a `NULL` face (dereferenced upstream,
 /// UB-131) and a face handle `geometry` does not resolve are errors.
 fn set_props_stage_2<O: LoopObject, G: ClassGeometry<O>>(
     k: &Kernel,
@@ -346,14 +315,36 @@ fn set_props_stage_2<O: LoopObject, G: ClassGeometry<O>>(
     props: &mut FaceProps<O>,
     face: Option<O>,
     face_index: u64,
-    cache: &mut CurveOnClassifyCache,
 ) -> Result<()> {
     let face =
         face.ok_or_else(|| SolidError::invalid_input(OP_CROSS, "loop without a face (UB-131)"))?;
     let (b, f) = face_id(geometry, face, OP_CROSS)?;
     // an `InvalidInput` of `FaceProps` is an upstream null dereference (UB-131 for the
     // face pointer `SetProps_Gaps` left unset): it propagates instead of being ignored
-    match props.set_props_stage2_cached(k, b, f, face_index, HealerOpType::All, cache) {
+    match props.set_props_stage2(k, b, f, face_index, HealerOpType::All) {
+        Err(e @ SolidError::InvalidInput { .. }) => Err(e),
+        r => ignore_status(r),
+    }
+}
+
+/// [`set_props_stage_2`] on the face's B-rep in place
+/// ([`FaceProps::set_props_stage2_mut`]).
+fn set_props_stage_2_mut<O: LoopObject, G: ClassGeometryMut<O>>(
+    k: &Kernel,
+    geometry: &mut G,
+    props: &mut FaceProps<O>,
+    face: Option<O>,
+    face_index: u64,
+) -> Result<()> {
+    let face =
+        face.ok_or_else(|| SolidError::invalid_input(OP_CROSS, "loop without a face (UB-131)"))?;
+    let Some((b, EntityRef::Face(f))) = geometry.topology_entity_mut(face) else {
+        return Err(SolidError::invalid_input(
+            OP_CROSS,
+            "unresolved mutable face",
+        ));
+    };
+    match props.set_props_stage2_mut(k, b, f, face_index, HealerOpType::All) {
         Err(e @ SolidError::InvalidInput { .. }) => Err(e),
         r => ignore_status(r),
     }
@@ -941,53 +932,13 @@ impl<O: ClassObject> CurveClassification<O> {
     /// resolve, a null pointer `SmEdgeuse::EvaluateBinormal` dereferences, and those of
     /// `SetProps_Stage2` and [`CurveClassification::point_classifies_connected_to`]; the
     /// status of `EvaluateBinormal` itself is ignored as upstream.
+    #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn get_loop_crossings<G: ClassGeometry<O>>(
         &self,
         k: &Kernel,
         geometry: &G,
         loops: &[O],
         face_props: Option<&mut FaceProps<O>>,
-    ) -> Result<LoopCrossings<O>>
-    where
-        O: LoopObject,
-    {
-        let mut cache = CurveOnClassifyCache::default();
-        self.get_loop_crossings_cached(k, geometry, loops, face_props, &mut cache)
-    }
-
-    /// [`CurveClassification::get_loop_crossings`] for a caller that keeps what the call
-    /// leaves on the face's B-rep: when it computes the stage 2 face properties itself,
-    /// the seam check of `SetProps_Stage2` makes the face's trimmed surface cache, and
-    /// with it the edge uses' missing UV trim curves (raising the edge and vertex
-    /// tolerances to fit them) and the gap caches. Upstream's `const` call leaves them on
-    /// the B-rep, where later queries find them; here they are collected in `edits`
-    /// (also when the call fails) for [`BrepQueryEdits::apply`].
-    ///
-    /// # Errors
-    ///
-    /// As [`CurveClassification::get_loop_crossings`].
-    pub fn get_loop_crossings_keeping_edits<G: ClassGeometry<O>>(
-        &self,
-        k: &Kernel,
-        geometry: &G,
-        loops: &[O],
-        face_props: Option<&mut FaceProps<O>>,
-        edits: &mut BrepQueryEdits,
-    ) -> Result<LoopCrossings<O>>
-    where
-        O: LoopObject,
-    {
-        self.get_loop_crossings_cached(k, geometry, loops, face_props, &mut edits.cache)
-    }
-
-    #[allow(clippy::too_many_lines)] // one upstream routine
-    fn get_loop_crossings_cached<G: ClassGeometry<O>>(
-        &self,
-        k: &Kernel,
-        geometry: &G,
-        loops: &[O],
-        face_props: Option<&mut FaceProps<O>>,
-        cache: &mut CurveOnClassifyCache,
     ) -> Result<LoopCrossings<O>>
     where
         O: LoopObject,
@@ -1000,7 +951,7 @@ impl<O: ClassObject> CurveClassification<O> {
         };
 
         // init rtn and output
-        let mut out = LoopCrossings {
+        let out = LoopCrossings {
             crossing_counts: vec![0; loops.len()],
             raw_touches: Vec::new(),
             done_touches: Vec::new(),
@@ -1020,9 +971,78 @@ impl<O: ClassObject> CurveClassification<O> {
             } else {
                 props.face_index
             };
-            set_props_stage_2(k, geometry, props, face, face_index, cache)?;
+            set_props_stage_2(k, geometry, props, face, face_index)?;
         }
+        self.loop_crossings_at_stage_2(k, geometry, loops, props, out, loop0)
+    }
 
+    /// [`CurveClassification::get_loop_crossings`] over mutable classification objects:
+    /// the `SetProps_Stage2` it may run edits the face's B-rep in place
+    /// ([`FaceProps::set_props_stage2_mut`] on the B-rep of the first loop's face), so
+    /// the UV trim curves, the tolerance growth and the gap caches of its seam check stay
+    /// there, as upstream's `GetLoopCrossings` leaves them.
+    ///
+    /// # Errors
+    ///
+    /// As [`CurveClassification::get_loop_crossings`]; [`SolidError::InvalidInput`] for
+    /// a face handle `geometry` cannot resolve mutably when stage 2 is computed.
+    pub fn get_loop_crossings_mut<G: ClassGeometryMut<O>>(
+        &self,
+        k: &Kernel,
+        geometry: &mut G,
+        loops: &[O],
+        face_props: Option<&mut FaceProps<O>>,
+    ) -> Result<LoopCrossings<O>>
+    where
+        O: LoopObject,
+    {
+        // direct optional input and output
+        let mut local_props = FaceProps::<O>::new();
+        let props: &mut FaceProps<O> = match face_props {
+            Some(p) => p,
+            None => &mut local_props,
+        };
+
+        // init rtn and output
+        let out = LoopCrossings {
+            crossing_counts: vec![0; loops.len()],
+            raw_touches: Vec::new(),
+            done_touches: Vec::new(),
+            sm_err: false,
+        };
+
+        // no work - no TgtLoops
+        let Some(&loop0) = loops.first() else {
+            return Ok(out);
+        };
+
+        // must have Face SM_PROPSTAGE_2 Props - when pOptFaceProps is not given
+        if props.prop_stage < PropStage::Stage2A {
+            let face = loop_face(&*geometry, loop0)?;
+            let face_index = if props.face_index == UNDEF_ULONG {
+                0
+            } else {
+                props.face_index
+            };
+            set_props_stage_2_mut(k, geometry, props, face, face_index)?;
+        }
+        self.loop_crossings_at_stage_2(k, &*geometry, loops, props, out, loop0)
+    }
+
+    /// The rest of `GetLoopCrossings` once the face props are at stage 2.
+    #[allow(clippy::too_many_lines)] // one upstream routine
+    fn loop_crossings_at_stage_2<G: ClassGeometry<O>>(
+        &self,
+        k: &Kernel,
+        geometry: &G,
+        loops: &[O],
+        props: &mut FaceProps<O>,
+        mut out: LoopCrossings<O>,
+        loop0: O,
+    ) -> Result<LoopCrossings<O>>
+    where
+        O: LoopObject,
+    {
         // Tgt Face and Surface Props
         let face = loop_face(geometry, loop0)?;
         let face_xsect_tol_3d = xsect_tol_3d_from_zones(k, props.zone_tol_3d, props.zone_tol_3d);

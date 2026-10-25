@@ -52,9 +52,10 @@ use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::tol::zone_tol3d;
 use solidcore::geom::vector3d::Vec3;
 use solidcore::intersect::curve_class::{
-    self as cc_mod, squeeze_out_smallest_interval, BrepQueryEdits, ClassificationInit, CurveClassification,
+    self as cc_mod, squeeze_out_smallest_interval, ClassificationInit, CurveClassification,
     CurveInterval, TouchData,
 };
+use solidcore::intersect::curve_class::p5::ClassGeometryMut;
 use solidcore::intersect::point_class::{
     ClassGeometry, ClassObject, ClassObjectKind, PointClassType, PointClassification,
 };
@@ -729,6 +730,24 @@ impl ClassGeometry<H> for Pool {
     }
 }
 
+impl ClassGeometryMut<H> for Pool {
+    fn curve_mut(&mut self, o: H) -> Option<&mut Curve> {
+        match o {
+            H::Obj(i, _) => match self.objs.get_mut(i) {
+                Some(PoolObj::Curve(c)) => Some(c),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    fn topology_entity_mut(&mut self, o: H) -> Option<(&mut Brep, EntityRef)> {
+        match (o, &mut self.brep) {
+            (H::Topo(e), Some((b, _))) => Some((b, e)),
+            _ => None,
+        }
+    }
+}
+
 impl Pool {
     fn handle(&self, i: Option<usize>) -> Result<Option<H>, HarnessError> {
         i.map(|i| {
@@ -1151,19 +1170,14 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
                                 hfp::seed(&mut props, face, sd[0] as i64, sd[1] as i64, sd[2]);
                             }
                         }
-                        // what the call leaves on the face's B-rep stays there for the
-                        // later ops, as on the shim's B-rep
-                        let mut edits = BrepQueryEdits::default();
-                        let r = cc.get_loop_crossings_keeping_edits(
+                        // in place: what the call leaves on the face's B-rep stays there
+                        // for the later ops, as on the shim's B-rep
+                        let r = cc.get_loop_crossings_mut(
                             &k,
-                            &pool,
+                            &mut pool,
                             &hs,
                             with_props.then_some(&mut props),
-                            &mut edits,
                         );
-                        if let Some((b, _)) = pool.brep.as_mut() {
-                            edits.apply(b).map_err(|e| harness(format!("keep the B-rep edits: {e}")))?;
-                        }
                         match st(r)? {
                             Ok(lc) => {
                                 o.push(if lc.sm_err { 1.0 } else { 0.0 });
