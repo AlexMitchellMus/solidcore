@@ -2745,22 +2745,27 @@ mod tests {
 
     #[test]
     fn stage3_failure_does_not_certify_cached_properties() {
-        let k = Kernel::default();
-        let (mut b, f) = plane_without_loops();
-        let mut p: FaceProps<H> = FaceProps::for_face(f, 0);
-        p.set_props_stage2(&k, &b, f, 0, HealerOpType::All).unwrap();
-        b.faceuse_mut(crate::topology::FaceuseId::from_index(0))
-            .unwrap()
-            .loopuses
-            .push(crate::topology::LoopuseId::from_index(99));
-        let first = p
-            .set_props_stage3(&k, &b, f, 0, HealerOpType::All)
-            .unwrap_err();
-        assert_eq!(
-            p.set_props_stage3(&k, &b, f, 0, HealerOpType::All),
-            Err(first)
-        );
-        assert_eq!(p.prop_stage, PropStage::Stage2);
+        for cached in [false, true] {
+            let k = Kernel::default();
+            let (mut b, f) = plane_without_loops();
+            let mut p: FaceProps<H> = FaceProps::for_face(f, 0);
+            p.set_props_stage2(&k, &b, f, 0, HealerOpType::All).unwrap();
+            b.faceuse_mut(crate::topology::FaceuseId::from_index(0))
+                .unwrap()
+                .loopuses
+                .push(crate::topology::LoopuseId::from_index(99));
+            let mut cache = CurveOnClassifyCache::default();
+            let mut run = |props: &mut FaceProps<H>| {
+                if cached {
+                    props.set_props_stage3_cached(&k, &b, f, 0, HealerOpType::All, &mut cache)
+                } else {
+                    props.set_props_stage3(&k, &b, f, 0, HealerOpType::All)
+                }
+            };
+            let first = run(&mut p).unwrap_err();
+            assert_eq!(run(&mut p), Err(first));
+            assert_eq!(p.prop_stage, PropStage::Stage2);
+        }
     }
 
     fn plane_without_loops() -> (Brep, FaceId) {
