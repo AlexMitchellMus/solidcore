@@ -363,7 +363,9 @@ fn drop_iso_curve(
 /// `DropCurve(ctx, domain, curve, interval, tol, maxDist, maxDev, uvCurves,
 /// bKeepAllDropCurves, NULL, bCreatingUVTrimCurve)` (virtual): the plane override;
 /// other kinds run `SmSurface::DropCurve`. Returns the largest drop distance, the
-/// deviation and the UV curves.
+/// deviation and the UV curves. As for [`surface_global_point_solve`], `DoTrace` runs
+/// with the surface cache's point testing off, so the start point drop's
+/// `GlobalPointSolve` keeps its fast-drop solutions unclassified (no face test).
 #[allow(clippy::too_many_arguments)] // upstream's argument list
 fn surface_drop_curve(
     k: &Kernel,
@@ -375,7 +377,7 @@ fn surface_drop_curve(
     keep_all: bool,
     creating_uv_trim_curve: bool,
 ) -> Result<(f64, f64, Vec<Curve>)> {
-    let r = surface.drop_curve::<NoObject>(
+    let r = surface.drop_curve_face_tested::<NoObject>(
         k,
         uv_domain,
         curve,
@@ -384,6 +386,7 @@ fn surface_drop_curve(
         keep_all,
         None,
         creating_uv_trim_curve,
+        None,
     )?;
     Ok((r.max_drop_to_surf, r.max_approx_dev, r.uv_curves))
 }
