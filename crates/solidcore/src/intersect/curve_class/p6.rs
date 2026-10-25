@@ -132,10 +132,10 @@ impl<O: ClassObject> CurveClassification<O> {
         self.homogenize_in(k, &mut ReadOnlyParams(geometry), other)
     }
 
-    /// [`CurveClassification::homogenize`] over topology the point solves may change:
-    /// a boundary's point parameters are computed with
-    /// [`PointClassification::compute_point_parameters_mut`] (a face surface's point
-    /// solve makes the face's trimmed surface cache there, as upstream).
+    /// [`CurveClassification::homogenize`] over topology the boundary point drops may
+    /// change: a drop onto a face makes the face's trimmed surface cache on the B-rep
+    /// [`ClassGeometryMut::topology_entity_mut`] resolves it to and keeps it, as
+    /// upstream (see [`PointClassification::compute_point_parameters_mut`]).
     ///
     /// # Errors
     /// Those of [`CurveClassification::homogenize`].
@@ -148,6 +148,7 @@ impl<O: ClassObject> CurveClassification<O> {
         self.homogenize_in(k, &mut MutableParams(geometry), other)
     }
 
+    /// `Homogenize` over either kind of access.
     pub(super) fn homogenize_in(
         &mut self,
         k: &Kernel,
@@ -156,9 +157,8 @@ impl<O: ClassObject> CurveClassification<O> {
     ) -> Result<()> {
         homogenize_boundaries(k, access, self, other)?;
         homogenize_boundaries(k, access, other, self)?;
-        let geometry = access.geometry();
-        fix_problems_by_squeezing(k, geometry, self, other)?;
-        fix_problems_by_squeezing(k, geometry, other, self)?;
+        fix_problems_by_squeezing(k, access.geometry(), self, other)?;
+        fix_problems_by_squeezing(k, access.geometry(), other, self)?;
         while self.size() > other.size() {
             let count = self.size();
             ignore_status(squeeze_out_smallest_interval(self))?;
@@ -1918,9 +1918,10 @@ fn homogenize_boundaries<O: ClassObject>(
         } else {
             ivl.max()
         };
-        let point = classify_crv_loc_by_index(k, access.geometry(), src, index)?;
-        let tol = pc.obj_zone_tol_3d(k, access.geometry())?;
-        let found = dst.find_interval(k, access.geometry(), param, last, tol)?;
+        let geometry = access.geometry();
+        let point = classify_crv_loc_by_index(k, geometry, src, index)?;
+        let tol = pc.obj_zone_tol_3d(k, geometry)?;
+        let found = dst.find_interval(k, geometry, param, last, tol)?;
         let mut pos = found.position;
         if pos == IntervalPosition::Outside {
             return Err(SolidError::sm_err(OP));

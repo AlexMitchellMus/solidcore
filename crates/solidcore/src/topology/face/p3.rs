@@ -1567,31 +1567,29 @@ impl ClassGeometry<IntersectObject> for IntersectObjects<'_> {
     }
 }
 
-/// The objects of [`IntersectObjects`] (side `false`) over the B-reps lent mutably to
-/// [`face_intersect_breps`]: the curve classification's face point solves make the
-/// faces' trimmed surface caches on them (`smsurf_GetSurfaceCache`), as upstream's do
-/// through the faces' pointers.
+/// [`IntersectObjects`] over the faces' B-reps lent mutably, for the curve
+/// classifications' `ExtractGeometry`: its boundary point drops make the faces'
+/// trimmed surface caches on the B-reps and keep them (`smsurf_GetSurfaceCache`, which
+/// creates the faces' UV trim curves), as upstream does through its face pointers.
 struct IntersectObjectsMut<'a> {
     /// The B-rep of this face.
     b: &'a mut Brep,
-    /// The B-rep of the other face when it is another one (side `true`).
+    /// The B-rep of the other face when it is a different one.
     other: Option<&'a mut Brep>,
-    /// The curves behind [`IntersectObject::Curve`].
+    side: bool,
     curves_3d: &'a [Curve],
-    /// The curves behind [`IntersectObject::UvCurve`] `(i, false)`.
     uv1: &'a [Option<Curve>],
-    /// The curves behind [`IntersectObject::UvCurve`] `(i, true)`.
     uv2: &'a [Option<Curve>],
 }
 
 impl IntersectObjectsMut<'_> {
-    /// The read-only objects over the same B-reps and curves.
+    /// The shared view of the same objects.
     fn view(&self) -> IntersectObjects<'_> {
-        let b = &*self.b;
+        let b: &Brep = self.b;
         IntersectObjects {
             b,
             other: self.other.as_deref().unwrap_or(b),
-            side: false,
+            side: self.side,
             curves_3d: self.curves_3d,
             uv1: self.uv1,
             uv2: self.uv2,
@@ -1630,20 +1628,20 @@ impl ClassGeometry<IntersectObject> for IntersectObjectsMut<'_> {
 }
 
 impl ClassGeometryMut<IntersectObject> for IntersectObjectsMut<'_> {
-    // the curves are only read here
+    // the classification curves are the intersection's, which the drops do not edit
     fn curve_mut(&mut self, _o: IntersectObject) -> Option<&mut Curve> {
         None
     }
     fn topology_entity_mut(&mut self, o: IntersectObject) -> Option<(&mut Brep, EntityRef)> {
-        match o {
-            IntersectObject::Topology(e, true) => match self.other.as_deref_mut() {
-                Some(ob) => Some((ob, e)),
-                // one B-rep: both sides name it
-                None => Some((&mut *self.b, e)),
-            },
-            IntersectObject::Topology(e, false) => Some((&mut *self.b, e)),
-            _ => None,
-        }
+        let IntersectObject::Topology(e, side) = o else {
+            return None;
+        };
+        // side `true` is the other face's B-rep (this one when they are the same)
+        let brep = match (side, self.other.as_deref_mut()) {
+            (true, Some(other)) => other,
+            _ => &mut *self.b,
+        };
+        Some((brep, e))
     }
 }
 
@@ -1877,6 +1875,7 @@ pub fn face_intersect_breps(
         }
     }
     for (ii, curve) in curves_3d.iter().enumerate() {
+        let (b, ob) = shared_breps(this_brep.as_deref(), other_brep.as_deref(), shared)?;
         let curve_type = curve_types
             .get(ii)
             .copied()
@@ -1903,7 +1902,6 @@ pub fn face_intersect_breps(
         let mut cc1 = curve_classification(k, IntersectObject::Curve(ii), &ivl, uv1, zone_tol)?;
         let mut cc2 = curve_classification(k, IntersectObject::Curve(ii), &ivl, uv2, zone_tol)?;
 
-        let (b, ob) = shared_breps(this_brep.as_deref(), other_brep.as_deref(), shared)?;
         let objects = IntersectObjects {
             b,
             other: ob,
@@ -1934,27 +1932,22 @@ pub fn face_intersect_breps(
             uv_curves2: true,
             points_3d: true,
         };
-        // The homogenization's point solves make the faces' trimmed caches
-        // (smsurf_GetSurfaceCache) on the B-reps when they are lent.
-        let ex = if let Some(tb) = this_brep.as_deref_mut() {
-            let mut lent = IntersectObjectsMut {
-                b: tb,
+        // the point drops of `Homogenize` make the faces' trimmed caches on their
+        // B-reps (smsurf_GetSurfaceCache) when the B-reps are lent
+        let ex = if this_brep.is_some() {
+            let this = this_brep
+                .as_deref_mut()
+                .ok_or_else(|| null("FaceIntersect: no B-rep"))?;
+            let mut objects = IntersectObjectsMut {
+                b: this,
                 other: other_brep.as_deref_mut(),
-                curves_3d: &curves_3d,
-                uv1: &uv_curves1,
-                uv2: &uv_curves2,
-            };
-            cc1.extract_geometry_mut(k, &mut lent, &mut cc2, extract)?
-        } else {
-            let (b, ob) = shared_breps(None, None, shared)?;
-            let objects = IntersectObjects {
-                b,
-                other: ob,
                 side: false,
                 curves_3d: &curves_3d,
                 uv1: &uv_curves1,
                 uv2: &uv_curves2,
             };
+            cc1.extract_geometry_mut(k, &mut objects, &mut cc2, extract)?
+        } else {
             cc1.extract_geometry(k, &objects, &mut cc2, extract)?
         };
         let found = !ex.curves_3d.is_empty();

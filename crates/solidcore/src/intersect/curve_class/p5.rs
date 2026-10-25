@@ -445,10 +445,9 @@ impl<O: ClassObject> CurveClassification<O> {
         self.extract_homogenized(k, geometry, other, options)
     }
 
-    /// [`CurveClassification::extract_geometry`] over topology the point solves may
-    /// change: the homogenization's point parameters are computed as
-    /// [`CurveClassification::homogenize_mut`] does (a face surface's point solve makes
-    /// the face's trimmed surface cache there, as upstream); the rest only reads.
+    /// [`CurveClassification::extract_geometry`] over topology the homogenization's
+    /// point drops may change ([`CurveClassification::homogenize_mut`]): a drop onto a
+    /// face makes and keeps the face's trimmed surface cache on its B-rep, as upstream.
     ///
     /// # Errors
     /// Those of [`CurveClassification::extract_geometry`].
