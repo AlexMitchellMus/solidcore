@@ -546,13 +546,20 @@ impl<T: Copy + PartialEq> ObjsInVoxels<T> {
         bbox: Option<&Extent3d>,
         item_estimate: usize,
     ) -> Result<()> {
-        let voxel_count = x_cnt
-            .checked_mul(y_cnt)
-            .and_then(|xy| xy.checked_mul(z_cnt))
-            .ok_or(SolidError::InvalidInput {
-                operation: "geom::hash_table::ObjsInVoxels::set_size",
-                reason: "voxel dimensions overflow",
-            })?;
+        // A zero factor makes the mathematical voxel product zero; preserve the
+        // pre-existing behaviour (upstream's wrapped product is also zero) instead of
+        // letting an intermediate overflow reject it.
+        let voxel_count = if x_cnt == 0 || y_cnt == 0 || z_cnt == 0 {
+            0
+        } else {
+            x_cnt
+                .checked_mul(y_cnt)
+                .and_then(|xy| xy.checked_mul(z_cnt))
+                .ok_or(SolidError::InvalidInput {
+                    operation: "geom::hash_table::ObjsInVoxels::set_size",
+                    reason: "voxel dimensions overflow",
+                })?
+        };
         self.x_cnt = x_cnt;
         self.y_cnt = y_cnt;
         self.z_cnt = z_cnt;
@@ -957,6 +964,15 @@ mod tests {
                 reason: "voxel dimensions overflow",
             })
         ));
+    }
+
+    #[test]
+    fn new_keeps_zero_dimension_success_despite_intermediate_overflow() {
+        // pre-existing behaviour: a zero factor makes the product zero, so even
+        // MAX x MAX x 0 succeeds with zero buckets instead of rejecting
+        let v = ObjsInVoxels::<usize>::new(usize::MAX, usize::MAX, 0, None, 0).unwrap();
+        assert_eq!(v.counts(), (usize::MAX, usize::MAX, 0));
+        assert_eq!(v.hash_table().bucket_count(), 0);
     }
 
     #[test]
