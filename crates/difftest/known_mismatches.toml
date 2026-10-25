@@ -122,49 +122,34 @@ case = "upstream_merge_breps_operation_3"
 why = "same result topology and vertex positions, different vertex list order: C++ lists one part's exclusive vertices last (plan/findings.md: 'boolean.merge_p3: vertex list order after merges that imprint edges into faces'; issue #832)"
 
 [[mismatch]]
-unit = "heal.face_props"
-case = "gen0646"
-why = "torus face, edges far off the surface: SetProps_Stage2 seam flags differ after the trimmed cache raised edge tolerances (same tolerances and UV trims both sides; FindVertexSector of the seam disagrees) (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
-
-[[mismatch]]
-unit = "heal.face_props"
-case = "gen0790"
-why = "torus face, edges far off the surface: SetProps_Stage2 seam flags differ after the trimmed cache raised edge tolerances (same tolerances and UV trims both sides; FindVertexSector of the seam disagrees) (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
-
-[[mismatch]]
-unit = "heal.face_props"
-case = "gen1312"
-why = "torus face, edges far off the surface: V seam intervals 2-5 C++ FACE, port OUTSIDE (FindVertexSector) with identical raised edge tolerances and UV trims (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
-
-[[mismatch]]
 unit = "intersect.curve_class_p4"
 case = "gen1570"
-why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ on a torus face with edges far off the surface after the trimmed cache raised edge tolerances (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
+why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ (gen1570: a sphere face with a vertex at the pole); unchanged by keeping snapshot surface owners, cause not found (plan/findings.md: 'snapshot surfaces keep their face owner')"
 
 [[mismatch]]
 unit = "intersect.curve_class_p4"
 case = "gen1622"
-why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ on a torus face with edges far off the surface after the trimmed cache raised edge tolerances (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
+why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ (gen1570: a sphere face with a vertex at the pole); unchanged by keeping snapshot surface owners, cause not found (plan/findings.md: 'snapshot surfaces keep their face owner')"
 
 [[mismatch]]
 unit = "intersect.curve_class_p4"
 case = "gen1841"
-why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ on a torus face with edges far off the surface after the trimmed cache raised edge tolerances (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
+why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ (gen1570: a sphere face with a vertex at the pole); unchanged by keeping snapshot surface owners, cause not found (plan/findings.md: 'snapshot surfaces keep their face owner')"
 
 [[mismatch]]
 unit = "intersect.curve_class_p4"
 case = "gen1876"
-why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ on a torus face with edges far off the surface after the trimmed cache raised edge tolerances (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
+why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ (gen1570: a sphere face with a vertex at the pole); unchanged by keeping snapshot surface owners, cause not found (plan/findings.md: 'snapshot surfaces keep their face owner')"
 
 [[mismatch]]
 unit = "intersect.curve_class_p4"
 case = "gen1968"
-why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ on a torus face with edges far off the surface after the trimmed cache raised edge tolerances (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
+why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ (gen1570: a sphere face with a vertex at the pole); unchanged by keeping snapshot surface owners, cause not found (plan/findings.md: 'snapshot surfaces keep their face owner')"
 
 [[mismatch]]
 unit = "intersect.curve_class_p4"
 case = "gen2061"
-why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ on a torus face with edges far off the surface after the trimmed cache raised edge tolerances (plan/findings.md: 'trimmed surface cache history: tolerance-growth deferral removed')"
+why = "GetLoopCrossings -> SetProps_Stage2 seam flags differ (gen1570: a sphere face with a vertex at the pole); unchanged by keeping snapshot surface owners, cause not found (plan/findings.md: 'snapshot surfaces keep their face owner')"
 
 [[mismatch]]
 unit = "topology.brep_p1"
