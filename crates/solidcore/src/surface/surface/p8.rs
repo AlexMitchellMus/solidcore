@@ -1719,7 +1719,7 @@ impl Surface {
                 // (the drop's trace gets the surface's cache, `smsurf_GetSurfaceCache`:
                 // the caller's, else the face's through a face-aware context)
                 let mut from_context;
-                let held = match (held, context.as_deref_mut()) {
+                let held = match (held, context) {
                     (Some(c), _) => Some(c),
                     (None, Some(context)) if self.face()?.is_some() => {
                         from_context = context.build_surface_cache(k, self, surface)?;

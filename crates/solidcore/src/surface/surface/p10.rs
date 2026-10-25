@@ -127,7 +127,9 @@ struct XsectPointClass {
     point_type: TsectCurveType,
 }
 
-/// `sm_ClassifyCurveSurfaceXSectPoint` (`surface::surface::p4`).
+/// `sm_ClassifyCurveSurfaceXSectPoint` (`surface::surface::p4`); `edge_tolerance` is
+/// the tolerance of the curve's owning edge, when the caller resolves it.
+#[allow(clippy::too_many_arguments)]
 fn classify_curve_surface_xsect_point(
     k: &Kernel,
     surface: &Surface,
@@ -136,8 +138,18 @@ fn classify_curve_surface_xsect_point(
     interval: &Extent1d,
     uv: Point2,
     t: f64,
+    edge_tolerance: Option<f64>,
 ) -> Result<XsectPointClass> {
-    let c = p4::classify_curve_surface_xsect_point(k, surface, domain, curve, interval, uv, t)?;
+    let c = p4::classify_curve_surface_xsect_point_with(
+        k,
+        surface,
+        domain,
+        curve,
+        interval,
+        uv,
+        t,
+        edge_tolerance,
+    )?;
     Ok(XsectPointClass {
         guess: c.found_guess.then_some((c.new_uv_guess, c.new_t_guess)),
         point_type: c.point_type,
@@ -662,6 +674,7 @@ impl<'t, 's, O: SolutionObject + 't> LsiGlobalSolver<'t, 's, O> {
                     &leaf.interval,
                     hit.uv,
                     hit.t,
+                    None,
                 );
                 // status ignored upstream (SE)
                 if let Some(XsectPointClass {
@@ -957,7 +970,7 @@ fn is_coincident_point<O>(
 ) -> Result<bool> {
     let uv = Point2::new(p(&solution.start, 1)?, p(&solution.start, 2)?);
     let t = p(&solution.start, 0)?;
-    let class = ignored(p4::classify_curve_surface_xsect_point_with(
+    let class = ignored(classify_curve_surface_xsect_point(
         k,
         surface,
         uv_domain,

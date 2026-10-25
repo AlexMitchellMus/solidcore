@@ -569,9 +569,9 @@ pub(super) fn curve_edge_tolerance<O>(
     handle: Option<O>,
     queries: Option<&dyn crate::surface::surface_cache::face_context::FaceQueries<O>>,
 ) -> Result<Option<f64>> {
-    if !curve
+    if curve
         .owner()
-        .is_some_and(|o| o.type_code == crate::geom::assert_array::labels::EDGE_TYPE)
+        .is_none_or(|o| o.type_code != crate::geom::assert_array::labels::EDGE_TYPE)
     {
         return Ok(None);
     }
