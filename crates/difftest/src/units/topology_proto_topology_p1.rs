@@ -323,8 +323,9 @@ pub(super) enum Script {
     },
     /// One object and one API call.
     Transform { obj: TObjIn, op: TOpIn },
-    /// One constructed body retained across every API call and geometry snapshot.
+    /// One constructed-body transform with runtime types and directed topology.
     ScaleProbe { obj: TObjIn, op: TOpIn },
+    /// One constructed body retained across every API call and geometry snapshot.
     TransformSequence { obj: TObjIn, ops: Vec<TOpIn> },
 }
 
@@ -5026,7 +5027,7 @@ fn constructed_transform_body(k: &mut Kernel, obj: &TObjIn) -> Result<Brep, Fail
         TObjIn::PrimitiveCone { origin, radii: [base, top], height } => st(solidcore::primitive::api_primitives::create_cone(k, v3(*origin), *base, *top, *height))?.map_err(|code| harness(format!("cone construction status {code}")))?,
         TObjIn::PrimitiveTorus { origin, radii: [major, minor] } => st(solidcore::primitive::api_primitives::create_torus(k, v3(*origin), *major, *minor))?.map_err(|code| harness(format!("torus construction status {code}")))?,
         TObjIn::CallerFace { origin, size: [width, height] } | TObjIn::ExtrusionFace { origin, size: [width, height] } => {
-            let mut body = st(solidcore::topology::brep::p3::new_brep(&mut k, solidcore::geom::tol::USE_DEFAULT, solidcore::geom::tol::USE_DEFAULT))?
+            let mut body = st(solidcore::topology::brep::p3::new_brep(k, solidcore::geom::tol::USE_DEFAULT, solidcore::geom::tol::USE_DEFAULT))?
                 .map_err(|code| harness(format!("caller body status {code}")))?;
             let keys = |entity| {
                 let named = solidcore::topology::brep::p3::topology_ref(0, entity);
@@ -5047,16 +5048,16 @@ fn constructed_transform_body(k: &mut Kernel, obj: &TObjIn) -> Result<Brep, Fail
                 }))?;
                 let domain = Extent2d::from_bounds(0.0, 0.0, 1.0, *height);
                 let mut extrusion = st(solidcore::surface::surf_of_extrusion::p1::SurfOfExtrusion::new(
-                    &k, generator, v3(*origin), Vec3::new(0.0, 0.0, 1.0), domain, false))?
+                    k, generator, v3(*origin), Vec3::new(0.0, 0.0, 1.0), domain, false))?
                     .map_err(|code| harness(format!("extrusion construction status {code}")))?;
-                st(extrusion.make_nurb(&k))?
+                st(extrusion.make_nurb(k))?
                     .map_err(|code| harness(format!("extrusion NURB status {code}")))?;
                 (Surface::from(extrusion), domain)
             } else {
                 (Surface::from(Plane::from_normal(v3(*origin), Vec3::new(0.0, 0.0, 1.0))),
                     Extent2d::from_bounds(0.0, 0.0, *width, *height))
             };
-            st(solidcore::topology::brep::p8::create_face_from_surface(&mut k, &mut body,
+            st(solidcore::topology::brep::p8::create_face_from_surface(k, &mut body,
                 Some(surface), &domain, &mut fenv))?
                 .map_err(|code| harness(format!("caller face status {code}")))?;
             body
