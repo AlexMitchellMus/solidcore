@@ -104,6 +104,12 @@ enum PairLink {
     LocalLinked,
 }
 
+struct ClassificationPair<'a, O> {
+    first: &'a mut CurveClassification<O>,
+    second: &'a mut CurveClassification<O>,
+    link: PairLink,
+}
+
 const OP_CLASSES: &str = "boolean::topology_intersector::p3::merge_curve_classes";
 const OP_ON_SURFACES: &str = "boolean::topology_intersector::p3::merge_curve_on_surfaces";
 const OP_COINCIDENT: &str = "boolean::topology_intersector::p3::merge_coincident_surfaces";
@@ -399,7 +405,25 @@ pub struct CurveOnSurfacesMerge<O> {
     pub deleted_curves: Vec<O>,
 }
 
+/// Status and initialized/partial outputs of an actual linked merge attempt.
+#[derive(Debug)]
+pub struct CurveOnSurfacesAttempt<O> {
+    /// Outputs written before the returned status, including cleanup curve handles.
+    pub output: CurveOnSurfacesMerge<O>,
+    /// The original status; output ownership is retained on error.
+    pub status: Result<()>,
+}
+
 impl<O> CurveOnSurfacesMerge<O> {
+    fn untouched() -> Self {
+        Self {
+            deleted_topology: false,
+            deleted_edges: None,
+            deleted_vertices: None,
+            deleted_curves: Vec::new(),
+        }
+    }
+
     /// Takes the outputs of one `MergeCurveClasses` call: its flag replaces the last,
     /// its lists replace the last only when it wrote them.
     fn take(&mut self, m: CurveClassesMerge<O>) {
@@ -481,6 +505,34 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         pair: PairLink,
     ) -> Result<CurveClassesMerge<O>> {
         let mut out = CurveClassesMerge::untouched();
+        self.merge_curve_classes_into_using(
+            k,
+            brep,
+            ClassificationPair {
+                first: crv_class1,
+                second: crv_class2,
+                link: pair,
+            },
+            merge_singularities,
+            &mut out,
+        )?;
+        Ok(out)
+    }
+
+    fn merge_curve_classes_into_using(
+        &mut self,
+        k: &mut Kernel,
+        brep: &mut impl IntersectorBrepP3<O>,
+        curves: ClassificationPair<'_, O>,
+        merge_singularities: bool,
+        out: &mut CurveClassesMerge<O>,
+    ) -> Result<()> {
+        let ClassificationPair {
+            first: crv_class1,
+            second: crv_class2,
+            link: pair,
+        } = curves;
+        out.topology_was_deleted = false;
 
         // For endPointClassifications
         //   1. if endPoint close to edge's vertex change classification from EDGE to VERTEX
@@ -531,7 +583,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
                     // skip curves which are smaller than the edge
                     if leng < leng_edge1 / 20.0 {
-                        return Ok(out);
+                        return Ok(());
                     }
 
                     // when interval2 classifies to an edge
@@ -541,7 +593,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
                         // skip curves smaller than the edge length
                         if leng < leng_edge2 / 20.0 {
-                            return Ok(out);
+                            return Ok(());
                         }
                     }
                 }
@@ -568,14 +620,14 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     let e = object_of(&ivl2.mid, ClassObjectKind::Edge)?;
                     let leng_edge1 = edge_length(k, brep, e)?;
                     if leng < leng_edge1 / 20.0 {
-                        return Ok(out);
+                        return Ok(());
                     }
 
                     if ivl1.mid.point_class() == PointClassType::Edge {
                         let e2 = object_of(&ivl1.mid, ClassObjectKind::Edge)?;
                         let leng_edge2 = edge_length(k, brep, e2)?;
                         if leng < leng_edge2 / 20.0 {
-                            return Ok(out);
+                            return Ok(());
                         }
                     }
                 }
@@ -700,7 +752,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 {
                     // create the Edge/Edge mate relationship
                     if !succeeded(self.relate(k, brep, Some(e1), Some(e2)))? {
-                        self.repair_edge_relation(k, brep, e1, e2, &mut squeezed, &mut out)?;
+                        self.repair_edge_relation(k, brep, e1, e2, &mut squeezed, out)?;
                     }
                 }
             }
@@ -744,7 +796,22 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         // Pass back deleted topology.
         out.deleted_edges = Some(squeezed.deleted_edges);
         out.deleted_vertices = Some(squeezed.deleted_vertices);
-        Ok(out)
+        Ok(())
+    }
+
+    fn capture_curve_classes(
+        &mut self,
+        k: &mut Kernel,
+        brep: &mut impl IntersectorBrepP3<O>,
+        curves: ClassificationPair<'_, O>,
+        merge_singularities: bool,
+        out: &mut CurveOnSurfacesMerge<O>,
+    ) -> Result<()> {
+        let mut output = CurveClassesMerge::untouched();
+        let status =
+            self.merge_curve_classes_into_using(k, brep, curves, merge_singularities, &mut output);
+        out.take(output);
+        status
     }
 
     /// The (`pNewE`, `pOtherNewE`) pair at index `ii` of the two mate-rebuilding loops
@@ -998,12 +1065,42 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         input: &CurveOnSurfaces<O>,
         pair: PairLink,
     ) -> Result<CurveOnSurfacesMerge<O>> {
-        let mut out = CurveOnSurfacesMerge {
-            deleted_topology: false,
-            deleted_edges: None,
-            deleted_vertices: None,
-            deleted_curves: Vec::new(),
-        };
+        let attempt = self.merge_curve_on_surfaces_attempt_using(k, brep, input, pair);
+        attempt.status?;
+        Ok(attempt.output)
+    }
+
+    /// A linked merge preserving output and temporary-curve ownership on error.
+    /// The two local classifications are the actual linked pair, without external labels.
+    pub fn merge_curve_on_surfaces_linked_attempt(
+        &mut self,
+        k: &mut Kernel,
+        brep: &mut impl IntersectorBrepP3<O>,
+        input: &CurveOnSurfaces<O>,
+    ) -> CurveOnSurfacesAttempt<O> {
+        self.merge_curve_on_surfaces_attempt_using(k, brep, input, PairLink::LocalLinked)
+    }
+
+    fn merge_curve_on_surfaces_attempt_using(
+        &mut self,
+        k: &mut Kernel,
+        brep: &mut impl IntersectorBrepP3<O>,
+        input: &CurveOnSurfaces<O>,
+        pair: PairLink,
+    ) -> CurveOnSurfacesAttempt<O> {
+        let mut output = CurveOnSurfacesMerge::untouched();
+        let status = self.merge_curve_on_surfaces_into_using(k, brep, input, pair, &mut output);
+        CurveOnSurfacesAttempt { output, status }
+    }
+
+    fn merge_curve_on_surfaces_into_using(
+        &mut self,
+        k: &mut Kernel,
+        brep: &mut impl IntersectorBrepP3<O>,
+        input: &CurveOnSurfaces<O>,
+        pair: PairLink,
+        out: &mut CurveOnSurfacesMerge<O>,
+    ) -> Result<()> {
         let both_edges_null = input.brep_edge.is_none() && input.other_edge.is_none();
 
         // Get the face or composite face from the surface.
@@ -1056,7 +1153,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 let v2 = point_class2.object();
                 self.relate(k, brep, v1, v2)?;
             }
-            return Ok(out);
+            return Ok(());
         }
 
         // next: Classify curve against thisFace (get curve segments inside trimmed face
@@ -1124,7 +1221,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
         // If classification found no intersections, quit.
         if Self::found_nothing(&crv_class1)? {
-            return Ok(out);
+            return Ok(());
         }
 
         // next: Classify the curve against otherFace
@@ -1159,7 +1256,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
         // If classification found no intersection, quit.
         if Self::found_nothing(&crv_class2)? {
-            return Ok(out);
+            return Ok(());
         }
 
         // when XSect curve lies along two edges from two faces that are partially
@@ -1186,9 +1283,9 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     new_curve,
                     new_tol,
                     &crv_class1,
-                    &mut out,
+                    out,
                 )?;
-                return Ok(out);
+                return Ok(());
             }
         }
 
@@ -1197,10 +1294,18 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         //    each interval classified to geometry in both Breps.
         // 2. Create a mate relationship between the objects of every matching end-point
         //    and mid-point CurveClassification.
-        let m =
-            self.merge_curve_classes_using(k, brep, &mut crv_class1, &mut crv_class2, false, pair)?;
-        out.take(m);
-        Ok(out)
+        self.capture_curve_classes(
+            k,
+            brep,
+            ClassificationPair {
+                first: &mut crv_class1,
+                second: &mut crv_class2,
+                link: pair,
+            },
+            false,
+            out,
+        )?;
+        Ok(())
     }
 
     /// `GetSize() == 1` and the single interval's start, mid and end all
@@ -1273,8 +1378,17 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         brep.face_curve_on_classify_mut(k, other_face, true, &mut new_class2)?;
 
         // merge those curves into their respective SmBreps
-        let m = self.merge_curve_classes(k, brep, &mut new_class1, &mut new_class2, false)?;
-        out.take(m);
+        self.capture_curve_classes(
+            k,
+            brep,
+            ClassificationPair {
+                first: &mut new_class1,
+                second: &mut new_class2,
+                link: PairLink::Metadata,
+            },
+            false,
+            out,
+        )?;
 
         // We still have some 3D curve left over: classify again
         let natural = curve_of(brep, Some(input.curve))?.natural_interval();
@@ -1329,8 +1443,17 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             brep.face_curve_on_classify_mut(k, other_face, true, &mut crv_class22)?;
         }
 
-        let m = self.merge_curve_classes(k, brep, &mut crv_class12, &mut crv_class22, false)?;
-        out.take(m);
+        self.capture_curve_classes(
+            k,
+            brep,
+            ClassificationPair {
+                first: &mut crv_class12,
+                second: &mut crv_class22,
+                link: PairLink::Metadata,
+            },
+            false,
+            out,
+        )?;
         Ok(())
     }
 
