@@ -13,7 +13,9 @@ DOCS_ONLY='^(plan/findings/.*|plan/upstream-issues/.*|plan/[^/]*\.md|site/.*|doc
 code=true
 if [ "$event" = pull_request ] || [ "$event" = merge_group ]; then
   if [ -n "$base" ] && { git cat-file -e "$base^{commit}" 2>/dev/null || git fetch -q --depth=1 origin "$base"; }; then
-    files=$(git diff --name-only "$base" HEAD)
+    # --no-renames: a rename lists both its old and new path, so moving code into a docs path
+    # still counts as a code change. Quoted (unusual) paths never match, which fails closed.
+    files=$(git diff --no-renames --name-only "$base" HEAD)
     if [ -n "$files" ] && ! grep -qvE "$DOCS_ONLY" <<<"$files"; then
       code=false
     fi
