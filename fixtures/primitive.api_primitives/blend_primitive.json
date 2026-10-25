@@ -1,6 +1,20 @@
 {
  "cases": [
   {
+   "name": "blend_success_without_face",
+   "inputs": {
+    "op": "blend_primitive",
+    "args": [0, 0, 0, 1, 1, 1, 0, 1, 3, 2, 1]
+   }
+  },
+  {
+   "name": "blend_success_with_face",
+   "inputs": {
+    "op": "blend_primitive",
+    "args": [0, 0, 0, 1, 1, 1, 0, 1, 2, 2, 1]
+   }
+  },
+  {
    "name": "blend_corner_same_dir",
    "inputs": {
     "op": "blend_primitive",

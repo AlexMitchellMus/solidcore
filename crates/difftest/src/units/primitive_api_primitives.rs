@@ -470,8 +470,10 @@ fn blend_out(i: &Inputs) -> Result<Output, HarnessError> {
             Ok(brep) => brep,
             Err(e) => return Ok(error_record(&e, &[])),
         };
-    let edges = p1::edges(&brep, None)?;
-    let faces = p1::faces(&brep, None)?;
+    let edges = p1::edges(&brep, None)
+        .map_err(|e| HarnessError::new(format!("blend_primitive edges: {e}")))?;
+    let faces = p1::faces(&brep, None)
+        .map_err(|e| HarnessError::new(format!("blend_primitive faces: {e}")))?;
     let edge1: EdgeId = pick(i, 6, &edges, "edge1")?;
     let face1: FaceId = pick(i, 7, &faces, "face1")?;
     let edge2: EdgeId = pick(i, 8, &edges, "edge2")?;
@@ -488,14 +490,16 @@ fn blend_out(i: &Inputs) -> Result<Output, HarnessError> {
         Err(e) => return Ok(error_record(&e, &[0.0])),
     };
     let built: solidcore::Result<Vec<f64>> = (|| {
-        let mut o = vec![1.0];
+        let mut o = vec![if blend.is_some() { 1.0 } else { 0.0 }];
         o.extend([
             p1::faces(&brep, None)?.len() as f64,
             p1::edges(&brep, None)?.len() as f64,
             p1::vertices(&brep, None)?.len() as f64,
         ]);
         crate::util::primitive::append(&k, &brep, &mut o)?;
-        put_face_detail(&mut o, &k, brep.face(blend)?);
+        if let Some(blend) = blend {
+            put_face_detail(&mut o, &k, brep.face(blend)?);
+        }
         Ok(o)
     })();
     Ok(match built {
