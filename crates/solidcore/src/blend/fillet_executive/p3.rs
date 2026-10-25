@@ -225,6 +225,53 @@ impl<O: ClassObject + SolutionObject + Ord, A: ExecutiveAccess<O>> OriginalSurfa
     }
 }
 
+/// Attribute tagging and merge capabilities for the surviving intermediate body.
+pub trait FilletTagMergeAccess<O: Copy + Ord> {
+    /// Re-walk the intermediate body's current owning edges.
+    ///
+    /// # Errors
+    /// Returns body lookup or traversal failures.
+    fn tag_merge_edges(&self, body: O) -> Result<Vec<O>>;
+    /// Read the recorded pseudo edge's native eligibility and mapped edge.
+    ///
+    /// # Errors
+    /// Returns pseudo-edge lookup failures.
+    fn tag_merge_edge(&self, edge: O) -> Result<TopoEdgeView<O>>;
+    /// Allocate one `FILLET_EDGES` standalone-reference attribute.
+    ///
+    /// # Errors
+    /// Returns allocation or store failures.
+    fn tag_merge_attribute(&mut self, k: &Kernel) -> Result<O>;
+    /// Attach the allocated attribute to the actual surviving edge.
+    ///
+    /// # Errors
+    /// Returns attachment failures; the executive ignores ordinary native status.
+    fn tag_merge_attach(&mut self, edge: O, attribute: O) -> Result<()>;
+    /// Merge the intermediate body into the target, adding analytics.
+    ///
+    /// # Errors
+    /// Returns the underlying merge failure without discarding partial edits.
+    fn tag_merge_bodies(&mut self, k: &mut Kernel, target: O, fillet: O) -> Result<()>;
+}
+
+impl<O: ClassObject + SolutionObject + Ord, A: ExecutiveAccess<O>> FilletTagMergeAccess<O> for A {
+    fn tag_merge_edges(&self, body: O) -> Result<Vec<O>> {
+        self.edges(body)
+    }
+    fn tag_merge_edge(&self, edge: O) -> Result<TopoEdgeView<O>> {
+        self.topo_edge(edge)
+    }
+    fn tag_merge_attribute(&mut self, k: &Kernel) -> Result<O> {
+        self.new_keep_attribute(k)
+    }
+    fn tag_merge_attach(&mut self, edge: O, attribute: O) -> Result<()> {
+        self.add_attribute(edge, Some(attribute))
+    }
+    fn tag_merge_bodies(&mut self, k: &mut Kernel, target: O, fillet: O) -> Result<()> {
+        self.merge_brep(k, target, fillet, None, None, true)
+    }
+}
+
 /// Native face-list completion and deletion through the retained intersector.
 pub trait OriginalSurfaceDeletionAccess<O: ClassObject + SolutionObject + Ord> {
     /// Current owning faces of the actual fillet body, in traversal order.
@@ -2240,6 +2287,39 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         access.original_delete_faces(k, &mut self.intersector, deleted)
     }
 
+    /// Tag eligible surviving `OnEdge` edges, then merge the intermediate body.
+    ///
+    /// `attributes` owns every allocated marker even if attachment or merge fails.
+    /// The caller retains them through subsequent stitching and orientation, then
+    /// releases them on every exit. This component does not delete either body.
+    ///
+    /// # Errors
+    /// Returns traversal, allocation, genuine missing-capability, or merge errors;
+    /// already appended attributes and partial body edits remain available.
+    pub fn tag_and_merge_fillet_faces(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl FilletTagMergeAccess<O>,
+        target: O,
+        fillet: O,
+        attributes: &mut Vec<O>,
+    ) -> Result<()> {
+        let edges = access.tag_merge_edges(fillet)?;
+        for edge in self.topo_edges.iter().flatten().copied() {
+            let view = access.tag_merge_edge(edge)?;
+            if !view.on_edge || !view.has_curve {
+                continue;
+            }
+            if let Some(edge) = view.brep_edge.filter(|edge| edges.contains(edge)) {
+                let attribute = access.tag_merge_attribute(k)?;
+                attributes.push(attribute);
+                ignore(access.tag_merge_attach(edge, attribute))?;
+            }
+        }
+        // Upstream cbi_MAP_TOPO_EDGES=0: no attributes on extra mated edges.
+        access.tag_merge_bodies(k, target, fillet)
+    }
+
     fn trim_and_merge(
         &mut self,
         k: &mut Kernel,
@@ -2259,20 +2339,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         self.delete_original_surface_faces(k, access, fillet, &kept, &mut deleted)?;
         let mut attributes = Vec::new();
         let result = (|| {
-            let edges = access.edges(fillet)?; // re-walk after DeleteFaces
-            for edge in self.topo_edges.iter().flatten().copied() {
-                let view = access.topo_edge(edge)?;
-                if !view.on_edge || !view.has_curve {
-                    continue;
-                }
-                if let Some(edge) = view.brep_edge.filter(|edge| edges.contains(edge)) {
-                    let attribute = access.new_keep_attribute(k)?;
-                    attributes.push(attribute);
-                    ignore(access.add_attribute(edge, Some(attribute)))?;
-                }
-            }
-            // Upstream cbi_MAP_TOPO_EDGES=0: no attributes on extra mated edges.
-            access.merge_brep(k, target, fillet, None, None, true)?;
+            self.tag_and_merge_fillet_faces(k, access, target, fillet, &mut attributes)?;
             if self.intersector.other_brep() == Some(fillet) {
                 self.intersector.set_other_brep(None);
             }
