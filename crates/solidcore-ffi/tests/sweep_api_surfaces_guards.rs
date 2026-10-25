@@ -56,7 +56,7 @@ fn extrude(curve: CurveSpec) -> Call {
 
 fn assert_rejected(call: &Call) {
     DISPATCHES.with_borrow_mut(Vec::clear);
-    assert!(matches!(run(&call), Err(FfiError::InvalidArgument(_))));
+    assert!(matches!(run(call), Err(FfiError::InvalidArgument(_))));
     DISPATCHES.with_borrow(|calls| assert!(calls.is_empty()));
 }
 
@@ -120,7 +120,7 @@ fn nonfinite_coordinates_are_rejected_before_dispatch() {
 #[test]
 fn invalid_circle_radii_are_rejected_before_dispatch() {
     for radius in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-        assert_rejected(extrude(CurveSpec::AnalyticCircle {
+        assert_rejected(&extrude(CurveSpec::AnalyticCircle {
             center: [0.0; 3],
             radius,
         }));
