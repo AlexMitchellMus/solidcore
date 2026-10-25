@@ -692,5 +692,23 @@ mod tests {
                 .len(),
             10
         );
+        let owned_edges = crate::topology::brep::p1::edges(session.target(), None).unwrap();
+        for edge in owned_edges.iter().skip(18) {
+            assert!(
+                session
+                    .target()
+                    .edge(*edge)
+                    .unwrap()
+                    .edgeuses
+                    .iter()
+                    .all(|&eu| session
+                        .target()
+                        .edgeuse(eu)
+                        .unwrap()
+                        .uv_trim_curve
+                        .is_none()),
+                "native endrib edge has no owned UV trims: {edge:?}"
+            );
+        }
     }
 }
