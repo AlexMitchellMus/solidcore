@@ -97,6 +97,13 @@ use super::p1::{
 };
 use super::p2::{IntersectorBrepP2, SqueezeVertices};
 
+/// Whether a pair is backed by caller metadata or the actual two local records.
+#[derive(Clone, Copy)]
+enum PairLink {
+    Metadata,
+    LocalLinked,
+}
+
 const OP_CLASSES: &str = "boolean::topology_intersector::p3::merge_curve_classes";
 const OP_ON_SURFACES: &str = "boolean::topology_intersector::p3::merge_curve_on_surfaces";
 const OP_COINCIDENT: &str = "boolean::topology_intersector::p3::merge_coincident_surfaces";
@@ -454,6 +461,25 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         crv_class2: &mut CurveClassification<O>,
         merge_singularities: bool,
     ) -> Result<CurveClassesMerge<O>> {
+        self.merge_curve_classes_using(
+            k,
+            brep,
+            crv_class1,
+            crv_class2,
+            merge_singularities,
+            PairLink::Metadata,
+        )
+    }
+
+    fn merge_curve_classes_using(
+        &mut self,
+        k: &mut Kernel,
+        brep: &mut impl IntersectorBrepP3<O>,
+        crv_class1: &mut CurveClassification<O>,
+        crv_class2: &mut CurveClassification<O>,
+        merge_singularities: bool,
+        pair: PairLink,
+    ) -> Result<CurveClassesMerge<O>> {
         let mut out = CurveClassesMerge::untouched();
 
         // For endPointClassifications
@@ -558,8 +584,17 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
         // Merge results of two classifications into the SmBrep topology graphs.
         //    Only intervals classified to topology in both SmBreps will be inserted.
-        let (merged, merged_other) =
-            crv_class1.merge_classifications_mut(k, brep, crv_class2, merge_singularities)?;
+        let (merged, merged_other) = match pair {
+            PairLink::Metadata => {
+                crv_class1.merge_classifications_mut(k, brep, crv_class2, merge_singularities)?
+            }
+            PairLink::LocalLinked => crv_class1.merge_classifications_linked_mut(
+                k,
+                brep,
+                crv_class2,
+                merge_singularities,
+            )?,
+        };
         let new_edges = merged.edges;
         let new_edges_other = merged_other.edges;
 
@@ -940,6 +975,29 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         brep: &mut impl IntersectorBrepP3<O>,
         input: &CurveOnSurfaces<O>,
     ) -> Result<CurveOnSurfacesMerge<O>> {
+        self.merge_curve_on_surfaces_using(k, brep, input, PairLink::Metadata)
+    }
+
+    /// Merge using the two actual local classification records as a linked pair.
+    /// No external classification labels or address registry are required.
+    /// # Errors
+    /// The original classification/merge errors, retaining their mutation order.
+    pub fn merge_curve_on_surfaces_linked(
+        &mut self,
+        k: &mut Kernel,
+        brep: &mut impl IntersectorBrepP3<O>,
+        input: &CurveOnSurfaces<O>,
+    ) -> Result<CurveOnSurfacesMerge<O>> {
+        self.merge_curve_on_surfaces_using(k, brep, input, PairLink::LocalLinked)
+    }
+
+    fn merge_curve_on_surfaces_using(
+        &mut self,
+        k: &mut Kernel,
+        brep: &mut impl IntersectorBrepP3<O>,
+        input: &CurveOnSurfaces<O>,
+        pair: PairLink,
+    ) -> Result<CurveOnSurfacesMerge<O>> {
         let mut out = CurveOnSurfacesMerge {
             deleted_topology: false,
             deleted_edges: None,
@@ -1020,11 +1078,20 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
         // when asked - set up fillet data
         if self.doing_fillets {
-            let (h1, h2) = input
-                .classifications
-                .ok_or(dangling("fillet merge without classification handles"))?;
-            crv_class1.set_fillet_data(Some(h2), true);
-            crv_class2.set_fillet_data(Some(h1), true);
+            match pair {
+                PairLink::Metadata => {
+                    let (h1, h2) = input
+                        .classifications
+                        .ok_or(dangling("fillet merge without classification handles"))?;
+                    crv_class1.set_fillet_data(Some(h2), true);
+                    crv_class2.set_fillet_data(Some(h1), true);
+                }
+                PairLink::LocalLinked => {
+                    // The actual opposite record is borrowed by the linked merge below.
+                    crv_class1.set_fillet_data(None, true);
+                    crv_class2.set_fillet_data(None, true);
+                }
+            }
         }
 
         // Assume this is an intersection curve only when both pBrepEdge and pOtherEdge
@@ -1130,7 +1197,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         //    each interval classified to geometry in both Breps.
         // 2. Create a mate relationship between the objects of every matching end-point
         //    and mid-point CurveClassification.
-        let m = self.merge_curve_classes(k, brep, &mut crv_class1, &mut crv_class2, false)?;
+        let m =
+            self.merge_curve_classes_using(k, brep, &mut crv_class1, &mut crv_class2, false, pair)?;
         out.take(m);
         Ok(out)
     }
