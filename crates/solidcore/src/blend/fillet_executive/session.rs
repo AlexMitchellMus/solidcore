@@ -96,6 +96,8 @@ pub enum FilletObject {
     Solver(FilletSolverId),
     /// A concrete corner in the session's corner slots.
     Corner(FilletCornerId),
+    /// The actual retained executive topology intersector.
+    Intersector,
     /// An actual retained cross-section generator.
     Generator(u32),
     /// An attribute owned by the session's actual attribute store.

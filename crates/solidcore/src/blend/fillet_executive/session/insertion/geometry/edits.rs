@@ -77,13 +77,15 @@ impl BrepGlue<FilletObject> for InsertionGeometry<'_> {
             })
             .transpose()?;
         self.with_edit(role, |body, env| {
-            crate::topology::brep::p5::glue_with_notifications(
+            let identity = (env.key_of)(EntityRef::Brep(crate::topology::BrepId::from_index(0)));
+            crate::topology::brep::p5::glue_with_body_identity(
                 k,
                 body,
                 Some(first),
                 Some(second),
                 wires.as_deref(),
-                Some(env),
+                env,
+                identity,
             )
         })
     }

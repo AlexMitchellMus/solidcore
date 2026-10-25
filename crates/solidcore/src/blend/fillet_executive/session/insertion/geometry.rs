@@ -1,6 +1,7 @@
 //! Actual target/intermediate topology and pseudo-curve bindings for insertion.
 
 mod edits;
+mod intersector;
 mod proto;
 mod query;
 mod topology_objects;
@@ -1267,6 +1268,115 @@ mod tests {
             })
             .unwrap();
     }
+    #[test]
+    fn actual_constructed_first_rail_merges_with_the_retained_intersector() {
+        use crate::blend::fillet_executive::session::FilletSession;
+        use crate::boolean::topology_intersector::p3::CurveOnSurfaces;
+        let mut k = Kernel::default();
+        let mut target = box_at(&mut k, 0.0);
+        let edge = target.edges().ids().next().unwrap();
+        let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+        k.context.set_doing_boolean(true);
+        session.executive.intersector.doing_fillets = true;
+        session
+            .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+            .unwrap();
+        session.create_corners(&k, None).unwrap();
+        session.create_fillet_brep(&mut k, None).unwrap();
+        session.shrink_fillet_faces(&mut k).unwrap();
+        session.set_fillet_brep_edge_map(&mut k).unwrap();
+        let result = session.with_insertion_geometry(&mut k, |k, ti, geometry| {
+            let rail = geometry.pseudo.geom(FilletGeomId(0))?.rail(0).unwrap();
+            let record = geometry.pseudo.fillet_edge(rail)?;
+            let face = record.original_face().unwrap();
+            let managed = record.fillet_brep_edge().unwrap();
+            let tolerance = geometry.intermediate.edge(managed)?.tolerance;
+            let primary =
+                crate::topology::edgeuse::p1::primary_edgeuse(geometry.pseudo.brep(), rail)?
+                    .unwrap();
+            let mate =
+                crate::topology::edgeuse::p1::mate(geometry.pseudo.brep(), primary)?.unwrap();
+            let uv = geometry
+                .pseudo
+                .original_uv_curve(rail)?
+                .map(|_| FilletObject::UvCurve(FilletBody::Pseudo, mate));
+            let face = FilletObject::Topology(FilletBody::Target, EntityRef::Face(face));
+            ti.set_primary_brep(Some(FilletObject::Body(FilletBody::Target)));
+            ti.set_other_brep(Some(FilletObject::IntermediateBrep));
+            geometry.target.set_editing_enabled(true);
+            let input = CurveOnSurfaces {
+                surface: geometry.face_surface(face).unwrap(),
+                other_surface: None,
+                curve_tolerance: tolerance,
+                curve: FilletObject::Curve(FilletBody::Pseudo, rail),
+                uv_curve1: uv,
+                uv_curve2: None,
+                brep_edge: None,
+                other_edge: Some(FilletObject::IntermediateTopology(EntityRef::Edge(managed))),
+                ti: Some(FilletObject::Intersector),
+                classifications: None,
+            };
+            let attempt = ti.merge_curve_on_surfaces_linked_attempt(k, geometry, &input);
+            assert!(crate::topology::brep::p1::vertices(geometry.target, None)?.len() > 8);
+            assert!(crate::topology::brep::p1::edges(geometry.target, None)?.len() > 12);
+            assert!(crate::topology::brep::p1::faces(geometry.target, None)?.len() > 6);
+            attempt.status?;
+            assert!(!attempt.output.deleted_topology);
+            assert_eq!(attempt.output.deleted_edges, Some(Vec::new()));
+            assert_eq!(attempt.output.deleted_vertices, Some(Vec::new()));
+            assert!(attempt.output.deleted_curves.is_empty());
+            assert_eq!(
+                ti.primary_brep(),
+                Some(FilletObject::Body(FilletBody::Target))
+            );
+            assert_eq!(ti.other_brep(), Some(FilletObject::IntermediateBrep));
+            Ok(())
+        });
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn actual_face_uv_classification_preserves_complete_outputs() {
+        use crate::boolean::topology_intersector::p1::IntersectorBrep;
+        use crate::intersect::point_class::{PointClassType, PointClassification};
+        let mut k = Kernel::default();
+        let mut target = box_at(&mut k, 0.0);
+        let mut intermediate = box_at(&mut k, 100.0);
+        let mut pseudo = FilletBrep::new();
+        *pseudo.brep_mut() = box_at(&mut k, 200.0);
+        let face = target.faces().ids().next().unwrap();
+        for vertex in crate::topology::face::p4::vertices(&target, face, None, false, None).unwrap()
+        {
+            target.vertex_mut(vertex).unwrap().tolerance = 0.003;
+        }
+        let uv = target
+            .face(face)
+            .unwrap()
+            .surface
+            .as_ref()
+            .unwrap()
+            .natural_uv_domain()
+            .min();
+        let face_handle = FilletObject::Topology(FilletBody::Target, EntityRef::Face(face));
+        let mut geometry =
+            InsertionGeometry::new(&mut target, &mut pseudo, &mut intermediate).unwrap();
+        let mut pc = PointClassification::new(1e-7);
+        let uvw = Point3::new(3.0, 4.0, 5.0);
+        pc.set_uvw_param(uvw);
+        IntersectorBrep::face_point_classify(&mut geometry, &k, face_handle, uv, &mut pc).unwrap();
+        assert_eq!(pc.point_class(), PointClassType::Vertex);
+        assert_eq!(pc.src_zone_tol_3d(), 0.003);
+        assert_eq!(pc.uvw_param(), uvw);
+        geometry.target.face_mut(face).unwrap().surface = None;
+        let prior_source = pc.src_zone_tol_3d();
+        assert!(
+            IntersectorBrep::face_point_classify(&mut geometry, &k, face_handle, uv, &mut pc)
+                .is_err()
+        );
+        assert_eq!(pc.src_zone_tol_3d(), prior_source);
+        assert_eq!(pc.uvw_param(), uvw);
+    }
+
     #[test]
     fn actual_point_imprint_split_issues_identity_on_the_retained_curve_objects() {
         use crate::intersect::curve_class::p6::merge_into_object_mut;
