@@ -521,6 +521,8 @@ fn new_brep_in(
     caller_key: Option<ObjectKey>,
 ) -> Result<Brep> {
     let mut b = Brep::new();
+    // (its Euler operators name geometry owners by their notification identities)
+    b.set_naming(crate::topology::NamingScheme::Notify);
 
     // When asked (should be extremly rare) set SystemTolerance sizes
     b.set_this_model_size_estimate(k, model_size_estimate);
@@ -1374,6 +1376,7 @@ fn merge_brep_in(
         }
 
         b.geometry_owner_keys.insert(EntityRef::Face(new_f), owner);
+        b.sync_face_surface_tolerance(new_f)?;
 
         // add newFace to target Brep FaceList
         b.face_list.push(new_f);
@@ -2444,6 +2447,7 @@ fn bind_wire_curve(
     if let Some(c) = b.edge_mut(e)?.curve.as_mut() {
         let _ = c.set_owner(Some(edge_ref), None);
     }
+    b.set_geometry_owner_key(EntityRef::Edge(e), Some(edge_ref));
     Ok(())
 }
 
@@ -2497,7 +2501,7 @@ fn make_wire_edge_in(
     let region = region_or_infinite(b, region);
 
     // make new edge connected to vertices and region
-    let e = p2::make_edge_topology(k, b, region, start, end)?;
+    let e = p2::make_edge_topology(k, b, region, start, end, env)?;
 
     // Set edge parameters
     let t = b.tolerance();
@@ -3146,6 +3150,7 @@ fn turn_to_nurbs_in(
         if let Some(c) = b.edge_mut(e)?.curve.as_mut() {
             let _ = c.set_owner(Some(edge_ref), None);
         }
+        b.set_geometry_owner_key(EntityRef::Edge(e), Some(edge_ref));
     }
     Ok(())
 }
@@ -3510,15 +3515,23 @@ fn orient_ray_votes(
 
             // Get Surface Normal for this point.
             let dom = b.face(face)?.uv_domain;
-            let sols = surface.global_point_solve::<CacheObject>(
+            // the face's surface reaches its face's cache (smsurf_GetSurfaceCache),
+            // made on the B-rep: an exact evaluation copy of the surface meanwhile
+            let surface = surface.clone_for_evaluation()?;
+            let tolerance_3d = b.tolerance();
+            let mut sols = crate::geom::solution_array::SolutionArray::new();
+            surface.global_point_solve_into_with_context::<CacheObject>(
                 k,
+                Some(CacheObject::Surface(face)),
                 None,
+                &mut crate::query::brep::BrepFaceServices::new(b),
                 &dom,
                 crate::geom::global_solver::SolverOperation::Minimize,
                 point_in_face,
-                b.tolerance(),
+                tolerance_3d,
                 None,
                 crate::geom::global_solver::SolutionRequested::Single,
+                &mut sols,
             )?;
             let sol = *sols.get(0).ok_or_else(ser)?;
             let uv = crate::math::Point2::new(sol.start.param(0)?, sol.start.param(1)?);
