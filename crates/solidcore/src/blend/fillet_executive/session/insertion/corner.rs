@@ -18,7 +18,8 @@ impl LiveGeometryInsertion<'_> {
         id: FilletCornerId,
     ) -> Result<()> {
         let corners = self.corners;
-        let index = usize::try_from(id.0).map_err(|_| super::super::invalid("corner index overflow"))?;
+        let index =
+            usize::try_from(id.0).map_err(|_| super::super::invalid("corner index overflow"))?;
         let corner = corners
             .get(index)
             .ok_or_else(|| super::super::invalid("actual insertion corner absent"))?;
@@ -67,7 +68,14 @@ impl CornerInsertionContext for LiveGeometryInsertion<'_> {
         curve: &Option<LiveCurveBinding>,
         managed_edge: EdgeId,
     ) -> Result<()> {
-        LiveGeometryInsertion::merge_corner_curve(self, pseudo, target, face, curve, managed_edge)
+        LiveGeometryInsertion::merge_corner_curve(
+            self,
+            pseudo,
+            target,
+            face,
+            curve.as_ref(),
+            managed_edge,
+        )
     }
     fn update_corner_topology(
         &mut self,
@@ -87,7 +95,7 @@ impl CornerInsertionContext for LiveGeometryInsertion<'_> {
         face: FaceId,
         surface: &Option<SurfaceBinding>,
     ) -> Result<()> {
-        LiveGeometryInsertion::register_bound_intersection(self, target, face, surface)
+        LiveGeometryInsertion::register_bound_intersection(self, target, face, surface.as_ref())
     }
     fn register_blending_intersection(
         &mut self,

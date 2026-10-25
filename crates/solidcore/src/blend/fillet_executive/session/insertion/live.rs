@@ -162,7 +162,7 @@ impl LiveGeometryInsertion<'_> {
         &mut self,
         target: &mut Brep,
         face: FaceId,
-        surface: &Option<SurfaceBinding>,
+        surface: Option<&SurfaceBinding>,
     ) -> Result<()> {
         if let Some(binding) = surface {
             binding.resolve_in_body(self.intermediate)?;
@@ -178,7 +178,7 @@ impl LiveGeometryInsertion<'_> {
             None
         };
         self.ti
-            .register_empty_ssi(actual, surface.map(FilletObject::Surface));
+            .register_empty_ssi(actual, surface.copied().map(FilletObject::Surface));
         Ok(())
     }
     fn merge_actual_curve(
@@ -215,7 +215,7 @@ impl LiveGeometryInsertion<'_> {
                 for edge in edges {
                     match edge {
                         FilletObject::IntermediateTopology(EntityRef::Edge(edge)) => {
-                            deleted.push(edge)
+                            deleted.push(edge);
                         }
                         FilletObject::Topology(FilletBody::Target, EntityRef::Edge(_)) => {}
                         _ => return Err(invalid("deleted edge outside actual merge operands")),
@@ -236,10 +236,10 @@ impl LiveGeometryInsertion<'_> {
         pseudo: &mut FilletBrep,
         target: &mut Brep,
         face: FaceId,
-        curve: &Option<LiveCurveBinding>,
+        curve: Option<&LiveCurveBinding>,
         managed: EdgeId,
     ) -> Result<()> {
-        let binding = curve.as_ref().ok_or_else(|| {
+        let binding = curve.ok_or_else(|| {
             SolidError::null_pointer("SmTopologyIntersector::MergeCurveOnSurfaces")
         })?;
         let actual = match binding.object {
@@ -369,7 +369,7 @@ impl IntersectionTopologyContext for LiveGeometryInsertion<'_> {
         face: FaceId,
         surface: &Option<SurfaceBinding>,
     ) -> Result<()> {
-        self.register_bound_intersection(target, face, surface)
+        self.register_bound_intersection(target, face, surface.as_ref())
     }
     fn record_bad_merge(
         &mut self,
@@ -576,8 +576,8 @@ mod tests {
         session
             .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
             .unwrap();
+        session.create_corners(&k, None).unwrap();
         let result = session.with_filleting_context(&mut k, |session, k| {
-            session.create_corners(k, None)?;
             session.create_fillet_brep(k, None)?;
             session.shrink_fillet_faces(k)?;
             let editing = session.target().editing_enabled();
