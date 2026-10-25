@@ -12,8 +12,12 @@
 //! sections are compared exactly, float sections to `1e-9` relative. Statuses are `0`
 //! (`SM_SUCCESS`) or the `SmStatus`.
 //!
-//! Deferred cases: `IsDegenerate` of an edge whose face has an original face while the
-//! back pointers are valid (`SmFace::GetSurface`, `topology.face_p2`).
+//! Rejected cases: `IsDegenerate` of an edge whose face has a label for an original face
+//! while the back pointers are valid. Upstream then calls `SmFace::GetSurface` on it
+//! (`SmPoly.cpp:21281-21283`) and a label is not an `SmFace`: undefined in C++. The shim
+//! decides this from the built model before any call and returns
+//! `STATUS_UNDEFINED_INPUT`; `run_cpp` maps that status to `rejected`. No C++ result
+//! is inspected.
 //! `owner_degenerate` is a separate opt-in operation: explicit face records resolve
 //! only their own labels. It compares real native `IsDegenerate` calls and independent
 //! surface samples; it never supplies geometry for the two legacy opaque-owner cases.
@@ -1150,6 +1154,15 @@ impl UnitDiff for Runner {
         let i: Inputs = case.parse()?;
         match ffi::run(&to_ffi(&i.brep), &op_to_ffi(&i.op)) {
             Ok(secs) => to_output(&secs),
+            // The shim declined the input before calling anything (decided from the built
+            // model, not from a result): upstream would call `SmFace::GetSurface` on a
+            // label that is not an `SmFace`.
+            Err(solidcore_ffi::FfiError::Status(ffi::STATUS_UNDEFINED_INPUT)) => {
+                Ok(Output::rejected(
+                    "SmPolyEdge::IsDegenerate would call GetSurface on a labelled fake SmFace \
+                     (undefined in C++; real original faces: owner_degenerate)",
+                ))
+            }
             Err(solidcore_ffi::FfiError::Status(s)) => Ok(Output::err(format!("status_{s}"))),
             Err(e) => Err(harness(e.to_string())),
         }
@@ -1242,9 +1255,8 @@ mod owner_tests {
             assert_eq!(deferred.symbol, "SmFace::GetSurface");
             let cpp = Runner.run_cpp(case).unwrap();
             assert!(cpp.error.is_none());
-            assert_eq!(cpp.ints["results"], vec![-9; 4]);
-            assert!(!cpp.values.contains_key("owner_points"));
-            assert!(!cpp.ints.contains_key("owner_topo"));
+            assert!(cpp.rejected.as_deref().unwrap().contains("fake SmFace"));
+            assert!(cpp.ints.is_empty() && cpp.values.is_empty());
         }
     }
 
@@ -1291,10 +1303,13 @@ mod owner_tests {
                 let mut unresolved = case.clone();
                 unresolved.inputs["op"]["owners"] = serde_json::json!([]);
                 assert!(Runner.run_rust(&unresolved).unwrap().deferred.is_some());
-                assert_eq!(
-                    Runner.run_cpp(&unresolved).unwrap().ints["results"],
-                    vec![-9; 3]
-                );
+                assert!(Runner
+                    .run_cpp(&unresolved)
+                    .unwrap()
+                    .rejected
+                    .as_deref()
+                    .unwrap()
+                    .contains("fake SmFace"));
             }
         }
     }
