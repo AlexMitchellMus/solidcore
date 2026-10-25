@@ -36,9 +36,12 @@ pub struct Solution {
 /// powers) with zero tolerance `tol`.
 ///
 /// Quartics with `tol > 1` are rejected unless `|coefficients[4]| < tol`, when
-/// upstream falls back to the lower-degree solver. Otherwise upstream reads an
-/// uninitialised resolvent-cubic root (undefined behaviour). Equality and NaN
-/// leading coefficients do not take that fallback and remain rejected.
+/// upstream falls back to the lower-degree solver. Otherwise the rejected inputs
+/// may reach an uninitialised resolvent-cubic root read (undefined behaviour):
+/// upstream also has further defined fallbacks on the resolvent input (e.g.
+/// `fabs(r) < tol`), so the guard stays conservative. Remaining over-rejection
+/// predates this guard; equality and NaN leading coefficients do not take the
+/// fallback and remain rejected.
 pub fn solve(coefficients: &[f64], tol: f64) -> Result<Solution, FfiError> {
     let degree = match coefficients.len() {
         3 => 2,
