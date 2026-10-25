@@ -321,7 +321,31 @@ mod tests {
                 let mut selected = OriginalSurfaceSelection::default();
                 session.select_original_fillet_surfaces(k, &mut selected)?;
                 assert_eq!(session.target().editing_enabled(), editing);
-                assert!(!selected.kept.is_empty());
+                let fillet_faces = p1::faces(session.intermediate_brep().unwrap(), None)?;
+                let target_faces = p1::faces(session.target(), None)?;
+                let kept_labels: Vec<_> = selected
+                    .kept
+                    .iter()
+                    .map(|face| {
+                        fillet_faces
+                            .iter()
+                            .position(|candidate| candidate == face)
+                            .unwrap()
+                    })
+                    .collect();
+                let deleted_labels: Vec<_> = selected
+                    .deleted
+                    .iter()
+                    .map(|face| {
+                        target_faces
+                            .iter()
+                            .position(|candidate| candidate == face)
+                            .unwrap()
+                    })
+                    .collect();
+                // Native same-input owning traversal, not raw arena indices.
+                assert_eq!(kept_labels, [0]);
+                assert_eq!(deleted_labels, [3, 4, 7, 5]);
                 for face in &selected.kept {
                     session.intermediate_brep().unwrap().face(*face)?;
                 }
@@ -421,11 +445,13 @@ mod tests {
         let mut session = FilletSession::new(&mut k, &mut target).unwrap();
         session.objects.intermediate = Some(fillet);
         let count = session.objects.notification_records.len();
+        let editing = session.target().editing_enabled();
         let mut selected = OriginalSurfaceSelection::default();
         assert!(session
             .select_original_fillet_surfaces(&mut k, &mut selected)
             .is_err());
         assert_eq!(session.objects.notification_records.len(), count);
+        assert_eq!(session.target().editing_enabled(), editing);
         assert!(selected.kept.is_empty() && selected.deleted.is_empty());
         for mark in [MarkType::Mark, MarkType::Mark2, MarkType::Mark3] {
             assert!(!k.context.is_mark_locked(mark));

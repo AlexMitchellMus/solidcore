@@ -2844,6 +2844,120 @@ mod tests {
     }
 
     #[test]
+    fn retained_trim_keeps_body_marks_and_successful_prefix_on_error() {
+        use crate::topology::topology::Topology;
+        use std::collections::BTreeMap;
+
+        #[derive(Default)]
+        struct RetainedMarks(BTreeMap<(bool, Entity), Topology>);
+        impl TrimOriginalSurfacesMarks for RetainedMarks {
+            fn is_marked(
+                &self,
+                k: &Kernel,
+                body: TrimOriginalBody,
+                entity: Entity,
+                mark: MarkType,
+            ) -> bool {
+                self.0
+                    .get(&(body == TrimOriginalBody::Target, entity))
+                    .is_some_and(|record| record.is_marked(&k.context, mark))
+            }
+            fn mark(&mut self, k: &Kernel, body: TrimOriginalBody, entity: Entity, mark: MarkType) {
+                self.0
+                    .entry((body == TrimOriginalBody::Target, entity))
+                    .or_default()
+                    .mark(Some(&k.context), mark);
+            }
+        }
+
+        let mut k = Kernel::default();
+        let mut fillet =
+            crate::primitive::api_primitives::create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0)
+                .unwrap();
+        let mut target =
+            crate::primitive::api_primitives::create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0)
+                .unwrap();
+        let mut pseudo = FilletBrep::new();
+        let (g, rails) = two_rail_geom(&mut pseudo, &k);
+        let id = FilletSolverId(23);
+        pseudo.geom_mut(g).unwrap().solver = Some(id);
+        let fs = solver(false);
+        let edge = fillet.edge_list()[0];
+        pseudo.fillet_edge_mut(rails[0]).unwrap().fillet_brep_edge1 = Some(edge);
+        let lock = MarkLock::new(core::slice::from_mut(&mut k.context), 0, ALL_MARKS).unwrap();
+        let mark = lock.mark_type();
+        let locks = [lock];
+        let mut records = RetainedMarks::default();
+        let face = target.face_list()[0];
+        assert_eq!(face, fillet.face_list()[0]);
+        records.mark(&k, TrimOriginalBody::Target, Entity::Face(face), mark);
+        let original_target_record = *records.0.get(&(true, Entity::Face(face))).unwrap();
+        let key = |_: EdgeId| ObjectRef {
+            type_code: 16001,
+            key: ObjectKey(0),
+        };
+        // A dangling mate fails AFTER collecting the real fillet faces. This
+        // defined Rust error tests retained prefix state, not native parity.
+        let dangling_mate = |_: EdgeId| Some(EdgeId::from_index(u32::MAX));
+        let env = TrimOriginalSurfacesEnv {
+            brep_mate: &dangling_mate,
+            fillet_edge_key: &key,
+            target_context: Some(0),
+        };
+        let mut kept = Vec::new();
+        let mut deleted = Vec::new();
+
+        // Wrong actual solver is rejected before touching marks or outputs.
+        let before = records.0.clone();
+        let error = pseudo
+            .trim_original_surfaces_with_solver(
+                &k,
+                g,
+                &mut fillet,
+                &mut target,
+                &mut records,
+                &mut kept,
+                &mut deleted,
+                &locks,
+                &env,
+                FilletSolverId(22),
+                &fs,
+            )
+            .unwrap_err();
+        assert!(matches!(error, SolidError::InvalidInput { .. }));
+        assert_eq!(records.0, before);
+        assert!(kept.is_empty() && deleted.is_empty());
+
+        pseudo
+            .trim_original_surfaces_with_solver(
+                &k,
+                g,
+                &mut fillet,
+                &mut target,
+                &mut records,
+                &mut kept,
+                &mut deleted,
+                &locks,
+                &env,
+                id,
+                &fs,
+            )
+            .unwrap_err();
+        assert_eq!(kept.len(), fillet.face_list().len());
+        assert!(deleted.is_empty());
+        assert_eq!(
+            *records.0.get(&(true, Entity::Face(face))).unwrap(),
+            original_target_record
+        );
+        for &f in fillet.face_list() {
+            assert!(records.is_marked(&k, TrimOriginalBody::Fillet, Entity::Face(f), mark));
+        }
+        // One body-qualified store distinguishes equal local ids. The target
+        // seed does not suppress the actual fillet traversal.
+        assert!(records.is_marked(&k, TrimOriginalBody::Target, Entity::Face(face), mark));
+    }
+
+    #[test]
     fn trim_original_surfaces_skips_rails_without_mated_edges() {
         let mut k = Kernel::default();
         let mut fb = FilletBrep::new();
