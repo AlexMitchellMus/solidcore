@@ -20,12 +20,14 @@ shim registers no context callbacks, and each face of the vertex to delete was n
 NULL` upstream, which would go on to merge shells across B-reps) is `InvalidInput`; no
 harness B-rep has one.
 
-Result: `boolean.topology_intersector_p1` 830 cases, 828 passed, 2 deferred (was 827 / 3),
-`with_values` 825 (was 824); `--seeds 6000` 6020 of 6030 passed, the 10 deferred are all
-`SmEdge::GetTolerance` (`topology.edge`). The same-B-rep branch of `Two::glue_vertices`
+Result: on the base before #890, `boolean.topology_intersector_p1` went from 827 passed /
+3 deferred to 828 / 2 (`with_values` 824 to 825), the 2 deferred being
+`SmEdge::GetTolerance` (`topology.edge`). On the tree merged with main after #890 it is
+830 of 830, 0 deferred, `with_values` 827, perturb SENSITIVE 830/830; `--seeds 6000`
+6030 of 6030. The same-B-rep branch of `Two::glue_vertices`
 does not delete the B-rep cache either (p5's `notify_pre_edit` holds none); not changed
 here because no case needs it.
 
 Cost if the ruling is wrong: a cross-B-rep glue that upstream completes (impossible by the
-region argument above) would be reported as an error by the port. The unit stays `partial`
-until `SmEdge::GetTolerance` is wired (open PR #890 wires it).
+region argument above) would be reported as an error by the port. With #890 on main this
+was the unit's last deferral, so the unit is promoted to `green`.
