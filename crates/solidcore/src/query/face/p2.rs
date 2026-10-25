@@ -30,9 +30,10 @@
 //!   `curve_on_classify_cached`, which run the same code on a private copy of the B-rep
 //!   (`SnapshotObjects` over `CurveOnClassifyCache`'s snapshot; the healer copies some of
 //!   its edits back). That entry goes once its last callers are converted: the stage 3 /
-//!   `ClassifyLoops` path, the `&Brep` face queries of `topology::face::p2`
-//!   (`CalculateAnInternalPoint`, `CreateCurvesByTrimming`), the `intersect::topology_solver`
-//!   and `blend::fillet_solver` classifications, and the boolean, proto-topology,
+//!   `ClassifyLoops` path, the `intersect::topology_solver` (its face silhouettes'
+//!   `CreateCurvesByTrimming`, through `topology::face::p2`'s snapshot entry) and
+//!   `blend::fillet_solver` classifications, `sm_CountContainedSamples`'
+//!   `CalculateAnInternalPoint` in `query::api_queries`, and the boolean, proto-topology,
 //!   `topology::face::p3` and fillet session classifiers.
 //! - **Object model.** The face is a record of a [`Brep`]; the functions take the
 //!   B-rep and the face's id. Classification objects are [`EntityRef`]s (the face, edge
