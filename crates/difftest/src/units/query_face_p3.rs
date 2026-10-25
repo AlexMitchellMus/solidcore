@@ -7,10 +7,12 @@
 //! `MakeFaceWithCurves` with line and circle UV trims and vertex loops over a B-spline or a
 //! real `SmCylinder` / `SmSphere` / `SmTorus` / `SmCone`, or an analytic surface's natural
 //! face). There is no Rust B-rep builder: the Rust side imports the graph the shim exports
-//! (unit `topology.face_p2`'s layout and importer). Faces whose surface, and edges whose
-//! curve, the importer cannot reproduce exactly (an `SmBSplineSurface` subclass other than
-//! `SmPlane`, an `SmBSplineCurve` subclass other than `SmLine`) are not compared: both
-//! sides report `inexact_geometry` when the operation evaluates them.
+//! (unit `topology.face_p2`'s layout and importer, with unit `query.face_p4`'s exact
+//! records of analytic face surfaces and ellipse edge curves). Faces whose surface, and
+//! edges whose curve, the importer still cannot reproduce exactly (no lossless record:
+//! an `SmBSplineSurface` subclass other than `SmPlane`, an `SmBSplineCurve` subclass
+//! other than `SmLine`) are not compared: both sides report `inexact_geometry` when the
+//! operation evaluates them.
 //!
 //! **Operations.**
 //! - `tight`: `SmFace::CalculateTightBoundingBox` of a face: status and box.

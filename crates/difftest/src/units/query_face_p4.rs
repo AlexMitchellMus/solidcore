@@ -27,11 +27,16 @@
 //! **Deferred.** Fresh props of a closed surface need `SmFace::HasSeamProblem`
 //! (`topology.face_p4`), which reaches its unported callees.
 //!
-//! **Inexact geometry.** The importer approximates the edge curves of most built faces
-//! (unit `topology.face_p2`'s `Exact`); the cases are still compared, since the loop
-//! classification is integer-valued. Two scale-`1e-3` cylinder cases where the
-//! approximation moves the bisector across a loop are known mismatches
-//! (`crates/difftest/known_mismatches.toml`).
+//! **Exact geometry.** The shim exports an analytic face surface (`SmCylinder`,
+//! `SmSphere`, `SmTorus`, `SmCone`, ...) and an ellipse or circle edge curve with its
+//! exact database record when that record is lossless (`sc_analytic_export.h`,
+//! `sc_exact_curve_export.h`), and the importer rebuilds them with the ported readers.
+//! Before, it imported their B-spline parts only: the loop bisector then ran on
+//! approximated geometry and flipped a loop classification in three cylinder cases (two
+//! at scale `1e-3`, and `gen0360` on macOS only, where Apple's `sin`/`cos` moved the C++
+//! side), now the named regressions `cyl_*` in `cases.json`. Geometry still imported as
+//! a B-spline part (unit `topology.face_p2`'s `Exact`) stays compared, since the loop
+//! classification is integer-valued.
 //!
 //! **Rejected** (both sides report `rejected`): the inputs the FFI wrapper documents,
 //! where `ClassifyLoops` would read outside its arrays.

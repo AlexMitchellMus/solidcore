@@ -22,16 +22,6 @@ case = "nurbs_off_Mouse_-0.05"
 why = "TurnToNURBS tracker: C++ sm_FixUVTrimCurves trims two UV trim curves at their vertex drop points and stretches them back (Trim + EditParameterization, two SM_NO_POST_EDITs each); the port skips that step on purpose (WR-255, #570), so its tracker lacks those 4 events (plan/findings.md: topology.brep_p3: TurnToNURBS UV trim curve edits notify)"
 
 [[mismatch]]
-unit = "query.face_p4"
-case = "gen0157"
-why = "the importer's approximation of the analytic edge curves moves the loop bisector's UV line (rel 1.6e-8) across a loop at scale 1e-3 (plan/findings.md: query.face_p4: two scale-1e-3 cylinder cases move with the importer's curve approximation) [ints.classify_loop_ios[4] cpp 1 rust 0]"
-
-[[mismatch]]
-unit = "query.face_p4"
-case = "gen0300"
-why = "the importer's approximation of the analytic edge curves moves the loop bisector's UV line (rel 1.6e-8) across a loop at scale 1e-3 (plan/findings.md: query.face_p4: two scale-1e-3 cylinder cases move with the importer's curve approximation) [ints.classify_loop_ios[2] cpp 2 rust 1]"
-
-[[mismatch]]
 unit = "topology.brep_p10"
 case = "healer10_always_Defeature_inset_cube"
 why = "still differs with ClassifyLoops' loop bisector keeping its B-rep edits (the healer copies its snapshot's UV trims, tolerance growth and gap caches back); cause not traced (plan/findings.md: ClassifyLoops' loop bisector keeps its B-rep edits: 37 of 49 listed cases match, 12 topology.brep_p10 cases still differ) [ints.ints[1336] cpp 1 rust 0]"
