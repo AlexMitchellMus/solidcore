@@ -296,7 +296,8 @@ SmStatus make_surface(const SmContext& ctx, Rd& r, SmSurface*& out)
     {
         CurveData c;
         read_curve(r, c);
-        SmPoint3d a = r.pt();
+        // revolution: axis_origin[3] axis_dir[3]; extrusion: dir[3] magnitude
+        SmPoint3d a = kind == 5 ? r.pt() : SmPoint3d(0.0, 0.0, 0.0);
         SmVector3d d = r.pt();
         double mag = kind == 6 ? r.num() : 0.0;
         if (!r.ok)

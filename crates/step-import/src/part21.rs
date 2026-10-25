@@ -312,7 +312,11 @@ impl<'a> Lexer<'a> {
                 self.pos += 1;
                 Ok(Tok::Binary(v))
             }
-            b'.' if self.s.get(self.pos + 1).is_some_and(u8::is_ascii_alphabetic) => {
+            b'.' if self
+                .s
+                .get(self.pos + 1)
+                .is_some_and(u8::is_ascii_alphabetic) =>
+            {
                 self.pos += 1;
                 let d = self.take_while(|b| b.is_ascii_alphanumeric() || b == b'_');
                 let v = String::from_utf8_lossy(d).into_owned();
@@ -324,8 +328,12 @@ impl<'a> Lexer<'a> {
             }
             b'+' | b'-' | b'.' | b'0'..=b'9' => self.number(),
             b'!' | b'A'..=b'Z' | b'a'..=b'z' | b'_' => {
-                let d = self.take_while(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'!');
-                Ok(Tok::Keyword(String::from_utf8_lossy(d).to_ascii_uppercase()))
+                let d = self.take_while(|b| {
+                    b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'!'
+                });
+                Ok(Tok::Keyword(
+                    String::from_utf8_lossy(d).to_ascii_uppercase(),
+                ))
             }
             other => self.err(format!("unexpected character 0x{other:02x}")),
         }
@@ -401,7 +409,8 @@ impl<'a> Parser<'a> {
             self.bump()?;
             Ok(())
         } else {
-            self.lx.err(format!("expected {what}, found {:?}", self.tok))
+            self.lx
+                .err(format!("expected {what}, found {:?}", self.tok))
         }
     }
 
@@ -515,7 +524,11 @@ pub fn parse(bytes: &[u8], limits: &Limits) -> Result<StepFile, ParseError> {
     let mut out = StepFile::default();
     match p.bump()? {
         Tok::Keyword(k) if k == "ISO-10303-21" => {}
-        other => return p.lx.err(format!("not a Part 21 file (starts with {other:?})")),
+        other => {
+            return p
+                .lx
+                .err(format!("not a Part 21 file (starts with {other:?})"))
+        }
     }
     p.expect(&Tok::Semi, "';'")?;
     loop {
@@ -561,10 +574,9 @@ pub fn parse(bytes: &[u8], limits: &Limits) -> Result<StepFile, ParseError> {
                             let inst = p.instance()?;
                             p.expect(&Tok::Semi, "';' after an instance")?;
                             if out.entities.len() >= limits.max_entities {
-                                return p.lx.err(format!(
-                                    "more than {} entities",
-                                    limits.max_entities
-                                ));
+                                return p
+                                    .lx
+                                    .err(format!("more than {} entities", limits.max_entities));
                             }
                             if out.entities.insert(id, inst).is_some() {
                                 return p.lx.err(format!("duplicate entity #{id}"));
@@ -623,8 +635,16 @@ mod tests {
     fn rejects_bad_input() {
         let lim = Limits::default();
         assert!(parse(b"", &lim).is_err());
-        assert!(parse(b"ISO-10303-21;\nDATA;\n#1=A(;\nENDSEC;END-ISO-10303-21;", &lim).is_err());
-        assert!(parse(b"ISO-10303-21;DATA;#1=A();#1=B();ENDSEC;END-ISO-10303-21;", &lim).is_err());
+        assert!(parse(
+            b"ISO-10303-21;\nDATA;\n#1=A(;\nENDSEC;END-ISO-10303-21;",
+            &lim
+        )
+        .is_err());
+        assert!(parse(
+            b"ISO-10303-21;DATA;#1=A();#1=B();ENDSEC;END-ISO-10303-21;",
+            &lim
+        )
+        .is_err());
         assert!(parse(b"ISO-10303-21;DATA;#1=A('x);ENDSEC;END-ISO-10303-21;", &lim).is_err());
         let deep = format!(
             "ISO-10303-21;DATA;#1=A({}{});ENDSEC;END-ISO-10303-21;",
@@ -636,7 +656,11 @@ mod tests {
             max_entities: 1,
             ..lim
         };
-        assert!(parse(b"ISO-10303-21;DATA;#1=A();#2=B();ENDSEC;END-ISO-10303-21;", &few).is_err());
+        assert!(parse(
+            b"ISO-10303-21;DATA;#1=A();#2=B();ENDSEC;END-ISO-10303-21;",
+            &few
+        )
+        .is_err());
     }
 
     #[test]

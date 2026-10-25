@@ -26,7 +26,9 @@ fn files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 fn main() {
-    let dir = std::env::args().nth(1).unwrap_or_else(|| "corpus/steptools".into());
+    let dir = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "corpus/steptools".into());
     let mut list = Vec::new();
     files(Path::new(&dir), &mut list);
     let mut reasons: BTreeMap<String, usize> = BTreeMap::new();
@@ -37,7 +39,11 @@ fn main() {
             Err(e) => println!("{name}: PARSE ERROR {e}"),
             Ok(m) => {
                 let (f, e, v): (usize, usize, usize) = m.bodies.iter().fold((0, 0, 0), |a, b| {
-                    (a.0 + b.faces.len(), a.1 + b.edges.len(), a.2 + b.vertices.len())
+                    (
+                        a.0 + b.faces.len(),
+                        a.1 + b.edges.len(),
+                        a.2 + b.vertices.len(),
+                    )
                 });
                 println!(
                     "{name}: bodies={} skipped={} faces={f} edges={e} vertices={v} instances={}",

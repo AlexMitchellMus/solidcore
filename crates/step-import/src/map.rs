@@ -147,8 +147,8 @@ impl<'a> Mapper<'a> {
         if r.name != "VECTOR" {
             return Err(MapError::Unsupported(r.name.clone()));
         }
-        let d = unit(self.direction(param(r, 1)?)?)
-            .map_or_else(|| invalid("zero direction"), Ok)?;
+        let d =
+            unit(self.direction(param(r, 1)?)?).map_or_else(|| invalid("zero direction"), Ok)?;
         let m = num(param(r, 2)?)? * s;
         Ok((d, m))
     }
@@ -228,7 +228,10 @@ impl<'a> Mapper<'a> {
             }
             return Ok((kind, v * f2));
         }
-        Err(MapError::Unsupported(format!("unit #{id} ({})", inst.type_name())))
+        Err(MapError::Unsupported(format!(
+            "unit #{id} ({})",
+            inst.type_name()
+        )))
     }
 
     fn context_units(&self, id: u64) -> R<Units> {
@@ -417,7 +420,10 @@ impl<'a> Mapper<'a> {
     /// name when the record is a simple instance).
     fn bspline_curve_base(&self, ps: &[Param], at: usize, s: f64) -> R<(u32, Vec<P3>)> {
         let degree = degree_of(ps.get(at))?;
-        let pts = list(ps.get(at + 1).map_or_else(|| invalid("missing points"), Ok)?)?;
+        let pts = list(
+            ps.get(at + 1)
+                .map_or_else(|| invalid("missing points"), Ok)?,
+        )?;
         let mut points = Vec::new();
         for p in pts {
             points.push(self.point(p, s)?);
@@ -434,8 +440,12 @@ impl<'a> Mapper<'a> {
         ps: &[Param],
         weights: Option<Vec<f64>>,
     ) -> R<Curve> {
-        let mults = mult_list(list(ps.first().map_or_else(|| invalid("missing mults"), Ok)?)?)?;
-        let knots = num_list(list(ps.get(1).map_or_else(|| invalid("missing knots"), Ok)?)?)?;
+        let mults = mult_list(list(
+            ps.first().map_or_else(|| invalid("missing mults"), Ok)?,
+        )?)?;
+        let knots = num_list(list(
+            ps.get(1).map_or_else(|| invalid("missing knots"), Ok)?,
+        )?)?;
         let b = BSplineCurve {
             degree,
             points,
@@ -564,7 +574,10 @@ impl<'a> Mapper<'a> {
     fn bspline_surface_base(&self, ps: &[Param], at: usize, s: f64) -> R<(u32, u32, Vec<Vec<P3>>)> {
         let ud = degree_of(ps.get(at))?;
         let vd = degree_of(ps.get(at + 1))?;
-        let rows = list(ps.get(at + 2).map_or_else(|| invalid("missing points"), Ok)?)?;
+        let rows = list(
+            ps.get(at + 2)
+                .map_or_else(|| invalid("missing points"), Ok)?,
+        )?;
         let mut pts = Vec::new();
         for row in rows {
             let mut out = Vec::new();
@@ -671,7 +684,9 @@ impl<'a> Mapper<'a> {
         }
         let mut out = Vec::new();
         for (k, &(a_id, a)) in vs.iter().enumerate() {
-            let &(b_id, b) = vs.get((k + 1) % vs.len()).map_or_else(|| invalid("poly"), Ok)?;
+            let &(b_id, b) = vs
+                .get((k + 1) % vs.len())
+                .map_or_else(|| invalid("poly"), Ok)?;
             if a_id == b_id {
                 continue;
             }
@@ -686,7 +701,8 @@ impl<'a> Mapper<'a> {
                     return invalid("poly vertex");
                 };
                 let len = dist(ps, pe);
-                let dir = unit(geom::sub(pe, ps)).map_or_else(|| invalid("zero-length poly edge"), Ok)?;
+                let dir =
+                    unit(geom::sub(pe, ps)).map_or_else(|| invalid("zero-length poly edge"), Ok)?;
                 let i = c.edges.len();
                 c.edges.push(Edge {
                     step_id: 0,
@@ -762,7 +778,11 @@ impl<'a> Mapper<'a> {
             "ORIENTED_FACE" => {
                 let inner = self.face(ref_of(param(r, 2)?)?, c, depth + 1)?;
                 if !boolean(param(r, 3)?)? {
-                    let f = c.faces.get(inner).cloned().map_or_else(|| invalid("face"), Ok)?;
+                    let f = c
+                        .faces
+                        .get(inner)
+                        .cloned()
+                        .map_or_else(|| invalid("face"), Ok)?;
                     let mut f = f;
                     f.step_id = id;
                     f.same_sense = !f.same_sense;
@@ -986,7 +1006,10 @@ pub(crate) fn check_bspline_curve(b: &BSplineCurve) -> R<()> {
 }
 
 pub(crate) fn check_knots(knots: &[f64], mults: &[u32], degree: usize) -> R<()> {
-    if knots.windows(2).any(|w| matches!(w, [a, b] if a.partial_cmp(b) != Some(std::cmp::Ordering::Less))) {
+    if knots
+        .windows(2)
+        .any(|w| matches!(w, [a, b] if a.partial_cmp(b) != Some(std::cmp::Ordering::Less)))
+    {
         return invalid("knots not increasing");
     }
     if mults.iter().any(|&m| m == 0 || m as usize > degree + 1) {
@@ -1088,10 +1111,18 @@ fn finish_bspline_surface(
     ps: &[Param],
     weights: Option<Vec<Vec<f64>>>,
 ) -> R<Surface> {
-    let u_mults = mult_list(list(ps.first().map_or_else(|| invalid("missing mults"), Ok)?)?)?;
-    let v_mults = mult_list(list(ps.get(1).map_or_else(|| invalid("missing mults"), Ok)?)?)?;
-    let u_knots = num_list(list(ps.get(2).map_or_else(|| invalid("missing knots"), Ok)?)?)?;
-    let v_knots = num_list(list(ps.get(3).map_or_else(|| invalid("missing knots"), Ok)?)?)?;
+    let u_mults = mult_list(list(
+        ps.first().map_or_else(|| invalid("missing mults"), Ok)?,
+    )?)?;
+    let v_mults = mult_list(list(
+        ps.get(1).map_or_else(|| invalid("missing mults"), Ok)?,
+    )?)?;
+    let u_knots = num_list(list(
+        ps.get(2).map_or_else(|| invalid("missing knots"), Ok)?,
+    )?)?;
+    let v_knots = num_list(list(
+        ps.get(3).map_or_else(|| invalid("missing knots"), Ok)?,
+    )?)?;
     let nu = points.len();
     let nv = points.first().map_or(0, Vec::len);
     if nu < ud as usize + 1 || nv < vd as usize + 1 || points.iter().any(|r| r.len() != nv) {
@@ -1148,7 +1179,9 @@ fn num(p: &Param) -> R<f64> {
 }
 
 fn num_at(l: &[Param], i: usize) -> R<f64> {
-    num(l.get(i).map_or_else(|| invalid("short coordinate list"), Ok)?)
+    num(l
+        .get(i)
+        .map_or_else(|| invalid("short coordinate list"), Ok)?)
 }
 
 fn num_list(l: &[Param]) -> R<Vec<f64>> {
@@ -1283,9 +1316,7 @@ mod tests {
         );
         assert_eq!(m.skipped[0].reason, "unsupported: OFFSET_SURFACE");
         // a reference cycle stops at the depth bound
-        let m = model(
-            "#1=MANIFOLD_SOLID_BREP('',#2);#2=ORIENTED_CLOSED_SHELL('',*,#2,.F.);",
-        );
+        let m = model("#1=MANIFOLD_SOLID_BREP('',#2);#2=ORIENTED_CLOSED_SHELL('',*,#2,.F.);");
         assert!(m.skipped[0].reason.contains("too deep"));
     }
 }

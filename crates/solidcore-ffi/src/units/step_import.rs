@@ -2,7 +2,7 @@
 //!
 //! Shim: `harness/cpp/shim/step_import.cpp` (`sc_step_import_build`): builds one SMLib
 //! B-rep from a body of the clean-room STEP importer, encoded by
-//! [`step_import::flat::encode`], with SM_API/SMLib calls only, and reports the stages
+//! [`step_import::flat::encode`], with `SM_API`/`SMLib` calls only, and reports the stages
 //! the Rust side (`crates/difftest/src/step.rs`) reports for the same body.
 //!
 //! Output: stage blocks `id n value*n`, ids [`STAGES`] (layout in the shim's header).

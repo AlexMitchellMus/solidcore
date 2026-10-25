@@ -147,7 +147,12 @@ END-ISO-10303-21;
         assert_eq!(t.unit_mm, 10.0);
         assert!((t.uncertainty_mm.unwrap() - 1e-4).abs() < 1e-18);
         assert_eq!(
-            (t.shells.len(), t.faces.len(), t.edges.len(), t.vertices.len()),
+            (
+                t.shells.len(),
+                t.faces.len(),
+                t.edges.len(),
+                t.vertices.len()
+            ),
             (1, 4, 6, 4)
         );
         assert!(t.shells[0].closed);

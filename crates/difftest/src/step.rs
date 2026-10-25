@@ -37,7 +37,9 @@ use solidcore::heal::stitch::p1::api_stitch_into_solid;
 use solidcore::kernel::Kernel;
 use solidcore::mass::integrator::properties::{brep_area, brep_volume, PropertyAttributes};
 use solidcore::nurbs::b_spline_curve::{BSplineCurve, BSplineCurveForm, CanonicalData, KnotType};
-use solidcore::nurbs::b_spline_surface::{BSplineSurface, BSplineSurfaceForm, CanonicalSurfaceData};
+use solidcore::nurbs::b_spline_surface::{
+    BSplineSurface, BSplineSurfaceForm, CanonicalSurfaceData,
+};
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::query::api_queries::brep_is_manifold_solid;
 use solidcore::surface::cone::Cone;
@@ -57,8 +59,8 @@ use solidcore::{EntityRef, SolidError};
 
 use step_import::model::{self as sm, Body, Bound};
 
-use crate::ssi::{exit_detail, glob_match};
 use crate::compare::values_agree;
+use crate::ssi::{exit_detail, glob_match};
 use crate::HarnessError;
 
 /// Relative accuracy of the area and volume integrations.
@@ -68,7 +70,10 @@ pub const TIMEOUT: Duration = Duration::from_secs(600);
 /// Where the corpus is fetched.
 pub const CORPUS_DIR: &str = "corpus/steptools";
 /// Verdicts, in summary order.
-pub const VERDICTS: [&str; 5] = ["MATCH", "DIFF", "DEFERRED", "CRASH", "SKIPPED"];
+/// `HEAL-DIFF`: every build stage agrees and the first difference is in `SmApiHealBrep`
+/// or after it; `DIFF`: a build stage (faces, stitch, counts, manifold, area, volume)
+/// differs.
+pub const VERDICTS: [&str; 6] = ["MATCH", "HEAL-DIFF", "DIFF", "DEFERRED", "CRASH", "SKIPPED"];
 
 /// What one kernel reported for one body: stages in order, and where the Rust side
 /// stopped on unported code.
@@ -144,7 +149,9 @@ fn status<T>(r: &Result<T, SolidError>, notes: &mut Vec<String>) -> Result<f64, 
             Err(Deferred((*unit).to_string(), (*upstream).to_string()))
         }
         Err(SolidError::Upstream { code, .. }) => Ok(f64::from(*code)),
-        Err(SolidError::InvalidInput { .. }) => Ok(f64::from(solidcore::error::SM_ERR_INVALID_INPUT)),
+        Err(SolidError::InvalidInput { .. }) => {
+            Ok(f64::from(solidcore::error::SM_ERR_INVALID_INPUT))
+        }
         Err(e) => {
             if notes.len() < 20 {
                 notes.push(e.to_string());
@@ -168,11 +175,7 @@ fn usizes(m: &[u32]) -> Vec<usize> {
 
 /// The curve bounded to `[lo, hi]` (an edge) or unbounded (a swept curve), as the shim's
 /// `make_curve`.
-fn make_curve(
-    k: &Kernel,
-    c: &sm::Curve,
-    bounds: Option<(f64, f64)>,
-) -> Result<Curve, SolidError> {
+fn make_curve(k: &Kernel, c: &sm::Curve, bounds: Option<(f64, f64)>) -> Result<Curve, SolidError> {
     match c {
         sm::Curve::Line {
             origin,
@@ -227,17 +230,19 @@ fn make_curve(
                 .map(|(lo, hi)| Extent1d::from_min_max(lo, hi));
             let pts: Vec<Point3> = b.points.iter().map(|p| v3(*p)).collect();
             let mults = usizes(&b.mults);
-            Ok(Curve::from(BSplineCurve::create_canonical(&CanonicalData {
-                dim: 3,
-                degree: b.degree as usize,
-                control_points: &pts,
-                form: BSplineCurveForm::Unspecified,
-                knot_multiplicities: &mults,
-                knots: &b.knots,
-                knot_type: KnotType::Unspecified,
-                weights: b.weights.as_deref(),
-                trim,
-            })?))
+            Ok(Curve::from(BSplineCurve::create_canonical(
+                &CanonicalData {
+                    dim: 3,
+                    degree: b.degree as usize,
+                    control_points: &pts,
+                    form: BSplineCurveForm::Unspecified,
+                    knot_multiplicities: &mults,
+                    knots: &b.knots,
+                    knot_type: KnotType::Unspecified,
+                    weights: b.weights.as_deref(),
+                    trim,
+                },
+            )?))
         }
     }
 }
@@ -512,13 +517,15 @@ fn build_rust_stages(body: &Body, rec: &mut Record) -> Result<(), Deferred> {
         };
         let v = brep_volume(&k, &mut b, ACCURACY, &attrs);
         let s = status(&v, &mut notes)?;
-        rec.stages.push(("volume".into(), vec![s, v.unwrap_or(0.0)]));
+        rec.stages
+            .push(("volume".into(), vec![s, v.unwrap_or(0.0)]));
         let h = api_heal_brep(&mut k, Some(&mut b));
         let s = status(&h, &mut notes)?;
         rec.stages.push(("heal".into(), vec![s]));
         let c = counts(&mut k, &b);
         status(&c, &mut notes)?;
-        rec.stages.push(("healed_counts".into(), c.unwrap_or_default()));
+        rec.stages
+            .push(("healed_counts".into(), c.unwrap_or_default()));
         let m = brep_is_manifold_solid(&b);
         let s = status(&m, &mut notes)?;
         rec.stages.push((
@@ -527,7 +534,8 @@ fn build_rust_stages(body: &Body, rec: &mut Record) -> Result<(), Deferred> {
         ));
         let v = brep_volume(&k, &mut b, ACCURACY, &attrs);
         let s = status(&v, &mut notes)?;
-        rec.stages.push(("healed_volume".into(), vec![s, v.unwrap_or(0.0)]));
+        rec.stages
+            .push(("healed_volume".into(), vec![s, v.unwrap_or(0.0)]));
         Ok(())
     })();
     rec.notes.extend(notes);
@@ -772,9 +780,9 @@ fn side_summary(r: &RunResult) -> Value {
     match r {
         Err(e) => json!({"error": e}),
         Ok(rec) => {
-            let faces = rec.stage("faces").map(|v| {
-                json!({"total": v.first(), "made": v.get(1), "failed": v.get(2)})
-            });
+            let faces = rec
+                .stage("faces")
+                .map(|v| json!({"total": v.first(), "made": v.get(1), "failed": v.get(2)}));
             json!({
                 "faces": faces,
                 "stitch": rec.stage("stitch"),
@@ -806,10 +814,17 @@ fn verdict(results: &[RunResult]) -> (String, Value) {
         Err(e) => return ("CRASH".into(), json!({"side": "rust", "detail": e})),
         Ok(r) => r,
     };
-    let diff = cpp.and_then(|c| c.as_ref().ok()).and_then(|c| first_difference(c, rust));
+    let diff = cpp
+        .and_then(|c| c.as_ref().ok())
+        .and_then(|c| first_difference(c, rust));
     if let Some((stage, i, a, b)) = diff {
+        let v = if stage.starts_with("heal") {
+            "HEAL-DIFF"
+        } else {
+            "DIFF"
+        };
         return (
-            "DIFF".into(),
+            v.into(),
             json!({"stage": stage, "index": i, "cpp": a, "rust": b}),
         );
     }
@@ -844,11 +859,15 @@ fn run_corpus_inner(root: &Path, opts: &CorpusOptions) -> Result<(), HarnessErro
         )));
     }
     files.retain(|f| {
-        let rel = f.strip_prefix(&dir).unwrap_or(f).to_string_lossy().into_owned();
+        let rel = f
+            .strip_prefix(&dir)
+            .unwrap_or(f)
+            .to_string_lossy()
+            .into_owned();
         opts.glob.as_deref().is_none_or(|g| glob_match(g, &rel))
     });
     // smallest first
-    files.sort_by_key(|f| (std::fs::metadata(f).map(|m| m.len()).unwrap_or(0), f.clone()));
+    files.sort_by_key(|f| (std::fs::metadata(f).map_or(0, |m| m.len()), f.clone()));
     let report_dir = opts
         .report_dir
         .clone()
@@ -863,7 +882,11 @@ fn run_corpus_inner(root: &Path, opts: &CorpusOptions) -> Result<(), HarnessErro
     let mut work_file: Vec<usize> = Vec::new();
     let mut unsupported: BTreeMap<String, usize> = BTreeMap::new();
     for (fi, f) in files.iter().enumerate() {
-        let rel = f.strip_prefix(&dir).unwrap_or(f).to_string_lossy().into_owned();
+        let rel = f
+            .strip_prefix(&dir)
+            .unwrap_or(f)
+            .to_string_lossy()
+            .into_owned();
         let bytes = std::fs::read(f).map_err(|e| HarnessError::new(format!("{rel}: {e}")))?;
         match step_import::import(&bytes, &step_import::Limits::default()) {
             Err(e) => file_entries.push(json!({"file": rel, "parse": e.to_string(), "bodies": []})),
@@ -941,12 +964,12 @@ fn run_corpus_inner(root: &Path, opts: &CorpusOptions) -> Result<(), HarnessErro
             let (v, detail) = verdict(res);
             *tally.entry(v.clone()).or_default() += 1;
             if v == "DEFERRED" {
-                if let Some(u) = detail["unit"].as_str() {
+                if let Some(u) = detail.get("unit").and_then(Value::as_str) {
                     *deferred_units.entry(u.to_string()).or_default() += 1;
                 }
             }
-            if v == "DIFF" {
-                if let Some(s) = detail["stage"].as_str() {
+            if v == "DIFF" || v == "HEAL-DIFF" {
+                if let Some(s) = detail.get("stage").and_then(Value::as_str) {
                     *diff_stages.entry(s.to_string()).or_default() += 1;
                 }
             }
@@ -991,7 +1014,12 @@ fn run_corpus_inner(root: &Path, opts: &CorpusOptions) -> Result<(), HarnessErro
         }
     }
     let summary: Vec<String> = tally.iter().map(|(k, v)| format!("{k}={v}")).collect();
-    println!("STEP-CORPUS files={} bodies={} {}", files.len(), work.len(), summary.join(" "));
+    println!(
+        "STEP-CORPUS files={} bodies={} {}",
+        files.len(),
+        work.len(),
+        summary.join(" ")
+    );
     if !deferred_units.is_empty() {
         println!("deferred on: {deferred_units:?}");
     }
@@ -1013,8 +1041,11 @@ fn run_corpus_inner(root: &Path, opts: &CorpusOptions) -> Result<(), HarnessErro
             "files": file_entries,
         });
         let path = report_dir.join("report.json");
-        std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap_or_default())
-            .map_err(|e| HarnessError::new(format!("{}: {e}", path.display())))?;
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&report).unwrap_or_default(),
+        )
+        .map_err(|e| HarnessError::new(format!("{}: {e}", path.display())))?;
         println!("report: {}", path.display());
     }
     Ok(())
