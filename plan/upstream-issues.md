@@ -1463,7 +1463,7 @@ meantime, whoever merges renumbers the new entry and every reference to it (here
 - **Confirmed:** yes (ASan, in the fork's C API tests); not reproduced in the solidcore difftest.
 - **Severity:** crash/UB (use-after-free).
 - **Fix:** tangency-labs/smlib af8db37: `IntersectInsertRelate` deletes the proto topology manager and returns the imprint's error, and `PiecewiseMerge` returns the error of its first `IntersectInsertRelate` (`SER`); the callers already propagate it.
-- **Rust port:** carries the fix (`TopologyIntersector::intersect_insert_relate`, `merge::p3::piecewise_merge`; test `piecewise_merge_ends_on_a_failed_intersect_insert_relate`).
+- **Rust port:** carries the fix (`TopologyIntersector::intersect_insert_relate`, `merge::p3::piecewise_merge`; test `piecewise_merge_ends_on_a_failed_intersect_insert_relate`). Since 2026-10-24 `intersect_insert_relate` also records `"UB-242"` in `Kernel::upstream_ub_passed`. The `boolean.topology_intersector_p2` shim's copy of `IntersectInsertRelate` now stops after a failed imprint in the same way, and both sides answer `-2`. Two generated cases (gen0111 torus/ellipsoid, gen0498 Endcap/toruswvy) reach it once `FaceIntersect` makes face caches on the lent B-reps. In both, the C++ `SmEdgeDefinition::Imprint` and `ImprintIntersections` return `SM_ERR_NULL_POINTER` exactly as the port does (checked with gdb).
 
 ### Topology
 
@@ -4178,3 +4178,19 @@ Numbering paragraph at the top says.
   port, these cases reached the port's UB-175 check; the C++ goes on (results of 8 and 7
   records).
 - **Confirmed:** by the port's teardown replay only; the C++ build was not instrumented.
+
+#### FAIL-3665. `SmApiBooleanDifference` fails (`SM_ERR`, 1001) cutting a column whose corner meets an internally tangent circle
+- **Location:** `SmMerge::MakeFaceuse` (three cases) and `SmBrep::MakeFaceTopology` (one), reached from `SmApiBooleanDifference`.
+- **What happens:** In `fixtures/solidcraft/3665-column-in-channel.json` every case fails at the cut of the r 3.04 cylinder centred at (0, 20) from the column (step 12 of `column_in_channel`, step 14 of the other three). That circle is internally tangent to the column's r 23.04 wall (r 23.039 in `control_column_clear`), so the column ends in a sharp corner on the wall. SolidCraft's expected volumes are closed forms; SMLib never reaches the final union.
+- **How found:** a standalone SM_API driver running the case steps on the C++ reference build (`SmApiCreateBox/Cylinder`, `SmApiBooleanIntersection/Difference`, `SmApiBrepCopy`), with gdb return breakpoints on `SmMerge::MakeFaceuse`, `SmBrep::MakeFaceTopology` and `SmBrep::TestClosureSplitRegion`.
+- **Confirmed:** yes, on the C++ build for main 92454ca60. The Rust port fails at the same step in the same function (`boolean::merge::p2::make_faceuse` and `topology::brep::p6`, status 1001).
+
+#### WR-259. `SmCone::IntersectWithCone` drops the line of two parallel cylinders when the face domain starts above the surface's bottom
+- **Location:** `source/SMLib/src/SmCone.cpp:2950`-`2971` (`SmCone::IntersectWithCone`, parallel non-coincident cylinder branch): `sLinePt` is the circle/circle intersection lifted to height `dMin` (`:2950`), tested by `STEPInversion` (`:2959`, `:2961`) and `ContainsPoint2d` on both domains (`:2970`); `dMin`/`dMax` are set at `:2797`-`2810` from the axial extents only.
+- **What happens:** The line's bottom end is a single point at v = 0 of the full cylinder. When a face's UV domain is trimmed above that (a cylinder face left by an earlier Boolean), the point lies outside the domain and the whole line is skipped, although the line crosses the domain over its length. The call returns `SM_SUCCESS` with `rbNeedsMoreIntersections` FALSE, so no general intersection runs either.
+- **Trigger:** `fixtures/solidcraft/3665-column-in-channel.json`: the cut of the r 3.04 cylinder at (0, 20) meets the column's r 23.04 cylinder face, whose domain an earlier Boolean trimmed to v in [0.8, 10.5]. The missing crossing line leaves the imprint chain open, so `SmMerge::MakeFaceuse` (`FindRadialSector`) or `SmBrep::MakeFaceTopology` returns `SM_ERR` (1001). This is the root cause of FAIL-3665.
+- **How found:** traced in the Rust port (face dumps after imprint, `FindRadialSector` candidates), then reproduced on the C++ reference.
+- **Confirmed:** yes, on the C++ reference (Ubuntu 24.04, x86_64 prebuilt and aarch64 built from source): `IntersectWithCone` of an r 20 and an r 3.04 parallel cylinder (height 11 from z = 2, the second through (0, 20, 2)) gives 2 lines on the natural domains and 0 when either face domain's v minimum is above 0 (trimming only v maximum keeps both); the Rust port gives the same counts and lines. The six cases are in `crates/difftest/src/units/surface_cone_p3.rs` (`parallel_cylinders_*`).
+- **Severity:** Boolean failure (`SM_ERR`), or a body with the crossing missing where the caller does not check.
+- **Fix:** test the line at its middle, `sLinePt + 0.5 (dMax - dMin) * axis`, instead of its bottom end. A line that overlaps both domains only away from its middle is still dropped; clipping `[dMin, dMax]` to both domains' v ranges would cover that.
+- **Rust port:** `crates/solidcore/src/surface/cone/p3.rs` tests the middle only when `Kernel::cone_parallel_midpoint_test` is set. It is off by default, so `surface.cone_p3` keeps upstream's bottom-end test and matches the C++ bit for bit; `boolean::merge::p4::manifold_boolean` sets it for the duration of a Boolean and restores it on exit. Documented in the file header's Deviations. With it, the four FAIL-3665 cases pass.
