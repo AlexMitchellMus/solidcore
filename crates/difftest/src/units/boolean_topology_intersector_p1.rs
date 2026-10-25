@@ -821,6 +821,45 @@ impl Two {
         }
     }
 
+    /// `SmBrep::GlueVertices(v1, v2)` where `v1` and `v2` belong to different B-reps.
+    /// Upstream notifies, reads the faces of `v2` and the shells of both vertices, then
+    /// looks for a shell pair in one region (`NER(pSurvVShell)`). A region belongs to one
+    /// B-rep, so a pair that shares none ends the call with `SM_ERR_NULL_POINTER`
+    /// before any edit. The notifications go to call-local records, which nothing here
+    /// observes, so they are not delivered across the two arenas.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR_NULL_POINTER`; [`SolidError::InvalidInput`] for shells of both B-reps
+    /// without a region (`NULL == NULL`: upstream would go on to merge shells across
+    /// B-reps) or a missing arena.
+    fn glue_vertices_of_two_breps(&self, survivor: H, deleted: H) -> solidcore::Result<()> {
+        let arena = |h: H| {
+            usize::try_from(h.b)
+                .ok()
+                .and_then(|slot| self.breps.get(slot))
+                .and_then(Option::as_ref)
+                .ok_or_else(|| invalid("handle names an absent B-rep"))
+        };
+        let (surv_brep, del_brep) = (arena(survivor)?, arena(deleted)?);
+        let (surv, del) = (vid(survivor), vid(deleted));
+        // pVertexToDelete->GetFaces(..) (each face is notified), then GetShells for both
+        vx::faces(del_brep, del)?;
+        let surv_shells = vx::shells(surv_brep, surv)?;
+        let del_shells = vx::shells(del_brep, del)?;
+        for &first in &surv_shells {
+            let region = surv_brep.shell(first)?.region;
+            for &last in &del_shells {
+                if region.is_none() && del_brep.shell(last)?.region.is_none() {
+                    return Err(invalid("shells of two B-reps share a NULL region"));
+                }
+            }
+        }
+        Err(SolidError::null_pointer(
+            "difftest::boolean_topology_intersector_p1::Two::glue_vertices",
+        ))
+    }
+
     /// Deletes the cache of the B-rep behind `brep` (`SmBrep::Notify`'s `PRE_EDIT` /
     /// `DESTRUCTION`); the next use rebuilds it.
     pub(crate) fn delete_cache(&mut self, brep: H) -> solidcore::Result<()> {
@@ -1495,12 +1534,7 @@ impl solidcore::topology::proto_topology::p3::BrepGlue<H> for Two {
             && v1.b != v2.b
             && (v1.b == brep.b || v2.b == brep.b)
         {
-            // UNPORTED(topology.brep_p5): SmBrep::GlueVertices of vertices of two B-reps --
-            // justified: topology::brep::p5::glue_vertices takes one B-rep arena
-            return Err(SolidError::unported(
-                "SmBrep::GlueVertices (vertices of two B-reps)",
-                "topology.brep_p5",
-            ));
+            return self.glue_vertices_of_two_breps(v1, v2);
         }
         if brep.kind != K_BREP
             || v1.kind != K_VERTEX
