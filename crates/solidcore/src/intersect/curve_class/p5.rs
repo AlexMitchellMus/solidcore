@@ -91,6 +91,22 @@ pub trait ClassGeometryMut<O>: ClassGeometry<O> {
     /// [`ClassGeometry::topology_entity`]); `None` for a handle the adapter cannot
     /// resolve (an invalid-input error for the caller).
     fn topology_entity_mut(&mut self, o: O) -> Option<(&mut Brep, EntityRef)>;
+    /// `sm_SetDoFilletingGeometry` replaces an edge's curve at its native setter
+    /// position. The default preserves the older direct arena assignment;
+    /// retained adapters override it to perform `SetCurve` invalidation and notify.
+    ///
+    /// # Errors
+    /// Missing mutable edge context or the retained setter's original error.
+    fn set_filleting_edge_curve(&mut self, edge: O, curve: Curve) -> Result<()> {
+        match self.topology_entity_mut(edge) {
+            Some((b, EntityRef::Edge(e))) => {
+                b.edge_mut(e)?.curve = Some(curve);
+                Ok(())
+            }
+            // UNPORTED(topology.edge): SmEdge::SetCurve
+            _ => Err(SolidError::unported("SmEdge::SetCurve", "topology.edge")),
+        }
+    }
 }
 
 /// The edits of part 5 over either kind of adapter.

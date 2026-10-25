@@ -2409,13 +2409,7 @@ impl<O: ClassObject, G: ClassGeometryMut<O>> FilletAccess<O> for Mutable<'_, G> 
         }
     }
     fn set_edge_curve(&mut self, edge: O, curve: Curve) -> Result<()> {
-        match self.0.topology_entity_mut(edge) {
-            Some((b, EntityRef::Edge(e))) => {
-                b.edge_mut(e)?.curve = Some(curve);
-                Ok(())
-            }
-            _ => ReadOnly(&*self.0).set_edge_curve(edge, curve),
-        }
+        self.0.set_filleting_edge_curve(edge, curve)
     }
 }
 
