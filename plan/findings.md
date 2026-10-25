@@ -19330,6 +19330,18 @@ other operand in the merge editing stages (`boolean.merge_p4` /
 of being kept reversed as a void. Listed in `known_mismatches.toml`; the offset
 port itself is not involved after the shell is built.
 
+## offset.offset_executive_p2 / topology.brep_p2 / topology.brep_p7: orphaned shells changed result shell counts (PR #796)
+
+Wiring `SmOffsetExecutive::PiecewiseMerge` to `SmMerge::PiecewiseMerge` made the offset
+results comparable, and ten sheet/round cases then disagreed only in the result's shell
+count (C++ 1, Rust 4). `SmBrep::MakeEdgeTopology` (copying a face's wire edges between
+shell vertices) and `SmBrep::GlueEdgesGeneral` `delete` the shell they merge away; the
+ports only unlinked it, so every merged vertex shell stayed in the arena as an empty,
+region-less record that `Brep::shells().len()` counts. Both now destroy it
+(`topology::shell::destroy`: `SM_NO_DESTRUCTION`, record, attribute uses). The other
+unlinked-only deletes (a deleted vertex shell's vertex use, edge uses, regions in p7)
+still stay as orphans; any runner that counts arena records instead of traversing the
+topology will see them. No other unit's difftest counts changed.
 ## ClassifyLoops' loop bisector keeps its B-rep edits: 37 of 49 listed cases match, 12 topology.brep_p10 cases still differ (2026-10-24)
 
 Follow-up to "ClassifyLoops' loop bisector builds UV trim curves upstream, on a copy in the
@@ -19689,6 +19701,17 @@ Suspected to be the same Rust merge region/shell handling as `gen0000` / `gen000
 above (the inset shell's Difference); not traced further. Listed in
 `known_mismatches.toml`.
 
+### Actual CreateFilletBrep: production constructor matches native on real box
+
+A new same-box checkpoint calls Session::create_fillet_brep directly against native SmFilletExecutive::CreateFilletBrep after shared parameter/corner setup. It returns before the harness's manual component sequence. The actual constructor result has matching directed intermediate B-rep topology, Line/Circle/Cylinder types and geometry samples, actual source-FG-to-managed-Face alias/owner, and retained executive E attributes. New comparison171 exact fields/124 values matches exactly. No internal substage success flags, before-state vectors or Stitch counters are fabricated.
+
+Whole executive_p3 now307 cases/260 value passes/47 existing deferrals/0 failures; same box15 exact passes plus1 honest full SmApiFilletEdges deferral. Every30 prior CPP/Rust output remains byte-identical across actual constructor wiring/latest-main integration; perturb catches15/15 implemented cases. This is actual CreateFilletBrep in unchanged direct context, not DoFilleting, target integration, mass or complete geometry notification/cache parity.
+
+### Actual SetFilletBrepEdgeMap: ordered managed mappings without interval repair
+
+The same ordinary box calls actual CreateFilletBrep, shared first-FG owner-face shrink, then Session::set_fillet_brep_edge_map against native. All four owning pseudo edges begin unmapped and map in order to managed-edge labels [0,2,3,1], each with one actual entry. Source and observations preserve raw rail intervals [+1e20,-1e20]: native evaluates the pseudo CURVE natural-interval midpoint and managed EDGE raw-interval midpoint. No interval fallback or repair is introduced.
+
+New checkpoint255 exact fields/140 values agrees exactly, including before/after type/status/raw intervals, first/ordered mappings, actual error code/target handles/comment bytes, whole body geometry, surface alias and E attributes. Unknown managed-map identities are harness errors rather than shared foreign sentinels. Whole executive_p3=308cases261valuepasses47existingdeferrals0fail; all32 prior CPP/Rust outputs byte-identical; perturb16/16 caught. Direct context flags remain unchanged. Target insertion/merge, full DoFilleting/public API and lower geometry notification/cache parity remain unfinished.
 ## boolean.topology_intersector_p2: gen0111 failed imprint, UB-242 vs UB-175
 
 Unit `boolean.topology_intersector_p2`, case `gen0111` (`IntersectInsertRelate` of
@@ -20315,3 +20338,26 @@ classifications now share one snapshot and keep their UV trims and tolerance gro
   differed). Cause still not found; it stays a known mismatch.
 - The 9 torus seam cases (`heal.face_props` gen0646/gen0790/gen1312, `intersect.curve_class_p4`
   gen1570/gen1622/gen1841/gen1876/gen1968/gen2061) and `query.face_p4`'s 2 entries are unchanged.
+## boolean.merge_p3: shell vertex on a box edge finds no edge solution (2026-10-25)
+
+Cases `piecewise_box_other_shell_vertex_imprint_2` and `_3` (fixture
+`fixtures/boolean.merge_p3/cases.json`, family 4: `PiecewiseMerge` of the box
+`(0,0,0)+(10,10,10)` with a one-vertex B-rep at `(5,0,0)`, options 2 and 3). They were
+deferred on main at the first face solve of `sm_IntersectShellVertices`
+(`smsurf_GetSurfaceCache` of a face-owned surface, "SmFace handle of a surface's
+face"). Now that the intersector's topology solves reach their faces' caches, they run
+to the end and disagree: C++ ends with 13 edges (`ints.topology_counts[1]`), Rust with
+12; `values.record[6]` C++ 13 vs Rust 12, `record[8]` 0 vs 5, `record[9]` 10 vs 0,
+`record[13]`/`[14]` 10 vs 0, `record[19..21]` 0 vs 10, `record[23]` 5 vs 0.
+
+Rust's `BrepPointSolve` of the vertex point against the box returns two face solutions
+(the faces `y = 0` and `z = 0`) and no edge solution: the point/edge pass over the
+B-rep cache's curve tree (`TopologySolver::brep_point_solve`, `trees.curves`) never
+reaches a `SmTLSPointEdge` local solve (the tree's root box is
+`(-1.501326..11.501326)^3`, the query box the point itself), so
+`sm_FindFirstLowestDimensionSol` picks a face and the vertex is imprinted on a face
+instead of splitting the edge `(0,0,0)-(10,0,0)` as C++ does. Suspected cause: the
+branch culling of the point query against the curve tree (`BranchMayContainAnswers` /
+`AreReadyForLocalSolve` with a zero-size point box and the vertex's zone tolerance), not
+the face-cache wiring, which only made the cases reach this point. The cases are known
+mismatches until that culling is compared with the C++.
