@@ -19334,6 +19334,21 @@ other operand in the merge editing stages (`boolean.merge_p4` /
 of being kept reversed as a void. Listed in `known_mismatches.toml`; the offset
 port itself is not involved after the shell is built.
 
+## intersect.curve_class_p1: sm_ComputeFacePointClass crashes the C++ reference on a single-point UV domain
+
+Unit `intersect.curve_class_p1`, op 50 (`sm_ComputeFacePointClass`) on the one-face
+B-rep of a `heal.face_props` face with `domain = [0, 0, 1e-300, 1e-300]` (face
+tolerance 1e-6, plane, three edge loops, any point). The shim's `SmFace::GetUVDomain()`
+is then the single point (0,0)-(0,0) (the 1e-300 size is lost when the face is built),
+and the C++ run ends in a segmentation fault; no Rust comparison is reached. Domains
+of size 1e-9, 1e-14 and 1e-100 run and agree. Cause inside the upstream point solve
+not located (no debugger on the box). The shim rejects such a face (`SC_ERR_ARG`)
+for this op, so the generator drops those scripts. The guard also rejects a domain that is zero on one axis
+only, which no generator produces and which was not tried (it is a precaution, not a measured crash).
+Hypothesis for a later agent with a debugger: `smsurf_GetSurfaceCache` returns NULL when the
+trimmed-surface-cache build fails on the point domain, and `SmCurveClass.cpp:3956-3963` then
+dereferences `pSC->m_bPointTestEnabled` unchecked (the Rust port models that branch as
+`SM_ERR_NULL_POINTER`). Not confirmed.
 ## offset.offset_executive_p2 / topology.brep_p2 / topology.brep_p7: orphaned shells changed result shell counts (PR #796)
 
 Wiring `SmOffsetExecutive::PiecewiseMerge` to `SmMerge::PiecewiseMerge` made the offset
@@ -20690,6 +20705,22 @@ after each call:
 clears it only on its success exits (`:3114`, `:4148`, `:5095`); its `SER` error
 returns leave it set, as the port's `manifold_boolean_translated` does. No change.
 
+## topology.brep_p10 edge/vertex tolerance last bits: SmSurfOfExtrusion::DropPointFast without NURB (2026-10-25)
+
+Follow-up to the 2026-10-25 brep_p10 heal/notify fixes on main. `read_Fillet_bottle`,
+`read_Fillet_cyl_cyl_shell`, `read_Fillet_fillet0227`, `read_Solids_InsetTaperedExtrude`
+and `read_Solids_extrusion2` differed only in edge tolerances set by the healer's
+`Fix_TolSizes` (`CalcEdgeZoneTol3d` of the edge's max edge/face gap) and the vertex
+tolerances raised from them (rel 5e-12 to 2.6e-11). Instrumented both sides at
+`Fix_TolSizes`, `SmEdgeuse::CalcMaxEdgeFaceGap`, `SmCrvSrfGapFunction::Evaluate` and
+`SmSurface::DropPoint`: the gap function's drops onto `SmSurfOfExtrusion` faces had the
+same inputs, but C++ `DropPointFast` succeeded (2 solutions; its `GetNaturalUVDomain`
+makes the missing NURB lazily) while the port's returned `SM_ERR` because the surface,
+read from file, had no NURB yet. The port then fell through to `LocalPointSolve`, whose
+result is within an ulp or so of the analytic one, and the max gap length moved in the
+last bits. `SurfOfExtrusion::drop_point_fast` now solves on an evaluation copy with the
+NURB made (as the inherited queries already do via `base_with_nurb`) when the NURB is
+missing. All five cases match bit for bit; entries removed from `known_mismatches.toml`.
 ## topology.brep_p3: TurnToNURBS UV trim curve edits notify (2026-10-25)
 
 - **What.** Four of the six `TurnToNURBS` known mismatches (`gen0138`, `gen0164`,
@@ -20792,6 +20823,26 @@ All 8 vertex-order known mismatches (`upstream_merge_breps_operation_0..3`,
    `Brep::geometry_owner_key`, so `PiecewiseMerge` sees all 10 split faces of `Box_1`
    instead of dropping the 4 newly split faces.
 
+## blend.fillet_executive_p1: `remove_topo_edges_mouse_two_struts` resolved (2026-10-25)
+
+- **Root cause.** After deleting Edge 1 of `Mouse.smb`, `EdgeId(0)`'s stored zone
+  tolerance grows to `2.613347926652509`. When deleting Edge 2, `DeleteTopologicalVertex`
+  joins `EdgeId(0)` and `EdgeId(4)` into a closed 250-cpt cubic `BSplineCurve` over
+  `[0.0, 32.5553347035394]` and calls `GetOrCreateUVTrimCurve` on `EdgeId(0)`'s edge uses:
+  first `Dome` (`FaceId(2)`, `SmBSplineSurface`, not the plane face) attaches a 250-cpt
+  closed UV curve, then `SideWall` (`FaceId(1)`) drops `[0.8477229801834114,
+  27.525179625915907]` at `ii = 3` and triggers `bEditUVMin` / `bEditUVMax`, calling
+  `trim_other_uv_curves` (`topology::edgeuse::p3`) to `Trim` `Dome`'s already-attached UV
+  curve twice. Upstream `SmBSplineCurve::Trim` reads `SmTol::GetZoneTol3d(this)` ->
+  `SmCurve::GetEdge()` -> `pEdge->GetTolerance()` (`2.613347926652509`), triggering
+  `N_CrvRemoveDegenSegs` on the ~80 short Dome UV spans (`~0.35 < 2.6133`) and collapsing
+  `Dome`'s UV curve to a 1-span 4-cpt cubic Bezier, whereas owner-less `Curve::trim` read
+  the system zone tolerance (`1e-5`) from `k`.
+- **Fix.** `topology::edgeuse::p3::trim_other_uv_curves` now trims sibling UV curves with
+  an edge-tolerance `Kernel` (`zone_tol3d(k, edge::tolerance(b, e)?)`, matching
+  `sm_TrimRail` in `blend::fillet_solver::p1`). `remove_topo_edges_mouse_two_struts` now
+  passes bit-identically (`max_rel_err = 0.0`, `155/155` pass, `0` `known_mismatch` in
+  `blend.fillet_executive_p1`).
 
 ## topology.brep_p10, topology.brep_p1, sweep.api_brep: heal/notify/ProjectAndTrim fixes and `read_Solids_fillet_ts` UAF root cause (2026-10-25)
 
