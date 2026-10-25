@@ -22,7 +22,7 @@
 //! constructing the net, and grows storage incrementally rather than reserving
 //! header-declared capacities. Valid point layouts and knot values are unchanged.
 
-#[path = "nlib_srf_offset_sms.rs"]
+#[path = "fixtures/nlib_srf_offset_sms.rs"]
 mod sms;
 
 use serde::{Deserialize, Serialize};

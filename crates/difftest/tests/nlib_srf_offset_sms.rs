@@ -2,7 +2,7 @@
 
 pub use difftest::HarnessError;
 
-#[path = "../src/units/nlib_srf_offset_sms.rs"]
+#[path = "../src/units/fixtures/nlib_srf_offset_sms.rs"]
 mod sms;
 
 fn assert_rejected(text: &str, message: &str) {
