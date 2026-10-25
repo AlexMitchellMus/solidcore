@@ -20601,3 +20601,48 @@ after each call:
 `SmMerge::BooleanManifold` sets `SetDoingBoolean(TRUE)` (`SmMerge.cpp:2551`) and
 clears it only on its success exits (`:3114`, `:4148`, `:5095`); its `SER` error
 returns leave it set, as the port's `manifold_boolean_translated` does. No change.
+
+## Face-owned surfaces reach their face's cache in solver identical-solution tests, line intersections and drop traces (wire/solve-handle-domains, PR #890, 2026-10-25)
+
+Closes the open entry "intersect.topology_solver_p2 static face solves: answering
+`GetNaturalUVDomain` exposes 9 mismatches" (PR #599). Its suspected cause was right: the
+9 cases disagreed because the Rust solves ran over a fresh plain cache of a standalone
+plane, while C++ solves over the face's `SmTrimSrfCache` (`smsurf_GetSurfaceCache`).
+
+- **topology_solver_p2 static adapter.** `StaticScene` now returns the faces' own
+  (face-owned) planes and gives the solver a face service
+  (`BrepFaceServices` over an identical second `CreateFaceFromSurface` build of the
+  shim's faces; `Brep::clone` does not keep the surfaces' owners, so a clone cannot
+  serve). `StaticHandle` answers `GetNaturalUVDomain` for the planes. With that, the 9
+  former mismatches and the 2 `SmTLSVertexFace` maximize cases match C++, and the 8
+  silhouette cases (operation 14) match once `sm_GetFaceSilhouettes` and
+  `CreateSilhouetteCurves` share the face's cache (upstream reads the one cache of the
+  surface in both).
+- **`GlobalPointSolve_0`** (the maximize branch of `GlobalPointSolve`) takes the caller's
+  face context for its cache and leaf trim tests, as the curve/surface solve already did.
+- **`SmCSIGlobalSolver::IdenticalSolutions`** of a face-aware solve reads its operands'
+  natural interval and UV domain (`SolveOperands`, as `SmCSGlobalSolver` did): the
+  `GetNaturalUVDomain` deferrals of `boolean.topology_intersector_p1` (3) and
+  `primitive.primitive_creation_p2` (2).
+- **`sm_ClassifyCurveSurfaceXSectPoint`** reads `pCurveOwner->GetTolerance()` of an
+  edge's curve through the new `FaceQueries::curve_edge_tolerance` (answered by the
+  intersector's face-cache context), in the CSI leaf solve and in
+  `sm_GlobalCurveIntersectCombineSolutions`' coincidence test.
+- **`SmBrep::DeleteTopologicalVertex`**: the coincidence check's curve handles carry the
+  curves' natural intervals (`SmCurve::GetNaturalInterval`, 3 cases).
+- **Line intersections and drop traces.** `GlobalLineIntersect`'s coincident drop gets
+  the face's cache from the context when the caller holds none; the `SmPlane` override's
+  base solve runs on the owning surface (upstream calls `SmSurface::GlobalLineIntersect`
+  on `this`; the port ran it on an ownerless copy, so a face's trimmed cache could not
+  build its tree); `sm_GlobalCurveIntersectCombineSolutions`' `DropAndTrimCurve` traces on
+  the face's cache; `SmSurfaceDropCurve`'s `DropCurve` runs with point testing off, as
+  `DoTrace` leaves the cache (`SmSurfaceDropCurve.cpp:1629`), so its start drop keeps the
+  fast-drop solutions unclassified.
+
+Not in this PR: `SmBrep::ProjectAndTrim`'s ray classification (`faces_to_delete`) still
+solves with `BrepObjects { preparation: None }`. Giving it a `RayPreparation` (as
+`topology::shell` does) makes the 5 planar-path cases that defer there
+(`planar_path_two_lines`, `gen0069`, `gen0071`, `gen0167`, `gen0184`) run, and they then
+fail like the 7 known mismatches #884 fixes (union `SM_ERR` after the UB-242 stop).
+Merged locally with #884 (before #886 landed) they pass: `primitive.primitive_creation_p2`
+305 pass, 0 fail, 3 deferred (the `MergeCurveClasses` cases #886 has since wired).
