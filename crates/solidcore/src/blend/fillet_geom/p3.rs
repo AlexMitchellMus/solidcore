@@ -1045,7 +1045,7 @@ impl FilletBrep {
                     .iter()
                     .map(|&vu| self.fillet_vertexuse(vu).map(|r| r.tsect_pnt().clone()))
                     .collect::<Result<Vec<_>>>()?;
-                do_point_intersection(
+                let traced = do_point_intersection(
                     &mut fi,
                     &mut *solver,
                     self,
@@ -1059,10 +1059,13 @@ impl FilletBrep {
                         approx_tol_3d: Some(tolerance),
                         ang_tol_rad: Some(ang_tol),
                     },
-                )?;
+                );
+                // the points are the vertex uses' SmTsectPnts upstream (written in
+                // place even when the call fails): copy them back before SER(eStat)
                 for (&vu, p) in tsect_pnts.iter().zip(&pnts) {
                     self.fillet_vertexuse_mut(vu)?.set_tsect_pnt(p);
                 }
+                traced?;
 
                 success = true;
                 for &vu in tsect_pnts.iter().skip(1) {
