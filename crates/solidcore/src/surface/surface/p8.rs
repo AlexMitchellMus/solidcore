@@ -77,6 +77,7 @@ use crate::geom::solution_array::{Solution, SolutionArray, SolutionObject, Solut
 use crate::geom::tol::are_same;
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::{Point3, Vec3};
+use crate::intersect::surface_drop_lib::p3::DropSolveContext;
 use crate::kernel::Kernel;
 use crate::math::{
     max2, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_RAD, EFF_ZERO_SQ, EFF_ZERO_SQRT, PI, UNDEF_DOUBLE,
@@ -2208,7 +2209,7 @@ impl Surface {
                 }
                 (None, _) => None,
             };
-            let dropped = self.drop_and_trim_curve_in::<NoObject, O>(
+            let dropped = self.drop_and_trim_curve_in_context::<NoObject, O>(
                 k,
                 cache,
                 uv_domain,
@@ -2218,6 +2219,10 @@ impl Surface {
                 true,
                 true,
                 None,
+                context.as_mut().map(|solver| DropSolveContext {
+                    solver: &mut **solver,
+                    handle: surface_handle,
+                }),
             )?;
             let mut dist_to_surface = dropped.max_drop_to_surf;
             let mut uv_curves: Vec<Curve> = dropped.uv_curves;
