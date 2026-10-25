@@ -20,7 +20,10 @@
 //! flat record documented in the ffi module (per op: code, status, outputs, state of the
 //! classification; `GetLoopCrossings` also the face props snapshot when they are passed),
 //! reported as the `out` values. A Rust error maps to its `SmStatus` (`InvalidInput` 1007, `-1`
-//! for one upstream cannot return); an `Unported` error anywhere defers the case.
+//! for one upstream cannot return); an `Unported` error anywhere defers the case. What a
+//! `GetLoopCrossings` leaves on the face's B-rep (the UV trim curves, tolerance growth and
+//! gap caches of its `SetProps_Stage2` seam check) is kept on the Rust B-rep for the later
+//! ops, as the shim's B-rep keeps it.
 //!
 //! Compared: `GetLoopCrossings` over the face's real loops up to the touch list (the face
 //! props stage 2, computed by `SetProps_Stage2` or preset by seeds at stage `2a` or later, the
@@ -49,7 +52,7 @@ use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::tol::zone_tol3d;
 use solidcore::geom::vector3d::Vec3;
 use solidcore::intersect::curve_class::{
-    self as cc_mod, squeeze_out_smallest_interval, ClassificationInit, CurveClassification,
+    self as cc_mod, squeeze_out_smallest_interval, BrepQueryEdits, ClassificationInit, CurveClassification,
     CurveInterval, TouchData,
 };
 use solidcore::intersect::point_class::{
@@ -967,7 +970,7 @@ fn pc_mut(ivl: &mut CurveInterval<H>, w: usize) -> Result<&mut PointClassificati
 #[allow(clippy::too_many_lines)]
 fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
     let k = Kernel::default();
-    let pool = build_pool(&k, s)?;
+    let mut pool = build_pool(&k, s)?;
     let mut ccs: [CurveClassification<H>; 2] =
         [CurveClassification::new(&k), CurveClassification::new(&k)];
     let mut o: Vec<f64> = Vec::new();
@@ -1148,7 +1151,19 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
                                 hfp::seed(&mut props, face, sd[0] as i64, sd[1] as i64, sd[2]);
                             }
                         }
-                        let r = cc.get_loop_crossings(&k, &pool, &hs, with_props.then_some(&mut props));
+                        // what the call leaves on the face's B-rep stays there for the
+                        // later ops, as on the shim's B-rep
+                        let mut edits = BrepQueryEdits::default();
+                        let r = cc.get_loop_crossings_keeping_edits(
+                            &k,
+                            &pool,
+                            &hs,
+                            with_props.then_some(&mut props),
+                            &mut edits,
+                        );
+                        if let Some((b, _)) = pool.brep.as_mut() {
+                            edits.apply(b).map_err(|e| harness(format!("keep the B-rep edits: {e}")))?;
+                        }
                         match st(r)? {
                             Ok(lc) => {
                                 o.push(if lc.sm_err { 1.0 } else { 0.0 });

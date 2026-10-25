@@ -1758,13 +1758,30 @@ impl<O: LoopObject> FaceProps<O> {
         exe_heal_op: HealerOpType,
     ) -> Result<()> {
         let mut cache = CurveOnClassifyCache::default();
+        self.set_props_stage2_cached(k, b, face, face_index, exe_heal_op, &mut cache)
+    }
+
+    /// [`FaceProps::set_props_stage2`] on the query state `cache`: what its seam check's
+    /// lazy queries leave on the snapshot (the UV trim curves the face's trimmed surface
+    /// cache makes, their tolerance growth, the gap caches) stays there for the caller to
+    /// keep ([`CurveOnClassifyCache::apply_uv_trim_updates`]), as upstream's `const`
+    /// `SetProps_Stage2` leaves them on the face's B-rep.
+    pub(crate) fn set_props_stage2_cached(
+        &mut self,
+        k: &Kernel,
+        b: &Brep,
+        face: FaceId,
+        face_index: u64,
+        exe_heal_op: HealerOpType,
+        cache: &mut CurveOnClassifyCache,
+    ) -> Result<()> {
         self.set_props_stage2_with(
             k,
             b,
             face,
             face_index,
             exe_heal_op,
-            &mut |k, b, f, cu, cv, p| face_has_seam_problem(k, b, f, cu, cv, p, &mut cache),
+            &mut |k, b, f, cu, cv, p| face_has_seam_problem(k, b, f, cu, cv, p, cache),
         )
     }
 

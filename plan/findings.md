@@ -20403,3 +20403,32 @@ branch culling of the point query against the curve tree (`BranchMayContainAnswe
 `AreReadyForLocalSolve` with a zero-size point box and the vertex's zone tolerance), not
 the face-cache wiring, which only made the cases reach this point. The cases are known
 mismatches until that culling is compared with the C++.
+
+## intersect.curve_class_p4 gen1570 / 1622 / 1841 / 1876 / 1968 / 2061: GetLoopCrossings B-rep edits were dropped (2026-10-25)
+
+Root cause of the six known mismatches (gen1570: `values.out[965..968]`, the second `GetLoopCrossings`'
+face props `m_eBadMissingSeam` / `m_eBadNearMissSeam` and their directions, C++ `FALSE`/4, port `TRUE`/0).
+- **Where it splits:** the script runs `GetLoopCrossings` (props computed by `SetProps_Stage2`), then
+  `construct` and a second `GetLoopCrossings` on the same face. Dropping the first call makes the second
+  agree (both sides `TRUE`), so C++ carries state from the first call. gdb on the C++ reference: in the
+  first call `HasSeamProblem` -> `CurveOnClassify` -> `FindVertexSector` -> `SectorClassifyCurveOn` ->
+  `SmEdgeuse::EvaluateBinormal` -> `smsurf_GetSurfaceCache` builds the face's trimmed cache
+  (`BuildTree` -> `SmFace::CreateUVTrimCurves`), which calls `SetUVTrimCurve` on the three edge uses and
+  raises the edge tolerances to 1.3988431936168952, 0.46800933301965275, 0.4680093330196321 (and the vertex
+  tolerances; they were 1e-5). The second call's seam classification sees those tolerances, classifies
+  the seam against an edge (no `FindVertexSector`, no `IsSectorMissingSeam`) and reports no missing seam.
+- **Port:** `get_loop_crossings` reads the B-rep through `&G`; its `SetProps_Stage2` ran the seam check on a
+  private snapshot (`CurveOnClassifyCache`) that was dropped, so the trim curves and tolerance growth were
+  lost (the shared surface cache slot kept the trimmed cache, so the second call never rebuilt them).
+- **Fix:** `CurveClassification::get_loop_crossings_keeping_edits` collects the snapshot edits in a
+  `BrepQueryEdits` that the caller applies (`apply_uv_trim_updates`: trim curves, larger edge / vertex
+  tolerances, gap caches); the runner applies them to its pool B-rep after each `GetLoopCrossings`, as the
+  shim's B-rep keeps them.
+- **Second defect exposed by the fix:** with the larger tolerances, the second call's seam
+  `IntersectVertices` -> `InsertPointClass` takes the "input deviation zero" branch, whose
+  `EditIntervalMax(lIndex, .., TRUE)` collapses interval `lIndex` (the last one). Upstream then writes
+  `rPtClass_Interval.m_vEnd` through the reference to slot `lIndex` it took earlier, a spare slot past
+  `m_lSize` that `SetSize` resets before reuse; the port's `at_mut(index)` failed with InvalidInput
+  ("interval index out of range"). The port now writes to whatever sits in that slot and drops the write
+  past the end.
+- Result: all six cases pass (3201 cases, 0 failed, 0 deferred, no known mismatch).
