@@ -4,7 +4,7 @@
 //!
 //! | Rust | Upstream |
 //! |------|----------|
-//! | [`CurveClassification::homogenize`] | `SmCurveClassification::Homogenize` |
+//! | [`CurveClassification::homogenize`], [`CurveClassification::homogenize_mut`] | `SmCurveClassification::Homogenize` |
 //! | [`CurveClassification::insert_curve_interval`], [`CurveClassification::insert_curve_interval_mut`] | `SmCurveClassification::InsertCurveInterval` |
 //! | [`CurveClassification::fix_end_point_class`] | `SmCurveClassification::FixEndPointClass` |
 //! | [`CurveClassification::merge_interval`], [`CurveClassification::merge_interval_mut`] | `SmCurveClassification::MergeInterval` |
@@ -45,7 +45,10 @@
 //! out for the vertex, at the moment upstream makes it; the read-only entry points defer
 //! there (`Unported(topology.vertex)`).
 
-use super::p1::{compute_face_point_class, compute_face_point_class_in, src_zone_tol_3d_of};
+use super::p1::{
+    compute_face_point_class, compute_face_point_class_in, src_zone_tol_3d_of, MutableParams,
+    PointParams, ReadOnlyParams,
+};
 use super::p3::{
     are_coincident_maybe, classify_crv_loc_by_index, connect_intervals, point_class_loc_by_index,
     Coincident,
@@ -126,8 +129,34 @@ impl<O: ClassObject> CurveClassification<O> {
         geometry: &impl ClassGeometry<O>,
         other: &mut Self,
     ) -> Result<()> {
-        homogenize_boundaries(k, geometry, self, other)?;
-        homogenize_boundaries(k, geometry, other, self)?;
+        self.homogenize_in(k, &mut ReadOnlyParams(geometry), other)
+    }
+
+    /// [`CurveClassification::homogenize`] over topology the point solves may change:
+    /// a boundary's point parameters are computed with
+    /// [`PointClassification::compute_point_parameters_mut`] (a face surface's point
+    /// solve makes the face's trimmed surface cache there, as upstream).
+    ///
+    /// # Errors
+    /// Those of [`CurveClassification::homogenize`].
+    pub fn homogenize_mut(
+        &mut self,
+        k: &Kernel,
+        geometry: &mut impl ClassGeometryMut<O>,
+        other: &mut Self,
+    ) -> Result<()> {
+        self.homogenize_in(k, &mut MutableParams(geometry), other)
+    }
+
+    pub(super) fn homogenize_in(
+        &mut self,
+        k: &Kernel,
+        access: &mut impl PointParams<O>,
+        other: &mut Self,
+    ) -> Result<()> {
+        homogenize_boundaries(k, access, self, other)?;
+        homogenize_boundaries(k, access, other, self)?;
+        let geometry = access.geometry();
         fix_problems_by_squeezing(k, geometry, self, other)?;
         fix_problems_by_squeezing(k, geometry, other, self)?;
         while self.size() > other.size() {
@@ -1871,7 +1900,7 @@ fn interval_degenerate<O: ClassObject>(
 
 fn homogenize_boundaries<O: ClassObject>(
     k: &Kernel,
-    geometry: &impl ClassGeometry<O>,
+    access: &mut impl PointParams<O>,
     src: &CurveClassification<O>,
     dst: &mut CurveClassification<O>,
 ) -> Result<()> {
@@ -1889,9 +1918,9 @@ fn homogenize_boundaries<O: ClassObject>(
         } else {
             ivl.max()
         };
-        let point = classify_crv_loc_by_index(k, geometry, src, index)?;
-        let tol = pc.obj_zone_tol_3d(k, geometry)?;
-        let found = dst.find_interval(k, geometry, param, last, tol)?;
+        let point = classify_crv_loc_by_index(k, access.geometry(), src, index)?;
+        let tol = pc.obj_zone_tol_3d(k, access.geometry())?;
+        let found = dst.find_interval(k, access.geometry(), param, last, tol)?;
         let mut pos = found.position;
         if pos == IntervalPosition::Outside {
             return Err(SolidError::sm_err(OP));
@@ -1928,15 +1957,15 @@ fn homogenize_boundaries<O: ClassObject>(
             new_pc.set_pre_snap_param(param);
             new_pc.copy_sss_point(pc);
             if matches!(new_pc.point_class(), Pc::Face | Pc::Edge) {
-                let point = classify_crv_loc_by_index(k, geometry, src, index)?;
+                let point = classify_crv_loc_by_index(k, access.geometry(), src, index)?;
                 // Ordinary projection failures turn the classification into UNKNOWN.
-                match new_pc.compute_point_parameters(k, geometry, point) {
+                match access.compute(k, &mut new_pc, point) {
                     Ok(()) => {}
                     Err(e) if e.is_unported() => return Err(e),
                     Err(_) => new_pc.set_class_object(Pc::Unknown, None),
                 }
             }
-            if !dst.insert_point_class(k, geometry, &new_pc, param, last, force)? {
+            if !dst.insert_point_class(k, access.geometry(), &new_pc, param, last, force)? {
                 return Err(SolidError::sm_err(OP));
             }
         }

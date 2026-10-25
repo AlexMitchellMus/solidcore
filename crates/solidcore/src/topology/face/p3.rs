@@ -86,7 +86,7 @@ use crate::geom::solution_array::{ObjectKind, Solution, SolutionObject, MAX_TREE
 use crate::geom::tol::xsect_tol_3d_from_zones;
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::intersect::curve_class::p1::CurveClassification;
-use crate::intersect::curve_class::p5::ExtractOptions;
+use crate::intersect::curve_class::p5::{ClassGeometryMut, ExtractOptions};
 use crate::intersect::point_class::{
     ClassGeometry, ClassObject, ClassObjectKind, PointClassType, PointClassification,
 };
@@ -1567,6 +1567,86 @@ impl ClassGeometry<IntersectObject> for IntersectObjects<'_> {
     }
 }
 
+/// The objects of [`IntersectObjects`] (side `false`) over the B-reps lent mutably to
+/// [`face_intersect_breps`]: the curve classification's face point solves make the
+/// faces' trimmed surface caches on them (`smsurf_GetSurfaceCache`), as upstream's do
+/// through the faces' pointers.
+struct IntersectObjectsMut<'a> {
+    /// The B-rep of this face.
+    b: &'a mut Brep,
+    /// The B-rep of the other face when it is another one (side `true`).
+    other: Option<&'a mut Brep>,
+    /// The curves behind [`IntersectObject::Curve`].
+    curves_3d: &'a [Curve],
+    /// The curves behind [`IntersectObject::UvCurve`] `(i, false)`.
+    uv1: &'a [Option<Curve>],
+    /// The curves behind [`IntersectObject::UvCurve`] `(i, true)`.
+    uv2: &'a [Option<Curve>],
+}
+
+impl IntersectObjectsMut<'_> {
+    /// The read-only objects over the same B-reps and curves.
+    fn view(&self) -> IntersectObjects<'_> {
+        let b = &*self.b;
+        IntersectObjects {
+            b,
+            other: self.other.as_deref().unwrap_or(b),
+            side: false,
+            curves_3d: self.curves_3d,
+            uv1: self.uv1,
+            uv2: self.uv2,
+        }
+    }
+}
+
+impl ClassGeometry<IntersectObject> for IntersectObjectsMut<'_> {
+    fn classification_vertex_point(&self, o: IntersectObject) -> Option<Point3> {
+        self.view().classification_vertex_point(o)
+    }
+    fn topology_zone_tol_3d(&self, o: IntersectObject) -> Option<f64> {
+        self.view().topology_zone_tol_3d(o)
+    }
+    fn curve(&self, o: IntersectObject) -> Option<&Curve> {
+        self.view().object_curve(o)
+    }
+    fn surface(&self, o: IntersectObject) -> Option<&Surface> {
+        self.view().object_surface(o)
+    }
+    fn volume(&self, _o: IntersectObject) -> Option<&Volume> {
+        None
+    }
+    fn point(&self, _o: IntersectObject) -> Option<Point3> {
+        None
+    }
+    fn topology_entity(&self, o: IntersectObject) -> Option<(&Brep, EntityRef)> {
+        self.view().object_entity(o)
+    }
+    fn topology_handle(&self, e: EntityRef) -> Option<IntersectObject> {
+        self.view().topology_handle(e)
+    }
+    fn topology_handle_in(&self, brep: &Brep, e: EntityRef) -> Option<IntersectObject> {
+        self.view().topology_handle_in(brep, e)
+    }
+}
+
+impl ClassGeometryMut<IntersectObject> for IntersectObjectsMut<'_> {
+    // the curves are only read here
+    fn curve_mut(&mut self, _o: IntersectObject) -> Option<&mut Curve> {
+        None
+    }
+    fn topology_entity_mut(&mut self, o: IntersectObject) -> Option<(&mut Brep, EntityRef)> {
+        match o {
+            IntersectObject::Topology(e, true) => match self.other.as_deref_mut() {
+                Some(ob) => Some((ob, e)),
+                // one B-rep: both sides name it
+                None => Some((&mut *self.b, e)),
+            },
+            IntersectObject::Topology(e, false) => Some((&mut *self.b, e)),
+            _ => None,
+        }
+    }
+}
+
 /// `FaceIntersect`: the curves (and, when asked, points) where face `f` meets
 /// `other`. Coincident surfaces (by `options.coincidence`, else
 /// `SmSurface::CoincidenceCheck` within `approx_tol_3d`) give copies of both faces'
@@ -1796,8 +1876,6 @@ pub fn face_intersect_breps(
             touching_on.push((on(pct1) && on(pct2)).then_some(point));
         }
     }
-    let (b, ob) = shared_breps(this_brep.as_deref(), other_brep.as_deref(), shared)?;
-
     for (ii, curve) in curves_3d.iter().enumerate() {
         let curve_type = curve_types
             .get(ii)
@@ -1825,6 +1903,7 @@ pub fn face_intersect_breps(
         let mut cc1 = curve_classification(k, IntersectObject::Curve(ii), &ivl, uv1, zone_tol)?;
         let mut cc2 = curve_classification(k, IntersectObject::Curve(ii), &ivl, uv2, zone_tol)?;
 
+        let (b, ob) = shared_breps(this_brep.as_deref(), other_brep.as_deref(), shared)?;
         let objects = IntersectObjects {
             b,
             other: ob,
@@ -1850,16 +1929,34 @@ pub fn face_intersect_breps(
             true,
         )?;
 
-        let ex = cc1.extract_geometry(
-            k,
-            &objects,
-            &mut cc2,
-            ExtractOptions {
-                uv_curves1: true,
-                uv_curves2: true,
-                points_3d: true,
-            },
-        )?;
+        let extract = ExtractOptions {
+            uv_curves1: true,
+            uv_curves2: true,
+            points_3d: true,
+        };
+        // The homogenization's point solves make the faces' trimmed caches
+        // (smsurf_GetSurfaceCache) on the B-reps when they are lent.
+        let ex = if let Some(tb) = this_brep.as_deref_mut() {
+            let mut lent = IntersectObjectsMut {
+                b: tb,
+                other: other_brep.as_deref_mut(),
+                curves_3d: &curves_3d,
+                uv1: &uv_curves1,
+                uv2: &uv_curves2,
+            };
+            cc1.extract_geometry_mut(k, &mut lent, &mut cc2, extract)?
+        } else {
+            let (b, ob) = shared_breps(None, None, shared)?;
+            let objects = IntersectObjects {
+                b,
+                other: ob,
+                side: false,
+                curves_3d: &curves_3d,
+                uv1: &uv_curves1,
+                uv2: &uv_curves2,
+            };
+            cc1.extract_geometry(k, &objects, &mut cc2, extract)?
+        };
         let found = !ex.curves_3d.is_empty();
         out.curves_3d.extend(ex.curves_3d);
         if let Some(v) = out.this_uv_curves.as_mut() {

@@ -5,7 +5,7 @@
 //! | Rust | Upstream |
 //! |------|----------|
 //! | [`insert_solutions`], [`insert_solutions_mut`] | `sm_InsertSolutions` (static) |
-//! | [`CurveClassification::extract_geometry`] | `SmCurveClassification::ExtractGeometry` |
+//! | [`CurveClassification::extract_geometry`], [`CurveClassification::extract_geometry_mut`] | `SmCurveClassification::ExtractGeometry` |
 //! | [`CurveClassification::fixup_classification`] | `SmCurveClassification::FixupClassification` |
 //! | [`CurveClassification::insert_topology_intersections`] | `SmCurveClassification::InsertTopologyIntersections` |
 //! | [`CurveClassification::intersect_vertices`], [`CurveClassification::intersect_vertices_mut`] | `SmCurveClassification::IntersectVertices` |
@@ -441,8 +441,37 @@ impl<O: ClassObject> CurveClassification<O> {
         other: &mut Self,
         options: ExtractOptions,
     ) -> Result<ExtractedGeometry> {
-        let mut out = ExtractedGeometry::default();
         self.homogenize(k, geometry, other)?;
+        self.extract_homogenized(k, geometry, other, options)
+    }
+
+    /// [`CurveClassification::extract_geometry`] over topology the point solves may
+    /// change: the homogenization's point parameters are computed as
+    /// [`CurveClassification::homogenize_mut`] does (a face surface's point solve makes
+    /// the face's trimmed surface cache there, as upstream); the rest only reads.
+    ///
+    /// # Errors
+    /// Those of [`CurveClassification::extract_geometry`].
+    pub fn extract_geometry_mut(
+        &mut self,
+        k: &Kernel,
+        geometry: &mut impl ClassGeometryMut<O>,
+        other: &mut Self,
+        options: ExtractOptions,
+    ) -> Result<ExtractedGeometry> {
+        self.homogenize_mut(k, geometry, other)?;
+        self.extract_homogenized(k, &*geometry, other, options)
+    }
+
+    /// `ExtractGeometry` after its `Homogenize`.
+    fn extract_homogenized(
+        &mut self,
+        k: &Kernel,
+        geometry: &impl ClassGeometry<O>,
+        other: &mut Self,
+        options: ExtractOptions,
+    ) -> Result<ExtractedGeometry> {
+        let mut out = ExtractedGeometry::default();
         self.cleanup_and_validate(k, geometry, other)?;
         if self.size() != other.size() {
             return Err(SolidError::sm_err(OP));
