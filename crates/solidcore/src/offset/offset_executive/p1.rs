@@ -3050,16 +3050,6 @@ mod tests {
         })
     }
 
-    fn assert_dependency<T: core::fmt::Debug>(result: Result<T>, symbol: &str, owner: &str) {
-        match result.unwrap_err() {
-            SolidError::Unported { upstream, unit } => {
-                assert_eq!(upstream, symbol);
-                assert_eq!(unit, owner);
-            }
-            other => panic!("expected dependency {symbol}, got {other:?}"),
-        }
-    }
-
     #[test]
     fn settings_defaults_and_scalar_view() {
         for (code, operation) in [
