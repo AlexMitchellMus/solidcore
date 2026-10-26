@@ -743,19 +743,15 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         check_all_edges: bool,
     ) -> Result<()>;
 
-    /// `SmFilletExecutive::CreateFilletCorners`; waiting for `blend.fillet_executive_p1`.
+    /// `SmFilletExecutive::CreateFilletCorners`: the implementor runs
+    /// [`FilletExecutive::create_fillet_corners`] with its `SmFilletCorner::Create`
+    /// factory (the live session creates its corners itself).
     fn create_corners(
         &mut self,
-        _k: &mut Kernel,
-        _executive: &mut FilletExecutive<O>,
-        _error: Option<&mut ErrorInfo<O>>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::CreateFilletCorners
-        Err(SolidError::unported(
-            "SmFilletExecutive::CreateFilletCorners",
-            "blend.fillet_executive_p1",
-        ))
-    }
+        k: &mut Kernel,
+        executive: &mut FilletExecutive<O>,
+        error: Option<&mut ErrorInfo<O>>,
+    ) -> Result<()>;
 
     /// `SmFilletExecutive::ProcessSmoothEdgeSequences` (`blend.fillet_executive_p2`).
     fn process_smooth_edge_sequences(
@@ -930,18 +926,10 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         allow_spine_edges: bool,
     ) -> Result<StitchAttempt>;
 
-    /// `SmFilletExecutive::DoPiecewiseMerge`; waiting for `blend.fillet_executive_p1`.
-    fn piecewise_merge(
-        &mut self,
-        _k: &mut Kernel,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::DoPiecewiseMerge
-        Err(SolidError::unported(
-            "SmFilletExecutive::DoPiecewiseMerge",
-            "blend.fillet_executive_p1",
-        ))
-    }
+    /// `SmFilletExecutive::DoPiecewiseMerge` on the implementor's bodies (the live
+    /// session's port is `FilletSession`'s piecewise merge).
+    fn piecewise_merge(&mut self, k: &mut Kernel, executive: &mut FilletExecutive<O>)
+        -> Result<()>;
 
     /// `SmFilletExecutive::SetFilletBrepEdgeMap` (`blend.fillet_executive_p2`).
     fn set_fillet_brep_edge_map(
