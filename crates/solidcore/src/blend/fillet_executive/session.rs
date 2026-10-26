@@ -532,6 +532,9 @@ impl FilletGeometryContext for SessionGeometryContext<'_> {
     }
 }
 
+/// A corner's face-error note (`FILEXEC_CORNER_ERR`).
+type CornerNote<'n> = &'n mut dyn FnMut(&FilletCorner);
+
 struct SessionEdgeLookup<'a> {
     solvers: &'a [Option<SolverObject>],
     extended_surfaces: &'a BTreeMap<FaceId, Surface>,
@@ -2037,10 +2040,7 @@ impl FaceConstructionAccess<FilletObject> for SessionObjects<'_> {
                 };
                 if nx1 {
                     let mut no_note = |_: &FilletCorner| {};
-                    let (face_note, end_note): (
-                        &mut dyn FnMut(&FilletCorner),
-                        &mut dyn FnMut(&FilletCorner),
-                    ) = if end_patch {
+                    let (face_note, end_note): (CornerNote<'_>, CornerNote<'_>) = if end_patch {
                         (&mut no_note, &mut note)
                     } else {
                         (&mut note, &mut no_note)

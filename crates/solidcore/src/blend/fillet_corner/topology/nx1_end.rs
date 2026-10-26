@@ -123,11 +123,8 @@ pub(crate) struct Nx1End<'a> {
     pub extend_edge: Option<EdgeId>,
 }
 
-fn pseudo_edge(edge: EdgeId) -> Option<FilletObject> {
-    Some(FilletObject::Topology(
-        FilletBody::Pseudo,
-        EntityRef::Edge(edge),
-    ))
+fn pseudo_edge(edge: EdgeId) -> FilletObject {
+    FilletObject::Topology(FilletBody::Pseudo, EntityRef::Edge(edge))
 }
 
 impl FilletCorner {
@@ -270,7 +267,7 @@ impl FilletCorner {
                 if total <= 3 {
                     // Register this edge and process it later
                     // when removing topological vertices
-                    topo_edges.push(pseudo_edge(edge2));
+                    topo_edges.push(Some(pseudo_edge(edge2)));
                 }
                 let original = eu1::edge(target, sides[1])?;
                 pseudo.fillet_edge_mut(edge2)?.set_original_edge(original);
@@ -292,7 +289,7 @@ impl FilletCorner {
                     .fillet_edge_mut(edge1)?
                     .set_fillet_edge_type(FilletEdgeType::OnEdge);
                 if total <= 3 {
-                    topo_edges.push(pseudo_edge(edge1));
+                    topo_edges.push(Some(pseudo_edge(edge1)));
                 }
                 let original = eu1::edge(target, sides[0])?;
                 pseudo.fillet_edge_mut(edge1)?.set_original_edge(original);
