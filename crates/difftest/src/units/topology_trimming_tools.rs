@@ -2192,7 +2192,14 @@ fn constructed_surface(kind: TrimConstructedKind) -> Result<(Surface, Vec<Point2
     Ok((Surface::from(BSplineSurface::from_nurb(nurb, false)), uv))
 }
 
-fn run_rust_constructed(k: &mut Kernel, kind: TrimConstructedKind) -> Result<Output, Fail> {
+struct ConstructedTrim {
+    body: Brep,
+    state: solidcore::topology::brep::p2::ArenaNotifyState,
+    serial: u64,
+    trim: Vec<i64>,
+}
+
+fn construct_rust_trim(k: &mut Kernel, kind: TrimConstructedKind) -> Result<ConstructedTrim, Fail> {
     use super::topology_brep_p10 as snapshot;
     use solidcore::topology::brep::{p2::ArenaNotifyState, p3};
     use solidcore::topology::topology::Topology;
@@ -2271,7 +2278,24 @@ fn run_rust_constructed(k: &mut Kernel, kind: TrimConstructedKind) -> Result<Out
             trim.push(label);
         }
     }
-    Ok(snapshot::snapshot_with_identity(k, &b, &state.records, &key_of)?.ints("trim", trim))
+    Ok(ConstructedTrim {
+        body: b,
+        state,
+        serial,
+        trim,
+    })
+}
+
+fn run_rust_constructed(k: &mut Kernel, kind: TrimConstructedKind) -> Result<Output, Fail> {
+    let built = construct_rust_trim(k, kind)?;
+    let key_of = |entity| solidcore::topology::brep::p3::topology_ref(built.serial, entity);
+    Ok(super::topology_brep_p10::snapshot_with_identity(
+        k,
+        &built.body,
+        &built.state.records,
+        &key_of,
+    )?
+    .ints("trim", built.trim))
 }
 
 struct ConstructedReader<'a> {
@@ -3169,6 +3193,259 @@ mod constructed_tests {
         ] {
             assert!(constructed_output(&raw).is_err(), "{raw:?}");
         }
+    }
+
+    fn actual_trim(k: &mut Kernel, kind: TrimConstructedKind) -> ConstructedTrim {
+        construct_rust_trim(k, kind)
+            .unwrap_or_else(|_| panic!("actual original trim construction failed"))
+    }
+
+    fn assert_one_owner_bit_changes(before: &Output, after: &Output) {
+        assert_eq!(before.values, after.values);
+        assert_eq!(
+            before.ints.keys().collect::<Vec<_>>(),
+            after.ints.keys().collect::<Vec<_>>()
+        );
+        for (key, values) in &before.ints {
+            if key == "ints" {
+                assert_eq!(values.len(), after.ints[key].len());
+                let changed = values
+                    .iter()
+                    .zip(&after.ints[key])
+                    .filter(|(a, b)| a != b)
+                    .map(|(a, b)| (*a, *b))
+                    .collect::<Vec<_>>();
+                assert_eq!(changed, vec![(1, 0)]);
+            } else {
+                assert_eq!(values, &after.ints[key]);
+            }
+        }
+    }
+
+    #[test]
+    fn constructed_notify_uv_owners_resolve_actual_holders() {
+        use super::super::topology_brep_p10::notify_uv_owner_matches;
+        use solidcore::topology::brep::{p2::ArenaNotifyState, p3};
+        use solidcore::EntityRef;
+
+        for kind in [
+            TrimConstructedKind::PlaneSquare,
+            TrimConstructedKind::CreasedStrip,
+        ] {
+            let mut k = Kernel::default();
+            let built = actual_trim(&mut k, kind);
+            let mut producer = ArenaNotifyState::new(&built.body);
+            let local = producer.env(None).key_of;
+            let canonical = |entity| p3::topology_ref(built.serial, entity);
+            for (holder, eu) in built.body.edgeuses().iter() {
+                if let Some(curve) = eu.uv_trim_curve.as_ref() {
+                    let owner = curve.owner().unwrap();
+                    assert_ne!(owner, canonical(EntityRef::Edgeuse(holder)));
+                    assert!(notify_uv_owner_matches(&built.body, local, holder, owner));
+                }
+            }
+            // Face/edge constructors have the explicit caller issuer, unlike the UV setter.
+            for face in solidcore::topology::brep::p1::faces(&built.body, None).unwrap() {
+                assert_eq!(
+                    built
+                        .body
+                        .face(face)
+                        .unwrap()
+                        .surface
+                        .as_ref()
+                        .unwrap()
+                        .owner(),
+                    Some(canonical(EntityRef::Face(face)))
+                );
+            }
+            for edge in solidcore::topology::brep::p1::edges(&built.body, None).unwrap() {
+                assert_eq!(
+                    built
+                        .body
+                        .edge(edge)
+                        .unwrap()
+                        .curve
+                        .as_ref()
+                        .unwrap()
+                        .owner(),
+                    Some(canonical(EntityRef::Edge(edge)))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn constructed_uv_owner_rejects_same_edge_mate_and_absence() {
+        use super::super::topology_brep_p10::{notify_uv_owner_matches, snapshot_with_identity};
+        use solidcore::topology::brep::{p2::ArenaNotifyState, p3};
+        use solidcore::EntityRef;
+
+        let mut k = Kernel::default();
+        let mut built = actual_trim(&mut k, TrimConstructedKind::PlaneSquare);
+        let serial = built.serial;
+        let canonical = |entity| p3::topology_ref(serial, entity);
+        let mut producer = ArenaNotifyState::new(&built.body);
+        let local = producer.env(None).key_of;
+        let holder = built
+            .body
+            .edgeuses()
+            .iter()
+            .find_map(|(id, eu)| eu.uv_trim_curve.is_some().then_some(id))
+            .unwrap();
+        let mate = eu1::mate(&built.body, holder).unwrap().unwrap();
+        assert_eq!(
+            built.body.edgeuse(holder).unwrap().edge,
+            built.body.edgeuse(mate).unwrap().edge
+        );
+        let original = built
+            .body
+            .edgeuse(holder)
+            .unwrap()
+            .uv_trim_curve
+            .as_ref()
+            .unwrap()
+            .owner();
+        let before =
+            snapshot_with_identity(&k, &built.body, &built.state.records, &canonical).unwrap();
+        let wrong = local(EntityRef::Edgeuse(mate));
+        for owner in [Some(wrong), None] {
+            built
+                .body
+                .edgeuse_mut(holder)
+                .unwrap()
+                .uv_trim_curve
+                .as_mut()
+                .unwrap()
+                .set_owner(owner, None);
+            assert!(!notify_uv_owner_matches(&built.body, local, holder, wrong));
+            let after =
+                snapshot_with_identity(&k, &built.body, &built.state.records, &canonical).unwrap();
+            assert_one_owner_bit_changes(&before, &after);
+        }
+        built
+            .body
+            .edgeuse_mut(holder)
+            .unwrap()
+            .uv_trim_curve
+            .as_mut()
+            .unwrap()
+            .set_owner(original, None);
+        assert_eq!(
+            before,
+            snapshot_with_identity(&k, &built.body, &built.state.records, &canonical).unwrap()
+        );
+    }
+
+    #[test]
+    fn constructed_uv_fallback_preserves_other_owner_domains() {
+        use super::super::topology_brep_p10::{notify_uv_owner_matches, snapshot_with_identity};
+        use solidcore::topology::{
+            brep::{p2::ArenaNotifyState, p3},
+            NamingScheme,
+        };
+        use solidcore::EntityRef;
+
+        let mut k = Kernel::default();
+        let mut built = actual_trim(&mut k, TrimConstructedKind::PlaneSquare);
+        let serial = built.serial;
+        let canonical = |entity| p3::topology_ref(serial, entity);
+        let mut producer = ArenaNotifyState::new(&built.body);
+        let local = producer.env(None).key_of;
+        let holder = built
+            .body
+            .edgeuses()
+            .iter()
+            .find_map(|(id, eu)| eu.uv_trim_curve.is_some().then_some(id))
+            .unwrap();
+        let owner = built
+            .body
+            .edgeuse(holder)
+            .unwrap()
+            .uv_trim_curve
+            .as_ref()
+            .unwrap()
+            .owner()
+            .unwrap();
+        for naming in [
+            NamingScheme::Unknown,
+            NamingScheme::Caller,
+            NamingScheme::Arena,
+        ] {
+            built.body.set_naming(naming);
+            assert!(!notify_uv_owner_matches(&built.body, local, holder, owner));
+        }
+        built.body.set_naming(NamingScheme::Notify);
+        let mate = eu1::mate(&built.body, holder).unwrap().unwrap();
+        assert!(built.body.edgeuse(mate).unwrap().uv_trim_curve.is_none());
+        assert!(!notify_uv_owner_matches(&built.body, local, mate, owner));
+        let before =
+            snapshot_with_identity(&k, &built.body, &built.state.records, &canonical).unwrap();
+        let face = solidcore::topology::brep::p1::faces(&built.body, None).unwrap()[0];
+        assert!(!notify_uv_owner_matches(
+            &built.body,
+            local,
+            holder,
+            canonical(EntityRef::Face(face))
+        ));
+        let face_owner = built
+            .body
+            .face(face)
+            .unwrap()
+            .surface
+            .as_ref()
+            .unwrap()
+            .owner();
+        built
+            .body
+            .face_mut(face)
+            .unwrap()
+            .surface
+            .as_mut()
+            .unwrap()
+            .set_owner(Some(local(EntityRef::Face(face))));
+        let wrong_face =
+            snapshot_with_identity(&k, &built.body, &built.state.records, &canonical).unwrap();
+        assert_one_owner_bit_changes(&before, &wrong_face);
+        built
+            .body
+            .face_mut(face)
+            .unwrap()
+            .surface
+            .as_mut()
+            .unwrap()
+            .set_owner(face_owner);
+        let edge = built.body.edgeuse(holder).unwrap().edge.unwrap();
+        let edge_owner = built
+            .body
+            .edge(edge)
+            .unwrap()
+            .curve
+            .as_ref()
+            .unwrap()
+            .owner();
+        built
+            .body
+            .edge_mut(edge)
+            .unwrap()
+            .curve
+            .as_mut()
+            .unwrap()
+            .set_owner(Some(local(EntityRef::Edge(edge))), None);
+        let wrong_edge =
+            snapshot_with_identity(&k, &built.body, &built.state.records, &canonical).unwrap();
+        assert_one_owner_bit_changes(&before, &wrong_edge);
+        built
+            .body
+            .edge_mut(edge)
+            .unwrap()
+            .curve
+            .as_mut()
+            .unwrap()
+            .set_owner(edge_owner, None);
+        assert_eq!(
+            before,
+            snapshot_with_identity(&k, &built.body, &built.state.records, &canonical).unwrap()
+        );
     }
 
     #[test]
