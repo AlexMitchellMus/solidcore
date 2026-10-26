@@ -1204,7 +1204,7 @@ fn solver_tolerance_sentinel_is_converted_at_set_tolerance_call() {
     );
 }
 
-// ---- closed-manifold result check (not upstream; tangency-labs/solidcore#422) ----
+// ---- closed-manifold result check (not upstream, opt-in; WR-212, tangency-labs/solidcore#422) ----
 
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::topology::{
@@ -1352,8 +1352,23 @@ fn fillet_body(body: Brep) -> (FilletExecutive<Handle>, Access, Result<()>) {
         ..Access::default()
     };
     let mut k = Kernel::default();
+    k.fixes.fillet_refuse_non_manifold_result = true;
     let result = executive.do_fillet(&mut k, &mut access);
     (executive, access, result)
+}
+
+#[test]
+fn open_result_is_accepted_without_the_opt_in_check() {
+    // Upstream (the default): DoFillet returns success for an open target.
+    let mut executive = state();
+    let mut access = Access {
+        body: Some(tetrahedron(&[0, 1, 2]).0),
+        ..Access::default()
+    };
+    let mut k = Kernel::default();
+    executive.do_fillet(&mut k, &mut access).unwrap();
+    assert_eq!(executive.error.code, 0);
+    assert!(executive.error.edge.is_none());
 }
 
 #[test]

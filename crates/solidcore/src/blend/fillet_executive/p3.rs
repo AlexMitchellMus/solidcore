@@ -24,11 +24,12 @@
 //! ownership are restored explicitly after fallible bodies, including on deferral.
 //! The upstream `cbi_MAP_TOPO_EDGES=0` experiments remain disabled. Parent-linked
 //! stage hooks borrow this live executive, never an adapter-owned duplicate.
-//! Not upstream: `do_fillet` ends with a closed-manifold check of the target
-//! (`check_closed_manifold`, tangency-labs/solidcore#422). A target with an edge
-//! that is not `SmEdge::IsManifold` is refused with error code
-//! `SM_FILERR_BAD_MERGE`, the edge in the error info and in the error, where
-//! upstream returns success. `do_filleting` alone is unchanged.
+//! Opt-in, not upstream: with `Kernel::fixes.fillet_refuse_non_manifold_result`
+//! (WR-212, tangency-labs/solidcore#422) `do_fillet` ends with a closed-manifold
+//! check of the target (`check_closed_manifold`). A target with an edge that is
+//! not `SmEdge::IsManifold` is then refused with error code `SM_FILERR_BAD_MERGE`,
+//! the edge in the error info and in the error, where upstream (the default)
+//! returns success. `do_filleting` alone is unchanged.
 //! Not upstream: [`ExecutiveAccess::shrink_face`] shrinks the new fillet faces with
 //! knot snapping of rounding errors (tangency-labs/solidcore#472).
 
@@ -2007,10 +2008,14 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         }
         access.create_corners(k, self, None)?;
         self.do_filleting(k, access, None)?;
+        if !k.fixes.fillet_refuse_non_manifold_result {
+            return Ok(());
+        }
         self.check_closed_manifold(access)
     }
 
     /// Refuse a filleted target that is not a closed manifold solid (not upstream;
+    /// opt-in `fixes.fillet_refuse_non_manifold_result`, WR-212,
     /// tangency-labs/solidcore#422). Upstream ignores the `bMaybeNotSolid` that
     /// `OrientTrimmedSurfaces` reports and returns success, so a round whose
     /// trimming breaks the shell came back as a valid body. The first edge of the
