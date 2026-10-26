@@ -219,31 +219,6 @@ impl crate::blend::fillet_solver::p5::RailClassificationContext for Context<'_> 
     }
 }
 
-/// Issued pseudo-B-rep identity for new recovery curves. Notification routing is
-/// deliberately unavailable until the recovery API supplies the actual curve key.
-pub(super) struct Ownership {
-    pub serial: u64,
-    pub brep: ObjectRef,
-}
-impl crate::blend::fillet_solver::p1::RailOwnership for Ownership {
-    fn edge_owner(&self, edge: EdgeId) -> crate::error::Result<(ObjectRef, Option<ObjectRef>)> {
-        Ok((
-            crate::topology::brep::p3::topology_ref(self.serial, EntityRef::Edge(edge)),
-            Some(self.brep),
-        ))
-    }
-    fn owner_changed(
-        &mut self,
-        _: crate::curve::curve::p2::OwnerChange,
-    ) -> crate::error::Result<()> {
-        // UNPORTED(blend.fillet_solver_p5): ProcessRollOver retained curve notification context.
-        Err(crate::error::SolidError::unported(
-            "SmFilletSolver::ProcessRollOver (actual curve notification context)",
-            "blend.fillet_solver_p5",
-        ))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
