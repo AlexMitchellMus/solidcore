@@ -4,8 +4,9 @@ Re-audit of the whole crate, following the PR #273 audit and the #835 source rev
 Range: base `92454ca6` (the main that #835's source review screened through) to
 `4427b2fa7` (main tip at review time; CI run 40378725048 green there: 557,740 cases,
 0 fail, 0 deferred). `git diff --name-only` lists 215 files under
-`crates/solidcore/src`, +45729/−5424, merged through 272 PRs (the list is in PR #1204's
-body; highlights: #1196 the S1 B-rep writer and part-file reader, #1159 the
+`crates/solidcore/src`, +45729/−5424, merged through 273 PR merge commits
+(`git log --merges --oneline 92454ca6..4427b2fa7`; highlights: #1196 the S1 B-rep
+writer and part-file reader, #1159 the
 `refine_cci_to_surfaces` port, #1195 sweeps batch, #1109 fillet Jacobian overflow
 guards, #1167/#1155 primitive-p2 guard paths, and a large set of `fix`/`wire`/
 difftest-corpus batches).
@@ -36,10 +37,13 @@ Earlier reviews must not re-report the 64→32 reductions as in-range changes; t
 `git log -G` value-pattern pitfall (`git log -L` and patternless `-G` under-report
 merge commits) made the `git show <commit>:<file>` check above the tie-breaker.
 
-### The one genuinely new recursion in the range
+### New recursion in the range (three paths, all bounded)
 
-`refine_cci_to_surfaces` (`intersect/curve_class/p2.rs`, ported in #1159) is the only
-new recursive function the range merges:
+**`refine_cci_to_surfaces`** (`intersect/curve_class/p2.rs`): the recursive call itself
+is new in the range (`97a52695c`, #1159, the large-gap refinement). The bound and the
+counter predate it: `MAX_REFINE_RECURSION = 5` and the `recursion_count` field were
+already at `92454ca6` (`:102`), where the large-gap part was still
+`UNPORTED(intersect.curve_class_p2)`.
 
 - `MAX_REFINE_RECURSION = 5` (`:126`), an explicit `recursion_count` parameter bumped
   first (`:1053`) and checked at entry (`:1056`, returns the unchanged output past the
@@ -47,7 +51,25 @@ new recursive function the range merges:
   explicit rather than left to the caller.
 - The recursive call in the large-gap path (`:2063`, `refine_cci_to_surfaces_mut`) is a
   single tail call that shares the already-incremented counter; it is not inside a
-  loop, so one input reaches at most 5 levels.
+  loop (it sits in the `if pt_was_refined1 || pt_was_refined2` block, `:2002`-`:2073`;
+  the function's only `while` ends at `:1629`), so one input reaches at most 5 levels.
+
+**`glue_with_notification_identity`** (`topology/brep/p5.rs:1136`, new in `312acd985`,
+#947): without a notification environment it re-enters itself once through
+`plain_edit` with `Some(env)` (`:1146`-`:1147`); that call takes the `Some` branch and
+does not recurse again. Depth 1, not input-driven.
+
+**`has_seam_problem_mut` ↔ `FaceProps::set_props_stage2_with`**
+(`topology/face/p4.rs:1846`, `heal/face_props.rs:1886`, both new in `a24a2434b`, #958):
+when the face props are below `Stage2A` (`p4.rs:1924`), `has_seam_problem_mut` runs
+`set_props_stage2_with` (`:1932`), whose seam callback (`face_props.rs:2062`) calls
+`has_seam_problem_mut` again (`p4.rs:1942`) with those props. `set_props_stage2_with`
+sets `prop_stage = Stage2A` (`:1918`) before the callback runs, so the inner call's
+`prop_stage < Stage2A` check (`p4.rs:1924`) skips the stage-2 run (and
+`set_props_stage2_with`'s own guard, `face_props.rs:1896`, would return at once): depth
+2, as upstream
+("increment PropState here - prevent infinite loops"). The bound is that ordering, not
+a counter (see Q4).
 
 ### The S1 writer/reader (#1196)
 
@@ -160,6 +182,12 @@ name), an existing bounded traversal, or the new code above. Notable clusters:
   the total number of solver/mate evaluations per stage is bounded by
   `MAX_SOLVE_BRANCHES`/the stage's own vector sizes, not by the depth counters.
   Carried over from #835, unchanged by this delta.
+- **Q4 — the seam/stage-2 recursion is bounded by ordering.** `has_seam_problem_mut` ↔
+  `set_props_stage2_with` stops at depth 2 only because `prop_stage = Stage2A` is set
+  before the seam callback runs. A change that moves that assignment after the callback,
+  or a caller that passes props reset below `Stage2A` into the callback, would make the
+  pair recurse without bound. No test pins the depth; a unit test asserting a single
+  inner `has_seam_problem_mut` per stage-2 run would.
 
 ### Verification
 
