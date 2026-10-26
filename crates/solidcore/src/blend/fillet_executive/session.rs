@@ -6,8 +6,13 @@
 //! |------|----------|
 //! | [`FilletSession`] | `SmFilletExecutive` and its owned objects |
 //! | [`SolverObject`] | the concrete `SmFilletSolver` objects |
+//! | [`FilletSession::set_self_intersection_handler`] | `SetSelfIntersectionHandler` |
+//! | [`FilletSession::fillet_corners`] | `GetFilletCorners` |
+//! | [`FilletSession::set_bevel_corner`] | `SetBevelCorner` |
 //!
-//! Deviations: one borrowed target and typed owned slots replace native pointers.
+//! Deviations: the retained handler's algorithm type is copied into every loaded
+//! solver (on load and on each set), standing in for the solvers' live
+//! `m_pExecutive->m_pSelfIntersectionHandler` read. One borrowed target and typed owned slots replace native pointers.
 //! Slots are never reused. Target curves cannot be replaced while its loading caches
 //! are retained: the session exposes only shared access to its borrowed target.
 //! Loading creates and retains default full-tree curve caches: only their knot
@@ -38,7 +43,9 @@ use crate::blend::fillet_geom::p1::{
     CornerLookup, FilletBrep, FilletCornerId, FilletCornerType, FilletSolverId, FilletVertexType,
 };
 use crate::blend::fillet_geom::p5::FilletEdgeContext;
-use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, FilletSurfaceGenerator};
+use crate::blend::fillet_solver::p1::{
+    FilletSolver, FilletSolverOps, FilletSurfaceGenerator, MakeSurfaceBlendSih,
+};
 use crate::blend::fillet_solver::p4::FilletGeometryContext;
 use crate::blend::fillet_standard_solver::p1::{
     constant_radius_from_edgeuse, ConstantDistanceFs, ConstantRadiusFs, FilletSolverType,
@@ -110,6 +117,8 @@ pub enum FilletObject {
     Generator(u32),
     /// An attribute owned by the session's actual attribute store.
     Attribute(AttributeHandle),
+    /// The session's retained self-intersection handler.
+    SelfIntersectionHandler,
 }
 
 impl ClassObject for FilletObject {
@@ -211,6 +220,7 @@ struct SessionObjects<'target> {
     extended_surfaces: BTreeMap<FaceId, Surface>,
     edge_caches: BTreeMap<EdgeId, CurveCache<FilletObject>>,
     target_serial: u64,
+    self_intersection_handler: Option<MakeSurfaceBlendSih>,
 }
 
 impl SessionObjects<'_> {
@@ -534,6 +544,7 @@ impl<'target> FilletSession<'target> {
                 extended_surfaces: BTreeMap::new(),
                 edge_caches: BTreeMap::new(),
                 target_serial,
+                self_intersection_handler: None,
             },
         })
     }
@@ -1041,8 +1052,131 @@ impl<'target> FilletSession<'target> {
     /// # Errors
     /// The real loader's surface, cache, topology or lifecycle errors; prior writes remain.
     pub fn load_solver(&mut self, k: &Kernel, solver: FilletSolverId) -> Result<()> {
+        let result =
+            self.executive
+                .load_fillet_solver(k, &mut self.objects, FilletObject::Solver(solver));
+        self.sync_self_intersection_handler();
+        result
+    }
+
+    /// `SetSelfIntersectionHandler`: retain `handler` as the executive's handler,
+    /// which every loaded solver reads through its executive.
+    pub fn set_self_intersection_handler(&mut self, handler: Option<MakeSurfaceBlendSih>) {
+        self.objects.self_intersection_handler = handler;
         self.executive
-            .load_fillet_solver(k, &mut self.objects, FilletObject::Solver(solver))
+            .set_self_intersection_handler(handler.map(|_| FilletObject::SelfIntersectionHandler));
+        self.sync_self_intersection_handler();
+    }
+
+    /// The retained self-intersection handler (`m_pSelfIntersectionHandler`).
+    #[must_use]
+    pub const fn self_intersection_handler(&self) -> Option<MakeSurfaceBlendSih> {
+        self.objects.self_intersection_handler
+    }
+
+    /// Make every solver with an executive see the retained handler, as upstream
+    /// solvers read `m_pExecutive->m_pSelfIntersectionHandler` on each use.
+    pub(super) fn sync_self_intersection_handler(&mut self) {
+        let algorithm = self
+            .objects
+            .self_intersection_handler
+            .as_ref()
+            .map(MakeSurfaceBlendSih::algorithm_type);
+        for solver in self.objects.solvers.iter_mut().flatten() {
+            let base = solver.base_mut();
+            if base.executive.is_some() {
+                base.executive_self_intersection_handler = algorithm;
+            }
+        }
+    }
+
+    /// `SetDoGlobalMerge`.
+    pub fn set_do_global_merge(&mut self, do_global_merge: bool) {
+        self.executive.set_do_global_merge(do_global_merge);
+    }
+
+    /// `SmEdge::GetBlendEdgeuse` of a target edge.
+    ///
+    /// # Errors
+    /// Those of [`crate::topology::edge::blend_edgeuse`].
+    pub fn blend_edgeuse(&mut self, k: &Kernel, edge: EdgeId) -> Result<Option<EdgeuseId>> {
+        crate::topology::edge::blend_edgeuse(k, self.objects.target, edge)
+    }
+
+    /// Construct `SmConstantDistanceFS` on the actual target sector and pseudo-B-rep.
+    ///
+    /// # Errors
+    /// Solver identity exhaustion or the real native constructor's query failures.
+    pub fn new_constant_distance_solver(
+        &mut self,
+        k: &Kernel,
+        edgeuse: EdgeuseId,
+        distance: f64,
+        approx_tol: f64,
+        ang_tol_rad: f64,
+        tan_tol_rad: f64,
+    ) -> Result<FilletSolverId> {
+        self.objects.allocate_constant_distance_solver(
+            k,
+            edgeuse,
+            distance,
+            approx_tol,
+            ang_tol_rad,
+            tan_tol_rad,
+        )
+    }
+
+    /// `GetFilletCorners`: the executive's corners in creation order.
+    ///
+    /// # Errors
+    /// A corner list entry that is not a session corner.
+    pub fn fillet_corners(&self) -> Result<Vec<FilletCornerId>> {
+        self.executive
+            .corners
+            .iter()
+            .map(|object| match object {
+                FilletObject::Corner(id) => Ok(*id),
+                _ => Err(invalid("executive corner is not a session corner")),
+            })
+            .collect()
+    }
+
+    /// `SmFilletCorner::SetBevel` on one live corner.
+    ///
+    /// # Errors
+    /// An unresolved corner identity.
+    pub fn set_corner_bevel(&mut self, id: FilletCornerId, is_bevel: bool) -> Result<()> {
+        self.objects
+            .corners
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| invalid("corner is not live in this session"))?
+            .set_bevel(is_bevel);
+        Ok(())
+    }
+
+    /// `SetBevelCorner(pVertex)`: make the corner of a target vertex a bevel.
+    ///
+    /// # Errors
+    /// Those of [`FilletExecutive::set_bevel_corner`]: `SM_ERR_NULL_POINTER` for a
+    /// vertex without an entry, invalid input for one without a created corner.
+    pub fn set_bevel_corner(&mut self, vertex: VertexId) -> Result<()> {
+        let corners = &mut self.objects.corners;
+        self.executive.set_bevel_corner(
+            Some(FilletObject::Topology(
+                FilletBody::Target,
+                EntityRef::Vertex(vertex),
+            )),
+            |object| {
+                let FilletObject::Corner(id) = object else {
+                    return Err(invalid("object is not a corner"));
+                };
+                corners
+                    .get_mut(id.0 as usize)
+                    .ok_or_else(|| invalid("corner is not live in this session"))?
+                    .set_bevel(true);
+                Ok(())
+            },
+        )
     }
 }
 
@@ -2049,6 +2183,39 @@ impl SessionObjects<'_> {
             Some(SolverObject::ConstantRadius(Box::new(solver)));
         Ok(id)
     }
+    #[allow(clippy::too_many_arguments)] // the native constructor's parameters
+    fn allocate_constant_distance_solver(
+        &mut self,
+        k: &Kernel,
+        edgeuse: EdgeuseId,
+        distance: f64,
+        approx_tol: f64,
+        ang_tol_rad: f64,
+        tan_tol_rad: f64,
+    ) -> Result<FilletSolverId> {
+        let id = FilletSolverId(
+            u32::try_from(self.solvers.len()).map_err(|_| invalid("too many solvers"))?,
+        );
+        // As for the constant-radius solver: reserve the identity first.
+        self.solvers.push(None);
+        let solver = ConstantDistanceFs::from_edgeuse(
+            k,
+            self.target,
+            &mut self.pseudo,
+            id,
+            approx_tol,
+            ang_tol_rad,
+            tan_tol_rad,
+            distance,
+            edgeuse,
+        )?;
+        *self
+            .solvers
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| invalid("lost solver slot"))? =
+            Some(SolverObject::ConstantDistance(Box::new(solver)));
+        Ok(id)
+    }
     fn assign_generator(&mut self, solver: FilletSolverId, generator: FilletObject) -> Result<()> {
         let FilletObject::Generator(id) = generator else {
             return Err(invalid("object is not a generator"));
@@ -2104,30 +2271,43 @@ impl FilletParametersAccess<FilletObject> for SessionObjects<'_> {
         k: &mut Kernel,
         spec: &SolverSpec<'_, FilletObject>,
     ) -> Result<FilletObject> {
-        let SolverSpec::ConstantRadius {
-            approx_tol,
-            ang_tol_rad,
-            tan_tol_rad,
-            radius,
-            edgeuse,
-        } = *spec
-        else {
-            return Err(invalid(
-                "this session constructor currently supports constant-radius edge solvers",
-            ));
+        let target_edgeuse = |edgeuse| match edgeuse {
+            FilletObject::Topology(FilletBody::Target, EntityRef::Edgeuse(edgeuse)) => Ok(edgeuse),
+            _ => Err(invalid("solver edge use is not in the target")),
         };
-        let FilletObject::Topology(FilletBody::Target, EntityRef::Edgeuse(edgeuse)) = edgeuse
-        else {
-            return Err(invalid("solver edge use is not in the target"));
-        };
-        self.allocate_constant_radius_solver(
-            k,
-            edgeuse,
-            radius,
-            approx_tol,
-            ang_tol_rad,
-            tan_tol_rad,
-        )
+        match *spec {
+            SolverSpec::ConstantRadius {
+                approx_tol,
+                ang_tol_rad,
+                tan_tol_rad,
+                radius,
+                edgeuse,
+            } => self.allocate_constant_radius_solver(
+                k,
+                target_edgeuse(edgeuse)?,
+                radius,
+                approx_tol,
+                ang_tol_rad,
+                tan_tol_rad,
+            ),
+            SolverSpec::ConstantDistance {
+                approx_tol,
+                ang_tol_rad,
+                tan_tol_rad,
+                radius,
+                edgeuse,
+            } => self.allocate_constant_distance_solver(
+                k,
+                target_edgeuse(edgeuse)?,
+                radius,
+                approx_tol,
+                ang_tol_rad,
+                tan_tol_rad,
+            ),
+            _ => Err(invalid(
+                "this session constructor supports constant-radius and constant-distance edge solvers",
+            )),
+        }
         .map(FilletObject::Solver)
     }
     fn parameters_set_generator(
