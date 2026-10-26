@@ -978,7 +978,13 @@ fn offset_evaluate_simple(
     offset: f64,
     uv: Point2,
 ) -> Result<Vec<Vec<Vec3>>> {
-    let off = OffsetSurface::new(k, offset, surface.clone_for_evaluation()?, false, SS_UNKNOWN)?;
+    let off = OffsetSurface::new(
+        k,
+        offset,
+        surface.clone_for_evaluation()?,
+        false,
+        SS_UNKNOWN,
+    )?;
     off.evaluate_simple(k, uv, 1, 1, simple_flags())
 }
 
