@@ -1972,6 +1972,7 @@ impl FaceConstructionAccess<FilletObject> for SessionObjects<'_> {
             intermediate,
             notification_records,
             attributes,
+            extended_surfaces,
             ..
         } = self;
         let corner = corners
@@ -1979,10 +1980,7 @@ impl FaceConstructionAccess<FilletObject> for SessionObjects<'_> {
             .ok_or_else(|| invalid("corner patch is not live"))?;
         corner.calc_corner_geom_with(&mut (), |corner, ()| {
             match corner.kind {
-                FilletCornerKind::ThreeByTwoMixed
-                | FilletCornerKind::NByOne
-                | FilletCornerKind::Open
-                | FilletCornerKind::NByTwo => {
+                FilletCornerKind::ThreeByTwoMixed | FilletCornerKind::NByTwo => {
                     // UNPORTED(blend.fillet_corner_p3): actual concrete corner-patch construction context.
                     return Err(SolidError::unported(
                         "SmFilletCorner::CreateCornerPatch (live construction context)",
@@ -2011,6 +2009,18 @@ impl FaceConstructionAccess<FilletObject> for SessionObjects<'_> {
                         key_of: &key_of,
                     },
                 };
+                // SmFilletNx1Corner::CreateCornerPatch builds an end patch
+                // (CreateEndPatch), whose failure note names the end face.
+                let nx1 = matches!(
+                    corner.kind,
+                    FilletCornerKind::NByOne | FilletCornerKind::Open
+                );
+                let end_patch = nx1 && corner.edges.len() == 3 && corner.extended_surface_patch;
+                let comment = if end_patch {
+                    "Fillet Corner Error: Corner End Face Creation Error"
+                } else {
+                    "Fillet Corner Error: Corner Face Creation Error"
+                };
                 let mut note = |corner: &FilletCorner| {
                     executive.error.note_corner_error(
                         crate::blend::fillet_geom::p1::FilletErrorType::VertexProblem,
@@ -2022,9 +2032,33 @@ impl FaceConstructionAccess<FilletObject> for SessionObjects<'_> {
                         }),
                         [None, None], // For now, we don't generally have just two surfaces.
                         [None, None], // For now, we don't generally have just two edgeuses.
-                        Some("Fillet Corner Error: Corner Face Creation Error"),
+                        Some(comment),
                     );
                 };
+                if nx1 {
+                    let mut no_note = |_: &FilletCorner| {};
+                    let (face_note, end_note): (
+                        &mut dyn FnMut(&FilletCorner),
+                        &mut dyn FnMut(&FilletCorner),
+                    ) = if end_patch {
+                        (&mut no_note, &mut note)
+                    } else {
+                        (&mut note, &mut no_note)
+                    };
+                    let mut env = CornerPatchEnv {
+                        k,
+                        target,
+                        pseudo,
+                        solvers: &store,
+                        fillet: Some(&mut fillet),
+                        note_face_error: face_note,
+                    };
+                    return corner.create_corner_patch_nx1_with(
+                        &mut env,
+                        |face| extended_surfaces.get(&face).cloned(),
+                        end_note,
+                    );
+                }
                 let mut env = CornerPatchEnv {
                     k,
                     target,

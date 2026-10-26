@@ -1698,6 +1698,37 @@ impl FilletCorner {
         Ok(())
     }
 
+    /// [`FilletCorner::create_corner_patch_nx1`] against any [`CornerPatchEnv`];
+    /// `extended_surface` resolves the executive's extended surfaces and
+    /// `note_end_face_error` notes a failed end face (`CreateEndPatch`).
+    ///
+    /// # Errors
+    /// As [`FilletCorner::create_corner_patch_nx1`].
+    pub fn create_corner_patch_nx1_with(
+        &mut self,
+        env: &mut CornerPatchEnv<'_, '_>,
+        extended_surface: impl Fn(FaceId) -> Option<Surface>,
+        note_end_face_error: &mut dyn FnMut(&FilletCorner),
+    ) -> Result<()> {
+        if self.edges.len() == 3 {
+            if self.extended_surface_patch {
+                let mut end_env = CornerPatchEnv {
+                    k: &mut *env.k,
+                    target: env.target,
+                    pseudo: &mut *env.pseudo,
+                    solvers: env.solvers,
+                    fillet: env.fillet.as_deref_mut(),
+                    note_face_error: note_end_face_error,
+                };
+                self.create_end_patch_with(&mut end_env, extended_surface)?;
+            } else {
+                self.create_corner_patch_default_with(env)?;
+            }
+        }
+        // else SM_DBG_WARN: Unexpected SmFilletNx1Corner endFace construction case
+        Ok(())
+    }
+
     /// `SmFilletNx2Corner::CreateCornerPatch`: with six fillet edges a small end patch
     /// over the last three first; then the three-sided default patch over the first
     /// three edges and vertices; the edges, vertices and end patch are put back.

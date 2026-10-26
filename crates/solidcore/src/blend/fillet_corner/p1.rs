@@ -1813,6 +1813,66 @@ impl FilletCorner {
         Ok(())
     }
 
+    /// [`FilletCorner::create_end_patch`] against any [`CornerPatchEnv`]:
+    /// `extended_surface` resolves the executive's extended surface of an original
+    /// face, and the environment's face-error note is the caller's
+    /// `FILEXEC_CORNER_ERR(this, "Corner End Face Creation Error")`.
+    ///
+    /// # Errors
+    /// As [`FilletCorner::create_end_patch`].
+    pub fn create_end_patch_with(
+        &mut self,
+        env: &mut CornerPatchEnv<'_, '_>,
+        extended_surface: impl Fn(FaceId) -> Option<Surface>,
+    ) -> Result<()> {
+        // for every filletCorner->FilletEdge
+        for curr_edge in self.edges.clone() {
+            // skip non SM_FE_FILLET_X_SIDE_FACE FilletEdges
+            let fe = env.pseudo.fillet_edge(curr_edge)?;
+            if fe.edge_type != FilletEdgeType::FilletXSideFace {
+                continue;
+            }
+
+            // Get FilletEdge->OriginalFace->ExtendedSurface or Surface when needed
+            let face = fe
+                .orig_face
+                .ok_or_else(|| SolidError::null_pointer(OP_END_PATCH))?;
+            let surface = match extended_surface(face) {
+                Some(s) => s,
+                None => env
+                    .target
+                    .face(face)?
+                    .surface
+                    .clone()
+                    .ok_or_else(|| SolidError::invalid_input(OP_END_PATCH, NULL_DEREF))?,
+            };
+
+            // Copy pSurface, when possible as an analytic surface
+            let new_surface = surface.copy_and_add_analytics(env.k)?;
+            self.surfaces.push(new_surface);
+
+            // Create Face (and Edges and Verts) in m_pFilletBrep from m_vSurfaces
+            match self.make_face_brep_with(env) {
+                Ok(()) => {}
+                Err(e) if e.is_unported() => return Err(e),
+                Err(
+                    e @ SolidError::InvalidInput {
+                        reason: NULL_DEREF, ..
+                    },
+                ) => return Err(e),
+                Err(_) => {
+                    // when MakeFaceBrep() failed - Note FilletError
+                    (env.note_face_error)(self);
+                    return Err(SolidError::sm_err(OP_END_PATCH));
+                }
+            }
+
+            break;
+        } // end iter every filletEdge searching for one attached to face to extend
+
+        Ok(())
+    }
+
     /// `MakeFaceBrep`: builds the corner's face(s) in the fillet B-rep
     /// ([`CornerEnv::fillet`], in its infinite region). One surface: a face on it bounded
     /// by copies of the corner edges' curves (all `SM_OT_SAME`), its orientation from
