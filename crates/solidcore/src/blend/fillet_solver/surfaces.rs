@@ -542,7 +542,7 @@ mod tests {
                 .as_mut()
                 .unwrap()
                 .surface
-                .evaluate_point_extending(&k, crate::geom::vector2d::Point2::new(0.25, 0.75))
+                .evaluate_point_extending(&k, Point2::new(0.25, 0.75))
                 .unwrap(),
             Point3::new(0.25, 0.75, 7.0)
         );
