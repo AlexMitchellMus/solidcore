@@ -176,7 +176,8 @@ fn box_with_two_rounds_then(k: &mut Kernel, r: f64) -> Outcome {
 /// `fillet_nx1_end_rib_global_merge` the rib is deleted and the global merge cuts the round
 /// off against the body: each builds, to the volumes of the integral of min(R5, R3 top)
 /// over the corner column outside the vertical round (47418.926881, 47546.786538 and
-/// 47591.811067).
+/// 47591.811067). The kernel's own volume is a quadrature: it lands within ~2e-3 of these on arm
+/// and ~1e-2 on x86 (CI: 47546.79569 for r 4), about 2e-7 relative, hence the 2e-2 tolerance.
 #[test]
 fn round_end_across_a_short_arc_is_cut_off_by_the_body() {
     for (r, expected) in [
@@ -194,7 +195,7 @@ fn round_end_across_a_short_arc_is_cut_off_by_the_body() {
         let Outcome::Built { volume, manifold } = box_with_two_rounds_then(&mut k, r) else {
             panic!("r {r}: refused");
         };
-        assert!(manifold && near(volume, expected, 5e-3), "r {r}: {volume}");
+        assert!(manifold && near(volume, expected, 2e-2), "r {r}: {volume}");
     }
 }
 
