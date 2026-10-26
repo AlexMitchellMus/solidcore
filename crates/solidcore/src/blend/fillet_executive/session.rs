@@ -591,10 +591,11 @@ fn live_corner_vertices_geom(
         FilletCornerType::NByOne
             | FilletCornerType::NByOneClosed
             | FilletCornerType::NByTwo
+            | FilletCornerType::ThreeByTwoMixed
             | FilletCornerType::NByNConvex
             | FilletCornerType::NByNConcave
     ) {
-        return Err(invalid("ordinary Nx1, Nx2 or NxN corner required"));
+        return Err(invalid("ordinary Nx1, Nx2, 3x2 or NxN corner required"));
     }
     let mut context = (k, target, pseudo, solvers, corners, extended_surfaces);
     corner.calc_corner_vert_geom_with(
@@ -800,6 +801,8 @@ struct SessionNx2Adjust<'a> {
     solvers: &'a mut [Option<SolverObject>],
     /// The corner slots, the running corner's holding a placeholder.
     corners: &'a mut Vec<FilletCorner>,
+    /// The executive's `m_vExtendedSurfacesMap`.
+    extended_surfaces: &'a mut BTreeMap<FaceId, Surface>,
     executive: &'a mut FilletExecutive<FilletObject>,
 }
 
@@ -812,12 +815,14 @@ impl Nx2AdjustContext for SessionNx2Adjust<'_> {
             Some(self.corner),
         )
     }
-    fn adjust_concave_corner_topology(&mut self, _corner: &mut FilletCorner) -> Result<()> {
-        // UNPORTED(blend.fillet_executive_p1): actual retained Nx2 concave adjustment context.
-        Err(SolidError::unported(
-            "SmFilletNx2Corner::AdjustConcaveCornerTopology (live context)",
-            "blend.fillet_executive_p1",
-        ))
+    fn adjust_concave_corner_topology(&mut self, corner: &mut FilletCorner) -> Result<()> {
+        corner.adjust_concave_corner_topology_with(
+            self.k,
+            self.target,
+            self.pseudo,
+            Some(self.corner),
+            self.extended_surfaces,
+        )
     }
     fn test_and_convert_big_rad_fillet(
         &mut self,
@@ -2548,16 +2553,6 @@ impl FaceConstructionAccess<FilletObject> for SessionObjects<'_> {
             .get_mut(id.0 as usize)
             .ok_or_else(|| invalid("corner patch is not live"))?;
         corner.calc_corner_geom_with(&mut (), |corner, ()| {
-            match corner.kind {
-                FilletCornerKind::ThreeByTwoMixed | FilletCornerKind::NByTwo => {
-                    // UNPORTED(blend.fillet_corner_p3): actual concrete corner-patch construction context.
-                    return Err(SolidError::unported(
-                        "SmFilletCorner::CreateCornerPatch (live construction context)",
-                        "blend.fillet_corner_p3",
-                    ));
-                }
-                _ => {}
-            }
             // SmFilletCorner::CreateCornerPatch, building into m_pFilletBrep.
             let body = intermediate
                 .as_mut()
@@ -2590,6 +2585,61 @@ impl FaceConstructionAccess<FilletObject> for SessionObjects<'_> {
                 } else {
                     "Fillet Corner Error: Corner Face Creation Error"
                 };
+                if corner.kind == FilletCornerKind::NByTwo {
+                    // SmFilletNx2Corner::CreateCornerPatch: an end patch (CreateEndPatch,
+                    // noting the end face) and the default patch (noting the corner
+                    // face). A failed note returns at once, so at most one fires; it
+                    // is replayed into the executive's record.
+                    type Noted = (FilletCornerType, &'static str, Option<VertexId>);
+                    let record =
+                        |c: &FilletCorner| (c.corner_type(), c.kind.name(), c.filleted_vertex());
+                    let mut face_noted: Option<Noted> = None;
+                    let mut end_noted: Option<Noted> = None;
+                    let result = {
+                        let mut face_note = |c: &FilletCorner| face_noted = Some(record(c));
+                        let mut end_note = |c: &FilletCorner| end_noted = Some(record(c));
+                        let mut env = CornerPatchEnv {
+                            k,
+                            target,
+                            pseudo,
+                            solvers: &store,
+                            fillet: Some(&mut fillet),
+                            note_face_error: &mut face_note,
+                        };
+                        corner.create_corner_patch_nx2_with(
+                            &mut env,
+                            |face| extended_surfaces.get(&face).cloned(),
+                            &mut end_note,
+                        )
+                    };
+                    for (noted, comment) in [
+                        (
+                            end_noted,
+                            "Fillet Corner Error: Corner End Face Creation Error",
+                        ),
+                        (
+                            face_noted,
+                            "Fillet Corner Error: Corner Face Creation Error",
+                        ),
+                    ] {
+                        let Some((corner_type, name, vertex)) = noted else {
+                            continue;
+                        };
+                        executive.error.note_corner_error(
+                            crate::blend::fillet_geom::p1::FilletErrorType::VertexProblem,
+                            corner_type,
+                            crate::blend::fillet_geom::p1::FilStatus::Failure,
+                            Some(name),
+                            vertex.map(|v| {
+                                FilletObject::Topology(FilletBody::Target, EntityRef::Vertex(v))
+                            }),
+                            [None, None], // For now, we don't generally have just two surfaces.
+                            [None, None], // For now, we don't generally have just two edgeuses.
+                            Some(comment),
+                        );
+                    }
+                    return result;
+                }
                 let mut note = |corner: &FilletCorner| {
                     executive.error.note_corner_error(
                         crate::blend::fillet_geom::p1::FilletErrorType::VertexProblem,
@@ -2633,6 +2683,9 @@ impl FaceConstructionAccess<FilletObject> for SessionObjects<'_> {
                     fillet: Some(&mut fillet),
                     note_face_error: &mut note,
                 };
+                if corner.kind == FilletCornerKind::ThreeByTwoMixed {
+                    return corner.create_corner_patch_3x2_with(&mut env);
+                }
                 corner.create_corner_patch_default_with(&mut env)
             })?
         })
@@ -3443,6 +3496,55 @@ impl SessionObjects<'_> {
             solvers,
         })
     }
+    fn make_3x2_mixed_corner_topology(
+        &mut self,
+        k: &Kernel,
+        id: FilletCornerId,
+        executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let edgeuses = self
+            .corners
+            .get(id.0 as usize)
+            .and_then(|corner| corner.solver_eus.as_deref())
+            .ok_or_else(|| invalid("corner has no actual solver edge uses"))?;
+        let mut solver_ids = [FilletSolverId(0); 2];
+        for (slot, index) in solver_ids.iter_mut().zip(0..2) {
+            let edgeuse = edgeuses
+                .get(index)
+                .copied()
+                .ok_or_else(|| invalid("corner has fewer than two solver edge uses"))?;
+            let object = FilletObject::Topology(FilletBody::Target, EntityRef::Edgeuse(edgeuse));
+            let Some(FilletObject::Solver(solver)) = executive.fillet_solver_of_edgeuse(object)
+            else {
+                return Err(SolidError::null_pointer(
+                    "SmFillet3x2MixedConvexityCorner::MakeCornerTopology",
+                ));
+            };
+            *slot = solver;
+        }
+        let SessionObjects {
+            target,
+            pseudo,
+            solvers,
+            corners,
+            extended_surfaces,
+            ..
+        } = self;
+        let corner = corners
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| invalid("corner is not live"))?;
+        corner.make_3x2_mixed_corner_topology(
+            crate::blend::fillet_corner::topology::mixed_3x2::Mixed3x2TopologyEnv {
+                k,
+                target,
+                pseudo,
+                corner: id,
+                solvers,
+                solver_ids,
+                extended_surfaces,
+            },
+        )
+    }
     fn make_convex_nxn_corner_topology(
         &mut self,
         k: &Kernel,
@@ -3553,7 +3655,10 @@ impl CornerVertexAccess<FilletObject> for SessionObjects<'_> {
             FilletCornerType::NByNConcave => {
                 self.make_concave_nxn_corner_topology(k, id, executive)
             }
-            _ => {
+            FilletCornerType::ThreeByTwoMixed => {
+                self.make_3x2_mixed_corner_topology(k, id, executive)
+            }
+            other => {
                 // UNPORTED(blend.fillet_executive_p1): retained context for other concrete corners.
                 Err(SolidError::unported(
                     "SmFilletCorner::MakeCornerTopology (live concrete dispatch)",
@@ -3668,6 +3773,7 @@ impl CornerVertexAccess<FilletObject> for SessionObjects<'_> {
             FilletCornerType::NByOne
                 | FilletCornerType::NByOneClosed
                 | FilletCornerType::NByTwo
+                | FilletCornerType::ThreeByTwoMixed
                 | FilletCornerType::NByNConvex
                 | FilletCornerType::NByNConcave
         ) {
@@ -3716,6 +3822,7 @@ impl CornerAdjustmentAccess<FilletObject> for SessionObjects<'_> {
             pseudo,
             corners,
             solvers,
+            extended_surfaces,
             ..
         } = self;
         // The running corner is taken out of its slot so that the big-radius
@@ -3732,6 +3839,7 @@ impl CornerAdjustmentAccess<FilletObject> for SessionObjects<'_> {
             corner: id,
             solvers: solvers.as_mut_slice(),
             corners,
+            extended_surfaces,
             executive,
         };
         let result = corner.adjust_topology_with(

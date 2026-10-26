@@ -911,6 +911,24 @@ impl FilletBrep {
         corner: Option<&FilletCorner>,
         solvers: &[FilletSolver],
     ) -> Result<()> {
+        self.calc_fillet_end_with_lookup(k, e, target, corner, &|id| solver_of(solvers, id, OP_END))
+    }
+
+    /// [`Self::calc_fillet_end`] resolving the geometry's solver through `resolve`
+    /// (the live session's solver store) instead of an indexed table.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::calc_fillet_end`]; those of `resolve`.
+    #[allow(clippy::too_many_lines)]
+    pub fn calc_fillet_end_with_lookup<'solver>(
+        &mut self,
+        k: &Kernel,
+        e: EdgeId,
+        target: &Brep,
+        corner: Option<&FilletCorner>,
+        resolve: &impl Fn(FilletSolverId) -> Result<&'solver FilletSolver>,
+    ) -> Result<()> {
         let nul = || SolidError::null_pointer(OP_END);
         let corner = corner.ok_or_else(nul)?;
 
@@ -1008,7 +1026,7 @@ impl FilletBrep {
 
         let solver_id =
             solver_id.ok_or_else(|| invalid(OP_END, "fillet geometry without solver"))?;
-        let approx_tol = solver_of(solvers, solver_id, OP_END)?.approx_tol_3d / 10.0;
+        let approx_tol = resolve(solver_id)?.approx_tol_3d / 10.0;
         let lifted = fillet_surface.lift_curve(
             k,
             &uv_domain,
@@ -1100,6 +1118,26 @@ impl FilletBrep {
         opt_corner: Option<&FilletCorner>,
         solvers: &[FilletSolver],
     ) -> Result<()> {
+        self.calc_set_back_rail_with_lookup(k, e, target, opt_corner, &|id| {
+            solver_of(solvers, id, OP_SETBACK)
+        })
+    }
+
+    /// [`Self::calc_set_back_rail`] resolving the geometry's solver through `resolve`
+    /// (the live session's solver store) instead of an indexed table.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::calc_set_back_rail`]; those of `resolve`.
+    #[allow(clippy::too_many_lines)]
+    pub fn calc_set_back_rail_with_lookup<'solver>(
+        &mut self,
+        k: &Kernel,
+        e: EdgeId,
+        target: &Brep,
+        opt_corner: Option<&FilletCorner>,
+        resolve: &impl Fn(FilletSolverId) -> Result<&'solver FilletSolver>,
+    ) -> Result<()> {
         let nul = || SolidError::null_pointer(OP_SETBACK);
         // locals
         let face = self.fillet_edge(e)?.original_face().ok_or_else(nul)?;
@@ -1114,7 +1152,7 @@ impl FilletBrep {
             .geom(fillet_geom)?
             .fillet_solver()
             .ok_or_else(|| invalid(OP_SETBACK, "fillet geometry without solver"))?;
-        let fil_solver1 = solver_of(solvers, solver_id, OP_SETBACK)?;
+        let fil_solver1 = resolve(solver_id)?;
         let approx_tol = fil_solver1.approx_tol_3d;
         let rail_index = fil_solver1.find_index_of_rail_on_face(target, Some(face))?;
         let rail = self

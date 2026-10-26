@@ -637,14 +637,13 @@ impl FilletBrep {
                 context,
                 target,
             ),
-            FilletEdgeType::FilletEnd
-            | FilletEdgeType::SetbackRail
-            | FilletEdgeType::RailExtension => {
-                // UNPORTED(blend.fillet_executive_p3): actual concrete corner-edge operation contexts.
-                Err(SolidError::unported(
-                    "SmFilletEdge::CalcCornerEdgeGeom (live concrete operations)",
-                    "blend.fillet_executive_p3",
-                ))
+            FilletEdgeType::FilletEnd => {
+                let c = corners.corner(corner)?;
+                self.calc_fillet_end_with_lookup(k, e, target, Some(c), &|id| context.solver(id))
+            }
+            FilletEdgeType::SetbackRail | FilletEdgeType::RailExtension => {
+                let c = corners.corner(corner)?;
+                self.calc_set_back_rail_with_lookup(k, e, target, Some(c), &|id| context.solver(id))
             }
             _ => Ok(()),
         }

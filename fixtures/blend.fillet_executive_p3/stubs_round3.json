@@ -1121,6 +1121,651 @@
           ]
         }
       }
+    },
+    {
+      "name": "stubs3-union-overhang-front-edges14-15-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                5,
+                -2,
+                10
+              ],
+              "size": [
+                10,
+                6,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            14,
+            15
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-overhang-front-edges14-22-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                5,
+                -2,
+                10
+              ],
+              "size": [
+                10,
+                6,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            14,
+            22
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-overhang-front-edges15-16-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                5,
+                -2,
+                10
+              ],
+              "size": [
+                10,
+                6,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            15,
+            16
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-overhang-corner-edges12-13-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                -2,
+                -2,
+                10
+              ],
+              "size": [
+                10,
+                6,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            12,
+            13
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-overhang-corner-edges14-15-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                -2,
+                -2,
+                10
+              ],
+              "size": [
+                10,
+                6,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            14,
+            15
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-overhang-corner-edges14-22-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                -2,
+                -2,
+                10
+              ],
+              "size": [
+                10,
+                6,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            14,
+            22
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-overhang-corner-edges15-22-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                -2,
+                -2,
+                10
+              ],
+              "size": [
+                10,
+                6,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            15,
+            22
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-inset-side-step-edges13-15-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                5,
+                2,
+                5
+              ],
+              "size": [
+                10,
+                10,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            13,
+            15
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-inset-side-step-edges13-17-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                5,
+                2,
+                5
+              ],
+              "size": [
+                10,
+                10,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            13,
+            17
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-inset-side-step-edges14-15-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                5,
+                2,
+                5
+              ],
+              "size": [
+                10,
+                10,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            14,
+            15
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-inset-side-step-edges14-18-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                5,
+                2,
+                5
+              ],
+              "size": [
+                10,
+                10,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            14,
+            18
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-inset-side-step-edges16-17-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                5,
+                2,
+                5
+              ],
+              "size": [
+                10,
+                10,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            16,
+            17
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-inset-side-step-edges16-18-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                5,
+                2,
+                5
+              ],
+              "size": [
+                10,
+                10,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            16,
+            18
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-inset-side-step-edges16-22-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                5,
+                2,
+                5
+              ],
+              "size": [
+                10,
+                10,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            16,
+            22
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs3-union-inset-side-step-edges17-22-r1",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "box_union",
+            "a": {
+              "origin": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                20,
+                10,
+                10
+              ]
+            },
+            "b": {
+              "origin": [
+                5,
+                2,
+                5
+              ],
+              "size": [
+                10,
+                10,
+                10
+              ]
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            17,
+            22
+          ]
+        }
+      }
     }
   ]
 }

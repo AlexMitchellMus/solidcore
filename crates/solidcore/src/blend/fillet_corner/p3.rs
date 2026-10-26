@@ -1555,6 +1555,15 @@ impl FilletCorner {
     /// [`SolidError::Unported`] (the drop onto a surface kind whose `DropCurve` needs
     /// unported code, see [`Surface::drop_curve`]).
     pub fn create_corner_patch_3x2(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
+        env.with_patch_env(|env| self.create_corner_patch_3x2_with(env))
+    }
+
+    /// [`FilletCorner::create_corner_patch_3x2`] against any [`CornerPatchEnv`].
+    ///
+    /// # Errors
+    /// As [`FilletCorner::create_corner_patch_3x2`].
+    #[allow(clippy::too_many_lines)] // one upstream routine
+    pub fn create_corner_patch_3x2_with(&mut self, env: &mut CornerPatchEnv<'_, '_>) -> Result<()> {
         // check state - 4 edges
         if self.edges.len() != 4 {
             // SM_DBG_WARN: Failed state check: 3x2 FilletCorner with other than 4 edges
@@ -1620,7 +1629,7 @@ impl FilletCorner {
         let mut curve2 = bspline_curve(env.pseudo, fe_on_edge)?;
 
         // join the 2 curves (JoinWith is virtual: SmLine and SmEllipse override it)
-        join_with(env.k, &mut curve1, true, &mut curve2, false)?;
+        join_with(&*env.k, &mut curve1, true, &mut curve2, false)?;
         env.pseudo.brep_mut().edge_mut(fe_on_extended_edge)?.curve = Some(curve1.clone());
         env.pseudo.brep_mut().edge_mut(fe_on_edge)?.curve = Some(curve2);
 
@@ -1662,7 +1671,7 @@ impl FilletCorner {
         // upstream keeps the `SmLine` object behind the pointer, `SetUVCurve` stores it)
         let uv_curves: Vec<Curve> = surface
             .drop_curve::<NoObject>(
-                env.k,
+                &*env.k,
                 &domain,
                 &curve1,
                 &interval,
@@ -1686,7 +1695,7 @@ impl FilletCorner {
             .set_edgeuse_uv_curve(mate_eu, Some(new_ps_curve), true, true)?;
 
         // Create a 3-sided corner patch
-        self.create_corner_patch_default(env)
+        self.create_corner_patch_default_with(env)
     }
 
     /// `SmFilletNx1Corner::CreateCornerPatch`: with three fillet edges an end patch
@@ -1787,6 +1796,79 @@ impl FilletCorner {
 
         // Create a 3-sided corner patch
         self.create_corner_patch_default(env)?;
+
+        // Put the end patch back
+        if let Some(p) = end_patch {
+            self.surfaces.push(p);
+        }
+
+        if !last_three_edges.is_empty() {
+            self.edges.extend(last_three_edges);
+            self.vertices.extend(last_two_verts);
+        }
+
+        Ok(())
+    }
+
+    /// [`FilletCorner::create_corner_patch_nx2`] against any [`CornerPatchEnv`];
+    /// `extended_surface` resolves the executive's extended surfaces and
+    /// `note_end_face_error` notes a failed end face (`CreateEndPatch`).
+    ///
+    /// # Errors
+    /// As [`FilletCorner::create_corner_patch_nx2`].
+    pub fn create_corner_patch_nx2_with(
+        &mut self,
+        env: &mut CornerPatchEnv<'_, '_>,
+        extended_surface: impl Fn(FaceId) -> Option<Surface>,
+        note_end_face_error: &mut dyn FnMut(&FilletCorner),
+    ) -> Result<()> {
+        let total_edges = self.edges.len();
+
+        let mut first_three_edges: Vec<EdgeId> = Vec::new();
+        let mut last_three_edges: Vec<EdgeId> = Vec::new();
+        let mut last_two_verts: Vec<VertexId> = Vec::new();
+        let mut end_patch: Option<Surface> = None;
+        if total_edges > 3 {
+            first_three_edges.extend(self.edges.iter().take(3).copied());
+            last_three_edges.extend(self.edges.iter().skip(3).copied());
+
+            if total_edges == 6 {
+                // Use the last 3 edges to create a small patch
+                self.edges.clone_from(&last_three_edges);
+                // Create a small corner face
+                let mut end_env = CornerPatchEnv {
+                    k: &mut *env.k,
+                    target: env.target,
+                    pseudo: &mut *env.pseudo,
+                    solvers: env.solvers,
+                    fillet: env.fillet.as_deref_mut(),
+                    note_face_error: note_end_face_error,
+                };
+                self.create_end_patch_with(&mut end_env, extended_surface)?;
+
+                // Temporarily remove the small patch
+                if self.surfaces.is_empty() {
+                    return Err(invalid(OP_NX2_PATCH, "end patch built no surface"));
+                }
+                end_patch = Some(self.surfaces.remove(0));
+                self.surfaces.clear();
+            }
+
+            self.edges.clone_from(&first_three_edges);
+
+            // Temporarily remove the last two vertices
+            if self.vertices.is_empty() {
+                return Err(invalid(OP_NX2_PATCH, "unsigned vertex index wraps around"));
+            }
+            while self.vertices.len() > 3 {
+                if let Some(v) = self.vertices.pop() {
+                    last_two_verts.push(v);
+                }
+            }
+        }
+
+        // Create a 3-sided corner patch
+        self.create_corner_patch_default_with(env)?;
 
         // Put the end patch back
         if let Some(p) = end_patch {
