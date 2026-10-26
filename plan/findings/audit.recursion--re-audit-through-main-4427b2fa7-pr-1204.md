@@ -165,6 +165,60 @@ name), an existing bounded traversal, or the new code above. Notable clusters:
   `curve/curve/p5.rs` (the bounded explicit stack), `geom/tree.rs` (the bounded
   explicit stack) — all bounded or finite.
 
+### Call-graph cross-check (LLVM IR, both ends of the range)
+
+The name screen above cannot see recursion through generic trait dispatch or under
+different names. As a second, mechanical pass, `solidcore` was compiled at both ends to
+LLVM IR (`cargo rustc -p solidcore --lib -- --emit=llvm-ir -C opt-level=0
+-C debuginfo=0 -C codegen-units=16`; opt-level 0 so no inlining hides a call), every
+direct `call`/`invoke` was taken as an edge (monomorphised generics and closures
+included), symbols were demangled with `c++filt`, and the recursive strongly connected
+components (size > 1 or a self-loop, at least one `solidcore` function) were compared:
+
+- `92454ca6`: 118,488 functions, 399,491 edges, 370 recursive SCCs.
+- `4427b2fa7`: 150,229 functions, 504,627 edges, 394 recursive SCCs.
+- With generic arguments stripped from the names, 43 tip SCCs are new or grew; every
+  one was traced (shortest cycle through each new member) and resolved:
+  - **The three paths above** (`refine_cci_to_surfaces_mut` ↔ `refine_large_gap` in
+    16 instantiations, `glue_with_notification_identity`, `has_seam_problem_mut` ↔
+    `set_props_stage2_with`; the last is invisible to the IR graph because the seam
+    callback is a `dyn FnMut`, and was found by the name screen).
+  - **`BSplineCurve::evaluate` ↔ `evaluate_into`** (`nurbs/b_spline_curve/p1.rs:1033`):
+    the zero-tangent fix re-evaluates once with `non_zero_tangents = false`, which does
+    not take that branch again. Depth 1.
+  - **New instantiations of existing bounded recursions:** `GlobalSolve` impls for
+    `FilletObject`, `CacheObject`, `arena_pair::H`, `NoObject` (`MAX_SOLVE_DEPTH`);
+    `SurfaceCache::subdivide_to_tolerances_*` (`MAX_SUBDIVISION_DEPTH = 512`, present at
+    the base); `TrimSrfCache::implant_edgeuse` ↔ `subdivide_node` (present at the base;
+    the inner implant runs with `do_subdivision = false`, depth 2);
+    `split_at_seam_merges` (joins `split_at_seam_depth`, carries `depth`,
+    `MAX_SPLIT_AT_SEAM_DEPTH = 8`).
+  - **Healing** (`HealData::heal_targets`/`fix_*`/`update_target_lists`, 9 functions at
+    the base, 17 at the tip): the same cycle now runs through the
+    `with_editing_enabled` closures (#936's editing scope); still bounded by
+    `MAX_TARGET_UPDATE_DEPTH = 32` (`heal/heal_data/p3.rs:193`).
+  - **Writers** (`write_surface_at`/`write_curve_at` with `OffsetSurface::write_to_db`,
+    `PolarConversion::write_to_db`, `Ellipse::write_to_db`): `depth + 1` at the offset
+    base (`offset_surface.rs:1908`), the revolution generator and polar curve
+    (`geometry_write.rs:256`, `:263`); `Ellipse::write_to_db` passes no owned curve to
+    its polar converter (`ellipse/p1.rs:1386`), so that static edge is never taken.
+  - **Nested-geometry recursion** (the evaluate SCC: 39 member names at the base, 65 more at the tip, 110 functions: copy,
+    `transform_at_depth`, `evaluate_point`, `make_nurb`, singularities, periodicity)
+    and **the large classification/solve SCC** (541 → 624 functions; 478 → 548 even
+    with `solve_branch` removed, so it is not only the solver): every shortest cycle
+    through each of the 22 new members (67 cycles) passes a wrapper step
+    (`CrvOnSurf`, `CrvInVolume`, `OffsetSurface`, `SrfInVolume`, `ProjectedCurve`, ...),
+    and the hand-checked ones descend to the wrapper's owned inner geometry (e.g.
+    `CrvInVolume::compute_breaks` classifies `self.curve` against `self.volume`).
+    These stay bounded by the ownership depth: the 22 `check_geometry_nesting` call
+    sites are unchanged in the range, no new wrapper struct literal or wrapper-variant
+    construction bypasses them (the one new `SurfaceKind::SurfOfExtrusion(..)` wraps a
+    `clone_for_evaluation` copy), and `PendingExtension` predates the range.
+  - **Drop/`Clone`/`Debug` SCCs** of the new types: structural over owned data.
+- **Indirect calls** (not in the IR graph): the range adds 42 lines naming a `dyn Fn*` callback type;
+  all but `SeamProblemFn` map entity keys/handles (`EntityRef` → `ObjectRef`, solver
+  lookups) or record a fillet error (`note_face_error`), none re-enters the caller.
+
 ### Open questions (not certifications)
 
 - **Q1 — the refine bound is a port decision.** Upstream's `lMaxRecursion` is the
@@ -188,6 +242,18 @@ name), an existing bounded traversal, or the new code above. Notable clusters:
   or a caller that passes props reset below `Stage2A` into the callback, would make the
   pair recurse without bound. No test pins the depth; a unit test asserting a single
   inner `has_seam_problem_mut` per stage-2 run would.
+- **Q5 — memo-held geometry is outside `check_geometry_nesting`.** Three memos are new
+  in the range: `Surface`'s `NurbMemo` (`OnceLock<Box<SurfaceKind>>`, a flat NURB
+  conversion), `BoundaryMemoEntry` (`surface/surface/p8.rs:356`, the four boundary
+  curves, `IsoCurve`s over a `clone_for_evaluation` copy of the surface, checked by
+  `IsoCurve::from_surface`'s `check_evaluation_copy_depth(1)`) and `CurveMemoEntry`
+  (`curve/curve/p5.rs:388`, a `CurveCache`). The nesting walker does not follow them,
+  but recursive `Drop` does (the drop SCC that grew from 7 to 92 functions). They add
+  a constant number of levels, not an input-driven chain: `boundary_curves` and
+  `boundary_iso_curve` are in no recursive SCC (a fill cannot trigger another boundary
+  fill), a memo copy starts empty, and the curve-cache fill recurses only down owned
+  geometry. Argued, not tested: no test builds the deepest legal geometry with all
+  memos filled and drops it on a 1 MiB stack.
 
 ### Verification
 
@@ -221,6 +287,11 @@ Checks run on `4427b2fa7` (this PR is notes-only; no kernel change):
   files were read in full, the remaining 60 (function-list signal only, no recursion
   hit) where the changed call chains enter them. This is a source re-audit of
   the delta on top of the #273 whole-crate audit, not a fresh whole-crate audit.
+- The call-graph pass covers direct calls in code instantiated inside `solidcore`
+  (generic code only instantiated by other crates is not in the IR); indirect calls
+  were reviewed by their callback types only. For the two large SCCs it checks the
+  new members' shortest cycles, not every cycle, and relies on the ownership-depth
+  argument for the rest, as the #273 audit did.
 - No worst-case wasm stack use is measured by this review; the wasm check (below)
   only establishes that the crate still compiles for `wasm32-unknown-unknown`.
 - Files owned by other lanes were not modified by this PR; it changes no kernel
