@@ -1910,6 +1910,10 @@ impl FilletCorner {
             .curve_based
             .solver
             .set_fillet_executive(Some(FilletExecutiveRef));
+        crate::blend::fillet_solver::curve_blend_sih::inherit_executive_handler(
+            &mut new_fs.curve_based.solver,
+            env.solvers,
+        );
         let fsg = match fsg_type {
             FilletSurfaceGeneratorType::Circular => Some(FilletSurfaceGenerator::circular(
                 approx_arcs,

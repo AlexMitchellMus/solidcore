@@ -1908,6 +1908,8 @@ macro_rules! fillet_intersector_ops {
 
             fn smooth_out_intersection(
                 &mut self,
+                k: &Kernel,
+                pseudo: &mut FilletBrep,
                 geom: &Self::FilletGeom,
                 curves_3d: &mut Vec<BSplineCurve>,
                 uv_curves1: &mut Vec<BSplineCurve>,
@@ -1915,6 +1917,8 @@ macro_rules! fillet_intersector_ops {
             ) -> Result<()> {
                 IntersectorOps::smooth_out_intersection(
                     &mut self.base,
+                    k,
+                    pseudo,
                     geom,
                     curves_3d,
                     uv_curves1,

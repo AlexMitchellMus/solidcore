@@ -324,13 +324,16 @@ pub trait FilletSolverOps {
     fn self_intersection_handler(&self) -> Result<Option<HandlingAlgorithmType>>;
 
     /// The handler's `SmoothOutIntersection(pFilletGeom, r3DCurves, rUVCurves1,
-    /// rUVCurves2)`: joins the new curves to the fillet geometry's previous section.
+    /// rUVCurves2)`: joins the new curves to the fillet geometry's previous section
+    /// (stored in `pseudo`).
     ///
     /// # Errors
     ///
-    /// The handler's failure; [`SolidError::Unported`] until ported.
+    /// The handler's failure.
     fn smooth_out_intersection(
         &mut self,
+        k: &Kernel,
+        pseudo: &mut FilletBrep,
         geom: &Self::FilletGeom,
         curves_3d: &mut Vec<BSplineCurve>,
         uv_curves1: &mut Vec<BSplineCurve>,
@@ -543,19 +546,19 @@ impl FilletSolverOps for ConstantRadiusAssistedFs {
 
     fn smooth_out_intersection(
         &mut self,
+        _k: &Kernel,
+        _pseudo: &mut FilletBrep,
         _geom: &FilletGeomId,
         _curves_3d: &mut Vec<BSplineCurve>,
         _uv_curves1: &mut Vec<BSplineCurve>,
         _uv_curves2: &mut Vec<BSplineCurve>,
     ) -> Result<()> {
-        // FlushCurve calls this only for a smoothing handler. The only handler an
-        // executive can hold here is `SmMakeSurfaceBlendSIH` (blending), and the
-        // smoothing override `SmMakeCurveBlendSIH::SmoothOutIntersection` has no
-        // owning unit (plan/findings.md "fillet_solver_p1: SmoothOutIntersection").
-        // UNPORTED(blend.fillet_executive_p1): SmSelfIntersectionHandler::SmoothOutIntersection (justified: findings.md "fillet_solver_p1: SmoothOutIntersection")
-        Err(SolidError::unported(
-            "SmSelfIntersectionHandler::SmoothOutIntersection",
-            "blend.fillet_executive_p1",
+        // FlushCurve calls this only for a smoothing handler, which is the
+        // executive's member: this solver has no executive (a NULL dereference
+        // upstream), so `self_intersection_handler` has already failed
+        Err(SolidError::invalid_input(
+            OP_FLUSH,
+            "self-intersection handler without a fillet executive",
         ))
     }
 
@@ -1763,6 +1766,8 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
         if let Some(algorithm) = solver.self_intersection_handler()? {
             if algorithm == HandlingAlgorithmType::Smoothing {
                 let smoothed = solver.smooth_out_intersection(
+                    k,
+                    pseudo,
                     &fillet_geom,
                     &mut curves_3d,
                     &mut surface1_uv_curves,
@@ -2373,6 +2378,8 @@ mod tests {
 
         fn smooth_out_intersection(
             &mut self,
+            _k: &Kernel,
+            _pseudo: &mut FilletBrep,
             _geom: &(),
             _curves_3d: &mut Vec<BSplineCurve>,
             _uv_curves1: &mut Vec<BSplineCurve>,
