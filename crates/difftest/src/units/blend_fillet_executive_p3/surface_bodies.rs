@@ -167,8 +167,10 @@ fn sheet(k: &mut Kernel, surfaces: &[&Surface]) -> SolidResult<(Brep, Vec<FaceId
 pub(super) fn rust(input: &SurfaceSurfaceBodies) -> Result<Output, HarnessError> {
     ffi::validate_surface_surface_bodies(&input.wire())
         .map_err(|e| HarnessError::new(e.to_string()))?;
+    let step = super::point_step()?;
     let run = || -> SolidResult<Vec<f64>> {
         let mut k = Kernel::default();
+        k.fillet_point_step.set(step);
         let surface = |c: &[[f64; 3]; 4]| {
             solidcore::nurbs::b_spline_surface::BSplineSurface::create_bilinear_surface(
                 Vec3::from(c[0]),

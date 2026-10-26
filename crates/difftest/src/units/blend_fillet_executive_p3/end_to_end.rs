@@ -696,8 +696,10 @@ pub(super) fn upstream_example(example: usize) -> Result<Option<Output>, Harness
     if !matches!(example, 0..=6) {
         return Ok(None);
     }
+    let step = super::point_step()?;
     let run = || -> SolidResult<Vec<f64>> {
         let mut k = Kernel::default();
+        k.fillet_point_step.set(step);
         let (dx, dy, dz) = if example < 2 {
             (5.0, 10.0, 15.0)
         } else {
@@ -765,7 +767,7 @@ pub(super) fn upstream_example(example: usize) -> Result<Option<Output>, Harness
 }
 pub(super) fn rust(input: &RealSolid) -> Result<Output, HarnessError> {
     input.validate()?;
-    let mut k = Kernel::default();
+    let mut k = super::seeded_kernel()?;
     let body = build(&mut k, input)?;
     match run_rust(k, body, input) {
         Ok(values) => {
@@ -827,8 +829,10 @@ fn surface_surface_output(values: &[f64]) -> Result<Output, HarnessError> {
 /// result B-rep is recorded as the shim records it.
 pub(super) fn surface_surface_rust(input: &SurfaceSurface) -> Result<Output, HarnessError> {
     ffi::validate_surface_surface(&input.wire()).map_err(|e| HarnessError::new(e.to_string()))?;
+    let step = super::point_step()?;
     let run = || -> SolidResult<Vec<f64>> {
         let mut k = Kernel::default();
+        k.fillet_point_step.set(step);
         let surface = |c: &[[f64; 3]; 4]| {
             solidcore::nurbs::b_spline_surface::BSplineSurface::create_bilinear_surface(
                 Vec3::from(c[0]),
