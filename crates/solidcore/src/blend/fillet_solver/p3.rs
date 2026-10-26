@@ -1885,18 +1885,11 @@ mod tests {
     }
 
     #[test]
-    fn step_solve_defers_where_upstream_casts_and_runs_the_plane_solve() {
+    fn step_solve_casts_to_the_variable_radius_solver_and_runs_the_plane_solve() {
+        // a solver reporting SM_FS_VARIABLE_RADIUS without being one: upstream's
+        // `(SmVariableRadiusFS*) this` cast is undefined, an input error here
         let (r, _, _) = step(FilletSolverType::VariableRadius, 1.8, 0.5);
-        assert!(
-            matches!(
-                r,
-                Err(SolidError::Unported {
-                    unit: "blend.fillet_standard_solver_p1",
-                    ..
-                })
-            ),
-            "{r:?}"
-        );
+        assert!(matches!(r, Err(SolidError::InvalidInput { .. })), "{r:?}");
         // the assisted kind's step ends in the (base) PointOnPlaneSolve, which the test
         // solver's equations satisfy on the clipped step
         let (r, _, _) = step(FilletSolverType::ConstRadiusAssisted, 1.8, 0.5);

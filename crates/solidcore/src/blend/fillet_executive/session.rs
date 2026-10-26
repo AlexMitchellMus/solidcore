@@ -345,29 +345,6 @@ impl SessionObjects<'_> {
     }
 }
 
-/// The session's solver slots as the corner law-interval adjustment resolves them.
-struct LiveLawSolvers<'a>(&'a mut Vec<Option<SolverObject>>);
-
-impl crate::blend::fillet_corner::p1::LawIntervalSolvers for LiveLawSolvers<'_> {
-    fn adjustable_variable_radius(
-        &mut self,
-        id: FilletSolverId,
-    ) -> Result<Option<&mut VariableRadiusFs>> {
-        let solver = self
-            .0
-            .get_mut(id.0 as usize)
-            .and_then(Option::as_mut)
-            .ok_or_else(|| invalid("solver is not live in this session"))?;
-        if !live_solver_ops(solver)?.offset_radii_can_change()? {
-            return Ok(None);
-        }
-        Ok(match solver {
-            SolverObject::VariableRadius(solver) => Some(solver.as_mut()),
-            _ => None,
-        })
-    }
-}
-
 /// The retained virtual operations of a concrete solver whose live corner-vertex
 /// operations are ported.
 fn live_solver_ops(solver: &mut SolverObject) -> Result<&mut dyn FilletSolverOps> {
@@ -2663,13 +2640,12 @@ impl SessionObjects<'_> {
                     }
                 }
             },
-            |(_, target, pseudo, solvers, _, _), corner, processed| {
-                corner.adjust_vertex_law_intervals(
-                    pseudo,
-                    target,
-                    &mut LiveLawSolvers(solvers),
-                    processed,
-                )
+            |_, _, _| {
+                // UNPORTED(blend.fillet_executive_p1): the retained variable-radius solver behind the law-interval adjustment.
+                Err(SolidError::unported(
+                    "SmFilletCorner::CalcCornerVertGeom (live variable-law adjustment)",
+                    "blend.fillet_executive_p1",
+                ))
             },
         )
     }
