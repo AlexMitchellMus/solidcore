@@ -539,6 +539,7 @@ pub fn decode(data: &[f64]) -> Result<Script, String> {
 }
 
 /// Options of [`from_body`].
+#[allow(clippy::struct_excessive_bools)] // independent switches of the recipe
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FromBodyOptions {
     /// Bound edges with their curve parameters instead of their vertex points.
@@ -728,6 +729,11 @@ pub fn from_body(body: &Body, options: FromBodyOptions) -> Script {
     s
 }
 
+/// The area element of a surface as a function of its second parameter.
+type AreaElement = Box<dyn Fn(f64) -> f64>;
+/// A point's surface parameters.
+type ParamMap = Box<dyn Fn(P3) -> (f64, f64)>;
+
 /// Samples per edge for [`step_uv_domain`].
 const EDGE_SAMPLES: usize = 32;
 
@@ -784,11 +790,12 @@ fn unwrap(prev: f64, x: f64) -> f64 {
 /// `AdjustSTEPUVDomain`): its edge loops sampled in loop order and mapped to the
 /// surface's parameters (angles in degrees, unwrapped along each loop, later loops
 /// moved into the first loop's period; a closed direction spanning a full turn is one
-/// period, its start moved into `[0, 360)`; vertex loops add their point).
+/// period, its start moved into `[0, 360)` and the range kept within `[-360, 360]`;
+/// vertex loops add their point in the directions that are not periodic).
 /// `None` for a face without loops and for surfaces whose STEP parameters are not
 /// analytic here (revolution, extrusion, B-spline).
 pub fn step_uv_domain(body: &Body, face: &crate::model::Face) -> Option<[f64; 4]> {
-    let map: Box<dyn Fn(P3) -> (f64, f64)> = match &face.surface {
+    let map: ParamMap = match &face.surface {
         Surface::Plane { frame } => {
             let f = *frame;
             Box::new(move |p| (dot(sub(p, f.origin), f.x), dot(sub(p, f.origin), f.y)))
@@ -827,10 +834,7 @@ pub fn step_uv_domain(body: &Body, face: &crate::model::Face) -> Option<[f64; 4]
         Surface::Torus { .. } => (true, true),
         _ => (true, false),
     };
-    let periodic = [u_periodic, v_periodic];
-    let mut lo = [f64::INFINITY; 2];
-    let mut hi = [f64::NEG_INFINITY; 2];
-    let mut first_mid: Option<[f64; 2]> = None;
+    let mut loops_uv: Vec<Vec<(f64, f64)>> = Vec::new();
     let mut vertex_points: Vec<(f64, f64)> = Vec::new();
     for l in &face.loops {
         let es = match &l.bound {
@@ -842,72 +846,103 @@ pub fn step_uv_domain(body: &Body, face: &crate::model::Face) -> Option<[f64; 4]
                 continue;
             }
         };
-        let mut pts: Vec<[f64; 2]> = Vec::new();
+        let mut pts = Vec::new();
         for oe in es {
             let e = body.edges.get(oe.edge)?;
             let along = oe.forward == e.same_sense;
             for j in 0..=EDGE_SAMPLES {
                 let s = j as f64 / EDGE_SAMPLES as f64;
-                let (u, v) = map(edge_point(e, if along { s } else { 1.0 - s })?);
-                let mut q = [u, v];
-                if let Some(prev) = pts.last() {
-                    for i in 0..2 {
-                        if periodic[i] {
-                            q[i] = unwrap(prev[i], q[i]);
-                        }
-                    }
-                }
-                pts.push(q);
+                pts.push(map(edge_point(e, if along { s } else { 1.0 - s })?));
             }
+        }
+        loops_uv.push(pts);
+    }
+    let axis = |pick: fn(&(f64, f64)) -> f64, periodic: bool| -> Option<(f64, f64)> {
+        let loops: Vec<Vec<f64>> = loops_uv
+            .iter()
+            .map(|l| l.iter().map(pick).collect())
+            .collect();
+        let extra: Vec<f64> = if periodic {
+            Vec::new()
+        } else {
+            vertex_points.iter().map(pick).collect()
+        };
+        axis_range(&loops, periodic, &extra)
+    };
+    let (u0, u1) = axis(|p| p.0, u_periodic)?;
+    let (mut v0, mut v1) = axis(|p| p.1, v_periodic)?;
+    // a cone face reaching its apex: the samples' rounding must not pass it
+    if let Surface::Cone {
+        radius,
+        semi_angle_deg,
+        ..
+    } = &face.surface
+    {
+        let tan = semi_angle_deg.to_radians().tan();
+        if tan != 0.0 {
+            let apex = -radius / tan;
+            v0 = v0.max(apex);
+            v1 = v1.max(apex);
+        }
+    }
+    Some([u0, v0, u1, v1])
+}
+
+/// The range of one parameter over the loops' samples (angles unwrapped along each loop
+/// and later loops moved into the first loop's period when `periodic`; a full turn is
+/// one period starting in `[0, 360)`), widened by `extra`; `None` without samples.
+fn axis_range(loops: &[Vec<f64>], periodic: bool, extra: &[f64]) -> Option<(f64, f64)> {
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    let mut first_mid: Option<f64> = None;
+    for l in loops {
+        let mut vals: Vec<f64> = Vec::new();
+        for &x in l {
+            let x = match (periodic, vals.last()) {
+                (true, Some(&prev)) => unwrap(prev, x),
+                _ => x,
+            };
+            vals.push(x);
         }
         // keep later loops in the first loop's period
-        let mut shift = [0.0; 2];
-        if let (Some(m), Some(p)) = (first_mid, pts.first()) {
-            for i in 0..2 {
-                if periodic[i] {
-                    shift[i] = unwrap(m[i], p[i]) - p[i];
-                }
-            }
-        }
-        let mut llo = [f64::INFINITY; 2];
-        let mut lhi = [f64::NEG_INFINITY; 2];
-        for p in &pts {
-            for i in 0..2 {
-                llo[i] = llo[i].min(p[i] + shift[i]);
-                lhi[i] = lhi[i].max(p[i] + shift[i]);
-            }
-        }
+        let shift = match (periodic, first_mid, vals.first()) {
+            (true, Some(m), Some(&p)) => unwrap(m, p) - p,
+            _ => 0.0,
+        };
+        let llo = vals.iter().fold(f64::INFINITY, |a, &x| a.min(x + shift));
+        let lhi = vals
+            .iter()
+            .fold(f64::NEG_INFINITY, |a, &x| a.max(x + shift));
         if first_mid.is_none() {
-            first_mid = Some([(llo[0] + lhi[0]) / 2.0, (llo[1] + lhi[1]) / 2.0]);
+            first_mid = Some((llo + lhi) / 2.0);
         }
-        for i in 0..2 {
-            lo[i] = lo[i].min(llo[i]);
-            hi[i] = hi[i].max(lhi[i]);
-        }
+        lo = lo.min(llo);
+        hi = hi.max(lhi);
     }
-    if !lo.iter().chain(hi.iter()).all(|x| x.is_finite()) {
+    if !(lo.is_finite() && hi.is_finite()) {
         return None;
     }
-    for (u, v) in vertex_points {
-        for (i, x) in [u, v].into_iter().enumerate() {
-            if !periodic[i] {
-                lo[i] = lo[i].min(x);
-                hi[i] = hi[i].max(x);
-            }
+    for &x in extra {
+        lo = lo.min(x);
+        hi = hi.max(x);
+    }
+    if periodic {
+        if hi - lo > 360.0 - 1e-6 {
+            hi = lo + 360.0;
+        }
+        // start the period in [0, 360) (a start within 1e-6 of a whole turn on it),
+        // then keep it inside the [-360, 360] that AdjustSTEPUVDomain takes
+        let mut turns = (lo / 360.0).floor();
+        if (lo - 360.0 * (turns + 1.0)).abs() < 1e-6 {
+            turns += 1.0;
+        }
+        lo -= 360.0 * turns;
+        hi -= 360.0 * turns;
+        if hi > 360.0 + 1e-6 {
+            lo -= 360.0;
+            hi -= 360.0;
         }
     }
-    for i in 0..2 {
-        if periodic[i] {
-            if hi[i] - lo[i] > 360.0 - 1e-6 {
-                hi[i] = lo[i] + 360.0;
-            }
-            // start the period in [0, 360)
-            let turns = (lo[i] / 360.0).floor();
-            lo[i] -= 360.0 * turns;
-            hi[i] -= 360.0 * turns;
-        }
-    }
-    Some([lo[0], lo[1], hi[0], hi[1]])
+    Some((lo, hi))
 }
 
 /// An estimate of the face's area independent of either kernel: its edge loops
@@ -920,7 +955,7 @@ pub fn step_uv_domain(body: &Body, face: &crate::model::Face) -> Option<[f64; 4]
 /// [`step_uv_domain`] has no parameters.
 pub fn step_face_area(body: &Body, face: &crate::model::Face, samples: usize) -> Option<f64> {
     step_uv_domain(body, face)?;
-    let (f, map): (Box<dyn Fn(f64) -> f64>, Box<dyn Fn(P3) -> (f64, f64)>) = match &face.surface {
+    let (f, map): (AreaElement, ParamMap) = match &face.surface {
         Surface::Plane { frame } => {
             let fr = *frame;
             (
@@ -1019,10 +1054,8 @@ pub fn step_face_area(body: &Body, face: &crate::model::Face, samples: usize) ->
         }
         // close the loop (a loop around a periodic direction does not close in u: its
         // seam edges close it)
-        let n = pts.len();
-        for i in 0..n {
-            let (u0, v0) = pts[i];
-            let (mut u1, mut v1) = pts[(i + 1) % n];
+        for (&(u0, v0), &(u1, v1)) in pts.iter().zip(pts.iter().cycle().skip(1)) {
+            let (mut u1, mut v1) = (u1, v1);
             if pu {
                 u1 = unwrap_rad(u0, u1);
             }
