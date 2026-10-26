@@ -48,8 +48,9 @@
 //! - **Temporary state.** The out-of-bounds convergence upstream enables on the surface
 //!   for the call (`SmTemporaryChangeValue`) runs on an evaluation copy with the flag
 //!   set. The surface cache flags (`m_bPointTestEnabled` off, `m_bProcessBoundaryCurves`
-//!   on) are the defaults of an unowned surface's cache in the port; a face-owned
-//!   surface's point solve is [`SolidError::Unported`] (`query.face_p2`) there. The
+//!   on) are modelled by the start point drop keeping every solution
+//!   ([`Surface::global_point_solve_point_test_off`], `SmSurfaceDropLib.cpp:4310-4316`)
+//!   unless the caller's face test or context replaces it. The
 //!   curve cache is built fresh (`make_curve_cache`); a failed build is
 //!   `SM_ERR_NULL_POINTER` (`NER`).
 //! - **Offset surface.** `SmOffsetSurface(1.0, *this, FALSE, lSingularities)` is a
@@ -86,6 +87,7 @@ use crate::math::{max2, min2, EFF_ZERO, EFF_ZERO_PARAM};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::surface::plane::PlaneDropCurve;
+use crate::surface::surface::p1::SurfaceSolveContext;
 use crate::surface::surface::p2::{
     CreateUvTrimCurvePathType, DropCurveFailArgs, SurfaceKind, UNSURE,
 };
@@ -118,6 +120,15 @@ pub const SM_ERR_BAD_FIND_DEGEN_PARAM: i32 = 1036;
 pub const MAX_SPAN_DEPTH: usize = 64;
 
 const OP: &str = "intersect::surface_drop_lib::Surface::drop_curve_base";
+
+/// The caller's face-aware solving service for a drop: the context that builds the
+/// surface's cache (and classifies against its face) and the surface's handle in it.
+pub struct DropSolveContext<'a, O: SolutionObject> {
+    /// The operation-scoped cache and face service.
+    pub solver: &'a mut dyn SurfaceSolveContext<O>,
+    /// The handle naming the dropped-onto surface in its cache.
+    pub handle: Option<O>,
+}
 
 /// What [`Surface::drop_curve_base`] made (`DropCurve`'s outputs).
 #[derive(Debug, Clone)]
@@ -409,7 +420,120 @@ impl Surface {
             keep_all_drop_curves,
             record,
             None,
+            None,
         )
+    }
+
+    /// [`Surface::drop_curve_base`] whose start point drop's trim test is `classify`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::drop_curve_base`], and those of `classify`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drop_curve_base_face_tested<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol_3d: f64,
+        keep_all_drop_curves: bool,
+        record: Option<DropFailRecord<'_, O>>,
+        classify: FaceTest<'_>,
+    ) -> Result<DropCurveOut> {
+        self.drop_curve_base_in(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol_3d,
+            keep_all_drop_curves,
+            record,
+            Some(classify),
+            None,
+        )
+    }
+
+    /// [`Surface::drop_curve_base`] under the caller's face context: the start point
+    /// drop's cache lookup (`smsurf_GetSurfaceCache` of a face-owned surface) is built
+    /// by `context`, so the face's trim boundary test is available.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::drop_curve_base`], and those of the context.
+    #[allow(clippy::too_many_arguments)]
+    pub fn drop_curve_base_with_context<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol_3d: f64,
+        keep_all_drop_curves: bool,
+        record: Option<DropFailRecord<'_, O>>,
+        context: DropSolveContext<'_, O>,
+    ) -> Result<DropCurveOut> {
+        self.drop_curve_base_in(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol_3d,
+            keep_all_drop_curves,
+            record,
+            None,
+            Some(context),
+        )
+    }
+
+    /// [`Surface::drop_curve`] under the caller's face context (see
+    /// [`Surface::drop_curve_base_with_context`]); the plane override runs with the
+    /// same context for its general fallback.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::drop_curve`], and those of the context.
+    #[allow(clippy::too_many_arguments)]
+    pub fn drop_curve_with_context<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol_3d: f64,
+        keep_all_drop_curves: bool,
+        record: Option<DropFailRecord<'_, O>>,
+        creating_uv_trim_curve: bool,
+        context: DropSolveContext<'_, O>,
+    ) -> Result<PlaneDropCurve> {
+        if let SurfaceKind::Plane(p) = self.kind() {
+            return p.drop_curve_owned_by_with_context(
+                k,
+                uv_domain,
+                curve,
+                interval,
+                approx_tol_3d,
+                keep_all_drop_curves,
+                creating_uv_trim_curve,
+                self,
+                Some(context),
+            );
+        }
+        let d = self.drop_curve_base_with_context::<O>(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol_3d,
+            keep_all_drop_curves,
+            record,
+            context,
+        )?;
+        Ok(PlaneDropCurve {
+            max_drop_to_surf: d.max_drop_to_surf,
+            max_approx_dev: d.max_approx_dev,
+            uv_curves: d.uv_curves.into_iter().map(Curve::from).collect(),
+        })
     }
 
     /// [`Surface::drop_curve`] of a face's surface by a caller that holds the face: the
@@ -434,7 +558,7 @@ impl Surface {
         classify: FaceTest<'_>,
     ) -> Result<PlaneDropCurve> {
         if let SurfaceKind::Plane(p) = self.kind() {
-            return p.drop_curve(
+            return p.drop_curve_owned_by_face_tested(
                 k,
                 uv_domain,
                 curve,
@@ -442,7 +566,8 @@ impl Surface {
                 approx_tol_3d,
                 keep_all_drop_curves,
                 creating_uv_trim_curve,
-                self.owner(),
+                self,
+                classify,
             );
         }
         let d = self.drop_curve_base_in::<O>(
@@ -454,6 +579,7 @@ impl Surface {
             keep_all_drop_curves,
             record,
             Some(classify),
+            None,
         )?;
         Ok(PlaneDropCurve {
             max_drop_to_surf: d.max_drop_to_surf,
@@ -475,6 +601,7 @@ impl Surface {
         keep_all_drop_curves: bool,
         mut record: Option<DropFailRecord<'_, O>>,
         face_test: Option<FaceTest<'_>>,
+        context: Option<DropSolveContext<'_, O>>,
     ) -> Result<DropCurveOut> {
         // `SmApproxTol3d sApproxTol3d`: the constructor maps SM_USE_DEFAULT to zone/2
         // and stores fabs (SmTol.cpp:109, SmTol.h:167-168), so upstream runs with |tol|.
@@ -623,7 +750,23 @@ impl Surface {
         }
 
         // Drop curve StartPoint to surface (SM_SO_MINIMIZE, all solutions)
-        let mut solutions: SolutionArray<O> = if let Some(classify) = face_test {
+        let mut solutions: SolutionArray<O> = if let Some(ctx) = context {
+            let mut solutions = SolutionArray::new();
+            this.global_point_solve_into_with_context(
+                k,
+                ctx.handle,
+                None,
+                ctx.solver,
+                &s_uv_domain,
+                SolverOperation::Minimize,
+                start.crv_pd[0],
+                max2(approx_tol_3d / 100.0, EFF_ZERO),
+                None,
+                SolutionRequested::All,
+                &mut solutions,
+            )?;
+            solutions
+        } else if let Some(classify) = face_test {
             this.global_point_solve_face_tested(
                 k,
                 fs.surface,
@@ -636,7 +779,9 @@ impl Surface {
                 classify,
             )?
         } else {
-            this.global_point_solve(
+            // the cache's point testing is off for the whole call (`sChange1`,
+            // SmSurfaceDropLib.cpp:4315): GlobalPointSolve keeps every solution
+            this.global_point_solve_point_test_off(
                 k,
                 fs.surface, // `this`'s handle when the caller gave a record (minimize ignores it)
                 &s_uv_domain,

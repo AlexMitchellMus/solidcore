@@ -55,6 +55,9 @@
 //! Positive B-rep tolerances avoid the unported automatic `SetTolerance` path;
 //! member approximation tolerance still covers zero, negative and -1 sentinel.
 //! All numeric keys have ZERO absolute floor; signed-zero inputs are retained.
+//! A fixture case whose native vertex positions follow heap addresses (upstream
+//! `SmRelation` walks in address-hash order) sets `heap_ordered_vertices`, which omits
+//! only the result B-reps' vertex bounds on both sides; see [`Inputs::heap_ordered_vertices`].
 //!
 //! This unit is necessarily PARTIAL: current positive geometry operations reach
 //! genuine missing manifold/copy/face-construction/shrink/merge/stitch work.
@@ -83,11 +86,12 @@ use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::nurbs::knots::Side;
 use solidcore::offset::offset_executive::p1::{OffsetExecutive, OffsetOperation};
 use solidcore::offset::offset_executive::p2::{
-    self, OffsetNotifications, OffsetOptions, ShellOptions, SolidOffsetOptions,
+    self, OffsetNotifications, OffsetOptions, ShellCopyIdentities, ShellOptions, SolidOffsetOptions,
 };
 use solidcore::query::api_queries::BrepRef;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::surface::{Surface, SurfaceKind};
+use solidcore::sweep::topology_sweep::store::SweepIdentities;
 use solidcore::topology::brep::p1 as brep_p1;
 use solidcore::topology::topology::Topology;
 use solidcore::topology::{
@@ -290,6 +294,15 @@ struct Inputs {
     tolerance: f64,
     #[serde(default)]
     config: Config,
+    /// The returned/retained B-reps' vertex bounds are not compared (counts, kinds and
+    /// tolerance still are). Set only on fixture cases whose native vertex positions
+    /// depend on heap addresses: `DoSolidOffset` walks `SmRelation`s whose
+    /// `std::unordered_map` buckets are keyed by object address, so the order of the
+    /// tolerance-merge averaging of degenerate side-wall vertices follows the heap
+    /// layout of the process (finding
+    /// `plan/findings/offset.offset_executive_p2--exact-2tol-shell-heap-layout.md`).
+    #[serde(default)]
+    heap_ordered_vertices: bool,
 }
 impl Inputs {
     fn native(&self) -> ffi::Request {
@@ -1223,10 +1236,20 @@ fn rust_result_projection(brep: &Brep) -> HResult<ResultProjection> {
         values,
     })
 }
-fn project_result(output: Output, key: &str, projection: Option<ResultProjection>) -> Output {
-    let Some(projection) = projection else {
+/// Emits a result projection; with `heap_ordered` (see [`Inputs::heap_ordered_vertices`])
+/// only the B-rep tolerance of `values` is kept, not the vertex bounds.
+fn project_result(
+    output: Output,
+    key: &str,
+    projection: Option<ResultProjection>,
+    heap_ordered: bool,
+) -> Output {
+    let Some(mut projection) = projection else {
         return output.int(&format!("{key}.present"), 0);
     };
+    if heap_ordered {
+        projection.values.truncate(1);
+    }
     output
         .int(&format!("{key}.present"), 1)
         .ints(&format!("{key}.counts"), projection.counts)
@@ -1387,7 +1410,7 @@ fn native_output(input: &Inputs, snapshot: &ffi::Snapshot) -> HResult<Output> {
             .as_ref()
             .map(|block| decode_block(block).map(|decoded| native_result_projection(&decoded)))
             .transpose()?;
-        output = project_result(output, key, projection);
+        output = project_result(output, key, projection, input.heap_ordered_vertices);
     }
     Ok(output)
 }
@@ -1452,6 +1475,98 @@ fn result_curve_key(edge: EdgeId, type_code: i64) -> ObjectRef {
     ObjectRef {
         key: ObjectKey((4_u64 << 60) | ((type_code as u64) << 32) | u64::from(edge.index())),
         type_code,
+    }
+}
+
+/// Identities of `SmApiShellBrepFull`'s private working copy, in namespace 0 with
+/// class 0 (bits 58-59), disjoint from [`MergeBodies`] (classes 1-3) and every other
+/// key here; the handle field (bits 46-57) tells topology (0), curves (1) and
+/// source lists (2) apart.
+fn copy_notification_key(entity: EntityRef) -> ObjectRef {
+    let local = notification_key(entity, 0);
+    ObjectRef {
+        key: MergeBodies::key(
+            0,
+            BrepId::from_index(0),
+            local.type_code as u64,
+            (local.key.0 & 0xffff_ffff) as u32,
+        ),
+        type_code: local.type_code,
+    }
+}
+
+fn copy_curve_key(edge: EdgeId, type_code: i64) -> ObjectRef {
+    ObjectRef {
+        key: MergeBodies::key(0, BrepId::from_index(1), type_code as u64, edge.index()),
+        type_code,
+    }
+}
+
+fn copy_source_lists(region: RegionId) -> [ObjectRef; 2] {
+    [0_u64, 1].map(|list| ObjectRef {
+        key: MergeBodies::key(0, BrepId::from_index(2), list, region.index()),
+        type_code: 0,
+    })
+}
+
+/// Identities of the B-reps a merging `PiecewiseMerge` creates, in the unused
+/// namespace 0 (bits 60-62), disjoint from the fixture, result and curve keys above
+/// and below the kernel's reserved bit 63: bits 58-59 tell topology (1), curves (2)
+/// and source lists (3) apart, bits 46-57 hold the merge-store handle, bits 32-45 the
+/// type code.
+struct MergeBodies;
+impl MergeBodies {
+    fn key(class: u64, brep: BrepId, kind: u64, index: u32) -> ObjectKey {
+        ObjectKey(
+            (class << 58)
+                | ((u64::from(brep.index()) & 0xfff) << 46)
+                | ((kind & 0x3fff) << 32)
+                | u64::from(index),
+        )
+    }
+}
+impl SweepIdentities for MergeBodies {
+    fn topology(&self, brep: BrepId, entity: EntityRef) -> ObjectRef {
+        let local = notification_key(entity, 0);
+        let index = (local.key.0 & 0xffff_ffff) as u32;
+        ObjectRef {
+            key: Self::key(1, brep, local.type_code as u64, index),
+            type_code: local.type_code,
+        }
+    }
+    fn owned_auxiliary_objects(&self, brep: BrepId, model: &Brep) -> Vec<ObjectKey> {
+        model
+            .edges()
+            .iter()
+            .filter_map(|(edge, e)| {
+                let curve = e.curve.as_ref()?;
+                Some(self.curve(brep, edge, curve).key)
+            })
+            .collect()
+    }
+    fn curve(&self, brep: BrepId, edge: EdgeId, curve: &Curve) -> ObjectRef {
+        let type_code = curve.type_code();
+        ObjectRef {
+            key: Self::key(2, brep, type_code as u64, edge.index()),
+            type_code,
+        }
+    }
+    fn new_curve(
+        &self,
+        brep: BrepId,
+        edge: EdgeId,
+        type_code: i64,
+    ) -> solidcore::Result<ObjectRef> {
+        Ok(ObjectRef {
+            key: Self::key(2, brep, type_code as u64, edge.index()),
+            type_code,
+        })
+    }
+    fn source_lists(&self, brep: BrepId, region: RegionId) -> solidcore::Result<[ObjectRef; 2]> {
+        Ok([0_u64, 1].map(|list| ObjectRef {
+            key: Self::key(3, brep, list, region.index()),
+            type_code: 0,
+        }))
     }
 }
 
@@ -1548,6 +1663,7 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
         result_curve_ref: &result_curve_key,
         boolean_source_lists: &boolean_source_lists,
         result_brep,
+        merge_identities: Some(&MergeBodies),
     };
     let keys = selections(input, source.as_ref(), foreign.as_ref())?;
     let selected_before = observe_selections(&keys, source.as_ref(), foreign.as_ref(), None);
@@ -1622,6 +1738,11 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
             }),
             input.config.shell(),
             &keys,
+            &ShellCopyIdentities {
+                key_of: &copy_notification_key,
+                curve_ref: &copy_curve_key,
+                boolean_source_lists: &copy_source_lists,
+            },
             &mut notifications,
         ),
         Operation::ApiOffset => p2::api_offset_brep_full(
@@ -1697,8 +1818,9 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
         vec![i64::from(source_pure), i64::from(foreign_pure)],
     )
 ;
-    output = project_result(output, "result", result_projection);
-    output = project_result(output, "executive_offset", offset_projection);
+    let heap_ordered = input.heap_ordered_vertices;
+    output = project_result(output, "result", result_projection, heap_ordered);
+    output = project_result(output, "executive_offset", offset_projection, heap_ordered);
     for (key, projection) in [
         ("source.before", source_before),
         ("source.after", source_after),
@@ -1805,6 +1927,7 @@ fn generated(rng: &mut Rng) -> Inputs {
             create_offset_solid: flags & 8 != 0,
             skip_stitch_merge: flags & 16 != 0,
         },
+        heap_ordered_vertices: false,
     };
     match category {
         0 | 1 => {
@@ -1922,6 +2045,7 @@ mod tests {
             faces: Vec::new(),
             tolerance: 1e-6,
             config: Config::default(),
+            heap_ordered_vertices: false,
         }
     }
     fn case(input: &Inputs) -> Case {
@@ -2164,8 +2288,13 @@ mod tests {
         }
         let mut valid = input;
         valid.faces = vec![Selection::Source(0), Selection::Source(0)];
-        let output = Runner.run_rust(&case(&valid)).unwrap();
-        assert_eq!(output.deferred.unwrap().symbol, "SmBrep::SmBrep");
+        // a valid (duplicated) selection is mapped through the working copy
+        let test_case = case(&valid);
+        let output = Runner.run_rust(&test_case).unwrap();
+        assert!(output.deferred.is_none(), "{:?}", output.deferred);
+        assert_eq!(output.ints["input.pure"], [1, 1]);
+        let native = Runner.run_cpp(&test_case).unwrap();
+        assert!(crate::compare::compare(&native, &output, Runner.abs_floors()).pass());
     }
 
     #[test]
@@ -2423,7 +2552,6 @@ mod tests {
     #[test]
     fn positive_geometry_and_strict_boundaries_preserve_explicit_partial_paths() {
         for (operation, fixture, extend, symbol) in [
-            (Operation::ApiShell, Fixture::Empty, false, "SmBrep::SmBrep"),
             // An empty rounded offset completes and returns its (empty) result.
             (Operation::StaticOffset, Fixture::Empty, false, RESULT),
             (Operation::Solid, sheet([0.0; 3], 1.0, 0), false, RESULT),
@@ -2438,6 +2566,24 @@ mod tests {
                 let output = Runner.run_rust(&case(&input)).unwrap();
                 assert_reaches(&output, symbol);
             }
+        }
+        // The pure shell API copies the empty source and shells the copy: the strict
+        // guard is 1007 below 2*tolerance, at and above it the empty result returns.
+        for distance in [0.0, 1.9999999999999995e-6, 2e-6, 2.0000000000000003e-6] {
+            let mut input = input(Operation::ApiShell);
+            input.source = Some(Fixture::Empty);
+            input.config.offset_distance = distance;
+            let test_case = case(&input);
+            let output = Runner.run_rust(&test_case).unwrap();
+            assert!(output.deferred.is_none(), "{:?}", output.deferred);
+            if distance < 2e-6 {
+                assert_eq!(output.ints["status"], [1007]);
+            } else {
+                assert_reaches(&output, RESULT);
+            }
+            assert_eq!(output.ints["input.pure"], [1, 1]);
+            let native = Runner.run_cpp(&test_case).unwrap();
+            assert!(crate::compare::compare(&native, &output, Runner.abs_floors()).pass());
         }
         // ShellBrep asks IsManifoldSolid before checking its strict radius guard.
         // Empty breps now have a native IsManifoldSolid implementation, so this
@@ -2483,22 +2629,18 @@ mod tests {
         let mut input = input(Operation::ApiShell);
         input.source = Some(box_fixture);
         input.faces = vec![Selection::Source(0), Selection::Source(0)];
-        assert_eq!(
-            Runner
-                .run_rust(&case(&input))
-                .unwrap()
-                .deferred
-                .unwrap()
-                .symbol,
-            "SmBrep::SmBrep"
-        );
+        // the working copy is made and the shell completes: its faces' surfaces reach
+        // their faces' trimmed caches
+        let output = Runner.run_rust(&case(&input)).unwrap();
+        assert!(output.deferred.is_none());
+        assert_eq!(output.ints.get("result.present"), Some(&vec![1]));
     }
 
     #[test]
     fn face_geometry_paths_reach_distinct_actual_callees() {
         // MakeWireEdgeVertex now runs, and concrete-Surface CrvOnSurf construction
         // lets the rounded and extended paths through DropCurve, ShrinkGeometry and
-        // the edge-use offset creator: they stop at the merge or the gap-fill
+        // the edge-use offset creator and PiecewiseMerge: they stop at the gap-fill
         // evaluation, or return a result B-rep that is compared.
         let context = CaseContext {
             root: repo_root(),
@@ -2506,11 +2648,7 @@ mod tests {
         };
         let fixtures = context.fixture_cases(Runner.id()).unwrap();
         for (name, owner, symbol) in [
-            (
-                "static_offset_real_plane_sheet_round",
-                "boolean.merge_p3",
-                "SmMerge::PiecewiseMerge",
-            ),
+            ("static_offset_real_plane_sheet_round", "", RESULT),
             (
                 "static_offset_real_plane_sheet_extended",
                 "",
@@ -2521,16 +2659,13 @@ mod tests {
                 "",
                 RESULT,
             ),
+            // (their face solves reach the faces' surface caches)
             (
                 "member_sheet_extended_dispatch_ignores_skip",
-                "topology.face_p2",
-                "SmFace handle of a surface's face",
+                "",
+                RESULT,
             ),
-            (
-                "extended_sheet_direct_independent_flags",
-                "topology.face_p2",
-                "SmFace handle of a surface's face",
-            ),
+            ("extended_sheet_direct_independent_flags", "", RESULT),
         ] {
             let case = fixtures.iter().find(|case| case.name == name).unwrap();
             let output = Runner.run_rust(case).unwrap();

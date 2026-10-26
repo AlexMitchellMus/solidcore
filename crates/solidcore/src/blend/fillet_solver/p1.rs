@@ -1800,6 +1800,14 @@ pub trait FilletSolverOps: AsFilletSolverOps {
         Ok(FilletSolverType::Unknown)
     }
 
+    /// `SM_CAST_PTR(SmVariableRadiusFS, this)`: mutable borrow when the concrete solver
+    /// is a [`VariableRadiusFs`](crate::blend::fillet_standard_solver::p1::VariableRadiusFs).
+    fn variable_radius_mut(
+        &mut self,
+    ) -> Option<&mut crate::blend::fillet_standard_solver::p1::VariableRadiusFs> {
+        None
+    }
+
     /// `((SmConstantDistanceFS*)this)->GetDistance()`: the rail distance of a
     /// constant-distance solver, read by `SmFindClippedRadiusEFO` (a cast upstream
     /// makes only for a [`FilletSolverType::ConstDist`] solver). Added by
@@ -1864,6 +1872,21 @@ impl FilletSolverOps for FilletSolver {
 
     fn solver_mut(&mut self) -> &mut FilletSolver {
         self
+    }
+
+    fn rail_edgeuse_intersect_on_geometry(
+        &mut self,
+        k: &Kernel,
+        geometry: &mut FilletGeom,
+        b: &mut Brep,
+        rail_index: usize,
+        edgeuse: EdgeuseId,
+        guess: f64,
+        tsect: &mut TsectPnt,
+    ) -> Result<Option<f64>> {
+        super::surfaces::base_rail_edgeuse_intersect(
+            self, k, geometry, b, rail_index, edgeuse, guess, tsect,
+        )
     }
 }
 

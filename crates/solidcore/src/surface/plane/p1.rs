@@ -118,6 +118,7 @@ use crate::geom::tol::{are_same, scaled_zero, tol3d};
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::sqrt;
 use crate::geom::vector3d::{Point3, Vec3};
+use crate::intersect::surface_drop_lib::p3::DropSolveContext;
 use crate::kernel::Kernel;
 use crate::math::{
     max2, min2, rad_to_deg, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_DEG, EFF_ZERO_SQ, EFF_ZERO_SQRT,
@@ -132,6 +133,7 @@ use crate::nurbs::knots::Side;
 use crate::nurbs::math::MAX_DERIVATIVE;
 use crate::surface::surface::p1::{self as surface_p1, SecondDerivatives};
 use crate::surface::surface::p2::{Surface, SurfaceKind, PLANE_TYPE};
+use crate::surface::surface::p4::FaceTest;
 use crate::surface::surface_cache::p1::SurfaceCache;
 
 const OP_EVAL: &str = "surface::plane::p1::Plane::evaluate";
@@ -1074,6 +1076,48 @@ impl Plane {
         fire_ray: bool,
         distance_tolerance: f64,
     ) -> Result<SolutionArray<O>> {
+        self.global_line_intersect_with_base(
+            uv_domain,
+            line_point,
+            line_vector,
+            line_interval,
+            fire_ray,
+            distance_tolerance,
+            |sub_interval| {
+                Surface::from(self.clone()).base_global_line_intersect_in(
+                    k,
+                    surface,
+                    cache,
+                    uv_domain,
+                    line_point,
+                    line_vector,
+                    Some(sub_interval),
+                    fire_ray,
+                    distance_tolerance,
+                )
+            },
+        )
+    }
+
+    /// The body of [`Plane::global_line_intersect_in`]: `base` is
+    /// `SmSurface::GlobalLineIntersect` over the given line interval, which the plane
+    /// calls on itself (a caller holding the plane's [`Surface`] runs it there, with
+    /// the surface's owner and the caller's cache and face context).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Plane::global_line_intersect`] and of `base`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn global_line_intersect_with_base<O: SolutionObject>(
+        &self,
+        uv_domain: &Extent2d,
+        line_point: Point3,
+        line_vector: Vec3,
+        line_interval: Option<&Extent1d>,
+        fire_ray: bool,
+        distance_tolerance: f64,
+        base: impl FnOnce(&Extent1d) -> Result<SolutionArray<O>>,
+    ) -> Result<SolutionArray<O>> {
         if line_vector.length_squared() < EFF_ZERO_SQ {
             return Err(SolidError::invalid_input(OP_LINE, "zero line vector"));
         }
@@ -1175,17 +1219,7 @@ impl Plane {
                     .unwrap_or(Extent1d::from_min_max(t_start - 1.0, t_end + 1.0));
                 // try global surface/curve solver (SmSurface::GlobalLineIntersect: the
                 // solutions name `surface`)
-                return Surface::from(self.clone()).base_global_line_intersect_in(
-                    k,
-                    surface,
-                    cache,
-                    uv_domain,
-                    line_point,
-                    line_vector,
-                    Some(&sub_interval),
-                    fire_ray,
-                    distance_tolerance,
-                );
+                return base(&sub_interval);
             }
 
             // test that 3D Points project to UVDomain
@@ -1420,6 +1454,8 @@ impl Plane {
             creating_uv_trim_curve,
             owner,
             None,
+            None::<DropSolveContext<'_, crate::surface::surface::p4::NoObject>>,
+            None,
         )
     }
 
@@ -1443,6 +1479,72 @@ impl Plane {
         creating_uv_trim_curve: bool,
         surface: &Surface,
     ) -> Result<PlaneDropCurve> {
+        self.drop_curve_owned_by_with_context::<crate::surface::surface::p4::NoObject>(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol,
+            keep_all,
+            creating_uv_trim_curve,
+            surface,
+            None,
+        )
+    }
+
+    /// [`Plane::drop_curve_owned_by`] whose general fallback's start point drop tests
+    /// the face's trim boundary with `classify`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Plane::drop_curve`], and those of `classify`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drop_curve_owned_by_face_tested(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol: f64,
+        keep_all: bool,
+        creating_uv_trim_curve: bool,
+        surface: &Surface,
+        classify: FaceTest<'_>,
+    ) -> Result<PlaneDropCurve> {
+        self.drop_curve_in::<crate::surface::surface::p4::NoObject>(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol,
+            keep_all,
+            creating_uv_trim_curve,
+            surface.owner(),
+            surface.owner_zone_tol_3d(),
+            None,
+            Some(classify),
+        )
+    }
+
+    /// [`Plane::drop_curve_owned_by`] whose general fallback solves under the caller's
+    /// face context.
+    ///
+    /// # Errors
+    ///
+    /// As [`Plane::drop_curve`], and those of the context.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drop_curve_owned_by_with_context<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol: f64,
+        keep_all: bool,
+        creating_uv_trim_curve: bool,
+        surface: &Surface,
+        context: Option<DropSolveContext<'_, O>>,
+    ) -> Result<PlaneDropCurve> {
         self.drop_curve_in(
             k,
             uv_domain,
@@ -1453,11 +1555,13 @@ impl Plane {
             creating_uv_trim_curve,
             surface.owner(),
             surface.owner_zone_tol_3d(),
+            context,
+            None,
         )
     }
 
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
-    fn drop_curve_in(
+    fn drop_curve_in<O: SolutionObject>(
         &self,
         k: &Kernel,
         uv_domain: &Extent2d,
@@ -1468,6 +1572,8 @@ impl Plane {
         creating_uv_trim_curve: bool,
         owner: Option<ObjectRef>,
         owner_zone_tol_3d: Option<f64>,
+        context: Option<DropSolveContext<'_, O>>,
+        face_test: Option<FaceTest<'_>>,
     ) -> Result<PlaneDropCurve> {
         // init output
         let mut out = PlaneDropCurve {
@@ -1585,6 +1691,8 @@ impl Plane {
                     keep_all,
                     owner,
                     owner_zone_tol_3d,
+                    context,
+                    face_test,
                 );
             };
 
@@ -1632,6 +1740,8 @@ impl Plane {
                         keep_all,
                         owner,
                         owner_zone_tol_3d,
+                        context,
+                        face_test,
                     );
                 }
 
@@ -1676,6 +1786,8 @@ impl Plane {
             keep_all,
             owner,
             owner_zone_tol_3d,
+            context,
+            face_test,
         )
     }
 
@@ -2279,7 +2391,7 @@ fn surface_drop_point(
 /// NULL, ..)` on the plane (a copy with the plane's `owner`, carrying the owning face's
 /// tolerance `owner_zone_tol_3d` when the caller has it).
 #[allow(clippy::too_many_arguments)]
-fn surface_drop_curve(
+fn surface_drop_curve<O: SolutionObject>(
     k: &Kernel,
     plane: &Plane,
     uv_domain: &Extent2d,
@@ -2289,13 +2401,22 @@ fn surface_drop_curve(
     keep_all: bool,
     owner: Option<ObjectRef>,
     owner_zone_tol_3d: Option<f64>,
+    context: Option<DropSolveContext<'_, O>>,
+    face_test: Option<FaceTest<'_>>,
 ) -> Result<PlaneDropCurve> {
     let mut surface = Surface::from(plane.clone());
     *surface.owner_mut() = owner;
     surface.set_owner_zone_tol_3d(owner_zone_tol_3d);
-    let r = surface.drop_curve_base::<crate::surface::surface::p4::NoObject>(
-        k, uv_domain, curve, interval, approx_tol, keep_all, None,
-    )?;
+    let r = match (context, face_test) {
+        (None, Some(classify)) => surface.drop_curve_base_face_tested::<O>(
+            k, uv_domain, curve, interval, approx_tol, keep_all, None, classify,
+        )?,
+        (Some(context), _) => surface.drop_curve_base_with_context::<O>(
+            k, uv_domain, curve, interval, approx_tol, keep_all, None, context,
+        )?,
+        (None, None) => surface
+            .drop_curve_base::<O>(k, uv_domain, curve, interval, approx_tol, keep_all, None)?,
+    };
     Ok(PlaneDropCurve {
         max_drop_to_surf: r.max_drop_to_surf,
         max_approx_dev: r.max_approx_dev,
