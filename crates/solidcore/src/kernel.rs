@@ -251,6 +251,8 @@ pub struct UpstreamFixes {
     pub fillet_setback_from_start_vertex: bool,
     /// `SmBSplineSurface::CopyAndAddAnalytics` keeps an exact copy where the recognised analytic surface does not give the same points at the same parameters (7 x 7 grid), so a face split by `MakeEdgeInFaceWithVU` keeps trims that still lie on its edges (WR-450, #387; the fork's tangency-labs/smlib@276b509).
     pub analytic_copy_keeps_parameterization: bool,
+    /// `SmOffsetExecutive::ShellBrep` of a solid inward fails when the inset leaves no cavity (an empty offset, `SM_ERR_INVALID_INPUT`) or the offset is not a closed solid (`SM_ERR`), instead of handing the input back unhollowed as a success (WR-454, #380; the fork's tangency-labs/smlib@fbe43bb).
+    pub shell_empty_cavity_fails: bool,
 }
 
 /// Options for [`Kernel::new`].
