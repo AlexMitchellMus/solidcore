@@ -47,6 +47,11 @@
 //!   is used, ...) the port returns [`SolidError::InvalidInput`]. `SER` / `NER` returns
 //!   are [`SolidError::Upstream`] with the upstream code (`SM_ERR`, `SM_ERR_NULL_POINTER`,
 //!   `SM_ERR_INVALID_INPUT` for a failed `Unitize`).
+//! - **Projected seam endpoints (WR-440, #530), opt-in.** With
+//!   `Kernel::fixes.check_loop_projected_seam_ends` (off by default: upstream's raw UV
+//!   jump), `CheckLoop` lifts only an end obtained from vertex projection to its
+//!   nearest period in a closed direction. Exact UV trim jumps remain errors, and the
+//!   physical gap uses the original parameters.
 //! - **Assert reports.** `pAList` is an optional [`AssertArray`]. The release build tests
 //!   every predicate (`eTestLevel < SM_LEVEL_0` is never true), so `eTestLevel` and
 //!   `pTestRequests` (unused) are dropped. A face or loop is named in a report by
@@ -2061,6 +2066,22 @@ fn loop_junction_tolerance(
     Ok(edge_limit)
 }
 
+// A projected endpoint is known only modulo the natural period. Exact UV trims
+// keep their chosen sheet. This lift is only for the UV gap test: surface points
+// are evaluated at the original parameters so a real 3D gap cannot be hidden by
+// a B-spline clamping an out-of-domain periodic representative.
+fn nearest_period(value: f64, target: f64, period: f64) -> f64 {
+    if !value.is_finite() || !target.is_finite() || !period.is_finite() || period <= 0.0 {
+        return value;
+    }
+    let lifted = value + ((target - value) / period).round() * period;
+    if lifted.is_finite() {
+        lifted
+    } else {
+        value
+    }
+}
+
 /// `CheckLoop`: for each pair of consecutive edge uses of the loop whose UV ends differ
 /// (by more than `1e-10`), the surface points must be within the edges'
 /// intersection tolerance (with `Kernel::fixes.check_loop_vertex_tolerance`, the larger of
@@ -2068,6 +2089,9 @@ fn loop_junction_tolerance(
 /// the natural domain in each direction, unless both ends are singular in that
 /// direction or the gap is certified by [`is_loop_uv_gap_within_tolerance`] (not across
 /// a seam). A large UV jump gives closure 1 when an end is singular, else `SM_ERR`.
+/// With `Kernel::fixes.check_loop_projected_seam_ends` (WR-440), projected ends without
+/// UV trims are compared on the nearest natural period in closed directions; exact trim
+/// ends retain their sheet. The 3D gap is always measured at the original parameters.
 /// Returns the closure: 0 closed, 1 closed except at singularities, 3 not closed in 3D.
 ///
 /// # Errors
@@ -2090,10 +2114,12 @@ pub fn check_loop(
 
     for ii in 0..n {
         let cur = at(&eus, ii)?;
-        let (current_start, _) = edge_uv_ends(k, b, cur)?;
+        let current_uv = edge_uv_extremes(k, b, cur)?;
+        let current_start = current_uv.start;
         let previous = if ii == 0 { n - 1 } else { ii - 1 };
         let prev = at(&eus, previous)?;
-        let (_, previous_end) = edge_uv_ends(k, b, prev)?;
+        let previous_uv = edge_uv_extremes(k, b, prev)?;
+        let previous_end = previous_uv.end;
 
         // When UVPoints vary by more than 1e-10
         if previous_end.distance(current_start) > 1e-10 {
@@ -2120,14 +2146,47 @@ pub fn check_loop(
             }
 
             let dom = surface.natural_uv_domain();
+            let mut gap_start = current_start;
+            let mut gap_end = previous_end;
+            // WR-440 (#530), opt-in: upstream compares the raw representatives.
+            if k.fixes.check_loop_projected_seam_ends
+                && (current_uv.start_weight.is_none() || previous_uv.end_weight.is_none())
+            {
+                for (start, end, period, direction) in [
+                    (
+                        &mut gap_start.x,
+                        &mut gap_end.x,
+                        dom.x_length(),
+                        SurfParamType::U,
+                    ),
+                    (
+                        &mut gap_start.y,
+                        &mut gap_end.y,
+                        dom.y_length(),
+                        SurfParamType::V,
+                    ),
+                ] {
+                    if period.is_finite()
+                        && period > 0.0
+                        && (*start - *end).abs() > period * 0.10
+                        && surface.is_closed(k, &dom, direction, None, false)?.0
+                    {
+                        if current_uv.start_weight.is_none() {
+                            *start = nearest_period(*start, *end, period);
+                        } else {
+                            *end = nearest_period(*end, *start, period);
+                        }
+                    }
+                }
+            }
             let sing1 = surface
                 .is_singularity(k, previous_end, tol_3d, false)?
                 .direction;
             let sing2 = surface
                 .is_singularity(k, current_start, tol_3d, false)?
                 .direction;
-            let large_u = (current_start.x - previous_end.x).abs() > dom.x_length() * 0.10;
-            let large_v = (current_start.y - previous_end.y).abs() > dom.y_length() * 0.10;
+            let large_u = (gap_start.x - gap_end.x).abs() > dom.x_length() * 0.10;
+            let large_v = (gap_start.y - gap_end.y).abs() > dom.y_length() * 0.10;
             let is_u = |d: SurfParamType| d == SurfParamType::U || d == SurfParamType::Both;
             let is_v = |d: SurfParamType| d == SurfParamType::V || d == SurfParamType::Both;
             let singular_u = is_u(sing1) && is_u(sing2);
@@ -2161,7 +2220,7 @@ pub fn check_loop(
                 1,
                 !large_u || singular_u || bounded,
                 dom.x_length() * 0.10,
-                (current_start.x - previous_end.x).abs(),
+                (gap_start.x - gap_end.x).abs(),
             )?;
             report(
                 &mut alist,
@@ -2172,7 +2231,7 @@ pub fn check_loop(
                 2,
                 !large_v || singular_v || bounded,
                 dom.y_length() * 0.10,
-                (current_start.y - previous_end.y).abs(),
+                (gap_start.y - gap_end.y).abs(),
             )?;
 
             if (large_u || large_v) && !bounded {
@@ -2554,6 +2613,181 @@ mod tests {
         // Missing endpoint topology must fall back to the edges, not another vertex.
         b.vertexuse_mut(VertexuseId::from_index(2)).unwrap().vertex = None;
         assert_eq!(check_loop(&k, &mut b, &surface, l, 1e-5, None).unwrap(), 3);
+    }
+
+    #[test]
+    fn issue_530_projected_rotational_sweep_loops_cross_periodic_seams() {
+        for (start, end) in [
+            ([2.0, 0.0, 0.0], [2.0, 0.0, 3.0]),
+            ([2.0, 0.0, 0.0], [1.0, 0.0, 3.0]),
+            ([1.0, 0.0, 0.0], [2.0, 0.0, 3.0]),
+        ] {
+            let mut k = Kernel::default();
+            k.fixes.check_loop_projected_seam_ends = true;
+            let mut b =
+                crate::topology::brep::p3::new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT)
+                    .unwrap();
+            crate::primitive::primitive_creation::p1::analytic_rotational_sweep(
+                &mut k,
+                &mut b,
+                &line3(start, end),
+                Vec3::ZERO,
+                Vec3::Z,
+            )
+            .unwrap();
+            let loops: Vec<_> = b.loops().iter().map(|(id, _)| id).collect();
+            assert!(!loops.is_empty());
+            let mut mixed_seam_off = None;
+            for l in loops {
+                let eus = loop_edgeuses(&b, l).unwrap();
+                assert!(!eus.is_empty());
+                assert!(eus
+                    .iter()
+                    .all(|&eu| eu1::uv_trim_curve(&b, eu).unwrap().0.is_none()));
+                let surface = b
+                    .face(b.loop_(l).unwrap().face)
+                    .unwrap()
+                    .surface
+                    .clone()
+                    .unwrap();
+                assert_eq!(
+                    check_loop(&k, &mut b, &surface, l, 1e-5, None).unwrap(),
+                    0,
+                    "profile {start:?} -> {end:?}"
+                );
+                // One seam retains its exact curve on the far side, while its
+                // neighbours' vertex projections choose the near side.
+                for eu in eus {
+                    let (mut a, mut z) = edge_uv_ends(&k, &mut b, eu).unwrap();
+                    if a.y == z.y {
+                        continue;
+                    }
+                    a.x = surface.natural_uv_domain().max().x;
+                    z.x = a.x;
+                    if eu1::orientation(&b, eu).unwrap() == OrientType::Opposite {
+                        core::mem::swap(&mut a, &mut z);
+                    }
+                    b.edgeuse_mut(eu).unwrap().uv_trim_curve =
+                        Some(uv_line([a.x, a.y], [z.x, z.y]));
+                    assert_eq!(
+                        check_loop(&k, &mut b, &surface, l, 1e-5, None).unwrap(),
+                        0,
+                        "mixed seam {eu:?}, profile {start:?} -> {end:?}"
+                    );
+                    // Off (the default), the raw one-period jump is upstream's.
+                    if mixed_seam_off.is_none() {
+                        let mut off = k.fixes;
+                        off.check_loop_projected_seam_ends = false;
+                        let on = core::mem::replace(&mut k.fixes, off);
+                        mixed_seam_off = Some(check_loop(&k, &mut b, &surface, l, 1e-5, None));
+                        k.fixes = on;
+                    }
+                    // A short physical gap must still fail after lifting the U
+                    // representative (including at a clamped surface boundary).
+                    a.y += 0.001;
+                    z.y += 0.001;
+                    b.edgeuse_mut(eu).unwrap().uv_trim_curve =
+                        Some(uv_line([a.x, a.y], [z.x, z.y]));
+                    let mut reports = AssertArray::new();
+                    assert_eq!(
+                        check_loop(&k, &mut b, &surface, l, 1e-5, Some(&mut reports)).unwrap(),
+                        3
+                    );
+                    assert!(!reports.is_empty());
+                    b.edgeuse_mut(eu).unwrap().uv_trim_curve = None;
+                }
+                // An exact UV polygon with one deliberately misplaced seam must
+                // retain its failure, even though both seam sides map to the same
+                // points in 3D. No endpoint here comes from projection.
+                let eus = loop_edgeuses(&b, l).unwrap();
+                let d = surface.natural_uv_domain();
+                let (u0, u1, v0, v1) = (d.min().x, d.max().x, d.min().y, d.max().y);
+                let corners = [
+                    ([u0, v1], [u0, v0]),
+                    ([u0, v0], [u1, v0]),
+                    ([u1, v0], [u1, v1]),
+                    ([u1, v1], [u0, v1]),
+                ];
+                assert_eq!(eus.len(), corners.len());
+                for (&eu, (mut a, mut z)) in eus.iter().zip(corners) {
+                    if eu1::orientation(&b, eu).unwrap() == OrientType::Opposite {
+                        core::mem::swap(&mut a, &mut z);
+                    }
+                    b.edgeuse_mut(eu).unwrap().uv_trim_curve = Some(uv_line(a, z));
+                }
+                assert_eq!(check_loop(&k, &mut b, &surface, l, 1e-5, None).unwrap(), 0);
+                let eu = eus[0];
+                b.edgeuse_mut(eu).unwrap().uv_trim_curve = Some(uv_line([u1, v1], [u1, v0]));
+                assert!(check_loop(&k, &mut b, &surface, l, 1e-5, None).is_err());
+            }
+            // With the fix off the cylinder's mixed seam is upstream's SM_ERR (1001).
+            let off = mixed_seam_off.expect("a mixed seam was checked");
+            if start[0] == end[0] {
+                assert!(off.is_err(), "profile {start:?} -> {end:?}: {off:?}");
+            }
+        }
+    }
+
+    // Both opt-in CheckLoop fixes on one junction: a seam edge use keeps its exact UV
+    // trim on the far sheet (WR-440 lifts its projected neighbours) and is displaced in
+    // V by a 3D gap that only the widened shared vertices cover (WR-381). Each field
+    // alone leaves the loop failing; both together close it.
+    #[test]
+    fn issue_476_and_530_fixes_combine_on_a_mixed_seam_gap() {
+        use crate::topology::VertexId;
+        let mut k = Kernel::default();
+        let mut b =
+            crate::topology::brep::p3::new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT)
+                .unwrap();
+        crate::primitive::primitive_creation::p1::analytic_rotational_sweep(
+            &mut k,
+            &mut b,
+            &line3([2.0, 0.0, 0.0], [2.0, 0.0, 3.0]),
+            Vec3::ZERO,
+            Vec3::Z,
+        )
+        .unwrap();
+        for i in 0..b.vertices().len() {
+            b.vertex_mut(VertexId::from_index(i as u32))
+                .unwrap()
+                .tolerance = 0.01;
+        }
+        let loops: Vec<_> = b.loops().iter().map(|(id, _)| id).collect();
+        let mut checked = 0;
+        for l in loops {
+            let surface = b
+                .face(b.loop_(l).unwrap().face)
+                .unwrap()
+                .surface
+                .clone()
+                .unwrap();
+            let Some(eu) = loop_edgeuses(&b, l).unwrap().into_iter().find(|&eu| {
+                let (a, z) = edge_uv_ends(&k, &mut b, eu).unwrap();
+                a.y != z.y
+            }) else {
+                continue;
+            };
+            let (mut a, mut z) = edge_uv_ends(&k, &mut b, eu).unwrap();
+            a.x = surface.natural_uv_domain().max().x;
+            z.x = a.x;
+            if eu1::orientation(&b, eu).unwrap() == OrientType::Opposite {
+                core::mem::swap(&mut a, &mut z);
+            }
+            a.y += 0.001;
+            z.y += 0.001;
+            b.edgeuse_mut(eu).unwrap().uv_trim_curve = Some(uv_line([a.x, a.y], [z.x, z.y]));
+            let mut run = |vertex: bool, seam: bool| {
+                k.fixes.check_loop_vertex_tolerance = vertex;
+                k.fixes.check_loop_projected_seam_ends = seam;
+                check_loop(&k, &mut b, &surface, l, 1e-5, None)
+            };
+            assert_eq!(run(true, true).unwrap(), 0, "both fixes");
+            assert_eq!(run(false, true).unwrap(), 3, "seam fix only: 3D gap");
+            assert!(run(true, false).is_err(), "vertex fix only: raw seam jump");
+            assert_ne!(run(false, false).ok(), Some(0), "SMLib");
+            checked += 1;
+        }
+        assert!(checked > 0);
     }
 
     #[test]
