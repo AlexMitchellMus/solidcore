@@ -7,6 +7,7 @@
 //! | [`FilletSession`] | `SmFilletExecutive` and its owned objects |
 //! | [`SolverObject`] | the concrete `SmFilletSolver` objects |
 //! | [`FilletSession::set_self_intersection_handler`] | `SetSelfIntersectionHandler` |
+//! | [`FilletSession::set_curve_blend_self_intersection_handler`] | `SetSelfIntersectionHandler` (`SmMakeCurveBlendSIH`) |
 //! | [`FilletSession::fillet_corners`] | `GetFilletCorners` |
 //! | [`FilletSession::set_bevel_corner`] | `SetBevelCorner` |
 //! | `big_radius::test_and_convert_big_rad_fillet` (private) | `SmFilletExecutive::TestAndConvertBigRadFillet` |
@@ -61,6 +62,7 @@ use crate::blend::fillet_geom::p1::{
 };
 use crate::blend::fillet_geom::p3::SplitCorners;
 use crate::blend::fillet_geom::p5::FilletEdgeContext;
+use crate::blend::fillet_solver::curve_blend_sih::MakeCurveBlendSih;
 use crate::blend::fillet_solver::p1::{
     FilletSolver, FilletSolverOps, FilletSurfaceGenerator, MakeSurfaceBlendSih,
 };
@@ -263,6 +265,7 @@ struct SessionObjects<'target> {
     edge_caches: BTreeMap<EdgeId, CurveCache<FilletObject>>,
     target_serial: u64,
     self_intersection_handler: Option<MakeSurfaceBlendSih>,
+    curve_blend_self_intersection_handler: Option<MakeCurveBlendSih>,
 }
 
 impl SessionObjects<'_> {
@@ -1125,6 +1128,7 @@ impl<'target> FilletSession<'target> {
                 edge_caches: BTreeMap::new(),
                 target_serial,
                 self_intersection_handler: None,
+                curve_blend_self_intersection_handler: None,
             },
         })
     }
@@ -1425,6 +1429,9 @@ impl<'target> FilletSession<'target> {
         k: &Kernel,
         error_info: Option<&mut ErrorInfo<FilletObject>>,
     ) -> Result<()> {
+        // solvers loaded since the last sync (`SetFilletParameters`) read the handler
+        // during the corners' traces
+        self.sync_self_intersection_handler();
         let SessionObjects {
             target,
             solvers,
@@ -1702,6 +1709,22 @@ impl<'target> FilletSession<'target> {
     /// which every loaded solver reads through its executive.
     pub fn set_self_intersection_handler(&mut self, handler: Option<MakeSurfaceBlendSih>) {
         self.objects.self_intersection_handler = handler;
+        // the executive holds one handler
+        self.objects.curve_blend_self_intersection_handler = None;
+        self.executive
+            .set_self_intersection_handler(handler.map(|_| FilletObject::SelfIntersectionHandler));
+        self.sync_self_intersection_handler();
+    }
+
+    /// `SetSelfIntersectionHandler` with an `SmMakeCurveBlendSIH`: retain `handler`
+    /// as the executive's (only) handler, replacing a surface-blend one, so every
+    /// `FlushCurve` of a loaded solver runs its `SmoothOutIntersection`.
+    pub fn set_curve_blend_self_intersection_handler(
+        &mut self,
+        handler: Option<MakeCurveBlendSih>,
+    ) {
+        self.objects.self_intersection_handler = None;
+        self.objects.curve_blend_self_intersection_handler = handler;
         self.executive
             .set_self_intersection_handler(handler.map(|_| FilletObject::SelfIntersectionHandler));
         self.sync_self_intersection_handler();
@@ -1721,10 +1744,13 @@ impl<'target> FilletSession<'target> {
             .self_intersection_handler
             .as_ref()
             .map(MakeSurfaceBlendSih::algorithm_type);
+        let curve_blend = self.objects.curve_blend_self_intersection_handler;
+        let algorithm = algorithm.or(curve_blend.map(|h| h.algorithm_type()));
         for solver in self.objects.solvers.iter_mut().flatten() {
             let base = solver.base_mut();
             if base.executive.is_some() {
                 base.executive_self_intersection_handler = algorithm;
+                base.executive_curve_blend_sih = curve_blend;
             }
         }
     }

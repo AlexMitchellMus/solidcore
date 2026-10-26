@@ -145,7 +145,7 @@ impl IntersectorOps for Observed {
         fn reload_surface_offsets() -> KernelResult<()>;
         fn rail_surface_evaluate_1st_derivatives(k: &Kernel, rail: usize, uv: Vec2) -> KernelResult<(Vec3, Vec3, Vec3)>;
         fn set_status(value: FilStatus) -> KernelResult<()>;
-        fn smooth_out_intersection(geom: &FilletGeomId, curves: &mut Vec<BSplineCurve>, uv0: &mut Vec<BSplineCurve>, uv1: &mut Vec<BSplineCurve>) -> KernelResult<()>;
+        fn smooth_out_intersection(k: &Kernel, pseudo: &mut FilletBrep, geom: &FilletGeomId, curves: &mut Vec<BSplineCurve>, uv0: &mut Vec<BSplineCurve>, uv1: &mut Vec<BSplineCurve>) -> KernelResult<()>;
         fn create_fillet_surface(k: &Kernel, center: &mut BSplineCurve, curve0: &mut BSplineCurve, curve1: &mut BSplineCurve, points: &[TsectPnt], uv0: &mut BSplineCurve, uv1: &mut BSplineCurve) -> KernelResult<Option<BSplineSurface>>;
         fn set_fillet_surface(pseudo: &mut FilletBrep, geom: &FilletGeomId, surface: Option<BSplineSurface>) -> KernelResult<()>;
         fn set_center_line_curve(pseudo: &mut FilletBrep, geom: &FilletGeomId, curve: BSplineCurve) -> KernelResult<()>;

@@ -2237,6 +2237,10 @@ impl FilletCorner {
             .0
             .solver
             .set_fillet_executive(Some(FilletExecutiveRef));
+        crate::blend::fillet_solver::curve_blend_sih::inherit_executive_handler(
+            &mut new_fs.0.solver,
+            env.solvers,
+        );
         let new_fg = new_fs.0.solver.first_fillet_geom()?;
 
         // Create two rails, one is along the pInterpolateEdge, the other one is along

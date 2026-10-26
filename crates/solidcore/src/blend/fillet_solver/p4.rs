@@ -3977,7 +3977,8 @@ pub(crate) struct IntersectorSolver<'b> {
     trace: [&'b Surface; 2],
     /// The target B-rep holding the solver's edge uses (upstream's `GetEdgeuse`
     /// pointers reach it directly), passed to `LoadInitialValues` under
-    /// `ComputePointValues` and `StepSolve`; `None` where the caller has none.
+    /// `ComputePointValues` and `StepSolve`, and read for the rails' original faces
+    /// by `SmoothOutIntersection`; `None` where the caller has none.
     brep: Option<&'b mut Brep>,
 }
 
@@ -4205,19 +4206,21 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_>
 
     fn smooth_out_intersection(
         &mut self,
-        _geom: &FilletGeomId,
-        _curves_3d: &mut Vec<BSplineCurve>,
-        _uv_curves1: &mut Vec<BSplineCurve>,
-        _uv_curves2: &mut Vec<BSplineCurve>,
+        k: &Kernel,
+        pseudo: &mut FilletBrep,
+        geom: &FilletGeomId,
+        curves_3d: &mut Vec<BSplineCurve>,
+        uv_curves1: &mut Vec<BSplineCurve>,
+        uv_curves2: &mut Vec<BSplineCurve>,
     ) -> Result<()> {
-        // as blend::fillet_intersector's ConstantRadiusAssistedFs: FlushCurve calls
-        // this only for a smoothing handler, and the only handler an executive can
-        // hold here (`SmMakeSurfaceBlendSIH`) is blending
-        // UNPORTED(blend.fillet_executive_p1): SmSelfIntersectionHandler::SmoothOutIntersection (justified: findings.md "fillet_solver_p1: SmoothOutIntersection")
-        Err(SolidError::unported(
-            "SmSelfIntersectionHandler::SmoothOutIntersection",
-            "blend.fillet_executive_p1",
-        ))
+        // the executive's handler (FlushCurve calls this for a smoothing one, which
+        // only SmMakeCurveBlendSIH is)
+        let handler = self
+            .ops
+            .solver()
+            .executive_curve_blend_sih
+            .ok_or_else(|| invalid("no smoothing self-intersection handler"))?;
+        handler.smooth_out_intersection(self, k, pseudo, *geom, curves_3d, uv_curves1, uv_curves2)
     }
 
     fn has_surface_generator(&self) -> Result<bool> {
@@ -4322,6 +4325,40 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_>
         let mate = eu::mate(pseudo.brep(), primary)?
             .ok_or_else(|| invalid("rail edge use without a mate"))?;
         pseudo.set_edgeuse_uv_curve(mate, Some(Curve::from(uv_curve)), true, true)
+    }
+}
+
+/// The solver members `SmMakeCurveBlendSIH::SmoothOutIntersection` reaches.
+impl crate::blend::fillet_solver::curve_blend_sih::SmoothingSolver for IntersectorSolver<'_> {
+    fn original_face_has_surface(&self, face: crate::topology::FaceId) -> Result<bool> {
+        let target = self
+            .brep
+            .as_deref()
+            .ok_or_else(|| invalid("no target B-rep for the rail faces"))?;
+        Ok(target.face(face)?.surface.is_some())
+    }
+
+    fn setup_offset_radius(&mut self, tsect: &TsectPnt) -> Result<f64> {
+        self.pre()?;
+        let mut radius = 0.0;
+        let r = self.ops.setup_offset_values(tsect, Some(&mut radius));
+        self.synced(r).map(|()| radius)
+    }
+
+    fn base_natural_uv_domain(&self, rail: usize) -> Result<Extent2d> {
+        Ok(offset_surface(&*self.ops, rail)?
+            .base_surface()
+            .natural_uv_domain())
+    }
+
+    fn rail_surface(&self, rail: usize) -> Result<Surface> {
+        Ok(Surface::from(
+            offset_surface(&*self.ops, rail)?.surface.clone(),
+        ))
+    }
+
+    fn this_approx_tol_3d(&self) -> f64 {
+        self.ops.solver().approx_tol_3d
     }
 }
 

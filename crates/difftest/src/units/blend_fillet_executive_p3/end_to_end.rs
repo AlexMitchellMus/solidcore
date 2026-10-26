@@ -192,6 +192,12 @@ pub(super) struct RealSolid {
     /// checkpoint only).
     #[serde(default)]
     piecewise_merge: bool,
+    /// Fillet with an `SmMakeCurveBlendSIH(step back factor)` self-intersection
+    /// handler installed on `SmApiFilletEdges`' executive, so every `FlushCurve`
+    /// runs `SmoothOutIntersection` (full checkpoint only; not with
+    /// `piecewise_merge`).
+    #[serde(default)]
+    curve_blend_sih: Option<f64>,
 }
 impl RealSolid {
     fn fillet_wire(&self) -> Vec<f64> {
@@ -224,6 +230,13 @@ impl RealSolid {
     fn check_form(&self) -> Result<(), HarnessError> {
         if self.piecewise_merge && self.checkpoint != Checkpoint::Full {
             return Err(HarnessError::new("piecewise merge needs the full checkpoint"));
+        }
+        if self.curve_blend_sih.is_some()
+            && (self.piecewise_merge || self.checkpoint != Checkpoint::Full)
+        {
+            return Err(HarnessError::new(
+                "curve-blend handler needs the full checkpoint without piecewise merge",
+            ));
         }
         match (&self.source, self.dimensions) {
             (None, Some(_)) if !self.all_edges => Ok(()),
@@ -328,6 +341,16 @@ fn output(mut values: &[f64]) -> Result<Output, HarnessError> {
 
 pub(super) fn cpp(input: &RealSolid) -> Result<Output, HarnessError> {
     input.check_form()?;
+    if let (Some(step_back), Some(source)) = (input.curve_blend_sih, &input.source) {
+        let values = ffi::curve_sih_source(step_back, &input.source_wire(source), source.path())
+            .map_err(|e| HarnessError::new(e.to_string()))?;
+        return output(&values);
+    }
+    if let Some(step_back) = input.curve_blend_sih {
+        let values = ffi::curve_sih_solid(step_back, &input.wire())
+            .map_err(|e| HarnessError::new(e.to_string()))?;
+        return output(&values);
+    }
     if let Some(source) = &input.source {
         let run = if input.piecewise_merge {
             ffi::piecewise_source
@@ -545,6 +568,9 @@ fn apply(k: &mut Kernel, body: &mut Brep, edges: &[EdgeId], input: &RealSolid) -
     if input.piecewise_merge {
         return piecewise_fillet_edges(k, body, edges, input);
     }
+    if let Some(step_back) = input.curve_blend_sih {
+        return curve_sih_fillet_edges(k, body, edges, input, step_back);
+    }
     solidcore::blend::fillet_executive::api::fillet_edges(
         k,
         body,
@@ -582,6 +608,41 @@ fn piecewise_fillet_edges(
             input.thumbweight,
         )?;
         session.set_do_piecewise_merge(true);
+        session.do_fillet(k)?;
+    }
+    stitch_and_orient(k, body, &StitchAndOrientOptions::default())
+}
+/// The shim's `curve_sih_fillet_edges`: `SmApiFilletEdges` with an
+/// `SmMakeCurveBlendSIH(step_back)` installed on the executive before
+/// `SetDoGlobalMerge(TRUE)`, `SetFilletParameters`, `DoFillet` and
+/// `StitchAndOrient` with its defaults.
+fn curve_sih_fillet_edges(
+    k: &mut Kernel,
+    body: &mut Brep,
+    edges: &[EdgeId],
+    input: &RealSolid,
+    step_back: f64,
+) -> SolidResult<()> {
+    use solidcore::blend::fillet_solver::curve_blend_sih::MakeCurveBlendSih;
+    use solidcore::topology::brep::p5::{stitch_and_orient, StitchAndOrientOptions};
+    if edges.is_empty() {
+        return Err(SolidError::invalid_input(
+            "harness::curve_sih_fillet",
+            "no edges",
+        ));
+    }
+    {
+        let mut session = solidcore::blend::fillet_executive::session::FilletSession::new(k, body)?;
+        session.set_curve_blend_self_intersection_handler(Some(MakeCurveBlendSih::new(step_back)));
+        session.set_do_global_merge(true);
+        session.prepare_constant_radius_edges(
+            k,
+            edges,
+            input.radius,
+            input.xsect,
+            input.continuity,
+            input.thumbweight,
+        )?;
         session.do_fillet(k)?;
     }
     stitch_and_orient(k, body, &StitchAndOrientOptions::default())

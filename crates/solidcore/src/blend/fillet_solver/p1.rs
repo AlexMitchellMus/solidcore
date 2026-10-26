@@ -446,6 +446,10 @@ pub struct FilletSolver {
     /// only part of the handler a solver reads). The owning executive keeps it equal
     /// to its own handler while this solver is loaded (`None` here).
     pub executive_self_intersection_handler: Option<HandlingAlgorithmType>,
+    /// `m_pExecutive->m_pSelfIntersectionHandler` when it is an
+    /// `SmMakeCurveBlendSIH` (the handler `SmoothOutIntersection` runs); kept equal
+    /// to the executive's handler like `executive_self_intersection_handler`.
+    pub executive_curve_blend_sih: Option<super::curve_blend_sih::MakeCurveBlendSih>,
     /// `m_dThisApproxTol3d`.
     pub approx_tol_3d: f64,
     /// `m_dThisAngTolRad`.
@@ -506,6 +510,7 @@ impl FilletSolver {
             edgeuses: [None, None],
             executive: None,
             executive_self_intersection_handler: None,
+            executive_curve_blend_sih: None,
             approx_tol_3d,
             ang_tol_rad,
             tangency_tolerance,
