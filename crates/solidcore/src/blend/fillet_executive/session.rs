@@ -3658,7 +3658,7 @@ impl CornerVertexAccess<FilletObject> for SessionObjects<'_> {
             FilletCornerType::ThreeByTwoMixed => {
                 self.make_3x2_mixed_corner_topology(k, id, executive)
             }
-            other => {
+            _ => {
                 // UNPORTED(blend.fillet_executive_p1): retained context for other concrete corners.
                 Err(SolidError::unported(
                     "SmFilletCorner::MakeCornerTopology (live concrete dispatch)",
