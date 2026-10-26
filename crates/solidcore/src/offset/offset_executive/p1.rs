@@ -621,8 +621,9 @@ impl OffsetExecutive {
     /// Removes result faces too close to the original (`RemoveExcessFaces`).
     ///
     /// The source is borrowed immutably while solving, corresponding to the upstream
-    /// editing-disabled query. This legacy immutable-kernel entry cannot advance the
-    /// real traversal mark at removal; use the kernel-context entry for that step.
+    /// editing-disabled query; the removal uses the result's actual editing flag and
+    /// the kernel's traversal marks. An empty deletion list still calls the landed
+    /// `RemoveFaces` implementation.
     /// Each original edge and face is identified by its geometry's owner key
     /// ([`arena_identity`] when unowned); an owner shared by two records or naming
     /// another record returns [`SolidError::Unsupported`] rather than omitting geometry.
@@ -630,24 +631,6 @@ impl OffsetExecutive {
     /// evaluation statuses are ignored, but an unported evaluator still defers.
     /// Result edges are visited in upstream edge list order (`SmBrep::GetEdges`).
     pub fn remove_excess_faces(
-        &self,
-        kernel: &Kernel,
-        original: &mut Brep,
-        result: &mut Brep,
-    ) -> Result<()> {
-        if self.excess_faces(kernel, original, result)?.is_none() {
-            return Ok(());
-        }
-        // UNPORTED(offset.offset_executive_p1): SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)
-        Err(SolidError::unported(
-            "SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)",
-            "offset.offset_executive_p1",
-        ))
-    }
-
-    /// Removes excess faces using the result's actual editing flag and kernel marks.
-    /// An empty deletion list still calls the landed `RemoveFaces` implementation.
-    pub fn remove_excess_faces_with_kernel_context(
         &mut self,
         kernel: &mut Kernel,
         original: &mut Brep,
@@ -1065,19 +1048,54 @@ impl OffsetExecutive {
             }
         }
         if problems {
-            let _curve = edge::create_trimmed_nurbs_curve(kernel, original, edge)?;
-            self.required_offset_brep()?;
-            // cpp:3092: offset distance, approximation tolerance, FALSE, FALSE.
-            // Ported: primitive::primitive_creation::p2::PrimitiveCreation::create_pipe_sweep,
-            // which needs a PrimitiveCreationAccess over the offset B-rep. Its first B-rep
-            // edit (p3's curve sweep) is the face construction below.
-            // UNPORTED(topology.brep_p8): SmBrep::CreateFacesFromSurface
-            return Err(SolidError::unported(
-                "SmBrep::CreateFacesFromSurface",
-                "topology.brep_p8",
-            ));
+            let curve = edge::create_trimmed_nurbs_curve(kernel, original, edge)?;
+            self.pipe_sweep_offset_brep(kernel, curve)?;
         }
         Ok(())
+    }
+
+    /// The pipe the gap-fill failure branch of `BuildOffsetOfEdgeuses` sweeps into the
+    /// offset B-rep (cpp:3087-3094): `SmPrimitiveCreation sPC(m_pOffsetBrep->
+    /// GetInfiniteRegion())` (tag 0, no analytics) and `CreatePipeSweep(offset distance,
+    /// the edge's trimmed NURBS curve, approximation tolerance, FALSE, FALSE, ...)`;
+    /// the three face lists are discarded, as upstream. The offset B-rep is lent to a
+    /// [`PrimitiveModel`](crate::primitive::primitive_creation::model::PrimitiveModel)
+    /// for the sweep and put back whatever its status.
+    fn pipe_sweep_offset_brep(&mut self, kernel: &mut Kernel, curve: Option<Curve>) -> Result<()> {
+        use crate::primitive::primitive_creation::model::PrimitiveModel;
+        use crate::primitive::primitive_creation::p1::PrimitiveCreation;
+
+        let brep = required(self.offset_brep.take())?;
+        let mut pc = PrimitiveCreation::new(brep.infinite_region(), 0, false);
+        let mut model = PrimitiveModel::new(kernel, brep);
+        // (a null trimmed curve is dereferenced by CreatePipeSweep upstream)
+        let path = match curve.map(Curve::into_kind) {
+            Some(CurveKind::BSpline(path)) => Ok(path),
+            Some(_) => Err(SolidError::invalid_input(
+                "offset::offset_executive::pipe_sweep_offset_brep",
+                "trimmed NURBS curve is not a B-spline",
+            )),
+            None => Err(SolidError::null_pointer(
+                "offset::offset_executive::pipe_sweep_offset_brep",
+            )),
+        };
+        let (mut start, mut side, mut end) = (Vec::new(), Vec::new(), Vec::new());
+        let status = path.and_then(|path| {
+            pc.create_pipe_sweep(
+                &mut model,
+                PrimitiveModel::MAIN,
+                self.offset_distance,
+                &path,
+                self.approximation_tol_3d,
+                false,
+                false,
+                &mut start,
+                &mut side,
+                &mut end,
+            )
+        });
+        self.offset_brep = Some(model.into_brep()?);
+        status
     }
 
     /// Fills unmatched edge gaps (`FillGapEdgeuses`). Empty gaps succeed without
@@ -3358,37 +3376,64 @@ mod tests {
             .unwrap();
     }
 
+    /// The gap-fill failure branch of `BuildOffsetOfEdgeuses` sweeps a pipe of the
+    /// offset distance along the edge's trimmed NURBS curve into the offset B-rep
+    /// (cpp:3087-3094), and puts the offset B-rep back on success and on failure.
+    #[test]
+    fn gap_fill_failure_pipe_sweeps_into_the_offset_brep() {
+        let mut kernel = Kernel::default();
+        let pts = [0.0, 3.0, 7.0, 10.0].map(|z| Vec3::new(0.0, 0.0, z));
+        let curve = Some(Curve::from(
+            crate::primitive::api_curves::create_curve(&pts).unwrap(),
+        ));
+
+        let mut exec = executive();
+        let offset = crate::topology::brep::p3::new_brep(
+            &mut kernel,
+            crate::geom::tol::USE_DEFAULT,
+            crate::geom::tol::USE_DEFAULT,
+        )
+        .unwrap();
+        exec.set_offset_brep(offset);
+        exec.pipe_sweep_offset_brep(&mut kernel, curve).unwrap();
+        let swept = exec.required_offset_brep().unwrap();
+        assert!(!swept.faces().is_empty());
+        let faces = swept.faces().len();
+
+        // A null trimmed curve is dereferenced upstream: an error, the B-rep kept.
+        assert!(exec.pipe_sweep_offset_brep(&mut kernel, None).is_err());
+        assert_eq!(exec.required_offset_brep().unwrap().faces().len(), faces);
+    }
+
     #[test]
     fn excess_face_early_returns_and_actual_dependencies() {
-        let kernel = Kernel::default();
+        let mut kernel = Kernel::default();
         let mut executive = executive();
         let mut original = Brep::new();
         let mut result = Brep::new();
         executive
-            .remove_excess_faces(&kernel, &mut original, &mut result)
+            .remove_excess_faces(&mut kernel, &mut original, &mut result)
             .unwrap();
         executive.set_merge_results(true);
         executive.set_shell_faces(&[FaceId::from_index(1)]);
         executive
-            .remove_excess_faces(&kernel, &mut original, &mut result)
+            .remove_excess_faces(&mut kernel, &mut original, &mut result)
             .unwrap();
         executive.set_shell_faces(&[]);
-        // No result edge: the original's editing flag is not touched.
+        // No result edge: the original's editing flag is not touched; the empty
+        // deletion list still reaches RemoveFaces, whose editing-disabled refusal is
+        // ignored (cpp:2099-2102).
+        executive
+            .remove_excess_faces(&mut kernel, &mut original, &mut result)
+            .unwrap();
         assert!(!original.editing_enabled());
-        assert_dependency(
-            executive.remove_excess_faces(&kernel, &mut original, &mut result),
-            "SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)",
-            "offset.offset_executive_p1",
-        );
         add_use(&mut result, 0.0, 1.0, 1.0);
         add_use(&mut result, 0.0, 1.0, 2.0);
-        // The edges evaluate and solve against the empty original; the legacy entry
-        // still defers at its removal step without removing any result faces.
-        assert_dependency(
-            executive.remove_excess_faces(&kernel, &mut original, &mut result),
-            "SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)",
-            "offset.offset_executive_p1",
-        );
+        // The edges evaluate and solve against the empty original; no result face is
+        // close to it, so nothing is removed.
+        executive
+            .remove_excess_faces(&mut kernel, &mut original, &mut result)
+            .unwrap();
         assert_eq!(result.edges().len(), 2);
         assert_eq!(result.edgeuses().len(), 2);
         assert!(result.faces().is_empty());
@@ -3540,7 +3585,7 @@ mod tests {
         exec.set_merge_results(true);
         // Native RemoveExcessFaces ignores the editing-disabled refusal from
         // RemoveFaces. No traversal mark is acquired by that refused inner call.
-        exec.remove_excess_faces_with_kernel_context(&mut kernel, &mut original, &mut result)
+        exec.remove_excess_faces(&mut kernel, &mut original, &mut result)
             .unwrap();
         assert!(!result.editing_enabled());
         assert_eq!(kernel.context.current_mark(MarkType::Mark), 1);
@@ -3550,7 +3595,7 @@ mod tests {
             crate::geom::context::ALL_MARKS,
             |kernel, mark| {
                 assert_eq!(mark, MarkType::Mark);
-                exec.remove_excess_faces_with_kernel_context(kernel, &mut original, &mut result)
+                exec.remove_excess_faces(kernel, &mut original, &mut result)
                     .unwrap();
                 assert!(kernel.context.is_mark_locked(mark));
                 assert!(!kernel.context.is_mark_locked(MarkType::Mark2));
@@ -3678,20 +3723,21 @@ mod tests {
                 other_gaps: vec![second],
                 ..SynchronizedEdgeuses::default()
             };
-            assert_dependency(
-                with_state(|state| {
-                    exec.fill_offset_edgeuse_gaps(
-                        &mut kernel,
-                        &original,
-                        edge,
-                        &synchronized,
-                        &[],
-                        state,
-                    )
-                }),
-                "SmBrep::CreateFacesFromSurface",
-                "topology.brep_p8",
-            );
+            // The pipe fallback runs on the offset B-rep (a bare `Brep::new()` without
+            // infinite region here), fails there, and the B-rep is put back.
+            let r = with_state(|state| {
+                exec.fill_offset_edgeuse_gaps(
+                    &mut kernel,
+                    &original,
+                    edge,
+                    &synchronized,
+                    &[],
+                    state,
+                )
+            });
+            assert!(r.is_err());
+            assert!(!matches!(r, Err(SolidError::Unported { .. })));
+            assert!(exec.offset_brep().is_some());
         }
     }
 
