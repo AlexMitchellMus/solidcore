@@ -37,13 +37,21 @@
 //! - **Undefined behaviour.** Where upstream would read through a null or mistyped
 //!   `m_pData`, a null Bezier pointer, a NURB-less B-spline or a bounding plane index
 //!   above 3, the port returns [`SolidError::InvalidInput`].
+//! - **Approximation angle arithmetic.** For a surface tested by evaluations rather
+//!   than an exact control net, an angle walk can divide a finite segment by an
+//!   overflowed length, producing a zero direction and spurious turning angles.
+//!   If refinement is still requested after the upstream minimum-UV-size checks,
+//!   the port returns `InvalidInput` instead of growing an approximation tree from
+//!   that invalid measurement. Passing leaves, exact control-net tests, infinite
+//!   chord tolerances alone, and custom testers that do not call this test are
+//!   unchanged. No coordinate or box-size cutoff is used.
 //! - **Virtual dispatch.** `SmSurface::FindTessellationSplits` (unit
 //!   `surface.surface_p9`) is not ported: [`SurfaceCache::subdivide_by_block`] returns
 //!   [`SolidError::Unported`] once it reaches it. The surface kinds are dispatched as
 //!   in [`crate::surface::surface_cache::p1`] (`SmIsoCurve::IsLinear` over the B-spline
 //!   kind only, which is all upstream reaches: the diagonal test runs for
-//!   `SmBSplineSurface_TYPE` and `SmSurfOfExtrusion_TYPE`, and no surface of extrusion
-//!   kind exists here yet).
+//!   `SmBSplineSurface_TYPE` and `SmSurfOfExtrusion_TYPE`, whose iso curves run the
+//!   inherited B-spline evaluation).
 //! - **Destructor.** `~SmSurfaceCache` deletes the tree, the continuity arrays, the
 //!   iso boundary curves, the alternate caches and the subdivision surfaces: all owned
 //!   by [`SurfaceCache`], dropped with it.
@@ -54,7 +62,6 @@ use crate::error::{Result, SolidError};
 use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::Extent3d;
 use crate::geom::pseudo_box::PseudoBox;
-use crate::geom::tol::{zone_tol_3d, SmallTopoType};
 use crate::geom::tree::{
     AuxDataType, NodeClass, NodeData, NodeGeomType, NodeId, SplitDir, SurfaceAux, TreeNode,
 };
@@ -256,6 +263,7 @@ fn limit_splits(splits: &mut Vec<f64>) {
 /// [`SolidError::Unported`] from the Bezier approximation (the approximation's other
 /// failures are ignored, as upstream: the patch keeps what was written).
 pub fn create_approximate_bezier_patch_block(
+    k: &Kernel,
     surface: &Surface,
 ) -> Result<ApproximateBezierPatchBlock> {
     // Note we are creating approximate cubic beziers
@@ -290,7 +298,7 @@ pub fn create_approximate_bezier_patch_block(
             let mut bezier = bicubic_block_patch()?;
 
             // approximate the surface shape with a degree 3x3 bezier patch
-            match compute_bezier_approximation(surface, &uv_domain, &mut bezier) {
+            match compute_bezier_approximation(k, surface, &uv_domain, &mut bezier) {
                 Err(e) if e.is_unported() => return Err(e),
                 Err(_) | Ok(()) => {}
             }
@@ -366,6 +374,7 @@ const ANGLES: ConstantsRequest = ConstantsRequest {
 /// (not a B-spline) the values come from evaluations of it over `uv_domain` (and
 /// `pSur` is not read); else from the net of `sur`.
 fn net_constants(
+    k: &Kernel,
     surface_to_test: Option<&Surface>,
     uv_domain: &Extent2d,
     sur: Option<&NurbSurface>,
@@ -373,7 +382,7 @@ fn net_constants(
     req: ConstantsRequest,
 ) -> Result<crate::nurbs::nurbs_srf::NetConstants> {
     if let Some(s) = surface_to_test {
-        let mut eval = |uv: Point2| s.evaluate_point(uv);
+        let mut eval = |uv: Point2| s.evaluate_point(k, uv);
         let ev: &mut PointEvaluator<'_> = &mut eval;
         compute_surf_constants(ev, uv_domain, req)
     } else {
@@ -431,8 +440,11 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     /// those of `CalculateBoundingBox`, `sm_ComputeNetConstants`,
     /// `sm_ComputeSurfConstants`, `GetCorners` and `ComputeSizeTolerances`;
     /// `InvalidInput` where upstream reads through null or mistyped data;
-    /// [`SolidError::Unported`] from `SmTol::GetZoneTol3d` of an owned surface and the
+    /// [`SolidError::Unported`] from `SmTol::GetZoneTol3d` of a face-owned surface whose
+    /// face tolerance is not cached on it ([`Surface::owner_zone_tol_3d`]) and from the
     /// surface calls.
+    /// `InvalidInput` if an approximation still requires refinement after a sampled
+    /// angle segment's length was non-finite (see the module deviations).
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn test_against_tolerances(&mut self, k: &Kernel, node: NodeId) -> Result<ToleranceTest> {
         // init output
@@ -467,18 +479,9 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         let chord_height_squared = chord_tol * chord_tol;
         let ang_tol_deg = opts.ang_tol_rad * 180.0 / PI;
         // SmTol::GetZoneTol3d(m_cpSurface): GetFace() ? its tolerance : the system's
-        let zone_tol = if self.surface().face()?.is_some() {
-            // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an opaque handle. Every
-            // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
-            // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
-            // receives the owning B-rep
-            return Err(SolidError::unported(
-                "SmTol::GetZoneTol3d(const SmObject*)",
-                "geom.tol",
-            ));
-        } else {
-            zone_tol_3d(k, SmallTopoType::NormalSize)
-        };
+        // (the face's tolerance as its B-rep cached it on the surface;
+        // UNPORTED(topology.face_p2): SmFace::GetTolerance for a bare face handle)
+        let zone_tol = crate::surface::surface::p1::zone_tol_3d(k, self.surface())?;
 
         // local tolerance state - a zero ChordHeight or Angle Tol value means to ignore the test
         {
@@ -522,8 +525,9 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                     pseudo_guess: None,
                     polar_guess: None,
                     expand_by_zone_tol: true,
+                    expand_tolerance: None,
                 };
-                let boxes = calculate_bounding_box(node_surface, &node_domain, &req)?;
+                let boxes = calculate_bounding_box(k, node_surface, &node_domain, &req)?;
                 let bbox = boxes
                     .normal
                     .ok_or_else(|| invalid(OP_TEST, "no bounding box"))?;
@@ -543,17 +547,23 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         }
 
         // When the surface is not a SmBSplineSurface - test the surface over the
-        // node's subdomain.
-        let cache_surface = self.surface().clone();
-        let surface_to_test: Option<&Surface> = match cache_surface.kind() {
-            SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) | SurfaceKind::SurfOfRevolution(_) => {
-                None
-            }
+        // node's subdomain. (The cache surface is copied only where the copy is read:
+        // the B-spline based kinds test the node's patch, and read the copy only in
+        // the surface-evaluation fallbacks below.)
+        let compound_copy: Option<Surface> = match self.surface().kind() {
+            SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
+            | SurfaceKind::BSpline(_)
+            | SurfaceKind::Plane(_)
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_) => None,
             SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::OffsetSurface(_)
-            | SurfaceKind::SrfInVolume(_) => Some(&cache_surface),
+            | SurfaceKind::SrfInVolume(_) => Some(self.surface().clone()),
         };
+        let surface_to_test: Option<&Surface> = compound_copy.as_ref();
 
         let mut subdivide = false;
         let mut direction = SurfParamType::U;
@@ -567,6 +577,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                 subdivide = true;
 
                 let nc = net_constants(
+                    k,
                     surface_to_test,
                     &node_domain,
                     sur.as_ref(),
@@ -623,9 +634,11 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         // AngleTol
         let mut u_ang_deg = -1.0;
         let mut v_ang_deg = -1.0;
+        let mut nonfinite_angle_length = false;
 
         if force_angle_test || (!subdivide && ang_tol_deg >= EFF_ZERO) {
             let nc = net_constants(
+                k,
                 surface_to_test,
                 &node_domain,
                 sur.as_ref(),
@@ -634,15 +647,23 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             )?;
             u_ang_deg = nc.u_angle_deg.unwrap_or(0.0);
             v_ang_deg = nc.v_angle_deg.unwrap_or(0.0);
+            nonfinite_angle_length |= nc.nonfinite_angle_length;
 
             // Returning more than 1-1/2 full revolutions indicates that the control
             // net is not suitable for estimating the angles: use surface evaluations.
             if u_ang_deg > 540.0 || v_ang_deg > 540.0 {
-                let surf: &Surface = surface_to_test.unwrap_or(&cache_surface);
-                let mut eval = |uv: Point2| surf.evaluate_point(uv);
+                let cache_surface;
+                let surf: &Surface = if let Some(s) = surface_to_test {
+                    s
+                } else {
+                    cache_surface = self.surface().clone();
+                    &cache_surface
+                };
+                let mut eval = |uv: Point2| surf.evaluate_point(k, uv);
                 let sc = compute_surf_constants(&mut eval, &node_domain, ANGLES)?;
                 u_ang_deg = sc.u_angle_deg.unwrap_or(0.0);
                 v_ang_deg = sc.v_angle_deg.unwrap_or(0.0);
+                nonfinite_angle_length |= sc.nonfinite_angle_length;
             }
 
             // Optimization for SmTessSrfCache::BuildTree(): switch to block subdivision
@@ -677,6 +698,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             // compute dUAngDeg and dVAngDeg to see if patch is flat
             if u_ang_deg < 0.0 || v_ang_deg < 0.0 {
                 let nc = net_constants(
+                    k,
                     surface_to_test,
                     &node_domain,
                     sur.as_ref(),
@@ -685,15 +707,21 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                 )?;
                 u_ang_deg = nc.u_angle_deg.unwrap_or(0.0);
                 v_ang_deg = nc.v_angle_deg.unwrap_or(0.0);
+                nonfinite_angle_length |= nc.nonfinite_angle_length;
             }
 
             let sizes = if u_ang_deg <= ang_tol_deg && v_ang_deg <= ang_tol_deg {
                 // when patch is Flat enough, compute from surface corner points - cheap
-                let c = self.corners(sur.as_ref(), &node_domain)?;
+                let c = self.corners(k, sur.as_ref(), &node_domain)?;
                 Self::size_tolerances_from_corners(c.u0v0, c.u1v0, c.u1v1, c.u0v1)
             } else {
                 // compute from sample surface IsoCurves - expensive
-                Self::size_tolerances_from_surface(k, &cache_surface, &node_domain)?
+                if let Some(s) = surface_to_test {
+                    Self::size_tolerances_from_surface(k, s, &node_domain)?
+                } else {
+                    let cache_surface = self.surface().clone();
+                    Self::size_tolerances_from_surface(k, &cache_surface, &node_domain)?
+                }
             };
             aspect_ratio = sizes.aspect_ratio;
             max_side_length = sizes.max_side_length_3d;
@@ -768,6 +796,12 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         }
 
         // set output for split
+        if surface_to_test.is_some() && nonfinite_angle_length {
+            return Err(invalid(
+                OP_TEST,
+                "non-finite approximation angle segment length",
+            ));
+        }
         out.needs_subdivision = true;
         out.direction = direction;
         Ok(out)
@@ -804,7 +838,14 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
 
         // remember need to check diagonal when all natural isoParam Curves are linear
         let mut check_diagonals = false;
-        if let SurfaceKind::BSpline(bss) = surface.kind() {
+        // (SmBSplineSurface_TYPE or SmSurfOfExtrusion_TYPE: the extrusion's iso curves
+        // evaluate its inherited B-spline evaluation)
+        let diagonal_candidate = match surface.kind() {
+            SurfaceKind::BSpline(bss) => Some(bss),
+            SurfaceKind::SurfOfExtrusion(s) => Some(s.base()),
+            _ => None,
+        };
+        if let Some(bss) = diagonal_candidate {
             let tol = if opts.chord_height_tolerance > 0.0 {
                 opts.chord_height_tolerance / 2.0
             } else {
@@ -812,7 +853,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             };
             let iso_linear = |param: SurfParamType, value: f64| -> Result<bool> {
                 let c = Curve::from(IsoCurve::new(bss.copy(), param, value, true, true));
-                Ok(c.is_linear(tol, false)?.linear)
+                Ok(c.is_linear(k, tol, false)?.linear)
             };
             if iso_linear(SurfParamType::U, uv_domain.min().x)?
                 && iso_linear(SurfParamType::V, uv_domain.min().y)?
@@ -845,13 +886,14 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             check_diagonals,
         )?;
 
-        self.block_from_splits(node, handle, &surface, &mut u_splits, &mut v_splits)
+        self.block_from_splits(k, node, handle, &surface, &mut u_splits, &mut v_splits)
     }
 
     /// The part of [`SurfaceCache::subdivide_by_block`] after the splits are known:
     /// culls them, makes the base node grid and combines it into a tree under `node`.
     fn block_from_splits(
         &mut self,
+        k: &Kernel,
         node: NodeId,
         handle: O,
         surface: &Surface,
@@ -927,12 +969,16 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                 let patch = match surface.kind() {
                     SurfaceKind::BSpline(b) => b.copy_sub_patch(&node_uv),
                     SurfaceKind::Plane(p) => p.base().copy_sub_patch(&node_uv),
+                    SurfaceKind::Cone(s) => s.rev().base().copy_sub_patch(&node_uv),
+                    SurfaceKind::Sphere(s) => s.base().base().copy_sub_patch(&node_uv),
+                    SurfaceKind::Torus(s) => s.base().base().copy_sub_patch(&node_uv),
                     SurfaceKind::SurfOfRevolution(s) => s.base().copy_sub_patch(&node_uv),
+                    SurfaceKind::SurfOfExtrusion(s) => s.base().copy_sub_patch(&node_uv),
                     SurfaceKind::CurveBounded(_)
                     | SurfaceKind::Step(_)
                     | SurfaceKind::OffsetSurface(_)
                     | SurfaceKind::SrfInVolume(_) => {
-                        return Err(invalid(OP_BLOCK, "node surface is not a B-spline"))
+                        return Err(invalid(OP_BLOCK, "node surface is not a B-spline"));
                     }
                 };
                 // If that fails, do what we can and continue.
@@ -947,8 +993,9 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                     pseudo_guess: None,
                     polar_guess: None,
                     expand_by_zone_tol: true,
+                    expand_tolerance: None,
                 };
-                if let Some(boxes) = ignore(patch.calculate_bounding_box(&patch_domain, &req))? {
+                if let Some(boxes) = ignore(patch.calculate_bounding_box(k, &patch_domain, &req))? {
                     if let Some(b) = boxes.normal {
                         self.tree_mut()
                             .ok_or_else(|| invalid(OP_BLOCK, "cache has no tree"))?

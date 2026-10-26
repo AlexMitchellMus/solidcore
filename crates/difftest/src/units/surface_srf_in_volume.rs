@@ -13,19 +13,19 @@
 //! `SM_SUCCESS`, else the `SmStatus`; `1007` for a Rust `InvalidInput`, `-1` for a Rust
 //! error upstream cannot produce) and the rest as `out`.
 //!
-//! Deferred cases: `Mirror` and `MakeExactBSplineOutSurfaceFrom*Space` (in no unit in
-//! `units.json`: dispatch gaps), the plane's `Transform` / `TrimWithDomain`
-//! (`surface.plane_p2`) and the base surface's `STEPInversion`, which runs
-//! `SmSurface::GlobalPointSolve` (`surface.surface_p4`) once the volume inversion has
-//! succeeded. Volumes are chains of transform, plain, default and component
+//! `Exact` calls the existing kernel-aware implementation and compares the returned
+//! surface's presence, concrete type and full NURB data, not merely its status.
+//! Its existing FFI guard permits transform-only chains; bend, unbend and twist
+//! exact-conversion implementations are not covered here. Volumes are otherwise
+//! chains of transform, plain, default and component
 //! twist / unbend / bend maps (the component constructors take a real axis, mid
 //! direction, period or neutral distance and tolerance). B-spline volumes are not
 //! built: they evaluate to `SM_ERR` on both sides (no `USE_VOLUMES` in the reference
 //! build). `STEPInversion` and `ReadFromDB` run through `surface.volume_p2`; a
 //! `ReadFromDB` case reads the text upstream's `WriteToDB` wrote for a generated object
 //! (no plain volume). Hand-built inline cases cover `Evaluate` of orders (0, 0) with
-//! `bOnlyUpperHalf == FALSE` and `Transform` on chains whose last map is not a
-//! transform. Every run has at least
+//! `bOnlyUpperHalf == FALSE`, `Transform` on chains whose last map is not a
+//! transform, and 60 `CreateMirrorSurface` cases (fixed seed). Every run has at least
 //! [`MIN_GENERATED`] generated cases; generated inputs the ffi wrapper rejects are
 //! redrawn.
 
@@ -460,7 +460,7 @@ fn build_volume(v: &Vol) -> Result<Volume, HarnessError> {
             }
             k => return Err(harness(format!("bad map kind {k}"))),
         };
-        next = Some(Volume::with_maps(kind, m.orient.map(transform_of), next));
+        next = Some(Volume::with_maps(kind, m.orient.map(transform_of), next).map_err(|e| HarnessError::new(e.to_string()))?);
     }
     next.ok_or_else(|| harness("volume without maps"))
 }
@@ -692,7 +692,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         OpIn::Info { uv, types } => {
             let c = siv_of(&s)?;
             let step = s.step_uv_domain();
-            let max = tri!(o, s.max_analytic_domain());
+            let max = tri!(o, s.max_analytic_domain(&k, ));
             o.push(0.0);
             o.extend([
                 s.type_code() as f64,
@@ -726,7 +726,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                 only_upper_half: *oh,
                 non_zero_tangents: *nz,
             };
-            let d = tri!(o, s.evaluate(pt(*uv), *hu, *hv, flags));
+            let d = tri!(o, s.evaluate(&k, pt(*uv), *hu, *hv, flags));
             o.push(0.0);
             put_derivs(&mut o, &d, *hu, *hv, *oh);
         }
@@ -740,18 +740,18 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         } => {
             let d = tri!(
                 o,
-                siv_of(&s)?.evaluate_simple(pt(*uv), *hu, *hv, side(*ul), side(*vl), *oh)
+                siv_of(&s)?.evaluate_simple(&k, pt(*uv), *hu, *hv, side(*ul), side(*vl), *oh)
             );
             o.push(0.0);
             put_derivs(&mut o, &d, *hu, *hv, *oh);
         }
         OpIn::EvalPoint { uv } => {
-            let p = tri!(o, s.evaluate_point(pt(*uv)));
+            let p = tri!(o, s.evaluate_point(&k, pt(*uv)));
             o.push(0.0);
             pv(&mut o, p);
         }
         OpIn::Normal { uv, ul, vl } => {
-            let n = tri!(o, s.evaluate_normal(pt(*uv), side(*ul), side(*vl)));
+            let n = tri!(o, s.evaluate_normal(&k, pt(*uv), side(*ul), side(*vl)));
             o.push(0.0);
             pv(&mut o, n);
         }
@@ -810,8 +810,8 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         OpIn::Equal { other } => {
             let c = siv_of(&s)?;
             let eq = match other {
-                None => tri!(o, c.approx_eq(c)),
-                Some(oc) => tri!(o, c.approx_eq(&build(&k, oc)?)),
+                None => tri!(o, c.approx_eq(&k, c)),
+                Some(oc) => tri!(o, c.approx_eq(&k, &build(&k, oc)?)),
             };
             o.extend([0.0, b(eq)]);
         }
@@ -853,12 +853,17 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         OpIn::Mirror { origin, x, y } => {
             let ax = Axis2Placement::new(v3(*origin), v3(*x), v3(*y));
-            tri!(o, siv_of(&s)?.create_mirror_surface(&k, &ax));
+            let m = tri!(o, siv_of(&s)?.create_mirror_surface(&k, &ax));
             o.push(0.0);
+            put_state(&mut o, &m);
         }
         OpIn::Exact => {
-            tri!(o, siv_of(&s)?.make_exact_b_spline_if_possible());
+            let exact = tri!(o, siv_of(&s)?.make_exact_b_spline_if_possible_with(&k));
             o.push(0.0);
+            o.push(b(exact.is_some()));
+            if let Some(exact) = exact {
+                put_surface(&mut o, &exact);
+            }
         }
         OpIn::ReadDb { .. } => return Err(harness("static op")),
     }
@@ -1188,6 +1193,35 @@ fn gen_case(rng: &mut Rng) -> Inputs {
 /// point (orders 0, 0) with `bOnlyUpperHalf == FALSE`, which upstream completes with
 /// the second-derivative branch, and `Transform` on a chain whose last map is not an
 /// `SmTransform` (upstream appends a copied transform).
+/// Generated `CreateMirrorSurface` cases the ffi wrapper accepts (the generator draws
+/// the op rarely and the wrapper takes transform chains only), from a fixed seed.
+fn mirror_cases() -> Result<Vec<Case>, HarnessError> {
+    const WANT: usize = 60;
+    let mut rng = Rng::new(0x5eed_4d17);
+    let mut cases = Vec::new();
+    for _ in 0..200_000 {
+        if cases.len() >= WANT {
+            break;
+        }
+        let mut i = gen_case(&mut rng);
+        let (origin, x, y) = gen_placement(&mut rng);
+        i.op = OpIn::Mirror { origin, x, y };
+        let Ok((op, input)) = cpp_input(&i) else {
+            continue;
+        };
+        if ffi::validate(op, &input).is_err() {
+            continue;
+        }
+        cases.push(Case {
+            unit: "surface.srf_in_volume".into(),
+            name: format!("mirror_{}", cases.len()),
+            source: CaseSource::Inline,
+            inputs: serde_json::to_value(&i).map_err(|e| harness(e.to_string()))?,
+        });
+    }
+    Ok(cases)
+}
+
 fn inline_cases() -> Result<Vec<Case>, HarnessError> {
     let plane = SurfIn::Plane {
         o: [0.0, 0.0, 0.0],
@@ -1315,6 +1349,7 @@ impl UnitDiff for Runner {
         };
         let mut cases = default_cases(self, &ctx)?;
         cases.extend(inline_cases()?);
+        cases.extend(mirror_cases()?);
         Ok(cases)
     }
 
@@ -1325,10 +1360,136 @@ impl UnitDiff for Runner {
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         rust(&case.parse()?)
     }
+
+    fn skipped_platform(&self, case: &Case) -> Option<String> {
+        let i: Inputs = case.parse().ok()?;
+        if matches!(i.op, OpIn::ReadDb { .. }) {
+            Some("libc++ istream extraction differs from libstdc++".into())
+        } else {
+            None
+        }
+    }
 }
 
 // `srf` is part of the shared helpers: keep the import used by the fixtures path.
 #[allow(dead_code)]
 fn _srf_in(s: &SrfIn) -> Result<InlineSrf, HarnessError> {
     srf(s)
+}
+
+#[cfg(all(test, feature = "cpp"))]
+mod tests {
+    use super::*;
+
+    fn assert_exact_result(name: &str, output: &Output) -> Result<(), HarnessError> {
+        assert!(output.error.is_none(), "{name}: {:?}", output.error);
+        assert!(output.deferred.is_none(), "{name}: {:?}", output.deferred);
+        assert!(output.rejected.is_none(), "{name}: {:?}", output.rejected);
+        assert_eq!(
+            output.ints.get("status").map(Vec::as_slice),
+            Some([0].as_slice()),
+            "{name}"
+        );
+        let data = output
+            .values
+            .get("out")
+            .ok_or_else(|| harness("missing exact result"))?;
+        if name.contains("_null_") {
+            // A successful null result is an observed output, not an empty pass.
+            assert_eq!(data, &[0.0], "{name}");
+            return Ok(());
+        }
+
+        assert_eq!(data.first(), Some(&1.0), "{name}: exact surface missing");
+        assert_eq!(
+            data.get(2),
+            Some(&1.0),
+            "{name}: returned surface has no NURB"
+        );
+        if name.starts_with("exact_plane_") {
+            assert_eq!(
+                data.get(1),
+                Some(&(Plane::TYPE as f64)),
+                "{name}: plane was sliced"
+            );
+            assert!(data.len() > 9, "{name}: plane geometry missing");
+            return Ok(());
+        }
+
+        assert_eq!(data.get(1), Some(&(BSplineSurface::TYPE as f64)), "{name}");
+        assert_eq!(
+            data.get(3..9),
+            Some([1.0, 1.0, 1.0, 1.0, 3.0, 3.0].as_slice()),
+            "{name}"
+        );
+        // Independent homogeneous control nets: translation acts on w, and the
+        // noncommuting chain must run in its original order, without dehomogenizing.
+        let expected = if name.starts_with("exact_identity_") {
+            [
+                1.0, 2.0, 3.0, 1.0, 0.0, 4.0, 2.0, 2.0, 6.0, -2.0, 4.0, 2.0, 3.0, 6.0, 9.0, 3.0,
+            ]
+        } else if name.starts_with("exact_rigid_") {
+            [
+                0.0, -2.0, 8.0, 1.0, 0.0, -6.0, 12.0, 2.0, 6.0, 0.0, 14.0, 2.0, 0.0, -6.0, 24.0,
+                3.0,
+            ]
+        } else {
+            assert!(name.starts_with("exact_chain_"), "{name}");
+            [
+                -3.0, -5.0, -1.0, 1.0, -6.0, -6.0, -4.0, 2.0, 0.0, -8.0, 2.0, 2.0, -9.0, -15.0,
+                -3.0, 3.0,
+            ]
+        };
+        assert_eq!(
+            data.get(9..25),
+            Some(expected.as_slice()),
+            "{name}: transformed control net"
+        );
+        assert_eq!(
+            data.get(25..),
+            Some([-2.0, -2.0, 3.0, 3.0, 4.0, 4.0, 6.0, 6.0].as_slice()),
+            "{name}: knots"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn exact_fixtures_compare_returned_geometry_and_nullness() {
+        let text = include_str!("../../../../fixtures/surface.srf_in_volume/exact_results.json");
+        let fixtures: Value = serde_json::from_str(text).unwrap();
+        let cases = fixtures["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 16);
+        for fixture in cases {
+            let name = fixture["name"].as_str().unwrap();
+            let input: Inputs = serde_json::from_value(fixture["inputs"].clone()).unwrap();
+            let native = cpp(&input).unwrap();
+            let port = rust(&input).unwrap();
+            assert_exact_result(name, &native).unwrap();
+            assert_exact_result(name, &port).unwrap();
+            let diff = crate::compare::compare(&native, &port, &[]);
+            assert!(diff.pass(), "{name}: {diff:?}");
+            assert!(diff.values_compared > 0, "{name}: empty comparison");
+        }
+    }
+
+    #[test]
+    fn exact_former_deferrals_compare_observed_results() {
+        for index in [450, 602, 608, 1982] {
+            let seed = CaseContext::seed_for("surface.srf_in_volume", index);
+            let mut rng = Rng::new(seed);
+            let input: Inputs = serde_json::from_value(Runner.generate(&mut rng).unwrap()).unwrap();
+            assert!(matches!(input.op, OpIn::Exact), "gen{index:04}");
+            let native = cpp(&input).unwrap();
+            let port = rust(&input).unwrap();
+            assert!(
+                port.deferred.is_none(),
+                "gen{index:04}: {:?}",
+                port.deferred
+            );
+            assert_eq!(port.ints["status"], [0], "gen{index:04}");
+            let diff = crate::compare::compare(&native, &port, &[]);
+            assert!(diff.pass(), "gen{index:04}: {diff:?}");
+            assert!(diff.values_compared > 0, "gen{index:04}: empty comparison");
+        }
+    }
 }

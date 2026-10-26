@@ -16,10 +16,12 @@
 //!   box or a full sphere face) with target lists, then a script of heal steps;
 //!   outputs each step's status and results and, at the end, the whole healer state
 //!   (targets, every props record ever allocated, every problem array with its labels,
-//!   histograms, statistics and the vertex voxel model). The C++ side replaces analytic
-//!   geometry by plain B-splines first (what the Rust import rebuilds); the Rust side
-//!   imports the C++ export (the `topology.vertexuse` importer) and restores each
-//!   vertex's vertex use order from the shim.
+//!   histograms, statistics and the vertex voxel model). The C++ side preserves exactly
+//!   exported analytic surfaces and edge curves (circles/ellipses, with their polar
+//!   mapping and flags) and replaces other surfaces and edge curves by the plain
+//!   B-splines the Rust import rebuilds; the Rust side imports the C++ export (the
+//!   `topology.vertexuse` importer) and restores each vertex's vertex use order from the
+//!   shim.
 //!
 //! Deferred: `Fix_TolSizes` (`SmBrep::GetThisModelSizeEstimate`, `topology.brep_p1`),
 //! `Cache_DegenFaces` with a face (`SmFace::IsDegenerate` classifies its edges with
@@ -51,7 +53,7 @@ use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::heal_heal_data_p2 as ffi;
 use solidcore_ffi::units::topology_vertexuse::counts;
 
-use super::topology_vertexuse::{gen_brep, import, path_of, push_curve, push_surface, BrepIn};
+use super::topology_vertexuse::{gen_brep, import_raw, path_of, push_curve, push_surface, BrepIn};
 use crate::case::CaseContext;
 use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -71,6 +73,8 @@ enum H {
     Curve(bool),
     EdgeCurve(EdgeId),
     Trim(EdgeuseId),
+    /// A temporary curve (the seam curves of `SmFace::HasSeamProblem`).
+    Temp(usize),
 }
 
 impl ClassObject for H {
@@ -78,8 +82,14 @@ impl ClassObject for H {
         match self {
             Self::Topo(e) => e.class_kind(),
             Self::Surface(_) => ClassObjectKind::Surface,
-            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) => ClassObjectKind::Curve,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) | Self::Temp(_) => {
+                ClassObjectKind::Curve
+            }
         }
+    }
+
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        (kind == ClassObjectKind::Curve).then_some(Self::Temp(index))
     }
 }
 
@@ -177,6 +187,19 @@ pub(crate) enum Prim {
         radius: f64,
         #[serde(default)]
         swap: bool,
+    },
+    /// The shared native planar ellipse/circle fixture (`sc_topology_fixture::ellipse_face`,
+    /// block kind 9): one analytic edge curve plus its B-spline UV trim and, for an arc,
+    /// a line closing chord.
+    EllipseFace {
+        circle: bool,
+        origin: [f64; 3],
+        axis: u8,
+        radii: [f64; 2],
+        angles: [f64; 2],
+        natural: [f64; 2],
+        inside_out: bool,
+        oob: bool,
     },
 }
 
@@ -363,6 +386,25 @@ fn block_of(
             v.extend([5.0, *radius, flag(*swap)]);
             String::new()
         }
+        BIn::Prim(Prim::EllipseFace {
+            circle,
+            origin,
+            axis,
+            radii,
+            angles,
+            natural,
+            inside_out,
+            oob,
+        }) => {
+            v.extend([9.0, flag(*circle)]);
+            v.extend(origin);
+            v.push(f64::from(*axis));
+            v.extend(radii);
+            v.extend(angles);
+            v.extend(natural);
+            v.extend([flag(*inside_out), flag(*oob)]);
+            String::new()
+        }
         BIn::Std(s) => {
             match s {
                 BrepIn::File { rebuild, .. } => v.extend([0.0, flag(*rebuild)]),
@@ -527,7 +569,10 @@ fn ffi_out(r: Result<Vec<f64>, solidcore_ffi::FfiError>) -> Result<Output, Harne
 /// The export of a heal case's B-rep and its `[n_v, n_e, n_f]` (`None` when it could
 /// not be built).
 fn export_of(path: &str, block: &[f64]) -> Result<(Vec<f64>, Option<[usize; 3]>), HarnessError> {
-    let ex = ffi::export(path, block).map_err(|e| harness(format!("c++ export: {e}")))?;
+    let ex = crate::export_memo::export("heal_heal_data_p2", &[path], block, || {
+        ffi::export(path, block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     let n = counts(&ex).map(vef);
     Ok((ex, n))
 }
@@ -866,6 +911,15 @@ fn pick<I: Copy>(alive: &[I], sel: u64) -> Option<I> {
     } else {
         alive.get((sel % alive.len() as u64) as usize).copied()
     }
+}
+
+/// Whether a seed step would queue a face props record a second time (the shim's
+/// `degen_face_seeded`: upstream queues each once, and the repair works on a record
+/// queued twice twice).
+fn degen_face_seeded(h: &HealData<H>) -> bool {
+    h.tgt_face_props
+        .iter()
+        .any(|id| h.bad_face_props_degen_faces.prob_array.contains(id))
 }
 
 fn target_count_after_removals<T: Copy + PartialEq>(
@@ -1251,7 +1305,8 @@ fn rust_heal(
     ffi::check_heal(&args_of(targets, voxels, steps, n))
         .map_err(|e| harness(format!("heal script: {e}")))?;
     let c = counts(&ex).ok_or_else(|| harness("export counts"))?;
-    let (mut b, exact) = import(&ex)?;
+    // raw: `restore` replaces every cached gap with the C++ record
+    let (mut b, exact) = import_raw(&ex)?;
     if exact.iter().any(|x| !x) {
         return Err(harness("a face surface was not imported exactly"));
     }
@@ -1493,10 +1548,10 @@ fn rust_heal(
                 }
             }
             Step::CacheFacePropsStage2 => {
-                h.cache_face_props_stage2(&k, &b, HealerOpType::CacheFaceprops2)
+                h.cache_face_props_stage2(&k, &mut b, HealerOpType::CacheFaceprops2)
             }
             Step::CacheFacePropsStage3 => {
-                h.cache_face_props_stage3(&k, &b, HealerOpType::CacheFaceprops3)
+                h.cache_face_props_stage3(&k, &mut b, HealerOpType::CacheFaceprops3)
             }
             Step::FixBadSheets => {
                 let mut lock = MarkLock::new(std::slice::from_mut(&mut k.context), 0, ALL_MARKS)
@@ -1520,7 +1575,7 @@ fn rust_heal(
                 .make_uv_trim_curves(&k, &mut b, *make, HealerOpType::MakeUvtrimcurves)
                 .map(|()| false),
             Step::FixInfiniteRegion => h
-                .fix_infinite_region(&mut b, HealerOpType::FixInfiniteRegions)
+                .fix_infinite_region(&mut k, &mut b, HealerOpType::FixInfiniteRegions)
                 .map(|()| false),
             Step::HealBrep {
                 mode,
@@ -1581,6 +1636,28 @@ fn rust_heal(
                     stop = true;
                     break;
                 }
+                // (the shim's guard: re-adding a live target this step does not remove
+                // gives it a second props record, which a catch-up that deletes topology
+                // frees through one record and dereferences through the other)
+                let readds = add.iter().flatten().any(|e| {
+                    !rm.contains(e)
+                        && match *e {
+                            EntityRef::Face(f) => b.face(f).is_ok() && h.tgt_faces.contains(&f),
+                            EntityRef::Edge(x) => b.edge(x).is_ok() && h.tgt_edges.contains(&x),
+                            EntityRef::Vertex(v) => {
+                                b.vertex(v).is_ok() && h.tgt_vertices.contains(&v)
+                            }
+                            _ => false,
+                        }
+                });
+                if readds
+                    && i64::from(*op).min(h.done_heal_op.code())
+                        >= HealerOpType::FixCoinVertices.code()
+                {
+                    o.push(NULL_DEREF);
+                    stop = true;
+                    break;
+                }
                 let rf = h.face_props_for_tgts(&rm, true);
                 let re = h.edge_props_for_tgts(&rm, true);
                 let rv = h.vertex_props_for_tgts(&rm, true);
@@ -1621,6 +1698,11 @@ fn rust_heal(
                     h.update_target_lists(&mut k, &mut b, &rm, &add, op_of(i64::from(*op)))
                         .map(|()| false)
                 }
+            }
+            Step::SeedFaceProblems { .. } | Step::SeedDegenFaces if degen_face_seeded(&h) => {
+                o.push(NULL_DEREF);
+                stop = true;
+                break;
             }
             Step::SeedFaceProblems { null_face } => {
                 for (i, &id) in h.tgt_face_props.iter().enumerate() {
@@ -1972,6 +2054,10 @@ fn gen_prob(rng: &mut Rng) -> Inputs {
 }
 
 impl UnitDiff for Runner {
+    fn reference_platform(&self) -> Option<crate::platform::ReferencePlatform> {
+        Some(crate::platform::X86_64_HASH_CASTS)
+    }
+
     fn id(&self) -> &'static str {
         "heal.heal_data_p2"
     }
@@ -2005,6 +2091,118 @@ impl UnitDiff for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A native analytic face must reach healing as the same surface kind in Rust.
+    /// A plain B-spline copy has the same control net but different UV evaluation.
+    #[test]
+    fn sphere_export_preserves_analytic_surface() {
+        use solidcore::surface::surface::SurfaceKind;
+
+        for swap in [false, true] {
+            let input = BIn::Prim(Prim::Sphere { radius: 3.0, swap });
+            let (path, block) = block_of(&input, false, false).unwrap();
+            let (export, counts) = export_of(&path, &block).unwrap();
+            assert!(counts.is_some(), "sphere construction failed");
+            let (brep, exact) = import_raw(&export).unwrap();
+            assert_eq!(exact, vec![true]);
+            let (_, face) = brep.faces().iter().next().unwrap();
+            let surface = face.surface.as_ref().unwrap();
+            assert!(matches!(surface.kind(), SurfaceKind::Sphere(_)));
+        }
+    }
+
+    /// The healer transport must keep a native circle/ellipse edge curve as its
+    /// analytic kind (with the polar mapping and flags), not flatten it to the plain
+    /// B-spline copy the old `normalise()` made. The closing chord stays a line.
+    #[test]
+    fn ellipse_face_preserves_native_edge_curve() {
+        use solidcore::curve::curve::p2::{CurveKind, CIRCLE_TYPE, ELLIPSE_TYPE};
+        use solidcore::geom::extent1d::Extent1d;
+
+        for circle in [false, true] {
+            let (angles, radii) = if circle {
+                ([-90.0, 90.0], [0.03, 0.03])
+            } else {
+                ([-90.0, 90.0], [0.03, 0.01])
+            };
+            let input = BIn::Prim(Prim::EllipseFace {
+                circle,
+                origin: [0.02, -0.03, 0.01],
+                axis: 0,
+                radii,
+                angles,
+                natural: [-4.0, 3.0],
+                inside_out: false,
+                oob: false,
+            });
+            let (path, block) = block_of(&input, false, false).unwrap();
+            let (export, counts) = export_of(&path, &block).unwrap();
+            assert!(counts.is_some(), "ellipse face construction failed");
+            let (brep, _) = import_raw(&export).unwrap();
+            let ty = if circle { CIRCLE_TYPE } else { ELLIPSE_TYPE };
+            let mut found = 0;
+            let mut plain = 0;
+            for (_, edge) in brep.edges().iter() {
+                let Some(curve) = edge.curve.as_ref() else {
+                    continue;
+                };
+                if curve.type_code() != ty {
+                    plain += 1;
+                    continue;
+                }
+                found += 1;
+                let CurveKind::Ellipse(ellipse) = curve.kind() else {
+                    panic!("analytic edge curve changed kind");
+                };
+                assert_eq!(ellipse.is_circle_class(), circle);
+                assert_eq!(ellipse.x_radius(), radii[0]);
+                assert_eq!(ellipse.y_radius(), radii[1]);
+                assert_eq!(ellipse.step_interval(), Extent1d::from_raw(angles[0], angles[1]));
+                assert_eq!(
+                    ellipse.base().natural_interval(),
+                    Extent1d::from_raw(-4.0, 3.0)
+                );
+                assert!(!ellipse.inside_out());
+                assert!(!ellipse.base().is_out_of_bounds_enabled());
+                assert!(ellipse.base().gw_nurb().is_some());
+            }
+            assert_eq!(found, 1, "circle={circle}: analytic edge curve was flattened");
+            assert!(plain >= 1, "circle={circle}: the closing chord disappeared");
+        }
+    }
+
+    /// Cache steps on the analytic edge still compare real edge/vertex props values.
+    #[test]
+    fn ellipse_face_heal_cache_compares_values() {
+        let input = Inputs::Heal {
+            brep: Box::new(BIn::Prim(Prim::EllipseFace {
+                circle: false,
+                origin: [0.02, -0.03, 0.01],
+                axis: 0,
+                radii: [0.03, 0.01],
+                angles: [-90.0, 270.0],
+                natural: [-4.0, 3.0],
+                inside_out: false,
+                oob: false,
+            })),
+            validate_only: false,
+            init_gaps: false,
+            targets: Targets {
+                v: Sel::All,
+                e: Sel::All,
+                f: Sel::All,
+            },
+            voxels: default_voxels(),
+            steps: vec![Step::CacheEdgeProps, Step::CacheVertexProps],
+        };
+        let cpp = run_cpp(&input).unwrap();
+        let rust = run_rust(&input).unwrap();
+        assert!(cpp.error.is_none(), "C++ failed: {cpp:?}");
+        assert!(rust.error.is_none(), "Rust failed: {rust:?}");
+        assert!(rust.deferred.is_none(), "Rust deferred: {rust:?}");
+        let diff = crate::compare(&cpp, &rust, Runner.abs_floors());
+        assert!(diff.pass() && diff.values_compared > 0, "{diff:?}");
+    }
 
     /// Object counts the C++ guard refuses are a harness error on the Rust side too,
     /// not a capacity-overflow panic or a 32 GiB object list (issue #181).

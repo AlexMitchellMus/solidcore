@@ -12,8 +12,8 @@
 //! call), patches to the read B-rep data and an op. Both sides read the file
 //! (`SmBrepData::ReadFromFile` / [`BrepData::read_from_file`]), patch it, build the
 //! B-rep and dump the result in the layout documented in the FFI module: integers to
-//! `ints`, doubles to `dbls` (subnormals as 0) and bit for bit to `dbl_bits`, `kinds`
-//! the interleaving. A Rust `InvalidInput` is the guard's `-2`.
+//! `ints`, doubles to `dbls` (subnormals as 0; pure reader/build cases also audit raw
+//! `dbl_bits`), `kinds` the interleaving. A Rust `InvalidInput` is the guard's `-2`.
 //!
 //! Generated cases pick a file, flags and patches (zone tolerance, manifold flag,
 //! healer version, borrowed geometry, flag stamps, the implied regions of an IGES
@@ -34,12 +34,14 @@ use solidcore::math::Vec3;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::surface::surface::Surface;
 use solidcore::topology::brep::p10::{
-    make_topology_from_data, project_and_trim, remove_all_topology, test_closure_split_region,
+    make_topology_from_data, project_and_trim, remove_all_topology_notified, test_closure_split_region,
     MakeTopologyOptions, ProjectAndTrimOptions, ProjectEnv, TopologyEnv, TrimType,
+    HEALER_VERSION,
 };
 use solidcore::topology::brep_cache::CacheObject;
 use solidcore::topology::brep_data::{BrepData, TopologyData};
 use solidcore::topology::database_io::FileType;
+use solidcore::topology::edge::NotifyEnv;
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::shell::{ShellMembers, ShellType};
 use solidcore::topology::topology::Topology;
@@ -134,7 +136,18 @@ fn path_of(i: &Inputs) -> Result<String, HarnessError> {
         .into_owned())
 }
 
-fn to_output(items: &[Item]) -> Output {
+/// Whether `i` runs only the `.smb` reader and pointer-wiring build (no analytic
+/// surface recognition, healer, closure ray-fire or curve projection), so every float
+/// can be audited bit for bit (`dbl_bits`). Once geometry solvers run, 1–3 ULP
+/// transcendental (`sin`/`cos`/`atan2`) differences between system `libm` and Rust are
+/// compared through `dbls` under the standard `1e-9` relative tolerance (as in
+/// [`snapshot`]).
+fn bit_audit(i: &Inputs) -> bool {
+    let [_, add_analytics, _, _, _, healer_enabled] = i.options;
+    !add_analytics && !healer_enabled && matches!(i.op, OpIn::Make | OpIn::RemoveAll { .. })
+}
+
+fn to_output(items: &[Item], include_bits: bool) -> Output {
     let ints: Vec<i64> = items
         .iter()
         .filter_map(|x| match x {
@@ -158,14 +171,130 @@ fn to_output(items: &[Item]) -> Output {
         .into_iter()
         .map(|v| if v.is_subnormal() { 0.0 } else { v })
         .collect();
-    Output::new()
+    let out = Output::new()
         .ints("ints", ints)
         .values("dbls", dbls)
-        .ints("dbl_bits", bits)
-        .ints("kinds", kinds)
+        .ints("kinds", kinds);
+    if include_bits {
+        out.ints("dbl_bits", bits)
+    } else {
+        out
+    }
+}
+
+/// Why the C++ side must not build these inputs, if it must not: requests on which
+/// `MakeTopologyFromData` runs the healer (`bHealerIsEnabled` and either `bAlwaysHeal`
+/// or an old healer version) over a B-rep it builds unchecked from patched records.
+///
+/// * After `Set` patches that change the data and leave records the build accepts
+///   (the Rust build, healing off, does not return `InvalidInput`; data it refuses is
+///   the shim's `-2`, and upstream never runs): the build keeps edge uses linked into
+///   loops their records do not name, loop rings of the wrong length or edges on
+///   another edge's curve, and the healer walks that B-rep unchecked (SIGSEGV and
+///   hangs in the C++ reference, UB-164; the ops after the build would too, and the
+///   FFI refuses those itself). A `Set` that changes nothing is compared.
+/// * After an `Iges` patch whose kept shells leave a face use record in no face use
+///   shell (the crafted spine fixtures: region 1 has no shells): that face use is built
+///   without a shell and `SmHealData::Fix_BadSheets` hands it to
+///   `SmBrep::TestClosureSplitRegion`, which reads `pFUStart->GetShell()->GetRegion()`
+///   through the null shell (`SmBrep.cpp:27909`, SIGSEGV).
+///
+/// The data is read and patched with the Rust reader (the same records upstream reads).
+fn heal_guard(i: &Inputs) -> Option<&'static str> {
+    let [_, _, _, _, always_heal, healer_enabled] = i.options;
+    if !healer_enabled {
+        return None;
+    }
+    let path = path_of(i).ok()?;
+    let bytes = std::fs::read(&path).ok()?;
+    let k = Kernel::default();
+    let mut data = BrepData::read_from_file(&k, bytes.clone(), FileType::Ascii).ok()?;
+    apply_patches(&mut data, &i.patches).ok()?;
+    if !(always_heal || data.healer_version() < HEALER_VERSION) {
+        return None;
+    }
+    if changes_indices(&k, &bytes, &i.patches) && builds(i, &data) {
+        return Some("healing a b-rep a set patch left inconsistent");
+    }
+    if i.patches.iter().any(|p| matches!(p, PatchIn::Iges)) {
+        let in_shell = |f: usize| {
+            data.shells.iter().any(|s| {
+                s.shell_type == 0
+                    && usize::try_from(s.faceuse_start).is_ok_and(|a| {
+                        usize::try_from(s.num_faceuses)
+                            .is_ok_and(|n| f >= a && f - a < n)
+                    })
+            })
+        };
+        if !(0..data.faceuses.len()).all(in_shell) {
+            return Some("healing a face use the iges patch left without a shell");
+        }
+    }
+    None
+}
+
+/// Whether the case's `Set` patches change the patched data: the data with every patch
+/// differs from the data with the same patches but its `Set` patches left out. A `Set`
+/// past its array, or of a field to the value it holds, changes nothing.
+fn changes_indices(k: &Kernel, bytes: &[u8], patches: &[PatchIn]) -> bool {
+    let without: Vec<PatchIn> = patches
+        .iter()
+        .filter(|p| !matches!(p, PatchIn::Set { .. }))
+        .copied()
+        .collect();
+    let patched = |ps: &[PatchIn]| {
+        let mut d = BrepData::read_from_file(k, bytes.to_vec(), FileType::Ascii).ok()?;
+        apply_patches(&mut d, ps).ok()?;
+        Some(format!("{d:?}"))
+    };
+    match (patched(patches), patched(&without)) {
+        (Some(a), Some(b)) => a != b,
+        _ => true,
+    }
+}
+
+/// Whether upstream gets past the build to the healer: false only when the Rust build
+/// (healing off) returns `InvalidInput`, the data the shim's simulation of the build's
+/// record indexing keeps from upstream (`-2`, UB-164), so upstream never runs.
+fn builds(i: &Inputs, data: &BrepData) -> bool {
+    let mut k = Kernel::default();
+    // Compare against pinned C++ c9c5979 (pre-tangency-labs/smlib@5af7070, WR-255 / #570).
+    k.context.set_trim_uv_curves_at_corner_drops(true);
+    let mut data = data.clone();
+    let Ok(mut b) = Brep::new_with_infinite_region() else {
+        return true;
+    };
+    let mut store = AttributeStore::new();
+    let mut records: BTreeMap<ObjectKey, Topology> = BTreeMap::new();
+    let mut env = TopologyEnv {
+        all_attributes: &[],
+        attributes: &mut store,
+        key_of: &key_of,
+        records: &mut records,
+        next_key: 1u64 << 50,
+    };
+    let [make_uv_trim_curves, add_analytics, force_same_tol, check_uv_trim_curves, always_heal, _] =
+        i.options;
+    let options = MakeTopologyOptions {
+        make_uv_trim_curves,
+        add_analytics,
+        force_same_tol,
+        check_uv_trim_curves,
+        always_heal,
+        healer_enabled: false,
+    };
+    !matches!(
+        make_topology_from_data(&mut k, &mut b, &mut data, &mut env, options),
+        Err(SolidError::InvalidInput { .. })
+    )
 }
 
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    if let Some(why) = heal_guard(i) {
+        // C++ undefined behaviour: neither side runs (not a harness error, which a
+        // normal run would count as a failure)
+        return Ok(Output::rejected(format!("guard: {why}")));
+    }
     let patches = i
         .patches
         .iter()
@@ -218,8 +347,9 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
         patches,
         op,
     };
+    let include_bits = bit_audit(i);
     ffi::run(&req)
-        .map(|items| to_output(&items))
+        .map(|items| to_output(&items, include_bits))
         .map_err(|e| harness(format!("ffi: {e}")))
 }
 
@@ -325,9 +455,9 @@ fn apply_patches(d: &mut BrepData, patches: &[PatchIn]) -> Result<(), HarnessErr
     for p in patches {
         match *p {
             PatchIn::ZoneTol(v) => d.zone_tol_3d = v,
-            PatchIn::Manifold(v) => {
-                d.manifold = i32::try_from(v).map_err(|_| harness("manifold"))?;
-            }
+            // the shim's `(SmBoolean)rd.i()`: an `int64_t` to `int` conversion, which
+            // keeps the low 32 bits (GCC), as `as i32` does
+            PatchIn::Manifold(v) => d.manifold = v as i32,
             PatchIn::Healer(v) => d.set_healer_version(v as u64),
             PatchIn::Borrowed(v) => d.is_geom_borrowed = v,
             PatchIn::Stamp(base) => {
@@ -410,6 +540,8 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
     let path = path_of(i)?;
     let bytes = std::fs::read(&path).map_err(|e| harness(format!("{path}: {e}")))?;
     let mut k = Kernel::default();
+    // Compare against pinned C++ c9c5979 (pre-tangency-labs/smlib@5af7070, WR-255 / #570).
+    k.context.set_trim_uv_curves_at_corner_drops(true);
     let mut data = match BrepData::read_from_file(&k, bytes, FileType::Ascii) {
         Ok(d) => d,
         Err(e @ SolidError::Unported { .. }) => return Ok(Err(e)),
@@ -449,16 +581,22 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
     out.push(Item::Int(i64::from(data.manifold)));
     out.push(Item::Int(i64::from(data.is_geom_borrowed)));
     let g = Graph::walk(&b).map_err(|e| harness(e.to_string()))?;
-    export(&b, &g, &records, &mut out).map_err(|e| harness(e.to_string()))?;
+    export(&k, &b, &g, &records, &mut out).map_err(|e| harness(e.to_string()))?;
 
     match i.op {
         OpIn::Make => {}
         OpIn::Closure { do_infinite } => {
-            // harness env: the runner holds no attribute state (default region
-            // records, empty store; see RegionNotifyState)
-            let mut state = solidcore::topology::brep::p2::RegionNotifyState::new(&b);
+            // the split names the B-rep's objects as the build did (`key_of`, the names
+            // its geometry owners carry, which its ray fires look up), over the build's
+            // records and attribute store
+            let mut env = NotifyEnv {
+                records: &mut records,
+                attributes: &mut store,
+                context: None,
+                key_of: &key_of,
+            };
             for &e in &g.edges.items {
-                match test_closure_split_region(&mut k, &mut b, &mut state.env(), do_infinite, e) {
+                match test_closure_split_region(&mut k, &mut b, &mut env, do_infinite, e) {
                     Ok(r) => {
                         out.push(Item::Int(0));
                         out.push(Item::Int(r.new_shells.len() as i64));
@@ -473,17 +611,25 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
                 }
             }
             let g2 = Graph::walk(&b).map_err(|e| harness(e.to_string()))?;
-            export(&b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
+            export(&k, &b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
         }
         OpIn::RemoveAll { editing } => {
             b.set_editing_enabled(editing);
-            match remove_all_topology(&mut k, &mut b) {
+            // the runner's records: the merged and deleted objects propagate their
+            // flags and user values into the survivors, as upstream's objects do
+            let mut env = NotifyEnv {
+                records: &mut records,
+                attributes: &mut store,
+                context: None,
+                key_of: &key_of,
+            };
+            match remove_all_topology_notified(&mut k, &mut b, &mut env) {
                 Ok(()) => out.push(Item::Int(0)),
                 Err(e @ SolidError::Unported { .. }) => return Ok(Err(e)),
                 Err(e) => out.push(Item::Int(status(&e))),
             }
             let g2 = Graph::walk(&b).map_err(|e| harness(e.to_string()))?;
-            export(&b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
+            export(&k, &b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
         }
         OpIn::Project {
             trim,
@@ -528,10 +674,19 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
                 angle_tol_radians: angle_tol,
                 subset_faces: None,
             };
+            // the merges' edits notify the build's records and attribute store under
+            // the build's names
+            let mut notify = NotifyEnv {
+                records: &mut records,
+                attributes: &mut store,
+                context: None,
+                key_of: &key_of,
+            };
             match project_and_trim(
                 &mut k,
                 &mut b,
                 &penv,
+                &mut notify,
                 &curve,
                 v(dir),
                 v(reference),
@@ -543,7 +698,7 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
                 Err(e) => out.push(Item::Int(status(&e))),
             }
             let g2 = Graph::walk(&b).map_err(|e| harness(e.to_string()))?;
-            export(&b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
+            export(&k, &b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
         }
     }
     Ok(Ok(out))
@@ -551,8 +706,8 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
 
 // ---- traversal-order registry (mirrors the shim's walk) ---------------------------------
 
-struct Reg<I> {
-    items: Vec<I>,
+pub(crate) struct Reg<I> {
+    pub(crate) items: Vec<I>,
     index: BTreeMap<u32, i64>,
 }
 
@@ -574,7 +729,7 @@ impl<I: Copy> Reg<I> {
         self.index.insert(r, self.items.len() as i64);
         self.items.push(id);
     }
-    fn find(&self, id: Option<I>, raw: impl Fn(I) -> u32) -> i64 {
+    pub(crate) fn find(&self, id: Option<I>, raw: impl Fn(I) -> u32) -> i64 {
         match id {
             None => -1,
             Some(id) => self.index.get(&raw(id)).copied().unwrap_or(-3),
@@ -582,17 +737,18 @@ impl<I: Copy> Reg<I> {
     }
 }
 
-struct Graph {
-    regions: Reg<RegionId>,
-    shells: Reg<ShellId>,
-    faceuses: Reg<FaceuseId>,
-    faces: Reg<FaceId>,
-    loopuses: Reg<LoopuseId>,
-    loops: Reg<LoopId>,
-    edgeuses: Reg<EdgeuseId>,
-    edges: Reg<EdgeId>,
-    vertexuses: Reg<VertexuseId>,
-    vertices: Reg<VertexId>,
+/// The B-rep's objects in the shim's traversal order (shared with `topology.brep_p6`).
+pub(crate) struct Graph {
+    pub(crate) regions: Reg<RegionId>,
+    pub(crate) shells: Reg<ShellId>,
+    pub(crate) faceuses: Reg<FaceuseId>,
+    pub(crate) faces: Reg<FaceId>,
+    pub(crate) loopuses: Reg<LoopuseId>,
+    pub(crate) loops: Reg<LoopId>,
+    pub(crate) edgeuses: Reg<EdgeuseId>,
+    pub(crate) edges: Reg<EdgeId>,
+    pub(crate) vertexuses: Reg<VertexuseId>,
+    pub(crate) vertices: Reg<VertexId>,
 }
 
 const LOOPUSE_TYPE: i64 = 16004;
@@ -601,7 +757,7 @@ const VERTEXUSE_TYPE: i64 = 16006;
 const SHELL_TYPE: i64 = 16013;
 const UNKNOWN_TYPE: i64 = 16999;
 
-fn orient_code(o: solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType) -> i64 {
+pub(crate) fn orient_code(o: solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType) -> i64 {
     use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
     match o {
         OrientType::Unknown => 0,
@@ -612,7 +768,7 @@ fn orient_code(o: solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType) -> i
 
 impl Graph {
     #[allow(clippy::too_many_lines)]
-    fn walk(b: &Brep) -> Result<Self, SolidError> {
+    pub(crate) fn walk(b: &Brep) -> Result<Self, SolidError> {
         let mut g = Self {
             regions: Reg::new(),
             shells: Reg::new(),
@@ -625,10 +781,10 @@ impl Graph {
             vertexuses: Reg::new(),
             vertices: Reg::new(),
         };
-        for (id, r) in b.regions().iter() {
-            if r.in_brep {
-                g.regions.add(Some(id), RegionId::index);
-            }
+        // GetRegions starts at the owning list head, which ResetInfiniteRegion
+        // changes without reallocating the region records.
+        for id in solidcore::topology::brep::p1::regions(b, None)? {
+            g.regions.add(Some(id), RegionId::index);
         }
         let (mut r, mut s, mut fu, mut lu, mut eu, mut vu, mut l, mut e, mut v) =
             (0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -799,11 +955,11 @@ impl Out<'_> {
         self.d(ivl.max());
         for k in 0..=4 {
             let t = ivl.min() + 0.25 * f64::from(k) * (ivl.max() - ivl.min());
-            self.point(c.evaluate_point(t));
+            self.point(c.evaluate_point(&Kernel::default(), t));
         }
         self.i(i64::from(c.owner() == Some(key_of(owner))));
     }
-    fn surface(&mut self, s: Option<&Surface>, owner: EntityRef) {
+    fn surface(&mut self, k: &Kernel, s: Option<&Surface>, owner: EntityRef) {
         let Some(s) = s else {
             self.i(0);
             return;
@@ -822,7 +978,7 @@ impl Out<'_> {
                     lo.x + 0.5 * f64::from(a) * (hi.x - lo.x),
                     lo.y + 0.5 * f64::from(bb) * (hi.y - lo.y),
                 );
-                self.point(s.evaluate_point(uv));
+                self.point(s.evaluate_point(k, uv));
             }
         }
         self.i(i64::from(s.owner() == Some(key_of(owner))));
@@ -831,6 +987,7 @@ impl Out<'_> {
 
 #[allow(clippy::too_many_lines)]
 fn export(
+    k: &Kernel,
     b: &Brep,
     g: &Graph,
     records: &BTreeMap<ObjectKey, Topology>,
@@ -904,7 +1061,7 @@ fn export(
     }
     for &id in &g.faces.items {
         let f = b.face(id)?;
-        w.surface(f.surface.as_ref(), EntityRef::Face(id));
+        w.surface(k, f.surface.as_ref(), EntityRef::Face(id));
         w.i(g.faceuses.find(f.faceuse, FaceuseId::index));
         let (lo, hi) = (f.uv_domain.min(), f.uv_domain.max());
         w.d(lo.x);
@@ -1001,13 +1158,12 @@ fn export(
 
 /// Shared post-state snapshot: topology in traversal order, sampled geometry,
 /// and lazy-cache initialization/UV fields not used by the p10 operation runner.
-pub(crate) fn snapshot(b: &Brep) -> Result<Output, HarnessError> {
+pub(crate) fn snapshot(k: &Kernel, b: &Brep) -> Result<Output, HarnessError> {
     let g = Graph::walk(b).map_err(|e| harness(e.to_string()))?;
     let mut items = Vec::new();
-    export(b, &g, &BTreeMap::new(), &mut items).map_err(|e| harness(e.to_string()))?;
-    let mut output = to_output(&items).int("validate_only", i64::from(b.validate_only()));
+    export(k, b, &g, &BTreeMap::new(), &mut items).map_err(|e| harness(e.to_string()))?;
     // This caller uses the normal relative comparison, not p10's bit audit.
-    output.ints.remove("dbl_bits");
+    let mut output = to_output(&items, false).int("validate_only", i64::from(b.validate_only()));
     output.values.insert(
         "dbls".into(),
         items
@@ -1022,8 +1178,8 @@ pub(crate) fn snapshot(b: &Brep) -> Result<Output, HarnessError> {
     let mut uv = Vec::new();
     let mut links = Vec::new();
     for id in &g.faceuses.items {
-        let f = b.faceuse(*id).map_err(|e| harness(e.to_string()))?;
-        let (next, last) = f.sibling_links.unwrap_or((None, None));
+        let (next, last) = solidcore::topology::shell::faceuse_sibling_links(b, *id)
+            .map_err(|e| harness(e.to_string()))?;
         links.extend([
             g.faceuses.find(next, FaceuseId::index),
             g.faceuses.find(last, FaceuseId::index),
@@ -1074,8 +1230,10 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        match rust(&case.parse()?)? {
-            Ok(items) => Ok(to_output(&items)),
+        let inputs: Inputs = case.parse()?;
+        let include_bits = bit_audit(&inputs);
+        match rust(&inputs)? {
+            Ok(items) => Ok(to_output(&items, include_bits)),
             Err(e) => Ok(Output::unported(&e).unwrap_or_else(|| Output::err(e.to_string()))),
         }
     }

@@ -41,8 +41,18 @@
 //!   way (`A[i][-1]` is the last entry of row `i - 1`). Accesses outside a whole
 //!   block or outside the given slices return [`SolidError::InvalidInput`] instead of
 //!   undefined behaviour.
+//! - [`interp_knots_and_tangents`] rejects a degree above `NL_MAXDEG` with
+//!   `InvalidInput` (upstream overruns its basis scratch arrays; the port would
+//!   otherwise size its knot arrays from the degree).
 //! - Errors are [`SolidError::Nlib`] values with the upstream `NL_*_ERR` number.
 //!   The `NL_STACKS` arguments and the routine-name strings have no counterpart.
+//! - Work arrays that cannot be reserved return [`NlibCode::Memory`] (upstream's
+//!   `NL_MEM_ERR` from a failed `N_Malloc`) instead of aborting. Index arithmetic on
+//!   caller counts (`n + p + 1`, `p + 1`, `2 * p`, ...) that would overflow `NL_INDEX`
+//!   (undefined behaviour upstream) returns [`SolidError::InvalidInput`]; where the
+//!   sum is only compared against the knot count, an overflowing sum counts as a
+//!   mismatch (`NL_INP_ERR`, as upstream's wrapped sum), and sums whose degree check
+//!   comes later are formed after that check (the order is not observable).
 
 use crate::error::{NlibCode, Result, SolidError};
 use crate::math::Vec3;
@@ -54,10 +64,11 @@ use crate::nurbs::crv_fit::p1::{
 };
 use crate::nurbs::crv_fit::p2::{interp, knots_derivs, knots_high_end_derivs};
 use crate::nurbs::fit_arrays::{
-    alloc, at, at2, at_mut, banded, basis, curve, hi, idx, invalid, mset, out_of_range, put, sg,
+    add, alloc, at, at2, at_mut, banded, basis, curve, hi, idx, invalid, mset, out_of_range, put,
+    sg,
 };
 use crate::nurbs::geom::{dist_polygon, normalize};
-use crate::nurbs::knots::{KnotVector, Side};
+use crate::nurbs::knots::{KnotVector, Side, MAX_DEGREE};
 use crate::nurbs::math::{combine2_pts, CPoint};
 
 const OP_DERIVS: &str = "nurbs::crv_fit::p3::interp_end_derivs";
@@ -581,8 +592,8 @@ fn rescale(t: &mut Vec3, fac: f64) -> Result<()> {
 /// with one tangent; [`NlibCode::Knot`] for an invalid given knot vector;
 /// `NL_GEO_ERR` for a tangent that cannot be normalised; errors of
 /// [`interp_given_params`], [`interp_knots_and_deriv`] and
-/// [`interp_knots_and_derivs`]; `InvalidInput` for empty `a`, too few parameters or
-/// a knot search leaving the given knot vector.
+/// [`interp_knots_and_derivs`]; `InvalidInput` for empty `a`, too few parameters, a
+/// degree above `NL_MAXDEG` or a knot search leaving the given knot vector.
 #[allow(clippy::too_many_lines)] // one upstream routine, kept in its original shape
 pub fn interp_knots_and_tangents(
     a: &[Vec3],
@@ -617,6 +628,12 @@ pub fn interp_knots_and_tangents(
 
     if p < 2 {
         return Err(SolidError::nlib(OP, NlibCode::Input));
+    }
+    if pu > MAX_DEGREE {
+        return Err(SolidError::InvalidInput {
+            operation: OP,
+            reason: "degree above NL_MAXDEG (upstream scratch array size)",
+        });
     }
     if per < 0.0 || per > 1.0 {
         return Err(SolidError::nlib(OP, NlibCode::Input));
@@ -660,7 +677,7 @@ pub fn interp_knots_and_tangents(
     };
 
     // Get knot vector if none passed in.
-    let mut ui = alloc(n + p + 1, 0.0, OP)?;
+    let mut ui = alloc(add(add(n, p, OP)?, 1, OP)?, 0.0, OP)?;
     let mut ideal_ok = true;
     if knt.is_none() {
         match tan_knots(&ul, pu, tan)? {
@@ -817,8 +834,8 @@ pub fn approx_closed_conditions(
     let pi = sg(p, OP)?;
 
     // Allocate memory for end derivatives (upstream Ds[1..=k], De[1..=k]).
-    let mut ds = vec![Vec3::ZERO; k];
-    let mut de = vec![Vec3::ZERO; k];
+    let mut ds = alloc(ki - 1, Vec3::ZERO, OP)?;
+    let mut de = alloc(ki - 1, Vec3::ZERO, OP)?;
 
     if let Some(d) = d {
         // Derivatives passed in.
@@ -831,7 +848,7 @@ pub fn approx_closed_conditions(
         // No derivatives are passed in; compute them internally.
         let nm = n / 2;
         let is = nm.max(n - pi - 1);
-        let ie = nm.min(pi + 1);
+        let ie = nm.min(add(pi, 1, OP)?);
         let nl = n - is + ie;
 
         let mut q = alloc(nl, Vec3::ZERO, OP)?;
@@ -1287,5 +1304,22 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    /// Fuzz regressions: an absurd derivative count fails with `NL_MEM_ERR` (as a
+    /// failed upstream allocation) and an absurd degree with an error, no abort.
+    #[test]
+    fn absurd_counts_are_errors() {
+        let a = pts();
+        assert!(matches!(
+            approx_closed_conditions(&a, 3, None, 1 << 62, ParamMethod::Uniform),
+            Err(SolidError::Nlib {
+                code: NlibCode::Memory,
+                ..
+            })
+        ));
+        assert!(
+            approx_closed_conditions(&a, i64::MAX as usize, None, 1, ParamMethod::Uniform).is_err()
+        );
     }
 }

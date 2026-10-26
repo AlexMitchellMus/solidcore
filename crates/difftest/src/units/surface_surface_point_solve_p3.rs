@@ -128,6 +128,21 @@ fn record(flat: &[f64]) -> Output {
         .values("out", rest.to_vec())
 }
 
+/// The FFI's own validation of `i` (what [`cpp`] runs), applied to the Rust side too:
+/// its guards refuse inputs upstream (and the faithful port) never finish on. A
+/// surface of revolution is not checked here (its check builds the surface in C++).
+fn validate(i: &Inputs) -> Result<(), HarnessError> {
+    match &i.surf {
+        Geometry::Base(surface) => {
+            let mut input = vec![flag(i.wrap)];
+            push_surf(&mut input, surface)?;
+            input.extend(tail(i));
+            ffi::validate(i.op.code(), &input).map_err(|e| harness(e.to_string()))
+        }
+        Geometry::Rev { .. } => Ok(()),
+    }
+}
+
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
     let rest = tail(i);
     let result = match &i.surf {
@@ -161,7 +176,7 @@ fn geometry(k: &Kernel, i: &Inputs) -> Result<Surface, HarnessError> {
         Geometry::Rev { rev } => {
             let surface = Surface::from(rev_rust(k, rev)?.map_err(|e| harness(e.to_string()))?);
             Ok(if i.wrap {
-                Surface::from(StepSurface::new(surface, true))
+                Surface::from(StepSurface::new(surface, true).map_err(|e| HarnessError::new(e.to_string()))?)
             } else {
                 surface
             })
@@ -291,12 +306,12 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                         previous.hit_bound(which, hits.signum());
                     }
                 }
-                let mut stepper = SurfPtSolveStepper::copy_of(&previous);
+                let mut stepper = SurfPtSolveStepper::copy_of(&k, &previous);
                 stepper.set_uv(p2(next));
                 match mode {
-                    0 => out.push(flag(stepper.find_boundary_solution()?)),
+                    0 => out.push(flag(stepper.find_boundary_solution(&k)?)),
                     1 => {
-                        let result = stepper.find_next_step(&Kernel::default(), &mut previous)?;
+                        let result = stepper.find_next_step(&k, &mut previous)?;
                         if let Some(status) = out.first_mut() {
                             *status = f64::from(result.status);
                         }
@@ -363,7 +378,7 @@ fn candidate(rng: &mut Rng) -> Option<Inputs> {
         natural
     };
     case.dom = domain;
-    case.test = gen_test(rng, &surface, domain, size);
+    case.test = gen_test(&k, rng, &surface, domain, size);
     case.op = match rng.below(12) {
         0..=2 => Operation::Global {
             target: if rng.chance(0.5) {
@@ -433,7 +448,9 @@ impl UnitDiff for Runner {
         cpp(&case.parse()?)
     }
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        rust(&case.parse()?)
+        let i = case.parse()?;
+        validate(&i)?;
+        rust(&i)
     }
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
         serde_json::to_value(generated(rng)?).ok()

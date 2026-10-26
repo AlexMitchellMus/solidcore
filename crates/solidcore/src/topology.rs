@@ -10,6 +10,7 @@
 //! | [`Region`] / [`RegionId`]   | `SmRegion` (minimal: list owner, shell list, void flag) |
 //! | [`Shell`] / [`ShellId`]     | `SmShell` (faces, region, type and list head)         |
 //! | [`Brep::new_with_infinite_region`] | `SmBrep::SmBrep()` (topology part, CO-PORTED) |
+//! | [`Brep::notify_serial`]     | (none: the B-rep's kernel-issued notification serial; CO-PORTED by `topology.brep_p3`) |
 //! | [`Faceuse`] / [`FaceuseId`] | `SmFaceuse` (unit `topology.edgeuse_p1`)              |
 //! | [`Face`] / [`FaceId`]       | `SmFace` (unit `topology.face_p2`)                    |
 //! | [`Loopuse`] / [`LoopuseId`] | `SmLoopuse` (unit `topology.loopuse`)                 |
@@ -59,8 +60,10 @@ use core::marker::PhantomData;
 use crate::curve::curve::Curve;
 use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::attribute::ObjectKey;
+use crate::geom::context::IdentitySlot;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
+use crate::geom::extent3d::Extent3d;
 use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::geom::tol::{USE_DEFAULT, ZONE_TOL_3D};
 use crate::geom::vector2d::Point2;
@@ -161,10 +164,14 @@ typed_id!(
     VertexuseId => Vertexuse
 );
 
-/// A dense, append-only store of `T` addressed by typed id `I`.
+/// A dense store of `T` addressed by typed id `I`. Items are appended; an item can
+/// be removed (upstream's `delete` of a topology object, unit `topology.brep_p4`),
+/// which empties its slot for good: ids are never reused, so the ids of the other
+/// items do not change, and iteration skips the empty slots.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Arena<I, T> {
-    items: Vec<T>,
+    items: Vec<Option<T>>,
+    live: usize,
     _id: PhantomData<fn() -> I>,
 }
 
@@ -172,6 +179,7 @@ impl<I, T> Default for Arena<I, T> {
     fn default() -> Self {
         Self {
             items: Vec::new(),
+            live: 0,
             _id: PhantomData,
         }
     }
@@ -181,55 +189,112 @@ impl<I: ArenaId, T> Arena<I, T> {
     /// Appends an item and returns its id.
     ///
     /// Fails with [`SolidError::InvalidInput`] if the arena already holds `u32::MAX`
-    /// items.
+    /// slots or cannot grow (allocation failure).
     pub fn insert(&mut self, item: T) -> Result<I> {
         let index = u32::try_from(self.items.len()).map_err(|_| SolidError::InvalidInput {
             operation: "topology::Arena::insert",
             reason: "arena is full",
         })?;
-        self.items.push(item);
+        self.items
+            .try_reserve(1)
+            .map_err(|_| SolidError::InvalidInput {
+                operation: "topology::Arena::insert",
+                reason: "arena cannot grow",
+            })?;
+        self.items.push(Some(item));
+        self.live = self.live.saturating_add(1);
         Ok(I::from_index(index))
     }
 
-    /// The item with id `id`, or `None` if the id is out of range.
+    /// Removes the item with id `id` (upstream `delete`) and returns it; `None` if the
+    /// id is out of range or already removed. The slot stays empty.
+    pub fn remove(&mut self, id: I) -> Option<T> {
+        let item = self.items.get_mut(id.index() as usize)?.take()?;
+        self.live = self.live.saturating_sub(1);
+        Some(item)
+    }
+
+    /// The item with id `id`, or `None` if the id is out of range or removed.
     #[must_use]
     pub fn get(&self, id: I) -> Option<&T> {
-        self.items.get(id.index() as usize)
+        self.items.get(id.index() as usize)?.as_ref()
     }
 
     /// Mutable access to the item with id `id`.
     #[must_use]
     pub fn get_mut(&mut self, id: I) -> Option<&mut T> {
-        self.items.get_mut(id.index() as usize)
+        self.items.get_mut(id.index() as usize)?.as_mut()
     }
 
-    /// Number of items.
+    /// Number of items (removed ones not counted).
     #[must_use]
     pub fn len(&self) -> usize {
-        self.items.len()
+        self.live
     }
 
-    /// True when the arena is empty.
+    /// True when the arena holds no item.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
+        self.live == 0
     }
 
-    /// Iterates `(id, item)` in insertion order.
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = (I, &T)> + '_ {
-        // Arena length never exceeds u32::MAX (checked in `insert`), so the cast is
-        // lossless.
-        self.items
-            .iter()
-            .enumerate()
-            .map(|(i, t)| (I::from_index(i as u32), t))
+    /// Iterates `(id, item)` in insertion order, skipping removed items.
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = (I, &T)> + DoubleEndedIterator + '_ {
+        ArenaIter {
+            inner: self.items.iter().enumerate(),
+            remaining: self.live,
+            _id: PhantomData,
+        }
     }
 
-    /// Iterates ids in insertion order.
-    pub fn ids(&self) -> impl ExactSizeIterator<Item = I> + '_ {
-        (0..self.items.len()).map(|i| I::from_index(i as u32))
+    /// Iterates ids in insertion order, skipping removed items.
+    pub fn ids(&self) -> impl ExactSizeIterator<Item = I> + DoubleEndedIterator + '_ {
+        self.iter().map(|(id, _)| id)
     }
 }
+
+/// The iterator behind [`Arena::iter`]: `(id, item)` in insertion order, skipping
+/// removed items.
+#[derive(Debug, Clone)]
+struct ArenaIter<'a, I, T> {
+    inner: core::iter::Enumerate<core::slice::Iter<'a, Option<T>>>,
+    remaining: usize,
+    _id: PhantomData<fn() -> I>,
+}
+
+impl<'a, I: ArenaId, T> Iterator for ArenaIter<'a, I, T> {
+    type Item = (I, &'a T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Arena length never exceeds u32::MAX (checked in `insert`), so the cast is
+        // lossless.
+        for (i, slot) in self.inner.by_ref() {
+            if let Some(t) = slot {
+                self.remaining = self.remaining.saturating_sub(1);
+                return Some((I::from_index(i as u32), t));
+            }
+        }
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl<I: ArenaId, T> DoubleEndedIterator for ArenaIter<'_, I, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        while let Some((i, slot)) = self.inner.next_back() {
+            if let Some(t) = slot {
+                self.remaining = self.remaining.saturating_sub(1);
+                return Some((I::from_index(i as u32), t));
+            }
+        }
+        None
+    }
+}
+
+impl<I: ArenaId, T> ExactSizeIterator for ArenaIter<'_, I, T> {}
 
 /// An `SmObject*` a topology record keeps but never dereferences (the surface,
 /// curve and B-rep pointers of an `SmDropCurveFail`): the object's kind and the
@@ -528,6 +593,30 @@ impl Default for Vertexuse {
     }
 }
 
+/// How a B-rep names its topology entities as the owners of its geometry (upstream's
+/// owner pointers): the port has no object pointers, so a geometry owner is an
+/// [`ObjectRef`](crate::geom::object::ObjectRef) under one of these schemes. A routine
+/// that attaches new geometry to topology (`SmEdgeuse::SetUVTrimCurve`'s `SetOwner`)
+/// names its owner by the B-rep's scheme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NamingScheme {
+    /// Not recorded: such routines leave the new geometry without owner (the caller
+    /// names it with its own identities).
+    #[default]
+    Unknown,
+    /// The Euler operators' notification identities
+    /// (`topology::loopuse::notify_ref`).
+    Notify,
+    /// A caller's own identities (a `TopologyEnv` / `NotifyEnv` `key_of`): such routines
+    /// leave the new geometry without owner, and the operation that holds the
+    /// caller's naming names it.
+    Caller,
+    /// The arena identities the crate's imported B-reps use
+    /// ([`brep_cache::arena_identity`](crate::topology::brep_cache::arena_identity):
+    /// the entity's type code and arena index).
+    Arena,
+}
+
 /// A boundary representation (`SmBrep`): arenas of shells, faces, loops, edges and
 /// vertices linked by typed ids.
 #[derive(Debug, Clone)]
@@ -555,8 +644,7 @@ pub struct Brep {
     region_list_head: Option<RegionId>,
     /// `m_pFaceListHead` (unit `topology.brep_p1`): the face list in its list order
     /// (every face record, once; an importer may reorder it). Upstream appends on
-    /// `PostInsert` and unlinks on `Remove`: a record deletion (`DeleteFace` /
-    /// `DeleteEdge` / `DeleteVertex`, not ported yet) must remove the id from this
+    /// `PostInsert` and unlinks on `Remove`: `remove_*_record` takes the id off this
     /// list and its siblings below, as `add_*_record` appends it.
     face_list: Vec<FaceId>,
     /// `m_pEdgeListHead` (unit `topology.brep_p1`): the edge list in its list order.
@@ -573,6 +661,29 @@ pub struct Brep {
     /// `m_pDeletedSurfaces` (unit `topology.brep_p1`): surfaces removed from the B-rep
     /// that are kept until the operation ends because they may still be referenced.
     deleted_surfaces: Vec<Surface>,
+    /// Faces whose surface's owner a running `SmFace::CreateUVTrimCurves` /
+    /// `SmEdgeuse::CreateUVTrimCurve` has temporarily cleared (`SmRescueSurfaceOwner`,
+    /// `SmTemporaryChangeValue` on `m_pOwner`), one entry per active clearing. While a
+    /// face is listed its surface has no face upstream (`GetFace()` is `NULL`), which
+    /// the port's surface owners (not set on every imported face surface) cannot
+    /// express on their own.
+    surface_owner_cleared: Vec<FaceId>,
+    /// (not upstream) How the B-rep names its topology as an owner of geometry
+    /// ([`NamingScheme`]).
+    naming: NamingScheme,
+    /// `m_pLockedBoundingBox` (unit `query.brep`): the box
+    /// [`crate::query::brep::lock_bounding_box`] saved, which
+    /// [`crate::query::brep::calculate_bounding_box`] returns while it is set. A clone
+    /// keeps it (clones stand in for the same B-rep); upstream's copy constructor
+    /// (`topology.brep_p3`) starts without one.
+    locked_bounding_box: Option<Extent3d>,
+    /// The B-rep's kernel-issued notification serial (CO-PORTED by `topology.brep_p3`):
+    /// its objects' topology keys hold it (`topology::brep::p3::topology_ref`). A
+    /// clone is a new B-rep without one.
+    notify_identity: IdentitySlot,
+    /// Edge/face identities supplied when their geometry was bound. These record
+    /// producer provenance; they are never inferred from an opaque geometry owner.
+    geometry_owner_keys: std::collections::BTreeMap<EntityRef, crate::geom::object::ObjectRef>,
 }
 
 impl Default for Brep {
@@ -600,6 +711,11 @@ impl Default for Brep {
             model_size_estimate: USE_DEFAULT,
             large_small_size_ratio: USE_DEFAULT,
             deleted_surfaces: Vec::new(),
+            surface_owner_cleared: Vec::new(),
+            naming: NamingScheme::Unknown,
+            locked_bounding_box: None,
+            notify_identity: IdentitySlot::default(),
+            geometry_owner_keys: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -652,6 +768,108 @@ impl Brep {
         self.infinite_region = region;
     }
 
+    /// How this B-rep names its topology as the owner of geometry ([`NamingScheme`]).
+    #[must_use]
+    pub const fn naming(&self) -> NamingScheme {
+        self.naming
+    }
+
+    /// Records how this B-rep names its topology as the owner of geometry: set where a
+    /// B-rep is built or its geometry owners are relabelled.
+    pub fn set_naming(&mut self, naming: NamingScheme) {
+        self.naming = naming;
+    }
+
+    /// Relabels geometry owned by this B-rep's own topology records under
+    /// [`NamingScheme::Arena`] ([`brep_cache::arena_identity`]), preserving shared or
+    /// unowned geometry and syncing face surface tolerances.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::NotFound`] for a dangling face or edge id (none in practice).
+    pub fn use_arena_naming(&mut self) -> Result<()> {
+        let edges: Vec<EdgeId> = self.edges.ids().collect();
+        for edge in edges {
+            let entity = EntityRef::Edge(edge);
+            let arena = brep_cache::arena_identity(brep_cache::CacheObject::Edge(edge));
+            let notify = loopuse::notify_ref(entity);
+            let proven = self.geometry_owner_key(entity);
+            let rebound = self.edge_mut(edge)?.curve.as_mut().is_some_and(|curve| {
+                let matched = curve.owner().is_some_and(|o| {
+                    o == arena
+                        || (o.key, o.type_code) == (notify.key, notify.type_code)
+                        || Some(o) == proven
+                });
+                if matched {
+                    curve.set_owner(Some(arena), None);
+                }
+                matched
+            });
+            if rebound {
+                self.set_geometry_owner_key(entity, Some(arena));
+            }
+        }
+        let faces: Vec<FaceId> = self.faces.ids().collect();
+        for face in faces {
+            let entity = EntityRef::Face(face);
+            let arena = brep_cache::arena_identity(brep_cache::CacheObject::Face(face));
+            let notify = loopuse::notify_ref(entity);
+            let proven = self.geometry_owner_key(entity);
+            let rebound = self
+                .face_mut(face)?
+                .surface
+                .as_mut()
+                .is_some_and(|surface| {
+                    let matched = surface
+                        .owner()
+                        .is_some_and(|o| o == arena || o == notify || Some(o) == proven);
+                    if matched {
+                        surface.set_owner(Some(arena));
+                    }
+                    matched
+                });
+            if rebound {
+                self.set_geometry_owner_key(entity, Some(arena));
+                self.sync_face_surface_tolerance(face)?;
+            }
+        }
+        self.naming = NamingScheme::Arena;
+        Ok(())
+    }
+
+    /// Producer-supplied owner identity recorded when geometry was bound to `entity`.
+    #[must_use]
+    pub(crate) fn geometry_owner_key(
+        &self,
+        entity: EntityRef,
+    ) -> Option<crate::geom::object::ObjectRef> {
+        self.geometry_owner_keys.get(&entity).copied()
+    }
+
+    /// All producer-supplied geometry owner identities recorded on this B-rep.
+    #[must_use]
+    pub(crate) const fn geometry_owner_keys(
+        &self,
+    ) -> &std::collections::BTreeMap<EntityRef, crate::geom::object::ObjectRef> {
+        &self.geometry_owner_keys
+    }
+
+    /// Updates or clears the producer-supplied geometry owner identity of `entity`.
+    pub(crate) fn set_geometry_owner_key(
+        &mut self,
+        entity: EntityRef,
+        owner: Option<crate::geom::object::ObjectRef>,
+    ) {
+        match owner {
+            Some(owner) => {
+                self.geometry_owner_keys.insert(entity, owner);
+            }
+            None => {
+                self.geometry_owner_keys.remove(&entity);
+            }
+        }
+    }
+
     /// `m_bEditingEnabled`.
     #[must_use]
     pub const fn editing_enabled(&self) -> bool {
@@ -661,6 +879,102 @@ impl Brep {
     /// Sets `m_bEditingEnabled`.
     pub fn set_editing_enabled(&mut self, enabled: bool) {
         self.editing_enabled = enabled;
+    }
+
+    /// Whether the owner of face `f`'s surface is temporarily cleared (see
+    /// [`Brep::begin_surface_owner_cleared`]): upstream's `GetFace()` of that surface
+    /// is then `NULL`.
+    #[must_use]
+    pub fn is_surface_owner_cleared(&self, f: FaceId) -> bool {
+        self.surface_owner_cleared.contains(&f)
+    }
+
+    /// Records that the owner of face `f`'s surface is temporarily cleared (the start
+    /// of an `SmTemporaryChangeValue<SmObject*>(pSurface->m_pOwner, NULL)` scope);
+    /// [`Brep::end_surface_owner_cleared`] ends it.
+    pub fn begin_surface_owner_cleared(&mut self, f: FaceId) {
+        self.surface_owner_cleared.push(f);
+        // the surface object (and its copies) learns it too
+        if let Some(s) = self.faces.get(f).and_then(|face| face.surface.as_ref()) {
+            s.begin_owner_cleared(f);
+        }
+    }
+
+    /// A private copy of this B-rep that stands for the B-rep itself (a query's scratch
+    /// copy where upstream works on the B-rep): its face surfaces share the cache slots
+    /// of this B-rep's ([`Surface::share_cache_slot_of`]), so that the surface caches the
+    /// query makes or reuses on the copy are the B-rep's surfaces' own, as upstream's
+    /// are. They also keep their owners (and the face tolerance cached on them), so
+    /// that `GetFace()` of the copy's surfaces finds the face as upstream's in-place
+    /// queries do (`SmTol::GetZoneTol3d(pSurface)` reads the face tolerance). A plain
+    /// `clone` (the copy constructor) starts every surface without cache or owner.
+    #[must_use]
+    pub fn clone_sharing_surface_caches(&self) -> Self {
+        let mut copy = self.clone();
+        for (id, face) in self.faces.iter() {
+            if let (Some(original), Ok(face_copy)) = (face.surface.as_ref(), copy.face_mut(id)) {
+                if let Some(surface) = face_copy.surface.as_mut() {
+                    surface.share_cache_slot_of(original);
+                    face::p2::RescueSurfaceOwner::new(original).restore(surface);
+                }
+            }
+        }
+        copy
+    }
+
+    /// A private copy of this B-rep that stands for the B-rep itself where upstream
+    /// queries the B-rep in place (a `const` query that still makes missing UV trim
+    /// curves on it): its edge curves, face surfaces and UV trim curves are exact copies
+    /// that keep their owners (and the surfaces share their cache slots), so the copy's
+    /// geometry still names its own edges and faces. A plain `clone` (the copy
+    /// constructor) resets every owner, and a B-rep cache made from it then holds no
+    /// curve or surface.
+    ///
+    /// # Errors
+    ///
+    /// Those of the geometry copies (a geometry nesting deeper than
+    /// `MAX_GEOMETRY_NESTING`).
+    pub fn clone_standing_for_self(&self) -> Result<Self> {
+        let mut copy = self.clone();
+        for (id, edge) in self.edges.iter() {
+            if let Some(curve) = edge.curve.as_ref() {
+                copy.edge_mut(id)?.curve = Some(curve.clone_for_evaluation()?);
+            }
+        }
+        for (id, face) in self.faces.iter() {
+            if let Some(surface) = face.surface.as_ref() {
+                copy.face_mut(id)?.surface = Some(surface.clone_for_evaluation()?);
+            }
+        }
+        for (id, edgeuse) in self.edgeuses.iter() {
+            if let Some(curve) = edgeuse.uv_trim_curve.as_ref() {
+                copy.edgeuse_mut(id)?.uv_trim_curve = Some(curve.clone_for_evaluation()?);
+            }
+        }
+        Ok(copy)
+    }
+
+    /// Ends the innermost [`Brep::begin_surface_owner_cleared`] scope of face `f`.
+    pub fn end_surface_owner_cleared(&mut self, f: FaceId) {
+        if let Some(i) = self.surface_owner_cleared.iter().rposition(|&g| g == f) {
+            self.surface_owner_cleared.remove(i);
+        }
+        if let Some(s) = self.faces.get(f).and_then(|face| face.surface.as_ref()) {
+            s.end_owner_cleared(f);
+        }
+    }
+
+    /// `m_pLockedBoundingBox` (unit `query.brep`): the locked bounding box, if any.
+    #[must_use]
+    pub const fn locked_bounding_box(&self) -> Option<Extent3d> {
+        self.locked_bounding_box
+    }
+
+    /// Sets (`Some`) or clears (`None`) `m_pLockedBoundingBox`; see
+    /// [`crate::query::brep::lock_bounding_box`] and
+    /// [`crate::query::brep::unlock_bounding_box`].
+    pub fn set_locked_bounding_box(&mut self, bbox: Option<Extent3d>) {
+        self.locked_bounding_box = bbox;
     }
 
     /// All shells.
@@ -899,6 +1213,23 @@ impl Brep {
         self.key = key;
     }
 
+    /// The serial a context issued this B-rep for its notifications, once one has
+    /// (the kernel issues it; there is no setter).
+    #[must_use]
+    pub fn notify_serial(&self) -> Option<u64> {
+        self.notify_identity.value()
+    }
+
+    /// The slot of the B-rep's notification serial, for the context that issues it.
+    pub(crate) fn notify_identity_slot(&mut self) -> &mut IdentitySlot {
+        &mut self.notify_identity
+    }
+
+    /// The slot of the B-rep's notification serial, read-only.
+    pub(crate) const fn notify_identity(&self) -> &IdentitySlot {
+        &self.notify_identity
+    }
+
     /// Appends a region record as is (no validation).
     pub fn add_region_record(&mut self, region: Region) -> Result<RegionId> {
         self.regions.insert(region)
@@ -910,11 +1241,31 @@ impl Brep {
     }
 
     /// Appends a face record as is (no validation; the shell's face list is not
-    /// touched); the face joins the end of the B-rep's face list.
+    /// touched); the face joins the end of the B-rep's face list, and its surface
+    /// records the face's tolerance ([`Brep::sync_face_surface_tolerance`]).
     pub fn add_face_record(&mut self, face: Face) -> Result<FaceId> {
         let id = self.faces.insert(face)?;
         self.face_list.push(id);
+        self.sync_face_surface_tolerance(id)?;
         Ok(id)
+    }
+
+    /// Records the face's tolerance on its surface
+    /// ([`Surface::set_owner_zone_tol_3d`](crate::surface::surface::Surface::set_owner_zone_tol_3d)),
+    /// so the surface's `GetFace()->GetTolerance()` reads it: the B-rep invariant that a
+    /// face record's surface carries that record's `tolerance`. A surface reaching no
+    /// face records nothing. Called wherever a face's surface or tolerance changes.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::NotFound`] for a dangling id.
+    pub fn sync_face_surface_tolerance(&mut self, f: FaceId) -> Result<()> {
+        let face = self.face_mut(f)?;
+        let tol = face.tolerance;
+        if let Some(surface) = face.surface.as_mut() {
+            surface.set_owner_zone_tol_3d(Some(tol));
+        }
+        Ok(())
     }
 
     /// Appends a loop record as is (no validation; the face's loop list is not
@@ -939,6 +1290,12 @@ impl Brep {
         Ok(id)
     }
 
+    /// Allocates a vertex retained by another topology object, outside the B-rep's
+    /// owning vertex list.
+    pub(crate) fn add_unlinked_vertex_record(&mut self, vertex: Vertex) -> Result<VertexId> {
+        self.vertices.insert(vertex)
+    }
+
     /// Appends a face use record as is (no validation).
     pub fn add_faceuse_record(&mut self, faceuse: Faceuse) -> Result<FaceuseId> {
         self.faceuses.insert(faceuse)
@@ -957,6 +1314,92 @@ impl Brep {
     /// Appends a vertex use record as is (no validation).
     pub fn add_vertexuse_record(&mut self, vertexuse: Vertexuse) -> Result<VertexuseId> {
         self.vertexuses.insert(vertexuse)
+    }
+
+    /// Deletes a shell record (upstream `delete`; no unlinking: the caller has
+    /// removed it from its lists first, as the friend code does upstream).
+    pub fn remove_shell_record(&mut self, id: ShellId) -> Result<Shell> {
+        self.shells
+            .remove(id)
+            .ok_or_else(|| not_found("topology::Brep::remove_shell_record", id))
+    }
+
+    /// Deletes a region record (upstream `delete`; no unlinking: the caller resets the
+    /// region list head and the infinite region when they named it).
+    pub fn remove_region_record(&mut self, id: RegionId) -> Result<Region> {
+        self.regions
+            .remove(id)
+            .ok_or_else(|| not_found("topology::Brep::remove_region_record", id))
+    }
+
+    /// Deletes a face record (upstream `m_pFaceListHead->Remove` and `delete`): the
+    /// face leaves the B-rep's face list; no other unlinking.
+    pub fn remove_face_record(&mut self, id: FaceId) -> Result<Face> {
+        let face = self
+            .faces
+            .remove(id)
+            .ok_or_else(|| not_found("topology::Brep::remove_face_record", id))?;
+        self.face_list.retain(|&x| x != id);
+        self.geometry_owner_keys.remove(&EntityRef::Face(id));
+        Ok(face)
+    }
+
+    /// Deletes a loop record (upstream `delete`; no unlinking).
+    pub fn remove_loop_record(&mut self, id: LoopId) -> Result<Loop> {
+        self.loops
+            .remove(id)
+            .ok_or_else(|| not_found("topology::Brep::remove_loop_record", id))
+    }
+
+    /// Deletes an edge record (upstream `m_pEdgeListHead->Remove` and `delete`): the
+    /// edge leaves the B-rep's edge list; no other unlinking.
+    pub fn remove_edge_record(&mut self, id: EdgeId) -> Result<Edge> {
+        let edge = self
+            .edges
+            .remove(id)
+            .ok_or_else(|| not_found("topology::Brep::remove_edge_record", id))?;
+        self.edge_list.retain(|&x| x != id);
+        self.geometry_owner_keys.remove(&EntityRef::Edge(id));
+        Ok(edge)
+    }
+
+    /// Deletes a vertex record (upstream `m_pVertexListHead->Remove` and `delete`):
+    /// the vertex leaves the B-rep's vertex list; no other unlinking.
+    pub fn remove_vertex_record(&mut self, id: VertexId) -> Result<Vertex> {
+        let vertex = self
+            .vertices
+            .remove(id)
+            .ok_or_else(|| not_found("topology::Brep::remove_vertex_record", id))?;
+        self.vertex_list.retain(|&x| x != id);
+        Ok(vertex)
+    }
+
+    /// Deletes a face use record (upstream `delete`; no unlinking).
+    pub fn remove_faceuse_record(&mut self, id: FaceuseId) -> Result<Faceuse> {
+        self.faceuses
+            .remove(id)
+            .ok_or_else(|| not_found("topology::Brep::remove_faceuse_record", id))
+    }
+
+    /// Deletes a loop use record (upstream `delete`; no unlinking).
+    pub fn remove_loopuse_record(&mut self, id: LoopuseId) -> Result<Loopuse> {
+        self.loopuses
+            .remove(id)
+            .ok_or_else(|| not_found("topology::Brep::remove_loopuse_record", id))
+    }
+
+    /// Deletes an edge use record (upstream `delete`; no unlinking).
+    pub fn remove_edgeuse_record(&mut self, id: EdgeuseId) -> Result<Edgeuse> {
+        self.edgeuses
+            .remove(id)
+            .ok_or_else(|| not_found("topology::Brep::remove_edgeuse_record", id))
+    }
+
+    /// Deletes a vertex use record (upstream `delete`; no unlinking).
+    pub fn remove_vertexuse_record(&mut self, id: VertexuseId) -> Result<Vertexuse> {
+        self.vertexuses
+            .remove(id)
+            .ok_or_else(|| not_found("topology::Brep::remove_vertexuse_record", id))
     }
 
     /// Adds an empty shell.
@@ -1049,6 +1492,77 @@ impl Brep {
 mod tests {
     use super::*;
     use crate::math::Vec3;
+
+    #[test]
+    fn surface_owner_cleared_scopes_nest() {
+        let mut b = Brep::new();
+        let (f, g) = (FaceId::from_index(0), FaceId::from_index(1));
+        assert!(!b.is_surface_owner_cleared(f));
+        b.begin_surface_owner_cleared(f);
+        b.begin_surface_owner_cleared(f);
+        b.end_surface_owner_cleared(f);
+        assert!(b.is_surface_owner_cleared(f));
+        assert!(!b.is_surface_owner_cleared(g));
+        b.end_surface_owner_cleared(f);
+        assert!(!b.is_surface_owner_cleared(f));
+        // an unmatched end is a no-op
+        b.end_surface_owner_cleared(g);
+        assert!(!b.is_surface_owner_cleared(g));
+    }
+
+    #[test]
+    fn copy_standing_for_the_brep_keeps_geometry_owners() {
+        use crate::curve::line::Line;
+        use crate::geom::object::ObjectRef;
+        use crate::surface::plane::Plane;
+        let mut b = Brep::new();
+        let s = b.add_shell().unwrap();
+        let (v0, v1) = (
+            b.add_vertex(Vec3::ZERO).unwrap(),
+            b.add_vertex(Vec3::X).unwrap(),
+        );
+        let e = b.add_edge(v0, v1).unwrap();
+        let f = b.add_face(s).unwrap();
+        let edge_owner = ObjectRef {
+            type_code: edge::TYPE,
+            key: ObjectKey(u64::from(e.index())),
+        };
+        let face_owner = ObjectRef {
+            type_code: face::p2::TYPE,
+            key: ObjectKey(u64::from(f.index())),
+        };
+        let mut curve =
+            Curve::from(Line::create_line_segment(3, Vec3::ZERO, Vec3::X, None).unwrap());
+        let _ = curve.set_owner(Some(edge_owner), None);
+        b.edge_mut(e).unwrap().curve = Some(curve);
+        let mut surface = Surface::from(Plane::new(
+            Vec3::ZERO,
+            Vec3::X,
+            Vec3::Y,
+            crate::math::Vec2::new(1.0, 1.0),
+            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        ));
+        surface.set_owner(Some(face_owner));
+        b.face_mut(f).unwrap().surface = Some(surface);
+
+        // the copy constructor resets the owners
+        let plain = b.clone();
+        assert_eq!(plain.edge(e).unwrap().curve.as_ref().unwrap().owner(), None);
+        assert_eq!(
+            plain.face(f).unwrap().surface.as_ref().unwrap().owner(),
+            None
+        );
+        // the copy standing for the B-rep keeps them
+        let copy = b.clone_standing_for_self().unwrap();
+        assert_eq!(
+            copy.edge(e).unwrap().curve.as_ref().unwrap().owner(),
+            Some(edge_owner)
+        );
+        assert_eq!(
+            copy.face(f).unwrap().surface.as_ref().unwrap().owner(),
+            Some(face_owner)
+        );
+    }
 
     #[test]
     fn build_single_triangle_face() {

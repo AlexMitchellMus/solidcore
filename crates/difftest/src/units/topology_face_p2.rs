@@ -20,6 +20,10 @@
 //! `SmBSplineCurve` subclass (an edge's ellipse) arrives as its B-spline part only. Ops
 //! that evaluate such a face surface (`Points`, `FixUv`, `BestUv`, `Connected`) or, for
 //! `BestUv`, such an edge curve are not compared: both sides report `inexact_geometry`.
+//! The importer also reads the exact heads other shims of this layout may put before a
+//! face surface (`2 ...`, `harness/cpp/shim/sc_analytic_export.h`) or an edge curve
+//! (`-3 ...`, `sc_exact_curve_export.h`); unit `query.face_p4`'s shim does, this unit's
+//! does not.
 //!
 //! **`GetPointsInFace` with more than one point** draws its V dither from
 //! `srand(time(NULL))` / `rand()` upstream and from `kernel.rng` in the port
@@ -88,6 +92,10 @@ const NULL_DEREF: f64 = -2.0;
 
 /// Generated cases beyond the default `--seeds` (the B-rep ops are cheap).
 const EXTRA_GENERATED: usize = 1500;
+
+/// Times a generated case's B-rep is drawn again, at most, when it lacks the entity kind its
+/// op selects (a wire or an edge network for a face op).
+const BREP_DRAWS: usize = 8;
 
 // ---- inputs -----------------------------------------------------------------------------
 
@@ -303,8 +311,8 @@ fn push_surface(v: &mut Vec<f64>, s: &SrfIn) -> Result<(), HarnessError> {
                 m as f64,
                 b.p as f64,
                 b.q as f64,
-                (b.u.len() - 1) as f64,
-                (b.v.len() - 1) as f64,
+                b.u.len().checked_sub(1).ok_or_else(|| harness("empty u knots"))? as f64,
+                b.v.len().checked_sub(1).ok_or_else(|| harness("empty v knots"))? as f64,
             ]);
             for row in &b.net {
                 for p in row {
@@ -371,7 +379,11 @@ fn sel(s: i64, n: usize) -> i64 {
 /// The C++ export of the case's B-rep.
 fn export(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
     let path = path_of(i)?;
-    ffi::eval(Op::Export, &path, &brep_block(i)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let block = brep_block(i)?;
+    crate::export_memo::export("topology_face_p2", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 /// A build failure as an operation error.
@@ -475,6 +487,46 @@ fn read_curve(rd: &mut Rd<'_>, uv: bool) -> Result<Option<SmCurve>, HarnessError
     Ok(Some(SmCurve::from(base)))
 }
 
+/// An edge curve block: an exact ellipse or circle head (`-3 ...`,
+/// [`crate::util::exact_curve::read_head`]) and the regular block after it, or the
+/// regular block alone. Returns the curve and whether it was imported exactly.
+fn read_edge_curve(rd: &mut Rd<'_>) -> Result<(Option<SmCurve>, bool), HarnessError> {
+    if rd.v.get(rd.at) != Some(&-3.0) {
+        let exact = matches!(rd.v.get(rd.at).copied(), Some(t) if t == -1.0 || t == BSPLINE_CURVE_TYPE as f64 || t == LINE_TYPE as f64);
+        return Ok((read_curve(rd, false)?, exact));
+    }
+    rd.at += 1;
+    let remaining = rd.v.len().saturating_sub(rd.at);
+    let exact = crate::util::exact_curve::read_head(&mut || rd.num(), remaining)?;
+    if rd.v.get(rd.at) != Some(&(exact.type_code() as f64)) {
+        return Err(harness(
+            "export: exact curve without its matching B-spline part",
+        ));
+    }
+    let fallback = read_curve(rd, false)?;
+    crate::util::exact_curve::check_base(&exact, fallback.as_ref())?;
+    Ok((Some(exact), true))
+}
+
+/// A face's surface block: an exact analytic head (`2 ...`,
+/// [`crate::util::read_exact_surface`]) and the regular block after it, or the regular
+/// block alone. Returns the surface and whether it was imported exactly.
+fn read_face_surface(rd: &mut Rd<'_>) -> Result<(Option<Surface>, bool), HarnessError> {
+    if rd.v.get(rd.at) != Some(&2.0) {
+        return read_surface(rd);
+    }
+    rd.at += 1;
+    let exact = crate::util::read_exact_surface(&mut || rd.num())?;
+    let (fallback, _) = read_surface(rd)?;
+    match exact {
+        Some(s) => {
+            crate::util::check_exact_base(&s, fallback.as_ref())?;
+            Ok((Some(s), true))
+        }
+        None => Ok((fallback, false)),
+    }
+}
+
 fn read_surface(rd: &mut Rd<'_>) -> Result<(Option<Surface>, bool), HarnessError> {
     let kind = rd.num()?;
     if kind == -1.0 {
@@ -523,7 +575,8 @@ fn read_surface(rd: &mut Rd<'_>) -> Result<(Option<Surface>, bool), HarnessError
 
 /// Whether each face's surface and each edge's curve was imported exactly (an
 /// `SmBSplineSurface` subclass other than `SmPlane`, or an `SmBSplineCurve` subclass
-/// other than `SmLine`, is imported as its B-spline part).
+/// other than `SmLine`, is imported as its B-spline part unless the export put its exact
+/// record before it).
 pub(crate) struct Exact {
     pub(crate) faces: Vec<bool>,
     pub(crate) edges: Vec<bool>,
@@ -585,7 +638,7 @@ pub(crate) fn import(ex: &[f64]) -> Result<(Brep, Exact), HarnessError> {
     let mut surfaces = Vec::new();
     let mut exact_faces = Vec::new();
     for f in 0..n_f {
-        let (mut surface, exact) = read_surface(&mut rd)?;
+        let (mut surface, exact) = read_face_surface(&mut rd)?;
         exact_faces.push(exact);
         let faceuse = opt(rd.idx()?, FaceuseId::from_index)?;
         let dom = Extent2d::from_bounds(rd.num()?, rd.num()?, rd.num()?, rd.num()?);
@@ -691,9 +744,8 @@ pub(crate) fn import(ex: &[f64]) -> Result<(Brep, Exact), HarnessError> {
             .into_iter()
             .map(|x| opt(x, EdgeuseId::from_index)?.ok_or_else(|| harness("null edge use")))
             .collect::<Result<Vec<_>, _>>()?;
-        let exact_curve = matches!(rd.v.get(rd.at).copied(), Some(t) if t == -1.0 || t == BSPLINE_CURVE_TYPE as f64 || t == LINE_TYPE as f64);
+        let (curve, exact_curve) = read_edge_curve(&mut rd)?;
         exact_edges.push(exact_curve);
-        let curve = read_curve(&mut rd, false)?;
         let interval = Extent1d::from_raw(a, b);
         edges.push((tolerance, interval, list, curve));
     }
@@ -1931,6 +1983,11 @@ fn run_rust_geom(op: &OpIn) -> Result<Vec<f64>, Fail> {
             flags,
             n,
         } => {
+            // The FFI bounds the derivative array (`MAX_DYDX`); mirror it so a
+            // fuzzed count cannot make the runner allocate without bound.
+            if *n > ffi::MAX_DYDX {
+                return Err(harness(format!("bad index/count {n} (max {})", ffi::MAX_DYDX)).into());
+            }
             let s = rust_surface(surface)?;
             let l = fp2::PrecisePropertyLayout::new(*flags);
             let k = Kernel::default();
@@ -1972,7 +2029,7 @@ fn run_rust_geom(op: &OpIn) -> Result<Vec<f64>, Fail> {
                 layout: &l,
             };
             let mut d = dydx.clone();
-            match e.evaluate(*t, &mut d) {
+            match e.evaluate(&k, *t, &mut d) {
                 Ok(()) => o.push(0.0),
                 Err(e) if e.is_unported() => return Err(e.into()),
                 Err(_) => o.push(1.0),
@@ -2205,12 +2262,31 @@ fn gen_op(rng: &mut Rng) -> OpIn {
 fn gen_inputs(rng: &mut Rng) -> Inputs {
     let op = gen_op(rng);
     let brep = op.is_brep().then(|| gen_brep(rng));
-    Inputs {
+    let mut i = Inputs {
         brep,
         validate_only: rng.chance(0.1),
         init_gaps: rng.chance(0.7),
         op,
+    };
+    // A B-rep without the entity kind the op selects compares only the same refusal on
+    // both sides: draw another. One that doesn't build, or no draw with the kind, keeps
+    // the case as it is, so its error stays visible.
+    for _ in 0..BREP_DRAWS {
+        if !lacks_kind(&i) {
+            break;
+        }
+        i.brep = Some(gen_brep(rng));
     }
+    i
+}
+
+/// Whether `i`'s B-rep builds but has none of the entity kind its op selects.
+fn lacks_kind(i: &Inputs) -> bool {
+    i.brep.is_some()
+        && export(i)
+            .ok()
+            .and_then(|ex| ffi::counts(&ex))
+            .is_some_and(|c| resolve(&i.op, &counts_of(c)).is_err())
 }
 
 impl UnitDiff for Runner {

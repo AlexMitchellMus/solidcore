@@ -9,12 +9,14 @@
 //! leaf's domain, boxes and polar vectors as data and the mid-point data computed from the
 //! surface as `SmSurfaceGridElement::Init` does), `fire` (`SmRayTracer::FireRay`), `local`
 //! (`SmLSI3LocalSolver::LocalSolve` on one leaf) and `add_surface`
-//! (`SmRayTracer::AddSurfaceToGrid`, not run in C++: it needs the surface cache). Both sides
-//! produce the flat record documented in the ffi module, reported as the values `rec`.
+//! (`SmRayTracer::AddSurfaceToGrid`: builds the surface cache and expands the surface into
+//! its subdivision leaves; the record holds each leaf's domain, box, mid-point data, pseudo box
+//! and polar box). Both sides produce the flat record documented in the ffi module, reported
+//! as the values `rec`. The grid elements of a ray walk are reported as positions among the
+//! `add_leaf` leaves (`-1` for a leaf `add_surface` made).
 //!
 //! Deferred cases: every ray or solve that gets past the leaf's pseudo box test reaches
-//! `SmSurface::LocalLineIntersect` (`surface.surface_p8`); `add_surface` builds the surface cache and
-//! then needs `SmSurface::CalculateContinuities` (`surface.surface_p6`). The generator makes mostly cases whose rays are rejected before
+//! `SmSurface::LocalLineIntersect` (`surface.surface_p8`). The generator makes mostly cases whose rays are rejected before
 //! that (grid miss, element box rejection by parameter, skipped element, pseudo box miss) and
 //! checks that with the Rust side, plus free cases that defer.
 
@@ -24,15 +26,15 @@ use serde_json::Value;
 use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::extent3d::Extent3d;
-use solidcore::geom::grid::{ElementId, Grid, SurfaceGridElement};
-use solidcore::geom::polar_box::PolarBox;
+use solidcore::geom::grid::{ElementId, Grid, GridItem, SurfaceGridElement};
+use solidcore::geom::polar_box::{PolarBox, PolarBoxState};
 use solidcore::geom::pseudo_box::PseudoBox;
 use solidcore::geom::solution_array::Solution;
 use solidcore::geom::vector2d::Vec2;
 use solidcore::geom::vector3d::Vec3;
 use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::intersect::ray_tracer::{
-    surface_leaf, LightSource, Lsi3LocalSolver, RayObject, RayRenderer, RayTracer,
+    LightSource, Lsi3LocalSolver, RayObject, RayRenderer, RayTracer,
 };
 use solidcore::kernel::Kernel;
 use solidcore::math::BIG_DOUBLE;
@@ -330,6 +332,13 @@ fn rust_surface(s: &SurfIn) -> Result<Surface, HarnessError> {
             &ext2(*domain),
         ))),
         SurfIn::Bezier { p, q, net } => {
+            // A degree at or above the net size cannot make a surface (NurbSurface::new
+            // rejects it); check first so a fuzzed degree cannot size the knot vectors.
+            let rows = net.len();
+            let cols = net.first().map_or(0, Vec::len);
+            if *p >= rows || *q >= cols {
+                return Err(harness("surface: degree not below the control net size"));
+            }
             let net = net
                 .iter()
                 .map(|r| r.iter().map(cpoint).collect())
@@ -355,14 +364,16 @@ fn status_of(e: &SolidError) -> f64 {
     }
 }
 
-fn put_solution(o: &mut Vec<f64>, s: &Solution<RayObject>) {
+/// `surface_of` maps the tracer's surface list to the runner's surfaces: `add_surface`
+/// lists a surface a second time.
+fn put_solution(o: &mut Vec<f64>, s: &Solution<RayObject>, surface_of: &[usize]) {
     o.push(f64::from(s.solution_type.code()));
     o.push(s.num_variables as f64);
     o.push(s.num_objects as f64);
     o.push(s.start.solution_value);
     o.extend(s.start.parameters);
     o.push(match s.objects.first().copied().flatten() {
-        Some(RayObject::Surface(i)) => i as f64,
+        Some(RayObject::Surface(i)) => surface_of.get(i).map_or(-2.0, |s| *s as f64),
         Some(_) => -2.0,
         None => -1.0,
     });
@@ -408,7 +419,7 @@ struct Stats {
     errors: usize,
 }
 
-fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
+fn run_rust(k: &Kernel, i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
     let surfaces: Vec<Surface> = i
         .surfaces
         .iter()
@@ -422,9 +433,12 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
     let grid = Grid::new(&ext3(i.grid.bbox), i.grid.size)?;
     let mut tracer_slot = Some(RayTracer::new(grid, i.grid.ray_tol, i.grid.ray_acc));
     let mut renderer: Option<RayRenderer> = None;
+    // the runner surface of each entry of the tracer's surface list
+    let mut surface_of: Vec<usize> = Vec::new();
     if let Some(t) = tracer_slot.as_mut() {
-        for s in &surfaces {
+        for (n, s) in surfaces.iter().enumerate() {
             t.register_surface(s);
+            surface_of.push(n);
         }
     }
     // the tracer lives in the renderer once there is one
@@ -443,6 +457,9 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
         };
     }
     let mut leaves: Vec<SurfaceGridElement<usize>> = Vec::new();
+    // the grid element of each `add_leaf` leaf, in `leaves` order: the ids a ray walk
+    // reports are positions in this list (`-1` for the elements `add_surface` makes)
+    let mut leaf_ids: Vec<ElementId> = Vec::new();
     let mut rec: Vec<f64> = Vec::new();
     let bad_index = |what: &'static str| SolidError::InvalidInput {
         operation: "difftest::intersect_ray_tracer",
@@ -467,8 +484,8 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
                 for v in polar.iter().skip(1) {
                     polar_box.add_vector(v3(*v), None);
                 }
-                let leaf = surface_leaf(
-                    *surface,
+                let leaf = SurfaceGridElement::from_leaf_data(
+                    k, *surface,
                     surf,
                     &ext2(*uv),
                     &ext3(*bbox),
@@ -485,9 +502,10 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
                     },
                     &polar_box,
                 )?;
-                tracer!()
+                let id = tracer!()
                     .grid_mut()
                     .add_surface_element(leaf, &ext3(*elem_box))?;
+                leaf_ids.push(id);
                 leaves.push(leaf);
             }
             OpIn::Fire {
@@ -499,15 +517,20 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
             } => {
                 let tracer = tracer!();
                 tracer.hit_any_thing = *hit_any;
-                tracer.skip_element = skip.map(ElementId);
+                tracer.skip_element = match skip {
+                    Some(s) => Some(*leaf_ids.get(*s).ok_or_else(|| bad_index("skip"))?),
+                    None => None,
+                };
                 st.fires += 1;
-                match tracer.fire_ray(v3(*p), v3(*v), *max_t) {
+                match tracer.fire_ray(k, v3(*p), v3(*v), *max_t) {
                     Ok(hit) => {
                         rec.push(0.0);
                         rec.push(f64::from(u8::from(hit.hits_something)));
-                        put_solution(&mut rec, &hit.solution);
+                        put_solution(&mut rec, &hit.solution, &surface_of);
                         rec.push(hit.grid_elements.len() as f64);
-                        rec.extend(hit.grid_elements.iter().map(|e| e.0 as f64));
+                        rec.extend(hit.grid_elements.iter().map(|e| {
+                            leaf_ids.iter().position(|l| l == e).map_or(-1.0, |p| p as f64)
+                        }));
                         rec.extend(&hit.min_distances);
                         rec.extend(&hit.max_distances);
                         st.walks += 1;
@@ -522,7 +545,7 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
                         st.errors += 1;
                         rec.push(status_of(&e));
                         rec.push(0.0);
-                        put_solution(&mut rec, &Solution::new());
+                        put_solution(&mut rec, &Solution::new(), &surface_of);
                         rec.push(0.0);
                     }
                 }
@@ -558,7 +581,7 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
                 solver.have_t_min_t_max = *have_t;
                 solver.t_min_of_bbox = *t_min;
                 solver.t_max_of_bbox = *t_max;
-                let r = solver.local_solve(surf, leaf);
+                let r = solver.local_solve(k, surf, leaf, None);
                 match &r.status {
                     Ok(()) => rec.push(0.0),
                     Err(e @ SolidError::Unported { .. }) => return Err(e.clone()),
@@ -566,11 +589,70 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
                 }
                 rec.push(f64::from(u8::from(r.found_intersection)));
                 rec.push(f64::from(u8::from(r.needs_more_subdivision)));
-                put_solution(&mut rec, &r.solution);
+                put_solution(&mut rec, &r.solution, &surface_of);
             }
             OpIn::AddSurface { surface } => {
                 let surf = surfaces.get(*surface).ok_or_else(|| bad_index("surface"))?;
-                tracer!().add_surface_to_grid(&Kernel::default(), surf)?;
+                let tracer = tracer!();
+                surface_of.push(*surface);
+                let before = tracer.grid_mut().elements().len();
+                let status = match tracer.add_surface_to_grid(k, surf) {
+                    Ok(()) => 0.0,
+                    Err(e @ SolidError::Unported { .. }) => return Err(e),
+                    Err(e) => status_of(&e),
+                };
+                // the surface leaves it made (a failed expansion keeps the ones before
+                // the failure, as upstream's grid does): count, then per leaf the
+                // domain, box and mid-point data
+                let made: Vec<_> = tracer
+                    .grid_mut()
+                    .elements()
+                    .iter()
+                    .skip(before)
+                    .filter_map(|e| match e.item() {
+                        GridItem::Surface(leaf) => Some(leaf),
+                        _ => None,
+                    })
+                    .collect();
+                rec.push(status);
+                rec.push(made.len() as f64);
+                for l in &made {
+                    let (u0, u1) = (l.uv_domain.min(), l.uv_domain.max());
+                    rec.extend([u0.x, u0.y, u1.x, u1.y]);
+                    let (b0, b1) = (l.bbox.min(), l.bbox.max());
+                    rec.extend([b0.x, b0.y, b0.z, b1.x, b1.y, b1.z]);
+                    for v in [l.mid_point, l.mid_du, l.mid_dv, l.mid_normal] {
+                        rec.extend([v.x, v.y, v.z]);
+                    }
+                    for j in 0..3 {
+                        let b = l.pseudo_box.basis_vector(j).unwrap_or(Vec3::new(0.0, 0.0, 0.0));
+                        rec.extend([b.x, b.y, b.z]);
+                    }
+                    for j in 0..3 {
+                        let iv = l.pseudo_box.interval(j).unwrap_or_else(Extent1d::new);
+                        rec.extend([iv.min(), iv.max()]);
+                    }
+                    let polar = &l.polar_box;
+                    let state = match polar.state() {
+                        PolarBoxState::Uninitialized => 0.0,
+                        PolarBoxState::PointWithBasis => 1.0,
+                        PolarBoxState::SinglePoint => 2.0,
+                        PolarBoxState::Arc => 3.0,
+                        PolarBoxState::Region => 4.0,
+                        PolarBoxState::Unbounded => 5.0,
+                    };
+                    rec.push(state);
+                    let bounded = (2.0..=4.0).contains(&state);
+                    let pd = polar.domain();
+                    rec.extend(if bounded {
+                        [pd.min().x, pd.min().y, pd.max().x, pd.max().y]
+                    } else {
+                        [0.0; 4]
+                    });
+                    for b in polar.basis() {
+                        rec.extend(if bounded { [b.x, b.y, b.z] } else { [0.0; 3] });
+                    }
+                }
             }
             OpIn::Renderer {
                 origin,
@@ -581,6 +663,11 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
                 ny,
                 rate,
             } => {
+                // the FFI's renderer size bound ("renderer size"); mirrored so a fuzzed
+                // pixel count cannot keep the Rust side rendering for billions of pixels
+                if !(1..=8).contains(nx) || !(1..=8).contains(ny) || !(1..=3).contains(rate) {
+                    return Err(bad_index("renderer size"));
+                }
                 let t = tracer_slot.take().ok_or_else(|| bad_index("renderer"))?;
                 let place = Axis2Placement::new(v3(*origin), v3(*x), v3(*y));
                 let mut r = RayRenderer::new(t, &place, &ext3(*view), *nx as u64, *ny as u64);
@@ -597,7 +684,7 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
                 object,
             } => {
                 let r = renderer.as_mut().ok_or_else(|| bad_index("renderer"))?;
-                let res = r.do_render(*shadows, v3(*background), v3(*object));
+                let res = r.do_render(k, *shadows, v3(*background), v3(*object));
                 match res {
                     Ok(_) => rec.push(0.0),
                     Err(e @ SolidError::Unported { .. }) => return Err(e),
@@ -607,12 +694,12 @@ fn run_rust(i: &Inputs, st: &mut Stats) -> solidcore::Result<Vec<f64>> {
             }
             OpIn::RenderPixel { x, y } => {
                 let r = renderer.as_mut().ok_or_else(|| bad_index("renderer"))?;
-                let res = r.render_pixel(*x as u64, *y as u64);
+                let res = r.render_pixel(k, *x as u64, *y as u64);
                 put_color(&mut rec, res, r.pixels_shaded())?;
             }
             OpIn::RenderRay { p, v } => {
                 let r = renderer.as_mut().ok_or_else(|| bad_index("renderer"))?;
-                let res = r.render_ray(v3(*p), v3(*v));
+                let res = r.render_ray(k, v3(*p), v3(*v));
                 put_color(&mut rec, res, r.pixels_shaded())?;
             }
         }
@@ -775,7 +862,7 @@ fn box_union(b: E6, p: P3) -> E6 {
 /// Leaf ops for a surface split into `nu` x `nv` cells: sampled boxes, polar vectors from
 /// the normals at the corners and middle, element boxes a little larger than the pseudo
 /// boxes (so rays can cross an element box and miss its pseudo box).
-fn gen_leaves(
+fn gen_leaves(k: &Kernel, 
     rng: &mut Rng,
     index: usize,
     s: &SurfIn,
@@ -807,7 +894,7 @@ fn gen_leaves(
                         u0 + (u1 - u0) * f64::from(a) / 4.0,
                         v0 + (v1 - v0) * f64::from(b) / 4.0,
                     );
-                    if let Ok(p) = surf.evaluate_point(uv) {
+                    if let Ok(p) = surf.evaluate_point(k, uv) {
                         let p = [p.x, p.y, p.z];
                         bbox = Some(match bbox {
                             None => [p[0], p[1], p[2], p[0], p[1], p[2]],
@@ -820,7 +907,7 @@ fn gen_leaves(
             let mut polar = Vec::new();
             for (a, b) in [(0.5, 0.5), (0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)] {
                 let uv = Vec2::new(u0 + (u1 - u0) * a, v0 + (v1 - v0) * b);
-                if let Ok(n) = surf.evaluate_normal(uv, Side::Left, Side::Left) {
+                if let Ok(n) = surf.evaluate_normal(k, uv, Side::Left, Side::Left) {
                     let n = [n.x, n.y, n.z];
                     if len3(n) > 1e-6 {
                         polar.push(n);
@@ -883,7 +970,7 @@ fn gen_case(rng: &mut Rng, safe: bool) -> Inputs {
 
     let mut leaf_ops = Vec::new();
     for (k, (s, r)) in surfaces.iter().zip(&rust).enumerate() {
-        leaf_ops.extend(gen_leaves(rng, k, s, r, scale, ray_tol));
+        leaf_ops.extend(gen_leaves(&Kernel::default(), rng, k, s, r, scale, ray_tol));
     }
     leaf_ops.truncate(40);
     // the grid box: around every leaf box
@@ -932,6 +1019,12 @@ fn gen_case(rng: &mut Rng, safe: bool) -> Inputs {
     }
     let n_leaves = leaf_ops.len();
     ops.extend(leaf_ops);
+    // a surface expanded into the grid by `AddSurfaceToGrid`, before the rays fired below
+    if rng.chance(0.2) {
+        ops.push(OpIn::AddSurface {
+            surface: rng.range_i64(0, ns as i64 - 1) as usize,
+        });
+    }
 
     // a point of a random leaf box
     let leaf_target = |rng: &mut Rng, ops: &[OpIn]| -> P3 {
@@ -1088,14 +1181,14 @@ fn gen_case(rng: &mut Rng, safe: bool) -> Inputs {
 
 /// Mostly cases the Rust side can finish (rays rejected before `LocalLineIntersect`),
 /// and some that defer.
-fn gen_checked(rng: &mut Rng) -> Inputs {
+fn gen_checked(k: &Kernel, rng: &mut Rng) -> Inputs {
     let want_safe = rng.chance(0.75);
     let mut last = gen_case(rng, want_safe);
     for _ in 0..12 {
         if !want_safe {
             return last;
         }
-        match run_rust(&last, &mut Stats::default()) {
+        match run_rust(k, &last, &mut Stats::default()) {
             Err(SolidError::Unported { .. }) => last = gen_case(rng, want_safe),
             _ => return last,
         }
@@ -1115,8 +1208,9 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
+        let k = &Kernel::default();
         let i: Inputs = case.parse()?;
-        match run_rust(&i, &mut Stats::default()) {
+        match run_rust(k, &i, &mut Stats::default()) {
             Ok(rec) => Ok(Output::new().values("rec", rec)),
             Err(e) => Ok(Output::unported(&e)
                 .unwrap_or_else(|| Output::err(format!("rust_error: {e}")))),
@@ -1124,7 +1218,8 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
-        serde_json::to_value(gen_checked(rng)).ok()
+        let k = &Kernel::default();
+        serde_json::to_value(gen_checked(k, rng)).ok()
     }
 
     fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
@@ -1147,8 +1242,8 @@ mod tests {
         let mut ok = 0;
         for k in 0..MIN_GENERATED as u64 {
             let mut rng = Rng::new(k);
-            let i = gen_checked(&mut rng);
-            match run_rust(&i, &mut st) {
+            let i = gen_checked(&Kernel::default(), &mut rng);
+            match run_rust(&Kernel::default(), &i, &mut st) {
                 Ok(_) => ok += 1,
                 Err(e) => {
                     assert!(e.is_unported(), "{e}");

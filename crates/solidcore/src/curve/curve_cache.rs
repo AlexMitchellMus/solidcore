@@ -39,12 +39,18 @@
 //!   cache store and is dropped whenever the curve changes. The curve's handle in
 //!   the caller's object space (`O`, see [`crate::geom::tree`]) is optional and is
 //!   what the tree reports as its owner object.
+//! - **Handle space.** `CurveCache::retag` (not upstream) copies a cache into
+//!   another handle space; the memo of `curve.curve_p5` (`make_curve_cache`) keeps one
+//!   handle-free cache per curve value and hands each caller such a copy.
 //! - **Memory managers.** `m_sBezMgr` / `m_sParentMgr` are `Vec`s; the NLib Bezier
 //!   blocks (`sSegmentBeziersMgr`, `sBezStack`, the working Bezier) are owned
 //!   [`Nurb`] values and a `Vec` used as the split stack (same push/pop order). The
 //!   byte-size bookkeeping (`m_lBezierSize`, `m_lTotalBezSize`,
 //!   `sm_ComputeNurbCurveSize`) has no counterpart. Parent data are pre-allocated
-//!   zero-filled, as upstream's block allocation.
+//!   zero-filled, as upstream's block allocation, and so is a span's pseudo box
+//!   ([`PseudoBox::zero_filled`]): `GetNewElement` runs no constructor, and
+//!   `CalculateBoundingBox` keeps that zero basis when it can set none (a span whose
+//!   squared extent overflows).
 //! - **Tree data.** Tree nodes point at spans through
 //!   [`crate::geom::tree::CurveSpanRef`]; [`CurveCache::build_tree`] hands the span
 //!   and parent arrays to the tree ([`Tree::set_curve_data`]) so the global solvers
@@ -74,10 +80,18 @@
 //! - **Undefined behaviour.** Where upstream would index past an array (a
 //!   continuity array shorter than the span list, a non-cubic span in
 //!   `sm_SplitSegment`) the port returns [`SolidError::InvalidInput`].
+//! - **Split bound.** `Tessellate` halves a span until it passes the tests, is
+//!   shorter than `SM_EFF_ZERO_SQRT` in parameter or (when set, as by default) below
+//!   the minimum parametric ratio of the interval. Without that ratio, a long
+//!   parameter range of geometry that never passes splits into up to
+//!   `length / SM_EFF_ZERO_SQRT` leaves. The port stops after [`MAX_TESS_SPLITS`]
+//!   halves in one tessellation with [`SolidError::InvalidInput`] (upstream fixtures
+//!   and the committed difftest cases examine at most 4,024).
 //! - **Not ported.** `GetTessellation`, `GetStart`, `GetEnd`, `GetDegree`,
 //!   `GetBrep`, `GetBSplineCurve`, `GetMemoryUsed`, `SetComputeAuxTreeData`, `Dump`
 //!   and `Draw` belong to other units or are debug output.
 
+use crate::curve::curve::knots_ignoring_status;
 use crate::curve::curve::p2::{at, Curve, CurveKind, FindCurveDistanceExtrema};
 use crate::error::{ignored, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
@@ -117,6 +131,11 @@ const OP_BLOCK: &str = "curve::curve_cache::create_bezier_segment_block";
 const OP_BUILD: &str = "curve::curve_cache::build_bezier_spans";
 const OP_SPLIT: &str = "curve::curve_cache::split_segment";
 const OP_SPAN: &str = "curve::curve_cache::CurveCache::span";
+
+/// Most split halves one [`CurveCache::tessellate`] examines (not upstream; see the
+/// module deviations): `2^16`, 16 times the most any upstream fixture or committed
+/// difftest case examines (4,024).
+pub const MAX_TESS_SPLITS: u64 = 1 << 16;
 const OP_PARENT: &str = "curve::curve_cache::CurveCache::parent";
 
 /// True for `SmCurveCache_TYPE` and its base `SmObject_TYPE`
@@ -132,8 +151,14 @@ fn invalid(operation: &'static str, reason: &'static str) -> SolidError {
 
 /// Evaluates `curve` at `t` into `pv` (position and first derivative), leaving
 /// `pv` unchanged when the (ignored) status is a failure.
-fn evaluate_ignored(curve: &Curve, t: f64, from_left: bool, pv: &mut [Vec3; 2]) -> Result<()> {
-    if let Some(v) = ignored(curve.evaluate(t, 1, from_left, true))? {
+fn evaluate_ignored(
+    k: &Kernel,
+    curve: &Curve,
+    t: f64,
+    from_left: bool,
+    pv: &mut [Vec3; 2],
+) -> Result<()> {
+    if let Some(v) = ignored(curve.evaluate(k, t, 1, from_left, true))? {
         *pv = [at(&v, 0), at(&v, 1)];
     }
     Ok(())
@@ -195,10 +220,10 @@ impl BezierAux1d {
     /// # Errors
     ///
     /// [`SolidError::Unported`] from the evaluation.
-    pub fn ends_on(&self, curve: &Curve) -> Result<(Point3, Point3, Extent1d)> {
+    pub fn ends_on(&self, k: &Kernel, curve: &Curve) -> Result<(Point3, Point3, Extent1d)> {
         let ivl = self.interval;
-        let start = ignored(curve.evaluate_point(ivl.min()))?.unwrap_or(Vec3::UNDEF);
-        let end = ignored(curve.evaluate_point(ivl.max()))?.unwrap_or(Vec3::UNDEF);
+        let start = ignored(curve.evaluate_point(k, ivl.min()))?.unwrap_or(Vec3::UNDEF);
+        let end = ignored(curve.evaluate_point(k, ivl.max()))?.unwrap_or(Vec3::UNDEF);
         Ok((start, end, ivl))
     }
 }
@@ -333,6 +358,28 @@ impl<O: Copy + PartialEq> CurveCache<O> {
             parents: Vec::new(),
             opts,
         }
+    }
+
+    /// This cache in another handle space, naming the curve `handle` (not upstream; see
+    /// [`crate::curve::curve::p5::make_curve_cache`]): what a build with `handle` gives,
+    /// since the handle is only stored. `None` when the tree names other objects.
+    pub(crate) fn retag<P: Copy + PartialEq>(&self, handle: Option<P>) -> Option<CurveCache<P>> {
+        let tree = match &self.tree {
+            Some(t) => Some(t.retag_curve_tree(handle)?),
+            None => None,
+        };
+        Some(CurveCache {
+            curve: self.curve.clone_detached(),
+            curve_handle: handle,
+            interval: self.interval,
+            tree,
+            continuities: self.continuities.clone(),
+            tried_analytic: self.tried_analytic,
+            analytic: self.analytic.as_ref().map(Curve::clone_detached),
+            spans: self.spans.clone(),
+            parents: self.parents.clone(),
+            opts: self.opts,
+        })
     }
 
     /// Sets the handle of the cached curve, reported as the owner object of the
@@ -477,7 +524,12 @@ impl<O: Copy + PartialEq> CurveCache<O> {
         right_continuity: ContinuityType,
     ) -> Nurb {
         let num_span = self.spans.len() as u64;
-        let mut new = BezierSpan::default();
+        // (a zero-filled GetNewElement slot: no constructor runs, so the pseudo box's
+        // basis stays zero until build_tree sets it)
+        let mut new = BezierSpan {
+            pseudo_box: PseudoBox::zero_filled(),
+            ..BezierSpan::default()
+        };
 
         // a leaf node is its own left and right most bezier component
         new.aux.left = num_span;
@@ -510,9 +562,10 @@ impl<O: Copy + PartialEq> CurveCache<O> {
     /// # Errors
     ///
     /// `InvalidInput` when neither the chord height nor the angle tolerance is set
-    /// (`SM_ERR_INVALID_INPUT`); `SM_ERR` for a B-spline without NURB, a curve
-    /// without spans, failing NLib splits and trims or an empty decomposition;
-    /// those of the control polygon, continuity and evaluation queries;
+    /// (`SM_ERR_INVALID_INPUT`) and past [`MAX_TESS_SPLITS`] split halves; `SM_ERR`
+    /// for a B-spline without NURB, a curve without spans, failing NLib splits and
+    /// trims or an empty decomposition; those of the control polygon, continuity and
+    /// evaluation queries;
     /// [`SolidError::Unported`] for unported callees.
     pub fn tessellate(&mut self, k: &Kernel) -> Result<()> {
         // check state: need at least one stored tessellation parameter
@@ -577,7 +630,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
 
         // When not simplifying the decomposition-tree
         if self.opts.make_full_tree {
-            let (_, conts) = self.curve.calculate_continuities(CONTINUITY_ANGLE)?;
+            let (_, conts) = self.curve.calculate_continuities(k, CONTINUITY_ANGLE)?;
             self.continuities.extend(conts);
         }
 
@@ -598,7 +651,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
                 | CurveKind::CrvOnSurf(_)
                 | CurveKind::Composite(_) => None,
             };
-            create_bezier_segment_block(nurb, &self.curve)?
+            create_bezier_segment_block(k, nurb, &self.curve)?
         };
 
         // max step size
@@ -607,6 +660,8 @@ impl<O: Copy + PartialEq> CurveCache<O> {
         let dim = self.curve.dim();
         let num_beziers = beziers.len();
 
+        // split halves examined (bounded: see MAX_TESS_SPLITS)
+        let mut splits: u64 = 0;
         // 2. for every unique curve parameter span
         for (i, seg) in beziers.iter().enumerate() {
             let mut bez = seg.clone();
@@ -637,6 +692,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
             // control-polygon properties while checking all tolerances
             let tmp = Curve::from(BSplineCurve::from_nurb(bez.clone(), dim, true));
             let c = compute_constants(
+                k,
                 &tmp,
                 &self.curve,
                 span_ivl,
@@ -695,17 +751,25 @@ impl<O: Copy + PartialEq> CurveCache<O> {
             let (bez_min, bez_max) = if is_bspline {
                 crv_split(&bez, span_ivl.mid()).map_err(SolidError::nl_ser(OP_TESS))?
             } else {
-                split_segment(&bez, &self.curve)?
+                split_segment(k, &bez, &self.curve)?
             };
             stack.push(bez_max);
             stack.push(bez_min);
 
             let mut first_in_seg = true;
             while let Some(top) = stack.pop() {
+                splits += 1;
+                if splits > MAX_TESS_SPLITS {
+                    return Err(invalid(
+                        OP_TESS,
+                        "tessellation needs more than MAX_TESS_SPLITS splits",
+                    ));
+                }
                 let bsp = Curve::from(BSplineCurve::from_nurb(top.clone(), dim, true));
                 let ivl = bsp.natural_interval();
 
                 let c = compute_constants(
+                    k,
                     &bsp,
                     &self.curve,
                     ivl,
@@ -765,7 +829,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
                 let (bez_min, bez_max) = if is_bspline {
                     crv_split(&top, ivl.mid()).map_err(SolidError::nl_ser(OP_TESS))?
                 } else {
-                    split_segment(&top, &self.curve)?
+                    split_segment(k, &top, &self.curve)?
                 };
                 stack.push(bez_max);
                 stack.push(bez_min);
@@ -773,7 +837,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
         }
 
         // combine the ordered leaf spans into a binary tree
-        self.build_tree(&leaf_beziers)
+        self.build_tree(k, &leaf_beziers)
     }
 
     /// The largest leaf interval: the cache interval split into
@@ -826,7 +890,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
     /// `SM_ERR` without spans (the empty tree is kept);
     /// `InvalidInput` for fewer Beziers than spans; [`SolidError::Unported`] from
     /// the box and evaluation callees.
-    pub fn build_tree(&mut self, leaf_beziers: &[Nurb]) -> Result<()> {
+    pub fn build_tree(&mut self, k: &Kernel, leaf_beziers: &[Nurb]) -> Result<()> {
         let mut tree: Tree<O> = Tree::new(Some(TreeOwner::CurveCache));
         let dim = self.curve.dim();
 
@@ -855,8 +919,14 @@ impl<O: Copy + PartialEq> CurveCache<O> {
                 pseudo: true,
                 polar: false,
             };
-            // (status ignored upstream: a failure leaves the zero-filled box)
-            let boxes = ignored(bsp.calculate_bounding_box(&bsp.natural_interval(), req))?;
+            // (status ignored upstream: a failure leaves the zero-filled box; the span's
+            // own pseudo box goes in, keeping its basis when none can be set)
+            let initial = self
+                .spans
+                .get(i)
+                .map_or_else(PseudoBox::zero_filled, |s| s.pseudo_box);
+            let boxes =
+                ignored(bsp.calculate_bounding_box_onto(&bsp.natural_interval(), req, initial))?;
             let (bbox, pseudo) = boxes.map_or((None, None), |b| (b.normal, b.pseudo));
             if let (Some(p), Some(span)) = (pseudo, self.spans.get_mut(i)) {
                 span.pseudo_box = p;
@@ -923,6 +993,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
 
                     // (status ignored upstream)
                     ignored(self.compute_parent_data(
+                        k,
                         &mut parent,
                         &left,
                         &right,
@@ -976,11 +1047,11 @@ impl<O: Copy + PartialEq> CurveCache<O> {
 
         // the end points GetEnds evaluates, for the tree's readers
         for s in &mut self.spans {
-            let (a, b, _) = s.aux.ends_on(&self.curve)?;
+            let (a, b, _) = s.aux.ends_on(k, &self.curve)?;
             s.aux.ends = [a, b];
         }
         for p in &mut self.parents {
-            let (a, b, _) = p.ends_on(&self.curve)?;
+            let (a, b, _) = p.ends_on(k, &self.curve)?;
             p.ends = [a, b];
         }
 
@@ -996,6 +1067,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
     /// tree; the turning angle grows by the tangent angle at a joint below `G1`.
     fn compute_parent_data(
         &self,
+        k: &Kernel,
         parent: &mut BezierAux1d,
         left: &BezierAux1d,
         right: &BezierAux1d,
@@ -1019,7 +1091,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
             let polygon =
                 bezier_polygon(leaf_beziers, parent.left as usize, parent.right as usize)?;
 
-            let (start, end, _) = parent.ends_on(&self.curve)?;
+            let (start, end, _) = parent.ends_on(k, &self.curve)?;
 
             // define span chord for chord height test
             let mut line_vec = end - start;
@@ -1048,8 +1120,8 @@ impl<O: Copy + PartialEq> CurveCache<O> {
             let ext2 = *self.span(right.left as usize)?.interval();
 
             // evaluate tangents at same positions; the left/right flags matter
-            let pv_left = self.curve.evaluate(ext1.evaluate(1.0), 1, false, true)?;
-            let pv_right = self.curve.evaluate(ext2.evaluate(0.0), 1, true, true)?;
+            let pv_left = self.curve.evaluate(k, ext1.evaluate(1.0), 1, false, true)?;
+            let pv_right = self.curve.evaluate(k, ext2.evaluate(0.0), 1, true, true)?;
             let (t_left, t_right) = (at(&pv_left, 1), at(&pv_right, 1));
             if t_left.length_squared() > EFF_ZERO_SQ && t_right.length_squared() > EFF_ZERO_SQ {
                 if let Ok(angle) = t_left.angle_between(t_right) {
@@ -1075,7 +1147,7 @@ fn curve_ref<O: Copy + PartialEq>(tree: &Tree<O>, id: NodeId) -> Result<CurveSpa
 /// without owner.
 fn curve_approx_tol_3d(k: &Kernel, curve: &Curve) -> Result<f64> {
     if curve.owner().is_some() {
-        // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on an opaque handle. Every
+        // DISPATCH GAP: SmTol::GetZoneTol3d(const SmObject*) (geom.tol, green) on an opaque handle. Every
         // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
         // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
         // receives the owning B-rep
@@ -1139,6 +1211,7 @@ pub fn bezier_polygon(leaf_beziers: &[Nurb], left: usize, right: usize) -> Resul
 /// B-spline; those of the control polygon; [`SolidError::Unported`] from the
 /// evaluations.
 pub fn compute_constants(
+    k: &Kernel,
     bez: &Curve,
     original: &Curve,
     interval: Extent1d,
@@ -1282,7 +1355,7 @@ pub fn compute_constants(
     out.max_chord_height_squared = max_segment_ch_sq;
     out.max_turning_angle_deg = total_angle * 180.0 / PI;
 
-    let mut efo = FindCurveDistanceExtrema::new(bez, original, interval, 10.0 * EFF_ZERO);
+    let mut efo = FindCurveDistanceExtrema::new(k, bez, original, interval, 10.0 * EFF_ZERO);
     let mut solver = LocalSolve1d::with_interval(interval, false);
 
     // Step along the curve: when the function changes sign, call the local solver.
@@ -1306,10 +1379,10 @@ pub fn compute_constants(
         ignored(efo.evaluate(param, &mut fv, true))?;
         let f = fv.f;
         if fv.found_answer {
-            if let Some(p) = ignored(bez.evaluate_point(param))? {
+            if let Some(p) = ignored(bez.evaluate_point(k, param))? {
                 pt1 = p;
             }
-            if let Some(p) = ignored(original.evaluate_point(param))? {
+            if let Some(p) = ignored(original.evaluate_point(k, param))? {
                 pt2 = p;
             }
             let dist_sq = pt1.distance_squared(pt2);
@@ -1321,10 +1394,10 @@ pub fn compute_constants(
             let guess = prev_t - prev_f * (param - prev_t) / (f - prev_f);
             if ignored(solver.solve_it(&mut efo, guess, 10.0 * EFF_ZERO))?.is_some() {
                 // (upstream measures at the step parameter, not the solution)
-                if let Some(p) = ignored(bez.evaluate_point(param))? {
+                if let Some(p) = ignored(bez.evaluate_point(k, param))? {
                     pt1 = p;
                 }
-                if let Some(p) = ignored(original.evaluate_point(param))? {
+                if let Some(p) = ignored(original.evaluate_point(k, param))? {
                     pt2 = p;
                 }
                 let dist_sq = pt1.distance_squared(pt2);
@@ -1350,7 +1423,7 @@ pub fn compute_constants(
 ///
 /// `SM_ERR` for fewer than two knots; [`SolidError::Unported`] from the
 /// evaluations (whose other failures upstream ignores).
-pub fn build_bezier_spans(curve: &Curve, knots: &[f64]) -> Result<Vec<Nurb>> {
+pub fn build_bezier_spans(k: &Kernel, curve: &Curve, knots: &[f64]) -> Result<Vec<Nurb>> {
     if knots.len() < 2 {
         return Err(SolidError::sm_err(OP_BUILD));
     }
@@ -1358,7 +1431,7 @@ pub fn build_bezier_spans(curve: &Curve, knots: &[f64]) -> Result<Vec<Nurb>> {
     let mut pv = [Vec3::UNDEF; 2];
 
     let mut param = knots.first().copied().unwrap_or(0.0);
-    evaluate_ignored(curve, param, true, &mut pv)?; // first eval: FromLeft == TRUE
+    evaluate_ignored(k, curve, param, true, &mut pv)?; // first eval: FromLeft == TRUE
 
     for &next in knots.iter().skip(1) {
         // control points
@@ -1369,7 +1442,7 @@ pub fn build_bezier_spans(curve: &Curve, knots: &[f64]) -> Result<Vec<Nurb>> {
         let c0 = pv[0];
         let c1 = c0 + pv[1] * delta_t / 3.0;
 
-        evaluate_ignored(curve, param, false, &mut pv)?;
+        evaluate_ignored(k, curve, param, false, &mut pv)?;
         let c3 = pv[0];
         let c2 = c3 - pv[1] * delta_t / 3.0;
 
@@ -1391,7 +1464,11 @@ pub fn build_bezier_spans(curve: &Curve, knots: &[f64]) -> Result<Vec<Nurb>> {
 ///
 /// `SM_ERR` for a curve without spans or a failing segment split; those of the
 /// knot query and of [`build_bezier_spans`].
-pub fn create_bezier_segment_block(nurb: Option<&Nurb>, curve: &Curve) -> Result<Vec<Nurb>> {
+pub fn create_bezier_segment_block(
+    k: &Kernel,
+    nurb: Option<&Nurb>,
+    curve: &Curve,
+) -> Result<Vec<Nurb>> {
     if let Some(n) = nurb {
         let span_count = n.knot_vector().map_or(0, |k| k.span_count(n.degree()));
         if span_count < 1 {
@@ -1399,12 +1476,12 @@ pub fn create_bezier_segment_block(nurb: Option<&Nurb>, curve: &Curve) -> Result
         }
         create_bez_segments(n).map_err(SolidError::nl_ser(OP_BLOCK))
     } else {
-        // the knot vector matches CalculateContinuities
-        let (knots, _) = curve.knots(None)?;
+        // the knot vector matches CalculateContinuities (status ignored)
+        let (knots, _) = knots_ignoring_status(curve.knots_with_status(k, None))?;
         if knots.len() < 2 {
             return Err(SolidError::sm_err(OP_BLOCK));
         }
-        build_bezier_spans(curve, &knots)
+        build_bezier_spans(k, curve, &knots)
     }
 }
 
@@ -1427,7 +1504,7 @@ fn cpt_mid(a: CPoint, b: CPoint) -> CPoint {
 /// `InvalidInput` for a Bezier that is not a cubic (upstream reads past it);
 /// [`SolidError::Unported`] from the evaluation (whose other failures upstream
 /// ignores).
-pub fn split_segment(bez: &Nurb, curve: &Curve) -> Result<(Nurb, Nurb)> {
+pub fn split_segment(k: &Kernel, bez: &Nurb, curve: &Curve) -> Result<(Nurb, Nurb)> {
     let (Some(full), Some(p)) = (bez.knots().get(..8), bez.cpts().get(..4)) else {
         return Err(invalid(OP_SPLIT, "span is not a cubic Bezier"));
     };
@@ -1444,7 +1521,7 @@ pub fn split_segment(bez: &Nurb, curve: &Curve) -> Result<(Nurb, Nurb)> {
 
     // control points
     let mut orig = [Vec3::UNDEF; 2];
-    evaluate_ignored(curve, mid, false, &mut orig)?;
+    evaluate_ignored(k, curve, mid, false, &mut orig)?;
     let [e, d] = orig;
 
     // derivative multiplier: parameter span divided by 3 for cubic
@@ -1480,13 +1557,14 @@ pub fn split_segment(bez: &Nurb, curve: &Curve) -> Result<(Nurb, Nurb)> {
 /// squared distance, and `F'`; found when `|F| <= tol`.
 impl EvalFunction for FindCurveDistanceExtrema<'_> {
     fn evaluate(&mut self, t: f64, out: &mut FunctionValue, _signal_errors: bool) -> Result<()> {
+        let k = self.kernel;
         // init output
         out.f = 0.0;
         out.f_prime = 0.0;
         out.found_answer = false;
 
-        let pv1 = self.curve1.evaluate(t, 2, true, true)?;
-        let pv2 = self.curve2.evaluate(t, 2, true, true)?;
+        let pv1 = self.curve1.evaluate(k, t, 2, true, true)?;
+        let pv2 = self.curve2.evaluate(k, t, 2, true, true)?;
         let (a0, a1, a2) = (at(&pv1, 0), at(&pv1, 1), at(&pv1, 2));
         let (b0, b1, b2) = (at(&pv2, 0), at(&pv2, 1), at(&pv2, 2));
 
@@ -1533,6 +1611,29 @@ mod tests {
         assert!(!c.is_kind_of(14000));
         assert_eq!(c.span_count(), 0);
         assert!(c.tree().is_none());
+    }
+
+    #[test]
+    fn splits_stop_at_the_bound() {
+        // a longest span no span passes and no minimum parametric ratio: the halving
+        // would only stop at `SM_EFF_ZERO_SQRT` spans (millions of them); it stops at
+        // MAX_TESS_SPLITS
+        let k = Kernel::default();
+        let opts = CurveCacheOptions {
+            chord_height_tolerance: 0.01,
+            max_3d_distance: 1e-9,
+            min_parametric_ratio: 0.0,
+            ..CurveCacheOptions::default()
+        };
+        let mut c: CurveCache<u32> =
+            CurveCache::new(cubic(), Extent1d::from_min_max(0.0, 1.0), opts);
+        assert!(matches!(
+            c.tessellate(&k),
+            Err(SolidError::InvalidInput {
+                reason: "tessellation needs more than MAX_TESS_SPLITS splits",
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -1610,6 +1711,7 @@ mod tests {
 
     #[test]
     fn split_segment_halves() {
+        let k = &Kernel::default();
         let h = Curve::from(HermiteCurve::new(
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(1.0, 0.0, 0.0),
@@ -1617,8 +1719,8 @@ mod tests {
             Vec3::new(1.0, 0.0, 0.0),
             3,
         ));
-        let segs = build_bezier_spans(&h, &[0.0, 1.0]).unwrap();
-        let (a, b) = split_segment(&segs[0], &h).unwrap();
+        let segs = build_bezier_spans(k, &h, &[0.0, 1.0]).unwrap();
+        let (a, b) = split_segment(k, &segs[0], &h).unwrap();
         assert_eq!(a.knots()[7], 0.5);
         assert_eq!(b.knots()[0], 0.5);
         assert_eq!(a.cpts()[3].x, 0.5);
@@ -1627,6 +1729,7 @@ mod tests {
 
     #[test]
     fn polygon_skips_shared_vertices() {
+        let k = &Kernel::default();
         let h = Curve::from(HermiteCurve::new(
             Vec3::new(0.0, 0.0, 0.0),
             Vec3::new(1.0, 0.0, 0.0),
@@ -1634,7 +1737,7 @@ mod tests {
             Vec3::new(1.0, 0.0, 0.0),
             3,
         ));
-        let segs = build_bezier_spans(&h, &[0.0, 0.5, 1.0]).unwrap();
+        let segs = build_bezier_spans(k, &h, &[0.0, 0.5, 1.0]).unwrap();
         let poly = bezier_polygon(&segs, 0, 1).unwrap();
         assert_eq!(poly.len(), 7);
         assert!(bezier_polygon(&segs, 0, 2).is_err());

@@ -12,7 +12,8 @@
 //!
 //! Selectors are taken modulo the entity count (`-1` is a null list entry); an op
 //! needing a vertex the B-rep lacks is rejected (nothing runs on either side). As in
-//! `heal.stitch_p1`, B-reps with analytic geometry other than planes and lines defer
+//! `heal.stitch_p1`, B-reps with analytic geometry other than planes, surfaces of
+//! revolution and lines defer
 //! (the shared export flattens it to B-spline parts).
 
 use serde::{Deserialize, Serialize};
@@ -121,7 +122,11 @@ fn path(b: &StitchBrep) -> Result<String, HarnessError> {
 
 /// The C++ export of the B-rep.
 fn export(b: &StitchBrep) -> Result<Vec<f64>, HarnessError> {
-    ffi::eval(Op::Export, &path(b)?, &block_of(b)?).map_err(|e| harness(format!("c++ export: {e}")))
+    let (path, block) = (path(b)?, block_of(b)?);
+    crate::export_memo::export("heal_stitch_p2", &[&path], &block, || {
+        ffi::eval(Op::Export, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ export: {e}")))
 }
 
 fn build_failure(export: &[f64]) -> Output {
@@ -143,20 +148,21 @@ fn pick(s: i64, n: usize) -> Option<u32> {
 
 /// The deferral of a B-rep with inexact geometry.
 fn inexact(types: &ImportTypes) -> Option<Output> {
-    if types
-        .face_surface_types
-        .iter()
-        .any(|&t| t >= 0 && !EXACT_SURFACES.contains(&t))
+    if let Some(t) = (0..types.face_surface_types.len())
+        .filter_map(|f| types.inexact_surface(f))
+        .find(|t| !EXACT_SURFACES.contains(t))
     {
         return Some(Output::deferred(
             HARNESS_ANALYTIC_IMPORT,
-            "analytic face surface exported as its B-spline part",
+            format!(
+                "{} face surface exported as its B-spline part",
+                super::topology_edgeuse_p1::surface_class_name(t)
+            ),
         ));
     }
-    if types
-        .edge_curve_types
-        .iter()
-        .any(|&t| t >= 0 && !EXACT_CURVES.contains(&t))
+    if (0..types.edge_curve_types.len())
+        .filter_map(|e| types.inexact_curve(e))
+        .any(|t| t >= 0 && !EXACT_CURVES.contains(&t))
     {
         return Some(Output::deferred(
             HARNESS_ANALYTIC_IMPORT,
@@ -588,7 +594,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
             // the shim's guard: the doubling from a tolerance at or below zero cannot
             // end (HANG-24); same test on the same box diagonal (`tol < dist / 200`
             // excludes a NaN tolerance, so `!(tol > 0)` is `tol <= 0` here)
-            let (tol, dist) = match st::solid_stitch_start(b) {
+            let (tol, dist) = match st::solid_stitch_start(k, b) {
                 Ok(start) => start,
                 Err(e) => return failed(e),
             };

@@ -13,11 +13,19 @@
 //! reports its first entry as the `status` (`0` = `SM_SUCCESS`, else the `SmStatus`; `1007` for
 //! a Rust `InvalidInput`, `-1` for a Rust error upstream cannot produce) and the rest as `out`.
 //!
-//! Deferred cases: every face case (the Rust side cannot put the surface on a face:
-//! `SmBrep::CreateFaceFromSurface`, `topology.brep_p8`), and edge use implants that reach
-//! `SmSurface::GetSingularities` (cache domain at a natural boundary), `FindUVNodes` (no node
-//! given) or `SubdivideNode` (large nodes with subdivision on). Every run has at least
-//! [`MIN_GENERATED`] generated cases; generated inputs the ffi wrapper rejects are redrawn.
+//! Face cases independently construct the same naturally trimmed B-spline face as
+//! the shim, then use the shared `BrepCacheFace` adapter for cache construction and
+//! classification. Missing downstream services remain explicit deferrals. Every
+//! run has at least [`MIN_GENERATED`] generated cases; generated inputs the ffi
+//! wrapper rejects are redrawn.
+//!
+//! Deviations: the runner-local SMS reader validates counts below the exclusive
+//! `2^usize::BITS` bound, checks dimension and payload arithmetic and available
+//! tokens before constructing the net, and grows storage incrementally. Valid
+//! point order, weights, knots and eager float parsing are unchanged.
+
+#[path = "fixtures/trim_srf_cache_sms.rs"]
+mod sms;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -45,6 +53,15 @@ use crate::case::CaseContext;
 use crate::runner::default_cases;
 use crate::util::flag;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
+
+#[path = "surface_trim_srf_cache/constructed_face.rs"]
+mod constructed_face;
+
+#[path = "surface_trim_srf_cache/native_face.rs"]
+mod native_face;
+
+#[path = "surface_trim_srf_cache/poly_edges.rs"]
+mod poly_edges;
 
 /// Generated cases per run, whatever `--seeds` says (it can only raise this).
 pub const MIN_GENERATED: usize = 600;
@@ -190,55 +207,19 @@ struct Inputs {
 
 // ---- file readers -------------------------------------------------------------------
 
-fn numbers(path: &str) -> Result<Vec<f64>, HarnessError> {
-    let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
-    text.split_whitespace()
-        .map(|t| {
-            t.parse::<f64>()
-                .map_err(|e| harness(format!("{path}: {e}")))
-        })
-        .collect()
-}
-
-fn int(path: &str, v: f64) -> Result<usize, HarnessError> {
-    if v.fract() != 0.0 || v < 0.0 {
-        return Err(harness(format!("{path}: bad count {v}")));
-    }
-    Ok(v as usize)
-}
-
 /// Reads an upstream `.sms` text file: `n m`, `p q`, rational flag, `(n+1)(m+1)`
 /// points (`x y z`, or `wx wy wz w` when rational, v index fastest), `n+p+2` u knots,
 /// `m+q+2` v knots.
 fn read_sms(path: &str) -> Result<InlineSrf, HarnessError> {
-    let v = numbers(path)?;
-    let mut it = v.into_iter();
-    let mut num = || {
-        it.next()
-            .ok_or_else(|| harness(format!("{path}: truncated")))
-    };
-    let n = int(path, num()?)?;
-    let m = int(path, num()?)?;
-    let p = int(path, num()?)?;
-    let q = int(path, num()?)?;
-    let rat = num()? != 0.0;
-    let mut net = Vec::with_capacity(n + 1);
-    for _ in 0..=n {
-        let mut row = Vec::with_capacity(m + 1);
-        for _ in 0..=m {
-            let (x, y, z) = (num()?, num()?, num()?);
-            let w = if rat { num()? } else { NOW };
-            row.push([x, y, z, w]);
-        }
-        net.push(row);
-    }
-    let u = (0..n + p + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    let v = (0..m + q + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(InlineSrf { net, p, q, u, v })
+    let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
+    let s = sms::parse_sms(&text, path)?;
+    Ok(InlineSrf {
+        net: s.net,
+        p: s.p,
+        q: s.q,
+        u: s.u,
+        v: s.v,
+    })
 }
 
 fn srf(s: &SrfIn) -> Result<InlineSrf, HarnessError> {
@@ -272,7 +253,15 @@ fn push_srf(o: &mut Vec<f64>, b: &BssIn) -> Result<(), HarnessError> {
     let s = srf(&b.srf)?;
     let (n, m) = shape(&s)?;
     o.extend([n as f64, m as f64, s.p as f64, s.q as f64]);
-    o.extend([(s.u.len() - 1) as f64, (s.v.len() - 1) as f64]);
+    let ku =
+        s.u.len()
+            .checked_sub(1)
+            .ok_or_else(|| harness("empty u knots"))?;
+    let kv =
+        s.v.len()
+            .checked_sub(1)
+            .ok_or_else(|| harness("empty v knots"))?;
+    o.extend([ku as f64, kv as f64]);
     for row in &s.net {
         for p in row {
             o.extend(p);
@@ -539,7 +528,7 @@ type Run = Result<Vec<f64>, SolidError>;
 
 #[allow(clippy::too_many_lines)]
 fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
-    let k = Kernel::default();
+    let mut k = Kernel::default();
     let bss = bss_of(&i.srf)?;
     let mut o = vec![0.0];
     let run: Run = match &i.op {
@@ -642,15 +631,7 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
                 Ok(o)
             }
         }
-        OpIn::Face { .. } => {
-            // the C++ side puts the surface on a face of a new brep: the Rust side has no
-            // face to give the cache, so the case defers on that construction
-            // UNPORTED(topology.brep_p8): SmBrep::CreateFaceFromSurface
-            Err(SolidError::unported(
-                "SmBrep::CreateFaceFromSurface",
-                "topology.brep_p8",
-            ))
-        }
+        OpIn::Face { build, points } => constructed_face::run(&mut k, bss, *build, points),
     };
     Ok(run)
 }
@@ -1075,14 +1056,28 @@ impl UnitDiff for Runner {
             seeds: ctx.seeds.max(MIN_GENERATED),
             ..ctx.clone()
         };
-        default_cases(self, &ctx)
+        let mut cases = default_cases(self, &ctx)?;
+        cases.extend(poly_edges::cases()?);
+        Ok(cases)
     }
 
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
+        if let Some(input) = case.inputs.get("native_face") {
+            return native_face::run_cpp(input);
+        }
+        if let Some(input) = case.inputs.get("poly_edges") {
+            return poly_edges::run_cpp(input);
+        }
         cpp(&case.parse()?)
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
+        if let Some(input) = case.inputs.get("native_face") {
+            return native_face::run_rust(input);
+        }
+        if let Some(input) = case.inputs.get("poly_edges") {
+            return poly_edges::run_rust(input);
+        }
         rust(&case.parse()?)
     }
 }
@@ -1092,9 +1087,7 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
-    /// The generators reach every op with successful outcomes on the Rust side (the
-    /// face cases are always deferred until `SmBrep::CreateFaceFromSurface` is
-    /// ported).
+    /// The generators reach every op with successful outcomes on the Rust side.
     #[test]
     fn generated_cases_cover_ops() {
         let mut tally: BTreeMap<(String, String), usize> = BTreeMap::new();
@@ -1150,7 +1143,7 @@ mod tests {
         for (k, v) in &tally {
             println!("{k:?}: {v}");
         }
-        for op in ["New", "PointTest", "ImplantEu"] {
+        for op in ["New", "PointTest", "ImplantEu", "Face"] {
             assert!(
                 tally.keys().any(|(n, k)| n == op && k == "status:0"),
                 "{op} never succeeds"

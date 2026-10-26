@@ -25,6 +25,7 @@ use serde_json::Value;
 
 use solidcore::curve::curve::{Curve, CurveKind};
 use solidcore::curve::ellipse::{Ellipse, EllipseOptions};
+use solidcore::curve::hyperbola::Hyperbola;
 use solidcore::curve::line::Line;
 use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::geom::extent1d::Extent1d;
@@ -83,6 +84,16 @@ pub(crate) enum GenIn {
         y: [f64; 3],
         d: [f64; 2],
         r: f64,
+    },
+    /// `SmHyperbola(c, x, y, [d0, d1], a, b, 3)` (fixtures only; the generator never
+    /// draws one).
+    Hyperbola {
+        c: [f64; 3],
+        x: [f64; 3],
+        y: [f64; 3],
+        d: [f64; 2],
+        a: f64,
+        b: f64,
     },
 }
 
@@ -272,6 +283,14 @@ fn ffi_gen(g: &GenIn) -> Result<ffi::Gen, HarnessError> {
             d: *d,
             r: *r,
         },
+        GenIn::Hyperbola { c, x, y, d, a, b } => ffi::Gen::Hyperbola {
+            c: *c,
+            x: *x,
+            y: *y,
+            d: *d,
+            a: *a,
+            b: *b,
+        },
     })
 }
 
@@ -446,6 +465,18 @@ fn rust_gen(k: &Kernel, g: &GenIn) -> Result<Curve, HarnessError> {
             .map_err(|e| harness(format!("circle: {e}")))?;
             Curve::from(e)
         }
+        GenIn::Hyperbola { c, x, y, d, a, b } => {
+            let [d0, d1] = *d;
+            Curve::from(Hyperbola::new(
+                v3(*c),
+                v3(*x),
+                v3(*y),
+                Extent1d::from_min_max(d0, d1),
+                *a,
+                *b,
+                3,
+            ))
+        }
     })
 }
 
@@ -523,7 +554,7 @@ pub(crate) fn put_curve(o: &mut Vec<f64>, c: Option<&Curve>) {
     o.extend_from_slice(cur.knots());
 }
 
-pub(crate) fn put_state(o: &mut Vec<f64>, s: &SurfOfRevolution) -> solidcore::Result<()> {
+pub(crate) fn put_state(k: &Kernel, o: &mut Vec<f64>, s: &SurfOfRevolution) -> solidcore::Result<()> {
     o.extend([
         flag(s.is_kind_of(SURF_OF_REVOLUTION_TYPE)?),
         flag(s.is_kind_of(B_SPLINE_SURFACE_TYPE)?),
@@ -539,7 +570,7 @@ pub(crate) fn put_state(o: &mut Vec<f64>, s: &SurfOfRevolution) -> solidcore::Re
     let d = s.step_uv_domain();
     o.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
     o.extend([s.start_angle_deg(), s.end_angle_deg()]);
-    let mx = s.max_analytic_domain()?;
+    let mx = s.max_analytic_domain(k)?;
     o.extend([mx.min().x, mx.min().y, mx.max().x, mx.max().y]);
     let (gd, gp) = s.gen_dir_param_extent();
     o.extend([gd.min(), gd.max(), f64::from(gp as u8)]);
@@ -589,7 +620,7 @@ fn rust_op(
     o: &mut Vec<f64>,
 ) -> Result<solidcore::Result<()>, HarnessError> {
     let r: solidcore::Result<()> = match op {
-        OpIn::Build {} => put_state(o, s),
+        OpIn::Build {} => put_state(k, o, s),
         OpIn::EvalStep { u, v, k: kk, point } => {
             let uv = Point2::new(*u, *v);
             if *point {
@@ -937,7 +968,7 @@ fn gen_step_ivl(g: &GenIn) -> [f64; 2] {
             c.u.last().copied().unwrap_or(1.0),
         ],
         GenIn::Line { .. } => [0.0, 1.0],
-        GenIn::Circle { d, .. } => *d,
+        GenIn::Circle { d, .. } | GenIn::Hyperbola { d, .. } => *d,
     }
 }
 

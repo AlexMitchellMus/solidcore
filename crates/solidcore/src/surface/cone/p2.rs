@@ -10,6 +10,7 @@
 //! | [`Cone::rebuild_step_from_nurb_parameters`]  | `SmCone::RebuildSTEPFromNURBParameters`          |
 //! | [`ellipse_trim_intervals`]                   | `sm_GetEllipseTrimIntervals` (file static)       |
 //! | [`Cone::reparameterize`]                     | `SmSurfOfRevolution::Reparameterize` (inherited; its polar converter rebuild calls the cone's iso curves) |
+//! | [`Cone::trim_with_domain`]                  | `SmSurfOfRevolution::TrimWithDomain` (inherited; its conversions and NURB rebuilds call the cone's virtuals) |
 //! | [`Cone::base_mut`]                           | `GetGwNurbPointer` (non-`const`, inherited)      |
 //!
 //! Deviations:
@@ -22,7 +23,9 @@
 //!   error status through `SER` from a function returning `SmBoolean`
 //!   (`IsNurbSurfaceCone`: a failed iso curve) the error is returned; upstream's caller
 //!   would read that status as `TRUE` with a `NULL` cone.
-//! - **Uninitialised reads.** `sm_GetEllipseTrimIntervals` ignores the status of
+//! - **Uninitialised reads.** A failed `ConvertUVFromNURBSToSTEP` in
+//!   [`Cone::trim_with_domain`] (upstream ignores the status and reads the corner it may
+//!   not have written) returns the error. `sm_GetEllipseTrimIntervals` ignores the status of
 //!   `smgu_LinePlaneIntersect` and then reads its parameter: a seam line parallel to
 //!   the ellipse plane (or of zero length) returns the error here. A failed
 //!   `ConvertUVFromNURBSToSTEP` (upstream then uses a default-constructed domain) and
@@ -100,10 +103,11 @@ fn linear_iso_param(s: &BSplineSurface) -> SurfParamType {
 }
 
 /// `pIsoCrv->IsArc(5, dScaledZero, ..)` of a plain B-spline iso curve.
-fn iso_arc(curve: &BSplineCurve, scaled_zero: f64) -> Result<Option<IsoArc>> {
+fn iso_arc(k: &Kernel, curve: &BSplineCurve, scaled_zero: f64) -> Result<Option<IsoArc>> {
     let arc = crate::curve::curve::p5::is_arc_base(
+        k,
         curve,
-        |c, tol| c.is_degenerate(tol, None),
+        |c, tol| c.is_degenerate(k, tol, None),
         5,
         scaled_zero,
     )?;
@@ -141,17 +145,17 @@ fn end_circles(
         .curve;
 
     // classify IsoparamCurves
-    let top_degenerate = top_iso.is_degenerate(scaled_zero, None)?;
-    let bot_degenerate = bot_iso.is_degenerate(scaled_zero, None)?;
+    let top_degenerate = top_iso.is_degenerate(k, scaled_zero, None)?;
+    let bot_degenerate = bot_iso.is_degenerate(k, scaled_zero, None)?;
     let top_arc = if top_degenerate {
         None
     } else {
-        iso_arc(&top_iso, scaled_zero)?
+        iso_arc(k, &top_iso, scaled_zero)?
     };
     let bot_arc = if bot_degenerate {
         None
     } else {
-        iso_arc(&bot_iso, scaled_zero)?
+        iso_arc(k, &bot_iso, scaled_zero)?
     };
 
     //  2 Arcs                       = were good, continue
@@ -225,6 +229,26 @@ impl Cone {
             .reparameterize_using(k, trim_domain, &|s, k, p, t| {
                 Ok(super::p1::cone_iso_curve(s, inside_out, k, p, t, None, false)?.curve)
             })
+    }
+
+    /// Trims to the NURB domain `new_nurb_uv_domain` (the inherited
+    /// `SmSurfOfRevolution::TrimWithDomain`): its body with the cone's
+    /// `ConvertUVFromNURBSToSTEP` (in `UpdateAnalyticalDomain`) and iso curves (in
+    /// `MakeNurb`, `Reparameterize` and `RebuildPolarConverter`) as its virtual calls.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`crate::surface::surf_of_revolution::SurfOfRevolution::trim_with_domain`]
+    /// and of [`Self::convert_uv_from_nurbs_to_step`] (upstream ignores that status and
+    /// reads the corner it may not have written).
+    pub fn trim_with_domain(&mut self, k: &Kernel, new_nurb_uv_domain: &Extent2d) -> Result<()> {
+        let inside_out = self.inside_out;
+        self.rev.trim_with_domain_using(
+            k,
+            new_nurb_uv_domain,
+            &|s, k, uv| super::p1::cone_convert_uv_from_nurbs_to_step(s, inside_out, k, uv),
+            &|s, k, p, t| Ok(super::p1::cone_iso_curve(s, inside_out, k, p, t, None, false)?.curve),
+        )
     }
 
     /// Rebuilds the polar converter with the cone's iso curves
@@ -584,7 +608,7 @@ impl Cone {
             .curve;
 
         // It must be circular.
-        let Some(mid) = iso_arc(&mid_iso, scaled_zero)? else {
+        let Some(mid) = iso_arc(k, &mid_iso, scaled_zero)? else {
             return Ok(None);
         };
 
@@ -727,7 +751,7 @@ impl Cone {
         };
 
         // classify the top and bottom isoParameter curves (SmBSplineSurface's)
-        let Some((mut top, bot)) = end_circles(
+        let Some((mut top, mut bot)) = end_circles(
             k,
             &self.rev.base,
             sweep_iso_param,
@@ -769,6 +793,19 @@ impl Cone {
 
         // (upstream also computes the STEP Y axis from the top frame's X axis here;
         // it is unused)
+
+        // Not upstream (WR-385, tangency-labs/solidcore#713): with the opt-in, an
+        // SmCylinder's radii within SM_EFF_ZERO_SQRT * (1 + r) are its one radius (their
+        // mean); further apart, the NURB is no longer a cylinder
+        if self.cylinder && k.fixes.cylinder_rebuild_mean_radius {
+            if (bot.radius - top.radius).abs() < EFF_ZERO_SQRT * (1.0 + bot.radius) {
+                let mean = 0.5 * (bot.radius + top.radius);
+                bot.radius = mean;
+                top.radius = mean;
+            } else {
+                return Err(SolidError::sm_err(OP_REBUILD));
+            }
+        }
 
         // when top and bot radius values are nearly equal - make them exactly equal
         if (bot.radius - top.radius).abs() < EFF_ZERO * (1.0 + bot.radius) {
@@ -1129,6 +1166,34 @@ mod tests {
     }
 
     #[test]
+    fn trim_with_domain_keeps_the_shape() {
+        let k = kernel();
+        for (swap, inside) in [(false, false), (true, false), (false, true), (true, true)] {
+            let mut cone = canonical(&k, 2.0, 1.0, 3.0, swap, inside);
+            let d = cone.rev().base().natural_uv_domain();
+            let (lo, hi) = (d.min(), d.max());
+            let trim = Extent2d::from_bounds(
+                lo.x + 0.25 * (hi.x - lo.x),
+                lo.y + 0.125 * (hi.y - lo.y),
+                lo.x + 0.75 * (hi.x - lo.x),
+                lo.y + 0.5 * (hi.y - lo.y),
+            );
+            cone.trim_with_domain(&k, &trim).unwrap();
+            let nd = cone.rev().base().natural_uv_domain();
+            assert!(nd.is_contained_by(&trim, 1e-12) && trim.is_contained_by(&nd, 1e-12));
+            let p = cone.rev().base().evaluate_point(trim.max()).unwrap();
+            let back = cone.convert_uv_from_nurbs_to_step(&k, trim.max()).unwrap();
+            let q = cone.evaluate_step_point(back).unwrap();
+            assert!((p - q).length() < 1e-9);
+            // the cone through the trimmed corner keeps its radius at that height
+            let r = (p.x * p.x + p.y * p.y).sqrt();
+            assert!((r - cone.radius(p.z)).abs() < 1e-9);
+            // a domain outside the current one is rejected
+            assert!(cone.trim_with_domain(&k, &d).is_err());
+        }
+    }
+
+    #[test]
     fn rejects_non_cones() {
         let k = kernel();
         let bs = BSplineSurface::create_bilinear_surface(
@@ -1149,6 +1214,39 @@ mod tests {
         cone.rebuild_step_from_nurb_parameters(&k).unwrap();
         assert!((cone.base_radius() - before.base_radius()).abs() < 1e-9);
         assert!((cone.semi_angle_deg() - before.semi_angle_deg()).abs() < 1e-7);
+    }
+
+    /// tangency-labs/solidcore#713 (WR-385): a cylinder whose NURB radii differ by
+    /// 2.25e-11 (rounding, as after `SwapUV`) gets a semi-angle upstream, which its own
+    /// check forbids; with the opt-in the radii are its one radius.
+    #[test]
+    fn issue_713_cylinder_rebuild_keeps_zero_semi_angle() {
+        let mut k = kernel();
+        let make = |k: &Kernel| {
+            let mut c = Cone::create_canonical_cylinder(k, &Axis2Placement::IDENTITY, 9.0).unwrap();
+            let linear_u = c.rev.base.degree(SurfParamType::U) == 1;
+            let nurb = c.rev.base.nurb.as_mut().unwrap();
+            let (n, m) = (nurb.n(), nurb.m());
+            for i in 0..=n {
+                for j in 0..=m {
+                    if (linear_u && i == n) || (!linear_u && j == m) {
+                        let p = nurb.cpt_mut(i, j).unwrap();
+                        p.x *= 1.0 + 2.5e-12;
+                        p.y *= 1.0 + 2.5e-12;
+                    }
+                }
+            }
+            c
+        };
+        let mut up = make(&k);
+        up.rebuild_step_from_nurb_parameters(&k).unwrap();
+        assert!(up.semi_angle_deg() != 0.0);
+
+        k.fixes.cylinder_rebuild_mean_radius = true;
+        let mut fixed = make(&k);
+        fixed.rebuild_step_from_nurb_parameters(&k).unwrap();
+        assert_eq!(fixed.semi_angle_deg(), 0.0);
+        assert!((fixed.base_radius() - 9.0).abs() < 1e-9);
     }
 
     #[test]

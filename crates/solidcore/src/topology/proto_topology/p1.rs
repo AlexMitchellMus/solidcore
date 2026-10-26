@@ -168,7 +168,9 @@
 //! - **Manager destructor** leaves the objects it does not list in the store (upstream
 //!   allocates them from the context).
 //! - `RemoveCoincidentNoEdgeProtoVertex` keeps upstream's `return SM_SUCCESS` (read as
-//!   `TRUE`) when the point solve finds nothing (plan/upstream-issues.md WR-73).
+//!   `TRUE`) when the point solve finds nothing (plan/upstream-issues.md WR-73); the
+//!   opt-in `Kernel::fixes.proto_vertex_miss_is_false` returns `FALSE` there
+//!   (tangency-labs/solidcore#848).
 //! - `Dump`, `Draw` and the `SM_DEBUG_CODE` blocks are not ported.
 //! - **Recursion.** None.
 
@@ -543,12 +545,14 @@ mod tests {
             .edge_definitions_mut()
             .extend([ed1, ed2]);
 
-        let (pos, tan) = m.proto_edge_evaluate_mid(&geo, pe, true, true).unwrap();
+        let (pos, tan) = m.proto_edge_evaluate_mid(&k, &geo, pe, true, true).unwrap();
         assert!((pos.unwrap() - Point3::new(1.0, 0.0, 0.0)).length() < 1e-12);
         assert!(tan.is_some());
-        let end = m.proto_edge_end_position_at(&geo, pe, Some(v1)).unwrap();
+        let end = m
+            .proto_edge_end_position_at(&k, &geo, pe, Some(v1))
+            .unwrap();
         assert!((end - Point3::new(2.0, 0.0, 0.0)).length() < 1e-12);
-        assert!(m.proto_edge_end_position_at(&geo, pe, None).is_err());
+        assert!(m.proto_edge_end_position_at(&k, &geo, pe, None).is_err());
         // same sources: drop the second
         assert_eq!(
             m.can_combine_edge_definitions(&k, &geo, ed1, ed2).unwrap(),
@@ -625,6 +629,64 @@ mod tests {
         assert_eq!(m.proto_vertices(), &[v3]);
     }
 
+    /// tangency-labs/solidcore#848 (WR-73): with the opt-in, a proto vertex the proto
+    /// edge does not reach is reported as not removed, so the caller goes on testing it
+    /// against the remaining proto edges.
+    #[test]
+    fn issue_848_no_hit_is_false() {
+        let mut k = Kernel::default();
+        k.fixes.proto_vertex_miss_is_false = true;
+        let geo = Geo(vec![line([0.0, 0.0, 0.0], [2.0, 0.0, 0.0])]);
+        let mut m = manager();
+        let ivl = geo.0[0].natural_interval();
+        let v0 = m
+            .new_proto_vertex(Point3::new(0.0, 0.0, 0.0), 1e-5)
+            .unwrap();
+        let v1 = m
+            .new_proto_vertex(Point3::new(2.0, 0.0, 0.0), 1e-5)
+            .unwrap();
+        let pe = m.new_proto_edge(&k, Some(v0), Some(v1), ivl).unwrap();
+        let ed = m
+            .insert_edge_definition(EdgeDefinition::new(
+                Some(C0),
+                ivl,
+                R0,
+                L0,
+                1e-5,
+                None,
+                None,
+                Some(pe),
+            ))
+            .unwrap();
+        m.proto_edge_mut(pe)
+            .unwrap()
+            .edge_definitions_mut()
+            .push(ed);
+        // off the curve: not removed, and reported so
+        let off = m
+            .new_proto_vertex(Point3::new(1.0, 5.0, 0.0), 1e-5)
+            .unwrap();
+        m.add_proto_vertex(off);
+        assert!(!m
+            .remove_coincident_no_edge_proto_vertex(&k, &geo, pe, off)
+            .unwrap());
+        assert_eq!(m.proto_vertices(), &[off]);
+        // on the curve: still removed
+        let on = m
+            .new_proto_vertex(Point3::new(1.0, 0.0, 0.0), 1e-5)
+            .unwrap();
+        m.add_proto_vertex(on);
+        assert!(m
+            .remove_coincident_no_edge_proto_vertex(&k, &geo, pe, on)
+            .unwrap());
+        assert_eq!(m.proto_vertices(), &[off]);
+        // the default keeps upstream's TRUE
+        k.fixes.proto_vertex_miss_is_false = false;
+        assert!(m
+            .remove_coincident_no_edge_proto_vertex(&k, &geo, pe, off)
+            .unwrap());
+    }
+
     #[test]
     fn manager_destroy_keeps_unlisted_objects() {
         let k = Kernel::default();
@@ -684,8 +746,8 @@ mod tests {
         assert!(proto::are_same_curve(&k, &geo, Some(C0), &ivl, Some(c1), &ivl, 1e-6).unwrap());
         assert!(!proto::are_same_curve(&k, &geo, Some(C0), &ivl, Some(c1), &ivl, 1e-12).unwrap());
         let dom = geo.0[0].natural_interval();
-        assert!(proto::is_interior(&geo, Some(C0), &dom, dom.mid(), 1e-6).unwrap());
-        assert!(!proto::is_interior(&geo, Some(C0), &dom, dom.min(), 1e-6).unwrap());
+        assert!(proto::is_interior(&k, &geo, Some(C0), &dom, dom.mid(), 1e-6).unwrap());
+        assert!(!proto::is_interior(&k, &geo, Some(C0), &dom, dom.min(), 1e-6).unwrap());
     }
 
     #[test]
@@ -699,7 +761,7 @@ mod tests {
         )
         .unwrap();
         let ivl = c.natural_interval();
-        let p = c.evaluate_point(ivl.min()).unwrap();
+        let p = c.evaluate_point(&k, ivl.min()).unwrap();
         assert!((p - Point3::new(1.0, 1.0, 0.0)).length() < 1e-12);
         api_transform::api_scale_by_pt(
             &mut k,
@@ -709,7 +771,7 @@ mod tests {
         )
         .unwrap();
         let ivl = c.natural_interval();
-        let q = c.evaluate_point(ivl.max()).unwrap();
+        let q = c.evaluate_point(&k, ivl.max()).unwrap();
         assert!((q - Point3::new(3.0, 1.0, 0.0)).length() < 1e-12);
 
         assert!(matches!(
@@ -739,7 +801,7 @@ mod tests {
             Some(TransformObject::Brep(&mut Brep::new())),
             Vec3::new(1.0, 0.0, 0.0)
         )
-        .is_err_and(|e| e.is_unported()));
+        .is_ok());
     }
 
     /// The B-rep walks on a wire edge from (0,0,0) to (1,0,0) of one B-rep.
