@@ -243,6 +243,14 @@ pub struct UpstreamFixes {
     pub classify_edge_interval: bool,
     /// `SmProtoEdge::Resolve` treats a proto edge from a proto vertex back to itself whose ends find one vertex definition as degenerate below twice the proto vertex's containment radius, and `ImprintIntersections` fits that vertex to its edges (WR-306, #1058).
     pub degenerate_proto_edge_in_one_vertex: bool,
+    /// A torus rebuilt from its NURB measures its generating interval signed (WR-408, #1112).
+    pub torus_signed_gen_curve_interval: bool,
+    /// A sheet sweep's open-profile wires are glued where the curves meet (WR-409, #1113).
+    pub sheet_sweep_joins_profile_wires: bool,
+    /// `SmFilletVertex::CalcSetBackVert` measures a corner setback from the vertex `GetStartVertex()` marks over the edge's own interval, not from `GetVertex()` over the curve's natural interval, so an edge whose primary edge use runs against its curve is not measured from its far end (WR-445, #1169).
+    pub fillet_setback_from_start_vertex: bool,
+    /// `SmBSplineSurface::CopyAndAddAnalytics` keeps an exact copy where the recognised analytic surface does not give the same points at the same parameters (7 x 7 grid), so a face split by `MakeEdgeInFaceWithVU` keeps trims that still lie on its edges (WR-450, #387; the fork's tangency-labs/smlib@276b509).
+    pub analytic_copy_keeps_parameterization: bool,
 }
 
 /// Options for [`Kernel::new`].
