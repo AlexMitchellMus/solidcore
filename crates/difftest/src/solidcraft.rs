@@ -1378,6 +1378,7 @@ fn enable_fix(k: &mut Kernel, name: &str) -> Result<(), String> {
         "cover_refuses_folded_continuation" => &mut k.fixes.cover_refuses_folded_continuation,
         "fillet_refuse_non_manifold_result" => &mut k.fixes.fillet_refuse_non_manifold_result,
         "cone_parallel_line_midpoint" => &mut k.fixes.cone_parallel_line_midpoint,
+        "analytic_copy_keeps_parameterization" => &mut k.fixes.analytic_copy_keeps_parameterization,
         _ => return Err(format!("unknown `fixes` entry `{name}`")),
     };
     *field = true;
