@@ -1283,7 +1283,7 @@ fn rust_query(k: &Kernel, s: &Surface, q: &QueryIn, o: &mut Vec<f64>) -> Result<
         }
         QueryIn::Knots { dir, ivl } => {
             let ivl = ivl.map(|[a, b]| Extent1d::from_min_max(a, b));
-            let r = param_code(dir).and_then(|p| s.knots(k, p, ivl.as_ref()));
+            let r = param_code(dir).and_then(|p| s.knots_with_nurb(k, p, ivl.as_ref()));
             if let Some((knots, mults)) = st(o, r)? {
                 o.push(knots.len() as f64);
                 o.extend_from_slice(&knots);

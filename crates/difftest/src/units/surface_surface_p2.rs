@@ -1423,7 +1423,7 @@ fn rust_surface_op(k: &Kernel, op: &OpIn, t: &This) -> Result<Run, HarnessError>
             record(|o| {
                 let ivl = ivl.map(|i| Extent1d::from_min_max(i[0], i[1]));
                 let (k, m) = match &s {
-                    Some(x) => x.knots(k, dir, ivl.as_ref())?,
+                    Some(x) => x.knots(dir, ivl.as_ref())?,
                     None => sp2::base_knots()?,
                 };
                 o.push(k.len() as f64);

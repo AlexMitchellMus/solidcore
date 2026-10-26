@@ -628,7 +628,7 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
         OpIn::Snap { uv, tol } => {
             let s = run()?;
             let mut o = Vec::new();
-            sub(&mut o, s.snap_to_knots(&k, p2(*uv), *tol), |o, p| {
+            sub(&mut o, s.snap_to_knots(p2(*uv), *tol), |o, p| {
                 o.extend([p.x, p.y]);
             })
             .map(|()| o)
@@ -737,7 +737,7 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
         OpIn::Seam { prev, curr, dom } => {
             let s = run()?;
             crossed_seam_or_pole(&k, &s, p2(*prev), p2(*curr), &dom_of(*dom))
-                .map(|c| vec![0.0, flag(c)])
+                .map(|crossed| vec![0.0, flag(crossed)])
         }
         OpIn::IsoLen { u, t } => {
             let s = run()?;

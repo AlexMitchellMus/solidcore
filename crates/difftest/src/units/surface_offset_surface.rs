@@ -740,7 +740,7 @@ fn run_step(
             let ivl = ivl.map(|[a, b]| Extent1d::from_min_max(a, b));
             push_res(
                 o,
-                s.knots(k, param_of(*param)?, ivl.as_ref()),
+                s.knots(param_of(*param)?, ivl.as_ref()),
                 |o, (knots, mults)| {
                     o.push(knots.len() as f64);
                     o.extend(knots);

@@ -307,7 +307,7 @@ pub(super) fn calculate_bounding_box(
     domain: &Extent2d,
     req: &BoundingBoxRequest<'_>,
 ) -> Result<BoundingBoxes> {
-    match surface.kind() {
+    match surface.kind_with_nurb(k)? {
         SurfaceKind::BSpline(b) => b.calculate_bounding_box(k, domain, req),
         // inherited from SmBSplineSurface, run for the derived surface (its IsKindOf
         // and virtual EvaluateNormal)
@@ -2595,7 +2595,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     ///
     /// `InvalidInput` when a continuity array is longer than the knot list (upstream
     /// reads past it); [`SolidError::Unported`] from `GetKnots`.
-    pub fn surface_continuity(&self, k: &Kernel, uv_domain: &Extent2d) -> Result<ContinuityType> {
+    pub fn surface_continuity(&self, uv_domain: &Extent2d) -> Result<ContinuityType> {
         // init return
         let mut ret = ContinuityType::CInfinity;
 
@@ -2604,7 +2604,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
 
         // fetch U knots and cached continuity array
         let mut knots: Vec<f64> = Vec::new();
-        if let Some((k, _)) = ignored(self.surface.knots(k, SurfParamType::U, None))? {
+        if let Some((k, _)) = ignored(self.surface.knots(SurfParamType::U, None))? {
             knots = k;
         }
         let u_conts = &self.u_continuities;
@@ -2625,7 +2625,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         }
 
         // fetch V knots and cached continuity array
-        if let Some((k, _)) = ignored(self.surface.knots(k, SurfParamType::V, None))? {
+        if let Some((k, _)) = ignored(self.surface.knots(SurfParamType::V, None))? {
             knots = k;
         }
         let v_conts = &self.v_continuities;

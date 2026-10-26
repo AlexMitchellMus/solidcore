@@ -757,7 +757,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         }
         OpIn::Knots { v_dir, ivl } => {
             let iv = ivl.map(|[x, y]| Extent1d::from_min_max(x, y));
-            let (k, m) = tri!(o, s.knots(&k, param(*v_dir), iv.as_ref()));
+            let (k, m) = tri!(o, s.knots(param(*v_dir), iv.as_ref()));
             o.push(0.0);
             o.push(k.len() as f64);
             o.extend_from_slice(&k);

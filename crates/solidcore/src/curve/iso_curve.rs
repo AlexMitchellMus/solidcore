@@ -345,13 +345,13 @@ impl IsoCurve {
     /// # Errors
     ///
     /// Those of [`BSplineSurface::knots`] (`SM_ERR` without NURB).
-    pub fn knots(&self, k: &Kernel, interval: Option<&Extent1d>) -> Result<(Vec<f64>, Vec<usize>)> {
+    pub fn knots(&self, interval: Option<&Extent1d>) -> Result<(Vec<f64>, Vec<usize>)> {
         let sp = if self.surf_param == SurfParamType::U {
             SurfParamType::V
         } else {
             SurfParamType::U
         };
-        self.surface.knots(k, sp, interval)
+        self.surface.knots(sp, interval)
     }
 
     /// Reads an iso curve from `db` (`ReadFromDB`): direction, iso parameter and flag,
@@ -515,7 +515,7 @@ mod tests {
         let c = IsoCurve::new(patch(), SurfParamType::U, 1.0, false, true);
         let i = c.natural_interval();
         assert_eq!((i.min(), i.max()), (-1.0, 3.0));
-        let (k, m) = c.knots(&Kernel::default(), None).expect("knots");
+        let (k, m) = c.knots(None).expect("knots");
         assert_eq!(k, vec![-1.0, 3.0]);
         assert_eq!(m, vec![2, 2]);
         let c = IsoCurve::new(patch(), SurfParamType::V, 1.0, false, true);

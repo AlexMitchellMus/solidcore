@@ -106,7 +106,7 @@ fn typed_iso_curve(
     value: f64,
     approx_tol: f64,
 ) -> Result<(BSplineCurve, Curve)> {
-    let typed = match surface.kind() {
+    let typed = match surface.kind_with_nurb(k)? {
         // (no override: the `SmSurface` body, whose approximation uses the tolerance)
         SurfaceKind::CurveBounded(_)
         | SurfaceKind::Step(_)
@@ -226,7 +226,7 @@ impl Surface {
         direction: SurfParamType,
         tolerance: f64,
     ) -> Result<Option<(Curve, Curve)>> {
-        let domain = self.natural_uv_domain();
+        let domain = self.natural_uv_domain_with_nurb(k)?;
         let (min, max) = match direction {
             SurfParamType::U => (domain.min().x, domain.max().x),
             SurfParamType::V => (domain.min().y, domain.max().y),
@@ -871,7 +871,7 @@ impl<'a, O: SolutionObject + 'a> CsiGlobalSolver<'a, '_, O> {
                 t_conts[1] = continuity;
             }
         }
-        let natural_domain = parent_surface.natural_uv_domain();
+        let natural_domain = parent_surface.natural_uv_domain_with_nurb(k)?;
         for (dir, leaf, parent, work, conts) in [
             (
                 SurfParamType::U,

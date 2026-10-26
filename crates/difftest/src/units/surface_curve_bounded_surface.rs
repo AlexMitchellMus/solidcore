@@ -800,7 +800,7 @@ fn rust_surface_op(k: &Kernel, op: &OpIn, this: &CbsIn) -> Result<Run, HarnessEr
             let v = Vec3::new(v[0], v[1], v[2]);
             let mut o = vec![0.0];
             let r = (|| -> solidcore::Result<()> {
-                o.push(st(s.knots(k, SurfParamType::U, None))?);
+                o.push(st(s.knots(SurfParamType::U, None))?);
                 o.push(flag(s.is_parallel_to_vector(k, v)?));
                 push_dom(&mut o, &s.max_analytic_domain(k)?);
                 o.push(st(s.copy(k))?);

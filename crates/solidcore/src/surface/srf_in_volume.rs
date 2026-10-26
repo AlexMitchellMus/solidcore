@@ -723,11 +723,10 @@ impl SrfInVolume {
     /// Those of the base surface's query.
     pub fn knots(
         &self,
-        k: &Kernel,
         param: SurfParamType,
         interval: Option<&Extent1d>,
     ) -> Result<(Vec<f64>, Vec<usize>)> {
-        self.surface.knots(k, param, interval)
+        self.surface.knots(param, interval)
     }
 
     // ---- evaluation -----------------------------------------------------------------
