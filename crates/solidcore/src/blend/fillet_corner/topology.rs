@@ -23,6 +23,8 @@
 //! vertex loop; the lookups have no effects), and its unused `GetEdges` read is
 //! omitted. There is no recursion.
 
+pub mod concave_nxn;
+
 use crate::blend::fillet_corner::p1::{
     check_face_complimentary_corner_concavity, face_by_two_edgeuses, test_g1_continuity,
 };
@@ -735,8 +737,12 @@ impl FilletCorner {
             solvers,
         } = env;
         let invalid = |reason: &'static str| SolidError::invalid_input(OP_NXN, reason);
-        if self.kind != FilletCornerKind::ConvexNByN {
-            return Err(invalid("requires a ConvexNByN corner"));
+        // SmFilletConcaveNxNCorner delegates its setback corners here.
+        if !matches!(
+            self.kind,
+            FilletCornerKind::ConvexNByN | FilletCornerKind::ConcaveNByN
+        ) {
+            return Err(invalid("requires a convex or concave NxN corner"));
         }
         // Determine if this is a setback corner
         let is_set_back = self.set_back_dist > self.approx_tol_3d * 100.0;

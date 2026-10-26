@@ -73,6 +73,7 @@ use crate::surface::surface::Surface;
 use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
 mod classification;
+mod concave_nxn;
 mod finish;
 mod original_merge;
 mod original_trim;
@@ -409,6 +410,88 @@ impl CornerSolverStore for SessionSolvers<'_> {
     }
     fn len(&self) -> usize {
         self.0.len()
+    }
+}
+
+/// `SmFilletVertex::CalcCornerVertGeom` over the live session's objects: dispatches an
+/// unprocessed corner vertex to its calculator by type. `depth` counts the mate
+/// vertices whose main vertex is being computed (bounded by
+/// [`crate::blend::fillet_geom::p3::MAX_MATE_DEPTH`]).
+#[allow(clippy::too_many_arguments)] // the session's borrowed object stores
+fn live_corner_vert_geom(
+    k: &Kernel,
+    target: &mut Brep,
+    pseudo: &mut FilletBrep,
+    solvers: &mut [Option<SolverObject>],
+    corners: &[FilletCorner],
+    extended_surfaces: &BTreeMap<FaceId, Surface>,
+    fv: VertexId,
+    depth: usize,
+) -> Result<()> {
+    let vertex = pseudo.fillet_vertex(fv)?;
+    if vertex.is_processed() {
+        return Ok(());
+    }
+    match vertex.fillet_vertex_type() {
+        FilletVertexType::OnVertex => pseudo.calc_vert_on_vert(fv, target),
+        FilletVertexType::RailXEdgeuse => {
+            let live = live_vertex_solvers(pseudo, solvers, fv)?;
+            pseudo.calc_rail_int_edgeuse_with_live_solvers(
+                k,
+                fv,
+                None,
+                CornerLookup::table(corners),
+                live,
+                target,
+            )
+        }
+        FilletVertexType::RailXRail => {
+            let live = live_vertex_solvers(pseudo, solvers, fv)?;
+            pseudo.calc_rail_int_rail_with_solver_ops(
+                k,
+                fv,
+                CornerLookup::table(corners),
+                live,
+                target,
+            )
+        }
+        FilletVertexType::FilletXFillet => pseudo.calc_fillet_int_fillet_with_context(
+            k,
+            fv,
+            CornerLookup::table(corners),
+            &SessionEdgeLookup {
+                solvers,
+                extended_surfaces,
+            },
+            target,
+        ),
+        FilletVertexType::FilletX2Fillets => pseudo.calc_fillet_int_2_fillets_with_context(
+            k,
+            fv,
+            CornerLookup::table(corners),
+            &SessionEdgeLookup {
+                solvers,
+                extended_surfaces,
+            },
+            target,
+        ),
+        FilletVertexType::Mate => concave_nxn::calc_mate_geom_live(
+            k,
+            target,
+            pseudo,
+            solvers,
+            corners,
+            extended_surfaces,
+            fv,
+            depth,
+        ),
+        _ => {
+            // UNPORTED(blend.fillet_executive_p1): retained solver-store dispatch for other corner vertex types.
+            Err(SolidError::unported(
+                "SmFilletVertex::CalcCornerVertGeom (live solver dispatch)",
+                "blend.fillet_executive_p1",
+            ))
+        }
     }
 }
 
@@ -2765,9 +2848,12 @@ impl SessionObjects<'_> {
             .ok_or_else(|| invalid("corner is not live"))?;
         if !matches!(
             corner.corner_type(),
-            FilletCornerType::NByOne | FilletCornerType::NByTwo | FilletCornerType::NByNConvex
+            FilletCornerType::NByOne
+                | FilletCornerType::NByTwo
+                | FilletCornerType::NByNConvex
+                | FilletCornerType::NByNConcave
         ) {
-            return Err(invalid("ordinary Nx1, Nx2 or convex NxN corner required"));
+            return Err(invalid("ordinary Nx1, Nx2 or NxN corner required"));
         }
         let mut context = (
             k,
@@ -2781,62 +2867,16 @@ impl SessionObjects<'_> {
             &mut context,
             |(_, _, pseudo, _, _, _), fv| Ok(pseudo.fillet_vertex(fv)?.is_processed()),
             |(k, target, pseudo, solvers, corners, extended_surfaces), fv| {
-                let vertex = pseudo.fillet_vertex(fv)?;
-                if vertex.is_processed() {
-                    return Ok(());
-                }
-                match vertex.fillet_vertex_type() {
-                    FilletVertexType::OnVertex => pseudo.calc_vert_on_vert(fv, target),
-                    FilletVertexType::RailXEdgeuse => {
-                        let live = live_vertex_solvers(pseudo, solvers, fv)?;
-                        pseudo.calc_rail_int_edgeuse_with_live_solvers(
-                            k,
-                            fv,
-                            None,
-                            CornerLookup::table(corners),
-                            live,
-                            target,
-                        )
-                    }
-                    FilletVertexType::RailXRail => {
-                        let live = live_vertex_solvers(pseudo, solvers, fv)?;
-                        pseudo.calc_rail_int_rail_with_solver_ops(
-                            k,
-                            fv,
-                            CornerLookup::table(corners),
-                            live,
-                            target,
-                        )
-                    }
-                    FilletVertexType::FilletXFillet => pseudo.calc_fillet_int_fillet_with_context(
-                        k,
-                        fv,
-                        CornerLookup::table(corners),
-                        &SessionEdgeLookup {
-                            solvers,
-                            extended_surfaces,
-                        },
-                        target,
-                    ),
-                    FilletVertexType::FilletX2Fillets => pseudo
-                        .calc_fillet_int_2_fillets_with_context(
-                            k,
-                            fv,
-                            CornerLookup::table(corners),
-                            &SessionEdgeLookup {
-                                solvers,
-                                extended_surfaces,
-                            },
-                            target,
-                        ),
-                    _ => {
-                        // UNPORTED(blend.fillet_executive_p1): retained solver-store dispatch for other corner vertex types.
-                        Err(SolidError::unported(
-                            "SmFilletVertex::CalcCornerVertGeom (live solver dispatch)",
-                            "blend.fillet_executive_p1",
-                        ))
-                    }
-                }
+                live_corner_vert_geom(
+                    k,
+                    target,
+                    pseudo,
+                    solvers,
+                    corners,
+                    extended_surfaces,
+                    fv,
+                    0,
+                )
             },
             |(_, target, pseudo, solvers, _, _), corner, processed| {
                 corner.adjust_vertex_law_intervals(
@@ -2873,6 +2913,9 @@ impl CornerVertexAccess<FilletObject> for SessionObjects<'_> {
             FilletCornerType::NByOne => self.make_nx1_corner_topology(k, id, executive),
             FilletCornerType::NByTwo => self.make_nx2_corner_topology(k, id, executive),
             FilletCornerType::NByNConvex => self.make_convex_nxn_corner_topology(k, id, executive),
+            FilletCornerType::NByNConcave => {
+                self.make_concave_nxn_corner_topology(k, id, executive)
+            }
             _ => {
                 // UNPORTED(blend.fillet_executive_p1): retained context for other concrete corners.
                 Err(SolidError::unported(
@@ -2985,7 +3028,10 @@ impl CornerVertexAccess<FilletObject> for SessionObjects<'_> {
         };
         if !matches!(
             self.corner_object(corner)?.corner_type(),
-            FilletCornerType::NByOne | FilletCornerType::NByTwo | FilletCornerType::NByNConvex
+            FilletCornerType::NByOne
+                | FilletCornerType::NByTwo
+                | FilletCornerType::NByNConvex
+                | FilletCornerType::NByNConcave
         ) {
             // UNPORTED(blend.fillet_executive_p1): retained context for other concrete corners.
             return Err(SolidError::unported(
