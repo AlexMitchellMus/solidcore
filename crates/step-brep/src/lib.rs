@@ -13,6 +13,7 @@ use solidcore::curve::line::{BoundedLineOptions, Line};
 use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::vector3d::{Point3, Vec3};
+use solidcore::heal::heal_data::p1::api_heal_brep;
 use solidcore::heal::stitch::p1::api_stitch_into_solid;
 use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_curve::{BSplineCurve, BSplineCurveForm, CanonicalData, KnotType};
@@ -321,6 +322,10 @@ pub fn build(body: &Body) -> Result<Brep, BuildError> {
     }
     drop(state);
     api_stitch_into_solid(&mut kernel, Some(&mut brep))?;
+    // The healer creates the UV trim curves and seam topology the display tessellator and
+    // mass properties rely on; without it every curved face is a trimmed-surface face with
+    // no UV boundary.
+    api_heal_brep(&mut kernel, Some(&mut brep))?;
     Ok(brep)
 }
 
