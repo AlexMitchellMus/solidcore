@@ -758,17 +758,10 @@ fn rust(input: &Inputs) -> Result<Output, HarnessError> {
         if let Some(out) = end_to_end::upstream_example(example)? {
             return Ok(out);
         }
-        // These fixture constructors are the actual missing API entrypoints, not
-        // geometric passes or a replacement for direct p3 parity.
+        // The one fixture whose API entry point (variable-radius law) is not ported.
         let symbol = match example {
-            // UNPORTED(blend.fillet_executive_p1): SmApiCircularFillet
-            0 => "SmApiCircularFillet",
-            // UNPORTED(blend.fillet_executive_p1): SmApiChamferFillet
-            1 => "SmApiChamferFillet",
             // UNPORTED(blend.fillet_executive_p1): SmApiVariableRadiusFillet
             4 => "SmApiVariableRadiusFillet",
-            // UNPORTED(blend.fillet_executive_p1): SmApiSetBevelCorners
-            5 | 6 => "SmApiSetBevelCorners",
             _ => return Err(HarnessError::new("unknown upstream fixture")),
         };
         return Ok(Output::deferred("blend.fillet_executive_p1", symbol));
