@@ -341,6 +341,22 @@ fn fsg_type(s: &FilletSolver) -> Result<FilletSurfaceGeneratorType> {
         .ok_or_else(|| invalid("no fillet surface generator"))
 }
 
+/// `sm_TurnIntoHalfPlane` (fork addition): turns `point` about the axis (through `origin`,
+/// unit direction `axis`) into the half-plane, bounded by the axis, through `target`. A
+/// point on the axis, or a target on it (within `tol`), stays.
+fn turn_into_half_plane(origin: Point3, axis: Vec3, target: Point3, tol: f64, point: &mut Point3) {
+    let p = *point - origin;
+    let t = target - origin;
+    let along = p.dot(axis);
+    let p_rad = p - axis * along;
+    let t_rad = t - axis * t.dot(axis);
+    let (p_len, t_len) = (p_rad.length(), t_rad.length());
+    if p_len < tol || t_len < tol {
+        return;
+    }
+    *point = origin + axis * along + t_rad * (p_len / t_len);
+}
+
 /// `rTsectPnts[0]` and `rTsectPnts[GetSize() - 1]`.
 fn first_last(tsects: &[TsectPnt]) -> Result<(&TsectPnt, &TsectPnt)> {
     let first = tsects.first().ok_or_else(|| invalid("no tsect points"))?;
@@ -831,6 +847,9 @@ impl FilletSolver {
     ///
     /// With the opt-in `Kernel::fixes.fillet_chamfer_cone_on_arc` (not upstream, WR-421) a
     /// linear generator is revolved too, into a cone.
+    /// With `Kernel::fixes.fillet_torus_center_on_axis` (WR-422), a section centred on the
+    /// arc's axis has its rail points turned into the half-planes through the edge's ends and
+    /// takes the edge's start for the nearest point.
     ///
     /// `SM_ERR` when the generator is not circular, the edge curve is not an arc, the
     /// radius is tiny or changes, or the nearest point on the edge is not unique; those
@@ -901,9 +920,30 @@ impl FilletSolver {
         // instead of the base surface, in order to handle extended surfaces.
         let s = ops.solver_mut();
         s.set_surfaces_to_zero_offset()?;
-        let p0 = eval_offset(k, s, 0, start_uv0)?; // sP0 = rail1 point
-        let p1 = eval_offset(k, s, 1, start_uv1)?; // sP1 = rail2 point
+        let mut p0 = eval_offset(k, s, 0, start_uv0)?; // sP0 = rail1 point
+        let mut p1 = eval_offset(k, s, 1, start_uv1)?; // sP1 = rail2 point
         s.reload_surface_offsets()?;
+
+        // `fixes.fillet_torus_center_on_axis` (WR-422): when the section's centre lies on
+        // the arc's axis the rail points carry no angle, so turn them into the half-planes
+        // through the edge's ends.
+        let ivl = edge::interval(b, e)?;
+        let unit_axis = ref_frame.z_axis().unitize()?;
+        let axis_pnt = ref_frame.origin();
+        let center_tol = ops.solver().approx_tol_3d;
+        let center_on_axis = k.fixes.fillet_torus_center_on_axis && {
+            let off = arc_center - axis_pnt;
+            (off - unit_axis * off.dot(unit_axis)).length() < center_tol
+        };
+        let edge_ends = if center_on_axis {
+            let (start, _) = curve_pv(k, &curve, ivl.min())?;
+            let (end, _) = curve_pv(k, &curve, ivl.max())?;
+            turn_into_half_plane(axis_pnt, unit_axis, start, center_tol, &mut p0);
+            turn_into_half_plane(axis_pnt, unit_axis, start, center_tol, &mut p1);
+            Some((start, end))
+        } else {
+            None
+        };
 
         // allocate the arc from the points [centerPoint, sP0, sP1] (a linear section: the
         // line from rail to rail)
@@ -921,21 +961,26 @@ impl FilletSolver {
         let dir = axis_of_revolution.cross(vec); // Start direction of rail curves
 
         // get circular to-be-filleted edge->curve point (pos,tang) nearest to arcCenter Point
-        let ivl = edge::interval(b, e)?;
-        let sols = curve.global_point_solve(
-            k,
-            &ivl,
-            SolverOperation::Minimize,
-            arc_center,
-            ANALYTIC_TOL,
-            SolutionRequested::Single,
-            &GlobalPointSolveOptions::<crate::topology::ObjectHandle>::default(),
-        )?;
-        if sols.len() != 1 {
-            return Err(sm_err());
-        }
-        let t_near = sols.get(0).ok_or_else(sm_err)?.start.param(0)?;
-        let (_, near_tan) = curve_pv(k, &curve, t_near)?;
+        // (with the centre on the axis every point is as near: the edge's start, whose
+        // half-plane the section was turned into)
+        let near_tan = if center_on_axis {
+            curve_pv(k, &curve, ivl.min())?.1
+        } else {
+            let sols = curve.global_point_solve(
+                k,
+                &ivl,
+                SolverOperation::Minimize,
+                arc_center,
+                ANALYTIC_TOL,
+                SolutionRequested::Single,
+                &GlobalPointSolveOptions::<crate::topology::ObjectHandle>::default(),
+            )?;
+            if sols.len() != 1 {
+                return Err(sm_err());
+            }
+            let t_near = sols.get(0).ok_or_else(sm_err)?.start.param(0)?;
+            curve_pv(k, &curve, t_near)?.1
+        };
 
         // when to-be-filleted edge tangent nearest sweep curve opposes initial sweep direction
         if near_tan.dot(dir) < 0.0 {
@@ -951,9 +996,13 @@ impl FilletSolver {
         let end_uv1 = t_last.uv_pos(SrfIndex::Second);
         let s = ops.solver_mut();
         s.set_surfaces_to_zero_offset()?;
-        let end_p0 = eval_offset(k, s, 0, end_uv0)?; // sEndP0 = rail1 point
-        let end_p1 = eval_offset(k, s, 1, end_uv1)?; // sEndP1 = rail2 point
+        let mut end_p0 = eval_offset(k, s, 0, end_uv0)?; // sEndP0 = rail1 point
+        let mut end_p1 = eval_offset(k, s, 1, end_uv1)?; // sEndP1 = rail2 point
         s.reload_surface_offsets()?;
+        if let Some((_, end)) = edge_ends {
+            turn_into_half_plane(axis_pnt, unit_axis, end, center_tol, &mut end_p0);
+            turn_into_half_plane(axis_pnt, unit_axis, end, center_tol, &mut end_p1);
+        }
 
         let mut end_vec = end_p0 - origin;
 
