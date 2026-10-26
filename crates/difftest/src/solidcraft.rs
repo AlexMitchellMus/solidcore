@@ -807,11 +807,35 @@ fn solid(e: &SolidError) -> Run {
     }
 }
 
-fn take(bodies: &BTreeMap<String, Brep>, id: &str) -> Result<Brep, Run> {
-    bodies
-        .get(id)
-        .cloned()
-        .ok_or_else(|| Run::Error(format!("no body `{id}`")))
+/// Hands operand `id` to an operation that consumes it, as `SmApiBoolean*` consumes
+/// both of its B-reps. The body itself is moved out when nothing reads it afterwards
+/// (`reused` false); a body a later step (or this step's other operand) still reads is
+/// handed over as an `SmApiBrepCopy` ([`copy`], in key domain `domain`). A plain
+/// [`Clone`] would not do: the copy constructor resets every geometry owner, so the
+/// operation's B-rep queries (point classification by ray fire) find no curve or surface.
+fn take(
+    k: &mut Kernel,
+    bodies: &mut BTreeMap<String, Brep>,
+    id: &str,
+    reused: bool,
+    domain: u64,
+) -> Result<Brep, Run> {
+    if reused {
+        let b = bodies
+            .get(id)
+            .ok_or_else(|| Run::Error(format!("no body `{id}`")))?;
+        copy(k, b, domain)
+    } else {
+        bodies
+            .remove(id)
+            .ok_or_else(|| Run::Error(format!("no body `{id}`")))
+    }
+}
+
+/// Key domain of the copies [`take`] makes for step `n`'s operands, above any pattern
+/// copy's (those count from 1).
+fn operand_domain(n: usize, operand: u64) -> u64 {
+    1_000 + 2 * n as u64 + operand
 }
 
 /// `SmApiBrepCopy(b)`: a copy that owns its geometry, so a later `SmApiTranslate`
@@ -923,7 +947,26 @@ fn profile_curves(
     Ok(out)
 }
 
-fn step_rust(k: &mut Kernel, bodies: &mut BTreeMap<String, Brep>, step: &Step) -> Result<(), Run> {
+/// Runs step `n` of `steps` on `bodies`.
+fn step_rust(
+    k: &mut Kernel,
+    bodies: &mut BTreeMap<String, Brep>,
+    steps: &[Step],
+    n: usize,
+) -> Result<(), Run> {
+    let step = steps
+        .get(n)
+        .ok_or_else(|| Run::Error(format!("no step {}", n + 1)))?;
+    let later = steps.get(n + 1..).unwrap_or_default();
+    // Whether operand `id` is read again: by a later step, or as this step's other
+    // operand (`a` and `b` the same body).
+    let reused =
+        |id: &str, other: &str| id == other || later.iter().any(|s| s.inputs().contains(&id));
+    let operands = |k: &mut Kernel, bodies: &mut BTreeMap<String, Brep>, a: &str, b: &str| {
+        let first = take(k, bodies, a, reused(a, b), operand_domain(n, 0))?;
+        let second = take(k, bodies, b, reused(b, ""), operand_domain(n, 1))?;
+        Ok::<_, Run>((first, second))
+    };
     let body = match step {
         Step::Box { origin, size, .. } => {
             let [x, y, z] = *size;
@@ -940,27 +983,29 @@ fn step_rust(k: &mut Kernel, bodies: &mut BTreeMap<String, Brep>, step: &Step) -
             ..
         } => cylinder(k, *origin, *axis, *radius, *height)?,
         Step::Union { a, b, .. } => {
-            boolean::boolean_union(k, take(bodies, a)?, take(bodies, b)?).map_err(|e| solid(&e))?
+            let (a, b) = operands(k, bodies, a, b)?;
+            boolean::boolean_union(k, a, b).map_err(|e| solid(&e))?
         }
         Step::Intersection { a, b, .. } => {
-            boolean::boolean_intersection(k, take(bodies, a)?, take(bodies, b)?)
-                .map_err(|e| solid(&e))?
+            let (a, b) = operands(k, bodies, a, b)?;
+            boolean::boolean_intersection(k, a, b).map_err(|e| solid(&e))?
         }
         Step::Difference {
             a,
             b,
             pattern: None,
             ..
-        } => boolean::boolean_difference(k, take(bodies, a)?, take(bodies, b)?)
-            .map_err(|e| solid(&e))?,
+        } => {
+            let (a, b) = operands(k, bodies, a, b)?;
+            boolean::boolean_difference(k, a, b).map_err(|e| solid(&e))?
+        }
         Step::Difference {
             a,
             b,
             pattern: Some(p),
             ..
         } => {
-            let mut target = take(bodies, a)?;
-            let tool_source = take(bodies, b)?;
+            let (mut target, tool_source) = operands(k, bodies, a, b)?;
             let mut copies = 0;
             let [p0, p1] = p.pitch;
             for j in 0..p.count[1] {
@@ -1251,7 +1296,7 @@ pub fn run_rust(case: &Case) -> Run {
     }
     let mut bodies = BTreeMap::new();
     for (n, step) in case.steps.iter().enumerate() {
-        match step_rust(&mut k, &mut bodies, step) {
+        match step_rust(&mut k, &mut bodies, &case.steps, n) {
             Ok(()) => {}
             // Name the failing step (1-based) and the body it writes.
             Err(Run::Error(msg)) => {
