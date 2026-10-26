@@ -332,7 +332,11 @@ the pinned commit (only the SMLib/SM_API sources the harness builds), runs
 issue, `usd-brep <tag> released: N parked cases now agree, adopt?` (or `... none
 changed`). `--run-parked` runs only the parked cases: one that still disagrees is
 reported as `cpp_defect` (with its mismatches), one that agrees as an ordinary `pass`.
-`scripts/ci/parked_upstream.py` selects the units and writes the issue.
+`scripts/ci/parked_upstream.py` selects the units and writes the issue. Upstream's
+unpinned HEAD runs only in the `run-parked` job, which has a read-only token (credentials
+not kept in the checkout) and no sccache or rust-cache; its one cache, the C++ build, uses
+a `parked-upstream-*` key that main CI never restores. A separate `report` job, the only
+one with `issues: write`, reads the uploaded reports and runs nothing else.
 
 ## Regression gate (`--baseline`, value share)
 
