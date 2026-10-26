@@ -70,8 +70,8 @@ use crate::blend::fillet_geom::p3::SplitCorners;
 use crate::blend::fillet_geom::p4::{set_edge_curve, set_vertex_point};
 use crate::blend::fillet_solver::p1::{
     check_edge_curve_domains, test_manifold_tangent_rollover, test_side_edge_convexity, FilStatus,
-    FilletSolver, FilletSolverOps, FilletSphereSolveEnfo, FilletSurfaceGeneratorType,
-    RailRailIntersectEnfo, RailUvCurveIntersectEnfo,
+    FilletSolver, FilletSolverOps, FilletSphereSolveEnfo, FilletSurfaceGenerator,
+    FilletSurfaceGeneratorType, RailRailIntersectEnfo, RailUvCurveIntersectEnfo,
 };
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::Curve;
@@ -331,6 +331,14 @@ fn is_circular_fsg(s: &FilletSolver) -> Result<bool> {
         .as_ref()
         .ok_or_else(|| invalid("no fillet surface generator"))?;
     Ok(fsg.fillet_surface_generator_type() == FilletSurfaceGeneratorType::Circular)
+}
+
+/// The solver's surface generator type.
+fn fsg_type(s: &FilletSolver) -> Result<FilletSurfaceGeneratorType> {
+    s.fsg
+        .as_ref()
+        .map(FilletSurfaceGenerator::fillet_surface_generator_type)
+        .ok_or_else(|| invalid("no fillet surface generator"))
 }
 
 /// `rTsectPnts[0]` and `rTsectPnts[GetSize() - 1]`.
@@ -821,6 +829,9 @@ impl FilletSolver {
     ///
     /// # Errors
     ///
+    /// With the opt-in `Kernel::fixes.fillet_chamfer_cone_on_arc` (not upstream, WR-421) a
+    /// linear generator is revolved too, into a cone.
+    ///
     /// `SM_ERR` when the generator is not circular, the edge curve is not an arc, the
     /// radius is tiny or changes, or the nearest point on the edge is not unique; those
     /// of `SetupOffsetValues`, the evaluations and the constructors;
@@ -844,9 +855,13 @@ impl FilletSolver {
         // Check for Edge's curve domain being bigger than the Edge domain.
         let curve = checked_edge_curve(k, s, b, e)?;
 
-        // no work - not a circular cross-section on a circular arc
+        // no work - not a circular cross-section on a circular arc (with
+        // `fixes.fillet_chamfer_cone_on_arc`, or a linear one: its revolution is a cone)
         // Side effect: get circular arc RefFrame, Radius, StartAng, and EndAng.
-        if !is_circular_fsg(s)? {
+        let section = fsg_type(s)?;
+        let linear_section =
+            k.fixes.fillet_chamfer_cone_on_arc && section == FilletSurfaceGeneratorType::Linear;
+        if section != FilletSurfaceGeneratorType::Circular && !linear_section {
             return Err(sm_err());
         }
         let Some((ref_frame, _arc_radius, start_ang, _end_ang)) =
@@ -890,9 +905,13 @@ impl FilletSolver {
         let p1 = eval_offset(k, s, 1, start_uv1)?; // sP1 = rail2 point
         s.reload_surface_offsets()?;
 
-        // allocate the arc from the points [centerPoint, sP0, sP1]
-        let mut arc =
-            BSplineCurve::create_arc_from_points(arc_center, p0, p1, NurbCircleParam::Quadratic)?;
+        // allocate the arc from the points [centerPoint, sP0, sP1] (a linear section: the
+        // line from rail to rail)
+        let mut arc = if linear_section {
+            BSplineCurve::create_line_segment(3, p0, p1)?
+        } else {
+            BSplineCurve::create_arc_from_points(arc_center, p0, p1, NurbCircleParam::Quadratic)?
+        };
 
         // Determine if we need to reverse the axis of revolution
         let mut vec = p0 - origin;
