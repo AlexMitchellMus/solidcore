@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "name": "analytic_torus_iso_boundary",
+      "upstream_ref": "source/SMLib/src/SmSurface.cpp:21745 IntersectSurfaceBoundaries of an SmPlane with a canonical SmTorus (SmTorus::CreateCanonical, source/SMLib/src/SmTorus.cpp:172): SmTorus::CreateIsoParametricCurve builds the typed minor circle. One u-min minor circle inside the plane's square is the source prediction; the native curve count is not measured and nothing here fixes it.",
+      "inputs": {
+        "op": 1,
+        "a": {
+          "kind": 1,
+          "net": [
+            [0.0, 0.5, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+          ],
+          "domain": [0.0, 0.0, 1.0, 1.0]
+        },
+        "b": {
+          "kind": 2,
+          "net": [
+            [0.2, 0.5, 0.5],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.3, 0.2, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+          ],
+          "domain": [0.0, 0.0, 1.0, 1.0]
+        },
+        "tol": 1e-6,
+        "guesses": [0.0, 0.0, 0.0, 0.0],
+        "boundary_testing": false
+      }
+    }
+  ]
+}
