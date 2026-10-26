@@ -68,6 +68,50 @@ fn absent<T>() -> Result<T> {
     Err(invalid("test handle has no geometry"))
 }
 impl ExecutiveAccess<Handle> for Access {
+    fn solver_base(&self, _: Handle) -> Result<&crate::blend::fillet_solver::p1::FilletSolver> {
+        Err(SolidError::invalid_input(
+            "test::executive_access",
+            "no retained solver",
+        ))
+    }
+    fn solver_base_mut(
+        &mut self,
+        _: Handle,
+    ) -> Result<&mut crate::blend::fillet_solver::p1::FilletSolver> {
+        Err(SolidError::invalid_input(
+            "test::executive_access",
+            "no retained solver",
+        ))
+    }
+    fn solver_has_surface(&self, _: Handle, _: usize) -> Result<bool> {
+        Err(SolidError::invalid_input(
+            "test::executive_access",
+            "no retained solver",
+        ))
+    }
+    fn edge_g1_knots(&mut self, _: &Kernel, _: Handle) -> Result<Vec<f64>> {
+        Err(SolidError::invalid_input(
+            "test::executive_access",
+            "no retained solver",
+        ))
+    }
+    fn edgeuse_vertex(&self, _: Handle) -> Result<Option<Handle>> {
+        Err(SolidError::invalid_input(
+            "test::executive_access",
+            "no retained solver",
+        ))
+    }
+    fn reinitialize_corner_edges(
+        &mut self,
+        _: &mut Kernel,
+        _: Handle,
+        _: &mut FilletExecutive<Handle>,
+    ) -> Result<()> {
+        absent()
+    }
+    fn corner_tangent_solver(&self, _: Handle, _: Handle) -> Result<Option<Handle>> {
+        absent()
+    }
     fn make_corner_topology(
         &mut self,
         _: &mut Kernel,
@@ -693,6 +737,7 @@ fn state() -> FilletExecutive<Handle> {
         law_sequence_edges: vec![],
         pseudo_brep: None,
         surface_generators: vec![],
+        filleted_vertices: Vec::new(),
         vertex_corner_map: BTreeMap::new(),
         edgeuse_solver_map: BTreeMap::new(),
         self_intersection_handler: None,
@@ -1382,4 +1427,28 @@ fn do_filleting_alone_does_not_check_the_result() {
     let mut k = Kernel::default();
     executive.do_filleting(&mut k, &mut access, None).unwrap();
     assert_eq!(executive.error.code, 0);
+}
+
+#[test]
+fn tag_merge_component_retains_allocated_markers_when_merge_fails() {
+    let mut executive = state();
+    executive.topo_edges.push(Some(Handle(20)));
+    let mut access = Access {
+        mapped_edges: true,
+        merge_error: Some(failure()),
+        ..Access::default()
+    };
+    let mut attributes = Vec::new();
+    let result = executive.tag_and_merge_fillet_faces(
+        &mut Kernel::default(),
+        &mut access,
+        Handle(0),
+        Handle(1),
+        &mut attributes,
+    );
+    assert!(result.is_err());
+    assert_eq!(attributes, [Handle(30)]);
+    assert_eq!(access.attributes.get(&Handle(30)), Some(&vec![Handle(11)]));
+    assert_eq!(access.events, ["new_attr", "merge"]);
+    assert_eq!(executive.topo_edges, [Some(Handle(20))]);
 }

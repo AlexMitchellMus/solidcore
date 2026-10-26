@@ -39,8 +39,10 @@
 //! - **NURB.** As in `surface::cone::p1`, the cone is expected to have its NURB
 //!   ([`Cone::make_nurb`]); upstream makes a missing one inside `const` queries.
 //!   `Notify` (attribute copying in the recogniser) has no equivalent.
-//! - **Cylinder rebuild (#713).** An `SmCylinder` keeps a zero semi-angle. Its
-//!   recovered end radii must agree within `EFF_ZERO_SQRT * (1 + bottom_radius)`;
+//! - **Cylinder rebuild (#713, WR-385).** With the opt-in
+//!   `Kernel::fixes.cylinder_rebuild_mean_radius`, an `SmCylinder` keeps a zero
+//!   semi-angle. Its recovered end radii must agree within
+//!   `EFF_ZERO_SQRT * (1 + bottom_radius)`;
 //!   their mean becomes its radius. A larger taper returns `SM_ERR` before editing
 //!   the analytic state. The pinned C++ instead assigns a nonzero semi-angle to
 //!   cylinders. Ordinary `SmCone` objects retain upstream's radius/angle rules.
@@ -694,17 +696,19 @@ impl Cone {
     /// (`RebuildSTEPFromNURBParameters`): the circles at both ends of the linear
     /// direction (tested as [`Self::is_nurb_surface_cone`] does with the scale `1000`,
     /// the corner points evaluated on the cone, without the knot and middle circle
-    /// tests) give the semi-angle (kept for equal radii on cones), base radius,
+    /// tests) give the semi-angle (kept for equal radii by default), base radius,
     /// inside-out flag, placement (the end circle's frame), STEP domain and a new
     /// generator line over the NURB's linear interval; the polar converter is rebuilt
     /// before the generator is replaced.
-    /// Cylinders require end radii equal within `EFF_ZERO_SQRT * (1 + bottom_radius)`;
-    /// they use the mean radius and an exactly zero semi-angle.
+    /// With `k.fixes.cylinder_rebuild_mean_radius`, cylinders require end radii
+    /// equal within `EFF_ZERO_SQRT * (1 + bottom_radius)`; they use the mean radius
+    /// and an exactly zero semi-angle.
     ///
     /// # Errors
     ///
-    /// `SM_ERR` when the NURB is no longer a cone, or a cylinder's radii differ
-    /// beyond the reconstruction tolerance; those of the iso curves.
+    /// `SM_ERR` when the NURB is no longer a cone, or, with the fix enabled, a
+    /// cylinder's radii differ beyond the reconstruction tolerance; those of the
+    /// iso curves.
     pub fn rebuild_step_from_nurb_parameters(&mut self, k: &Kernel) -> Result<()> {
         // check m_pNurb - a degree 2 rational surface in at least 1 direction
         let deg_u = self.rev.base.degree(SurfParamType::U);
@@ -802,18 +806,24 @@ impl Cone {
         // (upstream also computes the STEP Y axis from the top frame's X axis here;
         // it is unused)
 
-        // A cylinder's class must survive roundoff when recovering its end circles
-        // from the NURB (#713). Larger edits no longer represent that analytic type.
-        if self.is_cylinder_class() {
-            if (bot.radius - top.radius).abs() > EFF_ZERO_SQRT * (1.0 + bot.radius) {
+        // Not upstream (WR-385, tangency-labs/solidcore#713): with the opt-in, an
+        // SmCylinder's radii within SM_EFF_ZERO_SQRT * (1 + r) are its one radius (their
+        // mean); further apart, the NURB is no longer a cylinder
+        if self.cylinder && k.fixes.cylinder_rebuild_mean_radius {
+            if (bot.radius - top.radius).abs() < EFF_ZERO_SQRT * (1.0 + bot.radius) {
+                let mean = 0.5 * (bot.radius + top.radius);
+                bot.radius = mean;
+                top.radius = mean;
+                // Equal radii skip the angle update below. Clear any angle left
+                // by a previous rebuild under the pinned rule, too (#713).
+                self.semi_angle_deg = 0.0;
+            } else {
                 return Err(SolidError::sm_err(OP_REBUILD));
             }
-            let radius = (bot.radius + top.radius) / 2.0;
-            bot.radius = radius;
-            top.radius = radius;
-            self.semi_angle_deg = 0.0;
-        } else if (bot.radius - top.radius).abs() < EFF_ZERO * (1.0 + bot.radius) {
-            // Keep upstream's stricter equality test for ordinary cones.
+        }
+
+        // when top and bot radius values are nearly equal - make them exactly equal
+        if (bot.radius - top.radius).abs() < EFF_ZERO * (1.0 + bot.radius) {
             top.radius = bot.radius;
         }
 
@@ -1258,7 +1268,8 @@ mod tests {
 
     #[test]
     fn rebuild_cylinder_roundoff_preserves_zero_semi_angle() {
-        let k = kernel();
+        let mut k = kernel();
+        k.fixes.cylinder_rebuild_mean_radius = true;
         // The radii recovered in issue #713, plus both sides of the rounding
         // allowance at different model scales and in both parameter directions.
         for (radius, top) in [(9.0000000000985, 9.0000000000757)].into_iter().chain(
@@ -1282,7 +1293,8 @@ mod tests {
 
     #[test]
     fn rebuild_cylinder_rejects_a_taper_before_changing_analytic_state() {
-        let k = kernel();
+        let mut k = kernel();
+        k.fixes.cylinder_rebuild_mean_radius = true;
         for radius in [0.009, 9.0, 90_000.0] {
             for sign in [-2.0, 2.0] {
                 for swap in [false, true] {
@@ -1322,16 +1334,23 @@ mod tests {
             );
             c.make_nurb(&k).unwrap();
             assert!(!c.is_cylinder_class());
+            let mut fixed_k = kernel();
+            fixed_k.fixes.cylinder_rebuild_mean_radius = true;
+            let mut fixed = c.clone();
             c.rebuild_step_from_nurb_parameters(&k).unwrap();
+            fixed.rebuild_step_from_nurb_parameters(&fixed_k).unwrap();
             let expected = (top - radius).atan2(3.0) * 180.0 / PI;
             assert!((c.semi_angle_deg() - expected).abs() < 1e-12);
             assert_ne!(c.semi_angle_deg(), 0.0);
+            assert_eq!(fixed.semi_angle_deg(), c.semi_angle_deg());
+            assert_eq!(fixed.base_radius(), c.base_radius());
         }
     }
 
     #[test]
     fn rebuild_cylinder_small_arc_clears_a_stale_semi_angle() {
-        let k = kernel();
+        let mut k = kernel();
+        k.fixes.cylinder_rebuild_mean_radius = true;
         for swap in [false, true] {
             for inside in [false, true] {
                 let mut c = Cone::new_cylinder_bounded(
@@ -1350,12 +1369,48 @@ mod tests {
                 // An earlier buggy rebuild can leave this angle even after the
                 // NURB is restored to an exact cylinder. Equal radii must reset it.
                 c.semi_angle_deg = -4.3550699142343645e-10;
+                let mut pinned = c.clone();
+                pinned.rebuild_step_from_nurb_parameters(&kernel()).unwrap();
+                assert_eq!(pinned.semi_angle_deg(), c.semi_angle_deg());
                 c.rebuild_step_from_nurb_parameters(&k).unwrap();
                 assert_eq!(c.semi_angle_deg(), 0.0);
                 assert!((c.base_radius() - 9.0).abs() < 1e-8);
                 assert_eq!(c.bot_radius(), c.top_radius());
             }
         }
+    }
+
+    /// tangency-labs/solidcore#713 (WR-385): a cylinder whose NURB radii differ by
+    /// 2.25e-11 (rounding, as after `SwapUV`) gets a semi-angle upstream, which its own
+    /// check forbids; with the opt-in the radii are its one radius.
+    #[test]
+    fn issue_713_cylinder_rebuild_keeps_zero_semi_angle() {
+        let mut k = kernel();
+        let make = |k: &Kernel| {
+            let mut c = Cone::create_canonical_cylinder(k, &Axis2Placement::IDENTITY, 9.0).unwrap();
+            let linear_u = c.rev.base.degree(SurfParamType::U) == 1;
+            let nurb = c.rev.base.nurb.as_mut().unwrap();
+            let (n, m) = (nurb.n(), nurb.m());
+            for i in 0..=n {
+                for j in 0..=m {
+                    if (linear_u && i == n) || (!linear_u && j == m) {
+                        let p = nurb.cpt_mut(i, j).unwrap();
+                        p.x *= 1.0 + 2.5e-12;
+                        p.y *= 1.0 + 2.5e-12;
+                    }
+                }
+            }
+            c
+        };
+        let mut up = make(&k);
+        up.rebuild_step_from_nurb_parameters(&k).unwrap();
+        assert!(up.semi_angle_deg() != 0.0);
+
+        k.fixes.cylinder_rebuild_mean_radius = true;
+        let mut fixed = make(&k);
+        fixed.rebuild_step_from_nurb_parameters(&k).unwrap();
+        assert_eq!(fixed.semi_angle_deg(), 0.0);
+        assert!((fixed.base_radius() - 9.0).abs() < 1e-9);
     }
 
     #[test]

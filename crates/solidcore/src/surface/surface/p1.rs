@@ -1005,7 +1005,7 @@ fn trim_srf_cache_tree<O: Copy + PartialEq>(
 /// surface's [`TrimSrfCache`] with the [`cache_tolerances`], its tree built unless
 /// the context is doing a Boolean operation (then [`SurfaceCache::get_tree`] builds
 /// it on first use) or the surface's cache slot says upstream reuses a cache whose
-/// tree is not built ([`Surface::cache_tree_state`]; see [`trim_srf_cache_tree`]).
+/// tree is not built ([`Surface::cache_tree_state`]; see `trim_srf_cache_tree`).
 ///
 /// # Errors
 ///
@@ -1618,6 +1618,54 @@ impl Surface {
         }
     }
 
+    /// [`Surface::evaluate_simple`] with first derivatives (`1, 1`) into the caller's
+    /// 2x2 block `d`: the entries the evaluation has are written, the others keep
+    /// their values. The B-spline based kinds evaluate without a heap allocation per
+    /// call
+    /// ([`crate::nurbs::b_spline_surface::BSplineSurface::evaluate_simple_first_into`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::evaluate_simple`].
+    pub fn evaluate_simple_first_into(
+        &self,
+        k: &Kernel,
+        uv: Point2,
+        flags: EvaluateFlags,
+        d: &mut [[Vec3; 2]; 2],
+    ) -> Result<()> {
+        let base = match self.kind() {
+            SurfaceKind::BSpline(s) => Some(s),
+            SurfaceKind::Cone(s) => Some(s.rev().base()),
+            SurfaceKind::SurfOfRevolution(s) => Some(s.base()),
+            SurfaceKind::SurfOfExtrusion(s) => Some(s.base()),
+            SurfaceKind::Sphere(s) => Some(s.base().base()),
+            SurfaceKind::Torus(s) => Some(s.base().base()),
+            SurfaceKind::Plane(_)
+            | SurfaceKind::CurveBounded(_)
+            | SurfaceKind::OffsetSurface(_)
+            | SurfaceKind::SrfInVolume(_)
+            | SurfaceKind::Step(_) => None,
+        };
+        if let Some(b) = base {
+            self.check_evaluation_copy_depth(0)?;
+            return b.evaluate_simple_first_into(
+                uv,
+                flags.u_side == Side::Left,
+                flags.v_side == Side::Left,
+                flags.only_upper_half,
+                d,
+            );
+        }
+        let r = self.evaluate_simple(k, uv, 1, 1, flags)?;
+        for (row, src) in d.iter_mut().zip(&r) {
+            for (slot, v) in row.iter_mut().zip(src) {
+                *slot = *v;
+            }
+        }
+        Ok(())
+    }
+
     /// The UV direction that the tangent plane maps onto `vec` (its projection) at
     /// `uv` (`ComputeParamDirection`; not unitised). Outside the domain the point is
     /// clamped for the check unless out-of-bounds evaluation is enabled, but the
@@ -2207,11 +2255,37 @@ impl Surface {
         approx_tol_3d: Option<f64>,
         ang_tol_rad: Option<f64>,
     ) -> Result<(Vec<Curve>, Vec<Curve>)> {
+        let mut cache = get_surface_cache::<SilhouetteObject>(k, self, None)?;
+        self.create_silhouette_curves_with_cache(
+            k,
+            &mut cache,
+            uv_domain,
+            eye_point_or_view_vector,
+            perspective,
+            approx_tol_3d,
+            ang_tol_rad,
+        )
+    }
+
+    /// [`Surface::create_silhouette_curves`] using an already-resolved surface cache
+    /// (`smsurf_GetSurfaceCache(this)` in callers holding the owning face's cache).
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::create_silhouette_curves`].
+    pub fn create_silhouette_curves_with_cache<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        cache: &mut SurfaceCache<O>,
+        uv_domain: &Extent2d,
+        eye_point_or_view_vector: Point3,
+        perspective: bool,
+        approx_tol_3d: Option<f64>,
+        ang_tol_rad: Option<f64>,
+    ) -> Result<(Vec<Curve>, Vec<Curve>)> {
         const OP: &str = "surface::surface::p1::create_silhouette_curves";
 
         // test to see if this surface has color: not modelled (see the doc comment)
-
-        let mut cache = get_surface_cache::<SilhouetteObject>(k, self, None)?;
 
         // Check to make sure internal surface continuities are better then C0 (the
         // check only signals upstream)
@@ -2225,7 +2299,7 @@ impl Surface {
                 return Err(e);
             }
         }
-        let traced = silhouette.do_trace(k, &mut cache, approx_tol_3d, ang_tol_rad)?;
+        let traced = silhouette.do_trace(k, cache, approx_tol_3d, ang_tol_rad)?;
         let mut curves_3d = traced.curves_3d;
         let mut curves_uv = traced.uv_curves;
 
@@ -3488,6 +3562,10 @@ pub struct CsiGlobalSolver<'t, 's, O> {
     pub interval: Extent1d,
     /// `m_crUVDomain`.
     pub uv_domain: Extent2d,
+    /// The handles and parameter domains of the solve's curve and surface, which the
+    /// solutions name (`IdenticalSolutions` reads them through upstream's objects);
+    /// `None` reads them from the handles themselves.
+    pub operands: Option<SolveOperands<O>>,
 }
 
 impl<'t, 's, O: SolutionObject> CsiGlobalSolver<'t, 's, O> {
@@ -3512,6 +3590,7 @@ impl<'t, 's, O: SolutionObject> CsiGlobalSolver<'t, 's, O> {
             found_coincidence,
             interval,
             uv_domain,
+            operands: None,
         }
     }
 }

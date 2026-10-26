@@ -12,7 +12,7 @@
 //! | [`build_nlib_curve`]                                  | `sm_BuildNlibCurve` (static)                     |
 //! | [`create_nlib_curve`]                                 | `sm_CreateNlibCurve` (static)                    |
 //! | [`create_nlib_surface`]                               | `sm_CreateNlibSurface` (static)                  |
-//! | [`BSplineSurface::approximate_offset_surface`], [`OffsetParamType`] | `ApproximateOffsetSurface`         |
+//! | [`BSplineSurface::approximate_offset_surface`], [`BSplineSurface::approximate_offset_surface_with`], [`OffsetParamType`] | `ApproximateOffsetSurface` |
 //! | [`create_non_rational_curve`]                         | `sm_CreateNonRationalCurve` (static)             |
 //! | [`create_coons_srf`], [`CoonsWarning`]                | `sm_CreateCoonsSrf` (static)                     |
 //! | [`BSplineSurface::create_coons_patch`]                | `CreateCoonsPatch`                               |
@@ -30,7 +30,7 @@
 //! | [`check_trim_boundaries`]                             | `sm_CheckTrimBoundaries` (static)                |
 //! | [`BSplineSurface::expand_boundary_span`]              | `ExpandBoundarySpan`                             |
 //! | [`check_zero_surface_derivs`]                         | `sm_check_zero_surface_derivs` (static)          |
-//! | [`BSplineSurface::evaluate_simple`]                   | `EvaluateSimple`                                 |
+//! | [`BSplineSurface::evaluate_simple`], [`BSplineSurface::evaluate_simple_first_into`] | `EvaluateSimple` |
 //! | [`BSplineSurface::evaluate_point`]                    | `EvaluatePoint`                                  |
 //!
 //! The other functions of the file (`CreateSkinnedSurface`, `CreateCornerBlend`,
@@ -38,6 +38,9 @@
 //! other units.
 //!
 //! Deviations:
+//! - `approximate_offset_surface_with` exposes the opt-in corrections of
+//!   [`crate::nurbs::srf_offset::OffsetOptions`] for issue #471; the original entry
+//!   point retains SMLib's behavior.
 //! - **Memory and contexts.** `SmNLibStackHandler`, the `NL_STACKS` arguments and the
 //!   `SmContext` arguments only manage memory and are dropped; new surfaces and curves
 //!   are return values (upstream out-params), surface lists are `Vec`s.
@@ -241,20 +244,24 @@ struct DroppedCurves {
 /// with the surface's owner) for a plane, the base body
 /// ([`crate::surface::surface::Surface::drop_curve_base`]) otherwise. The surface is
 /// the caller's (a face's surface keeps its owner).
-fn drop_curve(
+fn drop_curve<O: crate::geom::solution_array::SolutionObject>(
     k: &Kernel,
     srf: &crate::surface::surface::Surface,
     domain: &Extent2d,
     curve: &BSplineCurve,
     interval: &Extent1d,
     approx_tol: f64,
+    context: Option<crate::intersect::surface_drop_lib::p3::DropSolveContext<'_, O>>,
 ) -> Result<DroppedCurves> {
     use crate::curve::curve::{Curve as AnyCurve, CurveKind};
 
     let curve = AnyCurve::from(curve.clone());
-    let out = srf.drop_curve::<crate::surface::surface::p4::NoObject>(
-        k, domain, &curve, interval, approx_tol, true, None, true,
-    )?;
+    let out = match context {
+        Some(context) => srf.drop_curve_with_context::<O>(
+            k, domain, &curve, interval, approx_tol, true, None, true, context,
+        )?,
+        None => srf.drop_curve::<O>(k, domain, &curve, interval, approx_tol, true, None, true)?,
+    };
     // the drop gives `SmBSplineCurve`s (for a plane a UV `SmLine` or B-spline)
     let uv_curves = out
         .uv_curves
@@ -979,6 +986,30 @@ pub fn create_non_rational_curve(
     opt_base_surface: Option<&crate::surface::surface::Surface>,
     approx_tol: f64,
 ) -> Result<(BSplineCurve, Option<BSplineCurve>)> {
+    create_non_rational_curve_with_context::<crate::surface::surface::p4::NoObject>(
+        k,
+        curve,
+        opt_uv_trim_curve,
+        opt_base_surface,
+        approx_tol,
+        None,
+    )
+}
+
+/// [`create_non_rational_curve`] whose drop onto `opt_base_surface` runs under the
+/// caller's face context.
+///
+/// # Errors
+///
+/// As [`create_non_rational_curve`], and those of the context.
+pub fn create_non_rational_curve_with_context<O: crate::geom::solution_array::SolutionObject>(
+    k: &Kernel,
+    curve: &BSplineCurve,
+    opt_uv_trim_curve: Option<&BSplineCurve>,
+    opt_base_surface: Option<&crate::surface::surface::Surface>,
+    approx_tol: f64,
+    context: Option<crate::intersect::surface_drop_lib::p3::DropSolveContext<'_, O>>,
+) -> Result<(BSplineCurve, Option<BSplineCurve>)> {
     // for rational curves
     if curve.is_rational()? {
         // Build arc-length parameterized nonRational curve approximation
@@ -990,7 +1021,7 @@ pub fn create_non_rational_curve(
         if let Some(base) = opt_base_surface {
             let trim_ivl = new_curve.natural_interval();
             let domain = base.natural_uv_domain();
-            let dropped = drop_curve(k, base, &domain, &new_curve, &trim_ivl, approx_tol)?;
+            let dropped = drop_curve(k, base, &domain, &new_curve, &trim_ivl, approx_tol, context)?;
             new_uv_trim_curve = Some(
                 dropped
                     .uv_curves
@@ -1023,6 +1054,24 @@ impl BSplineSurface {
         approx_tol_3d: f64,
         param_type: OffsetParamType,
     ) -> Result<BSplineSurface> {
+        self.approximate_offset_surface_with(
+            offset_distance,
+            approx_tol_3d,
+            param_type,
+            crate::nurbs::srf_offset::OffsetOptions::default(),
+        )
+    }
+
+    /// [`BSplineSurface::approximate_offset_surface`] with explicit corrections for
+    /// extrusion recognition and sliver-span sampling (issue #471).
+    /// The default [`crate::nurbs::srf_offset::OffsetOptions`] preserves SMLib.
+    pub fn approximate_offset_surface_with(
+        &self,
+        offset_distance: f64,
+        approx_tol_3d: f64,
+        param_type: OffsetParamType,
+        options: crate::nurbs::srf_offset::OffsetOptions,
+    ) -> Result<BSplineSurface> {
         let nl_surf_p = self
             .nurb
             .as_ref()
@@ -1047,13 +1096,14 @@ impl BSplineSurface {
 
         // pass the call along to NLib
         let mut nl_surf = nl_surf_p
-            .offset(
+            .offset_with(
                 offset_distance,
                 ln_deg,
                 ln_deg,
                 nl_param,
                 10.0 * approx_tol_3d,
                 approx_tol_3d,
+                options,
             )
             .map_err(SolidError::nl_ser(OP_OFFSET))?;
 
@@ -1773,6 +1823,47 @@ impl BSplineSurface {
         }
         .map_err(SolidError::nl_ser(OP))?;
         Ok(sd)
+    }
+
+    /// [`BSplineSurface::evaluate_simple`] with first derivatives
+    /// (`highest_u_deriv = highest_v_deriv = 1`) into the caller's 2x2 block `d`
+    /// (every entry written), without a heap allocation per call for a non-rational,
+    /// non-polynomial surface ([`Surface::first_derivs_into`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`BSplineSurface::evaluate_simple`].
+    pub fn evaluate_simple_first_into(
+        &self,
+        uv: Point2,
+        u_from_left: bool,
+        v_from_left: bool,
+        only_upper_half: bool,
+        d: &mut [[Vec3; 2]; 2],
+    ) -> Result<()> {
+        const OP: &str = OP_EVAL_SIMPLE;
+        if self.form == BSplineSurfaceForm::Polynomial {
+            let full = self.evaluate_simple(uv, 1, 1, u_from_left, v_from_left, only_upper_half)?;
+            *d = [[Vec3::ZERO; 2]; 2];
+            for (out, row) in d.iter_mut().zip(&full) {
+                for (o, x) in out.iter_mut().zip(row) {
+                    *o = *x;
+                }
+            }
+            return Ok(());
+        }
+
+        let mut s_uv = uv;
+        let natural_uv_domain = self.natural_uv_domain();
+        if !natural_uv_domain.contains_point(s_uv, 0.0) {
+            s_uv = natural_uv_domain.clamp_point(s_uv);
+        }
+
+        let uflg = if u_from_left { Side::Left } else { Side::Right };
+        let vflg = if v_from_left { Side::Left } else { Side::Right };
+        let sur = surface_nurb(self, OP)?;
+        sur.first_derivs_into(s_uv.x, s_uv.y, uflg, vflg, only_upper_half, d)
+            .map_err(SolidError::nl_ser(OP))
     }
 
     /// The point at `uv` (`EvaluatePoint`): `N_SrfEvalPt` from the left at knots, or the

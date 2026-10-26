@@ -27,6 +27,9 @@
 //! Start-plane transform failures propagate here; upstream initializes EXTERIOR
 //! before that transform and skips the point on failure. Parallel boundary-output
 //! arrays are checked before deduplication rather than assuming equal lengths.
+//! Opt-in ([`UpstreamFixes::cone_parallel_line_midpoint`](crate::kernel::UpstreamFixes::cone_parallel_line_midpoint), WR-259): the
+//! parallel-cylinder lines are tested against both face domains at their middle, not
+//! their bottom end, which upstream tests and which a trimmed face domain skips.
 //! No input-driven recursion is introduced.
 
 use super::{Cone, ConeStepInversion};
@@ -698,9 +701,21 @@ impl Cone {
             };
             for point in points {
                 let line_point = point + (min - param) * axis;
+                // Upstream tests the bottom end of the line, which lies outside a face
+                // domain trimmed above the surface's own bottom, and skips the whole
+                // line (a face of a cylinder cut by an earlier Boolean; upstream defect
+                // WR-259). The opt-in fix tests the middle instead.
+                // ponytail: any overlap of the line with both domains would do; this
+                // keeps lines that only touch a domain at an end out, upgrade by
+                // clipping [min, max] to both domains' v ranges.
+                let test_point = if k.fixes.cone_parallel_line_midpoint {
+                    line_point + 0.5 * (max - min) * axis
+                } else {
+                    line_point
+                };
                 let zero = EFF_ZERO * (1.0 + line_point.max_dimension());
-                let inv = intersection_inversion(self, k, line_point, zero)?;
-                let other_inv = intersection_inversion(other, k, line_point, zero)?;
+                let inv = intersection_inversion(self, k, test_point, zero)?;
+                let other_inv = intersection_inversion(other, k, test_point, zero)?;
                 let (Some(inv), Some(other_inv)) = (inv, other_inv) else {
                     continue;
                 };
@@ -849,7 +864,7 @@ fn nurbs_uv_status_ignored(cone: &Cone, k: &Kernel, step_uv: Point2) -> Result<P
         Ok(uv) => Ok(uv),
         Err(e) if e.is_unported() => Err(e),
         Err(e) => {
-            let circle = cone.rev().polar_curve.as_ref().ok_or(e)?;
+            let circle = cone.rev().polar_curve().ok_or(e)?;
             let x = cone
                 .rev()
                 .polar

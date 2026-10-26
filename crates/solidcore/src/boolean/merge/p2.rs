@@ -16,6 +16,13 @@
 //! | [`MergeBrep`], [`StitchSettings`], [`StitchedVertices`], [`SplitEdges`], [`StitchedEdges`] | what `MergeAddedTopology` reads from and does to its B-rep and `SmStitch` |
 //!
 //! Deviations:
+//! - **Operand trims (issue #488, opt-in `Kernel::fixes.keep_operand_uv_trims`).** After
+//!   `MakeFaceuse` makes a face from the other operand, its edge uses get copies of the
+//!   other edge uses' UV trims where the new edge runs on `MergeEdge`'s copy of the
+//!   other edge's curve over the same interval (the fork's
+//!   `sm_CopyUVTrimCurvesOfOtherFace`). Curves have no mates here, so "a copy of its
+//!   curve" is checked as the same points at the interval's ends and middle. Upstream
+//!   (and the default) builds the face without them.
 //! - Operands, mates and notification storage are borrowed explicitly, as in
 //!   [`p1`] and [`p5`](super::p5); arena ids replace pointers.
 //!   `MergeEdge` and `MakeFaceuse` work on concrete [`Brep`] operands and the
@@ -490,6 +497,18 @@ pub struct MadeFaceuse {
     pub new_region: Option<RegionId>,
 }
 
+/// What [`make_faceuse_attempt`] returns.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MakeFaceuseAttempt {
+    /// The status of the operation: `Ok(())` or the upstream error.
+    pub status: Result<()>,
+    /// `pOldRegion`: the primary region receiving the new face (`None` on error or when
+    /// the face already had a mate).
+    pub old_region: Option<RegionId>,
+    /// `pNewRegion`: the region made when the new face splits `old_region`.
+    pub new_region: Option<RegionId>,
+}
+
 fn shell_region_of(b: &Brep, fu: FaceuseId) -> Result<Option<RegionId>> {
     let shell: ShellId =
         eu::faceuse_shell(b, fu)?.ok_or(dangling(OP_FACEUSE, "face use without shell"))?;
@@ -593,6 +612,59 @@ pub fn make_faceuse(
     )
 }
 
+/// [`make_faceuse`] attempt variant preserving partial outputs (such as `new_region` on split).
+pub fn make_faceuse_attempt(
+    k: &mut Kernel,
+    brep: &mut Brep,
+    other: &mut Brep,
+    faceuse: FaceuseId,
+    region: Option<RegionId>,
+    relations: &mut Relations,
+    copy: &mut TopologyCopy<'_>,
+    context: Option<&mut Context>,
+    new_faces: Option<&mut Vec<FaceId>>,
+) -> Result<MakeFaceuseAttempt> {
+    make_faceuse_attempt_with(
+        MergeContext::Split(k, context),
+        brep,
+        other,
+        faceuse,
+        region,
+        relations,
+        copy,
+        new_faces,
+    )
+}
+
+/// The attributes of the copy `MakeFaceuse` makes of a face's surface: upstream's
+/// `CopyAndAddAnalytics` copies the surface through its copy constructor (or
+/// `IsNurbSurfacePlane`'s `SM_NO_COPY`), which copies every attribute of the other
+/// face's surface onto the new face's, a reference attribute (`SM_AI_SURFACEMAP`)
+/// gaining the copy as a user. A surface goes by its owner's name (the arena name
+/// without one), as the merges' surface identities.
+fn copy_surface_attributes(
+    attributes: &mut crate::geom::attribute::AttributeStore,
+    other: &Brep,
+    from_face: FaceId,
+    brep: &Brep,
+    to_face: FaceId,
+) -> Result<()> {
+    let surface_key = |b: &Brep, f: FaceId| -> Result<ObjectRef> {
+        let surface = b.face(f)?.surface.as_ref();
+        let surface = surface.ok_or(dangling(OP_FACEUSE, "face without surface"))?;
+        Ok(surface.owner().unwrap_or_else(|| {
+            crate::topology::brep_cache::arena_identity(
+                crate::topology::brep_cache::CacheObject::Face(f),
+            )
+        }))
+    };
+    let (from, to) = (surface_key(other, from_face)?, surface_key(brep, to_face)?);
+    for h in attributes.attributes(from.key) {
+        attributes.copy(h, from.key, to.key)?;
+    }
+    Ok(())
+}
+
 /// [`make_faceuse`] with the kernel and notification context given as a
 /// [`MergeContext`] (for callers whose two B-reps share one kernel).
 ///
@@ -600,6 +672,27 @@ pub fn make_faceuse(
 ///
 /// As [`make_faceuse`].
 pub fn make_faceuse_with(
+    ctx: MergeContext<'_>,
+    brep: &mut Brep,
+    other: &mut Brep,
+    faceuse: FaceuseId,
+    region: Option<RegionId>,
+    relations: &mut Relations,
+    copy: &mut TopologyCopy<'_>,
+    new_faces: Option<&mut Vec<FaceId>>,
+) -> Result<MadeFaceuse> {
+    let attempt = make_faceuse_attempt_with(
+        ctx, brep, other, faceuse, region, relations, copy, new_faces,
+    )?;
+    attempt.status?;
+    Ok(MadeFaceuse {
+        old_region: attempt.old_region,
+        new_region: attempt.new_region,
+    })
+}
+
+/// [`make_faceuse_with`] attempt variant preserving partial outputs.
+pub fn make_faceuse_attempt_with(
     mut ctx: MergeContext<'_>,
     brep: &mut Brep,
     other: &mut Brep,
@@ -608,7 +701,7 @@ pub fn make_faceuse_with(
     relations: &mut Relations,
     copy: &mut TopologyCopy<'_>,
     mut new_faces: Option<&mut Vec<FaceId>>,
-) -> Result<MadeFaceuse> {
+) -> Result<MakeFaceuseAttempt> {
     // init output
     if let Some(list) = new_faces.as_deref_mut() {
         list.clear();
@@ -634,7 +727,11 @@ pub fn make_faceuse_with(
             (copy.face_destination_key)(face),
         );
         copy.notify(ctx.context(), source, dest)?;
-        return Ok(MadeFaceuse::default());
+        return Ok(MakeFaceuseAttempt {
+            status: Ok(()),
+            old_region: None,
+            new_region: None,
+        });
     }
 
     // when not given a Brep Region try to find the containing Brep Region
@@ -790,7 +887,7 @@ pub fn make_faceuse_with(
         context: None,
         key_of: &key_of,
     };
-    let made = brep_p7::make_face(
+    let attempt = brep_p7::make_face_attempt(
         ctx.kernel_mut(),
         brep,
         Some(region),
@@ -803,18 +900,39 @@ pub fn make_faceuse_with(
         &MakeFaceOptions::default(),
         copy.face_destination_key,
         &mut env,
-    );
+    )?;
     if saved_infinite_region.is_some() {
         brep.set_infinite_region_record(saved_infinite_region);
     }
-    let made = made?;
-    let new_region = made.region;
+    if let Err(err) = attempt.status {
+        return Ok(MakeFaceuseAttempt {
+            status: Err(err),
+            old_region: None,
+            new_region: attempt.region,
+        });
+    }
+    let new_region = attempt.region;
     // SER(m_vTI.Relate(pNewFace, ...)) dereferences a null new face.
-    let new_face = made
+    let new_face = attempt
         .face
         .ok_or(dangling(OP_FACEUSE, "MakeFace made no face"))?;
 
+    // the surface copy's attributes (`CopyAndAddAnalytics`)
+    copy_surface_attributes(
+        &mut *copy.vertices.attributes,
+        other,
+        face_to_make,
+        brep,
+        new_face,
+    )?;
+
     relations.relate_faces(brep, new_face, other, face_to_make)?;
+
+    // Not upstream (tangency-labs/solidcore#488; opt-in): MakeFace does not take the
+    // other face's UV trims over; carry the exact ones across
+    if ctx.kernel().fixes.keep_operand_uv_trims {
+        copy_uv_trim_curves_of_other_face(ctx.kernel(), brep, other, faceuse, new_face, relations)?;
+    }
     let (source, dest) = (
         (copy.face_source_key)(face_to_make),
         (copy.face_destination_key)(new_face),
@@ -825,10 +943,100 @@ pub fn make_faceuse_with(
     if let Some(list) = new_faces {
         list.push(new_face);
     }
-    Ok(MadeFaceuse {
+    Ok(MakeFaceuseAttempt {
+        status: Ok(()),
         old_region: Some(region),
         new_region,
     })
+}
+
+/// Not upstream (tangency-labs/solidcore#488, the fork's
+/// `sm_CopyUVTrimCurvesOfOtherFace`; opt-in `Kernel::fixes.keep_operand_uv_trims`): gives the
+/// edge uses of `new_face`, just made in `brep` from the other operand's face use
+/// `other_fu`, the UV trim curves of the other edge uses they stand for. A trim is
+/// parameterised by its edge's curve on its face's surface, so it stays exact where
+/// the new edge is the primary mate of the other edge, runs on a copy of its curve
+/// (the same points at its interval's ends and middle) over the same interval, and the
+/// new face lies on the copy `MakeFaceuse` made of the other face's surface (always,
+/// here). The new face's face use of the other face use's orientation lists its edge
+/// uses in the other's order (as `MakeFace` assigns `cpOptUVCurves`). Elsewhere the
+/// new edge use keeps what `MakeFace` gave it.
+///
+/// # Errors
+///
+/// `SM_ERR_NULL_POINTER` for a new face without both face uses; `SM_ERR` when the two
+/// face uses list different numbers of edge uses; those of the topology reads, the
+/// curve copies and evaluations and `SetUVTrimCurve`.
+fn copy_uv_trim_curves_of_other_face(
+    k: &Kernel,
+    brep: &mut Brep,
+    other: &Brep,
+    other_fu: FaceuseId,
+    new_face: FaceId,
+    relations: &Relations,
+) -> Result<()> {
+    let (fu1, fu2) = crate::topology::face::p2::faceuses(brep, new_face)?;
+    let (Some(fu1), Some(fu2)) = (fu1, fu2) else {
+        return Err(SolidError::null_pointer(OP_FACEUSE));
+    };
+    let orientation = other.faceuse(other_fu)?.orientation;
+    let new_fu = if brep.faceuse(fu1)?.orientation == orientation {
+        fu1
+    } else {
+        fu2
+    };
+    let other_uses = eu::faceuse_edgeuses(other, other_fu, false, None)?;
+    let new_uses = eu::faceuse_edgeuses(brep, new_fu, false, None)?;
+    if other_uses.len() != new_uses.len() {
+        return Err(SolidError::sm_err(OP_FACEUSE));
+    }
+    for (other_eu, new_eu) in other_uses.into_iter().zip(new_uses) {
+        let Some(trim) = eu::uv_trim_curve(other, other_eu)?.0 else {
+            continue;
+        };
+        let other_edge = eu::edge(other, other_eu)?;
+        let new_edge = eu::edge(brep, new_eu)?;
+        let (Some(other_edge), Some(new_edge)) = (other_edge, new_edge) else {
+            continue;
+        };
+        if relations.edges.primary(other_edge) != Some(new_edge) {
+            continue;
+        }
+        let (other_record, new_record) = (other.edge(other_edge)?, brep.edge(new_edge)?);
+        let interval = other_record.interval;
+        let new_interval = new_record.interval;
+        if new_interval.min() != interval.min() || new_interval.max() != interval.max() {
+            continue;
+        }
+        let (Some(other_curve), Some(new_curve)) =
+            (other_record.curve.as_ref(), new_record.curve.as_ref())
+        else {
+            continue;
+        };
+        // (MergeEdge's copy of the other edge's curve: the same points)
+        let mut same = other_curve.dim() == new_curve.dim()
+            && other_curve.natural_interval() == new_curve.natural_interval();
+        for t in [interval.min(), interval.mid(), interval.max()] {
+            if !same {
+                break;
+            }
+            same = other_curve.evaluate_point(k, t)? == new_curve.evaluate_point(k, t)?;
+        }
+        if !same {
+            continue;
+        }
+        let copy = trim.copy(k)?;
+        // TRUE = delete a trim MakeFace made for sectoring
+        eu::set_uv_trim_curve(
+            brep,
+            new_eu,
+            eu::UvTrimCurveArg::New(Box::new(copy)),
+            0.0,
+            true,
+            None,
+        )?;
+    }
+    Ok(())
 }
 
 // ---- merging added topology ------------------------------------------------------------
@@ -2002,6 +2210,83 @@ mod tests {
         .unwrap();
         copy.notify(None, source, edge_key(edge)).unwrap();
         assert_eq!(copy.vertices.records[&edge_key(edge).key].all_flags(), 17);
+    }
+
+    /// `MakeFaceuse`'s surface copy carries the source surface's attributes: a reference
+    /// `SM_AI_SURFACEMAP` lists both the source surface and its copy as users (as
+    /// `PiecewiseMerge`'s `RegisterExistingSSI` needs), and an owner-less surface goes by
+    /// its face's arena name.
+    #[test]
+    fn surface_copy_carries_the_surface_map_attribute_to_a_second_user() {
+        use crate::geom::attribute::{ids, Attribute, AttributeStore, Behavior, ObjectKey};
+        use crate::math::Point3;
+        use crate::primitive::api_primitives::create_box;
+        use crate::topology::brep_cache::{arena_identity, CacheObject};
+
+        let mut k = Kernel::default();
+        let mut other = create_box(&mut k, Point3::ZERO, 1.0, 2.0, 3.0).unwrap();
+        let mut brep = create_box(&mut k, Point3::ZERO, 1.0, 2.0, 3.0).unwrap();
+        let from_face = other.faces().ids().next().unwrap();
+        let to_face = brep.faces().ids().nth(1).unwrap();
+        let face_type = crate::topology::face::p2::TYPE;
+        let from = ObjectRef {
+            key: ObjectKey(7_000_001),
+            type_code: face_type,
+        };
+        let to = ObjectRef {
+            key: ObjectKey(8_000_002),
+            type_code: face_type,
+        };
+        let _ = other
+            .face_mut(from_face)
+            .unwrap()
+            .surface
+            .as_mut()
+            .unwrap()
+            .set_owner(Some(from));
+        let _ = brep
+            .face_mut(to_face)
+            .unwrap()
+            .surface
+            .as_mut()
+            .unwrap()
+            .set_owner(Some(to));
+
+        let mut attributes = AttributeStore::new();
+        let map = attributes
+            .insert(Attribute::pointer(ids::SURFACEMAP, 0, Behavior::Reference))
+            .unwrap();
+        attributes.add_attribute(from.key, map).unwrap();
+
+        copy_surface_attributes(&mut attributes, &other, from_face, &brep, to_face).unwrap();
+        assert_eq!(
+            attributes.find_attribute(to.key, ids::SURFACEMAP),
+            Some(map)
+        );
+        assert_eq!(attributes.users(map).unwrap(), vec![from.key, to.key]);
+        // a second copy onto the same surface (the face notification under the same
+        // name) adds no second reference
+        copy_surface_attributes(&mut attributes, &other, from_face, &brep, to_face).unwrap();
+        assert_eq!(attributes.users(map).unwrap(), vec![from.key, to.key]);
+
+        // an owner-less copy goes by its face's arena name
+        let _ = brep
+            .face_mut(to_face)
+            .unwrap()
+            .surface
+            .as_mut()
+            .unwrap()
+            .set_owner(None);
+        copy_surface_attributes(&mut attributes, &other, from_face, &brep, to_face).unwrap();
+        let arena = arena_identity(CacheObject::Face(to_face));
+        assert_eq!(
+            attributes.find_attribute(arena.key, ids::SURFACEMAP),
+            Some(map)
+        );
+        assert_eq!(
+            attributes.users(map).unwrap(),
+            vec![from.key, to.key, arena.key]
+        );
     }
 
     #[test]

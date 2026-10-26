@@ -29,13 +29,20 @@
 //!   plane, `2 owned surface-block`, `3` an empty `SmBrep`, `4` an empty `SmPolyBrep`, `5`
 //!   another topology object, `6` null, `7 owned n curve-block*n` an `SmCompositeCurve` of 1
 //!   to 4 curves, `8 owned surface-block a0 a1 b0 b1` an `SmCrvOnSurf` UV line on a
-//!   B-spline surface, `9 n (x y z tol)*n` an `SmPolyBrep` with 1 to 4 poly vertices) and
+//!   B-spline surface, `9 n (x y z tol)*n` an `SmPolyBrep` with 1 to 4 poly vertices,
+//!   `10 O X Y Z` a primitive box, `11 O radius` a primitive sphere, or
+//!   `12 O width height` a real planar face in a B-rep) and
 //!   one API call: `0 O X Y` `SmApiTransform`, `1 S` `SmApiScale`, `2 R S`
 //!   `SmApiScaleByPt`, `3 V` `SmApiTranslate`, `4 R A deg` `SmApiRotate`. Output: the
 //!   status, then for a curve its natural interval and 5 points (`status [P]`), for a
 //!   surface its natural domain and 3x3 points, for a poly B-rep (kinds 4 and 9) its
 //!   tolerance, its vertex count and per vertex `x y z tol` (nothing more for the other
-//!   kinds).
+//!   kinds). Constructed B-reps (10–12) append reachable vertex/edge/face counts, raw
+//!   model-size estimate, the primitive geometry record and face rectangular flags.
+//!
+//! * **transform sequence** (`3 constructed-object n (op args)*n`): retains one real
+//!   body across 2–8 calls. Output: `n (status record-length constructed-record)*n`,
+//!   sampled immediately after each call, before any subsequent operation or query.
 //!
 //! Each list or proto op writes `op status n outputs*n`. An op the shim refuses because it
 //! is undefined upstream (a dangling or null pointer dereference, a double delete, a crash
@@ -75,6 +82,10 @@ pub mod kind {
     pub const PROTO: i64 = 1;
     /// One API transformation.
     pub const TRANSFORM: i64 = 2;
+    /// A constructed body retained across two to eight API transformations.
+    pub const TRANSFORM_SEQUENCE: i64 = 3;
+    /// Constructed-body transform with runtime types and directed topology observations.
+    pub const SCALE_PROBE: i64 = 4;
 }
 
 /// List-script slot kinds.
@@ -156,6 +167,8 @@ pub mod pool {
     pub const VERTEX_TOL: i64 = 9;
     /// Input only: a vertex with a point and a zone tolerance (`10 P[3] tol`).
     pub const VERTEX_AT: i64 = 10;
+    /// Input only: operand, distinct surface id, trim/initial domains and UV trim translation.
+    pub const TRIMMED_FACE: i64 = 11;
 }
 
 /// Proto-script ops (arguments after the code; `pv`, `pe`, `ed`, `vd`, `pf` are proto ids,
@@ -421,6 +434,15 @@ pub mod tobj {
     pub const COMPOSITE: i64 = 7;
     pub const CRV_ON_SURF: i64 = 8;
     pub const POLY_PTS: i64 = 9;
+    pub const PRIMITIVE_BOX: i64 = 10;
+    pub const PRIMITIVE_SPHERE: i64 = 11;
+    pub const CALLER_FACE: i64 = 12;
+    pub const COPIED_BOX: i64 = 13;
+    pub const COPIED_SPHERE: i64 = 14;
+    pub const EXTRUSION_FACE: i64 = 18;
+    pub const PRIMITIVE_CYLINDER: i64 = 15;
+    pub const PRIMITIVE_CONE: i64 = 16;
+    pub const PRIMITIVE_TORUS: i64 = 17;
 }
 
 const MAX_SLOTS: i64 = 32;
@@ -434,7 +456,10 @@ crate::reader::unit_reader!();
 
 impl Reader<'_> {
     fn num(&mut self) -> Result<f64, FfiError> {
-        let v = *self.input.get(self.at).ok_or_else(|| bad("script ends early"))?;
+        let v = *self
+            .input
+            .get(self.at)
+            .ok_or_else(|| bad("script ends early"))?;
         self.at += 1;
         Ok(v)
     }
@@ -672,7 +697,7 @@ fn validate_proto(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     use proto_op as p;
     let n_obj = rd.int(0, MAX_OBJECTS)?;
     for _ in 0..n_obj {
-        match rd.int(0, pool::VERTEX_AT)? {
+        match rd.int(0, pool::TRIMMED_FACE)? {
             pool::CURVE => rd.curve()?,
             pool::PLANE => {
                 rd.vec3()?;
@@ -681,6 +706,13 @@ fn validate_proto(rd: &mut Reader<'_>) -> Result<(), FfiError> {
             pool::BSURF => rd.surface()?,
             pool::EDGE | pool::FACE => {
                 rd.id()?;
+            }
+            pool::TRIMMED_FACE => {
+                rd.int(1, 2)?;
+                rd.id()?;
+                for _ in 0..10 {
+                    rd.finite()?;
+                }
             }
             pool::VERTEX_AT => {
                 rd.vec3()?;
@@ -823,8 +855,33 @@ fn validate_proto(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     Ok(())
 }
 
-fn validate_transform(rd: &mut Reader<'_>) -> Result<(), FfiError> {
-    match rd.int(0, tobj::POLY_PTS)? {
+fn validate_transform_object(rd: &mut Reader<'_>) -> Result<i64, FfiError> {
+    let kind = rd.int(0, tobj::EXTRUSION_FACE)?;
+    match kind {
+        tobj::PRIMITIVE_CYLINDER | tobj::PRIMITIVE_TORUS => { rd.vec3()?; for _ in 0..2 { if rd.finite()? <= 1e-12 { return Err(bad("primitive dimension")); } } }
+        tobj::PRIMITIVE_CONE => { rd.vec3()?; let base=rd.finite()?; let top=rd.finite()?; let height=rd.finite()?; if base<0.0 || top<0.0 || (base<=1e-12 && top<=1e-12) || height<=1e-12 { return Err(bad("cone dimension")); } }
+        tobj::CALLER_FACE | tobj::EXTRUSION_FACE => {
+            rd.vec3()?;
+            for _ in 0..2 {
+                if rd.finite()? <= 1e-12 {
+                    return Err(bad("face dimension"));
+                }
+            }
+        }
+        tobj::PRIMITIVE_BOX | tobj::COPIED_BOX => {
+            rd.vec3()?;
+            for _ in 0..3 {
+                if rd.finite()? <= 1e-12 {
+                    return Err(bad("box dimension"));
+                }
+            }
+        }
+        tobj::PRIMITIVE_SPHERE | tobj::COPIED_SPHERE => {
+            rd.vec3()?;
+            if rd.finite()?.abs() <= 1e-12 {
+                return Err(bad("sphere radius"));
+            }
+        }
         tobj::POLY_PTS => {
             let n = rd.int(1, 4)?;
             for _ in 0..n {
@@ -861,6 +918,10 @@ fn validate_transform(rd: &mut Reader<'_>) -> Result<(), FfiError> {
         }
         _ => {}
     }
+    Ok(kind)
+}
+
+fn validate_transform_op(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     match rd.int(0, 4)? {
         0 => {
             rd.vec3()?;
@@ -893,6 +954,33 @@ fn validate_transform(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     }
     Ok(())
 }
+fn validate_transform(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+    validate_transform_object(rd)?;
+    validate_transform_op(rd)
+}
+
+fn validate_scale_probe(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+    let object = validate_transform_object(rd)?;
+    if !matches!(object, tobj::EXTRUSION_FACE | tobj::PRIMITIVE_CYLINDER | tobj::PRIMITIVE_CONE | tobj::PRIMITIVE_TORUS | tobj::PRIMITIVE_BOX | tobj::PRIMITIVE_SPHERE | tobj::COPIED_BOX | tobj::COPIED_SPHERE) {
+        return Err(bad("scale probe object"));
+    }
+    validate_transform_op(rd)
+}
+
+fn validate_transform_sequence(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+    let kind = validate_transform_object(rd)?;
+    if !matches!(
+        kind,
+        tobj::PRIMITIVE_BOX | tobj::PRIMITIVE_SPHERE | tobj::CALLER_FACE
+    ) {
+        return Err(bad("sequence requires a constructed body"));
+    }
+    let count = rd.int(2, 8)?;
+    for _ in 0..count {
+        validate_transform_op(rd)?;
+    }
+    Ok(())
+}
 
 /// Checks the static shape of a script (see the module docs).
 ///
@@ -901,10 +989,12 @@ fn validate_transform(rd: &mut Reader<'_>) -> Result<(), FfiError> {
 /// [`FfiError::InvalidArgument`] for a malformed script.
 pub fn validate(input: &[f64]) -> Result<(), FfiError> {
     let mut rd = Reader::new(input);
-    match rd.int(0, kind::TRANSFORM)? {
+    match rd.int(0, kind::SCALE_PROBE)? {
         kind::LIST => validate_list(&mut rd)?,
         kind::PROTO => validate_proto(&mut rd)?,
-        _ => validate_transform(&mut rd)?,
+        kind::TRANSFORM => validate_transform(&mut rd)?,
+        kind::TRANSFORM_SEQUENCE => validate_transform_sequence(&mut rd)?,
+        _ => validate_scale_probe(&mut rd)?,
     }
     if rd.at != input.len() {
         return Err(bad("trailing data"));

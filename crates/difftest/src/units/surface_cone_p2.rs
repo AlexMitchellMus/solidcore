@@ -1393,6 +1393,43 @@ mod tests {
         }
     }
 
+    /// The #713 fixtures keep pinned behavior by default and exercise the
+    /// existing opt-in independently of the unpatched C++ oracle.
+    #[test]
+    fn issue713_fixtures_exercise_both_behaviors() {
+        let fixtures: Value = serde_json::from_str(include_str!(
+            "../../../../fixtures/surface.cone_p2/issue713.json"
+        ))
+        .unwrap();
+        let cases = fixtures["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 24);
+        for enabled in [false, true] {
+            let mut k = Kernel::default();
+            k.fixes.cylinder_rebuild_mean_radius = enabled;
+            for case in cases {
+                let i: Inputs = serde_json::from_value(case["inputs"].clone()).unwrap();
+                let name = case["name"].as_str().unwrap();
+                let mut cone = rust_cone(&k, &i.cone).unwrap();
+                let before = cone.clone();
+                let mut record = Vec::new();
+                rust_op(&k, &mut cone, &i.op, &mut record).unwrap();
+                assert!(cone.is_cylinder_class(), "{name}");
+                if enabled && name.contains("taper_") {
+                    assert_eq!(record.first(), Some(&SM_ERR), "{name}");
+                    assert_eq!(cone.base_radius(), before.base_radius());
+                    assert_eq!(cone.semi_angle_deg(), before.semi_angle_deg());
+                } else {
+                    assert_eq!(record.first(), Some(&SUCCESS), "{enabled} {name}");
+                    if enabled {
+                        assert_eq!(cone.semi_angle_deg(), 0.0, "{name}");
+                    } else if !name.contains("unchanged_") {
+                        assert_ne!(cone.semi_angle_deg(), 0.0, "{name}");
+                    }
+                }
+            }
+        }
+    }
+
     impl ConeIn {
         /// An offset state (after `has`) whose bottom or top radius is exactly `0` while
         /// the input's were not: the apex truncation.

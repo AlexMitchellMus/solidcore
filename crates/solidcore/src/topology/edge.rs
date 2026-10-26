@@ -111,7 +111,7 @@
 use std::collections::BTreeMap;
 
 use crate::curve::curve::{Curve, CurveKind};
-use crate::error::{EntityRef, Result, SolidError};
+use crate::error::{ignore_status, EntityRef, Result, SolidError};
 use crate::geom::a_object;
 use crate::geom::attribute::{AttributeStore, ObjectKey};
 use crate::geom::context::Context;
@@ -194,7 +194,7 @@ impl Edge {
     }
 }
 
-// ---- unported callees -------------------------------------------------------------------
+// ---- edge use callees (topology.edgeuse_p3) ----------------------------------------------
 
 /// `SmEdgeuse::NormalizedEvaluate(t, TRUE, ..)`: the UV point at the normalised
 /// parameter `t` (a missing UV trim curve is made).
@@ -210,22 +210,24 @@ fn get_or_create_uv_trim_curve(k: &Kernel, b: &mut Brep, eu: EdgeuseId) -> Resul
 }
 
 /// `pBrep->Notify(operation, data1, pBrep, data3)` (unit `topology.brep_p2`).
-fn brep_notify(
+fn brep_notify_with_body_identity(
     b: &Brep,
     env: &mut NotifyEnv<'_>,
     operation: NotifyOperation,
     data1: Option<BrepNotifyArg>,
     data3: Option<ObjectRef>,
+    body: ObjectRef,
 ) -> Result<()> {
-    let brep = BrepNotifyArg::Object(brep_p2::brep_ref(b));
+    let brep = BrepNotifyArg::Object(body);
     // the caller-held SM_OC_BREP cache is not threaded through `NotifyEnv` (no Rust
     // caller can build one yet: `make_brep_cache` needs `query.brep`)
-    brep_p2::notify(
+    brep_p2::notify_with_body_identity(
         b,
         env,
         None,
         operation,
         [data1, Some(brep), data3.map(BrepNotifyArg::Object)],
+        body,
     )
 }
 
@@ -261,6 +263,15 @@ struct Cover {
 /// of `face0` and `face1` (two different faces). The covering surface may be expanded
 /// in place, as upstream. A merged domain that was not written stays the caller's
 /// default-constructed `sMergedDomain`.
+///
+/// Upstream's `STEPInversion` solves inside run on the faces' own surfaces, whose
+/// `smsurf_GetSurfaceCache` sees each face (`GetFace()`). The surfaces are moved out of
+/// their faces for the call (keeping their owners, so the caches they build are their
+/// own) and lent with the B-rep through a face solve context; while they are out, each
+/// face holds an evaluation copy of its surface (same owner, face tolerance and cache
+/// slot) for the B-rep reads of that cache build (UV trim curves, tolerances), whose
+/// edits land on the B-rep itself. The real surfaces, possibly expanded, replace the
+/// copies afterwards.
 #[allow(clippy::too_many_arguments)] // upstream's argument list plus the B-rep
 fn cover_other_coincident_surface(
     k: &Kernel,
@@ -271,21 +282,67 @@ fn cover_other_coincident_surface(
     domain0: &Extent2d,
     domain1: &Extent2d,
 ) -> Result<Cover> {
+    use crate::query::brep::BrepFaceServices;
+    use crate::surface::surface::p5::CoverSolveContext;
+    use crate::topology::brep_cache::CacheObject;
+
+    // the evaluation copies standing in the faces while their surfaces are out
+    let stand_in = |b: &Brep, f: FaceId| -> Result<Surface> {
+        b.face(f)?
+            .surface
+            .as_ref()
+            .ok_or_else(|| null("sm_CoverOtherCoincidentFace: face without surface"))?
+            .clone_for_evaluation()
+    };
+    let (copy0, copy1) = (stand_in(b, face0)?, stand_in(b, face1)?);
     // move the surfaces out of their faces for the call (keeping their owners) and back
     let mut this = b
         .face_mut(face0)?
         .surface
-        .take()
+        .replace(copy0)
         .ok_or_else(|| null("sm_CoverOtherCoincidentFace: face without surface"))?;
-    let Some(mut other) = b.face_mut(face1)?.surface.take() else {
+    let Some(mut other) = b.face_mut(face1)?.surface.replace(copy1) else {
         b.face_mut(face0)?.surface = Some(this);
         return Err(null("sm_CoverOtherCoincidentFace: face without surface"));
     };
-    let r =
-        this.cover_other_coincident_surface(k, &mut other, tol, Some(domain0), Some(domain1), true);
+    let (owner0, owner1) = (this.owner(), other.owner());
+    let r = this.cover_other_coincident_surface_deferring_trims_with_context(
+        k,
+        &mut other,
+        tol,
+        Some(domain0),
+        Some(domain1),
+        true,
+        CoverSolveContext {
+            context: &mut BrepFaceServices::new(&mut *b),
+            handles: [
+                Some(CacheObject::Surface(face0)),
+                Some(CacheObject::Surface(face1)),
+            ],
+        },
+    );
     b.face_mut(face0)?.surface = Some(this);
     b.face_mut(face1)?.surface = Some(other);
+    // a face tolerance the solves raised was recorded on the copy: the real surface
+    // records its face's current one (the B-rep invariant)
+    b.sync_face_surface_tolerance(face0)?;
+    b.sync_face_surface_tolerance(face1)?;
     let r = r?;
+    // the SmFace::RemoveUVTrimCurves (status ignored) each successful
+    // CoverCoincidentSurface of a face-owned surface ends with, in call order
+    for owner in &r.remove_uv_trim_curves_of {
+        let face = if Some(*owner) == owner0 {
+            face0
+        } else if Some(*owner) == owner1 {
+            face1
+        } else {
+            return Err(SolidError::invalid_input(
+                "topology::edge::cover_other_coincident_surface",
+                "covered surface owned by another face",
+            ));
+        };
+        ignore_status(crate::topology::face::p1::remove_uv_trim_curves(b, face))?;
+    }
     Ok(Cover {
         max_dist: r.max_dist,
         covering: r.covering_is_other.map(|is_other| {
@@ -1556,7 +1613,7 @@ pub fn is_seam(k: &Kernel, b: &mut Brep, e: EdgeId) -> Result<bool> {
 ///
 /// [`SolidError::InvalidInput`] for a face without surface or an edge use without
 /// face (upstream dereferences them); those of the surface queries;
-/// [`SolidError::Unported`] from `SmEdgeuse::NormalizedEvaluate`.
+/// [`SolidError::Unported`] from `SmEdgeuse::NormalizedEvaluate`'s unported callees.
 pub fn is_seam_of_surface(
     k: &Kernel,
     b: &mut Brep,
@@ -1705,8 +1762,8 @@ fn cover_other_coincident_face(
 ///
 /// [`SolidError::InvalidInput`] where upstream dereferences null (an edge use without
 /// face, a face without surface); those of the surface queries;
-/// [`SolidError::Unported`] from `SmEdgeuse::NormalizedEvaluate` and the coverage
-/// test.
+/// [`SolidError::Unported`] from `SmEdgeuse::NormalizedEvaluate`'s unported callees and
+/// the coverage test.
 pub fn is_topological(
     k: &Kernel,
     b: &mut Brep,
@@ -2061,14 +2118,18 @@ pub fn set_orientation(b: &mut Brep, e: EdgeId, orientation: OrientType) -> Resu
     Ok(())
 }
 
-/// `ReverseOrientation`: reverses the curve's parameterisation (the edge interval
-/// becomes the reversed one; its status is ignored, a failure leaves the default
-/// interval), flips every edge use's orientation and deletes their UV trim curves.
+/// `ReverseOrientation`: reverses the curve's parameterisation, then installs the
+/// reversed interval, flips every edge use's orientation and deletes its UV trim.
+/// By default a failed curve reversal's status is ignored, as upstream: the edge
+/// gets the default interval and its uses are still flipped. With the opt-in
+/// [`crate::kernel::UpstreamFixes::edge_reversal_keeps_failed_edge`] (WR-260) a
+/// failed reversal returns before changing the interval or edge uses.
 ///
 /// # Errors
 ///
 /// [`SolidError::InvalidInput`] without edge uses (upstream walks a null list) and
-/// those of [`eu1::set_uv_trim_curve`]; [`SolidError::Unported`] from the curve.
+/// those of [`eu1::set_uv_trim_curve`]; [`SolidError::Unported`] from the curve (with
+/// the opt-in fix, every error of the curve reversal).
 pub fn reverse_orientation(k: &Kernel, b: &mut Brep, e: EdgeId) -> Result<()> {
     // locals
     let old_ivl = b.edge(e)?.interval;
@@ -2078,6 +2139,7 @@ pub fn reverse_orientation(k: &Kernel, b: &mut Brep, e: EdgeId) -> Result<()> {
     if let Some(c) = b.edge_mut(e)?.curve.as_mut() {
         match c.reverse_parameterization(k, &old_ivl) {
             Ok(n) => new_ivl = n,
+            Err(err) if k.fixes.edge_reversal_keeps_failed_edge => return Err(err),
             Err(err) => failed(err)?,
         }
     }
@@ -2363,6 +2425,17 @@ pub fn notify(
     operation: NotifyOperation,
     data: [Option<ObjectRef>; 3],
 ) -> Result<()> {
+    notify_with_body_identity(b, e, env, operation, data, None)
+}
+
+fn notify_with_body_identity(
+    b: &mut Brep,
+    e: EdgeId,
+    env: &mut NotifyEnv<'_>,
+    operation: NotifyOperation,
+    data: [Option<ObjectRef>; 3],
+    body: Option<ObjectRef>,
+) -> Result<()> {
     use NotifyOperation as N;
     let [d1, d2, d3] = data;
     if operation == N::ChangeGeometry {
@@ -2373,8 +2446,22 @@ pub fn notify(
         if has_brep {
             // this->GetCurve() is still the old geometry (data3)
             let obj = |d: Option<ObjectRef>| d.map(BrepNotifyArg::Object);
-            brep_notify(b, env, N::RmFromBrep, obj(d3), d3)?;
-            brep_notify(b, env, N::AddToBrep, obj(d1), d3)?;
+            brep_notify_with_body_identity(
+                b,
+                env,
+                N::RmFromBrep,
+                obj(d3),
+                d3,
+                body.unwrap_or_else(|| brep_p2::brep_ref(b)),
+            )?;
+            brep_notify_with_body_identity(
+                b,
+                env,
+                N::AddToBrep,
+                obj(d1),
+                d3,
+                body.unwrap_or_else(|| brep_p2::brep_ref(b)),
+            )?;
         }
     }
     if matches!(
@@ -2468,7 +2555,7 @@ pub fn destroy(k: &mut Kernel, b: &mut Brep, e: EdgeId, env: &mut NotifyEnv<'_>)
         if let Some(context) = n.context.as_deref_mut() {
             context.set_doing_boolean(true);
         }
-        let notified = crate::error::ignore_status(notify(
+        let notified = ignore_status(notify(
             b,
             e,
             n,
@@ -2526,6 +2613,36 @@ pub fn set_curve(
     env: &mut NotifyEnv<'_>,
     curve_refs: [Option<ObjectRef>; 2],
 ) -> Result<Option<Curve>> {
+    set_curve_with_identity(b, e, new_curve, options, env, curve_refs, None)
+}
+
+/// Replace the actual edge curve while notifying its body's issued identity.
+/// The cache, UV invalidation and curve lifecycle share [`set_curve`]'s body.
+/// Other edge APIs retain their existing identity contract.
+///
+/// # Errors
+/// The same ordered notification errors as [`set_curve`].
+pub fn set_curve_with_body_identity(
+    b: &mut Brep,
+    e: EdgeId,
+    new_curve: Option<Curve>,
+    options: SetCurveOptions,
+    env: &mut NotifyEnv<'_>,
+    curve_refs: [Option<ObjectRef>; 2],
+    body: ObjectRef,
+) -> Result<Option<Curve>> {
+    set_curve_with_identity(b, e, new_curve, options, env, curve_refs, Some(body))
+}
+
+fn set_curve_with_identity(
+    b: &mut Brep,
+    e: EdgeId,
+    new_curve: Option<Curve>,
+    options: SetCurveOptions,
+    env: &mut NotifyEnv<'_>,
+    curve_refs: [Option<ObjectRef>; 2],
+    body: Option<ObjectRef>,
+) -> Result<Option<Curve>> {
     let [new_ref, old_ref] = curve_refs;
     if new_curve.is_none() && b.edge(e)?.curve.is_none() {
         return Ok(None);
@@ -2535,17 +2652,25 @@ pub fn set_curve(
 
     // side effect: delete all UVTrimCurves
     if options.call_notify {
-        notify(
+        notify_with_body_identity(
             b,
             e,
             env,
             NotifyOperation::ChangeGeometry,
             [new_ref, None, old_ref],
+            body,
         )?;
         if has_brep {
             // side effect: remove from spatial cache.
             let this = Some(BrepNotifyArg::Entity(EntityRef::Edge(e)));
-            brep_notify(b, env, NotifyOperation::RmFromBrep, this, old_ref)?;
+            brep_notify_with_body_identity(
+                b,
+                env,
+                NotifyOperation::RmFromBrep,
+                this,
+                old_ref,
+                body.unwrap_or_else(|| brep_p2::brep_ref(b)),
+            )?;
         }
     }
 
@@ -2576,11 +2701,19 @@ pub fn set_curve(
 
     // update the value
     b.edge_mut(e)?.curve = new_curve;
+    b.geometry_owner_keys.insert(EntityRef::Edge(e), this);
 
     // side effect: Add to spatial cache.
     if options.call_notify && has_brep {
         let this = Some(BrepNotifyArg::Entity(EntityRef::Edge(e)));
-        brep_notify(b, env, NotifyOperation::AddToBrep, this, new_ref)?;
+        brep_notify_with_body_identity(
+            b,
+            env,
+            NotifyOperation::AddToBrep,
+            this,
+            new_ref,
+            body.unwrap_or_else(|| brep_p2::brep_ref(b)),
+        )?;
     }
     Ok(returned)
 }
@@ -2802,6 +2935,124 @@ mod tests {
     use crate::nurbs::crv_basic::Curve as NlCurve;
     use crate::nurbs::math::{CPoint, NOW};
     use crate::topology::{EdgeuseOwner, Region, Shell, Vertex, Vertexuse, VertexuseOwner};
+
+    #[test]
+    fn retained_curve_replacement_invalidates_real_uv_and_uses_issued_body() {
+        use crate::geom::attribute::{ids, Attribute, Behavior};
+        use crate::topology::edge::notification_test_support as callbacks;
+
+        let mut k = Kernel::default();
+        let mut b =
+            crate::primitive::api_primitives::create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0)
+                .unwrap();
+        let legacy_key = b.key();
+        let serial = b.notify_serial().unwrap();
+        let key_of = |entity| crate::topology::brep::p3::topology_ref(serial, entity);
+        let body = key_of(EntityRef::Brep(crate::topology::BrepId::from_index(0)));
+        assert_ne!(legacy_key, body.key);
+        let id = b.edge_list()[0];
+        let uses = edgeuses(&b, id, None, None).unwrap();
+        for &eu in &uses {
+            eu3::get_or_create_uv_trim_curve(&k, &mut b, eu, false, false, true)
+                .unwrap()
+                .status
+                .unwrap();
+        }
+        assert!(uses
+            .iter()
+            .any(|&eu| b.edgeuse(eu).unwrap().uv_trim_curve.is_some()));
+        let curve = b.edge_mut(id).unwrap().curve.as_mut().unwrap();
+        let old_ref = ObjectRef {
+            type_code: curve.type_code(),
+            key: k
+                .context
+                .geometry_key(curve.notify_identity_slot())
+                .unwrap(),
+        };
+        let mut copy = b
+            .edge(id)
+            .unwrap()
+            .curve
+            .as_ref()
+            .unwrap()
+            .copy(&k)
+            .unwrap();
+        let interval = b.edge(id).unwrap().interval;
+        let before = b
+            .edge(id)
+            .unwrap()
+            .curve
+            .as_ref()
+            .unwrap()
+            .evaluate_point(&k, interval.evaluate(0.37))
+            .unwrap();
+        let mut records = BTreeMap::new();
+        crate::topology::brep::p3::seed_records(&mut records, &b, &key_of);
+        let mut attributes = AttributeStore::default();
+        let marker = attributes
+            .insert(Attribute::long(ids::USER_1, 917, Behavior::Reference))
+            .unwrap();
+        attributes.add_attribute(body.key, marker).unwrap();
+        let events = callbacks::install(&mut k.context);
+        k.context.set_doing_boolean(true);
+        let new_ref = Context::with_notification_context(&mut k, |_k, context| {
+            let mut env = NotifyEnv {
+                records: &mut records,
+                attributes: &mut attributes,
+                context: Some(context),
+                key_of: &key_of,
+            };
+            assert!(env.context.as_deref().unwrap().doing_boolean());
+            let new_ref = crate::topology::brep::p9::issue_curve_identity(id, &mut copy, &mut env)?;
+            set_curve_with_body_identity(
+                &mut b,
+                id,
+                Some(copy),
+                SetCurveOptions {
+                    delete_old_curve: true,
+                    ..Default::default()
+                },
+                &mut env,
+                [Some(new_ref), Some(old_ref)],
+                body,
+            )?;
+            Ok::<_, SolidError>(new_ref)
+        })
+        .unwrap()
+        .unwrap();
+        assert!(k.context.doing_boolean());
+        callbacks::assert_installed(&k.context, &events);
+        assert_eq!(b.key(), legacy_key);
+        assert_ne!(new_ref.key, old_ref.key);
+        let installed = b.edge(id).unwrap().curve.as_ref().unwrap();
+        assert_eq!(installed.notify_key(), Some(new_ref.key));
+        assert_eq!(
+            installed
+                .evaluate_point(&k, interval.evaluate(0.37))
+                .unwrap(),
+            before
+        );
+        assert!(uses
+            .iter()
+            .all(|&eu| b.edgeuse(eu).unwrap().uv_trim_curve.is_none()));
+        assert_eq!(attributes.users(marker).unwrap(), &[body.key]);
+        let events = events.lock().unwrap();
+        let body_events: Vec<_> = events
+            .iter()
+            .filter(|event| event.caller.type_code == BREP_TYPE)
+            .collect();
+        assert_eq!(body_events.len(), 8);
+        for event in body_events {
+            assert_eq!(event.caller, body);
+            assert_eq!(event.data[1], Some(body));
+        }
+        assert!(events
+            .iter()
+            .any(|event| event.caller == key_of(EntityRef::Edge(id))
+                && event.operation == NotifyOperation::ChangeGeometry
+                && event.data == [Some(new_ref), None, Some(old_ref)]));
+        assert!(!events.iter().any(|event| event.caller.key == legacy_key));
+    }
 
     #[test]
     fn kernel_notification_state_rekeys_real_stores_and_restores_scopes() {
@@ -3114,6 +3365,65 @@ mod tests {
         assert_eq!(b.edge(e).unwrap().tolerance, 1.0);
         for v in vs {
             assert_eq!(b.vertex(v).unwrap().tolerance, 1.0);
+        }
+    }
+
+    #[test]
+    fn issue_521_failed_reversal_preserves_edge_interval_uses_and_trims() {
+        let mut k = Kernel::default();
+        k.fixes.edge_reversal_keeps_failed_edge = true;
+        let (mut b, e, eus, _) = wire();
+        let hermite = crate::curve::hermite_curve::HermiteCurve::new(
+            Vec3::ZERO,
+            Vec3::X,
+            Vec3::X,
+            Vec3::Y,
+            3,
+        );
+        let mut curve = C::from(hermite);
+        let old_ivl = b.edge(e).unwrap().interval;
+        let expected = curve.reverse_parameterization(&k, &old_ivl).unwrap_err();
+        b.edge_mut(e).unwrap().curve = Some(curve);
+        for eu in eus {
+            b.edgeuse_mut(eu).unwrap().uv_trim_curve = Some(C::from(BSplineCurve::from_nurb(
+                NlCurve::new(
+                    vec![
+                        CPoint::new(0.0, 0.0, 0.0, NOW),
+                        CPoint::new(1.0, 0.0, 0.0, NOW),
+                    ],
+                    1,
+                    vec![0.0, 0.0, 1.0, 1.0],
+                )
+                .unwrap(),
+                3,
+                false,
+            )));
+        }
+        let before = format!("{b:?}");
+        assert_eq!(reverse_orientation(&k, &mut b, e), Err(expected));
+        assert_eq!(format!("{b:?}"), before);
+    }
+
+    #[test]
+    fn failed_reversal_installs_default_interval_by_default() {
+        // WR-260: upstream ignores the failed reversal's status.
+        let k = Kernel::default();
+        let (mut b, e, eus, _) = wire();
+        b.edge_mut(e).unwrap().curve =
+            Some(C::from(crate::curve::hermite_curve::HermiteCurve::new(
+                Vec3::ZERO,
+                Vec3::X,
+                Vec3::X,
+                Vec3::Y,
+                3,
+            )));
+        for &eu in &eus {
+            b.edgeuse_mut(eu).unwrap().uv_trim_curve = b.edge(e).unwrap().curve.clone();
+        }
+        reverse_orientation(&k, &mut b, e).unwrap();
+        assert_eq!(b.edge(e).unwrap().interval, Extent1d::new());
+        for eu in eus {
+            assert!(b.edgeuse(eu).unwrap().uv_trim_curve.is_none());
         }
     }
 

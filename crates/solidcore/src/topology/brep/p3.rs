@@ -13,6 +13,8 @@
 //! | [`api_brep_copy`]               | `SmApiBrepCopy`                                  |
 //! | [`copy_vertices`], [`copy_vertices_with_context`], [`CopySource`] | `SmBrep::CopyVertices`                           |
 //! | [`delete_face`], [`DeleteFaceOptions`] | `SmBrep::DeleteFace`                      |
+//! | [`remove_slit_loops_where_solids_touch`] | not upstream: the fork's `SmBrep::RemoveSlitLoopsWhereSolidsTouch` (issue #746) |
+//! | [`split_disconnected_shells`]  | not upstream: the fork's `SmBrep::SplitDisconnectedShells` (issue #746) |
 //! | [`make_wire_edge`]              | `SmBrep::MakeWireEdge`                           |
 //! | [`make_wire_edge_vertex`]       | `SmBrep::MakeWireEdgeVertex`                     |
 //! | [`merge_brep`], [`merge_brep_with_context`] | `SmBrep::MergeBrep`                              |
@@ -67,7 +69,7 @@
 //!   distinct per object is the caller's part, as an upstream caller's objects are its
 //!   own; the records and attributes it keeps under them are used as they are (an
 //!   object without a record gets the default one its constructor would make,
-//!   [`seed_records`]). Only objects with no caller key get kernel-issued identities:
+//!   `seed_records`). Only objects with no caller key get kernel-issued identities:
 //!   a curve is `(domain, counter)`, issued once per context domain and kept on the
 //!   [`Curve`] ([`Curve::notify_key`]); a caller without notification state of its own
 //!   ([`with_kernel_callbacks`], the healer's tracked edits) names topology by
@@ -77,7 +79,7 @@
 //!   have no public setter, and a clone (upstream's copy constructor: another object)
 //!   starts without one. Kernel keys have the top bit set (topology `0b10`, geometry
 //!   `0b11`); every edit refuses (`InvalidInput`) a caller key in that range before it
-//!   changes anything ([`check_keys`]), unless it is the object's own kernel identity.
+//!   changes anything (`check_keys`), unless it is the object's own kernel identity.
 //!   The lending adapters are not nestable: one inside another (whose kernel context
 //!   then holds no callbacks) is refused before anything changes
 //!   (`Context::lend_notify`). Independent contexts can issue equal keys by default.
@@ -129,7 +131,7 @@ use crate::topology::loopuse as lu1;
 use crate::topology::proto_topology::p1::CopyBrepMap;
 use crate::topology::shell::{self, ShellMembers, ShellType};
 use crate::topology::topology as topo;
-use crate::topology::topology_traverser::{self as tt, Entity, Marks};
+use crate::topology::topology_traverser::{self as tt, Entity, FaceTraversalMarks, Marks};
 use crate::topology::trimming_tools;
 use crate::topology::{
     vertex, vertexuse, Brep, EdgeId, EdgeuseId, EdgeuseOwner, FaceId, FaceuseId, LoopuseId,
@@ -193,6 +195,9 @@ impl Brep {
     /// `PreInsert(pRegion)` on the B-rep's region list: the region joins the list as
     /// its new head.
     pub(crate) fn pre_insert_region(&mut self, r: RegionId) -> Result<()> {
+        self.fix_region_order();
+        self.region_order.retain(|&x| x != r);
+        self.region_order.insert(0, r);
         self.region_mut(r)?.in_brep = true;
         self.region_list_head = Some(r);
         Ok(())
@@ -202,6 +207,9 @@ impl Brep {
     /// its end (it becomes the head of an empty list).
     pub(crate) fn post_insert_region(&mut self, r: RegionId) -> Result<()> {
         let empty = !self.regions.iter().any(|(_, x)| x.in_brep);
+        self.fix_region_order();
+        self.region_order.retain(|&x| x != r);
+        self.region_order.push(r);
         self.region_mut(r)?.in_brep = true;
         if empty {
             self.region_list_head = Some(r);
@@ -221,6 +229,8 @@ impl Brep {
                 .filter(|&x| x != r);
             self.region_list_head = next;
         }
+        self.fix_region_order();
+        self.region_order.retain(|&x| x != r);
         self.region_mut(r)?.in_brep = false;
         Ok(())
     }
@@ -384,6 +394,58 @@ fn normalized_evaluate(
     Ok((eval.point, eval.first_deriv.unwrap_or(Vec3::UNDEF)))
 }
 
+/// The mark authority used by a deletion's shared traversal body.
+pub(super) enum DeletionMarks<'a> {
+    Indexed(&'a mut Marks),
+    Retained,
+}
+
+struct RecordMarks<'a> {
+    records: &'a mut BTreeMap<ObjectKey, topo::Topology>,
+    key_of: &'a dyn Fn(EntityRef) -> ObjectRef,
+}
+
+impl RecordMarks<'_> {
+    fn key(&self, entity: Entity) -> ObjectKey {
+        let entity = match entity {
+            Entity::Face(id) => EntityRef::Face(id),
+            Entity::Edge(id) => EntityRef::Edge(id),
+            Entity::Vertex(id) => EntityRef::Vertex(id),
+            Entity::Faceuse(id) => EntityRef::Faceuse(id),
+            Entity::Vertexuse(id) => EntityRef::Vertexuse(id),
+            Entity::Shell(id) => EntityRef::Shell(id),
+        };
+        (self.key_of)(entity).key
+    }
+}
+impl FaceTraversalMarks for RecordMarks<'_> {
+    fn is_marked(&self, k: &Kernel, entity: Entity, mark: MarkType) -> bool {
+        self.records
+            .get(&self.key(entity))
+            .is_some_and(|record| record.is_marked(&k.context, mark))
+    }
+    fn mark(&mut self, k: &Kernel, entity: Entity, mark: MarkType) {
+        let key = self.key(entity);
+        self.records
+            .entry(key)
+            .or_default()
+            .mark(Some(&k.context), mark);
+    }
+}
+impl DeletionMarks<'_> {
+    pub(super) fn with_marks<T>(
+        &mut self,
+        records: &mut BTreeMap<ObjectKey, topo::Topology>,
+        key_of: &dyn Fn(EntityRef) -> ObjectRef,
+        body: impl FnOnce(&mut dyn FaceTraversalMarks) -> T,
+    ) -> T {
+        match self {
+            Self::Indexed(marks) => body(*marks),
+            Self::Retained => body(&mut RecordMarks { records, key_of }),
+        }
+    }
+}
+
 // ---- helpers --------------------------------------------------------------------------------
 
 /// `pRegion` or, for `None`, `GetInfiniteRegion()`.
@@ -398,6 +460,16 @@ fn brep_notify(
     operation: NotifyOperation,
     data: [Option<NotifyArg>; 3],
 ) -> Result<()> {
+    brep_notify_with_identity(b, env, operation, data, None)
+}
+
+fn brep_notify_with_identity(
+    b: &Brep,
+    env: &mut NotifyEnv<'_>,
+    operation: NotifyOperation,
+    data: [Option<NotifyArg>; 3],
+    body: Option<ObjectRef>,
+) -> Result<()> {
     // an object made by the edit has its (default) SmTopology record from its
     // constructor upstream; the arena's live in the caller's map, so one is added the
     // first time the edit names the object (seed_records covers the rest)
@@ -407,8 +479,12 @@ fn brep_notify(
             env.records.entry(key).or_default();
         }
     }
-    env.records.entry(p2::brep_ref(b).key).or_default();
-    p2::notify(b, env, None, operation, data)
+    let identity = body.unwrap_or_else(|| p2::brep_ref(b));
+    env.records.entry(identity.key).or_default();
+    match body {
+        Some(body) => p2::notify_with_body_identity(b, env, None, operation, data, body),
+        None => p2::notify(b, env, None, operation, data),
+    }
 }
 
 /// The topology entity `e` as a notification argument.
@@ -461,16 +537,18 @@ fn destroy_face(b: &mut Brep, env: &mut NotifyEnv<'_>, f: FaceId) -> Result<()> 
         NotifyOperation::Destruction,
         [arg(EntityRef::Face(f)), None, None],
     ))?;
-    env.attributes
-        .clear_attributes((env.key_of)(EntityRef::Face(f)).key)?;
+    let fref = (env.key_of)(EntityRef::Face(f));
+    env.attributes.clear_attributes(fref.key)?;
+    let expected = p1::default_face_owner(b, f);
     let face = b.face_mut(f)?;
     face.faceuse = None;
     let owned = face
         .surface
         .as_ref()
-        .is_some_and(|s| s.owner() == Some(arena_identity(CacheObject::Face(f))));
+        .is_some_and(|s| s.owner().is_some_and(|o| o == expected || o == fref));
     if owned {
         face.surface = None;
+        b.set_geometry_owner_key(EntityRef::Face(f), None);
     }
     Ok(())
 }
@@ -521,6 +599,8 @@ fn new_brep_in(
     caller_key: Option<ObjectKey>,
 ) -> Result<Brep> {
     let mut b = Brep::new();
+    // (its Euler operators name geometry owners by their notification identities)
+    b.set_naming(crate::topology::NamingScheme::Notify);
 
     // When asked (should be extremly rare) set SystemTolerance sizes
     b.set_this_model_size_estimate(k, model_size_estimate);
@@ -647,10 +727,51 @@ pub(crate) fn seed_records(
     b: &Brep,
     key_of: &dyn Fn(EntityRef) -> ObjectRef,
 ) {
+    if records.is_empty() {
+        // Bulk build (sorted input is O(n)); the same map as entry-by-entry.
+        *records = entities(b)
+            .map(|e| key_of(e).key)
+            .chain([p2::brep_ref(b).key])
+            .map(|k| (k, topo::Topology::default()))
+            .collect();
+        return;
+    }
     for e in entities(b) {
         records.entry(key_of(e).key).or_default();
     }
     records.entry(p2::brep_ref(b).key).or_default();
+}
+
+/// Leaves `records` exactly as [`seed_records`] does on an empty map (a default record
+/// for every object of `b`, and for the B-rep), whatever it held before: records of
+/// objects that are still there are reset in place and the rest is added or dropped, so
+/// an edit that notifies through the same B-rep again reuses most of the map.
+fn reseed_records(
+    records: &mut BTreeMap<ObjectKey, topo::Topology>,
+    b: &Brep,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+) {
+    let mut keys: Vec<ObjectKey> = entities(b)
+        .map(|e| key_of(e).key)
+        .chain([p2::brep_ref(b).key])
+        .collect();
+    keys.sort_unstable();
+    keys.dedup();
+    // (both ascending: `retain` visits the records in key order)
+    let mut next = 0;
+    records.retain(|key, record| {
+        while keys.get(next).is_some_and(|k| k < key) {
+            next += 1;
+        }
+        let keep = keys.get(next) == Some(key);
+        *record = topo::Topology::default();
+        keep
+    });
+    if records.len() != keys.len() {
+        for key in keys {
+            records.entry(key).or_default();
+        }
+    }
 }
 
 /// The kinds of topology keys with their class type codes (`GetType`), by kind number:
@@ -740,20 +861,43 @@ fn issuer<'c>(kernel: &'c mut Context, env: Option<&'c mut Context>) -> &'c mut 
     }
 }
 
-/// Every topology object of `b` (not the B-rep itself).
-fn entities(b: &Brep) -> Vec<EntityRef> {
-    let mut all = Vec::new();
-    all.extend(b.regions().iter().map(|(x, _)| EntityRef::Region(x)));
-    all.extend(b.shells().iter().map(|(x, _)| EntityRef::Shell(x)));
-    all.extend(b.faceuses().iter().map(|(x, _)| EntityRef::Faceuse(x)));
-    all.extend(b.faces().iter().map(|(x, _)| EntityRef::Face(x)));
-    all.extend(b.loopuses().iter().map(|(x, _)| EntityRef::Loopuse(x)));
-    all.extend(b.loops().iter().map(|(x, _)| EntityRef::Loop(x)));
-    all.extend(b.edgeuses().iter().map(|(x, _)| EntityRef::Edgeuse(x)));
-    all.extend(b.edges().iter().map(|(x, _)| EntityRef::Edge(x)));
-    all.extend(b.vertexuses().iter().map(|(x, _)| EntityRef::Vertexuse(x)));
-    all.extend(b.vertices().iter().map(|(x, _)| EntityRef::Vertex(x)));
-    all
+/// Every topology object of `b` (not the B-rep itself), without collecting them: the
+/// edit entry points walk this per call.
+fn entities(b: &Brep) -> impl Iterator<Item = EntityRef> + '_ {
+    let regions = b.regions().iter().map(|(x, _)| EntityRef::Region(x));
+    let shells = b.shells().iter().map(|(x, _)| EntityRef::Shell(x));
+    let faceuses = b.faceuses().iter().map(|(x, _)| EntityRef::Faceuse(x));
+    let faces = b.faces().iter().map(|(x, _)| EntityRef::Face(x));
+    let loopuses = b.loopuses().iter().map(|(x, _)| EntityRef::Loopuse(x));
+    let loops = b.loops().iter().map(|(x, _)| EntityRef::Loop(x));
+    let edgeuses = b.edgeuses().iter().map(|(x, _)| EntityRef::Edgeuse(x));
+    let edges = b.edges().iter().map(|(x, _)| EntityRef::Edge(x));
+    let vertexuses = b.vertexuses().iter().map(|(x, _)| EntityRef::Vertexuse(x));
+    let vertices = b.vertices().iter().map(|(x, _)| EntityRef::Vertex(x));
+    regions
+        .chain(shells)
+        .chain(faceuses)
+        .chain(faces)
+        .chain(loopuses)
+        .chain(loops)
+        .chain(edgeuses)
+        .chain(edges)
+        .chain(vertexuses)
+        .chain(vertices)
+}
+
+/// The number of objects [`entities`] yields.
+fn entity_count(b: &Brep) -> usize {
+    b.regions().len()
+        + b.shells().len()
+        + b.faceuses().len()
+        + b.faces().len()
+        + b.loopuses().len()
+        + b.loops().len()
+        + b.edgeuses().len()
+        + b.edges().len()
+        + b.vertexuses().len()
+        + b.vertices().len()
 }
 
 /// The refusal of a caller key in the kernel's reserved key range.
@@ -764,24 +908,31 @@ const RESERVED_KEY: SolidError = SolidError::InvalidInput {
 
 /// The objects of each kind an edit of `b` may still allocate: the next `window` ids
 /// (arenas only append, so new objects take exactly these).
-fn prospective_entities(b: &Brep, window: usize) -> Vec<EntityRef> {
-    let next = |len: usize| (len..len.saturating_add(window)).map_while(|i| u32::try_from(i).ok());
-    let mut all = Vec::new();
-    all.extend(next(b.regions().len()).map(|i| EntityRef::Region(RegionId::from_index(i))));
-    all.extend(next(b.shells().len()).map(|i| EntityRef::Shell(ShellId::from_index(i))));
-    all.extend(next(b.faceuses().len()).map(|i| EntityRef::Faceuse(FaceuseId::from_index(i))));
-    all.extend(next(b.faces().len()).map(|i| EntityRef::Face(FaceId::from_index(i))));
-    all.extend(next(b.loopuses().len()).map(|i| EntityRef::Loopuse(LoopuseId::from_index(i))));
-    all.extend(
-        next(b.loops().len()).map(|i| EntityRef::Loop(crate::topology::LoopId::from_index(i))),
-    );
-    all.extend(next(b.edgeuses().len()).map(|i| EntityRef::Edgeuse(EdgeuseId::from_index(i))));
-    all.extend(next(b.edges().len()).map(|i| EntityRef::Edge(EdgeId::from_index(i))));
-    all.extend(
-        next(b.vertexuses().len()).map(|i| EntityRef::Vertexuse(VertexuseId::from_index(i))),
-    );
-    all.extend(next(b.vertices().len()).map(|i| EntityRef::Vertex(VertexId::from_index(i))));
-    all
+fn prospective_entities(b: &Brep, window: usize) -> impl Iterator<Item = EntityRef> {
+    let next =
+        move |len: usize| (len..len.saturating_add(window)).map_while(|i| u32::try_from(i).ok());
+    let regions = next(b.regions().len()).map(|i| EntityRef::Region(RegionId::from_index(i)));
+    let shells = next(b.shells().len()).map(|i| EntityRef::Shell(ShellId::from_index(i)));
+    let faceuses = next(b.faceuses().len()).map(|i| EntityRef::Faceuse(FaceuseId::from_index(i)));
+    let faces = next(b.faces().len()).map(|i| EntityRef::Face(FaceId::from_index(i)));
+    let loopuses = next(b.loopuses().len()).map(|i| EntityRef::Loopuse(LoopuseId::from_index(i)));
+    let loops =
+        next(b.loops().len()).map(|i| EntityRef::Loop(crate::topology::LoopId::from_index(i)));
+    let edgeuses = next(b.edgeuses().len()).map(|i| EntityRef::Edgeuse(EdgeuseId::from_index(i)));
+    let edges = next(b.edges().len()).map(|i| EntityRef::Edge(EdgeId::from_index(i)));
+    let vertexuses =
+        next(b.vertexuses().len()).map(|i| EntityRef::Vertexuse(VertexuseId::from_index(i)));
+    let vertices = next(b.vertices().len()).map(|i| EntityRef::Vertex(VertexId::from_index(i)));
+    regions
+        .chain(shells)
+        .chain(faceuses)
+        .chain(faces)
+        .chain(loopuses)
+        .chain(loops)
+        .chain(edgeuses)
+        .chain(edges)
+        .chain(vertexuses)
+        .chain(vertices)
 }
 
 /// The number of objects of one kind any edit here allocates at most: the B-rep's own
@@ -790,8 +941,8 @@ fn prospective_entities(b: &Brep, window: usize) -> Vec<EntityRef> {
 /// shell, vertex use and vertex for every entry, repeated ones included, as upstream)
 /// and a few for the wire makers.
 fn allocation_window(b: &Brep, source: Option<&Brep>, inputs: usize) -> usize {
-    let n = entities(b).len();
-    let m = source.map_or(0, |s| entities(s).len());
+    let n = entity_count(b);
+    let m = source.map_or(0, entity_count);
     n.saturating_add(m)
         .saturating_add(inputs.saturating_mul(3))
         .saturating_add(16)
@@ -918,8 +1069,8 @@ pub(crate) fn kernel_named_edit<R>(
     let key_of = move |e: EntityRef| topology_ref(serial, e);
     let label = b.key();
     b.set_key(topology_ref(serial, brep_entity()).key);
-    let mut records = BTreeMap::new();
-    seed_records(&mut records, b, &key_of);
+    let mut records = std::mem::take(&mut k.notify_records);
+    reseed_records(&mut records, b, &key_of);
     let mut attributes = crate::geom::attribute::AttributeStore::default();
     let r = {
         let mut env = NotifyEnv {
@@ -931,13 +1082,14 @@ pub(crate) fn kernel_named_edit<R>(
         edit(k, b, &mut env)
     };
     b.set_key(label);
+    k.notify_records = records;
     r
 }
 
 /// Runs `edit` for a caller that keeps no notification state of its own (upstream's
 /// objects carry it): through the kernel context's notify callbacks and identity
-/// domain, lent for the edit and given back ([`with_lent_context`]), under the
-/// kernel's identities ([`kernel_named_edit`]).
+/// domain, lent for the edit and given back (`with_lent_context`), under the
+/// kernel's identities (`kernel_named_edit`).
 ///
 /// Not nestable: inside `edit`, notify through the `env` it is given. A
 /// `with_kernel_callbacks` (or the healer's tracked edit) inside `edit` is refused.
@@ -1358,7 +1510,8 @@ fn merge_brep_in(
         } else {
             face_surf.copy(k)?
         };
-        *new_surface.owner_mut() = Some((env.key_of)(EntityRef::Face(new_f)));
+        let owner = (env.key_of)(EntityRef::Face(new_f));
+        *new_surface.owner_mut() = Some(owner);
         let (rect, dom, ftol) = (
             src_face.rectangular_trim,
             src_face.uv_domain,
@@ -1371,6 +1524,9 @@ fn merge_brep_in(
             nf.uv_domain = dom;
             nf.tolerance = ftol;
         }
+
+        b.geometry_owner_keys.insert(EntityRef::Face(new_f), owner);
+        b.sync_face_surface_tolerance(new_f)?;
 
         // add newFace to target Brep FaceList
         b.face_list.push(new_f);
@@ -1498,8 +1654,10 @@ fn merge_brep_in(
             tolerance: etol,
             curve: None,
         })?;
-        let _ = new_c.set_owner(Some((env.key_of)(EntityRef::Edge(new_e))), None);
+        let owner = (env.key_of)(EntityRef::Edge(new_e));
+        let _ = new_c.set_owner(Some(owner), None);
         b.edge_mut(new_e)?.curve = Some(new_c);
+        b.geometry_owner_keys.insert(EntityRef::Edge(new_e), owner);
 
         // Relate the Edges.
         set(
@@ -1888,7 +2046,41 @@ pub fn delete_face(
     options: DeleteFaceOptions,
 ) -> Result<Vec<EntityRef>> {
     with_caller_identities(k, b, env, None, |k, b, env| {
-        delete_face_in(k, b, env, marks, f, options)
+        delete_face_in(
+            k,
+            b,
+            env,
+            &mut DeletionMarks::Indexed(marks),
+            f,
+            options,
+            None,
+        )
+    })
+}
+
+/// Delete a face using the actual notification records for traversal marks and
+/// an explicitly issued B-rep notification identity.
+///
+/// # Errors
+/// Those of [`delete_face`]. Earlier edits and retained marks remain on failure.
+pub fn delete_face_with_body_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    f: FaceId,
+    options: DeleteFaceOptions,
+    body: ObjectRef,
+) -> Result<Vec<EntityRef>> {
+    with_caller_identities(k, b, env, None, |k, b, env| {
+        delete_face_in(
+            k,
+            b,
+            env,
+            &mut DeletionMarks::Retained,
+            f,
+            options,
+            Some(body),
+        )
     })
 }
 
@@ -1898,9 +2090,10 @@ fn delete_face_in(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
-    marks: &mut Marks,
+    marks: &mut DeletionMarks<'_>,
     f: FaceId,
     options: DeleteFaceOptions,
+    body: Option<ObjectRef>,
 ) -> Result<Vec<EntityRef>> {
     let DeleteFaceOptions {
         delete_edges_vertices,
@@ -1921,11 +2114,16 @@ fn delete_face_in(
     }
 
     // tell Brep it's about to change
-    ignore_soft(brep_notify(
+    ignore_soft(brep_notify_with_identity(
         b,
         env,
         NotifyOperation::PreEdit,
-        [brep_arg(b), None, None],
+        [
+            body.map(NotifyArg::Object).or_else(|| brep_arg(b)),
+            None,
+            None,
+        ],
+        body,
     ))?;
     ignore_soft(face_notify(
         b,
@@ -1934,11 +2132,16 @@ fn delete_face_in(
         NotifyOperation::PreEdit,
         [arg(EntityRef::Face(f)), None, None],
     ))?;
-    ignore_soft(brep_notify(
+    ignore_soft(brep_notify_with_identity(
         b,
         env,
         NotifyOperation::RmFromBrep,
-        [arg(EntityRef::Face(f)), brep_arg(b), None],
+        [
+            arg(EntityRef::Face(f)),
+            body.map(NotifyArg::Object).or_else(|| brep_arg(b)),
+            None,
+        ],
+        body,
     ))?;
 
     // Get all vertices for later new shell detection
@@ -1997,15 +2200,16 @@ fn delete_face_in(
         }
 
         // allow attributes to propagate and inform the public of Region merges
-        ignore_soft(brep_notify(
+        ignore_soft(brep_notify_with_identity(
             b,
             env,
             NotifyOperation::MergeInBrep,
             [
                 arg(EntityRef::Region(surviving)),
                 arg(EntityRef::Region(del_region)),
-                brep_arg(b),
+                body.map(NotifyArg::Object).or_else(|| brep_arg(b)),
             ],
+            body,
         ))?;
 
         // Remove and Delete the DelRegion
@@ -2152,14 +2356,33 @@ fn delete_face_in(
         // delete every edge converted into a wire
         for e in new_wire_edges {
             deleted.push(EntityRef::Edge(e));
-            ignore_soft(delete_edge(k, b, env, e, None))?;
+            ignore_soft(match body {
+                Some(body) => super::p4::delete_edge_with_body_identity(
+                    k,
+                    b,
+                    &mut super::p4::DeleteEnv::from_notify(env),
+                    e,
+                    None,
+                    body,
+                ),
+                None => delete_edge(k, b, env, e, None),
+            })?;
         }
 
         // remove vertices that have become shell vertices
         for v in orig_vertices {
             if vertex::is_shell_vertex(b, v)? {
                 deleted.push(EntityRef::Vertex(v));
-                ignore_soft(delete_vertex(k, b, env, v))?;
+                ignore_soft(match body {
+                    Some(body) => super::p4::delete_vertex_with_body_identity(
+                        k,
+                        b,
+                        &mut super::p4::DeleteEnv::from_notify(env),
+                        v,
+                        body,
+                    ),
+                    None => delete_vertex(k, b, env, v),
+                })?;
             }
         }
     }
@@ -2174,7 +2397,7 @@ fn delete_face_nesting(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
-    marks: &mut Marks,
+    marks: &mut DeletionMarks<'_>,
     lock: &mut MarkLock,
     shell: ShellId,
     any_edgeuse: Option<EdgeuseId>,
@@ -2208,11 +2431,15 @@ fn delete_face_nesting(
                 continue;
             }
             if need_traversal {
-                tt::shell_traversal(k, b, marks, v, shell, None, None, lock)?;
+                marks.with_marks(env.records, env.key_of, |marks| {
+                    tt::shell_traversal_with_marks(k, b, marks, v, shell, None, None, lock)
+                })?;
                 need_traversal = false;
             }
             // subtract marked vertices - they have a home in the original Shell
-            if marks.is_marked(k, Entity::Vertex(v), lock.mark_type()) {
+            if marks.with_marks(env.records, env.key_of, |marks| {
+                marks.is_marked(k, Entity::Vertex(v), lock.mark_type())
+            }) {
                 *vertex_count = vertex_count.wrapping_sub(1);
             }
         }
@@ -2229,8 +2456,9 @@ fn delete_face_nesting(
         // Now remove all vertices which have been touched by previous traversal.
         for slot in verts.iter_mut() {
             let Some(v) = *slot else { continue };
-            if marks.is_marked(k, Entity::Vertex(v), lock.mark_type())
-                || vertex::is_shell_vertex(b, v)?
+            if marks.with_marks(env.records, env.key_of, |marks| {
+                marks.is_marked(k, Entity::Vertex(v), lock.mark_type())
+            }) || vertex::is_shell_vertex(b, v)?
             {
                 *slot = None;
                 count -= 1;
@@ -2253,16 +2481,18 @@ fn delete_face_nesting(
         shell::region_post_insert_shell(b, r, new_shell)?;
         let mut faceuses = Vec::new();
         let mut edgeuses = Vec::new();
-        tt::shell_traversal(
-            k,
-            b,
-            marks,
-            v,
-            shell,
-            Some(&mut edgeuses),
-            Some(&mut faceuses),
-            lock,
-        )?;
+        marks.with_marks(env.records, env.key_of, |marks| {
+            tt::shell_traversal_with_marks(
+                k,
+                b,
+                marks,
+                v,
+                shell,
+                Some(&mut edgeuses),
+                Some(&mut faceuses),
+                lock,
+            )
+        })?;
 
         if faceuses.is_empty() && !edgeuses.is_empty() {
             // Wire shell
@@ -2337,6 +2567,171 @@ fn delete_faceuses(b: &mut Brep, faceuses: [FaceuseId; 2]) -> Result<()> {
     for x in faceuses {
         if let Some(owner) = eu1::faceuse_shell(b, x)? {
             ignore_soft(shell::shell_remove_faceuse(b, owner, x))?;
+        }
+    }
+    Ok(())
+}
+
+// ---- slit loops where solids touch (not upstream; issue #746) --------------------------------
+
+/// The bound on [`split_disconnected_shells`]' splits of one shell (the fork's 1024 passes).
+const MAX_SHELL_SPLITS: usize = 1024;
+
+/// Not upstream (tangency-labs/solidcore#746, the fork's
+/// `SmBrep::RemoveSlitLoopsWhereSolidsTouch`): removes the inner loops of no area a
+/// volumetric Boolean leaves where solids touch along a curve inside a face (a cylinder
+/// resting on the top of a box, united), then splits the shells joined only through
+/// them ([`split_disconnected_shells`]). An inner loop is removed only when each of its
+/// edges is used exactly twice by the loop and also bounds another face, which keeps
+/// it; its uses go as [`delete_face`] removes a face's (edge uses destroyed through
+/// `env`, vertex uses taken off their vertices, the loop uses off their face uses).
+/// `SmTrimmingTools::CheckFace` rejects such a loop (bad orientation, zero area), and it
+/// bounds nothing: the regularized result is the solids touching there, each whole.
+/// Returns whether a loop was removed.
+///
+/// # Errors
+///
+/// `SM_ERR_NULL_POINTER` for a loop without both loop uses, an edge use without mate,
+/// edge or vertex use, a vertex use without vertex (`NER`); those of the edge use
+/// destruction, the topology reads and the shell split.
+pub fn remove_slit_loops_where_solids_touch(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+) -> Result<bool> {
+    let mut removed = false;
+    for f in p1::faces(b, None)? {
+        // inner loops only
+        let loops = face2::loops(b, f, false, None)?;
+        for &l in loops.iter().skip(1) {
+            let lu = b.loop_(l)?.loopuse.ok_or_else(ner)?;
+            let uses = lu1::edgeuses(b, lu, None, None)?;
+            if uses.len() < 2 {
+                continue;
+            }
+            // every edge used twice by the loop, and bounding another face too
+            let mut slit = true;
+            for &eu in &uses {
+                let e = eu1::edge(b, eu)?.ok_or_else(ner)?;
+                let mut in_loop = 0usize;
+                for &other in &uses {
+                    if eu1::edge(b, other)? == Some(e) {
+                        in_loop += 1;
+                    }
+                }
+                let other_face = edge::faces(b, e, None)?.iter().any(|&g| g != f);
+                slit = in_loop == 2 && other_face;
+                if !slit {
+                    break;
+                }
+            }
+            if !slit {
+                continue;
+            }
+
+            // take the loop off its face, then its edge uses and vertex uses off their
+            // edges and vertices
+            let other_lu = lu1::other_loopuse(b, lu)?.ok_or_else(ner)?;
+            b.face_mut(f)?.loops.retain(|&x| x != l);
+            for x in [lu, other_lu] {
+                let fu = lu1::faceuse(b, x)?.ok_or_else(ner)?;
+                faceuse_remove_loopuse(b, fu, x)?;
+            }
+            for eu in uses {
+                let mate = eu1::mate(b, eu)?.ok_or_else(ner)?;
+                let e = eu1::edge(b, eu)?.ok_or_else(ner)?;
+                edge_remove_edgeuse(b, e, eu)?;
+                edge_remove_edgeuse(b, e, mate)?;
+                let (vu1, v1) = eu_vertex(b, eu)?;
+                vertex_remove_vertexuse(b, v1, vu1)?;
+                let (vu2, v2) = eu_vertex(b, mate)?;
+                vertex_remove_vertexuse(b, v2, vu2)?;
+                crate::topology::edgeuse::p2::destroy(k, b, eu, env)?;
+                crate::topology::edgeuse::p2::destroy(k, b, mate, env)?;
+            }
+            removed = true;
+        }
+    }
+    if removed {
+        split_disconnected_shells(k, b)?;
+    }
+    Ok(removed)
+}
+
+/// Not upstream (tangency-labs/solidcore#746, the fork's
+/// `SmBrep::SplitDisconnectedShells`): splits each shell into its connected parts, as
+/// [`delete_face`] splits a shell a removed face leaves in pieces. The face uses
+/// reached through the shell from the first face use's face's first vertex stay; the
+/// rest move to a new face-use shell, in the infinite region or in a region of its
+/// own (with the old region's void flag), which is split in its turn. At most
+/// [`MAX_SHELL_SPLITS`] splits of each shell.
+///
+/// # Errors
+///
+/// Those of the shell traversal, the mark lock and the list edits.
+pub fn split_disconnected_shells(k: &mut Kernel, b: &mut Brep) -> Result<()> {
+    for r in p1::regions(b, None)? {
+        let mut shells = region_shells(b, r)?;
+        let mut jj = 0;
+        while let Some(&s) = shells.get(jj) {
+            jj += 1;
+            for _ in 0..MAX_SHELL_SPLITS {
+                let all = match &b.shell(s)?.members {
+                    ShellMembers::Faceuses(list) => list.clone(),
+                    _ => Vec::new(),
+                };
+                let Some(&first) = all.first() else {
+                    break;
+                };
+                if all.len() < 2 {
+                    break;
+                }
+                let face = eu1::faceuse_face(b, first)?.ok_or_else(ner)?;
+                let Some(&start) = face_vertices(b, face)?.first() else {
+                    break;
+                };
+                let mut reached = Vec::new();
+                let mut marks = Marks::default();
+                let mut lock = MarkLock::new(core::slice::from_mut(&mut k.context), 0, ALL_MARKS)?;
+                let traversed = tt::shell_traversal(
+                    k,
+                    b,
+                    &mut marks,
+                    start,
+                    s,
+                    None,
+                    Some(&mut reached),
+                    &lock,
+                );
+                lock.release(core::slice::from_mut(&mut k.context))?;
+                traversed?;
+                if reached.len() >= all.len() {
+                    break;
+                }
+
+                // the face uses not reached go to a new shell, in the infinite region or
+                // a region of its own
+                let new_s = b.add_shell_record(crate::topology::Shell::default())?;
+                set_shell_type(b, new_s, ShellType::Faceuse)?;
+                if Some(r) == b.infinite_region() {
+                    shell::region_post_insert_shell(b, r, new_s)?;
+                } else {
+                    let new_r = b.add_region_record(Region::new())?;
+                    let is_void = b.region(r)?.is_void();
+                    region_set_is_void(b, new_r, is_void)?;
+                    shell::region_post_insert_shell(b, new_r, new_s)?;
+                    b.post_insert_region(new_r)?;
+                }
+                for fu in all {
+                    if reached.contains(&fu) {
+                        continue;
+                    }
+                    shell::shell_remove_faceuse(b, s, fu)?;
+                    shell::shell_post_insert_faceuse(b, new_s, fu)?;
+                }
+                // the new shell may have parts of its own: it is split in its turn
+                shells.push(new_s);
+            }
         }
     }
     Ok(())
@@ -2439,6 +2834,7 @@ fn bind_wire_curve(
     if let Some(c) = b.edge_mut(e)?.curve.as_mut() {
         let _ = c.set_owner(Some(edge_ref), None);
     }
+    b.set_geometry_owner_key(EntityRef::Edge(e), Some(edge_ref));
     Ok(())
 }
 
@@ -2492,7 +2888,7 @@ fn make_wire_edge_in(
     let region = region_or_infinite(b, region);
 
     // make new edge connected to vertices and region
-    let e = p2::make_edge_topology(k, b, region, start, end)?;
+    let e = p2::make_edge_topology(k, b, region, start, end, env)?;
 
     // Set edge parameters
     let t = b.tolerance();
@@ -2809,13 +3205,15 @@ fn squeeze_edge_in(
         NotifyOperation::Destruction,
         [Some(eref), None, None],
     ))?;
+    let expected = p1::default_edge_owner(b, e);
     let owned = b
         .edge(e)?
         .curve
         .as_ref()
-        .is_some_and(|c| c.owner() == Some(arena_identity(CacheObject::Edge(e))));
+        .is_some_and(|c| c.owner().is_some_and(|o| o == expected || o == eref));
     if owned {
         b.edge_mut(e)?.curve = None;
+        b.set_geometry_owner_key(EntityRef::Edge(e), None);
     }
     b.remove_from_edge_list(e);
     Ok(())
@@ -2903,6 +3301,54 @@ fn with_nurb<'a>(k: &Kernel, s: &'a Surface) -> Result<Option<Cow<'a, BSplineSur
                 Some(Cow::Owned(tmp.base().clone()))
             }
         }
+        SurfaceKind::SurfOfExtrusion(x) => {
+            if x.base().gw_nurb().is_some() {
+                Some(Cow::Borrowed(x.base()))
+            } else {
+                let mut tmp = x.as_ref().clone();
+                match tmp.make_nurb(k) {
+                    Err(e) if e.is_unported() => return Err(e),
+                    Ok(()) | Err(_) => {}
+                }
+                Some(Cow::Owned(tmp.base().clone()))
+            }
+        }
+        SurfaceKind::Cone(x) => {
+            if x.rev().base().gw_nurb().is_some() {
+                Some(Cow::Borrowed(x.rev().base()))
+            } else {
+                let mut tmp = x.as_ref().clone();
+                match tmp.make_nurb(k) {
+                    Err(e) if e.is_unported() => return Err(e),
+                    Ok(()) | Err(_) => {}
+                }
+                Some(Cow::Owned(tmp.rev().base().clone()))
+            }
+        }
+        SurfaceKind::Torus(x) => {
+            if x.base().base().gw_nurb().is_some() {
+                Some(Cow::Borrowed(x.base().base()))
+            } else {
+                let mut tmp = x.as_ref().clone();
+                match tmp.make_nurb(k) {
+                    Err(e) if e.is_unported() => return Err(e),
+                    Ok(()) | Err(_) => {}
+                }
+                Some(Cow::Owned(tmp.base().base().clone()))
+            }
+        }
+        SurfaceKind::Sphere(x) => {
+            if x.base().base().gw_nurb().is_some() {
+                Some(Cow::Borrowed(x.base().base()))
+            } else {
+                let mut tmp = x.as_ref().clone();
+                match tmp.make_nurb(k) {
+                    Err(e) if e.is_unported() => return Err(e),
+                    Ok(()) | Err(_) => {}
+                }
+                Some(Cow::Owned(tmp.base().base().clone()))
+            }
+        }
         _ => None,
     })
 }
@@ -2912,12 +3358,16 @@ const fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
         SurfaceKind::BSpline(x) => Some(x),
         SurfaceKind::Plane(x) => Some(x.base()),
         SurfaceKind::SurfOfRevolution(x) => Some(x.base()),
+        SurfaceKind::SurfOfExtrusion(x) => Some(x.base()),
+        SurfaceKind::Cone(x) => Some(x.rev().base()),
+        SurfaceKind::Torus(x) => Some(x.base().base()),
+        SurfaceKind::Sphere(x) => Some(x.base().base()),
         _ => None,
     }
 }
 
 /// `TurnToNURBS`: makes every face surface and edge curve of the B-rep a plain
-/// B-spline: a B-spline kind (`SmPlane`, `SmSurfOfRevolution`) gets its B-spline
+/// B-spline: a B-spline kind (`SmPlane`, `SmSurfOfRevolution`, `SmSphere`, `SmCone`, `SmTorus`) gets its B-spline
 /// copy (`ReplaceSurface`, which rebuilds the UV trim curves); an `SmOffsetSurface` of a
 /// B-spline kind is approximated (`ApproximateOffsetSurface` at ten times the B-rep
 /// tolerance, chord length; a failed approximation skips the face), extended by 2% of
@@ -2935,9 +3385,14 @@ const fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
 /// identity domain.
 pub fn turn_to_nurbs(k: &mut Kernel, b: &mut Brep, env: &mut NotifyEnv<'_>) -> Result<()> {
     with_caller_identities(k, b, env, None, |k, b, env| {
-        turn_to_nurbs_in(k, b, env, &|f| arena_identity(CacheObject::Face(f)), &|e| {
-            arena_identity(CacheObject::Edge(e))
-        })
+        turn_to_nurbs_in(
+            k,
+            b,
+            env,
+            &|f| arena_identity(CacheObject::Face(f)),
+            &|e| arena_identity(CacheObject::Edge(e)),
+            &|e| arena_identity(CacheObject::Edge(e)),
+        )
     })
 }
 
@@ -2948,12 +3403,18 @@ pub(crate) fn turn_to_nurbs_with_geometry_owners(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
+    geometry_owner: &dyn Fn(EntityRef) -> ObjectRef,
 ) -> Result<()> {
     let key_of = env.key_of;
     with_caller_identities(k, b, env, None, |k, b, env| {
-        turn_to_nurbs_in(k, b, env, &|f| key_of(EntityRef::Face(f)), &|e| {
-            key_of(EntityRef::Edge(e))
-        })
+        turn_to_nurbs_in(
+            k,
+            b,
+            env,
+            &|f| geometry_owner(EntityRef::Face(f)),
+            &|e| geometry_owner(EntityRef::Edge(e)),
+            &|e| key_of(EntityRef::Edge(e)),
+        )
     })
 }
 
@@ -2964,6 +3425,7 @@ fn turn_to_nurbs_in(
     env: &mut NotifyEnv<'_>,
     face_owner: &dyn Fn(FaceId) -> ObjectRef,
     edge_owner: &dyn Fn(EdgeId) -> ObjectRef,
+    new_edge_owner: &dyn Fn(EdgeId) -> ObjectRef,
 ) -> Result<()> {
     ignore_soft(brep_notify(
         b,
@@ -3137,10 +3599,11 @@ fn turn_to_nurbs_in(
             env,
             [Some(r), None],
         )?;
-        let edge_ref = arena_identity(CacheObject::Edge(e));
+        let edge_ref = new_edge_owner(e);
         if let Some(c) = b.edge_mut(e)?.curve.as_mut() {
             let _ = c.set_owner(Some(edge_ref), None);
         }
+        b.set_geometry_owner_key(EntityRef::Edge(e), Some(edge_ref));
     }
     Ok(())
 }
@@ -3505,15 +3968,29 @@ fn orient_ray_votes(
 
             // Get Surface Normal for this point.
             let dom = b.face(face)?.uv_domain;
-            let sols = surface.global_point_solve::<CacheObject>(
+            // the face's surface reaches its face's cache (smsurf_GetSurfaceCache),
+            // made on the B-rep: an exact evaluation copy of the surface meanwhile (the
+            // face's surface, read again after the trimming's in-place edits)
+            let surface = b
+                .face(face)?
+                .surface
+                .as_ref()
+                .ok_or(null_deref("face without surface"))?
+                .clone_for_evaluation()?;
+            let tolerance_3d = b.tolerance();
+            let mut sols = crate::geom::solution_array::SolutionArray::new();
+            surface.global_point_solve_into_with_context::<CacheObject>(
                 k,
+                Some(CacheObject::Surface(face)),
                 None,
+                &mut crate::query::brep::BrepFaceServices::new(b),
                 &dom,
                 crate::geom::global_solver::SolverOperation::Minimize,
                 point_in_face,
-                b.tolerance(),
+                tolerance_3d,
                 None,
                 crate::geom::global_solver::SolutionRequested::Single,
+                &mut sols,
             )?;
             let sol = *sols.get(0).ok_or_else(ser)?;
             let uv = crate::math::Point2::new(sol.start.param(0)?, sol.start.param(1)?);
@@ -3612,22 +4089,13 @@ fn brep_curve_solve(
     let editing = b.editing_enabled();
     b.set_editing_enabled(false);
     let res = (|| -> Result<Vec<(usize, f64)>> {
-        let keys = |o: CacheObject| arena_identity(o);
+        let query = crate::query::brep::BrepQuery::of_brep(b);
         // (CacheMakeOrValidate: the cache with its vertex, curve and surface trees)
-        let cache = crate::topology::brep_cache::make_brep_cache(
-            k,
-            crate::topology::brep_cache::CacheSource::Brep(b),
-            &keys,
-        )?;
-        let owners = |_: ObjectRef| None;
-        let objects = crate::topology::brep_cache::BrepObjects {
-            preparation: None,
-            brep: b,
-            brep_id: crate::topology::BrepId::from_index(0),
-            cache: Some(&cache),
-            keys: &keys,
-            owner_of: &owners,
-        };
+        let cache = query.cache(k, b)?;
+        // the solve makes the face caches it reaches on the B-rep
+        // (smsurf_GetSurfaceCache) and classifies on it
+        let identity = query.effective_identity();
+        let objects = crate::query::brep::LiveBrepObjects::new(b, &identity, Some(cache))?;
         let sols = TopologySolver::brep_curve_solve(
             k,
             &objects,
@@ -3668,6 +4136,124 @@ mod tests {
     /// and its offset arm's `ApproximateOffsetSurface` read the NURB through
     /// `GetOrCreateGwNurbPointer`: a bounded plane built without `MakeNurb` gets its
     /// NURB and domain, not the empty B-spline part.
+    #[test]
+    fn retained_face_deletion_uses_real_marks_body_callbacks_and_failure_prefix() {
+        use crate::geom::attribute::{ids, Attribute, AttributeStore, Behavior};
+        use crate::topology::edge::notification_test_support as callbacks;
+
+        for fail_after_notifications in [false, true] {
+            let mut k = Kernel::default();
+            let mut b = crate::primitive::api_primitives::create_box(
+                &mut k,
+                Point3::ZERO,
+                10.0,
+                20.0,
+                30.0,
+            )
+            .unwrap();
+            b.set_editing_enabled(true);
+            let legacy_key = b.key();
+            let serial = b.notify_serial().unwrap();
+            let key_of = |entity| topology_ref(serial, entity);
+            let body = key_of(EntityRef::Brep(crate::topology::BrepId::from_index(0)));
+            assert_ne!(legacy_key, body.key);
+            let face = b.face_list()[0];
+            let face_ref = key_of(EntityRef::Face(face));
+            if fail_after_notifications {
+                // Defined NER after the actual public-edit notification prefix.
+                b.face_mut(face).unwrap().faceuse = None;
+            }
+            let mut records = BTreeMap::new();
+            seed_records(&mut records, &b, &key_of);
+            records.get_mut(&face_ref.key).unwrap().set_user_index1(73);
+            let mut attributes = AttributeStore::default();
+            let marker = attributes
+                .insert(Attribute::long(ids::USER_1, 917, Behavior::Reference))
+                .unwrap();
+            attributes.add_attribute(body.key, marker).unwrap();
+            let events = callbacks::install(&mut k.context);
+            k.context.set_doing_boolean(true);
+            let mut outer =
+                MarkLock::new(core::slice::from_mut(&mut k.context), 0, ALL_MARKS).unwrap();
+            let outer_type = outer.mark_type();
+            let outer_value = k.context.current_mark(outer_type);
+            let nested_before = k.context.current_mark(MarkType::Mark2);
+            let result = Context::with_notification_context(&mut k, |k, context| {
+                let mut env = NotifyEnv {
+                    records: &mut records,
+                    attributes: &mut attributes,
+                    context: Some(context),
+                    key_of: &key_of,
+                };
+                delete_face_with_body_identity(
+                    k,
+                    &mut b,
+                    &mut env,
+                    face,
+                    DeleteFaceOptions::default(),
+                    body,
+                )
+            })
+            .unwrap();
+            assert!(k.context.is_mark_locked(outer_type));
+            assert_eq!(k.context.current_mark(outer_type), outer_value);
+            assert!(!k.context.is_mark_locked(MarkType::Mark2));
+            assert!(!k.context.is_mark_locked(MarkType::Mark3));
+            if fail_after_notifications {
+                assert!(
+                    matches!(result, Err(SolidError::Upstream { code, .. }) if code == crate::error::SM_ERR_NULL_POINTER)
+                );
+                assert!(b.face(face).is_ok());
+                assert_eq!(records[&face_ref.key].user_index1(), 73);
+                assert_eq!(k.context.current_mark(MarkType::Mark2), nested_before);
+            } else {
+                result.unwrap();
+                assert!(!b.face_list().contains(&face));
+                assert!(k.context.current_mark(MarkType::Mark2) > nested_before);
+                assert!(records
+                    .values()
+                    .any(|record| record.get_mark(MarkType::Mark2) > 0));
+            }
+            outer
+                .release(core::slice::from_mut(&mut k.context))
+                .unwrap();
+            assert_eq!(b.key(), legacy_key);
+            assert_eq!(attributes.users(marker).unwrap(), &[body.key]);
+            assert!(k.context.doing_boolean());
+            callbacks::assert_installed(&k.context, &events);
+            let events = events.lock().unwrap();
+            assert!(events.len() >= 6);
+            for pair in events.chunks_exact(2) {
+                assert_eq!(pair[0].callback, "user");
+                assert_eq!(pair[1].callback, "system");
+                assert_eq!(pair[0].caller, pair[1].caller);
+                assert_eq!(pair[0].operation, pair[1].operation);
+                assert_eq!(pair[0].data, pair[1].data);
+            }
+            assert_eq!(events[0].caller, body);
+            assert_eq!(events[0].operation, NotifyOperation::PreEdit);
+            assert_eq!(events[0].data, [Some(body), None, None]);
+            assert_eq!(events[2].caller, face_ref);
+            assert_eq!(events[2].operation, NotifyOperation::PreEdit);
+            assert_eq!(events[4].caller, body);
+            assert_eq!(events[4].operation, NotifyOperation::RmFromBrep);
+            assert_eq!(events[4].data, [Some(face_ref), Some(body), None]);
+            for event in events
+                .iter()
+                .filter(|event| event.caller.type_code == body.type_code)
+            {
+                assert_eq!(event.caller, body);
+                match event.operation {
+                    NotifyOperation::PreEdit => assert_eq!(event.data[0], Some(body)),
+                    NotifyOperation::RmFromBrep => assert_eq!(event.data[1], Some(body)),
+                    NotifyOperation::MergeInBrep => assert_eq!(event.data[2], Some(body)),
+                    _ => (),
+                }
+            }
+            assert!(!events.iter().any(|event| event.caller.key == legacy_key));
+        }
+    }
+
     #[test]
     fn lazy_plane_gets_its_nurb_before_the_copy() {
         use crate::geom::extent2d::Extent2d;
@@ -4273,6 +4859,38 @@ mod tests {
         b.remove_region_from_list(r1).unwrap();
         assert_eq!(b.region_list_head(), None);
         assert!(p1::regions(&b, None).unwrap().is_empty());
+    }
+
+    /// `PostInsert` appends at the circular list's tail (before the head), also after
+    /// the head moved to a later region; `PreInsert` makes the region the head.
+    #[test]
+    fn region_list_appends_before_a_moved_head() {
+        let mut b = Brep::new();
+        let r0 = b.add_region_record(Region::default()).unwrap();
+        let r1 = b.add_region_record(Region::default()).unwrap();
+        b.post_insert_region(r0).unwrap();
+        b.post_insert_region(r1).unwrap();
+        b.set_region_list_head(Some(r1));
+        assert_eq!(p1::regions(&b, None).unwrap(), vec![r1, r0]);
+        // a record created on the list is appended as PostInsert
+        let r2 = b
+            .add_region_record(Region {
+                in_brep: true,
+                ..Region::default()
+            })
+            .unwrap();
+        let r3 = b.add_region_record(Region::default()).unwrap();
+        b.post_insert_region(r3).unwrap();
+        assert_eq!(p1::regions(&b, None).unwrap(), vec![r1, r0, r2, r3]);
+        b.remove_region_from_list(r0).unwrap();
+        b.post_insert_region(r0).unwrap();
+        assert_eq!(p1::regions(&b, None).unwrap(), vec![r1, r2, r3, r0]);
+        b.remove_region_from_list(r1).unwrap();
+        assert_eq!(b.region_list_head(), Some(r2));
+        b.pre_insert_region(r1).unwrap();
+        assert_eq!(p1::regions(&b, None).unwrap(), vec![r1, r2, r3, r0]);
+        b.remove_region_from_list(r3).unwrap();
+        assert_eq!(p1::regions(&b, None).unwrap(), vec![r1, r2, r0]);
     }
 
     /// Review of 255d52b7, 1: an object an edit creates cannot take a reserved key

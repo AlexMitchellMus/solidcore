@@ -15,8 +15,8 @@
 //! the number of requests. Cache handles are mapped explicitly; no B-rep copy is kept.
 
 mod live;
-pub use live::LiveBrepObjects;
 pub(crate) use live::{solve_mutable_brep_point, solve_mutable_ray};
+pub use live::{BrepFaceServices, FaceCaches, LiveBrepObjects, SideObject, SidedFaceServices};
 
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -43,6 +43,8 @@ const OP: &str = "query::brep::ray";
 #[derive(Debug, Default)]
 pub struct RayPreparation {
     pending: Cell<Option<PreparationRequest>>,
+    /// The B-rep the pending trim request was made on (compared, never dereferenced).
+    trim_brep: Cell<usize>,
     attempted: BTreeSet<PreparationRequest>,
     failed_trims: BTreeSet<EdgeuseId>,
     surface_caches: BTreeMap<FaceId, SurfaceCache<CacheObject>>,
@@ -55,8 +57,14 @@ pub(crate) enum PreparationRequest {
 }
 
 impl RayPreparation {
-    pub(crate) fn request_trim(&self, edgeuse: EdgeuseId) {
+    pub(crate) fn request_trim(&self, b: &Brep, edgeuse: EdgeuseId) {
+        self.trim_brep.set(core::ptr::from_ref(b) as usize);
         self.pending.set(Some(PreparationRequest::UvTrim(edgeuse)));
+    }
+
+    /// Whether the last trim request was made on `b` (identity, not equality).
+    pub(crate) fn trim_requested_on(&self, b: &Brep) -> bool {
+        self.trim_brep.get() == core::ptr::from_ref(b) as usize
     }
 
     pub(crate) fn trim_failed(&self, edgeuse: EdgeuseId) -> bool {
@@ -275,6 +283,13 @@ impl FaceQueries<CacheObject> for RaySurfaceContext<'_> {
         src_tol: f64,
     ) -> Result<(i32, Option<CacheObject>)> {
         self.classify(k, face, uv, src_tol, true)
+    }
+
+    fn curve_edge_tolerance(&self, curve: CacheObject) -> Option<Result<f64>> {
+        let (CacheObject::Curve(edge) | CacheObject::Edge(edge)) = curve else {
+            return None;
+        };
+        Some(crate::topology::edge::tolerance(self.brep, edge))
     }
 }
 

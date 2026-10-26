@@ -24,6 +24,7 @@
 //! | [`VariableRadiusFs::load_initial_values`]                | `SmVariableRadiusFS::LoadInitialValues`               |
 //! | [`VariableRadiusFs::is_kind_of`]                         | `SmVariableRadiusFS::IsKindOf`                        |
 //! | `impl FilletSolverOps for VariableRadiusFs`              | the `SmVariableRadiusFS` virtuals (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `LoadJacobian`, `LoadInitialValues`, `GetType`, `IsKindOf`, `GetSolverType`) |
+//! | `impl FilletSolverOps for ConstantDistanceFs`            | the `SmConstantDistanceFS` virtuals (`CanMakeAnalytic`, `GetJacobianSize`, `GetSolverType`, `LoadJacobian`, `LoadInitialValues`, `SetupOffsetValues`, `GetType`, `IsKindOf`) and `GetDistance` |
 //! | [`CircularCrossSectionFsg::create_surface`]              | `SmCircularCrossSectionFSG::CreateSurface`            |
 //! | [`BlendCurveCrossSectionFsg::create_surface`]            | `SmBlendCurveCrossSectionFSG::CreateSurface`          |
 //! | [`SurfaceSurfaceFs::new`]                                | `SmSurfaceSurfaceFS::SmSurfaceSurfaceFS`              |
@@ -337,6 +338,27 @@ pub trait ConstantRadiusOps {
     /// The `SmConstantRadiusFS` data, mutable.
     fn constant_radius_mut(&mut self) -> &mut ConstantRadiusFs;
 
+    /// The selected offset object for this context.
+    fn offset_surface(&self, rail: usize) -> Result<&OffsetSurface> {
+        self.constant_radius().surface(rail)
+    }
+
+    /// The same selected offset object for an in-place write.
+    fn offset_surface_mut(&mut self, rail: usize) -> Result<&mut OffsetSurface> {
+        self.constant_radius_mut().surface_mut(rail)
+    }
+
+    /// Reset the selected offset using the actual radius and orientation.
+    fn set_offset_by_radius(&mut self, rail: usize) -> Result<()> {
+        self.constant_radius_mut().set_offset_by_radius(rail)
+    }
+
+    /// Resolve the selected geometry's tangent-rollover guess at its native branch.
+    /// Context-free callers have no selected geometry.
+    fn check_tangent_rollover_guess_context(&self) -> Result<()> {
+        Ok(())
+    }
+
     /// `SetupOffsetExtension(pSurf, rDomain)` of the solver's class.
     ///
     /// # Errors
@@ -438,9 +460,8 @@ pub fn constant_radius_load_initial_values<S: ConstantRadiusOps + ?Sized>(
 
     // SmTemporaryChangeValue on the other base's out-of-bounds flag (surface1 is a
     // separate copy: when it has the same base, its copy changes too)
-    let fs = solver.constant_radius_mut();
-    let base2_id = fs.surface(other_rail)?.base_id;
-    let saved2 = enable_base_out_of_bounds(fs.surface_mut(other_rail)?);
+    let base2_id = solver.offset_surface(other_rail)?.base_id;
+    let saved2 = enable_base_out_of_bounds(solver.offset_surface_mut(other_rail)?);
     let saved1 = if surface1.base_id == base2_id {
         enable_base_out_of_bounds(surface1)
     } else {
@@ -458,10 +479,7 @@ pub fn constant_radius_load_initial_values<S: ConstantRadiusOps + ?Sized>(
         guess_t,
     );
     restore_base_out_of_bounds(surface1, saved1);
-    restore_base_out_of_bounds(
-        solver.constant_radius_mut().surface_mut(other_rail)?,
-        saved2,
-    );
+    restore_base_out_of_bounds(solver.offset_surface_mut(other_rail)?, saved2);
     r
 }
 
@@ -480,7 +498,7 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
 ) -> Result<Option<InitialValues>> {
     const OP: &str = OP_CR_INIT;
     let fs = solver.constant_radius();
-    let surface2 = fs.surface(other_rail)?;
+    let surface2 = solver.offset_surface(other_rail)?;
     let mut other_eu = fs.solver.edgeuses.get(other_rail).copied().flatten();
     let base2 = surface2.base_surface();
     let base2_id = surface2.base_id;
@@ -492,7 +510,7 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
     );
     let pnt = offset_evaluate_point(k, surface1, uv)?;
 
-    // (GetFilletGeomForSurfaces() is NULL: no tangent-rollover guess)
+    solver.check_tangent_rollover_guess_context()?;
     let mut srf2_guess_uv = Point3::UNDEF;
     let mut found_uv = false;
 
@@ -2038,6 +2056,23 @@ impl FilletSolverOps for VariableRadiusFs {
         &mut self.curve_based.solver
     }
 
+    /// `SmFilletSolver::RailEdgeuseIntersect` with `geometry` as the geometry for
+    /// surfaces (`SmFilletGeom::RailEdgeuseIntersect`).
+    fn rail_edgeuse_intersect_on_geometry(
+        &mut self,
+        k: &Kernel,
+        geometry: &mut crate::blend::fillet_geom::p1::FilletGeom,
+        target: &mut Brep,
+        rail_index: usize,
+        edgeuse: EdgeuseId,
+        guess: f64,
+        tsect: &mut TsectPnt,
+    ) -> Result<Option<f64>> {
+        crate::blend::fillet_solver::surfaces::slot_rail_edgeuse_intersect(
+            self, k, geometry, target, rail_index, edgeuse, guess, tsect,
+        )
+    }
+
     /// `SmVariableRadiusFS::GetJacobianSize`: 5.
     fn jacobian_size(&self) -> Result<usize> {
         Ok(VariableRadiusFs::jacobian_size(self))
@@ -2157,6 +2192,155 @@ impl FilletSolverOps for VariableRadiusFs {
     /// `SmVariableRadiusFS::GetSolverType`.
     fn solver_type(&self) -> Result<FilletSolverType> {
         Ok(VariableRadiusFs::solver_type(self))
+    }
+
+    /// `SM_CAST_PTR(SmVariableRadiusFS, this)`.
+    fn variable_radius_mut(&mut self) -> Option<&mut VariableRadiusFs> {
+        Some(self)
+    }
+}
+
+// ---- SmConstantDistanceFS virtuals --------------------------------------------------------------
+
+/// The virtuals of `SmConstantDistanceFS`: its overrides of `CanMakeAnalytic`,
+/// `GetJacobianSize`, `GetSolverType`, `LoadJacobian`, `LoadInitialValues`,
+/// `SetupOffsetValues`, `GetType` and `IsKindOf` (unit
+/// `blend.fillet_standard_solver_p1`), plus the `GetDistance` cast
+/// `SmFindClippedRadiusEFO` makes; the rest is the `SmFilletSolver` base.
+impl FilletSolverOps for ConstantDistanceFs {
+    fn solver(&self) -> &FilletSolver {
+        &self.solver
+    }
+
+    fn solver_mut(&mut self) -> &mut FilletSolver {
+        &mut self.solver
+    }
+
+    /// `SmFilletSolver::RailEdgeuseIntersect` with `geometry` as the geometry for
+    /// surfaces (`SmFilletGeom::RailEdgeuseIntersect`): this solver reads its rails
+    /// through its own slots, as `SmVariableRadiusFS` does.
+    fn rail_edgeuse_intersect_on_geometry(
+        &mut self,
+        k: &Kernel,
+        geometry: &mut crate::blend::fillet_geom::p1::FilletGeom,
+        target: &mut Brep,
+        rail_index: usize,
+        edgeuse: EdgeuseId,
+        guess: f64,
+        tsect: &mut TsectPnt,
+    ) -> Result<Option<f64>> {
+        crate::blend::fillet_solver::surfaces::slot_rail_edgeuse_intersect(
+            self, k, geometry, target, rail_index, edgeuse, guess, tsect,
+        )
+    }
+
+    /// `SmConstantDistanceFS::GetJacobianSize`: 5.
+    fn jacobian_size(&self) -> Result<usize> {
+        Ok(ConstantDistanceFs::jacobian_size(self))
+    }
+
+    /// `SmConstantDistanceFS::SetupOffsetValues`.
+    fn setup_offset_values(
+        &mut self,
+        tsect: &TsectPnt,
+        offset_dist: Option<&mut f64>,
+    ) -> Result<()> {
+        let d = ConstantDistanceFs::setup_offset_values(self, tsect)?;
+        if let Some(out) = offset_dist {
+            *out = d;
+        }
+        Ok(())
+    }
+
+    /// `SmConstantDistanceFS::CanMakeAnalytic`: `TRUE`.
+    fn can_make_analytic(&self) -> Result<bool> {
+        Ok(ConstantDistanceFs::can_make_analytic(self))
+    }
+
+    /// `SmConstantDistanceFS::LoadJacobian` ([`ConstantDistanceFs::load_jacobian`], which
+    /// only reads the in/out offsets).
+    fn load_jacobian(
+        &mut self,
+        k: &Kernel,
+        num_equations: &mut usize,
+        num_parameters: &mut usize,
+        load: &mut JacobianLoad<'_>,
+        f: &mut [f64],
+        jacobian: Option<&mut Matrix>,
+    ) -> Result<bool> {
+        ConstantDistanceFs::load_jacobian(
+            self,
+            k,
+            num_equations,
+            num_parameters,
+            load.rail_index,
+            [load.surface1, load.surface2],
+            [load.surf1_offset, load.surf2_offset],
+            load.x,
+            f,
+            jacobian,
+        )
+    }
+
+    /// `SmConstantDistanceFS::LoadInitialValues` ([`ConstantDistanceFs::load_initial_values`]).
+    ///
+    /// Every upstream caller passes `*GetSurface(lRailIndex)` as `crSurface1`, so the
+    /// offset distances the call sets change it: the call runs on the solver's own rail
+    /// surface, which is then copied into `surface1` (the callers' copy of it), as for
+    /// `SmVariableRadiusFS`. `rlSurface2Index` is `2` on entry (the callers that pass
+    /// `rbDoSurf2Calcs == 0` set it so; the others leave it to this call).
+    fn load_initial_values(
+        &mut self,
+        k: &Kernel,
+        brep: Option<&Brep>,
+        do_surf2_calcs: bool,
+        rail_index: usize,
+        surface1: &mut OffsetSurface,
+        surface1_index: usize,
+        intervals: &mut ExtentNd,
+        periodicities: &mut Vec<bool>,
+        guess_t: &mut Vec<f64>,
+    ) -> Result<Option<InitialValues>> {
+        self.solver.rail_mut(rail_index)?.clone_from(surface1);
+        let r = ConstantDistanceFs::load_initial_values(
+            self,
+            k,
+            brep,
+            do_surf2_calcs,
+            rail_index,
+            crate::blend::fillet_standard_solver::p1::InitialSurface::Rail(rail_index),
+            surface1_index,
+            2,
+            intervals,
+            periodicities,
+            guess_t,
+        );
+        surface1.clone_from(self.solver.rail(rail_index)?);
+        let v = r?;
+        Ok(v.surface2_rail.map(|surface2_rail| InitialValues {
+            surface2_rail,
+            surface2_index: v.surface2_index,
+        }))
+    }
+
+    /// `SmConstantDistanceFS::GetType`.
+    fn type_code(&self) -> Result<i64> {
+        Ok(ConstantDistanceFs::TYPE)
+    }
+
+    /// `SmConstantDistanceFS::IsKindOf`.
+    fn is_kind_of(&self, t: i64) -> Result<bool> {
+        Ok(ConstantDistanceFs::is_kind_of(self, t))
+    }
+
+    /// `SmConstantDistanceFS::GetSolverType`.
+    fn solver_type(&self) -> Result<FilletSolverType> {
+        Ok(ConstantDistanceFs::solver_type(self))
+    }
+
+    /// `((SmConstantDistanceFS*)this)->GetDistance()`.
+    fn constant_distance(&self) -> Result<f64> {
+        Ok(self.distance())
     }
 }
 
