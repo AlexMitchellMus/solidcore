@@ -416,6 +416,72 @@ fn counts(k: &mut Kernel, b: &Brep) -> Result<Vec<f64>, SolidError> {
     ])
 }
 
+/// Diagnostics: the area of each face of `body` (`None` where it fails), built two ways
+/// with the Rust port: alone in its own B-rep by `CreateFacesWithCurves` (the stitch
+/// recipe's faces, before stitching), and as the face of the same index in the B-rep
+/// `SmBrepConstructor` builds.
+pub fn face_areas(body: &Body, accuracy: f64) -> Vec<(Option<f64>, Option<f64>)> {
+    use solidcore::mass::integrator::properties::face_area;
+    let mut out = Vec::new();
+    let script =
+        step_import::script::from_body(body, step_import::script::FromBodyOptions::default());
+    let (k2, built, _) = crate::constructor::build_brep(&script);
+    let mut built = built;
+    let ctor_faces: Vec<FaceId> = built
+        .as_ref()
+        .and_then(|b| bp1::faces(b, None).ok())
+        .unwrap_or_default();
+    for (fi, face) in body.faces.iter().enumerate() {
+        let mut k = Kernel::default();
+        let alone = (|| -> Option<f64> {
+            let mut b = p3::new_brep(
+                &mut k,
+                solidcore::geom::tol::USE_DEFAULT,
+                solidcore::geom::tol::USE_DEFAULT,
+            )
+            .ok()?;
+            let srf = make_surface(&k, &face.surface).ok()?;
+            let mut first_err = None;
+            let input = face_input(&k, body, face, true, &mut first_err);
+            if first_err.is_some() {
+                return None;
+            }
+            let mut state = ArenaNotifyState::new(&b);
+            let mut env = state.env(None);
+            let key_of: &dyn Fn(EntityRef) -> solidcore::geom::object::ObjectRef = env.key_of;
+            let this_face = |f: FaceId| key_of(EntityRef::Face(f));
+            let mut marks = Marks::default();
+            let mut fenv = FaceBuildEnv {
+                env: &mut env,
+                marks: &mut marks,
+                this_face: &this_face,
+            };
+            let made = create_faces_with_curves(
+                &mut k,
+                &mut b,
+                None,
+                &input.loops,
+                Some(input.curves),
+                &input.orients,
+                Some(srf),
+                &mut fenv,
+            )
+            .ok()?;
+            let mut sum = 0.0;
+            for f in made.faces {
+                sum += face_area(&k, &mut b, f, accuracy).ok()?;
+            }
+            Some(sum)
+        })();
+        let ctor = match (built.as_mut(), ctor_faces.get(fi)) {
+            (Some(b), Some(&f)) => face_area(&k2, b, f, accuracy).ok(),
+            _ => None,
+        };
+        out.push((alone, ctor));
+    }
+    out
+}
+
 /// Builds `body` with the Rust port (the shim's recipe, stage by stage).
 pub fn build_rust(body: &Body) -> Record {
     let mut rec = Record::default();

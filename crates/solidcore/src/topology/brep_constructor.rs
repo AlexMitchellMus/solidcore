@@ -843,8 +843,10 @@ impl BrepConstructor {
     /// loop's direction. `orientation_in_loop` is [`OrientType::Same`] when the loop
     /// runs along the edge's curve. With `existing_edge` the pair joins that edge (a
     /// third face makes the B-rep non-manifold: the pair goes into the radial sector of
-    /// its face); else a new edge is made, and the optional start and end vertices
-    /// (in loop order) get the pair's vertex uses.
+    /// its face); else a new edge is made, and the optional start and end vertices get
+    /// the pair's vertex uses: the start vertex goes to the use that runs with the curve,
+    /// so they are the curve's start and end (upstream's comment says "relative to the
+    /// loop orientation", which only holds for a loop and edge both [`OrientType::Same`]).
     ///
     /// # Errors
     ///
@@ -1341,7 +1343,7 @@ mod tests {
                     OrientType::Opposite
                 };
                 let e = c
-                    .start_edge(k, orient, existing, Some(vs[s]), Some(vs[t]))
+                    .start_edge(k, orient, existing, Some(vs[key.0]), Some(vs[key.1]))
                     .unwrap();
                 if existing.is_none() {
                     c.set_edge_curve(k, Some(line(p(key.0), p(key.1))), false)

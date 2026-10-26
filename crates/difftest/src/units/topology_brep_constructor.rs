@@ -113,6 +113,7 @@ impl UnitDiff for Runner {
         let options = FromBodyOptions {
             parameter_limits: rng.chance(0.3),
             stitch: rng.chance(0.2),
+            natural_domains: rng.chance(0.2),
             separate_edges: false,
         };
         let mut s = script::from_body(&shape, options);
@@ -1374,6 +1375,13 @@ fn builtin() -> Vec<(String, Script)> {
             FromBodyOptions {
                 stitch: true,
                 separate_edges: true,
+                ..FromBodyOptions::default()
+            },
+        ),
+        (
+            "natural_domains",
+            FromBodyOptions {
+                natural_domains: true,
                 ..FromBodyOptions::default()
             },
         ),

@@ -34,6 +34,7 @@
 //!         | 17 x y z                               StartVertex
 //!         | 18                                     EndVertex
 //!         | 19                                     SwapRegions
+//!         | 20 surface u0 v0 u1 v1                  surface->AdjustSTEPUVDomain (before SetFaceSurface takes it)
 //! node    : kind a b c                             0 point (a,b,c), 1 parameter a, 2 UV point (a,b), 3 SmVertexNode()
 //! orient  : 0 unknown, 1 same, 2 opposite
 //! ```
@@ -44,7 +45,8 @@
 //! once (the call takes it over).
 
 use crate::flat::{decode_curve, decode_surface, encode_curve, encode_surface};
-use crate::model::{Body, BodyKind, Bound, Curve, Surface};
+use crate::geom::{bspline_point, dot, scale, sub};
+use crate::model::{Body, BodyKind, Bound, Curve, Surface, P3};
 
 /// First word of an encoded script.
 pub const MAGIC: f64 = 31.0;
@@ -190,6 +192,14 @@ pub enum Op {
     EndVertex,
     /// `SwapRegions`.
     SwapRegions,
+    /// `SmSurface::AdjustSTEPUVDomain(domain)` on a table surface not yet taken by
+    /// `SetFaceSurface` (an importer's call, not the constructor's).
+    AdjustStepUvDomain {
+        /// Index into the surface table.
+        surface: usize,
+        /// `(u0, v0, u1, v1)` in STEP parameters (degrees for angles).
+        domain: [f64; 4],
+    },
 }
 
 /// A script: the geometry table and the calls.
@@ -297,6 +307,10 @@ pub fn encode(s: &Script) -> Vec<f64> {
             }
             Op::EndVertex => o.push(18.0),
             Op::SwapRegions => o.push(19.0),
+            Op::AdjustStepUvDomain { surface, domain } => {
+                o.extend_from_slice(&[20.0, *surface as f64]);
+                o.extend_from_slice(domain);
+            }
         }
     }
     o
@@ -427,7 +441,7 @@ pub fn decode(data: &[f64]) -> Result<Script, String> {
     let mut curve_used = vec![false; nc];
     let mut surface_used = vec![false; ns];
     for _ in 0..no {
-        let op = match r.index(20)? {
+        let op = match r.index(21)? {
             0 => Op::StartBrep,
             1 => Op::EndBrep,
             2 => {
@@ -506,7 +520,15 @@ pub fn decode(data: &[f64]) -> Result<Script, String> {
                 Op::StartVertex(r.p3()?)
             }
             18 => Op::EndVertex,
-            _ => Op::SwapRegions,
+            19 => Op::SwapRegions,
+            _ => {
+                let surface = r.index(ns)?;
+                if surface_used.get(surface).copied().unwrap_or(true) {
+                    return Err(format!("surface {surface} adjusted after it was taken"));
+                }
+                let domain = [r.num()?, r.num()?, r.num()?, r.num()?];
+                Op::AdjustStepUvDomain { surface, domain }
+            }
         };
         s.ops.push(op);
     }
@@ -523,6 +545,9 @@ pub struct FromBodyOptions {
     pub parameter_limits: bool,
     /// `EndShell(TRUE)`: stitch each shell when it is ended.
     pub stitch: bool,
+    /// Bind every face surface over its natural UV domain, without the importer's
+    /// `AdjustSTEPUVDomain` to the face's STEP parameter box ([`step_uv_domain`]).
+    pub natural_domains: bool,
     /// Make a new edge (with its own curve, and vertices made by `EndLoop`) for every
     /// oriented edge instead of joining shared ones (to be stitched).
     pub separate_edges: bool,
@@ -565,10 +590,15 @@ pub fn from_body(body: &Body, options: FromBodyOptions) -> Script {
             // material: into the outer region of a solid's shell, into the void region
             // of a void shell
             let normal_is_surface_normal = face.same_sense == shell.orientation;
+            let surface = s.surfaces.len();
+            if !options.natural_domains {
+                if let Some(domain) = step_uv_domain(body, face) {
+                    s.ops.push(Op::AdjustStepUvDomain { surface, domain });
+                }
+            }
             s.ops.push(Op::StartFace(Orient::from_same(
                 normal_is_surface_normal != void,
             )));
-            let surface = s.surfaces.len();
             s.surfaces.push(face.surface.clone());
             s.ops.push(Op::SetFaceSurface {
                 surface,
@@ -616,8 +646,11 @@ pub fn from_body(body: &Body, options: FromBodyOptions) -> Script {
                         s.ops.push(Op::EndEdge);
                         continue;
                     }
-                    // the edge's vertices in loop order, made at first use
-                    let (a, b) = if forward {
+                    // the edge's vertices in its curve's direction, made at first use:
+                    // StartEdge gives the start vertex to the first edge use exactly when
+                    // that use runs with the curve (its doc's "relative to the loop
+                    // orientation" notwithstanding; smTopoTest passes them so too)
+                    let (a, b) = if e.same_sense {
                         (e.start, e.end)
                     } else {
                         (e.end, e.start)
@@ -693,6 +726,314 @@ pub fn from_body(body: &Body, options: FromBodyOptions) -> Script {
     }
     s.ops.push(Op::EndBrep);
     s
+}
+
+/// Samples per edge for [`step_uv_domain`].
+const EDGE_SAMPLES: usize = 32;
+
+/// The point of edge `e` at fraction `s` of its parameter range (curve direction).
+fn edge_point(e: &crate::model::Edge, s: f64) -> Option<P3> {
+    let (t0, mut t1) = (e.t_start, e.t_end);
+    match &e.curve {
+        Curve::Line {
+            origin,
+            dir,
+            magnitude,
+        } => {
+            let t = t0 + (t1 - t0) * s;
+            Some(add(*origin, scale(*dir, t * magnitude)))
+        }
+        Curve::Circle { frame, radius } => {
+            if t1 <= t0 {
+                t1 += 360.0;
+            }
+            Some(conic(frame, *radius, *radius, t0 + (t1 - t0) * s))
+        }
+        Curve::Ellipse {
+            frame,
+            semi1,
+            semi2,
+        } => {
+            if t1 <= t0 {
+                t1 += 360.0;
+            }
+            Some(conic(frame, *semi1, *semi2, t0 + (t1 - t0) * s))
+        }
+        Curve::BSpline(b) => bspline_point(b, t0 + (t1 - t0) * s),
+    }
+}
+
+fn add(a: P3, b: P3) -> P3 {
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+fn conic(f: &crate::model::Frame, a: f64, b: f64, deg: f64) -> P3 {
+    let r = deg.to_radians();
+    add(
+        f.origin,
+        add(scale(f.x, a * r.cos()), scale(f.y, b * r.sin())),
+    )
+}
+
+/// Unwraps an angle (degrees) to within 180 of `prev`.
+fn unwrap(prev: f64, x: f64) -> f64 {
+    x + 360.0 * ((prev - x) / 360.0).round()
+}
+
+/// The face's box in its surface's STEP parameters (what an importer passes to
+/// `AdjustSTEPUVDomain`): its edge loops sampled in loop order and mapped to the
+/// surface's parameters (angles in degrees, unwrapped along each loop, later loops
+/// moved into the first loop's period; a closed direction spanning a full turn is one
+/// period, its start moved into `[0, 360)`; vertex loops add their point).
+/// `None` for a face without loops and for surfaces whose STEP parameters are not
+/// analytic here (revolution, extrusion, B-spline).
+pub fn step_uv_domain(body: &Body, face: &crate::model::Face) -> Option<[f64; 4]> {
+    let map: Box<dyn Fn(P3) -> (f64, f64)> = match &face.surface {
+        Surface::Plane { frame } => {
+            let f = *frame;
+            Box::new(move |p| (dot(sub(p, f.origin), f.x), dot(sub(p, f.origin), f.y)))
+        }
+        Surface::Cylinder { frame, .. } | Surface::Cone { frame, .. } => {
+            let f = *frame;
+            Box::new(move |p| {
+                let d = sub(p, f.origin);
+                (dot(d, f.y).atan2(dot(d, f.x)).to_degrees(), dot(d, f.z))
+            })
+        }
+        Surface::Sphere { frame, radius } => {
+            let (f, r) = (*frame, *radius);
+            Box::new(move |p| {
+                let d = sub(p, f.origin);
+                let lat = (dot(d, f.z) / r).clamp(-1.0, 1.0).asin().to_degrees();
+                (dot(d, f.y).atan2(dot(d, f.x)).to_degrees(), lat)
+            })
+        }
+        Surface::Torus { frame, major, .. } => {
+            let (f, big) = (*frame, *major);
+            Box::new(move |p| {
+                let d = sub(p, f.origin);
+                let (x, y) = (dot(d, f.x), dot(d, f.y));
+                let rho = (x * x + y * y).sqrt();
+                (
+                    y.atan2(x).to_degrees(),
+                    dot(d, f.z).atan2(rho - big).to_degrees(),
+                )
+            })
+        }
+        _ => return None,
+    };
+    let (u_periodic, v_periodic) = match &face.surface {
+        Surface::Plane { .. } => (false, false),
+        Surface::Torus { .. } => (true, true),
+        _ => (true, false),
+    };
+    let periodic = [u_periodic, v_periodic];
+    let mut lo = [f64::INFINITY; 2];
+    let mut hi = [f64::NEG_INFINITY; 2];
+    let mut first_mid: Option<[f64; 2]> = None;
+    let mut vertex_points: Vec<(f64, f64)> = Vec::new();
+    for l in &face.loops {
+        let es = match &l.bound {
+            Bound::Edges(es) => es,
+            Bound::Vertex(v) => {
+                // a vertex loop (an apex or a pole) bounds the face's box in the
+                // directions that are not periodic (its angle is undefined)
+                vertex_points.push(map(body.vertices.get(*v)?.point));
+                continue;
+            }
+        };
+        let mut pts: Vec<[f64; 2]> = Vec::new();
+        for oe in es {
+            let e = body.edges.get(oe.edge)?;
+            let along = oe.forward == e.same_sense;
+            for j in 0..=EDGE_SAMPLES {
+                let s = j as f64 / EDGE_SAMPLES as f64;
+                let (u, v) = map(edge_point(e, if along { s } else { 1.0 - s })?);
+                let mut q = [u, v];
+                if let Some(prev) = pts.last() {
+                    for i in 0..2 {
+                        if periodic[i] {
+                            q[i] = unwrap(prev[i], q[i]);
+                        }
+                    }
+                }
+                pts.push(q);
+            }
+        }
+        // keep later loops in the first loop's period
+        let mut shift = [0.0; 2];
+        if let (Some(m), Some(p)) = (first_mid, pts.first()) {
+            for i in 0..2 {
+                if periodic[i] {
+                    shift[i] = unwrap(m[i], p[i]) - p[i];
+                }
+            }
+        }
+        let mut llo = [f64::INFINITY; 2];
+        let mut lhi = [f64::NEG_INFINITY; 2];
+        for p in &pts {
+            for i in 0..2 {
+                llo[i] = llo[i].min(p[i] + shift[i]);
+                lhi[i] = lhi[i].max(p[i] + shift[i]);
+            }
+        }
+        if first_mid.is_none() {
+            first_mid = Some([(llo[0] + lhi[0]) / 2.0, (llo[1] + lhi[1]) / 2.0]);
+        }
+        for i in 0..2 {
+            lo[i] = lo[i].min(llo[i]);
+            hi[i] = hi[i].max(lhi[i]);
+        }
+    }
+    if !lo.iter().chain(hi.iter()).all(|x| x.is_finite()) {
+        return None;
+    }
+    for (u, v) in vertex_points {
+        for (i, x) in [u, v].into_iter().enumerate() {
+            if !periodic[i] {
+                lo[i] = lo[i].min(x);
+                hi[i] = hi[i].max(x);
+            }
+        }
+    }
+    for i in 0..2 {
+        if periodic[i] {
+            if hi[i] - lo[i] > 360.0 - 1e-6 {
+                hi[i] = lo[i] + 360.0;
+            }
+            // start the period in [0, 360)
+            let turns = (lo[i] / 360.0).floor();
+            lo[i] -= 360.0 * turns;
+            hi[i] -= 360.0 * turns;
+        }
+    }
+    Some([lo[0], lo[1], hi[0], hi[1]])
+}
+
+/// An estimate of the face's area independent of either kernel: its edge loops
+/// sampled (`samples` points per edge) in the surface's STEP parameters, unwrapped as
+/// in [`step_uv_domain`], and the area element integrated over them by Green's theorem
+/// (`|sum over loops of the closed integral of u f(v) dv|`, with `f` the area element:
+/// `1` for a plane, `r` for a cylinder (u in radians), `(R + v tan a) / cos a` for a
+/// cone, `r^2 cos v` for a sphere, `r (R + r cos v)` for a torus). Exact up to the
+/// polygon approximation of the loops in parameter space. `None` where
+/// [`step_uv_domain`] has no parameters.
+pub fn step_face_area(body: &Body, face: &crate::model::Face, samples: usize) -> Option<f64> {
+    step_uv_domain(body, face)?;
+    let (f, map): (Box<dyn Fn(f64) -> f64>, Box<dyn Fn(P3) -> (f64, f64)>) = match &face.surface {
+        Surface::Plane { frame } => {
+            let fr = *frame;
+            (
+                Box::new(|_| 1.0),
+                Box::new(move |p| (dot(sub(p, fr.origin), fr.x), dot(sub(p, fr.origin), fr.y))),
+            )
+        }
+        Surface::Cylinder { frame, radius } => {
+            let (fr, r) = (*frame, *radius);
+            (
+                Box::new(move |_| r),
+                Box::new(move |p| {
+                    let d = sub(p, fr.origin);
+                    (dot(d, fr.y).atan2(dot(d, fr.x)), dot(d, fr.z))
+                }),
+            )
+        }
+        Surface::Cone {
+            frame,
+            radius,
+            semi_angle_deg,
+        } => {
+            let (fr, r, a) = (*frame, *radius, semi_angle_deg.to_radians());
+            (
+                Box::new(move |v| (r + v * a.tan()) / a.cos()),
+                Box::new(move |p| {
+                    let d = sub(p, fr.origin);
+                    (dot(d, fr.y).atan2(dot(d, fr.x)), dot(d, fr.z))
+                }),
+            )
+        }
+        Surface::Sphere { frame, radius } => {
+            let (fr, r) = (*frame, *radius);
+            (
+                Box::new(move |v| r * r * v.cos()),
+                Box::new(move |p| {
+                    let d = sub(p, fr.origin);
+                    let lat = (dot(d, fr.z) / r).clamp(-1.0, 1.0).asin();
+                    (dot(d, fr.y).atan2(dot(d, fr.x)), lat)
+                }),
+            )
+        }
+        Surface::Torus {
+            frame,
+            major,
+            minor,
+        } => {
+            let (fr, big, r) = (*frame, *major, *minor);
+            (
+                Box::new(move |v| r * (big + r * v.cos())),
+                Box::new(move |p| {
+                    let d = sub(p, fr.origin);
+                    let (x, y) = (dot(d, fr.x), dot(d, fr.y));
+                    let rho = (x * x + y * y).sqrt();
+                    (y.atan2(x), dot(d, fr.z).atan2(rho - big))
+                }),
+            )
+        }
+        _ => return None,
+    };
+    let tau = std::f64::consts::TAU;
+    let unwrap_rad = |prev: f64, x: f64| x + tau * ((prev - x) / tau).round();
+    let (pu, pv) = match &face.surface {
+        Surface::Plane { .. } => (false, false),
+        Surface::Torus { .. } => (true, true),
+        _ => (true, false),
+    };
+    let mut total = 0.0;
+    for l in &face.loops {
+        let Bound::Edges(es) = &l.bound else {
+            continue;
+        };
+        let mut pts: Vec<(f64, f64)> = Vec::new();
+        // the loop's traversal (a bound with orientation false runs backwards)
+        let oes: Vec<(usize, bool)> = if l.orientation {
+            es.iter().map(|e| (e.edge, e.forward)).collect()
+        } else {
+            es.iter().rev().map(|e| (e.edge, !e.forward)).collect()
+        };
+        for (ei, forward) in oes {
+            let e = body.edges.get(ei)?;
+            let along = forward == e.same_sense;
+            for j in 0..samples.max(1) {
+                let t = j as f64 / samples.max(1) as f64;
+                let (mut u, mut v) = map(edge_point(e, if along { t } else { 1.0 - t })?);
+                if let Some(&(qu, qv)) = pts.last() {
+                    if pu {
+                        u = unwrap_rad(qu, u);
+                    }
+                    if pv {
+                        v = unwrap_rad(qv, v);
+                    }
+                }
+                pts.push((u, v));
+            }
+        }
+        // close the loop (a loop around a periodic direction does not close in u: its
+        // seam edges close it)
+        let n = pts.len();
+        for i in 0..n {
+            let (u0, v0) = pts[i];
+            let (mut u1, mut v1) = pts[(i + 1) % n];
+            if pu {
+                u1 = unwrap_rad(u0, u1);
+            }
+            if pv {
+                v1 = unwrap_rad(v0, v1);
+            }
+            // trapezoid in v of u f(v)
+            total += 0.5 * (u0 * f(v0) + u1 * f(v1)) * (v1 - v0);
+        }
+    }
+    Some(total.abs())
 }
 
 #[cfg(test)]

@@ -205,30 +205,51 @@ pub fn run(
     notes: &mut Vec<String>,
 ) -> (Vec<f64>, Option<Deferred>) {
     let mut out = Blocks::default();
-    let deferred = run_into(script, mode, accuracy, notes, &mut out).err();
+    let mut k = Kernel::default();
+    let deferred = run_into(&mut k, script, mode, accuracy, notes, &mut out, None).err();
     (out.0, deferred)
 }
 
+/// Runs `script` and returns the kernel and the B-rep it built (none when no B-rep was
+/// started or the run stopped on unported code, which is returned).
+pub fn build_brep(script: &Script) -> (Kernel, Option<Brep>, Option<Deferred>) {
+    let mut out = Blocks::default();
+    let mut k = Kernel::default();
+    let mut keep = None;
+    let mut notes = Vec::new();
+    let deferred = run_into(
+        &mut k,
+        script,
+        0,
+        0.0,
+        &mut notes,
+        &mut out,
+        Some(&mut keep),
+    )
+    .err();
+    (k, keep, deferred)
+}
+
 fn run_into(
+    k: &mut Kernel,
     script: &Script,
     mode: i32,
     accuracy: f64,
     notes: &mut Vec<String>,
     out: &mut Blocks,
+    keep: Option<&mut Option<Brep>>,
 ) -> Result<(), Deferred> {
-    let mut k = Kernel::default();
-
     // geometry table: curves then surfaces
     let mut curves: Vec<Option<Curve>> = Vec::new();
     let mut surfaces: Vec<Option<Surface>> = Vec::new();
     let mut gs = Vec::new();
     for c in &script.curves {
-        let r = make_table_curve(&k, c);
+        let r = make_table_curve(k, c);
         gs.push(geometry_status(&r, notes)?);
         curves.push(r.ok());
     }
     for s in &script.surfaces {
-        let r = make_surface(&k, s);
+        let r = make_surface(k, s);
         gs.push(geometry_status(&r, notes)?);
         surfaces.push(r.ok());
     }
@@ -245,7 +266,7 @@ fn run_into(
         let status: Result<f64, ()> = match op {
             Op::StartBrep => {
                 let r = c
-                    .start_brep(&mut k, solidcore::geom::tol::USE_DEFAULT)
+                    .start_brep(k, solidcore::geom::tol::USE_DEFAULT)
                     .map(|_| ());
                 if r.is_ok() {
                     made_brep = true;
@@ -272,7 +293,7 @@ fn run_into(
             }
             Op::EndRegion => status(&c.end_region(), notes)?,
             Op::StartShell => status(&c.start_shell(), notes)?,
-            Op::EndShell { stitch } => status(&c.end_shell(&mut k, *stitch), notes)?,
+            Op::EndShell { stitch } => status(&c.end_shell(k, *stitch), notes)?,
             Op::StartFace(o) => pointer(&c.start_face(orient(*o)), notes)?,
             Op::EndFace => status(&c.end_face(), notes)?,
             Op::SetFaceSurface {
@@ -291,7 +312,7 @@ fn run_into(
                 }
             },
             Op::StartLoop(o) => pointer(&c.start_loop(orient(*o)), notes)?,
-            Op::EndLoop => status(&c.end_loop(&k), notes)?,
+            Op::EndLoop => status(&c.end_loop(k), notes)?,
             Op::SingleVertexLoop(p) => pointer(&c.start_and_end_single_vertex_loop(p3(*p)), notes)?,
             Op::StartVertexOfLoop(p) => {
                 let r = c.start_vertex_of_loop(p3(*p));
@@ -309,15 +330,15 @@ fn run_into(
                 };
                 let e = edge.and_then(|j| edges.get(j).copied().flatten());
                 let (s, t) = (get(&vertices, start), get(&vertices, end));
-                let r = c.start_edge(&mut k, orient(*o), e, s, t);
+                let r = c.start_edge(k, orient(*o), e, s, t);
                 edges.push(r.as_ref().ok().copied());
                 pointer(&r, notes)?
             }
             Op::SetEdgeCurve { curve, uv } => match curve {
-                None => status(&c.set_edge_curve(&k, None, *uv), notes)?,
+                None => status(&c.set_edge_curve(k, None, *uv), notes)?,
                 Some(j) => match curves.get_mut(*j).and_then(Option::take) {
                     None => Ok(SKIPPED),
-                    Some(cv) => status(&c.set_edge_curve(&k, Some(cv), *uv), notes)?,
+                    Some(cv) => status(&c.set_edge_curve(k, Some(cv), *uv), notes)?,
                 },
             },
             Op::SetLimits(a, b) => {
@@ -327,7 +348,7 @@ fn run_into(
                     Node::Uv(p) => VertexNode::from_uv_point(Point2::new(p[0], p[1])),
                     Node::Empty => VertexNode::default(),
                 };
-                status(&c.set_limits(&k, &node(a), &node(b)), notes)?
+                status(&c.set_limits(k, &node(a), &node(b)), notes)?
             }
             Op::EndEdge => status(&c.end_edge(), notes)?,
             Op::StartVertex(p) => {
@@ -342,6 +363,15 @@ fn run_into(
             Op::SwapRegions => {
                 c.swap_regions();
                 Ok(0.0)
+            }
+            Op::AdjustStepUvDomain { surface, domain } => {
+                match surfaces.get_mut(*surface).and_then(Option::as_mut) {
+                    None => Ok(SKIPPED),
+                    Some(s) => {
+                        let d = Extent2d::from_bounds(domain[0], domain[1], domain[2], domain[3]);
+                        status(&s.adjust_step_uv_domain(k, &d), notes)?
+                    }
+                }
             }
         };
         let code = op_code(op);
@@ -366,9 +396,13 @@ fn run_into(
     let Some(mut b) = brep else {
         return Ok(());
     };
+    if let Some(keep) = keep {
+        *keep = Some(b);
+        return Ok(());
+    }
     if mode == 0 {
         let bound = 4 * script.ops.len() + 16;
-        match dump(&k, &b, bound) {
+        match dump(k, &b, bound) {
             Ok((t, v)) => {
                 out.block(TAG_TOPOLOGY, &t);
                 out.block(TAG_VALUES, &v);
@@ -382,7 +416,7 @@ fn run_into(
             }
         }
     } else {
-        stages(&mut k, &mut b, accuracy, out, notes)?;
+        stages(k, &mut b, accuracy, out, notes)?;
     }
     Ok(())
 }
@@ -409,6 +443,7 @@ fn op_code(op: &Op) -> f64 {
         Op::StartVertex(_) => 17.0,
         Op::EndVertex => 18.0,
         Op::SwapRegions => 19.0,
+        Op::AdjustStepUvDomain { .. } => 20.0,
     }
 }
 

@@ -19,6 +19,8 @@
 //   101..108      (mode 1) the --step-corpus stages after construction: counts, manifold,
 //                 area, volume (at `accuracy`), heal, healed_counts, healed_manifold,
 //                 healed_volume, as in step_import.cpp
+// Op 20 (not a constructor call) is the importer's SmSurface::AdjustSTEPUVDomain on a table
+// surface before SetFaceSurface takes it.
 // Ops stop after a successful EndBrep (the caller's B-rep is kept for the dump).
 //
 // Dump (indices are first-seen traversal order per kind, -1 for NULL): regions of
@@ -471,6 +473,9 @@ bool read_script(const SmContext& ctx, Rd& r, std::vector<CurveData>& curves, st
             break;
         case 15:
             nargs = 8;
+            break;
+        case 20:
+            nargs = 5;
             break;
         default:
             nargs = 0;
@@ -953,9 +958,21 @@ void run_script(const double* in, int64_t n_in, int mode, double accuracy, Sink&
         case 18:
             status = st(c.EndVertex());
             break;
-        default:
+        case 19:
             c.SwapRegions();
             break;
+        default:
+        {
+            // 20: the importer's AdjustSTEPUVDomain on a surface not yet bound to a face
+            SmSurface* s = surfaces[(size_t)a[0]];
+            if (s == NULL)
+            {
+                status = -3.0;
+                break;
+            }
+            status = st(s->AdjustSTEPUVDomain(SmExtent2d(a[1], a[2], a[3], a[4])));
+            break;
+        }
         }
         out.block(2, {(double)op.code, status});
         if (op.code == 1 && status == 0.0)
