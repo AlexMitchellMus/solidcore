@@ -1,4 +1,4 @@
-#### WR-268. `SmBrepConstructor::EndShell(TRUE)` changes the B-rep through a `const` validation (`ValidatePointers` makes UV trim curves)
+#### WR-446. `SmBrepConstructor::EndShell(TRUE)` changes the B-rep through a `const` validation (`ValidatePointers` makes UV trim curves)
 - **Severity:** Wrong result
 - **Area:** Topology
 - **Location:** `source/SMLib/src/SmBrepData.cpp:272`, `SmBrepConstructor::EndShell` (def. `:261`); `source/SMLib/src/SmBrep.cpp`, `SmBrep::ValidatePointers` (def. `:30890`) and the static `sm_CheckEdgeuseGeometry` (def. `:29752`).
