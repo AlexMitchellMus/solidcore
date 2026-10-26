@@ -3,6 +3,7 @@ use super::*;
 use crate::blend::fillet_geom::p1::CornerLookup;
 use crate::blend::fillet_geom::p1::{FilletEdge, FilletEdgeuse, FilletGeom};
 use crate::blend::fillet_geom::p3::SplitCorners;
+use crate::blend::fillet_solver::p1::FilletSolver;
 use crate::curve::curve::p2::OwnerChange;
 use crate::curve::line::Line;
 use crate::geom::attribute::ObjectKey;
@@ -654,7 +655,7 @@ fn refinement_receives_rail_index_geom_and_short_list_and_preserves_warning_only
     impl ClassificationOps for Refine {
         fn refine(
             &mut self,
-            solver: &mut FilletSolver,
+            solver: &mut dyn crate::blend::fillet_solver::p1::FilletSolverOps,
             k: &Kernel,
             target: &mut Brep,
             fb: &mut FilletBrep,
@@ -665,7 +666,7 @@ fn refinement_receives_rail_index_geom_and_short_list_and_preserves_warning_only
         ) -> Result<()> {
             assert_eq!(which, 1);
             assert_eq!(small, [4, 2]);
-            assert_eq!(solver.approx_tol_3d, 1e-5);
+            assert_eq!(solver.solver().approx_tol_3d, 1e-5);
             assert_eq!(target.faces().len(), 2);
             assert_eq!(k.tolerances.zone_tol_3d, 0.271);
             assert_eq!(fb.geom(geom)?.rail(which), Some(rail));

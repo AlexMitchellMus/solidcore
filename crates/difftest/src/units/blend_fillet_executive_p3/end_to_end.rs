@@ -178,6 +178,8 @@ pub(super) struct RealSolid {
     #[serde(default)]
     source: Option<Source>,
     radius: f64,
+    #[serde(default)]
+    radius_end: Option<f64>,
     xsect: u32,
     continuity: u32,
     thumbweight: f64,
@@ -228,6 +230,16 @@ impl RealSolid {
     /// Rejects mixed or incomplete forms (a box needs `dimensions`; a source no
     /// `dimensions`, the full checkpoint, and exactly one of `edges` / `all_edges`).
     fn check_form(&self) -> Result<(), HarnessError> {
+        if self.radius_end.is_some()
+            && (self.checkpoint != Checkpoint::Full
+                || self.source.is_some()
+                || self.piecewise_merge
+                || self.curve_blend_sih.is_some())
+        {
+            return Err(HarnessError::new(
+                "radius_end requires the full checkpoint on a box without merge options",
+            ));
+        }
         if self.piecewise_merge && self.checkpoint != Checkpoint::Full {
             return Err(HarnessError::new("piecewise merge needs the full checkpoint"));
         }
@@ -248,6 +260,18 @@ impl RealSolid {
             }
             _ => Err(HarnessError::new("invalid real-solid form")),
         }
+    }
+    /// [`Self::check_form`], then the shim's wire validation for the chosen form.
+    fn validate(&self) -> Result<(), HarnessError> {
+        self.check_form()?;
+        match (&self.source, self.radius_end) {
+            (Some(source), _) => {
+                ffi::validate_real_source(&self.source_wire(source), source.path().is_some())
+            }
+            (None, Some(end)) => ffi::validate_real_variable_solid(&self.wire(), end),
+            (None, None) => ffi::validate_real_solid(&self.wire()),
+        }
+        .map_err(|e| HarnessError::new(e.to_string()))
     }
 }
 
@@ -363,6 +387,11 @@ pub(super) fn cpp(input: &RealSolid) -> Result<Output, HarnessError> {
     }
     if input.checkpoint != Checkpoint::Full {
         return prefix::cpp(input);
+    }
+    if let Some(end) = input.radius_end {
+        let values = ffi::real_variable_solid(&input.wire(), end)
+            .map_err(|e| HarnessError::new(e.to_string()))?;
+        return output(&values);
     }
     let run = if input.piecewise_merge {
         ffi::piecewise_solid
@@ -565,6 +594,17 @@ fn run_rust(mut k: Kernel, body: SolidResult<Brep>, input: &RealSolid) -> SolidR
     Ok(values)
 }
 fn apply(k: &mut Kernel, body: &mut Brep, edges: &[EdgeId], input: &RealSolid) -> SolidResult<()> {
+    if let Some(end) = input.radius_end {
+        return solidcore::blend::fillet_executive::api::variable_radius_fillet(
+            k,
+            body,
+            edges,
+            input.radius,
+            end,
+            input.xsect,
+            input.continuity,
+        );
+    }
     if input.piecewise_merge {
         return piecewise_fillet_edges(k, body, edges, input);
     }
@@ -663,7 +703,8 @@ pub(super) fn upstream_example(example: usize) -> Result<Option<Output>, Harness
         } else {
             (10.0, 10.0, 10.0)
         };
-        let mut body = solidcore::primitive::api_primitives::create_box(&mut k, Vec3::ZERO, dx, dy, dz)?;
+        let mut body =
+            solidcore::primitive::api_primitives::create_box(&mut k, Vec3::ZERO, dx, dy, dz)?;
         let edges = p1::edges(&body, None)?;
         let selected: Vec<EdgeId> = edges.iter().copied().take(4).collect();
         let result = match example {
@@ -673,8 +714,7 @@ pub(super) fn upstream_example(example: usize) -> Result<Option<Output>, Harness
                 &mut k, &mut body, &selected, 1.0, 1, 1, 1.0,
             ),
             3 => {
-                let radii: Vec<f64> =
-                    (0..selected.len()).map(|i| 0.5 + 0.25 * i as f64).collect();
+                let radii: Vec<f64> = (0..selected.len()).map(|i| 0.5 + 0.25 * i as f64).collect();
                 let types = vec![
                     solidcore::blend::fillet_solver::p1::FilletSurfaceGeneratorType::Circular;
                     selected.len()
@@ -724,12 +764,7 @@ pub(super) fn upstream_example(example: usize) -> Result<Option<Output>, Harness
     }
 }
 pub(super) fn rust(input: &RealSolid) -> Result<Output, HarnessError> {
-    input.check_form()?;
-    match &input.source {
-        Some(source) => ffi::validate_real_source(&input.source_wire(source), source.path().is_some()),
-        None => ffi::validate_real_solid(&input.wire()),
-    }
-    .map_err(|e| HarnessError::new(e.to_string()))?;
+    input.validate()?;
     let mut k = Kernel::default();
     let body = build(&mut k, input)?;
     match run_rust(k, body, input) {
@@ -846,6 +881,40 @@ pub(super) fn surface_surface_rust(input: &SurfaceSurface) -> Result<Output, Har
 #[cfg(test)]
 mod tests {
     use super::output;
+
+    fn variable_input() -> super::RealSolid {
+        serde_json::from_value(serde_json::json!({
+            "dimensions": [10,20,30], "radius": 0.5, "radius_end": 2.0,
+            "xsect": 1, "continuity": 1, "thumbweight": 1, "edges": [2]
+        }))
+        .expect("valid fixture schema")
+    }
+
+    #[test]
+    fn variable_radius_preserves_old_wire_and_rejects_prefix_before_execution() {
+        let mut input = variable_input();
+        let wire = input.wire();
+        assert_eq!(wire, [10.0, 20.0, 30.0, 0.5, 1.0, 1.0, 1.0, 1.0, 2.0]);
+        assert!(input.validate().is_ok());
+        input.radius_end = None;
+        assert_eq!(input.wire(), wire);
+        input.radius_end = Some(2.0);
+        input.checkpoint = super::Checkpoint::IntermediateFaces;
+        assert!(super::cpp(&input).is_err());
+        assert!(super::rust(&input).is_err());
+    }
+
+    #[test]
+    fn variable_radius_rejects_ignored_thumbweight_and_nonfinite_endpoint() {
+        let mut input = variable_input();
+        input.thumbweight = 1.5;
+        assert!(super::cpp(&input).is_err());
+        assert!(super::rust(&input).is_err());
+        input.thumbweight = 1.0;
+        input.radius_end = Some(f64::NAN);
+        assert!(super::cpp(&input).is_err());
+        assert!(super::rust(&input).is_err());
+    }
 
     #[test]
     fn failed_mass_has_status_without_substitute_values() {

@@ -1677,6 +1677,33 @@ mod tests {
     }
 
     #[test]
+    fn fillet_box_matches_analytic_removed_volume() {
+        let removed = (1.0 - std::f64::consts::PI / 4.0) * 0.5 * 0.5 * 20.0;
+        let case: Case = serde_json::from_value(json!({
+            "name": "single-edge-round",
+            "steps": [
+                {"op": "box", "id": "box", "origin": [0.0, 0.0, 0.0],
+                 "size": [10.0, 20.0, 30.0]},
+                {"op": "fillet", "id": "result", "body": "box",
+                 "edges": [[0.0, 10.0, 0.0]], "radius": 0.5}
+            ],
+            "expect": {"lumps": 1, "volume": {
+                "value": 6000.0 - removed, "tol": removed * 0.001,
+                "formula": "box minus one quarter-round edge cut"
+            }}
+        }))
+        .unwrap();
+        let run = run_rust(&case);
+        let (result, checks) = verdict(&case.expect, &run);
+        assert_eq!(result, "PASS", "{run:?}: {checks:?}");
+        if let Run::Done(measured) = run {
+            assert_eq!(measured.topology, [7, 15, 10]);
+        } else {
+            panic!("fillet did not produce a measured body");
+        }
+    }
+
+    #[test]
     fn fixes_are_enabled_by_name() {
         let mut k = Kernel::default();
         enable_fix(&mut k, "sweep_frame_on_planar_path_normal").unwrap();

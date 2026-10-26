@@ -2886,7 +2886,8 @@ impl RailClassificationAccess<FilletObject> for SessionObjects<'_> {
             &mut self.pseudo,
             &mut self.attributes,
             |k, pseudo, ownership| {
-                solver.base_mut().test_roll_over_with_context(
+                FilletSolver::test_roll_over_with_ops(
+                    live_solver_ops(solver),
                     k,
                     self.target,
                     pseudo,

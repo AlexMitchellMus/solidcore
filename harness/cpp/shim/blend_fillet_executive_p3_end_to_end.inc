@@ -109,10 +109,13 @@ SmStatus curve_sih_fillet_edges(SmBrep* pBrep,SmTArray<SmEdge*>& rEdges,double d
     return SM_SUCCESS;
 }
 
-// `curve_sih` > 0 fillets with curve_sih_fillet_edges at that step-back factor.
+// `curve_sih` > 0 fillets with curve_sih_fillet_edges at that step-back factor; a
+// non-null `end_radius` runs SmApiVariableRadiusFillet from fillet[0] to *end_radius
+// (thumbweight fillet[3] must be 1.0, the variable-radius API takes none).
 int32_t fillet_and_record(SmBrep* body,const double* fillet,int64_t n,std::vector<double>& values,
-    bool piecewise=false,double curve_sih=0.0) {
+    bool piecewise=false,double curve_sih=0.0,const double* end_radius=nullptr) {
     if (n < 5) return SC_ERR_ARG;
+    if (end_radius && (!std::isfinite(*end_radius) || fillet[3] != 1.0)) return SC_ERR_ARG;
     const double ulong_limit=std::ldexp(1.0,std::numeric_limits<ULONG>::digits);
     for (int i : {1,2}) if (fillet[i] < 0 || std::floor(fillet[i]) != fillet[i]
         || fillet[i] >= ulong_limit) return SC_ERR_ARG;
@@ -135,7 +138,9 @@ int32_t fillet_and_record(SmBrep* body,const double* fillet,int64_t n,std::vecto
             }
         }
     }
-    const auto result=curve_sih > 0.0
+    const auto result=end_radius
+        ? SmApiVariableRadiusFillet(body,selected,fillet[0],*end_radius,ULONG(fillet[1]),ULONG(fillet[2]))
+        : curve_sih > 0.0
         ? curve_sih_fillet_edges(body,selected,fillet[0],ULONG(fillet[1]),ULONG(fillet[2]),fillet[3],curve_sih)
         : piecewise
         ? piecewise_fillet_edges(body,selected,fillet[0],ULONG(fillet[1]),ULONG(fillet[2]),fillet[3])
@@ -165,7 +170,7 @@ int32_t fillet_and_record(SmBrep* body,const double* fillet,int64_t n,std::vecto
 // then owning-list edge indices. This initial fixture constructor is a box.
 namespace fillet_real_solid {
 int32_t real_solid(const double* input, int64_t n, double* out, int64_t cap, int64_t* out_len,
-    bool piecewise, double curve_sih=0.0) {
+    bool piecewise, double curve_sih=0.0, const double* end_radius=nullptr) {
     if (!input || n < 9) return SC_ERR_ARG;
     for (int64_t i=0; i<n; ++i) if (!std::isfinite(input[i])) return SC_ERR_ARG;
     for (int i=0; i<3; ++i) if (input[i] <= SM_EFF_ZERO) return SC_ERR_ARG;
@@ -176,7 +181,7 @@ int32_t real_solid(const double* input, int64_t n, double* out, int64_t cap, int
     if (setup != SM_SUCCESS || !raw) return SC_ERR_ARG;
     std::unique_ptr<SmBrep> body(raw);
     std::vector<double> values;
-    const auto rc=fillet_real_solid::fillet_and_record(body.get(),input+3,n-3,values,piecewise,curve_sih);
+    const auto rc=fillet_real_solid::fillet_and_record(body.get(),input+3,n-3,values,piecewise,curve_sih,end_radius);
     if (rc != SC_OK) return rc;
     return sc_copy_out(values.data(),int64_t(values.size()),out,cap,out_len);
     SC_CATCH
@@ -186,6 +191,11 @@ int32_t real_solid(const double* input, int64_t n, double* out, int64_t cap, int
 SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_solid(
     const double* input, int64_t n, double* out, int64_t cap, int64_t* out_len) {
     return fillet_real_solid::real_solid(input,n,out,cap,out_len,false);
+}
+SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_variable_solid(
+    const double* input, int64_t n, double end_radius,
+    double* out, int64_t cap, int64_t* out_len) {
+    return fillet_real_solid::real_solid(input,n,out,cap,out_len,false,0.0,&end_radius);
 }
 
 // The box wire of sc_blend_fillet_executive_p3_real_solid, filleted with the
