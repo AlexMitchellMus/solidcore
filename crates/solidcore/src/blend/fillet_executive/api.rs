@@ -1,7 +1,8 @@
 //! Public fillet entry points: fillet B-rep edges through one live fillet session.
 //!
 //! Upstream: `source/SM_API/src/SmApiBrep.cpp` (`SmApiFilletEdges` 2049-2087,
-//! `SmApiFilletEdgesPerEdge` 2094-2135, `SmApiSetBevelCorners` 2305-2338),
+//! `SmApiFilletEdgesPerEdge` 2094-2135, `SmApiVariableRadiusFillet` 2142-2178,
+//! `SmApiSetBevelCorners` 2305-2338),
 //! `source/SM_API/src/SmApiFillets.cpp` (`SmApiChamferFillet` 40-113,
 //! `SmApiCircularFillet` 119-185).
 //!
@@ -9,6 +10,7 @@
 //! |------|----------|
 //! | [`fillet_edges`] | `SmApiFilletEdges` |
 //! | [`fillet_edges_per_edge`] | `SmApiFilletEdgesPerEdge` |
+//! | [`variable_radius_fillet`] | `SmApiVariableRadiusFillet` |
 //! | [`circular_fillet`] | `SmApiCircularFillet` |
 //! | [`chamfer_fillet`] | `SmApiChamferFillet` |
 //! | [`set_bevel_corners`] | `SmApiSetBevelCorners` |
@@ -30,6 +32,7 @@ use crate::blend::fillet_geom::p1::FilletSolverId;
 use crate::blend::fillet_solver::p1::{
     FilletSurfaceGenerator, FilletSurfaceGeneratorType, MakeSurfaceBlendSih,
 };
+use crate::blend::fillet_standard_solver::p1::FilletLaw;
 use crate::error::{Result, SolidError, SM_ERR_INVALID_INPUT};
 use crate::kernel::Kernel;
 use crate::math::PI;
@@ -112,6 +115,44 @@ pub fn fillet_edges_per_edge(
             xsect_types,
             continuity,
             thumbweight,
+        )?;
+        session.do_fillet(k)?;
+    }
+    stitch_and_orient(k, brep, &StitchAndOrientOptions::default())
+}
+
+/// `SmApiVariableRadiusFillet`: fillet `edges` of `brep` with a radius running
+/// linearly from `start_radius` to `end_radius` along each edge
+/// (`SmLinearFilletLaw`) and one cross-section (`xsect_type` 0 linear, 2 blend
+/// curve, any other value circular), then `StitchAndOrient` with its defaults.
+/// `continuity` (1, 2 or 3 for G1-G3) applies to blend-curve cross-sections, whose
+/// thumbweight is the `SetFilletParameters` default `1.0`.
+///
+/// # Errors
+/// `SM_ERR_INVALID_INPUT` for an empty edge list; the fillet executive's errors
+/// (the body keeps the edits made before the failure, as upstream).
+pub fn variable_radius_fillet(
+    k: &mut Kernel,
+    brep: &mut Brep,
+    edges: &[EdgeId],
+    start_radius: f64,
+    end_radius: f64,
+    xsect_type: u32,
+    continuity: u32,
+) -> Result<()> {
+    if edges.is_empty() {
+        return Err(invalid_input());
+    }
+    let law = FilletLaw::linear(start_radius, end_radius, None);
+    {
+        let mut session = FilletSession::new(k, brep)?;
+        session.prepare_variable_radius_edges(
+            k,
+            edges,
+            start_radius,
+            law,
+            xsect_type,
+            continuity,
         )?;
         session.do_fillet(k)?;
     }

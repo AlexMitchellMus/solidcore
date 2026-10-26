@@ -1218,15 +1218,31 @@ fn pseudo_brep_delete_edge(_pseudo: &mut FilletBrep, _e: EdgeId) -> Result<()> {
 /// offset radii cannot change. Both are virtual on the solver's dynamic type, which only
 /// the executive's solver store (`SmFilletExecutive::m_vFilletSolvers`, unit
 /// `blend.fillet_executive_p1`, #260) knows; the corner's solver list holds base records.
-fn variable_radius_solver_mut(
-    _solvers: &mut [FilletSolver],
-    _id: FilletSolverId,
-) -> Result<Option<&mut VariableRadiusFs>> {
-    // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::m_vFilletSolvers (the solver store resolving SmFilletSolver::OffsetRadiiCanChange and the SmVariableRadiusFS cast)
-    Err(SolidError::unported(
-        "SmFilletSolver::OffsetRadiiCanChange / SmVariableRadiusFS cast (the executive's solver store)",
-        "blend.fillet_executive_p1",
-    ))
+/// The solver store `CalcCornerVertGeom`'s law-interval adjustment resolves a fillet
+/// geometry's `GetFilletSolver()` in.
+pub trait LawIntervalSolvers {
+    /// `pThisFS->OffsetRadiiCanChange()` and then `SM_CAST_PTR(SmVariableRadiusFS,
+    /// pThisFS)`: the variable-radius solver `id` when its radii can change, else `None`.
+    ///
+    /// # Errors
+    /// An unresolved solver, or a solver class whose virtual is not reachable.
+    fn adjustable_variable_radius(
+        &mut self,
+        id: FilletSolverId,
+    ) -> Result<Option<&mut VariableRadiusFs>>;
+}
+
+impl LawIntervalSolvers for [FilletSolver] {
+    fn adjustable_variable_radius(
+        &mut self,
+        _id: FilletSolverId,
+    ) -> Result<Option<&mut VariableRadiusFs>> {
+        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::m_vFilletSolvers (the solver store resolving SmFilletSolver::OffsetRadiiCanChange and the SmVariableRadiusFS cast)
+        Err(SolidError::unported(
+            "SmFilletSolver::OffsetRadiiCanChange / SmVariableRadiusFS cast (the executive's solver store)",
+            "blend.fillet_executive_p1",
+        ))
+    }
 }
 
 /// `pFrom->Remove(pVU); pTo->PostInsert(pVU)` for a vertex use of the pseudo B-rep; the
@@ -1287,7 +1303,7 @@ impl FilletCorner {
                 )
             },
             |(env, solvers), corner, processed| {
-                corner.adjust_vertex_law_intervals(env, solvers, processed)
+                corner.adjust_vertex_law_intervals(env.pseudo, env.target, *solvers, processed)
             },
         )
     }
@@ -1324,10 +1340,21 @@ impl FilletCorner {
         adjust_law_intervals(context, self, &already_processed)
     }
 
-    fn adjust_vertex_law_intervals(
+    /// The law-interval adjustment that ends `CalcCornerVertGeom` for a corner calculated
+    /// as constant radius: each variable-radius solver whose radii can change and whose
+    /// fillet geometry meets a fillet vertex not processed before this corner's
+    /// calculation has the end of its law interval at this corner moved to the vertex's
+    /// edge parameter, keeping the shortest interval (unless that end is interior to
+    /// its law's edge map, or its edge is closed).
+    ///
+    /// # Errors
+    /// Those of the solver lookup; `SM_ERR_NULL_POINTER` / [`SolidError::InvalidInput`]
+    /// where upstream dereferences `NULL`; those of the interval arithmetic.
+    pub fn adjust_vertex_law_intervals<S: LawIntervalSolvers + ?Sized>(
         &self,
-        env: &mut CornerEnv<'_>,
-        solvers: &mut [FilletSolver],
+        pseudo: &FilletBrep,
+        target: &Brep,
+        solvers: &mut S,
         already_processed: &[bool],
     ) -> Result<()> {
         let num_verts = self.vertices.len();
@@ -1343,14 +1370,12 @@ impl FilletCorner {
                 .get(ii)
                 .ok_or_else(|| SolidError::null_pointer(OP_VERT_GEOM))?;
 
-            let fgs = env.pseudo.vertex_fillet_geoms(fv)?;
+            let fgs = pseudo.vertex_fillet_geoms(fv)?;
             for fg in fgs {
-                let fvu = env
-                    .pseudo
+                let fvu = pseudo
                     .vu_at_rail_end(fv, Some(fg), None, None)?
                     .ok_or_else(|| SolidError::invalid_input(OP_VERT_GEOM, NULL_DEREF))?;
-                let edge_t = env
-                    .pseudo
+                let edge_t = pseudo
                     .fillet_vertexuse(fvu)?
                     .tsect_pnt()
                     .user_doubles
@@ -1358,14 +1383,13 @@ impl FilletCorner {
                     .copied()
                     .ok_or_else(|| SolidError::null_pointer(OP_VERT_GEOM))?;
 
-                let solver_id = env
-                    .pseudo
+                let solver_id = pseudo
                     .geom(fg)?
                     .solver
                     .ok_or_else(|| SolidError::invalid_input(OP_VERT_GEOM, NULL_DEREF))?;
 
                 // pThisFS->OffsetRadiiCanChange(), SM_CAST_PTR(SmVariableRadiusFS, pThisFS)
-                let Some(vrfs) = variable_radius_solver_mut(solvers, solver_id)? else {
+                let Some(vrfs) = solvers.adjustable_variable_radius(solver_id)? else {
                     continue;
                 };
 
@@ -1381,11 +1405,10 @@ impl FilletCorner {
                     .copied()
                     .flatten()
                     .ok_or_else(|| SolidError::null_pointer(OP_VERT_GEOM))?;
-                let filleted_edge = eu1::edge(env.target, eu)?
+                let filleted_edge = eu1::edge(target, eu)?
                     .ok_or_else(|| SolidError::invalid_input(OP_VERT_GEOM, NULL_DEREF))?;
-                let at_fillet_start =
-                    edge::start_vertex(env.target, filleted_edge)? == corner_vertex;
-                let at_fillet_end = edge::end_vertex(env.target, filleted_edge)? == corner_vertex;
+                let at_fillet_start = edge::start_vertex(target, filleted_edge)? == corner_vertex;
+                let at_fillet_end = edge::end_vertex(target, filleted_edge)? == corner_vertex;
 
                 // A closed fillet edge needs the whole FilletLaw [B679]
                 if at_fillet_start && at_fillet_end {
