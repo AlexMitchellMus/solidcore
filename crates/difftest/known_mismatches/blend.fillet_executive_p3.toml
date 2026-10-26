@@ -5,8 +5,3 @@
 unit = "blend.fillet_executive_p3"
 case = "sweep4-bottle-e29-r0.1"
 why = "one result vertex tolerance differs (C++ 1.07e-2, Rust 1.60e-4); topology and every other value agree (plan/findings/blend.fillet_executive_p3--bottle-e29-r0.1-vertex-tolerance.md)"
-
-[[mismatch]]
-unit = "blend.fillet_executive_p3"
-case = "sweep4-brepForFillet2-all-r0.1"
-why = "result topology differs (vertex/edge/face counts) and area 1433.64 vs 1441.07 (plan/findings/blend.fillet_executive_p3--sweep4-sphere-diff-3cylinders-and-brepforfillet2-all-edges.md)"

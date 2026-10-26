@@ -27,7 +27,8 @@ known-mismatch entry's fail-closed check: “the case is now pass: remove the en
 
 Remove only this case's entry from
 `crates/difftest/known_mismatches/blend.fillet_executive_p3.toml`. Keep the fixture,
-all comparisons, and the existing tolerances. The separate `brepForFillet2` and
-bottle mismatches remain registered and unresolved by this addendum. No claim is
-made about which of the original three cone-face UV spans first caused the mass
-difference; the full unchanged result record now agrees.
+all comparisons, and the existing tolerances. The separate bottle mismatch remains
+registered and unresolved by this addendum. Main `35239e97c` independently resolves
+and removes `brepForFillet2`; the merge retains that resolution rather than restoring
+its entry. No claim is made about which of the original three cone-face UV spans
+first caused the mass difference; the full unchanged result record now agrees.
