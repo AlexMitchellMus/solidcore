@@ -1,4 +1,0 @@
-[[mismatch]]
-unit = "blend.fillet_executive_p3"
-case = "source-file-corner_box-edge13"
-why = "both fillet edge 13 with identical topology; area 364.2382213624 (C++) vs 364.2370067454 (Rust). Same first divergence as edge 9: target-face UV trim curves created during InsertIntersectionTopology differ by ~1e-8 (plan/findings/blend.fillet_executive_p3--non-box-sources-corner-box-nurb-box--addendum-2026-10-26-insertion-uv-trims.md)"
