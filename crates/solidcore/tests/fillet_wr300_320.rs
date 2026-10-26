@@ -269,3 +269,38 @@ fn retry_rail_search_holds_the_radius_as_the_first_does() {
         assert_eq!(round_into_a_rounded_corner(&mut k, 5.0, r1), off);
     }
 }
+
+/// `SM_FILERR_NO_ROOM`, the fork's error type for a blend larger than its faces.
+const NO_ROOM: i32 = 8;
+
+/// Blends of 6 and 9 run across the openings: SMLib builds a body that is no manifold
+/// solid. With `fillet_refuse_rails_leaving_faces` they are refused (`SM_FILERR_NO_ROOM`);
+/// the sizes that fit are unchanged.
+#[test]
+fn blends_larger_than_their_faces_are_refused() {
+    for xsect in [0, 1] {
+        for size in [6.0, 9.0] {
+            let mut k = Kernel::default();
+            assert!(
+                matches!(
+                    holed_cube_blend(&mut k, size, xsect),
+                    Outcome::Built {
+                        manifold: false,
+                        ..
+                    }
+                ),
+                "xsect {xsect} size {size}"
+            );
+            let mut k = kernel(|f| f.fillet_refuse_rails_leaving_faces = true);
+            assert_eq!(
+                holed_cube_blend(&mut k, size, xsect),
+                Outcome::Refused { code: NO_ROOM },
+                "xsect {xsect} size {size}"
+            );
+        }
+        let mut k = Kernel::default();
+        let off = holed_cube_blend(&mut k, 4.0, xsect);
+        let mut k = kernel(|f| f.fillet_refuse_rails_leaving_faces = true);
+        assert_eq!(holed_cube_blend(&mut k, 4.0, xsect), off);
+    }
+}

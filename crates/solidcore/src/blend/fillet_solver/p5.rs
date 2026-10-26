@@ -38,6 +38,9 @@ use crate::topology::{edge, edgeuse::p1 as eu, edgeuse::p2, Brep, EdgeId, Edgeus
 #[path = "p5/recovery.rs"]
 mod recovery;
 
+#[path = "p5/rails_fit.rs"]
+mod rails_fit;
+
 const OP: &str = "blend::fillet_solver::p5";
 
 /// Resolve handles used by `TestRollOver`, without assuming the two B-reps' arena

@@ -1934,6 +1934,25 @@ pub trait SolverGeometryAccess<O: ClassObject + SolutionObject + Ord> {
     /// # Errors
     /// Missing actual solver topology.
     fn geometry_edge(&self, solver: O) -> Result<O>;
+    /// The fork's `SmFilletSolver::RailsFitTheirFaces` for `solver` (not upstream; opt-in
+    /// `fixes.fillet_refuse_rails_leaving_faces`, WR-302): whether every rail of its
+    /// untrimmed fillet stays on the face it rolls on. Only an accessor with a live
+    /// pseudo-B-rep can tell.
+    ///
+    /// # Errors
+    /// [`SolidError::Unported`] without live context; the classification's errors.
+    fn geometry_rails_fit(
+        &mut self,
+        k: &mut Kernel,
+        solver: O,
+        executive: &FilletExecutive<O>,
+    ) -> Result<bool> {
+        let _ = (k, solver, executive);
+        Err(SolidError::unported(
+            "SmFilletSolver::RailsFitTheirFaces (fork)",
+            "blend.fillet_executive_p3",
+        ))
+    }
 }
 
 impl<O, A> SolverGeometryAccess<O> for A
@@ -2179,6 +2198,42 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         Ok(())
     }
 
+    /// Refuse blends larger than the faces they roll on, after every solver's fillet
+    /// geometry exists (not upstream; the fork's checks in `CreateFilletBrep`, each
+    /// opt-in), with `SM_FILERR_NO_ROOM` (8):
+    /// - `fixes.fillet_refuse_rails_leaving_faces` (WR-302, tangency-labs/solidcore#841
+    ///   and #1024): a solver whose rail leaves the face it rolls on between its ends
+    ///   (`SmFilletSolver::RailsFitTheirFaces`).
+    ///
+    /// # Errors
+    /// The refusal as `SM_ERR`, noted in the error info; those of the checks.
+    pub fn refuse_blends_larger_than_faces(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl SolverGeometryAccess<O>,
+    ) -> Result<()> {
+        if k.fixes.fillet_refuse_rails_leaving_faces {
+            let mut index = 0;
+            while let Some(solver) = self.solvers.get(index).copied() {
+                if !access.geometry_rails_fit(k, solver, self)? {
+                    return self.record_no_room(
+                        "Fillet Error: a rail leaves the face it rolls on (the blend is larger than the faces allow)",
+                    );
+                }
+                index += 1;
+            }
+        }
+        Ok(())
+    }
+
+    /// `NoteError(SM_FILERR_NO_ROOM, comment)`, then `SM_ERR`.
+    fn record_no_room(&mut self, comment: &str) -> Result<()> {
+        // The generic NoteError overload changes exactly these two members.
+        self.error.code = 8; // SM_FILERR_NO_ROOM
+        self.error.comment = comment.into();
+        Err(failure())
+    }
+
     /// Complete tangent adjustment, repeated vertex geometry and boundary edges per corner.
     ///
     /// # Errors
@@ -2397,6 +2452,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         self.create_corner_vertices(k, access)?;
         self.adjust_corner_topology(k, access)?;
         self.calculate_solver_geometry(k, access)?;
+        self.refuse_blends_larger_than_faces(k, access)?;
         self.calculate_corner_edges(k, access)?;
         self.trim_solver_rails(k, access)?;
         self.classify_solver_rails(k, access)?;
