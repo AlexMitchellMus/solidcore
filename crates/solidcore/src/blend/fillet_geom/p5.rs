@@ -19,7 +19,7 @@
 //! | [`FilletBrep::copy_fillet_geom`]                  | `SmFilletGeom(SmFilletGeom*)`                    |
 //! | [`FilletBrep::make_rail_edge`]                    | `SmFilletGeom::MakeRailEdge`                     |
 //! | [`FilletBrep::make_rail_edgeuse`]                 | `SmFilletGeom::MakeRailEdgeuse`                  |
-//! | [`FilletBrep::create_end_curve`]                  | `SmFilletGeom::CreateEndCurve`                   |
+//! | [`FilletBrep::create_end_curve`], [`FilletBrep::create_end_curve_with_solver`] | `SmFilletGeom::CreateEndCurve`                   |
 //! | [`FilletBrep::trim_rail_curves`], [`FilletBrep::trim_rail_curves_with_solver`] | `SmFilletGeom::TrimRailCurves`                   |
 //! | [`FilletBrep::trim_cliff_rails`]                  | `SmFilletGeom::TrimCliffRails`                   |
 //! | [`FilletBrep::update_geom_split_face`]            | `SmFilletGeom::UpdateSplitFace`                  |
@@ -1559,7 +1559,6 @@ impl FilletBrep {
     /// curve creations, the lift, [`FilletBrep::make_fillet_edge`] and (for
     /// `SM_BT_BLEND`) `FindEdgeTangentAtPoint`, which reads the rail end vertices'
     /// classification edges in `target`.
-    #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn create_end_curve(
         &mut self,
         k: &Kernel,
@@ -1567,6 +1566,59 @@ impl FilletBrep {
         end_index: usize,
         trim_type: BoundaryTrimmingType,
         solvers: &[FilletSolver],
+        target: &Brep,
+    ) -> Result<EdgeId> {
+        self.create_end_curve_resolved(
+            k,
+            g,
+            end_index,
+            trim_type,
+            &|id, op| solver_of(solvers, id, op),
+            target,
+        )
+    }
+
+    /// `CreateEndCurve` using the actual live solver of geometry `g` (its
+    /// `SplitFilletGeom` caller is that solver).
+    ///
+    /// # Errors
+    /// The errors of [`Self::create_end_curve`]; [`SolidError::InvalidInput`] if the
+    /// geometry names a solver other than `solver_id`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_end_curve_with_solver(
+        &mut self,
+        k: &Kernel,
+        g: FilletGeomId,
+        end_index: usize,
+        trim_type: BoundaryTrimmingType,
+        solver_id: FilletSolverId,
+        solver: &FilletSolver,
+        target: &Brep,
+    ) -> Result<EdgeId> {
+        self.create_end_curve_resolved(
+            k,
+            g,
+            end_index,
+            trim_type,
+            &|id, op| {
+                if id == solver_id {
+                    Ok(solver)
+                } else {
+                    Err(SolidError::invalid_input(op, "unresolved geometry solver"))
+                }
+            },
+            target,
+        )
+    }
+
+    #[allow(clippy::too_many_lines)] // one upstream routine
+    fn create_end_curve_resolved<'s>(
+        &mut self,
+        k: &Kernel,
+        g: FilletGeomId,
+        end_index: usize,
+        trim_type: BoundaryTrimmingType,
+        resolve: &impl Fn(FilletSolverId, &'static str) -> Result<&'s FilletSolver>,
         target: &Brep,
     ) -> Result<EdgeId> {
         // Create a line between the two UV points and lift the curve.
@@ -1613,7 +1665,11 @@ impl FilletBrep {
             .ok_or_else(|| SolidError::null_pointer(OP_END))?;
         let p_start = self.fillet_vertexuse(vu0)?.uv_point();
         let p_end = self.fillet_vertexuse(vu1)?.uv_point();
-        let solver = self.geom_solver(g, solvers, OP_END)?;
+        let sid = self
+            .geom(g)?
+            .fillet_solver()
+            .ok_or_else(|| SolidError::null_pointer(OP_END))?;
+        let solver = resolve(sid, OP_END)?;
 
         let uv_curve: Curve = if trim_type == BoundaryTrimmingType::Blend {
             let mut uv_tan1 = Vec2::new(0.0, 1.0);

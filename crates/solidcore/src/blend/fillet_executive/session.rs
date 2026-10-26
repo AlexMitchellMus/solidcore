@@ -47,8 +47,8 @@ use super::p3::{
 };
 use crate::blend::fillet_corner::p1::LawIntervalSolvers;
 use crate::blend::fillet_corner::p3::{
-    CornerFilletBrep, CornerPatchEnv, CornerSolverStore, FilletCorner, FilletCornerKind,
-    Nx2AdjustContext,
+    CornerFilletBrep, CornerPatchEnv, CornerSolverStore, ExecutiveErrorObject, FilletCorner,
+    FilletCornerKind, Nx2AdjustContext,
 };
 use crate::blend::fillet_geom::p1::{
     CornerLookup, FilletBrep, FilletCornerId, FilletCornerType, FilletSolverId, FilletVertexType,
@@ -77,6 +77,7 @@ mod concave_nxn;
 mod finish;
 mod original_merge;
 mod original_trim;
+mod surface;
 pub use original_trim::{OriginalSurfaceDeletion, OriginalSurfaceSelection};
 
 const OP: &str = "blend::fillet_executive::session";
@@ -133,6 +134,8 @@ pub enum FilletObject {
     SelfIntersectionHandler,
     /// A caller-supplied fillet law retained by the session.
     Law(u32),
+    /// A surface the corner code names in an error note (`RecordFilletError`).
+    CornerError(ExecutiveErrorObject),
 }
 
 impl ClassObject for FilletObject {
@@ -349,29 +352,26 @@ impl SessionObjects<'_> {
                 &mut self.pseudo,
                 &context,
             ),
-            // UNPORTED(blend.fillet_executive_p3): actual derived solver operation contexts.
-            SolverObject::SurfaceSurface(_) => Err(SolidError::unported(
-                "live concrete CalcFilletGeom operations",
-                "blend.fillet_executive_p3",
-            )),
+            // SmSurfaceSurfaceFS::CalcFilletGeom
+            SolverObject::SurfaceSurface(solver) => solver.calc_fillet_geom_with_context(
+                k,
+                self.target,
+                &mut self.pseudo,
+                &mut surface::SurfaceSurfaceSession {
+                    corners: &self.corners,
+                },
+            ),
         }
     }
 }
 
-/// The retained virtual operations of a concrete solver whose live corner-vertex
-/// operations are ported.
-fn live_solver_ops(solver: &mut SolverObject) -> Result<&mut dyn FilletSolverOps> {
+/// The retained virtual operations of a concrete solver.
+fn live_solver_ops(solver: &mut SolverObject) -> &mut dyn FilletSolverOps {
     match solver {
-        SolverObject::ConstantRadius(solver) => Ok(solver.as_mut()),
-        SolverObject::VariableRadius(solver) => Ok(solver.as_mut()),
-        SolverObject::ConstantDistance(solver) => Ok(solver.as_mut()),
-        SolverObject::SurfaceSurface(_) => {
-            // UNPORTED(blend.fillet_executive_p1): retained virtual operations for other concrete solver types.
-            Err(SolidError::unported(
-                "SmFilletSolver::RailEdgeuseIntersect (live concrete dispatch)",
-                "blend.fillet_executive_p1",
-            ))
-        }
+        SolverObject::ConstantRadius(solver) => solver.as_mut(),
+        SolverObject::VariableRadius(solver) => solver.as_mut(),
+        SolverObject::ConstantDistance(solver) => solver.as_mut(),
+        SolverObject::SurfaceSurface(solver) => solver.as_mut(),
     }
 }
 
@@ -528,7 +528,7 @@ fn live_vertex_solvers<'s>(
         let solver = slot
             .as_mut()
             .ok_or_else(|| invalid("vertex solver is not live"))?;
-        live.push((id, live_solver_ops(solver)?));
+        live.push((id, live_solver_ops(solver)));
     }
     if live.len() != ids.len() {
         return Err(invalid("vertex solver is not live"));
@@ -653,7 +653,50 @@ struct SessionCornerEdgeContext<'a> {
     pseudo: &'a mut FilletBrep,
     lookup: SessionEdgeLookup<'a>,
     corner: FilletCornerId,
-    do_global_merge: &'a bool,
+    do_global_merge: bool,
+    /// The executive's `m_sErrorInfo`, for `SmFilletCorner::RecordFilletError`.
+    error: &'a mut ErrorInfo<FilletObject>,
+}
+
+/// The executive identity of an object the corner code records in an error note: the
+/// target and fillet vertices are their topology; the other surfaces keep the corner
+/// code's identity.
+fn executive_error_object(object: ExecutiveErrorObject) -> FilletObject {
+    match object {
+        ExecutiveErrorObject::TargetVertex(v) => {
+            FilletObject::Topology(FilletBody::Target, EntityRef::Vertex(v))
+        }
+        ExecutiveErrorObject::FilletVertex(v) => {
+            FilletObject::Topology(FilletBody::Pseudo, EntityRef::Vertex(v))
+        }
+        other => FilletObject::CornerError(other),
+    }
+}
+
+/// Replay one corner error note (`SmFilletErrorInfo::NoteError` with the corner
+/// overload, made into a fresh record) into the executive's record: the same field
+/// writes, with the surfaces added uniquely to the ones already noted.
+fn replay_corner_error(
+    error: &mut ErrorInfo<FilletObject>,
+    note: &ErrorInfo<ExecutiveErrorObject>,
+) {
+    if *note == ErrorInfo::default() {
+        return;
+    }
+    let map = |o: Option<ExecutiveErrorObject>| o.map(executive_error_object);
+    error.code = note.code;
+    error.status = note.status;
+    error.corner_type = note.corner_type;
+    error.vertex = map(note.vertex);
+    for surface in &note.surfaces {
+        let surface = map(*surface);
+        if !error.surfaces.contains(&surface) {
+            error.surfaces.push(surface);
+        }
+    }
+    error.fillet_vertices = note.fillet_vertices.map(map);
+    error.comment.clone_from(&note.comment);
+    error.entity_name.clone_from(&note.entity_name);
 }
 
 /// One actual executive and its live target, pseudo-B-rep, solvers and corners.
@@ -1468,7 +1511,8 @@ impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
                 extended_surfaces,
             },
             corner: id,
-            do_global_merge: &executive.options.global_merge,
+            do_global_merge: executive.options.global_merge,
+            error: &mut executive.error,
         };
         corner.calc_corner_edge_geom_with(
             &mut context,
@@ -1478,15 +1522,24 @@ impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
                     this: Some((Some(context.corner), corner)),
                     exec: None,
                 };
-                context.pseudo.calc_corner_edge_geom_with_context(
-                    context.k,
-                    edge,
-                    corners,
-                    &context.lookup,
-                    context.target,
-                )
+                // SmFilletCorner::RecordFilletError -> m_pExecutive->NoteFilletError:
+                // the corner code notes into its own identities, replayed into the
+                // executive's record.
+                let mut note = ErrorInfo::default();
+                let result = context
+                    .pseudo
+                    .calc_corner_edge_geom_with_context_and_error_info(
+                        context.k,
+                        edge,
+                        corners,
+                        &context.lookup,
+                        context.target,
+                        Some(&mut note),
+                    );
+                replay_corner_error(context.error, &note);
+                result
             },
-            |context| *context.do_global_merge,
+            |context| context.do_global_merge,
             |context| &mut *context.pseudo,
         )
     }

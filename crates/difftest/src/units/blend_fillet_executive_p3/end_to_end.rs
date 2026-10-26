@@ -674,10 +674,13 @@ fn surface_surface_output(values: &[f64]) -> Result<Output, HarnessError> {
     Ok(out)
 }
 /// The Rust side of [`SurfaceSurface`]: both surfaces are built as the shim builds
-/// them; the public entry point is not ported yet.
+/// them (`SmApiCreateSurfaceFromCornerPoints`), then
+/// `solidcore::blend::fillet_executive::api::surface_surface_fillet` runs and the
+/// result B-rep is recorded as the shim records it.
 pub(super) fn surface_surface_rust(input: &SurfaceSurface) -> Result<Output, HarnessError> {
     ffi::validate_surface_surface(&input.wire()).map_err(|e| HarnessError::new(e.to_string()))?;
-    let run = || -> SolidResult<()> {
+    let run = || -> SolidResult<Vec<f64>> {
+        let mut k = Kernel::default();
         let surface = |c: &[[f64; 3]; 4]| {
             solidcore::nurbs::b_spline_surface::BSplineSurface::create_bilinear_surface(
                 Vec3::from(c[0]),
@@ -685,17 +688,43 @@ pub(super) fn surface_surface_rust(input: &SurfaceSurface) -> Result<Output, Har
                 Vec3::from(c[2]),
                 Vec3::from(c[3]),
             )
+            .map(solidcore::surface::surface::Surface::from)
         };
-        let _first = surface(&input.first)?;
-        let _second = surface(&input.second)?;
-        // UNPORTED(blend.fillet_executive_p1): SmApiSurfaceSurfaceFillet
-        Err(SolidError::Unported {
-            upstream: "SmApiSurfaceSurfaceFillet",
-            unit: "blend.fillet_executive_p1",
-        })
+        let first = surface(&input.first)?;
+        let second = surface(&input.second)?;
+        let result = solidcore::blend::fillet_executive::api::surface_surface_fillet(
+            &mut k,
+            &first,
+            &second,
+            input.radius1,
+            input.radius2,
+            input.tolerance,
+            input.xsect,
+            input.mirror,
+            input.complement,
+        );
+        let body = match result {
+            Ok(body) => body,
+            Err(error) => return Ok(vec![status(error)?]),
+        };
+        let mut values = vec![0.0];
+        if let Some(body) = body {
+            values.extend([
+                p1::vertices(&body, None)?.len() as f64,
+                p1::edges(&body, None)?.len() as f64,
+                p1::faces(&body, None)?.len() as f64,
+            ]);
+            let mut topology_record = Vec::new();
+            topology(&body, &mut topology_record)?;
+            section(&mut values, &topology_record);
+            let mut geometry = Vec::new();
+            crate::util::primitive::append(&k, &body, &mut geometry)?;
+            section(&mut values, &geometry);
+        }
+        Ok(values)
     };
     match run() {
-        Ok(()) => Err(HarnessError::new("surface-surface fillet has no Rust record")),
+        Ok(values) => surface_surface_output(&values),
         Err(error) => Output::unported(&error)
             .ok_or_else(|| HarnessError::new(error.to_string())),
     }
