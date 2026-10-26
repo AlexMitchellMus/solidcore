@@ -39,13 +39,18 @@ not been isolated. Native Windows C++ confirmation remains unavailable.
 
 The focused planar feature is confirmed on pinned Linux C++: construction by
 `SmBrep::MakeFaceWithCurves` succeeds, and `SmFace::ComputePreciseProperties`
-returns success with area `0.10000000000000001` instead of the exact `0.105`.
+returns success with area `0.10000000000000001` instead of the exact `0.105`
+at both requested accuracies `1e-10` and `1e-4` (the latter is within the
+documented range). The focused Rust regression reproduces both misses and
+recovers `0.105` with the opt-in.
 See WR-423 for the boundary data. This confirms the upstream integration
 failure mechanism independently of platform differences in the sphere case.
 
 `Kernel::fixes.precise_properties_at_trim_knots` enables the remedy. The
 outer absolute error-scale floor is shared among spans; inner iso integration
-and the caller's accuracy remain unchanged. Default mode preserves the
+and the numeric accuracy argument remain unchanged. Separate local error
+estimates do not establish a bound on the total accumulated error. A trim whose
+knots cannot be read falls back to whole-trim integration. Default mode preserves the
 pinned upstream step and accumulation order. No expected value, tolerance,
 skip, mismatch entry, or unit status changes.
 

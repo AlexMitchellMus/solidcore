@@ -145,8 +145,6 @@ impl Caches {
 #[allow(clippy::struct_excessive_bools)]
 #[non_exhaustive]
 pub struct UpstreamFixes {
-    /// Precise face properties integrate each UV trim knot span so adaptive steps cannot skip narrow features (WR-423, #1105).
-    pub precise_properties_at_trim_knots: bool,
     /// `CalcRailIntEdgeuse`'s retry rail search holds a variable round's radius only where its first search does (at a corner calculated as constant radius) (WR-300, #1023).
     pub fillet_retry_radius_as_first: bool,
     /// `TestRollOver` joins a rail's neighbouring intervals on its face or the face's boundary before the rollover, so a rail along its face's rim does not fail "Unable to Process Rollover" (WR-301, #485).
@@ -225,6 +223,8 @@ pub struct UpstreamFixes {
     pub sweep_frame_on_planar_path_normal: bool,
     /// `CoverCoincidentSurface` refuses a cover that extends a B-spline-based surface onto a continuation whose normal vanishes or turns back (a fold) over the domain the merge would use (WR-407, #434; SolidCraft change, tangency-labs/smlib 1b6f5fa).
     pub cover_refuses_folded_continuation: bool,
+    /// Precise face properties integrate each UV trim knot span so adaptive steps cannot skip narrow features (WR-423, #1105).
+    pub precise_properties_at_trim_knots: bool,
 }
 
 /// Options for [`Kernel::new`].

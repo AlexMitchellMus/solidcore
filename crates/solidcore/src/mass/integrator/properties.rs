@@ -284,12 +284,17 @@ pub fn boundary_properties(
         let ivl = trim.natural_interval();
         let mut bounds = vec![ivl.min()];
         if k.fixes.precise_properties_at_trim_knots {
-            let (knots, _) = trim.knots(k, Some(&ivl))?;
-            bounds.extend(
-                knots
-                    .into_iter()
-                    .filter(|t| *t > ivl.min() && *t < ivl.max()),
-            );
+            // Knots are optional guidance for this opt-in integration path. An
+            // analytic trim may integrate even when its NURB knots are unavailable.
+            match trim.knots(k, Some(&ivl)) {
+                Ok((knots, _)) => bounds.extend(
+                    knots
+                        .into_iter()
+                        .filter(|t| *t > ivl.min() && *t < ivl.max()),
+                ),
+                Err(err) if err.is_unported() => return Err(err),
+                Err(_) => {}
+            }
         }
         bounds.push(ivl.max());
         let mut span_scale = scale.clone();
