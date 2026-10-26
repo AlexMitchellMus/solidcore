@@ -1953,6 +1953,19 @@ pub trait SolverGeometryAccess<O: ClassObject + SolutionObject + Ord> {
             "blend.fillet_executive_p3",
         ))
     }
+    /// The fork's `SmFilletExecutive::FacesOutlastTheirBlends` over `solvers` (not
+    /// upstream; opt-in `fixes.fillet_refuse_face_consuming_blends`, WR-320): `false`
+    /// when the blends take the whole of a face they roll on, some at an angle to it.
+    ///
+    /// # Errors
+    /// [`SolidError::Unported`] without live context; missing geometry.
+    fn geometry_faces_outlast(&mut self, k: &mut Kernel, solvers: &[O]) -> Result<bool> {
+        let _ = (k, solvers);
+        Err(SolidError::unported(
+            "SmFilletExecutive::FacesOutlastTheirBlends (fork)",
+            "blend.fillet_executive_p3",
+        ))
+    }
 }
 
 impl<O, A> SolverGeometryAccess<O> for A
@@ -2200,10 +2213,13 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
 
     /// Refuse blends larger than the faces they roll on, after every solver's fillet
     /// geometry exists (not upstream; the fork's checks in `CreateFilletBrep`, each
-    /// opt-in), with `SM_FILERR_NO_ROOM` (8):
+    /// opt-in). Both fail with `SM_FILERR_NO_ROOM` (8):
     /// - `fixes.fillet_refuse_rails_leaving_faces` (WR-302, tangency-labs/solidcore#841
     ///   and #1024): a solver whose rail leaves the face it rolls on between its ends
-    ///   (`SmFilletSolver::RailsFitTheirFaces`).
+    ///   (`SmFilletSolver::RailsFitTheirFaces`);
+    /// - `fixes.fillet_refuse_face_consuming_blends` (WR-320, #879): blends that take
+    ///   the whole of a face, some meeting it at an angle
+    ///   (`SmFilletExecutive::FacesOutlastTheirBlends`).
     ///
     /// # Errors
     /// The refusal as `SM_ERR`, noted in the error info; those of the checks.
@@ -2222,6 +2238,13 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 }
                 index += 1;
             }
+        }
+        if k.fixes.fillet_refuse_face_consuming_blends
+            && !access.geometry_faces_outlast(k, &self.solvers)?
+        {
+            return self.record_no_room(
+                "Fillet Error: the blends take the whole of a face they roll on, some at an angle to it (the blend is larger than the faces allow)",
+            );
         }
         Ok(())
     }

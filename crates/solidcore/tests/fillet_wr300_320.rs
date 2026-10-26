@@ -14,7 +14,7 @@ use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::kernel::UpstreamFixes;
 use solidcore::mass::integrator::properties::{brep_volume, PropertyAttributes};
 use solidcore::math::Point3;
-use solidcore::primitive::api_primitives::create_box;
+use solidcore::primitive::api_primitives::{create_box, create_cylinder};
 use solidcore::topology::brep::p2::is_manifold_solid;
 use solidcore::topology::brep::p5::{stitch_and_orient, StitchAndOrientOptions};
 use solidcore::topology::edge;
@@ -302,5 +302,65 @@ fn blends_larger_than_their_faces_are_refused() {
         let off = holed_cube_blend(&mut k, 4.0, xsect);
         let mut k = kernel(|f| f.fillet_refuse_rails_leaving_faces = true);
         assert_eq!(holed_cube_blend(&mut k, 4.0, xsect), off);
+    }
+}
+
+// ---- WR-320: blends as wide as the face they roll on ----
+
+/// A cylinder of radius 10 and height 20, its top rim blended by `size`.
+fn cylinder_rim(k: &mut Kernel, size: f64, xsect: u32) -> Outcome {
+    let mut b = create_cylinder(k, Point3::new(0.0, 0.0, 0.0), 10.0, 20.0).unwrap();
+    let rim = *b
+        .edge_list()
+        .iter()
+        .find(|&&e| {
+            let c = edge::curve(&b, e).unwrap().unwrap();
+            let ivl = edge::interval(&b, e).unwrap();
+            let p = c.evaluate_point(k, ivl.min()).unwrap();
+            (p.z - 20.0).abs() < 1e-6 && (p.x.hypot(p.y) - 10.0).abs() < 1e-6
+        })
+        .unwrap();
+    fillet(k, &mut b, &[rim], size, xsect)
+}
+
+/// Blends as wide as the face they roll on: the chamfer's cone would end in a point at the
+/// top's centre, where SMLib goes on (the fork's `FacesOutlastTheirBlends`, WR-320). With
+/// `fillet_refuse_face_consuming_blends` a chamfer of 10 on the top rim of a cylinder of
+/// radius 10 is refused (`SM_FILERR_NO_ROOM`). A round of 10 closes the top as a hemisphere
+/// tangent to it, as the fork's amendment (tangency-labs/smlib `8bffb23`) lets it, and
+/// builds either way, as does everything below the full width.
+#[test]
+fn chamfer_as_wide_as_its_face_is_refused() {
+    let mut k = kernel(|f| f.fillet_refuse_face_consuming_blends = true);
+    assert_eq!(
+        cylinder_rim(&mut k, 10.0, 0),
+        Outcome::Refused { code: NO_ROOM }
+    );
+    let mut k = Kernel::default();
+    assert!(!matches!(
+        cylinder_rim(&mut k, 10.0, 0),
+        Outcome::Refused { code: NO_ROOM }
+    ));
+
+    // the round of 10: the cylinder (pi 100 10) and a hemisphere (2/3 pi 1000)
+    let hemisphere = std::f64::consts::PI * (1000.0 + 2000.0 / 3.0);
+    for on in [false, true] {
+        let mut k = kernel(|f| f.fillet_refuse_face_consuming_blends = on);
+        let Outcome::Built { volume, manifold } = cylinder_rim(&mut k, 10.0, 1) else {
+            panic!("on {on}: refused");
+        };
+        assert!(
+            manifold && near(volume, hemisphere, 5e-3),
+            "on {on}: {volume}"
+        );
+        for xsect in [0, 1] {
+            assert!(
+                matches!(
+                    cylinder_rim(&mut k, 9.99, xsect),
+                    Outcome::Built { manifold: true, .. }
+                ),
+                "on {on} xsect {xsect}"
+            );
+        }
     }
 }
