@@ -604,6 +604,7 @@ static void run_split_rail(std::vector<double>& out) {
     SmFilletBrep* pseudo=executive->GetPseudoBrep();
     std::unique_ptr<SmFilletVertex> start(new(pseudo) SmFilletVertex());
     std::unique_ptr<SmFilletVertex> end(new(pseudo) SmFilletVertex());
+    start->SetPoint(SmPoint3d(0,0,0)); end->SetPoint(SmPoint3d(1,0,0));
     SmFilletEdge* raw_rail=nullptr;
     SmStatus built=SmFilletEdge::MakeFilletEdge(pseudo,start.get(),end.get(),raw_rail);
     if(built!=SM_SUCCESS || !raw_rail) throw std::logic_error("split rail setup");

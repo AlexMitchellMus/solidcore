@@ -186,8 +186,8 @@ pub(super) fn rust() -> Result<Output, HarnessError> {
         let domain = copied.natural_interval();
         out.extend([
             pseudo.brep().edge(new_rail)?.tolerance,
-            domain.min,
-            domain.max,
+            domain.min(),
+            domain.max(),
         ]);
         for f in [0., 0.5, 1.] {
             let p = copied.evaluate_point(&k, domain.evaluate(f))?;
