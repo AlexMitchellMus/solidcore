@@ -13,6 +13,8 @@
 //! | [`api_brep_copy`]               | `SmApiBrepCopy`                                  |
 //! | [`copy_vertices`], [`copy_vertices_with_context`], [`CopySource`] | `SmBrep::CopyVertices`                           |
 //! | [`delete_face`], [`DeleteFaceOptions`] | `SmBrep::DeleteFace`                      |
+//! | [`remove_slit_loops_where_solids_touch`] | not upstream: the fork's `SmBrep::RemoveSlitLoopsWhereSolidsTouch` (issue #746) |
+//! | [`split_disconnected_shells`]  | not upstream: the fork's `SmBrep::SplitDisconnectedShells` (issue #746) |
 //! | [`make_wire_edge`]              | `SmBrep::MakeWireEdge`                           |
 //! | [`make_wire_edge_vertex`]       | `SmBrep::MakeWireEdgeVertex`                     |
 //! | [`merge_brep`], [`merge_brep_with_context`] | `SmBrep::MergeBrep`                              |
@@ -193,6 +195,9 @@ impl Brep {
     /// `PreInsert(pRegion)` on the B-rep's region list: the region joins the list as
     /// its new head.
     pub(crate) fn pre_insert_region(&mut self, r: RegionId) -> Result<()> {
+        self.fix_region_order();
+        self.region_order.retain(|&x| x != r);
+        self.region_order.insert(0, r);
         self.region_mut(r)?.in_brep = true;
         self.region_list_head = Some(r);
         Ok(())
@@ -202,6 +207,9 @@ impl Brep {
     /// its end (it becomes the head of an empty list).
     pub(crate) fn post_insert_region(&mut self, r: RegionId) -> Result<()> {
         let empty = !self.regions.iter().any(|(_, x)| x.in_brep);
+        self.fix_region_order();
+        self.region_order.retain(|&x| x != r);
+        self.region_order.push(r);
         self.region_mut(r)?.in_brep = true;
         if empty {
             self.region_list_head = Some(r);
@@ -221,6 +229,8 @@ impl Brep {
                 .filter(|&x| x != r);
             self.region_list_head = next;
         }
+        self.fix_region_order();
+        self.region_order.retain(|&x| x != r);
         self.region_mut(r)?.in_brep = false;
         Ok(())
     }
@@ -717,10 +727,54 @@ pub(crate) fn seed_records(
     b: &Brep,
     key_of: &dyn Fn(EntityRef) -> ObjectRef,
 ) {
+    if records.is_empty() {
+        // Bulk build (sorted input is O(n)); the same map as entry-by-entry.
+        *records = entities(b)
+            .map(|e| key_of(e).key)
+            .chain([p2::brep_ref(b).key])
+            .map(|k| (k, topo::Topology::default()))
+            .collect();
+        return;
+    }
     for e in entities(b) {
         records.entry(key_of(e).key).or_default();
     }
     records.entry(p2::brep_ref(b).key).or_default();
+}
+
+/// Leaves `records` exactly as [`seed_records`] does on an empty map (a default record
+/// for every object of `b`, and for the B-rep), whatever it held before: records of
+/// objects that are still there are reset in place and the rest is added or dropped, so
+/// an edit that notifies through the same B-rep again reuses most of the map.
+fn reseed_records(
+    records: &mut BTreeMap<ObjectKey, topo::Topology>,
+    b: &Brep,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+) {
+    // The B-rep first: kernel keys (kind 0) and `entities` (by kind, then slot) come
+    // out ascending, so the sort is skipped, as it gives the same vector either way.
+    let mut keys: Vec<ObjectKey> = std::iter::once(p2::brep_ref(b).key)
+        .chain(entities(b).map(|e| key_of(e).key))
+        .collect();
+    if !keys.is_sorted() {
+        keys.sort_unstable();
+    }
+    keys.dedup();
+    // (both ascending: `retain` visits the records in key order)
+    let mut next = 0;
+    records.retain(|key, record| {
+        while keys.get(next).is_some_and(|k| k < key) {
+            next += 1;
+        }
+        let keep = keys.get(next) == Some(key);
+        *record = topo::Topology::default();
+        keep
+    });
+    if records.len() != keys.len() {
+        for key in keys {
+            records.entry(key).or_default();
+        }
+    }
 }
 
 /// The kinds of topology keys with their class type codes (`GetType`), by kind number:
@@ -810,20 +864,43 @@ fn issuer<'c>(kernel: &'c mut Context, env: Option<&'c mut Context>) -> &'c mut 
     }
 }
 
-/// Every topology object of `b` (not the B-rep itself).
-fn entities(b: &Brep) -> Vec<EntityRef> {
-    let mut all = Vec::new();
-    all.extend(b.regions().iter().map(|(x, _)| EntityRef::Region(x)));
-    all.extend(b.shells().iter().map(|(x, _)| EntityRef::Shell(x)));
-    all.extend(b.faceuses().iter().map(|(x, _)| EntityRef::Faceuse(x)));
-    all.extend(b.faces().iter().map(|(x, _)| EntityRef::Face(x)));
-    all.extend(b.loopuses().iter().map(|(x, _)| EntityRef::Loopuse(x)));
-    all.extend(b.loops().iter().map(|(x, _)| EntityRef::Loop(x)));
-    all.extend(b.edgeuses().iter().map(|(x, _)| EntityRef::Edgeuse(x)));
-    all.extend(b.edges().iter().map(|(x, _)| EntityRef::Edge(x)));
-    all.extend(b.vertexuses().iter().map(|(x, _)| EntityRef::Vertexuse(x)));
-    all.extend(b.vertices().iter().map(|(x, _)| EntityRef::Vertex(x)));
-    all
+/// Every topology object of `b` (not the B-rep itself), without collecting them: the
+/// edit entry points walk this per call.
+fn entities(b: &Brep) -> impl Iterator<Item = EntityRef> + '_ {
+    let regions = b.regions().iter().map(|(x, _)| EntityRef::Region(x));
+    let shells = b.shells().iter().map(|(x, _)| EntityRef::Shell(x));
+    let faceuses = b.faceuses().iter().map(|(x, _)| EntityRef::Faceuse(x));
+    let faces = b.faces().iter().map(|(x, _)| EntityRef::Face(x));
+    let loopuses = b.loopuses().iter().map(|(x, _)| EntityRef::Loopuse(x));
+    let loops = b.loops().iter().map(|(x, _)| EntityRef::Loop(x));
+    let edgeuses = b.edgeuses().iter().map(|(x, _)| EntityRef::Edgeuse(x));
+    let edges = b.edges().iter().map(|(x, _)| EntityRef::Edge(x));
+    let vertexuses = b.vertexuses().iter().map(|(x, _)| EntityRef::Vertexuse(x));
+    let vertices = b.vertices().iter().map(|(x, _)| EntityRef::Vertex(x));
+    regions
+        .chain(shells)
+        .chain(faceuses)
+        .chain(faces)
+        .chain(loopuses)
+        .chain(loops)
+        .chain(edgeuses)
+        .chain(edges)
+        .chain(vertexuses)
+        .chain(vertices)
+}
+
+/// The number of objects [`entities`] yields.
+fn entity_count(b: &Brep) -> usize {
+    b.regions().len()
+        + b.shells().len()
+        + b.faceuses().len()
+        + b.faces().len()
+        + b.loopuses().len()
+        + b.loops().len()
+        + b.edgeuses().len()
+        + b.edges().len()
+        + b.vertexuses().len()
+        + b.vertices().len()
 }
 
 /// The refusal of a caller key in the kernel's reserved key range.
@@ -834,24 +911,31 @@ const RESERVED_KEY: SolidError = SolidError::InvalidInput {
 
 /// The objects of each kind an edit of `b` may still allocate: the next `window` ids
 /// (arenas only append, so new objects take exactly these).
-fn prospective_entities(b: &Brep, window: usize) -> Vec<EntityRef> {
-    let next = |len: usize| (len..len.saturating_add(window)).map_while(|i| u32::try_from(i).ok());
-    let mut all = Vec::new();
-    all.extend(next(b.regions().len()).map(|i| EntityRef::Region(RegionId::from_index(i))));
-    all.extend(next(b.shells().len()).map(|i| EntityRef::Shell(ShellId::from_index(i))));
-    all.extend(next(b.faceuses().len()).map(|i| EntityRef::Faceuse(FaceuseId::from_index(i))));
-    all.extend(next(b.faces().len()).map(|i| EntityRef::Face(FaceId::from_index(i))));
-    all.extend(next(b.loopuses().len()).map(|i| EntityRef::Loopuse(LoopuseId::from_index(i))));
-    all.extend(
-        next(b.loops().len()).map(|i| EntityRef::Loop(crate::topology::LoopId::from_index(i))),
-    );
-    all.extend(next(b.edgeuses().len()).map(|i| EntityRef::Edgeuse(EdgeuseId::from_index(i))));
-    all.extend(next(b.edges().len()).map(|i| EntityRef::Edge(EdgeId::from_index(i))));
-    all.extend(
-        next(b.vertexuses().len()).map(|i| EntityRef::Vertexuse(VertexuseId::from_index(i))),
-    );
-    all.extend(next(b.vertices().len()).map(|i| EntityRef::Vertex(VertexId::from_index(i))));
-    all
+fn prospective_entities(b: &Brep, window: usize) -> impl Iterator<Item = EntityRef> {
+    let next =
+        move |len: usize| (len..len.saturating_add(window)).map_while(|i| u32::try_from(i).ok());
+    let regions = next(b.regions().len()).map(|i| EntityRef::Region(RegionId::from_index(i)));
+    let shells = next(b.shells().len()).map(|i| EntityRef::Shell(ShellId::from_index(i)));
+    let faceuses = next(b.faceuses().len()).map(|i| EntityRef::Faceuse(FaceuseId::from_index(i)));
+    let faces = next(b.faces().len()).map(|i| EntityRef::Face(FaceId::from_index(i)));
+    let loopuses = next(b.loopuses().len()).map(|i| EntityRef::Loopuse(LoopuseId::from_index(i)));
+    let loops =
+        next(b.loops().len()).map(|i| EntityRef::Loop(crate::topology::LoopId::from_index(i)));
+    let edgeuses = next(b.edgeuses().len()).map(|i| EntityRef::Edgeuse(EdgeuseId::from_index(i)));
+    let edges = next(b.edges().len()).map(|i| EntityRef::Edge(EdgeId::from_index(i)));
+    let vertexuses =
+        next(b.vertexuses().len()).map(|i| EntityRef::Vertexuse(VertexuseId::from_index(i)));
+    let vertices = next(b.vertices().len()).map(|i| EntityRef::Vertex(VertexId::from_index(i)));
+    regions
+        .chain(shells)
+        .chain(faceuses)
+        .chain(faces)
+        .chain(loopuses)
+        .chain(loops)
+        .chain(edgeuses)
+        .chain(edges)
+        .chain(vertexuses)
+        .chain(vertices)
 }
 
 /// The number of objects of one kind any edit here allocates at most: the B-rep's own
@@ -860,8 +944,8 @@ fn prospective_entities(b: &Brep, window: usize) -> Vec<EntityRef> {
 /// shell, vertex use and vertex for every entry, repeated ones included, as upstream)
 /// and a few for the wire makers.
 fn allocation_window(b: &Brep, source: Option<&Brep>, inputs: usize) -> usize {
-    let n = entities(b).len();
-    let m = source.map_or(0, |s| entities(s).len());
+    let n = entity_count(b);
+    let m = source.map_or(0, entity_count);
     n.saturating_add(m)
         .saturating_add(inputs.saturating_mul(3))
         .saturating_add(16)
@@ -988,8 +1072,8 @@ pub(crate) fn kernel_named_edit<R>(
     let key_of = move |e: EntityRef| topology_ref(serial, e);
     let label = b.key();
     b.set_key(topology_ref(serial, brep_entity()).key);
-    let mut records = BTreeMap::new();
-    seed_records(&mut records, b, &key_of);
+    let mut records = std::mem::take(&mut k.notify_records);
+    reseed_records(&mut records, b, &key_of);
     let mut attributes = crate::geom::attribute::AttributeStore::default();
     let r = {
         let mut env = NotifyEnv {
@@ -1001,6 +1085,7 @@ pub(crate) fn kernel_named_edit<R>(
         edit(k, b, &mut env)
     };
     b.set_key(label);
+    k.notify_records = records;
     r
 }
 
@@ -2485,6 +2570,171 @@ fn delete_faceuses(b: &mut Brep, faceuses: [FaceuseId; 2]) -> Result<()> {
     for x in faceuses {
         if let Some(owner) = eu1::faceuse_shell(b, x)? {
             ignore_soft(shell::shell_remove_faceuse(b, owner, x))?;
+        }
+    }
+    Ok(())
+}
+
+// ---- slit loops where solids touch (not upstream; issue #746) --------------------------------
+
+/// The bound on [`split_disconnected_shells`]' splits of one shell (the fork's 1024 passes).
+const MAX_SHELL_SPLITS: usize = 1024;
+
+/// Not upstream (tangency-labs/solidcore#746, the fork's
+/// `SmBrep::RemoveSlitLoopsWhereSolidsTouch`): removes the inner loops of no area a
+/// volumetric Boolean leaves where solids touch along a curve inside a face (a cylinder
+/// resting on the top of a box, united), then splits the shells joined only through
+/// them ([`split_disconnected_shells`]). An inner loop is removed only when each of its
+/// edges is used exactly twice by the loop and also bounds another face, which keeps
+/// it; its uses go as [`delete_face`] removes a face's (edge uses destroyed through
+/// `env`, vertex uses taken off their vertices, the loop uses off their face uses).
+/// `SmTrimmingTools::CheckFace` rejects such a loop (bad orientation, zero area), and it
+/// bounds nothing: the regularized result is the solids touching there, each whole.
+/// Returns whether a loop was removed.
+///
+/// # Errors
+///
+/// `SM_ERR_NULL_POINTER` for a loop without both loop uses, an edge use without mate,
+/// edge or vertex use, a vertex use without vertex (`NER`); those of the edge use
+/// destruction, the topology reads and the shell split.
+pub fn remove_slit_loops_where_solids_touch(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+) -> Result<bool> {
+    let mut removed = false;
+    for f in p1::faces(b, None)? {
+        // inner loops only
+        let loops = face2::loops(b, f, false, None)?;
+        for &l in loops.iter().skip(1) {
+            let lu = b.loop_(l)?.loopuse.ok_or_else(ner)?;
+            let uses = lu1::edgeuses(b, lu, None, None)?;
+            if uses.len() < 2 {
+                continue;
+            }
+            // every edge used twice by the loop, and bounding another face too
+            let mut slit = true;
+            for &eu in &uses {
+                let e = eu1::edge(b, eu)?.ok_or_else(ner)?;
+                let mut in_loop = 0usize;
+                for &other in &uses {
+                    if eu1::edge(b, other)? == Some(e) {
+                        in_loop += 1;
+                    }
+                }
+                let other_face = edge::faces(b, e, None)?.iter().any(|&g| g != f);
+                slit = in_loop == 2 && other_face;
+                if !slit {
+                    break;
+                }
+            }
+            if !slit {
+                continue;
+            }
+
+            // take the loop off its face, then its edge uses and vertex uses off their
+            // edges and vertices
+            let other_lu = lu1::other_loopuse(b, lu)?.ok_or_else(ner)?;
+            b.face_mut(f)?.loops.retain(|&x| x != l);
+            for x in [lu, other_lu] {
+                let fu = lu1::faceuse(b, x)?.ok_or_else(ner)?;
+                faceuse_remove_loopuse(b, fu, x)?;
+            }
+            for eu in uses {
+                let mate = eu1::mate(b, eu)?.ok_or_else(ner)?;
+                let e = eu1::edge(b, eu)?.ok_or_else(ner)?;
+                edge_remove_edgeuse(b, e, eu)?;
+                edge_remove_edgeuse(b, e, mate)?;
+                let (vu1, v1) = eu_vertex(b, eu)?;
+                vertex_remove_vertexuse(b, v1, vu1)?;
+                let (vu2, v2) = eu_vertex(b, mate)?;
+                vertex_remove_vertexuse(b, v2, vu2)?;
+                crate::topology::edgeuse::p2::destroy(k, b, eu, env)?;
+                crate::topology::edgeuse::p2::destroy(k, b, mate, env)?;
+            }
+            removed = true;
+        }
+    }
+    if removed {
+        split_disconnected_shells(k, b)?;
+    }
+    Ok(removed)
+}
+
+/// Not upstream (tangency-labs/solidcore#746, the fork's
+/// `SmBrep::SplitDisconnectedShells`): splits each shell into its connected parts, as
+/// [`delete_face`] splits a shell a removed face leaves in pieces. The face uses
+/// reached through the shell from the first face use's face's first vertex stay; the
+/// rest move to a new face-use shell, in the infinite region or in a region of its
+/// own (with the old region's void flag), which is split in its turn. At most
+/// [`MAX_SHELL_SPLITS`] splits of each shell.
+///
+/// # Errors
+///
+/// Those of the shell traversal, the mark lock and the list edits.
+pub fn split_disconnected_shells(k: &mut Kernel, b: &mut Brep) -> Result<()> {
+    for r in p1::regions(b, None)? {
+        let mut shells = region_shells(b, r)?;
+        let mut jj = 0;
+        while let Some(&s) = shells.get(jj) {
+            jj += 1;
+            for _ in 0..MAX_SHELL_SPLITS {
+                let all = match &b.shell(s)?.members {
+                    ShellMembers::Faceuses(list) => list.clone(),
+                    _ => Vec::new(),
+                };
+                let Some(&first) = all.first() else {
+                    break;
+                };
+                if all.len() < 2 {
+                    break;
+                }
+                let face = eu1::faceuse_face(b, first)?.ok_or_else(ner)?;
+                let Some(&start) = face_vertices(b, face)?.first() else {
+                    break;
+                };
+                let mut reached = Vec::new();
+                let mut marks = Marks::default();
+                let mut lock = MarkLock::new(core::slice::from_mut(&mut k.context), 0, ALL_MARKS)?;
+                let traversed = tt::shell_traversal(
+                    k,
+                    b,
+                    &mut marks,
+                    start,
+                    s,
+                    None,
+                    Some(&mut reached),
+                    &lock,
+                );
+                lock.release(core::slice::from_mut(&mut k.context))?;
+                traversed?;
+                if reached.len() >= all.len() {
+                    break;
+                }
+
+                // the face uses not reached go to a new shell, in the infinite region or
+                // a region of its own
+                let new_s = b.add_shell_record(crate::topology::Shell::default())?;
+                set_shell_type(b, new_s, ShellType::Faceuse)?;
+                if Some(r) == b.infinite_region() {
+                    shell::region_post_insert_shell(b, r, new_s)?;
+                } else {
+                    let new_r = b.add_region_record(Region::new())?;
+                    let is_void = b.region(r)?.is_void();
+                    region_set_is_void(b, new_r, is_void)?;
+                    shell::region_post_insert_shell(b, new_r, new_s)?;
+                    b.post_insert_region(new_r)?;
+                }
+                for fu in all {
+                    if reached.contains(&fu) {
+                        continue;
+                    }
+                    shell::shell_remove_faceuse(b, s, fu)?;
+                    shell::shell_post_insert_faceuse(b, new_s, fu)?;
+                }
+                // the new shell may have parts of its own: it is split in its turn
+                shells.push(new_s);
+            }
         }
     }
     Ok(())
@@ -4612,6 +4862,38 @@ mod tests {
         b.remove_region_from_list(r1).unwrap();
         assert_eq!(b.region_list_head(), None);
         assert!(p1::regions(&b, None).unwrap().is_empty());
+    }
+
+    /// `PostInsert` appends at the circular list's tail (before the head), also after
+    /// the head moved to a later region; `PreInsert` makes the region the head.
+    #[test]
+    fn region_list_appends_before_a_moved_head() {
+        let mut b = Brep::new();
+        let r0 = b.add_region_record(Region::default()).unwrap();
+        let r1 = b.add_region_record(Region::default()).unwrap();
+        b.post_insert_region(r0).unwrap();
+        b.post_insert_region(r1).unwrap();
+        b.set_region_list_head(Some(r1));
+        assert_eq!(p1::regions(&b, None).unwrap(), vec![r1, r0]);
+        // a record created on the list is appended as PostInsert
+        let r2 = b
+            .add_region_record(Region {
+                in_brep: true,
+                ..Region::default()
+            })
+            .unwrap();
+        let r3 = b.add_region_record(Region::default()).unwrap();
+        b.post_insert_region(r3).unwrap();
+        assert_eq!(p1::regions(&b, None).unwrap(), vec![r1, r0, r2, r3]);
+        b.remove_region_from_list(r0).unwrap();
+        b.post_insert_region(r0).unwrap();
+        assert_eq!(p1::regions(&b, None).unwrap(), vec![r1, r2, r3, r0]);
+        b.remove_region_from_list(r1).unwrap();
+        assert_eq!(b.region_list_head(), Some(r2));
+        b.pre_insert_region(r1).unwrap();
+        assert_eq!(p1::regions(&b, None).unwrap(), vec![r1, r2, r3, r0]);
+        b.remove_region_from_list(r3).unwrap();
+        assert_eq!(p1::regions(&b, None).unwrap(), vec![r1, r2, r0]);
     }
 
     /// Review of 255d52b7, 1: an object an edit creates cannot take a reserved key

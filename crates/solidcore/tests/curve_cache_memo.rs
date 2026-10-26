@@ -95,17 +95,30 @@ fn operands(k: &mut Kernel, name: &str) -> solidcore::Result<(Brep, Brep, Op)> {
             api::create_box(k, p(-30.0, -30.0, 10.0), 60.0, 60.0, 20.0)?,
             Op::Intersection,
         ),
+        // analytic surfaces against B-spline surfaces (both memoise their boundaries)
+        "skin-minus-cyl" => (
+            skin(k, 20.0, 12.0, 0.0, 40.0, 5)?,
+            api::create_cylinder(k, p(0.0, 0.0, -5.0), 4.0, 50.0)?,
+            Op::Difference,
+        ),
+        "skin-and-sphere" => (
+            skin(k, 20.0, 12.0, 0.0, 40.0, 5)?,
+            api::create_sphere(k, p(5.0, 0.0, 20.0), 12.0)?,
+            Op::Intersection,
+        ),
         _ => unreachable!("unknown case {name}"),
     })
 }
 
-const CASES: [&str; 6] = [
+const CASES: [&str; 8] = [
     "box-cyl-hole",
     "sphere-and-box",
     "torus-minus-box",
     "cyl-union-cyl",
     "skin-minus-skin",
     "skin-and-box",
+    "skin-minus-cyl",
+    "skin-and-sphere",
 ];
 
 /// Every observable output of one case as text (`{:?}` prints each `f64` so that it
@@ -166,9 +179,13 @@ fn memo_on_and_off_give_bit_identical_results() {
 
 #[test]
 fn curves_and_breps_stay_send() {
-    // (`Curve` and `Brep` are not `Sync` on main either: `CrvOnSurf` and the offset
-    // surface hold `Cell`/`RefCell` caches)
+    // `Brep` shares its edge arenas with a classification snapshot through an `Arc`,
+    // which is `Send` only when the curves are `Sync` too: their interior caches
+    // (`CrvOnSurf`'s breaks, the offset surface's distance and extension, the B-spline
+    // surface's out-of-bounds flag) are atomics or mutexes, not `Cell`/`RefCell`
     fn assert_send<T: Send>() {}
+    fn assert_sync<T: Sync>() {}
     assert_send::<Curve>();
+    assert_sync::<Curve>();
     assert_send::<Brep>();
 }

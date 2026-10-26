@@ -57,6 +57,7 @@ pub mod vertex;
 pub mod vertexuse;
 
 use core::marker::PhantomData;
+use std::sync::Arc;
 
 use crate::curve::curve::Curve;
 use crate::error::{EntityRef, Result, SolidError};
@@ -164,6 +165,56 @@ typed_id!(
     /// Identifies a [`Vertexuse`] within its [`Brep`].
     VertexuseId => Vertexuse
 );
+
+/// A copy-on-write handle to a big arena of a [`Brep`]: `Clone` is a deep copy (as for
+/// a plain `Arena`), [`Shared::share`] is a refcount bump, and the first write through
+/// `DerefMut` of a shared handle copies the arena, so every writer behaves as on an
+/// unshared one. Used by [`Brep::clone_sharing_surface_caches`] for the arenas a query's
+/// snapshot only reads.
+#[derive(Debug)]
+struct Shared<T>(Arc<T>);
+
+impl<T> Shared<T> {
+    fn share(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+
+    fn copy(&self, share: bool) -> Self
+    where
+        T: Clone,
+    {
+        if share {
+            self.share()
+        } else {
+            self.clone()
+        }
+    }
+}
+
+impl<T: Default> Default for Shared<T> {
+    fn default() -> Self {
+        Self(Arc::default())
+    }
+}
+
+impl<T: Clone> Clone for Shared<T> {
+    fn clone(&self) -> Self {
+        Self(Arc::new((*self.0).clone()))
+    }
+}
+
+impl<T> core::ops::Deref for Shared<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T: Clone> core::ops::DerefMut for Shared<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        Arc::make_mut(&mut self.0)
+    }
+}
 
 /// A dense store of `T` addressed by typed id `I`. Items are appended; an item can
 /// be removed (upstream's `delete` of a topology object, unit `topology.brep_p4`),
@@ -620,18 +671,18 @@ pub enum NamingScheme {
 
 /// A boundary representation (`SmBrep`): arenas of shells, faces, loops, edges and
 /// vertices linked by typed ids.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Brep {
     shells: Arena<ShellId, Shell>,
     faces: Arena<FaceId, Face>,
     loops: Arena<LoopId, Loop>,
-    edges: Arena<EdgeId, Edge>,
+    edges: Shared<Arena<EdgeId, Edge>>,
     vertices: Arena<VertexId, Vertex>,
     regions: Arena<RegionId, Region>,
     infinite_region: Option<RegionId>,
     faceuses: Arena<FaceuseId, Faceuse>,
     loopuses: Arena<LoopuseId, Loopuse>,
-    edgeuses: Arena<EdgeuseId, Edgeuse>,
+    edgeuses: Shared<Arena<EdgeuseId, Edgeuse>>,
     vertexuses: Arena<VertexuseId, Vertexuse>,
     /// `m_bValidateOnly`.
     validate_only: bool,
@@ -640,9 +691,14 @@ pub struct Brep {
     /// The identity the B-rep is attributed and notified under (`SmBrep*`).
     key: ObjectKey,
     /// `SmOwningTopology::m_pList` of the B-rep (unit `topology.brep_p1`): the head of
-    /// its circular region list, `None` for the first region record (the region arena
-    /// holds the list in traversal order; the head only rotates it).
+    /// its circular region list, `None` for the first region record.
     region_list_head: Option<RegionId>,
+    /// The circular region list's link order (unit `topology.brep_p1`), from
+    /// [`Brep::region_list_head`] when it was last moved. Regions on the list
+    /// (`Region::in_brep`) that are not in it follow in arena order: that is upstream's
+    /// `PostInsert` (append at the tail, before the head). Empty while the list is still
+    /// in arena order (the head never moved past an append).
+    region_order: Vec<RegionId>,
     /// `m_pFaceListHead` (unit `topology.brep_p1`): the face list in its list order
     /// (every face record, once; an importer may reorder it). Upstream appends on
     /// `PostInsert` and unlinks on `Remove`: `remove_*_record` takes the id off this
@@ -687,24 +743,69 @@ pub struct Brep {
     geometry_owner_keys: std::collections::BTreeMap<EntityRef, crate::geom::object::ObjectRef>,
 }
 
+impl Clone for Brep {
+    fn clone(&self) -> Self {
+        self.copy(false)
+    }
+}
+
+impl Brep {
+    /// The copy constructor; with `share` the edge and edge use arenas (the bulk of a
+    /// clone: their curves) are shared copy-on-write instead of copied, so their curves
+    /// keep their owners until a write copies the arena.
+    fn copy(&self, share: bool) -> Self {
+        Self {
+            shells: self.shells.clone(),
+            faces: self.faces.clone(),
+            loops: self.loops.clone(),
+            edges: self.edges.copy(share),
+            vertices: self.vertices.clone(),
+            regions: self.regions.clone(),
+            infinite_region: self.infinite_region,
+            faceuses: self.faceuses.clone(),
+            loopuses: self.loopuses.clone(),
+            edgeuses: self.edgeuses.copy(share),
+            vertexuses: self.vertexuses.clone(),
+            validate_only: self.validate_only,
+            tolerance: self.tolerance,
+            key: self.key,
+            region_list_head: self.region_list_head,
+            region_order: self.region_order.clone(),
+            face_list: self.face_list.clone(),
+            edge_list: self.edge_list.clone(),
+            vertex_list: self.vertex_list.clone(),
+            editing_enabled: self.editing_enabled,
+            model_size_estimate: self.model_size_estimate,
+            large_small_size_ratio: self.large_small_size_ratio,
+            deleted_surfaces: self.deleted_surfaces.clone(),
+            surface_owner_cleared: self.surface_owner_cleared.clone(),
+            naming: self.naming,
+            locked_bounding_box: self.locked_bounding_box,
+            notify_identity: self.notify_identity.clone(),
+            geometry_owner_keys: self.geometry_owner_keys.clone(),
+        }
+    }
+}
+
 impl Default for Brep {
     fn default() -> Self {
         Self {
             shells: Arena::default(),
             faces: Arena::default(),
             loops: Arena::default(),
-            edges: Arena::default(),
+            edges: Shared::default(),
             vertices: Arena::default(),
             regions: Arena::default(),
             infinite_region: None,
             faceuses: Arena::default(),
             loopuses: Arena::default(),
-            edgeuses: Arena::default(),
+            edgeuses: Shared::default(),
             vertexuses: Arena::default(),
             validate_only: false,
             tolerance: ZONE_TOL_3D,
             key: ObjectKey(0),
             region_list_head: None,
+            region_order: Vec::new(),
             face_list: Vec::new(),
             edge_list: Vec::new(),
             vertex_list: Vec::new(),
@@ -911,7 +1012,7 @@ impl Brep {
     /// `clone` (the copy constructor) starts every surface without cache or owner.
     #[must_use]
     pub fn clone_sharing_surface_caches(&self) -> Self {
-        let mut copy = self.clone();
+        let mut copy = self.copy(true);
         for (id, face) in self.faces.iter() {
             if let (Some(original), Ok(face_copy)) = (face.surface.as_ref(), copy.face_mut(id)) {
                 if let Some(surface) = face_copy.surface.as_mut() {
@@ -1328,9 +1429,12 @@ impl Brep {
     /// Deletes a region record (upstream `delete`; no unlinking: the caller resets the
     /// region list head and the infinite region when they named it).
     pub fn remove_region_record(&mut self, id: RegionId) -> Result<Region> {
-        self.regions
+        let region = self
+            .regions
             .remove(id)
-            .ok_or_else(|| not_found("topology::Brep::remove_region_record", id))
+            .ok_or_else(|| not_found("topology::Brep::remove_region_record", id))?;
+        self.region_order.retain(|&x| x != id);
+        Ok(region)
     }
 
     /// Deletes a face record (upstream `m_pFaceListHead->Remove` and `delete`): the

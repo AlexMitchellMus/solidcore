@@ -38,11 +38,8 @@ use crate::offset::offset_geometry_creation::{
 };
 use crate::query::edge::ClosestPoint;
 use crate::surface::surface::Surface;
-use crate::surface::surface_cache::face_context::{
-    FaceQueries, MappedCacheFace, PreparedFaceQueries,
-};
+use crate::surface::surface_cache::face_context::{FaceQueries, PreparedFaceQueries};
 use crate::surface::surface_cache::SurfaceCache;
-use crate::surface::trim_srf_cache::CacheFace;
 use crate::surface::volume::Volume;
 use crate::topology::edge::{self, NotifyEnv, SetCurveOptions};
 use crate::topology::edgeuse::{p1 as eu, p2 as eu2, p3 as eu3};
@@ -584,16 +581,6 @@ fn cache_handle(arena: Arena) -> impl Fn(EntityRef) -> Result<Handle> {
     move |entity| Ok(Handle::topology(arena, entity))
 }
 
-fn cache_entity(arena: Arena) -> impl Fn(Handle) -> Result<EntityRef> {
-    move |handle| match handle.entity()? {
-        (a, entity) if a == arena => Ok(entity),
-        _ => Err(SolidError::invalid_input(
-            OP,
-            "cache handle belongs to the other B-rep",
-        )),
-    }
-}
-
 impl FaceQueries<Handle> for EdgeBrep<'_> {
     fn face_zone_tol_3d(&self, face: Handle) -> Result<f64> {
         let (arena, f) = face.face()?;
@@ -651,10 +638,8 @@ impl OffsetBrep<Handle> for EdgeBrep<'_> {
         surface: &Surface,
         handle: Option<Handle>,
     ) -> Result<SurfaceCache<Handle>> {
-        use crate::query::face::p2::BrepCacheFace;
-        use crate::surface::surface::p1::{
-            get_surface_cache, make_surface_cache, make_trim_srf_cache_with_face,
-        };
+        use crate::query::face::p2::solve_surface_cache_of_face;
+        use crate::surface::surface::p1::{get_surface_cache, make_surface_cache};
         // the solve's GetTree: a reused cache whose tree is not built builds it now
         let with_tree = |mut cache: SurfaceCache<Handle>| {
             if cache.tree().is_none() {
@@ -684,32 +669,12 @@ impl OffsetBrep<Handle> for EdgeBrep<'_> {
                 "surface owner is not the selected B-rep face",
             ));
         }
+        // the surface's trimmed cache, kept with it as upstream keeps it (reused by
+        // later solves on the same surface)
         let map = cache_handle(arena);
-        let unmap = cache_entity(arena);
-        let mut context = MappedCacheFace::new(BrepCacheFace { b, f: face }, &map, &unmap)?;
-        match make_trim_srf_cache_with_face(k, surface, handle, &mut context) {
-            Ok(mut cache) => {
-                cache.bind_face(
-                    owner,
-                    Handle::topology(arena, EntityRef::Face(face)),
-                    context.zone_tol_3d(k, context.face())?,
-                )?;
-                if cache.base().tree().is_none()
-                    || (!cache.base().have_t_surface_cache
-                        && surface.face()?.is_some()
-                        && cache.base().face_containment_done
-                            != crate::surface::surface_cache::p1::FaceContainment::UnderConstruction)
-                {
-                    cache.build_tree_with_face(k, &mut context)?;
-                }
-                Ok(cache.into_base())
-            }
-            Err(
-                e @ (SolidError::Unported { .. }
-                | SolidError::InvalidInput { .. }
-                | SolidError::NotFound { .. }),
-            ) => Err(e),
-            Err(_) => make_surface_cache(k, surface, handle),
+        match solve_surface_cache_of_face(k, b, face, owner, surface, handle, map)? {
+            Some(cache) => Ok(cache),
+            None => make_surface_cache(k, surface, handle),
         }
     }
 
@@ -1189,6 +1154,19 @@ impl CreatorExecutive<Handle> for Executive<'_> {
             .collect()
     }
 
+    fn has_collapsed_faces(&self) -> bool {
+        !self.inner.collapsed_faces.is_empty()
+    }
+
+    fn is_collapsed_face(&self, face: Handle) -> bool {
+        match face.object {
+            Object::Topology(Arena::Original, EntityRef::Face(f)) => {
+                self.inner.is_collapsed_face(f)
+            }
+            _ => false,
+        }
+    }
+
     fn offset_edgeuse(&self, original: Handle) -> Option<Handle> {
         match original.object {
             Object::Topology(Arena::Original, EntityRef::Edgeuse(u)) => self
@@ -1295,4 +1273,55 @@ pub(super) fn build(
         mark_type,
     )?;
     backend.take_output(made)
+}
+
+/// Not upstream (WR-346): `MateEdges(ctx, this, pEdgeuse, pAcross, pOffsetEU,
+/// pOffAcross, eMarkType)` over the executive's original and offset B-reps, mating the
+/// offsets of the faces on either side of a collapsed face.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn mate(
+    kernel: &Kernel,
+    creator: &OffsetGeometryCreation,
+    executive: &mut OffsetExecutive,
+    original: &mut Brep,
+    offset: &mut Brep,
+    edgeuse: EdgeuseId,
+    other: EdgeuseId,
+    offset_edgeuse: EdgeuseId,
+    other_offset_edgeuse: EdgeuseId,
+    mark_type: MarkType,
+    marks: MarkSource<'_>,
+    notifications: CapNotifications<'_>,
+) -> Result<()> {
+    let mut backend = EdgeBrep {
+        kernel,
+        original,
+        offset,
+        curves: Vec::new(),
+        surfaces: Vec::new(),
+        records: notifications.records,
+        attributes: notifications.attributes,
+        context: notifications.context,
+        original_key_of: notifications.original_key_of,
+        offset_key_of: notifications.offset_key_of,
+        marks,
+    };
+    let mut exec = Executive {
+        inner: executive,
+        original_key_of: notifications.original_key_of,
+        offset_key_of: notifications.offset_key_of,
+        made: BTreeMap::new(),
+    };
+    let original_use = |u| Handle::topology(Arena::Original, EntityRef::Edgeuse(u));
+    let offset_use = |u| Handle::topology(Arena::Offset, EntityRef::Edgeuse(u));
+    creator.mate_edges(
+        kernel,
+        &mut backend,
+        &mut exec,
+        Some(original_use(edgeuse)),
+        Some(original_use(other)),
+        Some(offset_use(offset_edgeuse)),
+        Some(offset_use(other_offset_edgeuse)),
+        mark_type,
+    )
 }

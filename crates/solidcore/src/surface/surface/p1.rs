@@ -742,14 +742,16 @@ pub fn map_to_2d(k: &Kernel, tol_3d: f64, uv: Point2, surface: &Surface) -> Resu
 /// (the curve evaluation's status is ignored, as upstream; a failed evaluation leaves
 /// undefined vectors).
 ///
-/// The UV-curve branch (`GetDim() == 2`) and the general 3D branch (the point and tangent
-/// dropped to the surface with `SmSurface::DropPoint` and `DropVectors`) are ported; the
-/// same-surface `SmCrvOnSurf` branch (`SmTol.cpp:1118-1123`, which evaluates the curve's UV
-/// curve) returns [`SolidError::Unported`].
+/// The UV-curve branch (`GetDim() == 2`), the same-surface `SmCrvOnSurf` branch (the
+/// curve is a curve on exactly this `surface` object, [`std::ptr::eq`] with its base
+/// surface as upstream's `&rSurface == GetBaseSurface()`; its UV curve is evaluated) and
+/// the general 3D branch (the point and tangent dropped to the surface with
+/// `SmSurface::DropPoint` and `DropVectors`) are ported. A curve on a copy of the surface
+/// takes the 3D branch, as upstream's pointer comparison does for a distinct object.
 ///
 /// # Errors
 ///
-/// [`SolidError::Unported`] for a curve on surface, and from the evaluations and the drop.
+/// [`SolidError::Unported`] from the evaluations and the drop.
 pub fn map_to_2d_on_curve(
     k: &Kernel,
     tol_3d: f64,
@@ -757,25 +759,28 @@ pub fn map_to_2d_on_curve(
     trim_curve: &Curve,
     surface: &Surface,
 ) -> Result<f64> {
-    // the same-surface SmCrvOnSurf branch evaluates the curve's own UV curve (an identity
-    // test on the base surface that the port cannot make)
-    if matches!(trim_curve.kind(), CurveKind::CrvOnSurf(_)) {
-        // UNPORTED(surface.surface_p1): SmTol::MapTo2d (SmCrvOnSurf branch, SmTol.cpp:1118-1123)
-        return Err(SolidError::unported(
-            "SmTol::MapTo2d(SmCrvOnSurf)",
-            "surface.surface_p1",
-        ));
-    }
+    // `&rSurface == ((SmCrvOnSurf &)rTrimCurve).GetBaseSurface()`: object identity of the
+    // curve's base surface (a reference comparison here: a copy of the surface is
+    // another object, as upstream's pointer comparison)
+    let own_surface = match trim_curve.kind() {
+        CurveKind::CrvOnSurf(c) => std::ptr::eq(surface, c.surface()),
+        _ => false,
+    };
 
-    // evaluate SurfacePt = rSurface(rUVTrimCurve(dParam)) for UVTrimCurves
+    // evaluate SurfacePt = rSurface(rUVTrimCurve(dParam)) for UVTrimCurves and SmCrvOnSurfs
     let mut pd = [Vec3::UNDEF; 2];
-    if let Some(d) = ignored(trim_curve.evaluate(k, param, 1, true, true))? {
+    let evaluated = match trim_curve.kind() {
+        // (`GetUVCurve()->Evaluate(dParam, 1, TRUE, sPD)`)
+        CurveKind::CrvOnSurf(c) if own_surface => c.uv_curve().evaluate(k, param, 1, true, true),
+        _ => trim_curve.evaluate(k, param, 1, true, true),
+    };
+    if let Some(d) = ignored(evaluated)? {
         for (slot, v) in pd.iter_mut().zip(d) {
             *slot = v;
         }
     }
     let [p0, p1] = pd;
-    let (uv, uv_dir) = if trim_curve.dim() == 2 {
+    let (uv, uv_dir) = if trim_curve.dim() == 2 || own_surface {
         (Point2::new(p0.x, p0.y), Vec2::new(p1.x, p1.y))
     } else {
         // general 3 dim Curve: drop its point and tangent to the surface's UV space
@@ -1616,6 +1621,54 @@ impl Surface {
                 )
             }
         }
+    }
+
+    /// [`Surface::evaluate_simple`] with first derivatives (`1, 1`) into the caller's
+    /// 2x2 block `d`: the entries the evaluation has are written, the others keep
+    /// their values. The B-spline based kinds evaluate without a heap allocation per
+    /// call
+    /// ([`crate::nurbs::b_spline_surface::BSplineSurface::evaluate_simple_first_into`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::evaluate_simple`].
+    pub fn evaluate_simple_first_into(
+        &self,
+        k: &Kernel,
+        uv: Point2,
+        flags: EvaluateFlags,
+        d: &mut [[Vec3; 2]; 2],
+    ) -> Result<()> {
+        let base = match self.kind() {
+            SurfaceKind::BSpline(s) => Some(s),
+            SurfaceKind::Cone(s) => Some(s.rev().base()),
+            SurfaceKind::SurfOfRevolution(s) => Some(s.base()),
+            SurfaceKind::SurfOfExtrusion(s) => Some(s.base()),
+            SurfaceKind::Sphere(s) => Some(s.base().base()),
+            SurfaceKind::Torus(s) => Some(s.base().base()),
+            SurfaceKind::Plane(_)
+            | SurfaceKind::CurveBounded(_)
+            | SurfaceKind::OffsetSurface(_)
+            | SurfaceKind::SrfInVolume(_)
+            | SurfaceKind::Step(_) => None,
+        };
+        if let Some(b) = base {
+            self.check_evaluation_copy_depth(0)?;
+            return b.evaluate_simple_first_into(
+                uv,
+                flags.u_side == Side::Left,
+                flags.v_side == Side::Left,
+                flags.only_upper_half,
+                d,
+            );
+        }
+        let r = self.evaluate_simple(k, uv, 1, 1, flags)?;
+        for (row, src) in d.iter_mut().zip(&r) {
+            for (slot, v) in row.iter_mut().zip(src) {
+                *slot = *v;
+            }
+        }
+        Ok(())
     }
 
     /// The UV direction that the tangent plane maps onto `vec` (its projection) at
@@ -4066,6 +4119,36 @@ mod tests {
             )
             .unwrap(),
         )
+    }
+
+    #[test]
+    fn map_to_2d_on_curve_uses_the_uv_curve_of_a_curve_on_this_surface() {
+        use crate::curve::crv_on_surf::CrvOnSurf;
+        let k = &Kernel::default();
+        let crv = CrvOnSurf::from_uv_line(
+            k,
+            Point2::new(0.1, 0.2),
+            Point2::new(0.8, 0.6),
+            bilinear(),
+            None,
+            0,
+        )
+        .unwrap();
+        let curve = Curve::from(crv);
+        let CurveKind::CrvOnSurf(c) = curve.kind() else {
+            panic!("curve on surface")
+        };
+        let base = c.surface();
+        let d = c.uv_curve().evaluate(k, 0.5, 1, true, true).unwrap();
+        let uv = Point2::new(d[0].x, d[0].y);
+        let dir = Vec2::new(d[1].x, d[1].y);
+        let expected = map_to_2d_dir(k, 1e-3, uv, dir, base).unwrap();
+        // the curve's own base surface: the UV curve is evaluated
+        let got = map_to_2d_on_curve(k, 1e-3, 0.5, &curve, base).unwrap();
+        assert_eq!(got, expected);
+        // another surface object: the curve's 3D point and tangent are dropped
+        let other = bilinear();
+        assert!(map_to_2d_on_curve(k, 1e-3, 0.5, &curve, &other).is_ok());
     }
 
     #[test]

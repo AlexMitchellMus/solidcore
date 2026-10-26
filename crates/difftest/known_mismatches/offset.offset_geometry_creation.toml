@@ -1,9 +1,0 @@
-[[mismatch]]
-unit = "offset.offset_geometry_creation"
-case = "gen0346"
-why = "the last op (MateEdges) self-intersects one SmSphere extended surface: the Rust GlobalSurfaceIntersect finds no curve and returns SM_ERR before ReplaceEdgeCurves; C++ also returns SM_ERR (1001), but only after ReplaceEdgeCurves has replaced the edge curve (dropping two edge uses' UV trim curves), so the recorded edge states differ (plan/findings/offset.offset_geometry_creation--addendum-2026-10-25-slicing-uv-curve-copy.md)"
-
-[[mismatch]]
-unit = "offset.offset_geometry_creation"
-case = "gen0350"
-why = "ExtendTrimEdges on an SmSphere face: the offset edge use's degree-1 UV trim curve ends with C++ knots 0.0296/0.1588/0.8554 against the Rust 0.0411/0.1687/0.8571 (control points equal); the Rust drop onto the other extended surface returns two seam pieces; where the C++ knots come from is not localised yet (plan/findings/offset.offset_geometry_creation--addendum-2026-10-25-slicing-uv-curve-copy.md)"

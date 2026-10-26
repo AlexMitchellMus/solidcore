@@ -18,8 +18,8 @@ use std::fmt;
 
 use crate::geom::{self, build_frame, conic_angle, dist, unit};
 use crate::model::{
-    BSplineCurve, BSplineSurface, Body, BodyKind, Bound, Curve, Edge, Face, Frame, Loop, Model,
-    OrientedEdge, Shell, Skipped, Surface, Vertex, P3,
+    BSplineCurve, BSplineSurface, Body, BodyKind, Bound, Curve, Diagnostic, Edge, Face, Frame,
+    Loop, Model, OrientedEdge, Shell, Skipped, Surface, Vertex, P3,
 };
 use crate::part21::{Instance, Limits, Param, Record, StepFile};
 
@@ -778,19 +778,16 @@ impl<'a> Mapper<'a> {
             "ORIENTED_FACE" => {
                 let inner = self.face(ref_of(param(r, 2)?)?, c, depth + 1)?;
                 if !boolean(param(r, 3)?)? {
-                    let f = c
-                        .faces
-                        .get(inner)
-                        .cloned()
-                        .map_or_else(|| invalid("face"), Ok)?;
-                    let mut f = f;
+                    // Face rows are not memoized, so this freshly mapped inner row
+                    // is not yet referenced by a shell. Reverse it in place rather
+                    // than appending a clone and leaving an orphaned inner face.
+                    let f = c.faces.get_mut(inner).map_or_else(|| invalid("face"), Ok)?;
                     f.step_id = id;
                     f.same_sense = !f.same_sense;
                     for l in &mut f.loops {
                         l.orientation = !l.orientation;
                     }
-                    c.faces.push(f);
-                    return Ok(c.faces.len() - 1);
+                    return Ok(inner);
                 }
                 Ok(inner)
             }
@@ -885,6 +882,10 @@ impl<'a> Mapper<'a> {
         }
         Ok(Body {
             step_id: id,
+            name: match r.params.first() {
+                Some(Param::Str(name)) if !name.is_empty() => Some(name.clone()),
+                _ => None,
+            },
             kind,
             unit_mm: u.mm,
             uncertainty_mm: u.uncertainty,
@@ -1221,6 +1222,44 @@ fn positive(x: f64, what: &str) -> R<f64> {
 }
 
 /// Maps every B-rep body of `file`.
+/// Report references that point at no entity in the data section.
+fn collect_dangling_references(file: &StepFile, diagnostics: &mut Vec<Diagnostic>) {
+    fn visit(param: &Param, missing: &mut Vec<u64>) {
+        match param {
+            Param::Ref(id) => missing.push(*id),
+            Param::List(items) => {
+                for item in items {
+                    visit(item, missing);
+                }
+            }
+            Param::Typed(_, value) => visit(value, missing),
+            _ => {}
+        }
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for (id, inst) in &file.entities {
+        let records: &[Record] = match inst {
+            Instance::Simple(record) => std::slice::from_ref(record),
+            Instance::Complex(records) => records,
+        };
+        for record in records {
+            for param in &record.params {
+                let mut missing = Vec::new();
+                visit(param, &mut missing);
+                for target in missing {
+                    if !file.entities.contains_key(&target) && seen.insert((*id, target)) {
+                        diagnostics.push(Diagnostic {
+                            step_id: Some(*id),
+                            message: format!("dangling reference #{target}"),
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Maps every B-rep body of `file`.
 pub fn map_file(file: &StepFile, limits: &Limits) -> Model {
     let m = Mapper {
         file,
@@ -1244,9 +1283,24 @@ pub fn map_file(file: &StepFile, limits: &Limits) -> Model {
         _ => Units::default(),
     };
     let mut model = Model {
+        header: file.header.clone(),
         schemas: file.schemas.clone(),
         ..Model::default()
     };
+    if all_units.is_empty() {
+        model.diagnostics.push(Diagnostic {
+            step_id: None,
+            message: "no GLOBAL_UNIT_ASSIGNED_CONTEXT; assuming millimetres/degrees".into(),
+        });
+    } else if all_units.len() > 1 {
+        model.diagnostics.push(Diagnostic {
+            step_id: None,
+            message: format!(
+                "{} distinct unit contexts; using the default fallback for bodies without an explicit context",
+                all_units.len()
+            ),
+        });
+    }
     for (id, inst) in &file.entities {
         let rec = match inst {
             Instance::Simple(r) => r,
@@ -1264,9 +1318,14 @@ pub fn map_file(file: &StepFile, limits: &Limits) -> Model {
         let Some(&(name, kind)) = BODY_NAMES.iter().find(|(n, _)| *n == rec.name) else {
             continue;
         };
-        let units = match contexts.get(id) {
-            Some(ctx) => m.context_units(*ctx),
-            None => Ok(fallback),
+        let units = if let Some(ctx) = contexts.get(id) {
+            m.context_units(*ctx)
+        } else {
+            model.diagnostics.push(Diagnostic {
+                step_id: Some(*id),
+                message: "body has no representation context; using the file unit fallback".into(),
+            });
+            Ok(fallback)
         };
         match units.and_then(|u| m.body(*id, kind, rec, u)) {
             Ok(b) => model.bodies.push(b),
@@ -1277,6 +1336,16 @@ pub fn map_file(file: &StepFile, limits: &Limits) -> Model {
             }),
         }
     }
+    if model.assembly_instances > 0 {
+        model.diagnostics.push(Diagnostic {
+            step_id: None,
+            message: format!(
+                "{} assembly instance(s) are counted but not applied; bodies are in their defining representation coordinates",
+                model.assembly_instances
+            ),
+        });
+    }
+    collect_dangling_references(file, &mut model.diagnostics);
     model
 }
 
@@ -1289,6 +1358,50 @@ mod tests {
         let text = format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('CONFIG_CONTROL_DESIGN'));\nENDSEC;\nDATA;\n{data}\nENDSEC;\nEND-ISO-10303-21;\n");
         let f = parse(text.as_bytes(), &Limits::default()).unwrap();
         map_file(&f, &Limits::default())
+    }
+
+    /// Millimetre units and the representation context that assigns them to the
+    /// `SHELL_BASED_SURFACE_MODEL` #5 of the oriented-face fixtures.
+    const ORIENTED_FACE_CONTEXT: &str = "#20=(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.));\
+         #21=(GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNIT_ASSIGNED_CONTEXT((#20)) REPRESENTATION_CONTEXT('',''));\
+         #22=MANIFOLD_SURFACE_SHAPE_REPRESENTATION('',(#5),#21);";
+
+    /// An ordinary planar `FACE` #6 on the non-collinear triangle #9/#10/#11,
+    /// with its only bound `#7` a `.T.` `FACE_OUTER_BOUND`.
+    const ORIENTED_FACE_TRIANGLE: &str = "#6=FACE('',(#7));\
+         #7=FACE_OUTER_BOUND('',#8,.T.);\
+         #8=POLY_LOOP('',(#9,#10,#11));\
+         #9=CARTESIAN_POINT('',(0.,0.,0.));\
+         #10=CARTESIAN_POINT('',(3.,0.,0.));\
+         #11=CARTESIAN_POINT('',(0.,4.,0.));";
+
+    fn oriented_face_model(body: &str) -> Model {
+        model(&format!(
+            "{ORIENTED_FACE_TRIANGLE}{body}{ORIENTED_FACE_CONTEXT}"
+        ))
+    }
+
+    /// Two `ORIENTED_FACE`s over the same base `FACE` #6, each in its own open
+    /// shell; `shells` is the item list of `SHELL_BASED_SURFACE_MODEL` #5.
+    fn oriented_face_mixed_model(shells: &str) -> Model {
+        oriented_face_model(&format!(
+            "#3=ORIENTED_FACE('',*,#6,.T.);\
+             #4=ORIENTED_FACE('',*,#6,.F.);\
+             #5=SHELL_BASED_SURFACE_MODEL('',({shells}));\
+             #13=OPEN_SHELL('',(#3));\
+             #14=OPEN_SHELL('',(#4));"
+        ))
+    }
+
+    /// A fixture is complete only if it maps to exactly one millimetre body
+    /// without skips or diagnostics.
+    fn assert_single_oriented_face_body(m: &Model) -> &Body {
+        assert_eq!(m.bodies.len(), 1);
+        assert!(m.skipped.is_empty(), "skipped: {:?}", m.skipped);
+        assert!(m.diagnostics.is_empty(), "diagnostics: {:?}", m.diagnostics);
+        let b = &m.bodies[0];
+        assert_eq!(b.unit_mm, 1.0);
+        b
     }
 
     #[test]
@@ -1305,6 +1418,60 @@ mod tests {
     }
 
     #[test]
+    fn diagnostics_report_missing_and_multiple_unit_contexts() {
+        let m = model("#1=CARTESIAN_POINT('',(0.,0.,0.));");
+        assert!(m
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("no GLOBAL_UNIT")));
+
+        let m = model(
+            "#1=(GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNIT_ASSIGNED_CONTEXT((#10)) REPRESENTATION_CONTEXT('',''));             #2=(GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNIT_ASSIGNED_CONTEXT((#11)) REPRESENTATION_CONTEXT('',''));             #10=(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.));             #11=(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.CENTI.,.METRE.));",
+        );
+        assert!(m
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("distinct unit contexts")));
+    }
+
+    #[test]
+    fn diagnostics_report_unapplied_assembly_instances() {
+        let m = model("#1=MAPPED_ITEM('',#2,#3);");
+        assert_eq!(m.assembly_instances, 1);
+        assert!(m
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("assembly instance")));
+    }
+
+    #[test]
+    fn body_name_and_missing_context_are_reported() {
+        let m = model(
+            "#1=MANIFOLD_SOLID_BREP('named',#2);\
+             #2=CLOSED_SHELL('',(#3));\
+             #3=ADVANCED_FACE('',(),#4,.T.);\
+             #4=PLANE('',#5);\
+             #5=AXIS2_PLACEMENT_3D('',#6,$,$);\
+             #6=CARTESIAN_POINT('',(0.,0.,0.));",
+        );
+        assert_eq!(m.bodies.len(), 1);
+        assert_eq!(m.bodies[0].name.as_deref(), Some("named"));
+        assert!(m
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("no representation context")));
+    }
+
+    #[test]
+    fn dangling_references_outside_bodies_are_reported() {
+        let m = model("#1=PRODUCT('p','p','',(#9));");
+        assert!(m
+            .diagnostics
+            .iter()
+            .any(|d| d.step_id == Some(1) && d.message.contains("dangling reference #9")));
+    }
+
+    #[test]
     fn dangling_and_unsupported() {
         let m = model("#1=MANIFOLD_SOLID_BREP('',#2);");
         assert_eq!(m.bodies.len(), 0);
@@ -1318,5 +1485,99 @@ mod tests {
         // a reference cycle stops at the depth bound
         let m = model("#1=MANIFOLD_SOLID_BREP('',#2);#2=ORIENTED_CLOSED_SHELL('',*,#2,.F.);");
         assert!(m.skipped[0].reason.contains("too deep"));
+    }
+
+    #[test]
+    fn oriented_face_reverse_maps_wrapper_in_place() {
+        let m = oriented_face_model(
+            "#3=ORIENTED_FACE('',*,#6,.F.);\
+             #5=SHELL_BASED_SURFACE_MODEL('',(#13));\
+             #13=OPEN_SHELL('',(#3));",
+        );
+        let b = assert_single_oriented_face_body(&m);
+        assert_eq!(b.kind, BodyKind::ShellModel);
+        assert_eq!(b.faces.len(), 1);
+        assert_eq!(b.shells.len(), 1);
+        assert_eq!(b.shells[0].faces, vec![0]);
+        let f = &b.faces[0];
+        assert_eq!(f.step_id, 3);
+        assert!(!f.same_sense);
+        assert_eq!(f.loops.len(), 1);
+        assert!(f.loops[0].outer);
+        assert!(!f.loops[0].orientation);
+        assert_eq!(b.edges.len(), 3);
+        assert_eq!(b.vertices.len(), 3);
+    }
+
+    #[test]
+    fn oriented_face_positive_control_keeps_inner_face() {
+        let m = oriented_face_model(
+            "#3=ORIENTED_FACE('',*,#6,.T.);\
+             #5=SHELL_BASED_SURFACE_MODEL('',(#13));\
+             #13=OPEN_SHELL('',(#3));",
+        );
+        let b = assert_single_oriented_face_body(&m);
+        assert_eq!(b.faces.len(), 1);
+        assert_eq!(b.shells.len(), 1);
+        assert_eq!(b.shells[0].faces, vec![0]);
+        let f = &b.faces[0];
+        assert_eq!(f.step_id, 6);
+        assert!(f.same_sense);
+        assert_eq!(f.loops.len(), 1);
+        assert!(f.loops[0].outer);
+        assert!(f.loops[0].orientation);
+        assert_eq!(b.edges.len(), 3);
+        assert_eq!(b.vertices.len(), 3);
+    }
+
+    #[test]
+    fn oriented_face_mixed_positive_then_reverse_shares_base_face() {
+        let m = oriented_face_mixed_model("#13,#14");
+        let b = assert_single_oriented_face_body(&m);
+        assert_eq!(b.faces.len(), 2);
+        assert_eq!(b.shells.len(), 2);
+        assert_eq!(b.shells[0].step_id, 13);
+        assert_eq!(b.shells[0].faces, vec![0]);
+        assert_eq!(b.shells[1].step_id, 14);
+        assert_eq!(b.shells[1].faces, vec![1]);
+        // The `.T.` wrapper row is mapped first and must not be mutated by the
+        // later `.F.` reverse.
+        assert_eq!(b.faces[0].step_id, 6);
+        assert!(b.faces[0].same_sense);
+        assert!(b.faces[0].loops[0].orientation);
+        assert_eq!(b.faces[1].step_id, 4);
+        assert!(!b.faces[1].same_sense);
+        assert!(!b.faces[1].loops[0].orientation);
+        // Both wrappers describe the same bounds and geometry.
+        assert!(b.faces[0].loops[0].outer);
+        assert_eq!(b.faces[0].loops[0].bound, b.faces[1].loops[0].bound);
+        assert_eq!(b.faces[0].surface, b.faces[1].surface);
+        // POLY_LOOP vertex/edge caching is shared between the two uses.
+        assert_eq!(b.edges.len(), 3);
+        assert_eq!(b.vertices.len(), 3);
+    }
+
+    #[test]
+    fn oriented_face_mixed_reverse_then_positive_shares_base_face() {
+        let m = oriented_face_mixed_model("#14,#13");
+        let b = assert_single_oriented_face_body(&m);
+        assert_eq!(b.faces.len(), 2);
+        assert_eq!(b.shells.len(), 2);
+        assert_eq!(b.shells[0].step_id, 14);
+        assert_eq!(b.shells[0].faces, vec![0]);
+        assert_eq!(b.shells[1].step_id, 13);
+        assert_eq!(b.shells[1].faces, vec![1]);
+        assert_eq!(b.faces[0].step_id, 4);
+        assert!(!b.faces[0].same_sense);
+        assert!(!b.faces[0].loops[0].orientation);
+        // The later `.T.` wrapper maps a fresh positive row.
+        assert_eq!(b.faces[1].step_id, 6);
+        assert!(b.faces[1].same_sense);
+        assert!(b.faces[1].loops[0].orientation);
+        assert!(b.faces[0].loops[0].outer);
+        assert_eq!(b.faces[0].loops[0].bound, b.faces[1].loops[0].bound);
+        assert_eq!(b.faces[0].surface, b.faces[1].surface);
+        assert_eq!(b.edges.len(), 3);
+        assert_eq!(b.vertices.len(), 3);
     }
 }
