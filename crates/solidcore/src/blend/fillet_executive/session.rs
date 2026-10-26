@@ -1792,6 +1792,14 @@ impl<'target> FilletSession<'target> {
         }
     }
 
+    /// `GetFilletErrorInfo`: what the executive recorded of its last failure
+    /// (`SmFilletErrorInfo`; the code is the `SmFilletErrorType` value, 8 for the
+    /// fork's `SM_FILERR_NO_ROOM`).
+    #[must_use]
+    pub const fn error_info(&self) -> &ErrorInfo<FilletObject> {
+        &self.executive.error
+    }
+
     /// `SetDoGlobalMerge`.
     pub fn set_do_global_merge(&mut self, do_global_merge: bool) {
         self.executive.set_do_global_merge(do_global_merge);
