@@ -1,4 +1,4 @@
-#### WR-268. Two walls swept along planar arcs that share their planes fail to join (1006), and a coincident face can be merged onto a B-spline continued across a fold
+#### WR-407. Two walls swept along planar arcs that share their planes fail to join (1006), and a coincident face can be merged onto a B-spline continued across a fold
 - **Severity:** Wrong result
 - **Area:** Intersection
 - **Location:** `source/SMLib/src/SmPrimitiveCreation.cpp:5112`, `SmPrimitiveCreation::CreateCurveSweep` (the `sPathPtAndDir[1].MakeUnitOrthoVectors` frame), and `source/SMLib/src/SmSurface.cpp:8263`, `SmSurface::CoverCoincidentSurface` (the `sOrigDomain.Union(sNewDomain, sUpdateDomain)` / `AdjustSTEPUVDomain` step). The sweep's own frame is built again in `source/SMLib/src/SmBSplineSurfaceNLib.cpp:5806` (`SmBSplineSurface::CreateSweepSurface`, `Z0` from `MakeUnitOrthoVectors` of the trajectory's start tangent).

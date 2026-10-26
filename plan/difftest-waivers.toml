@@ -13,7 +13,7 @@
 # a cover (a random rational surface whose Du x Dv normal turns back at the corner of the
 # domain the merge would use), which C++ still merges, so they move from pass to
 # known_mismatch by design: plan/findings/surface.surface_p3--cover-refuses-a-folded-continuation.md,
-# plan/upstream-issues/WR-268. They become `deviation(#434)` (and these waivers go) once
+# plan/upstream-issues/WR-407. They become `deviation(#434)` (and these waivers go) once
 # difftest has that outcome (#989).
 [[waiver]]
 unit = "surface.surface_p3"
