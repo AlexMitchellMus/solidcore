@@ -93,6 +93,10 @@ pub struct Case {
     /// (none: pinned SMLib behaviour).
     #[serde(default)]
     pub fixes: Vec<String>,
+    /// A known kernel refusal (an issue link): a step error defers the case on it instead
+    /// of counting an ERROR. A run that completes is checked as usual.
+    #[serde(default)]
+    pub refused_by: Option<String>,
     /// Run in order; each writes the body `id`.
     pub steps: Vec<Step>,
     /// Checked on the body `result`.
@@ -1331,7 +1335,14 @@ pub fn run_rust(case: &Case) -> Run {
             Ok(()) => {}
             // Name the failing step (1-based) and the body it writes.
             Err(Run::Error(msg)) => {
-                return Run::Error(format!("step {} (`{}`): {msg}", n + 1, step.id()))
+                let msg = format!("step {} (`{}`): {msg}", n + 1, step.id());
+                return match &case.refused_by {
+                    Some(why) => Run::Deferred(Deferral {
+                        blocked_by: why.clone(),
+                        symbol: msg,
+                    }),
+                    None => Run::Error(msg),
+                };
             }
             Err(stop) => return stop,
         }
@@ -1677,7 +1688,9 @@ mod tests {
         for l in all() {
             if let Run::Deferred(d) = run_rust(&l.case) {
                 assert!(
-                    d.blocked_by == "no SM_API entry point" || units.contains(&d.blocked_by),
+                    d.blocked_by == "no SM_API entry point"
+                        || units.contains(&d.blocked_by)
+                        || l.case.refused_by.as_ref() == Some(&d.blocked_by),
                     "{}: {d:?}",
                     l.id
                 );
@@ -1859,6 +1872,7 @@ mod tests {
             name: "c".into(),
             note: None,
             fixes: Vec::new(),
+            refused_by: None,
             steps,
             expect: Expect::default(),
         };

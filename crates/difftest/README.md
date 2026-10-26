@@ -722,6 +722,9 @@ nice -n 10 cargo run -p difftest -- --solidcraft-cases '3526-*'        # ids (<f
   on, by name, for a case that needs an opt-in fix of an upstream defect (for example
   `434-*`: `sweep_frame_on_planar_path_normal`, `cover_refuses_folded_continuation`);
   without it the case runs pinned SMLib behaviour.
+* **Known refusal** (`refused_by`, optional): an issue link for a case the kernel refuses
+  on purpose; a step error then defers the case on that link instead of counting an
+  `ERROR` (for example `324-*/round_4_over_hole`, tangency-labs/solidcore#422).
 * **Expectations** (`expect`): `lumps` (bounded regions; `0` = nothing left), `volume`
   (`value`, absolute `tol`, the `formula` it came from), `cylinder_faces_max`,
   `sheet_corner` (signed end distances and flat-pattern invariants).
