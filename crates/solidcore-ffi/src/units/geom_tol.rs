@@ -370,19 +370,26 @@ mod tests {
     #[test]
     fn volume_poles_accept_finite_meshes_without_shape_constraints() {
         let ordinary = [
-            0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0,
-            1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0,
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 1.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 0.0],
+            [1.0, 1.0, 1.0],
         ];
         let mut skew = ordinary;
-        for pole in skew.chunks_exact_mut(3) {
+        for pole in &mut skew {
             pole[0] += 0.5 * pole[1] - 0.25 * pole[2];
             pole[1] += 0.75 * pole[2];
         }
         let mut reversed = ordinary;
-        for pole in reversed.chunks_exact_mut(3) {
+        for pole in &mut reversed {
             pole[0] = -pole[0];
         }
-        for poles in [[0.0; 24], ordinary, skew, reversed, [f64::MAX; 24]] {
+        for corners in [[[0.0; 3]; 8], ordinary, skew, reversed, [[f64::MAX; 3]; 8]] {
+            let poles = std::array::from_fn(|index| corners[index / 3][index % 3]);
             assert!(validate_volume_poles(&poles).is_ok());
         }
     }
