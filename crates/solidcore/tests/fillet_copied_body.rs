@@ -55,7 +55,7 @@ fn top_front_edge(b: &Brep) -> EdgeId {
         })
         .collect();
     assert_eq!(found.len(), 1);
-    found[0]
+    *found.first().unwrap()
 }
 
 /// The #1144 repro: a 100 x 100 x 10 box, one edge rounded with r 1.
