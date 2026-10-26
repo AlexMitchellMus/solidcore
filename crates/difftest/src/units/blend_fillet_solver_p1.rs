@@ -299,7 +299,6 @@ impl Inputs {
             Inputs::RailUv { .. } => Op::RailUv,
             Inputs::SurfValues { .. } => Op::SurfValues,
             Inputs::UvVectors { .. } => Op::UvVectors,
-            Inputs::SplitRail => return None,
             Inputs::Split => Op::Split,
             Inputs::Finish { .. } => Op::Finish,
             Inputs::Fsg { .. } => Op::Fsg,
