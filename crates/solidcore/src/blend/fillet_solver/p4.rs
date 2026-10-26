@@ -487,6 +487,7 @@ impl FilletSolver {
         c6_compute_point_values(
             ops,
             k,
+            None,
             uv_values,
             uv_domain1,
             uv_domain2,
@@ -777,6 +778,7 @@ fn c1_collect_points(
         match find_fillet_tsect_pnt(
             ops,
             cx.k,
+            cx.target,
             &st.base_surfaces[0],
             &st.base_surfaces[1],
             pnt,
@@ -2023,6 +2025,7 @@ mod tests_c3 {
             let mut solver = IntersectorSolver {
                 ops: &mut fs,
                 trace: [&surfaces[0], &surfaces[1]],
+                brep: None,
             };
             solver.set_surfaces_to_zero_offset().unwrap();
             assert_eq!(dist(&surfaces[0]), 0.0);
@@ -2342,6 +2345,7 @@ fn c4_cusp_recovery(
         let found = find_fillet_tsect_pnt(
             ops,
             cx.k,
+            cx.target,
             base1,
             base2,
             pt,
@@ -3265,6 +3269,7 @@ mod tests_c5 {
 fn c6_compute_point_values(
     ops: &mut dyn FilletSolverOps,
     k: &Kernel,
+    brep: Option<&Brep>,
     uv_values: [Point2; 2],
     uv_domain1: &Extent2d,
     uv_domain2: &Extent2d,
@@ -3319,6 +3324,7 @@ fn c6_compute_point_values(
         step_solve(
             ops,
             k,
+            brep,
             point,
             &mut step,
             uv_domain1,
@@ -3335,6 +3341,7 @@ fn c6_compute_point_values(
             step_solve(
                 ops,
                 k,
+                brep,
                 point,
                 &mut step,
                 uv_domain1,
@@ -3368,6 +3375,7 @@ fn c6_compute_point_values(
         step_solve(
             ops,
             k,
+            brep,
             point,
             &mut step,
             uv_domain1,
@@ -3689,13 +3697,14 @@ fn record_fillet_error(
 fn find_fillet_tsect_pnt(
     ops: &mut dyn FilletSolverOps,
     k: &Kernel,
+    brep: &Brep,
     base1: &Surface,
     base2: &Surface,
     point: Point3,
     tangent: Vec3,
     out: &mut TsectPnt,
 ) -> Result<()> {
-    super::p3::find_fillet_tsect_pnt(ops, k, base1, base2, point, tangent, out)
+    super::p3::find_fillet_tsect_pnt(ops, k, Some(brep), base1, base2, point, tangent, out)
 }
 
 /// `StepSolve(rTsectPnt, rdStep, crUVDomain1, crUVDomain2, rbFoundAnswer,
@@ -3707,6 +3716,7 @@ fn find_fillet_tsect_pnt(
 fn step_solve(
     ops: &mut dyn FilletSolverOps,
     k: &Kernel,
+    brep: Option<&Brep>,
     point: &TsectPnt,
     step: &mut f64,
     uv_domain1: &Extent2d,
@@ -3714,11 +3724,12 @@ fn step_solve(
     flags: &mut StepSolveFlags,
     next: &mut TsectPnt,
 ) -> Result<()> {
-    // no target B-rep reaches the solver here (LoadInitialValues gets NULL, as the
-    // fillet intersector's solvers pass); the flags are copied back on an error too
+    // `brep` is the target B-rep holding the solver's edge uses (`GetEdgeuse`, read by
+    // `LoadInitialValues`) when the caller has it; the flags are copied back on an
+    // error too
     let mut out = super::p3::StepSolveOutcome::default();
     let r = FilletSolver::step_solve(
-        ops, k, None, point, step, uv_domain1, uv_domain2, next, &mut out,
+        ops, k, brep, point, step, uv_domain1, uv_domain2, next, &mut out,
     );
     flags.found_answer = out.found_good_point;
     flags.clipped = out.clipped;
@@ -3864,7 +3875,11 @@ fn do_point_intersection(
     // surfaces before its first solver call)
     sync_solver_extensions(&*ops, trace)?;
     sync_trace_offsets(&*ops, trace)?;
-    let mut solver = IntersectorSolver { ops, trace };
+    let mut solver = IntersectorSolver {
+        ops,
+        trace,
+        brep: Some(&*cx.target),
+    };
     let r = fi.do_point_intersection(&mut solver, &mut *cx.fillets, k, &ids, &opts);
     for (p, &id) in points.iter_mut().zip(&ids) {
         p.clone_from(fi.base.base.point(id)?);
@@ -3927,6 +3942,10 @@ pub(crate) struct IntersectorSolver<'b> {
     /// the solver's offset distances by [`sync_trace_offsets`] after every call that
     /// may set them.
     trace: [&'b Surface; 2],
+    /// The target B-rep holding the solver's edge uses (upstream's `GetEdgeuse`
+    /// pointers reach it directly), passed to `LoadInitialValues` under
+    /// `ComputePointValues` and `StepSolve`; `None` where the caller has none.
+    brep: Option<&'b Brep>,
 }
 
 /// Upstream's intersector evaluates the solver's own `SmOffsetSurface`s, so every
@@ -3972,7 +3991,11 @@ impl<'b> IntersectorSolver<'b> {
     pub(crate) fn new(ops: &'b mut dyn FilletSolverOps, trace: [&'b Surface; 2]) -> Result<Self> {
         sync_solver_extensions(&*ops, trace)?;
         sync_trace_offsets(&*ops, trace)?;
-        Ok(Self { ops, trace })
+        Ok(Self {
+            ops,
+            trace,
+            brep: None,
+        })
     }
 
     /// [`sync_solver_extensions`] before a solver call.
@@ -4012,9 +4035,10 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_>
         previous: Option<&TsectPnt>,
     ) -> Result<()> {
         self.pre()?;
-        let r = FilletSolver::compute_point_values(
+        let r = c6_compute_point_values(
             &mut *self.ops,
             k,
+            self.brep,
             uv_values,
             uv_domain1,
             uv_domain2,
@@ -4059,6 +4083,7 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_>
         let r = step_solve(
             &mut *self.ops,
             k,
+            self.brep,
             point,
             step_size,
             uv_domain1,
@@ -4116,6 +4141,7 @@ impl crate::blend::fillet_intersector::FilletSolverOps for IntersectorSolver<'_>
         self.pre()?;
         let r = self.ops.point_on_plane_solve(
             k,
+            self.brep,
             plane_origin,
             plane_normal,
             uv_domain1,

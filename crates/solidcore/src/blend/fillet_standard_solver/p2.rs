@@ -2816,6 +2816,7 @@ mod tests {
         let found3 = ops
             .point_on_plane_solve(
                 &k,
+                None,
                 p(0.4, 0.0, 0.0),
                 Vec3::new(1.0, 0.0, 0.0),
                 &d,

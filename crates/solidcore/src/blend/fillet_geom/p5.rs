@@ -768,25 +768,24 @@ impl FilletBrep {
                     }
 
                     if check_connectivity {
-                        // UNPORTED(blend.fillet_geom_p1): sm_ExamineNFixFilletGeoms (justified: findings.md "blend.fillet_geom_p5: examine solvers")
-                        // The status is ignored upstream (SmFilletGeom.cpp:5706-5709, no
-                        // `SER`): when wired this must be `ignore_non_unported(..)`, not
-                        // `?`. The p1 port still takes `ConstantRadiusAssistedFs` solvers
-                        // (re-checked after #168: the `FilletSolver` base of
-                        // blend.fillet_solver_p1 is not what it takes).
-                        unported_on::<_, ()>(
-                            (
-                                g1,
-                                at_start_of_geom1,
-                                g2,
-                                at_start_of_geom2,
-                                start_fv,
-                                end_fv,
-                                tol,
-                            ),
-                            "sm_ExamineNFixFilletGeoms",
-                            "blend.fillet_geom_p1",
-                        )?;
+                        // The status is ignored upstream (no `SER`). Each geometry's
+                        // `GetFilletSolver()` is resolved here for the adjusting path.
+                        let solver_of = |g: FilletGeomId| -> Result<Option<&FilletSolver>> {
+                            self.geom(g)?.fillet_solver().map(resolve).transpose()
+                        };
+                        let solvers = [solver_of(g1)?, solver_of(g2)?];
+                        ignore_non_unported(super::p1::examine_n_fix_fillet_geoms_with_solvers(
+                            k,
+                            self,
+                            g1,
+                            at_start_of_geom1,
+                            g2,
+                            at_start_of_geom2,
+                            start_fv,
+                            end_fv,
+                            tol,
+                            solvers,
+                        ))?;
                     }
                 }
             }

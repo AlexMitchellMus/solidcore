@@ -1953,12 +1953,15 @@ pub trait FilletSolverOps: AsFilletSolverOps {
     /// # Errors
     ///
     /// Those of the base `SmFilletSolver::PointOnPlaneSolve`
-    /// ([`FilletSolver::point_on_plane_solve`], unit `blend.fillet_solver_p2`, without
-    /// a B-rep: none of the virtual's callers holds one).
+    /// ([`FilletSolver::point_on_plane_solve`], unit `blend.fillet_solver_p2`). `brep`
+    /// is the target B-rep holding the solver's edge uses (upstream reaches them through
+    /// its `GetEdgeuse` pointers), for `LoadInitialValues`; `None` when the caller has
+    /// none.
     #[allow(clippy::too_many_arguments)]
     fn point_on_plane_solve(
         &mut self,
         k: &Kernel,
+        brep: Option<&Brep>,
         plane_origin: Point3,
         plane_normal: Vec3,
         uv_domain1: &Extent2d,
@@ -1970,7 +1973,7 @@ pub trait FilletSolverOps: AsFilletSolverOps {
         FilletSolver::point_on_plane_solve(
             self.as_solver_ops(),
             k,
-            None,
+            brep,
             plane_origin,
             plane_normal,
             uv_domain1,
