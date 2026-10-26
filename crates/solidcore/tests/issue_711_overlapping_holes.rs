@@ -47,3 +47,22 @@ fn issue_711_second_overlapping_hole_cuts() {
     let got = volume(&k, &mut disc).unwrap();
     assert!((got - want).abs() <= 1e-5 * want, "{got} vs {want}");
 }
+
+/// Without the fix (the default, as SMLib): the parallel-cylinder lines are tested at
+/// the tool's bottom, outside the first hole's trimmed wall, so the second cut fails.
+#[test]
+fn issue_711_second_overlapping_hole_fails_by_default() {
+    let mut k = Kernel::default();
+    let mut disc = create_cylinder(&mut k, Point3::new(0.0, 0.0, 0.0), 20.0, 10.0).unwrap();
+    let first = create_cylinder(&mut k, Point3::new(6.0, 0.0, -1.0), 5.0, 12.0).unwrap();
+    disc = boolean_difference(&mut k, disc, first).unwrap();
+    let second = create_cylinder(
+        &mut k,
+        Point3::new(3.0, 3.0 * 3.0_f64.sqrt(), -1.0),
+        5.0,
+        12.0,
+    )
+    .unwrap();
+    let r = boolean_difference(&mut k, disc, second);
+    assert!(r.is_err(), "{:?}", r.map(|_| ()));
+}
