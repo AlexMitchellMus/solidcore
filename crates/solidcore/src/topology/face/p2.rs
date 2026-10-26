@@ -2559,15 +2559,28 @@ fn notified_end_point_edit(
     edit_start: bool,
     weight: Option<f64>,
 ) -> Result<()> {
-    let Some(env) = env.filter(|e| e.context.is_some()) else {
-        return edit_end_point(held_curve_mut(b, holder)?, point, edit_start, weight);
-    };
+    let edit = |c: &mut Curve| edit_end_point(c, point, edit_start, weight);
+    match env.filter(|e| e.context.is_some()) {
+        Some(env) => notify_around_edit(b, env, holder, edit),
+        None => edit(held_curve_mut(b, holder)?),
+    }
+}
+
+/// `edit` of the UV trim curve `holder` holds, between `SM_NO_PRE_EDIT` and
+/// `SM_NO_POST_EDIT` with the curve as caller and first data object, after reporting
+/// the curve's and the edge use's owner links.
+fn notify_around_edit(
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    holder: EdgeuseId,
+    edit: impl Fn(&mut Curve) -> Result<()>,
+) -> Result<()> {
     let holder_ref = (env.key_of)(EntityRef::Edgeuse(holder));
     let edge_ref = eu1::edge(b, holder)?.map(|e| (env.key_of)(EntityRef::Edge(e)));
     let this = {
         let curve = held_curve_mut(b, holder)?;
         let Some(ctx) = env.context.as_deref_mut() else {
-            return Err(null("EditEndPoint: no context"));
+            return Err(null("FixUVTrimCurves: no context"));
         };
         ObjectRef {
             type_code: curve.type_code(),
@@ -2589,8 +2602,34 @@ fn notified_end_point_edit(
         )
     };
     notify(env, NotifyOperation::PreEdit)?;
-    edit_end_point(held_curve_mut(b, holder)?, point, edit_start, weight)?;
+    edit(held_curve_mut(b, holder)?)?;
     notify(env, NotifyOperation::PostEdit)
+}
+
+/// A `Trim` or `EditParameterization` of the UV trim curve `holder` holds, as
+/// `sm_FixUVTrimCurves` makes them: when the edit does work (it changes the curve's
+/// natural interval; both return before notifying otherwise), it notifies as
+/// [`notified_end_point_edit`] does. Whether the edit works is found by running it on
+/// a copy first.
+fn notified_curve_edit(
+    b: &mut Brep,
+    env: Option<&mut NotifyEnv<'_>>,
+    holder: EdgeuseId,
+    edit: impl Fn(&mut Curve) -> Result<()>,
+) -> Result<()> {
+    let Some(env) = env.filter(|e| e.context.is_some()) else {
+        return edit(held_curve_mut(b, holder)?);
+    };
+    let before = held_curve(b, holder)?.natural_interval();
+    let mut probe = held_curve(b, holder)?.clone();
+    edit(&mut probe)?;
+    let after = probe.natural_interval();
+    if before.min().to_bits() == after.min().to_bits()
+        && before.max().to_bits() == after.max().to_bits()
+    {
+        return edit(held_curve_mut(b, holder)?);
+    }
+    notify_around_edit(b, env, holder, edit)
 }
 
 /// `SmBSplineCurve::EditEndPoint(point, bEditStart, pdWeight)` of a UV trim curve.
@@ -2778,9 +2817,13 @@ pub fn fix_uv_trim_curves_notified(
                     let _ = trim_ivl.set_min_max(curr_ivl.min(), t_curr_new);
                 }
                 if !are_same(trim_ivl.min(), trim_ivl.max()) {
-                    let c = held_curve_mut(b, curr_holder)?;
-                    c.trim(k, &mut trim_ivl, TrimMode::Notify)?;
-                    c.edit_parameterization(k, &curr_ivl)?;
+                    notified_curve_edit(b, env.as_deref_mut(), curr_holder, |c| {
+                        let mut ivl = trim_ivl;
+                        c.trim(k, &mut ivl, TrimMode::Notify)
+                    })?;
+                    notified_curve_edit(b, env.as_deref_mut(), curr_holder, |c| {
+                        c.edit_parameterization(k, &curr_ivl)
+                    })?;
                 }
             }
         }
@@ -2794,9 +2837,13 @@ pub fn fix_uv_trim_curves_notified(
                     let _ = trim_ivl.set_min_max(t_prev_new, prev_ivl.max());
                 }
                 if !are_same(trim_ivl.min(), trim_ivl.max()) {
-                    let c = held_curve_mut(b, prev_holder)?;
-                    c.trim(k, &mut trim_ivl, TrimMode::Notify)?;
-                    c.edit_parameterization(k, &prev_ivl)?;
+                    notified_curve_edit(b, env.as_deref_mut(), prev_holder, |c| {
+                        let mut ivl = trim_ivl;
+                        c.trim(k, &mut ivl, TrimMode::Notify)
+                    })?;
+                    notified_curve_edit(b, env.as_deref_mut(), prev_holder, |c| {
+                        c.edit_parameterization(k, &prev_ivl)
+                    })?;
                 }
             }
         }
