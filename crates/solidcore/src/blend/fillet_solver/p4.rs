@@ -3822,6 +3822,49 @@ fn do_point_intersection(
     r.map(|_| ())
 }
 
+/// `SmFilletIntersector sFI(crSurface1, crDomain1, crSurface2, crDomain2, *this)` and
+/// `sFI.DoPointIntersection(.., rTsectPnts, bExtendBefore, bExtendAfter, NULL, NULL,
+/// &dApproxTol3d, &dAngTol, ..)` for a solver that traces outside
+/// [`FilletSolver::calc_fillet_geom_with_context`] (`SmSurfaceSurfaceFS::CalcFilletGeom`).
+/// `surfaces` are copies of the solver's offset surfaces; `points` are written back in
+/// place as upstream writes through the pointers; `FlushCurve` fills the solver's last
+/// fillet geometry in `fillets`.
+///
+/// # Errors
+/// Those of the intersector construction and of the point intersection.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn point_intersection_on_surfaces(
+    ops: &mut dyn FilletSolverOps,
+    k: &Kernel,
+    target: &mut Brep,
+    fillets: &mut FilletBrep,
+    surfaces: &[Surface; 2],
+    domains: [Extent2d; 2],
+    points: &mut [TsectPnt],
+    extend: [bool; 2],
+    approx_tol_3d: f64,
+    ang_tol_rad: f64,
+) -> Result<()> {
+    let [surface1, surface2] = surfaces;
+    let [domain1, domain2] = &domains;
+    let mut fi = TraceIntersector::new(k, surface1, domain1, surface2, domain2, None)?;
+    let mut cx = Cx {
+        k,
+        target,
+        fillets,
+        solvers: GeometrySolvers::Indexed(&[]),
+    };
+    let [extend_before, extend_after] = extend;
+    let args = PointIntersectionArgs {
+        extend_before,
+        extend_after,
+        start_dir: None,
+        approx_tol_3d,
+        ang_tol_rad,
+    };
+    do_point_intersection(&mut fi, ops, &mut cx, points, args)
+}
+
 /// The solver `*this` as `SmFilletIntersector` uses it (`m_rFilletSolver`): the
 /// fillet intersector's [`FilletSolverOps`](crate::blend::fillet_intersector::FilletSolverOps)
 /// over this solver's virtuals. `FlushCurve`'s writes into the fillet geometry go to

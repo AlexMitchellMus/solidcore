@@ -76,6 +76,7 @@ mod classification;
 mod finish;
 mod original_merge;
 mod original_trim;
+mod surface;
 pub use original_trim::{OriginalSurfaceDeletion, OriginalSurfaceSelection};
 
 const OP: &str = "blend::fillet_executive::session";
@@ -350,29 +351,26 @@ impl SessionObjects<'_> {
                 &mut self.pseudo,
                 &context,
             ),
-            // UNPORTED(blend.fillet_executive_p3): actual derived solver operation contexts.
-            SolverObject::SurfaceSurface(_) => Err(SolidError::unported(
-                "live concrete CalcFilletGeom operations",
-                "blend.fillet_executive_p3",
-            )),
+            // SmSurfaceSurfaceFS::CalcFilletGeom
+            SolverObject::SurfaceSurface(solver) => solver.calc_fillet_geom_with_context(
+                k,
+                self.target,
+                &mut self.pseudo,
+                &mut surface::SurfaceSurfaceSession {
+                    corners: &self.corners,
+                },
+            ),
         }
     }
 }
 
-/// The retained virtual operations of a concrete solver whose live corner-vertex
-/// operations are ported.
-fn live_solver_ops(solver: &mut SolverObject) -> Result<&mut dyn FilletSolverOps> {
+/// The retained virtual operations of a concrete solver.
+fn live_solver_ops(solver: &mut SolverObject) -> &mut dyn FilletSolverOps {
     match solver {
-        SolverObject::ConstantRadius(solver) => Ok(solver.as_mut()),
-        SolverObject::VariableRadius(solver) => Ok(solver.as_mut()),
-        SolverObject::ConstantDistance(solver) => Ok(solver.as_mut()),
-        SolverObject::SurfaceSurface(_) => {
-            // UNPORTED(blend.fillet_executive_p1): retained virtual operations for other concrete solver types.
-            Err(SolidError::unported(
-                "SmFilletSolver::RailEdgeuseIntersect (live concrete dispatch)",
-                "blend.fillet_executive_p1",
-            ))
-        }
+        SolverObject::ConstantRadius(solver) => solver.as_mut(),
+        SolverObject::VariableRadius(solver) => solver.as_mut(),
+        SolverObject::ConstantDistance(solver) => solver.as_mut(),
+        SolverObject::SurfaceSurface(solver) => solver.as_mut(),
     }
 }
 
@@ -436,7 +434,7 @@ fn live_vertex_solvers<'s>(
         let solver = slot
             .as_mut()
             .ok_or_else(|| invalid("vertex solver is not live"))?;
-        live.push((id, live_solver_ops(solver)?));
+        live.push((id, live_solver_ops(solver)));
     }
     if live.len() != ids.len() {
         return Err(invalid("vertex solver is not live"));

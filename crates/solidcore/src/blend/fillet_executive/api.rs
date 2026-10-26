@@ -2,7 +2,7 @@
 //!
 //! Upstream: `source/SM_API/src/SmApiBrep.cpp` (`SmApiFilletEdges` 2049-2087,
 //! `SmApiFilletEdgesPerEdge` 2094-2135, `SmApiVariableRadiusFillet` 2142-2178,
-//! `SmApiSetBevelCorners` 2305-2338),
+//! `SmApiSurfaceSurfaceFillet` 2189-2267, `SmApiSetBevelCorners` 2305-2338),
 //! `source/SM_API/src/SmApiFillets.cpp` (`SmApiChamferFillet` 40-113,
 //! `SmApiCircularFillet` 119-185).
 //!
@@ -14,6 +14,7 @@
 //! | [`circular_fillet`] | `SmApiCircularFillet` |
 //! | [`chamfer_fillet`] | `SmApiChamferFillet` |
 //! | [`set_bevel_corners`] | `SmApiSetBevelCorners` |
+//! | [`surface_surface_fillet`] | `SmApiSurfaceSurfaceFillet` |
 //!
 //! Deviations: the kernel argument replaces `SmApiGetOrCreateContext()`. Edges are
 //! typed ids of `brep`. Upstream destroys its executive (and the executive's
@@ -25,20 +26,27 @@
 //! as upstream does, and skip an edge whose solver constructor fails (upstream's
 //! constructor only signals the error and leaves a solver without surfaces, which
 //! `LoadFilletSolver` then refuses); `Unported` still propagates. The stack-held
-//! generator and handler become session-retained values. No recursion.
+//! generator and handler become session-retained values. [`surface_surface_fillet`]
+//! takes free surfaces (upstream checks `GetFace()` and only then builds a temporary
+//! B-rep per surface): both get a face, over the natural domain, in one temporary
+//! B-rep, the target of the session; the fillet B-rep is returned (`None` when the
+//! offset surfaces do not intersect, upstream `SM_SUCCESS` with a null result). No
+//! recursion.
 
 use super::session::FilletSession;
+use crate::blend::fillet_executive::p2::SurfaceFilletOptions;
 use crate::blend::fillet_geom::p1::FilletSolverId;
 use crate::blend::fillet_solver::p1::{
     FilletSurfaceGenerator, FilletSurfaceGeneratorType, MakeSurfaceBlendSih,
 };
-use crate::blend::fillet_standard_solver::p1::FilletLaw;
+use crate::blend::fillet_standard_solver::p1::{BoundaryTrimmingType, FilletLaw};
 use crate::error::{Result, SolidError, SM_ERR_INVALID_INPUT};
 use crate::kernel::Kernel;
 use crate::math::PI;
+use crate::surface::surface::Surface;
 use crate::topology::brep::p1;
 use crate::topology::brep::p5::{stitch_and_orient, StitchAndOrientOptions};
-use crate::topology::{Brep, EdgeId, VertexId};
+use crate::topology::{Brep, EdgeId, FaceId, VertexId};
 
 const OP: &str = "blend::fillet_executive::api";
 
@@ -302,6 +310,76 @@ pub fn set_bevel_corners(
         session.do_filleting(k, None)?;
     }
     stitch_and_orient(k, brep, &StitchAndOrientOptions::default())
+}
+
+/// `SmBrep::CreateFaceFromSurface(pSurface, pSurface->GetNaturalUVDomain(), pFace)` in
+/// the temporary B-rep of [`surface_surface_fillet`].
+fn create_face_from_surface(k: &mut Kernel, brep: &mut Brep, surface: &Surface) -> Result<FaceId> {
+    let domain = surface.natural_uv_domain();
+    let mut state = crate::topology::brep::p2::ArenaNotifyState::new(brep);
+    let mut env = state.env(None);
+    let mut marks = crate::topology::topology_traverser::Marks::default();
+    let this_face =
+        |f: FaceId| crate::topology::loopuse::notify_ref(crate::error::EntityRef::Face(f));
+    let mut fenv = crate::topology::brep::p8::FaceBuildEnv {
+        env: &mut env,
+        marks: &mut marks,
+        this_face: &this_face,
+    };
+    crate::topology::brep::p8::create_face_from_surface(
+        k,
+        brep,
+        Some(surface.clone()),
+        &domain,
+        &mut fenv,
+    )
+}
+
+/// `SmApiSurfaceSurfaceFillet`: a fillet between two arbitrary surfaces with signed
+/// radii from each (`SmFilletExecutive::SurfaceSurfaceFillet` with cross-section
+/// accuracy 0.1, `SM_BT_MAXIMAL` fillet trimming and no base-surface trimming).
+/// `tolerance` is the largest distance of the rails from the base surfaces;
+/// `xsect_type` is 0 linear, 1 approximated circular, 2 exact circular; `mirror` makes
+/// an inside-out fillet and `complement` the complementary circular cross section. The
+/// B-rep of the fillet surfaces, `None` when the offset surfaces do not intersect.
+///
+/// # Errors
+/// Those of the temporary faces and of `SurfaceSurfaceFillet`.
+#[allow(clippy::too_many_arguments)] // the upstream entry point's parameters
+pub fn surface_surface_fillet(
+    k: &mut Kernel,
+    surface1: &Surface,
+    surface2: &Surface,
+    radius1: f64,
+    radius2: f64,
+    tolerance: f64,
+    xsect_type: u32,
+    mirror: bool,
+    complement: bool,
+) -> Result<Option<Brep>> {
+    let mut temp = crate::topology::brep::p3::new_brep(
+        k,
+        crate::geom::tol::USE_DEFAULT,
+        crate::geom::tol::USE_DEFAULT,
+    )?;
+    let face1 = create_face_from_surface(k, &mut temp, surface1)?;
+    let face2 = create_face_from_surface(k, &mut temp, surface2)?;
+    let options = SurfaceFilletOptions {
+        xsect_type,
+        xsect_accuracy: 0.1,
+        trim_type: BoundaryTrimmingType::Maximal,
+        base_trim_type: 0,
+        mirror,
+        complement,
+    };
+    let mut session = FilletSession::new(k, &mut temp)?;
+    let made =
+        session.surface_surface_fillet(k, [face1, face2], radius1, radius2, tolerance, &options)?;
+    Ok(if made {
+        session.take_fillet_brep()
+    } else {
+        None
+    })
 }
 
 #[cfg(test)]

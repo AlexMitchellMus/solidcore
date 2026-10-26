@@ -9,7 +9,7 @@
 //! |------------------------------------------------------|------------------------------------------------|
 //! | [`FilletSolver::other_fillet_corner`]                | `SmFilletSolver::GetOtherFilletCorner`         |
 //! | [`find_fillet_tsect_pnt`]                            | `sm_FindFilletTsectPnt` (static)               |
-//! | [`FilletSolver::split_and_trim_fillet_surface`]      | `SmFilletSolver::SplitAndTrimFilletSurface`    |
+//! | [`FilletSolver::split_and_trim_fillet_surface`], [`FilletSolver::split_and_trim_fillet_surface_with`] | `SmFilletSolver::SplitAndTrimFilletSurface`    |
 //! | [`FilletSolver::step_solve`], [`StepSolveOutcome`]   | `SmFilletSolver::StepSolve`                    |
 //! | [`refine_rail_curve_classification`]                 | `sm_RefineRailCurveClassification`             |
 //! | [`calc_rail_x_edge`]                                 | `sm_CalcRailXEdge` (static)                    |
@@ -817,8 +817,51 @@ impl FilletSolver {
         fillet_geom_index: usize,
         trim_type: BoundaryTrimmingType,
     ) -> Result<()> {
+        self.split_and_trim_fillet_surface_in(
+            k,
+            fillets,
+            &LegacyClassificationObjects(geometry),
+            fillet_geom_index,
+            trim_type,
+            None,
+        )
+    }
+
+    /// [`Self::split_and_trim_fillet_surface`] with the classifications' actual
+    /// geometry provider (a live session's rails and target faces) and the target
+    /// B-rep the end curves read (`SplitFilletGeom`'s `CreateEndCurve`).
+    ///
+    /// # Errors
+    /// As [`Self::split_and_trim_fillet_surface`], with those of the end curves.
+    pub fn split_and_trim_fillet_surface_with(
+        &mut self,
+        k: &Kernel,
+        fillets: &mut FilletBrep,
+        geometry: &impl ClassGeometry<FilletClassObject>,
+        fillet_geom_index: usize,
+        trim_type: BoundaryTrimmingType,
+        target: &Brep,
+    ) -> Result<()> {
+        self.split_and_trim_fillet_surface_in(
+            k,
+            fillets,
+            geometry,
+            fillet_geom_index,
+            trim_type,
+            Some(target),
+        )
+    }
+
+    fn split_and_trim_fillet_surface_in(
+        &mut self,
+        k: &Kernel,
+        fillets: &mut FilletBrep,
+        geometry: &impl ClassGeometry<FilletClassObject>,
+        fillet_geom_index: usize,
+        trim_type: BoundaryTrimmingType,
+        target: Option<&Brep>,
+    ) -> Result<()> {
         const OP_T: &str = "blend::fillet_solver::p3::split_and_trim_fillet_surface";
-        let geometry = &LegacyClassificationObjects(geometry);
         let fillet_geom = *self
             .fillet_geoms
             .get(fillet_geom_index)
@@ -922,17 +965,31 @@ impl FilletSolver {
         }
 
         if found_intersection {
-            self.split_fillet_geom_scoped(
-                k,
-                fillets,
-                geometry,
-                fillet_geom_index,
-                trim_type as i32,
-                &ivls1,
-                &ivls2,
-                &cc1,
-                &cc2,
-            )?;
+            match target {
+                Some(target) => self.split_fillet_geom_with_target(
+                    k,
+                    fillets,
+                    geometry,
+                    fillet_geom_index,
+                    trim_type as i32,
+                    &ivls1,
+                    &ivls2,
+                    &cc1,
+                    &cc2,
+                    target,
+                )?,
+                None => self.split_fillet_geom_scoped(
+                    k,
+                    fillets,
+                    geometry,
+                    fillet_geom_index,
+                    trim_type as i32,
+                    &ivls1,
+                    &ivls2,
+                    &cc1,
+                    &cc2,
+                )?,
+            }
         } else {
             // No Good classifications.  Delete the fillet surface.
             fillets.geom_mut(fillet_geom)?.set_fillet_surface(None);
