@@ -877,6 +877,10 @@ double p3_check_concave(SmFilletCorner* c)
     side->GetEdge()->GetCurve()->EvaluatePoint(vu2->GetTsectPnt().m_dCurveParameter, p2);
     if (p1.DistanceBetween(p2) < c->*P3CornerPeek::tol())
         return 0.0;
+    // coincident rail points with a zero tolerance: the side surface is extended by
+    // 10 * 0 (CreateExtendedSurface does not return)
+    if (p1.DistanceBetween(p2) == 0.0)
+        return P3C_REFUSE;
     const SmVertex* cv = c->GetFilletedVertex();
     if (cv == NULL)
         return P3C_REFUSE;

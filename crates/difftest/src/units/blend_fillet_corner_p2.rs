@@ -560,6 +560,11 @@ fn gen_find_concave(rng: &mut Rng) -> Inputs {
     }
 }
 
+/// The share of `adjust_concave` cases whose side edge use is on a target face's loop.
+const SIDE_FACE_SHARE: f64 = 0.7;
+/// The loop edge use of a natural plane face along the z axis (the side edge).
+const SIDE_FACE_EU: i64 = 3;
+
 /// A corner case on an Nx2-shaped model (`gen_nx2_model` of unit
 /// `blend.fillet_corner_p3`): its target faces are `0` (plane x-z) and `1` (plane y-z),
 /// its corner edges `4 5` (plus `2`, a rail, for the three-edge concave case), its
@@ -606,6 +611,15 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
             } else {
                 vec![4, 5]
             };
+            // the side edge's edge use sits on a target face's loop (the face's edge along
+            // the z axis, as the wire side edge), so the extension finds a side face
+            if method == CornerMethod::AdjustConcave && rng.chance(SIDE_FACE_SHARE) {
+                if let Some(v0) = model.vertices.first_mut() {
+                    v0.pc_kind = 5;
+                    v0.pc_index = rng.below(2) as i64;
+                    v0.pc_sub = SIDE_FACE_EU;
+                }
+            }
             (kind, edges, Vec::new(), [0, 1])
         }
         CornerMethod::UpdateSplitFace => {
