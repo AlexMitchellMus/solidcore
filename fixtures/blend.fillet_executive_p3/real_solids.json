@@ -462,6 +462,28 @@
           "checkpoint": "intermediate_faces"
         }
       }
+    },
+    {
+      "name": "real-box-trihedral-equal-radius-full-api",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049 (full public fillet API on three incident box edges; final topology, geometry and mass)",
+      "inputs": {
+        "real_solid": {
+          "dimensions": [
+            10,
+            20,
+            30
+          ],
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            2,
+            6,
+            7
+          ]
+        }
+      }
     }
   ]
 }
