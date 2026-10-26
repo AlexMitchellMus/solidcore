@@ -238,10 +238,9 @@ impl UnitDiff for Runner {
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         let i: Inputs = case.parse()?;
-        let raw = match native(&i, 0)? {
-            Ok(raw) => raw,
-            // the native side rejects the case; nothing is compared
-            Err(_) => return Ok(Output::new()),
+        // the native side rejects the case: nothing is compared
+        let Ok(raw) = native(&i, 0)? else {
+            return Ok(Output::new());
         };
         let (mut b, _) = import(&raw)?;
         b.set_editing_enabled(i.editing);
@@ -301,9 +300,9 @@ impl UnitDiff for Runner {
             ..Inputs::default()
         };
         let scale = 10f64.powi(rng.range_i64(-1, 2) as i32);
-        match rng.below(3) {
+        if rng.below(3) == 0 {
             // a plane perpendicular to a coordinate axis (Z of X x Y)
-            0 => {
+            {
                 let at = rng.uniform(-10., 10.) * scale;
                 match rng.below(3) {
                     0 => {
@@ -319,8 +318,9 @@ impl UnitDiff for Runner {
                     _ => i.origin = [0., 0., at],
                 }
             }
+        } else {
             // an arbitrary plane
-            _ => {
+            {
                 let mut dir = || [rng.uniform(-1., 1.), rng.uniform(-1., 1.), rng.uniform(-1., 1.)];
                 i.x = dir();
                 i.y = dir();
