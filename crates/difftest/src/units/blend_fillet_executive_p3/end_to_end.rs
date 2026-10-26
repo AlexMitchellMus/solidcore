@@ -83,28 +83,180 @@ impl Checkpoint {
     }
 }
 
+/// One box of a two-box Boolean source: `SmApiCreateBox(origin, size)`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct BoxSpec {
+    origin: [f64; 3],
+    size: [f64; 3],
+}
+
+/// A non-box body the fillet runs on, built the same way on both sides.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum Source {
+    /// An upstream ASCII `.smb` file: `SmBrep::ReadFromFile` in the shim, imported
+    /// through the `topology.brep_p1` export on the Rust side (upstream list order).
+    File {
+        /// Absolute path (`{"$upstream_file": ..}` in the fixture).
+        path: String,
+    },
+    /// `SmApiCreateCylinder(origin, radius, height)`.
+    Cylinder {
+        /// Centre of the base.
+        origin: [f64; 3],
+        /// Radius.
+        radius: f64,
+        /// Height along Z.
+        height: f64,
+    },
+    /// `SmApiBooleanUnion` of two boxes.
+    BoxUnion {
+        /// First operand (the result).
+        a: BoxSpec,
+        /// Second operand (consumed).
+        b: BoxSpec,
+    },
+    /// `SmApiBooleanDifference` of two boxes.
+    BoxDifference {
+        /// First operand (the result).
+        a: BoxSpec,
+        /// Second operand (consumed).
+        b: BoxSpec,
+    },
+}
+impl Source {
+    /// Source kind code and the shim's fixed-length parameter block.
+    fn wire(&self) -> (f64, [f64; ffi::SOURCE_PARAMS]) {
+        let mut p = [0.0; ffi::SOURCE_PARAMS];
+        let boxes = |p: &mut [f64; ffi::SOURCE_PARAMS], a: &BoxSpec, b: &BoxSpec| {
+            for (slot, v) in p
+                .iter_mut()
+                .zip(a.origin.iter().chain(&a.size).chain(&b.origin).chain(&b.size))
+            {
+                *slot = *v;
+            }
+        };
+        match self {
+            Self::File { .. } => (1.0, p),
+            Self::Cylinder {
+                origin,
+                radius,
+                height,
+            } => {
+                for (slot, v) in p.iter_mut().zip(origin.iter().chain([radius, height])) {
+                    *slot = *v;
+                }
+                (2.0, p)
+            }
+            Self::BoxUnion { a, b } => {
+                boxes(&mut p, a, b);
+                (3.0, p)
+            }
+            Self::BoxDifference { a, b } => {
+                boxes(&mut p, a, b);
+                (4.0, p)
+            }
+        }
+    }
+    fn path(&self) -> Option<&str> {
+        match self {
+            Self::File { path } => Some(path),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct RealSolid {
     #[serde(default)]
     checkpoint: Checkpoint,
-    dimensions: [f64; 3],
+    /// The box of the default source (`SmApiCreateBox` at the origin).
+    #[serde(default)]
+    dimensions: Option<[f64; 3]>,
+    /// A non-box body instead of the box (full checkpoint only).
+    #[serde(default)]
+    source: Option<Source>,
     radius: f64,
     xsect: u32,
     continuity: u32,
     thumbweight: f64,
+    /// Selected edges by index into `GetEdges`; empty with `all_edges`.
+    #[serde(default)]
     edges: Vec<usize>,
+    /// Select every edge of the body (non-box sources only).
+    #[serde(default)]
+    all_edges: bool,
 }
 impl RealSolid {
-    fn wire(&self) -> Vec<f64> {
-        let mut out = self.dimensions.to_vec();
-        out.extend([
+    fn fillet_wire(&self) -> Vec<f64> {
+        let mut out = vec![
             self.radius,
             f64::from(self.xsect),
             f64::from(self.continuity),
             self.thumbweight,
             self.edges.len() as f64,
-        ]);
+        ];
         out.extend(self.edges.iter().map(|v| *v as f64));
+        out
+    }
+    /// The box wire: dimensions then the fillet wire.
+    fn wire(&self) -> Vec<f64> {
+        let mut out = self.dimensions.unwrap_or_default().to_vec();
+        out.extend(self.fillet_wire());
+        out
+    }
+    /// The source wire of [`ffi::real_source`]: kind, parameters, fillet wire.
+    fn source_wire(&self, source: &Source) -> Vec<f64> {
+        let (kind, params) = source.wire();
+        let mut out = vec![kind];
+        out.extend(params);
+        out.extend(self.fillet_wire());
+        out
+    }
+    /// Rejects mixed or incomplete forms (a box needs `dimensions`; a source no
+    /// `dimensions`, the full checkpoint, and exactly one of `edges` / `all_edges`).
+    fn check_form(&self) -> Result<(), HarnessError> {
+        match (&self.source, self.dimensions) {
+            (None, Some(_)) if !self.all_edges => Ok(()),
+            (Some(_), None)
+                if self.checkpoint == Checkpoint::Full
+                    && self.all_edges == self.edges.is_empty() =>
+            {
+                Ok(())
+            }
+            _ => Err(HarnessError::new("invalid real-solid form")),
+        }
+    }
+}
+
+/// `TestSmSurfaceSurfaceFillet`'s set-up: `SmApiSurfaceSurfaceFillet` on two
+/// `SmApiCreateSurfaceFromCornerPoints` surfaces.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct SurfaceSurface {
+    /// First surface corners `u0v0, u1v0, u0v1, u1v1`.
+    first: [[f64; 3]; 4],
+    /// Second surface corners.
+    second: [[f64; 3]; 4],
+    radius1: f64,
+    radius2: f64,
+    tolerance: f64,
+    xsect: u32,
+    mirror: bool,
+    complement: bool,
+}
+impl SurfaceSurface {
+    fn wire(&self) -> Vec<f64> {
+        let mut out: Vec<f64> = self.first.iter().chain(&self.second).flatten().copied().collect();
+        out.extend([
+            self.radius1,
+            self.radius2,
+            self.tolerance,
+            f64::from(self.xsect),
+            f64::from(u8::from(self.mirror)),
+            f64::from(u8::from(self.complement)),
+        ]);
         out
     }
 }
@@ -167,6 +319,12 @@ fn output(mut values: &[f64]) -> Result<Output, HarnessError> {
 }
 
 pub(super) fn cpp(input: &RealSolid) -> Result<Output, HarnessError> {
+    input.check_form()?;
+    if let Some(source) = &input.source {
+        let values = ffi::real_source(&input.source_wire(source), source.path())
+            .map_err(|e| HarnessError::new(e.to_string()))?;
+        return output(&values);
+    }
     if input.checkpoint != Checkpoint::Full {
         return prefix::cpp(input);
     }
@@ -249,14 +407,42 @@ fn topology(b: &Brep, out: &mut Vec<f64>) -> SolidResult<()> {
     }
     Ok(())
 }
-fn run_rust(input: &RealSolid) -> SolidResult<Vec<f64>> {
-    let mut k = Kernel::default();
-    let [x, y, z] = input.dimensions;
-    let mut body = solidcore::primitive::api_primitives::create_box(&mut k, Vec3::ZERO, x, y, z)?;
+/// The Rust body of `input`'s source (the box by default).
+fn build(k: &mut Kernel, input: &RealSolid) -> Result<SolidResult<Brep>, HarnessError> {
+    use solidcore::primitive::api_primitives as primitives;
+    let boxed = |k: &mut Kernel, b: &BoxSpec| {
+        let [x, y, z] = b.size;
+        primitives::create_box(k, Vec3::from(b.origin), x, y, z)
+    };
+    Ok(match &input.source {
+        None => {
+            let [x, y, z] = input.dimensions.unwrap_or_default();
+            primitives::create_box(k, Vec3::ZERO, x, y, z)
+        }
+        Some(Source::File { path }) => Ok(crate::units::topology_brep_p1::import_file(path, false)?),
+        Some(Source::Cylinder {
+            origin,
+            radius,
+            height,
+        }) => primitives::create_cylinder(k, Vec3::from(*origin), *radius, *height),
+        Some(Source::BoxUnion { a, b }) => boxed(k, a).and_then(|first| {
+            let second = boxed(k, b)?;
+            solidcore::boolean::api_brep::boolean_union(k, first, second)
+        }),
+        Some(Source::BoxDifference { a, b }) => boxed(k, a).and_then(|first| {
+            let second = boxed(k, b)?;
+            solidcore::boolean::api_brep::boolean_difference(k, first, second)
+        }),
+    })
+}
+fn run_rust(mut k: Kernel, body: SolidResult<Brep>, input: &RealSolid) -> SolidResult<Vec<f64>> {
+    let mut body = body?;
     let edges = p1::edges(&body, None)?;
     let mut selected = Vec::<EdgeId>::new();
     let mut before = Vec::new();
-    for &index in &input.edges {
+    let all: Vec<usize> = (0..edges.len()).collect();
+    let indices = if input.all_edges { &all } else { &input.edges };
+    for &index in indices {
         let id = *edges.get(index).ok_or_else(|| {
             SolidError::invalid_input("harness::real_fillet", "selected edge out of range")
         })?;
@@ -419,8 +605,15 @@ pub(super) fn upstream_example(example: usize) -> Result<Option<Output>, Harness
     }
 }
 pub(super) fn rust(input: &RealSolid) -> Result<Output, HarnessError> {
-    ffi::validate_real_solid(&input.wire()).map_err(|e| HarnessError::new(e.to_string()))?;
-    match run_rust(input) {
+    input.check_form()?;
+    match &input.source {
+        Some(source) => ffi::validate_real_source(&input.source_wire(source), source.path().is_some()),
+        None => ffi::validate_real_solid(&input.wire()),
+    }
+    .map_err(|e| HarnessError::new(e.to_string()))?;
+    let mut k = Kernel::default();
+    let body = build(&mut k, input)?;
+    match run_rust(k, body, input) {
         Ok(values) => {
             if input.checkpoint == Checkpoint::Full {
                 output(&values)
@@ -432,6 +625,73 @@ pub(super) fn rust(input: &RealSolid) -> Result<Output, HarnessError> {
             Some(deferred) => Ok(deferred),
             None => Err(HarnessError::new(error.to_string())),
         },
+    }
+}
+
+/// The C++ record of [`SurfaceSurface`]: `api_status`, then for a result B-rep its
+/// counts, topology and geometry.
+pub(super) fn surface_surface_cpp(input: &SurfaceSurface) -> Result<Output, HarnessError> {
+    let values =
+        ffi::surface_surface(&input.wire()).map_err(|e| HarnessError::new(e.to_string()))?;
+    surface_surface_output(&values)
+}
+fn surface_surface_output(values: &[f64]) -> Result<Output, HarnessError> {
+    let (&status, mut rest) = values
+        .split_first()
+        .ok_or_else(|| HarnessError::new("missing status"))?;
+    let mut out = Output::new();
+    let mut head = vec![status];
+    if !rest.is_empty() {
+        head.extend(rest.get(..3).ok_or_else(|| HarnessError::new("missing counts"))?);
+        rest = rest.get(3..).unwrap_or_default();
+        let topology = take_section(&mut rest)?;
+        if topology.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+            return Err(HarnessError::new("invalid topology record"));
+        }
+        out.ints.insert(
+            "result_topology".into(),
+            topology.iter().map(|v| *v as i64).collect(),
+        );
+        out.values
+            .insert("result_geometry".into(), take_section(&mut rest)?.to_vec());
+        if !rest.is_empty() {
+            return Err(HarnessError::new("trailing surface-surface record"));
+        }
+    }
+    if head.iter().any(|v| !v.is_finite() || v.fract() != 0.0) {
+        return Err(HarnessError::new("invalid status/counts"));
+    }
+    out.ints.insert(
+        "api_status_vertex_edge_face_counts".into(),
+        head.iter().map(|v| *v as i64).collect(),
+    );
+    Ok(out)
+}
+/// The Rust side of [`SurfaceSurface`]: both surfaces are built as the shim builds
+/// them; the public entry point is not ported yet.
+pub(super) fn surface_surface_rust(input: &SurfaceSurface) -> Result<Output, HarnessError> {
+    ffi::validate_surface_surface(&input.wire()).map_err(|e| HarnessError::new(e.to_string()))?;
+    let run = || -> SolidResult<()> {
+        let surface = |c: &[[f64; 3]; 4]| {
+            solidcore::nurbs::b_spline_surface::BSplineSurface::create_bilinear_surface(
+                Vec3::from(c[0]),
+                Vec3::from(c[1]),
+                Vec3::from(c[2]),
+                Vec3::from(c[3]),
+            )
+        };
+        let _first = surface(&input.first)?;
+        let _second = surface(&input.second)?;
+        // UNPORTED(blend.fillet_executive_p1): SmApiSurfaceSurfaceFillet
+        Err(SolidError::Unported {
+            upstream: "SmApiSurfaceSurfaceFillet",
+            unit: "blend.fillet_executive_p1",
+        })
+    };
+    match run() {
+        Ok(()) => Err(HarnessError::new("surface-surface fillet has no Rust record")),
+        Err(error) => Output::unported(&error)
+            .ok_or_else(|| HarnessError::new(error.to_string())),
     }
 }
 
