@@ -769,7 +769,7 @@ mod tests {
             match parse(input.as_bytes(), &lim) {
                 Ok(_) => accepted.push(name),
                 Err(error) => {
-                    assert_eq!(error.message, "parameter lists nested too deeply", "{name}")
+                    assert_eq!(error.message, "parameter lists nested too deeply", "{name}");
                 }
             }
         }
