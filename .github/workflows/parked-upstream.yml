@@ -1,0 +1,219 @@
+name: Parked cases vs upstream latest
+
+# Outside the difftest gate. A known-mismatch entry with `cpp_defect` is parked: the gate
+# does not run it (crates/difftest/README.md, "Known mismatches and parked C++ defects").
+#
+# `watch` runs nightly and only asks upstream usd-brep for its tags and HEAD
+# (`git ls-remote`): no checkout, no cargo, no C++. When that state is the one already
+# seen it stops there. Only when upstream changed (or on workflow_dispatch) does `parked`
+# build the C++ reference from upstream's HEAD with harness/cpp/build.sh, run
+# `difftest --run-parked` on every unit with a parked case, and open or update the one
+# tracking issue, "usd-brep <tag> released: N parked cases now agree, adopt?" (or
+# "... none changed"), written by scripts/ci/parked_upstream.py. It then records the
+# new state as seen.
+#
+# The last-seen state is an actions/cache entry keyed by the hash of the ls-remote output
+# (GITHUB_TOKEN cannot write repository variables, and a state branch would need
+# contents: write). `watch` looks it up every night, which keeps the entry from expiring;
+# if it ever is evicted, the next night simply re-runs once.
+#
+# Licence: harness/cpp builds only the SMLib and SM_API sources (AGENTS.md section 1);
+# nothing here builds an OCCT or USD target. The only credential is GITHUB_TOKEN, limited
+# to reading the repository and writing issues.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: parked-upstream
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Must match ci.yml (the repository only; the commit is upstream's HEAD here).
+  UPSTREAM_REPO: https://github.com/NVIDIA-Omniverse/usd-brep
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.decide.outputs.changed }}
+      key: ${{ steps.state.outputs.key }}
+      ref: ${{ steps.state.outputs.ref }}
+      sha: ${{ steps.state.outputs.sha }}
+    steps:
+      - name: Upstream tags and HEAD
+        id: state
+        run: |
+          mkdir -p "$RUNNER_TEMP/seen"
+          { git ls-remote --tags "$UPSTREAM_REPO"; git ls-remote "$UPSTREAM_REPO" HEAD; } \
+            | sort > "$RUNNER_TEMP/seen/state.txt"
+          sha=$(awk '$2 == "HEAD" { print $1 }' "$RUNNER_TEMP/seen/state.txt")
+          test -n "$sha"
+          # The newest tag (version order); HEAD's short commit when there is none.
+          tag=$(awk '{ print $2 }' "$RUNNER_TEMP/seen/state.txt" | grep '^refs/tags/' \
+            | sed -e 's#^refs/tags/##' -e 's#\^{}$##' | sort -uV | tail -n 1)
+          echo "key=parked-upstream-seen-$(sha256sum "$RUNNER_TEMP/seen/state.txt" | cut -c1-64)" >> "$GITHUB_OUTPUT"
+          echo "ref=${tag:-${sha:0:9}}" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/seen/state.txt"
+
+      - name: Seen before?
+        id: seen
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/seen
+          key: ${{ steps.state.outputs.key }}
+          lookup-only: true
+
+      - name: Decide
+        id: decide
+        env:
+          HIT: ${{ steps.seen.outputs.cache-hit }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ] || [ "$HIT" != true ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "upstream changed (or manual run): building"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "upstream unchanged since the last run: nothing to do"
+          fi
+
+  parked:
+    needs: watch
+    if: needs.watch.outputs.changed == 'true'
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 120
+    env:
+      SOLIDCORE_CPP_DIR: ${{ github.workspace }}/.cpp-latest
+      UPSTREAM_REF: ${{ needs.watch.outputs.ref }}
+      UPSTREAM_SHA: ${{ needs.watch.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Units with parked cases
+        id: units
+        run: |
+          units=$(python3 scripts/ci/parked_upstream.py units | tr '\n' ' ')
+          echo "units=$units" >> "$GITHUB_OUTPUT"
+          echo "parked units: ${units:-none}"
+
+      - name: Clone upstream at the watched HEAD
+        if: steps.units.outputs.units != ''
+        run: |
+          git init upstream
+          git -C upstream remote add origin "$UPSTREAM_REPO"
+          git -C upstream fetch --depth 1 origin "$UPSTREAM_SHA" || git -C upstream fetch origin
+          git -C upstream checkout --detach "$UPSTREAM_SHA"
+
+      # Same sccache setup as .github/actions/cpp-reference: it caches the solidcore-ffi
+      # shim objects and workspace crates across runs.
+      - name: Set up sccache
+        if: steps.units.outputs.units != ''
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Enable sccache
+        if: steps.units.outputs.units != ''
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_IDLE_TIMEOUT=0" >> "$GITHUB_ENV"
+
+      # The C++ reference built from that commit, cached under it and the harness files
+      # (as scripts/cpp-ref-key.sh keys the pinned build).
+      - name: Restore the latest-upstream C++ reference
+        if: steps.units.outputs.units != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: .cpp-latest
+          key: cpp-latest-v1-${{ runner.os }}-${{ env.UPSTREAM_SHA }}-${{ hashFiles('harness/cpp/CMakeLists.txt', 'harness/cpp/build.sh', 'harness/cpp/stubs/**', 'harness/cpp/patches/**') }}
+
+      - name: Build the C++ reference from upstream's HEAD
+        if: steps.units.outputs.units != ''
+        id: cpp
+        run: |
+          if [ -f "$SOLIDCORE_CPP_DIR/lib/libSMLib.a" ] && [ -f "$SOLIDCORE_CPP_DIR/lib/libSM_API.a" ]; then
+            echo "C++ reference restored from cache"
+            exit 0
+          fi
+          sudo apt-get update && sudo apt-get install -y ninja-build cmake g++
+          harness/cpp/build.sh --no-tests --jobs "$(nproc)"
+          echo "built=true" >> "$GITHUB_OUTPUT"
+
+      - name: Save the latest-upstream C++ reference
+        if: steps.cpp.outputs.built == 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: .cpp-latest
+          key: cpp-latest-v1-${{ runner.os }}-${{ env.UPSTREAM_SHA }}-${{ hashFiles('harness/cpp/CMakeLists.txt', 'harness/cpp/build.sh', 'harness/cpp/stubs/**', 'harness/cpp/patches/**') }}
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.units.outputs.units != ''
+        with:
+          workspaces: ". -> bin"
+          key: difftest
+
+      - name: Build difftest
+        if: steps.units.outputs.units != ''
+        run: cargo build --profile difftest -p difftest --features cpp
+
+      # Each unit separately so one failure does not hide the others; the exit status is
+      # ignored (a parked case that agrees is the news, and the reports carry it).
+      - name: Run the parked cases
+        if: steps.units.outputs.units != ''
+        env:
+          UNITS: ${{ steps.units.outputs.units }}
+        run: |
+          for u in $UNITS; do
+            bin/difftest/difftest --unit "$u" --run-parked --report-dir bin/parked || true
+          done
+
+      - name: Open or update the tracking issue
+        if: steps.units.outputs.units != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/ci/parked_upstream.py issue --report-dir bin/parked \
+            --upstream-ref "$UPSTREAM_REF" --upstream-sha "$UPSTREAM_SHA" \
+            --title-out "$RUNNER_TEMP/title.txt" --body-out "$RUNNER_TEMP/body.md"
+          title=$(cat "$RUNNER_TEMP/title.txt")
+          { echo "## $title"; echo; cat "$RUNNER_TEMP/body.md"; } >> "$GITHUB_STEP_SUMMARY"
+          number=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "usd-brep released in:title" \
+            --json number,title \
+            --jq 'map(select((.title | startswith("usd-brep ")) and (.title | contains(" released: ")))) | .[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue edit "$number" -R "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh issue create -R "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          fi
+
+  # Record the upstream state as seen only once its run completed, so a failed build is
+  # retried the next night.
+  seen:
+    needs: [watch, parked]
+    if: needs.watch.outputs.changed == 'true' && needs.parked.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record the state
+        env:
+          SHA: ${{ needs.watch.outputs.sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/seen"
+          echo "$SHA" > "$RUNNER_TEMP/seen/sha.txt"
+
+      - name: Save the seen state
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/seen
+          key: ${{ needs.watch.outputs.key }}
