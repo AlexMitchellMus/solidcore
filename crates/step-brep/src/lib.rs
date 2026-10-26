@@ -37,6 +37,7 @@ use solidcore::topology::brep::p2::ArenaNotifyState;
 use solidcore::topology::brep::p3;
 use solidcore::topology::brep::p8::{create_faces_with_curves, FaceBuildEnv};
 use solidcore::topology::topology_traverser::Marks;
+use solidcore::topology::trimming_tools;
 use solidcore::topology::{Brep, FaceId};
 use solidcore::{EntityRef, SolidError};
 use step_import::model::{self as sm, Body, Bound};
@@ -349,6 +350,33 @@ pub fn build_with_options(body: &Body, options: BuildOptions) -> Result<Brep, Bu
         api_heal_brep(&mut kernel, Some(&mut brep))?;
     }
     Ok(brep)
+}
+
+/// Whether every face has a UV trim curve (its own or its mate's).
+pub fn has_uv_trims(brep: &Brep) -> Result<bool, BuildError> {
+    for &face in brep.face_list() {
+        if !trimming_tools::face_uv_curves_present(brep, face)? {
+            return Ok(false);
+        }
+    }
+    Ok(!brep.face_list().is_empty())
+}
+
+/// Rejects a B-rep that is not display-ready: missing UV trims would make the
+/// tessellator fill the face's whole parameter domain and produce overlapping
+/// "flat rectangle" geometry.
+pub fn validate_for_display(brep: &Brep) -> Result<(), BuildError> {
+    if brep.face_list().is_empty() {
+        return Err(BuildError {
+            message: "B-rep has no faces".into(),
+        });
+    }
+    if !has_uv_trims(brep)? {
+        return Err(BuildError {
+            message: "B-rep has faces without UV trim curves".into(),
+        });
+    }
+    Ok(())
 }
 
 /// Parses STEP bytes and builds every body.
