@@ -153,6 +153,8 @@ pub struct UpstreamFixes {
     pub fillet_refuse_rails_leaving_faces: bool,
     /// `create_fillet_brep` refuses blends that take the whole of a face they roll on (`FacesOutlastTheirBlends`, no room) (WR-320, #879).
     pub fillet_refuse_face_consuming_blends: bool,
+    /// `DoFillet` refuses a filleted target that is not a closed manifold solid (an edge that is not `SmEdge::IsManifold`) with `SM_FILERR_BAD_MERGE`, where upstream returns success (WR-212, #422).
+    pub fillet_refuse_non_manifold_result: bool,
     /// The fillet solver tries the corner ball's patch after the torus when a round's centre line collapses to a point (WR-420, #416).
     pub fillet_corner_ball_patch: bool,
     /// `CalcTorusFilletGeom` revolves a linear section into a cone (WR-421, #420).
@@ -247,6 +249,8 @@ pub struct UpstreamFixes {
     pub sheet_sweep_joins_profile_wires: bool,
     /// `SmFilletVertex::CalcSetBackVert` measures a corner setback from the vertex `GetStartVertex()` marks over the edge's own interval, not from `GetVertex()` over the curve's natural interval, so an edge whose primary edge use runs against its curve is not measured from its far end (WR-445, #1169).
     pub fillet_setback_from_start_vertex: bool,
+    /// `SmBSplineSurface::CopyAndAddAnalytics` keeps an exact copy where the recognised analytic surface does not give the same points at the same parameters (7 x 7 grid), so a face split by `MakeEdgeInFaceWithVU` keeps trims that still lie on its edges (WR-450, #387; the fork's tangency-labs/smlib@276b509).
+    pub analytic_copy_keeps_parameterization: bool,
 }
 
 /// Options for [`Kernel::new`].
