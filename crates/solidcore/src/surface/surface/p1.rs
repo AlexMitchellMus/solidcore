@@ -126,6 +126,8 @@
 //! - **`SmDropCurveFail` copy constructor.** [`DropCurveFail::copy_of`]; the derived
 //!   `Clone` also copies the UV curves of a record without context.
 
+use std::borrow::Cow;
+
 use crate::curve::curve::p2::CurvePropertyType;
 use crate::curve::curve::p7::PropertyAnalysisOptions;
 use crate::curve::curve::{Curve, CurveKind};
@@ -1564,7 +1566,9 @@ impl Surface {
                 flags.v_side == Side::Left,
                 flags.only_upper_half,
             ),
-            SurfaceKind::SurfOfExtrusion(s) => s.base().evaluate_simple(
+            // (`GetNaturalUVDomain` and the NLib call read `GetOrCreateGwNurbPointer`'s
+            // NURB: a recognised extrusion has none until then)
+            SurfaceKind::SurfOfExtrusion(s) => s.base_with_nurb(k)?.evaluate_simple(
                 uv,
                 highest_u_deriv,
                 highest_v_deriv,
@@ -1640,12 +1644,14 @@ impl Surface {
         d: &mut [[Vec3; 2]; 2],
     ) -> Result<()> {
         let base = match self.kind() {
-            SurfaceKind::BSpline(s) => Some(s),
-            SurfaceKind::Cone(s) => Some(s.rev().base()),
-            SurfaceKind::SurfOfRevolution(s) => Some(s.base()),
-            SurfaceKind::SurfOfExtrusion(s) => Some(s.base()),
-            SurfaceKind::Sphere(s) => Some(s.base().base()),
-            SurfaceKind::Torus(s) => Some(s.base().base()),
+            SurfaceKind::BSpline(s) => Some(Cow::Borrowed(s)),
+            SurfaceKind::Cone(s) => Some(Cow::Borrowed(s.rev().base())),
+            SurfaceKind::SurfOfRevolution(s) => Some(Cow::Borrowed(s.base())),
+            // (the lazy NURB of a recognised extrusion, as `EvaluateSimple`'s
+            // `GetOrCreateGwNurbPointer` makes it)
+            SurfaceKind::SurfOfExtrusion(s) => Some(s.base_with_nurb(k)?),
+            SurfaceKind::Sphere(s) => Some(Cow::Borrowed(s.base().base())),
+            SurfaceKind::Torus(s) => Some(Cow::Borrowed(s.base().base())),
             SurfaceKind::Plane(_)
             | SurfaceKind::CurveBounded(_)
             | SurfaceKind::OffsetSurface(_)
@@ -2026,10 +2032,10 @@ impl Surface {
                         s.base()
                             .calculate_bounding_box_of(k, uv_domain, &req, Some(self))?
                     }
-                    SurfaceKind::SurfOfExtrusion(s) => {
-                        s.base()
-                            .calculate_bounding_box_of(k, uv_domain, &req, Some(self))?
-                    }
+                    // (`GetOrCreateGwNurbPointer` makes a recognised extrusion's NURB)
+                    SurfaceKind::SurfOfExtrusion(s) => s
+                        .base_with_nurb(k)?
+                        .calculate_bounding_box_of(k, uv_domain, &req, Some(self))?,
                     SurfaceKind::Plane(p) => plane_bounding_box(k, p, uv_domain, &req)?,
                     _ => unreachable_kind()?,
                 };
@@ -2481,7 +2487,11 @@ impl Surface {
                 }
             }
             SurfaceKind::SurfOfRevolution(s) => s.base().is_degenerate_point(k, tol_3d, uv_domain),
-            SurfaceKind::SurfOfExtrusion(s) => s.base().is_degenerate_point(k, tol_3d, uv_domain),
+            // (`GetNaturalUVDomain` or the explicit `MakeNurb` make a recognised
+            // extrusion's NURB first)
+            SurfaceKind::SurfOfExtrusion(s) => s
+                .base_with_nurb(k)?
+                .is_degenerate_point(k, tol_3d, uv_domain),
             SurfaceKind::Sphere(s) => s.base().base().is_degenerate_point(k, tol_3d, uv_domain),
             SurfaceKind::Torus(s) => s.base().base().is_degenerate_point(k, tol_3d, uv_domain),
             SurfaceKind::Plane(p) => p.base_for_query().is_degenerate_point(k, tol_3d, uv_domain),
@@ -2515,8 +2525,10 @@ impl Surface {
                 s.base()
                     .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
             }
+            // (the base body's `GetNaturalUVDomain` and evaluations make a recognised
+            // extrusion's NURB)
             SurfaceKind::SurfOfExtrusion(s) => {
-                s.base()
+                s.base_with_nurb(k)?
                     .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
             }
             SurfaceKind::Sphere(s) => {

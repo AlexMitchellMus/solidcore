@@ -896,9 +896,12 @@ impl Surface {
                 Ok(planar_of(k, s.base(), &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
             }
             // (and SmSurfOfExtrusion)
+            // (`CalculateBoundingBox`'s `GetOrCreateGwNurbPointer` makes a recognised
+            // extrusion's NURB)
             SurfaceKind::SurfOfExtrusion(s) => {
                 let face_tol = self.face_zone_tol_3d()?;
-                Ok(planar_of(k, s.base(), &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
+                let base = s.base_with_nurb(k)?;
+                Ok(planar_of(k, &base, &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
             }
             // SmSurface body: use the virtual box and ignore ordinary failures,
             // which leave the default pseudo box. The kernel is available here.
