@@ -2747,6 +2747,64 @@ mod tests {
         );
     }
 
+    /// The setback walks the edge's own interval, not its curve's natural interval (WR-445,
+    /// #1169): each box edge's curve is replaced by a line running 10 past both its ends, the
+    /// edge keeping the middle part as its interval. Upstream walks from the natural interval's
+    /// start, 10 outside the edge, from either end.
+    #[test]
+    fn a_setback_walks_the_edges_own_interval_with_the_fix() {
+        let mut k = Kernel::default();
+        let mut target =
+            crate::primitive::api_primitives::create_box(&mut k, Point3::ZERO, 60.0, 40.0, 20.0)
+                .unwrap();
+        let (dist, past) = (8.0, 10.0);
+        let edges = crate::topology::brep::p1::edges(&target, None).unwrap();
+        for &e in &edges {
+            let (start, end) = edge::start_end_vertices(&target, e).unwrap();
+            let a = vertex::point(&target, start.unwrap()).unwrap();
+            let b = vertex::point(&target, end.unwrap()).unwrap();
+            let len = a.distance(b);
+            let dir = (b - a) * (1.0 / len);
+            let line = Curve::from(crate::curve::line::Line::from_points(
+                a - dir * past,
+                b + dir * past,
+                3,
+            ));
+            let total = len + 2.0 * past;
+            let data = target.edge_mut(e).unwrap();
+            data.curve = Some(line);
+            data.interval = Extent1d::from_min_max(past / total, (past + len) / total);
+        }
+        let errors = |k: &Kernel| {
+            let mut out = Vec::new();
+            for &e in &edges {
+                let natural = edge::curve(&target, e).unwrap().unwrap().natural_interval();
+                let own = edge::interval(&target, e).unwrap();
+                assert!(
+                    own.min() > natural.min() && own.max() < natural.max(),
+                    "{own:?} in {natural:?}"
+                );
+                let (start, end) = edge::start_end_vertices(&target, e).unwrap();
+                for (cp, other) in [(start, end), (end, start)] {
+                    let cp_pt = vertex::point(&target, cp.unwrap()).unwrap();
+                    let other_pt = vertex::point(&target, other.unwrap()).unwrap();
+                    let expected = cp_pt + (other_pt - cp_pt) * (dist / cp_pt.distance(other_pt));
+                    let (orig, _) = set_back_frame(k, &target, e, cp, dist, "test").unwrap();
+                    out.push(orig.distance(expected));
+                }
+            }
+            out
+        };
+
+        // upstream: from either end the walk starts outside the edge
+        let upstream = errors(&k);
+        assert!(upstream.iter().all(|&err| err > 1.0), "{upstream:?}");
+
+        k.fixes.fillet_setback_from_start_vertex = true;
+        let fixed = errors(&k);
+        assert!(fixed.iter().all(|&err| err < 1e-9), "{fixed:?}");
+    }
+
     #[test]
     fn vertex_calculators_need_a_corner() {
         let k = Kernel::default();
