@@ -266,6 +266,10 @@ impl SurfPtGlobalSolver<'_> {
         let (mut best_idx_u, mut best_idx_v) = best_idx;
         let mut uv = Point2::UNDEF;
 
+        // The suspicious triangle guess, kept as a candidate with `fixes.point_solve_keeps_triangle_guess`
+        // (WR-444, #1164): the nearest control point found below can be worse.
+        let mut triangle: Option<(Point2, usize, usize)> = None;
+
         // find closest ControlPoint triangle with point closest to target
         let suspicious = match self.find_polygon_triangle_guess((best_idx_u, best_idx_v)) {
             Ok(t) => {
@@ -286,6 +290,12 @@ impl SurfPtGlobalSolver<'_> {
                             suspicious = false;
                         }
                     }
+                }
+                if suspicious
+                    && k.fixes.point_solve_keeps_triangle_guess
+                    && op != SolverOperation::Signed3dDirectedMaximize
+                {
+                    triangle = Some((b.domain().clamp_point(uv), best_idx_u, best_idx_v));
                 }
                 suspicious
             }
@@ -422,8 +432,30 @@ impl SurfPtGlobalSolver<'_> {
             );
         }
 
+        let uv = b.domain().clamp_point(uv);
+
+        // Return the better of the triangle guess and the control-point guess, judged on
+        // the surface itself (`fixes.point_solve_keeps_triangle_guess`, WR-444, #1164).
+        if let Some((tri_uv, tri_u, tri_v)) = triangle {
+            let on_surface = |guess: Point2| match self.calc_func_val(k, guess) {
+                Ok(v) => Ok(Some(v)),
+                Err(e) if e.is_unported() => Err(e),
+                Err(_) => Ok(None),
+            };
+            if let (Some(tri), Some(cpt)) = (on_surface(tri_uv)?, on_surface(uv)?) {
+                if tri < cpt {
+                    return Ok(PolygonGuess {
+                        uv: tri_uv,
+                        best_idx_u: tri_u,
+                        best_idx_v: tri_v,
+                        suspicious,
+                    });
+                }
+            }
+        }
+
         Ok(PolygonGuess {
-            uv: b.domain().clamp_point(uv),
+            uv,
             best_idx_u,
             best_idx_v,
             suspicious,
@@ -2140,6 +2172,117 @@ mod tests {
         );
         let r = g.find_rough_guess(&k).unwrap();
         assert!(r.uv.x > 0.5 && r.uv.y > 0.5);
+    }
+
+    /// A rational strip that doubles back on itself (#1164): two straight runs 5 apart whose
+    /// control points are 16 apart along each run and staggered, so for a point on the lower
+    /// run the nearest control point is on the upper one.
+    const STRIP_PATH: [(f64, f64); 8] = [
+        (0.0, 0.0),
+        (40.0, 8.0),
+        (80.0, 0.0),
+        (90.0, 2.5),
+        (80.0, 5.0),
+        (60.0, 5.0),
+        (20.0, 5.0),
+        (0.0, 5.0),
+    ];
+
+    fn doubled_back_strip() -> Surface {
+        use crate::nurbs::b_spline_curve::p1::KnotType;
+        use crate::nurbs::b_spline_surface::p1::{BSplineSurfaceForm, CanonicalSurfaceData};
+        let path = STRIP_PATH;
+        let weights = [1.0, 1.0, 1.0, 0.7, 1.0, 1.0, 1.0, 1.0];
+        let mut pts = Vec::new();
+        let mut w = Vec::new();
+        for (&(x, z), &wt) in path.iter().zip(&weights) {
+            for y in [0.0, 1.0] {
+                pts.push(Point3::new(x, y, z));
+                w.push(wt);
+            }
+        }
+        Surface::from(
+            BSplineSurface::create_canonical(&CanonicalSurfaceData {
+                u_degree: 2,
+                v_degree: 1,
+                control_points: &pts,
+                form: BSplineSurfaceForm::Unspecified,
+                u_multiplicities: &[3, 1, 1, 1, 1, 1, 3],
+                v_multiplicities: &[2, 2],
+                u_knots: &[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                v_knots: &[0.0, 1.0],
+                knot_type: KnotType::Unspecified,
+                weights: Some(&w),
+                uv_domain: None,
+            })
+            .unwrap(),
+        )
+    }
+
+    #[test]
+    fn a_suspicious_triangle_guess_stays_a_candidate_with_the_fix() {
+        let mut k = Kernel::default();
+        let s = doubled_back_strip();
+        let dom = Extent2d::from_bounds(0.0, 0.0, 6.0, 1.0);
+        // a point of the lower run (z below 3) whose nearest control point is on the upper run
+        // (z = 5), found by scanning the strip's first two spans
+        let nearest_z = |p: Point3| {
+            STRIP_PATH
+                .into_iter()
+                .min_by(|a, b| {
+                    let d = |c: &(f64, f64)| (c.0 - p.x).hypot(c.1 - p.z);
+                    d(a).total_cmp(&d(b))
+                })
+                .unwrap()
+                .1
+        };
+        let target = (1..500)
+            .map(|i| {
+                eval_point(
+                    &k,
+                    &s,
+                    Point2::new(f64::from(i) * 0.005, 0.5),
+                    Point3::UNDEF,
+                )
+                .unwrap()
+            })
+            .find(|p| p.z < 3.0 && (nearest_z(*p) - 5.0).abs() < 1e-9)
+            .expect("a point of the lower run nearest to the upper run's control points");
+
+        let guess_with = |k: &Kernel| {
+            let g = SurfPtGlobalSolver::new(
+                k,
+                &s,
+                &dom,
+                SolverOperation::Minimize,
+                target,
+                1e-6,
+                None,
+                SolutionRequested::Single,
+            )
+            .unwrap();
+            let p = g.find_polygon_guess(k, (0, 0)).unwrap();
+            let on_surface = eval_point(k, &s, p.uv, Point3::UNDEF)
+                .unwrap()
+                .distance(target);
+            (p, on_surface)
+        };
+
+        // upstream: the suspicious triangle guess is dropped for the control point's, which
+        // is on the wrong run
+        let (off, off_dist) = guess_with(&k);
+        assert!(off.suspicious, "{off:?} {off_dist} target {target:?}");
+
+        // with the fix the nearer of the two on the surface is returned
+        k.fixes.point_solve_keeps_triangle_guess = true;
+        let (on, on_dist) = guess_with(&k);
+        assert!(on.suspicious);
+        assert!(on_dist < off_dist, "off {off_dist}, on {on_dist}");
+        assert!(
+            on_dist < 1.0,
+            "the guess is {on_dist} from the point, at {:?}",
+            on.uv
+        );
     }
 
     #[test]
