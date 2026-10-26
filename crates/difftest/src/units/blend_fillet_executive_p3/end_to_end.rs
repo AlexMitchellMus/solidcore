@@ -248,6 +248,12 @@ impl RealSolid {
     /// Rejects mixed or incomplete forms (a box needs `dimensions`; a source no
     /// `dimensions`, the full checkpoint, and exactly one of `edges` / `all_edges`).
     fn check_form(&self) -> Result<(), HarnessError> {
+        if self
+            .corner_setback
+            .is_some_and(|setback| setback.wire().iter().any(|value| !value.is_finite()))
+        {
+            return Err(HarnessError::new("non-finite corner setback fixture"));
+        }
         if self.corner_setback.is_some()
             && (self.checkpoint != Checkpoint::Full
                 || self.source.is_some()
@@ -1100,6 +1106,7 @@ mod tests {
         ] {
             let mut input = setback_input(8.0);
             input.corner_setback = Some(super::CornerSetback { vertex, distance });
+            assert!(input.check_form().is_err());
             assert!(super::cpp(&input).is_err());
             assert!(super::rust(&input).is_err());
         }
