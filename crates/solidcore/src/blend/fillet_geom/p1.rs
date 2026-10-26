@@ -189,7 +189,7 @@ use std::collections::BTreeMap;
 use crate::blend::fillet_classification::FilletClassObject;
 use crate::blend::fillet_corner::p3::{FilletCorner, FilletExecutiveData};
 use crate::blend::fillet_custom_solver::{ConstantRadiusAssistedFs, OffsetSurface};
-use crate::blend::fillet_solver::p1::FilletSolver;
+use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps};
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::Curve;
 use crate::curve::hermite_curve::HermiteCurve;
@@ -3186,8 +3186,8 @@ pub fn adjust_uv_on_seam(
 pub fn create_cubic_rail_rail_interpolant(
     k: &Kernel,
     brep: &mut Brep,
-    fil_solver1: &mut FilletSolver,
-    fil_solver2: &mut FilletSolver,
+    fil_solver1: &mut dyn FilletSolverOps,
+    fil_solver2: &mut dyn FilletSolverOps,
     face: FaceId,
     corner_vert: VertexId,
     start_pnt: Point3,
@@ -3205,16 +3205,20 @@ pub fn create_cubic_rail_rail_interpolant(
             .ok_or_else(|| SolidError::null_pointer(OP))
     };
     // First, calculate the intersection of two rails
-    let rail_index = fil_solver1.find_index_of_rail_on_face(brep, Some(face))?;
-    let other_rail_index = fil_solver2.find_index_of_rail_on_face(brep, Some(face))?;
+    let rail_index = fil_solver1
+        .solver()
+        .find_index_of_rail_on_face(brep, Some(face))?;
+    let other_rail_index = fil_solver2
+        .solver()
+        .find_index_of_rail_on_face(brep, Some(face))?;
     // Derive guess uv point here
-    let mut eu = solver_edgeuse(&*fil_solver1, rail_index)?;
+    let mut eu = solver_edgeuse(fil_solver1.solver(), rail_index)?;
     let eu_vertex = |brep: &Brep, eu: EdgeuseId| -> Result<(VertexuseId, Option<VertexId>)> {
         let vu = eu1::vertexuse(brep, eu)?.ok_or_else(|| SolidError::null_pointer(OP))?;
         Ok((vu, vertexuse_unit::vertex(brep, vu)?))
     };
     if eu_vertex(brep, eu)?.1 != Some(corner_vert) {
-        eu = solver_edgeuse(&*fil_solver2, other_rail_index)?;
+        eu = solver_edgeuse(fil_solver2.solver(), other_rail_index)?;
     }
     let (vu, _) = eu_vertex(brep, eu)?;
     // ComputeUVPoint(sUVGuess) with its default bOKToMakeUVTrimCurve = TRUE; its status

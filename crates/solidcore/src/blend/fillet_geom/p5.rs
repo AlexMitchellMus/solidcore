@@ -91,7 +91,7 @@
 
 use crate::blend::fillet_corner::p3::{ExecutiveErrorObject, FilletCorner};
 use crate::blend::fillet_executive::p3::ErrorInfo;
-use crate::blend::fillet_solver::p1::FilletSolver;
+use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps};
 use crate::curve::curve::p1::{ApproximateCurveOptions, GlobalPointSolveOptions};
 use crate::curve::curve::{Curve, CurveKind};
 use crate::curve::hermite_curve::HermiteCurve;
@@ -387,6 +387,18 @@ pub trait FilletEdgeContext {
     /// # Errors
     /// Missing executive context or actual surface-resolution errors.
     fn extended_surface(&self, corner: &FilletCorner, face: FaceId) -> Result<Option<&Surface>>;
+
+    /// The concrete solvers `id1` and `id2` for a solve that changes them
+    /// (`sm_CreateCubicRailRailInterpolant`'s `RailRailIntersect`), in that order.
+    ///
+    /// # Errors
+    /// Missing or foreign solver identities; [`SolidError::InvalidInput`] when both
+    /// name one solver or the context holds its solvers read-only.
+    fn solver_pair_ops_mut(
+        &mut self,
+        id1: FilletSolverId,
+        id2: FilletSolverId,
+    ) -> Result<(&mut dyn FilletSolverOps, &mut dyn FilletSolverOps)>;
 }
 
 /// A caller's indexed solver table as a [`FilletEdgeContext`]; `op` names the
@@ -404,6 +416,17 @@ impl FilletEdgeContext for IndexedEdgeContext<'_, '_> {
 
     fn extended_surface(&self, corner: &FilletCorner, face: FaceId) -> Result<Option<&Surface>> {
         self.corners.extended_surface(corner, face)
+    }
+
+    fn solver_pair_ops_mut(
+        &mut self,
+        _id1: FilletSolverId,
+        _id2: FilletSolverId,
+    ) -> Result<(&mut dyn FilletSolverOps, &mut dyn FilletSolverOps)> {
+        Err(SolidError::invalid_input(
+            self.op,
+            "indexed edge context holds its solvers read-only",
+        ))
     }
 }
 

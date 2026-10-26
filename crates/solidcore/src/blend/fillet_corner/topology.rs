@@ -13,6 +13,7 @@
 //! | [`FilletCorner::make_nx1_closed_corner_topology`] ([`closed_nx1`]) | `SmFilletNx1ClosedCorner::MakeCornerTopology` |
 //! | [`FilletCorner::make_3x2_mixed_corner_topology`] ([`mixed_3x2`]) | `SmFillet3x2MixedConvexityCorner::MakeCornerTopology` |
 //! | `make_4x2_concave_corner_topology` (crate, `concave_4x2`) | `SmFilletNx2Corner::Make4x2ConcaveCornerTopology` |
+//! | 1x1, 2x2, 4x3, open and degenerate corners ([`end_corners`]) | `SmFillet1x1Corner`, `SmFillet2x2Corner`, `SmFillet4x3Corner`, `SmFilletOpenCorner`, `SmFilletDegenerateCorner` `::MakeCornerTopology` |
 //!
 //! Deviations: the caller lends the actual target, pseudo-B-rep and solver.
 //! Missing topology that native dereferences is an input error. The Nx1 end rib,
@@ -28,6 +29,7 @@
 pub mod closed_nx1;
 mod concave_4x2;
 pub mod concave_nxn;
+pub mod end_corners;
 pub mod mixed_3x2;
 
 use crate::blend::fillet_corner::p1::{

@@ -566,7 +566,7 @@ impl FilletBrep {
         k: &Kernel,
         e: EdgeId,
         corners: CornerLookup<'_>,
-        context: &impl super::p5::FilletEdgeContext,
+        context: &mut impl super::p5::FilletEdgeContext,
         target: &mut Brep,
     ) -> Result<()> {
         self.calc_corner_edge_geom_with_context_and_error_info(k, e, corners, context, target, None)
@@ -582,7 +582,7 @@ impl FilletBrep {
         k: &Kernel,
         e: EdgeId,
         corners: CornerLookup<'_>,
-        context: &impl super::p5::FilletEdgeContext,
+        context: &mut impl super::p5::FilletEdgeContext,
         target: &mut Brep,
         error_info: Option<&mut ErrorInfo<ExecutiveErrorObject>>,
     ) -> Result<()> {
@@ -626,7 +626,7 @@ impl FilletBrep {
                     e,
                     Some(corner),
                     corners,
-                    context,
+                    &mut *context,
                     target,
                 ),
             FilletEdgeType::OnExtendEdge => self.calc_edge_on_extended_edge_with_context(
