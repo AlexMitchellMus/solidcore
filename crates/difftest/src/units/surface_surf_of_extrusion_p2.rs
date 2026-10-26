@@ -1050,7 +1050,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
                         o.extend([0.0, 1.0, flag(had)]);
                         if let Some(q) = query {
                             if let Err(d) = rust_query(&k, &Surface::from(s), q, &mut o) {
-                                return Ok(d);
+                                return Ok(*d);
                             }
                             return to_output(&o);
                         }
@@ -1095,10 +1095,10 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
     to_output(&o)
 }
 
-/// A query's status and outputs (layouts in the FFI docs); `Err` with the deferred output
+/// A query's status and outputs (layouts in the FFI docs); `Err` with the (boxed) deferred output
 /// for an unported callee.
-fn rust_query(k: &Kernel, s: &Surface, q: &QueryIn, o: &mut Vec<f64>) -> Result<(), Output> {
-    fn st<T>(o: &mut Vec<f64>, r: solidcore::Result<T>) -> Result<Option<T>, Output> {
+fn rust_query(k: &Kernel, s: &Surface, q: &QueryIn, o: &mut Vec<f64>) -> Result<(), Box<Output>> {
+    fn st<T>(o: &mut Vec<f64>, r: solidcore::Result<T>) -> Result<Option<T>, Box<Output>> {
         match r {
             Ok(v) => {
                 o.push(0.0);
@@ -1106,19 +1106,19 @@ fn rust_query(k: &Kernel, s: &Surface, q: &QueryIn, o: &mut Vec<f64>) -> Result<
             }
             Err(e) => {
                 if let Some(d) = Output::unported(&e) {
-                    return Err(d);
+                    return Err(Box::new(d));
                 }
                 o.push(status(&e));
                 Ok(None)
             }
         }
     }
-    fn truth(o: &mut Vec<f64>, r: solidcore::Result<bool>) -> Result<(), Output> {
+    fn truth(o: &mut Vec<f64>, r: solidcore::Result<bool>) -> Result<(), Box<Output>> {
         match r {
             Ok(b) => o.push(flag(b)),
             Err(e) => {
                 if let Some(d) = Output::unported(&e) {
-                    return Err(d);
+                    return Err(Box::new(d));
                 }
                 o.push(-1.0);
             }
@@ -1220,7 +1220,7 @@ fn rust_query(k: &Kernel, s: &Surface, q: &QueryIn, o: &mut Vec<f64>) -> Result<
             }
             Err(e) => {
                 if let Some(d) = Output::unported(&e) {
-                    return Err(d);
+                    return Err(Box::new(d));
                 }
                 o.push(-1.0);
             }
