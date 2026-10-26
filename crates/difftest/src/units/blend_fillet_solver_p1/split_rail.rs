@@ -8,7 +8,7 @@ use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::context::NotifyCallback;
 use solidcore::geom::object::{NotifyOperation, ObjectRef};
 use solidcore::math::Vec3;
-use solidcore::topology::{brep::p3, edge};
+use solidcore::topology::{brep::p3, edge, vertex};
 use solidcore::EntityRef;
 use solidcore::Kernel;
 use std::collections::BTreeMap;
@@ -70,7 +70,7 @@ fn output(flat: &[f64]) -> Result<Output, HarnessError> {
         )
         .and_then(|n| n.checked_add(12))
         .ok_or_else(|| harness("record overflow"))?;
-    if flat.len() != boundary + 15 {
+    if flat.len() != boundary + 24 {
         return Err(harness("invalid split record length"));
     }
     let mut exact = Vec::new();
@@ -80,8 +80,8 @@ fn output(flat: &[f64]) -> Result<Output, HarnessError> {
         }
         exact.push(value as i64);
     }
-    let mut values = flat[boundary..boundary + 3].to_vec();
-    for chunk in flat[boundary + 3..].chunks_exact(4) {
+    let mut values = flat[boundary..boundary + 12].to_vec();
+    for chunk in flat[boundary + 12..].chunks_exact(4) {
         if chunk[0] != 0.0 {
             return Err(harness("split curve sample failed"));
         }
@@ -110,7 +110,7 @@ pub(super) fn rust() -> Result<Output, HarnessError> {
         let rail = pseudo.make_fillet_edge(Some(vertices[0]), Some(vertices[1]), None)?;
         let line = Curve::from(Line::from_points(Vec3::ZERO, Vec3::X, 3));
         pseudo.brep_mut().edge_mut(rail)?.curve = Some(line);
-        pseudo.brep_mut().edge_mut(rail)?.tolerance = 0.125;
+        edge::set_tolerance(pseudo.brep_mut(), rail, 0.125, true, true)?;
         let mut attributes = AttributeStore::default();
         RetainedRailOwnership::with_context(
             &mut k,
@@ -189,6 +189,15 @@ pub(super) fn rust() -> Result<Output, HarnessError> {
             domain.min(),
             domain.max(),
         ]);
+        for id in [vertices[0], middle, vertices[1]] {
+            out.push(vertex::tolerance(pseudo.brep(), id)?);
+        }
+        // The newly allocated middle vertex's point is unset by sm_SplitRail.
+        // Only the two explicitly initialized endpoint coordinates are read.
+        for id in [vertices[0], vertices[1]] {
+            let point = vertex::point(pseudo.brep(), id)?;
+            out.extend([point.x, point.y, point.z]);
+        }
         for f in [0., 0.5, 1.] {
             let p = copied.evaluate_point(&k, domain.evaluate(f))?;
             out.extend([0., p.x, p.y, p.z]);

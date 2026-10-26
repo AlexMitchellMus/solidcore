@@ -640,6 +640,11 @@ static void run_split_rail(std::vector<double>& out) {
         double(old_eus.GetSize()),double(new_eus.GetSize()),double(start_vus.GetSize()),double(middle_vus.GetSize()),double(end_vus.GetSize())});
     SmExtent1d domain=copied->GetNaturalInterval();
     out.insert(out.end(),{new_rail->GetTolerance(),domain.GetMin(),domain.GetMax()});
+    out.insert(out.end(),{start->GetTolerance(),vertex->GetTolerance(),end->GetTolerance()});
+    // The middle FV point is not initialized by the actual helper: never read it.
+    for(SmFilletVertex* endpoint:{start.get(),end.get()}) {
+        const SmPoint3d& point=endpoint->GetPoint(); out.insert(out.end(),{point[0],point[1],point[2]});
+    }
     for(double fraction:{0.,.5,1.}) {
         SmPoint3d point; const auto evaluated=copied->EvaluatePoint(domain.Evaluate(fraction),point);
         out.push_back(evaluated==SM_SUCCESS?0:double(evaluated));
