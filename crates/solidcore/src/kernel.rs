@@ -247,10 +247,18 @@ pub struct UpstreamFixes {
     pub torus_signed_gen_curve_interval: bool,
     /// A sheet sweep's open-profile wires are glued where the curves meet (WR-409, #1113).
     pub sheet_sweep_joins_profile_wires: bool,
+    /// `FindPolygonGuess` keeps a suspicious control-net triangle guess as a candidate against the nearest control point's, and returns the nearer one on the surface, so a rational surface whose control points are farther apart than its neighbouring parts does not lose a good guess (WR-444, #1164).
+    pub point_solve_keeps_triangle_guess: bool,
     /// `SmFilletVertex::CalcSetBackVert` measures a corner setback from the vertex `GetStartVertex()` marks over the edge's own interval, not from `GetVertex()` over the curve's natural interval, so an edge whose primary edge use runs against its curve is not measured from its far end (WR-445, #1169).
     pub fillet_setback_from_start_vertex: bool,
+    /// `SmEdgeDefinition::Imprint` first moves each end of an intersection edge's interval to the curve's point nearest its proto vertex when that point lies inside the interval, so the edge does not run past its vertex along a face rim (screw-thread groove booleans: "Face has partially Coincident Edges", `SmFace` test #34; WR-452, #435, #410; tangency-labs/smlib b43876f).
+    pub imprint_trims_edge_to_proto_vertex: bool,
+    /// `SmEdgeDefinition::Imprint` continues an intersection edge's 3d and UV curves, each by the polynomial of its own end span, to a proto vertex that lies a few tolerances past the curve's end, so the edge reaches its vertex (internal thread cuts; WR-453, #410; tangency-labs/smlib a8caccd).
+    pub imprint_extends_edge_to_proto_vertex: bool,
     /// `SmBSplineSurface::CopyAndAddAnalytics` keeps an exact copy where the recognised analytic surface does not give the same points at the same parameters (7 x 7 grid), so a face split by `MakeEdgeInFaceWithVU` keeps trims that still lie on its edges (WR-450, #387; the fork's tangency-labs/smlib@276b509).
     pub analytic_copy_keeps_parameterization: bool,
+    /// `SmFilletSolver::ComputePointValues`' bigger-step retry of the forward finite-difference step solves with the bigger step (`dBigStep`), not with the small `dStep` again (WR-456, #1181).
+    pub fillet_point_bigger_step_retry: bool,
     /// `DoExtendedOffset`'s protective stitch makes one pass at the merged body's tolerance instead of `StitchIntoSolid`'s doubling up to a 200th of the body's size, which welds the rims of cut-off pieces `MakeManifold` removes next into one edge of a far larger tolerance (WR-455, #855; the fork's tangency-labs/smlib@601d804).
     pub offset_stitch_at_body_tolerance: bool,
     /// `SmCurve::GlobalCurveIntersect` moves a point solution to an end of either curve when that end lies within tolerance of the other curve and the curves stay within tolerance of each other over the whole stretch between (`sm_MoveContactsToCurveEnds`), so a tangential contact is not placed inside the curve (WR-455, #855; the fork's tangency-labs/smlib@601d804).
