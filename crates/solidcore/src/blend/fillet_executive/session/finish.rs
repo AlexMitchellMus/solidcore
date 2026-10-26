@@ -16,8 +16,9 @@
 //! every entity of the intermediate body before `~SmBrep`. `RemoveTopoEdges` and
 //! `BooleanPostProcess` notify through local environments (their ports take none);
 //! afterwards the attributes of target edges they deleted are cleared from the
-//! session store. `do_fillet` ends with the closed-manifold check of the generic
-//! `FilletExecutive::do_fillet` (not upstream, tangency-labs/solidcore#422).
+//! session store. With the opt-in `Kernel::fixes.fillet_refuse_non_manifold_result`
+//! `do_fillet` ends with the closed-manifold check of the generic
+//! `FilletExecutive::do_fillet` (not upstream, WR-212, tangency-labs/solidcore#422).
 //! No public API entry point reaches `DoPiecewiseMerge` or a live-session
 //! `IntersectInsertRelate` (global merge): `SetFilletParameters` resets both flags;
 //! [`FilletSession::set_do_piecewise_merge`] selects the piecewise merge after it.
@@ -386,11 +387,15 @@ impl FilletSession<'_> {
         }
         self.create_corners(k, None)?;
         self.do_filleting(k, None)?;
+        if !k.fixes.fillet_refuse_non_manifold_result {
+            return Ok(());
+        }
         self.check_closed_manifold()
     }
 
     /// The closed-manifold result check of `FilletExecutive::do_fillet` (not
-    /// upstream, tangency-labs/solidcore#422), on the live target.
+    /// upstream, opt-in `fixes.fillet_refuse_non_manifold_result`, WR-212,
+    /// tangency-labs/solidcore#422), on the live target.
     fn check_closed_manifold(&mut self) -> Result<()> {
         for edge in p1::edges(self.objects.target, None)? {
             if crate::topology::edge::is_manifold(self.objects.target, edge)? {
