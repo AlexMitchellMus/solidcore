@@ -1554,6 +1554,16 @@ mod tests {
     }
 
     #[test]
+    fn fixes_are_enabled_by_name() {
+        let mut k = Kernel::default();
+        enable_fix(&mut k, "sweep_frame_on_planar_path_normal").unwrap();
+        enable_fix(&mut k, "cover_refuses_folded_continuation").unwrap();
+        assert!(k.fixes.sweep_frame_on_planar_path_normal);
+        assert!(k.fixes.cover_refuses_folded_continuation);
+        assert!(enable_fix(&mut k, "no_such_fix").is_err());
+    }
+
+    #[test]
     fn deferrals_name_a_plan_unit() {
         let units: Vec<String> = crate::plan::load(&crate::case::repo_root())
             .unwrap()
@@ -1744,6 +1754,7 @@ mod tests {
         let case = |steps: Vec<Step>| Case {
             name: "c".into(),
             note: None,
+            fixes: Vec::new(),
             steps,
             expect: Expect::default(),
         };
