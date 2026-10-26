@@ -15,6 +15,10 @@
 //! (`SmCurveCache.cpp:1508`, `curve_cache.rs:608`). The frozen target makes repeated
 //! loads equivalent. An external custom/non-full-tree cache provider is not yet
 //! accepted; this is not an arbitrary warmed-cache parity claim.
+//! Live corner stages dispatch `NByOne` and `NByTwo` corners to the ported corner
+//! code; an Nx2 corner's vertex calculators receive every retained solver of the
+//! vertex's geometries (one indexed table upstream). Two geometries on one solver at a
+//! rail/rail vertex are an input error here (the indexed path runs on a copy).
 //! This foundation supports solver construction/loading; it does not substitute a
 //! result for the remaining fillet execution stages. No recursion.
 
@@ -29,7 +33,7 @@ use super::p3::{
     ErrorInfo, FaceConstructionAccess, FaceShrinkAccess, FaceStitchAccess, FilletExecutive,
     RailClassificationAccess, RailTrimAccess, SolverGeometryAccess, StitchAttempt, VertexEntry,
 };
-use crate::blend::fillet_corner::p3::FilletCorner;
+use crate::blend::fillet_corner::p3::{FilletCorner, Nx2AdjustContext};
 use crate::blend::fillet_geom::p1::{
     CornerLookup, FilletBrep, FilletCornerId, FilletCornerType, FilletSolverId, FilletVertexType,
 };
@@ -310,6 +314,92 @@ impl SessionObjects<'_> {
                 "blend.fillet_executive_p3",
             )),
         }
+    }
+}
+
+/// The retained virtual operations of a concrete solver whose live corner-vertex
+/// operations are ported.
+fn live_solver_ops(solver: &mut SolverObject) -> Result<&mut dyn FilletSolverOps> {
+    match solver {
+        SolverObject::ConstantRadius(solver) => Ok(solver.as_mut()),
+        SolverObject::VariableRadius(solver) => Ok(solver.as_mut()),
+        _ => {
+            // UNPORTED(blend.fillet_executive_p1): retained virtual operations for other concrete solver types.
+            Err(SolidError::unported(
+                "SmFilletSolver::RailEdgeuseIntersect (live concrete dispatch)",
+                "blend.fillet_executive_p1",
+            ))
+        }
+    }
+}
+
+/// The retained solvers of every fillet geometry at pseudo vertex `fv`, with their
+/// actual identities, for the corner-vertex calculators.
+fn live_vertex_solvers<'s>(
+    pseudo: &FilletBrep,
+    solvers: &'s mut [Option<SolverObject>],
+    fv: VertexId,
+) -> Result<Vec<(FilletSolverId, &'s mut dyn FilletSolverOps)>> {
+    let mut ids = Vec::new();
+    for geometry in pseudo.vertex_fillet_geoms(fv)? {
+        let id = pseudo
+            .geom(geometry)?
+            .solver
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    let mut live = Vec::new();
+    for (index, slot) in solvers.iter_mut().enumerate() {
+        let Some(id) = ids.iter().copied().find(|id| id.0 as usize == index) else {
+            continue;
+        };
+        let solver = slot
+            .as_mut()
+            .ok_or_else(|| invalid("vertex solver is not live"))?;
+        live.push((id, live_solver_ops(solver)?));
+    }
+    if live.len() != ids.len() {
+        return Err(invalid("vertex solver is not live"));
+    }
+    Ok(live)
+}
+
+/// The live objects `SmFilletNx2Corner::AdjustTopology` reaches.
+struct SessionNx2Adjust<'a> {
+    k: &'a Kernel,
+    target: &'a mut Brep,
+    pseudo: &'a mut FilletBrep,
+    corner: FilletCornerId,
+}
+
+impl Nx2AdjustContext for SessionNx2Adjust<'_> {
+    fn parts(&mut self) -> (&Kernel, &mut Brep, &mut FilletBrep, Option<FilletCornerId>) {
+        (
+            self.k,
+            &mut *self.target,
+            &mut *self.pseudo,
+            Some(self.corner),
+        )
+    }
+    fn adjust_concave_corner_topology(&mut self, _corner: &mut FilletCorner) -> Result<()> {
+        // UNPORTED(blend.fillet_executive_p1): actual retained Nx2 concave adjustment context.
+        Err(SolidError::unported(
+            "SmFilletNx2Corner::AdjustConcaveCornerTopology (live context)",
+            "blend.fillet_executive_p1",
+        ))
+    }
+    fn test_and_convert_big_rad_fillet(
+        &mut self,
+        _corner: &mut FilletCorner,
+        _fg: crate::blend::fillet_geom::p1::FilletGeomId,
+    ) -> Result<bool> {
+        // UNPORTED(blend.fillet_executive_p1): actual retained big-radius conversion context.
+        Err(SolidError::unported(
+            "SmFilletExecutive::TestAndConvertBigRadFillet (live context)",
+            "blend.fillet_executive_p1",
+        ))
     }
 }
 
@@ -771,7 +861,8 @@ impl<'target> FilletSession<'target> {
     /// Run the actual executive corner-vertex component in native corner order.
     ///
     /// Each corner's topology, calculation flag and vertex geometry complete before
-    /// the next corner starts. Ordinary `NByOne` corners are supported; other concrete
+    /// the next corner starts. Ordinary `NByOne` and `NByTwo` corners are supported (a
+    /// mixed-convexity 4x2, tangent 4x2 or blending Nx2 adjustment stays unported); other concrete
     /// corner context remains unported. Smoothing and later adjustment are separate.
     ///
     /// # Errors
@@ -958,20 +1049,25 @@ impl<'target> FilletSession<'target> {
 impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
     fn edges_adjust_tangent(
         &mut self,
-        _k: &mut Kernel,
+        k: &mut Kernel,
         corner: FilletObject,
         _executive: &mut FilletExecutive<FilletObject>,
     ) -> Result<()> {
         let FilletObject::Corner(id) = corner else {
             return Err(invalid("object is not a corner"));
         };
-        let corner = self
-            .corners
+        let SessionObjects {
+            target, corners, ..
+        } = self;
+        let corner = corners
             .get_mut(id.0 as usize)
             .ok_or_else(|| invalid("corner is not live"))?;
         corner.adjust_tangent_corner_with(
             &mut (),
-            |_, ()| {
+            |corner, ()| {
+                if !corner.is_nx2_tangent_adjustment_corner(k, target)? {
+                    return Ok(());
+                }
                 // UNPORTED(blend.fillet_executive_p1): actual Nx2 tangent-adjustment context.
                 Err(SolidError::unported(
                     "SmFilletNx2Corner::AdjustTangentCorner (live context)",
@@ -2090,7 +2186,32 @@ impl SessionObjects<'_> {
             do_global_merge: &mut executive.options.global_merge,
         })
     }
-    fn calc_nx1_corner_vert_geom(&mut self, k: &Kernel, id: FilletCornerId) -> Result<()> {
+    fn make_nx2_corner_topology(
+        &mut self,
+        k: &Kernel,
+        id: FilletCornerId,
+        executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let edgeuses = self
+            .corners
+            .get(id.0 as usize)
+            .and_then(|corner| corner.solver_eus.as_deref())
+            .ok_or_else(|| invalid("corner has no actual solver edge uses"))?;
+        let mut solver_ids = [FilletSolverId(0); 2];
+        for (slot, index) in solver_ids.iter_mut().zip(0..2) {
+            let edgeuse = edgeuses
+                .get(index)
+                .copied()
+                .ok_or_else(|| invalid("corner has fewer than two solver edge uses"))?;
+            let object = FilletObject::Topology(FilletBody::Target, EntityRef::Edgeuse(edgeuse));
+            let Some(FilletObject::Solver(solver)) = executive.fillet_solver_of_edgeuse(object)
+            else {
+                return Err(SolidError::null_pointer(
+                    "SmFilletNx2Corner::MakeCornerTopology",
+                ));
+            };
+            *slot = solver;
+        }
         let SessionObjects {
             target,
             pseudo,
@@ -2098,17 +2219,56 @@ impl SessionObjects<'_> {
             corners,
             ..
         } = self;
+        let live = |solver: FilletSolverId| {
+            solvers
+                .get(solver.0 as usize)
+                .and_then(Option::as_ref)
+                .map(SolverObject::base)
+                .ok_or_else(|| invalid("corner solver is not live"))
+        };
+        let [first, second] = solver_ids;
+        let solvers = [live(first)?, live(second)?];
+        let corner = corners
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| invalid("corner is not live"))?;
+        corner.make_nx2_corner_topology(crate::blend::fillet_corner::topology::Nx2TopologyEnv {
+            k,
+            target,
+            pseudo,
+            corner: id,
+            solvers,
+        })
+    }
+    fn calc_nx1_corner_vert_geom(&mut self, k: &Kernel, id: FilletCornerId) -> Result<()> {
+        let SessionObjects {
+            target,
+            pseudo,
+            solvers,
+            corners,
+            extended_surfaces,
+            ..
+        } = self;
         let corner = corners
             .get(id.0 as usize)
             .ok_or_else(|| invalid("corner is not live"))?;
-        if corner.corner_type() != FilletCornerType::NByOne {
-            return Err(invalid("ordinary Nx1 corner required"));
+        if !matches!(
+            corner.corner_type(),
+            FilletCornerType::NByOne | FilletCornerType::NByTwo
+        ) {
+            return Err(invalid("ordinary Nx1 or Nx2 corner required"));
         }
-        let mut context = (k, target, pseudo, solvers, corners.as_slice());
+        let mut context = (
+            k,
+            target,
+            pseudo,
+            solvers,
+            corners.as_slice(),
+            &*extended_surfaces,
+        );
         corner.calc_corner_vert_geom_with(
             &mut context,
-            |(_, _, pseudo, _, _), fv| Ok(pseudo.fillet_vertex(fv)?.is_processed()),
-            |(k, target, pseudo, solvers, corners), fv| {
+            |(_, _, pseudo, _, _, _), fv| Ok(pseudo.fillet_vertex(fv)?.is_processed()),
+            |(k, target, pseudo, solvers, corners, extended_surfaces), fv| {
                 let vertex = pseudo.fillet_vertex(fv)?;
                 if vertex.is_processed() {
                     return Ok(());
@@ -2116,40 +2276,36 @@ impl SessionObjects<'_> {
                 match vertex.fillet_vertex_type() {
                     FilletVertexType::OnVertex => pseudo.calc_vert_on_vert(fv, target),
                     FilletVertexType::RailXEdgeuse => {
-                        let geometry = pseudo
-                            .vertex_fillet_geoms(fv)?
-                            .first()
-                            .copied()
-                            .ok_or_else(|| SolidError::null_pointer(OP))?;
-                        let solver_id = pseudo
-                            .geom(geometry)?
-                            .solver
-                            .ok_or_else(|| SolidError::null_pointer(OP))?;
-                        let solver = solvers
-                            .get_mut(solver_id.0 as usize)
-                            .and_then(Option::as_mut)
-                            .ok_or_else(|| invalid("vertex solver is not live"))?;
-                        let ops: &mut dyn FilletSolverOps = match solver {
-                            SolverObject::ConstantRadius(solver) => solver.as_mut(),
-                            SolverObject::VariableRadius(solver) => solver.as_mut(),
-                            _ => {
-                                // UNPORTED(blend.fillet_executive_p1): retained virtual operations for other concrete solver types.
-                                return Err(SolidError::unported(
-                                    "SmFilletSolver::RailEdgeuseIntersect (live concrete dispatch)",
-                                    "blend.fillet_executive_p1",
-                                ));
-                            }
-                        };
-                        pseudo.calc_rail_int_edgeuse_with_solver_ops(
+                        let live = live_vertex_solvers(pseudo, solvers, fv)?;
+                        pseudo.calc_rail_int_edgeuse_with_live_solvers(
                             k,
                             fv,
                             None,
                             CornerLookup::table(corners),
-                            solver_id,
-                            ops,
+                            live,
                             target,
                         )
                     }
+                    FilletVertexType::RailXRail => {
+                        let live = live_vertex_solvers(pseudo, solvers, fv)?;
+                        pseudo.calc_rail_int_rail_with_solver_ops(
+                            k,
+                            fv,
+                            CornerLookup::table(corners),
+                            live,
+                            target,
+                        )
+                    }
+                    FilletVertexType::FilletXFillet => pseudo.calc_fillet_int_fillet_with_context(
+                        k,
+                        fv,
+                        CornerLookup::table(corners),
+                        &SessionEdgeLookup {
+                            solvers,
+                            extended_surfaces,
+                        },
+                        target,
+                    ),
                     _ => {
                         // UNPORTED(blend.fillet_executive_p1): retained solver-store dispatch for other corner vertex types.
                         Err(SolidError::unported(
@@ -2189,14 +2345,17 @@ impl CornerVertexAccess<FilletObject> for SessionObjects<'_> {
         let FilletObject::Corner(id) = corner else {
             return Err(invalid("object is not a corner"));
         };
-        if self.corner_object(corner)?.corner_type() != FilletCornerType::NByOne {
-            // UNPORTED(blend.fillet_executive_p1): retained context for other concrete corners.
-            return Err(SolidError::unported(
-                "SmFilletCorner::MakeCornerTopology (live concrete dispatch)",
-                "blend.fillet_executive_p1",
-            ));
+        match self.corner_object(corner)?.corner_type() {
+            FilletCornerType::NByOne => self.make_nx1_corner_topology(k, id, executive),
+            FilletCornerType::NByTwo => self.make_nx2_corner_topology(k, id, executive),
+            _ => {
+                // UNPORTED(blend.fillet_executive_p1): retained context for other concrete corners.
+                Err(SolidError::unported(
+                    "SmFilletCorner::MakeCornerTopology (live concrete dispatch)",
+                    "blend.fillet_executive_p1",
+                ))
+            }
         }
-        self.make_nx1_corner_topology(k, id, executive)
     }
     fn vertices_error_info(
         &self,
@@ -2299,7 +2458,10 @@ impl CornerVertexAccess<FilletObject> for SessionObjects<'_> {
         let FilletObject::Corner(id) = corner else {
             return Err(invalid("object is not a corner"));
         };
-        if self.corner_object(corner)?.corner_type() != FilletCornerType::NByOne {
+        if !matches!(
+            self.corner_object(corner)?.corner_type(),
+            FilletCornerType::NByOne | FilletCornerType::NByTwo
+        ) {
             // UNPORTED(blend.fillet_executive_p1): retained context for other concrete corners.
             return Err(SolidError::unported(
                 "SmFilletCorner::CalcCornerVertGeom (live concrete dispatch)",
@@ -2333,27 +2495,32 @@ impl CornerAdjustmentAccess<FilletObject> for SessionObjects<'_> {
     }
     fn adjustment_topology(
         &mut self,
-        _k: &mut Kernel,
+        k: &mut Kernel,
         corner: FilletObject,
         _executive: &mut FilletExecutive<FilletObject>,
     ) -> Result<()> {
         let FilletObject::Corner(id) = corner else {
             return Err(invalid("object is not a corner"));
         };
-        let corner = self
-            .corners
+        let SessionObjects {
+            target,
+            pseudo,
+            corners,
+            ..
+        } = self;
+        let corner = corners
             .get_mut(id.0 as usize)
             .ok_or_else(|| invalid("corner is not live"))?;
+        let mut context = SessionNx2Adjust {
+            k,
+            target,
+            pseudo,
+            corner: id,
+        };
         corner.adjust_topology_with(
-            &mut (),
-            |_, ()| {
-                // UNPORTED(blend.fillet_executive_p1): actual retained Nx2 adjustment context.
-                Err(SolidError::unported(
-                    "SmFilletNx2Corner::AdjustTopology (live context)",
-                    "blend.fillet_executive_p1",
-                ))
-            },
-            |_, ()| {
+            &mut context,
+            |corner, context| corner.adjust_topology_nx2_with(context),
+            |_, _| {
                 // UNPORTED(blend.fillet_executive_p1): actual retained NxN adjustment context.
                 Err(SolidError::unported(
                     "SmFilletNxNCorner::AdjustTopology (live context)",
