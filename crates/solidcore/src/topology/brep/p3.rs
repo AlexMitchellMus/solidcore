@@ -722,7 +722,6 @@ pub(crate) fn seed_records(
     if records.is_empty() {
         // Bulk build (sorted input is O(n)); the same map as entry-by-entry.
         *records = entities(b)
-            .into_iter()
             .map(|e| key_of(e).key)
             .chain([p2::brep_ref(b).key])
             .map(|k| (k, topo::Topology::default()))
@@ -822,20 +821,43 @@ fn issuer<'c>(kernel: &'c mut Context, env: Option<&'c mut Context>) -> &'c mut 
     }
 }
 
-/// Every topology object of `b` (not the B-rep itself).
-fn entities(b: &Brep) -> Vec<EntityRef> {
-    let mut all = Vec::new();
-    all.extend(b.regions().iter().map(|(x, _)| EntityRef::Region(x)));
-    all.extend(b.shells().iter().map(|(x, _)| EntityRef::Shell(x)));
-    all.extend(b.faceuses().iter().map(|(x, _)| EntityRef::Faceuse(x)));
-    all.extend(b.faces().iter().map(|(x, _)| EntityRef::Face(x)));
-    all.extend(b.loopuses().iter().map(|(x, _)| EntityRef::Loopuse(x)));
-    all.extend(b.loops().iter().map(|(x, _)| EntityRef::Loop(x)));
-    all.extend(b.edgeuses().iter().map(|(x, _)| EntityRef::Edgeuse(x)));
-    all.extend(b.edges().iter().map(|(x, _)| EntityRef::Edge(x)));
-    all.extend(b.vertexuses().iter().map(|(x, _)| EntityRef::Vertexuse(x)));
-    all.extend(b.vertices().iter().map(|(x, _)| EntityRef::Vertex(x)));
-    all
+/// Every topology object of `b` (not the B-rep itself), without collecting them: the
+/// edit entry points walk this per call.
+fn entities(b: &Brep) -> impl Iterator<Item = EntityRef> + '_ {
+    let regions = b.regions().iter().map(|(x, _)| EntityRef::Region(x));
+    let shells = b.shells().iter().map(|(x, _)| EntityRef::Shell(x));
+    let faceuses = b.faceuses().iter().map(|(x, _)| EntityRef::Faceuse(x));
+    let faces = b.faces().iter().map(|(x, _)| EntityRef::Face(x));
+    let loopuses = b.loopuses().iter().map(|(x, _)| EntityRef::Loopuse(x));
+    let loops = b.loops().iter().map(|(x, _)| EntityRef::Loop(x));
+    let edgeuses = b.edgeuses().iter().map(|(x, _)| EntityRef::Edgeuse(x));
+    let edges = b.edges().iter().map(|(x, _)| EntityRef::Edge(x));
+    let vertexuses = b.vertexuses().iter().map(|(x, _)| EntityRef::Vertexuse(x));
+    let vertices = b.vertices().iter().map(|(x, _)| EntityRef::Vertex(x));
+    regions
+        .chain(shells)
+        .chain(faceuses)
+        .chain(faces)
+        .chain(loopuses)
+        .chain(loops)
+        .chain(edgeuses)
+        .chain(edges)
+        .chain(vertexuses)
+        .chain(vertices)
+}
+
+/// The number of objects [`entities`] yields.
+fn entity_count(b: &Brep) -> usize {
+    b.regions().len()
+        + b.shells().len()
+        + b.faceuses().len()
+        + b.faces().len()
+        + b.loopuses().len()
+        + b.loops().len()
+        + b.edgeuses().len()
+        + b.edges().len()
+        + b.vertexuses().len()
+        + b.vertices().len()
 }
 
 /// The refusal of a caller key in the kernel's reserved key range.
@@ -846,24 +868,31 @@ const RESERVED_KEY: SolidError = SolidError::InvalidInput {
 
 /// The objects of each kind an edit of `b` may still allocate: the next `window` ids
 /// (arenas only append, so new objects take exactly these).
-fn prospective_entities(b: &Brep, window: usize) -> Vec<EntityRef> {
-    let next = |len: usize| (len..len.saturating_add(window)).map_while(|i| u32::try_from(i).ok());
-    let mut all = Vec::new();
-    all.extend(next(b.regions().len()).map(|i| EntityRef::Region(RegionId::from_index(i))));
-    all.extend(next(b.shells().len()).map(|i| EntityRef::Shell(ShellId::from_index(i))));
-    all.extend(next(b.faceuses().len()).map(|i| EntityRef::Faceuse(FaceuseId::from_index(i))));
-    all.extend(next(b.faces().len()).map(|i| EntityRef::Face(FaceId::from_index(i))));
-    all.extend(next(b.loopuses().len()).map(|i| EntityRef::Loopuse(LoopuseId::from_index(i))));
-    all.extend(
-        next(b.loops().len()).map(|i| EntityRef::Loop(crate::topology::LoopId::from_index(i))),
-    );
-    all.extend(next(b.edgeuses().len()).map(|i| EntityRef::Edgeuse(EdgeuseId::from_index(i))));
-    all.extend(next(b.edges().len()).map(|i| EntityRef::Edge(EdgeId::from_index(i))));
-    all.extend(
-        next(b.vertexuses().len()).map(|i| EntityRef::Vertexuse(VertexuseId::from_index(i))),
-    );
-    all.extend(next(b.vertices().len()).map(|i| EntityRef::Vertex(VertexId::from_index(i))));
-    all
+fn prospective_entities(b: &Brep, window: usize) -> impl Iterator<Item = EntityRef> {
+    let next =
+        move |len: usize| (len..len.saturating_add(window)).map_while(|i| u32::try_from(i).ok());
+    let regions = next(b.regions().len()).map(|i| EntityRef::Region(RegionId::from_index(i)));
+    let shells = next(b.shells().len()).map(|i| EntityRef::Shell(ShellId::from_index(i)));
+    let faceuses = next(b.faceuses().len()).map(|i| EntityRef::Faceuse(FaceuseId::from_index(i)));
+    let faces = next(b.faces().len()).map(|i| EntityRef::Face(FaceId::from_index(i)));
+    let loopuses = next(b.loopuses().len()).map(|i| EntityRef::Loopuse(LoopuseId::from_index(i)));
+    let loops =
+        next(b.loops().len()).map(|i| EntityRef::Loop(crate::topology::LoopId::from_index(i)));
+    let edgeuses = next(b.edgeuses().len()).map(|i| EntityRef::Edgeuse(EdgeuseId::from_index(i)));
+    let edges = next(b.edges().len()).map(|i| EntityRef::Edge(EdgeId::from_index(i)));
+    let vertexuses =
+        next(b.vertexuses().len()).map(|i| EntityRef::Vertexuse(VertexuseId::from_index(i)));
+    let vertices = next(b.vertices().len()).map(|i| EntityRef::Vertex(VertexId::from_index(i)));
+    regions
+        .chain(shells)
+        .chain(faceuses)
+        .chain(faces)
+        .chain(loopuses)
+        .chain(loops)
+        .chain(edgeuses)
+        .chain(edges)
+        .chain(vertexuses)
+        .chain(vertices)
 }
 
 /// The number of objects of one kind any edit here allocates at most: the B-rep's own
@@ -872,8 +901,8 @@ fn prospective_entities(b: &Brep, window: usize) -> Vec<EntityRef> {
 /// shell, vertex use and vertex for every entry, repeated ones included, as upstream)
 /// and a few for the wire makers.
 fn allocation_window(b: &Brep, source: Option<&Brep>, inputs: usize) -> usize {
-    let n = entities(b).len();
-    let m = source.map_or(0, |s| entities(s).len());
+    let n = entity_count(b);
+    let m = source.map_or(0, entity_count);
     n.saturating_add(m)
         .saturating_add(inputs.saturating_mul(3))
         .saturating_add(16)
