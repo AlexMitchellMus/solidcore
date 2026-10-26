@@ -148,7 +148,10 @@ pub fn check_cpp_defect(root: &Path, id: &str) -> Result<(), String> {
             .file_name()
             .to_string_lossy()
             .into_owned();
-        if name.starts_with(&prefix) && name.ends_with(".md") && !name.contains("--addendum-") {
+        let markdown = Path::new(&name)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("md"));
+        if name.starts_with(&prefix) && markdown && !name.contains("--addendum-") {
             found.push(name);
         }
     }
