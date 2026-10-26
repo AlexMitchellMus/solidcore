@@ -16,6 +16,12 @@
 //! | [`extract_iso_curve`] | `sm_ExtractIsoCurve` (static) |
 //! | [`intersect_srf_bndry_crv`] | `sm_IntersectSrfBndryCrv` (static) |
 //!
+//! Deviations (not upstream, beyond the port): `CoincidenceCheck` keeps the surfaces'
+//! natural boundary curves in a memo in each surface value (`BoundaryMemo`), where
+//! upstream makes them again for every check. The curves are a function of the surface
+//! value, the domain and the kernel's tolerances, so a hit gives what a fresh build
+//! gives; `Kernel::memoize_curve_caches` turns it off with the curve cache memo.
+//!
 //! Deviations: out-parameters become return values. The caller's object handles
 //! (`O`, the objects named in solutions) replace the `this` and `&crCurve` pointers
 //! upstream stores in them. Solvers read the patches of the surface cache they were
@@ -38,21 +44,24 @@
 //! run when the solve fetches its cache (`smsurf_GetSurfaceCache`), so the tree is
 //! the face's and the coincident traces share it. The
 //! optional `SmDerivSurfDefinition` of `CreateBlendSurface` is copied, so its caller
-//! does not see the fields upstream overwrites. `CreateBlendSurface` returns `SM_ERR`
-//! as soon as one of the sample evaluations fails (upstream ignores the status, goes
-//! on with the partial arrays and fails later, except when both sets of samples fail
-//! at the same index). `CreateBlendSurface` of a curve that is not a B-spline kind
+//! does not see the fields upstream overwrites. `CreateBlendSurface` retains the
+//! sampler's partial, zero-filled arrays when ignoring an ordinary sampling error,
+//! as upstream does; `Unported` and count-safety failures still propagate.
+//! `CreateBlendSurface` of a curve that is not a B-spline kind
 //! returns `InvalidInput` (upstream signals the error and casts anyway).
 //! `SmSPGlobalSolver::LocalSolve` returns `InvalidInput` when the original surface of
 //! the leaf node is not the surface of the cache the solver was given (upstream reads
 //! the patch through the node's owner whatever it is). `GlobalPointSolve` gained the
 //! out-parameter form [`Surface::global_point_solve_into`] so that a caller ignoring
-//! its status keeps what was found before the failure.
+//! its status keeps what was found before the failure. `CoincidenceCheck` keeps the
+//! curve cache of each boundary curve for all its intersections, as upstream keeps
+//! it on the curve, so each boundary curve builds one cache per check.
 //! Unported callees return [`SolidError::Unported`], also where upstream ignores the
 //! status. Recursion: none.
 
 use super::p1::{
-    get_surface_cache, is_node_valid, is_point_valid_with as is_point_valid, SurfaceSolveContext,
+    get_surface_cache, is_node_valid, is_point_valid_with as is_point_valid, OperandDomain,
+    SolveOperands, SurfaceSolveContext,
 };
 use super::p2::{
     original_surface, CrossSectionValues, DerivSurfDefinition, LsiGlobalSolver, Surface,
@@ -61,8 +70,9 @@ use super::p2::{
 use super::p4::{is_point_on_normal, NoObject};
 use super::p5::DropPointOptions;
 use super::p6::SampleOptions;
-use crate::curve::curve::p8::CurveIntersectOptions;
+use crate::curve::curve::p5::CurveMemoKey;
 use crate::curve::curve::{Curve, CurveKind};
+use crate::curve::curve_cache::CurveCache;
 use crate::curve::line::Line;
 use crate::error::{ignore_status, ignored, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
@@ -73,10 +83,13 @@ use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::global_solver::{GlobalSolve, SolutionRequested, SolveRequest, SolverOperation};
 use crate::geom::local_solve_nd::TerminationReason;
 use crate::geom::polar_box::{PolarBox, PolarBoxState};
-use crate::geom::solution_array::{Solution, SolutionArray, SolutionObject, SolutionType, SortKey};
+use crate::geom::solution_array::{
+    OperandObject, Solution, SolutionArray, SolutionObject, SolutionType, SortKey,
+};
 use crate::geom::tol::are_same;
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::{Point3, Vec3};
+use crate::intersect::surface_drop_lib::p3::DropSolveContext;
 use crate::kernel::Kernel;
 use crate::math::{
     max2, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_RAD, EFF_ZERO_SQ, EFF_ZERO_SQRT, PI, UNDEF_DOUBLE,
@@ -90,6 +103,8 @@ use crate::surface::plane::Coincidence;
 use crate::surface::surface::p7::SpGlobalSolver;
 use crate::surface::surface_cache::p1::SurfaceCache;
 use crate::surface::surface_cache::BezierPatch;
+use std::borrow::Cow;
+use std::sync::OnceLock;
 
 /// A surface's solve cache kept by a caller across [`Surface::global_line_intersect_held`]
 /// calls (upstream keeps one cache on each surface): `None` until the first call
@@ -228,7 +243,7 @@ fn sp_local_solve<O: SolutionObject>(
 
 /// `SmSurface::DropCurve(ctx, domain, curve, interval, tol, .., keepAll, NULL, FALSE)`
 /// (virtual): the UV curves of the drop, the largest drop distance and the deviation.
-fn surface_drop_curve(
+fn surface_drop_curve<O: SolutionObject>(
     k: &Kernel,
     surface: &Surface,
     domain: &Extent2d,
@@ -236,9 +251,14 @@ fn surface_drop_curve(
     interval: &Extent1d,
     tol: f64,
     keep_all: bool,
+    context: Option<DropSolveContext<'_, O>>,
 ) -> Result<(Vec<Curve>, f64, f64)> {
-    let d =
-        surface.drop_curve::<NoObject>(k, domain, curve, interval, tol, keep_all, None, false)?;
+    let d = match context {
+        Some(context) => surface.drop_curve_with_context::<O>(
+            k, domain, curve, interval, tol, keep_all, None, false, context,
+        )?,
+        None => surface.drop_curve::<O>(k, domain, curve, interval, tol, keep_all, None, false)?,
+    };
     Ok((d.uv_curves, d.max_drop_to_surf, d.max_approx_dev))
 }
 
@@ -293,6 +313,104 @@ fn b_spline_part(curve: &Curve) -> Option<&BSplineCurve> {
 /// The 3D side curves of the natural UV trim loop of `surface` over `domain`
 /// (`CreateNaturalUVTrimCurves(ctx, domain, SM_SP_V, FALSE, ..)`); the status is
 /// not checked upstream.
+/// The key of a memoised [`trim_curves`] result (not upstream): the kernel inputs of the
+/// build ([`CurveMemoKey::of_kernel`]) and the domain's bits.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct BoundaryMemoKey {
+    kernel: CurveMemoKey,
+    domain: [u64; 4],
+}
+
+impl BoundaryMemoKey {
+    /// The key of `trim_curves(k, surface, domain)`, or `None` when it must not be
+    /// memoised: the memo is off, or the surface is not a pure value. B-spline, plane,
+    /// cone, sphere and torus surfaces build their sides from their own value (their
+    /// `CreateIsoParametricCurve` overrides read nothing else); the other kinds hold
+    /// curves, other surfaces or volumes, or approximate through the base body.
+    fn of(k: &Kernel, surface: &Surface, domain: &Extent2d) -> Option<Self> {
+        let pure_kind = matches!(
+            surface.kind(),
+            SurfaceKind::BSpline(_)
+                | SurfaceKind::Plane(_)
+                | SurfaceKind::Cone(_)
+                | SurfaceKind::Sphere(_)
+                | SurfaceKind::Torus(_)
+        );
+        if !pure_kind {
+            return None;
+        }
+        Some(Self {
+            kernel: CurveMemoKey::of_kernel(k)?,
+            domain: [
+                domain.min().x.to_bits(),
+                domain.min().y.to_bits(),
+                domain.max().x.to_bits(),
+                domain.max().y.to_bits(),
+            ],
+        })
+    }
+}
+
+/// One memoised [`trim_curves`] result.
+#[derive(Debug)]
+struct BoundaryMemoEntry {
+    key: BoundaryMemoKey,
+    curves: Vec<Option<Curve>>,
+}
+
+/// The memo of a surface's natural boundary curves for `CoincidenceCheck` (not
+/// upstream: upstream makes the four curves again for every check, here every face
+/// pair of a boolean). It lives in the [`Surface`] value and is filled once; a copy
+/// starts an empty one and an edit through `&mut Surface` replaces it. The curves are a
+/// function of the surface value and the key, so a hit gives what a fresh build gives,
+/// and the curves carry their own curve cache memos, so their caches are built once
+/// too. Lent by reference: the check only reads the curves. One entry per live surface,
+/// freed with it; no `unsafe`, and the surface stays `Send`.
+#[derive(Default)]
+pub(crate) struct BoundaryMemo(OnceLock<BoundaryMemoEntry>);
+
+impl core::fmt::Debug for BoundaryMemo {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // the memo is not part of the surface's observable state
+        f.write_str("BoundaryMemo")
+    }
+}
+
+impl BoundaryMemo {
+    /// An empty memo.
+    pub(crate) const fn new() -> Self {
+        Self(OnceLock::new())
+    }
+}
+
+/// [`trim_curves`] through the surface's [`BoundaryMemo`]: borrowed from the memo on a
+/// hit (or after filling it), built and owned when the key differs or the surface is
+/// not memoised.
+fn boundary_curves<'s>(
+    k: &Kernel,
+    surface: &'s Surface,
+    domain: &Extent2d,
+) -> Result<Cow<'s, [Option<Curve>]>> {
+    let Some(key) = BoundaryMemoKey::of(k, surface, domain) else {
+        return trim_curves(k, surface, domain).map(Cow::Owned);
+    };
+    let memo = &surface.boundary_memo().0;
+    if let Some(entry) = memo.get() {
+        if entry.key == key {
+            return Ok(Cow::Borrowed(&entry.curves));
+        }
+        return trim_curves(k, surface, domain).map(Cow::Owned);
+    }
+    let curves = trim_curves(k, surface, domain)?;
+    if let Err(entry) = memo.set(BoundaryMemoEntry { key, curves }) {
+        return Ok(Cow::Owned(entry.curves));
+    }
+    match memo.get() {
+        Some(entry) => Ok(Cow::Borrowed(&entry.curves)),
+        None => trim_curves(k, surface, domain).map(Cow::Owned),
+    }
+}
+
 fn trim_curves(k: &Kernel, surface: &Surface, domain: &Extent2d) -> Result<Vec<Option<Curve>>> {
     let t = ignored(surface.create_natural_uv_trim_curves(k, domain, SurfParamType::V, false))?;
     Ok(t.map(|t| t.curves_3d.into_iter().map(Some).collect())
@@ -313,7 +431,9 @@ fn boundary_uv(domain: &Extent2d, index: usize, t: f64) -> (Point2, Vec2) {
 }
 
 /// `eStat = GlobalCurveIntersect(..)`: the intersections of two boundary curves, none
-/// when the call fails.
+/// when the call fails. `cache0` and `cache1` hold the curves' caches across the
+/// calls of one coincidence check, as upstream keeps them on the boundary curves.
+#[allow(clippy::too_many_arguments)]
 fn boundary_intersections(
     k: &Kernel,
     crv0: &Curve,
@@ -321,15 +441,12 @@ fn boundary_intersections(
     crv1: &Curve,
     dom1: &Extent1d,
     tol: f64,
+    cache0: &mut Option<CurveCache<OperandObject>>,
+    cache1: &mut Option<CurveCache<OperandObject>>,
 ) -> Result<SolutionArray<NoObject>> {
-    Ok(ignored(crv0.global_curve_intersect(
-        k,
-        dom0,
-        crv1,
-        dom1,
-        tol,
-        &CurveIntersectOptions::<NoObject>::default(),
-    ))?
+    Ok(ignored(
+        crv0.global_curve_intersect_unnamed_cached(k, dom0, crv1, dom1, tol, false, cache0, cache1),
+    )?
     .unwrap_or_default())
 }
 
@@ -470,8 +587,11 @@ impl Surface {
         // Now we're looking for any partial overlap.
 
         // Create two sets of boundary curves.
-        let mut bdrys0 = trim_curves(k, self, &domain0)?;
-        let mut bdrys1 = trim_curves(k, other, &domain1)?;
+        // (not upstream: kept on the surfaces across checks, see BoundaryMemo)
+        let all0 = boundary_curves(k, self, &domain0)?;
+        let all1 = boundary_curves(k, other, &domain1)?;
+        let mut bdrys0: Vec<Option<&Curve>> = all0.iter().map(Option::as_ref).collect();
+        let mut bdrys1: Vec<Option<&Curve>> = all1.iter().map(Option::as_ref).collect();
 
         // We check angles a lot, so get a good angular tolerance.
         let bbox = bbox0.union(&bbox1);
@@ -489,11 +609,18 @@ impl Surface {
             }
         }
 
+        // The boundary curves' caches, built at their first intersection and kept
+        // for the rest of the check (upstream keeps them on the curves).
+        let mut caches0: Vec<Option<CurveCache<OperandObject>>> = Vec::new();
+        caches0.resize_with(bdrys0.len(), || None);
+        let mut caches1: Vec<Option<CurveCache<OperandObject>>> = Vec::new();
+        caches1.resize_with(bdrys1.len(), || None);
+
         // Set this True as default, so that we can just return if found.
         res.are_coincident = true;
 
         // Double loop over the two surface's boundary curves.
-        for (ii, crv0) in bdrys0.iter_mut().enumerate() {
+        for ((ii, crv0), cache0) in bdrys0.iter_mut().enumerate().zip(caches0.iter_mut()) {
             let Some(crv0) = crv0.as_ref() else { continue };
             if crv0.is_degenerate(k, EFF_ZERO, None)? {
                 continue;
@@ -504,7 +631,7 @@ impl Surface {
                 domain0.v_interval()
             };
 
-            for (jj, crv1) in bdrys1.iter().enumerate() {
+            for ((jj, crv1), cache1) in bdrys1.iter().enumerate().zip(caches1.iter_mut()) {
                 let Some(crv1) = crv1.as_ref() else { continue };
                 let crv_dom1 = if jj == 0 || jj == 2 {
                     domain1.u_interval()
@@ -513,7 +640,9 @@ impl Surface {
                 };
 
                 // Check for intersections.
-                let sols = boundary_intersections(k, crv0, &crv_dom0, crv1, &crv_dom1, tol_3d)?;
+                let sols = boundary_intersections(
+                    k, crv0, &crv_dom0, crv1, &crv_dom1, tol_3d, cache0, cache1,
+                )?;
 
                 // Check each boundary intersection for surface coincidence.
                 for sol in sols.as_slice() {
@@ -846,7 +975,7 @@ impl Surface {
     /// # Errors
     ///
     /// `InvalidInput` for a curve that is not a B-spline kind; `SM_ERR` for an invalid
-    /// definition, a failing sample evaluation or a failing skin;
+    /// definition or a failing skin; count-safety failures from the sampler;
     /// [`SolidError::Unported`] from the evaluations (`surface.surface_p5`,
     /// `DropPoint`).
     #[allow(clippy::too_many_arguments)]
@@ -908,7 +1037,7 @@ impl Surface {
 
         // Get Sample Values from Face1/Edge1 using edge2 as tangentReference
         def.tangent_reference = Some(curve2);
-        let start = def.sample_values(
+        let (start, start_status) = def.sample_values_with_status(
             k,
             self,
             curve1,
@@ -919,10 +1048,13 @@ impl Surface {
                 want_higher,
             },
         )?;
+        ignore_status(start_status)?;
 
         // Get Sample Values from Face2/Edge2 using edge1 as tangentReference
         def.tangent_reference = Some(curve1);
-        let end = def.sample_values(
+        // Native reuses sParams, but GetSampleValues first calls ReSet, which
+        // zeroes its previous contents. The independent end.params matches that.
+        let (end, end_status) = def.sample_values_with_status(
             k,
             surface2,
             curve2,
@@ -933,6 +1065,7 @@ impl Surface {
                 want_higher,
             },
         )?;
+        ignore_status(end_status)?;
 
         // use samples to build cross-section curves that capture the G1/G2/G3 shapes
         // (the status is not checked upstream; the curves built before a failure stay in
@@ -1134,16 +1267,32 @@ impl Surface {
         distance_tolerance: f64,
     ) -> Result<SolutionArray<O>> {
         match self.kind() {
-            SurfaceKind::Plane(p) => p.global_line_intersect_in(
-                k,
-                surface,
-                cache,
+            // (the plane's base solve runs on this surface, its face's, with the
+            // caller's cache and context)
+            SurfaceKind::Plane(p) => p.global_line_intersect_with_base(
                 uv_domain,
                 line_point,
                 line_vector,
                 line_interval,
                 fire_ray,
                 distance_tolerance,
+                |sub_interval| {
+                    self.base_global_line_intersect_from(
+                        k,
+                        surface,
+                        match cache {
+                            Some(cache) => LineCacheSource::Caller(cache),
+                            None => LineCacheSource::Fresh,
+                        },
+                        Some(context),
+                        uv_domain,
+                        line_point,
+                        line_vector,
+                        Some(sub_interval),
+                        fire_ray,
+                        distance_tolerance,
+                    )
+                },
             ),
             _ => self.base_global_line_intersect_from(
                 k,
@@ -1672,7 +1821,7 @@ impl Surface {
 
             // Check Surface/LineSegment Coincidence (its point solve reaches the
             // surface's face through the caller's context, when there is one)
-            let found = if let Some(context) = context {
+            let found = if let Some(context) = context.as_deref_mut() {
                 self.simple_coincidence_checker_with_context::<O>(
                     k,
                     uv_domain,
@@ -1700,6 +1849,17 @@ impl Surface {
             if found.is_some() {
                 sols.reset();
 
+                // (the drop's trace gets the surface's cache, `smsurf_GetSurfaceCache`:
+                // the caller's, else the face's through a face-aware context)
+                let mut from_context;
+                let held = match (held, context) {
+                    (Some(c), _) => Some(c),
+                    (None, Some(context)) if self.face()?.is_some() => {
+                        from_context = context.build_surface_cache(k, self, surface)?;
+                        Some(&mut from_context)
+                    }
+                    (None, _) => None,
+                };
                 let dropped = self.drop_and_trim_curve_in::<NoObject, O>(
                     k,
                     held,
@@ -1725,6 +1885,7 @@ impl Surface {
                         &line_interval_used,
                         distance_tolerance,
                         false,
+                        None::<DropSolveContext<'_, NoObject>>,
                     )?;
                     uv_curves = curves;
                     dist_to_surface = dist;
@@ -2197,8 +2358,18 @@ impl Surface {
         //                   more than 1 when curve wanders in and out of surface
         //                   boundary by more than dDistanceTolerance
         if coincident {
-            // drop curve to surface
-            let dropped = self.drop_and_trim_curve_in::<NoObject, O>(
+            // drop curve to surface (the drop's trace gets the surface's cache,
+            // `smsurf_GetSurfaceCache`: the face's, through a face-aware context)
+            let mut from_context;
+            let cache = match (cache, context.as_mut()) {
+                (Some(c), _) => Some(c),
+                (None, Some(context)) if self.face()?.is_some() => {
+                    from_context = context.build_surface_cache(k, self, surface_handle)?;
+                    Some(&mut from_context)
+                }
+                (None, _) => None,
+            };
+            let dropped = self.drop_and_trim_curve_in_context::<NoObject, O>(
                 k,
                 cache,
                 uv_domain,
@@ -2208,6 +2379,10 @@ impl Surface {
                 true,
                 true,
                 None,
+                context.as_mut().map(|solver| DropSolveContext {
+                    solver: &mut **solver,
+                    handle: surface_handle,
+                }),
             )?;
             let mut dist_to_surface = dropped.max_drop_to_surf;
             let mut uv_curves: Vec<Curve> = dropped.uv_curves;
@@ -2226,6 +2401,10 @@ impl Surface {
                     interval,
                     distance_tolerance,
                     false,
+                    context.as_mut().map(|solver| DropSolveContext {
+                        solver: &mut **solver,
+                        handle: surface_handle,
+                    }),
                 ))? {
                     uv_curves = curves;
                     dist_to_surface = dist;
@@ -2313,6 +2492,20 @@ impl Surface {
         gs.curve = Some(curve);
         gs.surface_cache = Some(surface_cache);
         gs.face_queries = face_queries;
+        // the solutions name the trees' owners (LocalSolve: the curve, sm_GetOriginalSurface)
+        gs.operands = Some(SolveOperands {
+            operands: [
+                curve_tree
+                    .owner_object()?
+                    .map(|h| (h, OperandDomain::Curve(curve.natural_interval()))),
+                surface_tree.owner_object()?.map(|h| {
+                    (
+                        h,
+                        OperandDomain::Surface(surface_cache.surface().natural_uv_domain()),
+                    )
+                }),
+            ],
+        });
 
         // traverse curve and surface sub-division trees
         // for each sub-division leaf pair that has intersecting boundaries
@@ -2342,6 +2535,7 @@ impl Surface {
                 surface_cache: Some(surface_cache),
                 curve_handle,
                 surface_handle,
+                edge_tolerance: super::p9::curve_edge_tolerance(curve, curve_handle, face_queries)?,
             },
             &mut sols,
         ))?;
@@ -3557,5 +3751,125 @@ mod tests {
             r.is_ok() || matches!(&r, Err(e) if e.is_unported()),
             "{r:?}"
         );
+    }
+
+    /// Opaque solution handles, as a B-rep's: they cannot reach their geometry.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Opaque {
+        Curve,
+        Surface,
+    }
+
+    impl SolutionObject for Opaque {
+        fn kind(&self) -> crate::geom::solution_array::ObjectKind {
+            match self {
+                Self::Curve => crate::geom::solution_array::ObjectKind::Curve,
+                Self::Surface => crate::geom::solution_array::ObjectKind::Surface,
+            }
+        }
+    }
+
+    #[test]
+    fn tree_intersection_compares_solutions_of_opaque_handles() {
+        // A cubic dipping through the bilinear patch crosses it twice: the tree solve
+        // compares the two solutions (IdenticalSolutions), whose parameter domains come
+        // from the solve's curve and surface, not from the handles.
+        let k = Kernel::default();
+        let s = bilinear();
+        let pts =
+            [(0.5, 1.0), (0.8, -1.0), (1.2, -1.0), (1.5, 1.0)].map(|(x, z)| Vec3::new(x, 1.5, z));
+        let c = Curve::from(crate::primitive::api_curves::create_curve(&pts).unwrap());
+        let sols = s
+            .global_curve_intersect(
+                &k,
+                [Opaque::Curve, Opaque::Surface],
+                &s.natural_uv_domain(),
+                &c,
+                &c.natural_interval(),
+                1e-6,
+            )
+            .unwrap();
+        assert_eq!(sols.as_slice().len(), 2);
+        for sol in sols.as_slice() {
+            let t = sol.start.param(0).unwrap();
+            let uv = Point2::new(sol.start.param(1).unwrap(), sol.start.param(2).unwrap());
+            let on_curve = c.evaluate_point(&k, t).unwrap();
+            let on_surface = s.evaluate_point(&k, uv).unwrap();
+            assert!(
+                on_curve.closer_than(1e-6, on_surface),
+                "{on_curve:?} {on_surface:?}"
+            );
+        }
+    }
+
+    /// Two overlapping bilinear patches in the same plane, the second one shifted.
+    fn overlapping_pair() -> (Surface, Surface) {
+        let patch = |x: f64| {
+            Surface::from(
+                BSplineSurface::create_bilinear_surface(
+                    Vec3::new(x, 0.0, 0.0),
+                    Vec3::new(x + 2.0, 0.0, 0.0),
+                    Vec3::new(x, 3.0, 0.0),
+                    Vec3::new(x + 2.0, 3.0, 0.0),
+                )
+                .unwrap(),
+            )
+        };
+        (patch(0.0), patch(1.0))
+    }
+
+    #[test]
+    fn boundary_memo_hit_is_the_fresh_build() {
+        let on = Kernel {
+            memoize_curve_caches: true,
+            ..Kernel::default()
+        };
+        let off = Kernel {
+            memoize_curve_caches: false,
+            ..Kernel::default()
+        };
+        let (a, b) = overlapping_pair();
+        let want = format!(
+            "{:?}",
+            a.base_coincidence_check(&off, &b, 1e-6, false).unwrap()
+        );
+        assert!(a.boundary_memo().0.get().is_none());
+        let (mut a, b) = overlapping_pair();
+        let first = format!(
+            "{:?}",
+            a.base_coincidence_check(&on, &b, 1e-6, false).unwrap()
+        );
+        assert!(a.boundary_memo().0.get().is_some());
+        assert!(b.boundary_memo().0.get().is_some());
+        let second = format!(
+            "{:?}",
+            a.base_coincidence_check(&on, &b, 1e-6, false).unwrap()
+        );
+        assert_eq!(first, want);
+        assert_eq!(second, want);
+        // a copy starts empty, an edit empties the memo
+        assert!(a.clone().boundary_memo().0.get().is_none());
+        let _ = a.kind_mut();
+        assert!(a.boundary_memo().0.get().is_none());
+        // other tolerances miss and build again, with the same result
+        let mut loose = Kernel {
+            memoize_curve_caches: true,
+            ..Kernel::default()
+        };
+        loose.tolerances.zone_tol_3d *= 10.0;
+        let (a2, b2) = overlapping_pair();
+        let _ = a2.base_coincidence_check(&on, &b2, 1e-6, false).unwrap();
+        let fresh = format!(
+            "{:?}",
+            overlapping_pair()
+                .0
+                .base_coincidence_check(&loose, &b2, 1e-6, false)
+                .unwrap()
+        );
+        let missed = format!(
+            "{:?}",
+            a2.base_coincidence_check(&loose, &b2, 1e-6, false).unwrap()
+        );
+        assert_eq!(missed, fresh);
     }
 }

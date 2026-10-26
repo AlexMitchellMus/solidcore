@@ -106,7 +106,7 @@ use crate::query::face::p2::{
 use crate::surface::surface::p2::{surface_cache, Surface, SurfaceKind};
 use crate::surface::surface_cache::p1::{AltCacheKey, AltSrfCacheType};
 use crate::surface::trim_srf_cache::POINT_CLASS_UNKNOWN;
-use crate::topology::face::p2::create_curves_by_trimming;
+use crate::topology::face::p2::create_curves_by_trimming_snapshot;
 
 const OP_MAY: &str = "intersect::topology_solver::p1::TopologySolver::may_contain_answer";
 const OP_TWO_TREES: &str = "intersect::topology_solver::p1::TopologySolver::solve_two_trees";
@@ -1910,13 +1910,17 @@ impl<'a, O: SolutionObject> LocalSolver<'a, O> {
 /// vector `opt_vectors[0]` (3D curves and their UV trim curves), taken from the
 /// surface cache's alternate caches or made and cached there (silhouette curves of
 /// the surface to ten times `tolerance_3d` and 20 degrees, trimmed by the face).
-/// The surface cache is the per-call [`surface_cache`], so the alternate caches it
-/// searches first hold only what this call adds. The trimming works on the face
-/// [`TopologyObjects::face_entity`] resolves; an adapter that resolves none returns
+/// The surface cache is the one the caller's
+/// [`TopologyObjects::surface_solve_context`] makes for the face's surface (else the
+/// per-call [`surface_cache`]); either is this call's copy, so the alternate caches
+/// it searches first hold only what this call adds. The trimming works on the face
+/// [`TopologyObjects::face_entity`] resolves, which the objects lend read-only, so it
+/// classifies on a copy of that B-rep and drops the lazy edits upstream's `const`
+/// `CreateCurvesByTrimming` leaves on it; an adapter that resolves none returns
 /// [`SolidError::Unported`] for `SmFace::CreateCurvesByTrimming`. A trimmed UV curve
 /// that is not a B-spline (upstream caches it as NULL and `GetCopyOfCurves` fails
 /// on it) is `SM_ERR_NULL_POINTER`.
-pub(super) fn face_silhouettes<O: Copy + PartialEq>(
+pub(super) fn face_silhouettes<O: SolutionObject>(
     k: &Kernel,
     objects: &dyn TopologyObjects<O>,
     face: O,
@@ -1926,7 +1930,10 @@ pub(super) fn face_silhouettes<O: Copy + PartialEq>(
     // locals and temporaries
     let surface = objects.face_surface(face)?;
     let srf = objects.surface(surface)?;
-    let mut cache = surface_cache(k, srf, Some(surface))?;
+    let mut cache = match objects.surface_solve_context() {
+        Some(mut ctx) => ctx.build_surface_cache(k, srf, Some(surface))?,
+        None => surface_cache(k, srf, Some(surface))?,
+    };
     let view = *opt_vectors
         .first()
         .ok_or(null_deref(OP_FACE_SIL, "no view vector"))?;
@@ -1965,8 +1972,9 @@ pub(super) fn face_silhouettes<O: Copy + PartialEq>(
     }
 
     // Create the planar section curves from the brep and the plane
-    let (curves_3d, curves_uv) = srf.create_silhouette_curves(
+    let (curves_3d, curves_uv) = srf.create_silhouette_curves_with_cache(
         k,
+        &mut cache,
         &objects.face_uv_domain(face)?,
         view,
         false,
@@ -1985,7 +1993,7 @@ pub(super) fn face_silhouettes<O: Copy + PartialEq>(
     };
     let curves_3d: Vec<Option<Curve>> = curves_3d.into_iter().map(Some).collect();
     let curves_uv: Vec<Option<Curve>> = curves_uv.into_iter().map(Some).collect();
-    let trimmed = create_curves_by_trimming(
+    let trimmed = create_curves_by_trimming_snapshot(
         k,
         b,
         f,

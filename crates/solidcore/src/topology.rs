@@ -56,6 +56,7 @@ pub mod vertex;
 pub mod vertexuse;
 
 use core::marker::PhantomData;
+use std::sync::Arc;
 
 use crate::curve::curve::Curve;
 use crate::error::{EntityRef, Result, SolidError};
@@ -163,6 +164,56 @@ typed_id!(
     /// Identifies a [`Vertexuse`] within its [`Brep`].
     VertexuseId => Vertexuse
 );
+
+/// A copy-on-write handle to a big arena of a [`Brep`]: `Clone` is a deep copy (as for
+/// a plain `Arena`), [`Shared::share`] is a refcount bump, and the first write through
+/// `DerefMut` of a shared handle copies the arena, so every writer behaves as on an
+/// unshared one. Used by [`Brep::clone_sharing_surface_caches`] for the arenas a query's
+/// snapshot only reads.
+#[derive(Debug)]
+struct Shared<T>(Arc<T>);
+
+impl<T> Shared<T> {
+    fn share(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+
+    fn copy(&self, share: bool) -> Self
+    where
+        T: Clone,
+    {
+        if share {
+            self.share()
+        } else {
+            self.clone()
+        }
+    }
+}
+
+impl<T: Default> Default for Shared<T> {
+    fn default() -> Self {
+        Self(Arc::default())
+    }
+}
+
+impl<T: Clone> Clone for Shared<T> {
+    fn clone(&self) -> Self {
+        Self(Arc::new((*self.0).clone()))
+    }
+}
+
+impl<T> core::ops::Deref for Shared<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T: Clone> core::ops::DerefMut for Shared<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        Arc::make_mut(&mut self.0)
+    }
+}
 
 /// A dense store of `T` addressed by typed id `I`. Items are appended; an item can
 /// be removed (upstream's `delete` of a topology object, unit `topology.brep_p4`),
@@ -619,18 +670,18 @@ pub enum NamingScheme {
 
 /// A boundary representation (`SmBrep`): arenas of shells, faces, loops, edges and
 /// vertices linked by typed ids.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Brep {
     shells: Arena<ShellId, Shell>,
     faces: Arena<FaceId, Face>,
     loops: Arena<LoopId, Loop>,
-    edges: Arena<EdgeId, Edge>,
+    edges: Shared<Arena<EdgeId, Edge>>,
     vertices: Arena<VertexId, Vertex>,
     regions: Arena<RegionId, Region>,
     infinite_region: Option<RegionId>,
     faceuses: Arena<FaceuseId, Faceuse>,
     loopuses: Arena<LoopuseId, Loopuse>,
-    edgeuses: Arena<EdgeuseId, Edgeuse>,
+    edgeuses: Shared<Arena<EdgeuseId, Edgeuse>>,
     vertexuses: Arena<VertexuseId, Vertexuse>,
     /// `m_bValidateOnly`.
     validate_only: bool,
@@ -686,19 +737,62 @@ pub struct Brep {
     geometry_owner_keys: std::collections::BTreeMap<EntityRef, crate::geom::object::ObjectRef>,
 }
 
+impl Clone for Brep {
+    fn clone(&self) -> Self {
+        self.copy(false)
+    }
+}
+
+impl Brep {
+    /// The copy constructor; with `share` the edge and edge use arenas (the bulk of a
+    /// clone: their curves) are shared copy-on-write instead of copied, so their curves
+    /// keep their owners until a write copies the arena.
+    fn copy(&self, share: bool) -> Self {
+        Self {
+            shells: self.shells.clone(),
+            faces: self.faces.clone(),
+            loops: self.loops.clone(),
+            edges: self.edges.copy(share),
+            vertices: self.vertices.clone(),
+            regions: self.regions.clone(),
+            infinite_region: self.infinite_region,
+            faceuses: self.faceuses.clone(),
+            loopuses: self.loopuses.clone(),
+            edgeuses: self.edgeuses.copy(share),
+            vertexuses: self.vertexuses.clone(),
+            validate_only: self.validate_only,
+            tolerance: self.tolerance,
+            key: self.key,
+            region_list_head: self.region_list_head,
+            face_list: self.face_list.clone(),
+            edge_list: self.edge_list.clone(),
+            vertex_list: self.vertex_list.clone(),
+            editing_enabled: self.editing_enabled,
+            model_size_estimate: self.model_size_estimate,
+            large_small_size_ratio: self.large_small_size_ratio,
+            deleted_surfaces: self.deleted_surfaces.clone(),
+            surface_owner_cleared: self.surface_owner_cleared.clone(),
+            naming: self.naming,
+            locked_bounding_box: self.locked_bounding_box,
+            notify_identity: self.notify_identity.clone(),
+            geometry_owner_keys: self.geometry_owner_keys.clone(),
+        }
+    }
+}
+
 impl Default for Brep {
     fn default() -> Self {
         Self {
             shells: Arena::default(),
             faces: Arena::default(),
             loops: Arena::default(),
-            edges: Arena::default(),
+            edges: Shared::default(),
             vertices: Arena::default(),
             regions: Arena::default(),
             infinite_region: None,
             faceuses: Arena::default(),
             loopuses: Arena::default(),
-            edgeuses: Arena::default(),
+            edgeuses: Shared::default(),
             vertexuses: Arena::default(),
             validate_only: false,
             tolerance: ZONE_TOL_3D,
@@ -780,6 +874,63 @@ impl Brep {
         self.naming = naming;
     }
 
+    /// Relabels geometry owned by this B-rep's own topology records under
+    /// [`NamingScheme::Arena`] ([`brep_cache::arena_identity`]), preserving shared or
+    /// unowned geometry and syncing face surface tolerances.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::NotFound`] for a dangling face or edge id (none in practice).
+    pub fn use_arena_naming(&mut self) -> Result<()> {
+        let edges: Vec<EdgeId> = self.edges.ids().collect();
+        for edge in edges {
+            let entity = EntityRef::Edge(edge);
+            let arena = brep_cache::arena_identity(brep_cache::CacheObject::Edge(edge));
+            let notify = loopuse::notify_ref(entity);
+            let proven = self.geometry_owner_key(entity);
+            let rebound = self.edge_mut(edge)?.curve.as_mut().is_some_and(|curve| {
+                let matched = curve.owner().is_some_and(|o| {
+                    o == arena
+                        || (o.key, o.type_code) == (notify.key, notify.type_code)
+                        || Some(o) == proven
+                });
+                if matched {
+                    curve.set_owner(Some(arena), None);
+                }
+                matched
+            });
+            if rebound {
+                self.set_geometry_owner_key(entity, Some(arena));
+            }
+        }
+        let faces: Vec<FaceId> = self.faces.ids().collect();
+        for face in faces {
+            let entity = EntityRef::Face(face);
+            let arena = brep_cache::arena_identity(brep_cache::CacheObject::Face(face));
+            let notify = loopuse::notify_ref(entity);
+            let proven = self.geometry_owner_key(entity);
+            let rebound = self
+                .face_mut(face)?
+                .surface
+                .as_mut()
+                .is_some_and(|surface| {
+                    let matched = surface
+                        .owner()
+                        .is_some_and(|o| o == arena || o == notify || Some(o) == proven);
+                    if matched {
+                        surface.set_owner(Some(arena));
+                    }
+                    matched
+                });
+            if rebound {
+                self.set_geometry_owner_key(entity, Some(arena));
+                self.sync_face_surface_tolerance(face)?;
+            }
+        }
+        self.naming = NamingScheme::Arena;
+        Ok(())
+    }
+
     /// Producer-supplied owner identity recorded when geometry was bound to `entity`.
     #[must_use]
     pub(crate) fn geometry_owner_key(
@@ -847,14 +998,18 @@ impl Brep {
     /// copy where upstream works on the B-rep): its face surfaces share the cache slots
     /// of this B-rep's ([`Surface::share_cache_slot_of`]), so that the surface caches the
     /// query makes or reuses on the copy are the B-rep's surfaces' own, as upstream's
-    /// are. A plain `clone` (the copy constructor) starts every surface without cache.
+    /// are. They also keep their owners (and the face tolerance cached on them), so
+    /// that `GetFace()` of the copy's surfaces finds the face as upstream's in-place
+    /// queries do (`SmTol::GetZoneTol3d(pSurface)` reads the face tolerance). A plain
+    /// `clone` (the copy constructor) starts every surface without cache or owner.
     #[must_use]
     pub fn clone_sharing_surface_caches(&self) -> Self {
-        let mut copy = self.clone();
+        let mut copy = self.copy(true);
         for (id, face) in self.faces.iter() {
             if let (Some(original), Ok(face_copy)) = (face.surface.as_ref(), copy.face_mut(id)) {
                 if let Some(surface) = face_copy.surface.as_mut() {
                     surface.share_cache_slot_of(original);
+                    face::p2::RescueSurfaceOwner::new(original).restore(surface);
                 }
             }
         }
