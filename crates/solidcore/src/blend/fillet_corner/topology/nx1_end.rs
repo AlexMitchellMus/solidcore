@@ -9,9 +9,10 @@
 //! | `finish_nx1_end` (crate) | tail of `SmFilletNx1Corner::MakeCornerTopology` |
 //!
 //! Deviations: the solver is the caller's concrete solver object instead of a
-//! `GetSolverType` cast. A failed variable-radius law evaluation is returned as an
-//! error (upstream's `SER` inside a `double` function returns the status code as the
-//! radius). The gap checks of a multi-neighbour end face (vertex and side-edge
+//! `GetSolverType` cast. A failed variable-radius law evaluation yields its status
+//! code as the radius, as upstream's `SER` inside the `double`
+//! `SmVariableRadiusFS::GetFilletRadius` does (an `Unported` callee still
+//! propagates). The gap checks of a multi-neighbour end face (vertex and side-edge
 //! geometry, extended-surface coincidence) are `Unported`. There is no recursion.
 
 use std::collections::BTreeMap;
@@ -22,7 +23,7 @@ use crate::blend::fillet_executive::session::{FilletBody, FilletObject, SolverOb
 use crate::blend::fillet_geom::p1::{
     FilletBrep, FilletCornerId, FilletEdgeType, FilletGeomId, FilletVertex, FilletVertexType,
 };
-use crate::error::{EntityRef, Result, SolidError};
+use crate::error::{EntityRef, Result, SolidError, SM_ERR, SM_ERR_INVALID_INPUT};
 use crate::geom::geom_utility::p2::ContinuityType;
 use crate::intersect::point_class::PointClassType;
 use crate::kernel::Kernel;
@@ -39,6 +40,15 @@ fn invalid(reason: &'static str) -> SolidError {
     SolidError::invalid_input(OP, reason)
 }
 
+/// The `SmStatus` upstream's `SER` returns for a failed callee.
+fn status_of(e: &SolidError) -> i32 {
+    match e {
+        SolidError::Upstream { code, .. } => *code,
+        SolidError::InvalidInput { .. } => SM_ERR_INVALID_INPUT,
+        _ => SM_ERR,
+    }
+}
+
 fn need<T>(value: Option<T>, reason: &'static str) -> Result<T> {
     value.ok_or_else(|| invalid(reason))
 }
@@ -51,7 +61,7 @@ fn need<T>(value: Option<T>, reason: &'static str) -> Result<T> {
 ///
 /// # Errors
 /// [`SolidError::InvalidInput`] for an edge use without vertex use or edge (upstream
-/// dereferences them); those of the variable-radius law evaluation.
+/// dereferences them); [`SolidError::Unported`] from the variable-radius law evaluation.
 pub fn find_surface_extension_dist_at_corner(
     target: &Brep,
     fillet_edgeuse: EdgeuseId,
@@ -90,8 +100,14 @@ pub fn find_surface_extension_dist_at_corner(
             };
             let interval = vr.law_interval;
             let orientation = vr.law_orientation;
-            let values = vr.law.evaluate(parameter, &interval, orientation)?;
-            ext_dist = values[0];
+            // SmVariableRadiusFS::GetFilletRadius is a `double` function whose
+            // `SER(m_rLaw->Evaluate(..))` returns the failed `SmStatus` itself, so a
+            // failed law evaluation yields the status code as the radius.
+            ext_dist = match vr.law.evaluate(parameter, &interval, orientation) {
+                Ok(values) => values[0],
+                Err(e) if e.is_unported() => return Err(e),
+                Err(e) => f64::from(status_of(&e)),
+            };
         }
         // SE(SM_ERR): reported only
         SolverObject::SurfaceSurface(_) => {}
