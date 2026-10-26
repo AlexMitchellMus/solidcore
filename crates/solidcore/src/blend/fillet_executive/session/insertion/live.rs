@@ -163,17 +163,19 @@ impl LiveGeometryInsertion<'_> {
             binding.resolve_in_body(self.intermediate)?;
         }
         let actual = if target.face(face)?.surface.is_some() {
-            Some(FilletObject::Surface(SurfaceBinding::capture_in_body(
-                self.context,
-                target,
-                InsertionBody::Target,
-                face,
-            )?))
+            Some(
+                SurfaceBinding::capture_in_body(self.context, target, InsertionBody::Target, face)?
+                    .face_surface(),
+            )
         } else {
             None
         };
+        // The table is keyed by the handles IntersectInsertRelate's face loop
+        // queries (`CheckIfHaveExistingSSI(pFace->GetSurface(), ..)`): the faces'
+        // current surfaces, so a registered pair is found by a later global or
+        // piecewise merge.
         self.ti
-            .register_empty_ssi(actual, surface.copied().map(FilletObject::Surface));
+            .register_empty_ssi(actual, surface.map(SurfaceBinding::face_surface));
         Ok(())
     }
     fn merge_actual_curve(
@@ -499,6 +501,24 @@ impl FilletSession<'_> {
         let result = body(self, k);
         k.context.set_doing_boolean(prior);
         result
+    }
+    /// One retained corner's `InsertIntersectionTopology` on the executive's
+    /// intersector and the actual bodies, without the fillet B-rep edge map
+    /// (`DoPiecewiseMerge` inserts each corner this way before relating its surfaces).
+    /// # Errors
+    /// Original corner insertion errors or a genuine missing live capability.
+    pub(in crate::blend::fillet_executive::session) fn insert_corner_topology(
+        &mut self,
+        k: &mut Kernel,
+        corner: FilletObject,
+    ) -> Result<()> {
+        Context::with_notification_context(k, |k, context| {
+            LiveInsertionAccess {
+                objects: &mut self.objects,
+                context,
+            }
+            .insertion_corner_topology(k, corner, &mut self.executive)
+        })?
     }
     /// Insert all retained geometry and corner topology through the shared native
     /// order. Target editing is restored on every result.

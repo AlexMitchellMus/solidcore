@@ -76,6 +76,7 @@ mod classification;
 mod finish;
 mod original_merge;
 mod original_trim;
+mod piecewise;
 pub use original_trim::{OriginalSurfaceDeletion, OriginalSurfaceSelection};
 
 const OP: &str = "blend::fillet_executive::session";
@@ -1218,6 +1219,13 @@ impl<'target> FilletSession<'target> {
     /// `SetDoGlobalMerge`.
     pub fn set_do_global_merge(&mut self, do_global_merge: bool) {
         self.executive.set_do_global_merge(do_global_merge);
+    }
+
+    /// `SetDoPiecewiseMerge`: `DoFilleting` then merges the intermediate body into the
+    /// target one face at a time (`DoPiecewiseMerge`). `SetFilletParameters` resets
+    /// it, so set it after preparing the edges.
+    pub fn set_do_piecewise_merge(&mut self, do_piecewise_merge: bool) {
+        self.executive.options.piecewise_merge = do_piecewise_merge;
     }
 
     /// `SmEdge::GetBlendEdgeuse` of a target edge.

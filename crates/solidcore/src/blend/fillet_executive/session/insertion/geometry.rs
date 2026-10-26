@@ -52,6 +52,11 @@ pub struct SurfaceBinding {
     geometry: ObjectRef,
 }
 impl SurfaceBinding {
+    /// The face-surface handle the intersector's face loops name this surface by
+    /// ([`InsertionGeometry::face_surface`] of its face).
+    pub(super) const fn face_surface(&self) -> FilletObject {
+        FilletObject::FaceSurface(self.role, self.face)
+    }
     pub(super) fn capture_in_body(
         context: &mut Context,
         body: &mut Brep,
