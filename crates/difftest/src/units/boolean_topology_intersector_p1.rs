@@ -102,7 +102,7 @@ use solidcore::topology::topology::Topology;
 use solidcore::topology::vertex as vx;
 use solidcore::query::brep::{BrepIdentity, BrepQuery};
 use solidcore::topology::{
-    Brep, BrepId, EdgeId, EdgeuseId, FaceId, LoopId, RegionId, VertexId, VertexuseId,
+    Brep, BrepId, EdgeId, EdgeuseId, FaceId, LoopId, LoopuseId, RegionId, VertexId, VertexuseId,
 };
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::boolean_topology_intersector_p1::{self as ffi, Op};
@@ -617,6 +617,8 @@ pub(super) const K_VERTEXUSE: u8 = 12;
 pub(super) const K_TRIM_CURVE: u8 = 13;
 /// A region (classification results).
 const K_REGION: u8 = 14;
+/// A loop use a face's trimmed surface cache names (Rust side only, never exported).
+const K_LOOPUSE: u8 = 15;
 
 /// An object handle: the B-rep (`2` for the curve stores, `-1` for the intersector),
 /// the kind and the index. Ordered as the shim sorts (`brep`, `kind`, `index`). A
@@ -819,6 +821,50 @@ impl Two {
         }
     }
 
+    /// `SmBrep::GlueVertices(v1, v2)` where `v1` and `v2` belong to different B-reps.
+    /// Upstream notifies, reads the faces of `v2` and the shells of both vertices, then
+    /// looks for a shell pair in one region (`NER(pSurvVShell)`). A region belongs to one
+    /// B-rep, so a pair that shares none ends the call with `SM_ERR_NULL_POINTER`
+    /// before any edit. The caller has already deleted the cache of `this`
+    /// (`Notify(SM_NO_PRE_EDIT, this)`). The remaining notifications are not delivered
+    /// across the two arenas: the shim registers no context callbacks, and each face of
+    /// the vertex to delete was already notified `PRE_EDIT` when the vertex was made
+    /// (`MakeVertexLoop` / `MakeVertexSplitEdge`), with nothing recomputing its
+    /// rectangular-trim flag or trim cache in between.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Upstream`] with `SM_ERR_NULL_POINTER` (upstream's `NER`);
+    /// [`SolidError::InvalidInput`] for shells of both B-reps
+    /// without a region (`NULL == NULL`: upstream would go on to merge shells across
+    /// B-reps) or a missing arena.
+    fn glue_vertices_of_two_breps(&self, survivor: H, deleted: H) -> solidcore::Result<()> {
+        let arena = |h: H| {
+            usize::try_from(h.b)
+                .ok()
+                .and_then(|slot| self.breps.get(slot))
+                .and_then(Option::as_ref)
+                .ok_or_else(|| invalid("handle names an absent B-rep"))
+        };
+        let (surv_brep, del_brep) = (arena(survivor)?, arena(deleted)?);
+        let (surv, del) = (vid(survivor), vid(deleted));
+        // pVertexToDelete->GetFaces(..) (each face is notified), then GetShells for both
+        vx::faces(del_brep, del)?;
+        let surv_shells = vx::shells(surv_brep, surv)?;
+        let del_shells = vx::shells(del_brep, del)?;
+        for &first in &surv_shells {
+            let region = surv_brep.shell(first)?.region;
+            for &last in &del_shells {
+                if region.is_none() && del_brep.shell(last)?.region.is_none() {
+                    return Err(invalid("shells of two B-reps share a NULL region"));
+                }
+            }
+        }
+        Err(SolidError::null_pointer(
+            "difftest::boolean_topology_intersector_p1::Two::glue_vertices_of_two_breps",
+        ))
+    }
+
     /// Deletes the cache of the B-rep behind `brep` (`SmBrep::Notify`'s `PRE_EDIT` /
     /// `DESTRUCTION`); the next use rebuilds it.
     pub(crate) fn delete_cache(&mut self, brep: H) -> solidcore::Result<()> {
@@ -923,6 +969,37 @@ impl Two {
             .and_then(|b| eu1::primary_edgeuse(b, eid(e)).ok().flatten())
             .is_some()
     }
+}
+
+/// The handle of an entity of B-rep `b` a face's trimmed surface cache names (its
+/// faces, edges, vertices, loop uses, edge uses and vertex uses).
+fn cache_entity_h(b: i8, e: EntityRef) -> solidcore::Result<H> {
+    Ok(match e {
+        EntityRef::Face(f) => hd(b, K_FACE, f.index()),
+        EntityRef::Edge(x) => hd(b, K_EDGE, x.index()),
+        EntityRef::Vertex(v) => hd(b, K_VERTEX, v.index()),
+        EntityRef::Loopuse(lu) => hd(b, K_LOOPUSE, lu.index()),
+        EntityRef::Edgeuse(eu) => hd(b, K_EDGEUSE, eu.index()),
+        EntityRef::Vertexuse(vu) => hd(b, K_VERTEXUSE, vu.index()),
+        _ => return Err(invalid("entity a surface cache does not name")),
+    })
+}
+
+/// The entity of B-rep `b` a surface cache handle names (inverse of
+/// [`cache_entity_h`]).
+fn cache_h_entity(b: i8, h: H) -> solidcore::Result<EntityRef> {
+    if h.b != b {
+        return Err(invalid("surface cache handle of another B-rep"));
+    }
+    Ok(match h.kind {
+        K_FACE => EntityRef::Face(fid(h)),
+        K_EDGE => EntityRef::Edge(eid(h)),
+        K_VERTEX => EntityRef::Vertex(vid(h)),
+        K_LOOPUSE => EntityRef::Loopuse(LoopuseId::from_index(h.i)),
+        K_EDGEUSE => EntityRef::Edgeuse(EdgeuseId::from_index(h.i)),
+        K_VERTEXUSE => EntityRef::Vertexuse(VertexuseId::from_index(h.i)),
+        _ => return Err(invalid("handle a surface cache does not name")),
+    })
 }
 
 impl ClassGeometry<H> for Two {
@@ -1462,12 +1539,10 @@ impl solidcore::topology::proto_topology::p3::BrepGlue<H> for Two {
             && v1.b != v2.b
             && (v1.b == brep.b || v2.b == brep.b)
         {
-            // UNPORTED(topology.brep_p5): SmBrep::GlueVertices of vertices of two B-reps --
-            // justified: topology::brep::p5::glue_vertices takes one B-rep arena
-            return Err(SolidError::unported(
-                "SmBrep::GlueVertices (vertices of two B-reps)",
-                "topology.brep_p5",
-            ));
+            // Notify(SM_NO_PRE_EDIT, this) deletes the cache of the B-rep the call is on,
+            // before anything can fail
+            self.delete_cache(brep)?;
+            return self.glue_vertices_of_two_breps(v1, v2);
         }
         if brep.kind != K_BREP
             || v1.kind != K_VERTEX
@@ -1967,6 +2042,30 @@ impl IntersectorBrep<H> for Two {
     }
     fn topology_objects(&self) -> &dyn TopologyObjects<H> {
         self
+    }
+    fn face_cache_target(&mut self, face: H) -> solidcore::Result<ti::FaceCacheTarget<'_, H>> {
+        if face.kind != K_FACE {
+            return Err(invalid("not a face handle"));
+        }
+        let b = face.b;
+        let surface = self
+            .face_surface_h(face)
+            .flatten()
+            .ok_or_else(|| invalid("face without surface"))?;
+        Ok(ti::FaceCacheTarget {
+            brep: self.brep_m(face)?,
+            face: fid(face),
+            surface,
+            handles: Box::new(move |e| cache_entity_h(b, e)),
+            entities: Box::new(move |h| cache_h_entity(b, h)),
+        })
+    }
+    fn face_entity_handles(&self, face: H) -> solidcore::Result<ti::EntityHandles<H>> {
+        if face.kind != K_FACE {
+            return Err(invalid("not a face handle"));
+        }
+        let b = face.b;
+        Ok(Box::new(move |e| cache_entity_h(b, e)))
     }
     fn brep_delete_face(&mut self, k: &mut Kernel, brep: H, face: H) -> solidcore::Result<()> {
         if brep.kind != K_BREP || face.b != brep.b {
@@ -5438,4 +5537,104 @@ fn edge_cases() -> Vec<(String, Value)> {
         );
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::case::CaseSource;
+
+    /// HANG-29: the `--fuzz 30000` inputs whose surface or curve control point of
+    /// `+-1e300` kept the C++ intersection busy past the timeout, for this unit and `_p2`
+    /// (which shares this reader), and UB-166's v knot snap (`ub166` in the name: the
+    /// shim refuses the B-rep). They cannot be fixtures (a harness error always fails a
+    /// case), so this test keeps them: each is refused before the intersection runs.
+    #[cfg(feature = "cpp")]
+    #[test]
+    fn ffi_refuses_surface_points_in_the_hang_range() {
+        let p2 = super::super::boolean_topology_intersector_p2::Runner;
+        let files: [(&str, &dyn UnitDiff); 2] = [
+            (
+                include_str!("../../tests/fuzz_regressions/boolean.topology_intersector_p1.json"),
+                &Runner,
+            ),
+            (
+                include_str!("../../tests/fuzz_regressions/boolean.topology_intersector_p2.json"),
+                &p2,
+            ),
+        ];
+        for (text, runner) in files {
+            let recorded: Value = serde_json::from_str(text).unwrap();
+            for recorded in recorded["cases"].as_array().unwrap() {
+                let case = Case {
+                    unit: runner.id().into(),
+                    name: recorded["name"].as_str().unwrap().into(),
+                    source: CaseSource::Inline,
+                    inputs: recorded["inputs"].clone(),
+                };
+                let error = runner.run_cpp(&case).unwrap_err().to_string();
+                let expected = if case.name.contains("ub166") {
+                    // the shim's UB-166 refusal (SC_ERR_ARG)
+                    "shim_rejected_args"
+                } else {
+                    "point out of range"
+                };
+                assert!(error.contains(expected), "{}: {error}", case.name);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod glue_tests {
+    use super::*;
+    use solidcore::primitive::api_primitives::create_box;
+    use solidcore::topology::proto_topology::p3::BrepGlue;
+
+    fn two_boxes() -> (Kernel, Two) {
+        let mut k = Kernel::default();
+        let a = create_box(&mut k, Point3::new(0.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
+        let b = create_box(&mut k, Point3::new(5.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
+        (k, Two::new(a, Some(b)))
+    }
+
+    /// `GlueVertices` on `this` with vertices of two B-reps: `Notify(SM_NO_PRE_EDIT, this)`
+    /// deletes the cache of `this`, then `NER(pSurvVShell)` (no region is shared) edits
+    /// nothing.
+    #[test]
+    fn glue_of_two_breps_drops_this_cache_and_returns_null_pointer() {
+        for this_slot in [0i8, 1] {
+            let (mut k, mut two) = two_boxes();
+            two.brep_cache(hd(0, K_BREP, 0)).unwrap();
+            two.brep_cache(hd(1, K_BREP, 0)).unwrap();
+            let counts = |two: &Two| {
+                two.breps
+                    .iter()
+                    .flatten()
+                    .map(|b| (b.vertices().len(), b.edges().len(), b.faces().len()))
+                    .collect::<Vec<_>>()
+            };
+            let before = counts(&two);
+            let first_vertex = |slot: usize| {
+                let id = two.breps[slot].as_ref().unwrap().vertices().ids().next();
+                hd(slot as i8, K_VERTEX, id.unwrap().index())
+            };
+            let (v0, v1) = (first_vertex(0), first_vertex(1));
+            let r = two.glue_vertices(&mut k, hd(this_slot, K_BREP, 0), v0, v1, None);
+            assert!(
+                matches!(
+                    r,
+                    Err(SolidError::Upstream { code: solidcore::error::SM_ERR_NULL_POINTER, .. })
+                ),
+                "this={this_slot}: {r:?}"
+            );
+            assert_eq!(counts(&two), before, "no topology edit");
+            let cached = |i: usize| two.caches[i].get().is_some();
+            assert_eq!(
+                (cached(0), cached(1)),
+                (this_slot != 0, this_slot != 1),
+                "only the cache of `this` is deleted"
+            );
+        }
+    }
 }

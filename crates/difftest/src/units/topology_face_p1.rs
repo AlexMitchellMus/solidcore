@@ -26,8 +26,7 @@
 //!
 //! Deferred: the cone `TrimWithDomain` callbacks of `ShrinkGeometry`
 //! (`surface.surface_p2`), and the `MoveSeam` splits past the recomputed seam problem
-//! (trimmed surface cache history, `surface.surface_p2`, or merges whose handles the
-//! geometry cannot resolve). Rejected: the seam calls the C++ crash trap (below) catches.
+//! (merges whose handles the geometry cannot resolve). Rejected: the seam calls the C++ crash trap (below) catches.
 //!
 //! **C++ crash trap.** Upstream `SplitAtSeam`'s U-then-V branch recurses on the wrong
 //! face and crashes (`plan/upstream-issues.md` UB-137). The shim runs every seam call
@@ -57,14 +56,11 @@ use solidcore::geom::object::ObjectRef;
 use solidcore::heal::face_props::{FaceProps, LoopObject, Tri};
 use solidcore::intersect::curve_class::p1::CurveClassification;
 use solidcore::intersect::point_class::{
-    ClassGeometry, ClassObject, ClassObjectKind, PointClassType,
+    ClassObject, ClassObjectKind, PointClassType,
 };
 use solidcore::kernel::Kernel;
-use solidcore::math::Point3;
 use solidcore::nurbs::b_spline_surface::p1::SurfParamType;
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use solidcore::surface::surface::Surface;
-use solidcore::surface::volume::Volume;
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::face::p1 as fp1;
 use solidcore::topology::face::p2 as fp2;
@@ -528,25 +524,6 @@ impl LoopObject for H {
     }
 }
 
-/// Classification geometry for the seam calls: resolves nothing (it cannot borrow the
-/// B-rep the call mutates).
-struct NoGeometry;
-
-impl ClassGeometry<H> for NoGeometry {
-    fn curve(&self, _: H) -> Option<&Curve> {
-        None
-    }
-    fn surface(&self, _: H) -> Option<&Surface> {
-        None
-    }
-    fn volume(&self, _: H) -> Option<&Volume> {
-        None
-    }
-    fn point(&self, _: H) -> Option<Point3> {
-        None
-    }
-}
-
 fn put_domain(o: &mut Vec<f64>, d: &Extent2d) {
     o.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
 }
@@ -723,7 +700,7 @@ fn reaches_brep(b: &Brep, f: FaceId) -> Result<bool, SolidError> {
 
 #[allow(clippy::too_many_lines)] // one record per op
 fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
-    let k = Kernel::default();
+    let mut k = Kernel::default();
     let (mut b, _) = shared::import(ex)?;
     // upstream edge curves are owned by their edges
     let edges: Vec<EdgeId> = b.edges().ids().collect();
@@ -910,7 +887,7 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
                 ok_to_split: *split,
             };
             let r = fp1::move_seam(
-                &k,
+                &mut k,
                 &mut b,
                 f,
                 key_of(EntityRef::Face(f)),
@@ -919,7 +896,6 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
                 problem,
                 opts,
                 fp.as_ref(),
-                &NoGeometry,
                 &|_| None,
             );
             o.push(status(&r)?);
@@ -943,14 +919,13 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
             };
             let fp = face_props(*props)?;
             let r = fp1::split_at_seam(
-                &k,
+                &mut k,
                 &mut b,
                 f,
                 &mut cu,
                 &mut cv,
                 problem,
                 fp.as_ref(),
-                &NoGeometry,
                 &|_| None,
             );
             o.push(status(&r)?);

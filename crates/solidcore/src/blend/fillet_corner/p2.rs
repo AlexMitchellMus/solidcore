@@ -93,7 +93,7 @@ use crate::blend::fillet_corner::p3::{
     unchecked_point, CornerEnv, FilletCorner, FilletExecutiveData,
 };
 use crate::blend::fillet_custom_solver::{OffsetSurface, SurfaceId};
-use crate::blend::fillet_executive::p3::FilletExecutive;
+use crate::blend::fillet_executive::p3::{ErrorInfo, FilletExecutive};
 use crate::blend::fillet_geom::p1::FilletErrorType;
 use crate::blend::fillet_geom::p1::{
     check_seam_out, set_surface_closure, FilStatus, FilletBrep, FilletCornerType, FilletEdgeType,
@@ -190,6 +190,25 @@ impl FilletCorner {
         exec: &FilletExecutiveData,
         fs: FilletSolverId,
     ) -> Result<Option<FilletSolverId>> {
+        self.tangent_fillet_solver_nx1_closed_with_lookup(k, b, fs, |eu| {
+            exec.fillet_solver_of_edgeuse(eu)
+        })
+    }
+
+    /// Borrowed-lookup form of [`FilletCorner::tangent_fillet_solver_nx1_closed`] for
+    /// live executive adapters whose solver identities are generic handles.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::InvalidInput`] for an unset `m_pSolverEUs`; those of
+    /// [`test_g1_continuity`].
+    pub fn tangent_fillet_solver_nx1_closed_with_lookup<S: Copy + Eq>(
+        &self,
+        k: &Kernel,
+        b: &Brep,
+        fs: S,
+        mut solver_of: impl FnMut(EdgeuseId) -> Option<S>,
+    ) -> Result<Option<S>> {
         let solver_eus = self
             .solver_eus
             .as_deref()
@@ -197,7 +216,7 @@ impl FilletCorner {
         let [edge_use] = solver_eus else {
             return Ok(None); // SM_ASSERT_ERR
         };
-        let fil_solver = exec.fillet_solver_of_edgeuse(*edge_use);
+        let fil_solver = solver_of(*edge_use);
 
         if fil_solver != Some(fs) {
             return Ok(None); // SM_ASSERT_ERR
@@ -229,6 +248,23 @@ impl FilletCorner {
         exec: &FilletExecutiveData,
         fs: FilletSolverId,
     ) -> Result<Option<FilletSolverId>> {
+        self.tangent_fillet_solver_nx2_with_lookup(k, b, fs, |eu| exec.fillet_solver_of_edgeuse(eu))
+    }
+
+    /// Borrowed-lookup form of [`FilletCorner::tangent_fillet_solver_nx2`] for live
+    /// executive adapters whose solver identities are generic handles.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::InvalidInput`] for an unset `m_pSolverEUs`; those of
+    /// [`test_g1_continuity`].
+    pub fn tangent_fillet_solver_nx2_with_lookup<S: Copy + Eq>(
+        &self,
+        k: &Kernel,
+        b: &Brep,
+        fs: S,
+        mut solver_of: impl FnMut(EdgeuseId) -> Option<S>,
+    ) -> Result<Option<S>> {
         let solver_eus = self
             .solver_eus
             .as_deref()
@@ -246,8 +282,8 @@ impl FilletCorner {
             return Ok(None); // not an error.
         }
 
-        let fs0 = exec.fillet_solver_of_edgeuse(*eu0);
-        let fs1 = exec.fillet_solver_of_edgeuse(*eu1_);
+        let fs0 = solver_of(*eu0);
+        let fs1 = solver_of(*eu1_);
 
         if fs0 == Some(fs) {
             return Ok(fs1);
@@ -276,17 +312,33 @@ impl FilletCorner {
         split_face: FaceId,
         corners: &[FilletCorner],
     ) -> Result<()> {
+        self.update_split_face_with_breps(
+            env.k, env.pseudo, env.target, orig_face, split_face, corners,
+        )
+    }
+
+    /// Shared split-face update with the actual topology borrows, without a solver table.
+    /// # Errors
+    /// Those of the existing vertex and edge split-face updates.
+    pub fn update_split_face_with_breps(
+        &self,
+        k: &Kernel,
+        pseudo: &mut FilletBrep,
+        target: &mut Brep,
+        orig_face: FaceId,
+        split_face: FaceId,
+        corners: &[FilletCorner],
+    ) -> Result<()> {
         for &v in &self.vertices {
-            env.pseudo
-                .update_split_face(env.k, v, env.target, orig_face, split_face)?;
+            pseudo.update_split_face(k, v, target, orig_face, split_face)?;
         }
         for &e in &self.edges {
-            env.pseudo.update_edge_split_face(
-                env.k,
+            pseudo.update_edge_split_face(
+                k,
                 e,
                 Some(orig_face),
                 Some(split_face),
-                env.target,
+                target,
                 corners,
             )?;
         }
@@ -2026,6 +2078,30 @@ impl FilletCorner {
 
 impl FilletCorner {
     /// `SmFilletCorner::RecordFilletError(eErrorType, pFilletSurface1, pFilletSurface2,
+    /// pStartFV, pEndFV, cComment)` into a standalone [`ErrorInfo`] (`NoteFilletError`
+    /// -> `GetFilletErrorInfo()->NoteError`).
+    pub fn record_fillet_error_in<O: Copy + PartialEq>(
+        &self,
+        error: &mut ErrorInfo<O>,
+        error_type: FilletErrorType,
+        filleted_vertex: Option<O>,
+        surfaces: [Option<O>; 2],
+        fillet_vertices: [Option<O>; 2],
+        comment: Option<&str>,
+    ) {
+        error.note_corner_error(
+            error_type,
+            self.corner_type(),
+            self.status,
+            Some(self.kind.name()),
+            filleted_vertex,
+            surfaces,
+            fillet_vertices,
+            comment,
+        );
+    }
+
+    /// `SmFilletCorner::RecordFilletError(eErrorType, pFilletSurface1, pFilletSurface2,
     /// pStartFV, pEndFV, cComment)`: tells the fillet executive about a corner error
     /// (`NoteFilletError` with this corner's type, status and name and its filleted
     /// vertex). The objects are the executive's identities: `filleted_vertex` is the
@@ -2041,11 +2117,9 @@ impl FilletCorner {
         comment: Option<&str>,
     ) {
         // Pass the call along to the FilletExectutive
-        executive.note_fillet_corner_error(
+        self.record_fillet_error_in(
+            &mut executive.error,
             error_type,
-            self.corner_type(),
-            self.status,
-            Some(self.kind.name()),
             filleted_vertex,
             surfaces,
             fillet_vertices,
