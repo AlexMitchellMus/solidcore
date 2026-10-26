@@ -832,8 +832,10 @@ impl FilletSolver {
     }
 
     /// [`Self::split_and_trim_fillet_surface`] with the classifications' actual
-    /// geometry provider (a live session's rails and target faces) and the target
-    /// B-rep the end curves read (`SplitFilletGeom`'s `CreateEndCurve`).
+    /// geometry provider (a live session's rails and target faces) and the base
+    /// B-reps the end curves read for rails 0 and 1 (`SplitFilletGeom`'s
+    /// `CreateEndCurve`; both the target, or a surface/surface fillet's second base
+    /// for rail 1).
     ///
     /// # Errors
     /// As [`Self::split_and_trim_fillet_surface`], with those of the end curves.
@@ -844,7 +846,7 @@ impl FilletSolver {
         geometry: &impl ClassGeometry<FilletClassObject>,
         fillet_geom_index: usize,
         trim_type: BoundaryTrimmingType,
-        target: &Brep,
+        bases: [&Brep; 2],
     ) -> Result<()> {
         self.split_and_trim_fillet_surface_in(
             k,
@@ -852,7 +854,7 @@ impl FilletSolver {
             geometry,
             fillet_geom_index,
             trim_type,
-            Some(target),
+            Some(bases),
         )
     }
 
@@ -863,7 +865,7 @@ impl FilletSolver {
         geometry: &impl ClassGeometry<FilletClassObject>,
         fillet_geom_index: usize,
         trim_type: BoundaryTrimmingType,
-        target: Option<&Brep>,
+        bases: Option<[&Brep; 2]>,
     ) -> Result<()> {
         const OP_T: &str = "blend::fillet_solver::p3::split_and_trim_fillet_surface";
         let fillet_geom = *self
@@ -969,8 +971,8 @@ impl FilletSolver {
         }
 
         if found_intersection {
-            match target {
-                Some(target) => self.split_fillet_geom_with_target(
+            match bases {
+                Some(bases) => self.split_fillet_geom_with_target(
                     k,
                     fillets,
                     geometry,
@@ -980,7 +982,7 @@ impl FilletSolver {
                     &ivls2,
                     &cc1,
                     &cc2,
-                    target,
+                    bases,
                 )?,
                 None => self.split_fillet_geom_scoped(
                     k,

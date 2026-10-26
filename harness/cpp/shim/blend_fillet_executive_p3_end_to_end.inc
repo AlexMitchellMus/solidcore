@@ -285,6 +285,80 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_surface_surface(
     SC_CATCH
 }
 
+namespace fillet_real_solid {
+inline void body_record(std::vector<double>& values, SmBrep* body) {
+    counts(values,body);
+    std::vector<double> topology_record; topology(topology_record,body);
+    section(values,topology_record);
+    std::vector<double> geometry; primitive_record::append(geometry,body);
+    section(values,geometry);
+}
+}
+
+// SmApiSurfaceSurfaceFillet where a surface may already belong to a face (the
+// GetFace() branch). Input: the two corner-point surfaces (24 values), owner1, owner2,
+// radius1, radius2, tolerance, cross-section (native ULONG), mirror, complement.
+// owner1: 0 free, 1 the face of its own sheet body (CreateFaceFromSurface over the
+// natural domain). owner2: 0 free, 1 its own sheet body, 2 a second face of surface 1's
+// body (owner1 1), 3 surface 1 itself (its corners are ignored). Output: [status,
+// has_result, result counts/topology/geometry when present, body count, then for each
+// sheet body (surface 1's first) its counts, topology and geometry after the call].
+SC_EXPORT int32_t sc_blend_fillet_executive_p3_surface_surface_bodies(
+    const double* input, int64_t n, double* out, int64_t cap, int64_t* out_len) {
+    if (!input || n != 32) return SC_ERR_ARG;
+    for (int64_t i=0; i<n; ++i) if (!std::isfinite(input[i])) return SC_ERR_ARG;
+    const double owner1=input[24], owner2=input[25];
+    if (owner1 != 0 && owner1 != 1) return SC_ERR_ARG;
+    if (owner2 != 0 && owner2 != 1 && owner2 != 2 && owner2 != 3) return SC_ERR_ARG;
+    if (owner2 == 2 && owner1 != 1) return SC_ERR_ARG;
+    const double ulong_limit=std::ldexp(1.0,std::numeric_limits<ULONG>::digits);
+    if (input[29] < 0 || std::floor(input[29]) != input[29] || input[29] >= ulong_limit) return SC_ERR_ARG;
+    for (int i : {30,31}) if (input[i] != 0 && input[i] != 1) return SC_ERR_ARG;
+    SC_TRY
+    const SmContext* context=SmApiGetOrCreateContext();
+    SmSurface* surfaces[2]={nullptr,nullptr};
+    const int built=owner2 == 3 ? 1 : 2;
+    for (int s=0; s<built; ++s) {
+        const double* c=input+12*s;
+        SmApiCreateSurfaceFromCornerPoints(SmPoint3d(c[0],c[1],c[2]),SmPoint3d(c[3],c[4],c[5]),
+            SmPoint3d(c[6],c[7],c[8]),SmPoint3d(c[9],c[10],c[11]),surfaces[s]);
+        if (!surfaces[s]) { delete surfaces[0]; return SC_ERR_ARG; }
+    }
+    if (owner2 == 3) surfaces[1]=surfaces[0];
+    // Free surfaces stay the caller's; owned ones belong to their sheet body's face.
+    std::unique_ptr<SmSurface> free1(owner1 == 0 ? surfaces[0] : nullptr);
+    std::unique_ptr<SmSurface> free2(owner2 == 0 ? surfaces[1] : nullptr);
+    std::unique_ptr<SmBrep> body1, body2;
+    auto own=[&](std::unique_ptr<SmBrep>& body, SmSurface* surface) {
+        if (!body) body.reset(new(*context) SmBrep());
+        SmFace* face=nullptr;
+        const SmStatus stat=body->CreateFaceFromSurface(surface,surface->GetNaturalUVDomain(),face);
+        return stat == SM_SUCCESS && face != nullptr;
+    };
+    if (owner1 == 1 && !own(body1,surfaces[0])) {
+        if (owner2 != 3 && owner2 != 0) delete surfaces[1];
+        return SC_ERR_ARG;
+    }
+    if (owner2 == 1 && !own(body2,surfaces[1])) return SC_ERR_ARG;
+    if (owner2 == 2 && !own(body1,surfaces[1])) return SC_ERR_ARG;
+    SmBrep* raw=nullptr;
+    const auto stat=SmApiSurfaceSurfaceFillet(surfaces[0],surfaces[1],input[26],input[27],input[28],
+        raw,ULONG(input[29]),input[30] != 0 ? TRUE : FALSE,input[31] != 0 ? TRUE : FALSE);
+    std::unique_ptr<SmBrep> result(raw);
+    std::vector<double> values{fillet_real_solid::status(stat)};
+    if (stat == SM_SUCCESS && result) {
+        values.push_back(1.0);
+        fillet_real_solid::body_record(values,result.get());
+    } else {
+        values.push_back(0.0);
+    }
+    values.push_back(double(int(bool(body1))+int(bool(body2))));
+    if (body1) fillet_real_solid::body_record(values,body1.get());
+    if (body2) fillet_real_solid::body_record(values,body2.get());
+    return sc_copy_out(values.data(),int64_t(values.size()),out,cap,out_len);
+    SC_CATCH
+}
+
 #include <SmFilletCorner.h>
 #include <SmFilletGeom.h>
 #include <SmFilletSolver.h>

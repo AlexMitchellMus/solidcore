@@ -1488,9 +1488,9 @@ impl FilletSolver {
         )
     }
 
-    /// [`Self::split_fillet_geom_scoped`] with the target B-rep the end curves read
-    /// (`CreateEndCurve`, which for `SM_BT_BLEND` reads the rail end vertices'
-    /// classification edges there).
+    /// [`Self::split_fillet_geom_scoped`] with the base B-reps of rails 0 and 1 the
+    /// end curves read (`CreateEndCurve`, which for `SM_BT_BLEND` reads each rail end
+    /// vertex's classification edge in its rail's base B-rep).
     ///
     /// # Errors
     /// As [`Self::split_fillet_geom_scoped`], with the errors of
@@ -1507,7 +1507,7 @@ impl FilletSolver {
         ivls2: &[Extent1d],
         cc1: &CurveClassification<FilletClassObject>,
         cc2: &CurveClassification<FilletClassObject>,
-        target: &Brep,
+        bases: [&Brep; 2],
     ) -> Result<()> {
         self.split_fillet_geom_in(
             k,
@@ -1519,7 +1519,7 @@ impl FilletSolver {
             ivls2,
             cc1,
             cc2,
-            Some(target),
+            Some(bases),
         )
     }
 
@@ -1535,7 +1535,7 @@ impl FilletSolver {
         ivls2: &[Extent1d],
         cc1: &CurveClassification<FilletClassObject>,
         cc2: &CurveClassification<FilletClassObject>,
-        target: Option<&Brep>,
+        bases: Option<[&Brep; 2]>,
     ) -> Result<()> {
         // SM_ASSERT(sizes equal) is a no-op; a shorter crIvls2 is read past its end.
         if ivls2.len() < ivls1.len() {
@@ -1611,7 +1611,7 @@ impl FilletSolver {
 
             // Create the ending curve on the fillet
             for end in 0..2usize {
-                let Some(target) = target else {
+                let Some(bases) = bases else {
                     // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::CreateEndCurve (caller holds no target B-rep; justified: findings.md "blend.fillet_geom_p5: solver and corner callers")
                     return unported_on(
                         (new_fillet_geom, end, trim_type),
@@ -1638,7 +1638,7 @@ impl FilletSolver {
                     end_trim,
                     solver_id,
                     self,
-                    target,
+                    bases,
                 )?;
             }
 

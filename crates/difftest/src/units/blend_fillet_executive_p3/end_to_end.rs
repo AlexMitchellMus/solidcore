@@ -269,7 +269,7 @@ impl SurfaceSurface {
     }
 }
 
-fn take_section<'a>(values: &mut &'a [f64]) -> Result<&'a [f64], HarnessError> {
+pub(super) fn take_section<'a>(values: &mut &'a [f64]) -> Result<&'a [f64], HarnessError> {
     let (&length, tail) = values
         .split_first()
         .ok_or_else(|| HarnessError::new("missing section length"))?;
@@ -350,14 +350,14 @@ pub(super) fn cpp(input: &RealSolid) -> Result<Output, HarnessError> {
     output(&values)
 }
 
-fn section(out: &mut Vec<f64>, data: &[f64]) {
+pub(super) fn section(out: &mut Vec<f64>, data: &[f64]) {
     out.push(data.len() as f64);
     out.extend_from_slice(data);
 }
 fn point(out: &mut Vec<f64>, p: Vec3) {
     out.extend([p.x, p.y, p.z]);
 }
-fn status(error: SolidError) -> SolidResult<f64> {
+pub(super) fn status(error: SolidError) -> SolidResult<f64> {
     match error {
         SolidError::InvalidInput { .. } => Ok(1007.0),
         SolidError::Upstream { code, .. } => Ok(f64::from(code)),
@@ -383,7 +383,7 @@ fn label<T: PartialEq>(list: &[T], value: Option<T>) -> f64 {
             .map_or(-2.0, |index| index as f64),
     }
 }
-fn topology(b: &Brep, out: &mut Vec<f64>) -> SolidResult<()> {
+pub(super) fn topology(b: &Brep, out: &mut Vec<f64>) -> SolidResult<()> {
     let vertices = p1::vertices(b, None)?;
     let edges = p1::edges(b, None)?;
     let faces = p1::faces(b, None)?;
@@ -746,8 +746,8 @@ pub(super) fn surface_surface_rust(input: &SurfaceSurface) -> Result<Output, Har
         let second = surface(&input.second)?;
         let result = solidcore::blend::fillet_executive::api::surface_surface_fillet(
             &mut k,
-            &first,
-            &second,
+            solidcore::blend::fillet_executive::api::FilletSurfaceArg::Free(&first),
+            solidcore::blend::fillet_executive::api::FilletSurfaceArg::Free(&second),
             input.radius1,
             input.radius2,
             input.tolerance,

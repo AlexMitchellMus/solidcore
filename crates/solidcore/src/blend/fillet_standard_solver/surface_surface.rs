@@ -11,17 +11,21 @@
 //! | `impl FilletSolverOps for SurfaceSurfaceFs` | the `SmSurfaceSurfaceFS` virtuals: those it inherits from `SmConstantRadiusFS` (`GetJacobianSize`, `SetupOffsetValues`, `OffsetRadiiCanChange`, `LoadJacobian`, `LoadInitialValues`) and from `SmFilletSolver` (`PointOnPlaneSolve`, `CanMakeAnalytic`, `SetExtensionFlags`), and its own `SetupOffsetExtension`, `GetType`, `IsKindOf`, `GetSolverType` |
 //! | [`SurfaceSurfaceFs::calc_fillet_geom_with_context`] | `SmSurfaceSurfaceFS::CalcFilletGeom` |
 //! | [`SurfaceSurfaceContext`] | the executive's pseudo-B-rep and the rails' original faces it reaches |
+//! | [`BaseBodies`] | the rails' original faces' B-reps (`GetOriginalFace()->GetBrep()`) |
 //!
 //! Deviations: the part before `GetPseudoBrep` is `blend.fillet_standard_solver_p2`'s
 //! [`SurfaceSurfaceFs::calc_fillet_start`]. The rails' classifications and
 //! `SplitAndTrimFilletSurface` resolve their objects through the caller's
-//! [`SurfaceSurfaceContext`] (the live session's target and pseudo-B-rep).
+//! [`SurfaceSurfaceContext`] (the live session's base B-reps and pseudo-B-rep); each
+//! rail is classified on its original face in that face's own base B-rep
+//! ([`BaseBodies`], upstream `pBaseFace->GetBrep()`).
 //! `SM_ASSERT(m_vFilletGeoms.GetSize() == 1)` (debug only) is not checked; the first
 //! geometry is used. A rail, edge use, curve or original face upstream dereferences
 //! unchecked is [`SolidError::InvalidInput`]. No recursion.
 
 use super::p1::{FilletSolverType, SurfaceSurfaceFs};
 use super::p2::{ConstantRadiusOps, SurfaceSurfaceStart};
+use crate::blend::fillet_classification::FilletClassObject;
 use crate::blend::fillet_custom_solver::{InitialValues, JacobianLoad, OffsetSurface, SurfaceId};
 use crate::blend::fillet_geom::p1::FilletBrep;
 use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps};
@@ -39,7 +43,7 @@ use crate::kernel::Kernel;
 use crate::math::Point3;
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::surface::surface::Surface;
-use crate::topology::{edge, edgeuse::p1 as eu, Brep};
+use crate::topology::{edge, edgeuse::p1 as eu, Brep, FaceId};
 
 const OP: &str = "blend::fillet_standard_solver::surface_surface";
 
@@ -47,12 +51,38 @@ fn invalid(reason: &'static str) -> SolidError {
     SolidError::invalid_input(OP, reason)
 }
 
+/// The B-reps of the two base faces (`pBaseFace->GetBrep()` of each rail): the
+/// target, and the second surface's B-rep when its face is not in the target.
+#[derive(Debug)]
+pub struct BaseBodies<'a> {
+    /// The first surface's B-rep (and the second's when `second` is `None`).
+    pub target: &'a mut Brep,
+    /// The second surface's B-rep when it is not `target`.
+    pub second: Option<&'a mut Brep>,
+}
+
 /// What `SmSurfaceSurfaceFS::CalcFilletGeom` reaches through the executive besides the
 /// solver: the rails' classification on their original faces and the geometry
 /// `SplitAndTrimFilletSurface` resolves their classifications with.
 pub trait SurfaceSurfaceContext: RailClassificationContext {
+    /// `pRail->GetOriginalFace()->CurveOnClassify(TRUE, *pCurveClass, TRUE)` of rail
+    /// `side`, whose original face `face` lies in that side's base B-rep of `bases`.
+    ///
+    /// # Errors
+    /// Those of the classification.
+    #[allow(clippy::too_many_arguments)]
+    fn classify_rail(
+        &mut self,
+        k: &Kernel,
+        bases: &mut BaseBodies<'_>,
+        pseudo: &Brep,
+        side: usize,
+        face: FaceId,
+        class: &mut CurveClassification<FilletClassObject>,
+    ) -> Result<()>;
     /// `SplitAndTrimFilletSurface(lFilletGeomIndex, eTrimType)` of `solver`, whose
-    /// geometries live in `pseudo` and whose rails were classified on faces of `target`.
+    /// geometries live in `pseudo` and whose rails were classified on the faces of
+    /// `bases`.
     ///
     /// # Errors
     /// Those of [`FilletSolver::split_and_trim_fillet_surface_with`].
@@ -60,7 +90,7 @@ pub trait SurfaceSurfaceContext: RailClassificationContext {
         &mut self,
         k: &Kernel,
         solver: &mut FilletSolver,
-        target: &Brep,
+        bases: &BaseBodies<'_>,
         pseudo: &mut FilletBrep,
         fillet_geom_index: usize,
         trim_type: BoundaryTrimmingType,
@@ -70,7 +100,7 @@ pub trait SurfaceSurfaceContext: RailClassificationContext {
 impl SurfaceSurfaceFs {
     /// `SmSurfaceSurfaceFS::CalcFilletGeom` in a live executive: from the stepped start
     /// point ([`SurfaceSurfaceFs::calc_fillet_start`]), two rail edges of the solver's
-    /// fillet geometry in `pseudo` on the faces of the two base surfaces in `target`,
+    /// fillet geometry in `pseudo` on the faces of the two base surfaces in `bases`,
     /// the offset-surface intersection through the point (extended at both ends,
     /// `FlushCurve` building the fillet surface and rail curves), each rail's curve
     /// classification on its original face and the primary edge uses' UV lines along
@@ -86,7 +116,7 @@ impl SurfaceSurfaceFs {
     pub fn calc_fillet_geom_with_context(
         &mut self,
         k: &Kernel,
-        target: &mut Brep,
+        bases: &mut BaseBodies<'_>,
         pseudo: &mut FilletBrep,
         context: &mut impl SurfaceSurfaceContext,
     ) -> Result<()> {
@@ -129,7 +159,7 @@ impl SurfaceSurfaceFs {
         crate::blend::fillet_solver::p4::point_intersection_on_surfaces(
             self,
             k,
-            target,
+            bases.target,
             pseudo,
             &surfaces,
             domains,
@@ -178,7 +208,7 @@ impl SurfaceSurfaceFs {
                 .original_face()
                 .ok_or_else(|| invalid("rail without original face"))?;
             pseudo.with_rail_classification(rail, |pseudo, cc| {
-                context.classify(k, target, pseudo, face, cc)
+                context.classify_rail(k, bases, pseudo, ii, face, cc)
             })?;
 
             let start_uv = Point3::new(uv_min.x, v, 0.0);
@@ -189,7 +219,7 @@ impl SurfaceSurfaceFs {
         }
 
         let trim_type = self.trim_type;
-        context.split_and_trim(k, &mut self.base.solver, target, pseudo, 0, trim_type)
+        context.split_and_trim(k, &mut self.base.solver, bases, pseudo, 0, trim_type)
     }
 }
 

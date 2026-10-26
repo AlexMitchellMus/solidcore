@@ -8,22 +8,31 @@
 //! |------|----------|
 //! | [`FilletSession::surface_surface_fillet`] | `SmFilletExecutive::SurfaceSurfaceFillet` |
 //! | [`FilletSession::do_surface_filleting`] | `SmFilletExecutive::DoSurfaceFilleting` |
+//! | `insert_surface_intersection_topology` (private) | `DoSurfaceFilleting`'s `InsertIntersectionTopology` loop |
 //! | `allocate_surface_surface_solver` (private) | `new SmSurfaceSurfaceFS(..)`, `SetFilletTrimType`, `SetReverseTrim` |
 //!
-//! Deviations: the two surfaces are the surfaces of two faces of the session's
-//! target (`pSur->GetFace()`, which `SmSurfaceSurfaceFS::CalcFilletGeom` reads); the
-//! caller supplies them (`blend::fillet_executive::api::surface_surface_fillet`). The
-//! executive is the session's (upstream a fresh `SmFilletExecutive` on the stack),
-//! which owns the cross-section generator (on the stack upstream). The fillet B-rep is
-//! the session's intermediate body. The trimming of the original surfaces (only with
-//! `lBaseTrimType != 0`, which `SmApiSurfaceSurfaceFillet` never passes) is not ported.
-//! The topology insertion runs through the session's
-//! [`FilletSession::insert_fillet_intersection_topology`], which also names the target
-//! and the fillet B-rep as the topology intersector's primary and other B-reps (upstream
-//! `DoSurfaceFilleting` leaves them unset) and enables target editing meanwhile; the
-//! surface/surface difftest cases match the C++ with this. No recursion.
+//! Deviations: the two surfaces are those of two faces (`pSur->GetFace()`, which
+//! `SmSurfaceSurfaceFS::CalcFilletGeom` reads): the first in the session's target, the
+//! second in the session's second base B-rep when it has one (the two may come from
+//! different B-reps upstream), otherwise in the target; the caller supplies them
+//! (`blend::fillet_executive::api::surface_surface_fillet`). Each rail is classified on
+//! and merged into its base face's B-rep (`pBaseFace->GetBrep()`); a second base
+//! B-rep's topology is named [`FilletBody::SecondBase`] in classifications, and its
+//! rail merges run with it in the target's place, on their own copy of the
+//! executive's intersector (taken before the first merge: the two arenas' typed ids
+//! may coincide where upstream pointers differ), and a split of one base B-rep's face
+//! leaves the other side's rails alone. A side edge with an original face in a
+//! two-B-rep session, and `SM_BT_BLEND` end curves on a second base B-rep, are
+//! `Unported`; no surface/surface case reaches them. The executive is the session's
+//! (upstream a fresh `SmFilletExecutive` on the stack), which owns the cross-section
+//! generator (on the stack upstream). The fillet B-rep is the session's intermediate
+//! body. The trimming of the original surfaces (only with `lBaseTrimType != 0`, which
+//! `SmApiSurfaceSurfaceFillet` never passes) is not ported. As upstream, the topology
+//! insertion leaves the intersector's primary and other B-reps unset and inserts only
+//! geometries with a fillet surface. No recursion.
 
 use super::{classification, invalid, FilletObject, FilletSession, SessionObjects, SolverObject};
+use crate::blend::fillet_classification::FilletBody;
 use crate::blend::fillet_custom_solver::SurfaceId;
 use crate::blend::fillet_executive::p2::SurfaceFilletOptions;
 use crate::blend::fillet_executive::p3::{ErrorInfo, FaceConstructionAccess, FaceStitchAccess};
@@ -31,7 +40,7 @@ use crate::blend::fillet_geom::p1::{FilletBrep, FilletSolverId};
 use crate::blend::fillet_solver::p1::{FilletSolver, FilletSurfaceGenerator};
 use crate::blend::fillet_solver::p5::RailClassificationContext;
 use crate::blend::fillet_standard_solver::p1::{BoundaryTrimmingType, SurfaceSurfaceFs};
-use crate::blend::fillet_standard_solver::surface_surface::SurfaceSurfaceContext;
+use crate::blend::fillet_standard_solver::surface_surface::{BaseBodies, SurfaceSurfaceContext};
 use crate::curve::curve::p8::CurveIntersectOptions;
 use crate::curve::curve::Curve;
 use crate::error::{Result, SolidError};
@@ -110,21 +119,55 @@ impl RailClassificationContext for SurfaceSurfaceSession<'_> {
 }
 
 impl SurfaceSurfaceContext for SurfaceSurfaceSession<'_> {
+    fn classify_rail(
+        &mut self,
+        k: &Kernel,
+        bases: &mut BaseBodies<'_>,
+        pseudo: &Brep,
+        side: usize,
+        face: FaceId,
+        cc: &mut crate::intersect::curve_class::p1::CurveClassification<
+            crate::blend::fillet_classification::FilletClassObject,
+        >,
+    ) -> Result<()> {
+        let BaseBodies { target, second } = bases;
+        let Some(second) = second.as_deref_mut().filter(|_| side == 1) else {
+            return self.classify(k, target, pseudo, face, cc);
+        };
+        // The second rail's original face lies in the second base B-rep: classify it
+        // there, naming that body's topology as the second base's.
+        let mut cache = crate::query::face::p2::CurveOnClassifyCache::default();
+        let result = {
+            let objects = classification::Objects {
+                target,
+                pseudo,
+                second: Some(second),
+                classified: FilletBody::SecondBase,
+            };
+            crate::query::face::p2::curve_on_classify_cached(
+                k, second, face, &objects, true, cc, true, false, true, &mut cache,
+            )
+        };
+        cache.apply_uv_trim_updates(second)?;
+        result.map(|_| ())
+    }
     fn split_and_trim(
         &mut self,
         k: &Kernel,
         solver: &mut FilletSolver,
-        target: &Brep,
+        bases: &BaseBodies<'_>,
         pseudo: &mut FilletBrep,
         fillet_geom_index: usize,
         trim_type: BoundaryTrimmingType,
     ) -> Result<()> {
-        // The classifications only read the rails' curves and the target's topology,
+        // The classifications only read the rails' curves and the base topology,
         // which the split leaves as they are: resolve them in a copy of the pseudo body.
         let snapshot = pseudo.brep().clone();
         let objects = classification::Objects {
-            target,
+            target: bases.target,
             pseudo: &snapshot,
+            second: bases.second.as_deref(),
+            classified: FilletBody::Target,
         };
         solver.split_and_trim_fillet_surface_with(
             k,
@@ -132,12 +175,26 @@ impl SurfaceSurfaceContext for SurfaceSurfaceSession<'_> {
             &objects,
             fillet_geom_index,
             trim_type,
-            target,
+            // CreateEndCurve's SM_BT_BLEND tangents read the edge each rail's end
+            // vertex is classified on: the second rail's lies in the second base
+            [
+                bases.target,
+                bases.second.as_deref().unwrap_or(bases.target),
+            ],
         )
     }
 }
 
 impl SessionObjects<'_> {
+    /// The B-rep of base surface `side`'s face: the second base B-rep for the second
+    /// surface when the session has one, otherwise the target.
+    fn base_body(&self, side: usize) -> &Brep {
+        match &self.second_base {
+            Some(base) if side == 1 => base.body,
+            _ => self.target,
+        }
+    }
+
     /// `new SmSurfaceSurfaceFS(crContext, dTolerance, dAngTol, dTanTol, |r1|, |r2|,
     /// *pSur1, *pSur2, bOrient1, bOrient2, sGuess1, sGuess2)`, then
     /// `SetFilletTrimType(eFilTrimType)` and `SetReverseTrim(bReverseTrim)`. The surfaces
@@ -160,9 +217,9 @@ impl SessionObjects<'_> {
             u32::try_from(self.solvers.len()).map_err(|_| invalid("too many solvers"))?,
         );
         let mut surfaces = Vec::with_capacity(2);
-        for face in faces {
+        for (side, face) in faces.into_iter().enumerate() {
             let surface = self
-                .target
+                .base_body(side)
                 .face(face)?
                 .surface
                 .clone()
@@ -198,8 +255,9 @@ impl SessionObjects<'_> {
 }
 
 impl FilletSession<'_> {
-    /// `SmFilletExecutive::SurfaceSurfaceFillet`: fillets the surfaces of target faces
-    /// `faces` with signed radii (the fillet centre lies on the intersection of the
+    /// `SmFilletExecutive::SurfaceSurfaceFillet`: fillets the surfaces of faces `faces`
+    /// (the first in the target, the second in the second base B-rep when the session
+    /// has one, otherwise in the target) with signed radii (the fillet centre lies on the intersection of the
     /// two offset surfaces). Each intersection curve of the offsets seeds one
     /// surface/surface solver, rolled from near its middle; the fillet surfaces are
     /// built into the session's intermediate body ([`Self::do_surface_filleting`]).
@@ -221,18 +279,18 @@ impl FilletSession<'_> {
         tolerance: f64,
         options: &SurfaceFilletOptions,
     ) -> Result<bool> {
-        let surface_of = |session: &Self, face: FaceId| -> Result<Surface> {
+        let surface_of = |session: &Self, side: usize, face: FaceId| -> Result<Surface> {
             session
                 .objects
-                .target
+                .base_body(side)
                 .face(face)?
                 .surface
                 .clone()
                 .ok_or_else(|| SolidError::null_pointer(OP))
         };
         let [face1, face2] = faces;
-        let sur1 = surface_of(self, face1)?;
-        let sur2 = surface_of(self, face2)?;
+        let sur1 = surface_of(self, 0, face1)?;
+        let sur2 = surface_of(self, 1, face2)?;
 
         // Create temporary offset surfaces
         let off1 = Surface::from(OffsetSurface::new(
@@ -479,10 +537,9 @@ impl FilletSession<'_> {
 
         // Set up a map between the fillet curves in the FilletGeoms and corresponding
         // fillet brep edges; insert the geometries' intersection topology.
+        self.set_fillet_brep_edge_map(k)?;
         if self.executive.options.topology_insertion {
-            self.insert_fillet_intersection_topology(k)?;
-        } else {
-            self.set_fillet_brep_edge_map(k)?;
+            self.insert_surface_intersection_topology(k)?;
         }
 
         // done with fillet B-rep editing
@@ -500,6 +557,42 @@ impl FilletSession<'_> {
 
         if let Some(output) = error_out {
             output.assign(&self.executive.error);
+        }
+        Ok(())
+    }
+
+    /// `DoSurfaceFilleting`'s topology insertion: every geometry with a fillet surface
+    /// of every solver, in order, `InsertIntersectionTopology()` (its rails merged into
+    /// their base faces' B-reps). The topology intersector's primary and other B-reps
+    /// stay unset, and no B-rep's editing is enabled beyond each rail merge's own scope.
+    /// A second base B-rep's rails merge through a copy of the executive's intersector,
+    /// taken here before the first merge, so that its relationships stay apart from
+    /// the target's (the two arenas' typed ids may coincide; upstream one intersector
+    /// keyed by distinct pointers, and a rail merge reads only its own rail's
+    /// relationships).
+    ///
+    /// # Errors
+    /// Those of the geometries' insertions.
+    fn insert_surface_intersection_topology(&mut self, k: &mut Kernel) -> Result<()> {
+        if let Some(base) = self.objects.second_base.as_mut() {
+            base.intersector = Some(self.executive.intersector.clone());
+        }
+        let mut index = 0;
+        while let Some(solver) = self.executive.solvers.get(index).copied() {
+            index += 1;
+            let FilletObject::Solver(id) = solver else {
+                return Err(invalid("object is not a solver"));
+            };
+            let geoms = self.objects.solver(id)?.base().fillet_geoms();
+            for geom in geoms {
+                // GetFilletSurface() == NULL: the geometry's surface slot is empty (its
+                // surface is the fillet B-rep face's once the face is made).
+                if self.objects.pseudo.geom(geom)?.fillet_surface.is_none() {
+                    continue;
+                }
+                // Merge each rail into originating face and more. . .
+                self.insert_geometry_topology(k, FilletObject::Geometry(geom))?;
+            }
         }
         Ok(())
     }
