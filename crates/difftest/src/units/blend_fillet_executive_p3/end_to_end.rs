@@ -734,8 +734,7 @@ fn setback_fillet_edges(
     }
     // SmApiSetBevelCorners ignores the ordinary StitchAndOrient return status.
     match stitch_and_orient(k, body, &StitchAndOrientOptions::default()) {
-        Ok(()) => Ok(()),
-        Err(SolidError::Upstream { .. } | SolidError::InvalidInput { .. }) => Ok(()),
+        Ok(()) | Err(SolidError::Upstream { .. } | SolidError::InvalidInput { .. }) => Ok(()),
         Err(error) => Err(error.into()),
     }
 }

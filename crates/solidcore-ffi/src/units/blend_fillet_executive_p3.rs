@@ -769,7 +769,7 @@ mod real_solid_tests {
                     count,
                     out.as_mut_ptr(),
                     1,
-                    &mut len,
+                    &raw mut len,
                 )
             };
             assert_eq!(status, crate::SC_ERR_ARG);
