@@ -37,6 +37,14 @@
 //! - **Undefined behaviour.** Where upstream would read through a null or mistyped
 //!   `m_pData`, a null Bezier pointer, a NURB-less B-spline or a bounding plane index
 //!   above 3, the port returns [`SolidError::InvalidInput`].
+//! - **Approximation angle arithmetic.** For a surface tested by evaluations rather
+//!   than an exact control net, an angle walk can divide a finite segment by an
+//!   overflowed length, producing a zero direction and spurious turning angles.
+//!   If refinement is still requested after the upstream minimum-UV-size checks,
+//!   the port returns `InvalidInput` instead of growing an approximation tree from
+//!   that invalid measurement. Passing leaves, exact control-net tests, infinite
+//!   chord tolerances alone, and custom testers that do not call this test are
+//!   unchanged. No coordinate or box-size cutoff is used.
 //! - **Virtual dispatch.** `SmSurface::FindTessellationSplits` (unit
 //!   `surface.surface_p9`) is not ported: [`SurfaceCache::subdivide_by_block`] returns
 //!   [`SolidError::Unported`] once it reaches it. The surface kinds are dispatched as
@@ -435,6 +443,8 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     /// [`SolidError::Unported`] from `SmTol::GetZoneTol3d` of a face-owned surface whose
     /// face tolerance is not cached on it ([`Surface::owner_zone_tol_3d`]) and from the
     /// surface calls.
+    /// `InvalidInput` if an approximation still requires refinement after a sampled
+    /// angle segment's length was non-finite (see the module deviations).
     #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn test_against_tolerances(&mut self, k: &Kernel, node: NodeId) -> Result<ToleranceTest> {
         // init output
@@ -537,9 +547,10 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         }
 
         // When the surface is not a SmBSplineSurface - test the surface over the
-        // node's subdomain.
-        let cache_surface = self.surface().clone();
-        let surface_to_test: Option<&Surface> = match cache_surface.kind() {
+        // node's subdomain. (The cache surface is copied only where the copy is read:
+        // the B-spline based kinds test the node's patch, and read the copy only in
+        // the surface-evaluation fallbacks below.)
+        let compound_copy: Option<Surface> = match self.surface().kind() {
             SurfaceKind::Cone(_)
             | SurfaceKind::Sphere(_)
             | SurfaceKind::Torus(_)
@@ -550,8 +561,9 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             SurfaceKind::CurveBounded(_)
             | SurfaceKind::Step(_)
             | SurfaceKind::OffsetSurface(_)
-            | SurfaceKind::SrfInVolume(_) => Some(&cache_surface),
+            | SurfaceKind::SrfInVolume(_) => Some(self.surface().clone()),
         };
+        let surface_to_test: Option<&Surface> = compound_copy.as_ref();
 
         let mut subdivide = false;
         let mut direction = SurfParamType::U;
@@ -622,6 +634,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         // AngleTol
         let mut u_ang_deg = -1.0;
         let mut v_ang_deg = -1.0;
+        let mut nonfinite_angle_length = false;
 
         if force_angle_test || (!subdivide && ang_tol_deg >= EFF_ZERO) {
             let nc = net_constants(
@@ -634,15 +647,23 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             )?;
             u_ang_deg = nc.u_angle_deg.unwrap_or(0.0);
             v_ang_deg = nc.v_angle_deg.unwrap_or(0.0);
+            nonfinite_angle_length |= nc.nonfinite_angle_length;
 
             // Returning more than 1-1/2 full revolutions indicates that the control
             // net is not suitable for estimating the angles: use surface evaluations.
             if u_ang_deg > 540.0 || v_ang_deg > 540.0 {
-                let surf: &Surface = surface_to_test.unwrap_or(&cache_surface);
+                let cache_surface;
+                let surf: &Surface = if let Some(s) = surface_to_test {
+                    s
+                } else {
+                    cache_surface = self.surface().clone();
+                    &cache_surface
+                };
                 let mut eval = |uv: Point2| surf.evaluate_point(k, uv);
                 let sc = compute_surf_constants(&mut eval, &node_domain, ANGLES)?;
                 u_ang_deg = sc.u_angle_deg.unwrap_or(0.0);
                 v_ang_deg = sc.v_angle_deg.unwrap_or(0.0);
+                nonfinite_angle_length |= sc.nonfinite_angle_length;
             }
 
             // Optimization for SmTessSrfCache::BuildTree(): switch to block subdivision
@@ -686,6 +707,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                 )?;
                 u_ang_deg = nc.u_angle_deg.unwrap_or(0.0);
                 v_ang_deg = nc.v_angle_deg.unwrap_or(0.0);
+                nonfinite_angle_length |= nc.nonfinite_angle_length;
             }
 
             let sizes = if u_ang_deg <= ang_tol_deg && v_ang_deg <= ang_tol_deg {
@@ -694,7 +716,12 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                 Self::size_tolerances_from_corners(c.u0v0, c.u1v0, c.u1v1, c.u0v1)
             } else {
                 // compute from sample surface IsoCurves - expensive
-                Self::size_tolerances_from_surface(k, &cache_surface, &node_domain)?
+                if let Some(s) = surface_to_test {
+                    Self::size_tolerances_from_surface(k, s, &node_domain)?
+                } else {
+                    let cache_surface = self.surface().clone();
+                    Self::size_tolerances_from_surface(k, &cache_surface, &node_domain)?
+                }
             };
             aspect_ratio = sizes.aspect_ratio;
             max_side_length = sizes.max_side_length_3d;
@@ -769,6 +796,12 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         }
 
         // set output for split
+        if surface_to_test.is_some() && nonfinite_angle_length {
+            return Err(invalid(
+                OP_TEST,
+                "non-finite approximation angle segment length",
+            ));
+        }
         out.needs_subdivision = true;
         out.direction = direction;
         Ok(out)

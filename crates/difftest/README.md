@@ -38,12 +38,14 @@ nice -n 10 cargo test -p difftest --features cpp                     # harness s
 | `--seeds N` | generated cases per unit (default 16) |
 | `--filter S` | only cases whose name contains `S` |
 | `--perturb` | change one item of each case's Rust output (below); passes only if **every** perturbed case is caught. No report written. |
+| `--compare-reports R` | with `--baseline D` only: run no case, apply the same ratchet to the finished reports in `R` (CI's `difftest-compare` job; needs no C++) |
 | `--baseline D` | regression ratchet: compare each unit with its earlier report `D/<unit>.json` (see [Regression gate](#regression-gate---baseline-value-share)). CI passes the exact base revision's validated report artifact |
 | `--report-dir D` / `--no-report` | report location (default `reports/difftest/`) / skip writing |
 | `--fuzz N` | with `--unit`: probe the unit's FFI guard with N mutated cases, each run in a child process (below). No report written. |
 | `--fuzz-out D` | where `--fuzz` writes failing inputs (default `bin/fuzz/`; files go to `D/<unit>/`) |
 | `--ssi-corpus [--tol T] [--jobs N] [glob]` | score the engines against the SSI corpus (see [below](#--ssi-corpus-exact-ground-truth-ssi-corpus)); not a gate; without the `cpp` feature, the `ssi` engine alone |
 | `--solidcraft-cases [glob]` | score the Rust port on SolidCraft's whole-operation regression cases (see [below](#--solidcraft-cases-solidcraft-regression-cases)); not a gate, no `cpp` feature needed |
+| `--step-corpus [--jobs N] [glob]` | import STEP Tools' AP203/AP214 sample files and build every B-rep body on both kernels from the same intermediate (see [below](#--step-corpus-real-world-step-files)); not a gate; without `cpp`, the Rust side alone |
 
 Exit status: `0` no failures (deferred cases are not failures), `1` any
 failure, `2` usage or setup error. Output: one summary line per unit,
@@ -53,6 +55,27 @@ PASS|PARTIAL|FAIL <unit> cases=… passed=… failed=… deferred=… max_rel_er
 ```
 
 then the first few failing cases and `reports/difftest/<unit>.json`.
+
+**Native reference restrictions ([#448](https://github.com/tangency-labs/solidcore/issues/448)).**
+`geom.hash_table`, `heal.heal_data_p1`, `heal.heal_data_p2`, `heal.heal_data_p3`
+and `surface.twist_volume` require an x86-64 C++ reference. Their out-of-range
+floating-point-to-integer conversions are undefined upstream; ARM64 saturates
+where the pinned x86-64 reference wraps. Rust deliberately reproduces the latter
+on every target. On other architectures these units print `SKIP ...
+skipped(platform)` (or `FUZZ-SKIP`), before building fixtures or calling C++.
+The twist unit is included because its period reduction has the same dependency,
+even though the current committed cases do not expose it.
+
+Skipped units are counted separately from passes, partials and failures. Their
+JSON reports have `status: "skipped(platform)"`, `pass: false`, a reason in
+`skipped_platform`, and no compared cases. `--status-of` prints `skipped(platform)`;
+ordinary comparison and fuzz runs exit successfully when they contain only passes,
+partials and platform skips. `--baseline` fails if any selected reference is
+unsupported, and skipped reports are invalid baselines: this cannot waive the CI
+coverage ratchet. Plan statuses and tolerances are unchanged. Rust-only
+`--digest-dir` runs remain enabled on every target. On Apple Silicon, an x86-64
+harness and difftest binary under Rosetta can compare these units; this does not
+address independent libc++ reader or libm differences.
 `with_values` / `no_values` split the passing cases into those that compared
 at least one float, integer or topology entry and those that compared nothing
 (both sides returned the same error, or empty outputs). `vacuous` counts the
@@ -295,6 +318,17 @@ The separate value-share floor remains 75% of a unit's passing cases and at
 least one value-bearing case. Both-error and vacuous passes stay in the
 denominator. Known mismatches are not passes and cannot waive new discrepancies.
 
+CI runs the gate as parallel jobs (`.github/workflows/ci.yml`): `difftest-baseline`
+fetches and validates the exact-base artifact (below) while `difftest-sweep` runs
+`--green --jobs 0` (status and value-share gates, reports uploaded within the run) and
+`difftest-perturb` runs `--green --perturb`, mandatory on every pull_request and
+merge_group run. `difftest-compare` needs both the validated base and the finished sweep and
+runs `--compare-reports <sweep reports> --baseline <validated base>`, which applies the
+`--baseline` ratchet (unit set, seeds, case identity, outcome and value retention, waivers)
+to the reports without re-running anything. The required check `difftest` is an aggregator
+(`needs` all four, `if: always()`): it succeeds only if every part succeeded, so a failed or
+skipped part, or a failed base validation, fails it. No base fallback and no second sweep.
+
 CI retrieves the exact base SHA's successful push/main CI artifact through
 `scripts/ci/difftest-baseline.sh`. PRs use `pull_request.base.sha` and main pushes
 use `before`. For a merge queue, the helper snapshots the trusted repository's
@@ -345,7 +379,7 @@ ratchet waivers once the PR has merged.
 * **Absolute floor** only where the runner documents one via
   `abs_floors()` (key + value + reason, written into the report). Do not add a
   floor to make a case pass; if the C++ and Rust genuinely disagree, record it in
-  `plan/findings.md` and leave the unit non-green.
+  a new `plan/findings/<slug>.md` and leave the unit non-green.
 * Key sets and array lengths must match. A case with a harness error (bad
   input, panic) fails. A unit with zero cases fails.
 
@@ -630,7 +664,9 @@ nice -n 10 cargo run -p difftest -- --solidcraft-cases '3526-*'        # ids (<f
 
 * **Steps** (`"op"`): `box`, `sphere`, `cylinder` (`axis`, default +Z), `union`,
   `difference` (optional `pattern`: the tool cut once per grid position, one cut after
-  the other), `intersection`, `fillet` (edges by a point on each), `offset_faces` (faces
+  the other), `intersection`, `loft` (`SmApiCreateSkinPrimitive` through `sections`,
+  each one closed `profile` with its `plane` and `origin`; `degree` 1, ruled, by
+  default; capped at both ends), `fillet` (edges by a point on each), `offset_faces` (faces
   by a point on each), `sheet_corner` (the deferred sheet-flange recipe below). Each
   writes the body `id`; the last writes `result`.
 * **Expectations** (`expect`): `lumps` (bounded regions; `0` = nothing left), `volume`
@@ -656,6 +692,9 @@ nice -n 10 cargo run -p difftest -- --solidcraft-cases '3526-*'        # ids (<f
   glob): per case its source links, verdict, deferral, measured values and checks.
 * `cargo test -p difftest --lib solidcraft` checks that every case file loads, every
   case runs to a verdict, and every deferral names a plan unit.
+* **Adding cases:** add a new `fixtures/solidcraft/<issue>-<slug>.json`. Files load in
+  sorted order and nothing counts them, so no Rust file changes unless the case needs
+  a new step kind.
 
 ### Sheet flange corner overlap (SolidCraft #3170, PR #3472)
 
@@ -693,6 +732,45 @@ nice -n 10 cargo run -p difftest -- --solidcraft-cases '3170-*' --no-report
 
 This case builds on the whole-operation harness in solidcore PR #345; it does not
 change any unit status, kernel implementation or floating-point tolerance.
+
+## `--step-corpus`: real-world STEP files
+
+A correctness report on real CAD data, separate from the gate like `--ssi-corpus`:
+verdicts never fail the run and it is not part of CI. The files are STEP Tools' sample
+sets (<https://steptools.com/docs/stpfiles/>, AP203 and AP214), "All Rights Reserved"
+and copied only for informational, non-commercial use: they are never committed.
+
+```sh
+scripts/fetch-steptools-corpus.sh                                   # corpus/steptools/, SHA-256 pinned
+nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --step-corpus --jobs 4
+nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --step-corpus 'ap203/block*'
+```
+
+* **Import.** `crates/step-import` (clean room, from the public ISO 10303-21 syntax and
+  the Part 41/42 entity definitions; no other STEP implementation consulted) parses
+  each file and maps its `MANIFOLD_SOLID_BREP`, `BREP_WITH_VOIDS`, `FACETED_BREP` and
+  `SHELL_BASED_SURFACE_MODEL` bodies to a plain-data model in millimetres. A body that
+  reaches an unsupported entity is skipped with `unsupported: <ENTITY>` (listed in the
+  summary). Assembly instancing (`MAPPED_ITEM`, `CONTEXT_DEPENDENT_SHAPE_REPRESENTATION`)
+  is counted, not applied: each body is built once in its own coordinates.
+* **Build (both kernels, same numbers).** The body is encoded as one `f64` array
+  (`step_import::flat`); the C++ shim (`harness/cpp/shim/step_import.cpp`) reads that
+  array and the Rust side builds from its decoding. Per face: the surface by
+  `CreateCanonical`, the edge loops' 3D curves bounded to their edges, then
+  `CreateFacesWithCurves`; then `SmApiStitchIntoSolid`, counts (regions, shells, faces,
+  edges, vertices), `SmApiBrepIsManifoldSolid`, `SmApiBrepComputeArea` and
+  `SmApiBrepComputeVolume` (accuracy `1e-6`), `SmApiHealBrep`, and counts, manifold
+  test and volume again. Face orientation is left to the stitch.
+* **Verdicts** (per body): `MATCH` (every stage agrees: statuses and counts equal,
+  values within `1e-9` relative), `HEAL-DIFF` (every build stage agrees, the heal or a
+  later stage differs), `DIFF` (a build stage differs), `DEFERRED` (the Rust side
+  reached unported code; the unit is shown), `CRASH` (a child crashed, timed out or
+  the shim rejected the input), `SKIPPED` (no B-rep body in the file).
+* Each (body, kernel) runs in its own child process (`--step-case <file> <body>
+  <cpp|rust> <out.json>`). Output: one line per body, a `STEP-CORPUS` summary line, and
+  `bin/step-corpus/report.json` (per body: source counts, both sides' stages, verdict).
+* `cargo run -p step-import --example survey -- corpus/steptools` lists what the
+  importer maps per file; `--example dump_body -- <file> <body> [--flat]` prints one body.
 
 ## Notes
 

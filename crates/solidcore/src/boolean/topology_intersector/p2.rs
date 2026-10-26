@@ -57,7 +57,9 @@
 //!   Upstream's `IntersectInsertRelate` reports a failure of `ImprintIntersections`
 //!   and then overwrites its status with that of `SetRelationships`, so the boolean
 //!   goes on with both B-reps half imprinted (upstream: reads of freed vertex uses).
-//!   The port deletes the manager and returns the imprint's error.
+//!   The port deletes the manager and returns the imprint's error, unless every
+//!   failing imprint stopped before editing a B-rep (an edge definition without a
+//!   final vertex): the B-reps are then consistent and the port goes on as upstream.
 //! - **Statuses upstream ignores** (`SmBrep` edits whose status is unchecked,
 //!   `RemoveRelationship` in `DeleteFaces` / `FixGaps`, bounding boxes, `DropPoint`,
 //!   `SimpleCoincidenceChecker`, `CalculateUVDomainFromUVTrimCurves`, `Relate` in
@@ -71,8 +73,7 @@
 //!   copy is a new handle), so there is nothing to reset.
 //! - **Callees not ported yet** are private stubs returning [`SolidError::Unported`],
 //!   each tagged `UNPORTED(<unit>)`:
-//!   `SmFace::Point3DClassify` (`query.face_p1`), `MergeCurveClasses`
-//!   (`boolean.topology_intersector_p3`, ported in draft PR #211), and the stub of [`p1`](super::p1)
+//!   `SmFace::Point3DClassify` (`query.face_p1`) and the stub of [`p1`](super::p1)
 //!   for `SmFace::FaceIntersect` (`topology.face_p3`). `SmFace::GetEdges` /
 //!   `GetVertices` / `GetBrep` go through [`IntersectorBrep::face_edges`] and siblings. The code after a stub is ported in
 //!   full. `SmBrep::DeleteEdge` / `DeleteVertex` (`topology.brep_p4`) go through
@@ -119,9 +120,11 @@ use super::p1::{
     add_unique, brep_make_edge_in_face, can_imprint, cc_insert_topology_intersections, contains,
     eval_curve_point, face_face_intersect_curves, find_common_elements, ignore_soft,
     intersect_shell_vertices, intersect_wire_lamina_edges, new_curve_classification,
-    set_edge_class, surface_coincidence_check, FaceIntersectOutputs, IntersectionCurves,
-    IntersectionResults, IntersectorBrep, TopologyIntersector,
+    set_edge_class, solve_with_face_caches, surface_coincidence_check,
+    surface_solve_with_face_caches, FaceIntersectOutputs, IntersectionCurves, IntersectionResults,
+    IntersectorBrep, TopologyIntersector,
 };
+use super::p3::IntersectorBrepP3;
 
 const OP_REGISTER: &str = "boolean::topology_intersector::p2::register_existing_ssi";
 const OP_SQUEEZE: &str = "boolean::topology_intersector::p2::check_for_squeeze_vertices";
@@ -253,24 +256,6 @@ impl<O: Ord + Copy> Mates<O> for MapMates<O> {
 }
 
 // ---- unported callees ----------------------------------------------------------------------
-
-/// `MergeCurveClasses(rCrvClass1, rCrvClass2, bMergeSingularities, rbTopologyWasDeleted,
-/// paDeletedEdges, paDeletedVertices)`: what it deleted. Draft PR #211 ports it as
-/// `TopologyIntersector::merge_curve_classes` (`boolean::topology_intersector::p3`), a
-/// method that also takes the kernel and the B-reps: wiring it changes the call site in
-/// [`TopologyIntersector::iir_edge_brep`] to `self.merge_curve_classes(k, brep, ..)` and
-/// widens that function's bound to `IntersectorBrepP3`.
-fn merge_curve_classes<O>(
-    _crv_class1: &mut CurveClassification<O>,
-    _crv_class2: &mut CurveClassification<O>,
-    _merge_singularities: bool,
-) -> Result<DeletedTopology<O>> {
-    // UNPORTED(boolean.topology_intersector_p3): SmTopologyIntersector::MergeCurveClasses
-    Err(SolidError::unported(
-        "SmTopologyIntersector::MergeCurveClasses",
-        "boolean.topology_intersector_p3",
-    ))
-}
 
 // ---- results ---------------------------------------------------------------------------------
 
@@ -823,12 +808,12 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     /// # Errors
     ///
     /// Those of `sm_SetEdgeClass`, `BrepCurveSolve` and `InsertTopologyIntersections`;
-    /// [`SolidError::Unported`] for `MergeCurveClasses` (`boolean.topology_intersector_p3`);
+    /// Those of `MergeCurveClasses` ([`TopologyIntersector::merge_curve_classes`]);
     /// [`SolidError::InvalidInput`] for an unknown edge or one without curve.
     pub fn iir_edge_brep(
         &mut self,
         k: &mut Kernel,
-        brep: &mut impl IntersectorBrepP2<O>,
+        brep: &mut impl IntersectorBrepP3<O>,
         edge: O,
         target: O,
         swap_order: bool,
@@ -866,8 +851,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
         // temporarily disable EditingEnabled bit; Intersect Edge->Curve with Brep
         let old_edit = brep.set_editing_enabled(target, false)?;
-        let solved = {
-            let objects = brep.topology_objects();
+        let solved = solve_with_face_caches(k, brep, |objects| {
             let curve_ref = CurveRef {
                 curve: objects.curve(curve)?,
                 handle: curve,
@@ -886,7 +870,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     opt_vectors: &[],
                 },
             )
-        };
+        });
         brep.set_editing_enabled(target, old_edit)?;
         let solutions = solved?;
 
@@ -894,10 +878,15 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         cc_insert_topology_intersections(k, &*brep, &mut crv_class2, &solutions)?;
 
         // merge curveClassifications into Breps
-        let merged = if swap_order {
-            merge_curve_classes(&mut crv_class2, &mut crv_class1, true)?
+        let merge = if swap_order {
+            self.merge_curve_classes(k, brep, &mut crv_class2, &mut crv_class1, true)?
         } else {
-            merge_curve_classes(&mut crv_class1, &mut crv_class2, true)?
+            self.merge_curve_classes(k, brep, &mut crv_class1, &mut crv_class2, true)?
+        };
+        let merged = DeletedTopology {
+            topology_deleted: merge.topology_was_deleted,
+            deleted_edges: merge.deleted_edges.unwrap_or_default(),
+            deleted_vertices: merge.deleted_vertices.unwrap_or_default(),
         };
 
         // set output values and return
@@ -928,7 +917,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     pub fn close_intersection_loop(
         &mut self,
         k: &mut Kernel,
-        brep: &mut impl IntersectorBrepP2<O>,
+        brep: &mut impl IntersectorBrepP3<O>,
         brep_vertex: Option<O>,
     ) -> Result<bool> {
         // check input
@@ -1105,8 +1094,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             .ok_or(invalid(OP_CLOSE_LOOP, "edge handle is unknown"))?;
         let tolerance = tol_of(geometry, edge)?;
         let old_edit = geometry.set_editing_enabled(brep, false)?;
-        let solved = {
-            let objects = geometry.topology_objects();
+        let solved = solve_with_face_caches(k, geometry, |objects| {
             let curve_ref = CurveRef {
                 curve: objects.curve(curve)?,
                 handle: curve,
@@ -1125,7 +1113,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     opt_vectors: &[],
                 },
             )
-        };
+        });
         geometry.set_editing_enabled(brep, old_edit)?;
 
         // check every solution - for a coincident solution
@@ -1147,9 +1135,10 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     ///
     /// Those of the manager's construction, `IntersectTopology` and
     /// `ResolveIntersections` (the manager then stays installed, as upstream leaks
-    /// it); every error of the imprint, after deleting the manager (SolidCraft fix
-    /// af8db37: upstream goes on with the half-imprinted B-reps, UB-242, which
-    /// [`Kernel::note_upstream_ub`] records);
+    /// it); every error of the imprint that may have edited a B-rep, after deleting
+    /// the manager (SolidCraft fix af8db37: upstream goes on with the half-imprinted
+    /// B-reps, UB-242, which [`Kernel::note_upstream_ub`] records); an imprint failure
+    /// that edited nothing only warns, as upstream;
     /// [`SolidError::InvalidInput`] without both B-reps. Where the manager's
     /// destructor would read a freed proto edge upstream (UB-175) the port's defined
     /// teardown goes on and [`Kernel::note_upstream_ub`] records `"UB-175"`.
@@ -1192,11 +1181,25 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         // Resolve Intersections; if that didn't work, quit before we mess up the Breps.
         deleted.extend(self.resolve_intersections(k, brep)?);
 
-        // Imprint Intersections, now we'll modify the Breps. If that didn't work, the
-        // Breps are partly imprinted and no longer consistent: stop here, so that no
-        // caller goes on to relate, classify or measure them (SolidCraft change,
-        // tangency-labs/smlib af8db37; upstream only warns and overwrites the status).
-        match self.imprint_intersections(k, brep) {
+        // Imprint Intersections, now we'll modify the Breps. If that didn't work and a
+        // failing imprint edited a Brep, the Breps are partly imprinted and no longer
+        // consistent: stop here, so that no caller goes on to relate, classify or
+        // measure them (SolidCraft change, tangency-labs/smlib af8db37; upstream only
+        // warns and overwrites the status). A failure that edited nothing (an edge
+        // definition without a final vertex) leaves the Breps consistent, and upstream
+        // goes on.
+        let outcome = self
+            .imprint_intersections_reporting_edits(k, brep)
+            .and_then(|o| {
+                if o.failure_edited {
+                    o.status.map(|()| o.deleted)
+                } else {
+                    // If that didn't work, inform the public (SE_MSG: the status is
+                    // overwritten below).
+                    Ok(o.deleted)
+                }
+            });
+        match outcome {
             Ok(d) => deleted.extend(d),
             Err(e) => {
                 if let Some(mut mgr) = self.proto_topo_mgr.take() {
@@ -2007,24 +2010,31 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                         face_dom = d;
                     }
 
-                    let sol = {
-                        let surface = brep.surface(surf_h).ok_or(invalid(
+                    // (the surface reaches its face's cache through the face,
+                    // `smsurf_GetSurfaceCache`)
+                    let surface = brep
+                        .surface(surf_h)
+                        .ok_or(invalid(
                             OP_EDGE_FACE_COIN,
                             "surface handle cannot be resolved",
-                        ))?;
-                        let curve = curve_of(brep, Some(curve_h))?;
-                        // (status unchecked: not coincident on failure)
-                        ignore_soft(surface.simple_coincidence_checker(
+                        ))?
+                        .clone_for_evaluation()?;
+                    let curve = curve_of(brep, Some(curve_h))?.clone_for_evaluation()?;
+                    // (status unchecked: not coincident on failure)
+                    let sol = ignore_soft(surface_solve_with_face_caches(k, brep, |context| {
+                        surface.simple_coincidence_checker_with_context(
                             k,
                             &face_dom,
-                            curve,
+                            &curve,
                             &edge_dom,
                             approx_tol,
                             false,
                             [Some(curve_h), Some(surf_h)],
-                        ))?
-                        .flatten()
-                    };
+                            None,
+                            context,
+                        )
+                    }))?
+                    .flatten();
                     let Some(sol) = sol else {
                         continue;
                     };

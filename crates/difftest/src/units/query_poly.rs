@@ -12,11 +12,17 @@
 //! sections are compared exactly, float sections to `1e-9` relative. Statuses are `0`
 //! (`SM_SUCCESS`) or the `SmStatus`.
 //!
-//! Deferred cases: `IsDegenerate` of an edge whose face has an original face while the
-//! back pointers are valid (`SmFace::GetSurface`, `topology.face_p2`).
-//! `owner_degenerate` is a separate opt-in operation: explicit face records resolve
-//! only their own labels. It compares real native `IsDegenerate` calls and independent
-//! surface samples; it never supplies geometry for the two legacy opaque-owner cases.
+//! Rejected cases: `IsDegenerate` of an edge whose face has a label for an original
+//! face while the back pointers are valid. Upstream then calls `SmFace::GetSurface`
+//! on that face (to map UV points), and a label is not an `SmFace`: the call is
+//! undefined in C++ (AGENTS.md section 4, step 5.6). The shim decides this from the
+//! built model (label plus back pointers), before any call, and returns
+//! `STATUS_UNDEFINED_INPUT`; `run_cpp` maps that status to `rejected`, no C++ result is
+//! inspected, and the Rust side, which would defer it at `SmFace::GetSurface`
+//! (`topology.face_p2`) for lack of the face, is not run.
+//! `owner_degenerate` is a separate opt-in operation that does compare these calls:
+//! explicit face records resolve only their own labels, and it compares real native
+//! `IsDegenerate` calls and independent surface samples.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1150,6 +1156,15 @@ impl UnitDiff for Runner {
         let i: Inputs = case.parse()?;
         match ffi::run(&to_ffi(&i.brep), &op_to_ffi(&i.op)) {
             Ok(secs) => to_output(&secs),
+            // The shim declined the input before calling anything (decided from the built
+            // model, not from a result): upstream would call `SmFace::GetSurface` on a
+            // label that is not an `SmFace`.
+            Err(solidcore_ffi::FfiError::Status(ffi::STATUS_UNDEFINED_INPUT)) => {
+                Ok(Output::rejected(
+                    "SmPolyEdge::IsDegenerate would call GetSurface on a labelled fake SmFace \
+                     (undefined in C++; real original faces: owner_degenerate)",
+                ))
+            }
             Err(solidcore_ffi::FfiError::Status(s)) => Ok(Output::err(format!("status_{s}"))),
             Err(e) => Err(harness(e.to_string())),
         }
@@ -1207,7 +1222,7 @@ mod owner_tests {
     }
 
     #[test]
-    fn original_corpus_and_opaque_native_outputs_are_retained() {
+    fn original_corpus_is_retained_and_opaque_owner_cases_are_rejected() {
         let cases = Runner
             .cases(&CaseContext {
                 root: repo_root(),
@@ -1240,11 +1255,12 @@ mod owner_tests {
             let deferred = rust.deferred.unwrap();
             assert_eq!(deferred.unit, "topology.face_p2");
             assert_eq!(deferred.symbol, "SmFace::GetSurface");
+            // The labelled original face is not an `SmFace`: upstream would dereference
+            // it, so the C++ side rejects the case and nothing is compared.
             let cpp = Runner.run_cpp(case).unwrap();
             assert!(cpp.error.is_none());
-            assert_eq!(cpp.ints["results"], vec![-9; 4]);
-            assert!(!cpp.values.contains_key("owner_points"));
-            assert!(!cpp.ints.contains_key("owner_topo"));
+            assert!(cpp.rejected.as_deref().unwrap().contains("fake SmFace"));
+            assert!(cpp.ints.is_empty() && cpp.values.is_empty());
         }
     }
 
@@ -1291,10 +1307,13 @@ mod owner_tests {
                 let mut unresolved = case.clone();
                 unresolved.inputs["op"]["owners"] = serde_json::json!([]);
                 assert!(Runner.run_rust(&unresolved).unwrap().deferred.is_some());
-                assert_eq!(
-                    Runner.run_cpp(&unresolved).unwrap().ints["results"],
-                    vec![-9; 3]
-                );
+                assert!(Runner
+                    .run_cpp(&unresolved)
+                    .unwrap()
+                    .rejected
+                    .as_deref()
+                    .unwrap()
+                    .contains("fake SmFace"));
             }
         }
     }
