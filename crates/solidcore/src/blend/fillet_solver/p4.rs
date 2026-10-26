@@ -540,11 +540,18 @@ const fn bspline_curve_cast(curve: &Curve) -> Option<&BSplineCurve> {
 }
 
 /// `SM_CAST_PTR(SmBSplineSurface, pSurface) != NULL`: the kinds derived from
-/// `SmBSplineSurface` (`SmPlane`, `SmSurfOfRevolution`).
+/// `SmBSplineSurface` (`SmPlane`, `SmSurfOfRevolution`, `SmSurfOfExtrusion`, and
+/// through `SmSurfOfRevolution` `SmCone`/`SmCylinder`, `SmSphere`, `SmTorus`).
 const fn is_bspline_surface(surface: &Surface) -> bool {
     matches!(
         surface.kind(),
-        SurfaceKind::BSpline(_) | SurfaceKind::Plane(_) | SurfaceKind::SurfOfRevolution(_)
+        SurfaceKind::BSpline(_)
+            | SurfaceKind::Plane(_)
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_)
+            | SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
     )
 }
 
