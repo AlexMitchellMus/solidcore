@@ -527,6 +527,60 @@ mod tests {
     }
 
     #[test]
+    fn second_radius_offsets_the_second_surface_by_its_own_radius() {
+        let offsets = |second: Option<f64>| {
+            let mut k = Kernel::default();
+            let mut body = boxed(&mut k);
+            let mut session = FilletSession::new(&mut k, &mut body).unwrap();
+            let edge = p1::edges(session.target(), None).unwrap()[0];
+            let edgeuse = session.blend_edgeuse(&k, edge).unwrap().unwrap();
+            let solver = match second {
+                Some(r) => session
+                    .new_constant_radius_solver_with_second(&k, edgeuse, 0.5, r, 1e-6, 0.5, 0.03)
+                    .unwrap(),
+                None => session
+                    .new_constant_radius_solver(&k, edgeuse, 0.5, 1e-6, 0.5, 0.03)
+                    .unwrap(),
+            };
+            session
+                .solver(solver)
+                .unwrap()
+                .base()
+                .offsets_data()
+                .unwrap()
+                .surfaces
+                .map(|s| s.unwrap().surface.offset_distance().abs())
+        };
+        assert_eq!(offsets(None), [0.5, 0.5]);
+        assert_eq!(offsets(Some(1.0)), [0.5, 1.0]);
+    }
+
+    #[test]
+    fn per_edge_constant_distance_prepares_constant_distance_solvers() {
+        let mut k = Kernel::default();
+        let mut body = boxed(&mut k);
+        let edges = p1::edges(&body, None).unwrap();
+        let mut session = FilletSession::new(&mut k, &mut body).unwrap();
+        session
+            .prepare_per_edge_constant_distance(
+                &mut k,
+                &edges[..2],
+                &[0.5, 0.75],
+                &[FilletSurfaceGeneratorType::Circular; 2],
+                1,
+                1.0,
+            )
+            .unwrap();
+        for i in 0..2 {
+            let solver = session.solver(FilletSolverId(i)).unwrap();
+            assert!(matches!(
+                solver,
+                crate::blend::fillet_executive::session::SolverObject::ConstantDistance(_)
+            ));
+        }
+    }
+
+    #[test]
     fn all_edge_setup_loads_one_solver_per_edge_with_the_blending_handler() {
         for solver_kind in [
             AllEdgeSolver::ConstantRadius,
