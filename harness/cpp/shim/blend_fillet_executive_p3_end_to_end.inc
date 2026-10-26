@@ -62,7 +62,31 @@ namespace fillet_real_solid {
 // edge indices; a count of 0 (source entry only) selects every edge in GetEdges
 // order. Validates the indices, runs SmApiFilletEdges on `body` and appends the
 // record. Returns SC_ERR_ARG for an invalid wire, else SC_OK.
-int32_t fillet_and_record(SmBrep* body,const double* fillet,int64_t n,std::vector<double>& values) {
+// SmApiFilletEdges with the executive's piecewise merge selected: the same
+// executive set-up, then SetDoPiecewiseMerge(TRUE) after SetFilletParameters
+// (which resets the merge flags; its header says they may be overridden after
+// it), as prog_test's topology-based filleting selects it (smFilletTest.cpp:4521).
+SmStatus piecewise_fillet_edges(SmBrep* pBrep,SmTArray<SmEdge*>& rEdges,double dRadius,
+    ULONG lXSectType,ULONG lContinuity,double dThumbweight) {
+    if (!pBrep || rEdges.GetSize() < 1) return SM_ERR_INVALID_INPUT;
+    const SmContext* pContext=SmApiGetOrCreateContext();
+    SmFilletSurfaceGeneratorType eFSGType=SM_FSG_CIRCULAR;
+    if (lXSectType == 0) eFSGType=SM_FSG_LINEAR;
+    else if (lXSectType == 2) eFSGType=SM_FSG_BLEND_CURVE;
+    SmFilletExecutive sFilExec(*pContext,pBrep);
+    sFilExec.SetDoGlobalMerge(TRUE);
+    SmStatus eStat=sFilExec.SetFilletParameters(pBrep,rEdges,eFSGType,SM_FS_CONST_RADIUS,
+        dRadius,NULL,-1.0,-1.0,-1.0,-1.0,lContinuity,dThumbweight);
+    if (eStat != SM_SUCCESS) return eStat;
+    sFilExec.SetDoPiecewiseMerge(TRUE);
+    eStat=sFilExec.DoFillet();
+    if (eStat != SM_SUCCESS) return eStat;
+    pBrep->StitchAndOrient();
+    return SM_SUCCESS;
+}
+
+int32_t fillet_and_record(SmBrep* body,const double* fillet,int64_t n,std::vector<double>& values,
+    bool piecewise=false) {
     if (n < 5) return SC_ERR_ARG;
     const double ulong_limit=std::ldexp(1.0,std::numeric_limits<ULONG>::digits);
     for (int i : {1,2}) if (fillet[i] < 0 || std::floor(fillet[i]) != fillet[i]
@@ -86,7 +110,9 @@ int32_t fillet_and_record(SmBrep* body,const double* fillet,int64_t n,std::vecto
             }
         }
     }
-    const auto result=SmApiFilletEdges(body,selected,fillet[0],ULONG(fillet[1]),ULONG(fillet[2]),fillet[3]);
+    const auto result=piecewise
+        ? piecewise_fillet_edges(body,selected,fillet[0],ULONG(fillet[1]),ULONG(fillet[2]),fillet[3])
+        : SmApiFilletEdges(body,selected,fillet[0],ULONG(fillet[1]),ULONG(fillet[2]),fillet[3]);
     // Selected pointers may no longer be live; all result traversals are fresh.
     section(values,before);
     values.push_back(status(result));
@@ -110,8 +136,9 @@ int32_t fillet_and_record(SmBrep* body,const double* fillet,int64_t n,std::vecto
 
 // Wire: dimensions XYZ, radius, xsect, continuity, thumbweight, edge count,
 // then owning-list edge indices. This initial fixture constructor is a box.
-SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_solid(
-    const double* input, int64_t n, double* out, int64_t cap, int64_t* out_len) {
+namespace fillet_real_solid {
+int32_t real_solid(const double* input, int64_t n, double* out, int64_t cap, int64_t* out_len,
+    bool piecewise) {
     if (!input || n < 9) return SC_ERR_ARG;
     for (int64_t i=0; i<n; ++i) if (!std::isfinite(input[i])) return SC_ERR_ARG;
     for (int i=0; i<3; ++i) if (input[i] <= SM_EFF_ZERO) return SC_ERR_ARG;
@@ -122,10 +149,23 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_solid(
     if (setup != SM_SUCCESS || !raw) return SC_ERR_ARG;
     std::unique_ptr<SmBrep> body(raw);
     std::vector<double> values;
-    const auto rc=fillet_real_solid::fillet_and_record(body.get(),input+3,n-3,values);
+    const auto rc=fillet_real_solid::fillet_and_record(body.get(),input+3,n-3,values,piecewise);
     if (rc != SC_OK) return rc;
     return sc_copy_out(values.data(),int64_t(values.size()),out,cap,out_len);
     SC_CATCH
+}
+}
+
+SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_solid(
+    const double* input, int64_t n, double* out, int64_t cap, int64_t* out_len) {
+    return fillet_real_solid::real_solid(input,n,out,cap,out_len,false);
+}
+
+// The box wire of sc_blend_fillet_executive_p3_real_solid, filleted with the
+// executive's piecewise merge (fillet_real_solid::piecewise_fillet_edges).
+SC_EXPORT int32_t sc_blend_fillet_executive_p3_piecewise_solid(
+    const double* input, int64_t n, double* out, int64_t cap, int64_t* out_len) {
+    return fillet_real_solid::real_solid(input,n,out,cap,out_len,true);
 }
 
 namespace fillet_real_solid {
@@ -173,8 +213,9 @@ SmBrep* build_source(int kind,const char* path,const double* p) {
 // Wire: source kind (1 file, 2 cylinder, 3 box union, 4 box difference), 12 source
 // parameters (unused ones 0), then the fillet wire of `fillet_and_record`. `path` is
 // the .smb file of kind 1 (null otherwise).
-SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_source(
-    const char* path, const double* input, int64_t n, double* out, int64_t cap, int64_t* out_len) {
+namespace fillet_real_solid {
+int32_t real_source(const char* path, const double* input, int64_t n, double* out, int64_t cap,
+    int64_t* out_len, bool piecewise) {
     const int64_t head=1+fillet_real_solid::SOURCE_PARAMS;
     if (!input || n < head+5) return SC_ERR_ARG;
     for (int64_t i=0; i<n; ++i) if (!std::isfinite(input[i])) return SC_ERR_ARG;
@@ -188,10 +229,23 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_source(
     std::unique_ptr<SmBrep> body(fillet_real_solid::build_source(int(kind),path,p));
     if (!body) return SC_ERR_ARG;
     std::vector<double> values;
-    const auto rc=fillet_real_solid::fillet_and_record(body.get(),input+head,n-head,values);
+    const auto rc=fillet_real_solid::fillet_and_record(body.get(),input+head,n-head,values,piecewise);
     if (rc != SC_OK) return rc;
     return sc_copy_out(values.data(),int64_t(values.size()),out,cap,out_len);
     SC_CATCH
+}
+}
+
+SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_source(
+    const char* path, const double* input, int64_t n, double* out, int64_t cap, int64_t* out_len) {
+    return fillet_real_solid::real_source(path,input,n,out,cap,out_len,false);
+}
+
+// The source wire of sc_blend_fillet_executive_p3_real_source, filleted with the
+// executive's piecewise merge (fillet_real_solid::piecewise_fillet_edges).
+SC_EXPORT int32_t sc_blend_fillet_executive_p3_piecewise_source(
+    const char* path, const double* input, int64_t n, double* out, int64_t cap, int64_t* out_len) {
+    return fillet_real_solid::real_source(path,input,n,out,cap,out_len,true);
 }
 
 // Wire: the four corner points (u0v0, u1v0, u0v1, u1v1) of each of two

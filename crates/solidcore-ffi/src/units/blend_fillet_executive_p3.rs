@@ -297,6 +297,61 @@ pub fn real_source(input: &[f64], path: Option<&str>) -> Result<Vec<f64>, FfiErr
     })
 }
 
+extern "C" {
+    fn sc_blend_fillet_executive_p3_piecewise_solid(
+        input: *const f64,
+        n: i64,
+        out: *mut f64,
+        cap: i64,
+        len: *mut i64,
+    ) -> i32;
+    fn sc_blend_fillet_executive_p3_piecewise_source(
+        path: *const std::ffi::c_char,
+        input: *const f64,
+        n: i64,
+        out: *mut f64,
+        cap: i64,
+        len: *mut i64,
+    ) -> i32;
+}
+
+/// [`real_solid`] with the executive's piecewise merge selected: `SmApiFilletEdges`'
+/// executive set-up, then `SetDoPiecewiseMerge(TRUE)` after `SetFilletParameters`,
+/// `DoFillet` and `StitchAndOrient`. Same wire and record.
+pub fn piecewise_solid(input: &[f64]) -> Result<Vec<f64>, FfiError> {
+    validate_real_solid(input)?;
+    call_with_buffer(65536, |out, len| unsafe {
+        sc_blend_fillet_executive_p3_piecewise_solid(
+            input.as_ptr(),
+            input.len() as i64,
+            out.as_mut_ptr(),
+            out.len() as i64,
+            len,
+        )
+    })
+}
+
+/// [`real_source`] with the executive's piecewise merge selected (see
+/// [`piecewise_solid`]). Same wire and record.
+pub fn piecewise_source(input: &[f64], path: Option<&str>) -> Result<Vec<f64>, FfiError> {
+    validate_real_source(input, path.is_some())?;
+    let cpath = path
+        .map(std::ffi::CString::new)
+        .transpose()
+        .map_err(|_| FfiError::InvalidArgument("path has a NUL byte".into()))?;
+    let ptr = cpath.as_ref().map_or(std::ptr::null(), |c| c.as_ptr());
+    call_with_buffer(65536, |out, len| unsafe {
+        sc_blend_fillet_executive_p3_piecewise_source(
+            ptr,
+            input.as_ptr(),
+            input.len() as i64,
+            out.as_mut_ptr(),
+            out.len() as i64,
+            len,
+        )
+    })
+}
+
 /// Validate the surface-surface wire: two surfaces' four corner points (24 values),
 /// radius1, radius2, tolerance, cross-section (native ULONG), mirror and complement
 /// (0/1).

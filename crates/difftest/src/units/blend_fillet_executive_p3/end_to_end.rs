@@ -187,6 +187,11 @@ pub(super) struct RealSolid {
     /// Select every edge of the body (non-box sources only).
     #[serde(default)]
     all_edges: bool,
+    /// Fillet with the executive's piecewise merge (`SetDoPiecewiseMerge(TRUE)` after
+    /// `SetFilletParameters`) instead of `SmApiFilletEdges`' default merge (full
+    /// checkpoint only).
+    #[serde(default)]
+    piecewise_merge: bool,
 }
 impl RealSolid {
     fn fillet_wire(&self) -> Vec<f64> {
@@ -217,6 +222,9 @@ impl RealSolid {
     /// Rejects mixed or incomplete forms (a box needs `dimensions`; a source no
     /// `dimensions`, the full checkpoint, and exactly one of `edges` / `all_edges`).
     fn check_form(&self) -> Result<(), HarnessError> {
+        if self.piecewise_merge && self.checkpoint != Checkpoint::Full {
+            return Err(HarnessError::new("piecewise merge needs the full checkpoint"));
+        }
         match (&self.source, self.dimensions) {
             (None, Some(_)) if !self.all_edges => Ok(()),
             (Some(_), None)
@@ -321,14 +329,24 @@ fn output(mut values: &[f64]) -> Result<Output, HarnessError> {
 pub(super) fn cpp(input: &RealSolid) -> Result<Output, HarnessError> {
     input.check_form()?;
     if let Some(source) = &input.source {
-        let values = ffi::real_source(&input.source_wire(source), source.path())
+        let run = if input.piecewise_merge {
+            ffi::piecewise_source
+        } else {
+            ffi::real_source
+        };
+        let values = run(&input.source_wire(source), source.path())
             .map_err(|e| HarnessError::new(e.to_string()))?;
         return output(&values);
     }
     if input.checkpoint != Checkpoint::Full {
         return prefix::cpp(input);
     }
-    let values = ffi::real_solid(&input.wire()).map_err(|e| HarnessError::new(e.to_string()))?;
+    let run = if input.piecewise_merge {
+        ffi::piecewise_solid
+    } else {
+        ffi::real_solid
+    };
+    let values = run(&input.wire()).map_err(|e| HarnessError::new(e.to_string()))?;
     output(&values)
 }
 
@@ -524,6 +542,9 @@ fn run_rust(mut k: Kernel, body: SolidResult<Brep>, input: &RealSolid) -> SolidR
     Ok(values)
 }
 fn apply(k: &mut Kernel, body: &mut Brep, edges: &[EdgeId], input: &RealSolid) -> SolidResult<()> {
+    if input.piecewise_merge {
+        return piecewise_fillet_edges(k, body, edges, input);
+    }
     solidcore::blend::fillet_executive::api::fillet_edges(
         k,
         body,
@@ -533,6 +554,37 @@ fn apply(k: &mut Kernel, body: &mut Brep, edges: &[EdgeId], input: &RealSolid) -
         input.continuity,
         input.thumbweight,
     )
+}
+/// The shim's `piecewise_fillet_edges`: `SmApiFilletEdges`' executive set-up, then
+/// `SetDoPiecewiseMerge(TRUE)` after `SetFilletParameters`, `DoFillet` and
+/// `StitchAndOrient` with its defaults.
+fn piecewise_fillet_edges(
+    k: &mut Kernel,
+    body: &mut Brep,
+    edges: &[EdgeId],
+    input: &RealSolid,
+) -> SolidResult<()> {
+    use solidcore::topology::brep::p5::{stitch_and_orient, StitchAndOrientOptions};
+    if edges.is_empty() {
+        return Err(SolidError::invalid_input(
+            "harness::piecewise_fillet",
+            "no edges",
+        ));
+    }
+    {
+        let mut session = solidcore::blend::fillet_executive::session::FilletSession::new(k, body)?;
+        session.prepare_constant_radius_edges(
+            k,
+            edges,
+            input.radius,
+            input.xsect,
+            input.continuity,
+            input.thumbweight,
+        )?;
+        session.set_do_piecewise_merge(true);
+        session.do_fillet(k)?;
+    }
+    stitch_and_orient(k, body, &StitchAndOrientOptions::default())
 }
 /// The `TestSmFillets.cpp` examples 0-6, as the shim runs them (examples 2-4 on the
 /// 10x10x10 box with its first four edges in `GetEdges` order: `SmApiFilletEdges(r=1,
