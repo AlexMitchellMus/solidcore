@@ -61,7 +61,7 @@ fn target_edge(object: FilletObject) -> Result<EdgeId> {
     }
 }
 
-struct FinishAccess<'a, 'target>(&'a mut SessionObjects<'target>);
+pub(super) struct FinishAccess<'a, 'target>(pub(super) &'a mut SessionObjects<'target>);
 
 impl FinishAccess<'_, '_> {
     fn require_target(brep: FilletObject) -> Result<()> {
@@ -462,10 +462,8 @@ impl FilletSession<'_> {
             .intersector
             .set_other_brep(Some(FilletObject::IntermediateBrep));
         if self.executive.options.piecewise_merge {
-            self.do_piecewise_merge(k)?;
-            // clean up: delete m_pFilletBrep
-            return FinishAccess(&mut self.objects)
-                .finish_delete_brep(k, FilletObject::IntermediateBrep);
+            // DoPiecewiseMerge deletes m_pFilletBrep inside its mark scope
+            return self.do_piecewise_merge(k);
         }
         // SetFilletBrepEdgeMap, then the geometry and corner insertion.
         self.insert_fillet_intersection_topology(k)?;
