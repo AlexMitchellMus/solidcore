@@ -3283,11 +3283,112 @@ impl SessionObjects<'_> {
             extended_surfaces,
             topo_edges: &mut executive.topo_edges,
         };
-        if corner.corner_type() == FilletCornerType::NByOneClosed {
-            corner.make_nx1_closed_corner_topology(env)
+        let gaps = if corner.corner_type() == FilletCornerType::NByOneClosed {
+            corner.make_nx1_closed_corner_topology(env)?;
+            None
         } else {
-            corner.make_nx1_corner_topology(env)
+            corner.make_nx1_corner_topology(env)?
+        };
+        match gaps {
+            Some(gaps) => self.nx1_end_gap_checks(k, id, gaps, executive),
+            None => Ok(()),
         }
+    }
+    /// The end of `SmFilletNx1Corner::MakeCornerTopology` for a mixed-convexity end
+    /// face spanning several faces: the corner's vertex geometry and the two new side
+    /// edges' geometry (statuses ignored, as upstream), then the coincidence of the
+    /// kept extended end surface with the other side edge.
+    fn nx1_end_gap_checks(
+        &mut self,
+        k: &Kernel,
+        id: FilletCornerId,
+        gaps: crate::blend::fillet_corner::topology::nx1_end::Nx1GapCheck,
+        executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        // in this case we can set FilletVertex and SideFilletEdge shapes
+        // without having the filletSurface - do so
+
+        // set filletVertex->Positions
+        crate::error::ignore_status(self.calc_nx1_corner_vert_geom(k, id))?;
+
+        // set FilletSideEdge->Curves
+        for edge in [gaps.edge1, gaps.edge2] {
+            let SessionObjects {
+                target,
+                pseudo,
+                solvers,
+                corners,
+                extended_surfaces,
+                ..
+            } = &mut *self;
+            let corner = corners
+                .get(id.0 as usize)
+                .ok_or_else(|| invalid("corner is not live"))?;
+            let lookup = SessionEdgeLookup {
+                solvers,
+                extended_surfaces,
+            };
+            let corner_lookup = CornerLookup {
+                table: None,
+                this: Some((Some(id), corner)),
+                exec: None,
+            };
+            let mut note = ErrorInfo::default();
+            let result = pseudo.calc_corner_edge_geom_with_context_and_error_info(
+                k,
+                edge,
+                corner_lookup,
+                &lookup,
+                target,
+                Some(&mut note),
+            );
+            replay_corner_error(&mut executive.error, &note);
+            crate::error::ignore_status(result)?;
+        }
+
+        // When proposing an extended surface
+        let Some(face) = gaps.extended_face else {
+            return Ok(());
+        };
+        let other = gaps
+            .other_side_edgeuse
+            .ok_or_else(|| SolidError::null_pointer("SmFilletNx1Corner::MakeCornerTopology"))?;
+        let other_edge = crate::topology::edgeuse::p1::edge(self.target, other)?
+            .ok_or_else(|| SolidError::null_pointer("SmFilletNx1Corner::MakeCornerTopology"))?;
+        let curve = crate::topology::edge::curve(self.target, other_edge)?
+            .ok_or_else(|| SolidError::null_pointer("SmFilletNx1Corner::MakeCornerTopology"))?;
+        let interval = crate::topology::edge::interval(self.target, other_edge)?;
+        let surface = self
+            .extended_surfaces
+            .get(&face)
+            .ok_or_else(|| SolidError::null_pointer("SmFilletNx1Corner::MakeCornerTopology"))?;
+        let corner = self
+            .corners
+            .get(id.0 as usize)
+            .ok_or_else(|| invalid("corner is not live"))?;
+        // get extendedSurface/OtherSideEdge coincidence to within tolerance
+        let found = crate::error::ignored(
+            surface.simple_coincidence_checker::<crate::topology::ObjectHandle>(
+                k,
+                &surface.natural_uv_domain(),
+                curve,
+                &interval,
+                corner.approx_tol_3d,
+                false,
+                [None, None],
+            ),
+        )?
+        .flatten()
+        .is_some();
+        // when extendedSurface/OtherSideEdge are not coincident
+        if !found {
+            // can't define endFace->Surface as a sideFace->ExtendedSurface
+            self.corners
+                .get_mut(id.0 as usize)
+                .ok_or_else(|| invalid("corner is not live"))?
+                .extended_surface_patch = false;
+        }
+        Ok(())
     }
     fn make_nx2_corner_topology(
         &mut self,

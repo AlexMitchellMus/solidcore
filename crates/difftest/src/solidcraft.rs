@@ -23,9 +23,11 @@ use std::process::ExitCode;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use solidcore::blend::fillet_executive::api as fillet_api;
 use solidcore::boolean::api_brep as boolean;
 use solidcore::curve::curve::Curve;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
+use solidcore::geom::global_solver::SolverOperation;
 use solidcore::geom::object::ObjectRef;
 use solidcore::geom::vector3d::{Point3, Vec3};
 use solidcore::kernel::Kernel;
@@ -43,7 +45,7 @@ use solidcore::topology::brep::p3;
 use solidcore::topology::proto_topology::p1::api_transform::{
     api_rotate, api_translate, TransformObject,
 };
-use solidcore::topology::Brep;
+use solidcore::topology::{edge, Brep, EdgeId};
 use solidcore::SolidError;
 
 use crate::ssi::glob_match;
@@ -807,6 +809,57 @@ fn solid(e: &SolidError) -> Run {
     }
 }
 
+/// `SM_FILLET_CIRCULAR`: any cross-section type other than linear (0) or blend curve (2).
+const FILLET_CIRCULAR: u32 = 1;
+
+/// Largest distance from a fillet step's point to the edge it names.
+const EDGE_PICK_TOL: f64 = 1e-6;
+
+/// Key domain of the copy a fillet step makes of its input.
+const FILLET_COPY_DOMAIN: u64 = 999;
+
+/// The edges of `b` that a SolidCraft fillet step's point `p` names: each edge whose
+/// curve passes within [`EDGE_PICK_TOL`] of `p` (`DropPoint` over the edge's interval),
+/// in edge-list order, except one that merely ends at `p`. A closed edge (one vertex at
+/// both ends, such as a cylinder's rim circle) is named by its vertex too; the seam
+/// line that also ends there is not.
+fn edges_through(k: &Kernel, b: &Brep, p: Point3) -> Result<Vec<EdgeId>, Run> {
+    let mut hits = Vec::new();
+    for &e in b.edge_list() {
+        let Some(curve) = edge::curve(b, e).map_err(|err| solid(&err))? else {
+            continue;
+        };
+        let interval = edge::interval(b, e).map_err(|err| solid(&err))?;
+        let dropped = curve
+            .drop_point(
+                k,
+                &interval,
+                p,
+                None,
+                EDGE_PICK_TOL,
+                None,
+                SolverOperation::Minimize,
+            )
+            .map_err(|err| solid(&err))?;
+        if !(dropped.success && dropped.distance <= EDGE_PICK_TOL) {
+            continue;
+        }
+        let [start, end] = b.edge(e).map_err(|err| solid(&err))?.vertices;
+        let mut at_end = false;
+        for v in [start, end] {
+            let q = b.vertex(v).map_err(|err| solid(&err))?.point;
+            at_end |= (q - p).length() <= EDGE_PICK_TOL;
+        }
+        if !at_end || start == end {
+            hits.push(e);
+        }
+    }
+    if hits.is_empty() {
+        return Err(Run::Error(format!("no edge passes through {p:?}")));
+    }
+    Ok(hits)
+}
+
 fn take(bodies: &BTreeMap<String, Brep>, id: &str) -> Result<Brep, Run> {
     bodies
         .get(id)
@@ -1130,12 +1183,32 @@ fn step_rust(k: &mut Kernel, bodies: &mut BTreeMap<String, Brep>, step: &Step) -
                     .into(),
             }))
         }
-        // No Rust `SmApiFilletEdges` yet: it belongs to `blend.fillet_executive_p1`.
-        Step::Fillet { .. } => {
-            return Err(Run::Deferred(Deferral {
-                blocked_by: "blend.fillet_executive_p1".into(),
-                symbol: "SmApiFilletEdges".into(),
-            }))
+        // `SmApiFilletEdges(body, edges, radius, SM_FILLET_CIRCULAR)` with its default
+        // G1 continuity and the documented default thumbweight 1.0 (unused for circular).
+        Step::Fillet {
+            body,
+            edges,
+            radius,
+            ..
+        } => {
+            // The body is filleted in place, as `SmApiFilletEdges` edits its B-rep: a
+            // `Clone` would keep the source's geometry owner names, which the fillet
+            // resolves back to their faces and edges.
+            let source = bodies
+                .get(body.as_str())
+                .ok_or_else(|| Run::Error(format!("no body `{body}`")))?;
+            let mut b = copy(k, source, FILLET_COPY_DOMAIN)?;
+            let mut picked = Vec::new();
+            for p in edges {
+                for e in edges_through(k, &b, p3(*p))? {
+                    if !picked.contains(&e) {
+                        picked.push(e);
+                    }
+                }
+            }
+            fillet_api::fillet_edges(k, &mut b, &picked, *radius, FILLET_CIRCULAR, 1, 1.0)
+                .map_err(|e| solid(&e))?;
+            b
         }
         // SM_API offsets or shells whole bodies only (SmApiOffsetBrepFull,
         // SmApiShellBrepFull); nothing offsets selected faces.

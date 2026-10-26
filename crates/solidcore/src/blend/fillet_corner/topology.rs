@@ -236,13 +236,17 @@ impl FilletCorner {
     /// mixed-convexity corner, the extended end surface and the cap topology.
     ///
     /// Allocations and corner-list insertions occur in native order and remain
-    /// visible if a later operation fails. Vertex geometry is computed later.
+    /// visible if a later operation fails. Vertex geometry is computed later, except
+    /// for the gap checks of a mixed-convexity end face spanning several faces: they
+    /// end upstream's routine and are returned for the caller to run at once.
     ///
     /// # Errors
     /// Invalid topology or a different corner kind; those of the actual solver,
-    /// convexity, surface-extension and pseudo-topology operations. The gap checks of
-    /// a mixed-convexity end face spanning several faces are `Unported`.
-    pub fn make_nx1_corner_topology(&mut self, env: Nx1TopologyEnv<'_>) -> Result<()> {
+    /// convexity, surface-extension and pseudo-topology operations.
+    pub fn make_nx1_corner_topology(
+        &mut self,
+        env: Nx1TopologyEnv<'_>,
+    ) -> Result<Option<nx1_end::Nx1GapCheck>> {
         let Nx1TopologyEnv {
             k,
             target,
@@ -345,7 +349,7 @@ impl FilletCorner {
         }
         if !mixed && total > 3 {
             *do_global_merge = true;
-            return Ok(());
+            return Ok(None);
         }
         self.finish_nx1_end(nx1_end::Nx1End {
             k,
