@@ -40,6 +40,7 @@
 //! are resolved modulo the export's counts. `-2` marks a call both sides skip because
 //! upstream dereferences `NULL` there.
 
+#[path = "blend_fillet_solver_p1/split_rail.rs"]
 mod split_rail;
 
 use serde::{Deserialize, Serialize};
