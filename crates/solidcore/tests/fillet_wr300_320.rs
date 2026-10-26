@@ -149,3 +149,50 @@ fn rail_rim_on_face_leaves_other_sizes_alone() {
         assert_eq!(holed_cube_blend(&mut k, 4.0, xsect), off);
     }
 }
+
+// ---- WR-303: the end of a round that crosses more than one face at a three-edge vertex ----
+
+/// A 60 x 40 x 20 box, its top back edge rounded 5, its top right edge rounded 3, then
+/// its vertical edge x = 60, y = 40 rounded `r` (SolidCraft ladder 07-fillets/016).
+fn box_with_two_rounds_then(k: &mut Kernel, r: f64) -> Outcome {
+    let mut b = create_box(k, Point3::new(0.0, 0.0, 0.0), 60.0, 40.0, 20.0).unwrap();
+    let e = edge_between(k, &b, [0.0, 40.0, 20.0], [60.0, 40.0, 20.0]);
+    assert!(matches!(
+        fillet(k, &mut b, &[e], 5.0, 1),
+        Outcome::Built { .. }
+    ));
+    let e = edge_between(k, &b, [60.0, 0.0, 20.0], [60.0, 35.0, 20.0]);
+    assert!(matches!(
+        fillet(k, &mut b, &[e], 3.0, 1),
+        Outcome::Built { .. }
+    ));
+    let e = edge_between(k, &b, [60.0, 40.0, 0.0], [60.0, 40.0, 15.0]);
+    fillet(k, &mut b, &[e], r, 1)
+}
+
+/// The third round's end runs across the R5 round's short end arc onto the R3 round: SMLib's
+/// Nx1 corner builds an end rib and fails ("Corner Edge Computation Failure"). With
+/// `fillet_nx1_end_rib_global_merge` the rib is deleted and the global merge cuts the round
+/// off against the body: each builds, to the volumes of the integral of min(R5, R3 top)
+/// over the corner column outside the vertical round (47418.926881, 47546.786538 and
+/// 47591.811067).
+#[test]
+fn round_end_across_a_short_arc_is_cut_off_by_the_body() {
+    for (r, expected) in [
+        (7.0, 47_418.926_881),
+        (4.0, 47_546.786_538),
+        (2.0, 47_591.811_067),
+    ] {
+        let mut k = Kernel::default();
+        assert_eq!(
+            box_with_two_rounds_then(&mut k, r),
+            Outcome::Refused { code: 3 },
+            "r {r}"
+        );
+        let mut k = kernel(|f| f.fillet_nx1_end_rib_global_merge = true);
+        let Outcome::Built { volume, manifold } = box_with_two_rounds_then(&mut k, r) else {
+            panic!("r {r}: refused");
+        };
+        assert!(manifold && near(volume, expected, 5e-3), "r {r}: {volume}");
+    }
+}

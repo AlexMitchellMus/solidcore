@@ -1979,6 +1979,10 @@ impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
         let corner = corners
             .get_mut(id.0 as usize)
             .ok_or_else(|| invalid("corner is not live"))?;
+        // WR-303: the Nx1 corner's end rib hands the round to the global merge.
+        if corner.drop_end_rib_for_global_merge(k, target, pseudo)? {
+            executive.options.global_merge = true;
+        }
         let mut context = SessionCornerEdgeContext {
             k,
             target,
