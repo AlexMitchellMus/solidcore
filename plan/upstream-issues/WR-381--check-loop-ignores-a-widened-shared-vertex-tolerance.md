@@ -4,7 +4,7 @@
 - **Location:** `source/SMLib/src/SmTrimmingTools.cpp:3150`, `SmTrimmingTools::CheckLoop`.
 - **What happens / Trigger / Confirmed:** see below (issue #476, PR #691).
 
-Location: `source/SMLib/src/SmTrimmingTools.cpp:3150`, `SmTrimmingTools::CheckLoop`.
+
 The 3D endpoint-gap test and the later non-seam UV-gap certificate use only
 `GetXSectTol3d(edge1, edge2)`. The source's own comment acknowledges that this
 can reject two edge ends attached to a consistent widened vertex.

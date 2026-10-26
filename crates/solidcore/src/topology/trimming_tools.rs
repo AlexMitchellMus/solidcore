@@ -74,8 +74,9 @@
 //!   (UB-120) cannot be passed.
 //! - **`CheckLoop`** takes the surface separately, as upstream; `CheckFace` passes a
 //!   copy of the face's surface (the edge use UV extremes need the B-rep mutably).
-//!   Its gap limit also honours a shared vertex's zone tolerance (#476); upstream
-//!   uses only the edge intersection tolerance and rejects consistent widened vertices.
+//!   With the opt-in `Kernel::fixes.check_loop_vertex_tolerance` (WR-381, #476) its gap
+//!   limit also honours a shared vertex's zone tolerance; upstream (the default) uses only
+//!   the edge intersection tolerance and rejects consistent widened vertices.
 //! - **Callees.** `SmBrep::MakeFaceWithCurves` (`topology.brep_p7`) and
 //!   `SmBrep::MakeFacesWithCurves` (`topology.brep_p8`) call their ports. Unported callees
 //!   return [`SolidError::Unported`]: `SmFace::FlipFaceOrientation` and `SmFace::SplitAtSeam` (`topology.face_p1`),
@@ -2025,7 +2026,8 @@ fn edge_zone_tol(k: &Kernel, b: &Brep, e: Option<EdgeId>) -> Result<f64> {
     })
 }
 
-// Only a genuinely shared topological vertex can enlarge the edge/edge limit.
+// Only a genuinely shared topological vertex can enlarge the edge/edge limit, and only
+// with the opt-in `Kernel::fixes.check_loop_vertex_tolerance` (WR-381, #476).
 // Use the previous edge use's mate: its vertex use is the previous end regardless
 // of either edge use's orientation (including closed edges and reversed loops).
 fn loop_junction_tolerance(
@@ -2039,6 +2041,9 @@ fn loop_junction_tolerance(
         edge_zone_tol(k, b, eu1::edge(b, current)?)?,
         edge_zone_tol(k, b, eu1::edge(b, previous)?)?,
     );
+    if !k.fixes.check_loop_vertex_tolerance {
+        return Ok(edge_limit);
+    }
     let Some(start_use) = eu1::vertexuse(b, current)? else {
         return Ok(edge_limit);
     };
@@ -2057,9 +2062,9 @@ fn loop_junction_tolerance(
 }
 
 /// `CheckLoop`: for each pair of consecutive edge uses of the loop whose UV ends differ
-/// (by more than `1e-10`), the surface points must be within the larger of the edges'
-/// intersection tolerance and their shared vertex's zone tolerance (else closure 3,
-/// signalled only) and the UV jump must stay under a tenth of
+/// (by more than `1e-10`), the surface points must be within the edges'
+/// intersection tolerance (with `Kernel::fixes.check_loop_vertex_tolerance`, the larger of
+/// it and their shared vertex's zone tolerance; else closure 3, signalled only) and the UV jump must stay under a tenth of
 /// the natural domain in each direction, unless both ends are singular in that
 /// direction or the gap is certified by [`is_loop_uv_gap_within_tolerance`] (not across
 /// a seam). A large UV jump gives closure 1 when an end is singular, else `SM_ERR`.
@@ -2443,9 +2448,15 @@ mod tests {
         (b, l)
     }
 
+    fn fixed_kernel() -> Kernel {
+        let mut k = Kernel::default();
+        k.fixes.check_loop_vertex_tolerance = true;
+        k
+    }
+
     #[test]
-    fn loop_gap_uses_shared_vertex_tolerance() {
-        let k = Kernel::default();
+    fn issue_476_loop_gap_uses_shared_vertex_tolerance() {
+        let k = fixed_kernel();
         let surface = Surface::from(crate::surface::plane::Plane::from_normal(
             Vec3::ZERO,
             Vec3::Z,
@@ -2474,9 +2485,28 @@ mod tests {
     }
 
     #[test]
-    fn loop_junction_uses_previous_end_not_previous_start() {
-        use crate::topology::{Edge, Edgeuse, VertexId, Vertexuse, VertexuseId};
+    fn issue_476_default_keeps_the_edge_only_gap_limit() {
+        // Default (SMLib): a gap the widened shared vertex would cover is closure 3.
         let k = Kernel::default();
+        assert!(!k.fixes.check_loop_vertex_tolerance);
+        let surface = Surface::from(crate::surface::plane::Plane::from_normal(
+            Vec3::ZERO,
+            Vec3::Z,
+        ));
+        let (mut b, l) = vertex_gap_loop(1.3e-5, 2.6e-5, true);
+        assert_eq!(check_loop(&k, &mut b, &surface, l, 1e-5, None).unwrap(), 3);
+        // The same loop with the field on is accepted.
+        let (mut b, l) = vertex_gap_loop(1.3e-5, 2.6e-5, true);
+        assert_eq!(
+            check_loop(&fixed_kernel(), &mut b, &surface, l, 1e-5, None).unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn issue_476_loop_junction_uses_previous_end_not_previous_start() {
+        use crate::topology::{Edge, Edgeuse, VertexId, Vertexuse, VertexuseId};
+        let k = fixed_kernel();
         let (mut b, l) = vertex_gap_loop(1.3e-5, 2.6e-5, false);
         // The first edge leaves a tight vertex; its far end joins the second edge
         // at the widened vertex. Looking at the previous start gives the wrong limit.

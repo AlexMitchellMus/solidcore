@@ -72,3 +72,12 @@ and 4/4). The trimming unit remains partial, and no full macOS `--green` result
 or unrun fork CI is claimed (known reference issues #448–450 remain).
 The real-push rebase resolved only the appended known-manifest conflict,
 preserving main's 16 entries plus this change's 12, and kept the findings index last.
+
+## Stacked on main: opt-in (2026-10-26)
+
+The fix above is applied only with `Kernel::fixes.check_loop_vertex_tolerance` (WR-381,
+default off, following the precedent of the other `UpstreamFixes` fields). With the default,
+`CheckLoop` is SMLib's and the twelve cases listed above match C++, so
+`crates/difftest/known_mismatches/topology.trimming_tools.toml` is not needed and was not
+carried over. The `issue_476_*` unit tests set the field and fail with it off;
+`issue_476_default_keeps_the_edge_only_gap_limit` pins the default.
