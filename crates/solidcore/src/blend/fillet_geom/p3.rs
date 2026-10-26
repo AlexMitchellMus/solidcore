@@ -537,6 +537,23 @@ impl FilletBrep {
         context: &impl super::p5::FilletEdgeContext,
         target: &mut Brep,
     ) -> Result<()> {
+        self.calc_corner_edge_geom_with_context_and_error_info(k, e, corners, context, target, None)
+    }
+
+    /// [`Self::calc_corner_edge_geom_with_context`] with an optional [`ErrorInfo`] sink
+    /// for `SmFilletCorner::RecordFilletError` (the live executive's error record).
+    ///
+    /// # Errors
+    /// As [`Self::calc_corner_edge_geom_with_context`].
+    pub fn calc_corner_edge_geom_with_context_and_error_info(
+        &mut self,
+        k: &Kernel,
+        e: EdgeId,
+        corners: CornerLookup<'_>,
+        context: &impl super::p5::FilletEdgeContext,
+        target: &mut Brep,
+        error_info: Option<&mut ErrorInfo<ExecutiveErrorObject>>,
+    ) -> Result<()> {
         let edge = self.fillet_edge(e)?;
         let corner = edge
             .fillet_corner()
@@ -550,14 +567,16 @@ impl FilletBrep {
                 &|id| context.solver(id),
                 target,
             ),
-            FilletEdgeType::FilletXSideFace => self.calc_fillet_int_side_face_with_context(
-                k,
-                e,
-                Some(corner),
-                corners,
-                context,
-                target,
-            ),
+            FilletEdgeType::FilletXSideFace => self
+                .calc_fillet_int_side_face_with_context_and_error_info(
+                    k,
+                    e,
+                    Some(corner),
+                    corners,
+                    context,
+                    target,
+                    error_info,
+                ),
             FilletEdgeType::FilletXFillet => self
                 .calc_edge_fillet_int_fillet_with_context_and_error_info(
                     k,
@@ -566,7 +585,7 @@ impl FilletBrep {
                     corners,
                     context,
                     target,
-                    None,
+                    error_info,
                 ),
             FilletEdgeType::OnEdge => self.calc_edge_on_edge(k, e, target),
             FilletEdgeType::RailRailInterpolation
