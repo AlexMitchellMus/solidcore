@@ -23,6 +23,7 @@ use std::process::ExitCode;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use solidcore::blend::fillet_executive::api as fillet_api;
 use solidcore::boolean::api_brep as boolean;
 use solidcore::curve::curve::Curve;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
@@ -845,6 +846,12 @@ fn solid(e: &SolidError) -> Run {
     }
 }
 
+/// `SM_FILLET_CIRCULAR`: any cross-section type other than linear (0) or blend curve (2).
+const FILLET_CIRCULAR: u32 = 1;
+
+/// Key domain of the copy a fillet step makes of its input.
+const FILLET_COPY_DOMAIN: u64 = 999;
+
 /// The operand `id` for the next step. A plain [`Clone`] resets every geometry owner, and
 /// a B-rep cache made from the clone then holds no edge or face, so the boolean's ray
 /// fires found nothing and classified a nested operand's faces as outside (a void was
@@ -1248,31 +1255,28 @@ fn step_rust(k: &mut Kernel, bodies: &mut BTreeMap<String, Brep>, step: &Step) -
                     .into(),
             }))
         }
+        // `SmApiFilletEdges(body, edges, radius, SM_FILLET_CIRCULAR)` with its default
+        // G1 continuity and the documented default thumbweight 1.0 (unused for circular).
         Step::Fillet {
             body,
             edges,
             radius,
             ..
         } => {
+            // The body is filleted in place, as `SmApiFilletEdges` edits its B-rep: a
+            // `Clone` would keep the source's geometry owner names, which the fillet
+            // resolves back to their faces and edges.
             let source = bodies
-                .get(body)
+                .get(body.as_str())
                 .ok_or_else(|| Run::Error(format!("no body `{body}`")))?;
-            let mut target = copy(k, source, 1)?;
-            let selected = edges
+            let mut b = copy(k, source, FILLET_COPY_DOMAIN)?;
+            let picked = edges
                 .iter()
-                .map(|point| fillet_edge_at_point(k, &target, p3(*point)))
+                .map(|point| fillet_edge_at_point(k, &b, p3(*point)))
                 .collect::<Result<Vec<_>, Run>>()?;
-            solidcore::blend::fillet_executive::api::fillet_edges(
-                k,
-                &mut target,
-                &selected,
-                *radius,
-                1,
-                1,
-                1.0,
-            )
-            .map_err(|e| solid(&e))?;
-            target
+            fillet_api::fillet_edges(k, &mut b, &picked, *radius, FILLET_CIRCULAR, 1, 1.0)
+                .map_err(|e| solid(&e))?;
+            b
         }
         // SM_API offsets or shells whole bodies only (SmApiOffsetBrepFull,
         // SmApiShellBrepFull); nothing offsets selected faces.
@@ -1372,6 +1376,7 @@ fn enable_fix(k: &mut Kernel, name: &str) -> Result<(), String> {
     let field = match name {
         "sweep_frame_on_planar_path_normal" => &mut k.fixes.sweep_frame_on_planar_path_normal,
         "cover_refuses_folded_continuation" => &mut k.fixes.cover_refuses_folded_continuation,
+        "fillet_refuse_non_manifold_result" => &mut k.fixes.fillet_refuse_non_manifold_result,
         "cone_parallel_line_midpoint" => &mut k.fixes.cone_parallel_line_midpoint,
         "analytic_copy_keeps_parameterization" => &mut k.fixes.analytic_copy_keeps_parameterization,
         _ => return Err(format!("unknown `fixes` entry `{name}`")),
@@ -1788,8 +1793,10 @@ mod tests {
         let mut k = Kernel::default();
         enable_fix(&mut k, "sweep_frame_on_planar_path_normal").unwrap();
         enable_fix(&mut k, "cover_refuses_folded_continuation").unwrap();
+        enable_fix(&mut k, "fillet_refuse_non_manifold_result").unwrap();
         assert!(k.fixes.sweep_frame_on_planar_path_normal);
         assert!(k.fixes.cover_refuses_folded_continuation);
+        assert!(k.fixes.fillet_refuse_non_manifold_result);
         assert!(enable_fix(&mut k, "no_such_fix").is_err());
     }
 
