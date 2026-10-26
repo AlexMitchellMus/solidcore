@@ -27,7 +27,6 @@ use solidcore::blend::fillet_executive::api as fillet_api;
 use solidcore::boolean::api_brep as boolean;
 use solidcore::curve::curve::Curve;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
-use solidcore::geom::global_solver::SolverOperation;
 use solidcore::geom::object::ObjectRef;
 use solidcore::geom::vector3d::{Point3, Vec3};
 use solidcore::kernel::Kernel;
@@ -45,7 +44,7 @@ use solidcore::topology::brep::p3;
 use solidcore::topology::proto_topology::p1::api_transform::{
     api_rotate, api_translate, TransformObject,
 };
-use solidcore::topology::{edge, Brep, EdgeId};
+use solidcore::topology::Brep;
 use solidcore::SolidError;
 
 use crate::ssi::glob_match;
