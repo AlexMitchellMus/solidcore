@@ -2224,15 +2224,11 @@ fn run_rust_constructed(k: &mut Kernel, kind: TrimConstructedKind) -> Result<Out
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| fail(&e))?;
     let interval = Extent1d::from_min_max(0.0, 1.0);
-    let curves = (0..points.len())
-        .map(|i| {
-            Line::create_line_segment(
-                3,
-                points[i],
-                points[(i + 1) % points.len()],
-                Some(&interval),
-            )
-            .map(Curve::from)
+    let curves = points
+        .iter()
+        .zip(points.iter().cycle().skip(1))
+        .map(|(&start, &end)| {
+            Line::create_line_segment(3, start, end, Some(&interval)).map(Curve::from)
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| fail(&e))?;
@@ -2321,16 +2317,18 @@ impl ConstructedReader<'_> {
 
 fn constructed_output(data: &[f64]) -> Result<Output, HarnessError> {
     let mut reader = ConstructedReader { data, at: 0 };
-    let mut trim = vec![
-        reader.integer()?,
-        reader.integer()?,
-        reader.integer()?,
-        reader.integer()?,
-    ];
-    if !matches!(trim[1], 0 | 1) || !matches!(trim[3], 0 | 1) || (trim[2] == 0) != (trim[3] == 1) {
+    let continuity_status = reader.integer()?;
+    let g1 = reader.integer()?;
+    let trim_status = reader.integer()?;
+    let returned_available = reader.integer()?;
+    let mut trim = vec![continuity_status, g1, trim_status, returned_available];
+    if !matches!(g1, 0 | 1)
+        || !matches!(returned_available, 0 | 1)
+        || (trim_status == 0) != (returned_available == 1)
+    {
         return Err(harness("invalid constructed trim availability"));
     }
-    if trim[3] == 1 {
+    if returned_available == 1 {
         let returned = reader.integers()?;
         trim.push(returned.len() as i64);
         trim.extend(returned);
