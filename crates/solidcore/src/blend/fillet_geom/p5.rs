@@ -1573,7 +1573,7 @@ impl FilletBrep {
             end_index,
             trim_type,
             &|id, op| solver_of(solvers, id, op),
-            target,
+            [target, target],
         )
     }
 
@@ -1592,7 +1592,7 @@ impl FilletBrep {
         trim_type: BoundaryTrimmingType,
         solver_id: FilletSolverId,
         solver: &FilletSolver,
-        target: &Brep,
+        bases: [&Brep; 2],
     ) -> Result<EdgeId> {
         self.create_end_curve_resolved(
             k,
@@ -1606,7 +1606,7 @@ impl FilletBrep {
                     Err(SolidError::invalid_input(op, "unresolved geometry solver"))
                 }
             },
-            target,
+            bases,
         )
     }
 
@@ -1618,8 +1618,11 @@ impl FilletBrep {
         end_index: usize,
         trim_type: BoundaryTrimmingType,
         resolve: &impl Fn(FilletSolverId, &'static str) -> Result<&'s FilletSolver>,
-        target: &Brep,
+        bases: [&Brep; 2],
     ) -> Result<EdgeId> {
+        // rail ii's end vertices are classified on base B-rep ii: the target for
+        // both rails, or a surface/surface fillet's second base for its second rail
+        let [base0, base1] = bases;
         // Create a line between the two UV points and lift the curve.
         let fillet_surface = self
             .geom(g)?
@@ -1681,9 +1684,9 @@ impl FilletBrep {
             // (rbFound, rTangent): a tangent not found leaves SmVector3d() undefined
             let found = |t: Option<Vec3>| (t.is_some(), t.unwrap_or(Vec3::UNDEF));
             let (found1, mut tangent1) =
-                found(self.find_edge_tangent_at_point(k, g, 0, end_index, target)?);
+                found(self.find_edge_tangent_at_point(k, g, 0, end_index, base0)?);
             let (found2, mut tangent2) =
-                found(self.find_edge_tangent_at_point(k, g, 1, end_index, target)?);
+                found(self.find_edge_tangent_at_point(k, g, 1, end_index, base1)?);
 
             // when 1st tangent was found
             if found1 {

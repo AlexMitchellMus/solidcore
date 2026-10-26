@@ -160,13 +160,6 @@ impl SurfaceSurfaceContext for SurfaceSurfaceSession<'_> {
         fillet_geom_index: usize,
         trim_type: BoundaryTrimmingType,
     ) -> Result<()> {
-        if bases.second.is_some() && trim_type == BoundaryTrimmingType::Blend {
-            // UNPORTED(blend.fillet_executive_p1): SmFilletGeom::CreateEndCurve (SM_BT_BLEND edge tangents on a second base B-rep)
-            return Err(SolidError::unported(
-                "SmFilletGeom::CreateEndCurve (SM_BT_BLEND on a second base B-rep)",
-                "blend.fillet_executive_p1",
-            ));
-        }
         // The classifications only read the rails' curves and the base topology,
         // which the split leaves as they are: resolve them in a copy of the pseudo body.
         let snapshot = pseudo.brep().clone();
@@ -182,7 +175,12 @@ impl SurfaceSurfaceContext for SurfaceSurfaceSession<'_> {
             &objects,
             fillet_geom_index,
             trim_type,
-            bases.target,
+            // CreateEndCurve's SM_BT_BLEND tangents read the edge each rail's end
+            // vertex is classified on: the second rail's lies in the second base
+            [
+                bases.target,
+                bases.second.as_deref().unwrap_or(bases.target),
+            ],
         )
     }
 }

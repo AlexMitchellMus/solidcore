@@ -742,7 +742,7 @@ mod tests {
     }
 
     /// Private regression for the adapter's registration step, before its Boolean.
-    /// Native DoPiecewiseMerge never changes an existing geometry's owner merely
+    /// Native `DoPiecewiseMerge` never changes an existing geometry's owner merely
     /// to name it for the merge (SmFilletExecutive.cpp2676-2800).
     #[test]
     fn piecewise_registration_preserves_original_issued_curve_owner() {
