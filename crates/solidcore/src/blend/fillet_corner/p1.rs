@@ -2740,7 +2740,7 @@ impl FilletSolverOps for PlainConstantRadiusFs {
     fn load_initial_values(
         &mut self,
         k: &Kernel,
-        brep: Option<&Brep>,
+        brep: Option<&mut Brep>,
         do_surf2_calcs: bool,
         rail_index: usize,
         surface1: &mut OffsetSurface,

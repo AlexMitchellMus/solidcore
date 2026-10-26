@@ -1458,6 +1458,7 @@ impl ConstantDistanceFs {
             let sols = surface_global_point_solve(
                 k,
                 &Surface::from(surface2.surface.clone()),
+                None,
                 &domain2,
                 pnt,
                 EFF_ZERO_SQ,

@@ -274,7 +274,7 @@ impl RailRailSolvers<'_> {
     fn rail_rail_intersect(
         &mut self,
         k: &Kernel,
-        target: &Brep,
+        target: &mut Brep,
         i: usize,
         uv_guess: Point2,
         rail_index1: usize,
@@ -586,7 +586,7 @@ fn b_spline_base_mut(c: &mut Curve) -> Option<&mut BSplineCurve> {
 #[allow(clippy::too_many_arguments)]
 fn rail_rail_intersect(
     k: &Kernel,
-    target: &Brep,
+    target: &mut Brep,
     solvers: &mut [FilletSolver],
     solver_index1: usize,
     uv_guess: Point2,

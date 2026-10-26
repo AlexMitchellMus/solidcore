@@ -98,7 +98,7 @@
 //!   iteration limits.
 
 use crate::blend::fillet_custom_solver::{
-    offset_compute_inward_vector, offset_evaluate_1st, offset_evaluate_point,
+    face_owner, offset_compute_inward_vector, offset_evaluate_1st, offset_evaluate_point,
     offset_local_point_solve, surface_global_point_solve, ConstantRadiusAssistedFs, InitialValues,
     JacobianLoad, OffsetSurface, SurfaceId,
 };
@@ -440,7 +440,7 @@ impl ConstantRadiusOps for SurfaceSurfaceFs {
 pub fn constant_radius_load_initial_values<S: ConstantRadiusOps + ?Sized>(
     solver: &mut S,
     k: &Kernel,
-    brep: Option<&Brep>,
+    brep: Option<&mut Brep>,
     do_surf2_calcs: bool,
     rail_index: usize,
     surface1: &mut OffsetSurface,
@@ -491,7 +491,7 @@ pub fn constant_radius_load_initial_values<S: ConstantRadiusOps + ?Sized>(
 fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
     solver: &S,
     k: &Kernel,
-    brep: Option<&Brep>,
+    mut brep: Option<&mut Brep>,
     other_rail: usize,
     surface1: &mut OffsetSurface,
     surface1_index: usize,
@@ -524,7 +524,7 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
     // then this is the wrong Edgeuse, and we don't have an appropriate one to use.
     let need_brep = || SolidError::invalid_input(OP, "edge uses without their B-rep");
     if let Some(eu) = other_eu {
-        let b = brep.ok_or_else(need_brep)?;
+        let b = brep.as_deref().ok_or_else(need_brep)?;
         if let Some(f) = edgeuse::face(b, eu)? {
             let same = b.face(f)?.surface.is_some() && base2_id == SurfaceId::Face(f);
             if !same {
@@ -535,7 +535,7 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
 
     let trimmed_eu = match other_eu {
         Some(eu) => {
-            let b = brep.ok_or_else(need_brep)?;
+            let b = brep.as_deref().ok_or_else(need_brep)?;
             edgeuse::uv_trim_curve(b, eu)?.0.map(|_| (b, eu))
         }
         None => None,
@@ -641,8 +641,14 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
 
     // If we didn't get a good enough uv on surface2, try a global solve
     if !found_uv {
-        let sols =
-            surface_global_point_solve(k, base2, &base2.natural_uv_domain(), pnt, EFF_ZERO_SQ)?;
+        let sols = surface_global_point_solve(
+            k,
+            base2,
+            face_owner(brep.as_deref_mut(), base2_id),
+            &base2.natural_uv_domain(),
+            pnt,
+            EFF_ZERO_SQ,
+        )?;
         if sols.len() != 1 {
             return Err(SolidError::sm_err(OP));
         }
@@ -669,8 +675,14 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
         }
     } else {
         // use global solve
-        let sols =
-            surface_global_point_solve(k, base2, &base2.natural_uv_domain(), pnt, EFF_ZERO_SQ)?;
+        let sols = surface_global_point_solve(
+            k,
+            base2,
+            face_owner(brep, base2_id),
+            &base2.natural_uv_domain(),
+            pnt,
+            EFF_ZERO_SQ,
+        )?;
         if sols.len() == 1 {
             let s = sols
                 .first()
@@ -718,7 +730,7 @@ impl ConstantRadiusAssistedFs {
     pub fn load_initial_values(
         &mut self,
         k: &Kernel,
-        brep: Option<&Brep>,
+        brep: Option<&mut Brep>,
         do_surf2_calcs: bool,
         rail_index: usize,
         surface1: &mut OffsetSurface,
@@ -1052,7 +1064,7 @@ impl ConstantRadiusAssistedFs {
 pub fn point_on_plane_solve(
     solver: &mut dyn FilletSolverOps,
     k: &Kernel,
-    brep: Option<&Brep>,
+    brep: Option<&mut Brep>,
     plane_orig: Point3,
     plane_normal: Vec3,
     uv_domain1: &Extent2d,
@@ -1996,6 +2008,7 @@ impl VariableRadiusFs {
                 let sols = surface_global_point_solve(
                     k,
                     &Surface::from(surface2.surface.clone()),
+                    None,
                     &extended,
                     pnt,
                     EFF_ZERO_SQ,
@@ -2135,7 +2148,7 @@ impl FilletSolverOps for VariableRadiusFs {
     fn load_initial_values(
         &mut self,
         k: &Kernel,
-        brep: Option<&Brep>,
+        brep: Option<&mut Brep>,
         do_surf2_calcs: bool,
         rail_index: usize,
         surface1: &mut OffsetSurface,
@@ -2151,7 +2164,7 @@ impl FilletSolverOps for VariableRadiusFs {
         let r = VariableRadiusFs::load_initial_values(
             self,
             k,
-            brep,
+            brep.as_deref(),
             do_surf2_calcs,
             rail_index,
             None,
@@ -2295,7 +2308,7 @@ impl FilletSolverOps for ConstantDistanceFs {
     fn load_initial_values(
         &mut self,
         k: &Kernel,
-        brep: Option<&Brep>,
+        brep: Option<&mut Brep>,
         do_surf2_calcs: bool,
         rail_index: usize,
         surface1: &mut OffsetSurface,
@@ -2308,7 +2321,7 @@ impl FilletSolverOps for ConstantDistanceFs {
         let r = ConstantDistanceFs::load_initial_values(
             self,
             k,
-            brep,
+            brep.as_deref(),
             do_surf2_calcs,
             rail_index,
             crate::blend::fillet_standard_solver::p1::InitialSurface::Rail(rail_index),
@@ -2495,7 +2508,7 @@ impl SurfaceSurfaceFs {
     pub fn load_initial_values(
         &mut self,
         k: &Kernel,
-        brep: Option<&Brep>,
+        brep: Option<&mut Brep>,
         do_surf2_calcs: bool,
         rail_index: usize,
         surface1: &mut OffsetSurface,

@@ -521,7 +521,7 @@ impl FilletSolverOps for TestSolver {
     fn load_initial_values(
         &mut self,
         _k: &Kernel,
-        _brep: Option<&Brep>,
+        _brep: Option<&mut Brep>,
         do_surf2_calcs: bool,
         rail_index: usize,
         _surface1: &mut OffsetSurface,

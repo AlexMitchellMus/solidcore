@@ -1864,7 +1864,7 @@ pub trait FilletSolverOps: AsFilletSolverOps {
     fn load_initial_values(
         &mut self,
         _k: &Kernel,
-        _brep: Option<&Brep>,
+        _brep: Option<&mut Brep>,
         _do_surf2_calcs: bool,
         _rail_index: usize,
         _surface1: &mut OffsetSurface,
@@ -1961,7 +1961,7 @@ pub trait FilletSolverOps: AsFilletSolverOps {
     fn point_on_plane_solve(
         &mut self,
         k: &Kernel,
-        brep: Option<&Brep>,
+        brep: Option<&mut Brep>,
         plane_origin: Point3,
         plane_normal: Vec3,
         uv_domain1: &Extent2d,

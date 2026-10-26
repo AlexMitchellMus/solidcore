@@ -3243,7 +3243,7 @@ pub fn create_cubic_rail_rail_interpolant(
         fil_solver1,
         fil_solver2,
         k,
-        Some(&*brep),
+        Some(&mut *brep),
         uv_guess,
         rail_index,
         other_rail_index,

@@ -1117,7 +1117,7 @@ impl FilletSolver {
     pub fn point_on_plane_solve(
         ops: &mut dyn FilletSolverOps,
         k: &Kernel,
-        brep: Option<&Brep>,
+        brep: Option<&mut Brep>,
         plane_orig: Point3,
         plane_normal: Vec3,
         uv_domain1: &Extent2d,
@@ -1389,7 +1389,7 @@ impl FilletSolver {
         ops: &mut dyn FilletSolverOps,
         other: &mut dyn FilletSolverOps,
         k: &Kernel,
-        brep: Option<&Brep>,
+        mut brep: Option<&mut Brep>,
         uv_guess: Point2,
         rail_index: usize,
         other_rail_index: usize,
@@ -1446,7 +1446,7 @@ impl FilletSolver {
         let this_side_eu = ops.solver().edgeuse(rail_index)?;
         let temp_this = match (ops.variable_radius_mut(), other_side_eu) {
             (Some(vrfs), Some(side)) => {
-                let target = brep.ok_or_else(|| {
+                let target = brep.as_deref().ok_or_else(|| {
                     invalid("variable-radius RailRailIntersect requires target B-rep")
                 })?;
                 crate::blend::fillet_executive::p2::DirectTemporaryRadiusChange::new(
@@ -1460,7 +1460,7 @@ impl FilletSolver {
         };
         let temp_other = match (other.variable_radius_mut(), this_side_eu) {
             (Some(vrfs), Some(side)) => {
-                let Some(target) = brep else {
+                let Some(target) = brep.as_deref() else {
                     temp_this.revert(ops.variable_radius_mut());
                     return Err(invalid(
                         "variable-radius RailRailIntersect requires target B-rep",
@@ -1489,7 +1489,7 @@ impl FilletSolver {
             let mut surface1 = take_surface(ops.solver(), rail_index)?;
             let loaded = ops.load_initial_values(
                 k,
-                brep,
+                brep.as_deref_mut(),
                 do_surf2_calcs,
                 rail_index,
                 &mut surface1,
@@ -1505,7 +1505,7 @@ impl FilletSolver {
             let mut other_surface1 = take_surface(other.solver(), other_rail_index)?;
             let other_loaded = other.load_initial_values(
                 k,
-                brep,
+                brep.as_deref_mut(),
                 do_surf2_calcs,
                 other_rail_index,
                 &mut other_surface1,
