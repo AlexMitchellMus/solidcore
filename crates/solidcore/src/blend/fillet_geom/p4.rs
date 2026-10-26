@@ -101,7 +101,6 @@ use crate::nurbs::b_spline_surface_n_lib::p2::{BlendNeighbour, OrientType};
 use crate::nurbs::crv_fit::p1::ParamMethod;
 use crate::surface::plane::Plane;
 use crate::surface::surface::p1::map_to_2d_dir;
-use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::brep::p7::{
     make_face_with_curves, make_face_with_curves_transfer, FaceCurvesInput, NewFace,
@@ -1341,14 +1340,16 @@ impl FilletBrep {
     /// those of [`CornerLookup::corner`] and [`CornerLookup::extended_surface`]
     /// (`corners` resolves the vertex's corner and holds the executive's extended
     /// surfaces); [`SolidError::Unported`] from the intersection
-    /// (`sm_SrfSrfIntersection`).
+    /// (`sm_SrfSrfIntersection`). For a 3x2 mixed corner, those of the on-face's
+    /// fast-drop trim test (`SmFace::PointClassify` on `target`, which may make the
+    /// face's trimmed surface cache).
     pub fn calc_rail_int_extended_edgeuse(
         &mut self,
         k: &Kernel,
         v: VertexId,
         corners: CornerLookup<'_>,
         solvers: &[FilletSolver],
-        target: &Brep,
+        target: &mut Brep,
     ) -> Result<()> {
         let context = super::p5::IndexedEdgeContext {
             solvers,
@@ -1370,7 +1371,7 @@ impl FilletBrep {
         v: VertexId,
         corners: CornerLookup<'_>,
         context: &impl super::p5::FilletEdgeContext,
-        target: &Brep,
+        target: &mut Brep,
     ) -> Result<()> {
         let corner = self.fillet_vertex(v)?.fillet_corner();
         let b3x2_mixed_corner_case = match corner {
@@ -1507,24 +1508,30 @@ impl FilletBrep {
         if b3x2_mixed_corner_case {
             // Find which end point lies on the pOnFace (the curves are dropped)
             let on_face = on_face.ok_or_else(|| SolidError::null_pointer(OP_EXT))?;
+            // pOnFace->GetSurface(): the face owns it, so the fast drop's trim test
+            // classifies on the face (`pFace->PointClassify`); the solve reads a copy
+            // sharing the surface's cache slot
             let surf1 = target
                 .face(on_face)?
                 .surface
                 .as_ref()
-                .ok_or_else(|| SolidError::null_pointer(OP_EXT))?;
+                .ok_or_else(|| SolidError::null_pointer(OP_EXT))?
+                .clone_for_evaluation()?;
             let tol = fil_solver()?.approx_tol_3d;
             let domain = surf1.natural_uv_domain();
             for pnt in [pnt1, pnt2] {
-                let solutions = surf1.global_point_solve::<NoObject>(
-                    k,
-                    None,
-                    &domain,
-                    SolverOperation::Intersect,
-                    pnt,
-                    zone_tol3d(k, 10.0 * tol),
-                    None,
-                    SolutionRequested::All,
-                )?;
+                let solutions =
+                    crate::intersect::point_class::live_owned_surface_global_point_solve(
+                        k,
+                        &surf1,
+                        target,
+                        on_face,
+                        &domain,
+                        SolverOperation::Intersect,
+                        pnt,
+                        zone_tol3d(k, 10.0 * tol),
+                        SolutionRequested::All,
+                    )?;
                 if !solutions.is_empty() {
                     set_vertex_point(self.brep_mut(), v, pnt)?;
                     self.fillet_vertex_mut(v)?.set_status(FilStatus::Processed);
@@ -2617,7 +2624,13 @@ mod tests {
         let k = kernel();
         let (mut fb, v) = fb_with_points(&k, &[Point3::new(0.0, 0.0, 0.0)]);
         let e = fb
-            .calc_rail_int_extended_edgeuse(&k, v[0], CornerLookup::default(), &[], &Brep::new())
+            .calc_rail_int_extended_edgeuse(
+                &k,
+                v[0],
+                CornerLookup::default(),
+                &[],
+                &mut Brep::new(),
+            )
             .unwrap_err();
         assert!(matches!(e, SolidError::Upstream { .. }));
     }

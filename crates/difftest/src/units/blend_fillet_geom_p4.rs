@@ -402,11 +402,11 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
         }
         Query::RailIntExtended { v } | Query::Int2Fillets { v } | Query::Nx2 { v } => {
             let vid = rm.vertex(*v)?;
-            let target = rm.target.clone();
+            let mut target = rm.target.clone();
             let r = match &i.query {
                 Query::RailIntExtended { .. } => rm
                     .fb
-                    .calc_rail_int_extended_edgeuse(&k, vid, CornerLookup::default(), &solvers, &target),
+                    .calc_rail_int_extended_edgeuse(&k, vid, CornerLookup::default(), &solvers, &mut target),
                 Query::Int2Fillets { .. } => {
                     rm.fb.calc_fillet_int_2_fillets(&k, vid, CornerLookup::default(), &solvers, &target)
                 }
