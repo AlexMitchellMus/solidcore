@@ -211,8 +211,18 @@ pub struct UpstreamFixes {
     pub fillet_nx1_end_rib_global_merge: bool,
     /// `sm_FixUVTrimCurves` moves only the end control points of the two UV trims meeting at a corner onto the vertex's UV point, without dropping the vertex onto them, trimming there and stretching them back over the edge interval (WR-255, #959/#570; the fork's tangency-labs/smlib@5af7070).
     pub uv_trim_corner_end_points_only: bool,
+    /// `BSplineCurve::trim` removes short end spans only for model-space curves
+    /// (dimension 3), preserving exact UV trims in surface parameter units
+    /// (WR-441, #1114). Off by default for pinned SMLib compatibility.
+    pub bspline_trim_preserves_uv_spans: bool,
     /// `SmCone::IntersectWithCone` tests the line of two parallel cylinders against both face domains at its middle, not its bottom end (WR-259, #711).
     pub cone_parallel_line_midpoint: bool,
+    /// The Boolean's topology intersector treats a self-loop proto edge whose ends a vertex definition on a vertex combined (`CanCombineVertexDefinitions`) as degenerate, instead of `SmProtoEdge::Resolve` splitting it onto that one vertex, after which `SmMerge::MakeFaceuse` returns `SM_ERR` (WR-214, #480; `plan/upstream-issues/WR-214--smprotoedge-resolve-splits-a-self-loop-proto-edge-onto-one.md`).
+    pub proto_edge_self_loop_on_vertex_degenerate: bool,
+    /// `SM_BO_SLICE` keeps a coincident pair whose primary face bounds material on one side only when that material lies on the side the sheet's `SM_OT_SAME` faceuse bounds (step 7.4d's rule), instead of falling through to the difference rule, which keeps a face lying in the slicing sheet in both parts (WR-254, #528; `plan/upstream-issues/WR-254--manifoldboolean-keeps-a-face-lying-in-the-slicing-sheet-in.md`).
+    pub slice_coincident_faces_sheet_side: bool,
+    /// After step 8, a Union, Difference or Intersection whose result is a manifold solid with more than two regions (the infinite region first) runs `SetRegionIsVoidFlagsForNestedSolids`, which puts each region's enclosing shell first (the fork's tangency-labs/smlib `abastran/void-shell-check`). It also rewrites the void flags by nesting from the infinite region, so where step 7 left flags that disagree with the nesting the result's void flags change too, not only its shell order (WR-265, #388; `plan/upstream-issues/WR-265--manifold-boolean-void-shell-first.md` and its 2026-10-26 addendum).
+    pub boolean_outer_shell_first: bool,
     /// `SmEdge::ReverseOrientation` returns a failed curve reversal's status before installing the interval, flipping the edge uses or deleting their UV trims (WR-260, #521).
     pub edge_reversal_keeps_failed_edge: bool,
     /// `GetUVCornerBoundaries`, `GetStartPointUVLoopGap` and `sm_CalcDistAndDev` return failed curve/surface evaluations and point drops instead of reading unwritten or earlier outputs (WR-262, WR-263, WR-264, #521).
@@ -223,6 +233,18 @@ pub struct UpstreamFixes {
     pub sweep_frame_on_planar_path_normal: bool,
     /// `CoverCoincidentSurface` refuses a cover that extends a B-spline-based surface onto a continuation whose normal vanishes or turns back (a fold) over the domain the merge would use (WR-407, #434; SolidCraft change, tangency-labs/smlib 1b6f5fa).
     pub cover_refuses_folded_continuation: bool,
+    /// A boolean vertex takes its position from the intersection curve that crosses its edge most steeply (WR-410, #1059).
+    pub boolean_vertex_by_best_crossing: bool,
+    /// `SmMerge::BooleanPostProcess` also checks the merged face's edges that a face merge left with that face on both sides (slits), not only the intersection edges (WR-304, #1120).
+    pub boolean_cleanup_removes_slits: bool,
+    /// `SmFace::CurveOnClassify` classifies an interval whose two ends lie on one face edge (or its vertices) and whose midpoint is within the intersection tolerance of it as on that edge (the fork's `ClassifyEdgeInterval`, WR-305, #1057).
+    pub classify_edge_interval: bool,
+    /// `SmProtoEdge::Resolve` treats a proto edge from a proto vertex back to itself whose ends find one vertex definition as degenerate below twice the proto vertex's containment radius, and `ImprintIntersections` fits that vertex to its edges (WR-306, #1058).
+    pub degenerate_proto_edge_in_one_vertex: bool,
+    /// A torus rebuilt from its NURB measures its generating interval signed (WR-408, #1112).
+    pub torus_signed_gen_curve_interval: bool,
+    /// A sheet sweep's open-profile wires are glued where the curves meet (WR-409, #1113).
+    pub sheet_sweep_joins_profile_wires: bool,
     /// Precise face properties integrate each UV trim knot span so adaptive steps cannot skip narrow features (WR-423, #1105).
     pub precise_properties_at_trim_knots: bool,
 }
@@ -283,6 +305,14 @@ pub struct Kernel {
     pub memoize_curve_caches: bool,
     /// Opt-in fixes of upstream defects (all off: upstream behaviour).
     pub fixes: UpstreamFixes,
+    /// Not upstream: the default-record map of the last `kernel_named_edit`
+    /// (`topology::brep::p3`), kept only to reuse its allocation; every edit resets it
+    /// to the records of a fresh seeding, so it never carries state between edits.
+    #[doc(hidden)]
+    pub notify_records: std::collections::BTreeMap<
+        crate::geom::attribute::ObjectKey,
+        crate::topology::topology::Topology,
+    >,
 }
 
 impl Default for Kernel {
@@ -304,6 +334,7 @@ impl Kernel {
             upstream_ub_passed: Vec::new(),
             memoize_curve_caches: !cfg!(feature = "curve-memo-off"),
             fixes: UpstreamFixes::default(),
+            notify_records: std::collections::BTreeMap::new(),
         }
     }
 
