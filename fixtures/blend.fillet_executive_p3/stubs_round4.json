@@ -375,6 +375,384 @@
           "all_edges": true
         }
       }
+    },
+    {
+      "name": "stubs4-degenerate-bottle-e0-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/bottle.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-bottle-e2-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/bottle.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            2
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-bottle-e10-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/bottle.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            10
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-bottle-e13-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/bottle.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            13
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-brepForFillet2-e5-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/brepForFillet2.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            5
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-brepForFillet2-e7-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/brepForFillet2.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            7
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-brepForFillet2-e9-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/brepForFillet2.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            9
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-caps_coons-e5-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/caps_coons.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            5
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-nurb_cone-e1-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/nurb_cone.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            1
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-nurb_cone-e3-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/nurb_cone.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            3
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-nurb_cone-e5-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/nurb_cone.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            5
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-nurb_cone-e8-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/nurb_cone.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            8
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-nurb_cone-e11-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/nurb_cone.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            11
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-nurb_cone-e20-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/nurb_cone.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            20
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-test5-e2-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/test5.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            2
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-test5-e3-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/test5.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            3
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-test5-e5-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/test5.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            5
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-degenerate-test5-e9-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/test5.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            9
+          ]
+        }
+      }
     }
   ]
 }

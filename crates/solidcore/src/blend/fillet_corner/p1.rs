@@ -1621,12 +1621,46 @@ impl FilletCorner {
         env: &mut CornerEnv<'_>,
         solvers: &[FilletSolver],
     ) -> Result<bool> {
+        let CornerEnv {
+            k,
+            target,
+            pseudo,
+            exec,
+            ..
+        } = env;
+        self.check_and_fix_degeneracy_with(
+            k,
+            target,
+            pseudo,
+            |e| exec.remove_from_topo_edges(e),
+            |id| {
+                solvers.get(id.0 as usize).ok_or_else(|| {
+                    SolidError::invalid_input(OP_DEGENERACY, "solver id past the list")
+                })
+            },
+        )
+    }
+
+    /// [`Self::check_and_fix_degeneracy`] over the caller's executive state: `remove_topo_edge`
+    /// is `m_pExecutive->RemoveFromTopoEdges` of a deleted corner edge, `solver` resolves a
+    /// fillet geometry's solver (`GetFilletSolver()`).
+    ///
+    /// # Errors
+    /// As [`Self::check_and_fix_degeneracy`], with `solver`'s resolution failures.
+    pub fn check_and_fix_degeneracy_with<'s>(
+        &mut self,
+        k: &Kernel,
+        target: &mut Brep,
+        pseudo: &mut FilletBrep,
+        mut remove_topo_edge: impl FnMut(EdgeId),
+        solver: impl Fn(FilletSolverId) -> Result<&'s FilletSolver>,
+    ) -> Result<bool> {
         let null = || SolidError::invalid_input(OP_DEGENERACY, NULL_DEREF);
         // get original vertex point location
         let corner_vertex = self.vertex.ok_or_else(null)?;
-        let corner_pnt = env.target.vertex(corner_vertex)?.point;
+        let corner_pnt = target.vertex(corner_vertex)?.point;
 
-        if !self.vertices_are_degenerate(env.pseudo, corner_pnt)? {
+        if !self.vertices_are_degenerate(pseudo, corner_pnt)? {
             return Ok(false);
         }
 
@@ -1635,9 +1669,9 @@ impl FilletCorner {
 
         // delete all corner edges (not rails)
         for e in std::mem::take(&mut self.edges) {
-            env.pseudo.remove_edge(e);
-            env.exec.remove_from_topo_edges(e);
-            env.pseudo.delete_fillet_edge(e)?;
+            pseudo.remove_edge(e);
+            remove_topo_edge(e);
+            pseudo.delete_fillet_edge(e)?;
         }
 
         // Combine all vertices into the 1st corner FilletVertex
@@ -1648,19 +1682,17 @@ impl FilletCorner {
         // for every corner FilletVertex except the first
         for fv in self.vertices.iter().skip(1).copied().collect::<Vec<_>>() {
             // move every cornerVertex->Vertexuse to 1st FilletVertex
-            for vu in vertex::vertexuses(env.pseudo.brep(), fv)? {
+            for vu in vertex::vertexuses(pseudo.brep(), fv)? {
                 // move vertexuse to 1st FilletVertex
-                move_vertexuse(env.pseudo, vu, fv, fv0)?;
+                move_vertexuse(pseudo, vu, fv, fv0)?;
 
                 // set associated TsectPnt type to SM_IP_SINGULARITY
-                env.pseudo
-                    .fillet_vertexuse_mut(vu)?
-                    .tsect_pnt_mut()
-                    .point_type = IntersectionPointType::Singularity;
+                pseudo.fillet_vertexuse_mut(vu)?.tsect_pnt_mut().point_type =
+                    IntersectionPointType::Singularity;
             }
 
             // delete the FilletVertex
-            env.pseudo.delete_fillet_vertex(fv)?;
+            pseudo.delete_fillet_vertex(fv)?;
         } // end iter every corner filletVertex but the 1st
 
         // set m_vVertices to a list of 1 filletVertex
@@ -1668,7 +1700,7 @@ impl FilletCorner {
 
         // set the filletVertex to classify to the orig Vertex
         {
-            let rec = env.pseudo.fillet_vertex_mut(fv0)?;
+            let rec = pseudo.fillet_vertex_mut(fv0)?;
             rec.set_point_class(
                 PointClassType::Vertex,
                 Some(EntityRef::Vertex(corner_vertex)),
@@ -1677,40 +1709,36 @@ impl FilletCorner {
         }
 
         // get vertexuses for both origVertex and the remaining corner filletVertex
-        let orig_vus = vertex::vertexuses(env.target, corner_vertex)?;
-        let fil_vus = vertex::vertexuses(env.pseudo.brep(), fv0)?;
+        let orig_vus = vertex::vertexuses(target, corner_vertex)?;
+        let fil_vus = vertex::vertexuses(pseudo.brep(), fv0)?;
 
         // for every corner FilletVertex->Vertexuse - set its TsectPnt->UVPoint position
         for fil_vu in fil_vus {
             // filletVertexuse locals: TsectPnt, rail->face, railIndex
-            let fil_eu = eu1::vertexuse_edgeuse(env.pseudo.brep(), fil_vu)?.ok_or_else(null)?;
-            let rail = eu1::edge(env.pseudo.brep(), fil_eu)?.ok_or_else(null)?;
-            let face = env
-                .pseudo
+            let fil_eu = eu1::vertexuse_edgeuse(pseudo.brep(), fil_vu)?.ok_or_else(null)?;
+            let rail = eu1::edge(pseudo.brep(), fil_eu)?.ok_or_else(null)?;
+            let face = pseudo
                 .fillet_edge(rail)?
                 .orig_face
                 .ok_or_else(|| SolidError::null_pointer(OP_DEGENERACY))?;
-            let fg = env
-                .pseudo
+            let fg = pseudo
                 .fillet_edgeuse(fil_eu)?
                 .fillet_geom
                 .ok_or_else(|| SolidError::null_pointer(OP_DEGENERACY))?;
-            let solver_id = env.pseudo.geom(fg)?.solver.ok_or_else(null)?;
-            let fil_solver = solvers.get(solver_id.0 as usize).ok_or_else(|| {
-                SolidError::invalid_input(OP_DEGENERACY, "solver id past the list")
-            })?;
-            let rail_index = fil_solver.find_index_of_rail_on_face(env.target, Some(face))?;
+            let solver_id = pseudo.geom(fg)?.solver.ok_or_else(null)?;
+            let fil_solver = solver(solver_id)?;
+            let rail_index = fil_solver.find_index_of_rail_on_face(target, Some(face))?;
 
             // for every original vertex->Vertexuse
             for &vu in &orig_vus {
                 // when filletVertexuse->Rail->Face == origVertexuse->Face
-                let fu = vertexuse::faceuse(env.target, vu)?.ok_or_else(null)?;
-                if eu1::faceuse_face(env.target, fu)? == Some(face) {
+                let fu = vertexuse::faceuse(target, vu)?.ok_or_else(null)?;
+                if eu1::faceuse_face(target, fu)? == Some(face) {
                     // refine the filletVertex->TsectPnt->UVpoint position (the
                     // projection's status is not checked: a failure leaves sUV's
                     // SM_UNDEF_DOUBLE members)
                     let uv = ignored(
-                        vertexuse::compute_uv_point(env.k, env.target, vu, true).map(Some),
+                        vertexuse::compute_uv_point(k, target, vu, true).map(Some),
                         None,
                     )?
                     .unwrap_or(Point2::UNDEF);
@@ -1719,7 +1747,7 @@ impl FilletCorner {
                     } else {
                         SrfIndex::Second
                     };
-                    *env.pseudo
+                    *pseudo
                         .fillet_vertexuse_mut(fil_vu)?
                         .tsect_pnt_mut()
                         .uv_pos_mut(srf) = uv;

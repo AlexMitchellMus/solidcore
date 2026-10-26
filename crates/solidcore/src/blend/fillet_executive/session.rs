@@ -3875,23 +3875,42 @@ impl CornerVertexAccess<FilletObject> for SessionObjects<'_> {
 impl CornerAdjustmentAccess<FilletObject> for SessionObjects<'_> {
     fn adjustment_check_degeneracy(
         &mut self,
-        _k: &mut Kernel,
+        k: &mut Kernel,
         corner: FilletObject,
-        _executive: &mut FilletExecutive<FilletObject>,
+        executive: &mut FilletExecutive<FilletObject>,
     ) -> Result<bool> {
-        let corner = self.corner_object(corner)?;
-        let vertex = corner
-            .filleted_vertex()
-            .ok_or_else(|| invalid("corner without original vertex"))?;
-        let point = self.target.vertex(vertex)?.point;
-        if !corner.vertices_are_degenerate(&self.pseudo, point)? {
-            return Ok(false);
-        }
-        // UNPORTED(blend.fillet_executive_p1): actual retained topology/attribute mutation during degeneracy fixing.
-        Err(SolidError::unported(
-            "SmFilletCorner::CheckAndFixDegeneracy (live mutation context)",
-            "blend.fillet_executive_p1",
-        ))
+        let FilletObject::Corner(id) = corner else {
+            return Err(invalid("object is not a corner"));
+        };
+        let SessionObjects {
+            target,
+            pseudo,
+            solvers,
+            corners,
+            ..
+        } = self;
+        let corner = corners
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| invalid("corner is not live"))?;
+        let solvers = &**solvers;
+        corner.check_and_fix_degeneracy_with(
+            k,
+            target,
+            pseudo,
+            |e| {
+                executive.remove_from_topo_edges(Some(FilletObject::Topology(
+                    FilletBody::Pseudo,
+                    EntityRef::Edge(e),
+                )));
+            },
+            |solver| {
+                solvers
+                    .get(solver.0 as usize)
+                    .and_then(Option::as_ref)
+                    .map(SolverObject::base)
+                    .ok_or_else(|| invalid("corner solver is not live"))
+            },
+        )
     }
     fn adjustment_topology(
         &mut self,
