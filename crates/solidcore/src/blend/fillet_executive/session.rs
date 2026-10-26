@@ -9,6 +9,7 @@
 //! | [`FilletSession::set_self_intersection_handler`] | `SetSelfIntersectionHandler` |
 //! | [`FilletSession::fillet_corners`] | `GetFilletCorners` |
 //! | [`FilletSession::set_bevel_corner`] | `SetBevelCorner` |
+//! | [`FilletSession::prepare_variable_radius_edges`] | `SetFilletParameters` (same parameters on each edge) with `SM_FS_VARIABLE_RADIUS` |
 //!
 //! Deviations: the retained handler's algorithm type is copied into every loaded
 //! solver (on load and on each set), standing in for the solvers' live
@@ -24,6 +25,12 @@
 //! code; an Nx2 corner's vertex calculators receive every retained solver of the
 //! vertex's geometries (one indexed table upstream). Two geometries on one solver at a
 //! rail/rail vertex are an input error here (the indexed path runs on a copy).
+//! A caller's fillet law is retained once and each variable-radius solver gets its
+//! own copy (upstream every solver of one `SetFilletParameters` call points at the
+//! caller's single law). The law's mutable state is the arc length (written, never
+//! read), the B-spline extension cache (a pure function of the law curve) and
+//! `SmTemporaryRadiusChange`, which only the solver it is applied to evaluates before
+//! the change is reverted, so the copies evaluate as the shared object does.
 //! This foundation supports solver construction/loading; it does not substitute a
 //! result for the remaining fillet execution stages. No recursion.
 
@@ -52,8 +59,8 @@ use crate::blend::fillet_solver::p1::{
 };
 use crate::blend::fillet_solver::p4::FilletGeometryContext;
 use crate::blend::fillet_standard_solver::p1::{
-    constant_radius_from_edgeuse, ConstantDistanceFs, ConstantRadiusFs, FilletSolverType,
-    FilletSurfaceGeneratorType, SurfaceSurfaceFs, VariableRadiusFs,
+    constant_radius_from_edgeuse, ConstantDistanceFs, ConstantRadiusFs, FilletLaw,
+    FilletSolverType, FilletSurfaceGeneratorType, SurfaceSurfaceFs, VariableRadiusFs,
 };
 use crate::curve::curve_cache::CurveCache;
 use crate::error::{EntityRef, Result, SolidError};
@@ -123,6 +130,8 @@ pub enum FilletObject {
     Attribute(AttributeHandle),
     /// The session's retained self-intersection handler.
     SelfIntersectionHandler,
+    /// A caller-supplied fillet law retained by the session.
+    Law(u32),
 }
 
 impl ClassObject for FilletObject {
@@ -219,6 +228,7 @@ struct SessionObjects<'target> {
     solvers: Vec<Option<SolverObject>>,
     corners: Vec<FilletCorner>,
     generators: Vec<FilletSurfaceGenerator>,
+    laws: Vec<FilletLaw>,
     attributes: AttributeStore,
     merge_attributes: Option<Vec<AttributeHandle>>,
     extended_surfaces: BTreeMap<FaceId, Surface>,
@@ -316,6 +326,14 @@ impl SessionObjects<'_> {
         };
         match current {
             SolverObject::ConstantRadius(solver) => FilletSolver::calc_fillet_geom_with_context(
+                solver.as_mut(),
+                k,
+                self.target,
+                &mut self.pseudo,
+                &context,
+            ),
+            // `SmVariableRadiusFS` inherits `SmFilletSolver::CalcFilletGeom`.
+            SolverObject::VariableRadius(solver) => FilletSolver::calc_fillet_geom_with_context(
                 solver.as_mut(),
                 k,
                 self.target,
@@ -578,6 +596,7 @@ impl<'target> FilletSession<'target> {
                 solvers: Vec::new(),
                 corners: Vec::new(),
                 generators: Vec::new(),
+                laws: Vec::new(),
                 attributes,
                 merge_attributes: None,
                 extended_surfaces: BTreeMap::new(),
@@ -812,6 +831,64 @@ impl<'target> FilletSession<'target> {
                 xsect_tol: -1.0,
                 continuity,
                 thumbweight,
+            },
+        )
+    }
+
+    /// `SetDoGlobalMerge(TRUE)` then the same-parameters `SetFilletParameters`
+    /// overload with `SM_FS_VARIABLE_RADIUS`, as `SmApiVariableRadiusFillet` does:
+    /// one cross-section type for every edge, `radius` as the (unused) solver
+    /// distance, `law` shared by every edge's solver and default tolerances.
+    ///
+    /// Zero selects linear, two blend-curve, every other cross-section code circular.
+    ///
+    /// # Errors
+    /// Native invalid input for an empty edge list; real parameter/constructor/loader errors.
+    pub fn prepare_variable_radius_edges(
+        &mut self,
+        k: &mut Kernel,
+        edges: &[EdgeId],
+        radius: f64,
+        law: FilletLaw,
+        xsect_type: u32,
+        continuity: u32,
+    ) -> Result<()> {
+        if edges.is_empty() {
+            return Err(SolidError::Upstream {
+                operation: OP,
+                code: crate::error::SM_ERR_INVALID_INPUT,
+                entity: None,
+            });
+        }
+        let xsect = match xsect_type {
+            0 => FilletSurfaceGeneratorType::Linear,
+            2 => FilletSurfaceGeneratorType::BlendCurve,
+            _ => FilletSurfaceGeneratorType::Circular,
+        };
+        let law = self.objects.allocate_law(law)?;
+        // The same-parameters overload passes the one law to every edge's solver.
+        let laws = vec![Some(law); edges.len()];
+        let edges = edges
+            .iter()
+            .map(|id| FilletObject::Topology(FilletBody::Target, EntityRef::Edge(*id)))
+            .collect::<Vec<_>>();
+        self.executive.set_do_global_merge(true);
+        self.executive.set_fillet_parameters(
+            k,
+            &mut self.objects,
+            &FilletParameters {
+                brep: Some(FilletObject::Body(FilletBody::Target)),
+                edges: &edges,
+                xsect_types: &[xsect],
+                radius_types: &[FilletSolverType::VariableRadius],
+                radius_values: &[radius],
+                var_rad_laws: Some(&laws),
+                approx_tol: -1.0,
+                ang_tol_deg: -1.0,
+                tan_tol_deg: -1.0,
+                xsect_tol: -1.0,
+                continuity,
+                thumbweight: 1.0,
             },
         )
     }
@@ -2317,6 +2394,56 @@ impl SessionObjects<'_> {
             Some(SolverObject::ConstantDistance(Box::new(solver)));
         Ok(id)
     }
+    fn allocate_law(&mut self, law: FilletLaw) -> Result<FilletObject> {
+        let id = u32::try_from(self.laws.len()).map_err(|_| invalid("too many laws"))?;
+        self.laws.push(law);
+        Ok(FilletObject::Law(id))
+    }
+    #[allow(clippy::too_many_arguments)] // the native constructor's parameters
+    fn allocate_variable_radius_solver(
+        &mut self,
+        k: &Kernel,
+        edgeuse: EdgeuseId,
+        radius: f64,
+        approx_tol: f64,
+        ang_tol_rad: f64,
+        tan_tol_rad: f64,
+        law: FilletObject,
+        reverse: bool,
+    ) -> Result<FilletSolverId> {
+        let FilletObject::Law(law) = law else {
+            return Err(invalid("object is not a law"));
+        };
+        let law = self
+            .laws
+            .get(law as usize)
+            .cloned()
+            .ok_or_else(|| invalid("law is not live"))?;
+        let id = FilletSolverId(
+            u32::try_from(self.solvers.len()).map_err(|_| invalid("too many solvers"))?,
+        );
+        // As for the constant-radius solver: reserve the identity first.
+        self.solvers.push(None);
+        let solver = VariableRadiusFs::from_edgeuse(
+            k,
+            self.target,
+            &mut self.pseudo,
+            id,
+            approx_tol,
+            ang_tol_rad,
+            tan_tol_rad,
+            radius,
+            edgeuse,
+            law,
+            reverse,
+        )?;
+        *self
+            .solvers
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| invalid("lost solver slot"))? =
+            Some(SolverObject::VariableRadius(Box::new(solver)));
+        Ok(id)
+    }
     fn assign_generator(&mut self, solver: FilletSolverId, generator: FilletObject) -> Result<()> {
         let FilletObject::Generator(id) = generator else {
             return Err(invalid("object is not a generator"));
@@ -2405,8 +2532,26 @@ impl FilletParametersAccess<FilletObject> for SessionObjects<'_> {
                 ang_tol_rad,
                 tan_tol_rad,
             ),
-            _ => Err(invalid(
-                "this session constructor supports constant-radius and constant-distance edge solvers",
+            SolverSpec::VariableRadius {
+                approx_tol,
+                ang_tol_rad,
+                tan_tol_rad,
+                radius,
+                edgeuse,
+                law,
+                reverse,
+            } => self.allocate_variable_radius_solver(
+                k,
+                target_edgeuse(edgeuse)?,
+                radius,
+                approx_tol,
+                ang_tol_rad,
+                tan_tol_rad,
+                law,
+                reverse,
+            ),
+            SolverSpec::SurfaceSurface { .. } => Err(invalid(
+                "this session constructor supports edge-use solvers only",
             )),
         }
         .map(FilletObject::Solver)
