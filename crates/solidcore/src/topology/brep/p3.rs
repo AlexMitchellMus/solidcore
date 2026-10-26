@@ -734,6 +734,38 @@ pub(crate) fn seed_records(
     records.entry(p2::brep_ref(b).key).or_default();
 }
 
+/// Leaves `records` exactly as [`seed_records`] does on an empty map (a default record
+/// for every object of `b`, and for the B-rep), whatever it held before: records of
+/// objects that are still there are reset in place and the rest is added or dropped, so
+/// an edit that notifies through the same B-rep again reuses most of the map.
+fn reseed_records(
+    records: &mut BTreeMap<ObjectKey, topo::Topology>,
+    b: &Brep,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+) {
+    let mut keys: Vec<ObjectKey> = entities(b)
+        .map(|e| key_of(e).key)
+        .chain([p2::brep_ref(b).key])
+        .collect();
+    keys.sort_unstable();
+    keys.dedup();
+    // (both ascending: `retain` visits the records in key order)
+    let mut next = 0;
+    records.retain(|key, record| {
+        while keys.get(next).is_some_and(|k| k < key) {
+            next += 1;
+        }
+        let keep = keys.get(next) == Some(key);
+        *record = topo::Topology::default();
+        keep
+    });
+    if records.len() != keys.len() {
+        for key in keys {
+            records.entry(key).or_default();
+        }
+    }
+}
+
 /// The kinds of topology keys with their class type codes (`GetType`), by kind number:
 /// the B-rep, then region, shell, face use, face, loop use, loop, edge use, edge,
 /// vertex use, vertex.
@@ -1029,8 +1061,8 @@ pub(crate) fn kernel_named_edit<R>(
     let key_of = move |e: EntityRef| topology_ref(serial, e);
     let label = b.key();
     b.set_key(topology_ref(serial, brep_entity()).key);
-    let mut records = BTreeMap::new();
-    seed_records(&mut records, b, &key_of);
+    let mut records = std::mem::take(&mut k.notify_records);
+    reseed_records(&mut records, b, &key_of);
     let mut attributes = crate::geom::attribute::AttributeStore::default();
     let r = {
         let mut env = NotifyEnv {
@@ -1042,6 +1074,7 @@ pub(crate) fn kernel_named_edit<R>(
         edit(k, b, &mut env)
     };
     b.set_key(label);
+    k.notify_records = records;
     r
 }
 
