@@ -1568,6 +1568,7 @@ mod tests {
         for l in &cases {
             assert!(
                 l.id.starts_with("a52-")
+                    || l.id.starts_with("catics-")
                     || (l.file.issue.contains("/issues/") && l.file.pr.contains("/pull/")),
                 "{}",
                 l.id
