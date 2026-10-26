@@ -1332,13 +1332,39 @@ impl FilletBrep {
     /// a neighbour vertex is not processed or the curves do not meet once;
     /// those of [`CornerLookup::corner`] (`corners` resolves the vertex's corner);
     /// [`SolidError::Unported`] from the intersection (`sm_SrfSrfIntersection`).
-    #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn calc_fillet_int_2_fillets(
         &mut self,
         k: &Kernel,
         v: VertexId,
         corners: CornerLookup<'_>,
         solvers: &[FilletSolver],
+        target: &Brep,
+    ) -> Result<()> {
+        self.calc_fillet_int_2_fillets_with_context(
+            k,
+            v,
+            corners,
+            &super::p5::IndexedEdgeContext {
+                solvers,
+                corners: CornerLookup::default(),
+                op: OP_INT2,
+            },
+            target,
+        )
+    }
+
+    /// [`Self::calc_fillet_int_2_fillets`] resolving the geometries' solvers through
+    /// `context` (a live executive's retained solvers).
+    ///
+    /// # Errors
+    /// As [`Self::calc_fillet_int_2_fillets`], with `context`'s resolution failures.
+    #[allow(clippy::too_many_lines)] // one upstream routine
+    pub fn calc_fillet_int_2_fillets_with_context(
+        &mut self,
+        k: &Kernel,
+        v: VertexId,
+        corners: CornerLookup<'_>,
+        context: &impl super::p5::FilletEdgeContext,
         target: &Brep,
     ) -> Result<()> {
         let corner = self
@@ -1382,8 +1408,8 @@ impl FilletBrep {
             };
             // The solvers are dereferenced only past the surface test (upstream
             // fetches the pointers before it but does not use them)
-            let (_, fs1) = self.eu_geom_solver(prim, solvers, OP_INT2)?;
-            let (_, fs2) = self.eu_geom_solver(mate, solvers, OP_INT2)?;
+            let (_, fs1) = self.eu_geom_solver_with(prim, context, OP_INT2)?;
+            let (_, fs2) = self.eu_geom_solver_with(mate, context, OP_INT2)?;
 
             let approx_tol = smin(fs1.approx_tol_3d, fs2.approx_tol_3d);
             let ang_tol = smin(fs1.ang_tol_rad, fs2.ang_tol_rad);
