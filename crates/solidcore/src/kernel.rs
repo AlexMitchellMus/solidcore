@@ -177,6 +177,8 @@ pub struct UpstreamFixes {
     pub proto_vertex_miss_is_false: bool,
     /// `CheckLoop` measures a gap against at least its vertex's zone tolerance (WR-381, #476).
     pub check_loop_vertex_tolerance: bool,
+    /// `CheckLoop` compares an end projected from its vertex (no UV trim) with its neighbour on the nearest natural period of a closed direction, so a one-period seam jump is not an `SM_ERR` (WR-440, #530).
+    pub check_loop_projected_seam_ends: bool,
     /// `SmBSplineCurve::AssertValid` reads the minimum radius of curvature before tests 13/14 compare it (WR-382, #475).
     pub bspline_check_min_radius: bool,
     /// The curve property solves ignore a failed guess in `SolveOscillating`'s sign-change search (WR-253, #481).
@@ -207,12 +209,20 @@ pub struct UpstreamFixes {
     pub offset_collapsed_rounds_mated: bool,
     /// At an Nx1 corner whose end rib cannot be built because a rail missed a side edge ending within the fillet's width, the rib is deleted and the global merge cuts the round off (WR-303, #841).
     pub fillet_nx1_end_rib_global_merge: bool,
+    /// `sm_FixUVTrimCurves` moves only the end control points of the two UV trims meeting at a corner onto the vertex's UV point, without dropping the vertex onto them, trimming there and stretching them back over the edge interval (WR-255, #959/#570; the fork's tangency-labs/smlib@5af7070).
+    pub uv_trim_corner_end_points_only: bool,
+    /// `SmCone::IntersectWithCone` tests the line of two parallel cylinders against both face domains at its middle, not its bottom end (WR-259, #711).
+    pub cone_parallel_line_midpoint: bool,
     /// `SmEdge::ReverseOrientation` returns a failed curve reversal's status before installing the interval, flipping the edge uses or deleting their UV trims (WR-260, #521).
     pub edge_reversal_keeps_failed_edge: bool,
     /// `GetUVCornerBoundaries`, `GetStartPointUVLoopGap` and `sm_CalcDistAndDev` return failed curve/surface evaluations and point drops instead of reading unwritten or earlier outputs (WR-262, WR-263, WR-264, #521).
     pub topology_failed_evaluations_propagate: bool,
     /// `SetProps_Stage3` returns a failed `ClassifyLoops` status before reading its outputs, and a failed stage drops its in-progress marker so a retry reruns it (WR-268, WR-266, #521).
     pub heal_stage3_failures_propagate: bool,
+    /// `CreateCurveSweep` starts a planar path's sweep frame with its z on the plane's normal, not on `MakeUnitOrthoVectors` of the start tangent, so a flat cap stays flat to the rounding (WR-407, #434; SolidCraft change, tangency-labs/smlib 1b6f5fa).
+    pub sweep_frame_on_planar_path_normal: bool,
+    /// `CoverCoincidentSurface` refuses a cover that extends a B-spline-based surface onto a continuation whose normal vanishes or turns back (a fold) over the domain the merge would use (WR-407, #434; SolidCraft change, tangency-labs/smlib 1b6f5fa).
+    pub cover_refuses_folded_continuation: bool,
 }
 
 /// Options for [`Kernel::new`].
@@ -263,13 +273,6 @@ pub struct Kernel {
     /// result for such an input is undefined, so a comparison against the C++ (the
     /// difftest) reads this to classify the case; no operation reads it.
     pub upstream_ub_passed: Vec<&'static str>,
-    /// Not upstream (WR-259, `plan/upstream-issues.md`): whether
-    /// `Cone::intersect_with_cone` tests the lines of two parallel cylinders at their
-    /// middle (`true`) instead of their bottom end (`false`, upstream and the default),
-    /// which skips a line crossing a face domain trimmed above the surface's bottom. The
-    /// Boolean sets it for its duration (`boolean::merge::p4::manifold_boolean`). A
-    /// [`Cell`] because the intersectors take `&Kernel`.
-    pub cone_parallel_midpoint_test: Cell<bool>,
     /// Not upstream: whether `make_curve_cache` keeps a memo of each curve cache in the
     /// curve value, and `CoincidenceCheck` a memo of each surface's boundary curves in
     /// the surface value (`true` unless the `curve-memo-off` feature is on). The memos
@@ -297,7 +300,6 @@ impl Kernel {
             context: Context::default(),
             fillet_point_step: Cell::new(None),
             upstream_ub_passed: Vec::new(),
-            cone_parallel_midpoint_test: Cell::new(false),
             memoize_curve_caches: !cfg!(feature = "curve-memo-off"),
             fixes: UpstreamFixes::default(),
         }
