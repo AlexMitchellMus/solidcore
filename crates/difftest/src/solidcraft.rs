@@ -89,6 +89,10 @@ pub struct Case {
     /// What this variant is.
     #[serde(default)]
     pub note: Option<String>,
+    /// Opt-in `Kernel::fixes` fields (`UpstreamFixes`) the case runs with, by field name
+    /// (none: pinned SMLib behaviour).
+    #[serde(default)]
+    pub fixes: Vec<String>,
     /// Run in order; each writes the body `id`.
     pub steps: Vec<Step>,
     /// Checked on the body `result`.
@@ -1226,9 +1230,25 @@ fn measure(k: &Kernel, b: &mut Brep) -> Result<Measured, SolidError> {
     })
 }
 
+/// Turns on the `UpstreamFixes` field `name` a case asks for.
+fn enable_fix(k: &mut Kernel, name: &str) -> Result<(), String> {
+    let field = match name {
+        "sweep_frame_on_planar_path_normal" => &mut k.fixes.sweep_frame_on_planar_path_normal,
+        "cover_refuses_folded_continuation" => &mut k.fixes.cover_refuses_folded_continuation,
+        _ => return Err(format!("unknown `fixes` entry `{name}`")),
+    };
+    *field = true;
+    Ok(())
+}
+
 /// Runs `case` on solidcore.
 pub fn run_rust(case: &Case) -> Run {
     let mut k = Kernel::default();
+    for fix in &case.fixes {
+        if let Err(msg) = enable_fix(&mut k, fix) {
+            return Run::Error(msg);
+        }
+    }
     let mut bodies = BTreeMap::new();
     for (n, step) in case.steps.iter().enumerate() {
         match step_rust(&mut k, &mut bodies, step) {
