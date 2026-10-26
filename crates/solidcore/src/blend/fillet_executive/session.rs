@@ -340,8 +340,16 @@ impl SessionObjects<'_> {
                 &mut self.pseudo,
                 &context,
             ),
+            // `SmConstantDistanceFS` inherits `SmFilletSolver::CalcFilletGeom`.
+            SolverObject::ConstantDistance(solver) => FilletSolver::calc_fillet_geom_with_context(
+                solver.as_mut(),
+                k,
+                self.target,
+                &mut self.pseudo,
+                &context,
+            ),
             // UNPORTED(blend.fillet_executive_p3): actual derived solver operation contexts.
-            _ => Err(SolidError::unported(
+            SolverObject::SurfaceSurface(_) => Err(SolidError::unported(
                 "live concrete CalcFilletGeom operations",
                 "blend.fillet_executive_p3",
             )),
@@ -355,7 +363,8 @@ fn live_solver_ops(solver: &mut SolverObject) -> Result<&mut dyn FilletSolverOps
     match solver {
         SolverObject::ConstantRadius(solver) => Ok(solver.as_mut()),
         SolverObject::VariableRadius(solver) => Ok(solver.as_mut()),
-        _ => {
+        SolverObject::ConstantDistance(solver) => Ok(solver.as_mut()),
+        SolverObject::SurfaceSurface(_) => {
             // UNPORTED(blend.fillet_executive_p1): retained virtual operations for other concrete solver types.
             Err(SolidError::unported(
                 "SmFilletSolver::RailEdgeuseIntersect (live concrete dispatch)",
