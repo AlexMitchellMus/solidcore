@@ -1,0 +1,29 @@
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "source-file-corner_box-all-edges"
+why = "C++ fillets every edge (status 0, area 360.302236); Rust returns SM_ERR from DoFilleting and leaves the body unchanged (plan/findings/blend.fillet_executive_p3--non-box-sources-corner-box-nurb-box.md)"
+
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "source-file-corner_box-edge9"
+why = "both fillet edge 9, area 364.0502109116 (C++) vs 364.0502699219 (Rust); later-stage divergence not localised (plan/findings/blend.fillet_executive_p3--non-box-sources-corner-box-nurb-box.md)"
+
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "source-file-corner_box-edge13"
+why = "C++ fillets edge 13 (status 0); Rust fails in CalcCornerEdgeGeom with SM_ERR and leaves the body unchanged (plan/findings/blend.fillet_executive_p3--non-box-sources-corner-box-nurb-box.md)"
+
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "source-file-nurb_box-all-edges"
+why = "C++ fillets every edge; Rust CalcFilletGeom fails (SmSurfOfExtrusion base not accepted as an SmBSplineSurface by c3_bspline_base) and leaves the body unchanged (plan/findings/blend.fillet_executive_p3--non-box-sources-corner-box-nurb-box.md)"
+
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "source-file-nurb_box-edge0"
+why = "C++ fillets edge 0; Rust CalcFilletGeom fails (SmSurfOfExtrusion base not accepted as an SmBSplineSurface by c3_bspline_base) (plan/findings/blend.fillet_executive_p3--non-box-sources-corner-box-nurb-box.md)"
+
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "source-file-nurb_box-edge5"
+why = "C++ fillets edge 5; Rust CalcFilletGeom fails (SmSurfOfExtrusion base not accepted as an SmBSplineSurface by c3_bspline_base) (plan/findings/blend.fillet_executive_p3--non-box-sources-corner-box-nurb-box.md)"
