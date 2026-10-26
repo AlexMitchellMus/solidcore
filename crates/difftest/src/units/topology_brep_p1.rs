@@ -2223,18 +2223,14 @@ fn independent_face(k: &mut Kernel, input: &BrepIn) -> Result<(Brep, f64), Fail>
     let BrepIn::Face { surface, dom } = input else {
         return Err(harness("cross-body intersection needs a face").into());
     };
-    let mut b = Brep::new();
+    // Match native `new (ctx) SmBrep()` and the executed kernel fixtures:
+    // a bare arena lacks the infinite region and constructor naming/tolerances.
+    let mut b = solidcore::topology::brep::p3::new_brep(k, tol::USE_DEFAULT, tol::USE_DEFAULT)?;
     let surface = surface_of(surface)?;
-    let mut records = BTreeMap::new();
-    let mut attributes = AttributeStore::default();
-    let mut env = solidcore::topology::edge::NotifyEnv {
-        records: &mut records,
-        attributes: &mut attributes,
-        context: None,
-        key_of: &key_of,
-    };
+    let mut state = solidcore::topology::brep::p2::ArenaNotifyState::new(&b);
+    let mut env = state.env(None);
     let mut marks = Marks::default();
-    let this_face = |face| key_of(EntityRef::Face(face));
+    let this_face = |face| arena_identity(CacheObject::Face(face));
     let mut fenv = solidcore::topology::brep::p8::FaceBuildEnv {
         env: &mut env,
         marks: &mut marks,
@@ -2250,7 +2246,10 @@ fn independent_face(k: &mut Kernel, input: &BrepIn) -> Result<(Brep, f64), Fail>
     ) {
         Ok(_) => 0.0,
         Err(e) if e.is_unported() => return Err(e.into()),
-        Err(e) => status_of(&e),
+        Err(e) => {
+            eprintln!("cross-body face construction failed: {e:?}; {e}; domain={domain:?}");
+            status_of(&e)
+        }
     };
     Ok((b, status))
 }
