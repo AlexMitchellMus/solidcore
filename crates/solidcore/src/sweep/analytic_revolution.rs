@@ -113,8 +113,8 @@ pub fn analytic_revolution(
         return Ok(None);
     }
     // the face is trimmed by the natural boundary: a side the analytic surface makes
-    // wrong (a torus's full minor circle off angle 0 collapses in
-    // SmEllipse::AdjustSTEPInterval, WR-211) keeps the B-spline
+    // wrong (before #899, a torus's full minor circle off angle 0, whose iso circle
+    // collapsed) keeps the B-spline
     let expected = ignored(boundary(k, reference, tol))?;
     let actual = ignored(boundary(k, &candidate, tol))?;
     Ok(match (expected, actual) {
@@ -572,13 +572,13 @@ mod tests {
             arc(Vec3::new(5.0, 0.0, 0.0), Vec3::X, -Vec3::Z, 1.5, 0.0, 360.0),
             "torus",
         ));
-        // full minor circles from another point: the torus's iso circle there
-        // collapses (SmEllipse::AdjustSTEPInterval, WR-211), so the B-spline stays.
-        // The partial torus's circle: x = -Z, about Y, from the bottom
+        // full minor circles from another point (the torus's iso circles there are
+        // whole since #899). The partial torus's circle: x = -Z, about Y, from the
+        // bottom
         out.push((
             "minor circle from the bottom",
             arc(Vec3::new(5.0, 0.0, 0.0), -Vec3::Z, Vec3::X, 1.5, 0.0, 360.0),
-            UPSTREAM,
+            "torus",
         ));
         out.push((
             "minor circle from the bottom reversed",
@@ -590,7 +590,7 @@ mod tests {
                 0.0,
                 360.0,
             ),
-            UPSTREAM,
+            "torus",
         ));
         out.push((
             "horn minor circle",
@@ -602,7 +602,7 @@ mod tests {
                 -180.0,
                 180.0,
             ),
-            UPSTREAM,
+            "torus",
         ));
         out.push((
             "fillet arc",

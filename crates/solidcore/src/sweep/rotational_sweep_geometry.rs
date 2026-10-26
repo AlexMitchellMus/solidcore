@@ -1420,10 +1420,9 @@ mod tests {
                 "torus",
                 arc(Vec3::new(5.0, 0.0, 0.0), Vec3::X, Vec3::Z, 1.5, 0.0, 360.0),
             ),
-            // a full minor circle from the bottom (the partial torus's): its iso
-            // circle would collapse (WR-211), so the B-spline surface stays
+            // a full minor circle from the bottom (the partial torus's)
             (
-                "upstream",
+                "minor circle from the bottom",
                 arc(Vec3::new(5.0, 0.0, 0.0), -Vec3::Z, Vec3::X, 1.5, 0.0, 360.0),
             ),
             (
@@ -1460,8 +1459,7 @@ mod tests {
             let expected = match name {
                 "dome" => "sphere",
                 "drill point" => "cone",
-                "fillet" => "torus",
-                "upstream" => "other",
+                "fillet" | "minor circle from the bottom" => "torus",
                 n => n,
             };
             assert_eq!(analytic, expected, "{name}");

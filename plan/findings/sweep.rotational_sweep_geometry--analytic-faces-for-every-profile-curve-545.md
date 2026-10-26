@@ -63,3 +63,13 @@ follows the issue's description). Upstream `WR-268` (`plan/upstream-issues/WR-26
 - `crates/solidcore/tests/primitives_solid.rs` `precise_sphere_properties_scale_and_translate`
   (from main) fails on Windows with or without the switches (`create_sphere` never
   reaches this code); main's Linux CI passes it.
+- **Rebased on main after #899 (2026-10-26).** #899 (issue #826) measures the torus iso
+  circle's end angles from the circle's centre, not the torus origin (`torus.rs`
+  `iso_curve`, a deviation). The full minor circle from the bottom now has a whole iso
+  circle, so its boundary matches the B-spline's and it becomes a torus as well: the
+  partial torus (`create_partial_torus`, 90 degrees) now has an analytic torus face
+  and is still a manifold solid (`api_primitives` test
+  `complete_solids_construct_and_partial_solids_report_dependencies`). `sweep.api_brep`
+  full-circle profiles that do not start at tube angle 0 may take the analytic path
+  again; the PR's CI difftest shows their status and counts. The boundary check stays:
+  it still keeps the B-spline wherever the analytic sides differ.
