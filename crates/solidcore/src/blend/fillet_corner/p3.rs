@@ -851,7 +851,11 @@ fn clear_corner_vertices(
 }
 
 /// `SM_REVERSE_FILLET_EDGE(e)`.
-fn reverse_fillet_edge(pseudo: &mut FilletBrep, e: EdgeId, op: &'static str) -> Result<()> {
+pub(crate) fn reverse_fillet_edge(
+    pseudo: &mut FilletBrep,
+    e: EdgeId,
+    op: &'static str,
+) -> Result<()> {
     let prim_eu =
         eu1::primary_edgeuse(pseudo.brep(), e)?.ok_or_else(|| invalid(op, p1::NULL_DEREF))?;
     let brep = pseudo.brep_mut();
@@ -862,7 +866,7 @@ fn reverse_fillet_edge(pseudo: &mut FilletBrep, e: EdgeId, op: &'static str) -> 
 }
 
 /// `SM_MODIFY_CORNEREDGE_FILLET_RELATION(e, fg)`.
-fn modify_corneredge_fillet_relation(
+pub(crate) fn modify_corneredge_fillet_relation(
     pseudo: &mut FilletBrep,
     e: EdgeId,
     fg: FilletGeomId,
@@ -893,7 +897,7 @@ pub(super) fn set_vertex_point(pseudo: &mut FilletBrep, v: VertexId, point: Poin
 }
 
 /// `pFrom->Remove(pVU); pTo->PostInsert(pVU)` for a vertex use of the pseudo B-rep.
-pub(super) fn move_vertexuse(
+pub(crate) fn move_vertexuse(
     pseudo: &mut FilletBrep,
     vu: VertexuseId,
     from: VertexId,

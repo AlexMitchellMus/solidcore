@@ -10,6 +10,7 @@
 //! | [`FilletCorner::make_convex_nxn_corner_topology`] | `SmFilletConvexNxNCorner::MakeCornerTopology` |
 //! | `find_side_edgeuse`, `find_closed_side_edgeuse` | `sm_FindSideEdgeuse`, `sm_FindClosedSideEdgeuse` |
 //! | `same_convexity_edges` | `same_convexity_edges` |
+//! | [`FilletCorner::make_nx1_closed_corner_topology`] ([`closed_nx1`]) | `SmFilletNx1ClosedCorner::MakeCornerTopology` |
 //!
 //! Deviations: the caller lends the actual target, pseudo-B-rep and solver.
 //! Missing topology that native dereferences is an input error. Mixed-convexity
@@ -22,6 +23,8 @@
 //! resolved by the caller before any allocation (upstream resolves each inside its
 //! vertex loop; the lookups have no effects), and its unused `GetEdges` read is
 //! omitted. There is no recursion.
+
+pub mod closed_nx1;
 
 use crate::blend::fillet_corner::p1::{
     check_face_complimentary_corner_concavity, face_by_two_edgeuses, test_g1_continuity,

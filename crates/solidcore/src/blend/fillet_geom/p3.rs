@@ -9,7 +9,7 @@
 //! | Rust                                     | Upstream                              |
 //! |------------------------------------------|---------------------------------------|
 //! | [`FilletBrep::calc_corner_vert_geom`]    | `SmFilletVertex::CalcCornerVertGeom`  |
-//! | [`FilletBrep::calc_mate_geom`]           | `SmFilletVertex::CalcMateGeom`        |
+//! | [`FilletBrep::calc_mate_geom`], [`FilletBrep::calc_mate_geom_with`] | `SmFilletVertex::CalcMateGeom` |
 //! | [`FilletBrep::calc_corner_edge_geom`]    | `SmFilletEdge::CalcCornerEdgeGeom`    |
 //! | [`FilletBrep::calc_edge_fillet_int_fillet`] | `SmFilletEdge::CalcFilletIntFillet` |
 //! | [`FilletBrep::re_calc_fillet_geom`]      | `SmFilletGeom::ReCalcFilletGeom`      |
@@ -95,7 +95,7 @@ use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::Surface;
 use crate::topology::edge;
 use crate::topology::edgeuse::p1::{self as eu1, primary_edgeuse};
-use crate::topology::{Brep, EdgeId, VertexId, VertexuseId};
+use crate::topology::{Brep, EdgeId, EdgeuseId, VertexId, VertexuseId};
 
 use super::p1::{
     check_seam_on, check_seam_out, evaluate_mate, set_surface_closure, CornerLookup, FilStatus,
@@ -351,6 +351,41 @@ impl FilletBrep {
         solvers: &mut [FilletSolver],
         depth: usize,
     ) -> Result<()> {
+        self.calc_mate_geom_with(
+            k,
+            v,
+            target,
+            solvers,
+            depth,
+            |fb, target, solvers, main| {
+                fb.corner_vert_geom(k, main, corners, target, solvers, depth + 1)
+            },
+            |solvers, target, solver_id, side| {
+                solver_of(solvers, solver_id, OP_MATE)?
+                    .find_index_of_rail_x_side_edgeuse(target, side)
+            },
+        )
+    }
+
+    /// [`FilletBrep::calc_mate_geom`] at mate nesting `depth` against the caller's
+    /// solver store `solvers`: `main` computes the main vertex (`CalcCornerVertGeom`
+    /// at `depth + 1`) and `rail_x_side` is the geometry solver's
+    /// `FindIndexOfRailXSideEdgeuse`.
+    ///
+    /// # Errors
+    ///
+    /// As [`FilletBrep::calc_mate_geom`], with `main`'s and `rail_x_side`'s errors.
+    #[allow(clippy::too_many_arguments)]
+    pub fn calc_mate_geom_with<S: ?Sized>(
+        &mut self,
+        k: &Kernel,
+        v: VertexId,
+        target: &mut Brep,
+        solvers: &mut S,
+        depth: usize,
+        main: impl FnOnce(&mut Self, &mut Brep, &mut S, VertexId) -> Result<()>,
+        rail_x_side: impl FnOnce(&mut S, &Brep, FilletSolverId, EdgeuseId) -> Result<usize>,
+    ) -> Result<()> {
         if depth >= MAX_MATE_DEPTH {
             return Err(invalid(
                 OP_MATE,
@@ -364,7 +399,7 @@ impl FilletBrep {
             .mate(0)
             .ok_or_else(|| SolidError::null_pointer(OP_MATE))?;
         if !self.fillet_vertex(main_fv)?.is_processed() {
-            match self.corner_vert_geom(k, main_fv, corners, target, solvers, depth + 1) {
+            match main(self, target, solvers, main_fv) {
                 Err(e) if e.is_unported() || is_depth_error(&e) => return Err(e),
                 _ => {} // status ignored
             }
@@ -400,8 +435,7 @@ impl FilletBrep {
             .geom(fillet_geom)?
             .fillet_solver()
             .ok_or_else(|| SolidError::null_pointer(OP_MATE))?;
-        let fil_solver = solver_of(solvers, solver_id, OP_MATE)?;
-        let rail_index = fil_solver.find_index_of_rail_x_side_edgeuse(target, other_side_eu)?;
+        let rail_index = rail_x_side(solvers, target, solver_id, other_side_eu)?;
         let rail_index = 1 - rail_index; // We're on the opposite rail.
 
         let main_vtx_use = self
