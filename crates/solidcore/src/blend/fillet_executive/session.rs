@@ -14,7 +14,7 @@
 //!
 //! Deviations: the retained handler's algorithm type is copied into every loaded
 //! solver (on load and on each set), standing in for the solvers' live
-//! `m_pExecutive->m_pSelfIntersectionHandler` read. One borrowed target and typed owned slots replace native pointers.
+//! `m_pExecutive->m_pSelfIntersectionHandler` read. One borrowed target (and, for a surface/surface fillet, an optional second base B-rep: `FilletSession::with_second_base`) and typed owned slots replace native pointers.
 //! Slots are never reused. Target curves cannot be replaced while its loading caches
 //! are retained: the session exposes only shared access to its borrowed target.
 //! Loading creates and retains default full-tree curve caches: only their knot
@@ -228,10 +228,22 @@ impl SolverObject {
     }
 }
 
+/// A surface/surface fillet's second base B-rep when its face is not in the target
+/// (upstream `pBaseFace->GetBrep()` of the second rail), with its issued identity and
+/// the intersector its rails merge through (see `session::surface`).
+#[derive(Debug)]
+struct SecondBase<'target> {
+    body: &'target mut Brep,
+    serial: u64,
+    intersector:
+        Option<crate::boolean::topology_intersector::p1::TopologyIntersector<FilletObject>>,
+}
+
 /// Owned objects and the target borrowed by the executive.
 #[derive(Debug)]
 struct SessionObjects<'target> {
     target: &'target mut Brep,
+    second_base: Option<SecondBase<'target>>,
     pseudo: FilletBrep,
     intermediate: Option<Brep>,
     insertion_curves: insertion::curves::InsertionCurves,
@@ -363,7 +375,10 @@ impl SessionObjects<'_> {
             // SmSurfaceSurfaceFS::CalcFilletGeom
             SolverObject::SurfaceSurface(solver) => solver.calc_fillet_geom_with_context(
                 k,
-                self.target,
+                &mut crate::blend::fillet_standard_solver::surface_surface::BaseBodies {
+                    target: self.target,
+                    second: self.second_base.as_mut().map(|base| &mut *base.body),
+                },
                 &mut self.pseudo,
                 &mut surface::SurfaceSurfaceSession {
                     corners: &self.corners,
@@ -749,7 +764,30 @@ impl<'target> FilletSession<'target> {
     /// # Errors
     /// Context B-rep construction, attribute allocation or identity exhaustion.
     pub fn new(k: &mut Kernel, target: &'target mut Brep) -> Result<Self> {
+        Self::with_second_base(k, target, None)
+    }
+
+    /// [`Self::new`] for a surface/surface fillet whose second base face lies in
+    /// `second_base`, a B-rep other than `target` (upstream the two original surfaces
+    /// may come from different B-reps; each rail merges into its base face's B-rep).
+    /// Only [`Self::surface_surface_fillet`] reads the second base B-rep.
+    ///
+    /// # Errors
+    /// Those of [`Self::new`].
+    pub fn with_second_base(
+        k: &mut Kernel,
+        target: &'target mut Brep,
+        second_base: Option<&'target mut Brep>,
+    ) -> Result<Self> {
         let target_serial = crate::topology::brep::p3::notify_serial(&mut k.context, target)?;
+        let second_base = match second_base {
+            Some(body) => Some(SecondBase {
+                serial: crate::topology::brep::p3::notify_serial(&mut k.context, body)?,
+                body,
+                intersector: None,
+            }),
+            None => None,
+        };
         let mut pseudo = FilletBrep::new();
         // SmFilletBrep derives from SmBrep: use the actual context constructor,
         // including its context tolerances and construction notifications.
@@ -775,6 +813,7 @@ impl<'target> FilletSession<'target> {
             executive,
             objects: SessionObjects {
                 target,
+                second_base,
                 pseudo,
                 intermediate: None,
                 insertion_curves: insertion::curves::InsertionCurves::default(),

@@ -218,6 +218,13 @@ extern "C" {
         cap: i64,
         len: *mut i64,
     ) -> i32;
+    fn sc_blend_fillet_executive_p3_surface_surface_bodies(
+        input: *const f64,
+        n: i64,
+        out: *mut f64,
+        cap: i64,
+        len: *mut i64,
+    ) -> i32;
 }
 
 /// Number of source parameters on the [`real_source`] wire.
@@ -376,6 +383,52 @@ pub fn surface_surface(input: &[f64]) -> Result<Vec<f64>, FfiError> {
     validate_surface_surface(input)?;
     call_with_buffer(65536, |out, len| unsafe {
         sc_blend_fillet_executive_p3_surface_surface(
+            input.as_ptr(),
+            input.len() as i64,
+            out.as_mut_ptr(),
+            out.len() as i64,
+            len,
+        )
+    })
+}
+
+/// Validate the owned-surface surface-surface wire: two surfaces' four corner points
+/// (24 values), owner1 (0 free, 1 own sheet body), owner2 (0 free, 1 own sheet body,
+/// 2 a second face of surface 1's body, only with owner1 1, 3 surface 1 itself),
+/// radius1, radius2, tolerance, cross-section (native ULONG), mirror and complement
+/// (0/1).
+pub fn validate_surface_surface_bodies(input: &[f64]) -> Result<(), FfiError> {
+    if input.len() != 32 || input.iter().any(|v| !v.is_finite()) {
+        return Err(FfiError::InvalidArgument(
+            "invalid surface-surface bodies wire".into(),
+        ));
+    }
+    let owner1 = input.get(24).copied().unwrap_or(-1.0);
+    let owner2 = input.get(25).copied().unwrap_or(-1.0);
+    if (owner1 != 0.0 && owner1 != 1.0)
+        || ![0.0, 1.0, 2.0, 3.0].contains(&owner2)
+        || (owner2 == 2.0 && owner1 != 1.0)
+    {
+        return Err(FfiError::InvalidArgument("invalid surface owner".into()));
+    }
+    let code = input.get(29).copied().unwrap_or(-1.0);
+    if code < 0.0 || code.fract() != 0.0 || code >= 18446744073709551616.0 {
+        return Err(FfiError::InvalidArgument("invalid native ULONG".into()));
+    }
+    if input.get(30..32).is_none_or(|f| f.iter().any(|v| *v != 0.0 && *v != 1.0)) {
+        return Err(FfiError::InvalidArgument("invalid flag".into()));
+    }
+    Ok(())
+}
+
+/// `SmApiSurfaceSurfaceFillet` where either surface may already belong to a face of a
+/// sheet body (see [`validate_surface_surface_bodies`]): `[status, has_result]`, the
+/// result B-rep's counts, topology and geometry sections when present, the sheet body
+/// count, then each sheet body's counts, topology and geometry after the call.
+pub fn surface_surface_bodies(input: &[f64]) -> Result<Vec<f64>, FfiError> {
+    validate_surface_surface_bodies(input)?;
+    call_with_buffer(65536, |out, len| unsafe {
+        sc_blend_fillet_executive_p3_surface_surface_bodies(
             input.as_ptr(),
             input.len() as i64,
             out.as_mut_ptr(),
