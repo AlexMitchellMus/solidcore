@@ -108,7 +108,7 @@ impl FilletSolverOps for GeometrySolver<'_> {
     fn load_initial_values(
         &mut self,
         k: &Kernel,
-        brep: Option<&Brep>,
+        brep: Option<&mut Brep>,
         do_surf2_calcs: bool,
         rail_index: usize,
         surface1: &mut OffsetSurface,
@@ -306,6 +306,59 @@ pub(crate) fn slot_rail_edgeuse_intersect<S: FilletSolverOps>(
         *selected = std::mem::replace(slot, kept.take()).map(|slot| slot.surface);
     }
     result
+}
+
+/// Run `f` with `geometry` of `pseudo` as `ops`'s geometry for the surfaces
+/// (`SetFilletGeomForSurfaces(pFG)` around a call): every `GetSurface(rail)` /
+/// `SetSurface(rail, ..)` of the call then reads or writes the geometry's offset
+/// surface. The geometry's offset surfaces are moved into the solver's slots for the
+/// call and back afterwards (also on error), with the solver's own surfaces and
+/// geometry for the surfaces restored. A rail the geometry has no offset surface for
+/// has none during the call (upstream's `GetOffsetSurface` falls back to
+/// `GetSurface`, which asks the same geometry again without end: UB-204).
+///
+/// # Errors
+/// [`SolidError::NotFound`] for a geometry not in `pseudo`; those of `f`.
+pub(crate) fn with_geometry_surfaces<T>(
+    ops: &mut dyn FilletSolverOps,
+    pseudo: &mut crate::blend::fillet_geom::p1::FilletBrep,
+    geometry: crate::blend::fillet_geom::p1::FilletGeomId,
+    f: impl FnOnce(
+        &mut dyn FilletSolverOps,
+        &mut crate::blend::fillet_geom::p1::FilletBrep,
+    ) -> Result<T>,
+) -> Result<T> {
+    let mut selected = std::mem::take(&mut pseudo.geom_mut(geometry)?.off_surfs);
+    let saved_geom = ops.solver().fillet_geom_for_surfaces();
+    let mut own: [Option<OffsetSurfaceSlot>; 2] = [None, None];
+    for ((slot, kept), (chosen, key)) in ops
+        .solver_mut()
+        .surfaces
+        .iter_mut()
+        .zip(own.iter_mut())
+        .zip(selected.iter_mut().zip(SELECTED_KEYS))
+    {
+        let chosen = chosen
+            .take()
+            .map(|surface| OffsetSurfaceSlot { key, surface });
+        *kept = std::mem::replace(slot, chosen);
+    }
+    ops.solver_mut().set_fillet_geom_for_surfaces(None);
+    let result = f(&mut *ops, &mut *pseudo);
+    ops.solver_mut().set_fillet_geom_for_surfaces(saved_geom);
+    for ((slot, kept), chosen) in ops
+        .solver_mut()
+        .surfaces
+        .iter_mut()
+        .zip(own.iter_mut())
+        .zip(selected.iter_mut())
+    {
+        *chosen = std::mem::replace(slot, kept.take()).map(|slot| slot.surface);
+    }
+    let back = pseudo.geom_mut(geometry).map(|g| g.off_surfs = selected);
+    let value = result?;
+    back?;
+    Ok(value)
 }
 
 #[cfg(test)]

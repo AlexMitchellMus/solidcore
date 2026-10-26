@@ -195,6 +195,15 @@ impl ExecutiveAccess<Handle> for Access {
     ) -> SolidResult<()> {
         executive.create_fillet_corners(k, |_, _, _, _| missing(), error)
     }
+    /// `SmFilletExecutive::DoPiecewiseMerge`: this empty-B-rep fixture never builds a
+    /// fillet B-rep, so there is nothing to merge piecewise.
+    fn piecewise_merge(
+        &mut self,
+        _: &mut Kernel,
+        _: &mut FilletExecutive<Handle>,
+    ) -> SolidResult<()> {
+        missing()
+    }
     // This empty-B-rep fixture has no face handles or intersector world. These
     // required adapters reject nonexistent objects; they are not UNPORTED calls
     // to the now-ported face p3, topology intersector p2, stitch p2, fillet geom p4
@@ -696,6 +705,13 @@ impl ExecutiveAccess<Handle> for Access {
         missing()
     }
     fn set_surface_generator(&mut self, _: Handle, _: Handle) -> SolidResult<()> {
+        missing()
+    }
+    fn new_fillet_solver(
+        &mut self,
+        _: &mut Kernel,
+        _: &solidcore::blend::fillet_executive::p2::SolverSpec<'_, Handle>,
+    ) -> SolidResult<Handle> {
         missing()
     }
 }

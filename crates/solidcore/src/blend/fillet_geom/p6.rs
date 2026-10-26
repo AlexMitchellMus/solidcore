@@ -1397,19 +1397,39 @@ impl FilletBrep {
         other: FilletGeomId,
         solvers: &[FilletSolver],
     ) -> Result<()> {
+        // check state
+        if self.geom(g)?.fillet_solver() != self.geom(other)?.fillet_solver() {
+            return Err(SolidError::sm_err(OP_COPY));
+        }
+        let solver_id = self
+            .geom(g)?
+            .fillet_solver()
+            .ok_or_else(|| invalid(OP_COPY, "fillet geometry without solver"))?;
+        let solver = solver_of(solvers, solver_id, OP_COPY)?;
+        self.copy_geom_with_solver(k, g, other, solver)
+    }
+
+    /// [`FilletBrep::copy_geom`] with the geometries' (common) solver `solver`.
+    ///
+    /// # Errors
+    /// As [`FilletBrep::copy_geom`].
+    pub fn copy_geom_with_solver(
+        &mut self,
+        k: &Kernel,
+        g: FilletGeomId,
+        other: FilletGeomId,
+        solver: &FilletSolver,
+    ) -> Result<()> {
         let nul = || SolidError::null_pointer(OP_COPY);
 
         // check state
         if self.geom(g)?.fillet_solver() != self.geom(other)?.fillet_solver() {
             return Err(SolidError::sm_err(OP_COPY));
         }
-
         // locals: m_pFilletSolver->m_crContext
-        let solver_id = self
-            .geom(g)?
-            .fillet_solver()
-            .ok_or_else(|| invalid(OP_COPY, "fillet geometry without solver"))?;
-        let solver = solver_of(solvers, solver_id, OP_COPY)?;
+        if self.geom(g)?.fillet_solver().is_none() {
+            return Err(invalid(OP_COPY, "fillet geometry without solver"));
+        }
 
         // copy FilletSurface and CenterLineCurve
         let to_copy = self.geom(other)?;

@@ -123,9 +123,10 @@ impl FilletSolver {
         &self,
         b: &Brep,
         this_corner: Option<FilletCornerId>,
+        corners: &dyn crate::blend::fillet_geom::p3::SplitCorners,
     ) -> Result<Option<FilletCornerId>> {
-        let corner0 = self.fillet_corner(b, 0)?;
-        let corner1 = self.fillet_corner(b, 1)?;
+        let corner0 = self.fillet_corner(b, 0, corners)?;
+        let corner1 = self.fillet_corner(b, 1, corners)?;
         if this_corner == corner0 {
             return Ok(corner1);
         }
@@ -155,7 +156,7 @@ impl FilletSolver {
 pub fn find_fillet_tsect_pnt(
     ops: &mut dyn FilletSolverOps,
     k: &Kernel,
-    brep: Option<&Brep>,
+    brep: Option<&mut Brep>,
     surf1: &Surface,
     surf2: &Surface,
     pnt_to_drop: Point3,
@@ -306,7 +307,7 @@ impl FilletSolver {
     pub fn step_solve(
         ops: &mut dyn FilletSolverOps,
         k: &Kernel,
-        brep: Option<&Brep>,
+        mut brep: Option<&mut Brep>,
         current: &TsectPnt,
         step: &mut f64,
         uv_domain1: &Extent2d,
@@ -549,7 +550,7 @@ impl FilletSolver {
                         // blend.fillet_solver_p2)
                         let found_solution = ops.point_on_plane_solve(
                             k,
-                            brep,
+                            brep.as_deref_mut(),
                             plane_orig,
                             plane_normal,
                             &uv_domains[0],
@@ -1790,7 +1791,7 @@ mod tests {
         fn load_initial_values(
             &mut self,
             _k: &Kernel,
-            _brep: Option<&Brep>,
+            _brep: Option<&mut Brep>,
             _do2: bool,
             _rail: usize,
             _s1: &mut OffsetSurface,
@@ -2039,13 +2040,21 @@ mod tests {
     fn other_fillet_corner_needs_the_executive() {
         // no executive: GetFilletExecutive() is dereferenced upstream
         let fs = FilletSolver::new(1e-6, 0.1, 0.01);
-        let r = fs.other_fillet_corner(&Brep::new(), None);
+        let r = fs.other_fillet_corner(
+            &Brep::new(),
+            None,
+            &crate::blend::fillet_geom::p3::NoCorners,
+        );
         assert!(matches!(r, Err(SolidError::InvalidInput { .. })), "{r:?}");
-        // with one, the corner lookup is blend.fillet_executive_p1's
+        // with one, the executive's corner of a missing vertex is NULL
         let mut fs = fs;
         fs.executive = Some(crate::blend::fillet_solver::p1::FilletExecutiveRef);
-        let r = fs.other_fillet_corner(&Brep::new(), None);
-        assert!(r.is_err_and(|e| e.is_unported()));
+        let r = fs.other_fillet_corner(
+            &Brep::new(),
+            None,
+            &crate::blend::fillet_geom::p3::NoCorners,
+        );
+        assert_eq!(r, Ok(None));
     }
 
     /// Resolves every handle to the one rail curve.

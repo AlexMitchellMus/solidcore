@@ -743,19 +743,15 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         check_all_edges: bool,
     ) -> Result<()>;
 
-    /// `SmFilletExecutive::CreateFilletCorners`; waiting for `blend.fillet_executive_p1`.
+    /// `SmFilletExecutive::CreateFilletCorners`: the implementor runs
+    /// [`FilletExecutive::create_fillet_corners`] with its `SmFilletCorner::Create`
+    /// factory (the live session creates its corners itself).
     fn create_corners(
         &mut self,
-        _k: &mut Kernel,
-        _executive: &mut FilletExecutive<O>,
-        _error: Option<&mut ErrorInfo<O>>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::CreateFilletCorners
-        Err(SolidError::unported(
-            "SmFilletExecutive::CreateFilletCorners",
-            "blend.fillet_executive_p1",
-        ))
-    }
+        k: &mut Kernel,
+        executive: &mut FilletExecutive<O>,
+        error: Option<&mut ErrorInfo<O>>,
+    ) -> Result<()>;
 
     /// `SmFilletExecutive::ProcessSmoothEdgeSequences` (`blend.fillet_executive_p2`).
     fn process_smooth_edge_sequences(
@@ -855,10 +851,8 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// Virtual `CalcFilletGeom` dispatch. The base is
     /// `blend::fillet_solver::p4::FilletSolver::calc_fillet_geom` (it takes the solver
     /// as its `FilletSolverOps`, the target and pseudo B-reps and the solver table);
-    /// the `SurfaceSurfaceFS` override belongs to `blend.fillet_standard_solver_p2`.
-    /// Adapters must dispatch by concrete solver type and return that owner's
-    /// `Unported` while it is missing.
-    // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::CalcFilletGeom -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
+    /// the `SmSurfaceSurfaceFS` override is `blend.fillet_standard_solver_p2`'s.
+    /// Adapters dispatch by concrete solver type.
     fn calc_fillet_geom(
         &mut self,
         k: &mut Kernel,
@@ -930,18 +924,10 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         allow_spine_edges: bool,
     ) -> Result<StitchAttempt>;
 
-    /// `SmFilletExecutive::DoPiecewiseMerge`; waiting for `blend.fillet_executive_p1`.
-    fn piecewise_merge(
-        &mut self,
-        _k: &mut Kernel,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::DoPiecewiseMerge
-        Err(SolidError::unported(
-            "SmFilletExecutive::DoPiecewiseMerge",
-            "blend.fillet_executive_p1",
-        ))
-    }
+    /// `SmFilletExecutive::DoPiecewiseMerge` on the implementor's bodies (the live
+    /// session's port is `FilletSession`'s piecewise merge).
+    fn piecewise_merge(&mut self, k: &mut Kernel, executive: &mut FilletExecutive<O>)
+        -> Result<()>;
 
     /// `SmFilletExecutive::SetFilletBrepEdgeMap` (`blend.fillet_executive_p2`).
     fn set_fillet_brep_edge_map(
@@ -1312,48 +1298,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     ) -> Result<O>;
 
     /// The fillet solver constructors `SetFilletParameters` and `SurfaceSurfaceFillet`
-    /// call, dispatched on the spec: `SmConstantRadiusFS` through
-    /// [`ExecutiveAccess::new_constant_radius_solver`]; `SmConstantDistanceFS`,
-    /// `SmVariableRadiusFS` and `SmSurfaceSurfaceFS` are ported
-    /// (`blend.fillet_standard_solver_p2`) but need a solver arena in the adapter
-    /// that no adapter has yet (`plan/findings.md`, executive adapter stubs).
+    /// call (`new SmConstantRadiusFS` / `SmConstantDistanceFS` / `SmVariableRadiusFS` /
+    /// `SmSurfaceSurfaceFS`), dispatched on the spec, adding the new solver to the
+    /// adapter's solver store and returning its handle.
+    ///
+    /// # Errors
+    /// The constructor's.
     fn new_fillet_solver(
         &mut self,
         k: &mut Kernel,
         spec: &super::p2::SolverSpec<'_, O>,
-    ) -> Result<O> {
-        match *spec {
-            super::p2::SolverSpec::ConstantRadius {
-                approx_tol,
-                ang_tol_rad,
-                tan_tol_rad,
-                radius,
-                edgeuse,
-            } => self.new_constant_radius_solver(
-                k,
-                approx_tol,
-                ang_tol_rad,
-                tan_tol_rad,
-                radius,
-                edgeuse,
-            ),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantDistanceFS::SmConstantDistanceFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
-            super::p2::SolverSpec::ConstantDistance { .. } => Err(SolidError::unported(
-                "SmConstantDistanceFS::SmConstantDistanceFS",
-                "blend.fillet_standard_solver_p2",
-            )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmVariableRadiusFS::SmVariableRadiusFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
-            super::p2::SolverSpec::VariableRadius { .. } => Err(SolidError::unported(
-                "SmVariableRadiusFS::SmVariableRadiusFS",
-                "blend.fillet_standard_solver_p2",
-            )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::SmSurfaceSurfaceFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
-            super::p2::SolverSpec::SurfaceSurface { .. } => Err(SolidError::unported(
-                "SmSurfaceSurfaceFS::SmSurfaceSurfaceFS",
-                "blend.fillet_standard_solver_p2",
-            )),
-        }
-    }
+    ) -> Result<O>;
 
     /// `SmFilletSolver::SetFilletSurfaceGenerator(pFSG)`: delegate to
     /// `FilletSolver::set_fillet_surface_generator` (`blend.fillet_solver_p1`) with

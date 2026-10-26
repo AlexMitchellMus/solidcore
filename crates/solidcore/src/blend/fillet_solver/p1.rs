@@ -27,7 +27,7 @@
 //! | [`compute_uv_vectors`]                                 | `SmFilletSolver::ComputeUVVectors`                    |
 //! | [`FilletSolver::split_fillet_geom_at_side_edge`]       | `SplitFilletGeomAtSideEdge`                           |
 //! | [`FilletSolver::split_fillet_geom`], [`FilletSolver::split_fillet_geom_scoped`], [`FilletSolver::split_fillet_geom_with_target`] | `SplitFilletGeom`                                     |
-//! | [`FilletSolver::trim_rails`]                           | `TrimRails`                                           |
+//! | [`FilletSolver::trim_rails_with`]                      | `TrimRails`                                           |
 //! | [`FilletSolver::TYPE`], [`FilletSolver::type_string`], [`FilletSolver::is_kind_of`] | `GetType`, `GetTypeString` (`SM_COMMON`), `IsKindOf` |
 //! | [`FilletSolverOps`] (trait, base methods)              | the virtuals `GetJacobianSize`, `SetupOffsetValues`, `CanMakeAnalytic`, `OffsetRadiiCanChange`, `LoadJacobian`, `LoadInitialValues`; `GetSolverType`, `PointOnPlaneSolve` and the `SmConstantDistanceFS::GetDistance` read of `SmFindClippedRadiusEFO` (added by `blend.fillet_solver_p3`) |
 //! | [`FilStatus`] (re-export of `blend.fillet_geom_p1`'s), [`FilletSolverType`], [`FilletSurfaceGeneratorType`] | `SmFilStatus`, `SmFilletSolverType`, `SmFilletSurfaceGeneratorType` |
@@ -118,6 +118,7 @@ use crate::blend::fillet_geom::p1::{
     BoundaryTrimmingType, FilletBrep, FilletGeom, FilletGeomId, FilletGeomType, FilletSolverId,
     FilletVertexType,
 };
+use crate::blend::fillet_geom::p3::SplitCorners;
 use crate::blend::fillet_intersector::HandlingAlgorithmType;
 use crate::blend::fillet_standard_solver::p1::{
     BlendCurveCrossSectionFsg, CircularCrossSectionFsg, LinearCrossSectionFsg,
@@ -984,16 +985,10 @@ impl FilletSolver {
     /// # Errors
     ///
     /// [`SolidError::InvalidInput`] where upstream dereferences `NULL` (missing edge
-    /// uses, vertex uses or executive); [`SolidError::Unported`] for the corner
-    /// lookup (`SmFilletExecutive::GetFilletCornerOfVertex`).
-    pub fn set_extension_flags(&mut self, b: &Brep) -> Result<()> {
-        self.set_extension_flags_with_lookup(b, |_| {
-            // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetFilletCornerOfVertex
-            Err(SolidError::unported(
-                "SmFilletExecutive::GetFilletCornerOfVertex",
-                "blend.fillet_executive_p1",
-            ))
-        })
+    /// uses, vertex uses or executive); those of `corners` (the executive's
+    /// `GetFilletCornerOfVertex`, dereferenced).
+    pub fn set_extension_flags(&mut self, b: &Brep, corners: &dyn ExtensionCorners) -> Result<()> {
+        self.set_extension_flags_with_lookup(b, |vertex| corners.corner_of(vertex))
     }
 
     /// Set extension flags using the actual corners resolved by the executive.
@@ -1187,6 +1182,7 @@ impl FilletSolver {
         fillet_geom: FilletGeomId,
         split_vertexuse: VertexuseId,
         which_end: usize,
+        corners: &mut dyn SplitCorners,
     ) -> Result<FilletGeomId> {
         const OP_S: &str = "blend::fillet_solver::p1::split_fillet_geom_at_side_edge";
         let nul = || SolidError::null_pointer(OP_S);
@@ -1287,8 +1283,15 @@ impl FilletSolver {
         // Do the split (default eNewGeomType = SM_FG_DEFAULT; the geometry's solver is
         // this one).
         let solver_id = pseudo.geom(fillet_geom)?.fillet_solver().ok_or_else(nul)?;
-        let new_fillet_geom =
-            pseudo.topology_split(k, fillet_geom, FilletGeomType::Default, solver_id, self, b)?;
+        let new_fillet_geom = pseudo.topology_split(
+            k,
+            fillet_geom,
+            FilletGeomType::Default,
+            solver_id,
+            self,
+            b,
+            corners,
+        )?;
 
         // The new fillet geom comes out as the 'high end'. Update offset surfaces,
         // orig face, and type in the two FG's. Copy offset surface from non-split side
@@ -1523,6 +1526,35 @@ impl FilletSolver {
         )
     }
 
+    /// `new SmFilletGeom(pFilletGeom)` (the copy constructor) for this solver's
+    /// geometry `other` of `pseudo`: a geometry of the same solver without offset
+    /// surfaces, two new rail edges (`MakeRailEdge`), `Copy(pFilletGeom)` (both
+    /// statuses ignored, `SE`), then `other`'s type. The new geometry's id.
+    ///
+    /// # Errors
+    /// [`SolidError::NotFound`] for `other` not in `pseudo`; [`SolidError::Unported`]
+    /// from the rail edges or the copy.
+    fn copy_constructed_geom(
+        &self,
+        k: &Kernel,
+        pseudo: &mut FilletBrep,
+        other: FilletGeomId,
+    ) -> Result<FilletGeomId> {
+        let (solver, geom_type) = {
+            let o = pseudo.geom(other)?;
+            (o.fillet_solver(), o.fillet_geom_type())
+        };
+        let mut geom = FilletGeom::new(k, None, geom_type)?;
+        geom.solver = solver;
+        let copy = pseudo.add_geom(geom);
+        for i in 0..2 {
+            ignore_status(pseudo.make_rail_edge(k, copy, i).map(|_| ()))?;
+        }
+        ignore_status(pseudo.copy_geom_with_solver(k, copy, other, self))?;
+        pseudo.geom_mut(copy)?.set_fillet_geom_type(geom_type);
+        Ok(copy)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn split_fillet_geom_in(
         &mut self,
@@ -1551,12 +1583,7 @@ impl FilletSolver {
         for ii in 0..n {
             // Create a new Fillet Geometry object by copying old one.
             let new_fillet_geom = if ii + 1 < n {
-                // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::SmFilletGeom (justified: findings.md "blend.fillet_geom_p5: solver and corner callers")
-                let copy: FilletGeomId = unported_on(
-                    fillet_geom,
-                    "SmFilletGeom::SmFilletGeom",
-                    "blend.fillet_geom_p5",
-                )?;
+                let copy = self.copy_constructed_geom(k, pseudo, fillet_geom)?;
                 self.fillet_geoms.push(copy);
                 copy
             } else {
@@ -1656,23 +1683,7 @@ impl FilletSolver {
     }
 
     /// `TrimRails`: trims every fillet geometry's rail curves to its processed fillet
-    /// vertices.
-    ///
-    /// # Errors
-    ///
-    /// [`SolidError::Unported`] for any geometry (`SmFilletGeom::TrimRailCurves`).
-    pub fn trim_rails(&mut self) -> Result<()> {
-        self.trim_rails_with(|fillet_geom, _| {
-            // UNPORTED(blend.fillet_geom_p5): SmFilletGeom::TrimRailCurves (justified: findings.md "blend.fillet_geom_p5: solver and corner callers")
-            unported_on(
-                fillet_geom,
-                "SmFilletGeom::TrimRailCurves",
-                "blend.fillet_geom_p5",
-            )
-        })
-    }
-
-    /// Trim retained geometries in native order using the actual borrowed solver.
+    /// vertices, in native order, using the actual borrowed solver.
     ///
     /// # Errors
     /// The first trimming error, retaining mutations of earlier geometries.
@@ -1730,6 +1741,30 @@ pub trait AsFilletSolverOps {
 impl<T: FilletSolverOps> AsFilletSolverOps for T {
     fn as_solver_ops(&mut self) -> &mut dyn FilletSolverOps {
         self
+    }
+}
+
+/// The executive's `GetFilletCornerOfVertex`, dereferenced, as
+/// `SmFilletSolver::SetExtensionFlags` reads it.
+pub trait ExtensionCorners {
+    /// The corner of target vertex `vertex`.
+    ///
+    /// # Errors
+    /// `SM_ERR_NULL_POINTER` for a vertex without corner (upstream dereferences the
+    /// `NULL` corner).
+    fn corner_of(&self, vertex: Option<VertexId>) -> Result<&FilletCorner>;
+}
+
+/// A caller without an executive's corners (a standalone entry point): every vertex's
+/// corner is `NULL`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoExtensionCorners;
+
+impl ExtensionCorners for NoExtensionCorners {
+    fn corner_of(&self, _vertex: Option<VertexId>) -> Result<&FilletCorner> {
+        Err(SolidError::null_pointer(
+            "blend::fillet_solver::p1::set_extension_flags",
+        ))
     }
 }
 
@@ -1864,7 +1899,7 @@ pub trait FilletSolverOps: AsFilletSolverOps {
     fn load_initial_values(
         &mut self,
         _k: &Kernel,
-        _brep: Option<&Brep>,
+        _brep: Option<&mut Brep>,
         _do_surf2_calcs: bool,
         _rail_index: usize,
         _surface1: &mut OffsetSurface,
@@ -1877,13 +1912,19 @@ pub trait FilletSolverOps: AsFilletSolverOps {
     }
 
     /// `SetExtensionFlags` (virtual): the base version
-    /// [`FilletSolver::set_extension_flags`].
+    /// [`FilletSolver::set_extension_flags`] on `b` with the executive's corners
+    /// `corners` (`SmVariableRadiusFS` also extends its edge curve, with `k`).
     ///
     /// # Errors
     ///
     /// Those of [`FilletSolver::set_extension_flags`].
-    fn set_extension_flags(&mut self, b: &Brep) -> Result<()> {
-        self.solver_mut().set_extension_flags(b)
+    fn set_extension_flags(
+        &mut self,
+        _k: &Kernel,
+        b: &Brep,
+        corners: &dyn ExtensionCorners,
+    ) -> Result<()> {
+        self.solver_mut().set_extension_flags(b, corners)
     }
 
     /// `GetType` (virtual): `SmFilletSolver_TYPE` for the base (each derived solver's
@@ -1932,13 +1973,13 @@ pub trait FilletSolverOps: AsFilletSolverOps {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] by default (`SmConstantDistanceFS`, unit
-    /// `blend.fillet_standard_solver_p1`).
+    /// [`SolidError::InvalidInput`] by default (a solver of another class, which
+    /// upstream would cast to `SmConstantDistanceFS`).
     fn constant_distance(&self) -> Result<f64> {
-        // UNPORTED(blend.fillet_standard_solver_p1): SmConstantDistanceFS::GetDistance (justified: findings.md "blend.fillet_solver_p3 (`SmFilletSolver.cpp` part 3")
-        Err(SolidError::unported(
-            "SmConstantDistanceFS::GetDistance",
-            "blend.fillet_standard_solver_p1",
+        // the cast is only made for a solver whose GetSolverType() is
+        // SM_FST_CONST_DIST, which only SmConstantDistanceFS (its override) reports
+        Err(invalid(
+            "(SmConstantDistanceFS*) cast of a solver of another class (undefined upstream)",
         ))
     }
 
@@ -1961,7 +2002,7 @@ pub trait FilletSolverOps: AsFilletSolverOps {
     fn point_on_plane_solve(
         &mut self,
         k: &Kernel,
-        brep: Option<&Brep>,
+        brep: Option<&mut Brep>,
         plane_origin: Point3,
         plane_normal: Vec3,
         uv_domain1: &Extent2d,

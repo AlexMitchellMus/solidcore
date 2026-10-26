@@ -41,7 +41,7 @@
 //!   the calculators read; the lookup also holds the executive's extended surfaces
 //!   (`GetExtendedSurface`). The corner's error log (`RecordFilletError`, unit
 //!   `blend.fillet_corner_p2`) records into the caller's [`ErrorInfo`] when supplied
-//!   (`UNPORTED(blend.fillet_executive_p1)` when omitted). A `NULL` corner that upstream
+//!   (a standalone caller without one notes into a scratch record). A `NULL` corner that upstream
 //!   dereferences (`CalcFilletIntSideFace`, `MakeRailEdgeuse`) is
 //!   `SM_ERR_NULL_POINTER`.
 //! - **Topology links.** `SmOwningTopology::PreInsert` / `PostInsert` of a vertex use
@@ -82,9 +82,10 @@
 //!   and `SmFilletGeom::Copy` are part 6's (`blend.fillet_geom_p6`). Each stub replaces only
 //!   its call.
 //! - **User pointers.** `MakeRailEdgeuse` stores the two faces' surface pointers in the
-//!   new vertex use's `SmTsectPnt::m_apUserPointer` (never read in SMLib; not modelled
-//!   by [`TsectPnt`](crate::intersect::surface_intersector::TsectPnt)); the faces are
-//!   still dereferenced (a missing face is `SM_ERR_NULL_POINTER`).
+//!   new vertex use's `SmTsectPnt::m_apUserPointer`
+//!   ([`TsectPnt::user_pointer`](crate::intersect::surface_intersector::p1::TsectPnt::user_pointer),
+//!   a shared copy of each face's surface; a face without surface stores `NULL`); a
+//!   missing face is `SM_ERR_NULL_POINTER`.
 //! - **Arguments.** Out-params become return values; `iDebugLevel` and debug drawing
 //!   are dropped. No recursion.
 
@@ -134,11 +135,6 @@ const OP_CLIFF: &str = "blend::fillet_geom::p5::FilletBrep::trim_cliff_rails";
 const OP_SPLIT: &str = "blend::fillet_geom::p5::FilletBrep::update_geom_split_face";
 
 // ---- helpers --------------------------------------------------------------------------
-
-/// A call into a unit that is not ported yet; `_args` are upstream's arguments.
-fn unported_on<A, T>(_args: A, upstream: &'static str, unit: &'static str) -> Result<T> {
-    Err(SolidError::unported(upstream, unit))
-}
 
 /// The global point solve options naming `curve` ([`CurveObjectHandle`]): the curve
 /// itself (upstream `this`, id `0`) and the analytic replacement its curve cache may make
@@ -338,14 +334,13 @@ fn corner_record_fillet_error(
     surface2: Option<ExecutiveErrorObject>,
     fv1: VertexId,
     fv2: VertexId,
-) -> Result<()> {
-    let Some(error_info) = error_info else {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::NoteFilletError (caller holds no ErrorInfo)
-        return unported_on(
-            (corner, surface1, surface2, fv1, fv2),
-            "SmFilletExecutive::NoteFilletError",
-            "blend.fillet_executive_p1",
-        );
+) {
+    // m_pExecutive->NoteFilletError: a caller without an executive record (a
+    // standalone entry point) notes into a scratch record it does not keep.
+    let mut scratch = ErrorInfo::default();
+    let error_info = match error_info {
+        Some(error_info) => error_info,
+        None => &mut scratch,
     };
     corner.record_fillet_error_in(
         error_info,
@@ -362,7 +357,6 @@ fn corner_record_fillet_error(
             "SmFilletEdge::CalcFilletIntSideFace(): failure to calculate intersection of fillet surface with side face",
         ),
     );
-    Ok(())
 }
 
 /// `SmFilletEdge::UpdateSplitFace(pOrigFace, pNewFace)` (unit `blend.fillet_geom_p2`,
@@ -378,17 +372,6 @@ fn fillet_edge_update_split_face(
     corners: &[FilletCorner],
 ) -> Result<()> {
     ignore_non_unported(fb.update_edge_split_face(k, e, orig_face, new_face, target, corners))
-}
-
-/// `pFilletSolver->m_pExecutive->GetPseudoBrep()` (unit `blend.fillet_executive_p1`):
-/// the executive's pseudo B-rep, which is the [`FilletBrep`] the geometries live in.
-fn executive_pseudo_brep(solver: &FilletSolver) -> Result<()> {
-    // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetPseudoBrep
-    unported_on(
-        solver.executive,
-        "SmFilletExecutive::GetPseudoBrep",
-        "blend.fillet_executive_p1",
-    )
 }
 
 /// Actual solver records and extended surfaces used by a corner edge calculation.
@@ -916,9 +899,8 @@ impl FilletBrep {
     /// `SM_ERR` when a vertex is not processed or the intersection fails (the edge gets
     /// `SM_FIL_SURF_INT_FAILURE`); `SM_ERR_NULL_POINTER` without uses, fillet
     /// geometry, solver, surface or corner; those of [`CornerLookup::corner`] (`corners` resolves the corner) and of
-    /// [`CornerLookup::extended_surface`]; [`SolidError::Unported`] when the caller
-    /// omits [`ErrorInfo`] (`blend.fillet_executive_p1`) or from the intersection
-    /// (`sm_SrfSrfIntersection`).
+    /// [`CornerLookup::extended_surface`]; [`SolidError::Unported`] from the
+    /// intersection (`sm_SrfSrfIntersection`).
     pub fn calc_fillet_int_side_face(
         &mut self,
         k: &Kernel,
@@ -1125,7 +1107,7 @@ impl FilletBrep {
                         surface2_id,
                         start_fv,
                         end_fv,
-                    )?;
+                    );
                     return Err(SolidError::sm_err(OP_SIDE));
                 }
             }
@@ -1317,8 +1299,7 @@ impl FilletBrep {
     /// # Errors
     ///
     /// `SM_ERR_NULL_POINTER` for a source without solver or a solver without executive
-    /// (upstream dereferences them); [`SolidError::Unported`] for the executive's
-    /// pseudo B-rep (`blend.fillet_executive_p1`).
+    /// (upstream dereferences them).
     pub fn copy_fillet_geom(
         &mut self,
         k: &Kernel,
@@ -1340,8 +1321,8 @@ impl FilletBrep {
         geom.solver = solver_id;
         let g = self.add_geom(geom);
 
-        // Create Rails
-        executive_pseudo_brep(solver)?;
+        // Create Rails: `m_pExecutive->GetPseudoBrep()` is the executive's pseudo B-rep,
+        // the `FilletBrep` the geometries live in (`self`).
         for i in 0..2 {
             ignore_non_unported(self.make_rail_edge(k, g, i))?;
         }
@@ -1505,14 +1486,29 @@ impl FilletBrep {
         let base_face = eu1::face(target, base_eu)?;
         self.fillet_edge_mut(rail_e)?.set_original_face(base_face);
 
-        // Set srf ptrs in FilletVertexuse's TsectPnt (m_apUserPointer, not modelled):
-        // both faces' surfaces are dereferenced
+        // Set srf ptrs in FilletVertexuse's TsectPnt.
         let face = base_face.ok_or_else(|| SolidError::null_pointer(OP_RAIL_EU))?;
         target.face(face)?;
+        if let Some(slot) = self
+            .fillet_vertexuse_mut(new_vu)?
+            .tsect_pnt_mut()
+            .user_pointer
+            .get_mut(rail_index)
+        {
+            *slot = user_surface(target, face)?;
+        }
         let base_eu1 = base_eu1.ok_or_else(|| SolidError::null_pointer(OP_RAIL_EU))?;
         let face1 =
             eu1::face(target, base_eu1)?.ok_or_else(|| SolidError::null_pointer(OP_RAIL_EU))?;
         target.face(face1)?;
+        if let Some(slot) = self
+            .fillet_vertexuse_mut(new_vu)?
+            .tsect_pnt_mut()
+            .user_pointer
+            .get_mut(1 - rail_index)
+        {
+            *slot = user_surface(target, face1)?;
+        }
 
         // set new Edgeuse->m_eOrientation
         if orient == OrientType::Unknown {
@@ -2410,6 +2406,19 @@ fn drop_vector(k: &Kernel, surface: &Surface, uv: Point2, direction: Vec3) -> Re
         .ok_or_else(|| SolidError::null_pointer(OP_END))
 }
 
+/// `(void*)pFace->GetSurface()` as an intersection point's user pointer (`None` for a
+/// face without surface).
+fn user_surface(
+    target: &Brep,
+    face: FaceId,
+) -> Result<Option<crate::intersect::surface_intersector::p1::UserSurface>> {
+    Ok(target
+        .face(face)?
+        .surface
+        .clone()
+        .map(|s| crate::intersect::surface_intersector::p1::UserSurface(std::sync::Arc::new(s))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2446,11 +2455,17 @@ mod tests {
         fb.fillet_vertex_mut(v[0])
             .unwrap()
             .set_fillet_corner(Some(FilletCornerId(0)));
-        // without a corner store
+        // without a corner store: an empty table
         let e = fb
             .calc_fillet_int_fillet(&k, v[0], CornerLookup::default(), &[], &Brep::new())
             .unwrap_err();
-        assert!(e.is_unported());
+        assert!(matches!(
+            e,
+            SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            }
+        ));
         // a corner in the table: no fillet/fillet edge at the vertex
         let corners = [FilletCorner::new(
             crate::blend::fillet_corner::p3::FilletCornerKind::TwoByTwo,

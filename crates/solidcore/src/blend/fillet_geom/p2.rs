@@ -274,7 +274,7 @@ impl RailRailSolvers<'_> {
     fn rail_rail_intersect(
         &mut self,
         k: &Kernel,
-        target: &Brep,
+        target: &mut Brep,
         i: usize,
         uv_guess: Point2,
         rail_index1: usize,
@@ -586,7 +586,7 @@ fn b_spline_base_mut(c: &mut Curve) -> Option<&mut BSplineCurve> {
 #[allow(clippy::too_many_arguments)]
 fn rail_rail_intersect(
     k: &Kernel,
-    target: &Brep,
+    target: &mut Brep,
     solvers: &mut [FilletSolver],
     solver_index1: usize,
     uv_guess: Point2,
@@ -2794,8 +2794,8 @@ mod tests {
             &mut solvers,
             &target
         )));
-        // with a corner: no rail geometries is SM_ERR; without a corner store the
-        // corner's filleted vertex is the executive's
+        // with a corner: no rail geometries is SM_ERR; without a corner store (an
+        // empty table) the corner id is not in the table
         fb.fillet_vertex_mut(v)
             .unwrap()
             .set_fillet_corner(Some(FilletCornerId(0)));
@@ -2803,14 +2803,21 @@ mod tests {
             fb.calc_rail_int_rail(&k, v, none, &mut solvers, &mut target),
             Err(SolidError::Upstream { code: 1001, .. })
         ));
-        assert!(fb
-            .calc_rail_int_edgeuse(&k, v, None, none, &mut solvers, &mut target)
-            .unwrap_err()
-            .is_unported());
-        // an id outside the table is invalid; a corner in it gets to the geometry check
+        assert!(matches!(
+            fb.calc_rail_int_edgeuse(&k, v, None, none, &mut solvers, &mut target),
+            Err(SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            })
+        ));
+        // an id outside the table is the NULL corner; a corner in it gets to the
+        // geometry check
         assert!(matches!(
             fb.calc_set_back_vert(&k, v, CornerLookup::table(&[]), &mut solvers, &target),
-            Err(SolidError::InvalidInput { .. })
+            Err(SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            })
         ));
         let corners = [FilletCorner::new(
             crate::blend::fillet_corner::p3::FilletCornerKind::OneByOne,

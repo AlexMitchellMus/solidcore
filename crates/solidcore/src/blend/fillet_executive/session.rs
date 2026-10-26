@@ -54,11 +54,12 @@ use super::p3::{
 use crate::blend::fillet_corner::p1::LawIntervalSolvers;
 use crate::blend::fillet_corner::p3::{
     CornerFilletBrep, CornerPatchEnv, CornerSolverStore, ExecutiveErrorObject, FilletCorner,
-    FilletCornerKind, Nx2AdjustContext,
+    FilletCornerKind, Nx2AdjustContext, TangentSplitEnv, TangentSplitOps,
 };
 use crate::blend::fillet_geom::p1::{
     CornerLookup, FilletBrep, FilletCornerId, FilletCornerType, FilletSolverId, FilletVertexType,
 };
+use crate::blend::fillet_geom::p3::SplitCorners;
 use crate::blend::fillet_geom::p5::FilletEdgeContext;
 use crate::blend::fillet_solver::p1::{
     FilletSolver, FilletSolverOps, FilletSurfaceGenerator, MakeSurfaceBlendSih,
@@ -144,6 +145,9 @@ pub enum FilletObject {
     Law(u32),
     /// A surface the corner code names in an error note (`RecordFilletError`).
     CornerError(ExecutiveErrorObject),
+    /// A fillet surface or centre line a solver names in an error note
+    /// (`SmFilletSolver::RecordFilletError`).
+    SolverError(crate::blend::fillet_solver::p2::SolverErrorObject),
 }
 
 impl ClassObject for FilletObject {
@@ -324,11 +328,26 @@ impl SessionObjects<'_> {
             .and_then(Option::as_mut)
             .ok_or_else(|| invalid("solver is not live in this session"))
     }
+    /// `pFilletSolver->CalcFilletGeom()`; the solver's `RecordFilletError` notes are
+    /// replayed into the executive's record (`m_pExecutive->NoteFilletError`).
     fn calc_solver_geometry(
         &mut self,
         k: &Kernel,
         id: FilletSolverId,
+        executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let mut note = ErrorInfo::default();
+        let result = self.calc_solver_geometry_noting(k, id, executive, &mut note);
+        replay_solver_error(&mut executive.error, &note);
+        result
+    }
+
+    fn calc_solver_geometry_noting(
+        &mut self,
+        k: &Kernel,
+        id: FilletSolverId,
         executive: &FilletExecutive<FilletObject>,
+        note: &mut ErrorInfo<crate::blend::fillet_solver::p2::SolverErrorObject>,
     ) -> Result<()> {
         let index = id.0 as usize;
         if index >= self.solvers.len() {
@@ -341,12 +360,12 @@ impl SessionObjects<'_> {
         let current = current
             .as_mut()
             .ok_or_else(|| invalid("solver is not live in this session"))?;
-        let context = SessionGeometryContext {
+        let mut context = SessionGeometryContext {
             current: id,
             before,
             after,
             executive,
-            corners: &self.corners,
+            corners: &mut self.corners,
         };
         match current {
             SolverObject::ConstantRadius(solver) => FilletSolver::calc_fillet_geom_with_context(
@@ -354,7 +373,8 @@ impl SessionObjects<'_> {
                 k,
                 self.target,
                 &mut self.pseudo,
-                &context,
+                &mut context,
+                note,
             ),
             // `SmVariableRadiusFS` inherits `SmFilletSolver::CalcFilletGeom`.
             SolverObject::VariableRadius(solver) => FilletSolver::calc_fillet_geom_with_context(
@@ -362,7 +382,8 @@ impl SessionObjects<'_> {
                 k,
                 self.target,
                 &mut self.pseudo,
-                &context,
+                &mut context,
+                note,
             ),
             // `SmConstantDistanceFS` inherits `SmFilletSolver::CalcFilletGeom`.
             SolverObject::ConstantDistance(solver) => FilletSolver::calc_fillet_geom_with_context(
@@ -370,7 +391,8 @@ impl SessionObjects<'_> {
                 k,
                 self.target,
                 &mut self.pseudo,
-                &context,
+                &mut context,
+                note,
             ),
             // SmSurfaceSurfaceFS::CalcFilletGeom
             SolverObject::SurfaceSurface(solver) => solver.calc_fillet_geom_with_context(
@@ -545,6 +567,196 @@ fn live_corner_vert_geom(
     }
 }
 
+/// `SmFilletCorner::CalcCornerVertGeom` of the ordinary Nx1, closed Nx1, Nx2 and `NxN`
+/// corner `id` over the live session's objects (the corner sits in its slot of
+/// `corners`).
+#[allow(clippy::too_many_arguments)] // the session's borrowed object stores
+fn live_corner_vertices_geom(
+    k: &Kernel,
+    target: &mut Brep,
+    pseudo: &mut FilletBrep,
+    solvers: &mut [Option<SolverObject>],
+    corners: &[FilletCorner],
+    extended_surfaces: &BTreeMap<FaceId, Surface>,
+    id: FilletCornerId,
+) -> Result<()> {
+    let corner = corners
+        .get(id.0 as usize)
+        .ok_or_else(|| invalid("corner is not live"))?;
+    if !matches!(
+        corner.corner_type(),
+        FilletCornerType::NByOne
+            | FilletCornerType::NByOneClosed
+            | FilletCornerType::NByTwo
+            | FilletCornerType::NByNConvex
+            | FilletCornerType::NByNConcave
+    ) {
+        return Err(invalid("ordinary Nx1, Nx2 or NxN corner required"));
+    }
+    let mut context = (k, target, pseudo, solvers, corners, extended_surfaces);
+    corner.calc_corner_vert_geom_with(
+        &mut context,
+        |(_, _, pseudo, _, _, _), fv| Ok(pseudo.fillet_vertex(fv)?.is_processed()),
+        |(k, target, pseudo, solvers, corners, extended_surfaces), fv| {
+            live_corner_vert_geom(
+                k,
+                target,
+                pseudo,
+                solvers,
+                corners,
+                extended_surfaces,
+                fv,
+                0,
+            )
+        },
+        |(_, target, pseudo, solvers, _, _), corner, processed| {
+            corner.adjust_vertex_law_intervals(pseudo, target, &mut **solvers, processed)
+        },
+    )
+}
+
+/// The live executive's `GetFilletCornerOfVertex` (`m_vVertexCornerMap`) and corner
+/// table, with the running corner (out of its slot) when one is, as
+/// [`SplitCorners`].
+pub(super) struct SessionSplitCorners<'a> {
+    pub(super) executive: &'a FilletExecutive<FilletObject>,
+    pub(super) corners: &'a mut [FilletCorner],
+    pub(super) this: Option<(FilletCornerId, &'a mut FilletCorner)>,
+}
+
+/// `GetFilletCornerOfVertex(vertex)` of the live executive (`None`: `NULL`).
+pub(super) fn session_corner_of_vertex(
+    executive: &FilletExecutive<FilletObject>,
+    vertex: VertexId,
+) -> Option<FilletCornerId> {
+    let key = Some(FilletObject::Topology(
+        FilletBody::Target,
+        EntityRef::Vertex(vertex),
+    ));
+    match executive.vertex_corner_map.get(&key) {
+        Some(VertexEntry::Corner(FilletObject::Corner(id))) => Some(*id),
+        _ => None,
+    }
+}
+
+impl SplitCorners for SessionSplitCorners<'_> {
+    fn corner_of_vertex(&self, vertex: VertexId) -> Option<FilletCornerId> {
+        session_corner_of_vertex(self.executive, vertex)
+    }
+    fn lookup(&self) -> CornerLookup<'_> {
+        CornerLookup {
+            table: Some(&*self.corners),
+            this: self.this.as_ref().map(|(id, c)| (Some(*id), &**c)),
+            exec: None,
+        }
+    }
+    fn corner_mut(&mut self, id: FilletCornerId) -> Result<&mut FilletCorner> {
+        if let Some((this_id, this)) = self.this.as_mut() {
+            if *this_id == id {
+                return Ok(this);
+            }
+        }
+        self.corners
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| SolidError::null_pointer(OP))
+    }
+}
+
+/// The live objects the tangent-corner splits reach (`AdjustTangentCorner`): the
+/// session's concrete solvers and corner table, the running corner's slot holding a
+/// placeholder.
+struct SessionTangentSplit<'a> {
+    executive: &'a FilletExecutive<FilletObject>,
+    solvers: &'a mut [Option<SolverObject>],
+    corners: &'a mut Vec<FilletCorner>,
+    extended_surfaces: &'a BTreeMap<FaceId, Surface>,
+    id: FilletCornerId,
+}
+
+impl SessionTangentSplit<'_> {
+    fn slot(&mut self, id: FilletSolverId) -> Result<&mut SolverObject> {
+        self.solvers
+            .get_mut(id.0 as usize)
+            .and_then(Option::as_mut)
+            .ok_or_else(|| invalid("fillet geometry solver is not live"))
+    }
+}
+
+impl TangentSplitOps for SessionTangentSplit<'_> {
+    fn solver(&self, id: FilletSolverId) -> Result<&FilletSolver> {
+        self.solvers
+            .get(id.0 as usize)
+            .and_then(Option::as_ref)
+            .map(SolverObject::base)
+            .ok_or_else(|| invalid("fillet geometry solver is not live"))
+    }
+    fn solver_ops(&mut self, id: FilletSolverId) -> Result<&mut dyn FilletSolverOps> {
+        Ok(live_solver_ops(self.slot(id)?))
+    }
+    fn split_fillet_geom_at_side_edge(
+        &mut self,
+        k: &Kernel,
+        target: &mut Brep,
+        pseudo: &mut FilletBrep,
+        corner: &mut FilletCorner,
+        id: FilletSolverId,
+        fillet_geom: crate::blend::fillet_geom::p1::FilletGeomId,
+        split_vertexuse: crate::topology::VertexuseId,
+        which_end: usize,
+    ) -> Result<crate::blend::fillet_geom::p1::FilletGeomId> {
+        let this = self.id;
+        let executive = self.executive;
+        let solver = self
+            .solvers
+            .get_mut(id.0 as usize)
+            .and_then(Option::as_mut)
+            .ok_or_else(|| invalid("fillet geometry solver is not live"))?;
+        solver.base_mut().split_fillet_geom_at_side_edge(
+            k,
+            target,
+            pseudo,
+            fillet_geom,
+            split_vertexuse,
+            which_end,
+            &mut SessionSplitCorners {
+                executive,
+                corners: self.corners.as_mut_slice(),
+                this: Some((this, corner)),
+            },
+        )
+    }
+    fn calc_corner_vert_geom(
+        &mut self,
+        k: &Kernel,
+        target: &mut Brep,
+        pseudo: &mut FilletBrep,
+        corner: &mut FilletCorner,
+        _corner_id: Option<FilletCornerId>,
+    ) -> Result<()> {
+        // The corner goes back into its slot for the calculation (the vertex
+        // calculators find it through the corner table).
+        let index = self.id.0 as usize;
+        let slot = self
+            .corners
+            .get_mut(index)
+            .ok_or_else(|| invalid("corner is not live"))?;
+        std::mem::swap(slot, corner);
+        let result = live_corner_vertices_geom(
+            k,
+            target,
+            pseudo,
+            self.solvers,
+            self.corners,
+            self.extended_surfaces,
+            self.id,
+        );
+        if let Some(slot) = self.corners.get_mut(index) {
+            std::mem::swap(slot, corner);
+        }
+        result
+    }
+}
+
 fn live_vertex_solvers<'s>(
     pseudo: &FilletBrep,
     solvers: &'s mut [Option<SolverObject>],
@@ -630,7 +842,27 @@ struct SessionGeometryContext<'a> {
     before: &'a [Option<SolverObject>],
     after: &'a [Option<SolverObject>],
     executive: &'a FilletExecutive<FilletObject>,
-    corners: &'a [FilletCorner],
+    corners: &'a mut [FilletCorner],
+}
+
+impl crate::blend::fillet_solver::p1::ExtensionCorners for SessionGeometryContext<'_> {
+    fn corner_of(&self, vertex: Option<VertexId>) -> Result<&FilletCorner> {
+        self.corner(vertex)
+    }
+}
+
+impl SplitCorners for SessionGeometryContext<'_> {
+    fn corner_of_vertex(&self, vertex: VertexId) -> Option<FilletCornerId> {
+        session_corner_of_vertex(self.executive, vertex)
+    }
+    fn lookup(&self) -> CornerLookup<'_> {
+        CornerLookup::table(self.corners)
+    }
+    fn corner_mut(&mut self, id: FilletCornerId) -> Result<&mut FilletCorner> {
+        self.corners
+            .get_mut(id.0 as usize)
+            .ok_or_else(|| SolidError::null_pointer(OP))
+    }
 }
 
 impl SessionGeometryContext<'_> {
@@ -640,7 +872,8 @@ impl SessionGeometryContext<'_> {
         let Some(VertexEntry::Corner(FilletObject::Corner(id))) =
             self.executive.vertex_corner_map.get(&key)
         else {
-            return Err(invalid("endpoint has no completed actual corner"));
+            // upstream dereferences the NULL corner
+            return Err(SolidError::null_pointer(OP));
         };
         self.corners
             .get(id.0 as usize)
@@ -649,10 +882,14 @@ impl SessionGeometryContext<'_> {
 }
 
 impl FilletGeometryContext for SessionGeometryContext<'_> {
-    fn set_extension_flags(&self, solver: &mut dyn FilletSolverOps, target: &Brep) -> Result<()> {
-        solver
-            .solver_mut()
-            .set_extension_flags_with_lookup(target, |vertex| self.corner(vertex))
+    fn set_extension_flags(
+        &self,
+        solver: &mut dyn FilletSolverOps,
+        k: &Kernel,
+        target: &Brep,
+    ) -> Result<()> {
+        // the virtual SetExtensionFlags (SmVariableRadiusFS extends its edge curve)
+        solver.set_extension_flags(k, target, self)
     }
 
     fn solver<'s>(
@@ -675,6 +912,14 @@ impl FilletGeometryContext for SessionGeometryContext<'_> {
         slot.and_then(Option::as_ref)
             .map(SolverObject::base)
             .ok_or_else(|| invalid("peer solver is not live in this session"))
+    }
+
+    fn corners(&self) -> CornerLookup<'_> {
+        CornerLookup::table(self.corners)
+    }
+
+    fn split_corners(&mut self) -> &mut dyn SplitCorners {
+        self
     }
 }
 
@@ -723,6 +968,58 @@ fn executive_error_object(object: ExecutiveErrorObject) -> FilletObject {
         }
         other => FilletObject::CornerError(other),
     }
+}
+
+/// The executive identity of an object a solver records in an error note: the
+/// filleted edge and the rails are their topology; the fillet surfaces and centre
+/// lines keep the solver code's identity.
+fn executive_solver_error_object(
+    object: crate::blend::fillet_solver::p2::SolverErrorObject,
+) -> FilletObject {
+    use crate::blend::fillet_solver::p2::SolverErrorObject;
+    match object {
+        SolverErrorObject::FilletedEdge(e) => {
+            FilletObject::Topology(FilletBody::Target, EntityRef::Edge(e))
+        }
+        SolverErrorObject::FilletEdge(e) => {
+            FilletObject::Topology(FilletBody::Pseudo, EntityRef::Edge(e))
+        }
+        other => FilletObject::SolverError(other),
+    }
+}
+
+/// Replay the solver's error notes (`SmFilletErrorInfo::NoteError` with the
+/// intersection overload, made into a fresh record) into the executive's record: the
+/// same field writes, with the surfaces, curves and edges added uniquely to the ones
+/// already noted.
+fn replay_solver_error(
+    error: &mut ErrorInfo<FilletObject>,
+    note: &ErrorInfo<crate::blend::fillet_solver::p2::SolverErrorObject>,
+) {
+    if *note == ErrorInfo::default() {
+        return;
+    }
+    let map = |o: Option<crate::blend::fillet_solver::p2::SolverErrorObject>| {
+        o.map(executive_solver_error_object)
+    };
+    error.code = note.code;
+    error.status = note.status;
+    error.edge_type = note.edge_type;
+    error.edge = map(note.edge);
+    for (from, to) in [
+        (&note.surfaces, &mut error.surfaces),
+        (&note.curves, &mut error.curves),
+        (&note.edges, &mut error.edges),
+    ] {
+        for object in from {
+            let object = map(*object);
+            if !to.contains(&object) {
+                to.push(object);
+            }
+        }
+    }
+    error.location = note.location;
+    error.comment.clone_from(&note.comment);
 }
 
 /// Replay one corner error note (`SmFilletErrorInfo::NoteError` with the corner
@@ -1243,7 +1540,8 @@ impl<'target> FilletSession<'target> {
     /// # Errors
     /// Actual solver/corner resolution, native geometry failures or missing callees.
     pub fn calc_solver_geometry(&mut self, k: &Kernel, id: FilletSolverId) -> Result<()> {
-        self.objects.calc_solver_geometry(k, id, &self.executive)
+        self.objects
+            .calc_solver_geometry(k, id, &mut self.executive)
     }
 
     /// Calculate all actual solver geometries through the shared executive stage.
@@ -1533,7 +1831,7 @@ impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
         &mut self,
         k: &mut Kernel,
         corner: FilletObject,
-        _executive: &mut FilletExecutive<FilletObject>,
+        executive: &mut FilletExecutive<FilletObject>,
     ) -> Result<()> {
         let FilletObject::Corner(id) = corner else {
             return Err(invalid("object is not a corner"));
@@ -1541,38 +1839,41 @@ impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
         let SessionObjects {
             target,
             pseudo,
+            solvers,
             corners,
+            extended_surfaces,
             ..
         } = self;
-        let corner = corners
+        // The running corner is taken out of its slot while it adjusts; its own vertex
+        // calculation puts it back for the duration (TangentSplitOps).
+        let slot = corners
             .get_mut(id.0 as usize)
             .ok_or_else(|| invalid("corner is not live"))?;
-        corner.adjust_tangent_corner_with(
-            &mut (&mut **target, &mut *pseudo),
-            |corner, (target, _)| {
-                if !corner.is_nx2_tangent_adjustment_corner(k, target)? {
-                    return Ok(());
-                }
-                // UNPORTED(blend.fillet_executive_p1): actual Nx2 tangent-adjustment context.
-                Err(SolidError::unported(
-                    "SmFilletNx2Corner::AdjustTangentCorner (live context)",
-                    "blend.fillet_executive_p1",
-                ))
-            },
-            |corner, (target, pseudo)| {
-                if corner
-                    .nx1_closed_tangent_split(k, target, pseudo)?
-                    .is_none()
-                {
-                    return Ok(());
-                }
-                // UNPORTED(blend.fillet_executive_p1): actual closed Nx1 tangent-split context.
-                Err(SolidError::unported(
-                    "SmFilletNx1ClosedCorner::AdjustTangentCorner (live split context)",
-                    "blend.fillet_executive_p1",
-                ))
-            },
-        )
+        let placeholder = FilletCorner::new(FilletCornerKind::Open, None, None, None, 0.0, 0.0);
+        let mut corner = std::mem::replace(slot, placeholder);
+        let mut ops = SessionTangentSplit {
+            executive,
+            solvers: solvers.as_mut_slice(),
+            corners,
+            extended_surfaces,
+            id,
+        };
+        let mut env = TangentSplitEnv {
+            k,
+            target,
+            pseudo,
+            corner: Some(id),
+            ops: &mut ops,
+        };
+        let result = corner.adjust_tangent_corner_with(
+            &mut env,
+            FilletCorner::adjust_tangent_corner_nx2,
+            FilletCorner::adjust_tangent_corner_nx1_closed,
+        );
+        if let Some(slot) = ops.corners.get_mut(id.0 as usize) {
+            *slot = corner;
+        }
+        result
     }
     fn edges_calculate(
         &mut self,
@@ -2378,13 +2679,71 @@ impl FaceConstructionAccess<FilletObject> for SessionObjects<'_> {
     }
 }
 
+/// The live rollover context: the retained classification context over the corner
+/// table, and the executive's corners as `ProcessRollOver`'s `TopologySplit` changes
+/// them.
+struct SessionRollOver<'a> {
+    corners: &'a mut [FilletCorner],
+    executive: &'a FilletExecutive<FilletObject>,
+}
+
+impl SessionRollOver<'_> {
+    fn classification(&self) -> classification::Context<'_> {
+        classification::Context {
+            corners: self.corners,
+        }
+    }
+}
+
+impl crate::blend::fillet_solver::p5::RailClassificationContext for SessionRollOver<'_> {
+    fn rail_curve(&self, edge: EdgeId) -> crate::blend::fillet_classification::FilletClassObject {
+        self.classification().rail_curve(edge)
+    }
+    fn rail_mate_uv_curve(
+        &self,
+        pseudo: &Brep,
+        mate: EdgeuseId,
+    ) -> Option<crate::blend::fillet_classification::FilletClassObject> {
+        self.classification().rail_mate_uv_curve(pseudo, mate)
+    }
+    fn classify(
+        &mut self,
+        k: &Kernel,
+        target: &mut Brep,
+        pseudo: &Brep,
+        face: FaceId,
+        class: &mut crate::intersect::curve_class::p1::CurveClassification<
+            crate::blend::fillet_classification::FilletClassObject,
+        >,
+    ) -> Result<()> {
+        self.classification()
+            .classify(k, target, pseudo, face, class)
+    }
+    fn corner_type(&self, corner: FilletCornerId) -> Result<FilletCornerType> {
+        self.classification().corner_type(corner)
+    }
+    fn corners(&self) -> CornerLookup<'_> {
+        CornerLookup::table(self.corners)
+    }
+    fn with_split_corners(
+        &mut self,
+        f: &mut dyn FnMut(&mut dyn SplitCorners) -> Result<()>,
+    ) -> Result<()> {
+        f(&mut SessionSplitCorners {
+            executive: self.executive,
+            corners: self.corners,
+            this: None,
+        })
+    }
+}
+
 impl RailClassificationAccess<FilletObject> for SessionObjects<'_> {
     fn rails_classify(
         &mut self,
         k: &mut Kernel,
         solver: FilletObject,
         adjusted: &mut Vec<FilletObject>,
-        _executive: &mut FilletExecutive<FilletObject>,
+        executive: &mut FilletExecutive<FilletObject>,
     ) -> Result<()> {
         let FilletObject::Solver(id) = solver else {
             return Err(invalid("rollover object is not an actual solver"));
@@ -2406,8 +2765,9 @@ impl RailClassificationAccess<FilletObject> for SessionObjects<'_> {
             .get_mut(id.0 as usize)
             .and_then(Option::as_mut)
             .ok_or_else(|| invalid("rollover solver is not live"))?;
-        let mut context = classification::Context {
-            corners: &self.corners,
+        let mut context = SessionRollOver {
+            corners: &mut self.corners,
+            executive,
         };
         let mut actual_adjusted = Vec::new();
         let result = solver.base_mut().test_roll_over_with_context(
@@ -3034,51 +3394,7 @@ impl SessionObjects<'_> {
             extended_surfaces,
             ..
         } = self;
-        let corner = corners
-            .get(id.0 as usize)
-            .ok_or_else(|| invalid("corner is not live"))?;
-        if !matches!(
-            corner.corner_type(),
-            FilletCornerType::NByOne
-                | FilletCornerType::NByOneClosed
-                | FilletCornerType::NByTwo
-                | FilletCornerType::NByNConvex
-                | FilletCornerType::NByNConcave
-        ) {
-            return Err(invalid("ordinary Nx1, Nx2 or NxN corner required"));
-        }
-        let mut context = (
-            k,
-            target,
-            pseudo,
-            solvers,
-            corners.as_slice(),
-            &*extended_surfaces,
-        );
-        corner.calc_corner_vert_geom_with(
-            &mut context,
-            |(_, _, pseudo, _, _, _), fv| Ok(pseudo.fillet_vertex(fv)?.is_processed()),
-            |(k, target, pseudo, solvers, corners, extended_surfaces), fv| {
-                live_corner_vert_geom(
-                    k,
-                    target,
-                    pseudo,
-                    solvers,
-                    corners,
-                    extended_surfaces,
-                    fv,
-                    0,
-                )
-            },
-            |(_, target, pseudo, solvers, _, _), corner, processed| {
-                corner.adjust_vertex_law_intervals(
-                    pseudo,
-                    target,
-                    solvers.as_mut_slice(),
-                    processed,
-                )
-            },
-        )
+        live_corner_vertices_geom(k, target, pseudo, solvers, corners, extended_surfaces, id)
     }
 
     fn corner_object(&self, object: FilletObject) -> Result<&FilletCorner> {

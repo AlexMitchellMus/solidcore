@@ -1221,11 +1221,6 @@ fn pseudo_brep_delete_edge(_pseudo: &mut FilletBrep, _e: EdgeId) -> Result<()> {
     ))
 }
 
-/// `pThisFS->OffsetRadiiCanChange()` then `SM_CAST_PTR(SmVariableRadiusFS, pThisFS)`: the
-/// variable-radius solver behind a fillet geometry's solver id, `None` for a solver whose
-/// offset radii cannot change. Both are virtual on the solver's dynamic type, which only
-/// the executive's solver store (`SmFilletExecutive::m_vFilletSolvers`, unit
-/// `blend.fillet_executive_p1`, #260) knows; the corner's solver list holds base records.
 /// The solver store a corner's law-interval adjustment resolves fillet geometries'
 /// solvers through.
 pub trait LawIntervalSolvers {
@@ -1243,11 +1238,9 @@ impl LawIntervalSolvers for [FilletSolver] {
         &mut self,
         _id: FilletSolverId,
     ) -> Result<Option<&mut VariableRadiusFs>> {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::m_vFilletSolvers (the solver store resolving SmFilletSolver::OffsetRadiiCanChange and the SmVariableRadiusFS cast)
-        Err(SolidError::unported(
-            "SmFilletSolver::OffsetRadiiCanChange / SmVariableRadiusFS cast (the executive's solver store)",
-            "blend.fillet_executive_p1",
-        ))
+        // A table of base solvers: SmFilletSolver::OffsetRadiiCanChange() is TRUE and
+        // the SM_CAST_PTR(SmVariableRadiusFS, ..) of a base solver is NULL.
+        Ok(None)
     }
 }
 
@@ -2740,7 +2733,7 @@ impl FilletSolverOps for PlainConstantRadiusFs {
     fn load_initial_values(
         &mut self,
         k: &Kernel,
-        brep: Option<&Brep>,
+        brep: Option<&mut Brep>,
         do_surf2_calcs: bool,
         rail_index: usize,
         surface1: &mut OffsetSurface,
@@ -3049,7 +3042,6 @@ mod tests {
         use crate::topology::{
             Edgeuse, EdgeuseOwner, Face, Faceuse, Loopuse, Vertexuse, VertexuseOwner,
         };
-        use std::collections::BTreeMap;
 
         let mut k = Kernel::default();
         let corner_pnt = Point3::new(1.0, 2.0, 3.0);
@@ -3136,7 +3128,6 @@ mod tests {
 
         let solvers = [FilletSolver::new(1e-3, 1e-3, 0.01)];
         let mut exec = FilletExecutiveData::default();
-        let surfaces = BTreeMap::new();
         let mut c = FilletCorner::new(FilletCornerKind::NByTwo, Some(cv), None, None, 1e-3, 0.1);
         c.vertices = vec![fv0];
         let r = {
@@ -3146,7 +3137,6 @@ mod tests {
                 pseudo: &mut fb,
                 exec: &mut exec,
                 corner: None,
-                tsect_surfaces: &surfaces,
                 solvers: &mut [],
                 fillet: None,
             };
