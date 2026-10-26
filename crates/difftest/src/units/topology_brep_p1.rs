@@ -1545,7 +1545,7 @@ fn run_rust_op(
                 other => {
                     return Err(Fail::Harness(harness(format!(
                         "unknown SmSetRegionVoidType code {other}"
-                    ))))
+                    ))));
                 }
             };
             let r = match mode {
@@ -1953,7 +1953,7 @@ fn run_rust_op(
                 other => {
                     return Err(Fail::Harness(harness(format!(
                         "unknown orientation code {other}"
-                    ))))
+                    ))));
                 }
             };
             let r = bp1::make_vertex_split_uv_trim_curve(
@@ -2371,7 +2371,11 @@ impl IntersectionReader<'_> {
         Ok(values)
     }
     fn integer(&mut self) -> Result<i64, HarnessError> {
-        let value = self.take(1)?[0];
+        let value = self
+            .take(1)?
+            .first()
+            .copied()
+            .ok_or_else(|| harness("short intersection output"))?;
         if !value.is_finite() || value.fract() != 0.0 || value.abs() > (1_u64 << 53) as f64 {
             return Err(harness("invalid intersection integer"));
         }
