@@ -755,16 +755,8 @@ fn rust(input: &Inputs) -> Result<Output, HarnessError> {
         if !input.record.is_empty() {
             return Err(HarnessError::new("mixed fixture forms"));
         }
-        if let Some(out) = end_to_end::upstream_example(example)? {
-            return Ok(out);
-        }
-        // The one fixture whose API entry point (variable-radius law) is not ported.
-        let symbol = match example {
-            // UNPORTED(blend.fillet_executive_p1): SmApiVariableRadiusFillet
-            4 => "SmApiVariableRadiusFillet",
-            _ => return Err(HarnessError::new("unknown upstream fixture")),
-        };
-        return Ok(Output::deferred("blend.fillet_executive_p1", symbol));
+        return end_to_end::upstream_example(example)?
+            .ok_or_else(|| HarnessError::new("unknown upstream fixture"));
     }
     ffi::validate(&input.record).map_err(|e| HarnessError::new(e.to_string()))?;
     let [op, has_target, initialized, prior_boolean, editing, want_error, seed_code, tolerance, piecewise, insertion, global, trimming, classification] =

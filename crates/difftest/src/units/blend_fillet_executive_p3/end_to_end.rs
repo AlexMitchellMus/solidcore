@@ -342,12 +342,13 @@ fn apply(k: &mut Kernel, body: &mut Brep, edges: &[EdgeId], input: &RealSolid) -
         input.thumbweight,
     )
 }
-/// `TestSmFillets.cpp` examples 2 and 3 on the 10x10x10 box with its first four
-/// edges in `GetEdges` order: `SmApiFilletEdges(r=1, circular)` and
-/// `SmApiFilletEdgesPerEdge(r = 0.5 + 0.25 i, circular)`. Returns the shim's
-/// `[status, faces, edges, vertices]` record, or `None` for the other examples.
+/// The `TestSmFillets.cpp` examples 0-6, as the shim runs them (examples 2-4 on the
+/// 10x10x10 box with its first four edges in `GetEdges` order: `SmApiFilletEdges(r=1,
+/// circular)`, `SmApiFilletEdgesPerEdge(r = 0.5 + 0.25 i, circular)` and
+/// `SmApiVariableRadiusFillet(0.5 -> 2.0, circular, G1)`). Returns the shim's
+/// `[status, faces, edges, vertices]` record, or `None` for an unknown example.
 pub(super) fn upstream_example(example: usize) -> Result<Option<Output>, HarnessError> {
-    if !matches!(example, 0..=3 | 5 | 6) {
+    if !matches!(example, 0..=6) {
         return Ok(None);
     }
     let run = || -> SolidResult<Vec<f64>> {
@@ -377,6 +378,9 @@ pub(super) fn upstream_example(example: usize) -> Result<Option<Output>, Harness
                     &mut k, &mut body, &selected, &radii, &types, 1, 1.0,
                 )
             }
+            4 => solidcore::blend::fillet_executive::api::variable_radius_fillet(
+                &mut k, &mut body, &selected, 0.5, 2.0, 1, 1,
+            ),
             _ => {
                 let bevel: Vec<_> = if example == 6 {
                     p1::vertices(&body, None)?.into_iter().take(1).collect()
