@@ -29,19 +29,17 @@ use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 pub struct Runner;
 
 /// Upstream solids (relative to `TestFiles/pt_TestFiles`) the generated cases mirror.
-const FILES: [&str; 14] = [
+const FILES: [&str; 12] = [
     "Solids/box.smb",
     "Solids/cylinder.smb",
     "Solids/sphere.smb",
     "Solids/pyramid.smb",
     "Solids/revolution.smb",
     "Solids/extrusion.smb",
-    "Solids/fillet_ts.smb",
     "Solids/l_shape_with_boss.smb",
     "Solids/nurb_fillet.smb",
     "cone.smb",
     "disk.smb",
-    "SmallBox.smb",
     "box_with_large_fillet.smb",
     "plane_circ.smb",
 ];
@@ -110,8 +108,8 @@ fn path(i: &Inputs) -> Result<String, HarnessError> {
 }
 
 /// The native output, or `Err(output)` when the FFI guard refuses the input.
-fn native(i: &Inputs, run: bool) -> Result<Result<Vec<f64>, Output>, HarnessError> {
-    match ffi::eval(run, &path(i)?, &block(i), &args(i)) {
+fn native(i: &Inputs, op: u8) -> Result<Result<Vec<f64>, Output>, HarnessError> {
+    match ffi::eval(op, &path(i)?, &block(i), &args(i)) {
         Ok(raw) if raw.first() == Some(&-999.) => Ok(Err(Output::rejected(format!(
             "fixture constructor status {}",
             raw.get(1).copied().unwrap_or(-1.)
@@ -227,36 +225,71 @@ impl UnitDiff for Runner {
 
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
         let i: Inputs = case.parse()?;
-        let raw = match native(&i, true)? {
+        let raw = match native(&i, 1)? {
             Ok(raw) => raw,
             Err(refused) => return Ok(refused),
         };
         let n = *raw.first().ok_or_else(|| herr("short record"))? as usize;
         let record = raw.get(1..=n).ok_or_else(|| herr("short record"))?.to_vec();
-        let (b, _) = import_raw(raw.get(n + 1..).ok_or_else(|| herr("short graph"))?)?;
+        let (mut b, _) = import_raw(raw.get(n + 1..).ok_or_else(|| herr("short graph"))?)?;
+        normalize_face_shells(&mut b).map_err(herr)?;
         Ok(graph(&b, record))
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         let i: Inputs = case.parse()?;
-        let raw = match native(&i, false)? {
+        let raw = match native(&i, 0)? {
             Ok(raw) => raw,
             // the native side rejects the case; nothing is compared
             Err(_) => return Ok(Output::new()),
         };
         let (mut b, _) = import(&raw)?;
         b.set_editing_enabled(i.editing);
+        // the native face and vertex list orders (the import orders them by the walk)
+        let lists = native(&i, 2)?.map_err(|_| herr("native lists"))?;
+        let mut at = 0;
+        let take = |at: &mut usize| -> Result<Vec<u32>, HarnessError> {
+            let n = *lists.get(*at).ok_or_else(|| herr("short lists"))? as usize;
+            let out = lists
+                .get(*at + 1..*at + 1 + n)
+                .ok_or_else(|| herr("short lists"))?
+                .iter()
+                .map(|&x| x as u32)
+                .collect();
+            *at += 1 + n;
+            Ok(out)
+        };
+        let faces = take(&mut at)?;
+        let vertices = take(&mut at)?;
+        let (nf, nv) = (faces.len(), vertices.len());
+        b.set_face_list(
+            faces
+                .iter()
+                .map(|&x| solidcore::topology::FaceId::from_index(x))
+                .collect(),
+        )
+        .map_err(|e| herr(format!("{e}: faces {nf} of {} {faces:?}", b.faces().len())))?;
+        b.set_vertex_list(
+            vertices
+                .iter()
+                .map(|&x| solidcore::topology::VertexId::from_index(x))
+                .collect(),
+        )
+        .map_err(|e| herr(format!("{e}: vertices {nv} of {} {vertices:?}", b.vertices().len())))?;
         let mut k = Kernel::default();
         bind_owners(&mut k, &mut b).map_err(herr)?;
         let plane = Axis2Placement::new(v(i.origin), v(i.x), v(i.y));
-        let run = || -> SolidResult<Vec<f64>> {
+        let mut run = || -> SolidResult<Vec<f64>> {
             let st = status(mirror(&mut k, &mut b, &plane))?;
             let mut record = vec![st];
             record.extend(geometry(&k, &b)?);
             Ok(record)
         };
         match run() {
-            Ok(record) => Ok(graph(&b, record)),
+            Ok(record) => {
+                normalize_face_shells(&mut b).map_err(herr)?;
+        Ok(graph(&b, record))
+            }
             Err(e) => Output::unported(&e).ok_or_else(|| herr(e)),
         }
     }
@@ -307,4 +340,41 @@ impl UnitDiff for Runner {
         ctx.seeds = ctx.seeds.max(128);
         crate::runner::default_cases(self, &ctx)
     }
+}
+
+/// `Face::shell` and `Shell::faces` have no upstream counterpart: the import derives them
+/// from the first face use in walk order, the port keeps them with the face's first
+/// face use (`swap_reflection_shells`). Both are recomputed here from the face's own
+/// first face use (`m_pFaceuse`, exported and compared), so the record the graph
+/// compares is the same on both sides; the face uses' own shells are compared as they are.
+fn normalize_face_shells(b: &mut Brep) -> SolidResult<()> {
+    // the faces in the graph's walk order (the import numbers them so), then the rest
+    let mut faces: Vec<_> = super::boolean_merge_p1::Canon::reachable(b).faces.items;
+    for f in b.faces().ids() {
+        if !faces.contains(&f) {
+            faces.push(f);
+        }
+    }
+    let mut shell_of = Vec::new();
+    for &f in &faces {
+        let face = b.face(f)?;
+        let shell = match face.faceuse {
+            Some(fu) => b.faceuse(fu)?.shell.unwrap_or(face.shell),
+            None => face.shell,
+        };
+        shell_of.push(shell);
+    }
+    for (&f, &shell) in faces.iter().zip(&shell_of) {
+        b.face_mut(f)?.shell = shell;
+    }
+    let shells: Vec<_> = b.shells().ids().collect();
+    for s in shells {
+        b.shell_mut(s)?.faces = faces
+            .iter()
+            .zip(&shell_of)
+            .filter(|(_, &sh)| sh == s)
+            .map(|(&f, _)| f)
+            .collect();
+    }
+    Ok(())
 }

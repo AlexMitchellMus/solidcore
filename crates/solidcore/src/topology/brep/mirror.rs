@@ -27,12 +27,15 @@
 //! wrapping a volume (`SmCrvInVolume`, `SmSrfInVolume`) mirrors its own copy of the
 //! volume (parts are held by value), where upstream also edits a volume the object does
 //! not own. Composite edges do not exist in the arena model (`sEdges` is the edge
-//! alone). The debug drawing code is omitted. No recursion is introduced here.
+//! alone). The NURBs of analytic surfaces without one are made before the infinite region
+//! search (`make_missing_nurbs`), where upstream's bounding box makes them lazily. The
+//! debug drawing code is omitted. No recursion is introduced here.
 
 use crate::error::{ignore_status, Result, SolidError};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::kernel::Kernel;
 use crate::query::brep::BrepQuery;
+use crate::surface::surface::p2::SurfaceKind;
 use crate::topology::brep::p1::{
     curve_owners, reverse_reflection_edgeuses, surface_owners, swap_reflection_shells,
     SetRegionVoidType,
@@ -206,6 +209,7 @@ fn mirror_in(
 
     // Brep->Regions - FindAndSetInfiniteRegion
     if brep_regions(b)?.len() > 1 {
+        make_missing_nurbs(k, b)?;
         // SmTemporaryChangeValue<SmBoolean> sChange(m_bEditingEnabled, FALSE)
         let previous = b.editing_enabled();
         b.set_editing_enabled(false);
@@ -220,6 +224,30 @@ fn mirror_in(
         );
         b.set_editing_enabled(previous);
         result?;
+    }
+    Ok(())
+}
+
+/// Makes the NURB of every analytic face surface that has none. Upstream's first
+/// `SmBSplineSurface::CalculateBoundingBox` makes it through the virtual
+/// `GetOrCreateGwNurbPointer` (`FindAndSetInfiniteRegion` calls it); the port's bounding
+/// box is a `const` method that returns `SM_ERR` instead (finding
+/// `query.brep--boolean-results-need-their-analytic-nurbs`), so the NURBs are made here,
+/// where upstream makes them, just before that call.
+fn make_missing_nurbs(k: &Kernel, b: &mut Brep) -> Result<()> {
+    for f in brep_faces(b)? {
+        let Some(surface) = b.face_mut(f)?.surface.as_mut() else {
+            continue;
+        };
+        match surface.kind_mut() {
+            SurfaceKind::Plane(s) if s.base().gw_nurb().is_none() => s.make_nurb()?,
+            SurfaceKind::Cone(s) if s.rev().base().gw_nurb().is_none() => s.make_nurb(k)?,
+            SurfaceKind::Sphere(s) if s.base().base().gw_nurb().is_none() => s.make_nurb(k)?,
+            SurfaceKind::Torus(s) if s.base().base().gw_nurb().is_none() => s.make_nurb(k)?,
+            SurfaceKind::SurfOfRevolution(s) if s.base().gw_nurb().is_none() => s.make_nurb(k)?,
+            SurfaceKind::SurfOfExtrusion(s) if s.base().gw_nurb().is_none() => s.make_nurb(k)?,
+            _ => {}
+        }
     }
     Ok(())
 }

@@ -65,11 +65,12 @@ void put_geometry(std::vector<double>& o, SmBrep* b) {
 }
 }
 
-// Args: editing, placement O/X/Y (9). Op 0 exports the fixture graph (`0 graph`); op 1
+// Args: editing, placement O/X/Y (9). Op 0 exports the fixture graph (`0 graph`), op 2 its
+// native face and vertex lists (`nf face* nv vertex*`); op 1
 // runs Mirror: `record_len status geometry... 0 graph` of the mirrored B-rep.
 SC_EXPORT int32_t sc_topology_brep_mirror_eval(int32_t op, const char* path, const double* input,
         int64_t n, const double* a, int64_t na, double* out, int64_t cap, int64_t* out_len) {
-    if (op < 0 || op > 1 || !input || n < 1 || !a || na != 10 || !path || !out_len) return SC_ERR_ARG;
+    if (op < 0 || op > 2 || !input || n < 1 || !a || na != 10 || !path || !out_len) return SC_ERR_ARG;
     SC_TRY
     Rd rd{input, 0};
     SmStatus status = SM_SUCCESS;
@@ -87,6 +88,19 @@ SC_EXPORT int32_t sc_topology_brep_mirror_eval(int32_t op, const char* path, con
     if (op == 0) {
         o.push_back(0.0);
         export_graph(b, g, o);
+        return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
+    }
+    if (op == 2) {
+        // the native face and vertex lists (GetFaces / GetVertices order), as indices of
+        // the exported graph: the import cannot derive them from the walk
+        SmTArray<SmFace*> faces;
+        SmTArray<SmVertex*> vertices;
+        b->GetFaces(faces);
+        b->GetVertices(vertices);
+        o.push_back((double)faces.GetSize());
+        for (ULONG i = 0; i < faces.GetSize(); ++i) o.push_back((double)g.find(3, faces[i]));
+        o.push_back((double)vertices.GetSize());
+        for (ULONG i = 0; i < vertices.GetSize(); ++i) o.push_back((double)g.find(9, vertices[i]));
         return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
     }
     SmAxis2Placement plane(SmPoint3d(a[1], a[2], a[3]), SmVector3d(a[4], a[5], a[6]),

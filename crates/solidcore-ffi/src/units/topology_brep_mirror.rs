@@ -28,15 +28,16 @@ mod sys {
     }
 }
 
-/// Exports the fixture (`false`) or runs `Mirror` (`true`).
+/// Op 0 exports the fixture graph, op 1 runs `Mirror`, op 2 exports the native face and
+/// vertex lists (`nf face* nv vertex*`, indices of the graph).
 ///
 /// `block`: the B-rep block. `args`: editing flag (0 or 1), then the mirror
 /// placement's origin, X axis and Y axis (the plane is its XY plane). Every number must
 /// be finite, so the placement is whatever `SmAxis2Placement`'s constructor makes of
 /// the axes (it defines a result for zero or parallel axes).
-pub fn eval(mirror: bool, path: &str, block: &[f64], args: &[f64; 10]) -> Result<Vec<f64>, FfiError> {
+pub fn eval(op: u8, path: &str, block: &[f64], args: &[f64; 10]) -> Result<Vec<f64>, FfiError> {
     let bad = |m: &str| FfiError::InvalidArgument(m.into());
-    if !args.iter().all(|x| x.is_finite()) || !matches!(args[0], 0.0 | 1.0) {
+    if op > 2 || !args.iter().all(|x| x.is_finite()) || !matches!(args[0], 0.0 | 1.0) {
         return Err(bad("mirror placement or editing flag"));
     }
     let mut rd = Reader {
@@ -46,12 +47,12 @@ pub fn eval(mirror: bool, path: &str, block: &[f64], args: &[f64; 10]) -> Result
     brep_block(&mut rd, path)?;
     rd.done()?;
     let path = CString::new(path).map_err(|_| bad("path"))?;
-    call_with_buffer(4096, |out, len| {
+    call_with_buffer(1 << 20, |out, len| {
         // SAFETY: the validated block and the fixed-length arguments stay live through
         // the call; the output and length pointers come from call_with_buffer.
         unsafe {
             sys::sc_topology_brep_mirror_eval(
-                i32::from(mirror),
+                i32::from(op),
                 path.as_ptr(),
                 block.as_ptr(),
                 block.len() as i64,
