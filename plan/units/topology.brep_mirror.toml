@@ -1,0 +1,12 @@
+id = "topology.brep_mirror"
+upstream = ["source/SMLib/src/SmBrep.cpp", "source/SMLib/src/SmAxis2Placement.cpp", "source/SMLib/src/SmBSplineSurface.cpp", "source/SMLib/src/SmOffsetSurface.cpp", "source/SMLib/src/SmCrvOnSurf.cpp", "source/SMLib/src/SmCrvInVolume.cpp"]
+rust_module = "topology::brep::mirror"
+depends_on = ["curve.curve_p2", "geom.axis2_placement", "nurbs.b_spline_curve_p1", "nurbs.b_spline_surface_p1", "surface.surface_p2", "topology.brep_p1", "topology.brep_p2", "topology.brep_p5", "topology.edge", "topology.face_p1", "topology.face_p3"]
+soft_depends_on = []
+est_lines = 330
+layer = 48
+tests = []
+status = "todo"
+claimed_by = ""
+claimed_at = ""
+notes = "NOT IN callgraph/units.json: SmBrep::Mirror and its callees are listed in harness/callgraph/unused_functions.txt (no upstream test and no SM_API entry point reaches them). Owns SmBrep::Mirror (SmBrep.cpp:23449), SmAxis2Placement::MirrorPoint / MirrorVector, and the CreateMirrorCurve / CreateMirrorSurface overrides of SmBSplineSurface, SmOffsetSurface, SmCrvOnSurf and SmCrvInVolume; the SmBSplineCurve and SmSrfInVolume overrides were ported earlier (nurbs.b_spline_curve_p1, surface.srf_in_volume). Rust: topology::brep::mirror::mirror; Axis2Placement::mirror_point / mirror_vector; Curve::create_mirror_curve, Surface::create_mirror_surface (dispatch over every kind, SM_ERR where upstream's base default applies); BSplineSurface / OffsetSurface / CrvOnSurf / CrvInVolume overrides beside their types."
