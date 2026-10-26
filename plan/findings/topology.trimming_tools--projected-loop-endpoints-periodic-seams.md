@@ -56,3 +56,11 @@ implementation/shim/fixture SHA-256 hashes are unchanged. Fresh gates pass with
 tests, wasm and default/native workspace Clippy. A fresh six-unit native rerun
 retains exactly the totals above, with zero unexpected failures; the 20 matching
 new seam controls again detect all 20 perturbations.
+
+Opt-in (2026-10-26): following the `UpstreamFixes` precedent (#1077), the lift is
+gated by `Kernel::fixes.check_loop_projected_seam_ends`, off by default. With the
+default the port reproduces the pinned C++ `CheckLoop`, so the four `cone.smb`
+selections above match the reference (two SM_ERR 1001 statuses, two closure-1
+classifications) and need no known-mismatch entries; the unit stays green. With the
+field on, the behaviour described above holds
+(`issue_530_projected_rotational_sweep_loops_cross_periodic_seams`).
