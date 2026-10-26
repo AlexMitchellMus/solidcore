@@ -638,7 +638,7 @@ static void run_split_rail(std::vector<double>& out) {
         double(new_rail->GetVertex()==vertex.get()),double(new_rail->GetOtherVertex(vertex.get())==end.get()),
         double(old_eus.GetSize()),double(new_eus.GetSize()),double(start_vus.GetSize()),double(middle_vus.GetSize()),double(end_vus.GetSize())});
     SmExtent1d domain=copied->GetNaturalInterval();
-    out.insert(out.end(),{new_rail->GetTolerance(),domain.Min(),domain.Max()});
+    out.insert(out.end(),{new_rail->GetTolerance(),domain.m_dMin,domain.m_dMax});
     for(double fraction:{0.,.5,1.}) {
         SmPoint3d point; const auto evaluated=copied->EvaluatePoint(domain.Evaluate(fraction),point);
         out.push_back(evaluated==SM_SUCCESS?0:double(evaluated));
