@@ -114,9 +114,15 @@ jobs:
           --skip primitives_are_closed_solids_with_analytic_properties
           --skip precise_sphere_properties_scale_and_translate
           --skip pole_free_sphere_tolerance_is_explicit_and_validated
+          --skip pole_free_spheres_keep_analytic_area_and_volume_with_trim_span_integration
       - name: Primitives solid tests (difftest profile)
         if: needs.changes.outputs.full == 'true'
         run: cargo test --profile difftest -p solidcore --test primitives_solid
+      # The opt-in pole-free sphere regression also takes minutes unoptimised.
+      # Only that test is skipped above; its small planar sibling runs there too.
+      - name: Trim-knot property regressions (difftest profile)
+        if: needs.changes.outputs.full == 'true'
+        run: cargo test --profile difftest -p solidcore --test issue_1105_trim_knot_properties
       # Solids: the primitives example's per-shape results (built, blocker, checks) for
       # the site's Solids page. It reuses the difftest-profile build above and exits 1
       # while any primitive fails, so only a crash (or a missing JSON) fails the job.
