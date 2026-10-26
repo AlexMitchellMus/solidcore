@@ -2585,7 +2585,7 @@ impl SessionObjects<'_> {
         // Reserve the identity before construction writes a geometry pointing at it;
         // a later constructor failure must not let another solver reuse that id.
         self.solvers.push(None);
-        let solver = constant_radius_from_edgeuse(
+        let mut solver = constant_radius_from_edgeuse(
             k,
             self.target,
             &mut self.pseudo,
@@ -2597,6 +2597,8 @@ impl SessionObjects<'_> {
             edgeuse,
             None,
         )?;
+        // `new SmConstantRadiusFS(..)`: the plain solver, not the assisted one
+        solver.plain = true;
         *self
             .solvers
             .get_mut(id.0 as usize)
