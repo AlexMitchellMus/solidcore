@@ -12,7 +12,7 @@
 //! |---------------------------------------------------|----------------------------------------------|
 //! | [`create_uv_curve`], [`UvCurves`]                 | `sm_CreateUVCurve`                           |
 //! | [`FilletBrep::calc_nx2_vert_fillet_x_fillet`]     | `sm_CalcNx2VertFilletXFillet`                |
-//! | [`FilletBrep::calc_fillet_int_2_fillets`]         | `SmFilletVertex::CalcFilletInt2Fillets`      |
+//! | [`FilletBrep::calc_fillet_int_2_fillets`], [`FilletBrep::calc_fillet_int_2_fillets_with_context`] | `SmFilletVertex::CalcFilletInt2Fillets` |
 //! | [`FilletBrep::calc_rail_int_extended_edgeuse`]    | `SmFilletVertex::CalcRailIntExtendedEdgeuse` |
 //! | [`FilletBrep::make_face_brep`]                    | `SmFilletGeom::MakeFaceBrep`                 |
 //! | [`FilletBrep::rail_index_of_vertex`]              | `SmFilletGeom::GetRailIndexOfVertex`         |
@@ -1124,10 +1124,10 @@ fn curve_ends(k: &Kernel, curve: &Curve) -> Result<(Extent1d, Point3, Point3)> {
 impl FilletBrep {
     /// The fillet surface and solver tolerances of the fillet geometry of edge use
     /// `eu`.
-    fn eu_geom_solver<'s>(
+    fn eu_geom_solver_with<'s>(
         &self,
         eu: EdgeuseId,
-        solvers: &'s [FilletSolver],
+        context: &'s impl super::p5::FilletEdgeContext,
         op: &'static str,
     ) -> Result<(FilletGeomId, &'s FilletSolver)> {
         let g = self
@@ -1138,7 +1138,7 @@ impl FilletBrep {
             .geom(g)?
             .fillet_solver()
             .ok_or_else(|| SolidError::null_pointer(op))?;
-        Ok((g, solver_of(solvers, sid, op)?))
+        Ok((g, context.solver(sid)?))
     }
 
     /// The primary edge use of `e` and its mate.
@@ -1196,6 +1196,27 @@ impl FilletBrep {
         fv: VertexId,
         solvers: &[FilletSolver],
     ) -> Result<()> {
+        self.calc_nx2_vert_fillet_x_fillet_with_context(
+            k,
+            fv,
+            &super::p5::IndexedEdgeContext {
+                solvers,
+                corners: CornerLookup::default(),
+                op: OP_NX2,
+            },
+        )
+    }
+
+    /// [`Self::calc_nx2_vert_fillet_x_fillet`] resolving the solvers through `context`.
+    ///
+    /// # Errors
+    /// As [`Self::calc_nx2_vert_fillet_x_fillet`], with `context`'s resolution failures.
+    pub fn calc_nx2_vert_fillet_x_fillet_with_context(
+        &mut self,
+        k: &Kernel,
+        fv: VertexId,
+        context: &impl super::p5::FilletEdgeContext,
+    ) -> Result<()> {
         let mut ref_pnt = Point3::UNDEF;
         let mut approx_tol = BIG_DOUBLE;
         let mut ang_tol = BIG_DOUBLE;
@@ -1207,7 +1228,7 @@ impl FilletBrep {
                 FilletEdgeType::CrossSection => {
                     let prim = primary_edgeuse(self.brep(), e)?
                         .ok_or_else(|| SolidError::null_pointer(OP_NX2))?;
-                    let (g, fs) = self.eu_geom_solver(prim, solvers, OP_NX2)?;
+                    let (g, fs) = self.eu_geom_solver_with(prim, context, OP_NX2)?;
                     approx_tol = smin(approx_tol, fs.approx_tol_3d);
                     ang_tol = smin(ang_tol, fs.ang_tol_rad);
                     if fillet_surface1.is_none() {
@@ -1294,13 +1315,39 @@ impl FilletBrep {
     /// a neighbour vertex is not processed or the curves do not meet once;
     /// those of [`CornerLookup::corner`] (`corners` resolves the vertex's corner);
     /// [`SolidError::Unported`] from the intersection (`sm_SrfSrfIntersection`).
-    #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn calc_fillet_int_2_fillets(
         &mut self,
         k: &Kernel,
         v: VertexId,
         corners: CornerLookup<'_>,
         solvers: &[FilletSolver],
+        target: &Brep,
+    ) -> Result<()> {
+        self.calc_fillet_int_2_fillets_with_context(
+            k,
+            v,
+            corners,
+            &super::p5::IndexedEdgeContext {
+                solvers,
+                corners: CornerLookup::default(),
+                op: OP_INT2,
+            },
+            target,
+        )
+    }
+
+    /// [`Self::calc_fillet_int_2_fillets`] resolving the geometries' solvers through
+    /// `context` (a live executive's retained solvers).
+    ///
+    /// # Errors
+    /// As [`Self::calc_fillet_int_2_fillets`], with `context`'s resolution failures.
+    #[allow(clippy::too_many_lines)] // one upstream routine
+    pub fn calc_fillet_int_2_fillets_with_context(
+        &mut self,
+        k: &Kernel,
+        v: VertexId,
+        corners: CornerLookup<'_>,
+        context: &impl super::p5::FilletEdgeContext,
         target: &Brep,
     ) -> Result<()> {
         let corner = self
@@ -1344,8 +1391,8 @@ impl FilletBrep {
             };
             // The solvers are dereferenced only past the surface test (upstream
             // fetches the pointers before it but does not use them)
-            let (_, fs1) = self.eu_geom_solver(prim, solvers, OP_INT2)?;
-            let (_, fs2) = self.eu_geom_solver(mate, solvers, OP_INT2)?;
+            let (_, fs1) = self.eu_geom_solver_with(prim, context, OP_INT2)?;
+            let (_, fs2) = self.eu_geom_solver_with(mate, context, OP_INT2)?;
 
             let approx_tol = smin(fs1.approx_tol_3d, fs2.approx_tol_3d);
             let ang_tol = smin(fs1.ang_tol_rad, fs2.ang_tol_rad);

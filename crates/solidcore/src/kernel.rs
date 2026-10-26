@@ -211,6 +211,12 @@ pub struct UpstreamFixes {
     pub uv_trim_corner_end_points_only: bool,
     /// `SmCone::IntersectWithCone` tests the line of two parallel cylinders against both face domains at its middle, not its bottom end (WR-259, #711).
     pub cone_parallel_line_midpoint: bool,
+    /// `SmEdge::ReverseOrientation` returns a failed curve reversal's status before installing the interval, flipping the edge uses or deleting their UV trims (WR-260, #521).
+    pub edge_reversal_keeps_failed_edge: bool,
+    /// `GetUVCornerBoundaries`, `GetStartPointUVLoopGap` and `sm_CalcDistAndDev` return failed curve/surface evaluations and point drops instead of reading unwritten or earlier outputs (WR-262, WR-263, WR-264, #521).
+    pub topology_failed_evaluations_propagate: bool,
+    /// `SetProps_Stage3` returns a failed `ClassifyLoops` status before reading its outputs, and a failed stage drops its in-progress marker so a retry reruns it (WR-268, WR-266, #521).
+    pub heal_stage3_failures_propagate: bool,
 }
 
 /// Options for [`Kernel::new`].
@@ -262,8 +268,10 @@ pub struct Kernel {
     /// difftest) reads this to classify the case; no operation reads it.
     pub upstream_ub_passed: Vec<&'static str>,
     /// Not upstream: whether `make_curve_cache` keeps a memo of each curve cache in the
-    /// curve value (`true` unless the `curve-memo-off` feature is on). The memo never
-    /// changes a result, only the time; `false` builds every cache fresh, to check that.
+    /// curve value, and `CoincidenceCheck` a memo of each surface's boundary curves in
+    /// the surface value (`true` unless the `curve-memo-off` feature is on). The memos
+    /// never change a result, only the time; `false` builds everything fresh, to check
+    /// that.
     pub memoize_curve_caches: bool,
     /// Opt-in fixes of upstream defects (all off: upstream behaviour).
     pub fixes: UpstreamFixes,
