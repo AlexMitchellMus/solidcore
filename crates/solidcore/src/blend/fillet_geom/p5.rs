@@ -1165,6 +1165,39 @@ impl FilletBrep {
         corners: CornerLookup<'_>,
         target: &Brep,
     ) -> Result<()> {
+        self.calc_edge_on_extended_edge_with_surfaces(k, e, corner, corners, target, |c, f| {
+            Ok(corners.extended_surface(c, f)?.cloned())
+        })
+    }
+
+    /// [`Self::calc_edge_on_extended_edge`] resolving the extended surfaces through the
+    /// caller's live executive objects.
+    ///
+    /// # Errors
+    /// As [`Self::calc_edge_on_extended_edge`]; those of `context`.
+    pub fn calc_edge_on_extended_edge_with_context(
+        &mut self,
+        k: &Kernel,
+        e: EdgeId,
+        corner: Option<FilletCornerId>,
+        corners: CornerLookup<'_>,
+        context: &impl FilletEdgeContext,
+        target: &Brep,
+    ) -> Result<()> {
+        self.calc_edge_on_extended_edge_with_surfaces(k, e, corner, corners, target, |c, f| {
+            Ok(context.extended_surface(c, f)?.cloned())
+        })
+    }
+
+    fn calc_edge_on_extended_edge_with_surfaces(
+        &mut self,
+        k: &Kernel,
+        e: EdgeId,
+        corner: Option<FilletCornerId>,
+        corners: CornerLookup<'_>,
+        target: &Brep,
+        extended_surface: impl Fn(&FilletCorner, FaceId) -> Result<Option<Surface>>,
+    ) -> Result<()> {
         let corner = corner.ok_or_else(|| SolidError::null_pointer(OP_EXT_EDGE))?;
         let (start_fv, end_fv) = self.edge_ends(e, OP_EXT_EDGE)?;
         if !self.fillet_vertex(start_fv)?.is_processed()
@@ -1185,8 +1218,8 @@ impl FilletBrep {
         let the_corner = corners.corner(corner)?;
         let mut surfaces: Vec<Option<Surface>> = Vec::with_capacity(2);
         for &f in faces.iter().take(2) {
-            let surf = match corners.extended_surface(the_corner, f)? {
-                Some(s) => Some(s.clone()),
+            let surf = match extended_surface(the_corner, f)? {
+                Some(s) => Some(s),
                 None => target.face(f)?.surface.clone(),
             };
             // SM_CAST_PTR(SmBSplineSurface, pSurf)

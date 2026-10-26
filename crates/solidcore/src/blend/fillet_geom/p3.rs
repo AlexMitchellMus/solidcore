@@ -569,8 +569,15 @@ impl FilletBrep {
                     None,
                 ),
             FilletEdgeType::OnEdge => self.calc_edge_on_edge(k, e, target),
+            FilletEdgeType::OnExtendEdge => self.calc_edge_on_extended_edge_with_context(
+                k,
+                e,
+                Some(corner),
+                corners,
+                context,
+                target,
+            ),
             FilletEdgeType::RailRailInterpolation
-            | FilletEdgeType::OnExtendEdge
             | FilletEdgeType::FilletEnd
             | FilletEdgeType::SetbackRail
             | FilletEdgeType::RailExtension => {

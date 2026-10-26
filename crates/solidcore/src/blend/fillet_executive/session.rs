@@ -2602,13 +2602,13 @@ impl SessionObjects<'_> {
             pseudo,
             solvers,
             corners,
+            extended_surfaces,
             ..
         } = self;
         let solver = solvers
-            .get(solver.0 as usize)
-            .and_then(Option::as_ref)
-            .ok_or_else(|| invalid("corner solver is not live"))?
-            .base();
+            .get_mut(solver.0 as usize)
+            .and_then(Option::as_mut)
+            .ok_or_else(|| invalid("corner solver is not live"))?;
         let corner = corners
             .get_mut(id.0 as usize)
             .ok_or_else(|| invalid("corner is not live"))?;
@@ -2619,6 +2619,8 @@ impl SessionObjects<'_> {
             corner: id,
             solver,
             do_global_merge: &mut executive.options.global_merge,
+            extended_surfaces,
+            topo_edges: &mut executive.topo_edges,
         })
     }
     fn make_nx2_corner_topology(
@@ -2810,6 +2812,17 @@ impl SessionObjects<'_> {
                         },
                         target,
                     ),
+                    FilletVertexType::RailXExtendedEdgeuse => pseudo
+                        .calc_rail_int_extended_edgeuse_with_context(
+                            k,
+                            fv,
+                            CornerLookup::table(corners),
+                            &SessionEdgeLookup {
+                                solvers,
+                                extended_surfaces,
+                            },
+                            target,
+                        ),
                     FilletVertexType::FilletX2Fillets => pseudo
                         .calc_fillet_int_2_fillets_with_context(
                             k,

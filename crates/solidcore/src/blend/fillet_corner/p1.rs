@@ -938,21 +938,24 @@ impl FilletCorner {
 
     /// Register an actual extended surface in the executive's owned face map.
     /// The same native domain-containment rule is used by both executive adapters.
+    /// Returns whether `ext_surface` was kept (upstream callers compare
+    /// `GetExtendedSurface` with the pointer they added).
     pub fn add_extended_original_surface_with_map(
         map: &mut BTreeMap<FaceId, Surface>,
         original_face: FaceId,
         ext_surface: Surface,
-    ) {
+    ) -> bool {
         if let Some(old_surface) = map.get(&original_face) {
             let new_domain = ext_surface.natural_uv_domain();
             let old_domain = old_surface.natural_uv_domain();
             if new_domain.is_contained_by(&old_domain, EFF_ZERO) {
                 // Old domain was bigger, delete the new ext surface.
-                return;
+                return false;
             }
             // else: the old surface is deleted (replaced below)
         }
         map.insert(original_face, ext_surface);
+        true
     }
 
     /// `ReInitializeCornerEdges`: `SetCurve(NULL, TRUE)` on every corner fillet edge
