@@ -9,7 +9,7 @@ crates/solidcore       the kernel (pure Rust, no unsafe, wasm-ok)        owner: 
 crates/solidcore-ffi   extern "C" bindings to the C++ kernel (feature cpp)
 crates/difftest        side-by-side Rust vs C++ runner
 harness/cpp            C++ reference build (build.sh -> bin/cpp) + shim/<unit>.cpp
-plan/                  units/<id>.toml (one file per unit), STATUS.md, findings.md, order.md
+plan/                  units/<id>.toml, findings/<slug>.md, upstream-issues/<slug>.md (one file each), STATUS.md, order.md
 ```
 
 ## 1. Hard rules
@@ -51,7 +51,7 @@ anywhere (including dependencies; `deny.toml` bans copyleft crates).
 (via FFI) on the same inputs and topology is identical and every value agrees within
 `1e-9` relative (`|a-b| <= 1e-9 * max(|a|,|b|)`; an absolute floor only where a unit
 documents one per key in `abs_floors()`, recorded in its report). Never loosen a tolerance to get green. A disagreement you cannot fix
-goes in `plan/findings.md` (unit, inputs, both values, suspected cause) and the unit
+goes in a new `plan/findings/<slug>.md` (unit, inputs, both values, suspected cause) and the unit
 stays `blocked`.
 
 **Git.** Work happens through pull requests to github.com/tangency-labs/solidcore. Never
@@ -141,7 +141,11 @@ Every ported file starts with:
 
 Unit list and states: `plan/units/<unit id>.toml`, one file per unit (format:
 `plan/modules.schema.md`, order: `plan/order.md`). **`plan/PROGRESS.md` is the checklist** (regenerated on `main` by CI;
-never edit it in a PR). **Any `todo` unit can be claimed.** A unit is *ready* when its `depends_on` are all
+never edit it in a PR). **Any `todo` unit or unclaimed completion task can be claimed.** A claim reserves
+its stated scope, not every future change to the unit. Missing functions, back-edge
+wiring, exact runner imports, fixtures and demonstrated parity bugs remain useful
+work in `partial` and `green` units; inspect source and reports, not status alone.
+A unit is *ready* when its `depends_on` are all
 `green` or `partial` (`soft_depends_on` never blocks; see section 4a); ready units are
 the easiest, lowest `layer` first. Claiming a unit that is not ready is fine:
 - Calls into a missing dependency are stubbed (`UNPORTED(<unit>)`, cases deferred; 4a).
@@ -156,14 +160,44 @@ the easiest, lowest `layer` first. Claiming a unit that is not ready is fine:
 into `upstream/` (see README), then run `scripts/fetch-cpp.sh`, or
 `nice -n 10 harness/cpp/build.sh --jobs 6` to build from source.
 
-1. **Claim = a draft PR.** Check nobody has it:
-   `gh pr list --state open --search "<unit id> in:title"`. If none, branch from the
-   latest `main` (`git fetch origin && git switch -c unit/<unit id> origin/main`),
-   `git commit --allow-empty -m "claim: <unit id>"`, push, and open a draft PR titled
-   exactly **`port: <unit id>`**. **The lowest-numbered open PR for a unit wins**; if
-   yours lost, close it. Do not edit `plan/units/` to claim. Push WIP at least
-   daily; a draft PR with no pushes for 48 h may be taken over (comment on it first).
-   If the unit's `notes` mention a WIP branch on `origin`, start from it.
+1. **Claim = a scoped draft PR.** Search open PR titles and bodies for the unit,
+   symbols and affected paths, including `wire:`, `fix:` and `difftest:` work; a title
+   search for `port:` alone misses completion work. Branch from the latest `main`.
+   Do not edit `plan/units/` to claim.
+   Initial whole-unit ports keep the title **`port: <unit id>`**. For completion work,
+   use a descriptive title such as **`wire: <unit id> — <function group>`** and name
+   the unit in the body. An empty claim commit is sufficient to open a draft.
+
+   Include this scope in the PR body (update it as the work changes):
+   ```text
+   Units:
+   In scope: upstream symbols, Rust functions and intended behavior
+   Expected edits: paths and shared interfaces
+   Evidence: failing/deferred case IDs or missing branches; validation planned
+   Related PRs / dependencies:
+   Available follow-ups: independent work others can take
+   Status / blockers / next step:
+   ```
+   For overlapping whole-unit `port:` claims, the lowest-numbered open PR wins.
+   For completion tasks, the earliest open claim wins only for overlapping work.
+   Non-overlapping work in
+   the same unit is welcome. Link the related PR and state the boundary before
+   starting; independent work need not wait for a whole-unit owner to reply.
+   If work changes the same function or shared interface, agree on a split in the
+   existing PR first, or build on its branch and document the dependency. If the
+   boundary is unclear, ask there and take a different independent task meanwhile.
+   Never implement a competing version of an actively claimed change.
+
+   Push WIP or post a concrete progress update at least daily while implementing.
+   After 48 h without either, comment with the exact scope you propose to take over
+   and allow 24 h for a response; then continue from published WIP, crediting its
+   author. Do not take over a PR merely because it awaits review or CI: offer review,
+   conflict resolution or a coordinated follow-up instead. A blocker update should
+   identify what is blocked and release independent work, rather than reserve the
+   whole unit indefinitely. When pausing, release the scope and link the WIP.
+   Existing PR authors retain their active scope; this is not a reset of claims.
+   If the unit's notes mention a WIP branch, inspect it before starting.
+
 2. **Port** the upstream functions the unit owns (listed in
    `harness/callgraph/units.json`) into its `rust_module`, plus the C++ shim
    (`harness/cpp/shim/<unit_id_with_underscores>.cpp`, functions `sc_<unit>_<fn>`, plain
@@ -230,11 +264,17 @@ into `upstream/` (see README), then run `scripts/fetch-cpp.sh`, or
   there locally; CI regenerates them, uploads main's set as the `difftest-reports`
   artifact, and the site and `plan/PROGRESS.md` read that
   (`scripts/fetch-reports.sh` downloads it). Quote your summary lines in the PR instead.
-- `plan/findings.md` and `plan/upstream-issues.md` are append-only: add new entries,
-  do not rewrite old ones. `.gitattributes` gives them `merge=union`, so a local
-  `git merge origin/main` keeps both sides' entries. GitHub's own conflict check
-  ignores that attribute, so when GitHub says your PR conflicts, merge main locally
-  and push.
+- **Never append to a shared file.** Every finding and every upstream issue is its own
+  new file: `plan/findings/<slug>.md` and `plan/upstream-issues/<slug>.md` (formats in
+  each directory's `README.md`). Records are never edited after they merge (like ADRs):
+  an update is an addendum file. The old shared `plan/findings.md` and
+  `plan/upstream-issues.md` were split into those directories; CI fails if either comes
+  back. Two PRs that each add a file never conflict.
+  Known difftest mismatches likewise live in `crates/difftest/known_mismatches/<unit id>.toml`
+  (one file per unit; see `crates/difftest/src/known.rs`), and SolidCraft cases in
+  `fixtures/solidcraft/<issue>-<slug>.json` (one file per issue).
+  The same goes for anything new you design: a registry or log is a directory of
+  per-entry files that tools read in sorted order, never one file everybody appends to.
 - **Branches from before the per-unit split** (they edit `plan/modules.toml` or commit
   reports): merge main, then run the migration, which moves your `modules.toml` edits
   into `plan/units/*.toml` and untracks your reports:
@@ -245,9 +285,32 @@ into `upstream/` (see README), then run `scripts/fetch-cpp.sh`, or
   lists any other conflicted files for you to resolve before committing.
 
 **Blocked** (gate cannot be met, upstream behaviour unclear): record details in
-`plan/findings.md`, set `status = "blocked"` with a reason in `notes`, and open the PR
+`plan/findings/<slug>.md`, set `status = "blocked"` with a reason in `notes`, and open the PR
 with just that so others can see it. Never sit on a draft PR you have stopped working
 on: close it, and say where the WIP is.
+
+### Completion evidence
+
+For new ports and completion changes, include the [completion evidence checklist](docs/completion-evidence.md)
+in the PR description. The evidence table is required for `wire:` PRs that remove
+`UNPORTED` stubs, including when existing fixtures do not reach the continuation. Identify the owned functions and branches implemented, which
+operations actually complete successfully against C++, and which remain unreachable.
+A passing status or empty result is evidence for that case, not proof that the
+operation's successful construction or mutation path works.
+
+A dependency stub replaces the missing call only. Port the upstream logic following
+it as well, preserving control flow and operation order; do not omit the continuation
+and present the function as complete. If an incremental PR deliberately leaves an
+owned body or continuation missing, list the exact symbols and remaining work.
+Report that limitation even if existing fixtures never reach it. Unit status follows
+the existing gate; it does not certify complete function or branch coverage.
+
+When a dependency is wired, rerun the affected callers and add cases that reach the
+previously blocked continuations. Keep newly exposed mismatches visible. Review
+runner skips, stand-in geometry and absent-entity cases before claiming coverage.
+Record independent harness follow-ups with reproducible evidence and check existing
+PRs before implementing them. This checklist supplements the existing correctness
+gate; it does not change tolerances, outcomes or status accounting.
 
 ## 4a. Cycles, back-edges and the merge lock
 
@@ -279,10 +342,13 @@ The kernel core is one big call cycle, so the plan dropped ~2,300 calls as *back
 - `plan/units/<id>.toml`: one unit's plan entry (status, claims, notes). Edit only
   your unit's file. Every tool reads them through `harness/plan/units.py` (Rust:
   `crates/difftest/src/plan.rs`).
-- `plan/findings.md`: Rust-vs-C++ disagreements, upstream bugs, nondeterminism (e.g.
-  upstream `srand(time(NULL))`), anything a later agent must know. Append-only.
-- `plan/upstream-issues.md`: upstream C++ defects also get an entry here (problems only,
-  with location, trigger, how found and whether the C++ build confirmed it). Append-only.
+- `plan/findings/<slug>.md`, one file per finding: Rust-vs-C++ disagreements, upstream
+  bugs, nondeterminism (e.g. upstream `srand(time(NULL))`), anything a later agent must
+  know. A reference to `plan/findings.md: <heading>` (older code comments): grep the
+  heading under `plan/findings/`.
+- `plan/upstream-issues/<slug>.md`, one file per issue: upstream C++ defects (problems
+  only, with location, trigger, how found and whether the C++ build confirmed it). The
+  site reads them all. A `plan/upstream-issues.md` ID: grep it under that directory.
 - `reports/difftest/<unit>.json`: difftest output. Not committed: CI uploads main's set
   as an artifact; `scripts/fetch-reports.sh` downloads it.
 - `plan/PROGRESS.md`: the checklist (generated; never edit by hand).

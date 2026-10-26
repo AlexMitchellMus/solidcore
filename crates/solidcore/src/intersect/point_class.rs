@@ -186,6 +186,31 @@ pub struct BrepMerge<'a, 'env, O> {
     pub curve_ref: &'a dyn Fn(EdgeId, i64) -> ObjectRef,
 }
 
+/// Actual merge context with checked identity access to newly constructed curves.
+pub struct BrepMergeWithIdentity<'a, 'env, O> {
+    /// Actual arena containing the classified object.
+    pub brep: &'a mut Brep,
+    /// Target in that arena.
+    pub target: EntityRef,
+    /// Caller handle for each arena entity.
+    pub handle: &'a dyn Fn(EntityRef) -> O,
+    /// Retained records, attributes and notification context.
+    pub notifications: &'a mut edge::NotifyEnv<'env>,
+    /// Legacy or actual-curve identity authority at construction.
+    pub curve_identity: crate::topology::brep::p9::CurveIdentity<'a>,
+}
+impl<'a, 'env, O> From<BrepMerge<'a, 'env, O>> for BrepMergeWithIdentity<'a, 'env, O> {
+    fn from(context: BrepMerge<'a, 'env, O>) -> Self {
+        Self {
+            brep: context.brep,
+            target: context.target,
+            handle: context.handle,
+            notifications: context.notifications,
+            curve_identity: crate::topology::brep::p9::CurveIdentity::Legacy(context.curve_ref),
+        }
+    }
+}
+
 /// The arena [`PointClassification::combine_in_brep`] writes a propagated surf/surf/surf
 /// point to.
 pub struct CombineBrep<'a, 'env, O> {
@@ -1457,7 +1482,7 @@ impl<O: ClassObject> PointClassification<O> {
                 // edit the B-rep that owns the object, which an opaque handle cannot
                 // reach mutably (the face's `GetBrep` itself is ported): the edit runs
                 // through merge_into_brep, which callers with the B-rep use.
-                // UNPORTED(topology.brep_p1): SmBrep mutable owning context
+                // DISPATCH GAP: SmBrep mutable owning context (opaque handle without a Brep)
                 return Err(SolidError::unported(
                     "SmBrep mutable owning context",
                     "topology.brep_p1",
@@ -1528,15 +1553,27 @@ impl<O: ClassObject> PointClassification<O> {
         src_point: Point3,
         context: BrepMerge<'_, '_, O>,
     ) -> Result<MergeOutputs<O>> {
+        self.merge_into_brep_with_curve_identity(k, src_point, context.into())
+    }
+
+    /// The same merge with checked identity issuance for actual copied curves.
+    /// # Errors
+    /// Original merge errors and identity failures, retaining prior edits.
+    pub fn merge_into_brep_with_curve_identity(
+        &mut self,
+        k: &mut Kernel,
+        src_point: Point3,
+        context: BrepMergeWithIdentity<'_, '_, O>,
+    ) -> Result<MergeOutputs<O>> {
         use crate::error::EntityRef;
         use crate::geom::tol::ScaledZero;
         use crate::topology::{brep::p9, vertex};
-        let BrepMerge {
+        let BrepMergeWithIdentity {
             brep: b,
             target,
             handle,
             notifications: env,
-            curve_ref,
+            curve_identity,
         } = context;
         let object = self.object.ok_or_else(|| null_object(OP_MERGE))?;
         let kind = match target {
@@ -1574,7 +1611,14 @@ impl<O: ClassObject> PointClassification<O> {
                 v
             }
             EntityRef::Edge(e) => {
-                let split = p9::make_vertex_split_edge(k, b, e, self.t_param(), env, curve_ref)?;
+                let split = p9::make_vertex_split_edge_with_curve_identity(
+                    k,
+                    b,
+                    e,
+                    self.t_param(),
+                    env,
+                    curve_identity,
+                )?;
                 let v = split.vertex.ok_or_else(|| SolidError::sm_err(OP_MERGE))?;
                 if !split.split {
                     // Native assigns these two fields directly; in particular an
@@ -2157,7 +2201,9 @@ impl<O: ClassObject, G: ClassGeometryMut<O>> SurfaceDrop<O> for MutableDrop<'_, 
                     .and_then(|(b, f)| geometry.topology_handle_in(b, EntityRef::Face(f)))
             }
         };
-        if let Some((b, EntityRef::Face(f))) = face.and_then(|o| self.0.topology_entity_mut(o)) {
+        if let Some((b, EntityRef::Face(f))) =
+            face.and_then(|o| self.0.topology_entity_for_query(o))
+        {
             return live_surface_global_point_solve(k, b, f, uv_domain, point, zone_tol_3d);
         }
         ReadOnlyDrop(&*self.0).global_point_solve(k, target, uv_domain, point, zone_tol_3d)
@@ -2360,7 +2406,7 @@ fn brep_id_of<O>(geometry: &impl ClassGeometry<O>, brep: Option<&Brep>) -> Resul
     match brep {
         None => Ok(None),
         Some(b) => geometry.brep_id(b).map(Some).ok_or(
-            // UNPORTED(topology.brep_p1): SmBrep identity (an adapter without B-rep ids)
+            // DISPATCH GAP: SmBrep identity (an adapter without B-rep ids)
             SolidError::unported("SmBrep identity of GetBrep", "topology.brep_p1"),
         ),
     }

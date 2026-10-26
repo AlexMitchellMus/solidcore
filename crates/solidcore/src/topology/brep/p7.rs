@@ -23,8 +23,9 @@
 //!   [`BrepData::read_from_file`] (unit `topology.brep_data`), which bounds every count it
 //!   reads and the nesting of its polymorphic readers (AGENTS.md section 1).
 //! - **Arena records.** `GlueEdgesGeneral` destroys the deleted edge's stable arena
-//!   record after its last edgeuse pair moves. Other plain `delete`s of edge uses,
-//!   vertex uses, shells and regions unlink the record (it stays as an orphan).
+//!   record after its last edgeuse pair moves, and the shell it merges away
+//!   (`delete pDelShell`). Other plain `delete`s of edge uses, vertex uses and regions
+//!   unlink the record (it stays as an orphan).
 //!   `m_pEdgeListHead->Remove` takes the edge off [`Brep::edge_list`] before the
 //!   transfers begin. The owning-list edits
 //!   `SmEdge::Remove(eu)`, `SmVertex::Remove(vu)`, `SmRegion::Remove(shell)` and
@@ -89,6 +90,12 @@
 //!   changes are not notified), which `MakeFace` then replaces with its own
 //!   (upstream: one shared surface whose owner `MakeFace` restores). It claims its
 //!   marks through a fresh [`Marks`] record per call, as each call takes a new mark.
+//! - **Original-surface transfer ownership (#894).** Deliberately correcting pinned
+//!   C++ `SmBrep.cpp:18859-18889`, the original-transfer path never restores the old
+//!   owner after installation, even on a late failure. The installed original keeps
+//!   its identity and partial topology; its owner, geometry-owner registration and
+//!   cached tolerance agree with the installed face before returning the failure.
+//!   The legacy-copy path retains upstream's owner-restoration behavior.
 //! - **`MakeFace`** returns nothing when `MakeFaceTopology` fails; upstream still hands
 //!   back the region and shell it may have made (`MakeFaceWithCurves` warns about it).
 //! - **`GlueEdgesGeneral`**: the arena cannot share one curve between two edges, so
@@ -140,7 +147,9 @@ use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::face::p2 as fp2;
 use crate::topology::face::p3::{IntersectObject, IntersectObjects};
 use crate::topology::topology_traverser::{self as tt, Marks};
-use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, FaceuseId, RegionId, ShellId, VertexId};
+use crate::topology::{
+    Brep, EdgeId, EdgeuseId, FaceId, FaceuseId, LoopId, RegionId, ShellId, VertexId, VertexuseId,
+};
 
 const OP: &str = "topology::brep::p7";
 
@@ -438,7 +447,7 @@ type SelfClassification = CurveClassification<IntersectObject>;
 /// each of `faces` (the remaining arguments default).
 fn classify_on_faces(
     k: &Kernel,
-    objects: &IntersectObjects<'_>,
+    objects: &mut SelfMergeObjects<'_, '_>,
     faces: &[FaceId],
     face: FaceId,
     uv_curve: IntersectObject,
@@ -462,7 +471,7 @@ fn classify_on_faces(
         },
     )?;
     for &f in faces {
-        qf2::curve_on_classify(k, objects.b, f, objects, true, &mut cc, false, false, true)?;
+        qf2::curve_on_classify_mut(k, f, objects, true, &mut cc, false, false, true)?;
     }
     Ok(cc)
 }
@@ -541,6 +550,48 @@ impl ClassGeometryMut<IntersectObject> for SelfMergeObjects<'_, '_> {
     }
 }
 
+impl qf2::CurveOnClassifyObjects<IntersectObject> for SelfMergeObjects<'_, '_> {
+    fn face(&self, f: FaceId) -> IntersectObject {
+        self.view().face(f)
+    }
+    fn vertex(&self, v: VertexId) -> IntersectObject {
+        self.view().vertex(v)
+    }
+    fn edge(&self, e: EdgeId) -> IntersectObject {
+        self.view().edge(e)
+    }
+    fn vertexuse(&self, vu: VertexuseId) -> IntersectObject {
+        self.view().vertexuse(vu)
+    }
+    fn edgeuse(&self, eu: EdgeuseId) -> IntersectObject {
+        self.view().edgeuse(eu)
+    }
+    fn edge_curve(&self, e: EdgeId) -> IntersectObject {
+        self.view().edge_curve(e)
+    }
+    fn trim_curve(&self, eu: EdgeuseId) -> IntersectObject {
+        self.view().trim_curve(eu)
+    }
+    fn face_surface(&self, f: FaceId) -> Option<IntersectObject> {
+        self.view().face_surface(f)
+    }
+    fn loop_id(&self, tgt_loop: IntersectObject) -> Option<LoopId> {
+        self.view().loop_id(tgt_loop)
+    }
+}
+
+impl qf2::FaceBrep for SelfMergeObjects<'_, '_> {
+    fn brep(&self) -> &Brep {
+        self.b
+    }
+}
+
+impl qf2::CurveOnClassifyBrep<IntersectObject> for SelfMergeObjects<'_, '_> {
+    fn brep_mut(&mut self) -> &mut Brep {
+        self.b
+    }
+}
+
 impl MergeIntervalBrep<IntersectObject> for SelfMergeObjects<'_, '_> {
     fn merge_context(
         &mut self,
@@ -612,9 +663,16 @@ fn edge_remove(b: &mut Brep, e: EdgeId, eu: EdgeuseId) -> Result<()> {
     Ok(())
 }
 
-/// Merges `del_shell` into `keep_shell` and drops the empty region (the shell-merging
-/// tails of `GlueEdgesGeneral`).
-fn merge_shells(k: &mut Kernel, b: &mut Brep, mut del: ShellId, mut keep: ShellId) -> Result<()> {
+/// Merges `del_shell` into `keep_shell`, deletes it (`delete pDelShell`: its destruction
+/// notification under `env`, its record and attribute uses) and drops the emptied
+/// region (the shell-merging tails of `GlueEdgesGeneral`).
+fn merge_shells(
+    k: &mut Kernel,
+    b: &mut Brep,
+    mut del: ShellId,
+    mut keep: ShellId,
+    env: &mut ed::NotifyEnv<'_>,
+) -> Result<()> {
     // m_pInfiniteRegion (NULL when unset; pointer equality, NULL == NULL)
     let inf = b.infinite_region();
     let keep_region = eu1::shell_region(b, keep)?;
@@ -633,8 +691,10 @@ fn merge_shells(k: &mut Kernel, b: &mut Brep, mut del: ShellId, mut keep: ShellI
 
     // remove it from its region, then the region when empty
     let reg = eu1::shell_region(b, del)?.ok_or_else(|| null("shell without region"))?;
-    // pReg->Remove(pDelShell), then pReg->GetSize()
+    // pReg->Remove(pDelShell); delete pDelShell (SmBrep.cpp:10200, 10429: ~SmShell, ported
+    // as shell::destroy); then pReg->GetSize()
     crate::topology::shell::region_remove_shell(b, reg, del)?;
+    crate::topology::shell::destroy(k, b, del, env)?;
     if b.region(reg)?.shells.is_empty() {
         remove_emptied_region(b, reg)?;
     }
@@ -867,31 +927,46 @@ fn make_face_transfer_attempt_with_state(
             &options,
         )
     };
-    // Native restores the pre-existing owner before checking topology status.
-    transfer.surface_mut(b)?.set_owner(old_owner);
+    // Only the legacy copy leaves the original outside the installed face.
+    if legacy {
+        transfer.surface_mut(b)?.set_owner(old_owner);
+    }
     out.region = attempt.region;
     out.shell = attempt.shell;
     out.face = attempt.face;
-    if let Err(error) = attempt.status {
-        if matches!(error, SolidError::Upstream { .. }) {
-            out.status = Err(error);
-            return Ok(());
+    let result = (|| {
+        if let Err(error) = attempt.status {
+            if matches!(error, SolidError::Upstream { .. }) {
+                out.status = Err(error);
+                return Ok(());
+            }
+            return Err(error);
         }
-        return Err(error);
+        let new_face = attempt.face.ok_or_else(|| null("MakeFace made no face"))?;
+        b.face_mut(new_face)?.uv_domain = *uv_domain;
+        let tol = b.tolerance();
+        face_set_tolerance(b, new_face, tol, true, true)?;
+        let owner = this_face(new_face);
+        if legacy {
+            transfer.install(b, new_face)?;
+        }
+        transfer.surface_mut(b)?.set_owner(Some(owner));
+        b.geometry_owner_keys
+            .insert(EntityRef::Face(new_face), owner);
+        b.sync_face_surface_tolerance(new_face)?;
+        Ok(())
+    })();
+    if !legacy && (result.is_err() || out.status.is_err()) {
+        if let Some(face) = transfer.installed_face() {
+            // Topology may fail after installing the original. Keep that partial
+            // result canonical without changing its status or construction order.
+            let owner = this_face(face);
+            transfer.surface_mut(b)?.set_owner(Some(owner));
+            b.geometry_owner_keys.insert(EntityRef::Face(face), owner);
+            b.sync_face_surface_tolerance(face)?;
+        }
     }
-    let new_face = attempt.face.ok_or_else(|| null("MakeFace made no face"))?;
-    b.face_mut(new_face)?.uv_domain = *uv_domain;
-    let tol = b.tolerance();
-    face_set_tolerance(b, new_face, tol, true, true)?;
-    let owner = this_face(new_face);
-    if legacy {
-        transfer.install(b, new_face)?;
-    }
-    transfer.surface_mut(b)?.set_owner(Some(owner));
-    b.geometry_owner_keys
-        .insert(EntityRef::Face(new_face), owner);
-    b.sync_face_surface_tolerance(new_face)?;
-    Ok(())
+    result
 }
 
 /// `MakeFace`: makes a face on `surface` (over `uv_domain`) in `region` (the infinite
@@ -1950,7 +2025,7 @@ pub fn glue_edges_general(
         let del_shell = eu1::shell(b, eu)?.ok_or_else(|| null("edge use without shell"))?;
         let keep_shell = eu1::shell(b, radial)?.ok_or_else(|| null("edge use without shell"))?;
         if del_shell != keep_shell {
-            merge_shells(k, b, del_shell, keep_shell)?;
+            merge_shells(k, b, del_shell, keep_shell, env)?;
         }
     }
 
@@ -2177,23 +2252,6 @@ pub fn merge_self_intersection_curves(
     for (i, c) in curves.iter().enumerate() {
         let tol = tol_3d;
         let curve_3d = IntersectObject::Curve(i);
-        let objects = IntersectObjects {
-            b: &*b,
-            other: &*b,
-            side: false,
-            curves_3d: &curves_3d,
-            uv1: &uv1,
-            uv2: &uv2,
-        };
-        let mut cc1 = classify_on_faces(
-            k,
-            &objects,
-            &all_faces,
-            face,
-            IntersectObject::UvCurve(i, false),
-            c.uv_curve_1.natural_interval(),
-            tol,
-        )?;
         let mut merge_objects = SelfMergeObjects {
             b: &mut *b,
             curves_3d: &mut curves_3d,
@@ -2202,6 +2260,15 @@ pub fn merge_self_intersection_curves(
             env: &mut *env,
             curve_ref,
         };
+        let mut cc1 = classify_on_faces(
+            k,
+            &mut merge_objects,
+            &all_faces,
+            face,
+            IntersectObject::UvCurve(i, false),
+            c.uv_curve_1.natural_interval(),
+            tol,
+        )?;
         let new_faces = set_curve_and_merge(k, &mut merge_objects, &mut cc1, curve_3d)?;
         all_faces.extend(new_faces);
         // (the intervals are copied: the gluing below edits the B-rep the
@@ -2212,17 +2279,17 @@ pub fn merge_self_intersection_curves(
                 continue;
             }
             let e1 = mid_edge(ivl)?;
-            let objects = IntersectObjects {
-                b: &*b,
-                other: &*b,
-                side: false,
-                curves_3d: &curves_3d,
+            let mut merge_objects = SelfMergeObjects {
+                b: &mut *b,
+                curves_3d: &mut curves_3d,
                 uv1: &uv1,
                 uv2: &uv2,
+                env: &mut *env,
+                curve_ref,
             };
             let mut cc2 = classify_on_faces(
                 k,
-                &objects,
+                &mut merge_objects,
                 &all_faces,
                 face,
                 IntersectObject::UvCurve(i, true),
@@ -2232,14 +2299,6 @@ pub fn merge_self_intersection_curves(
             if cc2.size() != 1 {
                 continue;
             }
-            let mut merge_objects = SelfMergeObjects {
-                b: &mut *b,
-                curves_3d: &mut curves_3d,
-                uv1: &uv1,
-                uv2: &uv2,
-                env: &mut *env,
-                curve_ref,
-            };
             let new_faces = set_curve_and_merge(k, &mut merge_objects, &mut cc2, curve_3d)?;
             all_faces.extend(new_faces);
             let [ivl2] = cc2.intervals() else {
@@ -2950,6 +3009,113 @@ mod tests {
         // rather than merely equal geometry or a copied owner field.
         assert_eq!(installed.notify_key(), Some(key));
         assert_eq!(installed.owner(), Some(face_ref(face)));
+        assert_eq!(
+            b.geometry_owner_keys.get(&EntityRef::Face(face)),
+            Some(&face_ref(face))
+        );
+        assert_eq!(
+            installed.owner_zone_tol_3d(),
+            Some(b.face(face).unwrap().tolerance)
+        );
+    }
+
+    #[test]
+    fn transfer_failure_keeps_surface_owner_consistent_with_its_location() {
+        // Invalid arena ids are Rust-only failure injection, never C++ inputs.
+        for late in [false, true] {
+            for old_owner in [None, Some(face_ref(FaceId::from_index(99)))] {
+                let mut k = Kernel::default();
+                let mut b = if late {
+                    Brep::new_with_infinite_region().unwrap()
+                } else {
+                    Brep::new()
+                };
+                let mut surface = plane();
+                surface.set_owner(old_owner);
+                let key = k
+                    .context
+                    .geometry_key(surface.notify_identity_slot())
+                    .unwrap();
+                let mut transfer = p6::FaceSurfaceTransfer::new(surface);
+                let mut out = MakeFaceAttempt {
+                    status: Ok(()),
+                    region: None,
+                    shell: None,
+                    face: None,
+                };
+                let mut records = std::collections::BTreeMap::new();
+                let mut attributes = AttributeStore::default();
+                let mut env = ed::NotifyEnv {
+                    records: &mut records,
+                    attributes: &mut attributes,
+                    context: None,
+                    key_of: &key_of,
+                };
+                let vertices = [VertexId::from_index(99)];
+                let result = make_face_transfer_attempt_with_state(
+                    &mut k,
+                    &mut b,
+                    None,
+                    &[],
+                    &[],
+                    if late { &vertices } else { &[] },
+                    &mut transfer,
+                    &dom(),
+                    OrientType::Same,
+                    &MakeFaceOptions::default(),
+                    &face_ref,
+                    &mut ed::NotifyState::from_env(&mut env),
+                    false,
+                    &mut out,
+                );
+                assert_eq!(out.region, None);
+                if late {
+                    assert!(matches!(result, Err(SolidError::NotFound { .. })));
+                    assert!(out.status.is_ok());
+                    let face = out.face.unwrap();
+                    assert!(out.shell.is_some());
+                    assert_eq!(transfer.installed_face(), Some(face));
+                    assert!(
+                        matches!(transfer.into_location().unwrap(), p6::FaceSurfaceLocation::Installed(id) if id == face)
+                    );
+                    let record = b.face(face).unwrap();
+                    let installed = record.surface.as_ref().unwrap();
+                    assert!(matches!(
+                        installed.kind(),
+                        crate::surface::surface::SurfaceKind::Plane(_)
+                    ));
+                    assert_eq!(installed.notify_key(), Some(key));
+                    assert_eq!(installed.owner(), Some(face_ref(face)));
+                    assert_eq!(
+                        b.geometry_owner_keys.get(&EntityRef::Face(face)),
+                        Some(&face_ref(face))
+                    );
+                    assert_eq!(installed.owner_zone_tol_3d(), Some(record.tolerance));
+                } else {
+                    result.unwrap();
+                    assert!(matches!(
+                        out.status,
+                        Err(SolidError::Upstream {
+                            code: crate::error::SM_ERR_NULL_POINTER,
+                            ..
+                        })
+                    ));
+                    assert_eq!(out.face, None);
+                    assert_eq!(out.shell, None);
+                    assert!(b.faces().is_empty());
+                    assert!(b.geometry_owner_keys.is_empty());
+                    match transfer.into_location().unwrap() {
+                        p6::FaceSurfaceLocation::Owned(surface) => {
+                            assert_eq!(surface.notify_key(), Some(key));
+                            assert_eq!(surface.owner(), old_owner);
+                        }
+                        p6::FaceSurfaceLocation::Installed(_) => {
+                            panic!("surface installed before early failure")
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]
