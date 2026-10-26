@@ -98,8 +98,9 @@
 //!   entries, compressed at the end. `m_pExecutive->m_bDoGlobalMerge` and
 //!   `m_vTopoEdges` (`RemoveFromTopoEdges`, CO-PORTED from `blend.fillet_executive_p1`)
 //!   and `m_sErrorInfo` ([`FilletExecutiveData::error`]) are fields of
-//!   [`FilletExecutiveData`]. `m_pBrep->DeleteEdge` (`topology.brep_p4`) is an
-//!   `Unported` stub.
+//!   [`FilletExecutiveData`]. `m_pBrep->DeleteEdge` of a failed corner edge is the
+//!   pseudo-B-rep's wire-edge deletion ([`FilletBrep::delete_wire_fillet_edge`]),
+//!   handed in by the caller of [`FilletCorner::calc_corner_edge_geom_with`].
 //! - **`MakeFaceBrep`** builds into [`CornerEnv::fillet`] (`m_pExecutive->m_pFilletBrep`;
 //!   `None` is the `NULL` upstream dereferences) through `SmBrep::MakeFaceWithCurves`
 //!   with that B-rep's notification environment; the face gets a clone of the corner
@@ -1212,15 +1213,6 @@ const OP_MAKE_FACE: &str = "blend::fillet_corner::p1::make_face_brep";
 const OP_CONST_RAD: &str = "blend::fillet_corner::p1::make_constant_radius_fillet";
 const OP_INSERT: &str = "blend::fillet_corner::p1::insert_intersection_topology";
 
-/// `SmBrep::DeleteEdge` on the pseudo B-rep (unit `topology.brep_p4`).
-fn pseudo_brep_delete_edge(_pseudo: &mut FilletBrep, _e: EdgeId) -> Result<()> {
-    // UNPORTED(topology.brep_p4): SmBrep::DeleteEdge -- justified: plan/findings.md "topology.brep_p4: the last stubs (PR #441)": the corner geometry pass holds no Kernel, and the pseudo B-rep's fillet records (edge list, SmFilletEdge/SmFilletVertex members) would have to drop what DeleteEdge deletes
-    Err(SolidError::unported(
-        "SmBrep::DeleteEdge",
-        "topology.brep_p4",
-    ))
-}
-
 /// The solver store a corner's law-interval adjustment resolves fillet geometries'
 /// solvers through.
 pub trait LawIntervalSolvers {
@@ -1464,8 +1456,8 @@ impl FilletCorner {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`]: those of the edge calculations, and the
-    /// deletion of a failed edge (`SmBrep::DeleteEdge`, `topology.brep_p4`); `SM_ERR` for a
+    /// [`SolidError::Unported`]: those of the edge calculations; those of the deletion of
+    /// a failed edge (`SmBrep::DeleteEdge` on the pseudo-B-rep); `SM_ERR` for a
     /// failed edge the merge cannot absorb; `SM_ERR_NULL_POINTER` for a processed edge
     /// without curve; those of the squeeze.
     pub fn calc_corner_edge_geom(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
@@ -1486,6 +1478,7 @@ impl FilletCorner {
             },
             |env| env.exec.do_global_merge,
             |env| &mut *env.pseudo,
+            |env, edge| env.pseudo.delete_wire_fillet_edge(env.k, edge),
         )
     }
 
@@ -1500,6 +1493,7 @@ impl FilletCorner {
         mut calculate: impl FnMut(&mut C, &Self, EdgeId) -> Result<()>,
         global_merge: impl Fn(&C) -> bool,
         mut pseudo: impl for<'p> FnMut(&'p mut C) -> &'p mut FilletBrep,
+        mut delete_edge: impl FnMut(&mut C, EdgeId) -> Result<()>,
     ) -> Result<()> {
         // for every filletEdge (not a rail) ordered around this corner
         let mut slots: Vec<Option<EdgeId>> = self.edges.iter().copied().map(Some).collect();
@@ -1526,7 +1520,8 @@ impl FilletCorner {
                 {
                     return Err(SolidError::sm_err(OP_EDGE_GEOM));
                 }
-                pseudo_brep_delete_edge(pseudo(context), curr_edge)?;
+                // pCurrEdge->GetBrep()->DeleteEdge(pCurrEdge): the pseudo-B-rep's
+                delete_edge(context, curr_edge)?;
                 if let Some(slot) = slots.get_mut(ii) {
                     *slot = None;
                 }
@@ -2922,6 +2917,7 @@ mod tests {
             },
             |(_, _, global_merge)| *global_merge,
             |(pseudo, _, _)| pseudo,
+            |_, _| Ok(()),
         );
         assert!(matches!(
             result,

@@ -2122,6 +2122,50 @@ impl FilletBrep {
         Ok(())
     }
 
+    /// `pFilletEdge->GetBrep()->DeleteEdge(pFilletEdge)` on this pseudo-B-rep: the wire
+    /// edge is deleted by `SmBrep::DeleteEdge` ([`crate::topology::brep::p4::delete_edge`],
+    /// which unlinks its edge uses and vertex uses, keeps a vertex use as a shell
+    /// vertex use where its vertex would be left without any, and splits the shell as
+    /// needed); `~SmFilletEdge` then finds no edge uses left. The fillet records of the
+    /// edge, of its edge uses and of the vertex uses `DeleteEdge` deleted go with them.
+    ///
+    /// # Errors
+    /// `SM_ERR` when editing is disabled or the edge is not a wire edge
+    /// (`SmBrep::DeleteEdge`'s checks); those of the deletion.
+    pub fn delete_wire_fillet_edge(&mut self, k: &mut Kernel, e: EdgeId) -> Result<()> {
+        // check state - m_bEditingEnabled must be on
+        if !self.editing_enabled {
+            return Err(SolidError::sm_err(OP_EDGE));
+        }
+        self.fillet_edge(e)?;
+        let uses = edge_unit::edgeuses(&self.brep, e, None, None)?;
+        let mut vus = Vec::new();
+        for &eu in &uses {
+            if let Some(vu) = self.brep.edgeuse(eu)?.vertexuse {
+                vus.push(vu);
+            }
+        }
+        // The pseudo-B-rep's m_bEditingEnabled is this record's flag (checked above).
+        let inner_editing = self.brep.editing_enabled();
+        self.brep.set_editing_enabled(true);
+        let deleted = crate::topology::brep::p4::with_local_env(|d| {
+            crate::topology::brep::p4::delete_edge(k, &mut self.brep, d, e, None)
+        });
+        self.brep.set_editing_enabled(inner_editing);
+        deleted?;
+        for eu in uses {
+            self.edgeuses.remove(&eu);
+        }
+        for vu in vus {
+            if self.brep.vertexuse(vu).is_err() {
+                self.vertexuses.remove(&vu);
+            }
+        }
+        self.edge_list.retain(|&x| x != e);
+        self.edges.remove(&e);
+        Ok(())
+    }
+
     /// `SmFilletEdge::GetOriginalUVCurve`: the UV trim curve of the primary edge use's
     /// mate.
     ///

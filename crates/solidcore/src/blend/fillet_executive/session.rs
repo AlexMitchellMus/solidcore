@@ -985,7 +985,7 @@ impl FilletEdgeContext for SessionEdgeLookup<'_> {
 }
 
 struct SessionCornerEdgeContext<'a> {
-    k: &'a Kernel,
+    k: &'a mut Kernel,
     target: &'a mut Brep,
     pseudo: &'a mut FilletBrep,
     lookup: SessionEdgeLookup<'a>,
@@ -1997,6 +1997,7 @@ impl CornerEdgeAccess<FilletObject> for SessionObjects<'_> {
             },
             |context| context.do_global_merge,
             |context| &mut *context.pseudo,
+            |context, edge| context.pseudo.delete_wire_fillet_edge(context.k, edge),
         )
     }
 }
