@@ -1,0 +1,10 @@
+#### WR-462. A round whose rolling ball does not fit the faces it rolls on, run up into a corner, fails in `CalcRailIntEdgeuse` with the generic `SM_ERR` (#1172)
+- **Severity:** Wrong result
+- **Area:** Fillets
+- **Location:** `source/SMLib/src/SmFilletExecutive.cpp`, `SmFilletExecutive::CreateFilletBrep` (corner vertices before `CalcFilletGeom`); `source/SMLib/src/SmFilletGeom.cpp`, `CalcRailIntEdgeuse`.
+- **What happens:** a blend whose ball is larger than a face's radius of curvature has a rail that turns back on itself, so the round cannot exist. SMLib finds out only in the corners, which run before the rails are built and look for a rail end that is not there; the fillet fails with `SM_ERR` ("Vertex Computation Failure" in the fork's run) instead of reporting that the round does not fit.
+- **Trigger:** a 60 x 40 x 20 box, its top edge at y = 40 rounded r5, its top edge at x = 60 rounded r3, then the vertical edge at x = 60, y = 40 with the two edges tangent to it up into the corner (the side's arc on the r5 round, the seam between the rounds): r3.1 and up cannot fit (the ball curves less than the r5 round around it; no ball over r3 fits the r3 round).
+- **How found:** SolidCraft ladder 07-fillets/016 (tangency-labs/solidcore#1172).
+- **Confirmed:** yes, in the port (unit test `a_ball_that_does_not_fit_is_no_room_before_the_corners`: r3.1 and r7 fail in the corners with status 1001 and an error code other than `SM_FILERR_NO_ROOM`).
+- **Fix:** the fork's `SmFilletSolver::BallFitsItsFaces` runs in `CreateFilletBrep` before the corners (diff `2c5baae..e5696ca` in #1172; the commits are not on a public branch of tangency-labs/smlib). It solves nine sections along each blend's edge and refuses with `SM_FILERR_NO_ROOM` when `det M` or `trace M` of the face's offset stretch `M = I - rS` is below -1e-6.
+- **Rust port:** with `Kernel::fixes.fillet_refuse_ball_not_fitting` the executive runs `ball_fits_its_faces` on each solver before the corners and records error code 8 (`SM_FILERR_NO_ROOM`); the call still returns the executive's status 1001, as for the other refusals.
