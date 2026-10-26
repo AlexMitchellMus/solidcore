@@ -487,14 +487,14 @@ impl TrimSurfaceTransfer {
 }
 
 enum TrimSurfaceBackend<'a> {
-    Legacy(Surface),
+    Legacy(&'a mut Option<Surface>),
     Retained(&'a mut TrimSurfaceTransfer),
 }
 
 impl TrimSurfaceBackend<'_> {
     fn surface(&self) -> Result<&Surface> {
         match self {
-            Self::Legacy(surface) => Ok(surface),
+            Self::Legacy(surface) => surface.as_ref().ok_or_else(|| SolidError::null_pointer(OP)),
             Self::Retained(transfer) => transfer
                 .transfer
                 .as_ref()
@@ -571,6 +571,7 @@ pub fn trim_surface_with_model_space_curves(
         uv_domain,
         surface_orientation,
     } = input;
+    let mut surface = Some(surface);
     trim_surface_impl(
         k,
         b,
@@ -584,7 +585,7 @@ pub fn trim_surface_with_model_space_curves(
             uv_domain,
             surface_orientation,
         },
-        TrimSurfaceBackend::Legacy(surface),
+        TrimSurfaceBackend::Legacy(&mut surface),
         first_is_outer,
         oriented_correctly,
         may_cross_seam,
@@ -630,6 +631,7 @@ fn trim_surface_impl(
     // Native clears the temporary cleanup immediately before MakeFace(s).
     let mut new_faces = match surface {
         TrimSurfaceBackend::Legacy(surface) => {
+            let surface = surface.take().ok_or_else(|| SolidError::null_pointer(OP))?;
             let input = TrimInput {
                 loop_counts: input.loop_counts,
                 curves: input.curves,
