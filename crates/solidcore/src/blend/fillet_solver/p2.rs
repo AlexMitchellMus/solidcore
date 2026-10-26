@@ -2488,15 +2488,8 @@ mod tests {
             ..TsectPnt::default()
         };
         let before = tsect.clone();
-        let result = FilletSolver::rail_edgeuse_intersect(
-            &mut ops,
-            &k,
-            &mut b,
-            0,
-            side_eu,
-            0.5,
-            &mut tsect,
-        );
+        let result =
+            FilletSolver::rail_edgeuse_intersect(&mut ops, &k, &mut b, 0, side_eu, 0.5, &mut tsect);
         assert_eq!(
             result,
             Err(invalid("Jacobian size overflows with edge-use parameter"))
