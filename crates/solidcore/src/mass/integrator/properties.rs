@@ -19,6 +19,8 @@
 //! their unported units. `boundary_properties` exposes the integration after trim
 //! construction for callers already holding oriented trim curves. Nested integration
 //! has a fixed two-level call structure, not input-driven recursion.
+//! With `Kernel::fixes.precise_properties_at_trim_knots`, each trim knot span is
+//! integrated separately; the default retains upstream's whole-curve step order.
 use super::{OdeIntegrator, OdeOptions};
 use crate::curve::curve::Curve;
 use crate::geom::attribute::{ids, AttributeStore, AttributeValue, ObjectKey};
@@ -280,69 +282,90 @@ pub fn boundary_properties(
             layout: &layout,
         };
         let ivl = trim.natural_interval();
-        let span = ivl.max() - ivl.min();
-        let mut y = vec![0.0; layout.num_components];
-        let mut scratch = vec![0.0; layout.num_components + 1];
-        let mut status = Err(SolidError::sm_err(OP));
-        for divisor in [2.0, 8.0, 64.0, 512.0, 4096.0] {
-            y.fill(0.0);
-            status = OdeIntegrator::default()
-                .integrate(
-                    &mut y,
-                    ivl.min(),
-                    ivl.max(),
-                    OdeOptions {
-                        accuracy: accuracy / 10.0,
-                        initial_step: span / divisor,
-                        minimum_step: 0.0,
-                        scale: Some(&scale),
-                    },
-                    |t, _, dy| {
-                        // A zero U tangent leaves the caller's derivative array
-                        // untouched upstream. Preserve this particular stage's
-                        // values, rather than another stage's shared scratch.
-                        if let Some(unused) = scratch.first_mut() {
-                            *unused = 0.0;
-                        }
-                        for (s, d) in scratch.iter_mut().skip(1).zip(dy.iter()) {
-                            *s = *d;
-                        }
-                        eval.evaluate(k, t, &mut scratch)?;
-                        for (d, v) in dy.iter_mut().zip(scratch.iter().skip(1)) {
-                            *d = *v;
-                        }
-                        Ok(())
-                    },
-                )
-                .map(|_| ());
-            if status.is_ok() {
-                break;
-            }
-            if status.as_ref().is_err_and(SolidError::is_unported) {
-                break;
-            }
+        let mut bounds = vec![ivl.min()];
+        if k.fixes.precise_properties_at_trim_knots {
+            let (knots, _) = trim.knots(k, Some(&ivl))?;
+            bounds.extend(
+                knots
+                    .into_iter()
+                    .filter(|t| *t > ivl.min() && *t < ivl.max()),
+            );
         }
-        status?;
-        let value = |index: usize| y.get(index.wrapping_sub(1)).copied().unwrap_or(0.0);
-        if layout.area != 0 {
-            result.area += value(layout.area);
+        bounds.push(ivl.max());
+        let mut span_scale = scale.clone();
+        if let Some(s) = span_scale.first_mut() {
+            // Share the absolute error budget across spans. The inner iso-curve
+            // integration still uses the original scale and requested accuracy.
+            *s /= (bounds.len() - 1) as f64;
         }
-        if layout.volume != 0 {
-            result.volume += value(layout.volume) * sign;
-        }
-        for (kk, (m, &index)) in result
-            .moments
-            .iter_mut()
-            .zip(layout.moments.iter())
-            .enumerate()
-        {
-            if index == 0 {
+        for interval in bounds.windows(2) {
+            let Some((&start, &end)) = interval.first().zip(interval.get(1)) else {
                 continue;
+            };
+            let span = end - start;
+            let mut y = vec![0.0; layout.num_components];
+            let mut scratch = vec![0.0; layout.num_components + 1];
+            let mut status = Err(SolidError::sm_err(OP));
+            for divisor in [2.0, 8.0, 64.0, 512.0, 4096.0] {
+                y.fill(0.0);
+                status = OdeIntegrator::default()
+                    .integrate(
+                        &mut y,
+                        start,
+                        end,
+                        OdeOptions {
+                            accuracy: accuracy / 10.0,
+                            initial_step: span / divisor,
+                            minimum_step: 0.0,
+                            scale: Some(&span_scale),
+                        },
+                        |t, _, dy| {
+                            // A zero U tangent leaves the caller's derivative array
+                            // untouched upstream. Preserve this particular stage's
+                            // values, rather than another stage's shared scratch.
+                            if let Some(unused) = scratch.first_mut() {
+                                *unused = 0.0;
+                            }
+                            for (s, d) in scratch.iter_mut().skip(1).zip(dy.iter()) {
+                                *s = *d;
+                            }
+                            eval.evaluate(k, t, &mut scratch)?;
+                            for (d, v) in dy.iter_mut().zip(scratch.iter().skip(1)) {
+                                *d = *v;
+                            }
+                            Ok(())
+                        },
+                    )
+                    .map(|_| ());
+                if status.is_ok() {
+                    break;
+                }
+                if status.as_ref().is_err_and(SolidError::is_unported) {
+                    break;
+                }
             }
-            let moment_sign = if kk < 4 { 1.0 } else { sign };
-            m.x += value(index) * moment_sign;
-            m.y += value(index + 1) * moment_sign;
-            m.z += value(index + 2) * moment_sign;
+            status?;
+            let value = |index: usize| y.get(index.wrapping_sub(1)).copied().unwrap_or(0.0);
+            if layout.area != 0 {
+                result.area += value(layout.area);
+            }
+            if layout.volume != 0 {
+                result.volume += value(layout.volume) * sign;
+            }
+            for (kk, (m, &index)) in result
+                .moments
+                .iter_mut()
+                .zip(layout.moments.iter())
+                .enumerate()
+            {
+                if index == 0 {
+                    continue;
+                }
+                let moment_sign = if kk < 4 { 1.0 } else { sign };
+                m.x += value(index) * moment_sign;
+                m.y += value(index + 1) * moment_sign;
+                m.z += value(index + 2) * moment_sign;
+            }
         }
     }
     Ok(result)
