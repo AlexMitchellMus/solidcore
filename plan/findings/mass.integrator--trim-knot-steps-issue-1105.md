@@ -37,6 +37,12 @@ demonstrates a narrow feature missed by whole-curve integration. Platform
 rounding changes the adaptive schedule; the exact first divergent step has
 not been isolated. Native Windows C++ confirmation remains unavailable.
 
+The focused planar feature is confirmed on pinned Linux C++: construction by
+`SmBrep::MakeFaceWithCurves` succeeds, and `SmFace::ComputePreciseProperties`
+returns success with area `0.10000000000000001` instead of the exact `0.105`.
+See WR-423 for the boundary data. This confirms the upstream integration
+failure mechanism independently of platform differences in the sphere case.
+
 `Kernel::fixes.precise_properties_at_trim_knots` enables the remedy. The
 outer absolute error-scale floor is shared among spans; inner iso integration
 and the caller's accuracy remain unchanged. Default mode preserves the

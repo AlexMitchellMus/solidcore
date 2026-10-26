@@ -145,7 +145,7 @@ impl Caches {
 #[allow(clippy::struct_excessive_bools)]
 #[non_exhaustive]
 pub struct UpstreamFixes {
-    /// Precise face properties integrate each UV trim knot span so adaptive steps cannot skip narrow features (#1105).
+    /// Precise face properties integrate each UV trim knot span so adaptive steps cannot skip narrow features (WR-423, #1105).
     pub precise_properties_at_trim_knots: bool,
     /// `CalcRailIntEdgeuse`'s retry rail search holds a variable round's radius only where its first search does (at a corner calculated as constant radius) (WR-300, #1023).
     pub fillet_retry_radius_as_first: bool,
