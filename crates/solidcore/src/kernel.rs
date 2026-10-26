@@ -181,7 +181,7 @@ pub struct UpstreamFixes {
     pub check_loop_projected_seam_ends: bool,
     /// `SmBSplineCurve::AssertValid` reads the minimum radius of curvature before tests 13/14 compare it (WR-382, #475).
     pub bspline_check_min_radius: bool,
-    /// The curve property solves ignore a failed guess in `SolveOscillating`'s sign-change search (WR-253, #481).
+    /// The one-dimensional local solves ignore a failed guess in `SolveOscillating`'s sign-change search (WR-253, #481).
     pub oscillating_skips_failed_guesses: bool,
     /// `sm_RefineCCSolutions` judges a range end's shift by its distance from 1 (WR-383, #527).
     pub refine_cc_range_ends: bool,

@@ -1315,7 +1315,7 @@ mod tests {
         }
         for failed_value in [0.0, -1.0] {
             let mut solver = LocalSolve1d::new();
-        solver.set_failed_guess_no_sign_change(true);
+            solver.set_failed_guess_no_sign_change(true);
             solver.prev1 = IterationValue {
                 t: 0.0,
                 f: 1.0,
