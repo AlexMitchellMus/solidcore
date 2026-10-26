@@ -2121,13 +2121,12 @@ impl RailClassificationAccess<FilletObject> for SessionObjects<'_> {
             .brep()
             .notify_serial()
             .ok_or_else(|| invalid("pseudo B-rep has no kernel identity"))?;
-        let mut ownership = classification::Ownership {
-            serial,
-            brep: crate::topology::brep::p3::topology_ref(
-                serial,
-                EntityRef::Brep(crate::topology::BrepId::from_index(0)),
-            ),
-        };
+        if k.context
+            .issued_brep_serial(self.pseudo.brep().notify_identity())
+            != Some(serial)
+        {
+            return Err(invalid("rollover pseudo B-rep belongs to another context"));
+        }
         let solver = self
             .solvers
             .get_mut(id.0 as usize)
@@ -2137,14 +2136,22 @@ impl RailClassificationAccess<FilletObject> for SessionObjects<'_> {
             corners: &self.corners,
         };
         let mut actual_adjusted = Vec::new();
-        let result = solver.base_mut().test_roll_over_with_context(
-            k,
-            self.target,
-            &mut self.pseudo,
-            &mut context,
-            &mut actual_adjusted,
-            &mut ownership,
-        );
+        let result =
+            crate::geom::context::Context::with_notification_context(k, |k, notifications| {
+                let mut ownership = classification::Ownership::new(
+                    self.pseudo.brep(),
+                    &mut self.attributes,
+                    notifications,
+                )?;
+                solver.base_mut().test_roll_over_with_context(
+                    k,
+                    self.target,
+                    &mut self.pseudo,
+                    &mut context,
+                    &mut actual_adjusted,
+                    &mut ownership,
+                )
+            })?;
         // Retain append-only adjusted-corner output even if a later rail fails.
         adjusted.extend(actual_adjusted.into_iter().map(FilletObject::Corner));
         result

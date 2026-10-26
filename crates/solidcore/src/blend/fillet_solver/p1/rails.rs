@@ -29,6 +29,24 @@ pub trait RailOwnership {
     fn edge_owner(&self, edge: EdgeId) -> Result<(ObjectRef, Option<ObjectRef>)>;
     /// Deliver the notification produced by `Curve::set_owner`.
     fn owner_changed(&mut self, change: OwnerChange) -> Result<()>;
+    /// Set the owner of the actual installed rail curve. The default preserves the
+    /// original adapter contract; retained contexts may notify before assignment.
+    ///
+    /// # Errors
+    /// Identity resolution or notification transport failures.
+    fn set_curve_owner(
+        &mut self,
+        _edge: EdgeId,
+        curve: &mut Curve,
+        owner: ObjectRef,
+        brep: Option<ObjectRef>,
+    ) -> Result<()> {
+        let (_, notification) = curve.set_owner(Some(owner), brep);
+        if let Some(notification) = notification {
+            self.owner_changed(notification)?;
+        }
+        Ok(())
+    }
 }
 pub(crate) struct SupportIntersection<'a> {
     pub start: VertexId,
@@ -180,11 +198,7 @@ impl Rails<'_> {
         crate::blend::fillet_geom::p1::set_rail_curve(self.fillets.brep_mut(), edge, curve)?;
         let (owner, brep) = self.ownership.edge_owner(edge)?;
         let curve = required(self.fillets.brep_mut().edge_mut(edge)?.curve.as_mut())?;
-        let (_, notification) = curve.set_owner(Some(owner), brep);
-        if let Some(notification) = notification {
-            self.ownership.owner_changed(notification)?;
-        }
-        Ok(())
+        self.ownership.set_curve_owner(edge, curve, owner, brep)
     }
 
     fn split_rail(
