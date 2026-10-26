@@ -703,6 +703,13 @@ impl ExecutiveAccess<Handle> for Access {
     fn set_surface_generator(&mut self, _: Handle, _: Handle) -> SolidResult<()> {
         missing()
     }
+    fn new_fillet_solver(
+        &mut self,
+        _: &mut Kernel,
+        _: &solidcore::blend::fillet_executive::p2::SolverSpec<'_, Handle>,
+    ) -> SolidResult<Handle> {
+        missing()
+    }
 }
 
 fn flag(value: bool) -> f64 {

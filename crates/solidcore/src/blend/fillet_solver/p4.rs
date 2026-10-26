@@ -80,6 +80,7 @@ use crate::blend::fillet_geom::p1::{
 };
 use crate::blend::fillet_geom::p3::{NoCorners, SplitCorners};
 use crate::blend::fillet_intersector::{FilletIntersector, StepSolve as StepSolveFlags};
+use crate::blend::fillet_solver::p1::NoExtensionCorners;
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{Result, SolidError};
 use crate::geom::extent1d::Extent1d;
@@ -193,7 +194,12 @@ pub trait FilletGeometryContext {
     ///
     /// # Errors
     /// Actual corner resolution or preparation failures.
-    fn set_extension_flags(&self, solver: &mut dyn FilletSolverOps, target: &Brep) -> Result<()>;
+    fn set_extension_flags(
+        &self,
+        solver: &mut dyn FilletSolverOps,
+        k: &Kernel,
+        target: &Brep,
+    ) -> Result<()>;
 
     /// Resolve an actual solver ID; borrow `current` only for this lookup's use.
     ///
@@ -645,8 +651,10 @@ fn c1_setup(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<CalcState>
     // Set the extension flags for two ends of fillets
     // extend ends when vertices are not blended and not degenerate
     match &cx.solvers {
-        GeometrySolvers::Indexed(_) => ops.set_extension_flags(cx.target)?,
-        GeometrySolvers::Live(context) => context.set_extension_flags(ops, cx.target)?,
+        GeometrySolvers::Indexed(_) => {
+            ops.set_extension_flags(cx.k, cx.target, &NoExtensionCorners)?;
+        }
+        GeometrySolvers::Live(context) => context.set_extension_flags(ops, cx.k, cx.target)?,
     }
 
     // local to-be-filleted edge data
@@ -892,7 +900,12 @@ mod tests_c1 {
         fn solver_mut(&mut self) -> &mut FilletSolver {
             &mut self.0
         }
-        fn set_extension_flags(&mut self, _b: &Brep) -> Result<()> {
+        fn set_extension_flags(
+            &mut self,
+            _k: &Kernel,
+            _b: &Brep,
+            _corners: &dyn crate::blend::fillet_solver::p1::ExtensionCorners,
+        ) -> Result<()> {
             Ok(())
         }
     }

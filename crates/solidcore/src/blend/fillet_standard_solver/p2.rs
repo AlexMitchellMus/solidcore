@@ -80,8 +80,8 @@
 //!   intersector's surfaces are copies of the solver's offsets, kept at the same offset
 //!   distances and base extensions as upstream's one object). The law argument is a copy
 //!   of the solver's law (`SmFilletIntersector::EvaluateLawPoint` does not read it).
-//!   `SetExtensionFlags` through the `FilletSolverOps` hook (which has no kernel) is
-//!   [`SolidError::InvalidInput`]; call [`VariableRadiusFs::set_extension_flags`].
+//!   `SetExtensionFlags` through the `FilletSolverOps` hook is
+//!   [`VariableRadiusFs::set_extension_flags`].
 //! - **Surface/surface geometry.** `CalcFilletGeom` steps with the ported
 //!   `SmFilletSolver::StepSolve` (without a B-rep: the executive of a surface/surface
 //!   fillet has none). Its part from `GetPseudoBrep` on needs the live executive's
@@ -2182,17 +2182,18 @@ impl FilletSolverOps for VariableRadiusFs {
         }))
     }
 
-    /// `SmVariableRadiusFS::SetExtensionFlags` needs the kernel to extend the edge
-    /// curve ([`VariableRadiusFs::set_extension_flags`]); the hook has none.
+    /// `SmVariableRadiusFS::SetExtensionFlags` ([`VariableRadiusFs::set_extension_flags`]).
     ///
     /// # Errors
     ///
-    /// [`SolidError::InvalidInput`]: call [`VariableRadiusFs::set_extension_flags`].
-    fn set_extension_flags(&mut self, _b: &Brep) -> Result<()> {
-        Err(SolidError::invalid_input(
-            OP_VR_RECALC,
-            "SmVariableRadiusFS::SetExtensionFlags needs the kernel: call VariableRadiusFs::set_extension_flags",
-        ))
+    /// Those of [`VariableRadiusFs::set_extension_flags`].
+    fn set_extension_flags(
+        &mut self,
+        k: &Kernel,
+        b: &Brep,
+        corners: &dyn crate::blend::fillet_solver::p1::ExtensionCorners,
+    ) -> Result<()> {
+        VariableRadiusFs::set_extension_flags(self, k, b, corners)
     }
 
     /// `SmVariableRadiusFS::GetType`.
@@ -2538,18 +2539,15 @@ impl SurfaceSurfaceFs {
     /// # Errors
     ///
     /// `SM_ERR` for parallel normals at the guesses; those of the evaluations and of
-    /// `StepSolve`; [`SolidError::Unported`] (`SmFilletExecutive::GetPseudoBrep`) once
-    /// the geometry is to be built: a solver in a live fillet session calls
-    /// [`SurfaceSurfaceFs::calc_fillet_geom_with_context`] instead.
+    /// `StepSolve`; `SM_ERR_NULL_POINTER` once the geometry is to be built: this entry
+    /// point is a solver outside an executive, whose `m_pExecutive->GetPseudoBrep()`
+    /// upstream dereferences `NULL` (a solver in a live fillet session runs
+    /// [`SurfaceSurfaceFs::calc_fillet_geom_with_context`]).
     pub fn calc_fillet_geom(&mut self, k: &Kernel) -> Result<()> {
         if self.calc_fillet_start(k)?.is_none() {
             return Ok(());
         }
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetPseudoBrep (context-free caller; the live session passes its pseudo-B-rep)
-        Err(SolidError::unported(
-            "SmFilletExecutive::GetPseudoBrep",
-            "blend.fillet_executive_p1",
-        ))
+        Err(SolidError::null_pointer(OP_SS_CALC))
     }
 
     /// `SmSurfaceSurfaceFS::CalcFilletGeom` up to `m_pExecutive->GetPseudoBrep()`: the
@@ -2956,7 +2954,13 @@ mod tests {
             g,
         )
         .expect("solver");
-        assert!(fs.calc_fillet_geom(&k).is_err_and(|e| e.is_unported()));
+        assert!(matches!(
+            fs.calc_fillet_geom(&k),
+            Err(SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            })
+        ));
     }
 
     #[test]

@@ -72,7 +72,7 @@ impl SolverOps for Observed {
     delegate_mut! { SolverOps;
         fn solver_mut() -> &mut FilletSolver;
         fn setup_offset_values(point: &TsectPnt, radius: Option<&mut f64>) -> KernelResult<()>;
-        fn set_extension_flags(brep: &Brep) -> KernelResult<()>;
+        fn set_extension_flags(k: &Kernel, brep: &Brep, corners: &dyn solidcore::blend::fillet_solver::p1::ExtensionCorners) -> KernelResult<()>;
         fn load_jacobian(k: &Kernel, equations: &mut usize, parameters: &mut usize, load: &mut JacobianLoad<'_>, f: &mut [f64], jacobian: Option<&mut Matrix>) -> KernelResult<bool>;
         fn load_initial_values(k: &Kernel, brep: Option<&mut Brep>, do_surf2_calcs: bool, rail_index: usize, surface1: &mut OffsetSurface, surface1_index: usize, intervals: &mut ExtentNd, periodicities: &mut Vec<bool>, guess_t: &mut Vec<f64>) -> KernelResult<Option<InitialValues>>;
     }

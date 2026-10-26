@@ -1221,11 +1221,6 @@ fn pseudo_brep_delete_edge(_pseudo: &mut FilletBrep, _e: EdgeId) -> Result<()> {
     ))
 }
 
-/// `pThisFS->OffsetRadiiCanChange()` then `SM_CAST_PTR(SmVariableRadiusFS, pThisFS)`: the
-/// variable-radius solver behind a fillet geometry's solver id, `None` for a solver whose
-/// offset radii cannot change. Both are virtual on the solver's dynamic type, which only
-/// the executive's solver store (`SmFilletExecutive::m_vFilletSolvers`, unit
-/// `blend.fillet_executive_p1`, #260) knows; the corner's solver list holds base records.
 /// The solver store a corner's law-interval adjustment resolves fillet geometries'
 /// solvers through.
 pub trait LawIntervalSolvers {
@@ -1243,11 +1238,9 @@ impl LawIntervalSolvers for [FilletSolver] {
         &mut self,
         _id: FilletSolverId,
     ) -> Result<Option<&mut VariableRadiusFs>> {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::m_vFilletSolvers (the solver store resolving SmFilletSolver::OffsetRadiiCanChange and the SmVariableRadiusFS cast)
-        Err(SolidError::unported(
-            "SmFilletSolver::OffsetRadiiCanChange / SmVariableRadiusFS cast (the executive's solver store)",
-            "blend.fillet_executive_p1",
-        ))
+        // A table of base solvers: SmFilletSolver::OffsetRadiiCanChange() is TRUE and
+        // the SM_CAST_PTR(SmVariableRadiusFS, ..) of a base solver is NULL.
+        Ok(None)
     }
 }
 

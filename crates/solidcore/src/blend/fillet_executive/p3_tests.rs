@@ -712,6 +712,13 @@ impl ExecutiveAccess<Handle> for Access {
     fn set_surface_generator(&mut self, _: Handle, _: Handle) -> Result<()> {
         absent()
     }
+    fn new_fillet_solver(
+        &mut self,
+        _: &mut Kernel,
+        _: &crate::blend::fillet_executive::p2::SolverSpec<'_, Handle>,
+    ) -> Result<Handle> {
+        absent()
+    }
 }
 
 fn state() -> FilletExecutive<Handle> {

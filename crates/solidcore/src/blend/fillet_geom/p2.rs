@@ -2814,7 +2814,10 @@ mod tests {
         // geometry check
         assert!(matches!(
             fb.calc_set_back_vert(&k, v, CornerLookup::table(&[]), &mut solvers, &target),
-            Err(SolidError::Upstream { code: crate::error::SM_ERR_NULL_POINTER, .. })
+            Err(SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            })
         ));
         let corners = [FilletCorner::new(
             crate::blend::fillet_corner::p3::FilletCornerKind::OneByOne,

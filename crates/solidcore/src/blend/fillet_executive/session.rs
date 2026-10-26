@@ -830,6 +830,12 @@ struct SessionGeometryContext<'a> {
     corners: &'a mut [FilletCorner],
 }
 
+impl crate::blend::fillet_solver::p1::ExtensionCorners for SessionGeometryContext<'_> {
+    fn corner_of(&self, vertex: Option<VertexId>) -> Result<&FilletCorner> {
+        self.corner(vertex)
+    }
+}
+
 impl SplitCorners for SessionGeometryContext<'_> {
     fn corner_of_vertex(&self, vertex: VertexId) -> Option<FilletCornerId> {
         session_corner_of_vertex(self.executive, vertex)
@@ -851,7 +857,8 @@ impl SessionGeometryContext<'_> {
         let Some(VertexEntry::Corner(FilletObject::Corner(id))) =
             self.executive.vertex_corner_map.get(&key)
         else {
-            return Err(invalid("endpoint has no completed actual corner"));
+            // upstream dereferences the NULL corner
+            return Err(SolidError::null_pointer(OP));
         };
         self.corners
             .get(id.0 as usize)
@@ -860,10 +867,14 @@ impl SessionGeometryContext<'_> {
 }
 
 impl FilletGeometryContext for SessionGeometryContext<'_> {
-    fn set_extension_flags(&self, solver: &mut dyn FilletSolverOps, target: &Brep) -> Result<()> {
-        solver
-            .solver_mut()
-            .set_extension_flags_with_lookup(target, |vertex| self.corner(vertex))
+    fn set_extension_flags(
+        &self,
+        solver: &mut dyn FilletSolverOps,
+        k: &Kernel,
+        target: &Brep,
+    ) -> Result<()> {
+        // the virtual SetExtensionFlags (SmVariableRadiusFS extends its edge curve)
+        solver.set_extension_flags(k, target, self)
     }
 
     fn solver<'s>(

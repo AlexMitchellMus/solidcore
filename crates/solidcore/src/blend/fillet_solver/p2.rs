@@ -64,6 +64,7 @@ use crate::blend::fillet_geom::p1::{
     FilletGeomType, FilletSolverId, FilletVertex, FilletVertexType, FilletVertexuse,
 };
 use crate::blend::fillet_geom::p2::{srf_srf_intersection, SrfSrfOptions};
+use crate::blend::fillet_geom::p3::SplitCorners;
 use crate::blend::fillet_geom::p4::{set_edge_curve, set_vertex_point};
 use crate::blend::fillet_solver::p1::{
     check_edge_curve_domains, test_manifold_tangent_rollover, test_side_edge_convexity, FilStatus,
@@ -423,9 +424,14 @@ impl FilletSolver {
     /// # Errors
     ///
     /// Those of [`FilletSolver::vertex`]; [`SolidError::InvalidInput`] without an
-    /// executive (upstream dereferences `NULL`); [`SolidError::Unported`] for the corner
-    /// lookup (`SmFilletExecutive::GetFilletCornerOfVertex`).
-    pub fn fillet_corner(&self, b: &Brep, index: usize) -> Result<Option<FilletCornerId>> {
+    /// executive (upstream dereferences `NULL`). `corners` is the executive's
+    /// `GetFilletCornerOfVertex` (a vertex without corner, or none, is `NULL`).
+    pub fn fillet_corner(
+        &self,
+        b: &Brep,
+        index: usize,
+        corners: &dyn SplitCorners,
+    ) -> Result<Option<FilletCornerId>> {
         if index > 1 {
             return Ok(None);
         }
@@ -433,12 +439,7 @@ impl FilletSolver {
         if self.executive.is_none() {
             return Err(invalid("no fillet executive"));
         }
-        let _ = vtx;
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetFilletCornerOfVertex
-        Err(SolidError::unported(
-            "SmFilletExecutive::GetFilletCornerOfVertex",
-            "blend.fillet_executive_p1",
-        ))
+        Ok(vtx.and_then(|v| corners.corner_of_vertex(v)))
     }
 
     /// `CalcCylinderFilletGeom(rTsectPnts, pFilletGeom)`: builds the cylinder of a

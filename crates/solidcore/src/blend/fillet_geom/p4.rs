@@ -16,7 +16,7 @@
 //! | [`FilletBrep::calc_rail_int_extended_edgeuse`]    | `SmFilletVertex::CalcRailIntExtendedEdgeuse` |
 //! | [`FilletBrep::make_face_brep`]                    | `SmFilletGeom::MakeFaceBrep`                 |
 //! | [`FilletBrep::rail_index_of_vertex`]              | `SmFilletGeom::GetRailIndexOfVertex`         |
-//! | [`FilletBrep::insert_intersection_topology`]      | `SmFilletGeom::InsertIntersectionTopology`   |
+//! | [`FilletBrep::insert_intersection_topology_with_context`] | `SmFilletGeom::InsertIntersectionTopology` |
 //! | [`FilletBrep::calc_blending_geom`]                | `SmFilletGeom::CalcBlendingGeom`             |
 //!
 //! Deviations:
@@ -61,15 +61,10 @@
 //! - **Part 6.** `GetRailIndexOfVertexuse`, `JoinTwoFilletVertsByCurves`,
 //!   `SmFilletEdge::CalcBlendingRail` and `RecordFilletError` are `blend.fillet_geom_p6`'s;
 //!   `MakeFaceBrep`'s 3D curve list holds `Option<Curve>` as the join appends them.
-//! - **Unported callees.** The fillet executive's
-//!   topology intersector, attribute users and topology bookkeeping
-//!   (`blend.fillet_executive_p1`), `SmTopologyIntersector::MergeCurveOnSurfaces` and
-//!   `RegisterExistingSSI` (ported in `boolean.topology_intersector_p3` / `_p2`, but
-//!   they need the executive's intersector, so their stubs are tagged
-//!   `blend.fillet_executive_p1`) in `InsertIntersectionTopology`. Each stub replaces
-//!   only its call; the code behind it is ported. The 777/778 marker attributes
-//!   `InsertIntersectionTopology` puts on a face for the executive's split check travel
-//!   with the `UpdateTopologyChanges` stub.
+//! - **Executive state.** `InsertIntersectionTopology` runs against the executive's
+//!   topology intersector, attribute users, marker attributes (777/778) and topology
+//!   bookkeeping through the caller's [`IntersectionTopologyContext`] (the live
+//!   executive session).
 //! - **B-spline casts.** `SM_CAST_PTR(SmBSplineCurve, ..)` succeeds for every kind
 //!   derived from `SmBSplineCurve` upstream (`SmLine`, `SmEllipse`/`SmCircle`,
 //!   `SmHyperbola`, `SmParabola`): `as_b_spline` returns their B-spline base.
@@ -123,8 +118,7 @@ use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
 use super::p1::{
     cleanup_noise, join_verts_by_capping, CornerLookup, CurveObjectHandle, FilStatus, FilletBrep,
-    FilletCornerType, FilletEdgeType, FilletErrorType, FilletGeomId, FilletGeomType,
-    FilletSolverId,
+    FilletCornerType, FilletEdgeType, FilletGeomId, FilletGeomType, FilletSolverId,
 };
 use super::p6::join_two_fillet_verts_by_curves_resolved;
 
@@ -144,11 +138,6 @@ const OP_FACE: &str = "blend::fillet_geom::p4::FilletBrep::make_face_brep";
 const OP_RAIL_IDX: &str = "blend::fillet_geom::p4::FilletBrep::rail_index_of_vertex";
 const OP_INSERT: &str = "blend::fillet_geom::p4::FilletBrep::insert_intersection_topology";
 const OP_BLEND: &str = "blend::fillet_geom::p4::FilletBrep::calc_blending_geom";
-
-/// A call into a unit that is not ported yet; `_args` are upstream's arguments.
-fn unported_on<A, T>(_args: A, upstream: &'static str, unit: &'static str) -> Result<T> {
-    Err(SolidError::unported(upstream, unit))
-}
 
 /// The solver of a fillet geometry in the caller's table (index `id.0`).
 pub(crate) fn solver_of<'s>(
@@ -346,85 +335,6 @@ struct CurveLists {
     orients: Vec<OrientType>,
 }
 
-/// The fillet executive's topology intersector (`GetTopologyIntersector`, the inline
-/// `SmMerge` accessor of the `SmFilletExecutive` object, which has no Rust object yet:
-/// the solver holds an opaque [`crate::blend::fillet_solver::p1::FilletExecutiveRef`];
-/// unit `blend.fillet_executive_p1`); a token standing for it.
-#[derive(Debug, Clone, Copy)]
-struct TopologyIntersectorRef;
-
-fn executive_topology_intersector(solver: &FilletSolver) -> Result<TopologyIntersectorRef> {
-    // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetTopologyIntersector
-    unported_on(
-        solver.executive,
-        "SmFilletExecutive::GetTopologyIntersector",
-        "blend.fillet_executive_p1",
-    )
-}
-
-/// `pFilExec->m_pAttributeE->GetUsers(sAllEdges)` (unit `blend.fillet_executive_p1`).
-fn executive_attribute_e_users(solver: &FilletSolver) -> Result<Vec<EdgeId>> {
-    // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::m_pAttributeE->GetUsers
-    unported_on(
-        solver.executive,
-        "SmFilletExecutive::m_pAttributeE",
-        "blend.fillet_executive_p1",
-    )
-}
-
-/// `SmTopologyIntersector::MergeCurveOnSurfaces`: whether topology was deleted, the
-/// edges this call deleted (upstream appends them to the caller's `paDeletedEdges`; the
-/// caller accumulates them). The routine itself is ported
-/// ([`crate::boolean::topology_intersector::p3`]), but it runs on the executive's
-/// topology intersector, which [`TopologyIntersectorRef`] only stands for until
-/// `blend.fillet_executive_p1` is ported; the stub is tagged with that unit, as
-/// [`register_existing_ssi`]'s is.
-#[allow(clippy::too_many_arguments)]
-fn merge_curve_on_surfaces(
-    ti: TopologyIntersectorRef,
-    target: &mut Brep,
-    surface: FaceId,
-    tol: f64,
-    curve: &Curve,
-    uv_curve: Option<&Curve>,
-    other_edge: EdgeId,
-) -> Result<(bool, Vec<EdgeId>)> {
-    // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetTopologyIntersector()->MergeCurveOnSurfaces
-    unported_on(
-        (ti, target, surface, tol, curve, uv_curve, other_edge),
-        "SmTopologyIntersector::MergeCurveOnSurfaces",
-        "blend.fillet_executive_p1",
-    )
-}
-
-/// `SmTopologyIntersector::RegisterExistingSSI` with no curves. The routine itself is
-/// ported ([`crate::boolean::topology_intersector::p2`]), but it runs on the executive's
-/// topology intersector, which [`TopologyIntersectorRef`] only stands for until
-/// `blend.fillet_executive_p1` is ported; the stub is tagged with that unit.
-fn register_existing_ssi(
-    ti: TopologyIntersectorRef,
-    face_surface: FaceId,
-    fillet_surface: Option<&Surface>,
-) -> Result<()> {
-    // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetTopologyIntersector()->RegisterExistingSSI
-    unported_on(
-        (ti, face_surface, fillet_surface),
-        "SmTopologyIntersector::RegisterExistingSSI",
-        "blend.fillet_executive_p1",
-    )
-}
-
-/// `pFilExec->UpdateTopologyChanges(&sFaceAttr, pBaseFace)` with the face's marker
-/// attribute `attr` (unit `blend.fillet_executive_p1`).
-fn update_topology_changes(solver: &FilletSolver, attr: u32, face: FaceId) -> Result<()> {
-    // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::UpdateTopologyChanges
-    unported_on(
-        (solver.executive, attr, face),
-        "SmFilletExecutive::UpdateTopologyChanges",
-        "blend.fillet_executive_p1",
-    )
-}
-
 /// Native lifetime of a face marker during geometry insertion.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IntersectionFaceRole {
@@ -525,116 +435,6 @@ pub trait IntersectionTopologyContext {
         rail: EdgeId,
         surface: &Option<Self::SurfaceBinding>,
     ) -> Result<()>;
-}
-
-// Compatibility for the indexed entrypoint. Its old intersector getter remains
-// a genuine missing capability, so it never invents a live marker or intersector.
-struct IndexedInsertionContext<'a> {
-    kernel: &'a Kernel,
-    fillet_brep: &'a Brep,
-    solvers: &'a [FilletSolver],
-    solver: &'a FilletSolver,
-    intersector: Option<TopologyIntersectorRef>,
-}
-impl IntersectionTopologyContext for IndexedInsertionContext<'_> {
-    type FaceMarker = u32;
-    type SurfaceBinding = Surface;
-    fn kernel(&self) -> &Kernel {
-        self.kernel
-    }
-    fn begin_intersection(&mut self, solver: &FilletSolver) -> Result<()> {
-        self.intersector = Some(executive_topology_intersector(solver)?);
-        Ok(())
-    }
-    fn surface_binding(&mut self, pseudo: &FilletBrep, g: FilletGeomId) -> Result<Option<Surface>> {
-        Ok(pseudo.geom(g)?.fillet_surface()?.cloned())
-    }
-    fn attribute_edges(&self) -> Result<Vec<EdgeId>> {
-        executive_attribute_e_users(self.solver)
-    }
-    fn with_face_scope<T>(
-        &mut self,
-        target: &mut Brep,
-        _face: FaceId,
-        role: IntersectionFaceRole,
-        body: impl FnOnce(&mut Self, &mut Brep, &u32) -> Result<T>,
-    ) -> Result<T> {
-        let legacy_marker = match role {
-            IntersectionFaceRole::Rail => 777,
-            IntersectionFaceRole::Side => 778,
-        };
-        body(self, target, &legacy_marker)
-    }
-    fn managed_edge_tolerance(&self, edge: EdgeId) -> Result<f64> {
-        Ok(self.fillet_brep.edge(edge)?.tolerance)
-    }
-    fn merge_curve(
-        &mut self,
-        pseudo: &mut FilletBrep,
-        target: &mut Brep,
-        face: FaceId,
-        tolerance: f64,
-        pseudo_edge: EdgeId,
-        managed_edge: EdgeId,
-        deleted_edges: &mut Vec<EdgeId>,
-    ) -> Result<()> {
-        let curve = pseudo
-            .brep()
-            .edge(pseudo_edge)?
-            .curve
-            .as_ref()
-            .ok_or_else(|| SolidError::null_pointer(OP_INSERT))?;
-        let uv_curve = pseudo.original_uv_curve(pseudo_edge)?;
-        let (_, deleted) = merge_curve_on_surfaces(
-            self.intersector
-                .ok_or_else(|| SolidError::null_pointer(OP_INSERT))?,
-            target,
-            face,
-            tolerance,
-            curve,
-            uv_curve,
-            managed_edge,
-        )?;
-        deleted_edges.extend(deleted);
-        Ok(())
-    }
-    fn update_topology(
-        &mut self,
-        _pseudo: &mut FilletBrep,
-        _target: &mut Brep,
-        marker: &u32,
-        face: FaceId,
-    ) -> Result<()> {
-        update_topology_changes(self.solver, *marker, face)
-    }
-    fn register_intersection(
-        &mut self,
-        _pseudo: &FilletBrep,
-        _target: &mut Brep,
-        face: FaceId,
-        surface: &Option<Surface>,
-    ) -> Result<()> {
-        register_existing_ssi(
-            self.intersector
-                .ok_or_else(|| SolidError::null_pointer(OP_INSERT))?,
-            face,
-            surface.as_ref(),
-        )
-    }
-    fn record_bad_merge(
-        &mut self,
-        pseudo: &FilletBrep,
-        g: FilletGeomId,
-        filleted_edge: Option<EdgeId>,
-        _target: &Brep,
-        face: FaceId,
-        rail: EdgeId,
-        _surface: &Option<Surface>,
-    ) -> Result<()> {
-        let surface = pseudo.geom(g)?.fillet_surface()?;
-        pseudo.record_fillet_error(g, FilletErrorType::BadMerge, filleted_edge, Some(face), Some(rail), surface,
-            Some("SmFilletGeom::InsertIntersectionTopology(): Failure to merge fillet rail curve into side face of Target Brep"), self.solvers)
-    }
 }
 
 // ---- sm_CreateUVCurve -----------------------------------------------------------------
@@ -2289,41 +2089,12 @@ impl FilletBrep {
 
     /// `SmFilletGeom::InsertIntersectionTopology`: merges each rail and each side curve
     /// of geometry `g` into its original face of the target B-rep through the fillet
-    /// executive's topology intersector, and registers the (empty) intersections of the
-    /// fillet surface with those faces and with the faces around the filleted edge's
-    /// uncapped vertices.
+    /// executive's topology intersector (`context`, the live executive's merge state),
+    /// and registers the (empty) intersections of the fillet surface with those faces
+    /// and with the faces around the filleted edge's uncapped vertices.
     ///
-    /// # Errors
-    ///
-    /// `SM_ERR_NULL_POINTER` without solver or executive; the merge's status;
-    /// [`SolidError::Unported`] for the executive and its topology intersector's merge
-    /// (`blend.fillet_executive_p1`).
-    #[allow(clippy::too_many_lines)] // one upstream routine
-    pub fn insert_intersection_topology(
-        &mut self,
-        k: &Kernel,
-        g: FilletGeomId,
-        solvers: &[FilletSolver],
-        target: &mut Brep,
-        fillet_brep: &Brep,
-    ) -> Result<()> {
-        let solver_id = self
-            .geom(g)?
-            .fillet_solver()
-            .ok_or_else(|| SolidError::null_pointer(OP_INSERT))?;
-        let solver = solver_of(solvers, solver_id, OP_INSERT)?;
-        let mut context = IndexedInsertionContext {
-            kernel: k,
-            fillet_brep,
-            solvers,
-            solver,
-            intersector: None,
-        };
-        self.insert_intersection_topology_with_context(g, solver, target, &mut context)
-    }
-
-    /// Insert geometry using the actual retained solver and caller-owned merge
-    /// context. The context preserves surface identity and scoped marker lifetimes.
+    /// `solver` is the geometry's actual retained solver; the context preserves
+    /// surface identity and scoped marker lifetimes.
     ///
     /// # Errors
     /// Native insertion failures and missing live capabilities, with preceding
@@ -2869,16 +2640,5 @@ mod tests {
         let mut fb = FilletBrep::new();
         let g = fb.add_geom(FilletGeom::new(&k, None, FilletGeomType::Blends).unwrap());
         assert!(fb.calc_blending_geom(&k, g, &[], &Brep::new()).is_err());
-    }
-
-    #[test]
-    fn insert_without_solver_is_null() {
-        let k = kernel();
-        let mut fb = FilletBrep::new();
-        let g = fb.add_geom(FilletGeom::new(&k, None, FilletGeomType::Default).unwrap());
-        let mut t = Brep::new();
-        assert!(fb
-            .insert_intersection_topology(&k, g, &[], &mut t, &Brep::new())
-            .is_err());
     }
 }

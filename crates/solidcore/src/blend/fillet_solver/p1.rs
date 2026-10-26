@@ -985,16 +985,10 @@ impl FilletSolver {
     /// # Errors
     ///
     /// [`SolidError::InvalidInput`] where upstream dereferences `NULL` (missing edge
-    /// uses, vertex uses or executive); [`SolidError::Unported`] for the corner
-    /// lookup (`SmFilletExecutive::GetFilletCornerOfVertex`).
-    pub fn set_extension_flags(&mut self, b: &Brep) -> Result<()> {
-        self.set_extension_flags_with_lookup(b, |_| {
-            // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetFilletCornerOfVertex
-            Err(SolidError::unported(
-                "SmFilletExecutive::GetFilletCornerOfVertex",
-                "blend.fillet_executive_p1",
-            ))
-        })
+    /// uses, vertex uses or executive); those of `corners` (the executive's
+    /// `GetFilletCornerOfVertex`, dereferenced).
+    pub fn set_extension_flags(&mut self, b: &Brep, corners: &dyn ExtensionCorners) -> Result<()> {
+        self.set_extension_flags_with_lookup(b, |vertex| corners.corner_of(vertex))
     }
 
     /// Set extension flags using the actual corners resolved by the executive.
@@ -1742,6 +1736,30 @@ impl<T: FilletSolverOps> AsFilletSolverOps for T {
     }
 }
 
+/// The executive's `GetFilletCornerOfVertex`, dereferenced, as
+/// `SmFilletSolver::SetExtensionFlags` reads it.
+pub trait ExtensionCorners {
+    /// The corner of target vertex `vertex`.
+    ///
+    /// # Errors
+    /// `SM_ERR_NULL_POINTER` for a vertex without corner (upstream dereferences the
+    /// `NULL` corner).
+    fn corner_of(&self, vertex: Option<VertexId>) -> Result<&FilletCorner>;
+}
+
+/// A caller without an executive's corners (a standalone entry point): every vertex's
+/// corner is `NULL`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoExtensionCorners;
+
+impl ExtensionCorners for NoExtensionCorners {
+    fn corner_of(&self, _vertex: Option<VertexId>) -> Result<&FilletCorner> {
+        Err(SolidError::null_pointer(
+            "blend::fillet_solver::p1::set_extension_flags",
+        ))
+    }
+}
+
 /// The virtual methods of `SmFilletSolver` (the base versions are the default methods)
 /// with access to the base data.
 pub trait FilletSolverOps: AsFilletSolverOps {
@@ -1886,13 +1904,19 @@ pub trait FilletSolverOps: AsFilletSolverOps {
     }
 
     /// `SetExtensionFlags` (virtual): the base version
-    /// [`FilletSolver::set_extension_flags`].
+    /// [`FilletSolver::set_extension_flags`] on `b` with the executive's corners
+    /// `corners` (`SmVariableRadiusFS` also extends its edge curve, with `k`).
     ///
     /// # Errors
     ///
     /// Those of [`FilletSolver::set_extension_flags`].
-    fn set_extension_flags(&mut self, b: &Brep) -> Result<()> {
-        self.solver_mut().set_extension_flags(b)
+    fn set_extension_flags(
+        &mut self,
+        _k: &Kernel,
+        b: &Brep,
+        corners: &dyn ExtensionCorners,
+    ) -> Result<()> {
+        self.solver_mut().set_extension_flags(b, corners)
     }
 
     /// `GetType` (virtual): `SmFilletSolver_TYPE` for the base (each derived solver's

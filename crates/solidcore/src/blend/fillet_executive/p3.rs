@@ -851,10 +851,8 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// Virtual `CalcFilletGeom` dispatch. The base is
     /// `blend::fillet_solver::p4::FilletSolver::calc_fillet_geom` (it takes the solver
     /// as its `FilletSolverOps`, the target and pseudo B-reps and the solver table);
-    /// the `SurfaceSurfaceFS` override belongs to `blend.fillet_standard_solver_p2`.
-    /// Adapters must dispatch by concrete solver type and return that owner's
-    /// `Unported` while it is missing.
-    // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::CalcFilletGeom -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
+    /// the `SmSurfaceSurfaceFS` override is `blend.fillet_standard_solver_p2`'s.
+    /// Adapters dispatch by concrete solver type.
     fn calc_fillet_geom(
         &mut self,
         k: &mut Kernel,
@@ -1300,48 +1298,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     ) -> Result<O>;
 
     /// The fillet solver constructors `SetFilletParameters` and `SurfaceSurfaceFillet`
-    /// call, dispatched on the spec: `SmConstantRadiusFS` through
-    /// [`ExecutiveAccess::new_constant_radius_solver`]; `SmConstantDistanceFS`,
-    /// `SmVariableRadiusFS` and `SmSurfaceSurfaceFS` are ported
-    /// (`blend.fillet_standard_solver_p2`) but need a solver arena in the adapter
-    /// that no adapter has yet (`plan/findings.md`, executive adapter stubs).
+    /// call (`new SmConstantRadiusFS` / `SmConstantDistanceFS` / `SmVariableRadiusFS` /
+    /// `SmSurfaceSurfaceFS`), dispatched on the spec, adding the new solver to the
+    /// adapter's solver store and returning its handle.
+    ///
+    /// # Errors
+    /// The constructor's.
     fn new_fillet_solver(
         &mut self,
         k: &mut Kernel,
         spec: &super::p2::SolverSpec<'_, O>,
-    ) -> Result<O> {
-        match *spec {
-            super::p2::SolverSpec::ConstantRadius {
-                approx_tol,
-                ang_tol_rad,
-                tan_tol_rad,
-                radius,
-                edgeuse,
-            } => self.new_constant_radius_solver(
-                k,
-                approx_tol,
-                ang_tol_rad,
-                tan_tol_rad,
-                radius,
-                edgeuse,
-            ),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantDistanceFS::SmConstantDistanceFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
-            super::p2::SolverSpec::ConstantDistance { .. } => Err(SolidError::unported(
-                "SmConstantDistanceFS::SmConstantDistanceFS",
-                "blend.fillet_standard_solver_p2",
-            )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmVariableRadiusFS::SmVariableRadiusFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
-            super::p2::SolverSpec::VariableRadius { .. } => Err(SolidError::unported(
-                "SmVariableRadiusFS::SmVariableRadiusFS",
-                "blend.fillet_standard_solver_p2",
-            )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::SmSurfaceSurfaceFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
-            super::p2::SolverSpec::SurfaceSurface { .. } => Err(SolidError::unported(
-                "SmSurfaceSurfaceFS::SmSurfaceSurfaceFS",
-                "blend.fillet_standard_solver_p2",
-            )),
-        }
-    }
+    ) -> Result<O>;
 
     /// `SmFilletSolver::SetFilletSurfaceGenerator(pFSG)`: delegate to
     /// `FilletSolver::set_fillet_surface_generator` (`blend.fillet_solver_p1`) with
