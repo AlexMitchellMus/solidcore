@@ -12,15 +12,17 @@
 //! sections are compared exactly, float sections to `1e-9` relative. Statuses are `0`
 //! (`SM_SUCCESS`) or the `SmStatus`.
 //!
-//! Rejected cases: `IsDegenerate` of an edge whose face has a label for an original face
-//! while the back pointers are valid. Upstream then calls `SmFace::GetSurface` on it
-//! (`SmPoly.cpp:21281-21283`) and a label is not an `SmFace`: undefined in C++. The shim
-//! decides this from the built model before any call and returns
-//! `STATUS_UNDEFINED_INPUT`; `run_cpp` maps that status to `rejected`. No C++ result
-//! is inspected.
-//! `owner_degenerate` is a separate opt-in operation: explicit face records resolve
-//! only their own labels. It compares real native `IsDegenerate` calls and independent
-//! surface samples; it never supplies geometry for the two legacy opaque-owner cases.
+//! Rejected cases: `IsDegenerate` of an edge whose face has a label for an original
+//! face while the back pointers are valid. Upstream then calls `SmFace::GetSurface`
+//! on that face (to map UV points), and a label is not an `SmFace`: the call is
+//! undefined in C++ (AGENTS.md section 4, step 5.6). The shim decides this from the
+//! built model (label plus back pointers), before any call, and returns
+//! `STATUS_UNDEFINED_INPUT`; `run_cpp` maps that status to `rejected`, no C++ result is
+//! inspected, and the Rust side, which would defer it at `SmFace::GetSurface`
+//! (`topology.face_p2`) for lack of the face, is not run.
+//! `owner_degenerate` is a separate opt-in operation that does compare these calls:
+//! explicit face records resolve only their own labels, and it compares real native
+//! `IsDegenerate` calls and independent surface samples.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1220,7 +1222,7 @@ mod owner_tests {
     }
 
     #[test]
-    fn original_corpus_and_opaque_native_outputs_are_retained() {
+    fn original_corpus_is_retained_and_opaque_owner_cases_are_rejected() {
         let cases = Runner
             .cases(&CaseContext {
                 root: repo_root(),
@@ -1253,6 +1255,8 @@ mod owner_tests {
             let deferred = rust.deferred.unwrap();
             assert_eq!(deferred.unit, "topology.face_p2");
             assert_eq!(deferred.symbol, "SmFace::GetSurface");
+            // The labelled original face is not an `SmFace`: upstream would dereference
+            // it, so the C++ side rejects the case and nothing is compared.
             let cpp = Runner.run_cpp(case).unwrap();
             assert!(cpp.error.is_none());
             assert!(cpp.rejected.as_deref().unwrap().contains("fake SmFace"));

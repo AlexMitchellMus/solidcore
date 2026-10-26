@@ -18,6 +18,8 @@
 //! This foundation supports solver construction/loading; it does not substitute a
 //! result for the remaining fillet execution stages. No recursion.
 
+pub mod insertion;
+
 use std::collections::BTreeMap;
 
 use super::p1::{ExecutiveObjects, SolverLoadingAccess};
@@ -49,6 +51,9 @@ use crate::surface::surface::Surface;
 use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 
 mod classification;
+mod original_merge;
+mod original_trim;
+pub use original_trim::{OriginalSurfaceDeletion, OriginalSurfaceSelection};
 
 const OP: &str = "blend::fillet_executive::session";
 
@@ -72,6 +77,18 @@ pub enum FilletObject {
     Topology(FilletBody, EntityRef),
     /// The retained curve of an edge; separate from its topology identity.
     Curve(FilletBody, EdgeId),
+    /// Actual curve retained by an intermediate edge.
+    IntermediateCurve(EdgeId),
+    /// An actual operation-owned curve copy with checked issued identity.
+    InsertionCurve(insertion::curves::CurveBinding),
+    /// Actual trim curve retained by an edge use.
+    UvCurve(FilletBody, EdgeuseId),
+    /// Actual intermediate edge-use trim curve.
+    IntermediateUvCurve(EdgeuseId),
+    /// Original Surface instance with checked body and geometry identity.
+    Surface(insertion::geometry::SurfaceBinding),
+    /// The current actual Surface of a body-qualified Face getter.
+    FaceSurface(insertion::geometry::InsertionBody, FaceId),
     /// The actual intermediate B-rep allocated during face construction.
     IntermediateBrep,
     /// Actual topology in the separately allocated intermediate body.
@@ -82,6 +99,8 @@ pub enum FilletObject {
     Solver(FilletSolverId),
     /// A concrete corner in the session's corner slots.
     Corner(FilletCornerId),
+    /// The actual retained executive topology intersector.
+    Intersector,
     /// An actual retained cross-section generator.
     Generator(u32),
     /// An attribute owned by the session's actual attribute store.
@@ -91,7 +110,12 @@ pub enum FilletObject {
 impl ClassObject for FilletObject {
     fn class_kind(&self) -> ClassObjectKind {
         match self {
-            Self::Curve(..) => ClassObjectKind::Curve,
+            Self::Curve(..)
+            | Self::IntermediateCurve(_)
+            | Self::InsertionCurve(_)
+            | Self::UvCurve(..)
+            | Self::IntermediateUvCurve(_) => ClassObjectKind::Curve,
+            Self::Surface(_) | Self::FaceSurface(..) => ClassObjectKind::Surface,
             Self::Topology(_, entity) | Self::IntermediateTopology(entity) => match entity {
                 EntityRef::Vertex(_) => ClassObjectKind::Vertex,
                 EntityRef::Edge(_) => ClassObjectKind::Edge,
@@ -112,7 +136,12 @@ impl ClassObject for FilletObject {
 impl SolutionObject for FilletObject {
     fn kind(&self) -> ObjectKind {
         match self {
-            Self::Curve(..) => ObjectKind::Curve,
+            Self::Curve(..)
+            | Self::IntermediateCurve(_)
+            | Self::InsertionCurve(_)
+            | Self::UvCurve(..)
+            | Self::IntermediateUvCurve(_) => ObjectKind::Curve,
+            Self::Surface(_) | Self::FaceSurface(..) => ObjectKind::Surface,
             Self::Topology(_, EntityRef::Vertex(_))
             | Self::IntermediateTopology(EntityRef::Vertex(_)) => ObjectKind::Vertex,
             Self::Topology(_, EntityRef::Edge(_))
@@ -166,12 +195,14 @@ struct SessionObjects<'target> {
     target: &'target mut Brep,
     pseudo: FilletBrep,
     intermediate: Option<Brep>,
+    insertion_curves: insertion::curves::InsertionCurves,
     notification_records:
         BTreeMap<crate::geom::attribute::ObjectKey, crate::topology::topology::Topology>,
     solvers: Vec<Option<SolverObject>>,
     corners: Vec<FilletCorner>,
     generators: Vec<FilletSurfaceGenerator>,
     attributes: AttributeStore,
+    merge_attributes: Option<Vec<AttributeHandle>>,
     extended_surfaces: BTreeMap<FaceId, Surface>,
     edge_caches: BTreeMap<EdgeId, CurveCache<FilletObject>>,
     target_serial: u64,
@@ -402,11 +433,13 @@ impl<'target> FilletSession<'target> {
                 target,
                 pseudo,
                 intermediate: None,
+                insertion_curves: insertion::curves::InsertionCurves::default(),
                 notification_records: BTreeMap::new(),
                 solvers: Vec::new(),
                 corners: Vec::new(),
                 generators: Vec::new(),
                 attributes,
+                merge_attributes: None,
                 extended_surfaces: BTreeMap::new(),
                 edge_caches: BTreeMap::new(),
                 target_serial,
@@ -747,11 +780,9 @@ impl<'target> FilletSession<'target> {
 
     /// Run the executive's smooth-sequence prelude on its retained solvers.
     ///
-    /// The ordinary single-solver path performs no collection, as in native code.
-    /// Multiple solvers still require the live tangent-corner lookup context.
-    ///
     /// # Errors
-    /// Missing live tangent collection when more than one solver is retained.
+    /// Pending corner entries (when `create_corners` has not run yet) or smooth-sequence
+    /// curve construction errors.
     pub fn process_smooth_edge_sequences(&mut self, k: &mut Kernel) -> Result<()> {
         self.objects.creation_smooth(k, &mut self.executive)
     }
@@ -1098,19 +1129,193 @@ impl EdgeMapAccess<FilletObject> for SessionObjects<'_> {
     }
 }
 
+impl crate::blend::fillet_executive::p1::SmoothSequenceAccess<FilletObject> for SessionObjects<'_> {
+    fn smooth_edge_edgeuses(&self, edge: FilletObject) -> Result<Vec<FilletObject>> {
+        let FilletObject::Topology(FilletBody::Target, EntityRef::Edge(id)) = edge else {
+            return Err(invalid("smooth-sequence edge is not in the target"));
+        };
+        Ok(
+            crate::topology::edge::edgeuses(self.target, id, None, None)?
+                .into_iter()
+                .map(|eu| FilletObject::Topology(FilletBody::Target, EntityRef::Edgeuse(eu)))
+                .collect(),
+        )
+    }
+
+    fn smooth_solver_edge(&self, solver: FilletObject) -> Result<FilletObject> {
+        self.vertices_solver_edge(solver)
+    }
+
+    fn smooth_solver_corner(
+        &self,
+        executive: &FilletExecutive<FilletObject>,
+        solver: FilletObject,
+        index: usize,
+    ) -> Result<Option<FilletObject>> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("object is not a solver"));
+        };
+        let s = self
+            .solvers
+            .get(id.0 as usize)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| invalid("solver is not live"))?;
+        let Some(vertex) = s.base().vertex(self.target, index)? else {
+            return Ok(None);
+        };
+        executive.fillet_corner_of_vertex(FilletObject::Topology(
+            FilletBody::Target,
+            EntityRef::Vertex(vertex),
+        ))
+    }
+
+    fn smooth_corner_tangent_solver(
+        &self,
+        k: &Kernel,
+        executive: &FilletExecutive<FilletObject>,
+        corner: FilletObject,
+        solver: FilletObject,
+    ) -> Result<Option<FilletObject>> {
+        let FilletObject::Solver(sid) = solver else {
+            return Err(invalid("object is not a solver"));
+        };
+        let corner = self.corner_object(corner)?;
+        let tangent =
+            corner.tangent_fillet_solver_with_lookup(k, self.target, sid, |eu| match executive
+                .fillet_solver_of_edgeuse(FilletObject::Topology(
+                    FilletBody::Target,
+                    EntityRef::Edgeuse(eu),
+                )) {
+                Some(FilletObject::Solver(id)) => Some(id),
+                _ => None,
+            })?;
+        Ok(tangent.map(FilletObject::Solver))
+    }
+
+    fn smooth_solver_edge0_id(&self, solver: FilletObject) -> Result<EdgeId> {
+        let edge = self.vertices_solver_edge(solver)?;
+        let FilletObject::Topology(FilletBody::Target, EntityRef::Edge(id)) = edge else {
+            return Err(invalid("solver edge is not in the target"));
+        };
+        Ok(id)
+    }
+
+    fn smooth_target_brep(&self) -> Result<&Brep> {
+        Ok(&*self.target)
+    }
+
+    fn smooth_with_target_mut<T>(
+        &mut self,
+        edges: &[EdgeId],
+        f: impl FnOnce(&mut Brep) -> Result<T>,
+    ) -> Result<T> {
+        for &edge in edges {
+            self.edge_caches.remove(&edge);
+        }
+        f(self.target)
+    }
+
+    fn smooth_set_edge_curve(
+        &mut self,
+        k: &mut Kernel,
+        edge: EdgeId,
+        curve: crate::curve::curve::Curve,
+    ) -> Result<()> {
+        self.edge_caches.remove(&edge);
+        let serial = self.target_serial;
+        let key_of = |entity| crate::topology::brep::p3::topology_ref(serial, entity);
+        crate::topology::brep::p3::seed_records(
+            &mut self.notification_records,
+            self.target,
+            &key_of,
+        );
+        crate::topology::brep::p3::with_lent_context(k, |_k, context| {
+            let mut env = crate::topology::edge::NotifyEnv {
+                records: &mut self.notification_records,
+                attributes: &mut self.attributes,
+                context: Some(context),
+                key_of: &key_of,
+            };
+            let _ = crate::topology::edge::set_curve(
+                self.target,
+                edge,
+                Some(curve),
+                crate::topology::edge::SetCurveOptions {
+                    delete_old_curve: true,
+                    dbg_warn_leaks: true,
+                    call_notify: true,
+                },
+                &mut env,
+                [None, None],
+            )?;
+            Ok(())
+        })?
+    }
+
+    fn smooth_solver_original_curve(
+        &self,
+        solver: FilletObject,
+    ) -> Result<Option<&crate::curve::curve::Curve>> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("object is not a solver"));
+        };
+        let s = self
+            .solvers
+            .get(id.0 as usize)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| invalid("solver is not live"))?;
+        Ok(match s {
+            SolverObject::VariableRadius(vr) => vr.curve_based.original_curve(),
+            _ => None,
+        })
+    }
+
+    fn smooth_set_solver_original_curve(
+        &mut self,
+        solver: FilletObject,
+        curve: crate::curve::curve::Curve,
+    ) -> Result<()> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("object is not a solver"));
+        };
+        let s = self
+            .solvers
+            .get_mut(id.0 as usize)
+            .and_then(Option::as_mut)
+            .ok_or_else(|| invalid("solver is not live"))?;
+        if let SolverObject::VariableRadius(vr) = s {
+            vr.curve_based.set_original_curve(Some(curve));
+        }
+        Ok(())
+    }
+
+    fn smooth_set_solver_law_interval(
+        &mut self,
+        solver: FilletObject,
+        interval: crate::geom::extent1d::Extent1d,
+    ) -> Result<()> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("object is not a solver"));
+        };
+        let s = self
+            .solvers
+            .get_mut(id.0 as usize)
+            .and_then(Option::as_mut)
+            .ok_or_else(|| invalid("solver is not live"))?;
+        if let SolverObject::VariableRadius(vr) = s {
+            vr.set_fillet_law_interval(interval);
+        }
+        Ok(())
+    }
+}
+
 impl BrepCreationAccess<FilletObject> for SessionObjects<'_> {
     fn creation_smooth(
         &mut self,
         k: &mut Kernel,
         executive: &mut FilletExecutive<FilletObject>,
     ) -> Result<()> {
-        executive.process_smooth_edge_sequences_with(k, |_, _, _| {
-            // UNPORTED(blend.fillet_executive_p2): retained tangent-corner context for CollectTangentEdgeSequence.
-            Err(SolidError::unported(
-                "SmFilletExecutive::CollectTangentEdgeSequence (live corner context)",
-                "blend.fillet_executive_p2",
-            ))
-        })
+        executive.process_smooth_edge_sequences_narrow(k, self)
     }
 }
 
