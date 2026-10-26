@@ -2722,7 +2722,14 @@ mod tests {
         let mut a = xy_plane();
         let mut b = xy_plane();
         let r = a
-            .cover_other_coincident_surface_deferring_trims(&Kernel::default(), &mut b, 1e-6, None, None, false)
+            .cover_other_coincident_surface_deferring_trims(
+                &Kernel::default(),
+                &mut b,
+                1e-6,
+                None,
+                None,
+                false,
+            )
             .unwrap();
         assert_eq!(r.covering_is_other, Some(false));
         assert!(r.max_dist <= 1e-6);

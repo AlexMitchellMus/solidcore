@@ -624,7 +624,9 @@ impl<O: Copy, B: IntersectorBrep<O>> HandleFaceEdge<'_, O, B> {
     fn entity(&self, o: O) -> Result<EntityRef> {
         ClassGeometry::topology_entity(&*self.backend, o)
             .map(|(_, e)| e)
-            .ok_or_else(|| SolidError::invalid_input(OP, "topology handle the owner cannot resolve"))
+            .ok_or_else(|| {
+                SolidError::invalid_input(OP, "topology handle the owner cannot resolve")
+            })
     }
     /// A copy of the curve behind handle `o` (`MakeEdgeInFaceWithVU` consumes it).
     fn curve(&self, o: O) -> Result<Curve> {
