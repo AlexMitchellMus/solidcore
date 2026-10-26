@@ -8,6 +8,7 @@
     clippy::indexing_slicing
 )] // test helpers
 use solidcore::blend::fillet_executive::session::FilletSession;
+use solidcore::blend::fillet_standard_solver::p1::FilletLaw;
 use solidcore::boolean::api_brep::boolean_difference;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::kernel::UpstreamFixes;
@@ -194,5 +195,77 @@ fn round_end_across_a_short_arc_is_cut_off_by_the_body() {
             panic!("r {r}: refused");
         };
         assert!(manifold && near(volume, expected, 5e-3), "r {r}: {volume}");
+    }
+}
+
+// ---- WR-300: a variable round whose rail ends at a rounded corner's arc ----
+
+/// `SmApiVariableRadiusFillet` with a linear law, reporting the executive's error code.
+fn variable(k: &mut Kernel, b: &mut Brep, edges: &[EdgeId], r0: f64, r1: f64) -> Outcome {
+    let result = {
+        let mut session = FilletSession::new(k, b).unwrap();
+        session
+            .prepare_variable_radius_edges(k, edges, r0, FilletLaw::linear(r0, r1, None), 1, 1)
+            .unwrap();
+        session.do_fillet(k).map_err(|_| session.error_info().code)
+    };
+    outcome(k, b, result)
+}
+
+/// A 60 x 40 x 20 box, its vertical edge x = 60, y = 40 rounded 5, then its top back edge
+/// rounded with a radius law `r0` to `r1` along it, ending at that corner round's arc
+/// (SolidCraft ladder 07-fillets/012).
+fn round_into_a_rounded_corner(k: &mut Kernel, r0: f64, r1: f64) -> Outcome {
+    let mut b = create_box(k, Point3::new(0.0, 0.0, 0.0), 60.0, 40.0, 20.0).unwrap();
+    let e = edge_between(k, &b, [60.0, 40.0, 0.0], [60.0, 40.0, 20.0]);
+    assert!(matches!(
+        fillet(k, &mut b, &[e], 5.0, 1),
+        Outcome::Built { .. }
+    ));
+    let e = edge_between(k, &b, [0.0, 40.0, 20.0], [55.0, 40.0, 20.0]);
+    variable(k, &mut b, &[e], r0, r1)
+}
+
+/// The law runs on past the edge's end, to 5.3636 where the rail meets the arc's end. SMLib's
+/// retry rail search holds the radius at 5 there, finds the arc's end at 5 and builds a body
+/// that is 3.8 mm3 too small (1 to 5; 3.95 for 2 to 5). With `fillet_retry_radius_as_first`
+/// the rail misses the arc and the round is cut off against the body, as the first search
+/// does, which needs `fillet_nx1_end_rib_global_merge` (the corner's end rib). Laws that
+/// end small at the corner do not reach the retry and are unchanged.
+#[test]
+fn retry_rail_search_holds_the_radius_as_the_first_does() {
+    let both = |f: &mut UpstreamFixes| {
+        f.fillet_retry_radius_as_first = true;
+        f.fillet_nx1_end_rib_global_merge = true;
+    };
+    for (r0, off, gain) in [(1.0, 47_751.094_836, 3.774), (2.0, 47_719.705_412, 3.952)] {
+        let mut k = Kernel::default();
+        let Outcome::Built { volume: v, .. } = round_into_a_rounded_corner(&mut k, r0, 5.0) else {
+            panic!("{r0}: refused");
+        };
+        assert!(near(v, off, 1e-3), "{r0} off: {v}");
+
+        let mut k = kernel(both);
+        let Outcome::Built {
+            volume: v,
+            manifold,
+        } = round_into_a_rounded_corner(&mut k, r0, 5.0)
+        else {
+            panic!("{r0}: refused");
+        };
+        assert!(manifold && near(v, off + gain, 1e-3), "{r0} on: {v}");
+
+        // alone, the field leaves the corner's end rib to fail
+        let mut k = kernel(|f| f.fillet_retry_radius_as_first = true);
+        assert_eq!(
+            round_into_a_rounded_corner(&mut k, r0, 5.0),
+            Outcome::Refused { code: 3 }
+        );
+    }
+    for r1 in [1.0, 2.0] {
+        let mut k = Kernel::default();
+        let off = round_into_a_rounded_corner(&mut k, 5.0, r1);
+        let mut k = kernel(both);
+        assert_eq!(round_into_a_rounded_corner(&mut k, 5.0, r1), off);
     }
 }
