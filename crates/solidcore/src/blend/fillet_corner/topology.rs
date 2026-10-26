@@ -972,6 +972,45 @@ mod tests {
         })
     }
 
+    fn run_nxn(kind: FilletCornerKind, all: usize, solvers: usize) -> Result<()> {
+        let k = Kernel::default();
+        let mut target = Brep::new();
+        let mut pseudo = FilletBrep::new();
+        let solver = FilletSolver::new(1e-5, 1e-3, 0.01);
+        let mut corner = FilletCorner::new(kind, None, None, None, 1e-3, 0.1);
+        let eus = (0..all)
+            .map(|_| {
+                target
+                    .add_edgeuse_record(crate::topology::Edgeuse::default())
+                    .unwrap()
+            })
+            .collect();
+        corner.all_eus = Some(eus);
+        corner.make_convex_nxn_corner_topology(NxNTopologyEnv {
+            k: &k,
+            target: &mut target,
+            pseudo: &mut pseudo,
+            corner: FilletCornerId(0),
+            solvers: vec![&solver; solvers],
+        })
+    }
+
+    #[test]
+    fn convex_nxn_topology_rejects_other_kinds_and_mismatched_solvers() {
+        assert!(matches!(
+            run_nxn(FilletCornerKind::NByTwo, 3, 3),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert!(matches!(
+            run_nxn(FilletCornerKind::ConvexNByN, 3, 2),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert!(matches!(
+            run_nxn(FilletCornerKind::ConvexNByN, 0, 0),
+            Err(SolidError::InvalidInput { .. })
+        ));
+    }
+
     #[test]
     fn nx2_topology_rejects_other_kinds_and_more_than_four_edge_uses() {
         assert!(matches!(

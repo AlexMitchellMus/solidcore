@@ -39,7 +39,10 @@ use super::p3::{
     RailClassificationAccess, RailTrimAccess, SolverGeometryAccess, StitchAttempt, VertexEntry,
 };
 use crate::blend::fillet_corner::p1::LawIntervalSolvers;
-use crate::blend::fillet_corner::p3::{FilletCorner, Nx2AdjustContext};
+use crate::blend::fillet_corner::p3::{
+    CornerFilletBrep, CornerPatchEnv, CornerSolverStore, FilletCorner, FilletCornerKind,
+    Nx2AdjustContext,
+};
 use crate::blend::fillet_geom::p1::{
     CornerLookup, FilletBrep, FilletCornerId, FilletCornerType, FilletSolverId, FilletVertexType,
 };
@@ -363,6 +366,21 @@ impl LawIntervalSolvers for [Option<SolverObject>] {
             }
             _ => Ok(None),
         }
+    }
+}
+
+/// The session's solver slots as the corner-patch builders' solver store.
+struct SessionSolvers<'s>(&'s [Option<SolverObject>]);
+
+impl CornerSolverStore for SessionSolvers<'_> {
+    fn get(&self, index: usize) -> Option<&FilletSolver> {
+        self.0
+            .get(index)
+            .and_then(Option::as_ref)
+            .map(SolverObject::base)
+    }
+    fn len(&self) -> usize {
+        self.0.len()
     }
 }
 
@@ -893,9 +911,9 @@ impl<'target> FilletSession<'target> {
     /// Run the actual executive corner-vertex component in native corner order.
     ///
     /// Each corner's topology, calculation flag and vertex geometry complete before
-    /// the next corner starts. Ordinary `NByOne` and `NByTwo` corners are supported (a
-    /// mixed-convexity 4x2, tangent 4x2 or blending Nx2 adjustment stays unported); other concrete
-    /// corner context remains unported. Smoothing and later adjustment are separate.
+    /// the next corner starts. Ordinary `NByOne`, `NByTwo` and convex `NxN` corners are
+    /// supported (a mixed-convexity 4x2, tangent 4x2 or blending Nx2 adjustment stays
+    /// unported); other concrete corner context remains unported. Smoothing and later adjustment are separate.
     ///
     /// # Errors
     /// Actual corner operations or lookups, with native failure metadata retained.
@@ -1853,23 +1871,85 @@ impl FaceConstructionAccess<FilletObject> for SessionObjects<'_> {
     }
     fn faces_corner_geometry(
         &mut self,
-        _k: &mut Kernel,
+        k: &mut Kernel,
         corner: FilletObject,
-        _executive: &mut FilletExecutive<FilletObject>,
+        executive: &mut FilletExecutive<FilletObject>,
     ) -> Result<()> {
         let FilletObject::Corner(id) = corner else {
             return Err(invalid("corner patch object is not an actual corner"));
         };
-        self.corners
+        let SessionObjects {
+            target,
+            pseudo,
+            solvers,
+            corners,
+            intermediate,
+            notification_records,
+            attributes,
+            ..
+        } = self;
+        let corner = corners
             .get_mut(id.0 as usize)
-            .ok_or_else(|| invalid("corner patch is not live"))?
-            .calc_corner_geom_with(&mut (), |_, ()| {
-                // UNPORTED(blend.fillet_corner_p3): actual concrete corner-patch construction context.
-                Err(SolidError::unported(
-                    "SmFilletCorner::CreateCornerPatch (live construction context)",
-                    "blend.fillet_corner_p3",
-                ))
-            })
+            .ok_or_else(|| invalid("corner patch is not live"))?;
+        corner.calc_corner_geom_with(&mut (), |corner, ()| {
+            match corner.kind {
+                FilletCornerKind::ThreeByTwoMixed
+                | FilletCornerKind::NByOne
+                | FilletCornerKind::Open
+                | FilletCornerKind::NByTwo => {
+                    // UNPORTED(blend.fillet_corner_p3): actual concrete corner-patch construction context.
+                    return Err(SolidError::unported(
+                        "SmFilletCorner::CreateCornerPatch (live construction context)",
+                        "blend.fillet_corner_p3",
+                    ));
+                }
+                _ => {}
+            }
+            // SmFilletCorner::CreateCornerPatch, building into m_pFilletBrep.
+            let body = intermediate
+                .as_mut()
+                .ok_or_else(|| invalid("intermediate body is not allocated"))?;
+            let serial = body
+                .notify_serial()
+                .ok_or_else(|| invalid("intermediate body has no kernel identity"))?;
+            let key_of = |entity| crate::topology::brep::p3::topology_ref(serial, entity);
+            crate::topology::brep::p3::seed_records(notification_records, body, &key_of);
+            let store = SessionSolvers(solvers);
+            crate::topology::brep::p3::with_lent_context(k, |k, context| {
+                let mut fillet = CornerFilletBrep {
+                    brep: body,
+                    notify: crate::topology::edge::NotifyEnv {
+                        records: notification_records,
+                        attributes,
+                        context: Some(context),
+                        key_of: &key_of,
+                    },
+                };
+                let mut note = |corner: &FilletCorner| {
+                    executive.error.note_corner_error(
+                        crate::blend::fillet_geom::p1::FilletErrorType::VertexProblem,
+                        corner.corner_type(),
+                        crate::blend::fillet_geom::p1::FilStatus::Failure,
+                        Some(corner.kind.name()),
+                        corner.filleted_vertex().map(|v| {
+                            FilletObject::Topology(FilletBody::Target, EntityRef::Vertex(v))
+                        }),
+                        [None, None], // For now, we don't generally have just two surfaces.
+                        [None, None], // For now, we don't generally have just two edgeuses.
+                        Some("Fillet Corner Error: Corner Face Creation Error"),
+                    );
+                };
+                let mut env = CornerPatchEnv {
+                    k,
+                    target,
+                    pseudo,
+                    solvers: &store,
+                    fillet: Some(&mut fillet),
+                    note_face_error: &mut note,
+                };
+                corner.create_corner_patch_default_with(&mut env)
+            })?
+        })
     }
     fn faces_solver_tolerance(&self, solver: FilletObject) -> Result<f64> {
         let FilletObject::Solver(id) = solver else {

@@ -10,8 +10,8 @@
 //! | [`FilletCorner::adjust_concave_corner_topology`]  | `SmFilletNx2Corner::AdjustConcaveCornerTopology` |
 //! | [`FilletCorner::adjust_topology_convex_nxn`], [`FilletCorner::adjust_topology_convex_nxn_with`] | `SmFilletConvexNxNCorner::AdjustTopology` |
 //! | [`FilletCorner::adjust_tangent_corner_nx1_closed`] | `SmFilletNx1ClosedCorner::AdjustTangentCorner`  |
-//! | [`FilletCorner::make_analytic_corner_surface`]    | `SmFilletCorner::MakeAnalyticCornerSurface`      |
-//! | [`FilletCorner::make_variable_radius_fillet`]     | `SmFilletCorner::MakeVariableRadiusFillet`       |
+//! | [`FilletCorner::make_analytic_corner_surface`], [`FilletCorner::make_analytic_corner_surface_with`] | `SmFilletCorner::MakeAnalyticCornerSurface` |
+//! | [`FilletCorner::make_variable_radius_fillet`], [`FilletCorner::make_variable_radius_fillet_with`] | `SmFilletCorner::MakeVariableRadiusFillet` |
 //! | [`FilletCorner::record_fillet_error`]             | `SmFilletCorner::RecordFilletError`              |
 //! | [`FilletCorner::update_split_face`]               | `SmFilletCorner::UpdateSplitFace`                |
 //! | [`FilletCorner::tangent_fillet_solver_nx1_closed`] | `SmFilletNx1ClosedCorner::GetTangentFilletSolver` |
@@ -90,7 +90,7 @@ use crate::blend::fillet_corner::p1::{
 };
 use crate::blend::fillet_corner::p3::{
     move_vertexuse, primary_eu, rail_tangent_unchecked, recalc_split_geoms, set_vertex_point,
-    unchecked_point, CornerEnv, FilletCorner, FilletExecutiveData,
+    unchecked_point, CornerEnv, CornerPatchEnv, FilletCorner, FilletExecutiveData,
 };
 use crate::blend::fillet_custom_solver::{OffsetSurface, SurfaceId};
 use crate::blend::fillet_executive::p3::{ErrorInfo, FilletExecutive};
@@ -1276,6 +1276,17 @@ impl FilletCorner {
     /// [`SolidError::Unported`] (`MakeConstantRadiusFillet`, unit
     /// `blend.fillet_corner_p1`).
     pub fn make_analytic_corner_surface(&mut self, env: &mut CornerEnv<'_>) -> Result<bool> {
+        env.with_patch_env(|env| self.make_analytic_corner_surface_with(env))
+    }
+
+    /// [`FilletCorner::make_analytic_corner_surface`] against any [`CornerPatchEnv`].
+    ///
+    /// # Errors
+    /// As [`FilletCorner::make_analytic_corner_surface`].
+    pub fn make_analytic_corner_surface_with(
+        &mut self,
+        env: &mut CornerPatchEnv<'_, '_>,
+    ) -> Result<bool> {
         match self.analytic_corner_surface(env) {
             Ok(made) => Ok(made),
             Err(e @ (SolidError::Unported { .. } | SolidError::InvalidInput { .. })) => Err(e),
@@ -1287,7 +1298,7 @@ impl FilletCorner {
     /// [`FilletCorner::make_analytic_corner_surface`] with its `SER` / `NER` exits as
     /// errors.
     #[allow(clippy::too_many_lines)]
-    fn analytic_corner_surface(&mut self, env: &mut CornerEnv<'_>) -> Result<bool> {
+    fn analytic_corner_surface(&mut self, env: &mut CornerPatchEnv<'_, '_>) -> Result<bool> {
         const OP: &str = OP_ANALYTIC;
         // no work - Vertex does not have exactly 3 or 4 edges
         let total_edges = self.edges.len();
@@ -1471,7 +1482,7 @@ impl FilletCorner {
                     // when SurfOfRevolution could not be found to fill Boundary Curves
                     // try to convert it to a variable-radius fillet to achive better G1
                     // continuity.
-                    match soft(self.make_variable_radius_fillet(env))? {
+                    match soft(self.make_variable_radius_fillet_with(env))? {
                         Some(s) => s,
                         // when both tries fail - quit
                         None => return Ok(false),
@@ -1489,7 +1500,7 @@ impl FilletCorner {
                 None => {
                     // When a Sphere could not be found to fill Boundary Curves try to
                     // convert it to a constant-radius fillet.
-                    match soft(self.make_constant_radius_fillet(env))? {
+                    match soft(self.make_constant_radius_fillet_with(env))? {
                         Some(s) => s,
                         // when both tries fail - quit
                         None => return Ok(false),
@@ -1535,8 +1546,19 @@ impl FilletCorner {
     /// axis or normal; those of the projections and evaluations;
     /// [`SolidError::InvalidInput`] where upstream dereferences `NULL` (a vertex,
     /// primary edge use, fillet solver, surface generator, vertex use or UV trim curve).
-    #[allow(clippy::too_many_lines)]
     pub fn make_variable_radius_fillet(&mut self, env: &mut CornerEnv<'_>) -> Result<Surface> {
+        env.with_patch_env(|env| self.make_variable_radius_fillet_with(env))
+    }
+
+    /// [`FilletCorner::make_variable_radius_fillet`] against any [`CornerPatchEnv`].
+    ///
+    /// # Errors
+    /// As [`FilletCorner::make_variable_radius_fillet`].
+    #[allow(clippy::too_many_lines)]
+    pub fn make_variable_radius_fillet_with(
+        &mut self,
+        env: &mut CornerPatchEnv<'_, '_>,
+    ) -> Result<Surface> {
         const OP: &str = OP_VAR_RAD;
         let sm_err = || SolidError::sm_err(OP); // Unable to convert
         let null = || SolidError::null_pointer(OP);
@@ -2165,9 +2187,9 @@ pub(super) const fn is_b_spline_kind(c: &Curve) -> bool {
     )
 }
 
-/// `pFilletGeom->GetFilletSolver()` in [`CornerEnv::solvers`] (dereferenced).
+/// `pFilletGeom->GetFilletSolver()` in [`CornerPatchEnv::solvers`] (dereferenced).
 fn solver_ref<'e>(
-    env: &'e CornerEnv<'_>,
+    env: &'e CornerPatchEnv<'_, '_>,
     g: FilletGeomId,
     op: &'static str,
 ) -> Result<&'e FilletSolver> {
@@ -2175,6 +2197,19 @@ fn solver_ref<'e>(
     env.solvers
         .get(i)
         .ok_or_else(|| invalid(op, "fillet solver id not in the solver table"))
+}
+
+fn solver_of_geom(
+    env: &CornerPatchEnv<'_, '_>,
+    g: FilletGeomId,
+    op: &'static str,
+) -> Result<usize> {
+    let si = env
+        .pseudo
+        .geom(g)?
+        .fillet_solver()
+        .ok_or_else(|| SolidError::invalid_input(op, "fillet geometry without solver"))?;
+    usize::try_from(si.0).map_err(|_| SolidError::invalid_input(op, "fillet solver id"))
 }
 
 fn invalid(op: &'static str, reason: &'static str) -> SolidError {
@@ -2221,21 +2256,12 @@ fn edgeuse_or_mate_geom(
     Ok(pseudo.fillet_edgeuse(mate)?.fillet_geom())
 }
 
-/// The index in [`CornerEnv::solvers`] of `pFilletGeom->GetFilletSolver()`.
+/// `pFilletGeom->GetFilletSolver()` of a fillet geometry (dereferenced).
 fn geom_solver(pseudo: &FilletBrep, g: FilletGeomId, op: &'static str) -> Result<FilletSolverId> {
     pseudo
         .geom(g)?
         .fillet_solver()
         .ok_or_else(|| SolidError::invalid_input(op, "fillet geometry without solver"))
-}
-
-fn solver_of_geom(env: &CornerEnv<'_>, g: FilletGeomId, op: &'static str) -> Result<usize> {
-    let si = env
-        .pseudo
-        .geom(g)?
-        .fillet_solver()
-        .ok_or_else(|| SolidError::invalid_input(op, "fillet geometry without solver"))?;
-    usize::try_from(si.0).map_err(|_| SolidError::invalid_input(op, "fillet solver id"))
 }
 
 /// The surface of a rail index (`UVPos(lRailIndex)`).

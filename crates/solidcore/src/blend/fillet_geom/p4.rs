@@ -12,7 +12,7 @@
 //! |---------------------------------------------------|----------------------------------------------|
 //! | [`create_uv_curve`], [`UvCurves`]                 | `sm_CreateUVCurve`                           |
 //! | [`FilletBrep::calc_nx2_vert_fillet_x_fillet`]     | `sm_CalcNx2VertFilletXFillet`                |
-//! | [`FilletBrep::calc_fillet_int_2_fillets`]         | `SmFilletVertex::CalcFilletInt2Fillets`      |
+//! | [`FilletBrep::calc_fillet_int_2_fillets`], [`FilletBrep::calc_fillet_int_2_fillets_with_context`] | `SmFilletVertex::CalcFilletInt2Fillets` |
 //! | [`FilletBrep::calc_rail_int_extended_edgeuse`]    | `SmFilletVertex::CalcRailIntExtendedEdgeuse` |
 //! | [`FilletBrep::make_face_brep`]                    | `SmFilletGeom::MakeFaceBrep`                 |
 //! | [`FilletBrep::rail_index_of_vertex`]              | `SmFilletGeom::GetRailIndexOfVertex`         |
@@ -1139,23 +1139,6 @@ impl FilletBrep {
             .fillet_solver()
             .ok_or_else(|| SolidError::null_pointer(op))?;
         Ok((g, context.solver(sid)?))
-    }
-
-    fn eu_geom_solver<'s>(
-        &self,
-        eu: EdgeuseId,
-        solvers: &'s [FilletSolver],
-        op: &'static str,
-    ) -> Result<(FilletGeomId, &'s FilletSolver)> {
-        let g = self
-            .fillet_edgeuse(eu)?
-            .fillet_geom()
-            .ok_or_else(|| SolidError::null_pointer(op))?;
-        let sid = self
-            .geom(g)?
-            .fillet_solver()
-            .ok_or_else(|| SolidError::null_pointer(op))?;
-        Ok((g, solver_of(solvers, sid, op)?))
     }
 
     /// The primary edge use of `e` and its mate.

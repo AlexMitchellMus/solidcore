@@ -41,8 +41,9 @@
 //! | [`FilletCorner::calc_corner_edge_geom`]      | `CalcCornerEdgeGeom`                        |
 //! | [`FilletCorner::check_and_fix_degeneracy`]   | `CheckAndFixDegeneracy`                     |
 //! | [`FilletCorner::create_end_patch`]           | `CreateEndPatch`                            |
-//! | [`FilletCorner::make_face_brep`]             | `MakeFaceBrep`                              |
-//! | [`FilletCorner::make_constant_radius_fillet`] | `MakeConstantRadiusFillet`                 |
+//! | [`FilletCorner::make_face_brep`], [`FilletCorner::make_face_brep_with`] | `MakeFaceBrep` (the new faces recorded in [`FilletCorner::surface_faces`]) |
+//! | [`FilletCorner::make_constant_radius_fillet`], [`FilletCorner::make_constant_radius_fillet_with`] | `MakeConstantRadiusFillet` |
+//! | [`FilletCorner::adjust_vertex_law_intervals`], [`LawIntervalSolvers`] | the law-interval half of `SmFilletCorner::CalcCornerVertGeom` |
 //! | [`FilletCorner::insert_intersection_topology`] | `InsertIntersectionTopology`              |
 //! | `PlainConstantRadiusFs` (private)            | the `SmConstantRadiusFS` virtuals (not the assisted solver's) |
 //! | `p3::FilletCorner::adjust_topology` / `adjust_tangent_corner` (`_` arms) | `SmFilletCorner::AdjustTopology`, `SmFillet4x3Corner::AdjustTopology`, `SmFilletNxNCorner::AdjustTopology`, `SmFilletCorner::AdjustTangentCorner` (all `return SM_SUCCESS`) |
@@ -130,7 +131,8 @@ use std::collections::BTreeMap;
 
 use crate::blend::fillet_corner::p2::is_b_spline_kind;
 use crate::blend::fillet_corner::p3::{
-    CornerEnv, ExecutiveErrorObject, FilletCorner, FilletCornerKind, FilletExecutiveData,
+    CornerEnv, CornerPatchEnv, ExecutiveErrorObject, FilletCorner, FilletCornerKind,
+    FilletExecutiveData,
 };
 use crate::blend::fillet_custom_solver::{InitialValues, JacobianLoad, OffsetSurface, SurfaceId};
 use crate::blend::fillet_geom::p1::{
@@ -1821,8 +1823,16 @@ impl FilletCorner {
     /// `SmBrep::MakeFaceWithCurves`; [`SolidError::InvalidInput`] where upstream
     /// dereferences `NULL` (no fillet B-rep, a corner edge without curve or vertex) or
     /// reads past `m_vEdges` (fewer than three edges with one surface).
-    #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn make_face_brep(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
+        env.with_patch_env(|env| self.make_face_brep_with(env))
+    }
+
+    /// [`FilletCorner::make_face_brep`] against any [`CornerPatchEnv`].
+    ///
+    /// # Errors
+    /// As [`FilletCorner::make_face_brep`].
+    #[allow(clippy::too_many_lines)] // one upstream routine
+    pub fn make_face_brep_with(&mut self, env: &mut CornerPatchEnv<'_, '_>) -> Result<()> {
         const OP: &str = OP_MAKE_FACE;
         let null = || SolidError::invalid_input(OP, NULL_DEREF);
 
@@ -1883,7 +1893,8 @@ impl FilletCorner {
                 orientations: curve_orients,
                 loop_points: Vec::new(),
             };
-            make_face(env, input, surface, loop_orient, OP)?;
+            let face = make_face(env, input, surface, loop_orient, OP)?;
+            self.surface_faces.extend(face);
 
             // all done
             return Ok(());
@@ -1938,7 +1949,8 @@ impl FilletCorner {
                 orientations: curve_orients,
                 loop_points: Vec::new(),
             };
-            make_face(env, input, surface, loop_orient, OP)?;
+            let face = make_face(env, input, surface, loop_orient, OP)?;
+            self.surface_faces.extend(face);
         } // end iter every surface buiding a face
 
         Ok(())
@@ -1967,8 +1979,19 @@ impl FilletCorner {
     /// `NULL` (a vertex, curve, primary edge use, mate, vertex use, solver, surface
     /// generator, the solver of an unknown generator type, the new fillet surface) or
     /// indexes `m_vEdges[9999]` (no edge length below `SM_BIG_DOUBLE`).
-    #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn make_constant_radius_fillet(&self, env: &mut CornerEnv<'_>) -> Result<Surface> {
+        env.with_patch_env(|env| self.make_constant_radius_fillet_with(env))
+    }
+
+    /// [`FilletCorner::make_constant_radius_fillet`] against any [`CornerPatchEnv`].
+    ///
+    /// # Errors
+    /// As [`FilletCorner::make_constant_radius_fillet`].
+    #[allow(clippy::too_many_lines)] // one upstream routine
+    pub fn make_constant_radius_fillet_with(
+        &self,
+        env: &mut CornerPatchEnv<'_, '_>,
+    ) -> Result<Surface> {
         const OP: &str = OP_CONST_RAD;
         let sm_err = || SolidError::sm_err(OP); // Unable to convert
         let null = || SolidError::null_pointer(OP);
@@ -2086,18 +2109,19 @@ impl FilletCorner {
         let other_v = other_of(env.pseudo.brep(), base_e, v)?;
         let other_uv = drop_uv(env.k, &surface1, env.pseudo.vertex_point(other_v)?)?;
 
-        let fsg_of = |env: &CornerEnv<'_>, g: FilletGeomId| -> Result<FilletSurfaceGenerator> {
-            let id = env.pseudo.geom(g)?.fillet_solver().ok_or_else(deref)?;
-            usize::try_from(id.0)
-                .ok()
-                .and_then(|i| env.solvers.get(i))
-                .ok_or_else(|| {
-                    SolidError::invalid_input(OP, "fillet solver id not in the solver table")
-                })?
-                .fillet_surface_generator()
-                .copied()
-                .ok_or_else(deref)
-        };
+        let fsg_of =
+            |env: &CornerPatchEnv<'_, '_>, g: FilletGeomId| -> Result<FilletSurfaceGenerator> {
+                let id = env.pseudo.geom(g)?.fillet_solver().ok_or_else(deref)?;
+                usize::try_from(id.0)
+                    .ok()
+                    .and_then(|i| env.solvers.get(i))
+                    .ok_or_else(|| {
+                        SolidError::invalid_input(OP, "fillet solver id not in the solver table")
+                    })?
+                    .fillet_surface_generator()
+                    .copied()
+                    .ok_or_else(deref)
+            };
         let fsg0 = fsg_of(env, fg0)?;
         let fsg1 = fsg_of(env, fg1)?;
         let fsg_type = fsg0.fillet_surface_generator_type();
@@ -2302,8 +2326,9 @@ impl FilletCorner {
                 .vertex
                 .ok_or_else(|| SolidError::invalid_input(OP_INSERT, NULL_DEREF))?;
             for face in vertex::faces(target, vertex)? {
-                for surface in &self.surfaces {
-                    context.register_blending_intersection(target, face, surface)?;
+                for (jj, surface) in self.surfaces.iter().enumerate() {
+                    let surface_face = self.surface_faces.get(jj).copied();
+                    context.register_blending_intersection(target, face, surface, surface_face)?;
                 }
             }
         }
@@ -2420,6 +2445,7 @@ pub trait CornerInsertionContext {
         target: &mut Brep,
         face: FaceId,
         surface: &Surface,
+        surface_face: Option<FaceId>,
     ) -> Result<()>;
 }
 
@@ -2524,6 +2550,7 @@ impl CornerInsertionContext for IndexedCornerInsertion<'_> {
         target: &mut Brep,
         face: FaceId,
         surface: &Surface,
+        _surface_face: Option<FaceId>,
     ) -> Result<()> {
         register_existing_ssi(
             TopologyIntersectorRef,
@@ -2734,14 +2761,14 @@ fn loop_orientation(
 }
 
 /// `pFilletBrep->MakeFaceWithCurves(NULL, ...)`: a face on `surface` (its natural
-/// domain) in the fillet B-rep's infinite region.
+/// domain) in the fillet B-rep's infinite region; the new face.
 fn make_face(
-    env: &mut CornerEnv<'_>,
+    env: &mut CornerPatchEnv<'_, '_>,
     input: FaceCurvesInput,
     surface: Surface,
     orientation: OrientType,
     op: &'static str,
-) -> Result<()> {
+) -> Result<Option<FaceId>> {
     let fillet = env
         .fillet
         .as_mut()
@@ -2750,7 +2777,7 @@ fn make_face(
     let region = fillet.brep.infinite_region();
     let key_of = fillet.notify.key_of;
     let face_ref = |f: FaceId| key_of(EntityRef::Face(f));
-    make_face_with_curves(
+    let made = make_face_with_curves(
         env.k,
         fillet.brep,
         region,
@@ -2762,7 +2789,7 @@ fn make_face(
         &face_ref,
         &mut fillet.notify,
     )?;
-    Ok(())
+    Ok(made.face)
 }
 
 #[cfg(test)]
