@@ -92,6 +92,7 @@ use crate::blend::fillet_geom::p1::{
 };
 use crate::blend::fillet_geom::p3::SplitCorners;
 use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, FilletSurfaceGeneratorType};
+use crate::blend::fillet_solver::surfaces::with_geometry_surfaces;
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
 use crate::geom::global_solver::SolverOperation;
@@ -2867,33 +2868,15 @@ pub(super) fn recalc_split_geoms(
     march_dir: Vec3,
 ) -> Result<()> {
     let fs = env.ops.solver_ops(solver)?;
-    let backup_fg = fs.solver().fillet_geom_for_surfaces();
-
-    fs.solver_mut()
-        .set_fillet_geom_for_surfaces(Some(orig_geom));
-    ignore_status(env.pseudo.re_calc_fillet_geom(
-        env.k,
-        orig_geom,
-        fs,
-        env.target,
-        false,
-        Some(march_dir),
-        None,
-    ))?;
-
-    // Now the other FG
-    fs.solver_mut().set_fillet_geom_for_surfaces(Some(new_geom));
-    ignore_status(env.pseudo.re_calc_fillet_geom(
-        env.k,
-        new_geom,
-        fs,
-        env.target,
-        false,
-        Some(march_dir),
-        None,
-    ))?;
-
-    fs.solver_mut().set_fillet_geom_for_surfaces(backup_fg);
+    let k = env.k;
+    let target = &*env.target;
+    // pFS->SetFilletGeomForSurfaces(pOrigGeom); pOrigGeom->ReCalcFilletGeom(..), then
+    // the same for the other FG, the backup restored after each
+    for g in [orig_geom, new_geom] {
+        ignore_status(with_geometry_surfaces(fs, env.pseudo, g, |fs, pseudo| {
+            pseudo.re_calc_fillet_geom(k, g, fs, target, false, Some(march_dir), None)
+        }))?;
+    }
     Ok(())
 }
 
