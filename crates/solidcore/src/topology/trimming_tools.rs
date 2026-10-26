@@ -2736,9 +2736,8 @@ mod tests {
     fn issue_476_and_530_fixes_combine_on_a_mixed_seam_gap() {
         use crate::topology::VertexId;
         let mut k = Kernel::default();
-        let mut b =
-            crate::topology::brep::p3::new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT)
-                .unwrap();
+        let mut b = crate::topology::brep::p3::new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT)
+            .unwrap();
         crate::primitive::primitive_creation::p1::analytic_rotational_sweep(
             &mut k,
             &mut b,
