@@ -82,9 +82,10 @@
 //!   and `SmFilletGeom::Copy` are part 6's (`blend.fillet_geom_p6`). Each stub replaces only
 //!   its call.
 //! - **User pointers.** `MakeRailEdgeuse` stores the two faces' surface pointers in the
-//!   new vertex use's `SmTsectPnt::m_apUserPointer` (never read in SMLib; not modelled
-//!   by [`TsectPnt`](crate::intersect::surface_intersector::TsectPnt)); the faces are
-//!   still dereferenced (a missing face is `SM_ERR_NULL_POINTER`).
+//!   new vertex use's `SmTsectPnt::m_apUserPointer`
+//!   ([`TsectPnt::user_pointer`](crate::intersect::surface_intersector::p1::TsectPnt::user_pointer),
+//!   a shared copy of each face's surface; a face without surface stores `NULL`); a
+//!   missing face is `SM_ERR_NULL_POINTER`.
 //! - **Arguments.** Out-params become return values; `iDebugLevel` and debug drawing
 //!   are dropped. No recursion.
 
@@ -1485,14 +1486,29 @@ impl FilletBrep {
         let base_face = eu1::face(target, base_eu)?;
         self.fillet_edge_mut(rail_e)?.set_original_face(base_face);
 
-        // Set srf ptrs in FilletVertexuse's TsectPnt (m_apUserPointer, not modelled):
-        // both faces' surfaces are dereferenced
+        // Set srf ptrs in FilletVertexuse's TsectPnt.
         let face = base_face.ok_or_else(|| SolidError::null_pointer(OP_RAIL_EU))?;
         target.face(face)?;
+        if let Some(slot) = self
+            .fillet_vertexuse_mut(new_vu)?
+            .tsect_pnt_mut()
+            .user_pointer
+            .get_mut(rail_index)
+        {
+            *slot = user_surface(target, face)?;
+        }
         let base_eu1 = base_eu1.ok_or_else(|| SolidError::null_pointer(OP_RAIL_EU))?;
         let face1 =
             eu1::face(target, base_eu1)?.ok_or_else(|| SolidError::null_pointer(OP_RAIL_EU))?;
         target.face(face1)?;
+        if let Some(slot) = self
+            .fillet_vertexuse_mut(new_vu)?
+            .tsect_pnt_mut()
+            .user_pointer
+            .get_mut(1 - rail_index)
+        {
+            *slot = user_surface(target, face1)?;
+        }
 
         // set new Edgeuse->m_eOrientation
         if orient == OrientType::Unknown {
@@ -2385,6 +2401,19 @@ fn drop_vector(k: &Kernel, surface: &Surface, uv: Point2, direction: Vec3) -> Re
         .first()
         .copied()
         .ok_or_else(|| SolidError::null_pointer(OP_END))
+}
+
+/// `(void*)pFace->GetSurface()` as an intersection point's user pointer (`None` for a
+/// face without surface).
+fn user_surface(
+    target: &Brep,
+    face: FaceId,
+) -> Result<Option<crate::intersect::surface_intersector::p1::UserSurface>> {
+    Ok(target
+        .face(face)?
+        .surface
+        .clone()
+        .map(|s| crate::intersect::surface_intersector::p1::UserSurface(std::sync::Arc::new(s))))
 }
 
 #[cfg(test)]

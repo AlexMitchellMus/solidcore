@@ -90,7 +90,7 @@ use crate::blend::fillet_corner::p1::{
 };
 use crate::blend::fillet_corner::p3::{
     move_vertexuse, primary_eu, rail_tangent_unchecked, recalc_split_geoms, set_vertex_point,
-    unchecked_point, CornerEnv, CornerPatchEnv, FilletCorner, FilletExecutiveData,
+    unchecked_point, CornerEnv, CornerPatchEnv, FilletCorner, FilletExecutiveData, TangentSplitEnv,
 };
 use crate::blend::fillet_custom_solver::{OffsetSurface, SurfaceId};
 use crate::blend::fillet_executive::p3::{ErrorInfo, FilletExecutive};
@@ -1041,7 +1041,10 @@ impl FilletCorner {
     /// geometry, fillet surface, rail, rail vertex use or vertex);
     /// [`SolidError::Unported`] (`blend.fillet_corner_p3` module docs).
     #[allow(clippy::too_many_lines)]
-    pub fn adjust_tangent_corner_nx1_closed(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
+    pub fn adjust_tangent_corner_nx1_closed(
+        &mut self,
+        env: &mut TangentSplitEnv<'_>,
+    ) -> Result<()> {
         const OP: &str = OP_NX1_TANGENT;
         let Some((orig_fg, this_fv_use)) =
             self.nx1_closed_tangent_split(env.k, env.target, env.pseudo)?
@@ -1065,14 +1068,11 @@ impl FilletCorner {
             .geom(orig_fg)?
             .fillet_solver()
             .ok_or_else(|| SolidError::null_pointer(OP))?;
-        let fs = usize::try_from(si.0)
-            .ok()
-            .and_then(|i| env.solvers.get_mut(i))
-            .ok_or_else(|| invalid(OP, "fillet solver id not in the solver table"))?;
-        let split = fs.split_fillet_geom_at_side_edge(
+        let split = env.ops.split_fillet_geom_at_side_edge(
             env.k,
             env.target,
             env.pseudo,
+            si,
             orig_fg,
             this_fv_use,
             which_end,
@@ -1180,10 +1180,7 @@ impl FilletCorner {
 
         // Adjust the uv positions in the TsectPnts in the Fillet Vertexuses for the seams.
         // SM_ASSERT(pNewFG->GetFilletSolver() == pFS);
-        let fs = usize::try_from(si.0)
-            .ok()
-            .and_then(|i| env.solvers.get(i))
-            .ok_or_else(|| invalid(OP, "fillet solver id not in the solver table"))?;
+        let fs = env.ops.solver(si)?;
         let off = |i: usize| -> Result<OffsetSurface> {
             fs.surface(i)?
                 .map(|slot| slot.surface.clone())
@@ -2374,7 +2371,6 @@ mod tests {
     fn with_env<T>(pseudo: &mut FilletBrep, run: impl FnOnce(&mut CornerEnv<'_>) -> T) -> T {
         let mut k = Kernel::default();
         let mut target = Brep::new();
-        let surfaces = std::collections::BTreeMap::new();
         let mut exec = FilletExecutiveData::default();
         let mut env = CornerEnv {
             k: &mut k,
@@ -2382,7 +2378,6 @@ mod tests {
             pseudo,
             exec: &mut exec,
             corner: None,
-            tsect_surfaces: &surfaces,
             solvers: &mut [],
             fillet: None,
         };
@@ -2467,7 +2462,7 @@ mod tests {
     #[test]
     fn nx1_closed_tangent_corner_needs_one_filleted_edge_use() {
         let (mut pseudo, mut c) = loop_corner(FilletCornerKind::NByOneClosed, 2);
-        with_env(&mut pseudo, |env| c.adjust_tangent_corner_nx1_closed(env)).unwrap();
+        with_env(&mut pseudo, |env| c.adjust_tangent_corner(env)).unwrap();
         assert_eq!(c.edges.len(), 2);
     }
 

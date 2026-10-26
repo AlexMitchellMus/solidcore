@@ -3049,7 +3049,6 @@ mod tests {
         use crate::topology::{
             Edgeuse, EdgeuseOwner, Face, Faceuse, Loopuse, Vertexuse, VertexuseOwner,
         };
-        use std::collections::BTreeMap;
 
         let mut k = Kernel::default();
         let corner_pnt = Point3::new(1.0, 2.0, 3.0);
@@ -3136,7 +3135,6 @@ mod tests {
 
         let solvers = [FilletSolver::new(1e-3, 1e-3, 0.01)];
         let mut exec = FilletExecutiveData::default();
-        let surfaces = BTreeMap::new();
         let mut c = FilletCorner::new(FilletCornerKind::NByTwo, Some(cv), None, None, 1e-3, 0.1);
         c.vertices = vec![fv0];
         let r = {
@@ -3146,7 +3144,6 @@ mod tests {
                 pseudo: &mut fb,
                 exec: &mut exec,
                 corner: None,
-                tsect_surfaces: &surfaces,
                 solvers: &mut [],
                 fillet: None,
             };

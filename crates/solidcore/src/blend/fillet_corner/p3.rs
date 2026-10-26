@@ -23,6 +23,7 @@
 //! | [`FilletCorner::adjust_tangent_corner`]            | `AdjustTangentCorner` (virtual; `SmFilletNx2Corner::AdjustTangentCorner` here) |
 //! | [`FilletCorner::adjust_topology_nx2_with`], [`Nx2AdjustContext`] | `SmFilletNx2Corner::AdjustTopology` (against a live or legacy context) |
 //! | [`FilletCorner::is_nx2_tangent_adjustment_corner`] | opening checks of `SmFilletNx2Corner::AdjustTangentCorner` |
+//! | [`TangentSplitEnv`], [`TangentSplitOps`] | the executive members the tangent-corner splits reach (legacy or live) |
 //! | [`FilletExecutiveData`]                            | the `SmFilletExecutive` members the corner code reads and writes (`m_vEdgeuseSolverMap`, `GetFilletSolverOfEdgeuse`; `m_vExtendedSurfacesMap` for unit `blend.fillet_corner_p1`; CO-PORTED from `blend.fillet_executive_p1`) |
 //!
 //! Deviations:
@@ -61,8 +62,7 @@
 //!   leaves the index unset upstream) is an error.
 //! - **Intersection-point user pointers.** `SmTsectPnt::m_apUserPointer[0..2]` (the two
 //!   surfaces of a fillet vertex use's intersection point, read by
-//!   `AdjustTangentCorner`) are not members of the Rust [`TsectPnt`](crate::intersect::surface_intersector::p1::TsectPnt): the caller passes
-//!   them per vertex use in [`CornerEnv::tsect_surfaces`]. `SmTemporaryChangeValue`
+//!   `AdjustTangentCorner`) are [`TsectPnt::user_pointer`]. `SmTemporaryChangeValue`
 //!   enabling out-of-bounds evaluation of the user surfaces (every `SmBSplineSurface`,
 //!   which includes `SmPlane` and `SmSurfOfRevolution`) is applied to copies.
 //! - **Topology moves.** `SmVertex::Remove` / `PostInsert` of a vertex use (the
@@ -90,12 +90,12 @@ use crate::blend::fillet_geom::p1::{
     CornerLookup, FilStatus, FilletBrep, FilletCornerId, FilletCornerType, FilletEdgeType,
     FilletErrorType, FilletGeomId, FilletGeomType, FilletSolverId, FilletVertex, FilletVertexType,
 };
-use crate::blend::fillet_solver::p1::{FilletSolver, FilletSurfaceGeneratorType};
+use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, FilletSurfaceGeneratorType};
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
 use crate::geom::global_solver::SolverOperation;
 use crate::intersect::point_class::PointClassType;
-use crate::intersect::surface_intersector::p1::SrfIndex;
+use crate::intersect::surface_intersector::p1::{SrfIndex, TsectPnt};
 use crate::kernel::Kernel;
 use crate::math::{rad_to_deg, Point3, Vec3, BIG_DOUBLE};
 use crate::nurbs::b_spline_curve::BSplineCurve;
@@ -665,9 +665,6 @@ pub struct CornerEnv<'a> {
     pub exec: &'a mut FilletExecutiveData,
     /// The corner's identity (`this`, as new fillet vertices and edges store it).
     pub corner: Option<FilletCornerId>,
-    /// `m_apUserPointer[0..2]` of the intersection point of each fillet vertex use (see
-    /// the module docs).
-    pub tsect_surfaces: &'a BTreeMap<VertexuseId, [Option<Surface>; 2]>,
     /// The fillet solvers the geometries' `GetFilletSolver()` ids index (`id.0`).
     pub solvers: &'a mut [FilletSolver],
     /// `m_pExecutive->m_pFilletBrep`, the B-rep `MakeFaceBrep` builds the corner's faces
@@ -2097,8 +2094,25 @@ impl FilletCorner {
     /// Those of [`FilletCorner::adjust_tangent_corner_nx2`] and
     /// [`FilletCorner::adjust_tangent_corner_nx1_closed`].
     pub fn adjust_tangent_corner(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
+        let CornerEnv {
+            k,
+            target,
+            pseudo,
+            exec,
+            corner,
+            solvers,
+            ..
+        } = env;
+        let mut ops = CornerEnvTangentOps { exec, solvers };
+        let mut env = TangentSplitEnv {
+            k,
+            target,
+            pseudo,
+            corner: *corner,
+            ops: &mut ops,
+        };
         self.adjust_tangent_corner_with(
-            env,
+            &mut env,
             |corner, env| corner.adjust_tangent_corner_nx2(env),
             |corner, env| corner.adjust_tangent_corner_nx1_closed(env),
         )
@@ -2171,7 +2185,7 @@ impl FilletCorner {
     /// null (a missing rail, rail curve, rail vertex use, solver or intersection
     /// surface); [`SolidError::Unported`] (module docs); those of the evaluations and of
     /// `GetRailIndexOfVertex`.
-    pub fn adjust_tangent_corner_nx2(&mut self, env: &mut CornerEnv<'_>) -> Result<()> {
+    pub fn adjust_tangent_corner_nx2(&mut self, env: &mut TangentSplitEnv<'_>) -> Result<()> {
         if !self.is_nx2_tangent_adjustment_corner(env.k, env.target)? {
             return Ok(());
         }
@@ -2220,13 +2234,13 @@ impl FilletCorner {
             let int_pt1 = env.pseudo.fillet_vertexuse(vu1)?.tsect_pnt().clone();
             let int_pt2 = env.pseudo.fillet_vertexuse(vu2)?.tsect_pnt().clone();
 
-            let user_surface = |vu: VertexuseId, i: usize| -> Result<Surface> {
-                let mut s = env
-                    .tsect_surfaces
-                    .get(&vu)
-                    .and_then(|s| s.get(i))
+            // (SmSurface*)rIntPt.m_apUserPointer[i]
+            let user_surface = |int_pt: &TsectPnt, i: usize| -> Result<Surface> {
+                let mut s = int_pt
+                    .user_pointer
+                    .get(i)
                     .and_then(Option::as_ref)
-                    .cloned()
+                    .map(|u| (*u.0).clone())
                     .ok_or_else(|| SolidError::null_pointer(OP_TANGENT))?;
                 // SmTemporaryChangeValue: GetOutOfBoundsEnabled() = TRUE on every
                 // SmBSplineSurface (SM_CAST_PTR also succeeds for the analytic kinds
@@ -2256,10 +2270,10 @@ impl FilletCorner {
                 }
                 Ok(s)
             };
-            let srf1a = user_surface(vu1, 0)?;
-            let srf1b = user_surface(vu1, 1)?;
-            let srf2a = user_surface(vu2, 0)?;
-            let srf2b = user_surface(vu2, 1)?;
+            let srf1a = user_surface(&int_pt1, 0)?;
+            let srf1b = user_surface(&int_pt1, 1)?;
+            let srf2a = user_surface(&int_pt2, 0)?;
+            let srf2b = user_surface(&int_pt2, 1)?;
 
             let srf1_pt =
                 unchecked_point(srf1a.evaluate_point(env.k, int_pt1.uv_pos(SrfIndex::First)))?;
@@ -2392,16 +2406,10 @@ impl FilletCorner {
                     .geom(orig_geom)?
                     .fillet_solver()
                     .ok_or_else(|| SolidError::null_pointer(OP_TANGENT))?;
-                let fs = usize::try_from(si.0)
-                    .ok()
-                    .and_then(|i| env.solvers.get_mut(i))
-                    .ok_or_else(|| {
-                        invalid(OP_TANGENT, "fillet solver id not in the solver table")
-                    })?;
                 // a NULL fillet vertex use fails GetRailIndexOfVertexuse's NER
                 let split = match this_fv_use {
-                    Some(vu) => fs.split_fillet_geom_at_side_edge(
-                        env.k, env.target, env.pseudo, orig_geom, vu, which_end,
+                    Some(vu) => env.ops.split_fillet_geom_at_side_edge(
+                        env.k, env.target, env.pseudo, si, orig_geom, vu, which_end,
                     ),
                     None => Err(SolidError::null_pointer(OP_TANGENT)),
                 };
@@ -2601,18 +2609,162 @@ impl FilletCorner {
     }
 }
 
+/// The executive's objects the tangent-corner splits (`AdjustTangentCorner` of
+/// `SmFilletNx2Corner` / `SmFilletNx1ClosedCorner`) reach: the fillet solvers (the
+/// base solver's side-edge split and the concrete solver's virtual operations for
+/// `ReCalcFilletGeom`) and the corner's own `CalcCornerVertGeom`. Implemented by the
+/// legacy [`CornerEnv`] and by a live executive session.
+pub trait TangentSplitOps {
+    /// The base of solver `id` (`pFG->GetFilletSolver()`).
+    ///
+    /// # Errors
+    /// [`SolidError::InvalidInput`] for a solver missing from the store.
+    fn solver(&self, id: FilletSolverId) -> Result<&FilletSolver>;
+    /// Solver `id`'s virtual operations (the solver `ReCalcFilletGeom` runs against).
+    ///
+    /// # Errors
+    /// [`SolidError::InvalidInput`] for a solver missing from the store.
+    fn solver_ops(&mut self, id: FilletSolverId) -> Result<&mut dyn FilletSolverOps>;
+    /// `SmFilletSolver::SplitFilletGeomAtSideEdge` on solver `id`.
+    ///
+    /// # Errors
+    /// Those of [`FilletSolver::split_fillet_geom_at_side_edge`];
+    /// [`SolidError::InvalidInput`] for a solver missing from the store.
+    #[allow(clippy::too_many_arguments)] // upstream's arguments plus the borrowed objects
+    fn split_fillet_geom_at_side_edge(
+        &mut self,
+        k: &Kernel,
+        target: &mut Brep,
+        pseudo: &mut FilletBrep,
+        id: FilletSolverId,
+        fillet_geom: FilletGeomId,
+        split_vertexuse: VertexuseId,
+        which_end: usize,
+    ) -> Result<FilletGeomId>;
+    /// `corner->CalcCornerVertGeom()` (the virtual corner-vertex calculation of
+    /// `corner`, identified by `corner_id`).
+    ///
+    /// # Errors
+    /// Those of the corner-vertex calculation.
+    fn calc_corner_vert_geom(
+        &mut self,
+        k: &Kernel,
+        target: &mut Brep,
+        pseudo: &mut FilletBrep,
+        corner: &mut FilletCorner,
+        corner_id: Option<FilletCornerId>,
+    ) -> Result<()>;
+}
+
+/// What the tangent-corner splits operate on besides the corner itself.
+pub struct TangentSplitEnv<'e> {
+    /// `m_crContext`.
+    pub k: &'e Kernel,
+    /// The B-rep being filleted.
+    pub target: &'e mut Brep,
+    /// `m_pPseudoBrep`.
+    pub pseudo: &'e mut FilletBrep,
+    /// The corner's identity (`this`, as new fillet edges store it).
+    pub corner: Option<FilletCornerId>,
+    /// The executive's solvers and corner-vertex calculation.
+    pub ops: &'e mut dyn TangentSplitOps,
+}
+
+impl std::fmt::Debug for TangentSplitEnv<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TangentSplitEnv")
+            .field("corner", &self.corner)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The legacy [`CornerEnv`]'s solver table and executive members as
+/// [`TangentSplitOps`].
+struct CornerEnvTangentOps<'a> {
+    exec: &'a FilletExecutiveData,
+    solvers: &'a mut [FilletSolver],
+}
+
+impl CornerEnvTangentOps<'_> {
+    fn slot(&mut self, id: FilletSolverId) -> Result<&mut FilletSolver> {
+        usize::try_from(id.0)
+            .ok()
+            .and_then(|i| self.solvers.get_mut(i))
+            .ok_or_else(|| invalid(OP_TANGENT, "fillet solver id not in the solver table"))
+    }
+}
+
+impl TangentSplitOps for CornerEnvTangentOps<'_> {
+    fn solver(&self, id: FilletSolverId) -> Result<&FilletSolver> {
+        usize::try_from(id.0)
+            .ok()
+            .and_then(|i| self.solvers.get(i))
+            .ok_or_else(|| invalid(OP_TANGENT, "fillet solver id not in the solver table"))
+    }
+    fn solver_ops(&mut self, id: FilletSolverId) -> Result<&mut dyn FilletSolverOps> {
+        Ok(self.slot(id)?)
+    }
+    fn split_fillet_geom_at_side_edge(
+        &mut self,
+        k: &Kernel,
+        target: &mut Brep,
+        pseudo: &mut FilletBrep,
+        id: FilletSolverId,
+        fillet_geom: FilletGeomId,
+        split_vertexuse: VertexuseId,
+        which_end: usize,
+    ) -> Result<FilletGeomId> {
+        self.slot(id)?.split_fillet_geom_at_side_edge(
+            k,
+            target,
+            pseudo,
+            fillet_geom,
+            split_vertexuse,
+            which_end,
+        )
+    }
+    fn calc_corner_vert_geom(
+        &mut self,
+        k: &Kernel,
+        target: &mut Brep,
+        pseudo: &mut FilletBrep,
+        corner: &mut FilletCorner,
+        corner_id: Option<FilletCornerId>,
+    ) -> Result<()> {
+        let exec = self.exec;
+        let mut context = (target, pseudo, &mut *self.solvers);
+        let this: &FilletCorner = corner;
+        this.calc_corner_vert_geom_with(
+            &mut context,
+            |(_, pseudo, _), fv| Ok(pseudo.fillet_vertex(fv)?.is_processed()),
+            |(target, pseudo, solvers), fv| {
+                pseudo.calc_corner_vert_geom(
+                    k,
+                    fv,
+                    CornerLookup::of_corner(corner_id, this, exec),
+                    target,
+                    solvers,
+                )
+            },
+            |(target, pseudo, solvers), corner, processed| {
+                corner.adjust_vertex_law_intervals(pseudo, target, *solvers, processed)
+            },
+        )
+    }
+}
+
 impl FilletCorner {
     /// `this->CalcCornerVertGeom()` with its status ignored (the tangent-corner
-    /// adjustments): only [`SolidError::Unported`] propagates. The solvers are lent from
-    /// `env` for the call.
+    /// adjustments): only [`SolidError::Unported`] propagates.
     pub(super) fn calc_corner_vert_geom_unchecked(
         &mut self,
-        env: &mut CornerEnv<'_>,
+        env: &mut TangentSplitEnv<'_>,
     ) -> Result<()> {
-        let solvers = std::mem::take(&mut env.solvers);
-        let r = self.calc_corner_vert_geom(env, solvers);
-        env.solvers = solvers;
-        ignore_status(r)
+        let corner_id = env.corner;
+        ignore_status(
+            env.ops
+                .calc_corner_vert_geom(env.k, env.target, env.pseudo, self, corner_id),
+        )
     }
 }
 
@@ -2623,7 +2775,11 @@ impl FilletCorner {
 ///
 /// `SM_ERR_NULL_POINTER` for a rail without curve (upstream dereferences it);
 /// [`SolidError::Unported`].
-pub(super) fn rail_tangent_unchecked(env: &CornerEnv<'_>, rail: EdgeId, t: f64) -> Result<Vec3> {
+pub(super) fn rail_tangent_unchecked(
+    env: &TangentSplitEnv<'_>,
+    rail: EdgeId,
+    t: f64,
+) -> Result<Vec3> {
     let curve = env
         .pseudo
         .brep()
@@ -2638,26 +2794,25 @@ pub(super) fn rail_tangent_unchecked(env: &CornerEnv<'_>, rail: EdgeId, t: f64) 
 
 /// The two `ReCalcFilletGeom(FALSE, &dir)` calls after a split (statuses ignored), each
 /// with the solver's fillet geometry for the surfaces set to the recalculated geometry
-/// and restored after.
+/// and restored after. The geometries recalculate against the solver's virtual
+/// operations ([`TangentSplitOps::solver_ops`]).
 ///
 /// # Errors
 ///
-/// [`SolidError::InvalidInput`] for a solver missing from [`CornerEnv::solvers`];
+/// [`SolidError::InvalidInput`] for a solver missing from the store;
 /// [`SolidError::Unported`].
 pub(super) fn recalc_split_geoms(
-    env: &mut CornerEnv<'_>,
+    env: &mut TangentSplitEnv<'_>,
     solver: FilletSolverId,
     orig_geom: FilletGeomId,
     new_geom: FilletGeomId,
     march_dir: Vec3,
 ) -> Result<()> {
-    let fs = usize::try_from(solver.0)
-        .ok()
-        .and_then(|i| env.solvers.get_mut(i))
-        .ok_or_else(|| invalid(OP_TANGENT, "fillet solver id not in the solver table"))?;
-    let backup_fg = fs.fillet_geom_for_surfaces();
+    let fs = env.ops.solver_ops(solver)?;
+    let backup_fg = fs.solver().fillet_geom_for_surfaces();
 
-    fs.set_fillet_geom_for_surfaces(Some(orig_geom));
+    fs.solver_mut()
+        .set_fillet_geom_for_surfaces(Some(orig_geom));
     ignore_status(env.pseudo.re_calc_fillet_geom(
         env.k,
         orig_geom,
@@ -2669,7 +2824,7 @@ pub(super) fn recalc_split_geoms(
     ))?;
 
     // Now the other FG
-    fs.set_fillet_geom_for_surfaces(Some(new_geom));
+    fs.solver_mut().set_fillet_geom_for_surfaces(Some(new_geom));
     ignore_status(env.pseudo.re_calc_fillet_geom(
         env.k,
         new_geom,
@@ -2680,7 +2835,7 @@ pub(super) fn recalc_split_geoms(
         None,
     ))?;
 
-    fs.set_fillet_geom_for_surfaces(backup_fg);
+    fs.solver_mut().set_fillet_geom_for_surfaces(backup_fg);
     Ok(())
 }
 
@@ -3076,7 +3231,6 @@ mod tests {
         let mut k = Kernel::default();
         let mut target = Brep::new();
         let mut pseudo = FilletBrep::new();
-        let surfaces = BTreeMap::new();
         let mut exec = FilletExecutiveData::default();
         let mut env = CornerEnv {
             k: &mut k,
@@ -3084,7 +3238,6 @@ mod tests {
             pseudo: &mut pseudo,
             exec: &mut exec,
             corner: None,
-            tsect_surfaces: &surfaces,
             solvers: &mut [],
             fillet: None,
         };
