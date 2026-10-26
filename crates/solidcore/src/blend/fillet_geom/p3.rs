@@ -58,7 +58,7 @@
 //!   (`blend.fillet_geom_p5`) after the intersection (it needs a solver table `ReCalcFilletGeom` does
 //!   not have); after a failed intersection in the edge's `CalcFilletIntFillet`,
 //!   `SmFilletCorner::RecordFilletError` (`blend.fillet_corner_p2`) records into the
-//!   caller's [`ErrorInfo`] (`UNPORTED(blend.fillet_executive_p1)` when omitted; the
+//!   caller's [`ErrorInfo`] (a scratch record when the caller has none; the
 //!   dispatchers' vertex and edge calculators of parts 2, 4, 5 and 6 are called); in
 //!   `TopologySplit` (whose `MakeRailEdgeuse` / `MakeFilletEdge` are part 5's, wired)
 //!   `SmFilletExecutive::GetFilletCornerOfVertex` and the executive's corner table
@@ -636,9 +636,8 @@ impl FilletBrep {
     /// `SM_FE_END_PNT_DROP_FAILURE`) when an end point does not drop onto the curve;
     /// [`SolidError::InvalidInput`] for a solver missing from `solvers`; those of
     /// `DropPoint` and `Trim` (a missing UV trim curve is `SM_ERR_NULL_POINTER`) and of
-    /// the intersection; [`SolidError::Unported`] for an unprocessed end vertex, from
-    /// the intersection, or when the caller omits [`ErrorInfo`] on a failed intersection
-    /// (`SM_FIL_SURF_INT_FAILURE`, `RecordFilletError`).
+    /// the intersection; [`SolidError::Unported`] for an unprocessed end vertex or from
+    /// the intersection.
     pub fn calc_edge_fillet_int_fillet(
         &mut self,
         k: &Kernel,
@@ -802,7 +801,7 @@ impl FilletBrep {
                         fillet_geom2,
                         start_fv,
                         end_fv,
-                    )?;
+                    );
                     return Err(SolidError::sm_err(OP_FIF));
                 }
             };
@@ -1581,14 +1580,13 @@ fn record_fillet_error(
     fillet_geom2: FilletGeomId,
     start_fv: VertexId,
     end_fv: VertexId,
-) -> Result<()> {
-    let Some(error_info) = error_info else {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::NoteFilletError (caller holds no ErrorInfo)
-        return unported_on(
-            (corner, fillet_geom1, fillet_geom2, start_fv, end_fv),
-            "SmFilletExecutive::NoteFilletError",
-            "blend.fillet_executive_p1",
-        );
+) {
+    // m_pExecutive->NoteFilletError: a caller without an executive record (a
+    // standalone entry point) notes into a scratch record it does not keep.
+    let mut scratch = ErrorInfo::default();
+    let error_info = match error_info {
+        Some(error_info) => error_info,
+        None => &mut scratch,
     };
     corner.record_fillet_error_in(
         error_info,
@@ -1608,7 +1606,6 @@ fn record_fillet_error(
             "SmFilletEdge::CalcFilletIntFillet(): failure to calculate intersection of two fillet surfaces",
         ),
     );
-    Ok(())
 }
 
 /// `pCorner->GetCornerType()` ([`FilletCorner::corner_type`], unit
@@ -2020,7 +2017,7 @@ mod tests {
     }
 
     #[test]
-    fn record_fillet_error_records_bad_int_and_requires_error_info() {
+    fn record_fillet_error_records_bad_int_with_or_without_error_info() {
         use crate::blend::fillet_corner::p3::FilletCornerKind;
 
         let k = Kernel::default();
@@ -2029,9 +2026,8 @@ mod tests {
         let b = vertex(&mut fb, &k, Point3::new(1.0, 0.0, 0.0));
         let corner = FilletCorner::new(FilletCornerKind::TwoByTwo, None, None, None, 1e-6, 0.01);
 
-        let err =
-            record_fillet_error(&corner, None, FilletGeomId(0), FilletGeomId(1), a, b).unwrap_err();
-        assert_eq!(unit_of(&err), Some("blend.fillet_executive_p1"));
+        // without the executive's record the note goes to a scratch record
+        record_fillet_error(&corner, None, FilletGeomId(0), FilletGeomId(1), a, b);
 
         let mut error_info = ErrorInfo::default();
         record_fillet_error(
@@ -2041,8 +2037,7 @@ mod tests {
             FilletGeomId(1),
             a,
             b,
-        )
-        .unwrap();
+        );
         assert_eq!(error_info.code, FilletErrorType::BadInt as i32);
         assert_eq!(
             error_info.surfaces,

@@ -41,7 +41,7 @@
 //!   the calculators read; the lookup also holds the executive's extended surfaces
 //!   (`GetExtendedSurface`). The corner's error log (`RecordFilletError`, unit
 //!   `blend.fillet_corner_p2`) records into the caller's [`ErrorInfo`] when supplied
-//!   (`UNPORTED(blend.fillet_executive_p1)` when omitted). A `NULL` corner that upstream
+//!   (a standalone caller without one notes into a scratch record). A `NULL` corner that upstream
 //!   dereferences (`CalcFilletIntSideFace`, `MakeRailEdgeuse`) is
 //!   `SM_ERR_NULL_POINTER`.
 //! - **Topology links.** `SmOwningTopology::PreInsert` / `PostInsert` of a vertex use
@@ -338,14 +338,13 @@ fn corner_record_fillet_error(
     surface2: Option<ExecutiveErrorObject>,
     fv1: VertexId,
     fv2: VertexId,
-) -> Result<()> {
-    let Some(error_info) = error_info else {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::NoteFilletError (caller holds no ErrorInfo)
-        return unported_on(
-            (corner, surface1, surface2, fv1, fv2),
-            "SmFilletExecutive::NoteFilletError",
-            "blend.fillet_executive_p1",
-        );
+) {
+    // m_pExecutive->NoteFilletError: a caller without an executive record (a
+    // standalone entry point) notes into a scratch record it does not keep.
+    let mut scratch = ErrorInfo::default();
+    let error_info = match error_info {
+        Some(error_info) => error_info,
+        None => &mut scratch,
     };
     corner.record_fillet_error_in(
         error_info,
@@ -362,7 +361,6 @@ fn corner_record_fillet_error(
             "SmFilletEdge::CalcFilletIntSideFace(): failure to calculate intersection of fillet surface with side face",
         ),
     );
-    Ok(())
 }
 
 /// `SmFilletEdge::UpdateSplitFace(pOrigFace, pNewFace)` (unit `blend.fillet_geom_p2`,
@@ -378,17 +376,6 @@ fn fillet_edge_update_split_face(
     corners: &[FilletCorner],
 ) -> Result<()> {
     ignore_non_unported(fb.update_edge_split_face(k, e, orig_face, new_face, target, corners))
-}
-
-/// `pFilletSolver->m_pExecutive->GetPseudoBrep()` (unit `blend.fillet_executive_p1`):
-/// the executive's pseudo B-rep, which is the [`FilletBrep`] the geometries live in.
-fn executive_pseudo_brep(solver: &FilletSolver) -> Result<()> {
-    // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::GetPseudoBrep
-    unported_on(
-        solver.executive,
-        "SmFilletExecutive::GetPseudoBrep",
-        "blend.fillet_executive_p1",
-    )
 }
 
 /// Actual solver records and extended surfaces used by a corner edge calculation.
@@ -917,9 +904,8 @@ impl FilletBrep {
     /// `SM_ERR` when a vertex is not processed or the intersection fails (the edge gets
     /// `SM_FIL_SURF_INT_FAILURE`); `SM_ERR_NULL_POINTER` without uses, fillet
     /// geometry, solver, surface or corner; those of [`CornerLookup::corner`] (`corners` resolves the corner) and of
-    /// [`CornerLookup::extended_surface`]; [`SolidError::Unported`] when the caller
-    /// omits [`ErrorInfo`] (`blend.fillet_executive_p1`) or from the intersection
-    /// (`sm_SrfSrfIntersection`).
+    /// [`CornerLookup::extended_surface`]; [`SolidError::Unported`] from the
+    /// intersection (`sm_SrfSrfIntersection`).
     pub fn calc_fillet_int_side_face(
         &mut self,
         k: &Kernel,
@@ -1126,7 +1112,7 @@ impl FilletBrep {
                         surface2_id,
                         start_fv,
                         end_fv,
-                    )?;
+                    );
                     return Err(SolidError::sm_err(OP_SIDE));
                 }
             }
@@ -1318,8 +1304,7 @@ impl FilletBrep {
     /// # Errors
     ///
     /// `SM_ERR_NULL_POINTER` for a source without solver or a solver without executive
-    /// (upstream dereferences them); [`SolidError::Unported`] for the executive's
-    /// pseudo B-rep (`blend.fillet_executive_p1`).
+    /// (upstream dereferences them).
     pub fn copy_fillet_geom(
         &mut self,
         k: &Kernel,
@@ -1341,8 +1326,8 @@ impl FilletBrep {
         geom.solver = solver_id;
         let g = self.add_geom(geom);
 
-        // Create Rails
-        executive_pseudo_brep(solver)?;
+        // Create Rails: `m_pExecutive->GetPseudoBrep()` is the executive's pseudo B-rep,
+        // the `FilletBrep` the geometries live in (`self`).
         for i in 0..2 {
             ignore_non_unported(self.make_rail_edge(k, g, i))?;
         }

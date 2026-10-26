@@ -137,6 +137,9 @@ pub enum FilletObject {
     Law(u32),
     /// A surface the corner code names in an error note (`RecordFilletError`).
     CornerError(ExecutiveErrorObject),
+    /// A fillet surface or centre line a solver names in an error note
+    /// (`SmFilletSolver::RecordFilletError`).
+    SolverError(crate::blend::fillet_solver::p2::SolverErrorObject),
 }
 
 impl ClassObject for FilletObject {
@@ -305,11 +308,26 @@ impl SessionObjects<'_> {
             .and_then(Option::as_mut)
             .ok_or_else(|| invalid("solver is not live in this session"))
     }
+    /// `pFilletSolver->CalcFilletGeom()`; the solver's `RecordFilletError` notes are
+    /// replayed into the executive's record (`m_pExecutive->NoteFilletError`).
     fn calc_solver_geometry(
         &mut self,
         k: &Kernel,
         id: FilletSolverId,
+        executive: &mut FilletExecutive<FilletObject>,
+    ) -> Result<()> {
+        let mut note = ErrorInfo::default();
+        let result = self.calc_solver_geometry_noting(k, id, executive, &mut note);
+        replay_solver_error(&mut executive.error, &note);
+        result
+    }
+
+    fn calc_solver_geometry_noting(
+        &mut self,
+        k: &Kernel,
+        id: FilletSolverId,
         executive: &FilletExecutive<FilletObject>,
+        note: &mut ErrorInfo<crate::blend::fillet_solver::p2::SolverErrorObject>,
     ) -> Result<()> {
         let index = id.0 as usize;
         if index >= self.solvers.len() {
@@ -336,6 +354,7 @@ impl SessionObjects<'_> {
                 self.target,
                 &mut self.pseudo,
                 &context,
+                note,
             ),
             // `SmVariableRadiusFS` inherits `SmFilletSolver::CalcFilletGeom`.
             SolverObject::VariableRadius(solver) => FilletSolver::calc_fillet_geom_with_context(
@@ -344,6 +363,7 @@ impl SessionObjects<'_> {
                 self.target,
                 &mut self.pseudo,
                 &context,
+                note,
             ),
             // `SmConstantDistanceFS` inherits `SmFilletSolver::CalcFilletGeom`.
             SolverObject::ConstantDistance(solver) => FilletSolver::calc_fillet_geom_with_context(
@@ -352,6 +372,7 @@ impl SessionObjects<'_> {
                 self.target,
                 &mut self.pseudo,
                 &context,
+                note,
             ),
             // SmSurfaceSurfaceFS::CalcFilletGeom
             SolverObject::SurfaceSurface(solver) => solver.calc_fillet_geom_with_context(
@@ -672,6 +693,58 @@ fn executive_error_object(object: ExecutiveErrorObject) -> FilletObject {
         }
         other => FilletObject::CornerError(other),
     }
+}
+
+/// The executive identity of an object a solver records in an error note: the
+/// filleted edge and the rails are their topology; the fillet surfaces and centre
+/// lines keep the solver code's identity.
+fn executive_solver_error_object(
+    object: crate::blend::fillet_solver::p2::SolverErrorObject,
+) -> FilletObject {
+    use crate::blend::fillet_solver::p2::SolverErrorObject;
+    match object {
+        SolverErrorObject::FilletedEdge(e) => {
+            FilletObject::Topology(FilletBody::Target, EntityRef::Edge(e))
+        }
+        SolverErrorObject::FilletEdge(e) => {
+            FilletObject::Topology(FilletBody::Pseudo, EntityRef::Edge(e))
+        }
+        other => FilletObject::SolverError(other),
+    }
+}
+
+/// Replay the solver's error notes (`SmFilletErrorInfo::NoteError` with the
+/// intersection overload, made into a fresh record) into the executive's record: the
+/// same field writes, with the surfaces, curves and edges added uniquely to the ones
+/// already noted.
+fn replay_solver_error(
+    error: &mut ErrorInfo<FilletObject>,
+    note: &ErrorInfo<crate::blend::fillet_solver::p2::SolverErrorObject>,
+) {
+    if *note == ErrorInfo::default() {
+        return;
+    }
+    let map = |o: Option<crate::blend::fillet_solver::p2::SolverErrorObject>| {
+        o.map(executive_solver_error_object)
+    };
+    error.code = note.code;
+    error.status = note.status;
+    error.edge_type = note.edge_type;
+    error.edge = map(note.edge);
+    for (from, to) in [
+        (&note.surfaces, &mut error.surfaces),
+        (&note.curves, &mut error.curves),
+        (&note.edges, &mut error.edges),
+    ] {
+        for object in from {
+            let object = map(*object);
+            if !to.contains(&object) {
+                to.push(object);
+            }
+        }
+    }
+    error.location = note.location;
+    error.comment.clone_from(&note.comment);
 }
 
 /// Replay one corner error note (`SmFilletErrorInfo::NoteError` with the corner
@@ -1168,7 +1241,8 @@ impl<'target> FilletSession<'target> {
     /// # Errors
     /// Actual solver/corner resolution, native geometry failures or missing callees.
     pub fn calc_solver_geometry(&mut self, k: &Kernel, id: FilletSolverId) -> Result<()> {
-        self.objects.calc_solver_geometry(k, id, &self.executive)
+        self.objects
+            .calc_solver_geometry(k, id, &mut self.executive)
     }
 
     /// Calculate all actual solver geometries through the shared executive stage.

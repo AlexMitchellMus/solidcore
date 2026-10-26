@@ -121,7 +121,7 @@ fn geom_rail(pseudo: &FilletBrep, g: FilletGeomId, i: usize) -> Result<EdgeId> {
 
 /// An object referenced by [`FilletSolver::record_fillet_error_in`] in an executive
 /// [`ErrorInfo`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SolverErrorObject {
     /// The filleted target edge (`pFilletedEdge`).
     FilletedEdge(EdgeId),
@@ -1914,15 +1914,13 @@ impl FilletSolver {
 
     /// `RecordFilletError(eType, rapTSPs, cComment)`: passes the error, with the
     /// filleted edge, the fillet surfaces, centre lines and rails built so far and the
-    /// first tsect point's curve position, to the executive (`NoteFilletError`) when
-    /// the caller holds no [`ErrorInfo`].
+    /// first tsect point's curve position, to the executive (`NoteFilletError`); a
+    /// caller holding no executive [`ErrorInfo`] notes into a scratch record.
     ///
     /// # Errors
     ///
     /// [`SolidError::InvalidInput`] for an unknown `error_type` or where upstream
-    /// dereferences `NULL` (no edge use, geometry or rail, or no executive);
-    /// [`SolidError::Unported`] for the report (`SmFilletExecutive::NoteFilletError`,
-    /// unit `blend.fillet_executive_p1`).
+    /// dereferences `NULL` (no edge use, geometry or rail, or no executive).
     pub fn record_fillet_error(
         &self,
         b: &Brep,
@@ -1936,14 +1934,13 @@ impl FilletSolver {
     }
 
     /// `RecordFilletError(eType, rapTSPs, cComment)` into the executive's
-    /// [`ErrorInfo`] (`None` when the caller has no executive error record yet).
+    /// [`ErrorInfo`] (`None` when the caller has no executive error record: the note
+    /// goes to a scratch record).
     ///
     /// # Errors
     ///
     /// [`SolidError::InvalidInput`] where upstream dereferences `NULL` (no edge use,
-    /// geometry or rail, or no executive); [`SolidError::Unported`] when `error_info`
-    /// is `None` (`SmFilletExecutive::NoteFilletError`, unit
-    /// `blend.fillet_executive_p1`).
+    /// geometry or rail, or no executive).
     pub fn record_fillet_error_in(
         &self,
         b: &Brep,
@@ -1992,12 +1989,12 @@ impl FilletSolver {
         if self.executive.is_none() {
             return Err(invalid("no fillet executive"));
         }
-        let Some(error_info) = error_info else {
-            // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::NoteFilletError (caller holds no ErrorInfo)
-            return Err(SolidError::unported(
-                "SmFilletExecutive::NoteFilletError",
-                "blend.fillet_executive_p1",
-            ));
+        // m_pExecutive->NoteFilletError: a caller without an executive record (a
+        // standalone entry point) notes into a scratch record it does not keep.
+        let mut scratch = ErrorInfo::default();
+        let error_info = match error_info {
+            Some(error_info) => error_info,
+            None => &mut scratch,
         };
         let surfaces: Vec<Option<SolverErrorObject>> = fil_surfs
             .into_iter()
@@ -2713,11 +2710,9 @@ mod tests {
         assert!(matches!(err, SolidError::InvalidInput { .. }));
 
         s.executive = Some(FilletExecutiveRef);
-        // Without ErrorInfo, record_fillet_error returns Unported(blend.fillet_executive_p1).
-        let err = s
-            .record_fillet_error(&target, &pseudo, 5, &[t.clone()], "bad int")
-            .unwrap_err();
-        assert!(err.is_unported());
+        // Without ErrorInfo, record_fillet_error notes into a scratch record.
+        s.record_fillet_error(&target, &pseudo, 5, &[t.clone()], "bad int")
+            .unwrap();
 
         s.record_fillet_error_in(
             &target,

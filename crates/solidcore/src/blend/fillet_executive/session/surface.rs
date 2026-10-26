@@ -16,7 +16,9 @@
 //! executive is the session's (upstream a fresh `SmFilletExecutive` on the stack),
 //! which owns the cross-section generator (on the stack upstream). The fillet B-rep is
 //! the session's intermediate body. The trimming of the original surfaces (only with
-//! `lBaseTrimType != 0`, which `SmApiSurfaceSurfaceFillet` never passes) is not ported.
+//! `lBaseTrimType != 0`, which `SmApiSurfaceSurfaceFillet` never passes) runs under
+//! the session's original-trim mark scope (one context: both bodies' identities are
+//! this kernel's).
 //! The topology insertion runs through the session's
 //! [`FilletSession::insert_fillet_intersection_topology`], which also names the target
 //! and the fillet B-rep as the topology intersector's primary and other B-reps (upstream
@@ -371,8 +373,8 @@ impl FilletSession<'_> {
     ///
     /// # Errors
     ///
-    /// Those of the face construction, stitching, edge map and insertion;
-    /// [`SolidError::Unported`] for the trimming of the original surfaces.
+    /// Those of the face construction, stitching, edge map and insertion,
+    /// and those of the original-surface trimming.
     pub fn do_surface_filleting(
         &mut self,
         k: &mut Kernel,
@@ -421,7 +423,10 @@ impl FilletSession<'_> {
             let FilletObject::Solver(id) = solver else {
                 return Err(invalid("object is not a solver"));
             };
-            match self.objects.calc_solver_geometry(k, id, &self.executive) {
+            match self
+                .objects
+                .calc_solver_geometry(k, id, &mut self.executive)
+            {
                 Err(error) if error.is_unported() => return Err(error),
                 Err(_) => continue,
                 Ok(()) => {}
@@ -490,12 +495,9 @@ impl FilletSession<'_> {
             body.set_editing_enabled(false);
         }
 
+        // when asked for Trimming of the original surfaces
         if self.executive.options.trimming {
-            // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::DoSurfaceFilleting (trimming of the original surfaces)
-            return Err(SolidError::unported(
-                "SmFilletExecutive::DoSurfaceFilleting (original surface trimming)",
-                "blend.fillet_executive_p1",
-            ));
+            self.trim_original_surfaces_for_surface_filleting(k)?;
         }
 
         if let Some(output) = error_out {
