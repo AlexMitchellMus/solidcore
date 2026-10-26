@@ -2519,7 +2519,7 @@ impl CornerAdjustmentAccess<FilletObject> for SessionObjects<'_> {
         };
         corner.adjust_topology_with(
             &mut context,
-            |corner, context| corner.adjust_topology_nx2_with(context),
+            FilletCorner::adjust_topology_nx2_with,
             |_, _| {
                 // UNPORTED(blend.fillet_executive_p1): actual retained NxN adjustment context.
                 Err(SolidError::unported(
