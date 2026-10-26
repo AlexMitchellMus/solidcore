@@ -40,6 +40,13 @@ Evidence (temporary dumps in the p3 runner and shim, not committed):
 - A body datum the record does not capture, with no effect here: C++ reports
   `GetRectangularTrim() == FALSE` on every result face, while Rust leaves `UNSURE`.
 
+Same divergence as upstream issue WR-449
+(`plan/upstream-issues/WR-449--sphere-diff-3cylinders-one-fillet-face-integrates-0-6-too-large.md`),
+found independently on the unfilleted input file through `corpus.parity`: the edge-30
+trim of face 7, one cubic span in C++ against the port's drop. There, C++'s face 7 stands
+apart from its five symmetric siblings, which the port matches, so the C++ value is the
+suspect one. The fillet case inherits that defect.
+
 Conclusion: on identical inputs, `SmEdgeuse::CreateUVTrimCurve` / `DropCurve`
 (topology.edgeuse_p3 and its surface drop-curve callees) accepts a single Hermite span
 in C++, while the Rust port subdivides. Next step: a direct `DropCurve` /
