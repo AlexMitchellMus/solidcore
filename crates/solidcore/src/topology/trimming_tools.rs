@@ -2716,9 +2716,7 @@ mod tests {
                     vec![0.0, 0.0, 1.0, 1.0],
                 )
                 .unwrap();
-                Surface::from(crate::nurbs::b_spline_surface::BSplineSurface::from_nurb(
-                    nurb, false,
-                ))
+                Surface::from(BSplineSurface::from_nurb(nurb, false))
             } else {
                 Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0)))
             };
