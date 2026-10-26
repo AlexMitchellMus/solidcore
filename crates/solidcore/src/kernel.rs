@@ -253,6 +253,8 @@ pub struct UpstreamFixes {
     pub fillet_setback_from_start_vertex: bool,
     /// `SmBSplineSurface::CopyAndAddAnalytics` keeps an exact copy where the recognised analytic surface does not give the same points at the same parameters (7 x 7 grid), so a face split by `MakeEdgeInFaceWithVU` keeps trims that still lie on its edges (WR-450, #387; the fork's tangency-labs/smlib@276b509).
     pub analytic_copy_keeps_parameterization: bool,
+    /// `DoFilleting`'s `BooleanPostProcess` removes none of the target's own edges, nor an edge between two of its faces (the fork's `m_sPostProcessKeptEdges`/`Faces`), so the patches of a sphere imported in six faces are not merged into a face no patch's parameterization can carry (WR-459, #423; the fork's tangency-labs/smlib@9ddf4a8).
+    pub fillet_cleanup_keeps_target_faces: bool,
 }
 
 /// Options for [`Kernel::new`].
