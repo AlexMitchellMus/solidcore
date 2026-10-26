@@ -119,11 +119,6 @@ fn invalid(operation: &'static str, reason: &'static str) -> SolidError {
     SolidError::invalid_input(operation, reason)
 }
 
-/// A call into a unit that is not ported yet; `_args` are upstream's arguments.
-fn unported_on<A, T>(_args: A, upstream: &'static str, unit: &'static str) -> Result<T> {
-    Err(SolidError::unported(upstream, unit))
-}
-
 const fn srf(i: usize) -> SrfIndex {
     if i == 0 {
         SrfIndex::First
@@ -1322,16 +1317,27 @@ impl FilletBrep {
         self.geom(g)?.fillet_edges(&mut edges);
         for e in edges {
             if self.fillet_edge(e)?.fillet_edge_type() == FilletEdgeType::CrossSection {
-                // SmFilletEdge::CalcCrossSection is part 5's, but it resolves this
-                // geometry's and the neighbouring geometry's solvers in a solver table,
-                // which ReCalcFilletGeom (given only its own solver) does not have; wire it
-                // when the callers pass the table (unreachable today: the point
-                // intersection above stops first).
-                // UNPORTED(blend.fillet_geom_p5): SmFilletEdge::CalcCrossSection
-                unported_on::<_, ()>(
-                    (k, e),
-                    "SmFilletEdge::CalcCrossSection",
-                    "blend.fillet_geom_p5",
+                // CalcCrossSection(crContext): no corner. It reads the solvers of the
+                // edge's geometries: this geometry's is `solver`.
+                let own = self.geom(g)?.fillet_solver().ok_or_else(nul)?;
+                let own_solver: &FilletSolver = solver.solver();
+                let resolve = |id: FilletSolverId| -> Result<&FilletSolver> {
+                    if id == own {
+                        return Ok(own_solver);
+                    }
+                    // UNPORTED(blend.fillet_geom_p5): SmFilletEdge::CalcCrossSection (a neighbouring geometry's solver: ReCalcFilletGeom holds only its own)
+                    Err(SolidError::unported(
+                        "SmFilletEdge::CalcCrossSection (neighbouring geometry's solver)",
+                        "blend.fillet_geom_p5",
+                    ))
+                };
+                self.calc_cross_section_with_lookup(
+                    k,
+                    e,
+                    None,
+                    CornerLookup::default(),
+                    &resolve,
+                    target,
                 )?;
             }
         }

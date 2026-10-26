@@ -17,11 +17,13 @@ use crate::kernel::Kernel;
 use crate::surface::surface::Surface;
 use crate::topology::{Brep, EdgeuseId};
 
-use super::p1::{FilletSolver, FilletSolverOps, OffsetSurfaceSlot};
+use super::p1::{FilletSolver, FilletSolverOps, OffsetSurfaceSlot, RolloverGuesses};
+use crate::math::Point2;
 
 struct GeometrySolver<'a> {
     actual: &'a mut ConstantRadiusAssistedFs,
     geometry: &'a mut FilletGeom,
+    rollover: RolloverGuesses,
 }
 
 impl ConstantRadiusOps for GeometrySolver<'_> {
@@ -55,15 +57,15 @@ impl ConstantRadiusOps for GeometrySolver<'_> {
         Ok(())
     }
 
-    fn check_tangent_rollover_guess_context(&self) -> Result<()> {
-        if self.geometry.fillet_geom_type() == FilletGeomType::TangentRollover {
-            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantRadiusFS::LoadInitialValues tangent-rollover vertex-use context
-            return Err(SolidError::unported(
-                "SmConstantRadiusFS::LoadInitialValues tangent-rollover vertex-use context",
-                "blend.fillet_standard_solver_p2",
-            ));
+    fn tangent_rollover_guess(&self, rail: usize) -> Result<Option<Point2>> {
+        if self.geometry.fillet_geom_type() != FilletGeomType::TangentRollover {
+            return Ok(None);
         }
-        Ok(())
+        match self.rollover.rails.get(rail).copied().flatten() {
+            Some(guess) => Ok(guess),
+            // pFG->GetRail(lRailIndex) is NULL: upstream dereferences it
+            None => Err(SolidError::null_pointer("blend::fillet_solver::surfaces")),
+        }
     }
 
     fn setup_offset_extension(
@@ -164,6 +166,7 @@ pub(crate) fn rail_edgeuse_intersect(
     actual: &mut ConstantRadiusAssistedFs,
     k: &Kernel,
     geometry: &mut FilletGeom,
+    rollover: RolloverGuesses,
     target: &mut Brep,
     rail_index: usize,
     edgeuse: EdgeuseId,
@@ -171,7 +174,11 @@ pub(crate) fn rail_edgeuse_intersect(
     tsect: &mut TsectPnt,
 ) -> Result<Option<f64>> {
     FilletSolver::rail_edgeuse_intersect(
-        &mut GeometrySolver { actual, geometry },
+        &mut GeometrySolver {
+            actual,
+            geometry,
+            rollover,
+        },
         k,
         target,
         rail_index,
@@ -431,6 +438,7 @@ mod tests {
         let mut view = GeometrySolver {
             actual: &mut actual,
             geometry: &mut geometry,
+            rollover: RolloverGuesses::default(),
         };
         assert!(std::ptr::eq(
             view.solver_surface(0).unwrap().unwrap(),

@@ -753,6 +753,48 @@
           ]
         }
       }
+    },
+    {
+      "name": "stubs4-rollover-bague-e1-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/bague.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            1
+          ]
+        }
+      }
+    },
+    {
+      "name": "stubs4-rollover-cap1-e3-r0.5",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/cap1.smb"
+            }
+          },
+          "radius": 0.5,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            3
+          ]
+        }
+      }
     }
   ]
 }

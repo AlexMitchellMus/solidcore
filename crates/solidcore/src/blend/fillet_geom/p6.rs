@@ -79,7 +79,7 @@
 use crate::blend::fillet_corner::p3::FilletCorner;
 use crate::blend::fillet_custom_solver::OffsetSurface;
 use crate::blend::fillet_executive::p3::ErrorInfo;
-use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps};
+use crate::blend::fillet_solver::p1::{FilletSolver, FilletSolverOps, RolloverGuesses};
 use crate::curve::curve::p2::BSPLINE_CURVE_TYPE;
 use crate::curve::curve::Curve;
 use crate::curve::hermite_curve::HermiteCurve;
@@ -92,7 +92,7 @@ use crate::geom::object::ObjectRef;
 use crate::geom::solution_array::{SolutionArray, SolutionObject};
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::intersect::point_class::{PointClassType, PointClassification};
-use crate::intersect::surface_intersector::p1::TsectPnt;
+use crate::intersect::surface_intersector::p1::{IntersectionPointType, SrfIndex, TsectPnt};
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT};
 use crate::nurbs::b_spline_curve::p1::{BSplineCurveForm, CanonicalData, KnotType};
@@ -115,7 +115,7 @@ use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId, VertexuseId};
 use super::p1::{
     classify_face_point, interpolate_endpts_and_tangents, is_order_correct, set_rail_curve,
     FilStatus, FilletBrep, FilletCornerId, FilletCornerType, FilletEdgeType, FilletErrorType,
-    FilletGeomId, FilletSolverId, FilletVertexType,
+    FilletGeomId, FilletGeomType, FilletSolverId, FilletVertexType,
 };
 use super::p4::solver_of;
 
@@ -1907,6 +1907,63 @@ impl FilletBrep {
         stat
     }
 
+    /// The tangent-rollover guesses of geometry `g`'s rails
+    /// (`SmConstantRadiusFS::LoadInitialValues` with `g` as the geometry for the
+    /// surfaces): per rail, the other surface's UV position of the first rail edge use
+    /// whose vertex is `SM_FV_RAIL_X_EDGEUSE` and whose intersection point is set.
+    ///
+    /// # Errors
+    /// [`SolidError::NotFound`] for dangling ids.
+    pub fn rollover_guesses(&self, g: FilletGeomId) -> Result<RolloverGuesses> {
+        let geometry = self.geom(g)?;
+        let mut out = RolloverGuesses {
+            tangent_rollover: geometry.fillet_geom_type() == FilletGeomType::TangentRollover,
+            ..RolloverGuesses::default()
+        };
+        if !out.tangent_rollover {
+            return Ok(out);
+        }
+        for (rail_index, slot) in out.rails.iter_mut().enumerate() {
+            let Some(rail) = geometry.rail(rail_index) else {
+                continue;
+            };
+            let mut found = None;
+            for eu in edge::edgeuses(self.brep(), rail, None, None)? {
+                let Some(vu) = eu1::vertexuse(self.brep(), eu)? else {
+                    continue;
+                };
+                let Ok(fvu) = self.fillet_vertexuse(vu) else {
+                    continue;
+                };
+                let Some(fv) = self.brep().vertexuse(vu)?.vertex else {
+                    continue;
+                };
+                let Ok(fvtx) = self.fillet_vertex(fv) else {
+                    continue;
+                };
+                if fvtx.fillet_vertex_type() != FilletVertexType::RailXEdgeuse {
+                    continue;
+                }
+                // Its uv should be set, and we should use it for srf2 guess.
+                let tsect = fvu.tsect_pnt();
+                if matches!(
+                    tsect.point_type,
+                    IntersectionPointType::Undefined | IntersectionPointType::Unknown
+                ) {
+                    continue;
+                }
+                found = Some(tsect.uv_pos(if rail_index == 0 {
+                    SrfIndex::Second
+                } else {
+                    SrfIndex::First
+                }));
+                break;
+            }
+            *slot = Some(found);
+        }
+        Ok(out)
+    }
+
     /// Intersect with access to the actual geometry's mutable offset objects.
     ///
     /// # Errors
@@ -1923,6 +1980,7 @@ impl FilletBrep {
         guess: f64,
         tsect: &mut TsectPnt,
     ) -> Result<Option<f64>> {
+        let rollover = self.rollover_guesses(g)?;
         let geometry = self.geom_mut(g)?;
         if geometry.fillet_solver().is_none() {
             return Err(SolidError::null_pointer(OP_RAIL_EU));
@@ -1930,7 +1988,7 @@ impl FilletBrep {
         let saved = solver.solver().fillet_geom_for_surfaces();
         solver.solver_mut().set_fillet_geom_for_surfaces(Some(g));
         let result = solver.rail_edgeuse_intersect_on_geometry(
-            k, geometry, target, rail_index, edgeuse, guess, tsect,
+            k, geometry, rollover, target, rail_index, edgeuse, guess, tsect,
         );
         solver.solver_mut().set_fillet_geom_for_surfaces(saved);
         result

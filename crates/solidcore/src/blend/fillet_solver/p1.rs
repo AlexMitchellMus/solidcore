@@ -414,6 +414,20 @@ pub struct OffsetSurfaceSlot {
     pub surface: OffsetSurface,
 }
 
+/// The tangent-rollover UV guesses `SmConstantRadiusFS::LoadInitialValues` reads from
+/// the rails of the geometry for the surfaces (`SM_FG_TANGENT_ROLLOVER`): taken before
+/// `SmFilletGeom::RailEdgeuseIntersect`'s solve, which does not change the
+/// pseudo-B-rep they come from.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct RolloverGuesses {
+    /// Whether the geometry is of type `SM_FG_TANGENT_ROLLOVER`.
+    pub tangent_rollover: bool,
+    /// Per rail index: `None` without the rail (upstream dereferences `NULL`), else the
+    /// other surface's UV of the rail's first `SM_FV_RAIL_X_EDGEUSE` vertex use with a
+    /// set intersection point (`Some(None)`: no such vertex use).
+    pub rails: [Option<Option<Point2>>; 2],
+}
+
 /// `SmFilletSolverOffsetsData`: saved offset surfaces and orientations (roll-over).
 #[derive(Debug, Clone)]
 pub struct FilletSolverOffsetsData {
@@ -1802,6 +1816,7 @@ pub trait FilletSolverOps: AsFilletSolverOps {
         &mut self,
         k: &Kernel,
         _geometry: &mut FilletGeom,
+        _rollover: RolloverGuesses,
         b: &mut Brep,
         rail_index: usize,
         edgeuse: EdgeuseId,
@@ -2044,6 +2059,7 @@ impl FilletSolverOps for FilletSolver {
         &mut self,
         k: &Kernel,
         geometry: &mut FilletGeom,
+        _rollover: RolloverGuesses,
         b: &mut Brep,
         rail_index: usize,
         edgeuse: EdgeuseId,
