@@ -1543,6 +1543,13 @@ fn put_vertex_points(o: &mut Vec<f64>, b: &Brep, vertices: &[VertexId]) -> Resul
 
 fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     let mut k = Kernel::default();
+    // The pinned C++ reference (c9c5979) still runs the WR-255 corner-drop
+    // Trim + EditParameterization path. Enable it only for TurnToNURBS cases so the
+    // tracker's Trim/EditParameterization events are comparable; production keeps the
+    // fork fix (end-point moves only).
+    if matches!(i.op, OpIn::TurnNurbs | OpIn::TurnNurbsOffset { .. }) {
+        k.context.set_trim_uv_curves_at_corner_drops(true);
+    }
     if standalone(&i.op) {
         let Some((_, args)) = op_args(&i.op, &[0; 10])? else {
             return Ok(Output::err("no target"));
