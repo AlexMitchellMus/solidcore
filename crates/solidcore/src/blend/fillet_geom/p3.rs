@@ -578,8 +578,15 @@ impl FilletBrep {
                     context,
                     target,
                 ),
-            FilletEdgeType::OnExtendEdge
-            | FilletEdgeType::FilletEnd
+            FilletEdgeType::OnExtendEdge => self.calc_edge_on_extended_edge_with_context(
+                k,
+                e,
+                Some(corner),
+                corners,
+                context,
+                target,
+            ),
+            FilletEdgeType::FilletEnd
             | FilletEdgeType::SetbackRail
             | FilletEdgeType::RailExtension => {
                 // UNPORTED(blend.fillet_executive_p3): actual concrete corner-edge operation contexts.

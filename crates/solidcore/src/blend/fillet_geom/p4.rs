@@ -1530,13 +1530,34 @@ impl FilletBrep {
     /// (`corners` resolves the vertex's corner and holds the executive's extended
     /// surfaces); [`SolidError::Unported`] from the intersection
     /// (`sm_SrfSrfIntersection`).
-    #[allow(clippy::too_many_lines)] // one upstream routine
     pub fn calc_rail_int_extended_edgeuse(
         &mut self,
         k: &Kernel,
         v: VertexId,
         corners: CornerLookup<'_>,
         solvers: &[FilletSolver],
+        target: &Brep,
+    ) -> Result<()> {
+        let context = super::p5::IndexedEdgeContext {
+            solvers,
+            corners,
+            op: OP_EXT,
+        };
+        self.calc_rail_int_extended_edgeuse_with_context(k, v, corners, &context, target)
+    }
+
+    /// [`Self::calc_rail_int_extended_edgeuse`] resolving the geometry's solver and
+    /// the side face's extended surface through the caller's live objects.
+    ///
+    /// # Errors
+    /// As [`Self::calc_rail_int_extended_edgeuse`]; those of `context`.
+    #[allow(clippy::too_many_lines)] // one upstream routine
+    pub fn calc_rail_int_extended_edgeuse_with_context(
+        &mut self,
+        k: &Kernel,
+        v: VertexId,
+        corners: CornerLookup<'_>,
+        context: &impl super::p5::FilletEdgeContext,
         target: &Brep,
     ) -> Result<()> {
         let corner = self.fillet_vertex(v)?.fillet_corner();
@@ -1574,11 +1595,7 @@ impl FilletBrep {
         // pFilletGeom->GetFilletSolver(), dereferenced where upstream does
         let sid = self.geom(fillet_geom)?.fillet_solver();
         let fil_solver = || -> Result<&FilletSolver> {
-            solver_of(
-                solvers,
-                sid.ok_or_else(|| SolidError::null_pointer(OP_EXT))?,
-                OP_EXT,
-            )
+            context.solver(sid.ok_or_else(|| SolidError::null_pointer(OP_EXT))?)
         };
 
         // get OtherFaceSurface
@@ -1629,7 +1646,7 @@ impl FilletBrep {
 
         // get face->extendedSurface
         let corner = corner.ok_or_else(|| SolidError::null_pointer(OP_EXT))?;
-        let surface2 = corners
+        let surface2 = context
             .extended_surface(corners.corner(corner)?, side_face)?
             .filter(|s| b_spline_net(s).is_some())
             .ok_or_else(|| SolidError::null_pointer(OP_EXT))?;
