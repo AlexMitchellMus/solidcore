@@ -41,8 +41,8 @@
 //!   (`surface.surface_cache_p3`). Without caches the nodes have no data
 //!   (`NER`, `SM_ERR_NULL_POINTER`).
 //! - **Polar boxes.** `BranchIsGaussSeparate` builds a missing polar box lazily
-//!   (`GetPolarBox`); the caches are shared here, so a missing box is built on a
-//!   copy of the cache and not stored back. (`SolveBranch` resets
+//!   (`GetPolarBox`); the caches are shared here, so a missing box is built without
+//!   storing it ([`SurfaceCache::polar_box_unstored`]; the values are the same). (`SolveBranch` resets
 //!   `m_bSeperateGaussMaps` to `TRUE` on entry, so it never calls it.)
 //! - **Points.** `ComputeSingularityPoint` takes intersection point ids of the
 //!   base's arena ([`AdvSurfaceIntersector::compute_singularity_point`]) or a
@@ -73,6 +73,7 @@
 //! - **Not ported.** `Dump` and the `SM_DEBUG_CODE` drawing blocks; `SM_ASSERT`s.
 
 use crate::curve::conic::{Conic, ConicType};
+use crate::curve::curve::p6::DropPointCaches;
 use crate::curve::curve::Curve;
 use crate::error::{Result, SolidError};
 use crate::geom::extent2d::Extent2d;
@@ -81,7 +82,7 @@ use crate::geom::geom_utility::p1::point_project_to_plane;
 use crate::geom::global_solver::{
     self, Branch, GlobalSolve, GlobalSolver, SolutionRequested, SolveRequest, SolverOperation,
 };
-use crate::geom::polar_box::{PolarBox, PolarBoxState};
+use crate::geom::polar_box::PolarBox;
 use crate::geom::solution_array::{Solution, SolutionArray, SolutionObject, SolutionType};
 use crate::geom::tree::{AuxDataType, NodeId, TreeNode};
 use crate::geom::vector2d::Point2;
@@ -497,6 +498,10 @@ impl<'s, 't, O: SolutionObject + 't> AdvSurfaceIntersector<'s, 't, O> {
         };
         self.solve_it(&request, &mut solutions)?;
 
+        // The caches of the drops on `out.curves_3d` (upstream keeps them on the
+        // curves): this loop only appends curves, so slot `i` stays curve `i`'s.
+        let mut drop_caches = DropPointCaches::default();
+
         // Now for each node pair do a test to see if produces a unique start point
         for sol in solutions.as_slice() {
             let uv_guess1 = Point2::new(sol.start.parameters[0], sol.start.parameters[1]);
@@ -560,10 +565,13 @@ impl<'s, 't, O: SolutionObject + 't> AdvSurfaceIntersector<'s, 't, O> {
             }
 
             // skip start points that are already on xsect curves
-            if self
-                .base
-                .is_point_on_curve(k, surf_pnt, &out.curves_3d, None)?
-            {
+            if self.base.is_point_on_curve_cached(
+                k,
+                surf_pnt,
+                &out.curves_3d,
+                None,
+                &mut drop_caches,
+            )? {
                 continue;
             }
 
@@ -640,13 +648,9 @@ impl<'s, 't, O: SolutionObject + 't> AdvSurfaceIntersector<'s, 't, O> {
             .flatten()
             .ok_or(SolidError::null_pointer(OP_GAUSS))?;
         let id = id.ok_or(SolidError::null_pointer(OP_GAUSS))?;
-        let stored = cache.aux(id)?.polar_box;
-        if stored.state() != PolarBoxState::Uninitialized {
-            return Ok(stored);
-        }
-        // built lazily upstream; built on a copy here (the caches are shared)
-        let mut copy = cache.clone();
-        copy.polar_box(k, id)
+        // built lazily upstream; built without storing it here (the caches are
+        // shared), which gives the same box
+        cache.polar_box_unstored(k, id)
     }
 
     /// The body of [`GlobalSolve::solve_branch`] (`SolveBranch`).

@@ -8,7 +8,7 @@
 //! |----------------------------------------------|-------------------------------------------|
 //! | [`compute_loop_orientation`]                 | `SmFace::ComputeLoopOrientation`          |
 //! | [`create_composites`]                        | `SmFace::CreateComposites`                |
-//! | [`create_uv_trim_curves`], [`UvTrimCurveGaps`] | `SmFace::CreateUVTrimCurves`            |
+//! | [`create_uv_trim_curves`], [`create_uv_trim_curves_notified`], [`UvTrimCurveGaps`] | `SmFace::CreateUVTrimCurves` |
 //! | [`face_intersect`], [`FaceIntersectOptions`], [`FaceIntersection`], [`IntersectObject`] | `SmFace::FaceIntersect` |
 //! | [`notify`]                                   | `SmFace::Notify`                          |
 //! | [`set_tolerance`]                            | `SmFace::SetTolerance` (`SM_USE_OLDTOL`)  |
@@ -18,6 +18,11 @@
 //! | [`has_lamina_edge`]                          | `SmFace::HasLaminaEdge` (CO-PORTED in `topology.topology_traverser`, re-exported) |
 //!
 //! Deviations:
+//! - **UV trim curve edit notifications.** Only the end point moves of
+//!   `sm_FixUVTrimCurves` notify ([`create_uv_trim_curves_notified`], through the
+//!   caller's [`NotifyEnv`]); `SmBSplineCurve::EditParameterization` of the curves
+//!   `SmSurface::DropIsoCurve` builds notifies nobody (no edge use owns them yet, so no
+//!   change tracker records it; `plan/findings.md`).
 //! - **Object model.** A face is a record in the [`Brep`]'s arenas; the methods are free
 //!   functions taking the B-rep and the face's id. Out-parameters are return values.
 //!   Where upstream dereferences null (a face without surface, an edge without curve, an
@@ -37,6 +42,11 @@
 //!   `sm_FixUVTrimCurves` of `CreateUVTrimCurves`; [`SolidError::Unported`] always
 //!   propagates. `CreateUVTrimCurves` reads the face domain, the surface poles and the
 //!   natural domain before clearing the surface owner, as upstream.
+//! - **`FaceIntersect`'s classifications.** With lent B-reps ([`FaceBreps::One`] /
+//!   [`FaceBreps::Two`]) both `CurveOnClassify` calls run on the faces' own B-reps
+//!   ([`crate::query::face::p2::curve_on_classify_mut`]), so their lazy edits stay on
+//!   them in upstream order; as queries they keep the kept face caches. A caller that
+//!   shares the B-reps ([`FaceBreps::Shared`]) classifies on a private copy.
 //! - **`ComputeLoopOrientation`** walks with a copy of the face surface; its last-to-first
 //!   span reads `sVeryFirstUV`, which stays at the `SmVector2d` default
 //!   (`SM_UNDEF_DOUBLE`, `SM_UNDEF_DOUBLE`) when no sample point dropped with a guess;
@@ -95,7 +105,7 @@ use crate::math::{Point3, Vec3, EFF_ZERO, PI};
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use crate::query::brep::{BrepFaceServices, SideObject, SidedFaceServices};
+use crate::query::brep::{BrepFaceServices, FaceCaches, SideObject, SidedFaceServices};
 use crate::query::face::p2 as qf2;
 use crate::surface::surface::p2::{smos_max, TsectCurveType};
 use crate::surface::surface::p4::NoObject;
@@ -114,7 +124,9 @@ use crate::topology::topology as topo;
 use crate::topology::topology_traverser::face_edges;
 use crate::topology::vertex;
 use crate::topology::vertexuse as vu1;
-use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, LoopId, LoopuseId, VertexId, VertexuseId};
+use crate::topology::{
+    Brep, BrepId, EdgeId, EdgeuseId, FaceId, LoopId, LoopuseId, VertexId, VertexuseId,
+};
 
 pub use crate::topology::topology_traverser::has_lamina_edge;
 
@@ -813,6 +825,25 @@ pub fn create_uv_trim_curves(
     adjust_tolerances: bool,
     opt_uv_curves: Option<(&mut [Option<Curve>], &[OrientType])>,
 ) -> Result<UvTrimCurveGaps> {
+    create_uv_trim_curves_notified(k, b, f, adjust_tolerances, opt_uv_curves, None)
+}
+
+/// [`create_uv_trim_curves`] whose UV trim curve edits notify through `env`: the end
+/// point moves of `sm_FixUVTrimCurves` ([`face2::fix_uv_trim_curves_notified`]). The
+/// other geometry edits on the way (`EditParameterization` of the curves
+/// `DropIsoCurve` builds, before any edge use owns them) still notify nobody.
+///
+/// # Errors
+///
+/// Those of [`create_uv_trim_curves`]; those of the notifications.
+pub fn create_uv_trim_curves_notified(
+    k: &Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    adjust_tolerances: bool,
+    opt_uv_curves: Option<(&mut [Option<Curve>], &[OrientType])>,
+    env: Option<&mut NotifyEnv<'_>>,
+) -> Result<UvTrimCurveGaps> {
     // queried before the surface owner is cleared, as upstream: the surface is still
     // face-owned, so `GetSingularities`' approximation tolerance
     // (`SmTol::GetApproxTol3d(this)`) is the face's
@@ -831,7 +862,7 @@ pub fn create_uv_trim_curves(
     // (recorded on the B-rep: a nested `smsurf_GetSurfaceCache` of the face's surface
     // then finds no face, so it does not build the face's UV trim curves itself)
     b.begin_surface_owner_cleared(f);
-    let result = create_uv_trim_curves_body(k, b, f, adjust_tolerances, opt_uv_curves, &pre);
+    let result = create_uv_trim_curves_body(k, b, f, adjust_tolerances, opt_uv_curves, &pre, env);
     // SmRescueSurfaceOwner's destructor restores the owner on every return
     b.end_surface_owner_cleared(f);
     if let Some(s) = b.face_mut(f)?.surface.as_mut() {
@@ -858,6 +889,7 @@ fn create_uv_trim_curves_body(
     adjust_tolerances: bool,
     mut opt_uv_curves: Option<(&mut [Option<Curve>], &[OrientType])>,
     pre: &PreRescue,
+    mut env: Option<&mut NotifyEnv<'_>>,
 ) -> Result<UvTrimCurveGaps> {
     let mut mean_cs_gap = 0.0;
     let mut max_cs_gap = 0.0_f64;
@@ -992,7 +1024,7 @@ fn create_uv_trim_curves_body(
                     );
 
                     // status ignored upstream
-                    let fixed = ignored(face2::fix_uv_trim_curves(
+                    let fixed = ignored(face2::fix_uv_trim_curves_notified(
                         k,
                         b,
                         eu,
@@ -1001,6 +1033,7 @@ fn create_uv_trim_curves_body(
                         tol_3d,
                         uv_gap_size,
                         &uv_domain,
+                        env.as_deref_mut(),
                     ))?
                     .unwrap_or(false);
 
@@ -1517,6 +1550,119 @@ impl<'a> IntersectObjects<'a> {
             _ => None,
         }
     }
+
+    fn distinct_breps(&self) -> [&'a Brep; 2] {
+        [self.b, self.other]
+    }
+
+    /// [`ClassGeometry::owner_entity`] for the borrowed lifetime.
+    pub(crate) fn object_owner_entity(&self, owner: ObjectRef) -> Option<(&'a Brep, EntityRef)> {
+        let same = core::ptr::eq(self.b, self.other);
+        let breps = self.distinct_breps();
+        let slice = if same { &breps[..1] } else { &breps[..] };
+        if owner.type_code == edge::TYPE {
+            for &b in slice {
+                for e in b.edges().ids() {
+                    let entity = EntityRef::Edge(e);
+                    if b.geometry_owner_key(entity) == Some(owner)
+                        || b.notify_serial().is_some_and(|s| {
+                            crate::topology::brep::p3::topology_ref(s, entity) == owner
+                        })
+                    {
+                        return Some((b, entity));
+                    }
+                }
+            }
+            let mut fallback = None;
+            for &b in slice {
+                for e in b.edges().ids() {
+                    let actual = b.edge(e).ok().and_then(|r| r.curve.as_ref()?.owner());
+                    if actual == Some(owner)
+                        && crate::topology::brep::p1::default_edge_owner(b, e) == owner
+                    {
+                        if fallback.is_some() {
+                            return None;
+                        }
+                        fallback = Some((b, EntityRef::Edge(e)));
+                    }
+                }
+            }
+            return fallback;
+        }
+        if owner.type_code == face2::TYPE {
+            for &b in slice {
+                for f in b.faces().ids() {
+                    let entity = EntityRef::Face(f);
+                    if b.geometry_owner_key(entity) == Some(owner)
+                        || b.notify_serial().is_some_and(|s| {
+                            crate::topology::brep::p3::topology_ref(s, entity) == owner
+                        })
+                    {
+                        return Some((b, entity));
+                    }
+                }
+            }
+            let mut fallback = None;
+            for &b in slice {
+                for f in b.faces().ids() {
+                    let actual = b.face(f).ok().and_then(|r| r.surface.as_ref()?.owner());
+                    if actual == Some(owner)
+                        && crate::topology::brep::p1::default_face_owner(b, f) == owner
+                    {
+                        if fallback.is_some() {
+                            return None;
+                        }
+                        fallback = Some((b, EntityRef::Face(f)));
+                    }
+                }
+            }
+            return fallback;
+        }
+        None
+    }
+
+    /// [`ClassGeometry::owner_of`] for the borrowed lifetime.
+    pub(crate) fn object_owner_of(&self, owner: ObjectRef) -> Option<ObjectRef> {
+        if owner.type_code != eu1::TYPE {
+            return None;
+        }
+        let same = core::ptr::eq(self.b, self.other);
+        let breps = self.distinct_breps();
+        let slice = if same { &breps[..1] } else { &breps[..] };
+        let edge_owner_in = |b: &Brep, e: EdgeId| -> ObjectRef {
+            b.geometry_owner_key(EntityRef::Edge(e))
+                .or_else(|| b.edge(e).ok()?.curve.as_ref()?.owner())
+                .unwrap_or_else(|| crate::topology::brep::p1::default_edge_owner(b, e))
+        };
+        for &b in slice {
+            for eu in b.edgeuses().ids() {
+                let entity = EntityRef::Edgeuse(eu);
+                if b.notify_serial()
+                    .is_some_and(|s| crate::topology::brep::p3::topology_ref(s, entity) == owner)
+                {
+                    let e = eu1::edge(b, eu).ok()??;
+                    return Some(edge_owner_in(b, e));
+                }
+            }
+        }
+        let mut fallback = None;
+        for &b in slice {
+            for eu in b.edgeuses().ids() {
+                let actual = b
+                    .edgeuse(eu)
+                    .ok()
+                    .and_then(|r| r.uv_trim_curve.as_ref()?.owner());
+                if actual == Some(owner) {
+                    let e = eu1::edge(b, eu).ok()??;
+                    if fallback.is_some() {
+                        return None;
+                    }
+                    fallback = Some(edge_owner_in(b, e));
+                }
+            }
+        }
+        fallback
+    }
 }
 
 impl ClassGeometry<IntersectObject> for IntersectObjects<'_> {
@@ -1532,6 +1678,9 @@ impl ClassGeometry<IntersectObject> for IntersectObjects<'_> {
         match o {
             IntersectObject::Topology(EntityRef::Vertex(v), side) => {
                 self.brep(side).vertex(v).ok().map(|v| v.tolerance)
+            }
+            IntersectObject::Topology(EntityRef::Edge(e), side) => {
+                self.brep(side).edge(e).ok().map(|e| e.tolerance)
             }
             IntersectObject::Topology(EntityRef::Face(f), side) => {
                 self.brep(side).face(f).ok().map(|f| f.tolerance)
@@ -1565,6 +1714,21 @@ impl ClassGeometry<IntersectObject> for IntersectObjects<'_> {
         let side = !core::ptr::eq(brep, self.b);
         (!side || core::ptr::eq(brep, self.other)).then_some(IntersectObject::Topology(e, side))
     }
+    fn brep_id(&self, brep: &Brep) -> Option<BrepId> {
+        if core::ptr::eq(brep, self.b) {
+            Some(BrepId::from_index(0))
+        } else if core::ptr::eq(brep, self.other) {
+            Some(BrepId::from_index(1))
+        } else {
+            None
+        }
+    }
+    fn owner_entity(&self, owner: ObjectRef) -> Option<(&Brep, EntityRef)> {
+        self.object_owner_entity(owner)
+    }
+    fn owner_of(&self, owner: ObjectRef) -> Option<ObjectRef> {
+        self.object_owner_of(owner)
+    }
 }
 
 /// [`IntersectObjects`] over the faces' B-reps lent mutably, for the curve
@@ -1580,6 +1744,8 @@ struct IntersectObjectsMut<'a> {
     curves_3d: &'a [Curve],
     uv1: &'a [Option<Curve>],
     uv2: &'a [Option<Curve>],
+    /// Set when an edit lent a B-rep ([`ClassGeometryMut::topology_entity_mut`]).
+    edited: bool,
 }
 
 impl IntersectObjectsMut<'_> {
@@ -1625,6 +1791,15 @@ impl ClassGeometry<IntersectObject> for IntersectObjectsMut<'_> {
     fn topology_handle_in(&self, brep: &Brep, e: EntityRef) -> Option<IntersectObject> {
         self.view().topology_handle_in(brep, e)
     }
+    fn brep_id(&self, brep: &Brep) -> Option<BrepId> {
+        self.view().brep_id(brep)
+    }
+    fn owner_entity(&self, owner: ObjectRef) -> Option<(&Brep, EntityRef)> {
+        self.view().object_owner_entity(owner)
+    }
+    fn owner_of(&self, owner: ObjectRef) -> Option<ObjectRef> {
+        self.view().object_owner_of(owner)
+    }
 }
 
 impl ClassGeometryMut<IntersectObject> for IntersectObjectsMut<'_> {
@@ -1633,6 +1808,10 @@ impl ClassGeometryMut<IntersectObject> for IntersectObjectsMut<'_> {
         None
     }
     fn topology_entity_mut(&mut self, o: IntersectObject) -> Option<(&mut Brep, EntityRef)> {
+        self.edited = true;
+        self.topology_entity_for_query(o)
+    }
+    fn topology_entity_for_query(&mut self, o: IntersectObject) -> Option<(&mut Brep, EntityRef)> {
         let IntersectObject::Topology(e, side) = o else {
             return None;
         };
@@ -1642,6 +1821,56 @@ impl ClassGeometryMut<IntersectObject> for IntersectObjectsMut<'_> {
             _ => &mut *self.b,
         };
         Some((brep, e))
+    }
+}
+
+impl qf2::CurveOnClassifyObjects<IntersectObject> for IntersectObjectsMut<'_> {
+    fn face(&self, f: FaceId) -> IntersectObject {
+        self.view().face(f)
+    }
+    fn vertex(&self, v: VertexId) -> IntersectObject {
+        self.view().vertex(v)
+    }
+    fn edge(&self, e: EdgeId) -> IntersectObject {
+        self.view().edge(e)
+    }
+    fn vertexuse(&self, vu: VertexuseId) -> IntersectObject {
+        self.view().vertexuse(vu)
+    }
+    fn edgeuse(&self, eu: EdgeuseId) -> IntersectObject {
+        self.view().edgeuse(eu)
+    }
+    fn edge_curve(&self, e: EdgeId) -> IntersectObject {
+        self.view().edge_curve(e)
+    }
+    fn trim_curve(&self, eu: EdgeuseId) -> IntersectObject {
+        self.view().trim_curve(eu)
+    }
+    fn face_surface(&self, f: FaceId) -> Option<IntersectObject> {
+        self.view().face_surface(f)
+    }
+    fn loop_id(&self, tgt_loop: IntersectObject) -> Option<LoopId> {
+        self.view().loop_id(tgt_loop)
+    }
+}
+
+/// The classified face's B-rep: the other face's for side `true` when it is a
+/// different one, else this face's.
+impl qf2::FaceBrep for IntersectObjectsMut<'_> {
+    fn brep(&self) -> &Brep {
+        match (self.side, self.other.as_deref()) {
+            (true, Some(other)) => other,
+            _ => self.b,
+        }
+    }
+}
+
+impl qf2::CurveOnClassifyBrep<IntersectObject> for IntersectObjectsMut<'_> {
+    fn brep_mut(&mut self) -> &mut Brep {
+        match (self.side, self.other.as_deref_mut()) {
+            (true, Some(other)) => other,
+            _ => &mut *self.b,
+        }
     }
 }
 
@@ -1716,7 +1945,6 @@ pub enum FaceBreps<'a> {
 /// # Errors
 ///
 /// Those of [`face_intersect`].
-#[allow(clippy::too_many_lines)] // one upstream routine
 pub fn face_intersect_breps(
     k: &Kernel,
     breps: FaceBreps<'_>,
@@ -1725,6 +1953,40 @@ pub fn face_intersect_breps(
     approx_tol_3d: f64,
     crv_ang_tol_deg: f64,
     options: &FaceIntersectOptions,
+) -> Result<FaceIntersection> {
+    face_intersect_breps_cached(
+        k,
+        breps,
+        f,
+        other,
+        approx_tol_3d,
+        crv_ang_tol_deg,
+        options,
+        [None, None],
+    )
+}
+
+/// [`face_intersect_breps`] keeping the trimmed surface caches the surface
+/// intersection makes on the lent B-reps in `face_caches` (this face's B-rep's, then
+/// the other face's; the second is unused with [`FaceBreps::One`]) for the next call
+/// on the same unchanged B-reps, as upstream keeps each face's cache on its surface.
+/// The caches must have been made on the B-rep they are given with, and the B-rep
+/// must not have changed since.
+///
+/// # Errors
+///
+/// Those of [`face_intersect`].
+#[allow(clippy::too_many_lines)] // one upstream routine
+#[allow(clippy::too_many_arguments)]
+pub fn face_intersect_breps_cached(
+    k: &Kernel,
+    breps: FaceBreps<'_>,
+    f: FaceId,
+    other: FaceId,
+    approx_tol_3d: f64,
+    crv_ang_tol_deg: f64,
+    options: &FaceIntersectOptions,
+    mut face_caches: [Option<&mut FaceCaches>; 2],
 ) -> Result<FaceIntersection> {
     let (mut this_brep, mut other_brep, shared) = match breps {
         FaceBreps::One(b) => (Some(b), None, None),
@@ -1807,25 +2069,37 @@ pub fn face_intersect_breps(
         };
         let (domain, other_domain) = (face2::uv_domain(b, f)?, face2::uv_domain(ob, other)?);
         let r = if let Some(this_brep) = this_brep.as_deref_mut() {
-            let mut services = vec![BrepFaceServices::new(this_brep)];
+            let [this_caches, other_caches] = &mut face_caches;
+            let taken = |slot: &mut Option<&mut FaceCaches>| {
+                slot.as_deref_mut().map(core::mem::take).unwrap_or_default()
+            };
+            let mut services = vec![BrepFaceServices::with_caches(this_brep, taken(this_caches))];
             if let Some(ob) = other_brep.as_deref_mut() {
-                services.push(BrepFaceServices::new(ob));
+                services.push(BrepFaceServices::with_caches(ob, taken(other_caches)));
             }
             let other_index = usize::from(other_side);
-            surface.global_surface_intersect_with_context(
+            let mut sided = SidedFaceServices(services);
+            let r = surface.global_surface_intersect_with_context(
                 k,
                 [
                     Some(SideObject(0, CacheObject::Surface(f))),
                     Some(SideObject(other_index, CacheObject::Surface(other))),
                 ],
-                &mut SidedFaceServices(services),
+                &mut sided,
                 &domain,
                 other_surface,
                 &other_domain,
                 use_surface_edges,
                 Some(approx_tol_3d),
                 Some(ang_tol_rad),
-            )?
+            );
+            // hand the caches back for the next call
+            for (service, slot) in sided.0.into_iter().zip(face_caches.iter_mut()) {
+                if let Some(slot) = slot.as_deref_mut() {
+                    *slot = service.into_caches();
+                }
+            }
+            r?
         } else {
             surface.global_surface_intersect(
                 k,
@@ -1875,7 +2149,6 @@ pub fn face_intersect_breps(
         }
     }
     for (ii, curve) in curves_3d.iter().enumerate() {
-        let (b, ob) = shared_breps(this_brep.as_deref(), other_brep.as_deref(), shared)?;
         let curve_type = curve_types
             .get(ii)
             .copied()
@@ -1902,30 +2175,49 @@ pub fn face_intersect_breps(
         let mut cc1 = curve_classification(k, IntersectObject::Curve(ii), &ivl, uv1, zone_tol)?;
         let mut cc2 = curve_classification(k, IntersectObject::Curve(ii), &ivl, uv2, zone_tol)?;
 
-        let objects = IntersectObjects {
-            b,
-            other: ob,
-            side: false,
-            curves_3d: &curves_3d,
-            uv1: &uv_curves1,
-            uv2: &uv_curves2,
-        };
-        let other_objects = IntersectObjects {
-            side: other_side,
-            ..objects
-        };
-        qf2::curve_on_classify(k, b, f, &objects, true, &mut cc1, false, false, true)?;
-        qf2::curve_on_classify(
-            k,
-            ob,
-            other,
-            &other_objects,
-            true,
-            &mut cc2,
-            false,
-            false,
-            true,
-        )?;
+        if let Some(this) = this_brep.as_deref_mut() {
+            // the classifications' lazy face queries (UV trim curves, gap caches,
+            // tolerance growth) edit the faces' own B-reps, as upstream's; they are
+            // queries, so the kept face caches stay
+            let mut objects = IntersectObjectsMut {
+                b: this,
+                other: other_brep.as_deref_mut(),
+                side: false,
+                curves_3d: &curves_3d,
+                uv1: &uv_curves1,
+                uv2: &uv_curves2,
+                edited: false,
+            };
+            qf2::curve_on_classify_mut(k, f, &mut objects, true, &mut cc1, false, false, true)?;
+            objects.side = other_side;
+            qf2::curve_on_classify_mut(k, other, &mut objects, true, &mut cc2, false, false, true)?;
+        } else {
+            let (b, ob) = shared_breps(None, None, shared)?;
+            let objects = IntersectObjects {
+                b,
+                other: ob,
+                side: false,
+                curves_3d: &curves_3d,
+                uv1: &uv_curves1,
+                uv2: &uv_curves2,
+            };
+            let other_objects = IntersectObjects {
+                side: other_side,
+                ..objects
+            };
+            qf2::curve_on_classify(k, b, f, &objects, true, &mut cc1, false, false, true)?;
+            qf2::curve_on_classify(
+                k,
+                ob,
+                other,
+                &other_objects,
+                true,
+                &mut cc2,
+                false,
+                false,
+                true,
+            )?;
+        }
 
         let extract = ExtractOptions {
             uv_curves1: true,
@@ -1945,9 +2237,27 @@ pub fn face_intersect_breps(
                 curves_3d: &curves_3d,
                 uv1: &uv_curves1,
                 uv2: &uv_curves2,
+                edited: false,
             };
-            cc1.extract_geometry_mut(k, &mut objects, &mut cc2, extract)?
+            let ex = cc1.extract_geometry_mut(k, &mut objects, &mut cc2, extract);
+            // an edit of the B-reps (not a query) may change what the kept face
+            // caches were made from
+            if objects.edited {
+                for slot in face_caches.iter_mut().flatten() {
+                    slot.clear();
+                }
+            }
+            ex?
         } else {
+            let (b, ob) = shared_breps(None, None, shared)?;
+            let objects = IntersectObjects {
+                b,
+                other: ob,
+                side: false,
+                curves_3d: &curves_3d,
+                uv1: &uv_curves1,
+                uv2: &uv_curves2,
+            };
             cc1.extract_geometry(k, &objects, &mut cc2, extract)?
         };
         let found = !ex.curves_3d.is_empty();
