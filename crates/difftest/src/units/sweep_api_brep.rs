@@ -25,6 +25,7 @@
 //! record contains actual reachable vertices, edge intervals and samples at
 //! 0.17/0.37/0.83, followed by manifold and volume queries (accuracy 1e-6).
 //! Evaluation/query statuses are retained; no healing or extra stitching is done.
+//! Observation decoding rejects truncated records without unchecked indexing.
 //! Legacy records and generated inputs remain unchanged.
 
 use serde::{Deserialize, Serialize};
@@ -393,7 +394,10 @@ fn to_output(i: &Inputs, flat: &[f64]) -> Result<Output, HarnessError> {
             }
         };
         let (nv, ne) = (count(2)?, count(1)?);
-        out = decode_observation(out, &flat[at..], nv, ne)?;
+        let observation = flat
+            .get(at..)
+            .ok_or_else(|| harness("missing observation record"))?;
+        out = decode_observation(out, observation, nv, ne)?;
         at = flat.len();
     }
     if at != flat.len() {
@@ -763,16 +767,24 @@ fn decode_observation(
     let mut statuses = Vec::new();
     let mut samples = Vec::new();
     for _ in 0..3 * ne {
-        statuses.push(take(flat, &mut at, 1)?[0] as i64);
+        let [evaluation_status] = take(flat, &mut at, 1)? else {
+            return Err(harness("missing evaluation status"));
+        };
+        statuses.push(*evaluation_status as i64);
         samples.extend_from_slice(take(flat, &mut at, 3)?);
     }
-    let query = take(flat, &mut at, 4)?;
+    let [manifold_status, manifold, volume_status, volume] = take(flat, &mut at, 4)? else {
+        return Err(harness("missing query record"));
+    };
     out = out
         .ints("linear_evaluation_status", statuses)
         .values("linear_edge_samples", samples)
-        .ints("linear_manifold", vec![query[0] as i64, query[1] as i64])
-        .int("linear_volume_status", query[2] as i64)
-        .scalar("linear_volume", query[3]);
+        .ints(
+            "linear_manifold",
+            vec![*manifold_status as i64, *manifold as i64],
+        )
+        .int("linear_volume_status", *volume_status as i64)
+        .scalar("linear_volume", *volume);
     if at != flat.len() {
         return Err(harness("trailing observation values"));
     }
@@ -1315,10 +1327,10 @@ mod tests {
                     }
                 }
             }
-            let mut actual: Vec<_> = observed.values["linear_vertices"]
-                .chunks_exact(3)
-                .map(|p| [p[0], p[1], p[2]])
-                .collect();
+            let mut actual = observed.values["linear_vertices"]
+                .as_chunks::<3>()
+                .0
+                .to_vec();
             actual.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
             assert_eq!(actual, expected);
             // Closed-form prism edges, independent of either kernel's graph/order.
@@ -1333,7 +1345,7 @@ mod tests {
             assert_eq!(expected_edges.len(), 12);
             for output in [&native, &observed] {
                 let mut seen = vec![false; 12];
-                for samples in output.values["linear_edge_samples"].chunks_exact(9) {
+                for samples in output.values["linear_edge_samples"].as_chunks::<9>().0 {
                     let index = expected_edges
                         .iter()
                         .position(|&(a, b)| {
@@ -1388,7 +1400,12 @@ mod tests {
                 assert_eq!(observed.values.get(key), Some(value));
                 assert_eq!(native.values.get(key), legacy_native.values.get(key));
             }
-            eprintln!("linear distance={distance}: native counts={:?} manifold={:?} volume={:?}; 36 edge evaluations; four mutations detected; legacy prefix bit-identical", native.values["counts"], native.ints["linear_manifold"], native.values["linear_volume"]);
+            eprintln!(
+                "linear distance={distance}: native counts={:?} manifold={:?} volume={:?}; 36 edge evaluations; four mutations detected; legacy prefix bit-identical",
+                native.values["counts"],
+                native.ints["linear_manifold"],
+                native.values["linear_volume"]
+            );
             observations.push(observed);
         }
         assert_eq!(observations.len(), 2);
