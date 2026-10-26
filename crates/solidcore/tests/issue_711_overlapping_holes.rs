@@ -2,8 +2,8 @@
 //! (usd-brep 1.0.1) sends cylinder/cylinder to `SmCone::IntersectWithCone`, whose
 //! parallel-cylinder branch tests each crossing line at the tool's bottom (v = 0), below
 //! the first hole's wall trimmed to the disc, so both lines are dropped and the cut
-//! fails in `SmBrep::MakeFace` (`SM_ERR`). The Boolean's
-//! `Kernel::cone_parallel_midpoint_test` (WR-259) tests the line's middle instead.
+//! fails in `SmBrep::MakeFace` (`SM_ERR`). With the opt-in
+//! `Kernel::fixes.cone_parallel_line_midpoint` (WR-259), the line is tested at its middle.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -29,6 +29,7 @@ fn volume(k: &Kernel, b: &mut Brep) -> solidcore::Result<f64> {
 #[test]
 fn issue_711_second_overlapping_hole_cuts() {
     let mut k = Kernel::default();
+    k.fixes.cone_parallel_line_midpoint = true;
     // a disc r 20, 10 thick
     let mut disc = create_cylinder(&mut k, Point3::new(0.0, 0.0, 0.0), 20.0, 10.0).unwrap();
     // two r 5 holes through it, 6 apart, the tools 12 high from z = -1

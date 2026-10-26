@@ -207,6 +207,10 @@ pub struct UpstreamFixes {
     pub offset_collapsed_rounds_mated: bool,
     /// At an Nx1 corner whose end rib cannot be built because a rail missed a side edge ending within the fillet's width, the rib is deleted and the global merge cuts the round off (WR-303, #841).
     pub fillet_nx1_end_rib_global_merge: bool,
+    /// `sm_FixUVTrimCurves` moves only the end control points of the two UV trims meeting at a corner onto the vertex's UV point, without dropping the vertex onto them, trimming there and stretching them back over the edge interval (WR-255, #959/#570; the fork's tangency-labs/smlib@5af7070).
+    pub uv_trim_corner_end_points_only: bool,
+    /// `SmCone::IntersectWithCone` tests the line of two parallel cylinders against both face domains at its middle, not its bottom end (WR-259, #711).
+    pub cone_parallel_line_midpoint: bool,
 }
 
 /// Options for [`Kernel::new`].
@@ -257,13 +261,6 @@ pub struct Kernel {
     /// result for such an input is undefined, so a comparison against the C++ (the
     /// difftest) reads this to classify the case; no operation reads it.
     pub upstream_ub_passed: Vec<&'static str>,
-    /// Not upstream (WR-259, `plan/upstream-issues.md`): whether
-    /// `Cone::intersect_with_cone` tests the lines of two parallel cylinders at their
-    /// middle (`true`) instead of their bottom end (`false`, upstream and the default),
-    /// which skips a line crossing a face domain trimmed above the surface's bottom. The
-    /// Boolean sets it for its duration (`boolean::merge::p4::manifold_boolean`). A
-    /// [`Cell`] because the intersectors take `&Kernel`.
-    pub cone_parallel_midpoint_test: Cell<bool>,
     /// Not upstream: whether `make_curve_cache` keeps a memo of each curve cache in the
     /// curve value (`true` unless the `curve-memo-off` feature is on). The memo never
     /// changes a result, only the time; `false` builds every cache fresh, to check that.
@@ -289,7 +286,6 @@ impl Kernel {
             context: Context::default(),
             fillet_point_step: Cell::new(None),
             upstream_ub_passed: Vec::new(),
-            cone_parallel_midpoint_test: Cell::new(false),
             memoize_curve_caches: !cfg!(feature = "curve-memo-off"),
             fixes: UpstreamFixes::default(),
         }
