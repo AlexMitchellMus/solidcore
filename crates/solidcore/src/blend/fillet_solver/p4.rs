@@ -3330,13 +3330,18 @@ fn c6_compute_point_values(
         // :3600
         compute_uv_vectors(point)?;
 
-        // :3604 static double sdStaticStep = TANGENT ? 1e-3 : 1e-5 (latched once)
-        let mut step =
-            k.latch_fillet_point_step(if point.point_type == IntersectionPointType::TangentPoint {
-                1.0e-3
-            } else {
-                1.0e-5
-            });
+        // :3604 static double sdStaticStep = TANGENT ? 1e-3 : 1e-5 (latched once; with
+        // `fixes.fillet_point_step_per_point` chosen for this point, WR-466)
+        let first = if point.point_type == IntersectionPointType::TangentPoint {
+            1.0e-3
+        } else {
+            1.0e-5
+        };
+        let mut step = if k.fixes.fillet_point_step_per_point {
+            first
+        } else {
+            k.latch_fillet_point_step(first)
+        };
 
         // :3615 forward step (StepSolve may shorten `dStep`, passed by reference)
         let mut step_forw = TsectPnt::new();
@@ -3634,6 +3639,32 @@ mod tests_c6 {
         let mut p = TsectPnt::new();
         let _ = run(&mut fs, &k2, 1.0, &mut p, None);
         assert_eq!(k2.fillet_point_step.get(), Some(7.0e-4));
+    }
+
+    /// WR-466 (#1173): with the fix the step is chosen per point and no latch is read or
+    /// set; without it a latched step (as left by an earlier blend) is the one used.
+    #[test]
+    fn per_point_step_ignores_the_latch_with_the_fix() {
+        let (a, b) = (xy(0.0), xy(1.0));
+        let mut prev = TsectPnt::new();
+        *prev.crv_deriv_mut() = Vec3::new(0.0, 3.0, 0.0);
+        for fixed in [false, true] {
+            let mut k = Kernel::default();
+            k.fixes.fillet_point_step_per_point = fixed;
+            k.fillet_point_step.set(Some(1.0e-5));
+            let mut fs = solver(&k, &a, &b);
+            let _ = run(&mut fs, &k, 1.0, &mut TsectPnt::new(), Some(&prev));
+            assert_eq!(k.fillet_point_step.get(), Some(1.0e-5));
+            let k = Kernel::default();
+            let mut fs = solver(&k, &a, &b);
+            let _ = run(&mut fs, &k, 1.0, &mut TsectPnt::new(), Some(&prev));
+            assert_eq!(k.fillet_point_step.get(), Some(1.0e-3));
+            let mut k = Kernel::default();
+            k.fixes.fillet_point_step_per_point = true;
+            let mut fs = solver(&k, &a, &b);
+            let _ = run(&mut fs, &k, 1.0, &mut TsectPnt::new(), Some(&prev));
+            assert_eq!(k.fillet_point_step.get(), None);
+        }
     }
 
     #[test]
