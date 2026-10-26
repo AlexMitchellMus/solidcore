@@ -36,10 +36,8 @@
 //!   `blend.fillet_corner_p1`) whose corner type and filleted vertex the calculators
 //!   read; the lookup also holds the executive's extended surfaces
 //!   (`GetExtendedSurface`).
-//! - **Cones.** `sm_CreateUVCurve` asks the surface `IsKindOf(SmCone_TYPE)`. A Rust
-//!   [`Surface`] has no cone kind (cones are [`crate::surface::cone::Cone`] values, not
-//!   surfaces), so the test is `false` for every surface it can be given; the cone
-//!   branch is kept behind the same test.
+//! - **Cones.** `sm_CreateUVCurve`'s `IsKindOf(SmCone_TYPE)` test is a match on
+//!   [`SurfaceKind::Cone`] (which also holds `SmCylinder`s).
 //! - **Curves.** Upstream's curve arrays hold pointers into the edges and copies are
 //!   made at the end of `MakeFaceBrep`; here the arrays hold clones, and the final
 //!   copies are made the same way (`Copy` for the 3D curves, the copy constructor for
@@ -55,9 +53,8 @@
 //!   (`USE_DEFAULT` becomes the zone tolerance, then `fabs`).
 //! - **Surface/surface intersections.** `sm_SrfSrfIntersection` is
 //!   `blend.fillet_geom_p2`'s, called with the fillet vertices' points; its curves are
-//!   retained as their actual B-spline-derived objects for virtual operations.
-//!   The existing public [`UvCurves`] base-only return contract still projects its
-//!   surface/plane fallback onto the B-spline base.
+//!   retained as their actual B-spline-derived objects for virtual operations, and
+//!   [`UvCurves`] returns them as such (an `SmEllipse` stays an ellipse).
 //! - **Part 6.** `GetRailIndexOfVertexuse`, `JoinTwoFilletVertsByCurves`,
 //!   `SmFilletEdge::CalcBlendingRail` and `RecordFilletError` are `blend.fillet_geom_p6`'s;
 //!   `MakeFaceBrep`'s 3D curve list holds `Option<Curve>` as the join appends them.
@@ -104,7 +101,6 @@ use crate::nurbs::b_spline_surface_n_lib::p2::{BlendNeighbour, OrientType};
 use crate::nurbs::crv_fit::p1::ParamMethod;
 use crate::surface::plane::Plane;
 use crate::surface::surface::p1::map_to_2d_dir;
-use crate::surface::surface::p2::CONE_TYPE;
 use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::brep::p7::{
@@ -458,10 +454,11 @@ pub trait IntersectionTopologyContext {
 /// an iso-parametric line), `rpUVCurve1` and `rpUVCurve2` (the second seam curve).
 #[derive(Debug, Clone, Default)]
 pub struct UvCurves {
-    /// `rp3DCurve`.
-    pub curve_3d: Option<BSplineCurve>,
-    /// `rpUVCurve1`.
-    pub uv_curve1: Option<BSplineCurve>,
+    /// `rp3DCurve`: the actual `SmBSplineCurve`-derived object (an `SmEllipse` from a
+    /// plane cut of a cylinder, for one).
+    pub curve_3d: Option<Curve>,
+    /// `rpUVCurve1`: the actual `SmBSplineCurve`-derived object.
+    pub uv_curve1: Option<Curve>,
     /// `rpUVCurve2`.
     pub uv_curve2: Option<BSplineCurve>,
 }
@@ -613,11 +610,11 @@ pub fn create_uv_curve(
         };
 
         // make Surface constant uMin isoParam curve
-        out.uv_curve1 = Some(BSplineCurve::create_line_segment(
+        out.uv_curve1 = Some(Curve::from(BSplineCurve::create_line_segment(
             2,
             p3(start_uv0),
             p3(end_uv0),
-        )?);
+        )?));
 
         // make Surface constant uMax isoParam curve
         out.uv_curve2 = Some(BSplineCurve::create_line_segment(
@@ -846,27 +843,26 @@ pub fn create_uv_curve(
         // pick a likely ZAxis: the cone's axis, else a fillet vertex use's curve
         // derivative
         let mut z_axis = Vec3::new(0.0, 0.0, 0.0);
-        if surface.is_kind_of(CONE_TYPE)? {
-            // (no Rust surface is a cone: see the module deviations)
-            return Err(SolidError::invalid_input(
-                OP_UV,
-                "cone surfaces are not surfaces",
-            ));
-        }
-        // find a fillet vertexuse to target
-        let mut vu = None;
-        let geoms = fb.vertex_fillet_geoms(start_fv)?;
-        if geoms.len() == 1 {
-            vu = fb.vu_at_rail_end(start_fv, geoms.first().copied(), None, None)?;
+        if let SurfaceKind::Cone(cone) = surface.kind() {
+            // SmCone_TYPE (an SmCylinder too): the cone's axis
+            z_axis = cone.rev().position().z_axis();
         } else {
-            let geoms = fb.vertex_fillet_geoms(end_fv)?;
+            // pick a likely ZAxis from the Start/EndFV->GetTsectPnt().CrvDeriv() values
+            // find a fillet vertexuse to target
+            let mut vu = None;
+            let geoms = fb.vertex_fillet_geoms(start_fv)?;
             if geoms.len() == 1 {
-                vu = fb.vu_at_rail_end(end_fv, geoms.first().copied(), None, None)?;
+                vu = fb.vu_at_rail_end(start_fv, geoms.first().copied(), None, None)?;
+            } else {
+                let geoms = fb.vertex_fillet_geoms(end_fv)?;
+                if geoms.len() == 1 {
+                    vu = fb.vu_at_rail_end(end_fv, geoms.first().copied(), None, None)?;
+                }
             }
-        }
-        // when a vertexuse was found
-        if let Some(vu) = vu {
-            z_axis = fb.fillet_vertexuse(vu)?.tsect_pnt().crv_deriv();
+            // when a vertexuse was found
+            if let Some(vu) = vu {
+                z_axis = fb.fillet_vertexuse(vu)?.tsect_pnt().crv_deriv();
+            }
         }
 
         // when ZAxis was set
@@ -899,9 +895,10 @@ pub fn create_uv_curve(
                 ) {
                     Ok(r) => {
                         // when Srf/Srf worked - don't need 2nd UVcurve
-                        // Preserve the public base-only UvCurves return contract.
-                        out.curve_3d = r.curve_3d.as_ref().and_then(as_b_spline).cloned();
-                        out.uv_curve1 = r.uv_curve1.as_ref().and_then(as_b_spline).cloned();
+                        // (the out-params are `SmBSplineCurve *&`: the derived objects
+                        // themselves, not copies of their B-spline bases)
+                        out.curve_3d = r.curve_3d.filter(|c| as_b_spline(c).is_some());
+                        out.uv_curve1 = r.uv_curve1.filter(|c| as_b_spline(c).is_some());
                         return Ok(out);
                     }
                     Err(e) if e.is_unported() => return Err(e),
@@ -915,11 +912,11 @@ pub fn create_uv_curve(
     }
 
     // Otherwise, make an iso-curve
-    out.uv_curve1 = Some(BSplineCurve::create_line_segment(
+    out.uv_curve1 = Some(Curve::from(BSplineCurve::create_line_segment(
         2,
         p3(start_uv),
         p3(end_uv),
-    )?);
+    )?));
 
     // all done
     Ok(out)
@@ -2501,7 +2498,7 @@ mod tests {
         let r = create_uv_curve(&k, &fb, v[0], v[1], false, &srf, 1e-6).unwrap();
         assert!(r.curve_3d.is_none());
         assert!(r.uv_curve2.is_none());
-        let c = Curve::from(r.uv_curve1.unwrap());
+        let c = r.uv_curve1.unwrap();
         let ivl = c.natural_interval();
         let s = c.evaluate_point(&k, ivl.min()).unwrap();
         let e = c.evaluate_point(&k, ivl.max()).unwrap();

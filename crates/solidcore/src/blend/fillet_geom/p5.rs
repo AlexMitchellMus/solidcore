@@ -822,18 +822,16 @@ impl FilletBrep {
             &surface1,
             50.0 * tol,
         )?;
-        let mut curve_3d: Option<Curve> = uv.curve_3d.map(Curve::from);
+        let mut curve_3d: Option<Curve> = uv.curve_3d;
         let uv_curve1 = uv.uv_curve1;
         let uv_curve2 = uv.uv_curve2;
 
         if curve_3d.is_none() {
             // Lift uv curve. `sm_CreateUVCurve` can succeed with neither curve, and
             // upstream then dereferences `*pUVCurve1` (UB-213).
-            let uv1 = Curve::from(
-                uv_curve1
-                    .clone()
-                    .ok_or_else(|| SolidError::null_pointer(OP_CROSS))?,
-            );
+            let uv1 = uv_curve1
+                .clone()
+                .ok_or_else(|| SolidError::null_pointer(OP_CROSS))?;
             let lifted = surface1.lift_curve(
                 k,
                 &surface1.natural_uv_domain(),
@@ -847,7 +845,7 @@ impl FilletBrep {
         let curve_3d = curve_3d.ok_or_else(|| SolidError::null_pointer(OP_CROSS))?;
 
         set_edge_curve(self.brep_mut(), e, Some(curve_3d))?; // side effect: delete current this->UVTrimCurves
-        self.set_uv(prim, uv_curve1.map(Curve::from))?;
+        self.set_uv(prim, uv_curve1)?;
 
         // Need second UV curve when we had a closed fillet surface
         let closed = match corner {
@@ -880,7 +878,7 @@ impl FilletBrep {
                 50.0 * tol,
             )?;
             // the duplicate 3D curve and an unexpected second UV curve are deleted
-            self.set_uv(mate, uv.uv_curve1.map(Curve::from))?;
+            self.set_uv(mate, uv.uv_curve1)?;
             let g2 = g2.ok_or_else(|| SolidError::null_pointer(OP_CROSS))?;
             self.geom_mut(g2)?.add_side_fillet_edgeuse(mate);
         }

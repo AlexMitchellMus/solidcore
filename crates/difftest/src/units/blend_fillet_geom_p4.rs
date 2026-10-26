@@ -37,7 +37,7 @@ use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_geom_p4::{self as ffi, Op};
 
 use super::blend_fillet_geom_p1::{
-    analytic_surface, dump_bcurve, gen_curve, gen_cylinder, gen_model, gen_surface, push_model,
+    analytic_surface, b_spline_part, dump_bcurve, gen_curve, gen_cylinder, gen_model, gen_surface, push_model,
     push_srf, scale_of, status, surface_of, AnalyticSrf, Crv, EdgeIn, EuIn, GeomIn, Model,
     RustModel, Srf, VertexIn,
 };
@@ -387,8 +387,8 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             );
             o.push(status_of!(r));
             let curves = r.unwrap_or_default();
-            dump_bcurve(&mut o, curves.curve_3d.as_ref());
-            dump_bcurve(&mut o, curves.uv_curve1.as_ref());
+            dump_bcurve(&mut o, curves.curve_3d.as_ref().and_then(b_spline_part));
+            dump_bcurve(&mut o, curves.uv_curve1.as_ref().and_then(b_spline_part));
             dump_bcurve(&mut o, curves.uv_curve2.as_ref());
         }
         Query::RailIndex { g, v } => {
