@@ -176,6 +176,7 @@ fn as_assisted(fs: &FilletSolver) -> ConstantRadiusAssistedFs {
     ConstantRadiusAssistedFs {
         solver: fs.clone(),
         fillet_radii: [0.0; 2],
+        plain: false,
     }
 }
 
@@ -593,6 +594,7 @@ fn point_on_plane_solve(
     let found = FilletSolverOps::point_on_plane_solve(
         fs,
         k,
+        None,
         plane_orig,
         plane_normal,
         domain1,

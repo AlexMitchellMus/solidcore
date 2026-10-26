@@ -143,8 +143,9 @@ impl FilletSolver {
 /// `sm_FindFilletTsectPnt(pFilSolver, cpSurf1, cpSurf2, rPntToDrop, rTraceDir,
 /// rNewTsectPnt)`: drops the guess point onto both base surfaces (minimum distance,
 /// every solution kept), then solves for the rail points whose offset point lies on
-/// the plane through `pnt_to_drop` normal to `trace_dir` (`PointOnPlaneSolve`) and
-/// stores `trace_dir` as the curve derivative of `new_tsect`.
+/// the plane through `pnt_to_drop` normal to `trace_dir` (`PointOnPlaneSolve`, given
+/// the target `brep` holding the solver's edge uses) and stores `trace_dir` as the
+/// curve derivative of `new_tsect`.
 ///
 /// # Errors
 ///
@@ -154,6 +155,7 @@ impl FilletSolver {
 pub fn find_fillet_tsect_pnt(
     ops: &mut dyn FilletSolverOps,
     k: &Kernel,
+    brep: Option<&Brep>,
     surf1: &Surface,
     surf2: &Surface,
     pnt_to_drop: Point3,
@@ -216,6 +218,7 @@ pub fn find_fillet_tsect_pnt(
     // (virtual: the solver's override, the base's in unit blend.fillet_solver_p2)
     let found_solution = ops.point_on_plane_solve(
         k,
+        brep,
         pnt_to_drop,
         trace_dir,
         &domain1,
@@ -546,6 +549,7 @@ impl FilletSolver {
                         // blend.fillet_solver_p2)
                         let found_solution = ops.point_on_plane_solve(
                             k,
+                            brep,
                             plane_orig,
                             plane_normal,
                             &uv_domains[0],
@@ -1959,6 +1963,7 @@ mod tests {
         let r = find_fillet_tsect_pnt(
             &mut fs,
             &k,
+            None,
             &s0,
             &s1,
             Vec3::new(R, 1.0, R),
