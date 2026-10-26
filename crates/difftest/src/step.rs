@@ -416,11 +416,70 @@ fn counts(k: &mut Kernel, b: &Brep) -> Result<Vec<f64>, SolidError> {
     ])
 }
 
+/// Diagnostics: face `fi` of `body` built alone in its own B-rep by the stitch
+/// recipe's `CreateFacesWithCurves` (Rust port): the kernel, the B-rep and the faces
+/// made; `None` where a step fails. With `adjust_domain` the surface is first given the
+/// face's STEP parameter box ([`step_import::script::step_uv_domain`]) by
+/// `AdjustSTEPUVDomain`, as the constructor recipe does.
+pub fn build_face_alone(
+    body: &Body,
+    fi: usize,
+    adjust_domain: bool,
+) -> Option<(Kernel, Brep, Vec<FaceId>)> {
+    let face = body.faces.get(fi)?;
+    let mut k = Kernel::default();
+    let mut b = p3::new_brep(
+        &mut k,
+        solidcore::geom::tol::USE_DEFAULT,
+        solidcore::geom::tol::USE_DEFAULT,
+    )
+    .ok()?;
+    let mut srf = make_surface(&k, &face.surface).ok()?;
+    if adjust_domain {
+        if let Some(d) = step_import::script::step_uv_domain(body, face) {
+            let d = solidcore::geom::extent2d::Extent2d::from_bounds(d[0], d[1], d[2], d[3]);
+            srf.adjust_step_uv_domain(&k, &d).ok()?;
+        }
+    }
+    let mut first_err = None;
+    let input = face_input(&k, body, face, true, &mut first_err);
+    if first_err.is_some() {
+        return None;
+    }
+    let mut state = ArenaNotifyState::new(&b);
+    let mut env = state.env(None);
+    let key_of: &dyn Fn(EntityRef) -> solidcore::geom::object::ObjectRef = env.key_of;
+    let this_face = |f: FaceId| key_of(EntityRef::Face(f));
+    let mut marks = Marks::default();
+    let mut fenv = FaceBuildEnv {
+        env: &mut env,
+        marks: &mut marks,
+        this_face: &this_face,
+    };
+    let made = create_faces_with_curves(
+        &mut k,
+        &mut b,
+        None,
+        &input.loops,
+        Some(input.curves),
+        &input.orients,
+        Some(srf),
+        &mut fenv,
+    )
+    .ok()?;
+    Some((k, b, made.faces))
+}
+
 /// Diagnostics: the area of each face of `body` (`None` where it fails), built two ways
-/// with the Rust port: alone in its own B-rep by `CreateFacesWithCurves` (the stitch
-/// recipe's faces, before stitching), and as the face of the same index in the B-rep
-/// `SmBrepConstructor` builds.
-pub fn face_areas(body: &Body, accuracy: f64) -> Vec<(Option<f64>, Option<f64>)> {
+/// with the Rust port: alone by [`build_face_alone`] (the stitch recipe's faces, before
+/// stitching), and as the face of the same index in the B-rep `SmBrepConstructor`
+/// builds (`adjust_alone`: the alone build with the STEP domain, see
+/// [`build_face_alone`]).
+pub fn face_areas(
+    body: &Body,
+    accuracy: f64,
+    adjust_alone: bool,
+) -> Vec<(Option<f64>, Option<f64>)> {
     use solidcore::mass::integrator::properties::face_area;
     let mut out = Vec::new();
     let script =
@@ -431,48 +490,14 @@ pub fn face_areas(body: &Body, accuracy: f64) -> Vec<(Option<f64>, Option<f64>)>
         .as_ref()
         .and_then(|b| bp1::faces(b, None).ok())
         .unwrap_or_default();
-    for (fi, face) in body.faces.iter().enumerate() {
-        let mut k = Kernel::default();
-        let alone = (|| -> Option<f64> {
-            let mut b = p3::new_brep(
-                &mut k,
-                solidcore::geom::tol::USE_DEFAULT,
-                solidcore::geom::tol::USE_DEFAULT,
-            )
-            .ok()?;
-            let srf = make_surface(&k, &face.surface).ok()?;
-            let mut first_err = None;
-            let input = face_input(&k, body, face, true, &mut first_err);
-            if first_err.is_some() {
-                return None;
-            }
-            let mut state = ArenaNotifyState::new(&b);
-            let mut env = state.env(None);
-            let key_of: &dyn Fn(EntityRef) -> solidcore::geom::object::ObjectRef = env.key_of;
-            let this_face = |f: FaceId| key_of(EntityRef::Face(f));
-            let mut marks = Marks::default();
-            let mut fenv = FaceBuildEnv {
-                env: &mut env,
-                marks: &mut marks,
-                this_face: &this_face,
-            };
-            let made = create_faces_with_curves(
-                &mut k,
-                &mut b,
-                None,
-                &input.loops,
-                Some(input.curves),
-                &input.orients,
-                Some(srf),
-                &mut fenv,
-            )
-            .ok()?;
+    for fi in 0..body.faces.len() {
+        let alone = build_face_alone(body, fi, adjust_alone).and_then(|(k, mut b, faces)| {
             let mut sum = 0.0;
-            for f in made.faces {
+            for f in faces {
                 sum += face_area(&k, &mut b, f, accuracy).ok()?;
             }
             Some(sum)
-        })();
+        });
         let ctor = match (built.as_mut(), ctor_faces.get(fi)) {
             (Some(b), Some(&f)) => face_area(&k2, b, f, accuracy).ok(),
             _ => None,

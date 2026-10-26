@@ -24,7 +24,11 @@ fn main() {
         eprintln!("no body {index}");
         std::process::exit(2);
     };
-    let areas = difftest::step::face_areas(&body, difftest::step::ACCURACY);
+    let areas = difftest::step::face_areas(
+        &body,
+        difftest::step::ACCURACY,
+        std::env::var_os("ADJUST_ALONE").is_some(),
+    );
     let shell_of = |fi: usize| body.shells.iter().position(|s| s.faces.contains(&fi));
     for (fi, (alone, ctor)) in areas.iter().enumerate() {
         let Some(face) = body.faces.get(fi) else {

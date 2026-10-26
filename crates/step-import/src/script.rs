@@ -737,9 +737,11 @@ type ParamMap = Box<dyn Fn(P3) -> (f64, f64)>;
 /// Samples per edge for [`step_uv_domain`].
 const EDGE_SAMPLES: usize = 32;
 
-/// The point of edge `e` at fraction `s` of its parameter range (curve direction).
-fn edge_point(e: &crate::model::Edge, s: f64) -> Option<P3> {
-    let (t0, mut t1) = (e.t_start, e.t_end);
+/// The point of edge `e` at fraction `s` of its parameter range, from `t_start` to
+/// `t_end` (the mapper orders a periodic range in the edge's sense: `t_end > t_start`
+/// along the curve, `t_end < t_start` against it).
+pub fn edge_point(e: &crate::model::Edge, s: f64) -> Option<P3> {
+    let (t0, t1) = (e.t_start, e.t_end);
     match &e.curve {
         Curve::Line {
             origin,
@@ -749,22 +751,12 @@ fn edge_point(e: &crate::model::Edge, s: f64) -> Option<P3> {
             let t = t0 + (t1 - t0) * s;
             Some(add(*origin, scale(*dir, t * magnitude)))
         }
-        Curve::Circle { frame, radius } => {
-            if t1 <= t0 {
-                t1 += 360.0;
-            }
-            Some(conic(frame, *radius, *radius, t0 + (t1 - t0) * s))
-        }
+        Curve::Circle { frame, radius } => Some(conic(frame, *radius, *radius, t0 + (t1 - t0) * s)),
         Curve::Ellipse {
             frame,
             semi1,
             semi2,
-        } => {
-            if t1 <= t0 {
-                t1 += 360.0;
-            }
-            Some(conic(frame, *semi1, *semi2, t0 + (t1 - t0) * s))
-        }
+        } => Some(conic(frame, *semi1, *semi2, t0 + (t1 - t0) * s)),
         Curve::BSpline(b) => bspline_point(b, t0 + (t1 - t0) * s),
     }
 }
