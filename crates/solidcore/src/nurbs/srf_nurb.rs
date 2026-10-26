@@ -174,7 +174,7 @@ impl BasisDerivs {
     }
 
     /// [`BasisDerivs::index`] with unsigned indices (each bound checked).
-    #[inline]
+    #[inline(always)]
     fn index_u(&self, k: usize, l: usize, i: usize, j: usize) -> Option<usize> {
         if k > self.udr || l > self.vdr || i > self.p || j > self.q {
             return None;
