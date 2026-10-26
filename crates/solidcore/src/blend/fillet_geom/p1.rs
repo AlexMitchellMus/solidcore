@@ -599,8 +599,8 @@ impl<'c> CornerLookup<'c> {
     }
 
     /// Only the running corner `corner` (with its id `id`) and the executive data it
-    /// reads: another corner's id is [`SolidError::InvalidInput`] (upstream's corner
-    /// methods only reach their own vertices and edges).
+    /// reads: another corner's id is `SM_ERR_NULL_POINTER` (upstream's corner methods
+    /// only reach their own vertices and edges).
     #[must_use]
     pub const fn of_corner(
         id: Option<FilletCornerId>,
@@ -628,8 +628,8 @@ impl<'c> CornerLookup<'c> {
     ///
     /// # Errors
     ///
-    /// [`SolidError::InvalidInput`] for an id neither the running corner nor in the
-    /// table (a caller without a corner store holds an empty table).
+    /// `SM_ERR_NULL_POINTER` for an id neither the running corner nor in the table (a
+    /// caller without a corner store holds an empty table).
     pub fn corner(&self, id: FilletCornerId) -> Result<&'c FilletCorner> {
         if let Some((this_id, this)) = self.this {
             if this_id == Some(id) {
@@ -641,23 +641,11 @@ impl<'c> CornerLookup<'c> {
                 return Ok(c);
             }
         }
-        match self.table {
-            Some(table) => usize::try_from(id.0)
-                .ok()
-                .and_then(|i| table.get(i))
-                .ok_or_else(|| {
-                    SolidError::invalid_input(OP_CORNER, "fillet corner id not in the corner table")
-                }),
-            None if self.this.is_some() || self.exec.is_some() => Err(SolidError::invalid_input(
-                OP_CORNER,
-                "fillet vertex or edge of another corner",
-            )),
-            // a caller without an executive holds an empty corner table
-            None => Err(SolidError::invalid_input(
-                OP_CORNER,
-                "fillet corner id not in the corner table",
-            )),
-        }
+        // upstream dereferences the corner pointer; one this caller cannot resolve is
+        // the NULL its NER would return for
+        self.table
+            .and_then(|table| usize::try_from(id.0).ok().and_then(|i| table.get(i)))
+            .ok_or_else(|| SolidError::null_pointer(OP_CORNER))
     }
 
     /// `pCorner->GetExtendedSurface(pOriginalFace)`

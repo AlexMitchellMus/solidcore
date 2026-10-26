@@ -78,6 +78,7 @@ use crate::blend::fillet_executive::p3::ErrorInfo;
 use crate::blend::fillet_geom::p1::{
     CornerLookup, FilletBrep, FilletErrorType, FilletGeomId, FilletGeomType, FilletSolverId,
 };
+use crate::blend::fillet_geom::p3::{NoCorners, SplitCorners};
 use crate::blend::fillet_intersector::{FilletIntersector, StepSolve as StepSolveFlags};
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{Result, SolidError};
@@ -207,11 +208,14 @@ pub trait FilletGeometryContext {
     /// The executive's corner table (`m_vFilletCorners`), which the pseudo-B-rep
     /// edge calculations read.
     fn corners(&self) -> CornerLookup<'_>;
+
+    /// The executive's corners as `TopologySplit` reaches and changes them.
+    fn split_corners(&mut self) -> &mut dyn SplitCorners;
 }
 
 enum GeometrySolvers<'a> {
     Indexed(&'a [FilletSolver]),
-    Live(&'a dyn FilletGeometryContext),
+    Live(&'a mut dyn FilletGeometryContext),
 }
 
 /// The objects `CalcFilletGeom` reaches besides the solver.
@@ -391,7 +395,7 @@ impl FilletSolver {
         k: &Kernel,
         target: &mut Brep,
         fillets: &mut FilletBrep,
-        context: &impl FilletGeometryContext,
+        context: &mut impl FilletGeometryContext,
         error_info: &mut ErrorInfo<SolverErrorObject>,
     ) -> Result<()> {
         Self::calc_fillet_geom_resolved(
@@ -404,13 +408,13 @@ impl FilletSolver {
         )
     }
 
-    fn calc_fillet_geom_resolved(
+    fn calc_fillet_geom_resolved<'a>(
         ops: &mut dyn FilletSolverOps,
-        k: &Kernel,
-        target: &mut Brep,
-        fillets: &mut FilletBrep,
-        solvers: GeometrySolvers<'_>,
-        error_info: Option<&mut ErrorInfo<SolverErrorObject>>,
+        k: &'a Kernel,
+        target: &'a mut Brep,
+        fillets: &'a mut FilletBrep,
+        solvers: GeometrySolvers<'a>,
+        error_info: Option<&'a mut ErrorInfo<SolverErrorObject>>,
     ) -> Result<()> {
         let mut cx = Cx {
             k,
@@ -3754,8 +3758,20 @@ fn topology_split(
         .geom(geom)?
         .fillet_solver()
         .ok_or_else(|| SolidError::null_pointer(OP))?;
-    cx.fillets
-        .topology_split(cx.k, geom, geom_type, solver_id, ops.solver(), cx.target)
+    // a standalone entry point holds no executive: no corner of any vertex
+    let corners: &mut dyn SplitCorners = match &mut cx.solvers {
+        GeometrySolvers::Indexed(_) => &mut NoCorners,
+        GeometrySolvers::Live(context) => context.split_corners(),
+    };
+    cx.fillets.topology_split(
+        cx.k,
+        geom,
+        geom_type,
+        solver_id,
+        ops.solver(),
+        cx.target,
+        corners,
+    )
 }
 
 /// `pFilletGeom->CalcBlendingGeom()` ([`FilletBrep::calc_blending_geom_of_solver`],

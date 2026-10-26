@@ -21,6 +21,7 @@ use crate::blend::fillet_classification::{FilletClassObject, LegacyClassificatio
 use crate::blend::fillet_geom::p1::{
     CornerLookup, FilletBrep, FilletCornerId, FilletCornerType, FilletGeomId, FilletGeomType,
 };
+use crate::blend::fillet_geom::p3::SplitCorners;
 #[cfg(test)]
 use crate::curve::curve::p2::OwnerChange;
 use crate::error::{ignored, EntityRef, Result, SolidError};
@@ -80,6 +81,45 @@ pub trait RailClassificationContext {
     /// The executive's corner table (`m_vFilletCorners`), which the rollover
     /// recovery's `CalcRailIntEdgeuse` reads.
     fn corners(&self) -> CornerLookup<'_>;
+    /// Run `f` on the executive's corners as `ProcessRollOver` reaches them (the
+    /// corner type, `CalcRailIntEdgeuse`'s table, and `TopologySplit`'s
+    /// `GetFilletCornerOfVertex` and `AddFilletVertex`). The default is this
+    /// context's [`Self::corner_type`] and [`Self::corners`] without a vertex-corner
+    /// map (a caller without an executive).
+    ///
+    /// # Errors
+    /// Those of `f`.
+    fn with_split_corners(
+        &mut self,
+        f: &mut dyn FnMut(&mut dyn SplitCorners) -> Result<()>,
+    ) -> Result<()>
+    where
+        Self: Sized,
+    {
+        f(&mut ContextCorners(&*self))
+    }
+}
+
+/// A [`RailClassificationContext`]'s corner type and table as [`SplitCorners`]: no
+/// vertex has a corner (`GetFilletCornerOfVertex` is `NULL`).
+struct ContextCorners<'c, C>(&'c C);
+
+impl<C: RailClassificationContext> SplitCorners for ContextCorners<'_, C> {
+    fn corner_of_vertex(&self, _vertex: crate::topology::VertexId) -> Option<FilletCornerId> {
+        None
+    }
+    fn lookup(&self) -> CornerLookup<'_> {
+        self.0.corners()
+    }
+    fn corner_mut(
+        &mut self,
+        _id: FilletCornerId,
+    ) -> Result<&mut crate::blend::fillet_corner::p3::FilletCorner> {
+        Err(SolidError::null_pointer(OP))
+    }
+    fn corner_type(&self, id: FilletCornerId) -> Result<FilletCornerType> {
+        self.0.corner_type(id)
+    }
 }
 
 struct LegacyRolloverContext<'a, T>(&'a T);
@@ -213,24 +253,17 @@ impl FilletSolver {
                     &mut MissingClassification,
                 )?;
             }
-            self.process_roll_over(
-                k,
-                target,
-                fillets,
-                id,
-                &|corner| context.corner_type(corner),
-                context.corners(),
-                adjusted_corners,
-                ownership,
-            )?;
+            context.with_split_corners(&mut |corners| {
+                self.process_roll_over(k, target, fillets, id, corners, adjusted_corners, ownership)
+            })?;
         }
         Ok(())
     }
 
     /// Process an existing pair of rail classifications. Blend patches and
     /// single-interval rails that both remain classified need no repair.
-    /// `corner_type` resolves the corner on rail 0's start vertex only when full
-    /// rollover is needed; `adjusted_corners` is append-only upstream output.
+    /// `corners` resolves the type of the corner on rail 0's start vertex only when
+    /// full rollover is needed; `adjusted_corners` is append-only upstream output.
     ///
     /// # Errors
     /// A missing classification or corner returns `SM_ERR_NULL_POINTER`. Unsupported
@@ -242,8 +275,7 @@ impl FilletSolver {
         target: &mut Brep,
         fillets: &mut FilletBrep,
         id: FilletGeomId,
-        corner_type: &impl Fn(FilletCornerId) -> Result<FilletCornerType>,
-        corners: CornerLookup<'_>,
+        corners: &mut dyn SplitCorners,
         adjusted_corners: &mut Vec<FilletCornerId>,
         ownership: &mut impl RolloverOwnership,
     ) -> Result<()> {
@@ -255,7 +287,7 @@ impl FilletSolver {
             corners,
             ownership,
         }
-        .process(id, corner_type, adjusted_corners, &mut recovery::Missing)
+        .process(id, adjusted_corners, &mut recovery::Missing)
     }
 }
 
@@ -382,6 +414,27 @@ mod tests {
     use crate::intersect::point_class::PointClassType;
     use crate::math::Vec3;
 
+    /// A corner store resolving only corner types, through `F`.
+    struct CornerTypes<F>(F);
+
+    impl<F: Fn(FilletCornerId) -> Result<FilletCornerType>> SplitCorners for CornerTypes<F> {
+        fn corner_of_vertex(&self, _: crate::topology::VertexId) -> Option<FilletCornerId> {
+            None
+        }
+        fn lookup(&self) -> CornerLookup<'_> {
+            CornerLookup::default()
+        }
+        fn corner_mut(
+            &mut self,
+            _: FilletCornerId,
+        ) -> Result<&mut crate::blend::fillet_corner::p3::FilletCorner> {
+            Err(SolidError::null_pointer(OP))
+        }
+        fn corner_type(&self, id: FilletCornerId) -> Result<FilletCornerType> {
+            (self.0)(id)
+        }
+    }
+
     struct NoOwnership;
     impl RolloverOwnership for NoOwnership {
         fn edge_owner(&self, _: EdgeId) -> Result<(ObjectRef, Option<ObjectRef>)> {
@@ -447,8 +500,7 @@ mod tests {
                 &mut target,
                 &mut fb,
                 id,
-                &|_| panic!("known rails must not resolve a corner"),
-                CornerLookup::default(),
+                &mut CornerTypes(|_| panic!("known rails must not resolve a corner")),
                 &mut adjusted,
                 &mut NoOwnership,
             )
@@ -469,11 +521,10 @@ mod tests {
             &mut target,
             &mut fb,
             id,
-            &|corner| {
+            &mut CornerTypes(|corner| {
                 assert_eq!(corner, FilletCornerId(42));
                 Err(refusal.clone())
-            },
-            CornerLookup::default(),
+            }),
             &mut adjusted,
             &mut NoOwnership,
         );
@@ -484,8 +535,7 @@ mod tests {
             &mut target,
             &mut fb,
             id,
-            &|_| Ok(FilletCornerType::OneByOne),
-            CornerLookup::default(),
+            &mut CornerTypes(|_| Ok(FilletCornerType::OneByOne)),
             &mut adjusted,
             &mut NoOwnership,
         );

@@ -2815,7 +2815,13 @@ mod tests {
         let e = fb
             .calc_fillet_int_2_fillets(&k, v[0], CornerLookup::default(), &[], &Brep::new())
             .unwrap_err();
-        assert!(matches!(e, SolidError::InvalidInput { .. }));
+        assert!(matches!(
+            e,
+            SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            }
+        ));
     }
 
     #[test]

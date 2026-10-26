@@ -1072,6 +1072,7 @@ impl FilletCorner {
             env.k,
             env.target,
             env.pseudo,
+            self,
             si,
             orig_fg,
             this_fv_use,

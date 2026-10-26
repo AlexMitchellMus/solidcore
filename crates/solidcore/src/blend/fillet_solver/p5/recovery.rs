@@ -26,8 +26,9 @@ use super::{
 use crate::blend::fillet_classification::FilletClassObject;
 use crate::blend::fillet_custom_solver::{OffsetSurface, SurfaceId};
 use crate::blend::fillet_geom::p1::{
-    CliffHandle, CornerLookup, FilStatus, FilletEdgeType, FilletVertex, FilletVertexType,
+    CliffHandle, FilStatus, FilletEdgeType, FilletVertex, FilletVertexType,
 };
+use crate::blend::fillet_geom::p3::SplitCorners;
 use crate::blend::fillet_solver::p1::{FilletSolverOffsetsData, OffsetSurfaceSlot};
 use crate::curve::curve::p1::GlobalPointSolveOptions;
 use crate::curve::curve::Curve;
@@ -41,8 +42,8 @@ pub(super) struct Recovery<'a> {
     pub k: &'a Kernel,
     pub target: &'a mut Brep,
     pub fillets: &'a mut FilletBrep,
-    /// The executive's corner table (`m_vFilletCorners`).
-    pub corners: CornerLookup<'a>,
+    /// The executive's corners (`m_vFilletCorners`, `GetFilletCornerOfVertex`).
+    pub corners: &'a mut dyn SplitCorners,
     pub ownership: &'a mut dyn RolloverOwnership,
 }
 
@@ -166,6 +167,7 @@ pub(super) trait RecoveryOps {
             solver_id,
             c.solver,
             c.target,
+            c.corners,
         )
     }
     fn rail_x_edge(
@@ -232,12 +234,11 @@ pub(super) trait RecoveryOps {
         // is the solver identified by geom.fillet_solver().
         let solver_id = required(c.fillets.geom(geom)?.fillet_solver())?;
         // CalcRailIntEdgeuse reads the vertex's corner in the executive's table
-        let corners = c.corners;
         c.fillets.calc_rail_int_edgeuse_with_solver(
             c.k,
             vertex,
             Some(geom),
-            corners,
+            c.corners.lookup(),
             solver_id,
             c.solver,
             c.target,
@@ -391,7 +392,6 @@ impl Recovery<'_> {
     pub(super) fn process(
         &mut self,
         id: FilletGeomId,
-        corner_type: &impl Fn(FilletCornerId) -> Result<FilletCornerType>,
         adjusted: &mut Vec<FilletCornerId>,
         ops: &mut impl RecoveryOps,
     ) -> Result<()> {
@@ -412,7 +412,7 @@ impl Recovery<'_> {
             }
             let corner = required(self.fillets.fillet_vertex(self.start(r0)?)?.fillet_corner())?;
             if !matches!(
-                corner_type(corner)?,
+                self.corners.corner_type(corner)?,
                 FilletCornerType::NByOneClosed | FilletCornerType::OneByOne
             ) {
                 return Err(SolidError::sm_err(OP));

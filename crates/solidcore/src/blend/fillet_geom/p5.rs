@@ -2456,7 +2456,13 @@ mod tests {
         let e = fb
             .calc_fillet_int_fillet(&k, v[0], CornerLookup::default(), &[], &Brep::new())
             .unwrap_err();
-        assert!(matches!(e, SolidError::InvalidInput { .. }));
+        assert!(matches!(
+            e,
+            SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            }
+        ));
         // a corner in the table: no fillet/fillet edge at the vertex
         let corners = [FilletCorner::new(
             crate::blend::fillet_corner::p3::FilletCornerKind::TwoByTwo,

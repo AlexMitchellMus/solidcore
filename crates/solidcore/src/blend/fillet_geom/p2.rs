@@ -2805,12 +2805,16 @@ mod tests {
         ));
         assert!(matches!(
             fb.calc_rail_int_edgeuse(&k, v, None, none, &mut solvers, &mut target),
-            Err(SolidError::InvalidInput { .. })
+            Err(SolidError::Upstream {
+                code: crate::error::SM_ERR_NULL_POINTER,
+                ..
+            })
         ));
-        // an id outside the table is invalid; a corner in it gets to the geometry check
+        // an id outside the table is the NULL corner; a corner in it gets to the
+        // geometry check
         assert!(matches!(
             fb.calc_set_back_vert(&k, v, CornerLookup::table(&[]), &mut solvers, &target),
-            Err(SolidError::InvalidInput { .. })
+            Err(SolidError::Upstream { code: crate::error::SM_ERR_NULL_POINTER, .. })
         ));
         let corners = [FilletCorner::new(
             crate::blend::fillet_corner::p3::FilletCornerKind::OneByOne,

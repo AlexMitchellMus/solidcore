@@ -118,6 +118,7 @@ use crate::blend::fillet_geom::p1::{
     BoundaryTrimmingType, FilletBrep, FilletGeom, FilletGeomId, FilletGeomType, FilletSolverId,
     FilletVertexType,
 };
+use crate::blend::fillet_geom::p3::SplitCorners;
 use crate::blend::fillet_intersector::HandlingAlgorithmType;
 use crate::blend::fillet_standard_solver::p1::{
     BlendCurveCrossSectionFsg, CircularCrossSectionFsg, LinearCrossSectionFsg,
@@ -1187,6 +1188,7 @@ impl FilletSolver {
         fillet_geom: FilletGeomId,
         split_vertexuse: VertexuseId,
         which_end: usize,
+        corners: &mut dyn SplitCorners,
     ) -> Result<FilletGeomId> {
         const OP_S: &str = "blend::fillet_solver::p1::split_fillet_geom_at_side_edge";
         let nul = || SolidError::null_pointer(OP_S);
@@ -1287,8 +1289,15 @@ impl FilletSolver {
         // Do the split (default eNewGeomType = SM_FG_DEFAULT; the geometry's solver is
         // this one).
         let solver_id = pseudo.geom(fillet_geom)?.fillet_solver().ok_or_else(nul)?;
-        let new_fillet_geom =
-            pseudo.topology_split(k, fillet_geom, FilletGeomType::Default, solver_id, self, b)?;
+        let new_fillet_geom = pseudo.topology_split(
+            k,
+            fillet_geom,
+            FilletGeomType::Default,
+            solver_id,
+            self,
+            b,
+            corners,
+        )?;
 
         // The new fillet geom comes out as the 'high end'. Update offset surfaces,
         // orig face, and type in the two FG's. Copy offset surface from non-split side
