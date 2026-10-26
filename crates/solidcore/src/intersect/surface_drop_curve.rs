@@ -1052,7 +1052,7 @@ impl<'s> SurfaceDropCurve<'s> {
 
         // add every Surface U internal continuity boundary to sIsoCurves array
         let u_conts: Vec<ContinuityType> = cache.u_continuities().to_vec();
-        let (u_knots, _) = surface.knots(SurfParamType::U, None)?;
+        let (u_knots, _) = surface.knots(k, SurfParamType::U, None)?;
         for ii in 1..u_conts.len().saturating_sub(1) {
             if is_c0(&u_conts, ii)? {
                 let value = index(&u_knots, ii)?;
@@ -1067,7 +1067,7 @@ impl<'s> SurfaceDropCurve<'s> {
         }
 
         // add every surface V internal continuity boundary to sIsoCurves array
-        let (v_knots, _) = surface.knots(SurfParamType::V, None)?;
+        let (v_knots, _) = surface.knots(k, SurfParamType::V, None)?;
         let v_conts: Vec<ContinuityType> = cache.v_continuities().to_vec();
         for ii in 1..v_conts.len().saturating_sub(1) {
             if is_c0(&v_conts, ii)? {
@@ -1382,7 +1382,7 @@ impl<'s> SurfaceDropCurve<'s> {
                 }
 
                 // see if working curve interval drops to Surface isoParameterCurve with the same parameterization
-                uv = surface.snap_to_knots(uv, EFF_ZERO_SQRT / 100.0)?;
+                uv = surface.snap_to_knots(k, uv, EFF_ZERO_SQRT / 100.0)?;
                 let drop = match drop_iso_curve(k, surface, &uv_domain, curve, &ivl, uv, approx_tol)
                 {
                     Ok(d) => d,
@@ -1739,6 +1739,7 @@ impl<'s> SurfaceDropCurve<'s> {
             // let WorkingDomain = Surface G1 continuous SubDomain that contains the StartPoint
             self.working_uv_domain = match cache {
                 Some(cache) => surface.domain_with_continuity_from_cache(
+                    k,
                     ContinuityType::G1,
                     start_pnt.curve_uv[0],
                     start_pnt.curve_uv[1],

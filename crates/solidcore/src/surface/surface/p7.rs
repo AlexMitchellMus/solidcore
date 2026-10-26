@@ -1797,10 +1797,10 @@ impl Surface {
             Some((context, handle)) => context
                 .build_surface_cache(k, self, *handle)
                 .map_err(ner)?
-                .surface_continuity(uv_domain)?,
+                .surface_continuity(k, uv_domain)?,
             None => super::p2::surface_cache::<()>(k, self, None)
                 .map_err(ner)?
-                .surface_continuity(uv_domain)?,
+                .surface_continuity(k, uv_domain)?,
         };
 
         // check state - internal curve continuities are better than C0 (only reported)
@@ -2240,12 +2240,12 @@ pub fn load_guesses(
 
     // set gridSize = 1 for linear geometry (an SmBSplineSurface: B-splines and planes)
     let is_bss = surface.is_kind_of(BSplineSurface::TYPE)?;
-    let grid_u = if is_bss && surface.number_control_points(SurfParamType::U) == 2 {
+    let grid_u = if is_bss && surface.number_control_points(k, SurfParamType::U) == 2 {
         1
     } else {
         GRID_SIZE
     };
-    let grid_v = if is_bss && surface.number_control_points(SurfParamType::V) == 2 {
+    let grid_v = if is_bss && surface.number_control_points(k, SurfParamType::V) == 2 {
         1
     } else {
         GRID_SIZE

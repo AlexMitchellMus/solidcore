@@ -225,7 +225,7 @@ impl Surface {
         surf_param: SurfParamType,
     ) -> Result<(ContinuityType, Vec<ContinuityType>)> {
         // Get unique knot values for eSurfParam direction
-        let (other_knots, _) = self.knots(surf_param, None)?;
+        let (other_knots, _) = self.knots(k, surf_param, None)?;
 
         // check state
         if other_knots.len() <= 1 {
@@ -249,7 +249,7 @@ impl Surface {
         } else {
             SurfParamType::U
         };
-        let (mut knots, _) = self.knots(get_sp, None)?;
+        let (mut knots, _) = self.knots(k, get_sp, None)?;
 
         // single span surfaces get checked in the middle in case the iso curves at both
         // end knots are degenerate.

@@ -1795,7 +1795,7 @@ impl Surface {
         }
         // (no GetTree: the continuity arrays are empty unless the cache's tree was built)
         let cache = continuity_surface_cache(k, self, handle, context)?;
-        self.domain_with_continuity_using(min_continuity, uv, uv_vector, &cache)
+        self.domain_with_continuity_using(k, min_continuity, uv, uv_vector, &cache)
     }
 
     /// [`Surface::domain_with_continuity`] over a caller-held surface cache
@@ -1808,6 +1808,7 @@ impl Surface {
     /// `InvalidInput` for an unknown knot position.
     pub fn domain_with_continuity_from_cache<O: Copy + PartialEq>(
         &self,
+        k: &Kernel,
         min_continuity: ContinuityType,
         uv: Point2,
         uv_vector: Vec2,
@@ -1816,11 +1817,12 @@ impl Surface {
         if let SurfaceKind::Step(s) = self.kind() {
             return s.domain_with_continuity();
         }
-        self.domain_with_continuity_using(min_continuity, uv, uv_vector, cache)
+        self.domain_with_continuity_using(k, min_continuity, uv, uv_vector, cache)
     }
 
     fn domain_with_continuity_using<O: Copy + PartialEq>(
         &self,
+        k: &Kernel,
         min_continuity: ContinuityType,
         uv: Point2,
         uv_vector: Vec2,
@@ -1842,7 +1844,7 @@ impl Surface {
         // For each dimension
         {
             let knots = self
-                .knots(SurfParamType::U, None)
+                .knots(k, SurfParamType::U, None)
                 .map_or_else(|_| Vec::new(), |k| k.0);
             let u_conts = cache.u_continuities();
             let n = u_conts.len();
@@ -1879,7 +1881,7 @@ impl Surface {
 
         {
             let knots = self
-                .knots(SurfParamType::V, None)
+                .knots(k, SurfParamType::V, None)
                 .map_or_else(|_| Vec::new(), |k| k.0);
             let v_conts = cache.v_continuities();
             let n = v_conts.len();
@@ -2300,7 +2302,7 @@ impl Surface {
 
         // Check to make sure internal surface continuities are better then C0 (the
         // check only signals upstream)
-        let _ = (cache.surface_continuity(uv_domain)? as i32) <= (ContinuityType::C0 as i32);
+        let _ = (cache.surface_continuity(k, uv_domain)? as i32) <= (ContinuityType::C0 as i32);
 
         let mut silhouette =
             SurfaceSilhouette::new(k, self, uv_domain, perspective, eye_point_or_view_vector)?;
@@ -2680,11 +2682,16 @@ impl Surface {
     /// # Errors
     ///
     /// Those of the knot queries.
-    pub fn snap_to_knots(&self, uv_original: Point2, uv_snap_tolerance: f64) -> Result<Point2> {
+    pub fn snap_to_knots(
+        &self,
+        k: &Kernel,
+        uv_original: Point2,
+        uv_snap_tolerance: f64,
+    ) -> Result<Point2> {
         let mut uv_snapped = uv_original;
 
         let mut min_snap_dist = BIG_DOUBLE;
-        for &knot in &self.knots(SurfParamType::U, None)?.0 {
+        for &knot in &self.knots(k, SurfParamType::U, None)?.0 {
             let snap_dist = (knot - uv_original.x).abs();
             if snap_dist < min_snap_dist && snap_dist < uv_snap_tolerance {
                 uv_snapped.x = knot;
@@ -2693,7 +2700,7 @@ impl Surface {
         }
 
         min_snap_dist = BIG_DOUBLE;
-        for &knot in &self.knots(SurfParamType::V, None)?.0 {
+        for &knot in &self.knots(k, SurfParamType::V, None)?.0 {
             let snap_dist = (knot - uv_original.y).abs();
             if snap_dist < min_snap_dist && snap_dist < uv_snap_tolerance {
                 uv_snapped.y = knot;
@@ -3158,52 +3165,57 @@ pub(crate) fn convert_domain_from_nurbs_to_step_with(
 /// Whether a step from `prev_uv` to `curr_uv` crossed a seam or a pole
 /// (`sm_CrossedSeamOrPole`): never on planes and bilinear B-splines; else a step
 /// longer than 0.4 of the domain side in `u` or in `v`.
-#[must_use]
+///
+/// # Errors
+///
+/// [`SolidError::Unported`] from making a lazy surface of extrusion's NURB.
 pub fn crossed_seam_or_pole(
+    k: &Kernel,
     surface: &Surface,
     prev_uv: Point2,
     curr_uv: Point2,
     domain: &Extent2d,
-) -> bool {
+) -> Result<bool> {
     const MAX_STEP_RATIO: f64 = 0.4;
 
     // First special cases: SmPlane or bilinear.
     match surface.kind() {
-        SurfaceKind::Plane(_) => return false,
+        SurfaceKind::Plane(_) => return Ok(false),
         SurfaceKind::BSpline(b) => {
             if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
-                return false;
+                return Ok(false);
             }
         }
         // an SmSurfOfRevolution is an SmBSplineSurface
         SurfaceKind::Cone(s) => {
             let b = s.rev().base();
             if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
-                return false;
+                return Ok(false);
             }
         }
         SurfaceKind::SurfOfRevolution(s) => {
             let b = s.base();
             if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
-                return false;
+                return Ok(false);
             }
         }
+        // (GetDegree makes a missing NURB)
         SurfaceKind::SurfOfExtrusion(s) => {
-            let b = s.base();
+            let b = s.base_with_nurb_or_base(k)?;
             if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
-                return false;
+                return Ok(false);
             }
         }
         SurfaceKind::Sphere(s) => {
             let b = s.base().base();
             if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
-                return false;
+                return Ok(false);
             }
         }
         SurfaceKind::Torus(s) => {
             let b = s.base().base();
             if b.degree(SurfParamType::U) == 1 && b.degree(SurfParamType::V) == 1 {
-                return false;
+                return Ok(false);
             }
         }
         SurfaceKind::CurveBounded(_)
@@ -3218,7 +3230,7 @@ pub fn crossed_seam_or_pole(
     // Check u and v separately.
     let dom_size_u = domain.u_interval().length();
     let dom_size_v = domain.v_interval().length();
-    step.x.abs() > MAX_STEP_RATIO * dom_size_u || step.y.abs() > MAX_STEP_RATIO * dom_size_v
+    Ok(step.x.abs() > MAX_STEP_RATIO * dom_size_u || step.y.abs() > MAX_STEP_RATIO * dom_size_v)
 }
 
 /// `sm_GetSurfaceToEvaluate`: the original surface of the cache owning `node`'s tree
@@ -4191,7 +4203,7 @@ mod tests {
         assert_eq!(
             s.domain_with_continuity(k, ContinuityType::G1, uv, dir)
                 .unwrap(),
-            s.domain_with_continuity_from_cache(ContinuityType::G1, uv, dir, &cache)
+            s.domain_with_continuity_from_cache(k, ContinuityType::G1, uv, dir, &cache)
                 .unwrap()
         );
     }
@@ -4306,7 +4318,7 @@ mod tests {
             st.evaluate_point(k, uv).unwrap(),
             base.evaluate_point(k, uv).unwrap()
         );
-        let (knots, mults) = st.knots(SurfParamType::U, None).unwrap();
+        let (knots, mults) = st.knots(k, SurfParamType::U, None).unwrap();
         assert_eq!(knots, vec![0.0, 1.0]);
         assert_eq!(mults, vec![2, 2]);
         assert!(st.approx_eq(k, &st.clone()).unwrap());
@@ -4333,16 +4345,20 @@ mod tests {
     #[test]
     fn snap_and_seams() {
         let s = bilinear();
-        let p = s.snap_to_knots(Point2::new(0.999, 0.4), 0.01).unwrap();
+        let p = s
+            .snap_to_knots(&Kernel::default(), Point2::new(0.999, 0.4), 0.01)
+            .unwrap();
         assert_eq!(p, Point2::new(1.0, 0.4));
         let d = s.natural_uv_domain();
         // bilinear: never a seam
         assert!(!crossed_seam_or_pole(
+            &Kernel::default(),
             &s,
             Point2::new(0.0, 0.0),
             Point2::new(1.0, 1.0),
             &d
-        ));
+        )
+        .unwrap());
     }
 
     #[test]

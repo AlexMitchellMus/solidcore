@@ -267,12 +267,12 @@ pub fn create_approximate_bezier_patch_block(
     surface: &Surface,
 ) -> Result<ApproximateBezierPatchBlock> {
     // Note we are creating approximate cubic beziers
-    let (mut u_splits, _) = surface.knots(SurfParamType::U, None)?;
+    let (mut u_splits, _) = surface.knots(k, SurfParamType::U, None)?;
     // limit initial U knot count to 6
     limit_splits(&mut u_splits);
 
     // limit initial V knot count to 6
-    let (mut v_splits, _) = surface.knots(SurfParamType::V, None)?;
+    let (mut v_splits, _) = surface.knots(k, SurfParamType::V, None)?;
     limit_splits(&mut v_splits);
 
     // get non-zero span count

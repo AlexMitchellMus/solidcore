@@ -653,9 +653,9 @@ impl Surface {
 
         // get unique knots crossing the isoParameter curve
         let (mut knots, _) = if param == SurfParamType::U {
-            self.knots(SurfParamType::V, None)?
+            self.knots(k, SurfParamType::V, None)?
         } else {
-            self.knots(SurfParamType::U, None)?
+            self.knots(k, SurfParamType::U, None)?
         };
 
         // when given an optional domain
@@ -1803,7 +1803,7 @@ impl Surface {
         }
 
         // Next look for bilinear.
-        if !tried0 && self.is_bilinear() {
+        if !tried0 && self.is_bilinear(k) {
             tried0 = true;
             if try_cover(
                 k,
@@ -1818,7 +1818,7 @@ impl Surface {
                 return Ok(done(&mut st, false));
             }
         }
-        if !tried1 && other.is_bilinear() {
+        if !tried1 && other.is_bilinear(k) {
             tried1 = true;
             if try_cover(
                 k,
