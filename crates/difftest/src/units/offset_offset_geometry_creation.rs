@@ -4625,7 +4625,7 @@ fn edge_cases() -> Vec<(String, Value)> {
                 torus_case(dist, analytics, c0, c1, c2),
             );
         }
-        let mut rng = Rng::new(0x0FF5_E7_70_4D5);
+        let mut rng = Rng::new(0xFF_5E77_04D5);
         let mut made = 0;
         for _ in 0..64 {
             if made == 8 {
