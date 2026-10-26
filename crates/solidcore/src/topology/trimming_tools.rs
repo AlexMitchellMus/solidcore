@@ -2683,8 +2683,9 @@ mod tests {
         use crate::topology::edge::NotifyEnv;
 
         // 0 success; 1 native early null region; 2 native early non-G1;
-        // 3 face-builder validation failure after its ownership handoff.
-        for mode in 0..4 {
+        // 3 face-builder validation failure after its ownership handoff;
+        // 4 a real degenerate curve makes an edgeless face, then repair fails.
+        for mode in 0..5 {
             let mut k = Kernel::default();
             let mut b = p3::new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT).unwrap();
             let serial = p3::notify_serial(&mut k.context, &mut b).unwrap();
@@ -2746,8 +2747,21 @@ mod tests {
                     )
                 })
                 .collect();
+            let curves = if mode == 4 {
+                let point = CPoint::new(0.0, 0.0, 0.0, NOW);
+                let curve = NlCurve::new(vec![point, point], 1, vec![0.0, 0.0, 1.0, 1.0]).unwrap();
+                vec![Curve::from(BSplineCurve::from_nurb(curve, 3, false))]
+            } else {
+                curves
+            };
             let input = TrimCurvesInput {
-                loop_counts: if mode == 3 { Vec::new() } else { vec![4] },
+                loop_counts: if mode == 3 {
+                    Vec::new()
+                } else if mode == 4 {
+                    vec![1]
+                } else {
+                    vec![4]
+                },
                 curves,
                 orientations: vec![OrientType::Same; 4],
                 loop_points: Vec::new(),
@@ -2773,10 +2787,22 @@ mod tests {
             );
             match transfer.into_location().unwrap() {
                 TrimSurfaceLocation::Installed(face) => {
-                    assert_eq!(mode, 0);
-                    assert_eq!(result.unwrap(), vec![face]);
-                    assert_eq!(p1::vertices(&b, None).unwrap().len(), 4);
-                    assert_eq!(p1::edges(&b, None).unwrap().len(), 4);
+                    if mode == 4 {
+                        assert!(matches!(
+                            result,
+                            Err(SolidError::Upstream {
+                                code: crate::error::SM_ERR,
+                                ..
+                            })
+                        ));
+                        assert_eq!(p1::faces(&b, None).unwrap(), vec![face]);
+                        assert!(b.face(face).unwrap().loops.is_empty());
+                    } else {
+                        assert_eq!(mode, 0);
+                        assert_eq!(result.unwrap(), vec![face]);
+                        assert_eq!(p1::vertices(&b, None).unwrap().len(), 4);
+                        assert_eq!(p1::edges(&b, None).unwrap().len(), 4);
+                    }
                     let installed = b.face(face).unwrap().surface.as_ref().unwrap();
                     assert_eq!(installed.notify_key(), Some(original_key));
                     assert_eq!(installed.owner(), Some(key_of(EntityRef::Face(face))));
