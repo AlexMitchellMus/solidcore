@@ -8,16 +8,27 @@
 //! ported functions run on both. Edge use arguments are selectors taken modulo the edge
 //! use count.
 //!
-//! `CreateUVTrimCurve` and every path that has to make a UV trim curve reach
-//! `SmSurface::DropCurve` (unit `intersect.surface_drop_lib_p3`), `DropPoint` and
-//! `LocalPointSolve` (`surface.surface_p5`) and the global point solve of non-planes
-//! (`surface.surface_point_solve_p3`): those cases are deferred; the paths with
-//! existing UV trim curves, the 3D evaluation, the null dereferences and the wire edge
-//! uses are compared. The state compared after an op is that of
+//! `CreateUVTrimCurve` and every path that has to make a UV trim curve run
+//! `SmSurface::DropCurve` (the plane override or the general drop, unit
+//! `intersect.surface_drop_lib_p3`) and are compared with the paths with existing UV
+//! trim curves, the 3D evaluation, the null dereferences and the wire edge uses; the
+//! cases that reach a unit not ported yet (the face's `CreateUVTrimCurves`, B-rep
+//! makers, surface kinds, the curve classifier) are deferred. The state compared after an op is that of
 //! `topology.edgeuse_p2`'s `put_eu_state` for the edge use and its mate and the edge's
-//! interval and tolerance. The graph export carries only whether an edge use's maximum
-//! edge/face gap is set, not its length (a B-rep read with `rebuild` has it set), so the
-//! distance `GetOrCreateUVTrimCurve` reports for an existing curve is not compared then.
+//! interval and tolerance. A unit-local auxiliary export carries the complete initial
+//! maximum edge/face gap cache, so `GetOrCreateUVTrimCurve` compares cached distances too.
+//! `EvaluateBinormal` builds the face's trimmed surface cache; on the tiny adversarial
+//! surfaces that tree grows to about 2 million nodes on both sides (2 014 255 in the C++
+//! for the `1e-4`-scale faces), below the port's `MAX_SUBDIVISION_NODES` bound; a case
+//! past that bound would be deferred to `surface.surface_cache_p3`.
+//!
+//! Known mismatches (`known_mismatches/topology.edgeuse_p3.toml`): `EvaluateBinormal` with `bUse3DOnly` on
+//! `Endcap.smb` (a file without UV trim curves). `SmBrep::ReadFromFile`'s healer leaves
+//! an `SmTrimSrfCache` without a tree on each face's surface; `EvaluateBinormal`
+//! reuses it, and its tree is built later with the surface's owner cleared
+//! (`GlobalPointSolve`), so no `CreateUVTrimCurves` runs. The Rust B-rep keeps no
+//! per-surface cache, so the port builds the face's trimmed cache and attaches the UV
+//! trim curves. The graph export does not carry the cache's existence.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -33,8 +44,8 @@ use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
 use solidcore_ffi::units::topology_edgeuse_p3::{self as ffi, Op};
 
 use super::topology_edgeuse_p1::{
-    brep_block_of, domain, gen_brep, gen_surface, harness, import_with_types, path_of, sel, BrepIn,
-    SrfIn, FILES,
+    brep_block_of, domain, gen_brep, gen_surface, harness, import_with_types, path_of,
+    seed_cache_tree_states, sel, BrepIn, SrfIn, FILES,
 };
 use super::topology_edgeuse_p2::{flag, inexact_geometry, put_eu_state, Setup};
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -98,11 +109,25 @@ impl OpIn {
 
 /// The case's B-rep: the C++ export, the imported Rust B-rep and the selected edge
 /// use; `Err(output)` when the B-rep cannot be built or has no edge use.
-fn setup(i: &Inputs) -> Result<Result<Setup, Output>, HarnessError> {
+type CaseSetup = (Setup, Option<ffi::PreparedBrep>);
+
+fn setup(i: &Inputs, prepare: bool) -> Result<Result<CaseSetup, Output>, HarnessError> {
     let path = path_of(Some(&i.brep))?;
     let block = brep_block_of(Some(&i.brep), i.validate_only, i.init_gaps)?;
-    let ex = ffi1::eval(ffi1::Op::Export, &path, &block)
+    let prepared = prepare
+        .then(|| ffi::PreparedBrep::new(&path, &block))
+        .transpose()
         .map_err(|e| harness(format!("c++ export: {e}")))?;
+    let ex = crate::export_memo::export(
+        "topology_edgeuse_p1",
+        &[&path],
+        &block,
+        || match &prepared {
+            Some(prepared) => Ok(prepared.export().to_vec()),
+            None => ffi1::eval(ffi1::Op::Export, &path, &block),
+        },
+    )
+    .map_err(|e| harness(format!("c++ export: {e}")))?;
     let Some(c) = ffi1::counts(&ex) else {
         let st = ex.get(1).copied().unwrap_or(0.0);
         return Ok(Err(Output::err(format!("brep_build_status_{st}"))));
@@ -112,26 +137,68 @@ fn setup(i: &Inputs) -> Result<Result<Setup, Output>, HarnessError> {
     if s < 0 {
         return Ok(Err(Output::err("no_entity_of_that_kind")));
     }
-    let (brep, types) = import_with_types(&ex)?;
+    let (mut brep, types) = import_with_types(&ex)?;
+    let gaps = crate::export_memo::export("topology_edgeuse_p3_gaps", &[&path], &block, || {
+        ffi::eval(Op::ExportGaps, &path, &block)
+    })
+    .map_err(|e| harness(format!("c++ gap export: {e}")))?;
+    import_gaps(&mut brep, &gaps, n_eu)?;
     let eu = EdgeuseId::from_index(u32::try_from(s).map_err(|_| harness("index"))?);
-    Ok(Ok(Setup {
-        path,
-        block,
-        brep,
-        eu,
-        types,
-    }))
+    Ok(Ok((
+        Setup {
+            path,
+            block,
+            brep,
+            eu,
+            types,
+        },
+        prepared,
+    )))
+}
+
+/// Restore input cache fields, without invoking or copying the tested operation.
+fn import_gaps(brep: &mut Brep, data: &[f64], count: usize) -> Result<(), HarnessError> {
+    let expected = count
+        .checked_mul(5)
+        .and_then(|n| n.checked_add(2))
+        .ok_or_else(|| harness("gap snapshot overflow"))?;
+    if data.first() != Some(&0.0) || data.get(1) != Some(&(count as f64)) || data.len() != expected
+    {
+        return Err(harness("invalid gap snapshot"));
+    }
+    for (index, values) in data
+        .get(2..)
+        .ok_or_else(|| harness("gap records"))?
+        .as_chunks::<5>()
+        .0
+        .iter()
+        .enumerate()
+    {
+        let &[owner, gap_3d, edge_t, u, v] = values;
+        if owner.fract() != 0.0 || owner < -1.0 || owner >= count as f64 {
+            return Err(harness("invalid gap owner"));
+        }
+        let id = EdgeuseId::from_index(u32::try_from(index).map_err(|_| harness("gap index"))?);
+        brep.edgeuse_mut(id)
+            .map_err(|e| harness(e.to_string()))?
+            .max_edge_face_gap = solidcore::heal::gap::EdgeFaceGap {
+            edgeuse: (owner >= 0.0).then(|| EdgeuseId::from_index(owner as u32)),
+            gap_3d,
+            edge_t,
+            face_uv: solidcore::math::Point2::new(u, v),
+        };
+    }
+    Ok(())
 }
 
 // ---- C++ side ---------------------------------------------------------------------------
 
 fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
-    let s = match setup(i)? {
+    let (s, prepared) = match setup(i, true)? {
         Ok(s) => s,
         Err(o) => return Ok(o),
     };
-    let mut input = s.block.clone();
-    input.push(f64::from(s.eu.index()));
+    let mut input = vec![f64::from(s.eu.index())];
     let op = match &i.op {
         OpIn::Create {
             want_dev, has_fail, ..
@@ -173,21 +240,16 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
             Op::GetOrCreate
         }
     };
-    let out = ffi::eval(op, &s.path, &input).map_err(|e| harness(format!("c++: {e}")))?;
+    let prepared = prepared
+        .as_ref()
+        .ok_or_else(|| harness("missing prepared fixture"))?;
+    let out = ffi::eval_prepared(op, prepared, &input).map_err(|e| harness(format!("c++: {e}")))?;
     let body = out.get(1..).ok_or_else(|| harness("c++: empty output"))?;
-    Ok(output_of(i, body.to_vec()))
+    Ok(output_of(body))
 }
 
 /// The output of an op body (after the build status), as both sides build it.
-fn output_of(i: &Inputs, mut body: Vec<f64>) -> Output {
-    // The export carries only whether a maximum edge/face gap is set, not its length,
-    // so the distance `GetOrCreateUVTrimCurve` reports for an existing curve is not
-    // compared when gaps are initialised.
-    if i.init_gaps && matches!(i.op, OpIn::GetOrCreate { want_dist: true, .. }) {
-        if let Some(d) = body.get_mut(1) {
-            *d = -2.0;
-        }
-    }
+fn output_of(body: &[f64]) -> Output {
     let first = body.first().copied().unwrap_or(f64::NAN);
     if first == NULL_DEREF {
         return Output::err("null_deref");
@@ -200,7 +262,7 @@ fn output_of(i: &Inputs, mut body: Vec<f64>) -> Output {
 // ---- Rust side --------------------------------------------------------------------------
 
 /// A curve's fingerprint as the shim's `put_curve_id`.
-fn put_curve_id(o: &mut Vec<f64>, c: Option<&SmCurve>) {
+fn put_curve_id(k: &Kernel, o: &mut Vec<f64>, c: Option<&SmCurve>) {
     let Some(c) = c else {
         o.push(-1.0);
         return;
@@ -209,7 +271,7 @@ fn put_curve_id(o: &mut Vec<f64>, c: Option<&SmCurve>) {
     let ivl = c.natural_interval();
     o.extend([ivl.min(), ivl.max()]);
     for t in [ivl.min(), ivl.mid(), ivl.max()] {
-        let p = c.evaluate_point(t).unwrap_or(Vec3::UNDEF);
+        let p = c.evaluate_point(k, t).unwrap_or(Vec3::UNDEF);
         o.extend([p.x, p.y, p.z]);
     }
 }
@@ -223,10 +285,10 @@ fn status_of(e: &SolidError) -> Option<f64> {
 }
 
 /// The tail every op reports: the edge use's and its mate's state and the edge state.
-fn put_states(o: &mut Vec<f64>, b: &Brep, eu: EdgeuseId) -> Result<(), SolidError> {
+fn put_states(k: &Kernel, o: &mut Vec<f64>, b: &Brep, eu: EdgeuseId) -> Result<(), SolidError> {
     let mate = eu1::mate(b, eu).ok().flatten();
-    put_eu_state(o, b, Some(eu))?;
-    put_eu_state(o, b, mate)?;
+    put_eu_state(k, o, b, Some(eu))?;
+    put_eu_state(k, o, b, mate)?;
     match eu1::edge(b, eu)? {
         Some(e) => {
             let r = b.edge(e)?;
@@ -240,15 +302,11 @@ fn put_states(o: &mut Vec<f64>, b: &Brep, eu: EdgeuseId) -> Result<(), SolidErro
 /// The Rust outcome of an op body; `Err` carries a [`SolidError`] that is not an
 /// upstream status (unported, null dereference).
 #[allow(clippy::too_many_lines)]
-fn run_rust_op(
-    op: &OpIn,
-    b: &mut Brep,
-    eu: EdgeuseId,
-) -> Result<Vec<f64>, SolidError> {
+fn run_rust_op(op: &OpIn, b: &mut Brep, eu: EdgeuseId) -> Result<Vec<f64>, SolidError> {
     let k = Kernel::default();
     // a failing upstream status is reported with the state, like the shim
     let finish = |b: &Brep, mut v: Vec<f64>| -> Result<Vec<f64>, SolidError> {
-        put_states(&mut v, b, eu)?;
+        put_states(&k, &mut v, b, eu)?;
         Ok(v)
     };
     match op {
@@ -258,7 +316,10 @@ fn run_rust_op(
             if eu1::faceuse(b, eu)?.is_none() {
                 // NER(pFU) before anything else
                 return match eu3::create_uv_trim_curve(&k, b, eu, *want_dev, None) {
-                    Ok(_) => Err(SolidError::invalid_input("difftest", "wire edge use made a curve")),
+                    Ok(_) => Err(SolidError::invalid_input(
+                        "difftest",
+                        "wire edge use made a curve",
+                    )),
                     Err(e) => status_of(&e).map(|s| vec![s]).ok_or(e),
                 };
             }
@@ -272,15 +333,18 @@ fn run_rust_op(
                         c.max_dist_to_surf,
                         c.max_deviation.filter(|_| *want_dev).unwrap_or(-1.0),
                     ]);
-                    put_curve_id(&mut v, Some(&c.curve));
+                    put_curve_id(&k, &mut v, Some(&c.curve));
                 }
                 Err(e) => {
                     v.push(status_of(&e).ok_or(e)?);
                     v.extend([-1.0, -1.0]);
-                    put_curve_id(&mut v, None);
+                    put_curve_id(&k, &mut v, None);
                 }
             }
-            v.push(rec.as_ref().map_or(-1.0, |f| f64::from(f.create_path_type as i32)));
+            v.push(
+                rec.as_ref()
+                    .map_or(-1.0, |f| f64::from(f.create_path_type as i32)),
+            );
             v.push(flag(rec.as_ref().is_some_and(|f| f.brep.is_some())));
             finish(b, v)
         }
@@ -290,11 +354,6 @@ fn run_rust_op(
             want_dev,
             ..
         } => {
-            // an existing curve reports the cached maximum edge/face gap, whose length the
-            // graph export does not carry (only whether it is set): not compared
-            let gap_hidden = *want_dist
-                && eu1::uv_trim_curve(b, eu)?.0.is_some()
-                && eu1::is_max_edge_face_gap_init(b, eu)?;
             let r = eu3::get_or_create_uv_trim_curve(&k, b, eu, *want_dist, *want_dev, *ok_make)?;
             let status = match &r.status {
                 Ok(()) => 0.0,
@@ -305,7 +364,7 @@ fn run_rust_op(
                 b,
                 vec![
                     status,
-                    if *want_dist && !gap_hidden { r.dist_to_surf } else { -2.0 },
+                    if *want_dist { r.dist_to_surf } else { -2.0 },
                     if *want_dev { r.deviation } else { -2.0 },
                     flag(has_curve),
                 ],
@@ -328,7 +387,12 @@ fn run_rust_op(
             match eu3::evaluate_binormal_uv(&k, b, eu, t, *use_3d, &options) {
                 Ok(r) => {
                     v.push(0.0);
-                    for p in [r.eval.point, r.eval.binormal, r.eval.tangent, r.eval.face_normal] {
+                    for p in [
+                        r.eval.point,
+                        r.eval.binormal,
+                        r.eval.tangent,
+                        r.eval.face_normal,
+                    ] {
                         v.extend([p.x, p.y, p.z]);
                     }
                     v.extend([r.eval.uv.x, r.eval.uv.y]);
@@ -361,21 +425,38 @@ fn run_rust_op(
     }
 }
 
+/// The operation of the port's surface cache subdivision bound.
+const SUBDIVIDE_OP: &str = "surface::surface_cache::p3::SurfaceCache::subdivide_to_tolerances";
+
 fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
-    let mut s = match setup(i)? {
+    let (mut s, _) = match setup(i, false)? {
         Ok(s) => s,
         Err(o) => return Ok(o),
     };
     if let Some(o) = inexact_geometry(&s) {
         return Ok(o);
     }
+    // the face surfaces' caches as the C++ build left them
+    seed_cache_tree_states(&s.brep, &s.path, &s.block)?;
     match run_rust_op(&i.op, &mut s.brep, s.eu) {
-        Ok(body) => Ok(output_of(i, body)),
+        Ok(body) => Ok(output_of(&body)),
         Err(e) => {
             if let Some(o) = Output::unported(&e) {
                 return Ok(o);
             }
             match e {
+                // the port's bound on the surface cache tree (`MAX_SUBDIVISION_NODES`),
+                // reached through the face's trimmed surface cache that `EvaluateBinormal`
+                // builds; upstream subdivides on (no fixture reaches it since the bound
+                // became 2^22; plan/findings.md, surface.surface_cache_p3)
+                SolidError::InvalidInput { operation, reason }
+                    if operation == SUBDIVIDE_OP && reason.contains("MAX_SUBDIVISION_NODES") =>
+                {
+                    Ok(Output::deferred(
+                        "surface.surface_cache_p3",
+                        "SmSurfaceCache::SubdivideToTolerances past MAX_SUBDIVISION_NODES (port bound)",
+                    ))
+                }
                 SolidError::InvalidInput { .. } => Ok(Output::err("null_deref")),
                 e => Err(harness(format!("rust: {e}"))),
             }
@@ -436,9 +517,16 @@ fn cylinder_surface(r: f64, h: f64, centre: [f64; 3], along_u: bool) -> Option<S
         (r, 0.0, 1.0),
     ];
     let pt = |(x, y, w): (f64, f64, f64), z: f64| {
-        [(centre[0] + x) * w, (centre[1] + y) * w, (centre[2] + z) * w, w]
+        [
+            (centre[0] + x) * w,
+            (centre[1] + y) * w,
+            (centre[2] + z) * w,
+            w,
+        ]
     };
-    let ck = [0.0, 0.0, 0.0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1.0, 1.0, 1.0];
+    let ck = [
+        0.0, 0.0, 0.0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1.0, 1.0, 1.0,
+    ];
     let lk = [0.0, 0.0, 1.0, 1.0];
     let v = if along_u {
         let net: Vec<_> = ring.iter().map(|&c| vec![pt(c, 0.0), pt(c, h)]).collect();
@@ -528,6 +616,27 @@ impl UnitDiff for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cached_distance_is_observed_instead_of_masked() {
+        let i: Inputs = serde_json::from_value(serde_json::json!({
+            "brep": {"kind": "file", "file": "Mouse.smb", "rebuild": true},
+            "init_gaps": true, "op": "get_or_create", "eu": 0,
+            "ok_make": false, "want_dist": true, "want_dev": false
+        }))
+        .unwrap();
+        let cpp = run_cpp(&i).unwrap();
+        let rust = run_rust(&i).unwrap();
+        assert!(crate::compare::compare(&cpp, &rust, &[]).pass());
+        let (mut s, _) = setup(&i, false).unwrap().unwrap();
+        assert!(eu1::uv_trim_curve(&s.brep, s.eu).unwrap().0.is_some());
+        let cached = s.brep.edgeuse_mut(s.eu).unwrap();
+        assert!(cached.max_edge_face_gap.is_init());
+        cached.max_edge_face_gap.gap_3d += 0.125;
+        let changed = output_of(&run_rust_op(&i.op, &mut s.brep, s.eu).unwrap());
+        assert!(!crate::compare::compare(&cpp, &changed, &[]).pass());
+        assert_ne!(changed.values["state"][0], -2.0);
+    }
 
     #[test]
     fn inputs_round_trip() {

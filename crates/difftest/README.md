@@ -3,8 +3,13 @@
 `difftest` runs every case of a unit through **upstream SMLib (C++, via
 `solidcore-ffi`)** and the **solidcore Rust port** on identical inputs and
 compares the results. A unit may be marked `status = "green"` in
-`plan/modules.toml` only when `difftest --status-of <id>` prints `green`, and
+`plan/units/<id>.toml` only when `difftest --status-of <id>` prints `green`, and
 `status = "partial"` only when it prints `partial` (AGENTS.md section 4a).
+
+`audit.recursion` is a crate-wide audit rather than a port: it has no standalone
+C++ counterpart or runner and is excluded from `--green`. Its plan status records
+the audit of the current merged code; its numerical regression check reruns the
+ported units with `--green`. Future ports still need their own recursion review.
 
 ## Quick start
 
@@ -26,30 +31,69 @@ nice -n 10 cargo test -p difftest --features cpp                     # harness s
 |---|---|
 | `--unit <id>` | run one unit (repeatable; `*` and `?` match several registered runners, e.g. `--unit 'nlib.*'`) |
 | `--jobs N` / `-j N` | run N units at a time, each in its own child process (default `1`: one process, in order; `0`: every core). Output, reports and exit status are the same as with `1` (below) |
-| `--green` | all units with `status = "green"` or `"partial"` in `plan/modules.toml` (one without a runner FAILS; a `green` unit that comes out partial FAILS) |
+| `--green` | all port units with `status = "green"` or `"partial"` in `plan/units/*.toml`, excluding `audit.recursion` (a crate-wide audit with no runner; a port without a runner FAILS; a `green` port that comes out partial FAILS) |
 | `--status-of <id>` | run the unit (no report) and print only `green`, `partial` or `fail`; exit `1` on `fail` (also when no runner is registered) |
 | `--all` | every registered runner |
 | `--list` | registered runners, their plan status and case counts |
 | `--seeds N` | generated cases per unit (default 16) |
 | `--filter S` | only cases whose name contains `S` |
 | `--perturb` | change one item of each case's Rust output (below); passes only if **every** perturbed case is caught. No report written. |
+| `--compare-reports R` | with `--baseline D` only: run no case, apply the same ratchet to the finished reports in `R` (CI's `difftest-compare` job; needs no C++) |
+| `--baseline D` | regression ratchet: compare each unit with its earlier report `D/<unit>.json` (see [Regression gate](#regression-gate---baseline-value-share)). CI passes the exact base revision's validated report artifact |
 | `--report-dir D` / `--no-report` | report location (default `reports/difftest/`) / skip writing |
 | `--fuzz N` | with `--unit`: probe the unit's FFI guard with N mutated cases, each run in a child process (below). No report written. |
 | `--fuzz-out D` | where `--fuzz` writes failing inputs (default `bin/fuzz/`; files go to `D/<unit>/`) |
-| `--ssi-corpus [--tol T] [--jobs N] [glob]` | score both engines against the SSI corpus (see [below](#--ssi-corpus-exact-ground-truth-ssi-corpus)); not a gate |
+| `--ssi-corpus [--tol T] [--jobs N] [glob]` | score the engines against the SSI corpus (see [below](#--ssi-corpus-exact-ground-truth-ssi-corpus)); not a gate; without the `cpp` feature, the `ssi` engine alone |
+| `--solidcraft-cases [glob]` | score the Rust port on SolidCraft's whole-operation regression cases (see [below](#--solidcraft-cases-solidcraft-regression-cases)); not a gate, no `cpp` feature needed |
+| `--step-corpus [--jobs N] [glob]` | import STEP Tools' AP203/AP214 sample files and build every B-rep body on both kernels from the same intermediate (see [below](#--step-corpus-real-world-step-files)); not a gate; without `cpp`, the Rust side alone |
 
 Exit status: `0` no failures (deferred cases are not failures), `1` any
 failure, `2` usage or setup error. Output: one summary line per unit,
 
 ```
-PASS|PARTIAL|FAIL <unit> cases=… passed=… failed=… deferred=… max_rel_err=… with_values=… no_values=… [blocked_by=<unit>(<n>),…]
+PASS|PARTIAL|FAIL <unit> cases=… passed=… failed=… deferred=… max_rel_err=… with_values=… no_values=… vacuous=… [blocked_by=<unit>(<n>),…]
 ```
 
 then the first few failing cases and `reports/difftest/<unit>.json`.
+
+**Native reference restrictions ([#448](https://github.com/tangency-labs/solidcore/issues/448)).**
+`geom.hash_table`, `heal.heal_data_p1`, `heal.heal_data_p2`, `heal.heal_data_p3`
+and `surface.twist_volume` require an x86-64 C++ reference. Their out-of-range
+floating-point-to-integer conversions are undefined upstream; ARM64 saturates
+where the pinned x86-64 reference wraps. Rust deliberately reproduces the latter
+on every target. On other architectures these units print `SKIP ...
+skipped(platform)` (or `FUZZ-SKIP`), before building fixtures or calling C++.
+The twist unit is included because its period reduction has the same dependency,
+even though the current committed cases do not expose it.
+
+Skipped units are counted separately from passes, partials and failures. Their
+JSON reports have `status: "skipped(platform)"`, `pass: false`, a reason in
+`skipped_platform`, and no compared cases. `--status-of` prints `skipped(platform)`;
+ordinary comparison and fuzz runs exit successfully when they contain only passes,
+partials and platform skips. `--baseline` fails if any selected reference is
+unsupported, and skipped reports are invalid baselines: this cannot waive the CI
+coverage ratchet. Plan statuses and tolerances are unchanged. Rust-only
+`--digest-dir` runs remain enabled on every target. On Apple Silicon, an x86-64
+harness and difftest binary under Rosetta can compare these units; this does not
+address independent libc++ reader or libm differences.
 `with_values` / `no_values` split the passing cases into those that compared
 at least one float, integer or topology entry and those that compared nothing
-(both sides returned the same error, or empty outputs). A unit whose passes are
-mostly `no_values` proves little: make the generator reach the success path.
+(both sides returned the same error, or empty outputs). `vacuous` counts the
+`no_values` passes where both sides *succeeded*: only the operation status was
+compared. A unit whose passes are mostly `no_values` proves little: make the
+generator reach the success path.
+
+**Status is compared.** `Output::error` is the operation's status (`None` =
+success) and is compared on every case: C++ success against a Rust error fails
+even when both outputs are empty. A Rust runner must therefore never turn an
+`Err` into an empty or default output (`unwrap_or_default()`, `.ok()`,
+`if let Ok(..)` without an `else`, `Err(_) => vec![]`, ...): map it with
+`Output::from_result` (or `Output::unported(&e).unwrap_or_else(|| Output::err(..))`),
+or, for an op inside a larger record, push the status it maps to (as the C++ shim
+does) before any default. Otherwise "C++ computed 0 results" and "Rust failed"
+look identical and the case passes vacuously. The report marks such cases
+`"vacuous": true`, and passes that agreed only on zeros (e.g. `count = 0`)
+`"only_zeros": true`; audit those runners first.
 
 **Timing** (stderr, one line per unit; diagnostic only, not in the report):
 
@@ -62,6 +106,15 @@ writes `<dir>/<unit>.digest` with one `<case>\t<fnv1a64>` line per case, the
 hash of the Rust output's `Debug` form (f64 `Debug` is the shortest round-trip
 form). Equal digest files from two builds mean bit-identical Rust outputs, which
 is how a refactor or optimisation proves it changed no value.
+
+**Rust side only / wasm32** (`--digest-dir <dir>`, plus `--digest-debug` for the
+full outputs in `<dir>/<unit>.debug`): runs only `run_rust` and writes the same
+digest lines, so the Rust kernel can be compared between targets. The binary also
+builds for `wasm32-wasip1` with feature `cpp`: the C++ shims are then not linked but
+left as imports, which `scripts/wasm_stub.py` serves with stubs returning
+`SC_ERR_UNLINKED`; a case whose Rust side reaches C++ (fixture exports) is written as
+`needs-cpp`. `scripts/wasm-digest.sh [--jobs N] [selection]` (default `--green`)
+builds both targets, runs native and under `wasmtime`, and lists differing cases.
 
 **Profiling without perf/sudo**: `scripts/perf/sampler.py` (ptrace sampler,
 frame-pointer unwinding) and `scripts/perf/analyze.py` (self/inclusive tables):
@@ -93,7 +146,8 @@ With `--jobs N` and more than one unit (`--green`, `--all`, several or a glob of
 <id>` with the other options; the C++ kernel keeps global state, so units never share a
 process or run on threads). At most N children run at once; the queue is ordered longest
 first by the `cases_total` of each unit's previous report (in `--report-dir`, else
-`reports/difftest/`), and the next unit starts as soon as a child exits. The parent
+`reports/difftest/`; a unit with no report is estimated from the size of its
+`fixtures/<id>/`, about 512 bytes a case), and the next unit starts as soon as a child exits. The parent
 prints each unit's lines in the serial order and the usual summary line, so stdout,
 `reports/difftest/*.json` and the exit status are identical to a serial run's. Timing
 goes to stderr only: `difftest --jobs N: wall … s, sum of unit times … s, longest unit
@@ -153,6 +207,9 @@ Rust port), then copy the case into `fixtures/<unit>/` as a regression case
 (fixture paths from `$upstream_file` appear expanded). Exit status `1` on any
 failure. A `differs` case is printed as a `note (differs)` line with its file and
 is written the same way (so it can be re-run), but does not fail the run.
+
+`.github/workflows/nightly.yml` runs `--fuzz 300` on every green and partial unit
+each night and uploads failing inputs as the `fuzz-failures` artifact.
 
 ## Fuzzing the `.smb` readers (`examples/reader_fuzz.rs`)
 
@@ -232,6 +289,88 @@ summaries include a rejected count when nonzero. A run containing only rejected
 fixtures fails the gate: rejection cannot establish parity. Layout errors, native
 exceptions and errors from the operation itself must not be classified this way.
 
+The same mechanism covers inputs that are undefined in C++ (AGENTS.md section 4,
+step 5.6): an FFI guard that refuses an input upstream would crash on, or a shim's
+crash trap that ran the call in a forked child and saw it crash, returns
+`Output::rejected(reason)` with the reason naming the upstream issue (e.g.
+`topology.face_p1`'s UB-137 seam calls). The C++ side never returns
+`Output::deferred`: deferrals are decided by the Rust side only, and a C++-side
+deferral is a harness error.
+
+## Regression gate (`--baseline`, value share)
+
+Passing cases must retain their identities, outcomes and value coverage.
+`--baseline D` compares a full unit run against `D/<unit>.json`: passing cases
+must remain passing, including against `known_mismatch`; cases that compared
+float/integer/topology values must keep value coverage. Deferred, failing and
+known-mismatch cases cannot disappear. A known mismatch must remain known or
+become a genuine pass; it cannot become deferred or rejected. Every retained case
+that compared values must keep value coverage. Rejected fixture constructors may be
+removed; new passing cases and genuine fixes are allowed. Changed seeds and
+`--filter` with `--baseline` are errors, so generated cases cannot silently vanish.
+With `--green`, dropped baseline units fail in the parent before parallel workers
+start. Children receive `--baseline` and enforce the same per-unit gates.
+Whole-set `--green`/`--all` preflight validates every report. Explicit `--unit`
+preflight validates selected reports and refuses an empty baseline; new units may
+have no earlier report. This avoids parsing the full corpus in every worker.
+
+The separate value-share floor remains 75% of a unit's passing cases and at
+least one value-bearing case. Both-error and vacuous passes stay in the
+denominator. Known mismatches are not passes and cannot waive new discrepancies.
+
+CI runs the gate as parallel jobs (`.github/workflows/ci.yml`): `difftest-baseline`
+fetches and validates the exact-base artifact (below) while `difftest-sweep` runs
+`--green --jobs 0` (status and value-share gates, reports uploaded within the run) and
+`difftest-perturb` runs `--green --perturb`, mandatory on every pull_request and
+merge_group run. `difftest-compare` needs both the validated base and the finished sweep and
+runs `--compare-reports <sweep reports> --baseline <validated base>`, which applies the
+`--baseline` ratchet (unit set, seeds, case identity, outcome and value retention, waivers)
+to the reports without re-running anything. The required check `difftest` is an aggregator
+(`needs` all four, `if: always()`): it succeeds only if every part succeeded, so a failed or
+skipped part, or a failed base validation, fails it. No base fallback and no second sweep.
+
+CI retrieves the exact base SHA's successful push/main CI artifact through
+`scripts/ci/difftest-baseline.sh`. PRs use `pull_request.base.sha` and main pushes
+use `before`. For a merge queue, the helper snapshots the trusted repository's
+`main` SHA once and uses its merge base with `merge_group.base_sha`. Later queue
+entries have speculative bases with no push/main run; their cumulative changes
+are checked against this common main ancestor. If main has advanced, only changes
+already in the queue's ancestry can advance its baseline. The event base, main
+snapshot and resolved baseline are recorded in provenance. Resolution happens
+before looking for artifacts and is never changed to find a successful run.
+Absent or pending exact-base runs are retried for up to 25 minutes (configurable
+downwards with `--wait-seconds`); failed runs are rejected immediately. Repository/workflow,
+run/attempt, artifact ownership, SHA256 and complete report set must validate.
+Missing/expired/corrupt baselines fail closed; no latest-main or committed-report
+fallback is allowed. Only a genuine zero-before first push, or a manual run with
+explicit `diagnostic_only`, skips the ratchet with a notice. Manual validation
+runs supply `baseline_sha`. The crate-wide `audit.recursion` review is excluded
+only when the exact base's selector explicitly declares this non-runner policy;
+other missing runner/report units fail. Provenance is stored beside the reports.
+
+Modern reports serialize actual `exact_compared` counts (including zero) with
+`schema_version = 1`. Old #550 reports omitted those counts, but their vacuity
+marker proves boolean integer coverage for a zero-float pass that is neither
+vacuous nor both-error. This bridge never invents an integer comparison count. Legacy known mismatches
+with zero floats need an indexed integer mismatch as proof of exact-value
+coverage; missing or ambiguous proof fails closed.
+Ambiguous older schemas fail rather than silently discarding coverage.
+Reports remain generated artifacts; never regenerate-and-commit baseline reports.
+
+A legitimate regression (a wrong fixture removed, a case renamed) needs a waiver
+in `plan/difftest-waivers.toml`, reviewed with the PR:
+
+```toml
+[[waiver]]
+unit = "nlib.knots"
+check = "ratchet"          # or "value-share"
+case = "insert_at_end"     # ratchet only; omit to waive every case of the unit
+reason = "fixture asserted the pre-#123 clamp; replaced by insert_at_end_clamped"
+```
+
+A waiver is only needed until the base commit's reports catch up, so remove
+ratchet waivers once the PR has merged.
+
 ## Pass criteria (fixed; never weaken)
 
 * **Topology / integers / error strings**: identical, same counts and order.
@@ -240,7 +379,7 @@ exceptions and errors from the operation itself must not be classified this way.
 * **Absolute floor** only where the runner documents one via
   `abs_floors()` (key + value + reason, written into the report). Do not add a
   floor to make a case pass; if the C++ and Rust genuinely disagree, record it in
-  `plan/findings.md` and leave the unit non-green.
+  a new `plan/findings/<slug>.md` and leave the unit non-green.
 * Key sets and array lengths must match. A case with a harness error (bad
   input, panic) fails. A unit with zero cases fails.
 
@@ -286,6 +425,14 @@ the boundary (free upstream objects inside the shim); flatten points as
 `[x0,y0,z0,x1,…]`. Shims are compiled with the same `-D`/`-I`/`-f` flags as the
 kernel (taken from `bin/cpp/ffi.env`, or `bin/cpp/compile_commands.json` if
 it is missing — format in `crates/solidcore-ffi/build.rs`).
+
+`SC_TRY` also acquires the single native-call mutex: upstream's API context,
+callbacks and system tolerances are process-global. Handwritten `try/catch`
+entrypoints must acquire `SC_NATIVE_LOCK;` before touching native state, retaining
+it through native object destruction and any catch-path cleanup. Pure forwarding
+entrypoints may rely on the guarded callee. The mutex is recursive for nested
+shim calls; it serializes individual exports, not multi-call retained-result
+protocols such as SSI's `intersect`/`take` pair.
 
 Topology from C++: walk upstream lists in their native order and emit
 **traversal-order indices** (map each pointer to its first-seen index), never
@@ -408,18 +555,19 @@ nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --unit foo
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --unit foo.bar --perturb   # must say SENSITIVE
 cargo clippy -p difftest -p solidcore-ffi --features difftest/cpp --all-targets -- -D warnings
 git add harness/cpp/shim/foo_bar.cpp crates/solidcore-ffi/src/units/foo_bar.rs \
-        crates/difftest/src/units/foo_bar.rs fixtures/foo.bar reports/difftest/foo.bar.json
+        crates/difftest/src/units/foo_bar.rs fixtures/foo.bar plan/units/foo.bar.toml
 ```
 
-Commit the report produced with the default `--seeds` (it is deterministic, so
-diffs in it are meaningful). Then set `status` to what
+Do not commit `reports/difftest/foo.bar.json` (gitignored; CI regenerates every
+green/partial unit's report and publishes main's set). Quote its summary line in the
+PR instead. Then set `status` in `plan/units/foo.bar.toml` to what
 `--status-of foo.bar` prints (`green` or `partial`; never on `fail`).
 
 ## `--ssi-corpus`: exact ground-truth SSI corpus
 
 A correctness report, separate from the gate: it never changes a unit's status, and
-CI's gating `difftest` job does not run it. It grades **both** engines' surface/surface
-intersection against [jyviko's SSI corpus](https://github.com/jyviko/ssi-corpus) (commit
+CI's gating `difftest` job does not run it. It grades the C++, the port and the `ssi`
+crate's surface/surface intersection against [jyviko's SSI corpus](https://github.com/jyviko/ssi-corpus) (commit
 `b04c8a6`, MIT OR Apache-2.0; issue #17): 119 cases (plane, quadrics, torus, B-spline and
 NURBS pairs, 25 of them from Yang, Jia & Yan, ACM TOG 42(6) 211, 2023), each with the dense
 exact intersection and the expected topology.
@@ -429,6 +577,7 @@ scripts/fetch-ssi-corpus.sh               # clones the corpus into corpus/ssi/ (
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --ssi-corpus             # all cases, tol 1e-6
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --ssi-corpus 'c3_*'      # case ids matching a glob (`*`, `?`)
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --ssi-corpus --tol default --jobs 4
+nice -n 10 cargo run --profile difftest -p difftest -- --ssi-corpus                         # the ssi engine only, no C++
 ```
 
 Without `corpus/ssi/` it prints how to fetch it and exits `0`. The corpus is data only:
@@ -437,20 +586,31 @@ pins the full commit SHA and checks the checkout's origin and `HEAD` against it.
 errors (unreadable case, report not writable); verdicts never fail the run.
 
 * **Engines.** Each case runs in a child process per engine (`difftest --ssi-case <case>
-  <tol> <cpp|rust> <out.json>`), so a C++ segfault or a 300 s timeout is a `CRASH`
+  <tol> <cpp|rust|ssi> <out.json>`), so a C++ segfault or a 300 s timeout is a `CRASH`
   verdict, as with the corpus' runner. `--jobs N` (default 2) children run at once.
+  `cpp` and `rust` need the `cpp` feature.
   * `cpp`: shim `harness/cpp/shim/ssi_corpus.cpp` mirrors the corpus'
     `runner/ssi_runner.cpp` in its `gsi` mode: real `SmPlane`, `SmCylinder`, `SmCone`
     (`CreateCanonical`), `SmSphere`, `SmTorus`, and `SmBSplineSurface` over an NLib net
     filled directly; `SmApiGetOrCreateContext()`; natural UV domains; edges on;
     `SmApproxTol3d(tol)` (or `NULL` for `default`); `SmSurface::GlobalSurfaceIntersect`.
-  * `rust`: the same surfaces with solidcore's types and `Surface::global_surface_intersect`.
-    A surface kind that is not a `SurfaceKind` yet (cylinder, cone, sphere, torus) or any
-    `SolidError::Unported` makes the case `DEFERRED`, never a faked result.
+  * `rust`: the same surfaces with solidcore's types (`Plane`, `Cone` as cylinder and
+    `create_canonical` cone, `Sphere`, `Torus`, each with its NURB made as the runner's
+    `GetNaturalUVDomain()` does, and `BSplineSurface`) and
+    `Surface::global_surface_intersect`. Any `SolidError::Unported` makes the case
+    `DEFERRED`, never a faked result.
   * Both sample every 3D and UV curve at 4001 uniform parameters of its natural interval
     and evaluate each surface at its UV samples, and write the runner's JSON
     (`{xyz, uv1, uv2, s1_at_uv, s2_at_uv, type}` per curve) to
     `bin/ssi-corpus/raw/<engine>_<tol>/<id>.json`.
+  * `ssi` (`src/ssi/ssi_engine.rs`): the `ssi` crate (`crates/ssi`, a method of its own,
+    not a port; see its README), as its own corpus runner runs it. Each surface becomes
+    the crate's exact patch (`ssi::shapes`, or the NURBS net as given),
+    `ssi::intersect_bodies` intersects them, and the curves are filled in to 0.01 rad
+    by `ssi::densify` after the timer. Curves are written as marched, with both patches'
+    parameters and each patch evaluated there; the points are the touch points, then
+    the curves' vertices. A refusal is status `SM_ERR` named by its code
+    (`BOOLEAN_TANGENT (...)`). Never compared for parity.
 * **Scorer** (`src/ssi/score.rs`, `polyset.rs`, `geom.rs`): a port of the corpus'
   `scoring/score.py` and the distance helpers of `ssi_geom.py` (not the truth
   generators). Accuracy tolerance `10 * tol`. Verdicts, most severe first: `CRASH`,
@@ -462,18 +622,20 @@ errors (unreadable case, report not writable); verdicts never fail the run.
 * **Parity.** Where both engines answered, their outputs are compared with the gate's
   rule (status, curve count, types, every sample within `1e-9` relative); mismatches are
   listed per case. A faithful port should also score the same verdicts as the C++.
-* **Output.** One line per case (`cpp` verdict, `rust` verdict, parity, the C++ flags),
-  then
+* **Output.** One line per case (each engine's verdict, parity, the flags of the first
+  engine run: the C++ when it runs), then
 
   ```
   SSI-CORPUS cpp: PASS=… INACCURATE=… WRONG_TOPOLOGY=… INCOMPLETE=… ERROR=… CRASH=… (cases=119)
   SSI-CORPUS rust: PASS=… DEFERRED=… (cases=119)
+  SSI-CORPUS ssi: PASS=… (cases=119)
   SSI-CORPUS parity: compared=… identical=… mismatched=… same_verdict=…
   ```
 
   and `reports/ssi-corpus.json` (`reports/ssi-corpus_<tol>_<glob>.json` for other
-  tolerances or a glob): per case both grades with their flags, distances and topology
-  signatures, the deferral reason and the parity result. No timings, so it is
+  tolerances or a glob; `reports/ssi-corpus_ssi.json` from a build without `cpp`, so it
+  never overwrites the full report): per case every grade with its flags, distances and
+  topology signatures, the deferral reason and the parity result. No timings, so it is
   deterministic.
 * **Cross-check with the corpus' own scorer.** `scripts/ssi-corpus-runner.sh` is an
   `SSI_RUNNER` for `score.py` (Python 3, numpy):
@@ -485,6 +647,131 @@ errors (unreadable case, report not writable); verdicts never fail the run.
 
   grades the same raw files (without `SSI_SC_RAW` it reruns the shim per case).
 
+## `--solidcraft-cases`: SolidCraft regression cases
+
+A correctness report, separate from the gate like `--ssi-corpus`: it never changes a
+unit's status and verdicts never fail the run. `fixtures/solidcraft/` holds one file per
+SolidCraft issue that was found and fixed on SolidCraft's earlier kernel (the issue, the
+fixing PR and the test the cases come from). Each case is a list of `SM_API`-level steps
+and the values its `result` body must have, known in closed form, so the bugs stay
+fixed once the operations run end to end here. Geometry and tolerances are those of the
+SolidCraft PR's own test wherever it has one.
+
+```sh
+nice -n 10 cargo run -p difftest -- --solidcraft-cases                 # all cases (Rust only)
+nice -n 10 cargo run -p difftest -- --solidcraft-cases '3526-*'        # ids (<file stem>/<name>) matching a glob
+```
+
+* **Steps** (`"op"`): `box`, `sphere`, `cylinder` (`axis`, default +Z), `union`,
+  `difference` (optional `pattern`: the tool cut once per grid position, one cut after
+  the other), `intersection`, `loft` (`SmApiCreateSkinPrimitive` through `sections`,
+  each one closed `profile` with its `plane` and `origin`; `degree` 1, ruled, by
+  default; capped at both ends), `fillet` (edges by a point on each), `offset_faces` (faces
+  by a point on each), `sheet_corner` (the deferred sheet-flange recipe below). Each
+  writes the body `id`; the last writes `result`.
+* **Expectations** (`expect`): `lumps` (bounded regions; `0` = nothing left), `volume`
+  (`value`, absolute `tol`, the `formula` it came from), `cylinder_faces_max`,
+  `sheet_corner` (signed end distances and flat-pattern invariants).
+* **Verdicts**: `PASS`, `FAIL`, `UNCHECKED` (no check failed but one cannot be measured
+  yet: `cylinder_faces_max` until solidcore has a cylinder surface kind), `ERROR` (a step
+  returned an error other than `Unported`), `DEFERRED`. A step that reaches unported code
+  defers the case on the unit in its `SolidError::Unported`; `fillet` has no Rust
+  `SmApiFilletEdges` yet and defers on `blend.fillet_executive_p1`; `offset_faces` defers
+  on `no SM_API entry point`, since `SM_API` only offsets or shells whole bodies
+  (`SmApiOffsetBrepFull`, `SmApiShellBrepFull`).
+* **Engines.** Rust only for now. A C++ engine (a shim running the same steps through
+  `SM_API`) would show which of these bugs upstream SMLib has.
+* **Output.** One line per case, then
+
+  ```
+  SOLIDCRAFT-CASES rust: PASS=… FAIL=… UNCHECKED=… ERROR=… DEFERRED=… (cases=…)
+  SOLIDCRAFT-CASES rust: blocked_by=<unit>(<cases>),…
+  ```
+
+  and `reports/solidcraft-cases.json` (`reports/solidcraft-cases_<glob>.json` for a
+  glob): per case its source links, verdict, deferral, measured values and checks.
+* `cargo test -p difftest --lib solidcraft` checks that every case file loads, every
+  case runs to a verdict, and every deferral names a plan unit.
+* **Adding cases:** add a new `fixtures/solidcraft/<issue>-<slug>.json`. Files load in
+  sorted order and nothing counts them, so no Rust file changes unless the case needs
+  a new step kind.
+
+### Sheet flange corner overlap (SolidCraft #3170, PR #3472)
+
+`fixtures/solidcraft/3170-sheet-corner-overlap.json` ports
+`overlapping_corners_keep_surface_clearance_and_flat_material` from SolidCraft
+PR #3472 (published revision `0420e385`). The 16 original combinations are signed
+90/72 degree bends, Partial/Full overlap (1/2 mm), and front/left covering choices.
+Each starts with a 120 x 90 mm XY base, thickness 2 mm, radius 1 mm, K factor 0.5,
+gap 0.5 mm and four 38.6 mm inside flanges, in front/right/rear/left order. The
+corner between flanges 0 and 3 is joined after the initial butt closure. Notch relief
+is 2 x 1 mm, with corner relief 8 mm, matching the original aluminium rule.
+
+The minimum signed distance of each end face (at both thickness faces) to its
+neighbour's inner plane must be negative overlap for the covering flange and positive
+gap for the covered flange, within the original `1e-9` mm absolute tolerance. The
+folded solid must be valid, its flat pattern must be one non-overlapping region, its
+flat area must change after joining, and
+`abs(volume - flat_area * thickness) < volume * 1e-3` must hold. No mesh, saved B-rep
+or value measured with another CAD product is used as ground truth.
+
+**Current status: all 16 geometry cases are DEFERRED.** There is no sheet-flange,
+corner-join and flat-pattern adapter in this runner. `sheet_corner` records the
+original operation rather than substituting already-trimmed boxes, which would not
+exercise the bug. It defers on `no SM_API entry point`. Even if a future adapter only
+returns volume and lump count, the sheet expectations remain `UNCHECKED`, not `PASS`,
+until it also measures and scores every sheet invariant. Passing the harness tests
+proves that the cases are preserved and classified correctly, not that solidcore
+already implements the sheet feature. Butt/standalone joins, per-corner expressions
+and UI behavior are outside this original 16-case port.
+
+```sh
+nice -n 10 cargo test -p difftest --lib solidcraft
+nice -n 10 cargo run -p difftest -- --solidcraft-cases '3170-*' --no-report
+```
+
+This case builds on the whole-operation harness in solidcore PR #345; it does not
+change any unit status, kernel implementation or floating-point tolerance.
+
+## `--step-corpus`: real-world STEP files
+
+A correctness report on real CAD data, separate from the gate like `--ssi-corpus`:
+verdicts never fail the run and it is not part of CI. The files are STEP Tools' sample
+sets (<https://steptools.com/docs/stpfiles/>, AP203 and AP214), "All Rights Reserved"
+and copied only for informational, non-commercial use: they are never committed.
+
+```sh
+scripts/fetch-steptools-corpus.sh                                   # corpus/steptools/, SHA-256 pinned
+nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --step-corpus --jobs 4
+nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --step-corpus 'ap203/block*'
+```
+
+* **Import.** `crates/step-import` (clean room, from the public ISO 10303-21 syntax and
+  the Part 41/42 entity definitions; no other STEP implementation consulted) parses
+  each file and maps its `MANIFOLD_SOLID_BREP`, `BREP_WITH_VOIDS`, `FACETED_BREP` and
+  `SHELL_BASED_SURFACE_MODEL` bodies to a plain-data model in millimetres. A body that
+  reaches an unsupported entity is skipped with `unsupported: <ENTITY>` (listed in the
+  summary). Assembly instancing (`MAPPED_ITEM`, `CONTEXT_DEPENDENT_SHAPE_REPRESENTATION`)
+  is counted, not applied: each body is built once in its own coordinates.
+* **Build (both kernels, same numbers).** The body is encoded as one `f64` array
+  (`step_import::flat`); the C++ shim (`harness/cpp/shim/step_import.cpp`) reads that
+  array and the Rust side builds from its decoding. Per face: the surface by
+  `CreateCanonical`, the edge loops' 3D curves bounded to their edges, then
+  `CreateFacesWithCurves`; then `SmApiStitchIntoSolid`, counts (regions, shells, faces,
+  edges, vertices), `SmApiBrepIsManifoldSolid`, `SmApiBrepComputeArea` and
+  `SmApiBrepComputeVolume` (accuracy `1e-6`), `SmApiHealBrep`, and counts, manifold
+  test and volume again. Face orientation is left to the stitch.
+* **Verdicts** (per body): `MATCH` (every stage agrees: statuses and counts equal,
+  values within `1e-9` relative), `HEAL-DIFF` (every build stage agrees, the heal or a
+  later stage differs), `DIFF` (a build stage differs), `DEFERRED` (the Rust side
+  reached unported code; the unit is shown), `CRASH` (a child crashed, timed out or
+  the shim rejected the input), `SKIPPED` (no B-rep body in the file).
+* Each (body, kernel) runs in its own child process (`--step-case <file> <body>
+  <cpp|rust> <out.json>`). Output: one line per body, a `STEP-CORPUS` summary line, and
+  `bin/step-corpus/report.json` (per body: source counts, both sides' stages, verdict).
+* `cargo run -p step-import --example survey -- corpus/steptools` lists what the
+  importer maps per file; `--example dump_body -- <file> <body> [--flat]` prints one body.
+
 ## Notes
 
 * Cases run sequentially in one process: the C++ kernel has global state. A
@@ -492,10 +779,12 @@ errors (unreadable case, report not writable); verdicts never fail the run.
   its cases in child processes instead).
 * Rust panics in a runner are caught and reported as a failing case.
 * `solidcore-ffi` without feature `cpp` is an empty crate that builds for
-  `wasm32-unknown-unknown`; the difftest binary refuses to run without `cpp`.
+  `wasm32-unknown-unknown`; the difftest binary refuses to run without `cpp`, except for `--solidcraft-cases` (Rust only).
 * Debugging: the binary is `bin/debug/difftest`; set breakpoints with
   mcp-debugger (the C++ kernel is built with `-g`).
-* Reports: `reports/difftest/<unit>.json` — sorted keys, no timestamps,
+* Reports: `reports/difftest/<unit>.json` — not committed (gitignored): CI uploads
+  main's set as the `difftest-reports` artifact, `scripts/fetch-reports.sh`
+  downloads it. Sorted keys, no timestamps,
   shortest round-trip floats, non-finite floats as `"NaN"`/`"inf"`; failing
   cases include inputs and up to 20 mismatches.
 * Reference platform: x86-64 Linux (as CI). Upstream converts out-of-range

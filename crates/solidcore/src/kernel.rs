@@ -18,12 +18,22 @@
 //! | [`Tolerances::large_small_size_ratio`] | `SM_LARGE_SMALL_SIZE_RATIO`               |
 //! | [`Rng`]                                | C `rand()` / `srand(time(NULL))` (e.g. `SmShell.cpp`) |
 //! | [`Caches`]                             | `SmCacheMgr`, `SmCacheMgrCrv/Srf/TSrf/Brep` |
+//! | [`Kernel::fillet_point_step`], [`Kernel::latch_fillet_point_step`] | the function-static `sdStaticStep` of `SmFilletSolver::ComputePointValues` |
+//! | [`Kernel::upstream_ub_passed`], [`Kernel::note_upstream_ub`] | (none: upstream undefined behaviour the port went past) |
 //!
 //! Upstream seeds `rand()` from the clock in a few places; the port replaces that with
 //! [`Rng`], seeded from [`KernelOptions::seed`], so runs are reproducible. Results that
 //! depend on random draws therefore cannot match the C++ bit for bit; difftests of such
 //! code must compare outcomes that are invariant to the draw (and say so in
 //! `plan/findings.md`).
+//!
+//! Upstream also keeps a few process-global function statics whose first use fixes
+//! their value for the rest of the process; those that change results live on the
+//! [`Kernel`] as latches (e.g. [`Kernel::fillet_point_step`]), so each kernel starts
+//! unlatched and a difftest runner can seed the latch with the value the C++ process
+//! already holds.
+
+use core::cell::Cell;
 
 use crate::geom::context::Context;
 
@@ -128,6 +138,77 @@ impl Caches {
     }
 }
 
+/// Opt-in fixes of upstream SMLib defects (`plan/upstream-issues/`), all off by default
+/// (upstream behaviour). Set them on [`Kernel::fixes`] before running operations; each
+/// field names its record (`WR-…`) and the `tangency-labs/solidcore` issue.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
+#[non_exhaustive]
+pub struct UpstreamFixes {
+    /// `CalcRailIntEdgeuse`'s retry rail search holds a variable round's radius only where its first search does (at a corner calculated as constant radius) (WR-300, #1023).
+    pub fillet_retry_radius_as_first: bool,
+    /// `TestRollOver` joins a rail's neighbouring intervals on its face or the face's boundary before the rollover, so a rail along its face's rim does not fail "Unable to Process Rollover" (WR-301, #485).
+    pub fillet_rail_rim_on_face: bool,
+    /// The fillet executive refuses a blend whose rails leave the faces they roll on (`RailsFitTheirFaces`, no room) (WR-302, #1024/#841).
+    pub fillet_refuse_rails_leaving_faces: bool,
+    /// `create_fillet_brep` refuses blends that take the whole of a face they roll on (`FacesOutlastTheirBlends`, no room) (WR-320, #879).
+    pub fillet_refuse_face_consuming_blends: bool,
+    /// The fillet solver tries the corner ball's patch after the torus when a round's centre line collapses to a point (WR-420, #416).
+    pub fillet_corner_ball_patch: bool,
+    /// `CalcTorusFilletGeom` revolves a linear section into a cone (WR-421, #420).
+    pub fillet_chamfer_cone_on_arc: bool,
+    /// A torus blend whose section centre is on the arc's axis turns rail points into the edge ends' half-planes (WR-422, #417).
+    pub fillet_torus_center_on_axis: bool,
+    /// `DoExtendedOffset` finds the excess offset faces after the merge only, not also on the untrimmed faces before it (WR-341, #977).
+    pub offset_excess_faces_after_merge: bool,
+    /// `BuildOffsetOfFaceuse` clips a face to its offset domain from its counterclockwise loops (an inset is not turned inside out) (WR-342, #974).
+    pub offset_clip_right_side_out: bool,
+    /// `SmSurfOfRevolution::CreateOffsetSurface` cuts the offset generator at the axis on either side of the frame origin (WR-343, #973).
+    pub revolution_offset_axis_both_sides: bool,
+    /// With extended convex edges, `piecewise_merge` relates the mated offsets of a manifold edge instead of intersecting them again (WR-344, #469).
+    pub offset_extended_edges_mated: bool,
+    /// A volumetric Boolean removes the zero-area loops a contact curve inside a face leaves, and splits shells joined only through them (WR-360, #746).
+    pub remove_slit_loops_where_solids_touch: bool,
+    /// A face a Boolean takes over from its second operand keeps that operand's exact UV trims (WR-361, #488).
+    pub keep_operand_uv_trims: bool,
+    /// `smgu_EvaluateCurveContinuity`'s G2 test compares the two sides' Frenet curvatures and normals (WR-380, #933/#838).
+    pub geometric_g2_continuity: bool,
+    /// `RemoveCoincidentNoEdgeProtoVertex` reports a miss as `false` (WR-73, #848).
+    pub proto_vertex_miss_is_false: bool,
+    /// `CheckLoop` measures a gap against at least its vertex's zone tolerance (WR-381, #476).
+    pub check_loop_vertex_tolerance: bool,
+    /// `SmBSplineCurve::AssertValid` reads the minimum radius of curvature before tests 13/14 compare it (WR-382, #475).
+    pub bspline_check_min_radius: bool,
+    /// The curve property solves ignore a failed guess in `SolveOscillating`'s sign-change search (WR-253, #481).
+    pub oscillating_skips_failed_guesses: bool,
+    /// `sm_RefineCCSolutions` judges a range end's shift by its distance from 1 (WR-383, #527).
+    pub refine_cc_range_ends: bool,
+    /// `SmSurface::GetFlatCorners` tests each corner bit instead of clearing the others (WR-384, #525).
+    pub flat_corners_test_bits: bool,
+    /// `SmCone::RebuildSTEPFromNURBParameters` gives a cylinder the mean of near-equal radii (semi-angle 0) (WR-385, #713).
+    pub cylinder_rebuild_mean_radius: bool,
+    /// `SweepProfilesAlongPath` asks for caps only when the profile closes (WR-400, #837).
+    pub planar_path_uncapped_open_profiles: bool,
+    /// A full-turn rotational sweep of a multi-curve profile makes lines and arcs their analytic surfaces (WR-401, #545).
+    pub revolve_analytic_profile_faces: bool,
+    /// A taper extrude's corner whose links meet at both ends pivots on the joint nearest its offset curve (WR-402, #479).
+    pub taper_pivot_nearest_corner: bool,
+    /// A full-turn rotational sweep makes a closed shell inside another solid its cavity (WR-403, #478).
+    pub revolve_nested_shells_as_cavities: bool,
+    /// A curve sweep caps from the side faces at the sweep's start and end (WR-404, #411).
+    pub curve_sweep_caps_at_sweep_ends: bool,
+    /// Planar faces from curves join a loop touching another loop at a vertex into that loop (WR-405, #892).
+    pub join_touching_loops: bool,
+    /// The pointer check judges a UV trim's end turn on its face's surface (first fundamental form), not in raw (u, v) (WR-406, #891).
+    pub uv_trim_reversal_on_surface: bool,
+    /// Before the piecewise merge, `do_extended_offset` rebuilds every offset face whose loops cross from the stretches of its loops that bound it (WR-345, #854).
+    pub offset_resolve_crossing_loops: bool,
+    /// An inward shell mates the walls across rounds thinner than it (collapsed faces) (#397).
+    pub offset_collapsed_rounds_mated: bool,
+    /// At an Nx1 corner whose end rib cannot be built because a rail missed a side edge ending within the fillet's width, the rib is deleted and the global merge cuts the round off (WR-303, #841).
+    pub fillet_nx1_end_rib_global_merge: bool,
+}
+
 /// Options for [`Kernel::new`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct KernelOptions {
@@ -161,6 +242,34 @@ pub struct Kernel {
     /// The session's modeling context (marks, Boolean flag, callbacks, its own
     /// model size estimate); created with the defaults, as `SmApiGetOrCreateContext`.
     pub context: Context,
+    /// The function-static `sdStaticStep` of `SmFilletSolver::ComputePointValues`
+    /// (`SmFilletSolver.cpp`, unit `blend.fillet_solver_p4`): `None` until the first
+    /// finite-difference step of a fillet point evaluation latches it (to `1e-3` when
+    /// that first point is a tangent point, else `1e-5`); every later evaluation on
+    /// this kernel reuses the latched value, as upstream does for the whole process.
+    /// A [`Cell`] so the latch can be set through the `&Kernel` the solvers take
+    /// (the kernel stays `Send`). Difftest runners seed it with the value the C++
+    /// process has latched; see [`Kernel::latch_fillet_point_step`].
+    pub fillet_point_step: Cell<Option<f64>>,
+    /// The upstream undefined-behaviour conditions (their `plan/upstream-issues.md`
+    /// ids, e.g. `"UB-175"`) that operations on this kernel met and went past with the
+    /// port's defined semantics, each listed once in the order first met. Upstream's
+    /// result for such an input is undefined, so a comparison against the C++ (the
+    /// difftest) reads this to classify the case; no operation reads it.
+    pub upstream_ub_passed: Vec<&'static str>,
+    /// Not upstream (WR-259, `plan/upstream-issues.md`): whether
+    /// `Cone::intersect_with_cone` tests the lines of two parallel cylinders at their
+    /// middle (`true`) instead of their bottom end (`false`, upstream and the default),
+    /// which skips a line crossing a face domain trimmed above the surface's bottom. The
+    /// Boolean sets it for its duration (`boolean::merge::p4::manifold_boolean`). A
+    /// [`Cell`] because the intersectors take `&Kernel`.
+    pub cone_parallel_midpoint_test: Cell<bool>,
+    /// Not upstream: whether `make_curve_cache` keeps a memo of each curve cache in the
+    /// curve value (`true` unless the `curve-memo-off` feature is on). The memo never
+    /// changes a result, only the time; `false` builds every cache fresh, to check that.
+    pub memoize_curve_caches: bool,
+    /// Opt-in fixes of upstream defects (all off: upstream behaviour).
+    pub fixes: UpstreamFixes,
 }
 
 impl Default for Kernel {
@@ -178,7 +287,31 @@ impl Kernel {
             rng: Rng::new(options.seed),
             caches: Caches::default(),
             context: Context::default(),
+            fillet_point_step: Cell::new(None),
+            upstream_ub_passed: Vec::new(),
+            cone_parallel_midpoint_test: Cell::new(false),
+            memoize_curve_caches: !cfg!(feature = "curve-memo-off"),
+            fixes: UpstreamFixes::default(),
         }
+    }
+
+    /// Records that an operation went past upstream undefined behaviour `id` (see
+    /// [`Kernel::upstream_ub_passed`]).
+    pub fn note_upstream_ub(&mut self, id: &'static str) {
+        if !self.upstream_ub_passed.contains(&id) {
+            self.upstream_ub_passed.push(id);
+        }
+    }
+
+    /// `static double sdStaticStep = first;`: the latched value of
+    /// [`Kernel::fillet_point_step`], latching `first` when nothing is latched yet.
+    #[must_use]
+    pub fn latch_fillet_point_step(&self, first: f64) -> f64 {
+        if let Some(step) = self.fillet_point_step.get() {
+            return step;
+        }
+        self.fillet_point_step.set(Some(first));
+        first
     }
 }
 
@@ -190,6 +323,16 @@ mod tests {
     fn kernel_is_send() {
         fn assert_send<T: Send>() {}
         assert_send::<Kernel>();
+    }
+
+    #[test]
+    fn fillet_point_step_latches_once() {
+        let k = Kernel::default();
+        assert_eq!(k.fillet_point_step.get(), None);
+        assert_eq!(k.latch_fillet_point_step(1.0e-5), 1.0e-5);
+        assert_eq!(k.latch_fillet_point_step(1.0e-3), 1.0e-5);
+        k.fillet_point_step.set(Some(1.0e-3));
+        assert_eq!(k.latch_fillet_point_step(1.0e-5), 1.0e-3);
     }
 
     #[test]

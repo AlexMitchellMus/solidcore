@@ -52,10 +52,8 @@
 //!   own deferred callees remain) and
 //!   `SmVertex::SetTolerance` (unit `topology.vertex`, reached through
 //!   `SmEdge::SetTolerance`) return [`SolidError::Unported`].
-//!   `SmCrvOnSurf` is ported for B-spline base surfaces only (unit `curve.crv_on_surf`,
-//!   partial): on a face of another surface kind `CheckAndSetUVTrimCurve` returns
-//!   [`SolidError::Unported`] naming that unit (a dispatch gap, as in
-//!   `intersect::curve_class::p1`).
+//!   `SmCrvOnSurf` preserves the face surface's concrete dispatch in
+//!   `CheckAndSetUVTrimCurve`.
 //! - **Notification.** [`notify`] runs the edge use's own part and then
 //!   [`topo::notify`] (`SmTopology::Notify`) with the caller's records, attribute
 //!   store and context; it propagates errors upstream does not report (`Notify`
@@ -77,7 +75,7 @@ use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
 use crate::surface::surface::p2::DropCurveFail;
 use crate::surface::surface::p7::drop_points_to_tangent_plane;
-use crate::surface::surface::{Surface, SurfaceKind};
+use crate::surface::surface::Surface;
 use crate::topology::edgeuse::p1::{
     brep_handle, drop_curve_fail, edge, edge_brep, edge_is_lamina, face, faceuse, mate, radial,
     set_uv_trim_curve, uv_trim_curve, FindStepOff, UvTrimCurveArg,
@@ -379,7 +377,7 @@ pub fn evaluate_binormal_step_off_into(
     let uv_domain = face_rec.uv_domain;
 
     // evaluate surface at edge point
-    let mut surf_point = surface.evaluate_point(uv)?;
+    let mut surf_point = surface.evaluate_point(k, uv)?;
 
     // set startpoint = stepoffdistance from surfPoint in binormal direction
     let binormal = match at_edge.binormal.unitize() {
@@ -394,7 +392,7 @@ pub fn evaluate_binormal_step_off_into(
 
     // drop start point to surface to get a guess point
     let dropped =
-        drop_points_to_tangent_plane(surface, uv, Side::Left, Side::Left, &[start_point])?;
+        drop_points_to_tangent_plane(k, surface, uv, Side::Left, Side::Left, &[start_point])?;
     let mut uv_guess = dropped
         .first()
         .copied()
@@ -445,7 +443,7 @@ pub fn evaluate_binormal_step_off_into(
     }
     let plane_normal = options.plane_normal.unwrap_or(tangent);
 
-    let mut eval_fun = FindStepOff::new(step_off_distance, surf_point, plane_normal, surface);
+    let mut eval_fun = FindStepOff::new(k, step_off_distance, surf_point, plane_normal, surface);
     let mut ls = LocalSolveNd::new(&mut eval_fun, Some(&intervals), Some(&periodicities));
     ls.set_boundary_handler(BoundaryHandler::TotalBoundaryHits, 3);
 
@@ -466,7 +464,7 @@ pub fn evaluate_binormal_step_off_into(
     // orientations)
     let uv_found = Point2::new(solution_vector[0], solution_vector[1]);
 
-    let mut normal = surface.evaluate_normal(uv_found, Side::Left, Side::Left)?;
+    let mut normal = surface.evaluate_normal(k, uv_found, Side::Left, Side::Left)?;
     let fu = faceuse(b, eu)?.ok_or_else(|| null("EvaluateBinormalStepOff: no face use"))?;
     if b.faceuse(fu)?.orientation == OrientType::Opposite {
         normal = -normal;
@@ -474,7 +472,7 @@ pub fn evaluate_binormal_step_off_into(
 
     // set output
     out.binormal = normal.cross(tangent);
-    out.point = surface.evaluate_point(uv_found)?;
+    out.point = surface.evaluate_point(k, uv_found)?;
     out.face_normal = normal;
     out.uv = uv_found;
     Ok(())
@@ -648,7 +646,6 @@ pub fn check_and_set_uv_trim_curve(
     };
 
     // attach pUVTrimCurve to this Edgeuse (FALSE = don't delete existing UVTrimCurve)
-    let uv_copy = uv_trim_curve_in.clone();
     let old_uv_trim_curve = set_uv_trim_curve(
         b,
         eu,
@@ -657,6 +654,10 @@ pub fn check_and_set_uv_trim_curve(
         false,
         opt_drop_curve_fail,
     )?;
+    let uv_copy = uv_trim_curve(b, eu)?
+        .0
+        .ok_or_else(|| null("CheckAndSetUVTrimCurve: attached curve missing"))?
+        .clone_for_evaluation()?;
 
     // define the 3D curve for the UVCurve projected through the Surface
     let surface = b
@@ -664,16 +665,7 @@ pub fn check_and_set_uv_trim_curve(
         .surface
         .as_ref()
         .ok_or_else(|| null("CheckAndSetUVTrimCurve: face without surface"))?;
-    let SurfaceKind::BSpline(bs) = surface.kind() else {
-        // DISPATCH GAP: SmCrvOnSurf over a non-B-spline SmSurface (curve.crv_on_surf,
-        // partial; no UNPORTED marker: the ported CrvOnSurf holds an SmBSplineSurface,
-        // not any Surface, as recorded in curve/crv_on_surf.rs and plan/findings.md)
-        return Err(SolidError::unported(
-            "SmSurface (non-B-spline) in SmCrvOnSurf",
-            "curve.crv_on_surf",
-        ));
-    };
-    let map_3d = CrvOnSurf::new(k, uv_copy, bs.clone(), None, 0)?;
+    let map_3d = CrvOnSurf::new(k, uv_copy, surface.clone_for_evaluation()?, None, 0)?;
     let natural = map_3d.natural_interval();
     let map_3d = Curve::from(map_3d);
     let edge_rec = b.edge(e)?;
@@ -715,7 +707,7 @@ pub fn check_and_set_uv_trim_curve(
             // give bad curves one last chance to be ok
             if !uv_good_enough {
                 // check approx pEdgeCurve length with 10 sample points
-                let (edge_length, _) = edge_curve.approximate_length(&interval, 10, false)?;
+                let (edge_length, _) = edge_curve.approximate_length(k, &interval, 10, false)?;
 
                 // if max dist between curves is near the edge (based on edge length)
                 if max_dist_to_surf < edge_length / 10.0 {
@@ -800,6 +792,40 @@ pub fn check_and_set_uv_trim_curve(
 }
 
 // ---- notification -------------------------------------------------------------------------
+
+/// `delete pEU`: `~SmEdgeuse` notifies `SM_NO_DESTRUCTION` (`Notify(op, this, NULL,
+/// NULL)` through the edge use's context, `GetContext()`: the environment's, else
+/// `k`'s), whose status it ignores ([`SolidError::Unported`] propagates); its UV trim
+/// and drop-failure curves are dropped with its record; `~SmAObject`
+/// (`ClearAttributes`) removes it from every attribute it uses.
+///
+/// # Errors
+///
+/// [`SolidError::NotFound`] for a dangling id; the notification's
+/// [`SolidError::Unported`]; those of `ClearAttributes`.
+pub fn destroy(
+    k: &mut Kernel,
+    b: &mut Brep,
+    eu: EdgeuseId,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+) -> Result<()> {
+    b.edgeuse(eu)?;
+    let this = (env.key_of)(crate::error::EntityRef::Edgeuse(eu));
+    crate::topology::edge::with_object_context(k, env, |n| {
+        crate::error::ignore_status(notify(
+            b,
+            eu,
+            &mut *n.records,
+            &mut *n.attributes,
+            n.context.as_deref_mut(),
+            NotifyOperation::Destruction,
+            this,
+            [Some(this), None, None],
+        ))
+    })?;
+    b.remove_edgeuse_record(eu)?;
+    env.attributes.clear_attributes(this.key)
+}
 
 /// `Notify`: a split (`SplitInBrep`, `Split`) or a geometry change (`ChangeGeometry`)
 /// deletes the UV trim curve and resets the cached edge/face gaps of the edge use and

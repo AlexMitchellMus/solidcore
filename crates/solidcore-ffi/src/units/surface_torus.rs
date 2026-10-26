@@ -19,7 +19,11 @@
 //!   `has [rebuild_status] state`; `Rebuild`: the state (also after a failure);
 //!   `Transform`: the state (also after a failure); `Eq`: the other torus's
 //!   construction status, then on success `this == other`, `other == this`; `Copy`:
-//!   `state copy == this`.
+//!   `state copy == this`; `TrimDomain`: the domain after the call (`TrimWithDomain`
+//!   writes it back), then the state (also after a failure); `IsectPlane`, `Global`:
+//!   status, then on success `more ncurves curves ntypes types ndevs devs nuv1 nuv2
+//!   nnull1 nnull2` (`more` is `0` for `Global`). The plane and the intersection
+//!   arguments are those of [`super::surface_sphere`] ([`Plane`], [`IsectArgs`]).
 //!
 //! The wrappers accept only what upstream handles without undefined behaviour: finite
 //! values, unit and independent placement axes (the base constructor passes the Y axis
@@ -27,6 +31,8 @@
 //! inside `[-360, 360]` at most 360 long, generator circles with independent axes and a
 //! positive radius, derivative orders up to 3.
 
+pub use super::surface_sphere::{Dom, IsectArgs, Plane};
+use super::surface_sphere::{push_args, push_plane};
 use crate::validate::bad;
 use crate::{call_with_buffer, FfiError};
 
@@ -151,6 +157,26 @@ pub enum Op {
     },
     /// `Copy`.
     Copy,
+    /// `IntersectWithPlane` (inherited from `SmSurfOfRevolution`).
+    IsectPlane {
+        /// The plane.
+        plane: Plane,
+        /// Domains and tolerance.
+        args: IsectArgs,
+    },
+    /// `GlobalSurfaceIntersect` with a plane (inherited from `SmSurfOfRevolution`).
+    Global {
+        /// The plane.
+        plane: Plane,
+        /// Domains and tolerance.
+        args: IsectArgs,
+    },
+    /// `TrimWithDomain(SmExtent2d(u0, v0, u1, v1))` (inherited from
+    /// `SmSurfOfRevolution`).
+    TrimDomain {
+        /// The new NURB domain `[u0, v0, u1, v1]`.
+        dom: [f64; 4],
+    },
 }
 
 impl Op {
@@ -166,6 +192,9 @@ impl Op {
             Op::Transform { .. } => 7,
             Op::Eq { .. } => 8,
             Op::Copy => 9,
+            Op::TrimDomain { .. } => 10,
+            Op::IsectPlane { .. } => 11,
+            Op::Global { .. } => 12,
         }
     }
 }
@@ -189,11 +218,17 @@ fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx]
 }
 
-/// Checks two axes are long enough and far from parallel.
+/// Checks two axes are long enough, far from parallel, and of a length whose square
+/// does not overflow: unitizing an axis of infinite length gives a zero axis, so a
+/// generator circle on it gets no NURB, which `SmSurfOfRevolution`'s constructor then
+/// evaluates (`EvaluatePoint` dereferences the NULL NURB).
 fn axes(x: [f64; 3], y: [f64; 3], what: &str) -> Result<(), FfiError> {
     finite(&x, what)?;
     finite(&y, what)?;
     let (lx, ly) = (len(x), len(y));
+    if !lx.is_finite() || !ly.is_finite() {
+        return Err(bad(format!("{what}: axis length overflows")));
+    }
     if lx < 1e-6 || ly < 1e-6 || len(cross(x, y)) < 1e-3 * lx * ly {
         return Err(bad(format!("{what}: degenerate or parallel axes")));
     }
@@ -315,6 +350,14 @@ fn push_op(o: &mut Vec<f64>, op: &Op) -> Result<(), FfiError> {
             o.extend_from_slice(&s);
         }
         Op::Eq { other } => push_torus(o, other)?,
+        Op::IsectPlane { plane, args } | Op::Global { plane, args } => {
+            push_plane(o, plane)?;
+            push_args(o, args)?;
+        }
+        Op::TrimDomain { dom } => {
+            domain(*dom, "trim domain")?;
+            o.extend_from_slice(dom);
+        }
     }
     Ok(())
 }

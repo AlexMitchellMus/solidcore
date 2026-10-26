@@ -6,13 +6,15 @@
 //! |------|----------|
 //! | [`find_infinite_region`] | `SmBrep::FindInfiniteRegion` |
 //! | [`orient_sheet_surfaces`] | `SmBrep::OrientSheetSurfaces` |
-//! | [`make_shell_vertex`] | `SmBrep::MakeShellVertex` |
+//! | [`make_shell_vertex`], [`make_shell_vertex_with_kernel_context`] | `SmBrep::MakeShellVertex` |
 //! | [`make_vertex_loop`] | `SmBrep::MakeVertexLoop` |
-//! | [`make_vertex_split_edge`] | `SmBrep::MakeVertexSplitEdge` |
+//! | [`make_vertex_split_edge`], [`make_vertex_split_edge_with_kernel_context`] | `SmBrep::MakeVertexSplitEdge` |
 //! | [`make_edge_in_face_with_vu`], [`drop_edge_curve`] | `SmBrep::MakeEdgeInFaceWithVU` |
 //!
 //! Deviations: typed ids replace pointers; notification storage and geometry
-//! identities are caller-owned. Editing state is part 1's `Brep::editing_enabled`.
+//! identities are caller-owned. Kernel-context entrypoints bind those stores to
+//! the actual kernel context at notification sites; legacy environments retain
+//! their external context, including null. Editing state is part 1's `Brep::editing_enabled`.
 //! Ordinary split failures retain the nearby vertex alongside their status. All six
 //! owned bodies are present; individual dependency calls defer to their owners.
 //! Part 1's `add_*_record` appends a face, edge or vertex to its owning list at
@@ -40,7 +42,9 @@ use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, EFF_ZERO_PARAM};
 use crate::nurbs::b_spline_surface::p1::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use crate::surface::surface::{Surface, SurfaceKind};
+use crate::query::brep::BrepQuery;
+use crate::query::brep::{self as qbrep, BoundingBoxOptions};
+use crate::surface::surface::Surface;
 use crate::topology::edge;
 use crate::topology::vertex;
 use crate::topology::vertexuse;
@@ -51,6 +55,58 @@ use crate::topology::{
 use crate::EntityRef;
 
 const OP: &str = "topology::brep::p9";
+
+/// Identity transport at the actual curve construction event. Legacy callbacks
+/// keep their existing domain; Actual receives the original object and live stores.
+#[derive(Clone, Copy)]
+pub enum CurveIdentity<'a> {
+    /// Existing infallible edge/type resolver.
+    Legacy(&'a dyn Fn(EdgeId, i64) -> crate::geom::object::ObjectRef),
+    /// Existing checked edge/type resolver.
+    Checked(&'a dyn Fn(EdgeId, i64) -> Result<crate::geom::object::ObjectRef>),
+    /// Checked issuer with the real curve, including a not-yet-installed copy.
+    Actual(
+        &'a dyn Fn(
+            EdgeId,
+            &mut Curve,
+            &mut edge::NotifyEnv<'_>,
+        ) -> Result<crate::geom::object::ObjectRef>,
+    ),
+}
+impl CurveIdentity<'_> {
+    pub(crate) fn resolve(
+        self,
+        edge: EdgeId,
+        curve: &mut Curve,
+        env: &mut edge::NotifyEnv<'_>,
+    ) -> Result<crate::geom::object::ObjectRef> {
+        match self {
+            Self::Legacy(resolve) => Ok(resolve(edge, curve.type_code())),
+            Self::Checked(resolve) => resolve(edge, curve.type_code()),
+            Self::Actual(issue) => issue(edge, curve, env),
+        }
+    }
+}
+
+/// Issue the real Curve identity through the caller's retained notification context.
+/// No topology key or temporary kernel context substitutes for the geometry slot.
+/// # Errors
+/// Missing notification context or a geometry identity owned by another context.
+pub fn issue_curve_identity(
+    _edge: EdgeId,
+    curve: &mut Curve,
+    env: &mut edge::NotifyEnv<'_>,
+) -> Result<crate::geom::object::ObjectRef> {
+    let type_code = curve.type_code();
+    let context = env.context.as_deref_mut().ok_or_else(|| {
+        SolidError::invalid_input(
+            OP,
+            "curve identity requires the actual notification context",
+        )
+    })?;
+    let key = context.geometry_key(curve.notify_identity_slot())?;
+    Ok(crate::geom::object::ObjectRef { type_code, key })
+}
 
 /// Outputs of `MakeVertexSplitEdge`, including the endpoint on ordinary failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -79,25 +135,22 @@ impl SplitEdgeOutput {
 ///
 /// The first call, `GetRegions`, requires the B-rep's native owning-list order.
 /// An arena's allocation order cannot substitute for it. Ray selection and its
-/// single shell retry follow that individual dependency call. `world` supplies
-/// the same real geometry/cache context used by shell ray queries.
+/// single shell retry follow that individual dependency call. `query` (the B-rep's
+/// identities and cache) serves both the shell's ray fires and the B-rep's.
 ///
 /// # Errors
 /// Returns the owning unit's `Unported` error, without selecting a guessed region.
-pub fn find_infinite_region<O, W>(
+pub fn find_infinite_region(
     k: &mut Kernel,
     b: &mut Brep,
-    brep_id: crate::topology::BrepId,
+    query: &BrepQuery<'_>,
     shell: Option<ShellId>,
     bbox: Option<&crate::geom::extent3d::Extent3d>,
-    world: &W,
-) -> Result<Option<RegionId>>
-where
-    O: crate::geom::solution_array::SolutionObject + crate::intersect::point_class::ClassObject,
-    W: crate::topology::shell::ShellRayWorld<O>,
-{
+) -> Result<Option<RegionId>> {
     use crate::intersect::point_class::PointClassification;
+    use crate::topology::brep_cache::CacheObject;
     use crate::topology::shell::{ShellRayInput, ShellRayState};
+    let brep_id = query.identity().brep_id;
     let mut shell_to_test = shell;
     let mut supplied_box = bbox.copied();
     // The native recursive retry drops the optional shell AND bounding box. It
@@ -110,12 +163,16 @@ where
         let tolerance = b.tolerance();
         let mut state = ShellRayState {
             region: None,
-            classification: PointClassification::<O>::new(tolerance),
+            classification: PointClassification::<CacheObject>::new(tolerance),
         };
         let bounds = match supplied_box {
             Some(bounds) => bounds,
-            None => crate::error::ignored(brep_bounds(b))?
-                .unwrap_or_else(crate::geom::extent3d::Extent3d::new),
+            None => crate::error::ignored(qbrep::calculate_bounding_box(
+                k,
+                &mut *b,
+                BoundingBoxOptions::default(),
+            ))?
+            .unwrap_or_else(crate::geom::extent3d::Extent3d::new),
         };
         let ray_start = bounds.max() + (bounds.max() - bounds.min()) * 0.5;
         let mut direction = Vec3::new(1.0, 1.0, 1.0);
@@ -155,7 +212,7 @@ where
                                 b.edge(edge_id)?.curve.as_ref(),
                                 "ray target edge without curve",
                             )?
-                            .has_repeated_end_control_points(crate::geom::tol::ZONE_TOL_3D)?;
+                            .has_repeated_end_control_points(k, crate::geom::tol::ZONE_TOL_3D)?;
                         if (pass == 0 && dubious) || (pass == 1 && !dubious) {
                             continue;
                         }
@@ -164,7 +221,7 @@ where
                             required(record.curve.as_ref(), "ray target edge without curve")?;
                         for parameter in parameters {
                             let point =
-                                curve.evaluate_point(record.interval.evaluate(parameter))?;
+                                curve.evaluate_point(k, record.interval.evaluate(parameter))?;
                             let ray = point - ray_start;
                             let squared = ray.length_squared();
                             if squared < distance {
@@ -183,7 +240,7 @@ where
                 b,
                 brep_id,
                 shell,
-                world,
+                query,
                 ShellRayInput {
                     start: ray_start,
                     direction,
@@ -197,14 +254,17 @@ where
             if !success {
                 let edge_id = best_edge.ok_or_else(|| SolidError::null_pointer(OP))?;
                 let record = b.edge(edge_id)?;
-                let curve = required(record.curve.as_ref(), "ray target edge without curve")?;
-                let point = curve.evaluate_point(record.interval.evaluate(0.789))?;
+                // (a copy: the ray fires may add UV trim curves to the B-rep)
+                let curve =
+                    required(record.curve.as_ref(), "ray target edge without curve")?.clone();
+                let interval = record.interval;
+                let point = curve.evaluate_point(k, interval.evaluate(0.789))?;
                 let attempt = crate::topology::shell::ray_fire(
                     k,
                     b,
                     brep_id,
                     shell,
-                    world,
+                    query,
                     ShellRayInput {
                         start: ray_start,
                         direction: point - ray_start,
@@ -216,14 +276,14 @@ where
                 let success = ray_success(&attempt.status)?;
                 state = attempt.state;
                 if !success {
-                    let point = curve.evaluate_point(record.interval.evaluate(0.189))?;
+                    let point = curve.evaluate_point(k, interval.evaluate(0.189))?;
                     let start = bounds.min() - (bounds.max() - bounds.min()) * 0.5;
                     let attempt = crate::topology::shell::ray_fire(
                         k,
                         b,
                         brep_id,
                         shell,
-                        world,
+                        query,
                         ShellRayInput {
                             start,
                             direction: point - start,
@@ -256,7 +316,7 @@ where
                     let curve = required(record.curve.as_ref(), "ray target edge without curve")?;
                     let big_tolerance = record.tolerance > 1.01 * b.tolerance();
                     let repeated =
-                        curve.has_repeated_end_control_points(crate::geom::tol::ZONE_TOL_3D)?;
+                        curve.has_repeated_end_control_points(k, crate::geom::tol::ZONE_TOL_3D)?;
                     // IsSeam may create UV trim curves; reborrow the edge afterwards.
                     let seam = edge::is_seam(k, b, *edge_id)?;
                     let record = b.edge(*edge_id)?;
@@ -279,7 +339,7 @@ where
                         continue;
                     }
                     for parameter in parameters {
-                        let point = curve.evaluate_point(record.interval.evaluate(parameter))?;
+                        let point = curve.evaluate_point(k, record.interval.evaluate(parameter))?;
                         let ray = point - ray_start;
                         let squared = ray.length_squared();
                         if squared < distance {
@@ -290,16 +350,23 @@ where
                 }
             }
             direction = ray_direction(direction)?;
-            if !brep_ray_fire(b, ray_start, direction, tolerance, &mut state)? {
+            // (the rays solve on one cache: nothing edits the B-rep in between)
+            let mut fire = |b: &mut Brep, start: Point3, direction: Vec3| {
+                brep_ray_fire(k, query, b, start, direction, tolerance, &mut state)
+            };
+            if !fire(b, ray_start, direction)? {
                 // Native retries use edges[0], not the closest sampled edge.
                 let edge_id = *required(edges.first(), "missing first ray edge")?;
                 let record = b.edge(edge_id)?;
-                let curve = required(record.curve.as_ref(), "ray target edge without curve")?;
-                let point = curve.evaluate_point(record.interval.evaluate(0.789))?;
-                if !brep_ray_fire(b, ray_start, point - ray_start, tolerance, &mut state)? {
-                    let point = curve.evaluate_point(record.interval.evaluate(0.189))?;
+                // (a copy: the ray fires may add UV trim curves to the B-rep)
+                let curve =
+                    required(record.curve.as_ref(), "ray target edge without curve")?.clone();
+                let interval = record.interval;
+                let point = curve.evaluate_point(k, interval.evaluate(0.789))?;
+                if !fire(b, ray_start, point - ray_start)? {
+                    let point = curve.evaluate_point(k, interval.evaluate(0.189))?;
                     let start = bounds.min() - (bounds.max() - bounds.min()) * 0.5;
-                    if !brep_ray_fire(b, start, point - start, tolerance, &mut state)? {
+                    if !fire(b, start, point - start)? {
                         return Err(SolidError::sm_err(OP));
                     }
                 }
@@ -321,31 +388,27 @@ fn brep_edges(b: &Brep) -> Result<Vec<EdgeId>> {
     crate::topology::brep::p1::edges(b, None)
 }
 
-fn brep_bounds(b: &Brep) -> Result<crate::geom::extent3d::Extent3d> {
-    let _ = b;
-    // UNPORTED(query.brep): SmBrep::CalculateBoundingBox
-    Err(SolidError::unported(
-        "SmBrep::CalculateBoundingBox",
-        "query.brep",
-    ))
-}
-
+/// `this->RayFire(start, direction, tolerance, pRegion, sPC)` (unit `topology.brep_p2`)
+/// on `query`'s cache: `Ok(true)` with the region in `state` on success, `Ok(false)` on
+/// an ordinary failure (the caller tries its next ray). The intersection is not read
+/// after the ray fires, so `state.classification` stays as it was.
 fn brep_ray_fire<O>(
-    b: &Brep,
+    k: &Kernel,
+    query: &BrepQuery<'_>,
+    b: &mut Brep,
     start: Point3,
     direction: Vec3,
     tolerance: f64,
     state: &mut crate::topology::shell::ShellRayState<O>,
 ) -> Result<bool> {
-    let _ = (b, start, direction, tolerance, state);
-    // UNPORTED(query.brep): SmBrep::RayFire over the B-rep cache. The port
-    // (`topology::brep::p2::ray_fire`) solves on the SM_OC_BREP cache world and first
-    // needs CalculateBoundingBox; both belong to query.brep, as for
-    // ShellRayWorld::shell_ray_sector.
-    Err(SolidError::unported(
-        "SmBrep::RayFire (B-rep cache world)",
-        "query.brep",
-    ))
+    let fired = query.ray_fire_live(k, b, start, direction, tolerance);
+    match crate::error::ignored(fired)? {
+        Some(hit) => {
+            state.region = hit.region;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
 }
 
 fn ray_direction(direction: Vec3) -> Result<Vec3> {
@@ -487,6 +550,52 @@ pub fn make_shell_vertex(
     point: Point3,
     env: &mut edge::NotifyEnv<'_>,
 ) -> Result<(ShellId, VertexId)> {
+    make_shell_vertex_with_context(
+        None,
+        b,
+        region,
+        point,
+        &mut edge::NotifyState::from_env(env),
+    )
+}
+
+/// [`make_shell_vertex`] using the actual kernel context and caller-owned stores.
+/// The same incomplete topology barriers and allocation order apply.
+pub fn make_shell_vertex_with_kernel_context(
+    k: &mut Kernel,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    point: Point3,
+    stores: &mut edge::NotificationStores<'_>,
+) -> Result<(ShellId, VertexId)> {
+    make_shell_vertex_with_state(
+        k,
+        b,
+        region,
+        point,
+        &mut edge::NotifyState::from_kernel_stores(stores),
+    )
+}
+
+pub(crate) fn make_shell_vertex_with_state(
+    k: &mut Kernel,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    point: Point3,
+    state: &mut edge::NotifyState<'_>,
+) -> Result<(ShellId, VertexId)> {
+    make_shell_vertex_with_context(Some(&mut k.context), b, region, point, state)
+}
+
+// No geometry call in this routine needs the whole kernel. The optional context
+// lets the immutable-kernel legacy face constructor use this same algorithm.
+pub(crate) fn make_shell_vertex_with_context(
+    mut kernel_context: Option<&mut crate::geom::context::Context>,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    point: Point3,
+    state: &mut edge::NotifyState<'_>,
+) -> Result<(ShellId, VertexId)> {
     let region = match region {
         Some(region) => Some(region),
         // GetInfiniteRegion: the stored m_pInfiniteRegion.
@@ -495,29 +604,37 @@ pub fn make_shell_vertex(
     if let Some(region) = region {
         b.region(region)?;
     }
-    let (shell, vertex) = make_shell_vertex_topology(b, region, env)?;
-    register_entities(env, &[EntityRef::Shell(shell), EntityRef::Vertex(vertex)]);
+    let (shell, vertex) = state.with_context(kernel_context.as_deref_mut(), |env| {
+        make_shell_vertex_topology(b, region, env)
+    })?;
+    register_state_entities(state, &[EntityRef::Shell(shell), EntityRef::Vertex(vertex)]);
     for vu in b.vertex(vertex)?.vertexuses.clone() {
-        register_entities(env, &[EntityRef::Vertexuse(vu)]);
+        register_state_entities(state, &[EntityRef::Vertexuse(vu)]);
     }
-    ignore_status(set_vertex_point(b, vertex, point, env))?;
+    state.with_context(kernel_context.as_deref_mut(), |env| {
+        ignore_status(set_vertex_point(b, vertex, point, env))
+    })?;
     vertex::set_tolerance(b, vertex, b.tolerance(), true, true)?;
-    brep_notify(
-        b,
-        env,
-        NotifyOperation::AddToBrep,
-        EntityRef::Vertex(vertex),
-        None,
-        None,
-    )?;
-    brep_notify(
-        b,
-        env,
-        NotifyOperation::AddToBrep,
-        EntityRef::Shell(shell),
-        None,
-        None,
-    )?;
+    state.with_context(kernel_context.as_deref_mut(), |env| {
+        brep_notify(
+            b,
+            env,
+            NotifyOperation::AddToBrep,
+            EntityRef::Vertex(vertex),
+            None,
+            None,
+        )
+    })?;
+    state.with_context(kernel_context, |env| {
+        brep_notify(
+            b,
+            env,
+            NotifyOperation::AddToBrep,
+            EntityRef::Shell(shell),
+            None,
+            None,
+        )
+    })?;
     Ok((shell, vertex))
 }
 
@@ -616,8 +733,12 @@ pub fn make_vertex_loop(
 }
 
 fn register_entities(env: &mut edge::NotifyEnv<'_>, entities: &[EntityRef]) {
+    register_state_entities(&mut edge::NotifyState::from_env(env), entities);
+}
+
+fn register_state_entities(state: &mut edge::NotifyState<'_>, entities: &[EntityRef]) {
     for &entity in entities {
-        env.records.entry((env.key_of)(entity).key).or_default();
+        state.records.entry((state.key_of)(entity).key).or_default();
     }
 }
 
@@ -738,6 +859,7 @@ fn set_curve_owner(
     let owner = (env.key_of)(EntityRef::Edge(edge_id));
     let curve = required(b.edge_mut(edge_id)?.curve.as_mut(), "edge without curve")?;
     let (_, change) = curve.set_owner(Some(owner), None);
+    b.set_geometry_owner_key(EntityRef::Edge(edge_id), Some(owner));
     if let Some(change) = change {
         ignore_status(crate::geom::a_object::notify(
             env.attributes,
@@ -807,20 +929,127 @@ pub fn make_vertex_split_edge(
     env: &mut edge::NotifyEnv<'_>,
     curve_ref: &dyn Fn(EdgeId, i64) -> crate::geom::object::ObjectRef,
 ) -> Result<SplitEdgeOutput> {
+    make_vertex_split_edge_with_state(
+        k,
+        b,
+        edge_id,
+        parameter,
+        &mut edge::NotifyState::from_env(env),
+        curve_ref,
+    )
+}
+
+/// [`make_vertex_split_edge`] notifying through the actual kernel context.
+/// `stores` supplies real topology/attribute records; `curve_ref` identifies each
+/// edge's curve, including the newly allocated edge. Refusal and errors retain the
+/// same outputs and partial edits as the legacy entrypoint.
+pub fn make_vertex_split_edge_with_kernel_context(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edge_id: EdgeId,
+    parameter: f64,
+    stores: &mut edge::NotificationStores<'_>,
+    curve_ref: &dyn Fn(EdgeId, i64) -> crate::geom::object::ObjectRef,
+) -> Result<SplitEdgeOutput> {
+    make_vertex_split_edge_with_state(
+        k,
+        b,
+        edge_id,
+        parameter,
+        &mut edge::NotifyState::from_kernel_stores(stores),
+        curve_ref,
+    )
+}
+
+pub(crate) fn make_vertex_split_edge_with_state(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edge_id: EdgeId,
+    parameter: f64,
+    state: &mut edge::NotifyState<'_>,
+    curve_ref: &dyn Fn(EdgeId, i64) -> crate::geom::object::ObjectRef,
+) -> Result<SplitEdgeOutput> {
+    make_vertex_split_edge_with_identity(k, b, edge_id, parameter, state, &|e, kind| {
+        Ok(curve_ref(e, kind))
+    })
+}
+
+/// The same native split with a caller identity resolver that can refuse an
+/// unregistered newly allocated curve. Partial topology and notifications remain
+/// visible on an identity error, just as on downstream constructor errors.
+pub(crate) fn make_vertex_split_edge_with_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edge_id: EdgeId,
+    parameter: f64,
+    state: &mut edge::NotifyState<'_>,
+    curve_ref: &dyn Fn(EdgeId, i64) -> Result<crate::geom::object::ObjectRef>,
+) -> Result<SplitEdgeOutput> {
+    make_vertex_split_edge_with_curve_identity_state(
+        k,
+        b,
+        edge_id,
+        parameter,
+        state,
+        CurveIdentity::Checked(curve_ref),
+    )
+}
+
+/// Split with an actual-curve issuer at Copy/SetCurve, retaining the native prefix.
+/// # Errors
+/// The original split/notification errors or checked identity issuance errors.
+pub fn make_vertex_split_edge_with_curve_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edge_id: EdgeId,
+    parameter: f64,
+    env: &mut edge::NotifyEnv<'_>,
+    curve_identity: CurveIdentity<'_>,
+) -> Result<SplitEdgeOutput> {
+    make_vertex_split_edge_with_curve_identity_state(
+        k,
+        b,
+        edge_id,
+        parameter,
+        &mut edge::NotifyState::from_env(env),
+        curve_identity,
+    )
+}
+
+/// Split through the actual kernel context with checked curve identity issuance.
+/// # Errors
+/// Original split errors or identity issuance failure after the retained prefix.
+pub fn make_vertex_split_edge_with_kernel_curve_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edge_id: EdgeId,
+    parameter: f64,
+    stores: &mut edge::NotificationStores<'_>,
+    curve_identity: CurveIdentity<'_>,
+) -> Result<SplitEdgeOutput> {
+    make_vertex_split_edge_with_curve_identity_state(
+        k,
+        b,
+        edge_id,
+        parameter,
+        &mut edge::NotifyState::from_kernel_stores(stores),
+        curve_identity,
+    )
+}
+
+pub(crate) fn make_vertex_split_edge_with_curve_identity_state(
+    k: &mut Kernel,
+    b: &mut Brep,
+    edge_id: EdgeId,
+    parameter: f64,
+    state: &mut edge::NotifyState<'_>,
+    curve_identity: CurveIdentity<'_>,
+) -> Result<SplitEdgeOutput> {
     let out = SplitEdgeOutput::default();
     if !b.editing_enabled() {
         return Ok(out);
     }
-    let previous = k.context.doing_boolean();
-    k.context.set_doing_boolean(true);
-    let previous_env = env
-        .context
-        .as_deref()
-        .map(crate::geom::context::Context::doing_boolean);
-    if let Some(context) = env.context.as_deref_mut() {
-        context.set_doing_boolean(true);
-    }
-    let result = (|| {
+    state.with_doing_boolean(k, |k, state| {
         let scaled_zero = EFF_ZERO_PARAM * (1.0 + parameter.abs());
         let interval = b.edge(edge_id)?.interval;
         if !interval.contains_value(parameter, scaled_zero) {
@@ -832,8 +1061,8 @@ pub fn make_vertex_split_edge(
             let start_ivl = Extent1d::from_min_max(interval.min(), parameter);
             let end_ivl = Extent1d::from_min_max(parameter, interval.max());
             let curve = required(b.edge(edge_id)?.curve.as_ref(), "split edge has no curve")?;
-            let dist_to_start = curve.approximate_length(&start_ivl, 2, false)?.0;
-            let dist_to_end = curve.approximate_length(&end_ivl, 2, false)?.0;
+            let dist_to_start = curve.approximate_length(k, &start_ivl, 2, false)?.0;
+            let dist_to_end = curve.approximate_length(k, &end_ivl, 2, false)?.0;
             let start = required(
                 edge::start_vertex(b, edge_id)?,
                 "split edge has no start vertex",
@@ -845,11 +1074,13 @@ pub fn make_vertex_split_edge(
             let start_tol = b.vertex(start)?.tolerance;
             let end_tol = b.vertex(end)?.tolerance;
             if dist_to_start < start_tol
-                && curve.approximate_length(&start_ivl, 10, false)?.0 < start_tol
+                && curve.approximate_length(k, &start_ivl, 10, false)?.0 < start_tol
             {
                 near_start = true;
             }
-            if dist_to_end < end_tol && curve.approximate_length(&end_ivl, 10, false)?.0 < end_tol {
+            if dist_to_end < end_tol
+                && curve.approximate_length(k, &end_ivl, 10, false)?.0 < end_tol
+            {
                 near_end = true;
             }
             if near_start {
@@ -872,16 +1103,18 @@ pub fn make_vertex_split_edge(
             });
         }
 
-        let edge_ref = (env.key_of)(EntityRef::Edge(edge_id));
-        ignore_status(edge::notify(
-            b,
-            edge_id,
-            env,
-            NotifyOperation::PreEdit,
-            [Some(edge_ref), Some(brep_ref(b)), None],
-        ))?;
+        let edge_ref = (state.key_of)(EntityRef::Edge(edge_id));
+        state.with_env(k, |env| {
+            ignore_status(edge::notify(
+                b,
+                edge_id,
+                env,
+                NotifyOperation::PreEdit,
+                [Some(edge_ref), Some(brep_ref(b)), None],
+            ))
+        })?;
         for face in edge::faces(b, edge_id, None)? {
-            face_notify(b, face, env, NotifyOperation::PreEdit)?;
+            state.with_env(k, |env| face_notify(b, face, env, NotifyOperation::PreEdit))?;
             b.face(face)?;
         }
         let start = required(edge::start_vertex(b, edge_id)?, "split edge without start")?;
@@ -894,8 +1127,8 @@ pub fn make_vertex_split_edge(
             curve: None,
         })?;
         let new_vertex = b.add_vertex_record(Vertex::default())?;
-        register_entities(
-            env,
+        register_state_entities(
+            state,
             &[EntityRef::Edge(new_edge), EntityRef::Vertex(new_vertex)],
         );
         let mut ivl1 = Extent1d::from_min_max(interval.min(), parameter);
@@ -907,34 +1140,42 @@ pub fn make_vertex_split_edge(
         let same = b.edgeuse(primary)?.orientation == OrientType::Same;
         b.edge_mut(edge_id)?.interval = if same { ivl1 } else { ivl2 };
         b.edge_mut(new_edge)?.interval = if same { ivl2 } else { ivl1 };
-        let copied =
+        let mut copied =
             required(b.edge(edge_id)?.curve.as_ref(), "split edge without curve")?.copy(k)?;
-        let old_curve_type =
-            required(b.edge(edge_id)?.curve.as_ref(), "split edge without curve")?.type_code();
-        let new_curve_type = copied.type_code();
-        let old_curve_ref = curve_ref(edge_id, old_curve_type);
-        let new_curve_ref = curve_ref(new_edge, new_curve_type);
-        ignore_status(edge::set_curve(
-            b,
-            new_edge,
-            Some(copied),
-            edge::SetCurveOptions {
-                delete_old_curve: false,
-                ..edge::SetCurveOptions::default()
-            },
-            env,
-            [Some(new_curve_ref), None],
-        ))?;
-        set_curve_owner(b, new_edge, env, new_curve_ref)?;
-        ignore_status(crate::geom::a_object::notify(
-            env.attributes,
-            env.context.as_deref_mut(),
-            NotifyOperation::Split,
-            old_curve_ref,
-            Some(old_curve_ref),
-            Some(new_curve_ref),
-            Some(edge_ref),
-        ))?;
+        let old_curve_ref = state.with_env(k, |env| {
+            let curve = required(
+                b.edge_mut(edge_id)?.curve.as_mut(),
+                "split edge without curve",
+            )?;
+            curve_identity.resolve(edge_id, curve, env)
+        })?;
+        let new_curve_ref =
+            state.with_env(k, |env| curve_identity.resolve(new_edge, &mut copied, env))?;
+        state.with_env(k, |env| {
+            ignore_status(edge::set_curve(
+                b,
+                new_edge,
+                Some(copied),
+                edge::SetCurveOptions {
+                    delete_old_curve: false,
+                    ..edge::SetCurveOptions::default()
+                },
+                env,
+                [Some(new_curve_ref), None],
+            ))
+        })?;
+        state.with_env(k, |env| set_curve_owner(b, new_edge, env, new_curve_ref))?;
+        state.with_env(k, |env| {
+            ignore_status(crate::geom::a_object::notify(
+                env.attributes,
+                env.context.as_deref_mut(),
+                NotifyOperation::Split,
+                old_curve_ref,
+                Some(old_curve_ref),
+                Some(new_curve_ref),
+                Some(edge_ref),
+            ))
+        })?;
         let split_parameter;
         if same {
             ignore_status(
@@ -990,8 +1231,10 @@ pub fn make_vertex_split_edge(
             b.edge_mut(new_edge)?.interval = ivl1;
         }
         let point = required(b.edge(edge_id)?.curve.as_ref(), "split edge without curve")?
-            .evaluate_point(split_parameter)?;
-        ignore_status(set_vertex_point(b, new_vertex, point, env))?;
+            .evaluate_point(k, split_parameter)?;
+        state.with_env(k, |env| {
+            ignore_status(set_vertex_point(b, new_vertex, point, env))
+        })?;
         let original_uses = edge::edgeuses(b, edge_id, None, None)?;
         if original_uses.len() % 2 != 0 {
             return Err(SolidError::invalid_input(
@@ -1013,7 +1256,7 @@ pub fn make_vertex_split_edge(
                 ..Vertexuse::default()
             })?;
             b.vertex_mut(new_vertex)?.vertexuses.push(vu);
-            register_entities(env, &[EntityRef::Edgeuse(eu), EntityRef::Vertexuse(vu)]);
+            register_state_entities(state, &[EntityRef::Edgeuse(eu), EntityRef::Vertexuse(vu)]);
             new_vertexuses.push(vu);
         }
         for ((old_pair, new_pair), vu_pair) in original_uses
@@ -1067,7 +1310,7 @@ pub fn make_vertex_split_edge(
                 b.edgeuse_mut(new2)?.ccw = Some(old2);
             }
         }
-        let for_tessellation = env
+        let for_tessellation = state
             .attributes
             .find_attribute(b.key(), crate::geom::attribute::ids::TESSELLATING)
             .is_some();
@@ -1095,22 +1338,26 @@ pub fn make_vertex_split_edge(
         ignore_status(vertex::set_tolerance(b, new_vertex, tolerance, true, true))?;
         insert_brep_entity(b, EntityRef::Edge(new_edge))?;
         insert_brep_entity(b, EntityRef::Vertex(new_vertex))?;
-        brep_notify(
-            b,
-            env,
-            NotifyOperation::AddToBrep,
-            EntityRef::Vertex(new_vertex),
-            None,
-            None,
-        )?;
-        brep_notify(
-            b,
-            env,
-            NotifyOperation::SplitInBrep,
-            EntityRef::Edge(edge_id),
-            Some(EntityRef::Edge(new_edge)),
-            None,
-        )?;
+        state.with_env(k, |env| {
+            brep_notify(
+                b,
+                env,
+                NotifyOperation::AddToBrep,
+                EntityRef::Vertex(new_vertex),
+                None,
+                None,
+            )
+        })?;
+        state.with_env(k, |env| {
+            brep_notify(
+                b,
+                env,
+                NotifyOperation::SplitInBrep,
+                EntityRef::Edge(edge_id),
+                Some(EntityRef::Edge(new_edge)),
+                None,
+            )
+        })?;
         sync_edge_cache(b, edge_id)?;
         sync_edge_cache(b, new_edge)?;
         Ok(SplitEdgeOutput {
@@ -1118,12 +1365,7 @@ pub fn make_vertex_split_edge(
             edges: Some([edge_id, new_edge]),
             vertex: Some(new_vertex),
         })
-    })();
-    if let (Some(context), Some(previous)) = (env.context.as_deref_mut(), previous_env) {
-        context.set_doing_boolean(previous);
-    }
-    k.context.set_doing_boolean(previous);
-    result
+    })
 }
 
 /// Inputs for `MakeEdgeInFaceWithVU`. Optional geometry is owned, as the native
@@ -1172,12 +1414,31 @@ pub fn make_edge_in_face_with_vu(
     env: &mut edge::NotifyEnv<'_>,
     curve_ref: &dyn Fn(EdgeId, i64) -> crate::geom::object::ObjectRef,
 ) -> Result<EdgeInFaceOutput> {
+    make_edge_in_face_with_vu_with_curve_identity(
+        k,
+        b,
+        input,
+        env,
+        CurveIdentity::Legacy(curve_ref),
+    )
+}
+
+/// Install the actual input Curve using checked identity issuance before `SetCurve`.
+/// # Errors
+/// Original construction/notification errors or checked identity issuance errors.
+pub fn make_edge_in_face_with_vu_with_curve_identity(
+    k: &Kernel,
+    b: &mut Brep,
+    input: EdgeInFaceInput,
+    env: &mut edge::NotifyEnv<'_>,
+    curve_identity: CurveIdentity<'_>,
+) -> Result<EdgeInFaceOutput> {
     use crate::topology::{
         face::{p1 as fp1, p2 as fp2},
         loopuse as lu,
     };
     let face = input.face.ok_or_else(|| SolidError::null_pointer(OP))?;
-    let curve = input.curve.ok_or_else(|| SolidError::null_pointer(OP))?;
+    let mut curve = input.curve.ok_or_else(|| SolidError::null_pointer(OP))?;
     if !b.editing_enabled() {
         return Err(SolidError::sm_err(OP));
     }
@@ -1246,14 +1507,19 @@ pub fn make_edge_in_face_with_vu(
     if uv_trim.is_none() {
         drop_fail = None;
         let face_record = b.face(face)?;
-        let surface = required(face_record.surface.as_ref(), "face without surface")?;
-        let dropped = drop_edge_curve(
+        let surface = required(face_record.surface.as_ref(), "face without surface")?
+            .clone_for_evaluation()?;
+        let uv_domain = face_record.uv_domain;
+        let face_tolerance = face_record.tolerance;
+        let dropped = drop_edge_curve_in_face(
             k,
-            surface,
-            &face_record.uv_domain,
+            b,
+            face,
+            &surface,
+            &uv_domain,
             &curve,
             &input.interval,
-            face_record.tolerance,
+            face_tolerance,
         )?;
         let mut curves = dropped.uv_curves;
         max_dist = dropped.max_drop_to_surf;
@@ -1264,7 +1530,7 @@ pub fn make_edge_in_face_with_vu(
             // native signature, so projection cannot populate this pointer.
         }
     }
-    let curve_identity = curve_ref(edge_id, curve.type_code());
+    let curve_identity = curve_identity.resolve(edge_id, &mut curve, env)?;
     // The native excessive-distance SE(SM_ERR) is logging-only.
     ignore_status(edge::set_curve(
         b,
@@ -1331,7 +1597,7 @@ pub fn make_edge_in_face_with_vu(
             copy
         });
         seam = required(b.edgeuse(top)?.uv_trim_curve.as_ref(), "trim disappeared")?
-            .is_domain_boundary(&domain, crate::math::EFF_ZERO)?;
+            .is_domain_boundary(k, &domain, crate::math::EFF_ZERO)?;
         if seam != SurfParamType::Neither {
             let translation = match seam {
                 SurfParamType::UMin => Vec3::new(domain.x_length(), 0.0, 0.0),
@@ -1385,19 +1651,22 @@ pub fn make_edge_in_face_with_vu(
             let curve = required(
                 b.edge(edge_id)?.curve.as_ref(),
                 "inserted edge without curve",
-            )?;
+            )?
+            .clone();
+            let tolerance = b.tolerance();
             end = find_vertex_sector(
+                k,
                 b,
                 VertexSectorInput {
                     face,
                     vertex: end_vertex,
-                    curve,
+                    curve: &curve,
                     uv_trim: None,
                     parameter: t_end,
                     other_parameter: t_start,
                     orientation: end_orientation,
-                    tolerance: b.tolerance(),
-                    use_uv_classification: false,
+                    tolerance,
+                    validate_sector: false,
                 },
             )?
             .unwrap_or(end);
@@ -1406,8 +1675,10 @@ pub fn make_edge_in_face_with_vu(
         let new_face = b.add_face_record(crate::topology::Face::new(b.face(face)?.shell))?;
         let mut surface = required(b.face(face)?.surface.as_ref(), "split face without surface")?
             .copy_and_add_analytics(k)?;
-        surface.set_owner(Some((env.key_of)(EntityRef::Face(new_face))));
+        let new_face_owner = (env.key_of)(EntityRef::Face(new_face));
+        surface.set_owner(Some(new_face_owner));
         b.face_mut(new_face)?.surface = Some(surface);
+        b.set_geometry_owner_key(EntityRef::Face(new_face), Some(new_face_owner));
         set_face_tolerance(b, new_face, b.tolerance(), true, true)?;
         b.face_mut(new_face)?.uv_domain = b.face(face)?.uv_domain;
         let new_fu1 = b.add_faceuse_record(crate::topology::Faceuse::default())?;
@@ -1589,10 +1860,17 @@ struct VertexSectorInput<'a> {
     other_parameter: f64,
     orientation: OrientType,
     tolerance: f64,
-    use_uv_classification: bool,
+    validate_sector: bool,
 }
 
-fn find_vertex_sector(b: &Brep, input: VertexSectorInput<'_>) -> Result<Option<VertexuseId>> {
+/// `pFace->FindVertexSector(pVertex, *pCurve, pUVTrim, dT, dTOther, eOrient, tol,
+/// bValidateSector, rpVU, ..)` (unit `topology.face_p4`; `bUVSpaceOkay` at its default
+/// `TRUE`; the possible-problem outputs are unused): the vertex use of the sector.
+fn find_vertex_sector(
+    k: &Kernel,
+    b: &mut Brep,
+    input: VertexSectorInput<'_>,
+) -> Result<Option<VertexuseId>> {
     let VertexSectorInput {
         face,
         vertex,
@@ -1602,25 +1880,25 @@ fn find_vertex_sector(b: &Brep, input: VertexSectorInput<'_>) -> Result<Option<V
         other_parameter,
         orientation,
         tolerance,
-        use_uv_classification,
+        validate_sector,
     } = input;
-    let _ = (
+    let sector = crate::topology::face::p4::find_vertex_sector(
+        k,
         b,
         face,
-        vertex,
-        curve,
-        uv_trim,
-        parameter,
-        other_parameter,
-        orientation,
-        tolerance,
-        use_uv_classification,
-    );
-    // UNPORTED(topology.face_p4): SmFace::FindVertexSector
-    Err(SolidError::unported(
-        "SmFace::FindVertexSector",
-        "topology.face_p4",
-    ))
+        crate::topology::face::p4::FindVertexSectorArgs {
+            vertex,
+            curve,
+            uv_curve: uv_trim,
+            param_at_vertex: parameter,
+            param_ivl_end: other_parameter,
+            orientation,
+            zone_tol_3d: tolerance,
+            validate_sector,
+            uv_space_okay: true,
+        },
+    )?;
+    Ok(sector.vertexuse)
 }
 
 fn remove_old_loop_vertices(b: &mut Brep, vu: VertexuseId) -> Result<()> {
@@ -1674,18 +1952,20 @@ fn set_face_tolerance(
 
 fn compute_loop_orientation(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     face: FaceId,
     loop_: LoopId,
     uv_bounds: Option<&mut crate::geom::extent2d::Extent2d>,
     do_3d_loop_computation: bool,
 ) -> Result<OrientType> {
-    let _ = (k, b, face, loop_, uv_bounds, do_3d_loop_computation);
-    // UNPORTED(topology.face_p3): SmFace::ComputeLoopOrientation
-    Err(SolidError::unported(
-        "SmFace::ComputeLoopOrientation",
-        "topology.face_p3",
-    ))
+    crate::topology::face::p3::compute_loop_orientation(
+        k,
+        b,
+        face,
+        loop_,
+        uv_bounds,
+        do_3d_loop_computation,
+    )
 }
 
 fn shell_post_insert(
@@ -1832,7 +2112,7 @@ fn redistribute_inner_loops(
         }
         let edges = lu::loop_edges(b, loop_)?;
         let (mut point, mut tolerance) = if let Some(edge) = edges.first() {
-            edge_sample(b, required(*edge, "inner loop has null edge")?)?
+            edge_sample(k, b, required(*edge, "inner loop has null edge")?)?
         } else {
             let vertices = lu::loop_vertices(b, loop_)?;
             let v = required(
@@ -1902,7 +2182,7 @@ fn redistribute_inner_loops(
                     } else {
                         let edge =
                             *required(other_edges.first(), "nested other face without edge")?;
-                        (point, tolerance) = edge_sample(b, edge)?;
+                        (point, tolerance) = edge_sample(k, b, edge)?;
                         classify_with_retries(
                             k,
                             b,
@@ -1948,10 +2228,10 @@ fn redistribute_inner_loops(
     Ok(())
 }
 
-fn edge_sample(b: &Brep, edge: EdgeId) -> Result<(Point3, f64)> {
+fn edge_sample(k: &Kernel, b: &Brep, edge: EdgeId) -> Result<(Point3, f64)> {
     let record = b.edge(edge)?;
     let point = required(record.curve.as_ref(), "sample edge without curve")?
-        .evaluate_point(record.interval.evaluate(0.34567))?;
+        .evaluate_point(k, record.interval.evaluate(0.34567))?;
     Ok((point, record.tolerance))
 }
 
@@ -1983,6 +2263,7 @@ fn computed_uv_domain(
     .map_or(initial, |out| out.domain))
 }
 
+#[derive(Clone, Copy)]
 struct FacePointInput {
     face: FaceId,
     point: Point3,
@@ -1994,7 +2275,7 @@ struct FacePointInput {
 
 fn classify_with_retries(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     mut input: FacePointInput,
     classify_to_original: bool,
     pc: &mut crate::intersect::point_class::PointClassification<EntityRef>,
@@ -2015,9 +2296,12 @@ fn classify_with_retries(
     Ok(())
 }
 
+/// `pTgtFace->Point3DClassify(point, tol, bDoBoundaryIntersections, sPointClass,
+/// pOptGuessUV, bTgtLoopsOnly)` ([`crate::query::face::p1::point_3d_classify`]), with
+/// no target loop list (the outer loop when `outer_only`).
 fn point_3d_classify(
     k: &Kernel,
-    b: &Brep,
+    b: &mut Brep,
     input: &FacePointInput,
     pc: &mut crate::intersect::point_class::PointClassification<EntityRef>,
 ) -> Result<()> {
@@ -2028,27 +2312,21 @@ fn point_3d_classify(
         intersect_boundaries,
         guess,
         outer_only,
-    } = input;
-    let _ = (
+    } = *input;
+    crate::query::face::p1::point_3d_classify(
         k,
         b,
         face,
         point,
         tolerance,
         intersect_boundaries,
-        guess,
-        outer_only,
         pc,
-    );
-    // DISPATCH GAP: SmFace::Point3DClassify is ported
-    // (`query::face::p1::point_3d_classify`, query.face_p1 partial; no UNPORTED marker),
-    // but it takes `&mut Brep` (for `query::face::p2::point_classify`) and this caller's
-    // chain holds `&Brep`; wire it when the B-rep can be lent mutably here. Until
-    // then every such case would still defer inside it (topology.face_p2 / query.face_p2).
-    Err(SolidError::unported(
-        "SmFace::Point3DClassify",
-        "query.face_p1",
-    ))
+        crate::query::face::p1::Point3dClassifyOptions {
+            guess_uv: guess,
+            tgt_loops_only: outer_only,
+            ..crate::query::face::p1::Point3dClassifyOptions::default()
+        },
+    )
 }
 
 /// Geometry-only projection sequence used by `MakeEdgeInFaceWithVU`.
@@ -2090,7 +2368,7 @@ pub fn drop_edge_curve(
         None,
     )?;
     Ok(EdgeCurveDrop {
-        uv_curves: dropped.uv_curves.into_iter().map(Curve::from).collect(),
+        uv_curves: dropped.uv_curves,
         max_drop_to_surf: dropped.max_drop_to_surf,
         max_approx_dev: dropped.max_approx_dev,
     })
@@ -2107,6 +2385,102 @@ pub struct EdgeCurveDrop {
     pub max_approx_dev: f64,
 }
 
+/// [`drop_edge_curve`] onto the surface of face `face` of `b` with the face's own
+/// UV domain and tolerance: the projection prefix of `MakeEdgeInFaceWithVU` for a
+/// face-owned surface, which classifies and builds its caches through the face.
+///
+/// # Errors
+/// As [`drop_edge_curve`], and those of the face classification.
+pub fn drop_edge_curve_on_face(
+    k: &Kernel,
+    b: &mut Brep,
+    face: FaceId,
+    curve: &Curve,
+    interval: &Extent1d,
+) -> Result<EdgeCurveDrop> {
+    let record = b.face(face)?;
+    let surface =
+        required(record.surface.as_ref(), "face without surface")?.clone_for_evaluation()?;
+    let (uv_domain, tolerance) = (record.uv_domain, record.tolerance);
+    drop_edge_curve_in_face(k, b, face, &surface, &uv_domain, curve, interval, tolerance)
+}
+
+/// [`drop_edge_curve`] onto face `face` of `b`, whose surface `surface` is (a copy for
+/// evaluation): upstream's surface is owned by the face, so the start point drop's
+/// fast-drop trim test classifies on the face
+/// ([`crate::intersect::point_class::live_face_fast_drop_test`]).
+#[allow(clippy::too_many_arguments)]
+fn drop_edge_curve_in_face(
+    k: &Kernel,
+    b: &mut Brep,
+    face: FaceId,
+    surface: &Surface,
+    domain: &crate::geom::extent2d::Extent2d,
+    curve: &Curve,
+    interval: &Extent1d,
+    face_tolerance: f64,
+) -> Result<EdgeCurveDrop> {
+    let mut test_on: Option<bool> = None;
+    for factor in [1.0, 10.0, 300.0] {
+        let mut classify = |k: &Kernel, uv: crate::math::Point2, src_tol: f64| -> Result<bool> {
+            crate::intersect::point_class::live_face_fast_drop_test(
+                k,
+                b,
+                face,
+                &mut test_on,
+                uv,
+                src_tol,
+            )
+        };
+        // the virtual SmSurface::DropCurve with the defaults bKeepAllDropCurves = TRUE,
+        // no failure record, bCreatingUVTrimCurve = TRUE
+        let dropped = surface.drop_curve_face_tested::<crate::surface::surface::p4::NoObject>(
+            k,
+            domain,
+            curve,
+            interval,
+            face_tolerance * factor,
+            true,
+            None,
+            true,
+            Some(&mut classify),
+        )?;
+        if !dropped.uv_curves.is_empty() {
+            return Ok(EdgeCurveDrop {
+                uv_curves: dropped.uv_curves,
+                max_drop_to_surf: dropped.max_drop_to_surf,
+                max_approx_dev: dropped.max_approx_dev,
+            });
+        }
+    }
+    // the face's surface cache (upstream's tracer fetches it for the face-owned surface)
+    let mut cache = crate::surface::surface::p1::SurfaceSolveContext::build_surface_cache(
+        &mut crate::query::brep::BrepFaceServices::new(&mut *b),
+        k,
+        surface,
+        Some(crate::topology::brep_cache::CacheObject::Surface(face)),
+    )?;
+    let dropped = surface.drop_and_trim_curve_in::<
+        crate::topology::ObjectHandle,
+        crate::topology::brep_cache::CacheObject,
+    >(
+        k,
+        Some(&mut cache),
+        domain,
+        curve,
+        interval,
+        face_tolerance * 100.0,
+        true,
+        true,
+        None,
+    )?;
+    Ok(EdgeCurveDrop {
+        uv_curves: dropped.uv_curves,
+        max_drop_to_surf: dropped.max_drop_to_surf,
+        max_approx_dev: dropped.max_approx_dev,
+    })
+}
+
 fn drop_curve(
     k: &Kernel,
     surface: &Surface,
@@ -2115,25 +2489,539 @@ fn drop_curve(
     interval: &Extent1d,
     tolerance: f64,
 ) -> Result<(Vec<Curve>, f64, f64)> {
-    if let SurfaceKind::Plane(plane) = surface.kind() {
-        // The real SmPlane override; its generic fallback retains the p3 deferral.
-        let dropped = plane.drop_curve(k, domain, curve, interval, tolerance, true, true)?;
-        return Ok((
-            dropped.uv_curves,
-            dropped.max_drop_to_surf,
-            dropped.max_approx_dev,
-        ));
-    }
-    // UNPORTED(intersect.surface_drop_lib_p3): SmSurface::DropCurve
-    Err(SolidError::unported(
-        "SmSurface::DropCurve",
-        "intersect.surface_drop_lib_p3",
+    // the virtual SmSurface::DropCurve with the defaults bKeepAllDropCurves = TRUE,
+    // no failure record, bCreatingUVTrimCurve = TRUE
+    let dropped = surface.drop_curve::<crate::surface::surface::p4::NoObject>(
+        k, domain, curve, interval, tolerance, true, None, true,
+    )?;
+    Ok((
+        dropped.uv_curves,
+        dropped.max_drop_to_surf,
+        dropped.max_approx_dev,
     ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod notifications {
+        use super::*;
+        use crate::geom::attribute::{ids, Attribute, AttributeStore, Behavior, ObjectKey};
+        use crate::geom::context::{Context, MarkLock, ALL_MARKS};
+        use crate::geom::object::ObjectRef;
+        use crate::topology::edge::notification_test_support as callbacks;
+        use crate::topology::topology::Topology;
+        use std::collections::BTreeMap;
+
+        fn split_key(entity: EntityRef) -> ObjectRef {
+            let (base, index, type_code) = match entity {
+                EntityRef::Edge(id) => (100, id.index(), edge::TYPE),
+                EntityRef::Vertex(id) => (200, id.index(), vertex::TYPE),
+                EntityRef::Edgeuse(id) => (300, id.index(), crate::topology::edgeuse::p1::TYPE),
+                EntityRef::Vertexuse(id) => (400, id.index(), vertexuse::TYPE),
+                EntityRef::Shell(id) => (
+                    500,
+                    id.index(),
+                    crate::topology::loopuse::notify_ref(entity).type_code,
+                ),
+                _ => panic!("unexpected split entity"),
+            };
+            ObjectRef {
+                key: ObjectKey(base + u64::from(index)),
+                type_code,
+            }
+        }
+
+        fn split_curve_ref(edge: EdgeId, type_code: i64) -> ObjectRef {
+            ObjectRef {
+                key: ObjectKey(1000 + u64::from(edge.index())),
+                type_code,
+            }
+        }
+
+        fn split_wire() -> (Brep, EdgeId) {
+            let mut b = Brep::new();
+            b.set_key(ObjectKey(77));
+            b.set_editing_enabled(true);
+            let start = b.add_vertex(Point3::ZERO).unwrap();
+            let end = b.add_vertex(Point3::new(1.0, 0.0, 0.0)).unwrap();
+            let edge = b.add_edge(start, end).unwrap();
+            b.edge_mut(edge).unwrap().interval = Extent1d::from_min_max(0.0, 1.0);
+            b.edge_mut(edge).unwrap().curve = Some(Curve::from(
+                crate::curve::line::Line::from_points(Point3::ZERO, Point3::new(1.0, 0.0, 0.0), 3),
+            ));
+            for (vertex, orientation) in [(start, OrientType::Same), (end, OrientType::Opposite)] {
+                let vu = b
+                    .add_vertexuse_record(Vertexuse {
+                        vertex: Some(vertex),
+                        ..Vertexuse::default()
+                    })
+                    .unwrap();
+                let eu = b
+                    .add_edgeuse_record(crate::topology::Edgeuse {
+                        edge: Some(edge),
+                        owner: crate::topology::EdgeuseOwner::Shell(None),
+                        vertexuse: Some(vu),
+                        orientation,
+                        ..crate::topology::Edgeuse::default()
+                    })
+                    .unwrap();
+                b.vertexuse_mut(vu).unwrap().owner = VertexuseOwner::Edgeuse(Some(eu));
+                b.vertex_mut(vertex).unwrap().vertexuses.push(vu);
+                b.edge_mut(edge).unwrap().edgeuses.push(eu);
+            }
+            (b, edge)
+        }
+
+        #[test]
+        fn actual_split_issues_copied_curve_identity_and_retains_refusal_prefix() {
+            use std::cell::RefCell;
+
+            for refuse_copy in [false, true] {
+                let mut k = Kernel::default();
+                let mut b = crate::primitive::api_primitives::create_box(
+                    &mut k,
+                    Point3::ZERO,
+                    10.0,
+                    20.0,
+                    30.0,
+                )
+                .unwrap();
+                b.set_editing_enabled(true);
+                let edge = b.edge_list()[0];
+                let serial = b.notify_serial().unwrap();
+                let key_of = |entity| crate::topology::brep::p3::topology_ref(serial, entity);
+                let interval = b.edge(edge).unwrap().interval;
+                let parameter = (interval.min() + interval.max()) * 0.5;
+                let primary = edge::primary_edgeuse(&b, edge).unwrap().unwrap();
+                let same = b.edgeuse(primary).unwrap().orientation == OrientType::Same;
+                let expected_interval = if same {
+                    Extent1d::from_min_max(interval.min(), parameter)
+                } else {
+                    Extent1d::from_min_max(parameter, interval.max())
+                };
+                let original = b.edge_mut(edge).unwrap().curve.as_mut().unwrap();
+                let original_key = k
+                    .context
+                    .geometry_key(original.notify_identity_slot())
+                    .unwrap();
+                let original_ref = ObjectRef {
+                    key: original_key,
+                    type_code: original.type_code(),
+                };
+                let before = (b.edge_list().len(), b.vertex_list().len());
+                let mut records = BTreeMap::new();
+                crate::topology::brep::p3::seed_records(&mut records, &b, &key_of);
+                let mut attributes = AttributeStore::default();
+                let label = attributes
+                    .insert(Attribute::long(ids::USER_1, 73, Behavior::Copy))
+                    .unwrap();
+                attributes.add_attribute(original_key, label).unwrap();
+                let events = callbacks::install(&mut k.context);
+                let issued = RefCell::new(Vec::new());
+                let issuer = |id: EdgeId, curve: &mut Curve, env: &mut edge::NotifyEnv<'_>| {
+                    let before = curve.notify_key();
+                    assert!(env.context.as_deref().unwrap().doing_boolean());
+                    if refuse_copy && id != edge {
+                        assert_eq!(before, None);
+                        return Err(SolidError::invalid_input(
+                            "test curve issuer",
+                            "refused copied curve",
+                        ));
+                    }
+                    let reference = issue_curve_identity(id, curve, env)?;
+                    issued.borrow_mut().push((id, before, reference));
+                    Ok(reference)
+                };
+                let result = make_vertex_split_edge_with_kernel_curve_identity(
+                    &mut k,
+                    &mut b,
+                    edge,
+                    parameter,
+                    &mut edge::NotificationStores {
+                        records: &mut records,
+                        attributes: &mut attributes,
+                        key_of: &key_of,
+                    },
+                    CurveIdentity::Actual(&issuer),
+                );
+                assert!(!k.context.doing_boolean());
+                callbacks::assert_installed(&k.context, &events);
+                assert_eq!(
+                    (b.edge_list().len(), b.vertex_list().len()),
+                    (before.0 + 1, before.1 + 1)
+                );
+                assert_eq!(b.edge(edge).unwrap().interval, expected_interval);
+                assert_eq!(issued.borrow()[0], (edge, Some(original_key), original_ref));
+                let new_edge = *b.edge_list().last().unwrap();
+                let events = events.lock().unwrap();
+                if refuse_copy {
+                    assert!(result.is_err());
+                    assert_eq!(issued.borrow().len(), 1);
+                    assert!(b.edge(new_edge).unwrap().curve.is_none());
+                    assert!(events
+                        .iter()
+                        .any(|event| event.operation == NotifyOperation::PreEdit));
+                    assert!(!events
+                        .iter()
+                        .any(|event| event.operation == NotifyOperation::Split));
+                } else {
+                    let output = result.unwrap();
+                    assert!(output.split);
+                    assert_eq!(issued.borrow().len(), 2);
+                    let (id, before, new_ref) = issued.borrow()[1];
+                    assert_eq!((id, before), (new_edge, None));
+                    assert_ne!(new_ref.key, original_key);
+                    assert_ne!(new_ref.key, key_of(EntityRef::Edge(new_edge)).key);
+                    let installed = b.edge(new_edge).unwrap().curve.as_ref().unwrap();
+                    assert_eq!(installed.notify_key(), Some(new_ref.key));
+                    assert_eq!(installed.owner(), Some(key_of(EntityRef::Edge(new_edge))));
+                    let copied = attributes.find_attribute(new_ref.key, ids::USER_1).unwrap();
+                    assert_ne!(copied, label);
+                    assert_eq!(attributes.get(copied).unwrap().long_value(), Some(73));
+                    let split: Vec<_> = events
+                        .iter()
+                        .filter(|event| event.operation == NotifyOperation::Split)
+                        .collect();
+                    assert_eq!(split.len(), 2);
+                    assert_eq!((split[0].callback, split[1].callback), ("user", "system"));
+                    for event in split {
+                        assert_eq!(event.caller, original_ref);
+                        assert_eq!(
+                            event.data,
+                            [
+                                Some(original_ref),
+                                Some(new_ref),
+                                Some(key_of(EntityRef::Edge(edge)))
+                            ]
+                        );
+                    }
+                }
+                assert_eq!(
+                    b.edge(edge).unwrap().curve.as_ref().unwrap().notify_key(),
+                    Some(original_key)
+                );
+            }
+        }
+
+        #[test]
+        fn split_uses_real_stores_callbacks_and_restores_each_context_on_success() {
+            #[derive(Clone, Copy)]
+            enum Binding {
+                Kernel,
+                External(bool),
+                Null,
+            }
+
+            for previous in [false, true] {
+                for binding in [
+                    Binding::Kernel,
+                    Binding::External(false),
+                    Binding::External(true),
+                    Binding::Null,
+                ] {
+                    let mut k = Kernel::default();
+                    k.context.set_doing_boolean(previous);
+                    let kernel_events = callbacks::install(&mut k.context);
+                    let mut external = Context::default();
+                    let external_events = callbacks::install(&mut external);
+                    if let Binding::External(previous) = binding {
+                        external.set_doing_boolean(previous);
+                    }
+                    let mut outer =
+                        MarkLock::new(core::slice::from_mut(&mut k.context), 0, ALL_MARKS).unwrap();
+                    let mark = outer.mark_type();
+                    let mark_value = k.context.current_mark(mark);
+                    let (mut b, edge) = split_wire();
+                    let edge_ref = split_key(EntityRef::Edge(edge));
+                    let curve_type = b.edge(edge).unwrap().curve.as_ref().unwrap().type_code();
+                    let original_curve = split_curve_ref(edge, curve_type);
+                    let mut record = Topology::default();
+                    record.set_user_index1(912);
+                    record.mark(Some(&k.context), mark);
+                    let mut records = BTreeMap::from([(edge_ref.key, record)]);
+                    for (id, _) in b.vertices().iter() {
+                        records.insert(split_key(EntityRef::Vertex(id)).key, Topology::default());
+                    }
+                    for (id, _) in b.edgeuses().iter() {
+                        records.insert(split_key(EntityRef::Edgeuse(id)).key, Topology::default());
+                    }
+                    for (id, _) in b.vertexuses().iter() {
+                        records
+                            .insert(split_key(EntityRef::Vertexuse(id)).key, Topology::default());
+                    }
+                    let mut attributes = AttributeStore::default();
+                    let label = attributes
+                        .insert(Attribute::long(ids::USER_1, 73, Behavior::Copy))
+                        .unwrap();
+                    attributes.add_attribute(original_curve.key, label).unwrap();
+                    let tessellating = attributes
+                        .insert(Attribute::new(ids::TESSELLATING, Behavior::Reference))
+                        .unwrap();
+                    attributes.add_attribute(b.key(), tessellating).unwrap();
+                    let result = match binding {
+                        Binding::Kernel => make_vertex_split_edge_with_kernel_context(
+                            &mut k,
+                            &mut b,
+                            edge,
+                            0.5,
+                            &mut edge::NotificationStores {
+                                records: &mut records,
+                                attributes: &mut attributes,
+                                key_of: &split_key,
+                            },
+                            &split_curve_ref,
+                        ),
+                        Binding::External(_) | Binding::Null => make_vertex_split_edge(
+                            &mut k,
+                            &mut b,
+                            edge,
+                            0.5,
+                            &mut edge::NotifyEnv {
+                                records: &mut records,
+                                attributes: &mut attributes,
+                                context: if matches!(binding, Binding::External(_)) {
+                                    Some(&mut external)
+                                } else {
+                                    None
+                                },
+                                key_of: &split_key,
+                            },
+                            &split_curve_ref,
+                        ),
+                    };
+                    let output = result.unwrap();
+                    assert!(output.split);
+                    assert_eq!(output.edges, Some([edge, EdgeId::from_index(1)]));
+                    assert_eq!(output.vertex, Some(VertexId::from_index(2)));
+                    assert_eq!(
+                        b.vertex(VertexId::from_index(2)).unwrap().point,
+                        Point3::new(0.5, 0.0, 0.0)
+                    );
+                    assert_eq!((b.edge_list().len(), b.vertex_list().len()), (2, 3));
+                    assert_eq!(k.context.doing_boolean(), previous);
+                    assert!(k.context.is_mark_locked(mark));
+                    assert_eq!(k.context.current_mark(mark), mark_value);
+                    assert!(records
+                        .get(&edge_ref.key)
+                        .unwrap()
+                        .is_marked(&k.context, mark));
+                    assert_eq!(records.get(&edge_ref.key).unwrap().user_index1(), 912);
+                    assert_eq!(
+                        records
+                            .get(&split_key(EntityRef::Edge(EdgeId::from_index(1))).key)
+                            .unwrap()
+                            .user_index1(),
+                        912
+                    );
+                    if let Binding::External(previous) = binding {
+                        assert_eq!(external.doing_boolean(), previous);
+                    }
+                    callbacks::assert_installed(&k.context, &kernel_events);
+                    callbacks::assert_installed(&external, &external_events);
+                    let new_edge = EdgeId::from_index(1);
+                    let new_curve = split_curve_ref(new_edge, curve_type);
+                    assert_eq!(
+                        b.edge(new_edge).unwrap().curve.as_ref().unwrap().owner(),
+                        Some(split_key(EntityRef::Edge(new_edge)))
+                    );
+                    let copied_label = attributes
+                        .find_attribute(new_curve.key, ids::USER_1)
+                        .unwrap();
+                    assert_ne!(copied_label, label);
+                    assert_eq!(attributes.get(copied_label).unwrap().long_value(), Some(73));
+                    assert_eq!(
+                        attributes.find_attribute(original_curve.key, ids::USER_1),
+                        Some(label)
+                    );
+                    assert_eq!(
+                        attributes.find_attribute(b.key(), ids::TESSELLATING),
+                        Some(tessellating)
+                    );
+                    let kernel_log = kernel_events.lock().unwrap();
+                    let external_log = external_events.lock().unwrap();
+                    let events = match binding {
+                        Binding::Kernel => {
+                            assert!(external_log.is_empty());
+                            &*kernel_log
+                        }
+                        Binding::External(_) => {
+                            assert!(kernel_log.is_empty());
+                            &*external_log
+                        }
+                        Binding::Null => {
+                            assert!(kernel_log.is_empty());
+                            assert!(external_log.is_empty());
+                            outer
+                                .release(core::slice::from_mut(&mut k.context))
+                                .unwrap();
+                            continue;
+                        }
+                    };
+                    let expected = [
+                        (NotifyOperation::PreEdit, edge_ref),
+                        (
+                            NotifyOperation::ChangeGeometry,
+                            split_key(EntityRef::Edge(new_edge)),
+                        ),
+                        (NotifyOperation::ChangeOwner, new_curve),
+                        (NotifyOperation::Split, original_curve),
+                        (
+                            NotifyOperation::ChangeGeometry,
+                            split_key(EntityRef::Vertex(VertexId::from_index(2))),
+                        ),
+                        (NotifyOperation::AddToBrep, brep_ref(&b)),
+                        (NotifyOperation::SplitInBrep, brep_ref(&b)),
+                    ];
+                    assert_eq!(events.len(), expected.len() * 2);
+                    for (pair, (operation, caller)) in events.chunks_exact(2).zip(expected) {
+                        assert_eq!((pair[0].callback, pair[1].callback), ("user", "system"));
+                        for event in pair {
+                            assert_eq!((event.operation, event.caller), (operation, caller));
+                            assert_eq!(event.data, pair[0].data);
+                        }
+                    }
+                    assert_eq!(events[0].data, [Some(edge_ref), Some(brep_ref(&b)), None]);
+                    assert_eq!(
+                        events[6].data,
+                        [Some(original_curve), Some(new_curve), Some(edge_ref)]
+                    );
+                    assert_eq!(
+                        events[10].data,
+                        [
+                            Some(split_key(EntityRef::Vertex(VertexId::from_index(2)))),
+                            Some(brep_ref(&b)),
+                            None
+                        ]
+                    );
+                    assert_eq!(
+                        events[12].data,
+                        [
+                            Some(edge_ref),
+                            Some(edge_ref),
+                            Some(split_key(EntityRef::Edge(new_edge)))
+                        ]
+                    );
+                    outer
+                        .release(core::slice::from_mut(&mut k.context))
+                        .unwrap();
+                }
+            }
+        }
+
+        #[test]
+        fn kernel_shell_vertex_registers_real_topology_and_notifies_in_order() {
+            let mut k = Kernel::default();
+            let events = callbacks::install(&mut k.context);
+            let mut b = Brep::new();
+            let region = b
+                .add_region_record(crate::topology::Region::default())
+                .unwrap();
+            let mut records = BTreeMap::new();
+            let mut attributes = AttributeStore::default();
+            let result = make_shell_vertex_with_kernel_context(
+                &mut k,
+                &mut b,
+                Some(region),
+                Point3::ZERO,
+                &mut edge::NotificationStores {
+                    records: &mut records,
+                    attributes: &mut attributes,
+                    key_of: &split_key,
+                },
+            );
+            let (shell, vertex) = result.unwrap();
+            assert_eq!(b.vertices().len(), 1);
+            assert_eq!(b.shells().len(), 1);
+            assert_eq!(b.vertexuses().len(), 1);
+            assert_eq!(b.region(region).unwrap().shells, vec![shell]);
+            assert_eq!(b.shell(shell).unwrap().region, Some(region));
+            assert_eq!(b.vertex(vertex).unwrap().point, Point3::ZERO);
+            assert_eq!(b.vertex(vertex).unwrap().tolerance, b.tolerance());
+            let vu = b.vertex(vertex).unwrap().vertexuses[0];
+            assert_eq!(records.len(), 3);
+            for entity in [
+                EntityRef::Shell(shell),
+                EntityRef::Vertex(vertex),
+                EntityRef::Vertexuse(vu),
+            ] {
+                assert!(records.contains_key(&split_key(entity).key));
+            }
+            callbacks::assert_installed(&k.context, &events);
+            let events = events.lock().unwrap();
+            let vertex_ref = split_key(EntityRef::Vertex(vertex));
+            let shell_ref = split_key(EntityRef::Shell(shell));
+            let expected = [
+                (
+                    NotifyOperation::ChangeGeometry,
+                    split_key(EntityRef::Vertexuse(vu)),
+                ),
+                (NotifyOperation::ChangeGeometry, vertex_ref),
+                (NotifyOperation::AddToBrep, brep_ref(&b)),
+                (NotifyOperation::AddToBrep, brep_ref(&b)),
+            ];
+            assert_eq!(events.len(), expected.len() * 2, "{events:?}");
+            for (pair, (operation, caller)) in events.chunks_exact(2).zip(expected) {
+                assert_eq!((pair[0].callback, pair[1].callback), ("user", "system"));
+                for event in pair {
+                    assert_eq!((event.operation, event.caller), (operation, caller));
+                    assert_eq!(event.data, pair[0].data);
+                }
+            }
+            assert_eq!(events[0].data, [None; 3]);
+            assert_eq!(events[2].data, [None; 3]);
+            assert_eq!(events[4].data, [Some(vertex_ref), Some(brep_ref(&b)), None]);
+            assert_eq!(events[6].data, [Some(shell_ref), Some(brep_ref(&b)), None]);
+        }
+
+        #[test]
+        fn kernel_split_refusals_restore_state_without_notifying() {
+            for previous in [false, true] {
+                let mut k = Kernel::default();
+                k.context.set_doing_boolean(previous);
+                let events = callbacks::install(&mut k.context);
+                let (mut b, edge) = split_wire();
+                let mut records =
+                    BTreeMap::from([(split_key(EntityRef::Edge(edge)).key, Topology::default())]);
+                let mut attributes = AttributeStore::default();
+                let mut stores = edge::NotificationStores {
+                    records: &mut records,
+                    attributes: &mut attributes,
+                    key_of: &split_key,
+                };
+                for parameter in [0.0, 1.0, -1.0, 2.0, f64::MAX] {
+                    let output = make_vertex_split_edge_with_kernel_context(
+                        &mut k,
+                        &mut b,
+                        edge,
+                        parameter,
+                        &mut stores,
+                        &|_, _| panic!("refusal must precede curve identity lookup"),
+                    )
+                    .unwrap();
+                    assert!(!output.split);
+                    assert_eq!(output.status(), SM_ERR);
+                    assert_eq!(k.context.doing_boolean(), previous);
+                }
+                b.set_editing_enabled(false);
+                let output = make_vertex_split_edge_with_kernel_context(
+                    &mut k,
+                    &mut b,
+                    EdgeId::from_index(999),
+                    0.5,
+                    &mut stores,
+                    &split_curve_ref,
+                )
+                .unwrap();
+                assert!(!output.split);
+                assert_eq!(k.context.doing_boolean(), previous);
+                assert!(events.lock().unwrap().is_empty());
+                callbacks::assert_installed(&k.context, &events);
+                assert_eq!((b.edge_list().len(), b.vertex_list().len()), (1, 2));
+            }
+        }
+    }
 
     #[test]
     fn zero_ray_direction_retains_the_defined_native_status() {

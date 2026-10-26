@@ -83,6 +83,12 @@ fn main() {
     if !cpp {
         return;
     }
+    // wasm32 (`difftest --digest-dir` only): keep the declarations, compile and link
+    // nothing. The shim symbols stay undefined imports, served at run time by the stub
+    // module from `scripts/wasm_stub.py` (each returns `SC_ERR_UNLINKED`).
+    if env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32") {
+        return;
+    }
 
     // ---- locate C++ build --------------------------------------------------
     let cpp_dir = env::var_os("SOLIDCORE_CPP_DIR")
@@ -91,8 +97,15 @@ fn main() {
     let lib_dir = cpp_dir.join("lib");
     let env_file = cpp_dir.join("ffi.env");
     let cc_json = cpp_dir.join("compile_commands.json");
+    // Cargo treats a missing rerun-if-changed path as always stale and reruns this
+    // script on every build. `ffi.env` is watched unconditionally (both the prebuilt
+    // reference and harness/cpp/build.sh write it, and if it is absent the rerun is
+    // what picks it up once it appears). `compile_commands.json` is only written by a
+    // from-source build, so it is watched only when it exists.
     println!("cargo:rerun-if-changed={}", env_file.display());
-    println!("cargo:rerun-if-changed={}", cc_json.display());
+    if cc_json.is_file() {
+        println!("cargo:rerun-if-changed={}", cc_json.display());
+    }
     println!("cargo:rerun-if-changed={}", lib_dir.display());
 
     let cfg = if env_file.is_file() {
@@ -143,6 +156,34 @@ fn main() {
         for f in &cfg.cxxflags {
             b.flag(f);
         }
+        // Rollover fixture destruction can abort on OOM. Execute a fresh worker
+        // image rather than calling SMLib after fork in a multithreaded host.
+        let worker_source = root.join("harness/cpp/worker/rollover.cpp");
+        println!("cargo:rerun-if-changed={}", worker_source.display());
+        let worker = out_dir.join("solidcore-rollover-worker");
+        let mut command = b.get_compiler().to_command();
+        command
+            .arg(&worker_source)
+            .arg(shim_dir.join("topology_edgeuse_p1.cpp"))
+            .arg(shim_dir.join("sc_shim.cpp"))
+            .arg("-o")
+            .arg(&worker);
+        command.arg(format!("-L{}", lib_dir.display()));
+        for dir in &cfg.lib_dirs {
+            command.arg(format!("-L{}", dir.display()));
+        }
+        command.args(["-lSM_API", "-lSMLib", "-pthread"]);
+        for lib in cfg.syslibs.as_deref().unwrap_or(&[]) {
+            command.arg(format!("-l{lib}"));
+        }
+        assert!(
+            command.status().expect("compile rollover worker").success(),
+            "rollover worker compilation failed"
+        );
+        b.define(
+            "SC_ROLLOVER_WORKER_PATH",
+            Some(format!("\"{}\"", worker.display()).as_str()),
+        );
         b.files(&shims);
         b.compile("solidcore_shims");
     }

@@ -91,6 +91,10 @@
 //!   dropped. Solutions name `this` (and the other line) through an optional
 //!   caller-supplied object id. Optional outputs (`pOptLoc`, the boxes, the
 //!   tessellation arrays) are requested with flags.
+//! - **Tessellation size.** `Tessellate` reserves its `min_segments + 1` entries per
+//!   requested array first and returns [`SolidError::InvalidInput`] when that
+//!   allocation fails (upstream's `SmTArray::Add` fails silently, leaving short arrays
+//!   after a very long loop).
 //! - **Statuses.** Calls whose status upstream ignores keep upstream's values, except
 //!   that [`SolidError::Unported`] is always propagated. `DeformToEndPointTargets`
 //!   hands the new curve back only when the B-spline deformation succeeds (upstream
@@ -127,6 +131,7 @@ use crate::geom::tol::{are_same, are_same_to_tol, is_zero, tol3d};
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
 use crate::math::{max2, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT, INFINITE_PARAMETER, UNDEF_DOUBLE};
+use crate::nurbs::b_spline_curve::p3::DerivedOverrides;
 use crate::nurbs::b_spline_curve::{
     BSplineCurve, BSplineCurveForm, BoundingBoxRequest, BoundingBoxes, Ends, Tessellation,
 };
@@ -141,6 +146,7 @@ const OP_OFFSET: &str = "curve::line::Line::create_simple_offset";
 const OP_DROP: &str = "curve::line::Line::drop_point_fast";
 const OP_JOIN: &str = "curve::line::Line::join_with";
 const OP_DEFORM: &str = "curve::line::Line::deform_to_end_point_targets";
+const OP_TESS: &str = "curve::line::Line::tessellate";
 
 /// `SmCurveLocationType`: where a point lies relative to a curve; discriminants are
 /// the upstream values.
@@ -238,6 +244,20 @@ pub struct Line {
     scale: f64,
     /// `m_bInsideOut`.
     inside_out: bool,
+}
+
+impl Line {
+    /// Exact evaluation copy without the B-spline copy constructor's knot fix-up.
+    pub(crate) fn clone_exact_bounded(&self) -> Self {
+        Self {
+            base: self.base.clone_exact(),
+            point: self.point,
+            vector: self.vector,
+            anal_domain: self.anal_domain,
+            scale: self.scale,
+            inside_out: self.inside_out,
+        }
+    }
 }
 
 impl Default for Line {
@@ -973,15 +993,41 @@ impl Line {
     /// steps (`Tessellate`): the parameters, points and (first derivative) tangents
     /// requested. The points are only evaluated with their tangents when tangents
     /// are requested.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::InvalidInput`] when the `min_segments + 1` entries of a requested
+    /// array cannot be allocated (upstream's `SmTArray::Add` then fails silently and
+    /// the loop runs on).
     pub fn tessellate(
         &self,
         interval: &Extent1d,
         min_segments: u64,
         req: TessellationRequest,
-    ) -> Tessellation {
+    ) -> Result<Tessellation> {
         let mut out = Tessellation::default();
         let n = min_segments as f64;
+
+        // The arrays hold `min_segments + 1` entries: reserve them up front so a huge
+        // caller count fails cleanly instead of aborting on allocation.
+        let too_big = || SolidError::invalid_input(OP_TESS, "min_segments too large to allocate");
+        let count = min_segments
+            .checked_add(1)
+            .and_then(|c| usize::try_from(c).ok())
+            .ok_or_else(too_big)?;
+        if req.parameters {
+            out.parameters
+                .try_reserve_exact(count)
+                .map_err(|_| too_big())?;
+        }
+        if req.points {
+            out.points.try_reserve_exact(count).map_err(|_| too_big())?;
+        }
+        if req.tangents {
+            out.tangents
+                .try_reserve_exact(count)
+                .map_err(|_| too_big())?;
+        }
 
         // when asked - build evenly spaced param point array
         if req.parameters {
@@ -1017,7 +1063,7 @@ impl Line {
                 }
             }
         }
-        out
+        Ok(out)
     }
 
     // ---- solvers ----------------------------------------------------------------------
@@ -1429,7 +1475,10 @@ impl Line {
 
         // when a SmSurfOfExtrusion GenCurve, look for Parent Surface NURB Interval constraint
         if owner.is_some_and(|o| o.type_code == SURF_OF_EXTRUSION_TYPE) {
-            // UNPORTED(surface.surf_of_extrusion_p1): SmSurfOfExtrusion::GetGenDirParamExtent
+            // DISPATCH GAP: SmSurfOfExtrusion::GetGenDirParamExtent (surface.surf_of_extrusion_p1,
+            // ported as SurfOfExtrusion::gen_dir_param_extent; no UNPORTED marker: the owner is an
+            // opaque ObjectRef. An owning extrusion does this step itself (adjust_generator_interval,
+            // SurfOfExtrusion::make_nurb) and never sets its generator's owner, so nothing reaches here)
             return Err(SolidError::Unported {
                 upstream: "SmSurfOfExtrusion::GetGenDirParamExtent",
                 unit: "surface.surf_of_extrusion_p1",
@@ -1438,7 +1487,10 @@ impl Line {
 
         // when a SmSurfOfRevolution GenCurve, look for Parent Surface NURB Interval constraint
         if owner.is_some_and(|o| o.type_code == SURF_OF_REVOLUTION_TYPE) {
-            // UNPORTED(surface.surf_of_revolution_p1): SmSurfOfRevolution::GetGenDirParamExtent
+            // DISPATCH GAP: SmSurfOfRevolution::GetGenDirParamExtent (surface.surf_of_revolution_p1,
+            // ported as SurfOfRevolution::gen_dir_param_extent; no UNPORTED marker: the owner is an
+            // opaque ObjectRef. An owning revolution does this step itself (e.g. the cone's
+            // adjust_gen_line_with_owner) and never sets its generator's owner, so nothing reaches here)
             return Err(SolidError::Unported {
                 upstream: "SmSurfOfRevolution::GetGenDirParamExtent",
                 unit: "surface.surf_of_revolution_p1",
@@ -1952,13 +2004,16 @@ impl Line {
 
     /// Checks that the STEP and NURB end points of a bounded line with NURB agree within
     /// the scaled zero (`AssertValid`); failed checks are reported to `list` (as
-    /// object `key`). Unless `level_given` the `SmBSplineCurve` checks run first.
+    /// object `key`). Unless `level_given` the `SmBSplineCurve` checks run first, with
+    /// the line's virtual methods; they make a missing NURB first (`MakeNurb` is
+    /// virtual: the line's NURB), a side effect kept here.
     ///
     /// # Errors
     ///
-    /// Those of [`BSplineCurve::assert_valid`] unless `level_given`.
+    /// Those of [`BSplineCurve::assert_valid`] unless `level_given`;
+    /// [`SolidError::Unported`] from `MakeNurb`.
     pub fn assert_valid(
-        &self,
+        &mut self,
         k: &Kernel,
         list: Option<&mut AssertArray>,
         level_given: bool,
@@ -1968,11 +2023,27 @@ impl Line {
         let mut rtn = true;
 
         // call the base class AssertValid
-        rtn &= if level_given {
-            true
-        } else {
-            self.base.assert_valid(k, list.as_deref_mut(), false, key)?
-        };
+        if !level_given {
+            // SmBSplineCurve::AssertValid makes a missing NURB (virtual MakeNurb,
+            // status ignored)
+            if self.base.nurb.is_none() {
+                ignore_status(self.make_nurb())?;
+            }
+            let this = &*self;
+            let is_degenerate = |tol: f64| Ok(this.is_degenerate(tol, None));
+            rtn &= this.base.assert_valid_with(
+                k,
+                list.as_deref_mut(),
+                false,
+                key,
+                &DerivedOverrides {
+                    degree: Some(this.degree()),
+                    analytic: this.is_analytic(),
+                    bounded: this.is_bounded(),
+                    is_degenerate: &is_degenerate,
+                },
+            )?;
+        }
 
         // when line is bounded and there is a Nurb representation
         if self.is_bounded() && self.base.nurb.is_some() {
@@ -2151,6 +2222,30 @@ mod tests {
                 ..BoundedLineOptions::default()
             },
         )
+    }
+
+    #[test]
+    fn tessellate_rejects_unallocatable_segment_counts() {
+        // fuzz (curve_p1): `min_segments = i64::MAX` aborted on allocation
+        let l = seg();
+        let ivl = l.natural_interval();
+        let all = TessellationRequest {
+            parameters: true,
+            points: true,
+            tangents: true,
+        };
+        assert!(matches!(
+            l.tessellate(&ivl, u64::MAX, all),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert!(matches!(
+            l.tessellate(&ivl, u64::MAX >> 1, all),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        let t = l.tessellate(&ivl, 4, all).unwrap();
+        assert_eq!(t.parameters.len(), 5);
+        assert_eq!(t.points.len(), 5);
+        assert_eq!(t.tangents.len(), 5);
     }
 
     #[test]

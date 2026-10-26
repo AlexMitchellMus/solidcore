@@ -22,7 +22,10 @@
 //! corner: the shim refuses the block's opaque corner tags, upstream asks the corner
 //! for its filleted vertex first), `rail_rail` (an edge between two vertices with
 //! incoming rails, its original face a B-spline face, a real plane or a surface of
-//! revolution; the edge's status, curve and its edge uses' UV curves are compared) or
+//! revolution, sometimes with a corner whose fillet edge list the routine reads first:
+//! more than four edges, or up to four with the test edge two places on, sometimes a
+//! cross-section edge without geometry; the edge's status, curve and its edge uses' UV
+//! curves are compared) or
 //! `split_face` (the original face, then `UpdateSplitFace`; the face indices are
 //! compared; only the path where the edge is not on the split face runs: the other
 //! one reaches `ShouldSwapFaces`, `blend.fillet_geom_p6`, which the shim refuses).
@@ -35,14 +38,14 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use solidcore::blend::fillet_geom::p1::FilletSolverId;
+use solidcore::blend::fillet_corner::p3::{FilletCorner, FilletCornerKind};
+use solidcore::blend::fillet_geom::p1::{CornerLookup, FilletCornerId, FilletSolverId};
 use solidcore::blend::fillet_geom::p2::{srf_srf_intersection, SrfSrfOptions};
 use solidcore::blend::fillet_solver::p1::FilletSolver;
-use solidcore::curve::curve::{Curve, CurveKind};
+use solidcore::curve::curve::Curve;
 use solidcore::geom::tol::zone_tol3d;
 use solidcore::kernel::Kernel;
 use solidcore::math::{Point3, Vec3};
-use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::surface::surface::Surface;
 use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::{edge, EdgeId, FaceId};
@@ -50,8 +53,8 @@ use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_geom_p2::{self as ffi, Op};
 
 use super::blend_fillet_geom_p1::{
-    analytic_surface, dump_bcurve, gen_model, gen_surface, push_model, push_srf, scale_of,
-    status, surface_of, AnalyticSrf, Crv, EdgeIn, EuIn, Model, RustModel, Srf,
+    analytic_surface, b_spline_part, dump_bcurve, gen_model, gen_surface, push_model, push_srf, scale_of, status,
+    surface_of, AnalyticSrf, Crv, EdgeIn, EuIn, Model, RustModel, Srf,
 };
 use super::blend_fillet_geom_p4::{
     empty_model, gen_analytic, push_analytic, uv_line, vertex_at, SolverIn,
@@ -128,6 +131,9 @@ enum Query {
         /// The original face's tolerance.
         #[serde(default)]
         face_tol: f64,
+        /// `pCorner`: a corner with these fillet edges (model edges), `None` for `NULL`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        corner: Option<Vec<usize>>,
     },
     SplitFace {
         e: usize,
@@ -229,13 +235,25 @@ fn cpp_input(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
         Query::CrossSection { v, param } => {
             o.extend([*v as f64, flag(param.is_some()), param.unwrap_or(0.0)]);
         }
-        Query::RailRail { e, face, face_tol } => {
+        Query::RailRail {
+            e,
+            face,
+            face_tol,
+            corner,
+        } => {
             o.push(*e as f64);
             match face {
                 None => o.push(-1.0),
                 Some(s) => {
                     push_surf(&mut o, s)?;
                     o.push(*face_tol);
+                }
+            }
+            match corner {
+                None => o.push(-1.0),
+                Some(edges) => {
+                    o.push(edges.len() as f64);
+                    o.extend(edges.iter().map(|&e| e as f64));
                 }
             }
         }
@@ -381,18 +399,6 @@ fn st<T>(r: &solidcore::Result<T>) -> Result<f64, SolidError> {
     }
 }
 
-/// The B-spline part of a curve of a kind derived from `SmBSplineCurve`.
-const fn b_spline_part(c: &Curve) -> Option<&BSplineCurve> {
-    match c.kind() {
-        CurveKind::BSpline(b) => Some(b),
-        CurveKind::Line(l) => Some(l.base()),
-        CurveKind::Ellipse(e) => Some(e.base()),
-        CurveKind::Hyperbola(h) => Some(h.base()),
-        CurveKind::Parabola(p) => Some(p.base()),
-        _ => None,
-    }
-}
-
 /// The curve record `type has [..]`.
 fn dump_curve(o: &mut Vec<f64>, c: Option<&Curve>) {
     o.push(c.map_or(0.0, |c| c.type_code() as f64));
@@ -506,9 +512,11 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
         | Query::CrossSection { v, .. }
         | Query::SetBack { v } => {
             let vid = rm.vertex(*v)?;
+            // the queried vertex has no corner (module docs)
+            let no_corners = CornerLookup::default();
             let r = match &i.query {
                 Query::RailIntRail { .. } => {
-                    rm.fb.calc_rail_int_rail(&k, vid, &solvers, &mut rm.target)
+                    rm.fb.calc_rail_int_rail(&k, vid, no_corners, &mut solvers, &mut rm.target)
                 }
                 Query::RailIntEdgeuse { g, .. } => {
                     let g = match usize::try_from(*g) {
@@ -516,20 +524,25 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                         Err(_) => None,
                     };
                     rm.fb
-                        .calc_rail_int_edgeuse(&k, vid, g, &mut solvers, &mut rm.target)
+                        .calc_rail_int_edgeuse(&k, vid, g, no_corners, &mut solvers, &mut rm.target)
                 }
                 Query::CrossSection { param, .. } => {
                     rm.fb
-                        .calc_vert_on_cross_section(&k, vid, *param, &solvers, &mut rm.target)
+                        .calc_vert_on_cross_section(&k, vid, *param, no_corners, &mut solvers, &mut rm.target)
                 }
-                _ => rm.fb.calc_set_back_vert(&k, vid, &solvers, &rm.target),
+                _ => rm.fb.calc_set_back_vert(&k, vid, no_corners, &mut solvers, &rm.target),
             };
             o.push(status_of!(r));
             let p: Point3 = rm.fb.vertex_point(vid).map_err(h)?;
             o.extend([p.x, p.y, p.z]);
             o.push(rm.fb.fillet_vertex(vid).map_err(h)?.status() as i64 as f64);
         }
-        Query::RailRail { e, face, face_tol } => {
+        Query::RailRail {
+            e,
+            face,
+            face_tol,
+            corner,
+        } => {
             let eid: EdgeId = rm.edge(*e)?;
             if let Some(s) = face {
                 let surface = match surf(&k, s)? {
@@ -554,9 +567,26 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                     .set_original_face(Some(f));
             }
             o.push(0.0);
-            let r = rm
-                .fb
-                .calc_rail_rail_interpolation(&k, eid, None, &solvers, &mut rm.target);
+            // the shim's corner: its fillet edges only, of type SM_FCR_UNKNOWN, which no
+            // FilletCornerKind has; the routine tests the type only for
+            // SM_FCR_N_x_N_CONCAVE, which neither is
+            let mut table = Vec::new();
+            if let Some(edges) = corner {
+                let mut c = FilletCorner::new(FilletCornerKind::OneByOne, None, None, None, 1.0e-6, 0.01);
+                for &ce in edges {
+                    c.edges.push(rm.edge(ce)?);
+                }
+                table.push(c);
+            }
+            let opt_corner = corner.as_ref().map(|_| FilletCornerId(0));
+            let r = rm.fb.calc_rail_rail_interpolation(
+                &k,
+                eid,
+                opt_corner,
+                CornerLookup::table(&table),
+                &mut solvers,
+                &mut rm.target,
+            );
             o.push(status_of!(r));
             o.push(rm.fb.fillet_edge(eid).map_err(h)?.status() as i64 as f64);
             let brep = rm.fb.brep();
@@ -590,7 +620,10 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
             };
             let (fs, of, nf) = (face(*set)?, face(*f1)?, face(*f2)?);
             rm.fb.fillet_edge_mut(eid).map_err(h)?.set_original_face(fs);
-            let r = rm.fb.update_edge_split_face(eid, of, nf);
+            // the shim refuses runs reaching ShouldSwapFaces (its corners carry no data)
+            let r = rm
+                .fb
+                .update_edge_split_face(&k, eid, of, nf, &mut rm.target, &[]);
             o.push(status_of!(r));
             let index = |f: Option<FaceId>| {
                 f.and_then(|f| rm.target_faces.iter().position(|&x| x == f))
@@ -621,14 +654,21 @@ fn plane_in(o: [f64; 3], x: [f64; 3], y: [f64; 3], scale: f64, rng: &mut Rng) ->
         x_axis: x,
         y_axis: y,
         uv_scale: [scale, scale],
-        domain: [d, [d[0] + rng.uniform(1.5, 3.0), d[1] + rng.uniform(1.5, 3.0)]],
+        domain: [
+            d,
+            [d[0] + rng.uniform(1.5, 3.0), d[1] + rng.uniform(1.5, 3.0)],
+        ],
         make_nurb: rng.chance(0.95),
     }
 }
 
 /// A unit vector perpendicular-ish to `n`.
 fn perp(n: [f64; 3]) -> [f64; 3] {
-    let a = if n[0].abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+    let a = if n[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
     let c = [
         n[1] * a[2] - n[2] * a[1],
         n[2] * a[0] - n[0] * a[2],
@@ -677,7 +717,7 @@ fn standing(mut s: Srf, shift: f64) -> Srf {
 }
 
 /// A pair of surfaces that (mostly) intersect.
-fn gen_pair(rng: &mut Rng, scale: f64) -> (SurfIn, SurfIn) {
+fn gen_pair(k: &Kernel, rng: &mut Rng, scale: f64) -> (SurfIn, SurfIn) {
     match rng.below(20) {
         // plane / plane: crossing, sometimes parallel or coincident
         0..=6 => {
@@ -705,7 +745,7 @@ fn gen_pair(rng: &mut Rng, scale: f64) -> (SurfIn, SurfIn) {
                 .ok()
                 .and_then(|rs| {
                     let d = rs.natural_uv_domain();
-                    rs.evaluate_point(d.evaluate(rng.uniform(0.2, 0.8), rng.uniform(0.2, 0.8)))
+                    rs.evaluate_point(k, d.evaluate(rng.uniform(0.2, 0.8), rng.uniform(0.2, 0.8)))
                         .ok()
                 })
                 .map_or([0.5 * scale, 0.5 * scale, 0.0], v3a);
@@ -732,7 +772,12 @@ fn gen_pair(rng: &mut Rng, scale: f64) -> (SurfIn, SurfIn) {
                 plane @ AnalyticSrf::Plane { .. } => {
                     return (
                         SurfIn::Analytic(plane),
-                        SurfIn::Analytic(plane_through(rng.point3(-scale, scale), unit(rng), scale, rng)),
+                        SurfIn::Analytic(plane_through(
+                            rng.point3(-scale, scale),
+                            unit(rng),
+                            scale,
+                            rng,
+                        )),
                     )
                 }
             };
@@ -768,15 +813,29 @@ fn probe_curve(s1: &SurfIn, s2: &SurfIn, tol: f64, ang: f64) -> Option<Curve> {
     let k = Kernel::default();
     let a = surf(&k, s1).ok()?.ok()?;
     let b = surf(&k, s2).ok()?.ok()?;
-    srf_srf_intersection(&k, None, None, None, None, &a, &b, tol, ang, SrfSrfOptions::default())
-        .ok()?
-        .curve_3d
+    srf_srf_intersection(
+        &k,
+        None,
+        None,
+        None,
+        None,
+        &a,
+        &b,
+        tol,
+        ang,
+        SrfSrfOptions::default(),
+    )
+    .ok()?
+    .curve_3d
 }
 
-fn gen_srf_srf(rng: &mut Rng) -> Inputs {
+fn gen_srf_srf(k: &Kernel, rng: &mut Rng) -> Inputs {
     let scale = scale_of(rng);
-    let (s1, s2) = gen_pair(rng, scale);
-    let tol = scale * *rng.choose(&[1e-6, 1e-6, 1e-4, 1e-8, 1e-3, 1e-12, 1e-2]).unwrap_or(&1e-6);
+    let (s1, s2) = gen_pair(k, rng, scale);
+    let tol = scale
+        * *rng
+            .choose(&[1e-6, 1e-6, 1e-4, 1e-8, 1e-3, 1e-12, 1e-2])
+            .unwrap_or(&1e-6);
     let ang = *rng
         .choose(&[0.5235987755982988, 0.1, 0.5, 0.01, 1.2])
         .unwrap_or(&0.5);
@@ -795,7 +854,7 @@ fn gen_srf_srf(rng: &mut Rng) -> Inputs {
         _ => {
             if let Some(c) = probe_curve(&s1, &s2, tol, ang) {
                 let ivl = c.natural_interval();
-                let at = |t: f64| c.evaluate(ivl.evaluate(t), 1, true, true).ok();
+                let at = |t: f64| c.evaluate(k, ivl.evaluate(t), 1, true, true).ok();
                 let (t0, t1) = match rng.below(5) {
                     0 => (0.0, 1.0),
                     1 => (0.8, 0.2), // reversed
@@ -924,7 +983,11 @@ fn seg(a: [f64; 3], b: [f64; 3], ext: f64) -> Crv {
 fn arc3(a: [f64; 3], m: [f64; 3], b: [f64; 3]) -> Crv {
     Crv {
         dim: 3,
-        cpts: vec![[a[0], a[1], a[2], NOW], [m[0], m[1], m[2], NOW], [b[0], b[1], b[2], NOW]],
+        cpts: vec![
+            [a[0], a[1], a[2], NOW],
+            [m[0], m[1], m[2], NOW],
+            [b[0], b[1], b[2], NOW],
+        ],
         p: 2,
         u: vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
     }
@@ -953,7 +1016,9 @@ fn gen_rail_rail(rng: &mut Rng) -> Option<Inputs> {
     let d = rs.natural_uv_domain();
     let at = |a: f64, b: f64| -> Option<([f64; 3], [f64; 2])> {
         let uv = d.evaluate(a, b);
-        rs.evaluate_point(uv).ok().map(|p| (v3a(p), [uv.x, uv.y]))
+        rs.evaluate_point(&k, uv)
+            .ok()
+            .map(|p| (v3a(p), [uv.x, uv.y]))
     };
     // the edge's two vertices and the rails' far ends
     // fractions of the domain (the planes' domains are large: points near the middle)
@@ -967,7 +1032,11 @@ fn gen_rail_rail(rng: &mut Rng) -> Option<Inputs> {
     let mate_type = 3; // SM_FV_MATE
     for (p, uv) in [(p0, uv0), (p1, uv1), (p2, uv2), (p3, uv3)] {
         let mut v = vertex_at(p);
-        v.vtype = if rng.chance(0.85) { mate_type } else { rng.below(14) as i64 };
+        v.vtype = if rng.chance(0.85) {
+            mate_type
+        } else {
+            rng.below(14) as i64
+        };
         v.uv = uv;
         if rng.chance(0.1) {
             // off the face
@@ -975,7 +1044,13 @@ fn gen_rail_rail(rng: &mut Rng) -> Option<Inputs> {
         }
         model.vertices.push(v);
     }
-    let rail = |rng: &mut Rng, from: usize, to: usize, pf: [f64; 3], pt: [f64; 3], uf: [f64; 2], ut: [f64; 2]| {
+    let rail = |rng: &mut Rng,
+                from: usize,
+                to: usize,
+                pf: [f64; 3],
+                pt: [f64; 3],
+                uf: [f64; 2],
+                ut: [f64; 2]| {
         let curve = if rng.chance(0.6) {
             seg(pf, pt, *rng.choose(&[0.0, 0.0, 0.1, 0.5]).unwrap_or(&0.0))
         } else {
@@ -1052,6 +1127,20 @@ fn gen_rail_rail(rng: &mut Rng) -> Option<Inputs> {
     if rng.chance(0.97) {
         model.edges.push(r2);
     }
+    // a cross-section edge (between vertices of its own, no geometry) the corner's
+    // edge list may hold opposite the queried edge
+    if rng.chance(0.4) {
+        let nv = model.vertices.len();
+        let far = [p0[0], p0[1], p0[2] + scale];
+        model.vertices.push(vertex_at(far));
+        model.vertices.push(vertex_at([far[0] + scale, far[1], far[2]]));
+        let mut cs = model.edges.first().cloned()?;
+        cs.vs = nv;
+        cs.ve = nv + 1;
+        cs.etype = 2; // SM_FE_CROSS_SECTION
+        model.edges.push(cs);
+    }
+    let corner = gen_rail_rail_corner(rng, model.edges.len());
     Some(Inputs {
         model,
         solvers: Vec::new(),
@@ -1059,13 +1148,48 @@ fn gen_rail_rail(rng: &mut Rng) -> Option<Inputs> {
         query: Query::RailRail {
             e: 0,
             face_tol: scale * *rng.choose(&[1e-6, 1e-6, 1e-4, 1e-9, 0.0]).unwrap_or(&1e-6),
-            face: if rng.chance(0.03) {
-                None
-            } else {
-                Some(face)
-            },
+            face: if rng.chance(0.03) { None } else { Some(face) },
+            corner,
         },
     })
+}
+
+/// The fillet edges of `CalcRailRailInterpolation`'s corner (`None`: no corner) among the
+/// `ne` model edges (the queried edge is `0`): more than four (the interpolation runs as
+/// without a corner), or up to four with the queried edge mostly in the list, so the edge
+/// two places on (a cross-section edge or not) is tested.
+fn gen_rail_rail_corner(rng: &mut Rng, ne: usize) -> Option<Vec<usize>> {
+    if ne == 0 || rng.chance(0.5) {
+        return None;
+    }
+    let pick = |rng: &mut Rng| rng.below(ne as u64) as usize;
+    if rng.chance(0.35) {
+        let n = 5 + rng.below(3) as usize;
+        let mut edges: Vec<usize> = (0..n).map(|_| pick(rng)).collect();
+        if rng.chance(0.8) {
+            if let Some(slot) = edges.get_mut(rng.below(n as u64) as usize) {
+                *slot = 0;
+            }
+        }
+        return Some(edges);
+    }
+    let n = rng.below(5) as usize;
+    let mut edges: Vec<usize> = (0..n).map(|_| pick(rng)).collect();
+    if n > 0 && rng.chance(0.75) {
+        let at = rng.below(n as u64) as usize;
+        if let Some(slot) = edges.get_mut(at) {
+            *slot = 0;
+        }
+        // the test edge (two places on) is the cross-section edge when there is one
+        if ne > 3 && rng.chance(0.6) {
+            if let Some(slot) = edges.get_mut((at + 2) % n) {
+                if (at + 2) % n != at {
+                    *slot = ne - 1;
+                }
+            }
+        }
+    }
+    Some(edges)
 }
 
 /// `UpdateSplitFace` on p1's random model with target faces.
@@ -1120,10 +1244,11 @@ impl UnitDiff for Runner {
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
+        let k = &Kernel::default();
         // keep only inputs the shim runs
         for _ in 0..64 {
             let inputs = match rng.below(20) {
-                0..=12 => gen_srf_srf(rng),
+                0..=12 => gen_srf_srf(k, rng),
                 13 | 14 => gen_vertex_calc(rng),
                 15..=18 => match gen_rail_rail(rng) {
                     Some(i) => i,
@@ -1204,7 +1329,10 @@ mod tests {
             }
             let kind = match Runner.run_rust(case) {
                 Ok(o) if o.deferred.is_some() => {
-                    format!("deferred {}", o.deferred.map(|d| d.unit).unwrap_or_default())
+                    format!(
+                        "deferred {}",
+                        o.deferred.map(|d| d.unit).unwrap_or_default()
+                    )
                 }
                 Ok(o) => match o.values.get("status").and_then(|v| v.first()).copied() {
                     Some(s) => {

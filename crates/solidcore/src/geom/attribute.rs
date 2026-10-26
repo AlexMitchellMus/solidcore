@@ -91,6 +91,9 @@
 //!   uninitialised variable), a count or index above [`MAX_INDEXED_ATTRIBUTES`]
 //!   (upstream allocates the size asked for, or wraps for `ULONG_MAX`), and a reader
 //!   without a stream are [`SolidError::InvalidInput`], before anything is created.
+//!   For safety, ASCII counts must fit the remaining input and indices grow only
+//!   after successful extraction; truncated or malformed index lists are rejected
+//!   with [`SolidError::InvalidInput`] instead of leaving invented zero entries.
 //! - `Mark` (`m_lMark`), `Dump`, `AssertValid`, `GetMemoryUsed` and the persistence
 //!   getters (`GetNumLongElements`, ...) belong to other units or are unused; the
 //!   attribute's data is exposed through [`Attribute::value`].
@@ -541,6 +544,12 @@ pub enum AttributeValue {
         /// `m_pVertexuse`.
         vertexuse: Option<ObjectKey>,
     },
+    /// `SmDecimateVertexAttr` (unit `query.brep`, [`crate::query::brep`]).
+    DecimateVertex(crate::query::brep::DecimateVertexData),
+    /// `SmQuadricVertexAttr` (unit `query.brep`, [`crate::query::brep`]).
+    QuadricVertex(crate::query::brep::QuadricVertexData),
+    /// `SmQuadricEdgeAttr` (unit `query.brep`, [`crate::query::brep`]).
+    QuadricEdge(crate::query::brep::QuadricEdgeData),
 }
 
 /// An attribute: an id naming its purpose, a [`Behavior`], the list of objects
@@ -657,7 +666,9 @@ impl Attribute {
     ///
     /// As upstream, `SmLongAttribute`, `SmVector3dAttribute` and `SmColorAttribute`
     /// copies get [`Behavior::Copy`] whatever the original's behaviour; the other
-    /// classes keep it.
+    /// classes keep it. The decimation attributes copy everything but their sort
+    /// index, which restarts at `0` ([`crate::query::brep::DecimateVertexData::make_copy`],
+    /// [`crate::query::brep::QuadricEdgeData::make_copy`]).
     #[must_use]
     pub fn make_copy(&self) -> Self {
         let id = self.id;
@@ -665,6 +676,16 @@ impl Attribute {
             AttributeValue::Long(v) => Self::long(id, *v, Behavior::Copy),
             AttributeValue::Vector3d(v) => Self::vector3d(id, *v, Behavior::Copy),
             AttributeValue::Color(v) => Self::color(id, *v, Behavior::Copy),
+            AttributeValue::DecimateVertex(d) => Self::with_value(
+                id,
+                self.behavior,
+                AttributeValue::DecimateVertex(d.make_copy()),
+            ),
+            AttributeValue::QuadricEdge(d) => Self::with_value(
+                id,
+                self.behavior,
+                AttributeValue::QuadricEdge(d.make_copy()),
+            ),
             other => Self::with_value(id, self.behavior, other.clone()),
         }
     }
@@ -706,7 +727,10 @@ impl Attribute {
         match self.value {
             AttributeValue::None
             | AttributeValue::PolyToEuVu { .. }
-            | AttributeValue::PolyEdgeToVertexUse { .. } => type_code::ATTRIBUTE,
+            | AttributeValue::PolyEdgeToVertexUse { .. }
+            | AttributeValue::DecimateVertex(_)
+            | AttributeValue::QuadricVertex(_)
+            | AttributeValue::QuadricEdge(_) => type_code::ATTRIBUTE,
             AttributeValue::Generic { .. } => type_code::GENERIC,
             AttributeValue::Long(_) => type_code::LONG,
             AttributeValue::Pointer(_) | AttributeValue::MergeRegion(_) => type_code::POINTER,
@@ -722,7 +746,10 @@ impl Attribute {
         match self.value {
             AttributeValue::None
             | AttributeValue::PolyToEuVu { .. }
-            | AttributeValue::PolyEdgeToVertexUse { .. } => "SmAttribute_TYPE",
+            | AttributeValue::PolyEdgeToVertexUse { .. }
+            | AttributeValue::DecimateVertex(_)
+            | AttributeValue::QuadricVertex(_)
+            | AttributeValue::QuadricEdge(_) => "SmAttribute_TYPE",
             AttributeValue::Generic { .. } => "SmGenericAttribute_TYPE",
             AttributeValue::Long(_) => "SmLongAttribute_TYPE",
             AttributeValue::Pointer(_) | AttributeValue::MergeRegion(_) => {
@@ -743,7 +770,10 @@ impl Attribute {
         let own: &[i64] = match self.value {
             AttributeValue::None
             | AttributeValue::PolyToEuVu { .. }
-            | AttributeValue::PolyEdgeToVertexUse { .. } => &[],
+            | AttributeValue::PolyEdgeToVertexUse { .. }
+            | AttributeValue::DecimateVertex(_)
+            | AttributeValue::QuadricVertex(_)
+            | AttributeValue::QuadricEdge(_) => &[],
             AttributeValue::Generic { .. } => &[type_code::GENERIC],
             AttributeValue::Long(_) => &[type_code::LONG],
             AttributeValue::Pointer(_) => &[type_code::POINTER],
@@ -847,6 +877,13 @@ impl AttributeStore {
             operation: "geom::attribute::AttributeStore::insert",
             reason: "too many attributes",
         })?;
+        // upstream's `new` of an attribute fails on memory exhaustion; never abort
+        self.slots
+            .try_reserve(1)
+            .map_err(|_| SolidError::InvalidInput {
+                operation: "geom::attribute::AttributeStore::insert",
+                reason: "attribute store cannot grow",
+            })?;
         self.slots.push(Some(attribute));
         Ok(AttributeHandle(index))
     }
@@ -1401,12 +1438,18 @@ impl AttributeStore {
         }
         let n = count as usize;
         let indices = if ascii {
+            db.ensure_available(n, 1, OP)?;
             let s = db.in_stream_mut().ok_or_else(no_stream)?;
-            let mut v = vec![0u64; n];
-            for x in &mut v {
-                if let Some(value) = s.extract_ulong() {
-                    *x = value;
-                }
+            let mut v = Vec::new();
+            for _ in 0..n {
+                let value =
+                    s.extract_ulong()
+                        .filter(|_| !s.fail())
+                        .ok_or(SolidError::InvalidInput {
+                            operation: OP,
+                            reason: "attribute index could not be extracted",
+                        })?;
+                v.push(value);
             }
             if let Err(e) = goto_next_attline(s) {
                 return Ok(IndexedAttributes {
@@ -1838,14 +1881,77 @@ mod tests {
         assert_eq!(all.len(), 4);
         assert!(all[0].is_none() && all[1].is_some() && all[3].is_some());
         assert_eq!(s.get(all[1].unwrap()).unwrap().attribute_id(), ids::UNKNOWN);
+        let before_store = s.clone();
+        let before_all = all.clone();
         assert!(s
             .read_indexed_attributes_from_db(&mut all, &mut db)
             .unwrap()
             .is_empty());
+        assert_eq!(s, before_store);
+        assert_eq!(all, before_all);
         assert!(matches!(
             s.read_indexed_attributes_from_db(&mut all, &mut db),
             Err(SolidError::Upstream { code: 1001, .. })
         ));
+    }
+
+    #[test]
+    fn read_indexed_ascii_max_count_without_payload() {
+        let mut s = AttributeStore::new();
+        let h = s.insert(Attribute::long(7, 42, Behavior::Copy)).unwrap();
+        let mut all = vec![Some(h), None];
+        let before_store = s.clone();
+        let before_all = all.clone();
+        let mut db = DatabaseReader::with_stream(
+            FileType::Ascii,
+            InputStream::new(format!("{MAX_INDEXED_ATTRIBUTES}\n").into_bytes()),
+        );
+        assert!(matches!(
+            s.read_indexed_attributes_from_db_partial(&mut all, &mut db),
+            Err(SolidError::InvalidInput { .. })
+        ));
+        assert_eq!(s, before_store);
+        assert_eq!(all, before_all);
+    }
+
+    #[test]
+    fn read_indexed_ascii_rejects_incomplete_extraction() {
+        for data in ["3 1  \n", "3 1 2", "2 1 tail\n"] {
+            let mut s = AttributeStore::new();
+            let mut all = vec![None];
+            let before_store = s.clone();
+            let before_all = all.clone();
+            let mut db = DatabaseReader::with_stream(
+                FileType::Ascii,
+                InputStream::new(data.as_bytes().to_vec()),
+            );
+            assert!(matches!(
+                s.read_indexed_attributes_from_db_partial(&mut all, &mut db),
+                Err(SolidError::InvalidInput { .. })
+            ));
+            assert_eq!(s, before_store);
+            assert_eq!(all, before_all);
+        }
+    }
+
+    #[test]
+    fn read_indexed_ascii_preserves_indices_on_failed_line_skip() {
+        let mut s = AttributeStore::new();
+        let mut all = vec![None];
+        let before_store = s.clone();
+        let before_all = all.clone();
+        let mut db =
+            DatabaseReader::with_stream(FileType::Ascii, InputStream::new(b"2 3 1".to_vec()));
+        let read = s
+            .read_indexed_attributes_from_db_partial(&mut all, &mut db)
+            .unwrap();
+        assert_eq!(read.indices, vec![3, 1]);
+        assert!(matches!(
+            read.status,
+            Some(SolidError::Upstream { code: 1001, .. })
+        ));
+        assert_eq!(s, before_store);
+        assert_eq!(all, before_all);
     }
 
     #[test]

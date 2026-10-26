@@ -591,7 +591,7 @@ fn rust_lsi(
     cache.process_boundary_curves = flags.boundary;
     let tree = cache.tree().ok_or_else(|| harness("surface tree"))?;
     let mut solver = LsiGlobalSolver::new(
-        tree,
+        k, tree,
         Some(cache.surface()),
         ext(dom),
         v3(point),
@@ -606,12 +606,12 @@ fn rust_lsi(
         .base
         .set_solution_requested(SolutionRequested::All);
     solver.surface_cache = Some(&cache);
-    solver.kernel = Some(k);
+    solver.kernel = k;
     let mut branch: Branch = Default::default();
     if let Some(slot) = branch.first_mut() {
         *slot = Some(NodeId(node));
     }
-    let r = solver.local_solve_branch(&branch).map(|more| {
+    let r = solver.local_solve_branch(k, &branch).map(|more| {
         let mut o = vec![
             0.0,
             if more { 1.0 } else { 0.0 },
@@ -681,6 +681,7 @@ fn rust_combine(
         surface_cache: Some(&cache),
         curve_handle: Some(H(0)),
         surface_handle: Some(H(1)),
+        edge_tolerance: None,
     };
     let r = global_curve_intersect_combine_solutions(
         k,

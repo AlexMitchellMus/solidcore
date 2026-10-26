@@ -8,7 +8,7 @@ use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 use serde::Deserialize;
 use serde_json::Value;
 use solidcore::curve::curve::Curve;
-use solidcore::error::{Result as SolidResult, SolidError};
+use solidcore::error::{EntityRef, Result as SolidResult, SolidError};
 use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::extent3d::Extent3d;
@@ -19,12 +19,19 @@ use solidcore::geom::tree::{NodeGeomType, Tree};
 use solidcore::intersect::topology_solver::p1::{CurveRef, TopologyObjects, TopologySolver};
 use solidcore::intersect::topology_solver::p2::{TopologySolveOptions, TopologyTrees};
 use solidcore::kernel::Kernel;
-use solidcore::math::{Point3, Vec3};
+use solidcore::math::{Point2, Point3, Vec3};
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::crv_basic::Curve as NlCurve;
 use solidcore::nurbs::math::{CPoint, NOW};
+use solidcore::surface::surface::p1::SurfaceSolveContext;
 use solidcore::surface::surface::Surface;
+use solidcore::surface::surface_cache::face_context::{
+    prepare_face_surface_cache, FaceQueries, PreparedFaceQueries,
+};
+use solidcore::surface::surface_cache::SurfaceCache;
+use solidcore::topology::{Brep, FaceId};
 use solidcore_ffi::units::intersect_topology_solver_p2 as ffi;
+use std::cell::RefCell;
 
 /// Topology solver p2 differential runner.
 pub struct Runner;
@@ -131,7 +138,7 @@ impl SolutionObject for StaticHandle {
     fn kind(&self) -> ObjectKind {
         match self.0 {
             999 | -2 => ObjectKind::Curve,
-            1000 | 1001 => ObjectKind::Other,
+            1000 | 1001 | 10_000.. => ObjectKind::Other,
             2000 | 2001 => ObjectKind::Face,
             2002 | 2003 => ObjectKind::Surface,
             2004 => ObjectKind::Edge,
@@ -141,7 +148,11 @@ impl SolutionObject for StaticHandle {
     fn natural_interval(&self) -> Option<Extent1d> {
         (self.0 == 999 || self.0 == -2).then(|| Extent1d::from_min_max(0.0, 1.0))
     }
+    fn natural_uv_domain(&self) -> Option<Extent2d> {
+        (self.0 == 2002 || self.0 == 2003).then(|| Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0))
+    }
 }
+#[derive(Debug)]
 struct StaticScene {
     points: Vec<Point3>,
     first: Tree<StaticHandle>,
@@ -151,6 +162,91 @@ struct StaticScene {
     curve: Curve,
     edge_owner: bool,
     surfaces: [Surface; 2],
+    /// The shim's `CreateFaceFromSurface` faces (handles 2000, 2001), each in its
+    /// own B-rep as `first` / `second` (entries 5 to 8 only), with their prepared
+    /// trimmed surface caches and entity handle tables.
+    faces: Vec<(Brep, FaceId)>,
+    face_caches: Vec<SurfaceCache<StaticHandle>>,
+    face_entities: Vec<RefCell<Vec<EntityRef>>>,
+}
+struct StaticSurfaceContext<'a>(&'a StaticScene);
+impl SurfaceSolveContext<StaticHandle> for StaticSurfaceContext<'_> {
+    fn build_surface_cache(
+        &mut self,
+        _k: &Kernel,
+        _surface: &Surface,
+        handle: Option<StaticHandle>,
+    ) -> SolidResult<SurfaceCache<StaticHandle>> {
+        let at = match handle.map(|h| h.0) {
+            Some(2002) => 0,
+            Some(2003) => 1,
+            _ => return Err(static_error()),
+        };
+        self.0.face_caches.get(at).cloned().ok_or_else(static_error)
+    }
+    fn face_queries(&self) -> Option<&dyn FaceQueries<StaticHandle>> {
+        Some(self.0)
+    }
+}
+impl StaticScene {
+    fn classify_prepared(
+        &self,
+        k: &Kernel,
+        face: StaticHandle,
+        uv: Point2,
+        src_tol: f64,
+        fast_drop: bool,
+    ) -> SolidResult<(i32, Option<StaticHandle>)> {
+        let at = match face.0 {
+            2000 => 0,
+            2001 => 1,
+            _ => return Err(static_error()),
+        };
+        let (b, f) = self.faces.get(at).ok_or_else(static_error)?;
+        let entities = self.face_entities.get(at).ok_or_else(static_error)?;
+        let base = 10_000 * (at as i32 + 1);
+        let handle_of = |entity: EntityRef| -> SolidResult<StaticHandle> {
+            if entity == EntityRef::Face(*f) {
+                return Ok(face);
+            }
+            let mut table = entities.borrow_mut();
+            if let Some(idx) = table.iter().position(|&e| e == entity) {
+                return Ok(StaticHandle(base + idx as i32));
+            }
+            let idx = table.len() as i32;
+            table.push(entity);
+            Ok(StaticHandle(base + idx))
+        };
+        let prepared = PreparedFaceQueries::new(b, *f, &handle_of)?;
+        if fast_drop {
+            prepared.face_point_classify_fast_drop(k, face, uv, src_tol)
+        } else {
+            prepared.face_point_classify(k, face, uv, src_tol)
+        }
+    }
+}
+impl FaceQueries<StaticHandle> for StaticScene {
+    fn face_zone_tol_3d(&self, face: StaticHandle) -> SolidResult<f64> {
+        self.face_tolerance(face)
+    }
+    fn face_point_classify(
+        &self,
+        k: &Kernel,
+        face: StaticHandle,
+        uv: Point2,
+        src_tol: f64,
+    ) -> SolidResult<(i32, Option<StaticHandle>)> {
+        self.classify_prepared(k, face, uv, src_tol, false)
+    }
+    fn face_point_classify_fast_drop(
+        &self,
+        k: &Kernel,
+        face: StaticHandle,
+        uv: Point2,
+        src_tol: f64,
+    ) -> SolidResult<(i32, Option<StaticHandle>)> {
+        self.classify_prepared(k, face, uv, src_tol, true)
+    }
 }
 fn static_error() -> SolidError {
     SolidError::invalid_input(
@@ -186,6 +282,10 @@ fn static_tree(
     Ok(tree)
 }
 impl TopologyObjects<StaticHandle> for StaticScene {
+    fn surface_solve_context(&self) -> Option<Box<dyn SurfaceSolveContext<StaticHandle> + '_>> {
+        (!self.face_caches.is_empty())
+            .then(|| Box::new(StaticSurfaceContext(self)) as Box<dyn SurfaceSolveContext<StaticHandle> + '_>)
+    }
     fn brep_trees(&self, brep: StaticHandle) -> SolidResult<TopologyTrees<'_, StaticHandle>> {
         let (vertices, empty) = match brep.0 {
             1000 => (&self.first, &self.empty_first),
@@ -233,6 +333,10 @@ impl TopologyObjects<StaticHandle> for StaticScene {
         self.edge_curve(edge)?;
         Ok(Extent1d::from_min_max(0.0, 1.0))
     }
+    fn edge_tolerance(&self, edge: StaticHandle) -> SolidResult<f64> {
+        self.edge_curve(edge)?;
+        Ok(1e-5)
+    }
     fn surface_face(&self, surface: StaticHandle) -> SolidResult<Option<StaticHandle>> {
         match surface.0 {
             2002 => Ok(Some(StaticHandle(2000))),
@@ -248,12 +352,15 @@ impl TopologyObjects<StaticHandle> for StaticScene {
         }
     }
     fn surface(&self, surface: StaticHandle) -> SolidResult<&Surface> {
-        match surface.0 {
-            2002 => self.surfaces.first(),
-            2003 => self.surfaces.get(1),
-            _ => None,
+        let at = match surface.0 {
+            2002 => 0,
+            2003 => 1,
+            _ => return Err(static_error()),
+        };
+        if let Some((b, f)) = self.faces.get(at) {
+            return b.face(*f)?.surface.as_ref().ok_or_else(static_error);
         }
-        .ok_or_else(static_error)
+        self.surfaces.get(at).ok_or_else(static_error)
     }
     fn face_uv_domain(&self, face: StaticHandle) -> SolidResult<Extent2d> {
         self.face_surface(face)?;
@@ -263,11 +370,42 @@ impl TopologyObjects<StaticHandle> for StaticScene {
         self.face_surface(face)?;
         Ok(1e-5)
     }
+    fn face_entity(&self, face: StaticHandle) -> Option<(&Brep, FaceId)> {
+        let at = match face.0 {
+            2000 => 0,
+            2001 => 1,
+            _ => return None,
+        };
+        self.faces.get(at).map(|(b, f)| (b, *f))
+    }
     fn surface_owner(&self, surface: StaticHandle) -> SolidResult<Option<StaticHandle>> {
         self.surface_face(surface)
     }
     fn shape_member(&self, _: StaticHandle) -> ShapeMember {
         ShapeMember::Other
+    }
+    // SmTol::GetZoneTol3d(const SmObject*) of the shim's objects: topology's own
+    // GetTolerance, a curve's edge's or a surface's face's tolerance (the system's
+    // without one, as for the analytic curve), a B-rep's tolerance
+    fn object_zone_tol_3d(&self, k: &Kernel, object: StaticHandle) -> SolidResult<f64> {
+        let system = || {
+            solidcore::geom::tol::zone_tol_3d(k, solidcore::geom::tol::SmallTopoType::NormalSize)
+        };
+        match object.0 {
+            1000 | 1001 => Ok(1e-5),
+            2000 | 2001 => self.face_tolerance(object),
+            2002 | 2003 => match self.surface_face(object)? {
+                Some(face) => self.face_tolerance(face),
+                None => Ok(system()),
+            },
+            2004 => self.edge_tolerance(object),
+            999 => match self.curve_edge(object)? {
+                Some(edge) => self.edge_tolerance(edge),
+                None => Ok(system()),
+            },
+            -2 => Ok(system()),
+            _ => self.vertex_tolerance(object),
+        }
     }
 }
 fn static_rust(case: &Case) -> Result<Output, HarnessError> {
@@ -283,7 +421,7 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
     {
         return Err(HarnessError::new("unbounded static fixture"));
     }
-    let kernel = Kernel::default();
+    let mut kernel = Kernel::default();
     let first: Vec<Point3> = i
         .first
         .iter()
@@ -328,6 +466,66 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
         vec![0.0, 0.0, 1.0, 1.0],
     )
     .map_err(|e| HarnessError::new(e.to_string()))?;
+    let planes = [0.0, 1.0].map(|z| {
+        Surface::from(solidcore::surface::plane::Plane::new(
+            Point3::new(0.0, 0.0, z),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            solidcore::geom::vector2d::Vec2::new(1.0, 1.0),
+            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        ))
+    });
+    let mut faces = Vec::new();
+    let mut face_caches = Vec::new();
+    let mut face_entities = Vec::new();
+    if i.entry >= 5 {
+        for (which, plane) in planes.iter().enumerate() {
+            // new SmBrep(SM_USE_DEFAULT, SM_USE_DEFAULT, &context)
+            let mut b = super::blend_fillet_geom_p1::new_brep(&mut kernel)?;
+            let f = super::sweep_trans_sweep_geometry::create_face(
+                &mut kernel,
+                &mut b,
+                plane.clone(),
+                &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+            )
+            .map_err(|e| HarnessError::new(format!("CreateFaceFromSurface: {e}")))?;
+            let face_handle = StaticHandle(2000 + which as i32);
+            let surface_handle = StaticHandle(2002 + which as i32);
+            let base = 10_000 * (which as i32 + 1);
+            let entities = RefCell::new(Vec::new());
+            let handle_of = |entity: EntityRef| -> SolidResult<StaticHandle> {
+                if entity == EntityRef::Face(f) {
+                    return Ok(face_handle);
+                }
+                let mut table = entities.borrow_mut();
+                if let Some(idx) = table.iter().position(|&e| e == entity) {
+                    return Ok(StaticHandle(base + idx as i32));
+                }
+                let idx = table.len() as i32;
+                table.push(entity);
+                Ok(StaticHandle(base + idx))
+            };
+            let entity_of = |handle: StaticHandle| -> SolidResult<EntityRef> {
+                if handle == face_handle {
+                    return Ok(EntityRef::Face(f));
+                }
+                let idx = usize::try_from(handle.0 - base).map_err(|_| static_error())?;
+                entities.borrow().get(idx).copied().ok_or_else(static_error)
+            };
+            let cache = prepare_face_surface_cache(
+                &kernel,
+                &mut b,
+                f,
+                surface_handle,
+                &handle_of,
+                &entity_of,
+            )
+            .map_err(|e| HarnessError::new(format!("prepare_face_surface_cache: {e}")))?;
+            faces.push((b, f));
+            face_caches.push(cache);
+            face_entities.push(entities);
+        }
+    }
     let scene = StaticScene {
         points: all,
         first: tree1,
@@ -336,15 +534,10 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
         empty_second,
         curve: Curve::from(BSplineCurve::from_nurb(nurb, 3, false)),
         edge_owner: i.entry == 7,
-        surfaces: [0.0, 1.0].map(|z| {
-            Surface::from(solidcore::surface::plane::Plane::new(
-                Point3::new(0.0, 0.0, z),
-                Vec3::new(1.0, 0.0, 0.0),
-                Vec3::new(0.0, 1.0, 0.0),
-                solidcore::geom::vector2d::Vec2::new(1.0, 1.0),
-                &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
-            ))
-        }),
+        surfaces: planes,
+        faces,
+        face_caches,
+        face_entities,
     };
     let vectors = [Vec3::new(0.0, 0.0, 1.0), Vec3::new(1.0, 0.0, 0.0)];
     let options = TopologySolveOptions {
@@ -362,7 +555,8 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
         handle: StaticHandle(999),
     };
     let interval = Extent1d::from_min_max(0.0, 1.0);
-    let shape = Shape::new(&[], &[], &[], &[]).map_err(|e| HarnessError::new(e.to_string()))?;
+    let shape = Shape::new(&mut kernel, &solidcore::geom::object::NoBreps, &[], &[], &[], &[])
+        .map_err(|e| HarnessError::new(e.to_string()))?;
     let result = match i.entry {
         0 => TopologySolver::brep_point_solve(
             &kernel,
@@ -421,7 +615,7 @@ fn static_rust(case: &Case) -> Result<Output, HarnessError> {
                 (first, second)
             };
             local
-                .solve_it(&mut ts, Some(first), Some(second))
+                .solve_it(&kernel, &mut ts, Some(first), Some(second))
                 .map(|()| ts.base.solutions)
         }
         _ => return Err(HarnessError::new("static entry")),

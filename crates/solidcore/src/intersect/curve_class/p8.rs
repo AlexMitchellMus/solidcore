@@ -11,6 +11,9 @@
 //! | [`CurveClassification::intersect_volume_discontinuities`] | `Intersect3DDiscontinuities` (volume) |
 //! | `insert_solutions` (private) | `sm_InsertSolutions` call adapter (part 5) |
 //! | `plane_intersections` (private) | `SmSurface::GlobalCurveIntersect` call on a boundary plane |
+//! | [`uv_discontinuity_intervals`] | the classification in `SmCrvOnSurf::GetKnots` |
+//! | [`volume_discontinuity_intervals`] | the classification in `SmCrvInVolume::GetKnots` |
+//! | [`FreeHandle`] | the stack classification's objects (a curve and its surface or volume) |
 //!
 //! Deviations: handles and caller-supplied geometry replace pointers; Kernel is explicit.
 //! Temporary boundaries have local ownership; a detached surface copy replaces the
@@ -31,7 +34,7 @@
 //! invalid-input error at its first insertion. Solutions passed to part 5 name the
 //! classification curve for its curve (and analytic replacement) and the temporary for
 //! the boundary (and its analytic replacement); collapsed ranges are copied back.
-//! Generic `CrvOnSurf` construction defers to `curve.crv_on_surf`.
+//! Curve-on-surface construction preserves concrete surface dispatch.
 //! No input-driven recursion: dimension forwarding dispatches once through shared helpers.
 
 use crate::curve::crv_on_surf::CrvOnSurf;
@@ -39,6 +42,7 @@ use crate::curve::curve::p8::CurveIntersectOptions;
 use crate::curve::curve::{Curve, CurveKind};
 use crate::curve::line::Line;
 use crate::error::{ignore_status, ignored, Result, SolidError};
+use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::SolverOperation;
 use crate::geom::solution_array::{ObjectKind, SolutionObject};
@@ -48,7 +52,7 @@ use crate::geom::tol::{
     SmallTopoType,
 };
 use crate::intersect::curve_class::{
-    CurveClassification, FoundInterval, IntervalPosition, NO_INTERVAL,
+    ClassificationInit, CurveClassification, FoundInterval, IntervalPosition, NO_INTERVAL,
 };
 use crate::intersect::point_class::{ClassGeometry, ClassObject, ClassObjectKind, PointClassType};
 use crate::kernel::Kernel;
@@ -63,9 +67,23 @@ use crate::surface::surface::{Surface, SurfaceKind};
 use crate::surface::volume::{Discontinuities3d, Volume};
 
 /// Solution-object tag: 0/2 the classification curve (and its analytic replacement),
-/// 1/3 the boundary curve (and its analytic replacement), [`PLANE_TAG`] a boundary plane.
+/// 1/3 the boundary curve (and its analytic replacement), [`PLANE_TAG`] a boundary
+/// plane; with the natural interval of the curve or the natural UV domain of the
+/// plane (upstream's objects are the curves and the plane, whose parameter intervals
+/// `IdenticalSolutions` reads).
 #[derive(Clone, Copy, PartialEq)]
-struct BoundaryObject(u8, crate::geom::extent1d::Extent1d);
+struct BoundaryObject(u8, Extent1d, Extent2d);
+impl BoundaryObject {
+    /// Curve `tag` with natural interval `ivl`.
+    fn curve(tag: u8, ivl: Extent1d) -> Self {
+        Self(tag, ivl, Extent2d::new())
+    }
+
+    /// The boundary plane with natural UV domain `domain`.
+    fn plane(domain: Extent2d) -> Self {
+        Self(PLANE_TAG, Extent1d::new(), domain)
+    }
+}
 impl SolutionObject for BoundaryObject {
     fn kind(&self) -> ObjectKind {
         if self.0 == PLANE_TAG {
@@ -74,8 +92,11 @@ impl SolutionObject for BoundaryObject {
             ObjectKind::Curve
         }
     }
-    fn natural_interval(&self) -> Option<crate::geom::extent1d::Extent1d> {
+    fn natural_interval(&self) -> Option<Extent1d> {
         (self.0 != PLANE_TAG).then_some(self.1)
+    }
+    fn natural_uv_domain(&self) -> Option<Extent2d> {
+        (self.0 == PLANE_TAG).then_some(self.2)
     }
 }
 
@@ -216,8 +237,8 @@ fn plane_intersections(
         .global_curve_intersect(
             k,
             [
-                BoundaryObject(0, natural),
-                BoundaryObject(PLANE_TAG, natural),
+                BoundaryObject::curve(0, natural),
+                BoundaryObject::plane(plane.natural_uv_domain()),
             ],
             &plane.natural_uv_domain(),
             curve,
@@ -228,8 +249,8 @@ fn plane_intersections(
         .to_vec())
 }
 
-fn pv(curve: &Curve, t: f64) -> Result<[Vec3; 2]> {
-    let v = curve.evaluate(t, 1, true, true)?;
+fn pv(k: &Kernel, curve: &Curve, t: f64) -> Result<[Vec3; 2]> {
+    let v = curve.evaluate(k, t, 1, true, true)?;
     Ok([
         *v.first().ok_or_else(|| SolidError::sm_err(OP))?,
         *v.get(1).ok_or_else(|| SolidError::sm_err(OP))?,
@@ -237,18 +258,7 @@ fn pv(curve: &Curve, t: f64) -> Result<[Vec3; 2]> {
 }
 
 fn iso_curve(k: &Kernel, surface: &Surface, line: Line) -> Result<Curve> {
-    match surface.kind() {
-        SurfaceKind::BSpline(s) => {
-            Ok(CrvOnSurf::new(k, line.into(), s.clone_exact(), None, 0)?.into())
-        }
-        _ => {
-            // DISPATCH GAP (curve.crv_on_surf): CrvOnSurf stores only BSplineSurface.
-            Err(SolidError::unported(
-                "SmCrvOnSurf on a generic SmSurface",
-                "curve.crv_on_surf",
-            ))
-        }
-    }
+    Ok(CrvOnSurf::new(k, line.into(), surface.clone_for_evaluation()?, None, 0)?.into())
 }
 
 fn ends(knots: &[f64]) -> Result<(f64, f64)> {
@@ -261,13 +271,13 @@ fn ends(knots: &[f64]) -> Result<(f64, f64)> {
 fn intersections(
     k: &Kernel,
     curve: &Curve,
-    interval: &crate::geom::extent1d::Extent1d,
+    interval: &Extent1d,
     boundary: &Curve,
     tol: f64,
     fast: bool,
 ) -> Result<Vec<Solution<BoundaryObject>>> {
-    let this = BoundaryObject(0, curve.natural_interval());
-    let other = BoundaryObject(1, boundary.natural_interval());
+    let this = BoundaryObject::curve(0, curve.natural_interval());
+    let other = BoundaryObject::curve(1, boundary.natural_interval());
     if fast {
         if let CurveKind::Line(line) = boundary.kind() {
             let r =
@@ -299,8 +309,8 @@ fn intersections(
             &CurveIntersectOptions {
                 handles: [Some(this), Some(other)],
                 analytic_handles: [
-                    Some(BoundaryObject(2, this.1)),
-                    Some(BoundaryObject(3, other.1)),
+                    Some(BoundaryObject::curve(2, this.1)),
+                    Some(BoundaryObject::curve(3, other.1)),
                 ],
                 ..Default::default()
             },
@@ -345,7 +355,7 @@ impl<O: ClassObject> CurveClassification<O> {
         uv: bool,
     ) -> Result<()> {
         let mut detached = surface.clone_for_evaluation()?;
-        *detached.owner_mut() = None;
+        let _ = detached.set_owner(None);
         let surface = &detached;
         let curve = self.curve_geometry(geometry)?;
         let domain = surface.natural_uv_domain();
@@ -390,7 +400,7 @@ impl<O: ClassObject> CurveClassification<O> {
         let mut solutions = Vec::new();
         let mut degenerate = Vec::new();
         for (ii, boundary) in boundaries.iter().enumerate() {
-            let deg = !uv && boundary.is_degenerate(EFF_ZERO, None)?;
+            let deg = !uv && boundary.is_degenerate(k, EFF_ZERO, None)?;
             degenerate.push(deg);
             let mut sols = if deg {
                 Vec::new()
@@ -424,8 +434,8 @@ impl<O: ClassObject> CurveClassification<O> {
                     continue;
                 }
                 let t = sol.start.parameters[0];
-                let cpv = pv(curve, t)?;
-                let mut bpv = pv(boundary, sol.start.parameters[1])?;
+                let cpv = pv(k, curve, t)?;
+                let mut bpv = pv(k, boundary, sol.start.parameters[1])?;
                 if uv {
                     if are_parallel(bpv[1], cpv[1], None) {
                         continue;
@@ -464,7 +474,7 @@ impl<O: ClassObject> CurveClassification<O> {
                         2 => Point2::new(t, domain.max().y),
                         _ => Point2::new(domain.min().x, t),
                     };
-                    let normal = surface.evaluate_normal(p, Side::Left, Side::Left)?;
+                    let normal = surface.evaluate_normal(k, p, Side::Left, Side::Left)?;
                     if !are_perpendicular(cpv[1], normal, None) {
                         continue;
                     }
@@ -497,7 +507,7 @@ impl<O: ClassObject> CurveClassification<O> {
                 continue;
             }
             let t = self.at(i)?.interval().evaluate(0.5);
-            let cpv = pv(curve, t)?;
+            let cpv = pv(k, curve, t)?;
             if uv {
                 let inside = domain.contains_point(Point2::new(cpv[0].x, cpv[0].y), 0.0);
                 self.at_mut(i)?.mid.set_class_object(
@@ -519,7 +529,7 @@ impl<O: ClassObject> CurveClassification<O> {
             ))? {
                 if drop.success && drop.gap < tol {
                     if let Some(normal) =
-                        ignored(surface.evaluate_normal(drop.result_uv, Side::Left, Side::Left))?
+                        ignored(surface.evaluate_normal(k, drop.result_uv, Side::Left, Side::Left))?
                     {
                         if are_perpendicular(cpv[1], normal, None) {
                             self.at_mut(i)?
@@ -568,7 +578,7 @@ impl<O: ClassObject> CurveClassification<O> {
         uv: bool,
     ) -> Result<()> {
         let mut detached = surface.clone_for_evaluation()?;
-        *detached.owner_mut() = None;
+        let _ = detached.set_owner(None);
         let surface = &detached;
         let curve = self.curve_geometry(geometry)?;
         let domain = surface.natural_uv_domain();
@@ -660,15 +670,15 @@ impl<O: ClassObject> CurveClassification<O> {
                 }
                 let t = sol.start.parameters[0];
                 let bt = sol.start.parameters[1];
-                let cpv = pv(curve, t)?;
-                let bpv = pv(boundary, bt)?;
+                let cpv = pv(k, curve, t)?;
+                let bpv = pv(k, boundary, bt)?;
                 let normal = if uv {
                     Vec3::Z
                 } else {
                     let CurveKind::CrvOnSurf(iso) = boundary.kind() else {
                         return Err(SolidError::sm_err(OP));
                     };
-                    iso.evaluate_surface_normal(bt, true)?.normal
+                    iso.evaluate_surface_normal(k, bt, true)?.normal
                 };
                 if are_parallel(bpv[1], cpv[1], None) {
                     continue;
@@ -692,7 +702,7 @@ impl<O: ClassObject> CurveClassification<O> {
             let first = self.at(0)?;
             let t = first.interval().evaluate(0.5);
             let inside = if uv {
-                let p = pv(curve, t)?[0];
+                let p = pv(k, curve, t)?[0];
                 domain.contains_point(Point2::new(p.x, p.y), 0.0)
             } else {
                 let guess = first
@@ -702,11 +712,11 @@ impl<O: ClassObject> CurveClassification<O> {
                         CurveKind::CrvOnSurf(c) => Some(c),
                         _ => None,
                     })
-                    .map(|c| c.evaluate_uv_point(first.start.t_param()))
+                    .map(|c| c.evaluate_uv_point(k, first.start.t_param()))
                     .transpose()?;
                 let drop = ignored(surface.drop_point::<BoundaryObject>(
                     k,
-                    curve.evaluate_point(t)?,
+                    curve.evaluate_point(k, t)?,
                     &domain,
                     &DropPointOptions {
                         guess_uv: guess,
@@ -744,7 +754,7 @@ impl<O: ClassObject> CurveClassification<O> {
             return Err(SolidError::sm_err(OP));
         }
         let mut d = Discontinuities3d::new();
-        if !volume.has_discontinuities(Some(&mut d), false)? {
+        if !volume.has_discontinuities(k, Some(&mut d), false)? {
             return Ok(());
         }
         let domain = volume.natural_param_domain()?;
@@ -880,7 +890,7 @@ impl<O: ClassObject> CurveClassification<O> {
                         continue;
                     }
                     let t = sol.start.parameters[0];
-                    let cpv = pv(curve, t)?;
+                    let cpv = pv(k, curve, t)?;
                     let normal = plane.evaluate_normal();
                     if normal.is_perpendicular_to(cpv[1], 0.5) {
                         continue;
@@ -901,7 +911,7 @@ impl<O: ClassObject> CurveClassification<O> {
                 }
             }
             if !classified {
-                let p = curve.evaluate_point(self.at(0)?.interval().evaluate(0.5))?;
+                let p = curve.evaluate_point(k, self.at(0)?.interval().evaluate(0.5))?;
                 let inside = domain.contains_point(p, 0.0);
                 self.at_mut(0)?.mid.set_class_object(
                     if inside {
@@ -1033,6 +1043,157 @@ impl<O: ClassObject> CurveClassification<O> {
     }
 }
 
+// ---- free-standing classifications ------------------------------------------------------
+
+/// The objects of a classification of one free-standing curve against one surface or
+/// volume: the stack `SmCurveClassification` of `SmCrvOnSurf::GetKnots` and
+/// `SmCrvInVolume::GetKnots`, plus the temporary boundaries this part records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FreeHandle {
+    /// The classified curve.
+    Curve,
+    /// The surface or volume it is classified against.
+    Target,
+    /// The `index`-th temporary of `kind` ([`ClassObject::temporary`]).
+    Temporary(usize, ClassObjectKind),
+}
+
+impl ClassObject for FreeHandle {
+    fn class_kind(&self) -> ClassObjectKind {
+        match self {
+            Self::Curve => ClassObjectKind::Curve,
+            // only read through ClassGeometry::surface / volume
+            Self::Target => ClassObjectKind::Other,
+            Self::Temporary(_, kind) => *kind,
+        }
+    }
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        Some(Self::Temporary(index, kind))
+    }
+}
+
+/// What a free-standing curve is classified against.
+#[derive(Clone, Copy)]
+enum FreeTarget<'a> {
+    Surface(&'a Surface),
+    Volume(&'a Volume),
+}
+
+/// The geometry behind [`FreeHandle`]s (temporaries are resolved by this part's own
+/// wrapper).
+struct FreeGeometry<'a> {
+    curve: &'a Curve,
+    target: FreeTarget<'a>,
+}
+
+impl ClassGeometry<FreeHandle> for FreeGeometry<'_> {
+    fn curve(&self, o: FreeHandle) -> Option<&Curve> {
+        (o == FreeHandle::Curve).then_some(self.curve)
+    }
+    fn surface(&self, o: FreeHandle) -> Option<&Surface> {
+        match (o, self.target) {
+            (FreeHandle::Target, FreeTarget::Surface(s)) => Some(s),
+            _ => None,
+        }
+    }
+    fn volume(&self, o: FreeHandle) -> Option<&Volume> {
+        match (o, self.target) {
+            (FreeHandle::Target, FreeTarget::Volume(v)) => Some(v),
+            _ => None,
+        }
+    }
+    fn point(&self, _o: FreeHandle) -> Option<Point3> {
+        None
+    }
+}
+
+/// The interval parameter ranges of `cc`, in order (`GetSize` / `GetAt(ii).m_vInterval`).
+fn interval_ranges(cc: &CurveClassification<FreeHandle>) -> Vec<Extent1d> {
+    cc.intervals().iter().map(|i| i.interval).collect()
+}
+
+/// The classification `SmCrvOnSurf::GetKnots` makes of its UV curve `uv_curve` over
+/// `interval` (zone tolerance `tol`) on `surface`, cut at the surface's knot lines
+/// (`SmCurveClassification(uv, ivl, NULL, tol, 0, NULL, FALSE, TRUE, surface)` then
+/// `IntersectUVDiscontinuties`): the parameter range of every interval, in order.
+///
+/// # Errors
+///
+/// Those of [`CurveClassification::intersect_uv_discontinuities`]; the constructor's
+/// status is ignored, as upstream.
+pub fn uv_discontinuity_intervals(
+    k: &Kernel,
+    uv_curve: &Curve,
+    interval: Extent1d,
+    tol: f64,
+    surface: &Surface,
+) -> Result<Vec<Extent1d>> {
+    let geometry = FreeGeometry {
+        curve: uv_curve,
+        target: FreeTarget::Surface(surface),
+    };
+    let mut cc = CurveClassification::with_curve(
+        k,
+        &ClassificationInit {
+            curve: Some(FreeHandle::Curve),
+            interval,
+            uv_curve: None,
+            src_zone_tol_3d: tol,
+            opt_data_size: 0,
+            is_curve_owned: false,
+            is_curve_current: true,
+            surface1: Some(FreeHandle::Target),
+            surface2: None,
+            uv_curve2: None,
+            ti: None,
+        },
+    )?;
+    cc.intersect_uv_discontinuities(k, &geometry, surface, FreeHandle::Target)?;
+    Ok(interval_ranges(&cc))
+}
+
+/// The classification `SmCrvInVolume::GetKnots` makes of its base curve `curve` over
+/// `interval` (zone tolerance `tol`) against `volume`'s discontinuity planes
+/// (`SmCurveClassification(curve, ivl, NULL, tol)` then
+/// `Intersect3DDiscontinuities(volume, in_param_space)`): the parameter range of every
+/// interval, in order.
+///
+/// # Errors
+///
+/// Those of [`CurveClassification::intersect_volume_discontinuities`]; the
+/// constructor's status is ignored, as upstream.
+pub fn volume_discontinuity_intervals(
+    k: &Kernel,
+    curve: &Curve,
+    interval: Extent1d,
+    tol: f64,
+    volume: &Volume,
+    in_param_space: bool,
+) -> Result<Vec<Extent1d>> {
+    let geometry = FreeGeometry {
+        curve,
+        target: FreeTarget::Volume(volume),
+    };
+    let mut cc = CurveClassification::with_curve(
+        k,
+        &ClassificationInit {
+            curve: Some(FreeHandle::Curve),
+            interval,
+            uv_curve: None,
+            src_zone_tol_3d: tol,
+            opt_data_size: 0,
+            is_curve_owned: false,
+            is_curve_current: true,
+            surface1: None,
+            surface2: None,
+            uv_curve2: None,
+            ti: None,
+        },
+    )?;
+    cc.intersect_volume_discontinuities(k, &geometry, volume, FreeHandle::Target, in_param_space)?;
+    Ok(interval_ranges(&cc))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1101,7 +1262,8 @@ mod tests {
             .mid
             .set_class_object(PointClassType::Nothing, None);
         let before = cc.intervals().to_vec();
-        let volume = Volume::with_maps(VolumeKind::Transform(Transform::default()), None, None);
+        let volume =
+            Volume::with_maps(VolumeKind::Transform(Transform::default()), None, None).unwrap();
         cc.intersect_volume_discontinuities(&k, &g, &volume, H::Volume, true)
             .unwrap();
         assert_eq!(before, cc.intervals());

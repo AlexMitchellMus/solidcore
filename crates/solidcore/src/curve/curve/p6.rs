@@ -17,7 +17,10 @@
 //! | [`Curve::global_coincidence_checker`], [`Coincidence`]  | `SmCurve::GlobalCoincidenceChecker`   |
 //! | [`Curve::deform_to_end_point_targets`]                  | `SmCurve::DeformToEndPointTargets`    |
 //!
-//! Deviations:
+//! Deviations: endpoint deformation rejects non-B-spline UV curves with
+//! `InvalidInput`; ordinary UV-drop errors use `Vec2::UNDEF` rather than preserving
+//! partially written native out-params; UV replacement can fail on the Rust-only
+//! evaluation-copy depth guard. Other deviations:
 //! - **Out-params.** Every function returns its outputs ([`DroppedPoint`],
 //!   [`MaxDistance`], [`Coincidence`], the solution list of
 //!   [`Curve::simple_coincidence_checker`], the new curve of
@@ -38,13 +41,10 @@
 //! - **Bad `DropPoint` operation.** Upstream warns and uses `SM_SO_MINIMIZE`; so does
 //!   the port (without the warning).
 //! - **Object identity.** `&crOtherCurve == this` is [`core::ptr::eq`].
-//! - **`DeformToEndPointTargets`.** `ppOptNewCurve` is `want_new_curve`; the new curve
-//!   is returned. The `SmCrvOnSurf` branch (editing the UV curve when
-//!   `pOptSurfCrvOnSurf` is its base surface) is not here: it is taken only with
-//!   that surface argument, which the port drops with `pOptCrvOrientation` (every
-//!   caller here passes `NULL`), and it needs `SmSurface::DropPoint` (unit
-//!   `surface.surface_p5`). A curve on surface takes the approximation path, through
-//!   its `ApproximateCurve` override.
+//! - **`DeformToEndPointTargets`.** The legacy entry point omits the optional
+//!   surface; [`Curve::deform_to_end_point_targets_on_surface`] retains it and the
+//!   optional orientation. Matching surfaces edit the UV B-spline in place,
+//!   replacing derived analytic UV curves with their deformed B-spline.
 //! - **Handles.** The global point solves of `DropPoint` and `CurveMaxDistanceBetween`
 //!   name a private handle of the curve (with its natural interval, as upstream's
 //!   `this`); those solutions are not returned.
@@ -57,15 +57,23 @@
 //!   tripled per split) keeps the two curves' caches for its whole recursion instead
 //!   (`Curve::global_point_solve_cached`), built at the first global solve as
 //!   upstream's; the build is deterministic, so the solutions are those of a fresh
-//!   cache. Other `DropPoint` callers still build one per call.
+//!   cache. [`Curve::drop_point_in`] keeps the caches of a caller's curves in a
+//!   [`DropPointCaches`] (`IsPointOnCurve` in `FindInteriorCurves`). Other
+//!   `DropPoint` callers still build one per call.
 //! - **Recursion.** `GlobalCoincidenceChecker` splits closed and half closed curves
 //!   recursively; past [`MAX_COINCIDENCE_DEPTH`] nested splits it fails with
-//!   `InvalidInput` (upstream recurses without bound).
+//!   `InvalidInput` (upstream recurses without bound). Each split makes three calls, so
+//!   the calls grow as `3^depth` well before that depth: past
+//!   [`MAX_COINCIDENCE_CALLS`] calls in one check it fails with `InvalidInput` too
+//!   (`1e300` control points split 15 to 30 levels deep and ran for minutes, fuzz
+//!   `curve.curve_p8` fuzz01456; upstream fixtures and the committed difftest cases
+//!   make at most 15,139 calls and split 32 levels deep).
 //! - **Seam test.** `sm_IsPointSolutionAcrossClosedSeamBoundary` (unit
 //!   `curve.curve_p5`) is told whether the solution's first object is its `this`
 //!   curve: the split solutions name `[this, other]`, so it is when the coincidence
 //!   check split the other curve, or `this` and the other are the same curve.
 
+use crate::curve::curve::knots_ignoring_status;
 use crate::curve::curve::p1::{ApproximateCurveOptions, GlobalPointSolveOptions};
 use crate::curve::curve::p2::{
     at, snap_sol_to_specified_endpoint, Curve, CurveKind, CurvePropertyType,
@@ -103,6 +111,12 @@ const OP_COINCIDENCE: &str = "curve::curve::p6::global_coincidence_checker";
 /// fewer than 40 levels).
 pub const MAX_COINCIDENCE_DEPTH: usize = 200;
 
+/// Most calls (the first and every split piece) one
+/// [`Curve::global_coincidence_checker`] makes (not upstream; see the module
+/// deviations): `2^18`, 17 times the most any upstream fixture or committed difftest
+/// case makes (15,139).
+pub const MAX_COINCIDENCE_CALLS: usize = 1 << 18;
+
 /// `lNumSpans` of the base `CalculateBoundingBox`.
 const NUM_SPANS: u64 = 12;
 
@@ -123,6 +137,13 @@ impl SolutionObject for CurveHandle {
     }
 }
 
+/// The curve caches of [`Curve::drop_point_in`], kept across calls on the same
+/// curves (performance only: upstream keeps each cache on its curve; see
+/// [`Curve::global_point_solve_cached`]). Slot `i` belongs to the caller's curve `i`,
+/// which must not change while the slots are used.
+#[derive(Debug, Default)]
+pub(crate) struct DropPointCaches(Vec<Option<CurveCache<CurveHandle>>>);
+
 // ---- CalculateBoundingBox --------------------------------------------------------------
 
 /// The base-class `SmCurve::CalculateBoundingBox` of `curve` over `interval`: the
@@ -139,6 +160,7 @@ impl SolutionObject for CurveHandle {
 /// Those of `LocalPropertyAnalysis` and the base `Tessellate`; those of `IsDegenerate` and
 /// `ApproximateLength`; `InvalidInput` where upstream would read past the samples.
 pub fn calculate_bounding_box_base(
+    k: &Kernel,
     curve: &Curve,
     interval: &Extent1d,
     req: BoundingBoxRequest,
@@ -162,7 +184,7 @@ pub fn calculate_bounding_box_base(
     let mut pt_der = [Vec3::UNDEF, Vec3::UNDEF];
     let sample = |t: f64, pt_der: &mut [Vec3; 2]| -> Result<()> {
         // nonZeroTangent values (status ignored)
-        if let Some(v) = ignored(curve.evaluate(t, num_derivs, false, true))? {
+        if let Some(v) = ignored(curve.evaluate(k, t, num_derivs, false, true))? {
             for (dst, src) in pt_der.iter_mut().zip(v) {
                 *dst = src;
             }
@@ -208,6 +230,7 @@ pub fn calculate_bounding_box_base(
             }
 
             let found = match local_property_analysis(
+                k,
                 curve,
                 &sub_ivl,
                 CurvePropertyType::ParallelToVector,
@@ -244,7 +267,7 @@ pub fn calculate_bounding_box_base(
 
         if !stat_ok {
             // Maybe the curve is degenerate.
-            if curve.is_degenerate(EFF_ZERO, None)? {
+            if curve.is_degenerate(k, EFF_ZERO, None)? {
                 // Just go with the first point, which is already in the points.
                 stat_ok = true;
             }
@@ -257,7 +280,7 @@ pub fn calculate_bounding_box_base(
     }
 
     // pick tessellate control accuracies
-    let (size, _) = curve.approximate_length(interval, 5, false)?;
+    let (size, _) = curve.approximate_length(k, interval, 5, false)?;
     let angle_tol_deg = 2.0;
 
     // LocalPropertyAnalysis failed, use Tess.
@@ -265,7 +288,7 @@ pub fn calculate_bounding_box_base(
         // sample the target curve over target interval
         let chord_height = size / 100_000.0;
         // (Tessellate resets the arrays it is given)
-        let tess = curve.tessellate(interval, chord_height, angle_tol_deg, 0)?;
+        let tess = curve.tessellate(k, interval, chord_height, angle_tol_deg, 0)?;
         points = tess.points;
         if want_tangents {
             tangents = tess.tangents;
@@ -467,7 +490,7 @@ impl Curve {
                 })
             }
             CurveKind::Composite(c) => c.calculate_bounding_box(k, interval, req, expand),
-            _ => calculate_bounding_box_base(self, interval, req, expand),
+            _ => calculate_bounding_box_base(k, self, interval, req, expand),
         }
     }
 
@@ -524,6 +547,33 @@ impl Curve {
             op,
             &mut None,
         )
+    }
+
+    /// [`Curve::drop_point`] keeping the curve's cache for the global solve in slot
+    /// `index` of `caches` (see [`DropPointCaches`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Curve::drop_point`].
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drop_point_in(
+        &self,
+        k: &Kernel,
+        interval: &Extent1d,
+        point: Point3,
+        vec_to_inside: Option<Vec3>,
+        dist_tol: f64,
+        guess: Option<f64>,
+        op: SolverOperation,
+        caches: &mut DropPointCaches,
+        index: usize,
+    ) -> Result<DroppedPoint> {
+        if caches.0.len() <= index {
+            caches.0.resize_with(index + 1, || None);
+        }
+        let mut fresh = None;
+        let slot = caches.0.get_mut(index).unwrap_or(&mut fresh);
+        self.drop_point_cached(k, interval, point, vec_to_inside, dist_tol, guess, op, slot)
     }
 
     /// [`Curve::drop_point`] keeping the curve's cache for the global solve in
@@ -626,6 +676,7 @@ impl Curve {
 
         if let Some(guess) = guess {
             let (converged, sol) = self.local_point_solve::<()>(
+                k,
                 interval,
                 op,
                 point,
@@ -644,6 +695,7 @@ impl Curve {
             // when a good enough solution was found
             if local_converged && solution.start.solution_value < xsect_tol {
                 let (snapped, keep_sol) = snap_sol_to_specified_endpoint(
+                    k,
                     self,
                     interval,
                     vec_to_inside,
@@ -683,6 +735,7 @@ impl Curve {
             // for every solution
             for sol in solutions.as_slice() {
                 let (snapped, keep_sol) = snap_sol_to_specified_endpoint(
+                    k,
                     self,
                     interval,
                     vec_to_inside,
@@ -812,6 +865,7 @@ impl Curve {
                     opt_vectors: vectors,
                     handle: this,
                     analytic_handle: analytic,
+                    zone_tol_3d: None,
                 };
                 Ok(self
                     .global_point_solve(
@@ -878,16 +932,20 @@ impl Curve {
         // there are a large number of knots.
         if num_samples == 0 {
             do_precise = true;
-            let knots = ignored(self.knots(None))?.map_or(0, |(k, _)| k.len());
-            let other_knots = ignored(other.knots(None))?.map_or(0, |(k, _)| k.len());
+            let knots = knots_ignoring_status(self.knots_with_status(k, None))?
+                .0
+                .len();
+            let other_knots = knots_ignoring_status(other.knots_with_status(k, None))?
+                .0
+                .len();
             num_samples = 22 + knots as u64 + other_knots as u64;
         }
 
         // special case line/line check
         if self.degree()? == 1
-            && self.number_natural_knots()? == 4
+            && self.number_natural_knots(k)? == 4
             && other.degree()? == 1
-            && other.number_natural_knots()? == 4
+            && other.number_natural_knots(k)? == 4
         {
             do_precise = false;
             num_samples = 2;
@@ -917,10 +975,11 @@ impl Curve {
 
             // locals for localPointSolve
             let mut found_parameter = 0.0;
-            let mut pnt = other.evaluate_point(t_guess2)?;
+            let mut pnt = other.evaluate_point(k, t_guess2)?;
 
             // Find ThisCurvePoint Normal to OtherCurvePoint
             let (mut found, mut solution) = self.local_point_solve::<()>(
+                k,
                 interval,
                 SolverOperation::Minimize,
                 pnt,
@@ -932,8 +991,9 @@ impl Curve {
             if !found && ii == 0 {
                 // try moving ThisCurvePoint a small distance from its endPoint
                 t_guess2 = other_interval.evaluate(0.001);
-                pnt = other.evaluate_point(t_guess2)?;
+                pnt = other.evaluate_point(k, t_guess2)?;
                 (found, solution) = self.local_point_solve::<()>(
+                    k,
                     interval,
                     SolverOperation::Minimize,
                     pnt,
@@ -946,8 +1006,9 @@ impl Curve {
             if !found && ii == num_samples - 1 {
                 // try moving ThisCurvePoint a small distance from its endPoint
                 t_guess2 = other_interval.evaluate(0.999);
-                pnt = other.evaluate_point(t_guess2)?;
+                pnt = other.evaluate_point(k, t_guess2)?;
                 (found, solution) = self.local_point_solve::<()>(
+                    k,
                     interval,
                     SolverOperation::Minimize,
                     pnt,
@@ -959,7 +1020,7 @@ impl Curve {
             // get ThisCurve solution point and gap vector distance
             let mut found_dist = BIG_DOUBLE;
             if found {
-                let test_pnt = self.evaluate_point(solution.start.param(0)?)?;
+                let test_pnt = self.evaluate_point(k, solution.start.param(0)?)?;
                 found_dist = test_pnt.distance(pnt);
                 found_parameter = solution.start.param(0)?;
             }
@@ -1018,6 +1079,7 @@ impl Curve {
                 } else {
                     // Find ThisCurvePoint Closest (not Normal) to OtherCurvePoint
                     (found, solution) = self.local_point_solve::<()>(
+                        k,
                         interval,
                         SolverOperation::Minimize,
                         pnt,
@@ -1065,13 +1127,14 @@ impl Curve {
         }
 
         // get maxGap ThisCurve Point
-        let pnt = self.evaluate_point(this_t_max)?;
+        let pnt = self.evaluate_point(k, this_t_max)?;
 
         // when doing precise and MaxDist found is greater than zero
         let scaled_zero = EFF_ZERO * (1.0 + pnt.max_dimension());
         if do_precise && max_dist > scaled_zero {
             // find the gap maximum near the largest sampled gap point
             let (found, solution) = self.local_curve_solve::<()>(
+                k,
                 interval,
                 other,
                 &other_interval,
@@ -1088,8 +1151,8 @@ impl Curve {
                 // get Gap points and size
                 let t_max1 = solution.start.param(0)?;
                 let t_max2 = solution.start.param(1)?;
-                let pnt1 = self.evaluate_point(t_max1)?;
-                let pnt2 = other.evaluate_point(t_max2)?;
+                let pnt1 = self.evaluate_point(k, t_max1)?;
+                let pnt2 = other.evaluate_point(k, t_max2)?;
                 let found_dist = pnt1.distance(pnt2);
 
                 // save largest gap seen
@@ -1135,10 +1198,10 @@ impl Curve {
         objects: [Option<O>; 2],
     ) -> Result<Vec<Solution<O>>> {
         // evaluate both curveInterval min/max endPoints
-        let start_point1 = self.evaluate_point(interval.min())?;
-        let end_point1 = self.evaluate_point(interval.max())?;
-        let start_point2 = other.evaluate_point(other_interval.min())?;
-        let end_point2 = other.evaluate_point(other_interval.max())?;
+        let start_point1 = self.evaluate_point(k, interval.min())?;
+        let end_point1 = self.evaluate_point(k, interval.max())?;
+        let start_point2 = other.evaluate_point(k, other_interval.min())?;
+        let end_point2 = other.evaluate_point(k, other_interval.max())?;
 
         // Curve/curve MinDistance parameter pairs and distance value
         let mut drops: Vec<(f64, f64, f64)> = Vec::with_capacity(4);
@@ -1149,6 +1212,7 @@ impl Curve {
             // find OtherCurve Point closest to ThisCurve StartPoint
             let guess = other_interval.evaluate(0.5);
             let (found, sol) = other.local_point_solve::<()>(
+                k,
                 other_interval,
                 SolverOperation::Minimize,
                 start_point1,
@@ -1171,6 +1235,7 @@ impl Curve {
             // find ThisCurve Point closest to OtherCurve StartPoint
             let guess = interval.evaluate(0.5);
             let (found, sol) = self.local_point_solve::<()>(
+                k,
                 interval,
                 SolverOperation::Minimize,
                 start_point2,
@@ -1196,6 +1261,7 @@ impl Curve {
             // find ThisCurve Point closest to OtherCurve EndPoint
             let guess = interval.evaluate(0.5);
             let (found, sol) = self.local_point_solve::<()>(
+                k,
                 interval,
                 SolverOperation::Minimize,
                 end_point2,
@@ -1230,6 +1296,7 @@ impl Curve {
             // find OtherCurve Point closest to ThisCurve EndPoint
             let guess = other_interval.evaluate(0.5);
             let (found, sol) = other.local_point_solve::<()>(
+                k,
                 other_interval,
                 SolverOperation::Minimize,
                 end_point1,
@@ -1323,8 +1390,8 @@ impl Curve {
     /// # Errors
     ///
     /// Those of the evaluations, box, closure, degeneracy and drop computations;
-    /// `InvalidInput` past [`MAX_COINCIDENCE_DEPTH`] nested splits; those of the seam
-    /// test of split solutions.
+    /// `InvalidInput` past [`MAX_COINCIDENCE_DEPTH`] nested splits or
+    /// [`MAX_COINCIDENCE_CALLS`] calls; those of the seam test of split solutions.
     pub fn global_coincidence_checker<O: SolutionObject>(
         &self,
         k: &Kernel,
@@ -1339,6 +1406,7 @@ impl Curve {
         // solve and kept for the whole split recursion (upstream keeps them on the
         // curves, which do not change here)
         let mut caches = [None, None];
+        let mut calls = 0;
         self.global_coincidence_checker_at(
             k,
             interval,
@@ -1349,10 +1417,12 @@ impl Curve {
             objects,
             0,
             &mut caches,
+            &mut calls,
         )
     }
 
-    /// [`Curve::global_coincidence_checker`] at split depth `depth`.
+    /// [`Curve::global_coincidence_checker`] at split depth `depth`; `calls` counts the
+    /// calls of the whole check.
     fn global_coincidence_checker_at<O: SolutionObject>(
         &self,
         k: &Kernel,
@@ -1364,11 +1434,19 @@ impl Curve {
         objects: [Option<O>; 2],
         depth: usize,
         caches: &mut [Option<CurveCache<CurveHandle>>; 2],
+        calls: &mut usize,
     ) -> Result<Coincidence<O>> {
+        *calls += 1;
         if depth > MAX_COINCIDENCE_DEPTH {
             return Err(SolidError::invalid_input(
                 OP_COINCIDENCE,
                 "coincidence check split deeper than MAX_COINCIDENCE_DEPTH",
+            ));
+        }
+        if *calls > MAX_COINCIDENCE_CALLS {
+            return Err(SolidError::invalid_input(
+                OP_COINCIDENCE,
+                "coincidence check makes more than MAX_COINCIDENCE_CALLS calls",
             ));
         }
 
@@ -1379,10 +1457,10 @@ impl Curve {
         };
 
         // no work - either curve is degenerate - no solutions possible
-        if self.is_degenerate(tol / 2.0, Some(interval))? {
+        if self.is_degenerate(k, tol / 2.0, Some(interval))? {
             return Ok(out);
         }
-        if other.is_degenerate(tol / 2.0, Some(other_interval))? {
+        if other.is_degenerate(k, tol / 2.0, Some(other_interval))? {
             return Ok(out);
         }
 
@@ -1409,7 +1487,7 @@ impl Curve {
 
         // Special Case: closed or half-closed curves: split it into smaller pieces
         // and recursively call itself.
-        if self.is_split_needed(interval, tol)? {
+        if self.is_split_needed(k, interval, tol)? {
             let pieces = split_in_three(interval);
             let mut parts = Vec::with_capacity(3);
             for piece in &pieces {
@@ -1424,15 +1502,16 @@ impl Curve {
                         objects,
                         depth + 1,
                         caches,
+                        calls,
                     )?
                     .solutions,
                 );
             }
-            return self.merge_split_solutions(&parts, interval, other, other_interval, true);
+            return self.merge_split_solutions(k, &parts, interval, other, other_interval, true);
         }
 
         // Do the same recursive division if the second curve is closed.
-        if other.is_split_needed(other_interval, tol)? {
+        if other.is_split_needed(k, other_interval, tol)? {
             let pieces = split_in_three(other_interval);
             let mut parts = Vec::with_capacity(3);
             for piece in &pieces {
@@ -1447,26 +1526,27 @@ impl Curve {
                         objects,
                         depth + 1,
                         caches,
+                        calls,
                     )?
                     .solutions,
                 );
             }
-            return self.merge_split_solutions(&parts, interval, other, other_interval, false);
+            return self.merge_split_solutions(k, &parts, interval, other, other_interval, false);
         }
 
         // Two non closed intervals: drop the endPoints, sort them and test the
         // maximum distance between the curves.
 
         // get thisCurve start and stop position/tangents
-        let line_pt1 = self.evaluate(interval.min(), 1, true, true)?;
+        let line_pt1 = self.evaluate(k, interval.min(), 1, true, true)?;
         let (line_pt1_0, line_pt1_1) = (at(&line_pt1, 0), at(&line_pt1, 1));
-        let end1 = self.evaluate(interval.max(), 1, true, true)?;
+        let end1 = self.evaluate(k, interval.max(), 1, true, true)?;
         let (end1_0, end1_1) = (at(&end1, 0), -at(&end1, 1)); // Negate end derivatives
 
         // get otherCurve start and stop position/tangents
-        let line_pt2 = other.evaluate(other_interval.min(), 1, true, true)?;
+        let line_pt2 = other.evaluate(k, other_interval.min(), 1, true, true)?;
         let (line_pt2_0, line_pt2_1) = (at(&line_pt2, 0), at(&line_pt2, 1));
-        let end2 = other.evaluate(other_interval.max(), 1, true, true)?;
+        let end2 = other.evaluate(k, other_interval.max(), 1, true, true)?;
         let (end2_0, end2_1) = (at(&end2, 0), -at(&end2, 1)); // Negate end derivatives
 
         // Add any endPoint/endPoint coincident cases with open gaps as single solutions
@@ -1687,14 +1767,14 @@ impl Curve {
     /// Whether [`Curve::global_coincidence_checker`] splits this curve over
     /// `interval`: closed, or (for an interval longer than a tenth of the zone
     /// tolerance) tangents sweeping through 180 degrees or more.
-    fn is_split_needed(&self, interval: &Extent1d, tol: f64) -> Result<bool> {
-        let mut do_split = self.is_closed(interval, tol)?;
+    fn is_split_needed(&self, k: &Kernel, interval: &Extent1d, tol: f64) -> Result<bool> {
+        let mut do_split = self.is_closed(k, interval, tol)?;
 
         // In addition to closed curves, split curves which are half closed
         if !do_split {
             // Needed to break infinite recursion
             if interval.length() > ZONE_TOL_3D / 10.0 {
-                let polar_box = self.approximate_polar_box(interval, 5)?;
+                let polar_box = self.approximate_polar_box(k, interval, 5)?;
                 let state = polar_box.state();
                 if state == PolarBoxState::Unbounded
                     || ((state == PolarBoxState::Arc || state == PolarBoxState::Region)
@@ -1714,6 +1794,7 @@ impl Curve {
     /// contiguous run of range solutions covers all of either interval.
     fn merge_split_solutions<O: SolutionObject>(
         &self,
+        k: &Kernel,
         parts: &[Vec<Solution<O>>],
         interval: &Extent1d,
         other: &Self,
@@ -1734,6 +1815,7 @@ impl Curve {
                 // the object pointers with the seam test's `this` curve)
                 let across = if split_this {
                     is_point_solution_across_closed_seam_boundary(
+                        k,
                         sol,
                         other,
                         other_interval,
@@ -1743,6 +1825,7 @@ impl Curve {
                     )?
                 } else {
                     is_point_solution_across_closed_seam_boundary(
+                        k,
                         sol,
                         self,
                         interval,
@@ -1827,6 +1910,42 @@ impl Curve {
         end_tan: Option<Vec3>,
         end_tan_type: InValueType,
     ) -> Result<Option<Self>> {
+        self.deform_to_end_point_targets_on_surface(
+            k,
+            tgt_start,
+            tgt_end,
+            want_new_curve,
+            start_tan,
+            start_tan_type,
+            end_tan,
+            end_tan_type,
+            None,
+        )
+    }
+
+    /// Deforms endpoints, retaining a curve on a matching `surface` by editing its
+    /// parameter-space curve. `orientation` reverses the UV target assignment when
+    /// it is opposite. This is the optional-surface branch of the upstream method.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Self::deform_to_end_point_targets`], surface comparison and point
+    /// dropping; `InvalidInput` when the UV curve does not derive from a B-spline.
+    pub fn deform_to_end_point_targets_on_surface(
+        &mut self,
+        k: &Kernel,
+        tgt_start: Option<Point3>,
+        tgt_end: Option<Point3>,
+        want_new_curve: bool,
+        start_tan: Option<Vec3>,
+        start_tan_type: InValueType,
+        end_tan: Option<Vec3>,
+        end_tan_type: InValueType,
+        surface: Option<(
+            &crate::surface::surface::Surface,
+            Option<crate::nurbs::b_spline_surface_n_lib::p2::OrientType>,
+        )>,
+    ) -> Result<Option<Self>> {
         let same_or_free =
             |t: InValueType| t == InValueType::Same || t == InValueType::Unconstrained;
 
@@ -1837,6 +1956,68 @@ impl Curve {
             && same_or_free(end_tan_type)
         {
             return Ok(None);
+        }
+
+        if let (Some((surface, orientation)), CurveKind::CrvOnSurf(curve)) =
+            (surface, self.kind_mut())
+        {
+            if !want_new_curve {
+                return Err(SolidError::invalid_input(
+                    OP_DEFORM,
+                    "ppOptNewCurve must be NonNULL for non SmBSplineCurve_TYPE curves",
+                ));
+            }
+            if surface.approx_eq(k, curve.surface())? {
+                let ends = curve.uv_curve().ends(k)?;
+                let domain = surface.natural_uv_domain();
+                let drop_target = |target: Option<Point3>,
+                                   current: Point3|
+                 -> Result<Option<Point3>> {
+                    let Some(target) = target else {
+                        return Ok(None);
+                    };
+                    let options = crate::surface::surface::p5::DropPointOptions {
+                        guess_uv: Some(crate::math::Vec2::new(current.x, current.y)),
+                        ..Default::default()
+                    };
+                    let uv = ignored(surface.drop_point::<crate::surface::surface::p4::NoObject>(
+                        k, target, &domain, &options,
+                    ))?
+                    .map_or(crate::math::Vec2::UNDEF, |result| result.result_uv);
+                    Ok(Some(Point3::new(uv.x, uv.y, 0.0)))
+                };
+                let start = drop_target(tgt_start, ends.start)?;
+                let end = drop_target(tgt_end, ends.end)?;
+                let (start, end) = if orientation
+                    == Some(crate::nurbs::b_spline_surface_n_lib::p2::OrientType::Opposite)
+                {
+                    (end, start)
+                } else {
+                    (start, end)
+                };
+                let uv = curve.uv_curve_mut();
+                if !uv.is_kind_of(crate::curve::curve::p2::BSPLINE_CURVE_TYPE) {
+                    return Err(SolidError::invalid_input(
+                        OP_DEFORM,
+                        "the UV curve must derive from SmBSplineCurve",
+                    ));
+                }
+                let replacement = uv.deform_to_end_point_targets(
+                    k,
+                    start,
+                    end,
+                    true,
+                    None,
+                    InValueType::Same,
+                    None,
+                    InValueType::Same,
+                )?;
+                if let Some(mut replacement) = replacement {
+                    ignore_status(replacement.convert_to_2d(k))?;
+                    curve.set_uv_curve(replacement)?;
+                }
+                return Ok(None);
+            }
         }
 
         let dim = self.dim();
@@ -1877,10 +2058,6 @@ impl Curve {
                     "ppOptNewCurve must be NonNULL for non SmBSplineCurve_TYPE curves",
                 ));
             }
-
-            // NOT PORTED (this unit's own limit, see plan/findings.md, surface.surface_p5): the
-            // SmCrvOnSurf branch needs the dropped pOptSurfCrvOnSurf and pOptCrvOrientation
-            // arguments of SmSurface::DropPoint
 
             // for derived BSpline types: copy the Nurb curve as a plain BSplineCurve
             CurveKind::Hyperbola(h) => {
@@ -2012,7 +2189,7 @@ mod tests {
                     reused.success && reused.distance < tol,
                     "angle {a}: {reused:?}"
                 );
-                let q = full.evaluate_point(reused.parameter).unwrap();
+                let q = full.evaluate_point(&k, reused.parameter).unwrap();
                 assert!(q.distance(on) < tol, "angle {a}: {q:?}");
             }
         }
@@ -2032,7 +2209,7 @@ mod tests {
         let (ivl, other_ivl) = (full.natural_interval(), half.natural_interval());
         let tol = 1e-6;
         let objects = [None::<NoObject>, None];
-        assert!(full.is_split_needed(&ivl, tol).unwrap());
+        assert!(full.is_split_needed(&k, &ivl, tol).unwrap());
 
         let mut caches = [None, None];
         let mut check = || {
@@ -2046,6 +2223,7 @@ mod tests {
                 objects,
                 0,
                 &mut caches,
+                &mut 0,
             )
             .unwrap()
         };
@@ -2061,8 +2239,8 @@ mod tests {
         for s in &prefilled.solutions {
             let mut angles = [0.0; 2];
             for (angle, e) in angles.iter_mut().zip([&s.start, &s.end]) {
-                let p = full.evaluate_point(e.param(0).unwrap()).unwrap();
-                let q = half.evaluate_point(e.param(1).unwrap()).unwrap();
+                let p = full.evaluate_point(&k, e.param(0).unwrap()).unwrap();
+                let q = half.evaluate_point(&k, e.param(1).unwrap()).unwrap();
                 assert!(p.distance(q) < tol, "{p:?} vs {q:?}");
                 assert!(p.y > -tol && (p.length() - 2.0).abs() < tol, "{p:?}");
                 *angle = p.y.max(0.0).atan2(p.x);
@@ -2189,6 +2367,73 @@ mod tests {
             .unwrap();
         assert_eq!(sols.len(), 1);
         assert_eq!(sols[0].solution_type, SolutionType::RangeOfValues);
+    }
+
+    #[test]
+    fn surface_deformation_edits_uv_and_honors_opposite_orientation() {
+        use crate::curve::crv_on_surf::CrvOnSurf;
+        use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
+        use crate::surface::plane::Plane;
+        use crate::surface::surface::Surface;
+        let k = Kernel::default();
+        let surface = Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0)));
+        for derived in [false, true] {
+            for orientation in [None, Some(OrientType::Same), Some(OrientType::Opposite)] {
+                let uv = Curve::from(
+                    BSplineCurve::create_line_segment(
+                        2,
+                        Vec3::new(0.0, 0.0, 0.0),
+                        Vec3::new(1.0, 0.0, 0.0),
+                    )
+                    .unwrap(),
+                );
+                let uv = if derived {
+                    Curve::from(crate::curve::line::Line::from_points(
+                        Vec3::ZERO,
+                        Vec3::new(1.0, 0.0, 0.0),
+                        2,
+                    ))
+                } else {
+                    uv
+                };
+                let mut curve = Curve::from(
+                    CrvOnSurf::new(&k, uv, surface.clone_for_evaluation().unwrap(), None, 0)
+                        .unwrap(),
+                );
+                let start_uv = crate::math::Vec2::new(0.25, 0.5);
+                let end_uv = crate::math::Vec2::new(0.75, 0.5);
+                let start = surface.evaluate_point(&k, start_uv).unwrap();
+                let end = surface.evaluate_point(&k, end_uv).unwrap();
+                let replacement = curve
+                    .deform_to_end_point_targets_on_surface(
+                        &k,
+                        Some(start),
+                        Some(end),
+                        true,
+                        None,
+                        InValueType::Unconstrained,
+                        None,
+                        InValueType::Unconstrained,
+                        Some((&surface, orientation)),
+                    )
+                    .unwrap();
+                assert!(replacement.is_none());
+                let CurveKind::CrvOnSurf(result) = curve.kind() else {
+                    panic!("changed curve kind")
+                };
+                assert!(matches!(result.uv_curve().kind(), CurveKind::BSpline(_)));
+                let ends = result.uv_curve().ends(&k).unwrap();
+                let (expected_start, expected_end) = if orientation == Some(OrientType::Opposite) {
+                    (end_uv, start_uv)
+                } else {
+                    (start_uv, end_uv)
+                };
+                assert!((ends.start.x - expected_start.x).abs() < 1e-12);
+                assert!((ends.start.y - expected_start.y).abs() < 1e-12);
+                assert!((ends.end.x - expected_end.x).abs() < 1e-12);
+                assert!((ends.end.y - expected_end.y).abs() < 1e-12);
+            }
+        }
     }
 
     #[test]

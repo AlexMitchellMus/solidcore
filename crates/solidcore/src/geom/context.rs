@@ -12,13 +12,17 @@
 //! | [`Context`]                               | `SmContext`                                     |
 //! | [`Context::new`], [`Context::default`]    | `SmContext::SmContext(double, double)` (no `SM_USE_GLOBAL_CACHE`) |
 //! | [`Context::doing_boolean`]                | `SmContext::GetDoingBoolean`                    |
+//! | [`IdentitySlot`], [`NotifyLease`], [`Context::take_notify_lease`], [`Context::restore_notify_lease`], [`KERNEL_KEY_BASE`], [`TOPOLOGY_KEY_BASE`], [`GEOMETRY_KEY_BASE`], [`MAX_BREP_SERIAL`], [`is_reserved_key`] | (none: kernel-issued notification identities; CO-PORTED by `topology.brep_p3`) |
+//! | `Context::share_geometry_sequence` (crate) | store-owned allocation of geometry notification keys |
 //! | [`Context::doing_boolean_mut`]            | `SmContext::GetDoingBooleanRef`                 |
 //! | [`Context::set_doing_boolean`]            | `SmContext::SetDoingBoolean`                    |
+//! | [`Context::trim_uv_curves_at_corner_drops`], [`Context::set_trim_uv_curves_at_corner_drops`] | (none: pinned-`c9c5979` compatibility toggle for WR-255 / #570; `false` by default) |
 //! | [`Context::user_notify_callback`]         | `SmContext::GetUserNotifyCallback`              |
 //! | [`Context::set_user_notify_callback`]     | `SmContext::SetUserNotifyCallback` (unused upstream) |
 //! | [`Context::sys_notify_callback`]          | `SmContext::GetSysNotifyCallback`               |
 //! | [`Context::user_notify_callback_mut`], [`Context::sys_notify_callback_mut`] | the same getters, for `Execute` |
 //! | [`NotifyCallback`], [`NotifyCallback::execute`] | `SmNotifyCallback`, `SmNotifyCallback::Execute` |
+//! | [`NotifyCallback::owner_link`]            | (none: the `GetOwner()` / `GetEdge()` a callback reads) |
 //! | [`Context::set_sys_notify_callback`]      | `SmContext::SetSysNotifyCallback`               |
 //! | [`Context::this_model_size_estimate`]     | `SmContext::GetThisModelSizeEstimate`           |
 //! | [`Context::set_this_model_size_estimate`] | `SmContext::SetThisModelSizeEstimate` (inline, `SM_USE_OLDTOL` build) |
@@ -43,6 +47,7 @@
 //! | `lock_mark`, `unlock_mark` (private)      | `SmNewMarkAndLock::LockMark`, `UnlockMark`      |
 //! | `unlocked_mark` (private)                 | `SmNewMarkAndLock::GetUnlockedMark`             |
 //! | [`with_mark_lock`]                        | the scoped `{ SmNewMarkAndLock sMarkLock(pContext, mask); ... }` idiom |
+//! | [`Context::claim_mark`], [`SharedMarkLock`] | the same idiom in a `const` query (`SmNewMarkAndLock(const SmContext*, mask)`) |
 //! | [`MassPropertyBehavior`]                  | `SmMassPropertyBehavior` (and its constructor)  |
 //! | [`create_context`]                        | `SmApiCreateContext`                            |
 //! | [`get_or_create_context`]                 | `SmApiGetOrCreateContext`                       |
@@ -56,6 +61,10 @@
 //!   [`Kernel`]'s own context. A method that upstream would run through a null
 //!   context pointer (a crash) returns [`SolidError::InvalidInput`], as does an index
 //!   outside the slice.
+//! - The marks and their locks are atomics, so that a `const` query that only holds the
+//!   context shared (the port's `&Kernel`) can still claim a mark as upstream's do
+//!   ([`Context::claim_mark`], whose guard unlocks on drop). The kernel is
+//!   single-threaded: the accesses happen in program order.
 //! - The upstream two-context constructor locks the *first* context's mark type in the
 //!   second context and increments the first context's mark twice; this is ported
 //!   as is (see `plan/findings.md`).
@@ -68,10 +77,18 @@
 //!   [`Context::sys_notify_callback_mut`] by [`object::notify`].
 //! - `SmApiGeneral.cpp` keeps one process-global `SmContext*`; the port takes the slot
 //!   (`&mut Option<Context>`) from the caller.
+//! - Store-owned contexts can share a geometry-key sequence without sharing their
+//!   identity domains. The counter is owned, bounded and has no process-global state.
 //! - The attribute-callback list, global user data (`void*`), `operator new/delete`,
 //!   `Dump`, `GetTypeString` and `IsLockedMark` are unused upstream and not ported.
 
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc,
+};
+
 use crate::error::{Result, SolidError};
+use crate::geom::attribute::ObjectKey;
 use crate::geom::object;
 use crate::geom::tol;
 use crate::kernel::Kernel;
@@ -140,6 +157,9 @@ pub const ALL_MARKS: i32 = MarkType::AllMarks as i32;
 /// Index of `SM_MT_MARKIO` in the mark arrays (the `default:` mark upstream).
 const MARK_IO: usize = 3;
 
+/// An installed notify callback, or none (what a [`NotifyLease`] carries).
+pub type BoxedCallback = Option<Box<dyn NotifyCallback>>;
+
 /// Receiver of topology-change notifications (`SmNotifyCallback`).
 pub trait NotifyCallback: std::fmt::Debug + Send {
     /// `SmNotifyCallback::Execute`: called once for every [`object::notify`] of an
@@ -167,6 +187,17 @@ pub trait NotifyCallback: std::fmt::Debug + Send {
     fn as_any(&self) -> Option<&dyn core::any::Any> {
         None
     }
+
+    /// Records the object `object` is owned by (`SmCurve::GetOwner`,
+    /// `SmSurface::GetOwner`, `SmEdgeuse::GetEdge`; `None` for a null owner) for the
+    /// notifications that follow. An upstream callback reads these links from the
+    /// notified objects themselves; an [`object::ObjectRef`] carries none, so the
+    /// notifying code reports a link no notification announces (a UV trim curve's edge
+    /// use, that edge use's edge) before the notification a callback needs it for
+    /// ([`object::report_owner_link`]). The default ignores it.
+    fn owner_link(&mut self, object: ObjectKey, owner: Option<object::ObjectRef>) {
+        let _ = (object, owner);
+    }
 }
 
 /// Shared modeling state (`SmContext`): traversal marks, the Boolean flag, notify
@@ -174,13 +205,19 @@ pub trait NotifyCallback: std::fmt::Debug + Send {
 #[derive(Debug)]
 pub struct Context {
     /// `m_lCurrentMark`, `m_lCurrentMark2`, `m_lCurrentMark3`, `m_lCurrentMarkIO`,
-    /// `m_lCurrentMarkAssert`.
-    current_marks: [u64; 5],
+    /// `m_lCurrentMarkAssert`. Atomic so that a query holding the context shared can
+    /// claim a mark ([`Context::claim_mark`]), as upstream's `const` queries do
+    /// through `SmNewMarkAndLock(const SmContext*, ..)`; single-threaded use orders the
+    /// accesses.
+    current_marks: [AtomicU64; 5],
     /// `m_bMarkLock`, `m_bMark2Lock`, `m_bMark3Lock`, `m_bMarkIOLock`,
     /// `m_bMarkAssertLock`.
-    mark_locks: [bool; 5],
+    mark_locks: [AtomicBool; 5],
     /// `m_bDoingBoolean`.
     doing_boolean: bool,
+    /// Whether `sm_FixUVTrimCurves` runs upstream `c9c5979`'s drop/trim/reparameterize
+    /// stretch before moving corner control points (`false` by default: #570 / WR-255).
+    trim_uv_curves_at_corner_drops: bool,
     /// `m_dThisModelSizeEstimate`.
     model_size_estimate: f64,
     /// `m_dThisLargeSmallSizeRatio`.
@@ -191,7 +228,138 @@ pub struct Context {
     user_notify_callback: Option<Box<dyn NotifyCallback>>,
     /// `m_pSysNotifyCallBack`.
     sys_notify_callback: Option<Box<dyn NotifyCallback>>,
+    /// This context's notification identity domain (`Context::geometry_key`,
+    /// `Context::brep_serial`), lent with the callbacks ([`NotifyLease`]).
+    identities: IdentityDomain,
 }
+
+/// The reserved range of notification keys: the top bit set. Only the kernel issues
+/// keys in it: topology keys ([`TOPOLOGY_KEY_BASE`], a B-rep serial, the object's
+/// kind and its arena index) and geometry keys ([`GEOMETRY_KEY_BASE`]). A caller's own
+/// labels stay below it ([`is_reserved_key`]).
+pub const KERNEL_KEY_BASE: u64 = 0b10 << 62;
+
+/// The kernel's topology keys: `0b10 << 62 | serial << 36 | kind << 32 | index`
+/// (`topology::brep::p3::topology_ref`).
+pub const TOPOLOGY_KEY_BASE: u64 = 0b10 << 62;
+
+/// The kernel's geometry keys: both top bits set, then a counter of the issuing
+/// domain.
+pub const GEOMETRY_KEY_BASE: u64 = 0b11 << 62;
+
+/// The largest B-rep serial a domain issues (26 bits, bits 36..62 of a topology key).
+pub const MAX_BREP_SERIAL: u64 = (1 << 26) - 1;
+
+/// Whether `key` is in the kernel's reserved range ([`KERNEL_KEY_BASE`]).
+#[must_use]
+pub const fn is_reserved_key(key: ObjectKey) -> bool {
+    key.0 >= KERNEL_KEY_BASE
+}
+
+/// The token of one identity domain. Each [`Context`] makes its own and tokens are
+/// told apart only by `Arc::ptr_eq` (never ordered or hashed), so no two domains are
+/// confused.
+#[derive(Debug)]
+struct DomainToken(());
+
+/// A context's notification identity domain: its token and how many geometry keys and
+/// B-rep serials it has issued.
+#[derive(Debug)]
+struct IdentityDomain {
+    token: Arc<DomainToken>,
+    geometry_issued: Arc<AtomicU64>,
+    breps_issued: u64,
+    /// The stand-in a crate edit left while it lends the context's callbacks
+    /// ([`Context::lend_notify`]): the context issues nothing and lends nothing until
+    /// they are given back.
+    lent: bool,
+}
+
+impl IdentityDomain {
+    fn new() -> Self {
+        Self {
+            token: Arc::new(DomainToken(())),
+            geometry_issued: Arc::new(AtomicU64::new(0)),
+            breps_issued: 0,
+            lent: false,
+        }
+    }
+}
+
+/// A kernel-issued identity: the issuing domain and the value it issued (a geometry
+/// key or a B-rep serial).
+#[derive(Debug)]
+struct Issued {
+    domain: Arc<DomainToken>,
+    value: u64,
+}
+
+/// Where an object keeps the notification identity the kernel issued it (upstream
+/// passes the object itself, known by address): empty until a context issues one.
+/// Only the crate fills a slot, from the context the object is notified through; an
+/// identity is valid only in the domain that issued it, and any other domain issues a
+/// fresh one. A clone is empty (a copy is another object), so no two live objects
+/// hold one identity.
+#[derive(Debug, Default)]
+pub struct IdentitySlot(Option<Issued>);
+
+impl Clone for IdentitySlot {
+    /// An empty slot: the copy is a new object.
+    fn clone(&self) -> Self {
+        Self::new()
+    }
+}
+
+impl IdentitySlot {
+    /// An empty slot.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self(None)
+    }
+
+    /// The issued value (a geometry key or a B-rep serial), once there is one.
+    #[must_use]
+    pub fn value(&self) -> Option<u64> {
+        self.0.as_ref().map(|i| i.value)
+    }
+}
+
+/// A context's notify callbacks and identity domain, lent to another context for a
+/// while ([`Context::take_notify_lease`]), so that every identity the callbacks see
+/// still comes from the domain they live with.
+#[derive(Debug)]
+pub struct NotifyLease {
+    user: BoxedCallback,
+    sys: BoxedCallback,
+    identities: IdentityDomain,
+}
+
+/// Return the callbacks and identity domain even when the caller unwinds.
+struct NotificationScope<'a> {
+    kernel: &'a mut Kernel,
+    notifications: Context,
+}
+impl Drop for NotificationScope<'_> {
+    fn drop(&mut self) {
+        self.kernel
+            .context
+            .install_lease(self.notifications.take_lease());
+    }
+}
+
+/// The refusal of a context whose callbacks a crate edit has lent out
+/// ([`Context::lend_notify`]): a nested edit through it would notify no callback, in
+/// another domain.
+const NOTIFY_LENT: SolidError = SolidError::InvalidInput {
+    operation: "geom::context::lend_notify",
+    reason: "the context's notify callbacks are lent to an edit in progress (nested edit)",
+};
+
+/// The refusal of an exhausted identity domain.
+const IDENTITIES_EXHAUSTED: SolidError = SolidError::InvalidInput {
+    operation: "geom::context::identities",
+    reason: "the context has issued every notification identity of the kind",
+};
 
 impl Default for Context {
     /// `SmContext()`: both sizes [`tol::USE_DEFAULT`].
@@ -201,37 +369,137 @@ impl Default for Context {
 }
 
 impl Context {
+    /// The geometry key the object owning `slot` is notified under in this context:
+    /// the slot's key when this context's domain issued it, else a fresh key of the
+    /// domain, stored in the slot (the object enters the domain). Keys are in
+    /// [`GEOMETRY_KEY_BASE`]'s range and unique among those the domain has issued.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` once the domain has issued every geometry key, or while a crate
+    /// edit has lent the context's callbacks ([`Context::lend_notify`]).
+    pub(crate) fn geometry_key(&mut self, slot: &mut IdentitySlot) -> Result<ObjectKey> {
+        self.check_not_lent()?;
+        if let Some(i) = &slot.0 {
+            if Arc::ptr_eq(&i.domain, &self.identities.token) {
+                return Ok(ObjectKey(i.value));
+            }
+        }
+        // Only key uniqueness is shared, not model data.
+        let n = self
+            .identities
+            .geometry_issued
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |issued| {
+                issued
+                    .checked_add(1)
+                    .filter(|next| *next <= !GEOMETRY_KEY_BASE)
+            })
+            .map_err(|_| IDENTITIES_EXHAUSTED)?
+            + 1;
+        let key = GEOMETRY_KEY_BASE | n;
+        slot.0 = Some(Issued {
+            domain: Arc::clone(&self.identities.token),
+            value: key,
+        });
+        Ok(ObjectKey(key))
+    }
+
+    /// Join a store-owned geometry sequence without changing this context's domain
+    /// or previously issued identities. New keys are unique across the store's
+    /// kernels; callbacks and identity leases retain their original domains.
+    pub(crate) fn share_geometry_sequence(&mut self, sequence: Arc<AtomicU64>) -> Result<()> {
+        self.check_not_lent()?;
+        sequence.fetch_max(
+            self.identities.geometry_issued.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
+        self.identities.geometry_issued = sequence;
+        Ok(())
+    }
+
+    /// The serial the B-rep owning `slot` is notified under in this context (its
+    /// objects' topology keys hold it): the slot's when this context's domain issued
+    /// it, else a fresh serial of the domain, stored in the slot. Serials run from 1 to
+    /// [`MAX_BREP_SERIAL`].
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` once the domain has issued every serial, or while a crate edit
+    /// has lent the context's callbacks ([`Context::lend_notify`]).
+    pub(crate) fn brep_serial(&mut self, slot: &mut IdentitySlot) -> Result<u64> {
+        self.check_not_lent()?;
+        if let Some(serial) = self.issued_brep_serial(slot) {
+            return Ok(serial);
+        }
+        let serial = self.fresh_serial()?;
+        slot.0 = Some(Issued {
+            domain: Arc::clone(&self.identities.token),
+            value: serial,
+        });
+        Ok(serial)
+    }
+
+    /// The serial this context's domain issued the B-rep owning `slot`, if it did.
+    pub(crate) fn issued_brep_serial(&self, slot: &IdentitySlot) -> Option<u64> {
+        slot.0
+            .as_ref()
+            .filter(|i| Arc::ptr_eq(&i.domain, &self.identities.token))
+            .map(|i| i.value)
+    }
+
+    fn fresh_serial(&mut self) -> Result<u64> {
+        let n = self.identities.breps_issued + 1;
+        if n > MAX_BREP_SERIAL {
+            return Err(IDENTITIES_EXHAUSTED);
+        }
+        self.identities.breps_issued = n;
+        Ok(n)
+    }
+
     /// Borrow notification callbacks alongside the live kernel without moving
     /// the kernel's traversal marks or tolerances. Notification APIs use mutable
     /// Context while geometry APIs borrow Kernel; both refer to one upstream
-    /// context. Callback ownership is restored on every returned error as well.
+    /// context. The callbacks travel with their identity domain
+    /// ([`Context::lend_notify`]), and are restored on returned errors and unwinding callbacks as well.
     /// The snapshot `Context` is read-only apart from its callbacks: mark, mark-lock
     /// and doing-Boolean changes the action makes to it are dropped on return.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput`, before anything moves, when they are already lent (a nested
+    /// lend would notify nobody, in another domain).
     pub(crate) fn with_notification_context<T>(
         k: &mut Kernel,
         action: impl FnOnce(&mut Kernel, &mut Context) -> T,
-    ) -> T {
-        let context = &mut k.context;
-        let mut notifications = context.metadata_copy();
-        notifications.user_notify_callback = context.user_notify_callback.take();
-        notifications.sys_notify_callback = context.sys_notify_callback.take();
-        let result = action(k, &mut notifications);
-        k.context.user_notify_callback = notifications.user_notify_callback;
-        k.context.sys_notify_callback = notifications.sys_notify_callback;
-        result
+    ) -> Result<T> {
+        let mut notifications = k.context.metadata_copy();
+        notifications.install_lease(k.context.lend_notify()?);
+        let mut scope = NotificationScope {
+            kernel: k,
+            notifications,
+        };
+        Ok(action(scope.kernel, &mut scope.notifications))
     }
 
     /// An immutable metadata snapshot, without copying callback ownership.
     pub(crate) fn metadata_copy(&self) -> Self {
         Self {
-            current_marks: self.current_marks,
-            mark_locks: self.mark_locks,
+            current_marks: self
+                .current_marks
+                .each_ref()
+                .map(|m| AtomicU64::new(m.load(Ordering::Relaxed))),
+            mark_locks: self
+                .mark_locks
+                .each_ref()
+                .map(|l| AtomicBool::new(l.load(Ordering::Relaxed))),
             doing_boolean: self.doing_boolean,
+            trim_uv_curves_at_corner_drops: self.trim_uv_curves_at_corner_drops,
             model_size_estimate: self.model_size_estimate,
             large_small_size_ratio: self.large_small_size_ratio,
             zone_tol_3d: self.zone_tol_3d,
             user_notify_callback: None,
             sys_notify_callback: None,
+            identities: IdentityDomain::new(),
         }
     }
 
@@ -242,14 +510,16 @@ impl Context {
     #[must_use]
     pub fn new(model_size_estimate: f64, large_small_size_ratio: f64) -> Self {
         Self {
-            current_marks: [1; 5],
-            mark_locks: [false; 5],
+            current_marks: [1; 5].map(AtomicU64::new),
+            mark_locks: [false; 5].map(AtomicBool::new),
             doing_boolean: false,
+            trim_uv_curves_at_corner_drops: false,
             model_size_estimate,
             large_small_size_ratio,
             zone_tol_3d: tol::size_estimate_to_zone_tol_3d(model_size_estimate),
             user_notify_callback: None,
             sys_notify_callback: None,
+            identities: IdentityDomain::new(),
         }
     }
 
@@ -267,6 +537,19 @@ impl Context {
     /// Sets the Boolean flag (`SetDoingBoolean`).
     pub fn set_doing_boolean(&mut self, doing_boolean: bool) {
         self.doing_boolean = doing_boolean;
+    }
+
+    /// Whether `sm_FixUVTrimCurves` trims UV curves at dropped corner points and
+    /// stretches their intervals (`false` by default, following `tangency-labs/smlib@5af7070`
+    /// / #570 / WR-255; `true` reproduces pinned `c9c5979`). Not upstream.
+    #[must_use]
+    pub const fn trim_uv_curves_at_corner_drops(&self) -> bool {
+        self.trim_uv_curves_at_corner_drops
+    }
+
+    /// Sets [`Context::trim_uv_curves_at_corner_drops`]. Not upstream.
+    pub fn set_trim_uv_curves_at_corner_drops(&mut self, trim: bool) {
+        self.trim_uv_curves_at_corner_drops = trim;
     }
 
     /// The application's notify callback (`GetUserNotifyCallback`).
@@ -302,6 +585,88 @@ impl Context {
     /// in debug builds when one is already set).
     pub fn set_sys_notify_callback(&mut self, callback: Option<Box<dyn NotifyCallback>>) {
         self.sys_notify_callback = callback;
+    }
+
+    /// Takes the user and the system notify callbacks out with this context's identity
+    /// domain, leaving no callbacks and a fresh domain, so that a caller can lend them to
+    /// another context for a while ([`Context::restore_notify_lease`]; no upstream
+    /// counterpart: a context reached through `GetContext` cannot be borrowed twice).
+    /// The identities the callbacks see keep coming from their own domain.
+    ///
+    /// Until the lease is given back this context is a new identity domain, whose
+    /// identities may coincide with the lent domain's: every caller store keyed by
+    /// identities (notification records and attributes, a tracker, a callback's state)
+    /// must be scoped to one domain. A lease that is never given back leaves the context
+    /// a new domain for good.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput`, before anything moves, while a crate edit has lent this context's
+    /// callbacks (`Context::lend_notify`): swapping the lent context's placeholder would
+    /// let a nested edit through, notifying nobody.
+    pub fn take_notify_lease(&mut self) -> Result<NotifyLease> {
+        self.check_not_lent()?;
+        Ok(self.take_lease())
+    }
+
+    /// Installs a lease's callbacks and identity domain, dropping this context's own
+    /// callbacks and domain (returning a lease to the context it came from, or lending
+    /// it to a stand-in); take them out first to keep them.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput`, before anything moves, while a crate edit has lent this context's
+    /// callbacks: the edit's own return of them would drop what this installs. (Callbacks
+    /// set on a lent context with the `set_*` setters are dropped the same way when the
+    /// edit gives the lent ones back.)
+    pub fn restore_notify_lease(&mut self, lease: NotifyLease) -> Result<()> {
+        self.check_not_lent()?;
+        self.install_lease(lease);
+        Ok(())
+    }
+
+    /// [`Context::take_notify_lease`] without the lent check: a crate lending helper
+    /// taking its stand-in's callbacks back.
+    pub(crate) fn take_lease(&mut self) -> NotifyLease {
+        NotifyLease {
+            user: self.user_notify_callback.take(),
+            sys: self.sys_notify_callback.take(),
+            identities: core::mem::replace(&mut self.identities, IdentityDomain::new()),
+        }
+    }
+
+    /// [`Context::restore_notify_lease`] without the lent check: a crate lending helper
+    /// installing a lease on its stand-in, or giving a lease back to the context that
+    /// lent it (which ends the lend).
+    pub(crate) fn install_lease(&mut self, lease: NotifyLease) {
+        self.user_notify_callback = lease.user;
+        self.sys_notify_callback = lease.sys;
+        self.identities = lease.identities;
+    }
+
+    /// Lends the callbacks and the identity domain for a crate edit, as
+    /// [`Context::take_notify_lease`], and marks this context as lent until
+    /// [`Context::install_lease`] gives them back.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidInput` when they are already lent (a nested edit), before anything
+    /// moves.
+    pub(crate) fn lend_notify(&mut self) -> Result<NotifyLease> {
+        self.check_not_lent()?;
+        let lease = self.take_lease();
+        self.identities.lent = true;
+        Ok(lease)
+    }
+
+    /// `InvalidInput` when a crate edit has lent this context's callbacks
+    /// ([`Context::lend_notify`]).
+    pub(crate) const fn check_not_lent(&self) -> Result<()> {
+        if self.identities.lent {
+            Err(NOTIFY_LENT)
+        } else {
+            Ok(())
+        }
     }
 
     /// The context's model size estimate, or the system one when it is
@@ -356,34 +721,29 @@ impl Context {
     pub fn current_mark(&self, mark_type: MarkType) -> u64 {
         match mark_type {
             MarkType::NoMark => {
-                let [m1, m2, m3, mio, massert] = self.current_marks;
+                let [m1, m2, m3, mio, massert] = self
+                    .current_marks
+                    .each_ref()
+                    .map(|m| m.load(Ordering::Relaxed));
                 1 + max5(m1, m2, m3, mio, massert)
             }
             _ => self
                 .current_marks
                 .get(mark_type.slot().unwrap_or(MARK_IO))
-                .copied()
-                .unwrap_or(0),
+                .map_or(0, |m| m.load(Ordering::Relaxed)),
         }
     }
 
     /// Advances a mark by two and returns the new value (`SmContext::NewMark`; the
     /// lock check is a debug-only assertion upstream). [`MarkType::NoMark`] changes
     /// nothing and returns [`Context::current_mark`] of it.
-    fn new_mark(&mut self, mark_type: MarkType) -> u64 {
+    fn new_mark(&self, mark_type: MarkType) -> u64 {
         if mark_type == MarkType::NoMark {
             return self.current_mark(MarkType::NoMark);
         }
-        match self
-            .current_marks
-            .get_mut(mark_type.slot().unwrap_or(MARK_IO))
-        {
-            Some(m) => {
-                *m = m.wrapping_add(2);
-                *m
-            }
-            None => 0,
-        }
+        self.current_marks
+            .get(mark_type.slot().unwrap_or(MARK_IO))
+            .map_or(0, |m| m.fetch_add(2, Ordering::Relaxed).wrapping_add(2))
     }
 
     /// Whether a mark is locked (`IsMarkLocked`); never for [`MarkType::NoMark`] or
@@ -393,14 +753,52 @@ impl Context {
         mark_type
             .slot()
             .and_then(|s| self.mark_locks.get(s))
-            .copied()
-            .unwrap_or(false)
+            .is_some_and(|l| l.load(Ordering::Relaxed))
     }
 
     /// Sets a mark's lock flag (no-op for marks without a slot).
-    fn set_lock(&mut self, mark_type: MarkType, locked: bool) {
-        if let Some(l) = mark_type.slot().and_then(|s| self.mark_locks.get_mut(s)) {
-            *l = locked;
+    fn set_lock(&self, mark_type: MarkType, locked: bool) {
+        if let Some(l) = mark_type.slot().and_then(|s| self.mark_locks.get(s)) {
+            l.store(locked, Ordering::Relaxed);
+        }
+    }
+
+    /// `SmNewMarkAndLock(const SmContext*, mask)` for a holder of the context that
+    /// cannot change it otherwise (upstream's `const` queries): picks the first
+    /// unlocked mark allowed by `mask` as [`MarkLock::new`] does, advances and locks
+    /// it until the returned guard is dropped (`~SmNewMarkAndLock`).
+    #[must_use]
+    pub fn claim_mark(&self, mask: i32) -> SharedMarkLock<'_> {
+        let mark_type = unlocked_mark(self, mask);
+        self.new_mark(mark_type);
+        self.set_lock(mark_type, true);
+        SharedMarkLock {
+            context: self,
+            mark_type,
+        }
+    }
+}
+
+/// A mark claimed through a shared context ([`Context::claim_mark`]); dropping it
+/// unlocks the mark if it is still locked (`~SmNewMarkAndLock`).
+#[derive(Debug)]
+pub struct SharedMarkLock<'a> {
+    context: &'a Context,
+    mark_type: MarkType,
+}
+
+impl SharedMarkLock<'_> {
+    /// The claimed mark (`GetMarkType`).
+    #[must_use]
+    pub const fn mark_type(&self) -> MarkType {
+        self.mark_type
+    }
+}
+
+impl Drop for SharedMarkLock<'_> {
+    fn drop(&mut self) {
+        if self.context.is_mark_locked(self.mark_type) {
+            self.context.set_lock(self.mark_type, false);
         }
     }
 }
@@ -752,6 +1150,24 @@ pub fn get_or_create_context(slot: &mut Option<Context>) -> &mut Context {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_shared_context_claims_and_unlocks_a_mark() {
+        let mut k = Kernel::default();
+        let before = k.context.current_mark(MarkType::Mark2);
+        let m = with_mark_lock(&mut k, ALL_MARKS, |k, outer| {
+            assert_eq!(outer, MarkType::Mark);
+            let lock = k.context.claim_mark(ALL_MARKS);
+            // the first mark is locked by the enclosing lock: the second is claimed
+            assert_eq!(lock.mark_type(), MarkType::Mark2);
+            assert!(k.context.is_mark_locked(MarkType::Mark2));
+            lock.mark_type()
+        })
+        .unwrap();
+        assert_eq!(m, MarkType::Mark2);
+        assert!(!k.context.is_mark_locked(MarkType::Mark2));
+        assert_eq!(k.context.current_mark(MarkType::Mark2), before + 2);
+    }
+
     use super::*;
 
     const ALL: [MarkType; 7] = [

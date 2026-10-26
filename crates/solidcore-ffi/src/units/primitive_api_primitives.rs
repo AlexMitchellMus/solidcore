@@ -6,7 +6,7 @@
 //! (both), `SmApiCreateCone` (both), `SmApiCreateTorus` (both), `SmApiCreatePyramid`,
 //! `SmApiCreateCylindricalBox`, `SmApiCreatePartialSphere`, `SmApiCreateSphereNoPole`,
 //! `SmApiCreatePartialCone`, `SmApiCreateConeEllipticEnds`, `SmApiCreatePartialCylinder`,
-//! `SmApiCreatePartialTorus`, `SmApiCreateSwungPrimitive`).
+//! `SmApiCreatePartialTorus`, `SmApiCreateSwungPrimitive`, `SmApiCreateBlendPrimitive`).
 //!
 //! A call is `op args...` with the arguments in the API's order (`O[3]` = the origin,
 //! center or base center):
@@ -33,11 +33,24 @@
 //! | `PartialCylinder`   | 23 | `O[3] radius height start end`         |
 //! | `PartialTorus`      | 24 | `O[3] major minor start end`           |
 //! | `Swung`             | 25 | `k` x `C[3] r a0 a1` (XY arcs), `k` x arcs (XZ), `scale` |
+//! | `BlendPrimitive`    | 26 | `O[3] length width height edge1 face1 edge2 face2 same_dir` |
 //!
 //! The swung curves are `SmApiCreateArc(C, r, a0, a1)` B-splines.
 //!
+//! `BlendPrimitive` first builds the box `SmApiCreateBox(O, length, width, height)` and
+//! then calls `SmApiCreateBlendPrimitive` with the boundary edge and face given as
+//! indices into that B-rep's `GetEdges`/`GetFaces` lists (the list order the B-rep record
+//! uses). `same_dir` is `TRUE` (1) for start-of-edge1 to start-of-edge2, `FALSE` (0) for
+//! start to end. Its output is the box's status when the box fails, else the API's
+//! status; on success `has` (the out blend face is non-null), the mutated B-rep's
+//! face/edge/vertex counts and its geometry/trim record, then the blend face's record:
+//! `GetType`, tolerance, UV domain, loop count, `has surface`, the surface's `GetType`,
+//! its NURB (for a B-spline kind) and a 5 x 5 `EvaluatePoint` grid over the face's UV
+//! domain.
+//!
 //! The output is the API status (`0` = `SM_SUCCESS`, else the `SmStatus`), then on success
-//! `has` and the result record. A B-rep's record is its face, edge and vertex counts. A
+//! `has` and the result record. A B-rep's record contains its face, edge and vertex counts, then the geometry/trim
+//! record in `crates/difftest/src/util/primitive.rs`. A
 //! surface's record is its `GetType`, position (`O X Y Z`), STEP UV domain, the kind's
 //! values (plane: the UV scale; cylinder / cone: bottom and top radius, inside-out and
 //! swap-UV flags; torus: major and minor radius, inside-out and swap-UV flags), its NURB
@@ -75,6 +88,11 @@
 //!   `PartialSphere`, `PartialCone`, `ConeEllipticEnds`, `PartialCylinder`,
 //!   `PartialTorus`, `Swung`): every argument (and arc value) finite and at most
 //!   [`MAX_KERNEL_COORD`] in magnitude (a non-finite origin segfaults `CreateTorus`).
+//! - `BlendPrimitive`: the box's origin and dimensions finite and at most
+//!   [`MAX_KERNEL_COORD`] in magnitude (the blend surface is built with the same
+//!   kernel machinery, on inputs this unit's generated cases only reach at moderate
+//!   scale), its four entity indices integers in `0..`[`MAX_BLEND_ENTITY`] (the shim
+//!   checks them against the B-rep's actual lists) and `same_dir` `0`/`1`.
 //!
 //! The kernel-side bounds are conservative where the crashes are erratic: they may also
 //! reject some inputs upstream survives, all of them deferred on the Rust side.
@@ -98,6 +116,9 @@ pub const MIN_ARC_CHORD: f64 = 1.0e-4;
 pub const MIN_ARC_SAGITTA: f64 = 1.0e-8;
 /// Smallest gap (degrees) between a `CylindricalBox` sweep and a full turn.
 pub const MIN_FULL_TURN_GAP: f64 = 1.0e-8;
+/// Largest edge/face index of `BlendPrimitive` (program shape; the shim also checks
+/// it against the box's actual lists).
+pub const MAX_BLEND_ENTITY: usize = 64;
 
 /// `SM_EFF_ZERO`.
 const EFF_ZERO: f64 = 1.0e-12;
@@ -112,7 +133,10 @@ fn bad(m: &str) -> FfiError {
 }
 
 fn bounded(xs: &[f64], what: &str) -> Result<(), FfiError> {
-    if xs.iter().all(|x| x.is_finite() && x.abs() <= MAX_KERNEL_COORD) {
+    if xs
+        .iter()
+        .all(|x| x.is_finite() && x.abs() <= MAX_KERNEL_COORD)
+    {
         Ok(())
     } else {
         Err(bad(what))
@@ -179,7 +203,9 @@ pub fn guard(op: Op, args: &[f64], arcs: Option<(&[Arc], &[Arc])>) -> Result<(),
             if valid {
                 let sweep = a1 - a0;
                 let theta = sweep.to_radians();
-                if !origin.iter().all(|x| x.is_finite() && x.abs() <= MAX_KERNEL_COORD)
+                if !origin
+                    .iter()
+                    .all(|x| x.is_finite() && x.abs() <= MAX_KERNEL_COORD)
                     || ri * theta < MIN_ARC_CHORD
                     || ri * theta * theta / 8.0 < MIN_ARC_SAGITTA
                     || 360.0 - sweep < MIN_FULL_TURN_GAP
@@ -201,12 +227,33 @@ pub fn guard(op: Op, args: &[f64], arcs: Option<(&[Arc], &[Arc])>) -> Result<(),
             if let Some((xy, xz)) = arcs {
                 for c in xy.iter().chain(xz) {
                     bounded(&c.center, "swung: arc out of bounds")?;
-                    bounded(&[c.radius, c.start_deg, c.end_deg], "swung: arc out of bounds")?;
+                    bounded(
+                        &[c.radius, c.start_deg, c.end_deg],
+                        "swung: arc out of bounds",
+                    )?;
                 }
             }
         }
-        Op::CylinderSurface | Op::ConeSurface | Op::Box | Op::Cylinder
-        | Op::Cone | Op::Pyramid => {}
+        Op::BlendPrimitive => {
+            for i in 0..6 {
+                let v = a(i);
+                if !v.is_finite() || v.abs() > MAX_KERNEL_COORD {
+                    return Err(bad("blend primitive: box out of bounds"));
+                }
+            }
+            for i in 6..10 {
+                let v = a(i);
+                if !(v >= 0.0 && v <= MAX_BLEND_ENTITY as f64) || v != v.trunc() {
+                    return Err(bad("blend primitive: entity index out of range"));
+                }
+            }
+            let same = a(10);
+            if same != 0.0 && same != 1.0 {
+                return Err(bad("blend primitive: direction flag"));
+            }
+        }
+        Op::CylinderSurface | Op::ConeSurface | Op::Box | Op::Cylinder | Op::Cone | Op::Pyramid => {
+        }
     }
     Ok(())
 }
@@ -266,6 +313,9 @@ pub enum Op {
     PartialTorus = 24,
     /// `SmApiCreateSwungPrimitive(xy, xz, scale)`.
     Swung = 25,
+    /// `SmApiCreateBlendPrimitive(brep, edge1, face1, edge2, face2, same_dir)` on a
+    /// box built by `SmApiCreateBox`.
+    BlendPrimitive = 26,
 }
 
 impl Op {
@@ -279,11 +329,14 @@ impl Op {
             | Self::Box
             | Self::Cone
             | Self::PartialSphere => 6,
-            Self::PlaneSurface | Self::PlaneBrep | Self::Cylinder | Self::Torus | Self::Pyramid => 5,
+            Self::PlaneSurface | Self::PlaneBrep | Self::Cylinder | Self::Torus | Self::Pyramid => {
+                5
+            }
             Self::PlanarCircle | Self::Sphere | Self::SphereNoPole => 4,
             Self::CylindricalBox | Self::PartialCone | Self::ConeEllipticEnds => 8,
             Self::PartialCylinder | Self::PartialTorus => 7,
             Self::Swung => 1,
+            Self::BlendPrimitive => 11,
         }
     }
 }
