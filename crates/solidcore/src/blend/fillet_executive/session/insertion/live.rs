@@ -896,4 +896,47 @@ mod tests {
         let table = session.executive.intersector.intersection_table().unwrap();
         assert!(table.other_surfaces.contains(&Some(owned)));
     }
+    #[test]
+    fn shrink_resolves_the_fillet_surface_owner_face_in_the_fillet_brep() {
+        use crate::blend::fillet_executive::p3::FaceShrinkAccess;
+        let mut k = Kernel::default();
+        let mut target = crate::primitive::api_primitives::create_box(
+            &mut k,
+            Point3::new(0.0, 0.0, 0.0),
+            10.0,
+            20.0,
+            30.0,
+        )
+        .unwrap();
+        let edge = target.edges().ids().next().unwrap();
+        let mut session = FilletSession::new(&mut k, &mut target).unwrap();
+        session
+            .prepare_constant_radius_edges(&mut k, &[edge], 0.5, 1, 1, 1.0)
+            .unwrap();
+        session.create_corners(&k, None).unwrap();
+        session
+            .with_filleting_context(&mut k, |session, k| session.create_fillet_brep(k, None))
+            .unwrap();
+        let g = FilletGeomId(0);
+        let Some(FilletSurfaceStorage::ManagedFace { face, .. }) =
+            session.objects.pseudo.geom(g).unwrap().fillet_surface
+        else {
+            panic!("the fillet face took over the surface");
+        };
+        let geom = FilletObject::Geometry(g);
+        let own = Some(FilletObject::IntermediateTopology(EntityRef::Face(face)));
+        assert_eq!(session.objects.shrink_geometry_face(geom).unwrap(), own);
+        // A surface the geometry holds whose owner is a fillet B-rep face (not the
+        // geometry's managed one) resolves to that face, as `GetFace()` does.
+        let intermediate = session.objects.intermediate.as_ref().unwrap();
+        let mut copy = intermediate.face(face).unwrap().surface.clone().unwrap();
+        let owner = session
+            .objects
+            .intermediate_identity(EntityRef::Face(face))
+            .unwrap();
+        copy.set_owner(Some(owner));
+        session.objects.pseudo.geom_mut(g).unwrap().fillet_surface =
+            Some(FilletSurfaceStorage::Owned(Box::new(copy)));
+        assert_eq!(session.objects.shrink_geometry_face(geom).unwrap(), own);
+    }
 }
