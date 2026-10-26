@@ -329,10 +329,6 @@ fn build_at(k: &mut Kernel, b: &BrepIn, depth: usize) -> Result<Brep, Stop> {
         &BrepIn::Plane { origin, size } => {
             primitives::create_plane(k, p3(origin), size[0], size[1])
         }
-            origin,
-            radius,
-            height,
-        } => primitives::create_cylinder(k, p3(origin), radius, height),
         BrepIn::Boolean { operation, a, b } => {
             let (a, b) = (build_at(k, a, depth + 1)?, build_at(k, b, depth + 1)?);
             api::boolean(k, a, b, op(*operation)?).map(|out| out.result)

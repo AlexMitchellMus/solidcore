@@ -1898,7 +1898,9 @@ mod tests {
                 .unwrap()
                 .result;
             let (a, b) = if lid_first { (lid, cup) } else { (cup, lid) };
-            let r = boolean(&mut k, a, b, BooleanOperation::Union).unwrap().result;
+            let r = boolean(&mut k, a, b, BooleanOperation::Union)
+                .unwrap()
+                .result;
             let infinite = r.infinite_region().unwrap();
             let solids: Vec<RegionId> = bp::regions(&r, None)
                 .unwrap()

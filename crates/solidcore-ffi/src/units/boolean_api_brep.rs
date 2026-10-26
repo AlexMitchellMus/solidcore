@@ -395,7 +395,7 @@ mod tests {
             size: [1.0; 3],
         };
         let program = |tree| Call::Trees {
-            breps: vec![shape.clone(), shape],
+            breps: vec![shape.clone(), shape.clone()],
             tree,
         };
         assert!(encode(&program(vec![0, 0])).is_ok());
