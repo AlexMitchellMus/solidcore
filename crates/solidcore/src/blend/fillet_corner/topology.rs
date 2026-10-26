@@ -18,7 +18,7 @@
 //! `Make4x2ConcaveCornerTopology`. The Nx2 corner's two solvers are resolved by the
 //! caller (upstream looks them up after the 4x2 checks; the lookup has no effects).
 //! An unset `sm_TestG1Continuity` angle (upstream reads it uninitialised) is an input
-//! error where the mixed-convexity tests read it. The convex NxN corner's solvers are
+//! error where the mixed-convexity tests read it. The convex `NxN` corner's solvers are
 //! resolved by the caller before any allocation (upstream resolves each inside its
 //! vertex loop; the lookups have no effects), and its unused `GetEdges` read is
 //! omitted. There is no recursion.
@@ -878,9 +878,10 @@ impl FilletCorner {
             if is_set_back {
                 // Insert a rail-rail-interpo edge
                 let edge = pseudo.make_fillet_edge(Some(curr_fv), Some(next_fv), Some(corner))?;
-                let common_face = match pseudo.fillet_vertex(next_fv)?.point_class_object() {
-                    Some(EntityRef::Face(face)) => face,
-                    _ => return Err(SolidError::null_pointer(OP_NXN)),
+                let Some(EntityRef::Face(common_face)) =
+                    pseudo.fillet_vertex(next_fv)?.point_class_object()
+                else {
+                    return Err(SolidError::null_pointer(OP_NXN));
                 };
                 {
                     let edge = pseudo.fillet_edge_mut(edge)?;

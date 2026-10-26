@@ -2550,13 +2550,12 @@ impl SessionObjects<'_> {
         }
         let mut solver_ids = Vec::new();
         for &eu in edgeuses {
-            let solver = match lookup(eu)? {
-                Some(solver) => solver,
-                None => {
-                    let mate = crate::topology::edgeuse::p1::mate(self.target, eu)?
-                        .ok_or_else(|| SolidError::null_pointer(NATIVE))?;
-                    lookup(mate)?.ok_or_else(|| SolidError::null_pointer(NATIVE))?
-                }
+            let solver = if let Some(solver) = lookup(eu)? {
+                solver
+            } else {
+                let mate = crate::topology::edgeuse::p1::mate(self.target, eu)?
+                    .ok_or_else(|| SolidError::null_pointer(NATIVE))?;
+                lookup(mate)?.ok_or_else(|| SolidError::null_pointer(NATIVE))?
             };
             solver_ids.push(solver);
         }
@@ -2679,8 +2678,8 @@ impl SessionObjects<'_> {
             },
             |(_, target, pseudo, solvers, _, _), corner, processed| {
                 corner.adjust_vertex_law_intervals(
-                    &**pseudo,
-                    &**target,
+                    pseudo,
+                    target,
                     solvers.as_mut_slice(),
                     processed,
                 )
