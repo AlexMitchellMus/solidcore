@@ -19,7 +19,7 @@
 use super::p1::FilletSolver;
 use crate::blend::fillet_classification::{FilletClassObject, LegacyClassificationObjects};
 use crate::blend::fillet_geom::p1::{
-    FilletBrep, FilletCornerId, FilletCornerType, FilletGeomId, FilletGeomType,
+    CornerLookup, FilletBrep, FilletCornerId, FilletCornerType, FilletGeomId, FilletGeomType,
 };
 #[cfg(test)]
 use crate::curve::curve::p2::OwnerChange;
@@ -77,6 +77,9 @@ pub trait RailClassificationContext {
     /// # Errors
     /// An unresolved corner.
     fn corner_type(&self, corner: FilletCornerId) -> Result<FilletCornerType>;
+    /// The executive's corner table (`m_vFilletCorners`), which the rollover
+    /// recovery's `CalcRailIntEdgeuse` reads.
+    fn corners(&self) -> CornerLookup<'_>;
 }
 
 struct LegacyRolloverContext<'a, T>(&'a T);
@@ -112,6 +115,10 @@ impl<T: RolloverObjects> RailClassificationContext for LegacyRolloverContext<'_,
     }
     fn corner_type(&self, corner: FilletCornerId) -> Result<FilletCornerType> {
         self.0.corner_type(corner)
+    }
+    /// The legacy entry points hold no executive: an empty corner table.
+    fn corners(&self) -> CornerLookup<'_> {
+        CornerLookup::default()
     }
 }
 
@@ -212,6 +219,7 @@ impl FilletSolver {
                 fillets,
                 id,
                 &|corner| context.corner_type(corner),
+                context.corners(),
                 adjusted_corners,
                 ownership,
             )?;
@@ -235,6 +243,7 @@ impl FilletSolver {
         fillets: &mut FilletBrep,
         id: FilletGeomId,
         corner_type: &impl Fn(FilletCornerId) -> Result<FilletCornerType>,
+        corners: CornerLookup<'_>,
         adjusted_corners: &mut Vec<FilletCornerId>,
         ownership: &mut impl RolloverOwnership,
     ) -> Result<()> {
@@ -243,6 +252,7 @@ impl FilletSolver {
             k,
             target,
             fillets,
+            corners,
             ownership,
         }
         .process(id, corner_type, adjusted_corners, &mut recovery::Missing)
@@ -438,6 +448,7 @@ mod tests {
                 &mut fb,
                 id,
                 &|_| panic!("known rails must not resolve a corner"),
+                CornerLookup::default(),
                 &mut adjusted,
                 &mut NoOwnership,
             )
@@ -462,6 +473,7 @@ mod tests {
                 assert_eq!(corner, FilletCornerId(42));
                 Err(refusal.clone())
             },
+            CornerLookup::default(),
             &mut adjusted,
             &mut NoOwnership,
         );
@@ -473,6 +485,7 @@ mod tests {
             &mut fb,
             id,
             &|_| Ok(FilletCornerType::OneByOne),
+            CornerLookup::default(),
             &mut adjusted,
             &mut NoOwnership,
         );

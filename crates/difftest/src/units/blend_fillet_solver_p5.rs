@@ -438,6 +438,8 @@ fn run(i: &Inputs) -> Result<Output, HarnessError> {
             &mut fb,
             id,
             &|_| Ok(corner_type(i.corner)),
+            // the fixture names a corner type, not corner objects: an empty table
+            solidcore::blend::fillet_geom::p1::CornerLookup::default(),
             &mut adjusted,
             &mut Ownership,
         )

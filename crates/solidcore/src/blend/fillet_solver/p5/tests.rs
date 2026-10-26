@@ -171,6 +171,7 @@ impl Fixture {
             k: &self.k,
             target: &mut self.target,
             fillets: &mut self.fb,
+            corners: CornerLookup::default(),
             ownership: &mut self.owners,
         }
     }
@@ -1051,14 +1052,8 @@ fn rollover_corner_vertex_delegates_to_the_available_geom_port() {
     let rail = f.fb.geom(id).unwrap().rail(0).unwrap();
     let start = f.context().start(rail).unwrap();
     let r = Missing.corner_vertex(&mut f.context(), start, id);
-    // the recovery holds no corner table to resolve the vertex's corner in
-    assert!(matches!(
-        r,
-        Err(SolidError::Unported {
-            unit: "blend.fillet_executive_p1",
-            ..
-        })
-    ));
+    // the fixture's corner table is empty: the vertex's corner is not in it
+    assert!(matches!(r, Err(SolidError::InvalidInput { .. })));
 }
 
 #[test]

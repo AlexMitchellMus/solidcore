@@ -203,6 +203,10 @@ pub trait FilletGeometryContext {
         id: FilletSolverId,
         current: &'s FilletSolver,
     ) -> Result<&'s FilletSolver>;
+
+    /// The executive's corner table (`m_vFilletCorners`), which the pseudo-B-rep
+    /// edge calculations read.
+    fn corners(&self) -> CornerLookup<'_>;
 }
 
 enum GeometrySolvers<'a> {
@@ -3781,7 +3785,7 @@ fn calc_cross_section(ops: &dyn FilletSolverOps, cx: &mut Cx<'_>, edge: EdgeId) 
             cx.k,
             edge,
             None,
-            CornerLookup::default(),
+            context.corners(),
             &|id| context.solver(id, ops.solver()),
             cx.target,
         ),

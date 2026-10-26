@@ -109,6 +109,9 @@ impl RailClassificationContext for SurfaceSurfaceSession<'_> {
         }
         .corner_type(corner)
     }
+    fn corners(&self) -> crate::blend::fillet_geom::p1::CornerLookup<'_> {
+        crate::blend::fillet_geom::p1::CornerLookup::table(self.corners)
+    }
 }
 
 impl SurfaceSurfaceContext for SurfaceSurfaceSession<'_> {

@@ -682,6 +682,10 @@ impl FilletGeometryContext for SessionGeometryContext<'_> {
             .map(SolverObject::base)
             .ok_or_else(|| invalid("peer solver is not live in this session"))
     }
+
+    fn corners(&self) -> CornerLookup<'_> {
+        CornerLookup::table(self.corners)
+    }
 }
 
 /// A corner's face-error note (`FILEXEC_CORNER_ERR`).

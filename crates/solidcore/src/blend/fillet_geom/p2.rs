@@ -2794,8 +2794,8 @@ mod tests {
             &mut solvers,
             &target
         )));
-        // with a corner: no rail geometries is SM_ERR; without a corner store the
-        // corner's filleted vertex is the executive's
+        // with a corner: no rail geometries is SM_ERR; without a corner store (an
+        // empty table) the corner id is not in the table
         fb.fillet_vertex_mut(v)
             .unwrap()
             .set_fillet_corner(Some(FilletCornerId(0)));
@@ -2803,10 +2803,10 @@ mod tests {
             fb.calc_rail_int_rail(&k, v, none, &mut solvers, &mut target),
             Err(SolidError::Upstream { code: 1001, .. })
         ));
-        assert!(fb
-            .calc_rail_int_edgeuse(&k, v, None, none, &mut solvers, &mut target)
-            .unwrap_err()
-            .is_unported());
+        assert!(matches!(
+            fb.calc_rail_int_edgeuse(&k, v, None, none, &mut solvers, &mut target),
+            Err(SolidError::InvalidInput { .. })
+        ));
         // an id outside the table is invalid; a corner in it gets to the geometry check
         assert!(matches!(
             fb.calc_set_back_vert(&k, v, CornerLookup::table(&[]), &mut solvers, &target),

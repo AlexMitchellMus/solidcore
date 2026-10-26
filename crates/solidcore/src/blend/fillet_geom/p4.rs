@@ -2815,7 +2815,7 @@ mod tests {
         let e = fb
             .calc_fillet_int_2_fillets(&k, v[0], CornerLookup::default(), &[], &Brep::new())
             .unwrap_err();
-        assert!(e.is_unported());
+        assert!(matches!(e, SolidError::InvalidInput { .. }));
     }
 
     #[test]

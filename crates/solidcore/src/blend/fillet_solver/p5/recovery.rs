@@ -41,6 +41,8 @@ pub(super) struct Recovery<'a> {
     pub k: &'a Kernel,
     pub target: &'a mut Brep,
     pub fillets: &'a mut FilletBrep,
+    /// The executive's corner table (`m_vFilletCorners`).
+    pub corners: CornerLookup<'a>,
     pub ownership: &'a mut dyn RolloverOwnership,
 }
 
@@ -229,14 +231,13 @@ pub(super) trait RecoveryOps {
         // ProcessRollOver visits this solver's own geometries, so c.solver
         // is the solver identified by geom.fillet_solver().
         let solver_id = required(c.fillets.geom(geom)?.fillet_solver())?;
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::m_vFilletCorners (the
-        // rollover recovery holds no corner table; CalcRailIntEdgeuse reads the vertex's
-        // corner)
+        // CalcRailIntEdgeuse reads the vertex's corner in the executive's table
+        let corners = c.corners;
         c.fillets.calc_rail_int_edgeuse_with_solver(
             c.k,
             vertex,
             Some(geom),
-            CornerLookup::default(),
+            corners,
             solver_id,
             c.solver,
             c.target,

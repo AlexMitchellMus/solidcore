@@ -572,8 +572,8 @@ const OP_CORNER: &str = "blend::fillet_geom::p1::CornerLookup::corner";
 /// names (upstream's `GetFilletCorner()` pointer, dereferenced) and the executive
 /// members a corner reads (`GetExtendedSurface`).
 ///
-/// [`CornerLookup::default`] is a caller without a corner store: every lookup is
-/// [`SolidError::Unported`] (`blend.fillet_executive_p1`, which owns the corners).
+/// [`CornerLookup::default`] is a caller without an executive (a standalone entry
+/// point): an empty corner table and an empty extended-surface map.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CornerLookup<'c> {
     /// The executive's corner table (`m_vFilletCorners`), indexed by the id (`id.0`);
@@ -628,8 +628,8 @@ impl<'c> CornerLookup<'c> {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] without a corner store; [`SolidError::InvalidInput`]
-    /// for an id neither the running corner nor in the table.
+    /// [`SolidError::InvalidInput`] for an id neither the running corner nor in the
+    /// table (a caller without a corner store holds an empty table).
     pub fn corner(&self, id: FilletCornerId) -> Result<&'c FilletCorner> {
         if let Some((this_id, this)) = self.this {
             if this_id == Some(id) {
@@ -652,11 +652,10 @@ impl<'c> CornerLookup<'c> {
                 OP_CORNER,
                 "fillet vertex or edge of another corner",
             )),
-            // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::m_vFilletCorners (the
-            // caller holds no corner store)
-            None => Err(SolidError::unported(
-                "SmFilletExecutive::m_vFilletCorners",
-                "blend.fillet_executive_p1",
+            // a caller without an executive holds an empty corner table
+            None => Err(SolidError::invalid_input(
+                OP_CORNER,
+                "fillet corner id not in the corner table",
             )),
         }
     }
@@ -667,7 +666,8 @@ impl<'c> CornerLookup<'c> {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] without executive data.
+    /// None: a caller without executive data holds an empty map (`None` for every
+    /// face).
     pub fn extended_surface(
         &self,
         corner: &FilletCorner,
@@ -675,12 +675,8 @@ impl<'c> CornerLookup<'c> {
     ) -> Result<Option<&'c Surface>> {
         match self.exec {
             Some(exec) => Ok(corner.extended_surface(exec, face)),
-            // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::m_vExtendedSurfacesMap
-            // (the caller holds no executive)
-            None => Err(SolidError::unported(
-                "SmFilletExecutive::m_vExtendedSurfacesMap",
-                "blend.fillet_executive_p1",
-            )),
+            // a caller without an executive holds an empty m_vExtendedSurfacesMap
+            None => Ok(None),
         }
     }
 }

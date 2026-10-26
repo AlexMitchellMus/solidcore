@@ -135,11 +135,6 @@ const OP_SPLIT: &str = "blend::fillet_geom::p5::FilletBrep::update_geom_split_fa
 
 // ---- helpers --------------------------------------------------------------------------
 
-/// A call into a unit that is not ported yet; `_args` are upstream's arguments.
-fn unported_on<A, T>(_args: A, upstream: &'static str, unit: &'static str) -> Result<T> {
-    Err(SolidError::unported(upstream, unit))
-}
-
 /// The global point solve options naming `curve` ([`CurveObjectHandle`]): the curve
 /// itself (upstream `this`, id `0`) and the analytic replacement its curve cache may make
 /// (id `1`). The replacement's handle carries the rail's own interval, which holds only
@@ -2428,11 +2423,11 @@ mod tests {
         fb.fillet_vertex_mut(v[0])
             .unwrap()
             .set_fillet_corner(Some(FilletCornerId(0)));
-        // without a corner store
+        // without a corner store: an empty table
         let e = fb
             .calc_fillet_int_fillet(&k, v[0], CornerLookup::default(), &[], &Brep::new())
             .unwrap_err();
-        assert!(e.is_unported());
+        assert!(matches!(e, SolidError::InvalidInput { .. }));
         // a corner in the table: no fillet/fillet edge at the vertex
         let corners = [FilletCorner::new(
             crate::blend::fillet_corner::p3::FilletCornerKind::TwoByTwo,
