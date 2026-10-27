@@ -2377,8 +2377,12 @@ pub(crate) mod tests {
                 _ => Err(SolidError::sm_err("edge")),
             }
         }
-        fn edge_tolerance(&self, _edge: Obj) -> Result<f64> {
-            Err(SolidError::sm_err("edge"))
+        fn edge_tolerance(&self, edge: Obj) -> Result<f64> {
+            // SmEdge's default tolerance (the point/edge solve reads it for the cache)
+            match edge {
+                Obj::Edge(_) => Ok(0.0),
+                _ => Err(SolidError::sm_err("edge")),
+            }
         }
         fn surface_face(&self, _surface: Obj) -> Result<Option<Obj>> {
             Ok(None)
