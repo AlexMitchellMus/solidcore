@@ -1564,29 +1564,39 @@ mod tests {
         );
     }
 
-    /// The pad moves the forked child's heap: a block the child allocates after the pad
-    /// lands at another address than without it, and the parent counts padded children
-    /// only. (`isolate`'s own tests need `solidcore-ffi/cpp`, which no CI job tests.)
+    /// The pad moves the forked child's heap. After a warm-up fork, an unpadded probe
+    /// lands at the same address before and after a padded one, which lands elsewhere:
+    /// so the difference is the pad's, not the parent's heap moving between forks (it
+    /// does: the first fork's allocation lands elsewhere, hence the warm-up). The parent
+    /// counts padded children only. (`isolate`'s own tests need `solidcore-ffi/cpp`,
+    /// which no CI job tests.)
     #[cfg(all(feature = "cpp", unix))]
     #[test]
     fn heap_pad_moves_the_forked_childs_allocations() {
         use solidcore_ffi::isolate;
         let probe = || {
             isolate::fresh_process(|| {
-                let b = std::hint::black_box(Box::new([0u8; 48]));
+                let b = std::hint::black_box(Box::new([0u8; 24]));
                 Ok(vec![(&raw const *b).addr() as f64])
             })
             .unwrap()[0]
         };
         assert_eq!(isolate::heap_pad(), 0);
+        let _warm_up = probe();
         let before = isolate::padded_children();
         let plain = probe();
         assert_eq!(isolate::padded_children(), before);
-        set_heap_pad(3);
+        set_heap_pad(512);
         let padded = probe();
         set_heap_pad(0);
         assert_eq!(isolate::padded_children(), before + 1);
         assert_eq!(isolate::heap_pad(), 0);
-        assert_ne!(plain, padded);
+        let plain_again = probe();
+        assert_eq!(isolate::padded_children(), before + 1);
+        assert_eq!(
+            plain, plain_again,
+            "unpadded forks must not move on their own"
+        );
+        assert_ne!(plain, padded, "the pad must move the child's allocation");
     }
 }
