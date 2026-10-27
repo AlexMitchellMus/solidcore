@@ -1,7 +1,8 @@
 # AGENTS.md — solidcore
 
 solidcore is a port of NVIDIA's SMLib B-rep kernel (C++, Apache-2.0) to idiomatic safe
-Rust. Upstream is cloned (gitignored) at `upstream/`, pinned to commit `c9c5979`. Many
+Rust. Upstream is cloned (gitignored) at `upstream/`, pinned to v1.0.1, commit `3fd5b95`
+(`scripts/upstream-pin.env` is the single source of truth for scripts, CI and the site). Many
 agents work here at once: read this whole file before your first change.
 
 ```
@@ -68,6 +69,11 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ```
 
 **Processes.** Kill only processes you started, by PID. Never `pkill`/`pgrep -f`.
+
+**Deleting.** Delete directories and build output with `cargo xtask rm <path>...` (and
+worktrees with `cargo xtask worktree-rm <dir>`), never `rm -rf`: agent harnesses hold `rm -rf`
+for a human's approval even with permissions bypassed, which stalls unattended runs. The
+xtask only deletes inside the worktree root, `bin/`, `reports/` and the temp dir.
 
 ## 2. Machine budget
 
@@ -339,6 +345,26 @@ The kernel core is one big call cycle, so the plan dropped ~2,300 calls as *back
   drops to 0 and passes becomes `green`; record this in the same commit.
 - **Local swarms only:** when several agents share one clone, everything that writes
   that clone's `main` runs under `flock .git/swarm.lock -c '<commands>'`.
+
+## 4b. Fixing upstream defects
+
+Every unit is ported; most new work fixes SMLib defects in the port. The long-term policy
+is still open in #1018. Until it is settled, the interim rule is the one in that thread:
+
+- **Default = the C++ reference.** Default behaviour matches the pinned C++ (usd-brep
+  v1.0.1 since #1277), and difftest keeps gating it at parity.
+- **Result-changing fixes are opt-in.** A fix that changes a result is a
+  `Kernel::fixes` (`UpstreamFixes`) field, off by default, with a regression test of the
+  issue's case and an addendum in `plan/upstream-issues/` naming the field. Examples:
+  #1233, #1285, #1287.
+- **Crash, UB, hang and nondeterminism fixes are unconditional**, e.g. #1160 for UB-87.
+- **Check that the issue is still open work before you claim it.** Many issues were
+  fixed by a PR that did not close them (see #1206). Search merged PRs for the issue
+  number, the upstream symbol and the `WR-`/`UB-`/`HANG-` record id, and grep
+  `plan/upstream-issues/` and the `UpstreamFixes` docs. Issues about fork-only features
+  that are not in SMLib or SM_API at the pin (e.g. the screw sweep, #1162/#1163) are out
+  of scope.
+- A fixing PR uses a closing keyword (`Fixes #n`) so the issue closes when it merges.
 
 ## 5. Where things go
 

@@ -374,14 +374,18 @@ impl<O: Copy + PartialEq> CurveCache<O> {
             Some(t) => Some(t.retag_curve_tree(handle)?),
             None => None,
         };
+        let analytic = match &self.analytic {
+            Some(a) => Some(a.clone_detached().ok()?),
+            None => None,
+        };
         Some(CurveCache {
-            curve: self.curve.clone_detached(),
+            curve: self.curve.clone_detached().ok()?,
             curve_handle: handle,
             interval: self.interval,
             tree,
             continuities: self.continuities.clone(),
             tried_analytic: self.tried_analytic,
-            analytic: self.analytic.as_ref().map(Curve::clone_detached),
+            analytic,
             spans: self.spans.clone(),
             parents: self.parents.clone(),
             opts: self.opts,
@@ -637,6 +641,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
             | CurveKind::Offset(_)
             | CurveKind::CrvInVolume(_)
             | CurveKind::CrvOnSurf(_)
+            | CurveKind::TangentField(_)
             | CurveKind::Composite(_) => false,
         };
 
@@ -664,6 +669,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
                 | CurveKind::Offset(_)
                 | CurveKind::CrvInVolume(_)
                 | CurveKind::CrvOnSurf(_)
+                | CurveKind::TangentField(_)
                 | CurveKind::Composite(_) => None,
             };
             create_bezier_segment_block(k, nurb, &self.curve)?
@@ -716,6 +722,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
                 self.opts.off_axis_tolerance,
                 self.opts.max_3d_distance,
                 approx_tol,
+                is_bspline, // B-spline spans are exact pieces of the curve
             )?;
 
             // skip short spans - unless its the last span and no other spans have
@@ -793,6 +800,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
                     self.opts.off_axis_tolerance,
                     self.opts.max_3d_distance,
                     approx_tol,
+                    is_bspline, // B-spline spans are exact pieces of the curve
                 )?;
 
                 // skip very small curves
@@ -1227,8 +1235,9 @@ pub fn bezier_polygon(leaf_beziers: &[Nurb], left: usize, right: usize) -> Resul
 /// the polygon exceeds (`sm_ComputeConstants`): base line length (`d3d_tol`),
 /// chord height (`ch_tol_sq`), turning angle (`angle_tol_deg`; note that upstream
 /// also stops at the first non-zero angle when this tolerance is zero), off-axis
-/// size (`off_axis_tol`); then the sampled distance between `bez` and `original`
-/// against `approx_tol`.
+/// size (`off_axis_tol`); then, unless `exact_span` (`bez` is an exact piece of
+/// `original`, a B-spline, so the check would only measure rounding differences), the
+/// sampled distance between `bez` and `original` against `approx_tol`.
 ///
 /// # Errors
 ///
@@ -1245,6 +1254,7 @@ pub fn compute_constants(
     off_axis_tol: f64,
     d3d_tol: f64,
     approx_tol: f64,
+    exact_span: bool,
 ) -> Result<SpanConstants> {
     let mut out = SpanConstants::default();
 
@@ -1379,6 +1389,13 @@ pub fn compute_constants(
     // set output
     out.max_chord_height_squared = max_segment_ch_sq;
     out.max_turning_angle_deg = total_angle * 180.0 / PI;
+
+    // The distance check below bounds the error of a span that approximates a
+    // non-B-spline curve. A span cut from a B-spline curve is an exact piece of it: the
+    // check would only measure rounding differences, so skip it.
+    if exact_span {
+        return Ok(out);
+    }
 
     let mut efo = FindCurveDistanceExtrema::new(k, bez, original, interval, 10.0 * EFF_ZERO);
     let mut solver = LocalSolve1d::with_interval(interval, false);
