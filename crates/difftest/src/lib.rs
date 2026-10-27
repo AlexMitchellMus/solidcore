@@ -18,6 +18,8 @@ pub mod jobs;
 pub mod json;
 pub mod known;
 pub mod output;
+#[cfg(feature = "cpp")]
+pub(crate) mod own_reader;
 pub mod plan;
 pub mod platform;
 pub mod report;
