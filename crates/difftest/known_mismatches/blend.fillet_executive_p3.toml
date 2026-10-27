@@ -5,3 +5,41 @@
 unit = "blend.fillet_executive_p3"
 case = "sweep4-bottle-e29-r0.1"
 why = "one result vertex tolerance differs (C++ 1.07e-2, Rust 1.60e-4); topology and every other value agree (plan/findings/blend.fillet_executive_p3--bottle-e29-r0.1-vertex-tolerance.md)"
+
+# Round-5 sweep representatives (fixtures/blend.fillet_executive_p3/sweep_round5.json):
+# one case per root-cause group of the Fillet/*.smb probe sweep.
+
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "sweep5-letter_g-e1-r1.0"
+why = "C++ fillets (0; 22,33,13), Rust refuses with 1001: stitching to the original B-rep fails because a kernel-free Surface::knots on a lazy surface of extrusion errors in SurfaceMaxDistanceBetween (plan/findings/blend.fillet_executive_p3--sweep5-lazy-extrusion-knots.md)"
+
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "sweep5-bottle-e29-r1.0"
+why = "C++ fillets (0; 47,62,20; mass 1007), Rust refuses with 1001 in IntersectInsertRelate: DropCurve's SnapToKnots / GetDomainWithContinuity read a lazy extrusion's knots without making its NURB (plan/findings/blend.fillet_executive_p3--sweep5-lazy-extrusion-knots.md)"
+
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "sweep5-bague-e4-r1.0"
+why = "C++ TrimRailCurves fails (1001, body kept); Rust's rail of the closed edge has natural interval (0, 63.507) against C++ (0, 31.940), so Rust fillets (16,24,8) and its mass fails (plan/findings/blend.fillet_executive_p3--sweep5-bague-e4-rail-length.md)"
+
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "sweep5-letter_g-e10-r1.0"
+why = "mass area 855.6511940507597 vs 855.6495364737889; topology and geometry agree; one fillet face whose edge use holds no own UV trim integrates differently (plan/findings/blend.fillet_executive_p3--sweep5-mass-on-mate-held-uv-trims.md)"
+
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "sweep5-nurb_box1-all-r0.5"
+why = "mass area 1572.3758420480713 vs 1572.3758445910357 (rel 1.6e-9); one face whose edge uses hold no own UV trim integrates differently (plan/findings/blend.fillet_executive_p3--sweep5-mass-on-mate-held-uv-trims.md)"
+
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "sweep5-sphere_diff_3cylinders-e29-r1.0"
+why = "one result vertex tolerance differs (C++ 9.1005e-5, Rust 9.3047e-5); everything else agrees (plan/findings/blend.fillet_executive_p3--sweep5-sphere-diff-e29-vertex-tolerance.md)"
+
+[[mismatch]]
+unit = "blend.fillet_executive_p3"
+case = "sweep5-ext_w_hole-e15-r1.0"
+why = "one face's tolerance (5.2976e-5 vs 4e-5) and UV domain minimum ((0, 0.5869) vs (2.5, 7.5)) differ, so its surface samples do; topology agrees (plan/findings/blend.fillet_executive_p3--sweep5-ext-w-hole-e15-face-domain.md)"
