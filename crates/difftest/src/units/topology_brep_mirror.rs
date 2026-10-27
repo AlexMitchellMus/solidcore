@@ -158,7 +158,7 @@ fn surface_samples(
         return;
     };
     out.push(s.type_code() as f64);
-    let d = s.natural_uv_domain();
+    let d = s.natural_uv_domain_if_built();
     let (a, z) = (d.min(), d.max());
     out.extend([a.x, a.y, z.x, z.y]);
     for i in 0..3 {
