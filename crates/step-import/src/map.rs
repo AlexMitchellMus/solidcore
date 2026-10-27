@@ -1436,8 +1436,13 @@ fn map_loose_faces(
     // all, treat every face as a sheet rather than returning an empty model.
     if model.bodies.is_empty() {
         for (id, instance) in &m.file.entities {
-            let Instance::Simple(record) = instance else { continue };
-            if !matches!(record.name.as_str(), "ADVANCED_FACE" | "FACE_SURFACE" | "FACE") {
+            let Instance::Simple(record) = instance else {
+                continue;
+            };
+            if !matches!(
+                record.name.as_str(),
+                "ADVANCED_FACE" | "FACE_SURFACE" | "FACE"
+            ) {
                 continue;
             }
             let units = if let Some(ctx) = contexts.get(id) {
