@@ -2268,6 +2268,28 @@ impl Surface {
         }
     }
 
+    /// Not upstream (`SmSurface::OffsetCollapses`, WR-464): whether the offset by
+    /// `signed_offset_distance` shrinks a cone, cylinder, sphere or torus onto its spine
+    /// (radius below `tol`), the only case where [`Self::create_offset_surface`] gives no
+    /// surface. `false` for every other surface.
+    ///
+    /// # Errors
+    ///
+    /// Those of the NURB conversion of the kind.
+    pub fn offset_collapses(
+        &self,
+        k: &Kernel,
+        signed_offset_distance: f64,
+        tol: f64,
+    ) -> Result<bool> {
+        Ok(match self.kind_with_nurb(k)? {
+            SurfaceKind::Cone(s) => s.offset_collapses(k, signed_offset_distance, tol),
+            SurfaceKind::Sphere(s) => s.offset_collapses(signed_offset_distance, tol),
+            SurfaceKind::Torus(s) => s.offset_collapses(signed_offset_distance, tol),
+            _ => false,
+        })
+    }
+
     /// The silhouette curves of the surface over `uv_domain` for a parallel
     /// (`eye_point_or_view_vector` the view vector) or perspective projection
     /// (`CreateSilhouetteCurves`), with the walk tolerances `pOptApproxTol3d` and
@@ -2520,7 +2542,11 @@ impl Surface {
                 }
             }
             SurfaceKind::SurfOfRevolution(s) => s.base().is_degenerate_point(k, tol_3d, uv_domain),
-            SurfaceKind::SurfOfExtrusion(s) => s.base().is_degenerate_point(k, tol_3d, uv_domain),
+            // (`GetNaturalUVDomain` or the explicit `MakeNurb` make a recognised
+            // extrusion's NURB first)
+            SurfaceKind::SurfOfExtrusion(s) => s
+                .base_with_nurb(k)?
+                .is_degenerate_point(k, tol_3d, uv_domain),
             SurfaceKind::Sphere(s) => s.base().base().is_degenerate_point(k, tol_3d, uv_domain),
             SurfaceKind::Torus(s) => s.base().base().is_degenerate_point(k, tol_3d, uv_domain),
             SurfaceKind::Plane(p) => p.base_for_query().is_degenerate_point(k, tol_3d, uv_domain),
@@ -2554,8 +2580,10 @@ impl Surface {
                 s.base()
                     .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
             }
+            // (the base body's `GetNaturalUVDomain` and evaluations make a recognised
+            // extrusion's NURB)
             SurfaceKind::SurfOfExtrusion(s) => {
-                s.base()
+                s.base_with_nurb(k)?
                     .is_degenerate_curve(k, angle_tol_deg, uv_domain, opt_3d_tol)
             }
             SurfaceKind::Sphere(s) => {

@@ -1839,7 +1839,7 @@ impl Surface {
     /// The number of control points in `param`'s direction
     /// (`GetNumberControlPoints`).
     #[must_use]
-    pub fn number_control_points(&self, param: SurfParamType) -> usize {
+    pub fn number_control_points(&self, k: &Kernel, param: SurfParamType) -> usize {
         match &self.kind {
             SurfaceKind::BSpline(s) => s.number_control_points(param),
             SurfaceKind::CurveBounded(_)
@@ -1849,7 +1849,10 @@ impl Surface {
             SurfaceKind::Plane(s) => s.base_for_query().number_control_points(param),
             SurfaceKind::Cone(s) => s.rev().base().number_control_points(param),
             SurfaceKind::SurfOfRevolution(s) => s.base().number_control_points(param),
-            SurfaceKind::SurfOfExtrusion(s) => s.base().number_control_points(param),
+            // (GetOrCreateGwNurbPointer; a failed make leaves no NURB, so 0)
+            SurfaceKind::SurfOfExtrusion(s) => s
+                .base_with_nurb_or_base(k)
+                .map_or(0, |b| b.number_control_points(param)),
             SurfaceKind::Sphere(s) => s.base().base().number_control_points(param),
             SurfaceKind::Torus(s) => s.base().base().number_control_points(param),
         }
@@ -1877,7 +1880,7 @@ impl Surface {
 
     /// Whether the surface is bilinear (`IsBilinear`).
     #[must_use]
-    pub fn is_bilinear(&self) -> bool {
+    pub fn is_bilinear(&self, k: &Kernel) -> bool {
         match &self.kind {
             SurfaceKind::BSpline(s) => s.is_bilinear(),
             SurfaceKind::CurveBounded(_)
@@ -1887,7 +1890,10 @@ impl Surface {
             SurfaceKind::Plane(s) => s.base_for_query().is_bilinear(),
             SurfaceKind::Cone(s) => s.rev().base().is_bilinear(),
             SurfaceKind::SurfOfRevolution(s) => s.base().is_bilinear(),
-            SurfaceKind::SurfOfExtrusion(s) => s.base().is_bilinear(),
+            // (GetNumberControlPoints makes a missing NURB)
+            SurfaceKind::SurfOfExtrusion(s) => {
+                s.base_with_nurb_or_base(k).is_ok_and(|b| b.is_bilinear())
+            }
             SurfaceKind::Sphere(s) => s.base().base().is_bilinear(),
             SurfaceKind::Torus(s) => s.base().base().is_bilinear(),
         }
@@ -1898,7 +1904,7 @@ impl Surface {
     /// # Errors
     ///
     /// Those of the kind's override.
-    pub fn is_parallel_to_vector(&self, vector: Vec3) -> Result<bool> {
+    pub fn is_parallel_to_vector(&self, k: &Kernel, vector: Vec3) -> Result<bool> {
         match &self.kind {
             SurfaceKind::BSpline(s) => s.is_parallel_to_vector(vector),
             SurfaceKind::CurveBounded(_)
@@ -1909,7 +1915,9 @@ impl Surface {
             // (not a plane: the SmBSplineSurface net test)
             SurfaceKind::Cone(s) => s.rev().base().is_parallel_to_vector(vector),
             SurfaceKind::SurfOfRevolution(s) => s.base().is_parallel_to_vector(vector),
-            SurfaceKind::SurfOfExtrusion(s) => s.base().is_parallel_to_vector(vector),
+            SurfaceKind::SurfOfExtrusion(s) => {
+                s.base_with_nurb_or_base(k)?.is_parallel_to_vector(vector)
+            }
             SurfaceKind::Sphere(s) => s.base().base().is_parallel_to_vector(vector),
             SurfaceKind::Torus(s) => s.base().base().is_parallel_to_vector(vector),
         }
@@ -2747,11 +2755,11 @@ impl Surface {
                 dist,
                 extension_continuity,
             )?)),
-            SurfaceKind::SurfOfExtrusion(s) => Ok(Self::from(s.base().create_extended_surface(
-                k,
-                dist,
-                extension_continuity,
-            )?)),
+            // (`GetOrCreateGwNurbPointer` makes a recognised extrusion's NURB)
+            SurfaceKind::SurfOfExtrusion(s) => Ok(Self::from(
+                s.base_with_nurb(k)?
+                    .create_extended_surface(k, dist, extension_continuity)?,
+            )),
         }
     }
 
@@ -2830,14 +2838,15 @@ impl Surface {
                     extension_continuity,
                 )?))
             }
-            SurfaceKind::SurfOfExtrusion(s) => {
-                Ok(Self::from(s.base().create_extended_surface_dir(
+            // (`GetOrCreateGwNurbPointer` makes a recognised extrusion's NURB)
+            SurfaceKind::SurfOfExtrusion(s) => Ok(Self::from(
+                s.base_with_nurb(k)?.create_extended_surface_dir(
                     k,
                     ext_direction,
                     dist,
                     extension_continuity,
-                )?))
-            }
+                )?,
+            )),
         }
     }
 

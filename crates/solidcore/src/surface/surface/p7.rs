@@ -911,10 +911,13 @@ impl Surface {
                 )
             }
             // (and SmSurfOfExtrusion)
+            // (`CalculateBoundingBox`'s `GetOrCreateGwNurbPointer` makes a recognised
+            // extrusion's NURB)
             SurfaceKind::SurfOfExtrusion(s) => {
                 let face_tol = self.face_zone_tol_3d()?;
+                let base = s.base_with_nurb(k)?;
                 Ok(
-                    planar_of(k, s.base(), &self.natural_uv_domain_with_nurb(k)?, face_tol)?
+                    planar_of(k, &base, &self.natural_uv_domain_with_nurb(k)?, face_tol)?
                         .is_planar(tol_3d),
                 )
             }
@@ -2255,12 +2258,12 @@ pub fn load_guesses(
 
     // set gridSize = 1 for linear geometry (an SmBSplineSurface: B-splines and planes)
     let is_bss = surface.is_kind_of(BSplineSurface::TYPE)?;
-    let grid_u = if is_bss && surface.number_control_points(SurfParamType::U) == 2 {
+    let grid_u = if is_bss && surface.number_control_points(k, SurfParamType::U) == 2 {
         1
     } else {
         GRID_SIZE
     };
-    let grid_v = if is_bss && surface.number_control_points(SurfParamType::V) == 2 {
+    let grid_v = if is_bss && surface.number_control_points(k, SurfParamType::V) == 2 {
         1
     } else {
         GRID_SIZE
