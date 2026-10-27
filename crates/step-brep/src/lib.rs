@@ -627,6 +627,36 @@ mod tests {
         }
     }
 
+    /// The same two-loop band on a surface of extrusion. The incremental split path
+    /// recognizes the surface on a split face without building its NURB, which is what
+    /// broke `moon_buggy.stp` during stitching.
+    fn extrusion_band() -> Body {
+        let mut body = cylinder_band();
+        let frame = Frame {
+            origin: [0.0, 0.0, 0.0],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            z: [0.0, 0.0, 1.0],
+        };
+        let face = body.faces.first_mut().expect("band face");
+        face.surface = Surface::Extrusion {
+            curve: Box::new(Curve::Circle {
+                frame,
+                radius: 10.0,
+            }),
+            dir: [0.0, 0.0, 1.0],
+            magnitude: 20.0,
+        };
+        body
+    }
+
+    #[test]
+    fn builds_a_multi_loop_extrusion_band() {
+        let brep = build(&extrusion_band()).expect("extrusion band build");
+        assert_eq!(brep.face_list().len(), 1);
+        assert_eq!(brep.edge_list().len(), 2);
+    }
+
     #[test]
     fn builds_a_multi_loop_cylinder_band() {
         let brep = build(&cylinder_band()).expect("cylinder band build");
