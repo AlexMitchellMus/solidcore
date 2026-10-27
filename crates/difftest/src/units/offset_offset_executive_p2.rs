@@ -226,10 +226,9 @@ impl Fixture {
     const fn face_count(&self) -> usize {
         match self {
             Self::Empty | Self::Wire { .. } => 0,
-            Self::PlaneSheet { .. } => 1,
+            Self::PlaneSheet { .. } | Self::Sphere { .. } => 1,
             Self::Box { .. } => 6,
             Self::Cylinder { .. } => 3,
-            Self::Sphere { .. } => 1,
         }
     }
 }
