@@ -62,6 +62,7 @@ use crate::error::{Result, SolidError};
 use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::Extent3d;
 use crate::geom::pseudo_box::PseudoBox;
+use crate::geom::tol::ZONE_TOL_3D;
 use crate::geom::tree::{
     AuxDataType, NodeClass, NodeData, NodeGeomType, NodeId, SplitDir, SurfaceAux, TreeNode,
 };
@@ -570,7 +571,16 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
 
         // chordheight
         if chord_height_squared >= EFF_ZERO {
-            let height = pseudo_box.interval(2).map_or(0.0, |i| i.length());
+            let mut height = pseudo_box.interval(2).map_or(0.0, |i| i.length());
+
+            // Bezier patch boxes are padded by SM_ZONE_TOL_3D on each side, so a chord
+            // height tolerance no larger than that could never be met; test the
+            // unpadded height.
+            if aux_type == AuxDataType::BezierSurface && chord_tol <= 2.0 * ZONE_TOL_3D {
+                let unpadded = height - 2.0 * ZONE_TOL_3D;
+                height = if unpadded > 0.0 { unpadded } else { 0.0 };
+            }
+
             if height * height <= chord_height_squared {
                 self.aux_mut(node)?.chord_height_satisfied = true;
             } else {
@@ -832,7 +842,18 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             }
         };
         let handle = fields.surface.ok_or(SolidError::null_pointer(OP_BLOCK))?;
-        let surface = self.node_surface(Some(handle))?.clone();
+        // upstream works on the node's surface itself (`pAux->mBA_pSurface`); the cache is
+        // edited below, so an evaluation copy (exact knots, owner kept) stands for it: the
+        // copy constructor's knot fix-up would move near-coincident knots and so the splits.
+        // An `SmPlane` keeps the copy constructor: its copy carries the NURB upstream has
+        // made on the plane by now (the port keeps none on the original), and a freshly
+        // made plane NURB has no knots for the fix-up to move.
+        let node_surface = self.node_surface(Some(handle))?;
+        let surface = if let SurfaceKind::Plane(_) = node_surface.kind() {
+            node_surface.clone()
+        } else {
+            node_surface.clone_for_evaluation()?
+        };
         let uv_domain = surface.natural_uv_domain_with_nurb(k)?;
         let opts = *self.options();
 
@@ -1207,7 +1228,7 @@ mod tests {
     #[test]
     fn add_curves_evicts_oldest() {
         let s = Surface::from(BSplineSurface::from_nurb(bilinear(0.0), false));
-        let d = s.natural_uv_domain();
+        let d = s.natural_uv_domain_if_built();
         let mut c: SurfaceCache<i64> = SurfaceCache::new(s, d, SurfaceCacheOptions::default());
         for i in 0..7 {
             let key = AltCacheKey {
@@ -1227,7 +1248,7 @@ mod tests {
 
     fn patch_cache(z: f64, opts: SurfaceCacheOptions) -> SurfaceCache<i64> {
         let s = Surface::from(BSplineSurface::from_nurb(bilinear(z), false));
-        let d = s.natural_uv_domain();
+        let d = s.natural_uv_domain_if_built();
         let mut c = SurfaceCache::new(s, d, opts);
         c.set_surface_handle(Some(-7));
         let mut tree: Tree<i64> = Tree::new(None);
@@ -1305,7 +1326,7 @@ mod tests {
     fn nth_bounding_plane_rejects_large_index() {
         let k = Kernel::default();
         let s = Surface::from(BSplineSurface::from_nurb(bilinear(0.0), false));
-        let mut bp = PatchBoundaryBoundingPlanes::new(s.natural_uv_domain());
+        let mut bp = PatchBoundaryBoundingPlanes::new(s.natural_uv_domain_if_built());
         let r = bp.nth_bounding_plane(&k, &s, 4);
         assert!(r.is_err() || !r.expect("ok").plane_exists);
     }
