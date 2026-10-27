@@ -284,11 +284,7 @@ fn put_states(k: &Kernel, o: &mut Vec<f64>, b: &Brep, eu: EdgeuseId) -> Result<(
         }
         None => o.extend([0.0; 3]),
     }
-    put_trim_curve(k, o, b.edgeuse(eu)?.uv_trim_curve.as_ref())?;
-    match mate {
-        Some(m) => put_trim_curve(k, o, b.edgeuse(m)?.uv_trim_curve.as_ref()),
-        None => put_trim_curve(k, o, None),
-    }
+    Ok(())
 }
 
 /// The Rust outcome of an op body; `Err` carries a [`SolidError`] that is not an
