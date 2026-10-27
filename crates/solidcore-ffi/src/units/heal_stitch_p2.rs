@@ -19,7 +19,7 @@
 //! | `Solid`  |                            | `status [solid stitched max_vgap max_egap digest]` (`StitchIntoSolid`; `-3` when the tolerance doubling cannot end: a tenth of the B-rep tolerance at or below zero and below `1/200` of the box diagonal; a NaN diagonal skips the loop, an infinite one ends it once the tolerance doubles to infinity) |
 //! | `Shell`  | `well_formed max_tol`      | `status [stitched max_vgap max_egap digest]` (`StitchIntoShell`; `-3` when `max_tol / 100` underflows to zero) |
 //! | `VList`  | `tol manifold squeeze n v*n` | `status [max_gap min_gap surviving deleted deleted_edges list [digest]]` (one-list `StitchVertexPairs`; the digest when a vertex was deleted) |
-//! | `Split`  | `tol manifold ignore n v*n n e*n` | `status [max_gap min_gap processed split new verts edges [digest]]` (`SplitEdgesWithVertices`; the digest when it processed a vertex or made an edge) |
+//! | `Split`  | `tol manifold ignore n v*n n e*n editing` | `status [max_gap min_gap processed split new verts edges [digest]]` (`SplitEdgesWithVertices`, on the B-rep with `m_bEditingEnabled` set when `editing`; the digest when it processed a vertex or made an edge) |
 //!
 //! Output lists are `n idx*n` with `-1` for null and `-3` for an entity the op created.
 //! A digest is the B-rep after the op: `n_faces n_edges n_vertices`, each vertex's
@@ -157,6 +157,7 @@ fn op_args(op: Op, rd: &mut Reader<'_>, c: [usize; 10]) -> Result<(), FfiError> 
             rd.flag()?;
             list(rd, nv)?;
             list(rd, ne)?;
+            rd.flag()?;
         }
     }
     Ok(())

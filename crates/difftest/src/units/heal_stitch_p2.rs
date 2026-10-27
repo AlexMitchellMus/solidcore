@@ -226,6 +226,11 @@ enum OpIn {
         ignore: bool,
         verts: Vec<i64>,
         edges: Vec<i64>,
+        /// Run on a B-rep with `m_bEditingEnabled` set, as upstream's callers
+        /// (`SmMerge`, `SmBrep::SqueezeFace`) do; without it `MakeVertexSplitEdge`
+        /// refuses every split.
+        #[serde(default)]
+        editing: bool,
     },
 }
 
@@ -267,6 +272,7 @@ enum Resolved {
         ignore: bool,
         verts: Vec<Option<VertexId>>,
         edges: Vec<Option<EdgeId>>,
+        editing: bool,
     },
 }
 
@@ -353,6 +359,7 @@ fn resolve(op: &OpIn, b: &Brep) -> Option<Resolved> {
             ignore,
             verts,
             edges,
+            editing,
         } => {
             if b.vertices().is_empty() {
                 return None;
@@ -363,6 +370,7 @@ fn resolve(op: &OpIn, b: &Brep) -> Option<Resolved> {
                 ignore: *ignore,
                 verts: verts.iter().map(|&x| opt_vertex(x, b)).collect(),
                 edges: edges.iter().map(|&x| opt_edge(x, b)).collect(),
+                editing: *editing,
             }
         }
     })
@@ -423,10 +431,12 @@ fn args(op: &Resolved) -> (Op, Vec<f64>) {
             ignore,
             verts,
             edges,
+            editing,
         } => {
             v.extend([*tol, flag(*manifold), flag(*ignore)]);
             push_opt(&mut v, verts);
             push_opt(&mut v, edges);
+            v.push(flag(*editing));
             Op::Split
         }
     };
@@ -680,7 +690,11 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
             ignore,
             verts,
             edges,
+            editing,
         } => {
+            if *editing {
+                b.set_editing_enabled(true);
+            }
             let mut s = st1::Stitch::new(&mut cb, *tol, true, true);
             s.making_manifold_solid = *manifold;
             s.ignore_problems = *ignore;
@@ -839,6 +853,7 @@ fn gen_op(rng: &mut Rng) -> OpIn {
             ignore: rng.chance(0.3),
             verts: gen_opt_sels(rng, 8),
             edges: gen_opt_sels(rng, 12),
+            editing: false,
         },
     }
 }

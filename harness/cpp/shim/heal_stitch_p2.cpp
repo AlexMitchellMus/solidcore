@@ -362,6 +362,9 @@ void run_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
         SmTArray<SmEdge*> edges, split, made;
         read_vertices(rd, g, verts);
         read_edges(rd, g, edges);
+        // the B-rep's editing flag, as SmMerge and SmBrep::SqueezeFace call it
+        if (rd.flag())
+            brep->m_bEditingEnabled = TRUE;
         SmStitchCallback cb;
         SmStitch stitch(cb, tol);
         stitch.m_bMakingManifoldSolid = manifold ? TRUE : FALSE;
