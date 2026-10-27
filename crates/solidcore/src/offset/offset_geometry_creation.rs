@@ -1173,7 +1173,7 @@ impl OffsetGeometryCreation {
             // self-intersection locals
             let angle_tol = 20.0 * PI / 180.0;
             let use_surface_edges = [false, false];
-            let uv_domain = brep.surface(off)?.natural_uv_domain();
+            let uv_domain = brep.surface(off)?.natural_uv_domain_with_nurb(k)?;
 
             // find self intersections
             let ssi = {
@@ -1663,7 +1663,7 @@ impl OffsetGeometryCreation {
         let sur = brep
             .face_surface(face)?
             .ok_or(dangling("face without surface"))?;
-        let surf_domain = surface_of(brep, sur)?.natural_uv_domain();
+        let surf_domain = surface_of(brep, sur)?.natural_uv_domain_with_nurb(k)?;
         let mut min = face_domain.min();
         let mut max = face_domain.max();
         if (min.x - surf_domain.min().x).abs() < EFF_ZERO {
@@ -2283,6 +2283,42 @@ impl OffsetGeometryCreation {
             // else set Interval
             trim_ivl.add_value(found_param);
         } // end iter twice
+
+        // `Kernel::fixes.offset_closed_curve_trim_arc` (WR-463, #403): on a closed curve the
+        // two trim points bound two arcs and the interval between them is only one of them.
+        // The edge takes the arc that runs where the base edge does; when a trim point lies
+        // on the curve's seam the other arc is an interval too, else the edge is not trimmed.
+        if k.fixes.offset_closed_curve_trim_arc {
+            let nat_ivl = curve_of(brep, curve_3d)?.natural_interval();
+            let seam_tol = EFF_ZERO * (1.0 + nat_ivl.max_dimension());
+            let tol = self.this_approx_tol_3d;
+            if trim_ivl.length() > seam_tol
+                && curve_of(brep, curve_3d)?.is_closed(k, &nat_ivl, tol)?
+            {
+                let base_mid =
+                    edgeuse_normalized_evaluate(k, brep, base_edgeuse, 0.5, false, false, true)?;
+                let curve = curve_of(brep, curve_3d)?;
+                let in_mid = curve.evaluate_point(k, trim_ivl.evaluate(0.5))?;
+                let mut out_param = trim_ivl.max() + 0.5 * (nat_ivl.length() - trim_ivl.length());
+                if out_param > nat_ivl.max() {
+                    out_param -= nat_ivl.length();
+                }
+                let out_mid = curve.evaluate_point(k, out_param)?;
+                if distance(out_mid, base_mid) < distance(in_mid, base_mid) {
+                    let seam = curve.evaluate_point(k, nat_ivl.min())?;
+                    let lo = curve.evaluate_point(k, trim_ivl.min())?;
+                    let hi = curve.evaluate_point(k, trim_ivl.max())?;
+                    if distance(lo, seam) <= tol {
+                        trim_ivl = Extent1d::from_raw(trim_ivl.max(), nat_ivl.max());
+                    } else if distance(hi, seam) <= tol {
+                        trim_ivl = Extent1d::from_raw(nat_ivl.min(), trim_ivl.min());
+                    } else {
+                        // the arc runs across the seam: no interval of this curve gives it
+                        return Ok(None);
+                    }
+                }
+            }
+        }
 
         // cull zero length curves
         let scaled_zero = EFF_ZERO * (1.0 + trim_ivl.max_dimension());
@@ -3144,7 +3180,9 @@ impl OffsetGeometryCreation {
 
     /// `EdgeuseOffset(ctx, exec, cpOriginalEdgeuse, cpOtherOriginalEdgeuse,
     /// cpOffsetEdgeuse, cpOtherOffsetEdgeuse, ..)`: the cap surface of an edge of the
-    /// offset. When the executive extends convex edges, lamina and tangent edges are
+    /// offset. A tangent edge between an offset face and a shell face whose offset edge
+    /// uses leave gaps is always bridged by a cap below. Otherwise, when the executive
+    /// extends convex edges, lamina and tangent edges are
     /// extended/trimmed (`ExtendTrimEdges`) and the others mated (`MateEdges`),
     /// problems only reported. Otherwise a non-convex radial sector gets nothing
     /// (`SM_ERR` for a tangent sector with gaps between the offsets), a lamina edge
@@ -3184,8 +3222,27 @@ impl OffsetGeometryCreation {
             .edgeuse_edge(original_edgeuse)?
             .ok_or(dangling("edge use without edge"))?;
 
+        // A tangent edge between an offset face and a shell face can't be closed by
+        // extension: bridge it below.
+        let shell_faces = executive.shell_faces();
+        let gap_edgeuses = (other_original_edgeuse, offset_edgeuse, other_offset_edgeuse);
+        let shell_tangent_gap = match gap_edgeuses {
+            (Some(other_orig), Some(off), Some(other_off)) => {
+                let on_shell = |face: Option<O>| face.is_some_and(|f| contains(&shell_faces, &f));
+                on_shell(brep.edgeuse_face(original_edgeuse)?)
+                    != on_shell(brep.edgeuse_face(other_orig)?)
+                    && brep.edgeuse_is_tangent_sector(
+                        k,
+                        original_edgeuse,
+                        self.tangency_tol_degrees(),
+                    )?
+                    && self.have_tangent_gaps(k, brep, 10, off, other_off)?
+            }
+            _ => false,
+        };
+
         // If we are extending convex edges, extend both offset surfaces to hit each other.
-        if executive.extend_convex_edges() {
+        if executive.extend_convex_edges() && !shell_tangent_gap {
             let lamina = brep.edge_is_lamina(orig_edge)?;
 
             // No, we have to call ExtendTrimEdges() for Lamina Edges.  [cbi B01; B256 ok]
@@ -3222,7 +3279,8 @@ impl OffsetGeometryCreation {
         } // end when extending convex edges
 
         // Make sure sector being offset is convex otherwise just skip it
-        if brep.edgeuse_radial(original_edgeuse)? == other_original_edgeuse
+        if !shell_tangent_gap
+            && brep.edgeuse_radial(original_edgeuse)? == other_original_edgeuse
             && !brep.edgeuse_is_convex_radial_sector(k, original_edgeuse, 10)?
         {
             if brep.edgeuse_is_tangent_sector(k, original_edgeuse, 3.0)? {
@@ -3249,10 +3307,10 @@ impl OffsetGeometryCreation {
         let other_orig_face = brep
             .edgeuse_face(other_original_edgeuse)?
             .ok_or(dangling("edge use without face"))?;
-        let shell_faces = executive.shell_faces();
 
         // when Orig or OtherOrig face is a ShellFace (not offset - just copied) and we are insetting
-        if (contains(&shell_faces, &orig_face) || contains(&shell_faces, &other_orig_face))
+        if !shell_tangent_gap
+            && (contains(&shell_faces, &orig_face) || contains(&shell_faces, &other_orig_face))
             && executive.inset()
         {
             // when OrigFace is not a shell face and we have an OffsetEdgeuse
@@ -3793,7 +3851,7 @@ impl<O: ClassObject + SolutionObject> LocalOperationGeometryCreation<O> {
             let sur = brep
                 .face_surface(face)?
                 .ok_or(dangling("face without surface"))?;
-            let old_domain = surface_of(brep, sur)?.natural_uv_domain();
+            let old_domain = surface_of(brep, sur)?.natural_uv_domain_with_nurb(k)?;
             // Reparameterize's status is ignored
             {
                 let s = brep
