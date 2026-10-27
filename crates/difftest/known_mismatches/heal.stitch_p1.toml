@@ -1,0 +1,50 @@
+# Unstitched cubes whose corner gap reaches the default edge tolerance (1e-5): the
+# region nesting of DoStitching (FindAndSetInfiniteRegion's ray fire, here and inside
+# the nested edge glue) raises different edge and vertex tolerances. Counts, topology
+# and vertex points agree; the same B-reps agree with nesting off
+# (plan/findings/heal.stitch_p2--region-nesting-ray-fire-raises-other-edge-tolerances.md).
+
+[[mismatch]]
+unit = "heal.stitch_p1"
+case = "cov_cube2_advanced"
+why = "5 values of the stitched B-rep's digest differ, edge/vertex tolerances raised by the region nesting's ray fire (first values.out[31]: C++ 3.118529526847857e-5 vs Rust 2.6188138958028285e-5); counts, topology and vertex points agree (plan/findings/heal.stitch_p2--region-nesting-ray-fire-raises-other-edge-tolerances.md)"
+
+[[mismatch]]
+unit = "heal.stitch_p1"
+case = "cov_cube2_advanced_plain"
+why = "5 values of the stitched B-rep's digest differ, edge/vertex tolerances raised by the region nesting's ray fire (first values.out[31]: C++ 3.118529526847857e-5 vs Rust 2.6188138958028285e-5); counts, topology and vertex points agree (plan/findings/heal.stitch_p2--region-nesting-ray-fire-raises-other-edge-tolerances.md)"
+
+[[mismatch]]
+unit = "heal.stitch_p1"
+case = "cov_cube2_stitch"
+why = "5 values of the stitched B-rep's digest differ, edge/vertex tolerances raised by the region nesting's ray fire (first values.out[27]: C++ 3.118529526847857e-5 vs Rust 2.6188138958028285e-5); counts, topology and vertex points agree (plan/findings/heal.stitch_p2--region-nesting-ray-fire-raises-other-edge-tolerances.md)"
+
+[[mismatch]]
+unit = "heal.stitch_p1"
+case = "cov_cube4_advanced"
+why = "10 values of the stitched B-rep's digest differ, edge/vertex tolerances raised by the region nesting's ray fire (first values.out[15]: C++ 3.994385211916053e-5 vs Rust 2.84517845987677e-5; also values.out[130] C++ 5.000004048922745e-1 vs Rust 4.9999939290479195e-1 (a split edge's interval start)); counts, topology and vertex points agree (plan/findings/heal.stitch_p2--region-nesting-ray-fire-raises-other-edge-tolerances.md)"
+
+[[mismatch]]
+unit = "heal.stitch_p1"
+case = "cov_cube4_advanced_plain"
+why = "10 values of the stitched B-rep's digest differ, edge/vertex tolerances raised by the region nesting's ray fire (first values.out[15]: C++ 3.994385211916053e-5 vs Rust 2.84517845987677e-5; also values.out[130] C++ 5.000004048922745e-1 vs Rust 4.9999939290479195e-1 (a split edge's interval start)); counts, topology and vertex points agree (plan/findings/heal.stitch_p2--region-nesting-ray-fire-raises-other-edge-tolerances.md)"
+
+[[mismatch]]
+unit = "heal.stitch_p1"
+case = "cov_cube4_stitch"
+why = "10 values of the stitched B-rep's digest differ, edge/vertex tolerances raised by the region nesting's ray fire (first values.out[11]: C++ 3.994385211916053e-5 vs Rust 2.84517845987677e-5; also values.out[126] C++ 5.000004048922745e-1 vs Rust 4.9999939290479195e-1 (a split edge's interval start)); counts, topology and vertex points agree (plan/findings/heal.stitch_p2--region-nesting-ray-fire-raises-other-edge-tolerances.md)"
+
+[[mismatch]]
+unit = "heal.stitch_p1"
+case = "cov_cube5_advanced"
+why = "3 values of the stitched B-rep's digest differ, edge/vertex tolerances raised by the region nesting's ray fire (first values.out[19]: C++ 2.5691890827453953e-5 vs Rust 2.569611165040373e-5); counts, topology and vertex points agree (plan/findings/heal.stitch_p2--region-nesting-ray-fire-raises-other-edge-tolerances.md)"
+
+[[mismatch]]
+unit = "heal.stitch_p1"
+case = "cov_cube5_advanced_plain"
+why = "3 values of the stitched B-rep's digest differ, edge/vertex tolerances raised by the region nesting's ray fire (first values.out[19]: C++ 2.5691890827453953e-5 vs Rust 2.569611165040373e-5); counts, topology and vertex points agree (plan/findings/heal.stitch_p2--region-nesting-ray-fire-raises-other-edge-tolerances.md)"
+
+[[mismatch]]
+unit = "heal.stitch_p1"
+case = "cov_cube5_stitch"
+why = "3 values of the stitched B-rep's digest differ, edge/vertex tolerances raised by the region nesting's ray fire (first values.out[15]: C++ 2.5691890827453953e-5 vs Rust 2.569611165040373e-5); counts, topology and vertex points agree (plan/findings/heal.stitch_p2--region-nesting-ray-fire-raises-other-edge-tolerances.md)"
