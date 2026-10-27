@@ -1706,8 +1706,15 @@ pub fn make_edge_in_face_with_vu_with_curve_identity(
             let fu2 = required(b.faceuse(fu1)?.mate, "faceuse without mate")?;
             (None, fu1, fu2)
         } else {
-            // separating cut: create one new face
-            let new_face = b.add_face_record(crate::topology::Face::new(b.face(face)?.shell))?;
+            // separating cut: create one new face, in the split face's shell as `GetShell`
+            // reads it, through its primary face use (the port's `Face::shell` is a cache
+            // the native shell moves do not maintain)
+            let cached_shell = b.face(face)?.shell;
+            let shell = match b.face(face)?.faceuse {
+                Some(fu) => b.faceuse(fu)?.shell.unwrap_or(cached_shell),
+                None => cached_shell,
+            };
+            let new_face = b.add_face_record(crate::topology::Face::new(shell))?;
             let mut surface =
                 required(b.face(face)?.surface.as_ref(), "split face without surface")?
                     .copy_and_add_analytics(k)?;

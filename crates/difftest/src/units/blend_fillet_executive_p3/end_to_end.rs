@@ -432,21 +432,27 @@ fn output(mut values: &[f64]) -> Result<Output, HarnessError> {
     Ok(out)
 }
 
-/// The shim's `SC_P3_CRASHED`: a source case whose native run crashed in the shim's
-/// fork crash trap.
-const NATIVE_CRASH: i32 = -1100;
-
 /// A source case's C++ record, or its rejection when the native fillet crashed in the
-/// shim's fork crash trap (undefined in C++: AGENTS.md section 5.6; the upstream
+/// case's fresh child process (undefined in C++: AGENTS.md section 5.6; the upstream
 /// crashes are UB-209 and UB-261). Rust is not run on a rejected case.
-fn source_output(result: Result<Vec<f64>, solidcore_ffi::FfiError>) -> Result<Output, HarnessError> {
+fn source_output(
+    result: Result<(Vec<f64>, f64), solidcore_ffi::FfiError>,
+) -> Result<Output, HarnessError> {
     match result {
-        Ok(values) => output(&values),
-        Err(solidcore_ffi::FfiError::Status(NATIVE_CRASH)) => Ok(Output::rejected(
-            "native C++ crash in SmApiFilletEdges (shim fork crash trap; UB-209, UB-261)",
+        Ok((values, step)) => Ok(super::with_point_step(output(&values)?, step)),
+        Err(solidcore_ffi::FfiError::Status(solidcore_ffi::SC_ERR_CHILD_CRASHED)) => Ok(Output::rejected(
+            "native C++ crash in SmApiFilletEdges (fresh child process; UB-209, UB-261)",
         )),
         Err(e) => Err(HarnessError::new(e.to_string())),
     }
+}
+
+/// A box case's C++ record (see [`super::fresh_cpp`]).
+fn solid_output(
+    result: Result<(Vec<f64>, f64), solidcore_ffi::FfiError>,
+) -> Result<Output, HarnessError> {
+    let (values, step) = result.map_err(|e| HarnessError::new(e.to_string()))?;
+    Ok(super::with_point_step(output(&values)?, step))
 }
 
 pub(super) fn cpp(input: &RealSolid) -> Result<Output, HarnessError> {
@@ -454,21 +460,19 @@ pub(super) fn cpp(input: &RealSolid) -> Result<Output, HarnessError> {
     if let Some(shell) = input.shell {
         let mut wire = input.wire();
         wire.extend([shell.distance, f64::from(u8::from(shell.open_top))]);
-        let values =
-            ffi::fillet_then_shell(&wire).map_err(|e| HarnessError::new(e.to_string()))?;
-        return shell_output(&values);
+        let (values, step) = super::fresh_cpp(|| ffi::fillet_then_shell(&wire))
+            .map_err(|e| HarnessError::new(e.to_string()))?;
+        return Ok(super::with_point_step(shell_output(&values)?, step));
     }
     if let (Some(step_back), Some(source)) = (input.curve_blend_sih, &input.source) {
-        return source_output(ffi::curve_sih_source(
-            step_back,
-            &input.source_wire(source),
-            source.path(),
-        ));
+        return source_output(super::fresh_cpp(|| {
+            ffi::curve_sih_source(step_back, &input.source_wire(source), source.path())
+        }));
     }
     if let Some(step_back) = input.curve_blend_sih {
-        let values = ffi::curve_sih_solid(step_back, &input.wire())
-            .map_err(|e| HarnessError::new(e.to_string()))?;
-        return output(&values);
+        return solid_output(super::fresh_cpp(|| {
+            ffi::curve_sih_solid(step_back, &input.wire())
+        }));
     }
     if let Some(source) = &input.source {
         let run = if input.piecewise_merge {
@@ -476,23 +480,22 @@ pub(super) fn cpp(input: &RealSolid) -> Result<Output, HarnessError> {
         } else {
             ffi::real_source
         };
-        return source_output(run(&input.source_wire(source), source.path()));
+        return source_output(super::fresh_cpp(|| {
+            run(&input.source_wire(source), source.path())
+        }));
     }
     if input.checkpoint != Checkpoint::Full {
         return prefix::cpp(input);
     }
     if let Some(end) = input.radius_end {
-        let values = ffi::real_variable_solid(&input.wire(), end)
-            .map_err(|e| HarnessError::new(e.to_string()))?;
-        return output(&values);
+        return solid_output(super::fresh_cpp(|| ffi::real_variable_solid(&input.wire(), end)));
     }
     let run = if input.piecewise_merge {
         ffi::piecewise_solid
     } else {
         ffi::real_solid
     };
-    let values = run(&input.wire()).map_err(|e| HarnessError::new(e.to_string()))?;
-    output(&values)
+    solid_output(super::fresh_cpp(|| run(&input.wire())))
 }
 
 pub(super) fn section(out: &mut Vec<f64>, data: &[f64]) {
@@ -604,7 +607,7 @@ fn build(k: &mut Kernel, input: &RealSolid) -> Result<SolidResult<Brep>, Harness
         }),
     })
 }
-fn run_rust(mut k: Kernel, body: SolidResult<Brep>, input: &RealSolid) -> SolidResult<Vec<f64>> {
+fn run_rust(k: &mut Kernel, body: SolidResult<Brep>, input: &RealSolid) -> SolidResult<Vec<f64>> {
     let mut body = body?;
     let edges = p1::edges(&body, None)?;
     let mut selected = Vec::<EdgeId>::new();
@@ -629,15 +632,15 @@ fn run_rust(mut k: Kernel, body: SolidResult<Brep>, input: &RealSolid) -> SolidR
             for fraction in [0.17, 0.37, 0.83] {
                 sample(
                     &mut before,
-                    curve.evaluate_point(&k, edge.interval.evaluate(fraction)),
+                    curve.evaluate_point(k, edge.interval.evaluate(fraction)),
                 )?;
             }
         }
     }
     if input.checkpoint != Checkpoint::Full {
-        return prefix::run(&mut k, &mut body, &selected, input, &before);
+        return prefix::run(k, &mut body, &selected, input, &before);
     }
-    let result = apply(&mut k, &mut body, &selected, input);
+    let result = apply(k, &mut body, &selected, input);
     let result_status = match result {
         Ok(()) => 0.0,
         Err(error) => status(error)?,
@@ -654,7 +657,7 @@ fn run_rust(mut k: Kernel, body: SolidResult<Brep>, input: &RealSolid) -> SolidR
     topology(&body, &mut topology_record)?;
     section(&mut values, &topology_record);
     let mut geometry = Vec::new();
-    crate::util::primitive::append(&k, &body, &mut geometry)?;
+    crate::util::primitive::append(k, &body, &mut geometry)?;
     section(&mut values, &geometry);
     // The public API leaves no attribute on the body: the executive's fillet-edge
     // attribute and the temporary merge tags are destroyed with its session, as
@@ -665,7 +668,7 @@ fn run_rust(mut k: Kernel, body: SolidResult<Brep>, input: &RealSolid) -> SolidR
         key_of: &|_| solidcore::geom::attribute::ObjectKey(0),
     };
     match solidcore::mass::integrator::properties::brep_mass_properties(
-        &k,
+        k,
         &mut body,
         1e-4,
         1.0,
@@ -842,11 +845,11 @@ fn shell_output(values: &[f64]) -> Result<Output, HarnessError> {
 /// The Rust side of the fillet-then-shell record: `fillet_edges`, then
 /// `OffsetExecutive::shell_brep` with `SmApiShellBrepFull`'s options, on the
 /// identities of [`shell_notifications`].
-fn shell_rust(mut k: Kernel, input: &RealSolid, shell: ShellAfter) -> SolidResult<Vec<f64>> {
+fn shell_rust(k: &mut Kernel, input: &RealSolid, shell: ShellAfter) -> SolidResult<Vec<f64>> {
     use solidcore::offset::offset_executive::p1::OffsetExecutive;
     use solidcore::offset::offset_executive::p2::{OffsetOptions, ShellOptions};
     let [x, y, z] = input.dimensions.unwrap_or_default();
-    let mut body = solidcore::primitive::api_primitives::create_box(&mut k, Vec3::ZERO, x, y, z)?;
+    let mut body = solidcore::primitive::api_primitives::create_box(k, Vec3::ZERO, x, y, z)?;
     let all = p1::edges(&body, None)?;
     let edges: Vec<EdgeId> = input
         .edge_indices()?
@@ -861,7 +864,7 @@ fn shell_rust(mut k: Kernel, input: &RealSolid, shell: ShellAfter) -> SolidResul
         })
         .collect::<SolidResult<_>>()?;
     let mut values = Vec::new();
-    match apply(&mut k, &mut body, &edges, input) {
+    match apply(k, &mut body, &edges, input) {
         Ok(()) => values.push(0.0),
         Err(error) => {
             values.push(status(error)?);
@@ -876,7 +879,7 @@ fn shell_rust(mut k: Kernel, input: &RealSolid, shell: ShellAfter) -> SolidResul
                 continue;
             };
             if s.is_kind_of(solidcore::surface::plane::Plane::TYPE)?
-                && (s.evaluate_point(&k, face.uv_domain.mid())?.z - z).abs() < 1e-6
+                && (s.evaluate_point(k, face.uv_domain.mid())?.z - z).abs() < 1e-6
             {
                 open.push(f);
             }
@@ -884,7 +887,7 @@ fn shell_rust(mut k: Kernel, input: &RealSolid, shell: ShellAfter) -> SolidResul
     }
     let mut stores = shell_notifications::Stores::new(&mut body);
     let shelled = OffsetExecutive::shell_brep(
-        &mut k,
+        k,
         body,
         ShellOptions {
             offset: OffsetOptions {
@@ -938,7 +941,7 @@ fn shell_rust(mut k: Kernel, input: &RealSolid, shell: ShellAfter) -> SolidResul
         Err(error) => values.push(status(error)?),
     }
     let mut geometry = Vec::new();
-    crate::util::primitive::append(&k, &result, &mut geometry)?;
+    crate::util::primitive::append(k, &result, &mut geometry)?;
     section(&mut values, &geometry);
     Ok(values)
 }
@@ -1115,10 +1118,8 @@ pub(super) fn upstream_example(example: usize) -> Result<Option<Output>, Harness
     if !matches!(example, 0..=6) {
         return Ok(None);
     }
-    let step = super::point_step()?;
-    let run = || -> SolidResult<Vec<f64>> {
-        let mut k = Kernel::default();
-        k.fillet_point_step.set(step);
+    let mut k = Kernel::default();
+    let mut run = || -> SolidResult<Vec<f64>> {
         let (dx, dy, dz) = if example < 2 {
             (5.0, 10.0, 15.0)
         } else {
@@ -1169,14 +1170,16 @@ pub(super) fn upstream_example(example: usize) -> Result<Option<Output>, Harness
             p1::vertices(&body, None)?.len() as f64,
         ])
     };
-    match run() {
+    let result = run();
+    let step = super::rust_point_step(&k);
+    match result {
         Ok(values) => {
             let mut out = Output::new();
             out.ints.insert(
                 "api_status_counts".into(),
                 values.into_iter().map(|v| v as i64).collect(),
             );
-            Ok(Some(out))
+            Ok(Some(super::with_point_step(out, step)))
         }
         Err(error) => match Output::unported(&error) {
             Some(deferred) => Ok(Some(deferred)),
@@ -1187,24 +1190,28 @@ pub(super) fn upstream_example(example: usize) -> Result<Option<Output>, Harness
 pub(super) fn rust(input: &RealSolid) -> Result<Output, HarnessError> {
     input.validate()?;
     if let Some(shell) = input.shell {
-        let k = super::seeded_kernel()?;
-        return match shell_rust(k, input, shell) {
-            Ok(values) => shell_output(&values),
+        let mut k = Kernel::default();
+        return match shell_rust(&mut k, input, shell) {
+            Ok(values) => Ok(super::with_point_step(
+                shell_output(&values)?,
+                super::rust_point_step(&k),
+            )),
             Err(error) => match Output::unported(&error) {
                 Some(deferred) => Ok(deferred),
                 None => Err(HarnessError::new(error.to_string())),
             },
         };
     }
-    let mut k = super::seeded_kernel()?;
+    let mut k = Kernel::default();
     let body = build(&mut k, input)?;
-    match run_rust(k, body, input) {
+    match run_rust(&mut k, body, input) {
         Ok(values) => {
-            if input.checkpoint == Checkpoint::Full {
-                output(&values)
+            let out = if input.checkpoint == Checkpoint::Full {
+                output(&values)?
             } else {
-                prefix::output(&values, input.checkpoint)
-            }
+                prefix::output(&values, input.checkpoint)?
+            };
+            Ok(super::with_point_step(out, super::rust_point_step(&k)))
         }
         Err(error) => match Output::unported(&error) {
             Some(deferred) => Ok(deferred),
@@ -1216,9 +1223,9 @@ pub(super) fn rust(input: &RealSolid) -> Result<Output, HarnessError> {
 /// The C++ record of [`SurfaceSurface`]: `api_status`, then for a result B-rep its
 /// counts, topology and geometry.
 pub(super) fn surface_surface_cpp(input: &SurfaceSurface) -> Result<Output, HarnessError> {
-    let values =
-        ffi::surface_surface(&input.wire()).map_err(|e| HarnessError::new(e.to_string()))?;
-    surface_surface_output(&values)
+    let (values, step) = super::fresh_cpp(|| ffi::surface_surface(&input.wire()))
+        .map_err(|e| HarnessError::new(e.to_string()))?;
+    Ok(super::with_point_step(surface_surface_output(&values)?, step))
 }
 fn surface_surface_output(values: &[f64]) -> Result<Output, HarnessError> {
     let (&status, mut rest) = values
@@ -1258,10 +1265,8 @@ fn surface_surface_output(values: &[f64]) -> Result<Output, HarnessError> {
 /// result B-rep is recorded as the shim records it.
 pub(super) fn surface_surface_rust(input: &SurfaceSurface) -> Result<Output, HarnessError> {
     ffi::validate_surface_surface(&input.wire()).map_err(|e| HarnessError::new(e.to_string()))?;
-    let step = super::point_step()?;
-    let run = || -> SolidResult<Vec<f64>> {
-        let mut k = Kernel::default();
-        k.fillet_point_step.set(step);
+    let mut k = Kernel::default();
+    let mut run = || -> SolidResult<Vec<f64>> {
         let surface = |c: &[[f64; 3]; 4]| {
             solidcore::nurbs::b_spline_surface::BSplineSurface::create_bilinear_surface(
                 Vec3::from(c[0]),
@@ -1304,8 +1309,10 @@ pub(super) fn surface_surface_rust(input: &SurfaceSurface) -> Result<Output, Har
         }
         Ok(values)
     };
-    match run() {
-        Ok(values) => surface_surface_output(&values),
+    let result = run();
+    let step = super::rust_point_step(&k);
+    match result {
+        Ok(values) => Ok(super::with_point_step(surface_surface_output(&values)?, step)),
         Err(error) => Output::unported(&error)
             .ok_or_else(|| HarnessError::new(error.to_string())),
     }

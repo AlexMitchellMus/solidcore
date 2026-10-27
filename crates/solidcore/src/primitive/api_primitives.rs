@@ -139,12 +139,14 @@ fn extent_from_zero(max_x: f64, max_y: f64) -> Extent2d {
 /// with `SM_ERR` when no face is made.
 pub fn create_plane(k: &mut Kernel, origin: Point3, x: f64, y: f64) -> Result<Brep> {
     let frame = xy_frame(origin);
-    let brep = p1::create_rectangle(k, 1.0e-5, x, y, &frame)?;
+    let mut brep = p1::create_rectangle(k, 1.0e-5, x, y, &frame)?;
     if brep.face_list().is_empty() {
         return Err(SolidError::sm_err(
             "primitive::api_primitives::create_plane",
         ));
     }
+    // (not upstream: the port's cached topology fields, true for the caller)
+    brep.refresh_cached_topology();
     Ok(brep)
 }
 
@@ -171,12 +173,14 @@ pub fn create_plane_surface(origin: Point3, length: f64, width: f64) -> Result<P
 /// `SM_ERR` when no face is made.
 pub fn create_planar_circle(k: &mut Kernel, origin: Point3, radius: f64) -> Result<Brep> {
     let frame = xy_frame(origin);
-    let brep = p1::create_circle(k, 1.0e-5, radius, &frame)?;
+    let mut brep = p1::create_circle(k, 1.0e-5, radius, &frame)?;
     if brep.face_list().is_empty() {
         return Err(SolidError::sm_err(
             "primitive::api_primitives::create_planar_circle",
         ));
     }
+    // (not upstream: the port's cached topology fields, true for the caller)
+    brep.refresh_cached_topology();
     Ok(brep)
 }
 
@@ -200,6 +204,8 @@ pub fn create_box(
     let frame = xy_frame(origin);
     let (mut pc, mut brep) = new_primitive(k)?;
     pc.create_box(k, &mut brep, length, width, height, &frame)?;
+    // (not upstream: the port's cached topology fields, true for the caller)
+    brep.refresh_cached_topology();
     Ok(brep)
 }
 
@@ -453,6 +459,8 @@ pub fn create_pyramid(
             ..crate::query::brep::BrepIdentity::default()
         }),
     )?;
+    // (not upstream: the port's cached topology fields, true for the caller)
+    brep.refresh_cached_topology();
     Ok(brep)
 }
 
@@ -509,6 +517,8 @@ pub fn create_cylindrical_box(
         &frame,
         &mut env,
     )?;
+    // (not upstream: the port's cached topology fields, true for the caller)
+    brep.refresh_cached_topology();
     Ok(brep)
 }
 
@@ -609,6 +619,8 @@ fn sphere_no_pole(
         tolerance.unwrap_or(ZONE_TOL_3D),
         &mut env,
     )?;
+    // (not upstream: the port's cached topology fields, true for the caller)
+    brep.refresh_cached_topology();
     Ok(brep)
 }
 
@@ -712,6 +724,8 @@ pub fn create_cone_elliptic_ends(k: &mut Kernel, params: &ConeEllipticEnds) -> R
         },
         params.end_caps,
     )?;
+    // (not upstream: the port's cached topology fields, true for the caller)
+    brep.refresh_cached_topology();
     Ok(brep)
 }
 
@@ -875,6 +889,7 @@ fn with_model(
     k: &mut Kernel,
     body: impl FnOnce(&mut PrimitiveCreation, &mut PrimitiveModel<'_>) -> Result<()>,
 ) -> Result<Brep> {
+    // (PrimitiveModel::build_new refreshes the port's cached topology fields)
     PrimitiveModel::build_new(k, body).map(|(brep, ())| brep)
 }
 
