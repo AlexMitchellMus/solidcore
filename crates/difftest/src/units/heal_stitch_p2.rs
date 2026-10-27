@@ -467,7 +467,17 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
     let (code, a) = args(&op);
     let mut input = block_of(&i.brep)?;
     input.extend(a);
-    let out = ffi::eval(code, &path(&i.brep)?, &input).map_err(|e| harness(format!("c++: {e}")))?;
+    let p = path(&i.brep)?;
+    let call = || ffi::eval(code, &p, &input);
+    // A file B-rep's op runs in a fresh process: after a stitch of an `.smb` B-rep, the
+    // next read of a file in the same process exports differently (state the shim's
+    // context keeps), so a case's C++ result would depend on the cases before it.
+    let out = if p.is_empty() {
+        call()
+    } else {
+        solidcore_ffi::isolate::fresh_process(call)
+    }
+    .map_err(|e| harness(format!("c++: {e}")))?;
     let body = out.get(1..).ok_or_else(|| harness("c++: empty output"))?;
     Ok(guarded_output(body.to_vec()))
 }
