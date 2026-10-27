@@ -1426,6 +1426,7 @@ fn patch(rng: &mut Rng, p: [[[f64; 3]; 2]; 2]) -> SurfIn {
     let (u1, v1) = (u0 + rng.uniform(0.5, 3.0), v0 + rng.uniform(0.5, 3.0));
     let row = |r: [[f64; 3]; 2]| r.iter().map(|q| [q[0], q[1], q[2], 1.0]).collect();
     SurfIn::Bspline {
+        raw_knots: false,
         bss: BssIn {
             oob: false,
             form: default_form(),
@@ -1653,6 +1654,7 @@ fn exact_volume_cases() -> Result<Vec<Case>, HarnessError> {
         }
         let row = |r: [[f64; 3]; 2]| r.iter().map(|q| [q[0], q[1], q[2], 1.0]).collect();
         SurfIn::Bspline {
+            raw_knots: false,
             bss: BssIn {
                 oob: false,
                 form: default_form(),

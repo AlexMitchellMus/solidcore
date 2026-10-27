@@ -1309,6 +1309,7 @@ fn straight(rng: &mut Rng, p: [f64; 3], q: [f64; 3]) -> ExactCurveIn {
     ExactCurveIn::Curve(CurveIn::Bspline(BSplineIn {
         dim: 3,
         oob: false,
+        raw_knots: false,
         cpts,
         p: deg,
         u,
@@ -1346,6 +1347,7 @@ fn planar(rng: &mut Rng, f: &[[f64; 3]; 4], x: f64, y: f64, c: f64, s: f64) -> E
             ExactCurveIn::Curve(CurveIn::Bspline(BSplineIn {
                 dim: 3,
                 oob: false,
+                raw_knots: false,
                 cpts,
                 p: 3,
                 u: vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
