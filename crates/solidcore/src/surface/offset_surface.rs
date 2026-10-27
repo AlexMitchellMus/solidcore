@@ -894,6 +894,34 @@ impl OffsetSurface {
         want: [bool; 3],
         expand_pos_boxes_by_zone_tol_3d: bool,
     ) -> Result<SurfaceBoxes> {
+        self.calculate_bounding_box_with_guesses(
+            k,
+            this,
+            uv_domain,
+            want,
+            expand_pos_boxes_by_zone_tol_3d,
+            None,
+            None,
+        )
+    }
+
+    /// [`OffsetSurface::calculate_bounding_box`] with upstream's optional basis guesses
+    /// (`pOptPseudoBasisGuess`, `pOptPolarBasisGuess`), passed along to the base
+    /// surface's boxes (the base-class body for an extended domain ignores them).
+    ///
+    /// # Errors
+    ///
+    /// As [`OffsetSurface::calculate_bounding_box`].
+    pub fn calculate_bounding_box_with_guesses(
+        &self,
+        k: &Kernel,
+        this: &Surface,
+        uv_domain: &Extent2d,
+        want: [bool; 3],
+        expand_pos_boxes_by_zone_tol_3d: bool,
+        pseudo_guess: Option<&PseudoBox>,
+        polar_guess: Option<&PolarBox>,
+    ) -> Result<SurfaceBoxes> {
         if !uv_domain.is_contained_by(&self.surface.natural_uv_domain_with_nurb(k)?, EFF_ZERO) {
             return this.base_calculate_bounding_box(k, want, expand_pos_boxes_by_zone_tol_3d);
         }
@@ -916,11 +944,13 @@ impl OffsetSurface {
         });
 
         // bound the base surface (pass the call along to the base surface)
-        let base = self.surface.calculate_bounding_box(
+        let base = self.surface.calculate_bounding_box_with_guesses(
             k,
             uv_domain,
             [true, true, true],
             expand_pos_boxes_by_zone_tol_3d,
+            pseudo_guess,
+            polar_guess,
         )?;
         let missing = || SolidError::invalid_input(OP, "base surface box not computed");
         let base_normal = base.normal_box.ok_or_else(missing)?;
