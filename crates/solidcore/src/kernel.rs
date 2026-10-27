@@ -285,6 +285,8 @@ pub struct UpstreamFixes {
     pub fillet_nx1_tangent_side_edge: bool,
     /// `TrimExtendedEdge` takes, on a closed curve, the arc that runs where its base edge does, not always the interval between its two trim points: a hemisphere's rim, two arcs of one circle, no longer becomes one arc twice (WR-463, #403; the fork's tangency-labs/smlib@fa7ff4a).
     pub offset_closed_curve_trim_arc: bool,
+    /// `SmSphere::IntersectWithPlane` and `IntersectWithSphere` return a single touching point only when the intersection circle's own radius (`sqrt(R^2 - d^2)`, or the two-sphere circle's height, each formed from the gaps to tangency) is within the tolerance, not whenever the gap to tangency is, which collapsed circles of radius up to about `sqrt(2 R tol)` (1e-3 for `R = 1`, `tol = 1e-6`) into one point (WR-79 part 1, #396; the fork's tangency-labs/smlib@30d25bf).
+    pub sphere_small_circle_not_touching: bool,
 }
 
 /// Options for [`Kernel::new`].
