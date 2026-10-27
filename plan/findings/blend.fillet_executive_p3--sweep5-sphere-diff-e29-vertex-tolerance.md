@@ -11,8 +11,18 @@ C++ 9.100516385135238e-5, Rust 9.304666970990486e-5 (rel 2.2e-2). The rail trims
 102.85355973819911), both sides). So do the per-stage UV-trim counts and lengths from
 CreateFilletBrep to the end of merge.
 
-Suspected cause: a tolerance raise from a UV trim drop (`SmEdgeuse::CreateUVTrimCurve` /
-`SetUVTrimCurve`) that gets a different gap, as in
-`plan/findings/blend.fillet_executive_p3--bottle-e29-r0.1-vertex-tolerance.md`. That one was
-a `Surface::clone` standing in for upstream's shared surface object. The remaining
-`clone_keeping_owner` callers that addendum lists are candidates. Not localised yet.
+Localised further: the vertex (15.2135, -15.9047, 15.9047) has the same sequence of
+`SmVertex::SetTolerance` calls on both sides up to the eleventh one, which raises it from
+7.556389994188304e-5 to C++ 9.1005163851352381e-5 / Rust 9.30466697099048589e-5. That
+call comes from the trim of the original surfaces (`blend/fillet_geom` p2 -> p6 ->
+p1 -> `topology/face` ShrinkGeometry -> `CreateUVTrimCurves` -> `GetOrCreateUVTrimCurve` ->
+`SetUVTrimCurve`). There the edge tolerance becomes `2.0 * dMaxDistanceToSurface` and
+cascades to the vertex. So the `DropCurve` max distance of that edge differs: C++
+4.5503e-5, Rust 4.6523e-5.
+
+Suspected cause: the edge curve's `DropCurve` onto the original face's surface measures a
+different maximum gap, in the drop lib / drop curve. `plan/findings/blend.fillet_executive_p3--bottle-e29-r0.1-vertex-tolerance.md`
+was a similar case (a `Surface::clone` standing in for the shared surface). Switching the
+remaining `clone_keeping_owner` callers in `blend::fillet_standard_solver::p1/p2` and
+`intersect::curve_class::p5` to exact copies does not change this case. The next step is to
+compare that drop's points and `dMaxDistToSurf`.
