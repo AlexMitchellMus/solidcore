@@ -16,7 +16,7 @@
 //! | [`face_bounding_box`], [`face_internal_point`], [`face_classify_uv`], [`face_closest_point`], [`face_closest_point_in_shape`] | `SmApiFaceBoundingBox`, `SmApiFaceInternalPoint`, `SmApiFaceClassifyUV`, `SmApiFaceClosestPoint` |
 //! | [`edge_bounding_box`], [`edge_closest_point`], [`edge_parameter_range`], [`edge_classify_parameter`], [`edge_tangent`] | `SmApiEdgeBoundingBox`, `SmApiEdgeClosestPoint`, `SmApiEdgeParameterRange`, `SmApiEdgeClassifyParameter`, `SmApiEdgeTangent` |
 //! | [`vertex_get_point`] | `SmApiVertexGetPoint` |
-//! | `count_contained_samples`, `point_in_solid`, `target_curve_crossings` (private) | `sm_CountContainedSamples`, `sm_PointInSolid`, its `BrepCurveSolve` |
+//! | `count_contained_samples`, `edge_piece_points`, `point_in_solid`, `target_curve_crossings` (private) | `sm_CountContainedSamples`, `sm_PointInSolid`, its `BrepCurveSolve` |
 //! | `solution_point` (private) | `SmSolution::GetPoint` |
 //!
 //! Deviations: typed references/ids replace nullable pointers; results replace
@@ -32,9 +32,10 @@
 //! private copy of each target ([`BrepClassifier::of_brep`], keyed by the target's
 //! recorded naming scheme and proven owner keys); `sm_CountContainedSamples`'
 //! `SmApiFaceInternalPoint` of each sample face runs on a copy of the sample B-rep
-//! (borrowed next to the target), and its `BrepCurveSolve` of each sample edge runs on
-//! one copy of the target (the solve makes caches on the B-rep it solves), while the
-//! public [`face_internal_point`] works on its B-rep in place. No new recursion or allocation from
+//! (borrowed next to the target), and its `BrepCurveSolve` of each sample edge runs
+//! through the caller's objects on the edge curves of the sample's curve tree (so in
+//! that tree's order, which only the counts read), while the public
+//! [`face_internal_point`] works on its B-rep in place. No new recursion or allocation from
 //! serialized counts.
 
 use crate::curve::curve::p1::GlobalPointSolveOptions;
@@ -44,10 +45,12 @@ use crate::geom::extent1d::Extent1d;
 use crate::geom::extent3d::Extent3d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::object::{BrepStore, FaceKey, ObjectRef, Shape, ShapeMember};
-use crate::geom::solution_array::{ObjectKind, Solution, SolutionArray, SolutionObject};
+use crate::geom::solution_array::{
+    ObjectKind, Solution, SolutionArray, SolutionObject, SolutionType,
+};
 use crate::geom::tools::{self, EdgePick};
 use crate::intersect::point_class::{PointClassType, PointClassification};
-use crate::intersect::topology_solver::p1::{TopologyObjects, TopologySolver};
+use crate::intersect::topology_solver::p1::{CurveRef, TopologyObjects, TopologySolver};
 use crate::intersect::topology_solver::p2::TopologySolveOptions;
 use crate::kernel::Kernel;
 use crate::math::{Point2, Point3, Vec3, EFF_ZERO};
@@ -420,33 +423,22 @@ fn brep_vertices(brep: &Brep) -> Result<Vec<VertexId>> {
 }
 
 /// `SmTopologySolver::BrepCurveSolve(pTarget, curve, interval, SM_SO_INTERSECT,
-/// SM_SR_ALL, tolerance, SM_BIG_DOUBLE, NULL)` against `target` (a copy of it, on which
-/// the solve makes its caches): every solution's start parameter, and its end parameter
-/// for a range of values, in solution order.
-fn target_curve_crossings(
+/// SM_SR_ALL, tolerance, SM_BIG_DOUBLE, NULL)` through the caller's objects: every
+/// solution's start parameter, and its end parameter for a range of values, in solution
+/// order.
+fn target_curve_crossings<O: SolutionObject>(
     k: &Kernel,
-    target: &mut Brep,
-    curve: &Curve,
+    objects: &dyn TopologyObjects<O>,
+    target: O,
+    curve: CurveRef<'_, O>,
     interval: &Extent1d,
     tolerance: f64,
 ) -> Result<Vec<f64>> {
-    use crate::geom::solution_array::SolutionType;
-    use crate::intersect::topology_solver::p1::CurveRef;
-    let query = qbrep::BrepQuery::of_brep(target);
-    let cache = query.cache(k, target)?;
-    let identity = query.effective_identity();
-    let objects = qbrep::LiveBrepObjects::new(target, &identity, Some(cache))?;
     let solutions = TopologySolver::brep_curve_solve(
         k,
-        &objects,
-        Some(CacheObject::Brep),
-        CurveRef {
-            curve,
-            handle: CacheObject::Other(ObjectRef {
-                type_code: curve.type_code(),
-                key: crate::geom::attribute::ObjectKey(0),
-            }),
-        },
+        objects,
+        Some(target),
+        curve,
         interval,
         TopologySolveOptions {
             operation: SolverOperation::Intersect,
@@ -466,38 +458,42 @@ fn target_curve_crossings(
     Ok(params)
 }
 
-fn count_contained_samples(
+/// One point on each piece of each edge of `sample` between its crossings of
+/// `target`'s boundary (`sm_CountContainedSamples`' edge loop over `GetEdges`). The edges
+/// come from the sample's curve tree (one object per edge curve; edges without a curve
+/// are skipped, as upstream), so their order is the tree's: only the inside/outside
+/// counts of the points are used.
+fn edge_piece_points<O: SolutionObject>(
     k: &Kernel,
-    sample: &Brep,
-    target: &mut Target<'_>,
+    objects: &dyn TopologyObjects<O>,
+    sample: O,
+    target: O,
     tolerance: f64,
-) -> Result<(usize, usize)> {
-    let mut points = Vec::new();
-    for vertex in brep_vertices(sample)? {
-        points.push(sample.vertex(vertex)?.point);
-    }
-    for face in brep_faces(sample)? {
-        // SmApiFaceInternalPoint on a sample borrowed next to the classified target: on a
-        // copy of the sample (module Deviations)
-        if let Some(point) = ignored(face::calculate_an_internal_point_snapshot(k, sample, face))? {
-            points.push(point);
+) -> Result<Vec<Point3>> {
+    let mut curve_objects: Vec<O> = Vec::new();
+    {
+        let trees = objects.brep_trees(sample)?;
+        for item in trees.curves.object_list()? {
+            if let Some(o) = trees.curves.list(item)?.object {
+                if !curve_objects.contains(&o) {
+                    curve_objects.push(o);
+                }
+            }
         }
     }
-
-    // One point on each piece of each edge between its crossings of the target's
-    // boundary: each piece is wholly inside or outside the target.
-    let mut target_copy: Option<Brep> = None;
-    for e in brep_edges(sample)? {
-        let Some(curve) = edge::curve(sample, e)? else {
+    let mut points = Vec::new();
+    for handle in curve_objects {
+        let Some(edge) = objects.curve_edge(handle)? else {
             continue;
         };
-        let interval = edge::interval(sample, e)?;
+        let interval = objects.edge_interval(edge)?;
+        let curve = objects.curve(handle)?;
         let mut params = vec![interval.min()];
-        let target_brep = target_copy.get_or_insert_with(|| target.0.brep().clone());
         if let Some(crossings) = ignored(target_curve_crossings(
             k,
-            target_brep,
-            curve,
+            objects,
+            target,
+            CurveRef { curve, handle },
             &interval,
             tolerance,
         ))? {
@@ -517,6 +513,39 @@ fn count_contained_samples(
             }
         }
     }
+    Ok(points)
+}
+
+fn count_contained_samples<O: SolutionObject>(
+    k: &Kernel,
+    objects: &dyn TopologyObjects<O>,
+    sample: &Brep,
+    handles: [O; 2],
+    target: &mut Target<'_>,
+    tolerance: f64,
+) -> Result<(usize, usize)> {
+    let [sample_handle, target_handle] = handles;
+    let mut points = Vec::new();
+    for vertex in brep_vertices(sample)? {
+        points.push(sample.vertex(vertex)?.point);
+    }
+    for face in brep_faces(sample)? {
+        // SmApiFaceInternalPoint on a sample borrowed next to the classified target: on a
+        // copy of the sample (module Deviations)
+        if let Some(point) = ignored(face::calculate_an_internal_point_snapshot(k, sample, face))? {
+            points.push(point);
+        }
+    }
+
+    // One point on each piece of each edge between its crossings of the target's
+    // boundary: each piece is wholly inside or outside the target.
+    points.extend(edge_piece_points(
+        k,
+        objects,
+        sample_handle,
+        target_handle,
+        tolerance,
+    )?);
 
     let (mut inside, mut outside) = (0, 0);
     for point in points {
@@ -547,7 +576,7 @@ pub fn brep_relationship<O: SolutionObject>(
     b: BrepRef<'_, O>,
 ) -> Result<BrepRelationship> {
     let solution = brep_relationship_solve(k, objects, a.handle, b.handle)?;
-    brep_relationship_classify(k, objects, &solution, a.brep, b.brep)
+    brep_relationship_classify(k, objects, &solution, [a.handle, b.handle], a.brep, b.brep)
 }
 
 /// The boundary distance solve of [`brep_relationship`] (`BrepBrepSolve`, single
@@ -580,7 +609,8 @@ pub fn brep_relationship_solve<O: SolutionObject>(
 
 /// The containment and touching classification of [`brep_relationship`] after its
 /// solve ([`brep_relationship_solve`]), `brep_a` and `brep_b` being the B-reps the
-/// solution's objects name.
+/// solution's objects name and `handles` their handles in `objects` (the edge-piece
+/// samples solve each sample edge against the other B-rep through them).
 ///
 /// # Errors
 ///
@@ -589,9 +619,11 @@ pub fn brep_relationship_classify<O: SolutionObject>(
     k: &Kernel,
     objects: &dyn TopologyObjects<O>,
     solution: &Solution<O>,
+    handles: [O; 2],
     brep_a: &Brep,
     brep_b: &Brep,
 ) -> Result<BrepRelationship> {
+    let [ha, hb] = handles;
     let a = BrepRef {
         brep: brep_a,
         handle: (),
@@ -622,8 +654,10 @@ pub fn brep_relationship_classify<O: SolutionObject>(
                 0
             }
         } else {
-            let (bin, bout) = count_contained_samples(k, b.brep, &mut target_a, tolerance)?;
-            let (ain, aout) = count_contained_samples(k, a.brep, &mut target_b, tolerance)?;
+            let (bin, bout) =
+                count_contained_samples(k, objects, b.brep, [hb, ha], &mut target_a, tolerance)?;
+            let (ain, aout) =
+                count_contained_samples(k, objects, a.brep, [ha, hb], &mut target_b, tolerance)?;
             if bin > 0 && bout == 0 {
                 3
             } else if ain > 0 && aout == 0 {
@@ -637,8 +671,10 @@ pub fn brep_relationship_classify<O: SolutionObject>(
             distance,
         })
     } else {
-        let (bin, _) = count_contained_samples(k, b.brep, &mut target_a, tolerance)?;
-        let (ain, _) = count_contained_samples(k, a.brep, &mut target_b, tolerance)?;
+        let (bin, _) =
+            count_contained_samples(k, objects, b.brep, [hb, ha], &mut target_a, tolerance)?;
+        let (ain, _) =
+            count_contained_samples(k, objects, a.brep, [ha, hb], &mut target_b, tolerance)?;
         Ok(BrepRelationship {
             relationship: if bin > 0 || ain > 0 { 2 } else { 1 },
             distance: 0.0,

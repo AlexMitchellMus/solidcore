@@ -4635,7 +4635,7 @@ fn domain(s: &SrfIn) -> [f64; 4] {
 pub(super) fn gen_brep(rng: &mut Rng) -> BrepIn {
     match rng.below(10) {
         0..=5 => BrepIn::File {
-            file: (*rng.choose(&FILES).unwrap_or(&"SmallBox.smb")).to_string(),
+            file: (*rng.choose(&FILES).unwrap_or(&"SmallBox.smp")).to_string(),
             rebuild: rng.chance(0.2),
         },
         6 => {

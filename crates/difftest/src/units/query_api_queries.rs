@@ -691,7 +691,16 @@ fn topology(k: &mut Kernel, i: &Inputs, b: &mut Brep, second: &mut Brep) -> Resu
             )?;
             let [l0, l1] = &objects.lives;
             let result = l0.with_brep(|a| {
-                l1.with_brep(|b| api::brep_relationship_classify(k, &objects, &solution, a, b))
+                l1.with_brep(|b| {
+                    api::brep_relationship_classify(
+                        k,
+                        &objects,
+                        &solution,
+                        [Object(0, CacheObject::Brep), Object(1, CacheObject::Brep)],
+                        a,
+                        b,
+                    )
+                })
             })?;
             if i.op == 7 {
                 o.extend([result.distance, f64::from(result.relationship)]);

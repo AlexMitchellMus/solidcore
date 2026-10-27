@@ -905,8 +905,8 @@ impl Plane {
     ///
     /// # Errors
     ///
-    /// Those of [`BSplineSurface::canonical`], [`BSplineSurface::set_canonical`] and
-    /// [`Plane::rebuild_step_from_nurb_parameters`].
+    /// Those of [`BSplineSurface::canonical`], [`BSplineSurface::set_canonical`] (the
+    /// swap bit is then restored) and [`Plane::rebuild_step_from_nurb_parameters`].
     pub fn swap_uv(&mut self) -> Result<()> {
         // get current surface description
         self.ensure_nurb();
@@ -922,8 +922,8 @@ impl Plane {
         transpose(&mut cpts, num_v_cpts);
         transpose(&mut weights, num_v_cpts);
 
-        // Transpose Surface definition
-        self.base.set_canonical(&CanonicalSurfaceData {
+        // Transpose Surface definition; on failure, restore the bit
+        let status = self.base.set_canonical(&CanonicalSurfaceData {
             u_degree: c.v_degree,
             v_degree: c.u_degree,
             control_points: &cpts,
@@ -935,7 +935,11 @@ impl Plane {
             knot_type: c.knot_type,
             weights: Some(&weights),
             uv_domain: None,
-        })?;
+        });
+        if let Err(e) = status {
+            self.toggle_swap_uv_bit();
+            return Err(e);
+        }
         self.rebuild_step_from_nurb_parameters()
     }
 

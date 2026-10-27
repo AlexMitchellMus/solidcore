@@ -1580,6 +1580,24 @@ void run_heal(Rd& rd, const char* path, std::vector<double>& o)
         case 37:
         case 38:
         {
+            // UB-265: v1.0.1 Fix_SplitEdgesAtSeam ends by reading the mark of every target
+            // face props' m_pFace (IsMarked) without a null check. Reject the whole case
+            // (`-999 265`, replacing the record) while a target face props has no face
+            // (before Cache_FaceProps_Gaps, or seeded with a null face).
+            if (code == 38)
+            {
+                bool null_face = false;
+                for (ULONG i = 0; i < h->m_sTgtFaceProps.GetSize(); ++i)
+                    null_face |= h->m_sTgtFaceProps[i]->m_pFace == NULL;
+                if (null_face)
+                {
+                    o.clear();
+                    o.push_back(-999.0);
+                    o.push_back(265.0);
+                    stop = true;
+                    continue;
+                }
+            }
             SmNewMarkAndLock lock(brep->GetContext());
             stat = code == 37 ? h->Fix_MoveSeam(brep, lock, SM_HO_FIX_MOVESEAM)
                               : h->Fix_SplitEdgesAtSeam(brep, lock, SM_HO_FIX_SPLITEDGE_ATSEAM);

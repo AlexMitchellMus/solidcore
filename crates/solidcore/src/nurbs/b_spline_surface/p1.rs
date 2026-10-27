@@ -93,11 +93,6 @@
 //!   are taken, which bounds them by the point count; the checks and their order are
 //!   upstream's, so an absurd multiplicity fails the same point-count check without
 //!   allocating. A total count above `usize::MAX` is `InvalidInput`.
-//! - **Data constructor.** `SmBSplineSurface(n, m, p, q, r, s, Pw, U, V)` copies `V`
-//!   with `smos_MemCpy(.., (s+1) doubles, (r+1) doubles)`: the destination size is the
-//!   u knot count, so the copy is refused (status ignored) when `s > r` and the v
-//!   knots stay 0 (then fixed up). [`BSplineSurface::from_data`] keeps that
-//!   (`plan/findings.md`).
 //! - **Returned pointers.** `GetControlPointsPointer` returns a pointer into the NURB;
 //!   [`BSplineSurface::control_points`] returns a copy of the control points, row by
 //!   row (u index slowest).
@@ -707,14 +702,10 @@ impl BSplineSurface {
             .get(..=r)
             .ok_or_else(|| invalid(OP_DATA, "fewer than r + 1 u knots"))?;
         new_sur.u_knots_mut().copy_from_slice(src_u);
-        // upstream passes the u size (r + 1) as the destination size of the v copy, so
-        // smos_MemCpy refuses it (status ignored) when s > r: the v knots stay 0
-        if s <= r {
-            let src_v = v
-                .get(..=s)
-                .ok_or_else(|| invalid(OP_DATA, "fewer than s + 1 v knots"))?;
-            new_sur.v_knots_mut().copy_from_slice(src_v);
-        }
+        let src_v = v
+            .get(..=s)
+            .ok_or_else(|| invalid(OP_DATA, "fewer than s + 1 v knots"))?;
+        new_sur.v_knots_mut().copy_from_slice(src_v);
 
         // copy control point values from target surface to new surface one row at a time
         for i in 0..=n {

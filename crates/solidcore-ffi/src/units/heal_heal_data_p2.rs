@@ -324,7 +324,10 @@ fn targets(rd: &mut Reader<'_>) -> Result<(), FfiError> {
 /// loaded face targets for the single-vertex-sphere regression. `42 null_face`
 /// seeds degenerate/missing/crossed face queues with no crossed direction, only
 /// immediately before a final step 38 (or 35/39 for null faces). Step 38
-/// also outputs each current face props' crossed direction, flag and tried state.
+/// also outputs each current face props' crossed direction, flag and tried state. While
+/// a target face props has no face, whose mark v1.0.1's `Fix_SplitEdgesAtSeam` reads
+/// unchecked (UB-265), the shim replaces the whole record by `-999 265` (a rejected
+/// case).
 /// Selectors use the
 /// fixture graph's traversal order. Step 33 refuses catch-up into an uninitialized
 /// incremental vertex voxel model (`-2`). A nonempty add list also requires every
