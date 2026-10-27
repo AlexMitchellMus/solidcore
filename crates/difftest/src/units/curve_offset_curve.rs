@@ -337,8 +337,7 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
                 spec_block(&mut v, o);
             }
         }
-        OpIn::Copy { probes } => probe_block(&mut v, probes),
-        OpIn::CloneCtor { probes } => probe_block(&mut v, probes),
+        OpIn::Copy { probes } | OpIn::CloneCtor { probes } => probe_block(&mut v, probes),
         OpIn::IsKindOf { type_code } => v.push(*type_code as f64),
     }
     Ok((op, v))
