@@ -60,9 +60,10 @@
 //!   returns `InvalidInput`: `CreateByJoining` with no segments or fewer senses than
 //!   segments, `GetControlPointsExpert` for a dimension below 2 (it writes two values
 //!   per point whatever the stride), knot or span indices outside the curve. A
-//!   `ReadFromDB` header that cannot be read, a negative size or a knot type / form
-//!   outside its enum is `InvalidInput` (upstream: undefined values); counts are bounded
-//!   by the bytes left (see `plan/findings.md`, "Header-declared sizes").
+//!   `ReadFromDB` knot type / form outside its enum is `InvalidInput` (upstream:
+//!   undefined values); counts are bounded by the bytes left (see `plan/findings.md`,
+//!   "Header-declared sizes"). An unreadable header, degree or size upstream rejects
+//!   itself (`SM_ERR_INVALID_INPUT`), as the port does.
 //! - **`GetControlPointsExpert`** writes into the caller's array and leaves the slots it
 //!   does not write alone; the port returns a vector of `stride * count` values whose
 //!   unwritten slots are `0`; that vector is allocated fallibly (`InvalidInput`

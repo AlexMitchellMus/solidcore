@@ -2031,7 +2031,10 @@ pub fn has_seam_problem_mut<O: LoopObject, M: CurveOnClassifyBrep<O>>(
     // to the original graph, including shared vertices.
     if super::p3::is_closed_surface_with_vertex_loops(k, objects.brep(), f, Some(&*props))? {
         let this = objects.face(f);
-        let seams = [(&mut out.class_u, periodic_u), (&mut out.class_v, periodic_v)];
+        let seams = [
+            (&mut out.class_u, periodic_u),
+            (&mut out.class_v, periodic_v),
+        ];
         for (class, periodic) in seams {
             if !periodic {
                 continue;
@@ -2159,12 +2162,12 @@ pub fn has_seam_problem_mut<O: LoopObject, M: CurveOnClassifyBrep<O>>(
                 break;
             }
             // (a failing status is not clockwise)
-            let orient =
-                match super::p3::compute_loop_orientation_3d(k, objects.brep(), f, l, None) {
-                    Ok(o) => o,
-                    Err(e) if must_propagate(&e) => return Err(e),
-                    Err(_) => OrientType::Unknown,
-                };
+            let orient = match super::p3::compute_loop_orientation_3d(k, objects.brep(), f, l, None)
+            {
+                Ok(o) => o,
+                Err(e) if must_propagate(&e) => return Err(e),
+                Err(_) => OrientType::Unknown,
+            };
             if orient != OrientType::Opposite {
                 all_clockwise = false;
                 break;

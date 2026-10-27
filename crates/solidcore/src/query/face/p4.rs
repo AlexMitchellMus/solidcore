@@ -68,8 +68,7 @@ use crate::heal::face_props::{
     SS_VMAX, SS_VMIN, UNDEF_ULONG,
 };
 use crate::intersect::curve_class::p1::{
-    get_connected_touches, remove_non_crossings, CrvDirOnFaceType, CurveClassification,
-    TouchData,
+    get_connected_touches, remove_non_crossings, CrvDirOnFaceType, CurveClassification, TouchData,
 };
 use crate::intersect::curve_class::p2::ResetOptions;
 use crate::intersect::point_class::{PointClassType, PointClassification};
@@ -1124,7 +1123,10 @@ mod tests {
             touch(0, CrvDirOnFaceType::On),
         ];
         assert!(uv_containment_touches(&raw).unwrap().is_none());
-        assert!(uv_containment_touches::<EntityRef>(&[]).unwrap().unwrap().is_empty());
+        assert!(uv_containment_touches::<EntityRef>(&[])
+            .unwrap()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

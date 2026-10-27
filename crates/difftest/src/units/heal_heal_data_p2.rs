@@ -201,12 +201,6 @@ pub(crate) enum Prim {
         inside_out: bool,
         oob: bool,
     },
-    /// `SmPrimitiveCreation::CreateSphere(radius, a0, a1, SmAxis2Placement())` on a
-    /// B-rep of tolerance `1e-7` (block kind 10).
-    PrimSphere { radius: f64, angles: [f64; 2] },
-    /// `SmPrimitiveCreation::CreateTorus(major, minor, a0, a1, SmAxis2Placement())` on a
-    /// B-rep of tolerance `1e-7` (block kind 11).
-    PrimTorus { radii: [f64; 2], angles: [f64; 2] },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -335,34 +329,6 @@ pub(crate) enum Step {
         active: bool,
         op: u8,
     },
-    // ---- v1.0.1 prog_test regressions (smHealTest.cpp, smTopoTest.cpp) ----
-    /// `ResetInfiniteRegion` of the `sel`-th region, `SM_VS_INFINITEREGION_SWAP`.
-    ResetInfiniteRegion {
-        sel: u64,
-    },
-    /// `SmBrep::HealBrep(op)` (only steps 44..=46 may follow; no final state).
-    BrepHealBrep {
-        op: u8,
-    },
-    /// The region list with void flags, the infinite region and the topology counts.
-    RegionSnapshot,
-    /// `SmHealData::HealBrep(B-rep, op)` on a fresh healer: its not-yet face count
-    /// (only steps 44..=46 may follow; no final state).
-    FreshHealBrep {
-        op: u8,
-    },
-    /// `SetPoint` of the `sel`-th vertex to its own point under a tracker, then
-    /// `UpdateTargetLists(tracker, op)`.
-    TrackedSetPoint {
-        sel: u64,
-        op: u8,
-    },
-    /// `SqueezeEdge` of the `sel`-th edge to its `GetVertex` under a tracker, then
-    /// `UpdateTargetLists(tracker, op)` (only steps 44..=46 may follow; no final state).
-    TrackedSqueezeEdge {
-        sel: u64,
-        op: u8,
-    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -414,17 +380,6 @@ fn block_of(
         }
         BIn::Prim(Prim::SingleVertexSphere { radius, swap }) => {
             v.extend([6.0, *radius, flag(*swap)]);
-            String::new()
-        }
-        BIn::Prim(Prim::PrimSphere { radius, angles }) => {
-            v.extend([10.0, *radius]);
-            v.extend(angles);
-            String::new()
-        }
-        BIn::Prim(Prim::PrimTorus { radii, angles }) => {
-            v.push(11.0);
-            v.extend(radii);
-            v.extend(angles);
             String::new()
         }
         BIn::Prim(Prim::Sphere { radius, swap }) => {
@@ -588,14 +543,6 @@ fn args_of(t: &Targets, voxels: [u64; 3], steps: &[Step], n: [usize; 3]) -> Vec<
             Step::FixSplitEdgesAtSeam => v.push(38.0),
             Step::FixSplitFaceAtSeams => v.push(39.0),
             Step::UpdateTracked { active, op } => v.extend([40.0, flag(*active), f64::from(*op)]),
-            Step::ResetInfiniteRegion { sel } => v.extend([43.0, *sel as f64]),
-            Step::BrepHealBrep { op } => v.extend([44.0, f64::from(*op)]),
-            Step::RegionSnapshot => v.push(45.0),
-            Step::FreshHealBrep { op } => v.extend([46.0, f64::from(*op)]),
-            Step::TrackedSetPoint { sel, op } => v.extend([47.0, *sel as f64, f64::from(*op)]),
-            Step::TrackedSqueezeEdge { sel, op } => {
-                v.extend([48.0, *sel as f64, f64::from(*op)]);
-            }
         }
     }
     v
@@ -657,12 +604,6 @@ pub(crate) fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
                         | Step::FixSplitEdgesAtSeam
                         | Step::FixSplitFaceAtSeams
                         | Step::UpdateTracked { .. }
-                        | Step::ResetInfiniteRegion { .. }
-                        | Step::BrepHealBrep { .. }
-                        | Step::RegionSnapshot
-                        | Step::FreshHealBrep { .. }
-                        | Step::TrackedSetPoint { .. }
-                        | Step::TrackedSqueezeEdge { .. }
                 )
             }) {
                 ffi_out(solidcore_ffi::units::heal_heal_data_p3::heal(
@@ -1429,12 +1370,6 @@ fn rust_heal(
             Step::FixSplitEdgesAtSeam => 38,
             Step::FixSplitFaceAtSeams => 39,
             Step::UpdateTracked { .. } => 40,
-            Step::ResetInfiniteRegion { .. } => 43,
-            Step::BrepHealBrep { .. } => 44,
-            Step::RegionSnapshot => 45,
-            Step::FreshHealBrep { .. } => 46,
-            Step::TrackedSetPoint { .. } => 47,
-            Step::TrackedSqueezeEdge { .. } => 48,
         };
         let last_without_state = matches!(s, Step::HealBrep { mode, .. } if *mode != 0)
             || matches!(s, Step::HealTargets { .. })

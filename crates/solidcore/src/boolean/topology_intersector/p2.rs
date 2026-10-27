@@ -34,7 +34,7 @@
 //! | [`MapMates`]                                          | `GetOtherMate` / `RemoveRelationship` for `SmProtoTopologyManager::GlueCoincidentBrepVertices` |
 //!
 //! The two constructors are in [`p1`](super::p1) (co-ported there). `CloseIntersectionLoop`
-//! (`SmTopologyIntersector.cpp:6108-6354`, called from `SmMerge.cpp:2958`) and its only
+//! (`SmTopologyIntersector.cpp:6108-6368`, called from `SmMerge.cpp:2961`) and its only
 //! callee `IIREdgeBrep` (`:2836-2971`) are listed by no unit in `units.json`; they are
 //! co-ported here.
 //!
@@ -926,8 +926,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     /// `deleted_edges` are reset once the vertex and its mate are found, then receive
     /// the vertices and edges (of either B-rep) each completed
     /// [`TopologyIntersector::iir_edge_brep`] deleted by squeezing, so they hold the
-    /// completed calls' deletions also when a later call fails. Unowned in `units.json` (called from
-    /// `SmMerge.cpp:2958`); co-ported into this part.
+    /// completed calls' deletions also when a later call fails. Unowned in `units.json`
+    /// (called from `SmMerge.cpp:2961`); co-ported into this part.
     ///
     /// # Errors
     ///

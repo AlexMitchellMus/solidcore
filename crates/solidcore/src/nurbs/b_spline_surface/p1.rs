@@ -84,8 +84,9 @@
 //!   [`SolidError::InvalidInput`]. Where upstream would index outside its arrays or
 //!   allocate from wrapped or negative sizes (fewer multiplicities than knots or no
 //!   control points in `CreateCanonical`, too short arrays for the data constructor,
-//!   negative sizes, an unreadable header or a short binary stream in `ReadFromDB`,
-//!   knot type / form values outside the enums) the port returns `InvalidInput`.
+//!   knot type / form values outside the enums in `ReadFromDB`) the port returns
+//!   `InvalidInput`. An unreadable header or stream, a degree or a size `ReadFromDB`
+//!   rejects itself (`SM_ERR_INVALID_INPUT`) is `InvalidInput` as well.
 //! - **Canonical knots.** `CreateCanonical` expands the knots by the caller's
 //!   multiplicities with `SmTArray::Add` (failed growth ignored). The port counts the
 //!   expanded knots first and materialises them only after the control point rows

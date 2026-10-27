@@ -2,12 +2,19 @@
 //! (A through sections 0..4, B through 2..6), so their side faces coincide between z = 20
 //! and z = 40. Upstream (C++ at `c9c5979`) returns an empty A − B and all of A for A ∩ B,
 //! and fails A ∪ B (1001); the port does the same.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+
 use solidcore::boolean::api_brep::{
     boolean_difference, boolean_intersection, boolean_union, boolean_with_options,
 };
 use solidcore::boolean::merge::MergeOptions;
-use solidcore::geom::a_object::BooleanOperation;
 use solidcore::curve::curve::Curve;
+use solidcore::geom::a_object::BooleanOperation;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::mass::integrator::properties::{brep_volume, face_area, PropertyAttributes};
 use solidcore::math::Point3;
@@ -19,11 +26,11 @@ use solidcore::topology::Brep;
 use solidcore::Kernel;
 
 fn section(i: usize) -> solidcore::Result<Curve> {
-    let i = i as f64;
+    let i = f64::from(u32::try_from(i).unwrap());
     let (a, b, z) = (20.0 * (1.0 - 0.04 * i), 12.0 * (1.0 - 0.03 * i), 10.0 * i);
     let mut pts: Vec<Point3> = (0..12)
         .map(|j| {
-            let t = 2.0 * std::f64::consts::PI * j as f64 / 12.0;
+            let t = 2.0 * std::f64::consts::PI * f64::from(j) / 12.0;
             Point3::new(a * t.cos(), b * t.sin(), z)
         })
         .collect();
@@ -33,7 +40,9 @@ fn section(i: usize) -> solidcore::Result<Curve> {
 }
 
 fn skin_range(k: &mut Kernel, from: usize, to: usize) -> solidcore::Result<Brep> {
-    let cs = (from..to).map(section).collect::<solidcore::Result<Vec<Curve>>>()?;
+    let cs = (from..to)
+        .map(section)
+        .collect::<solidcore::Result<Vec<Curve>>>()?;
     let refs: Vec<Option<&Curve>> = cs.iter().map(Some).collect();
     create_skin_primitive(k, &vec![1; cs.len()], &refs, 1, true).map(|s| s.brep)
 }
@@ -65,10 +74,13 @@ fn shape(k: &Kernel, r: solidcore::Result<Brep>) -> String {
 fn faces(k: &Kernel, b: &mut Brep) -> Vec<String> {
     let mut out = Vec::new();
     for f in p1::faces(b, None).unwrap() {
-        let kind: String = format!("{:?}", b.face(f).unwrap().surface.as_ref().map(|s| s.kind()))
-            .chars()
-            .take_while(|c| *c != '(')
-            .collect();
+        let kind: String = format!(
+            "{:?}",
+            b.face(f).unwrap().surface.as_ref().map(|s| s.kind())
+        )
+        .chars()
+        .take_while(|c| *c != '(')
+        .collect();
         let area = face_area(k, b, f, 1e-4);
         let loops = solidcore::topology::face::p2::loops(b, f, false, None).map(|l| l.len());
         let mut zs: Vec<String> = solidcore::topology::face::p4::edges(b, f, None, false, None)
@@ -80,7 +92,9 @@ fn faces(k: &Kernel, b: &mut Brep) -> Vec<String> {
             .collect();
         zs.sort();
         zs.dedup();
-        out.push(format!("{f:?} {kind} area {area:?} loops {loops:?} vertex z {zs:?}"));
+        out.push(format!(
+            "{f:?} {kind} area {area:?} loops {loops:?} vertex z {zs:?}"
+        ));
     }
     out
 }
@@ -99,7 +113,10 @@ fn issue_1036_probe() {
         ("A n B (want 12084.49)", 1),
         ("A u B (want 36398.22)", 2),
     ] {
-        let (a, b) = (skin_range(&mut k, 0, 5).unwrap(), skin_range(&mut k, 2, 7).unwrap());
+        let (a, b) = (
+            skin_range(&mut k, 0, 5).unwrap(),
+            skin_range(&mut k, 2, 7).unwrap(),
+        );
         let r = match op {
             0 => boolean_difference(&mut k, a, b),
             1 => boolean_intersection(&mut k, a, b),
@@ -109,11 +126,26 @@ fn issue_1036_probe() {
     }
     // A imprinted with A n B and nothing else (`m_bImprinting`), and the operands' faces
     for (name, op, imprint) in [
-        ("A imprinted (difference)", BooleanOperation::Difference, true),
-        ("A - B without post-process", BooleanOperation::Difference, false),
-        ("A n B without post-process", BooleanOperation::Intersection, false),
+        (
+            "A imprinted (difference)",
+            BooleanOperation::Difference,
+            true,
+        ),
+        (
+            "A - B without post-process",
+            BooleanOperation::Difference,
+            false,
+        ),
+        (
+            "A n B without post-process",
+            BooleanOperation::Intersection,
+            false,
+        ),
     ] {
-        let (a, b) = (skin_range(&mut k, 0, 5).unwrap(), skin_range(&mut k, 2, 7).unwrap());
+        let (a, b) = (
+            skin_range(&mut k, 0, 5).unwrap(),
+            skin_range(&mut k, 2, 7).unwrap(),
+        );
         let options = MergeOptions::new(false, imprint, false, false, false);
         match boolean_with_options(&mut k, a, b, op, options) {
             Ok(mut out) => {
@@ -141,7 +173,10 @@ fn issue_1036_probe() {
             _ => k.fixes.boolean_cleanup_removes_slits = true,
         }
         for (name, op) in [("A - B", 0), ("A n B", 1), ("A u B", 2)] {
-            let (a, b) = (skin_range(&mut k, 0, 5).unwrap(), skin_range(&mut k, 2, 7).unwrap());
+            let (a, b) = (
+                skin_range(&mut k, 0, 5).unwrap(),
+                skin_range(&mut k, 2, 7).unwrap(),
+            );
             let r = match op {
                 0 => boolean_difference(&mut k, a, b),
                 1 => boolean_intersection(&mut k, a, b),
@@ -149,7 +184,10 @@ fn issue_1036_probe() {
             };
             report.push(format!("[{fix}] {name}: {}", shape(&k, r)));
         }
-        let (a, b) = (skin_range(&mut k, 0, 5).unwrap(), skin_range(&mut k, 2, 7).unwrap());
+        let (a, b) = (
+            skin_range(&mut k, 0, 5).unwrap(),
+            skin_range(&mut k, 2, 7).unwrap(),
+        );
         let options = MergeOptions::new(false, true, false, false, false);
         match boolean_with_options(&mut k, a, b, BooleanOperation::Difference, options) {
             Ok(mut out) => {

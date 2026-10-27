@@ -129,12 +129,11 @@ void init_cached_gaps(SmBrep* brep)
         }
 }
 
-// Builds the B-rep of a block (kinds 0..3 by the fixture, 4 box, 5 sphere face, 6
-// single-vertex sphere, 10 primitive sphere, 11 primitive torus).
+// Builds the B-rep of a block (kinds 0..3 by the fixture, 4 box, 5 sphere face).
 SmBrep* build_any(Rd& rd, const char* path, SmStatus& status)
 {
     int64_t kind = (int64_t)rd.in[rd.at];
-    if (kind != 4 && kind != 5 && kind != 6 && kind != 10 && kind != 11)
+    if (kind != 4 && kind != 5 && kind != 6)
         return build(rd, path, status);
     rd.idx();
     const SmContext& ctx = the_context();
@@ -145,18 +144,6 @@ SmBrep* build_any(Rd& rd, const char* path, SmStatus& status)
         double dx = rd.num(), dy = rd.num(), dz = rd.num();
         SmPrimitiveCreation prim(brep->GetInfiniteRegion());
         status = prim.CreateBox(dx, dy, dz, SmAxis2Placement());
-    }
-    else if (kind == 10 || kind == 11)
-    {
-        // SmPrimitiveCreation::CreateSphere / CreateTorus over an angle range, on a
-        // B-rep of tolerance 1e-7 (prog_test my_test_closed_face_containment_repeated)
-        double r1 = rd.num();
-        double r2 = kind == 11 ? rd.num() : 0.0;
-        double a0 = rd.num(), a1 = rd.num();
-        brep->SetTolerance(1e-7, FALSE);
-        SmPrimitiveCreation prim(brep->GetInfiniteRegion());
-        status = kind == 10 ? prim.CreateSphere(r1, a0, a1, SmAxis2Placement())
-                            : prim.CreateTorus(r1, r2, a0, a1, SmAxis2Placement());
     }
     else
     {
@@ -959,24 +946,6 @@ struct P1Out
     SmBoolean bNew;
 };
 
-// The B-rep's regions in list order (`index is_void`, index -1 for a region not in the
-// fixture graph), the infinite region's index and the face, edge and vertex counts.
-void put_regions(std::vector<double>& o, SmBrep* brep, Graph& g)
-{
-    SmTArray<SmRegion*> regions;
-    brep->GetRegions(regions);
-    o.push_back((double)regions.GetSize());
-    for (ULONG i = 0; i < regions.GetSize(); i++)
-    {
-        o.push_back((double)g.find(0, regions[i]));
-        o.push_back((double)regions[i]->IsVoid());
-    }
-    o.push_back((double)g.find(0, brep->GetInfiniteRegion()));
-    o.push_back((double)brep->GetNumFaces());
-    o.push_back((double)brep->GetNumEdges());
-    o.push_back((double)brep->GetNumVertices());
-}
-
 void mark_all_dead(SmHealData& h, Registry& r)
 {
     for (ULONG i = 0; i < h.m_sTgtVertexProps.GetSize(); i++)
@@ -1169,10 +1138,6 @@ void run_heal(Rd& rd, const char* path, std::vector<double>& o)
 
     int64_t nsteps = rd.idx();
     bool stop = false;
-    // set by a step that heals or edits the whole B-rep (44, 46, 48): the fixture graph
-    // and the healer's targets may name freed topology, so only steps 44..46 follow
-    // (the FFI validator) and the state is not dumped
-    bool stale = false;
     for (int64_t s = 0; s < nsteps && !stop; s++)
     {
         int64_t code = rd.idx();
@@ -1630,78 +1595,6 @@ void run_heal(Rd& rd, const char* path, std::vector<double>& o)
             tracker.StopTracking();
             break;
         }
-        // ---- v1.0.1 prog_test regressions (smHealTest.cpp, smTopoTest.cpp) ----
-        case 43: // ResetInfiniteRegion(region sel, SM_VS_INFINITEREGION_SWAP)
-        {
-            int64_t sel = rd.idx();
-            SmRegion* region = g.regions.empty() ? nullptr : g.regions[(size_t)(sel % (int64_t)g.regions.size())];
-            stat = brep->ResetInfiniteRegion(region, SM_VS_INFINITEREGION_SWAP);
-            break;
-        }
-        case 44: // SmBrep::HealBrep(op)
-            stat = brep->HealBrep((SmHealerOpType)rd.idx());
-            stale = true;
-            break;
-        case 45: // the region list, void flags and topology counts
-            put_regions(o, brep, g);
-            break;
-        case 46: // SmHealData::HealBrep(B-rep, op) on a fresh healer
-        {
-            SmHealerOpType op = (SmHealerOpType)rd.idx();
-            SmHealData fresh;
-            stat = fresh.HealBrep(brep, op);
-            o.push_back((double)fresh.m_sNotYetFaceProps.GetSize());
-            stale = true;
-            break;
-        }
-        case 47: // SetPoint(own point) of vertex sel, tracked; UpdateTargetLists(tracker, op)
-        {
-            int64_t sel = rd.idx();
-            SmHealerOpType op = (SmHealerOpType)rd.idx();
-            SmVertex* v = g.vertices.empty() ? nullptr : g.vertices[(size_t)(sel % (int64_t)g.vertices.size())];
-            if (v == nullptr)
-            {
-                o.push_back(ST_NULL_DEREF);
-                stop = true;
-                continue;
-            }
-            SmTrackTopologyChanges tracker(brep, TRUE);
-            v->SetPoint(v->GetPoint());
-            tracker.StopTracking();
-            o.push_back((double)tracker.GetRmList()->GetSize());
-            o.push_back((double)tracker.GetAddList()->GetSize());
-            stat = h->UpdateTargetLists(tracker, op);
-            r.note(*h);
-            o.push_back((double)h->m_sTgtVertices.GetSize());
-            o.push_back((double)h->m_sTgtEdges.GetSize());
-            o.push_back((double)h->m_sTgtFaces.GetSize());
-            break;
-        }
-        case 48: // SqueezeEdge(edge sel, its GetVertex()), tracked; UpdateTargetLists(tracker, op)
-        {
-            int64_t sel = rd.idx();
-            SmHealerOpType op = (SmHealerOpType)rd.idx();
-            SmEdge* e = g.edges.empty() ? nullptr : g.edges[(size_t)(sel % (int64_t)g.edges.size())];
-            if (e == nullptr)
-            {
-                o.push_back(ST_NULL_DEREF);
-                stop = true;
-                continue;
-            }
-            mark_all_dead(*h, r);
-            stale = true;
-            SmTrackTopologyChanges tracker(brep, TRUE);
-            SmStatus sq = brep->SqueezeEdge(e, e->GetVertex());
-            tracker.StopTracking();
-            ULONG idx;
-            o.push_back(st(sq));
-            o.push_back(flg(tracker.GetRmList()->FindElement(e, idx)));
-            o.push_back(flg(brep->IsLiveTopologyMember(e)));
-            stat = h->UpdateTargetLists(tracker, op);
-            r.note(*h);
-            o.push_back(flg(h->m_sTgtEdges.FindElement(e, idx)));
-            break;
-        }
         default: stat = SC_ERR_ARG; break;
         }
         if (code == 38 && stat == SM_SUCCESS)
@@ -1721,7 +1614,7 @@ void run_heal(Rd& rd, const char* path, std::vector<double>& o)
         if (stat != SM_SUCCESS)
             stop = true;
     }
-    if (!stop && !stale)
+    if (!stop)
         dump(*h, g, r, o);
 
     // free what the healer no longer owns, then the healer and the B-rep

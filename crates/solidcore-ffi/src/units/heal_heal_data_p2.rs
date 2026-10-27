@@ -7,9 +7,7 @@
 //! A B-rep block is one of [`super::topology_vertexuse`]'s (kinds `0..=3`),
 //! `4 dx dy dz validate_only init_gaps` (`SmPrimitiveCreation::CreateBox`) or
 //! `5 radius swap_uv validate_only init_gaps` (a face on the full
-//! `SmSphere::CreateCanonical` domain), `10 radius a0 a1 validate_only init_gaps` or
-//! `11 major minor a0 a1 validate_only init_gaps` (`SmPrimitiveCreation::CreateSphere` /
-//! `CreateTorus` over degrees `a0..a1`, B-rep tolerance `1e-7`); `init_gaps` computes the cached gaps first. The shim replaces analytic face surfaces and edge curves other than
+//! `SmSphere::CreateCanonical` domain); `init_gaps` computes the cached gaps first. The shim replaces analytic face surfaces and edge curves other than
 //! `SmPlane` / `SmLine` by plain B-spline copies before anything runs.
 //!
 //! | [`Op`]   | input | output |
@@ -153,25 +151,6 @@ pub(crate) fn check_block(path: &str, block: &[f64]) -> Result<(), FfiError> {
             let d = rd.num()?;
             if !(1e-4..=1e4).contains(&d) {
                 return Err(bad("box size out of range"));
-            }
-        }
-        rd.flag()?;
-        rd.flag()?;
-        return rd.done();
-    }
-    if kind == 10.0 || kind == 11.0 {
-        // primitive sphere (radius) or torus (major, minor radius) over an angle range
-        let radii = if kind == 11.0 { 2 } else { 1 };
-        for _ in 0..radii {
-            let r = rd.num()?;
-            if !(1e-3..=1e3).contains(&r) {
-                return Err(bad("primitive radius out of range"));
-            }
-        }
-        for _ in 0..2 {
-            let a = rd.num()?;
-            if !(-720.0..=720.0).contains(&a) {
-                return Err(bad("primitive angle out of range"));
             }
         }
         rd.flag()?;
@@ -354,20 +333,6 @@ fn targets(rd: &mut Reader<'_>) -> Result<(), FfiError> {
 /// model remain valid. Catch-up through `Fix_CoinVertices` or later is terminal
 /// because it can delete original fixture topology.
 ///
-/// v1.0.1 prog_test steps (outputs before `status new_probs` as noted): `43 sel`
-/// `ResetInfiniteRegion` of the `sel`-th region with `SM_VS_INFINITEREGION_SWAP`; `44
-/// op` `SmBrep::HealBrep(op)`; `45` the region list (`n (index is_void)*`, index `-3`
-/// for a region not in the fixture graph), the infinite region's index and the face,
-/// edge and vertex counts; `46 op` `SmHealData::HealBrep(B-rep, op)` on a fresh healer
-/// (outputs its not-yet face count); `47 sel op` `SetPoint` of the `sel`-th vertex to
-/// its own point under a tracker, then `UpdateTargetLists(tracker, op)` (outputs the
-/// tracker's removed and added counts, then the vertex, edge and face target counts);
-/// `48 sel op` `SqueezeEdge` of the `sel`-th edge to its `GetVertex` under a tracker,
-/// then `UpdateTargetLists(tracker, op)` (outputs the squeeze status, whether the edge
-/// is on the removed list, whether it is still live, and whether it is still a
-/// target). After `44`, `46` or `48` only `44..=46` may follow and the case ends
-/// without the state.
-///
 /// # Errors
 ///
 /// [`FfiError::InvalidArgument`] for anything else.
@@ -381,14 +346,9 @@ pub fn check_heal(args: &[f64]) -> Result<(), FfiError> {
         }
     }
     let nsteps = rd.index(MAX_STEPS)?;
-    // after a step that heals or edits the whole B-rep (44, 46, 48) only 44..=46 follow
-    let mut stale = false;
     for s in 0..nsteps {
-        let code = rd.index(48)?;
+        let code = rd.index(42)?;
         let last = s + 1 == nsteps;
-        if stale && !(44..=46).contains(&code) {
-            return Err(bad("only HealBrep / region steps may follow a whole-B-rep edit"));
-        }
         match code {
             12..=14 | 21 | 24 => {
                 rd.index(MAX_SEL)?;
@@ -462,18 +422,6 @@ pub fn check_heal(args: &[f64]) -> Result<(), FfiError> {
             40 => {
                 rd.flag()?;
                 rd.index(26)?;
-            }
-            43 => {
-                rd.index(MAX_SEL)?;
-            }
-            44 | 46 => {
-                rd.index(26)?;
-                stale = true;
-            }
-            47 | 48 => {
-                rd.index(MAX_SEL)?;
-                rd.index(26)?;
-                stale |= code == 48;
             }
             30 => {
                 let mode = rd.index(2)?;

@@ -352,8 +352,8 @@ fn merge_intervals<O: LoopObject>(
     resolve: &dyn Fn(O) -> Option<EntityRef>,
 ) -> Result<SeamSplit> {
     // (SER: a failing merge returns its status)
-    let merged = crate::topology::face::p4::merge_seam_intervals(k, b, f, dir, c)?
-        .map_err(|e| e.error)?;
+    let merged =
+        crate::topology::face::p4::merge_seam_intervals(k, b, f, dir, c)?.map_err(|e| e.error)?;
     let objects = BrepSeamObjects::new(k, &*b, f)?;
     let resolve = |o: O| objects.entity(o).or_else(|| resolve(o));
     let mut out = SeamSplit::default();
@@ -2288,10 +2288,7 @@ fn split_at_seam_merges<O: LoopObject>(
         // may be divided at existing vertices; carry the corner between the complete
         // walks without changing intermediate classifications. Reclassifying this
         // intermediate two-boundary face loses the V interior.
-        if merge_u
-            && !this_new.edges.is_empty()
-            && crv_class_u.size() > 0
-            && crv_class_v.size() > 0
+        if merge_u && !this_new.edges.is_empty() && crv_class_u.size() > 0 && crv_class_v.size() > 0
         {
             let first_u = &crv_class_u.at(0)?.start;
             let last_u = &crv_class_u.at(last_index(crv_class_u.size())?)?.end;
@@ -2304,7 +2301,11 @@ fn split_at_seam_merges<O: LoopObject>(
                 let last_v = last_index(crv_class_v.size())?;
                 for (interval, at_start) in [(0, true), (last_v, false)] {
                     let ivl = crv_class_v.at_mut(interval)?;
-                    let end = if at_start { &mut ivl.start } else { &mut ivl.end };
+                    let end = if at_start {
+                        &mut ivl.start
+                    } else {
+                        &mut ivl.end
+                    };
                     if end.point_class() == PointClassType::Face && end.object() == this {
                         end.set_class_object(PointClassType::Vertex, corner);
                     }

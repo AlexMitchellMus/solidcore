@@ -10,6 +10,7 @@
 //! | `notify_edge_and_vertices` (private) | `sm_NotifyEdgeAndVertices` |
 //! | [`OffsetExecutive::replace_implicit_offsets`] | `ReplaceImplicitOffsets` |
 //! | [`OffsetExecutive::remove_excess_faces`] | `RemoveExcessFaces` |
+//! | `forget_seconds`, `forget_firsts`, `removed_faces_edgeuses` (private) | `sm_ForgetSeconds`, `sm_ForgetFirsts`, `RemoveExcessFaces`' `sGone` |
 //! | [`OffsetExecutive::get_create_extended_surface`] | `GetCreateExtendedSurface` |
 //! | [`OffsetExecutive::insert_extended_surface`] | `m_vSurfExtSurf.Insert` (protected upstream; harness seeding) |
 //! | [`OffsetExecutive::piecewise_merge`] | `PiecewiseMerge` |
@@ -36,7 +37,10 @@
 //! and keys its cache by each edge's and face's geometry owner (arena identity when
 //! unowned), so geometry owned under a caller's notification keys is found; an owner
 //! shared by two records or naming another record (an indirect owner chain) is
-//! [`SolidError::Unsupported`] rather than silently skipped.
+//! [`SolidError::Unsupported`] rather than silently skipped. Its relation forgetting
+//! (`sm_ForgetSeconds` / `sm_ForgetFirsts` and the `sGone` / `sLive` walks) propagates
+//! a dangling-id error from the topology queries where upstream's walks cannot fail;
+//! only a corrupt B-rep reaches it.
 //! Result-edge enumeration uses `SmBrep::GetEdges` list order (`topology::brep::p1::edges`);
 //! the result B-rep is borrowed mutably because `NormalizedEvaluate` takes the edge use's
 //! B-rep mutably (its 3D evaluation, used here, edits nothing). `BuildSideWallOfEdgeuse` takes

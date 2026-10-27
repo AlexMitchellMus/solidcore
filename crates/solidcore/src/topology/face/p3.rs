@@ -99,9 +99,9 @@ use crate::geom::extent2d::{Extent2d, SS_UMAX, SS_UMIN, SS_VMAX, SS_VMIN};
 use crate::geom::object::{NotifyOperation, ObjectRef};
 use crate::geom::solution_array::{ObjectKind, Solution, SolutionObject, MAX_TREES};
 use crate::geom::tol::xsect_tol_3d_from_zones;
-use crate::heal::face_props::{FaceProps, LoopObject, PropStage, Tri};
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::sqrt as sm_sqrt;
+use crate::heal::face_props::{FaceProps, LoopObject, PropStage, Tri};
 use crate::intersect::curve_class::p1::CurveClassification;
 use crate::intersect::curve_class::p5::{ClassGeometryMut, ExtractOptions};
 use crate::intersect::point_class::{
@@ -679,18 +679,27 @@ impl LoopOrientationSampler<'_> {
         end: &LoopOrientationSample,
         depth: u32,
     ) -> Result<bool> {
-        let Some(quarter) =
-            self.sample(curve, start.param + (end.param - start.param) * 0.25, Some(start))?
+        let Some(quarter) = self.sample(
+            curve,
+            start.param + (end.param - start.param) * 0.25,
+            Some(start),
+        )?
         else {
             return Ok(false);
         };
-        let Some(mid) =
-            self.sample(curve, start.param + (end.param - start.param) * 0.5, Some(&quarter))?
+        let Some(mid) = self.sample(
+            curve,
+            start.param + (end.param - start.param) * 0.5,
+            Some(&quarter),
+        )?
         else {
             return Ok(false);
         };
-        let Some(three_quarter) =
-            self.sample(curve, start.param + (end.param - start.param) * 0.75, Some(&mid))?
+        let Some(three_quarter) = self.sample(
+            curve,
+            start.param + (end.param - start.param) * 0.75,
+            Some(&mid),
+        )?
         else {
             return Ok(false);
         };
