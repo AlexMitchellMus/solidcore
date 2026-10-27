@@ -202,6 +202,52 @@ pub fn body(input: [f64; 16]) -> Result<Vec<f64>, FfiError> {
         }
     })
 }
+/// [`body`] with explicit `DoSweep` target lists: `input[15]` (`targets`) must be 2
+/// and `lists` = `[faces higher, edges higher, vertices higher, faces same, edges
+/// same, vertices same, null_region]`. Each list selector is -1 for NULL, 0 for every
+/// `GetFaces`/`GetEdges`/`GetVertices` entity, 1 for `GetWireEdges` (edges) or
+/// `GetShellVertices` (vertices; faces: every face), 2 for an empty array, 3 for
+/// every entity but the last, or `10 + i` for the single entity `i` of that list;
+/// `null_region` 1 passes a NULL region. `kind` may also be 0 here: a base
+/// `SmSweepGeometryCreation` (every sweep returns `SM_ERR`).
+///
+/// # Errors
+/// As [`body`], plus a selector outside those values, an index past its list
+/// (`SC_ERR_ARG` from the shim) or native exceptions.
+pub fn body_lists(input: [f64; 16], lists: [f64; 7]) -> Result<Vec<f64>, FfiError> {
+    let integral = |v: f64, lo: f64, hi: f64| (lo..=hi).contains(&v) && v.fract() == 0.0;
+    if input.iter().chain(&lists).any(|v| !v.is_finite())
+        || !integral(input[0], 0.0, 6.0)
+        || !integral(input[1], 0.0, 2.0)
+        || !integral(input[12], 0.0, 4.0)
+        || !integral(input[14], -1e9, 1e9)
+        || input[15] != 2.0
+        || lists[..6]
+            .iter()
+            .any(|&l| !integral(l, -1.0, 10000.0) || (l > 3.0 && l < 10.0))
+        || (lists[6] != 0.0 && lists[6] != 1.0)
+    {
+        return Err(FfiError::InvalidArgument(
+            "invalid non-manifold body list sweep input".into(),
+        ));
+    }
+    let mut all = [0.0; 23];
+    all[..16].copy_from_slice(&input);
+    all[16..].copy_from_slice(&lists);
+    call_with_buffer(16384, |out, len| {
+        // SAFETY: the fixed-size input is read only; C++ writes at most `cap`
+        // doubles and retains no pointers to either buffer.
+        unsafe {
+            sys::sc_sweep_topology_sweep_body(
+                all.as_ptr(),
+                all.len() as i64,
+                out.as_mut_ptr(),
+                out.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })
+}
 #[cfg(test)]
 mod tests {
     use super::eval;
