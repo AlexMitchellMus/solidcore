@@ -190,13 +190,15 @@
 //!   kernel for it. Callers without one still read the stored base:
 //!   `SurfaceCache::surface_continuity`, the offset surface's and the surface-in-volume's
 //!   inherent `knots`, and `IsoCurve::knots` (a kernel would change their signatures).
-//! - **Made NURB.** An analytic kind without a NURB makes one for `const` queries; the
-//!   surface keeps the made kind (`NurbMemo`, [`Surface::kind_with_nurb`]) for later
-//!   queries, emptied by any mutable access to the kind and absent on copies. A
-//!   surface of extrusion's made copy is exact (no copy-constructor knot fix-up), as its
-//!   query copy `base_with_nurb`, so its evaluations through the kept copy are those of
-//!   a fresh make. As upstream's NURB on the object, it is not keyed on the [`Kernel`]
-//!   the make used.
+//! - **Made NURB.** An analytic kind without a NURB makes one for `const` queries
+//!   ([`Surface::kind_with_nurb`]), as upstream's `GetOrCreateGwNurbPointer`. A plane
+//!   and a surface of extrusion keep it in their own NURB slot (filled once from
+//!   `&self`), so `kind()`, copies and `operator==` see it as upstream. A cone, sphere,
+//!   torus or surface of revolution's `MakeNurb` also rebuilds its polar converter and
+//!   may trim its generator, so the surface keeps the whole made kind instead
+//!   (`NurbMemo`), emptied by any mutable access to the kind and absent on copies;
+//!   `kind()` readers of those kinds still see no NURB. As upstream's NURB on the
+//!   object, neither is keyed on the [`Kernel`] the make used.
 
 use std::borrow::Cow;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -472,7 +474,8 @@ impl CacheSlot {
 }
 
 /// `GetOrCreateGwNurbPointer` called from a `const` method of an analytic kind that has
-/// no NURB yet (cone, sphere, torus, surface of revolution or extrusion): upstream runs
+/// no NURB yet (cone, sphere, torus or surface of revolution; a plane and an extrusion
+/// keep theirs in their own NURB slot): upstream runs
 /// the virtual `MakeNurb` and keeps the NURB on the surface, so every later call sees
 /// it. The port's `&self` methods cannot fill the kind in place; the kind with its NURB
 /// made is kept here instead, once, and dropped whenever the kind is changed
@@ -1175,7 +1178,17 @@ impl Surface {
             SurfaceKind::Sphere(s) => s.base().base().gw_nurb().is_none(),
             SurfaceKind::Torus(s) => s.base().base().gw_nurb().is_none(),
             SurfaceKind::SurfOfRevolution(s) => s.base().gw_nurb().is_none(),
-            SurfaceKind::SurfOfExtrusion(s) => s.base().gw_nurb().is_none(),
+            SurfaceKind::SurfOfExtrusion(s) => {
+                // made once and kept in the extrusion's own NURB slot
+                // (`SurfOfExtrusion::base_with_nurb`; status ignored, as upstream)
+                if s.base().gw_nurb().is_none() {
+                    match s.base_with_nurb(k) {
+                        Err(e) if e.is_unported() => return Err(e),
+                        _ => {}
+                    }
+                }
+                false
+            }
             _ => false,
         };
         if !missing {
@@ -1184,48 +1197,29 @@ impl Surface {
         if let Some(made) = self.made_nurb.0.get() {
             return Ok(made);
         }
-        let mut kind = match &self.kind {
-            // an exact copy, as SurfOfExtrusion::base_with_nurb makes for a query (no
-            // copy-constructor knot fix-up: upstream makes the NURB on the object itself)
-            SurfaceKind::SurfOfExtrusion(s) => {
-                SurfaceKind::SurfOfExtrusion(Box::new(s.clone_for_evaluation(0)?))
-            }
-            _ => self.kind.clone(),
-        };
+        let mut kind = self.kind.clone();
         match &mut kind {
             SurfaceKind::Cone(s) => ignore_status(s.make_nurb(k))?,
             SurfaceKind::Sphere(s) => ignore_status(s.make_nurb(k))?,
             SurfaceKind::Torus(s) => ignore_status(s.make_nurb(k))?,
             SurfaceKind::SurfOfRevolution(s) => ignore_status(s.make_nurb(k))?,
-            SurfaceKind::SurfOfExtrusion(s) => ignore_status(s.make_nurb(k))?,
             _ => {}
         }
         Ok(self.made_nurb.0.get_or_init(|| Box::new(kind)))
     }
 
     /// [`SurfOfExtrusion::base_with_nurb`] of this surface (a surface of extrusion),
-    /// with the made NURB kept ([`Surface::kind_with_nurb`]): an extrusion with a NURB
-    /// lends its base; one without lends the kept made copy, which is the copy
-    /// `base_with_nurb` makes (the same exact copy and `MakeNurb`, so the same NURB bit
-    /// for bit). When `MakeNurb` fails, `base_with_nurb` runs again for its error.
+    /// which makes a missing NURB once and keeps it on the extrusion.
     ///
     /// # Errors
     ///
     /// `SM_ERR` when this surface is not a surface of extrusion; those of
-    /// [`SurfOfExtrusion::base_with_nurb`] and [`Surface::kind_with_nurb`].
+    /// [`SurfOfExtrusion::base_with_nurb`].
     pub(crate) fn extrusion_base_with_nurb(&self, k: &Kernel) -> Result<Cow<'_, BSplineSurface>> {
         let SurfaceKind::SurfOfExtrusion(s) = &self.kind else {
             return Err(SolidError::sm_err(OP_KIND_WITH_NURB));
         };
-        if s.base().gw_nurb().is_some() {
-            return s.base_with_nurb(k);
-        }
-        match self.kind_with_nurb(k)? {
-            SurfaceKind::SurfOfExtrusion(made) if made.base().gw_nurb().is_some() => {
-                Ok(Cow::Borrowed(made.base()))
-            }
-            _ => s.base_with_nurb(k),
-        }
+        s.base_with_nurb(k)
     }
 
     /// Whether a made NURB is kept ([`NurbMemo`]; for tests).

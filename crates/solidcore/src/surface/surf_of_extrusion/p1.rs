@@ -71,8 +71,15 @@
 //!   lazy `GetNaturalUVDomain` would;
 //!   [`SurfOfExtrusion::gen_dir_param_extent`] reads the NURB as it is (an empty
 //!   interval without one). `Reparameterize` and a non-identity `Transform` make it.
-//!   Inherited `Surface` evaluation and iso-curve queries use a temporary, bounded
-//!   copy via `base_with_nurb`; they do not change the stored copy state. A lazy
+//!   Inherited `Surface` evaluation and iso-curve queries go through
+//!   `base_with_nurb`, which makes a missing NURB once on a bounded exact copy and
+//!   keeps it in the surface's NURB slot, as upstream keeps it on the object (later
+//!   readers, copies and `operator==` see it). Upstream's in-place `MakeNurb` also
+//!   adjusts the generator's STEP interval to the analytic U interval and makes a lazy
+//!   line generator's NURB; that generator state stays on the copy and is not kept.
+//!   `Clone` copies the NURB the surface has (knots fixed up, as the copy
+//!   constructor), but cannot make a missing one first as upstream's copy constructor
+//!   does (`MakeNurb` needs the [`Kernel`]). A lazy
 //!   B-spline generator (as returned by the extrusion recogniser) uses the analytic
 //!   domain, swapped when needed, for `Surface::natural_uv_domain`; other lazy
 //!   generator kinds still require an explicit `MakeNurb` for that domain query.
@@ -727,15 +734,20 @@ impl SurfOfExtrusion {
         &mut self.base
     }
 
-    /// The inherited NURB for a query, made on a bounded temporary copy when missing.
-    /// An existing (possibly reparameterised) NURB is borrowed unchanged.
+    /// The inherited NURB for a query (`GetOrCreateGwNurbPointer` from a `const`
+    /// method): an existing (possibly reparameterised) NURB is borrowed unchanged; a
+    /// missing one is made by [`SurfOfExtrusion::make_nurb`] on a bounded exact copy
+    /// and kept on this surface, as upstream keeps it on the object (the copy's
+    /// generator adjustments are not kept; see the module docs, **Lazy NURB**).
     pub(crate) fn base_with_nurb(&self, k: &Kernel) -> Result<Cow<'_, BSplineSurface>> {
-        if self.base.gw_nurb().is_some() {
-            return Ok(Cow::Borrowed(&self.base));
+        if self.base.gw_nurb().is_none() {
+            let mut copy = self.clone_for_evaluation(0)?;
+            copy.make_nurb(k)?;
+            if let Some(made) = copy.base.nurb.take() {
+                self.base.nurb.fill(made);
+            }
         }
-        let mut copy = self.clone_for_evaluation(0)?;
-        copy.make_nurb(k)?;
-        Ok(Cow::Owned(copy.base))
+        Ok(Cow::Borrowed(&self.base))
     }
 
     /// The inherited NURB as `GetOrCreateGwNurbPointer` leaves it for a query whose
