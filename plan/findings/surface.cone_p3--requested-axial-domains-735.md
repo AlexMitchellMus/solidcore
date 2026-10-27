@@ -50,3 +50,29 @@ The former unmerged WR-258 proposal in this branch describes the same defect as
 the merged WR-259. Its historical blocked status and differential failures came
 from enabling the fix unconditionally against `c9c5979`; that implementation and
 its shared-archive entries are superseded by this opt-in version.
+
+## Final verification (2026-10-28)
+
+Tested source `4e7120570d7ae0a99c7f4bedeeb14387d1b8bcf4`, including main `e61b6296d0e983225e277179869d6e1ef6c59d64`.
+Formatting, strict workspace Clippy with default and C++ features, wasm32, all
+262 plan entries, record-ID checks and the frozen-archive guard pass. All 2,438
+kernel unit tests and 103 integrations pass in the difftest profile (two unit
+tests and five integrations remain ignored as before). The runner suite passes
+393 unit tests and 338 integrations (36 unit tests and one integration remain
+ignored). The earlier debug-profile kernel and integration run also passed before
+the final main merge.
+
+```text
+PASS surface.cone_p3 cases=1490 passed=1490 failed=0 deferred=0 max_rel_err=0e0 with_values=1474 no_values=16 vacuous=0
+SENSITIVE surface.cone_p3 perturbed=1490 detected=1490 unperturbed=0 deferred=0 (perturb mode: every perturbed case must FAIL)
+difftest: 261 unit(s), 260 passed, 1 partial, 0 failed
+difftest: compared 261 reports against the baseline: 0 unit(s) regressed
+```
+
+The full sweep enumerates 563,216 cases. Its only partial unit is the existing
+`sweep.topology_sweep` (677 passes, two known mismatches, seven parked cases and
+two rejected fixtures); none of its handling changes here. The exact-base
+artifact is main CI run `40599566707`, artifact `12778245961`, validated with
+provenance, digest and unit-set checks. All 1,442 cone baseline cases retain their
+identities, outcomes and value coverage; the 48 added fixtures also pass with the
+fixes off. No tolerance, absolute floor, native guard or mismatch waiver changes.
