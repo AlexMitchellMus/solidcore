@@ -4,15 +4,22 @@
 //! `source/SM_API/src/SmApiBrep.cpp`). Rust: `solidcore::boolean::api_brep`.
 //!
 //! A case is one API call (`api` plus its arguments). Operands are boxes
-//! (`SmApiCreateBox`) or spheres (`SmApiCreateSphere`), built on both sides by the same
-//! constructors (`primitive::api_primitives::create_box` / `create_sphere` on the Rust
-//! side) in the case's one kernel / context. A constructor that fails is a harness error
-//! on both sides (the shim's `SC_ERR_ARG`); one that stops at an unported callee defers
-//! the case. Both sides produce `status` (`0` = `SM_SUCCESS`, else the `SmStatus`:
+//! (`SmApiCreateBox`) or spheres (`SmApiCreateSphere`); fixture cases also use sheets
+//! (`SmApiCreatePlane`), tori (`SmApiCreateTorus`), operands moved by `SmApiRotate` /
+//! `SmApiTranslate` steps, skin solids (`SmApiCreateSkinPrimitive` of exact NURB curves)
+//! and the result of an `SmApiBoolean` of two operands. Both sides
+//! build them with the same constructors (`primitive::api_primitives`,
+//! `sweep::api_surfaces::create_skin_primitive` and
+//! `boolean::api_brep::boolean` on the Rust side) in the case's one kernel / context, at the default `Kernel::fixes` (SMLib behaviour). A
+//! constructor that fails is a harness error on both sides (the shim's `SC_ERR_ARG`);
+//! one that stops at an unported callee defers the case. Both sides produce `status` (`0` = `SM_SUCCESS`, else the `SmStatus`:
 //! `1007` `SM_ERR_INVALID_INPUT`; `-1` on the Rust side for an error upstream cannot
 //! produce) and `record` (the op's outputs after the status, see the FFI module): on
 //! success the result B-reps' face, edge, vertex and region counts and
-//! `IsManifoldSolid`.
+//! `IsManifoldSolid`. A `measured` call (`SmApiBooleanWithOptions` with only the
+//! post-process flag chosen; fixtures only) also compares `measures`: the result's volume
+//! (`SmApiBrepComputeVolume`) and its face areas (`SmApiFaceComputeArea`) in ascending
+//! order, so a result with the right topology but a wrongly trimmed face shows.
 //!
 //! Compared: the input validation (`SM_BO_EXTRACT_SEPARATE` for the two-B-rep entry
 //! points, short lists and operations other than union / intersection / difference /
@@ -25,12 +32,24 @@ use serde_json::Value;
 
 use solidcore::boolean::api_brep as api;
 use solidcore::boolean::merge::MergeOptions;
+use solidcore::curve::curve::Curve as SmCurve;
 use solidcore::geom::a_object::BooleanOperation;
+use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::vector3d::Point3;
 use solidcore::kernel::Kernel;
+use solidcore::mass::integrator::properties::{brep_volume, face_area, PropertyAttributes};
+use solidcore::nurbs::b_spline_curve::BSplineCurve;
+use solidcore::nurbs::crv_basic::Curve as NurbCurve;
+use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::primitive::api_primitives as primitives;
+use solidcore::sweep::api_surfaces::create_skin_primitive;
 use solidcore::topology::brep::{p1 as brep_p1, p2 as brep_p2};
-use solidcore::topology::Brep;
+use solidcore::topology::edgeuse::p1 as edgeuse_p1;
+use solidcore::topology::proto_topology::p1::api_transform::{
+    api_rotate, api_translate, TransformObject,
+};
+use solidcore::topology::shell::shell_region;
+use solidcore::topology::{Brep, FaceuseId, RegionId};
 use solidcore::SolidError;
 use solidcore_ffi::units::boolean_api_brep::{self as ffi, BrepSpec, Call, Flags};
 
@@ -56,13 +75,76 @@ fn harness(msg: impl Into<String>) -> HarnessError {
 type P3 = [f64; 3];
 
 /// An operand.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum BrepIn {
     /// `SmApiCreateBox`.
     Box { origin: P3, size: P3 },
     /// `SmApiCreateSphere`.
     Sphere { center: P3, radius: f64 },
+    /// `SmApiCreatePlane` (`SmBrep*&` overload).
+    Plane { origin: P3, size: [f64; 2] },
+    /// `SmApiCreateTorus` (`SmBrep*&` overload; axis +Z).
+    Torus { center: P3, major: f64, minor: f64 },
+    /// `brep` moved by `steps` in order (`SmApiRotate` / `SmApiTranslate`).
+    Moved {
+        steps: Vec<MoveIn>,
+        brep: Box<BrepIn>,
+    },
+    /// `SmApiBoolean(a, b, operation)`'s result.
+    Boolean {
+        operation: i32,
+        a: Box<BrepIn>,
+        b: Box<BrepIn>,
+    },
+    /// `SmApiCreateSkinPrimitive(counts, curves, degree, cap_ends)` of 3D NURB curves.
+    Skin {
+        counts: Vec<u64>,
+        curves: Vec<SkinCurveIn>,
+        degree: u64,
+        #[serde(default = "yes")]
+        cap_ends: bool,
+    },
+}
+
+/// A 3D NURB curve of a skin operand, as its NURB stores it: degree, control points
+/// (weighted, `w x w y w z`, when `weights` is given) and the full knot vector. Both
+/// sides build `SmBSplineCurve(gw_CURVE*, 3, FALSE)` from it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SkinCurveIn {
+    p: usize,
+    cpts: Vec<P3>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    weights: Option<Vec<f64>>,
+    knots: Vec<f64>,
+}
+
+impl SkinCurveIn {
+    /// The `[x y z w]` points with `w` = `NOW` for a non-rational curve (a weight count
+    /// that differs from the point count is left to the FFI's check as a missing weight).
+    fn pw(&self) -> Vec<[f64; 4]> {
+        self.cpts
+            .iter()
+            .enumerate()
+            .map(|(i, q)| {
+                let w = match &self.weights {
+                    Some(w) => w.get(i).copied().unwrap_or(f64::NAN),
+                    None => NOW,
+                };
+                [q[0], q[1], q[2], w]
+            })
+            .collect()
+    }
+}
+
+/// One step of a moved operand.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum MoveIn {
+    /// `SmApiRotate(brep, point, axis, angle_deg)`.
+    Rotate { point: P3, axis: P3, angle_deg: f64 },
+    /// `SmApiTranslate(brep, vector)`.
+    Translate { vector: P3 },
 }
 
 /// `SmApiBooleanWithOptions` flags; missing ones take the `SmMergeOptions` defaults.
@@ -129,12 +211,72 @@ enum Inputs {
         breps: Vec<BrepIn>,
         tree: Vec<i64>,
     },
+    /// `SmApiBooleanWithOptions` with only `bBooleanPostProcess` chosen, then the
+    /// result's volume and face areas.
+    Measured {
+        a: BrepIn,
+        b: BrepIn,
+        operation: i32,
+        #[serde(default = "yes")]
+        post_process: bool,
+    },
 }
 
 fn spec(b: &BrepIn) -> BrepSpec {
-    match *b {
-        BrepIn::Box { origin, size } => BrepSpec::Box { origin, size },
-        BrepIn::Sphere { center, radius } => BrepSpec::Sphere { center, radius },
+    match b {
+        &BrepIn::Box { origin, size } => BrepSpec::Box { origin, size },
+        &BrepIn::Sphere { center, radius } => BrepSpec::Sphere { center, radius },
+        &BrepIn::Plane { origin, size } => BrepSpec::Plane { origin, size },
+        &BrepIn::Torus {
+            center,
+            major,
+            minor,
+        } => BrepSpec::Torus {
+            center,
+            major,
+            minor,
+        },
+        BrepIn::Moved { steps, brep } => BrepSpec::Moved {
+            steps: steps
+                .iter()
+                .map(|m| match *m {
+                    MoveIn::Rotate {
+                        point,
+                        axis,
+                        angle_deg,
+                    } => ffi::Move::Rotate {
+                        point,
+                        axis,
+                        angle_deg,
+                    },
+                    MoveIn::Translate { vector } => ffi::Move::Translate { vector },
+                })
+                .collect(),
+            brep: Box::new(spec(brep)),
+        },
+        BrepIn::Skin {
+            counts,
+            curves,
+            degree,
+            cap_ends,
+        } => BrepSpec::Skin {
+            counts: counts.clone(),
+            curves: curves
+                .iter()
+                .map(|c| ffi::SkinCurve {
+                    p: c.p,
+                    cpts: c.pw(),
+                    knots: c.knots.clone(),
+                })
+                .collect(),
+            degree: *degree,
+            cap: *cap_ends,
+        },
+        BrepIn::Boolean { operation, a, b } => BrepSpec::Boolean {
+            operation: *operation,
+            a: Box::new(spec(a)),
+            b: Box::new(spec(b)),
+        },
     }
 }
 
@@ -199,6 +341,17 @@ fn to_call(i: &Inputs) -> Call {
             breps: specs(breps),
             tree: tree.clone(),
         },
+        Inputs::Measured {
+            a,
+            b,
+            operation,
+            post_process,
+        } => Call::Measured {
+            a: spec(a),
+            b: spec(b),
+            operation: *operation,
+            post_process: *post_process,
+        },
     }
 }
 
@@ -222,9 +375,46 @@ fn to_output(o: &[f64]) -> Result<Output, HarnessError> {
 }
 
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    if ub_175(i)? {
+        return Ok(Output::rejected(
+            "UB-175: ~SmProtoTopologyManager frees a proto edge that a proto vertex \
+             still lists, then ~SmProtoVertex reads it; not run",
+        ));
+    }
     match ffi::run(&to_call(i)) {
-        Ok(o) => to_output(&o),
+        Ok(o) => match i {
+            Inputs::Measured { .. } => measured_output(&o),
+            _ => to_output(&o),
+        },
         Err(e) => Err(harness(format!("cpp: {e}"))),
+    }
+}
+
+/// A `measured` record: the integer record, then on success (`status` 0 and a result)
+/// the measures the shim appends ([`ffi::split_measures`]).
+fn measured_output(o: &[f64]) -> Result<Output, HarnessError> {
+    let succeeded = o.first() == Some(&0.0) && o.get(1) == Some(&1.0);
+    if !succeeded {
+        return to_output(o);
+    }
+    let (head, measures) =
+        ffi::split_measures(o).ok_or_else(|| harness("cpp: measured record too short"))?;
+    Ok(to_output(head)?.values("measures", measures.to_vec()))
+}
+
+/// Whether the Boolean reaches UB-175 (`plan/upstream-issues.md`): the teardown of
+/// `IntersectInsertRelate`'s proto topology manager reads a proto edge it already
+/// freed, so the input is undefined in C++ (AGENTS.md section 4, step 5.6) and [`cpp`]
+/// rejects it. Decided from the inputs and the Rust side only: the port replays the
+/// teardown, goes on with its defined result and records `"UB-175"` on the kernel
+/// ([`Kernel::upstream_ub_passed`]).
+fn ub_175(i: &Inputs) -> Result<bool, HarnessError> {
+    let mut k = Kernel::default();
+    match rust_call_with(&mut k, i, &|_| {}) {
+        Ok(_) | Err(Stop::Deferred(_) | Stop::Torus(_)) => {
+            Ok(k.upstream_ub_passed.contains(&"UB-175"))
+        }
+        Err(Stop::Harness(e)) => Err(e),
     }
 }
 
@@ -251,10 +441,12 @@ fn options(f: FlagsIn) -> MergeOptions {
     )
 }
 
-/// Why a Rust run stopped early: `Unported` defers the case; anything else is a
+/// Why a Rust run stopped early: `Unported` defers the case; a failing torus operand is
+/// the call's record (`status 2`, as the shim's `TorusFailed`); anything else is a
 /// harness error, as the shim treats a failing operand constructor (`SC_ERR_ARG`).
 enum Stop {
     Deferred(Box<Output>),
+    Torus(Box<Output>),
     Harness(HarnessError),
 }
 
@@ -271,18 +463,90 @@ fn stop(what: &str, e: &SolidError) -> Stop {
     }
 }
 
-/// Builds an operand exactly as the shim does (`SmApiCreateBox` / `SmApiCreateSphere`).
+fn p3(p: P3) -> Point3 {
+    Point3::new(p[0], p[1], p[2])
+}
+
+/// Builds an operand exactly as the shim does (`SmApiCreateBox`, `SmApiCreateSphere`,
+/// `SmApiCreatePlane`, `SmApiBoolean`). Nested
+/// operands are at most `ffi::MAX_DEPTH` deep (the FFI rejects deeper ones first).
 fn build(k: &mut Kernel, b: &BrepIn) -> Result<Brep, Stop> {
-    let r = match *b {
-        BrepIn::Box { origin, size } => primitives::create_box(
-            k,
-            Point3::new(origin[0], origin[1], origin[2]),
-            size[0],
-            size[1],
-            size[2],
-        ),
-        BrepIn::Sphere { center, radius } => {
-            primitives::create_sphere(k, Point3::new(center[0], center[1], center[2]), radius)
+    build_at(k, b, 0)
+}
+
+fn build_at(k: &mut Kernel, b: &BrepIn, depth: usize) -> Result<Brep, Stop> {
+    if depth >= ffi::MAX_DEPTH {
+        return Err(Stop::Harness(harness("operand nested too deep")));
+    }
+    let r = match b {
+        &BrepIn::Box { origin, size } => {
+            primitives::create_box(k, p3(origin), size[0], size[1], size[2])
+        }
+        &BrepIn::Sphere { center, radius } => primitives::create_sphere(k, p3(center), radius),
+        &BrepIn::Plane { origin, size } => {
+            primitives::create_plane(k, p3(origin), size[0], size[1])
+        }
+        &BrepIn::Torus {
+            center,
+            major,
+            minor,
+        } => {
+            return primitives::create_torus(k, p3(center), major, minor).map_err(|e| {
+                match Output::unported(&e) {
+                    Some(d) => Stop::Deferred(Box::new(d)),
+                    None => Stop::Torus(Box::new(record(status(&e), vec![2]))),
+                }
+            });
+        }
+        BrepIn::Moved { steps, brep } => {
+            let mut b = build_at(k, brep, depth + 1)?;
+            for m in steps {
+                let moved = match *m {
+                    MoveIn::Rotate {
+                        point,
+                        axis,
+                        angle_deg,
+                    } => api_rotate(
+                        k,
+                        Some(TransformObject::Brep(&mut b)),
+                        p3(point),
+                        p3(axis),
+                        angle_deg,
+                    ),
+                    MoveIn::Translate { vector } => {
+                        api_translate(k, Some(TransformObject::Brep(&mut b)), p3(vector))
+                    }
+                };
+                moved.map_err(|e| stop("operand move", &e))?;
+            }
+            Ok(b)
+        }
+        BrepIn::Boolean { operation, a, b } => {
+            let (a, b) = (build_at(k, a, depth + 1)?, build_at(k, b, depth + 1)?);
+            api::boolean(k, a, b, op(*operation)?).map(|out| out.result)
+        }
+        BrepIn::Skin {
+            counts,
+            curves,
+            degree,
+            cap_ends,
+        } => {
+            let cs = curves
+                .iter()
+                .map(|c| {
+                    let pw = c
+                        .pw()
+                        .iter()
+                        .map(|&[x, y, z, w]| CPoint::new(x, y, z, w))
+                        .collect();
+                    NurbCurve::new(pw, c.p, c.knots.clone())
+                        .map(|n| SmCurve::from(BSplineCurve::from_nurb(n, 3, false)))
+                        .map_err(|e| stop("skin curve", &e))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let refs: Vec<Option<&SmCurve>> = cs.iter().map(Some).collect();
+            let counts: Vec<usize> = counts.iter().map(|&c| c as usize).collect();
+            create_skin_primitive(k, &counts, &refs, *degree as usize, *cap_ends).map(|s| s.brep)
         }
     };
     r.map_err(|e| stop("operand constructor", &e))
@@ -305,7 +569,8 @@ fn count(n: usize) -> Result<i64, HarnessError> {
     i64::try_from(n).map_err(|_| harness("count overflow"))
 }
 
-/// `faces edges vertices regions manifold_solid` of a B-rep (the shim's `put_brep`).
+/// `faces edges vertices regions manifold_solid` of a B-rep, then per region
+/// `is_void is_infinite shells` and per shell `faceuses mate_region` (the shim's `put_brep`).
 fn put_brep(o: &mut Vec<i64>, b: &Brep) -> Result<(), Stop> {
     let regions = brep_p1::regions(b, None).map_err(|e| stop("GetRegions", &e))?;
     let manifold = brep_p2::is_manifold_solid(b).map_err(|e| stop("IsManifoldSolid", &e))?;
@@ -314,7 +579,79 @@ fn put_brep(o: &mut Vec<i64>, b: &Brep) -> Result<(), Stop> {
     o.push(count(b.vertex_list().len())?);
     o.push(count(regions.len())?);
     o.push(i64::from(manifold));
+    for &r in &regions {
+        let region = b.region(r).map_err(|e| stop("GetRegion", &e))?;
+        let shells = region
+            .get_shells(None, |_, _| Ok(false))
+            .map_err(|e| stop("GetShells", &e))?;
+        o.push(i64::from(region.is_void()));
+        o.push(i64::from(region.is_infinite_region(b, r)));
+        o.push(count(shells.len())?);
+        for s in shells {
+            let shell = b.shell(s).map_err(|e| stop("GetShell", &e))?;
+            let faceuses = shell.get_faceuses().map_err(|e| stop("GetFaceuses", &e))?;
+            o.push(count(faceuses.len())?);
+            o.push(mate_region(b, shell.first_faceuse(), &regions)?);
+        }
+    }
     Ok(())
+}
+
+/// Index in `regions` of the region on the other side of `fu` (the shell's first
+/// faceuse), `-1` without one (the shim's `mate_region`).
+fn mate_region(
+    b: &Brep,
+    fu: solidcore::Result<Option<FaceuseId>>,
+    regions: &[RegionId],
+) -> Result<i64, Stop> {
+    let Some(fu) = fu.map_err(|e| stop("GetFirstFaceuse", &e))? else {
+        return Ok(-1);
+    };
+    let Some(mate) = edgeuse_p1::faceuse_mate(b, fu).map_err(|e| stop("GetMate", &e))? else {
+        return Ok(-1);
+    };
+    let shell = edgeuse_p1::faceuse_shell(b, mate).map_err(|e| stop("GetShell", &e))?;
+    let region = match shell {
+        Some(s) => shell_region(b, s).map_err(|e| stop("GetRegion", &e))?,
+        None => None,
+    };
+    match region.and_then(|m| regions.iter().position(|&r| r == m)) {
+        Some(k) => count(k),
+        None => Ok(-1),
+    }
+    .map_err(Stop::from)
+}
+
+/// The shim's `put_measures`: `volume_status volume faces` and the face areas in
+/// ascending order (a failed face as minus its status). An unported callee defers.
+fn measures(k: &Kernel, b: &mut Brep) -> Result<Vec<f64>, Stop> {
+    let store = AttributeStore::default();
+    let attrs = PropertyAttributes {
+        store: &store,
+        key_of: &|_| ObjectKey(0),
+    };
+    let fail = |e: &SolidError| -> Result<f64, Stop> {
+        match Output::unported(e) {
+            Some(d) => Err(Stop::Deferred(Box::new(d))),
+            None => Ok(status(e) as f64),
+        }
+    };
+    let mut o = match brep_volume(k, b, ffi::VOLUME_ACCURACY, &attrs) {
+        Ok(v) => vec![0.0, v],
+        Err(e) => vec![fail(&e)?, 0.0],
+    };
+    let faces = brep_p1::faces(b, None).map_err(|e| stop("GetFaces", &e))?;
+    o.push(faces.len() as f64);
+    let mut areas = Vec::new();
+    for f in faces {
+        areas.push(match face_area(k, b, f, ffi::AREA_ACCURACY) {
+            Ok(a) => a,
+            Err(e) => -fail(&e)?,
+        });
+    }
+    areas.sort_by(f64::total_cmp);
+    o.extend(areas);
+    Ok(o)
 }
 
 /// Whether upstream keeps the second operand of a successful two-B-rep boolean
@@ -345,12 +682,21 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
     let mut k = Kernel::default();
     match rust_call(&mut k, i) {
         Ok(o) => Ok(o),
-        Err(Stop::Deferred(o)) => Ok(*o),
+        Err(Stop::Deferred(o) | Stop::Torus(o)) => Ok(*o),
         Err(Stop::Harness(e)) => Err(e),
     }
 }
 
 fn rust_call(k: &mut Kernel, i: &Inputs) -> Result<Output, Stop> {
+    rust_call_with(k, i, &|_| {})
+}
+
+/// [`rust_call`], showing every error the API returned to `seen`.
+fn rust_call_with(k: &mut Kernel, i: &Inputs, seen: &dyn Fn(&SolidError)) -> Result<Output, Stop> {
+    let err_output = |e: &SolidError| {
+        seen(e);
+        err_output(e)
+    };
     let two = |r: solidcore::Result<api::BooleanOutcome>, kept: bool| match r {
         Ok(out) => two_record(&out, kept),
         Err(e) => Ok(err_output(&e)),
@@ -413,6 +759,7 @@ fn rust_call(k: &mut Kernel, i: &Inputs) -> Result<Output, Stop> {
                 }
                 // Rejected: no result (`cleared`) and the list untouched.
                 Err(e) if matches!(e, SolidError::InvalidInput { .. }) => {
+                    seen(&e);
                     Ok(record(status(&e), vec![1, count(v.len())?]))
                 }
                 Err(e) => Ok(err_output(&e)),
@@ -434,6 +781,23 @@ fn rust_call(k: &mut Kernel, i: &Inputs) -> Result<Output, Stop> {
                     }
                     o.push(count(res.surfaces.len())?);
                     Ok(record(0, o))
+                }
+                Err(e) => Ok(err_output(&e)),
+            }
+        }
+        Inputs::Measured {
+            a,
+            b,
+            operation,
+            post_process,
+        } => {
+            let (a, b) = (build(k, a)?, build(k, b)?);
+            let flags = MergeOptions::new(false, false, *post_process, false, false);
+            match api::boolean_with_options(k, a, b, op(*operation)?, flags) {
+                Ok(mut out) => {
+                    let rec = two_record(&out, keeps_other(*operation, false))?;
+                    let m = measures(k, &mut out.result)?;
+                    Ok(rec.values("measures", m))
                 }
                 Err(e) => Ok(err_output(&e)),
             }

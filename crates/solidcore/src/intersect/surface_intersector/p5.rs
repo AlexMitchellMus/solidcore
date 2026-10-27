@@ -1,12 +1,12 @@
 //! `SmSurfaceIntersector`, part 5: the top level surface/surface intersection
-//! ([`AdvSurfaceIntersector::do_intersection`]) and its grazing-box shortcut
+//! ([`do_intersection`]) and its grazing-box shortcut
 //! ([`SurfaceIntersector::grazing_box_process`]).
 //!
 //! Upstream: `source/SMLib/src/SmSurfaceIntersector.cpp`.
 //!
 //! | Rust                                                  | Upstream                      |
 //! |-------------------------------------------------------|-------------------------------|
-//! | [`AdvSurfaceIntersector::do_intersection`], [`AdvSurfaceIntersector::do_intersection_with_caches`] | `DoIntersection` |
+//! | [`do_intersection`], [`AdvSurfaceIntersector::do_intersection_with_caches`] | `DoIntersection` |
 //! | [`intersection_surface_caches`], [`IntersectionSurface`] | the `smsurf_GetSurfaceCache` / `GetTree` calls at the top of `DoIntersection` |
 //! | [`SurfaceIntersector::grazing_box_process`], [`GrazingBox`] | `GrazingBoxProcess`     |
 //!
@@ -24,7 +24,7 @@
 //!   [`AdvSurfaceIntersector::new`] sets.
 //! - **Surface caches.** Rust surfaces keep no cache, so the caller hands the caches
 //!   in ([`intersection_surface_caches`] builds them as `smsurf_GetSurfaceCache` /
-//!   `GetTree` would; [`AdvSurfaceIntersector::do_intersection`] does both). One
+//!   `GetTree` would; [`do_intersection`] does both). One
 //!   cache per surface, one for a self intersection (upstream gets the same cache
 //!   twice). The temporary flags (`m_bPointTestEnabled = FALSE`,
 //!   `m_bProcessBoundaryCurves = TRUE`) are set before the first solve rather than
@@ -147,12 +147,17 @@ fn intersection_surface_caches_in<O: Copy + PartialEq>(
     };
     let [h1, h2] = handles;
     let mut get = |s, h| -> Result<SurfaceCache<O>> {
-        let built = match context.as_mut() {
-            Some(ctx) => ctx.build_surface_cache(k, s, h),
-            None => surface_cache::<O>(k, s, h),
+        let (built, from_context) = match context.as_mut() {
+            Some(ctx) => (ctx.build_surface_cache(k, s, h), true),
+            None => (surface_cache::<O>(k, s, h), false),
         };
         let mut c = built.map_err(ner)?;
-        c.get_tree(k).map_err(ner)?;
+        // A context builds the cache with its tree ready (`GetTree` through the face
+        // that owns the surface, `SurfaceSolveContext::build_surface_cache`): calling
+        // `GetTree` again here, in the same state, would rebuild the same tree.
+        if !(from_context && c.tree().is_some()) {
+            c.get_tree(k).map_err(ner)?;
+        }
         Ok(c)
     };
     let mut caches = vec![get(si.surface(SrfIndex::First), h1)?];
@@ -382,12 +387,13 @@ pub fn do_intersection_with_context<O: SolutionObject + Copy + PartialEq>(
     ssi.base
         .set_use_surface_edges(use_surface_edges[0], use_surface_edges[1]);
     caches = intersection_surface_caches_with_context(k, &ssi.base, handles, context)?;
-    ssi.do_intersection_with_caches_and_queries(
+    ssi.do_intersection_in(
         k,
         &mut caches,
         opt_approx_tol_3d,
         opt_ang_tol_rad,
         context.face_queries(),
+        true,
     )
 }
 
@@ -453,7 +459,6 @@ impl<'t, O: SolutionObject + Copy + PartialEq + 't> AdvSurfaceIntersector<'_, 't
     /// # Errors
     ///
     /// As [`AdvSurfaceIntersector::do_intersection_with_caches`].
-    #[allow(clippy::too_many_lines)] // one upstream function
     pub fn do_intersection_with_caches_and_queries(
         &mut self,
         k: &Kernel,
@@ -461,6 +466,31 @@ impl<'t, O: SolutionObject + Copy + PartialEq + 't> AdvSurfaceIntersector<'_, 't
         opt_approx_tol_3d: Option<f64>,
         opt_ang_tol_rad: Option<f64>,
         queries: Option<&dyn FaceQueries<O>>,
+    ) -> Result<SurfaceIntersection> {
+        self.do_intersection_in(
+            k,
+            caches,
+            opt_approx_tol_3d,
+            opt_ang_tol_rad,
+            queries,
+            false,
+        )
+    }
+
+    /// [`AdvSurfaceIntersector::do_intersection_with_caches_and_queries`]; with
+    /// `trees_ready` the caches came from a face-aware context with their trees ready
+    /// (`GetTree` just ran through their faces), so a cache with a tree is not asked
+    /// for it again: in the same state that `GetTree` would rebuild the same tree, and
+    /// the two flags its rebuild sets are overwritten below.
+    #[allow(clippy::too_many_lines)] // one upstream function
+    fn do_intersection_in(
+        &mut self,
+        k: &Kernel,
+        caches: &'t mut [SurfaceCache<O>],
+        opt_approx_tol_3d: Option<f64>,
+        opt_ang_tol_rad: Option<f64>,
+        queries: Option<&dyn FaceQueries<O>>,
+        trees_ready: bool,
     ) -> Result<SurfaceIntersection> {
         let mut result = SurfaceIntersection::default();
 
@@ -477,13 +507,15 @@ impl<'t, O: SolutionObject + Copy + PartialEq + 't> AdvSurfaceIntersector<'_, 't
             return Err(SolidError::null_pointer(OP_DI));
         }
         for c in caches.iter_mut().take(2) {
-            c.get_tree(k).map_err(|e| {
-                if e.is_unported() {
-                    e
-                } else {
-                    SolidError::null_pointer(OP_DI)
-                }
-            })?;
+            if !(trees_ready && c.tree().is_some()) {
+                c.get_tree(k).map_err(|e| {
+                    if e.is_unported() {
+                        e
+                    } else {
+                        SolidError::null_pointer(OP_DI)
+                    }
+                })?;
+            }
 
             // Turn off point testing so GlobalPointSolve() keeps all point solutions;
             // turn on boundary curve processing so LocalSolve looks for drop points on
@@ -618,9 +650,13 @@ impl<'t, O: SolutionObject + Copy + PartialEq + 't> AdvSurfaceIntersector<'_, 't
         }
 
         // get StartPoints = Surf1->NaturalBoundaryCurve/Surf2 Intersections and
-        // Surf1/Surf2->NaturalBoundaryCurve Intersections (on copies of the caches)
+        // Surf1/Surf2->NaturalBoundaryCurve Intersections (on copies of the caches:
+        // exact ones, since upstream searches its own caches)
         if !self.base.doing_self_intersection {
-            let mut boundary_caches = caches.to_vec();
+            let mut boundary_caches = caches
+                .iter()
+                .map(SurfaceCache::clone_for_evaluation)
+                .collect::<Result<Vec<_>>>()?;
             self.base.find_boundary_start_points_with_queries(
                 k,
                 &mut boundary_caches,

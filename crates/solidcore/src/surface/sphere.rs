@@ -526,6 +526,15 @@ impl Sphere {
 
     // ---- offset ---------------------------------------------------------------------
 
+    /// Not upstream (`SmSurface::OffsetCollapses`, WR-464): whether the offset radius is
+    /// below `tol`, where [`Self::create_offset_surface`] gives no surface.
+    #[must_use]
+    pub fn offset_collapses(&self, signed_offset_distance: f64, tol: f64) -> bool {
+        let sign =
+            if self.base.swap_uv { -1.0 } else { 1.0 } * if self.inside_out { -1.0 } else { 1.0 };
+        self.radius + sign * signed_offset_distance < tol
+    }
+
     /// The sphere offset by `signed_offset_distance` along the NURB normal
     /// (`CreateOffsetSurface`): a copy with the radius changed by the distance
     /// (negated with [`SurfOfRevolution::swap_uv`] and with [`Self::inside_out`]), the
@@ -623,14 +632,10 @@ impl Sphere {
     /// generator that is not a circle; those of the conversions.
     pub fn convert_uv_from_step_to_nurbs(&self, k: &Kernel, step_uv: Point2) -> Result<Point2> {
         // convert sweep coordinate
-        let polar_curve = self
-            .base
-            .polar_curve
-            .as_ref()
-            .ok_or(SolidError::invalid_input(
-                OP_CONVERT,
-                "polar converter has no curve",
-            ))?;
+        let polar_curve = self.base.polar_curve().ok_or(SolidError::invalid_input(
+            OP_CONVERT,
+            "polar converter has no curve",
+        ))?;
         let (mut nurbs_x, _exact) =
             self.base
                 .polar
@@ -911,7 +916,7 @@ impl Sphere {
         // check for special cases
         let mut need_nurb_intersection = true;
         let mut out = SurfaceIntersection::default();
-        match other.kind() {
+        match other.kind_with_nurb(k)? {
             SurfaceKind::Plane(p) => {
                 let (more, found) =
                     self.intersect_with_plane(k, uv_domain, p, other_uv_domain, approx_tol_3d)?;
@@ -2699,7 +2704,7 @@ fn convert_uv_from_nurbs_to_step(
     };
 
     // convert sweep coordinate
-    let polar_curve = base.polar_curve.as_ref().ok_or(SolidError::invalid_input(
+    let polar_curve = base.polar_curve().ok_or(SolidError::invalid_input(
         OP_CONVERT,
         "polar converter has no curve",
     ))?;
@@ -2773,7 +2778,7 @@ mod tests {
             &k,
             &domain,
             &other,
-            &other.natural_uv_domain(),
+            &other.natural_uv_domain_if_built(),
             [true, true],
             None,
             None,

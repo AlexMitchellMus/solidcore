@@ -17,7 +17,9 @@
 //! on the Rust side), whose objects the Rust side notifies under identities of their
 //! own ([`source_key_of`]). `DeleteFace` always passes a deleted list
 //! (`pOptDeletedEdgesVertices`); the header default `NULL` only skips its `Add`s and
-//! is not compared.
+//! is not compared. `CopyVertices` also appends the source and existing destination
+//! vertex coordinates before/after copying, then the returned vertices' destination
+//! walk indices and coordinates in returned order.
 //!
 //! `Orient` outputs three values ([`split_orient`]): `out` (status, flag, face domains
 //! and upward face uses, counts), `swapped` (each face's `SmFace::SwapUV` `POST_EDIT`
@@ -366,6 +368,24 @@ fn key_of(e: EntityRef) -> ObjectRef {
     }
 }
 
+/// The entity a [`key_of`] key names (`None` for another key).
+fn entity_of_key(key: ObjectKey) -> Option<EntityRef> {
+    let i = u32::try_from((key.0 & 0xffff_ffff).checked_sub(1)?).ok()?;
+    Some(match key.0 >> 32 {
+        1 => EntityRef::Region(RegionId::from_index(i)),
+        2 => EntityRef::Shell(ShellId::from_index(i)),
+        3 => EntityRef::Faceuse(FaceuseId::from_index(i)),
+        4 => EntityRef::Face(FaceId::from_index(i)),
+        5 => EntityRef::Loopuse(LoopuseId::from_index(i)),
+        6 => EntityRef::Loop(LoopId::from_index(i)),
+        7 => EntityRef::Edgeuse(EdgeuseId::from_index(i)),
+        8 => EntityRef::Edge(EdgeId::from_index(i)),
+        9 => EntityRef::Vertexuse(VertexuseId::from_index(i)),
+        10 => EntityRef::Vertex(VertexId::from_index(i)),
+        _ => return None,
+    })
+}
+
 /// The identity of the source B-rep's entities in a copy or merge into another B-rep
 /// (its ids overlap the destination's, which are notified under [`key_of`]).
 fn source_key_of(e: EntityRef) -> ObjectRef {
@@ -443,6 +463,9 @@ fn rust_brep(path: &str, h: &[f64], c: &[usize; 10]) -> Result<Brep, HarnessErro
                 let _ = surface.set_owner(Some(arena_identity(CacheObject::Face(id))));
             }
         }
+        // the face's tolerance, as the face upstream answers GetTolerance with
+        b.sync_face_surface_tolerance(id)
+            .map_err(|e| harness(e.to_string()))?;
     }
     // the shared import leaves `m_pFU` unset: the face's upward (SAME) face use
     let ups: Vec<(FaceId, FaceuseId)> = b
@@ -1208,8 +1231,13 @@ fn run_rust_op(
     // Execute's owner walk: each pre-op curve's GetOwner() is its edge
     tracker.set_owner_metadata(owners.into_iter().map(|(c, e)| (c.key, Some(e))).collect());
     let r = run_rust_op_in(k, b, second, op, a, Some(&mut ctx));
+    // the shim's StopTracking before put_tracker: 1.0.1 records the completed edit's
+    // dependencies (RecordDependencies) on the tracker's lists
+    let recorded =
+        tracker.stop_tracking_with_brep(Some(&mut ctx), b, &entity_of_key, &|e| key_of(e).key);
     let lists = tracker.lists();
     tracker.finish(Some(&mut ctx));
+    must(recorded)?;
     drop(must(ctx.take_notify_lease())?);
     let mut out = r?;
     let geometry_seen = seen
@@ -1375,14 +1403,30 @@ fn run_rust_op_in(
         }
         OpIn::CopyVertices { .. } => {
             let dst = second.ok_or_else(|| Fail::Harness(harness("no second B-rep")))?;
+            let source = must(bp1::vertices(b, None))?;
+            let existing = must(bp1::vertices(dst, None))?;
+            let mut geometry = Vec::new();
+            put_vertex_points(&mut geometry, b, &source)?;
+            put_vertex_points(&mut geometry, dst, &existing)?;
             let n = arg(0)? as usize;
             let vs: Vec<VertexId> = (0..n)
                 .map(|j| arg(1 + j).map(|x| VertexId::from_index(x as u32)))
                 .collect::<Result<_, _>>()?;
             let (s, r) = status(bp3::copy_vertices(k, b, &vs, dst, &mut env, &source_key_of))?;
             out.push(s);
-            out.push(r.map_or(0.0, |x| x.len() as f64));
+            out.push(r.as_ref().map_or(0.0, |x| x.len() as f64));
             put_counts(&mut out, dst)?;
+            put_vertex_points(&mut geometry, b, &source)?;
+            put_vertex_points(&mut geometry, dst, &existing)?;
+            let copied = r.unwrap_or_default();
+            let post = walk(dst)?;
+            geometry.push(copied.len() as f64);
+            for v in copied {
+                geometry.push(post.find(9, Some(v.index())));
+                let p = must(solidcore::topology::vertex::point(dst, v))?;
+                geometry.extend([p.x, p.y, p.z]);
+            }
+            out.extend(geometry);
         }
         OpIn::DeleteFace { .. } => {
             let f = FaceId::from_index(arg(0)? as u32);
@@ -1501,7 +1545,7 @@ fn run_rust_op_in(
                 let s = must(b.face(f))?.surface.as_ref();
                 out.push(s.map_or(-1.0, |x| x.type_code() as f64));
                 if let (Some(_), Some(s)) = (offset, s) {
-                    let d = s.natural_uv_domain();
+                    let d = s.natural_uv_domain_with_nurb(k).map_err(|e| HarnessError::new(e.to_string()))?;
                     out.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
                 }
             }
@@ -1509,6 +1553,15 @@ fn run_rust_op_in(
         }
     }
     Ok(out)
+}
+
+fn put_vertex_points(o: &mut Vec<f64>, b: &Brep, vertices: &[VertexId]) -> Result<(), Fail> {
+    o.push(vertices.len() as f64);
+    for &v in vertices {
+        let p = must(solidcore::topology::vertex::point(b, v))?;
+        o.extend([p.x, p.y, p.z]);
+    }
+    Ok(())
 }
 
 fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
@@ -1698,6 +1751,33 @@ impl UnitDiff for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_vertices_observes_returned_geometry_and_order() {
+        let i: Inputs = serde_json::from_value(serde_json::json!({
+            "brep": { "kind": "wire", "curve": { "dim": 3, "p": 1,
+                "cpts": [[2, -3, 5, 1], [7, 11, -13, 1]], "u": [0, 0, 1, 1] },
+                "t0": 0, "t1": 1 },
+            "editing": -1, "op": "copy_vertices", "vertices": [1, 0, 1]
+        }))
+        .unwrap();
+        let cpp = run_cpp(&i).unwrap();
+        let mut rust = run_rust(&i).unwrap();
+        assert!(crate::compare::compare(&cpp, &rust, &[]).pass());
+        let out = rust.values.get_mut("out").unwrap();
+        let tail = &out[out.len() - 13..];
+        assert_eq!(tail[0], 3.0);
+        assert_eq!(&tail[2..5], &[7.0, 11.0, -13.0]);
+        assert_eq!(&tail[6..9], &[2.0, -3.0, 5.0]);
+        assert_eq!(&tail[10..13], &[7.0, 11.0, -13.0]);
+        assert_ne!(
+            tail[1], tail[9],
+            "repeated input must yield distinct copies"
+        );
+        // A wrong copied coordinate must fail independently of counts and graph.
+        *out.last_mut().unwrap() += 1.0;
+        assert!(!crate::compare::compare(&cpp, &rust, &[]).pass());
+    }
 
     /// Classifies the passing cases of the committed report by op and C++ status
     /// (`out[0]` the build status, `out[1]` the op's), the split the PR and the

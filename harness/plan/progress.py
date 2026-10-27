@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Regenerate plan/PROGRESS.md from plan/units/*.toml and the difftest reports.
 
-CI (.github/workflows/progress.yml) runs this on main and commits the result; PRs never
-edit plan/PROGRESS.md. Locally:
+The Pages workflow (.github/workflows/pages.yml) runs this on main and publishes the result
+on the site as PROGRESS.md; plan/PROGRESS.md is gitignored and never committed. Locally:
     python3 harness/plan/progress.py          # from plan/units and reports/difftest/
     python3 harness/plan/progress.py --prs    # also mark units with an open "port: <id>" PR
 Output is deterministic (no timestamps); statuses, claims and report counts drive changes.
@@ -30,8 +30,16 @@ ICON = {"green": "✅", "partial": "🟡", "claimed": "🔨", "blocked": "⛔", 
 
 
 def load_units():
-    """Units from plan/units/*.toml (sorted by id)."""
-    return plan_units.load_units(ROOT)
+    """Units from plan/units/*.toml (sorted by id). `est_lines` is recomputed from
+    harness/callgraph/units.json (the functions each unit owns at the pinned upstream
+    commit, scripts/upstream-pin.env) for every unit listed there, so the line counts
+    follow the pin; units the call graph does not list keep their toml value."""
+    units = plan_units.load_units(ROOT)
+    lines = plan_units.callgraph_lines(ROOT)
+    for u in units:
+        if u["id"] in lines:
+            u["est_lines"] = lines[u["id"]]
+    return units
 
 
 def load_case_counts(units):

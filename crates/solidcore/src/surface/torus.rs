@@ -44,6 +44,9 @@
 //!   (upstream ignores it and reads the corner it may not have written).
 //!   [`Torus::intersect_with_plane`] runs the inherited `IntersectWithPlane` with the
 //!   torus's iso circles.
+//! - **Iso endpoint angles.** Correct upstream's explicit-domain endpoint vectors
+//!   to be relative to the iso circle's center, not the torus origin (#774).
+//!   Extraction, periodic wrapping and interval-length policy remain unchanged.
 //! - **Copies.** As upstream's copy constructor, which leaves `m_bInsideOut` at its
 //!   default, `Clone` (and [`Torus::copy`]) resets [`Torus::inside_out`] to `false`.
 //!   The constructor also leaves it `false` (its `bInsideOut` only orients the minor
@@ -550,6 +553,14 @@ impl Torus {
 
     // ---- offset ---------------------------------------------------------------------
 
+    /// Not upstream (`SmSurface::OffsetCollapses`, WR-464): whether the offset minor
+    /// radius is below `tol`, where [`Self::create_offset_surface`] gives no surface.
+    #[must_use]
+    pub fn offset_collapses(&self, signed_offset_distance: f64, tol: f64) -> bool {
+        let sign = if self.base.swap_uv { -1.0 } else { 1.0 };
+        self.minor_radius + sign * signed_offset_distance < tol
+    }
+
     /// The torus offset by `signed_offset_distance` along the NURB normal
     /// (`CreateOffsetSurface`): a copy with the minor radius changed by the distance
     /// (negated with [`SurfOfRevolution::swap_uv`]), the generator scaled about its
@@ -664,14 +675,10 @@ impl Torus {
     /// generator that is not a circle; those of the conversions.
     pub fn convert_uv_from_step_to_nurbs(&self, k: &Kernel, step_uv: Point2) -> Result<Point2> {
         // convert sweep coordinate
-        let polar_curve = self
-            .base
-            .polar_curve
-            .as_ref()
-            .ok_or(SolidError::invalid_input(
-                OP_CONVERT,
-                "polar converter has no curve",
-            ))?;
+        let polar_curve = self.base.polar_curve().ok_or(SolidError::invalid_input(
+            OP_CONVERT,
+            "polar converter has no curve",
+        ))?;
         let (mut nurbs_x, _exact) =
             self.base
                 .polar
@@ -977,22 +984,36 @@ impl Torus {
         let vec_min = nurb_min_point - min_origin;
         let vec_max = nurb_max_point - max_origin;
 
-        // get GenCurve min and max angles (statuses ignored upstream: 0 on failure)
-        let mut gen_angle_min = ignored(start_for_min_angle.angle_between(vec_min))?.unwrap_or(0.0);
-        let mut gen_angle_max = ignored(start_for_max_angle.angle_between(vec_max))?.unwrap_or(0.0);
-        gen_angle_min = 180.0 * gen_angle_min / PI;
-        gen_angle_max = 180.0 * gen_angle_max / PI;
+        // not upstream (WR-408, tangency-labs/solidcore#1112, opt-in): signed angles
+        let (gen_angle_min, gen_angle_max) = if k.fixes.torus_signed_gen_curve_interval {
+            torus_gen_curve_interval(
+                [start_for_min_angle, vec_min],
+                [start_for_max_angle, vec_max],
+                torus_z_axis,
+                inside_out,
+            )?
+        } else {
+            // get GenCurve min and max angles (statuses ignored upstream: 0 on failure)
+            let mut gen_angle_min =
+                ignored(start_for_min_angle.angle_between(vec_min))?.unwrap_or(0.0);
+            let mut gen_angle_max =
+                ignored(start_for_max_angle.angle_between(vec_max))?.unwrap_or(0.0);
+            gen_angle_min = 180.0 * gen_angle_min / PI;
+            gen_angle_max = 180.0 * gen_angle_max / PI;
 
-        // snap to ends for small tolerances
-        if gen_angle_min.abs() < EFF_ZERO_DEG {
-            gen_angle_min = 0.0;
-        }
-        if gen_angle_max.abs() < EFF_ZERO_DEG || (gen_angle_max - 360.0).abs() < EFF_ZERO_DEG {
-            gen_angle_max = 360.0;
-        }
-        if gen_angle_max < gen_angle_min + EFF_ZERO_DEG {
-            gen_angle_max += 360.0;
-        }
+            // snap to ends for small tolerances
+            if gen_angle_min.abs() < EFF_ZERO_DEG {
+                gen_angle_min = 0.0;
+            }
+            if gen_angle_max.abs() < EFF_ZERO_DEG || (gen_angle_max - 360.0).abs() < EFF_ZERO_DEG {
+                gen_angle_max = 360.0;
+            }
+            if gen_angle_max < gen_angle_min + EFF_ZERO_DEG {
+                gen_angle_max += 360.0;
+            }
+
+            (gen_angle_min, gen_angle_max)
+        };
 
         // define Torus domain
         let anal_uv_domain = Extent2d::from_bounds(
@@ -1211,7 +1232,6 @@ fn iso_curve(
     let nurb_min_point = iso.curve.evaluate_point(nurb_ivl.min())?;
     let nurb_max_point = iso.curve.evaluate_point(nurb_ivl.max())?;
     let nurb_min_vec = nurb_min_point - torus_origin;
-    let nurb_max_vec = nurb_max_point - torus_origin;
 
     // get iso circle parameters
     let (circle_center, x_axis, y_axis, radius, inside_out, anal_domain) = if step_param
@@ -1256,10 +1276,12 @@ fn iso_curve(
         // get angles to min/max points inside periodic interval (statuses ignored
         // upstream; a failed angle is 0)
         let circle_z_axis = x_axis.cross(y_axis);
+        let circle_min_vec = nurb_min_point - circle_center;
+        let circle_max_vec = nurb_max_point - circle_center;
         let min_ang_rad =
-            ignored(circle_z_axis.ccw_angle_between(x_axis, nurb_min_vec))?.unwrap_or(0.0);
+            ignored(circle_z_axis.ccw_angle_between(x_axis, circle_min_vec))?.unwrap_or(0.0);
         let max_ang_rad =
-            ignored(circle_z_axis.ccw_angle_between(x_axis, nurb_max_vec))?.unwrap_or(0.0);
+            ignored(circle_z_axis.ccw_angle_between(x_axis, circle_max_vec))?.unwrap_or(0.0);
         let min_ang_deg = anal_domain
             .contains_periodic_value(min_ang_rad * 180.0 / PI, 360.0, -1.0)
             .periodic_value;
@@ -1328,7 +1350,7 @@ fn convert_uv_from_nurbs_to_step(
     };
 
     // convert sweep coordinate
-    let polar_curve = base.polar_curve.as_ref().ok_or(SolidError::invalid_input(
+    let polar_curve = base.polar_curve().ok_or(SolidError::invalid_input(
         OP_CONVERT,
         "polar converter has no curve",
     ))?;
@@ -1340,6 +1362,52 @@ fn convert_uv_from_nurbs_to_step(
     let circle = gen_circle(base.gen_curve.as_ref(), OP_CONVERT)?;
     let polar_param = circle.convert_t_from_nurbs_to_step(k, nurb_uv.y)?;
     Ok(Point2::new(step_x, polar_param))
+}
+
+/// Not upstream (WR-408, tangency-labs/solidcore#1112; the SolidCraft fork's
+/// `sm_TorusGenCurveInterval`): the generating circle's analytic interval, in degrees,
+/// from the NURB's first and last points, each given as `[x, vec]`: its circle's unit X
+/// axis (from the torus axis out to the circle's centre) and the vector from that centre
+/// to the point. Each angle is measured counter-clockwise from X toward the torus's
+/// `z_axis` (about `x * z_axis`), as `EvaluateSTEP` measures V, over a whole turn; an
+/// inside-out torus runs its NURB the other way round, so its last point starts the
+/// interval. Angles within `EFF_ZERO_DEG` of 0 snap to it, and the end is lifted a turn
+/// when it is not above the start. Upstream measured both with the unsigned
+/// `AngleBetween`, which mirrors an interval below the equator or past 180 degrees
+/// (-90..90 became 90..450, the inner half of the tube).
+///
+/// # Errors
+///
+/// Those of `CCWAngleBetween`.
+fn torus_gen_curve_interval(
+    first: [Vec3; 2],
+    last: [Vec3; 2],
+    z_axis: Vec3,
+    inside_out: bool,
+) -> Result<(f64, f64)> {
+    let [x_first, vec_first] = first;
+    let [x_last, vec_last] = last;
+    let first_rad = x_first
+        .cross(z_axis)
+        .ccw_angle_between(x_first, vec_first)?;
+    let last_rad = x_last.cross(z_axis).ccw_angle_between(x_last, vec_last)?;
+    let first_deg = 180.0 * first_rad / PI;
+    let last_deg = 180.0 * last_rad / PI;
+    let (mut low, mut high) = if inside_out {
+        (last_deg, first_deg)
+    } else {
+        (first_deg, last_deg)
+    };
+    if low.abs() < EFF_ZERO_DEG {
+        low = 0.0;
+    }
+    if high.abs() < EFF_ZERO_DEG {
+        high = 0.0;
+    }
+    if high < low + EFF_ZERO_DEG {
+        high += 360.0;
+    }
+    Ok((low, high))
 }
 
 #[cfg(test)]
@@ -1365,6 +1433,100 @@ mod tests {
             None,
         )
         .expect("torus")
+    }
+
+    #[test]
+    fn iso_circle_full_turn_domains_and_conversions() {
+        let k = Kernel::default();
+        let frames = [
+            Axis2Placement::IDENTITY,
+            Axis2Placement::new(
+                Vec3::new(1.0, 2.0, 0.5),
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(0.0, 0.0, 1.0),
+            ),
+        ];
+        for frame in &frames {
+            for shift in [0.0, 45.0] {
+                let analytic = Extent2d::from_bounds(shift, shift, shift + 360.0, shift + 360.0);
+                for swap in [false, true] {
+                    for inside_out in [false, true] {
+                        let mut t = Torus::create_canonical(
+                            &k,
+                            frame,
+                            3.0,
+                            1.0,
+                            TorusOptions {
+                                swap_uv: swap,
+                                inside_out,
+                                circle_nurb: None,
+                            },
+                            Some(&analytic),
+                        )
+                        .expect("torus");
+
+                        // The constructor orients the generator but
+                        // deliberately leaves the torus flag false. Exercise
+                        // consistently oriented iso circles here.
+                        t.inside_out = inside_out;
+                        let domain = t.base.base.natural_uv_domain();
+                        for minor in [true, false] {
+                            let param = if minor == swap {
+                                SurfParamType::V
+                            } else {
+                                SurfParamType::U
+                            };
+                            let fixed = if param == SurfParamType::U {
+                                domain.u_interval().evaluate(0.25)
+                            } else {
+                                domain.v_interval().evaluate(0.25)
+                            };
+                            for explicit in [false, true] {
+                                let iso = t
+                                    .create_iso_parametric_curve(
+                                        &k,
+                                        param,
+                                        fixed,
+                                        explicit.then_some(&domain),
+                                        false,
+                                    )
+                                    .expect("iso circle");
+                                let CurveKind::Ellipse(circle) = iso.curve.kind() else {
+                                    panic!("expected circle");
+                                };
+                                let interval = circle.step_interval();
+                                assert!(
+                                    (interval.min() - shift).abs() < 1e-9
+                                        && (interval.max() - (shift + 360.0)).abs() < 1e-9,
+                                    "minor={minor} explicit={explicit} swap={swap} inside_out={inside_out}: {interval:?}"
+                                );
+                                for fraction in [0.0, 0.25, 0.5, 0.75, 1.0] {
+                                    let step = interval.evaluate(fraction);
+                                    let nurb = circle
+                                        .convert_t_from_step_to_nurbs(&k, step)
+                                        .expect("STEP to NURBS");
+                                    assert!(nurb.is_finite());
+                                    let back = circle
+                                        .convert_t_from_nurbs_to_step(&k, nurb)
+                                        .expect("NURBS to STEP");
+                                    assert!(back.is_finite());
+                                    let p =
+                                        circle.base().evaluate_point(nurb).expect("NURBS point");
+                                    let requested = circle
+                                        .evaluate_step_point(step)
+                                        .expect("requested STEP point");
+                                    let returned = circle
+                                        .evaluate_step_point(back)
+                                        .expect("returned STEP point");
+                                    assert!((p - requested).length() < 1e-9);
+                                    assert!((p - returned).length() < 1e-9);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -1464,5 +1626,46 @@ mod tests {
         let mut db = DatabaseReader::new();
         let r = Torus::read_from_db(&Kernel::default(), &mut db, 0);
         assert!(r.is_err());
+    }
+
+    /// A quarter turn of a torus whose generating interval runs below its equator
+    /// (-90 to 90 degrees, the outer half of the tube), rebuilt from its NURB as
+    /// `SmFace::SwapUV` does: with the opt-in the interval is the outer half again (270 to
+    /// 450, the same arc); upstream's unsigned angles give 90 to 450, the inner half
+    /// (WR-408).
+    #[test]
+    fn issue_1112_rebuilt_torus_keeps_an_interval_below_its_equator() {
+        let mut k = Kernel::default();
+        k.fixes.torus_signed_gen_curve_interval = true;
+        let frame = Axis2Placement::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+        let t = Torus::create_canonical(
+            &k,
+            &frame,
+            14.0,
+            7.0,
+            TorusOptions::default(),
+            Some(&Extent2d::from_bounds(0.0, -90.0, 90.0, 90.0)),
+        )
+        .unwrap();
+        let mut r = t.clone();
+        r.rebuild_step_from_nurb_parameters(&k).expect("rebuild");
+        let v = r.base.anal_uv_domain.v_interval();
+        assert!((v.length() - 180.0).abs() < 1e-9, "v {v:?}");
+        let turn = (v.min() - 270.0).rem_euclid(360.0);
+        assert!(turn < 1e-9 || turn > 360.0 - 1e-9, "v {v:?}");
+        // the same points as the original's
+        for (u, f) in [(10.0, 0.25), (45.0, 0.5), (80.0, 0.75)] {
+            let p = t
+                .evaluate_step_point(Point2::new(u, -90.0 + 180.0 * f))
+                .unwrap();
+            let q = r
+                .evaluate_step_point(Point2::new(u, v.min() + v.length() * f))
+                .unwrap();
+            assert!((p - q).length() < 1e-9, "{p:?} {q:?}");
+        }
     }
 }

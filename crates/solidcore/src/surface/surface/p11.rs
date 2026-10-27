@@ -1197,23 +1197,16 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CsGlobalSolver<'t, '_, O
     ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
         // (surface::surface::p5)
         // the solutions name the solve's curve and surface (`&crCurve`, `this`)
-        match &self.operands {
-            Some(operands) => cs_identical_solutions_in(
-                self.kernel,
-                &self.base,
-                self.surface,
-                sol1,
-                sol2,
-                operands,
-            ),
-            None => cs_identical_solutions_in(
-                self.kernel,
-                &self.base,
-                self.surface,
-                sol1,
-                sol2,
-                &crate::geom::solution_array::OwnDomains,
-            ),
+        if let Some(operands) = &self.operands {
+            cs_identical_solutions_in(self.kernel, &self.base, self.surface, sol1, sol2, operands)
+        } else {
+            let domains = super::p1::SolveOperands {
+                operands: [
+                    super::p5::curve_operand(&self.base, 0, self.curve),
+                    super::p5::surface_operand(&self.base, 1, self.surface_cache, self.surface),
+                ],
+            };
+            cs_identical_solutions_in(self.kernel, &self.base, self.surface, sol1, sol2, &domains)
         }
     }
 }
@@ -1488,9 +1481,9 @@ impl<'t, O: SolutionObject + 't> SsGlobalSolver<'t, '_, O> {
                 // natural domains, with boundary testing)
                 let found = view1.eval.local_surface_intersect(
                     k,
-                    &view1.eval.natural_uv_domain(),
+                    &view1.eval.natural_uv_domain_with_nurb(k)?,
                     view2.eval,
-                    &view2.eval.natural_uv_domain(),
+                    &view2.eval.natural_uv_domain_with_nurb(k)?,
                     tol,
                     uv_guess1,
                     uv_guess2,
@@ -2019,7 +2012,7 @@ impl Surface {
                 let lift_handle = BoundaryCurveHandle(0, uv_curve.natural_interval());
 
                 // for every U knot (SER: checked)
-                let (knots, _) = self.knots(SurfParamType::U, None)?;
+                let (knots, _) = self.knots_with_nurb(k, SurfParamType::U, None)?;
                 let u_conts = cache.u_continuities();
                 let size = u_conts.len().saturating_sub(1);
                 for iu in 1..size {
@@ -2042,7 +2035,7 @@ impl Surface {
                 }
 
                 // for every V knot (SER: checked)
-                let (knots, _) = self.knots(SurfParamType::V, None)?;
+                let (knots, _) = self.knots_with_nurb(k, SurfParamType::V, None)?;
                 let v_conts = cache.v_continuities();
                 let size = v_conts.len().saturating_sub(1);
                 for iv in 1..size {

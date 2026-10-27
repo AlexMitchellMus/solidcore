@@ -10,9 +10,10 @@
 // validates every input. B-rep blocks are those of sc_topology_fixture.h (kinds 0..3)
 // plus kind 4 (SmPrimitiveCreation::CreateBox, as prog_test
 // my_test_squeeze_edge_tracks_removal) and kind 5 (a full SmSphere face, as prog_test
-// my_test_closed_sphere_properties). Analytic face surfaces and edge curves other than
-// SmPlane / SmLine are replaced by plain B-spline copies (what the Rust import
-// rebuilds, as the heal.gap shim does), then the graph is walked (with the vertex
+// my_test_closed_sphere_properties). Surfaces and edge curves the shared exporters can
+// carry as their exact analytic kind (planes, circles and ellipses) are kept; any other
+// surface or edge curve is replaced by a plain B-spline copy (what the Rust import
+// rebuilds, as the heal.gap shim does). Then the graph is walked (with the vertex
 // lists) and exported, followed by each vertex's vertex use list.
 #include "sc_topology_fixture.h"
 
@@ -55,9 +56,21 @@ SmBSplineCurve* plain_curve(SmCurve* c)
     return new (the_context()) SmBSplineCurve(sm_AllocateAndCopyNurbCurve(nurb), b->GetDim(), FALSE);
 }
 
-// Match the shared export/import: preserve exact analytic surfaces, and replace
-// other surfaces and edge curves with plain B-splines, as the heal.gap shim does.
-// Replaced originals are left unowned and leaked.
+// Whether the shared graph exporter transports `c` as its exact analytic kind.
+// Probe that exporter instead of duplicating its eligibility and round-trip rules,
+// so normalise() keeps exactly the curves the Rust import rebuilds natively.
+bool exact_curve(const SmCurve* c)
+{
+    if (c == nullptr || (c->GetType() != SmEllipse_TYPE && c->GetType() != SmCircle_TYPE))
+        return false;
+    std::vector<double> head;
+    sc_exact_curve_export::put_export_curve(head, c, the_context(), put_curve);
+    return !head.empty() && head.front() == -3.0;
+}
+
+// Match the shared export/import: preserve exact analytic surfaces and edge curves,
+// and replace other surfaces and edge curves with plain B-splines, as the heal.gap
+// shim does. Replaced originals are left unowned and leaked.
 void normalise(Graph& g)
 {
     for (SmFace* f : g.faces)
@@ -81,7 +94,12 @@ void normalise(Graph& g)
     }
     for (SmEdge* e : g.edges)
     {
-        SmBSplineCurve* nc = plain_curve(e->*EdgePeek::curve());
+        SmCurve* c = e->*EdgePeek::curve();
+        // Keep circles/ellipses that the shared exporter can carry exactly; the
+        // healer then sees the same native kind as the imported Rust B-rep.
+        if (exact_curve(c))
+            continue;
+        SmBSplineCurve* nc = plain_curve(c);
         if (nc != nullptr)
             e->*EdgePeek::curve() = nc;
     }
@@ -148,7 +166,7 @@ SmBrep* build_any(Rd& rd, const char* path, SmStatus& status)
                 {
                     SmShell *outer = NULL, *inner = NULL;
                     status = builder.StartShell(outer, inner);
-                    if (status == SM_SUCCESS && !builder.StartFace(SM_OT_SAME)) status = SM_ERR;
+                    if (status == SM_SUCCESS && !builder.StartFace(swap ? SM_OT_OPPOSITE : SM_OT_SAME)) status = SM_ERR;
                     if (status == SM_SUCCESS) status = builder.SetFaceSurface(sphere, sphere->GetNaturalUVDomain());
                     if (status == SM_SUCCESS && !builder.StartAndEndSingleVertexLoop(SmPoint3d(0, 0, r))) status = SM_ERR;
                     if (status == SM_SUCCESS) status = builder.EndFace();
@@ -282,8 +300,9 @@ const FaceFlagPtr FACE_FLAGS[] = {
     &SmFaceProps::m_bBadOuterLoopOrder,   &SmFaceProps::m_lBadOrient_LoopCnt,     &SmFaceProps::m_lBadNoArea_LoopCnt,
     &SmFaceProps::m_lOuterLoopCnt,        &SmFaceProps::m_lBadNested_LoopCnt,     &SmFaceProps::m_bBadUnpairedNoArea_Loop,
     &SmFaceProps::m_lBadClosed3d_LoopCnt, &SmFaceProps::m_lBadClosedPtr_LoopCnt,  &SmFaceProps::m_lBadMissingPoles,
+    &SmFaceProps::m_bBadCrossedPole,
 };
-const int N_FACE_FLAGS = 18;
+const int N_FACE_FLAGS = 19;
 typedef SmMixedLinkType SmFaceProps::*FaceMixedPtr;
 const FaceMixedPtr FACE_MIXED[] = {&SmFaceProps::m_eSheet, &SmFaceProps::m_ePoles};
 typedef SmTriedLinkType SmFaceProps::*FaceTriedPtr;
@@ -820,6 +839,7 @@ void dump(SmHealData& h, Graph& g, Registry& r, std::vector<double>& o)
     put_base(o, h.m_sFaceProps_NoVertexPole, r.iff);
     put_base(o, h.m_sBadFaceProps_FlatCorner, r.iff);
     put_base(o, h.m_sBadFaceProps_MissingSeam, r.iff);
+    put_base(o, h.m_sBadFaceProps_CrossedPole, r.iff);
     put_base(o, h.m_sBadFaceProps_CrossedSeam, r.iff);
     put_base(o, h.m_sBadFaceProps_NearMissSeam, r.iff);
     put_base(o, h.m_sRanFaceProps_MoveSeam, r.iff);
@@ -1131,7 +1151,7 @@ void run_heal(Rd& rd, const char* path, std::vector<double>& o)
                    || (code == 35 && h->m_sBadFaceProps_DegenFaces.GetSize() != 0)
                    || (code == 36 && h->m_sBadEdgeProps_DegenEdges.GetSize() != 0)
                    || (code == 37 && (h->m_sBadFaceProps_MissingSeam.GetSize() != 0 || h->m_sBadFaceProps_CrossedSeam.GetSize() != 0 || h->m_sBadFaceProps_NearMissSeam.GetSize() != 0))
-                   || (code == 38 && h->m_sBadFaceProps_CrossedSeam.GetSize() != 0)
+                   || (code == 38 && (h->m_sBadFaceProps_CrossedSeam.GetSize() != 0 || h->m_sBadFaceProps_CrossedPole.GetSize() != 0))
                    || (code == 39 && h->m_sBadFaceProps_MissingSeam.GetSize() != 0);
         if (repair) mark_all_dead(*h, r);
         switch (code)
@@ -1560,6 +1580,24 @@ void run_heal(Rd& rd, const char* path, std::vector<double>& o)
         case 37:
         case 38:
         {
+            // UB-265: v1.0.1 Fix_SplitEdgesAtSeam ends by reading the mark of every target
+            // face props' m_pFace (IsMarked) without a null check. Reject the whole case
+            // (`-999 265`, replacing the record) while a target face props has no face
+            // (before Cache_FaceProps_Gaps, or seeded with a null face).
+            if (code == 38)
+            {
+                bool null_face = false;
+                for (ULONG i = 0; i < h->m_sTgtFaceProps.GetSize(); ++i)
+                    null_face |= h->m_sTgtFaceProps[i]->m_pFace == NULL;
+                if (null_face)
+                {
+                    o.clear();
+                    o.push_back(-999.0);
+                    o.push_back(265.0);
+                    stop = true;
+                    continue;
+                }
+            }
             SmNewMarkAndLock lock(brep->GetContext());
             stat = code == 37 ? h->Fix_MoveSeam(brep, lock, SM_HO_FIX_MOVESEAM)
                               : h->Fix_SplitEdgesAtSeam(brep, lock, SM_HO_FIX_SPLITEDGE_ATSEAM);

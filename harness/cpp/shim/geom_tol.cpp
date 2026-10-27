@@ -6,10 +6,14 @@
 
 #include "StdAfx.h"
 #include <SmBSplineCurve.h>
+#include <SmBSplineVolume.h>
 #include <SmCircle.h>
 #include <SmCurve.h>
 #include <SmLine.h>
+#include <SmMemory.h>
 #include <SmNurbsCrv.h>
+#include <SmNurbsVol.h>
+#include <SmVolume.h>
 #include <nurbs.h>
 
 #include <SmContext.h>
@@ -22,6 +26,8 @@
 #include <SmVector3d.h>
 
 #include <algorithm>
+#include <cmath>
+#include <memory>
 #include <stdexcept>
 #include <vector>
 
@@ -305,10 +311,12 @@ SC_EXPORT int32_t sc_geom_tol_op(int32_t op, double model_size, double ratio, co
 
 // Runs a script of SmRelation<int, int> operations on objects first[0..n1) and
 // second[0..n2) (identified by index) with cardinality `card`.
-//   script: [0, f, s] = RelatePair, [1, f, k, s1..sk] = RelateToMany, [2] = RemoveAll
+//   script: [0, f, s] = RelatePair, [1, f, k, s1..sk] = RelateToMany, [2] = RemoveAll,
+//           [3, f, s] = RemovePair
 // Output (int64): per script op its status; then for every first f:
 //   GetSecond(f) index (-1 = NULL), count, sorted GetSeconds(f);
-// then count + sorted GetAllFirsts, count + sorted GetAllSeconds.
+// then per second s count + sorted GetFirsts(s), then count + sorted GetAllFirsts,
+// count + sorted GetAllSeconds.
 // (upstream returns these in hash order, which is unspecified; they are sorted here.)
 SC_EXPORT int32_t sc_geom_tol_relation(int32_t card, int64_t n1, int64_t n2, const int64_t* script,
                                        int64_t n_script, int64_t* out, int64_t cap,
@@ -327,12 +335,13 @@ SC_EXPORT int32_t sc_geom_tol_relation(int32_t card, int64_t n1, int64_t n2, con
     while (i < n_script)
     {
         int64_t kind = script[i];
-        if (kind == 0)
+        if (kind == 0 || kind == 3)
         {
             if (i + 3 > n_script) return SC_ERR_ARG;
             int64_t f = script[i + 1], s = script[i + 2];
             if (f < 0 || f >= n1 || s < 0 || s >= n2) return SC_ERR_ARG;
-            res.push_back(sRel.RelatePair(&vFirsts[f], &vSeconds[s]));
+            res.push_back(kind == 0 ? sRel.RelatePair(&vFirsts[f], &vSeconds[s])
+                                    : sRel.RemovePair(&vFirsts[f], &vSeconds[s]));
             i += 3;
         }
         else if (kind == 1)
@@ -371,6 +380,14 @@ SC_EXPORT int32_t sc_geom_tol_relation(int32_t card, int64_t n1, int64_t n2, con
         sRel.GetSeconds(&vFirsts[f], sSeconds);
         std::vector<int64_t> v;
         for (ULONG j = 0; j < sSeconds.GetSize(); ++j) v.push_back(s_idx(sSeconds[j]));
+        push_sorted(v);
+    }
+    for (int64_t s = 0; s < n2; ++s)
+    {
+        SmTArray<int*> sFirsts;
+        sRel.GetFirsts(&vSeconds[s], sFirsts);
+        std::vector<int64_t> v;
+        for (ULONG j = 0; j < sFirsts.GetSize(); ++j) v.push_back(f_idx(sFirsts[j]));
         push_sorted(v);
     }
     {
@@ -478,6 +495,47 @@ SmCurve* sc_read_curve(ScRd& rd, const SmContext& ctx)
 }
 } // namespace
 
+// Fixed B-spline volume (degree 1, 2x2x2 control points, unit weights, knots 0/0/1/1)
+// followed by SmTol::GetScaledZero(*volume). 24 doubles = 8 poles x 3 coords.
+SC_EXPORT int32_t sc_geom_tol_volume(const double* in, int64_t n_in, double* out, int64_t cap, int64_t* out_len)
+{
+    if (in == nullptr || n_in != 24 || out_len == nullptr || (out == nullptr && cap > 0))
+        return SC_ERR_ARG;
+    for (int64_t i = 0; i < 24; ++i)
+        if (!std::isfinite(in[i]))
+            return SC_ERR_ARG;
+    SC_TRY
+    SmContext ctx;
+    gw_VOLUME* rec = sm_AllocateNurbVolume(1, 1, 1, 1, 1, 1, 3, 3, 3);
+    if (rec == NULL)
+        return SC_ERR_ARG;
+    SmMemDelete cleanup(rec);
+    for (int i = 0; i <= 3; ++i)
+    {
+        rec->knu->U[i] = (i < 2) ? 0.0 : 1.0;
+        rec->knv->U[i] = (i < 2) ? 0.0 : 1.0;
+        rec->knw->U[i] = (i < 2) ? 0.0 : 1.0;
+    }
+    for (int i = 0; i <= 1; ++i)
+        for (int j = 0; j <= 1; ++j)
+            for (int k = 0; k <= 1; ++k)
+            {
+                NL_CPOINT& c = rec->mesh->Pw[i][j][k];
+                const int base = (i * 4 + j * 2 + k) * 3;
+                c.x = in[base];
+                c.y = in[base + 1];
+                c.z = in[base + 2];
+                c.w = 1.0;
+            }
+    // This constructor copies the record, as in surface_b_spline_volume.cpp.
+    // Both allocations are guarded through native exceptions, before ctx dies.
+    std::unique_ptr<SmVolume> v(new (ctx) SmBSplineVolume(&ctx, rec));
+    smos_Free(rec);
+    cleanup.Clear();
+    const double scaled_zero = (double)SmTol::GetScaledZero(*v);
+    return sc_copy_out(&scaled_zero, 1, out, cap, out_len);
+    SC_CATCH
+}
 SC_EXPORT int32_t sc_geom_tol_curve(const double* in, int64_t n_in, double* out, int64_t cap, int64_t* out_len)
 {
     if (in == nullptr || n_in < 1 || out_len == nullptr || (out == nullptr && cap > 0))

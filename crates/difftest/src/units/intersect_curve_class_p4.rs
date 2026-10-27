@@ -1,6 +1,6 @@
 //! Runner for unit `intersect.curve_class_p4`: the full `SmCurveClassification` constructor,
-//! `GetLoopCrossings`, `SmCurveInterval::GetIvlBound_EdgeuseObj` and the static
-//! `sm_SqueezeOutSmallestInterval` of `SmCurveClass.cpp`.
+//! `GetLoopCrossings`, `GetLoopTouches`, `SmCurveInterval::GetIvlBound_EdgeuseObj` and the
+//! static `sm_SqueezeOutSmallestInterval` of `SmCurveClass.cpp`.
 //!
 //! C++: `solidcore_ffi::units::intersect_curve_class_p4` (upstream
 //! `source/SMLib/src/SmCurveClass.cpp`). Rust: `solidcore::intersect::curve_class::p4`.
@@ -20,7 +20,10 @@
 //! flat record documented in the ffi module (per op: code, status, outputs, state of the
 //! classification; `GetLoopCrossings` also the face props snapshot when they are passed),
 //! reported as the `out` values. A Rust error maps to its `SmStatus` (`InvalidInput` 1007, `-1`
-//! for one upstream cannot return); an `Unported` error anywhere defers the case.
+//! for one upstream cannot return); an `Unported` error anywhere defers the case. What a
+//! `GetLoopCrossings` leaves on the face's B-rep (the UV trim curves, tolerance growth and
+//! gap caches of its `SetProps_Stage2` seam check) is kept on the Rust B-rep for the later
+//! ops, as the shim's B-rep keeps it.
 //!
 //! Compared: `GetLoopCrossings` over the face's real loops up to the touch list (the face
 //! props stage 2, computed by `SetProps_Stage2` or preset by seeds at stage `2a` or later, the
@@ -37,6 +40,12 @@
 //! run-time checks (scripts it rejects as undefined upstream are dropped), among them
 //! `GetLoopCrossings` on an empty classification (a squeeze can empty it), which reads
 //! `GetAt(0)` unchecked.
+//!
+//! `GetLoopTouches` (new in 1.0.1; `GetLoopCrossings` now derives its crossings from it) runs
+//! on a `_touches` twin of every script with a loop crossings op, that op replaced by the
+//! touches op over the same loops, props and seeds. Its record is the status, then on success
+//! the touch list and the props snapshot; a failing status is compared alone, as upstream may
+//! leave the touches collected before it.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -52,6 +61,7 @@ use solidcore::intersect::curve_class::{
     self as cc_mod, squeeze_out_smallest_interval, ClassificationInit, CurveClassification,
     CurveInterval, TouchData,
 };
+use solidcore::intersect::curve_class::p5::ClassGeometryMut;
 use solidcore::intersect::point_class::{
     ClassGeometry, ClassObject, ClassObjectKind, PointClassType, PointClassification,
 };
@@ -234,6 +244,14 @@ enum OpIn {
         loops: Vec<usize>,
         with_props: bool,
         /// Face props seeds `[field, idx, value]` (as the `heal.face_props` runner).
+        #[serde(default)]
+        seeds: Vec<[f64; 3]>,
+    },
+    /// `GetLoopTouches` (new in 1.0.1): the arguments of [`OpIn::LoopCrossings`].
+    LoopTouches {
+        t: usize,
+        loops: Vec<usize>,
+        with_props: bool,
         #[serde(default)]
         seeds: Vec<[f64; 3]>,
     },
@@ -484,6 +502,9 @@ fn cpp_input(s: &Script) -> Vec<f64> {
             OpIn::IvlBound { j, do_min, .. } => v.extend([*j as f64, b(*do_min)]),
             OpIn::LoopCrossings {
                 loops, with_props, seeds, ..
+            }
+            | OpIn::LoopTouches {
+                loops, with_props, seeds, ..
             } => {
                 v.push(loops.len() as f64);
                 v.extend(loops.iter().map(|&l| l as f64));
@@ -548,6 +569,7 @@ fn op_code(o: &OpIn) -> (usize, usize) {
         OpIn::Squeeze { t } => (op::SQUEEZE, t),
         OpIn::IvlBound { t, .. } => (op::IVL_BOUND, t),
         OpIn::LoopCrossings { t, .. } => (op::LOOP_CROSSINGS, t),
+        OpIn::LoopTouches { t, .. } => (op::LOOP_TOUCHES, t),
         OpIn::Construct { t, .. } => (op::CONSTRUCT, t),
     }
 }
@@ -723,6 +745,24 @@ impl ClassGeometry<H> for Pool {
     }
     fn topology_handle(&self, e: EntityRef) -> Option<H> {
         self.brep.as_ref().map(|_| H::Topo(e))
+    }
+}
+
+impl ClassGeometryMut<H> for Pool {
+    fn curve_mut(&mut self, o: H) -> Option<&mut Curve> {
+        match o {
+            H::Obj(i, _) => match self.objs.get_mut(i) {
+                Some(PoolObj::Curve(c)) => Some(c),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    fn topology_entity_mut(&mut self, o: H) -> Option<(&mut Brep, EntityRef)> {
+        match (o, &mut self.brep) {
+            (H::Topo(e), Some((b, _))) => Some((b, e)),
+            _ => None,
+        }
     }
 }
 
@@ -967,7 +1007,7 @@ fn pc_mut(ivl: &mut CurveInterval<H>, w: usize) -> Result<&mut PointClassificati
 #[allow(clippy::too_many_lines)]
 fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
     let k = Kernel::default();
-    let pool = build_pool(&k, s)?;
+    let mut pool = build_pool(&k, s)?;
     let mut ccs: [CurveClassification<H>; 2] =
         [CurveClassification::new(&k), CurveClassification::new(&k)];
     let mut o: Vec<f64> = Vec::new();
@@ -1148,14 +1188,57 @@ fn rust_run(s: &Script) -> Result<Vec<f64>, Fail> {
                                 hfp::seed(&mut props, face, sd[0] as i64, sd[1] as i64, sd[2]);
                             }
                         }
-                        let r = cc.get_loop_crossings(&k, &pool, &hs, with_props.then_some(&mut props));
+                        // in place: what the call leaves on the face's B-rep stays there
+                        // for the later ops, as on the shim's B-rep
+                        let r = cc.get_loop_crossings_mut(
+                            &k,
+                            &mut pool,
+                            &hs,
+                            with_props.then_some(&mut props),
+                        );
                         match st(r)? {
                             Ok(lc) => {
-                                o.push(if lc.sm_err { 1.0 } else { 0.0 });
+                                // the status upstream returns with its arrays
+                                o.push(lc.status.as_ref().map_or(0.0, status));
                                 o.push(lc.crossing_counts.len() as f64);
                                 o.extend(lc.crossing_counts.iter().map(|&c| c as f64));
                                 put_touches(&mut o, &pool, &lc.raw_touches);
                                 put_touches(&mut o, &pool, &lc.done_touches);
+                                if *with_props {
+                                    let snap = hfp::snapshot(&props, pool.face_id());
+                                    o.extend(snap);
+                                }
+                            }
+                            Err(s) => o.push(s),
+                        }
+                    }
+                    OpIn::LoopTouches {
+                        loops, with_props, seeds, ..
+                    } => {
+                        let hs = loops
+                            .iter()
+                            .map(|&l| pool.handle(Some(l))?.ok_or_else(|| harness("no loop")))
+                            .collect::<Result<Vec<H>, HarnessError>>()?;
+                        let mut props = FaceProps::<H>::new();
+                        if !seeds.is_empty() {
+                            let face = pool.face_id();
+                            for sd in seeds {
+                                hfp::seed(&mut props, face, sd[0] as i64, sd[1] as i64, sd[2]);
+                            }
+                        }
+                        // in place, as the loop crossings above
+                        let r = cc.get_loop_touches_mut(
+                            &k,
+                            &mut pool,
+                            &hs,
+                            with_props.then_some(&mut props),
+                        );
+                        // a failing status is compared alone (the shim's list may hold the
+                        // touches collected before the failure)
+                        match st(r)? {
+                            Ok(touches) => {
+                                o.push(0.0);
+                                put_touches(&mut o, &pool, &touches);
                                 if *with_props {
                                     let snap = hfp::snapshot(&props, pool.face_id());
                                     o.extend(snap);
@@ -2052,6 +2135,25 @@ fn crossings(t: usize, loops: Vec<usize>, with_props: bool, seeds: Vec<[f64; 3]>
     OpIn::LoopCrossings { t, loops, with_props, seeds }
 }
 
+/// The script with every loop crossings op replaced by the loop touches op over the same
+/// arguments, `None` for a script without one.
+fn touches_twin(s: &Script) -> Option<Script> {
+    let mut twin = s.clone();
+    let mut any = false;
+    for x in &mut twin.ops {
+        if let OpIn::LoopCrossings { t, loops, with_props, seeds } = x {
+            *x = OpIn::LoopTouches {
+                t: *t,
+                loops: core::mem::take(loops),
+                with_props: *with_props,
+                seeds: core::mem::take(seeds),
+            };
+            any = true;
+        }
+    }
+    any.then_some(twin)
+}
+
 /// Edge cases: the loop crossings over the real loop of every fixture face (a degenerate
 /// classification curve with computed, preset and no face props; a regular curve), and of
 /// empty loop lists over every classification shape (empty, without curve, closed, short
@@ -2244,6 +2346,21 @@ impl UnitDiff for Runner {
                 inputs,
             });
         }
+        // GetLoopTouches (new in 1.0.1) over every loop crossings script
+        let twins = cases
+            .iter()
+            .filter_map(|c| {
+                let s: Script = serde_json::from_value(c.inputs.clone()).ok()?;
+                let twin = touches_twin(&s)?;
+                Some(Case {
+                    unit: self.id().into(),
+                    name: format!("{}_touches", c.name),
+                    source: CaseSource::Inline,
+                    inputs: serde_json::to_value(twin).ok()?,
+                })
+            })
+            .collect::<Vec<_>>();
+        cases.extend(twins);
         Ok(cases)
     }
 
@@ -2287,6 +2404,20 @@ mod tests {
             assert!(ffi::validate(ffi_face(&s).as_ref(), &cpp_input(&s)).is_ok(), "{name}");
             assert!(shim_accepts(&s), "{name}");
         }
+    }
+
+    /// The loop touches twins of the edge cases are accepted by the shim.
+    #[test]
+    fn touches_twins_are_accepted() {
+        let mut n = 0;
+        for (name, v) in edge_cases() {
+            let s: Script = serde_json::from_value(v).unwrap();
+            let Some(twin) = touches_twin(&s) else { continue };
+            n += 1;
+            assert!(ffi::validate(ffi_face(&twin).as_ref(), &cpp_input(&twin)).is_ok(), "{name}");
+            assert!(shim_accepts(&twin), "{name}");
+        }
+        assert!(n > 0);
     }
 
     /// The scripts undefined upstream are rejected by the shim (or the ffi guard), and the

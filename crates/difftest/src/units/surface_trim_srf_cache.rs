@@ -4,9 +4,9 @@
 //! cache of a face).
 //!
 //! C++: `solidcore_ffi::units::surface_trim_srf_cache` (upstream
-//! `source/SMLib/src/SmTrimSrfCache.cpp`; trees are built by hand, edge uses are bare
-//! `SmEdgeuse` objects holding their UV trim curve, faces come from
-//! `SmBrep::CreateFaceFromSurface`). Rust: `solidcore::surface::trim_srf_cache`.
+//! `source/SMLib/src/SmTrimSrfCache.cpp`; trees are built by hand. Edge uses either
+//! carry ownerless UV inputs or genuinely own them through a real wire edge with
+//! an explicit edge tolerance; faces come from `SmBrep::CreateFaceFromSurface`).
 //!
 //! A case is a surface `srf` (`oob`, `form` and an inline or `.sms` surface) and an `op` with
 //! its parameters. Both sides produce the flat record documented in the ffi module; the runner
@@ -18,6 +18,14 @@
 //! classification. Missing downstream services remain explicit deferrals. Every
 //! run has at least [`MIN_GENERATED`] generated cases; generated inputs the ffi
 //! wrapper rejects are redrawn.
+//!
+//! Deviations: the runner-local SMS reader validates counts below the exclusive
+//! `2^usize::BITS` bound, checks dimension and payload arithmetic and available
+//! tokens before constructing the net, and grows storage incrementally. Valid
+//! point order, weights, knots and eager float parsing are unchanged.
+
+#[path = "fixtures/trim_srf_cache_sms.rs"]
+mod sms;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -37,7 +45,7 @@ use solidcore::nurbs::srf_basic::Surface as NlSurface;
 use solidcore::surface::surface::Surface;
 use solidcore::surface::surface_cache::p1::FaceContainment;
 use solidcore::surface::surface_cache::{BezierAux2d, BezierPatch, SurfaceCacheOptions};
-use solidcore::surface::trim_srf_cache::TrimSrfCache;
+use solidcore::surface::trim_srf_cache::{EdgeuseInput, TrimSrfCache};
 use solidcore::SolidError;
 use solidcore_ffi::units::surface_trim_srf_cache::{self as ffi, Op};
 
@@ -51,6 +59,9 @@ mod constructed_face;
 
 #[path = "surface_trim_srf_cache/native_face.rs"]
 mod native_face;
+
+#[path = "surface_trim_srf_cache/poly_edges.rs"]
+mod poly_edges;
 
 /// Generated cases per run, whatever `--seeds` says (it can only raise this).
 pub const MIN_GENERATED: usize = 600;
@@ -134,6 +145,9 @@ struct CallIn {
     subdiv: bool,
     /// Node to implant into, `-1` = all nodes meeting the curve box.
     node: i64,
+    /// Explicit edge owner tolerance; absent retains the ownerless synthetic path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    owner_tol: Option<f64>,
 }
 
 /// A face point: `PointTest` with `tol` when `test_tol`, `PointClassify` with `tol`.
@@ -196,55 +210,19 @@ struct Inputs {
 
 // ---- file readers -------------------------------------------------------------------
 
-fn numbers(path: &str) -> Result<Vec<f64>, HarnessError> {
-    let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
-    text.split_whitespace()
-        .map(|t| {
-            t.parse::<f64>()
-                .map_err(|e| harness(format!("{path}: {e}")))
-        })
-        .collect()
-}
-
-fn int(path: &str, v: f64) -> Result<usize, HarnessError> {
-    if v.fract() != 0.0 || v < 0.0 {
-        return Err(harness(format!("{path}: bad count {v}")));
-    }
-    Ok(v as usize)
-}
-
 /// Reads an upstream `.sms` text file: `n m`, `p q`, rational flag, `(n+1)(m+1)`
 /// points (`x y z`, or `wx wy wz w` when rational, v index fastest), `n+p+2` u knots,
 /// `m+q+2` v knots.
 fn read_sms(path: &str) -> Result<InlineSrf, HarnessError> {
-    let v = numbers(path)?;
-    let mut it = v.into_iter();
-    let mut num = || {
-        it.next()
-            .ok_or_else(|| harness(format!("{path}: truncated")))
-    };
-    let n = int(path, num()?)?;
-    let m = int(path, num()?)?;
-    let p = int(path, num()?)?;
-    let q = int(path, num()?)?;
-    let rat = num()? != 0.0;
-    let mut net = Vec::with_capacity(n + 1);
-    for _ in 0..=n {
-        let mut row = Vec::with_capacity(m + 1);
-        for _ in 0..=m {
-            let (x, y, z) = (num()?, num()?, num()?);
-            let w = if rat { num()? } else { NOW };
-            row.push([x, y, z, w]);
-        }
-        net.push(row);
-    }
-    let u = (0..n + p + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    let v = (0..m + q + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(InlineSrf { net, p, q, u, v })
+    let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
+    let s = sms::parse_sms(&text, path)?;
+    Ok(InlineSrf {
+        net: s.net,
+        p: s.p,
+        q: s.q,
+        u: s.u,
+        v: s.v,
+    })
 }
 
 fn srf(s: &SrfIn) -> Result<InlineSrf, HarnessError> {
@@ -361,6 +339,7 @@ fn cpp_input(i: &Inputs) -> Result<(Op, Vec<f64>), HarnessError> {
             for c in calls {
                 push_crv(&mut o, &c.crv);
                 o.extend([flag(c.subdiv), c.node as f64]);
+                o.extend([flag(c.owner_tol.is_some()), c.owner_tol.unwrap_or(0.0)]);
             }
         }
         OpIn::Face { build, points } => {
@@ -615,8 +594,11 @@ fn rust_op(i: &Inputs) -> Result<Run, HarnessError> {
                 let crv = curve_of(&call.crv)?;
                 match c.implant_edgeuse(
                     &k,
-                    idx as i64,
-                    Some(&crv),
+                    EdgeuseInput {
+                        edgeuse: idx as i64,
+                        uv_trim_curve: Some(crv),
+                        owner_zone_tol_3d: call.owner_tol,
+                    },
                     call.subdiv,
                     &mut ext,
                     link(call.node),
@@ -1031,6 +1013,7 @@ fn gen_case(rng: &mut Rng) -> Inputs {
                         crv: gen_curve(rng, dom),
                         subdiv: rng.chance(0.08),
                         node,
+                        owner_tol: None,
                     }
                 })
                 .collect();
@@ -1081,12 +1064,17 @@ impl UnitDiff for Runner {
             seeds: ctx.seeds.max(MIN_GENERATED),
             ..ctx.clone()
         };
-        default_cases(self, &ctx)
+        let mut cases = default_cases(self, &ctx)?;
+        cases.extend(poly_edges::cases()?);
+        Ok(cases)
     }
 
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
         if let Some(input) = case.inputs.get("native_face") {
             return native_face::run_cpp(input);
+        }
+        if let Some(input) = case.inputs.get("poly_edges") {
+            return poly_edges::run_cpp(input);
         }
         cpp(&case.parse()?)
     }
@@ -1094,6 +1082,9 @@ impl UnitDiff for Runner {
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         if let Some(input) = case.inputs.get("native_face") {
             return native_face::run_rust(input);
+        }
+        if let Some(input) = case.inputs.get("poly_edges") {
+            return poly_edges::run_rust(input);
         }
         rust(&case.parse()?)
     }

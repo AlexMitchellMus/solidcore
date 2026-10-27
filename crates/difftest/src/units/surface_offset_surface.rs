@@ -43,6 +43,9 @@ use crate::case::CaseContext;
 use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 
+#[path = "fixtures/surface_offset_surface_sms.rs"]
+mod surface_offset_surface_sms;
+
 /// Generated cases per run, whatever `--seeds` says (it can only raise this).
 pub const MIN_GENERATED: usize = 3000;
 
@@ -248,62 +251,20 @@ enum Inputs {
     },
 }
 
-fn numbers(path: &str) -> Result<Vec<f64>, HarnessError> {
-    let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
-    text.split_whitespace()
-        .map(|t| {
-            t.parse::<f64>()
-                .map_err(|e| harness(format!("{path}: {e}")))
-        })
-        .collect()
-}
-
-fn count(path: &str, v: f64) -> Result<usize, HarnessError> {
-    if v.fract() != 0.0 || v < 0.0 {
-        return Err(harness(format!("{path}: bad count {v}")));
-    }
-    Ok(v as usize)
-}
-
 /// Reads an upstream `.sms` text file: `n m`, `p q`, rational flag, `(n+1)(m+1)` points
 /// (`x y z`, or `wx wy wz w` when rational, v index fastest), `n+p+2` u knots, `m+q+2` v
 /// knots.
 fn read_sms(path: &str) -> Result<BssIn, HarnessError> {
-    let v = numbers(path)?;
-    let mut it = v.into_iter();
-    let mut num = || {
-        it.next()
-            .ok_or_else(|| harness(format!("{path}: truncated")))
-    };
-    let n = count(path, num()?)?;
-    let m = count(path, num()?)?;
-    let p = count(path, num()?)?;
-    let q = count(path, num()?)?;
-    let rat = num()? != 0.0;
-    let mut net = Vec::new();
-    for _ in 0..=n {
-        let mut row = Vec::new();
-        for _ in 0..=m {
-            let (x, y, z) = (num()?, num()?, num()?);
-            let w = if rat { num()? } else { NOW };
-            row.push([x, y, z, w]);
-        }
-        net.push(row);
-    }
-    let u = (0..n + p + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    let v = (0..m + q + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
+    let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
+    let parsed = surface_offset_surface_sms::parse_sms(&text, path)?;
     Ok(BssIn {
         oob: false,
         form: default_form(),
-        net,
-        p,
-        q,
-        u,
-        v,
+        net: parsed.net,
+        p: parsed.p,
+        q: parsed.q,
+        u: parsed.u,
+        v: parsed.v,
     })
 }
 
@@ -626,7 +587,7 @@ fn rust_off(k: &Kernel, o: &OffIn) -> Result<solidcore::Result<OffsetSurface>, H
 
 /// The 3x3 `EvaluatePoint` grid over the natural domain.
 fn put_grid(k: &Kernel, o: &mut Vec<f64>, s: &Surface) -> Result<(), Fail> {
-    let d = s.natural_uv_domain();
+    let d = s.natural_uv_domain_with_nurb(k).map_err(|e| HarnessError::new(e.to_string()))?;
     for i in 0..3 {
         for j in 0..3 {
             let uv = d.evaluate(f64::from(i) / 2.0, f64::from(j) / 2.0);
@@ -652,14 +613,15 @@ fn put_state(k: &Kernel, o: &mut Vec<f64>, s: &OffsetSurface) -> Result<(), Fail
     s.with_extended_base_surface(|e| match e {
         Some(e) => {
             o.push(1.0);
-            put_dom(o, &e.natural_uv_domain());
+            // (an extension is a B-spline surface: never lazy)
+            put_dom(o, &e.natural_uv_domain_if_built());
             o.push(e.type_code() as f64);
         }
         None => o.push(0.0),
     });
     let b = s.base_surface();
     o.push(b.type_code() as f64);
-    put_dom(o, &b.natural_uv_domain());
+    put_dom(o, &b.natural_uv_domain_with_nurb(k).map_err(|e| HarnessError::new(e.to_string()))?);
     o.push(s.type_code() as f64);
     put_grid(k, o, &Surface::from(s.clone()))
 }
@@ -669,7 +631,7 @@ fn put_result(k: &Kernel, o: &mut Vec<f64>, r: &Surface) -> Result<(), Fail> {
     if let SurfaceKind::OffsetSurface(off) = r.kind() {
         put_state(k, o, off)
     } else {
-        put_dom(o, &r.natural_uv_domain());
+        put_dom(o, &r.natural_uv_domain_with_nurb(k).map_err(|e| HarnessError::new(e.to_string()))?);
         put_grid(k, o, r)
     }
 }
@@ -1261,7 +1223,8 @@ fn gen_off(rng: &mut Rng, scale: f64, depth: usize) -> OffIn {
 /// points, at least `1e-9`), built on the Rust side.
 fn base_info(k: &Kernel, off: &OffIn) -> Option<([f64; 4], f64)> {
     let s = rust_srf(k, &off.base).ok()?.ok()?;
-    let d = s.natural_uv_domain();
+    // (runner helper that does not return Result)
+    let d = s.natural_uv_domain_if_built();
     let r = [d.min().x, d.min().y, d.max().x, d.max().y];
     if !(r.iter().all(|c| c.is_finite() && c.abs() < 1e5) && r[0] < r[2] && r[1] < r[3]) {
         return None;
@@ -1684,7 +1647,7 @@ fn fill_placeholders(case: &mut Case) -> Result<(), HarnessError> {
     .map_err(|e| bad(&e.to_string()))?;
     let k = Kernel::default();
     let base = rust_srf(&k, &off.base)?.map_err(|e| bad(&format!("base: {e}")))?;
-    let d = base.natural_uv_domain();
+    let d = base.natural_uv_domain_with_nurb(&k).map_err(|e| HarnessError::new(e.to_string()))?;
     let (u0, v0, u1, v1) = (d.min().x, d.min().y, d.max().x, d.max().y);
     let (lu, lv) = (u1 - u0, v1 - v0);
     let on = || -> Result<[f64; 3], HarnessError> {

@@ -12,6 +12,9 @@
 //! Each case works on a fresh copy of that box (the shim builds one per case), and
 //! `MergeInterval` edits it through `MergeIntervalBrep`; a merge also reports the box
 //! after it (counts, sorted vertex and edge tolerances, the new vertices and edges).
+//! `InsertCurveInterval` runs through `insert_curve_interval_mut` (its `Combine` may move
+//! the picked vertex to a surf/surf/surf point, `SmVertex::SetPoint`) and reports that
+//! vertex's point after it.
 //! The `imprint_*` cases pick other box objects and place lines on the box, with its
 //! editing enabled, so the vertex, face-split, coincident-edge and wire-edge branches
 //! run to completion.
@@ -19,8 +22,6 @@
 use crate::{Case, CaseContext, CaseSource, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::cell::OnceCell;
-use std::rc::Rc;
 use solidcore::curve::curve::p2::Curve;
 use solidcore::curve::ellipse::{Ellipse, EllipseOptions};
 use solidcore::curve::line::{BoundedLineOptions, Line};
@@ -43,11 +44,16 @@ use solidcore::topology::face::p2 as topo_face;
 use solidcore::topology::vertex as topo_vertex;
 use solidcore::topology::Brep;
 use solidcore::{EntityRef, SolidError};
-use solidcore_ffi::units::topology_brep_p1::counts;
 use solidcore_ffi::units::intersect_curve_class_p6 as ffi;
+use solidcore_ffi::units::topology_brep_p1::counts;
+use std::cell::OnceCell;
+use std::rc::Rc;
 
 /// Curve-classification part 6 oracle.
 pub struct Runner;
+
+#[path = "intersect_curve_class_p6/paired_fillet.rs"]
+mod paired_fillet;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Fixture {
@@ -561,10 +567,15 @@ impl UnitDiff for Runner {
         "intersect.curve_class_p6"
     }
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
+        if case.inputs.get("paired_fillet").and_then(Value::as_bool) == Some(true) {
+            return paired_fillet::cpp(paired_fillet::Mode::Metadata);
+        }
+        if let Some(mode) = paired_fillet::Mode::from_input(&case.inputs) {
+            return paired_fillet::cpp(mode);
+        }
         let i: Fixture = case.parse()?;
         let result = ffi::run_picked(
-            i.op, i.kind, i.scale, i.tol, i.flags, i.index, &i.a, &i.b, &i.input, i.pick,
-            i.editing,
+            i.op, i.kind, i.scale, i.tol, i.flags, i.index, &i.a, &i.b, &i.input, i.pick, i.editing,
         );
         if i.expected_rejection {
             return rejected(result);
@@ -574,6 +585,12 @@ impl UnitDiff for Runner {
             .map_err(|e| h(e.to_string()))
     }
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
+        if case.inputs.get("paired_fillet").and_then(Value::as_bool) == Some(true) {
+            return paired_fillet::rust(paired_fillet::Mode::Metadata);
+        }
+        if let Some(mode) = paired_fillet::Mode::from_input(&case.inputs) {
+            return paired_fillet::rust(mode);
+        }
         let i: Fixture = case.parse()?;
         let validation = ffi::validate_picked(
             i.op, i.kind, i.scale, i.tol, i.flags, i.index, &i.a, &i.b, &i.input, i.pick,
@@ -595,11 +612,18 @@ impl UnitDiff for Runner {
         let [x, y, z] = *point;
         let mut a = classification(&k, &i.a, i.tol, &g.first)?;
         let mut b = classification(&k, &i.b, i.tol, &g.first)?;
-        a.set_fillet_data((i.flags & 2 != 0).then_some(Handle::Other), i.flags & 2 != 0);
+        a.set_fillet_data(
+            (i.flags & 2 != 0).then_some(Handle::Other),
+            i.flags & 2 != 0,
+        );
         let result = match i.op {
-            0 => a
-                .insert_curve_interval(&k, &g, &ivl(&i.input, i.tol, &g.first)?)
-                .map(|()| (None, None)),
+            // a surf/surf/surf point combined into a vertex boundary moves the box's
+            // vertex (SmVertex::SetPoint), as the shim's InsertCurveInterval does
+            0 => {
+                let input = ivl(&i.input, i.tol, &g.first)?;
+                a.insert_curve_interval_mut(&mut k, &mut g, &input)
+                    .map(|()| (None, None))
+            }
             1 => a.homogenize(&k, &g, &mut b).map(|()| (None, None)),
             2 => a
                 .fix_end_point_class(&k, &g, i.index, Vec3::new(x, y, z))
@@ -629,12 +653,39 @@ impl UnitDiff for Runner {
                 if let Some(merged) = &merged {
                     put_brep(&mut out, &g, merged).map_err(|e| h(e.to_string()))?;
                 }
+                // the picked vertex after InsertCurveInterval (a combined
+                // surf/surf/surf point moves it through SmVertex::SetPoint)
+                if i.op == 0 {
+                    let Some(EntityRef::Vertex(v)) = g.first.get(2).copied() else {
+                        return Err(h("picked vertex is not a vertex"));
+                    };
+                    let p = topo_vertex::point(&g.brep, v).map_err(|e| h(e.to_string()))?;
+                    out.extend([p.x, p.y, p.z]);
+                }
                 Ok(Output::new().values("out", out))
             }
         }
     }
     fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
         let mut out = crate::runner::default_cases(self, ctx)?;
+        out.push(Case {
+            unit: self.id().into(),
+            name: "paired-fillet-real-boxes".into(),
+            source: CaseSource::Inline,
+            inputs: serde_json::json!({"paired_fillet":true}),
+        });
+        for (name, mode) in [
+            ("linked", "linked"),
+            ("legacy-no-peer", "legacy-none"),
+            ("linked-disabled", "linked-disabled"),
+        ] {
+            out.push(Case {
+                unit: self.id().into(),
+                name: format!("paired-fillet-real-boxes-{name}"),
+                source: CaseSource::Inline,
+                inputs: serde_json::json!({"paired_fillet":mode}),
+            });
+        }
         for kind in 0..5 {
             // Competing classifications exercise receiver/argument order, gap
             // precedence and saved-point propagation, rather than only assigning
@@ -764,7 +815,14 @@ impl UnitDiff for Runner {
             // a degenerate chord: one vertex loop
             ("face_point", 7, 1e-12, [0, 0, 0, 0], [2, 2, 2], [0.0, 1.0]),
             // edge -> edge -> edge along the edge (1,0,1)-(1,1,1): its end vertices
-            ("edge_coincident", 6, 1.0, [0, 0, 0, 0], [3, 3, 3], [0.0, 1.0]),
+            (
+                "edge_coincident",
+                6,
+                1.0,
+                [0, 0, 0, 0],
+                [3, 3, 3],
+                [0.0, 1.0],
+            ),
             // part of that edge: splits it at both ends
             ("edge_inner", 6, 0.5, [0, 0, 0, 0], [3, 3, 3], [0.0, 0.5]),
             // region -> region -> region: a wire edge between two shell vertices

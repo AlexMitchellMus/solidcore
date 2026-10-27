@@ -16,7 +16,7 @@
 
 mod live;
 pub(crate) use live::{solve_mutable_brep_point, solve_mutable_ray};
-pub use live::{BrepFaceServices, LiveBrepObjects, SideObject, SidedFaceServices};
+pub use live::{BrepFaceServices, FaceCaches, LiveBrepObjects, SideObject, SidedFaceServices};
 
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -26,7 +26,7 @@ use crate::kernel::Kernel;
 use crate::math::Point2;
 use crate::query::face::p2::BrepCacheFace;
 use crate::surface::surface::p1::{get_surface_cache_with_face, SurfaceSolveContext};
-use crate::surface::surface::Surface;
+use crate::surface::surface::{CacheTreeState, Surface};
 use crate::surface::surface_cache::face_context::{
     FaceQueries, MappedCacheFace, PreparedFaceQueries,
 };
@@ -43,6 +43,8 @@ const OP: &str = "query::brep::ray";
 #[derive(Debug, Default)]
 pub struct RayPreparation {
     pending: Cell<Option<PreparationRequest>>,
+    /// The B-rep the pending trim request was made on (compared, never dereferenced).
+    trim_brep: Cell<usize>,
     attempted: BTreeSet<PreparationRequest>,
     failed_trims: BTreeSet<EdgeuseId>,
     surface_caches: BTreeMap<FaceId, SurfaceCache<CacheObject>>,
@@ -55,8 +57,14 @@ pub(crate) enum PreparationRequest {
 }
 
 impl RayPreparation {
-    pub(crate) fn request_trim(&self, edgeuse: EdgeuseId) {
+    pub(crate) fn request_trim(&self, b: &Brep, edgeuse: EdgeuseId) {
+        self.trim_brep.set(core::ptr::from_ref(b) as usize);
         self.pending.set(Some(PreparationRequest::UvTrim(edgeuse)));
+    }
+
+    /// Whether the last trim request was made on `b` (identity, not equality).
+    pub(crate) fn trim_requested_on(&self, b: &Brep) -> bool {
+        self.trim_brep.get() == core::ptr::from_ref(b) as usize
     }
 
     pub(crate) fn trim_failed(&self, edgeuse: EdgeuseId) -> bool {
@@ -130,12 +138,30 @@ fn prepare_surface_cache(
     b: &mut Brep,
     face: FaceId,
 ) -> Result<SurfaceCache<CacheObject>> {
+    face_surface_cache(k, b, face, true)
+}
+
+/// `smsurf_GetSurfaceCache` of `face`'s surface: the trimmed cache its factory makes
+/// (`CacheMakeOrValidate`), with its tree then built when `get_tree` (a solve's
+/// `GetTree`, which creates the face's UV trim curves and implants its boundary).
+/// Without `get_tree`, a cache the factory leaves without tree (made during a Boolean
+/// operation, or reused unbuilt: [`Surface::cache_tree_state`]) keeps the state bits
+/// the `SmTrimSrfCache` constructor set, as upstream's until its first `GetTree`; a
+/// surface whose cache upstream has built is built here as well.
+fn face_surface_cache(
+    k: &Kernel,
+    b: &mut Brep,
+    face: FaceId,
+    get_tree: bool,
+) -> Result<SurfaceCache<CacheObject>> {
     let surface = b
         .face(face)?
         .surface
         .as_ref()
         .ok_or(SolidError::null_pointer(OP))?
         .clone_for_evaluation()?;
+    // upstream reuses a cache whose tree is built, with the built tree's state bits
+    let get_tree = get_tree || surface.cache_tree_state() == CacheTreeState::Built;
     let entities: BTreeMap<_, _> = b
         .loopuses()
         .iter()
@@ -165,11 +191,12 @@ fn prepare_surface_cache(
     let mut cache =
         get_surface_cache_with_face(k, &surface, Some(CacheObject::Surface(face)), &mut mapped)?;
     // A Boolean operation can defer the factory's tree build until GetTree.
-    if cache.base().tree().is_none()
-        || (!cache.base().have_t_surface_cache
-            && surface.face()?.is_some()
-            && cache.base().face_containment_done
-                != crate::surface::surface_cache::p1::FaceContainment::UnderConstruction)
+    if get_tree
+        && (cache.base().tree().is_none()
+            || (!cache.base().have_t_surface_cache
+                && surface.face()?.is_some()
+                && cache.base().face_containment_done
+                    != crate::surface::surface_cache::p1::FaceContainment::UnderConstruction))
     {
         cache.build_tree_with_face(k, &mut mapped)?;
     }
@@ -276,6 +303,13 @@ impl FaceQueries<CacheObject> for RaySurfaceContext<'_> {
     ) -> Result<(i32, Option<CacheObject>)> {
         self.classify(k, face, uv, src_tol, true)
     }
+
+    fn curve_edge_tolerance(&self, curve: CacheObject) -> Option<Result<f64>> {
+        let (CacheObject::Curve(edge) | CacheObject::Edge(edge)) = curve else {
+            return None;
+        };
+        Some(crate::topology::edge::tolerance(self.brep, edge))
+    }
 }
 
 #[cfg(test)]
@@ -354,6 +388,56 @@ mod tests {
                 .0,
             PointClassType::Vertex.code()
         );
+    }
+
+    /// During a Boolean operation `smsurf_GetSurfaceCache` defers the tree build
+    /// (`CacheMakeOrValidate`), so `GlobalPointSolve`'s fast-drop face test reads the
+    /// `SmTrimSrfCache` constructor's state bits until a solve's `GetTree` builds the
+    /// tree (whose build turns point testing off on a face without UV trim curves:
+    /// `blend.fillet_executive_p3` rollover-404).
+    #[test]
+    fn fast_drop_cache_state_defers_the_tree_during_a_boolean() {
+        let mut k = Kernel::default();
+        let mut b = crate::primitive::api_primitives::create_box(
+            &mut k,
+            crate::math::Point3::ZERO,
+            10.0,
+            10.0,
+            10.0,
+        )
+        .unwrap();
+        let face = crate::topology::brep::p1::faces(&b, None)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+        let surface = b
+            .face(face)
+            .unwrap()
+            .surface
+            .as_ref()
+            .unwrap()
+            .clone_for_evaluation()
+            .unwrap();
+        surface.set_cache_tree_state(CacheTreeState::NoCache);
+        k.context.set_doing_boolean(true);
+        let handle = Some(CacheObject::Surface(face));
+        let mut services = BrepFaceServices::new(&mut b);
+
+        let state = services.surface_cache_state(&k, &surface, handle).unwrap();
+        assert!(state.is_trimmed());
+        assert!(state.tree().is_none());
+        assert!(state.point_test_enabled);
+        assert!(!state.have_t_surface_cache);
+        assert_eq!(surface.cache_tree_state(), CacheTreeState::Unbuilt);
+
+        // a solve's GetTree builds the kept cache; later readers see the built tree
+        let built = services.build_surface_cache(&k, &surface, handle).unwrap();
+        assert!(built.tree().is_some());
+        assert_eq!(surface.cache_tree_state(), CacheTreeState::Built);
+        let state = services.surface_cache_state(&k, &surface, handle).unwrap();
+        assert!(state.tree().is_some());
+        assert_eq!(state.point_test_enabled, built.point_test_enabled);
     }
 
     #[test]

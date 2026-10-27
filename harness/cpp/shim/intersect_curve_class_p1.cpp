@@ -2126,8 +2126,22 @@ int32_t run(Rd& rd, std::vector<double>& o)
         }
         case K_BSURF:
         {
-            bool oob = rd.flag();
-            SmBSplineSurface* s = new (ctx) SmBSplineSurface(read_nurb_surface(rd), FALSE, NULL);
+            // bit 0: out-of-bounds evaluation; bit 1: the given knots are written back
+            // over the NURB after the constructor has fixed them up (sm_FixupKnotVector)
+            int64_t flags = rd.idx();
+            bool oob = (flags & 1) != 0;
+            gw_SURFACE* sur = read_nurb_surface(rd);
+            std::vector<double> ku(sur->knu->U, sur->knu->U + sur->knu->m + 1);
+            std::vector<double> kv(sur->knv->U, sur->knv->U + sur->knv->m + 1);
+            SmBSplineSurface* s = new (ctx) SmBSplineSurface(sur, FALSE, NULL);
+            if ((flags & 2) != 0)
+            {
+                gw_SURFACE* own = s->GetGwNurbPointer();
+                for (size_t i = 0; i < ku.size(); i++)
+                    own->knu->U[i] = ku[i];
+                for (size_t i = 0; i < kv.size(); i++)
+                    own->knv->U[i] = kv[i];
+            }
             s->GetOutOfBoundsEnabled() = oob ? TRUE : FALSE;
             p = s;
             break;
@@ -2900,10 +2914,19 @@ int32_t run(Rd& rd, std::vector<double>& o)
             double tol = rd.num();
             if (!ok || f == NULL || f->GetSurface() == NULL)
                 return SC_ERR_ARG;
+            // a face whose UV domain has zero size on EITHER axis crashes this (SIGSEGV, measured
+            // with this guard removed: a heal.face_props domain collapsing to sizes (0,1), (1,0)
+            // and (0,0); sizes down to 1e-100 on the other axis still run; cause not located, a
+            // NULL surface cache at the unchecked pSC->m_bPointTestEnabled is a candidate), so
+            // either-axis zero is rejected as undefined. A bare face's empty domain (min above
+            // max, negative size) is fine: nothing is inside it.
+            SmPoint2d dsz = f->GetUVDomain().GetSize();
+            if (dsz.x == 0.0 || dsz.y == 0.0)
+                return SC_ERR_ARG;
             SmPointClassification pc;
             SmStatus s = sc_cc_p1::sm_ComputeFacePointClass(p, SmZoneTol3d(tol), f, pc);
             o.push_back(st(s));
-            o.push_back((double)pc.GetPointClass());
+            put_pc(o, pc, pool);
             break;
         }
         default: return SC_ERR_ARG;

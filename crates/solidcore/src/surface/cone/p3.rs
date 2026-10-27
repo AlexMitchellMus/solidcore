@@ -27,9 +27,13 @@
 //! Start-plane transform failures propagate here; upstream initializes EXTERIOR
 //! before that transform and skips the point on failure. Parallel boundary-output
 //! arrays are checked before deduplication rather than assuming equal lengths.
-//! Parallel-cylinder intersection spans use both requested domains converted to
-//! STEP, instead of the full cylinders' axial extents (upstream issue #711).
-//! Their conversion errors propagate; the original tolerance branches are kept.
+//! Opt-in ([`UpstreamFixes::cone_parallel_line_midpoint`](crate::kernel::UpstreamFixes::cone_parallel_line_midpoint), WR-259): the
+//! parallel-cylinder lines are tested against both face domains at their middle, not
+//! their bottom end, which upstream tests and which a trimmed face domain skips.
+//! Opt-in ([`UpstreamFixes::cone_parallel_line_domains`](crate::kernel::UpstreamFixes::cone_parallel_line_domains), WR-259 / #711):
+//! parallel-cylinder spans use both requested domains converted to STEP, instead of
+//! the full cylinders' axial extents. Conversion errors propagate; the original
+//! tolerance branches are kept. This works independently of the midpoint option.
 //! No input-driven recursion is introduced.
 
 use super::{Cone, ConeStepInversion};
@@ -59,7 +63,7 @@ use crate::surface::sphere::Sphere;
 use crate::surface::surf_of_extrusion::SurfOfExtrusion;
 use crate::surface::surf_of_revolution::p3::Revolved;
 use crate::surface::surf_of_revolution::SurfOfRevolution;
-use crate::surface::surface::p2::{SurfaceIntersection, TsectCurveType, CONE_TYPE};
+use crate::surface::surface::p2::{SurfaceIntersection, TsectCurveType, CONE_TYPE, CYLINDER_TYPE};
 use crate::surface::surface::{Surface, SurfaceKind};
 
 const OP: &str = "surface::cone::p3";
@@ -628,23 +632,28 @@ impl Cone {
             if !self.is_cylinder() || !other.is_cylinder() {
                 return Ok((true, out));
             }
-            // The face domains can be shorter than either underlying cylinder.
-            // Work relative to `bottom`, as the circle/line construction below
-            // does, after converting the requested NURB domains to STEP heights.
-            // This conversion also handles swapped UV and inside-out surfaces.
-            let trim = self.convert_domain_from_nurbs_to_step(k, domain)?;
-            let other_trim = other.convert_domain_from_nurbs_to_step(k, other_domain)?;
-            let mut min = trim.v_min() - step.v_min();
-            let mut max = trim.v_max() - step.v_min();
-            let other_trim_bottom = other_origin + other_trim.v_min() * other_axis;
-            let other_trim_top = other_origin + other_trim.v_max() * other_axis;
-            let other_param = line_closest_point(bottom, axis, other_trim_bottom);
-            let other_param2 = line_closest_point(bottom, axis, other_trim_top);
-            let other_min = min2(other_param, other_param2);
-            let other_max = max2(other_param, other_param2);
-            if other_min > max + tol || other_max < min - tol {
-                return Ok((false, out));
-            }
+            let (mut min, mut max, other_min, other_max) = if k.fixes.cone_parallel_line_domains {
+                // Face domains can be shorter than either underlying cylinder.
+                // Work relative to `bottom`, as the circle/line construction below
+                // does. STEP conversion handles swapped UV and inside-out surfaces;
+                // projection also handles the other cylinder's reversed axis.
+                let trim = self.convert_domain_from_nurbs_to_step(k, domain)?;
+                let other_trim = other.convert_domain_from_nurbs_to_step(k, other_domain)?;
+                let min = trim.v_min() - step.v_min();
+                let max = trim.v_max() - step.v_min();
+                let other_trim_bottom = other_origin + other_trim.v_min() * other_axis;
+                let other_trim_top = other_origin + other_trim.v_max() * other_axis;
+                let other_param = line_closest_point(bottom, axis, other_trim_bottom);
+                let other_param2 = line_closest_point(bottom, axis, other_trim_top);
+                let other_min = min2(other_param, other_param2);
+                let other_max = max2(other_param, other_param2);
+                if other_min > max + tol || other_max < min - tol {
+                    return Ok((false, out));
+                }
+                (min, max, other_min, other_max)
+            } else {
+                (0.0, height, min2(param, param2), max2(param, param2))
+            };
             if other_min > max - tol {
                 min = max;
             }
@@ -714,9 +723,20 @@ impl Cone {
             };
             for point in points {
                 let line_point = point + (min - param) * axis;
+                // Upstream tests the bottom end of the line, which lies outside a face
+                // domain trimmed above the surface's own bottom, and skips the whole
+                // line (a face of a cylinder cut by an earlier Boolean; upstream defect
+                // WR-259). The opt-in fix tests the middle instead.
+                // The independent domain-clipping option above also keeps overlaps
+                // away from this full-span midpoint and shortens their output lines.
+                let test_point = if k.fixes.cone_parallel_line_midpoint {
+                    line_point + 0.5 * (max - min) * axis
+                } else {
+                    line_point
+                };
                 let zero = EFF_ZERO * (1.0 + line_point.max_dimension());
-                let inv = intersection_inversion(self, k, line_point, zero)?;
-                let other_inv = intersection_inversion(other, k, line_point, zero)?;
+                let inv = intersection_inversion(self, k, test_point, zero)?;
+                let other_inv = intersection_inversion(other, k, test_point, zero)?;
                 let (Some(inv), Some(other_inv)) = (inv, other_inv) else {
                     continue;
                 };
@@ -865,7 +885,7 @@ fn nurbs_uv_status_ignored(cone: &Cone, k: &Kernel, step_uv: Point2) -> Result<P
         Ok(uv) => Ok(uv),
         Err(e) if e.is_unported() => Err(e),
         Err(e) => {
-            let circle = cone.rev().polar_curve.as_ref().ok_or(e)?;
+            let circle = cone.rev().polar_curve().ok_or(e)?;
             let x = cone
                 .rev()
                 .polar
@@ -1029,14 +1049,15 @@ impl Cone {
             IntersectTarget::Plane(p) => {
                 self.intersect_with_plane(k, domain, p, other_domain, approx_tol_3d)?
             }
-            IntersectTarget::Cone(c) if c.type_code() == CONE_TYPE => self.intersect_with_cone_on(
-                k,
-                domain,
-                c,
-                other_domain,
-                approx_tol_3d,
-                [this, other_surface],
-            )?,
+            IntersectTarget::Cone(c) if matches!(c.type_code(), CONE_TYPE | CYLINDER_TYPE) => self
+                .intersect_with_cone_on(
+                    k,
+                    domain,
+                    c,
+                    other_domain,
+                    approx_tol_3d,
+                    [this, other_surface],
+                )?,
             IntersectTarget::Revolution(r) => {
                 let (more, mut out) =
                     r.intersect_with_cone(k, other_domain, self, domain, approx_tol_3d)?;
@@ -1136,7 +1157,8 @@ mod tests {
 
     #[test]
     fn issue711_overlapping_holes_keep_both_trimmed_intersections() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
+        k.fixes.cone_parallel_line_domains = true;
         let a = cylinder(&k, Vec3::new(6.0, 0.0, -1.0), false, false, false);
         let b = cylinder(&k, Vec3::new(3.0, 5.196, -1.0), false, false, false);
         let da = axial_domain(&k, &a, 1.0, 11.0);
@@ -1162,7 +1184,8 @@ mod tests {
 
     #[test]
     fn issue711_axial_trims_respect_both_parameterizations_and_axis_directions() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
+        k.fixes.cone_parallel_line_domains = true;
         for flags in 0..32 {
             let reverse = flags & 16 != 0;
             let a = cylinder(&k, Vec3::ZERO, false, flags & 1 != 0, flags & 2 != 0);
@@ -1187,7 +1210,8 @@ mod tests {
 
     #[test]
     fn issue711_upper_trim_shortens_lines_and_tangent_lines() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
+        k.fixes.cone_parallel_line_domains = true;
         let a = cylinder(&k, Vec3::ZERO, false, false, false);
         for (offset, count, kind) in [
             (6.0, 2, TsectCurveType::Crossing),
@@ -1206,8 +1230,43 @@ mod tests {
     }
 
     #[test]
+    fn issue711_domain_clipping_is_independent_of_midpoint() {
+        for midpoint in [false, true] {
+            for domains in [false, true] {
+                let mut k = Kernel::default();
+                assert!(!k.fixes.cone_parallel_line_domains);
+                k.fixes.cone_parallel_line_midpoint = midpoint;
+                k.fixes.cone_parallel_line_domains = domains;
+                let a = cylinder(&k, Vec3::ZERO, false, false, false);
+                let b = cylinder(&k, Vec3::new(6.0, 0.0, 0.0), false, false, false);
+                // The full line's bottom (0) and middle (6) are both outside
+                // this overlap. Clipping moves them into the requested faces.
+                let da = axial_domain(&k, &a, 1.0, 4.0);
+                let db = axial_domain(&k, &b, 2.0, 5.0);
+                let (more, out) = a.intersect_with_cone(&k, &da, &b, &db, Some(1e-7)).unwrap();
+                assert!(!more);
+                assert_axial_lines(&out, if domains { 2 } else { 0 }, 2.0, 4.0);
+                // Default compatibility also keeps overlong lines when their
+                // bottom lies in both faces, as the native fixture compares.
+                let da = axial_domain(&k, &a, 0.0, 4.0);
+                let db = b.rev().base().natural_uv_domain();
+                let (more, out) = a.intersect_with_cone(&k, &da, &b, &db, Some(1e-7)).unwrap();
+                assert!(!more);
+                if domains {
+                    assert_axial_lines(&out, 2, 0.0, 4.0);
+                } else if midpoint {
+                    assert!(out.curves_3d.is_empty());
+                } else {
+                    assert_axial_lines(&out, 2, 0.0, 12.0);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn issue711_axial_disjoint_and_touching_domains() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
+        k.fixes.cone_parallel_line_domains = true;
         let a = cylinder(&k, Vec3::ZERO, false, false, false);
         let b = cylinder(&k, Vec3::new(6.0, 0.0, 0.0), false, false, false);
         let da = axial_domain(&k, &a, 1.0, 4.0);
@@ -1228,7 +1287,8 @@ mod tests {
 
     #[test]
     fn issue711_trimmed_cylinder_with_nonzero_step_origin() {
-        let k = Kernel::default();
+        let mut k = Kernel::default();
+        k.fixes.cone_parallel_line_domains = true;
         let mut a = cylinder(&k, Vec3::ZERO, false, false, false);
         let da = axial_domain(&k, &a, 2.0, 10.0);
         a.trim_with_domain(&k, &da).unwrap();
@@ -1245,13 +1305,13 @@ mod tests {
     fn general_dispatch_preserves_cone_and_all_parameters() {
         let k = Kernel::default();
         let cone = Cone::empty(false);
-        let cylinder = Cone::empty(true);
+        let torus = Surface::from(crate::surface::torus::Torus::empty());
         let domain = Extent2d::from_bounds(1.0, 2.0, 3.0, 4.0);
         let other_domain = Extent2d::from_bounds(-1.0, -2.0, 5.0, 6.0);
-        // SmCylinder_TYPE deliberately does not match SmCone_TYPE in the native
-        // switch, even though its object derives from SmCone.
+        // A torus has no case in the native switch: the general intersector gets every
+        // parameter unchanged.
         let error = cone.global_surface_intersect_with(&k, &domain,
-            IntersectTarget::Cone(&cylinder), &other_domain, [false, true], Some(0.0123), Some(0.456),
+            IntersectTarget::Surface(&torus), &other_domain, [false, true], Some(0.0123), Some(0.456),
             |request| {
                 assert!(core::ptr::eq(request.kernel, &raw const k));
                 assert!(core::ptr::eq(request.cone, &raw const cone));
@@ -1260,10 +1320,34 @@ mod tests {
                 assert_eq!(request.use_surface_edges, [false, true]);
                 assert_eq!(request.approx_tol_3d, Some(0.0123));
                 assert_eq!(request.ang_tol_rad, Some(0.456));
-                assert!(matches!(request.other, IntersectTarget::Cone(c) if core::ptr::eq(c, &raw const cylinder)));
+                assert!(matches!(request.other, IntersectTarget::Surface(s) if core::ptr::eq(s, &raw const torus)));
                 Err(SolidError::sm_err("test::general_dispatch"))
             }).unwrap_err();
         assert_eq!(error.operation(), "test::general_dispatch");
+    }
+
+    #[test]
+    fn cylinder_target_reaches_intersect_with_cone() {
+        let k = Kernel::default();
+        let cone = Cone::empty(false);
+        let cylinder = Cone::empty(true);
+        let domain = Extent2d::from_bounds(1.0, 2.0, 3.0, 4.0);
+        // v1.0.1 SmCone::GlobalSurfaceIntersect (SmCone.cpp:2376-2377) handles
+        // SmCylinder_TYPE with SmCone_TYPE in IntersectWithCone; the empty cylinder
+        // fails there, before any general fallback.
+        let error = cone
+            .global_surface_intersect_with(
+                &k,
+                &domain,
+                IntersectTarget::Cone(&cylinder),
+                &domain,
+                [true, true],
+                None,
+                None,
+                |_| Err(SolidError::sm_err("test::general_dispatch")),
+            )
+            .unwrap_err();
+        assert_ne!(error.operation(), "test::general_dispatch");
     }
 
     #[test]

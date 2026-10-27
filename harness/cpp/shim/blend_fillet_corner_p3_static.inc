@@ -39,6 +39,7 @@ enum : int32_t
     P3_ADJ_TANGENT = 3,
     P3_UPDATE_SPLIT = 4, // SmFilletCorner::UpdateSplitFace (unit blend.fillet_corner_p2)
     P3_ANALYTIC = 5,     // SmFilletCorner::MakeAnalyticCornerSurface (unit blend.fillet_corner_p2)
+    P3_BIG_RAD = 6,      // SmFilletExecutive::TestAndConvertBigRadFillet
 };
 
 const double P3C_REFUSE = -2.0;
@@ -51,6 +52,26 @@ struct P3ExecPeek : SmFilletExecutive
     P3ExecPeek(const SmContext& c) : SmFilletExecutive(c) {}
     static SmFilletBrep* SmFilletExecutive::*pseudo() { return &P3ExecPeek::m_pPseudoBrep; }
     static SmBrep* SmFilletExecutive::*fillet() { return &P3ExecPeek::m_pFilletBrep; }
+    static SmMapPtrToPtr<SmVertex, SmObject> SmFilletExecutive::*vcmap()
+    {
+        return &P3ExecPeek::m_vVertexCornerMap;
+    }
+};
+
+struct P3BigRadSolver : P4Solver
+{
+    P3BigRadSolver(const SmContext& ctx, double tol, double ang, double tang)
+        : P4Solver(ctx, tol, ang, tang)
+    {
+    }
+    void set_rails(SmEdgeuse* eu0, SmEdgeuse* eu1, SmOffsetSurface* s0, SmOffsetSurface* s1)
+    {
+        m_pEdgeuses[0] = eu0;
+        m_pEdgeuses[1] = eu1;
+        m_pSurfaces[0] = s0;
+        m_pSurfaces[1] = s1;
+    }
+    SmTArray<SmFilletGeom*>& geoms_vec() { return m_vFilletGeoms; }
 };
 
 struct P3CornerPeek : SmFilletCorner
@@ -179,17 +200,21 @@ int64_t p3_index_of_vertex(Model& M, SmFilletVertex* v) { return index_of(M.vert
 // What SmFilletCorner::MakeAnalyticCornerSurface (blend.fillet_corner_p2) does on the corner's
 // edges E, without changing anything (P3_ANALYTIC runs it, the default corner patch calls it
 // first): P3A_REFUSE where it dereferences NULL, P3A_TRUE / P3A_FALSE for its return (its SER /
-// NER exits return a non-zero status, which its callers read as TRUE; a failed
-// SmFilletCorner::MakeConstantRadiusFillet makes it FALSE, p3_const_rad).
+// NER exits return a non-zero status, which its callers read as TRUE: P3A_TRUE_STATUS, TRUE
+// without the surface added to m_vSurfaces; a failed SmFilletCorner::MakeConstantRadiusFillet
+// makes it FALSE, p3_const_rad).
 // The surface fits are run (the file-static sm_CreatePlanarSurface / sm_CreateSrfOfRevolution
 // through blend_fillet_corner_p2_static.inc, CreateSphereFromArcs, the chamfer edges'
 // sm_SrfSrfIntersection) and their results deleted. The model's fillet geometries have no
-// solver: a geometry the function asks for its solver is refused. `ov` overrides one edge's 3D
+// solver unless the case gives it one (p3_run): a geometry without a solver that the function
+// asks for its solver is refused; circular or blend curve generators of two equal fillets
+// are refused where the constant radius solver is built. `ov` overrides one edge's 3D
 // curve (the 3x2 patch joins one before).
 enum P3Analytic
 {
     P3A_REFUSE,
-    P3A_TRUE,
+    P3A_TRUE,        // a surface was made and added to m_vSurfaces
+    P3A_TRUE_STATUS, // a SER / NER exit (read as TRUE): no surface added
     P3A_FALSE,
 };
 
@@ -208,8 +233,9 @@ SmBSplineCurve* p3_curve_of(SmFilletEdge* e, const P3Override& ov)
 // What SmFilletCorner::MakeConstantRadiusFillet (blend.fillet_corner_p1) does on the corner's
 // edges E up to where it reads its fillet geometries' solvers: P3A_REFUSE where it dereferences
 // NULL or reads m_vEdges[9999], P3A_FALSE for a status (MakeAnalyticCornerSurface then returns
-// FALSE). The model's fillet geometries have no solver, so a corner that gets past both
-// projections is refused (GetFilletSolver()->GetFilletSurfaceGenerator()).
+// FALSE). A corner that gets past both projections is refused at the solvers' generators
+// when a geometry has none, and past equal circular / blend curve generators (the constant
+// radius solver is built there).
 P3Analytic p3_const_rad(SmFilletCorner* c, const std::vector<SmFilletEdge*>& E, Model& M, const P3Override& ov)
 {
     ULONG n = (ULONG)E.size();
@@ -247,6 +273,7 @@ P3Analytic p3_const_rad(SmFilletCorner* c, const std::vector<SmFilletEdge*>& E, 
     SmFilletEdge* e0 = E[(found + n - 1) % n];
     SmFilletEdge* e1 = E[(found + 1) % n];
     SmSurface* srf[2] = {NULL, NULL};
+    SmFilletGeom* fgs[2] = {NULL, NULL};
     SmFilletEdge* es[2] = {e0, e1};
     for (int i = 0; i < 2; ++i)
     {
@@ -257,6 +284,7 @@ P3Analytic p3_const_rad(SmFilletCorner* c, const std::vector<SmFilletEdge*>& E, 
         if (fg == NULL || fg->GetFilletSurface() == NULL)
             return P3A_FALSE; // NER
         srf[i] = fg->GetFilletSurface();
+        fgs[i] = fg;
     }
     SmPoint3d opp = e0->GetVertex()->GetPoint();
     double t = 0.0;
@@ -279,11 +307,37 @@ P3Analytic p3_const_rad(SmFilletCorner* c, const std::vector<SmFilletEdge*>& E, 
             sols.GetSize() != 1)
             return P3A_FALSE;
     }
-    return P3A_REFUSE; // pFG0->GetFilletSolver()->GetFilletSurfaceGenerator()
+    // the generators of the two fillets' solvers (a NULL solver or generator is dereferenced)
+    SmFilletSurfaceGenerator* fsg[2] = {NULL, NULL};
+    for (int i = 0; i < 2; ++i)
+    {
+        if (fgs[i]->GetFilletSolver() == NULL)
+            return P3A_REFUSE;
+        fsg[i] = fgs[i]->GetFilletSolver()->GetFilletSurfaceGenerator();
+        if (fsg[i] == NULL)
+            return P3A_REFUSE;
+    }
+    SmFilletSurfaceGeneratorType eType = fsg[0]->GetFilletSurfaceGeneratorType();
+    if (eType != fsg[1]->GetFilletSurfaceGeneratorType())
+        return P3A_FALSE; // SM_ERR
+    if (eType == SM_FSG_BLEND_CURVE)
+    {
+        double s0 = ((SmBlendCurveCrossSectionFSG*)fsg[0])->GetBlendScale();
+        double s1 = ((SmBlendCurveCrossSectionFSG*)fsg[1])->GetBlendScale();
+        if (smos_Fabs(s0 - s1) > SM_EFF_ZERO)
+            return P3A_FALSE; // SM_ERR (unable to convert)
+    }
+    if (eType == SM_FSG_LINEAR)
+        return P3A_FALSE; // SM_ERR
+    // SM_FSG_UNKNOWN: pNewFS stays NULL and is dereferenced. Circular or blend curve: the
+    // constant radius solver is built and the fillet recomputed (not pre-checked).
+    return P3A_REFUSE;
 }
 
+// `nulled` (optional) receives the planar corner's edge whose curve upstream deleted
+// (`SetCurve(NULL, TRUE)`) before the status exit it then takes (P3A_TRUE_STATUS).
 P3Analytic p3_analytic(SmFilletCorner* c, const std::vector<SmFilletEdge*>& E, Model& M,
-                       const P3Override& ov = P3Override())
+                       const P3Override& ov = P3Override(), SmFilletEdge** nulled = NULL)
 {
     ULONG n = (ULONG)E.size();
     if (n < 3 || n > 4)
@@ -339,7 +393,7 @@ P3Analytic p3_analytic(SmFilletCorner* c, const std::vector<SmFilletEdge*>& E, M
         }
         SmBSplineCurve* b = p3_curve_of(e, ov);
         if (b == NULL)
-            return P3A_TRUE; // SER(SM_ERR)
+            return P3A_TRUE_STATUS; // SER(SM_ERR)
         curves.Add(b);
     }
     if (chamfer)
@@ -358,26 +412,45 @@ P3Analytic p3_analytic(SmFilletCorner* c, const std::vector<SmFilletEdge*>& E, M
             SmVector3d lv;
             if (curves[i]->IsLine(10, tol, lp, lv))
                 continue;
-            // (the edge's curve is deleted here upstream; the intersection does not read it)
+            // (the edge's curve is deleted here upstream, SetCurve(NULL, TRUE); the
+            // intersection does not read it, but the status exits below leave it NULL)
             SmSurface* fs = NULL;
             double atol = 0.0, ang = 0.0;
             if (e->GetFilletEdgeType() == SM_FE_RAIL_RAIL_INTERPOLATION)
             {
                 if (e->GetOriginalFace() == NULL)
-                    break; // NER: TRUE
+                {
+                    r = P3A_TRUE_STATUS; // NER
+                    if (nulled)
+                        *nulled = e;
+                    break;
+                }
                 fs = e->GetOriginalFace()->GetSurface();
                 atol = e->GetOriginalFace()->GetTolerance();
                 ang = 30.0 * SM_PI / 180.0;
             }
             else
             {
-                // pFilletGeom->GetFilletSolver()->GetThisApproxTol3d(): the model's
-                // geometries have no solver (or there is no geometry)
-                r = P3A_REFUSE;
-                break;
+                // pPrimEU->GetFilletGeom() (no mate fallback), its solver's tolerances and
+                // its fillet surface: NULL geometry or solver is dereferenced
+                SmFilletEdgeuse* pe = (SmFilletEdgeuse*)e->GetPrimaryEdgeuse();
+                SmFilletGeom* pfg = pe != NULL ? pe->GetFilletGeom() : NULL;
+                if (pfg == NULL || pfg->GetFilletSolver() == NULL)
+                {
+                    r = P3A_REFUSE;
+                    break;
+                }
+                fs = pfg->GetFilletSurface();
+                atol = pfg->GetFilletSolver()->GetThisApproxTol3d();
+                ang = pfg->GetFilletSolver()->GetThisAngTolRad();
             }
             if (fs == NULL)
-                break; // NER: TRUE
+            {
+                r = P3A_TRUE_STATUS; // NER
+                if (nulled)
+                    *nulled = e;
+                break;
+            }
             SmVertex* sv = e->GetStartVertex();
             SmVertex* ev = e->GetOtherVertex(sv);
             if (ev == NULL)
@@ -393,7 +466,12 @@ P3Analytic p3_analytic(SmFilletCorner* c, const std::vector<SmFilletEdge*>& E, M
             delete u1;
             delete u2;
             if (is != SM_SUCCESS)
-                break; // SER: TRUE
+            {
+                r = P3A_TRUE_STATUS; // SER
+                if (nulled)
+                    *nulled = e;
+                break;
+            }
             if (c3 == NULL)
             {
                 r = P3A_REFUSE; // pNew3DCurve->SetOwner()
@@ -467,10 +545,17 @@ double p3_check_default_patch(SmFilletCorner* c, const std::vector<SmFilletEdge*
                               const std::vector<SmFilletVertex*>& V, Model& M,
                               const P3Override& ov = P3Override())
 {
-    switch (p3_analytic(c, E, M, ov))
+    SmFilletEdge* nulled = NULL;
+    switch (p3_analytic(c, E, M, ov, &nulled))
     {
     case P3A_REFUSE: return P3C_REFUSE;
     case P3A_TRUE: return p3_check_make_face(c, E, ov, 1);
+    // a status exit adds no surface: MakeFaceBrep sees m_vSurfaces as it was (with one
+    // surface it copies every edge's curve, the deleted one included)
+    case P3A_TRUE_STATUS:
+        if (nulled != NULL)
+            return (c->*P3CornerPeek::surfs()).GetSize() == 1 ? P3C_REFUSE : 0.0;
+        return p3_check_make_face(c, E, ov, 0);
     case P3A_FALSE: break;
     }
     ULONG n = (ULONG)E.size();
@@ -566,8 +651,8 @@ double p3_check_default_patch(SmFilletCorner* c, const std::vector<SmFilletEdge*
             }
         }
         SmCurve* curve = fe == ov.edge ? ov.curve : fe->GetCurve();
-        if (curve == NULL)
-            return P3C_REFUSE; // CreateCornerBlend reads every boundary curve
+        // A NULL curve is not refused: CreateCornerBlend returns SM_ERR below four curves,
+        // else sm_CreateNonRationalCurve casts null-safely and returns SM_ERR_NULL_POINTER.
         uv.Add(ps);
         c3d.Add(curve);
         orients.Add(SM_OT_SAME);
@@ -717,17 +802,23 @@ double p3_check_patch(int64_t kind, SmFilletCorner* c, Model& M)
             delete k1;
             return 0.0; // SER(SM_ERR) before any deletion
         }
+        // From here upstream has deleted pFEOnEdge (~SmTopology unlinks it from the pseudo
+        // B-rep's edge list) and pCornerV (its uses moved to the surviving vertex, its mates
+        // cleared) before any later return, exactly as on success: the op runs, and the
+        // Model drops the corner vertex from its own list so neither the export nor ~Model
+        // touches it (p3_deleted_vertex, as for the success path below).
         if (onExt->GetOriginalFace() == NULL)
         {
             delete k1;
-            return P3C_REFUSE; // deletes Model objects, then NER
+            p3_deleted_vertex = cornerV;
+            return 0.0; // NER(pOrigFace) after the deletions
         }
         // pSurface->DropCurve(.., *pCurve1 (the joined curve), ..) dereferences the original
         // face's surface; the mate of the primary edge use is dereferenced after it. Run the
         // DropCurve here (a pure function of the surface and the joined copy; the model's
         // faces are unit bilinear patches, so UB-182 / HANG-38 do not arise): when it (or the
-        // one-curve check) fails, upstream returns having deleted the Model's objects (refused,
-        // like a missing original face above); else the default patch over the rest follows.
+        // one-curve check) fails, upstream returns its status after the deletions (run, as
+        // a missing original face above); else the default patch over the rest follows.
         SmSurface* srf = onExt->GetOriginalFace()->GetSurface();
         if (srf == NULL)
         {
@@ -742,7 +833,7 @@ double p3_check_patch(int64_t kind, SmFilletCorner* c, Model& M)
         SmEdgeuse* primary = onExt->GetPrimaryEdgeuse();
         double pre = 0.0;
         if (ds != SM_SUCCESS || !one)
-            pre = P3C_REFUSE; // pFEOnEdge and pCornerV are already deleted: the Model's export would walk freed objects
+            p3_deleted_vertex = cornerV; // SER(DropCurve) / SER(SM_ERR) after the deletions
         else if (primary == NULL || primary->GetMate() == NULL)
             pre = P3C_REFUSE;
         else
@@ -850,6 +941,12 @@ double p3_check_concave(SmFilletCorner* c)
     side->GetEdge()->GetCurve()->EvaluatePoint(vu2->GetTsectPnt().m_dCurveParameter, p2);
     if (p1.DistanceBetween(p2) < c->*P3CornerPeek::tol())
         return 0.0;
+    // coincident rail points with a zero tolerance: dGapDist == 0, so
+    // AdjustConcaveCornerTopology (SmFilletCorner.cpp:7185) extends the side surface by
+    // 10 * 0 and CreateExtendedSurface halves 0 forever (HANG-9, addendum 2026-10-26;
+    // stack confirmed at runtime)
+    if (p1.DistanceBetween(p2) == 0.0)
+        return P3C_REFUSE;
     const SmVertex* cv = c->GetFilletedVertex();
     if (cv == NULL)
         return P3C_REFUSE;
@@ -985,6 +1082,57 @@ double p3_check_convex_nxn(SmFilletCorner* c)
     return 0.0;
 }
 
+// Pre-checks SmFilletExecutive::TestAndConvertBigRadFillet(fg) on the standalone corner Model
+// (where vertices hold either NULL or opaque integer corner tags 1..=4, and geometries have no
+// solver): P3C_REFUSE where it would dereference NULL, an opaque corner tag or a NULL solver,
+// 1.0 where NER returns SM_ERR_NULL_POINTER cleanly (stopping AdjustTopology via SER), and 0.0
+// where it returns SM_SUCCESS with bConvertedToCorner == FALSE.
+double p3_check_big_rad_on_model(SmFilletGeom* fg, SmFilletCorner* c)
+{
+    if (fg == NULL)
+        return P3C_REFUSE;
+    SmFilletCorner* sc = NULL;
+    SmFilletCorner* ec = NULL;
+    for (ULONG r = 0; r < 2; ++r)
+    {
+        SmFilletEdge* rail = fg->GetRail(r);
+        if (rail == NULL)
+            return P3C_REFUSE;
+        SmEdgeuse* prim = rail->GetPrimaryEdgeuse();
+        if (prim == NULL || prim->GetMate() == NULL)
+            return P3C_REFUSE;
+        if (prim->GetVertexuse() == NULL || prim->GetMate()->GetVertexuse() == NULL)
+            return P3C_REFUSE;
+        SmFilletVertex* sv = (SmFilletVertex*)prim->GetVertexuse()->GetVertex();
+        SmFilletVertex* ev = (SmFilletVertex*)prim->GetMate()->GetVertexuse()->GetVertex();
+        if (sv == NULL || ev == NULL)
+            return P3C_REFUSE;
+        if (r == 0)
+        {
+            sc = sv->GetFilletCorner();
+            if (sc == NULL)
+                return 1.0; // NER(pStartCorner)
+            if (sc != c)
+                return P3C_REFUSE; // opaque integer corner tag in Model
+            ec = ev->GetFilletCorner();
+            if (ec == NULL)
+                return 1.0; // NER(pEndCorner)
+            if (ec != c)
+                return P3C_REFUSE; // opaque integer corner tag in Model
+            if (sc->*P3CornerPeek::adjusted() || ec->*P3CornerPeek::adjusted())
+                return 0.0;
+        }
+        if (sc->GetCornerType() != SM_FCR_N_x_2 || ec->GetCornerType() != SM_FCR_N_x_2
+            || sv->IsProcessed() == FALSE || ev->IsProcessed() == FALSE)
+        {
+            return 0.0;
+        }
+    }
+    if (fg->GetFilletSolver() == NULL)
+        return P3C_REFUSE;
+    return P3C_REFUSE;
+}
+
 double p3_check_topo(int64_t kind, SmFilletCorner* c, Model& M)
 {
     if (kind == 9 || kind == 10)
@@ -1022,7 +1170,19 @@ double p3_check_topo(int64_t kind, SmFilletCorner* c, Model& M)
         side->GetEdge()->GetCurve()->EvaluatePoint(vu2->GetTsectPnt().m_dCurveParameter, p2);
         double dist = p1.DistanceBetween(p2);
         if (c->IsBlendingCorner())
-            return P3C_NOT_RUN; // TestAndConvertBigRadFillet
+        {
+            double br1 = p3_check_big_rad_on_model(gs[0], c);
+            if (br1 == P3C_REFUSE)
+                return P3C_REFUSE;
+            if (br1 > 0.0)
+                return 0.0;
+            double br2 = p3_check_big_rad_on_model(gs[1], c);
+            if (br2 == P3C_REFUSE)
+                return P3C_REFUSE;
+            if (br2 > 0.0)
+                return 0.0;
+            continue;
+        }
         if (dist < c->*P3CornerPeek::tol())
             continue;
         const SmVertex* cv = c->GetFilletedVertex();
@@ -1335,10 +1495,515 @@ void p3_put_fillet_brep(std::vector<double>& o, SmBrep* b)
     }
 }
 
+void p3_put_error_info(std::vector<double>& o, SmFilletErrorInfo* info, const SmVertex* corner_vert)
+{
+    if (info == NULL)
+    {
+        o.push_back(-1.0);
+        return;
+    }
+    o.push_back((double)info->GetErrorCode());
+    o.push_back((double)info->m_eCornerType);
+    double vtag = -1.0;
+    if (info->m_pFilletedVertex != NULL)
+        vtag = info->m_pFilletedVertex == corner_vert ? 1.0 : 0.0;
+    o.push_back(vtag);
+    size_t nlen = 0;
+    while (nlen < SM_TBLOCK_SIZE && info->m_cEntityName[nlen] != 0)
+        ++nlen;
+    o.push_back((double)nlen);
+    for (size_t i = 0; i < nlen; ++i)
+        o.push_back((double)(unsigned char)info->m_cEntityName[i]);
+    size_t clen = 0;
+    while (clen < SM_TBLOCK_SIZE && info->m_cComment[clen] != 0)
+        ++clen;
+    o.push_back((double)clen);
+    for (size_t i = 0; i < clen; ++i)
+        o.push_back((double)(unsigned char)info->m_cComment[i]);
+}
+
+int32_t p3_big_rad(Rd& rd, std::vector<double>& o)
+{
+    const SmContext& ctx = the_context();
+    Model M(ctx);
+    if (!M.build(rd))
+        return SC_ERR_ARG;
+
+    int64_t fg_idx = rd.idx();
+    int64_t nc = rd.idx();
+    if (rd.bad || fg_idx < 0 || (size_t)fg_idx >= M.geoms.size() || nc < 0 || nc > 4)
+        return SC_ERR_ARG;
+
+    P3ExecPeek* exec = new (ctx) P3ExecPeek(ctx);
+    exec->*P3ExecPeek::pseudo() = M.pseudo;
+
+    std::vector<SmFilletCorner*> corners;
+    for (int64_t i = 0; i < nc && !rd.bad; ++i)
+    {
+        int64_t kind = rd.idx();
+        int64_t vEdge = rd.idx();
+        int64_t vSub = rd.idx();
+        bool adjusted = rd.flag();
+        double tol = rd.num();
+        double tan = rd.num();
+        int64_t ne = rd.idx();
+        const SmVertex* vert = NULL;
+        if (vEdge >= 0)
+        {
+            if ((size_t)vEdge >= M.targetEdges.size())
+            {
+                rd.bad = true;
+                break;
+            }
+            SmVertex* vs = NULL;
+            SmVertex* ve = NULL;
+            M.targetEdges[(size_t)vEdge]->GetVertices(vs, ve);
+            vert = vSub == 0 ? vs : ve;
+        }
+        SmFilletCorner* c = p3_make_corner(kind, ctx, vert, NULL, NULL, exec, tol, tan);
+        if (c == NULL || ne < 0 || ne > 32)
+        {
+            delete c;
+            rd.bad = true;
+            break;
+        }
+        c->*P3CornerPeek::adjusted() = adjusted ? TRUE : FALSE;
+        corners.push_back(c);
+        for (int64_t k = 0; k < ne && !rd.bad; ++k)
+        {
+            SmFilletEdge* e = M.edge(rd.idx());
+            if (e == NULL)
+            {
+                rd.bad = true;
+                break;
+            }
+            (c->*P3CornerPeek::edges()).Add(e);
+        }
+    }
+
+    int64_t nfc = rd.idx();
+    if (nfc < 0 || nfc > nc)
+        rd.bad = true;
+    for (int64_t i = 0; i < nfc && !rd.bad; ++i)
+    {
+        int64_t ci = rd.idx();
+        if (ci < 0 || ci >= nc)
+        {
+            rd.bad = true;
+            break;
+        }
+        exec->GetFilletCorners().Add(corners[(size_t)ci]);
+    }
+
+    int64_t ns = rd.idx();
+    if (ns < 0 || ns > 4)
+        rd.bad = true;
+    std::vector<P3BigRadSolver*> solvers;
+    for (int64_t i = 0; i < ns && !rd.bad; ++i)
+    {
+        double tol = rd.num();
+        double ang = rd.num();
+        double tang = rd.num();
+        bool has_rails = rd.flag();
+        P3BigRadSolver* s = new (ctx) P3BigRadSolver(ctx, tol, ang, tang);
+        solvers.push_back(s);
+        if (has_rails)
+        {
+            int64_t f0 = rd.idx(), eu0_i = rd.idx();
+            double d0 = rd.num();
+            int64_t f1 = rd.idx(), eu1_i = rd.idx();
+            double d1 = rd.num();
+            if (f0 < 0 || (size_t)f0 >= M.targetFaces.size() || f1 < 0 || (size_t)f1 >= M.targetFaces.size()
+                || eu0_i < 0 || eu0_i >= 4 || eu1_i < 0 || eu1_i >= 4)
+            {
+                rd.bad = true;
+                break;
+            }
+            SmTArray<SmLoop*> l0, l1;
+            M.targetFaces[(size_t)f0]->GetLoops(l0);
+            M.targetFaces[(size_t)f1]->GetLoops(l1);
+            SmTArray<SmEdgeuse*> eus0, eus1;
+            if (l0.GetSize() > 0)
+                l0[0]->GetEdgeuses(eus0);
+            if (l1.GetSize() > 0)
+                l1[0]->GetEdgeuses(eus1);
+            SmBSplineSurface* bs0 = SM_CAST_PTR(SmBSplineSurface, M.targetFaces[(size_t)f0]->GetSurface());
+            SmBSplineSurface* bs1 = SM_CAST_PTR(SmBSplineSurface, M.targetFaces[(size_t)f1]->GetSurface());
+            if ((ULONG)eu0_i >= eus0.GetSize() || (ULONG)eu1_i >= eus1.GetSize() || bs0 == NULL || bs1 == NULL)
+            {
+                rd.bad = true;
+                break;
+            }
+            SmOffsetSurface* os0 = new (ctx) SmOffsetSurface(d0, *bs0);
+            SmOffsetSurface* os1 = new (ctx) SmOffsetSurface(d1, *bs1);
+            os0->SetAllowExtension(TRUE);
+            os1->SetAllowExtension(TRUE);
+            s->set_rails(eus0[(ULONG)eu0_i], eus1[(ULONG)eu1_i], os0, os1);
+        }
+        int64_t ngo = rd.idx();
+        if (ngo < 0 || ngo > 4)
+        {
+            rd.bad = true;
+            break;
+        }
+        for (int64_t k = 0; k < ngo && !rd.bad; ++k)
+        {
+            SmFilletGeom* g = M.geom(rd.idx());
+            if (g == NULL)
+            {
+                rd.bad = true;
+                break;
+            }
+            s->geoms_vec().Add(g);
+        }
+    }
+
+    for (size_t g = 0; g < M.geoms.size() && !rd.bad; ++g)
+    {
+        int64_t si = rd.idx();
+        if (si >= (int64_t)solvers.size())
+        {
+            rd.bad = true;
+            break;
+        }
+        M.geoms[g]->*P4GeomPeek::solver() = si < 0 ? NULL : solvers[(size_t)si];
+    }
+
+    int64_t nfs = rd.idx();
+    if (nfs < 0 || nfs > ns)
+        rd.bad = true;
+    for (int64_t i = 0; i < nfs && !rd.bad; ++i)
+    {
+        int64_t si = rd.idx();
+        if (si < 0 || si >= ns)
+        {
+            rd.bad = true;
+            break;
+        }
+        exec->GetFilletSolvers().Add(solvers[(size_t)si]);
+    }
+
+    auto cleanup_all = [&](SmFilletCorner* del_c1, SmFilletCorner* del_c2, P3BigRadSolver* del_s,
+                           SmFilletCorner* new_c) {
+        exec->*P3ExecPeek::pseudo() = NULL;
+        exec->GetFilletCorners().ReSet();
+        exec->GetFilletSolvers().ReSet();
+        if (new_c != NULL)
+        {
+            (new_c->*P3CornerPeek::verts()).ReSet();
+            delete new_c;
+        }
+        for (size_t i = 0; i < corners.size(); ++i)
+        {
+            if (corners[i] != del_c1 && corners[i] != del_c2)
+            {
+                (corners[i]->*P3CornerPeek::verts()).ReSet();
+                delete corners[i];
+            }
+        }
+        for (size_t i = 0; i < solvers.size(); ++i)
+        {
+            if (solvers[i] != del_s)
+            {
+                solvers[i]->geoms_vec().ReSet();
+                delete solvers[i];
+            }
+        }
+        delete exec;
+    };
+
+    if (rd.bad)
+    {
+        cleanup_all(NULL, NULL, NULL, NULL);
+        return SC_ERR_ARG;
+    }
+
+    // Replace opaque corner tags (1..=nc) on vertices and edges with the real SmFilletCorner*s;
+    // refuse any tag >= nc that would be dereferenced.
+    bool bad_tag = false;
+    for (size_t i = 0; i < M.verts.size(); ++i)
+    {
+        uintptr_t raw = (uintptr_t)M.verts[i]->GetFilletCorner();
+        if (raw > 0)
+        {
+            if ((int64_t)(raw - 1) < nc)
+                M.verts[i]->SetFilletCorner(corners[(size_t)(raw - 1)]);
+            else
+                bad_tag = true;
+        }
+    }
+    std::vector<SmFilletEdge*> init_es = M.edges();
+    for (size_t i = 0; i < init_es.size(); ++i)
+    {
+        uintptr_t raw = (uintptr_t)init_es[i]->GetFilletCorner();
+        if (raw > 0)
+        {
+            if ((int64_t)(raw - 1) < nc)
+                init_es[i]->SetFilletCorner(corners[(size_t)(raw - 1)]);
+            else
+                bad_tag = true;
+        }
+    }
+
+    SmFilletGeom* fg = M.geoms[(size_t)fg_idx];
+    // Pre-check null dereferences and self-aliasing UAFs before mutating.
+    bool refuse = bad_tag;
+    SmFilletVertex* sv[2] = {NULL, NULL};
+    SmFilletVertex* ev[2] = {NULL, NULL};
+    SmFilletEdge* rails[2] = {NULL, NULL};
+    SmFilletCorner* sc = NULL;
+    SmFilletCorner* ec = NULL;
+    bool early_exit = false;
+    for (ULONG r = 0; r < 2 && !refuse && !early_exit; ++r)
+    {
+        rails[r] = fg->GetRail(r);
+        if (rails[r] == NULL)
+        {
+            refuse = true;
+            break;
+        }
+        SmEdgeuse* prim = rails[r]->GetPrimaryEdgeuse();
+        if (prim == NULL || prim->GetMate() == NULL || prim->GetVertexuse() == NULL
+            || prim->GetMate()->GetVertexuse() == NULL)
+        {
+            refuse = true;
+            break;
+        }
+        sv[r] = (SmFilletVertex*)prim->GetVertexuse()->GetVertex();
+        ev[r] = (SmFilletVertex*)prim->GetMate()->GetVertexuse()->GetVertex();
+        if (sv[r] == NULL || ev[r] == NULL)
+        {
+            refuse = true;
+            break;
+        }
+        if (r == 0)
+        {
+            sc = sv[0]->GetFilletCorner();
+            ec = ev[0]->GetFilletCorner();
+            if (sc == NULL || ec == NULL)
+            {
+                early_exit = true; // NER
+                break;
+            }
+            if (sc->*P3CornerPeek::adjusted() || ec->*P3CornerPeek::adjusted())
+            {
+                early_exit = true;
+                break;
+            }
+        }
+        if (sc->GetCornerType() != SM_FCR_N_x_2 || ec->GetCornerType() != SM_FCR_N_x_2
+            || sv[r]->IsProcessed() == FALSE || ev[r]->IsProcessed() == FALSE)
+        {
+            early_exit = true;
+            break;
+        }
+    }
+    P3BigRadSolver* fg_solver = (P3BigRadSolver*)(fg->*P4GeomPeek::solver());
+    SmFilletVertex* will_delete_ev = NULL;
+    if (!refuse && !early_exit)
+    {
+        if (fg_solver == NULL)
+        {
+            refuse = true;
+        }
+        else
+        {
+            SmVector3d d0 = ev[0]->GetPoint() - sv[0]->GetPoint();
+            SmVector3d d1 = ev[1]->GetPoint() - sv[1]->GetPoint();
+            double tol = fg_solver->GetThisApproxTol3d();
+            if (d0.Length() > tol && d1.Length() > tol && d0.Dot(d1) <= 0.0)
+            {
+                ULONG sq = 0;
+                if (sv[0]->GetFilletVertexType() != SM_FV_MATE || ev[0]->GetFilletVertexType() != SM_FV_MATE)
+                {
+                    sq = 1;
+                    if (sv[1]->GetFilletVertexType() != SM_FV_MATE || ev[1]->GetFilletVertexType() != SM_FV_MATE)
+                        early_exit = true; // SER(SM_ERR)
+                }
+                if (!early_exit)
+                {
+                    ULONG ot = 1 - sq;
+                    if (rails[0] == rails[1] || sv[sq] == ev[sq] || ev[sq] == sv[ot] || ev[sq] == ev[ot] || sc == ec)
+                        refuse = true;
+                    else
+                        will_delete_ev = ev[sq];
+                }
+            }
+        }
+    }
+
+    if (refuse)
+    {
+        o.push_back(P3C_REFUSE);
+        cleanup_all(NULL, NULL, NULL, NULL);
+        return SC_OK;
+    }
+
+    // Snapshot geoms and vertices owned by fg_solver in case `delete pFS` runs.
+    std::vector<SmFilletGeom*> solver_geoms;
+    if (fg_solver != NULL)
+    {
+        SmTArray<SmFilletGeom*>& gv = fg_solver->geoms_vec();
+        for (ULONG i = 0; i < gv.GetSize(); ++i)
+            solver_geoms.push_back(gv[i]);
+    }
+
+    SmBoolean converted = FALSE;
+    SmStatus r = exec->TestAndConvertBigRadFillet(fg, converted);
+
+    // Track what TestAndConvertBigRadFillet deleted so Model::~Model and cleanup_all don't
+    // touch freed memory.
+    if (will_delete_ev != NULL)
+    {
+        for (size_t k = 0; k < M.verts.size(); ++k)
+            if (M.verts[k] == will_delete_ev)
+            {
+                M.verts.erase(M.verts.begin() + (std::ptrdiff_t)k);
+                break;
+            }
+    }
+
+    SmFilletCorner* del_c1 = NULL;
+    SmFilletCorner* del_c2 = NULL;
+    P3BigRadSolver* del_s = NULL;
+    SmFilletCorner* new_c = NULL;
+    if (r == SM_SUCCESS && converted != FALSE)
+    {
+        del_c1 = sc;
+        del_c2 = ec;
+        del_s = fg_solver;
+        for (size_t g = 0; g < solver_geoms.size(); ++g)
+        {
+            for (size_t k = 0; k < M.geoms.size(); ++k)
+                if (M.geoms[k] == solver_geoms[g])
+                {
+                    M.geoms.erase(M.geoms.begin() + (std::ptrdiff_t)k);
+                    break;
+                }
+        }
+        SmTArray<SmFilletCorner*>& fc = exec->GetFilletCorners();
+        for (ULONG i = 0; i < fc.GetSize(); ++i)
+            if (index_of(corners, fc[i]) < 0)
+                new_c = fc[i];
+    }
+    else if (r != SM_SUCCESS && sc != NULL && ec != NULL)
+    {
+        // Note: if failure occurred at m_vFilletSolvers.FindElement (after lines 4456-4457),
+        // sc and ec were already deleted! Detect whether sc/ec were removed from m_vFilletCorners
+        // AND pOrigVertS/E were non-NULL (lines 4449-4450 passed).
+        ULONG dummy = 0;
+        bool sc_in = exec->GetFilletCorners().FindElement(sc, dummy) != FALSE;
+        bool ec_in = exec->GetFilletCorners().FindElement(ec, dummy) != FALSE;
+        if (!sc_in && !ec_in && sc->GetFilletedVertex() != NULL && ec->GetFilletedVertex() != NULL)
+        {
+            // Check if vertex_corner_map received the insert (lines 4453-4454 ran right before delete)
+            if ((exec->*P3ExecPeek::vcmap()).Contains((SmVertex*)sc->GetFilletedVertex()) != FALSE)
+            {
+                del_c1 = sc;
+                del_c2 = ec;
+            }
+        }
+    }
+
+    int64_t new_id = nc;
+    auto map_corner_ptr = [&](const SmFilletCorner* p) -> double {
+        if (p == NULL)
+            return -1.0;
+        if (p == new_c && new_c != NULL)
+            return (double)new_id;
+        int64_t idx = index_of(corners, p);
+        return idx >= 0 ? (double)idx : -2.0;
+    };
+
+    // Convert real corner pointers on M's vertices and edges back to corner tags for M.put(o).
+    for (size_t i = 0; i < M.verts.size(); ++i)
+    {
+        double cid = map_corner_ptr(M.verts[i]->GetFilletCorner());
+        M.verts[i]->SetFilletCorner(cid < 0.0 ? NULL : (SmFilletCorner*)(uintptr_t)((int64_t)cid + 1));
+    }
+    std::vector<SmFilletEdge*> out_es = M.edges();
+    for (size_t i = 0; i < out_es.size(); ++i)
+    {
+        double cid = map_corner_ptr(out_es[i]->GetFilletCorner());
+        out_es[i]->SetFilletCorner(cid < 0.0 ? NULL : (SmFilletCorner*)(uintptr_t)((int64_t)cid + 1));
+    }
+
+    o.push_back(st(r));
+    o.push_back(flg(converted));
+    if (r == SM_SUCCESS)
+    {
+        SmTArray<SmFilletCorner*>& fc = exec->GetFilletCorners();
+        o.push_back((double)fc.GetSize());
+        for (ULONG i = 0; i < fc.GetSize(); ++i)
+            o.push_back(map_corner_ptr(fc[i]));
+
+        SmTArray<SmFilletSolver*>& fs = exec->GetFilletSolvers();
+        o.push_back((double)fs.GetSize());
+        for (ULONG i = 0; i < fs.GetSize(); ++i)
+        {
+            int64_t si = -1;
+            for (size_t k = 0; k < solvers.size(); ++k)
+                if ((SmFilletSolver*)solvers[k] == fs[i])
+                    si = (int64_t)k;
+            o.push_back((double)si);
+        }
+
+        if (converted != FALSE && new_c != NULL)
+        {
+            o.push_back((double)new_c->GetCornerType());
+            SmTArray<SmFilletVertex*>& nv = new_c->*P3CornerPeek::verts();
+            o.push_back((double)nv.GetSize());
+            for (ULONG i = 0; i < nv.GetSize(); ++i)
+                o.push_back((double)index_of(M.verts, nv[i]));
+            SmTArray<SmFilletEdge*>& ne = new_c->*P3CornerPeek::edges();
+            o.push_back((double)ne.GetSize());
+            for (ULONG i = 0; i < ne.GetSize(); ++i)
+                o.push_back(M.edge_index(ne[i]));
+            o.push_back(new_c->*P3CornerPeek::tol());
+            o.push_back(new_c->*P3CornerPeek::tantol());
+
+            o.push_back((double)(M.targetEdges.size() * 2));
+            for (size_t i = 0; i < M.targetEdges.size(); ++i)
+            {
+                SmVertex* vs = NULL;
+                SmVertex* ve = NULL;
+                M.targetEdges[i]->GetVertices(vs, ve);
+                for (SmVertex* tv : {vs, ve})
+                {
+                    SmObject* obj = (exec->*P3ExecPeek::vcmap()).At(tv);
+                    if (obj != NULL)
+                        o.push_back(map_corner_ptr((const SmFilletCorner*)obj));
+                    else
+                        o.push_back(-1.0);
+                }
+            }
+        }
+        M.put(o);
+    }
+
+    cleanup_all(del_c1, del_c2, del_s, new_c);
+    return SC_OK;
+}
+
+// The solvers (and their surface generators) a corner case puts on the model's geometries.
+struct P3GeomSolvers
+{
+    std::vector<P4Solver*> solvers;
+    std::vector<SmFilletSurfaceGenerator*> fsgs;
+    ~P3GeomSolvers()
+    {
+        for (size_t i = 0; i < solvers.size(); ++i)
+            delete solvers[i];
+        for (size_t i = 0; i < fsgs.size(); ++i)
+            delete fsgs[i];
+    }
+};
+
 int32_t p3_run(int32_t op, Rd& rd, std::vector<double>& o)
 {
     const SmContext& ctx = the_context();
     P3PlaneGuard planes; // outlives M, whose intersection points point at the planes
+    P3GeomSolvers GS;    // outlives M, whose geometries point at the solvers
     Model M(ctx);
     if (!M.build(rd))
         return SC_ERR_ARG;
@@ -1432,6 +2097,47 @@ int32_t p3_run(int32_t op, Rd& rd, std::vector<double>& o)
                                            SmExtent1d(d0, d1), r, 3, &M.ctx);
         c->GetOrCreateGwNurbPointer();
         e->SetCurve(c, TRUE);
+    }
+    // solvers on the model's geometries: `n (approx tang fsg)..` and, when n > 0, per
+    // geometry its solver index (-1 none); a base solver (angle tolerance SM_EFF_ZERO_RAD)
+    // carrying the cross-section kind's generator (GS, declared before M).
+    {
+        int64_t ngs = rd.idx();
+        if (ngs < 0 || ngs > 8)
+            rd.bad = true;
+        for (int64_t i = 0; i < ngs && !rd.bad; ++i)
+        {
+            double atol = rd.num();
+            double tang = rd.num();
+            int64_t fsg = rd.idx();
+            if (fsg < 0 || fsg > 3)
+            {
+                rd.bad = true;
+                break;
+            }
+            P4Solver* s = new (ctx) P4Solver(ctx, atol, SM_EFF_ZERO_RAD, tang);
+            SmFilletSurfaceGenerator* f = NULL;
+            switch (fsg)
+            {
+            case 1: f = new (ctx) SmLinearCrossSectionFSG(); break;
+            case 2: f = new (ctx) SmCircularCrossSectionFSG(); break;
+            case 3: f = new (ctx) SmBlendCurveCrossSectionFSG(); break;
+            default: f = new (ctx) SmFilletSurfaceGenerator(); break;
+            }
+            s->SetFilletSurfaceGenerator(f);
+            GS.solvers.push_back(s);
+            GS.fsgs.push_back(f);
+        }
+        for (size_t g = 0; g < M.geoms.size() && ngs > 0 && !rd.bad; ++g)
+        {
+            int64_t si = rd.idx();
+            if (si >= (int64_t)GS.solvers.size())
+            {
+                rd.bad = true;
+                break;
+            }
+            M.geoms[g]->*P4GeomPeek::solver() = si < 0 ? NULL : GS.solvers[(size_t)si];
+        }
     }
     SmFace* splitFaces[2] = {NULL, NULL};
     if (op == P3_UPDATE_SPLIT)
@@ -1565,6 +2271,7 @@ int32_t p3_run(int32_t op, Rd& rd, std::vector<double>& o)
         M.put(o);
         p3_put_surfaces(o, c);
         p3_put_fillet_brep(o, filletBrep);
+        p3_put_error_info(o, exec->GetFilletErrorInfo(), vertex);
     }
     exec->*P3ExecPeek::fillet() = NULL;
     // the Model owns the fillet vertices; the corner owns its edge use arrays
@@ -1578,7 +2285,7 @@ int32_t p3_run(int32_t op, Rd& rd, std::vector<double>& o)
 SC_EXPORT int32_t sc_blend_fillet_corner_p3_corner(int32_t op, const double* in, int64_t n_in, double* out,
                                                    int64_t cap, int64_t* out_len)
 {
-    if (op < P3_CALC_GEOM || op > P3_ANALYTIC)
+    if (op < P3_CALC_GEOM || op > P3_BIG_RAD)
         return SC_ERR_ARG;
     if (out == NULL || out_len == NULL || n_in < 0 || cap < 0)
         return SC_ERR_ARG;
@@ -1590,7 +2297,7 @@ SC_EXPORT int32_t sc_blend_fillet_corner_p3_corner(int32_t op, const double* in,
     // any classification, as for OP_FB_SPLIT_FACE.
     rd.cache_op = op == P3_UPDATE_SPLIT;
     std::vector<double> o;
-    int32_t rc = p3_run(op, rd, o);
+    int32_t rc = op == P3_BIG_RAD ? p3_big_rad(rd, o) : p3_run(op, rd, o);
     if (rc != SC_OK)
         return rc;
     if (rd.at != n_in)

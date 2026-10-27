@@ -113,7 +113,7 @@ use crate::curve::curve::p2::{CIRCLE_TYPE, LINE_TYPE};
 use crate::curve::curve::{Curve, CurveKind};
 use crate::curve::ellipse::{Ellipse, EllipseOptions};
 use crate::curve::line::{BoundedLineOptions, Line};
-use crate::error::{ignore_status, ignored, Result, SolidError};
+use crate::error::{ignore_status, ignored, Result, SolidError, SM_ERR};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
@@ -143,7 +143,6 @@ const OP_EVAL: &str = "surface::cone::p1::Cone::evaluate";
 const OP_EVAL_STEP: &str = "surface::cone::p1::Cone::evaluate_step";
 const OP_GEN: &str = "surface::cone::p1::Cone::gen_curve";
 const OP_TRANSFORM: &str = "surface::cone::p1::Cone::transform";
-const OP_COINCIDENCE: &str = "surface::cone::p1::total_coincidence_checker";
 
 /// Upstream `SmStatus` value `SM_ERR_INVALID_INPUT`.
 const SM_ERR_INVALID_INPUT: i32 = 1007;
@@ -262,8 +261,7 @@ pub(crate) fn cone_convert_uv_from_nurbs_to_step(
 
     // convert sweep coordinate
     let circle = rev
-        .polar_curve
-        .as_ref()
+        .polar_curve()
         .ok_or(SolidError::null_pointer(OP_TO_STEP))?;
     let (x, _exact) = rev.polar.convert_to_polar_parameter(k, circle, nurb_uv.x)?;
 
@@ -1275,16 +1273,27 @@ impl Cone {
         let vec = vec.unitize_or_z();
         let point_on_surface = center + radius * vec;
 
-        // map Point to StepUV (status ignored)
-        let inv = self.step_inversion(k, point_on_surface, tol_3d, None)?;
+        // map Point to StepUV. Upstream ignores the status. When the generator drop finds no
+        // solution (a point beyond the end by up to `tol_3d`, #1067) the height of its
+        // StepUV is never written and the circle is built there (UB-87); the port uses the
+        // height of the point, clamped to the end, which is where the point lies within
+        // `tol_3d`. Every point whose inversion succeeds is unchanged.
+        let step_uv = match self.step_inversion(k, point_on_surface, tol_3d, None) {
+            Ok(inv) => inv.uv,
+            Err(SolidError::Upstream { code, .. }) if code == SM_ERR => Point2::new(
+                self.rev.anal_uv_domain.min().x,
+                height_step_ivl.clamp_value(param),
+            ),
+            Err(e) => return Err(e),
+        };
 
         // map StepUV to NurbUV (status ignored: after a failed polar conversion
         // rNURBSUV.x holds what the converter wrote and rNURBSUV.y is unset)
-        let (param_type, iso) = match self.convert_uv_from_step_to_nurbs(k, inv.uv) {
+        let (param_type, iso) = match self.convert_uv_from_step_to_nurbs(k, step_uv) {
             Ok(nurb_uv) if self.rev.swap_uv => (SurfParamType::U, nurb_uv.x),
             Ok(nurb_uv) => (SurfParamType::V, nurb_uv.y),
             Err(e) if e.is_unported() || !self.rev.swap_uv => return Err(e),
-            Err(e) => match self.sweep_nurbs_param_written(k, inv.uv.x)? {
+            Err(e) => match self.sweep_nurbs_param_written(k, step_uv.x)? {
                 Some(x) => (SurfParamType::U, x),
                 None => return Err(e),
             },
@@ -1310,14 +1319,10 @@ impl Cone {
     /// polar conversion.
     pub fn convert_uv_from_step_to_nurbs(&self, k: &Kernel, step_uv: Point2) -> Result<Point2> {
         // convert sweep coordinate
-        let circle = self
-            .rev
-            .polar_curve
-            .as_ref()
-            .ok_or(SolidError::invalid_input(
-                OP_TO_NURBS,
-                "polar converter has no curve",
-            ))?;
+        let circle = self.rev.polar_curve().ok_or(SolidError::invalid_input(
+            OP_TO_NURBS,
+            "polar converter has no curve",
+        ))?;
         let (x, _exact) = self
             .rev
             .polar
@@ -1364,14 +1369,10 @@ impl Cone {
     ///
     /// `InvalidInput` without polar curve; [`SolidError::Unported`].
     fn sweep_nurbs_param_written(&self, k: &Kernel, step_u: f64) -> Result<Option<f64>> {
-        let circle = self
-            .rev
-            .polar_curve
-            .as_ref()
-            .ok_or(SolidError::invalid_input(
-                OP_TO_NURBS,
-                "polar converter has no curve",
-            ))?;
+        let circle = self.rev.polar_curve().ok_or(SolidError::invalid_input(
+            OP_TO_NURBS,
+            "polar converter has no curve",
+        ))?;
         self.rev
             .polar
             .convert_to_nurbs_parameter_or_written(k, circle, step_u, 0.0)
@@ -1804,8 +1805,7 @@ impl Cone {
 ///
 /// # Errors
 ///
-/// `SmStatus` `0` (upstream `return FALSE`) for two lines that are not coincident;
-/// those of the evaluations and of the curve comparison.
+/// Those of the evaluations and of the curve comparison.
 pub fn total_coincidence_checker(
     k: &Kernel,
     this: &Curve,
@@ -1853,14 +1853,14 @@ pub fn total_coincidence_checker(
                 reversed: Some(false),
             });
         }
-        let dist_e_s = pt01.distance(pt11);
+        let dist_e_s = pt01.distance(pt10);
         if dist_s_e < tol && dist_e_s < tol {
             return Ok(Coincidence {
                 coincident: true,
                 reversed: Some(true),
             });
         }
-        return Err(status(OP_COINCIDENCE, 0));
+        return Ok(none);
     }
 
     // Not a line.  If not a circle, return no coincidence.
@@ -2018,6 +2018,53 @@ mod tests {
         assert!(line.curve.is_kind_of(LINE_TYPE));
         assert!(line.uv_iso_curve.is_some());
         assert!(!line.curve.is_kind_of(ELLIPSE_TYPE));
+    }
+
+    /// A reference point beyond a cone's end but within the tolerance (#1067, UB-87): the
+    /// inversion of the point finds no solution, and upstream builds the circle at a height it
+    /// never set. The circle is at the end instead. Inside the end, or beyond the tolerance, it
+    /// is as upstream.
+    #[test]
+    fn iso_circle_beyond_the_end_within_tolerance_is_at_the_end() {
+        for (swap_uv, inside_out) in [(false, false), (true, false), (false, true), (true, true)] {
+            let c = Cone::create_canonical_with_semi_angle(
+                &k(),
+                &std_placement(),
+                0.5,
+                70.0,
+                Some(1.0),
+                swap_uv,
+                inside_out,
+            )
+            .unwrap();
+            let tol = 1e-3;
+            let height_of = |z: f64| {
+                let circle = c
+                    .create_iso_circle_from_point(&k(), Vec3::new(c.radius(z), 0.0, z), tol)
+                    .unwrap_or_else(|e| panic!("z = {z}: {e:?}"))?;
+                let start = circle
+                    .evaluate_point(&k(), circle.natural_interval().min())
+                    .unwrap();
+                // the circle lies on the cone: its radius is the cone's at its height
+                let radius = (start.x * start.x + start.y * start.y).sqrt();
+                assert!(
+                    (radius - c.radius(start.z)).abs() < 1e-9,
+                    "z = {z}: circle at {start:?}"
+                );
+                Some(start.z)
+            };
+            for (z, want) in [
+                (0.9995, 0.9995),
+                (1.0, 1.0),
+                (1.0005, 1.0),
+                (1.000684, 1.0),
+                (1.0009, 1.0),
+            ] {
+                let got = height_of(z).unwrap_or_else(|| panic!("z = {z}: no circle"));
+                assert!((got - want).abs() < 1e-9, "z = {z}: circle at height {got}");
+            }
+            assert!(height_of(1.002).is_none());
+        }
     }
 
     #[test]
@@ -2236,12 +2283,22 @@ mod tests {
                 reversed: Some(false)
             }
         );
-        // upstream compares the wrong end point for reversed lines: `return FALSE`
         let rev = line(Vec3::new(1.0, 2.0, 3.0), Vec3::ZERO);
-        assert!(matches!(
-            total_coincidence_checker(&k, &a, &unit, &rev, &unit, 1e-6),
-            Err(SolidError::Upstream { code: 0, .. })
-        ));
+        assert_eq!(
+            total_coincidence_checker(&k, &a, &unit, &rev, &unit, 1e-6).unwrap(),
+            Coincidence {
+                coincident: true,
+                reversed: Some(true)
+            }
+        );
+        let apart = line(Vec3::new(5.0, 0.0, 0.0), Vec3::new(6.0, 0.0, 0.0));
+        assert_eq!(
+            total_coincidence_checker(&k, &a, &unit, &apart, &unit, 1e-6).unwrap(),
+            Coincidence {
+                coincident: false,
+                reversed: None
+            }
+        );
         let circle = |y: Vec3| {
             Curve::from(
                 Ellipse::new_circle(

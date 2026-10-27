@@ -30,22 +30,18 @@
 //! * Pointers become indices: a bucket item's `m_sItem` (a `SmPointItem*` into
 //!   `m_sPointItems`) is the point-item index, the bucket / used-bucket links are
 //!   bucket-item indices, `SM_UNDEF_ULONG` bucket indices and voxel indices are
-//!   `None`. Growing the arrays therefore never invalidates anything.
-//!   Upstream `SmObjsInVoxels::IncMaxItemCount` re-points the bucket items at the
-//!   *old* point-item array right before freeing it (a use-after-free once a
-//!   non-empty model grows); the port keeps the intended contents (see
-//!   `plan/findings.md`, `geom.hash_table`). Capacities (`GetDataSize`) are still
-//!   tracked so growth happens at the same moments, and the all-removed growth
-//!   path that zeroes the bucket-item records upstream is reproduced.
+//!   `None`. Growing the arrays therefore never invalidates anything. Capacities
+//!   (`GetDataSize`) are still tracked so growth happens at the same moments, and the
+//!   all-removed growth path that zeroes the bucket-item records upstream is
+//!   reproduced.
 //! * Upstream undefined behaviour (a bucket index past the table, a voxel model
 //!   with a box but zero voxels in `Add`, an empty explicit bucket list, a zero
 //!   divisor in `MapVoxelIndexToIndices`) returns [`SolidError::InvalidInput`]
 //!   (or, for an empty bucket list, checks no bucket).
-//! * Faithfully kept upstream quirks of `FindCoincidentPairs`: every bucket item
-//!   is compared against the bucket's *first* item (`pBegPointItem` is never
-//!   advanced), and `rEndPoint` is a reference, so each comparison overwrites the
-//!   point of the item following the current begin item with the current end
-//!   item's point (the stored points change).
+//! * Voxel dimension products are checked before changing the model; overflow
+//!   returns `InvalidInput` instead of silently wrapping as upstream does.
+//! * `FindCoincidentPairs` on a bucket item without a point item skips it (upstream
+//!   dereferences `NULL`).
 //! * Debug-only code (`SM_DEBUG_CODE`, asserts, `pOptBrep` drawing), `Dump`,
 //!   `Draw`, `AssertValid`, `operator=` / `operator==` are not ported (`Clone`
 //!   covers assignment).
@@ -439,8 +435,8 @@ pub struct VoxelHit {
 /// Options of [`ObjsInVoxels::find_coincident_pairs`].
 #[derive(Debug, Default)]
 pub struct FindPairsOptions<'a> {
-    /// Only begin items whose id (point-item index) is at least this
-    /// (`pOptLimitIndx`); `None` checks all.
+    /// Skip pairs whose two items both have an id (point-item index) below this
+    /// (`pOptLimitIndx`; checked on a previous call); `None` checks all pairs.
     pub limit_index: Option<usize>,
     /// Buckets to check (`pOptBucketIndices`); `None` walks every used bucket.
     pub buckets: Option<&'a [usize]>,
@@ -503,7 +499,7 @@ impl<T: Copy + PartialEq> ObjsInVoxels<T> {
     ///
     /// # Errors
     ///
-    /// As [`HashTable::init_size`] (one bucket per voxel).
+    /// As [`ObjsInVoxels::set_size`] (one bucket per voxel).
     pub fn new(
         x_cnt: usize,
         y_cnt: usize,
@@ -533,7 +529,9 @@ impl<T: Copy + PartialEq> ObjsInVoxels<T> {
     ///
     /// # Errors
     ///
-    /// As [`HashTable::init_size`] (one bucket per voxel).
+    /// [`SolidError::InvalidInput`] when the voxel dimensions overflow, leaving
+    /// the model unchanged. Otherwise, as [`HashTable::init_size`] (one bucket
+    /// per voxel).
     pub fn set_size(
         &mut self,
         x_cnt: usize,
@@ -542,11 +540,25 @@ impl<T: Copy + PartialEq> ObjsInVoxels<T> {
         bbox: Option<&Extent3d>,
         item_estimate: usize,
     ) -> Result<()> {
+        // A zero factor makes the mathematical voxel product zero; preserve the
+        // pre-existing behaviour (upstream's wrapped product is also zero) instead of
+        // letting an intermediate overflow reject it.
+        let voxel_count = if x_cnt == 0 || y_cnt == 0 || z_cnt == 0 {
+            0
+        } else {
+            x_cnt
+                .checked_mul(y_cnt)
+                .and_then(|xy| xy.checked_mul(z_cnt))
+                .ok_or(SolidError::InvalidInput {
+                    operation: "geom::hash_table::ObjsInVoxels::set_size",
+                    reason: "voxel dimensions overflow",
+                })?
+        };
         self.x_cnt = x_cnt;
         self.y_cnt = y_cnt;
         self.z_cnt = z_cnt;
         self.bbox = bbox.copied().unwrap_or_default();
-        self.hash.init_size(item_estimate, self.voxel_count())?;
+        self.hash.init_size(item_estimate, voxel_count)?;
         self.point_items.clear();
         self.point_capacity = 0;
         if item_estimate > 0 {
@@ -811,9 +823,9 @@ impl<T: Copy + PartialEq> ObjsInVoxels<T> {
     /// intersection tolerance `SmXSectTol3d(tolA + tolB)` (compared squared),
     /// each pair of items listed once (`FindCoincidentPairs`).
     ///
-    /// As upstream, each item is compared with its bucket's first item only, and
-    /// the comparisons overwrite stored points (see the module docs). The
-    /// histogram, when given, accumulates every gap compared.
+    /// Every pair of items within a bucket is compared, except, with
+    /// `opts.limit_index`, a pair whose two items are both below it. The histogram,
+    /// when given, accumulates every gap compared.
     ///
     /// # Errors
     ///
@@ -853,44 +865,39 @@ impl<T: Copy + PartialEq> ObjsInVoxels<T> {
             }
         }
         for head in heads {
-            let Some(head_rec) = head.and_then(|h| self.hash.bucket_items.get(h).copied()) else {
-                continue;
-            };
-            let Some(head_pi) = head_rec.item else {
-                continue;
-            };
-            let mut beg = Some(head_rec);
+            let mut beg = head.and_then(|h| self.hash.bucket_items.get(h).copied());
             while let Some(b) = beg {
                 beg = b
                     .next_bucket_item
                     .and_then(|n| self.hash.bucket_items.get(n).copied());
-                if limit_index.is_some_and(|lim| b.item_id < lim) {
+                // this beg entry's point item
+                let Some(beg_pi) = b.item else {
                     continue;
-                }
+                };
                 let mut end = b
                     .next_bucket_item
                     .and_then(|n| self.hash.bucket_items.get(n).copied());
-                // `rEndPoint` refers to the point of the first end item
-                let first_end_pi = end.and_then(|e| e.item);
                 while let Some(e) = end {
                     end = e
                         .next_bucket_item
                         .and_then(|n| self.hash.bucket_items.get(n).copied());
-                    let (Some(end_pi), Some(alias)) = (e.item, first_end_pi) else {
+                    // when asked - skip pairs with both point items below the limit index
+                    // (presumably checked for coincidence on a previous call)
+                    if limit_index.is_some_and(|lim| b.item_id < lim && e.item_id < lim) {
+                        continue;
+                    }
+                    let Some(end_pi) = e.item else {
                         continue;
                     };
-                    let (Some(end_item), Some(head_item)) = (
+                    let (Some(end_item), Some(beg_item)) = (
                         self.point_items.get(end_pi).copied(),
-                        self.point_items.get(head_pi).copied(),
+                        self.point_items.get(beg_pi).copied(),
                     ) else {
                         continue;
                     };
-                    if let Some(a) = self.point_items.get_mut(alias) {
-                        a.point = end_item.point;
-                    }
-                    let xs = xsect_tol3d(k, head_item.zone_tol + end_item.zone_tol);
+                    let xs = xsect_tol3d(k, beg_item.zone_tol + end_item.zone_tol);
                     let xs_sq = xsect_tol3d(k, xs * xs);
-                    let gap_sq = (head_item.point - end_item.point).length_squared();
+                    let gap_sq = (beg_item.point - end_item.point).length_squared();
                     if let Some(h) = histogram.as_deref_mut() {
                         if let Some(c) = h.get_mut(gap_histogram_index(gap_sq.sqrt())) {
                             *c = c.wrapping_add(1);
@@ -905,18 +912,18 @@ impl<T: Copy + PartialEq> ObjsInVoxels<T> {
                             ) else {
                                 continue;
                             };
-                            if i1 != head_item.item && i1 != end_item.item {
+                            if i1 != beg_item.item && i1 != end_item.item {
                                 continue;
                             }
-                            if (i1 == head_item.item && i2 == end_item.item)
-                                || (i2 == head_item.item && i1 == end_item.item)
+                            if (i1 == beg_item.item && i2 == end_item.item)
+                                || (i2 == beg_item.item && i1 == end_item.item)
                             {
                                 known = true;
                                 break;
                             }
                         }
                         if !known {
-                            out.first.push(head_pi);
+                            out.first.push(beg_pi);
                             out.second.push(end_pi);
                         }
                     }
@@ -935,6 +942,77 @@ mod tests {
 
     fn unit_box() -> Extent3d {
         Extent3d::from_bounds(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)
+    }
+
+    #[test]
+    fn new_rejects_voxel_dimension_overflow() {
+        assert!(matches!(
+            ObjsInVoxels::<usize>::new(usize::MAX, usize::MAX, 1, None, 0),
+            Err(SolidError::InvalidInput {
+                operation: "geom::hash_table::ObjsInVoxels::set_size",
+                reason: "voxel dimensions overflow",
+            })
+        ));
+    }
+
+    #[test]
+    fn new_keeps_zero_dimension_success_despite_intermediate_overflow() {
+        // pre-existing behaviour: a zero factor makes the product zero, so even
+        // MAX x MAX x 0 succeeds with zero buckets instead of rejecting
+        let v = ObjsInVoxels::<usize>::new(usize::MAX, usize::MAX, 0, None, 0).unwrap();
+        assert_eq!(v.counts(), (usize::MAX, usize::MAX, 0));
+        assert_eq!(v.hash_table().bucket_count(), 0);
+    }
+
+    #[test]
+    fn new_rejects_third_voxel_factor_overflow() {
+        assert!(matches!(
+            ObjsInVoxels::<usize>::new(1, usize::MAX, 2, None, 0),
+            Err(SolidError::InvalidInput {
+                operation: "geom::hash_table::ObjsInVoxels::set_size",
+                reason: "voxel dimensions overflow",
+            })
+        ));
+    }
+
+    #[test]
+    fn overflowing_set_size_preserves_model() {
+        let mut v = ObjsInVoxels::<usize>::new(2, 3, 4, Some(&unit_box()), 0).unwrap();
+        v.add(7, Vec3::new(0.2, 0.2, 0.2), 0.0, None).unwrap();
+        let before = v.clone();
+
+        assert!(matches!(
+            v.set_size(usize::MAX, usize::MAX, 1, None, 10),
+            Err(SolidError::InvalidInput {
+                operation: "geom::hash_table::ObjsInVoxels::set_size",
+                reason: "voxel dimensions overflow",
+            })
+        ));
+        assert_eq!(v.counts(), before.counts());
+        assert_eq!(v.bbox(), before.bbox());
+        assert_eq!(v.hash.bucket_count(), before.hash.bucket_count());
+        assert_eq!(v.hash.buckets, before.hash.buckets);
+        assert_eq!(v.hash.bucket_items, before.hash.bucket_items);
+        assert_eq!(v.hash.capacity, before.hash.capacity);
+        assert_eq!(v.hash.used_buckets, before.hash.used_buckets);
+        assert_eq!(v.hash.used_bucket_count, before.hash.used_bucket_count);
+        assert_eq!(
+            v.hash.removed_bucket_item_count,
+            before.hash.removed_bucket_item_count
+        );
+        assert_eq!(v.point_items(), before.point_items());
+        assert_eq!(v.point_capacity(), before.point_capacity());
+        assert_eq!(
+            v.removed_point_item_count(),
+            before.removed_point_item_count()
+        );
+    }
+
+    #[test]
+    fn voxel_dimensions_match_bucket_count() {
+        let v = ObjsInVoxels::<usize>::new(2, 3, 4, None, 0).unwrap();
+        assert_eq!(v.counts(), (2, 3, 4));
+        assert_eq!(v.hash_table().bucket_count(), 24);
     }
 
     #[test]
@@ -995,8 +1073,9 @@ mod tests {
         let p = v
             .find_coincident_pairs(&k, FindPairsOptions::default())
             .unwrap();
-        // bucket 0 holds [item1, item3, item2]: head item1 is compared with both
-        assert!(p.first.is_empty());
+        // bucket 0 holds [item1, item3, item2]: every pair is compared, item3 and
+        // item2 coincide
+        assert_eq!(p.first.len(), 1);
         assert_eq!(v.hash_table().used_bucket_count(), 2);
         assert_eq!(v.remove(1), 2);
         assert_eq!(v.removed_point_item_count(), 2);

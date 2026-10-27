@@ -266,19 +266,6 @@ SC_EXPORT int32_t sc_primitive_primitive_creation_p1_eval(int32_t op, const doub
                         curves.Add(curve);
                     }
                 }
-                if(data[1]<0) {
-                    // The full-circle/cylinder branch hangs on its reversed V
-                    // domain. Preserve negative line/open-arc sweeps: only this
-                    // exact upstream branch is excluded (plan/upstream-issues.md).
-                    for(ULONG i=0;i<curves.GetSize();++i) {
-                        if(curves[i]->IsLinear()) continue;
-                        SmAxis2Placement arc_frame;
-                        double radius=0,start=0,end=0;
-                        if(curves[i]->IsArc(8,b.GetTolerance(),arc_frame,radius,start,end)
-                           && end-start<360.0+b.GetTolerance() && end-start>360.0-b.GetTolerance()
-                           && arc_frame.GetZAxis().IsParallelTo(frame.GetZAxis(),0.5)) return -1010;
-                    }
-                }
                 cleanup.Clear(); // CreateLinearSweep consumes every input, including on error.
                 status=primitive.CreateLinearSweep(curves,frame.GetZAxis(),data[1],data[7]!=0);
             }
@@ -322,6 +309,13 @@ SC_EXPORT int32_t sc_primitive_primitive_creation_p1_eval(int32_t op, const doub
         const bool consumed=result==&a;
         if(consumed) clean_b.Clear();
         values.insert(values.end(),{st(status),flg(a.m_bEditingEnabled),consumed?-1.0:flg(b->m_bEditingEnabled),result?1.0:0.0});
+        if(consumed) {
+            // the result's counts and geometry, as op 4 records a constructed B-rep
+            SmTArray<SmFace*> faces; SmTArray<SmEdge*> edges; SmTArray<SmVertex*> vertices;
+            a.GetFaces(faces);a.GetEdges(edges);a.GetVertices(vertices);
+            values.insert(values.end(),{(double)faces.GetSize(),(double)edges.GetSize(),(double)vertices.GetSize()});
+            primitive_record::append(values,&a);
+        }
     } else {
         if(n!=13) return SC_ERR_ARG;
         SmBSplineCurve* curve=pc1_curve(data); SmObjDelete clean_curve(curve);

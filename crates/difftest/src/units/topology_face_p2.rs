@@ -5,21 +5,26 @@
 //! `SmBrep` per call: read from an upstream `.smb` test file (optionally rebuilding its
 //! UV trim curves), a wire edge from a B-spline curve (`CreateWireEdgeFromCurve`), a face
 //! from a B-spline surface or a real `SmPlane` (`CreateFaceFromSurface`), or the wire
-//! network of `prog_test` `my_test_topology`. There is no Rust B-rep reader or builder
-//! yet (units `topology.brep_*`), so the Rust side imports the graph the shim exports in
-//! traversal order (raw members, including each face's face use, UV domain,
-//! rectangular-trim flag, tolerance and surface owner, `SmPlane`s as planes, and each
-//! vertex use's cached vertex/face gap) into a [`Brep`] and runs the ported functions on
+//! network of `prog_test` `my_test_topology`. The Rust side imports the graph the shim
+//! exports in traversal order (raw members, including each face's face use, UV domain,
+//! rectangular-trim flag, tolerance and surface owner, and each vertex use's cached
+//! vertex/face gap) into a [`Brep`] and runs the ported functions on
 //! it; results are compared as traversal indices, flags, statuses, values and curve
 //! blocks (the shim's `put_curve` layout). Selectors are taken modulo the entity count
 //! (`-1` selecting null where allowed).
 //!
-//! **Inexact geometry.** The export carries plain B-spline surfaces, `SmPlane`s,
-//! B-spline curves and `SmLine`s exactly; another `SmBSplineSurface` subclass (the
-//! revolution, extrusion, cone, sphere and torus surfaces of several upstream files) or
-//! `SmBSplineCurve` subclass (an edge's ellipse) arrives as its B-spline part only. Ops
-//! that evaluate such a face surface (`Points`, `FixUv`, `BestUv`, `Connected`) or, for
-//! `BestUv`, such an edge curve are not compared: both sides report `inexact_geometry`.
+//! **Exact geometry.** Plain B-spline surfaces, `SmPlane`s, B-spline curves and
+//! `SmLine`s retain their regular blocks. Eligible revolution, cone/cylinder, sphere,
+//! torus and extrusion surfaces additionally carry an exact database head
+//! (`2 ...`, `harness/cpp/shim/sc_analytic_export.h`); eligible 3D edge ellipses and
+//! circles carry an exact curve head (`-3 ...`, `sc_exact_curve_export.h`). The importer
+//! reconstructs the concrete analytic kind and checks its B-spline part. The shared
+//! exporters require existing NURBs and lossless native database round trips; surface
+//! generator/polar state must also survive. Unsupported subclasses and representations
+//! rejected by those checks still arrive as their B-spline part only. Ops evaluating
+//! such a face surface (`Points`, `FixUv`, `BestUv`, `Connected`) or, for `BestUv`, such
+//! an edge curve still report `inexact_geometry` on both sides. UV trim curves and
+//! operation-result curve blocks retain the regular layout.
 //!
 //! **`GetPointsInFace` with more than one point** draws its V dither from
 //! `srand(time(NULL))` / `rand()` upstream and from `kernel.rng` in the port
@@ -436,7 +441,7 @@ fn orient_of(code: i64) -> Result<OrientType, HarnessError> {
 
 /// An exported curve block (`None` for `-1`). A B-spline or line is rebuilt exactly;
 /// another `SmBSplineCurve` kind is an error for a UV trim curve (`uv`) and its B-spline
-/// part for an edge curve (edge curves are only evaluated on deferred paths).
+/// part for an edge curve (an exact head, when present, is read by `read_edge_curve`).
 fn read_curve(rd: &mut Rd<'_>, uv: bool) -> Result<Option<SmCurve>, HarnessError> {
     let ty = rd.num()?;
     if ty == -1.0 {
@@ -481,6 +486,46 @@ fn read_curve(rd: &mut Rd<'_>, uv: bool) -> Result<Option<SmCurve>, HarnessError
         return Err(harness(format!("export: UV trim curve of type {ty}")));
     }
     Ok(Some(SmCurve::from(base)))
+}
+
+/// An edge curve block: an exact ellipse or circle head (`-3 ...`,
+/// [`crate::util::exact_curve::read_head`]) and the regular block after it, or the
+/// regular block alone. Returns the curve and whether it was imported exactly.
+fn read_edge_curve(rd: &mut Rd<'_>) -> Result<(Option<SmCurve>, bool), HarnessError> {
+    if rd.v.get(rd.at) != Some(&-3.0) {
+        let exact = matches!(rd.v.get(rd.at).copied(), Some(t) if t == -1.0 || t == BSPLINE_CURVE_TYPE as f64 || t == LINE_TYPE as f64);
+        return Ok((read_curve(rd, false)?, exact));
+    }
+    rd.at += 1;
+    let remaining = rd.v.len().saturating_sub(rd.at);
+    let exact = crate::util::exact_curve::read_head(&mut || rd.num(), remaining)?;
+    if rd.v.get(rd.at) != Some(&(exact.type_code() as f64)) {
+        return Err(harness(
+            "export: exact curve without its matching B-spline part",
+        ));
+    }
+    let fallback = read_curve(rd, false)?;
+    crate::util::exact_curve::check_base(&exact, fallback.as_ref())?;
+    Ok((Some(exact), true))
+}
+
+/// A face's surface block: an exact analytic head (`2 ...`,
+/// [`crate::util::read_exact_surface`]) and the regular block after it, or the regular
+/// block alone. Returns the surface and whether it was imported exactly.
+fn read_face_surface(rd: &mut Rd<'_>) -> Result<(Option<Surface>, bool), HarnessError> {
+    if rd.v.get(rd.at) != Some(&2.0) {
+        return read_surface(rd);
+    }
+    rd.at += 1;
+    let exact = crate::util::read_exact_surface(&mut || rd.num())?;
+    let (fallback, _) = read_surface(rd)?;
+    match exact {
+        Some(s) => {
+            crate::util::check_exact_base(&s, fallback.as_ref())?;
+            Ok((Some(s), true))
+        }
+        None => Ok((fallback, false)),
+    }
 }
 
 fn read_surface(rd: &mut Rd<'_>) -> Result<(Option<Surface>, bool), HarnessError> {
@@ -531,7 +576,8 @@ fn read_surface(rd: &mut Rd<'_>) -> Result<(Option<Surface>, bool), HarnessError
 
 /// Whether each face's surface and each edge's curve was imported exactly (an
 /// `SmBSplineSurface` subclass other than `SmPlane`, or an `SmBSplineCurve` subclass
-/// other than `SmLine`, is imported as its B-spline part).
+/// other than `SmLine`, is imported as its B-spline part unless the export put its exact
+/// record before it).
 pub(crate) struct Exact {
     pub(crate) faces: Vec<bool>,
     pub(crate) edges: Vec<bool>,
@@ -593,7 +639,7 @@ pub(crate) fn import(ex: &[f64]) -> Result<(Brep, Exact), HarnessError> {
     let mut surfaces = Vec::new();
     let mut exact_faces = Vec::new();
     for f in 0..n_f {
-        let (mut surface, exact) = read_surface(&mut rd)?;
+        let (mut surface, exact) = read_face_surface(&mut rd)?;
         exact_faces.push(exact);
         let faceuse = opt(rd.idx()?, FaceuseId::from_index)?;
         let dom = Extent2d::from_bounds(rd.num()?, rd.num()?, rd.num()?, rd.num()?);
@@ -699,9 +745,8 @@ pub(crate) fn import(ex: &[f64]) -> Result<(Brep, Exact), HarnessError> {
             .into_iter()
             .map(|x| opt(x, EdgeuseId::from_index)?.ok_or_else(|| harness("null edge use")))
             .collect::<Result<Vec<_>, _>>()?;
-        let exact_curve = matches!(rd.v.get(rd.at).copied(), Some(t) if t == -1.0 || t == BSPLINE_CURVE_TYPE as f64 || t == LINE_TYPE as f64);
+        let (curve, exact_curve) = read_edge_curve(&mut rd)?;
         exact_edges.push(exact_curve);
-        let curve = read_curve(&mut rd, false)?;
         let interval = Extent1d::from_raw(a, b);
         edges.push((tolerance, interval, list, curve));
     }
@@ -856,7 +901,7 @@ pub(crate) fn import(ex: &[f64]) -> Result<(Brep, Exact), HarnessError> {
 // ---- generation -------------------------------------------------------------------------
 
 /// The upstream `.smb` files used (all B-spline geometry).
-/// (`SmallBox.smb` and `Platform.smb` crash upstream's `SmBrep::ReadFromFile`; see
+/// (`SmallBox.smp` and `Platform.smp` crash upstream's `SmBrep::ReadFromFile`; see
 /// `plan/findings.md`.)
 const FILES: [&str; 15] = [
     "Mouse.smb",
@@ -960,7 +1005,7 @@ fn domain(s: &SrfIn) -> [f64; 4] {
 fn gen_brep(rng: &mut Rng) -> BrepIn {
     match rng.below(10) {
         0..=5 => BrepIn::File {
-            file: (*rng.choose(&FILES).unwrap_or(&"SmallBox.smb")).to_string(),
+            file: (*rng.choose(&FILES).unwrap_or(&"SmallBox.smp")).to_string(),
             rebuild: rng.chance(0.25),
         },
         6 => {
@@ -1501,6 +1546,7 @@ fn put_curve(o: &mut Vec<f64>, c: Option<&SmCurve>) -> Result<(), Fail> {
     let (base, line) = match c.kind() {
         CurveKind::BSpline(b) => (std::borrow::Cow::Borrowed(b), None),
         CurveKind::Line(l) => (l.base_with_nurb()?, Some(l)),
+        CurveKind::Ellipse(e) => (std::borrow::Cow::Borrowed(e.base()), None),
         _ => {
             o.push(-2.0);
             return Ok(());

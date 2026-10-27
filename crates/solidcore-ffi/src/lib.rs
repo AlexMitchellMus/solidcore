@@ -51,6 +51,9 @@ pub const SC_ERR_EXCEPTION: i32 = -1000;
 pub const SC_ERR_BUFFER: i32 = -1001;
 /// Shim status: the shim rejected its arguments.
 pub const SC_ERR_ARG: i32 = -1002;
+/// Status of a case whose C++ side ran in a fresh child process ([`isolate`]) that did
+/// not finish normally (a native crash, the 600 s alarm, an abnormal exit).
+pub const SC_ERR_CHILD_CRASHED: i32 = -1100;
 /// Shim status on wasm32: the C++ kernel is not linked (returned by every stub of the
 /// module that `scripts/wasm_stub.py` generates for `difftest --digest-dir`).
 pub const SC_ERR_UNLINKED: i32 = -1009;
@@ -63,6 +66,7 @@ pub fn status_name(s: i32) -> String {
         SC_ERR_BUFFER => "buffer_too_small".into(),
         SC_ERR_ARG => "shim_rejected_args".into(),
         SC_ERR_UNLINKED => "cpp_unlinked".into(),
+        SC_ERR_CHILD_CRASHED => "cpp_child_crashed".into(),
         other => format!("status_{other}"),
     }
 }
@@ -115,6 +119,26 @@ pub fn call_with_buffer<T: Copy + Default>(
 /// stubs, see [`unlinked_calls`]).
 pub const LINKED: bool = cfg!(feature = "cpp");
 
+#[cfg(feature = "cpp")]
+extern "C" {
+    fn sc_cpp_stdlib_is_libstdcxx() -> i32;
+}
+
+/// Whether the linked C++ reference was built against libstdc++.
+#[cfg(feature = "cpp")]
+pub fn cpp_stdlib_is_libstdcxx() -> bool {
+    unsafe { sc_cpp_stdlib_is_libstdcxx() != 0 }
+}
+
+/// Whether the linked C++ reference was built against libstdc++.
+///
+/// Without the C++ kernel there is no probe: nothing links against a C++
+/// standard library, so treat it as "not libstdc++" would never be seen.
+#[cfg(not(feature = "cpp"))]
+pub fn cpp_stdlib_is_libstdcxx() -> bool {
+    false
+}
+
 /// Number of shim calls so far that reached a stub instead of the C++ kernel: always 0
 /// natively; on wasm32 the count kept by the stub module from `scripts/wasm_stub.py`.
 pub fn unlinked_calls() -> u64 {
@@ -134,6 +158,8 @@ pub fn unlinked_calls() -> u64 {
     }
 }
 
+#[cfg(feature = "cpp")]
+pub mod isolate;
 #[cfg(feature = "cpp")]
 mod reader;
 #[cfg(feature = "cpp")]

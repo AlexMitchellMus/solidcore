@@ -72,6 +72,10 @@
 //!   that [`SolidError::Unported`] always propagates and a failure whose output
 //!   upstream would read uninitialised (a failed generator or surface evaluation, a
 //!   failed iso curve in `RebuildPolarConverter`) is returned.
+//! - **`RebuildPolarConverter`** makes a missing NURB first, as its upstream
+//!   `GetNaturalUVDomain` does (a lazy surface that is transformed or edited gets its
+//!   NURB there); called from `MakeNurbWithSweepParams` it does not, which bounds the
+//!   recursion upstream would enter if that NURB were missing.
 //! - **Unported callees.** `ConvertUVFromNURBSToSTEP` without exact polar conversion
 //!   needs `SmSTEPSurface` (unit `surface.surface_p1`), which returns
 //!   [`SolidError::Unported`].
@@ -358,8 +362,9 @@ pub struct SurfOfRevolution {
     pub(crate) swap_uv: bool,
     /// `m_vPolarConverter`: the sweep direction's conversion table.
     pub(crate) polar: PolarConversion,
-    /// The sweep circle `m_vPolarConverter` owns (`m_cpCurve`).
-    pub(crate) polar_curve: Option<Ellipse>,
+    /// The original sweep curve `m_vPolarConverter` owns (`m_cpCurve`), retaining
+    /// its object identity while numerical users borrow the ellipse kind.
+    pub(crate) polar_curve: Option<Curve>,
 }
 
 impl SurfOfRevolution {
@@ -371,9 +376,13 @@ impl SurfOfRevolution {
             .as_ref()
             .map(|c| c.clone_for_evaluation_depth(depth))
             .transpose()?;
-        let polar_curve = self.polar_curve.as_ref().map(|c| {
-            let mut copy = c.clone();
-            *copy.base_mut() = c.base().clone_exact();
+        let polar_curve = self.polar_curve.as_ref().map(|curve| {
+            let mut copy = curve.clone();
+            if let (CurveKind::Ellipse(copy), CurveKind::Ellipse(original)) =
+                (copy.kind_mut(), curve.kind())
+            {
+                *copy.base_mut() = original.base().clone_exact();
+            }
             copy
         });
         Ok(Self {
@@ -407,7 +416,7 @@ impl SurfOfRevolution {
             anal_uv_domain: self.anal_uv_domain,
             swap_uv: self.swap_uv,
             polar: self.polar.clone(),
-            polar_curve: self.polar_curve.as_ref().map(Ellipse::clone_exact_bounded),
+            polar_curve: self.polar_curve.as_ref().map(Curve::clone_exact_bounded),
         }
     }
 
@@ -646,7 +655,7 @@ impl SurfOfRevolution {
         self.base.nurb = tmp.nurb;
 
         // Set up the Polar conversion - create a sweep isoParametric curve
-        ignore_status(self.rebuild_polar_converter(k, iso))?;
+        ignore_status(self.rebuild_polar_converter_from(k, iso, false))?;
         Ok(())
     }
 
@@ -678,7 +687,27 @@ impl SurfOfRevolution {
         k: &Kernel,
         iso: SweepIsoFn<'_>,
     ) -> Result<()> {
-        // Try the beginning of the curve if possible
+        self.rebuild_polar_converter_from(k, iso, true)
+    }
+
+    /// [`Self::rebuild_polar_converter`]; `make_nurb` says whether a missing NURB is
+    /// made first, as upstream's `GetNaturalUVDomain` does
+    /// (`GetOrCreateGwNurbPointer` calls the virtual `MakeNurb`, the
+    /// `MakeNurbWithSweepParams` of `iso`'s class, which rebuilds the converter itself;
+    /// its status is ignored). [`Self::make_nurb_with_sweep_params_using`] passes
+    /// `false`: it has just stored its NURB, and upstream would recurse without bound
+    /// if that NURB were missing.
+    fn rebuild_polar_converter_from(
+        &mut self,
+        k: &Kernel,
+        iso: SweepIsoFn<'_>,
+        make_nurb: bool,
+    ) -> Result<()> {
+        // Try the beginning of the curve if possible (GetNaturalUVDomain makes a missing
+        // NURB)
+        if make_nurb && self.base.gw_nurb().is_none() {
+            ignore_status(self.make_nurb_with_sweep_params_using(k, None, iso))?;
+        }
         let nurb_domain = self.base.natural_uv_domain();
         let nurb_min_uv = nurb_domain.min();
         self.polar.set_polar_conversion_possible(false);
@@ -709,14 +738,14 @@ impl SurfOfRevolution {
         if iso_degenerate {
             return Err(SolidError::sm_err(OP_REBUILD));
         }
-        let CurveKind::Ellipse(mut circle) = sweep_iso.into_kind() else {
+        let CurveKind::Ellipse(circle) = sweep_iso.kind_mut() else {
             return Err(SolidError::invalid_input(
                 OP_REBUILD,
                 "the sweep iso curve is not a circle",
             ));
         };
-        let r = set_up_polar_conversion(&mut self.polar, &mut circle, k);
-        self.polar_curve = Some(circle);
+        let r = set_up_polar_conversion(&mut self.polar, circle, k);
+        self.polar_curve = Some(sweep_iso);
         r
     }
 
@@ -803,7 +832,13 @@ impl SurfOfRevolution {
     /// The sweep circle the polar converter was set up with (`m_cpCurve`).
     #[must_use]
     pub const fn polar_curve(&self) -> Option<&Ellipse> {
-        self.polar_curve.as_ref()
+        match self.polar_curve.as_ref() {
+            Some(curve) => match curve.kind() {
+                CurveKind::Ellipse(ellipse) => Some(ellipse),
+                _ => None,
+            },
+            None => None,
+        }
     }
 
     /// Whether the generator is planar and on the X/Z plane (`m_bPlanarGenerator`).
@@ -931,7 +966,7 @@ impl SurfOfRevolution {
         let (a, b) = (&self.polar, &other.polar);
         let has_curve = self.polar_curve.is_some();
         let curves_eq = !has_curve
-            || match (&self.polar_curve, &other.polar_curve) {
+            || match (self.polar_curve(), other.polar_curve()) {
                 (None, None) => true,
                 (Some(c), Some(d)) => c.approx_eq(d),
                 _ => false,
@@ -1223,10 +1258,7 @@ impl SurfOfRevolution {
         // when polar conversion is possible
         let mut exact_conversion = false;
         if self.have_polar_conversion() {
-            let circle = self
-                .polar_curve
-                .as_ref()
-                .ok_or(SolidError::null_pointer(OP_GEN))?;
+            let circle = self.polar_curve().ok_or(SolidError::null_pointer(OP_GEN))?;
             let (x, exact) = self
                 .polar
                 .convert_to_polar_parameter(k, circle, swapped.x)?;
@@ -1249,7 +1281,7 @@ impl SurfOfRevolution {
                 )?,
             );
             let point_3d = self.base.evaluate_point(nurbs_uv)?;
-            let domain = step_surface.natural_uv_domain();
+            let domain = step_surface.natural_uv_domain_with_nurb(k)?;
             // Always set output (the status is ignored): LocalPointSolve leaves a default
             // solution when it fails.
             let (u, v) = match ignored(step_surface.local_point_solve::<()>(
@@ -1974,6 +2006,48 @@ mod tests {
             false,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn polar_rebuild_retains_the_original_curve_identity() {
+        let mut kernel = k();
+        let mut revolution = cone();
+        let mut original = revolution.polar_curve.take().unwrap();
+        let key = kernel
+            .context
+            .geometry_key(original.notify_identity_slot())
+            .unwrap();
+        let before = original.evaluate_point(&kernel, 0.25).unwrap();
+        let original = std::cell::RefCell::new(Some(original));
+        revolution
+            .rebuild_polar_converter(&kernel, &|_, _, _, _| {
+                Ok(original.borrow_mut().take().unwrap())
+            })
+            .unwrap();
+        assert!(original.borrow().is_none());
+        let mut moved = Vec::new();
+        moved.push(revolution);
+        for _ in 0..16 {
+            moved.push(cone());
+        }
+        let retained = &moved[0];
+        let curve = retained.polar_curve.as_ref().unwrap();
+        assert_eq!(curve.notify_key(), Some(key));
+        assert_eq!(curve.evaluate_point(&kernel, 0.25).unwrap(), before);
+        assert!(retained.polar_curve().is_some());
+        for copy in [
+            retained.clone(),
+            retained.clone_exact(),
+            retained.clone_for_evaluation(0).unwrap(),
+        ] {
+            let copied = copy.polar_curve.as_ref().unwrap();
+            assert_eq!(copied.notify_key(), None);
+            assert_eq!(copied.evaluate_point(&kernel, 0.25).unwrap(), before);
+        }
+        assert_eq!(
+            retained.polar_curve.as_ref().unwrap().notify_key(),
+            Some(key)
+        );
     }
 
     #[test]

@@ -26,6 +26,8 @@
 // Before classifying, the trimmed surface cache of each face surface involved is deleted
 // (SmCacheMgr::DeleteObjectsCache): reading a file can leave one, and the port has no
 // object caches, so both sides classify through the loops.
+#include "sc_analytic_export.h"
+#include "sc_exact_curve_export.h"
 #include "sc_shim.h"
 #include "support/topology_fixture.h"
 
@@ -59,6 +61,9 @@
 #include <SmShell.h>
 #include <SmSolutionArray.h>
 #include <SmSurface.h>
+#include <SmSurfaceCache.h>
+#include <SmTrimSrfCache.h>
+#include <stdexcept>
 #include <SmTArray.h>
 #include <SmTol.h>
 #include <SmTopologyIntersector.h>
@@ -661,6 +666,7 @@ void export_graph(SmBrep* brep, Graph& g, std::vector<double>& o)
     for (SmFace* p : g.faces)
     {
         SmSurface* s = p->*FPeek::srf();
+        sc_analytic_export::put_exact_head(o, s, the_context());
         put_surface(o, s);
         o.push_back((double)g.find(2, p->*FPeek::fu()));
         SmExtent2d d = p->*FPeek::dom();
@@ -716,7 +722,7 @@ void export_graph(SmBrep* brep, Graph& g, std::vector<double>& o)
         for (SmTopology* t : list_of(p->GetList()))
             v.push_back(g.find(6, t));
         put_list(o, v);
-        put_curve(o, p->GetCurve());
+        sc_exact_curve_export::put_export_curve(o, p->GetCurve(), the_context(), put_curve);
     }
     for (SmVertexuse* p : g.vertexuses)
     {
@@ -854,9 +860,20 @@ void apply_edits(Rd& rd, Graph& g)
     }
 }
 
-// Deletes the trimmed surface cache of the face's surface, if any (reading a file can
-// leave one). The port has no object caches, so both sides then classify through the
-// loops; the cache branch of PointClassify is not compared.
+// Clear incidental caches left by reading files, before applying the fixture's mode.
+struct SurfaceCachePeek : SmSurfaceCache
+{
+    static SmTree* SmSurfaceCache::*tree() { return &SurfaceCachePeek::m_pTree; }
+};
+
+void put_cache_state(std::vector<double>& o, SmSurface* surface)
+{
+    auto* c = (SmSurfaceCache*)SmCacheMgr::GetObjectCache(SM_OC_TRIMSRF, surface);
+    if (!c) { o.insert(o.end(), {0, 0, 0, 0, 0}); return; }
+    o.insert(o.end(), {1, flg(c->m_bHaveTSurfaceCache), (double)c->m_bFaceContainmentDone,
+                      flg(c->m_bFaceWasModified), c->*SurfaceCachePeek::tree() ? 1.0 : 0.0});
+}
+
 void drop_trim_cache(SmFace* f)
 {
     SmSurface* srf = f->GetSurface();
@@ -950,15 +967,30 @@ void run_brep_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
             loops.Add(g.loops[(size_t)rd.idx()]);
         double pc_tol = rd.num();
         SmBoolean uv_ok = rd.bflag();
+        int64_t cache_mode = rd.idx(), repeats = rd.idx();
         drop_trim_cache(f);
         SmSurface* srf = f->GetSurface();
-        bool has_tsc = srf != nullptr && SmCacheMgr::GetObjectCache(SM_OC_TRIMSRF, srf) != nullptr;
-        SmPointClassification pc(SmZoneTol3d(pc_tol), &ctx);
-        SmStatus s = f->PointClassify(uv, SmZoneTol3d(src_tol), do_bnd, use_uv, pc, tgt_only,
-                                      has_loops ? &loops : nullptr, uv_ok);
-        o.push_back(st(s));
-        o.push_back(has_tsc ? 1.0 : 0.0);
-        put_pc(o, g, pc);
+        const bool traced = cache_mode != 0 || repeats != 1;
+        if (cache_mode != 0)
+        {
+            if (!srf) throw std::runtime_error("cached classification without surface");
+            SmSurfaceCache* cache = smsurf_GetSurfaceCache(srf);
+            if (!cache || !cache->IsKindOf(SmTrimSrfCache_TYPE) || !cache->GetTree())
+                throw std::runtime_error("trim cache construction failed");
+            if (cache_mode == 2) f->Notify(SM_NO_PRE_EDIT, f, NULL, NULL);
+        }
+        for (int64_t query = 0; query < repeats; ++query)
+        {
+            if (traced) put_cache_state(o, srf);
+            bool has_tsc = srf != nullptr && SmCacheMgr::GetObjectCache(SM_OC_TRIMSRF, srf) != nullptr;
+            SmPointClassification pc(SmZoneTol3d(pc_tol), &ctx);
+            SmStatus s = f->PointClassify(uv, SmZoneTol3d(src_tol), do_bnd, use_uv, pc, tgt_only,
+                                          has_loops ? &loops : nullptr, uv_ok);
+            o.push_back(st(s));
+            o.push_back(has_tsc ? 1.0 : 0.0);
+            put_pc(o, g, pc);
+            if (traced) put_cache_state(o, srf);
+        }
         break;
     }
     case OP_CLASSIFY_PARAM:

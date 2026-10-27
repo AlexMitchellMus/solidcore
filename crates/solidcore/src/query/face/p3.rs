@@ -12,6 +12,7 @@
 //! |-----------------------------------------------|---------------------------------------------|
 //! | [`calculate_tight_bounding_box`], [`calculate_tight_bounding_box_into`] | `SmFace::CalculateTightBoundingBox` |
 //! | [`face_classify_uv_line`]                     | `sm_FaceClassifyUVLine` (file static)       |
+//! | [`face_classify_uv_line_mut`]                 | `sm_FaceClassifyUVLine` (in place)          |
 //! | [`find_and_classify_loop_bisector`], [`LoopBisector`] | `sms_FindAndClassifyLoopBisector`   |
 //! | [`sector_classify_curve_on`], [`SectorEdgeuse`], [`SectorClassifyInput`], [`SectorClass`] | `SmFace::SectorClassifyCurveOn` |
 //! | [`ClassifyProblem`] (re-export of [`crate::query::face::p1::ClassifyProblem`]) | `SmClassifyProblem` (`SmCurveClass.h`) |
@@ -40,9 +41,11 @@
 //!   may attach missing UV trim curves to the B-rep, and `SetUVTrimCurve` then raises
 //!   the edge (and vertex) tolerances, which changes later tolerance-expanded boxes.
 //!   The tight box takes a [`LazyBrep`]: given `&mut Brep` the edits persist, as
-//!   upstream; given `&Brep` they go to a private copy and are lost. The bisector runs
-//!   on one private copy of the B-rep per call, as `query::face::p2`'s boundary views
-//!   do.
+//!   upstream; given `&Brep` they go to a private copy and are lost. The bisector's
+//!   `IsSeam` and classifications share one snapshot of the B-rep (a
+//!   `CurveOnClassifyCache`, shared by every loop of `SmFace::ClassifyLoops`): the
+//!   healer copies its UV trims, tolerance growth and gap caches back to its B-rep, as
+//!   upstream's stay on the face's own B-rep; the public entry points discard it.
 //! - **Surface boxes of a face's surface.** `IsPlanar` and `CalculateBoundingBox` of a
 //!   B-spline, plane or surface of revolution expand their boxes by the owning face's
 //!   tolerance (`GetFace()->GetTolerance()`); the port's surface cannot reach its face,
@@ -106,7 +109,9 @@ use crate::nurbs::knots::Side;
 use crate::query::brep::LazyBrep;
 use crate::query::edge as qe;
 use crate::query::face::p2::{
-    curve_on_classify, face_vertices, point_classify, CurveOnClassifyObjects, PointClassifyOptions,
+    curve_on_classify, curve_on_classify_cached, curve_on_classify_mut, face_vertices,
+    point_classify, CurveOnClassifyBrep, CurveOnClassifyCache, CurveOnClassifyObjects,
+    PointClassifyOptions,
 };
 use crate::query::r#loop::contains_uv_point;
 use crate::surface::surface::p2::SurfaceEval;
@@ -272,7 +277,7 @@ fn owning_face_tolerance(b: &Brep, f: FaceId, s: &Surface) -> Result<Option<f64>
 
 /// `pSurface->IsPlanar(dTol3d)` of face `f`'s surface.
 fn surface_is_planar(k: &Kernel, b: &Brep, f: FaceId, s: &Surface, tol_3d: f64) -> Result<bool> {
-    let base = match s.kind() {
+    let base = match s.kind_with_nurb(k)? {
         SurfaceKind::BSpline(bs) => Some(bs),
         SurfaceKind::SurfOfRevolution(r) => Some(r.base()),
         SurfaceKind::SurfOfExtrusion(r) => Some(r.base()),
@@ -293,12 +298,13 @@ fn surface_is_planar(k: &Kernel, b: &Brep, f: FaceId, s: &Surface, tol_3d: f64) 
             expand_by_zone_tol: false,
             expand_tolerance: None,
         };
-        let pseudo = ignored(bs.calculate_bounding_box(k, &s.natural_uv_domain(), &req))?
-            .and_then(|r| r.pseudo)
-            .map_or_else(PseudoBox::new, |mut p| {
-                p.expand_absolute(face_tol);
-                p
-            });
+        let pseudo =
+            ignored(bs.calculate_bounding_box(k, &s.natural_uv_domain_with_nurb(k)?, &req))?
+                .and_then(|r| r.pseudo)
+                .map_or_else(PseudoBox::new, |mut p| {
+                    p.expand_absolute(face_tol);
+                    p
+                });
         return Ok(pseudo.is_planar(tol_3d).is_planar);
     }
     Ok(s.is_planar(k, tol_3d)?.is_planar)
@@ -736,22 +742,77 @@ pub fn face_classify_uv_line<O: ClassObject>(
     src_zone_tol_3d: f64,
     cc: &mut CurveClassification<O>,
 ) -> Result<()> {
+    let line = uv_line(k, uv_start, uv_end, cc)?;
+
+    // Figure a tolerance for the CurveClassification (never read upstream)
+    let surface = face_surface(b, f, OP_UV_LINE)?;
+    approx_derivative_lengths(k, surface, &b.face(f)?.uv_domain)?;
+
+    load_uv_line(k, f, objects, line, src_zone_tol_3d, cc)?;
+
+    // ask the face to classify the curve
+    curve_on_classify(k, b, f, objects, true, cc, false, false, true)?;
+    Ok(())
+}
+
+/// [`face_classify_uv_line`] on the face's own B-rep in place (`objects`'
+/// [`crate::query::face::p2::FaceBrep::brep`], [`curve_on_classify_mut`]): what the classification makes on the
+/// B-rep stays there, as upstream's `const` `CurveOnClassify` leaves it.
+///
+/// # Errors
+///
+/// As [`face_classify_uv_line`].
+pub fn face_classify_uv_line_mut<O: ClassObject>(
+    k: &Kernel,
+    f: FaceId,
+    objects: &mut (impl ClassifyCurveObjects<O> + CurveOnClassifyBrep<O>),
+    uv_start: Point2,
+    uv_end: Point2,
+    src_zone_tol_3d: f64,
+    cc: &mut CurveClassification<O>,
+) -> Result<()> {
+    let line = uv_line(k, uv_start, uv_end, cc)?;
+
+    // Figure a tolerance for the CurveClassification (never read upstream)
+    let b = objects.brep();
+    let surface = face_surface(b, f, OP_UV_LINE)?;
+    approx_derivative_lengths(k, surface, &b.face(f)?.uv_domain)?;
+
+    load_uv_line(k, f, objects, line, src_zone_tol_3d, cc)?;
+
+    // ask the face to classify the curve
+    curve_on_classify_mut(k, f, objects, true, cc, false, false, true)?;
+    Ok(())
+}
+
+/// `sm_FaceClassifyUVLine` up to the tolerance: resets `cc` and builds the UV line.
+fn uv_line<O: ClassObject>(
+    k: &Kernel,
+    uv_start: Point2,
+    uv_end: Point2,
+    cc: &mut CurveClassification<O>,
+) -> Result<Line> {
     // init output
     cc.reset(k, &ResetOptions::default())?;
 
     // build UVLine
     let start = Point3::new(uv_start.x, uv_start.y, 0.0);
     let end = Point3::new(uv_end.x, uv_end.y, 0.0);
-    let line = Line::create_line_segment(2, start, end, None)
-        .map_err(|_| SolidError::null_pointer(OP_UV_LINE))?;
+    Line::create_line_segment(2, start, end, None).map_err(|_| SolidError::null_pointer(OP_UV_LINE))
+}
 
+/// `sm_FaceClassifyUVLine` after the tolerance: loads `line` into `cc`.
+fn load_uv_line<O: ClassObject>(
+    k: &Kernel,
+    f: FaceId,
+    objects: &mut impl ClassifyCurveObjects<O>,
+    line: Line,
+    src_zone_tol_3d: f64,
+    cc: &mut CurveClassification<O>,
+) -> Result<()> {
     // Load the new curve into the CurveClassification so that curve gets deleted by
     // rCurveClassification. Also need to pass Domain and Tolerance. [B327]
     let domain = line.natural_interval();
-
-    // Figure a tolerance for the CurveClassification (never read upstream)
-    let surface = face_surface(b, f, OP_UV_LINE)?;
-    approx_derivative_lengths(k, surface, &b.face(f)?.uv_domain)?;
 
     // Note: ReSet() tells the CC that pNewUVLine is owned, so it will be deleted.
     let (h, _) = objects.set_classify_curves(Curve::from(line), None)?;
@@ -767,11 +828,7 @@ pub fn face_classify_uv_line<O: ClassObject>(
             surface1: objects.face_surface(f),
             ..ResetOptions::default()
         },
-    )?;
-
-    // ask the face to classify the curve
-    curve_on_classify(k, b, f, objects, true, cc, false, false, true)?;
-    Ok(())
+    )
 }
 
 // ---- sms_FindAndClassifyLoopBisector -------------------------------------------------------
@@ -851,7 +908,7 @@ pub fn find_and_classify_loop_bisector<O: LoopObject + PartialEq>(
 /// # Errors
 ///
 /// As [`find_and_classify_loop_bisector`].
-#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+#[allow(clippy::too_many_arguments)]
 pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
     k: &Kernel,
     b: &Brep,
@@ -865,20 +922,53 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
     cc: &mut CurveClassification<O>,
     out: &mut LoopBisector,
 ) -> Result<()> {
+    find_and_classify_loop_bisector_cached(
+        k,
+        b,
+        f,
+        target,
+        loops,
+        ios,
+        marked,
+        props,
+        objects,
+        cc,
+        out,
+        &mut CurveOnClassifyCache::default(),
+    )
+}
+
+/// [`find_and_classify_loop_bisector_into`] on the query state `cache`: `IsSeam` and the
+/// classifications run on its snapshot of `b`, where the UV trim curves, tolerance growth
+/// and gap caches they make stay for the caller to keep
+/// ([`CurveOnClassifyCache::apply_uv_trim_updates`]), as upstream's on the face's own
+/// B-rep.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+pub(crate) fn find_and_classify_loop_bisector_cached<O: LoopObject + PartialEq>(
+    k: &Kernel,
+    b: &Brep,
+    f: FaceId,
+    target: usize,
+    loops: &[LoopId],
+    ios: &[ClassifyLoopIo],
+    marked: &BTreeSet<LoopId>,
+    props: &FaceProps<O>,
+    objects: &mut impl ClassifyCurveObjects<O>,
+    cc: &mut CurveClassification<O>,
+    out: &mut LoopBisector,
+    cache: &mut CurveOnClassifyCache,
+) -> Result<()> {
     let surface = face_surface(b, f, OP_BISECTOR)?;
 
     // check state - FaceDomain within SurfaceDomain
     let face_uv_domain = b.face(f)?.uv_domain;
-    let surf_uv_domain = surface.natural_uv_domain();
+    let surf_uv_domain = surface.natural_uv_domain_with_nurb(k)?;
     if !face_uv_domain.is_contained_by(&surf_uv_domain, 0.0) {
         return Err(null(
             OP_BISECTOR,
             "FaceUVDomain Not contained by SurfaceUVDomain",
         ));
     }
-
-    // (IsSeam may attach missing UV trim curves: a private snapshot of the B-rep)
-    let mut snapshot = b.clone();
 
     // init output
     *out = LoopBisector {
@@ -906,6 +996,8 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
     let mut sp = [Vec3::UNDEF; 2];
     let mut ends = [Vec3::UNDEF; 2];
     let mut uv1 = Vec2::UNDEF;
+    let mut start_uv = Vec2::UNDEF;
+    let mut end_uv = Vec2::UNDEF;
 
     // get pLoop->Edgeuses for the Target Loop (guarantees UVTrimLine XSects the TgtLoop)
     let tgt_lu = b
@@ -951,7 +1043,8 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
         let half0 = ends[0].distance(sp[0]);
         let half1 = ends[1].distance(sp[0]);
         let this_length = max2(half0, half1);
-        let edge_is_seam = topo_edge::is_seam(k, &mut snapshot, e)?;
+        // (IsSeam may attach missing UV trim curves: on the classifications' snapshot)
+        let edge_is_seam = topo_edge::is_seam(k, cache.snapshot(b), e)?;
         if longest_eu.is_none()
             || (this_length > max_edge_length && (!longest_is_seam || edge_is_seam))
         {
@@ -1151,8 +1244,8 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
             {
                 trim_interval = ivl;
             }
-            let start_uv = surf_uv_domain.clamp_point(uv0 + uv_dir * trim_interval.min());
-            let end_uv = surf_uv_domain.clamp_point(uv0 + uv_dir * trim_interval.max());
+            start_uv = surf_uv_domain.clamp_point(uv0 + uv_dir * trim_interval.min());
+            end_uv = surf_uv_domain.clamp_point(uv0 + uv_dir * trim_interval.max());
 
             let uv_trim_line = Line::from_points(
                 Point3::new(start_uv.x, start_uv.y, 0.0),
@@ -1221,8 +1314,8 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
 
             // Classify the sCrvOnSurf against this Loop and all unmarked loops only
             // (status ignored)
-            ignored(curve_on_classify(
-                k, b, f, objects, true, cc, true, true, false,
+            ignored(curve_on_classify_cached(
+                k, b, f, objects, true, cc, true, true, false, cache,
             ))?;
 
             // get the classification curve vertex intersections
@@ -1285,6 +1378,11 @@ pub fn find_and_classify_loop_bisector_into<O: LoopObject + PartialEq>(
             break;
         }
     } // end iter ii, every Loop->edge looking for a good UVTrimCurve Loop bisector
+
+    // Classify the actual endpoints, including circumferential samples on a singly
+    // periodic surface. Surface periodicity alone does not identify them.
+    out.start_on_seam = surface.is_on_seam(k, start_uv, None)?.on_seam;
+    out.stop_on_seam = surface.is_on_seam(k, end_uv, None)?.on_seam;
 
     // set remaining output
     out.has_curve = has_curve;
@@ -1907,7 +2005,7 @@ pub fn sector_classify_curve_on(
     };
 
     // Some surface info:
-    let srf_domain = face_surface(b, f, OP_SECTOR)?.natural_uv_domain();
+    let srf_domain = face_surface(b, f, OP_SECTOR)?.natural_uv_domain_with_nurb(k)?;
     let lu1 = eu1::loopuse(b, cp_eu1)?.ok_or_else(|| null(OP_SECTOR, "edge use not in a loop"))?;
     let loop1 = b
         .loopuse(lu1)?

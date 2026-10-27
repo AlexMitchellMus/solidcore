@@ -27,11 +27,18 @@
 //! **Deferred.** Fresh props of a closed surface need `SmFace::HasSeamProblem`
 //! (`topology.face_p4`), which reaches its unported callees.
 //!
-//! **Inexact geometry.** The importer approximates the edge curves of most built faces
-//! (unit `topology.face_p2`'s `Exact`); the cases are still compared, since the loop
-//! classification is integer-valued. Two scale-`1e-3` cylinder cases where the
-//! approximation moves the bisector across a loop are known mismatches
-//! (`crates/difftest/known_mismatches.toml`).
+//! **Exact geometry.** The shim exports an analytic face surface (`SmCylinder`,
+//! `SmSphere`, `SmTorus`, `SmCone`, ...) and an ellipse or circle edge curve with its
+//! exact database record when that record is lossless (`sc_analytic_export.h`,
+//! `sc_exact_curve_export.h`), and the importer rebuilds them with the ported readers.
+//! Before, it imported their B-spline parts only: the loop bisector then ran on
+//! approximated geometry and flipped a loop classification in three cylinder cases (two
+//! at scale `1e-3`, and `gen0360` on macOS), now the named regressions `cyl_*` in
+//! `cases.json`. Geometry still imported as a B-spline part (unit `topology.face_p2`'s
+//! `Exact`) stays compared, since the loop classification is integer-valued. The export marks the gap caches the shim's props
+//! build filled but carries no values; the import refills them
+//! (`topology_vertexuse::refill_gaps`), since the bisector's `CurveOnClassify` reads the
+//! edge/face gaps (plan/findings/query.face_p4--gen0360-macos-exact-records.md).
 //!
 //! **Rejected** (both sides report `rejected`): the inputs the FFI wrapper documents,
 //! where `ClassifyLoops` would read outside its arrays.
@@ -51,9 +58,9 @@ use solidcore::heal::face_props::{
     ClassifyLoopsOut, FaceProps, HealNotYetFaceType, LoopObject, LoopProps, Looptree, PropStage,
     Tri,
 };
-use solidcore::intersect::point_class::{ClassObject, ClassObjectKind};
 use solidcore::intersect::curve_class::p1::{CrvDirOnFaceType, CurveClassification, TouchData};
 use solidcore::intersect::point_class::PointClassType;
+use solidcore::intersect::point_class::{ClassObject, ClassObjectKind};
 use solidcore::kernel::Kernel;
 use solidcore::math::Point3;
 use solidcore::nurbs::b_spline_surface::SurfParamType;
@@ -184,14 +191,38 @@ pub(super) enum AnySrf {
     /// A B-spline surface (its natural domain).
     Bspline { surface: SrfIn },
     /// `SmCylinder` of radius `scale*a`, axis clamped to `[0, scale*c]`.
-    Cylinder { scale: f64, a: f64, c: f64, #[serde(default)] swap: bool },
+    Cylinder {
+        scale: f64,
+        a: f64,
+        c: f64,
+        #[serde(default)]
+        swap: bool,
+    },
     /// `SmSphere` of radius `scale*a`.
-    Sphere { scale: f64, a: f64, #[serde(default)] swap: bool },
+    Sphere {
+        scale: f64,
+        a: f64,
+        #[serde(default)]
+        swap: bool,
+    },
     /// `SmTorus` of radii `scale*a`, `scale*b`.
-    Torus { scale: f64, a: f64, b: f64, #[serde(default)] swap: bool },
+    Torus {
+        scale: f64,
+        a: f64,
+        b: f64,
+        #[serde(default)]
+        swap: bool,
+    },
     /// `SmCone` of bottom radius `scale*a`, semi-angle `b` degrees, axis clamped to
     /// `[0, scale*c]`.
-    Cone { scale: f64, a: f64, b: f64, c: f64, #[serde(default)] swap: bool },
+    Cone {
+        scale: f64,
+        a: f64,
+        b: f64,
+        c: f64,
+        #[serde(default)]
+        swap: bool,
+    },
 }
 
 /// A UV trim curve in fractions of the face domain.
@@ -199,10 +230,23 @@ pub(super) enum AnySrf {
 #[serde(tag = "t", rename_all = "snake_case")]
 pub(super) enum CurveIn {
     /// A line from `(a, b)` to `(c, d)`; `rev`: `SM_OT_OPPOSITE` in its loop.
-    Line { a: f64, b: f64, c: f64, d: f64, #[serde(default)] rev: bool },
+    Line {
+        a: f64,
+        b: f64,
+        c: f64,
+        d: f64,
+        #[serde(default)]
+        rev: bool,
+    },
     /// A counter-clockwise circle centred at `(a, b)`, radius `r` times the smaller
     /// domain side.
-    Circle { a: f64, b: f64, r: f64, #[serde(default)] rev: bool },
+    Circle {
+        a: f64,
+        b: f64,
+        r: f64,
+        #[serde(default)]
+        rev: bool,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -258,7 +302,13 @@ fn push_any(v: &mut Vec<f64>, s: &AnySrf) -> Result<(), HarnessError> {
         AnySrf::Cylinder { scale, a, c, swap } => v.extend([10.0, *scale, *a, 0.0, *c, sw(*swap)]),
         AnySrf::Sphere { scale, a, swap } => v.extend([11.0, *scale, *a, 0.0, 0.0, sw(*swap)]),
         AnySrf::Torus { scale, a, b, swap } => v.extend([12.0, *scale, *a, *b, 0.0, sw(*swap)]),
-        AnySrf::Cone { scale, a, b, c, swap } => v.extend([13.0, *scale, *a, *b, *c, sw(*swap)]),
+        AnySrf::Cone {
+            scale,
+            a,
+            b,
+            c,
+            swap,
+        } => v.extend([13.0, *scale, *a, *b, *c, sw(*swap)]),
     }
     Ok(())
 }
@@ -606,7 +656,11 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
     if rd.num()? != 0.0 {
         return Ok(Output::err("rejected"));
     }
-    let (b, _exact) = import(graph)?;
+    let (mut b, _exact) = import(graph)?;
+    // ClassifyLoops reads the cached gaps the export only marks as set (the bisector's
+    // CurveOnClassify with bHasBigGaps): recompute their values, as the refilling
+    // importers do
+    super::topology_vertexuse::refill_gaps(&mut b);
     let face_index = rd.int()?;
     let face = FaceId::from_index(u32::try_from(face_index).map_err(|_| harness("bad face"))?);
 
@@ -639,6 +693,9 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
     for _ in 0..n_pp {
         pole_points.push(Point3::new(rd.num()?, rd.num()?, rd.num()?));
     }
+    let raw_u = touches(&mut rd)?;
+    let raw_v = touches(&mut rd)?;
+    let bad_crossed_seam = rd.int()?;
     let n_loops = rd.count()?;
     let mut loops = rd
         .ints(n_loops)?
@@ -667,6 +724,12 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
             .and_then(SurfParamType::from_code)
             .ok_or_else(|| harness("bad SmSurfParamType"))?;
         props.pole_points = pole_points;
+        props.raw_touch_list_u = raw_u;
+        props.raw_touch_list_v = raw_v;
+        props.bad_crossed_seam_dir = u64::try_from(bad_crossed_seam)
+            .ok()
+            .and_then(SurfParamType::from_code)
+            .ok_or_else(|| harness("bad SmSurfParamType"))?;
     }
 
     let mut out = initial_out();
@@ -712,7 +775,9 @@ fn levels(rng: &mut Rng, n: usize) -> Vec<f64> {
     let mut v: Vec<f64> = (0..n).map(|_| rng.uniform(0.05, 0.95)).collect();
     if rng.chance(0.15) {
         if let Some(x) = v.first_mut() {
-            *x = *rng.choose(&[1e-4, 1e-6, 0.999_9, 0.999_999]).unwrap_or(&0.01);
+            *x = *rng
+                .choose(&[1e-4, 1e-6, 0.999_9, 0.999_999])
+                .unwrap_or(&0.01);
         }
     }
     if n > 1 && rng.chance(0.1) {
@@ -750,7 +815,13 @@ fn span(level: f64, u_dir: bool, backward: bool, rev: bool) -> Vec<CurveIn> {
             rev: true,
         }]
     } else {
-        vec![CurveIn::Line { a, b, c, d, rev: false }]
+        vec![CurveIn::Line {
+            a,
+            b,
+            c,
+            d,
+            rev: false,
+        }]
     }
 }
 
@@ -760,10 +831,34 @@ pub(super) fn rect(rng: &mut Rng) -> Vec<CurveIn> {
     let u1 = u0 + rng.uniform(0.1, 0.4);
     let v1 = v0 + rng.uniform(0.1, 0.4);
     let mut l = vec![
-        CurveIn::Line { a: u0, b: v0, c: u1, d: v0, rev: false },
-        CurveIn::Line { a: u1, b: v0, c: u1, d: v1, rev: false },
-        CurveIn::Line { a: u1, b: v1, c: u0, d: v1, rev: false },
-        CurveIn::Line { a: u0, b: v1, c: u0, d: v0, rev: false },
+        CurveIn::Line {
+            a: u0,
+            b: v0,
+            c: u1,
+            d: v0,
+            rev: false,
+        },
+        CurveIn::Line {
+            a: u1,
+            b: v0,
+            c: u1,
+            d: v1,
+            rev: false,
+        },
+        CurveIn::Line {
+            a: u1,
+            b: v1,
+            c: u0,
+            d: v1,
+            rev: false,
+        },
+        CurveIn::Line {
+            a: u0,
+            b: v1,
+            c: u0,
+            d: v0,
+            rev: false,
+        },
     ];
     if rng.chance(0.5) {
         // clockwise
@@ -771,7 +866,13 @@ pub(super) fn rect(rng: &mut Rng) -> Vec<CurveIn> {
             .into_iter()
             .rev()
             .map(|c| match c {
-                CurveIn::Line { a, b, c, d, .. } => CurveIn::Line { a: c, b: d, c: a, d: b, rev: false },
+                CurveIn::Line { a, b, c, d, .. } => CurveIn::Line {
+                    a: c,
+                    b: d,
+                    c: a,
+                    d: b,
+                    rev: false,
+                },
                 other @ CurveIn::Circle { .. } => other,
             })
             .collect();
@@ -796,7 +897,13 @@ fn straddle(u0: f64, u1: f64, v0: f64, v1: f64, u_dir: bool, cw: bool) -> Vec<Cu
         .iter()
         .map(|&(p, q)| {
             let (p, q) = (tr(p), tr(q));
-            CurveIn::Line { a: p.0, b: p.1, c: q.0, d: q.1, rev: false }
+            CurveIn::Line {
+                a: p.0,
+                b: p.1,
+                c: q.0,
+                d: q.1,
+                rev: false,
+            }
         })
         .collect();
     if cw {
@@ -804,7 +911,13 @@ fn straddle(u0: f64, u1: f64, v0: f64, v1: f64, u_dir: bool, cw: bool) -> Vec<Cu
             .into_iter()
             .rev()
             .map(|c| match c {
-                CurveIn::Line { a, b, c, d, .. } => CurveIn::Line { a: c, b: d, c: a, d: b, rev: false },
+                CurveIn::Line { a, b, c, d, .. } => CurveIn::Line {
+                    a: c,
+                    b: d,
+                    c: a,
+                    d: b,
+                    rev: false,
+                },
                 other @ CurveIn::Circle { .. } => other,
             })
             .collect();
@@ -865,7 +978,14 @@ pub(super) fn gen_seam_face(rng: &mut Rng) -> BrepIn {
         if rng.chance(0.5) {
             let du = rng.uniform(0.02, 0.1);
             let dv = rng.uniform(0.02, 0.1);
-            loops.push(straddle(u0 + du, u1 - du, v0 + dv, v1 - dv, u_dir, rng.chance(0.8)));
+            loops.push(straddle(
+                u0 + du,
+                u1 - du,
+                v0 + dv,
+                v1 - dv,
+                u_dir,
+                rng.chance(0.8),
+            ));
         }
         if rng.chance(0.3) {
             loops.push(span(rng.uniform(0.92, 0.98), u_dir, rng.chance(0.5), false));
@@ -873,7 +993,11 @@ pub(super) fn gen_seam_face(rng: &mut Rng) -> BrepIn {
     } else {
         for (j, level) in levels(rng, n).into_iter().enumerate() {
             let alternate = j % 2 == 1;
-            let backward = if rng.chance(0.85) { alternate } else { rng.chance(0.5) };
+            let backward = if rng.chance(0.85) {
+                alternate
+            } else {
+                rng.chance(0.5)
+            };
             loops.push(span(level, u_dir, backward, rng.chance(0.2)));
         }
     }
@@ -1034,17 +1158,33 @@ mod tests {
                 format!("deferred {}", d.unit)
             } else {
                 let ios = c.ints.get("classify_loop_ios").map_or(0, Vec::len);
-                *why.entry(format!("  start_stop {:?}", c.ints.get("start_stop"))).or_default() += 1;
-                for ch in c.ints.get("classify_loop_ios").cloned().unwrap_or_default().chunks(6) {
-                    *why.entry(format!("  io type/orient/area/cont {:?}", ch.get(1..))).or_default() += 1;
+                *why.entry(format!("  start_stop {:?}", c.ints.get("start_stop")))
+                    .or_default() += 1;
+                for ch in c
+                    .ints
+                    .get("classify_loop_ios")
+                    .cloned()
+                    .unwrap_or_default()
+                    .chunks(6)
+                {
+                    *why.entry(format!("  io type/orient/area/cont {:?}", ch.get(1..)))
+                        .or_default() += 1;
                 }
-                *why.entry(format!("  tree len {:?}", c.ints.get("looptree").and_then(|t| t.first()))).or_default() += 1;
+                *why.entry(format!(
+                    "  tree len {:?}",
+                    c.ints.get("looptree").and_then(|t| t.first())
+                ))
+                .or_default() += 1;
                 if ios > 0 {
                     classified += 1;
                 }
                 format!(
                     "compared status {} classifiable {:?} ios>0 {}",
-                    c.values.get("status").and_then(|v| v.first()).copied().unwrap_or(-1.0),
+                    c.values
+                        .get("status")
+                        .and_then(|v| v.first())
+                        .copied()
+                        .unwrap_or(-1.0),
                     c.ints.get("classifiable"),
                     ios > 0
                 )
@@ -1054,6 +1194,9 @@ mod tests {
         for (k, v) in &why {
             eprintln!("{v:4} {k}");
         }
-        assert!(classified * 2 > n, "only {classified} of {n} classify loops");
+        assert!(
+            classified * 2 > n,
+            "only {classified} of {n} classify loops"
+        );
     }
 }

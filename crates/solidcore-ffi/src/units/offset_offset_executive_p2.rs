@@ -209,14 +209,32 @@ pub enum Fixture {
         /// Length, width, height; nonpositive dimensions reach native rejection.
         size: [f64; 3],
     },
+    /// Three-face cylinder built by the actual `SmApiCreateCylinder` constructor
+    /// (`SmBrep*&` overload): the side face is closed along a seam edge.
+    Cylinder {
+        /// Centre of the base circle.
+        origin: [f64; 3],
+        /// Radius; degenerate radii reach native rejection.
+        radius: f64,
+        /// Height along Z.
+        height: f64,
+    },
+    /// One-face sphere built by the actual `SmApiCreateSphere` constructor.
+    Sphere {
+        /// Centre.
+        origin: [f64; 3],
+        /// Radius; degenerate radii reach native rejection.
+        radius: f64,
+    },
 }
 
 impl Fixture {
     fn face_count(&self) -> usize {
         match self {
             Self::EmptyBrep | Self::Wire { .. } => 0,
-            Self::PlaneSheet { .. } => 1,
+            Self::PlaneSheet { .. } | Self::Sphere { .. } => 1,
             Self::Box { .. } => 6,
+            Self::Cylinder { .. } => 3,
         }
     }
 }
@@ -476,6 +494,33 @@ fn pack_fixture(fixture: Option<&Fixture>, out: &mut Vec<f64>) -> Result<(), Ffi
             out.extend_from_slice(origin);
             out.extend_from_slice(size);
         }
+        Fixture::Cylinder {
+            origin,
+            radius,
+            height,
+        } => {
+            primitive_finite(origin, *radius)?;
+            finite(&[*height, origin[2] + height])?;
+            out.push(5.0);
+            out.extend_from_slice(origin);
+            out.extend_from_slice(&[*radius, *height]);
+        }
+        Fixture::Sphere { origin, radius } => {
+            primitive_finite(origin, *radius)?;
+            out.push(6.0);
+            out.extend_from_slice(origin);
+            out.push(*radius);
+        }
+    }
+    Ok(())
+}
+
+/// The shim's finiteness checks of a cylinder or sphere fixture.
+fn primitive_finite(origin: &[f64; 3], radius: f64) -> Result<(), FfiError> {
+    finite(origin)?;
+    finite(&[radius, radius * radius])?;
+    for a in origin {
+        finite(&[a + radius, a - radius])?;
     }
     Ok(())
 }
@@ -1166,7 +1211,7 @@ mod tests {
 
     #[cfg(feature = "cpp")]
     #[test]
-    fn native_incomplete_source_boxes_are_constructor_rejections() {
+    fn native_empty_source_boxes_reject_only_face_selection() {
         for (origin, size) in [([0.0; 3], [1e-6; 3]), ([1e6; 3], [1e-3; 3])] {
             for selection in [FaceSelection::Null, FaceSelection::Source(0)] {
                 let mut r = request(Operation::ApiShell);
@@ -1174,7 +1219,16 @@ mod tests {
                 r.faces = vec![selection];
                 r.tolerance = 1e-9;
                 r.config.offset_distance = 0.5;
-                assert_eq!(eval(&r).unwrap(), Outcome::Rejected { status: 1001 });
+                // The tiny box is an empty B-rep: a null selection still reaches the
+                // API's own 1007 validation; face 0 does not exist, so nothing runs.
+                if selection == FaceSelection::Null {
+                    let Outcome::Built(empty) = eval(&r).unwrap() else {
+                        panic!("empty box with a null selection must reach API validation")
+                    };
+                    assert_eq!(empty.status, NATIVE_INVALID_INPUT);
+                } else {
+                    assert_eq!(eval(&r).unwrap(), Outcome::Rejected { status: 1001 });
+                }
 
                 // A valid call after each rejection also exercises observer/lock
                 // restoration. Null selection is an operation error, not rejection.
@@ -1201,7 +1255,7 @@ mod tests {
 
     #[cfg(feature = "cpp")]
     #[test]
-    fn native_incomplete_foreign_boxes_are_constructor_rejections() {
+    fn native_empty_foreign_boxes_reject_only_face_selection() {
         for (origin, size) in [([0.0; 3], [1e-6; 3]), ([1e6; 3], [1e-3; 3])] {
             for selection in [FaceSelection::Null, FaceSelection::Foreign(0)] {
                 let mut r = request(Operation::ApiShell);
@@ -1213,7 +1267,16 @@ mod tests {
                 r.faces = vec![selection];
                 r.tolerance = 1e-9;
                 r.config.offset_distance = 0.5;
-                assert_eq!(eval(&r).unwrap(), Outcome::Rejected { status: 1001 });
+                // The tiny box is an empty B-rep: a null selection still reaches the
+                // API's own 1007 validation; face 0 does not exist, so nothing runs.
+                if selection == FaceSelection::Null {
+                    let Outcome::Built(empty) = eval(&r).unwrap() else {
+                        panic!("empty box with a null selection must reach API validation")
+                    };
+                    assert_eq!(empty.status, NATIVE_INVALID_INPUT);
+                } else {
+                    assert_eq!(eval(&r).unwrap(), Outcome::Rejected { status: 1001 });
+                }
 
                 // Foreign construction rejects after allocating the source. Both
                 // must be reclaimed without poisoning the next valid invocation.
@@ -1272,7 +1335,7 @@ mod tests {
 
     #[cfg(feature = "cpp")]
     #[test]
-    fn native_incomplete_source_and_foreign_sheets_are_constructor_rejections() {
+    fn native_degenerate_sheets_are_built() {
         for tolerance in [0.9, 1e3] {
             for foreign in [false, true] {
                 let indexed = if foreign {
@@ -1290,7 +1353,8 @@ mod tests {
                     r.faces = vec![selection];
                     r.tolerance = tolerance;
                     r.config.offset_distance = 10.0;
-                    assert_eq!(eval(&r).unwrap(), Outcome::Rejected { status: 1001 });
+                    // Merged/dropped-face sheets are defined native results.
+                    assert!(matches!(eval(&r).unwrap(), Outcome::Built(_)));
 
                     // A foreign rejection also cleans the already allocated source.
                     // The next call must retain real geometry and selector identity.
@@ -1324,7 +1388,7 @@ mod tests {
 
     #[cfg(feature = "cpp")]
     #[test]
-    fn native_sheet_rejection_precedes_member_null_guard_with_extreme_scalars() {
+    fn native_degenerate_sheet_reaches_member_null_guard_with_extreme_scalars() {
         let mut r = request(Operation::Extended);
         r.source = None;
         r.foreign = Some(unit_sheet());
@@ -1334,7 +1398,7 @@ mod tests {
         r.config.inset = true;
         r.config.extend_convex = true;
         r.config.create_offset_solid = true;
-        assert_eq!(eval(&r).unwrap(), Outcome::Rejected { status: 1001 });
+        assert!(matches!(eval(&r).unwrap(), Outcome::Built(_)));
 
         r.tolerance = 0.5;
         let Outcome::Built(snapshot) = eval(&r).unwrap() else {

@@ -40,11 +40,14 @@
 //! are resolved modulo the export's counts. `-2` marks a call both sides skip because
 //! upstream dereferences `NULL` there.
 
+#[path = "blend_fillet_solver_p1/split_rail.rs"]
+mod split_rail;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use solidcore::blend::fillet_geom::p1::{FilletBrep, FilletSolverId};
 use solidcore::blend::fillet_custom_solver::{JacobianLoad, OffsetSurface, SurfaceId};
+use solidcore::blend::fillet_geom::p1::{FilletBrep, FilletSolverId};
 use solidcore::blend::fillet_solver::p1::{
     check_edge_curve_domains, compute_uv_vectors, find_next_good_interval, test_analytic_surface,
     test_manifold_tangent_rollover, test_side_edge_convexity, tol_ang_tol_rad, trim_rail,
@@ -188,6 +191,8 @@ enum Inputs {
         uvd: [f64; 4],
     },
     Split,
+    /// Direct real rail-copy and owner-notification operation.
+    SplitRail,
     Finish {
         surface: SrfIn,
         has: [bool; 2],
@@ -314,6 +319,7 @@ impl Inputs {
             Inputs::TrimRail { .. } => StaticOp::TrimRail,
             Inputs::Queries { .. } => StaticOp::Queries,
             Inputs::Rollover { .. } => StaticOp::Rollover,
+            Inputs::SplitRail => StaticOp::SplitRail,
             _ => return None,
         })
     }
@@ -604,6 +610,9 @@ fn cpp_input(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
 }
 
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
+    if matches!(i, Inputs::SplitRail) {
+        return split_rail::cpp();
+    }
     if let Some(op) = i.static_op() {
         let case = match i.brep() {
             Some(brep) => match brep_case(brep)? {
@@ -1249,6 +1258,9 @@ fn rust_static(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, H
 }
 
 fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
+    if matches!(i, Inputs::SplitRail) {
+        return split_rail::rust();
+    }
     let mut o = Vec::new();
     if i.static_op().is_some() {
         let res = if let Some(brep) = i.brep() {
@@ -1366,7 +1378,8 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
         Inputs::SurfValues { setup, surfs, uv } => {
             let mut fs = shim_with(surfs, false, false, *setup)?;
             let mut t = TsectPnt::new();
-            let r = FilletSolver::compute_surface_values(k, 
+            let r = FilletSolver::compute_surface_values(
+                k,
                 &mut fs as &mut dyn FilletSolverOps,
                 [Point2::new(uv[0], uv[1]), Point2::new(uv[2], uv[3])],
                 &mut t,
@@ -1419,6 +1432,7 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
             let r = (|| -> Result<usize, SolidError> {
                 let mut fs =
                     FilletSolver::new_in(&k, &mut pseudo, FilletSolverId(0), 1.0e-6, 0.1, 0.01)?;
+                let target = Brep::new();
                 fs.split_fillet_geom(
                     &k,
                     &mut pseudo,
@@ -1429,6 +1443,7 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
                     &[],
                     &cc,
                     &cc,
+                    [&target, &target],
                 )?;
                 Ok(fs.fillet_geoms().len())
             })();
@@ -2056,7 +2071,7 @@ fn gen_rail_uv(rng: &mut Rng) -> Inputs {
 fn gen_brep_case(rng: &mut Rng) -> BrepIn {
     if rng.chance(0.6) {
         return BrepIn::File {
-            file: (*rng.choose(&FILES).unwrap_or(&"SmallBox.smb")).to_string(),
+            file: (*rng.choose(&FILES).unwrap_or(&"SmallBox.smp")).to_string(),
             rebuild: false,
         };
     }
@@ -2392,7 +2407,7 @@ fn gen_static(rng: &mut Rng) -> Inputs {
         4 => gen_clipped(rng),
         5 => Inputs::Convexity {
             brep: BrepIn::File {
-                file: (*rng.choose(&FILES).unwrap_or(&"SmallBox.smb")).to_string(),
+                file: (*rng.choose(&FILES).unwrap_or(&"SmallBox.smp")).to_string(),
                 rebuild: false,
             },
             edge: if rng.chance(0.6) { -1 } else { s(rng) },

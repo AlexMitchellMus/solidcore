@@ -4,7 +4,11 @@
 //!   from the exact base revision's validated CI artifact. Every case that
 //!   passed there must still exist and pass, and must still compare values if it did;
 //!   no deferred or failing case may disappear either. A deferred case may turn into a
-//!   pass (progress); a rejected fixture may go away. Different `--seeds` are a gate failure, so generated cases cannot be hidden.
+//!   pass (progress); a rejected fixture may go away. A known mismatch, a confirmed C++
+//!   defect run anyway (`cpp_defect`) or a parked case (`parked`, a `cpp_defect` entry
+//!   that is not run) must stay one of those three or become a pass, and a parked case
+//!   is exempt from the value-coverage check (it compares nothing); a case that passed
+//!   may not become any of them (marking a passing case is never a silent waiver). Different `--seeds` are a gate failure, so generated cases cannot be hidden.
 //! * **Value share**: at least [`MIN_VALUE_SHARE`] of a unit's passing cases, and at
 //!   least one, must compare a value (a float, integer or topology entry) rather than
 //!   only an error string both sides agreed on.
@@ -72,7 +76,7 @@ pub struct Violation {
 pub struct BaselineCase {
     /// Case name (unique within the unit).
     pub name: String,
-    /// `pass`, `fail`, `deferred`, `known_mismatch` or `rejected`.
+    /// `pass`, `fail`, `deferred`, `known_mismatch`, `cpp_defect`, `parked` or `rejected`.
     pub outcome: String,
     /// The case came from the generator (its inputs depend on `--seeds`).
     pub generated: bool,
@@ -160,7 +164,7 @@ pub fn parse_baseline(text: &str) -> Result<Baseline, String> {
             .ok_or("missing case outcome")?;
         if !matches!(
             outcome,
-            "pass" | "fail" | "deferred" | "rejected" | "known_mismatch"
+            "pass" | "fail" | "deferred" | "rejected" | "known_mismatch" | "cpp_defect" | "parked"
         ) {
             return Err(format!("unknown case outcome `{outcome}`"));
         }
@@ -227,6 +231,8 @@ pub fn parse_baseline(text: &str) -> Result<Baseline, String> {
         ("deferred", "cases_deferred", true),
         ("rejected", "cases_rejected", false),
         ("known_mismatch", "cases_known_mismatch", false),
+        ("cpp_defect", "cases_cpp_defect", false),
+        ("parked", "cases_parked", false),
     ] {
         if count(&v, field, required)? != counts.get(outcome).copied().unwrap_or(0) {
             return Err(format!("{field} disagrees with case outcomes"));
@@ -424,12 +430,23 @@ pub fn ratchet(base: &Baseline, res: &UnitResult) -> Vec<Violation> {
             continue;
         };
         let o = c.outcome();
-        if b.outcome == "known_mismatch"
-            && !matches!(o, CaseOutcome::KnownMismatch | CaseOutcome::Pass)
+        if is_listed(&b.outcome)
+            && !matches!(
+                o,
+                CaseOutcome::KnownMismatch
+                    | CaseOutcome::CppDefect
+                    | CaseOutcome::Parked
+                    | CaseOutcome::Pass
+            )
         {
             push(
                 &b.name,
-                format!("case `{}` was a known mismatch, now {}", b.name, o.as_str()),
+                format!(
+                    "case `{}` was a {}, now {}",
+                    b.name,
+                    listed_kind(&b.outcome),
+                    o.as_str()
+                ),
             );
             continue;
         }
@@ -447,7 +464,7 @@ pub fn ratchet(base: &Baseline, res: &UnitResult) -> Vec<Violation> {
             );
             continue;
         }
-        if b.compared_values && !c.compared_values() {
+        if b.compared_values && !c.compared_values() && o != CaseOutcome::Parked {
             push(
                 &b.name,
                 format!(
@@ -465,9 +482,126 @@ pub fn ratchet(base: &Baseline, res: &UnitResult) -> Vec<Violation> {
     out
 }
 
+/// A case listed in `known_mismatches/<unit>.toml` that still mismatches or is parked: a
+/// known mismatch, a confirmed C++ defect run anyway, or a parked case. Any may turn into
+/// another (the marker was added or dropped) or into a pass; anything else loses the
+/// tracked comparison.
+fn is_listed(outcome: &str) -> bool {
+    matches!(outcome, "known_mismatch" | "cpp_defect" | "parked")
+}
+
+fn listed_kind(outcome: &str) -> &'static str {
+    match outcome {
+        "cpp_defect" => "confirmed C++ defect",
+        "parked" => "parked case",
+        _ => "known mismatch",
+    }
+}
+
+/// Ratchet violations of a completed report `now` against the earlier report `base`
+/// (`--compare-reports`). The same rules as [`ratchet`], applied to two parsed reports
+/// instead of a live [`UnitResult`]: the sweep ran elsewhere and only its reports remain.
+pub fn ratchet_reports(base: &Baseline, now: &Baseline) -> Vec<Violation> {
+    let current: BTreeMap<&str, &BaselineCase> =
+        now.cases.iter().map(|c| (c.name.as_str(), c)).collect();
+    let mut out = Vec::new();
+    let mut push = |case: &str, detail: String| {
+        out.push(Violation {
+            unit: now.unit.clone(),
+            check: Check::Ratchet,
+            case: Some(case.to_string()),
+            detail,
+        });
+    };
+    if base.seeds != now.seeds {
+        push(
+            "<seeds>",
+            "baseline/current seeds differ; generated coverage cannot be ratcheted".into(),
+        );
+    }
+    for b in &base.cases {
+        if b.outcome == "rejected" {
+            continue;
+        }
+        let Some(c) = current.get(b.name.as_str()) else {
+            push(
+                &b.name,
+                format!("case `{}` ({} in the baseline) is gone", b.name, b.outcome),
+            );
+            continue;
+        };
+        if is_listed(&b.outcome) && !is_listed(&c.outcome) && c.outcome != "pass" {
+            push(
+                &b.name,
+                format!(
+                    "case `{}` was a {}, now {}",
+                    b.name,
+                    listed_kind(&b.outcome),
+                    c.outcome
+                ),
+            );
+            continue;
+        }
+        if b.outcome == "pass" && c.outcome != "pass" {
+            if c.outcome == "fail" {
+                continue; // already fails the unit in the sweep
+            }
+            push(
+                &b.name,
+                format!(
+                    "case `{}` passed in the baseline, now {}",
+                    b.name, c.outcome
+                ),
+            );
+            continue;
+        }
+        if b.compared_values && !c.compared_values && c.outcome != "parked" {
+            push(
+                &b.name,
+                format!(
+                    "case `{}` compared values in the baseline, now compares nothing",
+                    b.name
+                ),
+            );
+        }
+    }
+    out
+}
+
+/// Units that have a report (`<unit>.json`) in `dir`, sorted. Every report is parsed.
+pub fn report_units(dir: &Path) -> Result<Vec<String>, HarnessError> {
+    let entries =
+        fs::read_dir(dir).map_err(|e| HarnessError::new(format!("{}: {e}", dir.display())))?;
+    let mut out = Vec::new();
+    for e in entries {
+        let path = e
+            .map_err(|e| HarnessError::new(format!("{}: {e}", dir.display())))?
+            .path();
+        if path.extension().and_then(|x| x.to_str()) != Some("json") {
+            continue;
+        }
+        let unit = path
+            .file_stem()
+            .and_then(|x| x.to_str())
+            .ok_or_else(|| HarnessError::new("invalid report filename"))?
+            .to_string();
+        if load_baseline(dir, &unit)?.is_none() {
+            return Err(HarnessError::new(format!("{unit}: report disappeared")));
+        }
+        out.push(unit);
+    }
+    out.sort();
+    Ok(out)
+}
+
 /// Value-share violation of `res`, if any. Only meaningful for a unit that does not
-/// already fail.
+/// already fail. A unit whose every case was `skipped(platform)` (e.g. a libstdc++-only
+/// reference on libc++) compared nothing and has no share to check, like a unit-level
+/// `skipped(platform)`.
 pub fn value_share(res: &UnitResult) -> Option<Violation> {
+    if !res.cases.is_empty() && res.skipped_platform() == res.cases.len() {
+        return None;
+    }
     let passed = res.passed();
     let with_values = res.passed_with_values();
     // Exact integer arithmetic for `with_values / passed < MIN_VALUE_SHARE` (= 3/4).
@@ -568,6 +702,59 @@ mod tests {
     use crate::output::Deferred;
     use crate::runner::CaseResult;
 
+    fn bcase(name: &str, outcome: &str, compared_values: bool) -> BaselineCase {
+        BaselineCase {
+            name: name.into(),
+            outcome: outcome.into(),
+            generated: false,
+            compared_values,
+        }
+    }
+
+    fn report(seeds: u64, cases: Vec<BaselineCase>) -> Baseline {
+        Baseline {
+            unit: "a.b".into(),
+            status: Some("green".into()),
+            seeds: Some(seeds),
+            cases,
+        }
+    }
+
+    #[test]
+    fn ratchet_reports_flags_regressions() {
+        let base = report(
+            16,
+            vec![
+                bcase("p", "pass", true),
+                bcase("q", "pass", true),
+                bcase("r", "known_mismatch", false),
+                bcase("s", "deferred", false),
+                bcase("x", "rejected", false),
+                bcase("f", "pass", false),
+            ],
+        );
+        assert!(ratchet_reports(&base, &base).is_empty());
+        let now = report(
+            16,
+            vec![
+                bcase("p", "deferred", false),
+                bcase("q", "pass", false),
+                bcase("r", "deferred", false),
+                bcase("f", "fail", false),
+            ],
+        );
+        let names: Vec<String> = ratchet_reports(&base, &now)
+            .into_iter()
+            .filter_map(|v| v.case)
+            .collect();
+        // `f` failing is left to the sweep; `x` (rejected) may vanish; `s` may not.
+        assert_eq!(names, ["p", "q", "r", "s"]);
+        assert_eq!(
+            ratchet_reports(&base, &report(8, base.cases.clone())).len(),
+            1
+        );
+    }
+
     fn case(name: &str, outcome: &str, values: usize) -> CaseResult {
         let mut c = CaseResult {
             name: name.into(),
@@ -581,9 +768,12 @@ mod tests {
             both_errored: false,
             rejected: None,
             deferred: None,
+            skipped_platform: None,
             perturbed: None,
             diagnostics: BTreeMap::new(),
             known_mismatch: None,
+            cpp_defect: None,
+            parked: false,
         };
         match outcome {
             "pass" => {}
@@ -594,10 +784,22 @@ mod tests {
                 });
             }
             "rejected" => c.rejected = Some("bad".into()),
+            "skipped(platform)" => c.skipped_platform = Some("libc++".into()),
             "fail" => c.diff.mismatch_count = 1,
             "known_mismatch" => {
                 c.diff.mismatch_count = 1;
                 c.known_mismatch = Some("tracked mismatch".into());
+            }
+            "cpp_defect" => {
+                c.diff.mismatch_count = 1;
+                c.known_mismatch = Some("tracked mismatch".into());
+                c.cpp_defect = Some("UB-1".into());
+            }
+            "parked" => {
+                c.diff = CaseDiff::default();
+                c.known_mismatch = Some("tracked mismatch".into());
+                c.cpp_defect = Some("UB-1".into());
+                c.parked = true;
             }
             other => panic!("{other}"),
         }
@@ -609,9 +811,11 @@ mod tests {
             unit: "a.b".into(),
             cases,
             harness_error: None,
+            skipped_platform: None,
             abs_floors: Vec::new(),
             seeds: 16,
             timing: crate::runner::UnitTiming::default(),
+            heap_check: crate::runner::HeapCheck::default(),
         }
     }
 
@@ -710,6 +914,130 @@ mod tests {
     }
 
     #[test]
+    fn cpp_defects_ratchet_like_known_mismatches_and_never_waive_a_pass() {
+        // A pass may not be marked as a C++ defect (no silent waiver).
+        let b = base(&[("p", "pass", false, true)]);
+        let v = ratchet(&b, &unit(vec![case("p", "cpp_defect", 1)]));
+        assert_eq!(v.len(), 1);
+        assert!(v[0]
+            .detail
+            .contains("passed in the baseline, now cpp_defect"));
+        let now = report(16, vec![bcase("p", "cpp_defect", true)]);
+        assert_eq!(
+            ratchet_reports(&report(16, vec![bcase("p", "pass", true)]), &now).len(),
+            1
+        );
+        // Known mismatch <-> C++ defect and C++ defect -> pass are allowed.
+        for (before, after) in [
+            ("known_mismatch", "cpp_defect"),
+            ("cpp_defect", "known_mismatch"),
+            ("cpp_defect", "cpp_defect"),
+            ("cpp_defect", "pass"),
+        ] {
+            let b = base(&[("k", before, false, true)]);
+            assert!(
+                ratchet(&b, &unit(vec![case("k", after, 1)])).is_empty(),
+                "{before}->{after}"
+            );
+            let rb = report(16, vec![bcase("k", before, true)]);
+            let rn = report(16, vec![bcase("k", after, true)]);
+            assert!(ratchet_reports(&rb, &rn).is_empty(), "{before}->{after}");
+        }
+        // It may not disappear, defer, be rejected or fail.
+        let b = base(&[("k", "cpp_defect", false, true)]);
+        assert_eq!(ratchet(&b, &unit(Vec::new())).len(), 1);
+        for outcome in ["deferred", "rejected", "fail"] {
+            let v = ratchet(&b, &unit(vec![case("k", outcome, 0)]));
+            assert_eq!(v.len(), 1, "{outcome}");
+            assert!(
+                v[0].detail.contains("was a confirmed C++ defect"),
+                "{}",
+                v[0].detail
+            );
+            let rb = report(16, vec![bcase("k", "cpp_defect", true)]);
+            let rn = report(16, vec![bcase("k", outcome, false)]);
+            assert_eq!(ratchet_reports(&rb, &rn).len(), 1, "{outcome}");
+        }
+    }
+
+    #[test]
+    fn parked_cases_ratchet_like_listed_cases_without_value_coverage() {
+        // A run cpp_defect (it compared values) may be parked: it compares nothing now.
+        for (before, after) in [
+            ("cpp_defect", "parked"),
+            ("known_mismatch", "parked"),
+            ("parked", "parked"),
+            ("parked", "known_mismatch"),
+            ("parked", "cpp_defect"),
+            ("parked", "pass"),
+        ] {
+            let b = base(&[("k", before, false, true)]);
+            assert!(
+                ratchet(&b, &unit(vec![case("k", after, 1)])).is_empty(),
+                "{before}->{after}"
+            );
+            let rb = report(16, vec![bcase("k", before, true)]);
+            let rn = report(16, vec![bcase("k", after, after != "parked")]);
+            assert!(ratchet_reports(&rb, &rn).is_empty(), "{before}->{after}");
+        }
+        // A pass may not be parked (no silent waiver), and a parked case may not vanish,
+        // defer, be rejected or fail.
+        let b = base(&[("p", "pass", false, true)]);
+        let v = ratchet(&b, &unit(vec![case("p", "parked", 0)]));
+        assert_eq!(v.len(), 1);
+        assert!(v[0].detail.contains("passed in the baseline, now parked"));
+        let b = base(&[("k", "parked", false, false)]);
+        assert_eq!(ratchet(&b, &unit(Vec::new())).len(), 1);
+        for outcome in ["deferred", "rejected", "fail"] {
+            let v = ratchet(&b, &unit(vec![case("k", outcome, 0)]));
+            assert_eq!(v.len(), 1, "{outcome}");
+            assert!(v[0].detail.contains("was a parked case"), "{}", v[0].detail);
+        }
+    }
+
+    #[test]
+    fn parsed_parked_reports_are_green_and_counted() {
+        let r = serde_json::json!({"unit":"a.b","status":"green","pass":true,"seeds":16,
+            "schema_version":1,"cases_total":2,"cases_passed":1,"cases_failed":0,
+            "cases_deferred":0,"cases_parked":1,"cases_vacuous":0,
+            "cases":[
+              {"name":"p","pass":true,"outcome":"pass","values_compared":1,"exact_compared":0},
+              {"name":"k","pass":false,"outcome":"parked","values_compared":0,"exact_compared":0}]});
+        let b = parse_baseline(&r.to_string()).unwrap();
+        assert_eq!(b.cases[1].outcome, "parked");
+        assert!(!b.cases[1].compared_values);
+        for (field, value) in [
+            ("status", serde_json::json!("partial")),
+            ("cases_parked", serde_json::json!(0)),
+        ] {
+            let mut bad = r.clone();
+            bad[field] = value;
+            assert!(parse_baseline(&bad.to_string()).is_err(), "{field}");
+        }
+    }
+
+    #[test]
+    fn parsed_cpp_defect_reports_are_green_and_counted() {
+        let r = serde_json::json!({"unit":"a.b","status":"green","pass":true,"seeds":16,
+            "schema_version":1,"cases_total":2,"cases_passed":1,"cases_failed":0,
+            "cases_deferred":0,"cases_cpp_defect":1,"cases_vacuous":0,
+            "cases":[
+              {"name":"p","pass":true,"outcome":"pass","values_compared":1,"exact_compared":0},
+              {"name":"d","pass":false,"outcome":"cpp_defect","values_compared":0,"exact_compared":3}]});
+        let b = parse_baseline(&r.to_string()).unwrap();
+        assert_eq!(b.cases[1].outcome, "cpp_defect");
+        assert!(b.cases[1].compared_values);
+        for (field, value) in [
+            ("status", serde_json::json!("partial")),
+            ("cases_cpp_defect", serde_json::json!(0)),
+        ] {
+            let mut bad = r.clone();
+            bad[field] = value;
+            assert!(parse_baseline(&bad.to_string()).is_err(), "{field}");
+        }
+    }
+
+    #[test]
     fn legacy_indexed_integer_mismatch_proves_presence_without_a_count() {
         let mut old = serde_json::json!({"unit":"a.b","status":"partial","pass":true,"seeds":16,
             "cases_total":1,"cases_passed":0,"cases_failed":0,"cases_deferred":0,
@@ -799,6 +1127,14 @@ mod tests {
         // Deferred cases do not count either way, but some pass must compare a value.
         assert!(value_share(&unit(vec![case("a", "deferred", 0)])).is_some());
         assert!(value_share(&unit(vec![case("a", "pass", 1), case("b", "deferred", 0)])).is_none());
+        // A unit whose every case is platform-skipped compared nothing: no share to
+        // check. One case that ran brings the floor back.
+        let skipped = |n: usize| (0..n).map(|i| case(&format!("s{i}"), "skipped(platform)", 0));
+        assert!(value_share(&unit(skipped(3).collect())).is_none());
+        let mut v: Vec<_> = skipped(3).collect();
+        v.push(case("e", "pass", 0));
+        assert!(value_share(&unit(v)).is_some());
+        assert!(value_share(&unit(Vec::new())).is_some());
     }
 
     #[test]

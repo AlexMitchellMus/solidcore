@@ -18,6 +18,13 @@ pub trait UnitDiff {
     /// Unit id as in `plan/units/<id>.toml` (e.g. `nlib.knots`).
     fn id(&self) -> &'static str;
 
+    /// Architecture restriction of the C++ oracle, if any. This does not restrict
+    /// Rust-only digest runs. Unsupported comparisons are skipped before fixtures
+    /// are constructed and never count as parity passes.
+    fn reference_platform(&self) -> Option<crate::platform::ReferencePlatform> {
+        None
+    }
+
     /// Runs the upstream C++ (via `solidcore_ffi::units::*`).
     /// Return `Ok(Output::err(..))` when the *operation* fails and `Err` only
     /// for harness problems (bad inputs); `Err` always fails the case. Native fixture
@@ -48,6 +55,14 @@ pub trait UnitDiff {
     fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
         default_cases(self, ctx)
     }
+
+    /// If this case depends on the C++ standard library being libstdc++ (e.g.
+    /// libc++ differs in `istream` extraction), return a short reason and the
+    /// runner reports the case as `skipped(platform)` instead of running it.
+    /// Only consulted when `solidcore_ffi::cpp_stdlib_is_libstdcxx()` is false.
+    fn skipped_platform(&self, _case: &Case) -> Option<String> {
+        None
+    }
 }
 
 /// Fixture cases followed by generated cases (the default [`UnitDiff::cases`]).
@@ -68,6 +83,20 @@ pub struct RunOptions {
     /// Sensitivity check: change one item of each case's Rust output before
     /// comparing (see [`perturb_output`]); every perturbed case must fail.
     pub perturb: bool,
+    /// Opt-in per-case wall-clock limit; when set, a case exceeding it is
+    /// reported as a failed (timed-out) case instead of hanging the worker.
+    /// Default: no limit (byte-identical to the unset behaviour).
+    pub case_timeout: Option<Duration>,
+    /// Run only the parked cases (`known_mismatches/<unit>.toml` entries with a
+    /// `cpp_defect`) and nothing else: the nightly check against a newer C++ reference
+    /// (`--run-parked`). A parked case that now agrees is an ordinary pass here, not a
+    /// stale-entry error. Off by default: the gate never runs parked cases.
+    pub run_parked: bool,
+    /// Address-dependence check (`--heap-pads`): after each case, rerun its C++ side once
+    /// per entry with the forked child's heap padded by that many small blocks, and
+    /// record the case in [`UnitResult::heap_check`] if a rerun's output differs from the
+    /// unpadded one. Flag only: outcomes are unchanged. Empty (the default): no rerun.
+    pub heap_pads: Vec<usize>,
 }
 
 /// Relative perturbation used by [`RunOptions::perturb`] (10x the tolerance).
@@ -94,13 +123,22 @@ pub struct CaseResult {
     pub rejected: Option<String>,
     /// The Rust side hit an unported callee (case deferred, nothing compared).
     pub deferred: Option<Deferred>,
+    /// The case is skipped because the platform's C++ standard library is not
+    /// libstdc++ (e.g. libc++): the C++ reference is only authoritative on
+    /// libstdc++. Neither pass nor fail.
+    pub skipped_platform: Option<String>,
     /// In perturb mode: what was perturbed (`value`, `int`, `topology`, `error`),
     /// or `None` if the case had nothing to perturb or was deferred.
     pub perturbed: Option<&'static str>,
     /// The Rust side's [`Output::diagnostics`] (reported, never compared).
     pub diagnostics: BTreeMap<String, i64>,
-    /// The case is listed in `known_mismatches.toml` (the entry's `why`).
+    /// The case is listed in `known_mismatches/<unit>.toml` (the entry's `why`).
     pub known_mismatch: Option<String>,
+    /// The listing names a confirmed C++ reference defect (the entry's `cpp_defect`).
+    pub cpp_defect: Option<String>,
+    /// The case is parked: listed with a `cpp_defect`, so it was not run
+    /// ([`CaseOutcome::Parked`]).
+    pub parked: bool,
 }
 
 /// Classification of one case.
@@ -115,20 +153,34 @@ pub enum CaseOutcome {
     /// The Rust side returned `Unported` (and the C++ side ran without a harness
     /// error): neither pass nor fail.
     Deferred,
-    /// A mismatch listed in `known_mismatches.toml` ([`crate::known`]): not a pass,
+    /// Skipped because the platform's C++ standard library is not libstdc++.
+    SkippedPlatform,
+    /// A mismatch listed in `known_mismatches/<unit>.toml` ([`crate::known`]): not a pass,
     /// keeps the unit from being green, reported like a failure.
     KnownMismatch,
+    /// A listed mismatch whose entry names a confirmed defect of the C++ reference
+    /// (`cpp_defect`, [`crate::known`]) that was run anyway ([`RunOptions::run_parked`])
+    /// and still disagrees: the Rust result is the correct one. Not a pass, but it does
+    /// not keep the unit from being green. Reported separately, with its mismatches.
+    CppDefect,
+    /// A case listed with a `cpp_defect` (a confirmed upstream issue), not run: parked
+    /// until upstream fixes the defect. Neither a pass nor a failure; it does not keep
+    /// the unit from being green. Removing the entry's `cpp_defect` runs it again.
+    Parked,
 }
 
 impl CaseOutcome {
-    /// `pass`, `fail`, `deferred`, `rejected` or `known_mismatch`.
+    /// `pass`, `fail`, `deferred`, `rejected`, `known_mismatch`, `cpp_defect` or `parked`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Pass => "pass",
             Self::Rejected => "rejected",
             Self::Fail => "fail",
             Self::Deferred => "deferred",
+            Self::SkippedPlatform => "skipped(platform)",
             Self::KnownMismatch => "known_mismatch",
+            Self::CppDefect => "cpp_defect",
+            Self::Parked => "parked",
         }
     }
 }
@@ -137,14 +189,20 @@ impl CaseResult {
     /// Classification, excluding native fixture rejections from parity results.
     /// A harness error always fails.
     pub fn outcome(&self) -> CaseOutcome {
-        if self.harness_error.is_some() {
+        if self.parked {
+            CaseOutcome::Parked
+        } else if self.harness_error.is_some() {
             CaseOutcome::Fail
         } else if self.rejected.is_some() {
             CaseOutcome::Rejected
         } else if self.deferred.is_some() {
             CaseOutcome::Deferred
+        } else if self.skipped_platform.is_some() {
+            CaseOutcome::SkippedPlatform
         } else if self.diff.pass() {
             CaseOutcome::Pass
+        } else if self.known_mismatch.is_some() && self.cpp_defect.is_some() {
+            CaseOutcome::CppDefect
         } else if self.known_mismatch.is_some() {
             CaseOutcome::KnownMismatch
         } else {
@@ -155,6 +213,16 @@ impl CaseResult {
     /// Case is a listed known mismatch that still mismatches.
     pub fn is_known_mismatch(&self) -> bool {
         self.outcome() == CaseOutcome::KnownMismatch
+    }
+
+    /// Case is a listed confirmed C++ reference defect that still mismatches.
+    pub fn is_cpp_defect(&self) -> bool {
+        self.outcome() == CaseOutcome::CppDefect
+    }
+
+    /// Case is parked (listed with a `cpp_defect`, not run).
+    pub fn is_parked(&self) -> bool {
+        self.outcome() == CaseOutcome::Parked
     }
 
     /// Case passes (not deferred, no harness error, no mismatch).
@@ -170,6 +238,11 @@ impl CaseResult {
     /// Case is deferred.
     pub fn is_deferred(&self) -> bool {
         self.outcome() == CaseOutcome::Deferred
+    }
+
+    /// Case is skipped because the platform is not libstdc++.
+    pub fn is_skipped_platform(&self) -> bool {
+        self.outcome() == CaseOutcome::SkippedPlatform
     }
 
     /// The comparison checked at least one float, integer or topology entry (not only
@@ -191,21 +264,27 @@ impl CaseResult {
 /// Status of a unit run (AGENTS.md section 4a).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnitStatus {
-    /// At least one parity pass, no failures or deferrals (fixture rejections excluded).
+    /// No failures, deferrals or known mismatches (platform skips excluded). Parked cases
+    /// ([`CaseOutcome::Parked`]) and confirmed C++ reference defects run anyway
+    /// ([`CaseOutcome::CppDefect`]) do not keep a unit from being green.
+    /// An entirely platform-skipped run retains this canonical verdict but has no parity passes.
     Green,
     /// No failing case and at least one deferred case or known mismatch.
     Partial,
     /// Any failing case, a harness error, no cases, or only rejected fixtures.
     Fail,
+    /// The C++ reference is unsupported on this architecture; no cases ran.
+    SkippedPlatform,
 }
 
 impl UnitStatus {
-    /// `green`, `partial` or `fail`.
+    /// `green`, `partial`, `fail` or `skipped(platform)`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Green => "green",
             Self::Partial => "partial",
             Self::Fail => "fail",
+            Self::SkippedPlatform => "skipped(platform)",
         }
     }
 }
@@ -219,12 +298,102 @@ pub struct UnitResult {
     pub cases: Vec<CaseResult>,
     /// Failure to build the case list.
     pub harness_error: Option<String>,
+    /// Reason the C++ reference cannot run on this architecture (no cases ran).
+    pub skipped_platform: Option<String>,
     /// Documented absolute floors used.
     pub abs_floors: Vec<AbsFloor>,
     /// `--seeds` value used.
     pub seeds: usize,
     /// Wall time spent per phase (not written to the report).
     pub timing: UnitTiming,
+    /// The `--heap-pads` check (not written to the report).
+    pub heap_check: HeapCheck,
+}
+
+/// What [`RunOptions::heap_pads`] found in one unit.
+#[derive(Debug, Clone, Default)]
+pub struct HeapCheck {
+    /// Cases whose C++ side was rerun: every case whose C++ side ran and did not reject
+    /// the input (parked cases only under `--run-parked`, where they run).
+    pub checked: usize,
+    /// Of those, cases whose reruns actually forked a padded child
+    /// ([`solidcore_ffi::isolate::fresh_process`]). A runner that calls C++ in-process
+    /// is rerun unpadded, so its cases are checked but not padded.
+    pub padded: usize,
+    /// `(case, note)`: a padded rerun's C++ output differs from the unpadded one. The note
+    /// names the pad and the first differing field (unpadded value, then padded).
+    pub address_dependent: Vec<(String, String)>,
+    /// `(case, note)`: an unpadded (in-process) rerun's C++ output differs from the first
+    /// run. That is C++ state carried between calls (function statics, `rand()`, caches),
+    /// not a heap pad.
+    pub unstable: Vec<(String, String)>,
+    /// `(case, note)`: a rerun failed (harness error, child crash or timeout) where the
+    /// first run did not. Worth a look, but not evidence of address dependence.
+    pub rerun_errors: Vec<(String, String)>,
+}
+
+/// What one case's reruns showed ([`heap_dependence`]).
+enum HeapFlag {
+    AddressDependent(String),
+    Unstable(String),
+    RerunError(String),
+}
+
+/// [`solidcore_ffi::isolate::set_heap_pad`] when the C++ kernel is linked.
+fn set_heap_pad(blocks: usize) {
+    #[cfg(feature = "cpp")]
+    solidcore_ffi::isolate::set_heap_pad(blocks);
+    #[cfg(not(feature = "cpp"))]
+    let _ = blocks;
+}
+
+/// [`solidcore_ffi::isolate::padded_children`] when the C++ kernel is linked, else 0.
+fn padded_children() -> usize {
+    #[cfg(feature = "cpp")]
+    return solidcore_ffi::isolate::padded_children();
+    #[cfg(not(feature = "cpp"))]
+    0
+}
+
+/// Reruns `case`'s C++ side once per pad in `pads`, each in a fresh C++-phase export memo
+/// (as a first C++ run, and never followed by a Rust side), and compares each output
+/// with `base`, the first C++ run, as C++ against C++ with the unit's floors. Returns
+/// whether any rerun forked a padded child, and the first rerun that differed or failed.
+fn heap_dependence(
+    unit: &dyn UnitDiff,
+    case: &Case,
+    base: &Output,
+    pads: &[usize],
+) -> (bool, Option<HeapFlag>) {
+    let mut padded_any = false;
+    for &pad in pads {
+        let before = padded_children();
+        set_heap_pad(pad);
+        let memo = crate::export_memo::CaseScope::new();
+        let again = guarded(|| unit.run_cpp(case), "cpp");
+        drop(memo);
+        set_heap_pad(0);
+        let padded = padded_children() != before;
+        padded_any |= padded;
+        let flag = match again {
+            Ok(o) => compare(base, &o, unit.abs_floors())
+                .mismatches
+                .first()
+                .map(|m| {
+                    let note = format!("pad={pad}: {}: {} vs {}", m.field, m.cpp, m.rust);
+                    if padded {
+                        HeapFlag::AddressDependent(note)
+                    } else {
+                        HeapFlag::Unstable(note)
+                    }
+                }),
+            Err(e) => Some(HeapFlag::RerunError(format!("pad={pad}: {e}"))),
+        };
+        if flag.is_some() {
+            return (padded_any, flag);
+        }
+    }
+    (padded_any, None)
 }
 
 /// Wall time of one unit's run, split by phase (diagnostic only; printed to stderr).
@@ -280,24 +449,26 @@ impl UnitTiming {
 }
 
 impl UnitResult {
-    /// Green, partial or fail (see [`UnitStatus`]).
+    /// Comparison status, including an unsupported reference (see [`UnitStatus`]).
     pub fn status(&self) -> UnitStatus {
-        if self.harness_error.is_some()
-            || self.cases.is_empty()
-            || self.failed() > 0
-            || self.cases.len() == self.rejected()
-        {
+        if self.harness_error.is_some() || self.failed() > 0 {
+            UnitStatus::Fail
+        } else if self.skipped_platform.is_some() {
+            UnitStatus::SkippedPlatform
+        } else if self.cases.is_empty() || self.cases.len() == self.rejected() {
             UnitStatus::Fail
         } else if self.deferred() > 0 || self.known_mismatches() > 0 {
             UnitStatus::Partial
         } else {
+            // Platform skips are recorded separately, never as passes. Like the
+            // CI baseline verdict, they do not change the canonical unit status.
             UnitStatus::Green
         }
     }
 
-    /// No failure: the unit is green or partial (the exit status is 0).
+    /// Parity was checked: the unit is green or partial. Skipped units do not pass.
     pub fn pass(&self) -> bool {
-        self.status() != UnitStatus::Fail
+        matches!(self.status(), UnitStatus::Green | UnitStatus::Partial)
     }
 
     /// Number of passing cases.
@@ -338,9 +509,27 @@ impl UnitResult {
         self.cases.iter().filter(|c| c.is_known_mismatch()).count()
     }
 
+    /// Number of listed confirmed C++ reference defects that still mismatch.
+    pub fn cpp_defects(&self) -> usize {
+        self.cases.iter().filter(|c| c.is_cpp_defect()).count()
+    }
+
+    /// Number of parked cases (listed with a `cpp_defect`, not run).
+    pub fn parked(&self) -> usize {
+        self.cases.iter().filter(|c| c.is_parked()).count()
+    }
+
     /// Number of deferred cases.
     pub fn deferred(&self) -> usize {
         self.cases.iter().filter(|c| c.is_deferred()).count()
+    }
+
+    /// Number of cases skipped because the platform is not libstdc++.
+    pub fn skipped_platform(&self) -> usize {
+        self.cases
+            .iter()
+            .filter(|c| c.is_skipped_platform())
+            .count()
     }
 
     /// Deferred case count per blocking unit id, sorted by unit id.
@@ -452,10 +641,18 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
         unit: unit.id().to_string(),
         cases: Vec::new(),
         harness_error: None,
+        skipped_platform: unit
+            .reference_platform()
+            .and_then(|p| p.skip_reason(std::env::consts::ARCH))
+            .map(str::to_string),
         abs_floors: unit.abs_floors().to_vec(),
         seeds: ctx.seeds,
         timing: UnitTiming::default(),
+        heap_check: HeapCheck::default(),
     };
+    if res.skipped_platform.is_some() {
+        return res;
+    }
     let digest = std::env::var_os("DIFFTEST_RUST_DIGEST").is_some();
     let t0 = Instant::now();
     let cases = unit.cases(ctx);
@@ -483,15 +680,70 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
         if !missing.is_empty() {
             res.harness_error = Some(format!(
                 "{}: no such case(s): {}",
-                crate::known::KNOWN_MISMATCHES,
+                crate::known::path_for(unit.id()),
                 missing.join(", ")
             ));
             return res;
         }
     }
+    // Entries for another C library are checked for existence above but do not apply
+    // here: their cases run as ordinary cases.
+    let known: Vec<_> = known
+        .into_iter()
+        .filter(crate::known::KnownMismatch::applies)
+        .collect();
     for case in cases {
         if let Some(f) = &opts.filter {
             if !case.name.contains(f.as_str()) {
+                continue;
+            }
+        }
+        let entry = known.iter().find(|k| k.case == case.name);
+        let parked_id = entry.and_then(|k| k.cpp_defect.clone());
+        if opts.run_parked != parked_id.is_some() {
+            if parked_id.is_none() {
+                continue; // --run-parked runs the parked cases only
+            }
+            // A confirmed C++ defect is parked: not run, reported with its issue id.
+            res.cases.push(CaseResult {
+                name: case.name.clone(),
+                source: case.source.clone(),
+                inputs: case.inputs.clone(),
+                diff: CaseDiff::default(),
+                harness_error: None,
+                both_errored: false,
+                rejected: None,
+                deferred: None,
+                skipped_platform: None,
+                perturbed: None,
+                diagnostics: BTreeMap::new(),
+                known_mismatch: entry.map(|k| k.why.clone()),
+                cpp_defect: parked_id,
+                parked: true,
+            });
+            continue;
+        }
+        // Platform-dependent cases (libstdc++-only C++ reference behaviour): on a
+        // non-libstdc++ build report them as skipped(platform) without running.
+        if !solidcore_ffi::cpp_stdlib_is_libstdcxx() {
+            if let Some(reason) = unit.skipped_platform(&case) {
+                let cr = CaseResult {
+                    name: case.name.clone(),
+                    source: case.source.clone(),
+                    inputs: case.inputs.clone(),
+                    diff: CaseDiff::default(),
+                    harness_error: None,
+                    both_errored: false,
+                    rejected: None,
+                    deferred: None,
+                    skipped_platform: Some(reason),
+                    perturbed: None,
+                    diagnostics: BTreeMap::new(),
+                    known_mismatch: entry.map(|k| k.why.clone()),
+                    cpp_defect: entry.and_then(|k| k.cpp_defect.clone()),
+                    parked: false,
+                };
+                res.cases.push(cr);
                 continue;
             }
         }
@@ -516,12 +768,12 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
             both_errored: false,
             rejected: None,
             deferred: None,
+            skipped_platform: None,
             perturbed: None,
             diagnostics: BTreeMap::new(),
-            known_mismatch: known
-                .iter()
-                .find(|k| k.case == case.name)
-                .map(|k| k.why.clone()),
+            known_mismatch: entry.map(|k| k.why.clone()),
+            cpp_defect: entry.and_then(|k| k.cpp_defect.clone()),
+            parked: false,
         };
         if let Ok(c) = &cpp {
             if let Some(reason) = &c.rejected {
@@ -550,6 +802,26 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
         {
             res.timing.slowest_rust = Some((case.name.clone(), dt));
         }
+        if !opts.heap_pads.is_empty() {
+            if let Ok(base) = &cpp {
+                if base.rejected.is_none() {
+                    res.heap_check.checked += 1;
+                    let (padded, flag) = heap_dependence(unit, &case, base, &opts.heap_pads);
+                    res.heap_check.padded += usize::from(padded);
+                    let name = case.name.clone();
+                    match flag {
+                        Some(HeapFlag::AddressDependent(n)) => {
+                            res.heap_check.address_dependent.push((name, n));
+                        }
+                        Some(HeapFlag::Unstable(n)) => res.heap_check.unstable.push((name, n)),
+                        Some(HeapFlag::RerunError(n)) => {
+                            res.heap_check.rerun_errors.push((name, n));
+                        }
+                        None => {}
+                    }
+                }
+            }
+        }
         let t0 = Instant::now();
         match (cpp, rust) {
             (_, Ok(r)) if r.rejected.is_some() => {
@@ -574,6 +846,7 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
                     if cr.perturbed.is_some() {
                         // The known-result waiver does not cover an injected error.
                         cr.known_mismatch = None;
+                        cr.cpp_defect = None;
                     }
                 }
                 cr.both_errored = c.error.is_some() && r.error.is_some();
@@ -585,14 +858,19 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
             }
         }
         res.timing.compare += t0.elapsed();
+        // (--run-parked: a parked case that now agrees is the news, not a stale entry)
         if cr.known_mismatch.is_some()
             && !opts.perturb
+            && !(opts.run_parked && cr.outcome() == CaseOutcome::Pass)
             && cr.harness_error.is_none()
-            && cr.outcome() != CaseOutcome::KnownMismatch
+            && !matches!(
+                cr.outcome(),
+                CaseOutcome::KnownMismatch | CaseOutcome::CppDefect
+            )
         {
             cr.harness_error = Some(format!(
                 "listed in {} but the case is now {}: remove the entry",
-                crate::known::KNOWN_MISMATCHES,
+                crate::known::path_for(unit.id()),
                 cr.outcome().as_str()
             ));
         }
@@ -721,9 +999,12 @@ mod tests {
             both_errored: false,
             rejected: None,
             deferred,
+            skipped_platform: None,
             perturbed: None,
             diagnostics: BTreeMap::new(),
             known_mismatch: None,
+            cpp_defect: None,
+            parked: false,
         };
         let d = || {
             Some(Deferred {
@@ -735,9 +1016,11 @@ mod tests {
             unit: "u".into(),
             cases: vec![case(None, true), case(d(), true)],
             harness_error: None,
+            skipped_platform: None,
             abs_floors: Vec::new(),
             seeds: 0,
             timing: UnitTiming::default(),
+            heap_check: HeapCheck::default(),
         };
         assert_eq!(r.cases[1].outcome(), CaseOutcome::Deferred);
         assert_eq!(r.status(), UnitStatus::Partial);
@@ -761,6 +1044,67 @@ mod tests {
         assert_eq!(r.status(), UnitStatus::Fail);
         r.cases.truncate(1);
         assert_eq!(r.status(), UnitStatus::Green);
+        let mut known = case(None, false);
+        known.known_mismatch = Some("rust diverges".into());
+        assert_eq!(known.outcome(), CaseOutcome::KnownMismatch);
+        let mut defect = known.clone();
+        defect.cpp_defect = Some("UB-1".into());
+        assert_eq!(defect.outcome(), CaseOutcome::CppDefect);
+        assert!(!defect.pass() && !defect.fail());
+        r.cases.push(defect.clone());
+        assert_eq!(
+            r.status(),
+            UnitStatus::Green,
+            "a confirmed C++ defect is a success"
+        );
+        assert_eq!(
+            (r.passed(), r.cpp_defects(), r.known_mismatches()),
+            (1, 1, 0)
+        );
+        r.cases.push(known);
+        assert_eq!(r.status(), UnitStatus::Partial);
+        r.cases.truncate(1);
+        let mut parked = case(None, true);
+        parked.known_mismatch = Some("C++ uses a freed pointer".into());
+        parked.cpp_defect = Some("UB-1".into());
+        parked.parked = true;
+        assert_eq!(parked.outcome(), CaseOutcome::Parked);
+        assert!(!parked.pass() && !parked.fail());
+        r.cases.push(parked);
+        assert_eq!(
+            r.status(),
+            UnitStatus::Green,
+            "a parked case is not run and does not block green"
+        );
+        assert_eq!((r.passed(), r.parked(), r.cpp_defects()), (1, 1, 0));
+        r.cases.truncate(1);
+        let mut agrees = defect;
+        agrees.diff = CaseDiff::default();
+        assert_eq!(
+            agrees.outcome(),
+            CaseOutcome::Pass,
+            "a listed case that agrees passes"
+        );
+        let mut skipped = case(None, true);
+        skipped.skipped_platform = Some("platform-specific C++ reference behaviour".into());
+        assert_eq!(skipped.outcome(), CaseOutcome::SkippedPlatform);
+        assert!(!skipped.pass());
+        r.cases.push(skipped.clone());
+        assert_eq!(r.status(), UnitStatus::Green);
+        assert_eq!((r.passed(), r.failed(), r.skipped_platform()), (1, 0, 1));
+        // An entirely platform-skipped unit (e.g. database_io on libc++) keeps
+        // its canonical verdict without claiming any passing comparisons.
+        r.cases = vec![skipped];
+        assert_eq!(r.status(), UnitStatus::Green);
+        assert_eq!((r.passed(), r.failed(), r.skipped_platform()), (0, 0, 1));
+        let report = crate::report::unit_report(&r);
+        assert_eq!(report["cases"][0]["outcome"], "skipped(platform)");
+        assert_eq!(report["cases"][0]["pass"], false);
+        r.cases.push(case(d(), true));
+        assert_eq!(r.status(), UnitStatus::Partial);
+        r.cases.push(case(None, false));
+        assert_eq!(r.status(), UnitStatus::Fail);
+        r.cases = vec![case(None, true)];
         let mut h = case(d(), true);
         h.harness_error = Some("cpp: bad".into());
         assert_eq!(h.outcome(), CaseOutcome::Fail);
@@ -928,10 +1272,62 @@ mod tests {
     fn known_root(tag: &str, list: &str) -> CaseContext {
         let root =
             std::env::temp_dir().join(format!("difftest-known-{tag}-{}", std::process::id()));
-        let dir = root.join("crates/difftest");
+        let dir = root.join(crate::known::KNOWN_MISMATCHES_DIR);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("known_mismatches.toml"), list).unwrap();
+        std::fs::write(dir.join("empty.unit.toml"), list).unwrap();
         CaseContext { root, seeds: 0 }
+    }
+
+    /// `empty.unit`'s list with `case` parked on a confirmed upstream issue `UB-1`.
+    fn parked_root(tag: &str, case: &str) -> CaseContext {
+        let ctx = known_root(
+            tag,
+            &format!(
+                "[[mismatch]]\nunit = \"empty.unit\"\ncase = \"{case}\"\nwhy = \"w\"\ncpp_defect = \"UB-1\"\n"
+            ),
+        );
+        let dir = ctx.root.join(crate::known::UPSTREAM_ISSUES_DIR);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("UB-1--x.md"),
+            "#### UB-1. x\n- **Confirmed:** yes\n",
+        )
+        .unwrap();
+        ctx
+    }
+
+    #[test]
+    fn parked_cases_are_not_run_and_run_parked_runs_only_them() {
+        // The gate: the parked case is not run, is counted as parked and keeps the unit
+        // green; the other case runs as usual.
+        let r = run_unit(
+            &EmptyOrErr,
+            &parked_root("parked", "err"),
+            &RunOptions::default(),
+        );
+        assert_eq!(r.cases[1].outcome(), CaseOutcome::Parked);
+        assert_eq!(r.cases[1].cpp_defect.as_deref(), Some("UB-1"));
+        assert_eq!((r.passed(), r.failed(), r.parked()), (1, 0, 1));
+        assert_eq!(r.status(), UnitStatus::Green);
+        assert!(crate::report::summary_line(&r).contains(" parked=1"));
+        let report = crate::report::unit_report(&r);
+        assert_eq!(report["cases_parked"], 1);
+        assert_eq!(report["cases"][1]["outcome"], "parked");
+        assert_eq!(report["cases"][1]["cpp_defect"], "UB-1");
+
+        // --run-parked: only the parked case runs; still disagreeing, it is a cpp_defect.
+        let run = RunOptions {
+            run_parked: true,
+            ..RunOptions::default()
+        };
+        let r = run_unit(&EmptyOrErr, &parked_root("run-parked", "err"), &run);
+        assert_eq!(r.cases.len(), 1);
+        assert_eq!(r.cases[0].outcome(), CaseOutcome::CppDefect);
+        // A parked case that now agrees is an ordinary pass, not a stale entry.
+        let r = run_unit(&EmptyOrErr, &parked_root("run-parked-agrees", "ok"), &run);
+        assert_eq!(r.cases.len(), 1);
+        assert_eq!(r.cases[0].outcome(), CaseOutcome::Pass);
+        assert!(r.cases[0].harness_error.is_none());
     }
 
     #[test]
@@ -1081,5 +1477,126 @@ mod tests {
                 .is_some_and(|m| m.contains("must not defer")));
         }
         assert_eq!(r.cases[3].outcome(), CaseOutcome::Rejected);
+    }
+
+    /// Fake unit for `--heap-pads`: the C++ side of `drift` returns how often it has
+    /// run, as an address-dependent result would change between runs; `stable` does
+    /// not change. The Rust side returns the first C++ value, so both cases pass.
+    struct Drifting {
+        drift_runs: std::sync::atomic::AtomicUsize,
+    }
+
+    impl UnitDiff for Drifting {
+        fn id(&self) -> &'static str {
+            "drift.unit"
+        }
+        fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
+            let v = if case.name == "drift" {
+                self.drift_runs
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                    + 1
+            } else {
+                1
+            };
+            Ok(Output::new().values("v", vec![v as f64]))
+        }
+        fn run_rust(&self, _case: &Case) -> Result<Output, HarnessError> {
+            Ok(Output::new().values("v", vec![1.0]))
+        }
+        fn cases(&self, _ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
+            Ok(["stable", "drift"]
+                .into_iter()
+                .map(|n| Case {
+                    unit: "drift.unit".into(),
+                    name: n.into(),
+                    source: CaseSource::Inline,
+                    inputs: Value::Null,
+                })
+                .collect())
+        }
+    }
+
+    #[test]
+    fn heap_pads_flag_changing_cpp_output_without_changing_outcomes() {
+        let ctx = CaseContext {
+            root: std::path::PathBuf::new(),
+            seeds: 0,
+        };
+        let unit = Drifting {
+            drift_runs: std::sync::atomic::AtomicUsize::new(0),
+        };
+        let r = run_unit(
+            &unit,
+            &ctx,
+            &RunOptions {
+                heap_pads: vec![1, 8],
+                ..RunOptions::default()
+            },
+        );
+        // flag only: both cases pass against the first (unpadded) C++ run
+        assert_eq!(r.cases[0].outcome(), CaseOutcome::Pass);
+        assert_eq!(r.cases[1].outcome(), CaseOutcome::Pass);
+        assert_eq!(r.heap_check.checked, 2);
+        // this fake unit calls no forked child: its reruns are unpadded, so a change
+        // is in-process instability, never address dependence
+        assert_eq!(r.heap_check.padded, 0);
+        assert!(r.heap_check.address_dependent.is_empty());
+        assert!(r.heap_check.rerun_errors.is_empty());
+        assert_eq!(r.heap_check.unstable.len(), 1);
+        let (case, note) = &r.heap_check.unstable[0];
+        assert_eq!(case, "drift");
+        assert!(note.starts_with("pad=1: values.v[0]"), "{note}");
+        // the first pad that differs ends the reruns
+        assert_eq!(
+            unit.drift_runs.load(std::sync::atomic::Ordering::Relaxed),
+            2
+        );
+
+        let plain = Drifting {
+            drift_runs: std::sync::atomic::AtomicUsize::new(0),
+        };
+        let r = run_unit(&plain, &ctx, &RunOptions::default());
+        assert_eq!(r.heap_check.checked, 0);
+        assert!(r.heap_check.address_dependent.is_empty());
+        assert_eq!(
+            plain.drift_runs.load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+    }
+
+    /// The pad moves the forked child's heap. After a warm-up fork, an unpadded probe
+    /// lands at the same address before and after a padded one, which lands elsewhere:
+    /// so the difference is the pad's, not the parent's heap moving between forks (it
+    /// does: the first fork's allocation lands elsewhere, hence the warm-up). The parent
+    /// counts padded children only. (`isolate`'s own tests need `solidcore-ffi/cpp`,
+    /// which no CI job tests.)
+    #[cfg(all(feature = "cpp", unix))]
+    #[test]
+    fn heap_pad_moves_the_forked_childs_allocations() {
+        use solidcore_ffi::isolate;
+        let probe = || {
+            isolate::fresh_process(|| {
+                let b = std::hint::black_box(Box::new([0u8; 24]));
+                Ok(vec![(&raw const *b).addr() as f64])
+            })
+            .unwrap()[0]
+        };
+        assert_eq!(isolate::heap_pad(), 0);
+        let _warm_up = probe();
+        let before = isolate::padded_children();
+        let plain = probe();
+        assert_eq!(isolate::padded_children(), before);
+        set_heap_pad(512);
+        let padded = probe();
+        set_heap_pad(0);
+        assert_eq!(isolate::padded_children(), before + 1);
+        assert_eq!(isolate::heap_pad(), 0);
+        let plain_again = probe();
+        assert_eq!(isolate::padded_children(), before + 1);
+        assert_eq!(
+            plain, plain_again,
+            "unpadded forks must not move on their own"
+        );
+        assert_ne!(plain, padded, "the pad must move the child's allocation");
     }
 }

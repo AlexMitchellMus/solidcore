@@ -62,7 +62,7 @@
 //! | 47   | `n touch*n`                                  | `SmTouchData::GetWindingCount`              | `count orient`           |
 //! | 48   | `e P[3] (s u v)*2 param`                     | `sm_SetXSectEdgeThroughPoint`               | `param dev modified`     |
 //! | 49   | `e`                                          | `sm_GetCCIGeometry`                         | `n_surfaces count`       |
-//! | 50   | `f P[3] tol`                                 | `sm_ComputeFacePointClass`                  | `class`                  |
+//! | 50   | `f P[3] tol`                                 | `sm_ComputeFacePointClass`                  | `status` + point classification |
 //!
 //! A touch is `connected_to loop_dir loop_index param pt_index pt_classify` (ids or `-1`).
 //! A curve record is `min max n m (status [P[3]])*7`: the natural interval, the NURB's highest
@@ -408,7 +408,8 @@ fn curve_block(rd: &mut Reader<'_>) -> Result<(), FfiError> {
 
 /// A B-spline surface block `oob n m p q r s cpts u v`.
 fn surface_block(rd: &mut Reader<'_>) -> Result<(), FfiError> {
-    rd.flag()?;
+    // out-of-bounds flag (bit 0) and keep-the-knots flag (bit 1)
+    rd.index(3)?;
     let n = rd.index(MAX_SURF_INDEX)?;
     let m = rd.index(MAX_SURF_INDEX)?;
     let p = rd.index(MAX_DEGREE)?;

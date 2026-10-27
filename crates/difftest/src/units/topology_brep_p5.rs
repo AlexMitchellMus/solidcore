@@ -3,7 +3,8 @@
 //! `combine_target` compares only the old-tol target stage against the surviving
 //! vertex after real native `CombineCoincidentVertices`. Other operations compare
 //! status/output lifecycle and the semantic graph or explicitly defer. Successful
-//! topology mutation and nonidentity transformation are not certified here.
+//! topology mutation is compared only for `CreateWireEdgeFromCurve` (op 13, fixtures);
+//! nonidentity transformation is not certified here.
 //! Inputs the FFI guards refuse (undefined natively) are `rejected`, not failed.
 
 use serde::{Deserialize, Serialize};
@@ -345,27 +346,6 @@ fn rust_record(k: &mut Kernel, b: &mut Brep, i: &Inputs) -> SolidResult<Vec<f64>
     Ok(r)
 }
 
-/// Whether `b` holds a vertex use, edge use or shell its owner no longer lists (an
-/// unlinked record upstream deletes).
-fn has_unlinked_records(b: &Brep) -> bool {
-    let vu = b.vertexuses().iter().any(|(id, r)| {
-        r.vertex
-            .and_then(|v| b.vertex(v).ok())
-            .is_some_and(|v| !v.vertexuses.contains(&id))
-    });
-    let eu = b.edgeuses().iter().any(|(id, r)| {
-        r.edge
-            .and_then(|e| b.edge(e).ok())
-            .is_some_and(|e| !e.edgeuses.contains(&id))
-    });
-    let sh = b.shells().iter().any(|(id, r)| {
-        r.region
-            .and_then(|x| b.region(x).ok())
-            .is_some_and(|x| !x.shells.contains(&id))
-    });
-    vu || eu || sh
-}
-
 fn notification_record(b: &Brep, i: &Inputs) -> SolidResult<Vec<f64>> {
     use solidcore::geom::attribute::ObjectKey;
     use solidcore::geom::context::NotifyCallback;
@@ -410,7 +390,27 @@ fn notification_record(b: &Brep, i: &Inputs) -> SolidResult<Vec<f64>> {
         if i.mode != 1 {
             context.set_sys_notify_callback(Some(Box::new(TopologyChangeCallback::new(2))));
         }
-        tracker.stop_tracking(Some(&mut context));
+        // StopTracking records the dependencies of the completed edit (1.0.1
+        // `RecordDependencies`), under the shim's keys: vertex, edge and face
+        // `1/2/4_000_000 + index`
+        let entity_of = |key: ObjectKey| {
+            let i = u32::try_from(key.0 % 1_000_000).ok()?;
+            match key.0 / 1_000_000 {
+                1 => Some(solidcore::EntityRef::Vertex(VertexId::from_index(i))),
+                2 => Some(solidcore::EntityRef::Edge(EdgeId::from_index(i))),
+                4 => Some(solidcore::EntityRef::Face(FaceId::from_index(i))),
+                _ => None,
+            }
+        };
+        let key_of = |e: solidcore::EntityRef| {
+            ObjectKey(match e {
+                solidcore::EntityRef::Vertex(v) => 1_000_000 + u64::from(v.index()),
+                solidcore::EntityRef::Edge(x) => 2_000_000 + u64::from(x.index()),
+                solidcore::EntityRef::Face(x) => 4_000_000 + u64::from(x.index()),
+                _ => 999,
+            })
+        };
+        tracker.stop_tracking_with_brep(Some(&mut context), b, &entity_of, &key_of)?;
         out.extend(notification_values(&tracker.lists()));
         out.push(f(context.sys_notify_callback().is_none()));
         context.set_sys_notify_callback(None);
@@ -565,17 +565,14 @@ impl UnitDiff for Runner {
         }
         let mut kernel = Kernel::default();
         if i.op == 12 {
-            bind_transform_owners(&mut kernel, &mut b).map_err(|e| HarnessError::new(e.to_string()))?;
+            bind_transform_owners(&mut kernel, &mut b)
+                .map_err(|e| HarnessError::new(e.to_string()))?;
         }
         match rust_record(&mut kernel, &mut b, &i) {
             Ok(record) if i.op == 2 => Ok(Output::new().values("target_stage", record)),
             // a use or shell the edit unlinked stays in its arena (append-only records)
-            // where upstream deletes it, and [`graph`] lists unreachable records too: the
-            // record erasure is the B-rep storage integration of topology.brep_p4
-            Ok(_) if has_unlinked_records(&b) => Ok(Output::deferred(
-                "topology.brep_p4",
-                "SmBrep::~SmBrep (stable owning record erasure)",
-            )),
+            // where upstream deletes it; [`graph`] compares only the records reachable
+            // from the B-rep, as the native export walk emits only those
             Ok(record) => Ok(graph(&b, record)),
             Err(e) => Output::unported(&e).ok_or_else(|| HarnessError::new(e.to_string())),
         }

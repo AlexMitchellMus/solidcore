@@ -14,17 +14,19 @@
 //! produce) and the op's outputs: `derivs`, `domain` and `this_*` surface state,
 //! `new_*` and `patch<i>_*` surface states (`flags`, `dims`, `cpts`, `u`, `v`).
 //!
-//! Cases whose Rust side reaches an unported callee are deferred: G1 corner blends
-//! (the tangent field's `SmSurface::GetNaturalUVDomain`, `surface.surface_p2`;
-//! `SmSurface::EvaluateNormal`, `surface.surface_p7`) and skins whose two rails change
-//! their domains when synchronized (`SmCurve::LocalCurveIntersect`, `curve.curve_p3`). Every run has at
-//! least [`MIN_GENERATED`] generated cases.
+//! Cases whose Rust side reaches an unported callee are deferred. Every run has at
+//! least [`MIN_GENERATED`] generated cases, plus [`ANALYTIC_CASES`] G1 corner blends
+//! on analytic neighbour surfaces (`SmCone`, `SmCylinder`, `SmSphere`, `SmTorus`,
+//! evaluated through their virtual `SmSurface` methods).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::vector2d::Point2;
+use solidcore::geom::vector3d::Vec3;
+use solidcore::kernel::Kernel;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::b_spline_surface::{BSplineSurface, BSplineSurfaceForm, SurfParamType};
 use solidcore::nurbs::b_spline_surface_n_lib::p2::{
@@ -34,15 +36,23 @@ use solidcore::nurbs::crv_basic::Curve;
 use solidcore::nurbs::knots::Side;
 use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::nurbs::srf_basic::Surface;
+use solidcore::surface::cone::Cone;
+use solidcore::surface::sphere::Sphere;
+use solidcore::surface::surface::Surface as SmSurface;
+use solidcore::surface::torus::{Torus, TorusOptions};
 use solidcore::SolidError;
 use solidcore_ffi::units::nurbs_b_spline_surface_n_lib_p2::{self as ffi, Op};
 
 use crate::case::CaseContext;
 use crate::runner::default_cases;
-use crate::{Case, HarnessError, Output, Rng, UnitDiff};
+use crate::{Case, CaseSource, HarnessError, Output, Rng, UnitDiff};
 
 /// Generated cases per run, whatever `--seeds` says (it can only raise this).
 pub const MIN_GENERATED: usize = 600;
+
+/// Generated G1 corner blends on analytic neighbour surfaces (`analytic<i>`, seeded
+/// apart from the `gen<i>` cases so those stay as they are).
+pub const ANALYTIC_CASES: usize = 120;
 
 /// `nurbs.b_spline_surface_n_lib_p2` runner.
 pub struct Runner;
@@ -72,6 +82,30 @@ enum SrfIn {
     File { sms: String },
     /// Inline data.
     Inline(InlineSrf),
+}
+
+/// An analytic surface of revolution (`kind`: `0` `SmCone::CreateCanonical(bot, top,
+/// height)`, `1` `SmCylinder(radius, start, end, height)` + `MakeNurb`, `2`
+/// `SmSphere::CreateCanonical(radius)`, `3` `SmTorus::CreateCanonical(major, minor)`)
+/// on the placement `origin x y`, its parameters in `p`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AnalyticIn {
+    kind: u8,
+    origin: [f64; 3],
+    x: [f64; 3],
+    y: [f64; 3],
+    p: [f64; 4],
+}
+
+/// A neighbour surface of a corner blend: an analytic surface or a plain B-spline
+/// surface.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+enum NbrIn {
+    /// An analytic surface.
+    Analytic { analytic: AnalyticIn },
+    /// A plain `SmBSplineSurface`.
+    Srf(SrfIn),
 }
 
 /// An inline 3D curve: control points as stored, degree, knots.
@@ -150,7 +184,7 @@ enum OpIn {
         curves: Vec<CrvIn>,
         orients: Vec<u8>,
         uvs: Vec<Option<CrvIn>>,
-        srfs: Vec<Option<SrfIn>>,
+        srfs: Vec<Option<NbrIn>>,
         tol: f64,
         ang: f64,
         bilinear: bool,
@@ -178,82 +212,31 @@ struct Inputs {
 
 // ---- file readers -------------------------------------------------------------------
 
-fn numbers(path: &str) -> Result<Vec<f64>, HarnessError> {
-    let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
-    text.split_whitespace()
-        .map(|t| {
-            t.parse::<f64>()
-                .map_err(|e| harness(format!("{path}: {e}")))
-        })
-        .collect()
-}
-
-fn int(path: &str, v: f64) -> Result<usize, HarnessError> {
-    if v.fract() != 0.0 || v < 0.0 {
-        return Err(harness(format!("{path}: bad count {v}")));
-    }
-    Ok(v as usize)
-}
+#[path = "fixtures/nurbs_b_spline_surface_n_lib_p2_sms.rs"]
+mod sms;
 
 /// Reads an upstream `.sms` text file: `n m`, `p q`, rational flag, `(n+1)(m+1)`
 /// points (`x y z`, or `wx wy wz w` when rational, v index fastest), `n+p+2` u knots,
 /// `m+q+2` v knots.
 fn read_sms(path: &str) -> Result<InlineSrf, HarnessError> {
-    let v = numbers(path)?;
-    let mut it = v.into_iter();
-    let mut num = || {
-        it.next()
-            .ok_or_else(|| harness(format!("{path}: truncated")))
-    };
-    let n = int(path, num()?)?;
-    let m = int(path, num()?)?;
-    let p = int(path, num()?)?;
-    let q = int(path, num()?)?;
-    let rat = num()? != 0.0;
-    let mut net = Vec::with_capacity(n + 1);
-    for _ in 0..=n {
-        let mut row = Vec::with_capacity(m + 1);
-        for _ in 0..=m {
-            let (x, y, z) = (num()?, num()?, num()?);
-            let w = if rat { num()? } else { NOW };
-            row.push([x, y, z, w]);
-        }
-        net.push(row);
-    }
-    let u = (0..n + p + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    let v = (0..m + q + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(InlineSrf { net, p, q, u, v })
+    let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
+    let s = sms::decode(&text, path)?;
+    Ok(InlineSrf {
+        net: s.net,
+        p: s.p,
+        q: s.q,
+        u: s.u,
+        v: s.v,
+    })
 }
 
-/// Reads an upstream 3D `.smc` text file: `n`, `p`, rational flag, dimension (3),
-/// `n+1` points (`x y z`, or `wx wy wz w` when rational), `n+p+2` knots.
 fn read_smc(path: &str) -> Result<InlineCrv, HarnessError> {
-    let v = numbers(path)?;
-    let mut it = v.into_iter();
-    let mut num = || {
-        it.next()
-            .ok_or_else(|| harness(format!("{path}: truncated")))
-    };
-    let n = int(path, num()?)?;
-    let p = int(path, num()?)?;
-    let rat = num()? != 0.0;
-    if int(path, num()?)? != 3 {
-        return Err(harness(format!("{path}: not a 3D curve")));
-    }
-    let mut cpts = Vec::with_capacity(n + 1);
-    for _ in 0..=n {
-        let (x, y, z) = (num()?, num()?, num()?);
-        let w = if rat { num()? } else { NOW };
-        cpts.push([x, y, z, w]);
-    }
-    let u = (0..n + p + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(InlineCrv { cpts, p, u })
+    let c = crate::fixtures::text_curve::read_3d(path)?;
+    Ok(InlineCrv {
+        cpts: c.cpts,
+        p: c.p,
+        u: c.u,
+    })
 }
 
 fn srf(s: &SrfIn) -> Result<InlineSrf, HarnessError> {
@@ -427,9 +410,20 @@ fn cpp_input(i: &Inputs) -> Result<Vec<f64>, HarnessError> {
                 }
             }
             for s in srfs {
-                o.push(flag(s.is_some()));
-                if let Some(s) = s {
-                    push_srf(&mut o, &srf(s)?)?;
+                match s {
+                    None => o.push(0.0),
+                    Some(NbrIn::Srf(s)) => {
+                        o.push(1.0);
+                        push_srf(&mut o, &srf(s)?)?;
+                    }
+                    Some(NbrIn::Analytic { analytic: a }) => {
+                        o.push(2.0);
+                        o.push(f64::from(a.kind));
+                        o.extend(a.origin);
+                        o.extend(a.x);
+                        o.extend(a.y);
+                        o.extend(a.p);
+                    }
                 }
             }
             o.extend([*tol, *ang, flag(*bilinear)]);
@@ -595,6 +589,34 @@ fn bsc_of(c: &CrvIn) -> Result<BSplineCurve, HarnessError> {
     curve_of(&crv(c)?)
 }
 
+/// The analytic surface `a` (as the shim builds it).
+fn analytic_of(k: &Kernel, a: &AnalyticIn) -> Result<SmSurface, SolidError> {
+    let v = |a: [f64; 3]| Vec3::new(a[0], a[1], a[2]);
+    let a2p = Axis2Placement::new(v(a.origin), v(a.x), v(a.y));
+    let p = a.p;
+    Ok(match a.kind {
+        0 => Cone::create_canonical(k, &a2p, p[0], p[1], p[2], false, false)?.into(),
+        1 => {
+            let mut c = Cone::new_cylinder_bounded(
+                v(a.origin),
+                v(a.x),
+                v(a.y),
+                p[0],
+                p[1],
+                p[2],
+                p[3],
+                false,
+                false,
+                false,
+            );
+            c.make_nurb(k)?;
+            c.into()
+        }
+        2 => Sphere::create_canonical(k, &a2p, p[0])?.into(),
+        _ => Torus::create_canonical(k, &a2p, p[0], p[1], TorusOptions::default(), None)?.into(),
+    })
+}
+
 fn this_of(t: &This) -> Result<BSplineSurface, HarnessError> {
     let mut s = if t.empty {
         BSplineSurface::new()
@@ -672,7 +694,7 @@ fn side(left: bool) -> Side {
     }
 }
 
-fn rust(k: &solidcore::kernel::Kernel, i: &Inputs) -> Result<Output, HarnessError> {
+fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     let mut o = vec![0.0];
     let res: solidcore::Result<()> = match (&i.op, &i.this) {
         (
@@ -785,31 +807,35 @@ fn rust(k: &solidcore::kernel::Kernel, i: &Inputs) -> Result<Output, HarnessErro
                 .iter()
                 .map(|u| u.as_ref().map(bsc_of).transpose())
                 .collect::<Result<Vec<_>, _>>()?;
-            let ss = srfs
-                .iter()
-                .map(|s| s.as_ref().map(bss_of).transpose())
-                .collect::<Result<Vec<_>, _>>()?;
-            // the shim passes plain unowned `SmBSplineSurface`s
-            let whole: Vec<Option<solidcore::surface::surface::Surface>> = ss
-                .iter()
-                .map(|s| s.as_ref().map(|s| s.clone_exact().into()))
-                .collect();
-            let sr: Vec<Option<BlendNeighbour<'_>>> = ss
-                .iter()
-                .zip(&whole)
-                .map(|(b, s)| {
-                    b.as_ref()
-                        .zip(s.as_ref())
-                        .map(|(b_spline, surface)| BlendNeighbour { surface, b_spline })
-                })
-                .collect();
-            BSplineSurface::create_corner_blend(k, &c3, &ors, &uv, &sr, *tol, *ang, *bilinear)
-                .map(|patches| {
-                    o.push(patches.len() as f64);
-                    for p in &patches {
-                        dump_state(&mut o, p);
-                    }
-                })
+            // the shim passes plain unowned `SmBSplineSurface`s and analytic surfaces
+            let mut whole: Vec<Option<SmSurface>> = Vec::with_capacity(srfs.len());
+            let mut built = Ok(());
+            for s in srfs {
+                whole.push(match s {
+                    None => None,
+                    Some(NbrIn::Srf(s)) => Some(bss_of(s)?.into()),
+                    Some(NbrIn::Analytic { analytic }) => match analytic_of(k, analytic) {
+                        Ok(s) => Some(s),
+                        Err(e) => {
+                            built = Err(e);
+                            break;
+                        }
+                    },
+                });
+            }
+            built.and_then(|()| {
+                let sr: Vec<Option<BlendNeighbour<'_>>> = whole
+                    .iter()
+                    .map(|s| s.as_ref().map(|surface| BlendNeighbour { surface }))
+                    .collect();
+                BSplineSurface::create_corner_blend(k, &c3, &ors, &uv, &sr, *tol, *ang, *bilinear)
+                    .map(|patches| {
+                        o.push(patches.len() as f64);
+                        for p in &patches {
+                            dump_state(&mut o, p);
+                        }
+                    })
+            })
         }
         _ => return Err(harness("op and `this` do not match")),
     };
@@ -1386,7 +1412,9 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
     };
     let (c3, c2, pl) = plane_loop(rng, k);
     let mut uvs: Vec<Option<CrvIn>> = c2.into_iter().map(|c| Some(CrvIn::Inline(c))).collect();
-    let mut srfs: Vec<Option<SrfIn>> = (0..k).map(|_| Some(SrfIn::Inline(pl.clone()))).collect();
+    let mut srfs: Vec<Option<NbrIn>> = (0..k)
+        .map(|_| Some(NbrIn::Srf(SrfIn::Inline(pl.clone()))))
+        .collect();
     // drop some neighbours (an NER error, or one triangle side)
     let drops = rng.below(3) as usize;
     for _ in 0..drops {
@@ -1401,6 +1429,144 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
         op: OpIn::Corner {
             curves: c3.into_iter().map(CrvIn::Inline).collect(),
             orients: vec![1; k],
+            uvs,
+            srfs,
+            tol,
+            ang,
+            bilinear: false,
+        },
+    }
+}
+
+/// A random analytic surface (as `blend.fillet_solver_p1`'s `AnalyticRev` cases).
+fn gen_analytic(rng: &mut Rng) -> AnalyticIn {
+    let kind = rng.below(4) as u8;
+    let scale = *rng.choose(&[1e-3, 1.0, 1.0, 1.0, 1e3]).unwrap_or(&1.0);
+    let origin = rng.point3(-2.0, 2.0).map(|c| c * scale);
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let mut x = rng.point3(-1.0, 1.0);
+    if dot(x, x) < 0.04 {
+        x = [1.0, 0.0, 0.0];
+    }
+    // perpendicular axes, far from degenerate
+    let mut y = rng.point3(-1.0, 1.0);
+    let d = dot(x, y) / dot(x, x);
+    y = [y[0] - d * x[0], y[1] - d * x[1], y[2] - d * x[2]];
+    if dot(y, y) < 0.04 * dot(x, x) {
+        y = if x[0].abs() > 0.5 {
+            [-x[1], x[0], 0.0]
+        } else {
+            [0.0, -x[2], x[1]]
+        };
+    }
+    let r = |rng: &mut Rng| rng.uniform(0.5, 2.0) * scale;
+    let p = match kind {
+        // bot top height
+        0 => {
+            let bot = r(rng);
+            [bot, r(rng), r(rng), 0.0]
+        }
+        // radius start end height
+        1 => {
+            let start = rng.uniform(-360.0, 0.0);
+            [r(rng), start, start + rng.uniform(90.0, 360.0), r(rng)]
+        }
+        2 => [r(rng), 0.0, 0.0, 0.0],
+        // major minor (a ring torus)
+        _ => {
+            let minor = r(rng);
+            [minor * rng.uniform(1.5, 3.0), minor, 0.0, 0.0]
+        }
+    };
+    AnalyticIn {
+        kind,
+        origin,
+        x,
+        y,
+        p,
+    }
+}
+
+/// A G1 corner blend on an analytic surface: a loop of `k` sides around the middle of
+/// its natural domain (UV lines; the 3D curves are cubic Beziers whose control points
+/// are the surface points of the UV curve's control points), each with the surface as
+/// neighbour; some neighbours are dropped. Falls back to [`gen_corner`] when the
+/// surface cannot be built or evaluated.
+fn gen_analytic_corner(rng: &mut Rng) -> Inputs {
+    let k = Kernel::default();
+    let a = gen_analytic(rng);
+    let sides = if rng.chance(0.6) {
+        4
+    } else {
+        5 + rng.below(2) as usize
+    };
+    let tol = *rng.choose(&[1e-3, 1e-2]).unwrap_or(&1e-3);
+    let ang = *rng.choose(&[0.01, 0.05]).unwrap_or(&0.01);
+    let frac = rng.uniform(0.05, 0.3);
+    let turn = rng.uniform(0.0, std::f64::consts::TAU);
+    let reverse = rng.chance(0.3);
+    let built = analytic_of(&k, &a).and_then(|s| {
+        // (runner helper that does not return Result)
+        let d = s.natural_uv_domain_if_built();
+        let (lo, hi) = (d.min(), d.max());
+        let corner = |i: usize| {
+            let t = turn + std::f64::consts::TAU * i as f64 / sides as f64;
+            let t = if reverse { -t } else { t };
+            [
+                0.5 * (lo.x + hi.x) + frac * (hi.x - lo.x) * t.cos(),
+                0.5 * (lo.y + hi.y) + frac * (hi.y - lo.y) * t.sin(),
+            ]
+        };
+        let mut c3 = Vec::with_capacity(sides);
+        let mut c2 = Vec::with_capacity(sides);
+        for i in 0..sides {
+            let (p, q) = (corner(i), corner((i + 1) % sides));
+            let mut cpts3 = Vec::with_capacity(4);
+            let mut cpts2 = Vec::with_capacity(4);
+            for j in 0..4 {
+                let f = f64::from(j) / 3.0;
+                let uv = [p[0] + f * (q[0] - p[0]), p[1] + f * (q[1] - p[1])];
+                let x = s.evaluate_point(&k, Point2::new(uv[0], uv[1]))?;
+                cpts3.push([x.x, x.y, x.z, NOW]);
+                cpts2.push([uv[0], uv[1], 0.0, NOW]);
+            }
+            let u = vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+            c3.push(CrvIn::Inline(InlineCrv {
+                cpts: cpts3,
+                p: 3,
+                u: u.clone(),
+            }));
+            c2.push(Some(CrvIn::Inline(InlineCrv {
+                cpts: cpts2,
+                p: 3,
+                u,
+            })));
+        }
+        Ok((c3, c2))
+    });
+    let Ok((curves, mut uvs)) = built else {
+        return gen_corner(rng);
+    };
+    let mut srfs: Vec<Option<NbrIn>> = (0..sides)
+        .map(|_| {
+            Some(NbrIn::Analytic {
+                analytic: a.clone(),
+            })
+        })
+        .collect();
+    // drop a neighbour now and then (one triangle side, or an NER error)
+    if rng.chance(0.15) {
+        let i = rng.below(sides as u64) as usize;
+        if let (Some(u), Some(s)) = (uvs.get_mut(i), srfs.get_mut(i)) {
+            *u = None;
+            *s = None;
+        }
+    }
+    Inputs {
+        this: None,
+        op: OpIn::Corner {
+            curves,
+            orients: vec![1; sides],
             uvs,
             srfs,
             tol,
@@ -1433,7 +1599,20 @@ impl UnitDiff for Runner {
             seeds: ctx.seeds.max(MIN_GENERATED),
             ..ctx.clone()
         };
-        default_cases(self, &ctx)
+        let mut v = default_cases(self, &ctx)?;
+        let series = "nurbs.b_spline_surface_n_lib_p2.analytic";
+        for i in 0..ANALYTIC_CASES {
+            let seed = CaseContext::seed_for(series, i);
+            let inputs = serde_json::to_value(gen_analytic_corner(&mut Rng::new(seed)))
+                .map_err(|e| harness(e.to_string()))?;
+            v.push(Case {
+                unit: self.id().to_string(),
+                name: format!("analytic{i:03}"),
+                source: CaseSource::Generated { seed },
+                inputs,
+            });
+        }
+        Ok(v)
     }
 
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
@@ -1441,7 +1620,7 @@ impl UnitDiff for Runner {
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
-        let k = &solidcore::Kernel::default();
+        let k = &Kernel::default();
         rust(k, &case.parse()?)
     }
 }
@@ -1454,7 +1633,7 @@ mod tests {
     /// The generators reach success and failure of every op on the Rust side.
     #[test]
     fn generated_cases_cover_every_op() {
-        let k = &solidcore::Kernel::default();
+        let k = &Kernel::default();
         let mut tally: BTreeMap<(String, String), usize> = BTreeMap::new();
         for seed in 0..600u64 {
             let mut rng = Rng::new(0x5eed_0000 + seed);

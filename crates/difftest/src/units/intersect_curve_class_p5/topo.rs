@@ -394,10 +394,9 @@ fn resolve(i: &TopoIn) -> Result<Result<Resolved, Output>, HarnessError> {
         }
         let (brep, types) = import_with_types(&ex)?;
         exact &= (0..brep.faces().len()).all(|f| types.inexact_surface(f).is_none());
-        exact &= types
-            .edge_curve_types
-            .iter()
-            .all(|&t| t < 0 || t == BSPLINE_CURVE_TYPE || t == LINE_TYPE);
+        exact &= (0..types.edge_curve_types.len())
+            .filter_map(|e| types.inexact_curve(e))
+            .all(|t| t < 0 || t == BSPLINE_CURVE_TYPE || t == LINE_TYPE);
         breps.push(brep);
     }
     let mates = mates
@@ -681,6 +680,11 @@ pub(super) fn cpp(i: &TopoIn) -> Result<Output, HarnessError> {
     input.extend(&args);
     let o = ffi::topo(code, &r.path, &input).map_err(|e| harness(format!("c++: {e}")))?;
     match o.first() {
+        // the op's own guard (`run_vertices`: a large-gap vertex without a vertex use on
+        // the gap face, which `GetVertexuseOfFace` returns NULL for since v1.0.1)
+        Some(&0.0) if o.get(1..) == Some(&[-3.0][..]) => Ok(Output::rejected(
+            "upstream would dereference a null edge curve, end vertex, surface owner or vertex use",
+        )),
         Some(&0.0) => Ok(Output::new().values("out", o.get(1..).unwrap_or(&[]).to_vec())),
         Some(&-3.0) => Ok(Output::rejected(
             "upstream would dereference a null edge curve, end vertex, surface owner or vertex use",

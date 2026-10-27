@@ -18,7 +18,7 @@
 //! | [`Plane::adjust_step_uv_domain`]              | `AdjustSTEPUVDomain`                              |
 //! | [`Plane::coincidence_check`], [`Coincidence`] | `CoincidenceCheck`                                |
 //! | [`Plane::create_iso_parametric_curve`], [`PlaneIsoCurve`] | `CreateIsoParametricCurve`            |
-//! | [`Plane::drop_curve`], [`PlaneDropCurve`]     | `DropCurve`                                       |
+//! | [`Plane::drop_curve`], [`PlaneDropCurve`], `drop_curve_owned_by` (crate) | `DropCurve`                |
 //! | [`Plane::drop_point_fast`]                    | `DropPointFast`                                   |
 //! | [`Plane::evaluate_point`], [`Plane::evaluate_point_fast`] | `EvaluatePoint`, `EvaluatePointFast`  |
 //! | [`Plane::evaluate`], [`Plane::evaluate_simple`] | `Evaluate`, `EvaluateSimple` (inline)           |
@@ -48,23 +48,16 @@
 //!   `ToggleSwapUVBit`, `RebuildSTEPFromNURBParameters`, `IsPlanar`, `IsSingularity`,
 //!   `IsClosed`) are re-dispatched here. A missing NURB is made with [`Plane::make_nurb`] where
 //!   upstream calls `GetOrCreateGwNurbPointer`: `&mut self` methods make it in
-//!   place, read-only methods (upstream `const` methods that make it through a
-//!   `const_cast`) make it on a copy ([`Plane::base_with_nurb`]), so the plane keeps
-//!   none (so does the source of a copy). The observable differences are the NURB a
-//!   later [`Plane::toggle_swap_uv_bit`] leaves alone and `operator==`, which compares
-//!   the NURBs; the difftest therefore runs those two only while both sides agree
-//!   (before such a method, or once the NURB is made in place), and the shim copies a
-//!   plane without NURB from its analytic data (`plan/findings.md`).
-//!   [`Plane::natural_uv_domain`] is one of those read-only queries: upstream
-//!   `SmBSplineSurface::GetNaturalUVDomain` makes and keeps the NURB, the port makes it
-//!   on a copy and caches nothing. That also changes `IntersectWithPlane`
-//!   (`SmPlane.cpp:2183`, `surface::plane::p2`): for parallel planes it returns "no
-//!   intersection, done" when either plane has no NURB, and only otherwise tests for
-//!   coincidence and hands coincident planes to the general intersector. So after
-//!   `GetNaturalUVDomain` upstream and `natural_uv_domain` here, the same coincident
-//!   planes take different branches (found by difftest `--ssi-corpus`,
-//!   `c6_planes_identical` / `c6_planes_overlap`; follow-up in `plan/modules.toml`:
-//!   model the cache).
+//!   place; read-only methods (upstream `const` methods that make it through a
+//!   `const_cast`, such as `GetNaturalUVDomain`) make it from the analytic data and
+//!   keep it on the plane ([`Plane::base_with_nurb`]: the B-spline part's NURB slot is
+//!   filled once from `&self`), so later code sees it as upstream does: the
+//!   `IntersectWithPlane` "has a NURB" test (`surface::plane::p2`), `ToggleSwapUVBit`
+//!   (which leaves the NURB alone), `operator==` (which compares NURBs) and the copy
+//!   constructor, which makes the source's missing NURB and keeps it there
+//!   ([`Plane::copy`]). Internal stand-in copies (`Surface::from(self.clone())`, for
+//!   upstream's inherited methods on `this`) therefore also fill the plane's NURB, as
+//!   the inherited bodies upstream make it on `this`.
 //! - **Arguments.** Out-params become return values; `SmContext` arguments and the
 //!   arguments upstream marks `NotUsed` (`DropPointFast`'s pointing vector and
 //!   solution request, `Evaluate`'s sides and zero-tangent flags,
@@ -118,6 +111,7 @@ use crate::geom::tol::{are_same, scaled_zero, tol3d};
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::sqrt;
 use crate::geom::vector3d::{Point3, Vec3};
+use crate::intersect::surface_drop_lib::p3::DropSolveContext;
 use crate::kernel::Kernel;
 use crate::math::{
     max2, min2, rad_to_deg, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_DEG, EFF_ZERO_SQ, EFF_ZERO_SQRT,
@@ -132,6 +126,7 @@ use crate::nurbs::knots::Side;
 use crate::nurbs::math::MAX_DERIVATIVE;
 use crate::surface::surface::p1::{self as surface_p1, SecondDerivatives};
 use crate::surface::surface::p2::{Surface, SurfaceKind, PLANE_TYPE};
+use crate::surface::surface::p4::FaceTest;
 use crate::surface::surface_cache::p1::SurfaceCache;
 
 const OP_EVAL: &str = "surface::plane::p1::Plane::evaluate";
@@ -278,28 +273,30 @@ impl Plane {
     }
 
     /// An exact copy (`Copy`, the copy constructor): the B-spline part is copied
-    /// with the NURB of [`Plane::base_with_nurb`] (upstream makes the source's missing
-    /// NURB first, through a `const_cast`; here the source keeps none).
+    /// with the NURB of [`Plane::base_with_nurb`] (the `SmBSplineSurface` copy
+    /// constructor makes the source's missing NURB first, through a `const_cast`, and
+    /// the source keeps it; a failed make copies none).
     #[must_use]
     pub fn copy(&self) -> Self {
-        let mut src = self.member_copy();
-        if src.base.gw_nurb().is_none() {
-            let _ = src.make_nurb();
-        }
-        Self {
-            base: src.base.copy(),
-            ..src
-        }
+        let _ = self.base_with_nurb();
+        self.member_copy()
     }
 
-    /// A private solver copy without constructing or fixing the NURBS representation.
-    pub(crate) fn clone_exact(&self) -> Self {
+    /// An evaluation copy that stands for this plane object (upstream's pointer to it):
+    /// exact, and sharing this plane's NURB cell, so a NURB a read-only query makes
+    /// through the copy is kept on this plane, as upstream keeps it on the object.
+    pub(crate) fn clone_shared(&self) -> Self {
         Self {
-            base: self.base.clone_exact(),
+            base: self.base.clone_exact_shared(),
             position: self.position,
             anal_uv_domain: self.anal_uv_domain,
             uv_scale: self.uv_scale,
         }
+    }
+
+    /// Detaches a NURB cell shared with evaluation copies ([`Plane::clone_shared`]).
+    pub(crate) fn detach_nurb(&mut self) {
+        self.base.detach_nurb();
     }
 
     /// A copy of every member as is (no NURB is made).
@@ -353,19 +350,23 @@ impl Plane {
         *self.base.out_of_bounds_enabled_mut() = enabled;
     }
 
-    /// The B-spline part with a NURB: the stored one, or one made on a copy when the
-    /// plane has none (`GetOrCreateGwNurbPointer` from a `const` method).
+    /// The B-spline part with a NURB (`GetOrCreateGwNurbPointer` from a `const`
+    /// method): the stored one, or the one [`Plane::make_nurb`] makes when the plane has
+    /// none, which the plane then keeps, as upstream keeps it on the object (made on a
+    /// copy of the analytic data and stored once).
     ///
     /// # Errors
     ///
-    /// Those of [`Plane::make_nurb`].
+    /// Those of [`Plane::make_nurb`] (the plane stays without NURB).
     pub fn base_with_nurb(&self) -> Result<Cow<'_, BSplineSurface>> {
-        if self.base.gw_nurb().is_some() {
-            return Ok(Cow::Borrowed(&self.base));
+        if self.base.gw_nurb().is_none() {
+            let mut tmp = self.member_copy();
+            tmp.make_nurb()?;
+            if let Some(made) = tmp.base.nurb.take() {
+                self.base.nurb.fill(made);
+            }
         }
-        let mut tmp = self.member_copy();
-        tmp.make_nurb()?;
-        Ok(Cow::Owned(tmp.base))
+        Ok(Cow::Borrowed(&self.base))
     }
 
     /// The B-spline part for an inherited query: with a NURB when one can be made,
@@ -412,6 +413,19 @@ impl Plane {
     #[must_use]
     pub fn natural_uv_domain(&self) -> Extent2d {
         self.base_for_query().natural_uv_domain()
+    }
+
+    /// [`Plane::natural_uv_domain`] without keeping a made NURB: a missing one is made on
+    /// a copy (for the port's own bookkeeping, where upstream makes none).
+    pub(crate) fn natural_uv_domain_without_keeping(&self) -> Extent2d {
+        if self.base.gw_nurb().is_some() {
+            return self.base.natural_uv_domain();
+        }
+        let mut tmp = self.member_copy();
+        match tmp.make_nurb() {
+            Ok(()) => tmp.base.natural_uv_domain(),
+            Err(_) => self.base.natural_uv_domain(),
+        }
     }
 
     /// `SmPlane_TYPE` (`GetType`).
@@ -903,8 +917,8 @@ impl Plane {
     ///
     /// # Errors
     ///
-    /// Those of [`BSplineSurface::canonical`], [`BSplineSurface::set_canonical`] and
-    /// [`Plane::rebuild_step_from_nurb_parameters`].
+    /// Those of [`BSplineSurface::canonical`], [`BSplineSurface::set_canonical`] (the
+    /// swap bit is then restored) and [`Plane::rebuild_step_from_nurb_parameters`].
     pub fn swap_uv(&mut self) -> Result<()> {
         // get current surface description
         self.ensure_nurb();
@@ -920,8 +934,8 @@ impl Plane {
         transpose(&mut cpts, num_v_cpts);
         transpose(&mut weights, num_v_cpts);
 
-        // Transpose Surface definition
-        self.base.set_canonical(&CanonicalSurfaceData {
+        // Transpose Surface definition; on failure, restore the bit
+        let status = self.base.set_canonical(&CanonicalSurfaceData {
             u_degree: c.v_degree,
             v_degree: c.u_degree,
             control_points: &cpts,
@@ -933,7 +947,11 @@ impl Plane {
             knot_type: c.knot_type,
             weights: Some(&weights),
             uv_domain: None,
-        })?;
+        });
+        if let Err(e) = status {
+            self.toggle_swap_uv_bit();
+            return Err(e);
+        }
         self.rebuild_step_from_nurb_parameters()
     }
 
@@ -1074,6 +1092,48 @@ impl Plane {
         fire_ray: bool,
         distance_tolerance: f64,
     ) -> Result<SolutionArray<O>> {
+        self.global_line_intersect_with_base(
+            uv_domain,
+            line_point,
+            line_vector,
+            line_interval,
+            fire_ray,
+            distance_tolerance,
+            |sub_interval| {
+                Surface::from(self.clone()).base_global_line_intersect_in(
+                    k,
+                    surface,
+                    cache,
+                    uv_domain,
+                    line_point,
+                    line_vector,
+                    Some(sub_interval),
+                    fire_ray,
+                    distance_tolerance,
+                )
+            },
+        )
+    }
+
+    /// The body of [`Plane::global_line_intersect_in`]: `base` is
+    /// `SmSurface::GlobalLineIntersect` over the given line interval, which the plane
+    /// calls on itself (a caller holding the plane's [`Surface`] runs it there, with
+    /// the surface's owner and the caller's cache and face context).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Plane::global_line_intersect`] and of `base`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn global_line_intersect_with_base<O: SolutionObject>(
+        &self,
+        uv_domain: &Extent2d,
+        line_point: Point3,
+        line_vector: Vec3,
+        line_interval: Option<&Extent1d>,
+        fire_ray: bool,
+        distance_tolerance: f64,
+        base: impl FnOnce(&Extent1d) -> Result<SolutionArray<O>>,
+    ) -> Result<SolutionArray<O>> {
         if line_vector.length_squared() < EFF_ZERO_SQ {
             return Err(SolidError::invalid_input(OP_LINE, "zero line vector"));
         }
@@ -1175,17 +1235,7 @@ impl Plane {
                     .unwrap_or(Extent1d::from_min_max(t_start - 1.0, t_end + 1.0));
                 // try global surface/curve solver (SmSurface::GlobalLineIntersect: the
                 // solutions name `surface`)
-                return Surface::from(self.clone()).base_global_line_intersect_in(
-                    k,
-                    surface,
-                    cache,
-                    uv_domain,
-                    line_point,
-                    line_vector,
-                    Some(&sub_interval),
-                    fire_ray,
-                    distance_tolerance,
-                );
+                return base(&sub_interval);
             }
 
             // test that 3D Points project to UVDomain
@@ -1390,8 +1440,10 @@ impl Plane {
     /// than `approx_tol`, and is kept when `keep_all` or every control point drops
     /// within `approx_tol`. Everything else is the general `SmSurface::DropCurve`, run
     /// on the plane with its `owner` (the plane's `m_pOwner`, which a bare [`Plane`]
-    /// does not carry: pass the owning [`Surface`]'s [`Surface::owner`]; a face owner
-    /// makes the general drop return `Unported`, as for every other kind).
+    /// does not carry: pass the owning [`Surface`]'s [`Surface::owner`]; without the
+    /// face tolerance its B-rep records on that surface, which the crate's
+    /// `drop_curve_owned_by` also passes, a face owner makes the general drop return
+    /// `Unported`).
     ///
     /// # Errors
     ///
@@ -1407,6 +1459,137 @@ impl Plane {
         keep_all: bool,
         creating_uv_trim_curve: bool,
         owner: Option<ObjectRef>,
+    ) -> Result<PlaneDropCurve> {
+        self.drop_curve_in(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol,
+            keep_all,
+            creating_uv_trim_curve,
+            owner,
+            None,
+            None::<DropSolveContext<'_, crate::surface::surface::p4::NoObject>>,
+            None,
+        )
+    }
+
+    /// [`Plane::drop_curve`] of the plane held by `surface`: the general
+    /// `SmSurface::DropCurve` runs on the plane with `surface`'s owner and the face
+    /// tolerance its B-rep recorded on it ([`Surface::owner_zone_tol_3d`]), as upstream
+    /// runs it on the same `SmPlane` object.
+    ///
+    /// # Errors
+    ///
+    /// As [`Plane::drop_curve`].
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drop_curve_owned_by(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol: f64,
+        keep_all: bool,
+        creating_uv_trim_curve: bool,
+        surface: &Surface,
+    ) -> Result<PlaneDropCurve> {
+        self.drop_curve_owned_by_with_context::<crate::surface::surface::p4::NoObject>(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol,
+            keep_all,
+            creating_uv_trim_curve,
+            surface,
+            None,
+        )
+    }
+
+    /// [`Plane::drop_curve_owned_by`] whose general fallback's start point drop tests
+    /// the face's trim boundary with `classify`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Plane::drop_curve`], and those of `classify`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drop_curve_owned_by_face_tested(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol: f64,
+        keep_all: bool,
+        creating_uv_trim_curve: bool,
+        surface: &Surface,
+        classify: FaceTest<'_>,
+    ) -> Result<PlaneDropCurve> {
+        self.drop_curve_in::<crate::surface::surface::p4::NoObject>(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol,
+            keep_all,
+            creating_uv_trim_curve,
+            surface.owner(),
+            surface.owner_zone_tol_3d(),
+            None,
+            Some(classify),
+        )
+    }
+
+    /// [`Plane::drop_curve_owned_by`] whose general fallback solves under the caller's
+    /// face context.
+    ///
+    /// # Errors
+    ///
+    /// As [`Plane::drop_curve`], and those of the context.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drop_curve_owned_by_with_context<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol: f64,
+        keep_all: bool,
+        creating_uv_trim_curve: bool,
+        surface: &Surface,
+        context: Option<DropSolveContext<'_, O>>,
+    ) -> Result<PlaneDropCurve> {
+        self.drop_curve_in(
+            k,
+            uv_domain,
+            curve,
+            interval,
+            approx_tol,
+            keep_all,
+            creating_uv_trim_curve,
+            surface.owner(),
+            surface.owner_zone_tol_3d(),
+            context,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    fn drop_curve_in<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        curve: &Curve,
+        interval: &Extent1d,
+        approx_tol: f64,
+        keep_all: bool,
+        creating_uv_trim_curve: bool,
+        owner: Option<ObjectRef>,
+        owner_zone_tol_3d: Option<f64>,
+        context: Option<DropSolveContext<'_, O>>,
+        face_test: Option<FaceTest<'_>>,
     ) -> Result<PlaneDropCurve> {
         // init output
         let mut out = PlaneDropCurve {
@@ -1515,7 +1698,17 @@ impl Plane {
         if curve.is_kind_of(BSplineCurve::TYPE) {
             let Some(b_spline) = b_spline_part(curve) else {
                 return surface_drop_curve(
-                    k, self, uv_domain, curve, &ivl, approx_tol, keep_all, owner,
+                    k,
+                    self,
+                    uv_domain,
+                    curve,
+                    &ivl,
+                    approx_tol,
+                    keep_all,
+                    owner,
+                    owner_zone_tol_3d,
+                    context,
+                    face_test,
                 );
             };
 
@@ -1554,7 +1747,17 @@ impl Plane {
                 // if clamping moves the control point - give up - pass the call along
                 if dev_from_srf_nrm_line > approx_tol {
                     return surface_drop_curve(
-                        k, self, uv_domain, curve, &ivl, approx_tol, keep_all, owner,
+                        k,
+                        self,
+                        uv_domain,
+                        curve,
+                        &ivl,
+                        approx_tol,
+                        keep_all,
+                        owner,
+                        owner_zone_tol_3d,
+                        context,
+                        face_test,
                     );
                 }
 
@@ -1589,7 +1792,19 @@ impl Plane {
         }
 
         // else pass the call along to the general DropCurve method
-        surface_drop_curve(k, self, uv_domain, curve, &ivl, approx_tol, keep_all, owner)
+        surface_drop_curve(
+            k,
+            self,
+            uv_domain,
+            curve,
+            &ivl,
+            approx_tol,
+            keep_all,
+            owner,
+            owner_zone_tol_3d,
+            context,
+            face_test,
+        )
     }
 
     // ---- coincidence ------------------------------------------------------------------
@@ -1644,7 +1859,7 @@ impl Plane {
         let mut max_dist = -1.0;
 
         let domain0 = self.natural_uv_domain();
-        let domain1 = other.natural_uv_domain();
+        let domain1 = other.natural_uv_domain_with_nurb(k)?;
 
         let plane_pnt0 = self.position.origin();
         let plane_norm0 = self.position.z_axis();
@@ -1711,7 +1926,7 @@ impl Plane {
             }
 
             // If the other surface is a plane as well, we're done (bilinear suffices).
-            if other.is_bilinear() {
+            if other.is_bilinear(k) {
                 res.max_distance = sqrt(dist_sq);
                 res.are_coincident = true;
                 return Ok(res);
@@ -2125,6 +2340,7 @@ fn b_spline_part(curve: &Curve) -> Option<&BSplineCurve> {
         | CurveKind::Offset(_)
         | CurveKind::CrvInVolume(_)
         | CurveKind::CrvOnSurf(_)
+        | CurveKind::TangentField(_)
         | CurveKind::Composite(_) => None,
     }
 }
@@ -2189,8 +2405,10 @@ fn surface_drop_point(
 }
 
 /// The general `SmSurface::DropCurve(ctx, domain, curve, interval, tol, .., keep_all,
-/// NULL, ..)` on the plane (a copy with the plane's `owner`).
-fn surface_drop_curve(
+/// NULL, ..)` on the plane (a copy with the plane's `owner`, carrying the owning face's
+/// tolerance `owner_zone_tol_3d` when the caller has it).
+#[allow(clippy::too_many_arguments)]
+fn surface_drop_curve<O: SolutionObject>(
     k: &Kernel,
     plane: &Plane,
     uv_domain: &Extent2d,
@@ -2199,12 +2417,23 @@ fn surface_drop_curve(
     approx_tol: f64,
     keep_all: bool,
     owner: Option<ObjectRef>,
+    owner_zone_tol_3d: Option<f64>,
+    context: Option<DropSolveContext<'_, O>>,
+    face_test: Option<FaceTest<'_>>,
 ) -> Result<PlaneDropCurve> {
     let mut surface = Surface::from(plane.clone());
     *surface.owner_mut() = owner;
-    let r = surface.drop_curve_base::<crate::surface::surface::p4::NoObject>(
-        k, uv_domain, curve, interval, approx_tol, keep_all, None,
-    )?;
+    surface.set_owner_zone_tol_3d(owner_zone_tol_3d);
+    let r = match (context, face_test) {
+        (None, Some(classify)) => surface.drop_curve_base_face_tested::<O>(
+            k, uv_domain, curve, interval, approx_tol, keep_all, None, classify,
+        )?,
+        (Some(context), _) => surface.drop_curve_base_with_context::<O>(
+            k, uv_domain, curve, interval, approx_tol, keep_all, None, context,
+        )?,
+        (None, None) => surface
+            .drop_curve_base::<O>(k, uv_domain, curve, interval, approx_tol, keep_all, None)?,
+    };
     Ok(PlaneDropCurve {
         max_drop_to_surf: r.max_drop_to_surf,
         max_approx_dev: r.max_approx_dev,
@@ -2252,7 +2481,8 @@ mod tests {
             p.natural_uv_domain(),
             Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0)
         );
-        assert!(p.base().gw_nurb().is_none());
+        // GetNaturalUVDomain makes the NURB and the plane keeps it
+        assert!(p.base().gw_nurb().is_some());
         p.make_nurb().unwrap();
         assert!(p.base().is_bilinear());
         assert!(p.is_kind_of(Plane::TYPE).unwrap());
@@ -2340,9 +2570,11 @@ mod tests {
         let c = p.coincidence_check(&k, &q, 1e-6, true).unwrap();
         assert!(!c.are_coincident);
         let b = Surface::from(p.base_with_nurb().unwrap().into_owned());
-        // (a B-spline other surface runs SmSurface::IsPlanar, surface.surface_p7)
+        // (a B-spline other surface runs SmSurface::IsPlanar, surface.surface_p7; since
+        // SMLib v1.0.1 its pseudo box is unpadded (SmSurface.cpp:22371 at 3fd5b95), so the
+        // plane's own B-spline passes a 1e-6 planarity test and is coincident)
         assert!(
-            !p.coincidence_check(&k, &b, 1e-6, true)
+            p.coincidence_check(&k, &b, 1e-6, true)
                 .unwrap()
                 .are_coincident
         );

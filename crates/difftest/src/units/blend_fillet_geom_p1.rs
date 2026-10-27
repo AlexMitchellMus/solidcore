@@ -129,7 +129,8 @@ pub(crate) struct VertexIn {
     pub(crate) pc_class: i64,
     /// `0` none, `1` the start/end (`pc_sub`) vertex of target wire edge `pc_index`, `2`
     /// its primary edge use, `3` target face `pc_index`, `4` the target wire edge itself
-    /// (an `SmEdge`, what `SM_PC_EDGE` classifies to upstream).
+    /// (an `SmEdge`, what `SM_PC_EDGE` classifies to upstream), `5` edge use `pc_sub` of
+    /// the first loop of target face `pc_index` (an edge use with a face).
     #[serde(default)]
     pub(crate) pc_kind: i64,
     #[serde(default = "minus_one")]
@@ -1363,7 +1364,7 @@ pub(crate) fn natural_face(
     b: &mut Brep,
     surface: Surface,
 ) -> Result<FaceId, HarnessError> {
-    let domain = surface.natural_uv_domain();
+    let domain = surface.natural_uv_domain_with_nurb(k).map_err(|e| HarnessError::new(e.to_string()))?;
     let mut records = BTreeMap::new();
     let mut attributes = AttributeStore::default();
     let key_of = super::topology_brep_p8::key_of;
@@ -1462,6 +1463,11 @@ pub(crate) struct RustModel {
     pub(crate) fillet: Brep,
     pub(crate) fillet_edges: Vec<EdgeId>,
     pub(crate) fb: FilletBrep,
+    /// The Model's own geometries (the first `geom_count` of the arena; the shim's
+    /// `geoms` vector). Geometries the library adds later (a temporary solver's, which
+    /// upstream deletes with the solver) are not the Model's: the shim neither exports
+    /// nor addresses them.
+    pub(crate) geom_count: usize,
 }
 
 impl RustModel {
@@ -1517,6 +1523,19 @@ impl RustModel {
                 (3, Ok(i)) => Some(EntityRef::Face(
                     *target_faces.get(i).ok_or_else(|| harness("pc face"))?,
                 )),
+                (5, Ok(i)) => {
+                    // edge use `pc_sub` of the first loop of target face `i`
+                    let f = *target_faces.get(i).ok_or_else(|| harness("pc face"))?;
+                    let loops = solidcore::topology::face::p2::loops(&target, f, false, None)
+                        .map_err(h)?;
+                    let l = *loops.first().ok_or_else(|| harness("pc loop"))?;
+                    let eus = solidcore::topology::loopuse::loop_edgeuses(&target, l).map_err(h)?;
+                    let eu = usize::try_from(v.pc_sub)
+                        .ok()
+                        .and_then(|s| eus.get(s).copied())
+                        .ok_or_else(|| harness("pc loop edge use"))?;
+                    Some(EntityRef::Edgeuse(eu))
+                }
                 (4, Ok(i)) => Some(EntityRef::Edge(
                     *target_edges.get(i).ok_or_else(|| harness("pc index"))?,
                 )),
@@ -1541,7 +1560,7 @@ impl RustModel {
             let mut geom = FilletGeom::new(&k, None, gtype).map_err(h)?;
             geom.status = FilStatus::from_code(g.status).ok_or_else(|| harness("bad status"))?;
             if let Some(c) = &g.center {
-                geom.center_line_curve = Some(curve_of(c)?);
+                geom.center_line_curve = Some(Curve::from(curve_of(c)?));
             }
             if let Some(s) = &g.surface {
                 geom.set_fillet_surface(Some(surface_of(s)?));
@@ -1656,6 +1675,7 @@ impl RustModel {
             fillet,
             fillet_edges,
             fb,
+            geom_count: gids.len(),
         })
     }
 
@@ -1692,7 +1712,7 @@ impl RustModel {
     }
 
     pub(crate) fn geom(&self, i: usize) -> Result<FilletGeomId, HarnessError> {
-        if i < self.fb.geoms().len() {
+        if i < self.geom_count.min(self.fb.geoms().len()) {
             Ok(FilletGeomId(i as u32))
         } else {
             Err(harness("geometry index"))
@@ -1875,11 +1895,17 @@ impl RustModel {
                 o.push(self.vertex_index(v));
                 dump_curve(o, r.uv_trim_curve.as_ref());
                 let g = self.fb.fillet_edgeuse(eu).map_err(h)?.fillet_geom();
-                o.push(g.map_or(-1.0, |g| f64::from(g.0)));
+                // index_of(geoms, ..): -1 for a geometry that is not the Model's
+                o.push(
+                    g.filter(|g| (g.0 as usize) < self.geom_count)
+                        .map_or(-1.0, |g| f64::from(g.0)),
+                );
             }
         }
 
+        // the shim's `geoms` (the Model's own geometries)
         let gs = self.fb.geoms();
+        let gs = gs.get(..self.geom_count).unwrap_or(gs);
         o.push(gs.len() as f64);
         for g in gs {
             o.push(g.fillet_geom_type() as i64 as f64);
@@ -1896,7 +1922,7 @@ impl RustModel {
                 o.push(self.edge_index(Some(e)));
             }
             dump_bcurve(o, g.center_line_curve());
-            dump_surface(o, g.fillet_surface())?;
+            dump_surface(o, g.fillet_surface().map_err(h)?)?;
             o.push(g.ref_eus.len() as f64);
             for &eu in &g.ref_eus {
                 self.put_eu(o, Some(eu));

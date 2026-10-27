@@ -9,7 +9,7 @@
 //! | [`delete_topological_vertex`] | `SmBrep::DeleteTopologicalVertex` |
 //! | [`find_and_set_infinite_region`] | `SmBrep::FindAndSetInfiniteRegion` |
 //! | [`glue_vertices`] | `SmBrep::GlueVertices` |
-//! | [`make_edge_in_face`], [`make_edge_in_face_with_uv_curve`] | `SmBrep::MakeEdgeInFace` |
+//! | [`make_edge_in_face`], [`make_edge_in_face_with_uv_curve`], [`make_edge_in_face_in`] | `SmBrep::MakeEdgeInFace` |
 //! | [`make_manifold`] | `SmBrep::MakeManifold` |
 //! | [`remove_topological_edges_and_vertices`] | `SmBrep::RemoveTopologicalEdgesAndVertices` |
 //! | [`remove_faces`] | `SmBrep::RemoveFaces` |
@@ -433,6 +433,17 @@ fn notify_merge(
     deleted: VertexId,
     notifications: Option<&mut EditNotifyEnv<'_>>,
 ) -> Result<()> {
+    notify_merge_with_body(k, b, survivor, deleted, notifications, None)
+}
+
+fn notify_merge_with_body(
+    k: &mut Kernel,
+    b: &mut Brep,
+    survivor: VertexId,
+    deleted: VertexId,
+    notifications: Option<&mut EditNotifyEnv<'_>>,
+    body: Option<ObjectRef>,
+) -> Result<()> {
     let data = [
         Some(brep_p2::NotifyArg::Entity(crate::error::EntityRef::Vertex(
             survivor,
@@ -440,10 +451,19 @@ fn notify_merge(
         Some(brep_p2::NotifyArg::Entity(crate::error::EntityRef::Vertex(
             deleted,
         ))),
-        Some(brep_p2::NotifyArg::Object(brep_p2::brep_ref(b))),
+        Some(brep_p2::NotifyArg::Object(
+            body.unwrap_or_else(|| brep_p2::brep_ref(b)),
+        )),
     ];
     with_notifications(b, notifications, Some(&mut k.context), |b, env, _| {
-        brep_p2::notify(b, env, None, NotifyOperation::MergeInBrep, data)
+        brep_p2::notify_with_body_identity(
+            b,
+            env,
+            None,
+            NotifyOperation::MergeInBrep,
+            data,
+            body.unwrap_or_else(|| brep_p2::brep_ref(b)),
+        )
     })
 }
 
@@ -561,6 +581,22 @@ pub fn create_wire_edge_from_curve(
     plain_edit(k, b, |k, b, env| {
         create_wire_edge_from_curve_in(k, b, curve, interval, env)
     })
+}
+
+/// [`create_wire_edge_from_curve`] notifying through the caller's environment `env`
+/// (a caller that keeps its own notification state, e.g. a copy into a store body).
+///
+/// # Errors
+///
+/// As [`create_wire_edge_from_curve`].
+pub(crate) fn create_wire_edge_from_curve_notified(
+    k: &mut Kernel,
+    b: &mut Brep,
+    curve: Curve,
+    interval: Extent1d,
+    env: &mut EditNotifyEnv<'_>,
+) -> Result<EdgeId> {
+    create_wire_edge_from_curve_in(k, b, curve, interval, env)
 }
 
 /// [`create_wire_edge_from_curve`] under the edit's notification environment ([`plain_edit`]).
@@ -730,7 +766,10 @@ pub fn delete_topological_vertex_with_notifications(
                 &survivor_range,
                 0.001,
                 true,
-                [Some(JoinCurve::Deleted), Some(JoinCurve::Survivor)],
+                [
+                    Some(JoinCurve::Deleted(deleted_range)),
+                    Some(JoinCurve::Survivor(survivor_range)),
+                ],
             ))?;
         if let Some(coincidence) = coincidence {
             if let [solution] = coincidence.solutions.as_slice() {
@@ -870,14 +909,22 @@ fn edge_curve(b: &Brep, edge: EdgeId) -> Result<&Curve> {
         .as_ref()
         .ok_or_else(|| SolidError::null_pointer(OP))
 }
+/// The two curves of `DeleteTopologicalVertex`'s coincidence check as its solutions
+/// name them (upstream's `pDeleteCurve`, `pSurviveCurve`), with the natural interval
+/// `IdenticalSolutions` reads through them (`SmCurve::GetNaturalInterval`).
 #[derive(Clone, Copy, PartialEq)]
 enum JoinCurve {
-    Deleted,
-    Survivor,
+    Deleted(Extent1d),
+    Survivor(Extent1d),
 }
 impl crate::geom::solution_array::SolutionObject for JoinCurve {
     fn kind(&self) -> crate::geom::solution_array::ObjectKind {
         crate::geom::solution_array::ObjectKind::Curve
+    }
+    fn natural_interval(&self) -> Option<Extent1d> {
+        match self {
+            Self::Deleted(range) | Self::Survivor(range) => Some(*range),
+        }
     }
 }
 fn join_copied_curves(
@@ -983,6 +1030,7 @@ fn set_edge_curve_owner(
             .as_mut()
             .ok_or_else(|| SolidError::null_pointer(OP))?;
         let _ = curve.set_owner(Some(owner), Some(brep));
+        b.set_geometry_owner_key(crate::error::EntityRef::Edge(edge), Some(owner));
         Ok(())
     })
 }
@@ -1073,9 +1121,46 @@ pub fn glue_with_notifications(
     wire_edges: Option<&[EdgeId]>,
     notifications: Option<&mut EditNotifyEnv<'_>>,
 ) -> Result<()> {
+    glue_with_notification_identity(k, b, survivor, deleted, wire_edges, notifications, None)
+}
+
+/// Glue vertices with the caller's issued body identity, without changing `Brep::key`.
+/// Both the body caller and body-valued notification payloads use `body`.
+///
+/// # Errors
+/// The same ordered topology and notification errors as [`glue_with_notifications`].
+pub fn glue_with_body_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    survivor: Option<VertexId>,
+    deleted: Option<VertexId>,
+    wire_edges: Option<&[EdgeId]>,
+    notifications: &mut EditNotifyEnv<'_>,
+    body: ObjectRef,
+) -> Result<()> {
+    glue_with_notification_identity(
+        k,
+        b,
+        survivor,
+        deleted,
+        wire_edges,
+        Some(notifications),
+        Some(body),
+    )
+}
+
+fn glue_with_notification_identity(
+    k: &mut Kernel,
+    b: &mut Brep,
+    survivor: Option<VertexId>,
+    deleted: Option<VertexId>,
+    wire_edges: Option<&[EdgeId]>,
+    notifications: Option<&mut EditNotifyEnv<'_>>,
+    body: Option<ObjectRef>,
+) -> Result<()> {
     let Some(env) = notifications else {
         return plain_edit(k, b, |k, b, env| {
-            glue_with_notifications(k, b, survivor, deleted, wire_edges, Some(env))
+            glue_with_notification_identity(k, b, survivor, deleted, wire_edges, Some(env), body)
         });
     };
     let mut notifications = Some(env);
@@ -1084,26 +1169,34 @@ pub fn glue_with_notifications(
     }
     let survivor = survivor.ok_or_else(|| SolidError::null_pointer(OP))?;
     let deleted = deleted.ok_or_else(|| SolidError::null_pointer(OP))?;
-    crate::error::ignore_status(notify_pre_edit(k, b, notifications.as_deref_mut()))?;
-    crate::error::ignore_status(notify_vertex_pre_edit(
+    crate::error::ignore_status(notify_pre_edit_with_body(
+        k,
+        b,
+        notifications.as_deref_mut(),
+        body,
+    ))?;
+    crate::error::ignore_status(notify_vertex_pre_edit_with_body(
         k,
         b,
         survivor,
         notifications.as_deref_mut(),
+        body,
     ))?;
-    crate::error::ignore_status(notify_merge(
+    crate::error::ignore_status(notify_merge_with_body(
         k,
         b,
         survivor,
         deleted,
         notifications.as_deref_mut(),
+        body,
     ))?;
     for face in vertex::faces(b, deleted)? {
-        crate::error::ignore_status(notify_face_pre_edit(
+        crate::error::ignore_status(notify_face_pre_edit_with_body(
             k,
             b,
             face,
             notifications.as_deref_mut(),
+            body,
         ))?;
     }
     let distance = b.vertex(survivor)?.point.distance(b.vertex(deleted)?.point);
@@ -1190,13 +1283,31 @@ fn notify_pre_edit(
     b: &mut Brep,
     notifications: Option<&mut EditNotifyEnv<'_>>,
 ) -> Result<()> {
+    notify_pre_edit_with_body(k, b, notifications, None)
+}
+
+fn notify_pre_edit_with_body(
+    k: &mut Kernel,
+    b: &mut Brep,
+    notifications: Option<&mut EditNotifyEnv<'_>>,
+    body: Option<ObjectRef>,
+) -> Result<()> {
     let data = [
-        Some(brep_p2::NotifyArg::Object(brep_p2::brep_ref(b))),
+        Some(brep_p2::NotifyArg::Object(
+            body.unwrap_or_else(|| brep_p2::brep_ref(b)),
+        )),
         None,
         None,
     ];
     with_notifications(b, notifications, Some(&mut k.context), |b, env, _| {
-        brep_p2::notify(b, env, None, NotifyOperation::PreEdit, data)
+        brep_p2::notify_with_body_identity(
+            b,
+            env,
+            None,
+            NotifyOperation::PreEdit,
+            data,
+            body.unwrap_or_else(|| brep_p2::brep_ref(b)),
+        )
     })
 }
 fn notify_vertex_pre_edit(
@@ -1205,10 +1316,17 @@ fn notify_vertex_pre_edit(
     vertex: VertexId,
     notifications: Option<&mut EditNotifyEnv<'_>>,
 ) -> Result<()> {
-    let brep = ObjectRef {
-        type_code: crate::geom::a_object::BREP_TYPE,
-        key: b.key(),
-    };
+    notify_vertex_pre_edit_with_body(k, b, vertex, notifications, None)
+}
+
+fn notify_vertex_pre_edit_with_body(
+    k: &mut Kernel,
+    b: &mut Brep,
+    vertex: VertexId,
+    notifications: Option<&mut EditNotifyEnv<'_>>,
+    body: Option<ObjectRef>,
+) -> Result<()> {
+    let brep = body.unwrap_or_else(|| brep_p2::brep_ref(b));
     with_notifications(
         b,
         notifications,
@@ -1237,7 +1355,17 @@ fn notify_face_pre_edit(
     face: FaceId,
     notifications: Option<&mut EditNotifyEnv<'_>>,
 ) -> Result<()> {
-    let brep = brep_p2::brep_ref(b);
+    notify_face_pre_edit_with_body(k, b, face, notifications, None)
+}
+
+fn notify_face_pre_edit_with_body(
+    k: &mut Kernel,
+    b: &mut Brep,
+    face: FaceId,
+    notifications: Option<&mut EditNotifyEnv<'_>>,
+    body: Option<ObjectRef>,
+) -> Result<()> {
+    let brep = body.unwrap_or_else(|| brep_p2::brep_ref(b));
     with_notifications(
         b,
         notifications,
@@ -1394,7 +1522,12 @@ pub fn make_edge_in_face_with_uv_curve(
 ) -> Result<()> {
     with_p3_notifications(k, b, notifications, |k, b, env| {
         make_edge_with_backend(
-            &mut ArenaFaceEdge { k, b, env },
+            &mut ArenaFaceEdge {
+                k,
+                b,
+                env,
+                curve_ref: &edge_curve_identity,
+            },
             editing_enabled,
             face,
             start,
@@ -1407,6 +1540,50 @@ pub fn make_edge_in_face_with_uv_curve(
             output,
         )
     })
+}
+
+/// [`make_edge_in_face_with_uv_curve`] inside a caller's edit: notifying through the
+/// caller's `env`, with the new edge's curve identified by the caller's `curve_ref`
+/// (as [`super::p9::make_edge_in_face_with_vu`] takes it). The editing check reads
+/// `b`'s own `m_bEditingEnabled` ([`Brep::editing_enabled`]), as upstream's member does.
+///
+/// # Errors
+///
+/// Those of [`make_edge_in_face_with_uv_curve`].
+pub fn make_edge_in_face_in(
+    k: &Kernel,
+    b: &mut Brep,
+    face: Option<FaceId>,
+    start: Option<VertexId>,
+    end: Option<VertexId>,
+    curve: Curve,
+    uv_curve: Option<Curve>,
+    interval: Extent1d,
+    orientation: OrientType,
+    max_gap_3d: f64,
+    output: &mut EdgeInFace,
+    env: &mut EditNotifyEnv<'_>,
+    curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
+) -> Result<()> {
+    let editing_enabled = b.editing_enabled();
+    make_edge_with_backend(
+        &mut ArenaFaceEdge {
+            k,
+            b,
+            env,
+            curve_ref,
+        },
+        editing_enabled,
+        face,
+        start,
+        end,
+        curve,
+        uv_curve,
+        interval,
+        orientation,
+        max_gap_3d,
+        output,
+    )
 }
 
 /// Handle adapter for the shared owned control flow. Missing sector/insertion
@@ -1511,6 +1688,7 @@ struct ArenaFaceEdge<'a, 'e> {
     k: &'a Kernel,
     b: &'a mut Brep,
     env: &'a mut EditNotifyEnv<'e>,
+    curve_ref: &'a dyn Fn(EdgeId, i64) -> ObjectRef,
 }
 impl FaceEdgeBackend for ArenaFaceEdge<'_, '_> {
     type Face = FaceId;
@@ -1576,6 +1754,7 @@ impl FaceEdgeBackend for ArenaFaceEdge<'_, '_> {
             orientation,
             gap,
             out,
+            self.curve_ref,
         )
     }
 }
@@ -1584,7 +1763,7 @@ impl FaceEdgeBackend for ArenaFaceEdge<'_, '_> {
 /// all_sectors, ...)` with upstream's default `bUVSpaceOkay = TRUE`
 /// ([`face_p4::find_vertex_sector`]); only the sector's vertex use is read.
 #[allow(clippy::too_many_arguments)]
-fn find_vertex_sector(
+pub(crate) fn find_vertex_sector(
     k: &Kernel,
     b: &mut Brep,
     f: FaceId,
@@ -1620,8 +1799,8 @@ fn find_vertex_sector(
 
 /// `SmBrep::MakeEdgeInFaceWithVU(face, first, last, curve, uv, interval, orientation,
 /// max_gap_3d, ...)` without drop-curve state ([`super::p9::make_edge_in_face_with_vu`]).
-/// The double gap becomes the `SmZoneTol3d` parameter. Curves carry no identity in this
-/// port (module docs): the new edge's curve gets a call-local one.
+/// The double gap becomes the `SmZoneTol3d` parameter. The new edge's curve takes its
+/// identity from `curve_ref` (a call-local one for the plain entry points, module docs).
 #[allow(clippy::too_many_arguments)]
 fn make_edge_in_face_with_vu(
     k: &Kernel,
@@ -1636,6 +1815,7 @@ fn make_edge_in_face_with_vu(
     orientation: OrientType,
     max_gap_3d: f64,
     output: &mut EdgeInFace,
+    curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
 ) -> Result<()> {
     let made = super::p9::make_edge_in_face_with_vu(
         k,
@@ -1651,7 +1831,7 @@ fn make_edge_in_face_with_vu(
             curve_zone_tol_3d: crate::geom::tol::zone_tol3d(k, max_gap_3d),
         },
         env,
-        &edge_curve_identity,
+        curve_ref,
     )?;
     *output = EdgeInFace {
         edge: Some(made.edge),
@@ -1871,7 +2051,7 @@ pub fn remove_topological_with_notifications(
                     .surface
                     .as_ref()
                     .ok_or_else(|| SolidError::null_pointer(OP))?
-                    .natural_uv_domain();
+                    .natural_uv_domain_with_nurb(k)?;
                 crate::topology::face::p2::set_uv_domain(b, keep, &domain)?;
                 let tolerance = b.face(keep)?.tolerance;
                 if topological.dist_between > tolerance / 10.0 {
@@ -1957,7 +2137,7 @@ pub fn remove_faces(
 }
 
 /// [`remove_faces`] under the caller's notification environment `env` (the objects'
-/// `SmTopology` records and attributes), instead of the kernel's ([`plain_edit`]).
+/// `SmTopology` records and attributes), instead of the kernel's (`plain_edit`).
 ///
 /// # Errors
 ///
@@ -2361,11 +2541,10 @@ pub fn transform_with_notifications(
     notifications: Option<&mut EditNotifyEnv<'_>>,
 ) -> Result<()> {
     if let Some(env) = notifications {
-        transform_in(k, b, placement, scale, scale_tolerances, env, None)
+        transform_in(k, b, placement, scale, scale_tolerances, env)
     } else {
-        let owners = b.geometry_owner_keys.clone();
         plain_edit(k, b, |k, b, env| {
-            transform_in(k, b, placement, scale, scale_tolerances, env, Some(&owners))
+            transform_in(k, b, placement, scale, scale_tolerances, env)
         })
     }
 }
@@ -2377,7 +2556,6 @@ fn transform_in(
     scale: Option<Vec3>,
     scale_tolerances: bool,
     env: &mut EditNotifyEnv<'_>,
-    owners: Option<&std::collections::BTreeMap<crate::EntityRef, ObjectRef>>,
 ) -> Result<()> {
     let owner_keys = env.key_of;
     let mut notifications = Some(env);
@@ -2416,7 +2594,6 @@ fn transform_in(
     for edge in crate::topology::brep::p1::curve_owners(b, None, &|e| {
         transform_owner_key(
             b,
-            owners,
             crate::EntityRef::Edge(e),
             owner_keys(crate::EntityRef::Edge(e)),
         )
@@ -2445,7 +2622,6 @@ fn transform_in(
     for face in crate::topology::brep::p1::surface_owners(b, None, &|f| {
         transform_owner_key(
             b,
-            owners,
             crate::EntityRef::Face(f),
             owner_keys(crate::EntityRef::Face(f)),
         )
@@ -2521,12 +2697,23 @@ fn turn_to_nurbs(
     b: &mut Brep,
     notifications: Option<&mut EditNotifyEnv<'_>>,
 ) -> Result<()> {
-    with_p3_notifications(
-        k,
-        b,
-        notifications,
-        crate::topology::brep::p3::turn_to_nurbs_with_geometry_owners,
-    )
+    with_p3_notifications(k, b, notifications, |k, b, env| {
+        let key_of = env.key_of;
+        let mut selection = std::collections::BTreeMap::new();
+        for entity in brep_faces(b)?
+            .into_iter()
+            .map(crate::EntityRef::Face)
+            .chain(brep_edges(b)?.into_iter().map(crate::EntityRef::Edge))
+        {
+            selection.insert(entity, transform_owner_key(b, entity, key_of(entity)));
+        }
+        crate::topology::brep::p3::turn_to_nurbs_with_geometry_owners(k, b, env, &|entity| {
+            selection
+                .get(&entity)
+                .copied()
+                .unwrap_or_else(|| key_of(entity))
+        })
+    })
 }
 fn notify_edge_pre_edit(
     k: &mut Kernel,
@@ -2561,15 +2748,11 @@ fn notify_edge_pre_edit(
     )
 }
 
-// Geometry may retain a constructor's caller keys while plain-edit notifications
-// use unique kernel identities. Match only a proven producer key or the actual
-// issued kernel identity; foreign and unowned geometry keep the native filter.
-fn transform_owner_key(
-    b: &Brep,
-    owners: Option<&std::collections::BTreeMap<crate::EntityRef, ObjectRef>>,
-    entity: crate::EntityRef,
-    kernel_key: ObjectRef,
-) -> ObjectRef {
+// Geometry may retain a constructor's caller keys while plain-edit or temporary
+// transform notifications use distinct identities. Match only a proven producer
+// key or the issued notification identity; foreign and unowned geometry keep the
+// native filter.
+fn transform_owner_key(b: &Brep, entity: crate::EntityRef, kernel_key: ObjectRef) -> ObjectRef {
     let owner = match entity {
         crate::EntityRef::Edge(edge) => b
             .edges()
@@ -2586,10 +2769,7 @@ fn transform_owner_key(
     if owner == Some(kernel_key) {
         kernel_key
     } else {
-        owners
-            .and_then(|keys| keys.get(&entity))
-            .copied()
-            .unwrap_or(kernel_key)
+        b.geometry_owner_key(entity).unwrap_or(kernel_key)
     }
 }
 
@@ -2930,6 +3110,109 @@ mod tests {
         *pending.object_mut().unwrap() = 8;
         assert_eq!(pending.release(), Some((key, 8)));
         assert_eq!(store.attributes(key), vec![attribute]);
+    }
+
+    #[test]
+    fn issued_body_glue_notifies_real_caller_and_keeps_failure_prefix() {
+        use crate::geom::attribute::{ids, Attribute, AttributeStore, Behavior};
+        use crate::topology::edge::notification_test_support as callbacks;
+        use std::collections::BTreeMap;
+
+        for separate_region in [false, true] {
+            let mut k = Kernel::default();
+            let mut b = crate::primitive::api_primitives::create_box(
+                &mut k,
+                Point3::ZERO,
+                10.0,
+                20.0,
+                30.0,
+            )
+            .unwrap();
+            let original_key = b.key();
+            let serial = b.notify_serial().unwrap();
+            let key_of = |entity| crate::topology::brep::p3::topology_ref(serial, entity);
+            let body = key_of(crate::EntityRef::Brep(crate::topology::BrepId::from_index(
+                0,
+            )));
+            assert_ne!(body.key, original_key);
+            let survivor = b.vertex_list()[0];
+            let deleted = if separate_region {
+                let region = b
+                    .add_region_record(crate::topology::Region::default())
+                    .unwrap();
+                let mut setup_records = BTreeMap::new();
+                crate::topology::brep::p3::seed_records(&mut setup_records, &b, &key_of);
+                let mut setup_attributes = AttributeStore::default();
+                crate::topology::brep::p9::make_shell_vertex_with_kernel_context(
+                    &mut k,
+                    &mut b,
+                    Some(region),
+                    Point3::new(40.0, 0.0, 0.0),
+                    &mut crate::topology::edge::NotificationStores {
+                        records: &mut setup_records,
+                        attributes: &mut setup_attributes,
+                        key_of: &key_of,
+                    },
+                )
+                .unwrap()
+                .1
+            } else {
+                b.vertex_list()[1]
+            };
+            let survivor_ref = key_of(crate::EntityRef::Vertex(survivor));
+            let deleted_ref = key_of(crate::EntityRef::Vertex(deleted));
+            let mut records = BTreeMap::new();
+            crate::topology::brep::p3::seed_records(&mut records, &b, &key_of);
+            let mut attributes = AttributeStore::default();
+            let marker = attributes
+                .insert(Attribute::long(ids::USER_1, 917, Behavior::Reference))
+                .unwrap();
+            attributes.add_attribute(body.key, marker).unwrap();
+            let events = callbacks::install(&mut k.context);
+            let result =
+                crate::geom::context::Context::with_notification_context(&mut k, |k, context| {
+                    let mut env = EditNotifyEnv {
+                        records: &mut records,
+                        attributes: &mut attributes,
+                        context: Some(context),
+                        key_of: &key_of,
+                    };
+                    glue_with_body_identity(
+                        k,
+                        &mut b,
+                        Some(survivor),
+                        Some(deleted),
+                        None,
+                        &mut env,
+                        body,
+                    )
+                })
+                .unwrap();
+            callbacks::assert_installed(&k.context, &events);
+            assert_eq!(b.key(), original_key);
+            assert_eq!(attributes.users(marker).unwrap(), &[body.key]);
+            assert_eq!(attributes.get(marker).unwrap().long_value(), Some(917));
+            let events = events.lock().unwrap();
+            assert_eq!(events[0].caller, body);
+            assert_eq!(events[0].operation, NotifyOperation::PreEdit);
+            assert_eq!(events[0].data, [Some(body), None, None]);
+            assert_eq!((events[0].callback, events[1].callback), ("user", "system"));
+            if separate_region {
+                assert!(result.is_err());
+                assert_eq!(events.len(), 6);
+                assert!(b.vertex_list().contains(&deleted));
+            } else {
+                result.unwrap();
+                assert!(!b.vertex_list().contains(&deleted));
+                assert!(events.iter().any(|event| event.caller == survivor_ref
+                    && event.operation == NotifyOperation::PreEdit
+                    && event.data == [Some(survivor_ref), Some(body), None]));
+                assert!(events.iter().any(|event| event.caller == body
+                    && event.operation == NotifyOperation::MergeInBrep
+                    && event.data == [Some(survivor_ref), Some(deleted_ref), Some(body)]));
+            }
+            assert!(!events.iter().any(|event| event.caller.key == original_key));
+        }
     }
 
     #[test]

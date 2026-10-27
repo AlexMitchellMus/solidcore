@@ -48,7 +48,10 @@ fn case_json(c: &CaseResult) -> Value {
     if let Some(why) = &c.known_mismatch {
         m.insert("known_mismatch".into(), json!(why));
     }
-    if c.fail() || c.is_known_mismatch() {
+    if let Some(id) = &c.cpp_defect {
+        m.insert("cpp_defect".into(), json!(id));
+    }
+    if c.fail() || c.is_known_mismatch() || c.is_cpp_defect() {
         m.insert("inputs".into(), c.inputs.clone());
         m.insert("mismatch_count".into(), json!(c.diff.mismatch_count));
         let mm: Vec<Value> = c
@@ -87,6 +90,9 @@ pub fn unit_report(r: &UnitResult) -> Value {
     m.insert("unit".into(), json!(r.unit));
     m.insert("pass".into(), json!(r.pass()));
     m.insert("status".into(), json!(r.status().as_str()));
+    if let Some(reason) = &r.skipped_platform {
+        m.insert("skipped_platform".into(), json!(reason));
+    }
     m.insert("rel_tol".into(), num(REL_TOL));
     m.insert("abs_floors".into(), Value::Array(floors));
     m.insert("seeds".into(), json!(r.seeds));
@@ -96,6 +102,9 @@ pub fn unit_report(r: &UnitResult) -> Value {
     m.insert("cases_deferred".into(), json!(r.deferred()));
     if r.rejected() > 0 {
         m.insert("cases_rejected".into(), json!(r.rejected()));
+    }
+    if r.skipped_platform() > 0 {
+        m.insert("cases_skipped_platform".into(), json!(r.skipped_platform()));
     }
     let by_unit: Map<String, Value> = r
         .deferred_by_unit()
@@ -107,6 +116,12 @@ pub fn unit_report(r: &UnitResult) -> Value {
     m.insert("cases_vacuous".into(), json!(r.vacuous()));
     if r.known_mismatches() > 0 {
         m.insert("cases_known_mismatch".into(), json!(r.known_mismatches()));
+    }
+    if r.cpp_defects() > 0 {
+        m.insert("cases_cpp_defect".into(), json!(r.cpp_defects()));
+    }
+    if r.parked() > 0 {
+        m.insert("cases_parked".into(), json!(r.parked()));
     }
     m.insert("max_rel_err".into(), num(r.max_rel_err()));
     m.insert(
@@ -131,7 +146,7 @@ pub fn write_unit_report(dir: &Path, r: &UnitResult) -> Result<PathBuf, HarnessE
 /// Aggregate counts recorded in a report (including vacuous and known outcomes).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportCounts {
-    /// `green`, `partial` or `fail`.
+    /// `green`, `partial`, `fail` or `skipped(platform)`.
     pub status: String,
     /// All cases.
     pub total: u64,
@@ -145,6 +160,10 @@ pub struct ReportCounts {
     pub rejected: u64,
     /// Known mismatches (never counted as passing cases).
     pub known: u64,
+    /// Confirmed C++ reference defects (successes, but not passing cases).
+    pub cpp_defect: u64,
+    /// Parked cases (confirmed C++ defects, not run; neither passes nor failures).
+    pub parked: u64,
     /// Successful cases with no numeric/topological comparisons.
     pub vacuous: u64,
 }
@@ -161,6 +180,8 @@ impl ReportCounts {
             deferred: n(r.deferred()),
             rejected: n(r.rejected()),
             known: n(r.known_mismatches()),
+            cpp_defect: n(r.cpp_defects()),
+            parked: n(r.parked()),
             vacuous: n(r.vacuous()),
         }
     }
@@ -177,6 +198,8 @@ impl ReportCounts {
             deferred: n("cases_deferred")?,
             rejected: n("cases_rejected").unwrap_or(0),
             known: n("cases_known_mismatch").unwrap_or(0),
+            cpp_defect: n("cases_cpp_defect").unwrap_or(0),
+            parked: n("cases_parked").unwrap_or(0),
             vacuous: n("cases_vacuous").unwrap_or(0),
         })
     }
@@ -184,7 +207,7 @@ impl ReportCounts {
     /// `status=… cases=… passed=… failed=… deferred=… rejected=…`.
     pub fn describe(&self) -> String {
         format!(
-            "status={} cases={} passed={} failed={} deferred={} rejected={} known={} vacuous={}",
+            "status={} cases={} passed={} failed={} deferred={} rejected={} known={} cpp_defect={} parked={} vacuous={}",
             self.status,
             self.total,
             self.passed,
@@ -192,19 +215,42 @@ impl ReportCounts {
             self.deferred,
             self.rejected,
             self.known,
+            self.cpp_defect,
+            self.parked,
             self.vacuous
         )
     }
 }
 
+/// Aggregate CLI summary. Skipped units never contribute to the passed count.
+/// The optional suffix preserves existing output when all references are supported.
+pub fn run_summary(total: usize, partial: usize, failed: usize, skipped: usize) -> String {
+    let mut s = format!(
+        "difftest: {total} unit(s), {} passed, {partial} partial, {failed} failed",
+        total.saturating_sub(partial + failed + skipped)
+    );
+    if skipped > 0 {
+        let _ = write!(s, ", {skipped} skipped(platform)");
+    }
+    s
+}
+
 /// One-line summary, e.g.
 /// `PASS harness.selftest cases=40 passed=40 failed=0 deferred=0 max_rel_err=1.1e-16 with_values=36 no_values=4 vacuous=1`.
-/// The status word is `PASS` (green), `PARTIAL` or `FAIL`; `with_values` / `no_values`
+/// The status word is `PASS` (green), `PARTIAL`, `FAIL` or `SKIP`; a skip prints
+/// only the unit and its platform reason. Otherwise, `with_values` / `no_values`
 /// split the passing cases into those that compared at least one value and those that
 /// compared nothing (the same error on both sides, or empty outputs); `vacuous` counts
 /// the `no_values` cases where both sides succeeded, so only the status agreed; with deferred
 /// cases the line ends with ` blocked_by=<unit>(<cases>),...`.
 pub fn summary_line(r: &UnitResult) -> String {
+    if r.status() == UnitStatus::SkippedPlatform {
+        return format!(
+            "SKIP {} skipped(platform): {}",
+            r.unit,
+            r.skipped_platform.as_deref().unwrap_or_default()
+        );
+    }
     let with_values = r.passed_with_values();
     let mut s = format!(
         "{} {} cases={} passed={} failed={} deferred={} max_rel_err={:e} with_values={with_values} no_values={} vacuous={}",
@@ -212,6 +258,7 @@ pub fn summary_line(r: &UnitResult) -> String {
             UnitStatus::Green => "PASS",
             UnitStatus::Partial => "PARTIAL",
             UnitStatus::Fail => "FAIL",
+            UnitStatus::SkippedPlatform => "SKIP",
         },
         r.unit,
         r.cases.len(),
@@ -227,6 +274,15 @@ pub fn summary_line(r: &UnitResult) -> String {
     }
     if r.known_mismatches() > 0 {
         let _ = write!(s, " known_mismatch={}", r.known_mismatches());
+    }
+    if r.cpp_defects() > 0 {
+        let _ = write!(s, " cpp_defect={}", r.cpp_defects());
+    }
+    if r.parked() > 0 {
+        let _ = write!(s, " parked={}", r.parked());
+    }
+    if r.skipped_platform() > 0 {
+        let _ = write!(s, " skipped_platform={}", r.skipped_platform());
     }
     let blocked: Vec<String> = r
         .deferred_by_unit()
@@ -256,15 +312,17 @@ mod tests {
             unit: "a.b".into(),
             cases: Vec::new(),
             harness_error: None,
+            skipped_platform: None,
             abs_floors: Vec::new(),
             seeds: 16,
             timing: crate::runner::UnitTiming::default(),
+            heap_check: crate::runner::HeapCheck::default(),
         };
         let text = to_canonical_string(&unit_report(&r));
         assert_eq!(ReportCounts::parse(&text), Some(ReportCounts::of(&r)));
         assert_eq!(
             ReportCounts::of(&r).describe(),
-            "status=fail cases=0 passed=0 failed=0 deferred=0 rejected=0 known=0 vacuous=0"
+            "status=fail cases=0 passed=0 failed=0 deferred=0 rejected=0 known=0 cpp_defect=0 parked=0 vacuous=0"
         );
     }
 
@@ -301,14 +359,62 @@ mod tests {
                 both_errored: false,
                 rejected: None,
                 deferred: None,
+                skipped_platform: None,
                 perturbed: None,
                 diagnostics: std::collections::BTreeMap::new(),
                 known_mismatch: Some("test comparison".into()),
+                cpp_defect: None,
+                parked: false,
             };
             let report = case_json(&case);
             assert_eq!(report["outcome"], "known_mismatch");
             assert_eq!(report["values_compared"], 0);
             assert_eq!(report["exact_compared"], expected);
         }
+    }
+
+    #[test]
+    fn cpp_defects_are_reported_separately_and_keep_the_unit_green() {
+        let case = CaseResult {
+            name: "defect".into(),
+            source: CaseSource::Inline,
+            inputs: json!({"file": "x"}),
+            diff: compare(&Output::new().int("n", 1), &Output::new().int("n", 2), &[]),
+            harness_error: None,
+            both_errored: false,
+            rejected: None,
+            deferred: None,
+            skipped_platform: None,
+            perturbed: None,
+            diagnostics: std::collections::BTreeMap::new(),
+            known_mismatch: Some("C++ uses a freed pointer".into()),
+            cpp_defect: Some("UB-1".into()),
+            parked: false,
+        };
+        let c = case_json(&case);
+        assert_eq!(c["outcome"], "cpp_defect");
+        assert_eq!(c["pass"], false);
+        assert_eq!(c["cpp_defect"], "UB-1");
+        assert_eq!(c["mismatch_count"], 1);
+        let r = UnitResult {
+            unit: "a.b".into(),
+            cases: vec![case],
+            harness_error: None,
+            skipped_platform: None,
+            abs_floors: Vec::new(),
+            seeds: 16,
+            timing: crate::runner::UnitTiming::default(),
+            heap_check: crate::runner::HeapCheck::default(),
+        };
+        let v = unit_report(&r);
+        assert_eq!((&v["status"], &v["pass"]), (&json!("green"), &json!(true)));
+        assert_eq!(v["cases_cpp_defect"], 1);
+        assert_eq!(v["cases_passed"], 0);
+        assert!(v.get("cases_known_mismatch").is_none());
+        let text = to_canonical_string(&v);
+        assert_eq!(ReportCounts::parse(&text), Some(ReportCounts::of(&r)));
+        assert!(summary_line(&r).contains(" cpp_defect=1"));
+        let b = crate::baseline::parse_baseline(&text).unwrap();
+        assert_eq!(b.cases[0].outcome, "cpp_defect");
     }
 }

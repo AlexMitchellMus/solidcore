@@ -1121,7 +1121,8 @@ fn face_with_edges(
             ..Shell::default()
         })
         .map_err(setup)?;
-    let domain = surface.natural_uv_domain();
+    // (runner helper without a kernel in scope)
+    let domain = surface.natural_uv_domain_if_built();
     let face = brep
         .add_face_record(Face {
             surface: Some(surface),
@@ -1646,7 +1647,7 @@ fn rust_extend(input: &Extension) -> RResult<Output> {
             ],
         );
         let Some(surface) = surface else { continue };
-        let domain = surface.natural_uv_domain();
+        let domain = surface.natural_uv_domain_with_nurb(&kernel)?;
         let kind = match surface.kind() {
             SurfaceKind::Plane(_) => 1,
             SurfaceKind::BSpline(_) => 2,
@@ -1892,7 +1893,7 @@ fn put_rust_vertex_surface(
     surface: &Surface,
     samples: &[[f64; 2]],
 ) -> RResult<()> {
-    let domain = surface.natural_uv_domain();
+    let domain = surface.natural_uv_domain_with_nurb(k)?;
     raw.extend([
         surface.type_code() as f64,
         domain.min().x,
@@ -2185,6 +2186,7 @@ fn rust_face_tail(input: &FaceTailIn) -> RResult<Output> {
         &intersections,
         &mut env,
         &offset_key,
+        &curve_key,
     );
     let (status, _) = operation(result)?;
     let brep = executive
@@ -2344,13 +2346,24 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
     let mut offsets = Vec::new();
     let result = match branch {
         Probe::ReplaceEmpty => {
-            OffsetExecutive::replace_implicit_offsets(&kernel, &mut original, tolerance)
+            probe_env(|env, _| {
+                OffsetExecutive::replace_implicit_offsets(
+                    &mut kernel,
+                    &mut original,
+                    tolerance,
+                    &mut solidcore::topology::edge::NotificationStores {
+                        records: &mut *env.records,
+                        attributes: &mut *env.attributes,
+                        key_of: env.key_of,
+                    },
+                )
+            })
         }
         Probe::RemoveNoMerge | Probe::RemoveEmpty => {
             executive.set_merge_results(matches!(branch, Probe::RemoveEmpty));
-            executive.remove_excess_faces_with_kernel_context(
+            executive.remove_excess_faces(
                 &mut kernel,
-                &original,
+                &mut original,
                 &mut Brep::new(),
             )
         }
@@ -2360,9 +2373,9 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
             let eu = primary(&original, edge)?;
             executive.build_side_wall_of_edgeuse(&mut kernel, &mut original, Some(eu))
         }
-        Probe::FillEmpty => {
-            executive.fill_gap_edgeuses(&kernel, EdgeId::from_index(u32::MAX), &[], &[])
-        }
+        Probe::FillEmpty => probe_env(|env, _| {
+            executive.fill_gap_edgeuses(&mut kernel, EdgeId::from_index(u32::MAX), &[], &[], env)
+        }),
         Probe::VertexNull | Probe::VertexIsolated => {
             let vertex = if matches!(branch, Probe::VertexIsolated) {
                 let shell = original
@@ -2417,11 +2430,12 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
                     &SsiData::default(),
                     env,
                     offset_key_of,
+                    &curve_key,
                 )
             })
         }
         Probe::PiecewiseEmpty => executive
-            .piecewise_merge(&mut kernel, &mut original)
+            .piecewise_merge(&mut kernel, &mut original, None)
             .map(|_| {
                 counts = [0, 0, 0, 1];
             }),
@@ -2470,7 +2484,7 @@ fn rust_probe(k: &Kernel, branch: Probe, tolerance: f64) -> RResult<Output> {
             };
             executive.build_offset_of_edgeuses(
                 &mut kernel,
-                &original,
+                &mut original,
                 first,
                 other,
                 MarkType::Mark,
