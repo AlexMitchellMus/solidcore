@@ -36,6 +36,7 @@
 //! | [`UnbendVolume::is_curve_in_param_domain_simple`] | `IsCurveInParamDomainSimple`                   |
 //! | [`UnbendVolume::read_from_db`]                    | `ReadFromDB`                                   |
 //! | [`UnbendVolume::make_exact_b_spline_1st_out_surface`] | `MakeExactBSpline1stOutSurface` (in no unit in units.json; called by `SrfInVolume::make_exact_b_spline_if_possible_with`) |
+//! | [`UnbendVolume::make_exact_b_spline_1st_out_curve`] | `MakeExactBSpline1stOutCurve` (in no unit in units.json; called by `CrvInVolume::make_exact_b_spline_if_possible_with`) |
 //! | [`UNBEND_VOLUME_TYPE`], [`is_kind_of`], [`Volume::type_code`] and friends | `GetType`, `GetTypeString`, `GetClassString` (`SM_COMMON`), `IsKindOf` |
 //!
 //! Deviations:
@@ -86,6 +87,12 @@
 //! - **Unused arguments** upstream ignores (the from-left flags, zero-tangent and
 //!   zero-sampling options of the evaluations, the parameter domain of
 //!   `IsOnBoundarySimple`) are dropped where the call is local to this module.
+//! - **`MakeExactBSpline1stOutCurve`** takes the input space as a flag, as the surface
+//!   variant, and returns the new curve (`None` for upstream's `NULL`). The statuses
+//!   upstream ignores (the sample `EvaluatePoint`s, the end-point `MapPoint` /
+//!   `EvaluatePoint`, `CCWAngleBetween`) leave the previous value
+//!   ([`Vec3::UNDEF`] for points, `0` for angles; upstream's angles are then
+//!   uninitialised). The unused plane-distance sums and the debug drawing are dropped.
 //! - **`MakeExactBSpline1stOutSurface`** takes the input space as a flag
 //!   (`in_space`: `SM_VS_IN_SPACE`; otherwise `SM_VS_PARAM_SPACE`, so the invalid-space
 //!   `SM_ERR` has no counterpart) and returns the new surface (`None` for upstream's
@@ -133,6 +140,10 @@ use crate::topology::database_io::{DatabaseReader, FileType};
 /// `lSmpSize` of `MakeExactBSpline1stOutSurface`: the sample grid is
 /// `(SMP_SIZE + 1) x (SMP_SIZE + 1)`.
 const SMP_SIZE: u32 = 5;
+
+/// `lSmpSize` of `MakeExactBSpline1stOutCurve`: the curve is sampled at
+/// `CRV_SMP_SIZE + 1` points.
+const CRV_SMP_SIZE: u32 = 11;
 
 pub use crate::surface::volume::p1::UNBEND_VOLUME_TYPE;
 
@@ -1197,6 +1208,163 @@ impl UnbendVolume {
             uv_scale,
             &uv_domain,
         ))))
+    }
+
+    /// `MakeExactBSpline1stOutCurve`: the exact first out-space image of `input` (from
+    /// in-space when `in_space`, else from parameter space) through the unbend `volume`
+    /// (whose kind is `self`), or `None` when it is not one of the analytic cases. A
+    /// line parallel to the unbend axis, a circle centred on the axis (in a plane
+    /// normal to it) and a line radiating from the axis each map to the line through
+    /// the images of its ends. The test samples 12 points of the natural interval; any
+    /// sample outside the unbend's domain gives `None`.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] from the curve or volume services.
+    pub fn make_exact_b_spline_1st_out_curve(
+        &self,
+        k: &Kernel,
+        volume: &Volume,
+        in_space: bool,
+        input: &Curve,
+    ) -> Result<Option<Curve>> {
+        // locals: ParamSpace and InSpace Unbend orientations - Unbend's Neutral plane is
+        // perp to the Unbend's MidDirection
+        let (param_origin, unbend_origin) = (Vec3::ZERO, volume.unbend_origin());
+        let (param_mid_dir, unbend_mid_dir) = (Vec3::X, volume.unbend_mid_dir());
+        let (param_axis, unbend_axis) = (Vec3::Z, volume.unbend_axis());
+        let (param_binormal, unbend_binormal) = (Vec3::Y, volume.unbend_binormal());
+
+        // locals: making InputSpace either ParamSpace or InSpace
+        let (input_origin, input_mid_dir, input_axis, input_binormal) = if in_space {
+            (unbend_origin, unbend_mid_dir, unbend_axis, unbend_binormal)
+        } else {
+            (param_origin, param_mid_dir, param_axis, param_binormal)
+        };
+
+        // locals
+        let mut input_first = Vec3::UNDEF;
+        let mut input_last = Vec3::UNDEF;
+        let mut out_space_first = Vec3::UNDEF;
+        let mut out_space_last = Vec3::UNDEF;
+
+        let approx_tol = approx_tol_3d(k, SmallTopoType::NormalSize);
+        let ivl = input.natural_interval();
+        let mut input_pt = Vec3::UNDEF;
+        let mut on_axis_pt = Vec3::UNDEF;
+
+        let mut mid_dir_ang_rad = 0.0;
+        let mut axis_plane_range = Extent1d::new();
+        let mut mid_dir_plane_range = Extent1d::new();
+        let mut binormal_plane_range = Extent1d::new();
+        let mut axis_line_range = Extent1d::new();
+        let mut mid_dir_ang_rad_range = Extent1d::new();
+        let mut const_axis_plane = false;
+        let mut const_mid_dir_plane = false;
+        let mut const_binormal_plane = false;
+        let mut const_axis_line = false;
+        let mut const_mid_dir_ang_rad = false;
+
+        // See if the InputCurve is linear and parallel to one of the UnbendAxes
+        // (parallel to two UnbendPlanes)
+        for ii in 0..=CRV_SMP_SIZE {
+            let smp_u = ivl.evaluate(f64::from(ii) / f64::from(CRV_SMP_SIZE));
+
+            // Curve sample (status ignored)
+            if let Some(p) = ignored(input.evaluate_point(k, smp_u))? {
+                input_pt = p;
+            }
+
+            // no work - sample point not within bend domain
+            let is_in = if in_space {
+                volume.is_point_in_in_space_domain(input_pt, true)?.0
+            } else {
+                volume.is_point_in_param_domain(input_pt, true)?
+            };
+            if !is_in {
+                return Ok(None);
+            }
+
+            // save 1st and last sample pts and pick a point on Axis near line to keep
+            // vector sizes small
+            if ii == 0 {
+                input_first = input_pt;
+                let to_orig_vec = input_pt - input_origin;
+                on_axis_pt = input_origin + input_axis.dot(to_orig_vec) * input_axis;
+            } else if ii == CRV_SMP_SIZE {
+                input_last = input_pt;
+            }
+
+            // Input vec from SamplePt to OnAxisPt
+            let on_axis_vec = input_pt - on_axis_pt;
+
+            // InputSpace distances to planes perp to Unbend axes
+            let axis_plane = input_axis.dot(on_axis_vec);
+            let mid_dir_plane = input_mid_dir.dot(on_axis_vec);
+            let binormal_plane = input_binormal.dot(on_axis_vec);
+            let axis_line =
+                (mid_dir_plane * mid_dir_plane + binormal_plane * binormal_plane).sqrt();
+            // rot angle from sMidDirAxis (status ignored: a failure leaves the previous one)
+            if let Some(a) = ignored(input_axis.ccw_angle_between(input_mid_dir, on_axis_vec))? {
+                mid_dir_ang_rad = a;
+            }
+
+            // accumulate the range of Plane distances
+            axis_plane_range.add_value(axis_plane);
+            mid_dir_plane_range.add_value(mid_dir_plane);
+            binormal_plane_range.add_value(binormal_plane);
+            axis_line_range.add_value(axis_line);
+            mid_dir_ang_rad_range.add_value(mid_dir_ang_rad);
+
+            // remember when curve is const dist from bend plane
+            const_axis_plane = axis_plane_range.length() < approx_tol;
+            const_mid_dir_plane = mid_dir_plane_range.length() < approx_tol;
+            const_binormal_plane = binormal_plane_range.length() < approx_tol;
+            const_axis_line = axis_line_range.length() < approx_tol;
+            const_mid_dir_ang_rad = mid_dir_ang_rad_range.length() < EFF_ZERO_RAD;
+
+            // no work - curve not one of the special case curves
+            let parallel_to_axis = const_mid_dir_plane && const_binormal_plane; // lines parallel to the Bend Axis
+            let centered_on_axis = const_axis_line && const_axis_plane; // circles centered on the Bend Axis
+            let radiating = const_mid_dir_ang_rad && const_axis_plane; // lines radiating radially from the Bend Axis
+            if !parallel_to_axis && !centered_on_axis && !radiating {
+                return Ok(None);
+            }
+        }
+
+        // OutSpace 1st and Last points, without compounding (statuses ignored)
+        let out_point = |p: Point3| {
+            if in_space {
+                volume.map_point(p, false)
+            } else {
+                volume.evaluate_point(p, false)
+            }
+        };
+        if let Some(p) = ignored(out_point(input_first))? {
+            out_space_first = p;
+        }
+        if let Some(p) = ignored(out_point(input_last))? {
+            out_space_last = p;
+        }
+
+        // lines parallel to the Bend Axis             => map to OutSpace lines
+        // circles centered on the Bend Axis           => map to OutSpace lines
+        // lines radiating radially from the Bend Axis => map to OutSpace lines
+        let mut new_curve = None;
+        let parallel_to_axis = const_mid_dir_plane && const_binormal_plane;
+        let centered_on_axis = const_axis_line && const_axis_plane;
+        let radiating = const_mid_dir_ang_rad && const_axis_plane;
+        if parallel_to_axis || centered_on_axis || radiating {
+            // create the OutSpace Line
+            new_curve = Some(Curve::from(Line::from_points(
+                out_space_first,
+                out_space_last,
+                3,
+            )));
+        }
+
+        // all done
+        Ok(new_curve)
     }
 
     /// Reads an unbend volume from a database stream: the neutral distance and the

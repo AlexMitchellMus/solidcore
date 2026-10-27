@@ -31,6 +31,7 @@
 //! | [`TwistVolume::is_curve_in_param_domain_simple`]  | `IsCurveInParamDomainSimple`                   |
 //! | [`TwistVolume::read_from_db`]                     | `ReadFromDB`                                   |
 //! | [`TwistVolume::make_exact_b_spline_1st_out_surface`] | `MakeExactBSpline1stOutSurface` (in no unit in units.json; called by `SrfInVolume::make_exact_b_spline_if_possible_with`) |
+//! | [`TwistVolume::make_exact_b_spline_1st_out_curve`] | `MakeExactBSpline1stOutCurve` (in no unit in units.json; called by `CrvInVolume::make_exact_b_spline_if_possible_with`) |
 //! | [`TWIST_VOLUME_TYPE`], [`is_kind_of`], [`Volume::type_code`] and friends | `GetType`, `GetTypeString`, `GetClassString` (`SM_COMMON`), `IsKindOf` |
 //!
 //! Deviations:
@@ -74,6 +75,13 @@
 //!   `IsCurveInParamDomainSimple`, the line ends of `IsLineInParamDomainSimple`, the
 //!   point of `IsPointInParamDomainSimple`) are dropped where the call is local to
 //!   this module.
+//! - **`MakeExactBSpline1stOutCurve`** takes the input space as a flag, as the surface
+//!   variant, and returns the new curve. A failed sample `EvaluatePoint` (status
+//!   ignored) leaves the previous point ([`Vec3::UNDEF`] at first); the copy's
+//!   `Transform` status is ignored; a failed `Copy` (upstream then dereferences `NULL`)
+//!   is returned; the copy is the input's own kind (upstream casts it to
+//!   `SmBSplineCurve*`). The unused plane-distance sum and the debug drawing are
+//!   dropped.
 //! - **`MakeExactBSpline1stOutSurface`** takes the input space as a flag
 //!   (`in_space`: `SM_VS_IN_SPACE`; otherwise `SM_VS_PARAM_SPACE`, so the invalid-space
 //!   `SM_ERR` has no counterpart) and returns the new surface (`None` for upstream's
@@ -83,6 +91,7 @@
 //!   `NULL`) is returned; [`SolidError::Unported`] propagates. The copy is the input's
 //!   own kind (upstream casts it to `SmBSplineSurface*` whatever it is).
 
+use crate::curve::curve::p2::Curve;
 use crate::error::{ignored, Result, SolidError};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::extent1d::Extent1d;
@@ -106,6 +115,10 @@ use crate::topology::database_io::{DatabaseReader, FileType};
 /// `lSmpSize` of `MakeExactBSpline1stOutSurface`: the sample grid is
 /// `(SMP_SIZE + 1) x (SMP_SIZE + 1)`.
 const SMP_SIZE: u32 = 5;
+
+/// `lSmpSize` of `MakeExactBSpline1stOutCurve`: the curve is sampled at
+/// `CRV_SMP_SIZE + 1` points.
+const CRV_SMP_SIZE: u32 = 11;
 
 pub use crate::surface::volume::p1::TWIST_VOLUME_TYPE;
 
@@ -857,6 +870,102 @@ impl TwistVolume {
 
         // all done
         Ok(Some(new_surface))
+    }
+
+    /// `MakeExactBSpline1stOutCurve`: the exact first out-space image of `input` (from
+    /// in-space when `in_space`, else from parameter space) through the twist `volume`
+    /// (whose kind is `self`), or `None` when it is not one of the analytic cases: a
+    /// curve in a plane normal to the twist axis maps to a copy rotated about the axis
+    /// by the twist angle of its height. The test samples 12 points of the natural
+    /// interval; any sample outside the twist's domain gives `None`.
+    ///
+    /// # Errors
+    ///
+    /// Those of the curve copy (upstream dereferences the `NULL` a failed `Copy`
+    /// leaves); [`SolidError::Unported`] from the curve or volume services.
+    pub fn make_exact_b_spline_1st_out_curve(
+        &self,
+        k: &Kernel,
+        volume: &Volume,
+        in_space: bool,
+        input: &Curve,
+    ) -> Result<Option<Curve>> {
+        // locals: ParamSpace and InSpace Twist orientations
+        let (param_origin, twist_origin) = (Vec3::ZERO, volume.twist_origin());
+        let (param_axis, twist_axis) = (Vec3::Z, volume.twist_axis());
+
+        // locals: making InputSpace either ParamSpace or InSpace
+        let (input_origin, input_axis) = if in_space {
+            (twist_origin, twist_axis)
+        } else {
+            (param_origin, param_axis)
+        };
+
+        // locals
+        let approx_tol = approx_tol_3d(k, SmallTopoType::NormalSize);
+        let ivl = input.natural_interval();
+        let mut input_pt = Vec3::UNDEF;
+        let mut on_axis_pt = Vec3::UNDEF;
+
+        let mut axis_plane_range = Extent1d::new();
+
+        // See if the InputCurve is in a plane perpendicular to the TwistAxis
+        for ii in 0..=CRV_SMP_SIZE {
+            let smp_u = ivl.evaluate(f64::from(ii) / f64::from(CRV_SMP_SIZE));
+
+            // Curve sample (status ignored)
+            if let Some(p) = ignored(input.evaluate_point(k, smp_u))? {
+                input_pt = p;
+            }
+
+            // no work - sample point not within twist domain
+            let is_in = if in_space {
+                volume.is_point_in_in_space_domain(input_pt, true)?.0
+            } else {
+                volume.is_point_in_param_domain(input_pt, true)?
+            };
+            if !is_in {
+                return Ok(None);
+            }
+
+            // pick a point on Axis near the curve to keep vector sizes small
+            if ii == 0 {
+                let to_orig_vec = input_pt - input_origin;
+                on_axis_pt = input_origin + input_axis.dot(to_orig_vec) * input_axis;
+            }
+
+            // Input vec from SamplePt to OnAxisPt
+            let on_axis_vec = input_pt - on_axis_pt;
+
+            // InputSpace distances to planes perp to Twist axes
+            let axis_plane = input_axis.dot(on_axis_vec);
+
+            // accumulate the range of Plane distances
+            axis_plane_range.add_value(axis_plane);
+
+            // remember when curve is const dist from twist plane
+            let const_axis_plane = axis_plane_range.length() < approx_tol;
+
+            // no work - curve not const distance plane perp to TwistAxis
+            if !const_axis_plane {
+                return Ok(None);
+            }
+        }
+
+        // compute the rotation
+        let to_orig_vec = on_axis_pt - input_origin;
+        let z = input_axis.dot(to_orig_vec);
+        let ang_rad = z * 2.0 * PI / self.twist_period_dist();
+
+        let mut rotate = Axis2Placement::IDENTITY;
+        rotate.rotate_about_axis_at_point(ang_rad, on_axis_pt, input_axis);
+
+        // copy the input curve and rotate it (status ignored)
+        let mut new_curve = input.copy(k)?;
+        ignored(new_curve.transform(k, &rotate, None))?;
+
+        // all done
+        Ok(Some(new_curve))
     }
 
     /// Reads a twist volume from a database stream: the period and the minimum

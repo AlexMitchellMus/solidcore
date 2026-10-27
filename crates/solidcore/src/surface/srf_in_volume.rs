@@ -133,7 +133,7 @@ fn volume_mirror(volume: &mut Volume, plane: &Axis2Placement) -> Result<()> {
 
 /// `SmTransform::LoadAxis2Placement`: the placement of a right-handed, unit,
 /// orthonormal transform (`IsUnitOrthonormal`), else `None` (`SM_ERR`).
-fn transform_axis2_placement(t: &Transform) -> Option<Axis2Placement> {
+pub(crate) fn transform_axis2_placement(t: &Transform) -> Option<Axis2Placement> {
     // init output
     let mut placement = Axis2Placement::default();
     placement.init();
