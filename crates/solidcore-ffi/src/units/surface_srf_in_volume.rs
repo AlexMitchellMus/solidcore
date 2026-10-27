@@ -55,10 +55,10 @@
 //! [`eval`] accepts only what upstream handles without undefined behaviour: finite
 //! values, well-formed clamped B-splines, planes with a non-zero normal, derivative
 //! orders up to 3 (upstream's fixed arrays), a plain `SmVolume` head map only where
-//! nothing copies the volume (its `Copy` fails and the copy would share it), and for
-//! the `CopyCtor` additionally only where its result does not own the volume (the
-//! copy constructor attempts that copy even for owner flag 1, but a result with owner
-//! flag 1 does not own what the failed `Copy` left shared),
+//! nothing copies the volume (its `Copy` fails and the copy would share it), except
+//! for `Copy` and `CopyCtor` where the result must not own the shared volume (the
+//! copy constructor attempts that copy even for owner flag 1, whose result does not
+//! own what the failed `Copy` left shared),
 //! `STEPInversion` through any map kind (no domain box reaches the volume's
 //! inverse solves), domains and split
 //! parameters inside the base B-spline's domain, placements with independent axes, and
@@ -455,8 +455,10 @@ fn validate_op(op: Op, rd: &mut Reader<'_>, c: &Block) -> Result<(), FfiError> {
             inside(rd, c, v_dir)?;
         }
         Op::Copy => {
-            if c.head_base {
-                return Err(bad("copy of a plain volume"));
+            // Copy uses the copy constructor. A failed plain-volume Copy leaves
+            // the pointer shared, safe only when the result does not own it.
+            if c.head_base && c.owns_volume {
+                return Err(bad("copy owns a plain volume"));
             }
         }
         Op::CopyCtor => {
@@ -569,8 +571,8 @@ pub fn eval(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     call_with_buffer(4096, |buf, len| {
         // SAFETY: input is valid for input.len() reads and holds exactly what the shim
         // reads for `op` (validated above: well-formed blocks, every index, count and
-        // flag the shim passes to upstream, no copy of a plain volume); buf is valid
-        // for buf.len() writes and the shim honours the capacity; len is valid.
+        // flag the shim passes to upstream, no owning copy of a plain volume); buf is
+        // valid for buf.len() writes and the shim honours the capacity; len is valid.
         unsafe {
             sys::sc_surface_srf_in_volume_eval(
                 op.code(),
@@ -588,10 +590,11 @@ pub fn eval(op: Op, input: &[f64]) -> Result<Vec<f64>, FfiError> {
 mod tests {
     use super::*;
 
-    /// An object block: a unit bilinear B-spline surface and one volume map (a plain
-    /// `SmVolume` or an identity `SmTransform`), `in_param = false`, the given
-    /// constructor copy flag and owner flag.
-    fn copy_ctor_input(plain_volume: bool, copy: u64, owner: u64) -> Vec<f64> {
+    /// An object block for the `Copy` / `CopyCtor` guard tests: a unit bilinear
+    /// B-spline surface and one volume map (a plain `SmVolume` or an identity
+    /// `SmTransform`), `in_param = false`, the given constructor copy flag and owner
+    /// flag.
+    fn object_input(plain_volume: bool, copy: u64, owner: u64) -> Vec<f64> {
         // surface block kind 0: `oob form n m p q r s cpts u v`
         let mut v = vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 3.0, 3.0];
         v.extend([
@@ -619,7 +622,7 @@ mod tests {
         for owner in [0, 1] {
             for copy in [0, 1] {
                 assert!(
-                    validate(Op::CopyCtor, &copy_ctor_input(true, copy, owner)).is_ok(),
+                    validate(Op::CopyCtor, &object_input(true, copy, owner)).is_ok(),
                     "plain volume, copy {copy}, owner {owner}"
                 );
             }
@@ -627,7 +630,7 @@ mod tests {
             for copy in [2, 3] {
                 assert!(
                     matches!(
-                        validate(Op::CopyCtor, &copy_ctor_input(true, copy, owner)),
+                        validate(Op::CopyCtor, &object_input(true, copy, owner)),
                         Err(FfiError::InvalidArgument(_))
                     ),
                     "constructor copy {copy} of a plain volume, owner {owner}"
@@ -637,13 +640,63 @@ mod tests {
         // an owning copy would delete the volume the failed `Copy` left shared
         for owner in [2, 3] {
             assert!(matches!(
-                validate(Op::CopyCtor, &copy_ctor_input(true, 0, owner)),
+                validate(Op::CopyCtor, &object_input(true, 0, owner)),
                 Err(FfiError::InvalidArgument(_))
             ));
         }
         // the same owner flags are fine with a copyable volume
         for owner in [0, 3] {
-            assert!(validate(Op::CopyCtor, &copy_ctor_input(false, 0, owner)).is_ok());
+            assert!(validate(Op::CopyCtor, &object_input(false, 0, owner)).is_ok());
+        }
+    }
+
+    /// The virtual `Copy` runs the same copy constructor as `CopyCtor`, so the same
+    /// domain is defined: a plain `SmVolume` head only where the result's effective
+    /// owner flag is 0 or 1. The base `SmVolume::Copy` fails without setting the output
+    /// pointer, so a non-owning result shares the volume safely; an owning result (2 or
+    /// 3) would delete the original's volume.
+    #[test]
+    fn copy_accepts_only_a_non_owning_plain_volume_result() {
+        // a failed base `Copy` leaves the pointer shared: safe while the copy does not
+        // own the volume (owner flags 0 and 1)
+        for owner in [0, 1] {
+            for copy in [0, 1] {
+                assert!(
+                    validate(Op::Copy, &object_input(true, copy, owner)).is_ok(),
+                    "plain volume, copy {copy}, owner {owner}"
+                );
+            }
+            // the constructor's own rule still rejects copying a plain volume
+            for copy in [2, 3] {
+                assert!(
+                    matches!(
+                        validate(Op::Copy, &object_input(true, copy, owner)),
+                        Err(FfiError::InvalidArgument(_))
+                    ),
+                    "constructor copy {copy} of a plain volume, owner {owner}"
+                );
+            }
+        }
+        // an owning copy would delete the volume the failed `Copy` left shared
+        for owner in [2, 3] {
+            for copy in [0, 1] {
+                assert!(
+                    matches!(
+                        validate(Op::Copy, &object_input(true, copy, owner)),
+                        Err(FfiError::InvalidArgument(_))
+                    ),
+                    "owning copy of a plain volume, copy {copy}, owner {owner}"
+                );
+            }
+        }
+        // a copyable volume head keeps every effective owner flag defined
+        for owner in 0..=3 {
+            for copy in 0..=3 {
+                assert!(
+                    validate(Op::Copy, &object_input(false, copy, owner)).is_ok(),
+                    "transform volume, copy {copy}, owner {owner}"
+                );
+            }
         }
     }
 }

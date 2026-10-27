@@ -48,6 +48,12 @@
 //! setting the output pointer, so a copy that does not own the volume shares it; owner 2
 //! and 3 are rejected (an owning copy would delete the original's volume), and so is the
 //! constructor's own copy of a plain volume.
+//!
+//! Virtual `Copy` invokes the same copy constructor, so its plain-volume domain
+//! also admits effective owner flags 0/1 and rejects owning results 2/3.
+//! `fixtures/surface.srf_in_volume/copy_volume_domain.json` compares real copied
+//! surface and volume-chain state, including raw knots and a non-identity next map.
+//! Existing generated inputs retain their copyable-head sampling domain.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1597,6 +1603,11 @@ impl UnitDiff for Runner {
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
         for _ in 0..64 {
             let i = gen_case(rng);
+            // Keep generated cases in their established copyable-head domain;
+            // the newly admitted plain-volume Copy domain has named fixtures.
+            if matches!(i.op, OpIn::Copy) && i.siv.volume.first().is_some_and(|map| map.kind == 0) {
+                continue;
+            }
             let Ok((op, input)) = cpp_input(&i) else {
                 continue;
             };
