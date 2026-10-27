@@ -2667,9 +2667,15 @@ fn gen_corner(rng: &mut Rng) -> Inputs {
         Vec::new()
     };
     let queries: Vec<usize> = if nf > 0 {
-        (0..rng.below(3))
+        let mut q: Vec<usize> = (0..rng.below(3))
             .map(|_| rng.below(nf as u64) as usize)
-            .collect()
+            .collect();
+        // an ExtSurface case with no query compares an empty record on both sides;
+        // query face 0 instead (no extra rng draw, so the stream is unchanged)
+        if q.is_empty() {
+            q.push(0);
+        }
+        q
     } else {
         Vec::new()
     };
