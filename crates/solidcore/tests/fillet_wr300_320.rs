@@ -8,6 +8,7 @@
     clippy::indexing_slicing
 )] // test helpers
 use solidcore::blend::fillet_executive::session::FilletSession;
+use solidcore::blend::fillet_geom::p1::FilletErrorType;
 use solidcore::blend::fillet_standard_solver::p1::FilletLaw;
 use solidcore::boolean::api_brep::boolean_difference;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
@@ -271,11 +272,11 @@ fn retry_rail_search_holds_the_radius_as_the_first_does() {
     }
 }
 
-/// `SM_FILERR_NO_ROOM`, the fork's error type for a blend larger than its faces.
-const NO_ROOM: i32 = 8;
+/// `FilletErrorType::NoRoom`, the fork's error type for a blend larger than its faces.
+const NO_ROOM: i32 = FilletErrorType::NoRoom as i32;
 
 /// Blends of 6 and 9 run across the openings: SMLib builds a body that is no manifold
-/// solid. With `fillet_refuse_rails_leaving_faces` they are refused (`SM_FILERR_NO_ROOM`);
+/// solid. With `fillet_refuse_rails_leaving_faces` they are refused (`NoRoom`);
 /// the sizes that fit are unchanged.
 #[test]
 fn blends_larger_than_their_faces_are_refused() {
@@ -327,7 +328,7 @@ fn cylinder_rim(k: &mut Kernel, size: f64, xsect: u32) -> Outcome {
 /// Blends as wide as the face they roll on: the chamfer's cone would end in a point at the
 /// top's centre, where SMLib goes on (the fork's `FacesOutlastTheirBlends`, WR-320). With
 /// `fillet_refuse_face_consuming_blends` a chamfer of 10 on the top rim of a cylinder of
-/// radius 10 is refused (`SM_FILERR_NO_ROOM`). A round of 10 closes the top as a hemisphere
+/// radius 10 is refused (`NoRoom`). A round of 10 closes the top as a hemisphere
 /// tangent to it, as the fork's amendment (tangency-labs/smlib `8bffb23`) lets it, and
 /// builds either way, as does everything below the full width.
 #[test]

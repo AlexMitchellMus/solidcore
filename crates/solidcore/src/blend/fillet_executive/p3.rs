@@ -36,7 +36,7 @@
 use std::collections::BTreeMap;
 
 use crate::blend::fillet_executive::p1::ExecutiveObjects;
-use crate::blend::fillet_geom::p1::{FilStatus, FilletCornerType, FilletEdgeType};
+use crate::blend::fillet_geom::p1::{FilStatus, FilletCornerType, FilletEdgeType, FilletErrorType};
 use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::error::{EntityRef, Result, SolidError};
@@ -2211,18 +2211,15 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         Ok(())
     }
 
-    /// Refuse blends larger than the faces they roll on, after every solver's fillet
-    /// geometry exists (not upstream; the fork's checks in `CreateFilletBrep`, each
-    /// opt-in). Both fail with `SM_FILERR_NO_ROOM` (8):
-    /// - `fixes.fillet_refuse_rails_leaving_faces` (WR-302, tangency-labs/solidcore#841
-    ///   and #1024): a solver whose rail leaves the face it rolls on between its ends
-    ///   (`SmFilletSolver::RailsFitTheirFaces`);
-    /// - `fixes.fillet_refuse_face_consuming_blends` (WR-320, #879): blends that take
-    ///   the whole of a face, some meeting it at an angle
-    ///   (`SmFilletExecutive::FacesOutlastTheirBlends`).
+    /// Refuse blends whose rails leave the faces they roll on, after every solver's fillet
+    /// geometry exists (not upstream; the fork's check in `CreateFilletBrep`, opt-in
+    /// `fixes.fillet_refuse_rails_leaving_faces`, WR-302, tangency-labs/solidcore#841 and
+    /// #1024): a solver whose rail leaves the face it rolls on between its ends
+    /// (`SmFilletSolver::RailsFitTheirFaces`). Fails with `FilletErrorType::NoRoom` (8, not
+    /// an upstream code).
     ///
     /// # Errors
-    /// The refusal as `SM_ERR`, noted in the error info; those of the checks.
+    /// The refusal as `SM_ERR`, noted in the error info; those of the check.
     pub fn refuse_blends_larger_than_faces(
         &mut self,
         k: &mut Kernel,
@@ -2239,6 +2236,26 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 index += 1;
             }
         }
+        Ok(())
+    }
+
+    /// Refuse blends that take the whole of a face they roll on, some meeting it at an angle
+    /// (not upstream; opt-in `fixes.fillet_refuse_face_consuming_blends`, WR-320, #879:
+    /// `SmFilletExecutive::FacesOutlastTheirBlends`). The fork calls it in `CreateFilletBrep`
+    /// after the fillet faces are built and before they are stitched (the diff in #879),
+    /// on the trimmed rails; here it runs once the geometry exists, which is earlier. The
+    /// cylinder top case of the tests already fails in the port at the corner edges
+    /// (`SM_FILERR_VERTEX_PROBLEM`) before the fork's call site, so a later call would
+    /// lose the `NoRoom` status there (to be compared against C++). Fails with
+    /// `FilletErrorType::NoRoom`.
+    ///
+    /// # Errors
+    /// The refusal as `SM_ERR`, noted in the error info; those of the check.
+    pub fn refuse_face_consuming_blends(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl SolverGeometryAccess<O>,
+    ) -> Result<()> {
         if k.fixes.fillet_refuse_face_consuming_blends
             && !access.geometry_faces_outlast(k, &self.solvers)?
         {
@@ -2249,10 +2266,10 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         Ok(())
     }
 
-    /// `NoteError(SM_FILERR_NO_ROOM, comment)`, then `SM_ERR`.
+    /// `NoteError(NoRoom, comment)` (`NoRoom` is not an upstream code), then `SM_ERR`.
     fn record_no_room(&mut self, comment: &str) -> Result<()> {
         // The generic NoteError overload changes exactly these two members.
-        self.error.code = 8; // SM_FILERR_NO_ROOM
+        self.error.code = FilletErrorType::NoRoom as i32;
         self.error.comment = comment.into();
         Err(failure())
     }
@@ -2476,6 +2493,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         self.adjust_corner_topology(k, access)?;
         self.calculate_solver_geometry(k, access)?;
         self.refuse_blends_larger_than_faces(k, access)?;
+        self.refuse_face_consuming_blends(k, access)?;
         self.calculate_corner_edges(k, access)?;
         self.trim_solver_rails(k, access)?;
         self.classify_solver_rails(k, access)?;

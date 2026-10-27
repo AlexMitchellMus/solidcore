@@ -1794,7 +1794,7 @@ impl<'target> FilletSession<'target> {
     }
 
     /// `GetFilletErrorInfo`: what the executive recorded of its last failure
-    /// (`SmFilletErrorInfo`; the code is the `SmFilletErrorType` value, 8 for the
+    /// (`SmFilletErrorInfo`; the code is the `SmFilletErrorType` value, `FilletErrorType::NoRoom` = 8 for the
     /// fork's `SM_FILERR_NO_ROOM`).
     #[must_use]
     pub const fn error_info(&self) -> &ErrorInfo<FilletObject> {
