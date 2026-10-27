@@ -570,7 +570,7 @@ impl FilletBrep {
         let face = self.fillet_edge(e)?.original_face().ok_or_else(nul)?;
         let surf = face2::surface(target, face)?.ok_or_else(nul)?;
         let tol = face2::tolerance(target, face)?;
-        let uv_domain = surf.natural_uv_domain();
+        let uv_domain = surf.natural_uv_domain_with_nurb(k)?;
         let (start_fv, end_fv) = self.edge_end_vertices(e, OP_BLENDING)?;
 
         let prim_eu = primary_edgeuse(self.brep(), e)?.ok_or_else(nul)?;
@@ -958,7 +958,7 @@ impl FilletBrep {
             .clone();
 
         // Drop two end points to fillet
-        let uv_domain = fillet_surface.natural_uv_domain();
+        let uv_domain = fillet_surface.natural_uv_domain_with_nurb(k)?;
 
         let p1 = self.vertex_point(start_fv)?;
         let solutions1 = fillet_surface.global_point_solve::<NoObject>(
@@ -1187,7 +1187,7 @@ impl FilletBrep {
         } else {
             // RailUVCurve as the appropriate FilletSurface IsoParameterCurve
             let surface = self.geom(fillet_geom)?.fillet_surface()?.ok_or_else(nul)?;
-            let uv_domain = surface.natural_uv_domain();
+            let uv_domain = surface.natural_uv_domain_with_nurb(k)?;
 
             // compare RailPoint to a FilletSurface Point to see if rail runs along
             // sUVDomain.MinY IsoParamCurve
@@ -1819,7 +1819,7 @@ impl FilletBrep {
             .geom(g)?
             .fillet_surface()?
             .ok_or_else(|| SolidError::null_pointer(OP_SETUP))?;
-        let uv_domain = surface.natural_uv_domain();
+        let uv_domain = surface.natural_uv_domain_with_nurb(k)?;
         let mut uv = uv_domain.evaluate(end_index as f64, rail_index as f64);
         uv.x = parameter;
 
@@ -1883,6 +1883,7 @@ impl FilletBrep {
         guess_edge_parameter: f64,
         tsect: &mut TsectPnt,
     ) -> Result<Option<f64>> {
+        let rollover = self.rollover_guesses(g)?;
         let geometry = self.geom_mut(g)?;
         // NER( pFS )
         if geometry.fillet_solver().is_none() {
@@ -1891,9 +1892,10 @@ impl FilletBrep {
 
         // Tell our FilletSolver to use our surfaces.
         // If there's anything there already, restore it when we're done.
-        let saved_fg = solver
-            .solver_mut()
-            .lend_geometry_surfaces(g, &mut geometry.off_surfs);
+        let saved_fg =
+            solver
+                .solver_mut()
+                .lend_geometry_surfaces(g, rollover, &mut geometry.off_surfs);
 
         let stat = FilletSolver::rail_edgeuse_intersect(
             solver,
@@ -1991,11 +1993,12 @@ impl FilletBrep {
             return Err(SolidError::null_pointer(OP_RAIL_EU));
         }
         // pFS->SetFilletGeomForSurfaces(this), its surfaces lent to the solver
-        let saved = solver
-            .solver_mut()
-            .lend_geometry_surfaces(g, &mut geometry.off_surfs);
+        let saved =
+            solver
+                .solver_mut()
+                .lend_geometry_surfaces(g, rollover, &mut geometry.off_surfs);
         let result = solver.rail_edgeuse_intersect_on_geometry(
-            k, geometry, rollover, target, rail_index, edgeuse, guess, tsect,
+            k, geometry, target, rail_index, edgeuse, guess, tsect,
         );
         solver
             .solver_mut()

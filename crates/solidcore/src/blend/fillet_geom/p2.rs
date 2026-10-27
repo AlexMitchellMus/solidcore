@@ -796,8 +796,8 @@ pub fn srf_srf_intersection(
     let mut surface1_uv_curves: Vec<Option<Curve>> = Vec::new();
     let mut surface2_uv_curves: Vec<Option<Curve>> = Vec::new();
 
-    let domain1 = surf1.natural_uv_domain();
-    let domain2 = surf2.natural_uv_domain();
+    let domain1 = surf1.natural_uv_domain_with_nurb(k)?;
+    let domain2 = surf2.natural_uv_domain_with_nurb(k)?;
     // GetNaturalUVDomain makes a plane's NURB in place (through a const cast) and keeps
     // it; the port's query does not, so the routine continues on such copies
     let surf1 = &*with_lazy_nurb(surf1);
@@ -1610,6 +1610,16 @@ impl FilletBrep {
                 let ext_factor = fs.extension_factor();
                 fs.set_extension_factor(2.0 * ext_factor);
 
+                // WR-300 (#1023): upstream's retry holds the radius at a corner not
+                // calculated as constant radius too; the fix holds it only as the first
+                // search did.
+                let retry_si = if k.fixes.fillet_retry_radius_as_first
+                    && !corners.corner(corner)?.is_calc_as_const_rad()
+                {
+                    None
+                } else {
+                    Some(si)
+                };
                 for &guess in &guess_edge_parameters {
                     let _ = solvers.solver(si)?;
                     let r = rail_edgeuse_intersect(
@@ -1618,7 +1628,7 @@ impl FilletBrep {
                         g1,
                         solvers,
                         target,
-                        Some(si),
+                        retry_si,
                         rail_index,
                         side_eu1,
                         guess,
@@ -1976,8 +1986,8 @@ impl FilletBrep {
             }
         }
 
-        let domain1 = solver_surface(fs1, 0, OP)?.natural_uv_domain();
-        let domain2 = solver_surface(fs1, 1, OP)?.natural_uv_domain();
+        let domain1 = solver_surface(fs1, 0, OP)?.natural_uv_domain_with_nurb(k)?;
+        let domain2 = solver_surface(fs1, 1, OP)?.natural_uv_domain_with_nurb(k)?;
         let mut found_solution = false;
 
         // If the solver doesn't succeed the first time, step off along the edge.
@@ -2142,8 +2152,8 @@ impl FilletBrep {
 
         let surf1 = solver_surface(fs, 0, OP)?;
         let surf2 = solver_surface(fs, 1, OP)?;
-        let domain1 = surf1.natural_uv_domain();
-        let domain2 = surf2.natural_uv_domain();
+        let domain1 = surf1.natural_uv_domain_with_nurb(k)?;
+        let domain2 = surf2.natural_uv_domain_with_nurb(k)?;
         let (vu, tsect) = self.rail_end_tsect(v, Some(fillet_geom), None, OP)?;
 
         let tol = fs.this_approx_tol_3d();
@@ -2362,7 +2372,7 @@ impl FilletBrep {
             .clone();
         let face_srf = &face_srf;
         let surf_net = b_spline_net(face_srf).ok_or_else(|| SolidError::null_pointer(OP))?;
-        let uv_domain = face_srf.natural_uv_domain();
+        let uv_domain = face_srf.natural_uv_domain_with_nurb(k)?;
         let tol = face2::tolerance(target, face)?;
 
         // Determine if we want to work on 2D or 3D

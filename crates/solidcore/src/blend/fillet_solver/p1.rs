@@ -278,6 +278,21 @@ impl FilletSurfaceGenerator {
         Self::blend_curve(1.5, 1)
     }
 
+    /// `MeetsItsFacesTangentially` (virtual; the fork's, tangency-labs/smlib `8bffb23`):
+    /// whether each cross section is tangent, at its ends on the rails, to the faces the
+    /// fillet rolls on. The linear section cuts across both faces, an arc about the ball's
+    /// centre is square to the faces at each rail unless mirrored about the rails' chord,
+    /// and a blend curve takes its end tangents from that arc; the base generator and any
+    /// custom one are not known to.
+    #[must_use]
+    pub const fn meets_its_faces_tangentially(&self) -> bool {
+        match self {
+            Self::Circular(g) => !g.mirror,
+            Self::BlendCurve(_) => true,
+            Self::Base | Self::Linear | Self::EiffelTower => false,
+        }
+    }
+
     /// `GetFilletSurfaceGeneratorType` (virtual).
     #[must_use]
     pub const fn fillet_surface_generator_type(&self) -> FilletSurfaceGeneratorType {
@@ -478,6 +493,10 @@ pub struct FilletSolver {
     /// The lent offset surfaces of [`FilletSolver::lent_geometry`], each with a transient
     /// identity key (`SetOffsetsData` compares keys).
     pub(crate) lent_surfaces: [Option<OffsetSurfaceSlot>; 2],
+    /// The tangent-rollover guesses of the geometry for the surfaces, taken by the
+    /// scope that set it ([`FilletSolver::lend_geometry_surfaces`]); upstream's
+    /// `SmConstantRadiusFS::LoadInitialValues` reads them through `m_pFGForSurfaces`.
+    pub(crate) lent_rollover: Option<(FilletGeomId, RolloverGuesses)>,
     /// `m_dSavedOffsets` (not initialised upstream; `0.0` here).
     pub saved_offsets: [f64; 2],
     /// `m_dSurfaceExtensionFactor` (`0.5`).
@@ -534,6 +553,7 @@ impl FilletSolver {
             fg_for_surfaces: None,
             lent_geometry: None,
             lent_surfaces: [None, None],
+            lent_rollover: None,
             saved_offsets: [0.0, 0.0],
             surface_extension_factor: 0.5,
             conversion_tol: EFF_ZERO / 10.0,
@@ -1812,7 +1832,6 @@ pub trait FilletSolverOps: AsFilletSolverOps {
         &mut self,
         k: &Kernel,
         _geometry: &mut FilletGeom,
-        _rollover: RolloverGuesses,
         b: &mut Brep,
         rail_index: usize,
         edgeuse: EdgeuseId,
@@ -2945,15 +2964,14 @@ pub enum AnalyticTestSurface<'a> {
     Torus(&'a Torus),
 }
 
-/// `sm_TestAnalyticSurface(pSurface)`: a plane or cone by type (`GetType()`), or a
-/// surface that is planar (`IsPlanar()`, tolerance `SM_EFF_ZERO`) or a canonical cone
-/// (`SmCone::IsNurbSurfaceCone`). A cylinder is not `SmCone_TYPE`.
+/// `sm_TestAnalyticSurface(pSurface)`: a plane by type (`GetType()`), a cone or
+/// cylinder (`IsKindOf(SmCone_TYPE)`), or a surface that is planar (`IsPlanar()`,
+/// tolerance `SM_EFF_ZERO`) or a canonical cone (`SmCone::IsNurbSurfaceCone`).
 ///
 /// # Errors
 ///
-/// Those of `IsPlanar` and of the cone test (`SmCone::IsNurbSurfaceCone`), except a
-/// failing iso curve status, which upstream returns as the `SmBoolean` and which
-/// reads as `true`; `InvalidInput` for a surface kind that is not an
+/// Those of `IsPlanar` and of the cone test (`SmCone::IsNurbSurfaceCone`);
+/// `InvalidInput` for a surface kind that is not an
 /// `SmBSplineSurface` (a plane is accepted by type before).
 pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Result<bool> {
     use crate::surface::surface::p2::{CONE_TYPE, PLANE_TYPE};
@@ -2964,7 +2982,16 @@ pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Re
         AnalyticTestSurface::Torus(t) => t.type_code(),
     };
     // return TRUE when surface type is Plane or Cone
-    if type_code == PLANE_TYPE || type_code == CONE_TYPE {
+    if type_code == PLANE_TYPE {
+        return Ok(true);
+    }
+    let kind_of_cone = match surface {
+        AnalyticTestSurface::Surface(s) => s.is_kind_of(CONE_TYPE)?,
+        AnalyticTestSurface::Cone(c) => c.is_kind_of(CONE_TYPE)?,
+        AnalyticTestSurface::Sphere(s) => s.is_kind_of(CONE_TYPE)?,
+        AnalyticTestSurface::Torus(t) => t.is_kind_of(CONE_TYPE)?,
+    };
+    if kind_of_cone {
         return Ok(true);
     }
 
@@ -3003,13 +3030,7 @@ pub fn test_analytic_surface(k: &Kernel, surface: AnalyticTestSurface<'_>) -> Re
         AnalyticTestSurface::Sphere(s) => s.base().base(),
         AnalyticTestSurface::Torus(t) => t.base().base(),
     };
-    match Cone::is_nurb_surface_cone(k, bss, 1.0) {
-        Ok(None) => Ok(false),
-        // upstream returns the iso curve status as the SmBoolean: a failing (non-zero)
-        // status reads as TRUE
-        Ok(Some(_)) | Err(SolidError::Upstream { .. }) => Ok(true),
-        Err(e) => Err(e),
-    }
+    Ok(Cone::is_nurb_surface_cone(k, bss, 1.0)?.is_some())
 }
 
 /// `SE(pEU->EvaluateBinormal(dParameter, FALSE, rPnt, rBinVec, NULL, &rFaceuseNormal))`

@@ -1461,7 +1461,7 @@ impl BSplineSurface {
     /// # Errors
     ///
     /// `SM_ERR_NULL_POINTER` without NURB; the errors of
-    /// [`BSplineSurface::set_canonical`].
+    /// [`BSplineSurface::set_canonical`] (the swap bit is then restored).
     pub fn swap_uv(&mut self) -> Result<()> {
         // get current surface description
         let c = self.canonical()?;
@@ -1476,8 +1476,8 @@ impl BSplineSurface {
         transpose(&mut cpts, num_v_cpts);
         transpose(&mut weights, num_v_cpts);
 
-        // Transpose Surface definition
-        self.set_canonical(&CanonicalSurfaceData {
+        // Transpose Surface definition; on failure, restore the bit
+        let status = self.set_canonical(&CanonicalSurfaceData {
             u_degree: c.v_degree,
             v_degree: c.u_degree,
             control_points: &cpts,
@@ -1489,7 +1489,11 @@ impl BSplineSurface {
             knot_type: c.knot_type,
             weights: Some(&weights),
             uv_domain: None,
-        })
+        });
+        if status.is_err() {
+            self.toggle_swap_uv_bit();
+        }
+        status
     }
 
     /// Changes the natural domain to `new_step_uv_domain` (`AdjustSTEPUVDomain`):
@@ -1903,7 +1907,7 @@ mod tests {
                 // Only swapped, unequal domains make Reparameterize build the NURB.
                 assert_eq!(extrusion.base().gw_nurb().is_some(), swap_uv);
             }
-            assert_eq!(copy.natural_uv_domain(), domain);
+            assert_eq!(copy.natural_uv_domain_if_built(), domain);
             for ((u, v), expected) in samples.into_iter().zip(before) {
                 let uv = domain.evaluate(u, v);
                 assert_eq!(s.evaluate_point(uv).unwrap(), expected);
