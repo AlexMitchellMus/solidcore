@@ -265,6 +265,8 @@ pub struct UpstreamFixes {
     pub analytic_copy_keeps_parameterization: bool,
     /// `SmFilletSolver::ComputePointValues`' bigger-step retry of the forward finite-difference step solves with the bigger step (`dBigStep`), not with the small `dStep` again (WR-456, #1181).
     pub fillet_point_bigger_step_retry: bool,
+    /// A fillet's trace also runs through the filleted edge's end where a rail ends on an extended edge, so the surface reaches that end (#1022, WR-468).
+    pub fillet_through_extended_rail_end: bool,
     /// `N_FillNSidedHole` (through `SmBSplineSurface::CreateCornerBlend`) shortens the cross-boundary derivative across an inner curve where its cubic blend from the opposite boundary would leave that boundary's tangent plane, so a corner patch (a fillet setback corner) stays inside the faces it meets (WR-461, #1170).
     pub corner_blend_stays_inside_neighbours: bool,
 }
