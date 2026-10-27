@@ -701,7 +701,7 @@ impl Surface {
         self.check_evaluation_copy_depth(depth)?;
         let kind = match &self.kind {
             SurfaceKind::BSpline(s) => SurfaceKind::BSpline(s.clone_exact()),
-            SurfaceKind::Plane(s) => SurfaceKind::Plane(s.clone_exact()),
+            SurfaceKind::Plane(s) => SurfaceKind::Plane(s.clone_shared()),
             SurfaceKind::Cone(s) => SurfaceKind::Cone(Box::new(Cone {
                 rev: s.rev().clone_for_evaluation(depth + 1)?,
                 base_radius: s.base_radius,
@@ -725,7 +725,7 @@ impl Surface {
                 SurfaceKind::SurfOfRevolution(Box::new(s.clone_for_evaluation(depth + 1)?))
             }
             SurfaceKind::SurfOfExtrusion(s) => {
-                SurfaceKind::SurfOfExtrusion(Box::new(s.clone_for_evaluation(depth + 1)?))
+                SurfaceKind::SurfOfExtrusion(Box::new(s.clone_for_evaluation_shared(depth + 1)?))
             }
             SurfaceKind::Step(s) => SurfaceKind::Step(s.clone_for_evaluation(depth + 1)?),
             SurfaceKind::CurveBounded(s) => {
@@ -754,7 +754,7 @@ impl Surface {
     pub(crate) fn clone_exact_bounded(&self) -> Self {
         let kind = match &self.kind {
             SurfaceKind::BSpline(s) => SurfaceKind::BSpline(s.clone_exact()),
-            SurfaceKind::Plane(s) => SurfaceKind::Plane(s.clone_exact()),
+            SurfaceKind::Plane(s) => SurfaceKind::Plane(s.clone_shared()),
             SurfaceKind::Cone(s) => {
                 let mut c = s.as_ref().clone();
                 c.rev = s.rev().clone_exact();
@@ -777,7 +777,9 @@ impl Surface {
                 SurfaceKind::SurfOfRevolution(Box::new(s.clone_exact()))
             }
             SurfaceKind::SurfOfExtrusion(s) => {
-                SurfaceKind::SurfOfExtrusion(Box::new(s.clone_exact()))
+                let mut c = s.clone_exact();
+                c.base = s.base().clone_exact_shared();
+                SurfaceKind::SurfOfExtrusion(Box::new(c))
             }
             SurfaceKind::Step(s) => SurfaceKind::Step(s.clone_exact_bounded()),
             SurfaceKind::CurveBounded(s) => SurfaceKind::CurveBounded(s.clone_exact_bounded()),
@@ -1155,9 +1157,16 @@ impl Surface {
         &self.kind
     }
 
-    /// The concrete kind, mutable (forgets a NURB made by [`Surface::kind_with_nurb`]).
+    /// The concrete kind, mutable (forgets a NURB made by [`Surface::kind_with_nurb`]
+    /// into the side memo, and detaches a plane's or extrusion's NURB cell from the
+    /// evaluation copies sharing it, so an edit stays with this surface).
     pub fn kind_mut(&mut self) -> &mut SurfaceKind {
         self.made_nurb.reset();
+        match &mut self.kind {
+            SurfaceKind::Plane(s) => s.detach_nurb(),
+            SurfaceKind::SurfOfExtrusion(s) => s.detach_nurb(),
+            _ => {}
+        }
         // an edit makes another surface value: start an empty boundary memo
         self.boundary_memo = BoundaryMemo::new();
         &mut self.kind

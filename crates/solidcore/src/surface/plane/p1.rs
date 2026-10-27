@@ -282,14 +282,21 @@ impl Plane {
         self.member_copy()
     }
 
-    /// A private solver copy without constructing or fixing the NURBS representation.
-    pub(crate) fn clone_exact(&self) -> Self {
+    /// An evaluation copy that stands for this plane object (upstream's pointer to it):
+    /// exact, and sharing this plane's NURB cell, so a NURB a read-only query makes
+    /// through the copy is kept on this plane, as upstream keeps it on the object.
+    pub(crate) fn clone_shared(&self) -> Self {
         Self {
-            base: self.base.clone_exact(),
+            base: self.base.clone_exact_shared(),
             position: self.position,
             anal_uv_domain: self.anal_uv_domain,
             uv_scale: self.uv_scale,
         }
+    }
+
+    /// Detaches a NURB cell shared with evaluation copies ([`Plane::clone_shared`]).
+    pub(crate) fn detach_nurb(&mut self) {
+        self.base.detach_nurb();
     }
 
     /// A copy of every member as is (no NURB is made).

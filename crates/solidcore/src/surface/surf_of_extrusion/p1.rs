@@ -355,6 +355,21 @@ impl SurfOfExtrusion {
         })
     }
 
+    /// [`SurfOfExtrusion::clone_for_evaluation`] for a copy that stands for this surface
+    /// object (upstream's pointer to it): it shares this surface's NURB cell, so a NURB a
+    /// read-only query makes through the copy is kept on this surface too.
+    pub(crate) fn clone_for_evaluation_shared(&self, depth: usize) -> Result<Self> {
+        let mut copy = self.clone_for_evaluation(depth)?;
+        copy.base = self.base.clone_exact_shared();
+        Ok(copy)
+    }
+
+    /// Detaches a NURB cell shared with evaluation copies
+    /// ([`SurfOfExtrusion::clone_for_evaluation_shared`]).
+    pub(crate) fn detach_nurb(&mut self) {
+        self.base.detach_nurb();
+    }
+
     /// `SmSurfOfExtrusion_TYPE` (`SURF_BASE_TYPE + 30`).
     pub const TYPE: i64 = SURF_OF_EXTRUSION_TYPE;
 
@@ -2316,12 +2331,15 @@ mod tests {
         )
         .unwrap();
         assert!(lazy.base().gw_nurb().is_none());
-        let mut surf = Surface::from(lazy);
+        let surf = Surface::from(lazy);
+        // a lazy exact copy: makes its own NURB afresh
         let fresh = |surf: &Surface| {
             let SurfaceKind::SurfOfExtrusion(e) = surf.kind() else {
                 panic!("an extrusion");
             };
-            Surface::from(e.clone_exact())
+            let mut c = e.clone_exact();
+            c.base.nurb.take();
+            Surface::from(c)
         };
         let eval = |surf: &Surface, uv: Point2| -> Vec<u64> {
             let mut out = Vec::new();
@@ -2350,22 +2368,18 @@ mod tests {
                 );
             }
         }
-        assert!(surf.has_made_nurb(), "the made NURB is kept");
-        // mutate, then evaluate: the kept NURB must not survive the edit
-        let SurfaceKind::SurfOfExtrusion(e) = surf.kind_mut() else {
+        // the made NURB is kept on the extrusion itself (no side memo), as upstream
+        // keeps it on the object
+        assert!(!surf.has_made_nurb());
+        let SurfaceKind::SurfOfExtrusion(e) = surf.kind() else {
             panic!("an extrusion");
         };
-        e.extrusion_vec = Vec3::new(0.0, 0.5, 3.0);
-        assert!(!surf.has_made_nurb(), "an edit empties the kept NURB");
-        for &uv in &uvs {
-            assert_eq!(
-                eval(&surf, uv),
-                eval(&fresh(&surf), uv),
-                "after the edit at {uv:?}"
-            );
-        }
-        // a copy starts without one
-        assert!(!surf.clone().has_made_nurb());
+        assert!(e.base().gw_nurb().is_some(), "the made NURB is kept");
+        // a copy carries it (the copy constructor copies the source's NURB)
+        let SurfaceKind::SurfOfExtrusion(c) = surf.clone().into_kind() else {
+            panic!("an extrusion");
+        };
+        assert!(c.base().gw_nurb().is_some());
     }
 
     /// A planar quadratic B-spline in the z = 0 plane.
@@ -2645,16 +2659,16 @@ mod tests {
         )
         .unwrap();
         assert!(lazy.base().gw_nurb().is_none());
-        let made = lazy.base_with_nurb(&k).unwrap().into_owned();
+        let made = lazy.clone_exact().base_with_nurb(&k).unwrap().into_owned();
         let surf = Surface::from(lazy.clone_exact());
         for param in [SurfParamType::U, SurfParamType::V] {
             let want = made.knots(param, None).unwrap();
+            if param == SurfParamType::U {
+                assert!(surf.knots(param, None).is_err(), "the stored base has none");
+            }
             assert_eq!(surf.knots_with_nurb(&k, param, None).unwrap(), want);
-            assert_ne!(
-                surf.knots(param, None).ok(),
-                Some(want),
-                "the stored base has none"
-            );
+            // the made NURB is kept: the stored base now answers it too
+            assert_eq!(surf.knots(param, None).ok(), Some(want));
         }
         // a STEP surface's knots: its domain ends, each `degree + 1` times
         let step = Surface::from(StepSurface::new(Surface::from(lazy), true).unwrap());
@@ -2684,10 +2698,13 @@ mod tests {
         )
         .unwrap();
         assert!(lazy.base().gw_nurb().is_none());
-        let made = lazy.base_with_nurb(&k).unwrap().into_owned();
+        let made = lazy.clone_exact().base_with_nurb(&k).unwrap().into_owned();
         let surf = Surface::from(lazy.clone_exact());
+        assert!(
+            surf.knots(SurfParamType::U, None).is_err(),
+            "the stored base has none"
+        );
         for param in [SurfParamType::U, SurfParamType::V] {
-            assert!(surf.knots(param, None).is_err(), "the stored base has none");
             let want = made.knots(param, None).unwrap();
             assert_eq!(
                 SurfaceEvaluate::knots(&surf, &k, param, None).unwrap(),
