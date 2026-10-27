@@ -41,8 +41,10 @@
 //! - **Curves.** Upstream's curve arrays hold pointers into the edges and copies are
 //!   made at the end of `MakeFaceBrep`; here the arrays hold clones, and the final
 //!   copies are made the same way (`Copy` for the 3D curves, the copy constructor for
-//!   the UV curves). The fillet surface the new face consumes is a copy (the fillet
-//!   geometry keeps its own). `SetCurve` on a fillet edge applies the
+//!   the UV curves). The retained session transfers the original fillet surface to
+//!   its managed face, recording early destruction and partial installation on
+//!   failure. The legacy indexed API retains its copied-surface contract.
+//!   `SetCurve` on a fillet edge applies the
 //!   `SM_NO_CHANGE_GEOMETRY` resets directly (as `blend.fillet_geom_p1` does: the
 //!   pseudo B-rep has no notification environment) and `SetOwner` of the new curve is
 //!   implied by the edge holding it.
@@ -246,6 +248,7 @@ const fn as_b_spline(c: &Curve) -> Option<&BSplineCurve> {
         | CurveKind::Offset(_)
         | CurveKind::CrvInVolume(_)
         | CurveKind::CrvOnSurf(_)
+        | CurveKind::TangentField(_)
         | CurveKind::Composite(_) => None,
     }
 }
@@ -496,7 +499,7 @@ pub fn create_uv_curve(
     // locals
     let start_pnt = fb.vertex_point(start_fv)?;
     let end_pnt = fb.vertex_point(end_fv)?;
-    let uv_domain = surface.natural_uv_domain();
+    let uv_domain = surface.natural_uv_domain_with_nurb(k)?;
 
     // when asked - create 2 UVTrimCurves running along surface seam
     if create_two_boundary_curves {
@@ -639,7 +642,7 @@ pub fn create_uv_curve(
     let param_tol = (uv_domain.size().max_dimension() + 1.0) * EFF_ZERO;
 
     // the solutions name pSurface (SmFilletGeom.cpp:4461-4504), see UvSurfaceHandle
-    let handle = UvSurfaceHandle(surface.natural_uv_domain());
+    let handle = UvSurfaceHandle(surface.natural_uv_domain_with_nurb(k)?);
     let solve = |pnt: Point3, op: SolverOperation, tol: f64, req: SolutionRequested| {
         surface.global_point_solve(
             k,
@@ -1401,7 +1404,7 @@ impl FilletBrep {
             .fillet_edgeuse(prim)?
             .fillet_geom()
             .ok_or_else(|| SolidError::null_pointer(OP_EXT))?;
-        if self.geom(fillet_geom)?.fillet_surface()?.is_none() {
+        if !self.geom(fillet_geom)?.has_fillet_surface() {
             // Need fillet surface, will process it later
             return Ok(());
         }
@@ -1518,7 +1521,7 @@ impl FilletBrep {
                 .ok_or_else(|| SolidError::null_pointer(OP_EXT))?
                 .clone_for_evaluation()?;
             let tol = fil_solver()?.approx_tol_3d;
-            let domain = surf1.natural_uv_domain();
+            let domain = surf1.natural_uv_domain_with_nurb(k)?;
             for pnt in [pnt1, pnt2] {
                 let solutions =
                     crate::intersect::point_class::live_owned_surface_global_point_solve(
@@ -1703,7 +1706,7 @@ impl FilletBrep {
             .geom(g)?
             .fillet_surface()?
             .ok_or_else(nul)?
-            .natural_uv_domain();
+            .natural_uv_domain_with_nurb(k)?;
         let (geom_type, solver_id, rails, other_rails1, other_rails2, side_eus) = {
             let geom = self.geom(g)?;
             (
@@ -2062,11 +2065,50 @@ impl FilletBrep {
             self.geom_mut(g)?.fillet_surface = Some(location);
             status?;
         } else {
-            // UNPORTED(blend.fillet_geom_p4): original-surface transfer through the cliff trim tool.
-            return Err(SolidError::unported(
-                "SmFilletGeom::MakeFaceBrep (cliff surface transfer)",
-                "blend.fillet_geom_p4",
-            ));
+            use crate::topology::trimming_tools::{
+                trim_surface_with_model_space_curves_transfer, TrimCurvesInput,
+                TrimSurfaceLocation, TrimSurfaceTransfer,
+            };
+
+            let input = TrimCurvesInput {
+                loop_counts: curve_loops,
+                curves: curves_3d,
+                orientations: lists1.orients,
+                loop_points: Vec::new(),
+                uv_domain,
+                surface_orientation: OrientType::Same,
+            };
+            let owned = self.geom_mut(g)?.fillet_surface.take().ok_or_else(nul)?;
+            let super::p1::FilletSurfaceStorage::Owned(surface) = owned else {
+                self.geom_mut(g)?.fillet_surface = Some(owned);
+                return Err(SolidError::invalid_input(
+                    OP_FACE,
+                    "surface already transferred",
+                ));
+            };
+            let mut transfer = TrimSurfaceTransfer::new(*surface);
+            let status = trim_surface_with_model_space_curves_transfer(
+                k,
+                brep,
+                region,
+                d3d_tol,
+                input,
+                &mut transfer,
+                env,
+            );
+            self.geom_mut(g)?.fillet_surface = match transfer.into_location()? {
+                TrimSurfaceLocation::Owned(surface) => {
+                    Some(super::p1::FilletSurfaceStorage::Owned(surface))
+                }
+                TrimSurfaceLocation::Installed(face) => {
+                    Some(super::p1::FilletSurfaceStorage::ManagedFace {
+                        body: (env.key_of)(EntityRef::Brep(crate::topology::BrepId::from_index(0))),
+                        face,
+                    })
+                }
+                TrimSurfaceLocation::Destroyed => None,
+            };
+            status?;
         }
 
         Ok(())
@@ -2356,7 +2398,7 @@ impl FilletBrep {
             )?;
 
             // Lift it to 3D
-            let uv_domain = base_surf.natural_uv_domain();
+            let uv_domain = base_surf.natural_uv_domain_with_nurb(k)?;
             let face_tol = crate::topology::face::p2::tolerance(target, face)?;
             let lifted = base_surf.lift_curve(
                 k,
@@ -2498,7 +2540,7 @@ mod tests {
     fn uv_curve_on_plane_is_a_line() {
         let k = kernel();
         let srf = plane_patch(1.0);
-        let dom = srf.natural_uv_domain();
+        let dom = srf.natural_uv_domain_if_built();
         let a = srf.evaluate_point(&k, dom.evaluate(0.2, 0.3)).unwrap();
         let b = srf.evaluate_point(&k, dom.evaluate(0.2, 0.9)).unwrap();
         let (fb, v) = fb_with_points(&k, &[a, b]);
@@ -2519,7 +2561,7 @@ mod tests {
     fn uv_curve_diagonal_without_vertexuse_falls_back_to_line() {
         let k = kernel();
         let srf = plane_patch(1.0);
-        let dom = srf.natural_uv_domain();
+        let dom = srf.natural_uv_domain_if_built();
         let a = srf.evaluate_point(&k, dom.evaluate(0.1, 0.1)).unwrap();
         let b = srf.evaluate_point(&k, dom.evaluate(0.8, 0.7)).unwrap();
         let (fb, v) = fb_with_points(&k, &[a, b]);

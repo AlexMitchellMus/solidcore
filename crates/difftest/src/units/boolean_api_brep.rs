@@ -5,9 +5,11 @@
 //!
 //! A case is one API call (`api` plus its arguments). Operands are boxes
 //! (`SmApiCreateBox`) or spheres (`SmApiCreateSphere`); fixture cases also use sheets
-//! (`SmApiCreatePlane`), tori (`SmApiCreateTorus`) and the result of an `SmApiBoolean` of
-//! two operands. Both sides
-//! build them with the same constructors (`primitive::api_primitives` and
+//! (`SmApiCreatePlane`), tori (`SmApiCreateTorus`), operands moved by `SmApiRotate` /
+//! `SmApiTranslate` steps, skin solids (`SmApiCreateSkinPrimitive` of exact NURB curves)
+//! and the result of an `SmApiBoolean` of two operands. Both sides
+//! build them with the same constructors (`primitive::api_primitives`,
+//! `sweep::api_surfaces::create_skin_primitive` and
 //! `boolean::api_brep::boolean` on the Rust side) in the case's one kernel / context, at the default `Kernel::fixes` (SMLib behaviour). A
 //! constructor that fails is a harness error on both sides (the shim's `SC_ERR_ARG`);
 //! one that stops at an unported callee defers the case. Both sides produce `status` (`0` = `SM_SUCCESS`, else the `SmStatus`:
@@ -30,14 +32,22 @@ use serde_json::Value;
 
 use solidcore::boolean::api_brep as api;
 use solidcore::boolean::merge::MergeOptions;
+use solidcore::curve::curve::Curve as SmCurve;
 use solidcore::geom::a_object::BooleanOperation;
-use solidcore::geom::vector3d::Point3;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
+use solidcore::geom::vector3d::Point3;
 use solidcore::kernel::Kernel;
 use solidcore::mass::integrator::properties::{brep_volume, face_area, PropertyAttributes};
+use solidcore::nurbs::b_spline_curve::BSplineCurve;
+use solidcore::nurbs::crv_basic::Curve as NurbCurve;
+use solidcore::nurbs::math::{CPoint, NOW};
 use solidcore::primitive::api_primitives as primitives;
+use solidcore::sweep::api_surfaces::create_skin_primitive;
 use solidcore::topology::brep::{p1 as brep_p1, p2 as brep_p2};
 use solidcore::topology::edgeuse::p1 as edgeuse_p1;
+use solidcore::topology::proto_topology::p1::api_transform::{
+    api_rotate, api_translate, TransformObject,
+};
 use solidcore::topology::shell::shell_region;
 use solidcore::topology::{Brep, FaceuseId, RegionId};
 use solidcore::SolidError;
@@ -76,12 +86,65 @@ enum BrepIn {
     Plane { origin: P3, size: [f64; 2] },
     /// `SmApiCreateTorus` (`SmBrep*&` overload; axis +Z).
     Torus { center: P3, major: f64, minor: f64 },
+    /// `brep` moved by `steps` in order (`SmApiRotate` / `SmApiTranslate`).
+    Moved {
+        steps: Vec<MoveIn>,
+        brep: Box<BrepIn>,
+    },
     /// `SmApiBoolean(a, b, operation)`'s result.
     Boolean {
         operation: i32,
         a: Box<BrepIn>,
         b: Box<BrepIn>,
     },
+    /// `SmApiCreateSkinPrimitive(counts, curves, degree, cap_ends)` of 3D NURB curves.
+    Skin {
+        counts: Vec<u64>,
+        curves: Vec<SkinCurveIn>,
+        degree: u64,
+        #[serde(default = "yes")]
+        cap_ends: bool,
+    },
+}
+
+/// A 3D NURB curve of a skin operand, as its NURB stores it: degree, control points
+/// (weighted, `w x w y w z`, when `weights` is given) and the full knot vector. Both
+/// sides build `SmBSplineCurve(gw_CURVE*, 3, FALSE)` from it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SkinCurveIn {
+    p: usize,
+    cpts: Vec<P3>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    weights: Option<Vec<f64>>,
+    knots: Vec<f64>,
+}
+
+impl SkinCurveIn {
+    /// The `[x y z w]` points with `w` = `NOW` for a non-rational curve (a weight count
+    /// that differs from the point count is left to the FFI's check as a missing weight).
+    fn pw(&self) -> Vec<[f64; 4]> {
+        self.cpts
+            .iter()
+            .enumerate()
+            .map(|(i, q)| {
+                let w = match &self.weights {
+                    Some(w) => w.get(i).copied().unwrap_or(f64::NAN),
+                    None => NOW,
+                };
+                [q[0], q[1], q[2], w]
+            })
+            .collect()
+    }
+}
+
+/// One step of a moved operand.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum MoveIn {
+    /// `SmApiRotate(brep, point, axis, angle_deg)`.
+    Rotate { point: P3, axis: P3, angle_deg: f64 },
+    /// `SmApiTranslate(brep, vector)`.
+    Translate { vector: P3 },
 }
 
 /// `SmApiBooleanWithOptions` flags; missing ones take the `SmMergeOptions` defaults.
@@ -172,6 +235,42 @@ fn spec(b: &BrepIn) -> BrepSpec {
             center,
             major,
             minor,
+        },
+        BrepIn::Moved { steps, brep } => BrepSpec::Moved {
+            steps: steps
+                .iter()
+                .map(|m| match *m {
+                    MoveIn::Rotate {
+                        point,
+                        axis,
+                        angle_deg,
+                    } => ffi::Move::Rotate {
+                        point,
+                        axis,
+                        angle_deg,
+                    },
+                    MoveIn::Translate { vector } => ffi::Move::Translate { vector },
+                })
+                .collect(),
+            brep: Box::new(spec(brep)),
+        },
+        BrepIn::Skin {
+            counts,
+            curves,
+            degree,
+            cap_ends,
+        } => BrepSpec::Skin {
+            counts: counts.clone(),
+            curves: curves
+                .iter()
+                .map(|c| ffi::SkinCurve {
+                    p: c.p,
+                    cpts: c.pw(),
+                    knots: c.knots.clone(),
+                })
+                .collect(),
+            degree: *degree,
+            cap: *cap_ends,
         },
         BrepIn::Boolean { operation, a, b } => BrepSpec::Boolean {
             operation: *operation,
@@ -399,9 +498,55 @@ fn build_at(k: &mut Kernel, b: &BrepIn, depth: usize) -> Result<Brep, Stop> {
                 }
             });
         }
+        BrepIn::Moved { steps, brep } => {
+            let mut b = build_at(k, brep, depth + 1)?;
+            for m in steps {
+                let moved = match *m {
+                    MoveIn::Rotate {
+                        point,
+                        axis,
+                        angle_deg,
+                    } => api_rotate(
+                        k,
+                        Some(TransformObject::Brep(&mut b)),
+                        p3(point),
+                        p3(axis),
+                        angle_deg,
+                    ),
+                    MoveIn::Translate { vector } => {
+                        api_translate(k, Some(TransformObject::Brep(&mut b)), p3(vector))
+                    }
+                };
+                moved.map_err(|e| stop("operand move", &e))?;
+            }
+            Ok(b)
+        }
         BrepIn::Boolean { operation, a, b } => {
             let (a, b) = (build_at(k, a, depth + 1)?, build_at(k, b, depth + 1)?);
             api::boolean(k, a, b, op(*operation)?).map(|out| out.result)
+        }
+        BrepIn::Skin {
+            counts,
+            curves,
+            degree,
+            cap_ends,
+        } => {
+            let cs = curves
+                .iter()
+                .map(|c| {
+                    let pw = c
+                        .pw()
+                        .iter()
+                        .map(|&[x, y, z, w]| CPoint::new(x, y, z, w))
+                        .collect();
+                    NurbCurve::new(pw, c.p, c.knots.clone())
+                        .map(|n| SmCurve::from(BSplineCurve::from_nurb(n, 3, false)))
+                        .map_err(|e| stop("skin curve", &e))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let refs: Vec<Option<&SmCurve>> = cs.iter().map(Some).collect();
+            let counts: Vec<usize> = counts.iter().map(|&c| c as usize).collect();
+            create_skin_primitive(k, &counts, &refs, *degree as usize, *cap_ends).map(|s| s.brep)
         }
     };
     r.map_err(|e| stop("operand constructor", &e))
@@ -454,7 +599,11 @@ fn put_brep(o: &mut Vec<i64>, b: &Brep) -> Result<(), Stop> {
 
 /// Index in `regions` of the region on the other side of `fu` (the shell's first
 /// faceuse), `-1` without one (the shim's `mate_region`).
-fn mate_region(b: &Brep, fu: solidcore::Result<Option<FaceuseId>>, regions: &[RegionId]) -> Result<i64, Stop> {
+fn mate_region(
+    b: &Brep,
+    fu: solidcore::Result<Option<FaceuseId>>,
+    regions: &[RegionId],
+) -> Result<i64, Stop> {
     let Some(fu) = fu.map_err(|e| stop("GetFirstFaceuse", &e))? else {
         return Ok(-1);
     };

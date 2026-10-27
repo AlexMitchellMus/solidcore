@@ -11,6 +11,7 @@
 //! | [`OffsetExecutive::shell_brep`], [`ShellOutcome`] | both `SmOffsetExecutive::ShellBrep` overloads, including input ownership |
 //! | [`OffsetExecutive::do_solid_offset`] | `SmOffsetExecutive::DoSolidOffset` |
 //! | [`OffsetExecutive::do_extended_offset`] | `SmOffsetExecutive::DoExtendedOffset` |
+//! | `order_edgeuses_by_brep` (private) | `sm_OrderEdgeusesByBrep` |
 //! | [`api_shell_brep_full`], [`ShellCopyIdentities`] | `SmApiShellBrepFull` (and its working copy's identities) |
 //! | [`api_offset_brep_full`] | `SmApiOffsetBrepFull` |
 //!
@@ -25,6 +26,8 @@
 //! upstream); member null is native 1006, API null/invalid selection is native 1007.
 //! Offset/member inputs are mutable so existing queries can populate lazy UV trim
 //! geometry in the same arena; this adds no constructive capability or topology copy.
+//! `sm_OrderEdgeusesByBrep` (void upstream) propagates a dangling-id error from its
+//! face and edge-use queries; only a corrupt B-rep reaches it.
 //! Source faces use the native owning-list order. Temporary allocation uses the real
 //! empty constructor's void infinite region, tolerance, editing flag and caller-reserved
 //! result key. No offset geometry is fabricated. Copied faces pass the actual region
@@ -522,7 +525,7 @@ impl OffsetExecutive {
             }
         }
 
-        let mapped = self.mapped_original_edgeuses();
+        let mapped = order_edgeuses_by_brep(original, &self.mapped_original_edgeuses())?;
         with_mark_lock(kernel, ALL_MARKS, |kernel, mark_type| {
             // The same claimed mark reaches both mapped-edge passes. Source and
             // result keys stay disjoint through p1's synchronization and Copy calls.
@@ -1099,12 +1102,12 @@ impl OffsetExecutive {
                 }
                 record.mark(Some(&kernel.context), mark_type);
                 let surface = required(temporary.face(id)?.surface.as_ref(), OP_EXTENDED)?;
-                let original_domain = surface.natural_uv_domain();
+                let original_domain = surface.natural_uv_domain_with_nurb(kernel)?;
                 // Face-owned surfaces use the caller's result-arena identities.
                 let extension = self
                     .get_create_extended_surface(kernel, key.key.0, surface)?
                     .clone();
-                let extension_domain = extension.natural_uv_domain();
+                let extension_domain = extension.natural_uv_domain_with_nurb(kernel)?;
                 // cpp:1639: UNSURE retains the original; FALSE suppresses UV trim
                 // creation. The optional modified-face list is not requested.
                 let (original_surface, _) =
@@ -1316,7 +1319,10 @@ pub fn api_shell_brep_full(
         &working_faces,
         &mut working_notifications,
     );
-    outcome.result
+    let mut result = outcome.result?;
+    // (not upstream: the port's cached topology, true again for the caller)
+    result.refresh_cached_topology();
+    Ok(result)
 }
 
 /// Full-offset API: guard native null with 1007, then call the static executive.
@@ -1329,7 +1335,10 @@ pub fn api_offset_brep_full(
     notifications: &mut OffsetNotifications<'_>,
 ) -> Result<Brep> {
     let original = original.ok_or_else(|| invalid_input(OP_API_OFFSET))?;
-    offset_brep(kernel, original, options, notifications)
+    let mut result = offset_brep(kernel, original, options, notifications)?;
+    // (not upstream: the port's cached topology, true again for the caller)
+    result.refresh_cached_topology();
+    Ok(result)
 }
 
 fn configured_executive(original: &Brep, options: OffsetOptions) -> OffsetExecutive {
@@ -1759,6 +1768,35 @@ fn invalid_input(operation: &'static str) -> SolidError {
     }
 }
 
+/// `sm_OrderEdgeusesByBrep`: `edgeuses` ordered by `brep` (its faces, each face's
+/// two face uses, their edge uses), not by identity: the B-rep order is walked from
+/// its end and each listed edge use is placed at its first sighting. Edge uses not
+/// found in `brep` go last, in their input order.
+fn order_edgeuses_by_brep(brep: &Brep, edgeuses: &[EdgeuseId]) -> Result<Vec<EdgeuseId>> {
+    let mut unplaced: BTreeSet<EdgeuseId> = edgeuses.iter().copied().collect();
+
+    let mut brep_order = Vec::new();
+    for f in bp1::faces(brep, None)? {
+        let (faceuse1, faceuse2) = face::faceuses(brep, f)?;
+        for faceuse in [faceuse1, faceuse2].into_iter().flatten() {
+            brep_order.extend(eu::faceuse_edgeuses(brep, faceuse, false, None)?);
+        }
+    }
+
+    let mut ordered = Vec::new();
+    for &edgeuse in brep_order.iter().rev() {
+        if unplaced.remove(&edgeuse) {
+            ordered.push(edgeuse);
+        }
+    }
+    for &edgeuse in edgeuses {
+        if unplaced.contains(&edgeuse) {
+            ordered.push(edgeuse);
+        }
+    }
+    Ok(ordered)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1769,6 +1807,37 @@ mod tests {
     use crate::surface::plane::Plane;
     use crate::surface::surface::Surface;
     use crate::topology::{Faceuse, FaceuseId, Region, Shell};
+
+    /// `sm_OrderEdgeusesByBrep`: the B-rep's edge uses come from the end of its
+    /// face/face-use/edge-use order, each once; an edge use not in the B-rep goes last.
+    #[test]
+    fn edgeuses_are_ordered_by_their_brep_then_input_order() {
+        let mut k = Kernel::default();
+        let brep = crate::primitive::api_primitives::create_box(
+            &mut k,
+            crate::math::Point3::new(0.0, 0.0, 0.0),
+            1.0,
+            2.0,
+            3.0,
+        )
+        .unwrap();
+        let mut brep_order = Vec::new();
+        for f in bp1::faces(&brep, None).unwrap() {
+            let (a, b) = face::faceuses(&brep, f).unwrap();
+            for fu in [a, b].into_iter().flatten() {
+                brep_order.extend(eu::faceuse_edgeuses(&brep, fu, false, None).unwrap());
+            }
+        }
+        let last = *brep_order.last().unwrap();
+        let first = brep_order[0];
+        let foreign = [
+            EdgeuseId::from_index(900_001),
+            EdgeuseId::from_index(900_000),
+        ];
+        let input = vec![foreign[0], first, foreign[1], last];
+        let ordered = order_edgeuses_by_brep(&brep, &input).unwrap();
+        assert_eq!(ordered, vec![last, first, foreign[0], foreign[1]]);
+    }
 
     fn fixture_key(entity: EntityRef, namespace: u64) -> ObjectRef {
         let (index, type_code) = match entity {
@@ -4328,6 +4397,71 @@ mod tests {
                 shell.vertex_list().len()
             ),
             (7, 12, 8)
+        );
+    }
+
+    /// tangency-labs/solidcore#403 (WR-463): a sphere r10 cut by a box to a hemisphere has
+    /// a rim of two arcs (270 and 90 degrees) of one circle. Shelled 2 inward open at the
+    /// flat face, the offset of that circle is trimmed to the interval between two points
+    /// for both arcs, so the flat face gets the long arc twice and the cavity is no solid.
+    /// With the opt-in each arc takes the part of the circle it runs along: a solid of
+    /// volume 2/3 pi (10^3 - 8^3).
+    #[test]
+    fn issue_403_hemisphere_rim_arcs_keep_their_own_trim() {
+        use crate::primitive::api_primitives::{create_box, create_sphere};
+        let shell = |fixed: bool| -> Result<(bool, f64)> {
+            let mut kernel = Kernel::default();
+            kernel.fixes.offset_closed_curve_trim_arc = fixed;
+            let ball = create_sphere(&mut kernel, Vec3::new(0.0, 0.0, 0.0), 10.0).unwrap();
+            let upper =
+                create_box(&mut kernel, Vec3::new(-20.0, -20.0, 0.0), 40.0, 40.0, 20.0).unwrap();
+            let mut part =
+                crate::boolean::api_brep::boolean_intersection(&mut kernel, ball, upper).unwrap();
+            part.set_key(original_key(EntityRef::Brep(BrepId::from_index(0))).key);
+            let flat = planar_faces_at_z(&kernel, &part, 0.0);
+            assert_eq!(flat.len(), 1);
+            let mut notifications = NotificationFixture::new(&part);
+            OffsetExecutive::shell_brep(
+                &mut kernel,
+                part,
+                ShellOptions {
+                    offset: OffsetOptions {
+                        distance: -2.0,
+                        extend_convex_edges: true,
+                        merge_results: true,
+                    },
+                    create_offset_solid: false,
+                    merge_sheet_side_walls: false,
+                },
+                &flat,
+                &mut notifications.context(),
+            )
+            .result
+            .map(|mut shell| {
+                let store = AttributeStore::default();
+                let key_of = |_| ObjectKey(0);
+                let attributes = crate::mass::integrator::properties::PropertyAttributes {
+                    store: &store,
+                    key_of: &key_of,
+                };
+                let volume = crate::mass::integrator::properties::brep_volume(
+                    &kernel,
+                    &mut shell,
+                    1e-6,
+                    &attributes,
+                )
+                .unwrap();
+                (brep_is_manifold_solid(&shell).unwrap(), volume)
+            })
+        };
+        // upstream: the cavity is no solid and encloses no volume
+        let (solid, volume) = shell(false).unwrap();
+        assert!(!solid && volume.abs() < 1e-9, "{solid} {volume}");
+        let (solid, volume) = shell(true).unwrap();
+        let expected = 2.0 / 3.0 * PI * (1000.0 - 512.0);
+        assert!(
+            solid && (volume - expected).abs() < 1e-6 * expected,
+            "{volume}"
         );
     }
 

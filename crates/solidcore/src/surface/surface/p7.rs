@@ -37,10 +37,6 @@
 //! | [`good_drop_result`]                              | `sm_GoodDropResult` (static)                     |
 //!
 //! Deviations:
-//! - **Face tolerance of `IsPlanar`.** The B-spline, revolution and cone boxes are
-//!   expanded by the face tolerance the B-rep cached on the surface
-//!   ([`Surface::owner_zone_tol_3d`]). A face-owned surface without it returns
-//!   [`SolidError::Unported`] (`SmFace::GetTolerance`).
 //! - **Generic bodies.** The `SmSurface` bodies that only call the evaluation virtuals
 //!   (`Evaluate`, `EvaluatePoint`, `GetNaturalUVDomain`) are generic over
 //!   [`SurfaceEvaluate`], so a caller holding a bare [`BSplineSurface`] (which does not
@@ -239,7 +235,8 @@ pub fn base_evaluate_normal<S: SurfaceEvaluate + ?Sized>(
         }
     }
 
-    let uv_domain = surface.natural_uv_domain();
+    // (a generic `SurfaceEvaluate` receiver: the trait has no kernel)
+    let uv_domain = surface.natural_uv_domain_if_built();
     let mut step = 1.0e-8;
 
     // First check for the parallel-derivatives case (the lengths of the
@@ -782,7 +779,7 @@ impl Surface {
         u_side: Side,
         v_side: Side,
     ) -> Result<Vec3> {
-        match self.kind() {
+        match self.kind_with_nurb(k)? {
             // SmSphere::EvaluateNormal (the side flags are not used)
             SurfaceKind::Sphere(s) => s.evaluate_normal(uv),
             SurfaceKind::Cone(_)
@@ -840,7 +837,8 @@ impl Surface {
 
     /// Whether the surface is planar within `tol_3d`, with a plane point, unit normal
     /// and the largest deviation seen (`IsPlanar`, virtual): a plane always is; the
-    /// others test the pseudo box of `CalculateBoundingBox` over the natural domain.
+    /// others test the pseudo box of `CalculateBoundingBox` over the natural domain,
+    /// not expanded by the zone tolerance.
     ///
     /// # Errors
     ///
@@ -849,7 +847,9 @@ impl Surface {
     /// of an offset surface's bounding box (its other failures are ignored, as
     /// upstream).
     pub fn is_planar(&self, k: &Kernel, tol_3d: f64) -> Result<Planar> {
-        match self.kind() {
+        // the unpadded box: the zone-tolerance padding made flat surfaces fail small
+        // tolerances
+        match self.kind_with_nurb(k)? {
             SurfaceKind::Plane(p) => {
                 let (point, normal, deviation) = p.is_planar();
                 Ok(Planar {
@@ -860,45 +860,40 @@ impl Surface {
                 })
             }
             SurfaceKind::BSpline(s) => {
-                // the box expansion uses the owning face's tolerance, as cached on the
-                // surface by its B-rep (UNPORTED(topology.face_p2): SmFace::GetTolerance
-                // for a bare face handle without it)
-                let face_tol = self.face_zone_tol_3d()?;
-                Ok(planar_of(k, s, &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
+                Ok(planar_of(k, s, &self.natural_uv_domain_with_nurb(k)?)?.is_planar(tol_3d))
             }
             // SmSurfOfRevolution (and SmCone, SmSphere, SmTorus) inherit
-            // SmBSplineSurface::CalculateBoundingBox:
-            // the face's cached tolerance, as for the B-spline (UNPORTED(topology.face_p2):
-            // SmFace::GetTolerance for a bare face handle without it)
+            // SmBSplineSurface::CalculateBoundingBox
             SurfaceKind::Cone(s) => {
-                let face_tol = self.face_zone_tol_3d()?;
                 Ok(
-                    planar_of(k, s.rev().base(), &self.natural_uv_domain(), face_tol)?
+                    planar_of(k, s.rev().base(), &self.natural_uv_domain_with_nurb(k)?)?
                         .is_planar(tol_3d),
                 )
             }
             SurfaceKind::Sphere(s) => {
-                let face_tol = self.face_zone_tol_3d()?;
                 Ok(
-                    planar_of(k, s.base().base(), &self.natural_uv_domain(), face_tol)?
+                    planar_of(k, s.base().base(), &self.natural_uv_domain_with_nurb(k)?)?
                         .is_planar(tol_3d),
                 )
             }
             SurfaceKind::Torus(s) => {
-                let face_tol = self.face_zone_tol_3d()?;
                 Ok(
-                    planar_of(k, s.base().base(), &self.natural_uv_domain(), face_tol)?
+                    planar_of(k, s.base().base(), &self.natural_uv_domain_with_nurb(k)?)?
                         .is_planar(tol_3d),
                 )
             }
             SurfaceKind::SurfOfRevolution(s) => {
-                let face_tol = self.face_zone_tol_3d()?;
-                Ok(planar_of(k, s.base(), &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
+                Ok(
+                    planar_of(k, s.base(), &self.natural_uv_domain_with_nurb(k)?)?
+                        .is_planar(tol_3d),
+                )
             }
             // (and SmSurfOfExtrusion)
+            // (`CalculateBoundingBox`'s `GetOrCreateGwNurbPointer` makes a recognised
+            // extrusion's NURB)
             SurfaceKind::SurfOfExtrusion(s) => {
-                let face_tol = self.face_zone_tol_3d()?;
-                Ok(planar_of(k, s.base(), &self.natural_uv_domain(), face_tol)?.is_planar(tol_3d))
+                let base = s.base_with_nurb(k)?;
+                Ok(planar_of(k, &base, &self.natural_uv_domain_with_nurb(k)?)?.is_planar(tol_3d))
             }
             // SmSurface body: use the virtual box and ignore ordinary failures,
             // which leave the default pseudo box. The kernel is available here.
@@ -908,9 +903,9 @@ impl Surface {
             | SurfaceKind::SrfInVolume(_) => {
                 let pseudo = ignored(self.calculate_bounding_box(
                     k,
-                    &self.natural_uv_domain(),
+                    &self.natural_uv_domain_with_nurb(k)?,
                     [false, true, false],
-                    true,
+                    false,
                 ))?
                 .and_then(|b| b.pseudo_box)
                 .unwrap_or_else(PseudoBox::new);
@@ -951,7 +946,7 @@ impl Surface {
         let mut points = want_points.then_some([Vec3::UNDEF; 4]);
 
         // locals
-        let d = self.natural_uv_domain();
+        let d = self.natural_uv_domain_with_nurb(k)?;
         let corners = [
             Point2::new(d.u_min(), d.v_min()),
             Point2::new(d.u_min(), d.v_max()),
@@ -1012,7 +1007,7 @@ impl Surface {
         let mut s_dir = dir.unitize()?;
 
         // locals
-        let domain = self.natural_uv_domain();
+        let domain = self.natural_uv_domain_with_nurb(k)?;
         let uv_min = domain.min();
         let uv_max = domain.max();
         let mut s_ivl = Extent1d::new();
@@ -1380,10 +1375,11 @@ impl Surface {
         if let Some(context) = context.as_deref() {
             gs.face_queries = context.face_queries();
         }
+        let domain = self.natural_uv_domain_with_nurb(k)?;
         gs.operands = Some(SolveOperands {
             operands: [
                 handles[0].map(|h| (h, OperandDomain::Curve(curve.natural_interval()))),
-                handles[1].map(|h| (h, OperandDomain::Surface(self.natural_uv_domain()))),
+                handles[1].map(|h| (h, OperandDomain::Surface(domain))),
             ],
         });
 
@@ -1569,10 +1565,14 @@ impl Surface {
         if let Some(context) = context.as_deref() {
             gs.face_queries = context.face_queries();
         }
+        let (domain, other_domain) = (
+            self.natural_uv_domain_with_nurb(k)?,
+            other.natural_uv_domain_with_nurb(k)?,
+        );
         gs.operands = Some(SolveOperands {
             operands: [
-                handles[0].map(|h| (h, OperandDomain::Surface(self.natural_uv_domain()))),
-                handles[1].map(|h| (h, OperandDomain::Surface(other.natural_uv_domain()))),
+                handles[0].map(|h| (h, OperandDomain::Surface(domain))),
+                handles[1].map(|h| (h, OperandDomain::Surface(other_domain))),
             ],
         });
 
@@ -1843,7 +1843,7 @@ impl Surface {
         }
 
         // intersection
-        let projection_domain = projection_surface.natural_uv_domain();
+        let projection_domain = projection_surface.natural_uv_domain_with_nurb(k)?;
         let x = match context {
             Some((context, handle)) => {
                 crate::intersect::surface_intersector::p5::do_intersection_with_context(
@@ -1881,26 +1881,20 @@ impl Surface {
 ///
 /// [`SolidError::Unported`] from the bounding box.
 pub fn b_spline_is_planar(k: &Kernel, s: &BSplineSurface, tol_3d: f64) -> Result<Planar> {
-    Ok(planar_of(k, s, &s.natural_uv_domain(), None)?.is_planar(tol_3d))
+    Ok(planar_of(k, s, &s.natural_uv_domain())?.is_planar(tol_3d))
 }
 
-/// The pseudo box of a B-spline surface over `uv_domain`, expanded by `face_tol` (the
-/// owning face's tolerance; `None` for `SM_ZONE_TOL_3D`); a failed box is the default
-/// box, as upstream ignores the status.
-fn planar_of(
-    k: &Kernel,
-    s: &BSplineSurface,
-    uv_domain: &Extent2d,
-    face_tol: Option<f64>,
-) -> Result<PseudoBox> {
+/// The pseudo box of a B-spline surface over `uv_domain`, not expanded by the zone
+/// tolerance; a failed box is the default box, as upstream ignores the status.
+fn planar_of(k: &Kernel, s: &BSplineSurface, uv_domain: &Extent2d) -> Result<PseudoBox> {
     let req = BoundingBoxRequest {
         normal: false,
         pseudo: true,
         polar: false,
         pseudo_guess: None,
         polar_guess: None,
-        expand_by_zone_tol: true,
-        expand_tolerance: face_tol,
+        expand_by_zone_tol: false,
+        expand_tolerance: None,
     };
     Ok(ignored(s.calculate_bounding_box(k, uv_domain, &req))?
         .and_then(|b| b.pseudo)
@@ -2080,7 +2074,8 @@ pub fn compute_higher_order_derivs<S: SurfaceEvaluate + ?Sized>(
     want_g4: bool,
 ) -> Result<HigherOrderDerivs> {
     // locals
-    let domain = surface.natural_uv_domain();
+    // (a generic `SurfaceEvaluate` receiver: the trait has no kernel)
+    let domain = surface.natural_uv_domain_if_built();
 
     // finite difference step - watch for stepping out of surface boundaries
     let mut step = EFF_ZERO_SQRT / 1000.0; // 1.0e-9
@@ -2153,7 +2148,8 @@ pub fn compute_inward_vector<S: SurfaceEvaluate + ?Sized>(
     let (_, du, dv) = evaluate_1st_derivatives(k, surface, uv, Side::Left, Side::Left)?;
 
     // towards midPoint UV vec
-    let mid_uv = surface.natural_uv_domain().evaluate(0.5, 0.5);
+    // (a generic `SurfaceEvaluate` receiver: the trait has no kernel)
+    let mid_uv = surface.natural_uv_domain_if_built().evaluate(0.5, 0.5);
     let dir_uv = mid_uv - uv;
     let dir_uv = dir_uv.unitize().unwrap_or(dir_uv);
 
@@ -2237,12 +2233,12 @@ pub fn load_guesses(
 
     // set gridSize = 1 for linear geometry (an SmBSplineSurface: B-splines and planes)
     let is_bss = surface.is_kind_of(BSplineSurface::TYPE)?;
-    let grid_u = if is_bss && surface.number_control_points(SurfParamType::U) == 2 {
+    let grid_u = if is_bss && surface.number_control_points(k, SurfParamType::U) == 2 {
         1
     } else {
         GRID_SIZE
     };
-    let grid_v = if is_bss && surface.number_control_points(SurfParamType::V) == 2 {
+    let grid_v = if is_bss && surface.number_control_points(k, SurfParamType::V) == 2 {
         1
     } else {
         GRID_SIZE
@@ -3070,7 +3066,7 @@ mod tests {
     fn inward_vector_points_to_middle() {
         let k = &Kernel::default();
         let s = plane();
-        let d = s.natural_uv_domain();
+        let d = s.natural_uv_domain_if_built();
         let v = compute_inward_vector(k, &s, d.min()).unwrap();
         assert!((v.length() - 1.0).abs() < 1e-12);
     }

@@ -34,11 +34,10 @@
 //!   ([`Surface::owner_zone_tol_3d`]), and returns [`SolidError::Unported`] there
 //!   without it (`SmFace::GetTolerance`, unit `topology.face_p2`).
 //! - **NURB.** `IntersectWithPlane`'s parallel case tests whether both planes hold a
-//!   NURB (`m_pNurb`), as upstream; the boxes are computed on a NURB made on a copy
-//!   when the plane has none (upstream makes it in place, a `const_cast`). Because the
-//!   port's read-only queries (e.g. `natural_uv_domain`) never cache the NURB, a plane
-//!   upstream would already hold one can reach this test without it (see the
-//!   `surface::plane::p1` deviations).
+//!   NURB (`m_pNurb`), as upstream. The port's read-only queries (e.g.
+//!   `natural_uv_domain`, the boxes) make a missing NURB and keep it on the plane as
+//!   upstream does through a `const_cast` (see the `surface::plane::p1` deviations),
+//!   so a plane reaches this test with a NURB exactly when upstream's would.
 //! - **Statuses.** Where upstream ignores a status and would go on with stale or
 //!   uninitialised values (curve evaluations and copies in `TrimCurveToPlaneDomain`,
 //!   the test-point evaluation of `IsNurbSurfacePlane`), the port propagates the error.
@@ -163,6 +162,9 @@ fn zone_tolerance(owner: PlaneOwner) -> Result<f64> {
         PlaneOwner::Face(Some(tol)) => Ok(tol),
         // UNPORTED(topology.face_p2): SmFace::GetTolerance (a bare face handle without
         // the tolerance its B-rep caches on the surface)
+        // Proof (unreachable): a B-rep face's surface carries the face tolerance
+        // (Brep::sync_face_surface_tolerance invariant, see Surface::face_zone_tol_3d); 0
+        // hits in the green difftest sweep.
         PlaneOwner::Face(None) => Err(SolidError::unported(
             "SmFace::GetTolerance",
             "topology.face_p2",
@@ -1449,7 +1451,7 @@ pub(crate) fn global_surface_intersect_in<O: SolutionObject + Copy + PartialEq>(
     let mut out = SurfaceIntersection::default();
 
     // switch on OtherSurface Type looking for cheap special intersection case
-    match other.kind() {
+    match other.kind_with_nurb(k)? {
         // plane/plane special case intersection
         SurfaceKind::Plane(other_plane) => {
             // (whether each plane has a face: SmSurface::GetFace, and its tolerance)

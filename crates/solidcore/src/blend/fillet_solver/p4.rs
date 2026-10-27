@@ -306,7 +306,8 @@ impl CalcState {
         geom0: FilletGeomId,
         split_original_fillet: bool,
     ) -> Self {
-        let domain = base_surfaces[0].natural_uv_domain();
+        // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+        let domain = base_surfaces[0].natural_uv_domain_if_built();
         Self {
             edge_curve,
             ivl,
@@ -574,6 +575,7 @@ const fn bspline_curve_cast(curve: &Curve) -> Option<&BSplineCurve> {
         | CurveKind::Conic(_)
         | CurveKind::CrvInVolume(_)
         | CurveKind::CrvOnSurf(_)
+        | CurveKind::TangentField(_)
         | CurveKind::Composite(_) => None,
     }
 }
@@ -774,15 +776,24 @@ fn c1_collect_points(
 
     // Now, compute 'through points' from all internal G1 knots
     // (the size is re-read every iteration, as upstream's GetSize())
+    // SolidCraft (tangency-labs/solidcore#1022, WR-468, opt-in): then from the edge's
+    // ends where a rail of geometry 0 ends on an extended edge
+    // ([`c1_extended_rail_end_knots`]).
+    let extra_knots = if cx.k.fixes.fillet_through_extended_rail_end {
+        c1_extended_rail_end_knots(ops, cx, st)?
+    } else {
+        Vec::new()
+    };
     let mut k = 0;
-    while k < ops.solver().g1_knots.len() {
+    while k < ops.solver().g1_knots.len() + extra_knots.len() {
         // get position and tangent at G1 knot (status checked, values unused)
-        let knot = ops
-            .solver()
-            .g1_knots
-            .get(k)
-            .copied()
-            .ok_or_else(|| invalid("G1 knot index out of range"))?;
+        let knot = match ops.solver().g1_knots.get(k) {
+            Some(&knot) => knot,
+            None => extra_knots
+                .get(k - ops.solver().g1_knots.len())
+                .copied()
+                .ok_or_else(|| invalid("G1 knot index out of range"))?,
+        };
         st.edge_curve.evaluate(cx.k, knot, 1, true, false)?;
 
         // guess point: GetSurface(0) point nearest to the end of the binormal (half
@@ -873,6 +884,85 @@ fn c1_collect_points(
     }
 
     Ok(Some(SurfPass { uv_curve, all }))
+}
+
+/// Not upstream: the SolidCraft fork's addition to `CalcFilletGeom`
+/// (tangency-labs/solidcore#1022, WR-468; opt-in
+/// `Kernel::fixes.fillet_through_extended_rail_end`). A rail end on an extended edge
+/// (`SM_FV_RAIL_X_EXTENDED_EDGEUSE`) is found on the fillet surface only once that is
+/// made, so it gives the trace no point, and the surface can stop short of the
+/// filleted edge's end when the other rail ends well inside it. At such an end the
+/// corner's cap edges meet at the filleted edge's end, so the fillet runs at least to
+/// it: the edge's end parameter (`sIvl.GetMin()` / `GetMax()`, whichever end is the
+/// corner's filleted vertex) is a through point too. Returns those parameters not
+/// already among the G1 knots, in rail and end order; none for a closed edge or
+/// without the executive's corners.
+///
+/// # Errors
+///
+/// `SM_ERR_NULL_POINTER` for a missing edge use, edge, rail or corner.
+fn c1_extended_rail_end_knots(
+    ops: &dyn FilletSolverOps,
+    cx: &Cx<'_>,
+    st: &CalcState,
+) -> Result<Vec<f64>> {
+    use crate::blend::fillet_geom::p1::FilletVertexType;
+    use crate::topology::edge as topo_edge;
+
+    // a standalone entry point has no executive corners to resolve the rail ends'
+    // corners with: nothing to add
+    let corners = match &cx.solvers {
+        GeometrySolvers::Live(context) => context.corners(),
+        GeometrySolvers::Indexed(_) => return Ok(Vec::new()),
+    };
+    let eu0 = ops
+        .solver()
+        .edgeuse(0)?
+        .ok_or_else(|| SolidError::null_pointer(OP))?;
+    let edge = eu::edge(cx.target, eu0)?.ok_or_else(|| SolidError::null_pointer(OP))?;
+    let start = topo_edge::start_vertex(cx.target, edge)?;
+    let end = topo_edge::end_vertex(cx.target, edge)?;
+    let mut knots = Vec::new();
+    // a closed edge has no end the fillet stops at
+    if start == end {
+        return Ok(knots);
+    }
+    for which_rail in 0..2 {
+        let rail = cx
+            .fillets
+            .geom(st.geom0)?
+            .rail(which_rail)
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
+        let brep = cx.fillets.brep();
+        let first = topo_edge::vertex(brep, rail)?;
+        let second = match first {
+            Some(v) => topo_edge::other_vertex(brep, rail, Some(v))?,
+            None => None,
+        };
+        for fv in [first, second].into_iter().flatten() {
+            let fillet_vertex = cx.fillets.fillet_vertex(fv)?;
+            if fillet_vertex.fillet_vertex_type() != FilletVertexType::RailXExtendedEdgeuse {
+                continue;
+            }
+            let Some(corner) = fillet_vertex.fillet_corner() else {
+                continue;
+            };
+            let Some(corner_vertex) = corners.corner(corner)?.filleted_vertex() else {
+                continue;
+            };
+            let param = if Some(corner_vertex) == start {
+                st.ivl.min()
+            } else if Some(corner_vertex) == end {
+                st.ivl.max()
+            } else {
+                continue;
+            };
+            if !ops.solver().g1_knots.contains(&param) && !knots.contains(&param) {
+                knots.push(param);
+            }
+        }
+    }
+    Ok(knots)
 }
 
 #[cfg(test)]
@@ -1281,6 +1371,117 @@ mod tests_c1 {
                 entity: None,
             }
         );
+    }
+
+    /// The executive's corner table, for [`c1_extended_rail_end_knots`]; the other
+    /// context calls are not reached.
+    struct CornersOnly(
+        Vec<crate::blend::fillet_corner::p3::FilletCorner>,
+        NoCorners,
+    );
+
+    impl FilletGeometryContext for CornersOnly {
+        fn set_extension_flags(
+            &self,
+            _solver: &mut dyn FilletSolverOps,
+            _k: &Kernel,
+            _target: &Brep,
+        ) -> Result<()> {
+            Ok(())
+        }
+        fn solver<'s>(
+            &'s self,
+            _id: FilletSolverId,
+            current: &'s FilletSolver,
+        ) -> Result<&'s FilletSolver> {
+            Ok(current)
+        }
+        fn corners(&self) -> CornerLookup<'_> {
+            CornerLookup::table(&self.0)
+        }
+        fn split_corners(&mut self) -> &mut dyn SplitCorners {
+            &mut self.1
+        }
+    }
+
+    /// tangency-labs/solidcore#1022: a rail of geometry 0 that ends on an extended edge
+    /// (`SM_FV_RAIL_X_EXTENDED_EDGEUSE`) at the corner of the filleted edge's start
+    /// (or end) makes that end parameter a through knot, once, and only for a corner at
+    /// one of the edge's ends.
+    #[test]
+    fn issue_1022_extended_rail_end_adds_the_edge_end_as_a_through_knot() {
+        use crate::blend::fillet_corner::p3::{FilletCorner, FilletCornerKind};
+        use crate::blend::fillet_geom::p1::FilletCornerId;
+
+        let k = Kernel::default();
+        // the target edge v0 -> v1 with a vertex use on each edge use (start, end)
+        let (mut tb, eus) = target(Some(line_curve([0.0, 0.0, 0.0], [2.0, 0.0, 0.0], 3)));
+        let edge = eu::edge(&tb, eus[0]).unwrap().unwrap();
+        let [v0, v1] = tb.edge(edge).unwrap().vertices;
+        for (e, v) in [(eus[0], v0), (eus[1], v1)] {
+            let vu = tb
+                .add_vertexuse_record(Vertexuse {
+                    vertex: Some(v),
+                    ..Vertexuse::default()
+                })
+                .unwrap();
+            tb.edgeuse_mut(e).unwrap().vertexuse = Some(vu);
+        }
+        // ROWS: rail 1's first end is the only SM_FV_RAIL_X_EXTENDED_EDGEUSE vertex
+        let (mut fb, _g, _) = fillets(&k, ROWS);
+        let extended: Vec<_> = crate::topology::brep::p1::vertices(fb.brep(), None)
+            .unwrap()
+            .into_iter()
+            .filter(|&v| {
+                fb.fillet_vertex(v)
+                    .is_ok_and(|f| f.fillet_vertex_type() == FilletVertexType::RailXExtendedEdgeuse)
+            })
+            .collect();
+        assert_eq!(extended.len(), 1);
+        fb.fillet_vertex_mut(extended[0])
+            .unwrap()
+            .set_fillet_corner(Some(FilletCornerId(0)));
+
+        for (corner_vertex, want) in [(v0, vec![0.0]), (v1, vec![1.0])] {
+            let corner = FilletCorner::new(
+                FilletCornerKind::Open,
+                Some(corner_vertex),
+                None,
+                None,
+                1e-6,
+                1e-3,
+            );
+            let mut ctx = CornersOnly(vec![corner], NoCorners);
+            let mut ops = solver(&k, eus);
+            let mut cx = Cx {
+                k: &k,
+                target: &mut tb,
+                fillets: &mut fb,
+                solvers: GeometrySolvers::Live(&mut ctx),
+                error_info: None,
+            };
+            let st = c1_setup(&mut ops, &mut cx).unwrap();
+            assert_eq!(c1_extended_rail_end_knots(&ops, &cx, &st).unwrap(), want);
+            // a knot already among the G1 knots is not added again
+            ops.0.g1_knots.push(want[0]);
+            assert!(c1_extended_rail_end_knots(&ops, &cx, &st)
+                .unwrap()
+                .is_empty());
+        }
+
+        // without the executive's corners (a standalone entry point): none
+        let mut ops = solver(&k, eus);
+        let mut cx = Cx {
+            k: &k,
+            target: &mut tb,
+            fillets: &mut fb,
+            solvers: GeometrySolvers::Indexed(&[]),
+            error_info: None,
+        };
+        let st = c1_setup(&mut ops, &mut cx).unwrap();
+        assert!(c1_extended_rail_end_knots(&ops, &cx, &st)
+            .unwrap()
+            .is_empty());
     }
 }
 
@@ -1695,6 +1896,18 @@ fn c3_try_analytic(
 
     // try making a torus fillet to store in m_vFilletGeoms[0]; quit when this succeeds
     match calc_torus_fillet_geom(ops, cx, &mut st.store, &st.tsect_pnts) {
+        Ok(()) => return Ok(true),
+        Err(e) if e.is_unported() => return Err(e),
+        Err(_) => {}
+    }
+
+    // WR-420 (fork addition, opt-in): where the centre line collapses to a point, the
+    // corner ball's patch
+    if !cx.k.fixes.fillet_corner_ball_patch {
+        return Ok(false);
+    }
+    let tsects = st.store.snapshot(cx.fillets, &st.tsect_pnts)?;
+    match FilletSolver::calc_sphere_fillet_geom(ops, cx.k, cx.target, cx.fillets, &tsects, None) {
         Ok(()) => Ok(true),
         Err(e) if e.is_unported() => Err(e),
         Err(_) => Ok(false),
@@ -1730,8 +1943,8 @@ fn c3_trace_setup(
     st: &mut CalcState,
 ) -> Result<[Surface; 2]> {
     // get fillet baseSurface domains
-    let mut domain1 = st.base_surfaces[0].natural_uv_domain();
-    let mut domain2 = st.base_surfaces[1].natural_uv_domain();
+    let mut domain1 = st.base_surfaces[0].natural_uv_domain_if_built();
+    let mut domain2 = st.base_surfaces[1].natural_uv_domain_if_built();
 
     // extend baseSurface domains by m_dSurfaceExtensionFactor * rDomain.GetSize();
     // don't extend in periodic directions nor through singular boundaries
@@ -1846,7 +2059,7 @@ mod tests_c3 {
     fn analytic_planes() -> (Surface, Surface) {
         use crate::geom::vector2d::Vec2;
         use crate::surface::plane::Plane;
-        let domain = planes().0.natural_uv_domain();
+        let domain = planes().0.natural_uv_domain_if_built();
         let plane = |x: [f64; 3], y: [f64; 3]| {
             Surface::from(Plane::new(
                 Vec3::new(0.0, 0.0, 0.0),
@@ -2007,8 +2220,8 @@ mod tests_c3 {
         let mut st = state(line(), [a.clone(), b.clone()]);
         let surfaces = with_cx(&k, |cx| c3_trace_setup(&mut fs, cx, &mut st)).unwrap();
 
-        let mut d1 = a.natural_uv_domain();
-        let mut d2 = b.natural_uv_domain();
+        let mut d1 = a.natural_uv_domain_if_built();
+        let mut d2 = b.natural_uv_domain_if_built();
         fs.solver.setup_offset_extension(&k, &a, &mut d1).unwrap();
         fs.solver.setup_offset_extension(&k, &b, &mut d2).unwrap();
         assert_eq!(st.trace.domains[0].min, d1.min);
@@ -2885,7 +3098,7 @@ fn c5_undo_reversal(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<()
 
         let k = cx.k;
         let geom = cx.fillets.geom_mut(g)?;
-        if geom.center_line_curve.is_none() || geom.fillet_surface()?.is_none() {
+        if geom.center_line_curve.is_none() || !geom.has_fillet_surface() {
             return Err(SolidError::null_pointer(OP));
         }
         if let Some(center_line) = geom.center_line_curve.as_mut() {
@@ -3330,13 +3543,18 @@ fn c6_compute_point_values(
         // :3600
         compute_uv_vectors(point)?;
 
-        // :3604 static double sdStaticStep = TANGENT ? 1e-3 : 1e-5 (latched once)
-        let mut step =
-            k.latch_fillet_point_step(if point.point_type == IntersectionPointType::TangentPoint {
-                1.0e-3
-            } else {
-                1.0e-5
-            });
+        // :3604 static double sdStaticStep = TANGENT ? 1e-3 : 1e-5 (latched once; with
+        // `fixes.fillet_point_step_per_point` chosen for this point, ND-3)
+        let first = if point.point_type == IntersectionPointType::TangentPoint {
+            1.0e-3
+        } else {
+            1.0e-5
+        };
+        let mut step = if k.fixes.fillet_point_step_per_point {
+            first
+        } else {
+            k.latch_fillet_point_step(first)
+        };
 
         // :3615 forward step (StepSolve may shorten `dStep`, passed by reference)
         let mut step_forw = TsectPnt::new();
@@ -3356,15 +3574,22 @@ fn c6_compute_point_values(
         let mut found_forw = flags.found_answer;
 
         // :3619 bigger step in the small-step case; upstream passes `dStep` again, not
-        // `dBigStep` (ported as written), into the same `sStepForw`
+        // `dBigStep` (ported as written, WR-456), into the same `sStepForw`. With
+        // `fixes.fillet_point_bigger_step_retry` the retry solves with the bigger step.
         if !found_forw && step < 1.0e-4 {
             let big_step = 1.0e-3;
+            let mut big = big_step;
+            let retry_step = if k.fixes.fillet_point_bigger_step_retry {
+                &mut big
+            } else {
+                &mut step
+            };
             step_solve(
                 ops,
                 k,
                 brep.as_deref_mut(),
                 point,
-                &mut step,
+                retry_step,
                 uv_domain1,
                 uv_domain2,
                 &mut flags,
@@ -3634,6 +3859,136 @@ mod tests_c6 {
         let mut p = TsectPnt::new();
         let _ = run(&mut fs, &k2, 1.0, &mut p, None);
         assert_eq!(k2.fillet_point_step.get(), Some(7.0e-4));
+    }
+
+    /// `Variable` that records the finite-difference solves' first guesses
+    /// (`load_initial_values`) and makes the solve after the first guess find nothing.
+    struct Probe {
+        inner: Variable,
+        guesses: Vec<Vec<f64>>,
+    }
+
+    impl FilletSolverOps for Probe {
+        fn solver(&self) -> &FilletSolver {
+            self.inner.solver()
+        }
+        fn solver_mut(&mut self) -> &mut FilletSolver {
+            self.inner.solver_mut()
+        }
+        fn setup_offset_values(
+            &mut self,
+            tsect: &TsectPnt,
+            offset_dist: Option<&mut f64>,
+        ) -> Result<()> {
+            self.inner.setup_offset_values(tsect, offset_dist)
+        }
+        fn jacobian_size(&self) -> Result<usize> {
+            Ok(4)
+        }
+        fn load_jacobian(
+            &mut self,
+            k: &Kernel,
+            num_equations: &mut usize,
+            num_parameters: &mut usize,
+            load: &mut crate::blend::fillet_custom_solver::JacobianLoad<'_>,
+            f: &mut [f64],
+            jacobian: Option<&mut crate::geom::matrix::Matrix>,
+        ) -> Result<bool> {
+            let found = FilletSolverOps::load_jacobian(
+                &mut self.inner.0,
+                k,
+                num_equations,
+                num_parameters,
+                load,
+                f,
+                jacobian,
+            )?;
+            if self.guesses.len() == 1 {
+                // no root: the first solve ends without a point
+                for v in f.iter_mut() {
+                    *v += 1.0;
+                }
+            }
+            Ok(found)
+        }
+        fn load_initial_values(
+            &mut self,
+            _k: &Kernel,
+            _brep: Option<&mut Brep>,
+            _do_surf2_calcs: bool,
+            _rail_index: usize,
+            _surface1: &mut OffsetSurface,
+            _surface1_index: usize,
+            _intervals: &mut crate::geom::extent1d::ExtentNd,
+            _periodicities: &mut Vec<bool>,
+            guess_t: &mut Vec<f64>,
+        ) -> Result<Option<crate::blend::fillet_custom_solver::InitialValues>> {
+            self.guesses.push(guess_t.clone());
+            Ok(None)
+        }
+    }
+
+    /// WR-456 (#1181): after a failed small forward step the retry steps by the bigger
+    /// step with the fix, and by the small one again as upstream does without it.
+    #[test]
+    fn bigger_step_retry_uses_the_bigger_step_with_the_fix() {
+        let (a, b) = (xy(0.0), xz());
+        let mut moves = Vec::new();
+        for fixed in [false, true] {
+            let mut k = Kernel::default();
+            k.fixes.fillet_point_bigger_step_retry = fixed;
+            let mut ops = Probe {
+                inner: Variable(solver(&k, &a, &b)),
+                guesses: Vec::new(),
+            };
+            let mut p = TsectPnt::new();
+            let r = run(&mut ops, &k, 1.0, &mut p, None);
+            assert!(ops.guesses.len() >= 2, "{r:?} {:?}", ops.guesses);
+            // how far each of the first two guesses lies from the point's uv
+            let from = |g: &[f64]| (g[0] - 0.5).hypot(g[1] - 0.25);
+            let (first, retry) = (from(&ops.guesses[0]), from(&ops.guesses[1]));
+            assert!(first > 0.0 && first < 1.0e-4, "{first}");
+            moves.push(retry / first);
+        }
+        assert!((moves[0] - 1.0).abs() < 1.0e-9, "{moves:?}");
+        assert!((moves[1] - 100.0).abs() < 1.0e-6, "{moves:?}");
+    }
+
+    /// #1173 (ND-3): the first finite-difference guess lies one step from the point. With the
+    /// fix that step is the point's own whatever an earlier blend latched; without it the
+    /// latched step is used. The latch itself is neither read nor written with the fix.
+    #[test]
+    fn per_point_step_ignores_the_latch_with_the_fix() {
+        let (a, b) = (xy(0.0), xy(1.0));
+        let mut prev = TsectPnt::new();
+        *prev.crv_deriv_mut() = Vec3::new(0.0, 3.0, 0.0);
+        // distance of the first guess from the point's uv, for the fix on/off and a latch
+        let first_guess = |fixed: bool, latched: Option<f64>| {
+            let mut k = Kernel::default();
+            k.fixes.fillet_point_step_per_point = fixed;
+            k.fillet_point_step.set(latched);
+            let mut ops = Probe {
+                inner: Variable(solver(&k, &a, &b)),
+                guesses: Vec::new(),
+            };
+            let _ = run(&mut ops, &k, 1.0, &mut TsectPnt::new(), Some(&prev));
+            assert_eq!(
+                k.fillet_point_step.get(),
+                if fixed {
+                    latched
+                } else {
+                    latched.or(Some(1.0e-3))
+                }
+            );
+            let g = ops.guesses.first().expect("a finite-difference solve ran");
+            (g[0] - 0.5).hypot(g[1] - 0.25)
+        };
+        let (fresh, preset) = (first_guess(true, None), first_guess(true, Some(1.0e-5)));
+        assert!(fresh > 0.0);
+        assert_eq!(fresh, preset);
+        // without the fix the preset latch changes the step
+        assert!(first_guess(false, Some(1.0e-5)) < fresh / 10.0);
+        assert_eq!(first_guess(false, None), fresh);
     }
 
     #[test]
@@ -4348,7 +4703,7 @@ impl crate::blend::fillet_solver::curve_blend_sih::SmoothingSolver for Intersect
     fn base_natural_uv_domain(&self, rail: usize) -> Result<Extent2d> {
         Ok(offset_surface(&*self.ops, rail)?
             .base_surface()
-            .natural_uv_domain())
+            .natural_uv_domain_if_built())
     }
 
     fn rail_surface(&self, rail: usize) -> Result<Surface> {

@@ -473,7 +473,7 @@ impl Surface {
             .zip(found.iter_mut())
         {
             let (_, continuities) = self.calculate_continuities(k, dir)?;
-            let (knots, _) = self.knots(dir, None)?;
+            let (knots, _) = self.knots_with_nurb(k, dir, None)?;
             // note: can't say knots.len() - 1
             let mut i = 1;
             while i + 1 < knots.len() {
@@ -557,8 +557,8 @@ impl Surface {
         }
 
         // arrive here when both surfaces are not of type SmPlane_TYPE
-        let domain0 = self.natural_uv_domain();
-        let domain1 = other.natural_uv_domain();
+        let domain0 = self.natural_uv_domain_with_nurb(k)?;
+        let domain1 = other.natural_uv_domain_with_nurb(k)?;
 
         // Bad input - Surface types that don't have domains.
         if domain0.size().length_squared() < EFF_ZERO_SQ
@@ -1853,7 +1853,7 @@ impl Surface {
                 // (the drop's trace gets the surface's cache, `smsurf_GetSurfaceCache`:
                 // the caller's, else the face's through a face-aware context)
                 let mut from_context;
-                let held = match (held, context) {
+                let held = match (held, context.as_deref_mut()) {
                     (Some(c), _) => Some(c),
                     (None, Some(context)) if self.face()?.is_some() => {
                         from_context = context.build_surface_cache(k, self, surface)?;
@@ -1876,7 +1876,9 @@ impl Surface {
                 let mut uv_curves: Vec<Curve> = dropped.uv_curves;
 
                 // If the curve is entirely interior to the surface, then
-                // DropAndTrimCurve won't find it; in that case use DropCurve.
+                // DropAndTrimCurve won't find it; in that case use DropCurve. (Its trace
+                // gets the surface's cache as above: the face's through a face-aware
+                // context, whose point test classifies against the face.)
                 if uv_curves.is_empty() {
                     let (curves, dist, _deviation) = surface_drop_curve(
                         k,
@@ -1886,7 +1888,10 @@ impl Surface {
                         &line_interval_used,
                         distance_tolerance,
                         false,
-                        None::<DropSolveContext<'_, NoObject>>,
+                        context.as_mut().map(|solver| DropSolveContext {
+                            solver: &mut **solver,
+                            handle: surface,
+                        }),
                     )?;
                     uv_curves = curves;
                     dist_to_surface = dist;
@@ -2494,17 +2499,15 @@ impl Surface {
         gs.surface_cache = Some(surface_cache);
         gs.face_queries = face_queries;
         // the solutions name the trees' owners (LocalSolve: the curve, sm_GetOriginalSurface)
+        let surface_domain = surface_cache.surface().natural_uv_domain_with_nurb(k)?;
         gs.operands = Some(SolveOperands {
             operands: [
                 curve_tree
                     .owner_object()?
                     .map(|h| (h, OperandDomain::Curve(curve.natural_interval()))),
-                surface_tree.owner_object()?.map(|h| {
-                    (
-                        h,
-                        OperandDomain::Surface(surface_cache.surface().natural_uv_domain()),
-                    )
-                }),
+                surface_tree
+                    .owner_object()?
+                    .map(|h| (h, OperandDomain::Surface(surface_domain))),
             ],
         });
 
@@ -3386,7 +3389,7 @@ mod tests {
         let r = s.base_global_line_intersect::<NoObject>(
             &k,
             NoObject,
-            &s.natural_uv_domain(),
+            &s.natural_uv_domain_if_built(),
             Vec3::ZERO,
             Vec3::ZERO,
             None,
@@ -3397,7 +3400,7 @@ mod tests {
         assert!(s
             .local_line_intersect(
                 &k,
-                &s.natural_uv_domain(),
+                &s.natural_uv_domain_if_built(),
                 Vec3::ZERO,
                 Vec3::ZERO,
                 &Extent1d::from_min_max(0.0, 1.0),
@@ -3497,7 +3500,7 @@ mod tests {
                 Some(NoObject),
                 None,
                 &mut context,
-                &surface.natural_uv_domain(),
+                &surface.natural_uv_domain_if_built(),
                 Vec3::ZERO,
                 Vec3::ZERO,
                 None,
@@ -3616,7 +3619,7 @@ mod tests {
             key: crate::geom::attribute::ObjectKey(50_001),
         }));
         surface.set_owner_zone_tol_3d(Some(1e-5));
-        let domain = surface.natural_uv_domain();
+        let domain = surface.natural_uv_domain_if_built();
         let mut context = NumericalTrimContext {
             builds: 0,
             tests: core::cell::Cell::new(0),
@@ -3694,7 +3697,7 @@ mod tests {
         let hit = s
             .local_line_intersect(
                 k,
-                &s.natural_uv_domain(),
+                &s.natural_uv_domain_if_built(),
                 Vec3::new(1.0, 1.5, -2.0),
                 Vec3::new(0.0, 0.0, 1.0),
                 &Extent1d::from_min_max(-10.0, 10.0),
@@ -3784,7 +3787,7 @@ mod tests {
             .global_curve_intersect(
                 &k,
                 [Opaque::Curve, Opaque::Surface],
-                &s.natural_uv_domain(),
+                &s.natural_uv_domain_if_built(),
                 &c,
                 &c.natural_interval(),
                 1e-6,

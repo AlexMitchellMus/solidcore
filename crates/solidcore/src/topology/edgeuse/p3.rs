@@ -428,7 +428,7 @@ pub fn create_uv_trim_curve(
                 )?
         {
             let uv_curve = cos.uv_curve();
-            let surface_uv = face_surface.natural_uv_domain();
+            let surface_uv = face_surface.natural_uv_domain_with_nurb(k)?;
             let tol = tolerance(b, eu)?;
 
             let (start_pt, _end_pt) = match ignored(uv_curve.ends(k))? {
@@ -1033,7 +1033,8 @@ fn set_create_fail(
         from_call: 3,
         create_path_type: path,
         has_context: true,
-        uv_domain: surface.natural_uv_domain(),
+        // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+        uv_domain: surface.natural_uv_domain_if_built(),
         surface: Some(surface_handle),
         curve: Some(curve_handle),
         interval: curve.natural_interval(),
@@ -1145,7 +1146,7 @@ fn two_singular_end_points(
     // see if both curve ends drop to singularities
     let mut start_singularity = false;
     let mut end_singularity = false;
-    let surface_uv_domain = surface.natural_uv_domain();
+    let surface_uv_domain = surface.natural_uv_domain_with_nurb(k)?;
 
     // Curve EndPoints
     let start_point = ignored(curve.evaluate_point(k, edge_domain.min()))?.unwrap_or(Vec3::UNDEF);
@@ -1980,7 +1981,7 @@ pub fn evaluate_binormal_uv(
         // without classifying the solution point against the trim boundaries
         // (`global_point_solve_point_test_off`; the boundary-curve flag is not
         // modelled, module docs). Use surface's domain instead of Face's domain.
-        let srf_domain = surface.natural_uv_domain();
+        let srf_domain = surface.natural_uv_domain_with_nurb(k)?;
 
         // This 'turns off point testing' when GPS does not use the cache (a copy of
         // the surface without owner stands for upstream's temporary change)
@@ -2293,7 +2294,7 @@ pub fn normalized_evaluate(
                     .surface
                     .as_ref()
                     .ok_or_else(|| SolidError::null_pointer(OP))?; // NER(pSurf)
-                let domain = surf.natural_uv_domain();
+                let domain = surf.natural_uv_domain_with_nurb(k)?;
                 let drop = surface_drop_point(k, surf, three_d.point, &domain)?;
                 if !drop.found {
                     return Err(SolidError::sm_err(OP));

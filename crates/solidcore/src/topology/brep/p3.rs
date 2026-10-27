@@ -1005,7 +1005,7 @@ fn with_caller_identities<R>(
 
 /// [`with_caller_identities`] for an edit that allocates per entry of an input list of
 /// `inputs` entries ([`allocation_window`]).
-fn with_caller_identities_for<R>(
+pub(crate) fn with_caller_identities_for<R>(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
@@ -1129,7 +1129,10 @@ pub fn api_brep_copy(
             entity: None,
         });
     };
-    copy_brep(k, env, brep, source_key, None, None, true, false)
+    let mut copy = copy_brep(k, env, brep, source_key, None, None, true, false)?;
+    // (not upstream: the port's cached topology fields, true for the caller)
+    copy.refresh_cached_topology();
+    Ok(copy)
 }
 
 /// Identities and optional separate notification context of a copy's source.
@@ -1233,7 +1236,7 @@ fn copy_vertices_in(
 /// `SmTopology::Notify`, which carries the flags and user values of `this` to `to`
 /// (resetting its marks) and then the attributes and callbacks (`SmAObject`).
 /// `Notify` is `void`: only the errors of [`ignore_soft`] propagate.
-fn notify_copy_with_context(
+pub(crate) fn notify_copy_with_context(
     env: &mut NotifyEnv<'_>,
     source_context: Option<&mut Context>,
     this: ObjectRef,
@@ -1905,7 +1908,16 @@ fn merge_brep_in(
             _ => None,
         })
         .ok_or(null_deref("unmapped edge"))?;
-        let [a, c] = other.edge(e)?.vertices;
+        // Upstream has no such pair: it copies the edge and vertex use links above and
+        // reads the ends through them. Take the source's ends the same way (its cached
+        // pair is not maintained by topology edits, so it can be stale on a Boolean's
+        // result). An edge without edge uses, or whose uses do not name both ends, keeps
+        // its cached pair, so the copy never fails where upstream's does not.
+        let [cached_start, cached_end] = other.edge(e)?.vertices;
+        let [a, c] = match edge::start_end_vertices(other, e) {
+            Ok((start, end)) => [start.unwrap_or(cached_start), end.unwrap_or(cached_end)],
+            Err(_) => [cached_start, cached_end],
+        };
         let va = mapped(EntityRef::Vertex(a), &map, |x| match x {
             EntityRef::Vertex(x) => Some(x),
             _ => None,
@@ -2410,12 +2422,32 @@ fn delete_face_nesting(
 ) -> Result<()> {
     // (unsigned counts upstream)
     let remaining = |c: usize| c.wrapping_sub(new_shell_vertex_count);
+    let mut vertices_needing_new_shell = 0usize;
     if any_edgeuse.is_none() && remaining(*vertex_count) == 0 {
         let r = eu1::shell_region(b, shell)?.ok_or(null_deref("shell without region"))?;
         ignore_soft(shell::region_remove_shell(b, r, shell))?;
         // delete pShell
         shell::destroy(k, b, shell, env)?;
     } else {
+        // Vertex-only loops supply no boundary edgeuse. An attached wire
+        // can nevertheless survive after the shell loses its last faceuse.
+        let mut any_edgeuse = any_edgeuse;
+        if shell::shell_list_size(b, shell)? == 0 && any_edgeuse.is_none() {
+            'vertices: for v in verts.iter().flatten().copied() {
+                for vu in vertex::vertexuses(b, v)? {
+                    if !vertexuse::is_edge_vertexuse(b, vu)? {
+                        continue;
+                    }
+                    let eu = vertexuse::edgeuse(b, vu)?
+                        .ok_or(null_deref("edge vertex use without edge use"))?;
+                    if eu1::is_shell_edgeuse(b, eu)? && eu1::shell(b, eu)? == Some(shell) {
+                        any_edgeuse = Some(eu);
+                        break 'vertices;
+                    }
+                }
+            }
+        }
+
         // See if shell is now a wire shell - if it is point it to an edgeuse
         if shell::shell_list_size(b, shell)? == 0 {
             if let Some(eu) = any_edgeuse {
@@ -2446,10 +2478,14 @@ fn delete_face_nesting(
                 *vertex_count = vertex_count.wrapping_sub(1);
             }
         }
+
+        // The shell vertices counted in new_shell_vertex_count are already subtracted
+        // above.
+        vertices_needing_new_shell = *vertex_count;
     }
 
     // if any vertices no longer connect to pShell - need 1 or more new shells
-    if remaining(*vertex_count) == 0 {
+    if vertices_needing_new_shell == 0 {
         return Ok(());
     }
     lock.new_mark(core::slice::from_mut(&mut k.context))?;
@@ -3477,7 +3513,7 @@ fn turn_to_nurbs_in(
 
             // first extend the new surface in all directions by a small amount
             let new_surface = Surface::from(new_bss);
-            let domain = new_surface.natural_uv_domain();
+            let domain = new_surface.natural_uv_domain_with_nurb(k)?;
             // (status not checked upstream: a failed call leaves the Init() box, whose
             // size clamps to 1.0 below)
             let srf_bbox =
@@ -3546,7 +3582,7 @@ fn turn_to_nurbs_in(
             let ivl = b.edge(e)?.interval;
             match base.lift_curve(
                 k,
-                &base.natural_uv_domain(),
+                &base.natural_uv_domain_with_nurb(k)?,
                 cos.uv_curve(),
                 &ivl,
                 approx_tol,

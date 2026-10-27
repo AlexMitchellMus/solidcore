@@ -173,7 +173,7 @@ fn lifted(k: &Kernel, uv: &Curve, surface: &Surface) -> Result<Curve> {
         k,
         uv.clone_for_evaluation()?,
         surface.clone_for_evaluation()?,
-        Some(surface.natural_uv_domain()),
+        Some(surface.natural_uv_domain_with_nurb(k)?),
         0,
     )?))
 }
@@ -655,6 +655,8 @@ impl<O: ClassObject> CurveClassification<O> {
             // the boundary views are read-only `ClassGeometry` handles built from a
             // borrowed `&Brep` (`query::face::p2::curve_on_classify`), so a trim curve
             // created here could be neither stored nor resolved
+            // Proof (unreachable): only for an uncached trim curve met in a read-only
+            // boundary view; 0 hits in the green difftest sweep.
             SolidError::unported("SmEdgeuse::GetOrCreateUVTrimCurve", "topology.edgeuse_p3")
         })?;
         let trim = curve(geometry, trim_handle)?;

@@ -127,13 +127,13 @@ use crate::nurbs::knots::{Side, MAX_DEGREE};
 use crate::nurbs::math::{
     combine2_pts, power_basis_srf_eval_pts, srf_power_basis_eval_derivs, CPoint,
 };
-use crate::nurbs::srf_adv::p1::{eval_pt_derivs_unbounded, extend_by_dist};
-use crate::nurbs::srf_adv::p2::SrfContinuity;
+use crate::nurbs::srf_adv::p1::eval_pt_derivs_unbounded;
+use crate::nurbs::srf_adv::p2::{extend_by_dist_in_place, SrfContinuity};
 use crate::nurbs::srf_adv::p3::{
     create_swung_srf, create_trans_sweep_srf, extend_by_param_dist, ExtendContinuity,
 };
 use crate::nurbs::srf_adv::p4::create_coons_srf as bilinear_coons_srf;
-use crate::nurbs::srf_adv::p6::{create_sweep_scale, fill_n_sided_hole, SweepScaleOptions};
+use crate::nurbs::srf_adv::p6::{create_sweep_scale, fill_n_sided_hole_with, SweepScaleOptions};
 use crate::nurbs::srf_basic::{size_arrays, Direction, Surface, SurfaceIndices};
 use crate::nurbs::srf_common::ruled_srf;
 use crate::nurbs::srf_tool::p3::{join, make_compatible as make_surfaces_compatible};
@@ -1020,7 +1020,7 @@ pub fn create_non_rational_curve_with_context<O: crate::geom::solution_array::So
         let mut new_uv_trim_curve = None;
         if let Some(base) = opt_base_surface {
             let trim_ivl = new_curve.natural_interval();
-            let domain = base.natural_uv_domain();
+            let domain = base.natural_uv_domain_with_nurb(k)?;
             let dropped = drop_curve(k, base, &domain, &new_curve, &trim_ivl, approx_tol, context)?;
             new_uv_trim_curve = Some(
                 dropped
@@ -1435,12 +1435,14 @@ impl BSplineSurface {
         let mut sur_list = [this_sur, sur_2_join];
         let res = make_surfaces_compatible(&mut sur_list, compat_dir);
         let [this_sur, sur_2_join] = sur_list;
-        self.nurb = Some(this_sur);
-        surface_to_join.nurb = Some(sur_2_join);
+        self.nurb = Some(this_sur).into();
+        surface_to_join.nurb = Some(sur_2_join).into();
         // surfaces not compatible, so not joined
         res.map_err(SolidError::nl_ser(OP))?;
 
-        let (Some(this_sur), Some(sur_2_join)) = (&self.nurb, &surface_to_join.nurb) else {
+        let (Some(this_sur), Some(sur_2_join)) =
+            (self.nurb.as_ref(), surface_to_join.nurb.as_ref())
+        else {
             return Err(SolidError::sm_err(OP));
         };
         // join operation failed -> SM_ERR
@@ -1470,6 +1472,24 @@ impl BSplineSurface {
         ang_tol_deg: f64,
         opt_center: Option<(Point3, &mut Vec3)>,
     ) -> Result<Vec<BSplineSurface>> {
+        Self::create_n_sided_patch_with(bdry_crvs, deriv_crvs, ang_tol_deg, opt_center, false)
+    }
+
+    /// [`BSplineSurface::create_n_sided_patch`] with the opt-in fix of WR-461 (#1170)
+    /// when `stay_inside`: the cross-boundary derivatives across the inner curves are
+    /// shortened where their blend would leave the neighbour's tangent plane
+    /// (`Kernel::fixes.corner_blend_stays_inside_neighbours`).
+    ///
+    /// # Errors
+    ///
+    /// As [`BSplineSurface::create_n_sided_patch`].
+    pub fn create_n_sided_patch_with(
+        bdry_crvs: &mut [BSplineCurve],
+        deriv_crvs: &mut [Option<BSplineCurve>],
+        ang_tol_deg: f64,
+        opt_center: Option<(Point3, &mut Vec3)>,
+        stay_inside: bool,
+    ) -> Result<Vec<BSplineSurface>> {
         const OP: &str = OP_NSIDED;
         if deriv_crvs.len() < bdry_crvs.len() {
             return Err(invalid(OP, "fewer derivative entries than boundary curves"));
@@ -1493,7 +1513,13 @@ impl BSplineSurface {
         });
 
         // pass the call along to NLib
-        let res = fill_n_sided_hole(&mut cur, Some(der.as_mut_slice()), ang_tol_deg, center);
+        let res = fill_n_sided_hole_with(
+            &mut cur,
+            Some(der.as_mut_slice()),
+            ang_tol_deg,
+            center,
+            stay_inside,
+        );
         for (b, c) in bdry_crvs.iter_mut().zip(cur) {
             b.nurb = Some(c);
         }
@@ -1746,7 +1772,9 @@ impl BSplineSurface {
 
         let rtn = if same_size {
             // copy surQ values into surP
-            sur_q.copy_into(&mut self.nurb);
+            let mut nurb = self.nurb.take();
+            sur_q.copy_into(&mut nurb);
+            self.nurb = nurb.into();
             Ok(())
         } else {
             // something went wrong - leave surP unmodified
@@ -1900,14 +1928,12 @@ fn extend_side(
 ) -> Result<()> {
     const OP: &str = OP_EXTEND;
 
-    // extend Surf - shorter dists until extension succeeds
+    // extend Surf - shorter dists until extension succeeds (in place: a failed
+    // extension can leave its extended surface in esur, which the retry extends)
     let mut halvings = 0usize;
     loop {
-        match extend_by_dist(esur, *ext_dist, dir, end, gflg) {
-            Ok(s) => {
-                *esur = s;
-                break;
-            }
+        match extend_by_dist_in_place(esur, *ext_dist, dir, end, gflg) {
+            Ok(()) => break,
             Err(e @ SolidError::Unported { .. }) => return Err(e),
             Err(_) => {
                 *ext_dist /= 2.0;
@@ -1943,7 +1969,7 @@ fn extend_side(
             });
         }
         *ext_dist *= 2.0;
-        *esur = extend_by_dist(esur, *ext_dist, dir, end, gflg).map_err(SolidError::nl_ser(OP))?;
+        extend_by_dist_in_place(esur, *ext_dist, dir, end, gflg).map_err(SolidError::nl_ser(OP))?;
         if esur.is_valid().is_err() {
             return Err(SolidError::sm_err(OP));
         }

@@ -57,6 +57,8 @@
 //!   one owned by a surface of extrusion or revolution needs its generator range
 //!   (units `surface.surf_of_extrusion_p1`, `surface.surf_of_revolution_p1`). These
 //!   return [`SolidError::Unported`].
+//!   Trimming accepts a caller-resolved owning edge tolerance through
+//!   `trim_with_zone_tol`; public ownerless trimming uses the system tolerance.
 //! - **Notifications.** `Notify(SM_NO_POST_EDIT)` rebuilds the polar converter
 //!   (status ignored); the other operations only drop caches the ellipse does not
 //!   own here, and `SM_NO_UNKNOWN` only logs. `SmCurve::Notify`'s cache bookkeeping
@@ -263,8 +265,10 @@ impl PolarConversion {
 
         let exact = true;
 
-        // make sure to return the proper end value for closed curve seam conversions
-        if is_closed_base(k, &curve.base, &curve.base.natural_interval(), 0.0)? {
+        // make sure to return the proper end value for closed curve seam conversions.
+        // The seam adjustments only apply at the ends of the knot/angle tables, so test those
+        // cheap conditions first and evaluate IsClosed() (three curve evaluations) only there.
+        if !self.natural_knots.is_empty() && !self.angles.is_empty() {
             let inside_out = curve.inside_out;
             let knots = &self.natural_knots;
             let angles = &self.angles;
@@ -275,7 +279,7 @@ impl PolarConversion {
             let same = |a: f64, b: f64, tol: f64| are_same_to_tol(a, b, tol);
 
             // when values are at opposing ends - move the end angle
-            let move_down = if inside_out {
+            let move_to_min = if inside_out {
                 same(nurbs_param, at(knots, last, OP_TO_POLAR)?, scaled_zero)
                     && same(polar_deg, at(angles, 0, OP_TO_POLAR)?, EFF_ZERO_DEG)
             } else {
@@ -286,11 +290,8 @@ impl PolarConversion {
                         EFF_ZERO_DEG,
                     )
             };
-            if move_down {
-                // increment, rather than PolarParam = minAngle, to preserve tolerances
-                polar_deg -= 360.0;
-            } else {
-                let move_up = if inside_out {
+            let move_to_max = !move_to_min
+                && if inside_out {
                     same(nurbs_param, at(knots, 0, OP_TO_POLAR)?, scaled_zero)
                         && same(
                             polar_deg,
@@ -301,8 +302,14 @@ impl PolarConversion {
                     same(nurbs_param, at(knots, last, OP_TO_POLAR)?, scaled_zero)
                         && same(polar_deg, at(angles, 0, OP_TO_POLAR)?, EFF_ZERO_DEG)
                 };
-                if move_up {
-                    // increment, rather than PolarParam = maxAngle, to preserve tolerances
+
+            if (move_to_min || move_to_max)
+                && is_closed_base(k, &curve.base, &curve.base.natural_interval(), 0.0)?
+            {
+                // increment, rather than PolarParam = min/maxAngle, to preserve tolerances
+                if move_to_min {
+                    polar_deg -= 360.0;
+                } else {
                     polar_deg += 360.0;
                 }
             }
@@ -2017,6 +2024,27 @@ impl Ellipse {
     /// Those of [`BSplineCurve::trim`]; `InvalidInput` when an end cannot be converted
     /// (upstream: an uninitialised angle).
     pub fn trim(&mut self, k: &Kernel, trim_interval: &mut Extent1d, mode: TrimMode) -> Result<()> {
+        self.trim_with_zone_tol(
+            k,
+            trim_interval,
+            mode,
+            crate::geom::tol::zone_tol_3d(k, crate::geom::tol::SmallTopoType::NormalSize),
+        )
+    }
+
+    /// Trims with the caller-resolved owning edge's 3D zone tolerance, forwarding
+    /// it to both base-curve trim passes without changing interval-only behavior.
+    ///
+    /// # Errors
+    ///
+    /// The same errors as [`Self::trim`].
+    pub(crate) fn trim_with_zone_tol(
+        &mut self,
+        k: &Kernel,
+        trim_interval: &mut Extent1d,
+        mode: TrimMode,
+        zone_tol_3d: f64,
+    ) -> Result<()> {
         // no work - current natural interval is a subSet of targetInterval
         let nat_ivl = self.base.natural_interval();
         if nat_ivl.is_contained_by(trim_interval, EFF_ZERO) {
@@ -2024,7 +2052,8 @@ impl Ellipse {
         }
 
         // First ask SmBSplineCurve::Trim to compute the actual trim interval.
-        self.base.trim(k, trim_interval, TrimMode::IntervalOnly)?;
+        self.base
+            .trim_with_zone_tol(k, trim_interval, TrimMode::IntervalOnly, zone_tol_3d)?;
 
         // all done when asked to stop here
         if mode == TrimMode::IntervalOnly {
@@ -2046,7 +2075,8 @@ impl Ellipse {
         let max_step = to_step(self, trim_interval.max())?;
 
         // pass the call to Trim the BSpline - skip its Notify call
-        self.base.trim(k, trim_interval, TrimMode::Silent)?;
+        self.base
+            .trim_with_zone_tol(k, trim_interval, TrimMode::Silent, zone_tol_3d)?;
 
         // store the angular interval paying attention to m_bInsideOut
         if self.inside_out {

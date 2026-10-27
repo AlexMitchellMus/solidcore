@@ -5,7 +5,8 @@
     python3 site/build.py --out DIR       # elsewhere
 
 Standard library only (Python 3.11+ for tomllib). Every number comes from the repo:
-plan/units/*.toml, plan/PROGRESS.md (claims), harness/callgraph/units.json,
+plan/units/*.toml, plan/PROGRESS.md (claims; generated, not committed), harness/callgraph/units.json (upstream
+line counts at the pin), scripts/upstream-pin.env (upstream version and commit),
 reports/difftest/*.json (not committed: CI's artifact, see scripts/fetch-reports.sh),
 reports/solids/solids.json (not committed: CI's artifact, see scripts/fetch-solids.sh),
 reports/ssi-corpus.json, plan/upstream-issues/*.md, the
@@ -37,8 +38,12 @@ import units as plan_units  # noqa: E402  (the shared plan loader)
 REPO = os.environ.get("GITHUB_REPOSITORY", "tangency-labs/solidcore")
 REPO_URL = f"https://github.com/{REPO}"
 VIEWER_URL = "https://tangency-labs.github.io/solidcore-viewer/"
-UPSTREAM_URL = "https://github.com/NVIDIA-Omniverse/usd-brep"
-UPSTREAM_COMMIT = "c9c5979f04cea8c38213004d4f04df0dcfb40d05"
+PIN = plan_units.load_pin(ROOT)  # scripts/upstream-pin.env: the one place the pin is set
+UPSTREAM_URL = PIN["UPSTREAM_REPO"]
+UPSTREAM_VERSION = PIN["UPSTREAM_VERSION"]
+UPSTREAM_COMMIT = PIN["UPSTREAM_COMMIT"]
+UPSTREAM_PIN_HTML = (f'<a href="{UPSTREAM_URL}/tree/{UPSTREAM_COMMIT}">usd-brep v{html.escape(UPSTREAM_VERSION)} '
+                     f'(<code>{UPSTREAM_COMMIT[:7]}</code>)</a>')
 STATUSES = ["green", "partial", "claimed", "blocked", "todo"]
 STATUS_TEXT = {"green": "green", "partial": "partial", "claimed": "claimed",
                "blocked": "blocked", "todo": "todo"}
@@ -163,7 +168,7 @@ def aggregate(samples):
 # ---------------------------------------------------------------- data
 
 def load_claims():
-    """id -> claim text from the bot-maintained "In progress" section of PROGRESS.md."""
+    """id -> claim text from the "In progress" section of the generated PROGRESS.md."""
     claims = {}
     path = ROOT / "plan/PROGRESS.md"
     if not path.exists():
@@ -550,7 +555,8 @@ def page(title, body, depth, nav, head_sha, head_date, description="", path="", 
 {body}
 </main>
 <footer class="wrap">Generated from <a href="{REPO_URL}/tree/{head_sha}"><code>{short}</code></a>
-({esc(head_date)}) by <code>site/build.py</code>. Apache-2.0. Not affiliated with or endorsed by NVIDIA.</footer>
+({esc(head_date)}) by <code>site/build.py</code>; upstream reference {UPSTREAM_PIN_HTML}.
+Apache-2.0. Not affiliated with or endorsed by NVIDIA.</footer>
 <script src="{up}assets/app.js"></script>{extra_js}
 </body>
 </html>
@@ -622,7 +628,7 @@ def chart_svg(points, cid="chart", title="Share of upstream lines ported over ti
     parts.append(f'<line class="cross" x1="0" x2="0" y1="{T}" y2="{H - B}" visibility="hidden"/>')
     parts.append(f'<rect class="hit" x="{L}" y="{T}" width="{W - L - R}" height="{H - T - B}"/>')
     parts.append("</svg>")
-    legend = ('<div class="legend"><span><i class="sw green"></i>green (bit-identical to C++)</span>'
+    legend = ('<div class="legend"><span><i class="sw green"></i>green (matches C++ within 1e-9)</span>'
               '<span><i class="sw partial"></i>green + partial (ported)</span></div>')
     return (legend + '<div class="chartbox">' + "".join(parts) +
             '<div class="tip" hidden></div></div>')
@@ -823,6 +829,11 @@ def build(out):
     def write(rel, text):
         (out / rel).write_text(text)
 
+    # The checklist harness/plan/progress.py generated (not committed; pages.yml runs it).
+    checklist = ROOT / "plan/PROGRESS.md"
+    if checklist.exists():
+        shutil.copy(checklist, out / "PROGRESS.md")
+
     # ---- overview
     count = s["count"]
     pct = 100 * s["done_lines"] / s["total_lines"]
@@ -870,7 +881,8 @@ def build(out):
 <section class="hero">
 <h1>solidcore</h1>
 <p class="lede">solidcore is a Rust port of NVIDIA's SMLib, the boundary-representation (B-rep) solid
-modeling kernel from <a href="{UPSTREAM_URL}">usd-brep</a> (Apache-2.0), written in safe Rust: no
+modeling kernel from <a href="{UPSTREAM_URL}">usd-brep</a> (Apache-2.0; ported from and tested against
+{UPSTREAM_PIN_HTML}), written in safe Rust: no
 <code>unsafe</code>, no panics on bad input, deterministic, and buildable for WebAssembly. The upstream
 code is split into {s['units']} port units. A unit only counts as <strong>green</strong> when the
 <em>difftest</em> gate runs the Rust and the upstream C++ (through FFI) on the same inputs (upstream tests,
@@ -881,13 +893,13 @@ fixtures and fixed-seed generated cases) and the topology is identical and every
 </section>
 <section class="kpis">
 <div class="tile big"><div class="k">Upstream lines ported</div><div class="v">{pct:.1f}%</div>
-<div class="sub">{fmt_int(s['done_lines'])} of {fmt_int(s['total_lines'])} lines in green or partial units;
-{gpct:.1f}% green</div></div>
+<div class="sub">{fmt_int(s['done_lines'])} of {fmt_int(s['total_lines'])} lines of usd-brep
+v{esc(UPSTREAM_VERSION)} in green or partial units; {gpct:.1f}% green</div></div>
 {tiles}
 <div class="tile"><div class="k">ready to claim</div><div class="v">{ready_n}</div><div class="sub">todo with all dependencies done</div></div>
 {solids_tile}
 </section>
-<section>
+{reference_history_html()}<section>
 <h2>Progress over time</h2>
 <p class="muted">Share of in-scope upstream lines in green and partial units, from
 <code>plan/units/</code> along <code>main</code>'s history ({len(points)} sampled states).</p>
@@ -911,7 +923,7 @@ fixtures and fixed-seed generated cases) and the topology is identical and every
 <p>{len(ssi.get('cases', []))} cases from the external
 <a href="{esc(ssi.get('corpus', {}).get('repo', ''))}">ssi-corpus</a>, scored against known true intersections.
 Rust and C++ are compared where the Rust path is ported: {par.get('compared', 0)} compared,
-{par.get('identical', 0)} identical, {par.get('mismatched', 0)} mismatched.
+{par.get('identical', 0)} agree within 1e-9, {par.get('mismatched', 0)} mismatched.
 <a href="ssi.html">All cases</a>.</p>
 <div class="scroll narrow"><table><thead><tr><th>Verdict</th><th>C++</th><th>Rust</th></tr></thead>
 <tbody>{ssi_rows}</tbody></table></div>
@@ -925,7 +937,7 @@ Rust and C++ are compared where the Rust path is ported: {par.get('compared', 0)
 <li><a href="issues.html">{len(issues)} upstream issues</a> found while porting.</li>
 <li><a href="{VIEWER_URL}">Model viewer</a>: the upstream test models rendered by SMLib and by solidcore, side by side.</li>
 <li><a href="{REPO_URL}">Repository</a>: <a href="{REPO_URL}/blob/main/AGENTS.md">how to port a unit</a>,
-<a href="{REPO_URL}/blob/main/plan/PROGRESS.md">checklist</a>.</li>
+<a href="PROGRESS.md">checklist</a>.</li>
 </ul>
 </section>
 """
@@ -1201,7 +1213,7 @@ counts). Click a column heading to sort.</p>
         if rflags and rflags != flags:
             ftxt += "".join(f"<li>Rust: {esc(f)}</li>" for f in rflags)
         par = c.get("parity") or {}
-        ptxt = ("identical" if par.get("pass") and not par.get("mismatches") else
+        ptxt = ("agree" if par.get("pass") and not par.get("mismatches") else
                 f"{par.get('mismatches')} mismatches" if par else "")
         crow.append(
             f'<tr data-class="{esc(c.get("class", ""))}" data-cpp="{esc(cpp.get("verdict", ""))}" data-rust="{esc(rv)}">'
@@ -1242,6 +1254,29 @@ the C++ result's.</p>
             "timeline": len(points),
             "seconds": time.time() - t_start}
 
+
+
+def reference_history_html():
+    """Rows for site/reference-history/*.json: one file per past upstream pin."""
+    rows = []
+    for f in sorted((ROOT / "site" / "reference-history").glob("*.json")):
+        h = json.loads(f.read_text())
+        pk, fn, nx = h.get("peak", {}), h.get("final", {}), h.get("superseded_by", {})
+        peak = (f'{pk.get("green")}/{pk.get("units")} green on {esc(pk.get("date", ""))} '
+                f'(<a href="{REPO_URL}/pull/{pk.get("pr")}">#{pk.get("pr")}</a>, '
+                f'<code>{esc(pk.get("commit", ""))}</code>)') if pk else ""
+        final = (f'{fn.get("green")} green, {fn.get("partial", 0)} partial at '
+                 f'<code>{esc(fn.get("commit", ""))}</code>: {esc(fn.get("note", ""))}') if fn else ""
+        moved = (f'v{esc(nx.get("version", ""))} on {esc(nx.get("date", ""))} '
+                 f'(<a href="{REPO_URL}/pull/{nx.get("pr")}">#{nx.get("pr")}</a>)') if nx else ""
+        rows.append(f'<tr><td>v{esc(h["version"])} <code>{esc(h.get("commit", ""))}</code></td>'
+                    f'<td>{peak}</td><td>{final}</td><td>{moved}</td></tr>')
+    if not rows:
+        return ""
+    return ('<section>\n<h2>Earlier upstream pins</h2>\n<p class="muted">Difftest results against '
+            'previous C++ references, kept after the pin moved on.</p>\n<div class="scroll"><table>'
+            '<thead><tr><th>Pin</th><th>Best</th><th>Last state</th><th>Moved to</th></tr></thead><tbody>'
+            + "".join(rows) + '</tbody></table></div>\n</section>\n')
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])

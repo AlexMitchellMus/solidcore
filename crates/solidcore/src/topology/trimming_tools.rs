@@ -441,6 +441,103 @@ pub struct TrimInput {
     pub surface_orientation: OrientType,
 }
 
+/// Model-space trim data, with the original surface retained separately.
+#[derive(Debug)]
+pub(crate) struct TrimCurvesInput {
+    pub(crate) loop_counts: Vec<usize>,
+    pub(crate) curves: Vec<Curve>,
+    pub(crate) orientations: Vec<OrientType>,
+    pub(crate) loop_points: Vec<Point3>,
+    pub(crate) uv_domain: Extent2d,
+    pub(crate) surface_orientation: OrientType,
+}
+
+/// Original surface location after a consuming trim attempt, including errors.
+#[derive(Debug)]
+pub(crate) enum TrimSurfaceLocation {
+    Owned(Box<Surface>),
+    Installed(FaceId),
+    Destroyed,
+}
+
+/// The native trim tool destroys inputs on early errors, but hands ownership to
+/// the face builder after continuity validation. No surface copy is made here.
+#[derive(Debug)]
+pub(crate) struct TrimSurfaceTransfer {
+    transfer: Option<crate::topology::brep::p6::FaceSurfaceTransfer>,
+}
+
+impl TrimSurfaceTransfer {
+    pub(crate) const fn new(surface: Surface) -> Self {
+        Self {
+            transfer: Some(crate::topology::brep::p6::FaceSurfaceTransfer::new(surface)),
+        }
+    }
+
+    pub(crate) fn into_location(self) -> Result<TrimSurfaceLocation> {
+        use crate::topology::brep::p6::FaceSurfaceLocation;
+        match self.transfer {
+            None => Ok(TrimSurfaceLocation::Destroyed),
+            Some(transfer) => match transfer.into_location()? {
+                FaceSurfaceLocation::Owned(surface) => Ok(TrimSurfaceLocation::Owned(surface)),
+                FaceSurfaceLocation::Installed(face) => Ok(TrimSurfaceLocation::Installed(face)),
+            },
+        }
+    }
+}
+
+enum TrimSurfaceBackend<'a> {
+    Legacy(&'a mut Option<Surface>),
+    Retained(&'a mut TrimSurfaceTransfer),
+}
+
+impl TrimSurfaceBackend<'_> {
+    fn surface(&self) -> Result<&Surface> {
+        match self {
+            Self::Legacy(surface) => surface.as_ref().ok_or_else(|| SolidError::null_pointer(OP)),
+            Self::Retained(transfer) => transfer
+                .transfer
+                .as_ref()
+                .ok_or_else(|| SolidError::null_pointer(OP))?
+                .owned_surface(),
+        }
+    }
+
+    fn destroy_early(&mut self) {
+        if let Self::Retained(transfer) = self {
+            transfer.transfer.take();
+        }
+    }
+}
+
+/// Consuming ORIGINAL-surface successor for the live cliff caller. The G1 path
+/// retains the actual installed face even when later UV repair/checking fails.
+/// Uses the native cliff flags: first loop outer, loops not pre-oriented, no seam split.
+/// Non-G1 inputs therefore fail the native early check and are destroyed.
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+pub(crate) fn trim_surface_with_model_space_curves_transfer(
+    k: &mut Kernel,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    tol_3d: f64,
+    input: TrimCurvesInput,
+    transfer: &mut TrimSurfaceTransfer,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+) -> Result<Vec<FaceId>> {
+    trim_surface_impl(
+        k,
+        b,
+        region,
+        tol_3d,
+        input,
+        TrimSurfaceBackend::Retained(transfer),
+        true,
+        false,
+        false,
+        env,
+    )
+}
+
 /// `TrimSurfaceWithModelSpaceCurves` (region overload): trims `input.surface` with the
 /// model-space curve loops of `input` into one face (a G1 surface) or several (split at
 /// its creases) in `region`, splits them at the surface seams when `may_cross_seam`,
@@ -465,34 +562,127 @@ pub fn trim_surface_with_model_space_curves(
     may_cross_seam: bool,
     env: &mut crate::topology::edge::NotifyEnv<'_>,
 ) -> Result<Vec<FaceId>> {
-    // NER(pRegion); pBrep = pRegion->GetBrep(); NER(pBrep)
-    let region = region.ok_or(SolidError::null_pointer(OP))?;
-    if !b.region(region)?.in_brep {
-        return Err(SolidError::null_pointer(OP));
-    }
-    let _ = first_is_outer; // SM_ASSERT only
+    let TrimInput {
+        loop_counts,
+        curves,
+        orientations,
+        loop_points,
+        surface,
+        uv_domain,
+        surface_orientation,
+    } = input;
+    let mut surface = Some(surface);
+    trim_surface_impl(
+        k,
+        b,
+        region,
+        tol_3d,
+        TrimCurvesInput {
+            loop_counts,
+            curves,
+            orientations,
+            loop_points,
+            uv_domain,
+            surface_orientation,
+        },
+        TrimSurfaceBackend::Legacy(&mut surface),
+        first_is_outer,
+        oriented_correctly,
+        may_cross_seam,
+        env,
+    )
+}
 
-    // set Brep tolerance
-    brep_set_tolerance(k, b, tol_3d)?;
-
-    // remember if Surface is G1 continuous
-    let g1_surface = surface_continuity_check(k, &input.surface)?;
-
-    // for nonG1 surfaces, Loops must be oriented correctly
-    if !g1_surface && !oriented_correctly {
-        return Err(SolidError::sm_err(OP));
-    }
-
-    let mut new_faces = if g1_surface {
-        // when Surface is G1Continuous - just call MakeFaceWithCurves()
-        vec![make_face_with_curves(k, b, region, input, env)?]
-    } else {
-        // MakeFacesWithCurves, then clear the UV trim curves of the new faces
-        let faces = make_faces_with_curves(k, b, region, input, env)?;
-        for &f in &faces {
-            clear_uv_trim_curves(b, f)?;
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+fn trim_surface_impl(
+    k: &mut Kernel,
+    b: &mut Brep,
+    region: Option<RegionId>,
+    tol_3d: f64,
+    input: TrimCurvesInput,
+    mut surface: TrimSurfaceBackend<'_>,
+    first_is_outer: bool,
+    oriented_correctly: bool,
+    may_cross_seam: bool,
+    env: &mut crate::topology::edge::NotifyEnv<'_>,
+) -> Result<Vec<FaceId>> {
+    // Native SmObjDelete/SmObjsDelete remain active through these early checks.
+    let early = (|| {
+        let region = region.ok_or(SolidError::null_pointer(OP))?;
+        if !b.region(region)?.in_brep {
+            return Err(SolidError::null_pointer(OP));
         }
-        faces
+        let _ = first_is_outer; // SM_ASSERT only
+        brep_set_tolerance(k, b, tol_3d)?;
+        let g1_surface = surface_continuity_check(k, surface.surface()?)?;
+        if !g1_surface && !oriented_correctly {
+            return Err(SolidError::sm_err(OP));
+        }
+        Ok((region, g1_surface))
+    })();
+    let (region, g1_surface) = match early {
+        Ok(result) => result,
+        Err(error) => {
+            drop(input);
+            surface.destroy_early();
+            return Err(error);
+        }
+    };
+    // Native clears the temporary cleanup immediately before MakeFace(s).
+    let mut new_faces = match surface {
+        TrimSurfaceBackend::Legacy(surface) => {
+            let surface = surface.take().ok_or_else(|| SolidError::null_pointer(OP))?;
+            let input = TrimInput {
+                loop_counts: input.loop_counts,
+                curves: input.curves,
+                orientations: input.orientations,
+                loop_points: input.loop_points,
+                surface,
+                uv_domain: input.uv_domain,
+                surface_orientation: input.surface_orientation,
+            };
+            if g1_surface {
+                vec![make_face_with_curves(k, b, region, input, env)?]
+            } else {
+                let faces = make_faces_with_curves(k, b, region, input, env)?;
+                for &f in &faces {
+                    clear_uv_trim_curves(b, f)?;
+                }
+                faces
+            }
+        }
+        TrimSurfaceBackend::Retained(transfer) => {
+            // Only the fixed cliff entry uses this backend. Its early native
+            // !G1 && !oriented check already rejected non-G1 surfaces.
+            debug_assert!(g1_surface);
+            let key_of = env.key_of;
+            let mut made = crate::topology::brep::p7::NewFace::default();
+            crate::topology::brep::p7::make_face_with_curves_transfer(
+                k,
+                b,
+                Some(region),
+                crate::topology::brep::p7::FaceCurvesInput {
+                    loops: input.loop_counts,
+                    curves_3d: Some(input.curves.into_iter().map(Some).collect()),
+                    uv_curves: None,
+                    orientations: input.orientations,
+                    loop_points: input.loop_points,
+                },
+                transfer
+                    .transfer
+                    .as_mut()
+                    .ok_or_else(|| SolidError::null_pointer(OP))?,
+                &input.uv_domain,
+                input.surface_orientation,
+                None,
+                &|face| key_of(EntityRef::Face(face)),
+                env,
+                &mut made,
+            )?;
+            vec![made
+                .face
+                .ok_or_else(|| SolidError::invalid_input(OP, "MakeFaceWithCurves made no face"))?]
+        }
     };
 
     // when warned - split all new faces at seam boundaries
@@ -924,7 +1114,7 @@ pub fn fix_backwards_outer_loop_on_seam(k: &Kernel, b: &mut Brep, f: FaceId) -> 
         .surface
         .clone()
         .ok_or_else(|| null("face without surface"))?;
-    let bounds = surface.natural_uv_domain();
+    let bounds = surface.natural_uv_domain_with_nurb(k)?;
     let closed = [
         surface
             .is_closed(k, &bounds, SurfParamType::U, None, false)?
@@ -1256,8 +1446,9 @@ pub struct OrderedLoops {
     pub plane_normal: Vec3,
     /// `rsCurvesBBox`: the bounding box of all curves.
     pub curves_box: Extent3d,
-    /// `false` when a loop was open or compound, or a single curve not closed
-    /// (upstream's tentative `sRet = SM_ERR`).
+    /// `false` when a loop was open or compound, ended away from its first curve's
+    /// start point, or a single curve was not closed (upstream's tentative
+    /// `sRet = SM_ERR`).
     pub closed: bool,
     /// `false` when a curve was found off the plane (upstream returns `SM_ERR` there).
     pub on_plane: bool,
@@ -1363,6 +1554,7 @@ pub fn order_curves_into_loops(k: &Kernel, curves: &[Curve], tol_3d: f64) -> Res
         let mut loop_points: Vec<Point3> = Vec::new();
         let mut orient = OrientType::Same;
         let mut loop_edges: usize = 0;
+        let first_curve_index = curve_index;
 
         // build-this-loop while block
         loop {
@@ -1441,6 +1633,21 @@ pub fn order_curves_into_loops(k: &Kernel, curves: &[Curve], tol_3d: f64) -> Res
 
             // expected exit: closed loop
             if at(&seen, next_index)? {
+                // a closed loop ends at its first curve's start point; ending on another
+                // seen curve (e.g. the start of a closed curve in the chain) leaves it open
+                let loop_end_pt = if orient == OrientType::Same {
+                    end
+                } else {
+                    start
+                };
+                let loop_tol = if tol_3d > feature_size {
+                    tol_3d
+                } else {
+                    feature_size
+                };
+                if loop_end_pt.distance(at(&vertex_points, 2 * first_curve_index)?) >= loop_tol {
+                    out.closed = false;
+                }
                 break;
             }
 
@@ -1896,7 +2103,7 @@ pub fn is_loop_uv_gap_within_tolerance(
 ) -> Result<bool> {
     // the extractions run on GetOrCreateGwNurbPointer: a plane makes its NURB (a failure
     // is their NER, which certifies nothing)
-    let bss: Cow<'_, BSplineSurface> = match surface.kind() {
+    let bss: Cow<'_, BSplineSurface> = match surface.kind_with_nurb(k)? {
         SurfaceKind::BSpline(b) => Cow::Borrowed(b),
         SurfaceKind::Plane(p) => match p.base_with_nurb() {
             Ok(b) => b,
@@ -1920,7 +2127,7 @@ pub fn is_loop_uv_gap_within_tolerance(
     gap.add_point(end_uv);
 
     // Only certify gaps inside the surface's natural domain.
-    let nat = surface.natural_uv_domain();
+    let nat = surface.natural_uv_domain_with_nurb(k)?;
     if gap.min().x < nat.min().x
         || gap.min().y < nat.min().y
         || gap.max().x > nat.max().x
@@ -2140,7 +2347,7 @@ pub fn check_loop(
                 closure = 3; // SE_MSG: signalled, processing continues
             }
 
-            let dom = surface.natural_uv_domain();
+            let dom = surface.natural_uv_domain_with_nurb(k)?;
             let mut gap_start = current_start;
             let mut gap_end = previous_end;
             // WR-440 (#530), opt-in: upstream compares the raw representatives.
@@ -2387,7 +2594,7 @@ pub fn is_iso_curve_on_seam(k: &Kernel, surface: &Surface, curve: &Curve) -> Res
     let Some((side, param)) = is_iso_curve(k, curve)? else {
         return Ok(false);
     };
-    let bounds = surface.natural_uv_domain();
+    let bounds = surface.natural_uv_domain_with_nurb(k)?;
     let closed = surface.is_closed(k, &bounds, side, None, false)?.0;
     let (lo, hi) = if side == SurfParamType::U {
         (bounds.min().x, bounds.max().x)
@@ -2484,6 +2691,163 @@ mod tests {
             (Some(original_key), Some(key_of(EntityRef::Face(face)))),
             "the original surface must remain the face's surface under the caller's issued owner"
         );
+    }
+
+    #[test]
+    fn retained_original_trim_records_consumption_and_installation() {
+        use crate::curve::line::Line;
+        use crate::geom::attribute::AttributeStore;
+        use crate::surface::plane::Plane;
+        use crate::topology::brep::{p1, p3};
+        use crate::topology::edge::NotifyEnv;
+
+        // 0 success; 1 native early null region; 2 native early non-G1;
+        // 3 face-builder validation failure after its ownership handoff;
+        // 4 a real degenerate curve makes an edgeless face, then repair fails.
+        for mode in 0..5 {
+            let mut k = Kernel::default();
+            let mut b = p3::new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT).unwrap();
+            let serial = p3::notify_serial(&mut k.context, &mut b).unwrap();
+            let key_of = |entity| p3::topology_ref(serial, entity);
+            let mut records = std::collections::BTreeMap::new();
+            p3::seed_records(&mut records, &b, &key_of);
+            let mut attributes = AttributeStore::default();
+            let mut surface = if mode == 2 {
+                let net = (0..3)
+                    .map(|i| {
+                        (0..2)
+                            .map(|j| {
+                                CPoint::new(
+                                    0.5 * f64::from(i),
+                                    f64::from(j),
+                                    if i == 1 { 0.25 } else { 0.0 },
+                                    1.0,
+                                )
+                            })
+                            .collect()
+                    })
+                    .collect();
+                let nurb = crate::nurbs::srf_basic::Surface::new(
+                    net,
+                    1,
+                    1,
+                    vec![0.0, 0.0, 0.5, 1.0, 1.0],
+                    vec![0.0, 0.0, 1.0, 1.0],
+                )
+                .unwrap();
+                Surface::from(BSplineSurface::from_nurb(nurb, false))
+            } else {
+                Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0)))
+            };
+            let original_key = k
+                .context
+                .geometry_key(surface.notify_identity_slot())
+                .unwrap();
+            let uv = [
+                Point2::new(0.0, 0.0),
+                Point2::new(1.0, 0.0),
+                Point2::new(1.0, 1.0),
+                Point2::new(0.0, 1.0),
+            ];
+            let points = uv.map(|p| surface.evaluate_point(&k, p).unwrap());
+            let interval = Extent1d::from_min_max(0.0, 1.0);
+            let curves = (0..4)
+                .map(|i| {
+                    Curve::from(
+                        Line::create_line_segment(
+                            3,
+                            points[i],
+                            points[(i + 1) % 4],
+                            Some(&interval),
+                        )
+                        .unwrap(),
+                    )
+                })
+                .collect();
+            let curves = if mode == 4 {
+                let point = CPoint::new(0.0, 0.0, 0.0, NOW);
+                let curve = NlCurve::new(vec![point, point], 1, vec![0.0, 0.0, 1.0, 1.0]).unwrap();
+                vec![Curve::from(BSplineCurve::from_nurb(curve, 3, false))]
+            } else {
+                curves
+            };
+            let input = TrimCurvesInput {
+                loop_counts: if mode == 3 {
+                    Vec::new()
+                } else if mode == 4 {
+                    vec![1]
+                } else {
+                    vec![4]
+                },
+                curves,
+                orientations: vec![OrientType::Same; 4],
+                loop_points: Vec::new(),
+                uv_domain: Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+                surface_orientation: OrientType::Same,
+            };
+            let mut transfer = TrimSurfaceTransfer::new(surface);
+            let region = if mode == 1 { None } else { b.infinite_region() };
+            let mut env = NotifyEnv {
+                records: &mut records,
+                attributes: &mut attributes,
+                context: None,
+                key_of: &key_of,
+            };
+            let result = trim_surface_with_model_space_curves_transfer(
+                &mut k,
+                &mut b,
+                region,
+                1e-5,
+                input,
+                &mut transfer,
+                &mut env,
+            );
+            match transfer.into_location().unwrap() {
+                TrimSurfaceLocation::Installed(face) => {
+                    if mode == 4 {
+                        assert!(matches!(
+                            result,
+                            Err(SolidError::Upstream {
+                                code: crate::error::SM_ERR,
+                                ..
+                            })
+                        ));
+                        assert_eq!(p1::faces(&b, None).unwrap(), vec![face]);
+                        assert!(b.face(face).unwrap().loops.is_empty());
+                    } else {
+                        assert_eq!(mode, 0);
+                        assert_eq!(result.unwrap(), vec![face]);
+                        assert_eq!(p1::vertices(&b, None).unwrap().len(), 4);
+                        assert_eq!(p1::edges(&b, None).unwrap().len(), 4);
+                    }
+                    let installed = b.face(face).unwrap().surface.as_ref().unwrap();
+                    assert_eq!(installed.notify_key(), Some(original_key));
+                    assert_eq!(installed.owner(), Some(key_of(EntityRef::Face(face))));
+                    assert_eq!(
+                        b.geometry_owner_keys.get(&EntityRef::Face(face)),
+                        Some(&key_of(EntityRef::Face(face)))
+                    );
+                }
+                TrimSurfaceLocation::Destroyed => {
+                    assert!(mode == 1 || mode == 2);
+                    let code = if mode == 1 {
+                        crate::error::SM_ERR_NULL_POINTER
+                    } else {
+                        crate::error::SM_ERR
+                    };
+                    assert!(
+                        matches!(result, Err(SolidError::Upstream {code: got, ..}) if got==code)
+                    );
+                    assert!(p1::faces(&b, None).unwrap().is_empty());
+                }
+                TrimSurfaceLocation::Owned(surface) => {
+                    assert_eq!(mode, 3);
+                    assert!(result.is_err());
+                    assert_eq!(surface.notify_key(), Some(original_key));
+                    assert_eq!(surface.owner(), None);
+                }
+            }
+        }
     }
 
     fn uv_line(a: [f64; 2], b: [f64; 2]) -> Curve {
@@ -2732,7 +3096,7 @@ mod tests {
                     if a.y == z.y {
                         continue;
                     }
-                    a.x = surface.natural_uv_domain().max().x;
+                    a.x = surface.natural_uv_domain_if_built().max().x;
                     z.x = a.x;
                     if eu1::orientation(&b, eu).unwrap() == OrientType::Opposite {
                         core::mem::swap(&mut a, &mut z);
@@ -2770,7 +3134,7 @@ mod tests {
                 // retain its failure, even though both seam sides map to the same
                 // points in 3D. No endpoint here comes from projection.
                 let eus = loop_edgeuses(&b, l).unwrap();
-                let d = surface.natural_uv_domain();
+                let d = surface.natural_uv_domain_if_built();
                 let (u0, u1, v0, v1) = (d.min().x, d.max().x, d.min().y, d.max().y);
                 let corners = [
                     ([u0, v1], [u0, v0]),
@@ -2837,7 +3201,7 @@ mod tests {
                 continue;
             };
             let (mut a, mut z) = edge_uv_ends(&k, &mut b, eu).unwrap();
-            a.x = surface.natural_uv_domain().max().x;
+            a.x = surface.natural_uv_domain_if_built().max().x;
             z.x = a.x;
             if eu1::orientation(&b, eu).unwrap() == OrientType::Opposite {
                 core::mem::swap(&mut a, &mut z);

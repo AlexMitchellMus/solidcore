@@ -104,6 +104,8 @@ pub trait ClassGeometryMut<O>: ClassGeometry<O> {
                 Ok(())
             }
             // UNPORTED(topology.edge): SmEdge::SetCurve
+            // Proof (unreachable): the library ClassGeometry impls resolve the edge handle
+            // (topology_entity/_mut); 0 hits in the green difftest sweep.
             _ => Err(SolidError::unported("SmEdge::SetCurve", "topology.edge")),
         }
     }
@@ -258,7 +260,7 @@ fn project_vertex_point<O>(
     found: &mut bool,
     solution: &mut Solution<NoObject>,
 ) -> Result<bool> {
-    let domain = surface.natural_uv_domain();
+    let domain = surface.natural_uv_domain_with_nurb(k)?;
     if let Some(uv_curve) = any_uv_curve {
         // let good UVguess = UVTrimCurve(nearest param to vertex value)
         let uv_curve = geometry
@@ -783,7 +785,7 @@ impl<O: ClassObject> CurveClassification<O> {
                     k,
                     original_curve.clone_for_evaluation()?,
                     surface.clone_for_evaluation()?,
-                    Some(surface.natural_uv_domain()),
+                    Some(surface.natural_uv_domain_with_nurb(k)?),
                     0,
                 )?))
             } else {
@@ -867,7 +869,7 @@ impl<O: ClassObject> CurveClassification<O> {
                     if !has_big_gaps || solution.start.solution_value > big_tolerance {
                         continue;
                     }
-                    let domain = detached.natural_uv_domain();
+                    let domain = detached.natural_uv_domain_with_nurb(k)?;
                     let vertex_solutions = detached.global_point_solve::<NoObject>(
                         k,
                         None,
@@ -969,8 +971,8 @@ impl<O: ClassObject> CurveClassification<O> {
                     };
                 (resolve(self.surface1())?, resolve(self.surface2())?)
             };
-        let solve1 = out_of_bounds(&surface1).into_owned();
-        let solve2 = out_of_bounds(&surface2).into_owned();
+        let solve1 = out_of_bounds(&surface1)?.into_owned();
+        let solve2 = out_of_bounds(&surface2)?.into_owned();
 
         // ClassificationCurve's Param RangeSize
         let crv_param_range = {
@@ -1152,6 +1154,9 @@ impl<O: ClassObject> CurveClassification<O> {
                 let mate = geometry.topology_intersector_mate(ti, edge).ok_or(
                     // UNPORTED(boolean.topology_intersector_p1): SmTopologyIntersector::GetOtherMate
                     // (an adapter that cannot reach the intersector behind its handle)
+                    // Proof (unreachable): only if topology_intersector() is Some and the
+                    // adapter returns no mate; the library ClassGeometry impls resolve it;
+                    // 0 hits in the green difftest sweep.
                     SolidError::unported(
                         "SmTopologyIntersector::GetOtherMate",
                         "boolean.topology_intersector_p1",
