@@ -104,12 +104,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> bin"
-      # Tests that take minutes unoptimised are skipped here and run once, optimised:
-      # tests/primitives_solid.rs (four tests) and tests/curve_cache_memo.rs (about 10
-      # min unoptimised) in the next step, whose difftest-profile solidcore the runner
-      # tests below reuse; the two SolidCraft whole-corpus tests (about 42 min
-      # unoptimised) in "Difftest runner tests", which runs difftest's unit tests in
-      # the difftest profile.
+      # Tests that take minutes unoptimised are skipped here and run once, optimised,
+      # in the next step: tests/primitives_solid.rs (four tests) and
+      # tests/curve_cache_memo.rs (about 10 min unoptimised). Its difftest-profile
+      # solidcore is the one the runner tests below reuse. The two SolidCraft
+      # whole-corpus tests are #[ignore]d and run nightly (nightly.yml).
       - if: needs.changes.outputs.full == 'true'
         run: >-
           cargo test --workspace -- --exact
@@ -118,8 +117,6 @@ jobs:
           --skip precise_sphere_properties_scale_and_translate
           --skip pole_free_sphere_tolerance_is_explicit_and_validated
           --skip memo_on_and_off_give_bit_identical_results
-          --skip solidcraft::tests::every_case_reaches_a_verdict_without_a_harness_error
-          --skip solidcraft::tests::deferrals_name_a_plan_unit
       - name: Primitives solid and curve-cache memo tests (difftest profile)
         if: needs.changes.outputs.full == 'true'
         run: >-
