@@ -2506,46 +2506,66 @@ impl Surface {
             }
             SurfaceKind::Plane(s) => s.swap_uv_notifying(&mut own),
             SurfaceKind::Cone(s) => {
-                // SmBSplineSurface::SwapUV: the NURB swap, the inherited
-                // SmSurfOfRevolution::ToggleSwapUVBit, then SetCanonical's virtual
+                // SmBSplineSurface::SwapUV: the inherited
+                // SmSurfOfRevolution::ToggleSwapUVBit before SetCanonical's notifications
+                // (restored on failure), the NURB swap, then SetCanonical's virtual
                 // RebuildSTEPFromNURBParameters (the cone's, status ignored)
-                s.base_mut().swap_uv_notifying(&mut own)?;
                 s.rev.toggle_swap_uv_bit();
+                if let Err(e) = s.base_mut().swap_uv_notifying(&mut own) {
+                    s.rev.toggle_swap_uv_bit();
+                    return Err(e);
+                }
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
             SurfaceKind::Sphere(s) => {
-                // SmBSplineSurface::SwapUV: the NURB swap, the inherited
-                // SmSurfOfRevolution::ToggleSwapUVBit, then SetCanonical's virtual
+                // SmBSplineSurface::SwapUV: the inherited
+                // SmSurfOfRevolution::ToggleSwapUVBit before SetCanonical's notifications
+                // (restored on failure), the NURB swap, then SetCanonical's virtual
                 // RebuildSTEPFromNURBParameters (the sphere's, status ignored)
-                s.base.base_mut().swap_uv_notifying(&mut own)?;
                 s.base.toggle_swap_uv_bit();
+                if let Err(e) = s.base.base_mut().swap_uv_notifying(&mut own) {
+                    s.base.toggle_swap_uv_bit();
+                    return Err(e);
+                }
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
             SurfaceKind::Torus(s) => {
-                // SmBSplineSurface::SwapUV: the NURB swap, the inherited
-                // SmSurfOfRevolution::ToggleSwapUVBit, then SetCanonical's virtual
+                // SmBSplineSurface::SwapUV: the inherited
+                // SmSurfOfRevolution::ToggleSwapUVBit before SetCanonical's notifications
+                // (restored on failure), the NURB swap, then SetCanonical's virtual
                 // RebuildSTEPFromNURBParameters (the torus's, status ignored)
-                s.base.base_mut().swap_uv_notifying(&mut own)?;
                 s.base.toggle_swap_uv_bit();
+                if let Err(e) = s.base.base_mut().swap_uv_notifying(&mut own) {
+                    s.base.toggle_swap_uv_bit();
+                    return Err(e);
+                }
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
             SurfaceKind::SurfOfRevolution(s) => {
-                // As in `reverse`: the stored NURB stands for GetOrCreateGwNurbPointer.
-                s.base_mut().swap_uv_notifying(&mut own)?;
+                // As in `reverse`: the stored NURB stands for GetOrCreateGwNurbPointer;
+                // the bit toggles before SetCanonical's notifications (restored on failure).
                 s.toggle_swap_uv_bit();
+                if let Err(e) = s.base_mut().swap_uv_notifying(&mut own) {
+                    s.toggle_swap_uv_bit();
+                    return Err(e);
+                }
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
             SurfaceKind::SurfOfExtrusion(s) => {
                 // SmBSplineSurface::SwapUV: GetCanonical's GetOrCreateGwNurbPointer (the
-                // extrusion's MakeNurb when missing, status ignored), the NURB swap and
-                // the extrusion's ToggleSwapUVBit (its RebuildSTEPFromNURBParameters is
-                // the base's: no work)
+                // extrusion's MakeNurb when missing, status ignored), the extrusion's
+                // ToggleSwapUVBit before SetCanonical's notifications (restored on
+                // failure) and the NURB swap (its RebuildSTEPFromNURBParameters is the
+                // base's: no work)
                 if s.base().gw_nurb().is_none() {
                     ignore_status(s.make_nurb(k))?;
                 }
-                s.base_mut().swap_uv_notifying(&mut own)?;
                 s.toggle_swap_uv_bit();
-                Ok(())
+                let status = s.base_mut().swap_uv_notifying(&mut own);
+                if status.is_err() {
+                    s.toggle_swap_uv_bit();
+                }
+                status
             }
             SurfaceKind::OffsetSurface(s) => s.swap_uv_notifying(k, notify),
         }
@@ -6515,9 +6535,10 @@ mod tests {
     /// `SetCanonical`'s `SM_NO_PRE_EDIT` / `SM_NO_POST_EDIT` of each edited surface, in
     /// upstream's order: the B-spline kinds notify themselves (the stored trimmed
     /// surface cache deleted at `SM_NO_PRE_EDIT`), an offset only its base surface (it
-    /// has no extended one here).
+    /// has no extended one here), a surface in a volume itself around its base.
     #[test]
     fn swap_uv_notifying_names_each_edited_surface() {
+        use crate::surface::volume::{Volume, VolumeKind};
         use NotifyOperation::{PostEdit, PreEdit};
         let k = Kernel::default();
         let mut ctx = Context::default();
@@ -6552,6 +6573,44 @@ mod tests {
         assert!(events.iter().all(|e| e.1 == BSplineSurface::TYPE));
         assert_eq!(events[0].0, events[1].0);
         assert_eq!((events[0].2, events[1].2), (PreEdit, PostEdit));
+
+        // SmSrfInVolume::SwapUV: its own PRE/POST around its base surface's
+        let in_volume = |owner_flag| {
+            Surface::from(
+                SrfInVolume::new(
+                    &k,
+                    bilinear(),
+                    true,
+                    Volume::new(VolumeKind::Base),
+                    0,
+                    owner_flag,
+                )
+                .unwrap(),
+            )
+        };
+        let mut siv = in_volume(3);
+        let ty = siv.type_code();
+        let events = run(&mut siv).unwrap();
+        let own = siv.notify_key().unwrap();
+        let SurfaceKind::SrfInVolume(v) = &siv.kind else {
+            panic!("not a surface in a volume");
+        };
+        let base = v.surface().notify_key().unwrap();
+        assert_ne!(own, base);
+        let b = BSplineSurface::TYPE;
+        assert_eq!(
+            events,
+            vec![
+                (own, ty, PreEdit),
+                (base, b, PreEdit),
+                (base, b, PostEdit),
+                (own, ty, PostEdit)
+            ]
+        );
+        // an unowned surface is refused before any notification
+        let mut unowned = in_volume(2);
+        assert!(run(&mut unowned).is_err());
+        assert!(unowned.notify_key().is_none());
     }
 
     #[test]
