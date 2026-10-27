@@ -1070,8 +1070,8 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
     let mut o = Vec::new();
     match i {
         Inputs::RawTrimGap { trim, t, edge_gap, mate, raw_knots } => {
-            return call(Op::RawTrimGap, &raw_trim_gap_block(trim, *t, *edge_gap, *mate, *raw_knots)?)
-                .map(state);
+            call(Op::RawTrimGap, &raw_trim_gap_block(trim, *t, *edge_gap, *mate, *raw_knots)?)
+                .map(state)
         }
         Inputs::Gf {
             gf,
