@@ -2119,7 +2119,10 @@ impl Surface {
                     distance_tolerance,
                     target_distance,
                     requested,
-                    Some(OperandObject::Surface(0, self.natural_uv_domain())),
+                    Some(OperandObject::Surface(
+                        0,
+                        self.natural_uv_domain_with_nurb(k)?,
+                    )),
                     &|_, uv| s.evaluate_step_point(uv),
                     &|k, uv| self.evaluate_point(k, uv),
                     &|k, domain, operation, point, guess| {
@@ -2141,7 +2144,10 @@ impl Surface {
                     distance_tolerance,
                     target_distance,
                     requested,
-                    Some(OperandObject::Surface(0, self.natural_uv_domain())),
+                    Some(OperandObject::Surface(
+                        0,
+                        self.natural_uv_domain_with_nurb(k)?,
+                    )),
                     &|_, uv| s.evaluate_step_point(uv),
                     &|k, uv| self.evaluate_point(k, uv),
                     &|k, domain, operation, point, guess| {
@@ -2163,7 +2169,10 @@ impl Surface {
                     distance_tolerance,
                     target_distance,
                     requested,
-                    Some(OperandObject::Surface(0, self.natural_uv_domain())),
+                    Some(OperandObject::Surface(
+                        0,
+                        self.natural_uv_domain_with_nurb(k)?,
+                    )),
                     &|_, uv| s.evaluate_step_point(uv),
                     &|k, uv| self.evaluate_point(k, uv),
                     &|k, domain, operation, point, guess| {
@@ -2187,7 +2196,10 @@ impl Surface {
                     distance_tolerance,
                     target_distance,
                     requested,
-                    Some(OperandObject::Surface(0, self.natural_uv_domain())),
+                    Some(OperandObject::Surface(
+                        0,
+                        self.natural_uv_domain_with_nurb(k)?,
+                    )),
                 )?
                 .without_objects()),
             // SmSurfOfExtrusion::DropPointFast: its solutions name this surface, as the
@@ -2202,7 +2214,10 @@ impl Surface {
                     distance_tolerance,
                     target_distance,
                     requested,
-                    Some(OperandObject::Surface(0, self.natural_uv_domain())),
+                    Some(OperandObject::Surface(
+                        0,
+                        self.natural_uv_domain_with_nurb(k)?,
+                    )),
                 )?
                 .without_objects()),
             SurfaceKind::BSpline(_)
