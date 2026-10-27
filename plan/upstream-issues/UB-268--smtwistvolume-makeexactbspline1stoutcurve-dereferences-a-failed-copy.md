@@ -1,4 +1,4 @@
-#### UB-266. `SmTwistVolume::MakeExactBSpline1stOutCurve` dereferences the NULL result of a failed `Copy`
+#### UB-268. `SmTwistVolume::MakeExactBSpline1stOutCurve` dereferences the NULL result of a failed `Copy`
 - **Severity:** Crash / undefined behaviour
 - **Area:** Surfaces and volumes
 - **Location:** `source/SMLib/src/SmTwistVolume.cpp`, `SmTwistVolume::MakeExactBSpline1stOutCurve` (def. `:419`): `rInputCurve.Copy(*pContext, (SmCurve *&) rpNewCurve)` (`:538`) ignores the status, and `rpNewCurve->Transform(sRotate)` (`:539`) runs on the `NULL` it set at `:428`.
