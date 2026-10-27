@@ -344,12 +344,14 @@ fn merge_intervals<O: LoopObject>(
     c: &mut CurveClassification<O>,
     dir: SurfParamType,
     b: &mut Brep,
+    env: Option<&mut crate::topology::edge::NotifyEnv<'_>>,
     f: FaceId,
     resolve: &dyn Fn(O) -> Option<EntityRef>,
 ) -> Result<SeamSplit> {
     // (the merge's status is ignored, as upstream, keeping what it made before a
     // failure; a handle the objects cannot resolve is caller error and propagates)
-    let merged = match crate::topology::face::p4::merge_seam_intervals(k, b, f, dir, c)? {
+    let merged = match crate::topology::face::p4::merge_seam_intervals(k, b, env, f, dir, c, false)?
+    {
         Ok(merged) => merged,
         Err(e) if e.error.is_unported() || matches!(e.error, SolidError::InvalidInput { .. }) => {
             return Err(e.error)
@@ -2018,6 +2020,7 @@ pub fn move_seam_notified<O: LoopObject>(
         if let Some(s) = ignored(split_at_seam_depth(
             k,
             b,
+            env.as_deref_mut(),
             f,
             crv_class_u,
             crv_class_v,
@@ -2084,9 +2087,42 @@ pub fn split_at_seam<O: LoopObject>(
     props: Option<&FaceProps<O>>,
     resolve: &dyn Fn(O) -> Option<EntityRef>,
 ) -> Result<SeamSplit> {
+    split_at_seam_notified(
+        k,
+        b,
+        None,
+        f,
+        crv_class_u,
+        crv_class_v,
+        problem,
+        props,
+        resolve,
+    )
+}
+
+/// [`split_at_seam`] notifying its `MergeIntervals` edits through `env` when given
+/// (upstream's `SmObject::Notify` reaches the context's system callback, e.g. a
+/// healer's `SmTrackTopologyChanges`).
+///
+/// # Errors
+///
+/// As [`split_at_seam`].
+#[allow(clippy::too_many_arguments)] // one upstream routine
+pub fn split_at_seam_notified<O: LoopObject>(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: Option<&mut crate::topology::edge::NotifyEnv<'_>>,
+    f: FaceId,
+    crv_class_u: &mut CurveClassification<O>,
+    crv_class_v: &mut CurveClassification<O>,
+    problem: SeamProblem,
+    props: Option<&FaceProps<O>>,
+    resolve: &dyn Fn(O) -> Option<EntityRef>,
+) -> Result<SeamSplit> {
     split_at_seam_depth(
         k,
         b,
+        env,
         f,
         crv_class_u,
         crv_class_v,
@@ -2101,6 +2137,7 @@ pub fn split_at_seam<O: LoopObject>(
 fn split_at_seam_depth<O: LoopObject>(
     k: &mut Kernel,
     b: &mut Brep,
+    env: Option<&mut crate::topology::edge::NotifyEnv<'_>>,
     f: FaceId,
     crv_class_u: &mut CurveClassification<O>,
     crv_class_v: &mut CurveClassification<O>,
@@ -2171,6 +2208,7 @@ fn split_at_seam_depth<O: LoopObject>(
     let r = split_at_seam_merges(
         k,
         b,
+        env,
         f,
         crv_class_u,
         crv_class_v,
@@ -2190,6 +2228,7 @@ fn split_at_seam_depth<O: LoopObject>(
 fn split_at_seam_merges<O: LoopObject>(
     k: &mut Kernel,
     b: &mut Brep,
+    mut env: Option<&mut crate::topology::edge::NotifyEnv<'_>>,
     f: FaceId,
     crv_class_u: &mut CurveClassification<O>,
     crv_class_v: &mut CurveClassification<O>,
@@ -2206,7 +2245,7 @@ fn split_at_seam_merges<O: LoopObject>(
             Some(EntityRef::Vertex(v)) => Some(v),
             _ => None,
         })?;
-        this_new = merge_intervals(k, crv_class_u, Sp::U, b, f, resolve)?;
+        this_new = merge_intervals(k, crv_class_u, Sp::U, b, env.as_deref_mut(), f, resolve)?;
         if !merge_v {
             out.faces.extend_from_slice(&this_new.faces);
             out.edges.extend_from_slice(&this_new.edges);
@@ -2241,6 +2280,7 @@ fn split_at_seam_merges<O: LoopObject>(
                 let s = ignored(split_at_seam_depth(
                     k,
                     b,
+                    env.as_deref_mut(),
                     f,
                     &mut cu,
                     &mut cv,
@@ -2263,7 +2303,7 @@ fn split_at_seam_merges<O: LoopObject>(
             Some(EntityRef::Vertex(v)) => Some(v),
             _ => None,
         })?;
-        this_new = merge_intervals(k, crv_class_v, Sp::V, b, f, resolve)?;
+        this_new = merge_intervals(k, crv_class_v, Sp::V, b, env.as_deref_mut(), f, resolve)?;
         out.faces.extend_from_slice(&this_new.faces);
         out.edges.extend_from_slice(&this_new.edges);
         out.vertices.extend_from_slice(&this_new.vertices);
@@ -2611,6 +2651,7 @@ mod tests {
         let e = split_at_seam_depth(
             &mut k,
             &mut b,
+            None,
             f,
             &mut cu,
             &mut cv,
