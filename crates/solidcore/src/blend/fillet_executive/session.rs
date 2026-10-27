@@ -3469,6 +3469,19 @@ impl FilletParametersAccess<FilletObject> for SessionObjects<'_> {
         };
         self.assign_generator(id, generator)
     }
+    fn parameters_edge_is_live(&self, brep: FilletObject, edge: FilletObject) -> Result<bool> {
+        let (which, body) = match brep {
+            FilletObject::Body(FilletBody::Target) => (FilletBody::Target, &*self.target),
+            FilletObject::Body(FilletBody::Pseudo) => (FilletBody::Pseudo, self.pseudo.brep()),
+            _ => return Err(invalid("object is not a session body")),
+        };
+        // (an edge of another body, or not an edge, is not on this body's edge list)
+        let FilletObject::Topology(owner, EntityRef::Edge(id)) = edge else {
+            return Ok(false);
+        };
+        Ok(owner == which
+            && crate::topology::brep::p1::is_live_topology_member(body, Some(EntityRef::Edge(id))))
+    }
 }
 
 impl SessionObjects<'_> {
@@ -3603,7 +3616,7 @@ impl SessionObjects<'_> {
         let found = crate::error::ignored(
             surface.simple_coincidence_checker::<crate::topology::ObjectHandle>(
                 k,
-                &surface.natural_uv_domain(),
+                &surface.natural_uv_domain_with_nurb(k)?,
                 curve,
                 &interval,
                 corner.approx_tol_3d,
