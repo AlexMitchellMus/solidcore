@@ -193,7 +193,7 @@ pub fn copy_edges_with_context(
     source: crate::topology::brep::p3::CopySource<'_>,
 ) -> Result<Vec<EdgeId>> {
     use crate::topology::brep::p3;
-    let crate::topology::brep::p3::CopySource {
+    let p3::CopySource {
         key_of: source_key,
         context: mut source_context,
     } = source;

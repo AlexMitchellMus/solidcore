@@ -674,7 +674,7 @@ fn bspline_line(a: [f64; 3], b: [f64; 3]) -> Result<solidcore::curve::curve::Cur
     Ok(BSplineCurve::create_line_segment(3, Point3::new(a[0], a[1], a[2]), Point3::new(b[0], b[1], b[2]))?.into())
 }
 
-/// The shim's `sc_test_tsurf_creation` (prog_test `my_test_tsurf_creation`): a 10x10
+/// The shim's `sc_test_tsurf_creation` (`prog_test` `my_test_tsurf_creation`): a 10x10
 /// B-spline plane face with a notched outer loop and two inner loops.
 fn test_tsurf_creation(
     k: &mut Kernel,
@@ -738,7 +738,7 @@ fn test_tsurf_creation(
     Ok(())
 }
 
-/// The shim's `sc_create_test_brep` (prog_test `my_create_test_brep`), with the
+/// The shim's `sc_create_test_brep` (`prog_test` `my_create_test_brep`), with the
 /// context's doing-Boolean flag set while it adds the vertex loop, the edge loop,
 /// the wire edge and the shell vertex.
 fn create_test_brep(

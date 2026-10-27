@@ -158,7 +158,7 @@ pub fn body_undefined(input: &[f64; 16]) -> Option<&'static str> {
     None
 }
 
-/// Whole-B-rep `DoSweep` of a non-manifold body (prog_test `smSweepTest.cpp`):
+/// Whole-B-rep `DoSweep` of a non-manifold body (`prog_test` `smSweepTest.cpp`):
 /// `input` = `[body, kind (1 translation, 2 rotation), vx, vy, vz, angle_deg, cx, cy,
 /// cz, eps, stitch, merge, repetitions, tagging, tag_id, targets]`, `targets` 0 for
 /// the whole B-rep (all six target arrays null) or 1 for every face as faces-higher. `body` 0 is an
