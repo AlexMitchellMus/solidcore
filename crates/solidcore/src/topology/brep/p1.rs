@@ -2275,7 +2275,7 @@ fn first_nonseparating_seam(
     // Get the surface and check that it is periodic in U and V without poles.
     let face_tolerance = face2::tolerance(b, face)?;
     let surface = face_surface(b, face)?;
-    let domain = surface.natural_uv_domain();
+    let domain = surface.natural_uv_domain_with_nurb(k)?;
     if !surface.is_periodic(k, &domain, SurfParamType::U)?
         || !surface.is_periodic(k, &domain, SurfParamType::V)?
         || surface

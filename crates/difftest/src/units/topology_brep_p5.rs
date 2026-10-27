@@ -396,15 +396,9 @@ fn notification_record(b: &Brep, i: &Inputs) -> SolidResult<Vec<f64>> {
         let entity_of = |key: ObjectKey| {
             let i = u32::try_from(key.0 % 1_000_000).ok()?;
             match key.0 / 1_000_000 {
-                1 => Some(solidcore::EntityRef::Vertex(
-                    solidcore::topology::VertexId::from_index(i),
-                )),
-                2 => Some(solidcore::EntityRef::Edge(
-                    solidcore::topology::EdgeId::from_index(i),
-                )),
-                4 => Some(solidcore::EntityRef::Face(
-                    solidcore::topology::FaceId::from_index(i),
-                )),
+                1 => Some(solidcore::EntityRef::Vertex(VertexId::from_index(i))),
+                2 => Some(solidcore::EntityRef::Edge(EdgeId::from_index(i))),
+                4 => Some(solidcore::EntityRef::Face(FaceId::from_index(i))),
                 _ => None,
             }
         };
@@ -571,7 +565,8 @@ impl UnitDiff for Runner {
         }
         let mut kernel = Kernel::default();
         if i.op == 12 {
-            bind_transform_owners(&mut kernel, &mut b).map_err(|e| HarnessError::new(e.to_string()))?;
+            bind_transform_owners(&mut kernel, &mut b)
+                .map_err(|e| HarnessError::new(e.to_string()))?;
         }
         match rust_record(&mut kernel, &mut b, &i) {
             Ok(record) if i.op == 2 => Ok(Output::new().values("target_stage", record)),

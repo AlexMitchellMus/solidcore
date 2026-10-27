@@ -267,6 +267,8 @@ pub struct UpstreamFixes {
     pub fillet_point_bigger_step_retry: bool,
     /// A fillet's trace also runs through the filleted edge's end where a rail ends on an extended edge, so the surface reaches that end (#1022, WR-468).
     pub fillet_through_extended_rail_end: bool,
+    /// `SmFace::ComputePreciseProperties` scales the volume and moment error bounds by the body size (ten times the root of the estimated area, or the origin's distance when larger), not 1.0.1's tenth of it, so the integration converges at tight accuracies instead of returning `SM_ERR` (WR-470; the SolidCraft fork's tangency-labs/smlib@073d4740).
+    pub precise_properties_body_length_scale: bool,
 }
 
 /// Options for [`Kernel::new`].

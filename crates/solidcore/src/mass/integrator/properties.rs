@@ -279,7 +279,20 @@ pub fn boundary_properties(
         }
         // Scale volume and moment errors by a length per extra dimension. sqrt(area) is
         // a tenth of the body size; grow it once the origin is farther than the body.
-        let length = {
+        // With `fixes.precise_properties_body_length_scale` (WR-470; the SolidCraft
+        // fork's tangency-labs/smlib@073d4740) the length is the body size, ten times
+        // sqrt(area), or the origin's distance when larger: each component is then held
+        // to the area's share of its own size, where 1.0.1's tenth holds each extra power
+        // ten times tighter, below roundoff at tight accuracies.
+        let length = if k.fixes.precise_properties_body_length_scale {
+            let a = 10.0 * estimated_area.sqrt();
+            let b = origin_distance;
+            if a > b {
+                a
+            } else {
+                b
+            }
+        } else {
             let a = estimated_area.sqrt();
             let b = origin_distance / 10.0;
             if a > b {

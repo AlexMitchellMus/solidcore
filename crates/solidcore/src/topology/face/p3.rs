@@ -916,7 +916,7 @@ fn loop_orientation_3d(
     if width <= 0.0 || height <= 0.0 || edgeuses.is_empty() {
         return Ok(OrientType::Unknown);
     }
-    let surf_domain = surf_copy.natural_uv_domain();
+    let surf_domain = surf_copy.natural_uv_domain_with_nurb(k)?;
     let closed_u = surf_copy
         .is_closed(k, &surf_domain, SurfParamType::U, None, false)?
         .0;
@@ -1115,7 +1115,7 @@ pub fn create_uv_trim_curves_notified(
         srf_poles: surface_of(b, f)?
             .get_singularities_of_face(k, face2::tolerance(b, f)?, false, false)?
             .singular,
-        srf_uv_domain: surface_of(b, f)?.natural_uv_domain(),
+        srf_uv_domain: surface_of(b, f)?.natural_uv_domain_with_nurb(k)?,
     };
     let surface = surface_of(b, f)?;
     let rescue = face2::RescueSurfaceOwner::new(surface);
@@ -1429,7 +1429,7 @@ pub fn is_closed_surface_with_vertex_loops<O: LoopObject>(
         }
     }
 
-    let domain = surface.natural_uv_domain();
+    let domain = surface.natural_uv_domain_with_nurb(k)?;
     let face_tol = face2::tolerance(b, f)?;
     let xsect_tol = xsect_tol_3d_from_zones(k, face_tol, face_tol);
     let closed_u = surface

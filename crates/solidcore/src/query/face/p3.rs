@@ -2004,7 +2004,7 @@ pub fn sector_classify_curve_on(
     };
 
     // Some surface info:
-    let srf_domain = face_surface(b, f, OP_SECTOR)?.natural_uv_domain();
+    let srf_domain = face_surface(b, f, OP_SECTOR)?.natural_uv_domain_with_nurb(k)?;
     let lu1 = eu1::loopuse(b, cp_eu1)?.ok_or_else(|| null(OP_SECTOR, "edge use not in a loop"))?;
     let loop1 = b
         .loopuse(lu1)?

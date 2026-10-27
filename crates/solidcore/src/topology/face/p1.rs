@@ -912,7 +912,7 @@ pub fn find_if_rectangular_trim(
 
     let min = Point2::new(uv_bbox.min().x, uv_bbox.min().y);
     let max = Point2::new(uv_bbox.max().x, uv_bbox.max().y);
-    let nat_domain = surface_deref(b, f)?.natural_uv_domain();
+    let nat_domain = surface_deref(b, f)?.natural_uv_domain_with_nurb(k)?;
 
     // set output (SetMinMax's status ignored)
     let _ = out
@@ -1382,7 +1382,7 @@ fn shrink_geometry_notifying(
     let tol = face_domain.size().length() / 1000.0;
 
     // get surface's current natural UVDomain
-    let surf_domain = surface_deref(b, f)?.natural_uv_domain();
+    let surf_domain = surface_deref(b, f)?.natural_uv_domain_with_nurb(k)?;
 
     // If the face domain is dTol close within surface domain, choose the surface domain
     let mut min = face_domain.min();
