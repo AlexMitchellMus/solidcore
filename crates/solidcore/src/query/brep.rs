@@ -53,17 +53,18 @@
 //!   fresh one just before and drops it on failure), with [`EntityRef`] objects. Its
 //!   boundary solve and ray fires need the B-rep's cache and object identities, which
 //!   upstream reaches through the B-rep (`CacheMakeOrValidate`): a [`BrepQuery`] holds
-//!   the identities and builds the cache lazily, on the first solve that needs it (so a
-//!   single-region B-rep never builds one, as upstream). A caller keeps one query while
+//!   the identities and builds the cache lazily, on the first solve that needs it (so
+//!   single-region classification without boundary intersections skips it, as upstream).
+//!   A caller keeps one query while
 //!   the B-rep is not edited and makes a fresh one after an edit (upstream revalidates).
 //!   [`BrepQuery::of_brep`] and [`BrepClassifier::of_brep`] resolve a lone B-rep's
 //!   identities from its [`Brep::naming`] scheme and proven owner keys
-//!   ([`BrepIdentity::default`] assumes [`arena_identity`]). The ray fires may add
-//!   missing UV trim curves, which
-//!   upstream's `const` method does to the B-rep itself; [`BrepClassifier`] serves
-//!   callers that hold the B-rep shared and makes a private copy on the first ray fire
-//!   only ([`Brep::clone_standing_for_self`]: its geometry keeps its owners, which the
-//!   copy constructor resets, so the copy's cache still holds its curves and surfaces).
+//!   ([`BrepIdentity::default`] assumes [`arena_identity`]). Face boundary solves prepare
+//!   face caches, and ray fires may add missing UV trim curves, which upstream's `const`
+//!   method does to the B-rep itself. [`BrepClassifier`] serves callers that hold the
+//!   B-rep shared and makes a private copy on the first face boundary solve or ray fire
+//!   ([`Brep::clone_standing_for_self`]: its geometry keeps its owners, which the copy
+//!   constructor resets, so the copy's caches still hold its curves and surfaces).
 //!   A ray fire that fails with an ordinary error moves on to the next direction,
 //!   as a failing status does upstream; [`SolidError::Unported`] propagates.
 //! - **Out-params.** The evaluated point, normal or point and derivatives are the
@@ -882,7 +883,7 @@ impl Target<'_> {
 
     /// The B-rep to edit, copying a shared one first: the copy stands for the B-rep
     /// ([`Brep::clone_standing_for_self`]), so its geometry keeps naming its edges and
-    /// faces and the ray fires' cache holds them.
+    /// faces and the face boundary solves' and ray fires' caches hold them.
     fn mutable(&mut self) -> Result<&mut Brep> {
         match self {
             Self::Own(b) => Ok(b),
