@@ -2020,7 +2020,7 @@ pub fn move_seam_notified<O: LoopObject>(
         if let Some(s) = ignored(split_at_seam_depth(
             k,
             b,
-            env.as_deref_mut(),
+            env,
             f,
             crv_class_u,
             crv_class_v,
@@ -2303,7 +2303,7 @@ fn split_at_seam_merges<O: LoopObject>(
             Some(EntityRef::Vertex(v)) => Some(v),
             _ => None,
         })?;
-        this_new = merge_intervals(k, crv_class_v, Sp::V, b, env.as_deref_mut(), f, resolve)?;
+        this_new = merge_intervals(k, crv_class_v, Sp::V, b, env, f, resolve)?;
         out.faces.extend_from_slice(&this_new.faces);
         out.edges.extend_from_slice(&this_new.edges);
         out.vertices.extend_from_slice(&this_new.vertices);

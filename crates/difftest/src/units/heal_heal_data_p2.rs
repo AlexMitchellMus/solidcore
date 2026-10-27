@@ -14,7 +14,7 @@
 //! - `heal`: an `SmHealData` built on a B-rep (an upstream `.smb` file, a wire edge, a
 //!   one-face B-rep, the `my_test_topology` wire network, an `SmPrimitiveCreation`
 //!   box, a full sphere face, a one-vertex-loop face on a sphere, plane or torus, or
-//!   prog_test `my_test_move_seam_refreshes_face_props`' seam-crossing cone patch) with
+//!   `prog_test` `my_test_move_seam_refreshes_face_props`' seam-crossing cone patch) with
 //!   target lists, then a script of heal steps;
 //!   outputs each step's status and results and, at the end, the whole healer state
 //!   (targets, every props record ever allocated, every problem array with its labels,
@@ -190,7 +190,7 @@ pub(crate) enum Prim {
         #[serde(default)]
         surface: u8,
     },
-    /// prog_test `my_test_move_seam_refreshes_face_props`: a
+    /// `prog_test` `my_test_move_seam_refreshes_face_props`: a
     /// `SmBSplineSurface::CreateConePatch` face over `angles` (degrees) whose surface
     /// is replaced by the full 0..360 patch with its seam turned by `seam` degrees, so
     /// the seam crosses the face.

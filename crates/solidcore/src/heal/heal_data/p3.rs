@@ -955,7 +955,7 @@ impl<O: LoopObject> HealData<O> {
                 for o in &merged.edges {
                     match o.as_topology() {
                         Some(EntityRef::Edge(x)) => {
-                            self.new_edges_from_split_edges_at_seams.push(x)
+                            self.new_edges_from_split_edges_at_seams.push(x);
                         }
                         _ => return Err(invalid("MergeIntervals made an edge without B-rep edge")),
                     }
