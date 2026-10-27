@@ -1529,11 +1529,10 @@ impl FilletCorner {
         let interval = edge::interval(target, side_edge)?;
         // the face's own surface: its trimmed-surface services come from the B-rep
         let mut services = BrepFaceServices::with_caches(target, FaceCaches::new());
-        // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
         let runs_on = surface
             .simple_coincidence_checker_with_context(
                 k,
-                &surface.natural_uv_domain_if_built(),
+                &surface.natural_uv_domain_with_nurb(k)?,
                 &curve,
                 &interval,
                 self.approx_tol_3d,

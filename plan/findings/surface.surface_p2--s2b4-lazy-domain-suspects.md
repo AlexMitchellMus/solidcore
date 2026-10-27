@@ -45,8 +45,15 @@ so they are not silently accepted.
 Not listed: `_if_built` sites whose receiver is provably built (a B-spline surface just
 made in `primitive_creation/p3/construct.rs` and `p2/taper.rs`, extended surfaces in
 `blend/fillet_corner/p1.rs`, the never-lazy kinds arm of
-`Surface::natural_uv_domain_with_nurb`, an offset's extension in `follow_extension_of`), and
-test modules.
+`Surface::natural_uv_domain_with_nurb`, an offset's extension in `follow_extension_of` and
+in `OffsetSurface::select_surface`), and test modules.
+
+Related, not a domain call: `surface/offset_surface.rs` `extend_toward` reads the base's NURB
+through the kernel-free `nurb_of`, which returns `SM_ERR_NULL_POINTER` for a lazy analytic
+base where upstream's `GetOrCreateGwNurbPointer` would make it. Since main's #419
+(`fixes.offset_extension_from_base`), `extend_from_base` takes the kernel and reads the domains
+through `_with_nurb`, but still extends through `extend_toward`. S2b-4 can thread `k` into
+`extend_toward` / `nurb_of` the same way.
 
 **Plan (S2b-4, a follow-up PR):**
 - Thread `k` into the kernel-free helpers and constructors above where every caller has

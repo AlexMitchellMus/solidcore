@@ -1260,7 +1260,7 @@ impl OffsetSurface {
                     Some(base)
                 };
                 let original = original.ok_or_else(|| SolidError::null_pointer(OP_EXTEND))?;
-                // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+                // (kernel-free: an extension is a B-spline made from its NURB, never lazy)
                 let current = ext.current().map(Surface::natural_uv_domain_if_built);
                 let extended = extend_surface(
                     k,
@@ -2140,14 +2140,14 @@ fn extend_toward(surface: &Surface, uv: Point2) -> Result<Surface> {
 /// never less than the `current` extension's domain, so one point always gives one
 /// extension whatever was evaluated first. `Ok(None)` when `have` already contains `uv`.
 fn extend_from_base(
+    k: &Kernel,
     base: &Surface,
     uv: Point2,
     current: Option<Extent2d>,
     periodic: [bool; 2],
     singularities: u32,
 ) -> Result<Option<Surface>> {
-    // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
-    let domain = base.natural_uv_domain_if_built();
+    let domain = base.natural_uv_domain_with_nurb(k)?;
     let size = domain.size();
     let have = current.unwrap_or(domain);
     if domain.contains_point(uv, 0.0) || have.contains_point(uv, 0.0) {
@@ -2192,9 +2192,8 @@ fn extend_from_base(
         Some(extend_toward(base, low_uv)?)
     };
     let from = low.as_ref().unwrap_or(base);
-    // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
     if from
-        .natural_uv_domain_if_built()
+        .natural_uv_domain_with_nurb(k)?
         .contains_point(high_uv, 0.0)
     {
         return Ok(low);
@@ -2268,7 +2267,7 @@ fn extend_surface(
     // `fixes.offset_extension_from_base`: `fixed` holds the current extension's domain
     if fixed {
         let periodic = [is_periodic_on_u, is_periodic_on_v];
-        return extend_from_base(surface, *uv, current, periodic, singularities);
+        return extend_from_base(k, surface, *uv, current, periodic, singularities);
     }
 
     // extend a domain size farther out than needed
