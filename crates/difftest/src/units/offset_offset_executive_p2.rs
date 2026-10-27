@@ -447,7 +447,7 @@ fn validate(input: &Inputs) -> HResult<()> {
     }
     for fixture in input.source.iter().chain(&input.foreign) {
         match *fixture {
-            Fixture::Empty => {}
+            Fixture::Empty | Fixture::File { .. } => {}
             Fixture::Wire {
                 start,
                 end,
@@ -505,7 +505,6 @@ fn validate(input: &Inputs) -> HResult<()> {
                 finite(&[height, origin[2] + height])?;
             }
             Fixture::Sphere { origin, radius } => primitive_finite(origin, radius)?,
-            Fixture::File { .. } => {}
         }
     }
     Ok(())
