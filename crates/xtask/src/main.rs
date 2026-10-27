@@ -66,6 +66,12 @@ fn rm(paths: &[OsString], dry_run: bool) -> io::Result<()> {
         .map(|p| roots.check(Path::new(p)))
         .collect::<io::Result<Vec<_>>>()?;
     for target in checked {
+        // Re-check right before deleting: if a parent was swapped for a symlink since the
+        // first check, the target now resolves elsewhere and is refused. (std's
+        // remove_dir_all never follows symlinks inside the tree it deletes.)
+        if roots.check(&target)? != target {
+            return Err(refuse(&target, "changed between check and delete"));
+        }
         delete(&target, dry_run)?;
     }
     Ok(())
