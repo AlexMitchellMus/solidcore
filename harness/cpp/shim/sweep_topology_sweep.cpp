@@ -187,7 +187,14 @@ SC_EXPORT int32_t sc_sweep_topology_sweep_whole(const double* in, int64_t n_in, 
 // eps, stitch, merge, repetitions, tagging, tag_id, targets]; the translation is
 // (vx,vy,vz), the rotation is about the axis (vx,vy,vz) through (cx,cy,cz) with
 // tolerance eps. targets 0 sweeps the whole B-rep (all six target arrays NULL), 1
-// passes every GetFaces face as the faces-higher list (the others NULL).
+// passes every GetFaces face as the faces-higher list (the others NULL), 2 takes the
+// six lists from seven more inputs (n_in 23): [faces higher, edges higher, vertices
+// higher, faces same, edges same, vertices same, null_region], each list selector
+// -1 NULL, 0 every GetFaces/GetEdges/GetVertices entity, 1 GetWireEdges (edges) or
+// GetShellVertices (vertices), 2 an empty array, 3 every entity but the last (as
+// prog_test case 1 builds sFaces), 10+i the single entity i of that Get list;
+// null_region 1 passes a NULL region (the documented default, the infinite region).
+// kind 0 (lists only) is a base SmSweepGeometryCreation, whose sweeps return SM_ERR.
 // Out (doubles): status; on success the counts, vertex points and edge vertex
 // indices of sc_sweep_topology_sweep_whole, then the wire-edge and shell-vertex
 // counts, then per GetFaces face and per GetEdges edge its SM_AI_TAG
@@ -318,12 +325,19 @@ static void sc_put_tag(std::vector<double>& o, SmTopology* p)
 
 SC_EXPORT int32_t sc_sweep_topology_sweep_body(const double* in, int64_t n_in, double* out,
                                                int64_t cap, int64_t* out_len) {
-    if (!in || !out_len || n_in != 16) return SC_ERR_ARG;
+    if (!in || !out_len || (n_in != 16 && n_in != 23)) return SC_ERR_ARG;
     for (int64_t i = 0; i < n_in; ++i) if (!std::isfinite(in[i])) return SC_ERR_ARG;
-    if (in[0] < 0 || in[0] > 6 || in[0] != std::floor(in[0]) || (in[1] != 1 && in[1] != 2)
+    const bool lists = n_in == 23;
+    if (in[0] < 0 || in[0] > 6 || in[0] != std::floor(in[0])
+        || (in[1] != 1 && in[1] != 2 && !(lists && in[1] == 0))
         || in[12] < 0 || in[12] > 4 || in[12] != std::floor(in[12])
         || std::fabs(in[14]) > 1e9 || in[14] != std::floor(in[14])
-        || (in[15] != 0 && in[15] != 1)) return SC_ERR_ARG;
+        || (lists ? in[15] != 2 : (in[15] != 0 && in[15] != 1))) return SC_ERR_ARG;
+    if (lists) {
+        for (int j = 16; j < 22; ++j)
+            if (in[j] != std::floor(in[j]) || in[j] < -1 || in[j] > 10000 || (in[j] > 3 && in[j] < 10)) return SC_ERR_ARG;
+        if (in[22] != 0 && in[22] != 1) return SC_ERR_ARG;
+    }
     SC_TRY
     const SmContext& ctx = *SmApiGetOrCreateContext();
     SmBrep* brep = nullptr;
@@ -334,12 +348,40 @@ SC_EXPORT int32_t sc_sweep_topology_sweep_body(const double* in, int64_t n_in, d
     SmVector3d v(in[2], in[3], in[4]);
     SmTranslationalSweepGeometry translation(v);
     SmRotationalSweepGeometry rotation(SmPoint3d(in[6], in[7], in[8]), v, in[5], in[9]);
-    SmSweepGeometryCreation* g = in[1] == 1 ? (SmSweepGeometryCreation*)&translation : (SmSweepGeometryCreation*)&rotation;
+    SmSweepGeometryCreation base(in[9]);
+    SmSweepGeometryCreation* g = in[1] == 0 ? &base : in[1] == 1 ? (SmSweepGeometryCreation*)&translation : (SmSweepGeometryCreation*)&rotation;
     SmTopologySweep sweep(*g, in[10] != 0, FALSE, FALSE, in[11] != 0);
     sweep.SetRepetitions((ULONG)in[12]);
     sweep.SetTagging(in[13] != 0, (long)in[14]);
     SmTArray<SmFace*> faces_higher;
     if (in[15] == 1) brep->GetFaces(faces_higher);
+    SmTArray<SmFace*> list_faces[2]; SmTArray<SmEdge*> list_edges[2]; SmTArray<SmVertex*> list_vertices[2];
+    SmTArray<SmFace*>* fp[2] = {NULL, NULL}; SmTArray<SmEdge*>* ep[2] = {NULL, NULL}; SmTArray<SmVertex*>* vp[2] = {NULL, NULL};
+    if (lists) {
+        // Fill one list from its selector; false for an index past the Get list.
+        auto pick = [](auto& all, auto& wire, double sel, auto& list) -> bool {
+            if (sel == 0) { for (ULONG i = 0; i < all.GetSize(); ++i) list.Add(all[i]); }
+            else if (sel == 1) { for (ULONG i = 0; i < wire.GetSize(); ++i) list.Add(wire[i]); }
+            else if (sel == 3) { for (ULONG i = 0; i + 1 < all.GetSize(); ++i) list.Add(all[i]); }
+            else if (sel >= 10) { ULONG i = (ULONG)(sel - 10); if (i >= all.GetSize()) return false; list.Add(all[i]); }
+            return true;
+        };
+        SmTArray<SmFace*> all_faces; brep->GetFaces(all_faces);
+        SmTArray<SmEdge*> all_edges; brep->GetEdges(all_edges);
+        SmTArray<SmEdge*> wire_edges; brep->GetWireEdges(wire_edges);
+        SmTArray<SmVertex*> all_vertices; brep->GetVertices(all_vertices);
+        SmTArray<SmVertex*> shell_vertices; brep->GetShellVertices(shell_vertices);
+        for (int s = 0; s < 2; ++s) {
+            double fs = in[16 + 3 * s], es = in[17 + 3 * s], vs = in[18 + 3 * s];
+            if ((fs >= 0 && !pick(all_faces, all_faces, fs, list_faces[s]))
+                || (es >= 0 && !pick(all_edges, wire_edges, es, list_edges[s]))
+                || (vs >= 0 && !pick(all_vertices, shell_vertices, vs, list_vertices[s]))) return SC_ERR_ARG;
+            if (fs >= 0) fp[s] = &list_faces[s];
+            if (es >= 0) ep[s] = &list_edges[s];
+            if (vs >= 0) vp[s] = &list_vertices[s];
+        }
+        status = sweep.DoSweep(brep, in[22] == 1 ? NULL : brep->GetInfiniteRegion(), fp[0], ep[0], vp[0], fp[1], ep[1], vp[1]);
+    } else
     status = sweep.DoSweep(brep, brep->GetInfiniteRegion(), in[15] == 1 ? &faces_higher : NULL,
                            NULL, NULL, NULL, NULL, NULL);
     o.push_back(status == SM_SUCCESS ? 0 : status);

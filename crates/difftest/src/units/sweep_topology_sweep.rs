@@ -44,6 +44,10 @@ struct Input {
     /// (`solidcore_ffi::units::sweep_topology_sweep::body` input layout).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     body: Option<[f64; 16]>,
+    /// Explicit `DoSweep` target lists for `body` (its `targets` is 2):
+    /// `solidcore_ffi::units::sweep_topology_sweep::body_lists` layout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lists: Option<[f64; 7]>,
 }
 fn vector() -> [f64; 3] {
     [1., 0., 0.]
@@ -836,10 +840,26 @@ fn build_body(
     Ok(b)
 }
 
+/// One explicit target list from its selector (the shim's `pick`): `None` for -1
+/// (NULL), else every entity of `all` (0), `wire` (1), none (2), every entity but the
+/// last (3) or the single entity `all[sel - 10]`.
+fn pick_list<T: Copy>(all: &[T], wire: &[T], sel: f64) -> Result<Option<Vec<T>>> {
+    Ok(Some(match sel {
+        s if s < 0. => return Ok(None),
+        0. => all.to_vec(),
+        1. => wire.to_vec(),
+        2. => Vec::new(),
+        3. => all.get(..all.len().saturating_sub(1)).unwrap_or_default().to_vec(),
+        s => vec![*all
+            .get((s - 10.) as usize)
+            .ok_or_else(|| SolidError::invalid_input("runner", "target index past the list"))?],
+    }))
+}
+
 /// Rust side of `sc_sweep_topology_sweep_body`: the same body built by the same
-/// kernel calls in a [`SweepStore`], swept whole (all targets null) or with every face
-/// as faces-higher.
-fn body_rust(input: [f64; 16]) -> Result<Output> {
+/// kernel calls in a [`SweepStore`], swept whole (all targets null), with every face
+/// as faces-higher, or with the explicit `lists`.
+fn body_rust(input: [f64; 16], lists: Option<[f64; 7]>) -> Result<Output> {
     use solidcore::sweep::topology_sweep::store::{SweepIdentities, SweepStore};
     use solidcore::topology::brep::p1;
     let [body, kind, vx, vy, vz, angle, cx, cy, cz, eps, stitch, merge, reps, tagging, tag_id, targets] =
@@ -864,7 +884,9 @@ fn body_rust(input: [f64; 16]) -> Result<Output> {
         Err(e) => return Ok(body_output(&[status(&e) as f64])),
     };
     let v = Point3::new(vx, vy, vz);
-    let g = if kind == 1. {
+    let g = if kind == 0. {
+        SweepGeometry::Base(SweepGeometryCreation { eps, ..SweepGeometryCreation::default() })
+    } else if kind == 1. {
         SweepGeometry::Translation(TranslationalSweepGeometry::new(v))
     } else {
         SweepGeometry::Rotation(RotationalSweepGeometry::new(Point3::new(cx, cy, cz), v, angle, eps))
@@ -887,7 +909,27 @@ fn body_rust(input: [f64; 16]) -> Result<Output> {
         let faces = p1::faces(store.brep(id)?, None)?;
         sweep_targets.faces_higher = Some(faces.into_iter().map(|f| Some((id, f))).collect());
     }
-    let result = sweep.do_sweep(&mut store, &g, Some(id), Some((id, region)), &mut sweep_targets);
+    let mut destination = Some((id, region));
+    if let Some(lists) = lists {
+        let brep = store.brep(id)?;
+        let faces = p1::faces(brep, None)?;
+        let edges = p1::edges(brep, None)?;
+        let wires = p1::wire_edges(brep, None)?;
+        let vertices = p1::vertices(brep, None)?;
+        let shell_vertices = solidcore::topology::brep::p2::shell_vertices(brep, None)?;
+        sweep_targets.faces_higher = pick_list(&faces, &faces, lists[0])?.map(|l| l.into_iter().map(|x| Some((id, x))).collect());
+        sweep_targets.edges_higher = pick_list(&edges, &wires, lists[1])?.map(|l| l.into_iter().map(|x| Some((id, x))).collect());
+        sweep_targets.vertices_higher =
+            pick_list(&vertices, &shell_vertices, lists[2])?.map(|l| l.into_iter().map(|x| Some((id, x))).collect());
+        sweep_targets.faces_same = pick_list(&faces, &faces, lists[3])?.map(|l| l.into_iter().map(|x| Some((id, x))).collect());
+        sweep_targets.edges_same = pick_list(&edges, &wires, lists[4])?.map(|l| l.into_iter().map(|x| Some((id, x))).collect());
+        sweep_targets.vertices_same =
+            pick_list(&vertices, &shell_vertices, lists[5])?.map(|l| l.into_iter().map(|x| Some((id, x))).collect());
+        if lists[6] == 1. {
+            destination = None;
+        }
+    }
+    let result = sweep.do_sweep(&mut store, &g, Some(id), destination, &mut sweep_targets);
     let mut tags = Vec::new();
     if result.is_ok() {
         let tag = |t: Option<TagData>| {
@@ -953,7 +995,7 @@ fn rust(i: &Input) -> Result<Output> {
         return whole_rust(whole);
     }
     if let Some(body) = i.body {
-        return body_rust(body);
+        return body_rust(body, i.lists);
     }
     let mut s = TopologySweep::default();
     let mut out = Vec::new();
@@ -1145,8 +1187,9 @@ impl UnitDiff for Runner {
                 return Ok(Output::rejected(reason));
             }
             // Fresh process per case, as for `whole` below.
-            return solidcore_ffi::isolate::fresh_process(|| {
-                solidcore_ffi::units::sweep_topology_sweep::body(body)
+            return solidcore_ffi::isolate::fresh_process(|| match i.lists {
+                Some(lists) => solidcore_ffi::units::sweep_topology_sweep::body_lists(body, lists),
+                None => solidcore_ffi::units::sweep_topology_sweep::body(body),
             })
             .map(|record| body_output(&record))
             .map_err(|e| HarnessError::new(e.to_string()));
