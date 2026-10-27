@@ -53,6 +53,9 @@
 //! - **Touch lists.** Upstream's raw and done touch list pointers name either the face
 //!   props' seam lists (borrowed) or the lists computed for a bisector or for UV
 //!   containment (owned for the pass).
+//!   Bisector touch geometry resolves against the same cached B-rep snapshot that
+//!   `CurveOnClassify` updated, so vertex sectors see its UV trims and tolerances.
+//!   Classification curves and the original surface keep their existing identities.
 //! - **Undefined behaviour upstream** is [`SolidError::InvalidInput`]: an index read
 //!   outside `rClassifyLoopIOs`, the face props' loop props or a touch list (odd length),
 //!   an empty seam classification read at its first or last interval, a loop without
@@ -75,7 +78,7 @@ use crate::intersect::point_class::{PointClassType, PointClassification};
 use crate::kernel::Kernel;
 use crate::nurbs::b_spline_surface::SurfParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
-use crate::query::face::p2::CurveOnClassifyCache;
+use crate::query::face::p2::{CurveOnClassifyCache, SnapshotObjects};
 use crate::query::face::p3 as qf3;
 use crate::topology::face::p2 as face_p2;
 use crate::topology::{loopuse, vertex, Brep, FaceId, LoopId, LoopuseStart, VertexId};
@@ -274,15 +277,18 @@ type LoopCrossings<O> = (Vec<TouchData<O>>, Vec<TouchData<O>>);
 /// &sRawTouchDirList, &sDoneTouchDirList))`: the raw and the done touch lists (the
 /// counts are not read by `ClassifyLoops`). `curves` are the bisector curves
 /// `classification` names.
-fn get_loop_crossings<O: LoopObject>(
+fn get_loop_crossings<O: LoopObject + PartialEq>(
     k: &Kernel,
     curves: &qf3::LoopObjectCurves<'_, O>,
     classification: &CurveClassification<O>,
     loops: &[LoopId],
     props: &mut FaceProps<O>,
+    b: &Brep,
+    cache: &mut CurveOnClassifyCache,
 ) -> Result<LoopCrossings<O>> {
     let handles: Vec<O> = loops.iter().map(|&l| O::from_loop(l)).collect();
-    let c = classification.get_loop_crossings(k, curves, &handles, Some(props))?;
+    let live = SnapshotObjects::new(curves, b, cache.snapshot(b));
+    let c = classification.get_loop_crossings(k, &live, &handles, Some(props))?;
     if let Some(e) = c.status {
         return Err(e);
     }
@@ -291,15 +297,18 @@ fn get_loop_crossings<O: LoopObject>(
 
 /// `SER(pCrvClassification->GetLoopTouches(rLoops, &rFaceProps, sRawTouchDirList))`:
 /// the complete encounters of the bisector `classification` with the loops.
-fn get_loop_touches<O: LoopObject>(
+fn get_loop_touches<O: LoopObject + PartialEq>(
     k: &Kernel,
     curves: &qf3::LoopObjectCurves<'_, O>,
     classification: &CurveClassification<O>,
     loops: &[LoopId],
     props: &mut FaceProps<O>,
+    b: &Brep,
+    cache: &mut CurveOnClassifyCache,
 ) -> Result<Vec<TouchData<O>>> {
     let handles: Vec<O> = loops.iter().map(|&l| O::from_loop(l)).collect();
-    classification.get_loop_touches(k, curves, &handles, Some(props))
+    let live = SnapshotObjects::new(curves, b, cache.snapshot(b));
+    classification.get_loop_touches(k, &live, &handles, Some(props))
 }
 
 /// The UV containment view of a raw touch list: a copy whose seam ends take the
@@ -555,7 +564,9 @@ pub(crate) fn classify_loops_cached<O: LoopObject>(
         // cache; containment interprets a local copy of the UV boundary hits.
         if uv_containment {
             if let (ClassifyCrv::Bisector, Some(curves)) = (crv, bisector_curves.as_ref()) {
-                own_raw = Some(get_loop_touches(k, curves, scratch, loops, props)?);
+                own_raw = Some(get_loop_touches(
+                    k, curves, scratch, loops, props, b, cache,
+                )?);
             }
             let raw: &[TouchData<O>] = match (&own_raw, crv) {
                 (Some(r), _) => r,
@@ -570,7 +581,7 @@ pub(crate) fn classify_loops_cached<O: LoopObject>(
             };
             own_done = Some(done);
         } else if let (ClassifyCrv::Bisector, Some(curves)) = (crv, bisector_curves.as_ref()) {
-            let (raw, done) = get_loop_crossings(k, curves, scratch, loops, props)?;
+            let (raw, done) = get_loop_crossings(k, curves, scratch, loops, props, b, cache)?;
             own_raw = Some(raw);
             own_done = Some(done);
         }
