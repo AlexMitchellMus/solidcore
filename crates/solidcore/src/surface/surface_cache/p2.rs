@@ -482,6 +482,9 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         // SmTol::GetZoneTol3d(m_cpSurface): GetFace() ? its tolerance : the system's
         // (the face's tolerance as its B-rep cached it on the surface;
         // UNPORTED(topology.face_p2): SmFace::GetTolerance for a bare face handle)
+        // Proof (unreachable): a B-rep face's surface carries the face tolerance
+        // (Brep::sync_face_surface_tolerance invariant, see Surface::face_zone_tol_3d); 0
+        // hits in the green difftest sweep.
         let zone_tol = crate::surface::surface::p1::zone_tol_3d(k, self.surface())?;
 
         // local tolerance state - a zero ChordHeight or Angle Tol value means to ignore the test
@@ -846,7 +849,8 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         // edited below, so an evaluation copy (exact knots, owner kept) stands for it: the
         // copy constructor's knot fix-up would move near-coincident knots and so the splits.
         // An `SmPlane` keeps the copy constructor: its copy carries the NURB upstream has
-        // made on the plane by now (the port keeps none on the original), and a freshly
+        // made on the plane by now (the copy constructor makes and keeps it there first),
+        // and a freshly
         // made plane NURB has no knots for the fix-up to move.
         let node_surface = self.node_surface(Some(handle))?;
         let surface = if let SurfaceKind::Plane(_) = node_surface.kind() {
