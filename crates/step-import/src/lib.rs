@@ -3,7 +3,9 @@
 //! [`import`] parses a Part 21 file ([`part21`]) and maps its B-rep bodies
 //! ([`map`]) to a neutral, plain-data [`Model`] ([`model`]): shells, faces with
 //! orientation, loops of oriented edges, vertices, and analytic or B-spline geometry,
-//! in millimetres with every placement resolved. [`flat::encode`] turns a body into
+//! in millimetres with every placement resolved. A face that no shell references (a
+//! hand-written or geometrically bounded sheet) becomes a one-face open-shell body, so
+//! sheet-only files do not report "no B-rep bodies". [`flat::encode`] turns a body into
 //! one `f64` array for the C++ side of the difftest, so both kernels build from the
 //! same numbers. Nothing here depends on either kernel.
 //!
