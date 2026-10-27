@@ -55,8 +55,7 @@ fn shape(k: &Kernel, r: solidcore::Result<Brep>) -> String {
             p1::edges(&b, None).unwrap().len(),
             p1::vertices(&b, None).unwrap().len(),
             volume(k, &mut b),
-            // solidcore::topology::integrity::check(&b) once #1239 is merged in
-            "n/a"
+            solidcore::topology::integrity::check(&b)
         ),
         Err(e) => format!("{e:?}"),
     }
@@ -120,8 +119,7 @@ fn issue_1036_probe() {
             Ok(mut out) => {
                 report.push(format!(
                     "{name} integrity: {:?}",
-                    // solidcore::topology::integrity::check(&out.result) once #1239 is merged in
-                    "n/a"
+                    solidcore::topology::integrity::check(&out.result)
                 ));
                 let fs = faces(&k, &mut out.result);
                 report.push(format!("{name}: {} faces {fs:#?}", fs.len()));

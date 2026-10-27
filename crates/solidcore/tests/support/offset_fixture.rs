@@ -243,6 +243,11 @@ pub fn shell(
         &mut notifications.context(),
     )
     .result
+    .map(|mut b| {
+        // as `api_shell_brep_full` does for its caller: the port's cached topology fields
+        b.refresh_cached_topology();
+        b
+    })
 }
 
 /// `SmApiOffsetBrepFull` on `part` (extended convex edges, merged results).
@@ -289,10 +294,10 @@ pub fn planar_faces_at(k: &Kernel, b: &Brep, axis: usize, value: f64) -> Vec<Fac
         .collect()
 }
 
-/// What a probe reports about a result: status, manifold solid, face count, volume
-/// against the closed form (when there is one). Printed for the hand-off; returns
-/// whether the result matches the oracle (a manifold solid of the expected volume to
-/// `rel` relative).
+/// What a probe reports about a result: status, topology integrity, manifold solid,
+/// face count, volume against the closed form (when there is one). Printed for the hand-off; returns
+/// whether the result matches the oracle (an intact manifold solid of the expected
+/// volume to `rel` relative).
 pub fn report(
     k: &Kernel,
     label: &str,
@@ -306,11 +311,12 @@ pub fn report(
             false
         }
         Ok(mut b) => {
+            let integrity = solidcore::topology::integrity::check(&b);
             let manifold = brep_is_manifold_solid(&b);
             let faces = b.face_list().len();
             let got = volume(k, &mut b);
             eprintln!(
-                "PROBE {label}: Ok; manifold={manifold:?} faces={faces} edges={} vertices={} volume={got:?} want={want:?}",
+                "PROBE {label}: Ok; integrity={integrity:?} manifold={manifold:?} faces={faces} edges={} vertices={} volume={got:?} want={want:?}",
                 b.edge_list().len(),
                 b.vertex_list().len()
             );
@@ -319,7 +325,7 @@ pub fn report(
                 (None, Ok(_)) => true,
                 _ => false,
             };
-            matches!(manifold, Ok(true)) && volume_ok
+            integrity.is_ok() && matches!(manifold, Ok(true)) && volume_ok
         }
     }
 }
