@@ -336,6 +336,11 @@ impl SrfInVolume {
         }
     }
 
+    /// The base surface, mutable, for [`Surface::detach_nurb_cells`].
+    pub(crate) fn nested_surfaces_mut(&mut self) -> Vec<&mut Surface> {
+        vec![self.surface.as_mut()]
+    }
+
     /// An evaluation copy retaining exact basis data, with Surface's `MAX_GEOMETRY_NESTING` bound.
     pub(crate) fn clone_for_evaluation(&self, depth: usize) -> Result<Self> {
         Surface::check_volume_evaluation_copy_depth(&self.volume, depth)?;
@@ -498,7 +503,8 @@ impl SrfInVolume {
     /// `GetNaturalUVDomain`: the base surface's.
     #[must_use]
     pub fn natural_uv_domain(&self) -> Extent2d {
-        self.surface.natural_uv_domain()
+        // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+        self.surface.natural_uv_domain_if_built()
     }
 
     /// `GetSTEPUVDomain`: the base surface's.

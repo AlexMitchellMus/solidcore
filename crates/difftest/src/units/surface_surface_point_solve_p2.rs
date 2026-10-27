@@ -425,7 +425,7 @@ fn rust_op(i: &Inputs) -> Result<solidcore::Result<Vec<f64>>, HarnessError> {
     let tol = i.tol;
     // the object key is read from a second build of the surface: a query on the
     // solved surface would make and keep a lazy plane's NURB, which C++ does not
-    let obj = SrfObj(any_surface(&k, i.wrap, &i.surf)?.natural_uv_domain());
+    let obj = SrfObj(any_surface(&k, i.wrap, &i.surf)?.natural_uv_domain_with_nurb(&k).map_err(|e| HarnessError::new(e.to_string()))?);
     let global = || {
         SurfPtGlobalSolver::new(
             &k,
@@ -838,7 +838,7 @@ fn gen_rev_case(rng: &mut Rng) -> Result<Inputs, HarnessError> {
     );
     let surf = AnySurf::Rev { rev };
     let s = any_surface(&k, wrap, &surf)?;
-    let nd = s.natural_uv_domain();
+    let nd = s.natural_uv_domain_with_nurb(&k).map_err(|e| HarnessError::new(e.to_string()))?;
     let d = [nd.min().x, nd.min().y, nd.max().x, nd.max().y];
     // the largest coordinate magnitude over a grid of surface points
     let mut size = 1e-12_f64;

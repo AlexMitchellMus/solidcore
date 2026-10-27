@@ -846,7 +846,8 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         // edited below, so an evaluation copy (exact knots, owner kept) stands for it: the
         // copy constructor's knot fix-up would move near-coincident knots and so the splits.
         // An `SmPlane` keeps the copy constructor: its copy carries the NURB upstream has
-        // made on the plane by now (the port keeps none on the original), and a freshly
+        // made on the plane by now (the copy constructor makes and keeps it there first),
+        // and a freshly
         // made plane NURB has no knots for the fix-up to move.
         let node_surface = self.node_surface(Some(handle))?;
         let surface = if let SurfaceKind::Plane(_) = node_surface.kind() {
@@ -1228,7 +1229,7 @@ mod tests {
     #[test]
     fn add_curves_evicts_oldest() {
         let s = Surface::from(BSplineSurface::from_nurb(bilinear(0.0), false));
-        let d = s.natural_uv_domain();
+        let d = s.natural_uv_domain_if_built();
         let mut c: SurfaceCache<i64> = SurfaceCache::new(s, d, SurfaceCacheOptions::default());
         for i in 0..7 {
             let key = AltCacheKey {
@@ -1248,7 +1249,7 @@ mod tests {
 
     fn patch_cache(z: f64, opts: SurfaceCacheOptions) -> SurfaceCache<i64> {
         let s = Surface::from(BSplineSurface::from_nurb(bilinear(z), false));
-        let d = s.natural_uv_domain();
+        let d = s.natural_uv_domain_if_built();
         let mut c = SurfaceCache::new(s, d, opts);
         c.set_surface_handle(Some(-7));
         let mut tree: Tree<i64> = Tree::new(None);
@@ -1326,7 +1327,7 @@ mod tests {
     fn nth_bounding_plane_rejects_large_index() {
         let k = Kernel::default();
         let s = Surface::from(BSplineSurface::from_nurb(bilinear(0.0), false));
-        let mut bp = PatchBoundaryBoundingPlanes::new(s.natural_uv_domain());
+        let mut bp = PatchBoundaryBoundingPlanes::new(s.natural_uv_domain_if_built());
         let r = bp.nth_bounding_plane(&k, &s, 4);
         assert!(r.is_err() || !r.expect("ok").plane_exists);
     }
