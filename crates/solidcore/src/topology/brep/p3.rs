@@ -3392,7 +3392,7 @@ fn with_nurb<'a>(k: &Kernel, s: &'a Surface) -> Result<Option<Cow<'a, BSplineSur
     })
 }
 
-const fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
+fn as_bspline_surface(s: &Surface) -> Option<&BSplineSurface> {
     match s.kind() {
         SurfaceKind::BSpline(x) => Some(x),
         SurfaceKind::Plane(x) => Some(x.base()),
