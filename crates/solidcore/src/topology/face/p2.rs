@@ -972,15 +972,22 @@ fn is_singularity(
 
 /// `SmOffsetSurface(dOffset, rSurface).EvaluateSimple(uv, 1, 1, TRUE, TRUE, TRUE, ..)`:
 /// a temporary offset (not owning, default singularities, so its constructor runs the
-/// surface's `IsPeriodic` and `GetSingularities`) over a copy of `surface` that keeps
-/// its owner (upstream shares it).
+/// surface's `IsPeriodic` and `GetSingularities`) over an exact evaluation copy of
+/// `surface` that keeps its owner (upstream shares it; [`Surface`]'s `Clone` would run
+/// the copy constructor's knot fix-up).
 fn offset_evaluate_simple(
     k: &Kernel,
     surface: &Surface,
     offset: f64,
     uv: Point2,
 ) -> Result<Vec<Vec<Vec3>>> {
-    let off = OffsetSurface::new(k, offset, surface.clone_keeping_owner(), false, SS_UNKNOWN)?;
+    let off = OffsetSurface::new(
+        k,
+        offset,
+        surface.clone_for_evaluation()?,
+        false,
+        SS_UNKNOWN,
+    )?;
     off.evaluate_simple(k, uv, 1, 1, simple_flags())
 }
 
@@ -1191,7 +1198,7 @@ pub fn are_connected(
     // when gaps across MissingSeams are allowed
     if crosses_missing_seam_ok {
         // check for a properly oriented seam gap
-        let domain = surf.natural_uv_domain();
+        let domain = surf.natural_uv_domain_with_nurb(k)?;
         let (closed_u, _) = surf.is_closed(k, &domain, SurfParamType::U, Some(uv_tol), false)?;
         let (closed_v, _) = surf.is_closed(k, &domain, SurfParamType::V, Some(uv_tol), false)?;
 
@@ -1582,7 +1589,7 @@ pub fn points_in_face(
             Err(e) if e.is_unported() => return Err(e),
             Err(_) => b.face(f)?.uv_domain,
         };
-        let srf_dom = surf.natural_uv_domain();
+        let srf_dom = surf.natural_uv_domain_with_nurb(k)?;
         // (SmExtent2d::Intersect leaves the output unchanged when disjoint)
         let uv_dom = srf_dom
             .intersect(&trim_uv_domain)
