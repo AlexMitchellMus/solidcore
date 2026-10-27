@@ -22,8 +22,10 @@
   arena model keeps each edge's radial list as one vector and cannot hold that graph,
   so the port returns `InvalidInput`. The C++ B-rep is structurally inconsistent (the
   `plan/upstream-issues/UB-164--*.md` family: in-range but inconsistent cross-references
-  that `MakeTopologyFromData` builds), but whether its counts are "wrong" is not
-  verified, so the cases are ordinary known mismatches, not `cpp_defect`.
-- **Status:** listed in `crates/difftest/known_mismatches/topology.brep_p7.toml`.
-  Faithful agreement would need the arena to represent inconsistent radial links.
+  that `MakeTopologyFromData` builds). Verified with the C++ reference: upstream's own
+  `SmBrep::ValidatePointers` rejects all four B-reps (test 76 "Radial partner points back
+  to edgeuse"; test 134 "Edge primary edgeuse is non-Null" for `ellips_ts2`), while the
+  unmodified files validate clean: `plan/upstream-issues/WR-470--*.md`.
+- **Status:** listed in `crates/difftest/known_mismatches/topology.brep_p7.toml` with
+  `cpp_defect = "WR-470"` (parked; the Rust rejection is the correct result).
 - **PR:** https://github.com/tangency-labs/solidcore/pull/1270
