@@ -12,12 +12,7 @@ why = "C++ TrimRailCurves fails (1001, body kept); Rust's rail of the closed edg
 [[mismatch]]
 unit = "blend.fillet_executive_p3"
 case = "sweep5-letter_g-e10-r1.0"
-why = "mass area 855.6511940507597 vs 855.6495364737889; topology and geometry agree; one fillet face whose edge use holds no own UV trim integrates differently (plan/findings/blend.fillet_executive_p3--sweep5-mass-on-mate-held-uv-trims.md)"
-
-[[mismatch]]
-unit = "blend.fillet_executive_p3"
-case = "sweep5-nurb_box1-all-r0.5"
-why = "mass area 1572.3758420480713 vs 1572.3758445910357 (rel 1.6e-9); one face whose edge uses hold no own UV trim integrates differently (plan/findings/blend.fillet_executive_p3--sweep5-mass-on-mate-held-uv-trims.md)"
+why = "mass area 855.6511940507597 vs 855.6495364737889; topology and geometry agree; the fillet face's UV trims are shifted by 5.7e-14 in u, which the adaptive area integration amplifies (plan/findings/blend.fillet_executive_p3--sweep5-mass-on-mate-held-uv-trims--addendum-2026-10-27-nurb-box1-resolved.md)"
 
 [[mismatch]]
 unit = "blend.fillet_executive_p3"
