@@ -1491,7 +1491,7 @@ impl BSplineSurface {
     /// # Errors
     ///
     /// `SM_ERR_NULL_POINTER` without NURB; the errors of
-    /// [`BSplineSurface::set_canonical`].
+    /// [`BSplineSurface::set_canonical`] (the swap bit is then restored).
     pub fn swap_uv(&mut self) -> Result<()> {
         self.swap_uv_notifying(&mut |_| Ok(()))
     }
@@ -1516,8 +1516,8 @@ impl BSplineSurface {
         transpose(&mut cpts, num_v_cpts);
         transpose(&mut weights, num_v_cpts);
 
-        // Transpose Surface definition
-        self.set_canonical_notifying(
+        // Transpose Surface definition; on failure, restore the bit
+        let status = self.set_canonical_notifying(
             &CanonicalSurfaceData {
                 u_degree: c.v_degree,
                 v_degree: c.u_degree,
@@ -1532,7 +1532,11 @@ impl BSplineSurface {
                 uv_domain: None,
             },
             notify,
-        )
+        );
+        if status.is_err() {
+            self.toggle_swap_uv_bit();
+        }
+        status
     }
 
     /// Changes the natural domain to `new_step_uv_domain` (`AdjustSTEPUVDomain`):
