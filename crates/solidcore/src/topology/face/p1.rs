@@ -49,6 +49,12 @@
 //!   list edits) append to / remove from [`crate::topology::Faceuse::loopuses`] and set /
 //!   clear the loop use's face use. `Remove` of a loop use not on the face use's list is
 //!   `SM_ERR`, as upstream's owner check.
+//! - **`SwapUV` notifications.** [`swap_uv`] (no environment) sends the face's
+//!   notifications under the empty environment and the surface's to nobody;
+//!   [`swap_uv_with_notifications`] sends both through the caller's (the surface's
+//!   under its notify identity from the env's context, reported owned by the face).
+//!   The owner links of surfaces nested in an offset surface or a surface in a volume
+//!   are not reported: a callback walking their owners finds none.
 //! - **`CreateOrientedTrimBoundary`** returns the curves and per-loop counts in
 //!   [`OrientedTrimBoundary`]. A failed `SmLine::CreateLineSegment` (only possible for
 //!   coincident points, which the gap test excludes) is [`SolidError::InvalidInput`]
@@ -1200,8 +1206,12 @@ trait SwapUvNotify {
     /// The face's `Notify(op, this, SM_NO_GET_BREP(this), NULL)`.
     fn face(&mut self, b: &mut Brep, f: FaceId, op: NotifyOperation) -> Result<()>;
     /// An edited surface's `SmAObject::Notify` ([`Surface::swap_uv_notifying`]).
-    fn surface(&mut self, slot: &mut IdentitySlot, type_code: i64, op: NotifyOperation)
-        -> Result<()>;
+    fn surface(
+        &mut self,
+        slot: &mut IdentitySlot,
+        type_code: i64,
+        op: NotifyOperation,
+    ) -> Result<()>;
 }
 
 /// [`swap_uv`]'s notifications: the face's under the empty environment
@@ -1351,7 +1361,9 @@ fn swap_uv_notifying(
         .surface
         .as_mut()
         .ok_or_else(|| null("face without surface"))?
-        .swap_uv_notifying(k, &mut |slot, type_code, op| notify.surface(slot, type_code, op))?;
+        .swap_uv_notifying(k, &mut |slot, type_code, op| {
+            notify.surface(slot, type_code, op)
+        })?;
 
     for (eu, c) in to_set {
         // status ignored upstream

@@ -67,6 +67,14 @@
 //!   `Kernel::fixes.join_touching_loops`): `create_plane_with_3d_curves`
 //!   joins a loop touching another loop of its face at a vertex into that loop
 //!   (`join_touching_loops`, the SolidCraft fork's `JoinTouchingLoops`).
+//! - **Edit notifications.** `SwapUV`'s `Notify` calls (`SetCanonical`'s for the
+//!   kinds built on `SmBSplineSurface`, `SmSrfInVolume`'s own) need a context and an
+//!   attribute store the surface does not hold: [`Surface::swap_uv`] notifies nobody
+//!   (only `SmSurface::Notify`'s trimmed surface cache deletion runs) and the
+//!   crate-private `Surface::swap_uv_notifying` hands each edited surface's identity
+//!   slot to the caller's hook (the face's `SwapUV` sends them through its
+//!   environment). A trimmed surface cache in use when the swap notifies stays with its
+//!   caller (upstream deletes the object the caller holds).
 //! - **Nesting.** [`MAX_GEOMETRY_NESTING`] (32, the database reader's bound; upstream
 //!   fixtures nest at most 3) bounds wrapper geometry across curves, surfaces and
 //!   volumes. Every wrapper constructor and setter checks its inner geometry with the
@@ -2477,10 +2485,22 @@ impl Surface {
             SurfaceKind::SrfInVolume(s) => {
                 // check input - Can not swap UV on an unowned surface
                 let base = s.owned_surface_mut()?;
-                edit_notify(cache_slot, slot, type_code, notify, NotifyOperation::PreEdit)?;
+                edit_notify(
+                    cache_slot,
+                    slot,
+                    type_code,
+                    notify,
+                    NotifyOperation::PreEdit,
+                )?;
                 // base surface Swap
                 base.swap_uv_notifying(k, notify)?;
-                edit_notify(cache_slot, slot, type_code, notify, NotifyOperation::PostEdit)
+                edit_notify(
+                    cache_slot,
+                    slot,
+                    type_code,
+                    notify,
+                    NotifyOperation::PostEdit,
+                )
             }
             SurfaceKind::Plane(s) => s.swap_uv_notifying(&mut own),
             SurfaceKind::Cone(s) => {
@@ -2495,9 +2515,7 @@ impl Surface {
                 // SmBSplineSurface::SwapUV: the NURB swap, the inherited
                 // SmSurfOfRevolution::ToggleSwapUVBit, then SetCanonical's virtual
                 // RebuildSTEPFromNURBParameters (the sphere's, status ignored)
-                s.base
-                    .base_mut()
-                    .swap_uv_notifying(&mut own)?;
+                s.base.base_mut().swap_uv_notifying(&mut own)?;
                 s.base.toggle_swap_uv_bit();
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
@@ -2505,9 +2523,7 @@ impl Surface {
                 // SmBSplineSurface::SwapUV: the NURB swap, the inherited
                 // SmSurfOfRevolution::ToggleSwapUVBit, then SetCanonical's virtual
                 // RebuildSTEPFromNURBParameters (the torus's, status ignored)
-                s.base
-                    .base_mut()
-                    .swap_uv_notifying(&mut own)?;
+                s.base.base_mut().swap_uv_notifying(&mut own)?;
                 s.base.toggle_swap_uv_bit();
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
@@ -6489,6 +6505,48 @@ mod tests {
             )
             .unwrap(),
         )
+    }
+
+    /// `SetCanonical`'s `SM_NO_PRE_EDIT` / `SM_NO_POST_EDIT` of each edited surface, in
+    /// upstream's order: the B-spline kinds notify themselves (the stored trimmed
+    /// surface cache deleted at `SM_NO_PRE_EDIT`), an offset only its base surface (it
+    /// has no extended one here).
+    #[test]
+    fn swap_uv_notifying_names_each_edited_surface() {
+        use NotifyOperation::{PostEdit, PreEdit};
+        let k = Kernel::default();
+        let mut ctx = Context::default();
+        let mut run = |s: &mut Surface| {
+            let mut events = Vec::new();
+            s.swap_uv_notifying(&k, &mut |slot, type_code, op| {
+                events.push((ctx.geometry_key(slot)?, type_code, op));
+                Ok(())
+            })
+            .map(|()| events)
+        };
+
+        for mut s in [
+            bilinear(),
+            Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::Z)),
+        ] {
+            s.attach_trim_cache(|_| {}).unwrap();
+            assert!(s.has_trim_cache());
+            let ty = s.type_code();
+            let events = run(&mut s).unwrap();
+            let key = s.notify_key().unwrap();
+            assert_eq!(events, vec![(key, ty, PreEdit), (key, ty, PostEdit)]);
+            assert!(!s.has_trim_cache());
+            // the plain entry point notifies nobody
+            s.swap_uv(&k).unwrap();
+        }
+
+        let mut off = Surface::from(OffsetSurface::new(&k, 1.0, bilinear(), true, 0).unwrap());
+        let events = run(&mut off).unwrap();
+        assert!(off.notify_key().is_none());
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().all(|e| e.1 == BSplineSurface::TYPE));
+        assert_eq!(events[0].0, events[1].0);
+        assert_eq!((events[0].2, events[1].2), (PreEdit, PostEdit));
     }
 
     #[test]
