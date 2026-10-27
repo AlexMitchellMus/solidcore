@@ -3,8 +3,7 @@ Updates: plan/findings/blend.fillet_executive_p3--sweep5-sphere-diff-e29-vertex-
 # blend.fillet_executive_p3: sweep5 sphere_diff_3cylinders e29 vertex tolerance resolved (2026-10-27)
 
 Root cause: the zone tolerance of `SmBSplineCurve::Trim` when `SmFilletGeom::TrimRailCurves`
-trims the rail curve and its two UV trim curves (and the same three trims at the end of
-the fillet edge drop-point trim in `blend/fillet_geom` p3).
+trims the rail curve and its two UV trim curves.
 
 `Trim` reads `SmTol::GetZoneTol3d(this)`. For a curve held by an edge, or a UV trim curve
 held by an edge use, that is the holding edge's `GetTolerance()` (`SmCurve::GetEdge`
@@ -23,6 +22,12 @@ interval, `DropCurve` returns no curve, and `DropAndTrimCurve` succeeds with max
 right away with distance 4.5503e-5 and deviation 9.692e-6, combined to 4.6523e-5 (edge
 tolerance 9.3047e-5), which cascaded to the vertex.
 
-Fix: those trims now pass the holding edge's tolerance (system zone tolerance when the
+Fix: those three trims now pass the holding edge's tolerance (system zone tolerance when the
 holder has no edge) to `Curve::trim_with_zone_tol`. The case agrees exactly and its
 known-mismatch entry is removed.
+
+Not changed: the same pattern of three trims at the end of `SmFilletEdge::CalcFilletIntFillet`
+(`blend/fillet_geom` p3). Passing the holding edge's tolerance there too broke
+`blend.fillet_geom_p3` generated case gen0252 (value count C++ 125, Rust 130), so whether
+those curves have an owning edge in C++ at that point (`SetUVCurve`, the fillet edge's
+tolerance) needs its own check.
