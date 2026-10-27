@@ -15,66 +15,6 @@ case = "private-upstream-rollover-404-cyl-on-box1-edge12-r2"
 reason = "v1.0.1 pin (#1277): known mismatch, face 11 UV v-min -2.0000000000000013 (Rust) vs -2 (C++ 1.0.1); plan/findings/blend.fillet_executive_p3--rollover-404-face-uv-domain-vmin.md"
 
 [[waiver]]
-unit = "heal.heal_data_p3"
-check = "ratchet"
-case = "empty_repair_queues_0.0001"
-reason = "v1.0.1 pin (#1277): rejected, C++ 1.0.1 Fix_SplitEdgesAtSeam reads the mark of a null target face; the shim guards it (plan/upstream-issues/UB-265--fix-splitedgesatseam-reads-the-mark-of-a-null-target-face.md)"
-
-[[waiver]]
-unit = "heal.heal_data_p3"
-check = "ratchet"
-case = "empty_repair_queues_1.0"
-reason = "v1.0.1 pin (#1277): rejected, C++ 1.0.1 Fix_SplitEdgesAtSeam reads the mark of a null target face; the shim guards it (plan/upstream-issues/UB-265--fix-splitedgesatseam-reads-the-mark-of-a-null-target-face.md)"
-
-[[waiver]]
-unit = "heal.heal_data_p3"
-check = "ratchet"
-case = "empty_repair_queues_10000.0"
-reason = "v1.0.1 pin (#1277): rejected, C++ 1.0.1 Fix_SplitEdgesAtSeam reads the mark of a null target face; the shim guards it (plan/upstream-issues/UB-265--fix-splitedgesatseam-reads-the-mark-of-a-null-target-face.md)"
-
-[[waiver]]
-unit = "heal.heal_data_p3"
-check = "ratchet"
-case = "review_null_face_fix_split_edges_at_seam"
-reason = "v1.0.1 pin (#1277): rejected, C++ 1.0.1 Fix_SplitEdgesAtSeam reads the mark of a null target face; the shim guards it (plan/upstream-issues/UB-265--fix-splitedgesatseam-reads-the-mark-of-a-null-target-face.md)"
-
-[[waiver]]
-unit = "heal.heal_data_p3"
-check = "ratchet"
-case = "gen0008"
-reason = "v1.0.1 pin (#1277): rejected, C++ 1.0.1 Fix_SplitEdgesAtSeam reads the mark of a null target face; the shim guards it (plan/upstream-issues/UB-265--fix-splitedgesatseam-reads-the-mark-of-a-null-target-face.md)"
-
-[[waiver]]
-unit = "heal.heal_data_p3"
-check = "ratchet"
-case = "gen0016"
-reason = "v1.0.1 pin (#1277): rejected, C++ 1.0.1 Fix_SplitEdgesAtSeam reads the mark of a null target face; the shim guards it (plan/upstream-issues/UB-265--fix-splitedgesatseam-reads-the-mark-of-a-null-target-face.md)"
-
-[[waiver]]
-unit = "heal.heal_data_p3"
-check = "ratchet"
-case = "gen0067"
-reason = "v1.0.1 pin (#1277): rejected, C++ 1.0.1 Fix_SplitEdgesAtSeam reads the mark of a null target face; the shim guards it (plan/upstream-issues/UB-265--fix-splitedgesatseam-reads-the-mark-of-a-null-target-face.md)"
-
-[[waiver]]
-unit = "heal.heal_data_p3"
-check = "ratchet"
-case = "gen0070"
-reason = "v1.0.1 pin (#1277): rejected, C++ 1.0.1 Fix_SplitEdgesAtSeam reads the mark of a null target face; the shim guards it (plan/upstream-issues/UB-265--fix-splitedgesatseam-reads-the-mark-of-a-null-target-face.md)"
-
-[[waiver]]
-unit = "heal.heal_data_p3"
-check = "ratchet"
-case = "gen0078"
-reason = "v1.0.1 pin (#1277): rejected, C++ 1.0.1 Fix_SplitEdgesAtSeam reads the mark of a null target face; the shim guards it (plan/upstream-issues/UB-265--fix-splitedgesatseam-reads-the-mark-of-a-null-target-face.md)"
-
-[[waiver]]
-unit = "heal.heal_data_p3"
-check = "ratchet"
-case = "gen0081"
-reason = "v1.0.1 pin (#1277): rejected, C++ 1.0.1 Fix_SplitEdgesAtSeam reads the mark of a null target face; the shim guards it (plan/upstream-issues/UB-265--fix-splitedgesatseam-reads-the-mark-of-a-null-target-face.md)"
-
-[[waiver]]
 unit = "intersect.curve_class_p5"
 check = "ratchet"
 case = "topo0080"
@@ -85,66 +25,6 @@ unit = "intersect.curve_class_p5"
 check = "ratchet"
 case = "topo0241"
 reason = "v1.0.1 pin (#1277): rejected, 1.0.1 fixes WR-91 so GetVertexuseOfFace returns NULL for a vertex with no use on the face; the shim guards the upstream NULL dereference that follows (plan/upstream-issues/WR-91--addendum-2026-10-26-fixed-in-v1-0-1.md)"
-
-[[waiver]]
-unit = "query.api_queries"
-check = "ratchet"
-case = "relationship_face_touch_scale1_op7"
-reason = "v1.0.1 pin (#1277): deferred, query.api_queries is partial (16 face-handle deferrals, time-boxed follow-up in the PR)"
-
-[[waiver]]
-unit = "query.api_queries"
-check = "ratchet"
-case = "relationship_face_touch_scale1_op8"
-reason = "v1.0.1 pin (#1277): deferred, query.api_queries is partial (16 face-handle deferrals, time-boxed follow-up in the PR)"
-
-[[waiver]]
-unit = "query.api_queries"
-check = "ratchet"
-case = "relationship_interpenetrating_scale1_op7"
-reason = "v1.0.1 pin (#1277): deferred, query.api_queries is partial (16 face-handle deferrals, time-boxed follow-up in the PR)"
-
-[[waiver]]
-unit = "query.api_queries"
-check = "ratchet"
-case = "relationship_interpenetrating_scale1_op8"
-reason = "v1.0.1 pin (#1277): deferred, query.api_queries is partial (16 face-handle deferrals, time-boxed follow-up in the PR)"
-
-[[waiver]]
-unit = "query.api_queries"
-check = "ratchet"
-case = "relationship_coincident_scale1_op7"
-reason = "v1.0.1 pin (#1277): deferred, query.api_queries is partial (16 face-handle deferrals, time-boxed follow-up in the PR)"
-
-[[waiver]]
-unit = "query.api_queries"
-check = "ratchet"
-case = "relationship_coincident_scale1_op8"
-reason = "v1.0.1 pin (#1277): deferred, query.api_queries is partial (16 face-handle deferrals, time-boxed follow-up in the PR)"
-
-[[waiver]]
-unit = "query.api_queries"
-check = "ratchet"
-case = "relationship_face_touch_scale16_op7"
-reason = "v1.0.1 pin (#1277): deferred, query.api_queries is partial (16 face-handle deferrals, time-boxed follow-up in the PR)"
-
-[[waiver]]
-unit = "query.api_queries"
-check = "ratchet"
-case = "relationship_face_touch_scale16_op8"
-reason = "v1.0.1 pin (#1277): deferred, query.api_queries is partial (16 face-handle deferrals, time-boxed follow-up in the PR)"
-
-[[waiver]]
-unit = "query.api_queries"
-check = "ratchet"
-case = "relationship_interpenetrating_scale16_op7"
-reason = "v1.0.1 pin (#1277): deferred, query.api_queries is partial (16 face-handle deferrals, time-boxed follow-up in the PR)"
-
-[[waiver]]
-unit = "query.api_queries"
-check = "ratchet"
-case = "relationship_interpenetrating_scale16_op8"
-reason = "v1.0.1 pin (#1277): deferred, query.api_queries is partial (16 face-handle deferrals, time-boxed follow-up in the PR)"
 
 [[waiver]]
 unit = "query.face_p3"
@@ -169,3 +49,13 @@ unit = "topology.face_p2"
 check = "ratchet"
 case = "extra01154"
 reason = "v1.0.1 pin (#1277): known mismatch, sphere-pole internal point (Rust the pole, C++ 1.0.1 a nearby point); plan/findings/query.face_p3--sphere-pole-internal-point-v1-0-1.md"
+
+[[waiver]]
+unit = "heal.heal_data_p3"
+check = "ratchet"
+reason = "v1.0.1 pin (#1277), unit-wide: cases rejected because C++ 1.0.1 Fix_SplitEdgesAtSeam reads the mark of a null target face; the shim guards it (plan/upstream-issues/UB-265--fix-splitedgesatseam-reads-the-mark-of-a-null-target-face.md)"
+
+[[waiver]]
+unit = "query.api_queries"
+check = "ratchet"
+reason = "v1.0.1 pin (#1277), unit-wide: cases deferred, query.api_queries is partial (16 face-handle deferrals, time-boxed follow-up in the PR)"
