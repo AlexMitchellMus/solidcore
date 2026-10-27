@@ -845,14 +845,13 @@ fn new_brep(k: &mut Kernel) -> Result<Brep> {
     crate::topology::brep::p3::new_brep(k, USE_DEFAULT, USE_DEFAULT)
 }
 
-/// `new SmBrep()` and `SmPrimitiveCreation sPC(pBrep->GetInfiniteRegion())`, with
-/// [`PrimitiveCreation::set_analytic_revolutions`] on (SolidCraft change,
-/// tangency-labs/solidcore#545).
+/// `new SmBrep()` and `SmPrimitiveCreation sPC(pBrep->GetInfiniteRegion())`.
 fn new_primitive(k: &mut Kernel) -> Result<(PrimitiveCreation, Brep)> {
     let brep = new_brep(k)?;
-    let mut pc = PrimitiveCreation::new(brep.infinite_region(), 0, true);
-    pc.set_analytic_revolutions(true);
-    Ok((pc, brep))
+    Ok((
+        PrimitiveCreation::new(brep.infinite_region(), 0, true),
+        brep,
+    ))
 }
 
 /// Runs `body` on a new B-rep's [`PrimitiveCreation`] through a [`PrimitiveModel`] and
@@ -953,21 +952,26 @@ mod tests {
         assert!(crate::topology::brep::p2::is_manifold_solid(&sphere).unwrap());
         let cylinder = create_partial_cylinder(k, o(), 5.0, 10.0, 0.0, 90.0).unwrap();
         assert!(crate::topology::brep::p2::is_manifold_solid(&cylinder).unwrap());
-        let torus = create_partial_torus(k, o(), 10.0, 2.0, 0.0, 90.0).unwrap();
-        assert!(crate::topology::brep::p2::is_manifold_solid(&torus).unwrap());
-        // the swept face is an analytic torus (tangency-labs/solidcore#545)
-        let tori = torus
-            .face_list()
-            .iter()
-            .filter(|&&f| {
-                let surface = torus.face(f).unwrap().surface.as_ref().unwrap();
-                matches!(
-                    surface.kind(),
-                    crate::surface::surface::SurfaceKind::Torus(_)
-                )
-            })
-            .count();
-        assert_eq!(tori, 1);
+        // with `fixes.revolve_analytic_profile_faces` (WR-448, #545) the swept face is
+        // an analytic torus; upstream's is a B-spline surface
+        for (fix, expected) in [(false, 0), (true, 1)] {
+            k.fixes.revolve_analytic_profile_faces = fix;
+            let torus = create_partial_torus(k, o(), 10.0, 2.0, 0.0, 90.0).unwrap();
+            assert!(crate::topology::brep::p2::is_manifold_solid(&torus).unwrap());
+            let tori = torus
+                .face_list()
+                .iter()
+                .filter(|&&f| {
+                    let surface = torus.face(f).unwrap().surface.as_ref().unwrap();
+                    matches!(
+                        surface.kind(),
+                        crate::surface::surface::SurfaceKind::Torus(_)
+                    )
+                })
+                .count();
+            assert_eq!(tori, expected, "{fix}");
+        }
+        k.fixes.revolve_analytic_profile_faces = false;
         // edges without an edge use on their face
         let mut brep = Brep::new_with_infinite_region().unwrap();
         let (edge, face) = (EdgeId::from_index(0), FaceId::from_index(0));

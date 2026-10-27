@@ -1,7 +1,7 @@
 # sweep.rotational_sweep_geometry: analytic faces for every profile curve of a revolution, issue #545 (2026-10-24)
 
 SolidCraft change (tangency-labs/smlib 0b143f7; that commit is not public, so the port
-follows the issue's description). Upstream `WR-268` (`plan/upstream-issues/WR-268--createrotationalsweep-analytic-faces-only-for-one-curve.md`).
+follows the issue's description). Upstream `WR-448` (`plan/upstream-issues/WR-448--createrotationalsweep-analytic-faces-only-for-one-curve.md`).
 
 - `sweep::analytic_revolution` gives a line or circular arc in one half-plane through the
   axis its cylinder, cone, sphere or torus, bounded to the curve and the turn, in the
@@ -10,13 +10,12 @@ follows the issue's description). Upstream `WR-268` (`plan/upstream-issues/WR-26
   itself in `EdgeSweepHigher`), so the loop `EdgeSweepHigher` builds stays the same
   (test `analytic_revolutions_keep_the_b_spline_loop`: same roles, orientations,
   tolerances and normal; the UV trims lie on the analytic surface).
-- **Switches.** `PrimitiveCreation::set_analytic_revolutions` and
-  `RotationalSweepGeometry::set_analytic_revolutions` are off by default, so every
-  unit-level difftest compares upstream's surfaces: `sweep.rotational_sweep_geometry`
-  (surfaces compared), `primitive.primitive_creation_p3` (`partial_rotation_line`
-  compares the face's surface at 3x3 points; a cylinder there would differ from the
-  C++'s B-spline) and `p2`. The `SM_API` entry points (`PrimitiveModel::build_new`,
-  `api_primitives::new_primitive`) turn it on.
+- **Switch.** The opt-in `Kernel::fixes.revolve_analytic_profile_faces` (off by
+  default, upstream's surfaces) gates it: `PrimitiveCreation`'s rotational sweeps read
+  it and set `RotationalSweepGeometry::set_analytic_revolutions` for a partial turn.
+  Every difftest runs with it off. (Until 2026-10-27 the PR turned a
+  `PrimitiveCreation` switch on in the `SM_API` entry points instead; the bullets
+  below that describe API-level effects "with it on" were measured that way.)
 - **API-level difftests with it on.** `sweep.api_surfaces` revolution cases revolve
   interpolated waves and 2D NURBs, which get no analytic surface: unchanged.
   `sweep.api_brep` compares status and topology counts only. A local Rust run of its
@@ -73,3 +72,15 @@ follows the issue's description). Upstream `WR-268` (`plan/upstream-issues/WR-26
   full-circle profiles that do not start at tube angle 0 may take the analytic path
   again; the PR's CI difftest shows their status and counts. The boundary check stays:
   it still keeps the B-spline wherever the analytic sides differ.
+- **`primitive.api_primitives` with it on; opt-in since (2026-10-27).** Once main built
+  the partial cone, cylinder, sphere and torus end to end, CI on `c5e5f46ec` (the
+  switch then on at the `SM_API` entry points) failed 80 generated
+  `primitive.api_primitives` cases that pass on main (39 `partial_cone`, 30
+  `partial_cylinder`, 6 `partial_sphere`, 5 `partial_torus`; e.g. `gen0015`: face
+  tolerance `rec[12]` cpp 1.0000000010658142e-5 rust 1e-5, `rec[175]` cpp 1 rust
+  15.26, the analytic surface's parameter range): the analytic faces differ from
+  `c9c5979`'s B-splines by design. No other unit changed outcome. Main's
+  `UpstreamFixes::revolve_analytic_profile_faces` (#1077, for this issue) now gates
+  the change, off by default, so default results stay upstream's (#1018) and that
+  unit compares upstream again. Tests check the partial torus and the drilled hole
+  both ways.

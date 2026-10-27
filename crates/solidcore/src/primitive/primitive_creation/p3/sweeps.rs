@@ -17,13 +17,12 @@
 //! Not upstream (WR-442, tangency-labs/solidcore#478, opt-in
 //! `Kernel::fixes.revolve_nested_shells_as_cavities`): after a full turn's
 //! stitch, a closed shell inside another becomes that solid's cavity.
-//! **Analytic faces of a longer profile** (SolidCraft change, tangency-labs/smlib
-//! 0b143f7, tangency-labs/solidcore#545): upstream makes analytic faces only for a
-//! one-curve profile. With [`PrimitiveCreation::set_analytic_revolutions`] (off by
-//! default; the `SM_API` entry points turn it on) a whole turn gives each other curve
-//! its cylinder, cone, sphere or torus ([`analytic_revolution`]) before falling back
-//! to the `SmSurfOfRevolution`, and a partial turn sweeps with
-//! [`RotationalSweepGeometry::set_analytic_revolutions`] on.
+//! Not upstream (WR-448, tangency-labs/solidcore#545, opt-in
+//! `Kernel::fixes.revolve_analytic_profile_faces`; SolidCraft change, tangency-labs/smlib
+//! 0b143f7): upstream makes analytic faces only for a one-curve profile. With the fix
+//! a whole turn gives each other curve its cylinder, cone, sphere or torus
+//! ([`analytic_revolution`]) before falling back to the `SmSurfOfRevolution`, and a
+//! partial turn sweeps with [`RotationalSweepGeometry::set_analytic_revolutions`] on.
 
 use super::{construct::target, geometry::bspline, PrimitiveAccess};
 use crate::curve::curve::Curve;
@@ -357,9 +356,9 @@ impl PrimitiveCreation {
             }
             if face.is_none() {
                 if let Some(curve) = slot.as_ref() {
-                    // SolidCraft change (tangency-labs/smlib 0b143f7): the curve's
-                    // cylinder, cone, sphere or torus, else the surface of revolution
-                    let analytic = if self.analytic_revolutions() {
+                    // Not upstream (WR-448, #545): the curve's cylinder, cone,
+                    // sphere or torus, else the surface of revolution
+                    let analytic = if a.kernel(brep)?.fixes.revolve_analytic_profile_faces {
                         let tolerance = a.brep(brep)?.tolerance();
                         analytic_revolution(
                             a.kernel(brep)?,
@@ -472,8 +471,8 @@ impl PrimitiveCreation {
                 cap = false;
             }
             let mut rotation = RotationalSweepGeometry::new(axis_base, axis, angle_deg, tolerance);
-            // SolidCraft change (tangency-labs/smlib 0b143f7): analytic side faces
-            rotation.set_analytic_revolutions(self.analytic_revolutions());
+            // Not upstream (WR-448, #545): analytic side faces
+            rotation.set_analytic_revolutions(a.kernel(brep)?.fixes.revolve_analytic_profile_faces);
             let geometry = SweepGeometry::Rotation(rotation);
             let mut sweep = TopologySweep {
                 repetitions: options.repetitions,

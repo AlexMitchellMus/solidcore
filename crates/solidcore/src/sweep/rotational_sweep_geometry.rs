@@ -49,10 +49,11 @@
 //!   [`RotationalSweepGeometry::check_curve_sweep`] only runs the rotation-on-curve
 //!   test (its sweep amount is unused); `SM_DEBUG_CODE` blocks, `SM_ASSERT`s and
 //!   `smos_WriteBuffer` messages are dropped.
-//! - **Analytic revolutions** (SolidCraft change, tangency-labs/smlib 0b143f7,
-//!   tangency-labs/solidcore#545). With
+//! - **Analytic revolutions** (not upstream: WR-448, tangency-labs/solidcore#545;
+//!   SolidCraft change, tangency-labs/smlib 0b143f7). With
 //!   [`RotationalSweepGeometry::set_analytic_revolutions`] (off by default, so the
-//!   default follows `c9c5979`), `EdgeSweepHigher` gives a line or circular arc its
+//!   default follows `c9c5979`; `PrimitiveCreation`'s partial rotational sweep sets it
+//!   from `Kernel::fixes.revolve_analytic_profile_faces`), `EdgeSweepHigher` gives a line or circular arc its
 //!   cylinder, cone, sphere or torus in the B-spline surface's layout instead of
 //!   `CopyAndAddAnalytics` of the B-spline. The trims are the analytic surface's own
 //!   boundary, in the loop order and orientation the B-spline's give; the normal is
