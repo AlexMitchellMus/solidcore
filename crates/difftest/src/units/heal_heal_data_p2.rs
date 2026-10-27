@@ -562,7 +562,7 @@ fn ffi_out(r: Result<Vec<f64>, solidcore_ffi::FfiError>) -> Result<Output, Harne
     match r {
         // the shim refused an input whose upstream path is undefined (`-999 id`)
         Ok(v) if v.first() == Some(&-999.0) => Ok(Output::rejected(match v.get(1) {
-            Some(&id) if id == 265.0 => {
+            Some(&265.0) => {
                 "UB-265: Fix_SplitEdgesAtSeam reads the mark of a null target face".to_string()
             }
             id => format!("shim refusal {id:?}"),

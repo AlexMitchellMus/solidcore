@@ -812,7 +812,12 @@ mod tests {
             with_stderr("crash (exit status: 3)".into(), "\n \n"),
             "crash (exit status: 3)"
         );
-        let err: String = (0..50).map(|i| format!("line {i}\n")).collect();
+        let err: String = (0..50).fold(String::new(), |mut s, i| {
+            s.push_str("line ");
+            s.push_str(&i.to_string());
+            s.push('\n');
+            s
+        });
         let why = with_stderr("crash (exit status: 3)".into(), &err);
         assert!(why.starts_with("crash (exit status: 3); child stderr (last 40 lines):\nline 10\n"));
         assert!(why.ends_with("line 49"));
