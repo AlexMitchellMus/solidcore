@@ -1044,11 +1044,14 @@ impl CrvOnSurf {
     /// The minimum continuity of the interior breaks and the continuity at every
     /// break (`CalculateContinuities`): the ends discontinuous, each interior break
     /// evaluated from both sides with `angle_tol`; the minimum is
-    /// [`ContinuityType::Undefined`] without interior breaks. Caches the breaks.
+    /// [`ContinuityType::Undefined`] without interior breaks. Caches the breaks. A
+    /// failing evaluation keeps the previous break's continuity (upstream ignores the
+    /// status; before any success it reads an uninitialised value, UB-263: here
+    /// [`ContinuityType::Undefined`]).
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] from [`Self::knots`]; those of the evaluations;
+    /// [`SolidError::Unported`] from [`Self::knots`] or the evaluations;
     /// [`SolidError::InvalidInput`] without breaks.
     pub fn calculate_continuities(
         &self,
@@ -1088,6 +1091,11 @@ impl CrvOnSurf {
             *c = ContinuityType::Discontinuous;
         }
 
+        // eThisContinuity: declared before the loop and left unchanged by a failing
+        // EvaluateContinuity, whose status upstream ignores (uninitialised before the
+        // first success upstream, UB-263; `SM_CT_UNDEFINED` here)
+        let mut c = ContinuityType::Undefined;
+
         // build the output
         let mut ii = 1;
         while ii + 1 < n {
@@ -1095,12 +1103,14 @@ impl CrvOnSurf {
                 .get(ii)
                 .ok_or_else(|| SolidError::invalid_input(OP_CONTS, "no breaks"))?;
 
-            // evaluate geometric continuities
-            let c = match &this {
-                None => evaluate_continuity(k, self, t, true, self, t, false, angle_tol)?,
-                Some(c) => evaluate_continuity(k, c, t, true, c, t, false, angle_tol)?,
+            // evaluate geometric continuities (status ignored)
+            let r = match &this {
+                None => evaluate_continuity(k, self, t, true, self, t, false, angle_tol),
+                Some(d) => evaluate_continuity(k, d, t, true, d, t, false, angle_tol),
+            };
+            if let Some(e) = ignored(r)? {
+                c = e.continuity;
             }
-            .continuity;
 
             // set output
             if let Some(d) = conts.get_mut(ii) {

@@ -3,8 +3,9 @@
 //! surfaces of revolution and extrusion and their analytic kinds.
 //!
 //! Upstream: `source/SMLib/src/SmSurfOfRevolution.cpp`, `SmSurfOfExtrusion.cpp`,
-//! `SmCone.cpp`, `SmCylinder.cpp`, `SmSphere.cpp`, `SmTorus.cpp` (and the `WriteToDB`
-//! overrides of the other curve and surface classes, dispatched to).
+//! `SmCone.cpp`, `SmCylinder.cpp`, `SmSphere.cpp`, `SmTorus.cpp`, `SmCrvOnSurf.cpp`,
+//! `SmTangentField.cpp` (and the `WriteToDB` overrides of the other curve and surface
+//! classes, dispatched to).
 //!
 //! | Rust                         | Upstream                                         |
 //! |------------------------------|--------------------------------------------------|
@@ -15,12 +16,15 @@
 //! | `write_cone` (private)       | `SmCone::WriteToDB`, `SmCylinder::WriteToDB`     |
 //! | `write_sphere` (private)     | `SmSphere::WriteToDB`                            |
 //! | `write_torus` (private)      | `SmTorus::WriteToDB`                             |
+//! | `write_crv_on_surf` (private) | `SmCrvOnSurf::WriteToDB`                        |
+//! | `write_tangent_field` (private) | `SmTangentField::WriteToDB`                   |
 //!
 //! Deviations:
 //! - **Kinds without a writer.** The write side is not in the plan (see
 //!   `plan/findings.md`); only the kinds B-rep files hold are ported: B-spline curves,
-//!   lines, ellipses and circles; B-spline surfaces, planes, cones and cylinders,
-//!   spheres, tori, surfaces of revolution and extrusion, offset surfaces. Another
+//!   lines, ellipses and circles, curves on surfaces and tangent fields; B-spline
+//!   surfaces, planes, cones and cylinders, spheres, tori, surfaces of revolution and
+//!   extrusion, offset surfaces. Another
 //!   kind is [`SolidError::Unported`] with its `WriteToDB` symbol and unit
 //!   `(not in plan)`.
 //! - **Missing NURB.** Upstream's analytic writers ignore the status of the B-spline

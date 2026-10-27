@@ -931,6 +931,7 @@ impl Curve {
             CurveKind::Line(c) => c.is_kind_of(t),
             CurveKind::Ellipse(c) => c.kind_of(t),
             CurveKind::Parabola(c) => c.is_kind_of(t),
+            CurveKind::TangentField(c) => c.is_kind_of(t),
             _ => t == self.type_code() || is_kind_of(t),
         }
     }
