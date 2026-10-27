@@ -832,7 +832,10 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
             }
         };
         let handle = fields.surface.ok_or(SolidError::null_pointer(OP_BLOCK))?;
-        let surface = self.node_surface(Some(handle))?.clone();
+        // upstream works on the node's surface itself (`pAux->mBA_pSurface`); the cache is
+        // edited below, so an evaluation copy (exact knots, owner kept) stands for it: the
+        // copy constructor's knot fix-up would move near-coincident knots and so the splits
+        let surface = self.node_surface(Some(handle))?.clone_for_evaluation()?;
         let uv_domain = surface.natural_uv_domain_with_nurb(k)?;
         let opts = *self.options();
 
