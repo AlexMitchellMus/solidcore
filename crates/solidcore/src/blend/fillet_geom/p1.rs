@@ -4669,7 +4669,7 @@ mod tests {
         ));
         assert!(matches!(
             body.face(face).unwrap().surface.as_ref().unwrap().kind(),
-            crate::surface::surface::p2::SurfaceKind::Plane(_)
+            SurfaceKind::Plane(_)
         ));
         // A face without a surface is upstream's NULL.
         body.face_mut(face).unwrap().surface = None;
