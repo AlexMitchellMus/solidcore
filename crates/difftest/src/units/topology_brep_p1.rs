@@ -2072,7 +2072,7 @@ fn run_rust_op(
         } => {
             // the second B-rep in its own arena, built by the Rust kernel
             let mut b2 = match crate::own_builder::build(k, other, false, false)? {
-                Some(crate::own_builder::Built::Brep(b2)) => b2
+                Some(crate::own_builder::Built::Brep(b2)) => *b2,
                 Some(crate::own_builder::Built::Failed(e)) if e.is_unported() => {
                     return Err(e.into());
                 }
@@ -2224,7 +2224,7 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
 fn rust_brep(
     k: &mut Kernel,
     i: &Inputs,
-) -> Result<Result<(Brep, ImportTypes, [usize; 10]), Output>, HarnessError> {
+) -> Result<crate::own_builder::RustBrep<(Brep, ImportTypes, [usize; 10])>, HarnessError> {
     use crate::own_builder::{build, build_status, counts, Built};
     let src = i
         .brep
@@ -2232,6 +2232,7 @@ fn rust_brep(
         .ok_or_else(|| harness("B-rep op without brep"))?;
     match build(k, src, i.validate_only, i.init_gaps)? {
         Some(Built::Brep(b)) => {
+            let b = *b;
             // geometry owners are arena identities with the naming left `Unknown`, as
             // this unit's `.smb` import leaves it on main
             let c = counts(&b);

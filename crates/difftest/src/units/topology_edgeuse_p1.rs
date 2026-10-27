@@ -1482,11 +1482,12 @@ pub(crate) fn rust_brep(
     brep: Option<&BrepIn>,
     validate_only: bool,
     init_gaps: bool,
-) -> Result<Result<(Brep, ImportTypes, [usize; 10]), Output>, HarnessError> {
+) -> Result<crate::own_builder::RustBrep<(Brep, ImportTypes, [usize; 10])>, HarnessError> {
     use crate::own_builder::{build, build_status, counts, Built};
     let src = brep.ok_or_else(|| harness("B-rep op without brep"))?;
     match build(k, src, validate_only, init_gaps)? {
         Some(Built::Brep(b)) => {
+            let b = *b;
             let c = counts(&b);
             Ok(Ok((b, ImportTypes::default(), c)))
         }

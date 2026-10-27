@@ -1002,7 +1002,8 @@ fn own_brep(k: &mut Kernel, i: &Inputs) -> Result<Result<(Brep, [usize; 10]), Ou
         .and_then(serde_json::from_value)
         .map_err(|e| harness(format!("B-rep source: {e}")))?;
     match build_with(k, &src, i.validate_only, i.init_gaps, &CONVENTIONS)? {
-        Some(Built::Brep(mut b)) => {
+        Some(Built::Brep(b)) => {
+            let mut b = *b;
             if i.editing >= 0 {
                 b.set_editing_enabled(i.editing != 0);
             }

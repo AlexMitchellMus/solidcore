@@ -48,16 +48,21 @@ fn harness(msg: impl Into<String>) -> HarnessError {
     HarnessError::new(msg)
 }
 
+#[allow(clippy::needless_pass_by_value)] // used as `map_err(solid)`
 fn solid(e: SolidError) -> HarnessError {
     harness(format!("own builder: {e}"))
 }
+
+/// A built B-rep with its geometry types and entity counts, or the output a failed
+/// build reports.
+pub(crate) type RustBrep<T> = Result<T, crate::Output>;
 
 /// The outcome of building a source: the B-rep in the shim's traversal order, or the
 /// error the Rust build returned (the shim's `build` returns NULL with a status).
 #[derive(Debug)]
 pub(crate) enum Built {
     /// The built B-rep, renumbered into the shim's traversal order.
-    Brep(Brep),
+    Brep(Box<Brep>),
     /// The build failed (an unported callee, or the error the port returns where the
     /// shim reports a non-success status).
     Failed(SolidError),
@@ -227,7 +232,7 @@ pub(crate) fn build_with(
             return Ok(Some(Built::Failed(e)));
         }
     }
-    Ok(Some(Built::Brep(b)))
+    Ok(Some(Built::Brep(Box::new(b))))
 }
 
 /// `new (ctx) SmBrep()` then `f` on it: the B-rep, or the build's error.
@@ -929,6 +934,19 @@ fn opt<T, F: Fn(T) -> Result<T, HarnessError>>(
 /// A reached object referring to one the traversal did not reach.
 pub(crate) fn renumber_with(src: &Brep, conv: &Conventions<'_>) -> Result<Brep, HarnessError> {
     let g = walk_with(src, conv.prefix_lists).map_err(solid)?;
+    // the geometry `src` itself counts as owned by its face / edge (`GetSurfaces` /
+    // `GetCurves`, under its own naming; either errs on a face without surface or an
+    // edge without curve, then any recorded owner counts): relabelled to the new ids
+    let owned_surfaces: Vec<*const Surface> = solidcore::topology::brep::p1::surfaces(src, None)
+        .unwrap_or_default()
+        .into_iter()
+        .map(std::ptr::from_ref)
+        .collect();
+    let owned_curves: Vec<*const Curve> = solidcore::topology::brep::p1::curves(src, None)
+        .unwrap_or_default()
+        .into_iter()
+        .map(std::ptr::from_ref)
+        .collect();
     let m = Map(&g);
     let mut b = Brep::new();
     b.set_validate_only(src.validate_only());
@@ -981,9 +999,12 @@ pub(crate) fn renumber_with(src: &Brep, conv: &Conventions<'_>) -> Result<Brep, 
     }
     for &id in &g.faces.items {
         let f = src.face(id).map_err(solid)?;
+        let owned = f.surface.as_ref().is_some_and(|x| {
+            x.owner().is_some() || owned_surfaces.contains(&std::ptr::from_ref(x))
+        });
         let mut surface = f.surface.clone();
         let new = m.face(id)?;
-        if let Some(s) = surface.as_mut().filter(|s| s.owner().is_some()) {
+        if let Some(s) = surface.as_mut().filter(|_| owned) {
             let _ = s.set_owner(Some((conv.face_owner)(new)));
         }
         b.add_face_record(Face {
@@ -1021,9 +1042,13 @@ pub(crate) fn renumber_with(src: &Brep, conv: &Conventions<'_>) -> Result<Brep, 
     }
     for &id in &g.edges.items {
         let e = src.edge(id).map_err(solid)?;
+        let owned = e
+            .curve
+            .as_ref()
+            .is_some_and(|x| x.owner().is_some() || owned_curves.contains(&std::ptr::from_ref(x)));
         let mut curve = e.curve.clone();
         let new = m.edge(id)?;
-        if let Some(c) = curve.as_mut().filter(|c| c.owner().is_some()) {
+        if let Some(c) = curve.as_mut().filter(|_| owned) {
             let (owner, brep) = (conv.edge_owner)(new);
             let _ = c.set_owner(Some(owner), Some(brep));
         }
