@@ -144,6 +144,27 @@
           "all_edges": true
         }
       }
+    },
+    {
+      "name": "sweep5-ext_w_hole-e14-r1.0",
+      "upstream_ref": "source/SM_API/src/SmApiBrep.cpp:2049",
+      "inputs": {
+        "real_solid": {
+          "source": {
+            "kind": "file",
+            "path": {
+              "$upstream_file": "Fillet/ext_w_hole.smb"
+            }
+          },
+          "radius": 1.0,
+          "xsect": 1,
+          "continuity": 1,
+          "thumbweight": 1,
+          "edges": [
+            14
+          ]
+        }
+      }
     }
   ]
 }
