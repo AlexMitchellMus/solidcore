@@ -2433,22 +2433,61 @@ impl Surface {
     /// B-spline swap, whose virtual `ToggleSwapUVBit` flips its swap flag and whose
     /// `SetCanonical` rebuilds its analytic data, status ignored).
     ///
+    /// Notifies nobody: [`Surface::swap_uv_notifying`] sends the edit notifications.
+    ///
     /// # Errors
     ///
     /// Those of the kind's override (the base default is `SM_ERR`).
     pub fn swap_uv(&mut self, k: &Kernel) -> Result<()> {
+        self.swap_uv_notifying(k, &mut |_, _, _| Ok(()))
+    }
+
+    /// [`Surface::swap_uv`] with upstream's edit notifications: each B-spline swap's
+    /// `SetCanonical` (every kind built on `SmBSplineSurface`) and `SmSrfInVolume::SwapUV`
+    /// send `Notify(SM_NO_PRE_EDIT` / `SM_NO_POST_EDIT, this, SM_NO_GET_OWNER(this),
+    /// NULL)` on the edited surface; an offset surface notifies through its extended
+    /// and base surfaces. Each goes first through `SmSurface::Notify`, whose
+    /// `SM_NO_PRE_EDIT` deletes that surface's trimmed surface cache (one in use stays
+    /// with its caller), then to `notify` with the edited surface's identity slot and
+    /// type code (`SmAObject::Notify`, the caller's).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::swap_uv`] and of `notify`.
+    pub(crate) fn swap_uv_notifying(
+        &mut self,
+        k: &Kernel,
+        notify: &mut SurfaceEditNotify<'_>,
+    ) -> Result<()> {
         self.made_nurb.reset();
         self.boundary_memo = BoundaryMemo::new();
-        match &mut self.kind {
-            SurfaceKind::BSpline(s) => s.swap_uv(),
+        let type_code = self.type_code();
+        let Self {
+            kind,
+            notify_identity: slot,
+            cache_slot,
+            ..
+        } = self;
+        // SetCanonical's (or SmSrfInVolume's) Notify of this surface
+        // (the arms that notify more than this surface's SetCanonical do not use it)
+        let mut own = |op| edit_notify(cache_slot, slot, type_code, notify, op);
+        match kind {
+            SurfaceKind::BSpline(s) => s.swap_uv_notifying(&mut own),
             SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) => base_edit(),
-            SurfaceKind::SrfInVolume(s) => s.swap_uv(k),
-            SurfaceKind::Plane(s) => s.swap_uv(),
+            SurfaceKind::SrfInVolume(s) => {
+                // check input - Can not swap UV on an unowned surface
+                let base = s.owned_surface_mut()?;
+                edit_notify(cache_slot, slot, type_code, notify, NotifyOperation::PreEdit)?;
+                // base surface Swap
+                base.swap_uv_notifying(k, notify)?;
+                edit_notify(cache_slot, slot, type_code, notify, NotifyOperation::PostEdit)
+            }
+            SurfaceKind::Plane(s) => s.swap_uv_notifying(&mut own),
             SurfaceKind::Cone(s) => {
                 // SmBSplineSurface::SwapUV: the NURB swap, the inherited
                 // SmSurfOfRevolution::ToggleSwapUVBit, then SetCanonical's virtual
                 // RebuildSTEPFromNURBParameters (the cone's, status ignored)
-                s.base_mut().swap_uv()?;
+                s.base_mut().swap_uv_notifying(&mut own)?;
                 s.rev.toggle_swap_uv_bit();
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
@@ -2456,7 +2495,9 @@ impl Surface {
                 // SmBSplineSurface::SwapUV: the NURB swap, the inherited
                 // SmSurfOfRevolution::ToggleSwapUVBit, then SetCanonical's virtual
                 // RebuildSTEPFromNURBParameters (the sphere's, status ignored)
-                s.base.base_mut().swap_uv()?;
+                s.base
+                    .base_mut()
+                    .swap_uv_notifying(&mut own)?;
                 s.base.toggle_swap_uv_bit();
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
@@ -2464,13 +2505,15 @@ impl Surface {
                 // SmBSplineSurface::SwapUV: the NURB swap, the inherited
                 // SmSurfOfRevolution::ToggleSwapUVBit, then SetCanonical's virtual
                 // RebuildSTEPFromNURBParameters (the torus's, status ignored)
-                s.base.base_mut().swap_uv()?;
+                s.base
+                    .base_mut()
+                    .swap_uv_notifying(&mut own)?;
                 s.base.toggle_swap_uv_bit();
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
             SurfaceKind::SurfOfRevolution(s) => {
                 // As in `reverse`: the stored NURB stands for GetOrCreateGwNurbPointer.
-                s.base_mut().swap_uv()?;
+                s.base_mut().swap_uv_notifying(&mut own)?;
                 s.toggle_swap_uv_bit();
                 ignore_status(s.rebuild_step_from_nurb_parameters(k))
             }
@@ -2482,11 +2525,11 @@ impl Surface {
                 if s.base().gw_nurb().is_none() {
                     ignore_status(s.make_nurb(k))?;
                 }
-                s.base_mut().swap_uv()?;
+                s.base_mut().swap_uv_notifying(&mut own)?;
                 s.toggle_swap_uv_bit();
                 Ok(())
             }
-            SurfaceKind::OffsetSurface(s) => s.swap_uv(k),
+            SurfaceKind::OffsetSurface(s) => s.swap_uv_notifying(k, notify),
         }
     }
 
@@ -3927,6 +3970,34 @@ pub fn derivative_limit(pos: Point3) -> f64 {
 #[must_use]
 pub const fn normal_limit() -> f64 {
     1.0e-8
+}
+
+/// The edit notification hook of [`Surface::swap_uv_notifying`]: called with the
+/// edited surface's identity slot, its type code and `SM_NO_PRE_EDIT` /
+/// `SM_NO_POST_EDIT`.
+pub(crate) type SurfaceEditNotify<'a> =
+    dyn FnMut(&mut IdentitySlot, i64, NotifyOperation) -> Result<()> + 'a;
+
+/// `SmSurface::Notify` of an edited surface ([`Surface::swap_uv_notifying`]): its
+/// `SM_NO_PRE_EDIT` deletes the stored trimmed surface cache
+/// (`SmCacheMgr::DeleteObjectsCache(SM_OC_TRIMSRF, this)`; a cache in use stays with
+/// its caller), then `notify` gets the event (`SmAObject::Notify`).
+fn edit_notify(
+    cache_slot: &CacheSlot,
+    slot: &mut IdentitySlot,
+    type_code: i64,
+    notify: &mut SurfaceEditNotify<'_>,
+    operation: NotifyOperation,
+) -> Result<()> {
+    if operation == NotifyOperation::PreEdit {
+        cache_slot.with(|s| {
+            if matches!(s.trim, TrimCacheSlot::Stored(_)) {
+                s.trim = TrimCacheSlot::Empty;
+                s.face_modified_while_out = false;
+            }
+        });
+    }
+    notify(slot, type_code, operation)
 }
 
 /// `SmSurface::Notify`: drops the surface's trimmed-surface cache before an edit and

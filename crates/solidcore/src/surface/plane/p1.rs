@@ -908,6 +908,19 @@ impl Plane {
     /// Those of [`BSplineSurface::canonical`], [`BSplineSurface::set_canonical`] and
     /// [`Plane::rebuild_step_from_nurb_parameters`].
     pub fn swap_uv(&mut self) -> Result<()> {
+        self.swap_uv_notifying(&mut |_| Ok(()))
+    }
+
+    /// [`Plane::swap_uv`] with `SetCanonical`'s edit notifications sent through
+    /// `notify` ([`BSplineSurface::set_canonical_notifying`]).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Plane::swap_uv`] and of `notify`.
+    pub(crate) fn swap_uv_notifying(
+        &mut self,
+        notify: &mut crate::nurbs::b_spline_surface::p2::EditNotify<'_>,
+    ) -> Result<()> {
         // get current surface description
         self.ensure_nurb();
         let c = self.base.canonical()?;
@@ -923,7 +936,8 @@ impl Plane {
         transpose(&mut weights, num_v_cpts);
 
         // Transpose Surface definition
-        self.base.set_canonical(&CanonicalSurfaceData {
+        self.base.set_canonical_notifying(
+            &CanonicalSurfaceData {
             u_degree: c.v_degree,
             v_degree: c.u_degree,
             control_points: &cpts,
@@ -935,7 +949,9 @@ impl Plane {
             knot_type: c.knot_type,
             weights: Some(&weights),
             uv_domain: None,
-        })?;
+            },
+            notify,
+        )?;
         self.rebuild_step_from_nurb_parameters()
     }
 
