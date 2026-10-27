@@ -43,7 +43,7 @@ struct Input {
     /// Whole-B-rep `DoSweep` of a non-manifold body instead of a map script
     /// (`solidcore_ffi::units::sweep_topology_sweep::body` input layout).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    body: Option<[f64; 15]>,
+    body: Option<[f64; 16]>,
 }
 fn vector() -> [f64; 3] {
     [1., 0., 0.]
@@ -813,7 +813,7 @@ fn build_body(
     env: &mut solidcore::topology::edge::NotifyEnv<'_>,
 ) -> Result<Brep> {
     use solidcore::topology::brep::p9;
-    let mut b = if body == 0. {
+    let mut b = if body == 0. || body == 5. {
         solidcore::primitive::api_primitives::create_box(k, Point3::ZERO, 4., 3., 2.)?
     } else {
         Brep::new_with_infinite_region()?
@@ -825,6 +825,8 @@ fn build_body(
         p9::make_shell_vertex(&mut b, region, Point3::new(-5., 0., 0.), env)?;
     } else if body == 1. {
         create_test_brep(k, &mut b, env)?;
+    } else if body == 6. {
+        test_tsurf_creation(k, &mut b, env)?;
     } else if body == 3. {
         let region = b.infinite_region();
         p9::make_shell_vertex(&mut b, region, Point3::new(-5., 0., 0.), env)?;
@@ -835,11 +837,12 @@ fn build_body(
 }
 
 /// Rust side of `sc_sweep_topology_sweep_body`: the same body built by the same
-/// kernel calls in a [`SweepStore`], swept with all targets null.
-fn body_rust(input: [f64; 15]) -> Result<Output> {
+/// kernel calls in a [`SweepStore`], swept whole (all targets null) or with every face
+/// as faces-higher.
+fn body_rust(input: [f64; 16]) -> Result<Output> {
     use solidcore::sweep::topology_sweep::store::{SweepIdentities, SweepStore};
     use solidcore::topology::brep::p1;
-    let [body, kind, vx, vy, vz, angle, cx, cy, cz, eps, stitch, merge, reps, tagging, tag_id] =
+    let [body, kind, vx, vy, vz, angle, cx, cy, cz, eps, stitch, merge, reps, tagging, tag_id, targets] =
         input;
     let mut k = Kernel::default();
     let mut records = BTreeMap::new();
@@ -879,13 +882,12 @@ fn body_rust(input: [f64; 15]) -> Result<Output> {
         repetitions: reps as u64,
         ..TopologySweep::default()
     };
-    let result = sweep.do_sweep(
-        &mut store,
-        &g,
-        Some(id),
-        Some((id, region)),
-        &mut solidcore::sweep::topology_sweep::engine::SweepTargets::default(),
-    );
+    let mut sweep_targets = solidcore::sweep::topology_sweep::engine::SweepTargets::default();
+    if targets == 1. {
+        let faces = p1::faces(store.brep(id)?, None)?;
+        sweep_targets.faces_higher = Some(faces.into_iter().map(|f| Some((id, f))).collect());
+    }
+    let result = sweep.do_sweep(&mut store, &g, Some(id), Some((id, region)), &mut sweep_targets);
     let mut tags = Vec::new();
     if result.is_ok() {
         let tag = |t: Option<TagData>| {
@@ -1137,6 +1139,11 @@ impl UnitDiff for Runner {
     fn run_cpp(&self, c: &Case) -> std::result::Result<Output, HarnessError> {
         let i: Input = c.parse()?;
         if let Some(body) = i.body {
+            // An input whose C++ path is undefined (UB-269, UB-270) is refused by the
+            // FFI guard before the call; Rust is not run on it.
+            if let Some(reason) = solidcore_ffi::units::sweep_topology_sweep::body_undefined(&body) {
+                return Ok(Output::rejected(reason));
+            }
             // Fresh process per case, as for `whole` below.
             return solidcore_ffi::isolate::fresh_process(|| {
                 solidcore_ffi::units::sweep_topology_sweep::body(body)

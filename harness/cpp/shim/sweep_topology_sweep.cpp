@@ -180,10 +180,14 @@ SC_EXPORT int32_t sc_sweep_topology_sweep_whole(const double* in, int64_t n_in, 
 //   2  an empty B-rep (no topology at all)
 //   3  a single shell vertex at (-5,0,0)
 //   4  a single wire edge from a shell vertex at (10,0,0) to (15,2,0)
+//   5  SmApiCreateBox(origin, 4, 3, 2) alone
+//   6  my_test_tsurf_creation alone (the face of body 1 without its additions)
 //
 // in = [body, kind (1 translation, 2 rotation), vx, vy, vz, angle_deg, cx, cy, cz,
-// eps, stitch, merge, repetitions, tagging, tag_id]; the translation is (vx,vy,vz),
-// the rotation is about the axis (vx,vy,vz) through (cx,cy,cz) with tolerance eps.
+// eps, stitch, merge, repetitions, tagging, tag_id, targets]; the translation is
+// (vx,vy,vz), the rotation is about the axis (vx,vy,vz) through (cx,cy,cz) with
+// tolerance eps. targets 0 sweeps the whole B-rep (all six target arrays NULL), 1
+// passes every GetFaces face as the faces-higher list (the others NULL).
 // Out (doubles): status; on success the counts, vertex points and edge vertex
 // indices of sc_sweep_topology_sweep_whole, then the wire-edge and shell-vertex
 // counts, then per GetFaces face and per GetEdges edge its SM_AI_TAG
@@ -292,6 +296,10 @@ static SmStatus sc_build_body(int body, const SmContext& ctx, SmBrep*& rpBrep)
     case 2:
         rpBrep = new (ctx) SmBrep();
         return SM_SUCCESS;
+    case 5:
+        return SmApiCreateBox(SmVector3d(0,0,0), 4, 3, 2, rpBrep);
+    case 6:
+        return sc_test_tsurf_creation(ctx, rpBrep);
     case 3:
         rpBrep = new (ctx) SmBrep();
         return rpBrep->MakeShellVertex(rpBrep->GetInfiniteRegion(), SmPoint3d(-5,0,0), pShell, pVertex);
@@ -310,11 +318,12 @@ static void sc_put_tag(std::vector<double>& o, SmTopology* p)
 
 SC_EXPORT int32_t sc_sweep_topology_sweep_body(const double* in, int64_t n_in, double* out,
                                                int64_t cap, int64_t* out_len) {
-    if (!in || !out_len || n_in != 15) return SC_ERR_ARG;
+    if (!in || !out_len || n_in != 16) return SC_ERR_ARG;
     for (int64_t i = 0; i < n_in; ++i) if (!std::isfinite(in[i])) return SC_ERR_ARG;
-    if (in[0] < 0 || in[0] > 4 || in[0] != std::floor(in[0]) || (in[1] != 1 && in[1] != 2)
+    if (in[0] < 0 || in[0] > 6 || in[0] != std::floor(in[0]) || (in[1] != 1 && in[1] != 2)
         || in[12] < 0 || in[12] > 4 || in[12] != std::floor(in[12])
-        || std::fabs(in[14]) > 1e9 || in[14] != std::floor(in[14])) return SC_ERR_ARG;
+        || std::fabs(in[14]) > 1e9 || in[14] != std::floor(in[14])
+        || (in[15] != 0 && in[15] != 1)) return SC_ERR_ARG;
     SC_TRY
     const SmContext& ctx = *SmApiGetOrCreateContext();
     SmBrep* brep = nullptr;
@@ -329,7 +338,10 @@ SC_EXPORT int32_t sc_sweep_topology_sweep_body(const double* in, int64_t n_in, d
     SmTopologySweep sweep(*g, in[10] != 0, FALSE, FALSE, in[11] != 0);
     sweep.SetRepetitions((ULONG)in[12]);
     sweep.SetTagging(in[13] != 0, (long)in[14]);
-    status = sweep.DoSweep(brep, brep->GetInfiniteRegion(), NULL, NULL, NULL, NULL, NULL, NULL);
+    SmTArray<SmFace*> faces_higher;
+    if (in[15] == 1) brep->GetFaces(faces_higher);
+    status = sweep.DoSweep(brep, brep->GetInfiniteRegion(), in[15] == 1 ? &faces_higher : NULL,
+                           NULL, NULL, NULL, NULL, NULL);
     o.push_back(status == SM_SUCCESS ? 0 : status);
     if (status == SM_SUCCESS) {
         SmTArray<SmRegion*> regions; brep->GetRegions(regions);

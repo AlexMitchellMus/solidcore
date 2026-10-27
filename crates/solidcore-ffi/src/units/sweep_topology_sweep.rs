@@ -133,27 +133,56 @@ pub fn whole(input: [f64; 11]) -> Result<Vec<f64>, FfiError> {
         }
     })
 }
+/// The upstream defect a valid [`body`] input would reach, if any: those inputs are
+/// undefined in C++ and refused. Both are in the whole-B-rep branch (`targets` 0).
+/// With tagging, the whole-B-rep `TagProfile` reads the
+/// wire edges `RemoveAllTopology` has already deleted (UB-270), so the bodies with wire
+/// edges (0, 1, 4) are refused with tagging on. A repetition that finds no wire edge
+/// or shell vertex reuses the wire B-rep the previous repetition's union deleted
+/// (UB-269): the lone wire (4) has none left after one repetition, and bodies 0, 1
+/// and 3 none after two.
+#[must_use]
+pub fn body_undefined(input: &[f64; 16]) -> Option<&'static str> {
+    let (body, repetitions, tagging) = (input[0], input[12], input[13] != 0.0);
+    if input[15] != 0.0 {
+        return None;
+    }
+    if tagging && (body == 0.0 || body == 1.0 || body == 4.0) {
+        return Some("UB-270: whole-B-rep TagProfile reads deleted wire edges");
+    }
+    if (body == 4.0 && repetitions > 1.0)
+        || ((body == 0.0 || body == 1.0 || body == 3.0) && repetitions > 2.0)
+    {
+        return Some("UB-269: a repetition without wires reuses the deleted wire B-rep");
+    }
+    None
+}
+
 /// Whole-B-rep `DoSweep` of a non-manifold body (prog_test `smSweepTest.cpp`):
 /// `input` = `[body, kind (1 translation, 2 rotation), vx, vy, vz, angle_deg, cx, cy,
-/// cz, eps, stitch, merge, repetitions, tagging, tag_id]`. `body` 0 is an
+/// cz, eps, stitch, merge, repetitions, tagging, tag_id, targets]`, `targets` 0 for
+/// the whole B-rep (all six target arrays null) or 1 for every face as faces-higher. `body` 0 is an
 /// `SmApiCreateBox(origin, 4, 3, 2)` with a wire edge and a shell vertex, 1 the
 /// `my_create_test_brep` face (inner loops, a vertex loop, an edge loop, a wire edge
-/// and a shell vertex), 2 an empty B-rep, 3 a lone shell vertex and 4 a lone wire
-/// edge (see the shim). The rotation is about axis `v` through `c` with tolerance
-/// `eps`. Returns the record of [`whole`], then the wire-edge and shell-vertex
-/// counts, then per `GetFaces` face and per `GetEdges` edge its `SM_AI_TAG` as
-/// `[present, eight longs]`.
+/// and a shell vertex), 2 an empty B-rep, 3 a lone shell vertex, 4 a lone wire
+/// edge, 5 the box alone and 6 the face of body 1 alone (see the shim). The
+/// rotation is about axis `v` through `c` with tolerance `eps`. Returns the record of
+/// [`whole`], then the wire-edge and shell-vertex counts, then per `GetFaces` face and
+/// per `GetEdges` edge its `SM_AI_TAG` as `[present, eight longs]`.
 ///
 /// # Errors
 /// Non-finite input, an unknown body or kind, more than four repetitions, a
-/// non-integral or out-of-range tag id, or native exceptions.
-pub fn body(input: [f64; 15]) -> Result<Vec<f64>, FfiError> {
+/// non-integral or out-of-range tag id, an input [`body_undefined`] refuses, or
+/// native exceptions.
+pub fn body(input: [f64; 16]) -> Result<Vec<f64>, FfiError> {
     let integral = |v: f64, lo: f64, hi: f64| (lo..=hi).contains(&v) && v.fract() == 0.0;
     if input.iter().any(|v| !v.is_finite())
-        || !integral(input[0], 0.0, 4.0)
+        || !integral(input[0], 0.0, 6.0)
         || (input[1] != 1.0 && input[1] != 2.0)
         || !integral(input[12], 0.0, 4.0)
         || !integral(input[14], -1e9, 1e9)
+        || (input[15] != 0.0 && input[15] != 1.0)
+        || body_undefined(&input).is_some()
     {
         return Err(FfiError::InvalidArgument(
             "invalid non-manifold body sweep input".into(),

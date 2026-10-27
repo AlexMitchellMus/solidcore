@@ -20,6 +20,7 @@
      0,
      1,
      0,
+     0,
      0
     ]
    }
@@ -43,6 +44,7 @@
      1,
      0,
      1,
+     0,
      0,
      0
     ]
@@ -68,12 +70,13 @@
      1,
      1,
      0,
+     0,
      0
     ]
    }
   },
   {
-   "name": "nm_test_linear_z_three_reps",
+   "name": "nm_test_linear_z_two_reps",
    "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp:628 (DoSweep, bSweepWholeBrep) on a non-manifold body (tests/prog_test/src/smSweepTest.cpp my_create_test_brep / my_sweep_demo case 8): step 6 wire-edge and shell-vertex copy into a separate B-rep, nested DoSweep of them, ManifoldBoolean union",
    "inputs": {
     "steps": [],
@@ -90,7 +93,8 @@
      0,
      0,
      0,
-     3,
+     2,
+     0,
      0,
      0
     ]
@@ -116,6 +120,7 @@
      0,
      1,
      0,
+     0,
      0
     ]
    }
@@ -131,6 +136,7 @@
      0,
      0,
      10,
+     0,
      0,
      0,
      0,
@@ -164,12 +170,13 @@
      0,
      1,
      0,
+     0,
      0
     ]
    }
   },
   {
-   "name": "nm_test_rotation_neg_y_36_three_reps",
+   "name": "nm_test_rotation_neg_y_36",
    "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp:628 (DoSweep, bSweepWholeBrep) on a non-manifold body (tests/prog_test/src/smSweepTest.cpp my_create_test_brep / my_sweep_demo case 8): step 6 wire-edge and shell-vertex copy into a separate B-rep, nested DoSweep of them, ManifoldBoolean union",
    "inputs": {
     "steps": [],
@@ -186,7 +193,8 @@
      0.0001,
      0,
      0,
-     3,
+     1,
+     0,
      0,
      0
     ]
@@ -212,6 +220,7 @@
      0,
      1,
      0,
+     0,
      0
     ]
    }
@@ -235,6 +244,7 @@
      1,
      0,
      1,
+     0,
      0,
      0
     ]
@@ -260,6 +270,7 @@
      0,
      1,
      0,
+     0,
      0
     ]
    }
@@ -283,6 +294,7 @@
      0,
      0,
      1,
+     0,
      0,
      0
     ]
@@ -308,6 +320,7 @@
      0,
      1,
      0,
+     0,
      0
     ]
    }
@@ -331,6 +344,7 @@
      0,
      1,
      1,
+     0,
      0,
      0
     ]
@@ -356,6 +370,7 @@
      0,
      2,
      0,
+     0,
      0
     ]
    }
@@ -379,6 +394,7 @@
      0,
      0,
      1,
+     0,
      0,
      0
     ]
@@ -404,6 +420,7 @@
      0,
      1,
      0,
+     0,
      0
     ]
    }
@@ -428,13 +445,14 @@
      0,
      1,
      0,
+     0,
      0
     ]
    }
   },
   {
-   "name": "nm_wire_linear_z_three_reps",
-   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp:628 (DoSweep, bSweepWholeBrep) on a non-manifold body (tests/prog_test/src/smSweepTest.cpp my_create_test_brep / my_sweep_demo case 8): step 6 wire-edge and shell-vertex copy into a separate B-rep, nested DoSweep of them, ManifoldBoolean union",
+   "name": "nm_wire_linear_z_two_reps_ub269",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp:1394 (DoSweep, second repetition without wire edges or shell vertices): pWireBrep still points at the B-rep the first repetition's ManifoldBoolean deleted (UB-269); refused by the FFI guard",
    "inputs": {
     "steps": [],
     "body": [
@@ -450,7 +468,8 @@
      0,
      0,
      0,
-     3,
+     2,
+     0,
      0,
      0
     ]
@@ -476,6 +495,7 @@
      0,
      1,
      0,
+     0,
      0
     ]
    }
@@ -499,6 +519,7 @@
      1,
      0,
      1,
+     0,
      0,
      0
     ]
@@ -524,6 +545,7 @@
      0,
      1,
      0,
+     0,
      0
     ]
    }
@@ -547,6 +569,7 @@
      0,
      0,
      1,
+     0,
      0,
      0
     ]
@@ -572,7 +595,8 @@
      0,
      1,
      1,
-     7
+     7,
+     0
     ]
    }
   },
@@ -595,6 +619,7 @@
      0,
      0,
      1,
+     0,
      0,
      0
     ]
@@ -620,6 +645,7 @@
      0,
      1,
      0,
+     0,
      0
     ]
    }
@@ -644,13 +670,14 @@
      0,
      3,
      1,
-     9
+     9,
+     0
     ]
    }
   },
   {
-   "name": "nm_box_linear_z_tagging",
-   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp:2382 (DoSweepEdgesHigher with m_bDoTagging): NER on an untagged silhouette edge (whole-B-rep TagProfile tags only wire edges)",
+   "name": "nm_box_linear_z_tagging_ub270",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp:1014 (DoSweep, bSweepWholeBrep with m_bDoTagging): TagProfile on the wire edges RemoveAllTopology deleted (UB-270); refused by the FFI guard",
    "inputs": {
     "steps": [],
     "body": [
@@ -668,7 +695,383 @@
      0,
      1,
      1,
-     7
+     7,
+     0
+    ]
+   }
+  },
+  {
+   "name": "nm_box_only_linear_z_tagging",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp:2382 (DoSweepEdgesHigher with m_bDoTagging): NER on an untagged silhouette edge (the whole-B-rep TagProfile tags only wire edges)",
+   "inputs": {
+    "steps": [],
+    "body": [
+     5,
+     1,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1,
+     7,
+     0
+    ]
+   }
+  },
+  {
+   "name": "nm_face_only_linear_z_tagging",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp:2382 (DoSweepEdgesHigher with m_bDoTagging): NER on an untagged silhouette edge (the whole-B-rep TagProfile tags only wire edges)",
+   "inputs": {
+    "steps": [],
+    "body": [
+     6,
+     1,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1,
+     -3,
+     0
+    ]
+   }
+  },
+  {
+   "name": "nm_face_only_linear_z",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp:628 (DoSweep, bSweepWholeBrep) on a non-manifold body (tests/prog_test/src/smSweepTest.cpp my_create_test_brep / my_sweep_demo case 8): step 6 wire-edge and shell-vertex copy into a separate B-rep, nested DoSweep of them, ManifoldBoolean union",
+   "inputs": {
+    "steps": [],
+    "body": [
+     6,
+     1,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "name": "nm_face_only_rotation_neg_y_36",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp:628 (DoSweep, bSweepWholeBrep) on a non-manifold body (tests/prog_test/src/smSweepTest.cpp my_create_test_brep / my_sweep_demo case 8): step 6 wire-edge and shell-vertex copy into a separate B-rep, nested DoSweep of them, ManifoldBoolean union",
+   "inputs": {
+    "steps": [],
+    "body": [
+     6,
+     2,
+     0,
+     -1,
+     0,
+     36,
+     -10,
+     0,
+     0,
+     0.0001,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "name": "nm_box_only_linear_z_stitch",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp:1363 (DoSweep, bSweepWholeBrep with m_bDoStitching) on the box alone: the stitch of body 0's box part",
+   "inputs": {
+    "steps": [],
+    "body": [
+     5,
+     1,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     1,
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "name": "nm_shell_vertex_linear_z_two_reps",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp:628 (DoSweep, bSweepWholeBrep) on a non-manifold body (tests/prog_test/src/smSweepTest.cpp my_create_test_brep / my_sweep_demo case 8): step 6 wire-edge and shell-vertex copy into a separate B-rep, nested DoSweep of them, ManifoldBoolean union",
+   "inputs": {
+    "steps": [],
+    "body": [
+     3,
+     1,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     2,
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "name": "nm_faces_higher_test_linear_z",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp DoSweep with a faces-higher list (prog_test smSweepTest.cpp my_sweep_demo case 7, 'Translate 2 faces high', and the rotational faces-higher cases): DoSweepVerticesHigher of the loop vertices, DoSweepFacesSame (SweepFaceSame, its vertex-loop branch), DoSweepEdgesHigher; TagProfile and tag propagation when tagging",
+   "inputs": {
+    "steps": [],
+    "body": [
+     1,
+     1,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1
+    ]
+   }
+  },
+  {
+   "name": "nm_faces_higher_test_linear_z_merge",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp DoSweep with a faces-higher list (prog_test smSweepTest.cpp my_sweep_demo case 7, 'Translate 2 faces high', and the rotational faces-higher cases): DoSweepVerticesHigher of the loop vertices, DoSweepFacesSame (SweepFaceSame, its vertex-loop branch), DoSweepEdgesHigher; TagProfile and tag propagation when tagging",
+   "inputs": {
+    "steps": [],
+    "body": [
+     1,
+     1,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1,
+     0,
+     0,
+     1
+    ]
+   }
+  },
+  {
+   "name": "nm_faces_higher_test_linear_z_tagging",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp DoSweep with a faces-higher list (prog_test smSweepTest.cpp my_sweep_demo case 7, 'Translate 2 faces high', and the rotational faces-higher cases): DoSweepVerticesHigher of the loop vertices, DoSweepFacesSame (SweepFaceSame, its vertex-loop branch), DoSweepEdgesHigher; TagProfile and tag propagation when tagging",
+   "inputs": {
+    "steps": [],
+    "body": [
+     1,
+     1,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1,
+     11,
+     1
+    ]
+   }
+  },
+  {
+   "name": "nm_faces_higher_test_linear_oblique_stitch",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp DoSweep with a faces-higher list (prog_test smSweepTest.cpp my_sweep_demo case 7, 'Translate 2 faces high', and the rotational faces-higher cases): DoSweepVerticesHigher of the loop vertices, DoSweepFacesSame (SweepFaceSame, its vertex-loop branch), DoSweepEdgesHigher; TagProfile and tag propagation when tagging",
+   "inputs": {
+    "steps": [],
+    "body": [
+     1,
+     1,
+     1,
+     2,
+     5,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     1,
+     0,
+     0,
+     1
+    ]
+   }
+  },
+  {
+   "name": "nm_faces_higher_test_rotation_neg_y_36",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp DoSweep with a faces-higher list (prog_test smSweepTest.cpp my_sweep_demo case 7, 'Translate 2 faces high', and the rotational faces-higher cases): DoSweepVerticesHigher of the loop vertices, DoSweepFacesSame (SweepFaceSame, its vertex-loop branch), DoSweepEdgesHigher; TagProfile and tag propagation when tagging",
+   "inputs": {
+    "steps": [],
+    "body": [
+     1,
+     2,
+     0,
+     -1,
+     0,
+     36,
+     -10,
+     0,
+     0,
+     0.0001,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1
+    ]
+   }
+  },
+  {
+   "name": "nm_faces_higher_test_rotation_x_36_tagging",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp DoSweep with a faces-higher list (prog_test smSweepTest.cpp my_sweep_demo case 7, 'Translate 2 faces high', and the rotational faces-higher cases): DoSweepVerticesHigher of the loop vertices, DoSweepFacesSame (SweepFaceSame, its vertex-loop branch), DoSweepEdgesHigher; TagProfile and tag propagation when tagging",
+   "inputs": {
+    "steps": [],
+    "body": [
+     1,
+     2,
+     1,
+     0,
+     0,
+     36,
+     0,
+     5,
+     0,
+     0.0001,
+     0,
+     0,
+     1,
+     1,
+     5,
+     1
+    ]
+   }
+  },
+  {
+   "name": "nm_faces_higher_test_linear_z_two_reps",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp DoSweep with a faces-higher list (prog_test smSweepTest.cpp my_sweep_demo case 7, 'Translate 2 faces high', and the rotational faces-higher cases): DoSweepVerticesHigher of the loop vertices, DoSweepFacesSame (SweepFaceSame, its vertex-loop branch), DoSweepEdgesHigher; TagProfile and tag propagation when tagging",
+   "inputs": {
+    "steps": [],
+    "body": [
+     1,
+     1,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     2,
+     0,
+     0,
+     1
+    ]
+   }
+  },
+  {
+   "name": "nm_faces_higher_box_linear_z_tagging",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp DoSweep with a faces-higher list (prog_test smSweepTest.cpp my_sweep_demo case 7, 'Translate 2 faces high', and the rotational faces-higher cases): DoSweepVerticesHigher of the loop vertices, DoSweepFacesSame (SweepFaceSame, its vertex-loop branch), DoSweepEdgesHigher; TagProfile and tag propagation when tagging",
+   "inputs": {
+    "steps": [],
+    "body": [
+     5,
+     1,
+     0,
+     0,
+     10,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     1,
+     3,
+     1
+    ]
+   }
+  },
+  {
+   "name": "nm_faces_higher_box_rotation_full_turn",
+   "upstream_ref": "source/SMLib/src/SmTopologySweep.cpp DoSweep with a faces-higher list (prog_test smSweepTest.cpp my_sweep_demo case 7, 'Translate 2 faces high', and the rotational faces-higher cases): DoSweepVerticesHigher of the loop vertices, DoSweepFacesSame (SweepFaceSame, its vertex-loop branch), DoSweepEdgesHigher; TagProfile and tag propagation when tagging",
+   "inputs": {
+    "steps": [],
+    "body": [
+     5,
+     2,
+     0,
+     1,
+     0,
+     360,
+     -10,
+     0,
+     0,
+     0.0001,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1
     ]
    }
   }
