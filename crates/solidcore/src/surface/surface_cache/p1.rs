@@ -161,6 +161,7 @@ use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::math::NOW;
 use crate::nurbs::nurbs_crv::to_euclid;
 use crate::nurbs::srf_basic::Surface as NurbSurface;
+use crate::surface::surface::p1::SurfaceBoxes;
 use crate::surface::surface::p5::SS_NONE;
 use crate::surface::surface::{Surface, SurfaceKind};
 
@@ -358,18 +359,29 @@ pub(super) fn calculate_bounding_box(
                 "surface.surface_p1",
             ))
         }
-        // SmOffsetSurface::CalculateBoundingBox
-        // (OffsetSurface::calculate_bounding_box_with_guesses), the basis guesses passed
-        // along to the base surface
+        // SmOffsetSurface::CalculateBoundingBox forwarding the basis guesses to its base's
+        // CalculateBoundingBox (this dispatcher, all three boxes)
         SurfaceKind::OffsetSurface(o) => {
-            let boxes = o.calculate_bounding_box_with_guesses(
+            let base_req = BoundingBoxRequest {
+                normal: true,
+                pseudo: true,
+                polar: true,
+                ..*req
+            };
+            let boxes = o.calculate_bounding_box_with(
                 k,
                 surface,
                 domain,
                 [req.normal, req.pseudo, req.polar],
                 req.expand_by_zone_tol,
-                req.pseudo_guess,
-                req.polar_guess,
+                |base| {
+                    let b = calculate_bounding_box(k, base, domain, &base_req)?;
+                    Ok(SurfaceBoxes {
+                        normal_box: b.normal,
+                        pseudo_box: b.pseudo,
+                        polar_box: b.polar,
+                    })
+                },
             )?;
             Ok(BoundingBoxes {
                 normal: boxes.normal_box,
@@ -3439,7 +3451,7 @@ mod tests {
         )
         .unwrap();
         let surface = Surface::from(BSplineSurface::from_nurb(nurb, false));
-        let d = surface.natural_uv_domain();
+        let d = surface.natural_uv_domain_if_built();
         let mut c = SurfaceCache::new(surface, d, SurfaceCacheOptions::default());
         c.set_surface_handle(Some(-1));
         c
