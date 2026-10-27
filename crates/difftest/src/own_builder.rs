@@ -9,8 +9,9 @@
 //! order ([`walk`], the shim's `walk`), so selector indices taken modulo the entity
 //! counts name the same entities on both sides. No C++ state reaches the Rust side.
 //!
-//! `.smb` file sources ([`BrepIn::File`]) are not built here: [`build`] returns
-//! `None` for them and the caller keeps its import.
+//! `.smb` file sources ([`BrepIn::File`]) are not built by [`build`] (it returns
+//! `None` for them): [`read_with`] reads them with the Rust reader and renumbers the
+//! result the same way.
 
 use std::collections::BTreeMap;
 
@@ -233,6 +234,38 @@ pub(crate) fn build_with(
         }
     }
     Ok(Some(Built::Brep(Box::new(b))))
+}
+
+/// The B-rep of an `.smb` file source as the shim's `build` makes it: `new SmBrep`,
+/// `ReadFromFile(path, SM_ASCII, rebuild)` read by the Rust reader
+/// ([`crate::own_reader::read_file_rebuild`]), `m_bValidateOnly`, then (with
+/// `init_gaps`) the shim's gap initialisation walk, renumbered into the shim's
+/// traversal order under `conv`. No C++ state reaches the Rust side.
+///
+/// # Errors
+///
+/// A harness error when the file cannot be opened or the renumbering finds a dangling
+/// reference; a failed Rust read is [`Built::Failed`].
+pub(crate) fn read_with(
+    k: &mut Kernel,
+    path: &str,
+    rebuild: bool,
+    validate_only: bool,
+    init_gaps: bool,
+    conv: &Conventions<'_>,
+) -> Result<Built, HarnessError> {
+    let mut raw = match crate::own_reader::read_file_rebuild(k, path, rebuild)? {
+        Ok(b) => b,
+        Err(e) => return Ok(Built::Failed(e)),
+    };
+    raw.set_validate_only(validate_only);
+    let mut b = renumber_with(&raw, conv)?;
+    if init_gaps {
+        if let Err(e) = init_gap_walk(k, &mut b, conv.vertex_edge_gaps) {
+            return Ok(Built::Failed(e));
+        }
+    }
+    Ok(Built::Brep(Box::new(b)))
 }
 
 /// `new (ctx) SmBrep()` then `f` on it: the B-rep, or the build's error.
