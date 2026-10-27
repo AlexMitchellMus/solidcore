@@ -187,6 +187,21 @@ fn main() -> ExitCode {
         seeds: args.seeds.unwrap_or(DEFAULT_SEEDS),
     };
 
+    // (these modes run no case through `run_unit`, so they would ignore the pads)
+    if !args.heap_pads.is_empty()
+        && (args.list
+            || args.status_of.is_some()
+            || args.ssi_corpus
+            || args.solidcraft_cases
+            || args.step_corpus)
+    {
+        eprintln!(
+            "difftest: --heap-pads checks unit cases (not --list, --status-of, --ssi-corpus, \
+             --solidcraft-cases or --step-corpus)"
+        );
+        return ExitCode::from(2);
+    }
+
     // Rust only, so it runs without the C++ kernel.
     if args.baseline.is_some()
         && (args.perturb
@@ -878,18 +893,32 @@ fn heap_pads(v: &str) -> Result<Vec<usize>, String> {
         .collect()
 }
 
-/// The `--heap-pads` lines of one unit: a summary, then one line per address-dependent
-/// case. Informational: they change no outcome or exit status.
+/// The `--heap-pads` lines of one unit: a summary, then one line per flagged case.
+/// Informational: they change no outcome or exit status.
 fn print_heap_check(id: &str, pads: &[usize], check: &difftest::runner::HeapCheck) {
     let pads: Vec<String> = pads.iter().map(ToString::to_string).collect();
+    let unpadded = if check.checked > 0 && check.padded == 0 {
+        " (C++ runs in-process here: reruns unpadded, no address check)"
+    } else {
+        ""
+    };
     println!(
-        "HEAP {id} pads={} checked={} address_dependent={}",
+        "HEAP {id} pads={} checked={} padded={} address_dependent={} unstable={} rerun_errors={}{unpadded}",
         pads.join(","),
         check.checked,
-        check.address_dependent.len()
+        check.padded,
+        check.address_dependent.len(),
+        check.unstable.len(),
+        check.rerun_errors.len()
     );
-    for (case, note) in &check.address_dependent {
-        println!("  address-dependent {case}: {note}");
+    for (label, list) in [
+        ("address-dependent", &check.address_dependent),
+        ("unstable (in-process)", &check.unstable),
+        ("rerun-error", &check.rerun_errors),
+    ] {
+        for (case, note) in list {
+            println!("  {label} {case}: {note}");
+        }
     }
 }
 

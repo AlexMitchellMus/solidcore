@@ -313,11 +313,30 @@ pub struct UnitResult {
 /// What [`RunOptions::heap_pads`] found in one unit.
 #[derive(Debug, Clone, Default)]
 pub struct HeapCheck {
-    /// Cases whose C++ side was rerun: it ran, was not rejected, and was not parked.
+    /// Cases whose C++ side was rerun: every case whose C++ side ran and did not reject
+    /// the input (parked cases only under `--run-parked`, where they run).
     pub checked: usize,
-    /// `(case, note)` for each case whose C++ output changed with a heap pad; the note
-    /// names the first pad that changed it and its first differing field.
+    /// Of those, cases whose reruns actually forked a padded child
+    /// ([`solidcore_ffi::isolate::fresh_process`]). A runner that calls C++ in-process
+    /// is rerun unpadded, so its cases are checked but not padded.
+    pub padded: usize,
+    /// `(case, note)`: a padded rerun's C++ output differs from the unpadded one. The note
+    /// names the pad and the first differing field (unpadded value, then padded).
     pub address_dependent: Vec<(String, String)>,
+    /// `(case, note)`: an unpadded (in-process) rerun's C++ output differs from the first
+    /// run. That is C++ state carried between calls (function statics, `rand()`, caches),
+    /// not a heap pad.
+    pub unstable: Vec<(String, String)>,
+    /// `(case, note)`: a rerun failed (harness error, child crash or timeout) where the
+    /// first run did not. Worth a look, but not evidence of address dependence.
+    pub rerun_errors: Vec<(String, String)>,
+}
+
+/// What one case's reruns showed ([`heap_dependence`]).
+enum HeapFlag {
+    AddressDependent(String),
+    Unstable(String),
+    RerunError(String),
 }
 
 /// [`solidcore_ffi::isolate::set_heap_pad`] when the C++ kernel is linked.
@@ -328,34 +347,53 @@ fn set_heap_pad(blocks: usize) {
     let _ = blocks;
 }
 
-/// Reruns `case`'s C++ side once per pad in `pads` and returns a note for the first pad
-/// whose output differs from `base` (compared as C++ against Rust, with the unit's
-/// floors), or `None`. Runs outside any case's export memo, so the Rust side's inputs
-/// are untouched.
+/// [`solidcore_ffi::isolate::padded_children`] when the C++ kernel is linked, else 0.
+fn padded_children() -> usize {
+    #[cfg(feature = "cpp")]
+    return solidcore_ffi::isolate::padded_children();
+    #[cfg(not(feature = "cpp"))]
+    0
+}
+
+/// Reruns `case`'s C++ side once per pad in `pads`, each in a fresh C++-phase export memo
+/// (as a first C++ run, and never followed by a Rust side), and compares each output
+/// with `base`, the first C++ run, as C++ against C++ with the unit's floors. Returns
+/// whether any rerun forked a padded child, and the first rerun that differed or failed.
 fn heap_dependence(
     unit: &dyn UnitDiff,
     case: &Case,
     base: &Output,
     pads: &[usize],
-) -> Option<String> {
+) -> (bool, Option<HeapFlag>) {
+    let mut padded_any = false;
     for &pad in pads {
+        let before = padded_children();
         set_heap_pad(pad);
+        let memo = crate::export_memo::CaseScope::new();
         let again = guarded(|| unit.run_cpp(case), "cpp");
+        drop(memo);
         set_heap_pad(0);
-        let note = match again {
-            Ok(o) => {
-                let d = compare(base, &o, unit.abs_floors());
-                d.mismatches
-                    .first()
-                    .map(|m| format!("pad={pad}: {}: {} vs {}", m.field, m.cpp, m.rust))
-            }
-            Err(e) => Some(format!("pad={pad}: {e}")),
+        let padded = padded_children() != before;
+        padded_any |= padded;
+        let flag = match again {
+            Ok(o) => compare(base, &o, unit.abs_floors())
+                .mismatches
+                .first()
+                .map(|m| {
+                    let note = format!("pad={pad}: {}: {} vs {}", m.field, m.cpp, m.rust);
+                    if padded {
+                        HeapFlag::AddressDependent(note)
+                    } else {
+                        HeapFlag::Unstable(note)
+                    }
+                }),
+            Err(e) => Some(HeapFlag::RerunError(format!("pad={pad}: {e}"))),
         };
-        if note.is_some() {
-            return note;
+        if flag.is_some() {
+            return (padded_any, flag);
         }
     }
-    None
+    (padded_any, None)
 }
 
 /// Wall time of one unit's run, split by phase (diagnostic only; printed to stderr).
@@ -768,10 +806,18 @@ pub fn run_unit(unit: &dyn UnitDiff, ctx: &CaseContext, opts: &RunOptions) -> Un
             if let Ok(base) = &cpp {
                 if base.rejected.is_none() {
                     res.heap_check.checked += 1;
-                    if let Some(note) = heap_dependence(unit, &case, base, &opts.heap_pads) {
-                        res.heap_check
-                            .address_dependent
-                            .push((case.name.clone(), note));
+                    let (padded, flag) = heap_dependence(unit, &case, base, &opts.heap_pads);
+                    res.heap_check.padded += usize::from(padded);
+                    let name = case.name.clone();
+                    match flag {
+                        Some(HeapFlag::AddressDependent(n)) => {
+                            res.heap_check.address_dependent.push((name, n));
+                        }
+                        Some(HeapFlag::Unstable(n)) => res.heap_check.unstable.push((name, n)),
+                        Some(HeapFlag::RerunError(n)) => {
+                            res.heap_check.rerun_errors.push((name, n));
+                        }
+                        None => {}
                     }
                 }
             }
@@ -1491,8 +1537,13 @@ mod tests {
         assert_eq!(r.cases[0].outcome(), CaseOutcome::Pass);
         assert_eq!(r.cases[1].outcome(), CaseOutcome::Pass);
         assert_eq!(r.heap_check.checked, 2);
-        assert_eq!(r.heap_check.address_dependent.len(), 1);
-        let (case, note) = &r.heap_check.address_dependent[0];
+        // this fake unit calls no forked child: its reruns are unpadded, so a change
+        // is in-process instability, never address dependence
+        assert_eq!(r.heap_check.padded, 0);
+        assert!(r.heap_check.address_dependent.is_empty());
+        assert!(r.heap_check.rerun_errors.is_empty());
+        assert_eq!(r.heap_check.unstable.len(), 1);
+        let (case, note) = &r.heap_check.unstable[0];
         assert_eq!(case, "drift");
         assert!(note.starts_with("pad=1: values.v[0]"), "{note}");
         // the first pad that differs ends the reruns
@@ -1511,5 +1562,31 @@ mod tests {
             plain.drift_runs.load(std::sync::atomic::Ordering::Relaxed),
             1
         );
+    }
+
+    /// The pad moves the forked child's heap: a block the child allocates after the pad
+    /// lands at another address than without it, and the parent counts padded children
+    /// only. (`isolate`'s own tests need `solidcore-ffi/cpp`, which no CI job tests.)
+    #[cfg(all(feature = "cpp", unix))]
+    #[test]
+    fn heap_pad_moves_the_forked_childs_allocations() {
+        use solidcore_ffi::isolate;
+        let probe = || {
+            isolate::fresh_process(|| {
+                let b = std::hint::black_box(Box::new([0u8; 48]));
+                Ok(vec![(&raw const *b).addr() as f64])
+            })
+            .unwrap()[0]
+        };
+        assert_eq!(isolate::heap_pad(), 0);
+        let before = isolate::padded_children();
+        let plain = probe();
+        assert_eq!(isolate::padded_children(), before);
+        set_heap_pad(3);
+        let padded = probe();
+        set_heap_pad(0);
+        assert_eq!(isolate::padded_children(), before + 1);
+        assert_eq!(isolate::heap_pad(), 0);
+        assert_ne!(plain, padded);
     }
 }
