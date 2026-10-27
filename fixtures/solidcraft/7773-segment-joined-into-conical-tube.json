@@ -1,7 +1,7 @@
 {
  "issue": "https://github.com/tangency-labs/solidcraft/issues/7773",
- "pr": "none: the issue is open, and SolidCraft's kernel work is paused (#3992)",
- "test": "none: reproduced in the issue itself (an Extrude, Operation = Join) and in its triage comment; the numbers here are analytic",
+ "pr": "https://github.com/tangency-labs/solidcore/pull/1373",
+ "test": "none: the issue is open and has no fixing PR (SolidCraft's kernel work is paused, #3992), so `pr` points at the PR that adds this fixture, as the loader requires a /pull/ URL; the issue itself reproduces it (an Extrude, Operation = Join) and its triage comment; the numbers here are analytic",
  "summary": "Extrude (Join) of a circular-segment profile that sits in the wide-end opening of a tube whose inner surface is a cone failed on SolidCraft's earlier kernel with 'boolean Union: the operation failed: no result' (reproduced on 0.24.1 and on main): 'not supported yet: the exact fallback for where the bodies meet (faces that touch, or cross at a shallow angle) takes planar faces only, and the target has 6 curved faces (cone, cylinder) and the tool has 2 curved faces (cylinder)'. Geometry is the issue's: the tube is the revolve about z of the section (r, z) = (20, 0), (4, 20), (28.8, 20), (28.8, 0), so its bore is a cone from radius 20 at z = 0 to 4 at z = 20 and its wall is a cylinder of radius 28.8; the tool is the circular segment of the radius-20 circle on the far side of the chord y = -14.08 (area 115.92 mm^2), extruded 22 mm from z = 0, built here as a cylinder intersected with a box. The volumes are closed form up to one integral, evaluated by Gauss-Legendre quadrature (400 nodes on each of two smooth pieces) and cross-checked on a 2000 x 2000 grid (within 3e-3 mm^3). The tolerance is 0.01 mm^3, as in the other boolean cases.",
  "cases": [
   {
