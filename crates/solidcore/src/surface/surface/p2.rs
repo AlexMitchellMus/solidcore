@@ -739,6 +739,10 @@ pub(crate) fn check_geometry_nesting(
                     push(Geometry::Curve(c.uv_curve()));
                     push(Geometry::Surface(c.surface()));
                 }
+                CurveKind::TangentField(c) => {
+                    push(Geometry::Curve(c.base().uv_curve()));
+                    push(Geometry::Surface(c.base().surface()));
+                }
                 CurveKind::Composite(c) => {
                     for segment in c.segments() {
                         push(Geometry::Curve(&segment.curve));
@@ -1461,6 +1465,11 @@ impl Surface {
             Some(tol) => Ok(Some(tol)),
             // UNPORTED(topology.face_p2): SmFace::GetTolerance (a bare face handle
             // without the tolerance its B-rep records here)
+            // Proof (unreachable): a B-rep face's surface always carries the face
+            // tolerance: Brep::add_face_record and each set_owner(Some(face)) rebind (merge
+            // adapter, sweep store, brep p7, primitive merge) call
+            // sync_face_surface_tolerance; 0 hits in the green difftest sweep, only
+            // hand-built owners in unit tests reach this.
             None => Err(SolidError::unported(
                 "SmFace::GetTolerance",
                 "topology.face_p2",
