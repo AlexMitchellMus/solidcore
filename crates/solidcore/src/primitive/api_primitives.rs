@@ -241,6 +241,8 @@ pub fn create_cylinder(k: &mut Kernel, origin: Point3, radius: f64, height: f64)
     let frame = xy_frame(origin);
     let (mut pc, mut brep) = new_primitive(k)?;
     pc.create_cylinder(k, &mut brep, height, radius, &frame)?;
+    // (not upstream: the port's cached topology fields, true for the caller)
+    brep.refresh_cached_topology();
     Ok(brep)
 }
 
