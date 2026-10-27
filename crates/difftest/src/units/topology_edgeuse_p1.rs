@@ -4,9 +4,10 @@
 //! **B-rep ops.** The C++ side builds a real `SmBrep` per call: read from an upstream
 //! `.smb` test file (optionally rebuilding its UV trim curves), a wire edge from a
 //! B-spline curve (`CreateWireEdgeFromCurve`), a face from a B-spline surface or a plane
-//! (`CreateFaceFromSurface`), or the wire network of `prog_test` `my_test_topology`. There
-//! is no Rust B-rep reader or builder yet (units `topology.brep_*`), so the Rust side
-//! imports the graph the shim exports in traversal order (raw members: list owners,
+//! (`CreateFaceFromSurface`), or the wire network of `prog_test` `my_test_topology`. The
+//! Rust side builds every non-file source with the Rust kernel in the shim's call order
+//! ([`crate::own_builder`], renumbered into the shim's traversal order). For an `.smb`
+//! file it still imports the graph the shim exports in traversal order (raw members: list owners,
 //! list order, loop neighbours, orientations, UV trim curves, cached gap states,
 //! tolerances, face UV domains, geometry as B-splines; an `SmPlane` face surface as the
 //! exact [`Plane`] (origin, axes, scales, analytic domain), an `SmSurfOfRevolution` face

@@ -2,8 +2,10 @@
 //! Rust: `solidcore::topology::brep::p1`.
 //!
 //! As the `topology.edgeuse_p1` runner, the C++ side builds a real `SmBrep` per call
-//! (an upstream `.smb` file, a wire edge, a face, or the `prog_test` wire network) and
-//! the Rust side imports the graph the shim exports in traversal order into a [`Brep`]
+//! (an upstream `.smb` file, a wire edge, a face, or the `prog_test` wire network). The
+//! Rust side builds every non-file source itself with the Rust kernel
+//! ([`crate::own_builder`], renumbered into the shim's traversal order); for an `.smb`
+//! file it imports the graph the shim exports in traversal order into a [`Brep`]
 //! (the shared import of `topology.edgeuse_p1`, plus this unit's extras: the infinite
 //! region, the editing flag, the size estimates and each vertex's vertex use list in
 //! its native order). Every op's C++ output after the build status is compared with the
@@ -2070,7 +2072,7 @@ fn run_rust_op(
         } => {
             // the second B-rep in its own arena, built by the Rust kernel
             let mut b2 = match crate::own_builder::build(k, other, false, false)? {
-                Some(crate::own_builder::Built::Brep(b2)) => b2,
+                Some(crate::own_builder::Built::Brep(b2)) => b2
                 Some(crate::own_builder::Built::Failed(e)) if e.is_unported() => {
                     return Err(e.into());
                 }
@@ -2230,6 +2232,8 @@ fn rust_brep(
         .ok_or_else(|| harness("B-rep op without brep"))?;
     match build(k, src, i.validate_only, i.init_gaps)? {
         Some(Built::Brep(b)) => {
+            // geometry owners are arena identities with the naming left `Unknown`, as
+            // this unit's `.smb` import leaves it on main
             let c = counts(&b);
             Ok(Ok((b, ImportTypes::default(), c)))
         }
