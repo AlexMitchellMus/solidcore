@@ -1,4 +1,4 @@
-#### WR-470. `SmFace::ComputePreciseProperties` holds volume and moments too tightly to converge (1.0.1)
+#### WR-472. `SmFace::ComputePreciseProperties` holds volume and moments too tightly to converge (1.0.1)
 - **Severity:** Wrong result
 - **Area:** Mass properties
 - **Location:** `source/SMLib/src/SmFace.cpp:6214` at `3fd5b95` (`const double dLength = smos_Max(smos_Sqrt(dEstimatedArea), dOriginDistance/10.0);`), `SmFace::ComputePreciseProperties` (def. `:6144`); new in SMLib v1.0.1.

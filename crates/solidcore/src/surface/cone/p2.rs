@@ -40,8 +40,10 @@
 //!   crossing axes lose half their intersection (a union drops a body, status OK). With
 //!   the field set, the seam lines span the cone's whole height too and only their sweep
 //!   comes from the domain, as the SolidCraft fork does; the face's own trims are applied
-//!   by its caller. By default the seam lines use the domain, as the pinned C++ does. See
-//!   `plan/upstream-issues/WR-490--ellipse-trim-seam-lines-on-trimmed-domain.md`.
+//!   by its caller. By default the seam lines use the domain, as upstream does. Since
+//!   v1.0.1 the trim circles sit at the domain's v limits and the segments are classified
+//!   against the domain, so such an ellipse keeps its part inside the domain either way.
+//!   See `plan/upstream-issues/WR-490--ellipse-trim-seam-lines-on-trimmed-domain.md`.
 //! - **Offset factory.** The apex-truncation branch dereferences the result of
 //!   `CreateCanonical` without checking its status (a `NULL` cone crashes, a
 //!   non-finite height recurses without bound); here that construction's error is
@@ -1427,7 +1429,8 @@ mod tests {
         // A face already joined to another body: the ellipse of a plane through the axis
         // point (0, 0, 50) that meets the seam (x = 10, y = 0) only at its lowest point,
         // z = 20, in the trimmed-off part. Upstream takes the seam lines from the trimmed
-        // domain: no crossing at all, and the ellipse comes back as outside the cylinder.
+        // domain: at c9c5979 no crossing at all, and the ellipse came back as outside the
+        // cylinder; v1.0.1 adds the trim circle at v = 30 (see the tests below).
         let mut k = kernel();
         k.fixes.ellipse_trim_seam_lines_span_cone_height = fix;
         let cyl = canonical(&k, 10.0, 10.0, 100.0, false, false);
@@ -1472,22 +1475,35 @@ mod tests {
         (total(&ivls), total(&natural))
     }
 
-    #[test]
-    fn seam_crossing_below_a_trimmed_domain_keeps_the_ellipse() {
-        // WR-490, opt-in: the ellipse lies on the whole cylinder (z 20..80 of 0..100), so
-        // the full ellipse, as with the natural domain; the face's trims are the caller's
-        // (CurveOnClassify)
-        let (trimmed, natural) = ellipse_on_a_trimmed_cylinder(true);
-        assert!((natural - 360.0).abs() < 1e-9);
-        assert!((trimmed - 360.0).abs() < 1e-9, "{trimmed}");
+    /// The part of the ellipse of [`ellipse_on_a_trimmed_cylinder`] inside the trimmed
+    /// domain: `z = 50 - 30 cos t >= 30`, so `cos t <= 2/3`.
+    fn ellipse_part_above_v30() -> f64 {
+        360.0 - 2.0 * (2.0_f64 / 3.0).acos().to_degrees()
     }
 
     #[test]
-    fn seam_crossing_below_a_trimmed_domain_drops_the_ellipse_by_default() {
-        // WR-490, default: no seam crossing on the trimmed domain, so the ellipse is
-        // returned as outside, as the pinned C++ does
+    fn seam_crossing_below_a_trimmed_domain_keeps_the_ellipse() {
+        // WR-490, opt-in: the seam lines span the cylinder's height; since v1.0.1 the
+        // trim circles sit at the trim domain's v limits, so the part of the ellipse
+        // inside the trimmed domain, as without the field
+        let (trimmed, natural) = ellipse_on_a_trimmed_cylinder(true);
+        assert!((natural - 360.0).abs() < 1e-9);
+        assert!(
+            (trimmed - ellipse_part_above_v30()).abs() < 1e-9,
+            "{trimmed}"
+        );
+    }
+
+    #[test]
+    fn seam_crossing_below_a_trimmed_domain_keeps_the_part_inside_by_default() {
+        // WR-490, default: v1.0.1 intersects the ellipse with the trim circle at v = 30
+        // and classifies against the trim domain, so the part above it (the C++ 1.0.1
+        // agrees: surface.cone_p2 fixture wr490_ellipse_on_cylinder_trimmed_v30)
         let (trimmed, natural) = ellipse_on_a_trimmed_cylinder(false);
         assert!((natural - 360.0).abs() < 1e-9);
-        assert!(trimmed.abs() < 1e-9, "{trimmed}");
+        assert!(
+            (trimmed - ellipse_part_above_v30()).abs() < 1e-9,
+            "{trimmed}"
+        );
     }
 }

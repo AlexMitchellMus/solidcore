@@ -41,7 +41,7 @@ fn precise_sphere_properties_scale_and_translate() {
     for (center, radius) in [(Vec3::ZERO, 2.0), (Vec3::new(1.0, -2.0, 0.5), 5.0)] {
         for no_pole in [false, true] {
             let mut k = Kernel::default();
-            // 1.0.1's error scales cannot converge at 1e-10 on a sphere (WR-470)
+            // 1.0.1's error scales cannot converge at 1e-10 on a sphere (WR-472)
             k.fixes.precise_properties_body_length_scale = true;
             let mut b = if no_pole {
                 create_sphere_no_pole_with_tolerance(&mut k, center, radius, 1e-9)
@@ -72,7 +72,7 @@ fn precise_sphere_properties_scale_and_translate() {
     }
 }
 
-/// SMLib 1.0.1's default (WR-470): `SmFace::ComputePreciseProperties` holds the volume
+/// SMLib 1.0.1's default (WR-472): `SmFace::ComputePreciseProperties` holds the volume
 /// and moments of a sphere of radius 3 below roundoff at 1e-10, and the integration fails
 /// with `SM_ERR`. The opt-in `precise_properties_body_length_scale` measures it.
 #[test]
