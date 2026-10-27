@@ -3493,10 +3493,7 @@ mod tests {
     fn transform_scales_and_rejects_undefined() {
         let k = Kernel::default();
         let (mut b, f, _, _) = square(&k);
-        let mut records: std::collections::BTreeMap<
-            ObjectKey,
-            crate::topology::topology::Topology,
-        > = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::new();
         let mut caches: CacheStore<()> = CacheStore::new();
         let mut env = PolyNotifyEnv {

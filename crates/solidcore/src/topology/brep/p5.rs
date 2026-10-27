@@ -3100,7 +3100,6 @@ mod tests {
     fn issued_body_glue_notifies_real_caller_and_keeps_failure_prefix() {
         use crate::geom::attribute::{ids, Attribute, AttributeStore, Behavior};
         use crate::topology::edge::notification_test_support as callbacks;
-        use std::collections::BTreeMap;
 
         for separate_region in [false, true] {
             let mut k = Kernel::default();
@@ -3124,7 +3123,7 @@ mod tests {
                 let region = b
                     .add_region_record(crate::topology::Region::default())
                     .unwrap();
-                let mut setup_records = BTreeMap::new();
+                let mut setup_records = crate::topology::topology::NotifyRecords::new();
                 crate::topology::brep::p3::seed_records(&mut setup_records, &b, &key_of);
                 let mut setup_attributes = AttributeStore::default();
                 crate::topology::brep::p9::make_shell_vertex_with_kernel_context(
@@ -3145,7 +3144,7 @@ mod tests {
             };
             let survivor_ref = key_of(crate::EntityRef::Vertex(survivor));
             let deleted_ref = key_of(crate::EntityRef::Vertex(deleted));
-            let mut records = BTreeMap::new();
+            let mut records = crate::topology::topology::NotifyRecords::new();
             crate::topology::brep::p3::seed_records(&mut records, &b, &key_of);
             let mut attributes = AttributeStore::default();
             let marker = attributes
