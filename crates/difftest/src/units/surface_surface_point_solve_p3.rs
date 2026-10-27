@@ -218,7 +218,9 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
     let surface = geometry(&k, i)?;
     let domain = dom_of(i.dom);
     let operation = solver_op(i.solver)?;
-    let object = Object(surface.natural_uv_domain());
+    // the object key is read from a second build of the geometry: a query on the
+    // solved surface would make and keep a lazy plane's NURB, which C++ does not
+    let object = Object(geometry(&k, i)?.natural_uv_domain());
     let oob = |s: &Surface| match s.kind() {
         SurfaceKind::BSpline(b) => Some(b.is_out_of_bounds_enabled()),
         SurfaceKind::Plane(p) => Some(p.base().is_out_of_bounds_enabled()),

@@ -1440,7 +1440,9 @@ impl BSplineSurface {
         // surfaces not compatible, so not joined
         res.map_err(SolidError::nl_ser(OP))?;
 
-        let (Some(this_sur), Some(sur_2_join)) = (self.nurb.as_ref(), surface_to_join.nurb.as_ref()) else {
+        let (Some(this_sur), Some(sur_2_join)) =
+            (self.nurb.as_ref(), surface_to_join.nurb.as_ref())
+        else {
             return Err(SolidError::sm_err(OP));
         };
         // join operation failed -> SM_ERR

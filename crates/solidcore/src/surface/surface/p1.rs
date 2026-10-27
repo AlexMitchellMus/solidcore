@@ -2066,6 +2066,22 @@ impl Surface {
         })
     }
 
+    /// [`Surface::natural_uv_domain_with_nurb`] for the port's stand-in object key of
+    /// this surface (where upstream names `this` in a solution, and reads its natural
+    /// domain only if and when it compares objects): a lazy plane's domain is read from
+    /// a NURB made on a copy, so taking the key does not make and keep the plane's NURB
+    /// ahead of upstream (a solver built next tests whether the surface has one).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::natural_uv_domain_with_nurb`].
+    pub(crate) fn stand_in_key_domain(&self, k: &Kernel) -> Result<Extent2d> {
+        match self.kind() {
+            SurfaceKind::Plane(p) => Ok(p.natural_uv_domain_without_keeping()),
+            _ => self.natural_uv_domain_with_nurb(k),
+        }
+    }
+
     /// The B-spline part of an analytic kind with its NURB (`GetOrCreateGwNurbPointer`
     /// from a `const` method: [`Surface::kind_with_nurb`], which makes a missing NURB
     /// once and keeps it on the surface).

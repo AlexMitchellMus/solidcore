@@ -415,6 +415,19 @@ impl Plane {
         self.base_for_query().natural_uv_domain()
     }
 
+    /// [`Plane::natural_uv_domain`] without keeping a made NURB: a missing one is made on
+    /// a copy (for the port's own bookkeeping, where upstream makes none).
+    pub(crate) fn natural_uv_domain_without_keeping(&self) -> Extent2d {
+        if self.base.gw_nurb().is_some() {
+            return self.base.natural_uv_domain();
+        }
+        let mut tmp = self.member_copy();
+        match tmp.make_nurb() {
+            Ok(()) => tmp.base.natural_uv_domain(),
+            Err(_) => self.base.natural_uv_domain(),
+        }
+    }
+
     /// `SmPlane_TYPE` (`GetType`).
     #[must_use]
     pub const fn type_code(&self) -> i64 {
