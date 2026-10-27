@@ -630,11 +630,12 @@ impl Surface {
         let s_uv_domain = if uv_domain.x_length() >= EFF_ZERO && uv_domain.y_length() >= EFF_ZERO {
             *uv_domain
         } else {
-            self.natural_uv_domain()
+            self.natural_uv_domain_with_nurb(k)?
         };
         let degen_surf_u = s_uv_domain.x_length() < EFF_ZERO;
         let degen_surf_v = s_uv_domain.x_length() < EFF_ZERO; // (sic) WR-100
-        let contained = s_uv_domain.is_contained_by(&self.natural_uv_domain(), EFF_ZERO);
+        let contained =
+            s_uv_domain.is_contained_by(&self.natural_uv_domain_with_nurb(k)?, EFF_ZERO);
 
         let mut fs: FailState<'_, O> = FailState {
             uv_domain: *uv_domain,
@@ -690,7 +691,7 @@ impl Surface {
         }
 
         // UV Tolerances - proportional to surface 3d/UV mapping size
-        let srf_nat_domain = self.natural_uv_domain();
+        let srf_nat_domain = self.natural_uv_domain_with_nurb(k)?;
         let project_size = approx_derivative_lengths(k, self, &srf_nat_domain)?;
         let uv_tol_x = approx_tol_3d / (project_size.x + 1.0);
         let uv_tol_y = approx_tol_3d / (project_size.y + 1.0);
@@ -1038,6 +1039,11 @@ impl Surface {
         let num_drop_points = solutions.len();
         let mut curve_cache = None;
         for ii in 0..num_drop_points {
+            // a trace from this start point that is abandoned must not leave its drop
+            // distances in the reported maximums
+            let max_drop_to_surf_before_trace = max_drop_to_surf;
+            let max_approx_dev_before_trace = max_approx_dev;
+
             // set Start
             start.t = s_interval.min();
             start.uv_pd[0] = start_uv(&solutions, ii)?;
@@ -1260,6 +1266,8 @@ impl Surface {
                         default_path(&mut record, CreateUvTrimCurvePathType::DropStartPointFail);
                         ctrl_poly.clear();
                         knots.clear();
+                        max_drop_to_surf = max_drop_to_surf_before_trace;
+                        max_approx_dev = max_approx_dev_before_trace;
                         break;
                     }
                 }
@@ -1382,6 +1390,8 @@ impl Surface {
                         );
                         ctrl_poly.clear();
                         knots.clear();
+                        max_drop_to_surf = max_drop_to_surf_before_trace;
+                        max_approx_dev = max_approx_dev_before_trace;
                         stop_spans = true;
                         break;
                     }

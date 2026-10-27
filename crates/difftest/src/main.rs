@@ -9,6 +9,7 @@
 //! cargo run -p difftest --features cpp -- --status-of <id>   # prints green|partial|fail
 //! options: --seeds N (default 16)  --filter <substr>  --perturb  --report-dir <dir>  --no-report
 //!          --baseline <dir>   # regression ratchet against earlier reports (see `difftest::baseline`)
+//!          --run-parked       # only the parked cases (`cpp_defect` entries); nightly, never the gate
 //!          --jobs N (-j; default 1, 0 = all cores)   # units in N child processes (`difftest::jobs`)
 //! cargo run -p difftest --features cpp -- --unit <id> --fuzz N [--fuzz-out <dir>]   # FFI guard probing
 //! cargo run -p difftest --features cpp -- --ssi-corpus [--tol 1e-6|default] [--jobs N] [glob]
@@ -29,7 +30,7 @@ use difftest::case::repo_root;
 use difftest::{fuzz, plan, registry, report, run_unit, CaseContext, RunOptions, UnitStatus};
 
 const USAGE: &str = "usage: difftest [--unit <id>]... [--green] [--all] [--list]
-       [--status-of <id>] [--seeds N] [--filter <substr>] [--perturb] [--report-dir <dir>] [--no-report] [--jobs N]
+       [--status-of <id>] [--seeds N] [--filter <substr>] [--perturb] [--run-parked] [--report-dir <dir>] [--no-report] [--jobs N]
        [--baseline <dir>] [--compare-reports <dir>] [--digest-dir <dir> [--digest-debug]]
        difftest --unit <id>... --fuzz N [--fuzz-out <dir>] [--seeds N] [--filter <substr>]
        difftest --ssi-corpus [--tol 1e-6|default] [--jobs N] [--report-dir <dir>] [--no-report] [case-glob]
@@ -60,6 +61,7 @@ struct Args {
     seeds: Option<usize>,
     filter: Option<String>,
     perturb: bool,
+    run_parked: bool,
     report_dir: Option<PathBuf>,
     no_report: bool,
     baseline: Option<PathBuf>,
@@ -94,6 +96,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "--filter" => a.filter = Some(val("--filter")?),
             "--perturb" => a.perturb = true,
+            "--run-parked" => a.run_parked = true,
             "--report-dir" => a.report_dir = Some(PathBuf::from(val("--report-dir")?)),
             "--no-report" => a.no_report = true,
             "--baseline" => a.baseline = Some(PathBuf::from(val("--baseline")?)),
@@ -145,6 +148,17 @@ fn main() -> ExitCode {
     // Child of `--step-corpus`: one kernel on one body (see `difftest::step::run_child`).
     if raw.first().map(String::as_str) == Some("--step-case") {
         return difftest::step::run_child(raw.get(1..).unwrap_or(&[]));
+    }
+    // Child of unit `corpus.parity`: one side on one model file
+    // (see `difftest::units::corpus_parity::run_child`).
+    if raw.first().map(String::as_str) == Some("--corpus-parity-child") {
+        #[cfg(feature = "cpp")]
+        return difftest::units::corpus_parity::run_child(raw.get(1..).unwrap_or(&[]));
+        #[cfg(not(feature = "cpp"))]
+        {
+            eprintln!("difftest: --corpus-parity-child needs feature `cpp`");
+            return ExitCode::from(2);
+        }
     }
     // Child of `--fuzz`: one batch of fuzz cases (see `difftest::fuzz::run_child`).
     if raw.first().map(String::as_str) == Some("--fuzz-exec") {
@@ -282,6 +296,7 @@ fn main() -> ExitCode {
                     filter: args.filter.clone(),
                     perturb: false,
                     case_timeout: args.case_timeout.map(std::time::Duration::from_secs),
+                    run_parked: false,
                 };
                 let res = run_unit(unit.as_ref(), &ctx, &opts);
                 // The value-share floor is part of the gate (`--green` enforces it too).
@@ -382,6 +397,7 @@ fn main() -> ExitCode {
         filter: args.filter.clone(),
         perturb: args.perturb,
         case_timeout: args.case_timeout.map(std::time::Duration::from_secs),
+        run_parked: args.run_parked,
     };
     let report_dir = args
         .report_dir
@@ -481,6 +497,14 @@ fn main() -> ExitCode {
             println!(
                 "  known-mismatch {} [{}]: {first}",
                 c.name,
+                c.source.describe()
+            );
+        }
+        for c in res.cases.iter().filter(|c| c.is_parked()) {
+            println!(
+                "  parked {} ({}) [{}]",
+                c.name,
+                c.cpp_defect.as_deref().unwrap_or_default(),
                 c.source.describe()
             );
         }

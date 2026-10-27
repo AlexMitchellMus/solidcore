@@ -119,6 +119,7 @@ use crate::curve::curve::p2::{
 };
 use crate::curve::curve::p6::{calculate_bounding_box_base, DroppedPoint};
 use crate::curve::line::Line;
+use crate::curve::tangent_field::{TangentFieldCurve, TangentFieldMembers};
 use crate::error::{ignored, Result, SolidError};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::extent1d::Extent1d;
@@ -291,8 +292,24 @@ pub struct CrvOnSurf {
     parametrization_matches: bool,
 }
 
+/// An exact copy as a separate curve (the [`Curve`] copy constructor's): as upstream's
+/// copy constructor, which deep-copies the surface when the curve owns its UV curve or
+/// surface (owner flags 1 to 3), the copy's surface then gets its own NURB cells; with
+/// flag 0 both curves name the same surface upstream and the cells stay shared.
 impl Clone for CrvOnSurf {
     fn clone(&self) -> Self {
+        let mut c = self.clone_exact_shared();
+        if matches!(self.owner_flag, 1..=3) {
+            c.surface.detach_nurb_cells();
+        }
+        c
+    }
+}
+
+impl CrvOnSurf {
+    /// An exact copy that stands for this curve (an evaluation copy): the surface
+    /// shares its NURB cells with this curve's surface.
+    pub(crate) fn clone_exact_shared(&self) -> Self {
         // All factories and replacement paths validate the complete graph first.
         Self {
             uv_curve: Box::new(self.uv_curve.clone_exact_bounded()),
@@ -376,7 +393,7 @@ impl CrvOnSurf {
         // set m_vUVDomain
         c.uv_domain = match uv_domain {
             Some(d) => d,
-            None => c.surface.natural_uv_domain(),
+            None => c.surface.natural_uv_domain_with_nurb(k)?,
         };
 
         // m_lOwnerFlag 1 or 2: Copy Curve to be deleted when SmCrvOnSurf is destructed
@@ -897,7 +914,8 @@ impl CrvOnSurf {
         }
 
         // pick a UVSpace tolerance
-        let tol_2d = EFF_ZERO * (1.0 + self.surface.natural_uv_domain().max_dimension());
+        let tol_2d =
+            EFF_ZERO * (1.0 + self.surface.natural_uv_domain_with_nurb(k)?.max_dimension());
 
         // get the UVCurve knots and multiplicities (status ignored)
         let (mut knots, mut mults) = ignored(self.uv_curve.knots(k, interval))?.unwrap_or_default();
@@ -1042,17 +1060,34 @@ impl CrvOnSurf {
     /// The minimum continuity of the interior breaks and the continuity at every
     /// break (`CalculateContinuities`): the ends discontinuous, each interior break
     /// evaluated from both sides with `angle_tol`; the minimum is
-    /// [`ContinuityType::Undefined`] without interior breaks. Caches the breaks.
+    /// [`ContinuityType::Undefined`] without interior breaks. Caches the breaks. A
+    /// failing evaluation keeps the previous break's continuity (upstream ignores the
+    /// status; before any success it reads an uninitialised value, UB-263: here
+    /// [`ContinuityType::Undefined`]).
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] from [`Self::knots`]; those of the evaluations;
+    /// [`SolidError::Unported`] from [`Self::knots`] or the evaluations;
     /// [`SolidError::InvalidInput`] without breaks.
     pub fn calculate_continuities(
         &self,
         k: &Kernel,
         angle_tol: f64,
     ) -> Result<(ContinuityType, Vec<ContinuityType>)> {
+        self.calculate_continuities_as(k, angle_tol, None)
+    }
+
+    /// [`Self::calculate_continuities`] as the base of a derived object (`derived`:
+    /// the `SmTangentField` members; `EvaluateContinuity` evaluates it).
+    pub(crate) fn calculate_continuities_as(
+        &self,
+        k: &Kernel,
+        angle_tol: f64,
+        derived: Option<TangentFieldMembers>,
+    ) -> Result<(ContinuityType, Vec<ContinuityType>)> {
+        // upstream's `this` for EvaluateContinuity
+        let this = derived.map(|m| self.as_curve(Some(m)));
+
         // init output
         let mut min_cont = ContinuityType::Undefined;
 
@@ -1072,6 +1107,11 @@ impl CrvOnSurf {
             *c = ContinuityType::Discontinuous;
         }
 
+        // eThisContinuity: declared before the loop and left unchanged by a failing
+        // EvaluateContinuity, whose status upstream ignores (uninitialised before the
+        // first success upstream, UB-263; `SM_CT_UNDEFINED` here)
+        let mut c = ContinuityType::Undefined;
+
         // build the output
         let mut ii = 1;
         while ii + 1 < n {
@@ -1079,8 +1119,14 @@ impl CrvOnSurf {
                 .get(ii)
                 .ok_or_else(|| SolidError::invalid_input(OP_CONTS, "no breaks"))?;
 
-            // evaluate geometric continuities
-            let c = evaluate_continuity(k, self, t, true, self, t, false, angle_tol)?.continuity;
+            // evaluate geometric continuities (status ignored)
+            let r = match &this {
+                None => evaluate_continuity(k, self, t, true, self, t, false, angle_tol),
+                Some(d) => evaluate_continuity(k, d, t, true, d, t, false, angle_tol),
+            };
+            if let Some(e) = ignored(r)? {
+                c = e.continuity;
+            }
 
             // set output
             if let Some(d) = conts.get_mut(ii) {
@@ -1112,9 +1158,13 @@ impl CrvOnSurf {
     // ---- the B-spline approximation -------------------------------------------------
 
     /// A [`Curve`] wrapping a copy of this object (upstream's `this` for the base-class
-    /// calls).
-    fn as_curve(&self) -> Curve {
-        Curve::from(self.clone())
+    /// calls): the curve on surface itself, or (`derived`) the `SmTangentField` this
+    /// object is the base of, so that the virtual calls reach the derived overrides.
+    fn as_curve(&self, derived: Option<TangentFieldMembers>) -> Curve {
+        match derived {
+            None => Curve::from(self.clone()),
+            Some(m) => Curve::from(TangentFieldCurve::from_parts(self.clone(), m)),
+        }
     }
 
     /// The cached B-spline approximation of the 3D curve, made when needed
@@ -1135,6 +1185,19 @@ impl CrvOnSurf {
         approx_tol: f64,
         breaks: Option<&[f64]>,
         match_parameterization: Option<bool>,
+    ) -> Result<BSplineCurve> {
+        self.get_or_create_bs_approx_as(k, approx_tol, breaks, match_parameterization, None)
+    }
+
+    /// [`Self::get_or_create_bs_approx`] as the base of a derived object (`derived`:
+    /// the `SmTangentField` members; its virtual `Evaluate` makes the approximation).
+    pub(crate) fn get_or_create_bs_approx_as(
+        &mut self,
+        k: &Kernel,
+        approx_tol: f64,
+        breaks: Option<&[f64]>,
+        match_parameterization: Option<bool>,
+        derived: Option<TangentFieldMembers>,
     ) -> Result<BSplineCurve> {
         let max_gap_3d = self.max_gap_3d;
         let match_param = match_parameterization.unwrap_or(true);
@@ -1178,7 +1241,7 @@ impl CrvOnSurf {
             just_copy_bsplines: false,
         };
         let approx =
-            self.as_curve()
+            self.as_curve(derived)
                 .approximate_curve_base(k, &self.breaks(), approx_tol, &opts)?;
         if let Some(g) = approx.achieved_tol {
             self.max_gap_3d = g;
@@ -1208,11 +1271,25 @@ impl CrvOnSurf {
         approx_tol: f64,
         match_parameterization: bool,
     ) -> Result<(BSplineCurve, f64)> {
-        let bs = self.get_or_create_bs_approx(
+        self.approximate_curve_as(k, breaks, approx_tol, match_parameterization, None)
+    }
+
+    /// [`Self::approximate_curve`] as the base of a derived object
+    /// ([`Self::get_or_create_bs_approx_as`]).
+    pub(crate) fn approximate_curve_as(
+        &mut self,
+        k: &Kernel,
+        breaks: &[f64],
+        approx_tol: f64,
+        match_parameterization: bool,
+        derived: Option<TangentFieldMembers>,
+    ) -> Result<(BSplineCurve, f64)> {
+        let bs = self.get_or_create_bs_approx_as(
             k,
             approx_tol,
             Some(breaks),
             Some(match_parameterization),
+            derived,
         )?;
         Ok((bs.copy(), self.max_gap_3d))
     }
@@ -1231,10 +1308,25 @@ impl CrvOnSurf {
         req: BoundingBoxRequest,
         expand: bool,
     ) -> Result<BoundingBoxes> {
-        match self.get_or_create_bs_approx(k, APPROX_TOL_3D, None, None) {
+        self.calculate_bounding_box_as(k, interval, req, expand, None)
+    }
+
+    /// [`Self::calculate_bounding_box`] as the base of a derived object
+    /// ([`Self::get_or_create_bs_approx_as`]).
+    pub(crate) fn calculate_bounding_box_as(
+        &mut self,
+        k: &Kernel,
+        interval: &Extent1d,
+        req: BoundingBoxRequest,
+        expand: bool,
+        derived: Option<TangentFieldMembers>,
+    ) -> Result<BoundingBoxes> {
+        match self.get_or_create_bs_approx_as(k, APPROX_TOL_3D, None, None, derived) {
             Ok(bs) => bs.calculate_bounding_box(interval, req),
             Err(e) if e.is_unported() => Err(e),
-            Err(_) => calculate_bounding_box_base(k, &self.as_curve(), interval, req, expand),
+            Err(_) => {
+                calculate_bounding_box_base(k, &self.as_curve(derived), interval, req, expand)
+            }
         }
     }
 
@@ -1250,8 +1342,20 @@ impl CrvOnSurf {
         req: BoundingBoxRequest,
         expand: bool,
     ) -> Result<BoundingBoxes> {
+        self.calculate_bounding_box_ref_as(k, interval, req, expand, None)
+    }
+
+    /// [`Self::calculate_bounding_box_ref`] as the base of a derived object.
+    pub(crate) fn calculate_bounding_box_ref_as(
+        &self,
+        k: &Kernel,
+        interval: &Extent1d,
+        req: BoundingBoxRequest,
+        expand: bool,
+        derived: Option<TangentFieldMembers>,
+    ) -> Result<BoundingBoxes> {
         self.clone()
-            .calculate_bounding_box(k, interval, req, expand)
+            .calculate_bounding_box_as(k, interval, req, expand, derived)
     }
 
     /// `DropPoint`: with a `guess` the base-class drop; else the base-class drop
@@ -1273,6 +1377,22 @@ impl CrvOnSurf {
         guess: Option<f64>,
         op: SolverOperation,
     ) -> Result<DroppedPoint> {
+        self.drop_point_as(k, interval, point, vec_to_inside, dist_tol, guess, op, None)
+    }
+
+    /// [`Self::drop_point`] as the base of a derived object
+    /// ([`Self::get_or_create_bs_approx_as`]; the base-class drop evaluates it).
+    pub(crate) fn drop_point_as(
+        &mut self,
+        k: &Kernel,
+        interval: &Extent1d,
+        point: Point3,
+        vec_to_inside: Option<Vec3>,
+        dist_tol: f64,
+        guess: Option<f64>,
+        op: SolverOperation,
+        derived: Option<TangentFieldMembers>,
+    ) -> Result<DroppedPoint> {
         // check inputs (upstream warns and selects SM_SO_MINIMIZE)
         let op = if op != SolverOperation::Minimize
             && op != SolverOperation::Intersect
@@ -1292,10 +1412,11 @@ impl CrvOnSurf {
                 dist_tol,
                 guess,
                 op,
+                derived,
             );
         }
 
-        let bs = match self.get_or_create_bs_approx(k, APPROX_TOL_3D, None, None) {
+        let bs = match self.get_or_create_bs_approx_as(k, APPROX_TOL_3D, None, None, derived) {
             Ok(bs) => bs,
             Err(e) if e.is_unported() => return Err(e),
             Err(_) => {
@@ -1307,6 +1428,7 @@ impl CrvOnSurf {
                     dist_tol,
                     guess,
                     op,
+                    derived,
                 )
             }
         };
@@ -1333,6 +1455,7 @@ impl CrvOnSurf {
             dist_tol,
             Some(min_param),
             op,
+            derived,
         )
     }
 
@@ -1348,10 +1471,16 @@ impl CrvOnSurf {
         dist_tol: f64,
         guess: Option<f64>,
         op: SolverOperation,
+        derived: Option<TangentFieldMembers>,
     ) -> Result<DroppedPoint> {
-        let curve = self.as_curve();
+        let curve = self.as_curve(derived);
         let result = curve.drop_point_base(k, interval, point, vec_to_inside, dist_tol, guess, op);
-        if let CurveKind::CrvOnSurf(c) = curve.into_kind() {
+        let base = match curve.into_kind() {
+            CurveKind::CrvOnSurf(c) => Some(*c),
+            CurveKind::TangentField(t) => Some(t.into_base()),
+            _ => None,
+        };
+        if let Some(c) = base {
             *self
                 .break_cache
                 .get_mut()
@@ -1378,8 +1507,31 @@ impl CrvOnSurf {
         guess: Option<f64>,
         op: SolverOperation,
     ) -> Result<DroppedPoint> {
-        self.clone()
-            .drop_point(k, interval, point, vec_to_inside, dist_tol, guess, op)
+        self.drop_point_ref_as(k, interval, point, vec_to_inside, dist_tol, guess, op, None)
+    }
+
+    /// [`Self::drop_point_ref`] as the base of a derived object.
+    pub(crate) fn drop_point_ref_as(
+        &self,
+        k: &Kernel,
+        interval: &Extent1d,
+        point: Point3,
+        vec_to_inside: Option<Vec3>,
+        dist_tol: f64,
+        guess: Option<f64>,
+        op: SolverOperation,
+        derived: Option<TangentFieldMembers>,
+    ) -> Result<DroppedPoint> {
+        self.clone().drop_point_as(
+            k,
+            interval,
+            point,
+            vec_to_inside,
+            dist_tol,
+            guess,
+            op,
+            derived,
+        )
     }
 
     // ---- editing --------------------------------------------------------------------
@@ -1439,13 +1591,30 @@ impl CrvOnSurf {
     ///
     /// `SM_ERR` when nothing is owned (flag 0); those of the UV curve's trim.
     pub fn trim(&mut self, k: &Kernel, trim_interval: &mut Extent1d, mode: TrimMode) -> Result<()> {
+        self.trim_with_zone_tol(
+            k,
+            trim_interval,
+            mode,
+            crate::geom::tol::zone_tol_3d(k, crate::geom::tol::SmallTopoType::NormalSize),
+        )
+    }
+
+    /// Trims the owned UV curve with the caller-resolved owning object's tolerance.
+    pub(crate) fn trim_with_zone_tol(
+        &mut self,
+        k: &Kernel,
+        trim_interval: &mut Extent1d,
+        mode: TrimMode,
+        zone_tol_3d: f64,
+    ) -> Result<()> {
         // Don't own curve can not trim the curve
         if self.owner_flag == 0 {
             return Err(SolidError::sm_err(OP));
         }
 
         // pass the call along to the UVCurve
-        self.uv_curve.trim(k, trim_interval, mode)?;
+        self.uv_curve
+            .trim_with_zone_tol(k, trim_interval, mode, zone_tol_3d)?;
 
         // clear the knots
         if !self.need_breaks() {
@@ -1962,6 +2131,7 @@ mod tests {
             1e-6,
             None,
             SolverOperation::Normalize,
+            None,
         )
         .unwrap();
         assert!(!c.need_breaks());
@@ -2041,6 +2211,34 @@ mod tests {
                 panic!("copy lost the concrete offset surface");
             };
             assert_eq!(offset.base_surface().reached_face(), Some(face));
+        }
+    }
+
+    #[test]
+    fn copy_of_owning_curve_detaches_the_plane_nurb_cell() {
+        use crate::surface::plane::Plane;
+        use crate::surface::surface::SurfaceKind;
+        let k = Kernel::default();
+        let on = |c: &Curve| match c.kind() {
+            CurveKind::CrvOnSurf(c) => c.surface().clone_exact_bounded(),
+            _ => panic!("not a curve on a surface"),
+        };
+        let has_nurb = |c: &Curve| match on(c).kind() {
+            SurfaceKind::Plane(p) => p.base().gw_nurb().is_some(),
+            _ => panic!("not a curve on a plane"),
+        };
+        let domain = Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0);
+        // flag 0 names the same surface upstream (shared cell); flag 1 deep-copies it
+        for (flag, shared) in [(0, true), (1, false)] {
+            let plane = Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::Z));
+            let curve = Curve::from(CrvOnSurf::new(&k, uv(), plane, Some(domain), flag).unwrap());
+            assert!(!has_nurb(&curve));
+            let evaluation = curve.clone_exact_bounded();
+            let copy = curve.clone();
+            on(&curve).natural_uv_domain_with_nurb(&k).unwrap();
+            assert!(has_nurb(&curve));
+            assert!(has_nurb(&evaluation));
+            assert_eq!(has_nurb(&copy), shared);
         }
     }
 

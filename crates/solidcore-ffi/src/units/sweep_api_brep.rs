@@ -58,10 +58,6 @@
 //!   (a line of length `1.2e-5`, a circle of radius `1.7e-6`): curves whose extent
 //!   (line length, arc / circle diameter, the bounding-box diagonal of the
 //!   `SmApiCreateCurve` points) is below [`MIN_TAPER_EXTENT`] are rejected;
-//! - `Linear` / `LinearReps` with a negative distance and a full circle (B-spline or
-//!   analytic circle, or an arc spanning 360 degrees or more) never return (not
-//!   rejected for a capped `LinearReps` with other than one repetition, which
-//!   `CreateLinearSweep` refuses with `SM_ERR` first);
 //! - `PlanarPath` with a `Hermite` curve crashes: `CreateSweepAlongPlanarPath` uses the
 //!   `NULL` result of the profile `Copy` and casts the path curves to `SmBSplineCurve*`
 //!   unchecked;
@@ -85,6 +81,13 @@ pub const MIN_TAPER_EXTENT: f64 = 2.0e-5;
 
 mod sys {
     extern "C" {
+        pub fn sc_sweep_api_brep_observe_linear(
+            input: *const f64,
+            n_in: i64,
+            out: *mut f64,
+            cap: i64,
+            out_len: *mut i64,
+        ) -> i32;
         pub fn sc_sweep_api_brep_run(
             input: *const f64,
             n_in: i64,
@@ -512,25 +515,6 @@ fn check_taper_curves(curves: &[CurveSpec]) -> Result<(), FfiError> {
     Ok(())
 }
 
-/// Rejects the negative-distance sweeps of a full circle that never return.
-/// `refused`: `CreateLinearSweep` refuses the call before sweeping (capped with
-/// other than one repetition).
-fn check_linear(curves: &[CurveSpec], dist: f64, refused: bool) -> Result<(), FfiError> {
-    let full_circle = |c: &CurveSpec| match c {
-        CurveSpec::ApiCircle { .. } | CurveSpec::AnalyticCircle { .. } => true,
-        CurveSpec::ApiArc {
-            start_deg, end_deg, ..
-        } => (end_deg - start_deg).abs() >= 360.0,
-        _ => false,
-    };
-    if dist < 0.0 && !refused && copies_ok(curves) && curves.iter().any(full_circle) {
-        return Err(bad(
-            "linear sweep: negative distance with a full circle (upstream hang)",
-        ));
-    }
-    Ok(())
-}
-
 fn caps_of(caps: i32) -> Result<f64, FfiError> {
     if (-16..=16).contains(&caps) {
         Ok(f64::from(caps))
@@ -567,11 +551,6 @@ fn encode(call: &Call) -> Result<Vec<f64>, FfiError> {
             let reps = matches!(call, Call::LinearReps { .. });
             finite(dir, "sweep direction")?;
             finite(&[*dist], "sweep distance")?;
-            let refused = match call {
-                Call::LinearReps { reps, cap, .. } => *cap && *reps != 1,
-                _ => false,
-            };
-            check_linear(curves, *dist, refused)?;
             o.push(if reps { 10.0 } else { 1.0 });
             push_curves(&mut o, curves, false, true, false)?;
             o.extend_from_slice(dir);
@@ -690,4 +669,79 @@ pub fn run(call: &Call) -> Result<Vec<f64>, FfiError> {
             )
         }
     })
+}
+
+/// Runs a linear sweep with an additive observation record after the legacy prefix.
+///
+/// Only `Call::Linear` is accepted. Observation order is reachable vertex xyz,
+/// edge intervals, three `(status, xyz)` samples per edge at 0.17/0.37/0.83,
+/// manifold status/flag, then volume status/value (requested accuracy 1e-6).
+/// Failed sample/query values are zero placeholders with their statuses retained.
+/// The observation export bounds the result to 4096 vertices and edges each.
+pub fn observe_linear(call: &Call) -> Result<Vec<f64>, FfiError> {
+    if !matches!(call, Call::Linear { .. }) {
+        return Err(bad("linear observation requires a linear call"));
+    }
+    let input = encode(call)?;
+    call_with_buffer(256, |buf: &mut [f64], len| {
+        // SAFETY: encoded input and caller-owned output slices stay live for the call.
+        unsafe {
+            sys::sc_sweep_api_brep_observe_linear(
+                input.as_ptr(),
+                input.len() as i64,
+                buf.as_mut_ptr(),
+                buf.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn observe_linear_preserves_validation_and_empty_body_record() {
+        let mut call = Call::Linear {
+            curves: Vec::new(),
+            dir: [0.0, 0.0, 1.0],
+            dist: 4.0,
+            cap: true,
+        };
+        let legacy = run(&call).expect("native empty record");
+        // Empty profiles are accepted: upstream returns a non-null, empty B-rep.
+        // Captured by the direct legacy/observer shim control, without other shims.
+        assert_eq!(legacy, vec![0.0, 1.0, 0.0, 0.0, 0.0]);
+        let observed = observe_linear(&call).expect("observed empty body");
+        assert_eq!(
+            observed,
+            vec![0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        );
+        assert_eq!(&observed[..legacy.len()], legacy.as_slice());
+        if let Call::Linear { dist, .. } = &mut call {
+            *dist = f64::NAN;
+        }
+        assert_eq!(
+            run(&call)
+                .expect_err("legacy rejects nonfinite")
+                .to_string(),
+            observe_linear(&call)
+                .expect_err("observer rejects nonfinite")
+                .to_string()
+        );
+        let repetitions = Call::LinearReps {
+            curves: Vec::new(),
+            dir: [0.0, 0.0, 1.0],
+            dist: 4.0,
+            reps: 1,
+            cap: true,
+        };
+        assert_eq!(
+            observe_linear(&repetitions)
+                .expect_err("observer is linear-only")
+                .to_string(),
+            bad("linear observation requires a linear call").to_string()
+        );
+    }
 }

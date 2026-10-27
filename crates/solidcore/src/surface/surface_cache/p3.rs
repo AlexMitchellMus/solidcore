@@ -279,7 +279,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         );
         let (mut u_tol, mut v_tol) = (0.0, 0.0);
         if check_for_poles {
-            let srf_domain = self.surface().natural_uv_domain();
+            let srf_domain = self.surface().natural_uv_domain_with_nurb(k)?;
 
             // save natural domain sizes
             u_ivl = srf_domain.u_interval();
@@ -688,7 +688,7 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                 (uv_max.y - uv_min.y) / 4.0,
             )
         };
-        let snapped = sub.snap_to_knots(orig, snap_dist)?;
+        let snapped = sub.snap_to_knots(k, orig, snap_dist)?;
         let split_param = if direction == SurfParamType::U {
             snapped.x
         } else {

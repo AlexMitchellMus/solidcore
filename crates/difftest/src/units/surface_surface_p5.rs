@@ -785,7 +785,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
         OpIn::Cover { other, tol, merged } => {
             let mut this = s.clone();
             let mut other = surface_of(other)?;
-            match st(this.cover_other_coincident_surface(&k, &mut other, *tol, None, None, *merged))?
+            match st(this.cover_other_coincident_surface_deferring_trims(&k, &mut other, *tol, None, None, *merged))?
             {
                 Ok(r) => {
                     let which = r.covering_is_other.map_or(-1.0, b);
@@ -908,7 +908,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             ));
             let mut base = GlobalSolver::with_tree(&tree, if *kind < 2 { 2 } else { 3 });
             base.tolerance_3d = *tol;
-            let dom = s.natural_uv_domain();
+            let dom = s.natural_uv_domain_with_nurb(&k).map_err(|e| HarnessError::new(e.to_string()))?;
             let (pair, pref) = match kind {
                 0 => must(
                     SpGlobalSolver {
@@ -1351,7 +1351,8 @@ fn gen_line(rng: &mut Rng) -> CrvIn {
 /// normal, where a plane's analytic drop stays inside the domain.
 fn gen_point_over(k: &Kernel, rng: &mut Rng, s: &SrfIn, offset: f64) -> Option<[f64; 3]> {
     let surface = surface_of(s).ok()?;
-    let dom = surface.natural_uv_domain();
+    // (runner helper that does not return Result)
+    let dom = surface.natural_uv_domain_if_built();
     let uv = dom.evaluate(rng.uniform(0.1, 0.9), rng.uniform(0.1, 0.9));
     let p = surface.evaluate_point(k, uv).ok()?;
     let n = surface

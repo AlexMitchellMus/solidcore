@@ -1629,7 +1629,7 @@ impl OffsetExecutive<H> for Exec {
             self.inner.insert_extended_surface(key, surface.clone());
         }
         let ext = self.inner.get_create_extended_surface(k, key, &surface)?;
-        let domain = ext.natural_uv_domain();
+        let domain = ext.natural_uv_domain_with_nurb(k)?;
         if seeded {
             // the seeded entry is the base itself, as `m_vSurfExtSurf.Insert(s, s)`
             return Ok((base, domain));
@@ -1736,7 +1736,8 @@ fn put_srf(k: &Kernel, o: &mut Vec<f64>, s: Option<&Surface>) {
         return;
     };
     o.push(s.type_code() as f64);
-    let d = s.natural_uv_domain();
+    // (runner helper that does not return Result)
+    let d = s.natural_uv_domain_if_built();
     o.extend([d.u_min(), d.u_max(), d.v_min(), d.v_max()]);
     for i in 0..=2 {
         for j in 0..=2 {
@@ -4079,6 +4080,92 @@ fn edge_cases() -> Vec<(String, Value)> {
         add("box_vertex_offset_three_arcs", i);
     }
 
+    // VertexOffset with three arcs where an arc's ends both miss another arc's plane:
+    // the arc is rebuilt through the circle's intersections with the two other planes
+    // (`short`, `both_short`), or the rebuild fails because its circle lies in the third
+    // plane (`coincident`) or misses the plane (`no_intersection`)
+    {
+        // a rational quadratic arc about `c` in the plane of the unit vectors `u`, `v`,
+        // from angle `a0` to `a1` (degrees, less than 180 apart)
+        let plane_arc = |c: [f64; 3], u: [f64; 3], v: [f64; 3], r: f64, a0: f64, a1: f64| {
+            let at = |a: f64, rr: f64| -> [f64; 3] {
+                let (sa, ca) = a.to_radians().sin_cos();
+                [
+                    c[0] + rr * (ca * u[0] + sa * v[0]),
+                    c[1] + rr * (ca * u[1] + sa * v[1]),
+                    c[2] + rr * (ca * u[2] + sa * v[2]),
+                ]
+            };
+            let w = (0.5 * (a1 - a0)).to_radians().cos();
+            let (p0, p2) = (at(a0, r), at(a1, r));
+            let p1 = at(0.5 * (a0 + a1), r / w);
+            CrvIn {
+                dim: 3,
+                cpts: vec![
+                    [p0[0], p0[1], p0[2], 1.0],
+                    [p1[0] * w, p1[1] * w, p1[2] * w, w],
+                    [p2[0], p2[1], p2[2], 1.0],
+                ],
+                p: 2,
+                u: vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            }
+        };
+        let (x, y, z) = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]);
+        let o = [0.0; 3];
+        let r = 0.5;
+        for (name, c0, c1, c2) in [
+            (
+                "short",
+                plane_arc(o, x, y, r, 10.0, 80.0),
+                plane_arc(o, y, z, r, 0.0, 90.0),
+                plane_arc(o, z, x, r, 0.0, 90.0),
+            ),
+            (
+                "both_short",
+                plane_arc(o, x, y, r, 15.0, 70.0),
+                plane_arc(o, y, z, r, 20.0, 85.0),
+                plane_arc(o, z, x, r, 0.0, 90.0),
+            ),
+            (
+                "coincident",
+                plane_arc(o, x, y, r, 10.0, 80.0),
+                plane_arc(o, y, z, r, 0.0, 90.0),
+                plane_arc(o, x, y, r, 100.0, 170.0),
+            ),
+            (
+                "no_intersection",
+                plane_arc(o, x, y, r, 10.0, 80.0),
+                plane_arc([5.0 * r, 0.0, 0.0], y, z, r, 0.0, 90.0),
+                plane_arc(o, z, x, r, 0.0, 90.0),
+            ),
+        ] {
+            let f = "box_with_large_fillet.smb";
+            let mut i = base(f, Some(f), r);
+            i.ops = vec![
+                OpIn::AddCurve { curve: c0 },
+                OpIn::AddCurve { curve: c1 },
+                OpIn::AddCurve { curve: c2 },
+                OpIn::SetEdgeCurve {
+                    e: h(1, K_EDGE, 0),
+                    c: h(2, K_CURVE, 0),
+                },
+                OpIn::SetEdgeCurve {
+                    e: h(1, K_EDGE, 1),
+                    c: h(2, K_CURVE, 1),
+                },
+                OpIn::SetEdgeCurve {
+                    e: h(1, K_EDGE, 2),
+                    c: h(2, K_CURVE, 2),
+                },
+                OpIn::VertexOffset {
+                    v: h(0, K_VERTEX, 0),
+                    edges: vec![h(1, K_EDGE, 0), h(1, K_EDGE, 1), h(1, K_EDGE, 2)],
+                },
+            ];
+            add(&format!("box_vertex_offset_three_arcs_{name}"), i);
+        }
+    }
+
     // EdgeuseOffset on real solids: convex / tangent sectors, nulls, shell faces, inset
     for (name, f, dist) in [
         ("cone", "cone.smb", 0.5),
@@ -4395,6 +4482,56 @@ fn edge_cases() -> Vec<(String, Value)> {
         add("cone_mate_extend_local", i);
     }
 
+    // UpdateFaceSurfaceDomain on the cone face after its three edge uses' UV trim curves
+    // are scaled, moved or shrunk: the face takes the trim curves' domain, limited to
+    // the surface's (`CalculateUVDomainFromUVTrimCurves` defaults `bLimitDomain` to
+    // TRUE, so the extended-surface replacement is unreachable), or SM_ERR when the
+    // curves miss the surface's domain
+    for (name, d, scale, s) in [
+        ("scaled", [0.0, 0.0, 0.0], 1.5, h(0, K_FACE_SURFACE, 0)),
+        ("moved", [0.75, -0.5, 0.0], 1.0, h(0, K_FACE_SURFACE, 0)),
+        ("scaled_store", [0.1, 0.2, 0.0], 1.25, h(2, K_SURFACE, 0)),
+        ("shrunk", [0.0, 0.0, 0.0], 0.5, h(0, K_FACE_SURFACE, 0)),
+        // trim curves wholly outside the surface's domain: SM_ERR
+        ("disjoint", [100.0, 100.0, 0.0], 1.0, h(0, K_FACE_SURFACE, 0)),
+    ] {
+        let mut i = base("cone.smb", None, 0.5);
+        i.ops = vec![OpIn::AddSurface {
+            surface: SrfIn::Bspline(BssIn {
+                oob: false,
+                form: 0,
+                net: vec![
+                    vec![[-5.0, -5.0, 0.0, 1.0], [5.0, -5.0, 0.0, 1.0]],
+                    vec![[-5.0, 5.0, 0.0, 1.0], [5.0, 5.0, 1.0, 1.0]],
+                ],
+                p: 1,
+                q: 1,
+                u: vec![-10.0, -10.0, 10.0, 10.0],
+                v: vec![-10.0, -10.0, 10.0, 10.0],
+            }),
+        }];
+        for j in 0..3 {
+            i.ops.push(OpIn::AddCurveFrom {
+                src: h(0, K_EDGEUSE, j),
+                d,
+                scale,
+            });
+        }
+        for j in 0..3 {
+            i.ops.push(OpIn::SetEuUv {
+                eu: h(0, K_EDGEUSE, j),
+                c: h(2, K_CURVE, j),
+                max_dist: 0.0,
+            });
+        }
+        i.ops.push(OpIn::UpdateFaceDomain {
+            f: h(0, K_FACE, 0),
+            s,
+        });
+        i.ops.push(OpIn::Getters);
+        add(&format!("cone_update_face_domain_{name}"), i);
+    }
+
     // the guard refusals on non-solid B-reps
     for (name, a) in [
         ("network", BrepIn::Network),
@@ -4518,6 +4655,180 @@ fn edge_cases() -> Vec<(String, Value)> {
         other_off: h(1, K_EDGEUSE, 1),
     }];
     add("cone_have_tangent_gaps_no_samples", i);
+
+    // EdgeuseOffset's torus caps on box_with_large_fillet's convex edge 14 (edge uses 0
+    // and 22): the original edge gets the centre circle, the offset edges of edge uses 0
+    // (edge 14) and 1 (edge 12) the two rails, so the rails start a minor radius from the
+    // centre line's start. A plain torus, the rail swap (rail 2 has the centre line's
+    // radius), a self-intersecting torus whose arc the axis ray trims, one whose ray
+    // misses the arc, and seeded tori (their own rng).
+    {
+        let circle = |r: f64, z: f64| {
+            let w = std::f64::consts::FRAC_1_SQRT_2;
+            CrvIn {
+                dim: 3,
+                cpts: vec![
+                    [r, 0.0, z, 1.0],
+                    [r * w, r * w, z * w, w],
+                    [0.0, r, z, 1.0],
+                    [-r * w, r * w, z * w, w],
+                    [-r, 0.0, z, 1.0],
+                ],
+                p: 2,
+                u: vec![0.0, 0.0, 0.0, 0.5, 0.5, 1.0, 1.0, 1.0],
+            }
+        };
+        let torus_case = |dist: f64, analytics: bool, c0: CrvIn, c1: CrvIn, c2: CrvIn| {
+            let f = "box_with_large_fillet.smb";
+            let mut i = base(f, Some(f), dist);
+            i.analytics = analytics;
+            i.pairs = pairs(30, 1);
+            i.ops = vec![
+                OpIn::AddCurve { curve: c0 },
+                OpIn::AddCurve { curve: c1 },
+                OpIn::AddCurve { curve: c2 },
+                OpIn::SetEdgeCurve {
+                    e: h(0, K_EDGE, 14),
+                    c: h(2, K_CURVE, 0),
+                },
+                OpIn::SetEdgeCurve {
+                    e: h(1, K_EDGE, 14),
+                    c: h(2, K_CURVE, 1),
+                },
+                OpIn::SetEdgeCurve {
+                    e: h(1, K_EDGE, 12),
+                    c: h(2, K_CURVE, 2),
+                },
+                OpIn::EdgeuseOffset {
+                    orig: h(0, K_EDGEUSE, 0),
+                    other_orig: h(0, K_EDGEUSE, 1),
+                    off: h(1, K_EDGEUSE, 0),
+                    other_off: h(1, K_EDGEUSE, 1),
+                },
+                OpIn::EdgeState {
+                    e: h(1, K_EDGE, 14),
+                },
+                OpIn::EdgeState {
+                    e: h(1, K_EDGE, 12),
+                },
+            ];
+            i
+        };
+        let a260 = 260.0_f64.to_radians();
+        for (name, dist, analytics, c0, c1, c2) in [
+            (
+                "plain",
+                0.5,
+                true,
+                circle(2.0, 0.0),
+                circle(2.5, 0.0),
+                circle(1.5, 0.0),
+            ),
+            (
+                "plain_no_analytics",
+                0.5,
+                false,
+                circle(2.0, 0.0),
+                circle(2.5, 0.0),
+                circle(1.5, 0.0),
+            ),
+            (
+                "swap",
+                0.5,
+                true,
+                circle(2.0, 0.0),
+                circle(2.5, 0.0),
+                circle(2.0, 0.5),
+            ),
+            (
+                "self_intersecting_trim",
+                3.0,
+                true,
+                circle(1.0, 0.0),
+                circle(1.0, 3.0),
+                circle(1.0 + 3.0 * a260.cos(), 3.0 * a260.sin()),
+            ),
+            (
+                "self_intersecting_miss",
+                3.0,
+                true,
+                circle(1.0, 0.0),
+                circle(4.0, 0.0),
+                circle(1.0, 3.0),
+            ),
+            // rails on one circle, and rails 5e-4 apart (within ten edge tolerances):
+            // no cap, the offset edges' tolerances grow to twice the rail distance
+            (
+                "coincident_rails",
+                0.5,
+                true,
+                circle(2.0, 0.0),
+                circle(2.5, 0.0),
+                circle(2.5, 0.0),
+            ),
+            (
+                "rails_within_tolerance",
+                0.5,
+                true,
+                circle(2.0, 0.0),
+                circle(2.5, 0.0),
+                circle(2.5005, 0.0),
+            ),
+        ] {
+            add(
+                &format!("box_edgeuse_offset_torus_cap_{name}"),
+                torus_case(dist, analytics, c0, c1, c2),
+            );
+        }
+        let mut rng = Rng::new(0xFF_5E77_04D5);
+        let mut made = 0;
+        for _ in 0..64 {
+            if made == 8 {
+                break;
+            }
+            let major = rng.uniform(1.0, 4.0);
+            let minor = rng.uniform(0.2, 2.0 * major);
+            let t1 = rng.uniform(-170.0, 170.0).to_radians();
+            let t2 = t1 + rng.uniform(20.0, 170.0).to_radians();
+            let (r1, r2) = (major + minor * t1.cos(), major + minor * t2.cos());
+            if r1 < 0.05 || r2 < 0.05 {
+                continue;
+            }
+            let analytics = rng.chance(0.5);
+            add(
+                &format!("box_edgeuse_offset_torus_cap_seeded{made}"),
+                torus_case(
+                    minor,
+                    analytics,
+                    circle(major, 0.0),
+                    circle(r1, minor * t1.sin()),
+                    circle(r2, minor * t2.sin()),
+                ),
+            );
+            made += 1;
+        }
+    }
+
+    // EdgeuseOffset on box_with_large_fillet's tangent, non-convex edge 3 (edge uses 7
+    // and 29): with offset edge uses on one edge (no gaps: nothing built) and on two
+    // edges (edge 3 and edge 10, gaps: SM_ERR), and without an offset edge use
+    for (name, off, other_off) in [
+        ("same_edge", h(1, K_EDGEUSE, 7), h(1, K_EDGEUSE, 29)),
+        ("gaps", h(1, K_EDGEUSE, 7), h(1, K_EDGEUSE, 16)),
+        ("gaps_reversed", h(1, K_EDGEUSE, 16), h(1, K_EDGEUSE, 7)),
+        ("no_offset", NULL_H, h(1, K_EDGEUSE, 16)),
+    ] {
+        let f = "box_with_large_fillet.smb";
+        let mut i = base(f, Some(f), 0.25);
+        i.pairs = pairs(30, 1);
+        i.ops = vec![OpIn::EdgeuseOffset {
+            orig: h(0, K_EDGEUSE, 7),
+            other_orig: h(0, K_EDGEUSE, 29),
+            off,
+            other_off,
+        }];
+        add(&format!("box_edgeuse_offset_tangent_sector_{name}"), i);
+    }
 
     out
 }

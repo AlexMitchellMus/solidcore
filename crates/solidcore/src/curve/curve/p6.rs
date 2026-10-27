@@ -474,6 +474,11 @@ impl Curve {
             CurveKind::Line(c) => Ok(c.calculate_bounding_box(interval, req)),
             // (its cache update is lost on this copy)
             CurveKind::CrvOnSurf(c) => c.calculate_bounding_box_ref(k, interval, req, expand),
+            // the SmCrvOnSurf override on the derived object (its Evaluate)
+            CurveKind::TangentField(c) => {
+                c.base()
+                    .calculate_bounding_box_ref_as(k, interval, req, expand, Some(c.members()))
+            }
             CurveKind::Hermite(c) => {
                 let mut normal = Extent3d::new();
                 let mut pseudo = PseudoBox::new();
@@ -596,6 +601,17 @@ impl Curve {
             CurveKind::CrvOnSurf(c) => {
                 c.drop_point_ref(k, interval, point, vec_to_inside, dist_tol, guess, op)
             }
+            // the SmCrvOnSurf override on the derived object (its Evaluate)
+            CurveKind::TangentField(c) => c.base().drop_point_ref_as(
+                k,
+                interval,
+                point,
+                vec_to_inside,
+                dist_tol,
+                guess,
+                op,
+                Some(c.members()),
+            ),
             _ => self.drop_point_base_cached(
                 k,
                 interval,
@@ -1969,7 +1985,7 @@ impl Curve {
             }
             if surface.approx_eq(k, curve.surface())? {
                 let ends = curve.uv_curve().ends(k)?;
-                let domain = surface.natural_uv_domain();
+                let domain = surface.natural_uv_domain_with_nurb(k)?;
                 let drop_target = |target: Option<Point3>,
                                    current: Point3|
                  -> Result<Option<Point3>> {

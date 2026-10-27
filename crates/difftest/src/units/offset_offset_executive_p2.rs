@@ -38,6 +38,11 @@
 //! tolerance, so the offset sees the native radial order and face-use orientations.
 //! Box input parity remains counts of faces/edges/vertices, analytic kinds, vertex
 //! bounds, provenance and purity.
+//! Cylinder and sphere inputs are built the same way, with the real
+//! `SmApiCreateCylinder` (`SmBrep*&` overload) and `SmApiCreateSphere` and their ports,
+//! and projected like the box. Their seam edges are tangent sectors, so they reach the
+//! extend-corner pass of `DoExtendedOffset`. Input face and edge kinds use the shim's
+//! `IsKindOf` classes on both sides (a cone or sphere is an `SmBSplineSurface`).
 //! Sheet boundary scaffolding follows p1's typed rectangular fixture pattern;
 //! its Line boundaries are not claimed equivalent to native isocurve kinds.
 //! Native sheet/wire construction must preserve the projected counts (1/1/4/8/4
@@ -90,7 +95,7 @@ use solidcore::offset::offset_executive::p2::{
 };
 use solidcore::query::api_queries::BrepRef;
 use solidcore::surface::plane::Plane;
-use solidcore::surface::surface::{Surface, SurfaceKind};
+use solidcore::surface::surface::Surface;
 use solidcore::sweep::topology_sweep::store::SweepIdentities;
 use solidcore::topology::brep::p1 as brep_p1;
 use solidcore::topology::topology::Topology;
@@ -160,6 +165,15 @@ enum Fixture {
         origin: [f64; 3],
         size: [f64; 3],
     },
+    /// `SmApiCreateCylinder(origin, radius, height)`: base, top and a side face closed
+    /// along a seam edge (the edge's two uses form a tangent sector).
+    Cylinder {
+        origin: [f64; 3],
+        radius: f64,
+        height: f64,
+    },
+    /// `SmApiCreateSphere(origin, radius)`.
+    Sphere { origin: [f64; 3], radius: f64 },
 }
 impl Fixture {
     fn native(&self) -> ffi::Fixture {
@@ -190,13 +204,31 @@ impl Fixture {
                 domain,
             },
             Self::Box { origin, size } => ffi::Fixture::Box { origin, size },
+            Self::Cylinder {
+                origin,
+                radius,
+                height,
+            } => ffi::Fixture::Cylinder {
+                origin,
+                radius,
+                height,
+            },
+            Self::Sphere { origin, radius } => ffi::Fixture::Sphere { origin, radius },
         }
+    }
+    /// Built by a native primitive constructor (and its Rust port).
+    const fn primitive(&self) -> bool {
+        matches!(
+            self,
+            Self::Box { .. } | Self::Cylinder { .. } | Self::Sphere { .. }
+        )
     }
     const fn face_count(&self) -> usize {
         match self {
             Self::Empty | Self::Wire { .. } => 0,
-            Self::PlaneSheet { .. } => 1,
+            Self::PlaneSheet { .. } | Self::Sphere { .. } => 1,
             Self::Box { .. } => 6,
+            Self::Cylinder { .. } => 3,
         }
     }
 }
@@ -453,6 +485,15 @@ fn validate(input: &Inputs) -> HResult<()> {
                     finite(&[a + b, b * b])?;
                 }
             }
+            Fixture::Cylinder {
+                origin,
+                radius,
+                height,
+            } => {
+                primitive_finite(origin, radius)?;
+                finite(&[height, origin[2] + height])?;
+            }
+            Fixture::Sphere { origin, radius } => primitive_finite(origin, radius)?,
         }
     }
     Ok(())
@@ -591,9 +632,42 @@ fn add_shell(brep: &mut Brep, region: RegionId) -> HResult<ShellId> {
 
 // Rectangular typed input scaffold, adapted from p1's face_with_edges, with a
 // shared shell rather than four extra wire shells. It is NOT an offset result.
+/// The FFI's finiteness checks of a cylinder or sphere fixture.
+fn primitive_finite(origin: [f64; 3], radius: f64) -> HResult<()> {
+    finite(&origin)?;
+    finite(&[radius, radius * radius])?;
+    for a in origin {
+        finite(&[a + radius, a - radius])?;
+    }
+    Ok(())
+}
+
 fn build(kernel: &mut Kernel, fixture: &Fixture, tolerance: f64, namespace: u64) -> HResult<Brep> {
     if let Fixture::Box { origin, size } = *fixture {
         return build_box(kernel, origin, size, tolerance);
+    }
+    if let Fixture::Cylinder {
+        origin,
+        radius,
+        height,
+    } = *fixture
+    {
+        let mut brep = solidcore::primitive::api_primitives::create_cylinder(
+            kernel,
+            v3(origin),
+            radius,
+            height,
+        )
+        .map_err(setup)?;
+        brep.set_tolerance(tolerance);
+        return Ok(brep);
+    }
+    if let Fixture::Sphere { origin, radius } = *fixture {
+        let mut brep =
+            solidcore::primitive::api_primitives::create_sphere(kernel, v3(origin), radius)
+                .map_err(setup)?;
+        brep.set_tolerance(tolerance);
+        return Ok(brep);
     }
     let mut brep = Brep::new();
     brep.set_tolerance(tolerance);
@@ -685,19 +759,10 @@ fn build(kernel: &mut Kernel, fixture: &Fixture, tolerance: f64, namespace: u64)
                 &mut fenv,
             )
             .map_err(setup)?;
-            // the shim's representable_topology(result, 1, 1, 4, 8, 4)
-            if [
-                brep.faces().len(),
-                brep.loops().len(),
-                brep.edges().len(),
-                brep.edgeuses().len(),
-                brep.vertices().len(),
-            ] != [1, 1, 4, 8, 4]
-            {
-                return Err(bad("sheet constructor did not build a single rectangular face"));
-            }
         }
-        Fixture::Box { .. } => return Err(bad("box fixtures use the primitive constructor")),
+        Fixture::Box { .. } | Fixture::Cylinder { .. } | Fixture::Sphere { .. } => {
+            return Err(bad("primitive fixtures use the primitive constructors"))
+        }
     }
     Ok(brep)
 }
@@ -718,9 +783,6 @@ fn build_box(
     let [dx, dy, dz] = size;
     let mut brep = solidcore::primitive::api_primitives::create_box(kernel, v3(origin), dx, dy, dz)
         .map_err(setup)?;
-    if brep.faces().len() != 6 || brep.edges().len() != 12 || brep.vertices().len() != 8 {
-        return Err(bad("box constructor did not build a closed box"));
-    }
     brep.set_tolerance(tolerance);
     Ok(brep)
 }
@@ -798,7 +860,7 @@ struct Projection {
 }
 fn projected_counts(fixture: &Fixture, counts: [i64; 7]) -> Vec<i64> {
     let [_, _, faces, loops, edges, uses, vertices] = counts;
-    if matches!(fixture, Fixture::Box { .. }) {
+    if fixture.primitive() {
         vec![faces, edges, vertices]
     } else {
         vec![faces, loops, edges, uses, vertices]
@@ -878,16 +940,13 @@ fn rust_projection(kernel: &Kernel, fixture: &Fixture, brep: &Brep) -> HResult<P
             .surface
             .as_ref()
             .ok_or_else(|| bad("fixture face has no real surface"))?;
-        result.kinds.push(match surface.kind() {
-            SurfaceKind::Plane(_) => 1,
-            SurfaceKind::BSpline(_) => 2,
-            _ => 3,
-        });
+        // (the shim's `IsKindOf` classes: a cone or sphere is an `SmBSplineSurface`)
+        result.kinds.push(surface_kind(Some(surface))?);
         if matches!(fixture, Fixture::PlaneSheet { .. }) {
             result.values.extend(domain_values(face.uv_domain));
             result
                 .values
-                .extend(domain_values(surface.natural_uv_domain()));
+                .extend(domain_values(surface.natural_uv_domain_with_nurb(kernel).map_err(|e| HarnessError::new(e.to_string()))?));
             let lo = face.uv_domain.min();
             let hi = face.uv_domain.max();
             for fraction in [0.0, 0.5, 1.0] {
@@ -912,11 +971,7 @@ fn rust_projection(kernel: &Kernel, fixture: &Fixture, brep: &Brep) -> HResult<P
                 .curve
                 .as_ref()
                 .ok_or_else(|| bad("fixture wire has no real curve"))?;
-            result.kinds.push(match curve.kind() {
-                CurveKind::Line(_) => 1,
-                CurveKind::BSpline(_) => 2,
-                _ => 3,
-            });
+            result.kinds.push(curve_kind(Some(curve)));
             let domain = curve.natural_interval();
             result.values.extend([
                 edge.interval.min(),
@@ -931,7 +986,7 @@ fn rust_projection(kernel: &Kernel, fixture: &Fixture, brep: &Brep) -> HResult<P
             }
         }
     }
-    if matches!(fixture, Fixture::Box { .. } | Fixture::Wire { .. }) {
+    if fixture.primitive() || matches!(fixture, Fixture::Wire { .. }) {
         let mut vertex_points = Vec::with_capacity(vertices.len());
         for &vertex_id in &vertices {
             vertex_points.push(xyz(brep.vertex(vertex_id).map_err(setup)?.point));
@@ -1124,7 +1179,7 @@ fn native_projection(fixture: &Fixture, decoded: &DecodedBrep) -> HResult<Projec
             );
         }
     }
-    if matches!(fixture, Fixture::Box { .. } | Fixture::Wire { .. }) {
+    if fixture.primitive() || matches!(fixture, Fixture::Wire { .. }) {
         result
             .values
             .extend(bounds(decoded.vertices.iter().copied()));
@@ -2678,7 +2733,7 @@ mod tests {
     }
 
     #[test]
-    fn incomplete_native_boxes_are_rejected_without_hiding_valid_selection_errors() {
+    fn empty_native_boxes_are_compared_unless_a_face_is_selected() {
         let context = CaseContext {
             root: repo_root(),
             seeds: 0,
@@ -2701,16 +2756,28 @@ mod tests {
                     assert!(!output.values.is_empty());
                 }
                 compared += 1;
-            } else {
+            } else if case.name.ends_with("_selected") {
+                // The tiny box is an empty B-rep: no face 0 to select.
                 assert_eq!(
                     cpp.rejected.as_deref(),
                     Some("native fixture constructor status_1001")
                 );
                 assert!(cpp.ints.is_empty() && cpp.values.is_empty());
                 rejected += 1;
+            } else {
+                // Null selection: the empty box is built and the API status
+                // (1007) is compared against Rust.
+                let rust = Runner.run_rust(&case).unwrap();
+                for output in [&cpp, &rust] {
+                    assert!(output.rejected.is_none() && output.error.is_none());
+                    assert_eq!(output.ints["status"], [1007]);
+                }
+                let comparison = crate::compare::compare(&cpp, &rust, Runner.abs_floors());
+                assert!(comparison.pass(), "{}: {comparison:?}", case.name);
+                compared += 1;
             }
         }
-        assert_eq!((rejected, compared), (8, 2));
+        assert_eq!((rejected, compared), (4, 6));
     }
 
     fn assert_native_constructor_control(case: &Case, cpp: &Output, counts: [i64; 5]) {
@@ -2748,12 +2815,12 @@ mod tests {
     }
 
     #[test]
-    fn incomplete_native_sheets_are_rejected_without_hiding_valid_controls() {
+    fn degenerate_native_sheets_are_compared_alongside_valid_controls() {
         let context = CaseContext {
             root: repo_root(),
             seeds: 0,
         };
-        let (mut rejected, mut compared) = (0, 0);
+        let (rejected, mut compared) = (0, 0);
         for case in context.fixture_cases(Runner.id()).unwrap() {
             if !case.name.starts_with("review_sheet_") {
                 continue;
@@ -2764,15 +2831,17 @@ mod tests {
                 assert_native_constructor_control(&case, &cpp, [1, 1, 4, 8, 4]);
                 compared += 1;
             } else {
-                assert_eq!(
-                    cpp.rejected.as_deref(),
-                    Some("native fixture constructor status_1001")
-                );
-                assert!(cpp.ints.is_empty() && cpp.values.is_empty());
-                rejected += 1;
+                // Merged/dropped-face sheets are defined native results, built
+                // and compared as is (not rejections).
+                let rust = Runner.run_rust(&case).unwrap();
+                assert!(cpp.rejected.is_none() && rust.rejected.is_none());
+                let comparison = crate::compare::compare(&cpp, &rust, Runner.abs_floors());
+                assert!(comparison.pass(), "{}: {comparison:?}", case.name);
+                assert!(comparison.exact_compared > 0);
+                compared += 1;
             }
         }
-        assert_eq!((rejected, compared), (9, 4));
+        assert_eq!((rejected, compared), (0, 13));
     }
 
     #[test]

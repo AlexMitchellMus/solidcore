@@ -521,7 +521,7 @@ impl FilletSolverOps for TestSolver {
     fn load_initial_values(
         &mut self,
         _k: &Kernel,
-        _brep: Option<&Brep>,
+        _brep: Option<&mut Brep>,
         do_surf2_calcs: bool,
         rail_index: usize,
         _surface1: &mut OffsetSurface,
@@ -536,7 +536,8 @@ impl FilletSolverOps for TestSolver {
             let dom = slot_mut(&mut self.base, other)?
                 .surface
                 .base_surface()
-                .natural_uv_domain();
+                // (runner helper without a kernel in scope)
+                .natural_uv_domain_if_built();
             let idx2 = guess_t.len();
             set_ext(
                 intervals,
@@ -717,7 +718,8 @@ fn put_crv(k: &Kernel, o: &mut Vec<f64>, c: Option<&Curve>) {
 /// `put_srf` of the shim: `1 u0 v0 u1 v1` and the 3 x 3 grid of points.
 fn put_srf(k: &Kernel, o: &mut Vec<f64>, s: &Surface) {
     o.push(1.0);
-    let d = s.natural_uv_domain();
+    // (runner helper that does not return Result)
+    let d = s.natural_uv_domain_if_built();
     o.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
     for a in [0.0, 0.5, 1.0] {
         for bb in [0.0, 0.5, 1.0] {
@@ -1178,7 +1180,7 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             )?;
             let empty = Brep::new();
             let index = usize::try_from(*index).map_err(|_| harness("index"))?;
-            match fs.base.fillet_corner(&empty, index) {
+            match fs.base.fillet_corner(&empty, index, &solidcore::blend::fillet_geom::p3::NoCorners) {
                 Ok(c) => {
                     o.push(b(c.is_none()));
                     o.push(fs.jacobian_size().unwrap_or(0) as f64);

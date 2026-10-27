@@ -1,7 +1,8 @@
 # AGENTS.md — solidcore
 
 solidcore is a port of NVIDIA's SMLib B-rep kernel (C++, Apache-2.0) to idiomatic safe
-Rust. Upstream is cloned (gitignored) at `upstream/`, pinned to commit `c9c5979`. Many
+Rust. Upstream is cloned (gitignored) at `upstream/`, pinned to v1.0.1, commit `3fd5b95`
+(`scripts/upstream-pin.env` is the single source of truth for scripts, CI and the site). Many
 agents work here at once: read this whole file before your first change.
 
 ```
@@ -50,11 +51,12 @@ anywhere (including dependencies; `deny.toml` bans copyleft crates).
 **Correctness gate.** A unit is **green** only when difftest runs the Rust and the C++
 (via FFI) on the same inputs and topology is identical and every value agrees within
 `1e-9` relative (`|a-b| <= 1e-9 * max(|a|,|b|)`; an absolute floor only where a unit
-documents one per key in `abs_floors()`, recorded in its report). Never loosen a tolerance to get green. A disagreement you cannot fix
+documents one per key in `abs_floors()`, recorded in its report). Never loosen a tolerance to get green. The harness never feeds C++ outputs or C++ process state into the Rust side (`crates/difftest/README.md`, No C++ state reaches the Rust side). A disagreement you cannot fix
 goes in a new `plan/findings/<slug>.md` (unit, inputs, both values, suspected cause) and the unit
 stays `blocked`. Sole exception: a case where the C++ reference is verified wrong (a confirmed
 `plan/upstream-issues/` entry) is listed with `cpp_defect = "<id>"` in its known-mismatch entry
-and counts as passing (`crates/difftest/README.md`); never use it for a Rust divergence.
+and is parked: not run in the gate, not counted as a pass, and does not block green; removing
+the marker runs it again (`crates/difftest/README.md`); never use it for a Rust divergence.
 
 **Git.** Work happens through pull requests to github.com/tangency-labs/solidcore. Never
 push to `main` directly, never force-push shared branches, never rewrite `main`'s
@@ -67,6 +69,11 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ```
 
 **Processes.** Kill only processes you started, by PID. Never `pkill`/`pgrep -f`.
+
+**Deleting.** Delete directories and build output with `cargo xtask rm <path>...` (and
+worktrees with `cargo xtask worktree-rm <dir>`), never `rm -rf`: agent harnesses hold `rm -rf`
+for a human's approval even with permissions bypassed, which stalls unattended runs. The
+xtask only deletes inside the worktree root, `bin/`, `reports/` and the temp dir.
 
 ## 2. Machine budget
 
@@ -142,8 +149,8 @@ Every ported file starts with:
 ## 4. Porting a unit (PR workflow)
 
 Unit list and states: `plan/units/<unit id>.toml`, one file per unit (format:
-`plan/modules.schema.md`, order: `plan/order.md`). **`plan/PROGRESS.md` is the checklist** (regenerated on `main` by CI;
-never edit it in a PR). **Any `todo` unit or unclaimed completion task can be claimed.** A claim reserves
+`plan/modules.schema.md`, order: `plan/order.md`). **The [checklist](https://tangency-labs.github.io/solidcore/PROGRESS.md)** is generated
+from `main` by the Pages workflow (`harness/plan/progress.py`; not committed). **Any `todo` unit or unclaimed completion task can be claimed.** A claim reserves
 its stated scope, not every future change to the unit. Missing functions, back-edge
 wiring, exact runner imports, fixtures and demonstrated parity bugs remain useful
 work in `partial` and `green` units; inspect source and reports, not status alone.
@@ -264,7 +271,7 @@ into `upstream/` (see README), then run `scripts/fetch-cpp.sh`, or
   into). There is no shared `plan/modules.toml` any more.
 - Never commit `reports/difftest/` (gitignored). difftest still writes your reports
   there locally; CI regenerates them, uploads main's set as the `difftest-reports`
-  artifact, and the site and `plan/PROGRESS.md` read that
+  artifact, and the site and its checklist read that
   (`scripts/fetch-reports.sh` downloads it). Quote your summary lines in the PR instead.
 - **Never append to a shared file.** Every finding and every upstream issue is its own
   new file: `plan/findings/<slug>.md` and `plan/upstream-issues/<slug>.md` (formats in
@@ -353,7 +360,8 @@ The kernel core is one big call cycle, so the plan dropped ~2,300 calls as *back
   site reads them all. A `plan/upstream-issues.md` ID: grep it under that directory.
 - `reports/difftest/<unit>.json`: difftest output. Not committed: CI uploads main's set
   as an artifact; `scripts/fetch-reports.sh` downloads it.
-- `plan/PROGRESS.md`: the checklist (generated; never edit by hand).
+- [Checklist](https://tangency-labs.github.io/solidcore/PROGRESS.md): generated on the site
+  by `harness/plan/progress.py` (local runs write the gitignored `plan/PROGRESS.md`).
 - `plan/STATUS.md`: overall progress summary and handoff notes.
 - `bin/`: all build output (cargo `target-dir`, `bin/cpp/` for C++). Gitignored. Never
   commit build output or anything under `upstream/`.

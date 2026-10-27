@@ -9,9 +9,12 @@
 // which validates every input so upstream only touches valid memory. Every read is bounds
 // checked here as well (a malformed program is SC_ERR_ARG). The whole program is parsed before
 // any upstream object is built. Operand B-reps are boxes (SmApiCreateBox), spheres
-// (SmApiCreateSphere), sheets (SmApiCreatePlane) or the SmApiBoolean result of two
-// operands; a failing constructor or operand Boolean is SC_ERR_ARG. `out` receives the API status
-// (0 = SM_SUCCESS, else the SmStatus) and, on success, the op's outputs.
+// (SmApiCreateSphere), sheets (SmApiCreatePlane), tori (SmApiCreateTorus), an operand moved
+// by SmApiRotate / SmApiTranslate steps, a skin solid (SmApiCreateSkinPrimitive of NURB
+// curves) or the SmApiBoolean result of two operands; a failing
+// constructor or operand Boolean is SC_ERR_ARG, except a failing SmApiCreateTorus, whose
+// status becomes the call's (record `2`) so its radius guard is compared. `out` receives the
+// API status (0 = SM_SUCCESS, else the SmStatus) and, on success, the op's outputs.
 //
 // Ownership follows source/SM_API/inc/SmApiBrep.h: a rejected or failed two-B-rep call leaves
 // both operands with the caller (deleted here); on success the result is deleted and the second
@@ -23,6 +26,8 @@
 #include <SmApiBrep.h>
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
+#include <SmApiQueries.h>
+#include <SmBSplineCurve.h>
 #include <SmBrep.h>
 #include <SmContext.h>
 #include <SmFaceuse.h>
@@ -31,7 +36,9 @@
 #include <SmSurface.h>
 #include <SmTArray.h>
 #include <SmVector3d.h>
+#include <nurbs.h>
 
+#include <algorithm>
 #include <stdexcept>
 #include <vector>
 
@@ -54,6 +61,7 @@ enum : int32_t
     OP_MERGE_BREPS = 7,
     OP_LISTS = 8,
     OP_TREES = 9,
+    OP_MEASURED = 10,
 };
 
 // Operand kinds.
@@ -63,7 +71,25 @@ enum : int32_t
     BK_SPHERE = 2,   // SmApiCreateSphere(center, radius)
     BK_PLANE = 3,    // SmApiCreatePlane(origin, x, y)
     BK_BOOLEAN = 4,  // SmApiBoolean(a, b, operation)'s result
+    BK_TORUS = 5,    // SmApiCreateTorus(center, major, minor)
+    BK_MOVED = 6,    // an operand moved by SmApiRotate / SmApiTranslate steps
+    BK_SKIN = 7,     // SmApiCreateSkinPrimitive(counts, NURB curves, degree, cap)
 };
+
+// Most curves (and profiles) of one BK_SKIN operand (MAX_SKIN_CURVES in the Rust module),
+// and most control points of one of its curves (MAX_SKIN_POINTS).
+const int64_t MAX_SKIN_CURVES = 16;
+const int64_t MAX_SKIN_POINTS = 512;
+
+// Steps of a BK_MOVED operand.
+enum : int32_t
+{
+    STEP_ROTATE = 0,    // SmApiRotate(brep, point, axis, angle_deg)
+    STEP_TRANSLATE = 1, // SmApiTranslate(brep, vector)
+};
+
+// Most steps of one BK_MOVED operand (MAX_STEPS in the Rust module).
+const int64_t MAX_STEPS = 8;
 
 // Deepest operand block (MAX_DEPTH in the Rust module).
 const int MAX_DEPTH = 4;
@@ -71,6 +97,12 @@ const int MAX_DEPTH = 4;
 struct Bad : std::runtime_error
 {
     Bad() : std::runtime_error("bad program") {}
+};
+
+// A failed SmApiCreateTorus: its status becomes the call's, with the record `2`.
+struct TorusFailed
+{
+    double status;
 };
 
 struct Rd
@@ -98,7 +130,11 @@ struct BrepSpec
 {
     int32_t kind = BK_BOX;
     double d[6] = {0, 0, 0, 0, 0, 0};
-    std::vector<BrepSpec> sub; // BK_BOOLEAN: a, b
+    std::vector<BrepSpec> sub; // BK_BOOLEAN: a, b; BK_MOVED: the operand
+    std::vector<double> steps; // BK_MOVED: per step its kind then 7 (rotate) or 3 numbers
+    // BK_SKIN: profile counts, then per curve `p n+1 (n+1)*4 points (n+p+2) knots`, and in
+    // d[0] d[1] the loft degree and cap flag
+    std::vector<double> counts, curves;
 };
 
 BrepSpec read_spec(Rd& rd, int depth = 0)
@@ -106,7 +142,7 @@ BrepSpec read_spec(Rd& rd, int depth = 0)
     if (depth >= MAX_DEPTH)
         throw Bad();
     BrepSpec s;
-    s.kind = (int32_t)rd.idx(1, 4);
+    s.kind = (int32_t)rd.idx(1, 7);
     int k = 0;
     switch (s.kind)
     {
@@ -114,6 +150,9 @@ BrepSpec read_spec(Rd& rd, int depth = 0)
     case BK_SPHERE: k = 4; break;
     case BK_PLANE: k = 5; break;
     case BK_BOOLEAN: k = 0; break;
+    case BK_TORUS: k = 5; break;
+    case BK_MOVED: k = 0; break;
+    case BK_SKIN: k = 0; break;
     default: throw Bad();
     }
     if (s.kind == BK_BOOLEAN)
@@ -129,7 +168,83 @@ BrepSpec read_spec(Rd& rd, int depth = 0)
         s.sub.push_back(read_spec(rd, depth + 1));
         s.sub.push_back(read_spec(rd, depth + 1));
     }
+    if (s.kind == BK_MOVED)
+    {
+        int64_t n = rd.idx(0, MAX_STEPS);
+        for (int64_t i = 0; i < n; i++)
+        {
+            int64_t t = rd.idx(STEP_ROTATE, STEP_TRANSLATE);
+            s.steps.push_back((double)t);
+            int m = t == STEP_ROTATE ? 7 : 3;
+            for (int j = 0; j < m; j++)
+                s.steps.push_back(rd.num());
+        }
+        s.sub.push_back(read_spec(rd, depth + 1));
+    }
+    if (s.kind == BK_SKIN)
+    {
+        int64_t np = rd.idx(2, MAX_SKIN_CURVES);
+        int64_t total = 0;
+        for (int64_t i = 0; i < np; i++)
+        {
+            int64_t c = rd.idx(1, MAX_SKIN_CURVES);
+            total += c;
+            s.counts.push_back((double)c);
+        }
+        int64_t nc = rd.idx(1, MAX_SKIN_CURVES);
+        if (nc != total)
+            throw Bad();
+        for (int64_t i = 0; i < nc; i++)
+        {
+            int64_t p = rd.idx(1, 17);
+            int64_t n1 = rd.idx(2, MAX_SKIN_POINTS);
+            if (p >= n1)
+                throw Bad();
+            s.curves.push_back((double)p);
+            s.curves.push_back((double)n1);
+            for (int64_t j = 0; j < 4 * n1 + n1 + p + 1; j++)
+                s.curves.push_back(rd.num());
+        }
+        s.d[0] = (double)rd.idx(1, 17);
+        s.d[1] = rd.flag() ? 1.0 : 0.0;
+    }
     return s;
+}
+
+// The BK_SKIN operand: SmApiCreateSkinPrimitive of its curves (each an
+// SmBSplineCurve(gw_CURVE*, 3, FALSE)), which leaves the curves with the caller.
+SmApiStatus build_skin(const BrepSpec& s, SmBrep*& r)
+{
+    const SmContext& ctx = *SmApiGetOrCreateContext();
+    std::vector<SmBSplineCurve*> owned;
+    SmTArray<ULONG> counts;
+    SmTArray<const SmCurve*> curves;
+    for (size_t i = 0; i < s.counts.size(); i++)
+        counts.Add((ULONG)s.counts[i]);
+    const double* d = s.curves.data();
+    size_t at = 0;
+    while (at < s.curves.size())
+    {
+        int64_t p = (int64_t)d[at++];
+        int64_t n1 = (int64_t)d[at++];
+        gw_CURVE* cur = sm_AllocateNurbCurve((gw_INDEX)(n1 - 1), (gw_DEGREE)p, (gw_INDEX)(n1 + p));
+        for (int64_t j = 0; j < n1; j++)
+        {
+            cur->pol->Pw[j].x = d[at++];
+            cur->pol->Pw[j].y = d[at++];
+            cur->pol->Pw[j].z = d[at++];
+            cur->pol->Pw[j].w = d[at++];
+        }
+        for (int64_t j = 0; j <= n1 + p; j++)
+            cur->knt->U[j] = d[at++];
+        owned.push_back(new (ctx) SmBSplineCurve(cur, 3, FALSE));
+        curves.Add(owned.back());
+    }
+    SmApiStatus stat = SmApiCreateSkinPrimitive(counts, curves, (ULONG)s.d[0],
+                                                s.d[1] != 0.0 ? TRUE : FALSE, r, NULL, NULL, NULL);
+    for (size_t i = 0; i < owned.size(); i++)
+        delete owned[i];
+    return stat;
 }
 
 std::vector<BrepSpec> read_specs(Rd& rd, int64_t max)
@@ -151,6 +266,29 @@ SmBrep* build(const BrepSpec& s)
     case BK_BOX: stat = SmApiCreateBox(o, s.d[3], s.d[4], s.d[5], r); break;
     case BK_SPHERE: stat = SmApiCreateSphere(o, s.d[3], r); break;
     case BK_PLANE: stat = SmApiCreatePlane(o, s.d[3], s.d[4], r); break;
+    case BK_TORUS: stat = SmApiCreateTorus(o, s.d[3], s.d[4], r); break;
+    case BK_SKIN: stat = build_skin(s, r); break;
+    case BK_MOVED:
+    {
+        r = build(s.sub[0]);
+        stat = SM_SUCCESS;
+        const std::vector<double>& p = s.steps;
+        for (size_t i = 0; i < p.size() && stat == SM_SUCCESS;)
+        {
+            if ((int32_t)p[i] == STEP_ROTATE)
+            {
+                stat = SmApiRotate(r, SmVector3d(p[i + 1], p[i + 2], p[i + 3]),
+                                   SmVector3d(p[i + 4], p[i + 5], p[i + 6]), p[i + 7]);
+                i += 8;
+            }
+            else
+            {
+                stat = SmApiTranslate(r, SmVector3d(p[i + 1], p[i + 2], p[i + 3]));
+                i += 4;
+            }
+        }
+        break;
+    }
     case BK_BOOLEAN:
     {
         SmBrep* a = build(s.sub[0]);
@@ -177,6 +315,11 @@ SmBrep* build(const BrepSpec& s)
         }
         break;
     }
+    }
+    if (s.kind == BK_TORUS && stat != SM_SUCCESS)
+    {
+        delete r;
+        throw TorusFailed{st(stat)};
     }
     if (stat != SM_SUCCESS || r == NULL)
     {
@@ -243,6 +386,36 @@ void put_brep(std::vector<double>& o, const SmBrep* b)
     }
 }
 
+// Accuracies of the OP_MEASURED queries: SmApiBrepComputeVolume clamps to [1e-8, 1e-1],
+// SmApiFaceComputeArea to [1e-4, 1e-1].
+const double VOLUME_ACCURACY = 1e-6;
+const double AREA_ACCURACY = 1e-4;
+
+// OP_MEASURED's tail: `volume_status volume faces` then the face areas in ascending order
+// (a face whose SmApiFaceComputeArea fails counts as minus its status), then the number of
+// those values, so the reader can split them from the integer record before them.
+void put_measures(std::vector<double>& o, SmBrep* b)
+{
+    size_t start = o.size();
+    double volume = 0.0;
+    SmApiStatus vstat = SmApiBrepComputeVolume(b, VOLUME_ACCURACY, volume);
+    o.push_back(st(vstat));
+    o.push_back(vstat == SM_SUCCESS ? volume : 0.0);
+    SmTArray<SmFace*> faces;
+    b->GetFaces(faces);
+    o.push_back((double)faces.GetSize());
+    std::vector<double> areas;
+    for (ULONG i = 0; i < faces.GetSize(); i++)
+    {
+        double area = 0.0;
+        SmApiStatus astat = SmApiFaceComputeArea(faces[i], AREA_ACCURACY, area);
+        areas.push_back(astat == SM_SUCCESS ? area : -(double)st(astat));
+    }
+    std::sort(areas.begin(), areas.end());
+    o.insert(o.end(), areas.begin(), areas.end());
+    o.push_back((double)(o.size() - start));
+}
+
 // Whether upstream keeps the second operand of a successful two-B-rep boolean
 // (source/SM_API/inc/SmApiBrep.h).
 bool keeps_other(int32_t op, bool keep_option)
@@ -268,6 +441,11 @@ void run_two(Rd& rd, int32_t api, std::vector<double>& o)
         for (int i = 0; i < 5; i++)
             flags[i] = rd.flag();
         break;
+    case OP_MEASURED:
+        // SmApiBooleanWithOptions with only bBooleanPostProcess chosen
+        op = (int32_t)rd.idx(0, 10);
+        flags[2] = rd.flag();
+        break;
     default: throw Bad();
     }
     if (rd.at != rd.n)
@@ -289,6 +467,7 @@ void run_two(Rd& rd, int32_t api, std::vector<double>& o)
     case OP_INTERSECTION: stat = SmApiBooleanIntersection(b1, b2, res); break;
     case OP_MERGE: stat = SmApiBooleanMerge(b1, b2, res); break;
     case OP_WITH_OPTIONS:
+    case OP_MEASURED:
         stat = SmApiBooleanWithOptions(b1, b2, eop, flags[0], flags[1], flags[2], flags[3],
                                        flags[4], res);
         break;
@@ -315,6 +494,8 @@ void run_two(Rd& rd, int32_t api, std::vector<double>& o)
         put_brep(o, b2);
         delete b2;
     }
+    if (api == OP_MEASURED)
+        put_measures(o, res);
     delete res; // b1 itself on the documented path; any other b1 is left (ownership unknown)
 }
 
@@ -418,7 +599,7 @@ void run_trees(Rd& rd, std::vector<double>& o)
 
 void run(Rd& rd, std::vector<double>& o)
 {
-    int32_t api = (int32_t)rd.idx(1, 9);
+    int32_t api = (int32_t)rd.idx(1, 10);
     switch (api)
     {
     case OP_BOOLEAN:
@@ -426,7 +607,8 @@ void run(Rd& rd, std::vector<double>& o)
     case OP_DIFFERENCE:
     case OP_INTERSECTION:
     case OP_MERGE:
-    case OP_WITH_OPTIONS: run_two(rd, api, o); break;
+    case OP_WITH_OPTIONS:
+    case OP_MEASURED: run_two(rd, api, o); break;
     case OP_MERGE_BREPS: run_merge_breps(rd, o); break;
     case OP_LISTS: run_lists(rd, o); break;
     case OP_TREES: run_trees(rd, o); break;
@@ -449,6 +631,12 @@ SC_EXPORT int32_t sc_boolean_api_brep_run(const double* in, int64_t n_in, double
     catch (const Bad&)
     {
         return SC_ERR_ARG;
+    }
+    catch (const TorusFailed& t)
+    {
+        o.clear();
+        o.push_back(t.status);
+        o.push_back(2.0);
     }
     return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
     SC_CATCH

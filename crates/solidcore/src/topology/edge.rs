@@ -1628,7 +1628,7 @@ pub fn is_seam_of_surface(
     let edge_tol = tolerance(b, e)?;
 
     // surface must be closed
-    let dom = surface.natural_uv_domain();
+    let dom = surface.natural_uv_domain_with_nurb(k)?;
     if !(surface
         .is_closed(k, &dom, SurfParamType::U, Some(edge_tol), false)?
         .0
@@ -1795,14 +1795,20 @@ pub fn is_topological(
             .surface
             .as_ref()
             .ok_or_else(|| null("IsTopological: face without surface"))?;
-        Ok((f, s.clone()))
+        // Upstream reads `pFace->GetSurface()` itself. An evaluation copy keeps the
+        // face owner, whose tolerance `IsPlanar`'s pseudo box is expanded by; a plain
+        // clone drops it, so a curved B-spline face could pass as planar.
+        Ok((f, s.clone_for_evaluation()?))
     };
     // 1st edgeuse locals
     let (face1, surf1) = face_of(eu_a)?;
     // 3rd edgeuse locals = same oriented edgeuse on different face to edgeuse[0]
     let (face2_, surf2) = face_of(eu_c)?;
     let surfs = [&surf1, &surf2];
-    let uv_domain = [surf1.natural_uv_domain(), surf2.natural_uv_domain()];
+    let uv_domain = [
+        surf1.natural_uv_domain_with_nurb(k)?,
+        surf2.natural_uv_domain_with_nurb(k)?,
+    ];
     let same_surf = face1 == face2_;
 
     let samples: [f64; 3] = [0.37, 0.57, 0.82];

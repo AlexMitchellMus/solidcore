@@ -9,6 +9,7 @@
 //! | [`Cone::is_nurb_surface_cone`]               | `SmCone::IsNurbSurfaceCone`                      |
 //! | [`Cone::rebuild_step_from_nurb_parameters`]  | `SmCone::RebuildSTEPFromNURBParameters`          |
 //! | [`ellipse_trim_intervals`]                   | `sm_GetEllipseTrimIntervals` (file static)       |
+//! | `is_cone_point_in_trim_domain` (private)     | `sm_IsConePointInTrimDomain` (file static)       |
 //! | [`Cone::reparameterize`]                     | `SmSurfOfRevolution::Reparameterize` (inherited; its polar converter rebuild calls the cone's iso curves) |
 //! | [`Cone::trim_with_domain`]                  | `SmSurfOfRevolution::TrimWithDomain` (inherited; its conversions and NURB rebuilds call the cone's virtuals) |
 //! | [`Cone::base_mut`]                           | `GetGwNurbPointer` (non-`const`, inherited)      |
@@ -19,19 +20,30 @@
 //!   `Some` when upstream returns `TRUE`; the trim intervals are returned.
 //! - **Statuses.** Calls whose status upstream ignores keep upstream's values
 //!   (`SmPoint3d` outputs stay `SM_UNDEF_DOUBLE`, a failed `AngleBetween` is `0`),
-//!   except that [`SolidError::Unported`] always propagates. Where upstream returns an
-//!   error status through `SER` from a function returning `SmBoolean`
-//!   (`IsNurbSurfaceCone`: a failed iso curve) the error is returned; upstream's caller
-//!   would read that status as `TRUE` with a `NULL` cone.
+//!   except that [`SolidError::Unported`] always propagates.
 //! - **Uninitialised reads.** A failed `ConvertUVFromNURBSToSTEP` in
 //!   [`Cone::trim_with_domain`] (upstream ignores the status and reads the corner it may
 //!   not have written) returns the error. `sm_GetEllipseTrimIntervals` ignores the status of
 //!   `smgu_LinePlaneIntersect` and then reads its parameter: a seam line parallel to
 //!   the ellipse plane (or of zero length) returns the error here. A failed
-//!   `ConvertUVFromNURBSToSTEP` (upstream then uses a default-constructed domain) and
-//!   `GetHeight` failures are returned too. A STEP inversion of the cone that fails in
+//!   `ConvertUVFromNURBSToSTEP` there leaves the default-constructed domain, as
+//!   upstream. A STEP inversion of the cone that fails in
 //!   the generator solve returns the error (upstream keeps the location it had already
 //!   classified); its other failures leave `SM_LT_EXTERIOR`, as upstream.
+//! - **Seam lines of the ellipse trim (opt-in,
+//!   [`UpstreamFixes::ellipse_trim_seam_lines_span_cone_height`](crate::kernel::UpstreamFixes::ellipse_trim_seam_lines_span_cone_height),
+//!   WR-490).** `sm_GetEllipseTrimIntervals` takes the end circles at the cone's own
+//!   height and classifies through the cone's STEP inversion, which ignores the domain,
+//!   but evaluates the two seam lines on the given domain's v range. A face trimmed along
+//!   its axis then loses the seam crossing that lies in its trimmed-off part; with no
+//!   crossing left the ellipse is returned as outside, and two equal cylinders with
+//!   crossing axes lose half their intersection (a union drops a body, status OK). With
+//!   the field set, the seam lines span the cone's whole height too and only their sweep
+//!   comes from the domain, as the SolidCraft fork does; the face's own trims are applied
+//!   by its caller. By default the seam lines use the domain, as upstream does. Since
+//!   v1.0.1 the trim circles sit at the domain's v limits and the segments are classified
+//!   against the domain, so such an ellipse keeps its part inside the domain either way.
+//!   See `plan/upstream-issues/WR-490--ellipse-trim-seam-lines-on-trimmed-domain.md`.
 //! - **Offset factory.** The apex-truncation branch dereferences the result of
 //!   `CreateCanonical` without checking its status (a `NULL` cone crashes, a
 //!   non-finite height recurses without bound); here that construction's error is
@@ -62,6 +74,7 @@ use crate::geom::geom_utility::p1::{
 };
 use crate::geom::geom_utility::p2::{circle_plane_intersect, CurveIntersection};
 use crate::geom::tol::{approx_tol3d, is_zero};
+use crate::geom::vector2d::Point2;
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
 use crate::math::{max2, min2, EFF_ZERO, EFF_ZERO_SQRT, PI};
@@ -132,6 +145,21 @@ fn mid_point(curve: &BSplineCurve) -> Result<Point3> {
     Ok(ignored(curve.evaluate_point(curve.natural_interval().mid()))?.unwrap_or(Vec3::UNDEF))
 }
 
+/// The sweep iso curve of `s` at `knot`, or `None` when its construction fails
+/// (upstream `return FALSE`; an unported dependency still propagates).
+fn iso_curve(
+    k: &Kernel,
+    s: &BSplineSurface,
+    sweep: SurfParamType,
+    knot: f64,
+) -> Result<Option<BSplineCurve>> {
+    match s.create_iso_parametric_curve(k, sweep, knot, IsoCurveOptions::default()) {
+        Ok(iso) => Ok(Some(iso.curve)),
+        Err(e @ SolidError::Unported { .. }) => Err(e),
+        Err(_) => Ok(None),
+    }
+}
+
 /// The top and bottom circles of the sweep iso curves at `top_knot` and `bot_knot`
 /// (with a zero-radius circle at a vertex), or `None` when they are not two arcs or an
 /// arc and a degenerate curve.
@@ -144,12 +172,13 @@ fn end_circles(
     scaled_zero: f64,
 ) -> Result<Option<(IsoArc, IsoArc)>> {
     // make temporary Top and Bot BSPline isoParameter curves - hopefully arc shapes
-    let top_iso = s
-        .create_iso_parametric_curve(k, sweep, top_knot, IsoCurveOptions::default())?
-        .curve;
-    let bot_iso = s
-        .create_iso_parametric_curve(k, sweep, bot_knot, IsoCurveOptions::default())?
-        .curve;
+    // (a failed curve is not a cone)
+    let Some(top_iso) = iso_curve(k, s, sweep, top_knot)? else {
+        return Ok(None);
+    };
+    let Some(bot_iso) = iso_curve(k, s, sweep, bot_knot)? else {
+        return Ok(None);
+    };
 
     // classify IsoparamCurves
     let top_degenerate = top_iso.is_degenerate(k, scaled_zero, None)?;
@@ -269,6 +298,18 @@ impl Cone {
 
     // ---- CreateOffsetSurface -----------------------------------------------------
 
+    /// Not upstream (`SmSurface::OffsetCollapses`, WR-464): whether the offset by
+    /// `signed_offset_distance` has both radii below the tolerance, i.e. shrinks the cone
+    /// (or cylinder) onto its axis, where [`Self::create_offset_surface`] gives no surface.
+    #[must_use]
+    pub fn offset_collapses(&self, k: &Kernel, signed_offset_distance: f64, tol: f64) -> bool {
+        let tol = approx_tol3d(k, tol);
+        let sign =
+            if self.rev.swap_uv { -1.0 } else { 1.0 } * if self.inside_out { -1.0 } else { 1.0 };
+        let d = (self.semi_angle_deg * PI / 180.0).cos() * sign * signed_offset_distance;
+        self.bot_radius() + d < tol && self.top_radius() + d < tol
+    }
+
     /// The cone offset by `signed_offset_distance` along the NURB normal (negated with
     /// [`crate::surface::surf_of_revolution::SurfOfRevolution::swap_uv`] and with
     /// [`Self::inside_out`]) (`CreateOffsetSurface`). The radii change by
@@ -325,6 +366,7 @@ impl Cone {
         let mut new_top_radius = old_top_radius + off_rad_dist;
 
         // If both top and bottom are negative then don't create result
+        // (`Self::offset_collapses`: the test of `SmSurface::OffsetCollapses`)
         if new_bot_radius < approx_tol_3d && new_top_radius < approx_tol_3d {
             return Ok(None);
         }
@@ -515,8 +557,7 @@ impl Cone {
     ///
     /// # Errors
     ///
-    /// Those of the iso curves (upstream returns that status as its `SmBoolean`); those
-    /// of the arc test.
+    /// Those of the arc test (a failed iso curve is not a cone).
     pub fn is_nurb_surface_cone(
         k: &Kernel,
         test_surface: &BSplineSurface,
@@ -610,9 +651,9 @@ impl Cone {
         // check for not a cone - a middle arc must also be concentric with axis, and in
         // a parallel plane
         let mid_param = (bot_knot + top_knot) / 2.0;
-        let mid_iso = test_surface
-            .create_iso_parametric_curve(k, sweep_iso_param, mid_param, IsoCurveOptions::default())?
-            .curve;
+        let Some(mid_iso) = iso_curve(k, test_surface, sweep_iso_param, mid_param)? else {
+            return Ok(None);
+        };
 
         // It must be circular.
         let Some(mid) = iso_arc(k, &mid_iso, scaled_zero)? else {
@@ -878,18 +919,24 @@ impl Cone {
 
 // ---- sm_GetEllipseTrimIntervals ----------------------------------------------------
 
-/// The location the cone's `STEPInversion` writes for `point` (its status is ignored
-/// upstream).
-fn cone_location(k: &Kernel, cone: &Cone, point: Point3, tol: f64) -> Result<LocationType> {
+/// The location and STEP parameters the cone's `STEPInversion` writes for `point` (its
+/// status is ignored upstream). The parameters are only read for a location other
+/// than `SM_LT_EXTERIOR`; they are `SM_UNDEF_DOUBLE` where a failure sets that location.
+fn cone_inversion(
+    k: &Kernel,
+    cone: &Cone,
+    point: Point3,
+    tol: f64,
+) -> Result<(LocationType, Point2)> {
     match cone.step_inversion(k, point, tol, None) {
-        Ok(inv) => Ok(inv.location),
+        Ok(inv) => Ok((inv.location, inv.uv)),
         Err(e) if e.is_unported() => Err(e),
         // rotated point not on the generator: upstream sets SM_LT_EXTERIOR
         Err(SolidError::Upstream {
             operation: OP_REV_STEP_INV,
             code: SM_ERR,
             ..
-        }) => Ok(LocationType::Exterior),
+        }) => Ok((LocationType::Exterior, Point2::UNDEF)),
         Err(e) => {
             // a failed TransformPointToStartPlane returns after SM_LT_EXTERIOR is set
             let pos = cone.positive_point(k, point)?;
@@ -898,12 +945,40 @@ fn cone_location(k: &Kernel, cone: &Cone, point: Point3, tol: f64) -> Result<Loc
                 .transform_point_to_start_plane(pos.point, tol, false)
                 .is_err()
             {
-                Ok(LocationType::Exterior)
+                Ok((LocationType::Exterior, Point2::UNDEF))
             } else {
                 Err(e)
             }
         }
     }
+}
+
+/// Whether `point` on `cone` lies inside the STEP trim domain `anal_uv_domain`
+/// (`sm_IsConePointInTrimDomain`): the cone's STEP inversion ignores the domain and
+/// only reports whether the point is inside the whole cone, so the height must be in
+/// the domain's v interval and the angle (arbitrary at a pole) in its u interval.
+fn is_cone_point_in_trim_domain(
+    k: &Kernel,
+    cone: &Cone,
+    anal_uv_domain: &Extent2d,
+    point: Point3,
+    tol: f64,
+) -> Result<bool> {
+    let (loc, step_uv) = cone_inversion(k, cone, point, tol)?;
+    if loc == LocationType::Exterior {
+        return Ok(false);
+    }
+
+    if !anal_uv_domain.v_interval().contains_value(step_uv.y, tol) {
+        return Ok(false);
+    }
+
+    // the sweep angle is arbitrary at a pole
+    Ok(loc == LocationType::Pole
+        || anal_uv_domain
+            .u_interval()
+            .contains_periodic_value(step_uv.x, 360.0, -1.0)
+            .contained)
 }
 
 /// The segment classification of `sm_GetEllipseTrimIntervals` (`bInside[ii]`).
@@ -920,17 +995,18 @@ enum Inside {
 /// The intervals (in degrees of the ellipse's STEP domain) of the ellipse
 /// `origin + x_radius cos(t) x_axis + y_radius sin(t) y_axis`, known to lie on the
 /// cone, that are inside the cone trimmed to its NURB domain `uv_domain`
-/// (`sm_GetEllipseTrimIntervals`). The full ellipse is intersected with the top and
-/// bottom circles (two-point crossings inside the sweep only) and the two seam lines
-/// (within the scaled zero of their ends, or always when a circle lies in the ellipse
-/// plane); the crossing angles, sorted, cut it into segments whose midpoints are
-/// classified by the cone's STEP inversion (a degenerate segment is inside when both
-/// neighbours are outside). Every inside segment is intersected periodically with
+/// (`sm_GetEllipseTrimIntervals`). The full ellipse is intersected with the trim
+/// circles at the v limits of the trim domain (two-point crossings inside the sweep
+/// interval only) and the two seam lines (within the larger of the scaled zero and
+/// `tol` of their ends, or always when a circle lies in the ellipse plane); the
+/// crossing angles, sorted, cut it into segments whose midpoints are classified
+/// against the trim domain (a degenerate segment is inside when both neighbours are
+/// outside). Every inside segment is intersected periodically with
 /// `[start_ang_deg, end_ang_deg]`. Fewer than two crossings give no interval.
 ///
 /// # Errors
 ///
-/// Those of [`Ellipse::new`] and [`Cone::height`]; a seam line parallel to the
+/// Those of [`Ellipse::new`]; a seam line parallel to the
 /// ellipse plane or of zero length (upstream then reads uninitialised values); a STEP
 /// inversion failing in the generator solve. A failed NURB to STEP conversion of the
 /// domain corners is ignored as upstream does: the default-constructed domain is used.
@@ -970,12 +1046,6 @@ pub fn ellipse_trim_intervals(
         },
     )?;
 
-    // cone locals
-    let height = cone.height(k)?;
-    let cone_axis = cone.rev.position.z_axis();
-    let center_bot = cone.rev.position.origin() + cone.rev.anal_uv_domain.min().y * cone_axis;
-    let center_top = center_bot + height * cone_axis;
-
     // map given NurbDomain into StepDomain (SmSurface::ConvertDomainFromNURBSToSTEP,
     // status ignored: a failed corner conversion leaves the default-constructed
     // domain, a reversed result is replaced by the NURB domain)
@@ -996,14 +1066,31 @@ pub fn ellipse_trim_intervals(
             }
         }
     }
+    let sweep_ivl = anal_uv_domain.u_interval();
+
+    // cone locals - bottom and top trim circles sit at the v limits of the trim domain,
+    //               which may be a subset of the whole cone
+    let cone_axis = cone.rev.position.z_axis();
+    let bot_height = anal_uv_domain.min().y;
+    let top_height = anal_uv_domain.max().y;
+    let bot_radius = cone.radius(bot_height);
+    let top_radius = cone.radius(top_height);
+    let center_bot = cone.rev.position.origin() + bot_height * cone_axis;
+    let center_top = cone.rev.position.origin() + top_height * cone_axis;
 
     // get cone corners [StartLine start, StartLine end, EndLine start EndLine end]
-    // (statuses ignored)
+    // (statuses ignored). Opt-in (WR-490): the seam lines span the cone's whole height,
+    // as the end circles and the classification do; only their sweep comes from
+    // `uv_domain`. By default their v range comes from `uv_domain` too, as upstream.
+    let seam_domain = if k.fixes.ellipse_trim_seam_lines_span_cone_height {
+        let cone_v = cone.rev.anal_uv_domain.v_interval();
+        let sweep = anal_uv_domain.u_interval();
+        Extent2d::from_bounds(sweep.min(), cone_v.min(), sweep.max(), cone_v.max())
+    } else {
+        anal_uv_domain
+    };
     let corner = |u: f64, v: f64| -> Result<Point3> {
-        Ok(
-            ignored(cone.evaluate_step_point(anal_uv_domain.evaluate(u, v)))?
-                .unwrap_or(Vec3::UNDEF),
-        )
+        Ok(ignored(cone.evaluate_step_point(seam_domain.evaluate(u, v)))?.unwrap_or(Vec3::UNDEF))
     };
     let corners = [
         corner(0.0, 0.0)?,
@@ -1029,8 +1116,8 @@ pub fn ellipse_trim_intervals(
         ))?
         .unwrap_or(CurveIntersection::Points(Vec::new())))
     };
-    let mut tsect1 = circle_hits(cone.top_radius(), center_top)?;
-    let mut tsect2 = circle_hits(cone.bot_radius(), center_bot)?;
+    let mut tsect1 = circle_hits(top_radius, center_top)?;
+    let mut tsect2 = circle_hits(bot_radius, center_bot)?;
     let param0 = line_plane_intersect(corner0, start_line_vec, ellipse_origin, ellipse_z)?;
     let param1 = line_plane_intersect(corner2, end_line_vec, ellipse_origin, ellipse_z)?;
 
@@ -1058,8 +1145,14 @@ pub fn ellipse_trim_intervals(
         }
         for &point in points {
             // map XSectPoint to ConeUV point
-            let loc = cone_location(k, cone, point, tol)?;
-            if loc == LocationType::Interior && loc != LocationType::USeam {
+            let (loc, cone_step_uv) = cone_inversion(k, cone, point, tol)?;
+            // skip circle intersections on seams because the line intersections will
+            // catch seam intersections
+            if loc == LocationType::Interior
+                && sweep_ivl
+                    .contains_periodic_value(cone_step_uv.x, 360.0, -1.0)
+                    .contained
+            {
                 // add ellipse angleDeg for intersection to in/out angle array
                 xsect_angle.push(full_ellipse.step_inversion(k, point, false, 0.0).0);
             }
@@ -1068,11 +1161,24 @@ pub fn ellipse_trim_intervals(
 
     // for StartSeamLine/ellipse and EndSeamLine/ellipse xSects
     let scaled_zero = EFF_ZERO * (1.0 + max2(corner0.max_dimension(), corner3.max_dimension()));
-    for (line_start, line_vec, param) in [
-        (corner0, start_line_vec, param0),
-        (corner2, end_line_vec, param1),
+
+    // circle crossings within tol of a seam line were skipped above,
+    // so seam line crossings within tol of the line ends must be kept here
+    let param_tol = |line_vec: Vec3| {
+        let len = line_vec.length();
+        if len > EFF_ZERO {
+            max2(scaled_zero, tol / len)
+        } else {
+            scaled_zero
+        }
+    };
+    let start_param_tol = param_tol(start_line_vec);
+    let end_param_tol = param_tol(end_line_vec);
+    for (line_start, line_vec, param, param_tol) in [
+        (corner0, start_line_vec, param0, start_param_tol),
+        (corner2, end_line_vec, param1, end_param_tol),
     ] {
-        if coincident || (param >= 0.0 - scaled_zero && param <= 1.0 + scaled_zero) {
+        if coincident || (param >= 0.0 - param_tol && param <= 1.0 + param_tol) {
             let point = line_start + param * line_vec;
             xsect_angle.push(full_ellipse.step_inversion(k, point, false, 0.0).0);
         }
@@ -1121,12 +1227,15 @@ pub fn ellipse_trim_intervals(
         // classify nonDegenerate interval midPoint
         let mid_ang_deg = (end_ang_deg + start_ang_deg) / 2.0;
         let mid_point = full_ellipse.evaluate_step_point(mid_ang_deg)?;
-        let loc = cone_location(k, cone, mid_point, tol)?;
-        inside.push(if loc == LocationType::Exterior {
-            Inside::No
-        } else {
-            Inside::Yes
-        });
+
+        // Remember if segment MidPointUV is within cone trim boundaries
+        inside.push(
+            if is_cone_point_in_trim_domain(k, cone, &anal_uv_domain, mid_point, tol)? {
+                Inside::Yes
+            } else {
+                Inside::No
+            },
+        );
     }
 
     // add one interval to output for every inside segment
@@ -1475,5 +1584,90 @@ mod tests {
         // the circle lies in no seam-line plane crossing: the result is whatever the
         // classification gives, but it must not fail
         assert!(ivls.is_ok());
+    }
+
+    /// WR-490: total length (deg) of the trim intervals of an ellipse on a cylinder r 10,
+    /// h 100 trimmed to v >= 30, with `ellipse_trim_seam_lines_span_cone_height` set to
+    /// `fix`, and of the same ellipse on the natural domain.
+    fn ellipse_on_a_trimmed_cylinder(fix: bool) -> (f64, f64) {
+        // A face already joined to another body: the ellipse of a plane through the axis
+        // point (0, 0, 50) that meets the seam (x = 10, y = 0) only at its lowest point,
+        // z = 20, in the trimmed-off part. Upstream takes the seam lines from the trimmed
+        // domain: at c9c5979 no crossing at all, and the ellipse came back as outside the
+        // cylinder; v1.0.1 adds the trim circle at v = 30 (see the tests below).
+        let mut k = kernel();
+        k.fixes.ellipse_trim_seam_lines_span_cone_height = fix;
+        let cyl = canonical(&k, 10.0, 10.0, 100.0, false, false);
+        let d = cyl.rev().base().natural_uv_domain();
+        let (lo, hi) = (d.min(), d.max());
+        let trim = Extent2d::from_bounds(lo.x, lo.y + 0.3 * (hi.y - lo.y), hi.x, hi.y);
+        let step_min = cyl.convert_uv_from_nurbs_to_step(&k, trim.min()).unwrap();
+        assert!(step_min.y > 20.0 + 1e-6 && step_min.y < 50.0);
+        let x = Vec3::new(1.0, 0.0, -3.0) * (1.0 / 10.0_f64.sqrt());
+        let rx = 1000.0_f64.sqrt();
+        let lowest = Vec3::new(0.0, 0.0, 50.0) + rx * x;
+        assert!((lowest - Vec3::new(10.0, 0.0, 20.0)).length() < 1e-12);
+        let ivls = ellipse_trim_intervals(
+            &k,
+            Vec3::new(0.0, 0.0, 50.0),
+            x,
+            Vec3::new(0.0, 1.0, 0.0),
+            rx,
+            10.0,
+            0.0,
+            360.0,
+            &cyl,
+            &trim,
+            1e-6,
+        )
+        .unwrap();
+        let natural = ellipse_trim_intervals(
+            &k,
+            Vec3::new(0.0, 0.0, 50.0),
+            x,
+            Vec3::new(0.0, 1.0, 0.0),
+            rx,
+            10.0,
+            0.0,
+            360.0,
+            &cyl,
+            &d,
+            1e-6,
+        )
+        .unwrap();
+        let total = |v: &[Extent1d]| v.iter().map(Extent1d::length).sum::<f64>();
+        (total(&ivls), total(&natural))
+    }
+
+    /// The part of the ellipse of [`ellipse_on_a_trimmed_cylinder`] inside the trimmed
+    /// domain: `z = 50 - 30 cos t >= 30`, so `cos t <= 2/3`.
+    fn ellipse_part_above_v30() -> f64 {
+        360.0 - 2.0 * (2.0_f64 / 3.0).acos().to_degrees()
+    }
+
+    #[test]
+    fn seam_crossing_below_a_trimmed_domain_keeps_the_ellipse() {
+        // WR-490, opt-in: the seam lines span the cylinder's height; since v1.0.1 the
+        // trim circles sit at the trim domain's v limits, so the part of the ellipse
+        // inside the trimmed domain, as without the field
+        let (trimmed, natural) = ellipse_on_a_trimmed_cylinder(true);
+        assert!((natural - 360.0).abs() < 1e-9);
+        assert!(
+            (trimmed - ellipse_part_above_v30()).abs() < 1e-9,
+            "{trimmed}"
+        );
+    }
+
+    #[test]
+    fn seam_crossing_below_a_trimmed_domain_keeps_the_part_inside_by_default() {
+        // WR-490, default: v1.0.1 intersects the ellipse with the trim circle at v = 30
+        // and classifies against the trim domain, so the part above it (the C++ 1.0.1
+        // agrees: surface.cone_p2 fixture wr490_ellipse_on_cylinder_trimmed_v30)
+        let (trimmed, natural) = ellipse_on_a_trimmed_cylinder(false);
+        assert!((natural - 360.0).abs() < 1e-9);
+        assert!(
+            (trimmed - ellipse_part_above_v30()).abs() < 1e-9,
+            "{trimmed}"
+        );
     }
 }

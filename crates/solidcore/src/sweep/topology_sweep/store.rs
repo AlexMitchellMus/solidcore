@@ -16,7 +16,9 @@
 //! HCR entries own their actual scene; no scene copy is kept. Native dependency
 //! errors and partial geometry are preserved. No numerical algorithm or recursion
 //! is introduced. Destruction releases the Rust-owned registry/attribute state;
-//! the unported native B-rep destructor is not emulated.
+//! the unported native B-rep destructor is not emulated. `RemoveFaces`,
+//! `RemoveAllTopology` and the sweep stitch edit through the context the store has
+//! already lent to the edit (the trait defaults lend it again and fail).
 
 pub(crate) mod classification;
 mod merge;
@@ -131,6 +133,12 @@ pub trait SweepIdentities {
     fn new_curve(&self, _brep: BrepId, _edge: EdgeId, _type_code: i64) -> Result<ObjectRef> {
         Err(invalid("new split curve needs its caller identity"))
     }
+    /// Whether a curve the merge allocates at an edge split takes its actual Curve
+    /// identity from the edit's notification context when it is constructed
+    /// (`p9::CurveIdentity::Actual`), instead of [`Self::new_curve`].
+    fn actual_curve_identities(&self) -> bool {
+        false
+    }
     /// Reserve two distinct non-object handles for each primary region's merge
     /// source lists. They must not collide with topology, geometry or other lists.
     fn source_lists(
@@ -152,6 +160,10 @@ impl core::fmt::Debug for Identities<'_> {
     }
 }
 impl Identities<'_> {
+    fn actual_curve_identities(self) -> bool {
+        self.0.is_some_and(SweepIdentities::actual_curve_identities)
+    }
+
     fn source_lists(
         self,
         namespace: u32,
@@ -552,6 +564,49 @@ impl<'a> SweepStore<'a> {
             )?
             .ok_or_else(|| SolidError::null_pointer(OP))
         })
+    }
+
+    /// [`Self::piecewise_merge_skipping`] after its leading `IntersectInsertRelate`
+    /// ([`crate::boolean::merge::p3::piecewise_merge_related`]): the caller has
+    /// already related the operands on its own intersector.
+    ///
+    /// # Errors
+    /// As [`Self::piecewise_merge_skipping`].
+    pub fn piecewise_merge_related_skipping(
+        &mut self,
+        id: SweepMergeId,
+        skip_pairs: Option<&Relation<ObjectRef, ObjectRef>>,
+        use_existing_topology: bool,
+        create_new_breps_for_faces: bool,
+    ) -> Result<BrepId> {
+        self.run_merge(id, |k, driver| {
+            crate::boolean::merge::p3::piecewise_merge_related(
+                k,
+                driver,
+                skip_pairs,
+                use_existing_topology,
+                create_new_breps_for_faces,
+            )?
+            .ok_or_else(|| SolidError::null_pointer(OP))
+        })
+    }
+
+    /// The `m_vTI` of a live merge session, for a caller that configures it as its
+    /// own `SmMerge` base does (`SmFilletExecutive` sets `m_bIgnoreTangency` and
+    /// `m_bDoingFillets`).
+    ///
+    /// # Errors
+    /// An unknown or released merge.
+    pub fn merge_intersector_mut(
+        &mut self,
+        id: SweepMergeId,
+    ) -> Result<&mut KernelManifoldIntersector> {
+        Ok(&mut self
+            .merges
+            .get_mut(id.0 as usize)
+            .and_then(Option::as_mut)
+            .ok_or_else(|| invalid("unknown or released merge"))?
+            .intersector)
     }
 
     fn insert_body(&mut self, context: ContextId, mut body: Body<'a>) -> Result<BrepId> {
@@ -1160,6 +1215,66 @@ impl SweepAccess for SweepStore<'_> {
             None,
             None,
         )
+    }
+    /// `SmBrep::RemoveFaces`, notifying the store's lent context. The default's
+    /// kernel-callback variant would lend that context a second time.
+    fn remove_faces(&mut self, brep: BrepId, faces: &[FaceId]) -> Result<()> {
+        self.with_brep_mut(brep, |kernel, brep, _, env| {
+            let editing = brep.editing_enabled();
+            crate::topology::brep::p5::remove_faces_notified(kernel, brep, editing, faces, env)
+        })
+    }
+    /// `SmBrep::RemoveAllTopology`, notifying the store's lent context (as
+    /// [`Self::remove_faces`]).
+    fn remove_all_topology(&mut self, brep: BrepId) -> Result<()> {
+        self.with_brep_mut(brep, |kernel, brep, _, env| {
+            crate::topology::brep::p10::remove_all_topology_notified(kernel, brep, env)
+        })
+    }
+    /// `SmStitch(SmSweepStitchCallback, tol, TRUE, TRUE).DoStitching()`, editing
+    /// through the store's lent context (as [`Self::remove_faces`]). Split curves
+    /// take the caller's identities.
+    fn stitch(
+        &mut self,
+        brep: BrepId,
+        sweep: &mut super::TopologySweep,
+        tolerance: f64,
+        making_manifold_solid: bool,
+    ) -> Result<()> {
+        let identities = self.identities;
+        let new_curve = |edge: EdgeId, type_code: i64| {
+            identities
+                .0
+                .ok_or_else(|| invalid("new split curve needs its caller identity"))?
+                .new_curve(brep, edge, type_code)
+        };
+        self.with_brep_mut(brep, |kernel, model, _, env| {
+            let curve_identity = if identities.actual_curve_identities() {
+                crate::topology::brep::p9::CurveIdentity::Actual(
+                    &crate::topology::brep::p9::issue_curve_identity,
+                )
+            } else {
+                crate::topology::brep::p9::CurveIdentity::Checked(&new_curve)
+            };
+            let mut edits = crate::heal::stitch::p1::BorrowedStitchEdits {
+                env,
+                curve_identity,
+            };
+            let mut callback = super::access::SweepStitchCallback { brep, sweep };
+            let mut stitch =
+                crate::heal::stitch::p1::Stitch::new(&mut callback, tolerance, true, true);
+            stitch.making_manifold_solid = making_manifold_solid;
+            stitch.edits = Some(&mut edits);
+            stitch
+                .do_stitching(
+                    kernel,
+                    model,
+                    None,
+                    None,
+                    crate::heal::stitch::p2::MinGapRequest::default(),
+                )
+                .map(|_| ())
+        })
     }
 }
 

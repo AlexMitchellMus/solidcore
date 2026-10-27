@@ -4,8 +4,8 @@
 //!
 //! | Rust | Upstream |
 //! |------|----------|
-//! | [`FilletSolver::test_roll_over`] | `SmFilletSolver::TestRollOver` |
-//! | [`FilletSolver::process_roll_over`] | `SmFilletSolver::ProcessRollOver` |
+//! | [`FilletSolver::test_roll_over`], [`FilletSolver::test_roll_over_with_ops`] | `SmFilletSolver::TestRollOver` |
+//! | [`FilletSolver::process_roll_over`], [`FilletSolver::process_roll_over_with_ops`] | `SmFilletSolver::ProcessRollOver` |
 //!
 //! Deviations: pseudo-B-rep objects use typed arenas and geometry uses the same
 //! typed ids as the solver list. Completed mutations survive failures. Only unavailable
@@ -16,11 +16,12 @@
 //! Internal short intervals are retained in descending order for refinement.
 //! See `p5/recovery.rs` for the bounded segment-walk deviation. No recursion.
 
-use super::p1::FilletSolver;
+use super::p1::{FilletSolver, FilletSolverOps};
 use crate::blend::fillet_classification::{FilletClassObject, LegacyClassificationObjects};
 use crate::blend::fillet_geom::p1::{
-    FilletBrep, FilletCornerId, FilletCornerType, FilletGeomId, FilletGeomType,
+    CornerLookup, FilletBrep, FilletCornerId, FilletCornerType, FilletGeomId, FilletGeomType,
 };
+use crate::blend::fillet_geom::p3::SplitCorners;
 #[cfg(test)]
 use crate::curve::curve::p2::OwnerChange;
 use crate::error::{ignored, EntityRef, Result, SolidError};
@@ -36,6 +37,9 @@ use crate::topology::{edge, edgeuse::p1 as eu, edgeuse::p2, Brep, EdgeId, Edgeus
 
 #[path = "p5/recovery.rs"]
 mod recovery;
+
+#[path = "p5/rails_fit.rs"]
+mod rails_fit;
 
 const OP: &str = "blend::fillet_solver::p5";
 
@@ -77,6 +81,48 @@ pub trait RailClassificationContext {
     /// # Errors
     /// An unresolved corner.
     fn corner_type(&self, corner: FilletCornerId) -> Result<FilletCornerType>;
+    /// The executive's corner table (`m_vFilletCorners`), which the rollover
+    /// recovery's `CalcRailIntEdgeuse` reads.
+    fn corners(&self) -> CornerLookup<'_>;
+    /// Run `f` on the executive's corners as `ProcessRollOver` reaches them (the
+    /// corner type, `CalcRailIntEdgeuse`'s table, and `TopologySplit`'s
+    /// `GetFilletCornerOfVertex` and `AddFilletVertex`). The default is this
+    /// context's [`Self::corner_type`] and [`Self::corners`] without a vertex-corner
+    /// map (a caller without an executive).
+    ///
+    /// # Errors
+    /// Those of `f`.
+    fn with_split_corners(
+        &mut self,
+        f: &mut dyn FnMut(&mut dyn SplitCorners) -> Result<()>,
+    ) -> Result<()>
+    where
+        Self: Sized,
+    {
+        f(&mut ContextCorners(&*self))
+    }
+}
+
+/// A [`RailClassificationContext`]'s corner type and table as [`SplitCorners`]: no
+/// vertex has a corner (`GetFilletCornerOfVertex` is `NULL`).
+struct ContextCorners<'c, C>(&'c C);
+
+impl<C: RailClassificationContext> SplitCorners for ContextCorners<'_, C> {
+    fn corner_of_vertex(&self, _vertex: crate::topology::VertexId) -> Option<FilletCornerId> {
+        None
+    }
+    fn lookup(&self) -> CornerLookup<'_> {
+        self.0.corners()
+    }
+    fn corner_mut(
+        &mut self,
+        _id: FilletCornerId,
+    ) -> Result<&mut crate::blend::fillet_corner::p3::FilletCorner> {
+        Err(SolidError::null_pointer(OP))
+    }
+    fn corner_type(&self, id: FilletCornerId) -> Result<FilletCornerType> {
+        self.0.corner_type(id)
+    }
 }
 
 struct LegacyRolloverContext<'a, T>(&'a T);
@@ -112,6 +158,10 @@ impl<T: RolloverObjects> RailClassificationContext for LegacyRolloverContext<'_,
     }
     fn corner_type(&self, corner: FilletCornerId) -> Result<FilletCornerType> {
         self.0.corner_type(corner)
+    }
+    /// The legacy entry points hold no executive: an empty corner table.
+    fn corners(&self) -> CornerLookup<'_> {
+        CornerLookup::default()
     }
 }
 
@@ -159,7 +209,32 @@ impl FilletSolver {
         adjusted_corners: &mut Vec<FilletCornerId>,
         ownership: &mut impl RolloverOwnership,
     ) -> Result<()> {
-        let geoms = self.fillet_geoms();
+        Self::test_roll_over_with_ops(
+            self,
+            k,
+            target,
+            fillets,
+            context,
+            adjusted_corners,
+            ownership,
+        )
+    }
+
+    /// Classify rails and recover rollover with the actual concrete solver's virtuals.
+    /// Existing base entry points delegate to the same implementation.
+    ///
+    /// # Errors
+    /// As [`Self::test_roll_over_with_context`], retaining each mutation before failure.
+    pub fn test_roll_over_with_ops(
+        solver: &mut dyn FilletSolverOps,
+        k: &Kernel,
+        target: &mut Brep,
+        fillets: &mut FilletBrep,
+        context: &mut impl RailClassificationContext,
+        adjusted_corners: &mut Vec<FilletCornerId>,
+        ownership: &mut impl RolloverOwnership,
+    ) -> Result<()> {
+        let geoms = solver.solver().fillet_geoms();
         for id in geoms {
             for ii in 0..2 {
                 let rail = fillets
@@ -182,7 +257,7 @@ impl FilletSolver {
                         curve: Some(context.rail_curve(rail)),
                         interval: Some(interval),
                         uv_curve: context.rail_mate_uv_curve(fillets.brep(), mate),
-                        zone_tol_3d: self.approx_tol_3d,
+                        zone_tol_3d: solver.solver().approx_tol_3d,
                         ..ResetOptions::default()
                     },
                 )?;
@@ -195,8 +270,11 @@ impl FilletSolver {
                 fillets.with_rail_classification(rail, |pseudo, cc| {
                     context.classify(k, target, pseudo, face, cc)
                 })?;
+                if k.fixes.fillet_rail_rim_on_face {
+                    join_intervals_on_face(fillets, rail)?;
+                }
                 finish_classification(
-                    self,
+                    solver,
                     k,
                     target,
                     fillets,
@@ -206,23 +284,26 @@ impl FilletSolver {
                     &mut MissingClassification,
                 )?;
             }
-            self.process_roll_over(
-                k,
-                target,
-                fillets,
-                id,
-                &|corner| context.corner_type(corner),
-                adjusted_corners,
-                ownership,
-            )?;
+            context.with_split_corners(&mut |corners| {
+                Self::process_roll_over_with_ops(
+                    solver,
+                    k,
+                    target,
+                    fillets,
+                    id,
+                    corners,
+                    adjusted_corners,
+                    ownership,
+                )
+            })?;
         }
         Ok(())
     }
 
     /// Process an existing pair of rail classifications. Blend patches and
     /// single-interval rails that both remain classified need no repair.
-    /// `corner_type` resolves the corner on rail 0's start vertex only when full
-    /// rollover is needed; `adjusted_corners` is append-only upstream output.
+    /// `corners` resolves the type of the corner on rail 0's start vertex only when
+    /// full rollover is needed; `adjusted_corners` is append-only upstream output.
     ///
     /// # Errors
     /// A missing classification or corner returns `SM_ERR_NULL_POINTER`. Unsupported
@@ -234,19 +315,74 @@ impl FilletSolver {
         target: &mut Brep,
         fillets: &mut FilletBrep,
         id: FilletGeomId,
-        corner_type: &impl Fn(FilletCornerId) -> Result<FilletCornerType>,
+        corners: &mut dyn SplitCorners,
+        adjusted_corners: &mut Vec<FilletCornerId>,
+        ownership: &mut impl RolloverOwnership,
+    ) -> Result<()> {
+        Self::process_roll_over_with_ops(
+            self,
+            k,
+            target,
+            fillets,
+            id,
+            corners,
+            adjusted_corners,
+            ownership,
+        )
+    }
+
+    /// Process rollover through the actual concrete solver's virtual operations.
+    ///
+    /// # Errors
+    /// As [`Self::process_roll_over`], preserving the original mutation/error order.
+    #[allow(clippy::too_many_arguments)]
+    pub fn process_roll_over_with_ops(
+        solver: &mut dyn FilletSolverOps,
+        k: &Kernel,
+        target: &mut Brep,
+        fillets: &mut FilletBrep,
+        id: FilletGeomId,
+        corners: &mut dyn SplitCorners,
         adjusted_corners: &mut Vec<FilletCornerId>,
         ownership: &mut impl RolloverOwnership,
     ) -> Result<()> {
         recovery::Recovery {
-            solver: self,
+            solver,
             k,
             target,
             fillets,
+            corners,
             ownership,
         }
-        .process(id, corner_type, adjusted_corners, &mut recovery::Missing)
+        .process(id, adjusted_corners, &mut recovery::Missing)
     }
+}
+
+/// WR-301 (#485): the rail leaves its face only where it runs outside it. Neighbouring
+/// intervals on the face or on its boundary (a rail touching a vertex of the boundary or
+/// running along a piece of an edge, as a blend whose setback reaches exactly the rim of
+/// a hole does) are joined into one, so the rollover sees only the intervals that leave
+/// the face (tangency-labs/smlib `f6ed05a`).
+fn join_intervals_on_face(fillets: &mut FilletBrep, rail: EdgeId) -> Result<()> {
+    let cc = fillets
+        .fillet_edge_mut(rail)?
+        .curve_class
+        .as_mut()
+        .ok_or_else(|| SolidError::null_pointer(OP))?;
+    for index in (1..cc.size()).rev() {
+        let this = cc.at(index)?.mid;
+        let prev = cc.at(index - 1)?.mid;
+        if prev.point_class() == PointClassType::Unknown
+            || this.point_class() == PointClassType::Unknown
+        {
+            continue;
+        }
+        if prev.point_class() != PointClassType::Face {
+            cc.at_mut(index - 1)?.mid = this;
+        }
+        cc.connect_intervals(index, IntervalPosition::Start, false)?;
+    }
+    Ok(())
 }
 
 trait ClassificationOps {
@@ -276,7 +412,7 @@ trait ClassificationOps {
     }
     fn refine(
         &mut self,
-        solver: &mut FilletSolver,
+        solver: &mut dyn FilletSolverOps,
         k: &Kernel,
         target: &mut Brep,
         fillets: &mut FilletBrep,
@@ -290,7 +426,7 @@ trait ClassificationOps {
             .curve_class
             .take()
             .ok_or_else(|| SolidError::null_pointer(OP))?;
-        let result = super::p3::refine_rail_curve_classification_scoped(
+        let result = super::p3::refine_rail_curve_classification_scoped_with_ops(
             solver,
             k,
             target,
@@ -310,7 +446,7 @@ struct MissingClassification;
 impl ClassificationOps for MissingClassification {}
 
 fn finish_classification(
-    solver: &mut FilletSolver,
+    solver: &mut dyn FilletSolverOps,
     k: &Kernel,
     target: &mut Brep,
     fillets: &mut FilletBrep,
@@ -319,7 +455,7 @@ fn finish_classification(
     rail: EdgeId,
     ops: &mut impl ClassificationOps,
 ) -> Result<()> {
-    let small = squeeze_rail(k, fillets, rail, solver.approx_tol_3d, ops)?;
+    let small = squeeze_rail(k, fillets, rail, solver.solver().approx_tol_3d, ops)?;
     // Refinement is warning-only upstream, but retain its completed mutations
     // and propagate an unavailable implementation rather than faking success.
     ignored(ops.refine(solver, k, target, fillets, geom, which, rail, &small))?;
@@ -372,12 +508,37 @@ mod tests {
     use crate::intersect::point_class::PointClassType;
     use crate::math::Vec3;
 
+    /// A corner store resolving only corner types, through `F`.
+    struct CornerTypes<F>(F);
+
+    impl<F: Fn(FilletCornerId) -> Result<FilletCornerType>> SplitCorners for CornerTypes<F> {
+        fn corner_of_vertex(&self, _: crate::topology::VertexId) -> Option<FilletCornerId> {
+            None
+        }
+        fn lookup(&self) -> CornerLookup<'_> {
+            CornerLookup::default()
+        }
+        fn corner_mut(
+            &mut self,
+            _: FilletCornerId,
+        ) -> Result<&mut crate::blend::fillet_corner::p3::FilletCorner> {
+            Err(SolidError::null_pointer(OP))
+        }
+        fn corner_type(&self, id: FilletCornerId) -> Result<FilletCornerType> {
+            (self.0)(id)
+        }
+    }
+
     struct NoOwnership;
     impl RolloverOwnership for NoOwnership {
         fn edge_owner(&self, _: EdgeId) -> Result<(ObjectRef, Option<ObjectRef>)> {
             Err(SolidError::invalid_input(OP, "unexpected owner lookup"))
         }
-        fn owner_changed(&mut self, _: OwnerChange) -> Result<()> {
+        fn owner_changed(
+            &mut self,
+            _: &mut crate::curve::curve::Curve,
+            _: OwnerChange,
+        ) -> Result<()> {
             Err(SolidError::invalid_input(
                 OP,
                 "unexpected owner notification",
@@ -437,7 +598,7 @@ mod tests {
                 &mut target,
                 &mut fb,
                 id,
-                &|_| panic!("known rails must not resolve a corner"),
+                &mut CornerTypes(|_| panic!("known rails must not resolve a corner")),
                 &mut adjusted,
                 &mut NoOwnership,
             )
@@ -458,10 +619,10 @@ mod tests {
             &mut target,
             &mut fb,
             id,
-            &|corner| {
+            &mut CornerTypes(|corner| {
                 assert_eq!(corner, FilletCornerId(42));
                 Err(refusal.clone())
-            },
+            }),
             &mut adjusted,
             &mut NoOwnership,
         );
@@ -472,7 +633,7 @@ mod tests {
             &mut target,
             &mut fb,
             id,
-            &|_| Ok(FilletCornerType::OneByOne),
+            &mut CornerTypes(|_| Ok(FilletCornerType::OneByOne)),
             &mut adjusted,
             &mut NoOwnership,
         );

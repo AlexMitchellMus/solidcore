@@ -150,6 +150,7 @@ impl TsectPnt {
             tangent_plane_angle_rad: 0.0,
             deviation: 0.0,
             user_doubles: [0.0; MAX_USER_DOUBLES],
+            user_pointer: [None, None],
         }
     }
 }
@@ -1182,6 +1183,7 @@ pub fn update_tsect_point_with<'s, V: super::p4::IntersectorVirtuals<'s> + ?Size
 
     // copy rNextTSP user values from pNewTSP
     next_tsp.user_doubles = new_tsp.user_doubles;
+    next_tsp.user_pointer.clone_from(&new_tsp.user_pointer);
 
     // ComputePointValues with pNewTSP UV values and store results in rNextTSP
     let r = v.compute_point_values(k, uvs, &mut next_tsp, Some(&prev_tsp), None);
@@ -1595,7 +1597,7 @@ fn surface_global_curve_intersect<O: Copy + PartialEq>(
     tol: f64,
     queries: Option<&dyn FaceQueries<O>>,
 ) -> Result<Vec<Solution<()>>> {
-    let surface_object = SolveObject::Surface(surface.natural_uv_domain());
+    let surface_object = SolveObject::Surface(surface.natural_uv_domain_with_nurb(k)?);
     let curve_object = SolveObject::Curve(curve.natural_interval());
     // a trimmed cache of a face's surface: the solve's point solves classify their
     // fast-drop solutions on that face (GlobalPointSolve -> pFace->PointClassify)
@@ -1685,7 +1687,7 @@ fn surface_drop_and_trim_curve<O: Copy + PartialEq>(
 ) -> Result<DropAndTrim> {
     let r = match cache {
         Some(c) if c.surface_handle().is_some() => {
-            let surface_object = SolveObject::Surface(surface.natural_uv_domain());
+            let surface_object = SolveObject::Surface(surface.natural_uv_domain_with_nurb(k)?);
             let mut trace_cache = c.map_handles(|_| Ok(surface_object))?;
             surface.drop_and_trim_curve_in::<ObjectHandle, SolveObject>(
                 k,
@@ -1934,7 +1936,7 @@ mod tests {
         // (the surface cache tree build is not ported: no fetched cache)
         let mut caches = vec![SurfaceCache::<()>::new(
             a.clone(),
-            a.natural_uv_domain(),
+            a.natural_uv_domain_if_built(),
             crate::surface::surface_cache::SurfaceCacheOptions::default(),
         )];
         si.find_boundary_start_points_with_caches(&k, &mut caches, &far, &mut out)

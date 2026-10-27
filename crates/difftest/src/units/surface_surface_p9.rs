@@ -61,7 +61,8 @@ struct Inputs {
     analytic_plane: bool,
     #[serde(default)]
     analytic_revolution: bool,
-    /// 1: the corpus cylinder, 2: a canonical cone (shim kinds 3 and 4).
+    /// 1: the corpus cylinder, 2: a canonical cone, 3: a canonical sphere, 4: a
+    /// canonical torus (shim kinds 3 to 6).
     #[serde(default)]
     analytic_cone: u8,
     net: [[f64; 3]; 9],
@@ -111,6 +112,33 @@ fn surface(k: &Kernel, i: &Inputs) -> Result<Surface, HarnessError> {
         )
         .map_err(harness)?;
         return Ok(Surface::from(cone));
+    }
+    if i.analytic_cone == 3 {
+        let placement = solidcore::geom::axis2_placement::Axis2Placement::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+        let sphere = solidcore::surface::sphere::Sphere::create_canonical(k, &placement, 1.5)
+            .map_err(harness)?;
+        return Ok(Surface::from(sphere));
+    }
+    if i.analytic_cone == 4 {
+        let placement = solidcore::geom::axis2_placement::Axis2Placement::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+        let torus = solidcore::surface::torus::Torus::create_canonical(
+            k,
+            &placement,
+            2.0,
+            0.5,
+            solidcore::surface::torus::TorusOptions::default(),
+            None,
+        )
+        .map_err(harness)?;
+        return Ok(Surface::from(torus));
     }
     if i.analytic_revolution {
         let generator = Curve::from(BSplineCurve::from_nurb(
@@ -175,7 +203,7 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
         SurfParamType::from_code(i.direction as u64).ok_or_else(|| harness("direction"))?;
     let mut domain = Extent2d::from_bounds(i.domain[0], i.domain[1], i.domain[2], i.domain[3]);
     if i.analytic_cone != 0 {
-        let natural = surface.natural_uv_domain();
+        let natural = surface.natural_uv_domain_with_nurb(&k).map_err(|e| HarnessError::new(e.to_string()))?;
         domain = Extent2d::from_points(
             natural.evaluate(i.domain[0], i.domain[1]),
             natural.evaluate(i.domain[2], i.domain[3]),
@@ -240,7 +268,7 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
             cc.tessellate(&k)
                 .map_err(|e| harness(format!("CSI fixture cache setup: {e}")))?;
             {
-                let surface_handle = Handle(1, Some(surface.natural_uv_domain()));
+                let surface_handle = Handle(1, Some(surface.natural_uv_domain_with_nurb(&k).map_err(|e| HarnessError::new(e.to_string()))?));
                 let mut cache = SurfaceCache::<Handle>::new(
                     surface,
                     Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),

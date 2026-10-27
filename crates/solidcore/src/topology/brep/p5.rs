@@ -583,6 +583,22 @@ pub fn create_wire_edge_from_curve(
     })
 }
 
+/// [`create_wire_edge_from_curve`] notifying through the caller's environment `env`
+/// (a caller that keeps its own notification state, e.g. a copy into a store body).
+///
+/// # Errors
+///
+/// As [`create_wire_edge_from_curve`].
+pub(crate) fn create_wire_edge_from_curve_notified(
+    k: &mut Kernel,
+    b: &mut Brep,
+    curve: Curve,
+    interval: Extent1d,
+    env: &mut EditNotifyEnv<'_>,
+) -> Result<EdgeId> {
+    create_wire_edge_from_curve_in(k, b, curve, interval, env)
+}
+
 /// [`create_wire_edge_from_curve`] under the edit's notification environment ([`plain_edit`]).
 fn create_wire_edge_from_curve_in(
     k: &mut Kernel,
@@ -1747,7 +1763,7 @@ impl FaceEdgeBackend for ArenaFaceEdge<'_, '_> {
 /// all_sectors, ...)` with upstream's default `bUVSpaceOkay = TRUE`
 /// ([`face_p4::find_vertex_sector`]); only the sector's vertex use is read.
 #[allow(clippy::too_many_arguments)]
-fn find_vertex_sector(
+pub(crate) fn find_vertex_sector(
     k: &Kernel,
     b: &mut Brep,
     f: FaceId,
@@ -2035,7 +2051,7 @@ pub fn remove_topological_with_notifications(
                     .surface
                     .as_ref()
                     .ok_or_else(|| SolidError::null_pointer(OP))?
-                    .natural_uv_domain();
+                    .natural_uv_domain_with_nurb(k)?;
                 crate::topology::face::p2::set_uv_domain(b, keep, &domain)?;
                 let tolerance = b.face(keep)?.tolerance;
                 if topological.dist_between > tolerance / 10.0 {

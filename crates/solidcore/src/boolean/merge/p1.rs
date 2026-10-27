@@ -38,8 +38,13 @@
 //! surviving edge had before the call is put back (upstream the owner is the same
 //! `SmEdge*`), so the caller's identity-keyed walks (the temporary transform's inverse
 //! `Transform`) still find the curve.
+//! Opt-in `Kernel::fixes.boolean_cleanup_removes_slits` (WR-304, #1120): after each
+//! edge removal `boolean_post_process` also checks the merged face's edges that have
+//! it on both sides (slits), skipping any a later removal deleted.
+//! Opt-in `Kernel::fixes.fillet_cleanup_keeps_target_faces` (WR-459, #423): the edges in
+//! `CleanupRelations::kept_edges`, and those whose faces are all in `kept_faces`, stay.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::boolean::topology_intersector::p1::Relations;
 use crate::error::{EntityRef, Result, SolidError};
@@ -442,6 +447,12 @@ pub struct CleanupRelations {
     pub vertices: Vec<VertexId>,
     /// Shared live mates; deleted entities must be removed by the intersector.
     pub mates: Relations,
+    /// WR-459 (`Kernel::fixes.fillet_cleanup_keeps_target_faces`): the edges and faces
+    /// the clean-up leaves alone (the fork's `m_sPostProcessKeptEdges`/`Faces`: a
+    /// fillet's target), and any edge between two kept faces. Empty otherwise.
+    pub kept_edges: BTreeSet<EdgeId>,
+    /// See [`CleanupRelations::kept_edges`].
+    pub kept_faces: BTreeSet<FaceId>,
 }
 
 fn brep_edges(brep: &Brep) -> Result<Vec<EdgeId>> {
@@ -474,15 +485,40 @@ pub fn boolean_post_process(
     relations: &CleanupRelations,
     check_all_edges: bool,
 ) -> Result<()> {
-    let edges: Vec<_> = if check_all_edges {
+    let mut edges: Vec<_> = if check_all_edges {
         brep_edges(brep)?
     } else {
         relations.edges.clone()
     };
     let mut endpoints = Vec::new();
-    for e in edges {
-        if !check_all_edges && relations.mates.edges.other(e).is_none() {
+    // WR-304: the edges checked so far, and those the merging below left with one face
+    // on both sides (checked too, though they are no intersection edges).
+    let slits = k.fixes.boolean_cleanup_removes_slits;
+    let mut queued: BTreeSet<EdgeId> = if slits {
+        edges.iter().copied().collect()
+    } else {
+        BTreeSet::new()
+    };
+    let mut left_inside_face: BTreeSet<EdgeId> = BTreeSet::new();
+    let mut next = 0;
+    while let Some(&e) = edges.get(next) {
+        next += 1;
+        if left_inside_face.contains(&e) {
+            // A later removal may have deleted it
+            if !brep.edge_list().contains(&e) {
+                continue;
+            }
+        } else if !check_all_edges && relations.mates.edges.other(e).is_none() {
             continue;
+        }
+        if relations.kept_edges.contains(&e) {
+            continue;
+        }
+        if !relations.kept_faces.is_empty() {
+            let faces = edge::faces(brep, e, None)?;
+            if !faces.is_empty() && faces.iter().all(|f| relations.kept_faces.contains(f)) {
+                continue;
+            }
         }
         let topological = edge::is_topological(k, brep, e, 10.0)?;
         if !topological.is_topological {
@@ -509,7 +545,7 @@ pub fn boolean_post_process(
                 .surface
                 .as_ref()
                 .ok_or_else(|| SolidError::null_pointer(OP))?
-                .natural_uv_domain();
+                .natural_uv_domain_with_nurb(k)?;
             crate::topology::face::p2::set_uv_domain(brep, keep, &domain)?;
             let tolerance = crate::topology::face::p2::tolerance(brep, keep)?;
             if topological.dist_between > tolerance / 10.0 {
@@ -538,6 +574,16 @@ pub fn boolean_post_process(
         // unconditionally, even if IsTopological left it untouched.
         let domain = topological.merged_face_domain.unwrap_or_default();
         crate::topology::face::p2::set_uv_domain(brep, keep, &domain)?;
+        if slits {
+            // WR-304: an operand edge between two faces that are now one bounds the
+            // merged face on both sides (a slit); check it by the same test.
+            for face_edge in face_edges(brep, keep)? {
+                if edge::faces(brep, face_edge, None)?.len() == 1 && queued.insert(face_edge) {
+                    edges.push(face_edge);
+                    left_inside_face.insert(face_edge);
+                }
+            }
+        }
     }
     let mut vertices = relations.vertices.clone();
     for v in endpoints {

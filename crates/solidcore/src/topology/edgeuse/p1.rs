@@ -832,7 +832,7 @@ pub fn set_uv_trim_curve(
 
 /// The identity edge use `eu` owns geometry under in a B-rep with naming `naming`
 /// ([`NamingScheme`]); `None` when the B-rep records no scheme.
-fn owner_ref(naming: NamingScheme, eu: EdgeuseId) -> Option<ObjectRef> {
+pub(crate) fn owner_ref(naming: NamingScheme, eu: EdgeuseId) -> Option<ObjectRef> {
     match naming {
         NamingScheme::Unknown | NamingScheme::Caller => None,
         NamingScheme::Notify => Some(crate::topology::loopuse::notify_ref(EntityRef::Edgeuse(eu))),
@@ -1183,7 +1183,7 @@ pub fn start_point_uv_loop_gap(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<f6
         // drop point to Surface (statuses ignored, as upstream; with the opt-in fix a
         // failed drop supplies neither a valid point nor the next guess)
         let fix = k.fixes.topology_failed_evaluations_propagate;
-        let domain = surface.natural_uv_domain();
+        let domain = surface.natural_uv_domain_with_nurb(k)?;
         let start_opts = DropPointOptions {
             operation: SolverOperation::Minimize,
             ..Default::default()

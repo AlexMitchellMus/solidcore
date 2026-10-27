@@ -25,6 +25,9 @@
 //! | [`BSplineSurface::adjust_step_uv_domain`]         | `AdjustSTEPUVDomain`             |
 //! | `transpose` (private)                             | `SmTArray<T>::Transpose`         |
 //!
+//! Opt-in ([`UpstreamFixes::analytic_copy_keeps_parameterization`](crate::kernel::UpstreamFixes::analytic_copy_keeps_parameterization), WR-450):
+//! `CopyAndAddAnalytics` keeps an exact copy where its analytic surface differs from the source at the same parameters.
+//!
 //! Deviations:
 //! - **Out-params** become return values (structs where there are several). The
 //!   `SmContext` arguments only choose where upstream allocates and are dropped.
@@ -370,14 +373,47 @@ impl BSplineSurface {
         // (a surface that is not SmBSplineSurface_TYPE is copied as is: never here)
         // SmPlane
         if let Some(plane) = Plane::is_nurb_surface_plane(k, self, 1.0)? {
-            return Ok(Surface::from(plane));
+            return Ok(self.analytic_or_exact_copy(k, Surface::from(plane)));
         }
         // SmCone, SmSphere, SmSurfOfRevolution, SmSurfOfExtrusion
         if let Some(analytic) = recognise_analytic(k, self)? {
-            return Ok(analytic);
+            return Ok(self.analytic_or_exact_copy(k, analytic));
         }
         // arrive here - make sure it's a copy
         Ok(Surface::from(self.copy()))
+    }
+
+    /// The recognised analytic `analytic`, or an exact copy when
+    /// `Kernel::fixes.analytic_copy_keeps_parameterization` is on and `analytic` does not
+    /// give this surface's points at the same parameters (the fork's
+    /// `sm_SameParameterization`, WR-450, #387): a face split with
+    /// `MakeEdgeInFaceWithVU` keeps its UV domain and trims on the copy.
+    fn analytic_or_exact_copy(&self, k: &Kernel, analytic: Surface) -> Surface {
+        if !k.fixes.analytic_copy_keeps_parameterization {
+            return analytic;
+        }
+        let domain = self.natural_uv_domain();
+        let steps = 6.0;
+        let mut pairs = Vec::with_capacity(49);
+        let mut bbox = crate::geom::extent3d::Extent3d::default();
+        for i in 0..=6u8 {
+            for j in 0..=6u8 {
+                let uv = domain.evaluate(f64::from(i) / steps, f64::from(j) / steps);
+                let (Ok(a), Ok(b)) = (self.evaluate_point(uv), analytic.evaluate_point(k, uv))
+                else {
+                    return Surface::from(self.copy());
+                };
+                bbox.add_point(a);
+                pairs.push((a, b));
+            }
+        }
+        let tol = k.tolerances.zone_tol_3d.max(1.0e-9 * bbox.size().length());
+        // (`!(d <= tol)`: a NaN distance is a mismatch)
+        if pairs.iter().all(|&(a, b)| a.distance(b) <= tol) {
+            analytic
+        } else {
+            Surface::from(self.copy())
+        }
     }
 
     /// The 3D iso-parametric curve at `iso_parameter` (`CreateIsoParametricCurve`):
@@ -1425,7 +1461,7 @@ impl BSplineSurface {
     /// # Errors
     ///
     /// `SM_ERR_NULL_POINTER` without NURB; the errors of
-    /// [`BSplineSurface::set_canonical`].
+    /// [`BSplineSurface::set_canonical`] (the swap bit is then restored).
     pub fn swap_uv(&mut self) -> Result<()> {
         // get current surface description
         let c = self.canonical()?;
@@ -1440,8 +1476,8 @@ impl BSplineSurface {
         transpose(&mut cpts, num_v_cpts);
         transpose(&mut weights, num_v_cpts);
 
-        // Transpose Surface definition
-        self.set_canonical(&CanonicalSurfaceData {
+        // Transpose Surface definition; on failure, restore the bit
+        let status = self.set_canonical(&CanonicalSurfaceData {
             u_degree: c.v_degree,
             v_degree: c.u_degree,
             control_points: &cpts,
@@ -1453,7 +1489,11 @@ impl BSplineSurface {
             knot_type: c.knot_type,
             weights: Some(&weights),
             uv_domain: None,
-        })
+        });
+        if status.is_err() {
+            self.toggle_swap_uv_bit();
+        }
+        status
     }
 
     /// Changes the natural domain to `new_step_uv_domain` (`AdjustSTEPUVDomain`):
@@ -1867,16 +1907,99 @@ mod tests {
                 // Only swapped, unequal domains make Reparameterize build the NURB.
                 assert_eq!(extrusion.base().gw_nurb().is_some(), swap_uv);
             }
-            assert_eq!(copy.natural_uv_domain(), domain);
+            assert_eq!(copy.natural_uv_domain_if_built(), domain);
             for ((u, v), expected) in samples.into_iter().zip(before) {
                 let uv = domain.evaluate(u, v);
                 assert_eq!(s.evaluate_point(uv).unwrap(), expected);
                 assert!(copy.evaluate_point(k, uv).unwrap().distance(expected) < 1e-12);
             }
             if let crate::surface::surface::SurfaceKind::SurfOfExtrusion(extrusion) = copy.kind() {
-                assert_eq!(extrusion.base().gw_nurb().is_some(), swap_uv);
+                // the evaluations made the missing NURB and the extrusion keeps it
+                assert!(extrusion.base().gw_nurb().is_some());
             }
         }
+    }
+
+    /// #387's half cylinder (centre (0,50), r 40, z -60..60) as SolidCraft's record has
+    /// it: a rational quadratic in four equal spans (weights 1, .75, .5, .5, .75, 1).
+    fn rational_half_cylinder() -> BSplineSurface {
+        let ring = [
+            (-32.714_727_726_319_09, 26.983_775_509_593_045),
+            (-25.042_652_896_183_43, 16.078_866_267_486_678),
+            (6.658_860_627_247_413, 5.777_160_028_477_432),
+            (39.373_588_353_566_504, 28.793_384_518_884_38),
+            (40.386_802_556_454_75, 62.111_315_248_300_59),
+            (32.714_727_726_319_09, 73.016_224_490_406_96),
+        ];
+        let w = [1.0, 0.75, 0.5, 0.5, 0.75, 1.0];
+        let net = ring
+            .iter()
+            .zip(w)
+            .map(|(&(x, y), w)| {
+                [-60.0, 60.0]
+                    .map(|z| CPoint::new(w * x, w * y, w * z, w))
+                    .to_vec()
+            })
+            .collect();
+        let knots = vec![0.0, 0.0, 0.0, 0.25, 0.5, 0.75, 1.0, 1.0, 1.0];
+        let nurb = Surface::new(net, 2, 1, knots, vec![0.0, 0.0, 1.0, 1.0]).unwrap();
+        BSplineSurface::from_nurb(nurb, false)
+    }
+
+    /// WR-450 (#387): the analytic copy of the rational half cylinder has SMLib's own
+    /// parameterization, so a face's UV trims no longer fit it. With
+    /// `analytic_copy_keeps_parameterization` the copy keeps the exact surface.
+    #[test]
+    fn rational_half_cylinder_copy_keeps_parameterization() {
+        let mut k = Kernel::default();
+        let s = rational_half_cylinder();
+        let domain = s.natural_uv_domain();
+        let off = s.copy_and_add_analytics(&k).unwrap();
+        let worst = |k: &Kernel, c: &crate::surface::surface::Surface| {
+            let mut worst = 0.0_f64;
+            for i in 0..=6 {
+                for j in 0..=6 {
+                    let uv = domain.evaluate(f64::from(i) / 6.0, f64::from(j) / 6.0);
+                    let a = s.evaluate_point(uv).unwrap();
+                    worst = worst.max(a.distance(c.evaluate_point(k, uv).unwrap()));
+                }
+            }
+            worst
+        };
+        assert!(
+            !matches!(off.kind(), crate::surface::surface::SurfaceKind::BSpline(_)),
+            "recognised as analytic"
+        );
+        let off_gap = worst(&k, &off);
+        assert!(off_gap > 1e-3, "default copy is off by {off_gap}");
+
+        k.fixes.analytic_copy_keeps_parameterization = true;
+        let on = s.copy_and_add_analytics(&k).unwrap();
+        assert!(matches!(
+            on.kind(),
+            crate::surface::surface::SurfaceKind::BSpline(_)
+        ));
+        assert!(worst(&k, &on) < 1e-12);
+        // a surface whose analytic form shares its parameterization stays analytic
+        let ext = {
+            let net = [(1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+                .into_iter()
+                .map(|(x, y)| vec![CPoint::new(x, y, 0.0, NOW), CPoint::new(x, y, 2.0, NOW)])
+                .collect();
+            let nurb = Surface::new(
+                net,
+                2,
+                1,
+                vec![-1.0, -1.0, -1.0, 3.0, 3.0, 3.0],
+                vec![2.0, 2.0, 4.0, 4.0],
+            )
+            .unwrap();
+            BSplineSurface::from_nurb(nurb, false)
+        };
+        assert!(!matches!(
+            ext.copy_and_add_analytics(&k).unwrap().kind(),
+            crate::surface::surface::SurfaceKind::BSpline(_)
+        ));
     }
 
     #[test]

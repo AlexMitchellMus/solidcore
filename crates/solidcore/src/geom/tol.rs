@@ -653,6 +653,9 @@ pub fn zone_tol_3d_of_curve(k: &Kernel, curve: &Curve) -> Result<f64> {
     })?;
     if edge.is_some() {
         // UNPORTED(topology.edge): SmEdge::GetTolerance; justified: findings.md intersect.surface_drop_lib_p3
+        // Proof (unreachable): callers are geom::tol::is_degenerate_curve (tests only) and
+        // offset_geometry_creation (an unowned arc copy, the system branch); 0 hits in the
+        // green difftest sweep.
         return Err(SolidError::unported(
             "SmEdge::GetTolerance",
             "topology.edge",
@@ -660,6 +663,9 @@ pub fn zone_tol_3d_of_curve(k: &Kernel, curve: &Curve) -> Result<f64> {
     }
     if chain {
         // UNPORTED(topology.edge): SmCurve::GetEdge through the owning curves and edge uses (the owner-chain resolver needs the B-rep arena); justified: findings.md intersect.surface_drop_lib_p3
+        // Proof (unreachable): callers are geom::tol::is_degenerate_curve (tests only) and
+        // offset_geometry_creation (an unowned arc copy, the system branch); 0 hits in the
+        // green difftest sweep.
         return Err(SolidError::unported("SmCurve::GetEdge", "topology.edge"));
     }
     Ok(zone_tol_3d(k, SmallTopoType::NormalSize))
@@ -761,8 +767,9 @@ pub fn scaled_zero_of_equations<E: EvalNFunctions + ?Sized>(equations: &E) -> f6
 /// of the domain (`EvaluateBoundingBox`, status ignored: on a failure the box holds
 /// whatever was written before it, possibly nothing, as upstream).
 ///
-/// No caller and no difftest coverage of the bounded branch yet: `geom.tol` has no
-/// B-spline volume fixture.
+/// The bounded branch is compared on unit-weight trilinear B-spline volumes in
+/// the `geom.tol` difftest unit. Those fixtures do not cover higher-degree or
+/// rational volumes.
 /// # Errors
 ///
 /// [`SolidError::Unported`] from the volume; the undefined cases of

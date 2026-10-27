@@ -13,7 +13,7 @@
 //! | [`Surface::evaluate_geometric`], [`evaluate_geometric_of`] | `SmSurface::EvaluateGeometric`          |
 //! | [`Surface::evaluate_normal_section`], [`evaluate_normal_section_of`], [`SurfaceNormalSection`] | `SmSurface::EvaluateNormalSection` |
 //! | [`Surface::get_singularities`], [`Surface::get_singularities_of_face`], [`Singularities`] | `SmSurface::GetSingularities`                    |
-//! | [`Surface::cover_coincident_surface`], [`CoverCoincident`] | `SmSurface::CoverCoincidentSurface`     |
+//! | [`Surface::cover_coincident_surface_deferring_trims`], [`CoverCoincident`] | `SmSurface::CoverCoincidentSurface`     |
 //! | [`check_shape_match`]                             | `smsurf_CheckShapeMatch`                         |
 //! | [`FindPsNormalEnfo`] (`EvalNFunctions`)           | `SmFindPSNormalENFO::Evaluate` (struct: `surface.surface_p1`) |
 //! | [`SssIntersectEnfo`] (`EvalNFunctions`)           | `SmSSSIntersectENFO::Evaluate` (struct: `surface.surface_p1`) |
@@ -27,9 +27,11 @@
 //! - **Out-params** become return values; a solve that finds nothing returns `None`.
 //! - **Temporary out-of-bounds evaluation.** `SmTemporaryChangeValue` on the
 //!   `OutOfBoundsEnabled` flag of the (B-spline based) surfaces is done on the surface
-//!   itself where it is `&mut` ([`Surface::cover_coincident_surface`]) and on an
+//!   itself where it is `&mut` ([`Surface::cover_coincident_surface_deferring_trims`]) and on an
 //!   out-of-bounds copy where upstream changes a `const` surface
-//!   ([`Surface::local_surface_surface_intersect`]).
+//!   ([`Surface::local_surface_surface_intersect`]); that copy is an evaluation copy
+//!   (exact knots, owner kept), not the copy constructor, so it evaluates the surface
+//!   upstream evaluates.
 //! - **Ignored statuses.** Where upstream ignores the status of an evaluation its
 //!   outputs keep their previous values (initially undefined); the port does the same
 //!   and still propagates [`SolidError::Unported`].
@@ -44,9 +46,8 @@
 //!   curves itself. [`Surface::cover_coincident_surface_deferring_trims`] returns the
 //!   face in [`CoverCoincident::remove_uv_trim_curves_of`] and the caller that holds the
 //!   B-rep runs `topology::face::p1::remove_uv_trim_curves` right after the call (nothing
-//!   runs in between, so the order is upstream's).
-//!   [`Surface::cover_coincident_surface`] keeps returning [`SolidError::Unported`]
-//!   (`topology.face_p1`) for a face-owned surface for callers without the B-rep.
+//!   runs in between, so the order is upstream's). There is no entry point that skips
+//!   the deletion: every caller receives the face.
 //! - **A folded continuation is not covered** (opt-in
 //!   `Kernel::fixes.cover_refuses_folded_continuation`, WR-407; off by default, which
 //!   merges as upstream does). SolidCraft change, tangency-labs/smlib 1b6f5fa (`SmSurface::CoverCoincidentSurface`, before its
@@ -141,6 +142,9 @@ fn surface_approx_tol_3d(
     // without it stays UNPORTED(topology.face_p2): SmFace::GetTolerance
     // (`Surface::face_zone_tol_3d`); the face props pass it through
     // `get_singularities_of_face`
+    // Proof (unreachable): a B-rep face's surface carries the face tolerance
+    // (Brep::sync_face_surface_tolerance invariant, see Surface::face_zone_tol_3d); 0 hits
+    // in the green difftest sweep.
     if let Some(zone) = surface.face_zone_tol_3d()? {
         return Ok(approx_tol3d(k, 0.5 * zone));
     }
@@ -189,13 +193,20 @@ pub(crate) fn set_out_of_bounds_enabled(surface: &mut Surface, enabled: bool) {
 
 /// A copy of `surface` that evaluates out of bounds, when it is a B-spline based
 /// surface that does not already (the `SmTemporaryChangeValue` of a `const` surface).
-fn out_of_bounds_copy(surface: &Surface) -> Option<Surface> {
+/// Upstream changes the flag on the surface itself, so this is an evaluation copy
+/// ([`Surface::clone_for_evaluation`]: knots exactly as they are, owner kept), not the
+/// copy constructor, whose knot fix-up can move near-coincident knots.
+///
+/// # Errors
+///
+/// Those of [`Surface::clone_for_evaluation`] (a geometry graph nested too deep).
+fn out_of_bounds_copy(surface: &Surface) -> Result<Option<Surface>> {
     if out_of_bounds_enabled(surface) == Some(false) {
-        let mut copy = surface.clone();
+        let mut copy = surface.clone_for_evaluation()?;
         set_out_of_bounds_enabled(&mut copy, true);
-        Some(copy)
+        Ok(Some(copy))
     } else {
-        None
+        Ok(None)
     }
 }
 
@@ -268,7 +279,7 @@ pub struct Singularities {
     pub pole_normals: Option<[Vec3; 4]>,
 }
 
-/// The result of [`Surface::cover_coincident_surface`].
+/// The result of [`Surface::cover_coincident_surface_deferring_trims`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CoverCoincident {
     /// `rbSuccess`: the other surface fits inside this one.
@@ -281,8 +292,7 @@ pub struct CoverCoincident {
     /// The face owning this surface whose `SmFace::RemoveUVTrimCurves` upstream runs at
     /// the end of a successful call: the caller holding the B-rep runs it
     /// (`topology::face::p1::remove_uv_trim_curves`) right after the call. `None` on
-    /// failure and for a surface no face owns. Set only by
-    /// [`Surface::cover_coincident_surface_deferring_trims`].
+    /// failure and for a surface no face owns.
     pub remove_uv_trim_curves_of: Option<ObjectRef>,
 }
 
@@ -561,7 +571,7 @@ impl Surface {
         let mut approx_singularities: u32 = SS_NONE;
 
         // locals
-        let uv_domain = self.natural_uv_domain();
+        let uv_domain = self.natural_uv_domain_with_nurb(k)?;
         let u_ivl = uv_domain.u_interval();
         let v_ivl = uv_domain.v_interval();
         let approx_tol = surface_approx_tol_3d(k, self, face_tolerance)?;
@@ -745,41 +755,12 @@ impl Surface {
     /// Whether `other` (or the subset `other_domain` of it) fits inside this surface: a
     /// grid of points of `other` is dropped to this surface and, when all coincide within
     /// `tol`, this surface's STEP domain is expanded to cover them
-    /// (`CoverCoincidentSurface`). The surface is changed only on success.
-    ///
-    /// # Errors
-    ///
-    /// [`SolidError::Unported`]: `SmFace::RemoveUVTrimCurves` for a successful cover by a
-    /// surface owned by a face (`topology.face_p1`; the surface has been expanded, as
-    /// upstream before that call); those of the evaluations and of `STEPInversion`.
-    /// A caller holding the B-rep uses
-    /// [`Surface::cover_coincident_surface_deferring_trims`] instead.
-    pub fn cover_coincident_surface(
-        &mut self,
-        k: &Kernel,
-        other: &Surface,
-        tol: f64,
-        other_domain: Option<&Extent2d>,
-    ) -> Result<CoverCoincident> {
-        let r = self.cover_coincident_surface_deferring_trims(k, other, tol, other_domain)?;
-        if r.remove_uv_trim_curves_of.is_some() {
-            // UNPORTED(topology.face_p1): SmFace::RemoveUVTrimCurves
-            // (ported as topology::face::p1::remove_uv_trim_curves; a caller without
-            // the B-rep of the owner face cannot run it: callers with it use
-            // `cover_coincident_surface_deferring_trims`)
-            return Err(SolidError::unported(
-                "SmFace::RemoveUVTrimCurves",
-                "topology.face_p1",
-            ));
-        }
-        Ok(r)
-    }
-
-    /// [`Surface::cover_coincident_surface`] for a caller holding the B-rep: on success
+    /// (`CoverCoincidentSurface`). The surface is changed only on success. On success
     /// for a face-owned surface, the face whose UV trim curves upstream deletes at the
     /// end of the call (`SmFace::RemoveUVTrimCurves`) is returned in
-    /// [`CoverCoincident::remove_uv_trim_curves_of`], and the caller runs
-    /// `topology::face::p1::remove_uv_trim_curves` on it right after this call.
+    /// [`CoverCoincident::remove_uv_trim_curves_of`], and the caller, which holds the
+    /// B-rep, runs `topology::face::p1::remove_uv_trim_curves` on it right after this
+    /// call.
     ///
     /// # Errors
     ///
@@ -835,7 +816,8 @@ impl Surface {
         result
     }
 
-    /// The body of [`Surface::cover_coincident_surface`] with out-of-bounds evaluation on.
+    /// The body of [`Surface::cover_coincident_surface_deferring_trims`] with out-of-bounds
+    /// evaluation on.
     fn cover_coincident_surface_inner<O: SolutionObject>(
         &mut self,
         k: &Kernel,
@@ -865,9 +847,10 @@ impl Surface {
         // Also set up what will be the expanded domain.
         let mut new_domain = Extent2d::new();
 
-        let other_dom = other_domain
-            .copied()
-            .unwrap_or_else(|| other.natural_uv_domain());
+        let other_dom = match other_domain {
+            Some(d) => *d,
+            None => other.natural_uv_domain_with_nurb(k)?,
+        };
 
         // upstream ignores the status of the point evaluations
         let mut pt = Vec3::UNDEF;
@@ -955,7 +938,7 @@ impl Surface {
 
         // If both surfaces are bilinear, we're done.  (Four positions uniquely determine
         // a bilinear surface.)
-        if self.is_bilinear() && other.is_bilinear() {
+        if self.is_bilinear(k) && other.is_bilinear(k) {
             // We're done: finish up and return.  Union the projection of Other surface on
             // our domain with our original domain, and update our domain to it.
             let orig_domain = self.step_uv_domain();
@@ -1124,7 +1107,7 @@ impl Surface {
                 }
 
                 // Here we check seams/poles.
-                if crossed_seam_or_pole(self, guess_uv, drop_uv, &big_domain) {
+                if crossed_seam_or_pole(k, self, guess_uv, drop_uv, &big_domain)? {
                     return Ok(failure);
                 }
 
@@ -1154,10 +1137,8 @@ impl Surface {
 
         // But make sure that we didn't expand it to spill outside of sBigDomain.  This
         // would happen if the domain is against the seam of a surface of revolution, for
-        // example.  (Upstream ignores the status of the intersection.)
-        if let Ok(clipped) = new_domain.intersect(&big_domain) {
-            new_domain = clipped;
-        }
+        // example.
+        new_domain = clip_to_big_domain(&new_domain, &big_domain);
 
         // Now union the projection of Other surface on our domain with our original
         // domain, and update our domain to it.
@@ -1435,9 +1416,9 @@ impl Surface {
         uv_guess3: Point2,
     ) -> Result<Option<LocalSssSolution>> {
         // temporarily enable OutOfBounds evaluations for all B-spline based surfaces
-        let copy1 = out_of_bounds_copy(self);
-        let copy2 = out_of_bounds_copy(surface2);
-        let copy3 = out_of_bounds_copy(surface3);
+        let copy1 = out_of_bounds_copy(self)?;
+        let copy2 = out_of_bounds_copy(surface2)?;
+        let copy3 = out_of_bounds_copy(surface3)?;
         let s1 = copy1.as_ref().unwrap_or(self);
         let s2 = copy2.as_ref().unwrap_or(surface2);
         let s3 = copy3.as_ref().unwrap_or(surface3);
@@ -1734,6 +1715,17 @@ fn step_inversion_in<O: SolutionObject>(
     }
 }
 
+/// `sUpdateDomain.Intersect(sBigDomain, sNewDomain)` in `CoverCoincidentSurface`:
+/// `domain` clipped to `big_domain`. Upstream ignores the status, but on disjoint
+/// extents `SmExtent2d::Intersect` has `Init()`ed its result (`SmExtent2d.cpp:414`-`418`),
+/// so the covered domain is then the uninitialised extent (and the following union
+/// leaves the surface's own STEP domain as it is).
+fn clip_to_big_domain(domain: &Extent2d, big_domain: &Extent2d) -> Extent2d {
+    domain
+        .intersect(big_domain)
+        .unwrap_or_else(|_| Extent2d::new())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1770,7 +1762,7 @@ mod tests {
         let mut s = Surface::from(rev);
         assert_eq!(out_of_bounds_enabled(&s), Some(false));
         assert_eq!(gen_flag(&s), Some(false));
-        let copy = out_of_bounds_copy(&s).unwrap();
+        let copy = out_of_bounds_copy(&s).unwrap().unwrap();
         assert_eq!(out_of_bounds_enabled(&copy), Some(true));
         assert_eq!(gen_flag(&copy), Some(false));
         set_out_of_bounds_enabled(&mut s, true);
@@ -1830,7 +1822,7 @@ mod tests {
             false,
         ));
 
-        let covered = this.cover_coincident_surface(k, &other, 1.0e-6, None)?;
+        let covered = this.cover_coincident_surface_deferring_trims(k, &other, 1.0e-6, None)?;
         Ok((covered, this.step_uv_domain().u_interval().max()))
     }
 
@@ -1850,18 +1842,38 @@ mod tests {
         Ok(())
     }
 
-    /// Default (pinned SMLib `c9c5979`): the cover succeeds and extends the domain onto
-    /// the fold, as upstream does (WR-407).
+    /// Default (SMLib v1.0.1): the flat sheet is now planar to `SM_EFF_ZERO` (`IsPlanar`
+    /// tests the unpadded pseudo box, `SmSurface.cpp:22371` at `3fd5b95`), so
+    /// `GetMaxAnalyticDomain` expands it relatively by 100 instead of by half a span per
+    /// cubic direction. The search over that domain reaches the folded continuation and
+    /// the cover fails, changing nothing. At `c9c5979` the padded box was not planar; the
+    /// domain ended at the fold (u = 1.5) and the cover succeeded (WR-407).
     #[test]
-    fn issue_434_default_covers_across_the_fold() -> Result<()> {
+    fn issue_434_default_refuses_the_fold_of_a_planar_sheet() -> Result<()> {
         let k = Kernel::default();
         assert!(!k.fixes.cover_refuses_folded_continuation);
         let (covered, u_max) = issue_434_cover_across_a_fold(&k)?;
         assert!(
-            covered.success,
-            "upstream covers across the fold: {covered:?}"
+            !covered.success,
+            "the planar sheet's cover across the fold fails: {covered:?}"
         );
-        assert!(u_max > 1.0, "upstream extends the u domain: {u_max}");
+        assert_eq!(u_max, 1.0);
         Ok(())
+    }
+
+    #[test]
+    fn cover_clip_to_big_domain_inits_a_disjoint_domain_as_upstream() {
+        let big = Extent2d::from_bounds(0.0, 0.0, 10.0, 10.0);
+        // overlapping: the common part
+        let inside = Extent2d::from_bounds(-1.0, 2.0, 5.0, 12.0);
+        let clipped = clip_to_big_domain(&inside, &big);
+        assert_eq!(clipped, Extent2d::from_bounds(0.0, 2.0, 5.0, 10.0));
+        // disjoint: SmExtent2d::Intersect Init()s its result
+        let outside = Extent2d::from_bounds(20.0, 20.0, 30.0, 30.0);
+        let cleared = clip_to_big_domain(&outside, &big);
+        assert_eq!(cleared, Extent2d::new());
+        // the union that follows then keeps the surface's own domain
+        let orig = Extent2d::from_bounds(1.0, 1.0, 9.0, 9.0);
+        assert_eq!(orig.union(&cleared), orig);
     }
 }

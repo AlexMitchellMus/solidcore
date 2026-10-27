@@ -24,18 +24,19 @@
 //! ownership are restored explicitly after fallible bodies, including on deferral.
 //! The upstream `cbi_MAP_TOPO_EDGES=0` experiments remain disabled. Parent-linked
 //! stage hooks borrow this live executive, never an adapter-owned duplicate.
-//! Not upstream: `do_fillet` ends with a closed-manifold check of the target
-//! (`check_closed_manifold`, tangency-labs/solidcore#422). A target with an edge
-//! that is not `SmEdge::IsManifold` is refused with error code
-//! `SM_FILERR_BAD_MERGE`, the edge in the error info and in the error, where
-//! upstream returns success. `do_filleting` alone is unchanged.
+//! Opt-in, not upstream: with `Kernel::fixes.fillet_refuse_non_manifold_result`
+//! (WR-212, tangency-labs/solidcore#422) `do_fillet` ends with a closed-manifold
+//! check of the target (`check_closed_manifold`). A target with an edge that is
+//! not `SmEdge::IsManifold` is then refused with error code `SM_FILERR_BAD_MERGE`,
+//! the edge in the error info and in the error, where upstream (the default)
+//! returns success. `do_filleting` alone is unchanged.
 //! Not upstream: [`ExecutiveAccess::shrink_face`] shrinks the new fillet faces with
 //! knot snapping of rounding errors (tangency-labs/solidcore#472).
 
 use std::collections::BTreeMap;
 
 use crate::blend::fillet_executive::p1::ExecutiveObjects;
-use crate::blend::fillet_geom::p1::{FilStatus, FilletCornerType, FilletEdgeType};
+use crate::blend::fillet_geom::p1::{FilStatus, FilletCornerType, FilletEdgeType, FilletErrorType};
 use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::error::{EntityRef, Result, SolidError};
@@ -743,19 +744,15 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         check_all_edges: bool,
     ) -> Result<()>;
 
-    /// `SmFilletExecutive::CreateFilletCorners`; waiting for `blend.fillet_executive_p1`.
+    /// `SmFilletExecutive::CreateFilletCorners`: the implementor runs
+    /// [`FilletExecutive::create_fillet_corners`] with its `SmFilletCorner::Create`
+    /// factory (the live session creates its corners itself).
     fn create_corners(
         &mut self,
-        _k: &mut Kernel,
-        _executive: &mut FilletExecutive<O>,
-        _error: Option<&mut ErrorInfo<O>>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::CreateFilletCorners
-        Err(SolidError::unported(
-            "SmFilletExecutive::CreateFilletCorners",
-            "blend.fillet_executive_p1",
-        ))
-    }
+        k: &mut Kernel,
+        executive: &mut FilletExecutive<O>,
+        error: Option<&mut ErrorInfo<O>>,
+    ) -> Result<()>;
 
     /// `SmFilletExecutive::ProcessSmoothEdgeSequences` (`blend.fillet_executive_p2`).
     fn process_smooth_edge_sequences(
@@ -855,10 +852,8 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     /// Virtual `CalcFilletGeom` dispatch. The base is
     /// `blend::fillet_solver::p4::FilletSolver::calc_fillet_geom` (it takes the solver
     /// as its `FilletSolverOps`, the target and pseudo B-reps and the solver table);
-    /// the `SurfaceSurfaceFS` override belongs to `blend.fillet_standard_solver_p2`.
-    /// Adapters must dispatch by concrete solver type and return that owner's
-    /// `Unported` while it is missing.
-    // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::CalcFilletGeom -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
+    /// the `SmSurfaceSurfaceFS` override is `blend.fillet_standard_solver_p2`'s.
+    /// Adapters dispatch by concrete solver type.
     fn calc_fillet_geom(
         &mut self,
         k: &mut Kernel,
@@ -930,18 +925,10 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
         allow_spine_edges: bool,
     ) -> Result<StitchAttempt>;
 
-    /// `SmFilletExecutive::DoPiecewiseMerge`; waiting for `blend.fillet_executive_p1`.
-    fn piecewise_merge(
-        &mut self,
-        _k: &mut Kernel,
-        _executive: &mut FilletExecutive<O>,
-    ) -> Result<()> {
-        // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::DoPiecewiseMerge
-        Err(SolidError::unported(
-            "SmFilletExecutive::DoPiecewiseMerge",
-            "blend.fillet_executive_p1",
-        ))
-    }
+    /// `SmFilletExecutive::DoPiecewiseMerge` on the implementor's bodies (the live
+    /// session's port is `FilletSession`'s piecewise merge).
+    fn piecewise_merge(&mut self, k: &mut Kernel, executive: &mut FilletExecutive<O>)
+        -> Result<()>;
 
     /// `SmFilletExecutive::SetFilletBrepEdgeMap` (`blend.fillet_executive_p2`).
     fn set_fillet_brep_edge_map(
@@ -965,9 +952,9 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     ) -> Result<()>;
 
     /// `SmFilletCorner::InsertIntersectionTopology()`: delegate to the already ported
-    /// `blend::fillet_corner::p1::FilletCorner::insert_intersection_topology` (fillet
-    /// corner p1) on the corner `corner` resolves to, with its `CornerEnv` (the target
-    /// and fillet B-reps). Its status propagates (`SER`, `SmFilletExecutive.cpp:2758`,
+    /// `blend::fillet_corner::p1::FilletCorner::insert_intersection_topology_with_context` (fillet
+    /// corner p1) on the corner `corner` resolves to, with the executive's insertion
+    /// context (its topology intersector, the target and fillet B-reps). Its status propagates (`SER`, `SmFilletExecutive.cpp:2758`,
     /// `:3148`).
     fn insert_corner_topology(
         &mut self,
@@ -1312,48 +1299,17 @@ pub trait ExecutiveAccess<O: ClassObject + SolutionObject + Ord> {
     ) -> Result<O>;
 
     /// The fillet solver constructors `SetFilletParameters` and `SurfaceSurfaceFillet`
-    /// call, dispatched on the spec: `SmConstantRadiusFS` through
-    /// [`ExecutiveAccess::new_constant_radius_solver`]; `SmConstantDistanceFS`,
-    /// `SmVariableRadiusFS` and `SmSurfaceSurfaceFS` are ported
-    /// (`blend.fillet_standard_solver_p2`) but need a solver arena in the adapter
-    /// that no adapter has yet (`plan/findings.md`, executive adapter stubs).
+    /// call (`new SmConstantRadiusFS` / `SmConstantDistanceFS` / `SmVariableRadiusFS` /
+    /// `SmSurfaceSurfaceFS`), dispatched on the spec, adding the new solver to the
+    /// adapter's solver store and returning its handle.
+    ///
+    /// # Errors
+    /// The constructor's.
     fn new_fillet_solver(
         &mut self,
         k: &mut Kernel,
         spec: &super::p2::SolverSpec<'_, O>,
-    ) -> Result<O> {
-        match *spec {
-            super::p2::SolverSpec::ConstantRadius {
-                approx_tol,
-                ang_tol_rad,
-                tan_tol_rad,
-                radius,
-                edgeuse,
-            } => self.new_constant_radius_solver(
-                k,
-                approx_tol,
-                ang_tol_rad,
-                tan_tol_rad,
-                radius,
-                edgeuse,
-            ),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmConstantDistanceFS::SmConstantDistanceFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
-            super::p2::SolverSpec::ConstantDistance { .. } => Err(SolidError::unported(
-                "SmConstantDistanceFS::SmConstantDistanceFS",
-                "blend.fillet_standard_solver_p2",
-            )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmVariableRadiusFS::SmVariableRadiusFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
-            super::p2::SolverSpec::VariableRadius { .. } => Err(SolidError::unported(
-                "SmVariableRadiusFS::SmVariableRadiusFS",
-                "blend.fillet_standard_solver_p2",
-            )),
-            // UNPORTED(blend.fillet_standard_solver_p2): SmSurfaceSurfaceFS::SmSurfaceSurfaceFS -- justified: plan/findings.md blend.fillet_standard_solver_p2 (executive adapter stubs)
-            super::p2::SolverSpec::SurfaceSurface { .. } => Err(SolidError::unported(
-                "SmSurfaceSurfaceFS::SmSurfaceSurfaceFS",
-                "blend.fillet_standard_solver_p2",
-            )),
-        }
-    }
+    ) -> Result<O>;
 
     /// `SmFilletSolver::SetFilletSurfaceGenerator(pFSG)`: delegate to
     /// `FilletSolver::set_fillet_surface_generator` (`blend.fillet_solver_p1`) with
@@ -1978,6 +1934,38 @@ pub trait SolverGeometryAccess<O: ClassObject + SolutionObject + Ord> {
     /// # Errors
     /// Missing actual solver topology.
     fn geometry_edge(&self, solver: O) -> Result<O>;
+    /// The fork's `SmFilletSolver::RailsFitTheirFaces` for `solver` (not upstream; opt-in
+    /// `fixes.fillet_refuse_rails_leaving_faces`, WR-302): whether every rail of its
+    /// untrimmed fillet stays on the face it rolls on. Only an accessor with a live
+    /// pseudo-B-rep can tell.
+    ///
+    /// # Errors
+    /// [`SolidError::Unported`] without live context; the classification's errors.
+    fn geometry_rails_fit(
+        &mut self,
+        k: &mut Kernel,
+        solver: O,
+        executive: &FilletExecutive<O>,
+    ) -> Result<bool> {
+        let _ = (k, solver, executive);
+        Err(SolidError::unported(
+            "SmFilletSolver::RailsFitTheirFaces (fork)",
+            "blend.fillet_executive_p3",
+        ))
+    }
+    /// The fork's `SmFilletExecutive::FacesOutlastTheirBlends` over `solvers` (not
+    /// upstream; opt-in `fixes.fillet_refuse_face_consuming_blends`, WR-320): `false`
+    /// when the blends take the whole of a face they roll on, some at an angle to it.
+    ///
+    /// # Errors
+    /// [`SolidError::Unported`] without live context; missing geometry.
+    fn geometry_faces_outlast(&mut self, k: &mut Kernel, solvers: &[O]) -> Result<bool> {
+        let _ = (k, solvers);
+        Err(SolidError::unported(
+            "SmFilletExecutive::FacesOutlastTheirBlends (fork)",
+            "blend.fillet_executive_p3",
+        ))
+    }
 }
 
 impl<O, A> SolverGeometryAccess<O> for A
@@ -2052,10 +2040,14 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         }
         access.create_corners(k, self, None)?;
         self.do_filleting(k, access, None)?;
+        if !k.fixes.fillet_refuse_non_manifold_result {
+            return Ok(());
+        }
         self.check_closed_manifold(access)
     }
 
     /// Refuse a filleted target that is not a closed manifold solid (not upstream;
+    /// opt-in `fixes.fillet_refuse_non_manifold_result`, WR-212,
     /// tangency-labs/solidcore#422). Upstream ignores the `bMaybeNotSolid` that
     /// `OrientTrimmedSurfaces` reports and returns success, so a round whose
     /// trimming breaks the shell came back as a valid body. The first edge of the
@@ -2217,6 +2209,69 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             index += 1;
         }
         Ok(())
+    }
+
+    /// Refuse blends whose rails leave the faces they roll on, after every solver's fillet
+    /// geometry exists (not upstream; the fork's check in `CreateFilletBrep`, opt-in
+    /// `fixes.fillet_refuse_rails_leaving_faces`, WR-302, tangency-labs/solidcore#841 and
+    /// #1024): a solver whose rail leaves the face it rolls on between its ends
+    /// (`SmFilletSolver::RailsFitTheirFaces`). Fails with `FilletErrorType::NoRoom` (8, not
+    /// an upstream code).
+    ///
+    /// # Errors
+    /// The refusal as `SM_ERR`, noted in the error info; those of the check.
+    pub fn refuse_blends_larger_than_faces(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl SolverGeometryAccess<O>,
+    ) -> Result<()> {
+        if k.fixes.fillet_refuse_rails_leaving_faces {
+            let mut index = 0;
+            while let Some(solver) = self.solvers.get(index).copied() {
+                if !access.geometry_rails_fit(k, solver, self)? {
+                    return self.record_no_room(
+                        "Fillet Error: a rail leaves the face it rolls on (the blend is larger than the faces allow)",
+                    );
+                }
+                index += 1;
+            }
+        }
+        Ok(())
+    }
+
+    /// Refuse blends that take the whole of a face they roll on, some meeting it at an angle
+    /// (not upstream; opt-in `fixes.fillet_refuse_face_consuming_blends`, WR-320, #879:
+    /// `SmFilletExecutive::FacesOutlastTheirBlends`). The fork calls it in `CreateFilletBrep`
+    /// after the fillet faces are built and before they are stitched (the diff in #879),
+    /// on the trimmed rails; here it runs once the geometry exists, which is earlier. The
+    /// cylinder top case of the tests already fails in the port at the corner edges
+    /// (`SM_FILERR_VERTEX_PROBLEM`) before the fork's call site, so a later call would
+    /// lose the `NoRoom` status there (to be compared against C++). Fails with
+    /// `FilletErrorType::NoRoom`.
+    ///
+    /// # Errors
+    /// The refusal as `SM_ERR`, noted in the error info; those of the check.
+    pub fn refuse_face_consuming_blends(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut impl SolverGeometryAccess<O>,
+    ) -> Result<()> {
+        if k.fixes.fillet_refuse_face_consuming_blends
+            && !access.geometry_faces_outlast(k, &self.solvers)?
+        {
+            return self.record_no_room(
+                "Fillet Error: the blends take the whole of a face they roll on, some at an angle to it (the blend is larger than the faces allow)",
+            );
+        }
+        Ok(())
+    }
+
+    /// `NoteError(NoRoom, comment)` (`NoRoom` is not an upstream code), then `SM_ERR`.
+    fn record_no_room(&mut self, comment: &str) -> Result<()> {
+        // The generic NoteError overload changes exactly these two members.
+        self.error.code = FilletErrorType::NoRoom as i32;
+        self.error.comment = comment.into();
+        Err(failure())
     }
 
     /// Complete tangent adjustment, repeated vertex geometry and boundary edges per corner.
@@ -2437,6 +2492,8 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         self.create_corner_vertices(k, access)?;
         self.adjust_corner_topology(k, access)?;
         self.calculate_solver_geometry(k, access)?;
+        self.refuse_blends_larger_than_faces(k, access)?;
+        self.refuse_face_consuming_blends(k, access)?;
         self.calculate_corner_edges(k, access)?;
         self.trim_solver_rails(k, access)?;
         self.classify_solver_rails(k, access)?;

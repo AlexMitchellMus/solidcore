@@ -129,7 +129,8 @@ pub(crate) struct VertexIn {
     pub(crate) pc_class: i64,
     /// `0` none, `1` the start/end (`pc_sub`) vertex of target wire edge `pc_index`, `2`
     /// its primary edge use, `3` target face `pc_index`, `4` the target wire edge itself
-    /// (an `SmEdge`, what `SM_PC_EDGE` classifies to upstream).
+    /// (an `SmEdge`, what `SM_PC_EDGE` classifies to upstream), `5` edge use `pc_sub` of
+    /// the first loop of target face `pc_index` (an edge use with a face).
     #[serde(default)]
     pub(crate) pc_kind: i64,
     #[serde(default = "minus_one")]
@@ -1363,7 +1364,7 @@ pub(crate) fn natural_face(
     b: &mut Brep,
     surface: Surface,
 ) -> Result<FaceId, HarnessError> {
-    let domain = surface.natural_uv_domain();
+    let domain = surface.natural_uv_domain_with_nurb(k).map_err(|e| HarnessError::new(e.to_string()))?;
     let mut records = BTreeMap::new();
     let mut attributes = AttributeStore::default();
     let key_of = super::topology_brep_p8::key_of;
@@ -1522,6 +1523,19 @@ impl RustModel {
                 (3, Ok(i)) => Some(EntityRef::Face(
                     *target_faces.get(i).ok_or_else(|| harness("pc face"))?,
                 )),
+                (5, Ok(i)) => {
+                    // edge use `pc_sub` of the first loop of target face `i`
+                    let f = *target_faces.get(i).ok_or_else(|| harness("pc face"))?;
+                    let loops = solidcore::topology::face::p2::loops(&target, f, false, None)
+                        .map_err(h)?;
+                    let l = *loops.first().ok_or_else(|| harness("pc loop"))?;
+                    let eus = solidcore::topology::loopuse::loop_edgeuses(&target, l).map_err(h)?;
+                    let eu = usize::try_from(v.pc_sub)
+                        .ok()
+                        .and_then(|s| eus.get(s).copied())
+                        .ok_or_else(|| harness("pc loop edge use"))?;
+                    Some(EntityRef::Edgeuse(eu))
+                }
                 (4, Ok(i)) => Some(EntityRef::Edge(
                     *target_edges.get(i).ok_or_else(|| harness("pc index"))?,
                 )),

@@ -210,13 +210,18 @@ fn surface(rd: &mut Reader<'_>) -> Result<Domain, FfiError> {
 
 /// A B-spline curve block; returns its parameter range.
 fn curve(rd: &mut Reader<'_>) -> Result<(f64, f64), FfiError> {
+    curve_with(rd, MAX_INDEX)
+}
+
+/// [`curve`] with at most `max_index + 1` control points.
+fn curve_with(rd: &mut Reader<'_>, max_index: usize) -> Result<(f64, f64), FfiError> {
     let dim = rd.index(3)?;
     if dim < 2 {
         return Err(bad("curve: dimension must be 2 or 3"));
     }
-    let n = rd.index(MAX_INDEX)?;
+    let n = rd.index(max_index)?;
     let p = rd.index(MAX_DEGREE)?;
-    let m = rd.index(MAX_INDEX + MAX_DEGREE + 1)?;
+    let m = rd.index(max_index + MAX_DEGREE + 1)?;
     if p == 0 || p > n || m != n + p + 1 {
         return Err(bad("curve: need 1 <= p <= n and m = n + p + 1"));
     }
@@ -243,6 +248,19 @@ pub(crate) fn curve_at(input: &[f64], at: usize) -> Result<((f64, f64), usize), 
     Ok((r, rd.at))
 }
 
+/// [`curve_at`] for a curve of up to `max_index + 1` control points (`topology_brep_p2`'s
+/// `MergeSsi` section curves).
+pub(crate) fn long_curve_at(
+    input: &[f64],
+    at: usize,
+    max_index: usize,
+) -> Result<((f64, f64), usize), FfiError> {
+    let mut rd = Reader::new(input);
+    rd.at = at;
+    let r = curve_with(&mut rd, max_index)?;
+    Ok((r, rd.at))
+}
+
 /// [`brep_block`] for a wrapper with its own reader: validates the B-rep block at the
 /// start of `input`; returns the position after it.
 pub(crate) fn brep_block_at(input: &[f64], path: &str) -> Result<usize, FfiError> {
@@ -251,26 +269,11 @@ pub(crate) fn brep_block_at(input: &[f64], path: &str) -> Result<usize, FfiError
     Ok(rd.at)
 }
 
-/// A B-rep block.
-fn brep_block(rd: &mut Reader<'_>, path: &str) -> Result<(), FfiError> {
-    let kind = rd.index(9)?;
-    match kind {
-        0 => {
-            let p = Path::new(path);
-            if p.extension().and_then(|e| e.to_str()) != Some("smb") || !p.is_file() {
-                return Err(bad("B-rep file: need an existing .smb file"));
-            }
-            rd.flag()?;
-        }
-        1 => {
-            let (a, b) = curve(rd)?;
-            let t0 = rd.finite()?;
-            let t1 = rd.finite()?;
-            if !(a <= t0 && t0 < t1 && t1 <= b) {
-                return Err(bad("wire edge interval outside the curve's"));
-            }
-        }
-        2 | 4 => {
+/// Most faces of a kind-10 block.
+pub const MAX_FACES: usize = 4;
+
+/// The `surface u0 v0 u1 v1` face of a kind-2 (or kind-10) block.
+fn face_block(rd: &mut Reader<'_>) -> Result<(), FfiError> {
             let dom = surface(rd)?;
             let d = rd.finites(4)?;
             let (Some(&a), Some(&b2), Some(&c), Some(&e)) =
@@ -293,6 +296,67 @@ fn brep_block(rd: &mut Reader<'_>, path: &str) -> Result<(), FfiError> {
                     }
                 }
             }
+    Ok(())
+}
+
+/// A canonical analytic face of a kind-10 block: `kind scale a b c ox oy oz axis f0u f0v
+/// f1u f1v` (kind 10 cylinder, 11 sphere, 12 torus, 13 cone).
+fn analytic_face_block(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+    let kind = rd.index(13)?;
+    let scale = rd.finite()?;
+    let a = rd.finite()?;
+    let b = rd.finite()?;
+    let c = rd.finite()?;
+    if !(1e-3..=1e3).contains(&scale) || !(1e-3..=1e2).contains(&a) || !(0.0..=1e2).contains(&c) {
+        return Err(bad("analytic face: size out of range"));
+    }
+    let ok = match kind {
+        10 | 11 => true,
+        // a torus with a minor radius below its major one, a cone of semi-angle in (0, 90)
+        12 => b > 0.0 && b < a,
+        13 => b > 0.0 && b < 90.0,
+        _ => false,
+    };
+    if !ok {
+        return Err(bad("analytic face: bad kind or shape"));
+    }
+    let o = rd.vec3()?;
+    if o.iter().any(|x| x.abs() > 1e4) {
+        return Err(bad("analytic face: origin out of range"));
+    }
+    rd.index(2)?;
+    let f = rd.finites(4)?;
+    let (Some(&f0u), Some(&f0v), Some(&f1u), Some(&f1v)) = (f.first(), f.get(1), f.get(2), f.get(3))
+    else {
+        return Err(bad("analytic face: domain too short"));
+    };
+    if f.iter().any(|t| !(0.0..=1.0).contains(t)) || f0u >= f1u || f0v >= f1v {
+        return Err(bad("analytic face: domain fractions not ordered in [0, 1]"));
+    }
+    Ok(())
+}
+
+/// A B-rep block.
+fn brep_block(rd: &mut Reader<'_>, path: &str) -> Result<(), FfiError> {
+    let kind = rd.index(10)?;
+    match kind {
+        0 => {
+            let p = Path::new(path);
+            if p.extension().and_then(|e| e.to_str()) != Some("smb") || !p.is_file() {
+                return Err(bad("B-rep file: need an existing .smb file"));
+            }
+            rd.flag()?;
+        }
+        1 => {
+            let (a, b) = curve(rd)?;
+            let t0 = rd.finite()?;
+            let t1 = rd.finite()?;
+            if !(a <= t0 && t0 < t1 && t1 <= b) {
+                return Err(bad("wire edge interval outside the curve's"));
+            }
+        }
+        2 | 4 => {
+            face_block(rd)?;
             if kind == 4 {
                 // kind 4 adds an inner vertex loop at these fractions of the domain
                 for _ in 0..2 {
@@ -300,6 +364,20 @@ fn brep_block(rd: &mut Reader<'_>, path: &str) -> Result<(), FfiError> {
                     if !(0.0..=1.0).contains(&t) {
                         return Err(bad("vertex loop fraction outside [0, 1]"));
                     }
+                }
+            }
+        }
+        10 => {
+            // faces of one B-rep: kind-2 faces or canonical analytic ones
+            let nf = rd.index(MAX_FACES)?;
+            if nf == 0 {
+                return Err(bad("face list: need at least one face"));
+            }
+            for _ in 0..nf {
+                if rd.input.get(rd.at).is_some_and(|&k| k >= 10.0) {
+                    analytic_face_block(rd)?;
+                } else {
+                    face_block(rd)?;
                 }
             }
         }

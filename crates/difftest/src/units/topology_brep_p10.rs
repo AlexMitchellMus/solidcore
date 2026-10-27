@@ -34,9 +34,9 @@ use solidcore::math::Vec3;
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::surface::surface::Surface;
 use solidcore::topology::brep::p10::{
-    make_topology_from_data, project_and_trim, remove_all_topology_notified, test_closure_split_region,
-    MakeTopologyOptions, ProjectAndTrimOptions, ProjectEnv, TopologyEnv, TrimType,
-    HEALER_VERSION,
+    make_topology_from_data, project_and_trim, remove_all_topology_notified,
+    test_closure_split_region, MakeTopologyOptions, ProjectAndTrimOptions, ProjectEnv, TopologyEnv,
+    TrimType, HEALER_VERSION,
 };
 use solidcore::topology::brep_cache::CacheObject;
 use solidcore::topology::brep_data::{BrepData, TopologyData};
@@ -51,6 +51,7 @@ use solidcore::topology::{
 };
 use solidcore::{EntityRef, Kernel, SolidError};
 use solidcore_ffi::units::topology_brep_p10::{self as ffi, Item, Op, Patch, Request};
+use super::topology_vertexuse::CrvIn;
 
 use crate::case::{repo_root, CaseContext};
 use crate::fixtures::upstream_test_file;
@@ -77,6 +78,12 @@ struct Inputs {
     patches: Vec<PatchIn>,
     #[serde(default)]
     op: OpIn,
+    /// Exact borrowed NURB input; unlike the copying constructors, neither engine tunes knots.
+    #[serde(default)]
+    projection_curve: Option<CrvIn>,
+    /// Exercise whole-face classification after an intentionally empty projection subset.
+    #[serde(default)]
+    empty_projection_subset: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -182,6 +189,31 @@ fn to_output(items: &[Item], include_bits: bool) -> Output {
     }
 }
 
+/// Exposes stable pre-operation face identities as well as the complete geometry dump.
+fn operation_output(items: &[Item], i: &Inputs) -> Result<Output, HarnessError> {
+    let out = to_output(items, bit_audit(i));
+    if i.projection_curve.is_none() || !matches!(i.op, OpIn::Project { .. }) || items.len() <= 1 {
+        return Ok(out);
+    }
+    let Some(Item::Int(count)) = items.last() else {
+        return Err(harness("missing retained-face count"));
+    };
+    let count = usize::try_from(*count).map_err(|_| harness("negative retained-face count"))?;
+    let end = items.len() - 1;
+    let start = end.checked_sub(count).ok_or_else(|| harness("short face inventory"))?;
+    let original = start.checked_sub(1).and_then(|n| items.get(n));
+    let Some(Item::Int(original)) = original else {
+        return Err(harness("missing original-face count"));
+    };
+    let retained = items.get(start..end).ok_or_else(|| harness("short face inventory"))?
+        .iter().map(|item| match item {
+            Item::Int(id) => Ok(*id),
+            Item::Dbl(_) => Err(harness("non-integer face identity")),
+        }).collect::<Result<Vec<_>, _>>()?;
+    Ok(out.ints("face_counts", vec![*original, count as i64])
+        .ints("retained_original_faces", retained))
+}
+
 /// Why the C++ side must not build these inputs, if it must not: requests on which
 /// `MakeTopologyFromData` runs the healer (`bHealerIsEnabled` and either `bAlwaysHeal`
 /// or an old healer version) over a B-rep it builds unchecked from patched records.
@@ -221,8 +253,7 @@ fn heal_guard(i: &Inputs) -> Option<&'static str> {
             data.shells.iter().any(|s| {
                 s.shell_type == 0
                     && usize::try_from(s.faceuse_start).is_ok_and(|a| {
-                        usize::try_from(s.num_faceuses)
-                            .is_ok_and(|n| f >= a && f - a < n)
+                        usize::try_from(s.num_faceuses).is_ok_and(|n| f >= a && f - a < n)
                     })
             })
         };
@@ -344,11 +375,23 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
         options: i.options,
         patches,
         op,
+        projection_curve: i.projection_curve.as_ref().map(|c| ffi::ProjectionCurve {
+            degree: c.p,
+            control_points: c.cpts.clone(),
+            knots: c.u.clone(),
+        }),
+        empty_projection_subset: i.empty_projection_subset,
     };
-    let include_bits = bit_audit(i);
-    ffi::run(&req)
-        .map(|items| to_output(&items, include_bits))
-        .map_err(|e| harness(format!("ffi: {e}")))
+    let items = match ffi::run(&req) {
+        Ok(items) => items,
+        Err(solidcore_ffi::FfiError::Status(ffi::STATUS_UNDEFINED_PROJECTION_DEGREE)) => {
+            return Ok(Output::rejected(
+                "projecting a raw curve above NL_MAXDEG into a face overruns native surface scratch arrays",
+            ));
+        }
+        Err(e) => return Err(harness(format!("ffi: {e}"))),
+    };
+    operation_output(&items, i)
 }
 
 // ---- the Rust side --------------------------------------------------------------------
@@ -637,7 +680,16 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
             angle_tol,
         } => {
             let v = |p: [f64; 3]| Vec3::new(p[0], p[1], p[2]);
-            let curve = match BSplineCurve::create_line_segment(3, v(a), v(end)) {
+            let curve_result = if let Some(c) = &i.projection_curve {
+                let points = c.cpts.iter().map(|p| {
+                    solidcore::nurbs::math::CPoint::new(p[0], p[1], p[2], p[3])
+                }).collect();
+                solidcore::nurbs::crv_basic::Curve::new(points, c.p, c.u.clone())
+                    .map(|nurb| BSplineCurve::from_nurb(nurb, c.dim, true))
+            } else {
+                BSplineCurve::create_line_segment(3, v(a), v(end))
+            };
+            let curve = match curve_result {
                 Ok(c) => {
                     out.push(Item::Int(0));
                     c
@@ -668,7 +720,7 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
             let opts = ProjectAndTrimOptions {
                 approximation_tol_3d: approx_tol,
                 angle_tol_radians: angle_tol,
-                subset_faces: None,
+                subset_faces: i.empty_projection_subset.then_some(&[]),
             };
             // the merges' edits notify the build's records and attribute store under
             // the build's names
@@ -695,6 +747,17 @@ fn rust(i: &Inputs) -> Result<Dump, HarnessError> {
             }
             let g2 = Graph::walk(&b).map_err(|e| harness(e.to_string()))?;
             export(&k, &b, &g2, &records, &mut out).map_err(|e| harness(e.to_string()))?;
+            if i.projection_curve.is_some() {
+                out.push(Item::Int(g.faces.items.len() as i64));
+                let mut retained = 0;
+                for (index, id) in g.faces.items.iter().enumerate() {
+                    if g2.faces.items.contains(id) {
+                        out.push(Item::Int(index as i64));
+                        retained += 1;
+                    }
+                }
+                out.push(Item::Int(retained));
+            }
         }
     }
     Ok(Ok(out))
@@ -901,6 +964,8 @@ impl Graph {
 struct Out<'a> {
     o: &'a mut Vec<Item>,
     records: &'a BTreeMap<ObjectKey, Topology>,
+    key_of: &'a dyn Fn(EntityRef) -> ObjectRef,
+    uv_owner_matches: Option<&'a dyn Fn(EdgeuseId, ObjectRef) -> bool>,
 }
 
 impl Out<'_> {
@@ -919,7 +984,7 @@ impl Out<'_> {
     fn topo(&mut self, e: EntityRef) {
         let t = self
             .records
-            .get(&key_of(e).key)
+            .get(&(self.key_of)(e).key)
             .copied()
             .unwrap_or_else(Topology::new);
         self.i(t.all_flags() as i64);
@@ -953,7 +1018,12 @@ impl Out<'_> {
             let t = ivl.min() + 0.25 * f64::from(k) * (ivl.max() - ivl.min());
             self.point(c.evaluate_point(&Kernel::default(), t));
         }
-        self.i(i64::from(c.owner() == Some(key_of(owner))));
+        let matches = c.owner().is_some_and(|actual| {
+            actual == (self.key_of)(owner)
+                || matches!(owner, EntityRef::Edgeuse(holder)
+                    if self.uv_owner_matches.is_some_and(|resolve| resolve(holder, actual)))
+        });
+        self.i(i64::from(matches));
     }
     fn surface(&mut self, k: &Kernel, s: Option<&Surface>, owner: EntityRef) {
         let Some(s) = s else {
@@ -962,7 +1032,8 @@ impl Out<'_> {
         };
         self.i(1);
         self.i(s.type_code());
-        let dom: Extent2d = s.natural_uv_domain();
+        // (runner helper that does not return Result)
+        let dom: Extent2d = s.natural_uv_domain_if_built();
         let (lo, hi) = (dom.min(), dom.max());
         self.d(lo.x);
         self.d(lo.y);
@@ -977,7 +1048,7 @@ impl Out<'_> {
                 self.point(s.evaluate_point(k, uv));
             }
         }
-        self.i(i64::from(s.owner() == Some(key_of(owner))));
+        self.i(i64::from(s.owner() == Some((self.key_of)(owner))));
     }
 }
 
@@ -989,7 +1060,25 @@ fn export(
     records: &BTreeMap<ObjectKey, Topology>,
     o: &mut Vec<Item>,
 ) -> Result<(), SolidError> {
-    let mut w = Out { o, records };
+    export_with_identity(k, b, g, records, &key_of, None, o)
+}
+
+#[allow(clippy::too_many_lines)]
+fn export_with_identity(
+    k: &Kernel,
+    b: &Brep,
+    g: &Graph,
+    records: &BTreeMap<ObjectKey, Topology>,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    uv_owner_matches: Option<&dyn Fn(EdgeuseId, ObjectRef) -> bool>,
+    o: &mut Vec<Item>,
+) -> Result<(), SolidError> {
+    let mut w = Out {
+        o,
+        records,
+        key_of,
+        uv_owner_matches,
+    };
     w.d(b.tolerance());
     w.i(i64::from(b.editing_enabled()));
     for n in [
@@ -1155,9 +1244,62 @@ fn export(
 /// Shared post-state snapshot: topology in traversal order, sampled geometry,
 /// and lazy-cache initialization/UV fields not used by the p10 operation runner.
 pub(crate) fn snapshot(k: &Kernel, b: &Brep) -> Result<Output, HarnessError> {
+    snapshot_impl(k, b, &BTreeMap::new(), &key_of, None)
+}
+
+/// The same snapshot with the actual records and topology issuer of a constructed body.
+pub(crate) fn snapshot_with_identity(
+    k: &Kernel,
+    b: &Brep,
+    records: &BTreeMap<ObjectKey, Topology>,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+) -> Result<Output, HarnessError> {
+    // The UV setter takes the body's naming, not this snapshot's topology issuer.
+    // Use only the existing public producer callback; these seeded records are not
+    // substituted for the actual edit records passed to the snapshot.
+    let mut producer = solidcore::topology::brep::p2::ArenaNotifyState::new(b);
+    let producer_key_of = producer.env(None).key_of;
+    let uv_owner_matches =
+        |holder, owner| notify_uv_owner_matches(b, producer_key_of, holder, owner);
+    snapshot_impl(k, b, records, key_of, Some(&uv_owner_matches))
+}
+
+/// Resolve a Notify UV owner to its exact current holder, not merely its edge.
+/// Other geometry keeps the explicit caller issuer; no global owner aliases are inferred.
+pub(crate) fn notify_uv_owner_matches(
+    body: &Brep,
+    producer_key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    holder: EdgeuseId,
+    owner: ObjectRef,
+) -> bool {
+    if body.naming() != solidcore::topology::NamingScheme::Notify
+        || body
+            .edgeuse(holder)
+            .ok()
+            .and_then(|eu| eu.uv_trim_curve.as_ref())
+            .and_then(Curve::owner)
+            != Some(owner)
+    {
+        return false;
+    }
+    let mut matches = body
+        .edgeuses()
+        .iter()
+        .filter_map(|(id, _)| (producer_key_of(EntityRef::Edgeuse(id)) == owner).then_some(id));
+    matches.next() == Some(holder) && matches.next().is_none()
+}
+
+fn snapshot_impl(
+    k: &Kernel,
+    b: &Brep,
+    records: &BTreeMap<ObjectKey, Topology>,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    uv_owner_matches: Option<&dyn Fn(EdgeuseId, ObjectRef) -> bool>,
+) -> Result<Output, HarnessError> {
     let g = Graph::walk(b).map_err(|e| harness(e.to_string()))?;
     let mut items = Vec::new();
-    export(k, b, &g, &BTreeMap::new(), &mut items).map_err(|e| harness(e.to_string()))?;
+    export_with_identity(k, b, &g, records, key_of, uv_owner_matches, &mut items)
+        .map_err(|e| harness(e.to_string()))?;
     // This caller uses the normal relative comparison, not p10's bit audit.
     let mut output = to_output(&items, false).int("validate_only", i64::from(b.validate_only()));
     output.values.insert(
@@ -1227,9 +1369,8 @@ impl UnitDiff for Runner {
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         let inputs: Inputs = case.parse()?;
-        let include_bits = bit_audit(&inputs);
         match rust(&inputs)? {
-            Ok(items) => Ok(to_output(&items, include_bits)),
+            Ok(items) => operation_output(&items, &inputs),
             Err(e) => Ok(Output::unported(&e).unwrap_or_else(|| Output::err(e.to_string()))),
         }
     }
@@ -1344,6 +1485,8 @@ fn generate(rng: &mut Rng) -> Inputs {
         options,
         patches,
         op,
+        projection_curve: None,
+        empty_projection_subset: false,
     }
 }
 
