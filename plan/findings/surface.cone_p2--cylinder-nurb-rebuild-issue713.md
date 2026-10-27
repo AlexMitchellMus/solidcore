@@ -3,7 +3,8 @@
 PR: https://github.com/tangency-labs/solidcore/pull/724
 
 The following records the original, unconditional fix before the UpstreamFixes
-integration on 2026-10-26; the new opt-in validation is recorded in an addendum.
+integration on 2026-10-26; the new opt-in validation is recorded in
+[the current addendum](surface.cone_p2--cylinder-nurb-rebuild-issue713--addendum-2026-10-26-upstreamfixes.md).
 
 - **Reproducer:** `fixtures/surface.cone_p2/issue713.json`, particularly
   `issue713_reported_swap0_inside0`. Build a real cylinder of radius
@@ -15,7 +16,8 @@ integration on 2026-10-26; the new opt-in validation is recorded in an addendum.
   object is still an `SmCylinder`, whose analytic semi-angle must be zero. A
   standalone C++ probe linked against the prebuilt reference confirms these values.
   The unmodified Rust implementation matches C++ on all 1,594 cases, including
-  all 24 new fixtures, with `max_rel_err=0`. See upstream issue WR-385 below.
+  all 24 new fixtures, with `max_rel_err=0`. See
+  [WR-385](../upstream-issues/WR-385--cylinder-rebuild-gets-semi-angle-from-rounded-radii.md).
 - **Correction:** only actual cylinder objects use the mean of end-circle radii
   within `EFF_ZERO_SQRT * (1 + bottom_radius)`, and reset their semi-angle to zero.
   Larger radius differences return `SM_ERR` before changing analytic fields.
