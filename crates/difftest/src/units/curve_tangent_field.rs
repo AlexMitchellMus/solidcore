@@ -568,9 +568,9 @@ fn rust(k: &solidcore::kernel::Kernel, i: &Inputs) -> Result<Output, HarnessErro
 
 /// An error of a step whose status is compared: its `SmStatus`, or the deferral of an
 /// unported step.
-fn step_status(e: &SolidError) -> Result<f64, Output> {
+fn step_status(e: &SolidError) -> Result<f64, Box<Output>> {
     match Output::unported(e) {
-        Some(d) => Err(d),
+        Some(d) => Err(Box::new(d)),
         None => Ok(status(e) as f64),
     }
 }
@@ -595,7 +595,7 @@ fn rust_write_read(
 ) -> Result<Output, HarnessError> {
     match write_read_outputs(k, i, srf)? {
         Ok(o) => Ok(to_output(&o)),
-        Err(deferred) => Ok(deferred),
+        Err(deferred) => Ok(*deferred),
     }
 }
 
@@ -603,7 +603,7 @@ fn write_read_outputs(
     k: &solidcore::kernel::Kernel,
     i: &Inputs,
     srf: BSplineSurface,
-) -> Result<Result<Vec<f64>, Output>, HarnessError> {
+) -> Result<Result<Vec<f64>, Box<Output>>, HarnessError> {
     let w = i
         .write_read
         .as_ref()
@@ -700,7 +700,7 @@ fn write_read_outputs(
     o.extend([ivl.min(), ivl.max()]);
     let eq = match c.approx_eq(k, &tf) {
         Ok(eq) => eq,
-        Err(e) => return Ok(Err(fail(&e))),
+        Err(e) => return Ok(Err(Box::new(fail(&e)))),
     };
     o.push(if eq { 1.0 } else { 0.0 });
     for &t in &w.params {
