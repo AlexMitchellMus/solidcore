@@ -20,6 +20,7 @@
 //! | [`HermiteCurve::evaluate`]                 | `SmHermiteCurve::Evaluate`                       |
 //! | [`HermiteCurve::evaluate_point`]           | `SmHermiteCurve::EvaluatePoint`                  |
 //! | [`HermiteCurve::read_from_db`]             | `SmHermiteCurve::ReadFromDB`                     |
+//! | [`HermiteCurve::write_to_db`]              | `SmHermiteCurve::WriteToDB`                      |
 //! | [`HermiteCurve::TYPE`], [`HermiteCurve::type_code`], [`HermiteCurve::type_string`], [`HermiteCurve::class_string`] | `GetType`, `GetTypeString`, `GetClassString` (`SM_COMMON`) |
 //! | [`HermiteCurve::is_kind_of`]               | `SmHermiteCurve::IsKindOf`                       |
 //!
@@ -48,12 +49,15 @@
 //!   `SmVector3d` member initialisers), so an ASCII value whose extraction is
 //!   skipped stays `SM_UNDEF_DOUBLE`. A short binary read is an
 //!   error (upstream: undefined values, see `topology::database_io`).
+//! - `WriteToDB` is not in the plan's unit list (the write side has no unit); it is
+//!   ported here, next to its reader, for `topology::geometry_write`. Its version
+//!   argument is unused upstream and kept for the dispatcher.
 //! - `CalculateBoundingBox` ignores a failure of `MakeUnitOrthoVectors`, as upstream
 //!   (a chord whose squared length overflows); upstream then passes an uninitialised
 //!   second axis and a zero third axis to `SetBasis`, which fails on the zero
 //!   determinant, so the port leaves the pseudo box's basis unchanged.
 //! - The offset constructor, `ComputeAngleSpannedInDegrees`,
-//!   `GetBSplineControlPolygon`, `AssertValid`, `WriteToDB`, `GetMemoryUsed`,
+//!   `GetBSplineControlPolygon`, `AssertValid`, `GetMemoryUsed`,
 //!   `GetRootCurve` and `Dump` are not part of this unit.
 
 use crate::curve::curve::p2::HERMITE_CURVE_TYPE;
@@ -68,7 +72,7 @@ use crate::geom::tol::is_zero;
 use crate::geom::vector2d::{Point2, Vec2};
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::math::{max2, EFF_ZERO, EFF_ZERO_SQ};
-use crate::topology::database_io::{DatabaseReader, FileType};
+use crate::topology::database_io::{DatabaseReader, DatabaseWriter, FileType};
 
 /// A cubic Hermite curve on `[0, 1]` (`SmHermiteCurve`):
 ///
@@ -467,6 +471,36 @@ impl HermiteCurve {
             }
         }
         Ok(h)
+    }
+
+    /// Writes the curve (`WriteToDB`): points, derivatives and the power basis, three
+    /// doubles each (one labelled line each in ASCII files). `version` is unused, as
+    /// upstream.
+    ///
+    /// # Errors
+    ///
+    /// None (upstream's `WriteDouble` statuses cannot fail on the in-memory writer).
+    pub fn write_to_db(&self, db: &mut DatabaseWriter, version: u64) -> Result<()> {
+        let _ = version;
+        let rows = [
+            (self.p1, " SmHermiteCurve Initial point        \n"),
+            (self.d1, " SmHermiteCurve Initial direction    \n"),
+            (self.p2, " SmHermiteCurve Final point          \n"),
+            (self.d2, " SmHermiteCurve Final direction      \n"),
+            (self.c, " SmHermiteCurve C of power basis eqn \n"),
+            (self.d, " SmHermiteCurve D of power basis eqn \n"),
+        ];
+        if db.file_type() == FileType::Ascii {
+            for (v, label) in rows {
+                db.out_reals(&[v.x, v.y, v.z]).out_str(label);
+            }
+        } else {
+            for (v, _) in rows {
+                db.write_doubles(&[v.x, v.y, v.z]);
+            }
+        }
+        // all done
+        Ok(())
     }
 
     /// `SmHermiteCurve_TYPE` (`GetType`).
