@@ -970,6 +970,10 @@ fn run_rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
         return Ok(build_failure(&ex));
     };
     let (mut b, types) = super::topology_brep_p1::import(&ex, graph_at)?;
+    // the import names the geometry owners by arena identity; record that naming (and
+    // each owner) on the B-rep, so the region nesting's ray fires, which name the
+    // geometry under the stitch's notification identities, resolve the owners
+    b.use_arena_naming().map_err(|e| harness(e.to_string()))?;
     let Some(op) = resolve(k, &i.op, &b)? else {
         return Ok(no_entity());
     };

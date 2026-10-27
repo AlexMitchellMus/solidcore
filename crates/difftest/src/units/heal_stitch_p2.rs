@@ -459,7 +459,11 @@ fn prepare(i: &Inputs) -> Result<Result<(Brep, Resolved), Output>, HarnessError>
     let Some((_, graph_at)) = counts(&ex) else {
         return Ok(Err(build_failure(&ex)));
     };
-    let (b, types) = super::topology_brep_p1::import(&ex, graph_at)?;
+    let (mut b, types) = super::topology_brep_p1::import(&ex, graph_at)?;
+    // the import names the geometry owners by arena identity; record that naming (and
+    // each owner) on the B-rep, so the region nesting's ray fires, which name the
+    // geometry under the stitch's notification identities, resolve the owners
+    b.use_arena_naming().map_err(|e| harness(e.to_string()))?;
     let Some(op) = resolve(&i.op, &b) else {
         return Ok(Err(no_entity()));
     };
