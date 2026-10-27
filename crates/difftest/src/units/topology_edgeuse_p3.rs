@@ -36,7 +36,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use solidcore::curve::curve::Curve as SmCurve;
 use solidcore::kernel::Kernel;
 use solidcore::surface::surface::p2::DropCurveFail;
 use solidcore::topology::edgeuse::p1 as eu1;
