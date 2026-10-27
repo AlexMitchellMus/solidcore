@@ -265,6 +265,8 @@ pub struct UpstreamFixes {
     pub analytic_copy_keeps_parameterization: bool,
     /// `SmFilletSolver::ComputePointValues`' bigger-step retry of the forward finite-difference step solves with the bigger step (`dBigStep`), not with the small `dStep` again (WR-456, #1181).
     pub fillet_point_bigger_step_retry: bool,
+    /// A fillet's trace also runs through the filleted edge's end where a rail ends on an extended edge, so the surface reaches that end (#1022, WR-468).
+    pub fillet_through_extended_rail_end: bool,
     /// `TrimExtendedEdge` takes, on a closed curve, the arc that runs where its base edge does, not always the interval between its two trim points: a hemisphere's rim, two arcs of one circle, no longer becomes one arc twice (WR-463, #403; the fork's tangency-labs/smlib@fa7ff4a).
     pub offset_closed_curve_trim_arc: bool,
 }
