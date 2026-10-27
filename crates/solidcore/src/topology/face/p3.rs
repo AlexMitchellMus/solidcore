@@ -662,7 +662,7 @@ pub fn compute_loop_orientation(
     // get temporary face->Surface copy
     let surf_copy = surface_of(b, f)?.copy(k)?;
     let face_domain = face2::uv_domain(b, f)?;
-    let surf_domain = surface_of(b, f)?.natural_uv_domain();
+    let surf_domain = surface_of(b, f)?.natural_uv_domain_with_nurb(k)?;
 
     // Get last edgeuse endPosition (3d).
     let last = edgeuses
@@ -852,7 +852,7 @@ pub fn create_uv_trim_curves_notified(
         srf_poles: surface_of(b, f)?
             .get_singularities_of_face(k, face2::tolerance(b, f)?, false, false)?
             .singular,
-        srf_uv_domain: surface_of(b, f)?.natural_uv_domain(),
+        srf_uv_domain: surface_of(b, f)?.natural_uv_domain_with_nurb(k)?,
     };
     let surface = surface_of(b, f)?;
     let rescue = face2::RescueSurfaceOwner::new(surface);

@@ -298,12 +298,13 @@ fn surface_is_planar(k: &Kernel, b: &Brep, f: FaceId, s: &Surface, tol_3d: f64) 
             expand_by_zone_tol: false,
             expand_tolerance: None,
         };
-        let pseudo = ignored(bs.calculate_bounding_box(k, &s.natural_uv_domain(), &req))?
-            .and_then(|r| r.pseudo)
-            .map_or_else(PseudoBox::new, |mut p| {
-                p.expand_absolute(face_tol);
-                p
-            });
+        let pseudo =
+            ignored(bs.calculate_bounding_box(k, &s.natural_uv_domain_with_nurb(k)?, &req))?
+                .and_then(|r| r.pseudo)
+                .map_or_else(PseudoBox::new, |mut p| {
+                    p.expand_absolute(face_tol);
+                    p
+                });
         return Ok(pseudo.is_planar(tol_3d).is_planar);
     }
     Ok(s.is_planar(k, tol_3d)?.is_planar)
@@ -1997,7 +1998,7 @@ pub fn sector_classify_curve_on(
     };
 
     // Some surface info:
-    let srf_domain = face_surface(b, f, OP_SECTOR)?.natural_uv_domain();
+    let srf_domain = face_surface(b, f, OP_SECTOR)?.natural_uv_domain_with_nurb(k)?;
     let lu1 = eu1::loopuse(b, cp_eu1)?.ok_or_else(|| null(OP_SECTOR, "edge use not in a loop"))?;
     let loop1 = b
         .loopuse(lu1)?

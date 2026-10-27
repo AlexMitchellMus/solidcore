@@ -914,7 +914,7 @@ pub fn find_if_rectangular_trim(
 
     let min = Point2::new(uv_bbox.min().x, uv_bbox.min().y);
     let max = Point2::new(uv_bbox.max().x, uv_bbox.max().y);
-    let nat_domain = surface_deref(b, f)?.natural_uv_domain();
+    let nat_domain = surface_deref(b, f)?.natural_uv_domain_with_nurb(k)?;
 
     // set output (SetMinMax's status ignored)
     let _ = out
@@ -1029,7 +1029,8 @@ fn store_surface(
     }
 
     // update the Face domain, change the surface owner, save the surface
-    face.uv_domain = surface.natural_uv_domain();
+    // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+    face.uv_domain = surface.natural_uv_domain_if_built();
     surface.set_owner(Some(this));
     face.surface = Some(surface);
     b.geometry_owner_keys.insert(EntityRef::Face(f), this);
@@ -1378,7 +1379,7 @@ fn shrink_geometry_notifying(
     let tol = face_domain.size().length() / 1000.0;
 
     // get surface's current natural UVDomain
-    let surf_domain = surface_deref(b, f)?.natural_uv_domain();
+    let surf_domain = surface_deref(b, f)?.natural_uv_domain_with_nurb(k)?;
 
     // If the face domain is dTol close within surface domain, choose the surface domain
     let mut min = face_domain.min();
@@ -2431,7 +2432,7 @@ mod tests {
         // old surface is dropped (`bDeleteCurrFace`) or handed back
         let (mut b, f, _, _) = plane_face_with_faceuses();
         let s = Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::X));
-        let domain = s.natural_uv_domain();
+        let domain = s.natural_uv_domain_if_built();
         assert!(set_surface(&mut b, f, me(f), s, true).unwrap().is_none());
         let face = b.face(f).unwrap();
         assert_eq!(face.uv_domain, domain);

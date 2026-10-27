@@ -966,7 +966,7 @@ pub fn compute_uv_point(
         return Err(ner(vu));
     }
     let uv_domain = face_uv_domain(b, f)?;
-    let nat_domain = face_surface(b, f)?.natural_uv_domain();
+    let nat_domain = face_surface(b, f)?.natural_uv_domain_with_nurb(k)?;
 
     let sol = if is_edge_vertexuse(b, vu)? {
         // Edgeuse locals - thisEdgeuse->StartPt == CWEdgeuse->EndPt (with tolerances)

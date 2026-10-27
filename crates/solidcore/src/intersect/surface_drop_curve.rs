@@ -1739,6 +1739,7 @@ impl<'s> SurfaceDropCurve<'s> {
             // let WorkingDomain = Surface G1 continuous SubDomain that contains the StartPoint
             self.working_uv_domain = match cache {
                 Some(cache) => surface.domain_with_continuity_from_cache(
+                    k,
                     ContinuityType::G1,
                     start_pnt.curve_uv[0],
                     start_pnt.curve_uv[1],

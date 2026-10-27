@@ -1133,7 +1133,10 @@ fn create_face_from_surface(
     r: RegionId,
     s: Surface,
 ) -> (Result<FaceId>, Changes) {
-    let dom = s.natural_uv_domain();
+    let dom = match s.natural_uv_domain_with_nurb(k) {
+        Ok(dom) => dom,
+        Err(e) => return (Err(e), Changes::default()),
+    };
     let mut marks = Marks::default();
     let (made, changes) = tracked_edit(k, b, |k, b, env| {
         let key_of = env.key_of;
