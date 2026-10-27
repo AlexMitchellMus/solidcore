@@ -36,7 +36,7 @@
 use std::collections::BTreeMap;
 
 use crate::blend::fillet_executive::p1::ExecutiveObjects;
-use crate::blend::fillet_geom::p1::{FilStatus, FilletCornerType, FilletEdgeType};
+use crate::blend::fillet_geom::p1::{FilStatus, FilletCornerType, FilletEdgeType, FilletErrorType};
 use crate::blend::fillet_solver::p1::FilletSurfaceGenerator;
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
 use crate::error::{EntityRef, Result, SolidError};
@@ -2414,7 +2414,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             let mut index = 0;
             while let Some(solver) = self.solvers.get(index).copied() {
                 if !access.creation_ball_fits(k, solver)? {
-                    self.error.code = 8; // SM_FILERR_NO_ROOM (SolidCraft change)
+                    self.error.code = FilletErrorType::NoRoom as i32;
                     self.error.comment = "Fillet Error: a rail turns back on itself: the blend is wider than the face's curve allows (its rolling ball does not fit)".into();
                     return Err(failure());
                 }

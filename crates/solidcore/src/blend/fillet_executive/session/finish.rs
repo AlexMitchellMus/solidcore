@@ -607,9 +607,12 @@ mod stitch_identity_tests {
 #[cfg(test)]
 mod ball_fit_tests {
     use super::*;
+    use crate::blend::fillet_geom::p1::FilletErrorType;
     use crate::geom::global_solver::SolverOperation;
     use crate::math::Point3;
     use crate::topology::{edge, Brep};
+
+    const NO_ROOM: i32 = FilletErrorType::NoRoom as i32;
 
     fn edge_near(k: &Kernel, b: &Brep, point: [f64; 3]) -> EdgeId {
         let point = Point3::new(point[0], point[1], point[2]);
@@ -683,21 +686,22 @@ mod ball_fit_tests {
                 result,
                 Err(SolidError::Upstream { code: 1001, .. })
             ));
-            assert_ne!(code, 8, "r{radius}: the corners fail on their own");
+            assert_ne!(code, NO_ROOM, "r{radius}: the corners fail on their own");
             let (code, result) = corner_round(radius, true);
             assert!(matches!(
                 result,
                 Err(SolidError::Upstream { code: 1001, .. })
             ));
-            assert_eq!(code, 8, "r{radius}: SM_FILERR_NO_ROOM");
+            assert_eq!(code, NO_ROOM, "r{radius}: NoRoom");
         }
     }
 
     #[test]
     fn a_ball_that_fits_is_not_refused() {
         let (code, result) = corner_round(2.0, true);
-        // past the gate, into the corners (SmFace::PointClassify is not wired yet)
-        assert!(matches!(result, Err(e) if e.is_unported()));
-        assert_ne!(code, 8);
+        // the round past the gate completes (main wired SmFace::PointClassify, which this
+        // test used to stop at)
+        result.unwrap();
+        assert_ne!(code, NO_ROOM);
     }
 }
