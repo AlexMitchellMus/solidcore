@@ -1336,6 +1336,90 @@ fn builtin() -> Vec<(String, Inputs)> {
             points: Vec::new(),
         },
     ));
+    // A UV loop whose arch crosses the crease twice: after the split, the middle piece of
+    // the arch has both ends on the iso curve, so AddSortedSolution compares two
+    // solutions on one (iso curve, loop curve) pair (IsEqual reads the curves' natural
+    // intervals). The arch is a quadratic Bezier whose apex is at v (or u) = 0.7.
+    let arch_v = |s: f64, e: f64| {
+        vec![
+            CrvIn {
+                dim: 2,
+                cpts: vec![[s, 0.3, NOZ, NOW], [0.5, 1.1, NOZ, NOW], [e, 0.3, NOZ, NOW]],
+                p: 2,
+                u: vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            },
+            bline(2, [e, 0.3, 0.0], [s, 0.3, 0.0]),
+        ]
+    };
+    let arch_u = vec![
+        CrvIn {
+            dim: 2,
+            cpts: vec![[0.3, 0.2, NOZ, NOW], [1.1, 0.5, NOZ, NOW], [0.3, 0.8, NOZ, NOW]],
+            p: 2,
+            u: vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        },
+        bline(2, [0.3, 0.8, 0.0], [0.3, 0.2, 0.0]),
+    ];
+    for (name, s, l) in [
+        ("crease_v_arch", patch(1, 2, 1, 4, 1.0, false, true, &bump), arch_v(0.2, 0.8)),
+        ("crease_v_wide_arch", patch(1, 2, 1, 4, 1.0, false, true, &bump), arch_v(0.05, 0.95)),
+        ("crease_u_arch", patch(2, 1, 4, 1, 1.0, true, false, &ridge), arch_u),
+        // one closed degree-1 curve (a triangle) whose seam is on the crease: the iso
+        // curve meets both ends of the loop's only curve
+        (
+            "crease_v_seam",
+            patch(1, 2, 1, 4, 1.0, false, true, &bump),
+            vec![CrvIn {
+                dim: 2,
+                cpts: vec![
+                    [0.5, 0.5, NOZ, NOW],
+                    [0.8, 0.2, NOZ, NOW],
+                    [0.2, 0.2, NOZ, NOW],
+                    [0.5, 0.5, NOZ, NOW],
+                ],
+                p: 1,
+                u: vec![0.0, 0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0, 1.0],
+            }],
+        ),
+        // the same triangle crossing the crease, with its seam above it
+        (
+            "crease_v_seam_cross",
+            patch(1, 2, 1, 4, 1.0, false, true, &bump),
+            vec![CrvIn {
+                dim: 2,
+                cpts: vec![
+                    [0.5, 0.8, NOZ, NOW],
+                    [0.8, 0.2, NOZ, NOW],
+                    [0.2, 0.2, NOZ, NOW],
+                    [0.5, 0.8, NOZ, NOW],
+                ],
+                p: 1,
+                u: vec![0.0, 0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0, 1.0],
+            }],
+        ),
+    ] {
+        v.push((
+            format!("make_faces_uv_{name}"),
+            Inputs::MakeFaces {
+                surface: s,
+                dom: [0.0, 0.0, 1.0, 1.0],
+                orient: 1,
+                region_null: false,
+                loops: vec![l.len()],
+                has3d: false,
+                has_uv: true,
+                curves: l
+                    .into_iter()
+                    .map(|c| LoopCurve {
+                        c3: None,
+                        uv: Some(c),
+                        orient: 1,
+                    })
+                    .collect(),
+                points: Vec::new(),
+            },
+        ));
+    }
     v
 }
 

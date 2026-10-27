@@ -93,7 +93,7 @@ use crate::topology::face::p2 as face2;
 use crate::topology::loopuse;
 use crate::topology::topology_traverser::Marks;
 use crate::topology::trimming_tools::curve_loops::{
-    CurveIntersections, CurveKey, CurveLoops, IsoXSectSegment, LoopObject,
+    CurveIntersections, CurveKey, CurveLoops, IsoXSectSegment, LoopObject, StoreDomains,
 };
 use crate::topology::trimming_tools::find_outer_loops;
 use crate::topology::vertex;
@@ -960,7 +960,12 @@ pub fn make_faces_with_curves(
         let mut new_sols: SolutionArray<LoopObject> = SolutionArray::new();
         for ii in 0..ci.solutions.len() {
             if let Some(s) = ci.solutions.get(ii) {
-                ignore_status(new_sols.add_sorted_solution(s, SortKey::ByFirstParameter))?;
+                // (IsEqual reads the natural intervals of the solutions' curves)
+                ignore_status(new_sols.add_sorted_solution_in(
+                    s,
+                    SortKey::ByFirstParameter,
+                    &StoreDomains(&store),
+                ))?;
             }
         }
         let iso_key = ci
