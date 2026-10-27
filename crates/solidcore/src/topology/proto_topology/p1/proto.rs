@@ -2099,8 +2099,10 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         self.split_self_loops_on_vertices = split;
     }
 
-    /// The destructor `~SmProtoTopologyManager`: deletes the listed proto faces,
-    /// then the listed proto edges (with their edge definitions, which delete the
+    /// The destructor `~SmProtoTopologyManager`: first cuts the links between the
+    /// listed proto edges and proto vertices (each listed edge's ends are cleared and
+    /// each listed vertex's edge list emptied, so no destructor below unlists across
+    /// them), then deletes the listed proto faces, then the listed proto edges (with their edge definitions, which delete the
     /// curves they own), then the listed proto vertices (with their vertex
     /// definitions). Returns the curve handles deleted. References to objects
     /// already deleted (a use after free upstream) are skipped. Objects that are not
@@ -2108,6 +2110,21 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
     /// the manager); the manager must not be used for anything else afterwards.
     #[must_use]
     pub fn destroy(&mut self) -> Vec<O> {
+        // Cut the ProtoVertex <-> ProtoEdge links first: a ProtoVertex can still list a
+        // ProtoEdge that has moved to another ProtoVertex, and its destructor would then
+        // write into a deleted ProtoEdge.
+        for &pe in &self.pes {
+            if let Some(Some(e)) = self.pe_store.get_mut(pe.0 as usize) {
+                e.set_start_proto_vertex(None);
+                e.set_end_proto_vertex(None);
+            }
+        }
+        for &pv in &self.pvs {
+            if let Some(Some(v)) = self.pv_store.get_mut(pv.0 as usize) {
+                v.proto_edges_mut().clear();
+            }
+        }
+
         let mut deleted = Vec::new();
         for pf in std::mem::take(&mut self.pfs) {
             if let Some(slot) = self.pf_store.get_mut(pf.0 as usize) {
