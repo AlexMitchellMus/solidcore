@@ -1088,7 +1088,8 @@ pub(crate) fn renumber_with(src: &Brep, conv: &Conventions<'_>) -> Result<Brep, 
         conv.prefix_lists,
         conv.vertex_lists_last,
         conv.skip_edge_list,
-    ).map_err(solid)?;
+    )
+    .map_err(solid)?;
     // the geometry `src` itself counts as owned by its face / edge (`GetSurfaces` /
     // `GetCurves`, under its own naming; either errs on a face without surface or an
     // edge without curve, then any recorded owner counts): relabelled to the new ids
