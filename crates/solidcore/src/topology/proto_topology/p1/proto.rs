@@ -1540,8 +1540,8 @@ impl<O: ClassObject> EdgeDefinition<O> {
 
     /// Whether `position` is an interior point of the definition near its start (or
     /// end) (`IsInteriorPoint`): farther than `tol` from that end, dropping onto the
-    /// 3d curve (minimising, guessed at that end) in that half of the interval, with
-    /// the drop point farther than `tol` from the end. The parameter is the drop
+    /// 3d curve (minimising, guessed at that end) within `tol` of it, in that half of
+    /// the interval, with the drop point farther than `tol` from the end. The parameter is the drop
     /// parameter when the result is `true` (or the end parameter when the position
     /// is at the end).
     ///
@@ -1585,6 +1585,14 @@ impl<O: ClassObject> EdgeDefinition<O> {
         };
         param = d.parameter;
         if !d.success {
+            return Ok((false, param));
+        }
+
+        // SM_SO_MINIMIZE succeeds for any converged closest point, however far away.
+        // A true result lets UpdateEdges() trim this EdgeDef to the parameter, so the
+        // position must actually lie on the curve. (`!(dDropDist <= sTol3d)`: a NaN
+        // distance is rejected.)
+        if d.distance.is_nan() || d.distance > tol {
             return Ok((false, param));
         }
 
@@ -1832,6 +1840,11 @@ impl ProtoEdge {
     #[must_use]
     pub fn coinc_proto_faces(&self) -> &[ProtoFaceId] {
         &self.coinc_pfs
+    }
+
+    /// The coincident proto faces, for the edits upstream makes to `m_sCoincPFs`.
+    pub fn coinc_proto_faces_mut(&mut self) -> &mut Vec<ProtoFaceId> {
+        &mut self.coinc_pfs
     }
 
     /// Sets the interval (`SetXSectInterval`).

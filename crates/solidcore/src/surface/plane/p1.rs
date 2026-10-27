@@ -2552,9 +2552,11 @@ mod tests {
         let c = p.coincidence_check(&k, &q, 1e-6, true).unwrap();
         assert!(!c.are_coincident);
         let b = Surface::from(p.base_with_nurb().unwrap().into_owned());
-        // (a B-spline other surface runs SmSurface::IsPlanar, surface.surface_p7)
+        // (a B-spline other surface runs SmSurface::IsPlanar, surface.surface_p7; since
+        // SMLib v1.0.1 its pseudo box is unpadded (SmSurface.cpp:22371 at 3fd5b95), so the
+        // plane's own B-spline passes a 1e-6 planarity test and is coincident)
         assert!(
-            !p.coincidence_check(&k, &b, 1e-6, true)
+            p.coincidence_check(&k, &b, 1e-6, true)
                 .unwrap()
                 .are_coincident
         );

@@ -32,6 +32,7 @@
 #include "sc_exact_curve_export.h"
 #include "support/topology_fixture.h"
 #include "support/ellipse_face_fixture.h"
+#include "support/test_brep_fixture.h"
 
 
 #include "StdAfx.h"
@@ -548,6 +549,67 @@ void put_surface(std::vector<double>& o, const SmSurface* s)
         o.push_back(sur->knv->U[i]);
 }
 
+// Whether the B-rep being exported came from a smTestBrep.cpp block (10..12), whose
+// SmCrvOnSurf edge curves are exported as -4 records; every other block keeps the
+// encoding it had before those blocks existed (an SmCrvOnSurf there stays -2).
+bool& crv_on_surf_records()
+{
+    static thread_local bool on = false;
+    return on;
+}
+
+struct CosPeek : SmCrvOnSurf
+{
+    static ULONG SmCrvOnSurf::*owner_flag() { return &CosPeek::m_lOwnerFlag; }
+    static SmBSplineCurve* SmCrvOnSurf::*approx() { return &CosPeek::m_pBSApproxCurve; }
+    static double SmCrvOnSurf::*max_gap() { return &CosPeek::m_dMaxGap3d; }
+    static SmBoolean SmCrvOnSurf::*matches() { return &CosPeek::m_bParametrizationMatches; }
+};
+
+// An SmCrvOnSurf edge curve as `-4 type version nbytes bytes...`: its binary database record
+// (UV curve, base surface, UV domain, breaks), which SmCrvOnSurf::ReadFromDB reads back with
+// owner flag 2. Written only when that record is the whole curve: owner flag 2 (copies of
+// both inputs), no cached B-spline approximation, and a read-back that writes the same
+// bytes. Returns false (nothing written) otherwise, and the caller falls back to the -2 of
+// put_curve, which the Rust import rejects.
+bool put_crv_on_surf(std::vector<double>& out, const SmCurve* c)
+{
+    if (c == nullptr || c->GetType() != SmCrvOnSurf_TYPE)
+        return false;
+    const SmCrvOnSurf* cos = (const SmCrvOnSurf*)c;
+    if (cos->*CosPeek::owner_flag() != 2 || cos->*CosPeek::approx() != nullptr ||
+        cos->*CosPeek::max_gap() != SM_BIG_DOUBLE || cos->*CosPeek::matches() != FALSE ||
+        cos->GetUVCurve() == nullptr || cos->GetBaseSurface() == nullptr)
+        return false;
+    std::string bytes;
+    if (!sc_exact_curve_export::curve_record(c, bytes))
+        return false;
+    SmCurve* back = nullptr;
+    std::istringstream stream(bytes);
+    SmDatabaseIOStream db(SM_BINARY, &stream);
+    bool exact = false;
+    if (SmCurve::ReadFromDB(SmCrvOnSurf_TYPE, db, c->GetDim(), the_context(), back,
+                            SM_CURRENT_DATABASE_VERSION) == SM_SUCCESS &&
+        back != nullptr && back->GetType() == SmCrvOnSurf_TYPE &&
+        stream.peek() == std::char_traits<char>::eof())
+    {
+        std::string again;
+        exact = ((const SmCrvOnSurf*)back)->*CosPeek::owner_flag() == 2 &&
+                sc_exact_curve_export::curve_record(back, again) && again == bytes;
+    }
+    delete back;
+    if (!exact)
+        return false;
+    out.push_back(-4.0);
+    out.push_back((double)SmCrvOnSurf_TYPE);
+    out.push_back((double)SM_CURRENT_DATABASE_VERSION);
+    out.push_back((double)c->GetDim());
+    out.push_back((double)bytes.size());
+    for (unsigned char byte : bytes)
+        out.push_back((double)byte);
+    return true;
+}
+
 void put_list(std::vector<double>& o, const std::vector<int64_t>& v)
 {
     o.push_back((double)v.size());
@@ -653,7 +715,8 @@ void export_graph(SmBrep* brep, Graph& g, std::vector<double>& o)
         for (SmTopology* t : list_of(p->GetList()))
             v.push_back(g.find(6, t));
         put_list(o, v);
-        sc_exact_curve_export::put_export_curve(o, p->GetCurve(), the_context(), put_curve);
+        if (!crv_on_surf_records() || !put_crv_on_surf(o, p->GetCurve()))
+            sc_exact_curve_export::put_export_curve(o, p->GetCurve(), the_context(), put_curve);
     }
     for (SmVertexuse* p : g.vertexuses)
     {
@@ -691,6 +754,7 @@ SmBrep* build(Rd& rd, const char* path, SmStatus& status)
     int64_t kind = rd.idx();
     SmBrep* brep = new (ctx) SmBrep();
     status = SM_SUCCESS;
+    crv_on_surf_records() = false;
     if (kind == 0)
     {
         bool rebuild = rd.flag();
@@ -699,6 +763,25 @@ SmBrep* build(Rd& rd, const char* path, SmStatus& status)
     else if (kind == 9)
     {
         status = sc_topology_fixture::ellipse_face(brep, rd, ctx);
+    }
+    else if (kind == 10 || kind == 11 || kind == 12)
+    {
+        // the smTestBrep.cpp fixtures (support/test_brep_fixture.h), each building its own
+        // B-rep; their edges' SmCrvOnSurf curves are exported as -4 records
+        delete brep;
+        if (kind == 12)
+            brep = sc_test_brep::xy_sheet(ctx, rd.num(), status);
+        else if (kind == 10)
+            brep = sc_test_brep::loop_orientation_case(ctx, (ULONG)rd.idx(), status);
+        else
+            brep = sc_test_brep::torus_vertex_loop_case(const_cast<SmContext&>(ctx), (ULONG)rd.idx(), status);
+        crv_on_surf_records() = true;
+        if (brep == nullptr)
+        {
+            rd.bflag();
+            rd.flag();
+            return nullptr;
+        }
     }
     else if (kind == 1)
     {

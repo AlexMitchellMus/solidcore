@@ -2484,8 +2484,8 @@ mod tests {
             [false, false, true],
             true
         )));
-        assert!(is_face_tolerance(&off.is_planar(&k, 1e-6)));
         // no expansion, no tolerance: the box is computed
+        assert!(off.is_planar(&k, 1e-6).is_ok());
         assert!(off
             .calculate_bounding_box(&k, &dom, [true, true, true], false)
             .is_ok());

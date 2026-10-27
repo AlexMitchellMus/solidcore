@@ -108,7 +108,7 @@ use crate::nurbs::b_spline_curve::p1::{
 };
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::geom::dist_cpt_cpt;
-use crate::nurbs::knots::Side;
+use crate::nurbs::knots::{Side, MAX_DEGREE};
 use crate::nurbs::math::{CPoint, NOW, NOZ};
 use crate::nurbs::nurbs_crv::{allocate_nurb_curve, is_ncrv_degenerate, to_euclid};
 use crate::topology::database_io::{DatabaseReader, DatabaseWriter, FileType, InputStream};
@@ -132,6 +132,8 @@ const OP_ELEVATE: &str = "nurbs::b_spline_curve::p2::BSplineCurve::degree_elevat
 const OP_REVERSE: &str = "nurbs::b_spline_curve::p2::BSplineCurve::reverse_parameterization";
 const OP_SET_CP: &str = "nurbs::b_spline_curve::p2::BSplineCurve::set_control_point";
 const OP_READ: &str = "nurbs::b_spline_curve::p2::BSplineCurve::read_from_db";
+/// `ReadFromDB`'s message when the stream fails part way (`ReadFailed`).
+const READ_FAILED: &str = "NURBS curve data ends early or holds text that is not a number";
 
 /// `SmControlPointFormType`: how control points are passed in or out; discriminants
 /// are the upstream values.
@@ -1795,9 +1797,11 @@ impl BSplineCurve {
     ///
     /// # Errors
     ///
-    /// `InvalidInput` for an unreadable or negative header, a knot type or form
-    /// outside its enum, or a stream shorter than the header declares (upstream:
-    /// undefined values); `SM_ERR` from the 2D conversion.
+    /// `InvalidInput` (`SM_ERR_INVALID_INPUT`) when a read fails part way (data ends
+    /// early or is not a number), for a degree outside `1..=NL_MAXDEG`, fewer control
+    /// points than degree + 1 or too many to size, a rational flag other than 0 or 1,
+    /// a knot type or form outside its enum, or a stream shorter than the header
+    /// declares; `SM_ERR` from the 2D conversion.
     pub fn read_from_db(db: &mut DatabaseReader, dim: u64, version: u64) -> Result<Self> {
         let bad = |reason: &'static str| invalid(OP_READ, reason);
 
@@ -1827,7 +1831,7 @@ impl BSplineCurve {
             }
             match (n, p, rat, read_dim) {
                 (Some(n), Some(p), Some(rat), Some(d)) => (n, p, rat, d),
-                _ => return Err(bad("unreadable header (uninitialised upstream)")),
+                _ => return Err(bad(READ_FAILED)),
             }
         } else {
             let n = db.read_long()?;
@@ -1840,6 +1844,36 @@ impl BSplineCurve {
             }
             (n, p, rat, read_dim)
         };
+        if db.read_failed() {
+            return Err(bad(READ_FAILED));
+        }
+
+        // A curve above NL_MAXDEG evaluates, but a surface built from it (an extrusion or
+        // a sweep) has that degree and overflows NLib's surface evaluators, which size
+        // their stack arrays by NL_MAXDEG. A degree-0 curve has a zero tangent. NLib's own
+        // curve checks also cap curves at NL_MAXDEG, so reject anything outside
+        // [1, NL_MAXDEG].
+        if p < 1 || i64::from(p) > MAX_DEGREE as i64 {
+            return Err(bad(
+                "NURBS curve degree is outside the supported range 1 to NL_MAXDEG",
+            ));
+        }
+
+        // The count comes straight from the file too, as the highest index. A curve needs
+        // at least degree + 1 control points, and the NURB is one block whose byte size is
+        // a ULONG, so reject a count that would overflow it before it sizes anything.
+        if n < i64::from(p) {
+            return Err(bad(
+                "NURBS curve control point count is fewer than degree + 1",
+            ));
+        }
+        if n as u64 >= u64::MAX / (4 * 32) {
+            return Err(bad("NURBS curve control point count is too large"));
+        }
+        // Any nonzero flag would otherwise select the rational read below.
+        if rat != 0 && rat != 1 {
+            return Err(bad("NURBS curve rational flag is neither NL_NO nor NL_YES"));
+        }
 
         // knot count
         let n = usize::try_from(n).map_err(|_| bad("negative size"))?;
@@ -1868,24 +1902,22 @@ impl BSplineCurve {
 
         // Read in data
         let mut vals = [f64::NAN; 4];
-        for (i, slot) in cur.cpts_mut().iter_mut().enumerate() {
+        for slot in cur.cpts_mut().iter_mut() {
             if ascii {
                 let s = db.in_stream_mut().ok_or_else(|| bad("no input stream"))?;
-                let mut all = true;
                 for v in vals.iter_mut().take(per) {
-                    match s.extract_double() {
-                        Some(x) => *v = x,
-                        None => all = false,
+                    if let Some(x) = s.extract_double() {
+                        *v = x;
                     }
-                }
-                if i == 0 && !all {
-                    return Err(bad("unreadable control point (uninitialised upstream)"));
                 }
                 db.go_to_next_line();
             } else {
                 for v in vals.iter_mut().take(per) {
                     *v = db.read_double()?;
                 }
+            }
+            if db.read_failed() {
+                return Err(bad(READ_FAILED));
             }
             let [wx, wy, a, b] = vals;
             *slot = match (two_d, rational) {
@@ -1910,6 +1942,9 @@ impl BSplineCurve {
                 }
             } else {
                 *slot = db.read_double()?;
+            }
+            if db.read_failed() {
+                return Err(bad(READ_FAILED));
             }
         }
 

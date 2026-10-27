@@ -16,7 +16,7 @@
 //! | [`face_bounding_box`], [`face_internal_point`], [`face_classify_uv`], [`face_closest_point`], [`face_closest_point_in_shape`] | `SmApiFaceBoundingBox`, `SmApiFaceInternalPoint`, `SmApiFaceClassifyUV`, `SmApiFaceClosestPoint` |
 //! | [`edge_bounding_box`], [`edge_closest_point`], [`edge_parameter_range`], [`edge_classify_parameter`], [`edge_tangent`] | `SmApiEdgeBoundingBox`, `SmApiEdgeClosestPoint`, `SmApiEdgeParameterRange`, `SmApiEdgeClassifyParameter`, `SmApiEdgeTangent` |
 //! | [`vertex_get_point`] | `SmApiVertexGetPoint` |
-//! | `count_contained_samples`, `point_in_solid` (private) | `sm_CountContainedSamples`, `sm_PointInSolid` |
+//! | `count_contained_samples`, `point_in_solid`, `target_curve_crossings` (private) | `sm_CountContainedSamples`, `sm_PointInSolid`, its `BrepCurveSolve` |
 //! | `solution_point` (private) | `SmSolution::GetPoint` |
 //!
 //! Deviations: typed references/ids replace nullable pointers; results replace
@@ -32,8 +32,9 @@
 //! private copy of each target ([`BrepClassifier::of_brep`], keyed by the target's
 //! recorded naming scheme and proven owner keys); `sm_CountContainedSamples`'
 //! `SmApiFaceInternalPoint` of each sample face runs on a copy of the sample B-rep
-//! (borrowed next to the target), while the public [`face_internal_point`] works on its
-//! B-rep in place. No new recursion or allocation from
+//! (borrowed next to the target), and its `BrepCurveSolve` of each sample edge runs on
+//! one copy of the target (the solve makes caches on the B-rep it solves), while the
+//! public [`face_internal_point`] works on its B-rep in place. No new recursion or allocation from
 //! serialized counts.
 
 use crate::curve::curve::p1::GlobalPointSolveOptions;
@@ -49,7 +50,7 @@ use crate::intersect::point_class::{PointClassType, PointClassification};
 use crate::intersect::topology_solver::p1::{TopologyObjects, TopologySolver};
 use crate::intersect::topology_solver::p2::TopologySolveOptions;
 use crate::kernel::Kernel;
-use crate::math::{Point2, Point3, Vec3};
+use crate::math::{Point2, Point3, Vec3, EFF_ZERO};
 use crate::nurbs::b_spline_curve::BoundingBoxRequest;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::query::brep::BrepClassifier;
@@ -383,7 +384,7 @@ impl<'b> Target<'b> {
         Self(BrepClassifier::of_brep(brep))
     }
 
-    /// `pTarget->Point3DClassify(point, tolerance, FALSE, sPC)`: the point class and
+    /// `pTarget->Point3DClassify(point, tolerance, flag, sPC)`: the point class and
     /// whether its object is a region that is not void (`pReg != NULL &&
     /// !pReg->IsVoid()`).
     fn classify(
@@ -391,8 +392,9 @@ impl<'b> Target<'b> {
         k: &Kernel,
         point: Point3,
         tolerance: f64,
+        flag: bool,
     ) -> Result<(PointClassType, bool)> {
-        let pc = self.0.point_3d_classify(k, point, tolerance, false)?;
+        let pc = self.0.point_3d_classify(k, point, tolerance, flag)?;
         let material = match pc.object() {
             Some(EntityRef::Region(r)) => self.0.brep().region(r)?.is_void() == 0,
             _ => false,
@@ -409,12 +411,59 @@ fn point_in_solid(
     point: Point3,
     tolerance: f64,
 ) -> Result<bool> {
-    Ok(ignored(target.classify(k, point, tolerance))?
+    Ok(ignored(target.classify(k, point, tolerance, false))?
         .is_some_and(|(class, material)| class == PointClassType::Region && material))
 }
 
 fn brep_vertices(brep: &Brep) -> Result<Vec<VertexId>> {
     crate::topology::brep::p1::vertices(brep, None)
+}
+
+/// `SmTopologySolver::BrepCurveSolve(pTarget, curve, interval, SM_SO_INTERSECT,
+/// SM_SR_ALL, tolerance, SM_BIG_DOUBLE, NULL)` against `target` (a copy of it, on which
+/// the solve makes its caches): every solution's start parameter, and its end parameter
+/// for a range of values, in solution order.
+fn target_curve_crossings(
+    k: &Kernel,
+    target: &mut Brep,
+    curve: &Curve,
+    interval: &Extent1d,
+    tolerance: f64,
+) -> Result<Vec<f64>> {
+    use crate::geom::solution_array::SolutionType;
+    use crate::intersect::topology_solver::p1::CurveRef;
+    let query = qbrep::BrepQuery::of_brep(target);
+    let cache = query.cache(k, target)?;
+    let identity = query.effective_identity();
+    let objects = qbrep::LiveBrepObjects::new(target, &identity, Some(cache))?;
+    let solutions = TopologySolver::brep_curve_solve(
+        k,
+        &objects,
+        Some(CacheObject::Brep),
+        CurveRef {
+            curve,
+            handle: CacheObject::Other(ObjectRef {
+                type_code: curve.type_code(),
+                key: crate::geom::attribute::ObjectKey(0),
+            }),
+        },
+        interval,
+        TopologySolveOptions {
+            operation: SolverOperation::Intersect,
+            requested: SolutionRequested::All,
+            tolerance_3d: tolerance,
+            best_answer_so_far_sq: crate::math::BIG_DOUBLE,
+            opt_vectors: &[],
+        },
+    )?;
+    let mut params = Vec::new();
+    for solution in solutions.as_slice() {
+        params.push(solution.start.param(0)?);
+        if solution.solution_type == SolutionType::RangeOfValues {
+            params.push(solution.end.param(0)?);
+        }
+    }
+    Ok(params)
 }
 
 fn count_contained_samples(
@@ -434,9 +483,44 @@ fn count_contained_samples(
             points.push(point);
         }
     }
+
+    // One point on each piece of each edge between its crossings of the target's
+    // boundary: each piece is wholly inside or outside the target.
+    let mut target_copy: Option<Brep> = None;
+    for e in brep_edges(sample)? {
+        let Some(curve) = edge::curve(sample, e)? else {
+            continue;
+        };
+        let interval = edge::interval(sample, e)?;
+        let mut params = vec![interval.min()];
+        let target_brep = target_copy.get_or_insert_with(|| target.0.brep().clone());
+        if let Some(crossings) = ignored(target_curve_crossings(
+            k,
+            target_brep,
+            curve,
+            &interval,
+            tolerance,
+        ))? {
+            params.extend(crossings);
+        }
+        params.push(interval.max());
+        params.sort_by(f64::total_cmp);
+        for pair in params.windows(2) {
+            let &[a, b] = pair else {
+                continue;
+            };
+            if b - a <= EFF_ZERO * (1.0 + interval.length()) {
+                continue;
+            }
+            if let Some(mid) = ignored(curve.evaluate_point(k, 0.5 * (a + b)))? {
+                points.push(mid);
+            }
+        }
+    }
+
     let (mut inside, mut outside) = (0, 0);
     for point in points {
-        if let Some((class, material)) = ignored(target.classify(k, point, tolerance))? {
+        if let Some((class, material)) = ignored(target.classify(k, point, tolerance, true))? {
             match class {
                 PointClassType::Region => {
                     if material {
@@ -1022,13 +1106,13 @@ mod tests {
         let mut target = Target::new(&box_brep);
         assert_eq!(
             target
-                .classify(&k, Point3::new(0.5, 0.5, 0.5), 1e-5)
+                .classify(&k, Point3::new(0.5, 0.5, 0.5), 1e-5, false)
                 .unwrap(),
             (PointClassType::Region, true)
         );
         assert_eq!(
             target
-                .classify(&k, Point3::new(2.0, 2.0, 2.0), 1e-5)
+                .classify(&k, Point3::new(2.0, 2.0, 2.0), 1e-5, false)
                 .unwrap(),
             (PointClassType::Region, false)
         );
