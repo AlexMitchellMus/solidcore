@@ -387,8 +387,8 @@ fn check(op: Op, input: &[f64]) -> Result<(), FfiError> {
             nurb_curve(&mut rd, 2)?;
             let start = 7 + 4 * (n as usize + 1);
             let knots = input.get(start..).ok_or_else(|| bad("missing raw trim knots"))?;
-            if knots.windows(2).any(|w| {
-                let span = w[1] - w[0];
+            if knots.iter().zip(knots.iter().skip(1)).any(|(a, b)| {
+                let span = b - a;
                 span > 0.0 && span <= 1e-12
             }) {
                 return Err(bad("raw trim positive span must exceed EFF_ZERO (UB266)"));
