@@ -357,7 +357,7 @@ impl<O: ClassObject> CurveClassification<O> {
         let _ = detached.set_owner(None);
         let surface = &detached;
         let curve = self.curve_geometry(geometry)?;
-        let domain = surface.natural_uv_domain();
+        let domain = surface.natural_uv_domain_with_nurb(k)?;
         let surf_tol = if uv {
             eff_zero_param()
         } else {
@@ -580,7 +580,7 @@ impl<O: ClassObject> CurveClassification<O> {
         let _ = detached.set_owner(None);
         let surface = &detached;
         let curve = self.curve_geometry(geometry)?;
-        let domain = surface.natural_uv_domain();
+        let domain = surface.natural_uv_domain_with_nurb(k)?;
         let surf_tol = if uv {
             eff_zero_param()
         } else {

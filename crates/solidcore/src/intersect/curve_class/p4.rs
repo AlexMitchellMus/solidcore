@@ -1355,7 +1355,7 @@ impl<O: ClassObject> CurveClassification<O> {
         let surface = surface.ok_or_else(|| {
             SolidError::invalid_input(OP_CROSS, "face without a surface (UB-124)")
         })?;
-        let srf_domain = surface.natural_uv_domain();
+        let srf_domain = surface.natural_uv_domain_with_nurb(k)?;
         let srf_min_uv = srf_domain.min();
         let srf_max_uv = srf_domain.max();
         let crv_classification_interval = self.interval();
@@ -1401,7 +1401,7 @@ impl<O: ClassObject> CurveClassification<O> {
                     k,
                     surface,
                     smp_pt,
-                    &surface.natural_uv_domain(),
+                    &surface.natural_uv_domain_with_nurb(k)?,
                     None,
                     None,
                     smp_uv,
@@ -1872,7 +1872,7 @@ impl<O: ClassObject> CurveClassification<O> {
             c.k,
             c.surface,
             classify_crv_pn[0],
-            &c.surface.natural_uv_domain(),
+            &c.surface.natural_uv_domain_with_nurb(k)?,
             None,
             None,
             Vec2::UNDEF,
@@ -2148,7 +2148,7 @@ impl<O: ClassObject> CurveClassification<O> {
                 c.k,
                 c.surface,
                 edge_pn[0],
-                &c.surface.natural_uv_domain(),
+                &c.surface.natural_uv_domain_with_nurb(k)?,
                 None,
                 None,
                 Vec2::UNDEF,
