@@ -1337,9 +1337,9 @@ mod tests {
             native_output(&native, 2).unwrap()
         );
         result.surfaces.push(
-            solidcore::surface::plane::Plane::from_normal(
-                solidcore::math::Vec3::ZERO,
-                solidcore::math::Vec3::new(0.0, 0.0, 1.0),
+            Plane::from_normal(
+                Vec3::ZERO,
+                Vec3::new(0.0, 0.0, 1.0),
             )
             .into(),
         );
