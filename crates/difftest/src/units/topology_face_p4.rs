@@ -469,6 +469,21 @@ impl LoopObject for H {
     fn from_loop(l: LoopId) -> Self {
         Self::Loop(l)
     }
+
+    // (`HasSeamProblem` reads a raw touch's loop: `(SmLoop*)m_pConnectedTo`)
+    fn as_loop(&self) -> Option<LoopId> {
+        match self {
+            Self::Loop(l) => Some(*l),
+            _ => None,
+        }
+    }
+
+    fn as_vertex(&self) -> Option<VertexId> {
+        match self {
+            Self::Vertex(v) => Some(*v),
+            _ => None,
+        }
+    }
 }
 
 /// The B-rep behind the `Seam` handles.
@@ -735,7 +750,7 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
                 o.push(NULL_DEREF);
                 return Ok(o);
             };
-            let handle = SurfaceHandle(surface.natural_uv_domain());
+            let handle = SurfaceHandle(surface.natural_uv_domain_with_nurb(&k).map_err(|e| HarnessError::new(e.to_string()))?);
             let uv_domain = face.uv_domain;
             let tol = tol.unwrap_or(face.tolerance);
             let interval = ivl.map(|[t0, t1]| Extent1d::from_min_max(t0, t1));
