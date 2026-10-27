@@ -1939,7 +1939,7 @@ impl FilletBrep {
                 CliffHandle::Curve(curve_3d),
                 CliffHandle::Surface(fillet_surface),
             ],
-            &fillet_surface.natural_uv_domain(),
+            &fillet_surface.natural_uv_domain_with_nurb(k)?,
             curve_3d,
             &ivl,
             this_approx_tol_3d,
@@ -2462,7 +2462,7 @@ impl FilletBrep {
 
         // Fillet Surface:
         if let Some(surface) = geom.fillet_surface_mut(None)? {
-            let mut domain = surface.natural_uv_domain();
+            let mut domain = surface.natural_uv_domain_with_nurb(k)?;
             // Trimming is in the u-direction.
             let u_domain = domain.u_interval();
             let temp = u_domain
@@ -2523,7 +2523,8 @@ impl SolutionObject for CliffHandle<'_> {
     fn natural_uv_domain(&self) -> Option<Extent2d> {
         match self {
             Self::Curve(_) => None,
-            Self::Surface(s) => Some(s.natural_uv_domain()),
+            // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+            Self::Surface(s) => Some(s.natural_uv_domain_if_built()),
         }
     }
 }
@@ -2551,7 +2552,8 @@ impl SolutionObject for SurfaceHandle<'_> {
     }
 
     fn natural_uv_domain(&self) -> Option<Extent2d> {
-        Some(self.0.natural_uv_domain())
+        // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+        Some(self.0.natural_uv_domain_if_built())
     }
 }
 
@@ -2733,8 +2735,8 @@ pub fn two_pnts_intersection(
     tol_3d: f64,
 ) -> Result<PointIntersection> {
     // surface size locals
-    let domain1 = surf1.natural_uv_domain();
-    let domain2 = surf2.natural_uv_domain();
+    let domain1 = surf1.natural_uv_domain_with_nurb(k)?;
+    let domain2 = surf2.natural_uv_domain_with_nurb(k)?;
 
     let ssi_tol = tol_3d; // use caller-specified tol for SSI.
     let angle_tol = deg2rad(30.0);
@@ -3241,7 +3243,7 @@ pub fn adjust_uv_on_seam(
     ref_direction: Vec3,
     uv: &mut Point2,
 ) -> Result<()> {
-    let domain = surf.natural_uv_domain();
+    let domain = surf.natural_uv_domain_with_nurb(k)?;
     let min = domain.min();
     let max = domain.max();
 
@@ -3551,7 +3553,7 @@ pub fn examine_n_fix_fillet_geoms_with_solvers(
             .geom(geom)?
             .fillet_surface(None)?
             .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
-        let domain = surface.natural_uv_domain();
+        let domain = surface.natural_uv_domain_with_nurb(k)?;
         let (uv1, uv2) = if at_start {
             (domain.evaluate(0.0, 0.0), domain.evaluate(0.0, 1.0))
         } else {
@@ -3656,7 +3658,7 @@ pub fn examine_n_fix_fillet_geoms_with_solvers(
         let surface = g
             .fillet_surface(None)?
             .ok_or_else(|| SolidError::null_pointer(OP_EXAMINE))?;
-        (surface.natural_uv_domain(), g.rails)
+        (surface.natural_uv_domain_with_nurb(k)?, g.rails)
     };
 
     for (kk, rail) in rails.into_iter().enumerate() {
@@ -3901,7 +3903,7 @@ pub fn join_verts_by_capping(
     } else {
         ivl2.max()
     };
-    let domain = surface.natural_uv_domain();
+    let domain = surface.natural_uv_domain_with_nurb(k)?;
 
     // let sUV1 = UVTrimCurve1 UV endPoint
     let pnt = uv_curve1.evaluate_point(k, t_val1)?;
@@ -3971,7 +3973,8 @@ pub fn check_seam_out(surf: &Surface, uv: &mut Point2, tol: f64, closure: SurfPa
         return false;
     }
 
-    let dom = surf.natural_uv_domain();
+    // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+    let dom = surf.natural_uv_domain_if_built();
 
     if dom.contains_point(*uv, tol) {
         return false;
@@ -4018,7 +4021,8 @@ pub fn check_seam_on(surf: &Surface, uv: &mut Point2, tol: f64, closure: SurfPar
         return false;
     }
 
-    let dom = surf.natural_uv_domain();
+    // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+    let dom = surf.natural_uv_domain_if_built();
 
     let mut ret = false;
 
@@ -4165,7 +4169,7 @@ mod tests {
     fn surface_closure_of_an_open_patch_is_neither() {
         let k = &Kernel::default();
         let s = bilinear_patch();
-        let closure = set_surface_closure(k, &s, &s.natural_uv_domain()).unwrap();
+        let closure = set_surface_closure(k, &s, &s.natural_uv_domain_if_built()).unwrap();
         assert_eq!(closure, SurfParamType::Neither);
     }
 

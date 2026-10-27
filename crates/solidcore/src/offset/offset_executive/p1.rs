@@ -10,6 +10,7 @@
 //! | `notify_edge_and_vertices` (private) | `sm_NotifyEdgeAndVertices` |
 //! | [`OffsetExecutive::replace_implicit_offsets`] | `ReplaceImplicitOffsets` |
 //! | [`OffsetExecutive::remove_excess_faces`] | `RemoveExcessFaces` |
+//! | `forget_seconds`, `forget_firsts`, `removed_faces_edgeuses` (private) | `sm_ForgetSeconds`, `sm_ForgetFirsts`, `RemoveExcessFaces`' `sGone` |
 //! | [`OffsetExecutive::get_create_extended_surface`] | `GetCreateExtendedSurface` |
 //! | [`OffsetExecutive::insert_extended_surface`] | `m_vSurfExtSurf.Insert` (protected upstream; harness seeding) |
 //! | [`OffsetExecutive::piecewise_merge`] | `PiecewiseMerge` |
@@ -36,7 +37,10 @@
 //! and keys its cache by each edge's and face's geometry owner (arena identity when
 //! unowned), so geometry owned under a caller's notification keys is found; an owner
 //! shared by two records or naming another record (an indirect owner chain) is
-//! [`SolidError::Unsupported`] rather than silently skipped.
+//! [`SolidError::Unsupported`] rather than silently skipped. Its relation forgetting
+//! (`sm_ForgetSeconds` / `sm_ForgetFirsts` and the `sGone` / `sLive` walks) propagates
+//! a dangling-id error from the topology queries where upstream's walks cannot fail;
+//! only a corrupt B-rep reaches it.
 //! Result-edge enumeration uses `SmBrep::GetEdges` list order (`topology::brep::p1::edges`);
 //! the result B-rep is borrowed mutably because `NormalizedEvaluate` takes the edge use's
 //! B-rep mutably (its 3D evaluation, used here, edits nothing). `BuildSideWallOfEdgeuse` takes
@@ -64,9 +68,6 @@
 //! null-pointer error, a null blended face is `RelatePair`'s invalid input, and any
 //! failed `CreateCornerBlend` is `SM_ERR` (`SER(SM_ERR)`), unported callees aside.
 //! No new input-driven recursion; existing topology walks are cycle-bounded.
-//! Issue #368: as tangency-labs/smlib 5fe723c, removed offset faces leave all four
-//! correspondence maps before `RemoveFaces`; deleted blends also lose their outgoing
-//! pairs. The pinned reference retains stale faces that `PiecewiseMerge` later reads.
 //! The lamina clean-up's `DeleteFaces` runs through merge p4's arena intersector over
 //! the offset B-rep alone (both upstream operands are that B-rep); it notifies under
 //! `DELETE_FACES_NAMESPACE` rather than the caller's offset keys.
@@ -683,7 +684,7 @@ impl OffsetExecutive {
                     NotifyOperation::PreEdit,
                     [Some(face_ref), None, None],
                 ))?;
-                let domain = new_surface.natural_uv_domain();
+                let domain = new_surface.natural_uv_domain_with_nurb(kernel)?;
                 crate::topology::face::p2::set_uv_domain(brep, f, &domain)?;
                 // swap the approx surface for the exact offset surface
                 crate::topology::brep::p2::replace_surface(
@@ -730,7 +731,12 @@ impl OffsetExecutive {
         let Some(delete_faces) = self.excess_faces(kernel, original, result)? else {
             return Ok(());
         };
-        self.forget_faces(&delete_faces)?;
+
+        // The faces about to be removed and their edgeuses, which RemoveFaces deletes
+        let gone_faces: BTreeSet<FaceId> = delete_faces.iter().copied().collect();
+        let gone = removed_faces_edgeuses(result, &delete_faces)?;
+
+        // Clean up those faces we have collected.
         let editing_enabled = result.editing_enabled();
         // cpp:2099–2102 ignores ordinary RemoveFaces failures but still executes
         // its editing guard and traversal-mark effects. Missing work must defer.
@@ -739,31 +745,31 @@ impl OffsetExecutive {
             result,
             editing_enabled,
             &delete_faces,
-        ))
-    }
+        ))?;
 
-    /// Forgets correspondence to faces about to be removed (SolidCraft change, #368).
-    fn forget_faces(&mut self, faces: &[FaceId]) -> Result<()> {
-        fn forget_second<A: Ord + Copy>(
-            relation: &mut Relation<A, FaceId>,
-            face: FaceId,
-        ) -> Result<()> {
-            for first in relation.firsts(face) {
-                relation.remove_pair(first, face)?;
+        // Forget the deleted faces and edgeuses, so later lookups in the relations
+        // (lamina side walls, PiecewiseMerge) cannot return them. For m_vEUToEU also
+        // forget any edgeuse no result edge has.
+        if !gone_faces.is_empty() {
+            let mut live = BTreeSet::new();
+            for e in bp1::edges(result, None)? {
+                live.extend(edge::edgeuses(result, e, None, None)?);
             }
-            Ok(())
-        }
-
-        for &face in faces {
-            forget_second(&mut self.faceuse_to_faces, face)?;
-            forget_second(&mut self.edge_to_faces, face)?;
-            forget_second(&mut self.vertex_to_faces, face)?;
-            forget_second(&mut self.blend_to_faces, face)?;
-            for second in self.blend_to_faces.seconds(face) {
-                self.blend_to_faces.remove_pair(face, second)?;
-            }
+            forget_seconds(&mut self.edgeuse_to_edgeuses, &gone, Some(&live))?;
+            self.forget_faces(&gone_faces)?;
         }
         Ok(())
+    }
+
+    /// `RemoveExcessFaces`' forgetting of the removed faces: `m_vFUToF`, `m_vEToF`,
+    /// `m_vVToF` and `m_vBlendToFaces` forget the pairs whose second is gone, and
+    /// `m_vBlendToFaces` also those whose first is gone.
+    fn forget_faces(&mut self, gone: &BTreeSet<FaceId>) -> Result<()> {
+        forget_seconds(&mut self.faceuse_to_faces, gone, None)?;
+        forget_seconds(&mut self.edge_to_faces, gone, None)?;
+        forget_seconds(&mut self.vertex_to_faces, gone, None)?;
+        forget_seconds(&mut self.blend_to_faces, gone, None)?;
+        forget_firsts(&mut self.blend_to_faces, gone)
     }
 
     fn excess_faces(
@@ -849,7 +855,7 @@ impl OffsetExecutive {
             None,
         )?;
         // cpp:2819: m_pOffsetBrep->CreateFaceFromSurface(pNewSurface, natural domain)
-        let domain = new_surface.natural_uv_domain();
+        let domain = new_surface.natural_uv_domain_with_nurb(kernel)?;
         let new_face = match notifications {
             Some(notifications) => {
                 let key_of = notifications.key_of;
@@ -1481,7 +1487,7 @@ impl OffsetExecutive {
         loop_points: &[Vec3],
         notifications: &mut NotifyState<'_>,
     ) -> Result<FaceId> {
-        let domain = surface.natural_uv_domain();
+        let domain = surface.natural_uv_domain_with_nurb(kernel)?;
         let key_of = notifications.key_of;
         let this_face = |face: FaceId| key_of(EntityRef::Face(face));
         let brep = required(self.offset_brep.as_mut())?;
@@ -1725,7 +1731,7 @@ impl OffsetExecutive {
             let fits = original
                 .face(face_id)?
                 .uv_domain
-                .is_contained_by(&surface.natural_uv_domain(), EFF_ZERO)
+                .is_contained_by(&surface.natural_uv_domain_with_nurb(kernel)?, EFF_ZERO)
                 || self.operation == OffsetOperation::LocalOperation;
             if fits {
                 orientation
@@ -1744,7 +1750,7 @@ impl OffsetExecutive {
             false,
             true,
         )?;
-        let offset_domain = surface.natural_uv_domain();
+        let offset_domain = surface.natural_uv_domain_with_nurb(kernel)?;
         let face_domain = original.face(face_id)?.uv_domain;
         if face_domain.is_contained_by(&offset_domain, EFF_ZERO)
             || self.operation == OffsetOperation::LocalOperation
@@ -1916,7 +1922,7 @@ impl OffsetExecutive {
             }
             first.copy(kernel)?
         };
-        let mut copy_domain = copy_plane.natural_uv_domain();
+        let mut copy_domain = copy_plane.natural_uv_domain_with_nurb(kernel)?;
         let SurfaceKind::Plane(plane) = copy_plane.kind_mut() else {
             return Err(SolidError::null_pointer(OP));
         };
@@ -1932,7 +1938,7 @@ impl OffsetExecutive {
             copy_domain.add_point(plane.project_point_to_uv_domain(corner));
         }
         ignore_status(plane.adjust_step_uv_domain(&copy_domain))?;
-        let copy_plane_domain = copy_plane.natural_uv_domain();
+        let copy_plane_domain = copy_plane.natural_uv_domain_with_nurb(kernel)?;
 
         // make a planar face using the offset UV trim curves (as 3D curves)
         let mut loops = Vec::new();
@@ -2858,6 +2864,56 @@ fn notify_edge_and_vertices(
     Ok(())
 }
 
+/// `sm_ForgetSeconds`: forgets the pairs of `relation` whose second is in `gone` or,
+/// with `live`, is not in `live`.
+fn forget_seconds<A: Ord + Copy, B: Ord + Copy>(
+    relation: &mut Relation<A, B>,
+    gone: &BTreeSet<B>,
+    live: Option<&BTreeSet<B>>,
+) -> Result<()> {
+    for second in relation.all_seconds() {
+        if !gone.contains(&second) && live.is_none_or(|live| live.contains(&second)) {
+            continue;
+        }
+        for first in relation.firsts(second) {
+            relation.remove_pair(first, second)?;
+        }
+    }
+    Ok(())
+}
+
+/// `sm_ForgetFirsts`: forgets the pairs of `relation` whose first is in `gone`.
+fn forget_firsts<A: Ord + Copy, B: Ord + Copy>(
+    relation: &mut Relation<A, B>,
+    gone: &BTreeSet<A>,
+) -> Result<()> {
+    for first in relation.all_firsts() {
+        if !gone.contains(&first) {
+            continue;
+        }
+        for second in relation.seconds(first) {
+            relation.remove_pair(first, second)?;
+        }
+    }
+    Ok(())
+}
+
+/// The edge uses `RemoveFaces` deletes with `faces` (`RemoveExcessFaces`' `sGone`,
+/// collected before the removal): for each face, the uses of its edges on that face.
+fn removed_faces_edgeuses(result: &Brep, faces: &[FaceId]) -> Result<BTreeSet<EdgeuseId>> {
+    let mut gone = BTreeSet::new();
+    for &f in faces {
+        for e in face_edges(result, f)? {
+            for u in edge::edgeuses(result, e, None, None)? {
+                if eu::face(result, u)? == Some(f) {
+                    gone.insert(u);
+                }
+            }
+        }
+    }
+    Ok(gone)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3455,9 +3511,15 @@ mod tests {
         let first = executive
             .get_create_extended_surface(&kernel, 41, &base)
             .unwrap();
-        assert_eq!(first.natural_uv_domain(), expected.natural_uv_domain());
+        assert_eq!(
+            first.natural_uv_domain_if_built(),
+            expected.natural_uv_domain_if_built()
+        );
         let first_point = first
-            .evaluate_point(&kernel, first.natural_uv_domain().evaluate(0.5, 0.5))
+            .evaluate_point(
+                &kernel,
+                first.natural_uv_domain_if_built().evaluate(0.5, 0.5),
+            )
             .unwrap();
         // A cached identity does not evaluate even a different/malformed supplied base.
         let broken = Surface::from(BSplineSurface::new());
@@ -3466,7 +3528,10 @@ mod tests {
             .unwrap();
         assert_eq!(
             cached
-                .evaluate_point(&kernel, cached.natural_uv_domain().evaluate(0.5, 0.5))
+                .evaluate_point(
+                    &kernel,
+                    cached.natural_uv_domain_if_built().evaluate(0.5, 0.5)
+                )
                 .unwrap(),
             first_point
         );
@@ -3475,7 +3540,10 @@ mod tests {
             .unwrap();
         assert_eq!(
             other
-                .evaluate_point(&kernel, other.natural_uv_domain().evaluate(0.5, 0.5))
+                .evaluate_point(
+                    &kernel,
+                    other.natural_uv_domain_if_built().evaluate(0.5, 0.5)
+                )
                 .unwrap()
                 .z,
             7.0
@@ -3611,8 +3679,8 @@ mod tests {
 
         // Duplicate candidates and repeated cleanup are harmless. Original ids can
         // have the same numeric indices as result ids, but must remain related to kept.
-        exec.forget_faces(&[gone, gone]).unwrap();
-        exec.forget_faces(&[gone]).unwrap();
+        exec.forget_faces(&BTreeSet::from([gone])).unwrap();
+        exec.forget_faces(&BTreeSet::from([gone])).unwrap();
         for source in faceuses {
             assert_eq!(exec.offset_faces(source), vec![kept]);
         }
@@ -3631,12 +3699,54 @@ mod tests {
         assert!(exec.blend_to_faces.firsts(gone).is_empty());
         assert_eq!(exec.blend_to_faces.firsts(kept), vec![blend]);
 
-        exec.forget_faces(&[kept]).unwrap();
+        exec.forget_faces(&BTreeSet::from([kept])).unwrap();
         assert!(exec.faceuse_to_faces.all_firsts().is_empty());
         assert!(exec.edge_to_faces.all_firsts().is_empty());
         assert!(exec.vertex_to_faces.all_firsts().is_empty());
         assert!(exec.blend_to_faces.all_firsts().is_empty());
         assert!(exec.blend_to_faces.all_seconds().is_empty());
+    }
+
+    /// `RemoveExcessFaces`: `m_vEUToEU` forgets the pairs whose result edge use belongs
+    /// to a removed face or to no result edge, and keeps the rest.
+    #[test]
+    fn forget_seconds_drops_removed_and_dead_edgeuses() {
+        let mut k = Kernel::default();
+        let result = crate::primitive::api_primitives::create_box(
+            &mut k,
+            crate::math::Point3::new(0.0, 0.0, 0.0),
+            1.0,
+            2.0,
+            3.0,
+        )
+        .unwrap();
+        let faces = bp1::faces(&result, None).unwrap();
+        let removed = faces[0];
+        let mut on_removed = None;
+        let mut elsewhere = None;
+        let mut live = BTreeSet::new();
+        for e in bp1::edges(&result, None).unwrap() {
+            for u in edge::edgeuses(&result, e, None, None).unwrap() {
+                live.insert(u);
+                if eu::face(&result, u).unwrap() == Some(removed) {
+                    on_removed.get_or_insert(u);
+                } else {
+                    elsewhere.get_or_insert(u);
+                }
+            }
+        }
+        let (on_removed, elsewhere) = (on_removed.unwrap(), elsewhere.unwrap());
+        let dead = EdgeuseId::from_index(100_000);
+        let originals = [1, 2, 3].map(EdgeuseId::from_index);
+        let mut x = executive();
+        for (o, r) in originals.into_iter().zip([on_removed, elsewhere, dead]) {
+            x.edgeuse_to_edgeuses.relate_pair(o, r).unwrap();
+        }
+        let gone = removed_faces_edgeuses(&result, &[removed]).unwrap();
+        assert!(gone.contains(&on_removed) && !gone.contains(&elsewhere));
+        forget_seconds(&mut x.edgeuse_to_edgeuses, &gone, Some(&live)).unwrap();
+        assert_eq!(x.edgeuse_to_edgeuses.all_seconds(), vec![elsewhere]);
+        assert_eq!(x.edgeuse_to_edgeuses.seconds(originals[1]), vec![elsewhere]);
     }
 
     #[test]
@@ -3678,7 +3788,7 @@ mod tests {
         let face = brep.face(offset_face).unwrap();
         let surface = face.surface.as_ref().unwrap();
         assert!(matches!(surface.kind(), SurfaceKind::BSpline(_)));
-        assert_eq!(face.uv_domain, surface.natural_uv_domain());
+        assert_eq!(face.uv_domain, surface.natural_uv_domain_if_built());
         let p = surface
             .evaluate_point(&kernel, Vec2::new(0.5, 0.5))
             .unwrap();
@@ -4498,7 +4608,7 @@ mod tests {
         assert!(matches!(surface.kind(), SurfaceKind::BSpline(_)));
         assert!(cap.trim_curves.is_empty());
         assert!(cap.curve_orientations.is_empty());
-        let domain = surface.natural_uv_domain();
+        let domain = surface.natural_uv_domain_if_built();
         for (u, v) in [(0.17, 0.29), (0.43, 0.61), (0.83, 0.79)] {
             let uv = crate::math::Point2::new(
                 (1.0 - u) * domain.min().x + u * domain.max().x,
