@@ -2008,7 +2008,8 @@ impl Surface {
 
     /// `uv` of the STEP parameterisation in the NURBS parameterisation
     /// (`ConvertUVFromSTEPToNURBS`: the cone's, sphere's, torus's or surface of revolution's
-    /// override, else the base default, the identity).
+    /// override, the surface in volume's (its base surface's), else the base default,
+    /// the identity).
     ///
     /// # Errors
     ///
@@ -2018,6 +2019,8 @@ impl Surface {
             SurfaceKind::Cone(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
             SurfaceKind::Sphere(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
             SurfaceKind::Torus(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
+            // SmSrfInVolume forwards to its base surface
+            SurfaceKind::SrfInVolume(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
             SurfaceKind::SurfOfRevolution(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
             // (GetNaturalUVDomain makes a missing NURB)
             SurfaceKind::SurfOfExtrusion(_) => match self.kind_with_nurb(k)? {
@@ -2030,7 +2033,8 @@ impl Surface {
 
     /// `uv` of the NURBS parameterisation in the STEP parameterisation
     /// (`ConvertUVFromNURBSToSTEP`: the cone's, sphere's, torus's or surface of revolution's
-    /// override, else the base default, the identity).
+    /// override, the surface in volume's (its base surface's), else the base default,
+    /// the identity).
     ///
     /// # Errors
     ///
@@ -2040,6 +2044,8 @@ impl Surface {
             SurfaceKind::Cone(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             SurfaceKind::Sphere(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             SurfaceKind::Torus(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
+            // SmSrfInVolume forwards to its base surface
+            SurfaceKind::SrfInVolume(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             SurfaceKind::SurfOfRevolution(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             // (GetNaturalUVDomain makes a missing NURB)
             SurfaceKind::SurfOfExtrusion(_) => match self.kind_with_nurb(k)? {
