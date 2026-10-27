@@ -2817,7 +2817,7 @@ mod tests {
             let k = notify_ref(EntityRef::Region(id)).key;
             assert!(lookup.resolve_region(k).is_ok());
         }
-        let foreign = notify_ref(EntityRef::Region(crate::topology::RegionId::from_index(99))).key;
+        let foreign = notify_ref(EntityRef::Region(RegionId::from_index(99))).key;
         assert!(matches!(
             lookup.resolve_region(foreign),
             Err(SolidError::Unported {
