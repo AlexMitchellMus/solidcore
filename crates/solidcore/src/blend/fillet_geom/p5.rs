@@ -811,13 +811,13 @@ impl FilletBrep {
                         // closed corner's end row becomes its start row); re-read them.
                         surface1 = self
                             .geom(g1)?
-                            .fillet_surface()?
+                            .fillet_surface(None)?
                             .cloned()
                             .ok_or_else(|| SolidError::null_pointer(OP_CROSS))?;
                         if surface2.is_some() {
                             surface2 = Some(
                                 self.geom(g2)?
-                                    .fillet_surface()?
+                                    .fillet_surface(None)?
                                     .cloned()
                                     .ok_or_else(|| SolidError::null_pointer(OP_CROSS))?,
                             );
