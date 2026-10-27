@@ -638,10 +638,14 @@ impl UnitDiff for Runner {
             .get(1..=n)
             .ok_or_else(|| HarnessError::new("short record"))?
             .to_vec();
-        let (b, _) = import_raw(
+        let (mut b, _) = import_raw(
             raw.get(n + 1..)
                 .ok_or_else(|| HarnessError::new("short graph"))?,
         )?;
+        // the face loop lists and loop edge lists the export does not carry, derived
+        // from the exported uses as the Rust B-rep holds them (the Rust side builds its
+        // input itself, so its faces and loops have them)
+        b.refresh_cached_topology();
         Ok(graph(&b, record))
     }
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
@@ -725,3 +729,4 @@ impl UnitDiff for Runner {
         crate::runner::default_cases(self, &ctx)
     }
 }
+
