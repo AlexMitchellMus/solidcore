@@ -546,6 +546,31 @@ mod tests {
     }
 
     #[test]
+    fn write_then_read_round_trips() {
+        let h = sample();
+        for ft in [FileType::Ascii, FileType::Binary] {
+            let mut w = DatabaseWriter::open_for_write(ft);
+            h.write_to_db(&mut w, 30).unwrap();
+            let bytes = w.into_bytes();
+            if ft == FileType::Ascii {
+                let text = String::from_utf8(bytes.clone()).unwrap();
+                assert_eq!(text.lines().count(), 6);
+                assert!(text.starts_with(
+                    "0.0000000000000000 0.0000000000000000 0.0000000000000000 SmHermiteCurve Initial point        \n"
+                ));
+            } else {
+                assert_eq!(bytes.len(), 18 * 8);
+            }
+            let mut r = DatabaseReader::new();
+            r.open_for_read(bytes, ft);
+            let back = HermiteCurve::read_from_db(&mut r).unwrap();
+            assert_eq!(back.start_point(), h.start_point());
+            assert_eq!(back.end_derivative(), h.end_derivative());
+            assert_eq!(back.power_basis(), h.power_basis());
+        }
+    }
+
+    #[test]
     fn interpolates_ends() {
         let h = sample();
         assert_eq!(h.evaluate_point(0.0), h.start_point());
