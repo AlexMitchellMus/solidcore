@@ -2332,7 +2332,7 @@ fn first_nonseparating_seam(
                     match b.edgeuse(eu)?.orientation {
                         OrientType::Same => same += 1,
                         OrientType::Opposite => opposite += 1,
-                        _ => {}
+                        OrientType::Unknown => {}
                     }
                 }
             }

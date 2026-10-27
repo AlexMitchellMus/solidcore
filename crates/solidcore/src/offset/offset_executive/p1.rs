@@ -2872,7 +2872,7 @@ fn forget_seconds<A: Ord + Copy, B: Ord + Copy>(
     live: Option<&BTreeSet<B>>,
 ) -> Result<()> {
     for second in relation.all_seconds() {
-        if !gone.contains(&second) && live.map_or(true, |live| live.contains(&second)) {
+        if !gone.contains(&second) && live.is_none_or(|live| live.contains(&second)) {
             continue;
         }
         for first in relation.firsts(second) {

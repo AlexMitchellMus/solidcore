@@ -266,6 +266,10 @@ fn find_and_classify_loop_bisector<O: LoopObject>(
     r
 }
 
+/// Crossings found by [`get_loop_crossings`]: the touch lists for the two crossing
+/// directions, in the order upstream returns them.
+type LoopCrossings<O> = (Vec<TouchData<O>>, Vec<TouchData<O>>);
+
 /// `SER(pCrvClassification->GetLoopCrossings(rLoops, &rFaceProps, &sCrossingCounts,
 /// &sRawTouchDirList, &sDoneTouchDirList))`: the raw and the done touch lists (the
 /// counts are not read by `ClassifyLoops`). `curves` are the bisector curves
@@ -276,7 +280,7 @@ fn get_loop_crossings<O: LoopObject>(
     classification: &CurveClassification<O>,
     loops: &[LoopId],
     props: &mut FaceProps<O>,
-) -> Result<(Vec<TouchData<O>>, Vec<TouchData<O>>)> {
+) -> Result<LoopCrossings<O>> {
     let handles: Vec<O> = loops.iter().map(|&l| O::from_loop(l)).collect();
     let c = classification.get_loop_crossings(k, curves, &handles, Some(props))?;
     if let Some(e) = c.status {
@@ -726,9 +730,7 @@ pub(crate) fn classify_loops_cached<O: LoopObject>(
         // bounded walk starts at the 1st DoneTouchDirList entry, either on a nonperiodic
         // surface or in the UV domain enclosed by complete seams
         let mut inc_indx: Option<usize> = None;
-        if !cyclic_walk {
-            inc_indx = Some(0);
-        } else {
+        if cyclic_walk {
             let mut jj = 0;
             while jj < done_size {
                 if touch_at(done, jj)?.loop_dir == CrvDirOnFaceType::Out
@@ -745,6 +747,8 @@ pub(crate) fn classify_loops_cached<O: LoopObject>(
                 }
                 jj += 2;
             }
+        } else {
+            inc_indx = Some(0);
         }
 
         let iter_cnt = done_size + usize::from(end_with_no_vertex_pole);

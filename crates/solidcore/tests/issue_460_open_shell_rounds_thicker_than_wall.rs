@@ -29,7 +29,10 @@ use solidcore::{Brep, Kernel};
 
 /// The core `a x b x c` grown by `r` (Minkowski sum with a ball).
 fn grown_box(a: f64, b: f64, c: f64, r: f64) -> f64 {
-    a * b * c + 2.0 * r * (a * b + b * c + a * c) + PI * r * r * (a + b + c) + 4.0 / 3.0 * PI * r * r * r
+    a * b * c
+        + 2.0 * r * (a * b + b * c + a * c)
+        + PI * r * r * (a + b + c)
+        + 4.0 / 3.0 * PI * r * r * r
 }
 
 fn rounded_box(k: &mut Kernel) -> Brep {
@@ -45,7 +48,10 @@ fn issue_460_rounded_box_input() {
     let mut b = rounded_box(&mut k);
     let want = grown_box(24.0, 14.0, 4.0, 3.0);
     let got = volume(&k, &mut b).unwrap();
-    eprintln!("PROBE issue_460 input: faces={} volume={got} want={want}", b.face_list().len());
+    eprintln!(
+        "PROBE issue_460 input: faces={} volume={got} want={want}",
+        b.face_list().len()
+    );
     assert!((got - want).abs() <= 1e-5 * want, "{got} vs {want}");
 }
 
@@ -77,7 +83,12 @@ fn issue_460_open_top_shell() {
 #[test]
 #[ignore = "diagnostic probe, run on demand"]
 fn issue_460_closed_shell_by_round_set() {
-    for set in ["one vertical edge", "four vertical edges", "four top edges", "all twelve edges"] {
+    for set in [
+        "one vertical edge",
+        "four vertical edges",
+        "four top edges",
+        "all twelve edges",
+    ] {
         let mut k = Kernel::default();
         let mut b = create_box(&mut k, Point3::new(0.0, 0.0, 0.0), 30.0, 20.0, 10.0).unwrap();
         let edges: Vec<_> = b
@@ -99,7 +110,10 @@ fn issue_460_closed_shell_by_round_set() {
             .map(|(id, _)| id)
             .collect();
         let rounded = fillet_edges(&mut k, &mut b, &edges, 3.0, 1, 1, 1.0);
-        eprintln!("PROBE issue_460 {set}: {} edges rounded: {rounded:?}", edges.len());
+        eprintln!(
+            "PROBE issue_460 {set}: {} edges rounded: {rounded:?}",
+            edges.len()
+        );
         if rounded.is_err() {
             continue;
         }

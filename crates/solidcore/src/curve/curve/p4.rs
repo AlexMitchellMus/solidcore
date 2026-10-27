@@ -253,14 +253,13 @@ pub fn fix_chain_curves_list(
                     {
                         delete(&mut curves);
                         continue;
-                    } else {
-                        // add link to end
-                        case = 1;
-                        dist2 = d_s1e;
-                        next = Link::Index(j);
-                        tmp_end_pt = end_point1;
-                        tmp_mid_end_pt = mid_point;
                     }
+                    // add link to end
+                    case = 1;
+                    dist2 = d_s1e;
+                    next = Link::Index(j);
+                    tmp_end_pt = end_point1;
+                    tmp_mid_end_pt = mid_point;
                 }
 
                 // when links connects 2 of 4, (ThisLinkEnd == LastLinkEnd to tol2)
@@ -271,14 +270,13 @@ pub fn fix_chain_curves_list(
                     {
                         delete(&mut curves);
                         continue;
-                    } else {
-                        // Reverse link and add to end
-                        case = 2;
-                        dist2 = d_e1e;
-                        next = Link::Index(j);
-                        tmp_end_pt = start_point1;
-                        tmp_mid_end_pt = mid_point;
                     }
+                    // Reverse link and add to end
+                    case = 2;
+                    dist2 = d_e1e;
+                    next = Link::Index(j);
+                    tmp_end_pt = start_point1;
+                    tmp_mid_end_pt = mid_point;
                 }
 
                 // when links connects 3 of 4, (ThisLinkEnd == LastLinkStart to tol2)
@@ -289,14 +287,13 @@ pub fn fix_chain_curves_list(
                     {
                         delete(&mut curves);
                         continue;
-                    } else {
-                        // insert link before start
-                        case = 3;
-                        dist2 = d_e1s;
-                        next = Link::Index(j);
-                        tmp_start_pt = start_point1;
-                        tmp_mid_start_pt = mid_point;
                     }
+                    // insert link before start
+                    case = 3;
+                    dist2 = d_e1s;
+                    next = Link::Index(j);
+                    tmp_start_pt = start_point1;
+                    tmp_mid_start_pt = mid_point;
                 }
 
                 // when links connects 4 of 4, (ThisLinkStart == LastLinkStart to tol2)
@@ -306,7 +303,6 @@ pub fn fix_chain_curves_list(
                         && (mid_start_point - mid_point).length_squared() < dtol2
                     {
                         delete(&mut curves);
-                        continue;
                     } else {
                         // reverse and insert at start
                         case = 4;

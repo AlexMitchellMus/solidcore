@@ -900,7 +900,7 @@ impl PrimitiveCreation {
             let mut sweep_dir = direction.unitize()?;
             let mut distance = distance;
             if distance < 0.0 {
-                sweep_dir = sweep_dir * -1.0;
+                sweep_dir *= -1.0;
                 distance = -distance;
             }
             let mut analytic_domain = Extent2d::from_bounds(0.0, 0.0, 1.0, distance);

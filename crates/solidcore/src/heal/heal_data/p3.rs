@@ -1150,11 +1150,10 @@ fn glue_vertices(k: &mut Kernel, b: &mut Brep, a: VertexId, d: VertexId) -> Resu
     })?;
     Ok(changes)
 }
-fn squeeze_face(
-    k: &mut Kernel,
-    b: &mut Brep,
-    f: FaceId,
-) -> Result<(Vec<EdgeId>, Vec<EdgeId>, Vec<VertexId>, Changes)> {
+/// [`squeeze_face`]'s new edges, deleted edges, deleted vertices and tracked changes.
+type SqueezedFaceParts = (Vec<EdgeId>, Vec<EdgeId>, Vec<VertexId>, Changes);
+
+fn squeeze_face(k: &mut Kernel, b: &mut Brep, f: FaceId) -> Result<SqueezedFaceParts> {
     let (output, changes) = capture_changes(k, b, |k, b| {
         let mut output = crate::topology::brep::p5::SqueezedFace::default();
         // The enclosing healer edit session enables editing upstream; NULL uses the
