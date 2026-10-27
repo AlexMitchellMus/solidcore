@@ -222,7 +222,7 @@ impl OffsetCurve {
             distance: self.distance,
             interval: self.interval,
             reversed: self.reversed,
-            owns_curve: if self.owns_curve != 0 { 1 } else { 0 },
+            owns_curve: i32::from(self.owns_curve != 0),
         })
     }
 
