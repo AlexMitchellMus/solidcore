@@ -195,9 +195,14 @@
 //!   and a surface of extrusion keep it in their own NURB slot (filled once from
 //!   `&self`), so `kind()`, copies and `operator==` see it as upstream. A cone, sphere,
 //!   torus or surface of revolution's `MakeNurb` also rebuilds its polar converter and
-//!   may trim its generator, so the surface keeps the whole made kind instead
-//!   (`NurbMemo`), emptied by any mutable access to the kind and absent on copies;
-//!   `kind()` readers of those kinds still see no NURB. As upstream's NURB on the
+//!   may trim its generator, so the surface keeps the whole made kind (`MadeKindSlot`,
+//!   filled once from `&self`) and [`Surface::kind`] answers it from then on: `kind()`
+//!   readers, copies (`Clone` copies the made object; [`Surface::copy`] first makes the
+//!   source's NURB, as the copy constructor does) and `operator==` see it. Evaluation
+//!   copies share the cell (upstream's pointer to the one object); `&mut` access moves
+//!   the made kind into the surface first, on a cell of its own, so an edit applies to
+//!   the made object and reaches no other surface. `Clone` itself cannot make a missing
+//!   NURB first (that needs the [`Kernel`]). As upstream's NURB on the
 //!   object, neither is keyed on the [`Kernel`] the make used.
 
 use std::borrow::Cow;
@@ -1854,9 +1859,9 @@ impl Surface {
 
     /// [`Surface::degree`] as upstream's `GetDegree`, which makes a missing NURB
     /// (`GetOrCreateGwNurbPointer`): a surface of extrusion (the recogniser's lazy
-    /// generator) or a cone without one reads the degree of the NURB `MakeNurb` gives
-    /// it, on a temporary copy, where [`Surface::degree`] would answer `0`. A failed
-    /// make leaves no NURB, so `0`, as upstream.
+    /// generator), cone, sphere, torus or surface of revolution without one makes it and
+    /// keeps it ([`Surface::kind_with_nurb`]), where [`Surface::degree`] would answer
+    /// `0`. A failed make leaves no NURB, so `0`, as upstream.
     ///
     /// # Errors
     ///
@@ -1870,17 +1875,83 @@ impl Surface {
                     Err(_) => Ok(0), // FS
                 }
             }
-            // (a sphere's or a torus's NURB is quadratic both ways, so its 0 never
-            // reads as linear either)
-            SurfaceKind::Cone(s) if s.rev().base().gw_nurb().is_none() => {
-                let mut copy = s.clone();
-                match copy.make_nurb(k) {
-                    Ok(()) => Ok(copy.rev().base().degree(param)),
-                    Err(e) if e.is_unported() => Err(e),
-                    Err(_) => Ok(0), // FS
+            _ => {
+                if self.revolution_nurb_missing() {
+                    self.kind_with_nurb(k)?;
                 }
+                Ok(self.degree(param))
             }
-            _ => Ok(self.degree(param)),
+        }
+    }
+
+    /// The B-spline part of a cone, sphere, torus or surface of revolution with its NURB
+    /// (`GetOrCreateGwNurbPointer`): a missing one is made and kept on this surface
+    /// ([`Surface::kind_with_nurb`]; status ignored, so a failed make leaves the part
+    /// without NURB). `None` for the other kinds.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] from `MakeNurb`.
+    pub(crate) fn revolution_base_with_nurb(&self, k: &Kernel) -> Result<Option<&BSplineSurface>> {
+        if self.revolution_nurb_missing() {
+            self.kind_with_nurb(k)?;
+        }
+        Ok(match self.kind() {
+            SurfaceKind::Cone(s) => Some(s.rev().base()),
+            SurfaceKind::Sphere(s) => Some(s.base().base()),
+            SurfaceKind::Torus(s) => Some(s.base().base()),
+            SurfaceKind::SurfOfRevolution(s) => Some(s.base()),
+            _ => None,
+        })
+    }
+
+    /// The natural domain of a cone, sphere, torus or surface of revolution without NURB,
+    /// read from the NURB `MakeNurb` gives an exact copy (status ignored: a failed make
+    /// reads the NURB-less part), which this surface does not keep; `None` for a surface
+    /// that has its NURB or is of another kind. For the port's own bookkeeping, where
+    /// upstream makes no NURB ([`Surface::stand_in_key_domain`]).
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] from `MakeNurb`.
+    pub(crate) fn revolution_natural_uv_domain_without_keeping(
+        &self,
+        k: &Kernel,
+    ) -> Result<Option<Extent2d>> {
+        if !self.revolution_nurb_missing() {
+            return Ok(None);
+        }
+        let mut kind = clone_kind_exact(self.kind());
+        Ok(match &mut kind {
+            SurfaceKind::Cone(s) => {
+                ignore_status(s.make_nurb(k))?;
+                Some(s.rev().base().natural_uv_domain())
+            }
+            SurfaceKind::Sphere(s) => {
+                ignore_status(s.make_nurb(k))?;
+                Some(s.base().base().natural_uv_domain())
+            }
+            SurfaceKind::Torus(s) => {
+                ignore_status(s.make_nurb(k))?;
+                Some(s.base().base().natural_uv_domain())
+            }
+            SurfaceKind::SurfOfRevolution(s) => {
+                ignore_status(s.make_nurb(k))?;
+                Some(s.base().natural_uv_domain())
+            }
+            _ => None,
+        })
+    }
+
+    /// Whether this surface is a cone, sphere, torus or surface of revolution without
+    /// NURB (one [`Surface::kind_with_nurb`] makes and keeps).
+    fn revolution_nurb_missing(&self) -> bool {
+        match self.kind() {
+            SurfaceKind::Cone(s) => s.rev().base().gw_nurb().is_none(),
+            SurfaceKind::Sphere(s) => s.base().base().gw_nurb().is_none(),
+            SurfaceKind::Torus(s) => s.base().base().gw_nurb().is_none(),
+            SurfaceKind::SurfOfRevolution(s) => s.base().gw_nurb().is_none(),
+            _ => false,
         }
     }
 
@@ -1999,9 +2070,10 @@ impl Surface {
 
     /// [`Surface::knots`] as upstream's `GetKnots`, which reaches the NURB through
     /// `GetOrCreateGwNurbPointer` (a STEP surface: its base's `GetDegree`): a surface of
-    /// extrusion, cone, sphere or torus without its NURB answers from the NURB its
-    /// virtual `MakeNurb` gives a temporary copy, where [`Surface::knots`] reads the
-    /// NURB-less base. A failed make answers as [`Surface::knots`].
+    /// extrusion, cone, sphere, torus or surface of revolution without its NURB makes
+    /// it and keeps it ([`Surface::kind_with_nurb`]) and answers from it, where
+    /// [`Surface::knots`] reads the NURB-less base. A failed make answers as
+    /// [`Surface::knots`].
     ///
     /// # Errors
     ///
@@ -2012,45 +2084,21 @@ impl Surface {
         param: SurfParamType,
         ivl: Option<&Extent1d>,
     ) -> Result<(Vec<f64>, Vec<usize>)> {
-        // the made copy's knots, or `None` when the make fails (status ignored)
-        fn made<T>(
-            r: Result<T>,
-            knots: impl FnOnce(&T) -> Result<(Vec<f64>, Vec<usize>)>,
-        ) -> Result<Option<(Vec<f64>, Vec<usize>)>> {
-            match r {
-                Ok(t) => knots(&t).map(Some),
-                Err(e) if e.is_unported() => Err(e),
-                Err(_) => Ok(None),
-            }
+        // (a cone, sphere, torus or surface of revolution makes its NURB and keeps it,
+        // `kind_with_nurb`; a failed make leaves none, status ignored)
+        if self.revolution_nurb_missing() {
+            self.kind_with_nurb(k)?;
         }
-        let kept = match self.kind() {
-            SurfaceKind::Step(s) => return s.knots_with_nurb(k, param, ivl),
+        match self.kind() {
+            SurfaceKind::Step(s) => s.knots_with_nurb(k, param, ivl),
             SurfaceKind::SurfOfExtrusion(s) if s.base().gw_nurb().is_none() => {
-                made(s.base_with_nurb(k), |b| b.knots(param, ivl))?
+                match s.base_with_nurb(k) {
+                    Ok(b) => b.knots(param, ivl),
+                    Err(e) if e.is_unported() => Err(e),
+                    Err(_) => self.knots(param, ivl),
+                }
             }
-            SurfaceKind::Cone(s) if s.rev().base().gw_nurb().is_none() => {
-                let mut copy = s.clone();
-                made(copy.make_nurb(k).map(|()| copy), |c| {
-                    c.rev().base().knots(param, ivl)
-                })?
-            }
-            SurfaceKind::Sphere(s) if s.base().base().gw_nurb().is_none() => {
-                let mut copy = s.clone();
-                made(copy.make_nurb(k).map(|()| copy), |c| {
-                    c.base().base().knots(param, ivl)
-                })?
-            }
-            SurfaceKind::Torus(s) if s.base().base().gw_nurb().is_none() => {
-                let mut copy = s.clone();
-                made(copy.make_nurb(k).map(|()| copy), |c| {
-                    c.base().base().knots(param, ivl)
-                })?
-            }
-            _ => None,
-        };
-        match kept {
-            Some(knots) => Ok(knots),
-            None => self.knots(param, ivl),
+            _ => self.knots(param, ivl),
         }
     }
 
@@ -7511,5 +7559,114 @@ mod issue_892_tests {
         };
         let volume = brep_volume(&k, &mut plate, 1e-6, &attributes).unwrap();
         assert!((volume - 118.0).abs() < 1e-6, "volume {volume}");
+    }
+}
+
+#[cfg(test)]
+mod made_kind_tests {
+    use super::*;
+    use crate::math::{Point3, Vec3};
+    use crate::surface::torus::TorusOptions;
+
+    /// A torus without NURB (the constructor makes none), inside out so that the made
+    /// kind must keep the flag the copy constructor resets.
+    fn lazy_torus(k: &Kernel) -> Surface {
+        let mut t = Torus::new(
+            k,
+            Point3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Extent2d::from_bounds(0.0, 0.0, 270.0, 180.0),
+            5.0,
+            1.0,
+            TorusOptions {
+                swap_uv: false,
+                inside_out: false,
+                circle_nurb: None,
+            },
+        )
+        .unwrap();
+        t.inside_out = true;
+        Surface::from(t)
+    }
+
+    fn torus_of(s: &Surface) -> &Torus {
+        let SurfaceKind::Torus(t) = s.kind() else {
+            panic!("a torus");
+        };
+        t
+    }
+
+    #[test]
+    fn a_const_query_keeps_the_made_kind_on_the_surface() {
+        let k = Kernel::default();
+        let s = lazy_torus(&k);
+        assert!(torus_of(&s).base().base().gw_nurb().is_none());
+        let eval_copy = s.clone_for_evaluation().unwrap();
+
+        // GetNaturalUVDomain makes the NURB (GetOrCreateGwNurbPointer) and keeps it
+        let domain = s.natural_uv_domain_with_nurb(&k).unwrap();
+        assert!(s.has_made_nurb());
+        let made = torus_of(&s);
+        assert!(
+            made.base().base().gw_nurb().is_some(),
+            "kind() sees the NURB"
+        );
+        assert!(
+            made.base().have_polar_conversion(),
+            "and the rebuilt converter"
+        );
+        assert!(made.inside_out, "the made kind is an exact copy");
+        assert_eq!(s.natural_uv_domain_if_built(), domain);
+
+        // the made object is the one an in-place MakeNurb gives
+        let mut in_place = lazy_torus(&k);
+        let SurfaceKind::Torus(t) = in_place.kind_mut() else {
+            panic!("a torus");
+        };
+        t.make_nurb(&k).unwrap();
+        assert!(
+            s.approx_eq(&k, &in_place).unwrap(),
+            "operator== sees the NURB"
+        );
+        assert_eq!(in_place.natural_uv_domain_if_built(), domain);
+
+        // the evaluation copy taken before stands for the same object
+        assert!(eval_copy.shares_made_kind_with(&s));
+        assert!(torus_of(&eval_copy).base().base().gw_nurb().is_some());
+
+        // the copy constructor copies the made object
+        let copy = s.clone();
+        assert!(!copy.shares_made_kind_with(&s));
+        assert!(torus_of(&copy).base().base().gw_nurb().is_some());
+    }
+
+    #[test]
+    fn an_edit_detaches_the_made_kind_from_evaluation_copies() {
+        let k = Kernel::default();
+        let s = lazy_torus(&k);
+        let mut edited = s.clone_for_evaluation().unwrap();
+        s.kind_with_nurb(&k).unwrap();
+        assert!(edited.shares_made_kind_with(&s));
+
+        // the edit applies to the made object (it keeps its NURB) on a cell of its own
+        let SurfaceKind::Torus(t) = edited.kind_mut() else {
+            panic!("a torus");
+        };
+        assert!(t.base().base().gw_nurb().is_some());
+        t.inside_out = false;
+        assert!(!edited.shares_made_kind_with(&s));
+        assert!(!edited.has_made_nurb());
+        assert!(torus_of(&s).inside_out, "the original is untouched");
+        assert!(s.has_made_nurb());
+    }
+
+    #[test]
+    fn copy_makes_the_source_nurb_first() {
+        let k = Kernel::default();
+        let s = lazy_torus(&k);
+        let copy = s.copy(&k).unwrap();
+        assert!(s.has_made_nurb(), "the source keeps the NURB the copy made");
+        assert!(torus_of(&copy).base().base().gw_nurb().is_some());
     }
 }
