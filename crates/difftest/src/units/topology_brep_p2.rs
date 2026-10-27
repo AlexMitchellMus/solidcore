@@ -703,7 +703,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f6
                 0 => status(bp2::make_shell_vertex_topology(b, region))?.0,
                 1 => status(bp2::make_edge_vertex_topology(b, region, v1))?.0,
                 _ => {
-                    let mut records = BTreeMap::new();
+                    let mut records = solidcore::topology::topology::NotifyRecords::new();
                     let mut attrs = AttributeStore::default();
                     let mut env = NotifyEnv {
                         records: &mut records,
@@ -770,7 +770,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f6
             let surf = surface_arg(a, 1)?;
             let ext = arg(a.len() - 2)?;
             let uv = arg(a.len() - 1)?;
-            let mut records = BTreeMap::new();
+            let mut records = solidcore::topology::topology::NotifyRecords::new();
             let mut attrs = AttributeStore::default();
             let mut env = NotifyEnv {
                 records: &mut records,
@@ -799,7 +799,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f6
             }
             // every notified object, the B-rep included (it is a topology object
             // upstream: `this` and possibly a data object), has its default record
-            let mut records = BTreeMap::new();
+            let mut records = solidcore::topology::topology::NotifyRecords::new();
             records.insert(
                 bp2::brep_ref(b).key,
                 solidcore::topology::topology::Topology::default(),
@@ -859,7 +859,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f6
                 _ => bp2::OldSurface::Keep,
             };
             let create = arg(a.len() - 1)? != 0.0;
-            let mut records = BTreeMap::new();
+            let mut records = solidcore::topology::topology::NotifyRecords::new();
             let mut attrs = AttributeStore::default();
             let mut env = NotifyEnv {
                 records: &mut records,

@@ -3610,7 +3610,10 @@ mod tests {
             dst_record.mark(Some(&context), MarkType::Mark);
             let destination_io_mark = dst_record.get_mark(MarkType::MarkIo);
             let mut records =
-                std::collections::BTreeMap::from([(from, src_record), (to, dst_record)]);
+                crate::topology::topology::NotifyRecords::from(std::collections::BTreeMap::from([
+                    (from, src_record),
+                    (to, dst_record),
+                ]));
             let mut attributes = AttributeStore::new();
             let long = attributes
                 .insert(Attribute::long(501, 41, Behavior::Copy))
@@ -3686,10 +3689,11 @@ mod tests {
             let mut source = Brep::new();
             let shell = source.add_shell_record(Shell::default()).unwrap();
             let source_face = source.add_face_record(Face::new(shell)).unwrap();
-            let mut records = std::collections::BTreeMap::from([
-                (ObjectKey(1), Topology::new()),
-                (ObjectKey(2), Topology::new()),
-            ]);
+            let mut records =
+                crate::topology::topology::NotifyRecords::from(std::collections::BTreeMap::from([
+                    (ObjectKey(1), Topology::new()),
+                    (ObjectKey(2), Topology::new()),
+                ]));
             if invalid == 4 {
                 records.remove(&ObjectKey(1));
             }

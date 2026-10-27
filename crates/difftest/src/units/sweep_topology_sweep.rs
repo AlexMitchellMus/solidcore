@@ -92,7 +92,7 @@ fn unsupported<T>() -> Result<T> {
 struct Model {
     k: Kernel,
     b: Vec<Brep>,
-    records: BTreeMap<ObjectKey, solidcore::topology::topology::Topology>,
+    records: solidcore::topology::topology::NotifyRecords,
     attributes: AttributeStore,
     keys: BTreeMap<E, ObjectKey>,
     curve_keys: BTreeMap<EdgeRef, ObjectKey>,
@@ -168,7 +168,7 @@ impl Model {
         Ok(Self {
             k: Kernel::default(),
             b,
-            records: BTreeMap::new(),
+            records: solidcore::topology::topology::NotifyRecords::new(),
             attributes,
             keys,
             curve_keys,
@@ -568,7 +568,7 @@ fn whole_rust(input: [f64; 11]) -> Result<Output> {
             solidcore::geom::tol::ZONE_TOL_3D,
         ))
     };
-    let mut records = BTreeMap::new();
+    let mut records = solidcore::topology::topology::NotifyRecords::new();
     let mut attributes = AttributeStore::new();
     let mut next = 0;
     let mut store = SweepStore::new(&WholeIdentities, &mut records, &mut attributes, &mut next);
