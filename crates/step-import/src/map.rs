@@ -1431,6 +1431,26 @@ fn map_loose_faces(
             }),
         }
     }
+    // A surface model can wrap its faces in a non-shell representation, so the
+    // loose-face heuristic above sees no candidate. If the file has no solid bodies at
+    // all, treat every face as a sheet rather than returning an empty model.
+    if model.bodies.is_empty() {
+        for (id, instance) in &m.file.entities {
+            let Instance::Simple(record) = instance else { continue };
+            if !matches!(record.name.as_str(), "ADVANCED_FACE" | "FACE_SURFACE" | "FACE") {
+                continue;
+            }
+            let units = if let Some(ctx) = contexts.get(id) {
+                m.context_units(*ctx)
+            } else {
+                Ok(fallback)
+            };
+            if let Ok(body) = units.and_then(|u| m.sheet_body(*id, u)) {
+                model.bodies.push(body);
+                sheets += 1;
+            }
+        }
+    }
     if sheets > 0 {
         model.diagnostics.push(Diagnostic {
             step_id: None,

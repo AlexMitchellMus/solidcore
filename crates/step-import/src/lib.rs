@@ -27,7 +27,27 @@ pub use part21::{Limits, ParseError};
 
 /// Parses `bytes` and maps every B-rep body.
 pub fn import(bytes: &[u8], limits: &Limits) -> Result<Model, ParseError> {
-    let file = part21::parse(bytes, limits)?;
+    // Some AP203 files use the Part 21 short entity names. The parser stores the raw
+    // name, so normalize the handful of geometry entities needed by the mapper.
+    const ALIASES: [(&str, &str); 11] = [
+        ("FCSRF", "FACE_SURFACE"),
+        ("FCOTBN", "FACE_OUTER_BOUND"),
+        ("PLYLP", "POLY_LOOP"),
+        ("CRTPNT", "CARTESIAN_POINT"),
+        ("DRCTN", "DIRECTION"),
+        ("A2PL3D", "AXIS2_PLACEMENT_3D"),
+        ("CLSSHL", "CLOSED_SHELL"),
+        ("BSSWK", "B_SPLINE_SURFACE_WITH_KNOTS"),
+        ("BSCWK", "B_SPLINE_CURVE_WITH_KNOTS"),
+        ("TRMCRV", "TRIMMED_CURVE"),
+        ("CMCRSG", "COMPOSITE_CURVE"),
+    ];
+    let text = String::from_utf8_lossy(bytes);
+    let mut normalized = text.into_owned();
+    for (short, long) in ALIASES {
+        normalized = normalized.replace(&format!("={short}("), &format!("={long}("));
+    }
+    let file = part21::parse(normalized.as_bytes(), limits)?;
     Ok(map::map_file(&file, limits))
 }
 
