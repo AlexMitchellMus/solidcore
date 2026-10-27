@@ -32,3 +32,35 @@ continues to follow the project's official pin, now 1.0.1, and the taper error
 still precedes all analytic-state changes. Four added library regressions plus
 main's tests (14 cone-p2 tests in total) pass after the merge. The C++ libraries
 and sparse upstream checkout used for revalidation both identify commit `3fd5b95`.
+
+Validation against the 1.0.1 C++ reference:
+
+```text
+PASS surface.cone_p2 cases=1596 passed=1596 failed=0 deferred=0 max_rel_err=0e0 with_values=1596 no_values=0 vacuous=0
+SENSITIVE surface.cone_p2 perturbed=1596 detected=1596 unperturbed=0 deferred=0
+```
+
+All 1,572 exact-base case records from main `8cb29a1fa` are retained unchanged;
+24 issue713 fixtures are added. All four runner tests pass, including the
+fixture checks with either flag value. Formatting, default/C++ workspace
+Clippy, 2,429 kernel unit tests (two existing ignored), executed integrations,
+wasm32, and the optimized primitive/cache tests pass.
+
+The exact-base artifact is main CI run `40588316623`, artifact `12772748629`,
+validated for provenance, digest and complete unit coverage by the official
+baseline script. No filter is used and generated seeds match the baseline.
+
+Final broad validation with that same main snapshot and reference:
+
+```text
+difftest: 261 unit(s), 260 passed, 1 partial, 0 failed
+difftest: compared 261 reports against the baseline: 0 unit(s) regressed
+```
+
+The sweep enumerates 562,762 cases and completes in 474.6 seconds with four
+workers. The partial unit is `sweep.topology_sweep`, already partial on the
+exact base (677 passes, two existing known mismatches, seven parked C++ defects
+and two rejected fixtures). This PR adds no mismatch or parking entries.
+The report comparison uses matching default seeds and no case filter; it
+performs no native rerun. The 75% value-share and exact-base retention checks
+pass. Reports remain uncommitted.
