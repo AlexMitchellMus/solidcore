@@ -2128,12 +2128,6 @@ pub fn face_intersect_breps_cached(
     // first because they need the B-reps mutably; they only read the B-reps' topology
     // and geometry, which nothing below changes.
     let mut touching_on: Vec<Option<Point3>> = Vec::new();
-    // A caller sharing the B-reps ([`FaceBreps::Shared`]) classifies on private copies
-    // (this face's B-rep, and the other face's when it is a different one), as
-    // `face_classifies_on_face` of the topology solver does. They are made at the
-    // first touching curve and kept for the rest, so each classification sees the
-    // lazy edits of the earlier ones, as upstream's on the faces' own B-reps.
-    let mut shared_copies: Option<(Brep, Option<Brep>)> = None;
     if out.points_3d.is_some() {
         for (ii, curve) in curves_3d.iter().enumerate() {
             if curve_types.get(ii).copied() != Some(TsectCurveType::Touching) {
@@ -2142,29 +2136,17 @@ pub fn face_intersect_breps_cached(
             }
             // status ignored upstream
             let point = ignored(curve.evaluate_point(k, 0.5))?.unwrap_or(Vec3::UNDEF);
-            let (pct1, pct2) = if let Some(tb) = this_brep.as_deref_mut() {
-                let pct1 = point_3d_classify(k, tb, f, point, this_zone_tol)?;
-                let ob = other_brep.as_deref_mut().unwrap_or(tb);
-                (
-                    pct1,
-                    point_3d_classify(k, ob, other, point, other_zone_tol)?,
-                )
-            } else {
-                if shared_copies.is_none() {
-                    let (b, ob) = shared_breps(None, None, shared)?;
-                    shared_copies = Some((b.clone(), other_side.then(|| ob.clone())));
-                }
-                let (tb, ob) = shared_copies
-                    .as_mut()
-                    .map(|(tb, ob)| (tb, ob.as_mut()))
-                    .ok_or_else(|| null("FaceIntersect: no B-rep"))?;
-                let pct1 = point_3d_classify(k, tb, f, point, this_zone_tol)?;
-                let ob = ob.unwrap_or(tb);
-                (
-                    pct1,
-                    point_3d_classify(k, ob, other, point, other_zone_tol)?,
-                )
+            let Some(tb) = this_brep.as_deref_mut() else {
+                // DISPATCH GAP: a caller sharing both B-reps immutably cannot lend
+                // them to the classification.
+                return Err(SolidError::unported(
+                    "SmFace::Point3DClassify",
+                    "query.face_p1",
+                ));
             };
+            let pct1 = point_3d_classify(k, tb, f, point, this_zone_tol)?;
+            let ob = other_brep.as_deref_mut().unwrap_or(tb);
+            let pct2 = point_3d_classify(k, ob, other, point, other_zone_tol)?;
             let on = |t: PointClassType| {
                 matches!(
                     t,
@@ -2316,58 +2298,4 @@ pub fn face_intersect_breps_cached(
         out.cc_other_uv_curves = Some(uv_curves2);
     }
     Ok(out)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::primitive::api_primitives::{create_box, create_sphere};
-
-    /// `FaceIntersect` of every face of `a` with every face of `b`, lent
-    /// ([`FaceBreps::Two`], on copies) and shared ([`FaceBreps::Shared`]): the shared
-    /// call's touching points (classified on private copies) are the lent call's.
-    /// Returns how many touching points the shared calls found.
-    fn shared_points_match_lent(k: &Kernel, a: &Brep, b: &Brep) -> usize {
-        let options = FaceIntersectOptions {
-            want_points: true,
-            ..FaceIntersectOptions::default()
-        };
-        let mut found = 0;
-        for f in crate::topology::brep::p1::faces(a, None).unwrap() {
-            for g in crate::topology::brep::p1::faces(b, None).unwrap() {
-                let (mut la, mut lb) = (a.clone(), b.clone());
-                let lent = face_intersect_breps(
-                    k,
-                    FaceBreps::Two(&mut la, &mut lb),
-                    f,
-                    g,
-                    1e-6,
-                    1.0,
-                    &options,
-                );
-                let shared =
-                    face_intersect_breps(k, FaceBreps::Shared(a, b), f, g, 1e-6, 1.0, &options);
-                match (lent, shared) {
-                    (Ok(l), Ok(s)) => {
-                        assert_eq!(l.points_3d, s.points_3d, "faces {f:?} / {g:?}");
-                        assert_eq!(l.curves_3d.len(), s.curves_3d.len());
-                        found += s.points_3d.map_or(0, |p| p.len());
-                    }
-                    (Err(l), Err(s)) => assert_eq!(l.is_unported(), s.is_unported()),
-                    (l, s) => panic!("faces {f:?} / {g:?}: lent {l:?}, shared {s:?}"),
-                }
-            }
-        }
-        found
-    }
-
-    #[test]
-    fn shared_breps_classify_touching_points_on_copies() {
-        let mut k = Kernel::default();
-        // the sphere touches the box's top face at (1, 1, 2)
-        let block = create_box(&mut k, Vec3::new(0.0, 0.0, 0.0), 2.0, 2.0, 2.0).unwrap();
-        let ball = create_sphere(&mut k, Vec3::new(1.0, 1.0, 3.0), 1.0).unwrap();
-        let found = shared_points_match_lent(&k, &block, &ball);
-        assert!(found > 0, "no touching point reached");
-    }
 }
