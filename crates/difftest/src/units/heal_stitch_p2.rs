@@ -528,8 +528,9 @@ impl Ids {
     }
 }
 
-/// The B-rep after the op (as the shim's `put_digest`).
-fn digest(b: &Brep, o: &mut Vec<f64>) -> solidcore::Result<()> {
+/// The B-rep after the op (as the shim's `put_digest`): the counts, each vertex's point
+/// and tolerance, then `heal.stitch_p1`'s topology digest.
+fn digest(k: &mut Kernel, b: &Brep, o: &mut Vec<f64>) -> solidcore::Result<()> {
     let fs = bp1::faces(b, None)?;
     let es = bp1::edges(b, None)?;
     let vs = bp1::vertices(b, None)?;
@@ -538,7 +539,7 @@ fn digest(b: &Brep, o: &mut Vec<f64>) -> solidcore::Result<()> {
         let p = vertex::point(b, v)?;
         o.extend([p.x, p.y, p.z, vertex::tolerance(b, v)?]);
     }
-    Ok(())
+    super::heal_stitch_p1::topology_digest(k, b, o)
 }
 
 fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result<Vec<f64>> {
@@ -584,7 +585,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
                     ];
                     o.extend(r.min_unstitched_vert_gap);
                     o.extend(r.min_unstitched_edge_gap);
-                    digest(b, &mut o)?;
+                    digest(k, b, &mut o)?;
                     Ok(o)
                 }
                 Err(e) => failed(e),
@@ -610,7 +611,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
                         r.max_vertex_gap,
                         r.max_edge_gap,
                     ];
-                    digest(b, &mut o)?;
+                    digest(k, b, &mut o)?;
                     Ok(o)
                 }
                 Err(e) => failed(e),
@@ -632,7 +633,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
                         r.max_vertex_gap,
                         r.max_edge_gap,
                     ];
-                    digest(b, &mut o)?;
+                    digest(k, b, &mut o)?;
                     Ok(o)
                 }
                 Err(e) => failed(e),
@@ -656,7 +657,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
                     ids.edges(&mut o, r.deleted_edges.iter().map(|&e| Some(e)));
                     ids.vertices(&mut o, l.iter().copied());
                     if !r.deleted.is_empty() {
-                        digest(b, &mut o)?;
+                        digest(k, b, &mut o)?;
                     }
                     Ok(o)
                 }
@@ -684,7 +685,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
                     ids.vertices(&mut o, v.iter().copied());
                     ids.edges(&mut o, e.iter().copied());
                     if !r.processed.is_empty() || !r.new_edges.is_empty() {
-                        digest(b, &mut o)?;
+                        digest(k, b, &mut o)?;
                     }
                     Ok(o)
                 }

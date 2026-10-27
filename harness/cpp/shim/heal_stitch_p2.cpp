@@ -12,6 +12,7 @@
 // The build, walk and export are copied from heal_stitch_p1.cpp.
 #include "sc_shim.h"
 #include "sc_edgeuse_graph.h"
+#include "sc_stitch_digest.h"
 
 #include <SmApiPrimitives.h>
 #include <SmContext.h>
@@ -190,7 +191,8 @@ template <class T> void put_indices(std::vector<double>& o, Graph& g, int kind, 
 }
 
 // The B-rep after a mutating op: face, edge and vertex counts (GetFaces / GetEdges /
-// GetVertices), then each vertex's point and tolerance in list order.
+// GetVertices), each vertex's point and tolerance in list order, then the topology of
+// sc_stitch_digest.h.
 void put_digest(SmBrep* brep, std::vector<double>& o)
 {
     SmTArray<SmFace*> fs;
@@ -207,6 +209,7 @@ void put_digest(SmBrep* brep, std::vector<double>& o)
         put_vec(o, vs[i]->GetPoint());
         o.push_back((double)vs[i]->GetTolerance());
     }
+    put_topology(brep, o);
 }
 
 // The stitch outputs StitchIntoSolid / StitchIntoShell share.

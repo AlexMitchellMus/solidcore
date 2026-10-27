@@ -22,8 +22,9 @@
 //! | `Split`  | `tol manifold ignore n v*n n e*n` | `status [max_gap min_gap processed split new verts edges [digest]]` (`SplitEdgesWithVertices`; the digest when it processed a vertex or made an edge) |
 //!
 //! Output lists are `n idx*n` with `-1` for null and `-3` for an entity the op created.
-//! A digest is the B-rep after the op: `n_faces n_edges n_vertices` then each vertex's
-//! point and tolerance in list order.
+//! A digest is the B-rep after the op: `n_faces n_edges n_vertices`, each vertex's
+//! point and tolerance in list order, then the topology of
+//! `harness/cpp/shim/sc_stitch_digest.h` (as `heal.stitch_p1`).
 //!
 //! [`eval`] accepts only what upstream handles without undefined behaviour: the B-rep
 //! block rules of `heal.stitch_p1`, indices inside the B-rep's export, finite values
