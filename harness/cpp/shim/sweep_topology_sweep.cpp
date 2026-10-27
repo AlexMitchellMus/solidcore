@@ -12,6 +12,9 @@
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
 #include <SmShell.h>
+#include <SmBrep.h>
+#include <SmBSplineCurve.h>
+#include <SmBSplineSurface.h>
 #include <memory>
 #include <vector>
 #include <cmath>
@@ -158,6 +161,192 @@ SC_EXPORT int32_t sc_sweep_topology_sweep_whole(const double* in, int64_t n_in, 
         for (ULONG i = 0; i < vertices.GetSize(); ++i) { auto p = vertices[i]->GetPoint(); o.push_back(p.x); o.push_back(p.y); o.push_back(p.z); }
         auto index = [&](SmVertex* p) -> double { for (ULONG i = 0; i < vertices.GetSize(); ++i) if (vertices[i] == p) return (double)i; return -1; };
         for (ULONG i = 0; i < edges.GetSize(); ++i) { o.push_back(index(edges[i]->GetStartVertex())); o.push_back(index(edges[i]->GetEndVertex())); }
+    }
+    return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
+    SC_CATCH
+}
+
+// ---- Non-manifold bodies (prog_test smSweepTest.cpp) --------------------------------------
+//
+// sc_sweep_topology_sweep_body builds one of these bodies with SMLib calls in the
+// order prog_test makes them, then runs the whole-B-rep DoSweep (all six target
+// arrays NULL) on it:
+//   0  SmApiCreateBox(origin, 4, 3, 2) plus a shell vertex at (10,0,0) extended by
+//      MakeWireEdgeVertex to (15,2,0) and a shell vertex at (-5,0,0)
+//   1  my_create_test_brep: my_test_tsurf_creation (smTopoTest.cpp; a 10x10 B-spline
+//      plane face with a notched outer loop, a triangular and a circular inner loop),
+//      then MakeVertexLoop at (3.5,8.5,0), MakeEdgeInFace from vertex 0 to vertex 3,
+//      MakeWireEdgeVertex from vertex 1 to (15,2,0) and MakeShellVertex at (-5,0,0)
+//   2  an empty B-rep (no topology at all)
+//   3  a single shell vertex at (-5,0,0)
+//   4  a single wire edge from a shell vertex at (10,0,0) to (15,2,0)
+//
+// in = [body, kind (1 translation, 2 rotation), vx, vy, vz, angle_deg, cx, cy, cz,
+// eps, stitch, merge, repetitions, tagging, tag_id]; the translation is (vx,vy,vz),
+// the rotation is about the axis (vx,vy,vz) through (cx,cy,cz) with tolerance eps.
+// Out (doubles): status; on success the counts, vertex points and edge vertex
+// indices of sc_sweep_topology_sweep_whole, then the wire-edge and shell-vertex
+// counts, then per GetFaces face and per GetEdges edge its SM_AI_TAG
+// [present, eight longs].
+
+static SmStatus sc_test_tsurf_creation(const SmContext& crContext, SmBrep*& rpNewBrep)
+{
+    SmBrep* pBrep = new (crContext) SmBrep();
+    rpNewBrep = pBrep;
+    pBrep->SetTolerance(0.0001);
+    SmBSplineSurface* pPlane = NULL;
+    SER(SmBSplineSurface::CreateBilinearSurface(crContext,
+        SmPoint3d(0,0,0), SmPoint3d(10,0,0), SmPoint3d(0,10,0), SmPoint3d(10,10,0), pPlane));
+    SmSurface* pSurface;
+    SER(pPlane->CopyAndAddAnalytics(crContext, pSurface));
+    delete pPlane; pPlane = NULL;
+    pPlane = SM_CAST_PTR(SmBSplineSurface, pSurface);
+    if (!pPlane) return SM_ERR;
+    SmTArray<SmCurve*> s3DCurves;
+    SmTArray<SmOrientType> sCurveOrients;
+    struct Seg { SmPoint3d a, b; SmOrientType o; };
+    const Seg segs[] = {
+        {SmPoint3d(0,0,0), SmPoint3d(10,0,0), SM_OT_SAME},
+        {SmPoint3d(10,5,0), SmPoint3d(10,0,0), SM_OT_OPPOSITE},
+        {SmPoint3d(10,5,0), SmPoint3d(5,5,0), SM_OT_SAME},
+        {SmPoint3d(5,5,0), SmPoint3d(5,10,0), SM_OT_SAME},
+        {SmPoint3d(5,10,0), SmPoint3d(0,10,0), SM_OT_SAME},
+        {SmPoint3d(0,10,0), SmPoint3d(0,0,0), SM_OT_SAME},
+        {SmPoint3d(1,5,0), SmPoint3d(1,8,0), SM_OT_SAME},
+        {SmPoint3d(1,8,0), SmPoint3d(4,5,0), SM_OT_SAME},
+        {SmPoint3d(4,5,0), SmPoint3d(1,5,0), SM_OT_SAME},
+    };
+    for (const Seg& s : segs) {
+        SmBSplineCurve* pCurve = NULL;
+        SER(SmBSplineCurve::CreateLineSegment(crContext, 3, s.a, s.b, pCurve));
+        s3DCurves.Add(pCurve);
+        sCurveOrients.Add(s.o);
+    }
+    SmAxis2Placement sRefFrame;
+    sRefFrame.SetCanonical(SmPoint3d(6,2.5,0), SmVector3d(-1,0,0), SmVector3d(0,-1,0));
+    SmBSplineCurve* pCurve = NULL;
+    SER(SmBSplineCurve::CreateCircleSegment(crContext, 3, sRefFrame, 1.5, 0.0, 360.0, SM_CO_QUADRATIC, pCurve));
+    s3DCurves.Add(pCurve);
+    sCurveOrients.Add(SM_OT_OPPOSITE);
+    SmTArray<ULONG> sLoops;
+    sLoops.Add(6); sLoops.Add(3); sLoops.Add(1);
+    SmTArray<SmPoint3d> sLoopPoints;
+    SmRegion* pNewRegion; SmShell* pNewShell; SmFace* pNewFace;
+    SER(pBrep->MakeFaceWithCurves(pBrep->GetInfiniteRegion(), sLoops, &s3DCurves, NULL,
+        sCurveOrients, sLoopPoints, pPlane, pPlane->GetNaturalUVDomain(), SM_OT_SAME,
+        pNewRegion, pNewShell, pNewFace));
+    return SM_SUCCESS;
+}
+
+static SmStatus sc_create_test_brep(const SmContext& crContext, SmBrep*& rpBrep)
+{
+    SER(sc_test_tsurf_creation(crContext, rpBrep));
+    SmTemporaryChangeValue<SmBoolean> sChangeDB(((SmContext*)&crContext)->GetDoingBooleanRef(), TRUE);
+    SmTArray<SmVertex*> sVertices;
+    rpBrep->GetVertices(sVertices);
+    SmTArray<SmFace*> sFaces;
+    rpBrep->GetFaces(sFaces);
+    if (sFaces.GetSize() < 1 || sVertices.GetSize() < 4) return SM_ERR;
+    SmFace* pFace = sFaces[0];
+    SmLoop* pNewLoop; SmVertex* pNewVertex;
+    SER(rpBrep->MakeVertexLoop(pFace, SmPoint3d(3.5,8.5,0.0), pNewLoop, pNewVertex));
+    SmBSplineCurve* pLine = NULL;
+    SER(SmBSplineCurve::CreateLineSegment(crContext, 3, SmPoint3d(0,0,0), SmPoint3d(5,5,0), pLine));
+    SmEdge* pNewEdge; SmFace* pNewFace;
+    rpBrep->m_bEditingEnabled = TRUE;
+    SER(rpBrep->MakeEdgeInFace(pFace, sVertices[0], sVertices[3], pLine, NULL,
+        pLine->GetNaturalInterval(), SM_OT_SAME, SM_ZONE_TOL_3D, pNewEdge, pNewLoop, pNewFace));
+    pLine = NULL;
+    SER(SmBSplineCurve::CreateLineSegment(crContext, 3, SmPoint3d(10,0,0), SmPoint3d(15,2.0,0), pLine));
+    SER(rpBrep->MakeWireEdgeVertex(rpBrep->GetInfiniteRegion(), sVertices[1], pLine,
+        pLine->GetNaturalInterval(), SM_OT_SAME, SmPoint3d(15,2,0), pNewEdge, pNewVertex));
+    pLine = NULL;
+    SmShell* pNewShell;
+    SER(rpBrep->MakeShellVertex(rpBrep->GetInfiniteRegion(), SmPoint3d(-5.0,0,0), pNewShell, pNewVertex));
+    return SM_SUCCESS;
+}
+
+// A shell vertex at (10,0,0) extended by a wire edge to (15,2,0).
+static SmStatus sc_add_wire(const SmContext& ctx, SmBrep* pBrep)
+{
+    SmShell* pShell = NULL; SmVertex* pStart = NULL;
+    SER(pBrep->MakeShellVertex(pBrep->GetInfiniteRegion(), SmPoint3d(10,0,0), pShell, pStart));
+    SmBSplineCurve* pLine = NULL;
+    SER(SmBSplineCurve::CreateLineSegment(ctx, 3, SmPoint3d(10,0,0), SmPoint3d(15,2,0), pLine));
+    SmEdge* pEdge = NULL; SmVertex* pEnd = NULL;
+    SER(pBrep->MakeWireEdgeVertex(pBrep->GetInfiniteRegion(), pStart, pLine,
+        pLine->GetNaturalInterval(), SM_OT_SAME, SmPoint3d(15,2,0), pEdge, pEnd));
+    return SM_SUCCESS;
+}
+
+static SmStatus sc_build_body(int body, const SmContext& ctx, SmBrep*& rpBrep)
+{
+    SmShell* pShell = NULL; SmVertex* pVertex = NULL;
+    switch (body) {
+    case 0:
+        SER(SmApiCreateBox(SmVector3d(0,0,0), 4, 3, 2, rpBrep));
+        SER(sc_add_wire(ctx, rpBrep));
+        return rpBrep->MakeShellVertex(rpBrep->GetInfiniteRegion(), SmPoint3d(-5,0,0), pShell, pVertex);
+    case 1:
+        return sc_create_test_brep(ctx, rpBrep);
+    case 2:
+        rpBrep = new (ctx) SmBrep();
+        return SM_SUCCESS;
+    case 3:
+        rpBrep = new (ctx) SmBrep();
+        return rpBrep->MakeShellVertex(rpBrep->GetInfiniteRegion(), SmPoint3d(-5,0,0), pShell, pVertex);
+    default:
+        rpBrep = new (ctx) SmBrep();
+        return sc_add_wire(ctx, rpBrep);
+    }
+}
+
+static void sc_put_tag(std::vector<double>& o, SmTopology* p)
+{
+    auto tag = (SmTagAttribute*)p->FindAttribute(SM_AI_TAG);
+    o.push_back(tag ? 1 : 0);
+    for (int k = 0; k < 8; ++k) o.push_back(tag ? (double)tag->GetLongElementsAddress()[k] : 0.0);
+}
+
+SC_EXPORT int32_t sc_sweep_topology_sweep_body(const double* in, int64_t n_in, double* out,
+                                               int64_t cap, int64_t* out_len) {
+    if (!in || !out_len || n_in != 15) return SC_ERR_ARG;
+    for (int64_t i = 0; i < n_in; ++i) if (!std::isfinite(in[i])) return SC_ERR_ARG;
+    if (in[0] < 0 || in[0] > 4 || in[0] != std::floor(in[0]) || (in[1] != 1 && in[1] != 2)
+        || in[12] < 0 || in[12] > 4 || in[12] != std::floor(in[12])
+        || std::fabs(in[14]) > 1e9 || in[14] != std::floor(in[14])) return SC_ERR_ARG;
+    SC_TRY
+    const SmContext& ctx = *SmApiGetOrCreateContext();
+    SmBrep* brep = nullptr;
+    std::vector<double> o;
+    SmStatus status = sc_build_body((int)in[0], ctx, brep);
+    std::unique_ptr<SmBrep> owned(brep);
+    if (status != SM_SUCCESS || !brep) { o.push_back(status == SM_SUCCESS ? SM_ERR : status); return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len); }
+    SmVector3d v(in[2], in[3], in[4]);
+    SmTranslationalSweepGeometry translation(v);
+    SmRotationalSweepGeometry rotation(SmPoint3d(in[6], in[7], in[8]), v, in[5], in[9]);
+    SmSweepGeometryCreation* g = in[1] == 1 ? (SmSweepGeometryCreation*)&translation : (SmSweepGeometryCreation*)&rotation;
+    SmTopologySweep sweep(*g, in[10] != 0, FALSE, FALSE, in[11] != 0);
+    sweep.SetRepetitions((ULONG)in[12]);
+    sweep.SetTagging(in[13] != 0, (long)in[14]);
+    status = sweep.DoSweep(brep, brep->GetInfiniteRegion(), NULL, NULL, NULL, NULL, NULL, NULL);
+    o.push_back(status == SM_SUCCESS ? 0 : status);
+    if (status == SM_SUCCESS) {
+        SmTArray<SmRegion*> regions; brep->GetRegions(regions);
+        SmTArray<SmShell*> shells; brep->GetShells(shells);
+        SmTArray<SmFace*> faces; brep->GetFaces(faces);
+        SmTArray<SmLoop*> loops; brep->GetLoops(loops);
+        SmTArray<SmEdge*> edges; brep->GetEdges(edges);
+        SmTArray<SmVertex*> vertices; brep->GetVertices(vertices);
+        for (ULONG n : {regions.GetSize(), shells.GetSize(), faces.GetSize(), loops.GetSize(), edges.GetSize(), vertices.GetSize()}) o.push_back(n);
+        for (ULONG i = 0; i < vertices.GetSize(); ++i) { auto p = vertices[i]->GetPoint(); o.push_back(p.x); o.push_back(p.y); o.push_back(p.z); }
+        auto index = [&](SmVertex* p) -> double { for (ULONG i = 0; i < vertices.GetSize(); ++i) if (vertices[i] == p) return (double)i; return -1; };
+        for (ULONG i = 0; i < edges.GetSize(); ++i) { o.push_back(index(edges[i]->GetStartVertex())); o.push_back(index(edges[i]->GetEndVertex())); }
+        SmTArray<SmEdge*> wires; brep->GetWireEdges(wires);
+        SmTArray<SmVertex*> shell_vertices; brep->GetShellVertices(shell_vertices);
+        o.push_back(wires.GetSize()); o.push_back(shell_vertices.GetSize());
+        for (ULONG i = 0; i < faces.GetSize(); ++i) sc_put_tag(o, faces[i]);
+        for (ULONG i = 0; i < edges.GetSize(); ++i) sc_put_tag(o, edges[i]);
     }
     return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
     SC_CATCH

@@ -30,6 +30,13 @@ mod sys {
             cap: i64,
             len: *mut i64,
         ) -> i32;
+        pub fn sc_sweep_topology_sweep_body(
+            input: *const f64,
+            n: i64,
+            out: *mut f64,
+            cap: i64,
+            len: *mut i64,
+        ) -> i32;
     }
 }
 /// Validate a script and execute it against upstream. Entity 64 denotes null;
@@ -117,6 +124,46 @@ pub fn whole(input: [f64; 11]) -> Result<Vec<f64>, FfiError> {
         // doubles and retains no pointers to either buffer.
         unsafe {
             sys::sc_sweep_topology_sweep_whole(
+                input.as_ptr(),
+                input.len() as i64,
+                out.as_mut_ptr(),
+                out.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })
+}
+/// Whole-B-rep `DoSweep` of a non-manifold body (prog_test `smSweepTest.cpp`):
+/// `input` = `[body, kind (1 translation, 2 rotation), vx, vy, vz, angle_deg, cx, cy,
+/// cz, eps, stitch, merge, repetitions, tagging, tag_id]`. `body` 0 is an
+/// `SmApiCreateBox(origin, 4, 3, 2)` with a wire edge and a shell vertex, 1 the
+/// `my_create_test_brep` face (inner loops, a vertex loop, an edge loop, a wire edge
+/// and a shell vertex), 2 an empty B-rep, 3 a lone shell vertex and 4 a lone wire
+/// edge (see the shim). The rotation is about axis `v` through `c` with tolerance
+/// `eps`. Returns the record of [`whole`], then the wire-edge and shell-vertex
+/// counts, then per `GetFaces` face and per `GetEdges` edge its `SM_AI_TAG` as
+/// `[present, eight longs]`.
+///
+/// # Errors
+/// Non-finite input, an unknown body or kind, more than four repetitions, a
+/// non-integral or out-of-range tag id, or native exceptions.
+pub fn body(input: [f64; 15]) -> Result<Vec<f64>, FfiError> {
+    let integral = |v: f64, lo: f64, hi: f64| (lo..=hi).contains(&v) && v.fract() == 0.0;
+    if input.iter().any(|v| !v.is_finite())
+        || !integral(input[0], 0.0, 4.0)
+        || (input[1] != 1.0 && input[1] != 2.0)
+        || !integral(input[12], 0.0, 4.0)
+        || !integral(input[14], -1e9, 1e9)
+    {
+        return Err(FfiError::InvalidArgument(
+            "invalid non-manifold body sweep input".into(),
+        ));
+    }
+    call_with_buffer(16384, |out, len| {
+        // SAFETY: the fixed-size input is read only; C++ writes at most `cap`
+        // doubles and retains no pointers to either buffer.
+        unsafe {
+            sys::sc_sweep_topology_sweep_body(
                 input.as_ptr(),
                 input.len() as i64,
                 out.as_mut_ptr(),
