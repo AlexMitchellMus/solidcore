@@ -727,7 +727,7 @@ impl FilletBrep {
         let g2 = self.eu_geom(mate)?;
         let mut fs2_tol: Option<f64> = None;
 
-        let surface1: Surface;
+        let mut surface1: Surface;
         let mut surface2: Option<Surface> = None;
         let tol: f64;
         if let Some(g1) = g1 {
@@ -805,6 +805,23 @@ impl FilletBrep {
                             tol,
                             solvers,
                         ))?;
+
+                        // Upstream's `pSurface1` / `pSurface2` point at the fillet
+                        // geometries' own surfaces, which the fix edits in place (a
+                        // closed corner's end row becomes its start row); re-read them.
+                        surface1 = self
+                            .geom(g1)?
+                            .fillet_surface()?
+                            .cloned()
+                            .ok_or_else(|| SolidError::null_pointer(OP_CROSS))?;
+                        if surface2.is_some() {
+                            surface2 = Some(
+                                self.geom(g2)?
+                                    .fillet_surface()?
+                                    .cloned()
+                                    .ok_or_else(|| SolidError::null_pointer(OP_CROSS))?,
+                            );
+                        }
                     }
                 }
             }
@@ -1213,11 +1230,30 @@ impl FilletBrep {
             .fillet_edge(e)?
             .original_edge()
             .ok_or_else(|| SolidError::null_pointer(OP_EXT_EDGE))?;
-        let faces = edge::faces(target, orig_edge, None)?;
+        let mut faces = edge::faces(target, orig_edge, None)?;
         if faces.len() < 2 {
             return Err(SolidError::sm_err(OP_EXT_EDGE));
         }
         let the_corner = corners.corner(corner)?;
+        // Past a tangent side edge (`make_nx1_corner_topology`), the extended edge
+        // bounds the end face and a face that is not the side face this edge runs in:
+        // its extension is where that side face meets the end face's extension
+        // (tangency-labs/smlib@d5ebcb3, WR-457).
+        if k.fixes.fillet_nx1_tangent_side_edge {
+            if let Some(side) = self.fillet_edge(e)?.original_face() {
+                if !faces.contains(&side) {
+                    let mut end_face = None;
+                    for &f in &faces {
+                        if extended_surface(the_corner, f)?.is_some() {
+                            end_face = Some(f);
+                            break;
+                        }
+                    }
+                    let end_face = end_face.ok_or_else(|| SolidError::null_pointer(OP_EXT_EDGE))?;
+                    faces = vec![side, end_face];
+                }
+            }
+        }
         let mut surfaces: Vec<Option<Surface>> = Vec::with_capacity(2);
         for &f in faces.iter().take(2) {
             let surf = match extended_surface(the_corner, f)? {
