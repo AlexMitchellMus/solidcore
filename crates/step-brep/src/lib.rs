@@ -35,7 +35,8 @@ use solidcore::surface::surface::Surface;
 use solidcore::surface::torus::{Torus, TorusOptions};
 use solidcore::topology::brep::p2::ArenaNotifyState;
 use solidcore::topology::brep::p3;
-use solidcore::topology::brep::p8::{create_faces_with_curves, FaceBuildEnv};
+use solidcore::topology::brep::p7;
+use solidcore::topology::brep::p8::FaceBuildEnv;
 use solidcore::topology::topology_traverser::Marks;
 use solidcore::topology::trimming_tools;
 use solidcore::topology::{Brep, FaceId};
@@ -325,23 +326,40 @@ pub fn build_with_options(body: &Body, options: BuildOptions) -> Result<Brep, Bu
     let key_of: &dyn Fn(EntityRef) -> solidcore::geom::object::ObjectRef = env.key_of;
     let this_face = |face: FaceId| key_of(EntityRef::Face(face));
     let mut marks = Marks::default();
-    let mut face_env = FaceBuildEnv {
+    let face_env = FaceBuildEnv {
         env: &mut env,
         marks: &mut marks,
         this_face: &this_face,
     };
     for face in &body.faces {
-        let surface = Some(make_surface(&kernel, &face.surface)?);
+        let surface = make_surface(&kernel, &face.surface)?;
+        let uv_domain = surface.natural_uv_domain_with_nurb(&kernel)?;
         let input = face_input(&kernel, body, face)?;
-        create_faces_with_curves(
+        let curves = p7::FaceCurvesInput {
+            loops: input.loops,
+            curves_3d: Some(input.curves),
+            uv_curves: None,
+            orientations: input.orients,
+            loop_points: Vec::new(),
+        };
+        // Build the trimmed face from all of its loops at once. The incremental
+        // big-face-then-trim path splits multi-loop faces and lazily fits UV trim
+        // curves, which fails for lines projected onto periodic surfaces.
+        p7::make_face_with_curves(
             &mut kernel,
             &mut brep,
             None,
-            &input.loops,
-            Some(input.curves),
-            &input.orients,
+            curves,
             surface,
-            &mut face_env,
+            &uv_domain,
+            if face.same_sense {
+                OrientType::Same
+            } else {
+                OrientType::Opposite
+            },
+            None,
+            face_env.this_face,
+            face_env.env,
         )?;
     }
     drop(state);
@@ -453,7 +471,7 @@ mod tests {
                 step_id: 1,
                 start: 0,
                 end: 1,
-                curve: line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], 10.0),
+                curve: line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], 1.0),
                 same_sense: true,
                 t_start: 0.0,
                 t_end: 10.0,
@@ -462,16 +480,25 @@ mod tests {
                 step_id: 2,
                 start: 1,
                 end: 2,
-                curve: line([10.0, 0.0, 0.0], [-1.0, 1.0, 0.0], 10.0),
+                // The hypotenuse is 10*sqrt(2) long in a unit direction.
+                curve: line(
+                    [10.0, 0.0, 0.0],
+                    [
+                        -std::f64::consts::FRAC_1_SQRT_2,
+                        std::f64::consts::FRAC_1_SQRT_2,
+                        0.0,
+                    ],
+                    1.0,
+                ),
                 same_sense: true,
                 t_start: 0.0,
-                t_end: 10.0,
+                t_end: 10.0 * std::f64::consts::SQRT_2,
             },
             Edge {
                 step_id: 3,
                 start: 2,
                 end: 0,
-                curve: line([0.0, 10.0, 0.0], [0.0, -1.0, 0.0], 10.0),
+                curve: line([0.0, 10.0, 0.0], [0.0, -1.0, 0.0], 1.0),
                 same_sense: true,
                 t_start: 0.0,
                 t_end: 10.0,
@@ -515,6 +542,105 @@ mod tests {
             edges,
             vertices,
         }
+    }
+
+    /// A full-period cylindrical band: two closed circular loops on one periodic
+    /// surface. Building all loops at once is what keeps the construction off the
+    /// incremental split path that failed on this shape.
+    fn cylinder_band() -> Body {
+        let frame = Frame {
+            origin: [0.0, 0.0, 0.0],
+            x: [1.0, 0.0, 0.0],
+            y: [0.0, 1.0, 0.0],
+            z: [0.0, 0.0, 1.0],
+        };
+        let vertices = vec![
+            Vertex {
+                step_id: 1,
+                point: [10.0, 0.0, 0.0],
+            },
+            Vertex {
+                step_id: 2,
+                point: [10.0, 0.0, 20.0],
+            },
+        ];
+        let edges = vec![
+            Edge {
+                step_id: 1,
+                start: 0,
+                end: 0,
+                curve: Curve::Circle {
+                    frame,
+                    radius: 10.0,
+                },
+                same_sense: true,
+                t_start: 0.0,
+                t_end: 360.0,
+            },
+            Edge {
+                step_id: 2,
+                start: 1,
+                end: 1,
+                curve: Curve::Circle {
+                    frame: Frame {
+                        origin: [0.0, 0.0, 20.0],
+                        ..frame
+                    },
+                    radius: 10.0,
+                },
+                same_sense: true,
+                t_start: 0.0,
+                t_end: 360.0,
+            },
+        ];
+        let loop_ = |edge| Loop {
+            outer: edge == 0,
+            orientation: true,
+            bound: Bound::Edges(vec![OrientedEdge {
+                edge,
+                forward: true,
+            }]),
+        };
+        Body {
+            step_id: 2,
+            name: Some("cylinder band".into()),
+            kind: step_import::model::BodyKind::ManifoldSolid,
+            unit_mm: 1.0,
+            uncertainty_mm: None,
+            shells: vec![Shell {
+                step_id: 2,
+                closed: true,
+                orientation: true,
+                faces: vec![0],
+            }],
+            faces: vec![Face {
+                step_id: 2,
+                surface: Surface::Cylinder {
+                    frame,
+                    radius: 10.0,
+                },
+                same_sense: true,
+                loops: vec![loop_(0), loop_(1)],
+            }],
+            edges,
+            vertices,
+        }
+    }
+
+    #[test]
+    fn builds_a_multi_loop_cylinder_band() {
+        let brep = build(&cylinder_band()).expect("cylinder band build");
+        assert_eq!(brep.face_list().len(), 1);
+        assert_eq!(brep.edge_list().len(), 2);
+        assert_eq!(brep.vertex_list().len(), 2);
+        assert!(brep
+            .face_list()
+            .iter()
+            .all(
+                |&face| !solidcore::topology::face::p2::loops(&brep, face, false, None)
+                    .expect("face loops")
+                    .is_empty()
+            ));
     }
 
     #[test]
