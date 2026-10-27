@@ -3542,7 +3542,7 @@ fn c6_compute_point_values(
         compute_uv_vectors(point)?;
 
         // :3604 static double sdStaticStep = TANGENT ? 1e-3 : 1e-5 (latched once; with
-        // `fixes.fillet_point_step_per_point` chosen for this point, WR-466)
+        // `fixes.fillet_point_step_per_point` chosen for this point, ND-3)
         let first = if point.point_type == IntersectionPointType::TangentPoint {
             1.0e-3
         } else {
@@ -3952,30 +3952,41 @@ mod tests_c6 {
         assert!((moves[1] - 100.0).abs() < 1.0e-6, "{moves:?}");
     }
 
-    /// WR-466 (#1173): with the fix the step is chosen per point and no latch is read or
-    /// set; without it a latched step (as left by an earlier blend) is the one used.
+    /// #1173 (ND-3): the first finite-difference guess lies one step from the point. With the
+    /// fix that step is the point's own whatever an earlier blend latched; without it the
+    /// latched step is used. The latch itself is neither read nor written with the fix.
     #[test]
     fn per_point_step_ignores_the_latch_with_the_fix() {
         let (a, b) = (xy(0.0), xy(1.0));
         let mut prev = TsectPnt::new();
         *prev.crv_deriv_mut() = Vec3::new(0.0, 3.0, 0.0);
-        for fixed in [false, true] {
+        // distance of the first guess from the point's uv, for the fix on/off and a latch
+        let first_guess = |fixed: bool, latched: Option<f64>| {
             let mut k = Kernel::default();
             k.fixes.fillet_point_step_per_point = fixed;
-            k.fillet_point_step.set(Some(1.0e-5));
-            let mut fs = solver(&k, &a, &b);
-            let _ = run(&mut fs, &k, 1.0, &mut TsectPnt::new(), Some(&prev));
-            assert_eq!(k.fillet_point_step.get(), Some(1.0e-5));
-            let k = Kernel::default();
-            let mut fs = solver(&k, &a, &b);
-            let _ = run(&mut fs, &k, 1.0, &mut TsectPnt::new(), Some(&prev));
-            assert_eq!(k.fillet_point_step.get(), Some(1.0e-3));
-            let mut k = Kernel::default();
-            k.fixes.fillet_point_step_per_point = true;
-            let mut fs = solver(&k, &a, &b);
-            let _ = run(&mut fs, &k, 1.0, &mut TsectPnt::new(), Some(&prev));
-            assert_eq!(k.fillet_point_step.get(), None);
-        }
+            k.fillet_point_step.set(latched);
+            let mut ops = Probe {
+                inner: Variable(solver(&k, &a, &b)),
+                guesses: Vec::new(),
+            };
+            let _ = run(&mut ops, &k, 1.0, &mut TsectPnt::new(), Some(&prev));
+            assert_eq!(
+                k.fillet_point_step.get(),
+                if fixed {
+                    latched
+                } else {
+                    latched.or(Some(1.0e-3))
+                }
+            );
+            let g = ops.guesses.first().expect("a finite-difference solve ran");
+            (g[0] - 0.5).hypot(g[1] - 0.25)
+        };
+        let (fresh, preset) = (first_guess(true, None), first_guess(true, Some(1.0e-5)));
+        assert!(fresh > 0.0);
+        assert_eq!(fresh, preset);
+        // without the fix the preset latch changes the step
+        assert!(first_guess(false, Some(1.0e-5)) < fresh / 10.0);
+        assert_eq!(first_guess(false, None), fresh);
     }
 
     #[test]
