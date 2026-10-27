@@ -81,7 +81,7 @@
 //!   constructor), but cannot make a missing one first as upstream's copy constructor
 //!   does (`MakeNurb` needs the [`Kernel`]). A lazy
 //!   B-spline generator (as returned by the extrusion recogniser) uses the analytic
-//!   domain, swapped when needed, for `Surface::natural_uv_domain`; other lazy
+//!   domain, swapped when needed, for `Surface::natural_uv_domain_if_built`; other lazy
 //!   generator kinds still require an explicit `MakeNurb` for that domain query.
 //! - **Out-of-bounds evaluation.** `SmTemporaryChangeValue` gives the generator the
 //!   surface's out-of-bounds flag for the evaluation / drop; only a B-spline generator
