@@ -2451,9 +2451,9 @@ fn user_surface(
 /// tolerance (`SmEdge::GetTolerance`, zero on a fillet B-rep's rails); the system zone
 /// tolerance when there is no edge. `SmBSplineCurve::Trim` maps it to parameter space
 /// to find degenerate end spans to remove.
-pub(super) fn held_curve_zone_tol_3d(k: &Kernel, b: &Brep, edge: Option<EdgeId>) -> Result<f64> {
-    Ok(match edge {
-        Some(e) => crate::topology::edge::tolerance(b, e)?,
+pub(super) fn held_curve_zone_tol_3d(k: &Kernel, b: &Brep, holder: Option<EdgeId>) -> Result<f64> {
+    Ok(match holder {
+        Some(e) => edge::tolerance(b, e)?,
         None => crate::geom::tol::zone_tol_3d(k, crate::geom::tol::SmallTopoType::NormalSize),
     })
 }
