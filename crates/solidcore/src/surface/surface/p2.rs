@@ -750,6 +750,26 @@ impl Surface {
         })
     }
 
+    /// Detaches the NURB cells this surface's planes and surfaces of extrusion share
+    /// with evaluation copies, through the whole surface tree (offset, STEP,
+    /// curve-bounded and in-volume bases). Iterative (an explicit stack), so no input
+    /// depth bound applies. Surfaces held by curves (a curve-bounded surface's trim
+    /// curves, generator curves) are not reached.
+    pub(crate) fn detach_nurb_cells(&mut self) {
+        let mut stack: Vec<&mut Surface> = vec![self];
+        while let Some(s) = stack.pop() {
+            match &mut s.kind {
+                SurfaceKind::Plane(p) => p.detach_nurb(),
+                SurfaceKind::SurfOfExtrusion(e) => e.detach_nurb(),
+                SurfaceKind::Step(st) => stack.extend(st.nested_surfaces_mut()),
+                SurfaceKind::CurveBounded(c) => stack.extend(c.nested_surfaces_mut()),
+                SurfaceKind::SrfInVolume(v) => stack.extend(v.nested_surfaces_mut()),
+                SurfaceKind::OffsetSurface(o) => stack.extend(o.nested_surfaces_mut()),
+                _ => {}
+            }
+        }
+    }
+
     /// Exact recursive copy after the caller has validated the complete geometry graph.
     pub(crate) fn clone_exact_bounded(&self) -> Self {
         let kind = match &self.kind {
