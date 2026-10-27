@@ -2,7 +2,7 @@
 //! The opt-in fix keeps the requested accuracy and integrates each knot span.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)] // test fixtures
 
-use solidcore::curve::{curve::Curve, line::Line};
+use solidcore::curve::{curve::Curve, iso_curve::IsoCurve, line::Line};
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::extent2d::Extent2d;
 use solidcore::mass::integrator::properties::{
@@ -10,13 +10,16 @@ use solidcore::mass::integrator::properties::{
 };
 use solidcore::math::{Point2, Vec2, Vec3};
 use solidcore::nurbs::b_spline_curve::p1::BSplineCurveForm;
+use solidcore::nurbs::b_spline_surface::p1::SurfParamType;
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::primitive::api_curves::{
     create_canonical_curve, create_line_segment, CanonicalCurveParams,
 };
 use solidcore::primitive::api_primitives::create_sphere_no_pole_with_tolerance;
 use solidcore::query::brep::{calculate_bounding_box, BoundingBoxOptions};
-use solidcore::surface::{plane::Plane, surface::Surface};
+use solidcore::surface::{
+    curve_bounded_surface::CurveBoundedSurface, plane::Plane, surface::Surface,
+};
 use solidcore::topology::face::p2::{PPF_ALL, PPF_AREA};
 use solidcore::Kernel;
 
@@ -85,7 +88,7 @@ fn narrow_trim_feature_is_missed_by_default_and_integrated_when_enabled() {
 }
 
 #[test]
-fn opt_in_keeps_integrating_analytic_line_trims_without_stored_nurbs() {
+fn opt_in_integrates_whole_trim_when_knots_are_unavailable() {
     let domain = Extent2d::from_points(Point2::new(0.0, 0.0), Point2::new(1.0, 1.0));
     let surface = Surface::from(Plane::new(
         Vec3::ZERO,
@@ -94,10 +97,34 @@ fn opt_in_keeps_integrating_analytic_line_trims_without_stored_nurbs() {
         Vec2::new(1.0, 1.0),
         &domain,
     ));
-    let points = [Vec3::ZERO, Vec3::X, Vec3::new(1.0, 1.0, 0.0), Vec3::Y];
-    let trims: [Curve; 4] =
-        std::array::from_fn(|i| Curve::from(Line::from_points(points[i], points[(i + 1) % 4], 3)));
     let mut k = Kernel::default();
+    // This surface evaluates through its plane, but its base knot query returns
+    // SM_ERR. Its iso curve is the top edge of the square, from right to left.
+    let uv_source = Surface::from(
+        CurveBoundedSurface::new(
+            Surface::from(Plane::new(
+                Vec3::new(1.0, 1.0, 0.0),
+                -Vec3::X,
+                Vec3::Y,
+                Vec2::new(1.0, 1.0),
+                &domain,
+            )),
+            Vec::new(),
+            Vec::new(),
+            true,
+        )
+        .unwrap(),
+    );
+    let top = Curve::from(
+        IsoCurve::from_surface(uv_source, SurfParamType::V, 0.0, false, false).unwrap(),
+    );
+    assert!(top.knots(&k, Some(&top.natural_interval())).is_err());
+    let trims = [
+        Curve::from(Line::from_points(Vec3::ZERO, Vec3::X, 3)),
+        Curve::from(Line::from_points(Vec3::X, Vec3::new(1.0, 1.0, 0.0), 3)),
+        top,
+        Curve::from(Line::from_points(Vec3::Y, Vec3::ZERO, 3)),
+    ];
     let base = boundary_properties(
         &k,
         &surface,
