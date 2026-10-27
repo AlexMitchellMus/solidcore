@@ -19,6 +19,16 @@
 //! applies the same treatment to every body, so a tessellated body can be exported as
 //! `FACETED_BREP` without first rebuilding its topology.
 //!
+//! A display tessellation is often open or seamed: its boundary edges are used once
+//! and its patches may not join into a watertight shell. [`write_faceted`] rejects it
+//! because a `FACETED_BREP` solid must be closed. [`write_faceted_display`] (and
+//! [`write_faceted_display_with_metadata`]) writes the same welded `FACETED_BREP`
+//! geometry without asserting closure: open boundaries and seams are written as given,
+//! and a body's shells are flattened into the one shell that `FACETED_BREP` requires.
+//! The shell is still named `CLOSED_SHELL`, because `FACETED_BREP`'s `outer` attribute
+//! is typed `closed_shell`; the display writer never claims the mesh is watertight and
+//! never discards or rewinds a face to make it so.
+//!
 //! # Metadata
 //!
 //! [`write`] emits a neutral product named `part` with an AP203 schema. Callers that
@@ -566,28 +576,58 @@ struct FacetedLoop {
     orientation: bool,
 }
 
-/// Writes a closed faceted body as `FACETED_BREP` with shared `POLY_LOOP` points.
-fn faceted_shell(entities: &mut Entities, body: &Body) -> Result<u64, ExportError> {
-    if body.shells.len() != 1 {
+/// How strictly a faceted body must be a closed two-manifold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FacetedMode {
+    /// Require exactly one closed shell, with every undirected edge used twice.
+    Strict,
+    /// Accept a display tessellation whose shell is open or seamed.
+    Display,
+}
+
+impl FacetedMode {
+    /// Whether the mode enforces a closed solid.
+    const fn is_strict(self) -> bool {
+        matches!(self, Self::Strict)
+    }
+}
+
+/// Writes a faceted body as `FACETED_BREP` with shared `POLY_LOOP` points.
+///
+/// [`FacetedMode::Strict`] keeps the watertight-solid contract. [`FacetedMode::Display`]
+/// accepts open or seamed shells and flattens every shell of the body into the single
+/// shell that `FACETED_BREP` requires.
+fn faceted_shell(
+    entities: &mut Entities,
+    body: &Body,
+    mode: FacetedMode,
+) -> Result<u64, ExportError> {
+    if body.shells.is_empty() {
+        return Err(ExportError::new(format!(
+            "body #{} has no shells",
+            body.step_id
+        )));
+    }
+    if mode.is_strict() && body.shells.len() != 1 {
         return Err(ExportError::new(format!(
             "body #{} has {} shells; step-export supports one closed faceted shell",
             body.step_id,
             body.shells.len()
         )));
     }
-    let step_shell = body
-        .shells
-        .first()
-        .ok_or_else(|| ExportError::new(format!("body #{} has no shells", body.step_id)))?;
-    if !step_shell.closed {
-        return Err(ExportError::new(format!(
-            "body #{} has an open shell; step-export writes a closed faceted shell",
-            body.step_id
-        )));
+    let mut face_indices: Vec<usize> = Vec::new();
+    for step_shell in &body.shells {
+        if mode.is_strict() && !step_shell.closed {
+            return Err(ExportError::new(format!(
+                "body #{} has an open shell; step-export writes a closed faceted shell",
+                body.step_id
+            )));
+        }
+        face_indices.extend(step_shell.faces.iter().copied());
     }
     let welded = weld_vertices(body);
-    let mut faces: Vec<Vec<FacetedLoop>> = Vec::with_capacity(step_shell.faces.len());
-    for &face_index in &step_shell.faces {
+    let mut faces: Vec<Vec<FacetedLoop>> = Vec::with_capacity(face_indices.len());
+    for face_index in face_indices {
         let face = body.faces.get(face_index).ok_or_else(|| {
             ExportError::new(format!(
                 "body #{} references missing face {face_index}",
@@ -643,26 +683,29 @@ fn faceted_shell(entities: &mut Entities, body: &Body) -> Result<u64, ExportErro
         faces.push(loops);
     }
 
-    // A FACETED_BREP is a closed shell: every undirected edge must be used twice.
-    let mut uses: BTreeMap<(usize, usize), usize> = BTreeMap::new();
-    for loops in &faces {
-        for loop_ in loops {
-            let len = loop_.indices.len();
-            for (index, &a) in loop_.indices.iter().enumerate() {
-                let b = loop_.indices.get((index + 1) % len).copied().unwrap_or(a);
-                if a == b {
-                    continue;
+    if mode.is_strict() {
+        // A FACETED_BREP solid is a closed shell: every undirected edge must be
+        // used twice. Display output deliberately skips this check.
+        let mut uses: BTreeMap<(usize, usize), usize> = BTreeMap::new();
+        for loops in &faces {
+            for loop_ in loops {
+                let len = loop_.indices.len();
+                for (index, &a) in loop_.indices.iter().enumerate() {
+                    let b = loop_.indices.get((index + 1) % len).copied().unwrap_or(a);
+                    if a == b {
+                        continue;
+                    }
+                    let key = if a < b { (a, b) } else { (b, a) };
+                    *uses.entry(key).or_insert(0) += 1;
                 }
-                let key = if a < b { (a, b) } else { (b, a) };
-                *uses.entry(key).or_insert(0) += 1;
             }
         }
-    }
-    for ((a, b), count) in &uses {
-        if *count != 2 {
-            return Err(ExportError::new(format!(
-                "faceted shell is not closed: edge ({a}, {b}) is used {count} times, expected 2"
-            )));
+        for ((a, b), count) in &uses {
+            if *count != 2 {
+                return Err(ExportError::new(format!(
+                    "faceted shell is not closed: edge ({a}, {b}) is used {count} times, expected 2"
+                )));
+            }
         }
     }
 
@@ -706,6 +749,9 @@ fn faceted_shell(entities: &mut Entities, body: &Body) -> Result<u64, ExportErro
         .map(|id| format!("#{id}"))
         .collect::<Vec<_>>()
         .join(",");
+    // `FACETED_BREP.outer` is typed `closed_shell`, so even display output names
+    // the shell `CLOSED_SHELL`. A display tessellation may be open or seamed,
+    // which that entity type cannot express; it still reads as one faceted body.
     let shell_id = entities.add(format!("CLOSED_SHELL('',({refs}))"));
     let name = body.name.as_deref().unwrap_or("");
     Ok(entities.add(format!("FACETED_BREP({},#{shell_id})", quoted(name))))
@@ -718,7 +764,7 @@ fn faceted_shell(entities: &mut Entities, body: &Body) -> Result<u64, ExportErro
 /// A body containing anything outside the supported manifold/faceted subset, a
 /// non-closed faceted shell, or a non-finite number in an emitted STEP value.
 pub fn write(model: &Model) -> Result<String, ExportError> {
-    write_inner(model, &ExportMetadata::default(), false)
+    write_inner(model, &ExportMetadata::default(), WriteMode::Auto)
 }
 
 /// Writes a model with explicit header, product and presentation metadata.
@@ -730,7 +776,7 @@ pub fn write_with_metadata(
     model: &Model,
     metadata: &ExportMetadata,
 ) -> Result<String, ExportError> {
-    write_inner(model, metadata, false)
+    write_inner(model, metadata, WriteMode::Auto)
 }
 
 /// Writes every body as a closed `FACETED_BREP`, ignoring face surfaces and body kind.
@@ -743,7 +789,7 @@ pub fn write_with_metadata(
 /// A body without exactly one closed shell, a shell that is not closed after welding,
 /// or a non-finite number in an emitted STEP value.
 pub fn write_faceted(model: &Model) -> Result<String, ExportError> {
-    write_inner(model, &ExportMetadata::default(), true)
+    write_inner(model, &ExportMetadata::default(), WriteMode::Faceted)
 }
 
 /// [`write_faceted`] with explicit header, product and presentation metadata.
@@ -755,13 +801,57 @@ pub fn write_faceted_with_metadata(
     model: &Model,
     metadata: &ExportMetadata,
 ) -> Result<String, ExportError> {
-    write_inner(model, metadata, true)
+    write_inner(model, metadata, WriteMode::Faceted)
+}
+
+/// Writes every body as a welded `FACETED_BREP` display mesh.
+///
+/// This is [`write_faceted`] for a tessellation that is only for display: faces are
+/// still welded and share `POLY_LOOP` points, but the shell need not be closed. Open
+/// boundaries and seams are written as given, and all shells of a body are flattened
+/// into the single shell a `FACETED_BREP` requires. Nothing is dropped or rewound to
+/// make the mesh watertight.
+///
+/// The shell is still emitted as `CLOSED_SHELL` because `FACETED_BREP`'s `outer`
+/// attribute is typed `closed_shell`; use [`write_faceted`] when the output must be a
+/// closed solid.
+///
+/// # Errors
+///
+/// A body without shells, a face loop with fewer than three distinct vertices after
+/// welding, or a non-finite number in an emitted STEP value.
+pub fn write_faceted_display(model: &Model) -> Result<String, ExportError> {
+    write_inner(model, &ExportMetadata::default(), WriteMode::FacetedDisplay)
+}
+
+/// [`write_faceted_display`] with explicit header, product and presentation metadata.
+///
+/// # Errors
+///
+/// The same conditions as [`write_faceted_display`], plus a colour component outside
+/// `0..=1`.
+pub fn write_faceted_display_with_metadata(
+    model: &Model,
+    metadata: &ExportMetadata,
+) -> Result<String, ExportError> {
+    write_inner(model, metadata, WriteMode::FacetedDisplay)
+}
+
+/// How [`write_inner`] chooses a representation for each body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WriteMode {
+    /// Follow [`Body::kind`].
+    Auto,
+    /// Force every body through the strict closed faceted writer.
+    Faceted,
+    /// Force every body through the display faceted writer.
+    FacetedDisplay,
 }
 
 fn write_inner(
     model: &Model,
     metadata: &ExportMetadata,
-    force_faceted: bool,
+    mode: WriteMode,
 ) -> Result<String, ExportError> {
     metadata.validate()?;
     let schema = metadata.schema.unwrap_or(Schema::Ap203);
@@ -810,26 +900,30 @@ fn write_inner(
     let mut manifold_ids = Vec::new();
     let mut faceted_ids = Vec::new();
     for body in &model.bodies {
-        if force_faceted {
-            faceted_ids.push(faceted_shell(&mut entities, body)?);
-            continue;
-        }
-        match body.kind {
-            BodyKind::ManifoldSolid => {
-                let shell_id = shell(&mut entities, body)?;
-                let name = body.name.as_deref().unwrap_or("");
-                manifold_ids.push(
-                    entities.add(format!("MANIFOLD_SOLID_BREP({},#{shell_id})", quoted(name))),
-                );
+        match mode {
+            WriteMode::Auto => match body.kind {
+                BodyKind::ManifoldSolid => {
+                    let shell_id = shell(&mut entities, body)?;
+                    let name = body.name.as_deref().unwrap_or("");
+                    manifold_ids.push(
+                        entities.add(format!("MANIFOLD_SOLID_BREP({},#{shell_id})", quoted(name))),
+                    );
+                }
+                BodyKind::Faceted => {
+                    faceted_ids.push(faceted_shell(&mut entities, body, FacetedMode::Strict)?);
+                }
+                other => {
+                    return Err(ExportError::new(format!(
+                        "body #{} is {:?}; step-export writes MANIFOLD_SOLID_BREP and FACETED_BREP",
+                        body.step_id, other
+                    )));
+                }
+            },
+            WriteMode::Faceted => {
+                faceted_ids.push(faceted_shell(&mut entities, body, FacetedMode::Strict)?);
             }
-            BodyKind::Faceted => {
-                faceted_ids.push(faceted_shell(&mut entities, body)?);
-            }
-            other => {
-                return Err(ExportError::new(format!(
-                    "body #{} is {:?}; step-export writes MANIFOLD_SOLID_BREP and FACETED_BREP",
-                    body.step_id, other
-                )));
+            WriteMode::FacetedDisplay => {
+                faceted_ids.push(faceted_shell(&mut entities, body, FacetedMode::Display)?);
             }
         }
     }
@@ -1183,6 +1277,17 @@ mod tests {
         }
     }
 
+    /// A cube with one face removed: an open, seamed tessellation whose boundary
+    /// edges are used once, as a display mesh can be.
+    fn cube_without_a_face() -> Model {
+        let mut model = unwelded_faceted_cube();
+        model.bodies[0].shells[0]
+            .faces
+            .pop()
+            .expect("cube has faces");
+        model
+    }
+
     fn edge_uses(body: &Body) -> Vec<((usize, usize), usize)> {
         let mut uses: BTreeMap<(usize, usize), usize> = BTreeMap::new();
         for face in &body.faces {
@@ -1395,13 +1500,122 @@ mod tests {
 
     #[test]
     fn open_faceted_shell_is_rejected() {
-        let mut model = unwelded_faceted_cube();
-        model.bodies[0].shells[0]
-            .faces
-            .pop()
-            .expect("cube has faces");
-        let error = write(&model).expect_err("an open faceted shell must be rejected");
+        let error =
+            write(&cube_without_a_face()).expect_err("an open faceted shell must be rejected");
         assert!(error.message.contains("expected 2"), "{}", error.message);
+    }
+
+    #[test]
+    fn open_tessellation_writes_with_the_display_api() {
+        let model = cube_without_a_face();
+        let error = write_faceted(&model).expect_err("the strict writer rejects an open shell");
+        assert!(error.message.contains("expected 2"), "{}", error.message);
+
+        let text = write_faceted_display(&model).expect("display write of an open shell");
+        assert!(text.contains("FACETED_BREP("), "{text}");
+        assert!(!text.contains("MANIFOLD_SOLID_BREP("), "{text}");
+        assert_eq!(
+            text.matches("CARTESIAN_POINT(").count(),
+            8,
+            "display output must still weld coincident vertices"
+        );
+        let imported = reimport(&text);
+        let body = &imported.bodies[0];
+        assert_eq!(body.kind, BodyKind::Faceted);
+        assert_eq!(body.faces.len(), 5);
+        assert_eq!(body.vertices.len(), 8);
+        assert_eq!(body.edges.len(), 12);
+        let uses = edge_uses(body);
+        assert_eq!(uses.len(), 12);
+        assert_eq!(
+            uses.iter().filter(|(_, count)| *count == 1).count(),
+            4,
+            "the removed face must leave its four boundary edges unpaired: {uses:?}"
+        );
+    }
+
+    #[test]
+    fn display_api_accepts_a_shell_flagged_open() {
+        let mut model = cube_without_a_face();
+        model.bodies[0].shells[0].closed = false;
+        assert!(write_faceted(&model).is_err());
+        assert!(write_faceted_display(&model).is_ok());
+    }
+
+    #[test]
+    fn closed_cube_is_unchanged_by_the_display_api() {
+        let model = unwelded_faceted_cube();
+        let strict = write_faceted(&model).expect("strict closed cube");
+        let display = write_faceted_display(&model).expect("display closed cube");
+        assert_eq!(
+            strict, display,
+            "a closed body has one correct faceted output"
+        );
+        let imported = reimport(&display);
+        let body = &imported.bodies[0];
+        assert_eq!(body.kind, BodyKind::Faceted);
+        assert!(body.shells[0].closed);
+        assert_eq!(body.vertices.len(), 8);
+        assert_eq!(body.edges.len(), 12);
+        let uses = edge_uses(body);
+        assert_eq!(uses.len(), 12);
+        assert!(uses.iter().all(|(_, count)| *count == 2), "{uses:?}");
+    }
+
+    #[test]
+    fn display_flattens_multiple_shells_into_one_faceted_shell() {
+        let mut model = unwelded_faceted_cube();
+        let shell = model.bodies[0].shells[0].clone();
+        let split = shell.faces.len() / 2;
+        model.bodies[0].shells = vec![
+            Shell {
+                step_id: 1,
+                faces: shell.faces[..split].to_vec(),
+                ..shell.clone()
+            },
+            Shell {
+                step_id: 2,
+                faces: shell.faces[split..].to_vec(),
+                ..shell
+            },
+        ];
+        assert!(
+            write_faceted(&model).is_err(),
+            "the strict writer requires exactly one shell"
+        );
+
+        let text = write_faceted_display(&model).expect("display write of split shells");
+        assert_eq!(text.matches("FACETED_BREP(").count(), 1, "{text}");
+        assert_eq!(text.matches("CLOSED_SHELL(").count(), 1, "{text}");
+        let imported = reimport(&text);
+        assert_eq!(imported.bodies.len(), 1);
+        let body = &imported.bodies[0];
+        assert_eq!(body.faces.len(), 6);
+        assert_eq!(body.vertices.len(), 8);
+        assert_eq!(body.edges.len(), 12);
+        assert!(edge_uses(body).iter().all(|(_, count)| *count == 2));
+    }
+
+    #[test]
+    fn display_metadata_lands_in_the_header_and_presentation() {
+        let metadata = ExportMetadata::new()
+            .with_file_name("display")
+            .with_product_name("Display")
+            .with_schema(Schema::Ap242)
+            .with_color([0.25, 0.5, 0.75]);
+        let text = write_faceted_display_with_metadata(&cube_without_a_face(), &metadata)
+            .expect("display write with metadata");
+        assert!(text.contains("FILE_NAME('display'"), "{text}");
+        assert!(text.contains("PRODUCT('Display','Display',''"), "{text}");
+        assert!(
+            text.contains("FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF'))"),
+            "{text}"
+        );
+        assert!(text.contains("COLOUR_RGB('',0.25,0.5,0.75)"), "{text}");
+        assert!(text.contains("FACETED_BREP("), "{text}");
+        let imported = reimport(&text);
+        assert_eq!(imported.header.file_name, "display");
+        assert_eq!(imported.bodies.len(), 1);
     }
 
     #[test]
