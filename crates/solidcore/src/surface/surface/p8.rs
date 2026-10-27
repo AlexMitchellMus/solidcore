@@ -473,7 +473,7 @@ impl Surface {
             .zip(found.iter_mut())
         {
             let (_, continuities) = self.calculate_continuities(k, dir)?;
-            let (knots, _) = self.knots(dir, None)?;
+            let (knots, _) = self.knots_with_nurb(k, dir, None)?;
             // note: can't say knots.len() - 1
             let mut i = 1;
             while i + 1 < knots.len() {
@@ -557,8 +557,8 @@ impl Surface {
         }
 
         // arrive here when both surfaces are not of type SmPlane_TYPE
-        let domain0 = self.natural_uv_domain();
-        let domain1 = other.natural_uv_domain();
+        let domain0 = self.natural_uv_domain_with_nurb(k)?;
+        let domain1 = other.natural_uv_domain_with_nurb(k)?;
 
         // Bad input - Surface types that don't have domains.
         if domain0.size().length_squared() < EFF_ZERO_SQ
