@@ -863,6 +863,9 @@ impl Surface {
                 // the box expansion uses the owning face's tolerance, as cached on the
                 // surface by its B-rep (UNPORTED(topology.face_p2): SmFace::GetTolerance
                 // for a bare face handle without it)
+                // Proof (unreachable): a B-rep face's surface carries the face tolerance
+                // (Brep::sync_face_surface_tolerance invariant, see
+                // Surface::face_zone_tol_3d); 0 hits in the green difftest sweep.
                 let face_tol = self.face_zone_tol_3d()?;
                 Ok(
                     planar_of(k, s, &self.natural_uv_domain_with_nurb(k)?, face_tol)?
@@ -873,6 +876,9 @@ impl Surface {
             // SmBSplineSurface::CalculateBoundingBox:
             // the face's cached tolerance, as for the B-spline (UNPORTED(topology.face_p2):
             // SmFace::GetTolerance for a bare face handle without it)
+            // Proof (unreachable): a B-rep face's surface carries the face tolerance
+            // (Brep::sync_face_surface_tolerance invariant, see Surface::face_zone_tol_3d);
+            // 0 hits in the green difftest sweep.
             SurfaceKind::Cone(s) => {
                 let face_tol = self.face_zone_tol_3d()?;
                 Ok(planar_of(
