@@ -1134,10 +1134,8 @@ impl Surface {
 
         // But make sure that we didn't expand it to spill outside of sBigDomain.  This
         // would happen if the domain is against the seam of a surface of revolution, for
-        // example.  (Upstream ignores the status of the intersection.)
-        if let Ok(clipped) = new_domain.intersect(&big_domain) {
-            new_domain = clipped;
-        }
+        // example.
+        new_domain = clip_to_big_domain(&new_domain, &big_domain);
 
         // Now union the projection of Other surface on our domain with our original
         // domain, and update our domain to it.
@@ -1714,6 +1712,17 @@ fn step_inversion_in<O: SolutionObject>(
     }
 }
 
+/// `sUpdateDomain.Intersect(sBigDomain, sNewDomain)` in `CoverCoincidentSurface`:
+/// `domain` clipped to `big_domain`. Upstream ignores the status, but on disjoint
+/// extents `SmExtent2d::Intersect` has `Init()`ed its result (`SmExtent2d.cpp:414`-`418`),
+/// so the covered domain is then the uninitialised extent (and the following union
+/// leaves the surface's own STEP domain as it is).
+fn clip_to_big_domain(domain: &Extent2d, big_domain: &Extent2d) -> Extent2d {
+    domain
+        .intersect(big_domain)
+        .unwrap_or_else(|_| Extent2d::new())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1830,18 +1839,38 @@ mod tests {
         Ok(())
     }
 
-    /// Default (pinned SMLib `c9c5979`): the cover succeeds and extends the domain onto
-    /// the fold, as upstream does (WR-407).
+    /// Default (SMLib v1.0.1): the flat sheet is now planar to `SM_EFF_ZERO` (`IsPlanar`
+    /// tests the unpadded pseudo box, `SmSurface.cpp:22371` at `3fd5b95`), so
+    /// `GetMaxAnalyticDomain` expands it relatively by 100 instead of by half a span per
+    /// cubic direction. The search over that domain reaches the folded continuation and
+    /// the cover fails, changing nothing. At `c9c5979` the padded box was not planar; the
+    /// domain ended at the fold (u = 1.5) and the cover succeeded (WR-407).
     #[test]
-    fn issue_434_default_covers_across_the_fold() -> Result<()> {
+    fn issue_434_default_refuses_the_fold_of_a_planar_sheet() -> Result<()> {
         let k = Kernel::default();
         assert!(!k.fixes.cover_refuses_folded_continuation);
         let (covered, u_max) = issue_434_cover_across_a_fold(&k)?;
         assert!(
-            covered.success,
-            "upstream covers across the fold: {covered:?}"
+            !covered.success,
+            "the planar sheet's cover across the fold fails: {covered:?}"
         );
-        assert!(u_max > 1.0, "upstream extends the u domain: {u_max}");
+        assert_eq!(u_max, 1.0);
         Ok(())
+    }
+
+    #[test]
+    fn cover_clip_to_big_domain_inits_a_disjoint_domain_as_upstream() {
+        let big = Extent2d::from_bounds(0.0, 0.0, 10.0, 10.0);
+        // overlapping: the common part
+        let inside = Extent2d::from_bounds(-1.0, 2.0, 5.0, 12.0);
+        let clipped = clip_to_big_domain(&inside, &big);
+        assert_eq!(clipped, Extent2d::from_bounds(0.0, 2.0, 5.0, 10.0));
+        // disjoint: SmExtent2d::Intersect Init()s its result
+        let outside = Extent2d::from_bounds(20.0, 20.0, 30.0, 30.0);
+        let cleared = clip_to_big_domain(&outside, &big);
+        assert_eq!(cleared, Extent2d::new());
+        // the union that follows then keeps the surface's own domain
+        let orig = Extent2d::from_bounds(1.0, 1.0, 9.0, 9.0);
+        assert_eq!(orig.union(&cleared), orig);
     }
 }
