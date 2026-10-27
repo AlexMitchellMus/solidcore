@@ -33,4 +33,10 @@ Still on the system value (no `&Brep` at the build; follow-ups):
 - `Curve::length_base` builds over the curve itself, so an edge-owned curve returns
   `Unported` there (no silent value).
 At ordinary scale B-spline and analytic spans are exact, so those sites agree with C++
-unless the coordinates are large.
+unless the coordinates are large. A probe over 108 brep-level units (rebuilding every
+owned-curve cache with an unbounded tolerance and comparing span counts) found ~35,000
+owned builds; the tree depends on the tolerance in 26, all on curves of length 7e17 to
+1e50 (`primitive.api_primitives`: the edge-curve drops of `create_uv_trim_curve` and
+`TopologySolver::solve_point_edge`; `blend.fillet_geom_p1`: `create_uv_trim_curve` and
+`query::loop::drop_on_edge`). Every unit passed on its compared values; whether their
+edge tolerances differ from the system value was not checked.
