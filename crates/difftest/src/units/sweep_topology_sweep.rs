@@ -450,7 +450,7 @@ impl solidcore::sweep::topology_sweep::store::SweepIdentities for WholeIdentitie
         b: BrepId,
         e: EdgeId,
         type_code: i64,
-    ) -> solidcore::Result<solidcore::geom::object::ObjectRef> {
+    ) -> Result<solidcore::geom::object::ObjectRef> {
         Ok(solidcore::geom::object::ObjectRef {
             type_code,
             key: ObjectKey((u64::from(b.index()) << 40) | (20 << 32) | u64::from(e.index())),
@@ -464,8 +464,8 @@ impl solidcore::sweep::topology_sweep::store::SweepIdentities for WholeIdentitie
     fn source_lists(
         &self,
         b: BrepId,
-        r: solidcore::topology::RegionId,
-    ) -> solidcore::Result<[solidcore::geom::object::ObjectRef; 2]> {
+        r: RegionId,
+    ) -> Result<[solidcore::geom::object::ObjectRef; 2]> {
         Ok([21_u64, 22].map(|kind| solidcore::geom::object::ObjectRef {
             type_code: 0,
             key: ObjectKey((u64::from(b.index()) << 40) | (kind << 32) | u64::from(r.index())),
