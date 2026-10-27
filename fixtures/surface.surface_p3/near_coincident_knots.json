@@ -2,7 +2,7 @@
  "cases": [
   {
    "name": "local_sss_near_coincident_knots_x0.3_eps1e-10",
-   "upstream_ref": "source/SMLib/src/SmSurface.cpp:28813 (LocalSurfaceSurfaceIntersect enables out-of-bounds evaluation on the surfaces themselves)",
+   "upstream_ref": "source/SMLib/src/SmSurface.cpp:28872 (LocalSurfaceSurfaceIntersect enables out-of-bounds evaluation on the surfaces themselves)",
    "inputs": {
     "surface": {
      "bspline": {
@@ -170,7 +170,7 @@
   },
   {
    "name": "local_sss_near_coincident_knots_x0.5_eps1e-10",
-   "upstream_ref": "source/SMLib/src/SmSurface.cpp:28813 (LocalSurfaceSurfaceIntersect enables out-of-bounds evaluation on the surfaces themselves)",
+   "upstream_ref": "source/SMLib/src/SmSurface.cpp:28872 (LocalSurfaceSurfaceIntersect enables out-of-bounds evaluation on the surfaces themselves)",
    "inputs": {
     "surface": {
      "bspline": {
@@ -338,7 +338,7 @@
   },
   {
    "name": "local_sss_near_coincident_knots_x0.7_eps1e-10",
-   "upstream_ref": "source/SMLib/src/SmSurface.cpp:28813 (LocalSurfaceSurfaceIntersect enables out-of-bounds evaluation on the surfaces themselves)",
+   "upstream_ref": "source/SMLib/src/SmSurface.cpp:28872 (LocalSurfaceSurfaceIntersect enables out-of-bounds evaluation on the surfaces themselves)",
    "inputs": {
     "surface": {
      "bspline": {
@@ -506,7 +506,7 @@
   },
   {
    "name": "local_sss_near_coincident_knots_x0.3_eps3e-09",
-   "upstream_ref": "source/SMLib/src/SmSurface.cpp:28813 (LocalSurfaceSurfaceIntersect enables out-of-bounds evaluation on the surfaces themselves)",
+   "upstream_ref": "source/SMLib/src/SmSurface.cpp:28872 (LocalSurfaceSurfaceIntersect enables out-of-bounds evaluation on the surfaces themselves)",
    "inputs": {
     "surface": {
      "bspline": {
@@ -674,7 +674,7 @@
   },
   {
    "name": "local_sss_near_coincident_knots_x0.5_eps3e-09",
-   "upstream_ref": "source/SMLib/src/SmSurface.cpp:28813 (LocalSurfaceSurfaceIntersect enables out-of-bounds evaluation on the surfaces themselves)",
+   "upstream_ref": "source/SMLib/src/SmSurface.cpp:28872 (LocalSurfaceSurfaceIntersect enables out-of-bounds evaluation on the surfaces themselves)",
    "inputs": {
     "surface": {
      "bspline": {
@@ -842,7 +842,7 @@
   },
   {
    "name": "local_sss_near_coincident_knots_x0.7_eps3e-09",
-   "upstream_ref": "source/SMLib/src/SmSurface.cpp:28813 (LocalSurfaceSurfaceIntersect enables out-of-bounds evaluation on the surfaces themselves)",
+   "upstream_ref": "source/SMLib/src/SmSurface.cpp:28872 (LocalSurfaceSurfaceIntersect enables out-of-bounds evaluation on the surfaces themselves)",
    "inputs": {
     "surface": {
      "bspline": {
