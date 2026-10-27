@@ -1419,6 +1419,7 @@ fn edge_owner(e: EdgeId) -> (ObjectRef, ObjectRef) {
 pub(crate) type OwnBrep = crate::own_builder::RustBrep<(Brep, [usize; 10])>;
 
 /// A built (or failed) source as the runners consume it.
+#[allow(clippy::result_large_err)] // the failed build's output is the case's result
 pub(crate) fn own_output(built: crate::own_builder::Built) -> OwnBrep {
     use crate::own_builder::{counts, failed_output, Built};
     match built {
