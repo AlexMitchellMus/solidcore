@@ -267,6 +267,8 @@ pub struct UpstreamFixes {
     pub fillet_point_bigger_step_retry: bool,
     /// A fillet's trace also runs through the filleted edge's end where a rail ends on an extended edge, so the surface reaches that end (#1022, WR-468).
     pub fillet_through_extended_rail_end: bool,
+    /// `SmMerge::BooleanLists` copies its surface operands with the virtual `Copy` (the derived surface, its natural domain and its kind), where upstream's base copy constructor slices every surface to a geometry-less `SmSurface`, so a surface list always fails with `SM_ERR` and the planar 2D path is never taken (WR-196; `plan/upstream-issues/WR-196--booleanlists-slices-derived-surfaces-into-base-smsurface.md`).
+    pub boolean_lists_virtual_surface_copies: bool,
 }
 
 /// Options for [`Kernel::new`].
