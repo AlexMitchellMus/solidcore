@@ -197,6 +197,8 @@ pub struct UpstreamFixes {
     pub planar_path_uncapped_open_profiles: bool,
     /// A rotational sweep (whole or partial turn) makes each line and circular arc of its profile its cylinder, cone, sphere or torus, not only a one-curve profile's (WR-448, #545; SolidCraft change, tangency-labs/smlib 0b143f7).
     pub revolve_analytic_profile_faces: bool,
+    /// With `revolve_analytic_profile_faces`, a revolved arc whose centre is within the B-rep tolerance of the axis is the sphere centred on the axis through the arc's ends, and an end within it of the axis is its pole, not a sphere (or torus) built on the arc's own off-axis circle with a pole row of radius about sqrt(2 tol R) (WR-471, #1123; tangency-labs/smlib, "a revolved arc centred within tolerance of the axis is a sphere through its ends").
+    pub revolve_arc_centre_near_axis_is_sphere: bool,
     /// A taper extrude's corner whose links meet at both ends pivots on the joint nearest its offset curve (WR-402, #479).
     pub taper_pivot_nearest_corner: bool,
     /// A full-turn rotational sweep makes a closed shell inside another solid its cavity (WR-403, #478).
@@ -271,10 +273,16 @@ pub struct UpstreamFixes {
     pub fillet_point_bigger_step_retry: bool,
     /// A fillet's trace also runs through the filleted edge's end where a rail ends on an extended edge, so the surface reaches that end (#1022, WR-468).
     pub fillet_through_extended_rail_end: bool,
+    /// `SmFace::ComputePreciseProperties` scales the volume and moment error bounds by the body size (ten times the root of the estimated area, or the origin's distance when larger), not 1.0.1's tenth of it, so the integration converges at tight accuracies instead of returning `SM_ERR` (WR-472; the SolidCraft fork's tangency-labs/smlib@073d4740).
+    pub precise_properties_body_length_scale: bool,
     /// An offset surface evaluated beyond its base's domain extends the base itself on every side that can grow at once, each by the domain size times the least power of two that reaches the point and never less than the extension it replaces, so two copies of one offset give the same points whatever was evaluated first (WR-458, #419; the fork's tangency-labs/smlib@2d7c7ed).
     pub offset_extension_from_base: bool,
     /// `N_FillNSidedHole` (through `SmBSplineSurface::CreateCornerBlend`) shortens the cross-boundary derivative across an inner curve where its cubic blend from the opposite boundary would leave that boundary's tangent plane, so a corner patch (a fillet setback corner) stays inside planar faces it meets, with G1 kept (WR-461, #1170). Curved neighbours are not covered.
     pub corner_blend_stays_inside_neighbours: bool,
+    /// `DoFilleting`'s `BooleanPostProcess` removes none of the target's own edges, nor an edge between two of its faces (the fork's `m_sPostProcessKeptEdges`/`Faces`), so the patches of a sphere imported in six faces are not merged into a face no patch's parameterization can carry (WR-459, #423; the fork's tangency-labs/smlib@9ddf4a8).
+    pub fillet_cleanup_keeps_target_faces: bool,
+    /// `SmFilletNx1Corner::MakeCornerTopology` skips a side edge whose faces meet tangentially at the corner's vertex (a flat top running smoothly onto a round) round the vertex to the edge past it, so the end face is the one beyond the tangent seam (the slot wall), not the round the fillet never meets, and `SmFilletEdge::CalcEdgeOnExtendedEdge` intersects the side face with the end face's extension when the side face is not one of the edge's own faces (WR-457, #418; the fork's tangency-labs/smlib@d5ebcb3).
+    pub fillet_nx1_tangent_side_edge: bool,
     /// `TrimExtendedEdge` takes, on a closed curve, the arc that runs where its base edge does, not always the interval between its two trim points: a hemisphere's rim, two arcs of one circle, no longer becomes one arc twice (WR-463, #403; the fork's tangency-labs/smlib@fa7ff4a).
     pub offset_closed_curve_trim_arc: bool,
 }

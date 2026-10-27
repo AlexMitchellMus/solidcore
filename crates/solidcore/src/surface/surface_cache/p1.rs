@@ -161,6 +161,7 @@ use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::math::NOW;
 use crate::nurbs::nurbs_crv::to_euclid;
 use crate::nurbs::srf_basic::Surface as NurbSurface;
+use crate::surface::surface::p1::SurfaceBoxes;
 use crate::surface::surface::p5::SS_NONE;
 use crate::surface::surface::{Surface, SurfaceKind};
 
@@ -257,6 +258,7 @@ const fn bspline_curve_of(curve: &Curve) -> Option<&BSplineCurve> {
         | CurveKind::Offset(_)
         | CurveKind::CrvInVolume(_)
         | CurveKind::CrvOnSurf(_)
+        | CurveKind::TangentField(_)
         | CurveKind::Composite(_) => None,
     }
 }
@@ -376,13 +378,36 @@ pub(super) fn calculate_bounding_box(
                 polar: boxes.polar_box,
             })
         }
-        // DISPATCH GAP: upstream forwards the basis guesses to the base, which
-        // Surface::calculate_bounding_box does not take. No UNPORTED marker: the callees
-        // are ported; the error names this callback's unit.
-        SurfaceKind::OffsetSurface(_) => Err(SolidError::unported(
-            "SmOffsetSurface::CalculateBoundingBox from a surface cache",
-            "surface.surface_cache_p1",
-        )),
+        // SmOffsetSurface::CalculateBoundingBox forwarding the basis guesses to its base's
+        // CalculateBoundingBox (this dispatcher, all three boxes)
+        SurfaceKind::OffsetSurface(o) => {
+            let base_req = BoundingBoxRequest {
+                normal: true,
+                pseudo: true,
+                polar: true,
+                ..*req
+            };
+            let boxes = o.calculate_bounding_box_with(
+                k,
+                surface,
+                domain,
+                [req.normal, req.pseudo, req.polar],
+                req.expand_by_zone_tol,
+                |base| {
+                    let b = calculate_bounding_box(k, base, domain, &base_req)?;
+                    Ok(SurfaceBoxes {
+                        normal_box: b.normal,
+                        pseudo_box: b.pseudo,
+                        polar_box: b.polar,
+                    })
+                },
+            )?;
+            Ok(BoundingBoxes {
+                normal: boxes.normal_box,
+                pseudo: boxes.pseudo_box,
+                polar: boxes.polar_box,
+            })
+        }
     }
 }
 
@@ -1141,6 +1166,8 @@ impl<O> FaceContainmentClassifier<O> for BaseClassifier {
         // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
         // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
         // receives the owning B-rep (justified: findings.md "stubs naming green units")
+        // Proof (unreachable): BaseClassifier only fronts the SM_ERR PointClassify path; 0
+        // hits in the green difftest sweep.
         Err(SolidError::unported(
             "SmTol::GetZoneTol3d(const SmObject*)",
             "geom.tol",
@@ -3445,7 +3472,7 @@ mod tests {
         )
         .unwrap();
         let surface = Surface::from(BSplineSurface::from_nurb(nurb, false));
-        let d = surface.natural_uv_domain();
+        let d = surface.natural_uv_domain_if_built();
         let mut c = SurfaceCache::new(surface, d, SurfaceCacheOptions::default());
         c.set_surface_handle(Some(-1));
         c
