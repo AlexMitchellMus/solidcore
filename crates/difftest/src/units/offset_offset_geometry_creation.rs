@@ -2360,12 +2360,15 @@ struct Prepared {
     refill: Option<SolidError>,
 }
 
+/// What ends [`prepare`] early: the output the side reports, or a harness error.
+type Early = Box<Result<Output, HarnessError>>;
+
 /// One B-rep of the case: the Rust reader's B-rep of an `.smb` file on the Rust side
 /// ([`crate::own_builder::read_with`], renumbered into the shim's walk order), or the
 /// import of the shim's export.
 enum Side {
     /// Read by the Rust side itself: the B-rep, or the Rust read's failure.
-    Own(Result<Brep, SolidError>),
+    Own(Result<Box<Brep>, SolidError>),
     /// Imported from the shim's export.
     Import,
 }
@@ -2383,7 +2386,7 @@ fn side(k: &mut Kernel, b: &BrepIn, own: bool) -> Result<Side, HarnessError> {
     let path = path_of(Some(b))?;
     Ok(Side::Own(
         match read_with(k, &path, *rebuild, false, false, &Conventions::EDGEUSE_GRAPH)? {
-            Built::Brep(b) => Ok(*b),
+            Built::Brep(b) => Ok(b),
             Built::Failed(e) => Err(e),
         },
     ))
@@ -2439,7 +2442,7 @@ fn prepare(i: &Inputs, own: bool) -> Result<Prepared, Box<Result<Output, Harness
     let mut refill = None;
     let mut import = |ex: Option<&Vec<f64>>,
                       records: &[Option<Vec<u8>>]|
-     -> Result<(Brep, Vec<bool>), Box<Result<Output, HarnessError>>> {
+     -> Result<(Brep, Vec<bool>), Early> {
         let ex = ex.ok_or_else(|| Box::new(Err(harness("export of an imported B-rep"))))?;
         let (mut brep, mut exact, types) =
             import_raw_with_types(ex).map_err(|e| Box::new(Err(e)))?;
@@ -2455,14 +2458,14 @@ fn prepare(i: &Inputs, own: bool) -> Result<Prepared, Box<Result<Output, Harness
     let (brep_a, exact_a) = match side_a {
         Side::Own(Ok(b)) => {
             let e = own_exact(&b);
-            (b, e)
+            (*b, e)
         }
         Side::Own(Err(_)) | Side::Import => import(ex_a.as_ref(), &surfaces_a)?,
     };
     let (brep_b, exact_b) = match side_b {
         Some(Side::Own(Ok(b))) => {
             let e = own_exact(&b);
-            (Some(b), e)
+            (Some(*b), e)
         }
         Some(Side::Own(Err(_)) | Side::Import) => {
             let (b, e) = import(ex_b.as_ref(), &surfaces_b)?;
@@ -5092,7 +5095,7 @@ mod tests {
         let mut input = import_input("cone.smb");
         input.brep_a = fixture.clone();
         input.brep_b = Some(fixture);
-        let mut prepared = prepare(&input).unwrap();
+        let mut prepared = prepare(&input, false).unwrap();
         let k = Kernel::default();
         for (arena, tolerance) in [(0, 0.003), (1, 0.007)] {
             let handle = hd(arena, K_FACE_SURFACE, 0);
@@ -5153,7 +5156,7 @@ mod tests {
         for name in ["vase_rev.smb", "toruswvy.smb"] {
             let mut input = import_input(name);
             input.brep_b = None;
-            let prepared = prepare(&input).unwrap();
+            let prepared = prepare(&input, false).unwrap();
             let brep = prepared.two.breps[0].as_ref().unwrap();
             let faceuse = brep
                 .faceuses()
@@ -5171,7 +5174,7 @@ mod tests {
             let cpp = run_cpp(&input).unwrap();
             assert!(cpp.rejected.unwrap().starts_with("HANG-26:"));
             // the shim's own stop at the op, should the runner's guard miss it
-            let p = prepare(&input).unwrap();
+            let p = prepare(&input, false).unwrap();
             let encoded = encode(&input, &p.hdr, &p.ops).unwrap();
             let pa = path_of(Some(&input.brep_a)).unwrap();
             let pb = path_of(None).unwrap();
@@ -5412,7 +5415,7 @@ mod tests {
             assert_eq!(input.ops.len(), 7);
             eprintln!("gen0730 seed={seed} original_input={generated}");
             eprintln!("READBACK includes build/import, appended-query cache/executive preparation, getters and serialization; it is not a mutation-writer trace");
-            let prepared = prepare(&input).expect("prepare gen0730 handles");
+            let prepared = prepare(&input, false).expect("prepare gen0730 handles");
             let OpIn::ExtendTrimEdges {
                 eu, off, other_off, ..
             } = prepared.ops[6].op
