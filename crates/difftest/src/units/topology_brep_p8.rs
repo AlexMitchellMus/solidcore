@@ -82,12 +82,15 @@ fn hfail(e: impl core::fmt::Display) -> Fail {
 
 // ---- inputs -----------------------------------------------------------------------------
 
-/// A 3D curve: a B-spline or an `SmLine(a, b, 3)`.
+/// A 3D curve: a B-spline or an `SmLine(a, b, 3)`. `BsplineRaw` is the B-spline with
+/// its given knots written back over its own NURB after construction (undoing the
+/// constructor's knot fix-up, curve block kind `2`), on both sides.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum C3In {
     Bspline(CrvIn),
     Line { a: [f64; 3], b: [f64; 3] },
+    BsplineRaw(CrvIn),
 }
 
 /// A curve of `faces_with_curves`.
@@ -191,6 +194,10 @@ fn push_c3(v: &mut Vec<f64>, c: &C3In) -> Result<(), HarnessError> {
             v.extend(a);
             v.extend(b);
             Ok(())
+        }
+        C3In::BsplineRaw(c) => {
+            v.push(2.0);
+            push_curve(v, c)
         }
     }
 }
@@ -325,6 +332,15 @@ fn rust_c3(c: &C3In) -> Result<SmCurve, HarnessError> {
             Vec3::new(b[0], b[1], b[2]),
             3,
         )),
+        C3In::BsplineRaw(c) => {
+            let mut bs = rust_curve(c)?;
+            // undo the constructor's fix-up, as the shim does
+            bs.get_or_create_gw_nurb()
+                .map_err(|e| harness(format!("curve: {e}")))?
+                .knots_mut()
+                .copy_from_slice(&c.u);
+            SmCurve::from(bs)
+        }
     })
 }
 
@@ -1115,6 +1131,24 @@ fn builtin() -> Vec<(String, Inputs)> {
         a[0] += 1e-6;
     }
     planar_sets.push(("gap", gap));
+    // the bottom side as a degree-1 B-spline whose interior knots are 1.5e-12 apart
+    // around the sample parameter 0.5 (kept raw on both sides): upstream makes the edge
+    // with the curve itself, a fixed-up copy merges the two knots and moves the samples
+    let mut raw = polygon(&square, false);
+    if let Some(side) = raw.get_mut(0) {
+        *side = C3In::BsplineRaw(CrvIn {
+            dim: 3,
+            cpts: vec![
+                [0.0, 0.0, 0.0, NOW],
+                [0.8, 0.0, 0.0, NOW],
+                [1.2, 0.0, 0.0, NOW],
+                [2.0, 0.0, 0.0, NOW],
+            ],
+            p: 1,
+            u: vec![0.0, 0.0, 0.5 - 1e-12, 0.5 + 0.5e-12, 1.0, 1.0],
+        });
+    }
+    planar_sets.push(("square_raw_knots", raw));
     for (name, curves) in &planar_sets {
         for tol in [1e-6, 1e-3] {
             for region_null in [false, true] {
