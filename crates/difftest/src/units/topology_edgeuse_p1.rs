@@ -63,6 +63,7 @@ use solidcore::topology::{
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::topology_edgeuse_p1::{self as ffi, Op};
 
+use crate::util::trim_curve::put_trim_curve;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 
 /// The difftest runner.
@@ -1610,18 +1611,7 @@ fn eu_state(k: &Kernel, b: &Brep, eu: Option<EdgeuseId>, out: &mut Vec<f64>) -> 
     };
     out.push(1.0);
     let r = b.edgeuse(eu)?;
-    match r.uv_trim_curve.as_ref() {
-        None => out.push(-1.0),
-        Some(c) => {
-            out.push(1.0);
-            let ivl = c.natural_interval();
-            out.extend([ivl.min(), ivl.max()]);
-            for t in [ivl.min(), ivl.mid(), ivl.max()] {
-                let p = c.evaluate_point(k, t).unwrap_or(Vec3::UNDEF);
-                out.extend([p.x, p.y, p.z]);
-            }
-        }
-    }
+    put_trim_curve(k, out, r.uv_trim_curve.as_ref())?;
     out.push(if r.uv_trim_curve.is_some() {
         f64::from(eu.index())
     } else {
