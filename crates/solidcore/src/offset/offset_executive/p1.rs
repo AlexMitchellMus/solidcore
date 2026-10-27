@@ -578,12 +578,6 @@ impl OffsetExecutive {
         extract_gaps(brep, &mut first, &second, &mut out.gaps)?;
         // The second extraction sees the already reduced first list, as upstream.
         extract_gaps(brep, &mut second, &first, &mut out.other_gaps)?;
-        eprintln!(
-            first.len(),
-            second.len(),
-            out.gaps.len(),
-            out.other_gaps.len()
-        );
         out.edgeuses = first.into_iter().map(Some).collect();
         out.other_edgeuses = second.into_iter().map(Some).collect();
         Ok(out)
@@ -1271,7 +1265,6 @@ impl OffsetExecutive {
         if gaps.is_empty() {
             return Ok(());
         }
-        eprintln!(gaps.len(), candidate_faces.len());
         let mut all_vertices = Vec::new();
         {
             let brep = self.required_offset_brep()?;
