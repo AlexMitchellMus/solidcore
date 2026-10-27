@@ -19,6 +19,8 @@ pub mod json;
 pub mod known;
 pub mod output;
 #[cfg(feature = "cpp")]
+pub(crate) mod own_builder;
+#[cfg(feature = "cpp")]
 pub(crate) mod own_reader;
 pub mod plan;
 pub mod platform;
