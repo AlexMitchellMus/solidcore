@@ -598,13 +598,14 @@ macro_rules! status {
 /// loop (block kind 4) and the several-face B-rep (block kind 10) here. No C++ state
 /// reaches it.
 fn own_brep(i: &Inputs) -> Result<crate::own_builder::RustBrep<(Brep, [usize; 10])>, HarnessError> {
-    use crate::own_builder::{finish, in_new_brep, Conventions};
+    use crate::own_builder::{build_status, counts, finish, in_new_brep, Built as Own, Conventions};
     let mut k = Kernel::default();
-    let raw = match (&i.brep, i.vertex_loop) {
+    let conv = &Conventions::TOPOLOGY_FIXTURE;
+    let built = match (&i.brep, i.vertex_loop) {
         (CaseBrep::Shared(BrepIn::Face { surface, dom }), Some([fu, fv])) => {
             let s = surface_of(surface)?;
             let dom = *dom;
-            in_new_brep(&mut k, |k, b| {
+            let raw = in_new_brep(&mut k, |k, b| {
                 // kind 4: the face of kind 2 plus an inner vertex loop at the surface
                 // point whose parameters are the given fractions of the face domain
                 let face = crate::own_builder::create_face(k, b, s, dom)?;
@@ -625,14 +626,11 @@ fn own_brep(i: &Inputs) -> Result<crate::own_builder::RustBrep<(Brep, [usize; 10
                     &mut env,
                 )?;
                 Ok(())
-            })?
+            })?;
+            finish(&mut k, raw, i.validate_only, i.init_gaps, conv)?
         }
         (CaseBrep::Shared(src), _) => {
-            return own_result(super::topology_face_p1::own_built(
-                src,
-                i.validate_only,
-                i.init_gaps,
-            )?);
+            super::topology_face_p1::own_built(src, i.validate_only, i.init_gaps)?
         }
         (CaseBrep::Faces(FacesBrep::Faces { faces }), _) => {
             let mut surfaces = Vec::new();
@@ -642,7 +640,7 @@ fn own_brep(i: &Inputs) -> Result<crate::own_builder::RustBrep<(Brep, [usize; 10
                     FaceIn::Analytic { .. } => Err(face),
                 });
             }
-            in_new_brep(&mut k, |k, b| {
+            let raw = in_new_brep(&mut k, |k, b| {
                 for s in surfaces {
                     let (s, dom) = match s {
                         Ok(x) => x,
@@ -651,32 +649,19 @@ fn own_brep(i: &Inputs) -> Result<crate::own_builder::RustBrep<(Brep, [usize; 10
                     crate::own_builder::create_face(k, b, s, dom)?;
                 }
                 Ok(())
-            })?
+            })?;
+            finish(&mut k, raw, i.validate_only, i.init_gaps, conv)?
         }
     };
-    own_result(finish(
-        &mut k,
-        raw,
-        i.validate_only,
-        i.init_gaps,
-        &Conventions::TOPOLOGY_FIXTURE,
-    )?)
-}
-
-/// A Rust build with its entity counts, or the output [`build`] gives a failed one.
-fn own_result(
-    built: crate::own_builder::Built,
-) -> Result<crate::own_builder::RustBrep<(Brep, [usize; 10])>, HarnessError> {
-    use crate::own_builder::{build_status, counts, Built as Own};
-    match built {
+    Ok(match built {
         Own::Brep(b) => {
             let c = counts(&b);
-            Ok(Ok((*b, c)))
+            Ok((*b, c))
         }
-        Own::Failed(e) => Ok(Err(Output::unported(&e).unwrap_or_else(|| {
+        Own::Failed(e) => Err(Output::unported(&e).unwrap_or_else(|| {
             Output::err(format!("brep_build_status_{}", build_status(&e)))
-        }))),
-    }
+        })),
+    })
 }
 
 /// A `topology.vertexuse` surface block as the Rust surface the shim's `read_surface`

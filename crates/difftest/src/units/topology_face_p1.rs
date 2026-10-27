@@ -314,15 +314,15 @@ fn resolve(i: &Inputs) -> Result<Resolved, HarnessError> {
     let Some(c) = fixture::counts(&ex) else {
         return Ok(Err(Output::new().values("out", ex.to_vec())));
     };
-    Ok(resolve_with(i, c).map(|r| (r, ex)))
+    Ok(resolve_with(i, c).map(|r| (r, ex)).map_err(|o| *o))
 }
 
 /// The inputs with the selectors resolved against entity counts `c`, or the output of
 /// a case without a face (or loop).
-fn resolve_with(i: &Inputs, c: [usize; 10]) -> Result<Inputs, Output> {
+fn resolve_with(i: &Inputs, c: [usize; 10]) -> Result<Inputs, Box<Output>> {
     let [_, _, _, n_f, _, n_l, ..] = c;
     if n_f == 0 {
-        return Err(Output::err("no_face"));
+        return Err(Box::new(Output::err("no_face")));
     }
     let mut r = i.clone();
     r.face = shared::sel(i.face.max(0), n_f);
@@ -336,7 +336,7 @@ fn resolve_with(i: &Inputs, c: [usize; 10]) -> Result<Inputs, Output> {
         }
         OpIn::LoopRoundTrip { loop_ } => {
             if n_l == 0 {
-                return Err(Output::err("no_loop"));
+                return Err(Box::new(Output::err("no_loop")));
             }
             *loop_ = shared::sel((*loop_).max(0), n_l);
         }
@@ -1012,7 +1012,7 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     };
     let r = match resolve_with(i, c) {
         Ok(r) => r,
-        Err(o) => return Ok(o),
+        Err(o) => return Ok(*o),
     };
     match rust_record(&r, b) {
         Ok(v) => Ok(Output::new().values("out", v)),
