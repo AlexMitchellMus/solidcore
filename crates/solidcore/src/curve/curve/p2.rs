@@ -1779,7 +1779,7 @@ impl Curve {
             CurveKind::Parabola(c) => Ok(Self::from(c.copy())),
             CurveKind::Hermite(_) | CurveKind::Conic(_) | CurveKind::Iso(_) => Err(base_err()),
             CurveKind::Projected(c) => c.copy(k).map(Self::from),
-            CurveKind::Offset(c) => Ok(Self::from(c.copy())),
+            CurveKind::Offset(c) => c.copy().map(Self::from),
             CurveKind::CrvInVolume(c) => Ok(Self::from(c.copy())),
             CurveKind::CrvOnSurf(c) => c.copy(k).map(Self::from),
             CurveKind::Line(c) => Ok(Self::from(c.copy())),
