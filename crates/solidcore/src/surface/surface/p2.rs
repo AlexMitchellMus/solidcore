@@ -185,11 +185,11 @@
 //!   NURB (`GetOrCreateGwNurbPointer`); [`Surface::degree`] and [`Surface::knots`] read
 //!   the stored base, so a lazy extrusion, cone, sphere or torus answers `0` / the
 //!   NURB-less base. [`Surface::degree_with_nurb`] and [`Surface::knots_with_nurb`] answer
-//!   as upstream and serve the callers that hold a kernel. Callers without one still
-//!   read the stored base: `Surface::domain_with_continuity_using`,
-//!   `Surface::snap_to_knots`, `SurfaceCache::surface_continuity`, the offset surface's
-//!   and the surface-in-volume's `knots`, and `IsoCurve::knots` (a kernel would change
-//!   their signatures).
+//!   as upstream and serve the callers that hold a kernel. `SurfaceEvaluate::knots`,
+//!   `Surface::snap_to_knots` and `Surface::domain_with_continuity_from_cache` take the
+//!   kernel for it. Callers without one still read the stored base:
+//!   `SurfaceCache::surface_continuity`, the offset surface's and the surface-in-volume's
+//!   inherent `knots`, and `IsoCurve::knots` (a kernel would change their signatures).
 //! - **Made NURB.** An analytic kind without a NURB makes one for `const` queries; the
 //!   surface keeps the made kind (`NurbMemo`, [`Surface::kind_with_nurb`]) for later
 //!   queries, emptied by any mutable access to the kind and absent on copies. A
@@ -1924,7 +1924,8 @@ impl Surface {
 
     /// `uv` of the STEP parameterisation in the NURBS parameterisation
     /// (`ConvertUVFromSTEPToNURBS`: the cone's, sphere's, torus's or surface of revolution's
-    /// override, else the base default, the identity).
+    /// override, the surface in volume's (its base surface's), else the base default,
+    /// the identity).
     ///
     /// # Errors
     ///
@@ -1934,6 +1935,8 @@ impl Surface {
             SurfaceKind::Cone(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
             SurfaceKind::Sphere(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
             SurfaceKind::Torus(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
+            // SmSrfInVolume forwards to its base surface
+            SurfaceKind::SrfInVolume(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
             SurfaceKind::SurfOfRevolution(s) => s.convert_uv_from_step_to_nurbs(k, step_uv),
             // (GetNaturalUVDomain makes a missing NURB)
             SurfaceKind::SurfOfExtrusion(_) => match self.kind_with_nurb(k)? {
@@ -1946,7 +1949,8 @@ impl Surface {
 
     /// `uv` of the NURBS parameterisation in the STEP parameterisation
     /// (`ConvertUVFromNURBSToSTEP`: the cone's, sphere's, torus's or surface of revolution's
-    /// override, else the base default, the identity).
+    /// override, the surface in volume's (its base surface's), else the base default,
+    /// the identity).
     ///
     /// # Errors
     ///
@@ -1956,6 +1960,8 @@ impl Surface {
             SurfaceKind::Cone(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             SurfaceKind::Sphere(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             SurfaceKind::Torus(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
+            // SmSrfInVolume forwards to its base surface
+            SurfaceKind::SrfInVolume(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             SurfaceKind::SurfOfRevolution(s) => s.convert_uv_from_nurbs_to_step(k, nurbs_uv),
             // (GetNaturalUVDomain makes a missing NURB)
             SurfaceKind::SurfOfExtrusion(_) => match self.kind_with_nurb(k)? {
@@ -3487,13 +3493,18 @@ pub trait SurfaceEvaluate {
     /// Those of the comparison.
     fn surface_approx_eq(&self, k: &Kernel, other: &Self) -> Result<bool>;
 
-    /// `GetKnots`.
+    /// `GetKnots`, virtual: a lazy surface makes its NURB first
+    /// ([`Surface::knots_with_nurb`]).
     ///
     /// # Errors
     ///
     /// Those of the knot query.
-    fn knots(&self, param: SurfParamType, ivl: Option<&Extent1d>)
-        -> Result<(Vec<f64>, Vec<usize>)>;
+    fn knots(
+        &self,
+        k: &Kernel,
+        param: SurfParamType,
+        ivl: Option<&Extent1d>,
+    ) -> Result<(Vec<f64>, Vec<usize>)>;
 
     /// `IsKindOf`.
     ///
@@ -3599,10 +3610,11 @@ impl SurfaceEvaluate for Surface {
 
     fn knots(
         &self,
+        k: &Kernel,
         param: SurfParamType,
         ivl: Option<&Extent1d>,
     ) -> Result<(Vec<f64>, Vec<usize>)> {
-        Self::knots(self, param, ivl)
+        Self::knots_with_nurb(self, k, param, ivl)
     }
 
     fn is_kind_of(&self, t: i64) -> Result<bool> {
@@ -3708,6 +3720,7 @@ impl SurfaceEvaluate for BSplineSurface {
 
     fn knots(
         &self,
+        _k: &Kernel,
         param: SurfParamType,
         ivl: Option<&Extent1d>,
     ) -> Result<(Vec<f64>, Vec<usize>)> {

@@ -1382,7 +1382,7 @@ impl<'s> SurfaceDropCurve<'s> {
                 }
 
                 // see if working curve interval drops to Surface isoParameterCurve with the same parameterization
-                uv = surface.snap_to_knots(uv, EFF_ZERO_SQRT / 100.0)?;
+                uv = surface.snap_to_knots(k, uv, EFF_ZERO_SQRT / 100.0)?;
                 let drop = match drop_iso_curve(k, surface, &uv_domain, curve, &ivl, uv, approx_tol)
                 {
                     Ok(d) => d,

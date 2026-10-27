@@ -996,6 +996,8 @@ pub(crate) fn find_and_classify_loop_bisector_cached<O: LoopObject + PartialEq>(
     let mut sp = [Vec3::UNDEF; 2];
     let mut ends = [Vec3::UNDEF; 2];
     let mut uv1 = Vec2::UNDEF;
+    let mut start_uv = Vec2::UNDEF;
+    let mut end_uv = Vec2::UNDEF;
 
     // get pLoop->Edgeuses for the Target Loop (guarantees UVTrimLine XSects the TgtLoop)
     let tgt_lu = b
@@ -1242,8 +1244,8 @@ pub(crate) fn find_and_classify_loop_bisector_cached<O: LoopObject + PartialEq>(
             {
                 trim_interval = ivl;
             }
-            let start_uv = surf_uv_domain.clamp_point(uv0 + uv_dir * trim_interval.min());
-            let end_uv = surf_uv_domain.clamp_point(uv0 + uv_dir * trim_interval.max());
+            start_uv = surf_uv_domain.clamp_point(uv0 + uv_dir * trim_interval.min());
+            end_uv = surf_uv_domain.clamp_point(uv0 + uv_dir * trim_interval.max());
 
             let uv_trim_line = Line::from_points(
                 Point3::new(start_uv.x, start_uv.y, 0.0),
@@ -1376,6 +1378,11 @@ pub(crate) fn find_and_classify_loop_bisector_cached<O: LoopObject + PartialEq>(
             break;
         }
     } // end iter ii, every Loop->edge looking for a good UVTrimCurve Loop bisector
+
+    // Classify the actual endpoints, including circumferential samples on a singly
+    // periodic surface. Surface periodicity alone does not identify them.
+    out.start_on_seam = surface.is_on_seam(k, start_uv, None)?.on_seam;
+    out.stop_on_seam = surface.is_on_seam(k, end_uv, None)?.on_seam;
 
     // set remaining output
     out.has_curve = has_curve;

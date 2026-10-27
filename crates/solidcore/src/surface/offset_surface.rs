@@ -912,6 +912,37 @@ impl OffsetSurface {
         want: [bool; 3],
         expand_pos_boxes_by_zone_tol_3d: bool,
     ) -> Result<SurfaceBoxes> {
+        self.calculate_bounding_box_with(
+            k,
+            this,
+            uv_domain,
+            want,
+            expand_pos_boxes_by_zone_tol_3d,
+            |base| {
+                base.calculate_bounding_box(
+                    k,
+                    uv_domain,
+                    [true, true, true],
+                    expand_pos_boxes_by_zone_tol_3d,
+                )
+            },
+        )
+    }
+
+    /// [`OffsetSurface::calculate_bounding_box`] with the base surface's three boxes over
+    /// `uv_domain` from `base_boxes` (upstream's `m_pSurface->CalculateBoundingBox(..,
+    /// pOptPseudoBasisGuess, pOptPolarBasisGuess, ..)`: a caller holding basis guesses
+    /// forwards them there). Outside the base's natural domain the `SmSurface` body runs,
+    /// which does not use the guesses.
+    pub(crate) fn calculate_bounding_box_with(
+        &self,
+        k: &Kernel,
+        this: &Surface,
+        uv_domain: &Extent2d,
+        want: [bool; 3],
+        expand_pos_boxes_by_zone_tol_3d: bool,
+        base_boxes: impl FnOnce(&Surface) -> Result<SurfaceBoxes>,
+    ) -> Result<SurfaceBoxes> {
         if !uv_domain.is_contained_by(&self.surface.natural_uv_domain_with_nurb(k)?, EFF_ZERO) {
             return this.base_calculate_bounding_box(k, want, expand_pos_boxes_by_zone_tol_3d);
         }
@@ -934,12 +965,7 @@ impl OffsetSurface {
         });
 
         // bound the base surface (pass the call along to the base surface)
-        let base = self.surface.calculate_bounding_box(
-            k,
-            uv_domain,
-            [true, true, true],
-            expand_pos_boxes_by_zone_tol_3d,
-        )?;
+        let base = base_boxes(&self.surface)?;
         let missing = || SolidError::invalid_input(OP, "base surface box not computed");
         let base_normal = base.normal_box.ok_or_else(missing)?;
         let base_pseudo = base.pseudo_box.ok_or_else(missing)?;
@@ -1225,8 +1251,17 @@ impl OffsetSurface {
         if !domain.contains_point(uv, 0.0) {
             if self.allow_extension {
                 // extend original base surface so that it contains given sUV
-                let original = if use_ext { ext.current() } else { Some(base) };
+                // (`fixes.offset_extension_from_base`: always the base, however the
+                // extension was made before; the extension only sets a lower bound.)
+                let from_base = k.fixes.offset_extension_from_base;
+                let original = if use_ext && !from_base {
+                    ext.current()
+                } else {
+                    Some(base)
+                };
                 let original = original.ok_or_else(|| SolidError::null_pointer(OP_EXTEND))?;
+                // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+                let current = ext.current().map(Surface::natural_uv_domain_if_built);
                 let extended = extend_surface(
                     k,
                     original,
@@ -1234,6 +1269,8 @@ impl OffsetSurface {
                     self.is_periodic_on_u != 0,
                     self.is_periodic_on_v != 0,
                     self.singularities,
+                    from_base,
+                    current,
                 )?;
 
                 // when BaseSurface was extended - store and use the extension
@@ -2079,11 +2116,98 @@ fn nurb_of(surface: &Surface) -> Result<crate::nurbs::srf_basic::Surface> {
     }
 }
 
+/// One NLib G1R extension of `surface` reaching `uv` (the fork's `sm_ExtendToward`).
+fn extend_toward(surface: &Surface, uv: Point2) -> Result<Surface> {
+    let sur = nurb_of(surface)?;
+    let mut esur: Option<UnboundedExtension> = None;
+    match eval_pt_derivs_unbounded(&sur, uv.x, uv.y, 0, ExtendContinuity::G1R, &mut esur) {
+        Err(e) if e.is_unported() => return Err(e),
+        Err(_) => return Err(SolidError::sm_err(OP_EXTEND)),
+        Ok(_) => {}
+    }
+    let ext = esur.ok_or_else(|| {
+        SolidError::invalid_input(
+            OP_EXTEND,
+            "no extension made (upstream reads an empty NURB)",
+        )
+    })?;
+    Ok(Surface::from(BSplineSurface::from_gw_nurb(&ext.surface)))
+}
+
+/// The extension of `fixes.offset_extension_from_base` (WR-458, #419; the fork's
+/// tangency-labs/smlib@2d7c7ed): `base` is extended on every side that can grow at once,
+/// each by the base domain's size times the least power of two that reaches `uv`, and
+/// never less than the `current` extension's domain, so one point always gives one
+/// extension whatever was evaluated first. `Ok(None)` when `have` already contains `uv`.
+fn extend_from_base(
+    base: &Surface,
+    uv: Point2,
+    current: Option<Extent2d>,
+    periodic: [bool; 2],
+    singularities: u32,
+) -> Result<Option<Surface>> {
+    // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+    let domain = base.natural_uv_domain_if_built();
+    let size = domain.size();
+    let have = current.unwrap_or(domain);
+    if domain.contains_point(uv, 0.0) || have.contains_point(uv, 0.0) {
+        return Ok(None);
+    }
+    // the least power of two sizes that takes the end `end` (towards `dir`) past `target`
+    let reach = |end: f64, size: f64, target: f64, dir: f64| {
+        let mut k = 1.0;
+        while k < 1.0e6 && (end + dir * k * size - target) * dir < 0.0 {
+            k *= 2.0;
+        }
+        end + dir * k * size
+    };
+    let (dmin, dmax) = (domain.min(), domain.max());
+    let (mut lo, mut hi) = (have.min(), have.max());
+    if !periodic[0] && (singularities & SS_UMIN) == 0 {
+        lo.x = lo.x.min(reach(dmin.x, size.x, uv.x, -1.0));
+    }
+    if !periodic[0] && (singularities & SS_UMAX) == 0 {
+        hi.x = hi.x.max(reach(dmax.x, size.x, uv.x, 1.0));
+    }
+    if !periodic[1] && (singularities & SS_VMIN) == 0 {
+        lo.y = lo.y.min(reach(dmin.y, size.y, uv.y, -1.0));
+    }
+    if !periodic[1] && (singularities & SS_VMAX) == 0 {
+        hi.y = hi.y.max(reach(dmax.y, size.y, uv.y, 1.0));
+    }
+    // toward the low corner from the base, then the result toward the high corner (a side
+    // that does not grow keeps its middle coordinate)
+    let mid = domain.mid();
+    let low_uv = Point2::new(
+        if lo.x < dmin.x { lo.x } else { mid.x },
+        if lo.y < dmin.y { lo.y } else { mid.y },
+    );
+    let high_uv = Point2::new(
+        if hi.x > dmax.x { hi.x } else { mid.x },
+        if hi.y > dmax.y { hi.y } else { mid.y },
+    );
+    let low = if domain.contains_point(low_uv, 0.0) {
+        None
+    } else {
+        Some(extend_toward(base, low_uv)?)
+    };
+    let from = low.as_ref().unwrap_or(base);
+    // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+    if from
+        .natural_uv_domain_if_built()
+        .contains_point(high_uv, 0.0)
+    {
+        return Ok(low);
+    }
+    Ok(Some(extend_toward(from, high_uv)?))
+}
+
 /// `sm_ExtendSurface`: makes `uv` lie in the domain of `surface` by wrapping it in
 /// periodic directions and clamping it at singular sides; if it is still outside,
 /// returns the B-spline surface extended (G1, ruled) to contain a point one domain
 /// size farther out (or `uv` itself when that fails), `None` otherwise. `uv` is updated
-/// in place.
+/// in place. With `fixed` (`fixes.offset_extension_from_base`; `current` is the current
+/// extension's domain) the extension is made by [`extend_from_base`] instead.
 ///
 /// # Errors
 ///
@@ -2097,6 +2221,8 @@ fn extend_surface(
     is_periodic_on_u: bool,
     is_periodic_on_v: bool,
     singularities: u32,
+    fixed: bool,
+    current: Option<Extent2d>,
 ) -> Result<Option<Surface>> {
     // SM_CAST_PTR(SmBSplineSurface, pSurface); NER(pOriginal) (in the caller)
     if !is_b_spline_kind(surface) {
@@ -2137,6 +2263,12 @@ fn extend_surface(
     }
     if !surface.is_kind_of(B_SPLINE_SURFACE_TYPE)? {
         return Err(SolidError::sm_err(OP_EXTEND));
+    }
+
+    // `fixes.offset_extension_from_base`: `fixed` holds the current extension's domain
+    if fixed {
+        let periodic = [is_periodic_on_u, is_periodic_on_v];
+        return extend_from_base(surface, *uv, current, periodic, singularities);
     }
 
     // extend a domain size farther out than needed
@@ -2348,12 +2480,13 @@ impl SurfaceEvaluate for OffsetEval<'_> {
 
     fn knots(
         &self,
+        k: &Kernel,
         param: SurfParamType,
         ivl: Option<&Extent1d>,
     ) -> Result<(Vec<f64>, Vec<usize>)> {
         self.with_extension(|ext| match ext.current() {
-            Some(e) => e.knots(param, ivl),
-            None => self.off.surface.knots(param, ivl),
+            Some(e) => e.knots_with_nurb(k, param, ivl),
+            None => self.off.surface.knots_with_nurb(k, param, ivl),
         })
     }
 
@@ -2512,8 +2645,8 @@ mod tests {
             [false, false, true],
             true
         )));
-        assert!(is_face_tolerance(&off.is_planar(&k, 1e-6)));
         // no expansion, no tolerance: the box is computed
+        assert!(off.is_planar(&k, 1e-6).is_ok());
         assert!(off
             .calculate_bounding_box(&k, &dom, [true, true, true], false)
             .is_ok());
@@ -2660,5 +2793,62 @@ mod tests {
             let off = Surface::from(OffsetSurface::new(&k, 0.5, base, true, SS_UNKNOWN).unwrap());
             assert_eq!(off.natural_uv_domain_with_nurb(&k).unwrap(), want, "{name}");
         }
+    }
+
+    /// Two copies of one offset of a half cylinder (r 5, offset 4) evaluated beyond both
+    /// ends of its arc, one straight at the farther points, the other after two nearer
+    /// ones first (tangency-labs/solidcore#419, WR-458): upstream's extension reaches
+    /// one domain size past the first point, so the copies disagree; with
+    /// `fixes.offset_extension_from_base` the same points give the same extension.
+    fn offset_extension_gap(from_base: bool) -> f64 {
+        use crate::surface::cone::Cone;
+        let mut k = Kernel::default();
+        k.fixes.offset_extension_from_base = from_base;
+        let mut half = Cone::new_cylinder_bounded(
+            Vec3::ZERO,
+            Vec3::X,
+            Vec3::Y,
+            5.0,
+            0.0,
+            180.0,
+            10.0,
+            false,
+            false,
+            false,
+        );
+        half.make_nurb(&k).unwrap();
+        let half = Surface::from(half);
+        let d = half.natural_uv_domain_with_nurb(&k).unwrap();
+        let len = d.max().x - d.min().x;
+        let v = 0.5 * (d.min().y + d.max().y);
+        let make = || {
+            let mut o =
+                OffsetSurface::new(&k, 4.0, half.clone(), true, crate::geom::extent2d::SS_NONE)
+                    .unwrap();
+            o.set_allow_extension(true);
+            o
+        };
+        let (mut first, mut second) = (make(), make());
+        for u in [d.max().x + 0.067 * len, d.min().x - 0.067 * len] {
+            first
+                .evaluate_point_extending(&k, Point2::new(u, v))
+                .unwrap();
+        }
+        let mut gap: f64 = 0.0;
+        for u in [d.max().x + 0.116 * len, d.min().x - 0.116 * len] {
+            let uv = Point2::new(u, v);
+            let b = second.evaluate_point_extending(&k, uv).unwrap();
+            let a = first.evaluate_point_extending(&k, uv).unwrap();
+            gap = gap.max((a - b).length());
+        }
+        gap
+    }
+
+    #[test]
+    fn issue_419_offset_extension_does_not_depend_on_evaluation_order() {
+        let upstream = offset_extension_gap(false);
+        assert!(upstream > 1e-6, "upstream copies agree: {upstream}");
+        let fixed = offset_extension_gap(true);
+        assert!(fixed < 1e-9, "fixed copies disagree by {fixed}");
     }
 }

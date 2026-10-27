@@ -34,9 +34,11 @@
 //! Deviations:
 //! - **Object model** as in `blend.fillet_standard_solver_p1` (the solvers are its
 //!   structs). The tangent-rollover guess of `SmConstantRadiusFS::LoadInitialValues`
-//!   comes from [`ConstantRadiusOps::tangent_rollover_guess`]: the geometry for the
-//!   surfaces of `SmFilletGeom::RailEdgeuseIntersect` supplies its rails' guesses
-//!   (`blend::fillet_solver::surfaces`); context-free callers have none.
+//!   comes from [`ConstantRadiusOps::tangent_rollover_guess`]: every scope that sets
+//!   the solver's geometry for the surfaces (`SmFilletGeom::RailEdgeuseIntersect`, the
+//!   corners' `ReCalcFilletGeom` scopes) hands the solver that geometry's rail guesses,
+//!   taken when the scope starts (`blend::fillet_solver::surfaces`); context-free
+//!   callers have none.
 //! - **Virtual dispatch.** `SetupOffsetExtension` is dispatched on the solver's class
 //!   through [`ConstantRadiusOps`]: `SmSurfaceSurfaceFS` has its own version
 //!   (`blend.fillet_standard_solver_p1`); every other constant-radius solver uses the
@@ -361,14 +363,15 @@ pub trait ConstantRadiusOps {
     /// The tangent-rollover guess of rail `rail`'s other surface: in the
     /// tangent-rollover case (`GetFilletGeomForSurfaces()` of type
     /// `SM_FG_TANGENT_ROLLOVER`) the UV position stored in a rail vertex use's
-    /// intersection point (`None`: no such point, or no such geometry). Context-free
-    /// callers have no geometry for the surfaces.
+    /// intersection point (`None`: no such point, or no such geometry). The geometry
+    /// for the surfaces is the solver's, set by the scope that lent its surfaces
+    /// ([`FilletSolver::tangent_rollover_guess`]); context-free callers have none.
     ///
     /// # Errors
-    /// `SM_ERR_NULL_POINTER` without the geometry's rail.
+    /// `SM_ERR_NULL_POINTER` without the geometry's rail; [`SolidError::InvalidInput`]
+    /// for a geometry for the surfaces set outside a lending scope.
     fn tangent_rollover_guess(&self, rail: usize) -> Result<Option<Point2>> {
-        let _ = rail;
-        Ok(None)
+        self.constant_radius().solver.tangent_rollover_guess(rail)
     }
 
     /// `SetupOffsetExtension(pSurf, rDomain)` of the solver's class.
@@ -2096,24 +2099,6 @@ impl FilletSolverOps for VariableRadiusFs {
         &mut self.curve_based.solver
     }
 
-    /// `SmFilletSolver::RailEdgeuseIntersect` with `geometry` as the geometry for
-    /// surfaces (`SmFilletGeom::RailEdgeuseIntersect`).
-    fn rail_edgeuse_intersect_on_geometry(
-        &mut self,
-        k: &Kernel,
-        geometry: &mut crate::blend::fillet_geom::p1::FilletGeom,
-        _rollover: crate::blend::fillet_solver::p1::RolloverGuesses,
-        target: &mut Brep,
-        rail_index: usize,
-        edgeuse: EdgeuseId,
-        guess: f64,
-        tsect: &mut TsectPnt,
-    ) -> Result<Option<f64>> {
-        crate::blend::fillet_solver::surfaces::slot_rail_edgeuse_intersect(
-            self, k, geometry, target, rail_index, edgeuse, guess, tsect,
-        )
-    }
-
     /// `SmVariableRadiusFS::GetJacobianSize`: 5.
     fn jacobian_size(&self) -> Result<usize> {
         Ok(VariableRadiusFs::jacobian_size(self))
@@ -2256,25 +2241,6 @@ impl FilletSolverOps for ConstantDistanceFs {
 
     fn solver_mut(&mut self) -> &mut FilletSolver {
         &mut self.solver
-    }
-
-    /// `SmFilletSolver::RailEdgeuseIntersect` with `geometry` as the geometry for
-    /// surfaces (`SmFilletGeom::RailEdgeuseIntersect`): this solver reads its rails
-    /// through its own slots, as `SmVariableRadiusFS` does.
-    fn rail_edgeuse_intersect_on_geometry(
-        &mut self,
-        k: &Kernel,
-        geometry: &mut crate::blend::fillet_geom::p1::FilletGeom,
-        _rollover: crate::blend::fillet_solver::p1::RolloverGuesses,
-        target: &mut Brep,
-        rail_index: usize,
-        edgeuse: EdgeuseId,
-        guess: f64,
-        tsect: &mut TsectPnt,
-    ) -> Result<Option<f64>> {
-        crate::blend::fillet_solver::surfaces::slot_rail_edgeuse_intersect(
-            self, k, geometry, target, rail_index, edgeuse, guess, tsect,
-        )
     }
 
     /// `SmConstantDistanceFS::GetJacobianSize`: 5.
