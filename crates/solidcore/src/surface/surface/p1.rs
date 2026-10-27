@@ -1333,6 +1333,8 @@ impl Surface {
             }
             (SurfaceKind::SurfOfExtrusion(a), SurfaceKind::SurfOfExtrusion(b)) => a.approx_eq(k, b),
             (SurfaceKind::SrfInVolume(a), SurfaceKind::SrfInVolume(b)) => a.approx_eq(k, b),
+            (SurfaceKind::Sphere(a), SurfaceKind::Sphere(b)) => Ok(a.approx_eq(b)),
+            (SurfaceKind::Torus(a), SurfaceKind::Torus(b)) => Ok(a.approx_eq(b)),
             _ => Ok(false),
         }
     }
@@ -1835,7 +1837,7 @@ impl Surface {
         cache: &SurfaceCache<O>,
     ) -> Result<Extent2d> {
         // Start out with natural domain and then shrink it if needed
-        let ret_domain = self.natural_uv_domain();
+        let ret_domain = self.natural_uv_domain_with_nurb(k)?;
         let mut min = ret_domain.min();
         let mut max = ret_domain.max();
 
@@ -2046,12 +2048,14 @@ impl Surface {
         }
     }
 
-    /// [`Surface::natural_uv_domain`] as upstream's `GetNaturalUVDomain`, which makes a
+    /// [`Surface::natural_uv_domain_if_built`] as upstream's `GetNaturalUVDomain`, which makes a
     /// missing NURB (`GetOrCreateGwNurbPointer`): a lazy cone, sphere, torus or surface
     /// of revolution reads the domain of the NURB its `MakeNurb` gives
-    /// ([`Surface::kind_with_nurb`]), where [`Surface::natural_uv_domain`] answers the
-    /// NURB-less base's empty domain. A surface of extrusion already answers from its
-    /// generator, and every other kind as [`Surface::natural_uv_domain`].
+    /// ([`Surface::kind_with_nurb`]), where [`Surface::natural_uv_domain_if_built`] answers the
+    /// NURB-less base's empty domain; an offset surface reads its base's (or extended
+    /// surface's) the same way ([`OffsetSurface::natural_uv_domain_with_nurb`]). A
+    /// surface of extrusion already answers from its generator, and every other kind as
+    /// [`Surface::natural_uv_domain_if_built`].
     ///
     /// # Errors
     ///
@@ -2062,7 +2066,9 @@ impl Surface {
             SurfaceKind::SurfOfRevolution(s) => s.base().natural_uv_domain(),
             SurfaceKind::Sphere(s) => s.base().base().natural_uv_domain(),
             SurfaceKind::Torus(s) => s.base().base().natural_uv_domain(),
-            _ => self.natural_uv_domain(),
+            SurfaceKind::OffsetSurface(s) => s.natural_uv_domain_with_nurb(k)?,
+            // (the other kinds are never lazy)
+            _ => self.natural_uv_domain_if_built(),
         })
     }
 
@@ -2106,7 +2112,7 @@ impl Surface {
         // override then runs this body again for the nodes outside)
         let recurses = match self.kind() {
             SurfaceKind::OffsetSurface(s) => !self
-                .natural_uv_domain()
+                .natural_uv_domain_with_nurb(k)?
                 .is_contained_by(&s.base_surface().natural_uv_domain_with_nurb(k)?, EFF_ZERO),
             _ => true,
         };
@@ -4180,6 +4186,29 @@ mod tests {
     }
 
     #[test]
+    fn approx_eq_compares_spheres_and_tori_by_their_own_operator() {
+        use crate::geom::axis2_placement::Axis2Placement;
+        use crate::surface::sphere::Sphere;
+        use crate::surface::torus::{Torus, TorusOptions};
+        let k = &Kernel::default();
+        let frame = Axis2Placement::IDENTITY;
+        let sphere = |r: f64| Surface::from(Sphere::create_canonical(k, &frame, r).unwrap());
+        let torus = |major: f64, minor: f64| {
+            Surface::from(
+                Torus::create_canonical(k, &frame, major, minor, TorusOptions::default(), None)
+                    .unwrap(),
+            )
+        };
+        // distinct objects, so the pointer-identity shortcut does not apply
+        assert!(sphere(2.0).approx_eq(k, &sphere(2.0)).unwrap());
+        assert!(torus(4.0, 0.5).approx_eq(k, &torus(4.0, 0.5)).unwrap());
+        assert!(!sphere(2.0).approx_eq(k, &torus(4.0, 0.5)).unwrap());
+        assert!(!torus(4.0, 0.5).approx_eq(k, &sphere(2.0)).unwrap());
+        assert!(!sphere(2.0).approx_eq(k, &sphere(3.0)).unwrap());
+        assert!(!torus(4.0, 0.5).approx_eq(k, &torus(4.0, 0.75)).unwrap());
+    }
+
+    #[test]
     fn map_to_2d_on_curve_uses_the_uv_curve_of_a_curve_on_this_surface() {
         use crate::curve::crv_on_surf::CrvOnSurf;
         let k = &Kernel::default();
@@ -4312,7 +4341,7 @@ mod tests {
         let knots = vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
         let nl = NlSurface::new(net, 3, 3, knots.clone(), knots).unwrap();
         let s = Surface::from(BSplineSurface::from_nurb(nl, false));
-        let dom = s.natural_uv_domain();
+        let dom = s.natural_uv_domain_if_built();
         // the plain evaluation reports the failed repair
         assert!(s
             .evaluate(k, Point2::new(0.5, 0.5), 1, 1, upper_flags(true))
@@ -4371,7 +4400,7 @@ mod tests {
         assert!(
             base_is_degenerate_curve(k, &s, EFF_ZERO_DEG, Some(&line), DEGENERATE_TOL_3D).unwrap()
         );
-        let d = s.natural_uv_domain();
+        let d = s.natural_uv_domain_if_built();
         assert!(!s.is_periodic(k, &d, SurfParamType::U).unwrap());
         assert!(!s.is_analytic().unwrap());
     }
@@ -4383,7 +4412,7 @@ mod tests {
             .snap_to_knots(&Kernel::default(), Point2::new(0.999, 0.4), 0.01)
             .unwrap();
         assert_eq!(p, Point2::new(1.0, 0.4));
-        let d = s.natural_uv_domain();
+        let d = s.natural_uv_domain_if_built();
         // bilinear: never a seam
         assert!(!crossed_seam_or_pole(
             &Kernel::default(),

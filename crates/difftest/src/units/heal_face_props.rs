@@ -460,7 +460,7 @@ pub(crate) fn rust_brep(k: &Kernel, f: &FaceIn) -> Result<(Brep, FaceId), Harnes
         type_code: fp2::TYPE,
         key: ObjectKey(1),
     }));
-    let uv_domain = surface.natural_uv_domain();
+    let uv_domain = surface.natural_uv_domain_with_nurb(k).map_err(|e| HarnessError::new(e.to_string()))?;
     let face = b
         .add_face_record(Face {
             surface: Some(surface),
@@ -816,6 +816,9 @@ pub(crate) fn snapshot<O: LoopObject>(p: &FaceProps<O>, face: FaceId) -> Vec<f64
             None => o.extend([0.0; 3]),
         }
     }
+    o.push(t(p.bad_crossed_pole));
+    o.push(f64::from(u8::from(p.crossed_pole_edge.is_some())));
+    o.push(p.crossed_pole_parameter);
     o.resize(ffi::SNAP_LEN, 0.0);
     o
 }
