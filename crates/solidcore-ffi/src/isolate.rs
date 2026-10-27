@@ -10,6 +10,11 @@
 //! after the run. Nothing read in the child is ever handed to the Rust kernel: it is a
 //! compared output.
 //!
+//! [`set_heap_pad`] (off by default) makes the child allocate a few small blocks before
+//! the closure and free them after it. That moves the C++ side's heap addresses and
+//! nothing else, so a C++ result that changes with it depends on addresses (ND-2,
+//! ND-258): `difftest --heap-pads`.
+//!
 //! A child that dies (signal, the 600 s alarm, an abnormal exit) or sends a short
 //! message is [`SC_ERR_CHILD_CRASHED`](crate::SC_ERR_CHILD_CRASHED). Where fork is not
 //! available (non-Unix, wasm32) or fails, the closure runs in-process.
@@ -22,6 +27,22 @@ extern "C" {
     fn sc_isolate_alarm(seconds: u32);
     fn sc_isolate_exit() -> !;
     fn sc_isolate_wait(pid: i64) -> i32;
+}
+
+/// Blocks the forked child allocates before a case ([`set_heap_pad`]); 0 = none.
+static HEAP_PAD: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Sets how many small blocks (24 to 264 bytes) every later [`fresh_process`] child
+/// allocates before running its case and frees after it; `0` (the default) allocates
+/// nothing. Only forked children are padded: a case run in-process (no fork) is not.
+pub fn set_heap_pad(blocks: usize) {
+    HEAP_PAD.store(blocks, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The current [`set_heap_pad`] setting.
+#[must_use]
+pub fn heap_pad() -> usize {
+    HEAP_PAD.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 const TAG_OK: u8 = 0;
@@ -125,7 +146,12 @@ pub fn fresh_process_within(
             // without unwinding into the parent's frames).
             // SAFETY: only sets this child's alarm.
             unsafe { sc_isolate_alarm(seconds.clamp(1, MAX_SECONDS)) };
+            // Held across the case so the C++ side allocates around it (`set_heap_pad`).
+            let pad: Vec<Vec<u8>> = (0..heap_pad())
+                .map(|i| vec![1u8; 24 + 40 * (i % 7)])
+                .collect();
             let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(case));
+            drop(std::hint::black_box(pad));
             if let Ok(r) = r {
                 // SAFETY: `fd` is the pipe's write end, owned by this child only.
                 let mut pipe = unsafe { std::fs::File::from_raw_fd(fd) };

@@ -38,6 +38,7 @@ nice -n 10 cargo test -p difftest --features cpp                     # harness s
 | `--seeds N` | generated cases per unit (default 16) |
 | `--filter S` | only cases whose name contains `S` |
 | `--perturb` | change one item of each case's Rust output (below); passes only if **every** perturbed case is caught. No report written. |
+| `--heap-pads N[,N...]` | after each case, rerun its C++ side with the forked child's heap padded by N small blocks and list the cases whose C++ output changes ([below](#address-dependent-c-output---heap-pads)). Flag only: outcomes and exit status are unchanged. No report written. |
 | `--compare-reports R` | with `--baseline D` only: run no case, apply the same ratchet to the finished reports in `R` (CI's `difftest-compare` job; needs no C++) |
 | `--baseline D` | regression ratchet: compare each unit with its earlier report `D/<unit>.json` (see [Regression gate](#regression-gate---baseline-value-share)). CI passes the exact base revision's validated report artifact |
 | `--report-dir D` / `--no-report` | report location (default `reports/difftest/`) / skip writing |
@@ -210,6 +211,38 @@ is written the same way (so it can be re-run), but does not fail the run.
 
 `.github/workflows/nightly.yml` runs `--fuzz 300` on every green and partial unit
 each night and uploads failing inputs as the `fuzz-failures` artifact.
+
+## Address-dependent C++ output (`--heap-pads`)
+
+Some upstream results depend on heap addresses: containers keyed by pointers iterate
+in hash-of-address order (ND-2), and the order can choose a result (ND-258: which of two
+coincident planes survives a boolean). The Rust port uses arena ids, so it is
+deterministic and matches one of the C++ outcomes. Such a case can fail in one run and
+pass in the next: the forked C++ child inherits the parent's heap, so the outcome moves
+with the cases run before it, with `--filter` and with unrelated changes to the binary.
+
+```sh
+cargo run --profile difftest -p difftest --features cpp -- --unit <id> --heap-pads 1,3,8
+```
+
+After each case runs as usual, its C++ side is rerun once per pad. The rerun happens
+after the Rust side, outside the case's export memo, so the Rust side never sees a
+padded result. For each rerun, the forked child (`solidcore_ffi::isolate`) allocates
+that many small blocks (24 to 264 bytes) before the case and frees them after it. That
+moves the C++ side's addresses and nothing else. A rerun whose output differs from the
+unpadded one (the usual comparison, C++ against C++; the note shows the unpadded value,
+then the padded one) marks the case address-dependent:
+
+```text
+HEAP blend.fillet_executive_p3 pads=1,3,8 checked=1 address_dependent=1
+  address-dependent fuzz00712: pad=1: values.result_geometry[801]: -5.75e0 vs -7.5e-1
+```
+
+It is a flag, not a gate: outcomes, the summary line and the exit status are those of a
+plain run, and no report is written. Only C++ calls made through
+`isolate::fresh_process` are padded. A runner that calls C++ in-process is rerun
+unpadded, so its cases are flagged only if their C++ side changes on its own. A case
+that is not flagged is not proven address-independent: try several pads.
 
 ## Fuzzing the `.smb` readers (`examples/reader_fuzz.rs`)
 
