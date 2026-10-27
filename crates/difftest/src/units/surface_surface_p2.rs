@@ -161,6 +161,7 @@ struct This {
 /// cleared when `non_planar` is set (the way `SmTorus` / `SmCone::ReadFromDB` produce a
 /// non-planar generator; both constructors set the flag).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)]
 struct RevIn {
     cone: bool,
     origin: [f64; 3],
@@ -2946,6 +2947,7 @@ fn gen_static_case(rng: &mut Rng) -> Inputs {
 /// on the seams, at the cone's apex), points moved off it (outside and inside the
 /// tolerance) and one far away; the domain is the STEP domain or a sub-domain of it.
 fn revolution_cases() -> Result<Vec<Case>, HarnessError> {
+    type StepOp = (String, [f64; 4], [f64; 3], f64, Option<[f64; 2]>);
     let k = Kernel::default();
     let placements = [
         ([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
@@ -2992,7 +2994,6 @@ fn revolution_cases() -> Result<Vec<Case>, HarnessError> {
                             harness(format!("revolution {name} point ({fu}, {fv}): {e}"))
                         })
                     };
-                    type StepOp = (String, [f64; 4], [f64; 3], f64, Option<[f64; 2]>);
                     let mut ops: Vec<StepOp> = Vec::new();
                     for (fi, (fu, fv)) in fractions.iter().enumerate() {
                         let p = at(*fu, *fv)?;
