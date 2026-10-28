@@ -1205,8 +1205,8 @@ pub(super) fn const_make_rust(value: Value) -> Result<Output, HarnessError> {
 /// a minor radius equal to and above the major radius (the inside-out, self-intersecting
 /// shapes) and an explicit generator.
 pub(super) fn const_make_cases() -> Vec<Case> {
-    let mut cases = Vec::new();
     type Shape = (&'static str, f64, f64, Option<[f64; 4]>, Option<CircleIn>);
+    let mut cases = Vec::new();
     let shapes: [Shape; 8] = [
         ("full", 3.0, 1.0, None, None),
         ("part", 3.0, 1.0, Some([30.0, 20.0, 250.0, 300.0]), None),

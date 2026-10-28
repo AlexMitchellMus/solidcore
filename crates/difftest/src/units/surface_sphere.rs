@@ -1606,9 +1606,9 @@ pub(super) fn const_make_rust(value: Value) -> Result<Output, HarnessError> {
 /// the swap and inside-out flags, partial domains, caps ending at a pole and an explicit
 /// generator.
 pub(super) fn const_make_cases() -> Vec<Case> {
+    type Shape = (&'static str, Option<[f64; 4]>, Option<CircleIn>);
     let mut cases = Vec::new();
     let frame = |origin: [f64; 3]| (origin, [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]);
-    type Shape = (&'static str, Option<[f64; 4]>, Option<CircleIn>);
     let shapes: [Shape; 7] = [
         ("full", None, None),
         ("part", Some([30.0, -60.0, 200.0, 45.0]), None),
