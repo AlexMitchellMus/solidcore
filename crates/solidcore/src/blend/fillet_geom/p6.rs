@@ -570,7 +570,7 @@ impl FilletBrep {
         let face = self.fillet_edge(e)?.original_face().ok_or_else(nul)?;
         let surf = face2::surface(target, face)?.ok_or_else(nul)?;
         let tol = face2::tolerance(target, face)?;
-        let uv_domain = surf.natural_uv_domain();
+        let uv_domain = surf.natural_uv_domain_with_nurb(k)?;
         let (start_fv, end_fv) = self.edge_end_vertices(e, OP_BLENDING)?;
 
         let prim_eu = primary_edgeuse(self.brep(), e)?.ok_or_else(nul)?;
@@ -958,7 +958,7 @@ impl FilletBrep {
             .clone();
 
         // Drop two end points to fillet
-        let uv_domain = fillet_surface.natural_uv_domain();
+        let uv_domain = fillet_surface.natural_uv_domain_with_nurb(k)?;
 
         let p1 = self.vertex_point(start_fv)?;
         let solutions1 = fillet_surface.global_point_solve::<NoObject>(
@@ -1187,7 +1187,7 @@ impl FilletBrep {
         } else {
             // RailUVCurve as the appropriate FilletSurface IsoParameterCurve
             let surface = self.geom(fillet_geom)?.fillet_surface()?.ok_or_else(nul)?;
-            let uv_domain = surface.natural_uv_domain();
+            let uv_domain = surface.natural_uv_domain_with_nurb(k)?;
 
             // compare RailPoint to a FilletSurface Point to see if rail runs along
             // sUVDomain.MinY IsoParamCurve
@@ -1819,7 +1819,7 @@ impl FilletBrep {
             .geom(g)?
             .fillet_surface()?
             .ok_or_else(|| SolidError::null_pointer(OP_SETUP))?;
-        let uv_domain = surface.natural_uv_domain();
+        let uv_domain = surface.natural_uv_domain_with_nurb(k)?;
         let mut uv = uv_domain.evaluate(end_index as f64, rail_index as f64);
         uv.x = parameter;
 
@@ -1844,7 +1844,7 @@ impl FilletBrep {
     /// those of the solver's call ([`FilletSolver::rail_edgeuse_intersect`]).
     #[allow(clippy::too_many_arguments)]
     pub fn rail_edgeuse_intersect(
-        &self,
+        &mut self,
         k: &Kernel,
         g: FilletGeomId,
         solver: &mut FilletSolver,
@@ -1873,7 +1873,7 @@ impl FilletBrep {
     /// As [`Self::rail_edgeuse_intersect`].
     #[allow(clippy::too_many_arguments)]
     pub fn rail_edgeuse_intersect_with_solver_ops(
-        &self,
+        &mut self,
         k: &Kernel,
         g: FilletGeomId,
         solver: &mut dyn FilletSolverOps,
@@ -1883,16 +1883,19 @@ impl FilletBrep {
         guess_edge_parameter: f64,
         tsect: &mut TsectPnt,
     ) -> Result<Option<f64>> {
+        let rollover = self.rollover_guesses(g)?;
+        let geometry = self.geom_mut(g)?;
         // NER( pFS )
-        if self.geom(g)?.fillet_solver().is_none() {
+        if geometry.fillet_solver().is_none() {
             return Err(SolidError::null_pointer(OP_RAIL_EU));
         }
 
         // Tell our FilletSolver to use our surfaces.
         // If there's anything there already, restore it when we're done.
-        let saved_fg = solver.solver().fillet_geom_for_surfaces();
-
-        solver.solver_mut().set_fillet_geom_for_surfaces(Some(g));
+        let saved_fg =
+            solver
+                .solver_mut()
+                .lend_geometry_surfaces(g, rollover, &mut geometry.off_surfs);
 
         let stat = FilletSolver::rail_edgeuse_intersect(
             solver,
@@ -1904,7 +1907,9 @@ impl FilletBrep {
             tsect,
         );
 
-        solver.solver_mut().set_fillet_geom_for_surfaces(saved_fg);
+        solver
+            .solver_mut()
+            .return_geometry_surfaces(saved_fg, &mut geometry.off_surfs);
 
         stat
     }
@@ -1987,12 +1992,17 @@ impl FilletBrep {
         if geometry.fillet_solver().is_none() {
             return Err(SolidError::null_pointer(OP_RAIL_EU));
         }
-        let saved = solver.solver().fillet_geom_for_surfaces();
-        solver.solver_mut().set_fillet_geom_for_surfaces(Some(g));
+        // pFS->SetFilletGeomForSurfaces(this), its surfaces lent to the solver
+        let saved =
+            solver
+                .solver_mut()
+                .lend_geometry_surfaces(g, rollover, &mut geometry.off_surfs);
         let result = solver.rail_edgeuse_intersect_on_geometry(
-            k, geometry, rollover, target, rail_index, edgeuse, guess, tsect,
+            k, geometry, target, rail_index, edgeuse, guess, tsect,
         );
-        solver.solver_mut().set_fillet_geom_for_surfaces(saved);
+        solver
+            .solver_mut()
+            .return_geometry_surfaces(saved, &mut geometry.off_surfs);
         result
     }
 
@@ -2452,13 +2462,6 @@ mod tests {
         }
     }
 
-    fn unit_of(e: &SolidError) -> Option<&'static str> {
-        match e {
-            SolidError::Unported { unit, .. } => Some(*unit),
-            _ => None,
-        }
-    }
-
     fn vertex(fb: &mut FilletBrep, k: &Kernel, p: Point3) -> VertexId {
         let v = fb.brep_mut().add_vertex(p).unwrap();
         fb.insert_fillet_vertex(v, FilletVertex::new(k, None));
@@ -2881,10 +2884,12 @@ mod tests {
                 &mut TsectPnt::default(),
             )
             .unwrap_err();
-        // the solver reads its surfaces through the geometry (blend.fillet_solver_p1's
-        // justified stub)
-        assert_eq!(unit_of(&err), Some("blend.fillet_geom_p1"));
+        // the solver reads its surfaces through the geometry, which has none: upstream's
+        // GetOffsetSurface recurses through GetSurface without bound (UB-204), refused
+        assert!(!err.is_unported(), "{err:?}");
+        assert!(matches!(err, SolidError::InvalidInput { .. }), "{err:?}");
         assert_eq!(s.fillet_geom_for_surfaces(), saved);
+        assert_eq!(s.lent_geometry, None);
 
         // a geometry without solver: NER(pFS), the solver untouched
         fb.geom_mut(g).unwrap().solver = None;

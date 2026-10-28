@@ -24,13 +24,14 @@
 //! `Orient` outputs three values ([`split_orient`]): `out` (status, flag, face domains
 //! and upward face uses, counts), `swapped` (each face's `SmFace::SwapUV` `POST_EDIT`
 //! count, from that side's own tracker events) and `tracker` (the tracker's lists and
-//! events). `out` and `swapped` are always compared. A side whose events show a swap
-//! leaves out `tracker`: upstream the surface's own `SwapUV` notifies `SM_NO_PRE_EDIT` /
-//! `SM_NO_POST_EDIT` on the surface (`SmBSplineSurface::SwapUV` through `SetCanonical`,
-//! `SmBSplineSurface.cpp:4585`/`:4592`; `SmOffsetSurface` through its base surface;
-//! `SmSrfInVolume` itself), which the tracker records and turns into a `Chg` of the
-//! owning face, and a Rust `Surface` has no notification identity yet to send it under.
-//! A swap on one side only differs in `swapped` (and in `tracker`'s presence).
+//! events), all compared. A swap's surface edit is in `tracker`: upstream the surface's
+//! own `SwapUV` notifies `SM_NO_PRE_EDIT` / `SM_NO_POST_EDIT` on the surface
+//! (`SmBSplineSurface::SwapUV` through `SetCanonical`, `SmBSplineSurface.cpp:4585`/`:4592`;
+//! `SmOffsetSurface` through its base surface; `SmSrfInVolume` itself), which the
+//! tracker records and turns into a `Chg` of the owning face. The Rust side issues each
+//! pre-op face surface its identity on the tracked context with the face as its owner,
+//! and the port's `SwapUV` (`face::p1::swap_uv_with_notifications`) sends the surface's
+//! notifications under it; a surface is other geometry (`-30 n`) on both sides.
 
 use std::collections::BTreeMap;
 
@@ -366,6 +367,24 @@ fn key_of(e: EntityRef) -> ObjectRef {
         type_code,
         key: ObjectKey((kind << 32) | (1 + u64::from(i))),
     }
+}
+
+/// The entity a [`key_of`] key names (`None` for another key).
+fn entity_of_key(key: ObjectKey) -> Option<EntityRef> {
+    let i = u32::try_from((key.0 & 0xffff_ffff).checked_sub(1)?).ok()?;
+    Some(match key.0 >> 32 {
+        1 => EntityRef::Region(RegionId::from_index(i)),
+        2 => EntityRef::Shell(ShellId::from_index(i)),
+        3 => EntityRef::Faceuse(FaceuseId::from_index(i)),
+        4 => EntityRef::Face(FaceId::from_index(i)),
+        5 => EntityRef::Loopuse(LoopuseId::from_index(i)),
+        6 => EntityRef::Loop(LoopId::from_index(i)),
+        7 => EntityRef::Edgeuse(EdgeuseId::from_index(i)),
+        8 => EntityRef::Edge(EdgeId::from_index(i)),
+        9 => EntityRef::Vertexuse(VertexuseId::from_index(i)),
+        10 => EntityRef::Vertex(VertexId::from_index(i)),
+        _ => return None,
+    })
 }
 
 /// The identity of the source B-rep's entities in a copy or merge into another B-rep
@@ -1189,6 +1208,14 @@ fn run_rust_op(
             owners.push((c, key_of(EntityRef::Edge(e))));
         }
     }
+    // and each face's surface (upstream SetCanonical notifies the surface itself, its
+    // GetOwner() the face; the tracker lists name it as other geometry)
+    let faces: Vec<FaceId> = b.faces().ids().collect();
+    for f in faces {
+        if let Some(s) = must(bp3::face_surface_identity(&mut ctx, b, f))? {
+            owners.push((s, key_of(EntityRef::Face(f))));
+        }
+    }
     // (arena lengths in the walk's kind order: an imported B-rep's ids are its walk
     // indices, and an op only appends)
     let pre = [
@@ -1210,11 +1237,17 @@ fn run_rust_op(
     ctx.set_user_notify_callback(Some(Box::new(recorder)));
     let mut tracker =
         TrackTopologyChanges::new(Some(BrepId::from_index(0)), 7, true, Some(&mut ctx));
-    // Execute's owner walk: each pre-op curve's GetOwner() is its edge
+    // Execute's owner walk: each pre-op curve's GetOwner() is its edge, each pre-op
+    // surface's its face
     tracker.set_owner_metadata(owners.into_iter().map(|(c, e)| (c.key, Some(e))).collect());
     let r = run_rust_op_in(k, b, second, op, a, Some(&mut ctx));
+    // the shim's StopTracking before put_tracker: 1.0.1 records the completed edit's
+    // dependencies (RecordDependencies) on the tracker's lists
+    let recorded =
+        tracker.stop_tracking_with_brep(Some(&mut ctx), b, &entity_of_key, &|e| key_of(e).key);
     let lists = tracker.lists();
     tracker.finish(Some(&mut ctx));
+    must(recorded)?;
     drop(must(ctx.take_notify_lease())?);
     let mut out = r?;
     let geometry_seen = seen
@@ -1275,9 +1308,8 @@ fn run_rust_op(
 }
 
 /// An `Orient` output (either side) from its trailer: `out` before the tracker,
-/// `swapped` (each face's `SwapUV` count) and, unless that side swapped a face,
-/// `tracker` (see the module docs). An output without a trailer (a B-rep that did not
-/// build) stays whole in `out`.
+/// `swapped` (each face's `SwapUV` count) and `tracker` (see the module docs). An
+/// output without a trailer (a B-rep that did not build) stays whole in `out`.
 fn split_orient(v: Vec<f64>) -> Output {
     let trailer = match v.as_slice() {
         [.., n, at] if *n >= 0.0 && *at >= 0.0 => Some((*n as usize, *at as usize)),
@@ -1294,12 +1326,10 @@ fn split_orient(v: Vec<f64>) -> Output {
     v.truncate(body);
     let swapped = v.split_off(swaps_at);
     let tracker = v.split_off(at);
-    let o = Output::new().values("out", v);
-    if swapped.iter().all(|&x| x == 0.0) {
-        o.values("swapped", swapped).values("tracker", tracker)
-    } else {
-        o.values("swapped", swapped)
-    }
+    Output::new()
+        .values("out", v)
+        .values("swapped", swapped)
+        .values("tracker", tracker)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1522,7 +1552,9 @@ fn run_rust_op_in(
                 let s = must(b.face(f))?.surface.as_ref();
                 out.push(s.map_or(-1.0, |x| x.type_code() as f64));
                 if let (Some(_), Some(s)) = (offset, s) {
-                    let d = s.natural_uv_domain();
+                    let d = s
+                        .natural_uv_domain_with_nurb(k)
+                        .map_err(|e| HarnessError::new(e.to_string()))?;
                     out.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
                 }
             }

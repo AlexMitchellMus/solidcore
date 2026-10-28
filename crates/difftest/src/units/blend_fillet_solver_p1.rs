@@ -1432,7 +1432,19 @@ fn rust(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
             let r = (|| -> Result<usize, SolidError> {
                 let mut fs =
                     FilletSolver::new_in(&k, &mut pseudo, FilletSolverId(0), 1.0e-6, 0.1, 0.01)?;
-                fs.split_fillet_geom(&k, &mut pseudo, &NoGeometry, 0, 0, &[], &[], &cc, &cc)?;
+                let target = Brep::new();
+                fs.split_fillet_geom(
+                    &k,
+                    &mut pseudo,
+                    &NoGeometry,
+                    0,
+                    0,
+                    &[],
+                    &[],
+                    &cc,
+                    &cc,
+                    [&target, &target],
+                )?;
                 Ok(fs.fillet_geoms().len())
             })();
             r.map(|n| o.extend_from_slice(&[0.0, n as f64]))
@@ -2059,7 +2071,7 @@ fn gen_rail_uv(rng: &mut Rng) -> Inputs {
 fn gen_brep_case(rng: &mut Rng) -> BrepIn {
     if rng.chance(0.6) {
         return BrepIn::File {
-            file: (*rng.choose(&FILES).unwrap_or(&"SmallBox.smb")).to_string(),
+            file: (*rng.choose(&FILES).unwrap_or(&"SmallBox.smp")).to_string(),
             rebuild: false,
         };
     }
@@ -2395,7 +2407,7 @@ fn gen_static(rng: &mut Rng) -> Inputs {
         4 => gen_clipped(rng),
         5 => Inputs::Convexity {
             brep: BrepIn::File {
-                file: (*rng.choose(&FILES).unwrap_or(&"SmallBox.smb")).to_string(),
+                file: (*rng.choose(&FILES).unwrap_or(&"SmallBox.smp")).to_string(),
                 rebuild: false,
             },
             edge: if rng.chance(0.6) { -1 } else { s(rng) },
