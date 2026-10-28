@@ -174,8 +174,8 @@ enum Fixture {
     /// `SmApiCreateSphere(origin, radius)`.
     Sphere { origin: [f64; 3], radius: f64 },
     /// An upstream ASCII `.smb` file (`{"$upstream_file": ..}` in the fixture):
-    /// `SmBrep::ReadFromFile` in the shim, imported through the `topology.brep_p1`
-    /// export on the Rust side (upstream list order). The file keeps its own
+    /// `SmBrep::ReadFromFile` in the shim, read by the Rust reader on the Rust side
+    /// (`own_reader::read_file_or_fail`). The file keeps its own
     /// tolerance, as `smOffsetTest.cpp`'s `ShellBrep` reads it; the case's
     /// `tolerance` is not applied.
     File { path: String },
@@ -654,11 +654,10 @@ fn primitive_finite(origin: [f64; 3], radius: f64) -> HResult<()> {
 
 fn build(kernel: &mut Kernel, fixture: &Fixture, tolerance: f64, namespace: u64) -> HResult<Brep> {
     if let Fixture::File { path } = fixture {
-        let mut brep = crate::units::topology_brep_p1::import_file(path, false)?;
-        // The import labels geometry owners with arena identities; record them as the
-        // B-rep's own owner keys, as a kernel-built B-rep does.
-        brep.use_arena_naming().map_err(setup)?;
-        return Ok(brep);
+        // The Rust reader alone (`SmBrep::ReadFromFile` into `new SmBrep(ctx)`, as the
+        // shim reads it); it records the geometry owners under arena identities, as a
+        // kernel-built B-rep does.
+        return crate::own_reader::read_file_or_fail(kernel, path);
     }
     if let Fixture::Box { origin, size } = *fixture {
         return build_box(kernel, origin, size, tolerance);
