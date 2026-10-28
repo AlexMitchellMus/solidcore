@@ -845,7 +845,6 @@ fn rust_edge_loop_face(k: &mut Kernel, f: &EdgeLoopFaceIn) -> Result<Brep, Solid
         // `StartShell`'s `SetShellType(SmFaceuse_TYPE)`
         shell_type: solidcore::topology::shell::ShellType::Faceuse,
         members: ShellMembers::Faceuses(vec![FaceuseId::from_index(0), FaceuseId::from_index(1)]),
-        ..solidcore::topology::Shell::default()
     })?;
     // `StartShell`'s `m_pOuterRegion->PostInsert(m_pOuterShell)`
     b.region_mut(region)?.shells.push(ShellId::from_index(0));
@@ -1329,10 +1328,9 @@ fn sliver_curves(s: f64, bend: f64, sep: f64) -> Vec<LoopCurveIn> {
 /// coincident.
 fn quad_curves(s: f64) -> Vec<LoopCurveIn> {
     let c = [[0.0, 0.0, 0.0], [s, 0.0, 0.0], [s, s, 0.0], [0.0, s, 0.0]];
-    (0..4)
-        .map(|i| {
-            let a = c[i];
-            let b = c[(i + 1) % 4];
+    c.iter()
+        .zip(c.iter().cycle().skip(1))
+        .map(|(&a, &b)| {
             let v = [b[0] - a[0], b[1] - a[1], 0.0];
             let d0 = [v[0] / 3.0 + 0.15 * v[1], v[1] / 3.0 - 0.15 * v[0], 0.0];
             let d1 = [v[0] / 3.0 - 0.15 * v[1], v[1] / 3.0 + 0.15 * v[0], 0.0];
