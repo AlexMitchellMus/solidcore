@@ -59,12 +59,15 @@ pub(crate) fn read_key_of(e: EntityRef) -> ObjectRef {
 /// reads it. The outer error is a harness failure (the file cannot be opened); the
 /// inner one is the Rust reader's own result.
 pub(crate) fn read_file(k: &mut Kernel, path: &str) -> Result<SolidResult<Brep>, HarnessError> {
-    read_file_rebuild(k, path, false)
+    read_file_with(k, path, false)
 }
 
-/// [`read_file`] with `ReadFromFile`'s `bRebuildUVTrimCurves` flag: `rebuild` rebuilds
-/// the UV trim curves instead of checking and fixing them.
-pub(crate) fn read_file_rebuild(
+/// [`read_file`] with `ReadFromFile`'s `bRebuildUVTrimCurves` flag (`rebuild`).
+///
+/// # Errors
+///
+/// A harness failure when the file cannot be opened.
+pub(crate) fn read_file_with(
     k: &mut Kernel,
     path: &str,
     rebuild: bool,
@@ -73,7 +76,7 @@ pub(crate) fn read_file_rebuild(
     Ok(read_bytes(k, bytes, rebuild))
 }
 
-/// [`read_file_rebuild`] on the file's bytes.
+/// [`read_file_with`] on the file's bytes.
 fn read_bytes(k: &mut Kernel, bytes: Vec<u8>, rebuild: bool) -> SolidResult<Brep> {
     let mut body = Brep::new_with_infinite_region()?;
     let mut attributes = AttributeStore::default();
