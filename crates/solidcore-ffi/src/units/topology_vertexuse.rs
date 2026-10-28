@@ -269,6 +269,55 @@ pub(crate) fn brep_block_at(input: &[f64], path: &str) -> Result<usize, FfiError
     Ok(rd.at)
 }
 
+/// Most edges of a kind-14 edge-loop face block.
+pub const MAX_EDGE_LOOP_EDGES: usize = 64;
+
+/// A one-face block with an edge loop of explicit curves (`support/edge_loop_face_fixture.h`):
+/// `origin[3] normal[3] u0 v0 u1 v1 face_tol n_edges (curve t0 t1 tol)*n_edges`. A curve is
+/// `1 a[3] b[3]` (`SmLine`) or `3 p1[3] d1[3] p2[3] d2[3]` (`SmHermiteCurve`).
+fn edge_loop_face_block(rd: &mut Reader<'_>) -> Result<(), FfiError> {
+    rd.vec3()?;
+    rd.nonzero3()?;
+    let d = rd.finites(4)?;
+    let (Some(&u0), Some(&v0), Some(&u1), Some(&v1)) = (d.first(), d.get(1), d.get(2), d.get(3))
+    else {
+        return Err(bad("edge-loop face: domain too short"));
+    };
+    if u0 >= u1 || v0 >= v1 {
+        return Err(bad("edge-loop face: domain not ordered"));
+    }
+    // SmZoneTol3d: any finite value (a tolerance is stored as |v|)
+    rd.finite()?;
+    let n = rd.index(MAX_EDGE_LOOP_EDGES)?;
+    if n == 0 {
+        return Err(bad("edge-loop face: need at least one edge"));
+    }
+    for _ in 0..n {
+        let kind = rd.index(3)?;
+        match kind {
+            // SmLine(a, b)
+            1 => {
+                rd.vec3()?;
+                rd.vec3()?;
+            }
+            // SmHermiteCurve(p1, d1, p2, d2, 3)
+            3 => {
+                for _ in 0..4 {
+                    rd.vec3()?;
+                }
+            }
+            _ => return Err(bad("edge-loop face: unsupported curve kind")),
+        }
+        let t0 = rd.finite()?;
+        let t1 = rd.finite()?;
+        if t0 >= t1 {
+            return Err(bad("edge-loop face: edge interval not ordered"));
+        }
+        rd.finite()?;
+    }
+    Ok(())
+}
+
 /// Most faces of a kind-10 block.
 pub const MAX_FACES: usize = 4;
 
@@ -407,6 +456,7 @@ fn brep_block(rd: &mut Reader<'_>, path: &str) -> Result<(), FfiError> {
                 rd.input.get(rd.at..).ok_or_else(|| bad("short ellipse face"))?
             )?;
         }
+        14 => edge_loop_face_block(rd)?,
         3 => {}
         _ => return Err(bad("unsupported B-rep kind")),
     }
