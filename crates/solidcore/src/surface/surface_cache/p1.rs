@@ -258,6 +258,7 @@ const fn bspline_curve_of(curve: &Curve) -> Option<&BSplineCurve> {
         | CurveKind::Offset(_)
         | CurveKind::CrvInVolume(_)
         | CurveKind::CrvOnSurf(_)
+        | CurveKind::TangentField(_)
         | CurveKind::Composite(_) => None,
     }
 }
@@ -1165,6 +1166,8 @@ impl<O> FaceContainmentClassifier<O> for BaseClassifier {
         // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
         // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
         // receives the owning B-rep (justified: findings.md "stubs naming green units")
+        // Proof (unreachable): BaseClassifier only fronts the SM_ERR PointClassify path; 0
+        // hits in the green difftest sweep.
         Err(SolidError::unported(
             "SmTol::GetZoneTol3d(const SmObject*)",
             "geom.tol",
@@ -1780,6 +1783,20 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     #[must_use]
     pub const fn is_trimmed(&self) -> bool {
         self.trimmed_dispatch
+    }
+
+    /// Keys a face binding to the cache surface's owner as it is now: after the surface
+    /// and its face were renamed together (a B-rep copied into new arenas, its handles
+    /// mapped), the bound face is that surface's face again.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::face`].
+    pub(crate) fn rekey_trimmed_face(&mut self) -> Result<()> {
+        if self.trimmed_face_key.is_some() {
+            self.trimmed_face_key = self.surface.face()?;
+        }
+        Ok(())
     }
 
     /// Records a face handle only after checking the source surface's owner key.
