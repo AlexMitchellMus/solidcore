@@ -17,8 +17,8 @@
 //! `SmApiFilletEdgesPerEdge` (circular, constant radius), the chamfer as a linear
 //! constant-radius section at offset 5 (equal setbacks across a right angle) with every
 //! corner a bevel, then stitching; edges and faces are picked by the rig's points. Adapted
-//! from tdamsma's reproduction (`tdamsma:claude/issue-398-shell-box-rounds-chamfer-fillet`,
-//! 3a8d137bf).
+//! from tdamsma's reproduction, commit
+//! <https://github.com/tdamsma/solidcore/commit/3a8d137bfddf857c42d1a4440f8bb2256ffa3bf2>.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
