@@ -389,6 +389,27 @@ pub(crate) fn read_as(
     finish(k, raw, validate_only, init_gaps, conv)
 }
 
+/// Any source of the shim's `build` under `conv`: an `.smb` file read by the Rust
+/// reader ([`read_as`]), every other kind built by the Rust kernel ([`build_with`]).
+///
+/// # Errors
+///
+/// As [`read_as`] and [`build_with`].
+pub(crate) fn build_any(
+    k: &mut Kernel,
+    src: &BrepIn,
+    validate_only: bool,
+    init_gaps: bool,
+    conv: &Conventions<'_>,
+) -> Result<Built, HarnessError> {
+    if let BrepIn::File { rebuild, .. } = src {
+        let path = crate::units::topology_edgeuse_p1::path_of(Some(src))?;
+        return read_as(k, &path, *rebuild, validate_only, init_gaps, conv);
+    }
+    build_with(k, src, validate_only, init_gaps, conv)?
+        .ok_or_else(|| harness("own builder: a non-file source was not built"))
+}
+
 /// `new (ctx) SmBrep()` then `f` on it: the B-rep, or the build's error.
 ///
 /// # Errors
