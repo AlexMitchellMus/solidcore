@@ -808,7 +808,11 @@ fn ellipse_face(k: &mut Kernel, b: &mut Brep, i: &EllipseIn) -> Result<(), Solid
 /// (the arena order of a [`renumber_with`]ed B-rep); with `vertex_edge_gaps` each vertex
 /// use's `GetVertexEdgeGap` follows when `HasVertexEdgeGap`. Their statuses are
 /// ignored, as there; an unported callee is returned.
-fn init_gap_walk(k: &Kernel, b: &mut Brep, vertex_edge_gaps: bool) -> Result<(), SolidError> {
+pub(crate) fn init_gap_walk(
+    k: &Kernel,
+    b: &mut Brep,
+    vertex_edge_gaps: bool,
+) -> Result<(), SolidError> {
     use solidcore::topology::vertexuse as vu1;
     let vus: Vec<VertexuseId> = b.vertexuses().ids().collect();
     for vu in vus {
