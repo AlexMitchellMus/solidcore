@@ -853,8 +853,7 @@ impl Constructor {
             return Err(sm_err(OP));
         }
         // connect edge and edge uses: the first edge use has the edge's orientation
-        match existing_edge {
-            None => {
+        if existing_edge.is_none() {
                 if let Some(v) = start_vertex {
                     post_insert_vertexuse(b, v, vu1)?;
                 }
@@ -870,8 +869,7 @@ impl Constructor {
                     b.edge_mut(edge)?.edgeuses.push(eu);
                     b.edgeuse_mut(eu)?.edge = Some(edge);
                 }
-            }
-            Some(_) => {
+        } else {
                 let eu = opt_err(eu1p::primary_edgeuse(b, edge)?, OP)?;
                 let eu_mate = opt_err(eu1p::mate(b, eu)?, OP)?;
                 let eu_vu = opt_err(b.edgeuse(eu)?.vertexuse, OP)?;
@@ -894,7 +892,6 @@ impl Constructor {
                     return Err(sm_err(OP));
                 }
                 solidcore::topology::edge::add_oriented_eu_pair(b, edge, eu1, eu2, Some(eu_mate))?;
-            }
         }
         self.edge = Some(edge);
         self.edgeuse = Some(eu1);
@@ -979,9 +976,9 @@ impl Constructor {
                         }
                     }
                 }
-                let v = match v {
-                    Some(v) => v,
-                    None => {
+                let v = if let Some(v) = v {
+                    v
+                } else {
                         let tolerance = b.tolerance();
                         let v = b.add_vertex_record(Vertex {
                             tolerance,
@@ -996,7 +993,6 @@ impl Constructor {
                         let p = opt_err(edge.curve.as_ref(), OP)?.evaluate_point(k, t)?;
                         b.vertex_mut(v)?.point = p;
                         v
-                    }
                 };
                 post_insert_vertexuse(b, v, vu)?;
                 v
